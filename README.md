@@ -6,13 +6,11 @@
 
 **Open-source finance terminal. Fast, keyboard-driven, and extensible.**
 
-Desktop app for macOS and Windows. Terminal UI for macOS, Linux, and Windows.
-
-<a href="https://gloom.sh/download/desktop"><strong>Download desktop</strong></a>
+<a href="#install"><strong>Install</strong></a>
 &nbsp;&middot;&nbsp;
-<a href="#install"><strong>Install the TUI</strong></a>
+<a href="https://gloom.sh/download/desktop"><strong>Desktop app</strong></a>
 &nbsp;&middot;&nbsp;
-<a href="https://term.gloom.sh"><strong>Open in browser</strong></a>
+<a href="https://term.gloom.sh"><strong>Try it in the browser</strong></a>
 &nbsp;&middot;&nbsp;
 <a href="https://gloom.sh/discord">Discord</a>
 &nbsp;&middot;&nbsp;
@@ -21,60 +19,52 @@ Desktop app for macOS and Windows. Terminal UI for macOS, Linux, and Windows.
 <br />
 <br />
 
-<img src="https://gloom.sh/landing-terminal.png" alt="Gloom terminal showing portfolio, watchlists, market data, and chart panels." width="720" />
+<img src="docs/assets/gloom-desktop.webp" alt="Gloom showing a chart, an options chain, company details and analyst ratings for NVDA." width="840" />
 
 <sub>Backed by <a href="https://adjacent.markets/?ref=gloomberb"><img src="docs/assets/adjacent.svg" alt="" width="12" height="12" /> Adjacent</a></sub>
 
 </div>
 
-Quotes, charts, financials, filings, options, news, portfolios and alerts in one workspace. Browse every function in the [function catalog](https://gloom.sh/docs/functions).
+Quotes, charts, financials, filings, options, news and your portfolio in one workspace you drive from the keyboard. Type `DES AAPL` for company details or `GP NVDA` for a chart. It runs in your terminal (macOS, Linux, Windows), as a desktop app (macOS, Windows), and in the browser.
 
 ## Install
 
-On **macOS (Apple Silicon)**:
-
-```bash
-brew install --cask gloomberb
-```
-
-On **Windows 11**, [download the installer](https://github.com/gloom-sh/gloomberb/releases/latest/download/stable-win-x64-GloomberbSetup.exe). It is not code-signed yet, so SmartScreen may ask you to click **More info**, then **Run anyway**.
-
-For the terminal on **macOS or Linux**:
+macOS or Linux:
 
 ```bash
 curl -fsSL gloom.sh/install | bash
 ```
 
-For the terminal on **Windows**, in PowerShell:
+Windows, in PowerShell:
 
 ```powershell
 irm https://gloom.sh/install.ps1 | iex
 ```
 
-The script downloads the prebuilt release from GitHub and checks its SHA-256 against the checksum file the release publishes beside it, installing nothing if they differ. Apple Silicon Macs get the desktop app and the `gloom` command; Linux and Intel Macs get the standalone binary. The PowerShell line does the same on Windows: it puts the standalone `gloom.exe` in `%USERPROFILE%\.local\bin` and adds that folder to your PATH. It asks for `sudo` only if the destination isn't writable. Prefer to download it yourself? See the [installation guide](docs/installation.md).
-
-With [Bun](https://bun.sh), on any supported OS:
+Or with [Bun](https://bun.sh), on any of them:
 
 ```bash
 bun install -g @gloom-sh/terminal
 ```
 
-Then run `gloom`. The command was called `gloomberb` before 0.18.4, and that name still works. For chart graphics, use a Kitty-compatible terminal such as Ghostty, Kitty, or WezTerm. Windows Terminal draws charts as text; the desktop app draws them in full.
+Then run `gloom` (`gloomberb`, its old name, still works). On Apple Silicon the script also installs the desktop app, Gloom.app. Homebrew, the Windows desktop installer and manual downloads are in the [installation guide](docs/installation.md).
+
+Charts draw as images in Kitty-compatible terminals such as Ghostty, Kitty and WezTerm, and as text elsewhere.
 
 ## Start
 
-Press `Ctrl+P` for the command bar, or `` ` `` to search for a ticker. Try `DES AAPL` for company details or `GP NVDA` for a price chart. `HELP` lists commands and shortcuts.
+Press `Ctrl+P` for the command bar, or `` ` `` to search for a ticker. `HELP` lists every command and shortcut, and the [function catalog](https://gloom.sh/docs/functions) shows them all.
 
-The [user guide](docs/usage.md) covers charts, broker setup, shortcuts, and the CLI (`gloom quote AAPL`).
+From your shell, `gloom quote AAPL` prints a quote; add `--json` for scripts. The [user guide](docs/usage.md) covers charts, brokers, shortcuts and the CLI.
 
 ## Data and privacy
 
-The app is MIT licensed. Market data and Ask Gloom use [Gloom Cloud](https://gloom.sh/cloud), our hosted service, which is not open source. Free market data is delayed 15 minutes; Pro adds real-time data. See [what is open and what is not](docs/open-source.md). The [browser app](https://term.gloom.sh) has a smaller feature set ([limits](docs/browser.md)).
+Free market data is delayed: quotes by 15 minutes, news by 12 hours. Pro adds real-time data. Market data and Ask Gloom come from [Gloom Cloud](https://gloom.sh/cloud), a hosted service that is not open source; the app itself is MIT licensed. See [what is open and what is not](docs/open-source.md).
 
-Crash reports and usage counts can be turned off. See [what is sent and how to opt out](docs/telemetry.md).
+Crash reports and usage counts can be turned off: [what is sent](docs/telemetry.md).
 
 ## Plugins and contributing
 
-Plugins add panes, data providers, broker connections, and commands. Install one from GitHub with `gloom install gloom-sh/gloom-tv`. See the [plugin guide](PLUGINS.md) and the [contributing guide](CONTRIBUTING.md).
+Plugins add panes, data sources, brokers and commands. Install one from GitHub with `gloom install gloom-sh/gloom-tv`, or build your own with the [plugin guide](PLUGINS.md). To work on Gloom itself, read [CONTRIBUTING.md](CONTRIBUTING.md).
 
 [MIT licensed](LICENSE). Built with [OpenTUI](https://opentui.com/). [Sponsor Gloom](https://gloom.sh/sponsor).

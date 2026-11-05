@@ -2,30 +2,28 @@
 
 [Back to README](../README.md) · [User guide](usage.md)
 
-Open [term.gloom.sh](https://term.gloom.sh) without an account to start with a starter workspace. The browser app uses the same DOM renderer and layout as the desktop app, with a bundled browser plugin catalog.
+[term.gloom.sh](https://term.gloom.sh) opens a starter workspace with no account. It shares its layout and panes with the desktop app, and keeps your configuration, tickers, layouts and plugin state in the browser.
 
 ## Accounts and data
 
-- The workspace opens without signing in. Some panes, including filings and insider transactions, require a free, verified Gloom Cloud account; others require Pro.
-- 13F funds (`13F`), earnings history and calendar (`ERN`, `EVTS`), and institutional holders (`HDS`) open without an account, including from a saved layout.
-- Functions that read public sources, such as Treasury auctions (`AUCT`), the bond tape (`TRACE`), trading halts (`HALT`), Fear & Greed (`FNG`), comment letters (`CLTR`), prediction markets (`PM`) and polls (`POLL`), also work without an account. The browser app reaches the sources that refuse a browser through its own server, with a per-visitor rate limit that is higher when signed in.
-- Free access has rate limits, equity and options quotes delayed by 15 minutes, and news delayed by 12 hours. Pro provides real-time data and more datasets.
-- Signed out, once you have opened a function and spent a minute in the workspace, Chrome and Edge may offer to sign you in with Google (Google One Tap). Picking an account signs you in, or creates a free account, and you stay where you were. A Google address that already has an account here joins it once that account's email is verified. Closing the prompt, or picking a Google account that cannot sign in here, keeps it away for a week. Google's sign-in script is loaded only when the prompt is about to be asked for, never while a dialog or the command bar is open.
-- Chat needs a free Gloom Cloud account, and is read-only until the account's email is verified.
-- Configuration, tickers, layouts, session state, and plugin state are stored in the browser.
-- A function link opens the hosted terminal on one function and what it opens on, as typing them in the command bar would: `term.gloom.sh/?fn=ERN&arg=NVDA` opens NVDA's earnings, `?fn=PERP&arg=BTC` BTC's perpetuals. The argument is one symbol or a comma list of them; a code that runs a command instead of opening a pane is refused. A ticker link (`?ticker=NVDA&tab=news`) opens the research pane on one of its tabs.
-- A share link opens the hosted terminal on the shared pane, in the state the sender was looking at: a chart keeps its drawings and zoom, a news pane its open story, a filings pane its open document. Opening one requires no account; panes served by Gloom Cloud (SEC filings, insider transactions) ask the receiver to sign in. Creating a share requires a verified Gloom Cloud account.
+- Many functions open signed out, including 13F funds (`13F`), earnings (`ERN`, `EVTS`), institutional holders (`HDS`), Treasury auctions (`AUCT`), the bond tape (`TRACE`), trading halts (`HALT`), Fear & Greed (`FNG`), comment letters (`CLTR`), prediction markets (`PM`) and polls (`POLL`). Free access has rate limits, higher when signed in.
+- Some panes, such as filings and insider transactions, need a free, verified Gloom Cloud account; others need Pro. Chat needs a free account and is read-only until its email is verified.
+- Free data is delayed: equity and options quotes by 15 minutes, news by 12 hours. Pro adds real-time data and more datasets.
+- Signed out, after a minute in the workspace, Chrome and Edge may offer to sign you in with Google. Picking an account signs you in, or creates a free account, and closing the prompt keeps it away for a week.
+
+## Links
+
+- A function link opens one function, as typing it would: `term.gloom.sh/?fn=ERN&arg=NVDA` opens NVDA's earnings. The argument is one symbol or a comma list. `?ticker=NVDA&tab=news` opens the research pane on a tab.
+- A share link opens the shared pane as the sender saw it, with a chart's drawings and zoom or a news pane's open story. Opening one needs no account, though panes served by Gloom Cloud ask the receiver to sign in. Creating one needs a verified account.
 
 ## Plugins
 
-Every web-capable plugin is compiled into the build, so Polls and Prediction Markets are there on first load with nothing to install. Disable any of them from the plugin directory as you would a built-in.
+Every plugin that runs on the web is compiled into the build, so Polls and Prediction Markets are there on first load. Disable any of them from the plugin directory.
 
-The browser app does not install plugins. Code you pick would run on the origin holding your session, and a plugin is a React component sharing the app's own modules, so there is nothing to sandbox it with. Installing belongs to the desktop app and the terminal, which run on your machine. The plugin directory still lists everything and says where each plugin runs, and typing the code of one that is not in the build, such as `TV`, says where to get it.
+The browser app does not install plugins: a plugin is code that would run with your session and the app's own modules, so there is nothing to sandbox it with. The desktop app and the terminal install them. The plugin directory still lists every plugin and says where each one runs.
 
-## Feature limits
+## Not in the browser
 
-The browser build omits brokers and native integrations, filesystem notes, local AI, plugin installation, updater/debug tools, application menus, native window controls, pop-out native windows, and native context menus.
+Brokers and native integrations, filesystem notes, local AI, plugin installation, the updater and debug tools, application menus, native window controls and context menus, pop-out windows, custom RSS feeds and Substack, market movers, and TV.
 
-Modules whose feeds the build has no path to are also unavailable: custom RSS feeds and Substack, market movers, and TV.
-
-For local development, validation, and deployment details, see [Contributing](../CONTRIBUTING.md#browser-development).
+For local development and deployment, see [Contributing](../CONTRIBUTING.md#browser-development).

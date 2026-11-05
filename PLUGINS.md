@@ -1,105 +1,41 @@
 # Building Plugins
 
-Gloom is built on a plugin architecture — top-level product areas such as Portfolio and Ticker Research are plugins themselves. You can extend the app by writing your own.
+Most of Gloom is plugins: Portfolio, Ticker Research and every other product area are built the same way yours would be. A plugin can add panes, commands, data sources, broker connections and CLI commands. Start with [Plugin structure](#plugin-structure) for a minimal plugin, and [Developing a plugin](#developing-a-plugin) to run it.
 
 ## Installing plugins
 
-The Plugins pane (`PL` in the command bar) installs, updates, removes, enables,
-and sets up plugins without leaving the app, and a plugin installed or updated
-there is registered in the running session: its panes and commands exist as
-soon as the install finishes. The same operations exist as CLI commands:
+Open the Plugins pane (`PL` in the command bar) to install, update, remove, turn on or off and set up plugins. A plugin it installs works at once, with no restart. The same from a shell:
 
 ```bash
-gloom install user/repo        # from GitHub shorthand
-gloom install https://github.com/user/repo  # from full URL
+gloom install user/repo        # or https://github.com/user/repo
+gloom plugins                  # list installed plugins (--check asks for updates)
+gloom update [my-plugin]       # update all, or one
+gloom remove my-plugin
+gloom plugin enable my-plugin  # or disable, without removing it
 ```
 
-Manage installed plugins:
+Plugins live in the `plugins` folder of your [data folder](docs/installation.md#where-your-data-lives) (`~/.gloomberb/plugins/` by default); `gloom plugins` prints it.
 
-```bash
-gloom plugins                  # list installed plugins
-gloom update                   # update all plugins
-gloom update my-plugin         # update a specific plugin
-gloom remove my-plugin         # remove a plugin
-gloom plugin enable my-plugin  # turn one on or off without removing it
-gloom plugin disable my-plugin
-```
+A plugin listed at [gloom.sh/plugins](https://gloom.sh/plugins) installs and updates at the tag or commit the registry pins, and the installer checks that the checkout matches a pinned commit. A listing is not a review or an endorsement. Without a pin, including when the registry cannot be read, installs and updates follow the repository's default branch. A plugin that builds on another (IBKR Gateway on Interactive Brokers) brings that one along.
 
-Plugins are installed to `~/.gloomberb/plugins/`, or under `$GLOOMBERB_HOME/plugins/` when that variable relocates the folder. A new Linux install without `~/.gloomberb` uses `~/.local/share/gloomberb/plugins/` (see [Where your data lives](docs/installation.md#where-your-data-lives)); `gloom plugins` prints the folder in use.
-
-A plugin listed at [gloom.sh/plugins](https://gloom.sh/plugins) uses the
-registry's published tag or commit when available. If the registry supplies a
-commit hash, the installer checks that the checkout matches it. `update` uses
-the same pin. A registry listing does not mean a plugin has been reviewed or
-endorsed unless explicitly stated. Without a registry pin, including when
-the registry cannot be read and there is no cached listing, installation and
-updates follow the remote's default branch. A plugin that builds on another,
-such as IBKR Gateway on Interactive Brokers, brings that one along from the
-registry, from the Plugins pane and the CLI alike.
-
-Either way the Plugins pane says when an update is waiting. For a pinned
-plugin that is the registry's commit; otherwise, including for a private
-repository, the pane asks the checkout's own remote where its default branch
-is, which is exactly where `update` would land it. `gloom plugins --check`
-answers the same question from the terminal. The check needs whatever
-credentials the clone needs: a private repository without them is reported as
-nothing new rather than as an error, and it never blocks on a prompt.
-
-Official plugins, the registry entries published under
-[github.com/gloom-sh](https://github.com/gloom-sh), update themselves: once
-shortly after Gloom starts on a new version, then at most once a day, and
-at startup for one that failed to load because it uses something this
-Gloom does not have. They take the same steps as `update`, forward only
-and never to code this Gloom is too old for, peers first. A linked
-checkout, one with local edits, and one whose dependencies need `bun` when it
-is not on `PATH` are left alone, and the debug log says why. A plugin split
-across several files finishes updating at the next launch, and a single toast
-says "Plugins updated. Restart to finish." Third-party plugins, and anything
-installed from a repository the registry does not list, update only when you
-ask. Turn this off with **Update official plugins automatically** in the
-Plugins pane's settings.
+The Plugins pane says when an update is waiting, as `gloom plugins --check` does. Official plugins, the registry entries under [github.com/gloom-sh](https://github.com/gloom-sh), update themselves shortly after Gloom starts on a new version and then at most once a day, forward only and never to code this Gloom is too old for. A linked checkout or one with local edits is left alone. **Update official plugins automatically** in the Plugins pane's settings turns this off. Other plugins update only when you ask.
 
 ### Official plugins that need Git
 
-These official plugins live in their own repositories and install from GitHub
-with `git`: TV, Substack, Interactive Brokers, IBKR Gateway, Public,
-Robinhood, SimpleFIN, Polls, Prediction Markets and BYOK AI. A profile from
-before they moved gets them back after the app has drawn: the layout keeps
-their panes, and each one appears in place once its plugin is installed. A
-clone that gets no answer for a minute, or dependencies still installing after
-five, is stopped, and the next launch tries again.
-Windows does not ship `git`: install
-[Git for Windows](https://git-scm.com/download/win), then restart Gloom.
-Without it the app starts without them and says so at each launch, and
-`gloom doctor` names them; offline, it says once that it tries again at
-the next launch. Git runs quietly: a failure reports git's last line.
+TV, Substack, Interactive Brokers, IBKR Gateway, Public, Robinhood, SimpleFIN, Polls, Prediction Markets and BYOK AI live in their own repositories and install from GitHub with `git`. On first start Gloom clones the ones a profile is missing; a clone that hangs for a minute is stopped and retried at the next launch. Windows does not ship `git`: install [Git for Windows](https://git-scm.com/download/win) and restart Gloom. Until then Gloom starts without them, says so, and `gloom doctor` names them.
 
 ## Developing a plugin
 
-Work on a plugin from its own checkout rather than editing under
-`~/.gloomberb/plugins`:
+Work from your own checkout, not under the plugins folder:
 
 ```bash
-gloom plugin link ./my-plugin  # symlink the checkout into the plugins folder
-gloom plugin doctor my-plugin  # check it the way the app and the desktop build will
+gloom plugin link ./my-plugin    # symlink the checkout into the plugins folder
+gloom plugin doctor my-plugin    # check it the way the app and the desktop build will
 ```
 
-A linked plugin loads like an installed one, shows as `linked` in the Plugins
-pane, is never reported as behind the registry, and is skipped by `update`.
-Removing it removes the link and leaves the checkout alone.
+A linked plugin loads like an installed one, shows as `linked` in the Plugins pane, and is skipped by `update`. Removing it removes the link and leaves the checkout alone.
 
-Removal stops the plugin before deleting its files. If cleanup fails, the
-files stay in place and the Plugins pane asks you to restart Gloom before
-trying again; restarting is needed when cleanup left background work uncertain.
-
-`doctor` runs the checks that otherwise surface as a `failed` row in the pane
-or as a broken pane on the desktop: the entry file resolves, the Gloom the
-plugin declares is not newer than this one, it imports nothing the host has
-removed or deprecated, the module evaluates, the export is a `GloomPlugin`,
-the id is not reserved, the targets are real, the hosts the source reaches are
-declared, and the browser build the desktop view and the web app need actually
-compiles. Run it before publishing; it exits non-zero on a failure so it can
-sit in CI.
+`doctor` checks that the entry resolves, the Gloom it declares is not newer than this one, it imports nothing removed or deprecated, it evaluates and exports a `GloomPlugin`, its id is not reserved, its targets are real, it declares the hosts it reaches, and its browser build (which the desktop and web apps need) compiles. It exits non-zero on a failure, so it can run in CI.
 
 ## Plugin compatibility
 
@@ -1142,7 +1078,7 @@ ctx.registerPane({
 });
 ```
 
-Settings can also be dynamic — pass a function instead of an object to compute fields based on current state:
+Settings can also be dynamic: pass a function instead of an object to compute fields based on current state:
 
 ```typescript
 settings: (context) => ({
