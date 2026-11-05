@@ -62,8 +62,6 @@ jobs:
           persist-credentials: false
 
       - uses: ./.github/actions/setup-bun
-        with:
-          cache: "false"
 
       - name: Set the build version
         if: ${{ inputs.version != '' }}
@@ -91,7 +89,6 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           desktop: "true"
-          cache: "false"
 
       - name: Set the build version
         if: ${{ inputs.version != '' }}
@@ -186,7 +183,6 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           desktop: "true"
-          cache: "false"
 
       - name: Set the build version
         if: ${{ inputs.version != '' }}

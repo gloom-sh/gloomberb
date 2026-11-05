@@ -17,7 +17,6 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           desktop: "true"
-          cache: "false"
 
       - name: Configure Apple signing
         id: signing

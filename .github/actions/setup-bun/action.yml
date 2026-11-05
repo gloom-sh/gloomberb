@@ -13,11 +13,15 @@ inputs:
   cache:
     description: >-
       Restore the Bun binary from the Actions cache, and save it there after a
-      miss. Off in a job that runs registry plugins, which must leave nothing
-      a later job restores, and in a job that builds a release, deploys or
-      publishes, which takes nothing from it.
+      miss. Off unless a job asks, so a job added later restores nothing by
+      accident: a cache written by one run is read by any later run that can
+      see it, a job that runs code from outside the repository can write one
+      (the runner's token is in its environment), and a job that signs,
+      publishes or deploys must never restore one. Ask only in a job that
+      holds no secrets and no write token, and only where it saves time: the
+      download takes about as long as the restore.
     required: false
-    default: "true"
+    default: "false"
 
 runs:
   using: composite

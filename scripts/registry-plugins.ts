@@ -29,16 +29,15 @@ function git(args: string[], cwd: string): string {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
-const COMMIT = /^[0-9a-f]{7,40}$/i;
 const FULL_COMMIT = /^[0-9a-f]{40}$/i;
 
 /**
  * Puts `plugin` in `dir` (which must not exist yet) from `url`. With a
  * commit from the registry, that commit and nothing else: the checkout ends
- * on it or throws, and leaves nothing behind when it throws. A full commit id
- * is fetched as it is; an abbreviated one is not something git can fetch, so
- * the registry's ref (or the default branch) is, and has to be that commit.
- * Without one, the ref or the default branch.
+ * on it or throws, and leaves nothing behind when it throws. The commit has
+ * to be a full 40-character id, which git can fetch as it is; an abbreviated
+ * one throws, as git cannot fetch it and the check would have to trust a ref
+ * for it. Without a commit, the ref or the default branch.
  */
 export function checkoutRegistryPlugin(
   plugin: Pick<RegistryPlugin, "ref" | "commit">,
@@ -49,17 +48,15 @@ export function checkoutRegistryPlugin(
     git(["clone", "--quiet", "--depth", "1", ...(plugin.ref ? ["--branch", plugin.ref] : []), "--", url, dir], dirname(dir));
     return;
   }
+  if (!FULL_COMMIT.test(plugin.commit)) throw new Error(`the registry's commit "${plugin.commit}" is not a full 40-character commit id`);
   const commit = plugin.commit.toLowerCase();
-  if (!COMMIT.test(commit)) throw new Error(`the registry's commit "${plugin.commit}" is not a commit id`);
   mkdirSync(dir);
   try {
     git(["init", "--quiet"], dir);
-    git(["fetch", "--quiet", "--depth", "1", "--", url, FULL_COMMIT.test(commit) ? commit : plugin.ref ?? "HEAD"], dir);
+    git(["fetch", "--quiet", "--depth", "1", "--", url, commit], dir);
     git(["-c", "advice.detachedHead=false", "checkout", "--quiet", "--detach", "FETCH_HEAD"], dir);
     const head = git(["rev-parse", "HEAD"], dir);
-    if (FULL_COMMIT.test(commit) ? head !== commit : !head.startsWith(commit)) {
-      throw new Error(`checked out ${head.slice(0, 12)}, the registry reviewed ${plugin.commit}`);
-    }
+    if (head !== commit) throw new Error(`checked out ${head.slice(0, 12)}, the registry reviewed ${plugin.commit}`);
   } catch (error) {
     rmSync(dir, { recursive: true, force: true });
     throw error;

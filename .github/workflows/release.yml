@@ -117,7 +117,6 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           install: "false"
-          cache: "false"
 
       - name: Update Homebrew tap
         env:

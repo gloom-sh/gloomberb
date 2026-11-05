@@ -78,8 +78,10 @@ jobs:
   # plugin's own breakage only warns.
   #
   # This job and the next run code from other repositories. They leave no
-  # token on disk and use no Actions cache: what a job saves there on main,
-  # any later run can restore.
+  # token on disk. They restore no Actions cache either, but code in them
+  # could still write one, through the runner's token: what matters is that
+  # no job that signs, publishes or deploys restores any (setup-bun's cache
+  # is off unless a job asks).
   registry-plugins:
     runs-on: ubuntu-latest
     steps:
@@ -88,8 +90,6 @@ jobs:
           persist-credentials: false
 
       - uses: ./.github/actions/setup-bun
-        with:
-          cache: "false"
 
       - name: Compile registry plugins against this host
         run: bun run plugins:registry:check
@@ -109,8 +109,6 @@ jobs:
           persist-credentials: false
 
       - uses: ./.github/actions/setup-bun
-        with:
-          cache: "false"
 
       - name: Build the terminal binary
         run: bun run scripts/build.ts --target linux-x64
@@ -134,10 +132,8 @@ jobs:
         with:
           persist-credentials: false
 
-      # Takes nothing from the Actions cache while it holds the deploy token.
+      # Restores no Actions cache while it holds the deploy token.
       - uses: ./.github/actions/setup-bun
-        with:
-          cache: "false"
 
       - name: Build browser app
         run: bun run web:build

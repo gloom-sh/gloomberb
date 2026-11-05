@@ -57,7 +57,6 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           install: "false"
-          cache: "false"
 
       - id: plan
         name: Decide whether to build, and the version
@@ -117,7 +116,6 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           install: "false"
-          cache: "false"
 
       - uses: actions/download-artifact@v4
         with:
