@@ -139,15 +139,19 @@ test("a future's move the Tuesday after Memorial Day is from Friday, the trade d
 
 test("ICE's softs did not trade Good Friday, so Monday's coffee move is from Thursday", () => {
   const kc = createTestQuote({
-    symbol: "KC=F", currency: "USX", instrumentType: "FUTURE", listingExchangeName: "ICE FUTURES", exchangeName: "ICE FUTURES",
+    symbol: "KC=F", name: "Coffee May 26", currency: "USX", instrumentType: "FUTURE", listingExchangeName: "ICE FUTURES", exchangeName: "ICE FUTURES",
     price: 300, change: 3, changePercent: 1.01, previousClose: 297, changeSessionDate: "2026-04-06", marketState: "REGULAR",
     lastUpdated: Date.parse("2026-04-06T15:00:00Z"),
   });
-  const thursday = { settlement: { price: 297, date: "2026-04-02" }, spec: { tick: 0.05 } };
+  const thursday = { settlement: { price: 297, date: "2026-04-02" }, spec: { tick: 0.05 }, deliveryMonth: "2026-05" };
   expect(quoteChangeBasis(kc, { terms: thursday })).toEqual({ kind: "settle", date: "2026-04-02" });
-  // A reference that is not Thursday's settlement names no session; measured from that settlement, it reads as it.
+  // A reference that is not Thursday's settlement of the same contract is measured again from it, and reads as it.
   expect(quoteChangeBasis({ ...kc, change: 3.5 }, { terms: thursday })).toEqual({ kind: "previous close" });
   expect(quoteChangeBasis(futuresQuoteFromSettle({ ...kc, change: 3.5 }, thursday), { terms: thursday })).toEqual({ kind: "settle", date: "2026-04-02" });
+  // Terms of July while the quote prices May: the source's move stands, from no named session.
+  const july = { ...thursday, deliveryMonth: "2026-07" };
+  expect(futuresQuoteFromSettle({ ...kc, change: 3.5 }, july)).toEqual({ ...kc, change: 3.5 });
+  expect(quoteChangeBasis({ ...kc, change: 3.5 }, { terms: july })).toEqual({ kind: "previous close" });
   expect(quoteChangeBasis(kc, { terms: { ...thursday, settlement: { price: 300.5, date: "2026-04-06" } } }))
     .toEqual({ kind: "close", date: "2026-04-02" });
   expect(quotePreviousCloseDate(kc)).toBe("2026-04-02");
@@ -215,29 +219,31 @@ test("--json gives the basis beside the move: kind, dated session, closures, lab
   expect(changeBasisJson(null, NOW)).toBeNull();
 });
 
-test("at the CME reopen a move nothing confirms is measured from the last confirmed settlement, before and after the quote's date turns", () => {
+test("after the CME reopen the move is the source's, from the close of the session that has not settled yet, never two sessions", () => {
   // ES=F on Wed 4 Nov 2026 at 23:18 UTC, eighteen minutes after Globex reopened for Thursday's trade date. Tuesday
   // settled at 7,596.75; Wednesday's 7,720.50 close is not confirmed as its settlement until overnight.
-  const terms = { settlement: { price: 7596.75, date: "2026-11-03" }, spec: { tick: 0.25 } };
+  const terms = { settlement: { price: 7596.75, date: "2026-11-03" }, spec: { tick: 0.25 }, deliveryMonth: "2026-12" };
   const reopen = (changeSessionDate: string, previousCloseDate: string) => createTestQuote({
-    symbol: "ES=F", instrumentType: "FUTURE", listingExchangeName: "CME", exchangeName: "CME", marketState: "REGULAR",
+    symbol: "ES=F", name: "E-Mini S&P 500 Dec 26", instrumentType: "FUTURE", listingExchangeName: "CME", exchangeName: "CME", marketState: "REGULAR",
     price: 7734.5, change: 14, changePercent: 0.18, previousClose: 7720.5, previousCloseDate, changeSessionDate,
-    lastUpdated: Date.parse("2026-11-04T23:03:00Z"),
+    lastUpdated: Date.parse("2026-11-04T23:18:00Z"),
   });
-  // The source still dates the move Wednesday's (it read "vs Tue 3 Nov last trade"), then Thursday's ("vs Wed 4 Nov close").
+  // The source still dates the move Wednesday's (it read "vs Tue 3 Nov last trade"), then Thursday's.
   for (const quote of [reopen("2026-11-04", "2026-11-03"), reopen("2026-11-05", "2026-11-04")]) {
-    expect(quoteChangeBasis(quote, { terms })).toEqual({ kind: "previous close" });
-    const settled = futuresQuoteFromSettle(quote, terms);
-    expect(settled).toMatchObject({ price: 7734.5, change: 137.75, previousClose: 7596.75, previousCloseDate: "2026-11-03" });
-    expect(settled.changePercent).toBeCloseTo(1.8133, 4);
-    const basis = quoteChangeBasis(settled, { terms })!;
-    expect(changeBasisLabel(basis, NOW)).toBe("vs Tue 3 Nov settle");
-    expect(quoteSettleText(settled, terms)).toBe("$7,596.75 (2026-11-03)");
-    expect(quotePreviousCloseDate(settled)).toBe("2026-11-03");
+    expect(futuresQuoteFromSettle(quote, terms)).toBe(quote);
+    const basis = quoteChangeBasis(quote, { terms })!;
+    expect(changeBasisLabel(basis, NOW)).toBe("vs Wed 4 Nov close");
+    expect(quotePreviousCloseDate(quote)).toBe("2026-11-04");
   }
   // Once Wednesday's settlement is confirmed the source's move matches it and stands.
   const confirmed = { ...terms, settlement: { price: 7720.5, date: "2026-11-04" } };
   const quote = reopen("2026-11-05", "2026-11-04");
   expect(futuresQuoteFromSettle(quote, confirmed)).toBe(quote);
   expect(quoteChangeBasis(quote, { terms: confirmed })).toEqual({ kind: "settle", date: "2026-11-04" });
+  // Confirmed at another price while the source still measures from the close: measured again from the settlement.
+  const other = { ...terms, settlement: { price: 7722.25, date: "2026-11-04" } };
+  const remeasured = futuresQuoteFromSettle(quote, other);
+  expect(remeasured).toMatchObject({ change: 12.25, previousClose: 7722.25, previousCloseDate: "2026-11-04" });
+  expect(changeBasisLabel(quoteChangeBasis(remeasured, { terms: other })!, NOW)).toBe("vs Wed 4 Nov settle");
+  expect(quotePreviousCloseDate(remeasured)).toBe("2026-11-04");
 });

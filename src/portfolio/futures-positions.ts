@@ -42,6 +42,9 @@ export interface PortfolioFuturesTerms {
   settlement: FuturesSettlement | null;
   /** A different contract that is currently front, when the terms name one. */
   front?: Pick<NonNullable<FuturesContractTermsPayload["front"]>, "contract" | "contractSymbol">;
+  /** The tick and the month the settlement is of, which a move is checked against (futuresQuoteFromSettle), as FUT and `quote` check it. */
+  spec?: { tick: number } | null;
+  deliveryMonth?: string | null;
 }
 
 /** A grain or a soft quotes in US cents, so a dollar point value is a hundred of its price units. */
@@ -169,7 +172,7 @@ export function previousFuturesSettlement(
 
 /** What a portfolio reads from a future's terms, with the settlement before the latest when the history has it. */
 export function portfolioFuturesTerms(
-  terms: (Pick<FuturesContractTermsPayload, "spec" | "settlement"> & Partial<Pick<FuturesContractTermsPayload, "front" | "contract">>) | null | undefined,
+  terms: (Pick<FuturesContractTermsPayload, "spec" | "settlement"> & Partial<Pick<FuturesContractTermsPayload, "front" | "contract" | "deliveryMonth">>) | null | undefined,
   history?: readonly PricePoint[] | null,
 ): PortfolioFuturesTerms {
   const settlement = terms?.settlement && Number.isFinite(terms.settlement.price) && terms.settlement.price > 0
@@ -180,7 +183,12 @@ export function portfolioFuturesTerms(
     }
     : null;
   const front = terms?.front && terms.front.contract !== terms.contract ? terms.front : undefined;
-  return { size: futuresContractSize(terms?.spec), settlement, ...(front ? { front } : {}) };
+  const tick = terms?.spec?.tick;
+  return {
+    size: futuresContractSize(terms?.spec), settlement, ...(front ? { front } : {}),
+    ...(tick != null && Number.isFinite(tick) && tick > 0 ? { spec: { tick } } : {}),
+    ...(terms?.deliveryMonth ? { deliveryMonth: terms.deliveryMonth } : {}),
+  };
 }
 
 /**

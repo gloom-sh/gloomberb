@@ -241,14 +241,17 @@ describe("futures board exports and the reopen", () => {
     expect(cell(es, "status", board("ES=F", quote()), Date.parse("2026-11-26T15:00:00Z")).text).toBe("CLOSED");
   });
 
-  test("each row's move is measured as quote measures it, from the last confirmed settlement while nothing confirms the source's", () => {
+  test("each row's move is measured as quote measures it: from the session before's settlement of the same contract, else the source's", () => {
     const quotes = board("ES=F", quote());
-    const terms: FuturesTermsMap = new Map([["ES=F", { loading: false, terms: { settlement: { price: 7596.75, date: "2026-11-03" },
-      spec: { tick: 0.25 } } as never }]]);
-    const shown = futuresBoardQuotes(quotes, terms);
-    expect(shown.get("ES=F")!.quote).toMatchObject({ change: 137.75, previousClose: 7596.75 });
-    expect(cell(es, "change", shown).text).toBe("+137.75");
-    // Without terms, or once they confirm the source's reference, the board is the same map.
+    const terms = (settlement: { price: number; date: string }, deliveryMonth = "2026-12"): FuturesTermsMap =>
+      new Map([["ES=F", { loading: false, terms: { settlement, deliveryMonth, spec: { tick: 0.25 } } as never }]]);
+    const shown = futuresBoardQuotes(quotes, terms({ price: 7722.25, date: "2026-11-04" }));
+    expect(shown.get("ES=F")!.quote).toMatchObject({ change: 12.25, previousClose: 7722.25 });
+    expect(cell(es, "change", shown).text).toBe("+12.25");
+    // Tuesday's settlement is two sessions back, and March's is another contract: the source's +14 stands.
+    expect(futuresBoardQuotes(quotes, terms({ price: 7596.75, date: "2026-11-03" }))).toBe(quotes);
+    expect(futuresBoardQuotes(quotes, terms({ price: 7722.25, date: "2026-11-04" }, "2027-03"))).toBe(quotes);
     expect(futuresBoardQuotes(quotes, new Map())).toBe(quotes);
   });
+
 });

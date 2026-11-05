@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setSystemTime, test } from "bun:test";
 import type { CollectionSortPreference } from "../../../state/app/context";
 import { createDefaultConfig, type ColumnConfig } from "../../../types/config";
 import type { Quote, TickerFinancials } from "../../../types/financials";
@@ -801,6 +801,34 @@ describe("a hedge in the PF pane: long shares and short gold futures", () => {
     expect(gap).toMatchObject({ totalMktValue: 420_000, netMktValue: 420_000, totalCostBasis: 396_000, unrealizedPnl: 24_000, dailyPnl: 4_200,
       unknownContractSizeSymbols: ["GC=F"] });
     expect(gap.unavailableSymbols).toBeUndefined();
+  });
+
+  test("a future's move is measured as FUT and quote measure it: again from the session before's settlement of the same contract only", () => {
+    // Mon 19 Oct 2026 in the day session, the source measuring gold's move from Friday's last trade, 4,178, not its 4,181.10 settlement.
+    setSystemTime(new Date("2026-10-19T15:00:00Z"));
+    try {
+      const quote = { symbol: "GC=F", name: "Gold Dec 26", instrumentType: "FUTURE", listingExchangeName: "COMEX", exchangeName: "COMEX", marketState: "REGULAR" as const,
+        price: 4198, change: 20, changePercent: 0.48, previousClose: 4178, changeSessionDate: "2026-10-19", lastUpdated: Date.parse("2026-10-19T14:59:00Z") };
+      const moved = new Map([...financials, ["GC=F", createFinancials({ quote })]]);
+      const terms = (deliveryMonth: string) => new Map([["GC=F", { ...futuresTerms.get("GC=F")!, spec: { tick: 0.1 }, deliveryMonth }]]);
+      const read = (deliveryMonth: string) => {
+        const ctx: ColumnContext = { ...context, futuresTerms: terms(deliveryMonth) };
+        const totals = calculatePortfolioSummaryTotals([spy, gold], moved, "USD", new Map(), true, "main", "latest-print", terms(deliveryMonth));
+        return { change: getSortValue(column("change"), gold, moved.get("GC=F"), ctx), dayPnl: getSortValue(column("day_pnl"), gold, moved.get("GC=F"), ctx), totals };
+      };
+      // December's settlement: the move is +16.90 from it, -$16,900 for the short, in the row and the header alike.
+      const december = read("2026-12");
+      expect(december.change as number).toBeCloseTo(16.9, 6);
+      expect(december.dayPnl as number).toBeCloseTo(-16_900, 6);
+      expect(december.totals.dailyPnl).toBeCloseTo(4_200 - 16_900, 6);
+      expect(december.totals.dayChangeBasis).toBe("vs mixed closes");
+      // Terms still naming February's contract: the source's +20 stands, two sessions never read as one.
+      const february = read("2027-02");
+      expect(february.change).toBe(20);
+      expect(february.totals.dailyPnl).toBeCloseTo(4_200 - 20_000, 6);
+    } finally {
+      setSystemTime();
+    }
   });
 
   test("a grain future quoting in US cents is valued in dollars, in its row and in the header", () => {

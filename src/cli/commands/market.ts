@@ -1118,10 +1118,13 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const contracts = await Promise.all(answers.map(({ result }) => commandName === "quote" && result.quote
       ? cliFuturesContract(result.quote.symbol || result.target.symbol, result.quote.instrumentType)
       : null));
-    // A future's move that nothing confirms is measured from its last confirmed settlement, in the row and in every line.
-    answers.forEach((answer, index) => {
-      const quote = futuresQuoteFromSettle(answer.result.quote, contracts[index]);
-      if (quote !== answer.result.quote) answers[index] = { ...answer, result: { ...answer.result, quote } };
+    // A future's move the source measured from something other than the session before's settlement of the same contract is measured from it, in the row and in every line.
+    const sourceMoves = answers.map((answer, index) => {
+      const sent = answer.result.quote;
+      const quote = futuresQuoteFromSettle(sent, contracts[index]);
+      if (!sent || quote === sent) return null;
+      answers[index] = { ...answer, result: { ...answer.result, quote } };
+      return { change: sent.change, changePercent: sent.changePercent, previousClose: sent.previousClose };
     });
     // A contract that is not its root's front (NGF27, NG2) prints the front's own price beside it, read in one batch.
     const fronts = await loadFuturesFrontQuotes(contracts, market.dataProvider);
@@ -1141,11 +1144,12 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const data = answers.map(({ result, listing, failure }, index) => ({
       target: result.target,
       listing: listingMetadata(listingIdentity(listing, result.quote)),
-      // The figures the table shows, beside the quote as the source sent it.
+      // The figures the table shows, beside the quote they come from: a future's move as the table measures it, and the source's own beside it when that differs.
       ...quoteSessionFields(result.quote),
       // What `change` is measured from, with the label and holiday note the table shows.
       changeBasis: changeBasisJson(quoteChangeBasis(result.quote, { terms: contracts[index] }), now),
       quote: withPreviousCloseDate(result.quote),
+      ...sourceMoves[index] ? { sourceMove: sourceMoves[index] } : {},
       ...contracts[index] ? { futuresContract: contracts[index] } : {},
       ...fronts[index] ? { futuresFront: fronts[index] } : {},
       ...gasInUsd[index] ? { usdPerMmbtu: gasInUsd[index] } : {},

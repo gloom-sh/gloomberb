@@ -4,6 +4,7 @@ import {
   fitFuturesContractLines,
   futuresChangeBasis,
   futuresContractLines,
+  futuresQuoteMonth,
   futuresRollLines,
   futuresSettleText,
   futuresTickText,
@@ -16,6 +17,7 @@ import {
   resetFuturesPriceUnits,
   validateFuturesContractTerms,
 } from "./futures-contract";
+import { globexPrintSession } from "./market/globex-day";
 
 const gold: FuturesContractTermsPayload = {
   symbol: "GC=F", root: "GC", name: "Gold", contract: "GCZ26", contractSymbol: "GCZ26.CMX", deliveryMonth: "2026-12",
@@ -105,18 +107,16 @@ test("TTF without terms names its unit in the Contract block, and its dollar equ
 
 test("a futures move names what it is measured from, as far as the settlement in the terms shows", () => {
   const tick = { tick: 0.25 };
-  const basis = (settlement: { price: number; date: string } | null, price: number, change: number, sessionDate = "2026-10-19") =>
-    futuresChangeBasis({ settlement, spec: tick }, { price, change, sessionDate }, "CME");
+  const basis = (settlement: { price: number; date: string } | null, price: number, change: number, sessionDate = "2026-10-19", month: string | null = "2026-12") =>
+    futuresChangeBasis({ settlement, spec: tick, deliveryMonth: "2026-12" }, { price, change, sessionDate, month }, "CME");
   // Monday's move from Friday's settlement, which the terms still carry.
   expect(basis({ price: 5645, date: "2026-10-16" }, 5626, -19)).toEqual({ kind: "settle", session: "2026-10-16" });
   // Once Monday settles the terms no longer hold Friday's settlement: Friday's close, unchecked.
   expect(basis({ price: 5630, date: "2026-10-19" }, 5626, -19)).toEqual({ kind: "close", session: "2026-10-16" });
   // A move from Monday's own settlement is from Monday, whatever the date it carries.
   expect(basis({ price: 5630, date: "2026-10-19" }, 5640, 10)).toEqual({ kind: "settle", session: "2026-10-19" });
-  // Not Friday's settlement: a last trade or a close nothing confirms, so the move is measured again from that settlement.
+  // Not Friday's settlement, for the contract the quote prices: measured again from it, one session still.
   expect(basis({ price: 5645, date: "2026-10-16" }, 5626, -22)).toEqual({ kind: "settle", session: "2026-10-16", from: 5645 });
-  // Friday has not settled yet: from Thursday's settlement, the last one confirmed, never an unconfirmed close.
-  expect(basis({ price: 5600, date: "2026-10-15" }, 5626, -22)).toEqual({ kind: "settle", session: "2026-10-15", from: 5600 });
   expect(basis(null, 5626, -22, "2026-10-21")).toEqual({ kind: "close", session: "2026-10-20" });
   // A source that rounds the move stays within half a tick of the settlement; a tick away is another price.
   expect(basis({ price: 5645.25, date: "2026-10-16" }, 5626.25, -19.1)?.kind).toBe("settle");
@@ -126,6 +126,48 @@ test("a futures move names what it is measured from, as far as the settlement in
     .toBe("settle");
   expect(basis({ price: 5645, date: "2026-10-16" }, 5626, -19, "")).toBeNull();
   expect(futuresChangeBasis({ settlement: null }, { price: 5626, change: null, sessionDate: "2026-10-19" }, "CME")).toBeNull();
+});
+
+test("a settlement of another contract or an older session never re-measures the move: the source's stands, from no named session", () => {
+  const terms = (deliveryMonth: string, settlement: { price: number; date: string }) => ({ settlement, spec: { tick: 0.25 }, deliveryMonth });
+  // ES=F on Mon 14 Dec 2026, rolled to March while the cached terms still name December, settled Friday at 6700:
+  // March's 6780 less December's settlement would be the calendar spread, not the day's move.
+  const rolled = { price: 6790, change: 10, sessionDate: "2026-12-14", month: "2027-03" };
+  expect(futuresChangeBasis(terms("2026-12", { price: 6700, date: "2026-12-11" }), rolled, "CME")).toBeNull();
+  // A quote whose name carries no month cannot be paired with the terms either.
+  expect(futuresChangeBasis(terms("2026-12", { price: 6700, date: "2026-12-11" }), { ...rolled, month: null }, "CME")).toBeNull();
+  // The terms a session behind in the day session (Thursday's while Friday settled): nothing dates the reference.
+  const stale = { price: 5626, change: -22, sessionDate: "2026-10-19", month: "2026-12", tradedAt: Date.parse("2026-10-19T15:00:00Z") };
+  expect(futuresChangeBasis(terms("2026-12", { price: 5600, date: "2026-10-15" }), stale, "CME")).toBeNull();
+});
+
+test("the month a futures quote prices comes from a listed code or the continuous symbol's name", () => {
+  expect(futuresQuoteMonth({ symbol: "ESZ26.CME", name: "E-Mini S&P 500 Dec 26" })).toBe("2026-12");
+  expect(futuresQuoteMonth({ symbol: "6EH27", name: "" })).toBe("2027-03");
+  expect(futuresQuoteMonth({ symbol: "ES=F", name: "E-Mini S&P 500 Mar 27" })).toBe("2027-03");
+  expect(futuresQuoteMonth({ symbol: "ZC=F", name: "Corn Futures,Dec-2026" })).toBe("2026-12");
+  expect(futuresQuoteMonth({ symbol: "TTF=F", name: "Dutch TTF Natural Gas" })).toBeNull();
+});
+
+test("after the Globex reopen the move is the next trade date's, from the close of the session that has not settled yet", () => {
+  // ES=F at 23:18 UTC on Wed 4 Nov 2026: Globex reopened at 17:00 Chicago for Thursday's trade date. Tuesday settled at
+  // 7,596.75; Wednesday's 7,720.50 close is not confirmed as its settlement until overnight.
+  const terms = { settlement: { price: 7596.75, date: "2026-11-03" }, spec: { tick: 0.25 }, deliveryMonth: "2026-12" };
+  const move = (sessionDate: string, tradedAt: string) =>
+    ({ price: 7734.5, change: 14, sessionDate, month: "2026-12", tradedAt: Date.parse(tradedAt) });
+  // The source still dates the move Wednesday's, then Thursday's: Wednesday's close either way, never Tuesday's settlement.
+  expect(futuresChangeBasis(terms, move("2026-11-04", "2026-11-04T23:03:00Z"), "CME")).toEqual({ kind: "close", session: "2026-11-04" });
+  expect(futuresChangeBasis(terms, move("2026-11-05", "2026-11-04T23:17:00Z"), "CME")).toEqual({ kind: "close", session: "2026-11-04" });
+  // Through the night until the 08:30 Chicago open, and over a weekend: Sunday's evening opens Monday's date, from Friday.
+  expect(futuresChangeBasis(terms, move("2026-11-05", "2026-11-05T13:00:00Z"), "CME")).toEqual({ kind: "close", session: "2026-11-04" });
+  const friday = { ...terms, settlement: { price: 7596.75, date: "2026-11-05" } };
+  expect(futuresChangeBasis(friday, move("2026-11-06", "2026-11-08T23:30:00Z"), "CME")).toEqual({ kind: "close", session: "2026-11-06" });
+  expect(globexPrintSession("CME", Date.parse("2026-11-08T23:30:00Z"))).toEqual({ tradeDate: "2026-11-09", overnight: true });
+  // Once Wednesday's settlement is in the terms and the source measures from it, the move is from that settlement.
+  const settled = { ...terms, settlement: { price: 7722.25, date: "2026-11-04" } };
+  expect(futuresChangeBasis(settled, { ...move("2026-11-05", "2026-11-05T01:00:00Z"), change: 12.25 }, "CME")).toEqual({ kind: "settle", session: "2026-11-04" });
+  // The ES=F alias still measuring from the last trade once the terms hold the settlement: measured again from it.
+  expect(futuresChangeBasis(settled, move("2026-11-05", "2026-11-04T23:20:00Z"), "CME")).toEqual({ kind: "settle", session: "2026-11-04", from: 7722.25 });
 });
 
 test("on a Saturday the move is Friday's, from Thursday", () => {

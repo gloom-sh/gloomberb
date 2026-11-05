@@ -15,7 +15,7 @@ import {
 import { formatCompact, formatPercentRaw } from "../../../../utils/format";
 import { currencyPriceMinDigits, formatMarketCostWithCurrency, formatMarketPrice, formatMarketPriceWithCurrency, formatMarketQuantity, quoteFormatOptions } from "../../../../market-data/market/format";
 import { resolvePriceBasis } from "../../../../market-data/market/price-basis";
-import { combinedChangeBasisLabel, quoteChangeBasis, type QuoteChangeBasis } from "../../../../market-data/market/change-basis";
+import { combinedChangeBasisLabel, futuresQuoteFromSettle, quoteChangeBasis, type QuoteChangeBasis } from "../../../../market-data/market/change-basis";
 import { getPortfolioPositionMetrics, lotCostAtTodaysRate, lotCostFxRate, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../../../portfolio/position-metrics";
 import {
   getPortfolioValuationDisplay,
@@ -424,8 +424,9 @@ export async function valuePortfolioPositions({
   const known = (value: number | null | undefined): number | null => value != null && Number.isFinite(value) ? value : null;
 
   for (const ticker of purchaseDateFx ? withPurchaseDateCostFx(tickers, purchaseDateFx, currency, id) : tickers) {
-    const quote = quotes.get(ticker.metadata.ticker);
     const futuresTerms = isFuturesTicker(ticker) ? futures?.get(ticker.metadata.ticker) ?? { size: null, settlement: null } : null;
+    // A future's move as FUT and `quote` measure it with its terms.
+    const quote = futuresQuoteFromSettle(quotes.get(ticker.metadata.ticker), futuresTerms);
     // A lot entered without its contract size takes the one the terms state; the entries keep the saved record.
     const sized = withFuturesContractSize(ticker, futuresTerms?.size);
     const positions = sized.metadata.positions.filter((position) => position.portfolio === id && position.shares !== 0);

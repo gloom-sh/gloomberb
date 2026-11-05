@@ -3,7 +3,7 @@ import type { Quote } from "../../../types/financials";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
 import { FUTURES_SECTOR_ORDER, type FuturesContract, type FuturesSector } from "../../../market-data/futures-board";
-import { futuresPriceUnit } from "../../../market-data/futures-contract";
+import { CONTRACT_MONTH_NAME, futuresPriceUnit } from "../../../market-data/futures-contract";
 import { contractMonthLabel } from "../../../utils/contract-month";
 import { quoteDotMarketState } from "../../../market-data/market/status";
 import { futuresQuoteFromSettle } from "../../../market-data/market/change-basis";
@@ -48,9 +48,6 @@ export function futuresRowId(row: FuturesTableRow): string {
   return row.type === "header" ? `header-${row.sector}` : row.contract.symbol;
 }
 
-/** "Nov 2026", "Nov 26" or "Futures,Nov-2026"; a hyphen takes only a whole year, since "Futures,Nov-20" is 2026 cut short. */
-const CONTRACT_MONTH = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(?: (\d{4}|\d{2})|-(\d{4}))$/i;
-
 /**
  * The alias stays the row identity while its quoted contract rolls, so the
  * label is the catalog name plus the quoted contract's month ("30-Year T-Bond
@@ -72,7 +69,7 @@ export function quotedContractMonth(
   quote?: Quote | null,
 ): { year: number; month: number } | null {
   if (quote?.symbol?.trim().toUpperCase() !== contract.symbol.toUpperCase()) return null;
-  const match = CONTRACT_MONTH.exec(quote.name?.trim() ?? "");
+  const match = CONTRACT_MONTH_NAME.exec(quote.name?.trim() ?? "");
   if (!match) return null;
   const month = MONTH_NAMES.findIndex((name) => name.toLowerCase() === match[1]!.toLowerCase());
   const written = match[2] ?? match[3]!;

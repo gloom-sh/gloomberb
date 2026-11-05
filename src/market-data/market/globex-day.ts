@@ -50,3 +50,24 @@ export function globexDayOpen(exchange: string | undefined, time: number): boole
   }
   return true;
 }
+
+/** Central time the day session opens (08:30): until then the night that opened the trade date is still trading. */
+const DAY_SESSION_MINUTES = 8 * 60 + 30;
+
+/**
+ * The CME Globex trade date a print at `time` is booked on, and whether it
+ * came in the overnight hours that opened that date: from 17:00 Central the
+ * day before (Sunday's for Monday's) to the 08:30 day open, before the
+ * previous session's settlement is confirmed. Null off Globex or without a
+ * time. Weekends roll forward; holidays are the caller's calendar to apply.
+ */
+export function globexPrintSession(exchange: string | null | undefined, time: number | null | undefined): { tradeDate: string; overnight: boolean } | null {
+  const venue = canonicalExchange(exchange ?? undefined);
+  if (!GLOBEX_VENUES.has(venue) || time == null || !Number.isFinite(time) || time <= 0) return null;
+  const { year, month, day, hour, minute } = zonedDateTimeParts(time, ZONE);
+  const local = Date.UTC(year, month - 1, day) / MS_PER_DAY;
+  const minutes = hour * 60 + minute;
+  let trade = minutes >= BREAK_END_MINUTES ? local + 1 : local;
+  while (new Date(trade * MS_PER_DAY).getUTCDay() % 6 === 0) trade += 1;
+  return { tradeDate: isoDay(trade), overnight: trade > local || minutes < DAY_SESSION_MINUTES };
+}
