@@ -979,8 +979,9 @@ describe("GloomberbCloudProvider", () => {
     expect(asked?.adjusted).toBe(false);
     const adjusted = await provider.getOptionsChain("ETHA", "NASDAQ", 1_793_923_200, { adjustedOptions: true });
     expect(asked?.adjusted).toBe(true);
-    expect([...adjusted.calls, ...adjusted.puts].map((entry) => [entry.contractSymbol, entry.adjusted?.deliverable ?? null]))
-      .toEqual([["ETHA1261106C00009000", "15 ETHA"], ["ETHA1261106P00009000", null]]);
+    // The untagged one is tagged by its root, its deliverable unstated.
+    expect([...adjusted.calls, ...adjusted.puts].map((entry) => [entry.contractSymbol, entry.adjusted]))
+      .toEqual([["ETHA1261106C00009000", { root: "ETHA1", deliverable: "15 ETHA" }], ["ETHA1261106P00009000", { root: "ETHA1", deliverable: null }]]);
   });
 
   test("preserves original target context when streaming quotes", () => {

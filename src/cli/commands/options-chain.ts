@@ -264,7 +264,10 @@ export function optionsBasisFootnote(basis: OptionsChainBasis, chain?: OptionsCh
     parts.push(Number.isFinite(asOf) ? `OI live, ${formatUtcTime(new Date(asOf).toISOString())}` : openInterestAsOfLabel(basis.openInterest));
     return parts.join(" · ");
   }
-  if (basis.spot) {
+  // An adjusted contract delivers something other than 100 shares: the fund's price values none of it.
+  if (chain && [...chain.calls, ...chain.puts].some((contract) => contract.adjusted)) {
+    parts.push("adjusted: each delivers what its Deliverable says, so no IV or delta is read at the fund's price");
+  } else if (basis.spot) {
     parts.push(`Greeks at spot ${formatModelSpotPrice(basis.spot.price)} (${modelSpotLabel(basis.spot)}), `
       // An unknown yield is valued as none, and says so rather than read as a stated 0%.
       + `dividend yield ${basis.dividendYield == null ? "unknown (valued at 0%)" : `${Number((basis.dividendYield * 100).toFixed(2))}%`}, `

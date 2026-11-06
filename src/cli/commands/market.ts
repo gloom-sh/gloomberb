@@ -3217,8 +3217,10 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     }
     const quote = await quotePromise;
     const identity = listingIdentity(listing, quote);
-    // IV and delta are valued at one spot and instant, named under the table and on every exported row.
-    const { chain, spot: modelSpot } = valueChainAtModelSpot(loaded, inputs, Date.now(), identity.exchange);
+    // IV and delta are valued at one spot and instant, named under the table and on every exported row. Adjusted
+    // contracts deliver something other than 100 shares, so the spot values none of them.
+    const { chain, spot: modelSpot } = adjusted ? { chain: loaded, spot: null }
+      : valueChainAtModelSpot(loaded, inputs, Date.now(), identity.exchange);
     const basis: OptionsChainBasis = { spot: modelSpot, dividendYield: inputs.dividendYield ?? null,
       openInterest: await loadOptionsChainOpenInterest(symbol, chain), ivFilled: chainHasFilledIv(chain) };
     const basisFields = optionsBasisFields(basis);
@@ -3232,7 +3234,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // A venue that marks its contracts (Deribit) states IV and greeks without a quote.
     const marked = isMarkedChain(chain);
     const coin = chainCoinCurrency(chain);
-    const modelWarning = !marked && inputs.spot == null && (chain.calls.length > 0 || chain.puts.length > 0)
+    const modelWarning = !marked && !adjusted && inputs.spot == null && (chain.calls.length > 0 || chain.puts.length > 0)
       ? `IV and delta need a current ${listing.key} quote; those columns are blank`
       : null;
     const listed = chain.expirationDates.length > 0 || chain.calls.length > 0 || chain.puts.length > 0;

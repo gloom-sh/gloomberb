@@ -350,10 +350,10 @@ export function mapCloudFinancials(
  * ones it lists on request, and a contract under a numbered root that is not
  * the underlying's (ETHA1 beside ETHA) is one too, from a server that does not.
  */
-function isAdjustedContract(contract: OptionContract, underlying: string): boolean {
-  if (contract.adjusted) return true;
+function adjustedRoot(contract: OptionContract, underlying: string): string | null {
+  if (contract.adjusted) return contract.adjusted.root;
   const root = parseOptionTicker(contract.contractSymbol)?.underlying.toUpperCase();
-  return !!root && /\d$/.test(root) && root !== underlying.toUpperCase();
+  return root && /\d$/.test(root) && root !== underlying.toUpperCase() ? root : null;
 }
 
 /**
@@ -365,12 +365,17 @@ export function mapOptionsChain(
   chain: CloudOptionsChainPayload,
   { adjusted = false }: { adjusted?: boolean } = {},
 ): OptionsChain {
-  const keep = (contract: OptionContract) => isAdjustedContract(contract, chain.underlyingSymbol) === adjusted;
+  // An adjusted contract a server did not tag is tagged here, its deliverable unstated.
+  const contracts = (side: OptionContract[] | undefined) => (side ?? []).flatMap((contract) => {
+    const root = adjustedRoot(contract, chain.underlyingSymbol);
+    if ((root != null) !== adjusted) return [];
+    return [root && !contract.adjusted ? { ...contract, adjusted: { root, deliverable: null } } : contract];
+  });
   return {
     underlyingSymbol: chain.underlyingSymbol,
     expirationDates: chain.expirationDates ?? [],
-    calls: (chain.calls ?? []).filter(keep),
-    puts: (chain.puts ?? []).filter(keep),
+    calls: contracts(chain.calls),
+    puts: contracts(chain.puts),
     providerId: chain.providerId,
     dataSource: chain.dataSource,
     feed: chain.feed,
