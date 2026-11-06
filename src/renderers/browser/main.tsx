@@ -9,6 +9,7 @@ import { getBrowserPlugins } from "../../plugins/catalog-browser";
 import { DomErrorBoundary, DomHostProviders } from "../dom/dom-host-providers";
 import { installFocusScopeRelease } from "../dom/host/focus-scope";
 import { installDomMarketDataFrames } from "../dom/data-frames";
+import { webNativeRenderer } from "../dom/native-renderer";
 import { releaseBootFrameWhenDrawn, startBootFrameRecorder } from "../dom/boot-frame";
 import { BROWSER_STORAGE_KEYS } from "../../data/json-storage";
 import { createBrowserAppServices } from "./app-services";
@@ -57,7 +58,8 @@ const BOOT_FRAME_RELEASE_FALLBACK_MS = 4_000;
 async function boot(): Promise<void> {
   // Read before anything can save a workspace.
   const savedLayout = hasSavedBrowserConfig();
-  installBrowserConfigStore();
+  // A first visit's workspace fits the window it opens in.
+  installBrowserConfigStore(() => ({ width: webNativeRenderer.terminalWidth, height: webNativeRenderer.terminalHeight }));
   let loadedConfig: AppConfig | null = null;
   installCrashReporter({
     surface: "web",
