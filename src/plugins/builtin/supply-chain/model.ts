@@ -144,6 +144,31 @@ export function counterpartyName(row: SupplyRow): string {
 }
 export const roleLabel = (role: SupplyRole) => role[0]!.toUpperCase() + role.slice(1);
 
+/** A listing code that reads as no word: 0700:HKEX, 1211.HK, 7203. */
+const numberedListing = (value: string) => /^\d[\dA-Z]*(?:[.:][A-Z]+)?$/i.test(value.trim());
+
+/**
+ * The focus company as the direction labels name it ("AAPL says"): its ticker
+ * when the ticker is a word, its short name when it is a number (Tencent for
+ * 0700:HKEX), and the code when no name is known.
+ */
+export function focusCompanyLabel(symbol: string, name?: string | null): string {
+  const company = name?.trim() ? shortCompanyName(companyNameCase(name.trim())) : "";
+  return company && numberedListing(symbol) ? company : symbol;
+}
+
+/**
+ * The focus company's name: the one its relationships are filed under, or on
+ * a numbered listing the listing's own, as the filed one is often its code or
+ * the exchange's short name there ("0700:HKEX", "MEITUAN-W").
+ */
+export function focusCompanyName(entityName: string | null | undefined, symbol: string, listingName?: string | null): string | null {
+  const filed = entityName?.trim() || null;
+  const listing = listingName?.trim() || null;
+  if (listing && (numberedListing(symbol) || !filed || numberedListing(filed))) return listing;
+  return filed;
+}
+
 const SUPPLY_ROLE_ORDER: readonly SupplyRole[] = ["customer", "supplier", "partner", "competitor", "investee"];
 export interface SupplyRoleCount { role: SupplyRole; counterparties: number; locked: number }
 

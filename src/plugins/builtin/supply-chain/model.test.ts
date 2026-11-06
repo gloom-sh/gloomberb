@@ -6,7 +6,7 @@ import { cachedSupplyChain, fetchSupplyChain, loadSupplyChain, supplyChainCache,
 import { getThemeIds, getTheme, isDarkTheme, SUBTLE_TEXT_MIN, themeKeysDirection } from "../../../theme/themes";
 import { contrastRatio } from "../../../theme/color-utils";
 import { themedColorSet } from "../../../theme/series-colors";
-import { counterpartyLabel, counterpartyName, disclosedValue, disclosureText, fitShareBasis, flowBands, percentage, periodText, receivablesConcentration, ROLE_SLOTS, shareParts, sortRows, supplyEmptyText, supplyRoleCounts } from "./model";
+import { counterpartyLabel, counterpartyName, disclosedValue, disclosureText, fitShareBasis, flowBands, focusCompanyLabel, focusCompanyName, percentage, periodText, receivablesConcentration, ROLE_SLOTS, shareParts, sortRows, supplyEmptyText, supplyRoleCounts } from "./model";
 import { entity, supplyPayload, supplyRow } from "./test-fixture";
 import { supplyOptions } from "./trust";
 
@@ -272,4 +272,16 @@ test("receivables concentration takes the largest customer each period end, from
   // Two points are not a trend.
   expect(receivablesConcentration(rows.slice(1, 4), "FOCUS")).toEqual([]);
   expect(receivablesConcentration(rows, null)).toEqual([]);
+});
+
+test("a numbered listing reads by its company's name, a ticker that is a word by itself", () => {
+  // Filed under its code or the exchange's short name, a Hong Kong line takes its listing's name.
+  expect(focusCompanyName("0700:HKEX", "0700:HKEX", "Tencent Holdings Limited")).toBe("Tencent Holdings Limited");
+  expect(focusCompanyName("MEITUAN-W", "3690:HKEX", "Meituan")).toBe("Meituan");
+  expect(focusCompanyLabel("0700:HKEX", "Tencent Holdings Limited")).toBe("Tencent Holdings");
+  // With no name at hand the code stays, and a word ticker keeps both its filed name and its symbol.
+  expect(focusCompanyName("0700:HKEX", "0700:HKEX", null)).toBe("0700:HKEX");
+  expect(focusCompanyLabel("1211:HKEX", null)).toBe("1211:HKEX");
+  expect(focusCompanyName("Apple Inc.", "AAPL", "Apple Inc")).toBe("Apple Inc.");
+  expect(focusCompanyLabel("AAPL", "Apple Inc.")).toBe("AAPL");
 });

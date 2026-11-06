@@ -158,14 +158,15 @@ function isNonUsHolderListing(exchange?: string | null, currency?: string | null
 }
 
 /**
- * Holder lists are institutions' quarterly filings, mostly US 13F. On a
- * listing outside the US they are not that market's share register, which a
- * reader would otherwise assume.
+ * Holder lists are quarterly SEC 13F filings, by the managers that file them
+ * wherever they are. On a listing outside the US they are not that market's
+ * share register, which a reader would otherwise assume, so the list says
+ * plainly what it is.
  */
 export function nonUsHolderCaveat(exchange?: string | null, currency?: string | null): string | null {
   if (!isNonUsHolderListing(exchange, currency)) return null;
   const canonical = canonicalExchange(exchange ?? "");
   const venue = resolveExchangeTimeZone(canonical) ? canonical : "local";
   // Few filers report a line abroad, so a small position can lead the list.
-  return `Positions come from institutional filings (mostly US 13F), not the ${venue} share register, so the line's largest holders may be missing.`;
+  return `SEC 13F filings only, not the ${venue} share register: the line's largest holders may be missing.`;
 }

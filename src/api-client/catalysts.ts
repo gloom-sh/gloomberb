@@ -88,6 +88,8 @@ export interface CatalystEvent extends Omit<CatalystInput, "parties" | "sourceTe
   supersedesRevisionId: string | null
   firstSeenAt: string
   lastSeenAt: string
+  /** A company's own date still scheduled whose day has ended, with no outcome read since. */
+  datePassed?: boolean
 }
 export interface CatalystFilters {
   symbol?: string

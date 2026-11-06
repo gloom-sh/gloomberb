@@ -115,8 +115,13 @@ const STATUS_TONES: Array<[RegExp, StateTone]> = [
   [/approved|authori[sz]ed|^available$|^completed$/, "positive"],
   [/proposed|pending|re-examination|appeal|^settlement announced/, "warning"],
   [/recruiting|enrolling|^active|^ongoing$/, "accent"],
-  [/^(notice|rule|published|presidential document)$/, "muted"],
+  // A company date that passed with nothing read since about what came of it.
+  [/^(notice|rule|published|presidential document|date passed)$/, "muted"],
 ];
+/** The status an event is shown with: a company date gone by with no outcome reads "Date passed", whatever its source still says. */
+export function catalystShownStatus(event: Pick<CatalystEvent, "status" | "datePassed">): string {
+  return event.datePassed ? "date_passed" : event.status;
+}
 export function catalystStatusTone(status: string): StateTone {
   const text = humanLabel(status).toLowerCase();
   return STATUS_TONES.find(([pattern]) => pattern.test(text))?.[1] ?? "text";
@@ -211,7 +216,7 @@ export const catalystCell = (event: CatalystEvent, column: string, field: Cataly
     // A filer read from the title is in the Parties column; the event is the rest.
     case "title": return titleFiler(event)?.rest ?? event.title;
     case "type": return catalystLabel(event.type);
-    case "status": return changes ? changeSummary(event) : humanLabel(event.status);
+    case "status": return changes ? changeSummary(event) : humanLabel(catalystShownStatus(event));
     case "agency": return catalystAgency(event.agency);
     case "country": return event.country ?? event.jurisdiction;
     default: return "";
