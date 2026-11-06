@@ -376,11 +376,13 @@ test("munis point to the muni funds, DVD, fundamentals and --tax-rate, and say p
     for (const query of ["muni", "municipal", "tax-exempt", "tax equivalent"]) {
       const report = renderPaneCatalogReport(filterPaneCatalogEntries(entries, query), parsePaneCatalogArgs([query]), lookupGlossary(query), knownGapMessage(query))
         .replace(/\x1b\[[0-9;]*m/g, "");
+      // Read as one line: where the lead wraps depends on the terminal's width.
+      const flat = report.replace(/\s+/g, " ");
       expect(report, query).toStartWith("Municipal bonds: no AAA muni curve");
       // DVD is the function, with --tax-rate among its options and examples, and the lead names the others that take it.
       expect(report, query).toMatch(/^DVD\s+Dividend Yield/m);
-      expect(report, query).toContain("gloom fn DVD MUB --tax-rate 40.8");
-      expect(report, query).toContain("fn ETF <fund>");
+      expect(flat, query).toContain("gloom fn DVD MUB --tax-rate 40.8");
+      expect(flat, query).toContain("fn ETF <fund>");
       expect(report, query).not.toContain("No functions match");
     }
     const tey = renderPaneCatalogReport(filterPaneCatalogEntries(entries, "tax equivalent"), parsePaneCatalogArgs(["tax equivalent"]),

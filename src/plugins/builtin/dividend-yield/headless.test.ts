@@ -300,8 +300,9 @@ describe("a bond fund's yields", () => {
     expect(csv).toContain("Muni/Treasury ratio (%),81.16,MUB,pct,,Gloom Cloud,2026-10-15");
     expect(csv.join("\n")).not.toContain("(as of 2026-10-15)");
     // A figure missing with its reason names no unit.
-    const missing = await definition.load(request, context).then((loaded) => ({ ...loaded, sections: loaded.sections.map((section) => section.title !== "Dividend metrics" ? section
-      : { ...section, entries: section.entries!.map((entry) => entry.label === "Earnings Payout" ? { ...entry, value: null, formatted: "n/a: 11 of 12 payments" } : entry) }) }));
+    const metrics = result.sections[0]!;
+    const missing = { ...result, sections: [{ ...metrics, entries: metrics.entries!.map((entry) => entry.label === "Earnings Payout"
+      ? { ...entry, value: null, formatted: "n/a: 11 of 12 payments" } : entry) } as typeof metrics, ...result.sections.slice(1)] };
     expect(renderReportCsv(headlessReportTables(definition, missing, request, "DVD", freshness, { complete: true, unavailableSymbols: [] }), freshness))
       .toContain("Earnings Payout,n/a: 11 of 12 payments,MUB,,,Gloom Cloud,");
     // The text report is as it was.
