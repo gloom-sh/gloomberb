@@ -66,6 +66,8 @@ import {
   KELLY_HISTORY_DEFAULT_YEARS,
   KELLY_HISTORY_MIN_PERIODS,
   kellyHistoryRequest,
+  kellyHistoryUnanswered,
+  kellyTrailingHistoryRequest,
 } from "./history";
 import { kellyCount, kellyCountMultiplier } from "./units";
 import { KELLY_PANE_ID } from "./constants";
@@ -307,7 +309,17 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     [historyYears, mode, ticker?.metadata.exchange, ticker?.metadata.ticker],
   );
   const historyEntries = useChartQueries(historyRequest ? [historyRequest] : []);
-  const historyEntry = historyRequest ? historyEntries.get(buildChartKey(historyRequest)) ?? null : null;
+  const datedEntry = historyRequest ? historyEntries.get(buildChartKey(historyRequest)) ?? null : null;
+  // A source with no dated history answers from its trailing range, as the KELLY report does.
+  const datedUnanswered = kellyHistoryUnanswered(datedEntry);
+  const trailingRequest = useMemo(
+    () => datedUnanswered && ticker
+      ? kellyTrailingHistoryRequest({ symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange ?? "" }, historyYears)
+      : null,
+    [datedUnanswered, historyYears, ticker?.metadata.exchange, ticker?.metadata.ticker],
+  );
+  const trailingEntries = useChartQueries(trailingRequest ? [trailingRequest] : []);
+  const historyEntry = trailingRequest ? trailingEntries.get(buildChartKey(trailingRequest)) ?? null : datedEntry;
   const historyPoints = useResolvedEntryValue(historyEntry);
   const historyInputs = useMemo(
     () => historyPoints

@@ -1,5 +1,6 @@
 import type { PricePoint } from "../../../types/financials";
 import type { ChartRequest, InstrumentRef } from "../../../market-data/request-types";
+import type { QueryEntry } from "../../../market-data/result-types";
 import { dailyBarDate, getPricePointTimestamp } from "../../../utils/price-history";
 import { sessionCalendarTimeZone } from "../../../market-data/market/freshness";
 import { zonedDateTimeParts } from "../../../utils/zoned-date-time";
@@ -51,14 +52,29 @@ export function kellyHistoryRequest(instrument: InstrumentRef, years: number, no
   const lookback = clampKellyHistoryYears(years);
   const { year, month } = venueMonth(now, instrument.exchange ?? "");
   return {
-    instrument,
-    // The range the request falls back to where a source has no dated history.
-    bufferRange: lookback <= 1 ? "1Y" : "5Y",
+    ...kellyTrailingHistoryRequest(instrument, lookback),
     granularity: "detail",
     barSize: "1d",
     startDate: new Date(Date.UTC(year, month - 1 - (lookback * 12 + 1), 1)),
     endDate: new Date(Math.floor(now / DAY_MS) * DAY_MS + DAY_MS),
   };
+}
+
+/**
+ * The trailing range of daily closes (one or five years) read when a source
+ * answers no dated history (`kellyHistoryRequest` failed or came back empty):
+ * it starts days into the month before the window, so five years give 59
+ * returns, and the window says so. The History tab and the KELLY report both
+ * fall back to it.
+ */
+export function kellyTrailingHistoryRequest(instrument: InstrumentRef, years: number): ChartRequest {
+  return { instrument, bufferRange: clampKellyHistoryYears(years) <= 1 ? "1Y" : "5Y", granularity: "resolution", resolution: "1d" };
+}
+
+/** Whether a dated history read is over and gave no closes, so the trailing range is read instead. */
+export function kellyHistoryUnanswered(entry: Pick<QueryEntry<PricePoint[]>, "phase" | "data" | "lastGoodData"> | null | undefined): boolean {
+  if (!entry || (entry.phase !== "ready" && entry.phase !== "error")) return false;
+  return !(entry.data ?? entry.lastGoodData)?.length;
 }
 
 /**

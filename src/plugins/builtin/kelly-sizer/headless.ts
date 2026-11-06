@@ -12,6 +12,8 @@ import {
   KELLY_HISTORY_MAX_YEARS,
   KELLY_HISTORY_MIN_PERIODS,
   kellyHistoryRequest,
+  kellyHistoryUnanswered,
+  kellyTrailingHistoryRequest,
   type KellyHistoryInputs,
 } from "./history";
 import { formatPct, formatSignedPct } from "./view";
@@ -96,8 +98,15 @@ export const kellyHeadless: HeadlessPaneDefinition<"bundle"> = {
     // The quote and the one history window the lookback needs load together, through the
     // coordinator every chart reads daily closes from (the History tab's request, cache included).
     const coordinator = new MarketDataCoordinator(ctx.marketData);
+    const loadHistory = async () => {
+      const dated = await coordinator.loadChart(kellyHistoryRequest({ symbol, exchange }, years), { forceRefresh: ctx.refresh });
+      // A source with no dated history answers from its trailing range, as the History tab does.
+      return kellyHistoryUnanswered(dated)
+        ? coordinator.loadChart(kellyTrailingHistoryRequest({ symbol, exchange }, years), { forceRefresh: ctx.refresh })
+        : dated;
+    };
     const [entry, quote] = await Promise.all([
-      coordinator.loadChart(kellyHistoryRequest({ symbol, exchange }, years), { forceRefresh: ctx.refresh }),
+      loadHistory(),
       ctx.marketData.getQuote(symbol, exchange, ctx.refresh ? { cacheMode: "refresh" } : undefined).catch(logFailure("kelly-sizer.headless", "Load Kelly sizing quote failed", null)),
     ]);
     const history = resolveEntryValue(entry) ?? [];
