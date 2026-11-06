@@ -120,3 +120,28 @@ test("desktop artwork beside a label never reaches the file", () => {
     [{ base: { text: "USD", leading: "row art" }, EUR: { text: "0.8937", leading: "row art" } }],
   )).toEqual([",EUR", "USD,0.8937"]);
 });
+
+test("a ticker list's export names each row's listing, unit, source and as-of after its columns, and leaves out a sparkline", () => {
+  // The watchlist's Export CSV read `◐ BA,18.4600,GBP,-1.83,72270000000,…,16:49,BA`: a dot on the ticker, BAE read as
+  // Boeing, a market cap to three figures in a currency it did not name, a time with no date, and the ticker under 1M.
+  type Row = { ticker: DataTableCell; last: DataTableCell; cap: DataTableCell; asOf: DataTableCell; spark: DataTableCell; identity: string[] | null };
+  const rows: Row[] = [
+    { ticker: { text: "◐ BA:LSE", value: "BA:LSE" }, last: { text: "18.4600" }, cap: { text: "72.26B", value: 72_262_635_416.7568, valueUnit: "USD" },
+      asOf: { text: "16:49", value: "2026-11-06T16:49:00.000Z" },
+      spark: { text: "", content: "chart" }, identity: ["CLOSED", "delayed", "", "BA:LSE", "GBP", "", "Gloom Cloud", "2026-11-06T16:49:00.000Z"] },
+    { ticker: { text: "FX (EUR)" }, last: { text: "—" }, cap: { text: "—", value: null, valueUnit: "USD" }, asOf: { text: "—" },
+      spark: { text: "", content: "chart" }, identity: null },
+  ];
+  const headers = ["Session", "Feed", "status", "symbol_or_series", "currency_or_unit", "interval", "source", "as_of"];
+  const csv = createDataTableCsv<Row>({
+    columns: [left("ticker", "TICKER"), right("last", "LAST"), right("cap", "MCAP"), left("asOf", "AS OF UTC"), left("spark", "1M")],
+    items: rows,
+    renderCell: (row, column) => row[column.id as "ticker" | "last" | "cap" | "asOf" | "spark"],
+    exportIdentity: { headers, cells: (row) => row.identity },
+  });
+  expect(csv.slice(EXCEL_CSV_BOM.length).split("\n")).toEqual([
+    `TICKER,LAST,MCAP (USD),AS OF UTC,${headers.join(",")}`,
+    "BA:LSE,18.4600,72262635416.7568,2026-11-06T16:49:00.000Z,CLOSED,delayed,,BA:LSE,GBP,,Gloom Cloud,2026-11-06T16:49:00.000Z",
+    "FX (EUR),,,,,,,,,,,",
+  ]);
+});

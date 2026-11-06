@@ -120,3 +120,35 @@ for (const [symbol, prior, close, change] of [
     expect(Number.isNaN(points[2]!.close)).toBe(true);
   });
 }
+
+test("an index's history export names its listing, unit and bar size on every row, and its uncounted 0 volume is blank", async () => {
+  // HP ^HSI's Export CSV read `DATE,OPEN,HIGH,LOW,CLOSE,CHG,CHG %,VOLUME` with no symbol, and Volume 0 on 6 Nov.
+  const paneId = "history:index-export";
+  const provider = createTestDataProvider({ getPriceHistory: async () => [
+    { date: new Date("2026-11-05"), open: 24316.94, high: 24871.92, low: 24281.77, close: 24796.98, volume: 5_220_500_000 },
+    { date: new Date("2026-11-06"), open: 24404.62, high: 24740.18, low: 24349.3, close: 24481.86, volume: 0 },
+  ] });
+  const state = createInitialState(createTestPaneConfig("/tmp/gloom-history-index-unused", {
+    instanceId: paneId, paneId: "historical-prices", binding: { kind: "fixed", symbol: "^HSI" },
+  }));
+  state.tickers.set("^HSI", createTestTicker("^HSI"));
+  state.financials.set("^HSI", { quote: {
+    symbol: "^HSI", price: 24481.86, change: -315.12, changePercent: -1.27, currency: "HKD", instrumentType: "INDEX",
+    marketState: "CLOSED", lastUpdated: Date.parse("2026-11-06T08:09:00Z"), providerId: "gloomberb-cloud",
+  } } as never);
+  const runtime = createTestPluginRuntime({ getMarketData: () => provider });
+  await act(async () => {
+    await tui.render(
+      <TestPaneProvider state={state} paneId={paneId} pluginId="ticker-research" runtime={runtime}>
+        <HistoricalPricesPane paneId={paneId} paneType="historical-prices" focused width={120} height={14} />
+      </TestPaneProvider>, { width: 120, height: 14 },
+    );
+  });
+  await settleFrame(tui.setup(), 8);
+  await exportPaneTable(paneId, "history.csv");
+  const lines = takeSavedTextFile()!.text.replace(/^\uFEFF/, "").split("\n");
+  expect(lines[0]).toBe("DATE,OPEN,HIGH,LOW,CLOSE,CHG,CHG %,VOLUME,status,symbol_or_series,currency_or_unit,interval,source,as_of");
+  expect(lines[1]).toMatch(/^2026-11-06,24404\.62,.*,24481\.86,-315\.12,[-\d.]+,,,\^HSI,index points,1d,Gloom Cloud,2026-11-06$/);
+  expect(lines[2]).toMatch(/^2026-11-05,.*,5220500000,,\^HSI,index points,1d,Gloom Cloud,2026-11-06$/);
+  expect(lines).toContain("Price units,index points");
+});

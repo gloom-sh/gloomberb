@@ -70,6 +70,7 @@ import { cashRunway, SHORT_RUNWAY_HISTORY } from "../../../utils/cash-runway";
 import { useOfferingNote } from "./financials/offerings";
 import { taxEquivalentFields, useOverviewTaxEquivalent } from "./overview/tax-equivalent";
 import { distributionBasis, type TaxRates } from "../../../market-data/tax-equivalent";
+import { currentListingName } from "../../../tickers/listing-name";
 
 /** Cells between the Day and 52W ranges when they share a row. */
 const RANGE_PAIR_GAP = 4;
@@ -295,7 +296,8 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   // The days the venue was closed since that close, under the move: "HKEX closed Mon 19 Oct, holiday".
   const changeBasisNoteText = changeBasisNote(changeBasis);
   // The pane title already names the ticker, so the line leads with the company and drops a name that only repeats it.
-  const companyName = [ticker.metadata.name, quote?.name].find((name) => name && name !== ticker.metadata.ticker) ?? "";
+  // The listing's own quote names it first: BA on LSE is BAE Systems, whatever name a search gave the row it was saved from.
+  const companyName = currentListingName(ticker, quote) ?? "";
   const venueText = listingVenue ? (companyName ? ` (${listingVenue})` : listingVenue) : "";
   const sessionLabel = quoteSessionLabel(quote);
   const marketStateText = sessionLabel ? t(sessionLabel) : "";

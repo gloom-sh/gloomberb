@@ -28,6 +28,8 @@ import { DataTableView, type DataTableKeyEvent, type DataTableSelection } from "
 import type { QuoteFlashDirection } from "../quote-flash";
 import { objectVersion } from "../../utils/object-version";
 import { getCompletedRegularSessionDisplay } from "../../market-data/market/status";
+import { QUOTE_EXPORT_IDENTITY_HEADERS, quoteExportIdentityCells } from "../../market-data/quotes/export-identity";
+import { exportedListingKey } from "../../portfolio/listed-symbol";
 import { usePaneFooter } from "../layout/pane/footer";
 
 export interface TickerTableCell {
@@ -35,8 +37,13 @@ export interface TickerTableCell {
   /** Muted context after `text`, shown whole only when both fit on one line. */
   note?: string;
   color?: string;
-  /** The full-precision number behind a rounded `text`, which exports and rendered-view reports keep. */
-  value?: number | null;
+  /**
+   * What exports and rendered-view reports keep behind a rounded `text`: the full-precision number, an ISO
+   * date or time, or the listing with its venue (BA:LSE) behind a symbol drawn with its session dot.
+   */
+  value?: number | string | null;
+  /** The unit `value` is in where `text` does not say it, which an export names in the header (MCAP (USD)). */
+  valueUnit?: string;
   /** A tint behind a cell that stands out for a moment, such as a price that moved since the user last looked. */
   backgroundColor?: string;
   /**
@@ -78,6 +85,8 @@ export interface TickerListVisibleRange {
 }
 
 export interface TickerListTableViewProps {
+  /** What the list is (a watchlist's name), which names its exported file. */
+  exportName?: string;
   columns: ColumnConfig[];
   tickers: TickerRecord[];
   cursorSymbol: string | null;
@@ -260,6 +269,7 @@ export function TickerListTableView({
   summaryRows,
   virtualize = true,
   overscan = 4,
+  exportName,
 }: TickerListTableViewProps) {
   const commandBarShortcut = useCommandBarShortcut();
   const resolvedEmptyHint = emptyHint ?? tf("Press {shortcut} to add one.", { shortcut: addTickerShortcut ?? commandBarShortcut });
@@ -302,19 +312,21 @@ export function TickerListTableView({
     }
     const financials = financialsRef.current.get(ticker.metadata.ticker);
     if (column.id === PRICE_SPARKLINE_COLUMN_ID) {
+      // Drawn only: an export has no figure for it, so it leaves the column out (it wrote the ticker under 1M).
       return {
-        text: ticker.metadata.ticker,
+        text: "",
         content: <PriceSparkline priceHistory={getPriceHistory(financials)} width={column.width} />,
       };
     }
 
-    const { text, note, color, onPress, value, backgroundColor } = resolveCellRef.current.resolve(column, ticker, financials);
+    const { text, note, color, onPress, value, valueUnit, backgroundColor } = resolveCellRef.current.resolve(column, ticker, financials);
     const shouldFlash = flashSymbolsRef.current.has(ticker.metadata.ticker)
       && flashesOnQuoteTick(column.id, financials?.quote);
     return {
       text,
       ...(note ? { note } : {}),
       ...(value !== undefined ? { value } : {}),
+      ...(valueUnit ? { valueUnit } : {}),
       color: color || (rowState.selected ? colors.selectedText : undefined),
       attributes: shouldFlash ? TextAttributes.DIM : TextAttributes.NONE,
       ...(backgroundColor ? { backgroundColor } : {}),
@@ -335,6 +347,15 @@ export function TickerListTableView({
     const symbol = ticker.metadata.ticker;
     return `${resolveEpoch}|${objectVersion(financialsMap.get(symbol))}|${safeFlashSymbols.get(symbol) ?? ""}`;
   }, [financialsMap, resolveEpoch, safeFlashSymbols]);
+
+  // An export ends each row as `quote --csv` does: its session and feed, its listing with the venue, its unit,
+  // its source and the ISO time its price was observed. A summary line is no listing.
+  const exportIdentity = useMemo(() => ({
+    headers: QUOTE_EXPORT_IDENTITY_HEADERS,
+    cells: (ticker: TickerRecord) => isTickerRow(ticker)
+      ? quoteExportIdentityCells(exportedListingKey(ticker), financialsRef.current.get(ticker.metadata.ticker)?.quote)
+      : null,
+  }), []);
 
   const selection = useMemo<DataTableSelection<TickerRecord>>(() => ({
     kind: "id",
@@ -416,6 +437,8 @@ export function TickerListTableView({
       onRowContextMenu={handleRowContextMenu}
       rowContextMenuSurface
       renderCell={renderCell}
+      exportIdentity={exportIdentity}
+      exportName={exportName}
       getRowVersion={getRowVersion}
       emptyStateTitle={emptyTitle}
       emptyStateHint={resolvedEmptyHint}

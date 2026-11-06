@@ -1,5 +1,6 @@
 // Public API: gloomberb/components re-exports getColumnValue, getSortValue and
 // ColumnContext from here, so external plugins depend on their names and shapes.
+import { exportedListingKey, listedSymbol } from "./listed-symbol";
 import { comparablePriceEarnings, formatPriceEarnings } from "../utils/price-earnings";
 import { convertMarketCapitalization, listedMarketCapitalization } from "../utils/market-capitalization";
 import type { ColumnConfig } from "../types/config";
@@ -85,6 +86,8 @@ import {
 
 export interface ColumnContext {
   activeTab?: string;
+  /** The market most of the list's listings trade in (listHomeMarket): a row outside it shows its venue (BA:LSE). */
+  homeMarket?: string;
   /** Money columns convert into this: a portfolio's totals currency, else the base currency. */
   baseCurrency: string;
   exchangeRates: Map<string, number>;
@@ -503,7 +506,7 @@ export function getColumnValue(
   ticker: TickerRecord,
   financials: TickerFinancials | undefined,
   ctx: ColumnContext,
-): { text: string; color?: string; value?: number | null; pnlBasis?: PortfolioPositionPnl["basis"] } {
+): { text: string; color?: string; value?: number | string | null; valueUnit?: string; pnlBasis?: PortfolioPositionPnl["basis"] } {
   const sent = financials?.quote;
 
   const fundamentals = financials?.fundamentals;
@@ -542,7 +545,8 @@ export function getColumnValue(
     case "ticker": {
       // A print older than its venue's latest session pictures no session, not the market's current one.
       const statusDot = marketStateDot(quoteDotMarketState(quote));
-      return { text: `${statusDot} ${tickerDisplayName(ticker)}` };
+      // An export names the listing with its venue, without the dot: BA:LSE, never a bare BA read as Boeing.
+      return { text: `${statusDot} ${listedSymbol(ticker, tickerDisplayName(ticker), ctx.homeMarket)}`, value: exportedListingKey(ticker) };
     }
     case "name":
       // The name the listing's quote gives now, as `quote` and `portfolio show` name it, else the saved one.
@@ -621,7 +625,8 @@ export function getColumnValue(
     case "market_cap": {
       const cap = liveMarketCapitalization(quote, fundamentals);
       const value = cap ? listedMarketCapitalization(convertMarketCapitalization(cap.value, cap.currency, ctx.baseCurrency, ctx.exchangeRates)) : null;
-      return { text: value == null ? "—" : formatCompact(value, { fixedDecimals: true }) };
+      // An export writes the whole figure, not the three digits the cell shows (72.27B), in the base currency it names.
+      return { text: value == null ? "—" : formatCompact(value, { fixedDecimals: true }), value, valueUnit: ctx.baseCurrency };
     }
     case "pe":
       return { text: formatPriceEarnings(liveTrailingPE(quote, fundamentals)) };
@@ -766,7 +771,12 @@ export function getColumnValue(
       const time = getPortfolioValuationTime(quote, ctx.valuationBasis, positionMetrics, futures?.settlement);
       if (!time) return { text: "—" };
       // In UTC, as the header says; a close the venue's calendar gives no hour for is dated by its day.
-      return { text: time.dateOnly ? formatShortDate(time.time, MONTH_DAY) : formatFeedTime(time.time, ctx.now, "—", { utc: true }) };
+      // An export writes the date with it, as ISO: 16:49 alone says nothing of which day.
+      const iso = new Date(time.time).toISOString();
+      return {
+        text: time.dateOnly ? formatShortDate(time.time, MONTH_DAY) : formatFeedTime(time.time, ctx.now, "—", { utc: true }),
+        value: time.dateOnly ? iso.slice(0, 10) : iso,
+      };
     }
     case PRICE_SPARKLINE_COLUMN_ID:
       return { text: "" };

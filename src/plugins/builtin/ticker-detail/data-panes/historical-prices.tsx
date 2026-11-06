@@ -19,6 +19,9 @@ import { colors, priceColor } from "../../../../theme/colors";
 import { displayWidth, formatCompact, formatPercent } from "../../../../utils/format";
 import { isPlainKeyboardEvent } from "../../../../utils/keyboard";
 import { publicTickerKey } from "../../../../utils/exchanges";
+import { exportedListingSymbol } from "../../../../portfolio/listed-symbol";
+import { indexBarVolume } from "../../../../market-data/market/index-level";
+import { quoteExportUnit } from "../../../../market-data/quotes/export-identity";
 import { isPenceQuotedLine, penceFigure, quoteFormatOptions } from "../../../../market-data/market/format";
 import {
   barPriceDecimals, formatBarPrice, historyAllStart, historyBarsAfterHole, historyChangeBaseNote, historyMissingPeriodsNote, quotedPriceDivisor,
@@ -239,6 +242,9 @@ function nextHistoryRange(current: TimeRange): TimeRange {
   return TIME_RANGES[(index + 1) % TIME_RANGES.length] ?? "1Y";
 }
 
+/** The columns each exported bar ends with, as `fn HP --csv` ends a row. */
+const HISTORY_EXPORT_IDENTITY_HEADERS = ["status", "symbol_or_series", "currency_or_unit", "interval", "source", "as_of"] as const;
+
 export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   const dataProvider = useAssetData();
   const { symbol, exchange, ticker } = useBoundTicker();
@@ -262,9 +268,15 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   // While the session trades the day's bar is the quote's: the history keeps a
   // snapshot of it from whenever it was last fetched (withSessionBar).
   const quote = financials?.quote;
+  // An index's uncounted 0 volume (^HSI's day built from its quote) is no volume, as `history` and HP's CSV leave it.
+  const instrumentType = quote?.instrumentType ?? financials?.quoteMetadata?.instrumentType;
   const points = useMemo(
-    () => withSessionBar(data ?? [], quote, { now: Date.now(), venue }),
-    [data, quote, venue],
+    () => withSessionBar(data ?? [], quote, { now: Date.now(), venue }).map((point) => {
+      if (point.volume == null) return point;
+      const volume = indexBarVolume(point.volume, instrumentType);
+      return volume === point.volume ? point : { ...point, volume: undefined };
+    }),
+    [data, instrumentType, quote, venue],
   );
   const { rows, size, forming, dayToDate, newestDate, gapNotices } = useMemo(
     () => buildHistoricalPriceRows(points, venue, Date.now()),
@@ -360,6 +372,12 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   // The range is picked in the query bar; t still steps through it. The range
   // sets the bar size, which the footer says, and a week or month still
   // running says how far the newest bar goes.
+  const listing = symbol ? exportedListingSymbol(symbol, exchange, instrumentType) : "";
+  const priceUnit = listing && quote ? quoteExportUnit(listing, quote) : null;
+  const exportIdentityCells = [
+    "", listing, priceUnit ?? "", rows.length > 0 && size !== "intraday" ? size : "",
+    quote && (!quote.providerId || quote.providerId === "gloomberb-cloud") ? "Gloom Cloud" : "", newestRowDate.slice(0, 10),
+  ];
   const barInfo = useMemo<PaneFooterSegment[]>(() => [
     ...rows.length > 0 ? [{ id: "bars", parts: [{
       text: allStart ? `${historyBarSizeText(size)} from ${allStart}` : historyBarSizeText(size), tone: "muted" as const,
@@ -407,6 +425,8 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
       )}
       renderCell={renderCell}
       selectedTextOverridesCellColor
+      // Each bar says what it is a bar of, as `fn HP --csv` and `history --csv` end a row, so it survives a paste.
+      exportIdentity={{ headers: HISTORY_EXPORT_IDENTITY_HEADERS, cells: () => exportIdentityCells }}
       getExportMetadata={() => [
         ["Ticker", symbol ? publicTickerKey(symbol, exchange) : ""],
         ["Requested range", range],
@@ -414,7 +434,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
         ["Time zone", "UTC"],
         ...(forming && newestDate ? [["Partial bar", `${newestDate}, ${formingHistoryBarText(forming, newestDate)}`]] : []),
         ...(dayToDate && newestDate ? [["Partial bar", `${newestDate}, ${DAY_SO_FAR_TEXT}`]] : []),
-        ["Price units", "As served in the history; currency and price-basis metadata are unavailable"],
+        ["Price units", priceUnit ?? "As served in the history; currency and price-basis metadata are unavailable"],
         ["Status", error ? (rows.length ? "Retained after refresh failure" : "Unavailable")
           : loading ? (rows.length ? "Refreshing" : "Loading") : rows.length ? "Available" : "Empty"],
         ...(allStart ? [["Source starts", allStart]] : []),

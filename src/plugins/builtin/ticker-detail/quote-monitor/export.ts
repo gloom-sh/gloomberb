@@ -1,6 +1,6 @@
 import type { Quote } from "../../../../types/financials";
 import { serializeCsv } from "../../../../utils/csv";
-import { canonicalTickerKey } from "../../../../utils/exchanges";
+import { exportedListingSymbol } from "../../../../portfolio/listed-symbol";
 import { changeBasisLabel, quoteChangeBasis } from "../../../../market-data/market/change-basis";
 import { getQuoteSessionFields } from "../../../../market-data/market/status";
 import { QUOTE_EXPORT_IDENTITY_HEADERS, quoteExportIdentityCells } from "../../../../market-data/quotes/export-identity";
@@ -29,7 +29,7 @@ export function quoteMonitorCsv(entries: readonly QuoteMonitorExportEntry[], now
   const rows = entries.map(({ symbol, instrument, quote }) => {
     const { price, change, changePercent } = getQuoteSessionFields(quote);
     const basis = quote ? quoteChangeBasis(quote) : null;
-    const listing = instrument?.exchange ? canonicalTickerKey(instrument.symbol, instrument.exchange) : instrument?.symbol ?? symbol;
+    const listing = instrument ? exportedListingSymbol(instrument.symbol, instrument.exchange, quote?.instrumentType) : symbol;
     return [
       symbol,
       quote?.name ?? "",

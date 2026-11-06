@@ -13,6 +13,7 @@ import { isProviderBusy } from "../../../../sources/provider-errors";
 import { splitSymbolArgs } from "../../../../cli/symbol-args";
 import { readNameEntryGroups } from "../../../../cli/name-entries";
 import { mapWithConcurrency } from "../../../../utils/concurrency";
+import { quotedListingName } from "../../../../tickers/listing-name";
 import {
   describeFormerIssuer,
   describeTickerChange,
@@ -166,6 +167,14 @@ function exchangeFromResolved(resolved: ResolvedTickerSearch): string | undefine
     : resolved.ticker.metadata.exchange;
 }
 
+/** A search row named as its listing's own quote names it, when the quote prices that listing and names it otherwise. */
+function withQuotedListingName(resolved: ResolvedTickerSearch, quote: Quote | null): ResolvedTickerSearch {
+  if (resolved.kind !== "provider") return resolved;
+  const result = resolved.result;
+  const name = quotedListingName(result.exchange === "SMART" ? result.primaryExchange || result.exchange : result.exchange, quote);
+  return name && name !== result.name ? { ...resolved, result: { ...result, name } } : resolved;
+}
+
 export function tickerNameFromValidation(
   validation: Extract<QuickAddValidation, { status: "ready" | "duplicate" }>,
 ): string {
@@ -231,35 +240,38 @@ export async function resolveQuickAddValidation({
   const changes = startTickerChangeLookup(registry.marketData, query);
 
   try {
-    const resolved = await resolveTickerSearch({
+    const found = await resolveTickerSearch({
       query,
       activeTicker: null,
       tickers,
       dataProvider: registry.marketData,
     });
-    if (!resolved) {
+    if (!found) {
       const payload = await changes.settle();
       const line = tickerChangeLine(describeTickerChange(query, payload, null)) ?? describeFormerIssuer(query, payload, null)?.note;
       return { status: "missing", query, message: line ?? "No exact ticker match" };
     }
 
-    const symbol = resolved.symbol;
-    const ticker = tickerForResolved(resolved, tickers);
+    const symbol = found.symbol;
+    const ticker = tickerForResolved(found, tickers);
     const cachedQuote = ticker ? financials.get(ticker.metadata.ticker)?.quote ?? null : null;
     // A listing its own quote vouched for comes with it.
-    let quote = cachedQuote ?? (resolved.kind === "provider" ? resolved.quote ?? null : null);
+    let quote = cachedQuote ?? (found.kind === "provider" ? found.quote ?? null : null);
     if (!quote) {
       try {
         quote = await registry.marketData.getQuote(
           symbol,
-          exchangeFromResolved(resolved),
-          quoteContextFromResolved(resolved),
+          exchangeFromResolved(found),
+          quoteContextFromResolved(found),
         );
       } catch (error) {
         logFailure("portfolio-list.quick-add.resolution", "Read quick-add quote failed")(error);
         quote = null;
       }
     }
+    // The listing's own quote names it, over a search row that names another listing's company:
+    // search's BA on LSE read "The Boeing Company" while its quote is BAE Systems, and the row was saved so.
+    const resolved = withQuotedListingName(found, quote);
 
     // A listing abroad is not the US symbol the changes are of.
     const venue = resolved.kind === "provider" && resolved.result.exchange === "SMART"

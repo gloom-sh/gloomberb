@@ -2,15 +2,22 @@ import { createCsvExportFilename } from "../utils/csv";
 
 export type PaneTableExporter = (filename: string) => Promise<string>;
 
-const exporters = new Map<string, Map<symbol, PaneTableExporter>>();
+interface RegisteredExporter {
+  exporter: PaneTableExporter;
+  /** What the table is of, which names the file: a watchlist's name, not the pane's ("Portfolio"). */
+  name?: () => string | null | undefined;
+}
+
+const exporters = new Map<string, Map<symbol, RegisteredExporter>>();
 
 export function registerPaneTableExporter(
   paneId: string,
   exporter: PaneTableExporter,
+  name?: () => string | null | undefined,
 ): () => void {
   const token = Symbol(paneId);
-  const paneExporters = exporters.get(paneId) ?? new Map<symbol, PaneTableExporter>();
-  paneExporters.set(token, exporter);
+  const paneExporters = exporters.get(paneId) ?? new Map<symbol, RegisteredExporter>();
+  paneExporters.set(token, { exporter, ...name ? { name } : {} });
   exporters.set(paneId, paneExporters);
 
   return () => {
@@ -24,12 +31,16 @@ export function hasPaneTableExporter(paneId: string): boolean {
   return exporters.get(paneId)?.size === 1;
 }
 
-export async function exportPaneTable(paneId: string, filename: string): Promise<string> {
+function activeExporter(paneId: string): RegisteredExporter {
   const paneExporters = exporters.get(paneId);
   if (paneExporters?.size !== 1) {
     throw new Error("This pane does not have one active exportable table.");
   }
-  return [...paneExporters.values()][0]!(filename);
+  return [...paneExporters.values()][0]!;
+}
+
+export async function exportPaneTable(paneId: string, filename: string): Promise<string> {
+  return activeExporter(paneId).exporter(filename);
 }
 
 /**
@@ -42,7 +53,9 @@ export async function exportPaneTableCsv(
   notify: (notification: { body: string; type: "success" | "error" }) => void,
 ): Promise<void> {
   try {
-    const location = await exportPaneTable(paneId, createCsvExportFilename(title));
+    // The file is named after what the table is of when it says (the watchlist shown), else the pane.
+    const named = exporters.get(paneId)?.size === 1 ? activeExporter(paneId).name?.()?.trim() : null;
+    const location = await exportPaneTable(paneId, createCsvExportFilename(named || title));
     notify({ body: `Exported to ${location}`, type: "success" });
   } catch {
     notify({ body: "Failed to export CSV", type: "error" });
