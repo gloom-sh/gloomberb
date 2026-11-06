@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
-import { estimateKellyHistoryInputs } from "./history";
+import { estimateKellyHistoryInputs, kellyHistoryRequest } from "./history";
 
 const DAY_MS = 24 * 60 * 60_000;
 /** 9 Oct 2026: September is the newest month that has ended. */
@@ -55,4 +55,32 @@ test("too few months, or no history, or no gain or no loss gives no inputs inste
   expect(estimateKellyHistoryInputs([], 5, { now: NOW })).toBeNull();
   expect(estimateKellyHistoryInputs(closes(() => 0.1), 5, { now: NOW })).toBeNull();
   expect(estimateKellyHistoryInputs(closes(() => -0.05), 5, { now: NOW })).toBeNull();
+});
+
+test("five years are 60 returns: the request reaches the month-end before the window, and the month now is the venue's", () => {
+  // 6 Nov 2026: a trailing five-year range starts on 6 Nov 2021, after October 2021's close, and gave 59 returns.
+  const now = Date.parse("2026-11-06T03:00:00Z");
+  const request = kellyHistoryRequest({ symbol: "AAPL", exchange: "NASDAQ" }, 5, now);
+  expect(request).toMatchObject({ granularity: "detail", barSize: "1d" });
+  expect(request.startDate!.toISOString()).toBe("2021-10-01T00:00:00.000Z");
+  // One request, so one cache entry, for the whole UTC day.
+  expect(kellyHistoryRequest({ symbol: "AAPL", exchange: "NASDAQ" }, 5, now + 20 * 60 * 60_000)).toEqual(request);
+  expect(kellyHistoryRequest({ symbol: "AAPL", exchange: "NASDAQ" }, 1, now).startDate!.toISOString()).toBe("2025-10-01T00:00:00.000Z");
+  const weekdays: PricePoint[] = [];
+  for (let time = request.startDate!.getTime(); time < now - DAY_MS / 2; time += DAY_MS) {
+    const date = new Date(time);
+    if (date.getUTCDay() !== 0 && date.getUTCDay() !== 6) weekdays.push({ date, close: 100 + (date.getUTCMonth() % 2 ? 5 : 0) });
+  }
+  expect(estimateKellyHistoryInputs(weekdays, 5, { now, exchange: "NASDAQ" }))
+    .toMatchObject({ periods: 60, start: "2021-10-29", end: "2026-10-30" });
+
+  // 1 Dec 2026 08:00 in Tokyo is still 30 Nov in UTC: November has ended at the venue, and counts there.
+  const tokyo = Date.parse("2026-11-30T23:00:00Z");
+  const daily: PricePoint[] = [];
+  for (let time = Date.parse("2025-10-01T00:00:00Z"); time <= Date.parse("2026-11-30T00:00:00Z"); time += DAY_MS) {
+    const date = new Date(time);
+    daily.push({ date, close: 100 + (date.getUTCMonth() % 2 ? 5 : 0) });
+  }
+  expect(estimateKellyHistoryInputs(daily, 1, { now: tokyo, exchange: "JPX" })).toMatchObject({ periods: 12, end: "2026-11-30" });
+  expect(estimateKellyHistoryInputs(daily, 1, { now: tokyo, exchange: "" })).toMatchObject({ periods: 12, end: "2026-10-31" });
 });

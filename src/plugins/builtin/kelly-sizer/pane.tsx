@@ -20,7 +20,6 @@ import {
 import type { PaneProps } from "../../../types/plugin";
 import { useChartQueries, useFxRatesMap, useResolvedEntryValue } from "../../../market-data/hooks";
 import { buildChartKey } from "../../../market-data/selectors";
-import { clipPriceHistoryToRange } from "../../../time-series/history-window";
 import { useLiveTickerFinancials, useLiveTickerFinancialsMap } from "../../../state/hooks/live-ticker-financials";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
 import { convertCurrency, formatCurrency } from "../../../utils/format";
@@ -66,9 +65,9 @@ import {
   estimateKellyHistoryInputs,
   KELLY_HISTORY_DEFAULT_YEARS,
   KELLY_HISTORY_MIN_PERIODS,
-  kellyHistoryRange,
   kellyHistoryRequest,
 } from "./history";
+import { kellyCount, kellyCountMultiplier } from "./units";
 import { KELLY_PANE_ID } from "./constants";
 import {
   buildKellyCurveXAxisLabels,
@@ -282,8 +281,23 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const currentValue = currentValueOverride ?? sourceCurrentValue;
   const price = positionFinancials?.quote?.price ?? null;
   const priceCurrency = positionFinancials?.quote?.currency || ticker?.metadata.currency || config.baseCurrency;
-  // Units divide a base-currency size by the price in that currency, at the rate the portfolio values holdings at.
-  const basePrice = price == null ? null : convertCurrency(price, priceCurrency, config.baseCurrency, exchangeRates);
+  // A future is counted in contracts, each worth its price times the contract's multiplier from its terms.
+  const count = ticker
+    ? kellyCount(ticker.metadata.ticker, ticker.metadata.exchange ?? "", positionFinancials?.quote?.instrumentType ?? ticker.metadata.assetCategory)
+    : "shares";
+  const [contractMultiplier, setContractMultiplier] = useState<{ symbol: string; value: number | null } | null>(null);
+  const tickerSymbol = ticker?.metadata.ticker ?? null;
+  useEffect(() => {
+    if (count !== "contracts" || !tickerSymbol) return;
+    let cancelled = false;
+    void kellyCountMultiplier(tickerSymbol, count).then((value) => {
+      if (!cancelled) setContractMultiplier({ symbol: tickerSymbol, value });
+    });
+    return () => { cancelled = true; };
+  }, [count, tickerSymbol]);
+  const multiplier = count !== "contracts" ? 1 : contractMultiplier?.symbol === tickerSymbol ? contractMultiplier.value : null;
+  // Counts divide a base-currency size by one count's value in that currency, at the rate the portfolio values holdings at.
+  const basePrice = price == null || multiplier == null ? null : convertCurrency(price, priceCurrency, config.baseCurrency, exchangeRates) * multiplier;
   const unitPrice = basePrice != null && Number.isFinite(basePrice) && basePrice > 0 ? basePrice : null;
   // The same daily closes, through the same request, as the KELLY report reads.
   const historyRequest = useMemo(
@@ -297,7 +311,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const historyPoints = useResolvedEntryValue(historyEntry);
   const historyInputs = useMemo(
     () => historyPoints
-      ? estimateKellyHistoryInputs(clipPriceHistoryToRange(historyPoints, kellyHistoryRange(historyYears)), historyYears, { exchange: ticker?.metadata.exchange ?? "" })
+      ? estimateKellyHistoryInputs(historyPoints, historyYears, { exchange: ticker?.metadata.exchange ?? "" })
       : null,
     [historyPoints, historyYears, ticker?.metadata.exchange],
   );
@@ -520,6 +534,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     ...(mode === "history" && historyInputs ? buildKellyHistoryItems(historyInputs) : []),
     ...buildKellyResultItems({
       result,
+      count,
       baseCurrency: config.baseCurrency,
       currentGrowth,
       targetGrowth,

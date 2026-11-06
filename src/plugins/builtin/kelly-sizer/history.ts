@@ -2,6 +2,10 @@ import type { PricePoint } from "../../../types/financials";
 import type { TimeRange } from "../../../time-series/range";
 import type { ChartRequest, InstrumentRef } from "../../../market-data/request-types";
 import { dailyBarDate, getPricePointTimestamp } from "../../../utils/price-history";
+import { sessionCalendarTimeZone } from "../../../market-data/market/freshness";
+import { zonedDateTimeParts } from "../../../utils/zoned-date-time";
+
+const DAY_MS = 86_400_000;
 
 export const KELLY_HISTORY_DEFAULT_YEARS = 5;
 export const KELLY_HISTORY_MAX_YEARS = 5;
@@ -31,14 +35,31 @@ export function clampKellyHistoryYears(value: unknown): number {
   return Number.isFinite(years) ? Math.min(KELLY_HISTORY_MAX_YEARS, Math.max(1, years)) : KELLY_HISTORY_DEFAULT_YEARS;
 }
 
-/** The shortest history range that covers the lookback, so a one-year window never loads five. */
-export function kellyHistoryRange(years: number): TimeRange {
-  return clampKellyHistoryYears(years) <= 1 ? "1Y" : "5Y";
+/** The month now on the venue's calendar, as YYYY-MM: a coin's, and a venue without a known zone's, in UTC. */
+function venueMonth(now: number, exchange: string): { year: number; month: number } {
+  const { year, month } = zonedDateTimeParts(now, sessionCalendarTimeZone(exchange) ?? "UTC");
+  return { year, month };
 }
 
-/** The daily closes the History tab and the KELLY report both read. */
-export function kellyHistoryRequest(instrument: InstrumentRef, years: number): ChartRequest {
-  return { instrument, bufferRange: kellyHistoryRange(years), granularity: "resolution", resolution: "1d" };
+/**
+ * The daily closes the History tab and the KELLY report both read: from the
+ * first day of the month before the window's first month, so each of the
+ * `years` × 12 months has the close it is measured from, to the end of the
+ * UTC day, so a day keeps one request. A trailing five-year range starts days
+ * into that month and gave 59 returns.
+ */
+export function kellyHistoryRequest(instrument: InstrumentRef, years: number, now = Date.now()): ChartRequest {
+  const lookback = clampKellyHistoryYears(years);
+  const { year, month } = venueMonth(now, instrument.exchange ?? "");
+  return {
+    instrument,
+    // The range the request falls back to where a source has no dated history.
+    bufferRange: lookback <= 1 ? "1Y" : "5Y",
+    granularity: "detail",
+    barSize: "1d",
+    startDate: new Date(Date.UTC(year, month - 1 - (lookback * 12 + 1), 1)),
+    endDate: new Date(Math.floor(now / DAY_MS) * DAY_MS + DAY_MS),
+  };
 }
 
 /**
@@ -47,7 +68,8 @@ export function kellyHistoryRequest(instrument: InstrumentRef, years: number): C
  * trades every day and a stock that trades on weekdays are sized on the same
  * months. A month counts once it has ended (`now` is in a later month), so a
  * month in progress is never a return; the newest `years` × 12 complete
- * months are used. Days are the venue's (`exchange`), a coin's UTC. Null
+ * months are used. Days and the month now are the venue's (`exchange`), a
+ * coin's UTC, so a month that has ended in Tokyo counts before it has in UTC. Null
  * when that leaves fewer than `KELLY_HISTORY_MIN_PERIODS` returns, or every
  * one of them is a gain, or every one of them is a loss.
  */
@@ -57,7 +79,8 @@ export function estimateKellyHistoryInputs(
   options: { exchange?: string; now?: number } = {},
 ): KellyHistoryInputs | null {
   const years = clampKellyHistoryYears(yearsInput);
-  const thisMonth = new Date(options.now ?? Date.now()).toISOString().slice(0, 7);
+  const now = venueMonth(options.now ?? Date.now(), options.exchange ?? "");
+  const thisMonth = `${now.year}-${String(now.month).padStart(2, "0")}`;
   const monthEnds = new Map<string, { day: string; close: number }>();
   const closes = points
     .map((point) => ({ time: getPricePointTimestamp(point), close: point.close }))

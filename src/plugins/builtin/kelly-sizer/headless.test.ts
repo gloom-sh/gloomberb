@@ -19,16 +19,20 @@ function closes(returns: readonly number[]) {
   return points;
 }
 
-async function load(returns: readonly number[], options: { bankroll?: number; baseCurrency?: string; marketData?: Partial<DataProvider> } = {}) {
+async function load(returns: readonly number[], options: {
+  bankroll?: number; baseCurrency?: string; marketData?: Partial<DataProvider>; symbol?: string; apiClient?: object;
+} = {}) {
+  const symbol = options.symbol ?? "BTC-USD";
   const history = closes(returns);
   // The day after the last month ends: every month is complete.
   setSystemTime(new Date(history.at(-1)!.date.getTime() + 86_400_000));
   return kellyHeadless.load(
-    createTestHeadlessArgs({ symbols: ["BTC-USD"], options: { years: 1, ...(options.bankroll ? { bankroll: options.bankroll } : {}) } }),
+    createTestHeadlessArgs({ symbols: [symbol], options: { years: 1, ...(options.bankroll ? { bankroll: options.bankroll } : {}) } }),
     createTestHeadlessContext({
       config: { ...createDefaultConfig("/tmp/gloomberb-kelly-test"), baseCurrency: options.baseCurrency ?? "USD" },
-      resolveInstrument: async () => ({ symbol: "BTC-USD", exchange: "" }),
-      marketData: createTestDataProvider({ getPriceHistoryForResolution: async () => history, getPriceHistory: async () => history, ...options.marketData }),
+      resolveInstrument: async () => ({ symbol, exchange: "" }),
+      marketData: createTestDataProvider({ getDetailedPriceHistory: async () => history, getPriceHistory: async () => history, ...options.marketData }),
+      ...(options.apiClient ? { apiClient: options.apiClient as never } : {}),
     }),
   );
 }
@@ -61,4 +65,26 @@ test("in another base currency a coin's units are counted at the portfolio's rat
   // Without a rate to the base currency the column says why it is missing.
   const unpriced = await load(returns, { bankroll: 2_500_000, baseCurrency: "SGD", marketData: { ...marketData, getExchangeRate: async () => Promise.reject(new Error("no rate")) } });
   expect(unpriced.notes).toContain("No USD to SGD rate to count units in: each position is in SGD only.");
+});
+
+test("a future is counted in whole contracts, each its price times the contract's multiplier; without terms in money only", async () => {
+  const returns = [0.3, -0.25, 0.3, -0.25, 0.3, -0.25, 0.3, -0.25, 0.3];
+  // ES at 6,000 points, $50 a point: one contract is 300,000 USD.
+  const marketData = { getQuote: async () => createTestQuote({ symbol: "ESZ26", price: 6000, currency: "USD", instrumentType: "FUTURE" }) };
+  const terms = (symbol: string) => ({ symbol, root: "ES", name: "E-mini S&P 500", contract: "ESZ26", contractSymbol: "ESZ26",
+    deliveryMonth: "2026-12", spec: { unit: "USD / index point", size: "$50 x index", pointValue: 50, tick: 0.25, tickValue: 12.5,
+      settlement: "cash" }, lastTrade: null, firstNotice: null, inDelivery: false, settlement: null });
+  const result = await load(returns, { symbol: "ESZ26", bankroll: 2_000_000, marketData,
+    apiClient: { getCloudFuturesContract: async (symbol: string) => terms(symbol) } });
+  const sizing = result.sections!.find((section) => section.title === "Sizing on 2,000,000 USD")!;
+  expect(sizing.columns!.map((column) => column.header)).toEqual(["Kelly", "% of bankroll", "Position USD", "Contracts"]);
+  const full = sizing.rows!.find((row) => row.id === "full")!;
+  expect(full.shares).toBe(Math.floor((full.position as number) / 300_000));
+  expect(result.metadata).toMatchObject({ units: "contracts", contractMultiplier: 50 });
+
+  const unsized = await load(returns, { symbol: "ESZ26", bankroll: 2_000_000, marketData,
+    apiClient: { getCloudFuturesContract: async () => Promise.reject(new Error("no terms")) } });
+  expect(unsized.sections!.find((section) => section.title === "Sizing on 2,000,000 USD")!.columns!.map((column) => column.header))
+    .toEqual(["Kelly", "% of bankroll", "Position USD"]);
+  expect(unsized.notes).toContain("No contract size for ESZ26 to count contracts in: each position is in USD only.");
 });

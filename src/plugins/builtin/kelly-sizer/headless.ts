@@ -2,11 +2,8 @@ import type { HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/hea
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
 import { parseHedgeAmount } from "../options-scenario/hedge";
-import { clipPriceHistoryToRange } from "../../../time-series/history-window";
 import { convertCurrency, formatNumber } from "../../../utils/format";
 import { fxRateCurrencies } from "../../../utils/currency-units";
-import { isRoundTheClockCoin } from "../../../utils/crypto-pair";
-import { isFuturesInstrument } from "../../../market-data/futures-contract";
 import { buildBinaryOutcomes, solveKellyFraction } from "./model";
 import {
   clampKellyHistoryYears,
@@ -14,13 +11,13 @@ import {
   KELLY_HISTORY_DEFAULT_YEARS,
   KELLY_HISTORY_MAX_YEARS,
   KELLY_HISTORY_MIN_PERIODS,
-  kellyHistoryRange,
   kellyHistoryRequest,
   type KellyHistoryInputs,
 } from "./history";
 import { formatPct, formatSignedPct } from "./view";
 import { logFailure } from "../../../utils/log-failure";
-import type { Quote } from "../../../types/financials";
+import { loadFuturesContractTerms } from "../../../market-data/futures-contract";
+import { kellyCount, kellyCountMultiplier, type KellyCount } from "./units";
 
 /** The fractions of full Kelly a report sizes, largest first. */
 const KELLY_FRACTIONS = [
@@ -44,10 +41,7 @@ function inputEntries(inputs: KellyHistoryInputs, edge: number) {
   ];
 }
 
-/** What one of the ticker counts as: shares of a stock or fund, units of a coin or a future. */
-function unitsLabel(symbol: string, exchange: string, quote: Quote | null): "Shares" | "Units" {
-  return isRoundTheClockCoin(symbol, exchange) || isFuturesInstrument(symbol, quote?.instrumentType) ? "Units" : "Shares";
-}
+const COUNT_HEADER: Record<KellyCount, string> = { shares: "Shares", units: "Units", contracts: "Contracts" };
 
 /**
  * `price` in the base currency at the rates the portfolio values holdings at
@@ -99,7 +93,6 @@ export const kellyHeadless: HeadlessPaneDefinition<"bundle"> = {
   async load(args, ctx) {
     const { symbol, exchange = "" } = await resolveHeadlessInstrument(ctx, args.symbols[0]!);
     const years = clampKellyHistoryYears(args.options.years);
-    const range = kellyHistoryRange(years);
     // The quote and the one history window the lookback needs load together, through the
     // coordinator every chart reads daily closes from (the History tab's request, cache included).
     const coordinator = new MarketDataCoordinator(ctx.marketData);
@@ -107,7 +100,7 @@ export const kellyHeadless: HeadlessPaneDefinition<"bundle"> = {
       coordinator.loadChart(kellyHistoryRequest({ symbol, exchange }, years), { forceRefresh: ctx.refresh }),
       ctx.marketData.getQuote(symbol, exchange, ctx.refresh ? { cacheMode: "refresh" } : undefined).catch(logFailure("kelly-sizer.headless", "Load Kelly sizing quote failed", null)),
     ]);
-    const history = clipPriceHistoryToRange(resolveEntryValue(entry) ?? [], range);
+    const history = resolveEntryValue(entry) ?? [];
     ctx.signal.throwIfAborted();
     const inputs = estimateKellyHistoryInputs(history, years, { exchange });
     if (!inputs) {
@@ -123,21 +116,27 @@ export const kellyHeadless: HeadlessPaneDefinition<"bundle"> = {
     const bankroll = typeof bankrollValue === "number" && bankrollValue > 0 ? bankrollValue : null;
     const baseCurrency = ctx.config.baseCurrency || "USD";
     const price = quote && quote.price > 0 && Number.isFinite(quote.price) ? quote.price : null;
-    // The price in the bankroll's currency, at the rate the portfolio values holdings at; null without one.
-    const unitPrice = bankroll == null || price == null ? null : await priceInBase(price, quote?.currency, baseCurrency, coordinator);
-    // A coin is divisible and sized to a hundredth; shares and futures in whole units.
-    const coin = isRoundTheClockCoin(symbol, exchange);
-    const units = unitsLabel(symbol, exchange, quote);
+    // A future is counted in contracts, each its price times the contract's multiplier.
+    const count = kellyCount(symbol, exchange, quote?.instrumentType);
+    const [multiplier, basePrice] = bankroll == null || price == null ? [null, null] : await Promise.all([
+      kellyCountMultiplier(symbol, count, (key) => loadFuturesContractTerms(key, ctx.apiClient)),
+      // The price in the bankroll's currency, at the rate the portfolio values holdings at; null without one.
+      priceInBase(price, quote?.currency, baseCurrency, coordinator),
+    ]);
+    const unitPrice = basePrice == null || multiplier == null ? null : basePrice * multiplier;
+    // A coin is divisible and sized to a hundredth; shares and contracts whole.
+    const coin = count === "units";
+    const units = COUNT_HEADER[count];
     const rows: HeadlessPaneRow[] = KELLY_FRACTIONS.map(({ id, label, fraction }) => {
       const share = solve.fraction * fraction;
       const position = bankroll == null ? null : share * bankroll;
-      const count = position != null && unitPrice != null ? position / unitPrice : null;
+      const held = position != null && unitPrice != null ? position / unitPrice : null;
       return {
         id,
         kelly: label,
         fraction: share,
         position,
-        shares: count == null ? null : coin ? Math.floor(count * 100) / 100 : Math.floor(count),
+        shares: held == null ? null : coin ? Math.floor(held * 100) / 100 : Math.floor(held),
       };
     });
     // A fraction over the whole bankroll is a levered position.
@@ -148,9 +147,11 @@ export const kellyHeadless: HeadlessPaneDefinition<"bundle"> = {
       ...(levered.length ? [`Over 100% of bankroll means leverage, borrowing or margin beyond what you hold: ${levered.join(", ")}.`] : []),
       ...(solve.fraction === 0 ? ["No positive edge over this window: every Kelly fraction sizes nothing."] : []),
       ...(bankroll == null ? [`Add --bankroll <amount> to size each fraction in ${baseCurrency}.`] : []),
-      ...(bankroll != null && price != null && unitPrice == null
-        ? [`No ${quote?.currency || "quote"} to ${baseCurrency} rate to count ${units.toLowerCase()} in: each position is in ${baseCurrency} only.`]
-        : []),
+      ...(bankroll != null && price != null && multiplier == null
+        ? [`No contract size for ${symbol} to count contracts in: each position is in ${baseCurrency} only.`]
+        : bankroll != null && price != null && basePrice == null
+          ? [`No ${quote?.currency || "quote"} to ${baseCurrency} rate to count ${count} in: each position is in ${baseCurrency} only.`]
+          : []),
     ];
     return {
       complete: true,
@@ -182,8 +183,9 @@ export const kellyHeadless: HeadlessPaneDefinition<"bundle"> = {
         bankroll,
         currency: baseCurrency,
         price: price == null ? null : { value: price, currency: quote?.currency ?? null, asOf: quote?.lastUpdated ?? null },
-        ...(unitPrice != null && quote?.currency !== baseCurrency ? { priceInBase: { value: unitPrice, currency: baseCurrency } } : {}),
-        units: units.toLowerCase(),
+        ...(basePrice != null && quote?.currency !== baseCurrency ? { priceInBase: { value: basePrice, currency: baseCurrency } } : {}),
+        ...(count === "contracts" && multiplier != null ? { contractMultiplier: multiplier } : {}),
+        units: count,
         method: "Binary Kelly on calendar-month returns, month-end close to month-end close: win rate, mean gain and mean loss.",
       },
     };

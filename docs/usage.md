@@ -2533,9 +2533,9 @@ Select a coloured table row to locate its trail, and open it for dated strength 
 `KELLY <ticker>` sizes a position with the Kelly criterion:
 
 - **Binary, Scenario, Risk, Market and Asym** take your own probabilities and payoffs.
-- **History** reads them off the ticker's own daily closes: the share of up months, the mean gain of the up months and the mean loss of the down months, over calendar months, each month-end close against the one before, for the last five years (`Years` sets one to five), the month in progress left out; a coin and a stock are sized on the same months. It is sized as a binary bet, so full Kelly maximizes expected log growth. Past months are not a forecast, and fewer than six of them give no inputs.
+- **History** reads them off the ticker's own daily closes: the share of up months, the mean gain of the up months and the mean loss of the down months, over calendar months, each month-end close against the one before, for the last five years, 60 returns (`Years` sets one to five), the month in progress at the venue left out; a coin and a stock are sized on the same months. It is sized as a binary bet, so full Kelly maximizes expected log growth. Past months are not a forecast, and fewer than six of them give no inputs.
 
-`gloom fn KELLY LIT` prints History's inputs (window, win rate, average gain and loss, payoff ratio, edge a month) and full, half and quarter Kelly as a share of bankroll. `--bankroll 250000` (or `250k`, `1.5m`) sizes each in your base currency, and `--years 1` shortens the window. `gloom shot KELLY LIT --bankroll 250000` opens the pane on History with that bankroll.
+`gloom fn KELLY LIT` prints History's inputs (window, win rate, average gain and loss, payoff ratio, edge a month) and full, half and quarter Kelly as a share of bankroll. `--bankroll 250000` (or `250k`, `1.5m`) sizes each in your base currency, counted in shares of a stock, units of a coin or contracts of a future (price times the contract's multiplier), and `--years 1` shortens the window. `gloom shot KELLY LIT --bankroll 250000` opens the pane on History with that bankroll.
 
 ## Portfolio risk depth: PORT and MARS
 
