@@ -65,6 +65,6 @@ Crash reports and usage counts can be turned off: [what is sent](docs/telemetry.
 
 ## Plugins and contributing
 
-Plugins add panes, data sources, brokers and commands. Install one from GitHub with `gloom install gloom-sh/gloom-tv`, or build your own with the [plugin guide](PLUGINS.md). To work on Gloom itself, read [CONTRIBUTING.md](CONTRIBUTING.md).
+Plugins add panes, data sources, brokers and commands. Install one from GitHub with `gloom install gloom-sh/gloom-tv`, or build your own with the [plugin guide](PLUGINS.md#your-first-pane). To work on Gloom itself, read [CONTRIBUTING.md](CONTRIBUTING.md).
 
 [MIT licensed](LICENSE). Built with [OpenTUI](https://opentui.com/). [Sponsor Gloom](https://gloom.sh/sponsor).

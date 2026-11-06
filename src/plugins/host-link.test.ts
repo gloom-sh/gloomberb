@@ -27,6 +27,24 @@ test("finds the host package under either published name", () => {
   }
 });
 
+// A plugin with gloomberb as a devDependency has a real host in its own
+// node_modules. A Gloom run from there used to delete it to link to itself.
+test("leaves a host that is the plugin's own node_modules copy in place", () => {
+  const pluginDir = scratchDir("gloom-host-self-");
+  const hostRoot = join(pluginDir, "node_modules", "gloomberb");
+  mkdirSync(join(pluginDir, "node_modules", "react"), { recursive: true });
+  mkdirSync(hostRoot, { recursive: true });
+  writeFileSync(join(hostRoot, "package.json"), JSON.stringify({ name: "gloomberb" }));
+  writeFileSync(join(pluginDir, "node_modules", "react", "package.json"), JSON.stringify({ name: "react" }));
+
+  const result = linkHostPackages(pluginDir, hostRoot, dirname(pluginDir));
+
+  expect(result.error).toBeUndefined();
+  expect(lstatSync(hostRoot).isDirectory()).toBe(true);
+  expect(existsSync(join(hostRoot, "package.json"))).toBe(true);
+  expect(existsSync(join(pluginDir, "node_modules", "react", "package.json"))).toBe(true);
+});
+
 /**
  * A plugin is installed into a directory named after its repository, but
  * declares a sibling plugin by package name. Plugin repos are renaming from

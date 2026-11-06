@@ -114,13 +114,18 @@ function linkTarget(hostRoot: string, pkg: string): string | null {
  * that by the folder's identity: one folder can still come back under two
  * spellings (a short 8.3 name, another case). A link that is right must be
  * left alone; rewriting it leaves a moment in which it is missing.
+ *
+ * So is the target itself: a Gloom run from a plugin's own `node_modules`
+ * (a plugin can install `gloomberb` as a devDependency for its tests) is
+ * the host there, and replacing that folder with a link would delete it.
  */
 function alreadyLinked(path: string, target: string): boolean {
   try {
-    if (!isLink(path, lstatSync(path))) return false;
+    const stats = lstatSync(path);
     const linked = realpathSync(path);
     const wanted = realpathSync(target);
     if (process.platform === "win32" ? linked.toLowerCase() === wanted.toLowerCase() : linked === wanted) return true;
+    if (!isLink(path, stats)) return false;
     const a = statSync(path, { bigint: true });
     const b = statSync(target, { bigint: true });
     return a.ino !== 0n && a.ino === b.ino && a.dev === b.dev;
