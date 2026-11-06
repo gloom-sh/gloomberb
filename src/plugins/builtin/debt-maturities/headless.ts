@@ -123,8 +123,9 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
         errors: debtNotices(data),
         sections: bandSections(data, latest),
         metadata: { ...data },
-        // Dated by the report's balance sheet, named by its form; a report outside SEC is cited as the server names it.
-        freshness: { asOf: latest.asOf, asOfLabel: latest.form, ...(data.cik ? {} : { source: data.source.name }) },
+        // Dated by the report's balance sheet: an SEC filing named by its form, a report outside SEC cited
+        // as the server names it (its form, HKEX or CNINFO, would repeat that name).
+        freshness: data.cik ? { asOf: latest.asOf, asOfLabel: latest.form } : { asOf: latest.asOf, source: data.source.name },
       };
     }
     const quarter = newerQuarter(data);

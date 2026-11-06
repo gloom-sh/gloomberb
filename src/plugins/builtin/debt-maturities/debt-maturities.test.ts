@@ -459,7 +459,7 @@ test("DDIS prints a ladder in its filing's own bands as reported, with its basis
   const serialized = serializeHeadlessPaneResult(debtMaturitiesHeadless, result) as { sections: Array<{ rows: Array<Record<string, unknown>> }> };
   expect(serialized.sections[0]!.rows[1]).toMatchObject({ label: "1 to 2 years", value: 16_227e6, basis: "carrying", fromMonths: 12, toMonths: 24 });
   // Cited to the report, not to SEC.
-  expect(formatFreshnessLine(freshness)).toBe("Source: HKEX annual or interim report notes · HKEX Wed 31 Dec 2025 · not a live feed (filed data)");
+  expect(formatFreshnessLine(freshness)).toBe("Source: HKEX annual or interim report notes · Wed 31 Dec 2025 · not a live feed (filed data)");
 });
 
 test("maturity sorting follows fiscal order; numeric sorts preserve missing values last", () => {
