@@ -10,6 +10,7 @@ import { createPluginCache } from "../../../data/plugin-cache";
 import type { HeadlessPaneApiClient } from "../../../types/plugin";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer, type CloudResource } from "../shared/cloud-resource";
 import { CLOUD_SESSION_REQUIRED } from "../shared/research-cloud-session";
+import { withListingNames, type OutlierNameSource } from "./outliers-names";
 
 /** What the ranking reads: a window and the filters. */
 export interface SocialOutliersQuery {
@@ -29,7 +30,8 @@ const SOCIAL_OUTLIERS_NOT_AVAILABLE = "Social outliers are not available yet.";
 export const socialOutliersCache = createPluginCache<SocialOutliersPayload>({
   kind: "social-outliers",
   source: "gloom-cloud",
-  schemaVersion: 1,
+  // 2: rows are named as search names them; version 1 kept the screener's names.
+  schemaVersion: 2,
   // Closed days are counted after midnight UTC and today's counts through the day.
   policy: { staleMs: 15 * 60_000, expireMs: 2 * 86_400_000 },
 });
@@ -75,22 +77,25 @@ export async function loadSocialOutliers(
     limit = SOCIAL_OUTLIER_PANE_ROWS,
     force = false,
     client = apiClient,
+    names,
     signal,
   }: {
     limit?: number;
     force?: boolean;
     client?: Pick<HeadlessPaneApiClient, "getCloudSocialOutliers">;
+    /** Names each ticker as search does, in one batched request; without it the screener's stored names stand. */
+    names?: OutlierNameSource;
     signal?: AbortSignal;
   } = {},
 ): Promise<CloudResource<SocialOutliersPayload>> {
   return loadCloudResource(
     socialOutliersCache,
     cacheKey(query, limit),
-    () => client.getCloudSocialOutliers(outliersParams(query, limit), { signal }).catch((error: unknown) => {
+    async () => withListingNames(await client.getCloudSocialOutliers(outliersParams(query, limit), { signal }).catch((error: unknown) => {
       // A refused session is the pane's sign-in wall, keyed on the shared gate.
       if (isAccessDenied(error)) throw new Error(CLOUD_SESSION_REQUIRED, { cause: error });
       throw unavailableOnServer(error, SOCIAL_OUTLIERS_NOT_AVAILABLE);
-    }),
+    }), names, signal),
     { force, validate: validateSocialOutliers, signal },
   );
 }

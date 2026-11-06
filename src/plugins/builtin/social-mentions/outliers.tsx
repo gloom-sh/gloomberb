@@ -11,7 +11,7 @@ import {
 } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { ageFooterSegment } from "../../../components/layout/pane/footer";
-import { useAsyncResource, useAutoRefresh, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
+import { useAsyncResource, useAutoRefresh, useMarketData, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box } from "../../../ui";
 import { compareSortValues, nextHeaderSort } from "../../../utils/sort-values";
@@ -90,9 +90,11 @@ export function SocialOutliersView({ width, height, focused, renderTicker }: {
   const [dayOpen, setDayOpen] = useState(false);
   const [sort, setSort] = useState<{ columnId: SocialOutlierColumnId; direction: "asc" | "desc" }>({ columnId: "ratio", direction: "desc" });
 
+  // Each ticker is named as search names it, in one batched request with the ranking.
+  const marketData = useMarketData();
   const loader = useCallback(
-    async (force: boolean): Promise<SocialOutliersAnswer> => ({ query, resource: await loadSocialOutliers(query, { force }) }),
-    [query],
+    async (force: boolean): Promise<SocialOutliersAnswer> => ({ query, resource: await loadSocialOutliers(query, { force, names: marketData }) }),
+    [marketData, query],
   );
   const resource = useAsyncResource(loader, {
     initialData: () => {

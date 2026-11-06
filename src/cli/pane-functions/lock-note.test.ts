@@ -46,6 +46,8 @@ const LOCKED_FUNCTIONS: LockedFunction[] = [
   { module: earningsCallsModule, template: "earnings-calls-pane", token: "CALLS", argument: "QUIET", needs: "Gloom Cloud Pro", free: null, command: "gloom fn CALLS QUIET then reads" },
   { module: jobsModule, template: "jobs-pane", token: "JOBS", argument: "", needs: "Gloom Cloud Pro", free: "gloom fn HIRE <ticker> previews", command: "gloom fn JOBS then reads" },
   { module: socialMentionsModule, template: "social-mentions-pane", token: "BUZZ", argument: "ACME", needs: "a free Gloom sign-in", free: null, command: "gloom fn BUZZ ACME then reads" },
+  // No ticker is the ranking of the market's outliers, so the command it names is bare.
+  { module: socialMentionsModule, template: "social-mentions-pane", token: "BUZZ", argument: "", needs: "a free Gloom sign-in", free: null, command: "gloom fn BUZZ then reads" },
 ];
 
 /** The refusal the server gives, as each function's read meets it. */

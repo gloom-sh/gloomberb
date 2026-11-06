@@ -9,6 +9,8 @@ import type { CloudSocialOutliersParams, SocialMentionsPayload, SocialOutlierRow
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
 import { createTestHeadlessContext } from "../../../test-support/headless";
+import type { DataProvider } from "../../../types/data-provider";
+import type { InstrumentSearchResult } from "../../../types/instrument";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { findPaneInstance } from "../../../types/config";
@@ -53,6 +55,8 @@ function mentions(symbol: string): SocialMentionsPayload {
 
 let state: AppState | null = null;
 let seed: Record<string, unknown> = {};
+/** The data provider the pane names its tickers through; none leaves the screener's stored names. */
+let marketData: Partial<DataProvider> | null = null;
 function Harness({ width, height }: { width: number; height: number }) {
   const config = createTestPaneConfig(join(tmpdir(), "gloom-social-outliers-test"), { instanceId: PANE_ID, paneId: "social-mentions", title: "Social Mentions" });
   const [current, dispatch] = useReducer(appReducer, config, (initialConfig) => {
@@ -62,7 +66,7 @@ function Harness({ width, height }: { width: number; height: number }) {
     return initial;
   });
   state = current;
-  const runtime = useMemo(() => createStatefulTestPluginRuntime(), []);
+  const runtime = useMemo(() => createStatefulTestPluginRuntime({ getMarketData: () => marketData as DataProvider | null }), []);
   return <TestPaneFrame state={current} dispatch={dispatch} paneId={PANE_ID} pluginId="social-mentions" runtime={runtime} width={width} height={height} footerKeys>
     {(body) => <SocialMentionsPane focused {...body} />}
   </TestPaneFrame>;
@@ -99,6 +103,7 @@ afterEach(() => {
   mock.restore();
   socialOutliersCache.reset();
   seed = {};
+  marketData = null;
 });
 
 test("BUZZ alone ranks the outliers; Enter opens the ticker's BUZZ here and Esc comes back to the same row", async () => {
@@ -198,6 +203,61 @@ test("an empty ranking, a load, a failure and a refused session each say so in t
   expect(wall).not.toContain("Latest day");
 });
 
+/** A search row as the service lists a listing. */
+function listing(symbol: string, exchange: string, name: string, extra: Partial<InstrumentSearchResult> = {}): InstrumentSearchResult {
+  return { providerId: "gloomberb-cloud", symbol, exchange, name, type: "Common Stock", ...extra };
+}
+
+test("tickers are named as ticker search names them, in one batched search: capitals, blanks and foreign lines settled", async () => {
+  const batches: string[][] = [];
+  const singles: string[] = [];
+  marketData = {
+    searchBatch: async (queries) => {
+      batches.push([...queries]);
+      return new Map([
+        // The TSX line carries the symbol for a name; the US line is the cashtag's listing.
+        ["NWBI", [listing("NWBI", "TSX", "NWBI"), listing("NWBI", "NASDAQ", "Northwind Biologics, Inc.")]],
+        ["CTSO", [listing("CTSO", "NYSE", "Contoso Energy Corporation")]],
+        ["FBKM", [listing("FBKM", "NASDAQ", "Fabrikam Semiconductor ETF", { type: "ETF" })]],
+      ]);
+    },
+    search: async (query) => { singles.push(query); return []; },
+  };
+  await mount(async (params) => answer(params, [
+    outlier("NWBI", "NORTHWIND BIOLOGICS INC", 1_826, 200),
+    outlier("CTSO", "CONTOSO ENERGY CORP", 840, 160),
+    outlier("FBKM", null, 96, 40),
+  ]));
+  const frame = tui.frame();
+  expect(frame).toMatch(/NWBI\s+Northwind Biologics, Inc\.\s+2026-11-05/);
+  expect(frame).toMatch(/CTSO\s+Contoso Energy Corporation\s+2026-11-05/);
+  expect(frame).toMatch(/FBKM\s+Fabrikam Semiconductor ETF\s+2026-11-05/);
+  expect(frame).not.toMatch(/NORTHWIND|CONTOSO|FBKM\s+--/);
+  // One request for the whole ranking, never one a row.
+  expect(batches).toEqual([["NWBI", "CTSO", "FBKM"]]);
+  expect(singles).toEqual([]);
+
+  // The opened ticker's title says the same name.
+  await act(async () => { tui.setup().mockInput.pressEnter(); });
+  await settle();
+  expect(tui.frame()).toContain("\u2190 Back NWBI \u00b7 Northwind Biologics, Inc.");
+});
+
+test("a name search cannot give keeps the stored one, and a failed or missing batch never costs the ranking", async () => {
+  marketData = { searchBatch: async () => new Map([["CTSO", [listing("CTSO", "NYSE", "Contoso Energy Corporation")]]]) };
+  await mount(async (params) => answer(params, [outlier("NWBI", "NORTHWIND BIOLOGICS INC", 1_826, 200), outlier("CTSO", "CONTOSO ENERGY CORP", 840, 160)]));
+  expect(tui.frame()).toMatch(/NWBI\s+NORTHWIND BIOLOGICS INC/);
+  expect(tui.frame()).toMatch(/CTSO\s+Contoso Energy Corporation/);
+
+  for (const searchBatch of [async () => { throw new Error("Search is down."); }, async () => null, undefined]) {
+    socialOutliersCache.reset();
+    marketData = { searchBatch } as Partial<DataProvider>;
+    await mount(async (params) => answer(params, [outlier("NWBI", "NORTHWIND BIOLOGICS INC", 1_826, 200)]));
+    expect(tui.frame()).toMatch(/NWBI\s+NORTHWIND BIOLOGICS INC/);
+    expect(tui.frame()).not.toContain("unavailable");
+  }
+});
+
 test("a narrow pane gives up the median, then the company, then the stance", () => {
   const ids = (width: number) => buildSocialOutlierColumns(width, ROWS, "day").map((column) => column.id);
   expect(ids(120)).toEqual(["ticker", "company", "day", "mentions", "baseline", "ratio", "stance", "price"]);
@@ -234,7 +294,13 @@ test("fn BUZZ alone reads the same query, one row per ticker dated by its own da
     symbol: "FBKM", company: "Fabrikam Bancorp", day: "2026-11-05", countedAt: "2026-11-06T00:20:00.000Z", posts: 96, median: 40,
     ratio: 2.4, stance: null, stancePosts: 0, pricePct: null, priceAsOf: null, marketCap: null,
   });
+  // The report names each ticker through the context's batched search too.
+  const named = await socialMentionsHeadless.load(
+    { rawArgument: "", argument: "", symbols: [], options: { range: "1y", limit: 20, window: "day", minPosts: 25 } },
+    createTestHeadlessContext({ apiClient, refresh: true, marketData: { searchBatch: async () => new Map([["FBKM", [listing("FBKM", "NASDAQ", "Fabrikam Bancorp, Inc.")]]]) } as never }),
+  );
+  expect("rows" in named.sections[0]! && named.sections[0].rows?.map((row) => row.company)).toEqual(["Northwind Biologics Inc", "Contoso Energy Corp", "Fabrikam Bancorp, Inc."]);
   const empty = await load({ window: "today", minPosts: 100, cap: "small" });
   expect("empty" in empty.sections[0]! && empty.sections[0].empty).toBe("No ticker counted today matches these filters.");
-  expect(asked).toEqual([{ window: "day", minPosts: 25, limit: 20 }, { window: "today", minPosts: 100, cap: "small", limit: 20 }]);
+  expect(asked).toEqual([{ window: "day", minPosts: 25, limit: 20 }, { window: "day", minPosts: 25, limit: 20 }, { window: "today", minPosts: 100, cap: "small", limit: 20 }]);
 });
