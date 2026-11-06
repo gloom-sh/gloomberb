@@ -63,6 +63,7 @@ export const SIGNED_OUT_ROUTES: Readonly<Record<string, readonly SignedOutRoute[
   "nasdaqtrader.com": [{ methods: READ, path: "/rss.aspx" }],
   "production.dataviz.cnn.io": [{ methods: READ, path: "/index/fearandgreed/" }],
   "services-dynarep.ddwa.finra.org": [{ methods: ["POST"], path: "/public/reporting/v2/data/group/" }],
+  "www.treasurydirect.gov": [{ methods: READ, path: "/TA_WS/securities/search" }],
 };
 
 /** Whether a caller without a confirmed session may send `method` to `url`. */

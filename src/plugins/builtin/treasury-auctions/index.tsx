@@ -4,6 +4,7 @@ import { fixedIncomeShortcut } from "../fixed-income/shortcut";
 import {
   attachTreasuryAuctionsPersistence,
   resetTreasuryAuctionsPersistence,
+  TREASURY_DIRECT_CONNECTION_ID,
   TREASURY_FISCAL_DATA_CONNECTION_ID,
 } from "./cache";
 import { AUCTION_HISTORY_WINDOWS, auctionHistoryLabel } from "./model";
@@ -11,7 +12,7 @@ import { createPublicPaneShare } from "../shared/public-pane";
 import { treasuryAuctionsHeadless } from "./headless";
 
 
-let disposeConnection: (() => void) | null = null;
+let disposeConnections: Array<() => void> = [];
 
 export function treasuryAuctionsSettings(): PaneSettingsDef {
   return {
@@ -31,19 +32,29 @@ export function treasuryAuctionsSettings(): PaneSettingsDef {
 export const treasuryAuctionsModule: PluginModule = {
   setup(ctx) {
     attachTreasuryAuctionsPersistence(ctx.persistence, ctx.connectionHealth);
-    disposeConnection = ctx.connectionHealth.registerSource({
-      id: TREASURY_FISCAL_DATA_CONNECTION_ID,
-      name: "Treasury Fiscal Data",
-      kind: "api",
-      ownerId: "credit",
-      priority: 300,
-      detail: "fiscaldata.treasury.gov",
-    });
+    disposeConnections = [
+      ctx.connectionHealth.registerSource({
+        id: TREASURY_FISCAL_DATA_CONNECTION_ID,
+        name: "Treasury Fiscal Data",
+        kind: "api",
+        ownerId: "credit",
+        priority: 300,
+        detail: "fiscaldata.treasury.gov",
+      }),
+      ctx.connectionHealth.registerSource({
+        id: TREASURY_DIRECT_CONNECTION_ID,
+        name: "TreasuryDirect",
+        kind: "api",
+        ownerId: "credit",
+        priority: 301,
+        detail: "treasurydirect.gov",
+      }),
+    ];
   },
 
   dispose() {
-    disposeConnection?.();
-    disposeConnection = null;
+    for (const dispose of disposeConnections) dispose();
+    disposeConnections = [];
     resetTreasuryAuctionsPersistence();
   },
 

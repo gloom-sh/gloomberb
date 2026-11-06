@@ -10,6 +10,7 @@ import {
   indirectPct,
   isPendingAuction,
   matchesFilter,
+  mergeAuctionSources,
   nextAuctionHistoryWindow,
   nextFilter,
   rateLabel,
@@ -19,6 +20,7 @@ import {
   visibleAuctions,
 } from "./model";
 import { auction } from "./test-fixture";
+import type { TreasuryAuction } from "./types";
 
 describe("term ordering", () => {
   test("orders the curve by length, not alphabetically", () => {
@@ -274,5 +276,50 @@ describe("history windows", () => {
     expect(auctionHistoryWindow({ historyDays: "ALL" })).toBe("all");
     expect(auctionHistoryWindow({ historyDays: "7300" })).toBe(120);
     expect(auctionHistoryWindow(undefined)).toBe(120);
+  });
+});
+
+describe("mergeAuctionSources", () => {
+  const row = (cusip: string, auctionDate: string, overrides: Partial<TreasuryAuction> = {}) =>
+    auction({ id: `${cusip}|${auctionDate}`, cusip, auctionDate, secType: "Bill", securityTerm: "13-Week", offeringAmount: 95e9, ...overrides });
+  const completed = { highInvestmentRate: 4.372, bidToCoverRatio: 2.6 };
+
+  test("an auction in both feeds is one row, the one with its results", () => {
+    const merged = mergeAuctionSources(
+      [row("A", "2026-10-19"), row("B", "2026-10-15", completed)],
+      [row("A", "2026-10-19", completed), row("B", "2026-10-15")],
+      "2026-09-01",
+    );
+    expect(merged).toHaveLength(2);
+    // The pending Fiscal Data row gives way to TreasuryDirect's; a result already there is not replaced by a row without one.
+    expect(merged.find((entry) => entry.cusip === "A")).toMatchObject(completed);
+    expect(merged.find((entry) => entry.cusip === "B")).toMatchObject(completed);
+  });
+
+  test("with results in both, or in neither, the Fiscal Data row stays", () => {
+    const fiscal = [row("A", "2026-10-19", { ...completed, highYield: 1 }), row("B", "2026-10-20", { offeringAmount: 1 })];
+    const direct = [row("A", "2026-10-19", { ...completed, highYield: 2 }), row("B", "2026-10-20", { offeringAmount: 2 })];
+    expect(mergeAuctionSources(fiscal, direct, "2026-09-01")).toEqual(fiscal);
+  });
+
+  test("a reopening shares its issue's CUSIP and stays its own row", () => {
+    const merged = mergeAuctionSources([row("A", "2026-10-19", completed)], [row("A", "2026-10-26", completed), row("A", "2026-10-19", completed)], "2026-09-01");
+    expect(merged.map((entry) => entry.id)).toEqual(["A|2026-10-19", "A|2026-10-26"]);
+  });
+
+  test("adds the auctions only TreasuryDirect lists, announced ones included, from the window's start", () => {
+    const merged = mergeAuctionSources(
+      [row("OLD", "2026-08-01", completed)],
+      [row("BEFORE", "2026-08-31", completed), row("NEW", "2026-11-05", completed), row("UPCOMING", "2026-11-12")],
+      "2026-09-01",
+    );
+    expect(merged.map((entry) => entry.cusip)).toEqual(["OLD", "NEW", "UPCOMING"]);
+    expect(isPendingAuction(merged.find((entry) => entry.cusip === "UPCOMING")!)).toBe(true);
+  });
+
+  test("a board with only one feed is that feed's", () => {
+    const fiscal = [row("A", "2026-10-19", completed)];
+    expect(mergeAuctionSources(fiscal, [], "2026-09-01")).toEqual(fiscal);
+    expect(mergeAuctionSources([], fiscal, "2026-09-01")).toEqual(fiscal);
   });
 });
