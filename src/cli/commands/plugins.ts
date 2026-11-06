@@ -126,6 +126,52 @@ function hostCovered(host: string, declared: readonly string[]): boolean {
   return declared.some((entry) => host === entry || host.endsWith(`.${entry}`));
 }
 
+/**
+ * The `hosts` rows of `plugin doctor`. A plugin declares its hosts twice: in
+ * its export, which is what the web reads (the worker proxies exactly the
+ * exported `hosts` of the plugins in its build, see
+ * scripts/generate-web-proxy-hosts.ts), and in gloom.json, which is what the
+ * plugin directory shows. Terminal and desktop reach any host, so a host
+ * missing from the export works there and fails only on the web.
+ *
+ * Hosts are found by a regex over the source, so a page the plugin only opens
+ * as a link is found too; gloom.json `linkHosts` names those.
+ */
+export function pluginHostChecks(
+  sources: readonly string[],
+  exported: readonly string[],
+  manifest: { hosts: readonly string[] | null; linkHosts: readonly string[] },
+): Array<{ status: PluginCheckStatus; message: string }> {
+  const declared = exported.map((host) => host.toLowerCase());
+  const listed = manifest.hosts ?? [];
+  const seen = new Set<string>();
+  for (const text of sources) {
+    for (const match of text.matchAll(HOST_LITERAL_PATTERN)) {
+      const host = match[1]!.toLowerCase();
+      if (!IGNORED_HOST_PATTERN.test(host)) seen.add(host);
+    }
+  }
+  const known = [...declared, ...listed, ...manifest.linkHosts];
+  const undeclared = [...seen].filter((host) => !hostCovered(host, known)).sort();
+  const notExported = listed.filter((host) => !hostCovered(host, declared));
+  const notListed = manifest.hosts ? declared.filter((host) => !hostCovered(host, listed)) : [];
+
+  const checks: Array<{ status: PluginCheckStatus; message: string }> = [];
+  if (undeclared.length > 0) {
+    checks.push({ status: "warn", message: `In source but not declared: ${undeclared.join(", ")}. A host it fetches goes in hosts, in the plugin and in gloom.json; a page it only opens goes in linkHosts in gloom.json.` });
+  }
+  if (notExported.length > 0) {
+    checks.push({ status: "warn", message: `In gloom.json but not in the plugin's hosts: ${notExported.join(", ")}. The web proxies only the hosts the plugin exports.` });
+  }
+  if (notListed.length > 0) {
+    checks.push({ status: "warn", message: `In the plugin's hosts but not in gloom.json: ${notListed.join(", ")}. The plugin directory shows gloom.json's.` });
+  }
+  if (checks.length === 0) {
+    checks.push({ status: "ok", message: declared.length ? declared.join(", ") : "no third-party hosts found" });
+  }
+  return checks;
+}
+
 /** Host imports the compat tables list, as `name from gloomberb/x (...)` lines. */
 function listedHostImports<T>(
   sources: readonly string[],
@@ -193,7 +239,8 @@ async function doctorPlugin(nameOrPath: string): Promise<PluginDoctorReport> {
   else add("host-link", "ok", `linked ${link.linked.join(", ")}`);
 
   const incompatible = checkPluginCompatibility(candidate);
-  const declaredMin = readPluginManifest(candidate).minGloomberb;
+  const manifest = readPluginManifest(candidate);
+  const declaredMin = manifest.minGloomberb;
   // The loader skips this check for a linked checkout, so it only warns there.
   if (incompatible) add("gloom", linked ? "warn" : "fail", incompatible.error);
   else if (declaredMin) add("gloom", "ok", `${formatVersion(declaredMin)} or newer`);
@@ -237,23 +284,7 @@ async function doctorPlugin(nameOrPath: string): Promise<PluginDoctorReport> {
     else add("config-schema", "ok", `${plugin.configSchema.length} setting${plugin.configSchema.length === 1 ? "" : "s"}`);
   }
 
-  const declaredHosts = plugin.hosts ?? [];
-  const seenHosts = new Set<string>();
-  for (const text of sources) {
-    for (const match of text.matchAll(HOST_LITERAL_PATTERN)) {
-      const host = match[1]!.toLowerCase();
-      if (IGNORED_HOST_PATTERN.test(host)) continue;
-      seenHosts.add(host);
-    }
-  }
-  const undeclared = [...seenHosts].filter((host) => !hostCovered(host, declaredHosts)).sort();
-  if (undeclared.length > 0) {
-    // A regex over source: a link the plugin only opens in the browser shows
-    // up too, so this is a prompt to check, not a verdict.
-    add("hosts", "warn", `In source but not in hosts: ${undeclared.join(", ")}. Anything fetched from there works on desktop and fails on the web.`);
-  } else {
-    add("hosts", "ok", declaredHosts.length ? declaredHosts.join(", ") : "no third-party hosts found");
-  }
+  for (const check of pluginHostChecks(sources, plugin.hosts ?? [], manifest)) add("hosts", check.status, check.message);
 
   const rendersInBrowser = pluginSupportsTarget(plugin, "desktop") || pluginSupportsTarget(plugin, "web");
   if (rendersInBrowser) {

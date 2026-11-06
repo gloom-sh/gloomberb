@@ -1,6 +1,20 @@
 # Building Plugins
 
-Most of Gloom is plugins: Portfolio, Ticker Research and every other product area are built the same way yours would be. A plugin can add panes, commands, data sources, broker connections and CLI commands. Start with [Plugin structure](#plugin-structure) for a minimal plugin, and [Developing a plugin](#developing-a-plugin) to run it.
+Most of Gloom is plugins: Portfolio, Ticker Research and every other product area are built the same way yours would be. A plugin can add panes, commands, data sources, broker connections and CLI commands.
+
+## Your first pane
+
+Start from the reference plugin, [gloom-hackernews](https://github.com/gloom-sh/gloom-hackernews): one pane, its API client and a test, in about 400 lines. With [Bun](https://bun.sh) and Gloom installed:
+
+```bash
+git clone https://github.com/gloom-sh/gloom-hackernews my-plugin
+cd my-plugin
+bun install
+gloom plugin link .             # Gloom loads this checkout
+gloom plugin doctor my-plugin   # checks it the way the terminal, desktop and web will
+```
+
+Start Gloom, press `Ctrl+P`, type `HN` and press Enter. Then rename the ids in `types.ts`, point `client.ts` at your own API and reshape `pane.tsx`; Gloom loads an edit when it restarts. [Its README](https://github.com/gloom-sh/gloom-hackernews#readme) says what each file shows. The rest of this guide is the reference, from [Plugin structure](#plugin-structure) on.
 
 ## Installing plugins
 
@@ -35,7 +49,9 @@ gloom plugin doctor my-plugin    # check it the way the app and the desktop buil
 
 A linked plugin loads like an installed one, shows as `linked` in the Plugins pane, and is skipped by `update`. Removing it removes the link and leaves the checkout alone.
 
-`doctor` checks that the entry resolves, the Gloom it declares is not newer than this one, it imports nothing removed or deprecated, it evaluates and exports a `GloomPlugin`, its id is not reserved, its targets are real, it declares the hosts it reaches, and its browser build (which the desktop and web apps need) compiles. It exits non-zero on a failure, so it can run in CI.
+`gloomberb` and `react` are peer dependencies: Gloom serves its own copies to every plugin. List `gloomberb` as a devDependency too, as the reference plugin does, so `bun test` and `tsc` resolve its imports in a fresh clone; installs leave devDependencies out.
+
+`doctor` checks that the entry resolves, the Gloom it declares is not newer than this one, it imports nothing removed or deprecated, it evaluates and exports a `GloomPlugin`, its id is not reserved, its targets are real, it declares the hosts it reaches (see [Network access](#network-access)), and its browser build (which the desktop and web apps need) compiles. It exits non-zero on a failure, so it can run in CI.
 
 ## Plugin compatibility
 
@@ -50,7 +66,7 @@ the plugin starts using something a release added:
 { "id": "my-plugin", "minGloom": "0.15.0" }
 ```
 
-A `>=0.15.0` range on `gloom` in `peerDependencies` works too; `gloom.json`
+A `>=0.15.0` range on `gloomberb` in `peerDependencies` works too; `gloom.json`
 wins when both are set, and anything else is ignored. An older Gloom does
 not import the plugin at all: the Plugins pane shows `needs 0.15.0` on its row,
 and `gloom plugins` says why it is not loaded. A linked checkout is loaded
@@ -133,10 +149,19 @@ code are still yours to catch and log.
 
 ## Plugin structure
 
-A plugin implements the `GloomPlugin` interface:
+A plugin implements the `GloomPlugin` interface. This one adds a pane that `HELLO` opens from the command bar:
 
-```typescript
-import type { GloomPlugin } from "gloomberb/types/plugin";
+```tsx
+import type { GloomPlugin, PaneProps } from "gloomberb/types/plugin";
+import { Box, Text } from "gloomberb/ui";
+
+function HelloPane({ width, height }: PaneProps) {
+  return (
+    <Box width={width} height={height}>
+      <Text>Hello from My Plugin</Text>
+    </Box>
+  );
+}
 
 export const myPlugin: GloomPlugin = {
   id: "my-plugin",
@@ -144,14 +169,10 @@ export const myPlugin: GloomPlugin = {
   version: "1.0.0",
   description: "What it does",
   toggleable: true, // let users enable/disable from settings
-  cliCommands: [
-    {
-      name: "my-plugin",
-      description: "Run a plugin-owned CLI command",
-      async execute(args, ctx) {
-        console.log(`args: ${args.join(" ")}`);
-      },
-    },
+  panes: [{ id: "my-plugin", name: "My Plugin", component: HelloPane, defaultPosition: "right" }],
+  // Makes the pane a command-bar function.
+  paneTemplates: [
+    { id: "my-plugin-pane", paneId: "my-plugin", label: "My Plugin", description: "Say hello", shortcut: { prefix: "HELLO" } },
   ],
 
   setup(ctx) {
@@ -172,10 +193,15 @@ An external plugin is a directory in `~/.gloomberb/plugins/`:
 
 ```
 ~/.gloomberb/plugins/my-plugin/
-  index.ts          # export default myPlugin
+  index.tsx         # export default myPlugin
+  gloom.json        # what the plugin directory lists, and the oldest Gloom it runs on
   index.browser.ts  # optional, see below
   package.json      # optional, for dependencies
   icon.svg          # optional, 64x64, shown in the plugin directory
+```
+
+```json
+{ "id": "my-plugin", "name": "My Plugin", "minGloom": "0.15.0" }
 ```
 
 The icon is the plugin's logo. The desktop and the web also draw it beside
@@ -1529,7 +1555,13 @@ It reads the endpoint file from the data directory, so it is native only: a rend
 
 ### Network access
 
-List every third-party host a plugin fetches from in its `hosts` field, as bare domains. The terminal and desktop reach anything, so there it is documentation and what the plugin directory shows. On the web, the browser cannot call a host without CORS headers, and the hosted app proxies exactly the hosts that the plugins in its build, built-in or bundled, declare. A host left out works on the desktop and fails on the web.
+List every third-party host a plugin fetches from in its `hosts` field, as bare domains. The terminal and desktop reach anything, so there it is documentation. On the web, the browser cannot call a host without CORS headers, and the hosted app proxies exactly the hosts that the plugins in its build, built-in or bundled, export in `hosts`. A host left out works on the desktop and fails on the web.
+
+List the same hosts in `gloom.json`: the plugin directory shows those, and `plugin doctor` warns when the two lists differ. A host the plugin only opens as a link, such as a story's page, is not fetched; list it in `linkHosts` in `gloom.json` so doctor does not ask for it:
+
+```json
+{ "hosts": ["hacker-news.firebaseio.com"], "linkHosts": ["news.ycombinator.com"] }
+```
 
 Pane footers show changing status such as loading, errors, stale data, or live/delayed feeds. Preserve existing pane-specific action shortcuts instead of duplicating them in body toolbars. Do not repeat the pane title, fixed labels, row counts, or generic keyboard hints:
 

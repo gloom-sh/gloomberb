@@ -67,6 +67,6 @@ bun install -g @gloom-sh/terminal
 
 ## 插件与贡献
 
-插件可添加面板、数据源、券商连接与命令。用 `gloom install gloom-sh/gloom-tv` 从 GitHub 安装插件，或参考[插件开发指南（英文）](PLUGINS.md)自己编写。参与 Gloom 开发请阅读[贡献指南（英文）](CONTRIBUTING.md)。
+插件可添加面板、数据源、券商连接与命令。用 `gloom install gloom-sh/gloom-tv` 从 GitHub 安装插件，或参考[插件开发指南（英文）](PLUGINS.md#your-first-pane)自己编写。参与 Gloom 开发请阅读[贡献指南（英文）](CONTRIBUTING.md)。
 
 采用 [MIT 许可证](LICENSE)。基于 [OpenTUI](https://opentui.com/) 构建。[赞助 Gloom](https://gloom.sh/sponsor)。
