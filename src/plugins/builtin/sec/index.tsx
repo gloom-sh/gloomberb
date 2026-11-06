@@ -24,7 +24,7 @@ import { publicTickerKey } from "../../../utils/exchanges";
 import { fundFactsAbroadKey, hasFundFactsAbroad, mayBeFundViewTicker, mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../../utils/sec";
 import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
 import { listingAnnouncementsPage } from "../../../utils/exchange-announcements";
-import { pricingSupplementTest } from "../../../utils/sec-filings";
+import { form4TradeText, isOtherIssuerForm4, pricingSupplementTest } from "../../../utils/sec-filings";
 import { formatInsiderName } from "../insider/display";
 import { parseForm4Xml } from "../insider/insider-data";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
@@ -217,13 +217,15 @@ function toFeedItems(
     const enrichedTitle = formDesc
       ? `${displayTitle} — ${formDesc}`
       : displayTitle;
-    const summary = readSummary?.title ?? getFilingColumnText(filing);
+    // A Form 4 the company filed as an owner of another company's shares names that company only in its trade.
+    const summary = (isOtherIssuerForm4(filing) ? form4TradeText(filing) : null) ?? readSummary?.title ?? getFilingColumnText(filing);
+    const direction = readSummary?.direction ?? (filing.form4?.side === "buy" || filing.form4?.side === "sell" ? filing.form4.side : null);
     const items = secFilingItemCodes(filing.items);
     const facts: DetailFact[] = [
       { label: "Issuer", value: filing.companyName || "Name unavailable" },
       ...(issuerTicker ? [{ label: "Ticker", value: issuerTicker.symbol, link: { label: `Open ${issuerTicker.symbol}`, onOpen: issuerTicker.open } }] : []),
       { label: "CIK", value: filing.cik },
-      { label: "Form", value: formDesc ? `${filing.form} · ${formDesc}` : filing.form, color: toneColor(filingTone(filing, readSummary?.direction), colors) },
+      { label: "Form", value: formDesc ? `${filing.form} · ${formDesc}` : filing.form, color: toneColor(filingTone(filing, direction), colors) },
       { label: "Filed", value: formatFiledAt(filing) },
       ...(acceptedAt ? [{ label: "SEC-reported acceptance", value: acceptedAt }] : []),
       ...(items ? [{ label: "Items", value: items }] : []),
@@ -233,7 +235,7 @@ function toFeedItems(
     return {
       id: filing.accessionNumber,
       eyebrow: filing.form,
-      eyebrowColor: toneColor(filingTone(filing, readSummary?.direction), colors),
+      eyebrowColor: toneColor(filingTone(filing, direction), colors),
       // A ticker shared by several filers names the filer on each row.
       title: showIssuer && filing.companyName ? `${filing.companyName}: ${summary}` : summary,
       timestamp: filing.filingDate,

@@ -205,7 +205,8 @@ import {
   searchNewsStories,
   wordMeansMore,
 } from "./news-search";
-import { formatUtcDayTime, formatUtcTime } from "../../utils/utc-time";
+import { displayTimeZone, formatUtcDayTime, formatUtcTime } from "../../utils/utc-time";
+import { localReportTiming } from "../../utils/report-timing";
 import { DAY_SO_FAR_TEXT, withSessionBar } from "../../time-series/session-bar";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
@@ -353,7 +354,7 @@ import {
   withIndexedHolders,
 } from "../../plugins/builtin/holders/index-holders";
 import { loadShownSecFilings } from "../../plugins/builtin/sec/forms";
-import { currentReportItemsLabel, hiddenFilingsMetadata, hiddenFilingsNote, type HiddenFilings } from "../../utils/sec-filings";
+import { currentReportItemsLabel, form4TradeText, hiddenFilingsMetadata, hiddenFilingsNote, type HiddenFilings } from "../../utils/sec-filings";
 import { INSIDER_REPORT_FILINGS, loadParsedInsiderFilings } from "../../plugins/builtin/insider/client";
 import { insiderEmptyNotice, loadHomeInsiderReportsNote } from "../../plugins/builtin/insider/issuer";
 import { buildInsiderSummary } from "../../plugins/builtin/insider/model";
@@ -877,6 +878,8 @@ function filingRows(filings: SecFilingItem[]) {
     items: secFilingItemCodes(filing.items) ?? "",
     // A current report's items by number and name: the results 8-K reads apart from another filed that day.
     itemsLabel: currentReportItemsLabel(filing.items) ?? "",
+    // A Form 4's trade: whose shares, which way, how many and at what price.
+    trade: form4TradeText(filing) ?? "",
   }));
 }
 
@@ -1014,6 +1017,10 @@ function earningsRows(events: ResolvedEarningsEvent[]) {
     // Out, announced by the company, or projected from its past reports.
     status: earningsDateLabel(event.dateStatus),
     timing: event.timing,
+    // The company's own time when it announced one ("at 21:00 SGT Sat 7 Nov"), else with a
+    // timezone set the session on the reader's clock: "after close, about 05:05 SGT Tue 10 Nov".
+    localTiming: localReportTiming(isoDate(event.earningsDate).slice(0, 10),
+      event.timing === "AMC" ? "amc" : event.timing === "BMO" ? "bmo" : null, displayTimeZone(), event.releaseAt) ?? "",
     epsEstimate: event.epsEstimate,
     epsActual: event.epsActual,
     revenueEstimate: event.revenueEstimate,
@@ -2592,6 +2599,7 @@ const FILING_COLUMNS = [
   { key: "items", header: "Items" },
   { key: "itemsLabel", header: "Item names" },
   { key: "pressReleaseUrl", header: "Press release URL" },
+  { key: "trade", header: "Trade" },
 ];
 
 // The text table names the items before the URL, which a narrow terminal drops first. A current report's
@@ -2600,7 +2608,8 @@ const FILING_TEXT_COLUMNS = [
   { key: "filingDate", header: "Date" },
   { key: "form", header: "Form" },
   { key: "companyName", header: "Company", maxWidth: 24 },
-  { key: "itemsLabel", header: "Items" },
+  // A current report's items; a Form 4's trade, which its filer's name alone does not say.
+  { key: "itemsLabel", header: "Items", format: (value: unknown, row: Record<string, unknown>) => String(value || row.trade || "") },
   { key: "url", header: "URL", optional: true,
     format: (value: unknown, row: Record<string, unknown>) => String(row.pressReleaseUrl || (value ?? "")) },
 ];
@@ -3756,7 +3765,7 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
         { key: "status", header: "Status" },
         { key: "symbol", header: "Symbol" },
         { key: "name", header: "Name" },
-        { key: "timing", header: "Timing" },
+        { key: "timing", header: "Timing", format: (value: unknown, row: Record<string, unknown>) => String(row.localTiming || (value ?? "")) },
         { key: "epsEstimate", header: "EPS Est", align: "right", format: formatEpsCell },
         { key: "epsActual", header: "EPS", align: "right", format: formatEpsCell },
       ],

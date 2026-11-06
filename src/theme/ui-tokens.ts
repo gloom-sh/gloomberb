@@ -92,8 +92,11 @@ function roleColours(palette: Palette): Array<[string, string]> {
   ];
 }
 
+/** A theme's own colours: the derived ones it may leave out (the tones in a selected row) are not variables. */
+type PaletteColour = { [K in keyof Palette]-?: undefined extends Palette[K] ? never : K }[keyof Palette];
+
 /** The palette entries styles.css reads as they are. */
-const PALETTE_VARIABLES: Array<[keyof Palette, string]> = [
+const PALETTE_VARIABLES: Array<[PaletteColour, string]> = [
   ["bg", "--gloom-bg"],
   ["panel", "--gloom-panel"],
   ["border", "--gloom-border"],

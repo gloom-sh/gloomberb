@@ -1547,6 +1547,7 @@ export const zhCN: Record<string, string> = {
   "YOUR WORKSPACE": "你的工作区",
   "Your holdings as a heatmap, a watchlist, and {ticker} charted. Every pane moves; {shortcut} adds more.": "持仓热力图、自选列表和 {ticker} 的图表。每个面板都可移动；{shortcut} 可添加更多。",
   "b: sign in with the browser instead": "b：改用浏览器登录",
+  "Esc, then b: sign in with the browser instead": "按 Esc 后按 b：改用浏览器登录",
   "Sign in with the browser instead": "改用浏览器登录",
   "Real-time market data": "实时市场数据",
   // ── Onboarding desks ─────────────────────────────────────────

@@ -80,6 +80,11 @@ export function setDisplayTimeZone(zone: string | null | undefined): void {
   displayZone = readerTimeZone(zone);
 }
 
+/** The zone CLI text shows local times in (setDisplayTimeZone), or null when none is set. */
+export function displayTimeZone(): string | null {
+  return displayZone;
+}
+
 /** The zone a configured name shows a second clock in: null when unset, unknown or UTC all year. */
 export function readerTimeZone(zone: string | null | undefined): string | null {
   const canonical = zone ? canonicalTimeZone(zone) : null;

@@ -47,9 +47,9 @@ test("filings names an 8-K's items; exports keep the codes in items and add the 
   const [header, eightK, tenQ] = (await filings("csv")).split("\n");
   // Date, Form, Company and URL where they were; the items, then the fixed columns every export ends with.
   // Exports keep the filing's link in URL and add the press release after the columns they had.
-  expect(header).toStartWith("Date,Form,Company,URL,Items,Item names,Press release URL,symbol_or_series,");
+  expect(header).toStartWith("Date,Form,Company,URL,Items,Item names,Press release URL,Trade,symbol_or_series,");
   expect(eightK).toContain(',https://www.sec.gov/101,"2.02,7.01,9.01",2.02 Results of operations; 7.01 Regulation FD disclosure,https://www.sec.gov/101/ex99-1.htm,');
-  expect(tenQ).toContain(",https://www.sec.gov/100,,,,");
+  expect(tenQ).toContain(",https://www.sec.gov/100,,,,,");
 });
 
 // `filings WFC` listed 15 pricing supplements where `fn SEC WFC` hid them.

@@ -1,4 +1,5 @@
 import type { SecFilingItem } from "../types/data-provider";
+import { formatCompact } from "./format";
 import { secFilingItemCodes } from "./sec";
 
 /**
@@ -265,4 +266,35 @@ export async function loadLatestFilings(
     if (kept.filings.length >= limit || read.length < count || count >= SEC_FILING_FETCH_LIMIT) return kept;
     count = Math.min(SEC_FILING_FETCH_LIMIT, count * READ_GROWTH);
   }
+}
+
+const FORM4_VERBS: Record<string, string> = {
+  P: "Bought", S: "Sold", A: "Awarded", G: "Gift of", F: "Withheld for tax", M: "Exercised", X: "Exercised", C: "Converted",
+};
+
+/** Whether a Form 4 reports another company's shares: one the listing's company filed as their owner. */
+export function isOtherIssuerForm4(filing: Pick<SecFilingItem, "cik" | "form4">): boolean {
+  const issuer = filing.form4?.issuerCik?.replace(/^0+/, "");
+  return !!issuer && issuer !== filing.cik.replace(/^0+/, "");
+}
+
+/**
+ * A Form 4's row, from what Gloom Cloud read of it: "Sold 2.13M SIRI shares
+ * at $21.48 (SIRIUS XM HOLDINGS INC.)" for one the company filed as an owner
+ * of another company's shares, whose issuer only the form names, and "COOK
+ * TIMOTHY D: Sold 120k shares at $231.50" for an insider of its own. Null
+ * without the service's summary.
+ */
+export function form4TradeText(filing: Pick<SecFilingItem, "cik" | "form4">): string | null {
+  const trade = filing.form4;
+  if (!trade) return null;
+  const verb = FORM4_VERBS[trade.code] ?? (trade.side === "disposed" || trade.side === "sell" ? "Disposed of" : "Acquired");
+  const price = trade.price == null ? "" : ` at $${trade.price >= 1 ? trade.price.toFixed(2) : trade.price.toPrecision(3)}`;
+  // A form of options alone counts options, not shares.
+  const unit = trade.derivative ? "options" : "shares";
+  if (isOtherIssuerForm4(filing)) {
+    const subject = trade.issuerTicker ? `${trade.issuerTicker} ${unit}` : unit;
+    return `${verb} ${formatCompact(trade.shares)} ${subject}${price} (${trade.issuerName})`;
+  }
+  return `${trade.ownerName ? `${trade.ownerName}: ` : ""}${verb} ${formatCompact(trade.shares)} ${unit}${price}`;
 }

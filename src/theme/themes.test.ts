@@ -15,8 +15,9 @@ import {
   paneTitleBg,
   paneTitleText,
 } from "./colors";
+import { selectedCellColor } from "./tone-contrast";
 import { contrastRatio } from "./color-utils";
-import { DEFAULT_THEME, getThemeIds, isDarkTheme, resolveThemeId, themes } from "./themes";
+import { DEFAULT_THEME, getThemeIds, isDarkTheme, listThemes, resolveThemeId, themes, TONE_TEXT_MIN } from "./themes";
 
 const BODY_TEXT_MIN = 4.5;
 const SUBTLE_TEXT_MIN = 3.6;
@@ -88,6 +89,28 @@ describe("theme contrast", () => {
       assertMinContrast(id, "headerText/header", theme.headerText, theme.header, BODY_TEXT_MIN);
       assertMinContrast(id, "selectedText/selected", theme.selectedText, theme.selected, BODY_TEXT_MIN);
     }
+  });
+
+  // colorblind-light read a loss on a selected row at 3.16:1 and its warning amber at 3.85:1 on the panel.
+  test("keeps up, down, warning and neutral at body contrast in every light and colour-blind theme, on the page and in a selected row", () => {
+    const readable = listThemes().filter((theme) => theme.appearance === "light" || theme.traits.includes("colorblind-safe"));
+    expect(readable.map((theme) => theme.id)).toContain("colorblind");
+    for (const { id } of readable) {
+      applyTheme(id);
+      for (const [role, inRow] of [["positive", "selectedPositive"], ["negative", "selectedNegative"], ["warning", "selectedWarning"], ["neutral", "selectedNeutral"]] as const) {
+        for (const [surface, background] of [["bg", colors.bg], ["panel", colors.panel]] as const) {
+          assertMinContrast(id, `${role}/${surface}`, colors[role], background, TONE_TEXT_MIN);
+        }
+        // A data table draws the tone through the theme's token for the selection.
+        expect(selectedCellColor(colors[role], colors)).toBe(colors[inRow]!);
+        assertMinContrast(id, `${role}/selected`, colors[inRow]!, colors.selected, TONE_TEXT_MIN);
+      }
+      // Any other colour is the cell's own.
+      expect(selectedCellColor("#123456", colors)).toBe("#123456");
+    }
+    // A dark theme keeps its tones in a selected row as they are.
+    applyTheme("amber");
+    expect(selectedCellColor(colors.negative, colors)).toBe(colors.negative);
   });
 
   test("keeps unfocused pane chrome readable", () => {

@@ -29,7 +29,7 @@ export const ALERT_ADD_FORMS: readonly AlertAddForm[] = [
   { name: "IV spike", usage: "<OCC contract> iv spike <points>" },
   { name: "52-week range", usage: "<symbol> 52-week <high|low>" },
   { name: "unusual volume", usage: "<symbol> unusual volume [<multiple>x]" },
-  { name: "SEC filing", usage: "<symbol> filing [8-K|10-K|10-Q|S-1|13D|13D/A|13G|13G/A|6-K|20-F]" },
+  { name: "SEC filing", usage: "<symbol> filing [8-K|10-K|10-Q|S-1|13D|13D/A|13G|13G/A|6-K|20-F|13F]" },
   { name: "insider trade", usage: "<symbol> insider [buy|sell]" },
   { name: "short interest", usage: "<symbol> short interest [increase|decrease] [<percent>%]" },
   { name: "analyst change", usage: "<symbol> analyst [upgrade|downgrade]" },
@@ -59,6 +59,11 @@ export interface RuleAddRequest {
   /** Where that symbol may list: in the US, as Gloom Cloud's research rules follow, or anywhere (hiring, a catalyst's company). */
   listing: "us" | "any";
   values: Record<string, string>;
+  /**
+   * A 13F typed as a filing form (`BRK.B filing 13F`): the 13F alert on the
+   * fund the symbol's company files as, its CIK read from its SEC filings.
+   */
+  thirteenFFilerOf?: true;
 }
 
 /** Who checks a rule and how it reaches you, as docs/usage.md states it. */
@@ -118,6 +123,10 @@ function symbolRule(symbol: string, words: readonly string[]): RuleAddRequest | 
   }
   if (kind === "filing" || kind === "filings") {
     const typed = words.slice(1).join(" ");
+    // A 13F is a fund's holdings report, which the 13F alert follows by the fund's CIK: the company's own, read when it is added.
+    if (/^13\s*F(?:\s*-?\s*HR)?(?:\/A)?$/i.test(typed.trim())) {
+      return { kind: "rule", event: "thirteenf-fund", symbol, listing: "us", values: {}, thirteenFFilerOf: true };
+    }
     const form = readFilingForm(typed);
     if (!form) throw new Error(`A filing alert follows one form: ${FILING_FORMS_TEXT}, not "${typed}": ${example("filing 8-K")}.`);
     return rule("filing_type", { form });

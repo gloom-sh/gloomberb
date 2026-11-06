@@ -403,7 +403,7 @@ gloom fn 13F MU --view=crowding                              # that ticker's ran
 
 The text report opens with the quarters compared, the holder, new and exited counts, and, when the list is longer than `--limit`, which funds are shown and the `--offset` that continues it. `--json` carries `shown`, `total`, `truncated` and `nextOffset`. Headless crowding accepts `--rank=new`, `--rank=exits`, `--rank=increases` or `--rank=decreases`.
 
-A ticker reads as one in any case (`fn 13F aapl`, `brk.b` and `BRK-B` list the holders as `AAPL` and `BRK.B` do). A lowercase word that is also in a filer's name, such as `ares`, lists the ticker's holders and adds the command that opens the fund, and a ticker-shaped word with no 13F holders, such as `tiger`, is searched as a fund name.
+A ticker reads as one in any case (`fn 13F aapl`, `brk.b` and `BRK-B` list the holders as `AAPL` and `BRK.B` do). A well-known investor's name opens the fund they manage (`fn 13F buffett` is Berkshire Hathaway), and one whose surname another shares needs the full name (`fn 13F "cathie wood"`). A lowercase word that is also in a filer's name, such as `ares`, lists the ticker's holders and adds the command that opens the fund, and a ticker-shaped word with no 13F holders, such as `tiger`, is searched as a fund name.
 
 #### HDS
 
@@ -915,6 +915,7 @@ gloom alerts add perps hyperliquid:default:BTC funding above 0.05%   # funding, 
 gloom alerts add catalyst                  # your portfolio and watchlists; PFE catalyst, catalyst type clinical, catalyst agency FDA, catalyst country US
 gloom alerts add congress                  # your portfolio and watchlist; congress "Nancy Pelosi" follows a member
 gloom alerts add 13f 1067983               # a fund by its SEC CIK
+gloom alerts add BRK.B filing 13F          # the 13F of the company's own filer, as 13f 1067983
 ```
 
 These rules, except an IV level and an earnings, CPI, FOMC or calendar date, are checked only for a signed-in account. One added while signed out is saved and reads `needs sign-in` in `gloom alerts list` and its CSV and **Needs sign-in** in **Events** and `fn ALRT --tab events`, with one line on how to sign in, until a session is saved.

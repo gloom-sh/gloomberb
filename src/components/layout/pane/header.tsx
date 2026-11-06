@@ -1,6 +1,7 @@
 import { Box, Text, useActionShortcut, useNativeRenderer, useRendererHost, useUiCapabilities } from "../../../ui";
 import { useCallback, useMemo, useRef, type ReactNode } from "react";
 import { colors, floatingPaneTitleBg, paneTitleBg, paneTitleText } from "../../../theme/colors";
+import { paneTitleTone } from "../../../theme/tone-contrast";
 import { WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { capturePointerDrag } from "../../../ui/pointer-drag";
@@ -579,7 +580,7 @@ export function PaneHeader({
           <TerminalPaneButton
             key={setting.key}
             text={quickSettingText(setting)}
-            fg={setting.active ? colors.warning : colors.textDim}
+            fg={setting.active ? paneTitleTone(colors.warning, visuallyFocused, floating) : colors.textDim}
             role="pane-quick-setting"
             onMouseDown={setting.onMouseDown}
           />
@@ -640,7 +641,7 @@ export function PaneHeader({
         <TerminalPaneButton
           key={setting.key}
           text={quickSettingText(setting)}
-          fg={setting.active ? colors.warning : colors.textDim}
+          fg={setting.active ? paneTitleTone(colors.warning, visuallyFocused, floating) : colors.textDim}
           role="pane-quick-setting"
           onMouseDown={setting.onMouseDown}
         />

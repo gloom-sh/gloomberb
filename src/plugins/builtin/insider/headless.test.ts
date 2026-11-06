@@ -107,6 +107,30 @@ describe("insider client", () => {
     expect(maxActive).toBe(1);
   });
 
+  // `insider OXY` read its 20 Form 4s one after another, 6-8 s cold.
+  test("reads a long list several documents at once, and keeps the list's order", async () => {
+    let active = 0;
+    let maxActive = 0;
+    const listing = Array.from({ length: 12 }, (_, index) => listed(`f${index}`, "4", `2026-08-${String(28 - index).padStart(2, "0")}`));
+    const provider = createTestDataProvider({
+      getSecFilings: async () => listing,
+      getSecFilingContent: async (filing) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        // The newest arrives last: the rows still come in the list's order.
+        await Bun.sleep(filing.accessionNumber === "f0" ? 15 : 2);
+        active -= 1;
+        return form4("2488");
+      },
+    });
+
+    const result = await loadParsedInsiderFilings(provider, "AMD", { limit: 10 });
+
+    expect(result.parsed.map(({ filing }) => filing.accessionNumber)).toEqual(listing.slice(0, 10).map((filing) => filing.accessionNumber));
+    // Four at once, as many as the service reads from the SEC at a time.
+    expect(maxActive).toBe(4);
+  });
+
   test("a foreign private issuer whose Form 4s are all filed as an owner has none, and says why", async () => {
     let lookups = 0;
     const load = (filings: SecFilingItem[]) => createInsiderHeadless().load(args("", 20), {

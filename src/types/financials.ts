@@ -706,8 +706,8 @@ export interface NextEarnings {
   date: string;
   /** Before the open, during market hours, after the close. */
   timing: "bmo" | "dmh" | "amc" | null;
-  /** "history" when the timing is predicted from the last two reports. */
-  timingSource: "filing" | "calendar" | "history" | null;
+  /** "history" when the timing is predicted from the last two reports; "company" when the company announced the date itself. */
+  timingSource: "filing" | "calendar" | "history" | "company" | null;
 }
 
 export type IncomeStatementField = "netIncome" | "netIncomeIncludingNoncontrollingInterests" | "netIncomeCommonStockholders";

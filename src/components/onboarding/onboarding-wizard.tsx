@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { recordResearchActivity, type ResearchActivity } from "../../api-client/research-activity";
 import type { AppBrokerImportRuntime } from "../../app/runtime/broker-import";
 import { type AppConfig, findPaneInstance, type OnboardingStage } from "../../types/config";
-import { useViewport } from "../../react/input";
+import { useBeforeShortcut, useViewport } from "../../react/input";
 import { useKeybindings } from "../../app/keybindings";
 import { useAppDispatch, useAppSelector, useAppStateRef } from "../../state/app/context";
 import {
@@ -83,6 +83,11 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
   const keybindings = useKeybindings();
   const dialogOpen = useDialogState((dialog) => dialog.isOpen);
   const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
+  // A pane holding the keyboard (a chat composer, a ticker search): the card's keys are its.
+  const inputCaptured = useAppSelector((state) => state.inputCaptured);
+  // Whether the last key went to a field: there the card shows no keys, since they type.
+  const [typingInField, setTypingInField] = useState(false);
+  useBeforeShortcut((event) => setTypingInField(event.targetEditable === true));
   const { width: viewportWidth, height: viewportHeight } = useViewport();
   const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
@@ -256,6 +261,7 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     ? findPaneInstance(config.layout, focusedPaneId)
     : null;
   const helpFocused = focusedInstance?.paneId === "help";
+  const coachAside = useCoachStepsAside(config, stage);
   const {
     offer, pricing, billingInterval, setBillingInterval, planAccess, primaryUpgradeAction, continueFree,
   } = useOnboardingUpgrade({
@@ -313,10 +319,13 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     submitAccountField, backPortfolio, continuePortfolio, setPortfolioOptionIdx, activeBrokerFields,
     brokerFieldIdx, setBrokerSelectIdx, brokerChoices, openBrokerGuide, chosenDesks, finishDesks,
     setDeskCursor, deskCursor, setChosenDesks, continueAccount, skipSetup, primaryUpgradeAction,
-    setBillingInterval, keybindings, dialogOpen, commandBarOpen, saveProgressInBackground, goBack,
+    setBillingInterval, keybindings, dialogOpen, commandBarOpen, saveProgressInBackground, goBack, coachAside,
+    inputCaptured,
   });
 
   return {
+    coachAside,
+    coachKeysHidden: inputCaptured || typingInField,
     helpFocused, stage, progress, notificationDismissShortcut, finish, notificationActionShortcut,
     saveProgressInBackground, colors, commandBarShortcut, selectedBrokerId, brokerOptions, portfolioSub,
     sectionAvailability, goToSection, skipSetup, isFinishing, isBrokerCommitting, desktop, positions,
@@ -330,8 +339,46 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
   };
 }
 
+/**
+ * A card button's letter key, shown only while no field is being typed in: in
+ * a field the letter is typed (the Skip button's `s` went into the Ticker
+ * field), and it acts on the card once Esc leaves the field.
+ */
+export function cardKey(key: string, editingField: boolean): string | undefined {
+  return editingField && key.length === 1 ? undefined : key;
+}
+
+/** Every pane of every desk, by instance id. */
+function paneIdsOf(config: AppConfig): Set<string> {
+  return new Set([config.layout, ...config.layouts.map((saved) => saved.layout)]
+    .flatMap((layout) => layout.instances.map((instance) => instance.instanceId)));
+}
+
+/**
+ * Whether the workspace coach steps aside: while a pane opened after it is
+ * open, as it does while Help has focus. It floats above the whole shell, so
+ * it would otherwise cover a pane the user opened under it (a floating 13F
+ * pane at the top right), and its keys would compete with that pane's.
+ */
+export function coachStepsAside(shownWith: ReadonlySet<string> | null, config: AppConfig): boolean {
+  if (!shownWith) return false;
+  for (const id of paneIdsOf(config)) if (!shownWith.has(id)) return true;
+  return false;
+}
+
+function useCoachStepsAside(config: AppConfig, stage: OnboardingStage): boolean {
+  // The panes the coach came up with: the workspace it was built around.
+  const [shownWith, setShownWith] = useState<ReadonlySet<string> | null>(null);
+  useEffect(() => {
+    if (stage !== "research") setShownWith(null);
+    else setShownWith((current) => current ?? paneIdsOf(config));
+  }, [config, stage]);
+  return stage === "research" && coachStepsAside(shownWith, config);
+}
+
 export function OnboardingWizard(props: OnboardingWizardProps) {
   const {
+    coachAside, coachKeysHidden,
     helpFocused, stage, progress, notificationDismissShortcut, finish, notificationActionShortcut,
     saveProgressInBackground, colors, commandBarShortcut, selectedBrokerId, brokerOptions, portfolioSub,
     sectionAvailability, goToSection, skipSetup, isFinishing, isBrokerCommitting, desktop, positions,
@@ -344,7 +391,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
     goBack, rerun,
   } = useOnboardingWizard(props);
 
-  if (helpFocused) {
+  if (helpFocused || coachAside) {
     return null;
   }
 
@@ -356,18 +403,19 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
         {/* Each button shows its key, as Connect shows Alt+Enter; in the
             terminal the second wraps under the first. The desktop card has no
             room for both: like a toast, its dismiss key is in the tooltip.
-            F10 also dismisses it. */}
+            F10 also dismisses it. In a field, or with a pane holding the
+            keyboard, the keys are the field's: the card shows none. */}
         <OnboardingButton
           label="Keep exploring"
           variant="ghost"
-          shortcut={!desktop && notificationDismissShortcut ? notificationDismissShortcut : undefined}
+          shortcut={!desktop && !coachKeysHidden && notificationDismissShortcut ? notificationDismissShortcut : undefined}
           title={desktop && notificationDismissShortcut ? `${t("Keep exploring")} (${notificationDismissShortcut})` : undefined}
           onPress={() => { void finish(); }}
         />
         <OnboardingButton
           label="Connect free Cloud"
           variant="primary"
-          shortcut={notificationActionShortcut || undefined}
+          shortcut={!coachKeysHidden && notificationActionShortcut || undefined}
           onPress={() => saveProgressInBackground({ stage: "account" })}
         />
       </>}>
@@ -463,14 +511,14 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
           {portfolioSub === "positions" ? (
             <>
               {brokerOptions.length > 0 && positionCount > 0 ? (
-                <OnboardingButton label="Connect a broker" variant="ghost" shortcut={CONNECT_BROKER_KEY} onPress={openBrokerConnect} />
+                <OnboardingButton label="Connect a broker" variant="ghost" shortcut={cardKey(CONNECT_BROKER_KEY, editingField)} onPress={openBrokerConnect} />
               ) : null}
               {/* Holding nothing yet, the step can be left as the Desks step can. */}
               {positionCount === 0 ? (
                 <OnboardingButton
                   label="Skip"
                   variant="ghost"
-                  shortcut={SKIP_PORTFOLIO_KEY}
+                  shortcut={cardKey(SKIP_PORTFOLIO_KEY, editingField)}
                   disabled={positions.submitting}
                   onPress={skipPositions}
                 />
@@ -596,7 +644,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
           available={sectionAvailability}
           onNavigate={goToSection}
           onDismiss={skipSetup}
-          dismissShortcut={SKIP_SETUP_KEY}
+          dismissShortcut={cardKey(SKIP_SETUP_KEY, editingField)}
           dismissing={isFinishing}
         />
         <OnboardingTitle
@@ -630,12 +678,14 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
         ) : null}
         {!desktop && browserSignIn ? (
           <Box height={1}>
-            <Text fg={colors.textMuted}>{t("b: sign in with the browser instead")}</Text>
+            <Text fg={colors.textMuted}>{editingField
+              ? t("Esc, then b: sign in with the browser instead")
+              : t("b: sign in with the browser instead")}</Text>
           </Box>
         ) : null}
         <OnboardingActions
           hint={desktop && browserSignIn ? (
-            <Button label="Sign in with the browser instead" variant="plain" compact shortcut={BROWSER_SIGN_IN_KEY} onPress={account.beginQrSignIn} />
+            <Button label="Sign in with the browser instead" variant="plain" compact shortcut={cardKey(BROWSER_SIGN_IN_KEY, editingField)} onPress={account.beginQrSignIn} />
           ) : undefined}
         >
           <OnboardingButton

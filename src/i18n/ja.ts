@@ -1547,6 +1547,7 @@ export const ja: Record<string, string> = {
   "YOUR WORKSPACE": "あなたのワークスペース",
   "Your holdings as a heatmap, a watchlist, and {ticker} charted. Every pane moves; {shortcut} adds more.": "保有銘柄のヒートマップ、ウォッチリスト、{ticker} のチャート。ペインは自由に動かせ、{shortcut} で追加できます。",
   "b: sign in with the browser instead": "b: ブラウザーでサインイン",
+  "Esc, then b: sign in with the browser instead": "Esc のあと b: ブラウザーでサインイン",
   "Sign in with the browser instead": "ブラウザーでサインイン",
   "Real-time market data": "リアルタイム市場データ",
   // ── Onboarding desks ─────────────────────────────────────────

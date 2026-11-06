@@ -4,6 +4,7 @@ import { useThemeColors } from "../../theme/theme-context";
 import { useShortcut } from "../../react/input";
 import { keepEscapeFromClosing } from "../../utils/double-escape-close";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
+import { readsAtBodyContrast } from "../../theme/tone-contrast";
 import { Popover } from "./popover";
 
 export type MenuItem = HostMenuItem;
@@ -94,7 +95,8 @@ function TerminalMenu({ items, onSelect, selection = "none", title, onClose }: M
               {`${marker}${item.label}`}
             </Text>
             {item.hint && <Box flexGrow={1} />}
-            {item.hint && <Text fg={colors.textMuted}>{` ${item.hint}`}</Text>}
+            {/* On the selection a light or colour-blind theme draws the hint as the label; dark themes keep it muted. */}
+            {item.hint && <Text fg={active && readsAtBodyContrast(colors) ? colors.selectedText : colors.textMuted}>{` ${item.hint}`}</Text>}
           </Box>
         );
       })}

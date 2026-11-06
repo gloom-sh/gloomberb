@@ -73,6 +73,30 @@ export interface SecFilingItem {
    * the page the results or the news are on, not the cover page.
    */
   pressReleaseUrl?: string;
+  /**
+   * What a Form 4 did, when Gloom Cloud read it for the list: whose shares,
+   * the main transaction and its shares and average price. A company's list
+   * holds the Form 4s it filed as an owner of other companies' shares, which
+   * only this names. Absent from other forms and from an older server.
+   */
+  form4?: SecForm4Trade;
+}
+
+/** A Form 4's main transaction, the one moving the most shares. */
+export interface SecForm4Trade {
+  /** The first reporting owner, as filed. */
+  ownerName: string;
+  issuerName: string;
+  issuerTicker: string | null;
+  issuerCik: string | null;
+  /** The SEC transaction code: P purchase, S sale, A award, G gift, F tax withholding, M exercise, ... */
+  code: string;
+  side: "buy" | "sell" | "acquired" | "disposed";
+  shares: number;
+  /** Share-weighted average price; null when no line gives one. */
+  price: number | null;
+  /** True when the transaction is in options or other derivatives (a form with no share lines): `shares` counts those. */
+  derivative?: boolean;
 }
 
 export interface SecFilingDocument {
@@ -140,6 +164,8 @@ export interface EarningsEvent {
   revenueActual: number | null;
   surprise: number | null;
   timing: "BMO" | "AMC" | "TNS" | "";
+  /** When the results come out, as the company announced it (Berkshire's Saturday 13:00Z); absent when it named no time. */
+  releaseAt?: string | null;
 }
 
 /** The reads a provider may send in batches (`DataProvider.batchesReads`). */

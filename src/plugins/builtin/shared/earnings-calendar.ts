@@ -291,6 +291,8 @@ function eventOfRow(event: EarningsEvent, row: EarningsAction, report: CalendarR
       ...base,
       earningsDate,
       earningsCallDate: ownDate ? event.earningsCallDate ?? null : null,
+      // The company's time is for its own date, never another the record places the report on.
+      releaseAt: ownDate ? event.releaseAt ?? null : null,
       isDateEstimate: statusFlag(dateStatus) ?? (dateStatus === "reported" ? base.isDateEstimate ?? null : null),
       epsEstimate: recordFigures ? row.epsEstimate ?? null : base.epsEstimate ?? row.epsEstimate ?? null,
       epsAnalysts: recordFigures ? row.epsAnalysts ?? null : base.epsAnalysts ?? row.epsAnalysts ?? null,

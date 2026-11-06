@@ -25,10 +25,18 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 }
 
 /**
- * Reads the company's Form 4 filings newest first, one at a time, until
- * `limit` of them are its own. A form it filed as an owner of another
- * company's shares is read and left out, so a list of only those is read to
- * the end before it can say there are none.
+ * Form 4 documents read at once: a list is read in a few round trips, not one
+ * per filing, and never more than the service reads from the SEC at once.
+ */
+const CONTENT_READS_AT_ONCE = 4;
+
+/**
+ * Reads the company's Form 4 filings newest first until `limit` of them are
+ * its own, up to four documents at a time ahead of the one being looked at
+ * and never more than are still wanted (one at a time, `insider OXY` took
+ * 6-8 s for its 20). A form it filed as an
+ * owner of another company's shares is read and left out, so a list of only
+ * those is read to the end before it can say there are none.
  */
 export async function loadParsedInsiderFilings(
   provider: DataProvider,
@@ -37,25 +45,34 @@ export async function loadParsedInsiderFilings(
 ): Promise<InsiderFilingsLoad> {
   if (!provider.getSecFilings) throw new Error("Insider filing data unavailable");
   if (!provider.getSecFilingContent) throw new Error("Insider filing content unavailable");
+  const readContent = provider.getSecFilingContent.bind(provider);
   const filings = await provider.getSecFilings(symbol, SEC_FILING_SCAN_LIMIT, options.exchange ?? "");
+  const forms = filings.filter((filing) => isInsiderForm(filing.form));
+  const reads: Array<Promise<{ content: string | null } | null>> = [];
+  const read = (index: number) => reads[index] ??= readContent(forms[index]!).then(
+    (content) => ({ content }),
+    () => {
+      // Intentional ignore: an unread filing may be the company's own, so it stays as a row that says it was not read.
+      return null;
+    },
+  );
 
   const parsed: ParsedInsiderFiling[] = [];
   let own = 0;
-  for (const filing of filings) {
-    if (own >= options.limit) break;
-    if (!isInsiderForm(filing.form)) continue;
+  for (let index = 0; index < forms.length && own < options.limit; index += 1) {
     throwIfAborted(options.signal);
-    let content: string | null;
-    try {
-      content = await provider.getSecFilingContent(filing);
-    } catch {
-      throwIfAborted(options.signal);
-      // An unread filing may be the company's own; it stays as a row that says so.
+    // Never more in flight than filings still wanted: each read is at most one of them.
+    const window = Math.min(CONTENT_READS_AT_ONCE, options.limit - own);
+    for (let ahead = index; ahead < Math.min(forms.length, index + window); ahead += 1) read(ahead);
+    const filing = forms[index]!;
+    const result = await read(index);
+    throwIfAborted(options.signal);
+    if (!result) {
       parsed.push({ filing, transaction: null, isLoading: false });
       own += 1;
       continue;
     }
-    const entries = parseInsiderFiling(filing, content);
+    const entries = parseInsiderFiling(filing, result.content);
     if (entries.length === 0) continue;
     parsed.push(...entries);
     own += 1;
