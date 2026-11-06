@@ -1567,6 +1567,53 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(frame).toContain("22.0");
   });
 
+  test("warms the financials of all visible rows in one batch rather than three at a time", async () => {
+    const symbols = Array.from({ length: 80 }, (_, index) => `T${String(index).padStart(2, "0")}`);
+    const config = createManualCollectionConfig("watchlist");
+    config.layout.instances.find((pane) => pane.instanceId === TEST_PANE_ID)!.settings = { columnIds: ["ticker", "price", "pe"] };
+    const batches: number[] = [];
+    const provider = createTestDataProvider({
+      async getQuote(symbol) { return makeQuote({ symbol }); },
+      async getTickerFinancials(symbol) {
+        return createTestFinancials({ quote: makeQuote({ symbol }), fundamentals: { trailingPE: 25 } });
+      },
+      async getTickerFinancialsBatch(targets) {
+        batches.push(targets.length);
+        return targets.map((target) => ({
+          target,
+          financials: createTestFinancials({ quote: makeQuote({ symbol: target.symbol }), fundamentals: { trailingPE: 25 } }),
+        }));
+      },
+      subscribeQuotes() { return () => {}; },
+    });
+    sharedCoordinator = new MarketDataCoordinator(provider);
+    setSharedMarketDataCoordinator(sharedCoordinator);
+
+    await tui.render(
+      <PortfolioHarness
+        config={config}
+        collectionId="watchlist"
+        paneHeight={30}
+        stateMutator={(state) => {
+          state.tickers = new Map(symbols.map((symbol) => [symbol, createTestTicker(symbol, symbol, { watchlists: ["watchlist"] })]));
+          state.financials = new Map(symbols.map((symbol) => [symbol, createTestFinancials({ quote: makeQuote({ symbol }) })]));
+        }}
+      />,
+      { width: 100, height: 30 },
+    );
+    await flushFrame();
+    for (let wait = 0; wait < 40 && batches.length === 0; wait += 1) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+    }
+    await flushFrame();
+
+    // The rows on screen and the few under them, not three.
+    expect(batches[0]).toBeGreaterThanOrEqual(24);
+    expect(batches[0]).toBeLessThanOrEqual(100);
+  });
+
   test("force-refreshes old visible quote data even when the pane is not focused", async () => {
     const config = createPortfolioConfigWithColumns(
       "broker:ibkr-flex:DU12345",

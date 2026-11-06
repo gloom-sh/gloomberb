@@ -103,7 +103,7 @@ test("streamed USD pairs move the FX rate while current and keep the loaded rate
 
   // A print far from the loaded rate is a wrong pair or a bad tick.
   pair("EURUSD=X", { price: 0.5 });
-  clock.advance(1_000);
+  clock.advance(1_250);
   expect(coordinator.getQuoteEntry({ symbol: "EURUSD=X", exchange: "" }).data?.price).toBe(0.5);
   expect(coordinator.getFxEntry("EUR").data).toBeCloseTo(1.1181, 6);
 });

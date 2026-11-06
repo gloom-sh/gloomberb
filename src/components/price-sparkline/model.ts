@@ -39,19 +39,35 @@ function closeValue(point: PricePoint): number | null {
   return Number.isFinite(point.close) ? point.close : null;
 }
 
+/**
+ * The bars a sparkline draws: those within the period of the latest one, or
+ * the last few when that leaves fewer than two. A series runs oldest to
+ * newest, so they are found from its end: every quote that moves a line asks
+ * for a month of a series of two thousand weekly bars, and testing each bar
+ * cost more than all else the quote set off.
+ */
 export function resolveSparklineHistory(priceHistory: PricePoint[], period: SparklineWindow = "1M"): PricePoint[] {
-  const validHistory = priceHistory.filter((point) => Number.isFinite(getPricePointTimestamp(point)));
-  const latest = validHistory.at(-1);
-  if (!latest) return [];
+  let latest = priceHistory.length - 1;
+  while (latest >= 0 && !Number.isFinite(getPricePointTimestamp(priceHistory[latest]!))) latest -= 1;
+  if (latest < 0) return [];
 
-  const latestTime = getPricePointTimestamp(latest);
-  if (Number.isFinite(latestTime)) {
-    const cutoffTime = latestTime - PERIOD_WINDOW_DAYS[period] * 86_400_000;
-    const windowHistory = validHistory.filter((point) => getPricePointTimestamp(point) >= cutoffTime);
-    if (windowHistory.length >= 2) return windowHistory;
+  const cutoffTime = getPricePointTimestamp(priceHistory[latest]!) - PERIOD_WINDOW_DAYS[period] * 86_400_000;
+  const windowHistory: PricePoint[] = [];
+  for (let index = latest; index >= 0; index -= 1) {
+    const point = priceHistory[index]!;
+    const time = getPricePointTimestamp(point);
+    if (!Number.isFinite(time)) continue;
+    if (time < cutoffTime) break;
+    windowHistory.push(point);
   }
+  if (windowHistory.length >= 2) return windowHistory.reverse();
 
-  return validHistory.slice(-PERIOD_FALLBACK_POINTS[period]);
+  const recentHistory: PricePoint[] = [];
+  for (let index = latest; index >= 0 && recentHistory.length < PERIOD_FALLBACK_POINTS[period]; index -= 1) {
+    const point = priceHistory[index]!;
+    if (Number.isFinite(getPricePointTimestamp(point))) recentHistory.push(point);
+  }
+  return recentHistory.reverse();
 }
 
 export function sparklineValues(priceHistory: PricePoint[]): number[] {

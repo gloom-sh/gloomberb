@@ -8,6 +8,7 @@ import {
   selectQuoteWarmupRoute,
   selectQuoteWarmupTickers,
   selectStreamTickers,
+  selectVisibleSnapshotBatch,
   VISIBLE_QUOTE_STREAM_MAX_AGE_MS,
 } from "./data";
 import { createTestFinancials } from "../../../../test-support/data-provider";
@@ -77,6 +78,30 @@ describe("selectQuoteWarmupRoute", () => {
     expect(routes.filter((route) => route === "snapshot")).toHaveLength(2);
     expect(routes.filter((route) => route === "quote").length).toBeGreaterThan(30);
     expect(selectQuoteWarmupRoute({ quoteAt: start }, false, start + 5 * 60_000)).toBe("quote");
+  });
+});
+
+describe("selectVisibleSnapshotBatch", () => {
+  const brokerTicker = (symbol: string, conId: number) => createTestTicker(symbol, symbol, {
+    broker_contracts: [{ brokerId: "ibkr", brokerInstanceId: "ibkr-live", symbol, localSymbol: symbol, exchange: "SMART", conId }],
+  });
+
+  test("asks for every visible row in one request up to the service's batch of 100", () => {
+    const rows = Array.from({ length: 160 }, (_, index) => ticker(`T${index}`));
+    expect(selectVisibleSnapshotBatch(rows.slice(0, 60), {})).toHaveLength(60);
+    expect(selectVisibleSnapshotBatch(rows, {}).map((row) => row.metadata.ticker)).toEqual(
+      rows.slice(0, 100).map((row) => row.metadata.ticker),
+    );
+  });
+
+  test("keeps rows read from a broker to a few at a time beside the provider rows", () => {
+    const rows = [
+      ...Array.from({ length: 5 }, (_, index) => brokerTicker(`B${index}`, index + 1)),
+      ...Array.from({ length: 40 }, (_, index) => ticker(`T${index}`)),
+    ];
+    const batch = selectVisibleSnapshotBatch(rows, {}).map((row) => row.metadata.ticker);
+    expect(batch.filter((symbol) => symbol.startsWith("B"))).toEqual(["B0", "B1", "B2"]);
+    expect(batch.filter((symbol) => symbol.startsWith("T"))).toHaveLength(40);
   });
 });
 

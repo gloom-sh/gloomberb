@@ -603,6 +603,8 @@ describe("MarketDataCoordinator", () => {
     expect(cacheReads).toBe(1);
     // The day reference the cache supplied still reaches the resolved quote.
     expect(coordinator.getQuoteEntry(instrument).data?.previousClose).toBe(282.95);
+    // On the app's own frame clock, a tick held for its interval would stay queued into the next test.
+    coordinator.destroy();
   });
 
   it("reconciles batch quote loads with cached provider day references before a snapshot loads", async () => {
