@@ -168,6 +168,8 @@ function renderCell(
       return { text: row.declared ? formatDistributionAmount(row.declared.amount, row.declared.currency) : "", color: colors.textDim };
     case "currency":
       return { text: row.currency, color: colors.textDim };
+    case "source":
+      return { text: row.source ?? "", color: colors.textDim };
   }
 }
 

@@ -126,6 +126,13 @@ export function toDividendPayment(
   };
 }
 
+/** A row's publisher when the server names one (a fund's sponsor), else null. */
+function distributionSource(value: unknown): { publisher: string; url: string } | null {
+  const source = value as { publisher?: unknown; url?: unknown } | null | undefined;
+  return typeof source?.publisher === "string" && source.publisher.trim() && typeof source.url === "string"
+    ? { publisher: source.publisher.trim(), url: source.url } : null;
+}
+
 /**
  * The declared amount of each paid row by its ex-date: a company declaring in
  * another currency than the listing pays. Rows in the listing's own currency,
@@ -213,7 +220,8 @@ export async function fetchDividendData(
   const payments = actions && cashCurrency ? actions.dividends.flatMap(action => {
     const payment = toDividendPayment(action.exDate, action.amount, cashCurrency);
     const declared = declaredCash.get(action.exDate);
-    return payment ? [declared ? { ...payment, declared } : payment] : [];
+    const source = distributionSource(action.source);
+    return payment ? [{ ...payment, ...(declared ? { declared } : {}), ...(source ? { source } : {}) }] : [];
   }).sort((a, b) => b.exDate.getTime() - a.exDate.getTime()) : [];
   if (!historyError && actions && (actions.coverage?.dividends === "unavailable" || payments.length !== actions.dividends.length)) {
     // A read with no rows is not an incomplete one.

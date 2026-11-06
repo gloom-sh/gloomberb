@@ -100,6 +100,8 @@ export interface DividendRow {
   currency: string;
   /** The amount as the company declared it, in another currency (DividendPayment.declared). */
   declared?: { amount: number; currency: string };
+  /** Who published it when not the listing's history: the fund's sponsor (DividendPayment.source). */
+  source?: string;
 }
 
 export function toDividendRows(payments: DividendPayment[]): DividendRow[] {
@@ -109,5 +111,6 @@ export function toDividendRows(payments: DividendPayment[]): DividendRow[] {
     amount: payment.amount,
     currency: payment.currency,
     ...(payment.declared ? { declared: payment.declared } : {}),
+    ...(payment.source ? { source: payment.source.publisher } : {}),
   }));
 }
