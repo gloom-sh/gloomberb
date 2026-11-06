@@ -161,7 +161,7 @@ export function startScheduledEventAlerts(
       let updated = rule;
       const date = followedDate(rule, scheduled, dates, ruleToday, calendar, at);
       if (date !== (rule.eventDate ?? null)) {
-        const { eventDate: _previous, ...rest } = rule;
+        const { eventDate: _previous, eventTime: _time, ...rest } = rule;
         updated = date ? { ...rest, eventDate: date } : rest;
         changed = true;
       }
@@ -171,6 +171,12 @@ export function startScheduledEventAlerts(
       // The release's row on the day followed: its time, and its figures once out.
       const row = calendar && updated.eventDate && followsRelease(target) ? releaseRowOn(target, updated.eventDate, calendar) : null;
       const time = row ? releaseInstant(row) : null;
+      // A release's print time, kept beside its day for the Events tab and `fn ALRT`.
+      const eventTime = time != null && rule.kind === "calendar_event" ? new Date(time).toISOString().replace(/\.000Z$/, "Z") : null;
+      if (eventTime && updated.eventTime !== eventTime) {
+        updated = { ...updated, eventTime };
+        changed = true;
+      }
       if (updated.eventDate && scheduledPhase(updated.eventDate, scheduled.leadDays, updated.firedFor, ruleToday, scheduled.trigger) === "due") {
         // A results alert goes off once the report it waits for has its actual EPS.
         const result = scheduled.trigger === "results" && target.kind === "earnings"

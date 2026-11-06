@@ -619,7 +619,8 @@ test("a streamed tick triggers a price alert once, and the poll leaves streaming
     expect(deserializeAlerts(store.get("alerts")!)[0]).toMatchObject({ status: "triggered", lastCheckedPrice: 202 });
     // The device's log keeps it with the quote it went off on, for History with no sign-in.
     expect(device.get("firedLog")).toEqual([expect.objectContaining({
-      kind: "price", ruleId: "above", rule: "AAPL above 200", value: 202, unit: "USD", source: "real-time", symbol: "AAPL",
+      // The rule as every entry of the log names it, its level at the instrument's precision.
+      kind: "price", ruleId: "above", rule: "AAPL above 200.00", value: 202, unit: "USD", source: "real-time", symbol: "AAPL",
       quoteAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
     })]);
     // The first poll ran before any tick; nothing streaming is re-quoted after it.
@@ -804,4 +805,48 @@ test("a slow valuation read leaves price delivery independent and cannot overwri
     expect(deserializeAlerts(store.get("alerts"))[0]?.status).toBe("triggered");
     expect(deserializeAlerts(store.get("metricAlerts"))[0]?.status).toBe("triggered");
   } finally { alertsPlugin.dispose?.(); financials.resolve({}); }
+});
+
+test("the poll asks for move rules' quotes a hundred to a request, and keeps their readings on the device, never in the synced list", async () => {
+  const rules: AlertRule[] = Array.from({ length: 150 }, (_, index) => ({
+    ...makeAlert(`m${index}`, `S${index}:LSE`, "below", 3), exchange: "LSE", move: true,
+  }));
+  const moves = serializeAlerts(rules);
+  const store = new Map<string, unknown>([["moveAlerts", moves]]);
+  const device = new Map<string, unknown>();
+  const batches: number[] = [];
+  let single = 0;
+  const done = Promise.withResolvers<void>();
+  const ctx = {
+    registerCommand() {}, registerPane() {}, registerPaneTemplate() {},
+    configState: { get: (key: string) => store.get(key) ?? null, set: (key: string, value: unknown) => { store.set(key, value); } },
+    resume: {
+      getState: (key: string) => device.get(key) ?? null,
+      setState: (key: string, value: unknown) => { device.set(key, value); if (key === "moveChecks") done.resolve(); },
+    },
+    marketData: createTestDataProvider({
+      getQuote: async () => { single += 1; throw new Error("asked one at a time"); },
+      getQuotesBatch: async (targets: QuoteSubscriptionTarget[]) => {
+        batches.push(targets.length);
+        return targets.map((target) => ({ target, quote: {
+          symbol: target.symbol, price: 96, change: -4, changePercent: -4, previousClose: 100, currency: "GBP",
+          exchangeName: "LSE", lastUpdated: Date.now(), marketState: "REGULAR", dataSource: "delayed",
+        } as Quote }));
+      },
+    }),
+    paneSettings: { get: () => "300" },
+    notify() {}, showPane() {}, log: { info() {}, warn() {} },
+  };
+  try {
+    await alertsPlugin.setup?.(ctx as any);
+    await done.promise;
+    expect({ batches, single }).toEqual({ batches: [100, 50], single: 0 });
+    // Every rule went off and was read; the synced list is the rules as they were.
+    expect(store.get("moveAlerts")).toBe(moves);
+    const checks = device.get("moveChecks") as Record<string, { percent: number; fired: boolean }>;
+    expect(Object.keys(checks)).toHaveLength(150);
+    expect(checks.m0).toMatchObject({ percent: -4, fired: true });
+  } finally {
+    alertsPlugin.dispose?.();
+  }
 });

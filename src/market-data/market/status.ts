@@ -3,7 +3,7 @@ import { blendHex, colors, priceColor, type ThemeColors } from "../../theme/colo
 import { isFiniteNumber } from "../../utils/guards";
 import { canonicalExchange, isKnownExchangeCode } from "../../utils/exchanges";
 import { quoteTradingDay } from "../quotes/day-range";
-import { isQuoteBeforeLatestSession } from "../quotes/freshness";
+import { awaitingFirstDelayedPrint, isQuoteBeforeLatestSession } from "../quotes/freshness";
 import { delistingLabel, delistingStateLabel } from "../quotes/delisting";
 import { preMarketOpenOn, regularSessionCloseOn, venueSessionOnOrBefore } from "./freshness";
 import { futuresWeekendClosure } from "./futures-week";
@@ -106,7 +106,9 @@ function closeLabel(date: string): string {
  */
 function quoteMarketState(quote: Quote | null | undefined, now = Date.now()): MarketState | undefined {
   if (!quote?.marketState) return undefined;
-  return futuresWeekendClosure(quote.listingExchangeName || quote.exchangeName, now) ? "CLOSED" : quote.marketState;
+  if (futuresWeekendClosure(quote.listingExchangeName || quote.exchangeName, now)) return "CLOSED";
+  // The session follows the venue's calendar: LSE is open at 08:09, though its delayed feed has not printed in it yet.
+  return quote.marketState !== "REGULAR" && awaitingFirstDelayedPrint(quote, now) ? "REGULAR" : quote.marketState;
 }
 
 /**

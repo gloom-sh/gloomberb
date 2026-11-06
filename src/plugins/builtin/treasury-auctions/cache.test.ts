@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import { ConnectionHealthRegistry } from "../../../core/connection-health";
 import type { PluginPersistence } from "../../../types/plugin";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
@@ -7,9 +7,11 @@ import {
   attachTreasuryAuctionsPersistence,
   loadTreasuryAuctions,
   resetTreasuryAuctionsPersistence,
+  TREASURY_DIRECT_CONNECTION_ID,
   TREASURY_FISCAL_DATA_CONNECTION_ID,
 } from "./cache";
-import { auction } from "./test-fixture";
+import { isPendingAuction } from "./model";
+import { auction, RECORDED_NOW, recordedFiscalData, recordedTreasuryDirect } from "./test-fixture";
 import { ApiRequestError } from "../../../api-client/errors";
 import { outage } from "../../../test-support/outage";
 import type { TreasuryAuction } from "./types";
@@ -214,5 +216,133 @@ describe("loadTreasuryAuctions", () => {
   test("works with no persistence attached at all", async () => {
     const result = await loadTreasuryAuctions(true, async () => [auctionFixture("network")]);
     expect(result.auctions[0]!.id).toBe("network");
+  });
+});
+
+describe("loadTreasuryAuctions with TreasuryDirect", () => {
+  beforeEach(() => setSystemTime(new Date(RECORDED_NOW)));
+  afterEach(() => setSystemTime());
+
+  const fiscalLoader = async () => recordedFiscalData();
+  const directLoader = async () => recordedTreasuryDirect();
+  /** Fiscal Data's board as an earlier read saved it: stale, so a refresh is due, and kept for a week. */
+  const savedFiscalBoard = () => {
+    const persistence = new MemoryPluginPersistence();
+    persistence.seedResource("treasury-auctions", "recent:120", recordedFiscalData(), {
+      sourceKey: "treasury-fiscal-data", schemaVersion: 4, stale: true,
+    });
+    return persistence;
+  };
+  const rate = (board: TreasuryAuction[], cusip: string) => board.find((entry) => entry.cusip === cusip)?.highYield
+    ?? board.find((entry) => entry.cusip === cusip)?.highInvestmentRate ?? null;
+
+  test("fills the results and the auctions Fiscal Data lags on, and lists the announced ones", async () => {
+    attachTreasuryAuctionsPersistence(new MemoryPluginPersistence());
+    const { auctions, refreshError, stale } = await loadTreasuryAuctions(true, fiscalLoader, 120, directLoader);
+
+    const ids = auctions.map((entry) => entry.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(new Set(ids)).toEqual(new Set([...recordedFiscalData(), ...recordedTreasuryDirect()].map((entry) => entry.id)));
+    // 19 to 22 Oct read Pending on Fiscal Data's board; they carry their results now.
+    const lagged = auctions.filter((entry) => entry.auctionDate >= "2026-10-19" && entry.auctionDate <= "2026-10-22");
+    expect(lagged.length).toBeGreaterThanOrEqual(8);
+    expect(lagged.filter(isPendingAuction)).toEqual([]);
+    expect(rate(auctions, "91282CRR4")).toBe(2.367);
+    // The newest results are TreasuryDirect's, the pending ones are the auctions announced after them.
+    expect(auctions.filter((entry) => entry.auctionDate === "2026-11-05").length).toBe(2);
+    expect(auctions.filter(isPendingAuction).map((entry) => entry.auctionDate).every((day) => day > "2026-11-05")).toBe(true);
+    expect(auctions.filter(isPendingAuction).length).toBe(6);
+    expect(refreshError).toBeUndefined();
+    expect(stale).toBe(false);
+  });
+
+  test("both sources keep their cache and each is read once per refresh, TreasuryDirect for at most 60 days", async () => {
+    attachTreasuryAuctionsPersistence(new MemoryPluginPersistence());
+    const asked: string[] = [];
+    const fiscal = async (query: AuctionQuery) => { asked.push(`fiscal from ${query.from}`); return recordedFiscalData(); };
+    const direct = async (days: number) => { asked.push(`direct ${days}`); return recordedTreasuryDirect(); };
+
+    await loadTreasuryAuctions(false, fiscal, 120, direct);
+    await loadTreasuryAuctions(false, fiscal, 120, direct);
+    expect(asked).toEqual(["fiscal from 2026-07-09", "direct 60"]);
+    // A shorter window reads its own board of Fiscal Data's and no more of TreasuryDirect's than it shows.
+    const short = await loadTreasuryAuctions(false, fiscal, 30, direct);
+    expect(asked.slice(2)).toEqual(["fiscal from 2026-10-07", "direct 30"]);
+    expect(short.auctions.every((entry) => entry.auctionDate >= "2026-10-07")).toBe(true);
+    await loadTreasuryAuctions(true, fiscal, 120, direct);
+    expect(asked.slice(4)).toEqual(["fiscal from 2026-07-09", "direct 60"]);
+  });
+
+  test("a board from Fiscal Data alone is served when TreasuryDirect is down, and says so", async () => {
+    attachTreasuryAuctionsPersistence(new MemoryPluginPersistence());
+    for (const failure of [new ApiRequestError("TreasuryDirect request failed (503)", 503), new ApiRequestError("TreasuryDirect request failed (404)", 404), outage()]) {
+      const result = await loadTreasuryAuctions(true, fiscalLoader, 120, async () => { throw failure; });
+      expect(result.auctions.map((entry) => entry.id)).toEqual(recordedFiscalData().map((entry) => entry.id));
+      expect(result.refreshError).toBe(failure.message);
+      expect(result.stale).toBe(true);
+    }
+    // An empty answer is a failure, not a quiet month.
+    const empty = await loadTreasuryAuctions(true, fiscalLoader, 120, async () => []);
+    expect(empty.auctions).toHaveLength(recordedFiscalData().length);
+    expect(empty.refreshError).toBe("TreasuryDirect returned no auctions");
+  });
+
+  test("a board from TreasuryDirect alone is served when Fiscal Data is down", async () => {
+    attachTreasuryAuctionsPersistence(new MemoryPluginPersistence());
+    for (const failure of [new ApiRequestError("Treasury Fiscal Data request failed (503)", 503), new ApiRequestError("Treasury Fiscal Data request failed (404)", 404)]) {
+      const result = await loadTreasuryAuctions(true, async () => { throw failure; }, 120, directLoader);
+      expect(result.auctions.map((entry) => entry.id)).toEqual(recordedTreasuryDirect().map((entry) => entry.id));
+      expect(result.refreshError).toBe(failure.message);
+      expect(result.savedAt).toBeUndefined();
+    }
+    // Fiscal Data answering with nothing is down as well.
+    expect((await loadTreasuryAuctions(true, async () => [], 120, directLoader)).refreshError).toBe("Treasury Fiscal Data returned no auctions");
+  });
+
+  test("a saved Fiscal Data board takes the results TreasuryDirect has while Fiscal Data is down", async () => {
+    attachTreasuryAuctionsPersistence(savedFiscalBoard());
+    const result = await loadTreasuryAuctions(false, async () => { throw outage(); }, 120, directLoader);
+    expect(result.auctions.filter(isPendingAuction).every((entry) => entry.auctionDate > "2026-11-05")).toBe(true);
+    expect(result.auctions.some((entry) => entry.auctionDate === "2026-11-05")).toBe(true);
+    // The footer says how old the saved board is, not that the refresh failed.
+    expect(result.stale).toBe(true);
+    expect(result.savedAt).toBeDefined();
+  });
+
+  test("with both sources down the failure is Fiscal Data's, and a saved board answers for a transient one", async () => {
+    attachTreasuryAuctionsPersistence(new MemoryPluginPersistence());
+    await expect(loadTreasuryAuctions(true, async () => { throw new Error("fiscal"); }, 120, async () => { throw new Error("direct"); }))
+      .rejects.toThrow("fiscal");
+
+    attachTreasuryAuctionsPersistence(savedFiscalBoard());
+    const result = await loadTreasuryAuctions(false, async () => { throw outage(); }, 120, async () => { throw outage(); });
+    expect(result.auctions).toHaveLength(recordedFiscalData().length);
+    expect(result.savedAt).toBeDefined();
+  });
+
+  test("ALL adds TreasuryDirect to its recent side only; the archive is Fiscal Data's alone", async () => {
+    attachTreasuryAuctionsPersistence(new MemoryPluginPersistence());
+    const queries: AuctionQuery[] = [];
+    const directDays: number[] = [];
+    const result = await loadTreasuryAuctions(true, async (query) => {
+      queries.push(query);
+      return query.before ? [auction({ id: "1979", secType: "Bond", securityTerm: "20-Year", auctionDate: "1979-10-31", highYield: 9.5 })] : recordedFiscalData();
+    }, "all", async (days) => { directDays.push(days); return recordedTreasuryDirect(); });
+    expect(directDays).toEqual([60]);
+    expect(queries).toHaveLength(2);
+    expect(result.auctions.some((entry) => entry.id === "1979")).toBe(true);
+    expect(result.auctions.filter(isPendingAuction).every((entry) => entry.auctionDate > "2026-11-05")).toBe(true);
+    expect(result.auctions).toHaveLength(new Set([...recordedFiscalData(), ...recordedTreasuryDirect()].map((entry) => entry.id)).size + 1);
+  });
+
+  test("reports both sources through Connections", async () => {
+    const health = new ConnectionHealthRegistry();
+    health.registerSource({ id: TREASURY_FISCAL_DATA_CONNECTION_ID, name: "Treasury Fiscal Data", kind: "api" });
+    health.registerSource({ id: TREASURY_DIRECT_CONNECTION_ID, name: "TreasuryDirect", kind: "api" });
+    attachTreasuryAuctionsPersistence(new MemoryPluginPersistence(), health);
+    await loadTreasuryAuctions(true, fiscalLoader, 120, async () => { throw outage(); });
+    const status = Object.fromEntries(health.getSnapshot().sources.map((source) => [source.id, source.status]));
+    expect(status[TREASURY_FISCAL_DATA_CONNECTION_ID]).toBe("connected");
+    expect(status[TREASURY_DIRECT_CONNECTION_ID]).not.toBe("connected");
   });
 });

@@ -20,6 +20,8 @@ export interface CompanyNameListing {
   name: string;
   /** The service marked the listing with the name as typed (`searchAliases`): the company it means by it. */
   named?: true;
+  /** The service marks the listing as its company's home line (`homeListing`). */
+  home?: true;
   /**
    * When the listing is a fund or an index carrying the name ("JP Morgan" read
    * as ^JTEK, JP MORGAN ETF TRUS), the company's common stock the name says
@@ -122,13 +124,21 @@ export async function findListingOfCompanyName(
     const line = home ? 0 : 1 + lineDistance(type, exchange, result.symbol);
     return [{
       result, exchange, stock, home, namesCompany,
+      // The service's first answer, marked as its company's home, with every word typed in its name word for word.
+      served: order === 0 && home && match.abbreviated === 0 && stock === 0 && classifyInstrumentKind(type) === "equity",
       rank: [match.extra, match.abbreviated, stock, line, named ? 0 : 1, isUsListingExchange(exchange) ? 0 : 1, result.symbol.length, order],
     }];
   }).sort((left, right) => {
     const at = left.rank.findIndex((value, index) => value !== right.rank[index]);
     return at < 0 ? 0 : left.rank[at]! - right.rank[at]!;
   });
-  const first = listed.find((listing) => listing.namesCompany);
+  // The company the service answers the name with first, and marks the home line of, is the one it means, though
+  // another line's name is nearer the one typed: "Panasonic" is Panasonic Holdings on JPX, not a Frankfurt line
+  // under the name it had before (Panasonic Corporation), whose lines would lead it to a Malaysian subsidiary.
+  // The row the service marks with the name outranks that answer, and a line whose symbol is the word typed is no answer to a name.
+  const servedFirst = listed.some((listing) => namedByService(name, listing.result)) ? undefined
+    : listed.find((listing) => listing.served && listing.namesCompany && listing.result.symbol.toUpperCase() !== name.toUpperCase());
+  const first = servedFirst ?? listed.find((listing) => listing.namesCompany);
   // Listings are named in Latin letters: a name in another script ("任天堂 ソニー") names none, answered or not.
   if (!first && busy && !hasNonLatinLetters(name)) throw busy;
   if (!first) return null;
@@ -162,6 +172,7 @@ export async function findListingOfCompanyName(
     : {
       symbol: best.result.symbol.toUpperCase(), exchange: best.exchange, name: best.result.name,
       ...namedByService(name, best.result) ? { named: true as const } : {},
+      ...best.home ? { home: true as const } : {},
     };
   const meant = best.stock && options.meant ? await stockNamedRunTogether(dataProvider, name, results) : null;
   return meant ? { ...found, meant } : found;
@@ -296,6 +307,22 @@ export async function marksAnotherListing(dataProvider: Partial<Pick<DataProvide
 }
 
 /**
+ * The listing under another symbol the service marks with the word as typed
+ * (`searchAliases`), off `exchange`: "NTT" marks 9432 on JPX (NTT, Inc.),
+ * which a bare NTT read on Warsaw is not. The search `marksAnotherListing`
+ * asks; null when it marks none, cannot search or is too busy to say.
+ */
+export async function serviceMarkedOtherListing(dataProvider: Partial<Pick<DataProvider, "search">>, word: string,
+  exchange: string): Promise<{ symbol: string; exchange: string; name: string } | null> {
+  if (typeof dataProvider.search !== "function") return null;
+  const answer = await searchListings(dataProvider as Pick<DataProvider, "search">, word.trim());
+  const marked = Array.isArray(answer) ? answer.find((result) => result.symbol.toUpperCase() !== word.trim().toUpperCase()
+    && namedByService(word, result) && !!listedExchange(result) && listedExchange(result) !== canonicalExchange(exchange)
+    && !parsePublicTickerKey(result.symbol).exchange) : undefined;
+  return marked ? { symbol: marked.symbol.toUpperCase(), exchange: listedExchange(marked), name: marked.name } : null;
+}
+
+/**
  * The listing of `symbol` the service marks with `word` (`^VIX` on CXI for
  * "VIX"), as `marksAnotherListing` reads the same search; null when search
  * marks no listing of it, cannot search or is too busy to say.
@@ -372,6 +399,31 @@ const shareClassSymbol = (symbol: string) => symbol.trim().toUpperCase().replace
  * search that fails says nothing either way, and the code stands. Null for
  * anything else.
  */
+/**
+ * Whether a terminal code is looked for in search before it is taken: its
+ * root in capitals and its yellow key typed as the terminal shows it (`SEAS
+ * US Equity`), a US code is one as typed, as a code abroad is: a line that
+ * stopped trading is one search no longer lists, and it is still that symbol,
+ * never a name. All in capitals (`PUTNAM US EQUITY`) it may be a fund's name,
+ * so search decides; so it does for a root in lower case.
+ */
+function terminalCodeVerified(code: TerminalListingCode): boolean {
+  const us = !code.exchange || isUsListingExchange(code.exchange);
+  const keyed = /\s[Ee]quity$/.test(code.typed) && !/\p{Ll}/u.test(code.typed.split(" ")[0]!);
+  return (us && !keyed) || /\p{Ll}/u.test(code.typed.split(" ")[0]!);
+}
+
+/**
+ * A terminal's code read as its listing with no search (`VOD LN`, `7203 JT`,
+ * `SAFE LN Equity`), as `readTerminalCodeArg` takes it; null for a code it
+ * looks for in search first, and for anything that is no code. A pasted
+ * list asks nothing for these but their quotes.
+ */
+export function settledTerminalCode(typed: string): TerminalListingCode | null {
+  const code = readTerminalListingCode(typed);
+  return code?.market && !code.alternatives && !terminalCodeVerified(code) ? code : null;
+}
+
 export async function readTerminalCodeArg(
   dataProvider: Pick<DataProvider, "search">,
   typed: string,
@@ -379,11 +431,7 @@ export async function readTerminalCodeArg(
   const code = readTerminalListingCode(typed);
   if (!code?.market) return code;
   const us = !code.exchange || isUsListingExchange(code.exchange);
-  // Its root in capitals and its yellow key typed as the terminal shows it (`SEAS US Equity`), a US code is one as
-  // typed, as a code abroad is: a line that stopped trading is one search no longer lists, and it is still that
-  // symbol, never a name. All in capitals (`PUTNAM US EQUITY`) it may be a fund's name, so search decides.
-  const keyed = /\s[Ee]quity$/.test(code.typed) && !/\p{Ll}/u.test(code.typed.split(" ")[0]!);
-  const verify = (us && !keyed) || /\p{Ll}/u.test(code.typed.split(" ")[0]!);
+  const verify = terminalCodeVerified(code);
   if (!verify && !code.alternatives) return code;
   const listings: TerminalListing[] = [code, ...code.alternatives ?? []];
   try {

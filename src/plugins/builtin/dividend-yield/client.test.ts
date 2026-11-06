@@ -221,6 +221,29 @@ describe("cash distribution calculations", () => {
     expect(text).not.toContain("£0.06");
   });
 
+  test("a distribution a fund's sponsor gave its history names the sponsor in the history, and JSON keeps its page", async () => {
+    const iShares = { publisher: "iShares", url: "https://www.ishares.com/us/products/239766/ishares-national-muni-bond-etf" };
+    setHttpFetchTransport(async () => Response.json({ status: "success", data: { quote: null, summary: null, actions: {
+      symbol: "MUB", currency: "USD", coverage: { dividends: "available" }, splits: [], earnings: [],
+      dividends: [{ exDate: "2026-09-01", amount: 0.29 }, { exDate: "2026-10-01", amount: 0.279282, source: iShares },
+        { exDate: "2026-11-02", amount: 0.284092, source: iShares }, { exDate: "2026-08-03", amount: 0.286, source: { publisher: 7 } }],
+    } } }));
+    const data = await fetchDividendData("MUB", null);
+    expect(data.payments.map((row) => row.source?.publisher ?? null)).toEqual(["iShares", "iShares", null, null]);
+    const request = { rawArgument: "MUB", argument: "MUB", symbols: ["MUB"], options: {} };
+    const result = projectDividendYieldHeadless(data, request);
+    const history = result.sections.find((section) => section.title === "Dividend history")!;
+    expect(history.columns?.map((column) => column.key)).toEqual(["exDate", "amount", "currency", "type", "source"]);
+    expect(history.rows?.[0]).toMatchObject({ exDate: "2026-11-02", source: "iShares", sourceUrl: iShares.url });
+    expect(history.rows?.[2]).not.toHaveProperty("source");
+    const text = renderHeadlessPaneText(createDividendYieldHeadless(), result, request, "DVD");
+    expect(text).toMatch(/2026-11-02 +\$0\.284092 +USD +cash +iShares/);
+    // A history its sponsor gave nothing to keeps its columns.
+    const own = projectDividendYieldHeadless({ ...data, payments: data.payments.map(({ source: _, ...row }) => row) }, request);
+    expect(own.sections.find((section) => section.title === "Dividend history")?.columns?.map((column) => column.key))
+      .toEqual(["exDate", "amount", "currency", "type"]);
+  });
+
   test("a rand line of a dollar payer rounds its cents to two decimals and says they are converted from USD, even with no declared row beside them", async () => {
     setHttpFetchTransport(async () => Response.json({ status: "success", data: { quote: null, summary: null, actions: {
       symbol: "S32", currency: "ZAc", fetchedAt: "2026-10-29T18:39:54.600Z", coverage: { dividends: "available" }, splits: [], earnings: [],

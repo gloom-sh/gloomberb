@@ -22,7 +22,6 @@ import {
 } from "./scheduled";
 import { isResearchAlertKind, MAX_LEAD_DAYS } from "./research-rules";
 import { EVENT_ALERT_TEMPLATES, MAX_EVENT_ALERTS, createEventAlert, eventAlertStoreKey, readEventAlertStores, updateEventAlerts } from "./events";
-import { formatMarketPrice } from "../../../market-data/market/format";
 import { settleTypedListingKey } from "../../../tickers/listing-venues";
 import { parseListingArg } from "../../../cli/listing-arg";
 import { notATickerSymbol } from "../../../sources/provider-errors";
@@ -44,15 +43,23 @@ import { alertsCliCommand } from "./cli";
 import {
   createQuoteErrorMessage,
   farTargetMessage,
+  levelInQuoteUnit,
+  moveQuoteFields,
   quoteAlertFields,
   quoteErrorAlertFields,
   resolveAlertQuote,
+  resolveAlertQuotes,
 } from "./quotes";
+import { MOVE_CHECKS_KEY, moveChecksOf, readMoveChecks, withMoveChecks } from "./move-checks";
 import {
   loadAlerts,
   saveAlerts,
 } from "./storage";
 import { createAlertQuoteStream, readStreamedAlertQuote, type AlertQuoteStream } from "./live";
+import { alertPriceText } from "./price-text";
+import { isPenceQuotedLine } from "../../../market-data/market/format";
+import { judgeMove, moveBasisText, moveFiredText } from "./move";
+import { alertListing } from "./format";
 import type { AlertRule } from "./types";
 
 let catalystAlertsStop: (() => void) | null = null;
@@ -99,14 +106,17 @@ export const alertsPlugin: GloomPlugin = {
     ivLevelAlertsStop = startIvLevelAlerts(ctx, recordFired);
     const notifyTriggered = (alert: AlertRule, quote: Quote, firedAt: number) => {
       const price = quote.price;
+      // The price at the instrument's precision, as the quote that fired it says it (1.33702, 69.80p).
+      const priced = { ...alert, ...quoteAlertFields(quote) };
       recordFired({
-        kind: "price", ruleId: alert.id, rule: `${alert.exchange ? `${alert.symbol}:${alert.exchange}` : alert.symbol} ${alert.condition} ${alert.targetPrice}`,
+        // The rule as every other entry of the log names it: the listing once, the level at its precision and in its unit.
+        kind: "price", ruleId: alert.id, rule: alertLogRule(priced).rule,
         firedAt, value: price, ...(quote.currency ? { unit: quote.currency } : {}),
         quoteAt: firedAlertTime(quote.lastUpdated), source: quoteSourceWords(quote.dataSource),
         symbol: alert.symbol, ...(alert.exchange ? { exchange: alert.exchange } : {}),
       });
       ctx.notify({
-        body: `${formatAlertDescription(alert)} triggered at ${price}`,
+        body: `${formatAlertDescription(priced)} triggered at ${alertPriceText(priced, price)}`,
         type: "success",
         refId: `price:${alert.id}`,
         desktop: "always",
@@ -119,6 +129,45 @@ export const alertsPlugin: GloomPlugin = {
       });
     };
 
+    /**
+     * A move rule judged on a quote, its fields updated in place: armed again in
+     * a new session, and notified once when the move reaches it. Whether it went off.
+     */
+    const checkMove = (alert: AlertRule, quote: Quote, now: number): boolean => {
+      const judged = judgeMove(alert, quote, now);
+      Object.assign(alert, moveQuoteFields(quote, now), judged.alert);
+      if (!judged.fired || !judged.reading) return false;
+      const reading = judged.reading;
+      const listing = alertListing({ symbol: alert.symbol, exchange: alert.exchange });
+      const body = moveFiredText(listing, reading, alertPriceText(alert, quote.price), now);
+      ctx.log.info("move: TRIGGERED", { symbol: alert.symbol, percent: reading.percent });
+      recordFired({
+        kind: "move", ruleId: alert.id, rule: formatAlertDescription(alert), firedAt: now, value: Number(reading.percent.toFixed(4)), unit: "%",
+        detail: moveBasisText(reading.basis, now), quoteAt: firedAlertTime(quote.lastUpdated), source: quoteSourceWords(quote.dataSource),
+        symbol: alert.symbol, ...(alert.exchange ? { exchange: alert.exchange } : {}),
+      });
+      ctx.notify({
+        body, type: "success", refId: `price:${alert.id}`, desktop: "always", persistent: true, sound: "Glass",
+        action: { label: "Open", onClick: () => ctx.showPane("alerts") },
+      });
+      return true;
+    };
+
+    // Move rules are judged with this device's readings of them, and their readings are kept here, never in the synced
+    // list: five hundred rules checked every minute write nothing another device pulls.
+    const loadJudgedAlerts = () => {
+      const alerts = loadAlerts(ctx);
+      return alerts.some((alert) => alert.move) ? withMoveChecks(alerts, readMoveChecks(ctx.resume.getState(MOVE_CHECKS_KEY))) : alerts;
+    };
+    const saveMoveChecks = (alerts: readonly AlertRule[]) => {
+      if (!alerts.some((alert) => alert.move)) return;
+      try {
+        ctx.resume.setState(MOVE_CHECKS_KEY, moveChecksOf(alerts));
+      } catch (failure) {
+        ctx.log.warn("Move alert readings not kept", { error: String(failure) });
+      }
+    };
+
     // The last price each alert was judged on by the stream. `crosses` needs
     // it tick to tick, and writing it to the store on every tick would churn
     // the saved config.
@@ -126,14 +175,22 @@ export const alertsPlugin: GloomPlugin = {
     let lastStreamPersistAt = 0;
     const evaluateStreamed = () => {
       if (generation !== pollGeneration) return;
-      const alerts = loadAlerts(ctx);
+      const alerts = loadJudgedAlerts();
       const now = Date.now();
       let persist = false;
       let touched = false;
+      let movesTouched = false;
       for (const alert of alerts) {
-        if (alert.metric || alert.status !== "active") continue;
+        if (alert.metric || (alert.status !== "active" && !alert.move)) continue;
         const quote = readStreamedAlertQuote(alert, undefined, now);
         if (!quote) continue;
+        if (alert.move) {
+          const status = alert.status;
+          if (checkMove(alert, quote, now) || alert.status !== status) persist = true;
+          touched = true;
+          movesTouched = true;
+          continue;
+        }
         // A re-armed or new alert has no stored baseline: judge nothing on this
         // tick and store one at once, so `crosses` never compares against a
         // price from before the edit.
@@ -153,6 +210,7 @@ export const alertsPlugin: GloomPlugin = {
       }
       if (!persist && !(touched && now - lastStreamPersistAt >= STREAM_PERSIST_MS)) return;
       lastStreamPersistAt = now;
+      if (movesTouched) saveMoveChecks(alerts);
       void saveAlerts(ctx, alerts, "price").catch(logFailure("alerts.stream", "Save streamed price alerts failed"));
       if (persist) alertStream?.sync();
     };
@@ -231,8 +289,10 @@ export const alertsPlugin: GloomPlugin = {
           // Never save a rule its own list would refuse to read back.
           if (!validMetricRule({ metric, condition: input.condition, targetPrice: input.price })) throw new Error(`${benchmark} cannot be a benchmark: relative strength alerts compare two US listings.`);
         }
+        // A London line's level is in the pence its quote shows: 70p, or 70 where 70 in pounds is far off.
+        if (!input.metric) input = { ...input, price: levelInQuoteUnit(input, quote, symbol).price };
         // A target ten times away is a slip or another instrument's price, such as bitcoin's on the BTC fund.
-        const far = farTargetMessage(symbol, input.price, quote.price, symbol.includes(":") ? null : notTheCoinNote(symbol, quote));
+        const far = farTargetMessage(symbol, input.price, quote.price, symbol.includes(":") ? null : notTheCoinNote(symbol, quote), isPenceQuotedLine(quote));
         if (!input.metric && far) throw new Error(far);
 
         const alert: AlertRule = {
@@ -268,7 +328,7 @@ export const alertsPlugin: GloomPlugin = {
         alertStream?.sync();
 
         ctx.notify({
-          body: `Alert set: ${formatAlertDescription(alert)}${input.metric ? firstCheck ? `, ${firstCheck}` : "" : ` (current ${formatMarketPrice(quote.price, { minimumFractionDigits: 2 })})`}`,
+          body: `Alert set: ${formatAlertDescription(alert)}${input.metric ? firstCheck ? `, ${firstCheck}` : "" : ` (current ${alertPriceText(alert, quote.price)})`}`,
           type: "success",
         });
       },
@@ -351,14 +411,22 @@ export const alertsPlugin: GloomPlugin = {
     // delivered lately, and every symbol while the app is hidden.
     const pollLevels = async (metrics: boolean) => {
       alertStream?.sync();
-      const pending = loadAlerts(ctx).filter((alert) => Boolean(alert.metric) === metrics && alert.status === "active" && !readStreamedAlertQuote(alert));
+      // A move rule that went off is asked for too: the next session's quote arms it again.
+      const pending = loadJudgedAlerts().filter((alert) => Boolean(alert.metric) === metrics && (alert.status === "active" || alert.move) && !readStreamedAlertQuote(alert));
       if (pending.length === 0) return;
 
       ctx.log.info("poll", { active: pending.length });
 
       // One batched pass over the distinct symbols: the alerts pane reads the same
       // persisted store, so this is the only place that talks to the provider.
-      const quoteKeys = [...new Set(pending.filter(alert => !alert.metric).map((alert) => `${alert.symbol}\0${alert.exchange ?? ""}`))];
+      const keyOf = (alert: AlertRule) => `${alert.symbol}\0${alert.exchange ?? ""}`;
+      // Move rules, up to five hundred from one bulk add, are asked a hundred listings to a request.
+      const moveKeys = [...new Set(pending.filter((alert) => alert.move).map(keyOf))];
+      const quoteKeys = [...new Set(pending.filter(alert => !alert.metric && !alert.move).map(keyOf))].filter((key) => !moveKeys.includes(key));
+      const moveQuotes = moveKeys.length === 0 ? [] : await resolveAlertQuotes(ctx.marketData, moveKeys.map((key) => {
+        const [symbol = "", exchange = ""] = key.split("\0");
+        return { symbol, exchange };
+      }));
       const results = await Promise.all(quoteKeys.map(async (key): Promise<[string, Quote | string]> => {
         const [symbol, exchange = ""] = key.split("\0");
         try {
@@ -375,14 +443,14 @@ export const alertsPlugin: GloomPlugin = {
         catch (error) { readings.set(alert.id, { armedAt: alert.armedAt ?? alert.createdAt, reading: error instanceof Error ? error.message : String(error) }); }
       }
       if (generation !== pollGeneration) return;
-      const quotes = new Map<string, Quote | string>(results);
+      const quotes = new Map<string, Quote | string>([...results, ...moveKeys.map((key, index) => [key, moveQuotes[index]!] as [string, Quote | string])]);
 
       // Read the store again: the stream or the pane may have changed an alert
       // while the quotes were in flight, and an alert must trigger only once.
-      const alerts = loadAlerts(ctx).filter(alert => Boolean(alert.metric) === metrics);
+      const alerts = loadJudgedAlerts().filter(alert => Boolean(alert.metric) === metrics);
       let changed = false;
       for (const alert of alerts) {
-        if (alert.status !== "active") continue;
+        if (alert.status !== "active" && !alert.move) continue;
         if (alert.metric) {
           const result = readings.get(alert.id);
           if (!result || result.armedAt !== (alert.armedAt ?? alert.createdAt)) continue;
@@ -421,6 +489,11 @@ export const alertsPlugin: GloomPlugin = {
           continue;
         }
 
+        if (alert.move) {
+          checkMove(alert, quote, Date.now());
+          changed = true;
+          continue;
+        }
         if (evaluateAlert(alert, quote.price)) {
           alert.status = "triggered";
           alert.triggeredAt = Date.now();
@@ -433,6 +506,7 @@ export const alertsPlugin: GloomPlugin = {
       }
 
       if (changed) {
+        if (!metrics) saveMoveChecks(alerts);
         await saveAlerts(ctx, alerts, metrics ? "metric" : "price");
       }
     };

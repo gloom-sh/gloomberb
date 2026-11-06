@@ -1,11 +1,25 @@
-import { eventAlertTarget, type EventAlertRule } from "./events";
+import { eventAlertTarget, releaseTimeOn, type EventAlertRule } from "./events";
+import { timeZoneCity, zonedClock } from "../../../utils/utc-time";
 import { readScheduledRule, scheduledAlertStatus, scheduledToday } from "./scheduled";
 
-/** Earnings, macro and calendar event rules name the event day they wait for; the rest name what they follow. */
-export function ruleTarget(rule: EventAlertRule): string {
+/**
+ * Earnings, macro and calendar event rules name the event day they wait for,
+ * a release with its print time in UTC and on the reader's clock when they
+ * set a zone (`2026-11-06 13:30 UTC, 08:30 New York`); the rest name what they follow.
+ */
+export function ruleTarget(rule: EventAlertRule, zone: string | null = null): string {
   const target = eventAlertTarget(rule);
   if (!readScheduledRule(rule)) return target;
-  return `${target} · ${rule.eventDate ?? "date not known yet"}`;
+  return `${target} · ${rule.eventDate ? eventWhen(rule, zone) : "date not known yet"}`;
+}
+
+/** `2026-11-06 13:30 UTC, 08:30 New York`, or the day alone without a print time. */
+export function eventWhen(rule: Pick<EventAlertRule, "eventDate" | "eventTime">, zone: string | null = null): string {
+  if (!rule.eventDate) return "";
+  if (!releaseTimeOn(rule.eventTime, rule.eventDate)) return rule.eventDate;
+  const at = Date.parse(rule.eventTime);
+  const local = zone ? zonedClock(at, zone) : null;
+  return `${rule.eventDate} ${rule.eventTime.slice(11, 16)} UTC${local ? `, ${local.label} ${timeZoneCity(zone!)}` : ""}`;
 }
 
 /**

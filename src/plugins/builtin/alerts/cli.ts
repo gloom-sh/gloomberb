@@ -5,12 +5,13 @@ import { firstDailyCheck, metricAvailabilityError, metricReadings } from "./metr
 import { ALERT_ADD_FORMS, ALERT_KINDS_TEXT, parseRuleAddArgs, RULE_US_DATA, ruleDelivery, type RuleAddRequest } from "./cli-forms";
 import { alertChangeEntry, appendAlertLog, type AlertLogAction } from "./fired-log";
 import { alertLogRule } from "./alert-log";
-import { alertListing, alertReadingAt, alertReadingText, isoUtc, listingWithCurrency, NOT_CHECKED_YET } from "./format";
+import { alertListing, alertReadingAt, alertReadingText, isoUtc, listingWithCurrency, measureLabel, NOT_CHECKED_YET } from "./format";
 import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
 import { quoteAlertFields } from "./quotes";
 import { createEventAlert } from "./events";
 import { isResearchAlertKind, readResearchRule } from "./research-rules";
 import { withConfigData, withMarketData } from "../../../cli/scoped-context";
+import { localTimeSuffix } from "../../../utils/utc-time";
 import { resolvePersistedCloudSessionToken } from "../../../cli/pane-functions/cloud-session";
 import type { ConfigContext } from "../../../cli/types";
 import { checkedWhenSignedIn, NEEDS_SIGN_IN, needsSignInNote } from "./event-rows";
@@ -44,14 +45,16 @@ import {
   type CalendarEventChoice,
   type ReleaseRename,
 } from "./calendar-events";
-import { createAlert, rearmAlert, sameLevelRule } from "./alert-engine";
+import { createAlert, formatAlertDescription, rearmAlert, sameLevelRule } from "./alert-engine";
+import { alertPriceText } from "./price-text";
 import { ALERTS_PLUGIN_ID } from "./constants";
 import { MAX_EVENT_ALERTS, eventAlertTarget, toggleEventAlert, writeEventAlertStores, type EventAlertRule } from "./events";
 import { alertKindLabel, fetchAlertHistory, ruleStateText, type AlertRuleState } from "./history";
 import { apiClient } from "../../../api-client";
 import { IV_LEVEL_CHECKS_KEY, ivLevelCheckText, readIvLevelChecks, rearmIvLevelAlert, type IvLevelCheck } from "./iv-level";
-import { parseAlertPrice, readAlertPrice } from "./price";
-import { farTargetMessage } from "./quotes";
+import { isPenceLevel, parseAlertPrice, readAlertLevel } from "./price";
+import { farTargetMessage, levelInQuoteUnit } from "./quotes";
+import { isPenceQuotedLine } from "../../../market-data/market/format";
 import { MACRO_EVENT_NAMES, createResearchAlert, formatPremium, ivLevelUnitError, parseAmount, parseIvLevel } from "./research-builder";
 import { IV_LEVEL_RANGES, MAX_LEAD_DAYS, type IvLevelMetric, type MacroAlertEvent } from "./research-rules";
 import {
@@ -77,6 +80,13 @@ import {
 } from "./scheduled";
 import { scheduledEventSources } from "./scheduled-sources";
 import { readAlertStores, writeLevelAlertStores } from "./storage";
+import {
+  bulkMoveLogRule, MOVE_REARM, moveNowText, parseMoveAddArgs, planMoveAlerts, quoteSavedListings, quoteTypedSymbols, uniqueInputs, venueCounts,
+  watchlistListings, MAX_BULK_ALERTS, type MoveAddRequest, type MoveListing, type MovePlan,
+} from "./cli-move";
+import { MOVE_APP_ONLY, moveRuleWords } from "./move";
+import { MOVE_CHECKS_KEY, moveChecksOf, readMoveChecks, withMoveChecks, type MoveCheck } from "./move-checks";
+import { listAddLookups } from "../portfolio-list/cli/bulk-symbols";
 import type { AlertCondition, AlertRule } from "./types";
 
 /**
@@ -109,7 +119,12 @@ export type AlertAddRequest =
     kind: "price"; symbol: string; condition: AlertCondition; price: number;
     /** A price typed as 81.000, which the last price may show was 81000 with a dot between thousands. */
     thousandsDot?: ThousandsDotReadings & { text: string };
+    /** The price as typed, `70p` for a London line in pence (`price` is then in pounds). */
+    typed?: string;
+    pence?: true;
   }
+  /** A move from the previous close, on one symbol, several, or a watchlist's listings. */
+  | MoveAddRequest
   /** `results`: once the report's actual EPS is out, rather than `leadDays` before the date. */
   | { kind: "earnings"; symbol: string; leadDays: number; results?: true }
   | { kind: "macro"; event: MacroAlertEvent; leadDays: number }
@@ -129,6 +144,32 @@ export type AlertAddRequest =
 type ResearchAddRequest = Extract<AlertAddRequest, { kind: "news" | "flow" | "iv_level" | "iv_spike" }>;
 
 const CONDITIONS: readonly AlertCondition[] = ["above", "below", "crosses"];
+
+const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** The lines under a bulk move add: what was set already, what quoted nothing, what was dropped, each named. */
+function moveSummaryLines(
+  plan: Pick<MovePlan, "existing" | "sameListing" | "failed">,
+  moves: { repeats: number; leftOut: number },
+): string[] {
+  const names = (inputs: string[]) => inputs.length > 12 ? `${inputs.slice(0, 12).join(", ")} and ${inputs.length - 12} more` : inputs.join(", ");
+  // 7203.T beside `7203 JP` is the alert the command just made, not one set before: "Same listing as 7203:JPX in this command: 7203.T."
+  const same = new Map<string, string[]>();
+  for (const entry of plan.sameListing) {
+    const listing = alertListing(entry.alert);
+    same.set(listing, [...same.get(listing) ?? [], entry.input]);
+  }
+  return [
+    ...plan.existing.length ? [`  Already set (${plan.existing.length}): ${names(plan.existing.map((entry) => entry.input))}.`] : [],
+    ...[...same].slice(0, 12).map(([listing, inputs]) => `  Same listing as ${listing} in this command: ${names(inputs)}.`),
+    ...same.size > 12 ? [`  And ${same.size - 12} more listings typed twice.`] : [],
+    // Each with why, on its own line: `ZZZQQQ: Not a ticker: ZZZQQQ.`
+    ...plan.failed.length ? [`  Not added (${plan.failed.length}):`, ...plan.failed.slice(0, 12).map((entry) => `    ${entry.input}: ${entry.error.split("\n")[0]}`),
+      ...plan.failed.length > 12 ? [`    and ${plan.failed.length - 12} more: ${plan.failed.slice(12).map((entry) => entry.input).join(", ")}`] : []] : [],
+    ...moves.repeats ? [`  Repeats skipped: ${moves.repeats}.`] : [],
+    ...moves.leftOut ? [`  Left out: ${moves.leftOut}, past the ${MAX_BULK_ALERTS} one command adds.`] : [],
+  ];
+}
 
 /** The first word of a price typed with a space between thousands and no quotes (`81 000`): one to three digits. */
 const LEADING_GROUP = /^[+-]?\d{1,3}$/;
@@ -177,9 +218,11 @@ export function parseAlertAddArgs(
   exchange?: string | null,
   country?: string | null,
   benchmark?: string | null,
+  /** `--watchlist` names the listings, so the words are only the move. */
+  watchlist = false,
 ): AlertAddRequest {
   const [first, second, third, ...rest] = args;
-  if (!first) throw new Error(ADD_USAGE);
+  if (!first) throw new Error(watchlist ? `Name the move for the watchlist's listings: alerts add --watchlist <name> up 3%.` : ADD_USAGE);
   const countryFilter = readCountryOption(country);
   if (benchmark === null) throw new Error(`${BENCHMARK_RULE} such as alerts add XLE rrg leading --benchmark QQQ.`);
   const rrgFlag = benchmark !== undefined && second?.toLowerCase() === "rrg";
@@ -197,12 +240,19 @@ export function parseAlertAddArgs(
     if (days !== undefined || country !== undefined) throw new Error(`${isRelativeMetric(metric.metric) ? "Relative strength" : "Valuation and daily technical"} alerts take neither --days nor --country.`);
     return { kind: "metric", ...metric };
   }
-  const research = parseResearchAddArgs(args) ?? parseRuleAddArgs(args);
+  const research = watchlist ? null : parseResearchAddArgs(args) ?? parseRuleAddArgs(args);
   if (research) {
     if (days !== undefined) throw new Error("--days is for earnings and calendar event alerts, not this kind of alert.");
     if (country !== undefined) throw new Error(COUNTRY_RULE);
     return research;
   }
+  // `moves 0.5%`, `up 3%`, `down 3%`, on one symbol, several or a watchlist; `below -3%` is down 3%.
+  const move = parseMoveAddArgs(args, watchlist);
+  if (move) {
+    if (days !== undefined || country !== undefined) throw new Error("A move alert takes neither --days nor --country.");
+    return move;
+  }
+  if (watchlist) throw new Error(`A watchlist takes a move from the previous close: alerts add --watchlist <name> up 3%, down 3% or moves 2%.`);
   const leadDays = () => {
     const parsed = days === null ? null : parseLeadDays(days);
     if (parsed == null) throw new Error(DAYS_RULE);
@@ -226,7 +276,7 @@ export function parseAlertAddArgs(
   const condition = second.toLowerCase() as AlertCondition;
   if (!CONDITIONS.includes(condition)) {
     // Words with no price after them name a release (CN PMI, Industrial Profits); a price ends a mistyped price alert.
-    if (parseAlertPrice(args.at(-1)!).kind === "invalid") return releaseRequest(args, countryFilter, leadDays());
+    if (parseAlertPrice(args.at(-1)!).kind === "invalid" && !isPenceLevel(args.at(-1)!)) return releaseRequest(args, countryFilter, leadDays());
     throw new Error(`Unknown alert "${second}". ${ALERT_KINDS_TEXT}`);
   }
   if (country !== undefined) throw new Error(COUNTRY_RULE);
@@ -240,10 +290,12 @@ export function parseAlertAddArgs(
     throw new Error(`${[third, ...rest].join(" ")} could be ${spaced.value} (thousands) or ${typed} and a stray ${rest.join(" ")}; type ${retype(spaced.value)} or ${retype(typed)}`);
   }
   // A price pasted from a sheet (1.350,5, 1,350.5, 1 350,5) reads as it is written; `1,350` could be either, so it asks.
-  const price = readAlertPrice(third);
+  // `70p` is pence, a London line's unit, kept in pounds as the line's quote is.
+  const { price, pence } = readAlertLevel(third);
   if (rest.length > 0) throw new Error(`A price alert takes one price, not "${rest.join(" ")}" after ${third}; type ${retype(price)}`);
-  const thousandsDot = thousandsDotReadings(third);
-  return { kind: "price", symbol: first, condition, price, ...(thousandsDot ? { thousandsDot: { ...thousandsDot, text: third.trim() } } : {}) };
+  const thousandsDot = pence ? null : thousandsDotReadings(third);
+  return { kind: "price", symbol: first, condition, price, typed: third.trim(), ...pence ? { pence } : {},
+    ...(thousandsDot ? { thousandsDot: { ...thousandsDot, text: third.trim() } } : {}) };
 }
 
 const OCC_CONTRACT = /^(?:O:)?[A-Z.]{1,6}\d{6}[CP]\d{8}$/i;
@@ -439,8 +491,11 @@ type AlertListRow = Record<string, unknown> & {
 
 function priceRow(alert: AlertRule): AlertListRow {
   return {
-    ...alert, kind: alert.metric?.kind ?? "price", rule: alert.metric ? metricDescription(alert) : undefined,
-    target: alert.exchange ? `${alert.symbol}:${alert.exchange}` : alert.symbol,
+    ...alert, kind: alert.metric?.kind ?? (alert.move ? "move" : "price"), rule: alert.metric ? metricDescription(alert) : undefined,
+    // A move's rule in the words it was added with: `up 3.00%`, `moves 0.50%`.
+    ...alert.move ? { rule: `${moveRuleWords(alert)} from the previous close`, appOnly: true } : {},
+    // The listing as it was kept: 7203:JPX, never 7203:JPX:JPX.
+    target: alertListing({ symbol: alert.symbol, exchange: alert.exchange }),
     // The listing it is checked on, in its currency, and its last reading in words with when it is from.
     listing: alertListing(alert), currency: alert.lastQuoteCurrency ?? null,
     lastReading: alertReadingText(alert), lastReadingAt: isoUtc(alertReadingAt(alert)) || null,
@@ -511,6 +566,11 @@ async function cloudRuleStates(rules: readonly EventAlertRule[], session: string
 }
 
 /** The Gloom Cloud session the app saved after sign-in, as `fn` and market commands read with; null signed out. */
+/** This device's readings of its move rules, as the app keeps them: never in the synced list. */
+function savedMoveChecks(config: Partial<Pick<ConfigContext, "persistence">>): Record<string, MoveCheck> {
+  return readMoveChecks(config.persistence?.pluginState?.get(ALERTS_PLUGIN_ID, resumeStateKey(MOVE_CHECKS_KEY))?.value);
+}
+
 function savedSession(config: Partial<Pick<ConfigContext, "persistence">>): string | null {
   const persistence = config.persistence;
   return apiClient.getSessionToken() ?? (persistence?.pluginState ? resolvePersistedCloudSessionToken({ persistence }) : null);
@@ -536,10 +596,12 @@ function textRow(row: AlertListRow): Record<string, unknown> {
   const price = row.kind === "price";
   return {
     id: row.id,
-    kind: price ? "Price" : alertKindLabel(row.kind),
+    // A move says in its row that only the running app hears of it, as ALRT's Measure does.
+    kind: price ? "Price" : row.kind === "move" ? measureLabel({ move: true }) : alertKindLabel(row.kind),
     target: row.target,
+    // A level at the instrument's precision, in the unit its quote shows: below 1.3375, below 70.00p.
     trigger: row.rule ?? (price
-      ? `${row.condition} ${row.targetPrice}`
+      ? `${row.condition} ${alertPriceText(row as unknown as AlertRule, Number(row.targetPrice))}`
       : typeof row.leadDays === "number"
         ? scheduledTriggerText({ leadDays: row.leadDays, trigger: row.when === "results" ? "results" : "date", prints: row.onRelease === true })
         : ""),
@@ -601,7 +663,8 @@ const weekday = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "
 function releaseWhen(event: EconEvent): string {
   const day = `on ${weekday.format(event.date)} ${dateKey(event.date)}`;
   if (isAllDayEvent(event)) return `${day}, all day`;
-  return event.timeNote ? day : `${day} ${event.date.toISOString().slice(11, 16)} UTC`;
+  // The print time in UTC, and on the reader's clock beside it when they set a zone.
+  return event.timeNote ? day : `${day} ${event.date.toISOString().slice(11, 16)} UTC${localTimeSuffix(event.date.getTime())}`;
 }
 
 /** The release an alert was added for, as `--json` gives it. */
@@ -706,10 +769,15 @@ export const alertsCliCommand: CliCommandDef = {
       { flags: "--days <n>", description: `Days before the event the alert goes off, 1 to ${MAX_LEAD_DAYS} (default 1); earnings and calendar event alerts` },
       { flags: "--country <code>", description: "The country of a calendar event, as econ --country takes it (CN, US, DE); a code before the name does the same (alerts add CN PMI)" },
       { flags: "--benchmark <symbol>", description: "The listing an RRG alert is measured against; SPY by default, as in RRG" },
+      { flags: "--watchlist <name>", description: `A move alert on each listing of the watchlist, up to ${MAX_BULK_ALERTS} (alerts add --watchlist Book up 3%)` },
     ],
     examples: [
       "alerts",
       "alerts add AAPL above 250",
+      "alerts add GBPUSD=X moves 0.5%",
+      "alerts add HSBA.L BARC.L down 3%",
+      "alerts add --watchlist Book up 3%",
+      "alerts add VOD.L below 70p",
       "alerts add AAPL pe below 25",
       "alerts add AAPL ps above 8",
       'alerts add NVDA "rsi(14)" under 30',
@@ -753,19 +821,50 @@ export const alertsCliCommand: CliCommandDef = {
     const benchmarkFlag = rawArgs.some((arg) => arg === "--benchmark" || arg.startsWith("--benchmark="));
     const benchmarkValue = takeOption(args, "--benchmark");
     const benchmark = benchmarkFlag && benchmarkValue === undefined ? null : benchmarkValue;
+    const watchlistFlag = rawArgs.some((arg) => arg === "--watchlist" || arg.startsWith("--watchlist="));
+    const watchlistName = takeOption(args, "--watchlist");
+    if (watchlistFlag && !watchlistName?.trim()) ctx.fail("--watchlist takes a watchlist's name: alerts add --watchlist Book up 3%.");
     const action = args[0] ?? "list";
+    if (watchlistFlag && action !== "add") ctx.fail("--watchlist is for alerts add: alerts add --watchlist Book up 3%.");
     const now = Date.now();
     const today = newYorkToday(new Date(now));
     const failWith = (error: unknown): never => ctx.fail(error instanceof Error ? error.message : String(error));
 
     const parseAdd = (): AlertAddRequest => {
       try {
-        return parseAlertAddArgs(args.slice(1), days, exchangeOption, country, benchmark);
+        return parseAlertAddArgs(args.slice(1), days, exchangeOption, country, benchmark, watchlistFlag);
       } catch (error) {
         return failWith(error);
       }
     };
     const typedRequest = action === "add" ? parseAdd() : null;
+    // A move's listings, each read as `quote` reads it, or a watchlist's as it keeps them, with what was dropped.
+    let moves: { listings: MoveListing[]; repeats: number; leftOut: number; watchlist?: string } | null = null;
+    if (typedRequest?.kind === "move") {
+      const move = typedRequest;
+      if (watchlistName && exchangeOption) ctx.fail("--exchange names a symbol's venue; a watchlist's listings keep their own.");
+      moves = await withMarketData(ctx, async (opened) => {
+        // Signed out, a list's quotes wait for room in the service's allowance rather than being refused.
+        const market = { ...opened, dataProvider: await listAddLookups(opened.dataProvider) as typeof opened.dataProvider };
+        if (watchlistName) {
+          const list = await watchlistListings(market, watchlistName, ctx.fail);
+          if (list.listings.length === 0) ctx.fail(`Watchlist "${list.name}" has no listings. Add some with gloom watchlist add ${list.name} <symbols>.`);
+          const unique = uniqueInputs(list.listings);
+          return { listings: await quoteSavedListings(market, unique.inputs), repeats: 0, leftOut: unique.leftOut, watchlist: list.name };
+        }
+        const unique = uniqueInputs(move.symbols.map((input) => ({ input })));
+        // One symbol, however often it was typed (`ZZZQQQ zzzqqq`), fails the command with why, as a price alert's does;
+        // of several, each that fails is named in the summary.
+        if (unique.inputs.length === 1) {
+          const input = unique.inputs[0]!.input;
+          const quoted = await requireQuotedListing(input, exchangeOption, market, ctx, "alerts add");
+          const exchange = quoted.listing.exchange || canonicalExchange(quoted.quote.listingExchangeName || quoted.quote.exchangeName);
+          return { listings: [{ input, listing: { symbol: quoted.listing.key, ...exchange ? { exchange } : {} }, quote: quoted.quote, notes: quoted.notes }], repeats: unique.repeats, leftOut: 0 };
+        }
+        const listings = await quoteTypedSymbols(unique.inputs.map((entry) => entry.input), (symbol) => requireQuotedListing(symbol, exchangeOption, market, PROBE, "alerts add"));
+        return { listings, repeats: unique.repeats, leftOut: unique.leftOut };
+      });
+    }
     // XLK/SPY is first a listing written with a slash (BRK/B, EUR/USD); one that quotes nothing is the ratio of the two.
     const pairListing = typedRequest?.kind === "price" && PAIR_SHAPE.test(typedRequest.symbol)
       ? await withMarketData(ctx, (market) => requireQuotedListing(typedRequest.symbol, exchangeOption, market, PROBE, "alerts add")).catch((error: unknown) => {
@@ -848,6 +947,17 @@ export const alertsCliCommand: CliCommandDef = {
       if (priced.quote.currency) reading.lastQuoteCurrency = priced.quote.currency;
       priced.listing.exchange = exchange;
     }
+    // A London line's level is in the pence its quote shows: `70p`, or 70 where 70 in pounds is far off its price.
+    let penceNote: string | null = null;
+    if (request?.kind === "price" && priced) {
+      try {
+        const level = levelInQuoteUnit(request, priced.quote, priced.listing.key);
+        request.price = level.price;
+        penceNote = level.note;
+      } catch (error) {
+        failWith(error);
+      }
+    }
     if (request?.kind === "price" && priced && !isQuoteStaleForCurrentSession(priced.quote)) {
       // The price it is added at is its first reading and the baseline a crossing is measured from, as Add Alert keeps it.
       const price = lastPrice(priced.quote);
@@ -860,11 +970,11 @@ export const alertsCliCommand: CliCommandDef = {
     if (request?.kind === "price" && priced) {
       // A target ten times away is a slip or another instrument's price, such as bitcoin's on the BTC fund.
       // Against the price the alert is checked on, as Add Alert measures it.
-      const far = farTargetMessage(priced.listing.key, request.price, priced.quote.price, coinNote);
+      const far = farTargetMessage(priced.listing.key, request.price, priced.quote.price, coinNote, isPenceQuotedLine(priced.quote));
       if (far) ctx.fail(far);
     }
     // What a typed listing was read as (7203:TSE as 7203:JPX, MXN as MXN:FWB2), said beside what was added.
-    let read = [...priced?.notes ?? [], ...coinNote ? [coinNote] : [], ...benchmarkNotes];
+    let read = [...priced?.notes ?? [], ...coinNote ? [coinNote] : [], ...benchmarkNotes, ...penceNote ? [penceNote] : []];
     let newEventRule: EventAlertRule | null = null;
     let newResearchRule: EventAlertRule | null = null;
     if (research) {
@@ -912,6 +1022,9 @@ export const alertsCliCommand: CliCommandDef = {
         const target: ScheduledEventTarget = { kind: "release", event: choice.name, country: choice.country, ...(choice.publisher ? { publisher: choice.publisher } : {}) };
         try {
           newEventRule = createScheduledAlert(target, request.leadDays, choice.next ? dateKey(choice.next.date) : null);
+          // Its print time, which the Events tab and `fn ALRT` show beside the day.
+          const at = choice.next ? releaseInstant(choice.next) : null;
+          if (at != null) newEventRule.eventTime = new Date(at).toISOString().replace(/\.000Z$/, "Z");
         } catch (error) {
           ctx.fail(error instanceof Error ? error.message : String(error));
         }
@@ -951,12 +1064,16 @@ export const alertsCliCommand: CliCommandDef = {
     }
 
     if (action === "list") {
-      // An IV level's last reading is this device's, beside the rules.
-      const { alerts, alertsError, events, checks, session } = await withConfigData(ctx, (config) => ({
-        ...readAlertStores(config.config),
-        checks: readIvLevelChecks(config.persistence?.pluginState?.get(ALERTS_PLUGIN_ID, resumeStateKey(IV_LEVEL_CHECKS_KEY))?.value),
-        session: savedSession(config),
-      }));
+      // An IV level's last reading is this device's, beside the rules, as are a move rule's and whether it went off this session.
+      const { alerts, alertsError, events, checks, session } = await withConfigData(ctx, (config) => {
+        const stores = readAlertStores(config.config);
+        return {
+          ...stores,
+          alerts: withMoveChecks(stores.alerts, savedMoveChecks(config)),
+          checks: readIvLevelChecks(config.persistence?.pluginState?.get(ALERTS_PLUGIN_ID, resumeStateKey(IV_LEVEL_CHECKS_KEY))?.value),
+          session: savedSession(config),
+        };
+      });
       // Earnings dates come through market data; CPI, FOMC and calendar dates do not need it.
       const lookup = (targets: ScheduledEventTarget[]) => targets.some((target) => target.kind === "earnings")
         ? withMarketData(ctx, (market) => lookupScheduledDates(targets, scheduledEventSources(market.dataProvider), today, now))
@@ -968,7 +1085,7 @@ export const alertsCliCommand: CliCommandDef = {
       ];
       const waiting = rows.filter((row) => row.status === NEEDS_SIGN_IN).length;
       const allWarnings = [...(alertsError ? [alertsError] : []), ...(events.error ? [events.error] : []), ...warnings, ...cloud.warning ? [cloud.warning] : [],
-        ...waiting ? [needsSignInNote(waiting)] : []];
+        ...waiting ? [needsSignInNote(waiting)] : [], ...alerts.some((alert) => alert.move) ? [MOVE_APP_ONLY] : []];
       ctx.printResult({ data: rows, ...(allWarnings.length ? { warnings: allWarnings } : {}) }, {
         rows: (data) => data.map(textRow),
         textColumns: [
@@ -990,7 +1107,20 @@ export const alertsCliCommand: CliCommandDef = {
     }
 
     await withConfigData(ctx, async (config) => {
-      const { pluginState, alerts, alertsError, levelErrors, events } = readAlertStores(config.config);
+      const stores = readAlertStores(config.config);
+      const { pluginState, alertsError, levelErrors, events } = stores;
+      // Move rules as this device reads them; saving writes the rules alone (`writeLevelAlertStores`).
+      const alerts = withMoveChecks(stores.alerts, savedMoveChecks(config));
+      // A move rule's readings are this device's, kept beside its alert log; a dry run keeps nothing.
+      const keepMoveChecks = (update: (checks: Record<string, MoveCheck>) => Record<string, MoveCheck>) => {
+        const state = config.persistence?.pluginState;
+        if (ctx.cliOptions.dryRun || !state) return;
+        try {
+          state.set(ALERTS_PLUGIN_ID, resumeStateKey(MOVE_CHECKS_KEY), update(savedMoveChecks(config)));
+        } catch (error) {
+          logFailure("alerts.cli", "Keep move alert readings failed")(error);
+        }
+      };
       const save = async (next: { alerts?: AlertRule[]; events?: EventAlertRule[] }) => {
         if (next.alerts) for (const [key, value] of Object.entries(writeLevelAlertStores(next.alerts))) {
           if (levelErrors[key] && value !== "[]") ctx.fail(levelErrors[key]!);
@@ -1015,23 +1145,71 @@ export const alertsCliCommand: CliCommandDef = {
         return events.rules;
       };
       // Each rule created, re-armed or deleted here goes in this device's alert log, beside the alerts that fired.
-      const record = (action: AlertLogAction, rule: AlertRule | EventAlertRule) => {
+      const record = (action: AlertLogAction, rule: AlertRule | EventAlertRule | Parameters<typeof alertChangeEntry>[1]) => {
         const state = config.persistence?.pluginState;
         if (ctx.cliOptions.dryRun || !state) return;
         try {
           appendAlertLog({
             get: (key) => state.get(ALERTS_PLUGIN_ID, resumeStateKey(key))?.value,
             set: (key, value) => state.set(ALERTS_PLUGIN_ID, resumeStateKey(key), value),
-          }, [alertChangeEntry(action, alertLogRule(rule), Date.now())]);
+          }, [alertChangeEntry(action, "ruleId" in rule ? rule : alertLogRule(rule), Date.now())]);
         } catch (error) {
           logFailure("alerts.cli", "Record alert change failed")(error);
         }
       };
 
+      if (request?.kind === "move" && moves) {
+        const plan = planMoveAlerts(request, moves.listings, alerts, now);
+        const single = moves.listings.length === 1 && !moves.watchlist;
+        const rule = moveRuleWords({ condition: request.condition, targetPrice: request.percent });
+        if (single && plan.existing[0]) {
+          const existing = plan.existing[0].alert;
+          const rearm = existing.status === "triggered" ? "; it went off this session and arms again in the next" : "";
+          ctx.fail(`${formatAlertDescription(existing)} already exists as alert ${existing.id}${rearm}. Nothing was added.`);
+        }
+        // One symbol that made no alert fails with why, never prints an alert it did not make.
+        if (single && plan.added.length === 0) ctx.fail(plan.failed[0]?.error ?? "No move alert was added.");
+        if (plan.added.length === 0 && !single) {
+          ctx.fail(`No move alert was added: ${[plan.existing.length ? `${plan.existing.length} already set` : "", plan.failed.length ? `${plan.failed.length} not quoted` : ""].filter(Boolean).join(", ")}.`,
+            moveSummaryLines(plan, moves).join("\n") || undefined);
+        }
+        await save({ alerts: [...alerts, ...plan.added] });
+        // The reading each was added on is its first, on this device, until the app's next check.
+        keepMoveChecks((checks) => ({ ...checks, ...moveChecksOf(plan.added) }));
+        // One entry for the add, however many alerts it made: "109 move alerts up 3.00% on Book's listings: 1605:JPX, … and 106 more".
+        if (plan.added.length === 1) record("created", plan.added[0]!);
+        else if (plan.added.length > 1) record("created", bulkMoveLogRule(plan.added, moves.watchlist));
+        const notes = [...request.readAs ? [request.readAs] : [], ...moves.listings.flatMap((entry) => entry.notes ?? [])];
+        if (single) {
+          const alert = plan.added[0]!;
+          const nowText = moveNowText(alert, now);
+          ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert }, ...(notes.length ? { warnings: notes } : {}) }, {
+            text: (data) => `Added alert ${data.alert.id}: ${formatAlertDescription(data.alert)} (${MOVE_REARM}).${nowText ? ` ${capitalize(nowText)}.` : ""}${dryRunNote(data.dryRun)}\n${MOVE_APP_ONLY}`,
+          });
+          return;
+        }
+        const source = moves.watchlist ? `on ${moves.watchlist}'s listings` : "";
+        ctx.printResult({
+          data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, added: plan.added,
+            existing: plan.existing.map((entry) => ({ input: entry.input, id: entry.alert.id })), failed: plan.failed,
+            repeats: moves.repeats, leftOut: moves.leftOut },
+          ...(notes.length ? { warnings: notes } : {}),
+        }, {
+          text: (data) => [
+            `Added ${data.added.length} move ${data.added.length === 1 ? "alert" : "alerts"}${source ? ` ${source}` : ""}: ${rule} from the previous close (${MOVE_REARM}).${dryRunNote(data.dryRun)}`,
+            ...data.added.length ? [`  ${MOVE_APP_ONLY}`] : [],
+            ...data.added.length ? [`  By venue: ${venueCounts(data.added)}.`] : [],
+            ...moveSummaryLines(plan, moves),
+          ].join("\n"),
+        });
+        return;
+      }
       if (request?.kind === "price" || request?.kind === "metric") {
-        const { condition, price } = request;
+        const { condition } = request;
         const symbol = requireArg(priceListing?.key, ADD_USAGE, ctx);
-        const alert: AlertRule = { ...createAlert(symbol, condition, price, priceListing?.exchange), ...(request.kind === "metric" ? { metric: request.metric } : {}), ...reading };
+        const alert: AlertRule = { ...createAlert(symbol, condition, request.price, priceListing?.exchange), ...(request.kind === "metric" ? { metric: request.metric } : {}),
+          // A London line's level is shown in pence from the first, before any check has read its quote.
+          ...request.kind === "price" && priced && isPenceQuotedLine(priced.quote) ? { lastQuotePence: true } : {}, ...reading };
         // The same rule on the same listing is one alert: a second add names it and adds nothing.
         const existing = alerts.find((entry) => sameLevelRule(entry, alert));
         if (existing) {
@@ -1052,7 +1230,9 @@ export const alertsCliCommand: CliCommandDef = {
           ...firstCheck ? { firstCheck: { close: firstCheck.day, at: isoUtc(firstCheck.at) } } : {},
           ...unread ? { unread } : {} }, ...(read.length > 0 ? { warnings: read } : {}) }, {
           // The delivery, as docs/usage.md states it, before any full stop, which after the price would read as part of it (below 81.).
-          text: (data) => `Added alert ${data.alert.id}: ${data.alert.metric ? metricDescription(data.alert) : `${symbol} ${condition} ${price}`} (${PRICE_DELIVERY}).${notes ? ` ${notes}` : ""}${dryRunNote(data.dryRun)}`,
+          // The listing with its venue, the level at its precision and in its unit: `VOD:LSE below 70.00p`, `GBPUSD=X below 1.33750`.
+          text: (data) => `Added alert ${data.alert.id}: ${data.alert.metric ? metricDescription(data.alert)
+            : `${alertListing(data.alert)} ${condition} ${alertPriceText(data.alert, data.alert.targetPrice)}`} (${PRICE_DELIVERY}).${notes ? ` ${notes}` : ""}${dryRunNote(data.dryRun)}`,
         });
         return;
       }
@@ -1135,7 +1315,9 @@ export const alertsCliCommand: CliCommandDef = {
         if (!level && !rule && alertsError) ctx.fail(alertsError);
         // An alert still waiting to go off has nothing to re-arm, and is left as it is.
         const active = level ? level.status === "active" : rule ? eventRuleArmed(rule, now) : false;
-        if (level && !active) await save({ alerts: alerts.map((alert) => alert.id === id ? rearmAlert(alert) : alert) });
+        // A move rule that went off this session is armed again on this device, where it went off: its reading goes, the rule stays.
+        if (level?.move && !active) keepMoveChecks((checks) => Object.fromEntries(Object.entries(checks).filter(([key]) => key !== id)));
+        else if (level && !active) await save({ alerts: alerts.map((alert) => alert.id === id ? rearmAlert(alert) : alert) });
         if (rule && !active) {
           // A scheduled alert alerts again for its coming event; any other event alert resumes.
           const next = readScheduledRule(rule) ? rearmScheduledAlert(rule)
