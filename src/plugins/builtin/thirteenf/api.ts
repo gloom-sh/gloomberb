@@ -128,7 +128,7 @@ export function retryAfterSeconds(error: unknown): number | null {
  * wait and that signing in lifts it ("Anonymous 13F rate limit exceeded"
  * said neither); the limit itself is the service's.
  */
-export function thirteenFReadError(error: unknown): unknown {
+function thirteenFReadError(error: unknown): unknown {
   if (!isRateLimited(error)) return error;
   const seconds = retryAfterSeconds(error);
   return new ApiRequestError(
