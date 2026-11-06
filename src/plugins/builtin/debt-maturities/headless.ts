@@ -1,12 +1,83 @@
+import type { DebtMaturitiesPayload } from "../../../api-client/debt-maturities";
+import type { HeadlessBundleSection } from "../../../types/headless";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchDebtMaturities } from "./client";
-import { bucketShare, debtAmount, debtCostProxyNote, debtHistoryRows, debtNewestAsOf, debtNewestForm, debtNotices, debtPercent, newerQuarter } from "./model";
+import {
+  bandScaleText, bandTotal, bucketShare, debtAmount, debtBands, debtBasis, debtCostProxyNote, debtHistoryRows, debtNewestAsOf,
+  debtNewestForm, debtNotices, debtPercent, debtStandard, maturityRows, newerQuarter, type DebtLatest,
+} from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 
 /** Amounts and shares as the pane prints them (952.00M, 12.5%); exports keep the whole number. */
 const amount = (value: unknown) => debtAmount(typeof value === "number" ? value : null);
 const percent = (value: unknown) => debtPercent(typeof value === "number" ? value : null);
+
+/**
+ * A schedule in its filing's own bands, as the pane shows it: each band as
+ * reported with its share of their total, then the filing (standard, what the
+ * amounts are, how the report states them, the report's link). Exports name
+ * the basis on every row, so the amount column reads the same for every
+ * company; the text report heads it with the basis.
+ */
+function bandSections(data: DebtMaturitiesPayload, latest: DebtLatest): HeadlessBundleSection[] {
+  const basis = debtBasis(latest);
+  const standard = debtStandard(latest.taxonomy);
+  const columns = [
+    { key: "label", header: "Maturity" },
+    { key: "value", header: "Amount", align: "right" as const, textFormat: amount },
+    { key: "currency", header: "Currency" },
+    { key: "share", header: "% total", align: "right" as const, textFormat: percent },
+    { key: "asOf", header: "As of" },
+    { key: "filed", header: "Filed" },
+  ];
+  const source = latest.source;
+  const check = source?.reconciledTo;
+  const filing: Array<[string, string | null | undefined]> = [
+    ["Standard", standard],
+    ["Basis", basis.detail ? `${basis.words} (${basis.detail})` : basis.words],
+    [basis.total, `${debtAmount(bandTotal(debtBands(latest)!))} ${latest.currency}`],
+    ["Reported in", source ? bandScaleText(latest.currency, source.scale, source.scaleStated) : latest.currency],
+    ["Form", latest.form],
+    ["Accession", latest.accession],
+    ["Table", source?.concept],
+    ["Checked against", check ? `${check.concept} (${check.ratio.toFixed(2)}x)` : null],
+    ["Lease liabilities", latest.includesLeases ? "Included" : null],
+    ["Report", latest.filingUrl],
+  ];
+  return [
+    {
+      title: "Maturity schedule as reported",
+      textTitle: `Maturity schedule as reported (${[basis.words, standard].filter(Boolean).join(", ")})`,
+      columns: [
+        ...columns.slice(0, 2),
+        { key: "basis", header: "Basis" },
+        { key: "fromMonths", header: "From month" },
+        { key: "toMonths", header: "To month" },
+        ...columns.slice(2),
+        { key: "readFrom", header: "Read from" },
+      ],
+      textColumns: [columns[0]!, { ...columns[1]!, header: basis.amount }, ...columns.slice(2)],
+      rows: maturityRows(latest).map((row) => ({
+        label: row.label,
+        value: row.value,
+        basis: latest.amountBasis ?? "principal",
+        fromMonths: row.band!.fromMonths,
+        toMonths: row.band!.toMonths,
+        currency: latest.currency,
+        share: row.share,
+        asOf: latest.asOf,
+        filed: latest.filed,
+        readFrom: row.band!.members.join(" + "),
+      })),
+    },
+    {
+      title: "Filing",
+      columns: [{ key: "field", header: "Field" }, { key: "value", header: "Value" }],
+      rows: filing.flatMap(([field, value]) => (value ? [{ field, value }] : [])),
+    },
+  ];
+}
 
 export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
@@ -45,6 +116,17 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
   async load(args, ctx) {
     const symbol = args.symbols[0]!;
     const data = await fetchDebtMaturities(symbol, ctx.apiClient, await resolveHeadlessIssuerListing(ctx, symbol));
+    const latest = data.latest;
+    if (latest && debtBands(latest)) {
+      return {
+        complete: data.status === "available",
+        errors: debtNotices(data),
+        sections: bandSections(data, latest),
+        metadata: { ...data },
+        // Dated by the report's balance sheet, named by its form; a report outside SEC is cited as the server names it.
+        freshness: { asOf: latest.asOf, asOfLabel: latest.form, ...(data.cik ? {} : { source: data.source.name }) },
+      };
+    }
     const quarter = newerQuarter(data);
     const costNote = debtCostProxyNote(data.history);
     return {

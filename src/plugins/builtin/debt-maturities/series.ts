@@ -2,6 +2,7 @@ import type { DebtHistoryPoint } from "../../../api-client/debt-maturities";
 import type { SeriesDefinition } from "../../../series/types";
 import { cachedSeriesNote } from "../shared/series-warning";
 import { loadDebtMaturities } from "./client";
+import { debtBands } from "./model";
 
 type HistoryField = "totalPrincipal" | "next12MonthsShare" | "next3YearsShare";
 
@@ -32,7 +33,8 @@ export const DEBT_MATURITY_SERIES: readonly SeriesDefinition[] = FIELDS.map(({ i
   style: "step",
   load: async ({ ticker }) => {
     const resource = await loadDebtMaturities(ticker!);
-    if (!resource.payload.history.length) throw new Error(`No maturity schedule reported for ${ticker}.`);
+    // A schedule in its filing's own bands has no principal by year to chart.
+    if (!resource.payload.history.length || debtBands(resource.payload.latest)) throw new Error(`No maturity schedule reported for ${ticker}.`);
     // An amount stays in the unit it is listed in: a filing in another currency is a gap, not a converted figure.
     const listed = (point: DebtHistoryPoint) => unit !== "USD" || point.currency === "USD";
     const other = resource.payload.history.find((point) => !listed(point))?.currency;

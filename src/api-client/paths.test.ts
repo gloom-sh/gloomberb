@@ -44,7 +44,7 @@ test("issuer reads of a listing outside the US send its bare symbol with its ven
   expect(cloudProxyStatementsPath("SAN", sanofi)).toBe("/cloud/proxies/SAN?exchange=EPA&name=Sanofi");
   expect(cloudProxyStatementPath("SAN", 2026, sanofi)).toBe("/cloud/proxies/SAN/2026?exchange=EPA&name=Sanofi");
   expect(cloudFilingEventsPath("SAN", 50, sanofi)).toBe("/cloud/events/SAN?exchange=EPA&name=Sanofi&limit=50");
-  expect(cloudDebtMaturitiesPath("SAN", sanofi)).toBe("/cloud/debt-maturities?symbol=SAN&exchange=EPA&name=Sanofi");
+  expect(cloudDebtMaturitiesPath("SAN", sanofi)).toBe("/cloud/debt-maturities?symbol=SAN&exchange=EPA&name=Sanofi&version=2");
   expect(cloudRevenueBreakdownPath("SAN", undefined, sanofi)).toBe("/cloud/revenue-breakdown?symbol=SAN&exchange=EPA&name=Sanofi");
   expect(cloudSecBeneficialOwnersPath({ ticker: "SAN", ...sanofi })).toBe("/cloud/sec/beneficial-owners?ticker=SAN&exchange=EPA&name=Sanofi");
 
@@ -58,7 +58,7 @@ test("issuer reads of a listing outside the US send its bare symbol with its ven
   // Without a name only the venue goes; the server then reads the name of a quote it holds.
   expect(cloudRiskReportsPath("SAN:EPA")).toBe("/cloud/risks/SAN?exchange=EPA");
   expect(cloudFilingEventsPath("AI", 50, { exchange: "XPAR", name: "  " })).toBe("/cloud/events/AI?exchange=EPA&limit=50");
-  expect(cloudDebtMaturitiesPath("SAN", { exchange: "EPA" })).toBe("/cloud/debt-maturities?symbol=SAN&exchange=EPA");
+  expect(cloudDebtMaturitiesPath("SAN", { exchange: "EPA" })).toBe("/cloud/debt-maturities?symbol=SAN&exchange=EPA&version=2");
   expect(cloudSecBeneficialOwnersPath({ ticker: "7203:JPX" })).toBe("/cloud/sec/beneficial-owners?ticker=7203&exchange=JPX");
 
   // A name is a query value: spaces, dots, apostrophes and ampersands survive the trip.
@@ -72,13 +72,13 @@ test("issuer reads of a listing outside the US send its bare symbol with its ven
     .toBe("/cloud/risks/AI?exchange=EPA&name=L%27Air+Liquide+S.A.");
 });
 
-test("debt maturities and the revenue breakdown keep a US request exactly as it was", () => {
+test("debt maturities and the revenue breakdown send a US symbol exactly as it was, with no venue", () => {
   for (const [symbol, exchange, encoded] of [
     ["AAPL", undefined, "AAPL"], ["AAPL", "NASDAQ", "AAPL"], ["AAPL:XNAS", undefined, "AAPL%3AXNAS"],
     ["SAN", "NYSE", "SAN"], ["BRK.B", "SMART", "BRK.B"],
   ]) {
     const listing = { exchange, name: "Ignored Inc." };
-    expect(cloudDebtMaturitiesPath(symbol!, listing)).toBe(`/cloud/debt-maturities?symbol=${encoded}`);
+    expect(cloudDebtMaturitiesPath(symbol!, listing)).toBe(`/cloud/debt-maturities?symbol=${encoded}&version=2`);
     expect(cloudRevenueBreakdownPath(symbol!, "product", listing)).toBe(`/cloud/revenue-breakdown?symbol=${encoded}&view=product`);
     expect(cloudRevenueBreakdownPath(symbol!)).toBe(`/cloud/revenue-breakdown?symbol=${encoded}`);
   }
