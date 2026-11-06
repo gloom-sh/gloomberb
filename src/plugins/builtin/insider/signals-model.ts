@@ -13,6 +13,7 @@ import { formatShortDate } from "../../../utils/datetime-format";
 import { displayWidth, formatCompact } from "../../../utils/format";
 import type { SortComparableValue } from "../../../utils/sort-values";
 import { formatInsiderName } from "./display";
+import { MARKET_CAP_BAND_OPTIONS } from "../shared/market-cap-bands";
 import { DEFAULT_INSIDER_SIGNAL_WINDOW, DEFAULT_INSIDER_SIGNALS_QUERY, INSIDER_SIGNAL_WINDOWS, type InsiderSignalsQuery } from "./signals-client";
 
 export type InsiderSignalColumnId =
@@ -56,13 +57,7 @@ export const INSIDER_SIGNAL_MIN_OPTIONS: SelectButtonOption[] = [
   { value: "10000000", label: "$10M+" },
 ];
 
-export const INSIDER_SIGNAL_CAP_OPTIONS: SelectButtonOption<InsiderSignalCap | "all">[] = [
-  { value: "all", label: "All" },
-  { value: "micro", label: "Micro", description: "Under $300M" },
-  { value: "small", label: "Small", description: "$300M to $2B" },
-  { value: "mid", label: "Mid", description: "$2B to $10B" },
-  { value: "large", label: "Large", description: "Over $10B" },
-];
+export const INSIDER_SIGNAL_CAP_OPTIONS: SelectButtonOption<InsiderSignalCap | "all">[] = MARKET_CAP_BAND_OPTIONS;
 
 /** The words a side changes: the column headers, the position filter, the empty and coverage lines. */
 export interface InsiderSideWords {

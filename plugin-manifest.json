@@ -111,7 +111,7 @@
           {
             "code": "BUZZ",
             "name": "Social Mentions",
-            "description": "Daily posts on X naming the ticker's cashtag, the day's top posts and their stance."
+            "description": "Daily posts on X naming the ticker's cashtag, the day's top posts and their stance; alone, the tickers whose posts jump most against their own median."
           }
         ]
       },
