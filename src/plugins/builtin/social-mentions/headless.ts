@@ -61,7 +61,7 @@ export const socialMentionsHeadless: HeadlessPaneDefinition<"bundle"> = {
       // The ranking's query as the pane reads it from the same state.
       const query = socialOutliersQueryFrom(args.options);
       const data = (await loadSocialOutliers(query, { limit: Number(args.options.limit) || SOCIAL_OUTLIER_PANE_ROWS,
-        force: ctx.refresh === true, client: ctx.apiClient, signal: ctx.signal })
+        force: ctx.refresh === true, client: ctx.apiClient, names: ctx.marketData, signal: ctx.signal })
         .catch(async (error: unknown) => { throw await explainRefusal(error, socialMentionsLockNote, { symbol: null, context: ctx }); })).payload;
       const today = data.window === "today";
       return { complete: true,
