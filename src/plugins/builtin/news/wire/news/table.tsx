@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, type ReactNode, type RefObject } from "react";
-import { TextAttributes, type ScrollBoxRenderable } from "../../../../../ui";
+import type { ScrollBoxRenderable } from "../../../../../ui";
 import {
   DataTableStackView,
   TickerBadgeList,
@@ -14,12 +14,12 @@ import type { MarketNewsItem } from "../../../../../types/news-source";
 import { colors } from "../../../../../theme/colors";
 import { collectNewsDisplayTickers } from "../../../../../news/ticker-symbols";
 import { useLoadNewsStory } from "../../../../../news/hooks";
-import { formatFeedTime } from "../../../../../utils/datetime-format";
 import { logFailure } from "../../../../../utils/log-failure";
 import { nextHeaderSort } from "../../../../../utils/sort-values";
 import { formatNewsCategoryForColumn } from "../categories";
 import { useOpenTickerChoice } from "../../../shared/ticker-choice";
 import { usePinnedMoment } from "../../../../../components/use-pinned-moment";
+import { MIN_HEADLINE_WIDTH, NEWS_SOURCE_WIDTH, NEWS_TIME_WIDTH, newsHeadlineCell, newsSourceCell, newsTimeCell } from "./row";
 
 export type NewsColumnId =
   | "rank"
@@ -114,10 +114,8 @@ function sortNewsArticles(
 
 const FIXED_COLUMN_WIDTHS: Record<Exclude<NewsColumnId, "title">, number> = {
   rank: 4,
-  // "Mon 09:10", or "Sep 18, 25" for a story from another year.
-  time: 10,
-  // Publishers and X handles: "GlobeNewswire", "@unusual_whales".
-  source: 15,
+  time: NEWS_TIME_WIDTH,
+  source: NEWS_SOURCE_WIDTH,
   tickers: 18,
   categories: 10,
   sentiment: 4,
@@ -146,9 +144,6 @@ const SPELLED_SENTIMENT_MIN_HEADLINE_WIDTH = 60;
 
 const columnAlign = (id: NewsColumnId): "left" | "right" =>
   id === "rank" || id === "importance" ? "right" : "left";
-
-/** Below this the headline takes room back from the other columns. */
-const MIN_HEADLINE_WIDTH = 40;
 
 /**
  * What a narrowing pane gives up, in order, to keep the headline readable: a
@@ -330,19 +325,13 @@ export function NewsArticleStackView({
       case "rank":
         return { text: String(index + 1), color: tone(colors.textDim) };
       case "time":
-        return { text: formatFeedTime(item.publishedAt), value: item.publishedAt, color: tone(colors.textDim) };
+        return { ...newsTimeCell(item, { later }), value: item.publishedAt };
       case "source":
-        return { text: item.source, color: colors.textMuted };
+        return newsSourceCell(item);
       case "title":
-        return {
-          // Unclipped: the table fits it to the width the column really gets,
-          // which on desktop is wider than the width it was laid out at.
-          text: titleForArticle?.(item) ?? item.title,
-          color: tone(colors.text),
-          attributes: later || readArticleIds?.has(item.id)
-            ? TextAttributes.NONE
-            : TextAttributes.BOLD,
-        };
+        // Unclipped: the table fits it to the width the column really gets,
+        // which on desktop is wider than the width it was laid out at.
+        return newsHeadlineCell(item, { later, read: readArticleIds?.has(item.id), title: titleForArticle?.(item) });
       case "tickers": {
         const tickers = fitTickerSymbols(collectNewsDisplayTickers(item.tickers), column.width);
         return {

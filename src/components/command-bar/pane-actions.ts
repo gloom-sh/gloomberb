@@ -14,7 +14,7 @@ import {
 } from "../../layout/pane-manager";
 import { resolveTickerRetargetPane, retargetTickerPane } from "../../layout/ticker-retarget";
 import type { PluginRegistry } from "../../plugins/registry";
-import type { PinTickerOptions } from "../../types/plugin";
+import type { PaneDef, PinTickerOptions } from "../../types/plugin";
 import { instrumentFromTicker } from "../../market-data/request-types";
 import { resolveTickerForPane, type AppAction, type AppState } from "../../state/app/context";
 import { recordFunctionOpen } from "../../telemetry/usage-counts";
@@ -34,6 +34,26 @@ export function showCollectionInPortfolioPane(
     ?? null;
   if (!targetPaneId) return;
   dispatch({ type: "UPDATE_PANE_STATE", paneId: targetPaneId, patch: { collectionId } });
+}
+
+/**
+ * The pane a ticker's Enter changes in place, or null when Enter opens a pane
+ * instead (or goes to one already open on the ticker). DES and the bar's
+ * ticker rows (`des`) change a focused Ticker Research pane; ticker search
+ * (`pane`, the backtick or a pane header's ticker) changes the focused pane
+ * whenever it shows a ticker (`resolveTickerRetargetPane`). Shift+Enter always
+ * opens a new pane. The command bar's key hint reads the same answer.
+ */
+export function resolveTickerEnterTarget(
+  layout: LayoutConfig,
+  focusedPaneId: string | null,
+  panes: ReadonlyMap<string, PaneDef>,
+  how: "des" | "pane",
+): PaneInstanceConfig | null {
+  const retarget = how === "pane" ? resolveTickerRetargetPane(layout, focusedPaneId, panes) : null;
+  if (retarget) return retarget;
+  const focused = focusedPaneId ? findPaneInstance(layout, focusedPaneId) : null;
+  return focused?.paneId === TICKER_RESEARCH_PANE_ID ? focused : null;
 }
 
 interface CommandBarPaneActionsOptions {
@@ -84,15 +104,12 @@ export function useCommandBarPaneActions({
    */
   const focusTicker = useCallback((symbol: string, options?: PinTickerOptions) => {
     const currentState = stateRef.current;
-    const focusedPane = currentState.focusedPaneId
-      ? findPaneInstance(currentState.config.layout, currentState.focusedPaneId)
-      : null;
-    if (!options?.forceNewPane && focusedPane?.paneId === TICKER_RESEARCH_PANE_ID) {
-      retargetPane(focusedPane, symbol, options);
-      return;
-    }
-    openFixedTickerPane(symbol, options);
-  }, [openFixedTickerPane, retargetPane, stateRef]);
+    const target = options?.forceNewPane
+      ? null
+      : resolveTickerEnterTarget(currentState.config.layout, currentState.focusedPaneId, pluginRegistry.panes, "des");
+    if (target) retargetPane(target, symbol, options);
+    else openFixedTickerPane(symbol, options);
+  }, [openFixedTickerPane, pluginRegistry.panes, retargetPane, stateRef]);
 
   /**
    * Ticker search's Enter (the backtick, or the ticker in a pane's header): the focused pane
@@ -103,10 +120,10 @@ export function useCommandBarPaneActions({
     const currentState = stateRef.current;
     const target = options?.forceNewPane
       ? null
-      : resolveTickerRetargetPane(currentState.config.layout, currentState.focusedPaneId, pluginRegistry.panes);
+      : resolveTickerEnterTarget(currentState.config.layout, currentState.focusedPaneId, pluginRegistry.panes, "pane");
     if (target) retargetPane(target, symbol, options);
-    else focusTicker(symbol, options);
-  }, [focusTicker, pluginRegistry.panes, retargetPane, stateRef]);
+    else openFixedTickerPane(symbol, options);
+  }, [openFixedTickerPane, pluginRegistry.panes, retargetPane, stateRef]);
 
   const duplicatePane = useCallback((paneId: string) => {
     const currentState = stateRef.current;

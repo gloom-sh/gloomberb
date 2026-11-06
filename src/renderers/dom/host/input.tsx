@@ -55,8 +55,11 @@ function textInputStyle(props: Record<string, unknown>, multiline: boolean): CSS
     height: cellHeight(props.height) ?? (multiline ? "100%" : "var(--cell-h)"),
     margin: 0,
     caretColor: typeof props.cursorColor === "string" ? props.cursorColor : "auto",
+    // The placeholder is drawn by styles.css from this variable: the role by
+    // default, the same role lifted for a field on a surface of its own.
+    ...(typeof props.placeholderColor === "string" ? { "--gloom-placeholder": props.placeholderColor } : {}),
     ...overrides,
-  };
+  } as CSSProperties;
 }
 
 /**

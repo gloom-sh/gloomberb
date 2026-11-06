@@ -1683,6 +1683,8 @@ export const ja: Record<string, string> = {
   "Denied in {seconds} s": "{seconds} 秒後に拒否",
   "choose": "選ぶ",
   "select": "決定",
+  "here": "ここ",
+  "new pane": "新しいペイン",
   "confirm": "確定",
   "presets": "プリセット",
   "add": "追加",
