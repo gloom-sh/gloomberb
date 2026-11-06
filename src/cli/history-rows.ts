@@ -13,7 +13,7 @@ import { classifyInstrumentType } from "../tickers/instrument-kind";
 import { isRoundTheClockCoin } from "../utils/crypto-pair";
 import { currencyPairCode } from "../utils/currency-pair";
 import { currencyUnitLabel, resolveCurrencyUnit } from "../utils/currency-units";
-import { getPricePointTimestamp } from "../utils/price-history";
+import { dailyBarDate, getPricePointTimestamp } from "../utils/price-history";
 import {
   isWickFlag, latestTradeIndex, missingVolumeNotice, pricePointIntegrityFlags, pricePointValues, pricePointWickFlags,
 } from "../utils/price-history-integrity";
@@ -24,6 +24,9 @@ import { barLastSession, barPeriodToDate, type BarPeriodToDate } from "../market
 import { barSizeFromGap, medianBarGap } from "../time-series/bar-spacing";
 import { isRegularSessionTime, sessionCalendarTimeZone } from "../market-data/market/freshness";
 import { zonedDateKey } from "../utils/zoned-date-time";
+import { futuresBoardContract } from "../market-data/futures-board";
+import { isFuturesInstrument } from "../market-data/futures-contract";
+import { contractPriceUnit } from "../time-series/price-units";
 
 const PRICE_KEYS = ["open", "high", "low", "close"] as const;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -93,6 +96,12 @@ export interface HistoryRow {
   roll?: true;
   /** The bar traded far below the bars around it (THIN_VOLUME_SHARE of their median): a price on few trades. */
   thin?: true;
+  /**
+   * A monthly bar whose prices contradict each other (`flag`) keeps its close;
+   * its open, high and low were rebuilt from the month's daily bars
+   * (withDailyRebuiltBars), else they are blank.
+   */
+  rebuilt?: "daily bars";
 }
 
 /** A coin's volume: traded value in its quote currency, per UTC day on daily bars. */
@@ -267,6 +276,77 @@ function flagCodes(row: Pick<HistoryRow, "flag">): string[] {
   return row.flag ? row.flag.split(",") : [];
 }
 
+const finiteOrNull = (value: number | undefined | null) => typeof value === "number" && Number.isFinite(value) ? value : null;
+
+/** Whether a contradictory monthly bar's close can stand: a positive number. */
+function keptMonthlyClose(point: PricePoint): boolean {
+  return typeof point.close === "number" && Number.isFinite(point.close) && point.close > 0;
+}
+
+/** Days a month's daily bars may leave out at either end or between two of them and still say its range: a week. */
+const REBUILD_MAX_HOLE_DAYS = 7;
+
+/** Flagged months a few apart are read in one span of daily bars: the months between cost less than another read. */
+const REBUILD_SPAN_GAP_MONTHS = 3;
+/** The longest span one read of daily bars covers: a year. */
+const REBUILD_SPAN_MONTHS = 12;
+
+const monthIndex = (month: string) => Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1;
+
+/**
+ * The spans of daily bars that rebuild the flagged `months` (YYYY-MM), each
+ * read once: neighbouring months, up to REBUILD_SPAN_GAP_MONTHS apart, share
+ * a span of at most a year, so ZC=F's twelve flagged months since 2000 take
+ * six reads rather than twelve.
+ */
+export function dailyRebuildSpans(months: readonly string[]): Array<{ from: string; to: string }> {
+  const spans: Array<{ from: string; to: string }> = [];
+  for (const month of [...new Set(months)].filter((value) => /^\d{4}-\d{2}$/.test(value)).sort()) {
+    const span = spans.at(-1);
+    if (span && monthIndex(month) - monthIndex(span.to) <= REBUILD_SPAN_GAP_MONTHS
+      && monthIndex(month) - monthIndex(span.from) < REBUILD_SPAN_MONTHS) span.to = month;
+    else spans.push({ from: month, to: month });
+  }
+  return spans;
+}
+
+/**
+ * Monthly bars whose prices contradict each other, their close kept
+ * (historyRows), with open, high and low rebuilt from the month's daily bars:
+ * the first open, the highest high and the lowest low. A month is rebuilt
+ * only when its daily bars cover it, no week of it without one, and their
+ * range holds the kept close; otherwise its open, high and low stay blank.
+ * Daily bars whose own prices contradict each other are not read. A daily
+ * bar's day is the one the listing's `exchange` trades it on (dailyBarDate):
+ * a Sydney session stamped 23:00 UTC the evening before is still the 1st.
+ */
+export function withDailyRebuiltBars(rows: readonly HistoryRow[], daily: readonly PricePoint[], priceDivisor = 1, exchange = ""): HistoryRow[] {
+  const byMonth = new Map<string, Array<{ day: number; open: number | null; high: number; low: number }>>();
+  for (const point of daily) {
+    const time = getPricePointTimestamp(point);
+    const values = pricePointValues(point);
+    if (!Number.isFinite(time) || values.high == null || values.low == null) continue;
+    const date = dailyBarDate(time, exchange);
+    const days = byMonth.get(date.slice(0, 7)) ?? [];
+    days.push({ day: Date.parse(`${date}T00:00:00Z`) / DAY_MS, open: values.open, high: values.high, low: values.low });
+    byMonth.set(date.slice(0, 7), days);
+  }
+  return rows.map((row) => {
+    if (row.interval !== "1mo" || row.close == null || row.open != null || blankingCodes(row).length === 0) return row;
+    const days = [...(byMonth.get(row.date.slice(0, 7)) ?? [])].sort((left, right) => left.day - right.day);
+    const first = Date.parse(`${row.date.slice(0, 7)}-01T00:00:00Z`) / DAY_MS;
+    const start = new Date(first * DAY_MS);
+    const last = Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0) / DAY_MS;
+    const stops = [first - 1, ...days.map((entry) => entry.day), last + 1];
+    if (days.length === 0 || stops.slice(1).some((day, index) => day - stops[index]! > REBUILD_MAX_HOLE_DAYS)) return row;
+    const open = days[0]!.open;
+    const high = cleanBarPrice(Math.max(...days.map((entry) => entry.high)), priceDivisor);
+    const low = cleanBarPrice(Math.min(...days.map((entry) => entry.low)), priceDivisor);
+    if (open == null || row.close > high || row.close < low) return row;
+    return { ...row, open: cleanBarPrice(open, priceDivisor), high, low, rebuilt: "daily bars" as const };
+  });
+}
+
 /** The codes of a bar left blank for prices that contradict each other: not a break before it, nor a withheld wick. */
 function blankingCodes(row: Pick<HistoryRow, "flag">): string[] {
   return flagCodes(row).filter((code) => !BREAK_FLAGS.has(code) && !isWickFlag(code));
@@ -297,8 +377,11 @@ export function historyRows(
   const rows = points.map((point, index) => {
     const time = times[index]!;
     const iso = Number.isFinite(time) ? new Date(time).toISOString() : "";
-    const values = pricePointValues(point);
     const flags = [...pricePointIntegrityFlags(point), ...pricePointWickFlags(point)];
+    // A monthly bar whose prices contradict each other keeps its close and volume: a continuous future's month
+    // (ZC=F's September 2000) can join one contract's open to another's range. Every other bar is blanked whole.
+    const kept = interval === "1mo" && pricePointIntegrityFlags(point).length > 0 && keptMonthlyClose(point);
+    const values = kept ? { ...pricePointValues(point), close: point.close!, volume: finiteOrNull(point.volume) } : pricePointValues(point);
     const price = (value: number | null) => value == null ? null : cleanBarPrice(value, priceDivisor);
     return {
       date: intraday ? iso.replace(".000Z", "Z") : iso.slice(0, 10),
@@ -723,7 +806,8 @@ export function historyIntervalsByRange(): string {
 }
 
 export interface HistoryUnit {
-  kind: "currency" | "pair" | "points" | "unknown";
+  /** `contract`: a future's price in its contract's unit, `US cents / bushel`, the spelling FUT and G use. */
+  kind: "currency" | "pair" | "points" | "contract" | "unknown";
   /** Currency code of the prices; null for index points or when no source says. */
   currency: string | null;
   /** What one price is: "USD", "ILA (agorot, 1/100 ILS)", "ZAR per USD", "index points"; null when unknown. */
@@ -737,7 +821,12 @@ export interface HistoryUnit {
  * named as such. Without one the unit is unknown rather than guessed from the
  * exchange.
  */
-export function historyUnit(listing: string, quote: { currency?: string; instrumentType?: string } | null | undefined): HistoryUnit {
+export function historyUnit(
+  listing: string,
+  quote: { currency?: string; instrumentType?: string } | null | undefined,
+  /** A future's unit from its contract terms (`US cents / bushel`), else the futures catalog's. */
+  priceUnit?: string | null,
+): HistoryUnit {
   const pair = currencyPairCode(listing.trim().toUpperCase());
   if (pair) {
     const [base, counter] = [pair.slice(0, 3), pair.slice(3)];
@@ -745,6 +834,10 @@ export function historyUnit(listing: string, quote: { currency?: string; instrum
   }
   if (isIndexLevel(quote?.instrumentType)) return { kind: "points", currency: null, unit: INDEX_POINTS_EXPORT_UNIT };
   const code = quote?.currency?.trim();
+  // A future is priced in its contract's unit, spelled one way in the text, CSV and JSON.
+  const future = !!code && isFuturesInstrument(listing, quote?.instrumentType);
+  const contractUnit = future ? contractPriceUnit(priceUnit ?? futuresBoardContract(listing.trim().toUpperCase())?.unit, code) : null;
+  if (code && contractUnit) return { kind: "contract", currency: code, unit: contractUnit };
   return code
     ? { kind: "currency", currency: code, unit: currencyUnitLabel(code, { ofMajor: true }) }
     : { kind: "unknown", currency: null, unit: null };
@@ -752,7 +845,7 @@ export function historyUnit(listing: string, quote: { currency?: string; instrum
 
 /** The unit an export names for a history's prices: a pair's quote currency per base (`JPY per USD`), else its currency or unit. */
 export function historyExportUnit(unit: HistoryUnit): string | null {
-  return unit.kind === "pair" ? unit.unit : unit.currency ?? unit.unit;
+  return unit.kind === "pair" || unit.kind === "contract" ? unit.unit : unit.currency ?? unit.unit;
 }
 
 function historyDate(value: string): string {
@@ -776,7 +869,8 @@ export function historyFacts(unit: HistoryUnit, rows: readonly Pick<HistoryRow, 
   const interval = rows[0]?.interval;
   const unbroken = historyUnbrokenFrom(rows);
   return [
-    unit.kind === "pair" ? unit.unit! : unit.kind === "points" ? INDEX_POINTS_LABEL : `Currency ${unit.unit ?? "unknown"}`,
+    unit.kind === "pair" ? unit.unit! : unit.kind === "points" ? INDEX_POINTS_LABEL
+      : unit.kind === "contract" ? `Unit ${unit.unit}` : `Currency ${unit.unit ?? "unknown"}`,
     interval ? `${BAR_INTERVAL_LABELS[interval]} bars` : "",
     first && last ? (first === last ? historyDate(first) : `${historyDate(first)} to ${historyDate(last)}`) : "",
     `${rows.length} ${rows.length === 1 ? "bar" : "bars"}`,
@@ -1008,7 +1102,7 @@ export function historyGapNote(
  * null when every bar agrees. Bars flagged only for a gap or jump before them
  * keep their prices and are not counted.
  */
-export function historyFlagNote(rows: readonly Pick<HistoryRow, "flag">[]): string | null {
+export function historyFlagNote(rows: readonly Pick<HistoryRow, "flag" | "close" | "rebuilt">[]): string | null {
   const flagged = rows.filter((row) => blankingCodes(row).length > 0);
   if (flagged.length === 0) return null;
   const codes = new Set(flagged.flatMap(blankingCodes));
@@ -1018,7 +1112,17 @@ export function historyFlagNote(rows: readonly Pick<HistoryRow, "flag">[]): stri
     codes.has("low>high") ? "low above high" : "",
   ].filter(Boolean);
   const count = `${flagged.length} of ${rows.length} ${flagged.length === 1 && rows.length === 1 ? "bar" : "bars"}`;
-  return `${count} ${flagged.length === 1 ? "has" : "have"} ${kinds.join(", or ")} in the source data; their prices are left blank`;
+  const said = `${count} ${flagged.length === 1 ? "has" : "have"} ${kinds.join(", or ")} in the source data`;
+  // A monthly bar keeps its close; its open, high and low come from the month's daily bars where they cover it.
+  const kept = flagged.filter((row) => row.close != null);
+  if (kept.length === 0) return `${said}; their prices are left blank`;
+  const rebuilt = kept.filter((row) => row.rebuilt).length;
+  const blank = flagged.length - kept.length;
+  const keep = blank > 0 ? `${kept.length} keep their close` : flagged.length === 1 ? "it keeps its close" : "they keep their close";
+  const ohl = rebuilt === kept.length ? ", with open, high and low from the month's daily bars"
+    : rebuilt > 0 ? `; open, high and low come from the month's daily bars for ${rebuilt} and are blank for ${kept.length - rebuilt}, whose daily bars do not cover the month without contradiction`
+      : `; open, high and low are blank, the month's daily bars not covering ${kept.length === 1 ? "it" : "them"} without contradiction`;
+  return `${said}; ${keep}${ohl}${blank > 0 ? `; ${blank} ${blank === 1 ? "is" : "are"} left blank` : ""}`;
 }
 
 /**

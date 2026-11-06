@@ -8,6 +8,7 @@ import { fxPrintTradingDay } from "../../utils/fx-market-hours";
 import { zonedDateKey } from "../../utils/zoned-date-time";
 import { futuresChangeBasis, futuresQuoteMonth, futuresSettleText, isFuturesInstrument } from "../futures-contract";
 import { quoteTradingDay } from "../quotes/day-range";
+import { splitRatioText } from "../quotes/session-split";
 import { hasPublishedSessionCalendar, previousPublishedSession } from "./freshness";
 import { getActiveQuoteDisplay, getRegularSessionDisplay, regularSessionDisplayDate } from "./status";
 
@@ -35,6 +36,11 @@ interface DatedChangeBasis {
   venue?: string;
   /** Days of the venue's trading week it was closed between that session and the move's (holidays). */
   closed?: readonly string[];
+  /**
+   * A split took effect in the move's session (Quote.sessionSplit): the close
+   * it is measured from is on the new share basis.
+   */
+  split?: { exDate: string; priceFactor: number };
 }
 
 export interface QuoteChangeBasisOptions {
@@ -199,7 +205,11 @@ export function quoteChangeBasis(
     return basis && basis.from == null ? { kind: basis.kind, date: basis.session } : { kind: "previous close" };
   }
   if (!sessionDate || !ISO_DATE.test(sessionDate)) return { kind: "previous close" };
-  return previousSession(quote, sessionDate) ?? { kind: "previous close" };
+  const previous = previousSession(quote, sessionDate);
+  if (!previous) return { kind: "previous close" };
+  // The split of the move's own session is said beside it, on every surface.
+  const split = quote.sessionSplit;
+  return split?.exDate === sessionDate ? { ...previous, split: { exDate: split.exDate, priceFactor: split.priceFactor } } : previous;
 }
 
 /**
@@ -316,15 +326,23 @@ export function changeBasisLabel(basis: QuoteChangeBasis, now = Date.now()): str
 }
 
 /**
- * The days a venue was closed since the close a move is measured from, when
- * there were any: "HKEX closed Mon 19 Oct, holiday"; three or more read as a
- * span, "TWSE closed Thu 12 Feb to Fri 20 Feb, holidays". Null otherwise.
+ * What a reader needs beside the close a move is measured from: a split in
+ * the move's session, "3-for-1 split Thu 5 Nov, close adjusted" (the close is
+ * on the new share basis), and the days a venue was closed since that close,
+ * "HKEX closed Mon 19 Oct, holiday"; three or more read as a span, "TWSE
+ * closed Thu 12 Feb to Fri 20 Feb, holidays". Null when there is neither.
  */
 export function changeBasisNote(basis: QuoteChangeBasis | null | undefined, now = Date.now()): string | null {
-  if (!basis || basis.kind !== "close" || !basis.venue || !basis.closed?.length) return null;
-  const days = basis.closed.map((date) => sessionDay(date, now));
-  const span = days.length === 1 ? days[0] : days.length === 2 ? `${days[0]} and ${days[1]}` : `${days[0]} to ${days.at(-1)}`;
-  return `${basis.venue} closed ${span}, ${days.length === 1 ? "holiday" : "holidays"}`;
+  if (!basis || basis.kind !== "close") return null;
+  const notes: string[] = [];
+  const ratio = basis.split ? splitRatioText(basis.split.priceFactor) : null;
+  if (basis.split && ratio) notes.push(`${ratio} split ${sessionDay(basis.split.exDate, now)}, close adjusted`);
+  if (basis.venue && basis.closed?.length) {
+    const days = basis.closed.map((date) => sessionDay(date, now));
+    const span = days.length === 1 ? days[0] : days.length === 2 ? `${days[0]} and ${days[1]}` : `${days[0]} to ${days.at(-1)}`;
+    notes.push(`${basis.venue} closed ${span}, ${days.length === 1 ? "holiday" : "holidays"}`);
+  }
+  return notes.length ? notes.join("; ") : null;
 }
 
 /** What several moves summed into one (a portfolio's day) are measured from, when they say. */
@@ -355,6 +373,7 @@ export function changeBasisJson(basis: QuoteChangeBasis | null, now = Date.now()
     kind: basis.kind,
     date: "date" in basis ? basis.date : null,
     ...("closed" in basis && basis.closed?.length ? { closed: [...basis.closed] } : {}),
+    ...("split" in basis && basis.split ? { split: { ...basis.split } } : {}),
     label: changeBasisLabel(basis, now),
     ...(note ? { note } : {}),
   };

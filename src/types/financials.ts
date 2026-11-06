@@ -120,6 +120,16 @@ interface DepositaryReceiptFacts {
   cedearRatio?: CedearRatio;
 }
 
+/** A split in a quote's own session (Quote.sessionSplit). */
+export interface QuoteSessionSplit {
+  /** The first session on the new basis, YYYY-MM-DD. */
+  exDate: string;
+  /** What a price from before the split is multiplied by. */
+  priceFactor: number;
+  /** The previous close the source stated, on the old basis. */
+  sourcePreviousClose: number;
+}
+
 export interface Quote extends DepositaryReceiptFacts {
   /** Applies to this price observation; a stored position cannot supply it. */
   priceBasis?: PriceBasis;
@@ -143,6 +153,14 @@ export interface Quote extends DepositaryReceiptFacts {
    */
   changeBasis?: "24h" | "none";
   previousClose?: number;
+  /**
+   * A split took effect in the quote's session, so the source's previous close
+   * was on the old share basis: previousClose is the close before it on the
+   * price's basis, the source's `sourcePreviousClose` times `priceFactor`
+   * (1/3 for a 3-for-1 split, 10 for a 1-for-10 reverse one), and change is
+   * measured from it. Gloom Cloud sets it; absent on any other quote.
+   */
+  sessionSplit?: QuoteSessionSplit;
   /**
    * Exchange-local date of previousClose. The app's quote router reads it
    * from the listing's own daily closes where the venue's calendar cannot

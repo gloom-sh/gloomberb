@@ -46,6 +46,24 @@ test("a move skipping a venue holiday names the close it is from and the day the
   expect(changeBasisLabel({ kind: "close", date: "2025-12-31" }, NOW)).toBe("vs Wed 31 Dec 2025 close");
 });
 
+test("a split in the move's session is said beside the close it is measured from, as Gloom Cloud adjusted it", () => {
+  // SOXX on Thu 5 Nov 2026, the first session of its 3-for-1 split: the source's close of 450.41 is 150.14 on the new basis.
+  const soxx = createTestQuote({ symbol: "SOXX", instrumentType: "ETF", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ",
+    price: 148.94, change: -1.2, changePercent: -0.8, previousClose: 150.14, changeSessionDate: "2026-11-05", marketState: "REGULAR",
+    lastUpdated: Date.parse("2026-11-05T18:30:00Z"), sessionSplit: { exDate: "2026-11-05", priceFactor: 1 / 3, sourcePreviousClose: 450.41 } });
+  const now = Date.parse("2026-11-05T19:00:00Z");
+  const basis = quoteChangeBasis(soxx);
+  expect(basis).toEqual({ kind: "close", date: "2026-11-04", venue: "NASDAQ", closed: [], split: { exDate: "2026-11-05", priceFactor: 1 / 3 } });
+  expect(changeBasisLabel(basis!, now)).toBe("vs Wed 4 Nov close");
+  expect(changeBasisNote(basis, now)).toBe("3-for-1 split Thu 5 Nov, close adjusted");
+  // The day after, the move is a plain day's: the split is no longer the move's.
+  const friday = { ...soxx, changeSessionDate: "2026-11-06", lastUpdated: Date.parse("2026-11-06T18:30:00Z") };
+  expect(changeBasisNote(quoteChangeBasis(friday), now)).toBeNull();
+  // A reverse split reads as one.
+  expect(changeBasisNote({ ...basis!, split: { exDate: "2026-11-05", priceFactor: 10 } } as never, now))
+    .toBe("1-for-10 reverse split Thu 5 Nov, close adjusted");
+});
+
 test("a quote dated by when it was read, on a weekend or a holiday, holds the last session's move, from the session before", () => {
   // Read on Saturday 17 Oct with no session date: Friday's move, from Thursday's close.
   const saturday = Date.parse("2026-10-17T10:00:00Z");

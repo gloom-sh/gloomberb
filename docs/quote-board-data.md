@@ -18,7 +18,11 @@ out in up to four batches at once, and a batch with no answer after five
 seconds is given up, so one slow contract cannot hold the rest; its rows keep
 the cached quote, marked stale, until the answer arrives, and a late answer
 paints its rows then, unless a newer load has started. The 1W, 1M and YTD returns load history only
-for the listed rows. The footer, the empty state and the source line of
+for the listed rows. Each return runs from the front contract's last close on or before the same
+calendar day back (a week, a month, three months) or the prior year's last close, the base RETURN
+and CTM's month and year ghosts use too; the header's hover and `fn FUT` name that close
+(`Returns: 1W from Thu 29 Oct close; 1M from Mon 5 Oct close; YTD from Wed 31 Dec 2025 close.`),
+and its JSON carries each base date beside the return (`1M from`). The footer, the empty state and the source line of
 `fn FUT` and `shot FUT` count the listed rows alone, so `fn FUT gold` is dated
 by gold's quote.
 

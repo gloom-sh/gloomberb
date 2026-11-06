@@ -11,6 +11,9 @@ const HORIZONS: readonly FuturesReturnHorizon[] = ["1W", "1M", "3M", "6M", "1Y",
 
 export const NO_FUTURES_RETURNS: FuturesReturnValues = { "1W": null, "1M": null, "3M": null, "6M": null, "1Y": null, YTD: null };
 
+/** The day of the close each return is measured from (`YYYY-MM-DD`), null where it has none. */
+export type FuturesReturnBases = Readonly<Record<FuturesReturnHorizon, string | null>>;
+
 const MONTH_CODES = "FGHJKMNQUVXZ";
 
 /** Gloom symbol of one listed contract: LEZ26.CME. */
@@ -97,10 +100,27 @@ export function frontContractReturns(
   price: number | null | undefined,
   asOf: number | null | undefined,
 ): FuturesReturnValues {
+  return frontContractPeriodReturns(history, price, asOf).values;
+}
+
+/**
+ * frontContractReturns with the day of each return's base close, which the
+ * board's JSON and CSV carry and its report names: `fn FUT ZC`'s
+ * 1M on Thu 5 Nov runs from Mon 5 Oct's close, as CTM's 1M curve and RETURN do.
+ */
+export function frontContractPeriodReturns(
+  history: readonly PricePoint[],
+  price: number | null | undefined,
+  asOf: number | null | undefined,
+): { values: FuturesReturnValues; bases: FuturesReturnBases } {
   const closes = dailyCloses(history);
   const live = price != null && Number.isFinite(price) && asOf != null && Number.isFinite(asOf);
   const liveDay = live ? utcDay(asOf) : null;
   const latest = live && liveDay ? { day: liveDay, close: price } : closes.at(-1);
-  if (!latest) return NO_FUTURES_RETURNS;
-  return Object.fromEntries(HORIZONS.map((period) => [period, periodReturn(closes, period, latest)?.percent ?? null])) as FuturesReturnValues;
+  if (!latest) return { values: NO_FUTURES_RETURNS, bases: { "1W": null, "1M": null, "3M": null, "6M": null, "1Y": null, YTD: null } };
+  const periods = HORIZONS.map((period) => [period, periodReturn(closes, period, latest)] as const);
+  return {
+    values: Object.fromEntries(periods.map(([period, result]) => [period, result?.percent ?? null])) as FuturesReturnValues,
+    bases: Object.fromEntries(periods.map(([period, result]) => [period, result?.base.day ?? null])) as FuturesReturnBases,
+  };
 }

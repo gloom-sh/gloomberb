@@ -12,9 +12,10 @@ import type { BoardQuoteMap } from "../shared/use-quote-board";
 import type { FuturesContract } from "../../../market-data/futures-board";
 import {
   frontContractCandidates,
-  frontContractReturns,
+  frontContractPeriodReturns,
   NO_FUTURES_RETURNS,
   pickFrontContract,
+  type FuturesReturnBases,
   type FuturesReturnValues,
 } from "./returns";
 
@@ -22,6 +23,8 @@ interface FrontReturnsState {
   /** A candidate contract's history is still loading. */
   loading: boolean;
   values: FuturesReturnValues;
+  /** The day each return's base close is from, once the contract's history is read. */
+  bases?: FuturesReturnBases;
 }
 
 export type FrontReturnsMap = ReadonlyMap<string, FrontReturnsState>;
@@ -151,10 +154,9 @@ export function useFrontContractReturns(
       const available = loaded.flatMap((entry) => entry.history ? [{ symbol: entry.symbol, history: entry.history }] : []);
       const front = pickFrontContract(available, quote?.price);
       const history = available.find((entry) => entry.symbol === front)?.history;
-      result.set(contract.symbol, {
-        loading: false,
-        values: history ? frontContractReturns(history, quote?.price, quote?.lastUpdated) : NO_FUTURES_RETURNS,
-      });
+      result.set(contract.symbol, history
+        ? { loading: false, ...frontContractPeriodReturns(history, quote?.price, quote?.lastUpdated) }
+        : { loading: false, values: NO_FUTURES_RETURNS });
     }
     return result;
     // `version` re-reads the history cache as loads land.
