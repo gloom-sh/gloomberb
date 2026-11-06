@@ -673,6 +673,8 @@ export type QuoteBoardCellKind = "status" | "price" | "change" | "changePercent"
 export interface QuoteBoardCellFormat {
   /** Spell out the session instead of a colored dot. */
   sessionText?: boolean;
+  /** The moment the status cell reads the venue's session at, in ms; the current time when omitted. */
+  now?: number;
   /** Called with the quote at its headline: a finite price. */
   formatPrice: (quote: Quote) => string;
   /** Called with the quote at its headline: a finite change; the text carries its sign. */
@@ -722,11 +724,11 @@ export function renderQuoteBoardCell(
   switch (kind) {
     case "status": {
       if (format.sessionText) {
-        return { text: quoteSessionLabel(quote) ?? "—", color: quoteSessionColor(quote) };
+        return { text: quoteSessionLabel(quote, format.now) ?? "—", color: quoteSessionColor(quote, colors, format.now) };
       }
-      const dot = marketStatusDot(quoteDotMarketState(quote));
+      const dot = marketStatusDot(quoteDotMarketState(quote, format.now));
       // The dot is a picture; the export says which session it means.
-      return { text: dot.char, value: quoteSessionLabel(quote), color: dot.color };
+      return { text: dot.char, value: quoteSessionLabel(quote, format.now), color: dot.color };
     }
     case "price":
       if (!quote || !Number.isFinite(quote.price)) return { text: "—", color: colors.textDim };

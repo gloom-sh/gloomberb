@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { Quote } from "../../../types/financials";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
 import {
@@ -210,6 +210,7 @@ describe("futures board exports and the reopen", () => {
     marketState: "CLOSED", lastUpdated: Date.parse("2026-11-04T21:59:00Z"), ...overrides,
   } as Quote);
   const board = (symbol: string, value: Quote): BoardQuoteMap => new Map([[symbol, { quote: value, loading: false, error: null, stale: false }]]);
+  afterEach(() => setSystemTime());
   const cell = (contract: FuturesContract, id: FuturesColumnId, quotes: BoardQuoteMap, now?: number, returns?: FrontReturnsMap) =>
     renderFuturesCell({ type: "row", contract }, ([...createFuturesColumns(220), ...FUTURES_REPORT_COLUMNS]).find((column) => column.id === id)!,
       quotes, { sessionText: true, now, returns });
@@ -230,6 +231,8 @@ describe("futures board exports and the reopen", () => {
   });
 
   test("a contract that trades Globex's whole day reads open from the 17:00 Central reopen, before its feed's first print", () => {
+    // The machine's clock is in the weekend gap, when Globex is closed: the cell reads the time it is given, not this.
+    setSystemTime(new Date("2026-11-07T15:00:00Z"));
     const reopened = Date.parse("2026-11-04T23:10:00Z");
     // Its last print is from before the daily break, and the delayed feed still calls it closed.
     expect(cell(es, "status", board("ES=F", quote()), reopened).text).toBe("OPEN");
