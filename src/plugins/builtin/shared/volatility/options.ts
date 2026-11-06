@@ -96,7 +96,7 @@ const EUROPEAN_INDEX_ROOTS: ReadonlySet<string> = new Set([
  * stock or fund option. A venue-marked coin option (Deribit's) and a cash-settled index root are European; a
  * contract named outside OCC's form is not judged. One without a symbol is taken as a stock's.
  */
-export function americanExercise(contract: { contractSymbol?: string; mark?: unknown }): boolean {
+function americanExercise(contract: { contractSymbol?: string; mark?: unknown }): boolean {
   if (contract.mark != null) return false;
   if (!contract.contractSymbol) return true;
   const root = parseOptionTicker(contract.contractSymbol)?.underlying.toUpperCase();
