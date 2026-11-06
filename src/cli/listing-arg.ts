@@ -270,10 +270,11 @@ async function settleSharedCode(listing: ListingArg, deps: ListingDeps): Promise
   }
   const { exchange } = reading;
   const key = `${symbol}:${exchange}`;
-  const readAs = [
-    listing.readAs,
-    exchange === meanings[0] ? null : `Read ${symbol}:${code} as ${key}: ${code} is ${venueChoices(meanings)}, and ${symbol} trades on ${exchange}.`,
-  ].filter(Boolean).join(" ");
+  const why = exchange === meanings[0] ? "." : `: ${code} is ${venueChoices(meanings)}, and ${symbol} trades on ${exchange}.`;
+  // Written venue first (TSE:7203), one reading says where it went: "Read TSE:7203 as 7203:JPX: ...".
+  const typedAs = ` as ${symbol}:${code}.`;
+  const readAs = listing.readAs?.endsWith(typedAs) ? `${listing.readAs.slice(0, -typedAs.length)} as ${key}${why}`
+    : [listing.readAs, why === "." ? null : `Read ${symbol}:${code} as ${key}${why}`].filter(Boolean).join(" ");
   return { symbol, exchange, key, ...readAs ? { readAs } : {} };
 }
 

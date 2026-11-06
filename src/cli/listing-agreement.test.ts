@@ -183,6 +183,21 @@ test("every command, fn function, the command bar, links and chat read a listing
   }
 });
 
+test("a listing written venue first, as spreadsheets write it, reads as its listing in commands and the command bar, said once", async () => {
+  for (const [typed, key, said] of [
+    ["TYO:7203", "7203:JPX", "Read TYO:7203 as 7203:JPX."],
+    ["TSE:7203", "7203:JPX", "Read TSE:7203 as 7203:JPX: TSE is Toronto Stock Exchange (TSX) or Tokyo Stock Exchange (JPX), and 7203 trades on JPX."],
+    ["LON:VOD", "VOD:LSE", "Read LON:VOD as VOD:LSE."],
+  ] as const) {
+    for (const [reader, read] of Object.entries(READERS)) {
+      const reading = await read(typed);
+      expect(reading.listing, `${reader} ${typed}`).toBe(key);
+      expect(reading.warnings.filter((warning) => warning.startsWith("Read ")), `${reader} ${typed}`).toEqual([said]);
+    }
+    expect((await openInCommandBar(typed)).listing, `command bar ${typed}`).toBe(key);
+  }
+});
+
 test("a code search leaves out is read from the listing's own quotes, not from a board Gloom Cloud answered for it", async () => {
   // Gloom Cloud answers 247540:KRX from KOSDAQ under the KRX name: that is no KRX line.
   UNSEARCHED.add("247540");
