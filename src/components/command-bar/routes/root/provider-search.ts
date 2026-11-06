@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import type { AppState } from "../../../../state/app/context";
 import type { DataProvider } from "../../../../types/data-provider";
 import type { TickerSearchCandidate } from "../../../../tickers/search";
@@ -48,6 +48,15 @@ const NONE_SHOWN: readonly string[] = [];
 interface InstantAnswer {
   query: string;
   items: ResultItem[];
+  /** Named by the listing index and saved tickers, not by this visit's own answer for the text. */
+  fromIndex: boolean;
+}
+
+/** The listing rows on screen for a text (`listingRowKey`, in order), and whether the listing index named them. */
+interface ShownListings {
+  query: string;
+  keys: readonly string[];
+  fromIndex: boolean;
 }
 
 /**
@@ -68,7 +77,9 @@ function buildInstantAnswer(options: {
 }): InstantAnswer | null {
   const { query, fromIndex, cached, tickers, savedSymbolKeys, buildTickerSearchResultItems, localTickerSearchResultItems } = options;
   const localItems = () => localTickerSearchResultItems(query, { limit: 6 });
-  if (cached) return { query, items: mergeTickerSearchResultItems(query, buildTickerSearchResultItems(cached, query), localItems()) };
+  if (cached) {
+    return { query, items: mergeTickerSearchResultItems(query, buildTickerSearchResultItems(cached, query), localItems()), fromIndex: false };
+  }
   if (!fromIndex) return null;
   const symbol = symbolSearchQuery(query);
   const known = knownListings(symbol);
@@ -84,7 +95,14 @@ function buildInstantAnswer(options: {
   // Only the exact lines: looser matches are search's to rank.
   const items = mergeTickerSearchResultItems(query, buildTickerSearchResultItems(candidates, query), localItems())
     .filter((item) => isExactTickerResultMatch(item, query));
-  return items.length > 0 ? { query, items } : null;
+  return items.length > 0 ? { query, items, fromIndex: true } : null;
+}
+
+/** The listing an answer leads with: its first exact line of the text, or its first line. */
+function answerTopListing(items: readonly ResultItem[], query: string | null): string | null {
+  const top = (query ? items.find((item) => isExactTickerResultMatch(item, query)) : undefined)
+    ?? items.find((item) => listingRowKey(item) != null);
+  return top ? listingRowKey(top) : null;
 }
 
 export function useRootProviderSearch(options: {
@@ -106,6 +124,8 @@ export function useRootProviderSearch(options: {
   /** What a plain query written as a terminal's code or a near miss reads as (`VOD LN`, `700.HK`). */
   reading?: RootTickerReading | null;
   rootResultItems: ResultItem[];
+  /** Set once the user has moved the highlight in this query. */
+  rootSelectionNavigatedRef?: RefObject<boolean>;
   rootTickerSearchArg: string | null;
   tickers: AppState["tickers"];
   writeTickerSearchCache: (
@@ -123,6 +143,11 @@ export function useRootProviderSearch(options: {
   rootSectionOrder: CommandBarSectionOrder;
   /** The section order to draw the list with: the providers', and the AI's place once a typed symbol names a listing. */
   rootCategoryPriorities?: CommandBarCategoryPriorities;
+  /**
+   * Counts the answers that led with another listing than the one the index
+   * named on screen: the highlight the user has not moved goes to the answer's.
+   */
+  rootAnswerTookTop: number;
 } {
   const {
     activeCollectionId,
@@ -137,6 +162,7 @@ export function useRootProviderSearch(options: {
     listingSuffix,
     reading = null,
     rootResultItems,
+    rootSelectionNavigatedRef,
     rootTickerSearchArg,
     tickers,
     writeTickerSearchCache,
@@ -157,12 +183,14 @@ export function useRootProviderSearch(options: {
   const searchBrokerInstanceId = activeSearchPortfolio?.brokerInstanceId;
   // Built with the keystroke, so the first frame for the text already has it. The index
   // answers only for a plain symbol: a venue list, a code or near miss whose listing the
-  // answer decides, and DES's own list, which the answer replaces whole, wait for search.
+  // answer decides, DES's own list, which the answer replaces whole, and a broker account's
+  // search, whose rows are its own contracts, wait for search.
   const instantAnswer = useMemo(() => {
     if (currentRoute || !rootTickerSearchArg) return null;
     return buildInstantAnswer({
       query: rootTickerSearchArg,
-      fromIndex: rootTickerSearchArg === rootPlainTickerSearchArg && listingSuffix == null && !reading,
+      fromIndex: rootTickerSearchArg === rootPlainTickerSearchArg && listingSuffix == null && !reading
+        && !searchBrokerId && !searchBrokerInstanceId,
       cached: readTickerSearchCache(rootTickerSearchArg, searchBrokerId, searchBrokerInstanceId),
       tickers,
       savedSymbolKeys,
@@ -187,8 +215,11 @@ export function useRootProviderSearch(options: {
   ]);
   const instantAnswerRef = useRef(instantAnswer);
   instantAnswerRef.current = instantAnswer;
-  /** The listings on screen for the text before search answered, in order (`listingRowKey`); the answer keeps them there. */
-  const shownListingsRef = useRef<{ query: string; keys: string[] } | null>(null);
+  /** The listing rows on screen for the text as last drawn; an answer keeps them there (`answerLead`). */
+  const shownListingsRef = useRef<ShownListings | null>(null);
+  /** The rows each answer leads with, decided once as it lands. */
+  const answerLeadRef = useRef<{ answer: ResultItem[]; keys: readonly string[] } | null>(null);
+  const answerTookTopRef = useRef(0);
 
   useEffect(() => {
     if (currentRoute) {
@@ -300,11 +331,22 @@ export function useRootProviderSearch(options: {
 
   const answered = !!rootTickerSearchArg && rootProviderResultsQuery === rootTickerSearchArg && !!rootProviderResults;
   const showingInstant = !answered && !!instantAnswer && instantAnswer.query === rootTickerSearchArg;
-  const shownListings = answered && shownListingsRef.current?.query === rootTickerSearchArg ? shownListingsRef.current.keys : NONE_SHOWN;
+  // An answer keeps the listing rows on screen where they are, its own following, so the row
+  // under the cursor stays put. Not when the index named them, the user has not moved the
+  // highlight, and the answer leads with another listing: then the index was wrong, and the
+  // answer's order and its first row stand.
+  if (answered && answerLeadRef.current?.answer !== rootProviderResults) {
+    const shown = shownListingsRef.current?.query === rootTickerSearchArg ? shownListingsRef.current : null;
+    const overruled = !!shown && shown.fromIndex && shown.keys.length > 0 && !rootSelectionNavigatedRef?.current
+      && answerTopListing(rootProviderResults!, rootPlainTickerSearchArg) !== shown.keys[0];
+    if (overruled) answerTookTopRef.current += 1;
+    answerLeadRef.current = { answer: rootProviderResults!, keys: shown && !overruled ? shown.keys : NONE_SHOWN };
+  }
+  const answerLead = answered ? answerLeadRef.current!.keys : NONE_SHOWN;
   const providerItems = useMemo(() => {
-    if (answered) return leadWithShownListings(rootProviderResults!, shownListings);
+    if (answered) return leadWithShownListings(rootProviderResults!, answerLead);
     return showingInstant ? instantAnswer!.items : null;
-  }, [answered, instantAnswer, rootProviderResults, showingInstant, shownListings]);
+  }, [answerLead, answered, instantAnswer, rootProviderResults, showingInstant]);
 
   const rootResults = useMemo(() => {
     if (listingSuffix != null) {
@@ -316,7 +358,7 @@ export function useRootProviderSearch(options: {
     }
     if (rootTickerSearchArg && providerItems) {
       if (rootPlainTickerSearchArg) {
-        return mergePlainRootTickerResults(rootPlainTickerSearchArg, providerItems, rootResultItems, reading, shownListings);
+        return mergePlainRootTickerResults(rootPlainTickerSearchArg, providerItems, rootResultItems, reading, answerLead);
       }
       return providerItems;
     }
@@ -328,15 +370,16 @@ export function useRootProviderSearch(options: {
     rootPlainTickerSearchArg,
     rootResultItems,
     rootTickerSearchArg,
-    shownListings,
+    answerLead,
   ]);
-  // The lines the bar named before asking, as drawn, for the answer to keep in place.
-  if (showingInstant) {
-    const named = new Set(instantAnswer!.items.map(listingRowKey));
+  // The listing rows as drawn, for the next answer to keep in place.
+  if (providerItems && rootTickerSearchArg) {
+    const named = new Set(providerItems.map(listingRowKey));
     const keys = rootResults.map(listingRowKey).filter((key): key is string => key != null && named.has(key));
+    const fromIndex = showingInstant && instantAnswer!.fromIndex;
     const kept = shownListingsRef.current;
-    if (kept?.query !== rootTickerSearchArg || kept.keys.join("\n") !== keys.join("\n")) {
-      shownListingsRef.current = { query: rootTickerSearchArg!, keys };
+    if (kept?.query !== rootTickerSearchArg || kept.fromIndex !== fromIndex || kept.keys.join("\n") !== keys.join("\n")) {
+      shownListingsRef.current = { query: rootTickerSearchArg, keys, fromIndex };
     }
   }
   const rootSectionOrder: CommandBarSectionOrder = listingSuffix != null
@@ -377,6 +420,7 @@ export function useRootProviderSearch(options: {
   return {
     activeRootProviderResultsKey,
     orderedRootResults,
+    rootAnswerTookTop: answerTookTopRef.current,
     rootCategoryPriorities,
     rootResultsCurrent,
     rootSearching,

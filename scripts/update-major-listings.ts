@@ -5,9 +5,12 @@
  * before search answers, and the app re-reads them a slice a day.
  *
  * Every symbol below is asked of Gloom Cloud's batched search, the search the
- * bar asks, signed out and paced under its allowance for a list; the lines it
- * answers for the symbol are written as it sent them, in its order. A symbol
- * search finds no line of is printed and left out, never written by hand.
+ * bar asks, signed out and paced under its allowance for a list. The lines it
+ * answers for the symbol are written as it sent them, every field the ranking
+ * reads (popularity, the home line), the one the bar ranks first in the whole
+ * answer leading (`directoryRows`), so the row the bar names first is the
+ * answer's. A symbol search finds no line of is printed and left out, never
+ * written by hand.
  *
  * The symbols are the large companies and funds of each market: the indexes'
  * members (S&P 100 and the Nasdaq 100's largest, the Hang Seng, the CSI 300's
@@ -33,7 +36,7 @@ const SYMBOLS: Record<string, string> = {
     YUM DPZ MAR HLT RCL NCLH LVS WYNN MGM EA TTWO RBLX U DDOG NET ZS OKTA MDB TEAM WDAY ADSK FTNT ROP CPRT PAYX CTAS FAST
     ODFL CSX NSC CP CNI MMM EMR GD NOC HII TDG HWM WMB KMI OKE EPD ET SLB HAL OXY EOG DVN FANG MPC PSX VLO AEP D EXC SRE
     PCG ED XEL CEG VST NRG GEV O SPG PSA AMT CCI DLR WELL VICI AVB EQR MET PRU AIG AFL ALL TRV HIG PNC TFC COF BK STT
-    KKR APO BX CVS HUM CNC HCA MRNA BIIB DXCM IDXX EW A IQV RMD ZBH BDX BAX WBA KR SYY ADM TSN CAG HRL CPB CHD CLX KMB
+    KKR APO BX CVS HUM CNC HCA MRNA BIIB DXCM IDXX EW A IQV RMD ZBH BDX BAX KR SYY ADM TSN CAG HRL CPB CHD CLX KMB
     WDC STX HPQ HPE NTAP ON NXPI MCHP SWKS QRVO TER ENPH FSLR SEDG ROKU SPOT PINS SNAP LYFT DASH TWLO DOCU ZM SOFI AFRM
     UPST PATH AI IONQ RGTI SOUN CVNA CHWY ETSY EBAY W BBY GME AMC BYND PTON DKNG CELH ELF LULU DECK CROX ONON BIRK
   `,

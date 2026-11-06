@@ -4,6 +4,7 @@ import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils"
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import { installListingDirectory } from "../../../tickers/search/listing-index";
 import type { InstrumentSearchResult } from "../../../types/instrument";
+import type { AppConfig } from "../../../types/config";
 import type { TickerRecord } from "../../../types/ticker";
 import { CommandBarHarness } from "./test-harness";
 
@@ -20,11 +21,11 @@ const sive: InstrumentSearchResult = {
 
 /** The shipped listings as `bun run listings:snapshot` writes them: Tencent's home line. */
 function shipTencent(): void {
-  installListingDirectory([["0700", "Tencent Holdings Limited", "HKEX", "Common Stock", "HKD", null, 1]]);
+  installListingDirectory([["0700", "Tencent Holdings Limited", "HKEX", "Common Stock", "HKD", null, 1, null]]);
 }
 
 /** Renders the bar empty and types `text`; search answers only once released. */
-async function typeWithSearchHeld(text: string, answer: InstrumentSearchResult[]) {
+async function typeWithSearchHeld(text: string, answer: InstrumentSearchResult[], configureConfig?: (config: AppConfig) => AppConfig) {
   const opened: string[] = [];
   const saved: TickerRecord[] = [];
   const { promise: held, resolve: release } = Promise.withResolvers<void>();
@@ -32,6 +33,7 @@ async function typeWithSearchHeld(text: string, answer: InstrumentSearchResult[]
   await tui.render(<CommandBarHarness
     query=""
     live
+    configureConfig={configureConfig}
     onAction={(action) => { if (action.type === "UPDATE_TICKER") saved.push(action.ticker); }}
     configurePluginRegistry={(registry) => { registry.pinTicker = (key) => { opened.push(key); }; }}
     dataProvider={createTestDataProvider({
@@ -101,27 +103,90 @@ test("a symbol search answered once is named on the keystroke the next time the 
   }
 });
 
-test("search's answer leaves the named line where it was and adds the rest below", async () => {
-  shipTencent();
-  // Search ranks another company's 0700 first this time.
-  const { opened, saved, release } = await typeWithSearchHeld("0700", [renegade, { ...tencent, homeListing: undefined }]);
-  expect(listOf(tui.frame())).toContain("Tencent");
-  expect(tui.frame()).not.toContain("Renegade");
+test("search's answer leaves the named lines where they were and adds the rest below", async () => {
+  installListingDirectory([
+    ["0700", "Tencent Holdings Limited", "HKEX", "Common Stock", "HKD", null, 1, 27_587],
+    ["0700", "Renegade Gold Inc.", "XDUS", "Common Stock", "EUR", null, 0, null],
+  ]);
+  // The answer has another line of Renegade's, which it ranks above the one named.
+  const { opened, saved, release } = await typeWithSearchHeld("0700", [
+    { ...tencent, popularity: 27_587 },
+    { ...renegade, exchange: "FWB2" },
+    renegade,
+  ]);
+  expect(tui.frame()).not.toContain("FWB2");
   release();
-  await tui.waitForFrameToContain("Renegade Gold");
+  await tui.waitForFrameToContain("FWB2");
   await tui.waitForFrameToExclude("Searching");
   const frame = tui.frame();
-  expect(frame.indexOf("Tencent")).toBeLessThan(frame.indexOf("Renegade"));
-  // The highlight stayed on Tencent: Enter opens it.
+  expect(frame.indexOf("Tencent")).toBeLessThan(frame.indexOf("XDUS"));
+  expect(frame.indexOf("XDUS")).toBeLessThan(frame.indexOf("FWB2"));
   await tui.emitKeypress({ name: "return", sequence: "\r" });
   await tui.waitForFrameToContain("bar:closed");
   expect(opened).toEqual(["0700"]);
   expect(saved.at(-1)?.metadata).toMatchObject({ exchange: "HKEX", name: "Tencent Holdings Limited" });
 });
 
+// From Gloom Cloud, as the index's lines are, so a line both name is one row.
+const dollarGeneral: InstrumentSearchResult = {
+  providerId: "gloomberb-cloud", symbol: "DG", name: "Dollar General Corporation", exchange: "NYSE", currency: "USD", type: "Common Stock",
+  homeListing: true, popularity: 13_617_000,
+};
+const vinci = (exchange: string): InstrumentSearchResult => ({
+  providerId: "gloomberb-cloud", symbol: "DG", name: "Vinci SA", exchange, currency: "EUR", type: "Common Stock", ...(exchange === "EPA" ? { homeListing: true } : {}),
+});
+/** Lines the index got wrong: Vinci's, with nothing to say Dollar General is the DG people mean. */
+function shipVinci(): void {
+  installListingDirectory([
+    ["DG", "Vinci SA", "EPA", "Common Stock", "EUR", null, 1, null],
+    ["DG", "Vinci SA", "VIE", "Common Stock", "EUR", null, 0, null],
+  ]);
+}
+
+test("an answer that leads with another listing than the index named takes the highlight the user left alone", async () => {
+  shipVinci();
+  const { opened, saved, release } = await typeWithSearchHeld("DG", [dollarGeneral, vinci("EPA"), vinci("VIE")]);
+  expect(listOf(tui.frame())).toContain("Vinci SA");
+  release();
+  await tui.waitForFrameToContain("Dollar General");
+  await tui.waitForFrameToExclude("Searching");
+  expect(tui.frame().indexOf("Dollar General")).toBeLessThan(tui.frame().indexOf("Vinci"));
+  await tui.emitKeypress({ name: "return", sequence: "\r" });
+  await tui.waitForFrameToContain("bar:closed");
+  expect(opened).toEqual(["DG"]);
+  expect(saved.at(-1)?.metadata).toMatchObject({ exchange: "NYSE", name: "Dollar General Corporation" });
+});
+
+test("a highlight the user moved stays on its row, in its place, whatever the answer leads with", async () => {
+  shipVinci();
+  const { saved, release } = await typeWithSearchHeld("DG", [dollarGeneral, vinci("EPA"), vinci("VIE")]);
+  await tui.emitKeypress({ name: "down" });
+  release();
+  await tui.waitForFrameToContain("Dollar General");
+  await tui.waitForFrameToExclude("Searching");
+  const frame = tui.frame();
+  expect(frame.indexOf("EPA")).toBeLessThan(frame.indexOf("VIE"));
+  expect(frame.indexOf("VIE")).toBeLessThan(frame.indexOf("Dollar General"));
+  await tui.emitKeypress({ name: "return", sequence: "\r" });
+  await tui.waitForFrameToContain("bar:closed");
+  expect(saved.at(-1)?.metadata).toMatchObject({ exchange: "VIE", name: "Vinci SA" });
+});
+
+test("a broker account's search names nothing before its own answer", async () => {
+  shipTencent();
+  const { release } = await typeWithSearchHeld("0700", [tencent], (config) => ({
+    ...config,
+    portfolios: config.portfolios.map((portfolio) => ({ ...portfolio, brokerId: "ibkr", brokerInstanceId: "ibkr-live" })),
+  }));
+  expect(tui.frame()).not.toContain("Tencent");
+  expect(tui.frame()).toContain("Searching");
+  release();
+  await tui.waitForFrameToContain("Tencent Holdings Limited");
+});
+
 test("search's answer keeps every line named before it, even where it adds another security", async () => {
   const venues = ["XNAS", "BVC", "BMV", "VIE", "WSE", "IEX"];
-  installListingDirectory(venues.map((venue, index) => ["ACME", "Acme Corp.", venue, "Common Stock", "USD", null, index === 0 ? 1 : 0]));
+  installListingDirectory(venues.map((venue, index) => ["ACME", "Acme Corp.", venue, "Common Stock", "USD", null, index === 0 ? 1 : 0, null]));
   const answer: InstrumentSearchResult[] = [
     ...venues.map((exchange, index) => ({ providerId: "test", symbol: "ACME", name: "Acme Corp.", exchange, currency: "USD", type: "Common Stock", homeListing: index === 0 })),
     { providerId: "test", symbol: "ACME", name: "Acme Corp. CEDEAR", exchange: "BYMA", currency: "ARS", type: "Common Stock" },

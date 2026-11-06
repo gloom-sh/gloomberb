@@ -10,7 +10,7 @@ import {
   type AppState,
 } from "./state/app/context";
 import type { AppAction } from "./core/state/app/state";
-import { bindAppActivity, useAppActive, useAppVisible } from "./state/app/activity";
+import { bindAppActivity, isAppVisible, subscribeAppVisibility, useAppActive, useAppVisible } from "./state/app/activity";
 import { Header } from "./components/layout/header";
 import { StatusBar } from "./components/layout/status-bar";
 import { useAppChromeShown } from "./components/layout/presentation";
@@ -445,11 +445,13 @@ function AppInner({
     appWideWorkElsewhere ? undefined : attachSeenPaneNotices(pluginRegistry.persistence.pluginState)
   ), [appWideWorkElsewhere, pluginRegistry]);
   // The listings a typed symbol names before search answers. Every window reads
-  // them; the main window keeps what search answers and refreshes the shipped ones.
+  // them; the main window keeps what search answers and, while it can be seen,
+  // refreshes the shipped ones.
   useEffect(() => attachListingIndex({
     pluginState: pluginRegistry.persistence.pluginState,
     writable: !appWideWorkElsewhere,
     searchBatch: dataProvider.searchBatch ? (queries, options) => dataProvider.searchBatch!(queries, options) : null,
+    visibility: { isVisible: isAppVisible, subscribe: subscribeAppVisibility },
   }), [appWideWorkElsewhere, dataProvider, pluginRegistry]);
 
   // Persist layout changes (switching, saving, deleting, renaming layouts).

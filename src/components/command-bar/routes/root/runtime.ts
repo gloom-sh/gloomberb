@@ -182,6 +182,7 @@ export function useCommandBarRootRuntime({
    * its row, so Enter opens the row that was highlighted.
    */
   const pinnedRootRowRef = useRef<{ id: string; answer: string | null } | null>(null);
+  const previousAnswerTookTopRef = useRef(0);
   const activeMatch = matchPrefix(rootQuery, availableCommands);
 
   const tickerSearchRouteQuery = currentRoute?.kind === "mode" && currentRoute.screen === "ticker-search"
@@ -317,6 +318,7 @@ export function useCommandBarRootRuntime({
   const {
     activeRootProviderResultsKey,
     orderedRootResults: answeredRootResults,
+    rootAnswerTookTop,
     rootCategoryPriorities,
     rootResultsCurrent,
     rootSearching: tickerSearching,
@@ -334,6 +336,7 @@ export function useCommandBarRootRuntime({
     listingSuffix: rootPlainTickerSearchArg && rootListingChoice ? rootListingChoice.suffix : null,
     reading: rootPlainTickerSearchArg ? rootTickerReading : null,
     rootResultItems: rootResultModel.items,
+    rootSelectionNavigatedRef,
     rootTickerSearchArg,
     tickers: state.tickers,
     writeTickerSearchCache,
@@ -370,6 +373,11 @@ export function useCommandBarRootRuntime({
       rootSelectionNavigatedRef.current = false;
       pinnedRootRowRef.current = null;
     }
+    // An answer that led with another listing than the index named takes the highlight the user left alone.
+    if (previousAnswerTookTopRef.current !== rootAnswerTookTop) {
+      previousAnswerTookTopRef.current = rootAnswerTookTop;
+      if (!rootSelectionNavigatedRef.current) pinnedRootRowRef.current = null;
+    }
 
     setRootSelectedIdx((current) => {
       if (rootSelectionNavigatedRef.current) {
@@ -401,6 +409,7 @@ export function useCommandBarRootRuntime({
     activeMatch?.command.id,
     currentRoute,
     orderedRootResults,
+    rootAnswerTookTop,
     rootModeKind,
     rootQuery,
     rootResultModel.initialIdx,
