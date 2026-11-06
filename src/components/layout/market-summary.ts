@@ -4,7 +4,7 @@ import { useThemeColors } from "../../theme/theme-context";
 import { useAppVisible } from "../../state/app/activity";
 import { useAppSelector } from "../../state/app/context";
 import { getSharedMarketDataCoordinator, resolveEntryValue } from "../../market-data/coordinator";
-import { tf } from "../../i18n";
+import { t, tf } from "../../i18n";
 import { useQuoteEntries } from "../../market-data/hooks";
 import { buildQuoteKey } from "../../market-data/selectors";
 import type { QueryEntry } from "../../market-data/result-types";
@@ -43,9 +43,16 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 /** A level or price this large reads in whole units in the strip: `S&P 500 6,843`, `BTC $75,686`. */
 const WHOLE_UNITS_FROM = 1_000;
 
+/** How much of the market state the header has room for: `NYSE pre-market`, `NYSE pre`, `pre`. */
+export type MarketStateForm = "full" | "short" | "bare";
+
 export interface MarketSummary {
-  /** The market's venue and where its day stands (`NYSE closed`), empty when it trades around the clock. */
-  marketLabel: string;
+  /**
+   * The market's venue and where its day stands, in each form a narrowing
+   * header steps down through (`NYSE pre-market`, `NYSE pre`, `pre`); empty
+   * when it trades around the clock or nothing says.
+   */
+  marketLabels: Record<MarketStateForm, string>;
   /** When that changes, read on the venue's clock (`opens 9:30 ET`, `2h10 left`); null when nothing says. */
   marketDetail: string | null;
   marketColor: string;
@@ -67,26 +74,29 @@ export interface MarketSummaryFit {
   showQuote: boolean;
   /** The quote keeps its move; false when it gave the move up to stay. */
   showQuoteMove: boolean;
-  /** The exchange's state; never without the quote it is the state of. */
-  showState: boolean;
-  /** The opening time or countdown after the state; never without it. */
+  /** The form of the exchange's state that fits, or null; never without the quote it is the state of. */
+  state: MarketStateForm | null;
+  /** The opening time or countdown after the state; only with its full form. */
   showDetail: boolean;
 }
+
+const STATE_FORMS: readonly MarketStateForm[] = ["full", "short", "bare"];
 
 /**
  * Picks which parts of the cluster survive at a given width, ordered by how
  * much each can still change: the quote first, then the market state, then
  * the detail (the opening time or countdown) that widens the state. A
- * narrowing header therefore sheds the detail, then the state, and keeps the
+ * narrowing header therefore sheds the detail, then shortens the state
+ * (`NYSE pre-market`, `NYSE pre`, `pre`) before it lets it go, and keeps the
  * quote longest, giving up its move before it gives way. Each width includes
- * the gap after its part; `detailWidth` is what the detail adds to the state,
- * and `quoteMoveWidth` what the move adds to the quote.
+ * the gap after its part; `detailWidth` is what the detail adds to the full
+ * state, and `quoteMoveWidth` what the move adds to the quote.
  */
 export function resolveMarketSummaryFit(options: {
   available: number;
   quoteWidth: number;
   quoteMoveWidth: number;
-  stateWidth: number;
+  stateWidths: Record<MarketStateForm, number>;
   detailWidth: number;
 }): MarketSummaryFit {
   let remaining = options.available;
@@ -97,9 +107,9 @@ export function resolveMarketSummaryFit(options: {
   };
   const showQuoteMove = take(options.quoteWidth);
   const showQuote = showQuoteMove || (options.quoteMoveWidth > 0 && take(options.quoteWidth - options.quoteMoveWidth));
-  const showState = showQuote && take(options.stateWidth);
-  const showDetail = showState && take(options.detailWidth);
-  return { showQuote, showQuoteMove: showQuote && showQuoteMove, showState, showDetail };
+  const state = showQuote ? STATE_FORMS.find((form) => take(options.stateWidths[form])) ?? null : null;
+  const showDetail = state === "full" && take(options.detailWidth);
+  return { showQuote, showQuoteMove: showQuote && showQuoteMove, state, showDetail };
 }
 
 /** A quote the strip can show: one with a price. Anything else is no answer, and a benchmark falls back to its listing. */
@@ -164,14 +174,42 @@ function venueOpenText(at: number, now: number, timeZone: string): string {
   return `${date}${hour}:${String(minute).padStart(2, "0")} ${timeZoneLabel(timeZone)}`;
 }
 
-const PHASE_LABELS: Record<VenueSessionPhase, string> = {
-  open: "{venue} open",
-  lunch: "{venue} lunch",
-  "pre-market": "{venue} pre-market",
-  "after-hours": "{venue} after-hours",
-  closed: "{venue} closed",
-  holiday: "{venue} holiday",
+/** Each phase in each form of the state: the full one names the session, the short one shortens it, the bare one drops the venue. */
+const PHASE_LABELS: Record<MarketStateForm, Record<VenueSessionPhase, string>> = {
+  full: {
+    open: "{venue} open",
+    lunch: "{venue} lunch",
+    "pre-market": "{venue} pre-market",
+    "after-hours": "{venue} after-hours",
+    closed: "{venue} closed",
+    holiday: "{venue} holiday",
+  },
+  short: {
+    open: "{venue} open",
+    lunch: "{venue} lunch",
+    "pre-market": "{venue} pre",
+    "after-hours": "{venue} post",
+    closed: "{venue} closed",
+    holiday: "{venue} holiday",
+  },
+  // No wider than the bare states the header used to show (PRE-MKT, OPEN, AFTER-HRS, CLOSED).
+  bare: {
+    open: "open",
+    lunch: "lunch",
+    "pre-market": "pre",
+    "after-hours": "post",
+    closed: "closed",
+    holiday: "closed",
+  },
 };
+
+function phaseLabels(phase: VenueSessionPhase, venue: string): Record<MarketStateForm, string> {
+  return {
+    full: tf(PHASE_LABELS.full[phase], { venue }),
+    short: tf(PHASE_LABELS.short[phase], { venue }),
+    bare: t(PHASE_LABELS.bare[phase]),
+  };
+}
 
 /** The market state each phase is coloured as: the regular session's, an extended session's, a closed one's. */
 const PHASE_STATES: Record<VenueSessionPhase, MarketState> = {
@@ -184,18 +222,17 @@ const PHASE_STATES: Record<VenueSessionPhase, MarketState> = {
 };
 
 /**
- * The strip's market state, named by its venue and read from the venue's own
- * hours and holidays: `NYSE closed · opens 9:30 ET`, `HKEX open · 2h10 left`,
- * `HKEX lunch · reopens 13:00 HKT`, `NYSE holiday · opens Fri 9:30 ET`.
+ * When the venue's session changes, on its own clock: `2h10 left`, `opens
+ * 9:30 ET`, `reopens 13:00 HKT`, `opens Fri 9:30 ET`. Null when its calendar
+ * does not say.
  */
-function venueSessionLabel(venue: string, session: VenueSessionNow, now: number): { label: string; detail: string | null } {
-  const label = tf(PHASE_LABELS[session.phase], { venue });
+function venueSessionDetail(session: VenueSessionNow, now: number): string | null {
   if (session.phase === "open") {
-    return { label, detail: session.closesAt != null ? tf("{time} left", { time: formatSessionCountdown(session.closesAt - now) }) : null };
+    return session.closesAt != null ? tf("{time} left", { time: formatSessionCountdown(session.closesAt - now) }) : null;
   }
-  if (session.opensAt == null) return { label, detail: null };
+  if (session.opensAt == null) return null;
   const time = venueOpenText(session.opensAt, now, session.timeZone);
-  return { label, detail: tf(session.phase === "lunch" ? "reopens {time}" : "opens {time}", { time }) };
+  return tf(session.phase === "lunch" ? "reopens {time}" : "opens {time}", { time });
 }
 
 /** A phase from the state a quote reports, for a venue whose hours the app does not know. */
@@ -212,44 +249,56 @@ function quotedPhase(state: MarketState | undefined): VenueSessionPhase | null {
 }
 
 /**
- * Where the header's market stands: its venue's calendar when the app knows
- * its hours (a benchmark's venue, or the venue a picked listing trades on),
- * otherwise the state its quote reports, without a time. Nothing for a
- * market that trades around the clock.
+ * Where the header's market stands: its venue's calendar on a day the app
+ * has that venue's published hours and closures for (a benchmark's venue, or
+ * the venue a picked listing trades on), with when that changes. Otherwise,
+ * where a holiday would read as a session (LSE and XETRA publish none here,
+ * other venues not every year), the state its quote reports, without a time.
+ * Nothing for a market that trades around the clock, or with no fresh quote
+ * to ask.
  */
 export function headerMarketState(
   target: Pick<HeaderMarketTarget, "venue" | "exchange">,
   quote: Quote | null | undefined,
   now: number,
   colors: ThemeColors,
-): Pick<MarketSummary, "marketColor" | "marketDetail" | "marketLabel"> {
+): Pick<MarketSummary, "marketColor" | "marketDetail" | "marketLabels"> {
   const venue = target.venue
     ?? canonicalExchange(quote?.listingExchangeName || quote?.exchangeName || target.exchange);
-  const none = { marketColor: colors.textDim, marketDetail: null, marketLabel: "" };
+  const none = { marketColor: colors.textDim, marketDetail: null, marketLabels: { full: "", short: "", bare: "" } };
   if (!venue || isAlwaysOpenExchange(venue)) return none;
   const session = venueSessionNow(venue, now);
   if (session) {
-    const { label, detail } = venueSessionLabel(venue, session, now);
-    return { marketColor: marketStateColor(PHASE_STATES[session.phase], colors), marketDetail: detail, marketLabel: label };
+    return {
+      marketColor: marketStateColor(PHASE_STATES[session.phase], colors),
+      marketDetail: venueSessionDetail(session, now),
+      marketLabels: phaseLabels(session.phase, venue),
+    };
   }
-  const phase = quotedPhase(quote?.marketState);
+  const phase = quote?.stale === true ? null : quotedPhase(quote?.marketState);
   if (!phase) return none;
-  const name = exchangeShortName(quote?.listingExchangeName || quote?.exchangeName, quote?.fullExchangeName) || venue;
-  return { marketColor: marketStateColor(PHASE_STATES[phase], colors), marketDetail: null, marketLabel: tf(PHASE_LABELS[phase], { venue: name }) };
+  const name = target.venue
+    ?? (exchangeShortName(quote?.listingExchangeName || quote?.exchangeName, quote?.fullExchangeName) || venue);
+  return { marketColor: marketStateColor(PHASE_STATES[phase], colors), marketDetail: null, marketLabels: phaseLabels(phase, name) };
 }
 
 /** Cells the cluster's parts take, each with the gap after it, as `resolveMarketSummaryFit` reads them. */
 export function marketSummaryWidths(summary: MarketSummary, delayedMarkWidth: number): {
   quoteWidth: number;
   quoteMoveWidth: number;
-  stateWidth: number;
+  stateWidths: Record<MarketStateForm, number>;
   detailWidth: number;
 } {
   const mark = summary.quoteDelayMinutes != null ? delayedMarkWidth + 1 : 0;
+  const stateWidth = (label: string) => label ? displayWidth(label) + 1 : 0;
   return {
     quoteWidth: displayWidth(summary.quoteLabel) + 1 + displayWidth(summary.quoteText) + 1 + mark,
     quoteMoveWidth: displayWidth(summary.quoteText) - displayWidth(summary.quotePriceText),
-    stateWidth: summary.marketLabel ? displayWidth(summary.marketLabel) + 1 : 0,
+    stateWidths: {
+      full: stateWidth(summary.marketLabels.full),
+      short: stateWidth(summary.marketLabels.short),
+      bare: stateWidth(summary.marketLabels.bare),
+    },
     detailWidth: summary.marketDetail ? displayWidth(` · ${summary.marketDetail}`) : 0,
   };
 }

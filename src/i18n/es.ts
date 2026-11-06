@@ -1753,4 +1753,11 @@ export const es: Record<string, string> = {
   "Choose Header Market": "Elegir mercado del encabezado",
   "Choose the market the header shows": "Elige el mercado que muestra el encabezado",
   "Benchmarks": "Índices de referencia",
+  "{venue} pre": "{venue} pre",
+  "{venue} post": "{venue} post",
+  "open": "abierto",
+  "lunch": "pausa",
+  "pre": "pre",
+  "post": "post",
+  "closed": "cerrado",
 };

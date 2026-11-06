@@ -1748,4 +1748,11 @@ export const ko: Record<string, string> = {
   "Choose Header Market": "헤더 시장 선택",
   "Choose the market the header shows": "헤더에 표시할 시장 선택",
   "Benchmarks": "벤치마크",
+  "{venue} pre": "{venue} 장전",
+  "{venue} post": "{venue} 장후",
+  "open": "장중",
+  "lunch": "점심",
+  "pre": "장전",
+  "post": "장후",
+  "closed": "휴장",
 };

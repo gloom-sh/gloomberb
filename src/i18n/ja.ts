@@ -1750,4 +1750,11 @@ export const ja: Record<string, string> = {
   "Choose Header Market": "ヘッダーの市場を選択",
   "Choose the market the header shows": "ヘッダーに表示する市場を選択",
   "Benchmarks": "ベンチマーク",
+  "{venue} pre": "{venue} 開始前",
+  "{venue} post": "{venue} 時間外",
+  "open": "取引中",
+  "lunch": "昼休み",
+  "pre": "開始前",
+  "post": "時間外",
+  "closed": "休場",
 };

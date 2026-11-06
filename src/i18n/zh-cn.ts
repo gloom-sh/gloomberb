@@ -1750,4 +1750,11 @@ export const zhCN: Record<string, string> = {
   "Choose Header Market": "选择标题栏市场",
   "Choose the market the header shows": "选择标题栏显示的市场",
   "Benchmarks": "基准指数",
+  "{venue} pre": "{venue} 盘前",
+  "{venue} post": "{venue} 盘后",
+  "open": "盘中",
+  "lunch": "午休",
+  "pre": "盘前",
+  "post": "盘后",
+  "closed": "休市",
 };

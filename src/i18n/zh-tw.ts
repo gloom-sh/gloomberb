@@ -1750,4 +1750,11 @@ export const zhTW: Record<string, string> = {
   "Choose Header Market": "選擇標題欄市場",
   "Choose the market the header shows": "選擇標題欄顯示的市場",
   "Benchmarks": "基準指數",
+  "{venue} pre": "{venue} 盤前",
+  "{venue} post": "{venue} 盤後",
+  "open": "盤中",
+  "lunch": "午休",
+  "pre": "盤前",
+  "post": "盤後",
+  "closed": "休市",
 };

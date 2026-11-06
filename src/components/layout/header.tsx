@@ -768,7 +768,8 @@ function NativeUpdateStatus({ onRestart, trailingGap, updateKey, view }: {
 
 /**
  * The market the user follows, at the header's right edge: its venue's state
- * (`NYSE closed · opens 9:30 ET`) and its quote (`S&P 500 6,843 +0.20%`). It
+ * (`NYSE closed · opens 9:30 ET`, shortened to `NYSE pre` or `pre` where the
+ * room is short) and its quote (`S&P 500 6,843 +0.20%`). It
  * fits itself into the columns the prompt geometry reserved rather than into
  * whatever this row has left over, so the cluster and the prompt can never
  * both claim the same space. Pressing it opens the market picker in the
@@ -795,10 +796,10 @@ function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: bo
     <Box paddingRight={1} flexShrink={0} data-gloom-role="header-market">
       <Button variant="plain" compact flush label="Choose Header Market" title={t("Choose the market the header shows")} onPress={openPicker} stopPropagation>
         <Box flexDirection="row" alignItems="center" gap={1}>
-          {fit.showState ? (
+          {fit.state ? (
             <Box flexDirection="row" flexShrink={0}>
               <Text fg={summary.marketColor} {...(nativePaneChrome ? { attributes: TextAttributes.BOLD } : {})}>
-                {summary.marketLabel}
+                {summary.marketLabels[fit.state]}
               </Text>
               {fit.showDetail && summary.marketDetail ? <Text fg={muted}>{` · ${summary.marketDetail}`}</Text> : null}
             </Box>
