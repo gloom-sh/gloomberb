@@ -5,12 +5,14 @@ import { useAppLanguage } from "../../../i18n/react";
 import { Button } from "../../../components/ui/button";
 import { DelayedMark, delayedMarkWidth, useStateQuoteDelay } from "../../../components/ui/delayed-mark";
 import { Box, Text, useCommandBarShortcut, useUiCapabilities } from "../../../ui";
+import { useViewport } from "../../../react/input";
 import { useThemeColors } from "../../../theme/theme-context";
 import { chatController, type ChatController } from "../chat/controller";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { CLOUD_QUOTE_DELAY_MINUTES, resolvePlanAccess } from "../../../api-client/plan-access";
 import { useTrialOfferShowing } from "./trial-offer-status-widget";
 import {
+  NARROW_STATUS_BAR_COLUMNS,
   STATUS_WIDGET_COLUMNS,
   useOtherStatusWidgetClaims,
   useStatusWidgetClaim,
@@ -46,14 +48,19 @@ export function CloudUpgradeStatusWidget({ controller = chatController }: CloudU
   // The bar holds back its usual columns for the widgets' own text, which
   // this one shares with the account chip beside it: half of them are its
   // own. The note says "delayed" where the row has room for what it draws
-  // past that half, and claims it, else it is the mark alone.
+  // past that half, and claims it, else it is the mark alone. The desktop
+  // and the web say it on any bar wider than a phone's, the layout tabs
+  // giving way; on a phone the word would cut the layout tab in front.
   const room = useStatusWidgetRoom();
+  const { width: barColumns } = useViewport();
   const othersClaimed = useOtherStatusWidgetClaims(CLAIM_ID);
   const word = t("delayed");
   // The mark, the space before the word, the word and the space after the note.
   const noteColumns = delayedMarkWidth(CLOUD_QUOTE_DELAY_MINUTES, false) + 1 + displayWidth(word) + 1;
   const overflow = Math.max(0, noteColumns - STATUS_WIDGET_COLUMNS / 2);
-  const spelled = !offerShowing && (nativePaneChrome || room - STATUS_WIDGET_COLUMNS - othersClaimed >= overflow);
+  const spelled = !offerShowing && (nativePaneChrome
+    ? barColumns >= NARROW_STATUS_BAR_COLUMNS
+    : room - STATUS_WIDGET_COLUMNS - othersClaimed >= overflow);
   useStatusWidgetClaim(CLAIM_ID, delayed && spelled && !nativePaneChrome ? overflow : 0);
   useStateQuoteDelay(delayed);
 

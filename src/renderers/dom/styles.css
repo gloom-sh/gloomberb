@@ -1639,10 +1639,15 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   outline-offset: 1px;
 }
 
-/* Keycaps on buttons and in dialog hints are for a keyboard; a touch screen
-   has none to press them with. A note beside them (a deadline) stays. */
+/* Keycaps on buttons and in dialog hints, and the keys the command bar and
+   the layout tabs name, are for a keyboard; a touch screen has none to press
+   them with. A note beside them (a deadline) stays. Text set whole with its
+   key (a layout tab's `⌘1 Research`) has the same words without the key
+   beside it, shown only where the key hint goes. */
+.gloom-without-keys { display: none; }
 @media (hover: none) and (pointer: coarse) {
   .gloom-keycap, .gloom-key-hint { display: none !important; }
+  .gloom-without-keys { display: inline; }
 }
 
 /* Reading columns (src/components/reader) set their type from their own

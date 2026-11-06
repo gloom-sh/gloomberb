@@ -462,6 +462,8 @@ interface HostTabItem {
   value: string;
   /** Artwork before the label, such as a logo; decoration only. */
   leading?: ReactNode;
+  /** The key the label starts with (`⌘1 `), hidden on a touch screen. */
+  keyPrefix?: string;
   disabled?: boolean;
   reorderable?: boolean;
   onClose?: (value: string) => void;
