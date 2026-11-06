@@ -1,7 +1,7 @@
 {
  "format": 1,
  "site": "https://gloom.sh",
- "updatedAt": "2026-11-03",
+ "updatedAt": "2026-11-05",
  "categories": [
   {
    "id": "research",
@@ -1776,7 +1776,7 @@
     "desktop",
     "tui"
    ],
-   "updatedAt": "2026-10-30",
+   "updatedAt": "2026-11-05",
    "blocks": [
     {
      "type": "heading",
@@ -1793,11 +1793,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Or use the [direct download](/download/desktop)."
-    },
-    {
-     "type": "paragraph",
-     "text": "The desktop app and Homebrew cask require Apple Silicon. Intel Macs can use the [browser version](#browser); check [release assets](https://github.com/gloom-sh/gloomberb/releases/latest) for terminal binary availability."
+     "text": "Or use the [direct download](/download/desktop). The desktop app and the Homebrew cask (`brew install --cask gloomberb`) need Apple Silicon; on an Intel Mac use the [browser version](#browser), or look for a terminal binary in the [release assets](https://github.com/gloom-sh/gloomberb/releases/latest)."
     },
     {
      "type": "paragraph",
@@ -1823,7 +1819,7 @@
     },
     {
      "type": "paragraph",
-     "text": "The [desktop installer](/download/desktop), about 280 MB, installs the app and the `gloom` command for your user, with no admin rights. It is not code-signed yet, so SmartScreen may stop it:"
+     "text": "The [desktop installer](/download/desktop) installs the app and the `gloom` command, with no admin rights. It is not code-signed yet, so SmartScreen may stop it:"
     },
     {
      "type": "list",
@@ -1836,21 +1832,7 @@
     },
     {
      "type": "paragraph",
-     "text": "To check the file first, compare `Get-FileHash` on it with the SHA-256 on the [release page](https://github.com/gloom-sh/gloomberb/releases/latest)."
-    },
-    {
-     "type": "list",
-     "items": [
-      "**Terminal:** the installer adds `gloom` to your PATH, so open a new terminal window. PowerShell works.",
-      "**Charts:** Windows Terminal has no Kitty graphics, so terminal charts draw as text. The desktop app draws them in full.",
-      "**Data:** `%USERPROFILE%\\.gloomberb`, printed by `gloom version`. `GLOOMBERB_HOME` moves it.",
-      "**Git and Bun:** Bun ships with the app; Git does not. Some official plugins (TV, Substack, Interactive Brokers, IBKR Gateway, Public, Robinhood, SimpleFIN, Polls, Prediction Markets, BYOK AI) install from GitHub and need [Git for Windows](https://git-scm.com/download/win). Without it Gloom starts without them, says so, and `gloom doctor` names them.",
-      "**Versions:** Windows 11 x64 is tested. ARM PCs run the x64 build through Windows' emulation: the desktop app is checked to open and stay open on Windows 11 on Arm, nothing more. Windows 10 is untested."
-     ]
-    },
-    {
-     "type": "paragraph",
-     "text": "Terminal only, in PowerShell, with no admin rights. It installs `gloom.exe` from the latest release into `%USERPROFILE%\\.local\\bin`, checks its SHA-256, and adds the folder to your PATH; open a new terminal window afterwards."
+     "text": "Terminal only, in PowerShell:"
     },
     {
      "type": "code",
@@ -1858,7 +1840,25 @@
     },
     {
      "type": "paragraph",
-     "text": "The bash line above is for macOS and Linux; under Git Bash it points here. With [Bun](https://bun.sh), `bun install -g @gloom-sh/terminal` works too."
+     "text": "Then open a new terminal window."
+    },
+    {
+     "type": "details",
+     "summary": "Windows notes",
+     "blocks": [
+      {
+       "type": "list",
+       "items": [
+        "**Checksum:** the installer is about 280 MB. Compare `Get-FileHash` on it with the SHA-256 on the [release page](https://github.com/gloom-sh/gloomberb/releases/latest).",
+        "**Terminal:** the installer adds `gloom` to your PATH, so open a new terminal window. PowerShell works.",
+        "**PowerShell line:** installs `gloom.exe` from the latest release into `%USERPROFILE%\\.local\\bin`, checks its SHA-256 and adds the folder to your PATH, with no admin rights. Under Git Bash the bash line points here. With [Bun](https://bun.sh), `bun install -g @gloom-sh/terminal` works too.",
+        "**Charts:** Windows Terminal has no Kitty graphics, so terminal charts draw as text. The desktop app draws them in full.",
+        "**Data:** `%USERPROFILE%\\.gloomberb`, printed by `gloom version`. `GLOOMBERB_HOME` moves it.",
+        "**Git and Bun:** Bun ships with the app; Git does not. Some official plugins (TV, Substack, Interactive Brokers, IBKR Gateway, Public, Robinhood, SimpleFIN, Polls, Prediction Markets, BYOK AI) install from GitHub and need [Git for Windows](https://git-scm.com/download/win). Without it Gloom starts without them, says so, and `gloom doctor` names them.",
+        "**Versions:** Windows 11 x64 is tested. ARM PCs run the x64 build through Windows' emulation: the desktop app is checked to open and stay open on Windows 11 on Arm, nothing more. Windows 10 is untested."
+       ]
+      }
+     ]
     },
     {
      "type": "heading",
@@ -1867,11 +1867,11 @@
     },
     {
      "type": "paragraph",
-     "text": "[Open term.gloom.sh](https://term.gloom.sh) without an account: search, delayed quotes, charts, delayed news and most panes work in a one-pane workspace. Layouts stay in your browser."
+     "text": "[Open term.gloom.sh](https://term.gloom.sh). No account needed: search, charts, most panes, quotes 15 minutes delayed and news 12 hours delayed, in a one-pane workspace. Layouts stay in your browser."
     },
     {
      "type": "paragraph",
-     "text": "A free sign-in unlocks account-backed panes such as filings, analysts, supply chain and scanners, plus sync and sharing. Some research panes and real-time data require Pro. Browser builds cannot connect brokers or install local plugins."
+     "text": "A free sign-in adds filings, analysts, supply chain, scanners, sync and sharing. Real-time data and some research panes need Pro. The browser cannot connect brokers or install local plugins."
     },
     {
      "type": "heading",
@@ -1917,33 +1917,40 @@
      ]
     },
     {
-     "type": "paragraph",
-     "text": "An existing `gloomberb` install keeps updating as it is."
+     "type": "details",
+     "summary": "Older installs",
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "An existing `gloomberb` install keeps updating as it is."
+      },
+      {
+       "type": "paragraph",
+       "text": "Installed before 0.18.4, when the command was `gloomberb`? Updating adds `gloom` beside it and `gloomberb` keeps working, with nothing to reinstall."
+      },
+      {
+       "type": "paragraph",
+       "text": "Had `Gloomberb.app`? Its next update renames it to `Gloom.app`; settings and data stay."
+      }
+     ]
     },
     {
-     "type": "paragraph",
-     "text": "Installed before 0.18.4, when the command was `gloomberb`? Updating adds `gloom` beside it and `gloomberb` keeps working, with nothing to reinstall."
-    },
-    {
-     "type": "paragraph",
-     "text": "Had `Gloomberb.app`? Its next update renames it to `Gloom.app`; settings and data stay."
-    },
-    {
-     "type": "heading",
-     "level": 3,
-     "text": "Release channels"
-    },
-    {
-     "type": "paragraph",
-     "text": "The app updates from **stable** releases, the ones on the [changelog](/changelog). **Nightly** is a daily build of main that gets fixes first and can break. To switch, run **Release Channel** from the command bar (on the Mac, also **Release Channel...** in the app menu), or in a terminal:"
-    },
-    {
-     "type": "code",
-     "code": "gloom config set updates.channel nightly"
-    },
-    {
-     "type": "paragraph",
-     "text": "Switching back to stable never installs an older version: your nightly build stays until a newer stable release is out. Nightly applies to the desktop app and the terminal app; Homebrew, Bun and the install script always get stable."
+     "type": "details",
+     "summary": "Release channels: stable and nightly",
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "The app updates from **stable** releases, the ones on the [changelog](/changelog). **Nightly** is a daily build of main that gets fixes first and can break. To switch, run **Release Channel** from the command bar (on the Mac, also **Release Channel...** in the app menu), or in a terminal:"
+      },
+      {
+       "type": "code",
+       "code": "gloom config set updates.channel nightly"
+      },
+      {
+       "type": "paragraph",
+       "text": "Switching back to stable never installs an older version: your nightly build stays until a newer stable release is out. Nightly applies to the desktop app and the terminal app; Homebrew, Bun and the install script always get stable."
+      }
+     ]
     },
     {
      "type": "paragraph",
@@ -2731,7 +2738,7 @@
       ],
       [
        "[Interactive Brokers](/plugins/ibkr-gateway)",
-       "The IBKR Gateway plugin's own Trade tab, with Gateway or TWS running"
+       "The IBKR Gateway plugin's own Trade tab, with Gateway or TWS running ([keeping Gateway logged in](/answers/ib-gateway-daily-restart-sunday-login))"
       ]
      ]
     },
@@ -2937,7 +2944,7 @@
       [
        "Ask Gloom",
        "`ASKG <question>`, or the `Ask Gloom` row in the command bar",
-       "Cloud assistant that reads your panes and runs tools. Verified accounts get the standard model, paid Pro the Pro model."
+       "Cloud assistant that reads your panes and runs tools. Verified accounts get 20 questions a day, paid Pro 300; the count resets at midnight UTC."
       ],
       [
        "AI screener",
@@ -3178,6 +3185,7 @@
      "type": "list",
      "items": [
       "`BR` checks the connection before `IBKR`.",
+      "Interactive Brokers: Flex errors are listed in [IBKR Flex Query setup](/answers/ibkr-flex-query-setup); a Gateway that logs out is covered in [the daily restart and the Sunday login](/answers/ib-gateway-daily-restart-sunday-login).",
       "Cloud login and broker authorization are separate.",
       "Market data, account sync, and order authorization can fail independently.",
       "Review the account and the order preview before submitting. Never test with a real order."
@@ -6114,7 +6122,7 @@
     "terminal",
     "remote control"
    ],
-   "updatedAt": "2026-10-09",
+   "updatedAt": "2026-11-05",
    "blocks": [
     {
      "type": "paragraph",
@@ -6624,6 +6632,10 @@
     {
      "type": "paragraph",
      "text": "An IBKR order instruction is not an order: IBKR returns a link where you review and submit it yourself."
+    },
+    {
+     "type": "paragraph",
+     "text": "IBKR allows one AI connection per user, and Gloom holds it: connecting IBKR in Gloom disconnects IBKR from other AI apps, so reach it through Gloom instead of connecting it directly. The IBKR sign-in ends seven days after you consent, however often it is used, and only signing in again brings it back. A day before, the Brokers pane shows when it ends and Gloom emails you once. Background: [IBKR in Claude or ChatGPT](/answers/ibkr-claude-chatgpt-connector)."
     },
     {
      "type": "heading",
@@ -7855,7 +7867,7 @@
    "title": "Risk factors (RISK)",
    "summary": "RISK groups the risk factors in a company's 10-K by theme and shows what was added, dropped or reworded since the previous year.",
    "chapter": "Compare, screen and follow the money",
-   "minutes": 3
+   "minutes": 4
   },
   {
    "url": "/academy/compare-screen-follow-money/filings-and-attention/executive-pay",
