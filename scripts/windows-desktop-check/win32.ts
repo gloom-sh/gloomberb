@@ -19,6 +19,7 @@ function load() {
   const user32 = dlopen("user32.dll", {
     SetProcessDpiAwarenessContext: { args: [FFIType.i64], returns: FFIType.bool },
     EnumWindows: { args: [FFIType.function, FFIType.i64], returns: FFIType.bool },
+    EnumChildWindows: { args: [FFIType.ptr, FFIType.function, FFIType.i64], returns: FFIType.bool },
     GetWindowTextW: { args: [FFIType.ptr, FFIType.ptr, FFIType.i32], returns: FFIType.i32 },
     GetClassNameW: { args: [FFIType.ptr, FFIType.ptr, FFIType.i32], returns: FFIType.i32 },
     GetWindowThreadProcessId: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.u32 },
@@ -126,6 +127,21 @@ export function topLevelWindows(): WindowInfo[] {
   return handles.map(windowInfo);
 }
 
+/** Every window under `hwnd`, its children's children too. */
+export function childWindows(hwnd: Hwnd): WindowInfo[] {
+  const handles: Hwnd[] = [];
+  const callback = new JSCallback((child: number) => {
+    handles.push(child);
+    return 1;
+  }, { args: [FFIType.ptr, FFIType.i64], returns: FFIType.i32 });
+  try {
+    user32.EnumChildWindows(hwnd as never, callback.ptr as never, 0);
+  } finally {
+    callback.close();
+  }
+  return handles.map(windowInfo);
+}
+
 export const isWindow = (hwnd: Hwnd) => user32.IsWindow(hwnd as never);
 export const isMinimized = (hwnd: Hwnd) => user32.IsIconic(hwnd as never);
 export const isMaximized = (hwnd: Hwnd) => user32.IsZoomed(hwnd as never);
@@ -176,6 +192,11 @@ export function windowStyle(hwnd: Hwnd): { value: string; flags: string[] } {
     value: `0x${raw.toString(16).padStart(8, "0")}`,
     flags: STYLE_BITS.filter(([, bit]) => (raw & bit) === bit).map(([name]) => name),
   };
+}
+
+/** GWL_EXSTYLE, as hex. */
+export function windowExStyle(hwnd: Hwnd): string {
+  return `0x${BigInt.asUintN(32, BigInt(user32.GetWindowLongPtrW(hwnd as never, -20))).toString(16).padStart(8, "0")}`;
 }
 
 /**
