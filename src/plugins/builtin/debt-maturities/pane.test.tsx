@@ -153,3 +153,56 @@ test("a newer 10-Q is a dated figure row of its own, and every filing's year lab
   // The footer says which filing the pane's date is.
   expect(lines.find((line) => line.includes("[o]pen"))).toContain("10-Q 2025-12-31, filed 2026-02-10 · just now");
 });
+
+/** A ladder in its report's own bands, as a version 2 server sends it: carrying amounts under IFRS, in HKD millions. */
+function bandPayload(): DebtMaturitiesPayload {
+  const base = payload();
+  const pdf = "https://www1.hkexnews.hk/listedco/listconews/sehk/2026/0408/2026040800985.pdf";
+  const band = (label: string, fromMonths: number, toMonths: number | null, value: number) =>
+    ({ label, fromMonths, toMonths, value, members: [`Repayable ${label.toLowerCase()}`] });
+  return {
+    ...base, version: 2, cik: null, taxonomy: "ifrs-full", status: "partial", asOf: "2025-12-31",
+    source: { name: "HKEX annual or interim report notes", url: pdf, cadence: "Annual and interim reports" },
+    latest: { ...base.latest!, asOf: "2025-12-31", filed: "2026-04-08", accession: "HKEX-2026040800985", form: "HKEX", currency: "HKD",
+      filingUrl: pdf, taxonomy: "ifrs-full", amountBasis: "carrying", sourceTotal: 88_436e6,
+      source: { url: pdf, concept: "Page 88: The maturity of long-term loans and bonds", scale: 1e6, scaleStated: true, reconciledTo: null },
+      sourceBuckets: [band("Within 1 year", 0, 12, 17_166e6), band("1 to 2 years", 12, 24, 16_227e6),
+        band("2 to 5 years", 24, 60, 43_947e6), band("After 5 years", 60, null, 11_096e6)] },
+    history: [{ ...base.history.at(-1)!, asOf: "2025-12-31", filed: "2026-04-08", accession: "HKEX-2026040800985", currency: "HKD",
+      complete: false, totalPrincipal: null, next12Months: null, next12MonthsShare: null, next3Years: null, next3YearsShare: null }],
+  };
+}
+
+test("a ladder in its report's own bands shows the bands as printed, in their basis, and its filing's standard and scale", async () => {
+  spy = spyOn(apiClient, "getCloudDebtMaturities").mockImplementation(async () => bandPayload());
+  debtMaturitiesCache.reset();
+  const lines = await render(94, 20);
+  const text = lines.join("\n");
+  // No principal history to compare: Maturities and Filing only.
+  expect(lines[0]).toContain("Maturities");
+  expect(lines[0]).not.toContain("History");
+  expect(text).toMatch(/Carrying total +88\.44B HKD +IFRS/);
+  // Within 1 year ends exactly at twelve months; three years falls inside 2 to 5 years, so it has no share.
+  expect(text).toMatch(/Due next 12 months +19\.4%/);
+  expect(text).not.toContain("Due next 3 years");
+  expect(lines.find((line) => line.includes("MATURITY"))).toMatch(/MATURITY.* CARRYING +% TOTAL +WALL/);
+  for (const [label, amount] of [["Within 1 year", "17.17B"], ["1 to 2 years", "16.23B"], ["2 to 5 years", "43.95B"], ["After 5 years", "11.10B"]] as const) {
+    expect(lines.find((line) => line.includes(label))).toContain(amount);
+  }
+  expect(text).not.toMatch(/Year [2-5]|Thereafter/);
+  // The footer names the report and its date.
+  expect(lines.find((line) => line.includes("[o]pen"))).toContain("HKEX 2025-12-31, filed 2026-04-08");
+
+  await tui.emitKeypress({ name: "return" });
+  await settle();
+  const detail = tui.frame();
+  expect(detail).toMatch(/Carrying amount +17,166,000,000 HKD/);
+  expect(detail).toMatch(/Read from +Repayable within 1 year/);
+
+  const filing = (await render(94, 20, "filing")).join("\n");
+  expect(filing).toMatch(/Standard +IFRS/);
+  expect(filing).toMatch(/Basis +Carrying amounts/);
+  expect(filing).toMatch(/Reported in +HKD millions/);
+  expect(filing).toMatch(/Annual interest +Not reported/);
+  expect(filing).not.toContain("Rank window");
+});

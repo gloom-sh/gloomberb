@@ -27,6 +27,7 @@ import {
 import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { colors } from "../../../theme/colors";
 import type {
+  DebtBand,
   DebtFact,
   DebtHistoryPoint,
   DebtMetric,
@@ -46,11 +47,16 @@ import {
 import { cachedDebtMaturities, loadDebtMaturities } from "./client";
 import {
   HISTORY_COLUMNS,
+  bandScaleText,
+  bandTotal,
+  bandsDueWithin,
   bucketBar,
   bucketColumns,
-  bucketShare,
   datedBucketScale,
   debtAmount,
+  debtBands,
+  debtBasis,
+  debtStandard,
   debtCostProxy,
   debtFilingUrl,
   debtMetricCaption,
@@ -67,11 +73,11 @@ import {
   sortedDebtHistory,
   type BucketColumn,
   type BucketColumnId,
-  type DebtBucket,
   type DebtLatest,
   type DebtSort,
   type HistoryColumn,
   type HistoryColumnId,
+  type MaturityRow,
 } from "./model";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { WALL_CAP_RESERVE, WallBar } from "./wall-bar";
@@ -82,6 +88,8 @@ const TABS = [
   { value: "history", label: "History" },
   { value: "filing", label: "Filing" },
 ];
+/** A schedule in its filing's own bands has no principal by year to compare across filings. */
+const BAND_TABS = TABS.filter((entry) => entry.value !== "history");
 /** The near-term lines run edge to edge, one filing a slot. */
 const LINE_SLOTS = { edges: false };
 /** Legend, four plot rows and the year axis. */
@@ -162,6 +170,120 @@ function QuarterFactRow({ label, fact }: { label: string; fact: DebtFact | null 
       value={fact ? `${fact.value.toLocaleString("en-US")} ${fact.unit}` : "Not reported"}
       detail={fact?.tag}
     />
+  );
+}
+/** A band as the filing reports it: its amount, the rows or members it was read from, and the filing. */
+function BandDetail({
+  band,
+  latest,
+  width,
+  height,
+}: {
+  band: DebtBand;
+  latest: DebtLatest;
+  width: number;
+  height: number;
+}) {
+  return (
+    <DetailScroll width={width} height={height}>
+      <KeyValueRow
+        labelWidth={20}
+        label={debtBasis(latest).amount}
+        value={`${band.value.toLocaleString("en-US")} ${latest.currency}`}
+        detail={latest.asOf}
+      />
+      <KeyValueRow
+        labelWidth={20}
+        label="Filed"
+        value={latest.filed}
+        detail={latest.form}
+      />
+      <KeyValueRow labelWidth={20} label="Accession" value={latest.accession} />
+      {band.members.length ? (
+        <KeyValueRow labelWidth={20} label="Read from" value={band.members.join(" + ")} />
+      ) : null}
+      {latest.source ? (
+        <KeyValueRow labelWidth={20} label="Table" value={latest.source.concept} />
+      ) : null}
+    </DetailScroll>
+  );
+}
+/**
+ * The filing of a schedule in its own bands: its standard, what the amounts
+ * are, how the report states them and what they were checked against.
+ */
+function BandFilingDetail({
+  latest,
+  bands,
+  width,
+  height,
+}: {
+  latest: DebtLatest;
+  bands: readonly DebtBand[];
+  width: number;
+  height: number;
+}) {
+  const basis = debtBasis(latest);
+  const expense = latest.interestExpenseFact,
+    source = latest.source,
+    check = source?.reconciledTo;
+  return (
+    <DetailScroll width={width} height={height}>
+      <KeyValueRow
+        labelWidth={20}
+        label="As of"
+        value={latest.asOf}
+        detail={latest.currency}
+      />
+      <KeyValueRow
+        labelWidth={20}
+        label="Filed"
+        value={latest.filed}
+        detail={latest.form}
+      />
+      <KeyValueRow labelWidth={20} label="Accession" value={latest.accession} />
+      <KeyValueRow labelWidth={20} label="Standard" value={debtStandard(latest.taxonomy) ?? "Not stated"} />
+      <KeyValueRow labelWidth={20} label="Basis" value={basis.words} detail={basis.detail} />
+      <KeyValueRow
+        labelWidth={20}
+        label={basis.total}
+        value={`${debtAmount(bandTotal(bands))} ${latest.currency}`}
+      />
+      {source ? (
+        <>
+          <KeyValueRow
+            labelWidth={20}
+            label="Reported in"
+            value={bandScaleText(latest.currency, source.scale, source.scaleStated)}
+          />
+          <KeyValueRow labelWidth={20} label="Table" value={source.concept} />
+        </>
+      ) : null}
+      {check ? (
+        <KeyValueRow
+          labelWidth={20}
+          label="Checked against"
+          value={check.concept}
+          detail={`${check.ratio.toFixed(2)}x`}
+        />
+      ) : null}
+      {latest.includesLeases ? (
+        <KeyValueRow labelWidth={20} label="Lease liabilities" value="Included" />
+      ) : null}
+      <KeyValueRow
+        labelWidth={20}
+        label="Annual interest"
+        value={expense ? `${debtAmount(expense.value)} ${expense.unit}` : "Not reported"}
+        detail={expense?.tag}
+      />
+      {expense?.start ? (
+        <KeyValueRow
+          labelWidth={20}
+          label="Expense period"
+          value={`${expense.start} to ${expense.end}`}
+        />
+      ) : null}
+    </DetailScroll>
   );
 }
 function FilingDetail({
@@ -337,9 +459,6 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   });
   const [initialTab] = usePaneSettingValue("tab", "maturities");
   const [savedTab, setTab] = usePluginPaneState<string>("debt:tab", initialTab);
-  const tab = TABS.some((entry) => entry.value === savedTab)
-    ? savedTab
-    : "maturities";
   const [bucketSort, setBucketSort] = usePluginPaneState<
     DebtSort<BucketColumnId>
   >("debt:bucketSort", { column: "label", direction: "asc" });
@@ -363,8 +482,14 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   );
   const data = resource.data?.payload,
     latest = data?.latest;
+  // A schedule in its filing's own bands: its bands as reported, no history.
+  const bands = debtBands(latest);
+  const tabs = bands ? BAND_TABS : TABS;
+  const tab = tabs.some((entry) => entry.value === savedTab)
+    ? savedTab
+    : "maturities";
   const quarter = data ? newerQuarter(data) : null;
-  const bucketKey = (bucket: DebtBucket) =>
+  const bucketKey = (bucket: MaturityRow) =>
     `${symbol}:${latest?.accession}:${latest?.asOf}:${bucket.id}`;
   const historyKey = useCallback(
     (point: DebtHistoryPoint) => `${symbol}:${point.accession}:${point.asOf}`,
@@ -424,7 +549,8 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   const wallScale = latest ? datedBucketScale(latest) : 0;
   // A bucket past the dated scale keeps room at the end for its value.
   const wallReserve = buckets.some((row) => bucketBar(row, wallScale)?.capped) ? WALL_CAP_RESERVE : 0;
-  const bucketColumnList = useMemo(() => bucketColumns(width), [width]);
+  const amountColumn = bands && latest ? debtBasis(latest).column : undefined;
+  const bucketColumnList = useMemo(() => bucketColumns(width, amountColumn), [width, amountColumn]);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
   // An open bucket or filing covers its tab; the tab keys wait until it closes.
   const detailOpen =
@@ -433,7 +559,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   const signInWall = !data && isCloudSessionRequired(resource.error);
   const { strip: tabStrip, rows: tabRows } = usePaneTabs(
     symbol && !signInWall
-      ? { tabs: TABS, activeValue: tab, onSelect: setTab, focused: tabsFocused, dense: true }
+      ? { tabs, activeValue: tab, onSelect: setTab, focused: tabsFocused, dense: true }
       : null,
   );
   // `height` is the pane body: the footer is chrome outside it on both targets.
@@ -442,6 +568,19 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   // Most important first: a short pane keeps the leading figures.
   const statItems = useMemo<StatItem[]>(() => {
     if (!latest) return [];
+    if (bands) {
+      // The bands' own total and standard; a share of it only where the bands end exactly at that horizon.
+      const shares = ([["next12", "Due next 12 months", 12], ["next3", "Due next 3 years", 36]] as const).flatMap(([id, label, months]) => {
+        const share = bandsDueWithin(bands, months);
+        return share === null ? [] : [{ id, label, value: debtPercent(share) }];
+      });
+      return [
+        { id: "total", label: debtBasis(latest).total, value: `${debtAmount(bandTotal(bands))} ${latest.currency}`,
+          detail: debtStandard(latest.taxonomy) ?? undefined },
+        ...shares,
+        { id: "as-of", label: "As of", value: latest.asOf },
+      ];
+    }
     const metric = (id: string, label: string, value: DebtMetric): StatItem => ({
       id, label, value: debtMetricValue(value),
       detail: `${formatPercentileRank(value.percentile.value, "10Y")}${value.asOf === latest.asOf ? "" : ` · ${value.asOf}`}`,
@@ -460,7 +599,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
         detail: `filed ${quarter.filed}`, detailVariants: [""], wide: true,
       }] : []),
     ];
-  }, [latest, quarter]);
+  }, [latest, bands, quarter]);
   const historyStrip = useMemo(() => {
     const values = bars.flatMap((row) => row.totalPrincipal === null ? [] : [row.totalPrincipal]);
     const last = values.at(-1);
@@ -501,7 +640,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
     stale: !!data && resource.data?.stale,
   });
   const renderBucket = (
-    row: DebtBucket,
+    row: MaturityRow,
     column: BucketColumn,
     _index: number,
     state: { selected: boolean },
@@ -521,7 +660,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
         ? row.label
         : column.id === "value"
           ? debtAmount(row.value)
-          : debtPercent(bucketShare(row, latest!)),
+          : debtPercent(row.share),
     color: state.selected
       ? colors.selectedText
       : row.value === null
@@ -577,9 +716,13 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
         {latest ? (
           <>
             {tab === "filing" ? (
-              <FilingDetail latest={latest} history={data?.history ?? []} quarter={quarter} width={width} height={bodyHeight} />
+              bands ? (
+                <BandFilingDetail latest={latest} bands={bands} width={width} height={bodyHeight} />
+              ) : (
+                <FilingDetail latest={latest} history={data?.history ?? []} quarter={quarter} width={width} height={bodyHeight} />
+              )
             ) : tab === "maturities" ? (
-              <DataTableStackView<DebtBucket, BucketColumn>
+              <DataTableStackView<MaturityRow, BucketColumn>
                 emptyStateTitle="No maturity buckets available."
                 focused={focused}
                 rootWidth={width}
@@ -620,9 +763,16 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
                 onBack={() => setOpenBucket(null)}
                 detailTitle={openBucketRow?.label}
                 detailContent={
-                  openBucketRow ? (
+                  openBucketRow?.band ? (
+                    <BandDetail
+                      band={openBucketRow.band}
+                      latest={latest}
+                      width={width}
+                      height={bodyHeight - 2}
+                    />
+                  ) : openBucketRow ? (
                     <FactDetail
-                      fact={openBucketRow.fact}
+                      fact={openBucketRow.bucket?.fact ?? null}
                       width={width}
                       height={bodyHeight - 2}
                     />

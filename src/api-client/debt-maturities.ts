@@ -68,12 +68,42 @@ export interface DebtQuarter {
   current: DebtFact | null;
   noncurrent: DebtFact | null;
 }
+/**
+ * What a schedule's amounts are: principal, carrying amounts, or contractual
+ * undiscounted cash flows (principal and the interest still to be paid).
+ */
+export type DebtAmountBasis = "principal" | "carrying" | "contractual_undiscounted";
+/** The accounting standard of a schedule read in its filing's own bands. */
+type DebtBandTaxonomy = "ifrs-full" | "cn-cas";
+/**
+ * One time band exactly as the filing reports it: from and to, in months
+ * after the balance-sheet date (to null: open ended), and the rows or members
+ * it was read from. Never split into years.
+ */
+export interface DebtBand {
+  label: string;
+  fromMonths: number;
+  toMonths: number | null;
+  value: number;
+  members: string[];
+}
+/** The document a schedule read from the filing itself came from, and what it was checked against. */
+interface DebtLadderSource {
+  url: string;
+  /** The table, text block or concept the schedule was read from. */
+  concept: string;
+  /** Units per table unit (1e6 for "in millions"), and whether the table said so. */
+  scale: number;
+  scaleStated: boolean;
+  reconciledTo: { concept: string; value: number; ratio: number } | null;
+}
 export interface DebtMaturitiesPayload {
-  version: 1;
+  /** 1 from servers before ladders in a filing's own bands; 2 when the server serves them. */
+  version: 1 | 2;
   symbol: string;
   cik: string | null;
   entityName: string | null;
-  taxonomy: "us-gaap" | null;
+  taxonomy: "us-gaap" | DebtBandTaxonomy | null;
   status: "available" | "partial" | "unavailable";
   fetchedAt: string;
   asOf: string | null;
@@ -102,6 +132,19 @@ export interface DebtMaturitiesPayload {
     borrowingCostPercent: DebtMetric;
     interestExpenseFact: DebtFact | null;
     borrowingCostEvidence: DebtBorrowingCost | null;
+    /** The document a schedule read from the filing itself came from; null or absent for SEC company facts. */
+    source?: DebtLadderSource | null;
+    /**
+     * Only on a schedule in its filing's own bands (version 2): its standard,
+     * what its amounts are, the bands as reported and their sum. `buckets`
+     * and the principal figures are then not read.
+     */
+    taxonomy?: DebtBandTaxonomy;
+    amountBasis?: DebtAmountBasis;
+    sourceBuckets?: DebtBand[];
+    sourceTotal?: number;
+    /** The filing counts lease liabilities among these borrowings. */
+    includesLeases?: true;
   };
   history: DebtHistoryPoint[];
   /** The latest 10-Q when it is newer than `latest`. Older servers and cached payloads leave it out. */

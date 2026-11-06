@@ -53,6 +53,26 @@ const OFFLINE_CLOCK_MS = Date.UTC(2026, 0, 6, 14, 30);
 /** Answered for a read an offline replay did not keep, as the worker answers when Gloom Cloud is down. */
 const NOT_KEPT: Answer = { status: 503, type: "text/plain", bytes: new TextEncoder().encode("Not in the replay") };
 
+/**
+ * A read as a client asked it before it asked for a payload version
+ * (`/api/cloud/debt-maturities?symbol=AAPL&version=2` was
+ * `?symbol=AAPL`), or null when it asks for none. A snapshot recorded before
+ * the client sent the parameter kept the read without it, and the server it
+ * recorded, which predates the version, answered the parameter by ignoring
+ * it: the kept answer is the one that server gives. The other parameters
+ * keep their order and encoding, so the label is the one the client wrote.
+ */
+export function unversionedRead(label: string): string | null {
+  const end = label.indexOf("\n");
+  const line = end < 0 ? label : label.slice(0, end);
+  const query = line.indexOf("?");
+  if (query < 0) return null;
+  const params = line.slice(query + 1).split("&");
+  const kept = params.filter((param) => !/^version=\d+$/.test(param));
+  if (kept.length === params.length) return null;
+  return `${line.slice(0, query)}${kept.length ? `?${kept.join("&")}` : ""}${end < 0 ? "" : label.slice(end)}`;
+}
+
 export function createReplay(dir: string, { offline = false }: { offline?: boolean } = {}): Replay {
   /** The text of every answer served this run: a cut string found here arrived cut, the page did not cut it. */
   const served = new Set<string>();
@@ -62,12 +82,19 @@ export function createReplay(dir: string, { offline = false }: { offline?: boole
   };
   return {
     async read(label, load) {
-      const file = join(dir, keyOf(label));
-      if (await Bun.file(`${file}.json`).exists()) {
+      const kept = async (key: string): Promise<Answer | null> => {
+        const file = join(dir, keyOf(key));
+        if (!await Bun.file(`${file}.json`).exists()) return null;
         const meta = await Bun.file(`${file}.json`).json();
         return remember({ status: meta.status, type: meta.type, bytes: new Uint8Array(await Bun.file(`${file}.body`).arrayBuffer()) });
+      };
+      const file = join(dir, keyOf(label));
+      const answer = await kept(label);
+      if (answer) return answer;
+      if (offline) {
+        const older = unversionedRead(label);
+        return (older && await kept(older)) || NOT_KEPT;
       }
-      if (offline) return NOT_KEPT;
       const fresh = remember(await load().catch((error) => ({ status: 502, type: "text/plain", bytes: new TextEncoder().encode(String(error)) })));
       if (fresh.status < 500 && fresh.status !== 429) {
         await mkdir(dir, { recursive: true });

@@ -2350,6 +2350,8 @@ Rate an answer with the thumbs under it (`+1` and `-1` in the terminal), or `g` 
 - **History** shows the last ten years of annual filing cohorts. Select an observation to inspect its filing.
 - **Filing** shows currency, source concepts, interest expense, the borrowing-cost proxy when supported, and percentile coverage. `o` opens the selected filing.
 
+A filing outside US GAAP (an IFRS 20-F, or a Hong Kong, A-share, ESEF or DART report: `DDIS 0019.HK`, `DDIS 600900.SS`) keeps its own maturity bands, such as within one year, one to two, two to five and over five years, in the basis it reports them (principal, carrying amounts or contractual cash flows). Maturities shows those bands and their total; Filing shows the standard, the basis, the scale and the table read. There is no History tab, since the bands are not principal by year.
+
 `gloom fn DDIS MSFT --json` gives the source amounts, complete filing history, ranks and provenance. `gloom shot DDIS MSFT --tab history` (or `--tab filing`) captures a tab. Missing facts stay unavailable, and unsupported issuers do not appear to have zero debt.
 
 ## Statement filings and bank figures

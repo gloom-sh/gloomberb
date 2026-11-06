@@ -1,5 +1,6 @@
 import { apiClient } from "../../../api-client";
 import type {
+  DebtBand,
   DebtFact,
   DebtMaturitiesPayload,
   DebtMetric,
@@ -18,7 +19,9 @@ import {
 export const debtMaturitiesCache = createPluginCache<DebtMaturitiesPayload>({
   kind: "debt-maturities",
   source: "gloom-cloud",
-  schemaVersion: 1,
+  // 2: payloads that can hold a schedule in its filing's own bands, so an
+  // answer cached before them (one that left the schedule out) is asked again.
+  schemaVersion: 2,
   policy: { staleMs: 6 * 60 * 60_000, expireMs: 14 * 24 * 60 * 60_000 },
 });
 export const BUCKET_IDS = [
@@ -60,6 +63,11 @@ const currency = (value: unknown) =>
 const sourceUrl = (value: unknown) =>
   typeof value === "string" &&
   /^https:\/\/(?:www\.|data\.)?sec\.gov\//.test(value);
+/** A report's own page or document, wherever it is published. */
+const httpsUrl = (value: unknown) =>
+  typeof value === "string" && URL.canParse(value) && new URL(value).protocol === "https:";
+/** SEC's annual forms a schedule by year is read from. */
+const ANNUAL_FORM = /^(10-K|20-F|40-F)(\/A)?$/;
 const near = (a: number | null, b: number | null) =>
   a === b ||
   (a !== null &&
@@ -79,7 +87,7 @@ function validFact(fact: DebtFact): boolean {
     fact.end <= fact.filed &&
     (fact.start === null || fact.start <= fact.end) &&
     accession(fact.accession) &&
-    /^(10-K|20-F)(\/A)?$/.test(fact.form)
+    ANNUAL_FORM.test(fact.form)
   );
 }
 function validMetric(
@@ -164,6 +172,8 @@ export function validateDebtMaturities(
   data: DebtMaturitiesPayload,
   symbol: string,
 ): DebtMaturitiesPayload {
+  if (data?.version === 2 && typeof data.latest === "object" && data.latest !== null && "sourceBuckets" in data.latest)
+    return validateBands(data, symbol);
   if (!data || typeof data !== "object" || !("latestQuarter" in data)) return validateSchedule(data, symbol);
   const { latestQuarter, ...schedule } = data;
   const valid = validateSchedule(schedule, symbol);
@@ -177,13 +187,17 @@ function validateSchedule(
   const invalid = (): never => {
     throw new Error("The server returned an invalid debt maturity schedule");
   };
+  // Version 2 answers a schedule in its filing's own bands (validateBands),
+  // and a company with none as version 1 does, under any standard and with
+  // the report's link, or none.
+  const v2 = data?.version === 2;
   if (
     !data ||
-    data.version !== 1 ||
+    (data.version !== 1 && !v2) ||
     data.symbol !== symbol ||
     !["available", "partial", "unavailable"].includes(data.status) ||
     !textOrNull(data.entityName) ||
-    !["us-gaap", null].includes(data.taxonomy) ||
+    !(v2 && data.latest === null ? ["us-gaap", "ifrs-full", "cn-cas", null] : ["us-gaap", null]).includes(data.taxonomy) ||
     !(
       data.cik === null ||
       (typeof data.cik === "string" && /^\d{10}$/.test(data.cik))
@@ -193,7 +207,7 @@ function validateSchedule(
     !nullableDay(data.asOf) ||
     !data.source ||
     typeof data.source.name !== "string" ||
-    !sourceUrl(data.source.url) ||
+    !(sourceUrl(data.source.url) || (v2 && data.latest === null && (data.source.url === "" || httpsUrl(data.source.url)))) ||
     typeof data.source.cadence !== "string" ||
     !Array.isArray(data.warnings) ||
     data.warnings.some((value) => typeof value !== "string") ||
@@ -220,7 +234,7 @@ function validateSchedule(
     !day(latest.filed) ||
     latest.asOf > latest.filed ||
     !accession(latest.accession) ||
-    !/^(10-K|20-F)(\/A)?$/.test(latest.form) ||
+    !ANNUAL_FORM.test(latest.form) ||
     !currency(latest.currency) ||
     !sourceUrl(latest.filingUrl) ||
     typeof latest.complete !== "boolean" ||
@@ -385,6 +399,91 @@ function validateSchedule(
   return data;
 }
 
+/** A report's accession (an SEC one, HKEX-2026040800985, a receipt number) and form (20-F, HKEX, ESEF). */
+const reportAccession = (value: unknown) => typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9-]{0,79}$/.test(value);
+const reportForm = (value: unknown) => typeof value === "string" && /^[A-Z0-9][A-Z0-9/-]{1,11}$/.test(value);
+const BAND_TAXONOMIES: readonly unknown[] = ["ifrs-full", "cn-cas"];
+const AMOUNT_BASES: readonly unknown[] = ["principal", "carrying", "contractual_undiscounted"];
+
+/**
+ * Bands that cover the schedule from the balance-sheet date on, in order,
+ * each starting where the last ended; only the last may be open ended.
+ */
+function validBands(bands: readonly DebtBand[]): boolean {
+  let from = 0;
+  for (const [index, band] of bands.entries()) {
+    if (
+      !band ||
+      typeof band.label !== "string" ||
+      !band.label.trim() ||
+      !number(band.value) ||
+      band.fromMonths !== from ||
+      !Array.isArray(band.members) ||
+      band.members.some((member) => typeof member !== "string") ||
+      (band.toMonths === null
+        ? index !== bands.length - 1
+        : !Number.isInteger(band.toMonths) || band.toMonths <= band.fromMonths)
+    )
+      return false;
+    from = band.toMonths ?? from;
+  }
+  return bands.length > 0;
+}
+
+/**
+ * A schedule in its filing's own bands (version 2): an IFRS or China CAS
+ * ladder, as reported, with what its amounts are and the report it came
+ * from. Its yearly buckets and principal figures are not read, so they are
+ * not checked; a 10-Q beside it is not read either.
+ */
+function validateBands(data: DebtMaturitiesPayload, symbol: string): DebtMaturitiesPayload {
+  const latest = data.latest!;
+  const bands = latest.sourceBuckets;
+  const interest = latest.interestExpenseFact;
+  const source = latest.source;
+  if (
+    data.symbol !== symbol ||
+    !["available", "partial"].includes(data.status) ||
+    !textOrNull(data.entityName) ||
+    !BAND_TAXONOMIES.includes(data.taxonomy) ||
+    latest.taxonomy !== data.taxonomy ||
+    !(data.cik === null || (typeof data.cik === "string" && /^\d{10}$/.test(data.cik))) ||
+    typeof data.fetchedAt !== "string" ||
+    !Number.isFinite(Date.parse(data.fetchedAt)) ||
+    !data.source ||
+    typeof data.source.name !== "string" ||
+    !httpsUrl(data.source.url) ||
+    typeof data.source.cadence !== "string" ||
+    !Array.isArray(data.warnings) ||
+    data.warnings.some((value) => typeof value !== "string") ||
+    !Array.isArray(data.history) ||
+    !day(latest.asOf) ||
+    latest.asOf !== data.asOf ||
+    !day(latest.filed) ||
+    latest.asOf > latest.filed ||
+    !reportAccession(latest.accession) ||
+    !reportForm(latest.form) ||
+    !currency(latest.currency) ||
+    !httpsUrl(latest.filingUrl) ||
+    !AMOUNT_BASES.includes(latest.amountBasis) ||
+    !Array.isArray(bands) ||
+    !validBands(bands) ||
+    !near(latest.sourceTotal ?? null, bands.reduce((sum, band) => sum + band.value, 0)) ||
+    (interest !== null &&
+      !(interest && number(interest.value) && typeof interest.tag === "string" && interest.unit === latest.currency &&
+        nullableDay(interest.start) && day(interest.end))) ||
+    (source != null &&
+      !(httpsUrl(source.url) && typeof source.concept === "string" && number(source.scale) && source.scale > 0 &&
+        typeof source.scaleStated === "boolean" &&
+        (source.reconciledTo == null ||
+          (typeof source.reconciledTo.concept === "string" && number(source.reconciledTo.value) &&
+            number(source.reconciledTo.ratio)))))
+  )
+    throw new Error("The server returned an invalid debt maturity schedule");
+  const { latestQuarter: _quarter, ...schedule } = data;
+  return schedule;
+}
+
 /** The symbol the server answers with: a listing abroad's bare symbol, otherwise the one sent. */
 const answeredSymbol = (symbol: string, listing?: IssuerListingParams) =>
   listingAbroad(symbol, listing?.exchange)?.symbol ?? symbol;
@@ -409,9 +508,15 @@ export async function fetchDebtMaturities(
     );
   } catch (error) {
     if (abroad && error instanceof ApiRequestError && error.status === 404) return noSchedule(answered);
+    // The server sends its own payload with a 503 when no schedule could be
+    // read (SEC or the store failing): said in one line, its status kept so a
+    // saved copy still answers for it.
+    if (error instanceof ApiRequestError && (error.status ?? 0) >= 500)
+      throw new ApiRequestError(NOT_READ, error.status, error.retryAfterMs, error.code, error.details);
     throw unavailableOnServer(error, "Debt maturities are not available yet.");
   }
 }
+const NOT_READ = "No maturity schedule could be read for this listing.";
 
 function noSchedule(symbol: string): DebtMaturitiesPayload {
   return {

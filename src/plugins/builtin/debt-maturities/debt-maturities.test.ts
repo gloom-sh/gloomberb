@@ -7,7 +7,7 @@ import type {
   DebtMetric,
   DebtQuarter,
 } from "../../../api-client/debt-maturities";
-import { ApiRequestError } from "../../../api-client/errors";
+import { ApiRequestError, isTransientFailure } from "../../../api-client/errors";
 import type { IssuerListingParams } from "../../../api-client/paths";
 import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
@@ -23,6 +23,7 @@ import {
 } from "./client";
 import { debtMaturitiesHeadless } from "./headless";
 import {
+  bandsDueWithin,
   bucketBar,
   bucketColumns,
   bucketShare,
@@ -127,6 +128,54 @@ function fixture(): DebtMaturitiesPayload {
         borrowingCostDebtTags: null,
       },
     ],
+  };
+}
+
+/** Swire Pacific's ladder as the server serves it to a terminal of version 2: the HKEX report's own bands, carrying amounts. */
+function bandFixture(): DebtMaturitiesPayload {
+  const base = fixture();
+  const pdf = "https://www1.hkexnews.hk/listedco/listconews/sehk/2026/0408/2026040800985.pdf";
+  const band = (label: string, fromMonths: number, toMonths: number | null, value: number, member: string) =>
+    ({ label, fromMonths, toMonths, value, members: [member] });
+  const sourceBuckets = [
+    band("Within 1 year", 0, 12, 17_166e6, "Repayable within one year"),
+    band("1 to 2 years", 12, 24, 16_227e6, "Repayable between one and two years"),
+    band("2 to 5 years", 24, 60, 43_947e6, "Repayable between two and five years"),
+    band("After 5 years", 60, null, 11_096e6, "Repayable after five years"),
+  ];
+  return {
+    ...base,
+    version: 2,
+    symbol: "0019",
+    cik: null,
+    entityName: "SWIRE PACIFIC A",
+    taxonomy: "ifrs-full",
+    asOf: "2025-12-31",
+    source: { name: "HKEX annual or interim report notes", url: pdf, cadence: "Annual and interim reports, read in reviewed runs" },
+    warnings: ["Annual interest expense is not reported in a supported matching filing, currency and duration."],
+    latest: {
+      ...base.latest!,
+      asOf: "2025-12-31",
+      filed: "2026-04-08",
+      accession: "HKEX-2026040800985",
+      form: "HKEX",
+      currency: "HKD",
+      filingUrl: pdf,
+      complete: false,
+      source: {
+        url: pdf,
+        concept: "Page 88: The maturity of long-term loans and bonds is as follows: Bank loans (secured)",
+        scale: 1e6,
+        scaleStated: true,
+        reconciledTo: { concept: "Balance-sheet borrowings", value: 88_436e6, ratio: 1 },
+      },
+      taxonomy: "ifrs-full",
+      amountBasis: "carrying",
+      sourceBuckets,
+      sourceTotal: 88_436e6,
+    },
+    history: [{ ...base.history[0]!, asOf: "2025-12-31", filed: "2026-04-08", accession: "HKEX-2026040800985", currency: "HKD",
+      complete: false, totalPrincipal: null, next12Months: null, next12MonthsShare: null, next3Years: null, next3YearsShare: null }],
   };
 }
 
@@ -302,6 +351,14 @@ describe("debt maturity Cloud boundary", () => {
         },
       }),
     ).rejects.toBe(denied);
+    // The server's 503 (its own payload, no message) is one short line, still a failure a saved copy answers for.
+    const failed = fetchDebtMaturities("300750", {
+      getCloudDebtMaturities: async () => {
+        throw new ApiRequestError("The server returned an error without a message.", 503, 30_000, undefined, { status: "unavailable" });
+      },
+    });
+    await expect(failed).rejects.toMatchObject({ message: "No maturity schedule could be read for this listing.", status: 503, retryAfterMs: 30_000 });
+    expect(isTransientFailure(await failed.catch((error: unknown) => error))).toBe(true);
   });
 
   test("SAN in Paris is cached apart from SAN in New York and a 404 for it is no schedule", async () => {
@@ -337,6 +394,83 @@ describe("debt maturity Cloud boundary", () => {
     expect(validateDebtMaturities(none, "AI")).toBe(none);
     await expect(fetchDebtMaturities("AI", missing)).rejects.toThrow("not available yet");
   });
+
+  test("version 2 reads a ladder in its filing's own bands; version 1 never carries one, and a broken band is refused", () => {
+    const bands = bandFixture();
+    const read = validateDebtMaturities(bands, "0019");
+    expect(read.latest?.sourceBuckets?.map((band) => band.label)).toEqual(["Within 1 year", "1 to 2 years", "2 to 5 years", "After 5 years"]);
+    // The same answer marked version 1 is not one a version 1 server sends: refused, as released clients refuse it.
+    expect(() => validateDebtMaturities({ ...bands, version: 1 }, "0019")).toThrow("invalid debt maturity");
+    // A schedule that is no object is refused, not a crash of the check.
+    for (const latest of ["ladder", 7, true])
+      expect(() => validateDebtMaturities({ ...bands, latest } as never, "0019")).toThrow("invalid debt maturity");
+    // A schedule by year reads the same under either version.
+    expect(validateDebtMaturities({ ...fixture(), version: 2 }, "TEST").latest?.buckets).toHaveLength(6);
+    // A company with nothing in its bands either: no schedule, under any standard, with the report's link or none.
+    const none = { ...bands, status: "unavailable" as const, asOf: null, latest: null, history: [] };
+    expect(validateDebtMaturities(none, "0019").latest).toBeNull();
+    expect(validateDebtMaturities({ ...none, source: { ...none.source, url: "" } }, "0019").latest).toBeNull();
+    for (const change of [
+      // A gap between bands, an open band before the last, bands out of order.
+      (p: DebtMaturitiesPayload) => { p.latest!.sourceBuckets![1]!.fromMonths = 18; },
+      (p: DebtMaturitiesPayload) => { p.latest!.sourceBuckets![2]!.toMonths = null; },
+      (p: DebtMaturitiesPayload) => { p.latest!.sourceBuckets!.reverse(); },
+      (p: DebtMaturitiesPayload) => { p.latest!.sourceBuckets = []; },
+      // A total that is not the bands' sum, a basis or standard it does not know, a link that is not https.
+      (p: DebtMaturitiesPayload) => { p.latest!.sourceTotal = 1; },
+      (p: DebtMaturitiesPayload) => { (p.latest as { amountBasis: string }).amountBasis = "fair_value"; },
+      (p: DebtMaturitiesPayload) => { p.latest!.taxonomy = "cn-cas"; },
+      (p: DebtMaturitiesPayload) => { p.latest!.filingUrl = "http://www1.hkexnews.hk/one.pdf"; },
+      (p: DebtMaturitiesPayload) => { p.latest!.sourceBuckets![0]!.value = -1; },
+      // A check against the balance sheet with no ratio.
+      (p: DebtMaturitiesPayload) => { (p.latest!.source!.reconciledTo as { ratio: unknown }).ratio = null; },
+    ]) {
+      const copy = structuredClone(bands);
+      change(copy);
+      expect(() => validateDebtMaturities(copy, "0019")).toThrow("invalid debt maturity");
+    }
+  });
+});
+
+test("a share due within a horizon comes only from bands that end exactly there", () => {
+  const { sourceBuckets: bands } = bandFixture().latest!;
+  expect(bandsDueWithin(bands!, 12)).toBeCloseTo((100 * 17_166) / 88_436, 6);
+  expect(bandsDueWithin(bands!, 24)).toBeCloseTo((100 * (17_166 + 16_227)) / 88_436, 6);
+  // Three years falls inside 2 to 5 years, which is never split.
+  expect(bandsDueWithin(bands!, 36)).toBeNull();
+  // Quarter bands add up to the year; TSM's 1 to 3 years band ends at three.
+  const quarters = [
+    { label: "Within 3 months", fromMonths: 0, toMonths: 3, value: 10, members: [] },
+    { label: "3 to 12 months", fromMonths: 3, toMonths: 12, value: 30, members: [] },
+    { label: "1 to 3 years", fromMonths: 12, toMonths: 36, value: 60, members: [] },
+    { label: "After 3 years", fromMonths: 36, toMonths: null, value: 100, members: [] },
+  ];
+  expect(bandsDueWithin(quarters, 12)).toBe(20);
+  expect(bandsDueWithin(quarters, 36)).toBe(50);
+});
+
+test("DDIS prints a ladder in its filing's own bands as reported, with its basis, standard, scale and report", async () => {
+  const bands = bandFixture();
+  const args = createTestHeadlessArgs({ symbols: ["0019"], argument: "0019", rawArgument: "0019" });
+  const ctx = createTestHeadlessContext({ apiClient: { getCloudDebtMaturities: async () => bands } as never });
+  const result = await debtMaturitiesHeadless.load(args, ctx);
+  const freshness = deriveHeadlessFreshness(debtMaturitiesHeadless, result, Date.parse("2026-11-06T12:00:00Z"));
+  const text = renderHeadlessPaneText(debtMaturitiesHeadless, result, args, "DDIS", freshness);
+  expect(text).toContain("Maturity schedule as reported (Carrying amounts, IFRS)");
+  expect(text).toMatch(/Maturity +Carrying amount +Currency +% total/);
+  expect(text).toMatch(/Within 1 year +17\.17B +HKD +19\.4%/);
+  expect(text).toMatch(/After 5 years +11\.10B +HKD +12\.5%/);
+  // No yearly split, no principal history.
+  expect(text).not.toContain("Year 2");
+  expect(text).not.toContain("Annual filing history");
+  expect(text).toMatch(/Reported in +HKD millions/);
+  expect(text).toMatch(/Checked against +Balance-sheet borrowings \(1\.00x\)/);
+  expect(text).toContain(bands.latest!.filingUrl);
+  // Exports name the basis on every band, so the amount column reads alike for every company.
+  const serialized = serializeHeadlessPaneResult(debtMaturitiesHeadless, result) as { sections: Array<{ rows: Array<Record<string, unknown>> }> };
+  expect(serialized.sections[0]!.rows[1]).toMatchObject({ label: "1 to 2 years", value: 16_227e6, basis: "carrying", fromMonths: 12, toMonths: 24 });
+  // Cited to the report, not to SEC.
+  expect(formatFreshnessLine(freshness)).toBe("Source: HKEX annual or interim report notes · Wed 31 Dec 2025 · not a live feed (filed data)");
 });
 
 test("maturity sorting follows fiscal order; numeric sorts preserve missing values last", () => {

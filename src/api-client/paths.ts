@@ -425,11 +425,16 @@ export function cloudProxyStatementPath(ticker: string, year: number, listing?: 
   return issuerPath("/cloud/proxies", ticker, listing, `/${year}`);
 }
 
-/** The principal maturity schedule; a US symbol goes as given, as it always has. */
+/**
+ * The maturity schedule; a US symbol goes as given, as it always has.
+ * `version=2` asks for schedules in a filing's own bands too, which servers
+ * before them ignore.
+ */
 export function cloudDebtMaturitiesPath(symbol: string, listing: IssuerListingParams = {}): string {
   const abroad = listingAbroad(symbol, listing.exchange, listing.name);
   const search = new URLSearchParams({ symbol: abroad?.symbol ?? symbol });
   setListingAbroad(search, abroad);
+  search.set("version", "2");
   return appendQuery("/cloud/debt-maturities", search);
 }
 
