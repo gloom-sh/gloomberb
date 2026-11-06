@@ -14,10 +14,10 @@ import type { CheckResult, CheckRun, CheckStatus } from "./results";
  * (SendInput), as a person with a mouse and keyboard does: the window resized
  * from every edge and corner, maximized and restored, snapped, minimized and
  * restored, the dock dividers, a floating pane moved and resized, a pane
- * dragged onto another, a popped-out window, typing in the command bar. Every
- * step is pictured and checked from outside (window rects, the cursor shape,
- * Windows hit tests, screen pixels) and from inside (the page's layout over
- * the DevTools port CEF opens on Windows).
+ * dragged onto another, a popped-out window, typing in the command bar, the
+ * tooltip a title shows. Every step is pictured and checked from outside
+ * (window rects, the cursor shape, Windows hit tests, screen pixels) and from
+ * inside (the page's layout over the DevTools port CEF opens on Windows).
  *
  *   bun scripts/windows-desktop-check/check.ts install --installer <GloomSetup.exe> --dir <install dir>
  *   bun scripts/windows-desktop-check/check.ts run --app <install dir> --out <dir> [--label <name>] [--only <text>]

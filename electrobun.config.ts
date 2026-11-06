@@ -19,6 +19,21 @@ const MAC_UNSIGNED = process.env.GLOOM_DESKTOP_UNSIGNED === "1";
  */
 const WINDOWS_NATIVE_RENDERER = process.env.GLOOM_WINDOWS_RENDERER === "native"
   || (process.platform === "win32" && process.arch === "arm64");
+/**
+ * Since Chromium 139, on Windows 11, Chromium's own top-level windows have
+ * no redirection bitmap (RemoveRedirectionBitmap): DirectComposition alone
+ * draws them, and Windows shows their backdrop until it does. In this app's
+ * Chromium nothing ever reaches the window a `title` tooltip opens in, so a
+ * tooltip was an empty light box. With the feature off those windows draw as
+ * before and the page keeps DirectComposition. Electrobun passes
+ * `--disable-features=VizDisplayCompositor` itself, as one switch, and a
+ * second `--disable-features` would replace it: that one is taken out and
+ * its feature listed here.
+ */
+const WINDOWS_CHROMIUM_FLAGS = {
+  "disable-features=VizDisplayCompositor": false,
+  "disable-features": "VizDisplayCompositor,RemoveRedirectionBitmap",
+};
 
 const config: ElectrobunConfig = {
   app: {
@@ -64,6 +79,7 @@ const config: ElectrobunConfig = {
     win: {
       bundleCEF: !WINDOWS_NATIVE_RENDERER,
       defaultRenderer: WINDOWS_NATIVE_RENDERER ? "native" : "cef",
+      chromiumFlags: WINDOWS_CHROMIUM_FLAGS,
       icon: "src/assets/gloomberb-logo-windows.ico",
     },
   },
