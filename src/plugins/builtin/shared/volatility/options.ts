@@ -1,3 +1,4 @@
+import { parseOptionTicker } from "../../../../utils/options";
 import { valueOption, type OptionSide } from "./pricing";
 
 export interface VolatilityInputs {
@@ -80,15 +81,43 @@ export function optionMid(quote: Pick<ParityQuote, "bid" | "ask"> & { quoteStale
  */
 const UNDER_INTRINSIC_MARGIN = 0.02;
 
-/** Whether an ask sits under the option's intrinsic value at `spot`: a quote no one could trade. */
-export function quoteUnderIntrinsic(quote: Pick<ParityQuote, "strike" | "ask">, side: "call" | "put", spot: number | undefined): boolean {
+/**
+ * Cash-settled index roots, exercised only at expiry (European style), as the
+ * server lists them. Such an option can be worth less than intrinsic: a deep
+ * in-the-money SPX put a year out is worth about the strike discounted to
+ * expiry less the index.
+ */
+const EUROPEAN_INDEX_ROOTS: ReadonlySet<string> = new Set([
+  "SPX", "SPXW", "SPXPM", "XSP", "NDX", "NDXP", "XND", "RUT", "RUTW", "MRUT", "VIX", "VIXW", "DJX", "XEO", "MXEA", "MXEF",
+]);
+
+/**
+ * Whether a contract can be exercised before expiry, so no quote of it is worth less than intrinsic: a listed US
+ * stock or fund option. A venue-marked coin option (Deribit's) and a cash-settled index root are European; a
+ * contract named outside OCC's form is not judged. One without a symbol is taken as a stock's.
+ */
+export function americanExercise(contract: { contractSymbol?: string; mark?: unknown }): boolean {
+  if (contract.mark != null) return false;
+  if (!contract.contractSymbol) return true;
+  const root = parseOptionTicker(contract.contractSymbol)?.underlying.toUpperCase();
+  return root != null && !EUROPEAN_INDEX_ROOTS.has(root);
+}
+
+/**
+ * Whether an ask sits under the option's intrinsic value at `spot`: a quote no one could trade. Only an American
+ * option is held to it (`americanExercise`).
+ */
+export function quoteUnderIntrinsic(
+  quote: Pick<ParityQuote, "strike" | "ask" | "contractSymbol"> & { mark?: unknown }, side: "call" | "put", spot: number | undefined,
+): boolean {
   if (spot == null || !positive(spot) || !positive(quote.ask) || !positive(quote.strike)) return false;
+  if (!americanExercise(quote)) return false;
   const intrinsic = side === "call" ? spot - quote.strike : quote.strike - spot;
   return quote.ask < intrinsic - UNDER_INTRINSIC_MARGIN * spot;
 }
 
 /** The chain with every quote under intrinsic at `spot` marked `quoteStale`, as the server marks it; the same chain when none is. */
-export function withQuotesUnderIntrinsicMarked<T extends { calls: C[]; puts: C[] }, C extends ParityQuote & { quoteStale?: boolean }>(
+export function withQuotesUnderIntrinsicMarked<T extends { calls: C[]; puts: C[] }, C extends ParityQuote & { quoteStale?: boolean; mark?: unknown }>(
   chain: T, spot: number | undefined,
 ): T {
   let marked = 0;

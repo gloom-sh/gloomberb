@@ -138,4 +138,20 @@ describe("quotes that cannot be priced", () => {
     expect(withQuotesUnderIntrinsicMarked(chain, undefined)).toBe(chain);
     expect(quoteUnderIntrinsic(chain.calls[0]!, "call", 50.77)).toBe(true);
   });
+
+  test("a European option is not held to intrinsic: a deep in-the-money SPX put a year out and a deep in-the-money ETH put keep their quotes", () => {
+    // SPX at 6,000 and the 8,000 put to Dec 2027 at 1,690 / 1,710: about the strike discounted a year at 4% less the
+    // index, 290 under its 2,000 intrinsic, as a European option is.
+    const spx = { calls: [], puts: [{ strike: 8000, bid: 1690, ask: 1710, contractSymbol: "SPXW271217P08000000" }] };
+    expect(withQuotesUnderIntrinsicMarked(spx, 6000)).toBe(spx);
+    for (const root of ["SPX", "XSP", "NDX", "NDXP", "RUT", "RUTW", "VIX", "VIXW"]) {
+      expect(quoteUnderIntrinsic({ strike: 8000, ask: 1710, contractSymbol: `${root}271217P08000000` }, "put", 6000)).toBe(false);
+    }
+    // Deribit's ETH 4,000 put with ETH at 2,240, 110 under its 1,760 intrinsic, marked by the venue at its forward:
+    // never judged against spot.
+    const eth = { calls: [], puts: [{ strike: 4000, bid: 1630, ask: 1650, contractSymbol: "ETH-25JUN27-4000-P", mark: { price: 1640 } }] };
+    expect(withQuotesUnderIntrinsicMarked(eth, 2240)).toBe(eth);
+    // The same prices on a fund's American put are no market.
+    expect(quoteUnderIntrinsic({ strike: 800, ask: 171, contractSymbol: "SPY271217P00800000" }, "put", 600)).toBe(true);
+  });
 });
