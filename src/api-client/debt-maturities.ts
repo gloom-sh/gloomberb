@@ -74,7 +74,7 @@ export interface DebtQuarter {
  */
 export type DebtAmountBasis = "principal" | "carrying" | "contractual_undiscounted";
 /** The accounting standard of a schedule read in its filing's own bands. */
-export type DebtBandTaxonomy = "ifrs-full" | "cn-cas";
+type DebtBandTaxonomy = "ifrs-full" | "cn-cas";
 /**
  * One time band exactly as the filing reports it: from and to, in months
  * after the balance-sheet date (to null: open ended), and the rows or members
@@ -88,7 +88,7 @@ export interface DebtBand {
   members: string[];
 }
 /** The document a schedule read from the filing itself came from, and what it was checked against. */
-export interface DebtLadderSource {
+interface DebtLadderSource {
   url: string;
   /** The table, text block or concept the schedule was read from. */
   concept: string;
