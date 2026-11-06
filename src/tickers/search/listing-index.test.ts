@@ -17,6 +17,14 @@ import { getSearchResultSymbol } from "./result";
 
 const DAY = 24 * 60 * 60_000;
 
+/** Moves fake time on a minute at a time, letting each refresh that comes due finish. */
+async function elapse(ms: number): Promise<void> {
+  for (let passed = 0; passed < ms; passed += 60_000) {
+    jest.advanceTimersByTime(Math.min(60_000, ms - passed));
+    for (let turn = 0; turn < 5; turn++) await Promise.resolve();
+  }
+}
+
 afterEach(() => {
   setSystemTime();
 });
@@ -73,13 +81,13 @@ test("an answer outlives the launch as search sent it, ranked as it was, and lea
     row("DG", "VINCI SA", "SWX", { currency: "CHF" }),
   ];
   rememberSearchAnswer("DG", dg, true);
-  rememberSearchAnswer("TWTR", [row("TWTR", "Twitter, Inc.", "NYSE", { providerId: "yahoo", delisting })], true);
+  rememberSearchAnswer("TWTR", [row("TWTR", "Twitter, Inc.", "NYSE", { providerId: "other-source", delisting })], true);
   app.relaunch();
 
   expect(knownListings("SIVE")).toEqual([row("SIVE", "Sivers Semiconductors AB", "SFB", { currency: "SEK", popularity: 120 })]);
   expect(rankedTop("DG", dg)).toBe("Dollar General Corporation NYSE");
   expect(rankedTop("DG", knownListings("DG"))).toBe("Dollar General Corporation NYSE");
-  expect(knownListings("TWTR")[0]).toMatchObject({ providerId: "yahoo", delisting });
+  expect(knownListings("TWTR")[0]).toMatchObject({ providerId: "other-source", delisting });
   // Every spelling of a symbol finds it, and a class is not the letters it follows.
   rememberSearchAnswer("NOVO-B", [row("NOVO.B", "Novo Nordisk A/S", "CPH")], true);
   expect(knownListings("novo b").map((listing) => listing.symbol)).toEqual(["NOVO.B"]);
@@ -96,7 +104,7 @@ test("an answer stands two weeks unconfirmed, and one search gave in full withou
   // One that may have been cut short says nothing about what is listed: the service was busy,
   // or a keystroke gave it up and another source, or a broker, answered.
   const without = (extra: Partial<InstrumentSearchResult>) => [row("WIDGX", "Widget Fund", "NASDAQ", extra)];
-  for (const [rows, cutShort] of [[without({}), true], [without({ providerId: "yahoo" }), false], [without({ brokerInstanceId: "ibkr-live" }), false]] as const) {
+  for (const [rows, cutShort] of [[without({}), true], [without({ providerId: "other-source" }), false], [without({ brokerInstanceId: "ibkr-live" }), false]] as const) {
     rememberSearchAnswer("WIDG", rows, answeredInFull(rows, cutShort));
   }
   expect(knownListings("WIDG").map((listing) => listing.name)).toEqual(["Widget Co"]);
@@ -162,22 +170,62 @@ test("the refresh runs only while the app can be seen, and comes back for a slic
       },
       visibility: { isVisible: () => visible, subscribe: (listener) => { listeners.add(listener); return () => listeners.delete(listener); } },
     });
-    const wait = async (ms: number) => {
-      jest.advanceTimersByTime(ms);
-      for (let turn = 0; turn < 5; turn++) await Promise.resolve();
-    };
-    await wait(10 * 60_000);
+    await elapse(10 * 60_000);
     expect(asked).toHaveLength(0);
     show(true);
-    await wait(2 * 60_000);
+    await elapse(2 * 60_000);
     expect(asked).toHaveLength(1);
     fails = false;
-    await wait(15 * 60_000);
+    await elapse(15 * 60_000);
     expect(asked).toHaveLength(2);
     expect(knownListings("AAA").map((listing) => listing.name)).toEqual(["Fresh AAA"]);
     // Done for the day.
-    await wait(60 * 60_000);
+    await elapse(60 * 60_000);
     expect(asked).toHaveLength(2);
+    detach();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test("a refresh that throws is tried again, and a line search sends without a name is kept with none", async () => {
+  jest.useFakeTimers();
+  try {
+    installListingDirectory([["AAA", "Old A", "NYSE", "Common Stock", "USD", null, 1, null]]);
+    let asked = 0;
+    let answer = (): Map<string, InstrumentSearchResult[]> => ({ get: () => { throw new Error("malformed answer"); } }) as never;
+    const detach = attachListingIndex({
+      pluginState: memoryState(),
+      writable: true,
+      searchBatch: async () => { asked += 1; return answer(); },
+    });
+    await elapse(2 * 60_000);
+    expect(asked).toBe(1);
+    answer = () => new Map([["AAA", [row("AAA", null as never, "NYSE"), row("AAA", "Fresh A", "NASDAQ")]]]);
+    await elapse(15 * 60_000);
+    expect(asked).toBe(2);
+    expect(knownListings("AAA").map((listing) => `${listing.name}|${listing.exchange}`).sort()).toEqual(["Fresh A|NASDAQ", "|NYSE"]);
+    detach();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test("a source that cannot batch is asked less often after each try, down to once a day", async () => {
+  jest.useFakeTimers();
+  try {
+    installListingDirectory([["AAA", "Old A", "NYSE", "Common Stock", "USD", null, 1, null]]);
+    let asked = 0;
+    const detach = attachListingIndex({
+      pluginState: memoryState(),
+      writable: true,
+      searchBatch: async () => { asked += 1; return null; },
+    });
+    // 15 minutes after the first, then 30, an hour, ... up to a day.
+    await elapse(4 * DAY);
+    expect(asked).toBe(10);
+    await elapse(DAY);
+    expect(asked).toBe(11);
     detach();
   } finally {
     jest.useRealTimers();

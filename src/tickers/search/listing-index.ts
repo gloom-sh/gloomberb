@@ -61,7 +61,7 @@ const REFRESH_SLICE = 100;
 const REFRESH_INTERVAL_MS = 24 * 60 * 60_000;
 /** After launch, so the refresh never competes with the panes' first reads. */
 const REFRESH_DELAY_MS = 90_000;
-/** A re-read that failed, or found the app hidden, is tried again after this long. */
+/** A re-read that failed is tried again after this long, doubled for each failure in a row. */
 const REFRESH_RETRY_MS = 15 * 60_000;
 /** Answers come in bursts while typing; one write after them. */
 const SAVE_DELAY_MS = 5_000;
@@ -175,12 +175,30 @@ function isKeptListing(value: unknown): value is KeptListing {
 }
 
 /**
+ * A search's rows as the index reads them: one without a symbol is left out,
+ * and a missing name, venue or type reads as none (search sends some lines
+ * with no name), so one odd row cannot stop a refresh or a search.
+ */
+function wellFormedRows(rows: readonly InstrumentSearchResult[]): InstrumentSearchResult[] {
+  return rows.flatMap((row) => {
+    if (!row || typeof row.symbol !== "string" || !row.symbol.trim()) return [];
+    if (typeof row.name === "string" && typeof row.exchange === "string" && typeof row.type === "string") return [row];
+    return [{
+      ...row,
+      name: typeof row.name === "string" ? row.name : "",
+      exchange: typeof row.exchange === "string" ? row.exchange : "",
+      type: typeof row.type === "string" ? row.type : "",
+    }];
+  });
+}
+
+/**
  * The lines of `symbol` among a search's rows, in its order: a data source's
  * rows only, since a broker's contract belongs to one account.
  */
 function exactListingRows(symbol: string, rows: readonly InstrumentSearchResult[]): InstrumentSearchResult[] {
   const key = listingIndexKey(symbol);
-  return rows.filter((row) => !row.brokerContract && !row.brokerInstanceId && listingIndexKey(getSearchResultSymbol(row)) === key);
+  return wellFormedRows(rows).filter((row) => !row.brokerContract && !row.brokerInstanceId && listingIndexKey(getSearchResultSymbol(row)) === key);
 }
 
 const rowIdentity = (row: InstrumentSearchResult) => `${row.symbol}|${row.exchange}|${row.name}|${row.type}`;
@@ -212,7 +230,8 @@ function rankedListingRows(symbol: string, rows: readonly InstrumentSearchResult
  * it picks them from the answer, a line of each security first, so the rows
  * it names before the answer, and the one Enter opens, are the answer's.
  */
-export function directoryRows(symbol: string, rows: readonly InstrumentSearchResult[]): InstrumentSearchResult[] {
+export function directoryRows(symbol: string, answer: readonly InstrumentSearchResult[]): InstrumentSearchResult[] {
+  const rows = wellFormedRows(answer);
   const exact = exactListingRows(symbol, rows);
   if (exact.length === 0) return [];
   const ranked = rankedListingRows(symbol, rows, exact);
@@ -396,13 +415,13 @@ export async function refreshListingDirectory(searchBatch: SearchBatch, now = Da
   for (const symbol of slice) {
     const rows = answers.get(symbol);
     // A query the service could not search is left out of the answer.
-    if (!rows) continue;
+    if (!Array.isArray(rows)) continue;
     // A symbol searched within the day already holds as fresh an answer.
     if (now - (remembered.get(listingIndexKey(symbol))?.at ?? 0) < REFRESH_INTERVAL_MS) continue;
     remember(symbol, directoryRows(symbol, rows), now);
   }
   // Read from the next keystroke on; a list on screen keeps its lines.
-  if (slice.some((symbol) => !answers.has(symbol))) {
+  if (slice.some((symbol) => !Array.isArray(answers.get(symbol)))) {
     save();
     return "failed";
   }
@@ -416,14 +435,18 @@ const ALWAYS_VISIBLE: ListingIndexVisibility = { isVisible: () => true, subscrib
 
 /**
  * Runs the refresh in the background for as long as the app runs: first a
- * while after launch, then when the next slice is due, and again a while
- * after a slice that failed. Only while the app can be seen; a hidden app
- * waits until it shows again. Returns the stop.
+ * while after launch, then when the next slice is due. A slice that failed
+ * is tried again a while later, twice as long after each failure in a row,
+ * up to a day: a source that cannot batch (a broker searching beside it)
+ * settles at the daily pace. Only while the app can be seen; a hidden app
+ * waits until it shows again. Nothing a refresh throws reaches the app.
+ * Returns the stop.
  */
 function scheduleRefresh(searchBatch: SearchBatch, visibility: ListingIndexVisibility): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let unsubscribe: (() => void) | null = null;
   let stopped = false;
+  let failures = 0;
   const later = (delay: number) => {
     timer = setTimeout(() => void run(), delay);
     (timer as { unref?: () => void }).unref?.();
@@ -440,9 +463,21 @@ function scheduleRefresh(searchBatch: SearchBatch, visibility: ListingIndexVisib
       });
       return;
     }
-    const outcome = await refreshListingDirectory(searchBatch);
+    let outcome: RefreshOutcome;
+    try {
+      outcome = await refreshListingDirectory(searchBatch);
+    } catch (error) {
+      logFailure("tickers.listing-index", "Refreshing major listings failed")(error);
+      outcome = "failed";
+    }
     if (stopped) return;
-    later(outcome === "failed" ? REFRESH_RETRY_MS : Math.max(refreshedAt + REFRESH_INTERVAL_MS - Date.now(), REFRESH_RETRY_MS));
+    if (outcome === "failed") {
+      later(Math.min(REFRESH_RETRY_MS * 2 ** failures, REFRESH_INTERVAL_MS));
+      failures += 1;
+      return;
+    }
+    failures = 0;
+    later(Math.max(refreshedAt + REFRESH_INTERVAL_MS - Date.now(), REFRESH_RETRY_MS));
   };
   later(REFRESH_DELAY_MS);
   return () => {
