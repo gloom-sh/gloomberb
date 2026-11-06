@@ -15,7 +15,7 @@ import { DESKTOP_APP_NAME, isDesktopAppIdentifier, LEGACY_DESKTOP_APP_NAME } fro
  *
  * Homebrew installs are left to Homebrew: its record names the bundle it
  * installed, and a bundle renamed under it makes `brew upgrade` fail. The cask
- * moves it to `Gloom.app` at the next `brew upgrade --cask gloomberb`.
+ * moves it to `Gloom.app` at the next `brew upgrade --cask gloom`.
  *
  * Nothing moves when a link into the old bundle sits in a folder this user
  * cannot write, since that command would stop working; the app runs under the

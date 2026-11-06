@@ -15,12 +15,12 @@ On Apple Silicon this installs the desktop app as `/Applications/Gloom.app` and 
 With Homebrew (Apple Silicon):
 
 ```bash
-brew install --cask gloomberb
+brew install --cask gloom
 ```
 
-The cask still installs the app as `Gloomberb.app` with the `gloomberb` command, and the app adds `gloom` beside it the first time it opens. You can also [download the disk image](https://gloom.sh/download/desktop).
+The cask installs `Gloom.app` with the `gloom` and `gloomberb` commands. You can also [download the disk image](https://gloom.sh/download/desktop).
 
-An install from before 0.18.4 renames itself to `Gloom.app` on its first start after updating, and moves its `gloom` and `gloomberb` links with it. A Homebrew install keeps its name until the cask changes it. Your data stays where it is.
+An install from before 0.18.4 renames itself to `Gloom.app` on its first start after updating, and moves its `gloom` and `gloomberb` links with it. A Homebrew install gets `Gloom.app` at its next `brew upgrade --cask gloom`. Your data stays where it is.
 
 ## Linux
 
@@ -68,13 +68,13 @@ On first start, Gloom clones a few official plugins from GitHub, which needs Git
 
 ## Updates
 
-The desktop app and the standalone binary download updates in the background, then show **Update ready**. Nothing restarts on its own: the desktop app installs the update when you press **Restart** (or `U`), and the terminal binary runs it the next time you start it. Homebrew installs update with `brew upgrade --cask gloomberb`, and Bun and npm installs by running their install command again.
+The desktop app and the standalone binary download updates in the background, then show **Update ready**. Nothing restarts on its own: the desktop app installs the update when you press **Restart** (or `U`), and the terminal binary runs it the next time you start it. Homebrew installs update with `brew upgrade --cask gloom`, and Bun and npm installs by running their install command again.
 
 **Release Channel** in the command bar (or `gloom config set updates.channel nightly`) switches the desktop app and the standalone binary to nightly builds of `main`, which get fixes first and can break. Switching back never installs an older version.
 
 ## Uninstall
 
-Run `brew uninstall --cask gloomberb` or `bun remove -g @gloom-sh/terminal`, or remove the desktop app from **Settings > Apps** on Windows. For a script install, delete `~/.local/bin/gloom`, `~/.local/bin/gloomberb` and `/Applications/Gloom.app`, or `%USERPROFILE%\.local\bin\gloom.exe` on Windows. Your [data](#where-your-data-lives) stays on disk.
+Run `brew uninstall --cask gloom` or `bun remove -g @gloom-sh/terminal`, or remove the desktop app from **Settings > Apps** on Windows. For a script install, delete `~/.local/bin/gloom`, `~/.local/bin/gloomberb` and `/Applications/Gloom.app`, or `%USERPROFILE%\.local\bin\gloom.exe` on Windows. Your [data](#where-your-data-lives) stays on disk.
 
 ## Where your data lives
 

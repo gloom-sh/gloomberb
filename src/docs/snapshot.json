@@ -1,7 +1,7 @@
 {
  "format": 1,
  "site": "https://gloom.sh",
- "updatedAt": "2026-11-05",
+ "updatedAt": "2026-11-06",
  "categories": [
   {
    "id": "research",
@@ -41,7 +41,7 @@
    "code": "DES",
    "name": "Security overview",
    "description": "Quote, chart, and research tabs",
-   "detail": "The starting point for any ticker: live quote, day and 52-week range, price chart, fundamentals, and tabs into every other research pane. T is the same pane; search Ticker Research to open a second one.",
+   "detail": "The starting point for any ticker: live quote, day and 52-week range, price chart, fundamentals, and tabs into every other research pane. A bond fund shows its SEC yield, yield to worst and duration beside its distribution yield. T is the same pane; search Ticker Research to open a second one.",
    "category": "research",
    "arg": "NVDA",
    "shot": "https://gloom.sh/screenshots/fn/DES.png",
@@ -430,7 +430,7 @@
    "code": "DVD",
    "name": "Dividend yield",
    "description": "Payout history and yield",
-   "detail": "Cash distributions, trailing yield, indicated rate when available, and payout growth. Future payments are not forecast.",
+   "detail": "Cash distributions, trailing yield, indicated rate when available, and payout growth. A bond fund's distribution yield is labelled as not its SEC yield, which follows it dated with yield to worst and duration; --tax-rate 40.8 adds a muni fund's tax-equivalent yield and muni/Treasury ratio. Several tickers rank in one table. Future payments are not forecast.",
    "category": "research",
    "arg": "KO",
    "shot": "https://gloom.sh/screenshots/fn/DVD.png",
@@ -1386,9 +1386,9 @@
   },
   {
    "code": "ETF",
-   "name": "ETF filings",
-   "description": "A fund's SEC filings",
-   "detail": "A US-listed fund's SEC filings: registration statements, prospectus updates, shareholder reports, N-CEN and N-PORT reports. Open any of them inline.",
+   "name": "ETF facts and filings",
+   "description": "A fund's facts and SEC filings",
+   "detail": "A US-listed fund's facts from its sponsor (fee, NAV, premium, net assets, and a bond fund's SEC yield, yield to worst and duration), then its SEC filings: registration statements, prospectus updates, shareholder reports, N-CEN and N-PORT reports. Open any of them inline.",
    "category": "ownership",
    "arg": "SPY",
    "shot": "https://gloom.sh/screenshots/fn/ETF.png",
@@ -1776,7 +1776,7 @@
     "desktop",
     "tui"
    ],
-   "updatedAt": "2026-11-05",
+   "updatedAt": "2026-11-06",
    "blocks": [
     {
      "type": "heading",
@@ -1789,11 +1789,11 @@
     },
     {
      "type": "code",
-     "code": "brew install --cask gloomberb\n# or\ncurl -fsSL gloom.sh/install | bash"
+     "code": "brew install --cask gloom\n# or\ncurl -fsSL gloom.sh/install | bash"
     },
     {
      "type": "paragraph",
-     "text": "Or use the [direct download](/download/desktop). The desktop app and the Homebrew cask (`brew install --cask gloomberb`) need Apple Silicon; on an Intel Mac use the [browser version](#browser), or look for a terminal binary in the [release assets](https://github.com/gloom-sh/gloomberb/releases/latest)."
+     "text": "Or use the [direct download](/download/desktop). The desktop app and the Homebrew cask (`brew install --cask gloom`) need Apple Silicon; on an Intel Mac use the [browser version](#browser), or look for a terminal binary in the [release assets](https://github.com/gloom-sh/gloomberb/releases/latest)."
     },
     {
      "type": "paragraph",
@@ -1908,7 +1908,7 @@
       ],
       [
        "Homebrew",
-       "`brew upgrade --cask gloomberb`"
+       "`brew upgrade --cask gloom`"
       ],
       [
        "Bun",
@@ -2553,9 +2553,16 @@
     "yield",
     "DRIP",
     "reinvest",
-    "DVD"
+    "DVD",
+    "import positions",
+    "broker CSV",
+    "Fidelity",
+    "Schwab",
+    "Vanguard",
+    "E*TRADE",
+    "Merrill"
    ],
-   "updatedAt": "2026-10-25",
+   "updatedAt": "2026-11-06",
    "blocks": [
     {
      "type": "heading",
@@ -2569,6 +2576,31 @@
     {
      "type": "code",
      "code": "gloom portfolio create Core\ngloom portfolio position set Core VTI 40 280\ngloom portfolio position set Core BND 60 72\ngloom portfolio cash set Core 2000 USD"
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Import positions from a broker CSV"
+    },
+    {
+     "type": "paragraph",
+     "text": "A broker Gloom does not sync can still fill a portfolio. Download its positions or holdings page as a CSV. Then in PF open the pane menu (`.`, or `...` in the title bar) and choose **Import Positions…**, or in a shell:"
+    },
+    {
+     "type": "code",
+     "code": "gloom portfolio import ~/Downloads/Portfolio_Positions.csv --dry-run   # the preview, nothing saved\ngloom portfolio import ~/Downloads/Portfolio_Positions.csv             # creates \"Fidelity\"\ngloom portfolio import positions.csv --name Fidelity --merge           # update a portfolio that holds tickers"
+    },
+    {
+     "type": "paragraph",
+     "text": "Fidelity, Schwab (one account or all of them), Vanguard, E*TRADE and Merrill exports are read as they come, and so is any table with a symbol and a quantity column. Each symbol becomes a position with its shares and, where the file has them, cost, purchase date and currency."
+    },
+    {
+     "type": "paragraph",
+     "text": "A preview comes first. The app saves nothing until you choose **Import**, and in a shell `--dry-run` prints the same preview. Cash, options, bonds and pending rows are listed as skipped, each with the reason. A trade history is refused."
+    },
+    {
+     "type": "paragraph",
+     "text": "Into a portfolio that already holds tickers, choose **Merge** (`--merge`: the file's positions are set over the same holdings, the rest stay) or **Replace** (`--replace`: holdings the file does not list are removed too). The app asks you to confirm a replace. A replace never removes a holding the file lists, and is refused while any stock row failed to import."
     },
     {
      "type": "heading",
@@ -2679,6 +2711,9 @@
         "Income uses trailing dividends, not announced ones. DRIP holds dividends, prices and exchange rates where they are today and reinvests once a year; it is an illustration, not a forecast.",
         "Trades use the current price and leave out fees, taxes and lot sizes.",
         "A broker portfolio uses the cash its account reports.",
+        "Several rows of one symbol (lots, or one holding in several accounts) become one position: the shares added up, the cost averaged, dated by the earliest lot.",
+        "Vanguard's export has no cost. Its positions come in without one, unless the portfolio already holds the ticker and keeps that cost; set it with `gloom portfolio position set`.",
+        "A file takes at most 1,000 positions and 5 MB. A portfolio synced from a broker is never imported into.",
         "In the PF pane the columns read `WEIGHT`, `TGT WT`, `DRIFT` and `TRADE`."
        ]
       }
@@ -5587,7 +5622,7 @@
     "functions",
     "screenshots"
    ],
-   "updatedAt": "2026-10-27",
+   "updatedAt": "2026-11-06",
    "blocks": [
     {
      "type": "paragraph",
@@ -5739,6 +5774,10 @@
        "Set a position"
       ],
       [
+       "`portfolio import <file> [--name <portfolio>] [--merge|--replace] [--dry-run]`",
+       "Fill a portfolio from a broker's positions CSV (`-` reads standard input): Fidelity, Schwab, Vanguard, E*TRADE, Merrill, or any table with a symbol and a quantity column. It reads shares, cost, purchase date and currency; the portfolio is named after the broker unless `--name` says otherwise. `--dry-run` previews and saves nothing. A portfolio that holds tickers needs `--merge` (update) or `--replace` (also remove what the file lacks; refused while a stock row failed to import). Cash, options, bonds and pending rows are skipped with the reason, a trade history is refused"
+      ],
+      [
        "`portfolio cash set <portfolio> <amount> [currency]`, `portfolio cash clear <portfolio>`",
        "Record or clear the cash line; it counts in the total and the weights"
       ],
@@ -5766,7 +5805,7 @@
     },
     {
      "type": "paragraph",
-     "text": "[Portfolios and rebalancing](/docs/portfolio) walks through targets and the drift table. `CASH` in `portfolio target` is the cash line; `portfolio add` and `position set` refuse a bare `CASH` (the stock is `CASH:NASDAQ`). `portfolio` and `watchlist` write immediately and ignore `--dry-run`. Sign-in, account management and chat are app-only."
+     "text": "[Portfolios and rebalancing](/docs/portfolio) walks through importing a broker CSV, targets and the drift table. `CASH` in `portfolio target` is the cash line; `portfolio add` and `position set` refuse a bare `CASH` (the stock is `CASH:NASDAQ`). `portfolio` and `watchlist` write immediately; `--dry-run` previews `add` and `portfolio import <file>`, and every other change refuses it. Sign-in, account management and chat are app-only."
     },
     {
      "type": "paragraph",
@@ -7522,7 +7561,7 @@
   {
    "url": "/academy/terminal-and-workspace/your-workspace/portfolio-risk",
    "title": "Portfolio risk (PORT, MARS)",
-   "summary": "PORT (also MARS) measures your portfolio's risk against a benchmark: how much it swings, its worst fall, a bad-day loss estimate, and what a crash or a rate jump would do to it.",
+   "summary": "PORT (also MARS) measures your portfolio's risk against a benchmark: how much it swings, its worst fall, a bad-day loss estimate, which holdings move together, and what a crash or a rate jump would do to it.",
    "chapter": "The terminal and your workspace",
    "minutes": 5
   },
@@ -7559,7 +7598,7 @@
    "title": "Your account and your broker (ACM, BR, IBKR)",
    "summary": "ACM manages your Gloom account, and BR connects a brokerage account so your real positions appear in a portfolio and stay in sync.",
    "chapter": "The terminal and your workspace",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/terminal-and-workspace/your-workspace/ai-helpers",
@@ -7699,7 +7738,7 @@
    "title": "Revenue by segment and company KPIs (SEG, KPIS)",
    "summary": "SEG splits a company's revenue by product, segment and region from its filings, and KPIS tracks the operating numbers it reports beyond the statements, each with its source quote.",
    "chapter": "Fundamentals and earnings",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/fundamentals-and-earnings/the-statements/reverse-dcf",
