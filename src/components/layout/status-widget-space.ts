@@ -10,6 +10,14 @@ import { useEffect, useSyncExternalStore } from "react";
 /** Held back for the widgets whether or not they claim more. */
 export const STATUS_WIDGET_COLUMNS = 20;
 
+/**
+ * Below this many columns the status bar is a narrow terminal's or a phone's,
+ * as Tidy reads the same width: the layout tabs are cut to fit in the
+ * terminal, and on the desktop and the web, where the tabs give way to the
+ * widgets, a widget takes its short form so the tab in front shows whole.
+ */
+export const NARROW_STATUS_BAR_COLUMNS = 80;
+
 const claims = new Map<string, number>();
 let room = Number.POSITIVE_INFINITY;
 const listeners = new Set<() => void>();

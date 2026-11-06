@@ -30,6 +30,13 @@ interface TabItem {
    * strip redraws when it changes.
    */
   leading?: ReactNode;
+  /**
+   * The key that switches to this tab, where `label` starts with it (`⌘1 ` of
+   * `⌘1 Research`). The desktop and the web hide it on a touch screen, which
+   * has no keys to press it with, as they hide keycaps; the terminal draws the
+   * label as it is.
+   */
+  keyPrefix?: string;
   disabled?: boolean;
   /** Text color while inactive; used for group markers such as a team accent. */
   fg?: string;

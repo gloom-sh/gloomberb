@@ -76,7 +76,7 @@ test("a Market column label resolves to the market it names and no free text rea
     getCloudPerpsBoard: async (query: unknown) => { searches.push(query); return perpBoard({ rows: (query as { search: string }).search === "xyz:SP500" ? [sp500] : [] }); },
     getCloudPerpsMarket: async (id: string) => { ids.push(id); return market({ rows: id === sp500.marketId ? [sp500] : [] }); },
   };
-  // The label the board prints and the identity typed by hand are one market.
+  // The label the board prints, the one it printed before (kept in saved panes) and the identity typed by hand are one market.
   for (const input of ["SP500 · XYZ", "SP500·XYZ", "xyz:SP500"]) expect((await fetchPerpSelection(input, client)).rows[0]!.marketId).toBe(sp500.marketId);
   expect(searches).toEqual([{ search: "xyz:SP500" }, { search: "xyz:SP500" }, { search: "xyz:SP500" }]);
   // Outside the board's preview, the builder dex names its own market; a label nothing carries, or free text, is no market and never a request.

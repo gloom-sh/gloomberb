@@ -330,7 +330,8 @@ function HeaderCommandPrompt({
           style={{ flexWrap: "wrap", alignContent: "flex-start" }}
         >
           <Text fg={mutedColor}>{placeholder}</Text>
-          {shortcut ? <Text fg={mutedColor}>{`  ${shortcut}`}</Text> : null}
+          {/* A key hint, which a touch screen hides (styles.css). */}
+          {shortcut ? <Text fg={mutedColor} className="gloom-key-hint">{`  ${shortcut}`}</Text> : null}
         </Box>
       ) : (
         <>

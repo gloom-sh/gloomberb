@@ -184,7 +184,7 @@ const listMetadata = (data: Pick<PerpBoardPayload, "asOf" | "access" | "status">
 
 export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "free-text", optional: true, placeholder: "market",
-    description: "A base asset, underlying, canonical market identity or Market column label, such as BTC, hyperliquid:xyz:TSLA or SP500 · XYZ. Opens its history; with --tab board it searches the board, with --tab compare, liquidations or depth it is the base asset. Without one, the board." },
+    description: "A base asset, underlying, canonical market identity or Market column label, such as BTC, hyperliquid:xyz:TSLA or xyz:TSLA. Opens its history; with --tab board it searches the board, with --tab compare, liquidations or depth it is the base asset. Without one, the board." },
   options: [
     { key: "tab", type: "enum", settingKey: "tab", values: PERP_TABS.map((value) => ({ value })), description: "Board, rankings, compare, liquidations, depth, history or evidence. Board without a market, history with one." },
     { key: "asset-class", type: "enum", settingKey: "assetClass", values: ASSET_FILTERS.map((value) => ({ value })), defaultValue: "all", description: "Board asset class." },

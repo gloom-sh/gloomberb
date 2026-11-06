@@ -18,7 +18,7 @@ import { loadPerpsCompare, loadPerpsEquity } from "./client";
 import { perpEquityIdentity } from "./equity-identity";
 import { useLivePerpRows } from "./live-rows";
 import { compact, perpCell, percent, price, readingTime, venueName } from "./model";
-import { useOpenPerpMarket } from "./open-market";
+import { openPerpLabel, useOpenPerpMarket } from "./open-market";
 import { contractText, foldSmallMarkets, mergeVenueMarkets, type PerpVenueMarket } from "./venue-markets";
 
 const STOCK_TYPES = new Set(["STK", "EQUITY", "STOCK", "COMMON STOCK"]);
@@ -119,7 +119,7 @@ export function PerpMarketsSection({ symbol, exchange, instrumentType, quote, wi
   const cell = (column: Column, market: PerpVenueMarket, row: PerpBoardRow): ColumnGridCell => {
     if (column.id === "venue") {
       return { text: venueName(market.venue), color: row.stale ? colors.textDim : colors.textBright,
-        link: { label: tf("Open {label}", { label: `PERP ${row.baseAsset} · ${venueName(market.venue)}` }), onOpen: () => openMarket(row.marketId) } };
+        link: { label: openPerpLabel(row), onOpen: () => openMarket(row.marketId) } };
     }
     if (column.id === "contract") return { text: contractText(market), color: colors.textMuted };
     if (column.id === "mark") return { text: price(row.markPrice ?? row.lastPrice), color: colors.text };

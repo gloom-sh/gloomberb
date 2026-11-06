@@ -97,6 +97,17 @@ export function shouldShowTidyWindows(layout: LayoutConfig): boolean {
     || analyzeFloatingPaneVisibility(layout).some((pane) => pane.buried);
 }
 
+/**
+ * Whether a screen of `size` cells holds panes side by side and one above
+ * another: as wide as Tidy tiles a grid at, and as tall as two rows of panes
+ * that each show a screen of rows. A phone holds no grid, upright or on its
+ * side, so a workspace made for one (the web's first visit) comes there as
+ * one stack of tabs instead.
+ */
+export function holdsPaneGrid(size: { width: number; height: number }): boolean {
+  return size.width >= NARROW_TIDY_WIDTH && size.height >= NARROW_TIDY_MIN_ROWS * 2;
+}
+
 function withStacks(node: DockLayoutNode | null, stacks: ReadonlyMap<string, readonly string[]>): DockLayoutNode | null {
   if (!node || stacks.size === 0) return node;
   if (node.kind === "pane") {

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { Window } from "happy-dom";
+import { isDockStack } from "../../layout/pane-manager/dock-stack";
 import { getDockedPaneIds } from "../../layout/pane-manager/dock-tree";
 import { BROWSER_RESEARCH_PANE_ID, createBrowserConfigStore } from "./config-host";
 import { BROWSER_STORAGE_KEYS, type StorageLike } from "../../data/json-storage";
@@ -30,6 +31,27 @@ test("a visit without a research link still opens NVDA", async () => {
   const research = config.layout.instances.find((instance) => instance.instanceId === BROWSER_RESEARCH_PANE_ID);
   expect(research?.binding).toEqual({ kind: "fixed", symbol: "NVDA" });
   expect(getDockedPaneIds(config.layout)).toHaveLength(6);
+});
+
+test("a phone gets every starter tab as one stack, the company's research in front, and keeps it", async () => {
+  // 390x844 upright and 844x390 on its side, in 8x18 px cells; 768x1024 holds the grid.
+  const open = async (width: number, height: number, storage = memoryStorage()) =>
+    createBrowserConfigStore(storage, "?ticker=NVDA", () => ({ width: width / 8, height: height / 18 })).loadConfig("browser://local");
+  for (const [width, height] of [[390, 844], [844, 390]] as const) {
+    const config = await open(width, height);
+    for (const saved of config.layouts) expect(isDockStack(saved.layout.dockRoot)).toBe(true);
+    const research = config.layouts[0]!.layout.dockRoot!;
+    expect(isDockStack(research) && research.tabs.active).toBe(BROWSER_RESEARCH_PANE_ID);
+    expect(getDockedPaneIds(config.layout).slice(0, 3)).toEqual([BROWSER_RESEARCH_PANE_ID, "chart-composer:research", "ticker-news:research"]);
+  }
+  const tablet = await open(768, 1024);
+  expect(tablet.layouts.some((saved) => isDockStack(saved.layout.dockRoot))).toBe(false);
+
+  // The grid saved on a wide window stays a grid when the same visitor comes back on a narrow one.
+  const storage = memoryStorage();
+  const wide = createBrowserConfigStore(storage, "", () => ({ width: 180, height: 50 }));
+  await wide.saveConfig(await wide.loadConfig("browser://local"));
+  expect(isDockStack((await open(390, 844, storage)).layout.dockRoot)).toBe(false);
 });
 
 test("a returning visitor keeps the saved layout", async () => {

@@ -43,6 +43,7 @@ import { getDesktopWindows, layoutMoveTargets } from "../../state/desktop-window
 import { fireAndForget } from "../../utils/fire-and-forget";
 import { recordFunctionOpen } from "../../telemetry/usage-counts";
 import {
+  NARROW_STATUS_BAR_COLUMNS,
   STATUS_WIDGET_COLUMNS,
   useClaimedStatusWidgetColumns,
   usePublishStatusWidgetRoom,
@@ -109,8 +110,6 @@ function truncate(text: string, width: number): string {
 /** The longest a layout tab's name runs, and the shortest a narrow bar cuts every name to before its tabs scroll. */
 const LAYOUT_NAME_MAX = 14;
 const LAYOUT_NAME_MIN = 8;
-/** Below this many columns the bar cuts the names to fit, as Tidy stacks the panes in one column. */
-const NARROW_TERMINAL_WIDTH = 80;
 
 const openLayoutWorkflow = (actionId: "new-layout" | "rename-layout") => {
   openFormModal({ kind: "builtin", actionId });
@@ -176,8 +175,10 @@ export function StatusBar() {
   const layoutTab = (index: number, nameWidth: number, activeCut?: ActiveTabCut) => {
     const layout = layouts[index]!;
     const cut = index === activeLayoutIdx ? activeCut : undefined;
+    const key = cut?.key === false ? "" : tabKey(index);
     return {
-      label: `${cut?.key === false ? "" : tabKey(index)}${truncate(layout.name, cut?.nameWidth ?? nameWidth)}${layoutMarkers[index] ?? ""}`,
+      label: `${key}${truncate(layout.name, cut?.nameWidth ?? nameWidth)}${layoutMarkers[index] ?? ""}`,
+      ...(key ? { keyPrefix: key } : {}),
       value: String(index),
       reorderable: true,
     };
@@ -220,7 +221,7 @@ export function StatusBar() {
   // end of a name (`CIO` of `FX Desk - CIO`).
   const overflowsAt = (width: number) => !nativePaneChrome && tabsWidthOf(savedLayoutTabsAt(width)) > tabsRoom;
   let nameWidth = LAYOUT_NAME_MAX;
-  if (termWidth < NARROW_TERMINAL_WIDTH) {
+  if (termWidth < NARROW_STATUS_BAR_COLUMNS) {
     while (overflowsAt(nameWidth) && nameWidth > LAYOUT_NAME_MIN) nameWidth -= 1;
     if (overflowsAt(nameWidth)) nameWidth = LAYOUT_NAME_MAX;
   }
@@ -231,13 +232,13 @@ export function StatusBar() {
   if (activeTooWide()) Object.assign(activeCut, { key: false, nameWidth });
   while (activeTooWide() && activeCut.nameWidth > 1) activeCut.nameWidth -= 1;
   const savedLayoutTabs = savedLayoutTabsAt(nameWidth, activeCut);
+  const transientKey = transientLayout?.shortcutActionId ? actionKey(transientLayout.shortcutActionId) : "";
   const layoutTabs = transientLayout
     ? [
       ...savedLayoutTabs,
       {
-        label: [transientLayout.shortcutActionId ? actionKey(transientLayout.shortcutActionId) : "", transientLayout.label]
-          .filter(Boolean)
-          .join(" "),
+        label: [transientKey, transientLayout.label].filter(Boolean).join(" "),
+        ...(transientKey ? { keyPrefix: `${transientKey} ` } : {}),
         value: transientLayout.id,
         reorderable: false,
       },

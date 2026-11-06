@@ -60,7 +60,7 @@ test("history report reads as units and the rows keep every raw field", async ()
 
 test("an underlying without data and the revision payloads stay short and honest", async () => {
   const { result, text } = await report("evidence", [bare]);
-  expect(text).toContain("TSLA · XYZ");
+  expect(text).toContain("xyz:TSLA");
   expect(text).toContain("Superseded 2026-10-04 01:00 UTC");
   expect(text).toContain("9f2c41d7");
   expect(text).not.toContain("9f2c41d7a0");
@@ -166,10 +166,10 @@ test("a Market column label opens its market, and a label nothing carries fails 
     getCloudPerpsHistory: async () => perpHistory({ marketId: sp500.marketId }),
   } as never;
   const args = (argument: string, tab = "history") => createTestHeadlessArgs({ argument, rawArgument: argument, options: { tab, days: "7", metric: "funding" } });
-  const opened = await perpsHeadless.load(args("SP500 · XYZ"), createTestHeadlessContext({ apiClient }));
+  const opened = await perpsHeadless.load(args("xyz:SP500"), createTestHeadlessContext({ apiClient }));
   expect(opened.metadata).toMatchObject({ marketId: sp500.marketId });
-  expect((await perpsHeadless.load(args("SP500 · XYZ", "board"), createTestHeadlessContext({ apiClient }))).sections[0]).toMatchObject({ rows: [sp500] });
-  await expect(perpsHeadless.load(args("FOO · XYZ"), createTestHeadlessContext({ apiClient }))).rejects.toThrow('No perpetual market matches "FOO · XYZ". Try BTC, ETH, SP500, xyz:SP500.');
+  expect((await perpsHeadless.load(args("xyz:SP500", "board"), createTestHeadlessContext({ apiClient }))).sections[0]).toMatchObject({ rows: [sp500] });
+  await expect(perpsHeadless.load(args("xyz:FOO"), createTestHeadlessContext({ apiClient }))).rejects.toThrow('No perpetual market matches "xyz:FOO". Try BTC, ETH, SP500, xyz:SP500.');
 });
 
 test("a pair or plain name opens the market it stands for, and a name nothing matches names the nearest board markets", async () => {
@@ -201,8 +201,8 @@ test("a pair or plain name opens the market it stands for, and a name nothing ma
   expect((await load("BRENTOIL")).metadata).not.toHaveProperty("notices");
   // Brent is BZ on the Binance board and BRENTOIL on Hyperliquid's xyz dex: the nearest is shown and the other named.
   const brent = await load("brent");
-  expect(brent.metadata).toMatchObject({ marketId: bz.marketId, notices: ['Showing BZ for "brent". Also on the board: BRENTOIL · XYZ.'] });
-  expect(brent.text).toContain('Showing BZ for "brent". Also on the board: BRENTOIL · XYZ.');
+  expect(brent.metadata).toMatchObject({ marketId: bz.marketId, notices: ['Showing BZ for "brent". Also on the board: xyz:BRENTOIL.'] });
+  expect(brent.text).toContain('Showing BZ for "brent". Also on the board: xyz:BRENTOIL.');
   // The same names compare their base asset across venues, and the comparison says which it read.
   const compared = await load("Bitcoin", "compare");
   expect(compared.metadata).toMatchObject({ baseAsset: "BTC", notices: ['Showing BTC for "Bitcoin".'] });
@@ -212,8 +212,8 @@ test("a pair or plain name opens the market it stands for, and a name nothing ma
   expect(((await load("BTC-USD", "board")).result.sections[0] as { rows: unknown[] }).rows).toMatchObject([market]);
 
   // A name nothing matches suggests the board markets nearest it, as the Market column writes them; free text and an unknown name keep the examples.
-  await expect(load("brentt")).rejects.toThrow('No perpetual market matches "brentt". Try BZ, BRENTOIL · XYZ.');
-  await expect(load("brentt", "compare")).rejects.toThrow('No perpetual market matches "brentt". Try BZ, BRENTOIL · XYZ.');
+  await expect(load("brentt")).rejects.toThrow('No perpetual market matches "brentt". Try BZ, xyz:BRENTOIL.');
+  await expect(load("brentt", "compare")).rejects.toThrow('No perpetual market matches "brentt". Try BZ, xyz:BRENTOIL.');
   await expect(load("ethereun")).rejects.toThrow('No perpetual market matches "ethereun". Try ETH.');
   await expect(load("XYZZY")).rejects.toThrow('No perpetual market matches "XYZZY". Try BTC, ETH, SP500, xyz:SP500.');
   await expect(load("what is a perp")).rejects.toThrow('No perpetual market matches "what is a perp". Try BTC, ETH, SP500, xyz:SP500.');

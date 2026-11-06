@@ -2,7 +2,7 @@
 
 [Back to README](../README.md) · [User guide](usage.md)
 
-[term.gloom.sh](https://term.gloom.sh) opens a starter workspace with no account. It shares its layout and panes with the desktop app, and keeps your configuration, tickers, layouts and plugin state in the browser.
+[term.gloom.sh](https://term.gloom.sh) opens a starter workspace with no account. It shares its layout and panes with the desktop app, and keeps your configuration, tickers, layouts and plugin state in the browser. On a phone, upright or on its side, each starter tab opens as one stack of tabs at the full width, the company's research in front; the chevron in the pane's title bar lists every pane in the stack. Tidy Windows on a wider screen tiles them again.
 
 ## Accounts and data
 

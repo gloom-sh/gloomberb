@@ -282,7 +282,16 @@ export function WebTabs({
                 textOverflow: "ellipsis",
               }}
             >
-              {tab.label}
+              {tab.keyPrefix && tab.label.startsWith(tab.keyPrefix) ? (
+                // The label with its key, which a touch screen hides, and
+                // without it, which only a touch screen shows (styles.css).
+                // Each is one run of text: a label split at its key sets the
+                // name a fraction of a pixel off where it was.
+                <>
+                  <span className="gloom-key-hint">{tab.label}</span>
+                  <span className="gloom-without-keys">{tab.label.slice(tab.keyPrefix.length)}</span>
+                </>
+              ) : tab.label}
             </span>
             {closeVisible && (
               <span

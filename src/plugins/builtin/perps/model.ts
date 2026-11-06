@@ -49,7 +49,11 @@ export function underlyingTicker(row: Pick<PerpBoardRow, "underlyingSymbol" | "u
     : row.underlying?.symbol.toUpperCase() === symbol ? row.underlying.listingExchange : undefined;
   return !listing || isUsListingExchange(listing) ? symbol : publicTickerKey(symbol, listing);
 }
-export const marketLabel = (row: Pick<PerpBoardRow, "dex" | "baseAsset">) => row.dex && row.dex !== "default" ? `${row.baseAsset} · ${row.dex.toUpperCase()}` : row.baseAsset;
+/**
+ * A market as the Market column, the pane title and the CLI name it: its base asset, or for a market on a Hyperliquid
+ * builder dex Hyperliquid's own name for it, the dex before a colon (`xyz:NVDA`), which is also its contract symbol.
+ */
+export const marketLabel = (row: Pick<PerpBoardRow, "dex" | "baseAsset">) => row.dex && row.dex !== "default" ? `${row.dex.toLowerCase()}:${row.baseAsset}` : row.baseAsset;
 
 /**
  * Plain names for markets, as the Market column writes the contracts to try, nearest first. A name the board does
@@ -58,7 +62,7 @@ export const marketLabel = (row: Pick<PerpBoardRow, "dex" | "baseAsset">) => row
  */
 const PLAIN_NAMES: Readonly<Record<string, readonly string[]>> = {
   bitcoin: ["BTC"], ethereum: ["ETH"], ether: ["ETH"], solana: ["SOL"], dogecoin: ["DOGE"], ripple: ["XRP"],
-  brent: ["BZ", "BRENTOIL · XYZ"], brentcrude: ["BZ", "BRENTOIL · XYZ"], wti: ["CL"], wticrude: ["CL"], naturalgas: ["NATGAS · XYZ"],
+  brent: ["BZ", "xyz:BRENTOIL"], brentcrude: ["BZ", "xyz:BRENTOIL"], wti: ["CL"], wticrude: ["CL"], naturalgas: ["xyz:NATGAS"],
 };
 /** A pair as exchanges and charts write it: BTC-USD, BTC/USD, BTCUSD, BTCUSDT, BTC-PERP, BTC/USDT:USDT. */
 const QUOTED_PAIR = /^([A-Z0-9]{1,15}?)([-/_ ]?)(?:USDT|USDC|USD|PERP)(?::[A-Z]{3,4})?$/;
@@ -73,8 +77,8 @@ export function perpBaseCandidates(input: string): string[] {
   const pair = QUOTED_PAIR.exec(input.trim().toUpperCase());
   return pair ? [pair[1]!] : [];
 }
-/** The base asset a Market column label names: `BRENTOIL · XYZ` is BRENTOIL. */
-export const baseOfLabel = (label: string) => label.split("·")[0]!.trim();
+/** The base asset a Market column label names: `xyz:BRENTOIL` is BRENTOIL. */
+export const baseOfLabel = (label: string) => label.replace(/^[a-z][a-z0-9]*:/, "");
 /** The base asset of a pair written with a separator (BTC-USD, BTC/USD), which no board symbol spells; null for anything else. */
 export function separatedPairBase(input: string): string | null {
   const pair = QUOTED_PAIR.exec(input.trim().toUpperCase());
