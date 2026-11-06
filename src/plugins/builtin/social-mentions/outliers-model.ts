@@ -17,7 +17,7 @@ export const SOCIAL_OUTLIER_WINDOW_OPTIONS: SelectButtonOption<SocialOutlierWind
   { value: "today", label: "Today", description: "Today's posts so far, UTC" },
 ];
 
-export const SOCIAL_OUTLIER_MIN_OPTIONS: SelectButtonOption[] = [
+const SOCIAL_OUTLIER_MIN_OPTIONS: SelectButtonOption[] = [
   { value: "0", label: "Any" },
   { value: "25", label: "25+" },
   { value: "100", label: "100+" },

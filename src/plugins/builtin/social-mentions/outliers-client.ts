@@ -20,7 +20,7 @@ export interface SocialOutliersQuery {
 }
 
 /** A few posts against a median of one reads as a jump of several times; the ranking starts past them. */
-export const DEFAULT_SOCIAL_OUTLIER_MIN_POSTS = 25;
+const DEFAULT_SOCIAL_OUTLIER_MIN_POSTS = 25;
 export const DEFAULT_SOCIAL_OUTLIERS_QUERY: SocialOutliersQuery = { window: "day", minPosts: DEFAULT_SOCIAL_OUTLIER_MIN_POSTS, cap: null };
 /** Tickers the pane ranks: read from the top, as INS's ranking is. */
 export const SOCIAL_OUTLIER_PANE_ROWS = 100;
@@ -39,7 +39,7 @@ const finite = (value: unknown): value is number => typeof value === "number" &&
 const time = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value));
 
 /** A ranking the pane can draw; anything else is an error, never a table with holes. */
-export function validateSocialOutliers(payload: SocialOutliersPayload): SocialOutliersPayload {
+function validateSocialOutliers(payload: SocialOutliersPayload): SocialOutliersPayload {
   const valid = !!payload && (payload.window === "day" || payload.window === "today") && time(payload.asOf) && day(payload.freshFrom)
     && !!payload.coverage && finite(payload.coverage.tracked) && finite(payload.coverage.counted)
     && Array.isArray(payload.rows) && payload.rows.every((row) => !!row
