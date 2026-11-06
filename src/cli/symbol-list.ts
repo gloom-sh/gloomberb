@@ -212,6 +212,9 @@ interface SymbolText {
   header?: string[];
 }
 
+/** Words a sheet writes where a value is missing, beside the marks isJunkCell knows (`N/A`, `-`, `—`). */
+const MISSING_WORD = /^(?:na|nan|none|null|nil)$/i;
+
 /**
  * Whether the first row of a delimited table is a header in any language:
  * every cell of it a word, none a figure, over columns that turn from a word
@@ -219,17 +222,21 @@ interface SymbolText {
  * over `THYAO,100,280`): two such columns, or one with no column of words
  * beside it. A row of symbols with a rating or a name beside it (`AAPL,BUY`),
  * or a grid with a numeric code in it (`AAL,czr us equity,UAL` over
- * `DAL,2007,ULCC`), is no header.
+ * `DAL,2007,ULCC`), is no header. A mark for a missing value (`n/a`, `-`,
+ * `—`, `NA`) is a data row's, never a column's name: a first row with one is
+ * no header, and one on a later row leaves its column's numbers numbers.
  */
 function isWordHeader(records: readonly string[][]): boolean {
   const [first, ...rest] = records;
   if (!first || first.length < 2 || rest.length === 0) return false;
-  const word = (cell: string | undefined) => !!cell && /\p{L}/u.test(cell) && !isFigure(cell) && !isNumberCell(cell);
+  const missing = (cell: string) => isJunkCell(cell) || MISSING_WORD.test(cell.trim());
+  const word = (cell: string | undefined) =>
+    !!cell && !missing(cell) && /\p{L}/u.test(cell) && !isFigure(cell) && !isNumberCell(cell);
   if (!first.every((cell) => !cell || word(cell)) || !word(first[0])) return false;
   const width = Math.max(...records.map((cells) => cells.length));
   let numbers = 0, words = 0;
   for (let index = 1; index < width; index++) {
-    const below = rest.map((cells) => cells[index]).filter((cell): cell is string => !!cell);
+    const below = rest.map((cells) => cells[index]).filter((cell): cell is string => !!cell && !missing(cell));
     if (!below.length) continue;
     if (word(first[index]) && below.every(isFigure)) numbers += 1;
     else if (!below.every(isFigure)) words += 1;

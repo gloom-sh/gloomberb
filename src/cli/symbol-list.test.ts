@@ -173,4 +173,13 @@ test("a first row of words over rows of numbers is a header in any language, ski
   // Symbols with a word beside them on every row are no header: the first row is read like the others.
   expect(parseSymbolText("AAPL,BUY\nMSFT,HOLD\n").symbols).toEqual(["AAPL", "MSFT"]);
   expect(parseSymbolText("AAPL,BUY\nMSFT,HOLD\n").header).toBeUndefined();
+  // A mark for a missing value is a data row's: AAPL was skipped as a header over its own n/a.
+  for (const first of ["AAPL,n/a,n/a", "AAPL,-,—", "AAPL,NA,NA", "AAPL,#N/A,280"]) {
+    expect(parseSymbolText(`${first}\nMSFT,100,280\nNVDA,5,120\n`), first).toMatchObject({ symbols: ["AAPL", "MSFT", "NVDA"] });
+    expect(parseSymbolText(`${first}\nMSFT,100,280\n`).header, first).toBeUndefined();
+  }
+  // One under a header leaves its column a column of numbers.
+  expect(parseSymbolText("Hisse,Adet,Maliyet\nTHYAO,100,280\nGARAN,n/a,120\n")).toMatchObject({
+    symbols: ["THYAO", "GARAN"], header: ["Hisse", "Adet", "Maliyet"],
+  });
 });

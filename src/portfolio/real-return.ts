@@ -21,7 +21,9 @@ export interface CpiSource {
 }
 
 export const CPI_SOURCES: Readonly<Record<string, CpiSource>> = {
-  USD: { currency: "USD", series: "CPIAUCSL", kind: "level", label: "US CPI", publisher: "BLS" },
+  // Not seasonally adjusted, as the BLS publishes it and as a period's change is quoted: an adjusted index
+  // is revised every year, so the same period would read differently later.
+  USD: { currency: "USD", series: "CPIAUCNS", kind: "level", label: "US CPI", publisher: "BLS" },
   // The central bank's table gives TurkStat's changes on the index, not its level: whole years are the
   // year-on-year change TurkStat computes from the level, the months left over its monthly changes.
   TRY: { currency: "TRY", series: "TURCPIMOM", yearSeries: "TURCPIYOY", kind: "changes", label: "Türkiye CPI", publisher: "TurkStat" },

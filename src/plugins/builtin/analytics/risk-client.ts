@@ -395,25 +395,26 @@ export async function fetchPortfolioRiskMarket(
     rangeKey: "2Y",
   } as const;
   const account = accountCurrency === "USD" ? null : accountCurrency;
-  // What needs no quote goes out with the quotes, not after them: the factor proxies' histories, and the account
-  // currency's rate and daily closes. Each is read once, where it was read before.
-  const early = new Map<string, ReturnType<RiskCloudClient["getCloudHistory"]>>();
-  const fetchEarly = (symbol: string, exchange: string) => {
-    const loading = client.getCloudHistory(symbol, exchange, historyParams, signal ? { signal } : undefined);
-    loading.catch(() => {
-      // Intentional ignore: the failure is raised where the history is read.
-    });
-    early.set(`${symbol}|${exchange}`, loading);
-  };
+  // Every daily history is read once per listing, under one key: a factor proxy's is the holding's of the same
+  // listing however the book names its venue (SPY, ARCA:SPY), and the account currency's pair is its FX leg's.
+  const dailyHistories = new Map<string, ReturnType<RiskCloudClient["getCloudHistory"]>>();
   const historyOf = (symbol: string, exchange: string) => {
-    const loading = early.get(`${symbol}|${exchange}`);
-    early.delete(`${symbol}|${exchange}`);
-    return loading ?? client.getCloudHistory(symbol, exchange, historyParams, signal ? { signal } : undefined);
+    const key = `${canonicalExchange(exchange)}:${normalizeSymbol(symbol)}`;
+    let loading = dailyHistories.get(key);
+    if (!loading) {
+      dailyHistories.set(key, loading = client.getCloudHistory(symbol, exchange, historyParams, signal ? { signal } : undefined));
+      loading.catch(() => {
+        // Intentional ignore: the failure is raised where the history is read.
+      });
+    }
+    return loading;
   };
-  for (const instrument of factors.values()) fetchEarly(instrument.symbol, instrument.exchange || "");
+  // What needs no quote goes out with the quotes, not after them: the factor proxies' histories, and the account
+  // currency's rate and daily closes.
+  for (const instrument of factors.values()) void historyOf(instrument.symbol, instrument.exchange || "");
   const accountConversion = account ? riskConversion(account) : null;
   if (accountConversion && accountConversion.divisor === 1)
-    fetchEarly(accountConversion.leg.instrument.symbol, accountConversion.leg.instrument.exchange ?? "");
+    void historyOf(accountConversion.leg.instrument.symbol, accountConversion.leg.instrument.exchange ?? "");
   const accountRate = account ? client.getCloudExchangeRate(account) : null;
   accountRate?.catch(() => {
     // Intentional ignore: the failure is raised where the rate is read.

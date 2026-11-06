@@ -92,7 +92,7 @@ test("portfolio show --from --real deflates the total by the CPI from the month 
   const levels: Record<string, number> = { "2026-06": 329, "2026-07": 330, "2026-08": 331, "2026-09": 332.65 };
   const cpi = {
     getCloudFredSeries: async (id: string, params: { startDate: string }) => ({
-      observations: id === "CPIAUCSL" ? Object.entries(levels).filter(([month]) => `${month}-01` >= params.startDate).map(([month, value]) => ({ date: `${month}-01`, value })) : [],
+      observations: id === "CPIAUCNS" ? Object.entries(levels).filter(([month]) => `${month}-01` >= params.startDate).map(([month, value]) => ({ date: `${month}-01`, value })) : [],
     }) as never,
   };
   const period = { from: "2026-08-03", to: "2026-10-30" };
@@ -100,7 +100,7 @@ test("portfolio show --from --real deflates the total by the CPI from the month 
   // JSON keeps the two published levels it was read from.
   expect(json.metadata.real).toMatchObject({
     cpi: "US CPI", fromMonth: "2026-07", toMonth: "2026-09", latestPublished: false, inflationPercent: expect.closeTo((332.65 / 330 - 1) * 100, 9),
-    readings: [{ series: "CPIAUCSL", month: "2026-07", value: 330 }, { series: "CPIAUCSL", month: "2026-09", value: 332.65 }],
+    readings: [{ series: "CPIAUCNS", month: "2026-07", value: 330 }, { series: "CPIAUCNS", month: "2026-09", value: 332.65 }],
   });
   const real = ((1 + json.metadata.real.nominalPercent / 100) / (332.65 / 330) - 1) * 100;
   expect(json.metadata.real.realPercent).toBeCloseTo(real, 9);

@@ -28,20 +28,26 @@ const NAME_NOISE = new Set([
   // A Japanese company's legal form, spelled out or short: Nippon Yusen Kabushiki Kaisha is Nippon Yusen K.K.
   "kabushiki", "kaisha", "kk",
   // A Turkish one: Türk Hava Yolları Anonim Ortaklığı is Türk Hava Yolları A.O., Türkiye Garanti Bankası A.Ş. and T.A.Ş.
-  "anonim", "sirketi", "ortakligi", "ao", "tas",
+  "anonim", "sirketi", "ortakligi",
 ]);
+// Turkish legal forms short enough to open another company's name (AO Smith, AO World): a legal form only as its last word.
+const LAST_WORD_NOISE = new Set(["ao", "tas"]);
 // Words a venue adds to the share it lists ("Microsoft Corporation Common Stock"), never part of whose it is.
 const SHARE_NOISE = new Set(["common", "ordinary", "stock", "shares"]);
 
 /** A company's name for comparing its listings: "Kotobuki Spirits Co., Ltd." is "kotobuki spirits". */
 function companyKey(name: string): string {
-  return foldNameLetters(name).toLowerCase()
+  const words = foldNameLetters(name).toLowerCase()
     .replace(/\([^)]*\)/g, " ")
     .replace(/\b(?:(?:american|global) )?depositary (?:shares?|receipts?)\b/g, " ")
     .replace(/\./g, "")
     .split(/[^\p{L}\p{N}]+/u)
-    .filter((word) => word && !NAME_NOISE.has(word))
-    .join(" ");
+    .filter((word) => word && !NAME_NOISE.has(word));
+  // The last word before any share wording, never a name's only one.
+  let last = words.length - 1;
+  while (last > 0 && SHARE_NOISE.has(words[last]!)) last--;
+  if (last > 0 && LAST_WORD_NOISE.has(words[last]!)) words.splice(last, 1);
+  return words.join(" ");
 }
 
 function companyWords(name: string | null | undefined): Set<string> {
@@ -250,7 +256,8 @@ export function shortCompanyName(name: string): string {
   const legal = (word: string) => {
     const plain = foldNameLetters(word).toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
     // "Public Limited Company" is a legal form too, though "Public" alone can be a name.
-    return NAME_NOISE.has(plain) || SHARE_NOISE.has(plain) || (plain === "public" && words.length > 2);
+    return NAME_NOISE.has(plain) || LAST_WORD_NOISE.has(plain) || SHARE_NOISE.has(plain)
+      || (plain === "public" && words.length > 2);
   };
   const joining = (word: string) => word === "&" || word.toLowerCase() === "and";
   while (words.length > 1 && (legal(words[words.length - 1]!) || joining(words[words.length - 1]!))) words.pop();

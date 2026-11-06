@@ -232,7 +232,7 @@ export function createRootCommandItemBuilder({
       case "run-setup-again":
         return "settings onboarding wizard guide first run start over desks holdings";
       case "quit":
-        return "quit exit close leave";
+        return "quit exit";
       default:
         return "";
     }

@@ -4,7 +4,7 @@ import { createDefaultConfig } from "../types/config";
 import { nearFunctionCodes } from "./pane-functions/catalog";
 import { createPaneCatalog } from "./pane-functions/discovery";
 import type { MarketContext } from "./types";
-import { catalogPointer, subcommandPointer, tickerPointer, type CatalogCommandHit } from "./unknown-command";
+import { catalogPointer, subcommandPointer, tickerPointer, unknownCommandReply, type CatalogCommandHit } from "./unknown-command";
 
 const RV: CatalogCommandHit = { code: "RV", label: "Relative Valuation", argKind: "tickers", argPlaceholder: null, peers: true };
 const EQS: CatalogCommandHit = { code: "EQS", label: "Equity Screener", argKind: "none", argPlaceholder: null, peers: false };
@@ -68,4 +68,30 @@ test("a subcommand typed without its command points at the command it belongs to
   // A word that is only an argument in a usage line, or a placeholder, belongs to no command.
   expect(subcommandPointer("set", [], commands)).toBeNull();
   expect(subcommandPointer("<function>", [], commands)).toBeNull();
+});
+
+// `gloom export LMT` lost its --csv/--json answer, and `gloom CASH` its ticker answer, to the subcommand pointer.
+test("an unknown word is a subcommand only after it is no export, bank figure or ticker", () => {
+  const commands = [
+    { name: "notes", usage: ["notes show <symbol>", "notes export [dir]"] },
+    { name: "portfolio", usage: ["portfolio cash set <portfolio> <amount> [currency]"] },
+    { name: "fundamentals", usage: ["fundamentals nim <symbol>"] },
+  ];
+  const reply = (token: string, args: string[]) =>
+    unknownCommandReply(token, commands, { fn: null, nearFn: null, hits: [], args }, null);
+  expect(reply("export", ["LMT"])).toEqual({
+    message: 'Unknown command "export".',
+    details: expect.stringContaining("add --csv or --json to any command to print its result as CSV or JSON, e.g. gloom history LMT --csv"),
+  });
+  expect(reply("CASH", [])).toEqual({
+    message: 'Unknown command "CASH".',
+    details: expect.stringContaining("To quote it: gloom quote CASH"),
+  });
+  expect(reply("nim", ["JPM"]).message).toBe('Unknown command "nim": a bank\'s figures are in the Bank section of fundamentals.');
+  // Typed as words, they still lead to the command they belong to.
+  expect(reply("cash", ["set", "Izmir", "1000"])).toEqual({
+    message: 'Unknown command "cash": it is a subcommand of portfolio.',
+    details: "Run: gloom portfolio cash set Izmir 1000",
+  });
+  expect(reply("show", ["AAPL"]).message).toBe('Unknown command "show": it is a subcommand of notes.');
 });

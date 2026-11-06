@@ -152,6 +152,28 @@ describe("CommandBar", () => {
     expect(quits).toBe(1);
   });
 
+  // A partial word put QUIT first, so Enter on `q` or `e` quit the app.
+  test.each([
+    ["q", "QQ Quote Monitor"],
+    ["qu", "QQ Quote Monitor"],
+    ["e", "Export Config"],
+    ["ex", "Export Config"],
+    ["close", "Close Pane"],
+  ])("%s never makes Quit the row Enter runs", async (query, first) => {
+    let quits = 0;
+    await tui.render(<CommandBarHarness query={query} onQuit={() => { quits += 1; }} />, { width: 100, height: 24 });
+    await tui.waitForFrameToContain(first);
+    const rows = tui.frame().split("\n").slice(1).map((line) => line.trim()).filter(Boolean);
+    expect(rows[1]).toBe(first);
+    expect(rows.some((row) => row.endsWith("Quit"))).toBe(false);
+
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
+    });
+    expect(quits).toBe(0);
+  });
+
   test("Check for Updates is inert once the terminal binary is swapped in", async () => {
     let checks = 0;
     await tui.render(<CommandBarHarness

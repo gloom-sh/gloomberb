@@ -403,7 +403,10 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     items.push(...tickerActionItems());
     items.push(...pluginCommandItems());
   } else {
+    // Quit answers only its own words, `quit` and `exit` (matched above): a
+    // partial query (`q`, `e`, `ex`) never makes it the row Enter runs.
     const commandItems = availableCommands
+      .filter((command) => command.id !== "quit")
       .map((command) => commandToItem(command))
       .filter((item): item is ResultItem => item !== null);
     const allItems = [

@@ -85,6 +85,40 @@ test("partial Cloud source failures stay local; permission rejection escapes the
   ).rejects.toThrow("Denied");
 });
 
+test("a holding that is a factor proxy shares the proxy's history however its venue is named", async () => {
+  // SPY held without its venue was read again beside the factor's ARCA:SPY, and the TRY pair once per reader.
+  const reads: string[] = [];
+  const client = {
+    getCloudQuotesBatch: async (requested: Array<{ symbol: string; exchange: string }>) => ({
+      status: "success",
+      data: { items: requested.map((row) => ({ ...row, status: "success", data: riskQuote(row.symbol, "ARCA") })) },
+    }),
+    getCloudHistory: async (symbol: string, exchange: string) => {
+      reads.push(`${exchange}:${symbol}`);
+      const history = riskHistory();
+      history.providerMeta!.normalizedSymbol = symbol;
+      history.providerMeta!.normalizedExchange = "ARCA";
+      return history;
+    },
+    getCloudFredSeries: async () => {
+      throw new Error("FRED unavailable");
+    },
+    getCloudExchangeRate: async () => ({ status: "success", data: { rate: 0.0237 } }),
+  };
+  await fetchPortfolioRiskMarket(
+    [{ symbol: "SPY", exchange: "", quantity: 10 }, { symbol: "IWM", exchange: "NYSEARCA", quantity: 5 }],
+    client as any,
+    now,
+    undefined,
+    "TRY",
+  );
+  const counts = new Map<string, number>();
+  for (const read of reads) counts.set(read.split(":")[1]!, (counts.get(read.split(":")[1]!) ?? 0) + 1);
+  expect([...counts].filter(([, count]) => count > 1)).toEqual([]);
+  expect(counts.get("SPY")).toBe(1);
+  expect(counts.get("IWM")).toBe(1);
+});
+
 test("without a current quote a dated USD history marks the holding at its latest close", () => {
   const history = riskHistory();
   const resolved = validateRiskHistory(history, instrument, null, now);
