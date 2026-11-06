@@ -16,7 +16,7 @@ import {
   WebTextField,
 } from "./desktop/controls";
 import { WebAudioPlayer } from "./desktop/audio-player";
-import { WebDialogActions, WebKeyHintsLine } from "./desktop/dialog-actions";
+import { WebDialogActions, WebKeyHint, WebKeyHintsLine } from "./desktop/dialog-actions";
 import { WebPopover } from "./desktop/popover";
 import { WebQueryBar } from "./desktop/query-bar";
 import { WebMenu } from "./desktop/menu";
@@ -92,6 +92,7 @@ export function createDomUiHost(
     SegmentedControl: WebSegmentedControl,
     DialogFrame: WebDialogFrame,
     DialogActions: WebDialogActions,
+    KeyHint: WebKeyHint,
     KeyHints: WebKeyHintsLine,
     PageStackView: WebPageStackView,
     DataTable: WebDataTable,

@@ -151,13 +151,13 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
     ...(!openPath ? [{ id: "inputs", key: "i", label: "nputs", onPress: () => setInputsOpen(true) }] : []),
     ...(selectedPath && !openPath ? [{ id: "evidence", key: "e", label: "vidence", onPress: details }] : []),
     ...(tab === "graph" && !openPath && selected && selected.id !== data?.entity?.id ? [{ id: "target", key: "p", label: "aths to target", onPress: () => applyTarget(entityKey(selected)) },
-      { id: "collapse", key: "c", label: collapsed.includes(selected.id) ? "expand" : "ollapse", onPress: () => setCollapsed(old => old.includes(selected.id) ? old.filter(id => id !== selected.id) : [...old, selected.id]) }] : []),
+      { id: "collapse", key: "c", label: collapsed.includes(selected.id) ? "expand" : "ollapse", title: collapsed.includes(selected.id) ? "Expand" : "Collapse", onPress: () => setCollapsed(old => old.includes(selected.id) ? old.filter(id => id !== selected.id) : [...old, selected.id]) }] : []),
     ...(!openPath && selected?.ticker ? [
       { id: "description", key: "d", label: "es", onPress: () => openDescription(entityKey(selected)) },
       { id: "financials", key: "f", label: "a", onPress: () => createPaneFromTemplate("financial-analysis-pane", { symbol: entityKey(selected) }) },
       { id: "chart", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: entityKey(selected) }) },
     ] : []),
-    ...(!openPath && (focus !== symbol || target) ? [{ id: "home", key: "z", label: "reset focus", onPress: () => { setFocus(symbol); applyTarget(""); setCollapsed([]); setSelected(null); } }] : []),
+    ...(!openPath && (focus !== symbol || target) ? [{ id: "home", key: "z", label: "reset focus", title: "Reset Focus", onPress: () => { setFocus(symbol); applyTarget(""); setCollapsed([]); setSelected(null); } }] : []),
     ...(data?.access === "preview" ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", onPress: openUpgrade }] : []),
   ];
   useAutoRefresh(resource.updatedAt, resource.load);

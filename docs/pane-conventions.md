@@ -93,7 +93,7 @@ column under 480px steps every reading level down together (13.2px body).
 | Buttons (`Button`, `IconButton`) | Four kinds, one radius (`md`), no shadow. Primary: accent fill, bold. Danger: the same in negative. Secondary: 1px control border, regular. Ghost (`ghost`, `plain`): text that takes the hover fill. Icon: 20×18, hover fill; a tab's close mark and a chart's tool are icon buttons. Height one row (18px), a bar's controls the bar's 20px. A chosen button takes the selection fill. What a settings row does when pressed is a secondary button; its current value is a chip. |
 | Tabs, segmented choices (`Tabs`, `SegmentedControl`, query bar choices) | One look: 12px text, 8px padding, no box and no radius; inactive dim, hover the text colour, active bright and bold on a 2px accent underline. Sub-tabs, the query bar's choices and segmented choices are the same. Title-bar tabs (a pane's primary strip, drawn in its title bar) are the same text and spacing in boxes instead of underlines: the active tab is a box with `md` top corners, open at the bottom, its top and sides the title bar's rule (the accent while the pane is focused), filled with the surface under it so it opens into the pane; an inactive one takes the hover fill in that shape. Their labels sit on the title's centre line. |
 | Chips (`Badge`, ticker chips) | 16px in an 18px row, `sm` radius, 8px padding, a subtle fill, the tone in the text. Regular weight; tickers bold. A label's lowercase letters sit in the middle of the fill, and an icon in front of it centres with them. A chip that is chosen (a filter that is on) is the solid tone with the background colour in its text. A chip is a mark: a word drawn without a fill or a border is text, and a pressable one is a ghost button. |
-| Key caps | 14px tall, caption size, `sm` radius, a 1px ring and a faint fill mixed from the text colour around it. Keys named outside a button (`KeyHints`: a dialog's hints, the command bar prompt's keys) are a keycap and a word each; the terminal writes them as a dialog's footer line does. |
+| Key caps | 14px tall, caption size, `sm` radius, a 1px ring and a faint fill mixed from the text colour around it. A key named outside a button is a `KeyHint`: a keycap before the whole words, the words `textMuted` and the keycap `textDim`, regular weight, 12px between two. A pane footer's hints, a dialog's (`KeyHints`) and the command bar prompt's keys are all one. A pressable one (a footer hint) brightens both under the pointer, with no fill. The terminal keeps its own forms: a footer's `[a]dd`, not bold, and a dialog's footer line. |
 | Fields and selects (`TextField`, `SelectField`, `SelectButton`) | One row tall, sunken fill, 1px control border, `md` radius, 8px padding, the placeholder in the placeholder colour; focused or open, the accent border (`fieldFrameStyle` for a field a pane frames itself, such as a text area). In a query bar they are its segments. A select in a form is `SelectButton variant="form"`: the label bold above the field, as a text field's. A search strip (`InputSearchBar` `strip`) is the band with the field's text at the inset. A block of code to copy is sunken too, `md` radius, 8 by 12px inside. |
 | Checkbox | 14px, `sm` radius, control border, sunken fill; checked, the accent. |
 | Links (`ExternalLinkText`) | The text around them, underlined; bright under the pointer or focus. |
@@ -327,9 +327,19 @@ the origin of a number. The one count the kit draws is the
   `sourceDidNotAnswer`). A permanent reason (a route not served yet, an
   unsupported symbol or series, sign-in or entitlement) and a reply that
   fails validation are the pane's error, saved copy or not.
-- Hints are actions with keys. `{ key: "a", label: "dd" }` renders `[a]dd`,
-  `{ key: "Ctrl+S", label: "save" }` renders `[Ctrl+S]save`, and `[⌃S]save`
-  on a Mac. Every hint is clickable. Hints follow the selection: a different array when a row is
+- Hints are actions with keys. `label` is what the terminal writes after
+  `[key]`: the rest of the word when the key is its first letter
+  (`{ key: "a", label: "dd" }` is `[a]dd`), and a space and the words when it
+  is not (`{ key: "x", label: " remove" }` is `[x] remove`). A key that is
+  not one letter is followed by its words: `{ key: "Ctrl+S", label: "save" }`
+  is `[Ctrl+S]save`, and `[⌃S]save` on a Mac. The desktop and the web draw
+  every hint the same way (`KeyHint`, the one key hint with the dialogs' and
+  the command bar's): the key in a keycap before the whole words (`a` add,
+  `x` remove), the words muted and the keycap a step brighter, nothing bold,
+  brighter under the pointer. `keyHintWords` reads the words from the
+  label; a hint written another way (`{ key: "m", label: "re-arm" }`) needs
+  a `title` or `id` that names it (`title: "Re-arm"`), or it reads `mre-arm`.
+  Every hint is clickable. Hints follow the selection: a different array when a row is
   selected, a detail is open, a tab changes. A hint with no target is omitted
   or `disabled`, never a no-op.
 - A key that only repeats what Enter already does, or that adjusts the

@@ -4,6 +4,7 @@ import { type CompanyFrom, companyFromLabel } from "../../../../types/company-fr
 import { clipToDisplayWidth, displayWidth } from "../../../../utils/format";
 import { formatShortDate } from "../../../../utils/datetime-format";
 import { getShortcutHintWidth } from "../../../ui/shortcut-hint";
+import { KEY_HINT_GAP_PX, keycapText, keyHintCells, keyHintTitle, keyHintWords } from "../../../ui/key-hint-words";
 
 export interface PaneFooterRegistration {
   order?: number;
@@ -229,10 +230,20 @@ export interface PaneFooterPart {
 export interface PaneHint {
   id: string;
   key: string;
+  /**
+   * What the terminal writes after `[key]`: the rest of the word when a letter
+   * key starts it (`"dd"`, `[a]dd`), a space and the words when it does not
+   * (`" remove"`, `[x] remove`), and the words after any other key (`"pick"`
+   * after `Enter`). The desktop and the web show the key in a keycap before
+   * the whole words, read from this (keyHintWords).
+   */
   label: string;
   /**
    * The action's full name in the pane menu. Defaults to the hint read as one
-   * word (`[a]dd` is "Add"); set it when the key is not the first letter.
+   * word (`[a]dd` is "Add"); set it when the key is not the first letter, and
+   * when the label is a whole word right after a letter key (`[m]re-arm`), so
+   * the desktop reads "re-arm", not "mre-arm". An `id` that names the label
+   * (`id: "rearm"`) does the same for the desktop.
    */
   title?: string;
   onPress?: (event?: PaneFooterPressEvent) => void;
@@ -296,12 +307,34 @@ type PaneHintKeyLabel = (key: string) => string;
 
 const KEY_AS_WRITTEN: PaneHintKeyLabel = (key) => key;
 
-function paneHintWidth(hint: Pick<PaneHint, "key" | "label">, prefix = "", keyLabel = KEY_AS_WRITTEN): number {
-  return getShortcutHintWidth(keyLabel(hint.key), hint.label, prefix);
+/** How much room hints take on a host, in cells: each hint, and the gap between two. */
+export interface PaneHintMetrics {
+  width(hint: Pick<PaneHint, "key" | "label" | "title" | "id">): number;
+  gap: number;
 }
 
-export function totalHintsWidth(hints: readonly Pick<PaneHint, "key" | "label">[], keyLabel = KEY_AS_WRITTEN): number {
-  return hints.reduce((total, hint, index) => total + paneHintWidth(hint, index > 0 ? " " : "", keyLabel), 0);
+/** The terminal's hints: `[s]eries`, a column apart. `keyLabel` writes the key as the host shows it. */
+export function terminalHintMetrics(keyLabel: PaneHintKeyLabel = KEY_AS_WRITTEN): PaneHintMetrics {
+  return { width: (hint) => getShortcutHintWidth(keyLabel(hint.key), hint.label), gap: HINT_GAP };
+}
+
+/**
+ * The desktop's and the web's hints: a keycap and the whole words (KeyHint),
+ * farther apart, on a grid of `cellPx` cells. The text scales with the cell
+ * and the spacing does not, so pass the live cell (useUiCapabilities().cellWidthPx).
+ */
+export function desktopHintMetrics(cellPx: number): PaneHintMetrics {
+  return {
+    width: (hint) => keyHintCells(keycapText(hint.key), keyHintWords(hint), cellPx),
+    gap: KEY_HINT_GAP_PX / cellPx,
+  };
+}
+
+const TERMINAL_HINT_METRICS = terminalHintMetrics();
+
+/** Cells `hints` take side by side, rounded up to a whole cell. */
+export function totalHintsWidth(hints: readonly Pick<PaneHint, "key" | "label" | "title" | "id">[], metrics: PaneHintMetrics = TERMINAL_HINT_METRICS): number {
+  return Math.ceil(hints.reduce((total, hint, index) => total + (index > 0 ? metrics.gap : 0) + metrics.width(hint), 0) - 1e-9);
 }
 
 function infoTextWidth(segments: readonly PaneFooterSegment[]): number {
@@ -418,7 +451,7 @@ export function layoutPaneFooterHintRow(
   footer: CombinedPaneFooter,
   contentWidth: number,
   iconReserve = 0,
-  keyLabel = KEY_AS_WRITTEN,
+  metrics: PaneHintMetrics = TERMINAL_HINT_METRICS,
 ): PaneFooterHintRow {
   const width = Math.max(0, Math.floor(contentWidth));
   const hints = footer.hints.filter((hint) => !hint.disabled);
@@ -434,12 +467,12 @@ export function layoutPaneFooterHintRow(
   const more = moreControl(hintBudget);
   let visible = hints;
   let overflow: PaneHint[] = [];
-  if (totalHintsWidth(hints, keyLabel) > hintBudget) {
-    const room = Math.max(0, hintBudget - more.width - (more.width > 0 ? HINT_GAP : 0));
+  if (totalHintsWidth(hints, metrics) > hintBudget) {
+    const room = Math.max(0, hintBudget - more.width - (more.width > 0 ? metrics.gap : 0));
     visible = [];
     let used = 0;
     for (const hint of hints) {
-      const next = used + (visible.length > 0 ? HINT_GAP : 0) + paneHintWidth(hint, "", keyLabel);
+      const next = used + (visible.length > 0 ? metrics.gap : 0) + metrics.width(hint);
       if (next > room) break;
       visible.push(hint);
       used = next;
@@ -447,8 +480,8 @@ export function layoutPaneFooterHintRow(
     overflow = hints.slice(visible.length);
   }
   const hintsWidth = overflow.length > 0
-    ? totalHintsWidth(visible, keyLabel) + (visible.length > 0 ? HINT_GAP : 0) + more.width
-    : totalHintsWidth(visible, keyLabel);
+    ? Math.ceil(totalHintsWidth(visible, metrics) + (visible.length > 0 ? metrics.gap : 0) + more.width)
+    : totalHintsWidth(visible, metrics);
   return {
     hints: visible,
     overflow,
@@ -460,15 +493,8 @@ export function layoutPaneFooterHintRow(
 }
 
 /** The name a hint goes by in the pane menu: `[a]dd` is "Add", `[r]efresh` is "Refresh". */
-export function paneHintTitle(hint: Pick<PaneHint, "key" | "label" | "title">): string {
-  if (hint.title) return hint.title;
-  const label = hint.label.trim();
-  const key = hint.key;
-  const joined = key.length === 1 && /^[a-z]$/i.test(key) && /^[a-z]/.test(hint.label)
-    && !label.toLowerCase().startsWith(key.toLowerCase())
-    ? `${key}${label}`
-    : label;
-  return joined.charAt(0).toUpperCase() + joined.slice(1);
+export function paneHintTitle(hint: Pick<PaneHint, "key" | "label" | "title" | "id">): string {
+  return keyHintTitle(hint);
 }
 
 export function hasPaneFooterContent(footer?: CombinedPaneFooter | null): boolean {
