@@ -8,9 +8,9 @@ import type { TickerRecord } from "../../../../types/ticker";
 import type { CollectionSortPreference } from "../../../../state/app/context";
 import {
   VISIBLE_FINANCIAL_WARMUP_DELAY_MS,
+  VISIBLE_FINANCIAL_WARMUP_MAX_WAIT_MS,
   VISIBLE_QUOTE_REFRESH_COOLDOWN_MS,
   VISIBLE_QUOTE_STREAM_WATCHDOG_MS,
-  VISIBLE_SNAPSHOT_WARMUP_BATCH_LIMIT,
   VISIBLE_SNAPSHOT_REFRESH_COOLDOWN_MS,
   SORT_QUOTE_WARMUP_BATCH_LIMIT,
   needsVisibleQuoteWarmup,
@@ -19,6 +19,7 @@ import {
   selectQuoteWarmupRoute,
   selectQuoteWarmupTickers,
   selectStreamTickers,
+  selectVisibleSnapshotBatch,
   sortPreferenceUsesQuote,
   visibleWarmupKey,
   type VisibleWarmupRequirements,
@@ -54,8 +55,14 @@ export function usePortfolioPaneStreaming({
   // The scheduled warmup batch, keyed by what it will fetch. Quote ticks and
   // prefetches replace the financials map many times a second; a batch that
   // still fetches the same rows keeps its timer instead of restarting it, or
-  // it would never fire while the tape is busy.
-  const pendingWarmupRef = useRef<{ key: string; timeoutId: ReturnType<typeof setTimeout> } | null>(null);
+  // it would never fire while the tape is busy. One that keeps changing, as
+  // first quotes arrive row by row, is sent after VISIBLE_FINANCIAL_WARMUP_MAX_WAIT_MS.
+  const pendingWarmupRef = useRef<{
+    key: string;
+    timeoutId: ReturnType<typeof setTimeout>;
+    /** When the first batch of this wait was scheduled. */
+    since: number;
+  } | null>(null);
   // What the warmup currently asks for, re-run when a tick may have changed it.
   const evaluateWarmupRef = useRef<() => void>(() => {});
   const warmupRecheckRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -193,7 +200,7 @@ export function usePortfolioPaneStreaming({
         }
       }
       const limitedQuoteSnapshotQueue = quoteSnapshotQueue.slice(0, SORT_QUOTE_WARMUP_BATCH_LIMIT);
-      const limitedSnapshotQueue = snapshotQueue.slice(0, VISIBLE_SNAPSHOT_WARMUP_BATCH_LIMIT);
+      const limitedSnapshotQueue = selectVisibleSnapshotBatch(snapshotQueue, instrumentOptions);
       if (quoteQueue.length === 0 && limitedQuoteSnapshotQueue.length === 0 && limitedSnapshotQueue.length === 0) {
         if (pendingWarmupRef.current) clearTimeout(pendingWarmupRef.current.timeoutId);
         pendingWarmupRef.current = null;
@@ -262,12 +269,14 @@ export function usePortfolioPaneStreaming({
         }
       };
 
+      const since = pendingWarmupRef.current?.since ?? Date.now();
       if (pendingWarmupRef.current) clearTimeout(pendingWarmupRef.current.timeoutId);
+      const delay = Math.min(VISIBLE_FINANCIAL_WARMUP_DELAY_MS, Math.max(0, since + VISIBLE_FINANCIAL_WARMUP_MAX_WAIT_MS - Date.now()));
       const timeoutId = setTimeout(() => {
         pendingWarmupRef.current = null;
         if (mountedRef.current) void runBatch();
-      }, VISIBLE_FINANCIAL_WARMUP_DELAY_MS);
-      pendingWarmupRef.current = { key: batchKey, timeoutId };
+      }, delay);
+      pendingWarmupRef.current = { key: batchKey, timeoutId, since };
     };
 
     evaluateWarmupRef.current = evaluate;

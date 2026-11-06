@@ -1,7 +1,7 @@
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { Quote } from "../../types/financials";
 import type { InstrumentRef } from "../request-types";
-import { marketDataFrames, type DataFrameScheduler } from "../frame-scheduler";
+import { marketDataFrames, type DataFrameRequest, type DataFrameScheduler } from "../frame-scheduler";
 import { mergeQuoteSubscriptionTargets } from "../quote-subscription-target";
 import { QueryStore } from "../query-store";
 import type { QueryEntry } from "../result-types";
@@ -51,6 +51,8 @@ export const QUOTE_SUBSCRIPTION_REMOVE_GRACE_MS = 250;
 export const QUOTE_SUBSCRIPTION_PRIORITY_UPDATE_DELAY_MS = 100;
 /** Keys nobody is looking at still feed totals and alerts, just not every frame. */
 const BACKGROUND_QUOTE_APPLY_INTERVAL_MS = 1_000;
+/** How long past its interval an off-screen key waits for a frame that carries visible quotes. */
+const BACKGROUND_QUOTE_RIDE_MS = 250;
 
 /**
  * Visible and selected keys apply every data frame; every other key waits for
@@ -417,7 +419,24 @@ export class QuoteSubscriptionManager {
 
     // Latest tick per key wins; the frame applies whatever is newest.
     this.pendingStreamQuotes.set(key, { instrument, quote });
-    this.frames.request(this.streamQuoteFrame, { notBefore: this.streamQuoteDueAt(key, subscription.target) });
+    this.frames.request(this.streamQuoteFrame, this.streamQuoteRequest(
+      this.streamQuoteDueAt(key, subscription.target),
+      isForegroundQuoteTarget(subscription.target),
+    ));
+  }
+
+  /**
+   * A visible or selected key, and the first tick of any key, sets a frame
+   * off itself. An off-screen key held for its interval applies with the next
+   * frame that carries visible quotes, and sets a frame off only when none
+   * came within BACKGROUND_QUOTE_RIDE_MS of it falling due. A frame of its own
+   * spaces the next one: with a list longer than the screen the off-screen
+   * keys came due all second long, each held the next visible quote back for a
+   * frame interval, and every visible row updated twice as late.
+   */
+  private streamQuoteRequest(dueAt: number, foreground: boolean): DataFrameRequest {
+    if (foreground || dueAt === Number.NEGATIVE_INFINITY) return { notBefore: dueAt };
+    return { notBefore: dueAt, rideUntil: Math.max(dueAt, this.frames.now()) + BACKGROUND_QUOTE_RIDE_MS };
   }
 
   private streamQuoteDueAt(key: string, target: QuoteSubscriptionTarget): number {
@@ -447,7 +466,7 @@ export class QuoteSubscriptionManager {
       due.push(pending);
     }
     if (nextDueAt !== Number.POSITIVE_INFINITY) {
-      this.frames.request(this.streamQuoteFrame, { notBefore: nextDueAt });
+      this.frames.request(this.streamQuoteFrame, this.streamQuoteRequest(nextDueAt, false));
     }
     if (due.length === 0) return;
 
