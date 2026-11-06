@@ -378,16 +378,8 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="pane-footer"][data-empty="true"] {
   border-top-color: transparent;
 }
-[data-gloom-role="pane-footer"] span,
-[data-gloom-role="pane-hint"] span {
+[data-gloom-role="pane-footer"] span {
   line-height: var(--cell-h);
-}
-[data-gloom-role="pane-hint"] {
-  cursor: pointer;
-  border-radius: var(--gloom-radius-md);
-}
-[data-gloom-role="pane-hint"]:hover {
-  background: var(--gloom-hover-fill);
 }
 [data-gloom-role="resize-handle"] {
   cursor: nwse-resize;
@@ -1053,6 +1045,26 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   background: color-mix(in srgb, currentColor 10%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 30%, transparent);
 }
+/* The one key hint (dialog-actions.tsx WebKeyHint): a pane footer's, a
+   dialog's and the command bar prompt's. The key in a keycap before the
+   whole words, the words in the muted tone and the keycap a step brighter,
+   nothing bold; a hint that runs its action brightens under the pointer. */
+.gloom-hint {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--gloom-space-xs);
+  white-space: nowrap;
+  font-weight: var(--gloom-weight-regular);
+  color: var(--gloom-key-hint-words, var(--gloom-text-muted));
+}
+.gloom-hint > .gloom-keycap { color: var(--gloom-key-hint-key, var(--gloom-text-dim)); }
+.gloom-hint[data-interactive="true"] { cursor: pointer; }
+.gloom-hint[data-interactive="true"]:hover {
+  --gloom-key-hint-words: var(--gloom-text);
+  --gloom-key-hint-key: var(--gloom-text-bright);
+}
+.gloom-hint[data-disabled="true"] { --gloom-key-hint-key: var(--gloom-text-muted); }
 .gloom-qb-filters { display: flex; align-items: stretch; flex: none; }
 .gloom-qb-filters .gloom-popover-anchor { display: flex; align-items: stretch; }
 .gloom-qb-chip { cursor: pointer; }
@@ -1641,9 +1653,10 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 
 /* Keycaps on buttons and in dialog hints, and the keys the command bar and
    the layout tabs name, are for a keyboard; a touch screen has none to press
-   them with. A note beside them (a deadline) stays. Text set whole with its
-   key (a layout tab's `⌘1 Research`) has the same words without the key
-   beside it, shown only where the key hint goes. */
+   them with. A note beside them (a deadline) stays, and so do the words of
+   a pane footer's hints, which a tap runs. Text set whole with its key (a
+   layout tab's `⌘1 Research`) has the same words without the key beside
+   it, shown only where the key hint goes. */
 .gloom-without-keys { display: none; }
 @media (hover: none) and (pointer: coarse) {
   .gloom-keycap, .gloom-key-hint { display: none !important; }

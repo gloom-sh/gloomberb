@@ -188,6 +188,7 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
           id: "toggle",
           key: "p",
           label: selectedRule?.status === "paused" ? "resume" : "ause",
+          title: selectedRule?.status === "paused" ? "Resume" : "Pause",
           onPress: () => toggle(selectedRule),
           disabled: !selectedRule,
         },

@@ -385,13 +385,18 @@ async function installDependencies(targetDir: string, quiet: boolean, timeoutMs?
   // their own CI can typecheck against the real API. At runtime the host is
   // symlinked in instead, and pulling a second full copy here would both
   // waste a lot of disk and risk a duplicate React.
-  const output = quiet ? "pipe" : "inherit";
+  // Bun's own lines (its version, "[5.00ms] done") are kept off the
+  // terminal like git's, and shown only when they say why it failed.
   const bun = bunCommand();
   const result = bun
-    ? await recordDependencyInstall(recordAs, () => run(bun.command, ["install", "--production"], targetDir, { stdout: output, stderr: output }, bun.env, timeoutMs)
+    ? await recordDependencyInstall(recordAs, () => run(bun.command, ["install", "--production"], targetDir, { stdout: "pipe", stderr: "pipe" }, bun.env, timeoutMs)
       .catch(logFailure("plugin-installer", "Plugin dependency installation failed", null)))
     : null;
-  if (result?.code !== 0 && !quiet) console.error(cliStyles.warning("Warning: failed to install plugin dependencies."));
+  if (result?.code !== 0 && !quiet) {
+    console.error(cliStyles.warning("Warning: failed to install plugin dependencies."));
+    const output = result ? result.stderr.trim() || result.stdout.trim() : "";
+    if (output) console.error(output);
+  }
 
   // After `bun install`, which prunes links it does not know about.
   const link = linkHostPackages(targetDir);

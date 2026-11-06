@@ -14,6 +14,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { functionDocsUrl, type FunctionFreshness, type FunctionHelpKey } from "../../../cli/pane-functions/function-help";
+import { keyHintWords } from "../../../components/ui/key-hint-words";
 import { requestFeedbackDialog } from "../../../components/feedback-dialog";
 import { Button } from "../../../components/ui/button";
 import { ExternalLink } from "../../../components/ui/external-link";
@@ -78,7 +79,7 @@ function CardRow({ label, children }: { label: string; children: ReactNode }) {
 function KeysRow({ keys }: { keys: readonly FunctionHelpKey[] }) {
   return (
     <Box flexDirection="row" flexWrap="wrap" gap={2}>
-      {keys.map((hint) => <ShortcutHint key={`${hint.key}${hint.label}`} hotkey={hint.key} label={hint.label} />)}
+      {keys.map((hint) => <ShortcutHint key={`${hint.key}${hint.label}`} hotkey={hint.key} label={hint.label} words={keyHintWords(hint)} />)}
     </Box>
   );
 }

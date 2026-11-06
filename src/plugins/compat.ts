@@ -70,6 +70,14 @@ export interface PluginManifest {
   minGloomberb: string | null;
   /** gloom.json `icon`: the plugin's logo, a path inside the checkout such as `icon.webp`. */
   icon: string | null;
+  /**
+   * gloom.json `hosts`, which the plugin directory shows as the plugin's
+   * network access. Null without a gloom.json. The web proxies the `hosts`
+   * the plugin exports instead, so `plugin doctor` checks the two agree.
+   */
+  hosts: string[] | null;
+  /** gloom.json `linkHosts`: pages the plugin only opens as links, never fetches. */
+  linkHosts: string[];
 }
 
 function readJson(path: string): Record<string, unknown> | null {
@@ -81,6 +89,11 @@ function readJson(path: string): Record<string, unknown> | null {
     logFailure("plugin-compat", "Plugin manifest read failed")(error);
     return null;
   }
+}
+
+function hostList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((host): host is string => typeof host === "string" && host.trim() !== "").map((host) => host.trim().toLowerCase());
 }
 
 function versionField(value: unknown): string | null {
@@ -109,6 +122,8 @@ export function readPluginManifest(pluginDir: string): PluginManifest {
       ?? versionField(gloom?.minGloomberb)
       ?? peerRangeMinimum(peers?.gloomberb),
     icon: typeof gloom?.icon === "string" && gloom.icon.trim() ? gloom.icon.trim() : null,
+    hosts: gloom ? hostList(gloom.hosts) : null,
+    linkHosts: hostList(gloom?.linkHosts),
   };
 }
 

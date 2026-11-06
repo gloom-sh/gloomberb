@@ -71,7 +71,7 @@ export function normalizeCommandTickerSearchText(value: string): string {
   return isExplicitMarketSymbol(normalized) ? normalized : normalized.replace(/[^A-Z0-9]+/g, "");
 }
 
-function isExactTickerResultMatch(item: ResultItem, rawQuery: string): boolean {
+export function isExactTickerResultMatch(item: ResultItem, rawQuery: string): boolean {
   if (item.kind !== "ticker" && item.kind !== "search") return false;
   // "ES FUT" names ES, and the future's own spelling ES=F.
   const assetClass = parseAssetClassQuery(rawQuery);
@@ -169,6 +169,8 @@ export function mergePlainRootTickerResults(
   rootItems: ResultItem[],
   /** What the typed text reads as when it is a terminal's code or a near miss (`readRootTickerQuery`). */
   reading: RootTickerReading | null = null,
+  /** Listings (`listingRowKey`) already on screen for the text: they keep their rows. */
+  shown: readonly string[] = [],
 ): ResultItem[] {
   const seenExactVenues = new Set<string>();
   const seenLooseSymbols = new Set<string>();
@@ -195,7 +197,7 @@ export function mergePlainRootTickerResults(
     }
     candidates.push(item);
   }
-  const instruments = pickRootInstruments(candidates, isExact);
+  const instruments = pickRootInstruments(candidates, isExact, new Set(shown));
   if (instruments.length === 0) {
     const busy = searchBusyRows(providerItems);
     return busy.length > 0 ? [...rootItems, ...busy] : rootItems;
@@ -229,6 +231,36 @@ export interface RootTickerReading {
 function rowListing(item: ResultItem): { symbol: string; exchange: string } {
   const label = parsePublicTickerKey(item.label.trim().toUpperCase());
   return { symbol: label.symbol.replace(/[-/]/g, "."), exchange: canonicalExchange(label.exchange || item.right) };
+}
+
+/** One listing however a row came to name it: a saved ticker, a search row, a broker's richer line of it. */
+export function listingRowKey(item: ResultItem): string | null {
+  if (!isInstrumentItem(item)) return null;
+  const { symbol, exchange } = rowListing(item);
+  return `${compactSearchText(symbol)}|${exchange}|${item.contractKey ?? ""}`;
+}
+
+/**
+ * Search's answer with the listings already on screen leading, in the order
+ * they were shown: the rows the index named before the answer stay where the
+ * user saw them, and the answer's other rows follow. Search may rank the same
+ * lines differently once it holds more of them, which would move the row under
+ * the cursor.
+ */
+export function leadWithShownListings(items: ResultItem[], shown: readonly string[]): ResultItem[] {
+  if (shown.length === 0) return items;
+  const order = new Map(shown.map((key, index) => [key, index]));
+  const leading: Array<{ item: ResultItem; at: number }> = [];
+  const rest: ResultItem[] = [];
+  for (const item of items) {
+    const key = listingRowKey(item);
+    const at = key == null ? undefined : order.get(key);
+    if (at === undefined) rest.push(item);
+    else leading.push({ item, at });
+  }
+  if (leading.length === 0) return items;
+  leading.sort((left, right) => left.at - right.at);
+  return [...leading.map(({ item }) => item), ...rest];
 }
 
 /**
@@ -305,17 +337,32 @@ export function venueDropdownResults(symbol: string, items: ResultItem[], suffix
 }
 
 /**
- * Up to the cap, in this order: the first exact row of each security, the
- * exact symbol's other exchanges, then looser hits. The rows keep their
+ * Up to the cap, in this order: the rows `shown` before search answered,
+ * the first exact row of each security, the exact symbol's other exchanges,
+ * then looser hits. The rows keep their
  * ranked order. Exchanges of one security share its issuer name and class.
  */
-function pickRootInstruments(candidates: ResultItem[], isExact: (item: ResultItem) => boolean): ResultItem[] {
+function pickRootInstruments(
+  candidates: ResultItem[],
+  isExact: (item: ResultItem) => boolean,
+  shown: ReadonlySet<string> = new Set(),
+): ResultItem[] {
   if (candidates.length <= ROOT_INSTRUMENTS_LIMIT) return candidates;
   const exact = candidates.filter(isExact);
   const picked = new Set<ResultItem>();
   const securities = new Set<string>();
+  const securityOf = (item: ResultItem) => `${getIssuerGroupKey(item.detail) || item.id}|${item.badge ?? item.instrumentType ?? ""}`;
+  // The rows on screen before search answered stay, and lead (`leadWithShownListings`):
+  // another security the answer adds does not take one's row.
+  for (const item of candidates) {
+    if (picked.size >= ROOT_INSTRUMENTS_LIMIT) break;
+    const key = shown.size > 0 ? listingRowKey(item) : null;
+    if (key == null || !shown.has(key)) continue;
+    picked.add(item);
+    securities.add(securityOf(item));
+  }
   for (const item of exact) {
-    const security = `${getIssuerGroupKey(item.detail) || item.id}|${item.badge ?? item.instrumentType ?? ""}`;
+    const security = securityOf(item);
     if (securities.has(security)) continue;
     securities.add(security);
     picked.add(item);

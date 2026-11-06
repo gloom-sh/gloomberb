@@ -440,6 +440,7 @@ export function CommandBar({
   const {
     activeMatch,
     orderedRootResults,
+    rootCategoryPriorities,
     rootGhostSuffix,
     rootResultsCurrent,
     rootSearching,
@@ -596,7 +597,7 @@ export function CommandBar({
     buildLayoutItems,
     currentRoute,
     orderedRootResults,
-    rootCategoryPriorities: providerCategoryPriorities,
+    rootCategoryPriorities,
     rootHoveredIdx,
     rootModeKind: rootModeInfo.kind,
     rootQuery,

@@ -79,7 +79,10 @@ async function until(container: HTMLElement, text: string) {
 
 const sidebarCells = (container: HTMLElement) => Number.parseFloat((container.querySelector('[data-gloom-role="pane-sidebar"]') as HTMLElement).style.width) / WEB_CELL_WIDTH;
 const basemap = (container: HTMLElement) => container.querySelector('[data-gloom-role="basemap"]')!.getAttribute("transform")!;
-const hints = (container: HTMLElement) => [...container.querySelectorAll('[data-gloom-role="pane-hint"]')].map((hint) => hint.textContent?.trim()).join(" ");
+// A hint is a keycap and its words; read back as `[key] words`.
+const hints = (container: HTMLElement) => [...container.querySelectorAll('[data-gloom-role="pane-hint"]')]
+  .map((hint) => `[${hint.querySelector(".gloom-keycap")?.textContent ?? ""}] ${hint.querySelector(".gloom-key-hint-words")?.textContent ?? ""}`)
+  .join(" ");
 
 describe("MAP on the desktop and the web", () => {
   test("< and > narrow and widen the sidebar from the keyboard without a footer hint", async () => {

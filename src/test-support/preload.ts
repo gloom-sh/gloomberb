@@ -1,5 +1,6 @@
 import { beforeEach } from "bun:test";
 import { resetSeenPaneNoticesForTest } from "../components/pane-notice-seen";
+import { resetListingIndexForTests } from "../tickers/search/listing-index";
 import { resetCrashReporterForTests } from "../telemetry/crash-reports";
 import { setCliAsciiLocaleOverride, setCliColorEnabledOverride, setCliPlainOverride, setCliWidthOverride } from "../utils/cli-output";
 
@@ -16,11 +17,14 @@ import { setCliAsciiLocaleOverride, setCliColorEnabledOverride, setCliPlainOverr
  * columns. Start each test with the default output modes and terminal width.
  *
  * Data warnings the user has opened are remembered the same way, and would
- * leave a later test's footer icon muted instead of warning yellow.
+ * leave a later test's footer icon muted instead of warning yellow. So are the
+ * listings search answered, which would name a later test's symbol before its
+ * own search does.
  */
 beforeEach(() => {
   resetCrashReporterForTests();
   resetSeenPaneNoticesForTest();
+  resetListingIndexForTests();
   setCliAsciiLocaleOverride(null);
   setCliColorEnabledOverride(null);
   setCliPlainOverride(null);

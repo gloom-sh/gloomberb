@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { ageFooterSegment, combinePaneFooterRegistrations, fitPaneFooterInfo, savedCopyFooterSegment, layoutPaneFooterHintRow, PANE_FOOTER_SEPARATOR, separatesPaneFooterSegments, splitDelayedStatus, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
+import { keyHintWords } from "../../../ui/key-hint-words";
+import { ageFooterSegment, combinePaneFooterRegistrations, desktopHintMetrics, fitPaneFooterInfo, savedCopyFooterSegment, layoutPaneFooterHintRow, PANE_FOOTER_SEPARATOR, totalHintsWidth, separatesPaneFooterSegments, splitDelayedStatus, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
 
 const hints: PaneHint[] = [
   { id: "search", key: "/", label: "search" },
@@ -129,6 +130,38 @@ describe("footer hint row", () => {
       const seen = layoutPaneFooterHintRow(footer([icon("muted"), status]), width, 3);
       expect([seen.hints.map((hint) => hint.id), seen.overflow.length, seen.infoWidth, seen.hintsWidth])
         .toEqual([unseen.map((hint) => hint.id), overflow.length, infoWidth, hintsWidth]);
+    }
+  });
+
+  test("on the desktop a hint is a keycap and whole words, set wider apart, so fewer fit than in the terminal", () => {
+    const terminal = totalHintsWidth(hints);
+    const desktop = desktopHintMetrics(8);
+    expect(totalHintsWidth(hints, desktop)).toBeGreaterThan(terminal);
+    // Just wide enough for the terminal's hints, not the desktop's: the desktop's last ones go under More.
+    expect(layoutPaneFooterHintRow(footer([]), terminal).overflow).toEqual([]);
+    expect(layoutPaneFooterHintRow(footer([]), terminal, 0, desktop).overflow.length).toBeGreaterThan(0);
+  });
+
+  // The grid's cell at the smallest, the default and the largest text size (font-scale.ts): the
+  // text scales with it, the keycap's padding and the gaps between hints are pixels.
+  test.each([6.67, 8, 13.33])("on a %ppx grid the hints as drawn fit the row they were measured for, and More fits beside them", (cellPx) => {
+    const metrics = desktopHintMetrics(cellPx);
+    // What the web draws for these hints, 0.6em a character: 12px apart, each a keycap
+    // of 14px at least (one letter, 4px either side), 4px, then the words.
+    const textPx = cellPx * 1.5;
+    const captionPx = textPx * 10 / 12;
+    const drawnPx = hints.reduce((total, hint, index) => total + (index > 0 ? 12 : 0)
+      + Math.max(14, hint.key.length * 0.6 * captionPx + 8) + 4 + keyHintWords(hint).length * 0.6 * textPx, 0);
+    expect(totalHintsWidth(hints, metrics) * cellPx).toBeGreaterThanOrEqual(drawnPx);
+    const status: PaneFooterSegment = { id: "loading", parts: [{ text: "loading" }] };
+    const all = totalHintsWidth(hints, metrics);
+    for (let cells = 8; cells <= all + 12; cells += 1) {
+      const row = layoutPaneFooterHintRow(footer([status]), cells, 0, metrics);
+      const shown = totalHintsWidth(row.hints, metrics)
+        + (row.overflow.length > 0 ? (row.hints.length > 0 ? metrics.gap : 0) + row.moreWidth : 0);
+      expect(row.hintsWidth).toBeGreaterThanOrEqual(shown);
+      expect(row.hintsWidth + row.infoWidth).toBeLessThanOrEqual(cells);
+      expect([...row.hints, ...row.overflow].map((hint) => hint.id)).toEqual(hints.map((hint) => hint.id));
     }
   });
 

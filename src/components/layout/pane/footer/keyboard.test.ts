@@ -54,4 +54,6 @@ test("the pane menu reads a hint as the action it names", () => {
   expect(paneHintTitle({ key: "x", label: " remove" })).toBe("Remove");
   expect(paneHintTitle({ key: "Ctrl+S", label: "save search" })).toBe("Save search");
   expect(paneHintTitle({ key: "x", label: "port all", title: "Export All" })).toBe("Export All");
+  // A whole word after a letter key the id names, as `[x]stop` writes it.
+  expect(paneHintTitle({ id: "stop", key: "x", label: "stop" })).toBe("Stop");
 });

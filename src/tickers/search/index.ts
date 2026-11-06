@@ -40,6 +40,7 @@ import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../so
 import { settleWithin } from "../../utils/async-deadline";
 import { companyNameExtraWords } from "../company-name";
 import { withHomeListingLead } from "./home-listing";
+import { answeredInFull, rememberSearchAnswer, withKnownListings } from "./listing-index";
 import { savedAbroadForBareSymbol, savedUsListingOf } from "./bare-symbol";
 import { delistingLabel } from "../../market-data/quotes/delisting";
 import { hasNonLatinLetters } from "../../utils/typed-text";
@@ -272,7 +273,13 @@ export async function searchTickerCandidates({
     onPartial ? (found) => onPartial(assemble(found)) : undefined,
     true,
   );
-  const candidates = assemble(results);
+  // The symbol's lines are named at once the next time it is typed. An answer that may have
+  // been cut short and found none of the lines leaves the ones search named before standing,
+  // as the bar showed them, unless the search was a broker account's own.
+  const complete = answeredInFull(results, !!busy || !!unreachable);
+  rememberSearchAnswer(query, results, complete);
+  const brokerScoped = !!searchContext?.brokerId || !!searchContext?.brokerInstanceId;
+  const candidates = assemble(!complete && !brokerScoped ? withKnownListings(query, results) : results);
   // Saved tickers or another source's rows still answer. Nothing at all, because the data service
   // could not be reached or a source was busy, is no answer: not a name nothing lists.
   if (unreachable && candidates.length === 0) throw unreachable;

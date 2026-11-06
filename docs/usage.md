@@ -76,7 +76,7 @@ Desktop builds add the matching `Cmd` shortcuts on macOS and these:
 
 ### Footer and pane menu
 
-The focused pane's footer shows its actions with their keys, such as `[a]dd`. The pane menu (`.` or the `...` button) lists every action, then the pane's table, filters, tabs and toggles, then the pane and window actions.
+The focused pane's footer shows its actions with their keys: `[a]dd` in the terminal, and in the desktop app and on the web the key in a small keycap before the action's name. Click a hint to run it. The pane menu (`.` or the `...` button) lists every action, then the pane's table, filters, tabs and toggles, then the pane and window actions.
 
 ### Dialogs and forms
 
@@ -213,7 +213,9 @@ End a search with one of those codes, other than `DERIV`, to keep only that clas
 
 A symbol that trades in several places lists its exchanges after a colon. `NET:` shows each one, your saved listing first, and a symbol several companies use lists them all (`CAR:` offers CAR Group on ASX as well as Avis and Carrefour). Letters after the colon narrow the list (`NET:L`), and `NET:XLON` names one listing.
 
-Enter opens exactly the highlighted row. Before a typed symbol or ticker command's search answers, there is no row yet and Enter uses the standard listing resolution (`DES HFC` opens the former US listing and shows its move to DINO, as `quote HFC` does). Once the rows are up, Enter opens the highlighted one; to choose another listing, use the arrow keys or click a search row. When a later answer reorders the rows, the highlight moves with its row. A company's name lists the listing `search` calls its primary first (`lufthansa` is LHA on XETRA), as `quote lufthansa` reads it. A saved symbol keeps its saved listing.
+A symbol you hold, have open or searched before, or a major listing in the US, Hong Kong, mainland China, Singapore, Japan or Europe (`AAPL`, `0700`, `D05`, `7203`, `SAP`) shows its Exact Match row as you type it, while search fills in the rest. Search's answer adds rows below the ones already shown rather than moving them; if it leads with another listing and you have not moved the highlight, its first row takes the top and the highlight. Ask AI's row stays below a symbol's rows. With a broker account's portfolio active, the bar waits for that account's search. Gloom keeps the major listings up to date in the background while the app is visible, and remembers what search answered on this device for two weeks; neither goes into `config.json` or sync.
+
+Enter opens exactly the highlighted row. Before a typed symbol or ticker command's search answers, and with no row for it yet, Enter uses the standard listing resolution (`DES HFC` opens the former US listing and shows its move to DINO, as `quote HFC` does). Once the rows are up, Enter opens the highlighted one; to choose another listing, use the arrow keys or click a search row. When a later answer reorders the rows, the highlight moves with its row. A company's name lists the listing `search` calls its primary first (`lufthansa` is LHA on XETRA), as `quote lufthansa` reads it. A saved symbol keeps its saved listing.
 
 When Gloom Cloud is too busy to search, the list says `Search is busy` rather than `No matches`, and saved tickers that match still show. `gloom search` and any command that looks a symbol up through search (`quote "Eagle Bulk"`, `watchlist add`) fails with `Search is busy, try again in a moment.` and exits 1 (`--json`: `code` `search_busy`, `retryable` `true`).
 
@@ -265,7 +267,7 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 | `SI <ticker>` | Short interest |
 | `SIV <ticker>` | FINRA daily off-exchange short-volume ratio, history and percentile |
 | `SIW [tickers]` | Short squeeze watch across your portfolios and watchlists: short interest as a share of float, days to cover, change since the prior settlement and the 1M move |
-| `BUZZ <ticker>` | Daily posts on X naming the cashtag, the 30-day median, top posts and their stance |
+| `BUZZ [ticker]` | Daily posts on X naming the cashtag, the 30-day median, top posts and their stance. Alone, the tickers whose posts jump above their own median |
 | `13F [fund/ticker/CIK]` | 13F fund filings and holdings |
 | `INS [ticker]` | Insider activity. Alone, the companies whose insiders are buying or selling in the open market |
 | `EVT <ticker>` | Corporate actions, earnings, and estimates |
