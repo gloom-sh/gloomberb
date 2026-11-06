@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { act, useState } from "react";
 import { createOpenTuiTestHarness, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
@@ -12,7 +12,8 @@ import {
   resetTreasuryAuctionsPersistence,
 } from "./cache";
 import { TreasuryAuctionsPane } from "./pane";
-import { auction } from "./test-fixture";
+import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
+import { auction, RECORDED_NOW, recordedFiscalData, recordedTreasuryDirect } from "./test-fixture";
 import type { TreasuryAuction } from "./types";
 
 const AUCTIONS: TreasuryAuction[] = [
@@ -62,12 +63,13 @@ const tui = createOpenTuiTestHarness();
 afterEach(() => {
   resetTreasuryAuctionsPersistence();
   setHttpFetchTransport(null);
+  setSystemTime();
 });
 
 const PANE_INSTANCE_ID = "treasury-auctions:test";
 const paneRuntime = createTestPluginRuntime();
 
-function Harness() {
+function Harness({ height = 20 }: { height?: number }) {
   // The filter tab and the open auction are pane state, so the harness needs a
   // reducer; filtering dispatches both in the same batch.
   const [paneState, setPaneState] = useState<AppState["paneState"]>({});
@@ -91,7 +93,7 @@ function Harness() {
         paneType="treasury-auctions"
         focused
         width={92}
-        height={20}
+        height={height}
       />
     </TestPaneProvider>
   );
@@ -125,6 +127,28 @@ describe("TreasuryAuctionsPane", () => {
     // The 20-Year is announced but unpublished: its Rate says so, as its detail does, and its other figures read "—".
     const announced = frame.split("\n").find((line) => line.includes("20-Year"));
     expect(announced).toMatch(/20-Year\s+Pending\s+—/);
+  });
+
+  // Fiscal Data's board had stopped at 22 Oct with the week of 19 Oct still without results.
+  test("an auction Fiscal Data has no results for reads its results from TreasuryDirect, and the announced ones show", async () => {
+    setSystemTime(new Date(RECORDED_NOW));
+    const persistence = new MemoryPluginPersistence();
+    persistence.seedResource("treasury-auctions", "recent:120", recordedFiscalData(), { sourceKey: "treasury-fiscal-data", schemaVersion: 4 });
+    persistence.seedResource("treasury-auctions", "direct:60", recordedTreasuryDirect(), { sourceKey: "treasury-direct", schemaVersion: 1 });
+    attachTreasuryAuctionsPersistence(persistence);
+    await tui.render(<Harness height={60} />, { width: 92, height: 60 });
+    await renderSettled();
+
+    const lines = tui.frame().split("\n");
+    const row = (date: string, term: string) => lines.find((line) => line.includes(date) && line.includes(term));
+    // Fiscal Data's 22 Oct 5-year TIPS had no results: it reads its real yield, stop-out and bid-to-cover now, and the bond of the 21st its yield.
+    expect(row("Oct 22", "5-Year")).toMatch(/TIPS\s+5-Year\s+2\.367%\s+6\.7bp\s+2\.41/);
+    expect(row("Oct 21", "19-Year 10-Month")).toMatch(/Bond\s+19-Year 10-Month\s+5\.469%/);
+    // The auctions after it, through 5 Nov, are on the board; the ones announced for the next week read Pending.
+    expect(row("Nov 5", "4-Week")).toMatch(/Bill\s+4-Week\s+3\.9\d\d%/);
+    expect(row("Nov 12", "30-Year")).toMatch(/Bond\s+30-Year\s+Pending/);
+    expect(row("Nov 9", "3-Year")).toMatch(/Note\s+3-Year\s+Pending/);
+    expect(lines.filter((line) => line.includes("Pending"))).toHaveLength(6);
   });
 
   test("opens a detail view for the selected auction", async () => {

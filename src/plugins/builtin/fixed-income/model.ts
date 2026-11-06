@@ -3,6 +3,7 @@ export const FIXED_INCOME_HOSTS = [
   "services-dynarep.ddwa.finra.org",
   "api.fiscaldata.treasury.gov",
   "markets.newyorkfed.org",
+  "www.treasurydirect.gov",
 ] as const;
 
 export type FixedIncomeSection = "credit" | "issuer-debt" | "bonds" | "treasury";
