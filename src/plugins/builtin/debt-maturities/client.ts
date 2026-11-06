@@ -64,14 +64,8 @@ const sourceUrl = (value: unknown) =>
   typeof value === "string" &&
   /^https:\/\/(?:www\.|data\.)?sec\.gov\//.test(value);
 /** A report's own page or document, wherever it is published. */
-const httpsUrl = (value: unknown) => {
-  if (typeof value !== "string") return false;
-  try {
-    return new URL(value).protocol === "https:";
-  } catch {
-    return false;
-  }
-};
+const httpsUrl = (value: unknown) =>
+  typeof value === "string" && URL.canParse(value) && new URL(value).protocol === "https:";
 /** SEC's annual forms a schedule by year is read from. */
 const ANNUAL_FORM = /^(10-K|20-F|40-F)(\/A)?$/;
 const near = (a: number | null, b: number | null) =>
