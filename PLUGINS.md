@@ -49,7 +49,7 @@ gloom plugin doctor my-plugin    # check it the way the app and the desktop buil
 
 A linked plugin loads like an installed one, shows as `linked` in the Plugins pane, and is skipped by `update`. Removing it removes the link and leaves the checkout alone.
 
-`gloomberb` and `react` are peer dependencies: Gloom serves its own copies to every plugin. List `gloomberb` as a devDependency too, as the reference plugin does, so `bun test` and `tsc` resolve its imports in a fresh clone; installs leave devDependencies out.
+`gloomberb` and `react` are peer dependencies: Gloom serves its own copies to every plugin. List `gloomberb` as a devDependency too, with a current `@types/node`, as the reference plugin does, so `bun test` and `tsc` resolve its imports in a fresh clone; installs leave devDependencies out.
 
 `doctor` checks that the entry resolves, the Gloom it declares is not newer than this one, it imports nothing removed or deprecated, it evaluates and exports a `GloomPlugin`, its id is not reserved, its targets are real, it declares the hosts it reaches (see [Network access](#network-access)), and its browser build (which the desktop and web apps need) compiles. It exits non-zero on a failure, so it can run in CI.
 
