@@ -175,3 +175,14 @@ test("a word after CRYP opens that list as --list does, an unknown one names the
   expect(limited.rows.map((row) => row.code)).toEqual(coins.rows.slice(0, 2).map((row) => row.code));
   expect((await run("defi", { limit: 1 })).rows).toHaveLength(1);
 });
+
+test("a supply a day older than the prices beside it is headed with its day", async () => {
+  const supplyHeader = async (supplyAsOf: string) => {
+    const apiClient = { getCloudCryptoMarkets: async () => cryptoFixture(), getCloudStablecoinSupply: async () => ({ ...stablecoinSupplyFixture(), asOf: supplyAsOf }) };
+    const result = await cryptoBoardHeadless.load(ARGS, { apiClient, signal: new AbortController().signal } as unknown as HeadlessPaneContext);
+    const column = result.columns!.find((entry) => entry.key === "supply")!;
+    return column.textHeader ?? column.header;
+  };
+  expect(await supplyHeader("2026-09-22")).toBe("Supply 09-22");
+  expect(await supplyHeader("2026-09-23")).toBe("Supply");
+});

@@ -249,6 +249,18 @@ async function loadDefi(list: DefiList, limit: number | null, ctx: Parameters<He
   };
 }
 
+/**
+ * The supply columns, the supply headed with its day when that is older than
+ * the prices beside it (`Supply 11-04` on a board priced on the 5th): a daily
+ * supply figure says its date, as the prices say theirs.
+ */
+function datedSupplyColumns(supplyAsOf: string | null | undefined, pricesAsOf: string | null | undefined): HeadlessPaneColumn[] {
+  const supplyDay = supplyAsOf?.slice(0, 10);
+  const pricesDay = pricesAsOf?.slice(0, 10);
+  if (!supplyDay || !pricesDay || supplyDay >= pricesDay) return STABLECOIN_SUPPLY_COLUMNS;
+  return STABLECOIN_SUPPLY_COLUMNS.map((column) => column.key === "supply" ? { ...column, textHeader: `Supply ${supplyDay.slice(5)}` } : column);
+}
+
 /** The first `limit` rows, in the list's order; every row without one. */
 function limitRows<T>(rows: T[], limit: number | null): T[] {
   return limit == null ? rows : rows.slice(0, limit);
@@ -418,7 +430,7 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
     ];
     return {
       rows,
-      columns: supply?.coins.length ? STABLECOIN_SUPPLY_COLUMNS : STABLECOIN_COLUMNS,
+      columns: supply?.coins.length ? datedSupplyColumns(supply.asOf, data.asOf) : STABLECOIN_COLUMNS,
       ...(history ? { exportTables: [history] } : {}),
       errors: data.warnings,
       ...(notes.length ? { notes } : {}),
