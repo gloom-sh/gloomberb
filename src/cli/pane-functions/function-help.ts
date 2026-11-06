@@ -19,6 +19,8 @@ const FUNCTION_DOCS_URL = "https://gloom.sh/docs/functions";
 export interface FunctionHelpKey {
   key: string;
   label: string;
+  /** The action's name, as its footer hint gives it, when the label is a whole word after a letter key. */
+  title?: string;
 }
 
 /** A function Free cannot fully open: Pro only, or a limited preview on Free. */
@@ -58,7 +60,7 @@ export function functionDocsUrl(code: string): string {
   return anchor ? `${FUNCTION_DOCS_URL}#${anchor}` : FUNCTION_DOCS_URL;
 }
 
-const key = (hotkey: string, label: string): FunctionHelpKey => ({ key: hotkey, label });
+const key = (hotkey: string, label: string, title?: string): FunctionHelpKey => (title ? { key: hotkey, label, title } : { key: hotkey, label });
 const same = (value: string): FunctionFreshness => ({ free: value, pro: value });
 
 const DELAYED = "15 minutes delayed";
@@ -243,7 +245,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
       + "Grades: Value, Growth, Profitability, Momentum and Revisions, F to A+, each ranked within the sector, and their equal-weighted 1-5 composite labelled Top, Strong, Neutral, Weak or Bottom. "
       + "Ideas holds ready technical screens, Value, Quality and GARP, screens on the classic scores and Top grades. The pane menu saves the matches to a watchlist.",
     usage: ["EQS", "gloom fn EQS --preset golden-cross", "gloom fn EQS --preset quality", "gloom fn EQS --preset magic-formula", "gloom fn EQS --preset top-grades"],
-    keys: [key("a", "dd criterion"), key("m", "etric"), key("t", "check ticker"), key("s", "ave screen"), key("o", "pen research")],
+    keys: [key("a", "dd criterion"), key("m", "etric"), key("t", "check ticker", "Check ticker"), key("s", "ave screen"), key("o", "pen research")],
     data: same("Daily snapshot, statements as filed"),
     bloomberg: ["EQS"],
   },
@@ -1168,7 +1170,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   ALRT: {
     summary: "Your price alerts with current price, distance to target and trigger state, plus alerts on earnings, CPI and FOMC dates, filings and 13F, news keywords, analyst changes, 52-week highs and lows, unusual volume, short interest, insider and congress trades, catalysts, IV spikes, options flow and perps.",
     usage: ["ALRT"],
-    keys: [key("a", "dd alert"), key("e", "dit"), key("d", "elete"), key("m", "re-arm")],
+    keys: [key("a", "dd alert"), key("e", "dit"), key("d", "elete"), key("m", "re-arm", "Re-arm")],
     data: QUOTES,
     bloomberg: ["ALRT"],
   },

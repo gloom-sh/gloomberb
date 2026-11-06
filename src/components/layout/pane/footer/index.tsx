@@ -3,6 +3,7 @@ import { useRef } from "react";
 import { colors, blendHex } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
 import { ShortcutHint } from "../../../ui/shortcut-hint";
+import { keyHintWords } from "../../../ui/key-hint-words";
 import { Button } from "../../../ui/button";
 import { ChoiceDialog } from "../../../ui/choice-dialog";
 import { Icon, IconButton } from "../../../ui/icon";
@@ -10,12 +11,15 @@ import { useRemoteUiNode } from "../../../../remote/semantic-tree";
 import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
 import { nativePaneFooterRows } from "../sizing";
 import {
+  DESKTOP_HINT_METRICS,
   EMPTY_FOOTER,
   PANE_FOOTER_SEPARATOR,
   fitPaneFooterInfo,
   separatesPaneFooterSegments,
   hasPaneFooterContent,
   layoutPaneFooterHintRow,
+  paneHintTitle,
+  terminalHintMetrics,
   totalHintsWidth,
   type CombinedPaneFooter,
   type PaneFooterPart,
@@ -198,6 +202,7 @@ function HintView({ hint, prefixSpace }: { hint: PaneHint; prefixSpace: boolean 
     <ShortcutHint
       hotkey={hint.key}
       label={hint.label}
+      words={keyHintWords(hint)}
       prefix={prefixSpace ? " " : ""}
       disabled={hint.disabled}
       dataGloomRole="pane-hint"
@@ -206,13 +211,16 @@ function HintView({ hint, prefixSpace }: { hint: PaneHint; prefixSpace: boolean 
   );
 }
 
+/** What sets a footer's hints apart on the desktop and the web: the gap a dialog's hints keep. */
+const DESKTOP_HINT_GAP_STYLE = { marginLeft: "var(--gloom-space-md)" };
+
 /** A hint behind More stays a remote control target, as it was when it only clipped. */
 function OverflowHintNode({ hint }: { hint: PaneHint }) {
   usePaneHintRemoteNode(hint);
   return null;
 }
 
-function FooterOverflowMenu({ hints, width, label }: { hints: PaneHint[]; width: number; label: string }) {
+function FooterOverflowMenu({ hints, width, label, nativePaneChrome }: { hints: PaneHint[]; width: number; label: string; nativePaneChrome: boolean }) {
   const dialog = useOptionalDialog();
   const keyLabel = useShortcutLabel();
   const open = () => {
@@ -223,9 +231,11 @@ function FooterOverflowMenu({ hints, width, label }: { hints: PaneHint[]; width:
         <ChoiceDialog
           {...context}
           title={t("Pane actions")}
+          // The desktop names each action as its menu does, with the key after it, never inside the word.
           choices={hints.map((hint, index) => ({
             id: String(index),
-            label: `[${keyLabel(hint.key)}]${hint.label}`,
+            label: nativePaneChrome ? paneHintTitle(hint) : `[${keyLabel(hint.key)}]${hint.label}`,
+            ...(nativePaneChrome ? { detail: keyLabel(hint.key) } : {}),
             disabled: !hint.onPress,
           }))}
         />
@@ -261,15 +271,17 @@ function FooterContent({
   const backgroundColor = showBackground ? blendHex(colors.bg, dividerColor, focused ? 0.12 : 0.06) : undefined;
   const availableWidth = width && width > 0 ? Math.floor(width) : null;
   const iconReserve = footer.info.reduce((total, segment) => total + iconSegmentReserve(segment, focused, nativePaneChrome), 0);
-  // Measured as the keys show: `[⌃S]` on a Mac takes fewer cells than `[Ctrl+S]`.
+  // Measured as the keys show: `[⌃S]` on a Mac takes fewer cells than `[Ctrl+S]`, and
+  // on the desktop and the web as a keycap and the whole words.
   const keyLabel = useShortcutLabel();
+  const metrics = nativePaneChrome ? DESKTOP_HINT_METRICS : terminalHintMetrics(keyLabel);
   const row = availableWidth !== null
-    ? layoutPaneFooterHintRow({ ...footer, hints: actionableHints }, availableWidth, iconReserve, keyLabel)
+    ? layoutPaneFooterHintRow({ ...footer, hints: actionableHints }, availableWidth, iconReserve, metrics)
     : null;
   const shownHints = row?.hints ?? actionableHints;
   const overflowHints = row?.overflow ?? [];
   const hasHints = shownHints.length > 0 || overflowHints.length > 0;
-  const hintsWidth = hasHints ? (row?.hintsWidth ?? totalHintsWidth(shownHints, keyLabel)) : 0;
+  const hintsWidth = hasHints ? (row?.hintsWidth ?? totalHintsWidth(shownHints, metrics)) : 0;
   const infoWidth = availableWidth !== null && hasInfo
     ? (row?.infoWidth ?? Math.max(0, availableWidth - hintsWidth))
     : undefined;
@@ -332,13 +344,18 @@ function FooterContent({
             {...(availableWidth !== null ? { width: hintsWidth } : { flexGrow: 1 })}
           >
             {shownHints.map((hint, index) => (
-              <Box key={hint.id} flexDirection="row">
+              <Box key={hint.id} flexDirection="row" {...(nativePaneChrome ? { flexShrink: 0, ...(index > 0 ? { style: DESKTOP_HINT_GAP_STYLE } : {}) } : {})}>
                 <HintView hint={hint} prefixSpace={index > 0} />
               </Box>
             ))}
             {overflowHints.length > 0 && row && (
-              <Box marginLeft={shownHints.length > 0 ? 1 : 0} flexShrink={0}>
-                <FooterOverflowMenu hints={overflowHints} width={row.moreWidth} label={row.moreLabel} />
+              <Box
+                flexShrink={0}
+                {...(nativePaneChrome
+                  ? (shownHints.length > 0 ? { style: DESKTOP_HINT_GAP_STYLE } : {})
+                  : { marginLeft: shownHints.length > 0 ? 1 : 0 })}
+              >
+                <FooterOverflowMenu hints={overflowHints} width={row.moreWidth} label={row.moreLabel} nativePaneChrome={nativePaneChrome} />
               </Box>
             )}
           </Box>

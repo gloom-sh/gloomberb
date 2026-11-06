@@ -76,7 +76,7 @@ Desktop builds add the matching `Cmd` shortcuts on macOS and these:
 
 ### Footer and pane menu
 
-The focused pane's footer shows its actions with their keys, such as `[a]dd`. The pane menu (`.` or the `...` button) lists every action, then the pane's table, filters, tabs and toggles, then the pane and window actions.
+The focused pane's footer shows its actions with their keys: `[a]dd` in the terminal, and in the desktop app and on the web the key in a small keycap before the action's name. Click a hint to run it. The pane menu (`.` or the `...` button) lists every action, then the pane's table, filters, tabs and toggles, then the pane and window actions.
 
 ### Dialogs and forms
 

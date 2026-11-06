@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ageFooterSegment, combinePaneFooterRegistrations, fitPaneFooterInfo, savedCopyFooterSegment, layoutPaneFooterHintRow, PANE_FOOTER_SEPARATOR, separatesPaneFooterSegments, splitDelayedStatus, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
+import { ageFooterSegment, combinePaneFooterRegistrations, DESKTOP_HINT_METRICS, fitPaneFooterInfo, savedCopyFooterSegment, layoutPaneFooterHintRow, PANE_FOOTER_SEPARATOR, totalHintsWidth, separatesPaneFooterSegments, splitDelayedStatus, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
 
 const hints: PaneHint[] = [
   { id: "search", key: "/", label: "search" },
@@ -129,6 +129,24 @@ describe("footer hint row", () => {
       const seen = layoutPaneFooterHintRow(footer([icon("muted"), status]), width, 3);
       expect([seen.hints.map((hint) => hint.id), seen.overflow.length, seen.infoWidth, seen.hintsWidth])
         .toEqual([unseen.map((hint) => hint.id), overflow.length, infoWidth, hintsWidth]);
+    }
+  });
+
+  test("on the desktop a hint is a keycap and whole words, set wider apart; the row and More still fit at every width", () => {
+    const status: PaneFooterSegment = { id: "loading", parts: [{ text: "loading" }] };
+    const terminal = totalHintsWidth(hints);
+    const desktop = totalHintsWidth(hints, DESKTOP_HINT_METRICS);
+    expect(desktop).toBeGreaterThan(terminal);
+    // Just wide enough for the terminal's hints, not the desktop's: the desktop's last ones go under More.
+    expect(layoutPaneFooterHintRow(footer([]), terminal).overflow).toEqual([]);
+    expect(layoutPaneFooterHintRow(footer([]), terminal, 0, DESKTOP_HINT_METRICS).overflow.length).toBeGreaterThan(0);
+    for (let cells = 8; cells <= desktop + 12; cells += 1) {
+      const row = layoutPaneFooterHintRow(footer([status]), cells, 0, DESKTOP_HINT_METRICS);
+      const shown = totalHintsWidth(row.hints, DESKTOP_HINT_METRICS)
+        + (row.overflow.length > 0 ? (row.hints.length > 0 ? DESKTOP_HINT_METRICS.gap : 0) + row.moreWidth : 0);
+      expect(row.hintsWidth).toBeGreaterThanOrEqual(shown);
+      expect(row.hintsWidth + row.infoWidth).toBeLessThanOrEqual(cells);
+      expect([...row.hints, ...row.overflow].map((hint) => hint.id)).toEqual(hints.map((hint) => hint.id));
     }
   });
 
