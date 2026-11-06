@@ -27,7 +27,11 @@ interface EarningsRealizedMove {
   afterClose: number;
 }
 
-type EarningsActualSource = "calendar" | "press-release";
+/** `filing` is a listing abroad's own results announcement. */
+type EarningsActualSource = "calendar" | "press-release" | "filing";
+
+/** What a report's figures cover; a US report is always a quarter. */
+export type EarningsPeriodKind = "quarter" | "half" | "ytd" | "year";
 
 export interface EarningsReport {
   symbol: string;
@@ -60,6 +64,8 @@ export interface EarningsReport {
   dateStatus?: EarningsDateStatus;
   /** The reported figure's basis, null when it cannot be determined; absent from older servers. */
   epsBasis?: EarningsEpsBasis | null;
+  /** ISO currency of every amount on the report, a listing abroad's (CNY for Tencent); absent for US listings, whose figures are dollars. */
+  currency?: string | null;
 }
 
 export interface EarningsCalendarReport extends EarningsReport {
@@ -77,11 +83,27 @@ export interface EarningsCalendarPayload {
 
 interface EarningsHistoryReport extends EarningsReport {
   revenueActual: number | null;
-  /** `press-release` until the statements have the quarter; absent from older servers. */
-  revenueActualSource?: "statements" | "press-release" | null;
+  /** `press-release` until the statements have the quarter, `filing` a listing abroad's results announcement; absent from older servers. */
+  revenueActualSource?: "statements" | "press-release" | "filing" | null;
   /** The fiscal quarter as the company names it, null when its calls do not say; absent from older servers. */
   fiscalYear?: number | null;
   fiscalQuarter?: number | null;
+  /**
+   * What the figures cover, a listing abroad's: a half-yearly reporter's
+   * half is a half, never a quarter. Absent (a quarter) for US listings.
+   * `fiscalYear` is then the year it falls in, named by the calendar year
+   * that year ends in, and `fiscalHalf` a half's number.
+   */
+  periodKind?: EarningsPeriodKind;
+  periodMonths?: number;
+  fiscalHalf?: number | null;
+  /** The results announcement the figures were read from, a listing abroad's. */
+  filing?: { url: string; title: string; publishedAt: string } | null;
+  /**
+   * A listing abroad's filed EPS's dilution: a basic EPS has no basis (it is
+   * not the statements' diluted figure) and says so here. Null or absent otherwise.
+   */
+  epsDilution?: "diluted" | "basic" | null;
 }
 
 /** One report whose fiscal quarter the company's calls name: every other quarter steps from it. */
@@ -100,6 +122,12 @@ export interface EarningsHistoryPayload {
   fiscalAnchor?: EarningsFiscalAnchor | null;
   /** The basis the company's next consensus is on, from its past year's reports; null when they do not agree. Absent from older servers. */
   consensusBasis?: EarningsEpsBasis | null;
+  /**
+   * Whether a listing abroad's history carries its announcements' figures
+   * and links (Pro, as KPIS has them); its street quarters are everyone's.
+   * Absent for US listings.
+   */
+  access?: { pro: boolean };
   /** Newest first; an upcoming report leads. */
   reports: EarningsHistoryReport[];
 }

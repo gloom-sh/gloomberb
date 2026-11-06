@@ -31,7 +31,7 @@ import { SupplyFlow } from "./flow";
 import { SupplyGraphPane } from "./graph-pane";
 import { entityTicker } from "./graph-model";
 import {
-  cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, earlierRows, fitShareBasis, receivablesConcentration, lockedDisclosures, nativeValue, percentage, ROLE_COLORS, roleLabel,
+  cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, earlierRows, fitShareBasis, focusCompanyLabel, focusCompanyName, receivablesConcentration, lockedDisclosures, nativeValue, percentage, ROLE_COLORS, roleLabel,
   periodDate, shareParts, sortRows, supplyEmptyText, supplyPreviewNote, supplyRoleCounts, type SupplySort,
 } from "./model";
 import { RowEvidence } from "./row-evidence";
@@ -146,9 +146,9 @@ function tableColumns(width: number, desktop: boolean, locked: boolean, valueWid
  * Company, then the counterparties per role on this tab, with how many
  * disclosures a free preview locks: the strip that heads the table and the flow.
  */
-function supplyFigures(data: SupplyChainPayload, views: readonly ("says" | "names")[], options: Required<SupplyOptions>): StatItem[] {
+function supplyFigures(data: SupplyChainPayload, views: readonly ("says" | "names")[], options: Required<SupplyOptions>, company: string | null): StatItem[] {
   return [
-    ...(data.entity ? [{ id: "company", label: "Company", value: data.entity.name }] : []),
+    ...(data.entity && company ? [{ id: "company", label: "Company", value: company }] : []),
     ...supplyRoleCounts(data, views, options).map(({ role, counterparties, locked }) => ({ id: role, label: ROLE_PLURALS[role], value: String(counterparties),
       color: ROLE_COLORS[role], detail: locked ? `+${locked} locked` : undefined })),
   ];
@@ -174,10 +174,10 @@ function ShareCell({ row, focusId, width, layout, selected }: { row: SupplyRow; 
 }
 
 export function SupplyChainPane({ width, height, focused }: PaneProps) {
-  const { symbol } = usePaneTickerIdentity();
-  return <SupplyView key={symbol ?? "empty"} symbol={symbol} width={width} height={height} focused={focused} />;
+  const { symbol, ticker } = usePaneTickerIdentity();
+  return <SupplyView key={symbol ?? "empty"} symbol={symbol} listingName={ticker?.metadata.name ?? null} width={width} height={height} focused={focused} />;
 }
-function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" | "height" | "focused"> & { symbol: string | null }) {
+function SupplyView({ symbol, listingName, width, height, focused }: Pick<PaneProps, "width" | "height" | "focused"> & { symbol: string | null; listingName: string | null }) {
   const colors = useThemeColors();
   const host = useRendererHost();
   const desktop = !!useUiCapabilities().nativePaneChrome;
@@ -332,10 +332,13 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
   if (graphTab) return <Box width={width} height={height} flexDirection="column">{strip}<SupplyGraphPane symbol={symbol} tab={savedTab as "graph" | "path"} width={width} height={Math.max(3, height - tabRows)} focused={focused} /></Box>;
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="supply-chain-signin" action="view supply chain disclosures" needsVerification={session.needsVerification} />;
   const bodyHeight = Math.max(3, height - tabRows);
-  const figures = data ? supplyFigures(data, tab === "flow" ? ["says", "names"] : [view], options) : [];
+  // A listing filed under its code (0700:HKEX) reads by its company's name.
+  const company = focusCompanyName(data?.entity?.name, symbol, listingName);
+  const focusLabel = focusCompanyLabel(symbol, company);
+  const figures = data ? supplyFigures(data, tab === "flow" ? ["says", "names"] : [view], options, company) : [];
   const tierFilter = { id: "tiers", label: "Evidence", kind: "multi" as const, emptyLabel: "Primary", values: options.tiers, options: TIER_OPTIONS, onChange: (value: string[]) => { setTiers(supplyOptions(value).tiers); setSelected(null); setOpen(null); } };
   const query = <QueryBar width={width} filters={[{ id: "direction", label: "Direction", inline: true, value: view,
-    options: [{ value: "says", label: `${symbol} says` }, { value: "names", label: `Names ${symbol}` }], onChange: (value: string) => { setView(value); setSelected(null); setOpen(null); } }, tierFilter]}
+    options: [{ value: "says", label: `${focusLabel} says` }, { value: "names", label: `Names ${focusLabel}` }], onChange: (value: string) => { setView(value); setSelected(null); setOpen(null); } }, tierFilter]}
     meta={view === "names" ? "% of reporting company's basis" : undefined} />;
   // Without a trend the figures keep every row they had; the chart layout shares the height with the table only when it draws.
   const header = concentrationChart
@@ -356,7 +359,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
         rootContent={tab === "flow" ? <Box flexDirection="column" flexGrow={1} flexBasis={0} minHeight={0}>
           <QueryBar width={width} filters={[tierFilter]} meta={flowMeta} />
           <StatGrid items={flowFigures} width={width} columns={flowFigureColumns} />
-          <SupplyFlow rows={allRows} symbol={symbol} focusName={data.entity?.name ?? null} focusId={focusId} width={width}
+          <SupplyFlow rows={allRows} symbol={symbol} focusName={data.entity ? company : null} focusId={focusId} width={width}
             height={Math.max(10, bodyHeight - chromeBarRows(desktop) - statGridRows(flowFigures, width, flowFigureColumns) - (data.truncated ? 1 : 0))} focused={focused && !openRow} selectedId={selectedId}
             onSelect={setSelected} onOpen={navigate} onVisible={setFlowIds} />
           {data.truncated ? <Box paddingX={1}><UpgradeLabel text="Upgrade to see every relationship" onPress={openUpgrade} role="supply-upgrade" /></Box> : null}

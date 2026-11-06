@@ -22,7 +22,7 @@ import { logFailure } from "../../../utils/log-failure";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadCatalystDetail, loadCatalysts, validateCatalysts } from "./client";
 import { CatalystEventDetail } from "./detail";
-import { catalystAgency, catalystBasisWidth, catalystCell, catalystColumns, catalystEmptyTitle, catalystLabel, catalystQuery, catalystSections, catalystStatusTone, catalystSymbol, catalystTab, catalystTypeTone, CATALYST_TABS } from "./model";
+import { catalystAgency, catalystBasisWidth, catalystCell, catalystColumns, catalystEmptyTitle, catalystLabel, catalystQuery, catalystSections, catalystShownStatus, catalystStatusTone, catalystSymbol, catalystTab, catalystTypeTone, CATALYST_TABS } from "./model";
 
 type Row = SectionedRow<CatalystEvent> | { kind: "locked"; key: string };
 const rowKey = (row: Row) => row.key;
@@ -140,7 +140,7 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
     if (column.id === "type") return { text, color: toneColor(catalystTypeTone(event.type), colors) };
     // The column has room for the flag beside a code.
     if (column.id === "country") return withCountryFlag({ text, color: colors.textDim }, text, desktop);
-    if (column.id === "status") return { text, color: tab === "changes" ? colors.text : toneColor(catalystStatusTone(event.status), colors) };
+    if (column.id === "status") return { text, color: tab === "changes" ? colors.text : toneColor(catalystStatusTone(catalystShownStatus(event)), colors) };
     return { text, color: column.id === "title" || column.id === "date" ? colors.text : colors.textDim };
   };
   if (isCloudSessionRequired(error?.message)) return <SignInWall placement="catalysts-signin" action="view catalysts" needsVerification={session.needsVerification} />;

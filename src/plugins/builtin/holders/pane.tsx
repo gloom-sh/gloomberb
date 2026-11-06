@@ -3,6 +3,7 @@ import { Box, Text, TextAttributes, useUiCapabilities, type ScrollBoxRenderable 
 import {
   Badge,
   DataTableView,
+  Notice,
   usePagedRows,
   usePaneFooter,
   usePaneTabs,
@@ -34,7 +35,7 @@ import {
   holderValueCurrency,
   resolveHolderOwnershipPercent,
 } from "./format";
-import { holderPeriodsDiffer, holderShareBasisMarker } from "./report-header";
+import { holderPeriodsDiffer, holderShareBasisMarker, nonUsHolderCaveat } from "./report-header";
 import {
   buildColumns,
   hasHolderChanges,
@@ -120,6 +121,9 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
 
   // The values' own currency: dollars from the 13F filings on a London line, not its pence.
   const currency = holderValueCurrency(listData, ticker?.metadata.currency || "USD")!;
+  // Dollars on a line priced in another currency (Alibaba's 9988) say USD, never a "$" read as Hong Kong dollars.
+  const listingCurrency = listData?.currency?.trim() || ticker?.metadata.currency || currency;
+  const currencyCode = currency !== listingCurrency;
   // A stake without a reported percentage is the holding's value over the
   // market cap, when both are in one currency. The stream keeps the cap
   // current, about once a second; the stakes follow it at most every few
@@ -299,7 +303,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         };
       }
       case "value":
-        return { text: formatMoneyCompact(row.value, currency), color: colors.text };
+        return { text: formatMoneyCompact(row.value, currency, { code: currencyCode }), color: colors.text };
       case "shares":
         return { text: formatCompact(row.shares), color: colors.text };
       case "changeShares":
@@ -320,7 +324,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
       case "reportDate":
         return { text: displayDate(row.reportDate), color: colors.textDim };
     }
-  }, [currency, fundMatches, marketCap]);
+  }, [currency, currencyCode, fundMatches, marketCap]);
 
   // Holders read from the company's home line say whose; the SEC index's rows are the listing's own.
   useCompanyDataFooter(indexed ? null : listData?.companyFrom, viewMode !== "13dg");
@@ -373,6 +377,8 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
       ? "Loading holders..."
       : !listData && error ? error : sortedRows.length === 0 ? "No holders available" : null;
   const chartHeight = Math.max(1, height - tabRows - (nativePaneChrome ? 1 : 0));
+  // A line abroad lists US 13F filers, not its own market's register: the table says so above the holders.
+  const registerCaveat = listData && sortedRows.length > 0 ? nonUsHolderCaveat(exchange || listData.exchange, listData.currency ?? "USD") : null;
 
   // A list shorter than the table cannot scroll to load more, so it pages on
   // until it fills the table, as a scroll would; a failed page waits for one.
@@ -410,6 +416,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
           renderCell={renderCell}
           selectedTextOverridesCellColor
           emptyStateTitle={statusTitle ?? "No holders available"}
+          rootBefore={registerCaveat ? <Box paddingX={1}><Notice tone="muted">{registerCaveat}</Notice></Box> : undefined}
         />
       ) : viewMode === "13dg" ? (
         <BeneficialOwnersView
@@ -434,6 +441,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
           onSelect={(row) => setSelectedId(row.id)}
           onActivate={openFundDetail}
           currency={currency}
+          currencyCode={currencyCode}
           marketCap={marketCap}
         />
       )}

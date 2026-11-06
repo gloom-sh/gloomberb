@@ -15,7 +15,7 @@ import {
   type ListingVenue,
 } from "../tickers/listing-venues";
 import { findUsListingOfCompany, type UsListing } from "../tickers/us-listing";
-import { findListingOfCompanyName, isCompanyNameInput, marksAnotherListing, readTerminalCodeArg, type CompanyNameListing } from "../tickers/company-name-listing";
+import { findListingOfCompanyName, isCompanyNameInput, marksAnotherListing, readTerminalCodeArg, serviceMarkedListing, type CompanyNameListing } from "../tickers/company-name-listing";
 import { movedAwayChange, startTickerChangeLookup, type MovedTickerChange } from "../tickers/ticker-changes";
 import { lineMayHaveMoved, listingChangeLine, loadListingFate, MovedSymbolError, SUCCESSOR_CHANGE_WAIT_MS, type ListingFate } from "../tickers/listing-fate";
 import { quotedListingName } from "../tickers/listing-name";
@@ -1204,6 +1204,27 @@ async function readVenueSuffix(listing: ListingArg, deps: Pick<ListingDeps, "dat
   return { symbol: match[1]!, exchange: venue, key, readAs: `Read ${listing.symbol} as ${key}.` };
 }
 
+/** One to three digits: a Hong Kong code written without its leading zeros (700, 5, 388). */
+const SHORT_HONG_KONG_CODE = /^\d{1,3}$/;
+
+/**
+ * A Hong Kong code written without its leading zeros as its HKEX listing,
+ * "Read 700 as 0700:HKEX.", where search marks that listing with the code as
+ * typed (`searchAliases`) as it does for 700 and 5. A row saved under the
+ * code keeps it. Null for any other symbol, and when search marks no HKEX
+ * listing with it, cannot search or is too busy to say.
+ */
+async function readHongKongShortCode(listing: ListingArg, deps: ListingDeps): Promise<ListingArg | null> {
+  if (listing.exchange || !SHORT_HONG_KONG_CODE.test(listing.symbol) || !Number(listing.symbol)) return null;
+  if (await deps.store.loadTicker(listing.symbol)) return null;
+  const symbol = String(Number(listing.symbol)).padStart(4, "0");
+  const marked = await serviceMarkedListing(deps.dataProvider, listing.symbol, symbol);
+  if (marked?.exchange !== "HKEX") return null;
+  const key = `${symbol}:HKEX`;
+  const readAs = [listing.readAs, `Read ${listing.symbol} as ${key}.`].filter(Boolean).join(" ");
+  return { symbol, exchange: "HKEX", key, readAs };
+}
+
 /** 7203.T as 7203:JPX when a row of 7203 on JPX is saved: a suffix `readListingSuffix` leaves to be confirmed. Null otherwise. */
 async function savedSuffixVenue(listing: ListingArg, store: ListingStore): Promise<ListingArg | null> {
   const venue = listing.exchange ? null : listingSuffixCandidate(listing.symbol);
@@ -1260,6 +1281,9 @@ export async function resolveCliListing(
   // USD-NGN and USDNGN are the pair USDNGN=X unless a security is listed under those letters.
   const pair = parsed.exchange ? null : await readAmbiguousCurrencyPair(parsed.symbol, deps);
   if (pair) parsed = { symbol: pair, exchange: "", key: pair };
+  // 700 is how Hong Kong writes Tencent's 0700, and search reads it so.
+  const hongKong = pair || named || index ? null : await readHongKongShortCode(parsed, deps);
+  if (hongKong) parsed = hongKong;
   // A one-letter suffix (7203.T) is read as its venue only when a row saved there says so; the listing's quote may later.
   const venueRow = options.listingSuffix && !pair && !named ? await savedSuffixVenue(parsed, deps.store) : null;
   if (venueRow) parsed = venueRow;

@@ -29,7 +29,7 @@ import { defaultValuationSeriesLoader, requiredSeries as valuationRequiredSeries
 import type { DatedObservation } from "../../plugins/builtin/market-valuation/series";
 import { defaultStatLoader } from "../../plugins/builtin/econ-statistics/client";
 import { STATS } from "../../plugins/builtin/econ-statistics/stats";
-import { parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 import { collectExternalPluginBundles } from "../../renderers/electrobun/bun/external-plugins";
 import { getQuoteMonitorPaneSettings } from "../../plugins/builtin/ticker-detail/settings";
 import { isNotATickerMessage } from "../not-a-ticker";
@@ -355,7 +355,8 @@ export async function buildDesktopShotPayload(
     shotInstance = { ...shotInstance, settings: { ...shotInstance.settings, ...prepared.settings } };
     for (const [symbol, data] of prepared.financials ?? []) {
       financials.push([symbol, data]);
-      tickers.push(await createFallbackTicker(symbol, data, context));
+      // A listing the user saved keeps its company's name (0700 on HKEX is Tencent Holdings), as the app shows it.
+      tickers.push(withSavedName(await createFallbackTicker(symbol, data, context), await savedListing(context, symbol)));
     }
   } else if (resolved.pane.id === "analytics") {
     const loaded = await loadModel();
@@ -462,6 +463,21 @@ export async function buildDesktopShotPayload(
 
 /** Panes that render the user's portfolio or watchlist rather than an argument. */
 export const COLLECTION_PANE_IDS = new Set(["portfolio-list", "analytics", "kelly-sizer", "earnings-calendar"]);
+
+/** The row saved for a listing key (0700:HKEX), under that key or bare on its venue; null when none is. */
+async function savedListing(context: MarketContext, key: string): Promise<TickerRecord | null> {
+  const { symbol, exchange } = parsePublicTickerKey(key);
+  const row = await context.store.loadTicker(key) ?? (exchange ? await context.store.loadTicker(symbol) : null);
+  return row && (!exchange || canonicalExchange(row.metadata.exchange) === canonicalExchange(exchange)) ? row : null;
+}
+
+/** A capture's ticker with the saved row's name, when the capture has only the code. */
+function withSavedName(ticker: TickerRecord, saved: TickerRecord | null): TickerRecord {
+  const name = saved?.metadata.name?.trim();
+  return name && ticker.metadata.name === parsePublicTickerKey(ticker.metadata.ticker).symbol
+    ? { ...ticker, metadata: { ...ticker.metadata, name } }
+    : ticker;
+}
 
 /**
  * The page only knows the tickers the payload carries, so a collection pane

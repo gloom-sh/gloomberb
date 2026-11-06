@@ -14,10 +14,10 @@ import type { CheckResult, CheckRun, CheckStatus } from "./results";
  * (SendInput), as a person with a mouse and keyboard does: the window resized
  * from every edge and corner, maximized and restored, snapped, minimized and
  * restored, the dock dividers, a floating pane moved and resized, a pane
- * dragged onto another, a popped-out window, typing in the command bar. Every
- * step is pictured and checked from outside (window rects, the cursor shape,
- * Windows hit tests, screen pixels) and from inside (the page's layout over
- * the DevTools port CEF opens on Windows).
+ * dragged onto another, a popped-out window, typing in the command bar, the
+ * tooltip a title shows. Every step is pictured and checked from outside
+ * (window rects, the cursor shape, Windows hit tests, screen pixels) and from
+ * inside (the page's layout over the DevTools port CEF opens on Windows).
  *
  *   bun scripts/windows-desktop-check/check.ts install --installer <GloomSetup.exe> --dir <install dir>
  *   bun scripts/windows-desktop-check/check.ts run --app <install dir> --out <dir> [--label <name>] [--only <text>]
@@ -301,7 +301,7 @@ function seedLayout(detached: Frame) {
  * steps start from: placing them afterwards would resize them, which is
  * itself something under test.
  */
-async function seedProfile(profile: string, frames: { main: Frame; detached: Frame }): Promise<void> {
+async function seedProfile(profile: string, frames: { main: Frame; detached: Frame }, theme: string | null = "dracula"): Promise<void> {
   await rm(profile, { recursive: true, force: true });
   const dataDir = join(profile, "data");
   await mkdir(dataDir, { recursive: true });
@@ -311,8 +311,9 @@ async function seedProfile(profile: string, frames: { main: Frame; detached: Fra
   await writeFile(join(dataDir, "config.json"), JSON.stringify({
     dataDir,
     onboardingComplete: true,
-    // Not black: an unpainted strip (black or white) stands out on it.
-    theme: "dracula",
+    // Not black: an unpainted strip (black or white) stands out on it. With
+    // none, the theme a new install opens with.
+    ...(theme ? { theme } : {}),
     telemetry: { crashReports: false, usage: false },
     // No plugin installs from the network while the window is under test.
     seededPlugins: EXTRACTED_PLUGINS.map((plugin) => plugin.id),
@@ -469,6 +470,35 @@ const PAGE_HELPER = String.raw`(() => {
         .filter(({ r }) => r.width > 0 && r.width < 400 && r.height < 400)
         .map(({ center, r }) => ({ center, x: r.left, y: r.top, width: r.width, height: r.height }));
     },
+    /**
+     * Elements of the main window that carry a title, where a person rests
+     * the pointer: a table's cell and column label, and a pane's header
+     * button. Each one's middle is on it with nothing over it, and the title
+     * a hover there shows is its own.
+     */
+    titled() {
+      const at = (el) => {
+        const r = el.getBoundingClientRect();
+        if (r.width < 6 || r.height < 6 || r.left < 0 || r.top < 0 || r.right > innerWidth || r.bottom > innerHeight) return null;
+        const x = r.left + Math.min(r.width / 2, 40), y = r.top + r.height / 2;
+        const hit = document.elementFromPoint(x, y);
+        return hit && hit.closest("[title]") === el ? { x, y } : null;
+      };
+      const pick = (selector, what) => {
+        for (const el of document.querySelectorAll(selector)) {
+          const title = (el.getAttribute("title") || "").trim();
+          if (!title || el.closest("[data-floating=true], [data-gloom-role=detached-pane-window]")) continue;
+          const point = at(el);
+          if (point) return { what, title, ...point, rect: rect(el) };
+        }
+        return null;
+      };
+      return [
+        pick("[data-gloom-role=pane-window] [data-gloom-role=data-table-row] [title]", "a table cell"),
+        pick("[data-gloom-role=pane-window] [data-gloom-role=data-table-header-cell] [title]", "a column label"),
+        pick("[data-gloom-role=pane-header] [data-gloom-role=icon-button][title]", "a pane header button"),
+      ].filter(Boolean);
+    },
     /** A bare point on a pane's header bar, or its title. */
     paneHeaderPoint(id) {
       const pane = q('[data-gloom-role=pane-window][data-gloom-pane-id="' + id + '"]');
@@ -484,6 +514,10 @@ const PAGE_HELPER = String.raw`(() => {
 })()`;
 
 interface PaneLayout { id: string; floating: boolean; rect: CssRect; title: CssRect | null; resize: CssRect | null }
+/** Something on the page with a title, as `titled` finds it: the point to rest the pointer on, in CSS pixels. */
+interface TitledTarget { what: string; title: string; x: number; y: number; rect: CssRect }
+/** A tooltip on screen: the window it shows in. */
+interface FoundTooltip { hwnd: number; rect: Rect; source: string }
 interface CssRect { x: number; y: number; width: number; height: number }
 interface PageLayout {
   innerWidth: number; innerHeight: number; dpr: number; visibility: string;
@@ -720,6 +754,42 @@ function commonestColor(bitmap: Bitmap): { color: number; share: number } {
 }
 
 const isLight = (color: number) => ((color >> 16) & 0xff) > 230 && ((color >> 8) & 0xff) > 230 && (color & 0xff) > 230;
+
+/**
+ * What a tooltip holds besides its fill, from every pixel inside its edge,
+ * where a border sits: how many pixels stand out from its commonest color,
+ * how far the farthest of them does, and how many colors it has. A line of
+ * anti-aliased text marks a few percent of the box at full contrast, in
+ * dozens of colors; an empty box is one flat fill.
+ */
+function tooltipInk(bitmap: Bitmap): { fill: string; colors: number; ink: number; contrast: number } {
+  const inset = 3;
+  const counts = new Map<number, number>();
+  for (let y = inset; y < bitmap.height - inset; y += 1) {
+    for (let x = inset; x < bitmap.width - inset; x += 1) {
+      const [r, g, b] = pixel(bitmap, x, y);
+      const key = (r << 16) | (g << 8) | b;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  let fill = 0, most = 0, total = 0;
+  for (const [key, count] of counts) {
+    total += count;
+    if (count > most) { fill = key; most = count; }
+  }
+  const fillRgb: [number, number, number] = [(fill >> 16) & 255, (fill >> 8) & 255, fill & 255];
+  let ink = 0, contrast = 0;
+  for (const [key, count] of counts) {
+    const distance = colorDistance([(key >> 16) & 255, (key >> 8) & 255, key & 255], fillRgb);
+    if (distance >= 48) ink += count;
+    contrast = Math.max(contrast, distance);
+  }
+  return { fill: hex(fillRgb), colors: counts.size, ink: total ? ink / total : 0, contrast };
+}
+
+/** Text a person can read: enough of the box marked, at enough contrast with its fill. */
+const TOOLTIP_MIN_INK = 0.01;
+const TOOLTIP_MIN_CONTRAST = 96;
 
 /**
  * Waits for a new window to paint its page. Before it does, it can show what
@@ -1084,12 +1154,15 @@ class Run {
     return { main: frame(this.baseRect), detached: frame(this.detachedRect) };
   }
 
-  /** Closes whatever is running and starts the app on a fresh profile. */
-  async start(reason: string | null): Promise<void> {
+  /**
+   * Closes whatever is running and starts the app on a fresh profile, in
+   * `theme` (null: the one a new install opens with).
+   */
+  async start(reason: string | null, theme: string | null = "dracula"): Promise<void> {
     await this.close();
     this.launches += 1;
     this.profile = join(this.out, "..", `profile-${basename(this.out)}-${this.launches}`);
-    await seedProfile(this.profile, this.seedFrames());
+    await seedProfile(this.profile, this.seedFrames(), theme);
     await this.launch(this.profile);
     // Read before the windows are placed: placing one makes Windows lay out its frame again.
     const shots: string[] = [];
@@ -2327,6 +2400,107 @@ class Run {
   }
 
   /**
+   * Rests the pointer on things in the main window that carry a title, as a
+   * person waits for a tooltip, and reads the window the browser engine opens
+   * for it at the pointer. It has to show its text, readable: a box with
+   * nothing in it fails, as a blank window does. On a fresh app in the theme
+   * a new install opens with.
+   */
+  async tooltipSteps(): Promise<void> {
+    const main = this.main;
+    await this.step("hover-tooltip", "A title shows its text on hover", async (shots) => {
+      await this.reset(main, this.baseRect);
+      const targets = await evaluate<TitledTarget[]>(main.page.cdp, "window.__winCheck.titled()", 5_000);
+      if (!targets.length) return { status: "fail", detail: "nothing in the main window with a title to hover" };
+      const lines: string[] = [];
+      let failed = 0;
+      for (const target of targets) {
+        const seen = await this.hoverForTooltip(main, target, shots);
+        if (!seen.ok) failed += 1;
+        lines.push(`${target.what} titled ${JSON.stringify(target.title.slice(0, 60))}: ${seen.detail}`);
+      }
+      win.moveMouse(this.restingPoint());
+      return { status: failed ? "fail" : "pass", detail: `${failed ? `${failed} of ${targets.length} without readable text; ` : ""}${lines.join("; ")}` };
+    });
+  }
+
+  /** A point on the desktop clear of the app's windows where they start from: below the main window, left of the popped-out one. */
+  restingPoint(): Point {
+    const work = win.monitorOf(this.main.hwnd).work;
+    return { x: work.left + 20, y: work.bottom - 20 };
+  }
+
+  /** Hovers one titled element and judges the tooltip that comes up within 4 s. */
+  async hoverForTooltip(window: AppWindow, target: TitledTarget, shots: string[]): Promise<{ ok: boolean; detail: string }> {
+    // From off the app, so the tooltip comes up for this element and no other.
+    win.moveMouse(this.restingPoint());
+    await sleep(900);
+    const before = new Set(win.topLevelWindows().filter((info) => info.visible).map((info) => info.hwnd));
+    const point = this.toScreen(window, target);
+    win.moveMouse({ x: point.x - 8, y: point.y });
+    await sleep(80);
+    win.moveMouse(point);
+    const hovered = Date.now();
+    let found = this.tooltipWindow(before, point);
+    while (!found && Date.now() - hovered < 4_000) {
+      await sleep(150);
+      found = this.tooltipWindow(before, point);
+    }
+    const targetTopLeft = this.toScreen(window, { x: target.rect.x, y: target.rect.y });
+    const targetBottomRight = this.toScreen(window, { x: target.rect.x + target.rect.width, y: target.rect.y + target.rect.height });
+    if (!found) {
+      const shot = this.shots.take("tooltip-none", { left: point.x - 200, top: point.y - 120, right: point.x + 700, bottom: point.y + 160 });
+      if (shot) shots.push(shot);
+      return { ok: false, detail: "no tooltip came up in 4 s" };
+    }
+    let tip: FoundTooltip = found;
+    const shownAfter = Date.now() - hovered;
+    // It can show a moment before it has drawn: text within 1.5 s passes.
+    let ink = tooltipInk(win.captureScreen(tip.rect));
+    const shown = Date.now();
+    while ((ink.ink < TOOLTIP_MIN_INK || ink.contrast < TOOLTIP_MIN_CONTRAST) && Date.now() - shown < 1_500) {
+      await sleep(250);
+      const now = this.tooltipWindow(before, point);
+      if (!now) break;
+      tip = now;
+      ink = tooltipInk(win.captureScreen(tip.rect));
+    }
+    const around = {
+      left: Math.min(targetTopLeft.x, tip.rect.left) - 160, top: Math.min(targetTopLeft.y, tip.rect.top) - 80,
+      right: Math.max(targetBottomRight.x, tip.rect.right) + 160, bottom: Math.max(targetBottomRight.y, tip.rect.bottom) + 80,
+    };
+    const shot = this.shots.take("tooltip", around);
+    if (shot) shots.push(shot);
+    const readable = ink.ink >= TOOLTIP_MIN_INK && ink.contrast >= TOOLTIP_MIN_CONTRAST;
+    // How the window is drawn, to tell a cause apart: WS_EX_NOREDIRECTIONBITMAP
+    // (0x00200000) leaves it nothing to show but what DirectComposition puts there.
+    const windowDetail = win.isWindow(tip.hwnd)
+      ? `, style ${win.windowStyle(tip.hwnd).value} ex ${win.windowExStyle(tip.hwnd)}, ${win.windowDpi(tip.hwnd).dpi} dpi, children ${win.childWindows(tip.hwnd).map((child) => child.className).join(" ") || "none"}`
+      : "";
+    return {
+      ok: readable,
+      detail: `${readable ? "text" : ink.ink < TOOLTIP_MIN_INK ? "an empty box" : "text too faint to read"}: ${tip.source} ${fmt(tip.rect)} up after ${(shownAfter / 1000).toFixed(1)} s, filled ${ink.fill}, ${(ink.ink * 100).toFixed(1)}% marked, contrast ${ink.contrast}, ${ink.colors} colors${windowDetail}`,
+    };
+  }
+
+  /**
+   * A window that opened at the pointer since `before`, the size of a
+   * tooltip: how the browser engine, Chromium or WebView2, shows a title.
+   */
+  tooltipWindow(before: Set<number>, point: Point): FoundTooltip | null {
+    for (const info of win.topLevelWindows()) {
+      if (!info.visible || before.has(info.hwnd) || info.className === "BasicWindowClass") continue;
+      const rect = win.visibleRect(info.hwnd);
+      const width = win.rectWidth(rect), height = win.rectHeight(rect);
+      if (width < 8 || height < 8 || width > 1600 || height > 400) continue;
+      // Below and right of the pointer, or above it near the bottom of the screen.
+      if (rect.left > point.x + 100 || rect.right < point.x - 100 || rect.top > point.y + 100 || rect.bottom < point.y - 140) continue;
+      return { hwnd: info.hwnd, rect, source: `a ${info.className} window${info.title ? ` "${info.title}"` : ""}` };
+    }
+    return null;
+  }
+
+  /**
    * New Window twice, the second from the window the first opened once it
    * has drawn the app: three full windows, each painted with the app, all of
    * it on screen, and brought forward from behind another window by a click
@@ -2633,6 +2807,11 @@ async function run(): Promise<void> {
     await runner.remembersFrame();
     await runner.ensure(runner.main);
     await runner.restartsItself();
+    // Tooltips as a new install shows them: on a fresh app in its own theme.
+    if (!runner.only || "hover-tooltip".includes(runner.only)) {
+      await runner.start(null, null);
+      await runner.tooltipSteps();
+    }
     // Last, on a fresh app: the windows New Window opens come back with every
     // later launch of its profile, where the steps above expect one window.
     if (!runner.only || ["new-windows", "windows-come-back"].some((id) => id.includes(runner.only!))) {

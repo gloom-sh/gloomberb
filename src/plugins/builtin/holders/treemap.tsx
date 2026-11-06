@@ -8,7 +8,7 @@ import {
 } from "./format";
 import type { HolderRow } from "./types";
 
-export function HoldersTreemap({ rows, width, height, selectedId, onSelect, onActivate, currency, marketCap, emptyStateTitle }: {
+export function HoldersTreemap({ rows, width, height, selectedId, onSelect, onActivate, currency, currencyCode = false, marketCap, emptyStateTitle }: {
   rows: HolderRow[];
   width: number;
   height: number;
@@ -16,6 +16,8 @@ export function HoldersTreemap({ rows, width, height, selectedId, onSelect, onAc
   onSelect: (row: HolderRow) => void;
   onActivate?: (row: HolderRow) => void;
   currency: string;
+  /** Dollars by their code too: values in dollars on a line priced in another currency. */
+  currencyCode?: boolean;
   marketCap?: number;
   /** Loading, error, and no-ticker states the pane resolves for both views. */
   emptyStateTitle?: string;
@@ -29,13 +31,13 @@ export function HoldersTreemap({ rows, width, height, selectedId, onSelect, onAc
       weight: row.value ?? row.shares ?? 0,
       colorValue: row.changePercent ?? null,
       primaryText: row.value != null
-        ? formatMoneyCompact(row.value, currency)
+        ? formatMoneyCompact(row.value, currency, { code: currencyCode })
         : formatCompact(row.shares),
       secondaryText: ownership ?? change,
       tertiaryText: ownership ? change : null,
       data: row,
     };
-  }), [currency, marketCap, rows]);
+  }), [currency, currencyCode, marketCap, rows]);
 
   return (
     <MetricTreemapSurface

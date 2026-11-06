@@ -3,6 +3,7 @@ import type { EarningsHistoryPayload } from "../../../api-client/earnings";
 import type { HeadlessPaneContext } from "../../../types/plugin";
 import { addDays, newYorkToday } from "./board-model";
 import { calendarWeekDates } from "./calendar-model";
+import { sameHistoryListing } from "./client";
 import { createEarningsBoardHeadless, createEarningsHeadless } from "./headless";
 
 const today = newYorkToday();
@@ -190,8 +191,66 @@ test("ERN for a listing abroad shows its next report and names the company's US 
   expect(result.errors).toBeUndefined();
   expect(result.rows.map((row) => [row.date, row.epsEstimate])).toEqual([[addDays(today, 19), 2.85]]);
   expect(result.metadata?.notices).toEqual([
-    "Past reports, surprises and implied moves cover US listings only, so SAN:EPA shows its next report. Sanofi's US listing is SNY: ERN SNY has them.",
+    "Past reports, surprises and implied moves cover US and Hong Kong listings only, so SAN:EPA shows its next report. Sanofi's US listing is SNY: ERN SNY has them.",
   ]);
+});
+
+test("ERN for a Hong Kong listing reads its own reports: each in its period and currency, a half never a quarter", async () => {
+  const tencent = (fields: Partial<HistoryReport> & Pick<HistoryReport, "date">) =>
+    report({ symbol: "0700:HKEX", name: "Tencent", timing: null, timingSource: null, currency: "CNY", dateStatus: "reported", ...fields });
+  const next = addDays(today, 12);
+  const payload: EarningsHistoryPayload = {
+    asOf: `${today}T12:00:00.000Z`, symbol: "0700:HKEX", name: "Tencent",
+    fiscalAnchor: { fiscalPeriod: "2025-12", fiscalYear: 2025, fiscalQuarter: 4 }, consensusBasis: "adjusted",
+    reports: [
+      tencent({ date: next, fiscalPeriod: "2026-09", fiscalYear: 2026, fiscalQuarter: 3, epsEstimate: 7.22, dateStatus: "confirmed" }),
+      tencent({ date: addDays(today, -86), timing: "amc", timingSource: "filing", fiscalPeriod: "2026-06", fiscalYear: 2026, fiscalQuarter: 2,
+        epsEstimate: 7.23544, epsActual: 7.433, epsBasis: "adjusted", revenueActual: 204.8e9, revenueActualSource: "filing",
+        filing: { url: "https://www1.hkexnews.hk/listedco/listconews/sehk/2026/0812/2026081200296.pdf", title: "Results", publishedAt: "2026-08-12T08:31:00.000Z" } }),
+      // A half the street has no quarter for: its own row, with no estimate.
+      tencent({ date: addDays(today, -88), fiscalPeriod: "2026-06", periodKind: "half", periodMonths: 6, fiscalYear: 2026, fiscalHalf: 1,
+        epsActual: 12.1, epsActualSource: "filing", epsBasis: "gaap", revenueActual: 400e9, revenueActualSource: "filing" }),
+      // A figure with no currency could be any: it is not shown.
+      tencent({ date: addDays(today, -180), fiscalPeriod: "2026-03", epsEstimate: 7.2, epsActual: 7.3, currency: null }),
+    ],
+  };
+  let served: EarningsHistoryPayload | Error = payload;
+  const definition = createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async (symbol) => {
+      expect(symbol).toBe("0700:HKEX");
+      if (served instanceof Error) throw served;
+      return served;
+    },
+    upcoming: async () => [{
+      symbol: "0700:HKEX", name: "Tencent", earningsDate: new Date(`${next}T08:10:00Z`), isDateEstimate: false, timing: "BMO",
+      epsEstimate: 7.22, epsActual: null, revenueEstimate: 210.36e9, revenueActual: null, surprise: null, epsAnalysts: 12,
+      estimateBasis: {
+        epsEstimate: { source: "earningsTrend", sourceValue: 7.22, period: "0q", periodEndDate: "2026-09-30", currency: "CNY" },
+        revenueEstimate: { source: "earningsTrend", sourceValue: 210.36e9, period: "0q", periodEndDate: "2026-09-30", currency: "CNY" },
+      },
+    }],
+  });
+  const load = () => definition.load({ rawArgument: "0700:HKEX", argument: ["0700:HKEX"], symbols: ["0700:HKEX"], options: {} }, context);
+  const result = await load();
+  expect(result.metadata?.notices).toBeUndefined();
+  expect(result.columns?.map((column) => column.key)).toContain("currency");
+  expect(result.rows.map((row) => [row.date, row.timing, row.period, row.currency, row.epsEstimate, row.epsActual, row.epsBasis, row.revenueEstimate, row.revenueActual])).toEqual([
+    // New York's "BMO" is not Hong Kong's session.
+    [next, null, "Q3 FY2026", "CNY", 7.22, null, "adjusted", 210.36e9, null],
+    [addDays(today, -86), "AMC", "Q2 FY2026", "CNY", 7.23544, 7.433, "adjusted", null, 204.8e9],
+    [addDays(today, -88), null, "H1 FY2026", "CNY", null, 12.1, "GAAP", null, 400e9],
+  ]);
+  expect(result.rows[1]!.filing).toContain("hkexnews.hk");
+  // A server that does not read Hong Kong's history yet refuses it: the next report stands alone, with no error.
+  const { ApiRequestError } = await import("../../../api-client/errors");
+  served = new ApiRequestError("A US ticker symbol is required", 400);
+  const old = await load();
+  expect(old.errors).toBeUndefined();
+  expect(old.rows.map((row) => [row.date, row.currency, row.epsEstimate])).toEqual([[next, "CNY", 7.22]]);
+  // Gloom Cloud names the listing by its four-digit code.
+  expect([sameHistoryListing("0700:HKEX", "700:HKEX"), sameHistoryListing("0700:HKEX", "0700:HKEX"), sameHistoryListing("0700:HKEX", "7000:HKEX"), sameHistoryListing("SAN", "SAN:EPA")])
+    .toEqual([true, true, false, false]);
 });
 
 test("a press release's figures are flagged provisional on the board and in the history, and the text report says so", async () => {
@@ -257,3 +316,80 @@ test("EVTS looks back a week or a day, the days the pane's Range shows, and ERN'
   expect(queries.at(-1)).toEqual({ ...lastWeek, perDay: 0, symbols: ["NFLX", "TSLA"] });
   await expect(ern.load({ ...args, options: { week: "last" } }, context)).rejects.toThrow("gloom fn EVTS CRWV --week last");
 });
+
+test("a Hong Kong half or year never takes the calendar's quarter figures, and no actual comes without its currency", async () => {
+  const smic = (fields: Partial<HistoryReport> & Pick<HistoryReport, "date">) =>
+    report({ symbol: "0981:HKEX", name: "SMIC", timing: null, timingSource: null, currency: "USD", dateStatus: "reported", ...fields });
+  const halfDay = addDays(today, -40);
+  const next = addDays(today, 6);
+  const payload: EarningsHistoryPayload = {
+    asOf: `${today}T12:00:00.000Z`, symbol: "0981:HKEX", name: "SMIC",
+    fiscalAnchor: { fiscalPeriod: "2025-12", fiscalYear: 2025, fiscalQuarter: 4 }, consensusBasis: null, access: { pro: true },
+    reports: [
+      smic({ date: next, fiscalPeriod: "2026-09", fiscalYear: 2026, fiscalQuarter: 3, epsEstimate: 0.05, dateStatus: "confirmed" }),
+      // Its interim's revenue alone: no EPS of its own.
+      smic({ date: halfDay, fiscalPeriod: "2026-06", periodKind: "half", periodMonths: 6, fiscalYear: 2026, fiscalHalf: 1,
+        revenueActual: 5.511e9, revenueActualSource: "filing" }),
+    ],
+  };
+  const event = (date: string, fields: Record<string, unknown>) => ({
+    symbol: "0981:HKEX", name: "SMIC", earningsDate: new Date(`${date}T00:00:00Z`), isDateEstimate: false, timing: "",
+    epsEstimate: null, epsActual: null, revenueEstimate: null, revenueActual: null, surprise: null, ...fields,
+  });
+  const load = async (upcoming: unknown) => (await createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async () => payload,
+    upcoming: async () => [upcoming] as never,
+  }).load({ rawArgument: "0981:HKEX", argument: ["0981:HKEX"], symbols: ["0981:HKEX"], options: {} }, context)).rows;
+  // The calendar's reported quarter, dated by the half: its 0.06 is a quarter's, not the half's.
+  const half = await load(event(addDays(halfDay, 1), {
+    dateStatus: "reported", epsActual: 0.06, epsEstimate: 0.035,
+    estimateBasis: { epsEstimate: { source: "earningsTrend", sourceValue: 0.035, period: "0q", periodEndDate: "2026-06-30", currency: "USD" } },
+  }));
+  expect(half.find((row) => row.period === "H1 FY2026")).toMatchObject({ epsActual: null, epsEstimate: null, revenueActual: 5.511e9 });
+  // An actual the calendar gives with no currency is not shown under the listing's.
+  const bare = await load(event(next, { dateStatus: "reported", epsActual: 0.07 }));
+  expect(bare.find((row) => row.date === next)).toMatchObject({ currency: "USD", epsActual: null, epsEstimate: 0.05 });
+})
+
+test("a Hong Kong filed EPS that is basic says so instead of GAAP", async () => {
+  const payload: EarningsHistoryPayload = {
+    asOf: `${today}T12:00:00.000Z`, symbol: "0941:HKEX", name: "China Mobile", access: { pro: true },
+    fiscalAnchor: { fiscalPeriod: "2025-12", fiscalYear: 2025, fiscalQuarter: 4 },
+    reports: [
+      report({ symbol: "0941:HKEX", date: addDays(today, -200), timing: null, timingSource: null, currency: "CNY", dateStatus: "reported",
+        fiscalPeriod: "2025-12", periodKind: "year", periodMonths: 12, fiscalYear: 2025, epsActual: 6.6, epsActualSource: "filing",
+        epsBasis: null, epsDilution: "basic" }),
+    ],
+  };
+  const rows = (await createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async () => payload,
+    upcoming: async () => [],
+  }).load({ rawArgument: "0941:HKEX", argument: ["0941:HKEX"], symbols: ["0941:HKEX"], options: {} }, context)).rows;
+  expect(rows.map((row) => [row.period, row.epsActual, row.epsBasis])).toEqual([["FY2025", 6.6, "basic"]]);
+})
+
+test("an account without Pro gets a Hong Kong listing's street quarters, named by its fiscal year, with no notice", async () => {
+  const next = addDays(today, 12);
+  const result = await createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async () => ({
+      asOf: `${today}T12:00:00.000Z`, symbol: "0700:HKEX", name: "Tencent", consensusBasis: "adjusted", access: { pro: false },
+      fiscalAnchor: { fiscalPeriod: "2025-12", fiscalYear: 2025, fiscalQuarter: 4 },
+      reports: [
+        report({ symbol: "0700:HKEX", date: next, timing: null, timingSource: null, currency: "CNY", dateStatus: "confirmed",
+          fiscalPeriod: "2026-09", fiscalYear: 2026, fiscalQuarter: 3, epsEstimate: 7.22 }),
+        report({ symbol: "0700:HKEX", date: addDays(today, -86), timing: null, timingSource: null, currency: "CNY", dateStatus: "reported",
+          fiscalPeriod: "2026-06", fiscalYear: 2026, fiscalQuarter: 2, epsEstimate: 7.23544, epsActual: 7.433, epsBasis: "adjusted" }),
+      ],
+    }),
+    upcoming: async () => [],
+  }).load({ rawArgument: "0700:HKEX", argument: ["0700:HKEX"], symbols: ["0700:HKEX"], options: {} }, context);
+  expect(result.errors).toBeUndefined();
+  expect(result.metadata?.notices).toBeUndefined();
+  expect(result.rows.map((row) => [row.period, row.currency, row.epsEstimate, row.epsActual, row.filing])).toEqual([
+    ["Q3 FY2026", "CNY", 7.22, null, null],
+    ["Q2 FY2026", "CNY", 7.23544, 7.433, null],
+  ]);
+})
