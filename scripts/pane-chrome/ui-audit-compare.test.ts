@@ -18,6 +18,12 @@ describe("pixelChange reads ImageMagick's answers strictly", () => {
     expect(pixelChange("a.jpg", "b.jpg", fake(SIZE, { exitCode: 0, stdout: "", stderr: "0" }))).toEqual({ status: "compared", change: 0 });
   });
 
+  test("the count reads with or without ImageMagick 7's normalized value in brackets", () => {
+    expect(pixelChange("a.jpg", "b.jpg", fake(SIZE, { exitCode: 0, stdout: "", stderr: "0 (0)\n" }))).toEqual({ status: "compared", change: 0 });
+    expect(pixelChange("a.jpg", "b.jpg", fake(SIZE, { exitCode: 1, stdout: "", stderr: "1234 (0.0123)" }))).toEqual({ status: "compared", change: 1234 / (1280 * 800) });
+    expect(pixelChange("a.jpg", "b.jpg", fake(SIZE, { exitCode: 1, stdout: "", stderr: "5678" }))).toEqual({ status: "compared", change: 5678 / (1280 * 800) });
+  });
+
   test("a failed compare, a count with warnings or no count is an error, never 0", () => {
     expect(pixelChange("a.jpg", "b.jpg", fake(SIZE, { exitCode: 2, stdout: "", stderr: "compare: insufficient image data" })).status).toBe("error");
     expect(pixelChange("a.jpg", "b.jpg", fake(SIZE, { exitCode: 1, stdout: "", stderr: "876128compare: Premature end of JPEG file" })).status).toBe("error");
