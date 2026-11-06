@@ -262,17 +262,38 @@ const PROGRESS_EVERY_MS = 5_000;
 
 /**
  * Lines on standard error while an add of several symbols is slow to look
- * them up: "Looked up 4 of 10 symbols." two seconds in, then every few
- * seconds, and nothing for one symbol or a lookup that is quick.
+ * them up: "Looking up 10 symbols." two seconds in when none is settled yet,
+ * else "Looked up 4 of 10 symbols.", which it says again every five seconds
+ * until all are. Nothing for one symbol or a lookup that is quick. It is told
+ * (0, total) as the lookup starts and each symbol as it settles; the lines
+ * come from a timer, so a lookup waiting on one slow answer still says so.
  */
-export function progressNotice(ctx: CliCommandContext, now = () => Date.now()): (looked: number, total: number) => void {
-  let last = now();
-  let wait = PROGRESS_AFTER_MS;
-  return (looked, total) => {
-    if (ctx.cliOptions.quiet || total < 2 || looked >= total || now() - last < wait) return;
-    last = now();
-    wait = PROGRESS_EVERY_MS;
-    console.error(cliStyles.muted(`Looked up ${looked} of ${total} symbols.`));
+export function progressNotice(
+  ctx: Pick<CliCommandContext, "cliOptions">,
+  { afterMs = PROGRESS_AFTER_MS, everyMs = PROGRESS_EVERY_MS }: { afterMs?: number; everyMs?: number } = {},
+): (looked: number, total: number) => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let looked = 0, total = 0, told = false;
+  const tell = () => {
+    timer = undefined;
+    if (looked >= total) return;
+    console.error(cliStyles.muted(told || looked > 0 ? `Looked up ${looked} of ${total} symbols.` : `Looking up ${total} symbols.`));
+    told = true;
+    schedule(everyMs);
+  };
+  const schedule = (ms: number) => {
+    timer = setTimeout(tell, ms);
+    // The add's own end, not this line, decides when the process exits.
+    (timer as { unref?: () => void }).unref?.();
+  };
+  return (settled, of) => {
+    if (ctx.cliOptions.quiet || of < 2) return;
+    looked = settled;
+    total = of;
+    if (looked >= total) {
+      if (timer) clearTimeout(timer);
+      timer = undefined;
+    } else if (!timer) schedule(afterMs);
   };
 }
 
