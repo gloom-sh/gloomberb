@@ -3591,7 +3591,11 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
       const rateFields = (short: typeof base.rate) => ({
         currency: short.currency, name: short.name, tenor: short.tenor, value: short.value, asOf: short.asOf,
         dayCountBasis: short.dayCountBasis, publisher: short.publisher, sourceUrl: short.sourceUrl, stale: short.stale,
+        ...(short.attribution ? { attribution: short.attribution } : {}),
       });
+      // A publisher's licence asks for its attribution wherever its rate is shown (MAS's SORA).
+      const attributions = [...new Set([base.rate, quote.rate].flatMap((short) => short.attribution
+        ? [`${short.name}: ${short.attribution.text.replace(/\.$/, "")} (${short.attribution.licenceUrl}).`] : []))];
       const staleRates = [base.rate, quote.rate].filter((short) => short.stale)
         .map((short) => `${short.name} (${short.currency}) is the last copy read, dated ${short.asOf ?? "undated"}; its source could not be read since.`);
       const forwardRow = {
@@ -3609,6 +3613,7 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
           `${currency} rate: ${describeShortRate(base.rate)}`,
           `${baseCurrency} rate: ${describeShortRate(quote.rate)}`,
           `Covered interest parity: ${formatFxRate(rate)} × ${growth(quote.rate)} / ${growth(base.rate)}; each rate earns simple interest over the ${tenor.days} days, standing in for a ${tenor.label} term rate.`,
+          ...attributions,
         ].join("\n"),
         exportIdentity: { symbolOrSeries: pair, currencyOrUnit: `${baseCurrency} per ${currency}`, interval: `forward ${tenor.label}` },
         columns: [

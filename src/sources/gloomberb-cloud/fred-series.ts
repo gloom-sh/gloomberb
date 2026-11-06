@@ -62,7 +62,12 @@ interface SeriesNotOnFred {
   /** Whose publication they are read from (the CBRT). */
   via: string;
   url: string;
+  /** The attribution the publisher's licence asks for wherever the series is shown as its own. */
+  attribution?: string;
 }
+
+/** What MAS's Singapore Open Data Licence asks every use of SORA to say, as Gloom Cloud serves it beside the rate. */
+const SORA_ATTRIBUTION = "Contains information from MAS's Domestic Interest Rates, made available under the Singapore Open Data Licence version 1.0.";
 
 const TURKISH_CPI: SeriesNotOnFred = {
   publisher: "TurkStat",
@@ -87,6 +92,7 @@ const NOT_ON_FRED: Readonly<Record<string, SeriesNotOnFred>> = {
     publisher: "MAS",
     via: "its domestic interest rates page",
     url: "https://eservices.mas.gov.sg/statistics/dir/DomesticInterestRates.aspx",
+    attribution: SORA_ATTRIBUTION,
   },
   // NAHB's builder sentiment index as first released, from the economic calendar's actuals.
   NAHBHMI: {

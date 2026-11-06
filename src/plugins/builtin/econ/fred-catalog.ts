@@ -214,6 +214,8 @@ export const FRED_CATALOG_SERIES: readonly SeriesDefinition[] = GROUPS.flatMap((
     group,
     ...(tags?.length ? { tags } : {}),
     publisher: seriesNotOnFred(seriesId)?.publisher ?? "FRED",
+    // The licence a publisher's data comes under, which the catalog lists beside the series (SORA's).
+    ...(seriesNotOnFred(seriesId)?.attribution ? { limitation: seriesNotOnFred(seriesId)!.attribution } : {}),
     url: fredSeriesUrl(seriesId),
     expression: `FRED:${seriesId}`,
   }))

@@ -1296,7 +1296,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 **Forwards.** `gloom fx USD/MXN --forward 30d` gives the forward implied by covered interest parity, labelled `implied by rates, not a dealer quote`: spot × (1 + quote rate × days/basis) / (1 + base rate × days/basis).
 
 - The answer shows the forward points (pips of 0.0001, 0.01 against JPY), the premium or discount over spot for the period and a year, and both rates with their day and publisher.
-- The rates are SOFR (USD), €STR (EUR), SONIA (GBP), Banxico's TIIE 28d (MXN) and MAS's SORA (SGD, ACT/365), so any pair of those works (`fx EUR/USD --forward 3m`, `fx USD/SGD --forward 3m`). A missing rate says which one.
+- The rates are SOFR (USD), €STR (EUR), SONIA (GBP), Banxico's TIIE 28d (MXN) and MAS's SORA (SGD, ACT/365), so any pair of those works (`fx EUR/USD --forward 3m`, `fx USD/SGD --forward 3m`). A missing rate says which one. SORA comes under MAS's Singapore Open Data Licence, so a forward through SGD, `fred SORA` and the series catalog carry the attribution it asks for.
 - Tenors count calendar days from today (`30d`, `2w`, `3m`, `1y`, up to a year). `--forward` with `--date` fails and names the command for that day's close.
 - `--json` carries `forward`, `points`, `premiumPercent`, `annualizedPercent`, `baseRate` and `quoteRate`. `catalog forward` points here.
 

@@ -92,5 +92,8 @@ describe("built-in series inventory", () => {
       if (!definition.group) problems.push(`${definition.id} has no group`);
     }
     expect(problems).toEqual([]);
+    // MAS's licence asks for its attribution wherever SORA is shown as MAS's: the catalog lists it beside the series.
+    expect(registry.list().find(({ definition }) => definition.id === "fred:SORA")?.definition)
+      .toMatchObject({ publisher: "MAS", limitation: expect.stringContaining("Singapore Open Data Licence") });
   });
 });
