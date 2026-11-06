@@ -6,7 +6,7 @@ import { usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { UpgradeLabel } from "../shared/locked-rows";
-import { CATALYST_DATE_WITHHELD, catalystAgency, catalystChangeText, catalystDate, catalystDateBasis, catalystDateWithheld, catalystFacts, catalystLabel } from "./model";
+import { CATALYST_DATE_WITHHELD, catalystAgency, catalystChangeText, catalystDate, catalystDateBasis, catalystDateWithheld, catalystFacts, catalystLabel, catalystShownStatus } from "./model";
 import { humanLabel } from "../shared/research-cells";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { loadCatalystDetail } from "./client";
@@ -20,7 +20,7 @@ function Evidence({ event, width, height }: { event: CatalystEvent; width: numbe
   const documents = Array.isArray(event.metadata?.documents) ? event.metadata.documents.filter((value): value is { url: string; title?: string; label?: string } => !!value && typeof value === "object" && "url" in value && typeof value.url === "string" && /^https?:\/\//.test(value.url)) : [];
   return <ScrollBox scrollY width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} contentOptions={{ paddingX: 1 }}>
     <KeyValueRow label="Classification" value={`${catalystLabel(event.type)} · ${catalystAgency(event.agency)} · ${event.country ?? event.jurisdiction}`} labelWidth={18} />
-    <KeyValueRow label="Status" value={humanLabel(event.status)} detail={`Revision ${event.revision}`} labelWidth={18} />
+    <KeyValueRow label="Status" value={humanLabel(catalystShownStatus(event))} detail={`Revision ${event.revision}`} labelWidth={18} />
     <KeyValueRow label="Announced" value={catalystDate(event, "announced")} labelWidth={18} />
     {event.effectiveDate ? <KeyValueRow label={catalystDateBasis(event, "effective")} value={catalystDate(event, "effective")} labelWidth={18} /> : null}
     {event.deadlineDate ? <KeyValueRow label={catalystDateBasis(event, "deadline")} value={catalystDate(event, "deadline")} labelWidth={18} />

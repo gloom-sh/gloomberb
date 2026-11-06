@@ -80,7 +80,7 @@ describe("holders headless model", () => {
     expect(result.metadata?.notices).toEqual([
       "BHP Group Limited (BHP.L) | LSE | GBp (pence) | 2 holders reported",
       "Mkt value = shares reported at 2026-06-30 x latest price. Change vs prior quarter: not reported by this source; see fn 13F BHP",
-      "US 13F filers only: these are US institutions' filings, not the LSE share register, so the line's largest holders may be missing.",
+      "SEC 13F filings only, not the LSE share register: the line's largest holders may be missing.",
     ]);
   });
 });
@@ -148,7 +148,7 @@ describe("holders headless with the service's units", () => {
     expect(result.metadata?.notices).toEqual([
       "BHP Group Limited (BHP.L) | LSE | values in USD | 2 holders reported",
       "Mkt value = shares reported at 2026-06-30 x period-end price (USD). Change vs prior quarter: not reported by this source; see fn 13F BHP:LSE",
-      "US 13F filers only: these are US institutions' filings, not the LSE share register, so the line's largest holders may be missing.",
+      "SEC 13F filings only, not the LSE share register: the line's largest holders may be missing.",
       "ADR: shares held as depositary receipts (1 ADR = 2 ordinary shares).",
     ]);
   });
