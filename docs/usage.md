@@ -265,7 +265,7 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 | `SI <ticker>` | Short interest |
 | `SIV <ticker>` | FINRA daily off-exchange short-volume ratio, history and percentile |
 | `SIW [tickers]` | Short squeeze watch across your portfolios and watchlists: short interest as a share of float, days to cover, change since the prior settlement and the 1M move |
-| `BUZZ <ticker>` | Daily posts on X naming the cashtag, the 30-day median, top posts and their stance |
+| `BUZZ [ticker]` | Daily posts on X naming the cashtag, the 30-day median, top posts and their stance. Alone, the tickers whose posts jump above their own median |
 | `13F [fund/ticker/CIK]` | 13F fund filings and holdings |
 | `INS [ticker]` | Insider activity. Alone, the companies whose insiders are buying or selling in the open market |
 | `EVT <ticker>` | Corporate actions, earnings, and estimates |

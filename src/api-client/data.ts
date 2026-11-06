@@ -44,7 +44,7 @@ import type { ShortVolumePayload, ShortVolumeScope } from "./short-volume";
 import type { FailsToDeliverPayload, OtcVolumePayload } from "./short-side-publications";
 import type { BeneficialOwnersPayload, CloudBeneficialOwnersParams } from "./beneficial-owners";
 import type { CloudInsiderSignalsParams, InsiderSignalsPayload } from "./insider-signals";
-import type { SocialMentionDayPosts, SocialMentionsPayload, SocialMentionsRange } from "./social-mentions";
+import type { CloudSocialOutliersParams, SocialMentionDayPosts, SocialMentionsPayload, SocialMentionsRange, SocialOutliersPayload } from "./social-mentions";
 import type { FuturesContractTermsPayload, FuturesCurveAsOfPayload, FuturesCurvePayload } from "./futures-curve";
 import type { CotBoardPayload, CotContractPayload, CotFamily, CotClass, CotPositions } from "./cot";
 import type { DoeBoardPayload, DoePricesPayload } from "./doe";
@@ -1217,6 +1217,19 @@ export class CloudDataApi {
   async getCloudSocialMentionPosts(symbol: string, day: string): Promise<SocialMentionDayPosts> {
     const params = new URLSearchParams({ symbol, day });
     return this.request<SocialMentionDayPosts>(`/cloud/social-mentions/posts?${params}`, { signal: AbortSignal.timeout(30_000) });
+  }
+
+  /** The market's social outliers: tickers posted about most against their own 30-day median. */
+  async getCloudSocialOutliers(params: CloudSocialOutliersParams = {}, options?: { signal?: AbortSignal }): Promise<SocialOutliersPayload> {
+    const query = new URLSearchParams();
+    if (params.window) query.set("window", params.window);
+    if (params.minPosts) query.set("minPosts", String(params.minPosts));
+    if (params.cap) query.set("cap", params.cap);
+    if (params.limit) query.set("limit", String(params.limit));
+    const search = query.toString();
+    return this.request<SocialOutliersPayload>(`/cloud/social-mentions/outliers${search ? `?${search}` : ""}`, {
+      signal: options?.signal ?? AbortSignal.timeout(30_000),
+    });
   }
 
   async getCloudFuturesCurve(root: string): Promise<FuturesCurvePayload> {

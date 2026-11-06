@@ -1012,6 +1012,7 @@ class GloomApiClient {
   getCloudCryptoEtfFlows = this.data.getCloudCryptoEtfFlows.bind(this.data);
   getCloudSocialMentions = this.data.getCloudSocialMentions.bind(this.data);
   getCloudSocialMentionPosts = this.data.getCloudSocialMentionPosts.bind(this.data);
+  getCloudSocialOutliers = this.data.getCloudSocialOutliers.bind(this.data);
   getCloudFuturesCurve = this.data.getCloudFuturesCurve.bind(this.data);
   getCloudFuturesCurveAsOf = this.data.getCloudFuturesCurveAsOf.bind(this.data);
   getCloudFuturesContract = this.data.getCloudFuturesContract.bind(this.data);

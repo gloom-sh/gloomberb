@@ -12,6 +12,8 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
+import { usePaneInstance } from "../../../state/app/context";
+import { SocialOutliersView, type SocialOpenedTicker } from "./outliers";
 import { asSessionRequired, cachedSocialMentions, loadSocialMentionPosts, loadSocialMentions } from "./client";
 import { SOCIAL_COLUMNS, socialChartPoints, socialCount, socialDayRows, socialRatio, socialStance, socialSummary, sortedSocialRows, stanceWord, topPostCell, type SocialColumn, type SocialDayRow, type SocialSort } from "./model";
 
@@ -70,11 +72,18 @@ function DayDetail({ symbol, row, recent, width, height }: {
   </Box>;
 }
 
-export function SocialMentionsPane({ width, height, focused }: Pick<PaneProps, "width" | "height" | "focused">) {
-  const { ticker } = usePaneTickerIdentity();
+/**
+ * BUZZ on a listing: its daily posts on X against their median, the chart and
+ * the days. `listingKey` is the pane's ticker, or one opened from the ranking.
+ */
+function SocialMentionsTickerView({ width, height, focused, listingKey, onDetailChange }: Pick<PaneProps, "width" | "height" | "focused"> & {
+  listingKey: string | undefined;
+  /** Opened from the ranking: whether a day is open, so Esc closes it first. */
+  onDetailChange?: (open: boolean) => void;
+}) {
   const [rangeValue] = usePaneSettingValue("socialRange", "1y");
   const range: SocialMentionsRange = RANGES.includes(rangeValue as SocialMentionsRange) ? rangeValue as SocialMentionsRange : "1y";
-  const listing = listingIdentity(ticker?.metadata.ticker);
+  const listing = listingIdentity(listingKey);
   const symbol = listing?.symbol && /^[A-Z][A-Z0-9]{0,5}$/.test(listing.symbol) ? listing.symbol : null;
   const session = useResearchCloudSession();
   const loader = useCallback((force: boolean) => loadSocialMentions(symbol!, range, force).catch((error: unknown) => { throw asSessionRequired(error); }),
@@ -110,6 +119,9 @@ export function SocialMentionsPane({ width, height, focused }: Pick<PaneProps, "
     return () => clearTimeout(timer);
   }, [pending, resource.updatedAt, resource.reload]);
   useAutoRefresh(resource.updatedAt, resource.load);
+  const dayOpen = !!openRow;
+  useEffect(() => onDetailChange?.(dayOpen), [dayOpen, onDetailChange]);
+  useEffect(() => () => onDetailChange?.(false), [onDetailChange]);
   useShortcut((event) => { if (focused && isPlainKey(event, "r")) { event.preventDefault(); void resource.reload(); } });
   usePaneNoticeFooter({ registrationId: "social-mentions:notices", focused,
     notices: [...(data?.warnings ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
@@ -156,4 +168,21 @@ export function SocialMentionsPane({ width, height, focused }: Pick<PaneProps, "
       /> : null}
     </PaneStatusBody>
   </Box>;
+}
+
+const renderOpenedTicker = ({ symbol, ...props }: SocialOpenedTicker) => <SocialMentionsTickerView {...props} listingKey={symbol} />;
+
+/**
+ * BUZZ on a ticker is that ticker's posts on X; without one it is the ranking
+ * of the market's social outliers. A ranked ticker opens here as BUZZ on its
+ * cashtag, and Back returns to the ranking.
+ */
+export function SocialMentionsPane({ width, height, focused }: Pick<PaneProps, "width" | "height" | "focused">) {
+  const { symbol, ticker } = usePaneTickerIdentity();
+  const instance = usePaneInstance();
+  // No ticker at all is the ranking; a pane linked to a list keeps its own empty state while the list has nothing selected.
+  if (!symbol && instance?.binding?.kind !== "follow") {
+    return <SocialOutliersView width={width} height={height} focused={focused} renderTicker={renderOpenedTicker} />;
+  }
+  return <SocialMentionsTickerView width={width} height={height} focused={focused} listingKey={ticker?.metadata.ticker} />;
 }

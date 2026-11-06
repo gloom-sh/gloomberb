@@ -4,6 +4,8 @@ import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { socialMentionPostsCache, socialMentionsCache } from "./client";
 import { socialMentionsHeadless } from "./headless";
 import { socialMentionsLockNote } from "./lock-note";
+import { socialOutliersCache } from "./outliers-client";
+import { SOCIAL_OUTLIERS_TITLE } from "./outliers-model";
 
 const socialMentionsSettings = [
   { key: "socialRange", label: "History", type: "select" as const,
@@ -15,9 +17,11 @@ export const socialMentionsModule: PluginModule = {
     defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 96, height: 30 },
     tableExport: true, headless: socialMentionsHeadless, settings: { title: "Social Mentions", fields: socialMentionsSettings } }],
   paneTemplates: [{ ...createTickerSurfacePaneTemplate({ id: "social-mentions-pane", paneId: "social-mentions", label: "Social Mentions",
-    description: "Daily posts on X naming the ticker's cashtag, the day's top posts and their stance.",
-    shortcut: "BUZZ", keywords: ["social", "mentions", "x", "twitter", "buzz", "sentiment", "stance", "cashtag"], publicShare: true,
+    description: "Daily posts on X naming the ticker's cashtag, the day's top posts and their stance; alone, the tickers whose posts jump above their own median.",
+    shortcut: "BUZZ", keywords: ["social", "mentions", "x", "twitter", "buzz", "sentiment", "stance", "cashtag", "outliers"], publicShare: true,
+    // Typed alone with no active ticker it ranks the market's social outliers.
+    withoutTickerTitle: SOCIAL_OUTLIERS_TITLE,
   }), headless: socialMentionsHeadless }],
-  setup(ctx) { socialMentionsCache.attach(ctx.persistence); socialMentionPostsCache.attach(ctx.persistence); },
-  dispose() { socialMentionsCache.reset(); socialMentionPostsCache.reset(); },
+  setup(ctx) { socialMentionsCache.attach(ctx.persistence); socialMentionPostsCache.attach(ctx.persistence); socialOutliersCache.attach(ctx.persistence); },
+  dispose() { socialMentionsCache.reset(); socialMentionPostsCache.reset(); socialOutliersCache.reset(); },
 };

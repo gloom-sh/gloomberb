@@ -641,8 +641,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["QR"],
   },
   BUZZ: {
-    summary: "Daily posts on X naming the ticker's cashtag, the day's top posts and their stance.",
-    usage: ["BUZZ TSLA"],
+    summary: "Daily posts on X naming the ticker's cashtag, the day's top posts and their stance. Alone it ranks the tickers by how far their posts jump above their own 30-day median, on the latest closed day or today so far, with stance and price move, filtered by posts and market cap.",
+    usage: ["BUZZ TSLA", "BUZZ"],
     keys: [OPEN, OPEN_SOURCE],
     data: same("Through the day"),
     bloomberg: [],
