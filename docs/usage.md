@@ -1531,7 +1531,7 @@ In short DVD panes, Page Up/Down scroll the summary, arrows or j/k navigate hist
 
 IV is solved from quote midpoints (not the provider's own implied volatility), and delta from that IV, the underlying's current price, its dividend yield and a 4% risk-free rate. A contract with no two-sided quote, no current underlying price or no time left shows a dash. A chain still quoting the last close is valued at that close.
 
-A quote from before the chain's session, or with its ask more than half a percent of the underlying under the option's intrinsic value, is shown with its bid and ask and `stale` in the IV column; no IV, delta or greek is read from it, here, in `OMON` and in the volatility surface, and the line under the table says so. Exports carry it as `Quote stale`.
+A quote from before the chain's session, or with its ask more than 2% of the underlying under the option's intrinsic value, is shown with its bid and ask and `stale` in the IV column; no IV, delta or greek is read from it, here, in `OMON` and in the volatility surface, and the line under the table says so. Exports carry it as `Quote stale`.
 
 The chain is the standard contracts. Contracts a corporate action adjusted (listed under a numbered root, such as ETHA1 beside ETHA after a split) deliver something other than 100 shares, so their prices do not compare with the standard ones at the same strike. `gloom options ETHA --adjusted` lists them instead, each with its deliverable (`15 ETHA + 120.5 USD cash`, or `not stated` when the source does not say).
 

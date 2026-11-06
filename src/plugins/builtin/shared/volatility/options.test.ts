@@ -117,16 +117,17 @@ test("term slope is the IV change per year between two tenors", () => {
 });
 
 describe("quotes that cannot be priced", () => {
-  test("an ask under intrinsic by more than half a percent of spot is marked stale and gives no midpoint; one a moment behind is kept", () => {
+  test("an ask under intrinsic by more than 2% of spot is marked stale and gives no midpoint; one minutes behind is kept", () => {
     // ETHA's 6 Nov chain on 5 Nov, spot 50.77: the strike-5 call last quoted before a split at 15.35/15.55.
     const chain = {
       calls: [
         { strike: 5, bid: 15.35, ask: 15.55, contractSymbol: "ETHA261106C00005000" },
-        // 10 cents under its 20.77 intrinsic: inside the 25-cent margin.
-        { strike: 30, bid: 20.5, ask: 20.67, contractSymbol: "ETHA261106C00030000" },
+        // 60 cents under its 20.77 intrinsic, as a chain minutes behind a rising price reads: inside the 1.02 margin.
+        { strike: 30, bid: 20, ask: 20.17, contractSymbol: "ETHA261106C00030000" },
         { strike: 51, bid: 0.63, ask: 0.69, contractSymbol: "ETHA261106C00051000" },
       ],
-      puts: [{ strike: 67, bid: 15.5, ask: 15.7, contractSymbol: "ETHA261106P00067000" }],
+      // 1.73 under its 16.23 intrinsic.
+      puts: [{ strike: 67, bid: 14.3, ask: 14.5, contractSymbol: "ETHA261106P00067000" }],
     };
     const marked = withQuotesUnderIntrinsicMarked(chain, 50.77);
     expect(marked.calls.map((contract) => (contract as { quoteStale?: boolean }).quoteStale ?? false)).toEqual([true, false, false]);

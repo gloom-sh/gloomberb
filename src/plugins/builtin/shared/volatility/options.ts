@@ -72,12 +72,13 @@ export function optionMid(quote: Pick<ParityQuote, "bid" | "ask"> & { quoteStale
 }
 
 /**
- * How far under intrinsic an ask has to be to be no market: half a percent of
- * the underlying, so a deep in-the-money quote a moment behind a moving price
- * is not read as one. The server marks the same quotes (and those quoted
- * before the session) `quoteStale`.
+ * How far under intrinsic an ask has to be to be no market: 2% of the
+ * underlying, so a deep in-the-money quote minutes behind a moving price (a
+ * chain refreshed every few minutes beside a live price) is not read as one.
+ * The server marks the same quotes (and those quoted before the session)
+ * `quoteStale`.
  */
-const UNDER_INTRINSIC_MARGIN = 0.005;
+const UNDER_INTRINSIC_MARGIN = 0.02;
 
 /** Whether an ask sits under the option's intrinsic value at `spot`: a quote no one could trade. */
 export function quoteUnderIntrinsic(quote: Pick<ParityQuote, "strike" | "ask">, side: "call" | "put", spot: number | undefined): boolean {
