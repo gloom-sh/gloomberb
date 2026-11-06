@@ -211,8 +211,9 @@ function validatePerpsMarket<T extends PerpMarketPayload>(data: T): T {
 const fetchPerpsMarket = async (marketId: string, client: Pick<typeof apiClient, "getCloudPerpsMarket"> = apiClient) => validatePerpsMarket(await client.getCloudPerpsMarket(marketId));
 
 /**
- * The Market column's label for a market on a Hyperliquid builder dex (`SP500 · XYZ`) read back as the `xyz:SP500`
- * identity the board search and the venue know it by; anything else is returned as typed.
+ * The label the Market column wrote for a market on a Hyperliquid builder dex before it wrote Hyperliquid's own name
+ * (`SP500 · XYZ`), read back as that name, `xyz:SP500`, so a market typed or saved that way still opens; anything
+ * else is returned as typed.
  */
 export const marketQuery = (input: string) => {
   const label = /^([^\s·]+)\s*·\s*([^\s·]+)$/.exec(input.trim());
@@ -246,7 +247,7 @@ const QUOTE_WORDS = new Set(["USD", "USDT", "USDC", "PERP", "SWAP"]);
 
 /**
  * The board names nearest an input nothing matched: markets whose symbol, base asset or name carry a word of it
- * (or all but its last letters), the biggest first, written as the Market column writes them (`BZ`, `BRENTOIL · XYZ`). Free text with several
+ * (or all but its last letters), the biggest first, written as the Market column writes them (`BZ`, `xyz:BRENTOIL`). Free text with several
  * words is no market name and gets none. A board that cannot be read leaves the caller its own examples.
  */
 export async function nearestPerpMarkets(input: string, client: Pick<typeof apiClient, "getCloudPerpsBoard"> = apiClient): Promise<string[]> {
@@ -270,7 +271,7 @@ export async function nearestPerpMarkets(input: string, client: Pick<typeof apiC
 }
 
 /**
- * One market by base asset, underlying, symbol, canonical identity or the Market column's label (`SP500 · XYZ`), or by
+ * One market by base asset, underlying, symbol, canonical identity or the Market column's label (`xyz:SP500`), or by
  * a name the board does not spell: a pair (BTC-USD, BTC/USD, BTCUSD) or a plain name (bitcoin, brent), read as the
  * base asset it stands for once the input names no market as typed. An input that names none comes back with no
  * rows and the board names nearest to it.

@@ -9,7 +9,7 @@ export const perpHistory = (patch: Partial<PerpHistoryPayload> = {}): PerpHistor
 /** Controlled identity envelope; the legacy capture above has no listing proof. */
 export function equityBoard(listing: PerpEquityListing, patch: Partial<PerpBoardPayload> = {}): PerpBoardPayload {
   return perpBoard({ listing, total: 1, rows: [perpRow({ marketId: `hyperliquid:xyz:${listing.symbol}`, dex: "xyz",
-    symbol: listing.symbol, baseAsset: listing.symbol, assetClass: "stocks", underlyingSymbol: listing.symbol,
+    symbol: `xyz:${listing.symbol}`, baseAsset: listing.symbol, assetClass: "stocks", underlyingSymbol: listing.symbol,
     equityMatch: { listing, underlying: listing, basis: "listing" } })], ...patch });
 }
 

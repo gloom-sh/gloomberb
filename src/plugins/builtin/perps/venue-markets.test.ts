@@ -25,8 +25,8 @@ test("an asset's contracts merge into one row per venue, the deepest first, its 
     // No open interest stated: last, and its total stays unknown rather than zero.
     ["dydx", "dydx:BTC-USD", 1, null],
   ]);
-  // A row names the contract it reads from and how many more it stands for; a delisted one is gone.
-  expect(markets.map(contractText)).toEqual(["USDT +2", "USDC", "USDT +1", "USD", "USD"]);
+  // A row names the contract it reads from, as the venue writes it, and how many more it stands for; a delisted one is gone.
+  expect(markets.map(contractText)).toEqual(["BTCUSDT +2", "BTC", "BTC-USDT-SWAP +1", "BTC-PERPETUAL", "BTC-USD"]);
 });
 
 test("Hyperliquid's builder dexes listing one stock are one Hyperliquid row, and a market read twice is one contract", () => {
@@ -45,7 +45,7 @@ test("Hyperliquid's builder dexes listing one stock are one Hyperliquid row, and
     ["bybit", "bybit:NVDAUSDT", ["bybit:NVDAUSDT"]],
   ]);
   expect(markets[0]!.openInterestUsd).toBe(113.5e6);
-  expect(contractText(markets[0]!)).toBe("xyz +2");
+  expect(contractText(markets[0]!)).toBe("xyz:NVDA +2");
 });
 
 test("markets with a small share of the open interest fold behind more, and the deepest always shows", () => {

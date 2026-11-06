@@ -84,13 +84,10 @@ export function foldSmallMarkets(markets: readonly PerpVenueMarket[], { minShare
 }
 
 /**
- * The contract a venue's row reads from, as the venue settles it (`USDT`, `USD inverse`, a Hyperliquid builder dex
- * such as `xyz`), and how many more it stands for: `USDT +2`.
+ * The contract a venue's row reads from, by its symbol on the venue as PERP's Contract column writes it (`BTCUSDT`,
+ * `BTC-USDT-SWAP`, `xyz:NVDA` on a Hyperliquid builder dex), and how many more it stands for: `BTCUSDT +2`.
  */
 export function contractText(market: PerpVenueMarket): string {
-  const row = market.primary;
-  const own = row.venue === "hyperliquid" && row.dex && row.dex !== "default" ? row.dex
-    : row.contractType === "inverse" ? `${row.quoteCurrency} inverse` : row.quoteCurrency;
   const others = market.contracts.length - 1;
-  return others > 0 ? `${own} +${others}` : own;
+  return others > 0 ? `${market.primary.symbol} +${others}` : market.primary.symbol;
 }
