@@ -3119,6 +3119,9 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const { value: expiration, flag: expirationFlag } = expirationOption;
   if (expirationOption.both) ctx.fail("--expiry is --expiration; give one of them.", `Usage: gloom ${OPTIONS_USAGE}`);
   const exchangeOption = takeOption(args, "--exchange");
+  // Contracts a corporate action adjusted (ETHA1) price another deliverable: listed only when asked for.
+  const adjusted = takeFlag(args, "--adjusted");
+  if (adjusted && leapsOptions.leaps) ctx.fail("--adjusted lists one chain's adjusted contracts; it does not apply with --leaps.", `Usage: gloom ${OPTIONS_USAGE}`);
   if (leapsOptions.leaps) {
     // With --leaps, --expiration is a window of one expiry.
     const criteria = parseLeapsCriteria({ ...leapsOptions.raw, ...expirationOption.given ? { "--expiration": expiration ?? "" } : {} });
@@ -3155,6 +3158,12 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // Expiries close on the listing's clock: a coin's options (Deribit) settle at 08:00 UTC on any day.
     const expiryVenue = optionExpiryVenue(symbol, exchange);
     const readChain = async (expiry: number | undefined) => {
+      // The adjusted contracts are their own request, never the standard chain's cached one.
+      if (adjusted) {
+        return { result: undefined, chain: await market.dataProvider.getOptionsChain(symbol, exchange, expiry, {
+          cacheMode: refresh ? "refresh" : "default", adjustedOptions: true,
+        }) };
+      }
       const cached = await market.dataProvider.getCachedQuery?.("getOptionsChain", [symbol, exchange, expiry, undefined])
         .load({ force: refresh });
       return {
@@ -3270,7 +3279,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       rows: (data: OptionsChain) => optionRows(data).map((row) => ({ ...row, ...basisFields })),
       // Choosing an expiry needs the list; once one is chosen the table is that expiry.
       summary: (data: OptionsChain) => expirationDate == null ? formatExpiryList(data.expirationDates) : "",
-      empty: `No option contracts for ${listingTitle(identity)}.`,
+      empty: adjusted ? `No adjusted option contracts for ${listingTitle(identity)} on this expiry.` : `No option contracts for ${listingTitle(identity)}.`,
       ...(contractCount > 0 ? { footnote: optionsBasisFootnote(basis, chain) } : {}),
       exportIdentity: { symbolOrSeries: listing.key, currencyOrUnit: currency, interval: OPTIONS_EXPORT_INTERVAL },
       // Exports state each decimal's unit in its header and end every row with the spot and dates it is as of.
@@ -3287,6 +3296,8 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "delta", header: "Delta (decimal)" },
         { key: "volume", header: "Vol" },
         { key: "openInterest", header: "OI" },
+        { key: "quoteStale", header: "Quote stale" },
+        ...(adjusted ? [{ key: "deliverable", header: "Deliverable" }] : []),
         { key: "spot", header: "Spot" },
         { key: "spotBasis", header: "Spot basis" },
         { key: "spotAsOf", header: "Spot as of" },
@@ -3331,6 +3342,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "delta", header: "Delta", align: "right", format: formatOptionDeltaCell },
         { key: "volume", header: "Vol", align: "right", format: formatCountCell, optional: true, dropPriority: 1 },
         { key: "openInterest", header: "OI", align: "right", format: formatCountCell, optional: true, dropPriority: 1 },
+        ...(adjusted ? [{ key: "deliverable", header: "Deliverable", format: (value: unknown) => typeof value === "string" ? value : "not stated" }] : []),
       ],
     });
   });
@@ -3770,6 +3782,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
           description: "Expiration as a date (2028-01-21) or Unix seconds; defaults to the nearest one, and lists the others. With --leaps: rank that expiry alone",
         },
         EXCHANGE_OPTION,
+        { flags: "--adjusted", description: "List the contracts a corporate action adjusted (a numbered root such as ETHA1), each with what it delivers, in place of the standard ones" },
         { flags: "--leaps", description: "Rank long-dated contracts across the symbols given, as a stock replacement; more than a year out unless a window says otherwise" },
         { flags: "--side <calls|puts>", description: `With --leaps: the side to rank (default ${DEFAULT_LEAPS_CRITERIA.side}s)` },
         {

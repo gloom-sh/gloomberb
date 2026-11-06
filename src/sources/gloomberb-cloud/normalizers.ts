@@ -5,6 +5,7 @@ import type {
   FinancialStatement,
   Fundamentals,
   NextEarnings,
+  OptionContract,
   OptionsChain,
   PricePoint,
   Quote,
@@ -24,6 +25,7 @@ import { isRoundTheClockCoin } from "../../utils/crypto-pair";
 import { latestSettledSessionDate } from "../../utils/price-history";
 import { zonedDateTimeParts, zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
 import { createProviderMiss } from "../provider-errors";
+import { parseOptionTicker } from "../../utils/options";
 import { reconcileQuoteDayRange } from "../../market-data/quotes/day-range";
 import { redactUnavailableFundamentals } from "../../utils/fundamentals";
 import { readWithdrawnObservations } from "../../utils/statement-gaps";
@@ -343,14 +345,32 @@ export function mapCloudFinancials(
   };
 }
 
+/**
+ * Whether a contract is one a corporate action adjusted: the server tags the
+ * ones it lists on request, and a contract under a numbered root that is not
+ * the underlying's (ETHA1 beside ETHA) is one too, from a server that does not.
+ */
+function isAdjustedContract(contract: OptionContract, underlying: string): boolean {
+  if (contract.adjusted) return true;
+  const root = parseOptionTicker(contract.contractSymbol)?.underlying.toUpperCase();
+  return !!root && /\d$/.test(root) && root !== underlying.toUpperCase();
+}
+
+/**
+ * A served chain: its standard contracts, or with `adjusted` the contracts a
+ * corporate action adjusted, which price another deliverable and are listed
+ * only when asked for.
+ */
 export function mapOptionsChain(
   chain: CloudOptionsChainPayload,
+  { adjusted = false }: { adjusted?: boolean } = {},
 ): OptionsChain {
+  const keep = (contract: OptionContract) => isAdjustedContract(contract, chain.underlyingSymbol) === adjusted;
   return {
     underlyingSymbol: chain.underlyingSymbol,
     expirationDates: chain.expirationDates ?? [],
-    calls: chain.calls ?? [],
-    puts: chain.puts ?? [],
+    calls: (chain.calls ?? []).filter(keep),
+    puts: (chain.puts ?? []).filter(keep),
     providerId: chain.providerId,
     dataSource: chain.dataSource,
     feed: chain.feed,

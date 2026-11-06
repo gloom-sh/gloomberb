@@ -154,7 +154,7 @@ test("an options export says on every row what it is, the spot and time behind I
     expect(listedOpenInterest).toHaveBeenCalledWith("open-interest?symbol=GOOGL&expiry=2028-03-17", expect.anything());
     const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, render).split("\n");
     const [header, ...rows] = csv.filter((line) => line && !line.startsWith("#"));
-    expect(header).toBe(["Side,Contract,Expiry,Strike,Last,Bid,Ask,IV (annualized decimal),IV source,Delta (decimal),Vol,OI",
+    expect(header).toBe(["Side,Contract,Expiry,Strike,Last,Bid,Ask,IV (annualized decimal),IV source,Delta (decimal),Vol,OI,Quote stale",
       "Spot,Spot basis,Spot as of,OI as of", ...EXPORT_IDENTITY_COLUMNS].join(","));
     expect(rows).toHaveLength(4);
     for (const row of rows) {

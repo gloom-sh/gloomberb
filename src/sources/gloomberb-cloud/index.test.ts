@@ -959,6 +959,30 @@ describe("GloomberbCloudProvider", () => {
     });
   });
 
+  test("a chain is its standard contracts; a numbered root's are listed only when asked for", async () => {
+    apiClient.ensureVerifiedSession = async () => verifiedUser;
+    const contract = (contractSymbol: string, adjusted?: { root: string; deliverable: string | null }) => ({
+      contractSymbol, strike: 9, currency: "USD", lastPrice: 0, change: 0, percentChange: 0, bid: 1, ask: 1.2,
+      impliedVolatility: 0, inTheMoney: true, expiration: 1_793_923_200, lastTradeDate: 0, ...(adjusted ? { adjusted } : {}),
+    });
+    let asked: { adjusted?: boolean } | undefined;
+    apiClient.getCloudOptionsChain = async (_symbol, _exchange, _expiration, options) => {
+      asked = options;
+      // A server that does not filter sends both; one that does tags the adjusted ones it lists on request.
+      return { status: "success", data: { providerId: "gloomberb-cloud", underlyingSymbol: "ETHA", expirationDates: [1_793_923_200],
+        calls: [contract("ETHA261106C00009000"), contract("ETHA1261106C00009000", options?.adjusted ? { root: "ETHA1", deliverable: "15 ETHA" } : undefined)],
+        puts: [contract("ETHA1261106P00009000")] } };
+    };
+    const provider = new GloomberbCloudProvider();
+    const standard = await provider.getOptionsChain("ETHA", "NASDAQ", 1_793_923_200);
+    expect([...standard.calls, ...standard.puts].map((entry) => entry.contractSymbol)).toEqual(["ETHA261106C00009000"]);
+    expect(asked?.adjusted).toBe(false);
+    const adjusted = await provider.getOptionsChain("ETHA", "NASDAQ", 1_793_923_200, { adjustedOptions: true });
+    expect(asked?.adjusted).toBe(true);
+    expect([...adjusted.calls, ...adjusted.puts].map((entry) => [entry.contractSymbol, entry.adjusted?.deliverable ?? null]))
+      .toEqual([["ETHA1261106C00009000", "15 ETHA"], ["ETHA1261106P00009000", null]]);
+  });
+
   test("preserves original target context when streaming quotes", () => {
     let unsubscribeCalled = false;
     const seenQuotes: Array<{ price: number; currency: string }> = [];

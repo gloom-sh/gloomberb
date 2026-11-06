@@ -5,10 +5,12 @@ import {
   extractImpliedForward,
   forwardFromCarry,
   optionMid,
+  quoteUnderIntrinsic,
   realizedVolatilityCadenceIssue,
   realizedVolatilityResult,
   solveImpliedVolatility,
   valueOption,
+  withQuotesUnderIntrinsicMarked,
   type OptionSide,
   type OptionValuation,
 } from "../shared/volatility";
@@ -110,6 +112,8 @@ export function solveChainVolatilities(
     return { valuationTime, byStrike, filled };
   }
   if (!positive(spot)) return { valuationTime, byStrike, filled };
+  // A quote under intrinsic is no market: no midpoint, forward or IV is read from it.
+  chain = withQuotesUnderIntrinsicMarked(chain, spot);
   const rate = optionChainRate(chain);
   const carry = Number.isFinite(dividendYield) ? dividendYield! : 0;
   const expirations = new Set([...chain.calls, ...chain.puts].map((contract) => contract.expiration));
@@ -242,8 +246,9 @@ export function calculateOptionGreeks(
     return { price, delta, gamma, thetaPerDay: theta, vegaPerPoint: vega, rhoPerPoint: 0 };
   }
   const volatility = contract ? volatilities.byStrike.get(contract.strike) : undefined;
-  // A side nobody bids has no market to measure sensitivity against.
-  if (!contract || optionMid(contract) == null || !positive(spot) || !positive(contract.strike) || volatility == null || !(volatility >= 0)) {
+  // A side nobody bids, or a stale quote, has no market to measure sensitivity against.
+  if (!contract || optionMid(contract) == null || quoteUnderIntrinsic(contract, side, spot) || !positive(spot) || !positive(contract.strike)
+    || volatility == null || !(volatility >= 0)) {
     return undefined;
   }
   return valueOption({

@@ -65,9 +65,40 @@ export function strikeFromLogMoneyness(logMoneyness: number, forward: number): n
 export interface ParityQuote { strike: number; bid: number; ask: number; contractSymbol?: string }
 
 /** Crossed, empty and one-sided markets cannot supply a midpoint. */
-export function optionMid(quote: Pick<ParityQuote, "bid" | "ask">): number | null {
-  return positive(quote.bid) && positive(quote.ask) && quote.ask >= quote.bid
+export function optionMid(quote: Pick<ParityQuote, "bid" | "ask"> & { quoteStale?: boolean }): number | null {
+  // A quote from before the chain's session, or under intrinsic, is no market to read a midpoint from.
+  return quote.quoteStale !== true && positive(quote.bid) && positive(quote.ask) && quote.ask >= quote.bid
     ? quote.bid + (quote.ask - quote.bid) / 2 : null;
+}
+
+/**
+ * How far under intrinsic an ask has to be to be no market: half a percent of
+ * the underlying, so a deep in-the-money quote a moment behind a moving price
+ * is not read as one. The server marks the same quotes (and those quoted
+ * before the session) `quoteStale`.
+ */
+const UNDER_INTRINSIC_MARGIN = 0.005;
+
+/** Whether an ask sits under the option's intrinsic value at `spot`: a quote no one could trade. */
+export function quoteUnderIntrinsic(quote: Pick<ParityQuote, "strike" | "ask">, side: "call" | "put", spot: number | undefined): boolean {
+  if (spot == null || !positive(spot) || !positive(quote.ask) || !positive(quote.strike)) return false;
+  const intrinsic = side === "call" ? spot - quote.strike : quote.strike - spot;
+  return quote.ask < intrinsic - UNDER_INTRINSIC_MARGIN * spot;
+}
+
+/** The chain with every quote under intrinsic at `spot` marked `quoteStale`, as the server marks it; the same chain when none is. */
+export function withQuotesUnderIntrinsicMarked<T extends { calls: C[]; puts: C[] }, C extends ParityQuote & { quoteStale?: boolean }>(
+  chain: T, spot: number | undefined,
+): T {
+  let marked = 0;
+  const mark = (side: "call" | "put") => (contract: C): C => {
+    if (contract.quoteStale || !quoteUnderIntrinsic(contract, side, spot)) return contract;
+    marked += 1;
+    return { ...contract, quoteStale: true };
+  };
+  const calls = chain.calls.map(mark("call"));
+  const puts = chain.puts.map(mark("put"));
+  return marked ? { ...chain, calls, puts } : chain;
 }
 
 interface ParityPair {

@@ -1136,6 +1136,18 @@ export interface OptionContract {
   /** Millisecond timestamp for the latest streamed quote applied to this snapshot. */
   lastUpdated?: number;
   /**
+   * The quote cannot be priced: it is from before the chain's session, or its
+   * ask is under intrinsic value. Its bid and ask are shown, marked stale; no
+   * implied volatility, greek or surface point is read from it.
+   */
+  quoteStale?: boolean;
+  /**
+   * A contract adjusted for a corporate action (root ETHA1 beside ETHA): it
+   * prices another deliverable, so a chain lists it only when asked to, with
+   * what it delivers ("15 ETHA + 120.5 USD cash"; null when the source does not say).
+   */
+  adjusted?: { root: string; deliverable: string | null };
+  /**
    * A venue's own mark, for a venue that marks every contract (Deribit): the
    * premium in `currency`, its implied volatility (a decimal) and Black-76
    * greeks at the expiry's forward (delta per 1.00, gamma per 1.00, vega per

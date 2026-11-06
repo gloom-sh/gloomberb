@@ -72,7 +72,7 @@ import { signedPositionDirection } from "../../../portfolio/position-metrics";
 import { optionMarketReference } from "./market-reference";
 import { useOptionsEnrichment } from "./enrichment";
 import type { OptionsEnrichmentSnapshot } from "./enrichment-model";
-import { optionMid, type OptionSide } from "../shared/volatility";
+import { optionMid, withQuotesUnderIntrinsicMarked, type OptionSide } from "../shared/volatility";
 import type { TickerRecord } from "../../../types/ticker";
 import type { TickerFinancials } from "../../../types/financials";
 import type { IvStats } from "../iv-history/client";
@@ -551,14 +551,6 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     () => strikeChain ? overlayOptionChainQuotes(strikeChain, optionQuoteEntries, optionQuoteFreshness, optionQuoteBroker).chain : null,
     [optionQuoteEntries, optionQuoteFreshness, strikeChain, optionQuoteBroker],
   );
-  const callsByStrike = useMemo(
-    () => new Map(liveChain?.calls.map((c) => [c.strike, c]) ?? []),
-    [liveChain],
-  );
-  const putsByStrike = useMemo(
-    () => new Map(liveChain?.puts.map((p) => [p.strike, p]) ?? []),
-    [liveChain],
-  );
   // IV and the Greeks are valued at one spot and instant, which the footer
   // names: the close a chain from the close was quoted against, else the
   // latest price (docs/research-data.md#greeks-spot-and-time).
@@ -566,6 +558,16 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const modelSpot = useMemo(() => liveChain ? optionModelSpot(underlyingQuote, liveChain, Date.now(), effectiveExchange) : null,
     [liveChain, underlyingQuote, effectiveExchange]);
   const greeksSpot = modelSpot?.price;
+  // A quote under intrinsic at that spot is shown stale, as the server marks one from before the session.
+  const pricedChain = useMemo(() => liveChain ? withQuotesUnderIntrinsicMarked(liveChain, greeksSpot) : null, [greeksSpot, liveChain]);
+  const callsByStrike = useMemo(
+    () => new Map(pricedChain?.calls.map((c) => [c.strike, c]) ?? []),
+    [pricedChain],
+  );
+  const putsByStrike = useMemo(
+    () => new Map(pricedChain?.puts.map((p) => [p.strike, p]) ?? []),
+    [pricedChain],
+  );
   // One solve per applied batch: a streamed contract's IV comes from its live
   // midpoint, the rest from the snapshot, all against the same forward.
   const volatilities = useMemo(

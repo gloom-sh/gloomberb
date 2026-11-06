@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { solveImpliedVolatility, valueOption } from "./pricing";
 import { expectedMove, extractImpliedForward, forwardFromCarry, logForwardMoneyness, optionDelta,
-  optionMid, strikeForDelta, strikeFromLogMoneyness, volatilityTermSlope } from "./options";
+  optionMid, quoteUnderIntrinsic, strikeForDelta, strikeFromLogMoneyness, volatilityTermSlope, withQuotesUnderIntrinsicMarked } from "./options";
 
 const input = { spot: 100, years: 0.5, rate: 0.04, dividendYield: 0.015, volatility: 0.3 };
 function quote(strike: number, side: "call" | "put") {
@@ -114,4 +114,27 @@ test("expected move uses a same-strike ATM straddle and separate one-sigma estim
 test("term slope is the IV change per year between two tenors", () => {
   expect(volatilityTermSlope({ years: 0.25, volatility: 0.4 }, { years: 0.5, volatility: 0.3 })).toBeCloseTo(-0.4, 9);
   expect(volatilityTermSlope({ years: 0.5, volatility: 0.4 }, { years: 0.5, volatility: 0.3 })).toBeNull();
+});
+
+describe("quotes that cannot be priced", () => {
+  test("an ask under intrinsic by more than half a percent of spot is marked stale and gives no midpoint; one a moment behind is kept", () => {
+    // ETHA's 6 Nov chain on 5 Nov, spot 50.77: the strike-5 call last quoted before a split at 15.35/15.55.
+    const chain = {
+      calls: [
+        { strike: 5, bid: 15.35, ask: 15.55, contractSymbol: "ETHA261106C00005000" },
+        // 10 cents under its 20.77 intrinsic: inside the 25-cent margin.
+        { strike: 30, bid: 20.5, ask: 20.67, contractSymbol: "ETHA261106C00030000" },
+        { strike: 51, bid: 0.63, ask: 0.69, contractSymbol: "ETHA261106C00051000" },
+      ],
+      puts: [{ strike: 67, bid: 15.5, ask: 15.7, contractSymbol: "ETHA261106P00067000" }],
+    };
+    const marked = withQuotesUnderIntrinsicMarked(chain, 50.77);
+    expect(marked.calls.map((contract) => (contract as { quoteStale?: boolean }).quoteStale ?? false)).toEqual([true, false, false]);
+    expect((marked.puts[0] as { quoteStale?: boolean }).quoteStale).toBe(true);
+    expect(optionMid(marked.calls[0]!)).toBeNull();
+    expect(optionMid(marked.calls[2]!)).toBeCloseTo(0.66, 10);
+    // Without a spot nothing is judged, and an unmarked chain is the same object.
+    expect(withQuotesUnderIntrinsicMarked(chain, undefined)).toBe(chain);
+    expect(quoteUnderIntrinsic(chain.calls[0]!, "call", 50.77)).toBe(true);
+  });
 });
