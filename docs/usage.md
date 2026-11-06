@@ -93,6 +93,8 @@ The focused pane's footer shows its actions with their keys, such as `[a]dd`. Th
 - A group linked to a watchlist, portfolio or scanner leaves the list and stays on the new ticker. The search never edits the list; **Link to** in the pane menu puts the group back on it.
 - A pane that shows no ticker (a list, a news feed, a market board, a chart of several tickers) opens the ticker in a Ticker Research pane, as `DES` does.
 
+The command bar does the same for a ticker when a Ticker Research pane has focus: Enter shows the ticker there and `Shift+Enter` opens it in a new pane, and the prompt names both keys at its end while such a row is selected. With another pane focused, or none, Enter opens the ticker in a pane of its own, or goes to one that already shows it.
+
 ### Linking a pane to a list
 
 A pane that shows one ticker (`GP`, `GIP`, `GF`, `GE`, `OMON`, `OPX`, `SEAS`, `FA`, company news) can follow a watchlist, portfolio or scanner like the research pane. Choose **Link to** and the list's name in its pane menu (`OPX NVDA  ⧉ Linked to Watchlist`).
