@@ -25,7 +25,7 @@ export function moveCondition(word: string | undefined): AlertCondition | null {
 }
 
 /** The largest move a rule takes, in percent: a fall cannot pass 100%. */
-export const MAX_MOVE_PERCENT = 100;
+const MAX_MOVE_PERCENT = 100;
 
 /** `0.5%`, `3`, `+3%`: a move in percent, unsigned; null when it is no positive number up to 100. */
 export function parseMovePercent(text: string | undefined): number | null {
@@ -33,9 +33,6 @@ export function parseMovePercent(text: string | undefined): number | null {
   const value = match ? Number(match[1]) : Number.NaN;
   return Number.isFinite(value) && value > 0 && value <= MAX_MOVE_PERCENT ? value : null;
 }
-
-/** Whether a level rule is a move from the previous close. */
-export const isMoveAlert = (alert: Pick<AlertRule, "move">): boolean => alert.move === true;
 
 const percentText = (value: number) => `${Number(value.toFixed(2)).toFixed(2)}%`;
 

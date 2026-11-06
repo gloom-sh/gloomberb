@@ -68,6 +68,6 @@ export function writeLevelAlertStores(alerts: AlertRule[]): Record<string, strin
   return Object.fromEntries(LEVEL_ALERT_KEYS.map(key => [key, serializeAlerts(alerts.filter(a => levelAlertStoreKey(a) === key))]));
 }
 /** Price, valuation/technical, relative strength and move rules each keep their own synced list. */
-export const LEVEL_ALERT_KEYS = [ALERTS_KEY, METRIC_ALERTS_KEY, RELATIVE_ALERTS_KEY, MOVE_ALERTS_KEY] as const;
+const LEVEL_ALERT_KEYS = [ALERTS_KEY, METRIC_ALERTS_KEY, RELATIVE_ALERTS_KEY, MOVE_ALERTS_KEY] as const;
 export const levelAlertStoreKey = (alert: Pick<AlertRule, "metric" | "move">): string =>
   alert.metric ? metricAlertsKey(alert.metric) : alert.move ? MOVE_ALERTS_KEY : ALERTS_KEY;

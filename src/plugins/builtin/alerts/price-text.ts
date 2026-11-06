@@ -11,12 +11,12 @@ import type { AlertRule } from "./types";
 export type AlertPriceSubject = Pick<AlertRule, "symbol" | "exchange" | "lastQuoteExchange" | "lastQuoteCurrency" | "lastQuotePence">;
 
 /** Whether an alert is on a currency pair (GBPUSD=X, EURUSD:CCY), whose rates print to the pair's precision. */
-export function isCurrencyPairAlert(alert: Pick<AlertRule, "symbol" | "exchange" | "lastQuoteExchange">): boolean {
+function isCurrencyPairAlert(alert: Pick<AlertRule, "symbol" | "exchange" | "lastQuoteExchange">): boolean {
   return isCurrencyPairListing(alert.symbol, alert.exchange || alert.lastQuoteExchange);
 }
 
 /** Whether an alert's listing trades in pence (a London line priced in pounds, 117.35p), which its levels are written in. */
-export function isPenceAlert(alert: Pick<AlertRule, "lastQuotePence">): boolean {
+function isPenceAlert(alert: Pick<AlertRule, "lastQuotePence">): boolean {
   return alert.lastQuotePence === true;
 }
 

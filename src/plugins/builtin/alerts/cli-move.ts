@@ -4,13 +4,12 @@
 // alert of its own, added in one write with one summary.
 import type { MarketContext } from "../../../cli/types";
 import type { Quote } from "../../../types/financials";
-import { canonicalExchange, exchangeLabel, parsePublicTickerKey } from "../../../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { chunked, mapWithConcurrency } from "../../../utils/concurrency";
 import type { QuoteBatchResult } from "../../../types/data-provider";
 import { findCollection } from "../portfolio-list/cli/render";
 import { createAlert, sameLevelRule } from "./alert-engine";
-import { alertListing } from "./format";
-import { moveBasisText, moveCondition, movePercentText, moveReached, moveRuleWords, parseMovePercent, readMove } from "./move";
+import { moveBasisText, moveCondition, movePercentText, moveReached, moveRuleWords, parseMovePercent } from "./move";
 import { moveQuoteFields } from "./quotes";
 import type { AlertCondition, AlertRule } from "./types";
 
@@ -202,9 +201,6 @@ export function moveNowText(alert: AlertRule, now = Date.now()): string | null {
   return `now ${movePercentText(percent)} ${moveBasisText(alert.lastMoveBasis, now)}${reached}`;
 }
 
-/** `7203:JPX`, `AAPL`: the listing a move alert was kept on. */
-export const keptListingText = (alert: Pick<AlertRule, "symbol" | "exchange">) => alertListing({ symbol: alert.symbol, exchange: alert.exchange });
-
 /** "LSE 120, JPX 100, NYSE 3": how many alerts were added on each venue, most first. */
 export function venueCounts(alerts: readonly AlertRule[]): string {
   const counts = new Map<string, number>();
@@ -214,9 +210,3 @@ export function venueCounts(alerts: readonly AlertRule[]): string {
   }
   return [...counts].sort((left, right) => right[1] - left[1]).map(([venue, count]) => `${count} ${venue === "other" ? "other" : venue}`).join(", ");
 }
-
-/** "Tokyo Stock Exchange (JPX)": a venue in words, for a single alert's line. */
-export const venueWords = (venue: string | undefined) => venue ? exchangeLabel(venue) : "";
-
-/** Reads a move from a quote for the plan's tests and the add's line; re-exported so callers need one module. */
-export { readMove };

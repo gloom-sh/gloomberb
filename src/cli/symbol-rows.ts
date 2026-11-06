@@ -361,7 +361,7 @@ const MAIN_VENUE_SHARE = 0.1;
  * London and Tokyo book's BP on NYSE and NTT on Warsaw, which a bare symbol
  * or a name can land on. Null for a short list, or one with no row off them.
  */
-export function offVenueRows(rows: readonly SymbolRow[]): { main: string[]; rows: SymbolRow[] } | null {
+function offVenueRows(rows: readonly SymbolRow[]): { main: string[]; rows: SymbolRow[] } | null {
   // A pair or a coin has no venue to be off; the US exchanges are one market.
   const market = (row: SymbolRow) => isUsListingExchange(row.exchange!) ? "US" : canonicalExchange(row.exchange!);
   const landed = rows.filter((row) => (row.status === "added" || row.status === "already_listed") && row.exchange
@@ -378,7 +378,7 @@ export function offVenueRows(rows: readonly SymbolRow[]): { main: string[]; rows
 const UNVENUED = new Set(["CCY", "CRYPTO", "FX"]);
 
 /** "8 landed outside the list's main venues (LSE, JPX): BP:NYSE, NTT:WSE, ...", each as typed beside the listing it went to. */
-export function offVenueSummary(rows: readonly SymbolRow[]): string | null {
+function offVenueSummary(rows: readonly SymbolRow[]): string | null {
   const off = offVenueRows(rows);
   if (!off) return null;
   const named = off.rows.map((row) => {

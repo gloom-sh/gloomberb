@@ -728,7 +728,7 @@ async function withOneWordNames(
       const found = await resolveCliTicker(named.key, store, dataProvider, undefined, { ...options, ownExchangeWins: true, changeGraceMs: LOOKUP_TIMEOUT_MS });
       return { input: entry.input, ...found, readAs: named.readAs ?? found.readAs };
     } catch (error) {
-      // Intentional ignore: a name that cannot be read keeps the word's own "not found".
+      // A name that cannot be read keeps the word's own "not found".
       logFailure("cli.ticker-resolution", "Read a word as a company's name failed")(error);
       return entry;
     }
