@@ -12,7 +12,7 @@ import { captureConsole } from "../../test-support/console";
 import { createTestTicker } from "../../test-support/ticker";
 import { resetBoardCoins } from "../board-coins";
 import { withSearchHints } from "../not-a-ticker";
-import { buildSearchReport, search } from "./search";
+import { buildSearchReport, search, searchCandidatesForCli } from "./search";
 import { marketDataCliCommands } from "./market";
 
 const quoteCommand = marketDataCliCommands.find((command) => command.name === "quote")!;
@@ -879,7 +879,8 @@ test("a word written as a name that is another company's ticker is the company o
   const row = (symbol: string, name: string, exchange: string, homeListing = false) =>
     ({ providerId: "test", symbol, name, exchange, type: "Common Stock", currency: "USD", ...homeListing ? { homeListing } : {} });
   const answer = [
-    row("AEON", "AEON Biopharma, Inc.", "AMEX"), row("8267", "Aeon Co., Ltd.", "JPX", true), row("SNAP", "Snap Inc.", "NYSE", true),
+    row("AEON", "AEON Biopharma, Inc.", "AMEX"), row("8267", "Aeon Co., Ltd.", "JPX", true), row("AEON", "Aeon Strategies Ltd.", "CSE"),
+    row("SNAP", "Snap Inc.", "NYSE", true),
   ];
   const dataProvider = createTestDataProvider({
     search: async (query) => answer.filter((entry) => entry.name.toUpperCase().startsWith(query.toUpperCase())),
@@ -896,4 +897,8 @@ test("a word written as a name that is another company's ticker is the company o
   expect(await quoted("Aeon")).toEqual(["8267:JPX", 'Read "Aeon" as 8267:JPX (Aeon Co., Ltd.); the ticker AEON is AEON Biopharma, Inc.']);
   expect(await quoted("AEON")).toEqual(["AEON", null]);
   expect(await quoted("Snap")).toEqual(["SNAP", null]);
+  // Search agrees: the name's company is the primary listing, the ticker's another match.
+  const biopharma = createTestQuote({ symbol: "AEON", name: "AEON Biopharma, Inc.", exchangeName: "AMEX" });
+  const listed = await searchCandidatesForCli({ query: "Aeon", tickers: [], dataProvider, quote: Promise.resolve(biopharma) });
+  expect(listed.map((candidate) => `${candidate.symbol} ${candidate.category}`)).toEqual(["8267 Primary Listing", "AEON Other Matches", "AEON Other Matches"]);
 });
