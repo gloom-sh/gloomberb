@@ -36,7 +36,7 @@ const outlierRow = (row: SocialOutlierRow) => ({
 
 export const socialMentionsHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", optional: true, placeholder: "ticker",
-    description: "Ticker with a searchable cashtag (up to six letters and digits); omit for the tickers whose posts jump most against their own 30-day median." },
+    description: "Ticker with a searchable cashtag (up to six letters and digits); omit for the tickers whose posts jump above their own 30-day median." },
   freshness: { source: "X posts", status: "not-a-feed", basis: "daily post counts" },
   discovery: { aliases: ["BUZZ"], dataRequirements: ["Free Gloom sign-in", "Gloom Cloud X mention history"],
     limitations: ["Daily $cashtag posts on X in UTC days, spam included.", "Top posts and stance cover days that were looked up.", "Views exist from 2022-12-22."] },

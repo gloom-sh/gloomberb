@@ -17,7 +17,7 @@ export const socialMentionsModule: PluginModule = {
     defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 96, height: 30 },
     tableExport: true, headless: socialMentionsHeadless, settings: { title: "Social Mentions", fields: socialMentionsSettings } }],
   paneTemplates: [{ ...createTickerSurfacePaneTemplate({ id: "social-mentions-pane", paneId: "social-mentions", label: "Social Mentions",
-    description: "Daily posts on X naming the ticker's cashtag, the day's top posts and their stance; alone, the tickers whose posts jump most against their own median.",
+    description: "Daily posts on X naming the ticker's cashtag, the day's top posts and their stance; alone, the tickers whose posts jump above their own median.",
     shortcut: "BUZZ", keywords: ["social", "mentions", "x", "twitter", "buzz", "sentiment", "stance", "cashtag", "outliers"], publicShare: true,
     // Typed alone with no active ticker it ranks the market's social outliers.
     withoutTickerTitle: SOCIAL_OUTLIERS_TITLE,
