@@ -31,8 +31,8 @@ const FRAME_ROLES = ["app-header", "pane-window", "dock-divider", "status-bar"];
 const FRAME_SELECTOR = FRAME_ROLES.map((role) => `[data-gloom-role="${role}"]`).join(", ");
 /**
  * Kept empty: pane bodies and footers are most of the page and are the data
- * the app fills from its cache as it starts. The market state and SPY quote in
- * the header, an update status said last session ("Restart to update") and
+ * the app fills from its cache as it starts. The header's market and its
+ * state, an update status said last session ("Restart to update") and
  * the status bar's widgets (an unread count, the account) are not true at the
  * next launch.
  */

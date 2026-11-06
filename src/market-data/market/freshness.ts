@@ -602,18 +602,30 @@ export function isMiddayBreakPrint(
   now: number,
   feedLagMs: number,
 ): boolean {
+  if (!Number.isFinite(timestampMs) || timestampMs > now) return false;
+  const pause = middayBreakOn(exchange, now);
+  if (!pause) return false;
+  return now >= pause.start && now <= pause.end + feedLagMs + MIDDAY_BREAK_MARGIN_MS
+    && timestampMs >= pause.start - MIDDAY_BREAK_MARGIN_MS;
+}
+
+/**
+ * The venue's midday break on the local day `now` falls in (HKEX pauses
+ * 12:00 to 13:00), whatever the time of day: when it starts and when the
+ * afternoon session opens. Null for a venue that trades through the day and
+ * on a day outside its trading week.
+ */
+export function middayBreakOn(exchange: string | undefined, now: number): { start: number; end: number } | null {
   const canonical = canonicalExchange(exchange);
   const pause = MIDDAY_BREAKS[canonical];
   const timeZone = pause?.timeZone ?? EXCHANGE_TIME_ZONES[canonical];
-  if (!pause || !timeZone || !Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now) return false;
+  if (!pause || !timeZone || !Number.isFinite(now)) return null;
   const { year, month, day } = zonedDateTimeParts(now, timeZone);
   const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-  if (!isTradingWeekday(canonical, weekday)) return false;
+  if (!isTradingWeekday(canonical, weekday)) return null;
   const [start, end] = weekday === 5 && pause.friday ? pause.friday : pause.weekdays;
   const at = (minutes: number) => zonedWallClockToUtcMs(timeZone, year, month, day, Math.floor(minutes / 60), minutes % 60, 0);
-  const breakStart = at(start);
-  return now >= breakStart && now <= at(end) + feedLagMs + MIDDAY_BREAK_MARGIN_MS
-    && timestampMs >= breakStart - MIDDAY_BREAK_MARGIN_MS;
+  return { start: at(start), end: at(end) };
 }
 
 function usSessionState(timestampMs: number): UsSessionState {

@@ -32,7 +32,8 @@ import { t, tf } from "../../i18n";
 import { ariaKeyShortcut } from "../../app/keybindings/chord";
 import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
 import { ClippedText, NATIVE_CLIP_STYLE } from "../ui/display";
-import { resolveMarketSummaryFit, useMarketSummary } from "./market-summary";
+import { marketSummaryWidths, resolveMarketSummaryFit, useMarketSummary } from "./market-summary";
+import { HEADER_MARKET_SEARCH } from "../../core/state/app/command-bar-launch";
 import { resolveHeaderPromptGeometry } from "./shell/chrome";
 import { useWindowFullscreen } from "./window-fullscreen";
 import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-controls";
@@ -766,48 +767,50 @@ function NativeUpdateStatus({ onRestart, trailingGap, updateKey, view }: {
 }
 
 /**
- * Market state, SPY and the base currency at the header's right edge. It fits
- * itself into the columns the prompt geometry reserved rather than into
+ * The market the user follows, at the header's right edge: its venue's state
+ * (`NYSE closed · opens 9:30 ET`) and its quote (`S&P 500 6,843 +0.20%`). It
+ * fits itself into the columns the prompt geometry reserved rather than into
  * whatever this row has left over, so the cluster and the prompt can never
- * both claim the same space.
+ * both claim the same space. Pressing it opens the market picker in the
+ * command bar, as the Header Market command does; the button is flush, so
+ * the cluster sits where its text would without one.
  */
 function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: boolean; width: number }) {
   const colors = useThemeColors();
+  const dispatch = useAppDispatch();
   const summary = useMarketSummary();
   const fit = resolveMarketSummaryFit({
     available: width,
-    baseCurrencyWidth: displayWidth(summary.baseCurrencyLabel) + 1,
-    countdownWidth: summary.marketLabel.length - summary.marketLabelShort.length,
-    // A delayed SPY carries its mark only while the status bar does not say the
-    // delay. Then the two fit, or give way, together, and once the rest of the
-    // cluster is gone SPY gives up its move rather than give way.
-    spyWidth: summary.spyText.length + 1 + (summary.spyDelayMinutes != null ? delayedMarkWidth(summary.spyDelayMinutes, nativePaneChrome) + 1 : 0),
-    spyMoveWidth: summary.spyDelayMinutes != null ? summary.spyText.length - summary.spyPriceText.length : 0,
-    stateWidth: summary.marketLabelShort ? summary.marketLabelShort.length + 1 : 0,
+    // A delayed quote carries its mark only while the status bar does not say
+    // the delay; the two fit, or give way, together.
+    ...marketSummaryWidths(summary, summary.quoteDelayMinutes != null ? delayedMarkWidth(summary.quoteDelayMinutes, nativePaneChrome) : 0),
   });
-  const marketLabel = fit.showCountdown ? summary.marketLabel : summary.marketLabelShort;
+  const openPicker = useCallback(() => {
+    dispatch({ type: "SET_COMMAND_BAR", open: true, query: "", launch: { kind: "ticker-search", query: "", payload: HEADER_MARKET_SEARCH } });
+  }, [dispatch]);
+  if (!fit.showQuote) return null;
+  const muted = nativePaneChrome ? colors.textDim : blendHex(colors.headerText, colors.header, 0.42);
 
   return (
-    <>
-      {fit.showState && marketLabel ? (
-        <Box paddingRight={1} flexShrink={0} data-gloom-role="header-market">
-          <Text fg={summary.marketColor} {...(nativePaneChrome ? { attributes: TextAttributes.BOLD } : {})}>
-            {marketLabel}
-          </Text>
+    <Box paddingRight={1} flexShrink={0} data-gloom-role="header-market">
+      <Button variant="plain" compact flush label="Choose Header Market" title={t("Choose the market the header shows")} onPress={openPicker} stopPropagation>
+        <Box flexDirection="row" alignItems="center" gap={1}>
+          {fit.showState ? (
+            <Box flexDirection="row" flexShrink={0}>
+              <Text fg={summary.marketColor} {...(nativePaneChrome ? { attributes: TextAttributes.BOLD } : {})}>
+                {summary.marketLabel}
+              </Text>
+              {fit.showDetail && summary.marketDetail ? <Text fg={muted}>{` · ${summary.marketDetail}`}</Text> : null}
+            </Box>
+          ) : null}
+          <Box flexDirection="row" flexShrink={0}>
+            <Text fg={nativePaneChrome ? colors.text : colors.headerText}>{`${summary.quoteLabel} `}</Text>
+            <Text fg={summary.quoteColor}>{fit.showQuoteMove ? summary.quoteText : summary.quotePriceText}</Text>
+          </Box>
+          {summary.quoteDelayMinutes != null ? <DelayedMark minutes={summary.quoteDelayMinutes} /> : null}
         </Box>
-      ) : null}
-      {fit.showSpy ? (
-        <Box paddingRight={1} flexShrink={0} flexDirection="row" alignItems="center" gap={1} data-gloom-role="header-market">
-          <Text fg={summary.spyColor}>{fit.showSpyMove ? summary.spyText : summary.spyPriceText}</Text>
-          {summary.spyDelayMinutes != null ? <DelayedMark minutes={summary.spyDelayMinutes} /> : null}
-        </Box>
-      ) : null}
-      {fit.showBaseCurrency ? (
-        <Box paddingRight={1} flexShrink={0}>
-          <Text fg={nativePaneChrome ? colors.textDim : blendHex(colors.headerText, colors.header, 0.42)}>{summary.baseCurrencyLabel}</Text>
-        </Box>
-      ) : null}
-    </>
+      </Button>
+    </Box>
   );
 }
 

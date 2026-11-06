@@ -8,6 +8,7 @@ import type { ListScreenState } from "../list/model";
 import { CommandBarListBody } from "../list/view";
 import { ThemePicker } from "../theme-picker";
 import type { CommandBarRoute } from "../workflow/types";
+import { HEADER_MARKET_TITLE, isHeaderMarketRoute } from "../routes/header-market";
 import { NATIVE_COMMAND_SURFACE, nativeCommandSurfaceBorder } from "./native-surface";
 import { useCommandBarPalette } from "./palette";
 import { publishCommandBarPrompt } from "./prompt-binding";
@@ -38,7 +39,7 @@ function resolvePromptPlaceholder(listState: ListScreenState, example: string | 
   if (listState.kind === "root") {
     return example ? tf("Try: {example}", { example }) : t("Search or run a command");
   }
-  if (listState.title === "Security Description") return t("Search tickers");
+  if (listState.title === "Security Description" || listState.title === HEADER_MARKET_TITLE) return t("Search tickers");
   return t("Filter");
 }
 
@@ -294,7 +295,7 @@ export function CommandBarPanel({
 function getCommandBarPanelTitle(route: CommandBarRoute): string {
   if (route.kind === "mode") {
     if (route.screen === "layout") return "Layout Actions";
-    return "Security Description";
+    return isHeaderMarketRoute(route.payload) ? HEADER_MARKET_TITLE : "Security Description";
   }
   return route.title;
 }

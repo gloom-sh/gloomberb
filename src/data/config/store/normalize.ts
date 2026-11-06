@@ -31,6 +31,7 @@ import { sanitizeStarPrompt } from "../../../app/star-prompt/model";
 import { sanitizeCommandBarOpens } from "../../../app/command-bar-intro";
 import { sanitizeUpdatesConfig } from "../../../updater/channel";
 import { ATTENTION_NOTICE_ACCOUNTS } from "../../../telemetry/attention-setting";
+import { sanitizeHeaderMarketChoice } from "../../../market-data/market/header-market";
 
 const configLog = debugLog.createLogger("config");
 const reportedUnknownThemes = new Set<string>();
@@ -97,6 +98,7 @@ export function normalizeLoadedConfig(
     ...sanitizePluginSeedFailure(candidate.pluginSeedFailure),
     ...(candidate.portfolioCurrenciesAdopted === true ? { portfolioCurrenciesAdopted: true } : {}),
     ...(candidate.presentationMode === true ? { presentationMode: true } : {}),
+    ...withHeaderMarket(sanitizeHeaderMarketChoice(candidate.headerMarket)),
     ...(typeof candidate.timezone === "string" && candidate.timezone.trim() ? { timezone: candidate.timezone.trim() } : {}),
     disabledSources: sanitizeUniqueStringList(candidate.disabledSources ?? defaults.disabledSources),
     pluginConfig: sanitizePluginConfig(candidate.pluginConfig),
@@ -184,6 +186,10 @@ export function normalizeConfigForSave(config: AppConfig): AppConfig {
   Object.assign(persisted, withUpdates(sanitizeUpdatesConfig(config.updates)));
 
   return persisted;
+}
+
+function withHeaderMarket(headerMarket: AppConfig["headerMarket"]): Pick<AppConfig, "headerMarket"> {
+  return headerMarket ? { headerMarket } : {};
 }
 
 function withKeybindings(keybindings: KeybindingsConfig | undefined): Pick<AppConfig, "keybindings"> {

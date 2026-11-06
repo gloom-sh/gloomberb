@@ -16,22 +16,21 @@ const COMMAND_SURFACE_MIN_WIDTH = { native: 46, terminal: 42 };
 
 /**
  * Market budgets used to size the command prompt, widest first. These stay
- * independent of label wording so a longer countdown cannot resize the prompt
- * or the sheet attached to it:
+ * independent of label wording so a longer state or a wider index level
+ * cannot resize the prompt or the sheet attached to it:
  *
- *   42  state, SPY, currency and a short countdown
- *   31  the state label and SPY
- *   21  SPY alone
+ *   42  the exchange's state and the market ("NYSE closed  S&P 500 6,843 +0.20%")
+ *   31  a short state and the market, or the market and its delay
+ *   21  the market alone
  *
  * Steps rather than a share of the window: a reserve of, say, 18 columns is
- * too narrow for anything and would waste all 18. There is deliberately no
- * step for "everything but the countdown", which would cost the sheet eleven
- * columns to add the base currency, the one value here that barely moves.
+ * too narrow for anything and would waste all 18.
  */
 const HEADER_MARKET_TIERS = [42, 31, 21] as const;
 /**
- * Full pre-market label, including "to regular open", when spare room allows:
- * "PRE-MKT · 1h 17m to regular open  SPY $762.43 -0.60%  base USD" with room to spare.
+ * The most the cluster takes from room the prompt and the update status leave
+ * over: the state with when the session opens or closes, and the market, as in
+ * "NYSE pre-market · opens 9:30 ET  S&P 500 6,843 +0.20%  ◷15m".
  */
 const HEADER_MARKET_FULL_COLUMNS = 64;
 
@@ -117,11 +116,12 @@ export function resolveHeaderPromptGeometry(options: {
       termWidth - left - updateReserve - marketReserve,
     ),
   );
-  // Spend only space left after the prompt and update reserve have their room.
-  // The longer market label gives way before either can lose a column.
-  const marketColumns = options.allowMarketExpansion !== false
-    && termWidth - left - width - updateReserve >= HEADER_MARKET_FULL_COLUMNS
-    ? HEADER_MARKET_FULL_COLUMNS
+  // Spend only space left after the prompt and update reserve have their room,
+  // up to the full cluster. The longer market label gives way before either can
+  // lose a column, and a header too narrow for a reserve stays without one.
+  const spare = termWidth - left - width - updateReserve;
+  const marketColumns = options.allowMarketExpansion !== false && marketReserve > 0
+    ? Math.max(marketReserve, Math.min(HEADER_MARKET_FULL_COLUMNS, spare))
     : marketReserve;
   return { left, width, marketColumns, updateColumns: Math.max(0, termWidth - left - width - marketColumns) };
 }

@@ -1,150 +1,139 @@
 import { describe, expect, test } from "bun:test";
 import { resolveHeaderPromptGeometry } from "./shell/chrome";
-import { resolveMarketSummaryFit, spySummary } from "./market-summary";
-import { getExtendedSessionDisplay, getRegularSessionDisplay } from "../../market-data/market/status";
+import {
+  headerMarketState,
+  headerQuoteSummary,
+  marketSummaryWidths,
+  resolveMarketSummaryFit,
+  type MarketSummary,
+} from "./market-summary";
 import { colors } from "../../theme/colors";
-import type { Quote } from "../../types/financials";
-import { sessionQuotes } from "../../test-support/test-fixture-session-quotes";
-import { formatPercentRaw } from "../../utils/format";
+import { createTestQuote } from "../../test-support/data-provider";
 
-/** "PRE-MKT · 1h 17m to regular open  SPY $762.43 -0.60%  base USD", each part with its trailing gap. */
+/** "NYSE pre-market · opens 9:30 ET  S&P 500 6,843 +0.20%  ◷15m", each part with its trailing gap. */
 const CLUSTER = {
-  baseCurrencyWidth: 9,
-  countdownWidth: 25,
-  spyWidth: 19,
-  stateWidth: 8,
+  quoteWidth: 26,
+  quoteMoveWidth: 7,
+  stateWidth: 16,
+  detailWidth: 16,
 };
 
 describe("header market cluster", () => {
   /**
    * The cluster shares the header with the command prompt, so a narrow window
-   * has to take it apart in an order the eye can follow: the countdown suffix
-   * first, then the base currency, then the state label, and SPY last because
-   * it is the value that moves.
+   * takes it apart in an order the eye can follow: when the session changes
+   * first, then the exchange's state, then the quote's move, and the market
+   * last because it is the value that moves.
    */
-  test("sheds the countdown, then the currency, then the state, keeping SPY longest", () => {
-    expect(resolveMarketSummaryFit({ available: 61, ...CLUSTER })).toEqual({
-      showSpy: true,
-      showState: true,
-      showBaseCurrency: true,
-      showCountdown: true,
-      showSpyMove: true,
+  test("sheds the detail, then the state, then the move, keeping the market longest", () => {
+    expect(resolveMarketSummaryFit({ available: 58, ...CLUSTER })).toEqual({
+      showQuote: true, showQuoteMove: true, showState: true, showDetail: true,
     });
-    expect(resolveMarketSummaryFit({ available: 60, ...CLUSTER })).toMatchObject({
-      showSpy: true,
-      showState: true,
-      showBaseCurrency: true,
-      showCountdown: false,
+    expect(resolveMarketSummaryFit({ available: 57, ...CLUSTER })).toEqual({
+      showQuote: true, showQuoteMove: true, showState: true, showDetail: false,
     });
-    expect(resolveMarketSummaryFit({ available: 35, ...CLUSTER })).toMatchObject({
-      showSpy: true,
-      showState: true,
-      showBaseCurrency: false,
-      showCountdown: false,
+    expect(resolveMarketSummaryFit({ available: 41, ...CLUSTER })).toEqual({
+      showQuote: true, showQuoteMove: true, showState: false, showDetail: false,
     });
-    // AFTER-HRS, wider than the base currency label.
-    expect(resolveMarketSummaryFit({ available: 28, ...CLUSTER, stateWidth: 10 })).toMatchObject({
-      showSpy: true,
-      showState: false,
-      showBaseCurrency: true,
+    // A detail that fits on its own never shows without the state it extends.
+    expect(resolveMarketSummaryFit({ available: 41, ...CLUSTER, detailWidth: 10 }).showDetail).toBe(false);
+    expect(resolveMarketSummaryFit({ available: 25, ...CLUSTER })).toEqual({
+      showQuote: true, showQuoteMove: false, showState: false, showDetail: false,
     });
-    expect(resolveMarketSummaryFit({ available: 18, ...CLUSTER })).toMatchObject({
-      showSpy: false,
-      showState: true,
-      showBaseCurrency: true,
+    // With no move to give up, a market too wide for the room gives way, and the state with it.
+    expect(resolveMarketSummaryFit({ available: 25, ...CLUSTER, quoteMoveWidth: 0, stateWidth: 12 })).toEqual({
+      showQuote: false, showQuoteMove: false, showState: false, showDetail: false,
     });
-  });
-
-  /** A countdown without the label it extends would read as a lone timer. */
-  test("never shows a countdown without its state label", () => {
-    const fit = resolveMarketSummaryFit({ ...CLUSTER, available: 30, stateWidth: 0 });
-    expect(fit.showState).toBe(false);
-    expect(fit.showCountdown).toBe(false);
   });
 
   /**
-   * The reserve lives with the prompt geometry and the widths live here, so
-   * this is the seam where the two can drift: a longer countdown must use
+   * The reserve lives with the prompt geometry and the widths here, so this is
+   * the seam where the two can drift: the longer state and its detail use
    * spare columns without shortening the command prompt.
    */
-  test("fits the whole cluster only when spare room preserves the prompt", () => {
+  test("fits the cluster into the columns the prompt leaves, without moving the prompt", () => {
+    const summary: MarketSummary = {
+      marketLabel: "NYSE pre-market",
+      marketDetail: "opens 9:30 ET",
+      marketColor: colors.text,
+      quoteLabel: "S&P 500",
+      quoteText: "6,843 +0.20%",
+      quotePriceText: "6,843",
+      quoteColor: colors.positive,
+      quoteDelayMinutes: 15,
+    };
+    const widths = marketSummaryWidths(summary, 4);
+    const fitAt = (termWidth: number, allowMarketExpansion?: boolean) => resolveMarketSummaryFit({
+      available: resolveHeaderPromptGeometry({ termWidth, allowMarketExpansion }).marketColumns,
+      ...widths,
+    });
+    expect(fitAt(80)).toEqual({ showQuote: true, showQuoteMove: false, showState: false, showDetail: false });
     for (const termWidth of [120, 140, 160]) {
-      const { marketColumns } = resolveHeaderPromptGeometry({ termWidth });
-      expect(resolveMarketSummaryFit({ available: marketColumns, ...CLUSTER })).toMatchObject({
-        showSpy: true,
-        showState: true,
-        showCountdown: false,
-      });
+      expect(fitAt(termWidth)).toEqual({ showQuote: true, showQuoteMove: true, showState: true, showDetail: false });
     }
-    for (const termWidth of [180, 200]) {
-      const { marketColumns } = resolveHeaderPromptGeometry({ termWidth });
-      expect(resolveMarketSummaryFit({ available: marketColumns, ...CLUSTER })).toEqual({
-        showSpy: true,
-        showState: true,
-        showBaseCurrency: true,
-        showCountdown: true,
-        showSpyMove: true,
-      });
-      const updating = resolveHeaderPromptGeometry({ termWidth, allowMarketExpansion: false });
+    for (const termWidth of [200, 240]) {
+      expect(fitAt(termWidth)).toEqual({ showQuote: true, showQuoteMove: true, showState: true, showDetail: true });
+      // An update status keeps the room the detail would take; the prompt stays put either way.
+      expect(fitAt(termWidth, false).showDetail).toBe(false);
+      expect(resolveHeaderPromptGeometry({ termWidth, allowMarketExpansion: false }).width)
+        .toBe(resolveHeaderPromptGeometry({ termWidth }).width);
+    }
+    // Spare room between the tiers goes to the cluster, never out of the prompt.
+    for (const termWidth of [150, 160, 170, 180]) {
       const quiet = resolveHeaderPromptGeometry({ termWidth });
-      expect(updating.width).toBe(quiet.width);
-      expect(updating.marketColumns).toBe(42);
-      expect(updating.updateColumns - quiet.updateColumns).toBe(22);
+      const updating = resolveHeaderPromptGeometry({ termWidth, allowMarketExpansion: false });
+      expect(quiet.width).toBe(updating.width);
+      expect(quiet.marketColumns).toBeGreaterThanOrEqual(updating.marketColumns);
+      expect(quiet.marketColumns).toBeLessThanOrEqual(64);
     }
-
-    // 80 columns keeps only SPY, and reserves nothing it cannot spend.
-    const narrow = resolveHeaderPromptGeometry({ termWidth: 80 });
-    expect(resolveMarketSummaryFit({ available: narrow.marketColumns, ...CLUSTER })).toMatchObject({
-      showSpy: true,
-      showState: false,
-    });
-  });
-
-  /**
-   * An account without Pro sees SPY late, and its mark (`◷15m`, or the clock
-   * and 15m on the desktop) makes SPY too wide for the narrowest cluster.
-   * SPY gives up its move there rather than leave the header to the state
-   * and base currency, which give way first at every wider step.
-   */
-  test("keeps a delayed SPY and its mark by shedding the rest, then SPY's move", () => {
-    const delayed = { ...CLUSTER, spyWidth: CLUSTER.spyWidth + 7, spyMoveWidth: 7 };
-    expect(resolveMarketSummaryFit({ available: 31, ...delayed })).toMatchObject({
-      showSpy: true,
-      showSpyMove: true,
-      showState: false,
-      showBaseCurrency: false,
-    });
-    expect(resolveMarketSummaryFit({ available: 21, ...delayed })).toEqual({
-      showSpy: true,
-      showSpyMove: false,
-      showState: false,
-      showBaseCurrency: false,
-      showCountdown: false,
-    });
-    // A SPY with no move to give up gives way as before.
-    expect(resolveMarketSummaryFit({ available: 21, ...delayed, spyMoveWidth: 0 })).toMatchObject({
-      showSpy: false,
-      showState: true,
-    });
   });
 });
 
-describe("header SPY", () => {
-  const spy = sessionQuotes("SPY");
-  const text = (quote: Quote) => spySummary(quote, colors).spyText;
+describe("header market quote", () => {
+  test("reads an index by its level in whole units and a listing to its tick", () => {
+    const index = createTestQuote({ symbol: "^GSPC", instrumentType: "INDEX", price: 6843.21, change: 13.66, changePercent: 0.2, marketState: "REGULAR" });
+    expect(headerQuoteSummary(index, colors)).toMatchObject({ quoteText: "6,843 +0.20%", quotePriceText: "6,843" });
+    const etf = createTestQuote({ symbol: "SPY", instrumentType: "ETF", price: 687.18, change: -3.66, changePercent: -0.53, marketState: "REGULAR" });
+    expect(headerQuoteSummary(etf, colors).quotePriceText).toBe("$687.18");
+    // A quote without a price is no answer: the strip shows a dash, never a zero level.
+    expect(headerQuoteSummary(createTestQuote({ symbol: "^GSPC", instrumentType: "INDEX", price: 0 }), colors).quoteText).toBe("—");
+  });
+});
 
-  test("holds the regular close and its move once the market is closed, as `ticker SPY` headlines them", () => {
-    const close = getRegularSessionDisplay(spy.weekend)!;
-    expect(text(spy.weekend)).toBe(`SPY $198.78 ${formatPercentRaw(close.changePercent)}`);
-    expect(text(spy.regular)).toBe("SPY $199.10 +0.67%");
+describe("header market state", () => {
+  const at = (iso: string) => Date.parse(iso);
+  const state = (venue: string, iso: string) => {
+    const { marketLabel, marketDetail } = headerMarketState({ venue, exchange: "" }, null, at(iso), colors);
+    return marketDetail ? `${marketLabel} · ${marketDetail}` : marketLabel;
+  };
+
+  /** The exchange's own hours and holidays, read on its clock, whatever zone the machine is in. */
+  test("names the exchange and where its day stands", () => {
+    // Tuesday 13 October 2026 in New York.
+    expect(state("NYSE", "2026-10-13T03:00:00Z")).toBe("NYSE closed · opens 9:30 ET");
+    expect(state("NYSE", "2026-10-13T12:00:00Z")).toBe("NYSE pre-market · opens 9:30 ET");
+    expect(state("NYSE", "2026-10-13T13:50:00Z")).toBe("NYSE open · 6h10 left");
+    expect(state("NYSE", "2026-10-13T21:30:00Z")).toBe("NYSE after-hours · opens 9:30 ET");
+    expect(state("NYSE", "2026-10-14T01:00:00Z")).toBe("NYSE closed · opens 9:30 ET");
+    expect(state("NYSE", "2026-10-17T15:00:00Z")).toBe("NYSE closed · opens Mon 9:30 ET");
+    // Thanksgiving, and the early close the day after it.
+    expect(state("NYSE", "2026-11-26T15:00:00Z")).toBe("NYSE holiday · opens 9:30 ET");
+    expect(state("NYSE", "2026-11-27T16:00:00Z")).toBe("NYSE open · 2h left");
+    // Hong Kong: its lunch break, its afternoon, and the Chung Yeung holiday; no pre-market.
+    expect(state("HKEX", "2026-10-13T01:00:00Z")).toBe("HKEX closed · opens 9:30 HKT");
+    expect(state("HKEX", "2026-10-13T04:30:00Z")).toBe("HKEX lunch · reopens 13:00 HKT");
+    expect(state("HKEX", "2026-10-13T06:00:00Z")).toBe("HKEX open · 2h10 left");
+    expect(state("HKEX", "2026-10-19T02:00:00Z")).toBe("HKEX holiday · opens 9:30 HKT");
+    expect(state("JPX", "2026-10-13T03:00:00Z")).toBe("JPX lunch · reopens 12:30 JST");
+    expect(state("XETRA", "2026-10-17T10:00:00Z")).toBe("XETRA closed · opens Mon 9:00 CET");
   });
 
-  test("shows the open extended session's print and its move from the close beside AFTER-HRS or PRE-MKT", () => {
-    for (const quote of [spy.afterHours, spy.preMarket]) {
-      const extended = getExtendedSessionDisplay(quote)!;
-      expect(text(quote)).toBe(`SPY $${extended.price.toFixed(2)} ${formatPercentRaw(extended.changePercent).padStart(6)}`);
-    }
-    expect(text(spy.afterHours)).toBe("SPY $198.80 +0.01%");
-    expect(text(spy.preMarket)).toBe("SPY $199.50 +0.36%");
+  test("falls back to the quote's state for a venue whose hours it does not know, and says nothing around the clock", () => {
+    const quote = createTestQuote({ symbol: "XYZ", exchangeName: "Nowhere", marketState: "REGULAR" });
+    expect(headerMarketState({ venue: null, exchange: "" }, quote, at("2026-10-13T15:00:00Z"), colors)).toMatchObject({
+      marketLabel: "Nowhere open",
+      marketDetail: null,
+    });
+    expect(headerMarketState({ venue: "CCC", exchange: "" }, null, at("2026-10-13T15:00:00Z"), colors).marketLabel).toBe("");
   });
 });

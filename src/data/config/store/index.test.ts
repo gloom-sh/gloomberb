@@ -168,6 +168,19 @@ test("presentation mode survives a save and reload, and anything but true leaves
   expect("presentationMode" in await loadConfig(dataDir)).toBe(false);
 });
 
+test("the header's market survives a save and reload, and a choice this build cannot show is dropped", async () => {
+  const dataDir = await createTempConfigDir();
+  await writeConfigJson(dataDir, createSavedConfig({ headerMarket: { benchmark: "hang-seng" } }));
+  const loaded = await loadConfig(dataDir);
+  expect(loaded.headerMarket).toEqual({ benchmark: "hang-seng" });
+
+  await saveConfig({ ...loaded, headerMarket: { symbol: "AAPL", exchange: "NASDAQ" } });
+  expect((await loadConfig(dataDir)).headerMarket).toEqual({ symbol: "AAPL", exchange: "NASDAQ" });
+
+  await writeConfigJson(dataDir, createSavedConfig({ headerMarket: { benchmark: "ibex35" } }));
+  expect("headerMarket" in await loadConfig(dataDir)).toBe(false);
+});
+
 test("fresh installs skip plugin restoration across config reloads", async () => {
   const dataDir = await createTempConfigDir();
   const fresh = await loadConfig(dataDir);

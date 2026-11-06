@@ -4,13 +4,15 @@
  * bar over an empty workspace, as the desktop app draws it on macOS
  * (`platform=darwin`, the default), Windows (`platform=win32`, with caption
  * buttons) and Linux, or as the web app does (`host=browser`); `font=20`
- * sets the largest text size the settings offer. SPY is
- * pre-market and the page's clock reads 04:00 in New York, so the market
- * summary takes its widest form ("PRE-MKT · 5h 30m"). The checks put the
+ * sets the largest text size the settings offer. The header follows the
+ * S&P 500 (`market=hang-seng` and the other benchmark ids pick another) and
+ * the page's clock reads 04:00 in New York, so the NYSE is in its pre-market
+ * and the market summary takes a wide form ("NYSE pre-market · opens 9:30
+ * ET"). The checks put the
  * header in each update state and window mode from the page
  * (`__paneChrome.header`) and count what Help and Restart were pressed for.
  * Opening the command bar drops its sheet under the prompt, listing the
- * built-in commands. Nothing is fetched: SPY comes from an invented source.
+ * built-in commands. Nothing is fetched: the quotes come from an invented source.
  */
 import { useLayoutEffect } from "react";
 import { CommandBar } from "../../src/components/command-bar/surface";
@@ -102,23 +104,50 @@ export function installHeaderClock(): void {
   });
 }
 
-/** SPY pre-market, from a source that answers at once. */
+/** The benchmarks the header can follow and SPY pre-market, from a source that answers at once. */
 export function installHeaderMarketData(): void {
-  const spy = createTestQuote({
-    symbol: "SPY",
-    price: 690.84,
-    change: 4.21,
-    changePercent: 0.61,
-    marketState: "PRE",
-    preMarketPrice: 687.18,
-    preMarketChange: -3.66,
-    preMarketChangePercent: -0.53,
-    lastUpdated: HEADER_CLOCK,
-  });
+  const quotes: Record<string, ReturnType<typeof createTestQuote>> = {
+    SPY: createTestQuote({
+      symbol: "SPY",
+      price: 690.84,
+      change: 4.21,
+      changePercent: 0.61,
+      marketState: "PRE",
+      preMarketPrice: 687.18,
+      preMarketChange: -3.66,
+      preMarketChangePercent: -0.53,
+      lastUpdated: HEADER_CLOCK,
+    }),
+    "^GSPC": createTestQuote({
+      symbol: "^GSPC",
+      name: "S&P 500",
+      instrumentType: "INDEX",
+      exchangeName: "SNP",
+      price: 6843.21,
+      previousClose: 6829.55,
+      change: 13.66,
+      changePercent: 0.2,
+      marketState: "CLOSED",
+      lastUpdated: HEADER_CLOCK,
+    }),
+    "^HSI": createTestQuote({
+      symbol: "^HSI",
+      name: "Hang Seng Index",
+      instrumentType: "INDEX",
+      exchangeName: "HKSE",
+      currency: "HKD",
+      price: 24533.33,
+      previousClose: 24619.12,
+      change: -85.79,
+      changePercent: -0.35,
+      marketState: "REGULAR",
+      lastUpdated: HEADER_CLOCK,
+    }),
+  };
   setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
     id: "header-fixture",
     name: "Header fixture",
-    getQuote: async () => spy,
+    getQuote: async (symbol) => quotes[symbol] ?? quotes.SPY!,
   })));
 }
 
