@@ -1,13 +1,15 @@
 import { metricFormInput, metricShortcut, parseMetricAlert } from "./metric-command";
 import { isRelativeMetric, type AlertMetric } from "./metric-model";
 import type { AlertCondition } from "./types";
-import { readAlertPrice } from "./price";
+import { isPenceLevel, readAlertLevel, readAlertPrice } from "./price";
 import { normalizeAlertSymbol } from "./quotes";
 
 export interface AlertCommandInput {
   symbol: string;
   condition: AlertCondition;
   price: number;
+  /** Typed in pence (`70p`): `price` is in pounds, for a London line quoted in pence. */
+  pence?: true;
   metric?: AlertMetric;
 }
 
@@ -61,7 +63,8 @@ export function parseAlertShortcutValues(
   }
 
   // The price reads as `alerts add` reads it: 81k is 81000, 81,000 asks which was meant, and text that is no number says what to type.
-  if (parts[2]) values.price = String(readAlertPrice(parts[2].replace(/^\$/, "")));
+  // `70p`, pence on a London line, stays as typed for the add to hold to its line.
+  if (parts[2]) values.price = isPenceLevel(parts[2]) ? (readAlertLevel(parts[2]), parts[2].trim()) : String(readAlertPrice(parts[2].replace(/^\$/, "")));
 
   return values;
 }
@@ -84,7 +87,7 @@ export function parseAlertCommandValues(
   const condition = parseAlertCondition(values?.condition);
   const priceStr = values?.price?.trim();
   if (!symbol || !condition || !priceStr) return null;
-  return { symbol, condition, price: readAlertPrice(priceStr.replace(/^\$/, "")) };
+  return { symbol, condition, ...readAlertLevel(priceStr.replace(/^\$/, "")) };
 }
 
 /**

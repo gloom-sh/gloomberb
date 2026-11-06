@@ -60,7 +60,7 @@ import {
   ratingReason,
 } from "../../plugins/builtin/research/analyst-model";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
-import { isQuoteStaleForCurrentSession, noPrintsTodayText } from "../../market-data/quotes/freshness";
+import { awaitingFirstDelayedPrint, isQuoteStaleForCurrentSession, noPrintsTodayText } from "../../market-data/quotes/freshness";
 import {
   coinOptionsAlternativesText, isCoinWithoutOptions, isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle,
 } from "../../market-data/options-alternatives";
@@ -313,6 +313,9 @@ import {
   shortRateFor,
 } from "../fx-forward";
 import { unavailableOnServer } from "../../plugins/builtin/shared/cloud-resource";
+
+/** `08:00`: an instant's UTC clock. */
+const utcClock = (time: number) => new Date(time).toISOString().slice(11, 16);
 
 /** `fx`'s forward form, for its usage line. */
 const FX_FORWARD_USAGE = "fx <base>/<quote> --forward <tenor>";
@@ -1185,8 +1188,13 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
         const label = `${row.target.symbol}${row.listing.name ? ` (${row.listing.name})` : ""}`;
         const stopped = noLongerTradingNote(label, row.quote, now);
         const ended = stopped && liveCompanies[index] ? `${stopped}. ${liveCompanies[index]}` : stopped;
-        const quiet = ended ? null : noPrintsTodayText(row.quote, now);
-        return [ended ?? (quiet ? `${label}: ${quiet}` : []), quoteBarNotes(label, row.quote, now)].flat();
+        // Open by its venue's calendar, before the delayed feed's first print: Last is the previous close until then.
+        const awaiting = ended ? null : awaitingFirstDelayedPrint(row.quote, now);
+        const quiet = ended || awaiting ? null : noPrintsTodayText(row.quote, now);
+        const waiting = awaiting && row.quote
+          ? `${label}: open since ${utcClock(awaiting.open)} UTC; Last is the previous close until the first delayed print, about ${utcClock(awaiting.expected)} UTC`
+          : null;
+        return [ended ?? (quiet ? `${label}: ${quiet}` : waiting ?? []), quoteBarNotes(label, row.quote, now)].flat();
       }),
       // A receipt and its home line each say the ratio, as `ticker` does; a CEDEAR names itself in its own.
       ...data.flatMap((row) => {

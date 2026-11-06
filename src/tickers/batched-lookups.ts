@@ -3,7 +3,7 @@ import type { Quote } from "../types/financials";
 import type { InstrumentSearchResult } from "../types/instrument";
 import { logFailure } from "../utils/log-failure";
 import { chunked } from "../utils/concurrency";
-import { isNoProviderMessage, isProviderBusy } from "../sources/provider-errors";
+import { createProviderMiss, isNoProviderMessage, isNoSourceAnswer, isProviderBusy, notATickerSymbol } from "../sources/provider-errors";
 import { ApiRequestError } from "../api-client/errors";
 
 /** The service refusing a request for the caller's rate (429). */
@@ -338,6 +338,9 @@ export class RequestAllowance {
   }
 }
 
+/** A listing's quote answered with none, as `listLookups` keeps it beside the errors that said so. */
+const NO_QUOTE = Symbol("no quote");
+
 /**
  * The data provider one command's lookups of a list read through, each
  * answer kept for the command: what reading the list's names asked (their
@@ -404,10 +407,28 @@ export function listLookups(dataProvider: DataProvider, { allowances = null }: {
       return new Map(queries.map((query) => [query, firstRows(rowsOf(query), limit)]));
     };
   }
+  // A listing no source has a quote for (a source's miss, "Not a ticker"), as answered: asked again it is refused again,
+  // so the command's later reads get the same answer without a request. A refusal or a failure is still asked again.
+  const missing = new Map<string, unknown>();
   overrides.getQuote = async (ticker, exchange, context) => {
     if (!plainContext(context)) return paced(1, () => dataProvider.getQuote(ticker, exchange, context));
     const key = listingKey(ticker, exchange);
-    const quote = quotes.get(key) ?? await paced(1, () => dataProvider.getQuote(ticker, exchange, context));
+    if (missing.has(key)) {
+      const miss = missing.get(key);
+      if (miss === NO_QUOTE) return null as unknown as Quote;
+      throw miss;
+    }
+    let quote = quotes.get(key);
+    if (!quote) {
+      try {
+        quote = await paced(1, () => dataProvider.getQuote(ticker, exchange, context));
+      } catch (error) {
+        if (isNoSourceAnswer(error)) missing.set(key, error);
+        throw error;
+      }
+      // Answered with no quote at all: the same answer next time.
+      if (!quote) missing.set(key, NO_QUOTE);
+    }
     if (quote) quotes.set(key, quote);
     return quote;
   };
@@ -415,16 +436,25 @@ export function listLookups(dataProvider: DataProvider, { allowances = null }: {
     overrides.getQuotesBatch = async (targets, options) => {
       // A batch asked with options of its own (a refresh, deferred follow-ups) is asked as it is.
       if (options && Object.values(options).some((value) => value != null)) return paced(targets.length, () => dataProvider.getQuotesBatch!(targets, options));
-      const asked = targets.filter((target) => !quotes.has(listingKey(target.symbol, target.exchange)));
+      const asked = targets.filter((target) => !quotes.has(listingKey(target.symbol, target.exchange)) && !missing.has(listingKey(target.symbol, target.exchange)));
       const answers = asked.length ? await paced(asked.length, () => dataProvider.getQuotesBatch!(asked)) : [];
-      for (const answer of answers) if (answer.quote) quotes.set(listingKey(answer.target.symbol, answer.target.exchange), answer.quote);
+      for (const answer of answers) {
+        const key = listingKey(answer.target.symbol, answer.target.exchange);
+        if (answer.quote) quotes.set(key, answer.quote);
+        // The source asked it alone already and none has it: later reads get that answer, not another request.
+        else if (answer.error instanceof Error && isNoSourceAnswer(answer.error)) missing.set(key, answer.error);
+        // "Not a ticker: MURATA.", the service's own answer that it lists nothing as the symbol.
+        else if (typeof answer.error === "string" && notATickerSymbol(answer.error)) missing.set(key, createProviderMiss(answer.error, undefined, { notFound: true }));
+        else if (answer.error == null && !answer.followUp) missing.set(key, NO_QUOTE);
+      }
       const byTarget = new Map(answers.map((answer) => [answer.target, answer] as const));
       return targets.map((target) => {
         const answer = byTarget.get(target);
         if (answer) return answer;
         const quote = quotes.get(listingKey(target.symbol, target.exchange));
-        // A source that left a target out answers nothing for it, as it would have alone.
-        return quote ? { target, quote } : { target, quote: null };
+        // A listing already answered with no quote gets that answer; a source that left a target out answers nothing for it.
+        const miss = missing.get(listingKey(target.symbol, target.exchange));
+        return quote ? { target, quote } : miss && miss !== NO_QUOTE ? { target, quote: null, error: miss } : { target, quote: null };
       });
     };
   }

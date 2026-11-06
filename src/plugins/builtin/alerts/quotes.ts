@@ -1,8 +1,10 @@
 import type { DataProvider } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import { getActiveQuoteDisplay } from "../../../market-data/market/status";
+import { isPenceQuotedLine } from "../../../market-data/market/format";
 import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
 import { canonicalExchange } from "../../../utils/exchanges";
+import { readMove } from "./move";
 import type { AlertRule } from "./types";
 
 export function normalizeAlertSymbol(value: string | null | undefined): string {
@@ -49,6 +51,7 @@ export function quoteAlertFields(
   | "lastQuoteProviderId"
   | "lastQuoteCurrency"
   | "lastQuoteExchange"
+  | "lastQuotePence"
 > & { lastCheckError?: undefined } {
   const exchange = quote.listingExchangeName || quote.exchangeName;
   return {
@@ -59,8 +62,19 @@ export function quoteAlertFields(
     lastQuoteProviderId: quote.providerId,
     ...(quote.currency ? { lastQuoteCurrency: quote.currency } : {}),
     ...(exchange ? { lastQuoteExchange: canonicalExchange(exchange) } : {}),
+    // A London line in pence writes its levels in pence; a quote that is not clears it.
+    lastQuotePence: isPenceQuotedLine(quote) || undefined,
     lastCheckError: undefined,
   };
+}
+
+/**
+ * A move rule's fields from a quote: those a price rule takes, with the
+ * reading the quote's move (in percent) and the close it is measured from.
+ */
+export function moveQuoteFields(quote: Quote, checkedAt = Date.now()): ReturnType<typeof quoteAlertFields> & Pick<AlertRule, "lastMoveBasis"> {
+  const reading = readMove(quote, checkedAt);
+  return { ...quoteAlertFields(quote, checkedAt), lastCheckedPrice: reading?.percent, lastMoveBasis: reading?.basis };
 }
 
 export function quoteErrorAlertFields(
@@ -89,10 +103,35 @@ const priceText = (value: number) => value.toLocaleString("en-US", Math.abs(valu
  * Null when the target is near enough, or there is no positive last price to
  * measure it against.
  */
-export function farTargetMessage(symbol: string, target: number, last: number | null | undefined, coinNote: string | null): string | null {
+export function farTargetMessage(symbol: string, target: number, last: number | null | undefined, coinNote: string | null, pence = false): string | null {
   if (last == null || !Number.isFinite(last) || last <= 0) return null;
   const above = target > last * MAX_TARGET_RATIO;
   if (!above && target >= last / MAX_TARGET_RATIO) return null;
   const how = above ? `more than ${MAX_TARGET_RATIO} times` : `under 1/${MAX_TARGET_RATIO} of`;
-  return `A target of ${priceText(target)} is ${how} ${symbol}'s last price of ${priceText(last)}. ${coinNote ?? "Check the price and the symbol."}`;
+  // A London line quoted in pence says both in pence, the unit its quote shows (7,000p, 119.4p).
+  const text = (value: number) => pence ? `${priceText(Number((value * 100).toPrecision(12)))}p` : priceText(value);
+  return `A target of ${text(target)} is ${how} ${symbol}'s last price of ${text(last)}. ${coinNote ?? "Check the price and the symbol."}`;
+}
+
+/**
+ * A level read in the unit its line's quote shows. On a London line quoted
+ * in pence, `70p` is £0.70, and so is a bare 70 when 70 in pounds is ten
+ * times off the price and 70p is not (VOD at 119.4p); the note says how it
+ * was read. Pence on a line not quoted in them is refused, naming its unit.
+ */
+export function levelInQuoteUnit(
+  level: { price: number; pence?: boolean; typed?: string },
+  quote: Pick<Quote, "currency" | "providerPriceDivisor" | "price">,
+  listing: string,
+): { price: number; pence: boolean; note: string | null } {
+  const pence = isPenceQuotedLine(quote);
+  if (level.pence && !pence) {
+    const pounds = Number((level.price * 100).toPrecision(12));
+    throw new Error(`${listing} is quoted in ${quote.currency?.trim() || "its own currency"}, not pence: type ${pounds / 100}${quote.currency ? ` (${quote.currency.trim()})` : ""} for ${pounds}p, or check the listing.`);
+  }
+  if (!pence || level.pence) return { price: level.price, pence, note: null };
+  const inPence = Number((level.price / 100).toPrecision(12));
+  if (!farTargetMessage(listing, level.price, quote.price, null) || farTargetMessage(listing, inPence, quote.price, null)) return { price: level.price, pence, note: null };
+  const typed = level.typed ?? String(level.price);
+  return { price: inPence, pence, note: `Read ${typed} as ${typed}p: ${listing} is quoted in pence.` };
 }

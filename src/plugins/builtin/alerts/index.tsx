@@ -22,7 +22,6 @@ import {
 } from "./scheduled";
 import { isResearchAlertKind, MAX_LEAD_DAYS } from "./research-rules";
 import { EVENT_ALERT_TEMPLATES, MAX_EVENT_ALERTS, createEventAlert, eventAlertStoreKey, readEventAlertStores, updateEventAlerts } from "./events";
-import { formatMarketPrice } from "../../../market-data/market/format";
 import { settleTypedListingKey } from "../../../tickers/listing-venues";
 import { parseListingArg } from "../../../cli/listing-arg";
 import { notATickerSymbol } from "../../../sources/provider-errors";
@@ -44,6 +43,8 @@ import { alertsCliCommand } from "./cli";
 import {
   createQuoteErrorMessage,
   farTargetMessage,
+  levelInQuoteUnit,
+  moveQuoteFields,
   quoteAlertFields,
   quoteErrorAlertFields,
   resolveAlertQuote,
@@ -53,6 +54,10 @@ import {
   saveAlerts,
 } from "./storage";
 import { createAlertQuoteStream, readStreamedAlertQuote, type AlertQuoteStream } from "./live";
+import { alertPriceText } from "./price-text";
+import { isPenceQuotedLine } from "../../../market-data/market/format";
+import { judgeMove, moveBasisText, moveFiredText } from "./move";
+import { alertListing } from "./format";
 import type { AlertRule } from "./types";
 
 let catalystAlertsStop: (() => void) | null = null;
@@ -99,6 +104,8 @@ export const alertsPlugin: GloomPlugin = {
     ivLevelAlertsStop = startIvLevelAlerts(ctx, recordFired);
     const notifyTriggered = (alert: AlertRule, quote: Quote, firedAt: number) => {
       const price = quote.price;
+      // The price at the instrument's precision, as the quote that fired it says it (1.33702, 69.80p).
+      const priced = { ...alert, ...quoteAlertFields(quote) };
       recordFired({
         kind: "price", ruleId: alert.id, rule: `${alert.exchange ? `${alert.symbol}:${alert.exchange}` : alert.symbol} ${alert.condition} ${alert.targetPrice}`,
         firedAt, value: price, ...(quote.currency ? { unit: quote.currency } : {}),
@@ -106,7 +113,7 @@ export const alertsPlugin: GloomPlugin = {
         symbol: alert.symbol, ...(alert.exchange ? { exchange: alert.exchange } : {}),
       });
       ctx.notify({
-        body: `${formatAlertDescription(alert)} triggered at ${price}`,
+        body: `${formatAlertDescription(priced)} triggered at ${alertPriceText(priced, price)}`,
         type: "success",
         refId: `price:${alert.id}`,
         desktop: "always",
@@ -117,6 +124,30 @@ export const alertsPlugin: GloomPlugin = {
           onClick: () => ctx.showPane("alerts"),
         },
       });
+    };
+
+    /**
+     * A move rule judged on a quote, its fields updated in place: armed again in
+     * a new session, and notified once when the move reaches it. Whether it went off.
+     */
+    const checkMove = (alert: AlertRule, quote: Quote, now: number): boolean => {
+      const judged = judgeMove(alert, quote, now);
+      Object.assign(alert, moveQuoteFields(quote, now), judged.alert);
+      if (!judged.fired || !judged.reading) return false;
+      const reading = judged.reading;
+      const listing = alertListing({ symbol: alert.symbol, exchange: alert.exchange });
+      const body = moveFiredText(listing, reading, alertPriceText(alert, quote.price), now);
+      ctx.log.info("move: TRIGGERED", { symbol: alert.symbol, percent: reading.percent });
+      recordFired({
+        kind: "move", ruleId: alert.id, rule: formatAlertDescription(alert), firedAt: now, value: Number(reading.percent.toFixed(4)), unit: "%",
+        detail: moveBasisText(reading.basis, now), quoteAt: firedAlertTime(quote.lastUpdated), source: quoteSourceWords(quote.dataSource),
+        symbol: alert.symbol, ...(alert.exchange ? { exchange: alert.exchange } : {}),
+      });
+      ctx.notify({
+        body, type: "success", refId: `price:${alert.id}`, desktop: "always", persistent: true, sound: "Glass",
+        action: { label: "Open", onClick: () => ctx.showPane("alerts") },
+      });
+      return true;
     };
 
     // The last price each alert was judged on by the stream. `crosses` needs
@@ -131,9 +162,15 @@ export const alertsPlugin: GloomPlugin = {
       let persist = false;
       let touched = false;
       for (const alert of alerts) {
-        if (alert.metric || alert.status !== "active") continue;
+        if (alert.metric || (alert.status !== "active" && !alert.move)) continue;
         const quote = readStreamedAlertQuote(alert, undefined, now);
         if (!quote) continue;
+        if (alert.move) {
+          const status = alert.status;
+          if (checkMove(alert, quote, now) || alert.status !== status) persist = true;
+          touched = true;
+          continue;
+        }
         // A re-armed or new alert has no stored baseline: judge nothing on this
         // tick and store one at once, so `crosses` never compares against a
         // price from before the edit.
@@ -231,8 +268,10 @@ export const alertsPlugin: GloomPlugin = {
           // Never save a rule its own list would refuse to read back.
           if (!validMetricRule({ metric, condition: input.condition, targetPrice: input.price })) throw new Error(`${benchmark} cannot be a benchmark: relative strength alerts compare two US listings.`);
         }
+        // A London line's level is in the pence its quote shows: 70p, or 70 where 70 in pounds is far off.
+        if (!input.metric) input = { ...input, price: levelInQuoteUnit(input, quote, symbol).price };
         // A target ten times away is a slip or another instrument's price, such as bitcoin's on the BTC fund.
-        const far = farTargetMessage(symbol, input.price, quote.price, symbol.includes(":") ? null : notTheCoinNote(symbol, quote));
+        const far = farTargetMessage(symbol, input.price, quote.price, symbol.includes(":") ? null : notTheCoinNote(symbol, quote), isPenceQuotedLine(quote));
         if (!input.metric && far) throw new Error(far);
 
         const alert: AlertRule = {
@@ -268,7 +307,7 @@ export const alertsPlugin: GloomPlugin = {
         alertStream?.sync();
 
         ctx.notify({
-          body: `Alert set: ${formatAlertDescription(alert)}${input.metric ? firstCheck ? `, ${firstCheck}` : "" : ` (current ${formatMarketPrice(quote.price, { minimumFractionDigits: 2 })})`}`,
+          body: `Alert set: ${formatAlertDescription(alert)}${input.metric ? firstCheck ? `, ${firstCheck}` : "" : ` (current ${alertPriceText(alert, quote.price)})`}`,
           type: "success",
         });
       },
@@ -351,7 +390,8 @@ export const alertsPlugin: GloomPlugin = {
     // delivered lately, and every symbol while the app is hidden.
     const pollLevels = async (metrics: boolean) => {
       alertStream?.sync();
-      const pending = loadAlerts(ctx).filter((alert) => Boolean(alert.metric) === metrics && alert.status === "active" && !readStreamedAlertQuote(alert));
+      // A move rule that went off is asked for too: the next session's quote arms it again.
+      const pending = loadAlerts(ctx).filter((alert) => Boolean(alert.metric) === metrics && (alert.status === "active" || alert.move) && !readStreamedAlertQuote(alert));
       if (pending.length === 0) return;
 
       ctx.log.info("poll", { active: pending.length });
@@ -382,7 +422,7 @@ export const alertsPlugin: GloomPlugin = {
       const alerts = loadAlerts(ctx).filter(alert => Boolean(alert.metric) === metrics);
       let changed = false;
       for (const alert of alerts) {
-        if (alert.status !== "active") continue;
+        if (alert.status !== "active" && !alert.move) continue;
         if (alert.metric) {
           const result = readings.get(alert.id);
           if (!result || result.armedAt !== (alert.armedAt ?? alert.createdAt)) continue;
@@ -421,6 +461,11 @@ export const alertsPlugin: GloomPlugin = {
           continue;
         }
 
+        if (alert.move) {
+          checkMove(alert, quote, Date.now());
+          changed = true;
+          continue;
+        }
         if (evaluateAlert(alert, quote.price)) {
           alert.status = "triggered";
           alert.triggeredAt = Date.now();

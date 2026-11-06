@@ -15,7 +15,9 @@ import {
   type ListingVenue,
 } from "../tickers/listing-venues";
 import { findUsListingOfCompany, type UsListing } from "../tickers/us-listing";
-import { findListingOfCompanyName, isCompanyNameInput, marksAnotherListing, readTerminalCodeArg, serviceMarkedListing, type CompanyNameListing } from "../tickers/company-name-listing";
+import {
+  findListingOfCompanyName, isCompanyNameInput, marksAnotherListing, readTerminalCodeArg, serviceMarkedListing, serviceMarkedOtherListing, type CompanyNameListing,
+} from "../tickers/company-name-listing";
 import { movedAwayChange, startTickerChangeLookup, type MovedTickerChange } from "../tickers/ticker-changes";
 import { lineMayHaveMoved, listingChangeLine, loadListingFate, MovedSymbolError, SUCCESSOR_CHANGE_WAIT_MS, type ListingFate } from "../tickers/listing-fate";
 import { quotedListingName } from "../tickers/listing-name";
@@ -54,6 +56,7 @@ import {
   isSearchOnlyVenue,
   readLondonDottedSymbol,
   readNearMissListing,
+  readVenueFirstListing,
   readTerminalListingCode,
   terminalCodeReadAs,
   unknownBloombergMarket,
@@ -63,6 +66,7 @@ import {
 import { listingAbroadVenue } from "../utils/sec";
 import { savedAbroadForBareSymbol, savedUsListingOf } from "../tickers/search/bare-symbol";
 import { listingSuffixCandidate, listingSuffixVenue, tickerHasListingSuffix } from "../sources/listing-symbols";
+import { isCurrencyPairListing } from "../utils/fx-market-hours";
 import { coinElsewhereNote, notTheCoinNote } from "./commands/crypto-hints";
 import { fredSeriesArgument, fredSeriesNotListing } from "../series/fred-argument";
 
@@ -165,10 +169,11 @@ export function parseListingArg(
   // A pasted ticker can bring the separator or quote marks that sat beside it (`UPST;`); search would ask for them.
   const stripped = stripStrayEdges(rawArg);
   const raw = stripped.text || rawArg;
-  // A terminal's code (WFC.N, "VOD LN", "JPM US Equity") is that listing (WFC:NYSE, VOD:LSE, JPM), and a symbol
-  // written nearly as one is (700.HK, 6758.JP, BRK/B) its working form (0700.HK, 6758.T, BRK-B).
+  // A terminal's code (WFC.N, "VOD LN", "JPM US Equity") is that listing (WFC:NYSE, VOD:LSE, JPM), a symbol
+  // written nearly as one is (700.HK, 6758.JP, BRK/B) its working form (0700.HK, 6758.T, BRK-B), and one written
+  // venue first, as spreadsheets write it (TYO:7203, LON:LSEG), the symbol on that venue (7203:JPX, LSEG:LSE).
   const terminal = terminalCode === undefined ? readTerminalListingCode(raw) : terminalCode;
-  const nearMiss = terminal ? null : readNearMissListing(raw);
+  const nearMiss = terminal ? null : readNearMissListing(raw) ?? (typedPerpetualListing(raw) ? null : readVenueFirstListing(raw));
   const reading = terminal ?? (nearMiss ? { typed: nearMiss.typed, key: nearMiss.symbol } : null);
   const parsed = parseCleanListingArg(reading?.key ?? raw, exchangeOption, { ownExchangeWins });
   const listing = listingSuffix ? readListingSuffix(parsed) ?? parsed : parsed;
@@ -511,9 +516,16 @@ export async function listingChoiceNotes(
   // A bare symbol read on a company's own US line (JPM on NYSE) is what it means: companies abroad sharing the
   // letters are not named. A US receipt (SAN, Banco Santander's) may still be meant for another (Sanofi's SAN:EPA).
   if (!exchange || (isUsListingExchange(exchange) && quote.isDepositaryReceipt !== true)) return coin;
-  const listed = await (venues ?? loadBareVenues(listing, deps) ?? []);
+  const [listed, marked] = await Promise.all([
+    venues ?? loadBareVenues(listing, deps) ?? [],
+    // A primary listing the service names by the word, off the venue picked: NTT is NTT, Inc. (9432 on JPX), not Warsaw's NTT.
+    serviceMarkedOtherListing(deps.dataProvider, listing.symbol, exchange).catch(logFailure("cli.listing-arg", "Read the listing a word names failed", null)),
+  ]);
   const note = listingChoiceNote(listing.symbol, { exchange, name: quote.name }, listed);
-  return [...note ? [note] : [], ...coin];
+  const also = marked ? `also ${marked.symbol}:${marked.exchange} ${marked.name}` : null;
+  const named = quote.name?.trim() ? `${shortCompanyName(quote.name)}, ` : "";
+  const choice = also ? `${note ?? `${listing.symbol} = ${named}${exchangeName(exchange)}`}; ${also}` : note;
+  return [...choice ? [choice] : [], ...coin];
 }
 
 /**
@@ -581,8 +593,17 @@ export async function usListingsOnlyMessage(
 ): Promise<{ message: string; details: string }> {
   const quote = await loadListingQuote(deps.dataProvider, listing);
   const company = listingIdentity(listing, quote).name;
-  const named = company ? `${shortCompanyName(company)} on ${exchangeLabel(listing.exchange)}` : exchangeLabel(listing.exchange);
-  const us = await usListingOfCompany(listing, company, deps);
+  // A listing read from its vendor suffix (7203.T) or its quote has no venue typed: it is the one its quote is from.
+  const venue = canonicalExchange(listing.exchange || quote?.listingExchangeName || quote?.exchangeName || "");
+  const suffix = listing.exchange ? null : listingSuffixCandidate(listing.symbol);
+  const local = { symbol: suffix && canonicalExchange(suffix.exchange) === venue ? suffix.symbol : listing.symbol, exchange: venue };
+  // A currency pair has no listing anywhere: say what it is, never "GBP/USD on ." or the code of a venue.
+  if (isCurrencyPairListing(listing.symbol, venue)) {
+    return { message: `${what} covers US listings only, and ${listing.key} is a currency pair.`, details: "A currency pair trades over the counter, with no exchange volume to follow." };
+  }
+  const where = venue ? exchangeLabel(venue) : "";
+  const named = company ? `${shortCompanyName(company)}${where ? ` on ${where}` : ""}` : where || "not a US listing";
+  const us = await usListingOfCompany(local, company, deps);
   const owner = company ? shortCompanyName(company) : listing.key;
   const command = us ? retry(us.symbol) : null;
   return {

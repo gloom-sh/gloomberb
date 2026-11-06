@@ -20,7 +20,7 @@ import { isUsSymbolVenue, LOOKUP_TIMEOUT_MS, movedAwayChange, tickerChangeLine, 
 import { isVenueAbroad } from "../tickers/listing-fate";
 import { sameCompany } from "../tickers/company-name";
 import { tickerHasListingSuffix } from "../sources/listing-symbols";
-import { canonicalExchange, exchangeLabel, resolveExchangeTimeZone } from "../utils/exchanges";
+import { canonicalExchange, exchangeLabel, isUsListingExchange, resolveExchangeTimeZone } from "../utils/exchanges";
 import { isCurrencyPairListing } from "../utils/fx-market-hours";
 import { isCurrencyCode } from "../utils/currency-pair";
 import { logFailure } from "../utils/log-failure";
@@ -345,7 +345,47 @@ export function summarizeSymbolRows(rows: readonly SymbolRow[], verb: Verb, repe
     groups.push(`${junk.length} not ${junk.length === 1 ? "a symbol" : "symbols"}: ${junk.join(junk.some((input) => input.includes(",")) ? "; " : ", ")}`);
   }
   if (repeated > 0) groups.push(`${repeated} repeat${repeated === 1 ? "" : "s"} skipped`);
+  // An add names the rows that landed off the list's main venues, to check or name with their venue (BP:LSE).
+  const off = verb === "add" ? offVenueSummary(rows) : null;
+  if (off) groups.push(off);
   return `${groups.join("; ")}.`;
+}
+
+/** Rows a list must have before the venues most of them landed on are its main ones. */
+const MAIN_VENUES_FROM = 10;
+/** The share of a list's rows a venue holds to be one of its main venues. */
+const MAIN_VENUE_SHARE = 0.1;
+
+/**
+ * The rows of an add that landed outside the venues most of the list is on: a
+ * London and Tokyo book's BP on NYSE and NTT on Warsaw, which a bare symbol
+ * or a name can land on. Null for a short list, or one with no row off them.
+ */
+export function offVenueRows(rows: readonly SymbolRow[]): { main: string[]; rows: SymbolRow[] } | null {
+  // A pair or a coin has no venue to be off; the US exchanges are one market.
+  const market = (row: SymbolRow) => isUsListingExchange(row.exchange!) ? "US" : canonicalExchange(row.exchange!);
+  const landed = rows.filter((row) => (row.status === "added" || row.status === "already_listed") && row.exchange
+    && !isCurrencyPairListing(row.symbol ?? undefined, row.exchange) && !UNVENUED.has(canonicalExchange(row.exchange)));
+  if (landed.length < MAIN_VENUES_FROM) return null;
+  const counts = new Map<string, number>();
+  for (const row of landed) counts.set(market(row), (counts.get(market(row)) ?? 0) + 1);
+  const main = [...counts].filter(([, count]) => count >= landed.length * MAIN_VENUE_SHARE).sort((a, b) => b[1] - a[1]).map(([venue]) => venue);
+  const off = landed.filter((row) => !main.includes(market(row)));
+  return main.length > 0 && off.length > 0 ? { main, rows: off } : null;
+}
+
+/** Venues a row is on that are no market of listings: currencies, coins, perpetuals. */
+const UNVENUED = new Set(["CCY", "CRYPTO", "FX"]);
+
+/** "8 landed outside the list's main venues (LSE, JPX): BP:NYSE, NTT:WSE, ...", each as typed beside the listing it went to. */
+export function offVenueSummary(rows: readonly SymbolRow[]): string | null {
+  const off = offVenueRows(rows);
+  if (!off) return null;
+  const named = off.rows.map((row) => {
+    const typed = symbolInputKey(row.input);
+    return row.listing && typed !== row.listing ? `${typed} as ${row.listing}` : row.listing ?? typed;
+  });
+  return `${off.rows.length} landed outside the list's main venues (${off.main.join(", ")}): ${named.join(", ")}`;
 }
 
 /** A message in a line's parentheses, without the subject the line already names or its closing stop. */

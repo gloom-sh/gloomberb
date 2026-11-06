@@ -25,6 +25,7 @@ import {
   listingVenues,
   movedSymbolLine,
   notTradedMessage,
+  oneWordCompanyName,
   parseListingArg,
   quoteBareListing,
   resolveCliListing,
@@ -56,7 +57,7 @@ import { coinElsewhereNote, savedListingCoinNote } from "./commands/crypto-hints
 import { NotASymbolError, notASymbolError } from "./symbol-cells";
 import { kindFromListingSyntax } from "../tickers/instrument-kind";
 import { classifyInstrumentKind, normalizeTickerSymbol } from "../tickers/search/ranking";
-import { companyNameQueries, findFormerIssuerOfName, isCompanyNameInput } from "../tickers/company-name-listing";
+import { companyNameQueries, findFormerIssuerOfName, isCompanyNameInput, settledTerminalCode } from "../tickers/company-name-listing";
 
 /** The saved ticker for a symbol (`SAN:EPA`, or `SAN` with `--exchange EPA`), saving it from search first if needed. */
 export async function resolveTickerForCli(
@@ -599,6 +600,9 @@ function lookAgain(entry: CliTickerResolution): boolean {
 function listLookupPlan(input: string, exchange: string | undefined): ListLookupPlan {
   // What cannot be a symbol is refused without a request.
   if (notASymbolError(input)) return { searches: [], changes: null };
+  // A terminal's code abroad (`VOD LN`) is its listing as written: it asks only for its quote.
+  const code = settledTerminalCode(input);
+  if (code) return { searches: [], changes: null };
   // A company's name searches what its reading searched (`readNameEntries`), answered by the same batch.
   if (isCompanyNameInput(input)) return { searches: companyNameQueries(input), changes: null };
   try {
@@ -681,6 +685,8 @@ export async function resolveTickersForCli(
       lookups = lookups.map((entry) => again.get(entry.input) ?? entry);
       failing = failedRequests.count() > before || [...again.values()].some(busyLookup);
     }
+    // A company's name typed as one word (Canon, ADVANTEST) that no listing trades as is read as `quote` reads it.
+    lookups = await withOneWordNames(lookups, store, dataProvider, { retry, askWhenAmbiguous });
     if (!failing) return lookups;
     // Still refused after the last wait: a failure may only be the refusal, so none is called not found,
     // and a match whose quote was refused is not taken as trading.
@@ -691,3 +697,39 @@ export async function resolveTickersForCli(
     failedRequests.stop();
   }
 }
+
+/** Names of one word looked up at once: each is a search and a quote. */
+const NAME_CONCURRENCY = 4;
+
+/**
+ * The lookups, each word no listing trades as (`TickerNotFoundError`) that
+ * names a company read as that company's listing, as `quote` reads it
+ * (`oneWordCompanyName`): CANON is 7751:JPX, and its row says so ("Read
+ * "CANON" as 7751:JPX (Canon Inc.)."). A word that names none keeps its own
+ * error.
+ */
+async function withOneWordNames(
+  lookups: CliTickerResolution[],
+  store: AppTickerRepositoryPort,
+  dataProvider: DataProvider,
+  options: Pick<CliTickerOptions, "retry" | "askWhenAmbiguous">,
+): Promise<CliTickerResolution[]> {
+  const words = lookups.filter((entry) => entry.error instanceof TickerNotFoundError && !entry.error.successor && ONE_WORD.test(entry.input));
+  if (words.length === 0) return lookups;
+  const read = new Map((await mapWithConcurrency(words, NAME_CONCURRENCY, async (entry): Promise<CliTickerResolution> => {
+    try {
+      const named = await oneWordCompanyName(entry.input, { dataProvider });
+      if (!named) return entry;
+      const found = await resolveCliTicker(named.key, store, dataProvider, undefined, { ...options, ownExchangeWins: true, changeGraceMs: LOOKUP_TIMEOUT_MS });
+      return { input: entry.input, ...found, readAs: named.readAs ?? found.readAs };
+    } catch (error) {
+      // Intentional ignore: a name that cannot be read keeps the word's own "not found".
+      logFailure("cli.ticker-resolution", "Read a word as a company's name failed")(error);
+      return entry;
+    }
+  })).map((entry) => [entry.input, entry] as const));
+  return lookups.map((entry) => read.get(entry.input) ?? entry);
+}
+
+/** A word that can be a company's name: letters, three and more, as a pasted name is (`Canon`, `ENEOS`). */
+const ONE_WORD = /^\p{L}[\p{L}&'-]{2,}$/u;

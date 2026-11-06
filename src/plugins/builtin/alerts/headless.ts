@@ -1,4 +1,5 @@
-import { closeBasis, metricName, metricReadingText } from "./metric-model";
+import { closeBasis, metricReadingText } from "./metric-model";
+import { moveBasisText, movePercentText } from "./move";
 /**
  * `gloom fn ALRT`: the Alerts pane's three tabs as reports. Prices lists
  * the price alerts as the pane's table does, Events the event alerts (earnings,
@@ -10,12 +11,14 @@ import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition, H
 import type { PaneLock } from "../../../types/plugin";
 import { refusedLock } from "../shared/cloud-denied";
 import { ALERT_TABS, ALERTS_PLUGIN_ID } from "./constants";
-import { needsSignInNote, ruleState } from "./event-rows";
+import { eventWhen, needsSignInNote, ruleState } from "./event-rows";
+import { readerTimeZone } from "../../../utils/utc-time";
 import { eventAlertTarget, type EventAlertRule } from "./events";
 import {
   alertListing,
   isoUtc,
-  conditionLabel,
+  measureLabel,
+  triggerLabel,
   formatAlertDistance,
   formatAlertTargetPrice,
   formatCurrentPrice,
@@ -49,15 +52,13 @@ const instant = (value: unknown) => (typeof value === "number" ? firedAlertTime(
  */
 const PRICE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "status", header: "State", format: (value) => (value === "triggered" ? "Triggered" : "Active") },
-  { key: "symbol", header: "Symbol", format: (value, row) => (row.exchange ? `${text(value)}:${text(row.exchange)}` : text(value)) },
-  { key: "metric", header: "Measure", format: (_value, row) => asAlert(row).metric ? metricName(asAlert(row).metric!) : "Price" },
+  // The listing as it was kept: 7203:JPX, never 7203:JPX:JPX for a rule an older version saved with its venue twice.
+  { key: "symbol", header: "Symbol", format: (value, row) => alertListing({ symbol: text(value), exchange: text(row.exchange) || undefined }) },
+  { key: "metric", header: "Measure", format: (_value, row) => measureLabel(asAlert(row)) },
   { key: "lastCheckedPrice", header: "Current", align: "right", textFormat: (_value, row) => formatCurrentPrice(asAlert(row), 14) },
   { key: "targetPrice", header: "Target", align: "right", textFormat: (_value, row) => formatAlertTargetPrice(asAlert(row), 14) },
   { key: "awayPercent", header: "Away", align: "right", format: percent, textFormat: (_value, row) => formatAlertDistance(asAlert(row)) },
-  { key: "condition", header: "Trigger", format: (value, row) => {
-    const metric = asAlert(row).metric;
-    return metric?.kind === "ma_cross" ? `Cross ${metric.direction}` : metric?.kind === "rrg" ? "Enters" : conditionLabel(value as AlertRule["condition"]);
-  } },
+  { key: "condition", header: "Trigger", format: (value, row) => triggerLabel({ ...asAlert(row), condition: value as AlertRule["condition"] }) },
   { key: "quoteAt", header: "Quote", textFormat: (_value, row) => formatQuoteChecked(asAlert(row)) },
   { key: "quoteSource", header: "Quote source" },
   { key: "lastCheckedAt", header: "Checked", format: instant },
@@ -111,7 +112,7 @@ const HISTORY_TEXT_COLUMNS = HISTORY_COLUMNS.filter((column) => column.key !== "
 function priceRow(alert: AlertRule): HeadlessPaneRow {
   const { lastQuoteProviderId: _provider, ...stored } = alert;
   const price = alert.lastCheckError ? null : alert.lastCheckedPrice;
-  const away = price == null || !Number.isFinite(price) || price === 0 || alert.metric?.kind === "rrg" ? null : (((alert.lastCheckedTarget ?? alert.targetPrice) - price) / price) * 100;
+  const away = price == null || !Number.isFinite(price) || price === 0 || alert.metric?.kind === "rrg" || alert.move ? null : (((alert.lastCheckedTarget ?? alert.targetPrice) - price) / price) * 100;
   const quoted = !alert.lastCheckError;
   const target = alert.lastCheckedTarget ?? alert.targetPrice;
   return {
@@ -122,7 +123,9 @@ function priceRow(alert: AlertRule): HeadlessPaneRow {
     created: isoUtc(alert.createdAt) || null,
     listing: alertListing(alert),
     currency: alert.lastQuoteCurrency ?? null,
-    reading: alert.metric && price != null && Number.isFinite(price) && Number.isFinite(target) ? metricReadingText(alert.metric, { value: price, target }) : null,
+    reading: alert.metric && price != null && Number.isFinite(price) && Number.isFinite(target) ? metricReadingText(alert.metric, { value: price, target })
+      // A move, with the close it is measured from.
+      : alert.move && price != null && Number.isFinite(price) ? `${movePercentText(price)} ${moveBasisText(alert.lastMoveBasis)}` : null,
   };
 }
 
@@ -141,14 +144,15 @@ function pricesResult(alerts: readonly AlertRule[], error: string | null, events
 }
 
 /** An event alert as the Events table lists it: a scheduled one with its event date and lead time apart. */
-function eventRow(rule: EventAlertRule, now: number, checks: Record<string, IvLevelCheck>, signedIn: boolean): HeadlessPaneRow {
+function eventRow(rule: EventAlertRule, now: number, checks: Record<string, IvLevelCheck>, signedIn: boolean, readerZone: string | null = null): HeadlessPaneRow {
   const scheduled = readScheduledRule(rule);
   return {
     id: rule.id,
     kind: rule.kind,
     event: alertKindLabel(rule.kind),
     following: scheduled ? scheduledEventName(scheduled.target) : eventAlertTarget(rule),
-    eventDate: scheduled ? rule.eventDate ?? null : null,
+    // A release's day with its print time in UTC, and on the reader's clock when they set a zone.
+    eventDate: scheduled && rule.eventDate ? eventWhen(rule, readerZone) : null,
     leadDays: scheduled?.leadDays ?? null,
     ...(scheduled?.trigger === "results" ? { when: "results" } : {}),
     state: ruleState(rule, now, signedIn),
@@ -158,10 +162,12 @@ function eventRow(rule: EventAlertRule, now: number, checks: Record<string, IvLe
   };
 }
 
-function eventsResult(rules: readonly EventAlertRule[], error: string | null, checks: Record<string, IvLevelCheck>, signedIn: boolean): HeadlessRowsResult {
+function eventsResult(
+  rules: readonly EventAlertRule[], error: string | null, checks: Record<string, IvLevelCheck>, signedIn: boolean, readerZone: string | null = null,
+): HeadlessRowsResult {
   const now = Date.now();
   const checked = rules.some((rule) => rule.kind === "iv_level");
-  const rows = [...rules].sort((a, b) => b.createdAt - a.createdAt).map((rule) => eventRow(rule, now, checks, signedIn));
+  const rows = [...rules].sort((a, b) => b.createdAt - a.createdAt).map((rule) => eventRow(rule, now, checks, signedIn, readerZone));
   // Signed out, the rules only a signed-in account gets checked say so on their rows, and once what to do.
   const waiting = rows.filter((row) => row.state === "Needs sign-in").length;
   return {
@@ -264,7 +270,8 @@ export const alertsHeadless: HeadlessPaneDefinition<"rows"> = {
     if (tab === "history") return historyResult(ctx);
     const { alerts, alertsError, events } = readAlertStores(ctx.config);
     return tab === "events"
-      ? eventsResult(events.rules, events.error, readIvLevelChecks(ctx.readDeviceState?.(ALERTS_PLUGIN_ID, IV_LEVEL_CHECKS_KEY)), !!ctx.apiClient.getSessionToken?.())
+      ? eventsResult(events.rules, events.error, readIvLevelChecks(ctx.readDeviceState?.(ALERTS_PLUGIN_ID, IV_LEVEL_CHECKS_KEY)), !!ctx.apiClient.getSessionToken?.(),
+        readerTimeZone(ctx.config.timezone))
       : pricesResult(alerts, alertsError, events.rules.length);
   },
 };

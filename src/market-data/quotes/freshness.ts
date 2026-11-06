@@ -5,6 +5,7 @@ import { getPublishedUsEquitySession } from "../published-us-sessions";
 import { quoteFutureToleranceMs } from "./clock";
 import {
   activeUsExtendedHoursSession,
+  delayedFeedLagMs,
   isAlwaysOpenExchange,
   isRegularSessionTime,
   isTimestampStaleForExchangeSession,
@@ -150,6 +151,27 @@ export function noPrintsTodaySince(quote: Quote | null | undefined, now = Date.n
   const open = latestRegularSessionOpen(venue, now);
   const printed = Math.min(quote.lastUpdated, now);
   return open != null && printed < open ? printed : null;
+}
+
+/** How long past a venue's open its delayed feed's first print may take, beyond the feed's own lag. */
+const FIRST_DELAYED_PRINT_GRACE_MS = 5 * 60_000;
+
+/**
+ * A venue abroad whose regular session has opened by its calendar while its
+ * delayed feed has not printed in it yet (LSE at 08:09 on a feed 15 minutes
+ * behind): the session is open, and the last price is the previous close
+ * until the first delayed print, due about `expected`. Null outside that
+ * wait, for a US listing (whose pre-market the service names) and for a
+ * quote that printed today.
+ */
+export function awaitingFirstDelayedPrint(quote: Quote | null | undefined, now = Date.now()): { open: number; expected: number } | null {
+  if (!quote || quote.delisting || !Number.isFinite(quote.lastUpdated)) return null;
+  const venue = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
+  if (!venue || isUsListingExchange(venue) || isRegularSessionTime(venue, now) !== true) return null;
+  const open = latestRegularSessionOpen(venue, now);
+  if (open == null || quote.lastUpdated >= open) return null;
+  const expected = open + delayedFeedLagMs(venue);
+  return now <= expected + FIRST_DELAYED_PRINT_GRACE_MS ? { open, expected } : null;
 }
 
 /** `no prints today since Thu 22 Oct 05:30 UTC (20h 50m old)`, or null as noPrintsTodaySince. */

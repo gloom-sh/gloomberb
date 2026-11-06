@@ -296,6 +296,22 @@ export async function marksAnotherListing(dataProvider: Partial<Pick<DataProvide
 }
 
 /**
+ * The listing under another symbol the service marks with the word as typed
+ * (`searchAliases`), off `exchange`: "NTT" marks 9432 on JPX (NTT, Inc.),
+ * which a bare NTT read on Warsaw is not. The search `marksAnotherListing`
+ * asks; null when it marks none, cannot search or is too busy to say.
+ */
+export async function serviceMarkedOtherListing(dataProvider: Partial<Pick<DataProvider, "search">>, word: string,
+  exchange: string): Promise<{ symbol: string; exchange: string; name: string } | null> {
+  if (typeof dataProvider.search !== "function") return null;
+  const answer = await searchListings(dataProvider as Pick<DataProvider, "search">, word.trim());
+  const marked = Array.isArray(answer) ? answer.find((result) => result.symbol.toUpperCase() !== word.trim().toUpperCase()
+    && namedByService(word, result) && !!listedExchange(result) && listedExchange(result) !== canonicalExchange(exchange)
+    && !parsePublicTickerKey(result.symbol).exchange) : undefined;
+  return marked ? { symbol: marked.symbol.toUpperCase(), exchange: listedExchange(marked), name: marked.name } : null;
+}
+
+/**
  * The listing of `symbol` the service marks with `word` (`^VIX` on CXI for
  * "VIX"), as `marksAnotherListing` reads the same search; null when search
  * marks no listing of it, cannot search or is too busy to say.
@@ -372,6 +388,31 @@ const shareClassSymbol = (symbol: string) => symbol.trim().toUpperCase().replace
  * search that fails says nothing either way, and the code stands. Null for
  * anything else.
  */
+/**
+ * Whether a terminal code is looked for in search before it is taken: its
+ * root in capitals and its yellow key typed as the terminal shows it (`SEAS
+ * US Equity`), a US code is one as typed, as a code abroad is: a line that
+ * stopped trading is one search no longer lists, and it is still that symbol,
+ * never a name. All in capitals (`PUTNAM US EQUITY`) it may be a fund's name,
+ * so search decides; so it does for a root in lower case.
+ */
+function terminalCodeVerified(code: TerminalListingCode): boolean {
+  const us = !code.exchange || isUsListingExchange(code.exchange);
+  const keyed = /\s[Ee]quity$/.test(code.typed) && !/\p{Ll}/u.test(code.typed.split(" ")[0]!);
+  return (us && !keyed) || /\p{Ll}/u.test(code.typed.split(" ")[0]!);
+}
+
+/**
+ * A terminal's code read as its listing with no search (`VOD LN`, `7203 JT`,
+ * `SAFE LN Equity`), as `readTerminalCodeArg` takes it; null for a code it
+ * looks for in search first, and for anything that is no code. A pasted
+ * list asks nothing for these but their quotes.
+ */
+export function settledTerminalCode(typed: string): TerminalListingCode | null {
+  const code = readTerminalListingCode(typed);
+  return code?.market && !code.alternatives && !terminalCodeVerified(code) ? code : null;
+}
+
 export async function readTerminalCodeArg(
   dataProvider: Pick<DataProvider, "search">,
   typed: string,
@@ -379,11 +420,7 @@ export async function readTerminalCodeArg(
   const code = readTerminalListingCode(typed);
   if (!code?.market) return code;
   const us = !code.exchange || isUsListingExchange(code.exchange);
-  // Its root in capitals and its yellow key typed as the terminal shows it (`SEAS US Equity`), a US code is one as
-  // typed, as a code abroad is: a line that stopped trading is one search no longer lists, and it is still that
-  // symbol, never a name. All in capitals (`PUTNAM US EQUITY`) it may be a fund's name, so search decides.
-  const keyed = /\s[Ee]quity$/.test(code.typed) && !/\p{Ll}/u.test(code.typed.split(" ")[0]!);
-  const verify = (us && !keyed) || /\p{Ll}/u.test(code.typed.split(" ")[0]!);
+  const verify = terminalCodeVerified(code);
   if (!verify && !code.alternatives) return code;
   const listings: TerminalListing[] = [code, ...code.alternatives ?? []];
   try {

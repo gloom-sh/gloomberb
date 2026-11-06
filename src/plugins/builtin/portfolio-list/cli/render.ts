@@ -244,32 +244,57 @@ type CollectionQuote = Awaited<ReturnType<DataProvider["getQuote"]>>;
 /**
  * Current quotes for a collection's tickers, keyed by symbol. A portfolio
  * quotes each holding's own contract; a failed quote leaves its ticker out so
- * the rest still values.
+ * the rest still values. A watchlist's tickers, which name no contract, are
+ * asked in batch requests where the source takes them: a list of two hundred
+ * names is a couple of requests, not two hundred at once.
  */
 export async function loadCollectionQuotes(
   tickers: readonly TickerRecord[],
   collection: Pick<CollectionMatch, "kind" | "id">,
-  dataProvider: Pick<DataProvider, "getQuote">,
+  dataProvider: Pick<DataProvider, "getQuote"> & Partial<Pick<DataProvider, "getQuotesBatch">>,
   /** The report prints what the day's move is from (`Day's move ... vs Thu 22 Oct close`). */
   { datesChangeBasis = false }: { datesChangeBasis?: boolean } = {},
 ): Promise<Map<string, CollectionQuote>> {
   const isPortfolio = collection.kind === "portfolio";
   const quotes = new Map<string, CollectionQuote>();
-  await Promise.all(
-    tickers.map(async (ticker) => {
-      try {
-        const instrument = isPortfolio ? instrumentFromTicker(ticker, ticker.metadata.ticker, { portfolioId: collection.id }) : null;
-        if (isPortfolio && !instrument) return;
-        const context = instrument ? toMarketDataContext(instrument) : undefined;
-        const quote = await dataProvider.getQuote(ticker.metadata.ticker, ticker.metadata.exchange,
-          datesChangeBasis ? { ...context, datesChangeBasis } : context);
-        quotes.set(ticker.metadata.ticker, quote);
-      } catch (error) {
-        // A partial quote failure leaves the rest of the table rendering.
-        logFailure("portfolio-list.cli.render", "Load collection quote failed")(error);
-      }
-    }),
-  );
+  const failed = logFailure("portfolio-list.cli.render", "Load collection quote failed");
+  const quoteOne = async (ticker: TickerRecord) => {
+    try {
+      const instrument = isPortfolio ? instrumentFromTicker(ticker, ticker.metadata.ticker, { portfolioId: collection.id }) : null;
+      if (isPortfolio && !instrument) return;
+      const context = instrument ? toMarketDataContext(instrument) : undefined;
+      const quote = await dataProvider.getQuote(ticker.metadata.ticker, ticker.metadata.exchange,
+        datesChangeBasis ? { ...context, datesChangeBasis } : context);
+      quotes.set(ticker.metadata.ticker, quote);
+    } catch (error) {
+      // A partial quote failure leaves the rest of the table rendering.
+      failed(error);
+    }
+  };
+  const batch = !isPortfolio && tickers.length > 1 ? dataProvider.getQuotesBatch : undefined;
+  if (!batch) {
+    await Promise.all(tickers.map(quoteOne));
+    return quotes;
+  }
+  const targets = tickers.map((ticker) => ({ symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange ?? "", surface: "watchlist" as const }));
+  const results = await batch.call(dataProvider, targets, datesChangeBasis ? { datesChangeBasis } : undefined).catch((error: unknown) => {
+    failed(error);
+    return null;
+  });
+  // A batch that failed, or left a ticker without a quote or a reason, asks those one at a time.
+  // Each answer by the listing it names, never by its place: a source may answer in another order.
+  const key = (target: { symbol: string; exchange?: string }) => `${target.symbol.toUpperCase()}|${(target.exchange ?? "").toUpperCase()}`;
+  const answered = new Map(results?.map((result) => [result.target, result] as const) ?? []);
+  const byListing = new Map(results?.map((result) => [key(result.target), result] as const) ?? []);
+  const retry: TickerRecord[] = [];
+  tickers.forEach((ticker, index) => {
+    const target = targets[index]!;
+    const result = answered.get(target) ?? byListing.get(key(target));
+    if (result?.quote) quotes.set(ticker.metadata.ticker, result.quote);
+    else if (result?.error) failed(result.error);
+    else retry.push(ticker);
+  });
+  await Promise.all(retry.map(quoteOne));
   return quotes;
 }
 

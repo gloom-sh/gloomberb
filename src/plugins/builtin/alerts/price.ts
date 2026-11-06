@@ -33,3 +33,20 @@ export function readAlertPrice(text: string): number {
   if (price.kind === "invalid") throw new Error(`Alert price must be a number, got "${text.trim()}"; ${PRICE_FORMAT}.`);
   return price.value;
 }
+
+/** A level in pence, as London lines trade: `70p`, `119.4p`. */
+const PENCE_LEVEL = /^(\d[\d.,]*)\s*p$/i;
+
+/** Whether a level is typed in pence (`70p`). */
+export const isPenceLevel = (text: string): boolean => PENCE_LEVEL.test(text.trim());
+
+/**
+ * An alert level as typed: a price (`readAlertPrice`), or one in pence
+ * (`70p`), kept in pounds as a London line's quote is (0.70) and marked so
+ * the line it is set on can be held to pence.
+ */
+export function readAlertLevel(text: string): { price: number; pence?: true } {
+  const pence = PENCE_LEVEL.exec(text.trim());
+  if (!pence) return { price: readAlertPrice(text) };
+  return { price: Number((readAlertPrice(pence[1]!) / 100).toPrecision(12)), pence: true };
+}

@@ -1,7 +1,9 @@
-import { closeBasis, metricReadingText, rotationQuadrant } from "./metric-model";
+import { closeBasis, metricName, metricReadingText, rotationQuadrant } from "./metric-model";
+import { moveBasisText, movePercentText, moveTargetText, moveTriggerLabel } from "./move";
 import { formatMarketPrice } from "../../../market-data/market/format";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { formatQuoteAgeWithSource } from "../../../market-data/quotes/time";
+import { alertListingKey, alertPriceText } from "./price-text";
 import type { AlertCondition, AlertRule } from "./types";
 
 /** What a list says of an alert no check has read yet. */
@@ -29,12 +31,11 @@ export function formatCurrentPrice(alert: AlertRule, maxWidth = 9): string {
   // The quadrant the latest weekly strength and momentum place it in.
   if (alert.metric?.kind === "rrg") return rotationQuadrant(alert.lastCheckedPrice, alert.lastCheckedTarget) ?? "-";
   if (alert.metric?.kind === "rs_ratio" && alert.lastCheckedPrice != null) return formatRatio(alert.lastCheckedPrice);
-  return alert.lastCheckedPrice == null
-    ? "-"
-    : formatMarketPrice(alert.lastCheckedPrice, {
-        maxWidth,
-        minimumFractionDigits: 2,
-      });
+  if (alert.lastCheckedPrice == null) return "-";
+  // A move rule reads the day's move: -0.38%.
+  if (alert.move) return movePercentText(alert.lastCheckedPrice);
+  // A price at its instrument's precision (1.34032 on GBP/USD, 117.35p on a London line), as `quote` prints it.
+  return alert.metric ? formatMarketPrice(alert.lastCheckedPrice, { maxWidth, minimumFractionDigits: 2 }) : alertPriceText(alert, alert.lastCheckedPrice, maxWidth);
 }
 
 export function formatAlertTargetPrice(alert: AlertRule, maxWidth = 9): string {
@@ -42,15 +43,14 @@ export function formatAlertTargetPrice(alert: AlertRule, maxWidth = 9): string {
   if (alert.metric?.kind === "close_ma") return `${alert.metric.period}-day MA`;
   if (alert.metric?.kind === "rrg") return `${alert.metric.quadrant[0]!.toUpperCase()}${alert.metric.quadrant.slice(1)}`;
   if (alert.metric?.kind === "rs_ratio") return formatRatio(alert.targetPrice);
-  return formatMarketPrice(alert.targetPrice, {
-    maxWidth,
-    minimumFractionDigits: 2,
-  });
+  if (alert.move) return moveTargetText(alert);
+  return alert.metric ? formatMarketPrice(alert.targetPrice, { maxWidth, minimumFractionDigits: 2 }) : alertPriceText(alert, alert.targetPrice, maxWidth);
 }
 
 export function formatAlertDistance(alert: AlertRule): string {
   const currentPrice = alert.lastCheckedPrice;
-  if (alert.lastCheckError || alert.metric?.kind === "rrg") return "-";
+  // A move is not a distance from a price: its reading and target say how far it has to go.
+  if (alert.lastCheckError || alert.metric?.kind === "rrg" || alert.move) return "-";
   if (currentPrice == null || !Number.isFinite(currentPrice) || currentPrice === 0) {
     return "-";
   }
@@ -92,8 +92,10 @@ export function isoUtc(value: number | null | undefined): string {
  * until it has been checked.
  */
 export function alertListing(alert: Pick<AlertRule, "symbol" | "exchange" | "lastQuoteExchange">): string {
-  const venue = alert.exchange || alert.lastQuoteExchange;
-  return venue && !alert.symbol.includes(":") ? `${alert.symbol}:${venue}` : alert.symbol;
+  // A pair written as Yahoo writes it names itself: GBPUSD=X, never GBPUSD=X:CCY.
+  if (/=X$/i.test(alert.symbol)) return alert.symbol;
+  // One key however the listing was typed: 7203.T, `7203 JP` and 7203:JPX are all 7203:JPX.
+  return alertListingKey(alert);
 }
 
 /** A listing with the currency its prices are in: `EWG:ARCA (USD)`; the listing alone until a quote has said it. */
@@ -124,14 +126,36 @@ export function alertReadingText(alert: AlertRule): string {
   if (alert.lastCheckError) return `no reading: ${alert.lastCheckError.replace(/\.$/, "")}`;
   const value = alert.lastCheckedPrice;
   if (value == null || !Number.isFinite(value)) return NOT_CHECKED_YET;
+  // A move, with the close it is measured from: `-0.38% vs Thu 5 Nov close as of 2026-11-06T08:47Z`.
+  if (alert.move) {
+    const at = alertReadingAt(alert);
+    const figure = `${movePercentText(value)} ${moveBasisText(alert.lastMoveBasis)}`;
+    return at ? `${figure} as of ${isoUtc(at).replace(/:\d{2}Z$/, "Z")}` : figure;
+  }
   const unit = readingUnit(alert);
+  // A price at its instrument's precision, a London line's in pence, which says its unit itself.
+  const price = !alert.metric ? alertPriceText(alert, value).replaceAll(",", "") : null;
   const figure = alert.metric?.kind === "rrg" ? metricReadingText(alert.metric, { value, target: alert.lastCheckedTarget ?? Number.NaN })
     : alert.metric?.kind === "rs_ratio" ? formatRatio(value)
-    : `${alert.metric ? value.toFixed(2) : String(value)}${unit === "x" ? "x" : unit ? ` ${unit}` : ""}`;
+    : price?.endsWith("p") ? price
+    : `${price ?? value.toFixed(2)}${unit === "x" ? "x" : unit ? ` ${unit}` : ""}`;
   const basis = alert.metric ? closeBasis(alert.metric) : null;
   if (basis && alert.lastDailyClose) return `${figure} on the ${alert.lastDailyClose} ${basis === "weekly close" ? "weekly close" : "close"}`;
   const at = alertReadingAt(alert);
   return at ? `${figure} as of ${isoUtc(at).replace(/:\d{2}Z$/, "Z")}` : figure;
+}
+
+/** The Trigger cell of a level rule: Above, Below, Cross; a move rule's Moves, Up or Down. */
+export function triggerLabel(alert: Pick<AlertRule, "condition" | "move" | "metric">): string {
+  if (alert.move) return moveTriggerLabel(alert.condition);
+  if (alert.metric?.kind === "ma_cross") return `Cross ${alert.metric.direction}`;
+  if (alert.metric?.kind === "rrg") return "Enters";
+  return conditionLabel(alert.condition);
+}
+
+/** The Measure cell: Price, Move, or the measure's name. */
+export function measureLabel(alert: Pick<AlertRule, "move" | "metric">): string {
+  return alert.metric ? metricName(alert.metric) : alert.move ? "Move" : "Price";
 }
 
 export function conditionLabel(condition: AlertCondition): string {

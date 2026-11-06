@@ -1,6 +1,6 @@
 import { logFailure } from "../utils/log-failure";
 import type { DataProvider } from "../types/data-provider";
-import { companyNameQueries, findListingOfCompanyName, isCompanyNameInput, readTerminalCodeArg } from "../tickers/company-name-listing";
+import { companyNameQueries, findListingOfCompanyName, isCompanyNameInput, readTerminalCodeArg, settledTerminalCode } from "../tickers/company-name-listing";
 import { batchedListLookups } from "../tickers/batched-lookups";
 import { mapWithConcurrency } from "../utils/concurrency";
 import { isNotATickerMessage } from "./not-a-ticker";
@@ -38,7 +38,8 @@ export async function readNameEntryGroups(
 ): Promise<string[][]> {
   // A pasted list's names are searched in batches and their quotes asked together, a few entries at a time: a list
   // of hundreds of names is a few requests, never hundreds at once.
-  const names = entries.filter((entry) => isCompanyNameInput(entry) && !unknownBloombergMarket(entry));
+  // A terminal's code abroad (`VOD LN`) is its listing as written: nothing searches for it as a name.
+  const names = entries.filter((entry) => isCompanyNameInput(entry) && !unknownBloombergMarket(entry) && !settledTerminalCode(entry));
   const full = source as DataProvider;
   const dataProvider = names.length > 1 && full.searchBatch
     ? (await batchedListLookups(full, names.map((name) => ({ searches: companyNameQueries(name), changes: null })))).dataProvider
