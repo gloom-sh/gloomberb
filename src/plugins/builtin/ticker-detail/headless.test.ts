@@ -4,7 +4,7 @@ import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/h
 import { createTestFinancials, createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import { HistoryRetentionError } from "../../../sources/history-retention";
 import { createTestHeadlessContext } from "../../../test-support/headless";
-import type { QuoteContribution } from "../../../types/financials";
+import type { Quote, QuoteContribution } from "../../../types/financials";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { setCliColorEnabledOverride, setCliWidthOverride } from "../../../utils/cli-output";
 import { financialStatementsHeadless, historicalPricesHeadless, quoteComparisonHeadless, returnsHeadless } from "./headless";
@@ -175,15 +175,16 @@ test("quote comparison retains successful exchange-qualified inputs when a peer 
   } as HeadlessPaneContext;
   const result = await quoteComparisonHeadless.load(args(["ABC", "MISSING"]), ctx);
   expect(result.rows).toEqual([{
-    symbol: "ABC", name: "Company", price: 105, change: 5, changePercent: 5, currency: "USD",
+    symbol: "ABC", name: "Company", price: 105, change: 5, changePercent: 5, currency: "USD", unit: "USD",
     extendedSession: null, extendedPrice: null, extendedChange: null, extendedChangePercent: null,
+    session: "", feed: "", changeBasis: "vs prev close",
     marketCap: null, updatedAt: 123, stale: false,
   }]);
   expect(result.unavailableSymbols).toEqual(["MISSING"]);
   expect(result.errors).toEqual(["MISSING: No quote"]);
 });
 
-test("quote monitor exports retain FX precision and small changes without altering raw values", async () => {
+test("quote monitor exports retain FX precision, and its move as the board shows it", async () => {
   // Retained public EUR/USD quote fields; provider retrieval is not replayed here.
   const quote = { symbol: "EURUSD=X", name: "EUR/USD", instrumentType: "CURRENCY",
     price: 1.1602274179458618, change: -0.0010778820541381684,
@@ -191,7 +192,8 @@ test("quote monitor exports retain FX precision and small changes without alteri
   const ctx = { signal: new AbortController().signal, marketData: createTestDataProvider({ getQuote: async () => quote }) } as HeadlessPaneContext;
   const input = args([quote.symbol]);
   const result = await quoteComparisonHeadless.load(input, ctx);
-  expect(result.rows[0]).toMatchObject({ price: quote.price, change: quote.change, instrumentType: "CURRENCY" });
+  // Last keeps every digit, as `quote --csv` does; the move is the figure read on the board, -$0.00108 and -0.09%.
+  expect(result.rows[0]).toMatchObject({ price: quote.price, change: -0.00108, changePercent: -0.09, instrumentType: "CURRENCY" });
   const text = renderHeadlessPaneText(quoteComparisonHeadless, result, input, "Quote Monitor");
   expect(text).toContain("$1.16023");
   expect(text).toContain("-$0.00108");
@@ -213,6 +215,40 @@ test("quote monitor shows an index in points, as quote does, whatever its curren
   expect(text).toContain("-1.79");
   expect(text).toContain("+33.23");
   expect(text).not.toMatch(/[$¥]/);
+});
+
+test("quote monitor exports date each row by its own price, with its session, feed and unit, as quote --csv does", async () => {
+  // Every row of `fn QQ "CL=F ^HSI 0005.HK RHM.DE ^TNX" --csv` was dated 21:20 UTC, with status, symbol and unit blank.
+  setSystemTime(new Date("2026-11-06T21:35:00Z"));
+  try {
+    const quotes = [
+      { symbol: "^HSI", name: "HANG SENG INDEX", instrumentType: "INDEX", currency: "HKD", price: 24481.86, change: -315.12046875,
+        changePercent: -1.2707964, previousClose: 24796.98, marketState: "CLOSED", exchangeName: "HKSE", dataSource: "delayed",
+        lastUpdated: Date.parse("2026-11-06T08:09:00Z") },
+      { symbol: "^TNX", name: "CBOE Interest Rate 10 Year T Note", instrumentType: "INDEX", currency: "USD", price: 4.859, change: 0.022,
+        changePercent: 0.454827372338, marketState: "POST", exchangeName: "CBOE INDICES", dataSource: "delayed",
+        lastUpdated: Date.parse("2026-11-06T19:59:00Z") },
+    ] as Quote[];
+    const contexts: unknown[] = [];
+    const ctx = createTestHeadlessContext({ marketData: createTestDataProvider({ getQuote: async (symbol, _exchange, context) => {
+      contexts.push(context);
+      return quotes.find((quote) => quote.symbol === symbol)!;
+    } }) });
+    const input = args(["^HSI", "^TNX"]);
+    const result = await quoteComparisonHeadless.load(input, ctx);
+    // The CLI waits for the daily close each move is dated from, as `quote` does.
+    expect(contexts).toEqual([{ datesChangeBasis: true }, { datesChangeBasis: true }]);
+    expect(result.rows.map((row) => [row.unit, row.change, row.changePercent, row.session, row.feed])).toEqual([
+      ["index points", -315.12, -1.27, "CLOSED", "delayed"],
+      ["pct", 0.022, 0.45, "CLOSED", "delayed"],
+    ]);
+    expect(result).toMatchObject({ rowSymbolKey: "symbol", rowUnitKey: "unit", rowAsOfKey: "updatedAt" });
+    expect(result.rows.map((row) => new Date(row.updatedAt as number).toISOString())).toEqual(["2026-11-06T08:09:00.000Z", "2026-11-06T19:59:00.000Z"]);
+    const text = renderHeadlessPaneText(quoteComparisonHeadless, result, input, "Quote Monitor");
+    expect(text.split("\n").find((line) => line.startsWith("^HSI"))).toMatch(/24,481\.86 +-315\.12 +-1\.27% +vs prev close +CLOSED +delayed/);
+  } finally {
+    setSystemTime();
+  }
 });
 
 test("historical prices use remembered exchanges and clip and sort the full OHLCV history", async () => {

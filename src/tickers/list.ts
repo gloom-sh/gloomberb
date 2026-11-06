@@ -1,6 +1,13 @@
 
 export const MAX_TICKER_LIST_SIZE = 10;
 
+/**
+ * The most tickers a Quote Monitor shows, one cap for the pane, its settings,
+ * the command bar's QQ and `fn QQ`: a shock view across oil, gold, defense
+ * and an index or two runs past ten.
+ */
+export const QUOTE_MONITOR_MAX_TICKERS = 20;
+
 function normalizeTickerToken(value: string): string {
   return value.trim().toUpperCase();
 }

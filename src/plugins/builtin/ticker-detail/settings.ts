@@ -4,7 +4,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import type { AppConfig } from "../../../types/config";
 import type { PriceSparklinePeriod } from "../../../components/price-sparkline/view";
 import { getSharedRegistry } from "../../registry";
-import { formatTickerListInput, MAX_TICKER_LIST_SIZE, parseTickerListInput } from "../../../tickers/list";
+import { formatTickerListInput, parseTickerListInput, QUOTE_MONITOR_MAX_TICKERS } from "../../../tickers/list";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 import { groupTickerResearchTabs, type TickerResearchTabSummary } from "./research-groups";
 
@@ -95,9 +95,9 @@ function coerceQuoteMonitorSymbols(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const parsed = value.filter((entry): entry is string => typeof entry === "string");
   try {
-    return parseTickerListInput(parsed.join(", "), MAX_TICKER_LIST_SIZE);
+    return parseTickerListInput(parsed.join(", "), QUOTE_MONITOR_MAX_TICKERS);
   } catch {
-    return parsed.slice(0, MAX_TICKER_LIST_SIZE);
+    return parsed.slice(0, QUOTE_MONITOR_MAX_TICKERS);
   }
 }
 
@@ -118,7 +118,7 @@ export function getQuoteMonitorPaneSettings(
 
   if (symbols.length === 0 && storedText.trim().length > 0) {
     try {
-      symbols = parseTickerListInput(storedText, MAX_TICKER_LIST_SIZE);
+      symbols = parseTickerListInput(storedText, QUOTE_MONITOR_MAX_TICKERS);
     } catch {
       // Intentional ignore: unparseable saved ticker text falls back to the legacy symbol or the pane's ticker.
       symbols = [];
@@ -126,7 +126,7 @@ export function getQuoteMonitorPaneSettings(
   }
   if (symbols.length === 0 && legacySymbol) {
     try {
-      symbols = parseTickerListInput(legacySymbol, MAX_TICKER_LIST_SIZE);
+      symbols = parseTickerListInput(legacySymbol, QUOTE_MONITOR_MAX_TICKERS);
     } catch {
       symbols = [legacySymbol.toUpperCase()];
     }
@@ -157,7 +157,7 @@ export function buildQuoteMonitorSettingsDef(settings: Record<string, unknown> |
       {
         key: "symbolsText",
         label: "Tickers",
-        description: `Enter up to ${MAX_TICKER_LIST_SIZE} tickers separated by commas.`,
+        description: `Enter up to ${QUOTE_MONITOR_MAX_TICKERS} tickers separated by commas.`,
         type: "text",
         placeholder: "AAPL, MSFT, NVDA",
       },
