@@ -50,6 +50,8 @@ export interface EventAlertRule {
   firedFor?: string;
   /** Macro and calendar events: the event date whose figures (actual, forecast, prior) it already sent. */
   printedFor?: string;
+  /** Calendar events: when the release on `eventDate` prints, ISO UTC, when the calendar gives its time. */
+  eventTime?: string;
   /**
    * IV level: when the level was reached. The rule stays Alerted until it is
    * re-armed. Its readings stay on the device (`ivLevelChecks`), so synced
@@ -191,6 +193,7 @@ export function readEventAlerts(json: string): EventAlertList {
         if (isDateKey(value.eventDate)) rule.eventDate = value.eventDate;
         if (isDateKey(value.firedFor)) rule.firedFor = value.firedFor;
         if (isDateKey(value.printedFor)) rule.printedFor = value.printedFor;
+        if (rule.kind === "calendar_event" && releaseTimeOn(value.eventTime, rule.eventDate)) rule.eventTime = value.eventTime;
       }
       if (rule.kind === "iv_level" && Number.isFinite(value.triggeredAt) && value.triggeredAt > 0) rule.triggeredAt = value.triggeredAt;
       rules.push(rule);
@@ -265,4 +268,10 @@ export function eventAlertTarget(rule: EventAlertRule): string {
     : rule.target === "fund"
       ? `CIK ${rule.value}`
       : rule.value;
+}
+
+/** Whether a saved release time is an ISO instant on the rule's event day (UTC); one from another day is stale. */
+export function releaseTimeOn(value: unknown, eventDate: string | undefined): value is string {
+  return typeof value === "string" && !!eventDate && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z$/.test(value)
+    && Number.isFinite(Date.parse(value)) && value.slice(0, 10) === eventDate;
 }

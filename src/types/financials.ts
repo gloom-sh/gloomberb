@@ -579,6 +579,12 @@ export interface AnalystResearchData {
 export interface DividendAction {
   exDate: string;
   amount: number;
+  /**
+   * Who published the row when it is not the listing's own history: a fund's
+   * sponsor, for a distribution the history lacks (iShares, SPDR, J.P. Morgan,
+   * VanEck), and the page it is published on. Absent elsewhere and from older servers.
+   */
+  source?: { publisher: string; url: string };
 }
 
 /**

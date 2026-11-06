@@ -4,6 +4,7 @@ import { TickerRepository } from "../data/ticker-repository";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
 import {
   listCoinNotes, ListingArgError, listingChoiceNote, listingVenues, loadForListing, notTradedMessage, parseListingArg, resolveCliListing,
+  usListingsOnlyMessage,
 } from "./listing-arg";
 import { LISTING_SEARCH_LIMIT } from "../tickers/search";
 import { FUTURES_CONTRACTS } from "../market-data/futures-board";
@@ -400,4 +401,26 @@ test("a list's bare coin code read as a listing says so, as quote does: CORR RIO
   expect(await listCoinNotes([listing("RIOT"), listing("BTC"), listing("ETH", "ARCA")], { dataProvider }))
     .toEqual(["BTC is Grayscale Bitcoin Mini Trust ETF, not bitcoin. For bitcoin use BTC-USD."]);
   expect(asked).toEqual(["BTC"]);
+});
+
+test("a US-only alert on a suffixed listing abroad names its venue from the quote, and a currency pair says it is one", async () => {
+  // Before: "Toyota Motor on ." and "GBP/USD on .", as a vendor suffix names no venue until the quote does.
+  const dataProvider = createTestDataProvider({
+    getQuote: async (symbol) => symbol === "GBPUSD=X"
+      ? createTestQuote({ symbol, name: "GBP/USD", exchange: "CCY", currency: "USD" })
+      : createTestQuote({ symbol, name: "Toyota Motor Corporation", exchange: "JPX", listingExchangeName: "JPX", currency: "JPY" }),
+    search: async (query) => /toyota/i.test(query)
+      ? [{ providerId: "test", symbol: "TM", name: "Toyota Motor Corporation", exchange: "NYSE", currency: "USD", type: "Common Stock" }]
+      : [],
+  });
+  const listing = (symbol: string) => ({ symbol, exchange: "", key: symbol, request: { symbol, exchange: "" }, saved: null });
+  const deps = { dataProvider, store: { loadTicker: async () => null, loadAllTickers: async () => [] } };
+  const what = "Unusual volume alerting";
+  const toyota = await usListingsOnlyMessage(what, listing("7203.T"), deps, (key) => `gloom alerts add ${key} unusual volume 3x`);
+  expect(toyota.message).toBe("Unusual volume alerting covers US listings only, and 7203.T is Toyota Motor on Tokyo Stock Exchange (JPX).");
+  expect(toyota.details).toBe("Toyota Motor's US listing: TM (try: gloom alerts add TM unusual volume 3x)");
+  expect(await usListingsOnlyMessage(what, listing("GBPUSD=X"), deps, () => null)).toEqual({
+    message: "Unusual volume alerting covers US listings only, and GBPUSD=X is a currency pair.",
+    details: "A currency pair trades over the counter, with no exchange volume to follow.",
+  });
 });

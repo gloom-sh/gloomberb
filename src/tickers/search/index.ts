@@ -35,7 +35,7 @@ import {
 } from "./result";
 
 import { typedPerpetualListing } from "../perpetual-listing";
-import { endsInLegalForm, readNearMissListing, readTerminalListingCode } from "../terminal-codes";
+import { endsInLegalForm, readNearMissListing, readVenueFirstListing, readTerminalListingCode } from "../terminal-codes";
 import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
 import { settleWithin } from "../../utils/async-deadline";
 import { companyNameExtraWords } from "../company-name";
@@ -132,7 +132,8 @@ interface TickerSearchCandidateOptions {
  */
 export function normalizeTickerInput(activeTicker: string | null, arg?: string): string | null {
   const explicitTicker = arg
-    ? (typedPerpetualListing(arg)?.key ?? (endsInLegalForm(arg) ? null : readTerminalListingCode(arg)?.key) ?? readNearMissListing(arg)?.symbol ?? arg)
+    ? (typedPerpetualListing(arg)?.key ?? (endsInLegalForm(arg) ? null : readTerminalListingCode(arg)?.key) ?? readNearMissListing(arg)?.symbol
+      ?? readVenueFirstListing(arg)?.symbol ?? arg)
       .trim().toUpperCase()
     : "";
   if (explicitTicker) return explicitTicker;

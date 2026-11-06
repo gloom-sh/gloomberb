@@ -8,6 +8,8 @@ import {
 } from "./alert-engine";
 import { ALERTS_KEY, ALERTS_PLUGIN_ID } from "./constants";
 import { readEventAlertStores } from "./events";
+import { MOVE_ALERTS_KEY } from "./move";
+import { moveRuleOnly } from "./move-checks";
 import type { AlertRule } from "./types";
 
 export function loadAlerts(ctx: GloomPluginContext): AlertRule[] {
@@ -22,11 +24,18 @@ export async function saveAlerts(
 ): Promise<void> {
   const stores = readLevelAlertStores((key) => ctx.configState.get<unknown>(key));
   // An unreadable list is never written over; one that has nothing to write does not hold up the others.
+  // Prices and moves are judged on quotes; valuation, technical and relative strength rules on their own readings.
+  const quoted = (key: string) => key === ALERTS_KEY || key === MOVE_ALERTS_KEY;
   const entries = Object.entries(writeLevelAlertStores(alerts)).filter(([key, value]) => (scope === "all"
-    || (scope === "price" ? key === ALERTS_KEY : key !== ALERTS_KEY)) && !(stores.errors[key] && value === "[]"));
+    || (scope === "price" ? quoted(key) : !quoted(key))) && !(stores.errors[key] && value === "[]"));
   for (const [key] of entries) if (stores.errors[key]) throw new Error(stores.errors[key]!);
   for (const [key, value] of entries) {
-    if (ctx.configState.get<unknown>(key) !== value) await ctx.configState.set(key, value);
+    const current = ctx.configState.get<unknown>(key);
+    // A list never written that stays empty (moves, on a profile without them) is left unwritten.
+    if (current === value || (current == null && value === "[]")) continue;
+    // Move rules that read as the ones to write are left as written, whatever the order of their fields: a check changes no rule.
+    if (key === MOVE_ALERTS_KEY && !stores.errors[key] && serializeAlerts(deserializeAlerts(current).map(moveRuleOnly)) === value) continue;
+    await ctx.configState.set(key, value);
   }
 }
 
@@ -53,14 +62,18 @@ export function readLevelAlertStores(get: (key: string) => unknown): { alerts: A
     const rows = error ? [] : deserializeAlerts(raw);
     if (rows.some(a => levelAlertStoreKey(a) !== key)) error = "Saved alerts contain a rule in the wrong list. Original data has been kept.";
     errors[key] = key === METRIC_ALERTS_KEY ? error?.replaceAll("price alerts", "valuation and technical alerts") ?? null
-      : key === RELATIVE_ALERTS_KEY ? error?.replaceAll("price alerts", "relative strength alerts") ?? null : error;
+      : key === RELATIVE_ALERTS_KEY ? error?.replaceAll("price alerts", "relative strength alerts") ?? null
+      : key === MOVE_ALERTS_KEY ? error?.replaceAll("price alerts", "move alerts") ?? null : error;
     if (!error) alerts.push(...rows);
   }
   return { alerts, errors, error: Object.values(errors).filter(Boolean).join(" ") || null };
 }
 export function writeLevelAlertStores(alerts: AlertRule[]): Record<string, string> {
-  return Object.fromEntries(LEVEL_ALERT_KEYS.map(key => [key, serializeAlerts(alerts.filter(a => levelAlertStoreKey(a) === key))]));
+  // A move rule is written as the rule alone: its readings are this device's (`MOVE_CHECKS_KEY`), so a check never changes the list.
+  return Object.fromEntries(LEVEL_ALERT_KEYS.map(key => [key, serializeAlerts(alerts.filter(a => levelAlertStoreKey(a) === key)
+    .map((alert) => alert.move ? moveRuleOnly(alert) : alert))]));
 }
-/** Price, valuation/technical and relative strength rules each keep their own synced list. */
-const LEVEL_ALERT_KEYS = [ALERTS_KEY, METRIC_ALERTS_KEY, RELATIVE_ALERTS_KEY] as const;
-export const levelAlertStoreKey = (alert: Pick<AlertRule, "metric">): string => alert.metric ? metricAlertsKey(alert.metric) : ALERTS_KEY;
+/** Price, valuation/technical, relative strength and move rules each keep their own synced list. */
+const LEVEL_ALERT_KEYS = [ALERTS_KEY, METRIC_ALERTS_KEY, RELATIVE_ALERTS_KEY, MOVE_ALERTS_KEY] as const;
+export const levelAlertStoreKey = (alert: Pick<AlertRule, "metric" | "move">): string =>
+  alert.metric ? metricAlertsKey(alert.metric) : alert.move ? MOVE_ALERTS_KEY : ALERTS_KEY;

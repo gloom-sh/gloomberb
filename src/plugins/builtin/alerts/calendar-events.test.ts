@@ -161,3 +161,46 @@ test("the reminder counts to the release time, or in days to an all-day event; t
   expect(releasePrintMessage({ kind: "macro", event: "cpi" }, row("2026-11-10T13:30:00.000Z", "US", "high", "Inflation Rate YoY", { actual: "3.1%", forecast: "3.0%", prior: "2.9%" })))
     .toBe("CPI release: Inflation Rate YoY 3.1% vs 3.0% expected, prior 2.9%");
 });
+
+test("payrolls by any name econ --search knows are the headline release, which is one series under the feeds' two names", () => {
+  const BLS = { name: "Bureau of Labor Statistics" };
+  const payrolls = [
+    row("2026-10-02T12:30:00.000Z", "US", "high", "Non Farm Payrolls", { actual: "29K", forecast: "90K", prior: "133K", source: BLS }),
+    row("2026-11-06T13:30:00.000Z", "US", "high", "Non-Farm Employment Change", { forecast: "65K", prior: "29K", source: BLS }),
+    row("2026-11-06T13:30:00.000Z", "US", "low", "Nonfarm Payrolls Private", { forecast: "64K", prior: "46K", source: BLS }),
+    row("2026-11-06T07:30:00.000Z", "FR", "low", "French Private Non Farm Payrolls QoQ Prel", { prior: "0.1%" }),
+  ];
+  const at = Date.parse("2026-11-06T08:00:00Z");
+  for (const typed of ["NFP", "jobs report", "Nonfarm Payrolls"]) {
+    const match = matchCalendarEvent(typed, null, payrolls, at);
+    if (match.kind !== "match") throw new Error(`${typed}: ${match.kind}`);
+    expect(match.choice).toMatchObject({ name: "Non-Farm Employment Change", country: "US", impact: "high" });
+    expect(match.choice.next?.date.toISOString()).toBe("2026-11-06T13:30:00.000Z");
+  }
+  // Last month's name is the same series: its alert waits for today's print, not for a row of its own name.
+  const former = matchCalendarEvent("Non Farm Payrolls", "US", payrolls, at);
+  expect(former.kind === "match" && former.choice.next?.date.toISOString()).toBe("2026-11-06T13:30:00.000Z");
+  expect(nextReleaseDate(payrolls, { kind: "release", event: "Non Farm Payrolls", country: "US", publisher: BLS.name }, at)).toBe("2026-11-06");
+  // A short word alone is still only offered, never read loosely.
+  expect(matchCalendarEvent("pay", null, payrolls, at).kind).toBe("none");
+});
+
+test("of matching releases one listed ahead is picked over one whose next print is not listed; `employment` is the payrolls headline", () => {
+  // Fri 6 Nov 2026, after the jobs report: the US releases are past, others' are still to come.
+  const listed = [
+    row("2026-10-29T12:30:00.000Z", "US", "high", "GDP Growth Rate QoQ Adv", { actual: "2.1%" }),
+    row("2026-11-13T10:00:00.000Z", "EU", "low", "GDP Growth Rate QoQ 2nd Est", { prior: "0.4%" }),
+    row("2026-11-06T13:30:00.000Z", "US", "high", "Non-Farm Employment Change", { actual: "119K" }),
+    row("2026-11-06T13:30:00.000Z", "CA", "high", "Employment Change", { actual: "10K" }),
+    row("2026-11-12T00:30:00.000Z", "AU", "high", "Employment Change", { prior: "15K" }),
+  ];
+  const at = Date.parse("2026-11-06T15:00:00Z");
+  const gdp = matchCalendarEvent("GDP", null, listed, at);
+  if (gdp.kind !== "match") throw new Error(gdp.kind);
+  expect(names([gdp.choice])).toEqual(["GDP Growth Rate QoQ 2nd Est (EU)"]);
+  expect(names(gdp.others)).toEqual(["GDP Growth Rate QoQ Adv (US)"]);
+  const employment = matchCalendarEvent("employment", null, listed, at);
+  if (employment.kind !== "match") throw new Error(employment.kind);
+  expect(names([employment.choice])).toEqual(["Non-Farm Employment Change (US)"]);
+  expect(names(employment.others)).toEqual(["Employment Change (AU)", "Employment Change (CA)"]);
+});
