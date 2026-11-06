@@ -1,4 +1,5 @@
 import { matchPrefix, type Command } from "./commands/registry";
+import { ASSIST_CATEGORY } from "./assist/model";
 import { t, tf } from "../../i18n";
 
 export { rankTickerSearchItems } from "../../tickers/search";
@@ -206,6 +207,15 @@ const PASTED_LIST_SECTION_PRIORITY = -110;
  * shifting the list.
  */
 const ASSIST_SECTION_PRIORITY = -100;
+/**
+ * Where the AI's section goes once the typed text names a listing: after the
+ * listings and the local matches, ahead of news and the rest of the corpus.
+ * The symbol is the answer there, and the AI's reading of it (DES on the same
+ * symbol) is a guess that arrives last; above the listings, its Thinking row
+ * would hold the top until the symbol's rows pushed it down, and its answer
+ * would push down the rows the user is reading.
+ */
+const ASSIST_AFTER_LISTINGS_PRIORITY = 150;
 /** Empty-bar recents lead the browse list, under an exact symbol or the AI. */
 const SUGGESTED_SECTION_PRIORITY = -90;
 /**
@@ -214,6 +224,11 @@ const SUGGESTED_SECTION_PRIORITY = -90;
  * at 190 and the rest of the corpus at 200 (both contributed by their provider).
  */
 const INSTRUMENTS_SECTION_PRIORITY = 100;
+
+/** `priorities` with the AI's section after the listings, for text that names one. */
+export function assistAfterListings(priorities?: CommandBarCategoryPriorities): CommandBarCategoryPriorities {
+  return new Map([...priorities ?? [], [ASSIST_CATEGORY, ASSIST_AFTER_LISTINGS_PRIORITY]]);
+}
 
 function getCategoryPriority(category: string, options?: CommandBarSectionOptions): number {
   const contributed = options?.categoryPriorities?.get(category);

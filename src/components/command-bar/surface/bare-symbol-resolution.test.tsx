@@ -74,7 +74,7 @@ for (const suggestionsReady of [false, true]) {
   }
 }
 
-test("a late answer that reorders the rows moves the highlight with its row, and Enter opens that row", async () => {
+test("a late answer that ranks the rows otherwise leaves them where they were shown, and Enter opens the highlighted row", async () => {
   const opened: string[] = [];
   const saved: TickerRecord[] = [];
   const { promise: fresh, resolve: answerFresh } = Promise.withResolvers<void>();
@@ -103,14 +103,11 @@ test("a late answer that reorders the rows moves the highlight with its row, and
   await tui.waitForFrameToExclude("Hampton Financial");
   await act(async () => { await tui.setup().mockInput.typeText("C"); });
   await tui.waitForFrameToContain("Hampton Financial");
+  expect(tui.frame()).toContain("Searching");
   answerFresh();
-  for (let attempt = 0; attempt < 50; attempt++) {
-    const frame = tui.frame();
-    if (frame.indexOf("HollyFrontier") >= 0 && frame.indexOf("HollyFrontier") < frame.indexOf("Hampton")) break;
-    await tui.renderFrames(1);
-    await Bun.sleep(10);
-  }
-  expect(tui.frame().indexOf("HollyFrontier")).toBeLessThan(tui.frame().indexOf("Hampton"));
+  await tui.waitForFrameToExclude("Searching");
+  // The row under the cursor did not move.
+  expect(tui.frame().indexOf("Hampton")).toBeLessThan(tui.frame().indexOf("HollyFrontier"));
   await tui.emitKeypress({ name: "return", sequence: "\r" });
   await tui.waitForFrameToContain("bar:closed");
   expect(opened).toEqual(["HFC"]);

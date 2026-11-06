@@ -8,6 +8,7 @@ import type { AppAction, AppContextStoreValue } from "../../../state/app/context
 import { runAutomated } from "../../../telemetry/usage-counts";
 import { currentTelemetryConfig, reportTelemetryConfig } from "../../../telemetry/live-config";
 import { VERSION } from "../../../version";
+import { createTestDataProvider } from "../../../test-support/data-provider";
 import { CommandBarHarness, createCommandBarTestControls, settleFrame } from "./test-harness";
 
 const tui = createOpenTuiTestHarness();
@@ -230,6 +231,70 @@ describe("CommandBar AI assist", () => {
     // Enter still runs it rather than whatever now sits at its old index.
     await tui.emitKeypress({ name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-chat-pane", options: undefined }]);
+  });
+
+  test("follows a typed symbol's rows, as Thinking and as an answer, so neither moves them", async () => {
+    signInVerified();
+    let releaseResponse = () => {};
+    const held = new Promise<void>((resolve) => { releaseResponse = resolve; });
+    const requests = mockAssistTransport(async () => {
+      await held;
+      return jsonResponse({ candidates: [
+        { input: "GP AAPL", title: "Chart Apple", prefix: "GP", confidence: 0.9 },
+        { input: "FA AAPL", title: "Apple's statements", prefix: "FA", confidence: 0.6 },
+      ] });
+    });
+    const listing = (symbol: string, name: string, exchange: string) => ({
+      providerId: "test", symbol, name, exchange, currency: "USD", type: "Common Stock",
+    });
+
+    // AAPL is saved, so its row is up before its search answers.
+    await tui.render(<CommandBarHarness
+      query="AAPL"
+      dataProvider={createTestDataProvider({
+        search: async () => [
+          { ...listing("AAPL", "Apple Inc.", "NASDAQ"), homeListing: true },
+          listing("AAPB", "GraniteShares 2x Long AAPL Daily ETF", "NASDAQ"),
+          listing("AAPU", "Direxion Daily AAPL Bull 2X Shares", "NASDAQ"),
+        ],
+      })}
+    />, { width: 120, height: 24 });
+    await tui.setup().renderOnce();
+    const thinking = tui.frame();
+    expect(thinking).toContain("Thinking…");
+    expect(thinking.indexOf("Apple Inc.")).toBeLessThan(thinking.indexOf("Ask AI"));
+    await waitForRequest(requests);
+    // Search answers first: the symbols it found beside the exact match line up under it.
+    const listed = await waitForFrameWithout("Searching");
+    const rowsOf = (frame: string) => frame.split("\n").filter((line) => /Apple Inc|GraniteShares|Direxion/.test(line));
+    expect(rowsOf(listed)).toHaveLength(3);
+    releaseResponse();
+    const answered = await waitForFrameToContain("Chart Apple", ASSIST_WAIT_ATTEMPTS);
+    // The AI's answer took its own place: the listings are on the same lines.
+    const lines = answered.split("\n");
+    expect(rowsOf(answered)).toEqual(rowsOf(listed));
+    for (const row of rowsOf(listed)) expect(lines.indexOf(row)).toBe(listed.split("\n").indexOf(row));
+  });
+
+  test.each(["SIVE", "D05", "0700"])("holds no place above %s while nothing names its listing yet", async (symbol) => {
+    signInVerified();
+    mockAssistTransport(async () => jsonResponse({ candidates: [{ input: `GP ${symbol}`, title: "Chart it", prefix: "GP", confidence: 0.9 }] }));
+    const { promise: searched, resolve: answerSearch } = Promise.withResolvers<void>();
+    await tui.render(<CommandBarHarness
+      query={symbol}
+      dataProvider={createTestDataProvider({
+        search: async () => {
+          await searched;
+          return [{ providerId: "test", symbol, name: "Listed Company", exchange: "SGX", currency: "SGD", type: "Common Stock" }];
+        },
+      })}
+    />, { width: 120, height: 24 });
+    await tui.setup().renderOnce();
+    expect(tui.frame()).not.toContain("Ask AI");
+    answerSearch();
+    await waitForFrameToContain("Listed Company", ASSIST_WAIT_ATTEMPTS);
+    const answered = await waitForFrameToContain("Chart it", ASSIST_WAIT_ATTEMPTS);
+    expect(answered.indexOf("Listed Company")).toBeLessThan(answered.indexOf("Ask AI"));
   });
 
   test("runs an argless prefix candidate that still carries an argument", async () => {

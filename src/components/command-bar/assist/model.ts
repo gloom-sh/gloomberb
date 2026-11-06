@@ -6,10 +6,15 @@ import type { ResultItem } from "../list/model";
 const ASSIST_GLYPH = "✦";
 
 /** Category heading the assist rows group under; the view model sorts it first. */
-const ASSIST_CATEGORY = "Ask AI";
+export const ASSIST_CATEGORY = "Ask AI";
 
 /** Shorter queries are almost always a half-typed prefix, not a question. */
 const ASSIST_AUTO_MIN_QUERY_LENGTH = 3;
+
+/** The row that holds the AI's place while it has not answered: before the ask goes out, and while it is out. */
+export function isAssistPlaceholderRow(item: Pick<ResultItem, "id">): boolean {
+  return item.id === "assist:pending" || item.id === "assist:loading";
+}
 
 export type AssistErrorKind = "unavailable" | "rate-limited" | "failed";
 

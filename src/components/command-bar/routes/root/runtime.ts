@@ -5,7 +5,7 @@ import type { DataProvider } from "../../../../types/data-provider";
 import type { CommandDef, PaneTemplateCreateOptions, PaneTemplateDef } from "../../../../types/plugin";
 import type { TickerRecord } from "../../../../types/ticker";
 import { listingChoiceQuery, symbolSearchQuery, type TickerSearchCandidate } from "../../../../tickers/search";
-import type { AssistRowHandlers } from "../../assist/model";
+import { isAssistPlaceholderRow, type AssistRowHandlers } from "../../assist/model";
 import { matchPrefix, type Command } from "../../commands/registry";
 import { isDefaultSelectable, type ResultItem } from "../../list/model";
 import type { CommandBarCategoryPriorities } from "../../view-model";
@@ -22,13 +22,18 @@ import { clampIndex } from "../../../../utils/math";
 
 /** Written the way a symbol is: up to five letters and a share class (AAPL, nvda, BRK.B). */
 const SYMBOL_SHAPED_QUERY = /^[A-Za-z]{1,5}(?:[.\-/][A-Za-z]{1,2})?$/;
+/** Written the way an Asian exchange numbers its listings: Hong Kong's 0700, Tokyo's 7203, Shanghai's 600519. */
+const LISTING_NUMBER_QUERY = /^\d{3,6}$/;
+/** Written the way Singapore codes them, letters and digits in capitals: D05, C6L, A17U. */
+const LISTING_CODE_QUERY = /^(?=[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z])[A-Z0-9]{3,4}$/;
 
 /**
  * Text that asks for a symbol rather than a local row: symbol-shaped, and in
- * capitals or in no row's name. `nvda` matches Exposure only through its
- * example input; `upd` is in Check for Updates.
+ * capitals or in no row's name, or a listing's number or code. `nvda` matches
+ * Exposure only through its example input; `upd` is in Check for Updates.
  */
 function readsAsSymbol(text: string, rows: readonly ResultItem[]): boolean {
+  if (LISTING_NUMBER_QUERY.test(text) || LISTING_CODE_QUERY.test(text)) return true;
   if (!SYMBOL_SHAPED_QUERY.test(text)) return false;
   if (text === text.toUpperCase()) return true;
   const wanted = text.toLowerCase();
@@ -158,6 +163,7 @@ export function useCommandBarRootRuntime({
   activeMatch: ReturnType<typeof matchPrefix>;
   orderedRootResults: ResultItem[];
   rootGhostSuffix: string | null;
+  rootCategoryPriorities: CommandBarCategoryPriorities | undefined;
   rootResultModel: RootResultModel;
   rootResultsCurrent: boolean;
   rootSearching: boolean;
@@ -310,7 +316,8 @@ export function useCommandBarRootRuntime({
 
   const {
     activeRootProviderResultsKey,
-    orderedRootResults,
+    orderedRootResults: answeredRootResults,
+    rootCategoryPriorities,
     rootResultsCurrent,
     rootSearching: tickerSearching,
     rootSectionOrder,
@@ -338,7 +345,13 @@ export function useCommandBarRootRuntime({
   // get had the symbol been typed slowly. Lower case found in a row's name
   // (`upd`, `list`) is that row and runs at once.
   const rootSymbolAnswerPending = !rootResultsCurrent && rootPlainTickerSearchArg !== null
-    && (rootTickerReading !== null || rootListingChoice !== null || readsAsSymbol(rootPlainTickerSearchArg, orderedRootResults));
+    && (rootTickerReading !== null || rootListingChoice !== null || readsAsSymbol(rootPlainTickerSearchArg, answeredRootResults));
+  // Nor does the AI hold a place for itself meanwhile: its Thinking row would
+  // lead the list until the symbol's rows came in above it.
+  const orderedRootResults = useMemo(
+    () => (rootSymbolAnswerPending ? answeredRootResults.filter((item) => !isAssistPlaceholderRow(item)) : answeredRootResults),
+    [answeredRootResults, rootSymbolAnswerPending],
+  );
 
   useLayoutEffect(() => {
     if (currentRoute) return;
@@ -427,6 +440,7 @@ export function useCommandBarRootRuntime({
   return {
     activeMatch,
     orderedRootResults,
+    rootCategoryPriorities,
     rootGhostSuffix,
     rootResultModel,
     rootResultsCurrent,
