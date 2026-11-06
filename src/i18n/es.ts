@@ -1569,7 +1569,7 @@ export const es: Record<string, string> = {
   "Your last payment didn't go through": "Tu último pago no se completó",
   "Pro is paused until your open invoice is paid. Pay it with another card and real-time data comes straight back.": "Pro está en pausa hasta que se pague tu factura pendiente. Págala con otra tarjeta y los datos en tiempo real vuelven al instante.",
   "Pay with another card": "Pagar con otra tarjeta",
-  "Stop trading on stale prices": "Deja de operar con precios desfasados",
+  "One better trade pays for Pro": "Una operación mejor paga Pro",
   "Pro is free for {days} days. $0 today, then {price} from {date}. Card required. Cancel before and you pay nothing.": "Pro es gratis durante {days} días. $0 hoy, luego {price} desde el {date}. Tarjeta necesaria. Cancela antes y no pagas nada.",
   "Continue to checkout": "Ir al pago",
   "{price}, billed today. Cancel anytime.": "{price}, se cobra hoy. Cancela cuando quieras.",

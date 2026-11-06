@@ -57,7 +57,7 @@ export function upgradeDialogCopy(
 ): UpgradeDialogCopy {
   // What Pro gets them, not the plan's name: the same title while it loads, with
   // or without a trial, so only the terms under it change.
-  const title = t("Stop trading on stale prices");
+  const title = t("One better trade pays for Pro");
   if (!offer) {
     return { title, subtitle: t("Loading…"), confirmLabel: t("Start free trial"), showPlan: true };
   }

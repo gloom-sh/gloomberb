@@ -1566,7 +1566,7 @@ export const zhCN: Record<string, string> = {
   "Your last payment didn't go through": "上次付款未成功",
   "Pro is paused until your open invoice is paid. Pay it with another card and real-time data comes straight back.": "Pro 已暂停，付清未结账单后恢复。换一张卡付款，实时数据立即恢复。",
   "Pay with another card": "换一张卡付款",
-  "Stop trading on stale prices": "别再用过时的价格交易",
+  "One better trade pays for Pro": "一笔更好的交易，就能抵上 Pro 的费用",
   "Pro is free for {days} days. $0 today, then {price} from {date}. Card required. Cancel before and you pay nothing.": "Pro 可免费使用 {days} 天。今天 $0，{date} 起 {price}。需要绑卡。在此之前取消则无需付费。",
   "Continue to checkout": "前往结账",
   "{price}, billed today. Cancel anytime.": "{price}，今天扣款。随时取消。",
