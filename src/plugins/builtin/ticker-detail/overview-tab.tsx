@@ -46,6 +46,7 @@ import { isReceiptSide, listingCedearRatio, listingDepositaryPair } from "../../
 import {
   CompactRangeBar,
   FundamentalsGrid,
+  FunctionLinkRow,
   PositionTable,
   QuoteBook,
   rangeEndpointWidth,
@@ -56,7 +57,8 @@ import { useFuturesContractTerms } from "./overview/futures-contract";
 import type { OverviewDividendState } from "./overview/dividend";
 import { optionContractFields, useOptionContractRow } from "./overview/option-contract";
 import { resolveOptionsTarget } from "../../../utils/options";
-import { buildOverviewStats, buildPositionRows, buildProfileFields } from "./overview/model";
+import { buildOverviewStats, buildPositionRows, buildProfileFields, FINANCIALS } from "./overview/model";
+import { hasStatementFinancials } from "./financials/model";
 import type { OverviewFunctionLink, StatField } from "./overview/types";
 import { describeFundamentalMarketCap } from "../../../utils/market-capitalization";
 import { liveFiftyTwoWeekRange, liveMarketCapitalization } from "../../../market-data/quotes/live-valuation";
@@ -90,6 +92,8 @@ function contractField(line: FuturesContractLine): StatField {
 interface OverviewTabProps {
   /** The contracts on the security, given the width of the overview's content. */
   perpetuals?: ReactNode | ((contentWidth: number) => ReactNode);
+  /** The company's latest news, given the width of the overview's content; it draws nothing while there is none. */
+  news?: ReactNode | ((contentWidth: number) => ReactNode);
   width?: number;
   /** The tab's height; a short one keeps fewer futures contract terms. */
   height?: number;
@@ -135,7 +139,7 @@ export function OverviewTab(props: OverviewTabProps) {
 /** Where a fund's facts open: the ETF function, its facts over its filings. */
 const FUND_FACTS_LINK: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
 
-function ResolvedOverviewTab({ width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, dividend }: OverviewTabProps & { ticker: TickerRecord }) {
+function ResolvedOverviewTab({ width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, news, dividend }: OverviewTabProps & { ticker: TickerRecord }) {
   const trade = useResearchTrading();
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const portfolios = useAppSelector((state) => state.config.portfolios);
@@ -609,6 +613,8 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
             <SectionHeading title={t("Fundamentals")} />
             <PaneLinkMenu>
               <FundamentalsGrid fields={stats} width={contentWidth} onOpenLink={onOpenFunction} />
+              {/* The statements behind the figures, for a company that has them. */}
+              {onOpenFunction && hasStatementFinancials(financials) ? <FunctionLinkRow link={FINANCIALS} onOpen={onOpenFunction} /> : null}
             </PaneLinkMenu>
           </Box>
         )}
@@ -621,6 +627,8 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
         )}
 
         {trade?.orders?.(contentWidth)}
+
+        {typeof news === "function" ? news(contentWidth) : news}
 
         {profileFields.length > 0 && (
           <Box flexDirection="column">
