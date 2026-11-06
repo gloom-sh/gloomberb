@@ -298,7 +298,8 @@ function mapCloudFundamentals(fundamentals: Fundamentals | undefined): Fundament
 }
 
 const EARNINGS_TIMINGS: ReadonlySet<unknown> = new Set(["bmo", "dmh", "amc"]);
-const EARNINGS_TIMING_SOURCES: ReadonlySet<unknown> = new Set(["filing", "calendar", "history"]);
+// "company": a date (and time) the company announced itself, which the service keeps over the calendar's.
+const EARNINGS_TIMING_SOURCES: ReadonlySet<unknown> = new Set(["filing", "calendar", "history", "company"]);
 
 /** The served next report; one without a calendar date is left out. */
 function mapCloudNextEarnings(value: NextEarnings | undefined): NextEarnings | undefined {

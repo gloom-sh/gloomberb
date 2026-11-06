@@ -24,12 +24,15 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
   throw signal.reason instanceof Error ? signal.reason : new Error("Insider filing load was aborted.");
 }
 
-/** Form 4 documents read at once: a list is read in a few round trips, not one per filing. */
-const CONTENT_READS_AT_ONCE = 8;
+/**
+ * Form 4 documents read at once: a list is read in a few round trips, not one
+ * per filing, and never more than the service reads from the SEC at once.
+ */
+const CONTENT_READS_AT_ONCE = 4;
 
 /**
  * Reads the company's Form 4 filings newest first until `limit` of them are
- * its own, up to eight documents at a time ahead of the one being looked at
+ * its own, up to four documents at a time ahead of the one being looked at
  * and never more than are still wanted (one at a time, `insider OXY` took
  * 6-8 s for its 20). A form it filed as an
  * owner of another company's shares is read and left out, so a list of only
@@ -46,10 +49,12 @@ export async function loadParsedInsiderFilings(
   const filings = await provider.getSecFilings(symbol, SEC_FILING_SCAN_LIMIT, options.exchange ?? "");
   const forms = filings.filter((filing) => isInsiderForm(filing.form));
   const reads: Array<Promise<{ content: string | null } | null>> = [];
-  // A read that fails is null: an unread filing may be the company's own, so it stays as a row that says so.
   const read = (index: number) => reads[index] ??= readContent(forms[index]!).then(
     (content) => ({ content }),
-    () => null,
+    () => {
+      // Intentional ignore: an unread filing may be the company's own, so it stays as a row that says it was not read.
+      return null;
+    },
   );
 
   const parsed: ParsedInsiderFiling[] = [];

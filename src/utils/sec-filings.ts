@@ -290,9 +290,11 @@ export function form4TradeText(filing: Pick<SecFilingItem, "cik" | "form4">): st
   if (!trade) return null;
   const verb = FORM4_VERBS[trade.code] ?? (trade.side === "disposed" || trade.side === "sell" ? "Disposed of" : "Acquired");
   const price = trade.price == null ? "" : ` at $${trade.price >= 1 ? trade.price.toFixed(2) : trade.price.toPrecision(3)}`;
+  // A form of options alone counts options, not shares.
+  const unit = trade.derivative ? "options" : "shares";
   if (isOtherIssuerForm4(filing)) {
-    const subject = trade.issuerTicker ? `${trade.issuerTicker} shares` : "shares";
+    const subject = trade.issuerTicker ? `${trade.issuerTicker} ${unit}` : unit;
     return `${verb} ${formatCompact(trade.shares)} ${subject}${price} (${trade.issuerName})`;
   }
-  return `${trade.ownerName ? `${trade.ownerName}: ` : ""}${verb} ${formatCompact(trade.shares)} shares${price}`;
+  return `${trade.ownerName ? `${trade.ownerName}: ` : ""}${verb} ${formatCompact(trade.shares)} ${unit}${price}`;
 }

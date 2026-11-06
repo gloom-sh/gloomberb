@@ -123,13 +123,17 @@ export function retryAfterSeconds(error: unknown): number | null {
     : null;
 }
 
+/** A refusal that carries no words of the service's own: an empty body, or the status alone. */
+const GENERIC_LIMIT_TEXT = /^\s*(?:(?:HTTP\s*)?429\b.*|too many requests\.?)?\s*$/i;
+
 /**
- * A 13F read the service refused for its signed-out limit says how long to
- * wait and that signing in lifts it ("Anonymous 13F rate limit exceeded"
- * said neither); the limit itself is the service's.
+ * A 13F read the service refused for its signed-out limit: the service's own
+ * message when it sent one (it says how long to wait and that signing in lifts
+ * the limit), else the same in the app's words. The limit itself is the
+ * service's.
  */
-function thirteenFReadError(error: unknown): unknown {
-  if (!isRateLimited(error)) return error;
+export function thirteenFReadError(error: unknown): unknown {
+  if (!isRateLimited(error) || !GENERIC_LIMIT_TEXT.test(error.message)) return error;
   const seconds = retryAfterSeconds(error);
   return new ApiRequestError(
     `Too many 13F reads without signing in: try again in ${seconds != null ? `${seconds} s` : "a minute"}, or sign in to lift the limit.`,

@@ -14,8 +14,8 @@ import {
   getChartIndicatorColor,
   paneTitleBg,
   paneTitleText,
-  selectedCellColor,
 } from "./colors";
+import { selectedCellColor } from "./tone-contrast";
 import { contrastRatio } from "./color-utils";
 import { DEFAULT_THEME, getThemeIds, isDarkTheme, listThemes, resolveThemeId, themes, TONE_TEXT_MIN } from "./themes";
 

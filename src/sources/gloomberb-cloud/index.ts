@@ -177,6 +177,7 @@ function readForm4Trade(value: unknown): SecForm4Trade | null {
     side,
     shares,
     price,
+    ...(raw.derivative === true ? { derivative: true } : {}),
   };
 }
 

@@ -127,8 +127,8 @@ describe("insider client", () => {
     const result = await loadParsedInsiderFilings(provider, "AMD", { limit: 10 });
 
     expect(result.parsed.map(({ filing }) => filing.accessionNumber)).toEqual(listing.slice(0, 10).map((filing) => filing.accessionNumber));
-    expect(maxActive).toBeGreaterThan(1);
-    expect(maxActive).toBeLessThanOrEqual(8);
+    // Four at once, as many as the service reads from the SEC at a time.
+    expect(maxActive).toBe(4);
   });
 
   test("a foreign private issuer whose Form 4s are all filed as an owner has none, and says why", async () => {

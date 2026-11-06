@@ -132,5 +132,8 @@ test("a Form 4 row says whose shares, which way, how many and at what price", ()
     issuerTicker: "BRK.A", issuerCik: "1067983", code: "G", side: "disposed", shares: 19, price: null } })).toBe("Jain Ajit: Gift of 19 shares");
   expect(form4TradeText({ cik: "320193", form4: { ...trade, issuerCik: "320193", ownerName: "COOK TIMOTHY D", code: "S", side: "sell", shares: 120_000, price: 231.5 } }))
     .toBe("COOK TIMOTHY D: Sold 120k shares at $231.50");
+  // A grant of options and nothing else counts options.
+  expect(form4TradeText({ cik: "320193", form4: { ...trade, issuerCik: "320193", ownerName: "COOK TIMOTHY D", code: "A", side: "acquired",
+    shares: 20_000, price: null, derivative: true } })).toBe("COOK TIMOTHY D: Awarded 20k options");
   expect(form4TradeText({ cik: "320193" })).toBeNull();
 });

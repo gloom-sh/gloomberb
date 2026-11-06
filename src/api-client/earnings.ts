@@ -39,8 +39,10 @@ export interface EarningsReport {
   /** Report date, New York. */
   date: string;
   timing: EarningsTiming | null;
-  /** `history` means inferred from the company's last reports, not announced. */
-  timingSource: "filing" | "calendar" | "history" | null;
+  /** `history` means inferred from the company's last reports, not announced; `company` that the company announced the date itself. */
+  timingSource: "filing" | "calendar" | "history" | "company" | null;
+  /** When the results come out, as the company announced it, for `company` dates with a time. Absent from older servers. */
+  announcedAt?: string | null;
   reportedAt: string | null;
   /** Fiscal quarter end month, YYYY-MM. */
   fiscalPeriod: string | null;

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { recordResearchActivity, type ResearchActivity } from "../../api-client/research-activity";
 import type { AppBrokerImportRuntime } from "../../app/runtime/broker-import";
 import { type AppConfig, findPaneInstance, type OnboardingStage } from "../../types/config";
-import { useViewport } from "../../react/input";
+import { useBeforeShortcut, useViewport } from "../../react/input";
 import { useKeybindings } from "../../app/keybindings";
 import { useAppDispatch, useAppSelector, useAppStateRef } from "../../state/app/context";
 import {
@@ -83,6 +83,11 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
   const keybindings = useKeybindings();
   const dialogOpen = useDialogState((dialog) => dialog.isOpen);
   const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
+  // A pane holding the keyboard (a chat composer, a ticker search): the card's keys are its.
+  const inputCaptured = useAppSelector((state) => state.inputCaptured);
+  // Whether the last key went to a field: there the card shows no keys, since they type.
+  const [typingInField, setTypingInField] = useState(false);
+  useBeforeShortcut((event) => setTypingInField(event.targetEditable === true));
   const { width: viewportWidth, height: viewportHeight } = useViewport();
   const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
@@ -315,10 +320,12 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     brokerFieldIdx, setBrokerSelectIdx, brokerChoices, openBrokerGuide, chosenDesks, finishDesks,
     setDeskCursor, deskCursor, setChosenDesks, continueAccount, skipSetup, primaryUpgradeAction,
     setBillingInterval, keybindings, dialogOpen, commandBarOpen, saveProgressInBackground, goBack, coachAside,
+    inputCaptured,
   });
 
   return {
     coachAside,
+    coachKeysHidden: inputCaptured || typingInField,
     helpFocused, stage, progress, notificationDismissShortcut, finish, notificationActionShortcut,
     saveProgressInBackground, colors, commandBarShortcut, selectedBrokerId, brokerOptions, portfolioSub,
     sectionAvailability, goToSection, skipSetup, isFinishing, isBrokerCommitting, desktop, positions,
@@ -371,7 +378,7 @@ function useCoachStepsAside(config: AppConfig, stage: OnboardingStage): boolean 
 
 export function OnboardingWizard(props: OnboardingWizardProps) {
   const {
-    coachAside,
+    coachAside, coachKeysHidden,
     helpFocused, stage, progress, notificationDismissShortcut, finish, notificationActionShortcut,
     saveProgressInBackground, colors, commandBarShortcut, selectedBrokerId, brokerOptions, portfolioSub,
     sectionAvailability, goToSection, skipSetup, isFinishing, isBrokerCommitting, desktop, positions,
@@ -396,18 +403,19 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
         {/* Each button shows its key, as Connect shows Alt+Enter; in the
             terminal the second wraps under the first. The desktop card has no
             room for both: like a toast, its dismiss key is in the tooltip.
-            F10 also dismisses it. */}
+            F10 also dismisses it. In a field, or with a pane holding the
+            keyboard, the keys are the field's: the card shows none. */}
         <OnboardingButton
           label="Keep exploring"
           variant="ghost"
-          shortcut={!desktop && notificationDismissShortcut ? notificationDismissShortcut : undefined}
+          shortcut={!desktop && !coachKeysHidden && notificationDismissShortcut ? notificationDismissShortcut : undefined}
           title={desktop && notificationDismissShortcut ? `${t("Keep exploring")} (${notificationDismissShortcut})` : undefined}
           onPress={() => { void finish(); }}
         />
         <OnboardingButton
           label="Connect free Cloud"
           variant="primary"
-          shortcut={notificationActionShortcut || undefined}
+          shortcut={!coachKeysHidden && notificationActionShortcut || undefined}
           onPress={() => saveProgressInBackground({ stage: "account" })}
         />
       </>}>

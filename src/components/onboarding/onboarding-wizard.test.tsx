@@ -111,6 +111,14 @@ function StateCapture() {
 }
 
 /** Records the keys that reach it, like a pane or the shell beside the wizard. */
+/** A pane's text field: Alt+Backspace deletes the word before the cursor, as an input does. */
+function FieldProbe({ text }: { text: { value: string } }) {
+  useShortcut((event) => {
+    if (event.targetEditable === true && event.name === "backspace" && (event.alt || event.meta)) text.value = text.value.replace(/\S+\s*$/, "");
+  }, { allowEditable: true });
+  return null;
+}
+
 function KeyProbe({ seen }: { seen: string[] }) {
   useShortcut((event) => { seen.push(event.name ?? ""); }, { phase: "before", allowEditable: true });
   return null;
@@ -1473,6 +1481,39 @@ describe("OnboardingWizard", () => {
     await waitForFrame("Built around AAPL");
     await tui.emitKeypress({ name: "backspace", meta: true }, { trackPropagation: true });
     expect(reached).toEqual(["backspace"]);
+    await waitUntil(() => capturedConfig?.onboardingComplete === true, "the dismiss key finishes onboarding");
+  });
+
+  // The card's Alt+Backspace ran in the field a pane had focused, finishing onboarding instead of deleting a word.
+  test("in a pane's text field Alt+Backspace deletes a word while the card shows, and the card shows no keys there", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-coach-field-"));
+    const text = { value: "berkshire hathaway" };
+    const config = {
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: { version: 1 as const, stage: "research" as const, path: "manual" as const, portfolioId: "main", tickerSymbol: "AAPL" },
+    };
+    await tui.render(
+      <WizardHarness config={config} pluginRegistry={createPluginRegistry()} after={<FieldProbe text={text} />} />,
+      { width: 100, height: 32 },
+    );
+    await tui.setup().renderOnce();
+    await waitForFrame("Built around AAPL");
+    expect(tui.frame()).toContain("Alt+Backspace");
+
+    // The field has the keyboard.
+    Object.defineProperty(tui.setup().renderer, "currentFocusedEditor", { configurable: true, get: () => ({}) });
+    await tui.emitKeypress({ name: "backspace", meta: true }, { trackPropagation: true });
+    expect(text.value).toBe("berkshire ");
+    await act(async () => { await Bun.sleep(20); await tui.setup().renderOnce(); });
+    expect(tui.frame()).toContain("Built around AAPL");
+    expect(tui.frame()).not.toContain("Alt+Backspace");
+    expect(tui.frame()).not.toContain("Alt+Enter");
+    expect(capturedConfig?.onboardingComplete).not.toBe(true);
+
+    // Out of the field, the card's key is the card's again.
+    Object.defineProperty(tui.setup().renderer, "currentFocusedEditor", { configurable: true, get: () => null });
+    await tui.emitKeypress({ name: "backspace", meta: true }, { trackPropagation: true });
+    expect(text.value).toBe("berkshire ");
     await waitUntil(() => capturedConfig?.onboardingComplete === true, "the dismiss key finishes onboarding");
   });
 

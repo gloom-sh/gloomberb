@@ -95,6 +95,8 @@ export interface SecForm4Trade {
   shares: number;
   /** Share-weighted average price; null when no line gives one. */
   price: number | null;
+  /** True when the transaction is in options or other derivatives (a form with no share lines): `shares` counts those. */
+  derivative?: boolean;
 }
 
 export interface SecFilingDocument {
@@ -162,6 +164,8 @@ export interface EarningsEvent {
   revenueActual: number | null;
   surprise: number | null;
   timing: "BMO" | "AMC" | "TNS" | "";
+  /** When the results come out, as the company announced it (Berkshire's Saturday 13:00Z); absent when it named no time. */
+  releaseAt?: string | null;
 }
 
 /** The reads a provider may send in batches (`DataProvider.batchesReads`). */

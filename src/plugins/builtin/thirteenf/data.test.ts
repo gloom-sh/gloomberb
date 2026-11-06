@@ -6,6 +6,7 @@ import { setHttpFetchTransport } from "../../../utils/http-transport";
 import {
   attachThirteenFApiPersistence,
   resetThirteenFApiPersistence,
+  thirteenFReadError,
 } from "./api";
 import { ApiRequestError } from "../../../api-client/errors";
 import { corporateSplitFactor, createFundPrefetcher, prefetchFundDetail, loadBrowserRows as loadRankedRows, loadFilingGap, loadFilingPositions, loadFundDetail, loadFundPerformance, loadSplitFactors } from "./data";
@@ -486,6 +487,17 @@ test("a prior quarter the service refused says it did not load and when to try a
   } finally {
     spy.mockRestore();
   }
+});
+
+test("a signed-out limit shows the service's own message, and says how long to wait when it sent none", () => {
+  const service = new ApiRequestError("Too many 13F reads without signing in: try again in 40 s, or sign in to lift the limit", 429, 39_200);
+  expect(thirteenFReadError(service)).toBe(service);
+  for (const bare of ["", "429 Too Many Requests", "Too Many Requests"]) {
+    expect((thirteenFReadError(new ApiRequestError(bare, 429, 39_200)) as Error).message)
+      .toBe("Too many 13F reads without signing in: try again in 40 s, or sign in to lift the limit.");
+  }
+  const other = new ApiRequestError("Unknown 13F path /holdings", 404);
+  expect(thirteenFReadError(other)).toBe(other);
 });
 
 test("abort during a holdings page stops the walk", async () => {

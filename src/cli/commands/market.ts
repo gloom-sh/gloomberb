@@ -206,7 +206,7 @@ import {
   wordMeansMore,
 } from "./news-search";
 import { displayTimeZone, formatUtcDayTime, formatUtcTime } from "../../utils/utc-time";
-import { localReportTiming } from "../../plugins/builtin/earnings/format";
+import { localReportTiming } from "../../utils/report-timing";
 import { DAY_SO_FAR_TEXT, withSessionBar } from "../../time-series/session-bar";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
@@ -1017,9 +1017,10 @@ function earningsRows(events: ResolvedEarningsEvent[]) {
     // Out, announced by the company, or projected from its past reports.
     status: earningsDateLabel(event.dateStatus),
     timing: event.timing,
-    // With a timezone set, when that is on the reader's clock: "after close, about 05:05 SGT Tue 10 Nov".
+    // The company's own time when it announced one ("at 21:00 SGT Sat 7 Nov"), else with a
+    // timezone set the session on the reader's clock: "after close, about 05:05 SGT Tue 10 Nov".
     localTiming: localReportTiming(isoDate(event.earningsDate).slice(0, 10),
-      event.timing === "AMC" ? "amc" : event.timing === "BMO" ? "bmo" : null, displayTimeZone()) ?? "",
+      event.timing === "AMC" ? "amc" : event.timing === "BMO" ? "bmo" : null, displayTimeZone(), event.releaseAt) ?? "",
     epsEstimate: event.epsEstimate,
     epsActual: event.epsActual,
     revenueEstimate: event.revenueEstimate,
