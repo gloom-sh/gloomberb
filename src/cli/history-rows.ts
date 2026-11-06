@@ -1,4 +1,5 @@
-import { INDEX_POINTS_EXPORT_UNIT, INDEX_POINTS_LABEL, isIndexLevel } from "../market-data/market/index-level";
+import { INDEX_POINTS_EXPORT_UNIT, INDEX_POINTS_LABEL, isIndexLevel, YIELD_INDEX_EXPORT_UNIT } from "../market-data/market/index-level";
+import { isYieldIndexSymbol } from "../tickers/index-roots";
 import type { PricePoint } from "../types/financials";
 import { formatPriceObservation, marketPriceFractionDigitCeiling, resolveAssetDisplayKind } from "../market-data/market/format";
 import { TIME_RANGES, type TimeRange } from "../time-series/range";
@@ -832,6 +833,8 @@ export function historyUnit(
     const [base, counter] = [pair.slice(0, 3), pair.slice(3)];
     return { kind: "pair", currency: counter, unit: `${counter} per ${base}` };
   }
+  // A Cboe yield index is a yield in percent, the unit `quote` exports it in, not index points.
+  if (isYieldIndexSymbol(listing)) return { kind: "points", currency: null, unit: YIELD_INDEX_EXPORT_UNIT };
   if (isIndexLevel(quote?.instrumentType)) return { kind: "points", currency: null, unit: INDEX_POINTS_EXPORT_UNIT };
   const code = quote?.currency?.trim();
   // A future is priced in its contract's unit, spelled one way in the text, CSV and JSON.
@@ -869,7 +872,7 @@ export function historyFacts(unit: HistoryUnit, rows: readonly Pick<HistoryRow, 
   const interval = rows[0]?.interval;
   const unbroken = historyUnbrokenFrom(rows);
   return [
-    unit.kind === "pair" ? unit.unit! : unit.kind === "points" ? INDEX_POINTS_LABEL
+    unit.kind === "pair" ? unit.unit! : unit.kind === "points" ? unit.unit === YIELD_INDEX_EXPORT_UNIT ? "Yield, percent" : INDEX_POINTS_LABEL
       : unit.kind === "contract" ? `Unit ${unit.unit}` : `Currency ${unit.unit ?? "unknown"}`,
     interval ? `${BAR_INTERVAL_LABELS[interval]} bars` : "",
     first && last ? (first === last ? historyDate(first) : `${historyDate(first)} to ${historyDate(last)}`) : "",

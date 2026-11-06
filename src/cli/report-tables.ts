@@ -666,6 +666,22 @@ export function renderReportCsv(report: CliReportTables, freshness?: ReportFresh
   return withCsvFooter(blocks.join("\n\n"), report.footer);
 }
 
+/**
+ * A CSV as `withCsvFooter` writes it, split into its rows and its closing
+ * lines (without their `# `): what goes to the file or pipe, where a
+ * spreadsheet would read a `#` line as a row of junk, and what goes to
+ * standard error beside the warnings. Every row already names its source and
+ * as-of in its own columns. A section's `# section:` line stays with its rows.
+ */
+export function splitCsvFooter(text: string): { csv: string; footer: string[] } {
+  const isComment = (line: string) => line.startsWith("# ");
+  const blocks = text.split("\n\n");
+  const last = blocks.at(-1) ?? "";
+  const lines = last.split("\n");
+  if (!last || !lines.every(isComment) || lines.some((line) => line.startsWith("# section: "))) return { csv: text, footer: [] };
+  return { csv: blocks.slice(0, -1).join("\n\n"), footer: lines.map((line) => line.slice(2)) };
+}
+
 /** CSV with its closing `#` lines after a blank line. */
 export function withCsvFooter(csv: string, footer: readonly string[]): string {
   return [csv, footer.map(commentLine).join("\n")].filter(Boolean).join("\n\n");

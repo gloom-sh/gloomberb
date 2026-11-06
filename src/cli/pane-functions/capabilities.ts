@@ -6,6 +6,7 @@ import type {
   PaneDef,
   PaneTemplateDef,
 } from "../../types/plugin";
+import { spreadsheetOptionHint } from "../spreadsheet-hint";
 
 export type PaneFunctionReadiness = "ready" | "partial" | "live-dom" | "unsupported";
 type PaneFunctionScreenshotReadiness = PaneFunctionReadiness;
@@ -327,7 +328,8 @@ export function normalizeCapabilityOptions(
       }
       const supported = capability.options.map(({ key }) => optionFlag(key)).join(", ");
       throw new Error(
-        `${settings.code ?? capability.id} does not support ${optionFlag(rawKey)}.${supported ? ` Supported options: ${supported}.` : " It has no options."}`,
+        [`${settings.code ?? capability.id} does not support ${optionFlag(rawKey)}.${supported ? ` Supported options: ${supported}.` : " It has no options."}`,
+          spreadsheetOptionHint(optionFlag(rawKey))].filter(Boolean).join(" "),
       );
     }
     normalized[option.key] = normalizeOptionValue(option, rawValue, settings.argument);

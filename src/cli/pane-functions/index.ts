@@ -40,7 +40,7 @@ import { CLI_ERROR_CODE, failUnreachable, failWithError, isCliFailure, unreachab
 import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../../utils/network-failure";
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
 import { knownGapMessage, commandPointer, commandPointerLeads, topicPointer } from "../known-gaps";
-import { selectReportTables, type CliReportTables } from "../report-tables";
+import { selectReportTables, splitCsvFooter, type CliReportTables } from "../report-tables";
 import { cliOutputWritten, printCliResult, serializeCliResult, type CliErrorObject } from "../result";
 import { checkOutputPath, resolveOutputPath, writeOutputFile } from "../output-file";
 import type { CatalogCommandHit } from "../unknown-command";
@@ -374,7 +374,11 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         // A report with no data writes no file: a header alone would read as a screen that matched nothing. It fails
         // as plain --json fails, with its code and whether to retry.
         if (failure) failWithError({ ...failure, details: `Nothing was written to ${outputPath}.` });
-        await writeOutputFile(outputPath, `${renderForFile(() => serializeCliResult(result, ctx.cliOptions, render))}\n`);
+        // A CSV file holds its rows alone; its closing source and note lines go to stderr, as printed CSV's do.
+        const written = renderForFile(() => serializeCliResult(result, ctx.cliOptions, render));
+        const { csv, footer } = ctx.cliOptions.format === "csv" ? splitCsvFooter(written) : { csv: written, footer: [] };
+        await writeOutputFile(outputPath, `${csv}\n`);
+        if (!ctx.cliOptions.quiet) for (const line of footer) console.error(line);
         // What was written and where; warnings go to stderr as they would beside printed rows, and JSON keeps its envelope.
         const saved = { output: outputPath, format: ctx.cliOptions.format, rows: report.data.rowCount };
         printCliResult({ data: saved, ...(warnings.length > 0 ? { warnings } : {}) },

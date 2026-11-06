@@ -187,6 +187,16 @@ function symbolColumns(rows: readonly string[][]): Set<number> {
   return columns;
 }
 
+/**
+ * A cell of symbols split by spaces in a list split by commas (`0700.hk
+ * 9988.HK`, `USDJPY=X USDCHF=X`): every word carries a listing's mark (a dot,
+ * a caret, `=`, `:` or a digit), which a company's name (`Apple Inc`) does not.
+ */
+function isSymbolWords(cell: string): boolean {
+  const words = cell.trim().split(/\s+/);
+  return words.length > 1 && words.every((word) => isGridSymbol(word) && /[.^=:\d]/.test(word));
+}
+
 /** A grid of numeric exchange codes alone, two or more to a row (`0700  9988`): every cell is a listing. */
 function numericCodeGrid(rows: readonly string[][]): boolean {
   return rows.some((cells) => cells.filter(Boolean).length > 1)
@@ -250,10 +260,13 @@ export function parseSymbolText(text: string): SymbolText {
   // A grid of symbols: a terminal's code is one cell (`CZR US Equity`), and so is a numeric code among tickers (`2007`).
   const codes = symbolColumns(cleaned);
   const grid = numericCodeGrid(cleaned) || cleaned.every((cells) => cells.every((cell, index) => (
-    !cell || isJunkCell(cell) || isTerminalCodeCell(cell)
+    !cell || isJunkCell(cell) || isTerminalCodeCell(cell) || isSymbolWords(cell)
     || (isGridSymbol(cell) && (index === 0 || !isFigure(cell) || (NUMERIC_CODE.test(cell) && codes.has(index))))
   )));
-  if (grid) return { symbols: records.flat().filter(Boolean), ignored: [] };
+  // A file of lines split by commas or spaces reads as the same list typed would (`lmt, NOC ,` then `^HSI, 0700.hk 9988.HK`):
+  // a cell of words is read as a typed entry is, so its symbols split.
+  const spaced = cleaned.some((cells) => cells.some((cell) => !isTerminalCodeCell(cell) && isSymbolWords(cell)));
+  if (grid) return { symbols: records.flat().filter(Boolean), ignored: [], ...spaced ? { entries: true as const } : {} };
   // Names split by semicolons or commas, with no figures: one pasted line, or one name a line with a separator left
   // on it, is a list. A name beside a sector or any other text is a table, read by its first column below.
   const names = cleaned.some((cells) => /\s/.test(cells[0] ?? ""));

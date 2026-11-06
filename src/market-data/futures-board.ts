@@ -271,6 +271,30 @@ export function futuresContractByName(value: unknown): FuturesContract | null {
 }
 
 /**
+ * The board row a commodity's word names whole when typed as a symbol: BRENT
+ * is Brent Crude Oil (BZ=F), WTI and OIL are WTI Crude Oil (CL=F), GOLD is
+ * Gold (GC=F). A word of the name or an alias, in full and of three letters
+ * or more, so a ticker that only starts one (COP, SIL) names none; the row
+ * whose name has the fewest other words wins, then the board's order.
+ */
+export function futuresContractByWord(symbol: unknown): FuturesContract | null {
+  const word = typed(symbol).toLowerCase();
+  if (!/^[a-z]{3,}$/.test(word)) return null;
+  let best: FuturesContract | null = null;
+  let fewest = Number.POSITIVE_INFINITY;
+  for (const contract of FUTURES_CONTRACTS) {
+    for (const name of [contract.name, ...contract.aliases ?? []]) {
+      const words = nameWords(name);
+      if (words.length < fewest && words.includes(word)) {
+        best = contract;
+        fewest = words.length;
+      }
+    }
+  }
+  return best;
+}
+
+/**
  * The future a bare symbol typed for a security stands for: a code no listed
  * security answers to (TTF is TTF=F). Null for every other symbol, and for a
  * code a security keeps (NG), whose future is NG=F.

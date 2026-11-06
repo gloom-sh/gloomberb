@@ -15,6 +15,7 @@ import {
   MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, pricePointWickFlags, priceHistoryIntegrityNotice,
   priceHistoryWickNotice,
 } from "../../../utils/price-history-integrity";
+import { indexBarVolume } from "../../../market-data/market/index-level";
 import {
   buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations,
   financialStatementPeriods, financialSubTabFields, formatFinancialHeader, isPerShareFinancialRow, receiptShareCountLabel,
@@ -470,7 +471,8 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
       const values = pricePointValues(point);
       return {
         date: Number.isFinite(date.getTime()) ? date.toISOString() : String(point.date),
-        open: clean(values.open), high: clean(values.high), low: clean(values.low), close: clean(values.close), volume: values.volume,
+        open: clean(values.open), high: clean(values.high), low: clean(values.low), close: clean(values.close),
+        volume: indexBarVolume(values.volume, quote?.instrumentType),
         ...(values.integrity ? { integrity: values.integrity } : {}),
         ...(point.partial ? { partial: true } : {}),
         // A coin's day Gloom Cloud rebuilt from hourly bars has no volume of its own, as `history` marks it.

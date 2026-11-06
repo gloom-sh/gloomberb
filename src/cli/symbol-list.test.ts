@@ -35,6 +35,13 @@ test("a pasted list of company names keeps each line or semicolon cell one name,
   expect(parseSymbolText("AAPL 150.00\nMSFT 420.10\n")).toEqual({ symbols: ["AAPL", "MSFT"], ignored: ["150.00", "420.10"] });
 });
 
+test("a file of lines split by commas and spaces reads every symbol, as the same list typed does", async () => {
+  // `lmt, NOC ,` read LMT alone: a cell of symbols split by spaces (`0700.hk 9988.HK`) made the file a table.
+  const basket = "lmt, NOC ,\nRTX  \n gd\nrhm.de,  BA.L\n^vix, ^TNX\nUSDJPY=X USDCHF=X\n^HSI, 0700.hk 9988.HK\n";
+  const read = await readSymbolList({ args: ["-"], readStdin: async () => basket, readEntries: async (entries) => entries.flatMap((entry) => entry.split(/\s+/)) });
+  expect(read.symbols).toEqual(["lmt", "NOC", "RTX", "gd", "rhm.de", "BA.L", "^vix", "^TNX", "USDJPY=X", "USDCHF=X", "^HSI", "0700.hk", "9988.HK"]);
+});
+
 test("names beside other text are a table read by its first column, or by the column a Name header names", async () => {
   // A sector beside each name is not a symbol: it was added twice as TECHNOLOGY.
   const sectors = "Apple Inc,Technology\nMicrosoft Corp,Technology\n";

@@ -16,7 +16,7 @@ import { serializeCsv } from "../utils/csv";
 import { formatUtcTime, isEpochMilliseconds, isZonedIsoDateTime } from "../utils/utc-time";
 import { formatFreshnessLine, withSavedCopy, type ReportFreshness } from "./pane-functions/freshness";
 import { withSearchHints, type FredSeriesCheck } from "./not-a-ticker";
-import { renderReportCsv, renderReportNdjson, withCsvFooter, type CliReportTables } from "./report-tables";
+import { renderReportCsv, renderReportNdjson, splitCsvFooter, withCsvFooter, type CliReportTables } from "./report-tables";
 import {
   EXPORT_DATING_COLUMNS,
   EXPORT_IDENTITY_COLUMNS,
@@ -636,7 +636,10 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
   if (options.quiet && options.format === "text") return;
   // JSON keeps the router's own words; everything else is for a person, so a "Not a ticker" gets its hint.
   const hinted = (text: string) => options.format === "json" ? text : withSearchHints(text, args, isFredSeries);
-  const output = hinted(serializeCliResult(result, options, renderOptions));
+  const serialized = hinted(serializeCliResult(result, options, renderOptions));
+  // A CSV's closing source and note lines go to stderr with the warnings: in the file they are rows of junk to a spreadsheet.
+  const { csv, footer } = options.format === "csv" ? splitCsvFooter(serialized) : { csv: serialized, footer: [] };
+  const output = csv;
   // Bun's console writer can truncate a large pipe write after stdout has been
   // initialized. The stream queues the remaining bytes until the reader drains.
   if (output && !process.stdout.write(`${output}\n`)) {
@@ -650,7 +653,8 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
       console.error(wrapToTerminal(`${cliStyles.warning("warning:")} ${hinted(warning)}`));
     }
   }
-  // CSV says what its rows do not in closing `# note:` lines; NDJSON has no place for one among its rows,
+  if (!options.quiet) for (const line of footer) console.error(line);
+  // CSV says what its rows do not in closing `note:` lines, on stderr; NDJSON has no place for one among its rows,
   // so the same notes go to stderr, where the warnings are.
   if (options.format === "ndjson" && !options.quiet) {
     for (const note of exportNdjsonNotes(result, options, renderOptions)) console.error(`note: ${note}`);

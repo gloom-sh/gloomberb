@@ -4,6 +4,7 @@ import type { Quote, QuoteIndexSession } from "../../../types/financials";
 import { isQuoteBeforeLatestSession, isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
 import { delayedFeedLagMs, readIndexSession } from "../../../market-data/market/freshness";
 import { quoteHeadlineTime } from "../../../market-data/market/status";
+import { indexLevelMarketState } from "../../../market-data/market/index-level";
 import { barSizeFromGap, medianBarGap } from "../../../time-series/bar-spacing";
 import { apiClient } from "../../../api-client";
 import { isPerpetualExchange } from "../../../tickers/perpetual-listing";
@@ -113,7 +114,8 @@ export function quoteFreshnessFields(
     stale: isQuoteStaleForCurrentSession(quote, now),
     ...(delayed ? { delayMinutes: delayedFeedLagMs(exchange) / 60_000 } : {}),
     ...(exchange && session ? { sessionExchange: exchange } : {}),
-    ...(quote.marketState && session ? { marketState: quote.marketState } : {}),
+    // An index's final close reads as a close, not after hours.
+    ...(quote.marketState && session ? { marketState: indexLevelMarketState(quote) } : {}),
     ...(sessionCalendar && session ? { sessionCalendar } : {}),
   };
 }

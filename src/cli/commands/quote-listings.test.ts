@@ -629,7 +629,7 @@ test("a word many names share is a name only as search's top result or an exact 
   expect((result.data as Array<{ target: QuoteSubscriptionTarget }>).map((row) => row.target.symbol)).toEqual(["AAPL:NASDAQ", "OIL", "BITCOIN", "HYPERLIQUID", "CARBON", "ZORBLAX"]);
   expect(result.warnings!.map((warning) => withSearchHints(warning, words))).toEqual([
     'Read "Apple" as AAPL:NASDAQ (Apple Inc.).',
-    "Not a ticker: OIL. Try `gloom search oil`.",
+    "Not a ticker: OIL. For WTI Crude Oil, quote the future CL=F.",
     "Not a ticker: BITCOIN. Did you mean BTC-USD (Bitcoin)?",
     "Not a ticker: HYPERLIQUID. Did you mean HYPE-USD (Hyperliquid)?",
     "Not a ticker: CARBON. Try `gloom search carbon`.",
