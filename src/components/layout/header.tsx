@@ -40,7 +40,6 @@ import { resolveHeaderPromptGeometry } from "./shell/chrome";
 import { useWindowFullscreen } from "./window-fullscreen";
 import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-controls";
 import { Button, terminalButtonColumns } from "../ui/button";
-import { DelayedMark, delayedMarkWidth } from "../ui/delayed-mark";
 import { KeyHints, keyHintsText } from "../ui/key-hints";
 
 const UPDATE_NOTICE_DURATION_MS = 5_000;
@@ -814,12 +813,7 @@ function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: bo
   const colors = useThemeColors();
   const dispatch = useAppDispatch();
   const summary = useMarketSummary();
-  const fit = resolveMarketSummaryFit({
-    available: width,
-    // A delayed quote carries its mark only while the status bar does not say
-    // the delay; the two fit, or give way, together.
-    ...marketSummaryWidths(summary, summary.quoteDelayMinutes != null ? delayedMarkWidth(summary.quoteDelayMinutes, nativePaneChrome) : 0),
-  });
+  const fit = resolveMarketSummaryFit({ available: width, ...marketSummaryWidths(summary) });
   const openPicker = useCallback(() => {
     dispatch({ type: "SET_COMMAND_BAR", open: true, query: "", launch: { kind: "ticker-search", query: "", payload: HEADER_MARKET_SEARCH } });
   }, [dispatch]);
@@ -842,7 +836,6 @@ function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: bo
             <Text fg={nativePaneChrome ? colors.text : colors.headerText}>{`${summary.quoteLabel} `}</Text>
             <Text fg={summary.quoteColor}>{fit.showQuoteMove ? summary.quoteText : summary.quotePriceText}</Text>
           </Box>
-          {summary.quoteDelayMinutes != null ? <DelayedMark minutes={summary.quoteDelayMinutes} /> : null}
         </Box>
       </Button>
     </Box>

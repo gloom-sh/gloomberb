@@ -11,9 +11,9 @@ import { colors } from "../../theme/colors";
 import { createTestQuote } from "../../test-support/data-provider";
 import type { Quote } from "../../types/financials";
 
-/** "NYSE pre-market · opens 9:30 ET  S&P 500 6,843 +0.20%  ◷15m", each part with its trailing gap. */
+/** "NYSE pre-market · opens 9:30 ET  S&P 500 6,843 +0.20%", each part with its trailing gap. */
 const CLUSTER = {
-  quoteWidth: 26,
+  quoteWidth: 21,
   quoteMoveWidth: 7,
   // "NYSE pre-market", "NYSE pre", "pre"
   stateWidths: { full: 16, short: 9, bare: 4 },
@@ -29,19 +29,20 @@ describe("header market cluster", () => {
    */
   test("sheds the detail, shortens the state and then drops it, then the move, keeping the market longest", () => {
     const fit = (available: number, options: Partial<typeof CLUSTER> = {}) => resolveMarketSummaryFit({ available, ...CLUSTER, ...options });
-    expect(fit(58)).toEqual({ showQuote: true, showQuoteMove: true, state: "full", showDetail: true });
-    expect(fit(57)).toEqual({ showQuote: true, showQuoteMove: true, state: "full", showDetail: false });
-    expect(fit(41)).toEqual({ showQuote: true, showQuoteMove: true, state: "short", showDetail: false });
-    expect(fit(34)).toEqual({ showQuote: true, showQuoteMove: true, state: "bare", showDetail: false });
-    expect(fit(29)).toEqual({ showQuote: true, showQuoteMove: true, state: null, showDetail: false });
+    expect(fit(53)).toEqual({ showQuote: true, showQuoteMove: true, state: "full", showDetail: true });
+    expect(fit(52)).toEqual({ showQuote: true, showQuoteMove: true, state: "full", showDetail: false });
+    expect(fit(36)).toEqual({ showQuote: true, showQuoteMove: true, state: "short", showDetail: false });
+    expect(fit(29)).toEqual({ showQuote: true, showQuoteMove: true, state: "bare", showDetail: false });
+    expect(fit(24)).toEqual({ showQuote: true, showQuoteMove: true, state: null, showDetail: false });
     // A detail that fits on its own never shows beside a shortened state, or without one.
-    expect(fit(41, { detailWidth: 6 }).showDetail).toBe(false);
-    expect(fit(29, { detailWidth: 2 }).showDetail).toBe(false);
-    // A market too wide to keep its move gives it up; the room it leaves can still hold the bare state.
-    expect(fit(25)).toEqual({ showQuote: true, showQuoteMove: false, state: "bare", showDetail: false });
-    expect(fit(20)).toEqual({ showQuote: true, showQuoteMove: false, state: null, showDetail: false });
+    expect(fit(36, { detailWidth: 6 }).showDetail).toBe(false);
+    expect(fit(24, { detailWidth: 2 }).showDetail).toBe(false);
+    // A market too wide to keep its move gives it up (a wide name such as Hang Seng, in the
+    // narrowest header); the room it leaves can still hold the bare state.
+    expect(fit(20)).toEqual({ showQuote: true, showQuoteMove: false, state: "bare", showDetail: false });
+    expect(fit(14)).toEqual({ showQuote: true, showQuoteMove: false, state: null, showDetail: false });
     // With no move to give up, a market too wide for the room gives way, and the state with it.
-    expect(fit(25, { quoteMoveWidth: 0 })).toEqual({ showQuote: false, showQuoteMove: false, state: null, showDetail: false });
+    expect(fit(20, { quoteMoveWidth: 0 })).toEqual({ showQuote: false, showQuoteMove: false, state: null, showDetail: false });
   });
 
   /**
@@ -82,15 +83,14 @@ describe("header market cluster", () => {
       quoteText: "6,843 +0.20%",
       quotePriceText: "6,843",
       quoteColor: colors.positive,
-      quoteDelayMinutes: 15,
     };
-    const widths = marketSummaryWidths(summary, 4);
+    const widths = marketSummaryWidths(summary);
     const fitAt = (termWidth: number, allowMarketExpansion?: boolean) => resolveMarketSummaryFit({
       available: resolveHeaderPromptGeometry({ termWidth, allowMarketExpansion }).marketColumns,
       ...widths,
     });
-    expect(fitAt(80)).toEqual({ showQuote: true, showQuoteMove: false, state: null, showDetail: false });
-    expect(fitAt(100)).toEqual({ showQuote: true, showQuoteMove: true, state: "bare", showDetail: false });
+    expect(fitAt(80)).toEqual({ showQuote: true, showQuoteMove: true, state: null, showDetail: false });
+    expect(fitAt(100)).toEqual({ showQuote: true, showQuoteMove: true, state: "short", showDetail: false });
     for (const termWidth of [120, 140, 160]) {
       expect(fitAt(termWidth)).toEqual({ showQuote: true, showQuoteMove: true, state: "full", showDetail: false });
     }
@@ -101,6 +101,10 @@ describe("header market cluster", () => {
       expect(resolveHeaderPromptGeometry({ termWidth, allowMarketExpansion: false }).width)
         .toBe(resolveHeaderPromptGeometry({ termWidth }).width);
     }
+    // The narrowest tier holds S&P 500 with its move; a wider name keeps its level and gives the move up.
+    const hangSeng = marketSummaryWidths({ ...summary, quoteLabel: "Hang Seng", quoteText: "24,533 -0.35%", quotePriceText: "24,533" });
+    expect(resolveMarketSummaryFit({ available: resolveHeaderPromptGeometry({ termWidth: 80 }).marketColumns, ...hangSeng }))
+      .toMatchObject({ showQuote: true, showQuoteMove: false });
     // Spare room between the tiers goes to the cluster, never out of the prompt.
     for (const termWidth of [150, 160, 170, 180]) {
       const quiet = resolveHeaderPromptGeometry({ termWidth });

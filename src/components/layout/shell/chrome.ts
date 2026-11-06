@@ -20,8 +20,8 @@ const COMMAND_SURFACE_MIN_WIDTH = { native: 46, terminal: 42 };
  * cannot resize the prompt or the sheet attached to it:
  *
  *   42  the exchange's state and the market ("NYSE closed  S&P 500 6,843 +0.20%")
- *   31  a short state and the market, or the market and its delay
- *   21  the market alone
+ *   31  a short state and the market
+ *   21  the market alone, a wide name or level (`Hang Seng 24,533`) without its move
  *
  * Steps rather than a share of the window: a reserve of, say, 18 columns is
  * too narrow for anything and would waste all 18.
@@ -30,7 +30,7 @@ const HEADER_MARKET_TIERS = [42, 31, 21] as const;
 /**
  * The most the cluster takes from room the prompt and the update status leave
  * over: the state with when the session opens or closes, and the market, as in
- * "NYSE pre-market · opens 9:30 ET  S&P 500 6,843 +0.20%  ◷15m".
+ * "NYSE pre-market · opens 9:30 ET  S&P 500 6,843 +0.20%".
  */
 const HEADER_MARKET_FULL_COLUMNS = 64;
 

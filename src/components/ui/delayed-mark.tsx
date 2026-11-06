@@ -61,8 +61,9 @@ export function useStateQuoteDelay(stating: boolean): void {
 }
 
 /**
- * The delay to mark beside a price shown outside a pane footer (the header's
- * SPY, a quote's headline): this account's (`useFreeQuoteDelay`) while
+ * The delay to mark beside a price shown outside a pane footer (a quote's
+ * headline; not the header's market, which never carries it): this account's
+ * (`useFreeQuoteDelay`) while
  * nothing else on screen says it, null while the price is live or the status
  * bar's delayed note says it for the whole app. The delay is said once per
  * screen: with the status bar hidden (presentation mode, `SB`), or in a
