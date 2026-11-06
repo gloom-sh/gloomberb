@@ -1,5 +1,5 @@
-import { blendHex } from "./color-utils";
-import type { Theme } from "./themes";
+import { blendForContrast, blendHex, higherContrast } from "./color-utils";
+import { SUBTLE_TEXT_MIN, type Theme } from "./themes";
 
 type Palette = Readonly<Omit<Theme, "name" | "description">>;
 
@@ -53,6 +53,22 @@ function surfaceSunkenColour(palette: Palette): string {
   return palette.bg;
 }
 
+/**
+ * Placeholder text in every field, the command bar's prompt included: the
+ * muted text, which a theme keeps at the subtle-text contrast against the page
+ * and its panels. A field on a surface of its own (the header, the command
+ * bar) passes that surface, and the colour is lifted only as far as it needs
+ * to keep the same contrast there.
+ */
+export function placeholderColour(palette: Palette, surface: string = palette.bg): string {
+  return blendForContrast(
+    palette.textMuted,
+    surface,
+    higherContrast(palette.text, palette.textBright, surface),
+    SUBTLE_TEXT_MIN,
+  );
+}
+
 /** A row or control under the pointer: halfway from the background to the selection. */
 export function hoverColour(palette: Palette): string {
   return blendHex(palette.bg, palette.selected, 0.5);
@@ -72,6 +88,7 @@ function roleColours(palette: Palette): Array<[string, string]> {
     ["--gloom-link-hover", palette.textBright],
     ["--gloom-error", palette.negative],
     ["--gloom-locked", palette.textDim],
+    ["--gloom-placeholder", placeholderColour(palette)],
   ];
 }
 

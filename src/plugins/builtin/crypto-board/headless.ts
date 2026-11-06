@@ -17,6 +17,7 @@ import {
   withCryptoSupply,
 } from "./model";
 import { stackedSupply, supplyByCode, supplyFailure, supplyHistoryRows, supplySummaryLine } from "./supply";
+import { REPORT_ROWS } from "../shared/headless-options";
 
 const NO_QUOTES = new Map();
 const number = (value: unknown) => (typeof value === "number" ? value : null);
@@ -200,15 +201,18 @@ function defiExportTables(payload: DefiTvlPayload, list: DefiList): HeadlessExpo
   ];
 }
 
+/** A day's close dated `YYYY-MM-DD` reads from that day's 00:00 UTC; it is stale 36 hours after the day ends. */
+const DEFI_CLOSE_STALE_MINUTES = (24 + 36) * 60;
+
 /**
  * `--list defi`: the largest protocols (or chains, `--by chain`) by TVL with
  * their 7D and 30D change, under the total's line. Dated by the total's day,
  * from a source that publishes it daily.
  */
-async function loadDefi(list: DefiList, ctx: Parameters<HeadlessPaneDefinition<"rows">["load"]>[1]) {
+async function loadDefi(list: DefiList, limit: number | null, ctx: Parameters<HeadlessPaneDefinition<"rows">["load"]>[1]) {
   const payload = await fetchDefiTvl(ctx.apiClient);
   const income = defiHasIncome(payload);
-  const rows = buildDefiRows(payload, list).map((row) => defiRecord(row, list, income));
+  const rows = limitRows(buildDefiRows(payload, list).map((row) => defiRecord(row, list, income)), limit);
   const summary = defiSummaryLine(payload);
   const exportTables = defiExportTables(payload, list);
   return {
@@ -225,7 +229,8 @@ async function loadDefi(list: DefiList, ctx: Parameters<HeadlessPaneDefinition<"
       status: "not-a-feed" as const,
       basis: "daily TVL",
       asOf: payload.asOf,
-      maxAgeMinutes: 36 * 60,
+      // The as-of day is a close: it is aged from the day's end, not its start, and stale 36 hours after it.
+      maxAgeMinutes: DEFI_CLOSE_STALE_MINUTES,
     },
     metadata: {
       list: "defi",
@@ -244,18 +249,57 @@ async function loadDefi(list: DefiList, ctx: Parameters<HeadlessPaneDefinition<"
   };
 }
 
+/**
+ * The supply columns, the supply headed with its day when that is older than
+ * the prices beside it (`Supply 11-04` on a board priced on the 5th): a daily
+ * supply figure says its date, as the prices say theirs.
+ */
+function datedSupplyColumns(supplyAsOf: string | null | undefined, pricesAsOf: string | null | undefined): HeadlessPaneColumn[] {
+  const supplyDay = supplyAsOf?.slice(0, 10);
+  const pricesDay = pricesAsOf?.slice(0, 10);
+  if (!supplyDay || !pricesDay || supplyDay >= pricesDay) return STABLECOIN_SUPPLY_COLUMNS;
+  return STABLECOIN_SUPPLY_COLUMNS.map((column) => column.key === "supply" ? { ...column, textHeader: `Supply ${supplyDay.slice(5)}` } : column);
+}
+
+/** The first `limit` rows, in the list's order; every row without one. */
+function limitRows<T>(rows: T[], limit: number | null): T[] {
+  return limit == null ? rows : rows.slice(0, limit);
+}
+
+/** The board's lists, as `--list` and the word after CRYP name them. */
+const CRYPTO_LISTS = [
+  { value: "coin", aliases: ["coins"] },
+  { value: "stablecoin", aliases: ["stablecoins", "stable", "stables"] },
+  { value: "defi", aliases: ["tvl"] },
+] as const;
+export type CryptoList = (typeof CRYPTO_LISTS)[number]["value"];
+
+/**
+ * The list a word after CRYP names (`stablecoins`, `tvl`, `--list defi`),
+ * null for none typed; any other word is refused with the lists there are.
+ */
+export function cryptoListOf(typed: string | null | undefined): CryptoList | null {
+  const word = (typed ?? "").trim().replace(/^--list(?:\s+|=)/i, "").trim().toLowerCase();
+  if (!word) return null;
+  const list = CRYPTO_LISTS.find((entry) => entry.value === word || (entry.aliases as readonly string[]).includes(word));
+  if (list) return list.value;
+  throw new Error(`No list "${typed!.trim()}". CRYP lists: coin, stablecoin, defi (or tvl).`);
+}
+
+/** The list a run asked for: the word after CRYP, else --list. */
+function requestedList(args: { argument: string | string[] | null; options: Record<string, unknown> }): CryptoList {
+  const typed = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument;
+  return cryptoListOf(typed) ?? (args.options.list === "defi" || args.options.list === "stablecoin" ? args.options.list : "coin");
+}
+
 export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
-  argument: { kind: "none" },
+  argument: { kind: "free-text", optional: true, placeholder: "list", description: "The list to open, as --list names it: coin, stablecoin, or defi (tvl).", examples: ["stablecoin", "tvl"] },
   options: [{
     key: "list",
     description: "Coins, stablecoins, or DeFi TVL.",
     type: "enum",
-    values: [
-      { value: "coin", aliases: ["coins"] },
-      { value: "stablecoin", aliases: ["stablecoins", "stable", "stables"] },
-      { value: "defi", aliases: ["tvl"] },
-    ],
+    values: CRYPTO_LISTS.map((entry) => ({ value: entry.value, aliases: [...entry.aliases] })),
     defaultValue: "coin",
     example: "--list stablecoin",
     pluginState: { pluginId: "market-overview", key: "activeTab" },
@@ -280,28 +324,48 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
       { value: "offpeg", aliases: ["off-peg", "peg", "depeg"] },
     ],
     example: "--list stablecoin --sort offpeg",
+  }, {
+    key: "limit",
+    shot: REPORT_ROWS,
+    description: "Rows to list, in the list's order: every row unless given.",
+    type: "integer",
+    minimum: 1,
+    maximum: 1000,
+    example: "--limit 10",
   }],
   columns: COIN_COLUMNS,
-  describe: (args) => `Crypto | ${args.options.list === "defi" ? `DeFi TVL by ${args.options.by === "chain" ? "chain" : "protocol"}` : args.options.list === "stablecoin" ? "Stablecoins" : "Coins"}`,
+  describe: (args) => {
+    const list = requestedList(args);
+    return `Crypto | ${list === "defi" ? `DeFi TVL by ${args.options.by === "chain" ? "chain" : "protocol"}` : list === "stablecoin" ? "Stablecoins" : "Coins"}`;
+  },
   discovery: {
     aliases: ["CRYP"],
+    // `fn TVL` is the DeFi list and `fn STABLECOINS` the stablecoins, not the coins.
+    opens: [
+      { words: ["TVL", "defi", "defi tvl", "total value locked"], argument: "defi" },
+      { words: ["stablecoin", "stablecoins", "stables", "stablecoin supply"], argument: "stablecoin" },
+    ],
     dataRequirements: ["Gloom Cloud crypto markets"],
   },
   // The pane opens on the order asked for, as its header sorts it.
   shotState: (args, _load, given) => {
     const sort = given.has("sort") ? CRYPTO_SORT_OPTIONS[String(args.options.sort)] : undefined;
-    return sort ? { pluginState: { "market-overview": { sort } } } : {};
+    const typed = cryptoListOf(Array.isArray(args.argument) ? args.argument.join(" ") : args.argument);
+    const state = { ...(sort ? { sort } : {}), ...(typed ? { activeTab: typed } : {}) };
+    return Object.keys(state).length ? { pluginState: { "market-overview": state } } : {};
   },
   // The board as the server read it, at most 15 seconds before; the pane streams, the report does not.
   // Each row keeps the time of its own last trade, so a coin that has not traded lately reads its age.
   freshness: CRYPTO_BOARD_FRESHNESS,
   async load(args, ctx) {
+    const list = requestedList(args);
     const offPeg = args.options.sort === "offpeg";
-    if (offPeg && args.options.list !== "stablecoin") {
+    if (offPeg && list !== "stablecoin") {
       throw new Error("--sort offpeg orders the stablecoins by how far each is off its peg: add --list stablecoin.");
     }
-    if (args.options.list === "defi") return loadDefi(args.options.by === "chain" ? "chain" : "protocol", ctx);
-    const kind = args.options.list === "stablecoin" ? "stablecoin" : "coin" satisfies CryptoAssetKind;
+    const limit = args.options.limit == null ? null : Number(args.options.limit);
+    if (list === "defi") return loadDefi(args.options.by === "chain" ? "chain" : "protocol", limit, ctx);
+    const kind = list === "stablecoin" ? "stablecoin" : "coin" satisfies CryptoAssetKind;
     // Supply is its own request: a failure there leaves the prices whole.
     const [data, supplyResult] = await Promise.all([
       fetchCryptoMarkets(ctx.apiClient),
@@ -311,7 +375,7 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
     ]);
     const supply = supplyResult && "payload" in supplyResult ? supplyResult.payload : null;
     const built = withCryptoSupply(buildCryptoRows(data.assets, kind, NO_QUOTES), supplyByCode(supply));
-    const rows = sortCryptoRows(built, CRYPTO_SORT_OPTIONS[String(args.options.sort ?? "mcap")] ?? { columnId: null, direction: "asc" }).map((row) => ({
+    const rows = limitRows(sortCryptoRows(built, CRYPTO_SORT_OPTIONS[String(args.options.sort ?? "mcap")] ?? { columnId: null, direction: "asc" }), limit).map((row) => ({
       rank: row.rank,
       symbol: row.asset.symbol,
       code: row.code,
@@ -358,7 +422,8 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
     const history = supply ? supplyHistoryTable(supply) : null;
     // A supply outage is a caveat, not a failure: the prices are the report, and they are complete.
     const notes = [
-      ...capNote,
+      // A coin with a supply is valued on it, so its row counts one supply.
+      ...(supply?.coins.length ? ["Market cap is price times the supply shown, else times circulating supply."] : capNote),
       ...(supply?.warnings ?? []),
       ...(supplyResult && "error" in supplyResult
         ? [`${supplyFailure(errorMessage(supplyResult.error)).replace(/\.$/, "")}; the prices are complete without it.`]
@@ -366,7 +431,7 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
     ];
     return {
       rows,
-      columns: supply?.coins.length ? STABLECOIN_SUPPLY_COLUMNS : STABLECOIN_COLUMNS,
+      columns: supply?.coins.length ? datedSupplyColumns(supply.asOf, data.asOf) : STABLECOIN_COLUMNS,
       ...(history ? { exportTables: [history] } : {}),
       errors: data.warnings,
       ...(notes.length ? { notes } : {}),

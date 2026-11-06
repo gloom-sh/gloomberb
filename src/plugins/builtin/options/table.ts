@@ -308,7 +308,8 @@ function formatOptionContractCell(
     case "openInterest":
       return formatCompact(contract.openInterest, { fixedDecimals: true });
     case "iv":
-      return formatIv(row.impliedVolatility, row.impliedVolatilityFilled);
+      // A stale quote (from before the session, or under intrinsic) is shown, but no IV or greek is read from it.
+      return contract.quoteStale ? "stale" : formatIv(row.impliedVolatility, row.impliedVolatilityFilled);
     case "delta":
       return formatGreek(greeks?.delta);
     case "gamma":
@@ -358,7 +359,7 @@ export function renderOptionCell(
   const surface = backgroundColor ?? rowSurface;
   return {
     text: formatOptionContractCell(row, contract, column),
-    color: contract ? optionRoleColor(optionColumnRole(column), surface) : optionMutedColor(surface),
+    color: contract && !contract.quoteStale ? optionRoleColor(optionColumnRole(column), surface) : optionMutedColor(surface),
     keepColorWhenSelected: otherHalf,
     backgroundColor,
   };

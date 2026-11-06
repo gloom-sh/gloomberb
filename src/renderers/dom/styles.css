@@ -54,6 +54,10 @@ input, textarea, [contenteditable]:not([contenteditable="false"]) {
   user-select: text;
 }
 input, textarea { cursor: text; }
+/* One placeholder colour for every field (ui-tokens placeholderColour). A
+   field on a surface of its own, such as the command bar's prompt, sets
+   --gloom-placeholder to the same role lifted for that surface. */
+input::placeholder, textarea::placeholder { color: var(--gloom-placeholder); opacity: 1; }
 /* Selectable text: what a person may want to copy by hand. A host Text takes
    the selectable prop; a block of text (a reader, markdown, a chat message, a
    log) carries this attribute on its container, and everything inside it that
@@ -1026,7 +1030,6 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-qb-search-icon { width: 11px; height: 11px; flex: none; }
 .gloom-qb-search[data-active="true"] .gloom-qb-search-icon { color: var(--gloom-border-focused); }
 .gloom-qb-search-input { flex: 1; min-width: 0; display: flex; align-items: center; }
-.gloom-qb-search-input input::placeholder { color: var(--gloom-text-muted); }
 /* The one key cap (dialog-actions.tsx WebKeycap): mixed from the text colour it
    sits with, so it reads on a filled button, a plain one and in every theme. */
 .gloom-qb-kbd,
@@ -1591,7 +1594,6 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   background: var(--qb-fill);
   box-shadow: inset -1px 0 0 var(--qb-hairline), inset 0 -2px 0 var(--gloom-border-focused);
 }
-[data-gloom-role="inline-quick-add"][data-band="true"] [data-gloom-role="inline-quick-add-field"] input::placeholder { color: var(--gloom-text-muted); }
 [data-gloom-role="inline-quick-add"][data-band="true"] [data-gloom-role="inline-quick-add-preview"] { padding: 0 var(--gloom-space-sm); }
 
 /* ===== Data table: sortable headers ===== */

@@ -2,7 +2,9 @@ import type { PluginModule } from "../plugin-module";
 import { LIVE_STREAMING_QUICK_SETTING, withLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { cryptoMarketsCache, DEFI_TVL_CACHES, STABLECOIN_SUPPLY_CACHES } from "./client";
 import { BITCOIN_NETWORK_CACHES } from "./bitcoin-network";
-import { cryptoBoardHeadless } from "./headless";
+import { cryptoBoardHeadless, cryptoListOf } from "./headless";
+import { errorMessage } from "../../../utils/errors";
+import { commandTabParams } from "../shared/command-tab";
 import { CRYPTO_SERIES } from "./series";
 
 export const cryptoBoardModule: PluginModule = {
@@ -32,8 +34,28 @@ export const cryptoBoardModule: PluginModule = {
         "crypto", "cryp", "bitcoin", "ethereum", "coins", "stablecoins", "stablecoin supply", "digital", "currency",
         "defi", "tvl", "total value locked", "defi tvl", "on-chain", "onchain", "aave", "lido", "protocols", "chains",
       ],
-      shortcut: { prefix: "CRYP" },
+      // `CRYP stablecoin` and `CRYP tvl` open those lists; CRYP alone opens on the list the pane was last on.
+      shortcut: {
+        prefix: "CRYP", argKind: "text", argPlaceholder: "list", argOptional: true, openWithoutArg: true,
+        argOptions: () => [
+          { value: "coin", label: "Coins" },
+          { value: "stablecoin", label: "Stablecoins" },
+          { value: "defi", label: "DeFi TVL" },
+        ],
+        argError: (arg) => {
+          try {
+            cryptoListOf(arg);
+            return null;
+          } catch (error) {
+            return { message: errorMessage(error), detail: "Type CRYP coin, CRYP stablecoin or CRYP tvl." };
+          }
+        },
+      },
       headless: cryptoBoardHeadless,
+      createInstance: (_context, options) => {
+        const list = cryptoListOf(options?.arg);
+        return { placement: "floating", ...(list ? { params: commandTabParams(list) } : {}) };
+      },
     },
   ],
   setup(ctx) {

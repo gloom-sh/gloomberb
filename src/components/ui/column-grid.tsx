@@ -33,9 +33,12 @@ export interface ColumnGridLink {
   onOpen: () => void;
 }
 
-/** Text the grid fits to its column (padded on the terminal, cut by CSS on the desktop), or content the column holds. */
+/**
+ * Text the grid fits to its column (padded on the terminal, cut by CSS on the desktop), or content the column holds.
+ * `attributes` are the text's marks, such as the bold of an unread headline.
+ */
 export type ColumnGridCell =
-  | { text: string; color?: string; link?: ColumnGridLink }
+  | { text: string; color?: string; attributes?: number; link?: ColumnGridLink }
   | { content: ReactNode }
   | null;
 
@@ -102,17 +105,22 @@ function useLinkTarget(link: ColumnGridLink | undefined) {
   } : {};
 }
 
+/** A cell's marks, given only when it has some, so a plain cell draws as it always did. */
+function marks(attributes: number | undefined): { attributes?: number } {
+  return attributes ? { attributes } : {};
+}
+
 /** A text cell that opens something, in the terminal: its padded text is the target. */
-function TerminalLinkCell({ text, color, link, width, align }: { text: string; color?: string; link: ColumnGridLink; width: number; align?: "left" | "right" }) {
+function TerminalLinkCell({ text, color, attributes, link, width, align }: { text: string; color?: string; attributes?: number; link: ColumnGridLink; width: number; align?: "left" | "right" }) {
   const target = useLinkTarget(link);
-  return <Box width={width} flexDirection="row" {...target}><Text fg={color}>{padTo(text, width, align)}</Text></Box>;
+  return <Box width={width} flexDirection="row" {...target}><Text fg={color} {...marks(attributes)}>{padTo(text, width, align)}</Text></Box>;
 }
 
 /** A text cell that opens something, on the desktop and the web. */
-function NativeLinkCell({ text, color, link, column, place }: { text: string; color?: string; link: ColumnGridLink; column: ColumnGridColumn; place: CSSProperties }) {
+function NativeLinkCell({ text, color, attributes, link, column, place }: { text: string; color?: string; attributes?: number; link: ColumnGridLink; column: ColumnGridColumn; place: CSSProperties }) {
   const target = useLinkTarget(link);
   return (
-    <Text fg={color} data-gloom-ui="column-grid-text" {...clipOf(text, column)} {...target} style={{ ...place, ...TEXT_BOX, textAlign: column.align ?? "left" }}>
+    <Text fg={color} {...marks(attributes)} data-gloom-ui="column-grid-text" {...clipOf(text, column)} {...target} style={{ ...place, ...TEXT_BOX, textAlign: column.align ?? "left" }}>
       {text}
     </Text>
   );
@@ -142,8 +150,8 @@ export function ColumnGrid({ columns, rows, width, role }: ColumnGridProps) {
                   {column.gapBefore ? <Box width={column.gapBefore} /> : null}
                   {cell && "text" in cell
                     ? cell.link
-                      ? <TerminalLinkCell text={cell.text} color={cell.color} link={cell.link} width={column.width} align={column.align} />
-                      : <Text fg={cell.color}>{padTo(cell.text, column.width, column.align)}</Text>
+                      ? <TerminalLinkCell text={cell.text} color={cell.color} attributes={cell.attributes} link={cell.link} width={column.width} align={column.align} />
+                      : <Text fg={cell.color} {...marks(cell.attributes)}>{padTo(cell.text, column.width, column.align)}</Text>
                     : <Box width={column.width} flexDirection="row">{cell?.content}</Box>}
                 </Box>
               );
@@ -171,12 +179,13 @@ export function ColumnGrid({ columns, rows, width, role }: ColumnGridProps) {
             const cell = row[index] ?? null;
             if (!cell) return null;
             const place: CSSProperties = { gridColumn: lines[index], gridRow: rowIndex + 1 };
-            if ("text" in cell && cell.link) return <NativeLinkCell key={index} text={cell.text} color={cell.color} link={cell.link} column={column} place={place} />;
+            if ("text" in cell && cell.link) return <NativeLinkCell key={index} text={cell.text} color={cell.color} attributes={cell.attributes} link={cell.link} column={column} place={place} />;
             return "text" in cell
               ? (
                 <Text
                   key={index}
                   fg={cell.color}
+                  {...marks(cell.attributes)}
                   data-gloom-ui="column-grid-text"
                   {...clipOf(cell.text, column)}
                   style={{ ...place, ...TEXT_BOX, textAlign: column.align ?? "left" }}

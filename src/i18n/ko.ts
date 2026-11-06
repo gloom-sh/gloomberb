@@ -1681,6 +1681,8 @@ export const ko: Record<string, string> = {
   "Denied in {seconds} s": "{seconds}초 후 거부",
   "choose": "고르기",
   "select": "선택",
+  "here": "여기",
+  "new pane": "새 패널",
   "confirm": "확인",
   "presets": "프리셋",
   "add": "추가",

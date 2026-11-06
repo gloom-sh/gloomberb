@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type RefObject } from "react";
 import { Box, Input, Text, useUiCapabilities, type InputRenderable } from "../ui";
-import { colors } from "../theme/colors";
+import { colors, placeholderText } from "../theme/colors";
 import { Icon } from "./ui/icon";
 import { useAppInputCapture } from "../state/app/input-capture";
 import { useShortcut } from "../react/input";
@@ -138,7 +138,7 @@ export function InputSearchBar({
         value={draft}
         focused={focused && active}
         placeholder={placeholder}
-        placeholderColor={colors.textDim}
+        placeholderColor={placeholderText()}
         textColor={colors.text}
         focusedTextColor={colors.text}
         backgroundColor={appearance === "plain" || band ? "transparent" : colors.panel}

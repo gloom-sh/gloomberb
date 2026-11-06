@@ -3,6 +3,7 @@ import { Box, Text, Textarea, useUiCapabilities, type InputRenderable, type Text
 import { t } from "../../i18n";
 import { useDialogKeyboard, type PromptContext } from "../../ui/dialog";
 import { useThemeColors } from "../../theme/theme-context";
+import { placeholderText } from "../../theme/colors";
 import { Button } from "./button";
 import { DialogActions } from "./dialog-actions";
 import { FRAMED_TEXTAREA_DESKTOP_STYLE, TextField } from "./fields";
@@ -96,7 +97,7 @@ export function TextPromptDialog({
               placeholder={shownPlaceholder}
               focused
               textColor={colors.text}
-              placeholderColor={colors.textDim}
+              placeholderColor={placeholderText(colors)}
               backgroundColor={colors.panel}
               flexGrow={1}
               wrapText

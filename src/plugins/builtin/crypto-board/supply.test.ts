@@ -41,5 +41,8 @@ test("a stablecoin row takes the largest coin of its code, whatever its case, an
   const rows = buildCryptoRows(cryptoFixture().assets, "stablecoin", new Map(), CRYPTO_FIXTURE_NOW);
   const [usdt] = withCryptoSupply(rows, supplyByCode(payload));
   expect(usdt).toMatchObject({ code: "USDT", supply: 180e9, supply7dPercent: -0.33, supplyShare: 60, pegType: "peggedUSD", price: 0.9998 });
+  // Its market cap is on the supply it shows, not on the board's own supply.
+  expect(usdt!.marketCap).toBeCloseTo(180e9 * 0.9998, 0);
+  expect(rows[0]!.marketCap).not.toBeCloseTo(180e9 * 0.9998, 0);
   expect(withCryptoSupply(rows, supplyByCode(payload))[0]).toBe(usdt);
 });

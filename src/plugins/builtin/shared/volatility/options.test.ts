@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { solveImpliedVolatility, valueOption } from "./pricing";
 import { expectedMove, extractImpliedForward, forwardFromCarry, logForwardMoneyness, optionDelta,
-  optionMid, strikeForDelta, strikeFromLogMoneyness, volatilityTermSlope } from "./options";
+  optionMid, quoteUnderIntrinsic, strikeForDelta, strikeFromLogMoneyness, volatilityTermSlope, withQuotesUnderIntrinsicMarked } from "./options";
 
 const input = { spot: 100, years: 0.5, rate: 0.04, dividendYield: 0.015, volatility: 0.3 };
 function quote(strike: number, side: "call" | "put") {
@@ -114,4 +114,44 @@ test("expected move uses a same-strike ATM straddle and separate one-sigma estim
 test("term slope is the IV change per year between two tenors", () => {
   expect(volatilityTermSlope({ years: 0.25, volatility: 0.4 }, { years: 0.5, volatility: 0.3 })).toBeCloseTo(-0.4, 9);
   expect(volatilityTermSlope({ years: 0.5, volatility: 0.4 }, { years: 0.5, volatility: 0.3 })).toBeNull();
+});
+
+describe("quotes that cannot be priced", () => {
+  test("an ask under intrinsic by more than 2% of spot is marked stale and gives no midpoint; one minutes behind is kept", () => {
+    // ETHA's 6 Nov chain on 5 Nov, spot 50.77: the strike-5 call last quoted before a split at 15.35/15.55.
+    const chain = {
+      calls: [
+        { strike: 5, bid: 15.35, ask: 15.55, contractSymbol: "ETHA261106C00005000" },
+        // 60 cents under its 20.77 intrinsic, as a chain minutes behind a rising price reads: inside the 1.02 margin.
+        { strike: 30, bid: 20, ask: 20.17, contractSymbol: "ETHA261106C00030000" },
+        { strike: 51, bid: 0.63, ask: 0.69, contractSymbol: "ETHA261106C00051000" },
+      ],
+      // 1.73 under its 16.23 intrinsic.
+      puts: [{ strike: 67, bid: 14.3, ask: 14.5, contractSymbol: "ETHA261106P00067000" }],
+    };
+    const marked = withQuotesUnderIntrinsicMarked(chain, 50.77);
+    expect(marked.calls.map((contract) => (contract as { quoteStale?: boolean }).quoteStale ?? false)).toEqual([true, false, false]);
+    expect((marked.puts[0] as { quoteStale?: boolean }).quoteStale).toBe(true);
+    expect(optionMid(marked.calls[0]!)).toBeNull();
+    expect(optionMid(marked.calls[2]!)).toBeCloseTo(0.66, 10);
+    // Without a spot nothing is judged, and an unmarked chain is the same object.
+    expect(withQuotesUnderIntrinsicMarked(chain, undefined)).toBe(chain);
+    expect(quoteUnderIntrinsic(chain.calls[0]!, "call", 50.77)).toBe(true);
+  });
+
+  test("a European option is not held to intrinsic: a deep in-the-money SPX put a year out and a deep in-the-money ETH put keep their quotes", () => {
+    // SPX at 6,000 and the 8,000 put to Dec 2027 at 1,690 / 1,710: about the strike discounted a year at 4% less the
+    // index, 290 under its 2,000 intrinsic, as a European option is.
+    const spx = { calls: [], puts: [{ strike: 8000, bid: 1690, ask: 1710, contractSymbol: "SPXW271217P08000000" }] };
+    expect(withQuotesUnderIntrinsicMarked(spx, 6000)).toBe(spx);
+    for (const root of ["SPX", "XSP", "NDX", "NDXP", "RUT", "RUTW", "VIX", "VIXW"]) {
+      expect(quoteUnderIntrinsic({ strike: 8000, ask: 1710, contractSymbol: `${root}271217P08000000` }, "put", 6000)).toBe(false);
+    }
+    // Deribit's ETH 4,000 put with ETH at 2,240, 110 under its 1,760 intrinsic, marked by the venue at its forward:
+    // never judged against spot.
+    const eth = { calls: [], puts: [{ strike: 4000, bid: 1630, ask: 1650, contractSymbol: "ETH-25JUN27-4000-P", mark: { price: 1640 } }] };
+    expect(withQuotesUnderIntrinsicMarked(eth, 2240)).toBe(eth);
+    // The same prices on a fund's American put are no market.
+    expect(quoteUnderIntrinsic({ strike: 800, ask: 171, contractSymbol: "SPY271217P00800000" }, "put", 600)).toBe(true);
+  });
 });

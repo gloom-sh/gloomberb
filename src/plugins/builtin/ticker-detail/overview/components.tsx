@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ColumnGrid, ColumnGridPair, RangeTrack, usePaneLinkMenuEntry, type ColumnGridCell, type ColumnGridColumn } from "../../../../components";
+import { ActionRow, ColumnGrid, ColumnGridPair, RangeTrack, usePaneLinkMenuEntry, type ColumnGridCell, type ColumnGridColumn } from "../../../../components";
 import { t, tf } from "../../../../i18n";
 import { formatMarketPriceWithCurrency, liveQuoteFormatOptions, type MarketFormatOptions } from "../../../../market-data/market/format";
 import { colors, hoverBg, priceColor } from "../../../../theme/colors";
@@ -243,6 +243,18 @@ function LinkedStatCell({
       {children}
     </Box>
   );
+}
+
+/**
+ * The way from a section into the function that has all of it ("Open
+ * Financials" under Fundamentals), as Trending's row opens Research Attention.
+ * Inside a `PaneLinkMenu` the pane menu lists it once with the section's
+ * figures that open the same function.
+ */
+export function FunctionLinkRow({ link, onOpen }: { link: OverviewFunctionLink; onOpen: (link: OverviewFunctionLink) => void }) {
+  const label = tf("Open {label}", { label: t(link.name) });
+  usePaneLinkMenuEntry(`function:${link.templateId}`, label, () => onOpen(link));
+  return <ActionRow label={label} onPress={() => onOpen(link)} />;
 }
 
 export function FundamentalsGrid({

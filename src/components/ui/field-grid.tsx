@@ -401,7 +401,6 @@ export function GridFieldView({
       variant="plain"
       backgroundColor={nativePaneChrome ? "transparent" : colors.selected}
       textColor={fg}
-      placeholderColor={colors.textMuted}
       onMouseDown={onFocus}
       onChange={(next) => {
         setDraft(next);
@@ -421,7 +420,6 @@ export function GridFieldView({
       variant="plain"
       backgroundColor={nativePaneChrome ? "transparent" : colors.selected}
       textColor={fg}
-      placeholderColor={colors.textMuted}
       onMouseDown={onFocus}
       onChange={(nextText) => {
         dirtyRef.current = true;

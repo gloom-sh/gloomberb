@@ -1,5 +1,5 @@
 import type { PerpBoardPayload, PerpBoardRow, PerpDepthRow, PerpLiquidationMarket, PerpLiquidationPrint, PerpLiquidationsPayload } from "../../../api-client/perps";
-import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneLoadArgs, HeadlessPaneRow } from "../../../types/headless";
+import type { HeadlessBundleResult, HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneLoadArgs, HeadlessPaneRow } from "../../../types/headless";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { DEPTH_COLUMN_IDS, depthBandTotals, depthCellText, depthColumnLabel, depthFreshness, depthStaleNote, downStreams, LIQUIDATION_COLUMN_IDS, liquidationCellText, liquidationColumnLabel, liquidationFreshness,
   PRINT_COLUMN_IDS, printCellText, printColumnLabel, type DepthColumnId, type LiquidationColumnId, type PrintColumnId } from "./cascade";
@@ -8,6 +8,7 @@ import { perpFreshness } from "./freshness";
 import { aprFootnote, ASSET_FILTERS, BOARD_COLUMNS, BOARD_SORTS, collectedVenueCount, COMPARE_COLUMNS, compact, fundingSpread, HISTORY_METRICS, label, marketLabel, observed, openingTab, PERP_TABS, perpCellText,
   perpColumnLabel, percent, perpHistoryProText, positioningFields, price, RANKING_COLUMNS, rankingRows, RANKINGS, ratioText, share, time, uncoveredVenueNote, VENUES, venueName, venuesOf, IDENTITY_VENUES, type PerpColumnId } from "./model";
 import { freePreviewNote } from "../shared/free-preview";
+import { REPORT_ROWS } from "../shared/headless-options";
 import { basisSpotSymbol } from "../futures-curve/model";
 
 // Text columns only: the text report shows these, JSON keeps every field of every row. Rates, premiums and
@@ -192,6 +193,7 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "sort", type: "enum", settingKey: "sort", values: BOARD_SORTS.map((value) => ({ value })), defaultValue: "oi", description: "Board order: open interest, funding, open-interest change, premium or long share of accounts." },
     { key: "days", type: "enum", settingKey: "days", values: ["1", "7", "30", "90", "365"].map((value) => ({ value })), defaultValue: "7", description: "History lookback in days." },
     { key: "metric", type: "enum", settingKey: "metric", values: HISTORY_METRICS.map((value) => ({ value })), defaultValue: "funding", description: "Displayed history chart; JSON retains every series." },
+    { key: "limit", type: "integer", shot: REPORT_ROWS, minimum: 1, maximum: 5000, description: "Rows to list in each table, in its order: every row unless given.", example: "--limit 10" },
   ],
   discovery: { aliases: ["PERP"], dataRequirements: ["Perpetual market observations"], limitations: ["Free accounts see a fixed preview of the board, rankings and comparisons, and latest values for one market.", "Pro unlocks every market, full rankings and history.", "Rankings list up to ten markets each.", "Rates, premiums and changes are fractions in JSON.", "Open-interest history begins at first collection.", "Funding APR is a simple annualization, not a forecast.",
     "Long/short account shares: venue definitions differ; history begins at first collection.",
@@ -199,127 +201,135 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
     "Order book depth is read hourly for each venue's 50 largest markets; a band wider than the book a venue returns is a floor (≥). Free shows the latest; Pro the week's history."] },
   describe: (args) => TITLES[tabOf(args)],
   async load(args, ctx) {
-    const requested = requestedOf(args);
-    const tab = tabOf(args);
-    if (tab === "board") {
-      const assetClass = String(args.options["asset-class"] ?? "all"), venue = String(args.options.venue ?? "all"), sort = String(args.options.sort ?? "oi");
-      const board = await fetchPerpsBoard({ ...(assetClass !== "all" ? { assetClass } : {}), ...(venue !== "all" ? { venue } : {}),
-        ...(requested ? { search: boardSearchText(requested) } : {}), sort }, ctx.apiClient);
-      // The server answers a venue with its own markets; a server that does not filter by venue answers every venue's.
-      const rows = venue === "all" ? board.rows : board.rows.filter((row) => row.venue === venue);
-      const lock = venue === "all" ? more(board.locked, "markets") : venuePreviewLine(venue, rows, board.rows);
-      return { sections: [{ ...marketSection("Markets", BOARD_TEXT_COLUMNS, rows), ...lockedTable(board.locked && !rows.length) }], complete: !board.locked && board.status === "ok",
-        errors: board.locked ? [lock] : [], ...aprNote(rows), freshness: perpFreshness(rows, { funding: rows, venue }),
-        metadata: { ...listMetadata(board), total: board.total, assetClass, venue, sort, ...(requested ? { search: requested } : {}) } };
-    }
-    if (tab === "rankings") {
-      const rankings = await fetchPerpsRankings(ctx.apiClient);
-      // A ranking the free view leaves empty is locked, left out and said on the Pro line; one that has none to rank says so.
-      const sections: HeadlessBundleSection[] = RANKINGS.map((ranking) => {
-        const rows = rankingRows(rankings, ranking.key);
-        return { ...marketSection(ranking.label, rankingTextColumns(ranking), rows), ...lockedTable(rankings.locked && !rows.length) };
-      });
-      const notices = venueUnused(String(args.options.venue ?? "all"), "rankings");
-      // Only the funding lists show funding.
-      const funding = RANKINGS.filter((ranking) => ranking.field === "fundingRate8h").flatMap((ranking) => rankingRows(rankings, ranking.key));
-      // The rankings show neither APR % nor Long %, only OI USD.
-      const ranked = RANKINGS.flatMap((ranking) => rankingRows(rankings, ranking.key));
-      return { sections, complete: !rankings.locked && rankings.status === "ok", errors: rankings.locked ? ["Full rankings need Gloom Pro"] : [],
-        ...aprNote(ranked, { apr: false, longShare: false }),
-        freshness: perpFreshness(RANKINGS.flatMap((ranking) => rankingRows(rankings, ranking.key)), { funding }), metadata: { ...(notices.length ? { notices } : {}), ...listMetadata(rankings) } };
-    }
-    if (tab === "compare") {
-      // A canonical identity names one contract; its base asset is what the venues share.
-      const identity = marketQuery(requested);
-      const asked = identity.includes(":") ? (await fetchPerpSelection(identity, ctx.apiClient)).rows[0]?.baseAsset ?? identity : (requested || DEFAULT_MARKET).toUpperCase();
-      // A pair or plain name (BTC-USD, bitcoin) compares the base asset it stands for; the rows say which.
-      const compare = await fetchPerpsCompare(asked, ctx.apiClient);
-      if (!compare.rows.length && !compare.locked) throw noMarket(requested || asked, await nearestPerpMarkets(requested || asked, ctx.apiClient));
-      const base = compare.rows[0]?.baseAsset ?? asked;
-      const spread = fundingSpread(compare.rows);
-      const notices = [...(requested ? [] : [`Showing ${DEFAULT_MARKET}. Try fn PERP ${EXAMPLE_MARKETS[1]} --tab compare.`]),
-        ...requested && !identity.includes(":") && base.toUpperCase() !== asked ? readAs(base, requested) : [], ...venueUnused(String(args.options.venue ?? "all"), "compare")];
-      return { sections: [{ ...marketSection("Contracts", COMPARE_TEXT_COLUMNS, compare.rows), ...lockedTable(compare.locked) },
-        ...(spread ? [{ title: "Funding spread", entries: [{ key: "fundingSpread8h", label: "Funding spread 8h", value: spread.value, formatted: `${spread.text} ${spread.detail}` }] }] : [])],
-        complete: !compare.locked && compare.status === "ok", errors: compare.locked ? [more(compare.locked, compare.locked === 1 ? "contract" : "contracts")] : [],
-        ...aprNote(compare.rows), freshness: perpFreshness(compare.rows, { funding: compare.rows }),
-        metadata: { ...(requested ? {} : { defaultArgument: DEFAULT_MARKET }), ...(notices.length ? { notices } : {}),
-          ...listMetadata(compare), total: compare.total, baseAsset: base,
-          ...(spread ? { fundingSpread8h: spread.value, fundingSpreadHigh: spread.high.marketId, fundingSpreadLow: spread.low.marketId } : {}) } };
-    }
-    if (tab === "liquidations" || tab === "depth") {
-      // A canonical identity names one contract; its base asset is what the venues share. A pair or plain name reads as its base asset.
-      const identity = marketQuery(requested);
-      const asked = identity.includes(":") ? (await fetchPerpSelection(identity, ctx.apiClient)).rows[0]?.baseAsset ?? identity : (requested || DEFAULT_MARKET).toUpperCase();
-      const notices = (base: string) => [...(requested ? [] : [`Showing ${DEFAULT_MARKET}. Try fn PERP ${EXAMPLE_MARKETS[1]} --tab ${tab}.`]),
-        ...requested && !identity.includes(":") && base.toUpperCase() !== asked ? readAs(base, requested) : [], ...venueUnused(String(args.options.venue ?? "all"), tab)];
-      if (tab === "liquidations") {
-        const data = await fetchPerpsLiquidations(asked, ctx.apiClient);
-        if (!data.markets.length && data.status !== "unavailable") throw noMarket(requested || asked, await nearestPerpMarkets(requested || asked, ctx.apiClient));
-        const told = notices(data.baseAsset);
-        const locked = lockedTable(data.locked);
-        const entries = (["long24h", "short24h", "long7d", "short7d"] as const).map((key) => ({ key, label: `${key.startsWith("long") ? "Longs" : "Shorts"} liquidated ${key.endsWith("24h") ? "24h" : "7d"}`,
-          value: data.totals[key], formatted: `${compact(data.totals[key])} USD` }));
-        return { sections: [{ title: "Totals", entries: [...entries, { key: "collectingSince", label: "Collecting since", value: data.collectingSince, formatted: time(data.collectingSince) }] },
-          { title: "By contract", columns: LIQUIDATION_TEXT_COLUMNS, rows: data.markets.map((row) => ({ ...row })) },
-          { title: "Hourly", columns: HOURLY_COLUMNS, rows: data.hourly.map((row) => ({ ...row })), ...locked },
-          // The prints are the window's, not the 24 hours beside them: the heading says which.
-          { title: "Largest prints", textTitle: windowDays(data) ? `Largest prints, ${windowDays(data)}` : "Largest prints", columns: printTextColumns(data.baseAsset), rows: data.largest.map((row) => ({ ...row })) }],
-          complete: !data.locked && data.status === "ok" && !downStreams(data).length, notes: data.notes,
-          errors: data.locked ? [freePreviewNote({ shows: "liquidation totals and the three largest prints", adds: "the hourly series and the twenty largest prints" })] : [],
-          freshness: liquidationFreshness(data),
-          metadata: { ...(requested ? {} : { defaultArgument: DEFAULT_MARKET }), ...(told.length ? { notices: told } : {}), baseAsset: data.baseAsset, asOf: data.asOf, from: data.from,
-            access: data.access, locked: data.locked, status: data.status, collectingSince: data.collectingSince, streams: data.streams, notionalCurrency: "USD" } };
-      }
-      const data = await fetchPerpsDepth(asked, ctx.apiClient);
-      if (!data.rows.length && data.status !== "unavailable") throw noMarket(requested || asked, await nearestPerpMarkets(requested || asked, ctx.apiClient));
-      const told = notices(data.baseAsset);
-      const staleNote = depthStaleNote(data.rows);
-      // The band totals over the current books, as the tab's figures show them; a floor (≥) when a book ends inside the band.
-      const bands = depthBandTotals(data.rows).map((band) => ({ key: `band${band.key}`, label: band.label, value: band.bids + band.asks,
-        formatted: `${band.floor ? "≥" : ""}${compact(band.bids + band.asks)} USD (bids ${compact(band.bids)} · asks ${compact(band.asks)}, ${band.books} ${band.books === 1 ? "book" : "books"})` }));
-      return { sections: [...bands.length ? [{ title: "Band totals", entries: bands }] : [],
-        { title: "Order books", columns: DEPTH_TEXT_COLUMNS, rows: data.rows.map((row) => ({ ...row })) },
-        { title: "Hourly depth", columns: DEPTH_HISTORY_COLUMNS, rows: data.history.map((row) => ({ ...row })), ...lockedTable(data.locked) }],
-        complete: !data.locked && data.status === "ok" && !staleNote, notes: [...staleNote ? [staleNote] : [], ...data.notes],
-        errors: data.locked ? [freePreviewNote({ shows: "each book's latest depth", adds: "the week's hourly depth" })] : [],
-        freshness: depthFreshness(data),
-        metadata: { ...(requested ? {} : { defaultArgument: DEFAULT_MARKET }), ...(told.length ? { notices: told } : {}), baseAsset: data.baseAsset, asOf: data.asOf,
-          access: data.access, locked: data.locked, status: data.status, sources: data.sources, notionalCurrency: "USD", reach: "fraction of mid" } };
-    }
-    const search = requested || DEFAULT_MARKET, venue = String(args.options.venue ?? "all");
-    const market = await fetchPerpSelection(search, ctx.apiClient, venue !== "all" ? venue : undefined);
-    const selected = market.rows[0];
-    if (!selected) throw noMarket(search, market.suggestions);
-    const notices = [...(requested ? [] : [`Showing ${DEFAULT_MARKET}. Try fn PERP ${EXAMPLE_MARKETS[1]}.`]),
-      ...market.resolved ? readAs(marketLabel(selected), requested, market.resolved.others) : [], ...venueNotice(venue, selected, requested, market.access)];
-    const metadata = { ...(requested ? {} : { defaultArgument: DEFAULT_MARKET }), ...(notices.length ? { notices } : {}), marketId: selected.marketId, sourceUrl: selected.sourceUrl, observedAt: selected.observedAt, sourceAsOf: selected.sourceAsOf,
-      rates: "fraction", quoteCurrency: selected.quoteCurrency, oiCurrency: "USD", fundingIntervalHours: selected.fundingIntervalHours };
-    // The venue's market as last polled, with the funding its latest row shows.
-    const freshness = perpFreshness([selected], { funding: [selected] });
-    // The same Positioning lines the pane's Evidence shows; JSON keeps the raw reading on the market row.
-    const positioning = positioningFields(selected);
-    if (tab === "evidence") return {
-      sections: [marketSection("Market evidence", MARKET_COLUMNS, market.rows),
-        // Where the figures were read, as the pane's Evidence names it: the venue's own endpoint and its time.
-        { title: "Source", entries: [{ key: "sourceUrl", label: "URL", value: selected.sourceUrl },
-          { key: "sourceAsOf", label: "Venue as of", value: selected.sourceAsOf, formatted: time(selected.sourceAsOf) }] },
-        ...(positioning ? [{ title: "Positioning", entries: positioning.map((field) => ({ key: field.key, label: field.label, value: field.value,
-          formatted: field.detail ? `${field.text} · ${field.detail}` : field.text })) }] : []),
-        { title: "Observation revisions", columns: REVISION_COLUMNS, rows: market.evidence.map((row) => ({ ...row })), ...lockedTable(market.access !== "pro") }],
-      // Positioning dates the long share itself.
-      complete: market.access === "pro" && market.status === "ok", ...aprNote(market.rows, { longShare: false }), freshness,
-      errors: market.access !== "pro" ? [freePreviewNote({ shows: `${marketLabel(selected)}'s latest evidence and positioning`, adds: "its observation revisions" })] : [],
-      metadata: { ...metadata, asOf: market.asOf, access: market.access, locked: market.locked, status: market.status },
-    };
-    const history = await fetchPerpsHistory({ marketId: selected.marketId, from: new Date(Date.now() - Number(args.options.days ?? 7) * 86_400_000).toISOString(), resolution: "auto", limit: 5000 }, ctx.apiClient);
-    const locked = lockedTable(history.locked);
-    return { sections: [marketSection("Latest market", MARKET_COLUMNS, [selected]), { title: "Own observations", columns: observationColumns(selected.quoteCurrency), rows: history.rows.map((row) => ({ ...row })), ...locked },
-      { title: "Paid funding", columns: FUNDING_COLUMNS, rows: history.funding.map((row) => ({ ...row })), ...locked }, { title: "Hourly candles", columns: candleColumns(selected.quoteCurrency), rows: history.candles.map((row) => ({ ...row })), ...locked },
-      { title: "Long/short history", columns: LONG_SHORT_COLUMNS, rows: (history.longShortRatio ?? []).map((row) => ({ ...row })), ...locked }],
-      complete: !history.locked && !history.truncated && history.status === "ok", ...aprNote([selected]), freshness,
-      errors: history.locked ? [historyLock(selected, collectedVenueCount(market.sources))] : history.truncated ? ["History reached the 5,000-observation limit; narrow the range"] : [],
-      metadata: { ...metadata, asOf: history.asOf, access: history.access, locked: history.locked, status: history.status, from: history.from, to: history.to, resolution: history.resolution, truncated: history.truncated ?? false },
-    };
+    const result = await loadPerpTab(args, ctx);
+    // `--limit` lists the first rows of each table, in its own order.
+    const limit = args.options.limit == null ? null : Number(args.options.limit);
+    return limit == null ? result : { ...result, sections: result.sections.map((section) => section.rows ? { ...section, rows: section.rows.slice(0, limit) } : section) };
   },
 };
+
+/** One tab of PERP, every row the server sent. */
+async function loadPerpTab(args: HeadlessPaneLoadArgs, ctx: HeadlessPaneContext): Promise<HeadlessBundleResult> {
+  const requested = requestedOf(args);
+  const tab = tabOf(args);
+  if (tab === "board") {
+    const assetClass = String(args.options["asset-class"] ?? "all"), venue = String(args.options.venue ?? "all"), sort = String(args.options.sort ?? "oi");
+    const board = await fetchPerpsBoard({ ...(assetClass !== "all" ? { assetClass } : {}), ...(venue !== "all" ? { venue } : {}),
+      ...(requested ? { search: boardSearchText(requested) } : {}), sort }, ctx.apiClient);
+    // The server answers a venue with its own markets; a server that does not filter by venue answers every venue's.
+    const rows = venue === "all" ? board.rows : board.rows.filter((row) => row.venue === venue);
+    const lock = venue === "all" ? more(board.locked, "markets") : venuePreviewLine(venue, rows, board.rows);
+    return { sections: [{ ...marketSection("Markets", BOARD_TEXT_COLUMNS, rows), ...lockedTable(board.locked && !rows.length) }], complete: !board.locked && board.status === "ok",
+      errors: board.locked ? [lock] : [], ...aprNote(rows), freshness: perpFreshness(rows, { funding: rows, venue }),
+      metadata: { ...listMetadata(board), total: board.total, assetClass, venue, sort, ...(requested ? { search: requested } : {}) } };
+  }
+  if (tab === "rankings") {
+    const rankings = await fetchPerpsRankings(ctx.apiClient);
+    // A ranking the free view leaves empty is locked, left out and said on the Pro line; one that has none to rank says so.
+    const sections: HeadlessBundleSection[] = RANKINGS.map((ranking) => {
+      const rows = rankingRows(rankings, ranking.key);
+      return { ...marketSection(ranking.label, rankingTextColumns(ranking), rows), ...lockedTable(rankings.locked && !rows.length) };
+    });
+    const notices = venueUnused(String(args.options.venue ?? "all"), "rankings");
+    // Only the funding lists show funding.
+    const funding = RANKINGS.filter((ranking) => ranking.field === "fundingRate8h").flatMap((ranking) => rankingRows(rankings, ranking.key));
+    // The rankings show neither APR % nor Long %, only OI USD.
+    const ranked = RANKINGS.flatMap((ranking) => rankingRows(rankings, ranking.key));
+    return { sections, complete: !rankings.locked && rankings.status === "ok", errors: rankings.locked ? ["Full rankings need Gloom Pro"] : [],
+      ...aprNote(ranked, { apr: false, longShare: false }),
+      freshness: perpFreshness(RANKINGS.flatMap((ranking) => rankingRows(rankings, ranking.key)), { funding }), metadata: { ...(notices.length ? { notices } : {}), ...listMetadata(rankings) } };
+  }
+  if (tab === "compare") {
+    // A canonical identity names one contract; its base asset is what the venues share.
+    const identity = marketQuery(requested);
+    const asked = identity.includes(":") ? (await fetchPerpSelection(identity, ctx.apiClient)).rows[0]?.baseAsset ?? identity : (requested || DEFAULT_MARKET).toUpperCase();
+    // A pair or plain name (BTC-USD, bitcoin) compares the base asset it stands for; the rows say which.
+    const compare = await fetchPerpsCompare(asked, ctx.apiClient);
+    if (!compare.rows.length && !compare.locked) throw noMarket(requested || asked, await nearestPerpMarkets(requested || asked, ctx.apiClient));
+    const base = compare.rows[0]?.baseAsset ?? asked;
+    const spread = fundingSpread(compare.rows);
+    const notices = [...(requested ? [] : [`Showing ${DEFAULT_MARKET}. Try fn PERP ${EXAMPLE_MARKETS[1]} --tab compare.`]),
+      ...requested && !identity.includes(":") && base.toUpperCase() !== asked ? readAs(base, requested) : [], ...venueUnused(String(args.options.venue ?? "all"), "compare")];
+    return { sections: [{ ...marketSection("Contracts", COMPARE_TEXT_COLUMNS, compare.rows), ...lockedTable(compare.locked) },
+      ...(spread ? [{ title: "Funding spread", entries: [{ key: "fundingSpread8h", label: "Funding spread 8h", value: spread.value, formatted: `${spread.text} ${spread.detail}` }] }] : [])],
+      complete: !compare.locked && compare.status === "ok", errors: compare.locked ? [more(compare.locked, compare.locked === 1 ? "contract" : "contracts")] : [],
+      ...aprNote(compare.rows), freshness: perpFreshness(compare.rows, { funding: compare.rows }),
+      metadata: { ...(requested ? {} : { defaultArgument: DEFAULT_MARKET }), ...(notices.length ? { notices } : {}),
+        ...listMetadata(compare), total: compare.total, baseAsset: base,
+        ...(spread ? { fundingSpread8h: spread.value, fundingSpreadHigh: spread.high.marketId, fundingSpreadLow: spread.low.marketId } : {}) } };
+  }
+  if (tab === "liquidations" || tab === "depth") {
+    // A canonical identity names one contract; its base asset is what the venues share. A pair or plain name reads as its base asset.
+    const identity = marketQuery(requested);
+    const asked = identity.includes(":") ? (await fetchPerpSelection(identity, ctx.apiClient)).rows[0]?.baseAsset ?? identity : (requested || DEFAULT_MARKET).toUpperCase();
+    const notices = (base: string) => [...(requested ? [] : [`Showing ${DEFAULT_MARKET}. Try fn PERP ${EXAMPLE_MARKETS[1]} --tab ${tab}.`]),
+      ...requested && !identity.includes(":") && base.toUpperCase() !== asked ? readAs(base, requested) : [], ...venueUnused(String(args.options.venue ?? "all"), tab)];
+    if (tab === "liquidations") {
+      const data = await fetchPerpsLiquidations(asked, ctx.apiClient);
+      if (!data.markets.length && data.status !== "unavailable") throw noMarket(requested || asked, await nearestPerpMarkets(requested || asked, ctx.apiClient));
+      const told = notices(data.baseAsset);
+      const locked = lockedTable(data.locked);
+      const entries = (["long24h", "short24h", "long7d", "short7d"] as const).map((key) => ({ key, label: `${key.startsWith("long") ? "Longs" : "Shorts"} liquidated ${key.endsWith("24h") ? "24h" : "7d"}`,
+        value: data.totals[key], formatted: `${compact(data.totals[key])} USD` }));
+      return { sections: [{ title: "Totals", entries: [...entries, { key: "collectingSince", label: "Collecting since", value: data.collectingSince, formatted: time(data.collectingSince) }] },
+        { title: "By contract", columns: LIQUIDATION_TEXT_COLUMNS, rows: data.markets.map((row) => ({ ...row })) },
+        { title: "Hourly", columns: HOURLY_COLUMNS, rows: data.hourly.map((row) => ({ ...row })), ...locked },
+        // The prints are the window's, not the 24 hours beside them: the heading says which.
+        { title: "Largest prints", textTitle: windowDays(data) ? `Largest prints, ${windowDays(data)}` : "Largest prints", columns: printTextColumns(data.baseAsset), rows: data.largest.map((row) => ({ ...row })) }],
+        complete: !data.locked && data.status === "ok" && !downStreams(data).length, notes: data.notes,
+        errors: data.locked ? [freePreviewNote({ shows: "liquidation totals and the three largest prints", adds: "the hourly series and the twenty largest prints" })] : [],
+        freshness: liquidationFreshness(data),
+        metadata: { ...(requested ? {} : { defaultArgument: DEFAULT_MARKET }), ...(told.length ? { notices: told } : {}), baseAsset: data.baseAsset, asOf: data.asOf, from: data.from,
+          access: data.access, locked: data.locked, status: data.status, collectingSince: data.collectingSince, streams: data.streams, notionalCurrency: "USD" } };
+    }
+    const data = await fetchPerpsDepth(asked, ctx.apiClient);
+    if (!data.rows.length && data.status !== "unavailable") throw noMarket(requested || asked, await nearestPerpMarkets(requested || asked, ctx.apiClient));
+    const told = notices(data.baseAsset);
+    const staleNote = depthStaleNote(data.rows);
+    // The band totals over the current books, as the tab's figures show them; a floor (≥) when a book ends inside the band.
+    const bands = depthBandTotals(data.rows).map((band) => ({ key: `band${band.key}`, label: band.label, value: band.bids + band.asks,
+      formatted: `${band.floor ? "≥" : ""}${compact(band.bids + band.asks)} USD (bids ${compact(band.bids)} · asks ${compact(band.asks)}, ${band.books} ${band.books === 1 ? "book" : "books"})` }));
+    return { sections: [...bands.length ? [{ title: "Band totals", entries: bands }] : [],
+      { title: "Order books", columns: DEPTH_TEXT_COLUMNS, rows: data.rows.map((row) => ({ ...row })) },
+      { title: "Hourly depth", columns: DEPTH_HISTORY_COLUMNS, rows: data.history.map((row) => ({ ...row })), ...lockedTable(data.locked) }],
+      complete: !data.locked && data.status === "ok" && !staleNote, notes: [...staleNote ? [staleNote] : [], ...data.notes],
+      errors: data.locked ? [freePreviewNote({ shows: "each book's latest depth", adds: "the week's hourly depth" })] : [],
+      freshness: depthFreshness(data),
+      metadata: { ...(requested ? {} : { defaultArgument: DEFAULT_MARKET }), ...(told.length ? { notices: told } : {}), baseAsset: data.baseAsset, asOf: data.asOf,
+        access: data.access, locked: data.locked, status: data.status, sources: data.sources, notionalCurrency: "USD", reach: "fraction of mid" } };
+  }
+  const search = requested || DEFAULT_MARKET, venue = String(args.options.venue ?? "all");
+  const market = await fetchPerpSelection(search, ctx.apiClient, venue !== "all" ? venue : undefined);
+  const selected = market.rows[0];
+  if (!selected) throw noMarket(search, market.suggestions);
+  const notices = [...(requested ? [] : [`Showing ${DEFAULT_MARKET}. Try fn PERP ${EXAMPLE_MARKETS[1]}.`]),
+    ...market.resolved ? readAs(marketLabel(selected), requested, market.resolved.others) : [], ...venueNotice(venue, selected, requested, market.access)];
+  const metadata = { ...(requested ? {} : { defaultArgument: DEFAULT_MARKET }), ...(notices.length ? { notices } : {}), marketId: selected.marketId, sourceUrl: selected.sourceUrl, observedAt: selected.observedAt, sourceAsOf: selected.sourceAsOf,
+    rates: "fraction", quoteCurrency: selected.quoteCurrency, oiCurrency: "USD", fundingIntervalHours: selected.fundingIntervalHours };
+  // The venue's market as last polled, with the funding its latest row shows.
+  const freshness = perpFreshness([selected], { funding: [selected] });
+  // The same Positioning lines the pane's Evidence shows; JSON keeps the raw reading on the market row.
+  const positioning = positioningFields(selected);
+  if (tab === "evidence") return {
+    sections: [marketSection("Market evidence", MARKET_COLUMNS, market.rows),
+      // Where the figures were read, as the pane's Evidence names it: the venue's own endpoint and its time.
+      { title: "Source", entries: [{ key: "sourceUrl", label: "URL", value: selected.sourceUrl },
+        { key: "sourceAsOf", label: "Venue as of", value: selected.sourceAsOf, formatted: time(selected.sourceAsOf) }] },
+      ...(positioning ? [{ title: "Positioning", entries: positioning.map((field) => ({ key: field.key, label: field.label, value: field.value,
+        formatted: field.detail ? `${field.text} · ${field.detail}` : field.text })) }] : []),
+      { title: "Observation revisions", columns: REVISION_COLUMNS, rows: market.evidence.map((row) => ({ ...row })), ...lockedTable(market.access !== "pro") }],
+    // Positioning dates the long share itself.
+    complete: market.access === "pro" && market.status === "ok", ...aprNote(market.rows, { longShare: false }), freshness,
+    errors: market.access !== "pro" ? [freePreviewNote({ shows: `${marketLabel(selected)}'s latest evidence and positioning`, adds: "its observation revisions" })] : [],
+    metadata: { ...metadata, asOf: market.asOf, access: market.access, locked: market.locked, status: market.status },
+  };
+  const history = await fetchPerpsHistory({ marketId: selected.marketId, from: new Date(Date.now() - Number(args.options.days ?? 7) * 86_400_000).toISOString(), resolution: "auto", limit: 5000 }, ctx.apiClient);
+  const locked = lockedTable(history.locked);
+  return { sections: [marketSection("Latest market", MARKET_COLUMNS, [selected]), { title: "Own observations", columns: observationColumns(selected.quoteCurrency), rows: history.rows.map((row) => ({ ...row })), ...locked },
+    { title: "Paid funding", columns: FUNDING_COLUMNS, rows: history.funding.map((row) => ({ ...row })), ...locked }, { title: "Hourly candles", columns: candleColumns(selected.quoteCurrency), rows: history.candles.map((row) => ({ ...row })), ...locked },
+    { title: "Long/short history", columns: LONG_SHORT_COLUMNS, rows: (history.longShortRatio ?? []).map((row) => ({ ...row })), ...locked }],
+    complete: !history.locked && !history.truncated && history.status === "ok", ...aprNote([selected]), freshness,
+    errors: history.locked ? [historyLock(selected, collectedVenueCount(market.sources))] : history.truncated ? ["History reached the 5,000-observation limit; narrow the range"] : [],
+    metadata: { ...metadata, asOf: history.asOf, access: history.access, locked: history.locked, status: history.status, from: history.from, to: history.to, resolution: history.resolution, truncated: history.truncated ?? false },
+  };
+}
