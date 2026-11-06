@@ -310,6 +310,20 @@ test("a real listing, with or without stories, never falls back to a text search
   expect(requests).toHaveLength(0);
 });
 
+test("a word that resolves to a ticker with no stories says so and lists the stories that mention the word", async () => {
+  // `news corn` on 5 Nov 2026 answered "No news for Teucrium Corn Fund (ARCA)." while corn's market had stories.
+  const requests = serveSearch([story("corn", "Bigger US corn stocks fuel doubts about USDA data", "2026-10-09T10:15:00.000Z")]);
+  const cli = createTestCliContext({
+    dataProvider: { getNews: async () => [], getQuote: async () => ({ symbol: "CORN", name: "Teucrium Corn Fund", exchangeName: "ARCA" }) },
+  });
+  await news.execute(["corn"], cli.context);
+
+  expect(requests.map((url) => url.searchParams.get("query"))).toEqual(["corn"]);
+  const text = render(cli.printed[0]!);
+  expect(text.split("\n")[0]).toBe('Stories matching "corn"  ·  no stories filed under CORN (Teucrium Corn Fund)');
+  expect(text).toContain("Bigger US corn stocks");
+});
+
 test("a coin pair whose stories came from searching the coin says so, with the name its quote gives to search", async () => {
   const queries: Array<{ ticker?: string; listingName?: string }> = [];
   const cli = createTestCliContext({

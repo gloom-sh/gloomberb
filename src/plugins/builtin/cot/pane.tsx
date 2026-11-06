@@ -22,6 +22,7 @@ const BOARD_COLUMNS: DataTableColumn[] = [
   { id: "change", label: "1W Δ", width: 11, align: "right" },
   { id: "one", label: "PCTL 1Y", width: 8, align: "right" },
   { id: "three", label: "PCTL 3Y", width: 8, align: "right" },
+  { id: "all", label: "PCTL ALL", width: 9, align: "right" },
   { id: "asOf", label: "AS OF", width: 10, align: "left" },
 ];
 const POSITION_COLUMNS: DataTableColumn[] = [
@@ -32,13 +33,17 @@ const POSITION_COLUMNS: DataTableColumn[] = [
   { id: "change", label: "1W Δ", width: 10, align: "right" },
   { id: "one", label: "PCTL 1Y", width: 8, align: "right" },
   { id: "three", label: "PCTL 3Y", width: 8, align: "right" },
+  { id: "all", label: "PCTL ALL", width: 9, align: "right" },
 ];
 /** Net positioning is the subject: two parts of the plot to the front price's one. */
 const NET_PRICE_PANELS = [{ id: "net", height: 2 }, { id: "price", height: 1 }];
 const NET_PANEL = [{ id: "net" }];
 /** Legend, four net rows, two price rows and the axis; a shorter band keeps the net alone. */
 const PRICE_PANEL_MIN_ROWS = 8;
-const rank = (value: number | null) => value == null ? "--" : value.toFixed(0);
+const rank = (value: number | null | undefined) => value == null ? "--" : value.toFixed(0);
+/** A class's rank in a percentile column: 1Y, 3Y, or against every stored report (`all`). */
+const columnRank = (row: CotClassSummary, column: string) =>
+  (column === "one" ? row.percentile1Y : column === "three" ? row.percentile3Y : row.percentileAll)?.value ?? null;
 const cotDetailTitle = (name: string | undefined, code: string | null) => name ? cotMarketName(name) : code ?? undefined;
 
 export function CotPane(props: PaneProps) {
@@ -81,7 +86,8 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
       : scope === "all" || COT_MAJOR_CODES.has(row.contractCode));
     if (!sort.columnId) return result;
     const value = (row: CotBoardRow) => ({ name: cotMarketName(row.marketName), code: row.contractCode, net: row.position.net, change: row.position.weeklyChange,
-      one: row.position.percentile1Y.value, three: row.position.percentile3Y.value, asOf: row.reportDate })[sort.columnId as "name"];
+      one: row.position.percentile1Y.value, three: row.position.percentile3Y.value, all: row.position.percentileAll?.value ?? null,
+      asOf: row.reportDate })[sort.columnId as "name"];
     return [...result].sort((a, b) => compareSortValues(value(a), value(b), sort.direction));
   }, [data, query, scope, sort]);
   useAutoRefresh(resource.updatedAt, resource.load);
@@ -116,7 +122,7 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
       if (column.id === "code") return { text: row.contractCode, color: colors.textMuted };
       if (column.id === "net") return { text: cotInteger(row.position.net, true) };
       if (column.id === "change") return { text: cotInteger(row.position.weeklyChange, true) };
-      if (column.id === "one" || column.id === "three") return { text: rank(column.id === "one" ? row.position.percentile1Y.value : row.position.percentile3Y.value), color: colors.warning };
+      if (column.id === "one" || column.id === "three" || column.id === "all") return { text: rank(columnRank(row.position, column.id)), color: colors.warning };
       return { text: row.reportDate, color: colors.textMuted };
     }}
     rootBefore={<QueryBar width={width}
@@ -197,8 +203,8 @@ function CotDetail({ width, height, focused, code, family, positions, traderClas
         tableColumns={POSITION_COLUMNS} />}
       selection={{ kind: "id", selectedId: traderClass, getId: (row) => row.id, onChange: (id) => onClassChange(id as CotClass) }}
       onActivate={(row) => onClassChange(row.id)} getItemKey={(row) => row.id} sortColumnId={null} sortDirection="asc"
-      renderCell={(row: CotClassSummary, column) => ({ text: column.id === "name" ? row.label : column.id === "one" ? rank(row.percentile1Y.value)
-        : column.id === "three" ? rank(row.percentile3Y.value) : cotInteger(column.id === "change" ? row.weeklyChange : row[column.id as "long" | "short" | "net"], column.id === "net" || column.id === "change") })}
+      renderCell={(row: CotClassSummary, column) => ({ text: column.id === "name" ? row.label
+        : column.id === "one" || column.id === "three" || column.id === "all" ? rank(columnRank(row, column.id)) : cotInteger(column.id === "change" ? row.weeklyChange : row[column.id as "long" | "short" | "net"], column.id === "net" || column.id === "change") })}
       emptyStateTitle="Position classes unavailable." /> : null}
   </PaneStatusBody>;
 }

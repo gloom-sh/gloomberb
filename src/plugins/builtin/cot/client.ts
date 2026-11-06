@@ -20,6 +20,7 @@ function base(data: CotPayloadBase, family: CotFamily, positions: CotPositions) 
     || !Array.isArray(data.gaps) || !data.gaps.every((gap) => typeof gap === "string")
     || !Array.isArray(data.classes) || data.classes.some((row) => !COT_CLASSES[family].some((option) => option.value === row.id))
     || data.asOf !== null && !date(data.asOf) || !Number.isFinite(Date.parse(data.generatedAt))
+    || data.publishedAt != null && !Number.isFinite(Date.parse(data.publishedAt))
     || !["available", "partial", "unavailable"].includes(data.status)) throw new Error("The server returned an invalid COT report");
 }
 function summary(row: CotClassSummary, family: CotFamily) {
@@ -27,7 +28,7 @@ function summary(row: CotClassSummary, family: CotFamily) {
     || ![row.long, row.short, row.spreading].every(count) || ![row.net, row.weeklyChange, row.netPercentOfOpenInterest].every(number)
     || row.net !== (row.long == null || row.short == null ? null : row.long - row.short)
     || row.previousReportDate !== null && !date(row.previousReportDate)) throw new Error("The server returned invalid COT positions");
-  for (const rank of [row.percentile1Y, row.percentile3Y]) {
+  for (const rank of [row.percentile1Y, row.percentile3Y, ...(row.percentileAll === undefined ? [] : [row.percentileAll])]) {
     if (!rank || !Number.isSafeInteger(rank.sampleCount) || rank.sampleCount < 0 || typeof rank.completeWindow !== "boolean"
       || ![rank.min, rank.max, rank.mean, rank.rank].every(number) || !date(rank.windowStart) || !date(rank.windowEnd)
       || rank.value !== null && (!number(rank.value) || rank.value < 0 || rank.value > 100)
@@ -86,8 +87,12 @@ export async function loadCotBoard(family: CotFamily, traderClass: CotClass, for
     () => fetchCotBoard(family, traderClass, apiClient, positions), { force });
   return presentCotBoard(payload, stale, refreshError);
 }
-export async function fetchCotContract(contractCode: string, family: CotFamily, client: Pick<typeof apiClient, "getCloudCotContract"> = apiClient, positions: CotPositions = "futures-only") {
-  try { return validateCotContract(await client.getCloudCotContract(contractCode, family, positions), family, contractCode, positions); }
+export async function fetchCotContract(contractCode: string, family: CotFamily, client: Pick<typeof apiClient, "getCloudCotContract"> = apiClient,
+  positions: CotPositions = "futures-only", since?: string) {
+  try {
+    const payload = await client.getCloudCotContract(contractCode, family, positions, since);
+    return validateCotContract(payload, family, contractCode, positions);
+  }
   catch (error) { throw unavailable(error); }
 }
 export interface CotDetailData { payload: CotContractPayload; price: PricePoint[]; priceSymbol: string | null; priceAsOf: string | null; priceWarning: string | null }

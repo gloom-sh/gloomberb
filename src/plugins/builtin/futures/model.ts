@@ -8,6 +8,7 @@ import { contractMonthLabel } from "../../../utils/contract-month";
 import { quoteDotMarketState } from "../../../market-data/market/status";
 import { futuresQuoteFromSettle } from "../../../market-data/market/change-basis";
 import { globexDayOpen } from "../../../market-data/market/globex-day";
+import { periodBaseDay, periodBaseText, periodDayText } from "../../../market-data/market/period-return";
 import type { FuturesReturnHorizon } from "./returns";
 import type { FuturesTermsMap } from "./use-board-terms";
 import type { FrontReturnsMap } from "./use-front-returns";
@@ -30,9 +31,13 @@ export type FuturesColumnId =
   | "return3m"
   | "return6m"
   | "return1y"
+  | FuturesReturnBaseColumnId
   | "volume"
   | "prevClose"
   | "time";
+
+/** The exports' column of the day a return's base close is from: `return1mFrom` beside `return1m`. */
+export type FuturesReturnBaseColumnId = "return1wFrom" | "return1mFrom" | "returnYtdFrom" | "return3mFrom" | "return6mFrom" | "return1yFrom";
 
 export interface FuturesSortPreference {
   columnId: FuturesColumnId | null;
@@ -168,6 +173,15 @@ export function futuresNoMatchFailure(query: string): { message: string; details
   };
 }
 
+export const FUTURES_RETURN_BASE_COLUMNS: Readonly<Record<FuturesReturnBaseColumnId, FuturesReturnHorizon>> = {
+  return1wFrom: "1W",
+  return1mFrom: "1M",
+  returnYtdFrom: "YTD",
+  return3mFrom: "3M",
+  return6mFrom: "6M",
+  return1yFrom: "1Y",
+};
+
 export const FUTURES_RETURN_COLUMNS: Readonly<Partial<Record<FuturesColumnId, FuturesReturnHorizon>>> = {
   return1w: "1W",
   return1m: "1M",
@@ -176,6 +190,28 @@ export const FUTURES_RETURN_COLUMNS: Readonly<Partial<Record<FuturesColumnId, Fu
   return6m: "6M",
   return1y: "1Y",
 };
+
+/**
+ * What each drawn return is measured from, as the report and the column's
+ * hover name it: `1M from Mon 5 Oct close`, the day every row's base close
+ * is from, or the day each row's close is on or before when rows differ (a
+ * venue closed on it). Null for a horizon no row has a return for.
+ */
+export function futuresReturnBaseText(
+  horizon: FuturesReturnHorizon,
+  returns: FrontReturnsMap,
+  now = Date.now(),
+): string | null {
+  const days = new Set<string>();
+  for (const state of returns.values()) {
+    const day = state.bases?.[horizon];
+    if (day) days.add(day);
+  }
+  if (days.size === 0) return null;
+  if (days.size === 1) return `${horizon} ${periodBaseText([...days][0]!, now)}`;
+  const asked = periodBaseDay(new Date(now).toISOString().slice(0, 10), horizon);
+  return `${horizon} from each contract's close on or before ${periodDayText(asked, new Date(now).getUTCFullYear())}`;
+}
 
 /** Sectors whose contracts trade CME Globex's whole day, 17:00 to 16:00 Central; grains, softs, lumber and livestock keep shorter hours. */
 const GLOBEX_DAY_SECTORS: ReadonlySet<FuturesSector> = new Set(["equity-index", "equity-sectors", "rates", "energy", "metals", "currencies"]);
@@ -243,6 +279,13 @@ function getSortValue(
     case "return6m":
     case "return1y":
       return returns?.get(contract.symbol)?.values[FUTURES_RETURN_COLUMNS[columnId]!] ?? null;
+    case "return1wFrom":
+    case "return1mFrom":
+    case "returnYtdFrom":
+    case "return3mFrom":
+    case "return6mFrom":
+    case "return1yFrom":
+      return returns?.get(contract.symbol)?.bases?.[FUTURES_RETURN_BASE_COLUMNS[columnId]] ?? null;
     case "volume":
       return quote?.volume ?? null;
     case "prevClose":

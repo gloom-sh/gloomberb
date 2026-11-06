@@ -31,6 +31,7 @@ import { redactUnavailableFundamentals } from "../../utils/fundamentals";
 import { readWithdrawnObservations } from "../../utils/statement-gaps";
 import { parseListingDelisting } from "../../market-data/quotes/delisting";
 import { readIntradayBar, readStaleReason } from "../../market-data/quotes/intraday-bar";
+import { readSessionSplit } from "../../market-data/quotes/session-split";
 
 export const GLOOMBERB_CLOUD_PROVIDER_ID = "gloomberb-cloud" as const;
 
@@ -108,6 +109,8 @@ export function mapQuote(
     change,
     changePercent,
     previousClose: impossibleClose ? undefined : normalizePriceValueByDivisor(quote.previousClose, divisor),
+    // A split in the quote's session: its previous close is on the new basis already.
+    sessionSplit: impossibleClose ? undefined : readSessionSplit(quote.sessionSplit, divisor),
     regularClose: normalizePriceValueByDivisor(quote.regularClose, divisor),
     // JSON carries an unavailable move as null; the percent is unitless.
     regularChange: normalizePriceValueByDivisor(quote.regularChange ?? undefined, divisor),

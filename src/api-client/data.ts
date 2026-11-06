@@ -763,8 +763,9 @@ export class CloudDataApi {
     return this.request<CotBoardPayload>(`/cloud/cot/board?${query}`);
   }
 
-  async getCloudCotContract(code: string, report: CotFamily, positions: CotPositions = "futures-only"): Promise<CotContractPayload> {
-    const query = new URLSearchParams({ report, ...(positions === "combined" ? { scope: positions } : {}) });
+  /** A market's report; `since` (YYYY-MM-DD) lists its history from that day instead of the last three years. */
+  async getCloudCotContract(code: string, report: CotFamily, positions: CotPositions = "futures-only", since?: string): Promise<CotContractPayload> {
+    const query = new URLSearchParams({ report, ...(positions === "combined" ? { scope: positions } : {}), ...(since ? { since } : {}) });
     return this.request<CotContractPayload>(`/cloud/cot/contracts/${encodeURIComponent(code)}?${query}`);
   }
 
