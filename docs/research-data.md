@@ -338,6 +338,12 @@ AUCT dates are auction dates, not issue or maturity dates. Term sorting uses eve
 
 The rate column currently exposes bill investment rates and note/bond/TIPS high yields in percentage points. Bill investment rates differ from bill discount rates; TIPS yields are real yields. FRN auction discount margins, fixed spreads, and issue/maturity dates are not currently loaded, so AUCT does not provide an FRN coupon or a settlement cash-flow forecast. Treasury distinguishes these fields in its [auction overview](https://treasurydirect.gov/auctions/) and [FRN description](https://treasurydirect.gov/marketable-securities/floating-rate-notes/). Prices are quoted per $100 principal.
 
+### Sources
+
+AUCT reads two Treasury feeds and shows one board. Fiscal Data's auction dataset is the full record, back to 1979, but it posts in batches: its newest rows can carry no results, and it has gone weeks without a new auction. TreasuryDirect's securities search lists every auction as soon as Treasury announces it and its results within minutes. So AUCT also reads TreasuryDirect for the last 60 days (fewer in a 30-day window) and the auctions announced up to a month ahead, and merges the two by CUSIP and auction date. An auction in both is one row: the one with its results, and Fiscal Data's when both have them or neither does. An auction only TreasuryDirect lists is added, so the latest results and the auctions of the coming days show even while Fiscal Data lags. Auctions older than that are Fiscal Data's alone.
+
+Each feed is cached for an hour on its own. When one cannot be read, the board is the other one's, with the failure in the footer (and in the headless report's errors, which then say the report is incomplete); a saved copy of either feed answers for a failed refresh as before. Only when both fail is there an error. The report is dated by the newest auction it lists, whichever feed it came from.
+
 ### Search
 
 The search takes a security type (bill, note, bond, TIPS, FRN, CMB), a benchmark, a term, a CUSIP or a date (`YYYY-MM-DD`, or the start of one).

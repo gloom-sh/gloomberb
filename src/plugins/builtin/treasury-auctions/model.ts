@@ -299,6 +299,29 @@ export function isPendingAuction(auction: TreasuryAuction): boolean {
 }
 
 /**
+ * One board from Fiscal Data's auctions and TreasuryDirect's. An auction in
+ * both (same CUSIP and day) is one row, the one with its results: Fiscal Data
+ * posts a day's auctions as announced and fills the results in later, or not
+ * at all while it lags, and TreasuryDirect has them within minutes. When both
+ * have them, or neither does, the Fiscal Data row stays, as it was before
+ * TreasuryDirect was read. An auction only TreasuryDirect lists is added, from
+ * `from` (an ISO date) on: it reads further back than a short window shows.
+ */
+export function mergeAuctionSources(
+  fiscal: readonly TreasuryAuction[],
+  direct: readonly TreasuryAuction[],
+  from: string,
+): TreasuryAuction[] {
+  const supplement = new Map(direct.filter((auction) => auction.auctionDate >= from).map((auction) => [auction.id, auction]));
+  const merged = fiscal.map((auction) => {
+    const other = supplement.get(auction.id);
+    supplement.delete(auction.id);
+    return other && isPendingAuction(auction) && !isPendingAuction(other) ? other : auction;
+  });
+  return [...merged, ...supplement.values()];
+}
+
+/**
  * The announced offering, for pending and completed auctions alike. Total
  * accepted also counts SOMA add-ons, which would overstate completed sizes.
  */
