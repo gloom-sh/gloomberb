@@ -267,7 +267,7 @@ function limitRows<T>(rows: T[], limit: number | null): T[] {
 }
 
 /** The board's lists, as `--list` and the word after CRYP name them. */
-export const CRYPTO_LISTS = [
+const CRYPTO_LISTS = [
   { value: "coin", aliases: ["coins"] },
   { value: "stablecoin", aliases: ["stablecoins", "stable", "stables"] },
   { value: "defi", aliases: ["tvl"] },
