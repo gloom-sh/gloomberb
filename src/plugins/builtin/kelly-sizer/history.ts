@@ -1,5 +1,4 @@
 import type { PricePoint } from "../../../types/financials";
-import type { TimeRange } from "../../../time-series/range";
 import type { ChartRequest, InstrumentRef } from "../../../market-data/request-types";
 import { dailyBarDate, getPricePointTimestamp } from "../../../utils/price-history";
 import { sessionCalendarTimeZone } from "../../../market-data/market/freshness";
