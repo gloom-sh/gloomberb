@@ -12,6 +12,8 @@ const NAME_NOISE = new Set([
   "co", "company", "corp", "corporation", "inc", "incorporated", "ltd", "limited", "llc", "lp", "plc", "sa", "ag", "nv", "se",
   "spa", "ab", "as", "asa", "oyj", "bv", "gmbh", "kgaa", "bhd", "berhad", "pcl", "the", "adr", "ads", "cedear", "cedears",
   "sponsored", "unsponsored", "cdr", "cdi", "aktiengesellschaft", "aktiebolag",
+  // A Japanese company's legal form, spelled out or short: Nippon Yusen Kabushiki Kaisha is Nippon Yusen K.K.
+  "kabushiki", "kaisha", "kk",
 ]);
 // Words a venue adds to the share it lists ("Microsoft Corporation Common Stock"), never part of whose it is.
 const SHARE_NOISE = new Set(["common", "ordinary", "stock", "shares"]);

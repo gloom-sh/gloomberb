@@ -684,3 +684,17 @@ test("a bare symbol is its US listing in a fresh profile and in one that saved i
   expect((await known.run(watchlistCliCommand, "remove", "Banks", "SHEL")).data).toMatchObject({ changed: true, listing: "SHEL:NYSE" });
   expect((await known.store.loadTicker("SHEL"))!.metadata.watchlists).toEqual(["banks"]);
 });
+
+test("a bare symbol added on a minor line abroad names the listing the service marks with the word, as quote does", async () => {
+  // As `search NTT` answers: Warsaw's NTT is NTT System; the service marks NTT, Inc.'s 9432 on JPX with the word.
+  const search: DataProvider["search"] = async (query) => query.toUpperCase() === "AKBNK" ? [
+    { providerId: "test", symbol: "AKBNK", name: "Akbank T.A.S.", exchange: "BIST", type: "Common Stock", currency: "TRY" },
+    { providerId: "test", symbol: "8306", name: "Akbank Holdings", exchange: "JPX", type: "Common Stock", currency: "JPY", searchAliases: ["akbnk"] },
+  ] : [];
+  const saver = await bistSaver(search);
+  const added = await saver.run(watchlistCliCommand, "add", "Banks", "AKBNK, GARAN");
+  expect(added.data.map((row) => [row.listing, row.abroad ?? null])).toEqual([
+    ["AKBNK:BIST", "AKBNK has no US listing; it trades on BIST, in TRY; also 8306:JPX Akbank Holdings."],
+    ["GARAN:BIST", "GARAN has no US listing; it trades on BIST, in TRY."],
+  ]);
+});

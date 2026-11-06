@@ -80,3 +80,26 @@ test("a batched search refused for one chunk drops the chunks still waiting for 
   expect(Date.now() - started).toBeLessThan(1_000);
   expect(sent).toEqual([100]);
 });
+
+test("a listing a list's lookup was told has no quote is never asked again in the same command; a refusal still is", async () => {
+  const singles: string[] = [];
+  const source = createTestDataProvider({
+    getQuote: async (symbol) => {
+      singles.push(symbol);
+      if (symbol === "BUSY") throw new Error("Anonymous market rate limit exceeded");
+      throw new Error(`Not a ticker: ${symbol}.`);
+    },
+  });
+  // The source's batch asked each it had no quote for alone already: MURATA is no ticker, BUSY was refused.
+  source.getQuotesBatch = async (targets) => targets.map((target) => target.symbol === "BUSY"
+    ? { target, quote: null, error: new Error("Anonymous market rate limit exceeded") }
+    : target.symbol === "GONE" ? { target, quote: null } : { target, quote: null, error: `Not a ticker: ${target.symbol}.` });
+  const lookups = listLookups(source);
+  await lookups.getQuotesBatch!([{ symbol: "MURATA", exchange: "" }, { symbol: "GONE", exchange: "" }, { symbol: "BUSY", exchange: "" }]);
+  await expect(lookups.getQuote("MURATA", "")).rejects.toThrow("Not a ticker: MURATA.");
+  expect(await lookups.getQuote("GONE", "")).toBeNull();
+  await expect(lookups.getQuote("BUSY", "")).rejects.toThrow("rate limit");
+  expect(singles).toEqual(["BUSY"]);
+  // A later batch answers them without asking either.
+  expect((await lookups.getQuotesBatch!([{ symbol: "MURATA", exchange: "" }])).map((result) => result.quote)).toEqual([null]);
+});

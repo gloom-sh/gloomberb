@@ -30,7 +30,8 @@ import { ruleState, ruleTarget } from "./event-rows";
 import { relativeTime } from "./format";
 import { alertKindLabel, fetchAlertHistory, ruleStateText } from "./history";
 import { isResearchAlertKind } from "./research-rules";
-import { useAsyncResource } from "../../../public/react";
+import { useAppConfig, useAsyncResource } from "../../../public/react";
+import { readerTimeZone } from "../../../utils/utc-time";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { apiClient } from "../../../api-client";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
@@ -53,6 +54,8 @@ const columnsFor = (width: number, lastCheck: boolean, needsSignIn: boolean): Da
 ];
 
 export function EventAlertsPane({ focused, width, height }: PaneProps) {
+  // A release's print time is on the reader's clock too, as ECO shows it.
+  const readerZone = readerTimeZone(useAppConfig().timezone);
   const [catalystStatus] = usePluginConfigState<string>(CATALYST_POLL_STATUS, "Catalyst alerts check every five minutes while the app is open");
   const [json, setJson] = usePluginConfigState<string>(EVENT_ALERTS_KEY, "[]");
   // IV levels, calendar events and IPOs are kept in their own lists, which released versions never read.
@@ -237,7 +240,7 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
                     ? ruleStateText(states.get(rule.id))
                     : ""
                 : column.id === "target"
-                ? ruleTarget(rule)
+                ? ruleTarget(rule, readerZone)
                 : column.id === "status"
                   ? unread ? "No data" : state
                   : new Date(rule.createdAt).toISOString().slice(0, 10),

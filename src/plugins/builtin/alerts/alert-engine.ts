@@ -1,7 +1,8 @@
 import { metricDescription, readAlertMetric, validMetricRule } from "./metric-model";
 import type { AlertCondition, AlertRule } from "./types";
 import { alertListing } from "./format";
-import { canonicalExchange } from "../../../utils/exchanges";
+import { alertListingKey, alertPriceText } from "./price-text";
+import { moveRuleWords } from "./move";
 import { logFailure } from "../../../utils/log-failure";
 
 export type { AlertRule };
@@ -43,6 +44,7 @@ export function editAlert(
     // The listing's currency and venue stay with it; a new symbol learns its own at its first check.
     ...(sameListing && alert.lastQuoteCurrency ? { lastQuoteCurrency: alert.lastQuoteCurrency } : {}),
     ...(sameListing && alert.lastQuoteExchange ? { lastQuoteExchange: alert.lastQuoteExchange } : {}),
+    ...(sameListing && alert.lastQuotePence ? { lastQuotePence: alert.lastQuotePence } : {}),
     condition,
     targetPrice,
     createdAt: alert.createdAt,
@@ -50,6 +52,8 @@ export function editAlert(
     status: "active",
     message: alert.message,
     ...(alert.metric ? { metric: alert.metric } : {}),
+    // A move rule stays one; the session it went off in is dropped, so it can go off again.
+    ...(alert.move ? { move: true } : {}),
   };
 }
 
@@ -63,15 +67,15 @@ export function rearmAlert(alert: AlertRule): AlertRule {
  * from the symbol alone. A second add of one names the first and adds nothing.
  */
 export function sameLevelRule(a: AlertRule, b: AlertRule): boolean {
-  const venue = (alert: AlertRule) => canonicalExchange(alert.exchange ?? "");
-  return a.symbol.toUpperCase() === b.symbol.toUpperCase()
-    && (venue(a) === venue(b) || alertListing(a) === alertListing(b))
+  // One key per listing: 7203.T, `7203 JP` and 7203:JPX are one listing, as is AAPL read on NASDAQ.
+  return alertListingKey(a) === alertListingKey(b) && !!a.move === !!b.move
     && a.condition === b.condition && a.targetPrice === b.targetPrice
     && JSON.stringify(readAlertMetric(a.metric)) === JSON.stringify(readAlertMetric(b.metric));
 }
 
 export function evaluateAlert(alert: AlertRule, currentPrice: number): boolean {
-  if (alert.metric || alert.status !== "active") return false;
+  // A move from the previous close is judged on the quote's move (`judgeMove`), never on its price.
+  if (alert.metric || alert.move || alert.status !== "active") return false;
 
   switch (alert.condition) {
     case "above":
@@ -91,9 +95,11 @@ export function evaluateAlert(alert: AlertRule, currentPrice: number): boolean {
 
 export function formatAlertDescription(alert: AlertRule): string {
   if (alert.metric) return metricDescription(alert);
+  if (alert.move) return `${alertListing({ symbol: alert.symbol, exchange: alert.exchange })} ${moveRuleWords(alert)} from the previous close`;
   const prefix = alert.condition === "above" ? ">"
     : alert.condition === "below" ? "<" : "↕";
-  return `${alert.symbol} ${prefix} ${alert.targetPrice}`;
+  // The listing as it was kept (7203:JPX, AAPL), its target at the instrument's precision (1.33750, 70.00p).
+  return `${alertListing({ symbol: alert.symbol, exchange: alert.exchange })} ${prefix} ${alertPriceText(alert, alert.targetPrice)}`;
 }
 
 export function serializeAlerts(alerts: AlertRule[]): string {

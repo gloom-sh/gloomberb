@@ -15,7 +15,7 @@ import {
   upsertTickerFromSearchResult,
   type ResolvedTickerSearch,
 } from "../tickers/search";
-import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
+import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../utils/exchanges";
 import {
   chosenListingNote,
   isNoProviderError,
@@ -25,6 +25,10 @@ import {
   listingVenues,
   movedSymbolLine,
   notTradedMessage,
+  oneWordCompanyName,
+  serviceNamedCompany,
+  isTitleCaseWord,
+  titleCaseCompanyName,
   parseListingArg,
   quoteBareListing,
   resolveCliListing,
@@ -56,7 +60,7 @@ import { coinElsewhereNote, savedListingCoinNote } from "./commands/crypto-hints
 import { NotASymbolError, notASymbolError } from "./symbol-cells";
 import { kindFromListingSyntax } from "../tickers/instrument-kind";
 import { classifyInstrumentKind, normalizeTickerSymbol } from "../tickers/search/ranking";
-import { companyNameQueries, findFormerIssuerOfName, isCompanyNameInput } from "../tickers/company-name-listing";
+import { companyNameQueries, findFormerIssuerOfName, isCompanyNameInput, settledTerminalCode } from "../tickers/company-name-listing";
 
 /** The saved ticker for a symbol (`SAN:EPA`, or `SAN` with `--exchange EPA`), saving it from search first if needed. */
 export async function resolveTickerForCli(
@@ -315,6 +319,15 @@ export async function resolveCliTicker(
     return withChange({ ...ended, otherVenues: bareNote ? bareVenues : null, ...uncheckedIf(listing, local, ended.ended) }, local.quote ? tradingListing(local.quote) : { name: local.ticker.metadata.name });
   }
 
+  // A bare word no quote of its own placed, which search read on a listing abroad, is the company the service marks
+  // with the word, as `quote` reads it: VISA is V:NYSE (Visa Inc.), not a receipt on Toronto; SHELL is SHEL:LSE.
+  const abroad = !listing.exchange && !!listing.typed && !isUsListingExchange(canonicalExchange(resolved.result.exchange));
+  const marked = abroad ? await serviceNamedCompany(listing.typed!, deps)
+    .catch(logFailure("cli.ticker-resolution", "Read a word the service marks as a name failed", null)) : null;
+  if (marked) {
+    const found = await resolveCliTicker(marked.key, store, dataProvider, undefined, options);
+    return { ...found, readAs: marked.readAs ?? found.readAs };
+  }
   const { ticker, created } = await upsertTickerFromSearchResult(store, resolved.result);
   // A listing saved before (by an earlier look at a list) is read again too: its quote says whether it still trades.
   const named = created || !bareQuote ? await nameFromListingQuote(ticker, store, dataProvider, bareQuote) : { ticker, quote: bareQuote };
@@ -599,6 +612,9 @@ function lookAgain(entry: CliTickerResolution): boolean {
 function listLookupPlan(input: string, exchange: string | undefined): ListLookupPlan {
   // What cannot be a symbol is refused without a request.
   if (notASymbolError(input)) return { searches: [], changes: null };
+  // A terminal's code abroad (`VOD LN`) is its listing as written: it asks only for its quote.
+  const code = settledTerminalCode(input);
+  if (code) return { searches: [], changes: null };
   // A company's name searches what its reading searched (`readNameEntries`), answered by the same batch.
   if (isCompanyNameInput(input)) return { searches: companyNameQueries(input), changes: null };
   try {
@@ -652,9 +668,14 @@ export async function resolveTickersForCli(
   const plans = new Map(symbols.map((input) => [input, listLookupPlan(input, exchange)] as const));
   let settled = 0;
   const progress = onProgress ? () => onProgress(++settled, symbols.length) : undefined;
+  // Symbols every search and own quote of which the service answered in some look: one found nothing for is not
+  // found, whatever it refused the others, so it is neither looked up again nor offered to try again.
+  const told = new Set<string>();
+  const notFound = (entry: CliTickerResolution) => entry.error instanceof TickerNotFoundError && told.has(entry.input);
   // Each look asks for its symbols' searches and changes in batches first.
   const look = async (inputs: readonly string[], concurrency: number, looked?: () => void): Promise<Map<string, CliTickerResolution>> => {
     const batched = await batchedListLookups(dataProvider, inputs.map((input) => plans.get(input)!));
+    for (const input of inputs) if (batched.settled(plans.get(input)!)) told.add(input);
     const resolve = (symbol: string) => resolveCliTicker(symbol, store, batched.dataProvider, exchange, {
       retry, askWhenAmbiguous, ownExchangeWins: true, changeGraceMs: LOOKUP_TIMEOUT_MS,
     });
@@ -672,7 +693,7 @@ export async function resolveTickersForCli(
     let failing = failedRequests.count() > 0 || lookups.some(busyLookup);
     for (const waitMs of retryWaitsMs) {
       // A match whose quote was refused is looked at again too, so it gets the check a first look gives.
-      const failed = lookups.filter(lookAgain).map((entry) => entry.input);
+      const failed = lookups.filter((entry) => lookAgain(entry) && !notFound(entry)).map((entry) => entry.input);
       if (!failing || failed.length === 0) break;
       onRetry?.(failed.length, waitMs);
       await new Promise((resolveWait) => setTimeout(resolveWait, waitMs));
@@ -681,13 +702,83 @@ export async function resolveTickersForCli(
       lookups = lookups.map((entry) => again.get(entry.input) ?? entry);
       failing = failedRequests.count() > before || [...again.values()].some(busyLookup);
     }
+    // A company's name typed as one word (Canon, ADVANTEST) that no listing trades as is read as `quote` reads it.
+    lookups = await withOneWordNames(lookups, store, dataProvider, { retry, askWhenAmbiguous });
+    // One written as a name (Aeon) that went to another company's ticker is the company of that name.
+    lookups = await withTitleCaseNames(lookups, store, dataProvider, { retry, askWhenAmbiguous });
     if (!failing) return lookups;
     // Still refused after the last wait: a failure may only be the refusal, so none is called not found,
     // and a match whose quote was refused is not taken as trading.
-    return lookups.map((entry) => lookAgain(entry)
+    return lookups.map((entry) => lookAgain(entry) && !notFound(entry)
       ? { input: entry.input, error: new LookupUnansweredError(entry.input) }
       : entry);
   } finally {
     failedRequests.stop();
   }
 }
+
+/** Names of one word looked up at once: each is a search and a quote. */
+const NAME_CONCURRENCY = 4;
+
+/**
+ * The lookups, each word no listing trades as (`TickerNotFoundError`) that
+ * names a company read as that company's listing, as `quote` reads it
+ * (`oneWordCompanyName`): CANON is 7751:JPX, and its row says so ("Read
+ * "CANON" as 7751:JPX (Canon Inc.)."). A word that names none keeps its own
+ * error.
+ */
+async function withOneWordNames(
+  lookups: CliTickerResolution[],
+  store: AppTickerRepositoryPort,
+  dataProvider: DataProvider,
+  options: Pick<CliTickerOptions, "retry" | "askWhenAmbiguous">,
+): Promise<CliTickerResolution[]> {
+  const words = lookups.filter((entry) => entry.error instanceof TickerNotFoundError && !entry.error.successor && ONE_WORD.test(entry.input));
+  if (words.length === 0) return lookups;
+  const read = new Map((await mapWithConcurrency(words, NAME_CONCURRENCY, async (entry): Promise<CliTickerResolution> => {
+    try {
+      const named = await oneWordCompanyName(entry.input, { dataProvider });
+      if (!named) return entry;
+      const found = await resolveCliTicker(named.key, store, dataProvider, undefined, { ...options, ownExchangeWins: true, changeGraceMs: LOOKUP_TIMEOUT_MS });
+      return { input: entry.input, ...found, readAs: named.readAs ?? found.readAs };
+    } catch (error) {
+      // A name that cannot be read keeps the word's own "not found".
+      logFailure("cli.ticker-resolution", "Read a word as a company's name failed")(error);
+      return entry;
+    }
+  })).map((entry) => [entry.input, entry] as const));
+  return lookups.map((entry) => read.get(entry.input) ?? entry);
+}
+
+/**
+ * The lookups, each word written as a company's name (`Aeon`) that went to
+ * another company's ticker read as the company of that name, as `quote`
+ * reads it (`titleCaseCompanyName`): "Aeon" is 8267:JPX (Aeon Co., Ltd.), not
+ * AEON Biopharma's AEON, and its row says so. A word that names no such
+ * company keeps its ticker.
+ */
+async function withTitleCaseNames(
+  lookups: CliTickerResolution[],
+  store: AppTickerRepositoryPort,
+  dataProvider: DataProvider,
+  options: Pick<CliTickerOptions, "retry" | "askWhenAmbiguous">,
+): Promise<CliTickerResolution[]> {
+  const words = lookups.filter((entry) => !entry.error && !entry.readAs && isTitleCaseWord(entry.input));
+  if (words.length === 0) return lookups;
+  const read = new Map((await mapWithConcurrency(words, NAME_CONCURRENCY, async (entry): Promise<CliTickerResolution> => {
+    try {
+      const named = await titleCaseCompanyName(entry.input, { symbol: entry.ticker!.metadata.ticker, name: entry.ticker!.metadata.name }, { dataProvider });
+      if (!named) return entry;
+      const found = await resolveCliTicker(named.key, store, dataProvider, undefined, { ...options, ownExchangeWins: true, changeGraceMs: LOOKUP_TIMEOUT_MS });
+      return { input: entry.input, ...found, readAs: named.readAs ?? found.readAs };
+    } catch (error) {
+      // A name that cannot be read keeps the ticker the word went to.
+      logFailure("cli.ticker-resolution", "Read a word written as a name failed")(error);
+      return entry;
+    }
+  })).map((entry) => [entry.input, entry] as const));
+  return lookups.map((entry) => read.get(entry.input) ?? entry);
+}
+
+/** A word that can be a company's name: letters, three and more, as a pasted name is (`Canon`, `ENEOS`). */
+const ONE_WORD = /^\p{L}[\p{L}&'-]{2,}$/u;

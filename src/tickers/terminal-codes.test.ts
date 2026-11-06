@@ -8,7 +8,7 @@ import { createTestDataProvider } from "../test-support/data-provider";
 import type { InstrumentSearchResult } from "../types/instrument";
 import type { HeadlessPaneDefinition, PaneDef, PaneTemplateDef } from "../types/plugin";
 import { normalizeTickerInput } from "./search";
-import { BLOOMBERG_MARKETS, endsInLegalForm, readNearMissListing, readTerminalListingCode, unknownBloombergMarket } from "./terminal-codes";
+import { BLOOMBERG_MARKETS, endsInLegalForm, readNearMissListing, readTerminalListingCode, readVenueFirstListing, unknownBloombergMarket } from "./terminal-codes";
 import { isKnownExchangeCode } from "../utils/exchanges";
 import { splitSymbolArgs, splitSymbolWords } from "../cli/symbol-args";
 import { parseSymbolText } from "../cli/symbol-list";
@@ -242,4 +242,20 @@ test("a code on a venue only search lists, or where Bloomberg's ticker is not th
   const refused = await resolveCliListing("MAY MK", undefined, deps).then(() => null, (error: ListingArgError) => error);
   expect(refused?.message).toBe("MAY does not trade on BURSAMY. MAY trades on: ASX.");
   expect(refused?.details).toBe("Bloomberg and Bursa Malaysia codes differ there: type the Bursa code, such as 1155 MK for Maybank.");
+});
+
+// A spreadsheet writes the venue first; a symbol-first listing, a symbol that is a venue's code too, and a market id stay as typed.
+test.each([
+  ["TYO:7203", "7203:JPX"],
+  ["LON:LSEG", "LSEG:LSE"],
+  ["NASDAQ:AAPL", "AAPL:NASDAQ"],
+  ["ETR:SAP", "SAP:XETRA"],
+])("%s, written venue first, reads as %s", (typed, key) => {
+  expect(readVenueFirstListing(typed)?.symbol).toBe(key);
+  expect(parseListingArg(typed)).toMatchObject({ key, readAs: `Read ${typed} as ${key}.` });
+});
+
+// A ticker that is also a venue's code, before a two-letter market code, is written symbol first, as before.
+test.each(["SAN:EPA", "BATS:LSE", "ICE:NYSE", "7203:JPX", "AAPL", "ICE:US", "CME:US", "NEO:US", "OTC:US", "ASX:AU", "BSE:IN", "AMS:SW"])("%s is not written venue first", (typed) => {
+  expect(readVenueFirstListing(typed)).toBeNull();
 });

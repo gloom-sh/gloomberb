@@ -31,7 +31,7 @@ import type { MarketContext } from "../types";
 import type { CliCommandContext, GloomPlugin } from "../../types/plugin";
 import { indexRootTryLine } from "../index-roots";
 import { indexRootFor } from "../../tickers/index-roots";
-import { readBrokerIndexCode } from "../listing-arg";
+import { isTitleCaseWord, readBrokerIndexCode } from "../listing-arg";
 import { knownGapMessage, commandPointer } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
@@ -134,8 +134,10 @@ export async function searchCandidatesForCli({
     const quote = BARE_SYMBOL.test(symbol) && candidates.some((candidate) => candidate.symbol.toUpperCase() === symbol)
       ? await (quoted ?? loadSearchedQuote(symbol, savedExchange, dataProvider))
       : null;
-    const ordered = withQuotedNames(symbol, withUsLineOfPrimary(withHomeListingPrimary(trimmedQuery, withPrimaryListingFirst(symbol, candidates, quote))), quote);
-    return withOtherCompaniesApart(ordered).slice(0, totalLimit);
+    // A word written as a name (`Aeon`) whose company search leads with keeps it first, as `quote Aeon` reads it.
+    const named = leadsWithNamedCompany(trimmedQuery, candidates, quote);
+    const ordered = withQuotedNames(symbol, withUsLineOfPrimary(withHomeListingPrimary(trimmedQuery, withPrimaryListingFirst(symbol, candidates, named ? null : quote))), quote);
+    return withOtherCompaniesApart(ordered, named ? trimmedQuery : null).slice(0, totalLimit);
   } catch (error) {
     // Not "No matches found": a script or a reader would take that for a name nothing lists.
     if (isProviderBusy(error)) failRetryable(SEARCH_BUSY_MESSAGE, SEARCH_BUSY_CODE);
@@ -278,6 +280,20 @@ function withPrimaryListingFirst(
 }
 
 /**
+ * Whether a word written as a company's name (`Aeon`) leads search with the
+ * home line of the company named that word (Aeon Co., Ltd.'s 8267 on JPX)
+ * while the symbol's quote prices a company named more (AEON Biopharma):
+ * the name's company stays primary, as `quote Aeon` reads the word
+ * (`titleCaseCompanyName`), and the ticker's company is another match.
+ */
+function leadsWithNamedCompany(query: string, candidates: readonly TickerSearchCandidate[], quote: Quote | null): boolean {
+  if (!quote || !isTitleCaseWord(query) || companyNameExtraWords(query, quote.name) === 0) return false;
+  const lead = candidates.find((candidate) => candidate.category === "Primary Listing");
+  return !!lead && lead.kind === "search" && lead.result?.homeListing === true
+    && lead.symbol.toUpperCase() !== query.toUpperCase() && companyNameExtraWords(query, resolveSearchName(lead)) === 0;
+}
+
+/**
  * A company searched by name lists its home line as the primary listing. A
  * search row names no home exchange or volume, so a company's lines go by
  * how far each is from being its own line (`listingDistance`), then by the
@@ -371,9 +387,11 @@ const baseSymbol = (symbol: string) => symbol.toUpperCase().replace(/[:.][A-Z]{1
  * name, a name it had (Cassava Sciences for Filana's FLNA), or, for a line
  * search names no company for, its symbol on another venue. Another company's
  * line, or a nameless line under another symbol (DKC1O on BYMA under
- * `search DK`), is an Other Match, listed after them.
+ * `search DK`), is an Other Match, listed after them. For a word read as the
+ * company named it (`leadsWithNamedCompany`), a company named more words
+ * (AEON Biopharma beside Aeon Co., Ltd.) is another company.
  */
-function withOtherCompaniesApart(candidates: TickerSearchCandidate[]): TickerSearchCandidate[] {
+function withOtherCompaniesApart(candidates: TickerSearchCandidate[], namedWord: string | null = null): TickerSearchCandidate[] {
   // A line search names no company for: no name, or only its symbol (DKC1O).
   const nameless = (candidate: TickerSearchCandidate) =>
     isLowQualityTickerName(candidate.result ? candidate.result.name ?? "" : resolveSearchName(candidate), candidate.symbol);
@@ -383,7 +401,8 @@ function withOtherCompaniesApart(candidates: TickerSearchCandidate[]): TickerSea
   const names = [resolveSearchName(primary), primary.result?.formerName, ...primary.nameAliases ?? []];
   const ownLine = (candidate: TickerSearchCandidate) => nameless(candidate)
     ? baseSymbol(candidate.symbol) === baseSymbol(primary.symbol)
-    : names.some((company) => sameCompany(resolveSearchName(candidate), company));
+    : names.some((company) => sameCompany(resolveSearchName(candidate), company))
+      && (!namedWord || companyNameExtraWords(namedWord, resolveSearchName(candidate)) === 0);
   const others = candidates.filter((candidate) => candidate.category === "Other Listings" && !ownLine(candidate));
   if (others.length === 0) return candidates;
   const kept = candidates.filter((candidate) => !others.includes(candidate));

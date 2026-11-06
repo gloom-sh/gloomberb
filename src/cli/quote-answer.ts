@@ -25,6 +25,7 @@ import {
   parseListingArg,
   quoteBareListing,
   serviceNamedCompany,
+  titleCaseCompanyName,
   type ListingArg,
   requireCliListing,
   resolveCliListing,
@@ -36,6 +37,7 @@ import {
 import { withListingSuggestion } from "./not-a-ticker";
 import { notATickerWords } from "./company-name-hint";
 import { isNetworkFailure } from "../utils/network-failure";
+import { logFailure } from "../utils/log-failure";
 import type { MarketContext } from "./types";
 
 /** The text of an error, or null for none. */
@@ -93,6 +95,14 @@ export async function answerQuote(
   const also = (quote: Quote) => root && quote.instrumentType?.trim().toUpperCase() !== "INDEX"
     ? [indexRootAlsoLine(root, request.command)] : [];
   if (result.quote) {
+    // A word written as a company's name, which is another company's ticker too, is the company of that name: "Aeon"
+    // is Aeon Co., Ltd. (8267:JPX), not AEON Biopharma. A saved row keeps its listing.
+    const titled = !listing.exchange && !listing.saved && listing.typed
+      ? await titleCaseCompanyName(listing.typed, { symbol: listing.symbol, name: result.quote.name }, market)
+        .catch(logFailure("cli.quote-answer", "Read a word as a company's name failed", null))
+      : null;
+    const meant = titled ? await answerNamedListing(titled, market, request, refresh, datesChangeBasis) : null;
+    if (meant) return meant;
     // "CAR = Avis Budget Group, NASDAQ (different companies on XETRA, ASX)" names the venue too, so it replaces "SXR8 -> XETRA".
     const choice = await listingChoiceNotes(listing, market, result.quote, venues);
     const venue = choice.length > 0 ? null : bareListingNote(listing, result.quote);
