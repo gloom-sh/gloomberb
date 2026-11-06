@@ -1363,9 +1363,9 @@ describe("ticker-search utilities", () => {
       ];
       const ranked = build("YAR", yar);
       expect(ranked.find((item) => item.category === "Primary Listing")?.result?.exchange).toBe("OSL");
-      // A home line of its own leads only a regional line: a symbol's line on its home exchange keeps the lead.
+      // It leads another company's line on that company's own exchange too: Yari Minerals has no home line.
       const yari = [yar[3]!, yar[4]!];
-      expect(build("YAR", yari)[0]?.result?.exchange).toBe("ASX");
+      expect(build("YAR", yari)[0]?.result?.exchange).toBe("OSL");
     });
   });
 

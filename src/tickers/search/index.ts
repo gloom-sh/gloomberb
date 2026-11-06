@@ -223,6 +223,7 @@ function createProviderTickerSearchCandidates(
       primaryExchangeLabel: result.primaryExchange,
       providerRank,
       popularity: searchResultPopularity(result),
+      ...(result.homeListing === true ? { homeListing: true } : {}),
       category: saved ? "Saved" : "Other Listings",
       kind: "search",
       saved,

@@ -108,11 +108,15 @@ async function warmThenOpen(pick: (tickers: ReadonlyMap<string, TickerRecord>) =
   }
 }
 
-/** The row for `results[0]`, the way the bar lists it beside the other listings and the saved tickers. */
+/**
+ * The row for `results[0]`, the way the bar lists it beside the other listings and the saved tickers:
+ * its own row, or the saved ticker's that took its place.
+ */
 const fromProvider = (query: string, ...results: InstrumentSearchResult[]) => (tickers: ReadonlyMap<string, TickerRecord>) => {
   const candidates = buildTickerSearchCandidates({ query, tickers, providerResults: results });
   const picked = results[0]!;
-  return candidates.find((candidate) => candidate.result?.symbol === picked.symbol && candidate.result.exchange === picked.exchange)!;
+  const lists = (candidate: TickerSearchCandidate) => candidate.result?.symbol === picked.symbol && candidate.result.exchange === picked.exchange;
+  return candidates.find((candidate) => candidate.kind === "search" && lists(candidate)) ?? candidates.find(lists)!;
 };
 const fromSaved = (symbol: string) => (tickers: ReadonlyMap<string, TickerRecord>) => (
   createQuickLookTickerCandidates(tickers.values()).find((candidate) => candidate.symbol === symbol)!

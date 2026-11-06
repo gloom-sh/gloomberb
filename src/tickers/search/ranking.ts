@@ -343,8 +343,15 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
   // stocks over funds (GLD) put a thinly traded company first.
   const exactIssuerRank = new Map<string, number>();
   const exactIssuerKey = (entry: RankedEntry) => getIssuerGroupKey(entry.item.detail) || `item:${entry.index}`;
+  // The companies under a lettered symbol with a line the service marks as their home: the listed companies it
+  // knows. A code of digits is one market's code (Hong Kong, Tokyo, Taipei), and the mark says nothing between
+  // markets there: BYD's home is Shenzhen, not its Hong Kong 1211, so the server's order of markets stands.
+  const exactIssuerHome = new Set<string>();
+  const lettered = /\p{L}/u.test(query);
   for (const entry of filtered) {
-    if (entry.symbolMatchRank !== 4 || entry.item.providerRank == null) continue;
+    if (entry.symbolMatchRank !== 4) continue;
+    if (lettered && entry.item.homeListing === true) exactIssuerHome.add(exactIssuerKey(entry));
+    if (entry.item.providerRank == null) continue;
     const key = exactIssuerKey(entry);
     exactIssuerRank.set(key, Math.min(entry.item.providerRank, exactIssuerRank.get(key) ?? Number.POSITIVE_INFINITY));
   }
@@ -449,6 +456,27 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
       const bProviderRank = b.item.providerRank ?? Number.POSITIVE_INFINITY;
       if (aProviderRank !== bProviderRank) return aProviderRank - bProviderRank;
       return compareFallbackEntries(a, b);
+    }
+    // A symbol typed whole asks for a listing under it, not a name. The companies listed under it go saved
+    // first, then the ones the service marks a home line of (`exactIssuerHome`), then in the server's order
+    // (`exactIssuerRank`). A company whose name only is or starts with the letters gets no head start (AXP
+    // Energy for AXP, CAT Strategic Metals for CAT), and neither does a small company the server lists first
+    // by a popularity it scores on another scale abroad (NextNav for NN, AAR for AIR, ahead of NN Group and
+    // Airbus). A line with no name or venue of its own (a Toronto `JNJ` named JNJ, an old line of ISP)
+    // follows the companies.
+    if (aExactSymbolRank === 4) {
+      const aSaved = isSavedSearchItem(a.item);
+      const bSaved = isSavedSearchItem(b.item);
+      if (aSaved !== bSaved) return aSaved ? -1 : 1;
+      const aPlaceholder = isPlaceholderLine(a.item);
+      const bPlaceholder = isPlaceholderLine(b.item);
+      if (aPlaceholder !== bPlaceholder) return aPlaceholder ? 1 : -1;
+      const aHome = exactIssuerHome.has(exactIssuerKey(a));
+      const bHome = exactIssuerHome.has(exactIssuerKey(b));
+      if (aHome !== bHome) return aHome ? -1 : 1;
+      const aIssuerRank = exactIssuerRank.get(exactIssuerKey(a)) ?? Number.POSITIVE_INFINITY;
+      const bIssuerRank = exactIssuerRank.get(exactIssuerKey(b)) ?? Number.POSITIVE_INFINITY;
+      if (aIssuerRank !== bIssuerRank) return aIssuerRank - bIssuerRank;
     }
     if (b.companyRank !== a.companyRank) {
       return b.companyRank - a.companyRank;
@@ -872,6 +900,17 @@ function namesUsCompany(
   return entries.some(({ item, symbolMatchRank }) => symbolMatchRank === 2 && item.kind === "search"
     && item.instrumentClass === "equity" && isUsListingExchange(listingVenue(item))
     && !!item.searchAliases?.some((alias) => compactSearchText(alias) === typed));
+}
+
+/**
+ * A search line that names no company or venue of its own: its name is its
+ * symbol or empty (an old line search keeps for a ticker, a Toronto `HD`
+ * named HD), or it lists on no exchange.
+ */
+function isPlaceholderLine(item: Pick<TickerSearchRankableItem, "label" | "detail" | "kind"> & Partial<TickerSearchRankableItem>): boolean {
+  if (item.kind !== "search") return false;
+  const name = compactSearchText(item.detail.split("|")[0] || "");
+  return !name || name === compactSearchText(item.symbol || item.label) || !(item.exchangeLabel || item.primaryExchangeLabel);
 }
 
 function isDepositaryReceiptType(type?: string): boolean {
