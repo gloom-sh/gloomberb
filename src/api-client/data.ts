@@ -543,12 +543,12 @@ export class CloudDataApi {
     symbol: string,
     exchange?: string,
     expirationDate?: number,
-    options: BatchableRead = {},
+    options: BatchableRead & { adjusted?: boolean } = {},
   ): Promise<CloudMarketResponse<CloudOptionsChainPayload>> {
     // A dated expiry asked with others may go out with the listing's other expiries asked in the same moment.
-    if (expirationDate != null && options.batch) return this.optionsChains.read({ symbol, exchange, expirationDate });
+    if (expirationDate != null && options.batch && !options.adjusted) return this.optionsChains.read({ symbol, exchange, expirationDate });
     return this.request<CloudMarketResponse<CloudOptionsChainPayload>>(
-      cloudOptionsChainPath(symbol, exchange, expirationDate),
+      cloudOptionsChainPath(symbol, exchange, expirationDate, options.adjusted === true),
     );
   }
 

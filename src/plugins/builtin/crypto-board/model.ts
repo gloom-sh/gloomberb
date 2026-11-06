@@ -313,7 +313,10 @@ const suppliedRows = new WeakMap<CryptoRow, { supply: CryptoRowSupply; row: Cryp
 
 /**
  * Each row with its coin's supply, matched by code. A row keeps its identity
- * while its price and its supply hold, so the table still skips it.
+ * while its price and its supply hold, so the table still skips it. A row with
+ * a supply is valued on it: its market cap is its price times the supply it
+ * shows, so the row counts one supply (USDT's Supply 178.16B at 0.9984 read
+ * beside a market cap on another supply, 177.42B).
  */
 export function withCryptoSupply(rows: readonly CryptoRow[], supply: ReadonlyMap<string, CryptoRowSupply>): CryptoRow[] {
   if (supply.size === 0) return rows as CryptoRow[];
@@ -322,7 +325,7 @@ export function withCryptoSupply(rows: readonly CryptoRow[], supply: ReadonlyMap
     if (!own) return row;
     const cached = suppliedRows.get(row);
     if (cached && cached.supply === own) return cached.row;
-    const supplied = { ...row, ...own };
+    const supplied = { ...row, ...own, ...(own.supply != null && own.supply > 0 ? { marketCap: own.supply * row.price } : {}) };
     suppliedRows.set(row, { supply: own, row: supplied });
     return supplied;
   });

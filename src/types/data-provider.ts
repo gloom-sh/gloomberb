@@ -146,6 +146,8 @@ export interface EarningsEvent {
 export type BatchedReadMethod = "getPriceHistory" | "getOptionsChain";
 
 export interface MarketDataRequestContext {
+  /** An options chain of the contracts adjusted for a corporate action (ETHA1), in place of the standard ones. */
+  adjustedOptions?: boolean;
   brokerId?: string;
   brokerInstanceId?: string;
   instrument?: BrokerContractRef | null;

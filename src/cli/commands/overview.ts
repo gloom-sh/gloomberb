@@ -747,6 +747,8 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
     ...fredHistoryNotes({ startDate, startGiven: start != null, seriesStart: data.info?.observationStart }),
     laggingSeriesNote(seriesId),
     computedFredSeriesNote(seriesId),
+    // A publisher's licence asks for its attribution wherever its series is shown (MAS's SORA).
+    seriesNotOnFred(seriesId)?.attribution ?? null,
   ].filter((note): note is string => note != null);
   // Nothing on or after the start: name where the series ends, so an empty answer is not a dead end.
   const latest = rows.length > 0 ? null : await loadFredSeries(seriesId, { limit: 1, sortOrder: "desc" })

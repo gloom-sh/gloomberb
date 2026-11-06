@@ -54,6 +54,8 @@ export interface CloudShortRate {
   fetchedAt: string | null;
   stale: boolean;
   unavailableReason: string | null;
+  /** The attribution the publisher's licence asks for wherever the rate is shown (MAS's SORA); absent otherwise. */
+  attribution?: { text: string; licenceUrl: string } | null;
 }
 
 export interface CloudShortRatesPayload {

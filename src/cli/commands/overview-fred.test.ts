@@ -212,6 +212,16 @@ test("a series FRED does not carry names its publisher and where it is read from
   const turkey = await runFred(["TURCPIYOY"]);
   expect(turkey.text.split("\n").at(-1)).toStartWith("Source: TurkStat via the CBRT, published 2026-10-05 \u00b7 Sep 2026");
   expect(turkey.result.freshness).toMatchObject({ publisher: "TurkStat", publishedAt: "2026-10-05T07:05:00.000Z" });
+  expect(turkey.text).not.toContain("Licence");
+
+  // SORA, read from MAS, carries the attribution MAS's licence asks for under the table.
+  serveSeries(() => ({
+    observations: [{ date: "2026-11-04", value: 1.2081, publisher: "MAS", publishedAt: "2026-11-05T01:00:00.000Z" }],
+    info: { id: "SORA", units: "Percent", frequency: "Daily", observationEnd: "2026-11-04" },
+  }));
+  const sora = await runFred(["SORA"]);
+  expect(sora.text).toContain("Contains information from MAS's Domestic Interest Rates, made available under the Singapore Open Data Licence version 1.0.");
+  expect(sora.text.split("\n").at(-1)).toStartWith("Source: MAS via its domestic interest rates page, published 2026-11-05");
 });
 
 test("a monthly series is dated by its month, and a lagging one carries its note", async () => {

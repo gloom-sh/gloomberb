@@ -14,6 +14,7 @@ import { Box } from "../../../ui";
 import { displayWidth, formatCurrency, formatNumber, MISSING_VALUE } from "../../../utils/format";
 import type { KellySizingResult, SensitivityGrid } from "./types";
 import type { KellyHistoryInputs } from "./history";
+import type { KellyCount } from "./units";
 import { formatPct, formatSignedPct } from "./view";
 
 /** The longest result label ("Full growth"), which sets the band's label column. */
@@ -34,6 +35,7 @@ export function buildKellyHistoryItems(inputs: KellyHistoryInputs): StatItem[] {
 
 /** What the first money figure says while there is no bankroll to size in. */
 const BANKROLL_HINT = "Set a bankroll";
+const COUNT_LABEL: Record<KellyCount, string> = { shares: "Shares", units: "Units", contracts: "Contracts" };
 
 /**
  * The sizing result as one band under the inputs, laid out in the FieldGrid's
@@ -44,6 +46,7 @@ const BANKROLL_HINT = "Set a bankroll";
  */
 export function buildKellyResultItems({
   result,
+  count = "units",
   baseCurrency,
   currentGrowth,
   targetGrowth,
@@ -51,6 +54,8 @@ export function buildKellyResultItems({
   columns,
 }: {
   result: KellySizingResult;
+  /** What the add or trim is counted in: a future's contracts, a coin's units, a stock's shares. */
+  count?: KellyCount;
   baseCurrency: string;
   /** Null when the holding is not a share of any bankroll. */
   currentGrowth: number | null;
@@ -59,7 +64,7 @@ export function buildKellyResultItems({
   columns: number;
 }): StatItem[] {
   const addTrim = result.addTrimValue == null ? MISSING_VALUE : formatCurrency(result.addTrimValue, baseCurrency);
-  const units = result.estimatedUnits == null ? null : `${formatNumber(result.estimatedUnits, 1)} units`;
+  const units = result.estimatedUnits == null ? null : `${formatNumber(result.estimatedUnits, 1)} ${count}`;
   // The units ride beside the amount when the column has room for label,
   // amount and units (plus the cell inset and gaps); otherwise they take a
   // cell of their own rather than being cut off at the column edge.
@@ -86,7 +91,7 @@ export function buildKellyResultItems({
       color: result.addTrimValue == null ? undefined : priceColor(result.addTrimValue),
     },
     ...(units != null && !unitsInline
-      ? [{ id: "units", label: "Units", value: formatNumber(result.estimatedUnits!, 1) }]
+      ? [{ id: "units", label: COUNT_LABEL[count], value: formatNumber(result.estimatedUnits!, 1) }]
       : []),
     {
       id: "risk",

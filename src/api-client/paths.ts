@@ -167,11 +167,14 @@ export function cloudOptionsChainPath(
   symbol: string,
   exchange?: string,
   expirationDate?: number,
+  /** The contracts adjusted for a corporate action, in place of the standard ones. */
+  adjusted = false,
 ): string {
   const search = new URLSearchParams({ symbol });
   if (exchange) search.set("exchange", exchange);
   if (expirationDate != null)
     search.set("expirationDate", String(expirationDate));
+  if (adjusted) search.set("adjusted", "1");
   return appendQuery("/market/options", search);
 }
 

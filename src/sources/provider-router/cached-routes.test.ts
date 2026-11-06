@@ -243,6 +243,23 @@ describe("shared cached market queries", () => {
     } finally { persistence.close(); }
   });
 
+  test("a chain's adjusted contracts are kept apart from the chain: neither is ever read for the other", async () => {
+    const persistence = new AppPersistence(":memory:");
+    const provider = createTestDataProvider({ id: "provider",
+      getOptionsChain: async (_symbol, _exchange, _expiration, context) => ({ underlyingSymbol: "ETHA", expirationDates: [1], puts: [],
+        calls: [{ contractSymbol: context?.adjustedOptions ? "ETHA1261106C00009000" : "ETHA261106C00009000" } as never] }),
+    });
+    const contracts = async (adjustedOptions?: boolean) => (await new AssetDataRouter(provider, [], persistence.resources)
+      .getOptionsChain("ETHA", "NASDAQ", 1, adjustedOptions ? { adjustedOptions } : undefined)).calls.map((entry) => entry.contractSymbol);
+    try {
+      // Each read stores what it was answered, then a new router (the next command) reads the store.
+      expect(await contracts(true)).toEqual(["ETHA1261106C00009000"]);
+      expect(await contracts()).toEqual(["ETHA261106C00009000"]);
+      expect(await contracts(true)).toEqual(["ETHA1261106C00009000"]);
+      expect(await contracts()).toEqual(["ETHA261106C00009000"]);
+    } finally { await tick(); persistence.close(); }
+  });
+
   test("a caller that cannot see a background refresh is not handed a stale stored chain as current", async () => {
     let online = true;
     const provider = createTestDataProvider({ id: "provider",

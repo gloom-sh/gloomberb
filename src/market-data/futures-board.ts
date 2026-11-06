@@ -186,6 +186,41 @@ const BY_SYMBOL: ReadonlyMap<string, FuturesContract> = new Map(FUTURES_CONTRACT
 
 const typed = (value: unknown) => typeof value === "string" ? value.trim().toUpperCase() : "";
 
+/**
+ * CME's crypto futures, which have a curve (CTM) but no board row, so their
+ * name and tick live here. Outright ticks: BTC $5, ETH $0.50, SOL $0.05, XRP
+ * $0.0005 (each $25 a contract). Their contracts are listed as ETHX26.CME.
+ */
+export const CME_CRYPTO_FUTURES: readonly { code: string; name: string; tick: number }[] = [
+  { code: "BTC", name: "Bitcoin", tick: 5 }, { code: "ETH", name: "Ether", tick: 0.5 },
+  { code: "SOL", name: "Solana", tick: 0.05 }, { code: "XRP", name: "XRP", tick: 0.0005 },
+];
+
+/**
+ * CME's micro crypto futures (Micro Bitcoin, Micro Ether, Micro SOL, Micro
+ * XRP): listed as MBTX26.CME, with no curve or board row, so only their codes
+ * live here.
+ */
+const CME_MICRO_CRYPTO_ROOTS: ReadonlySet<string> = new Set(["MBT", "MET", "MSL", "MXP"]);
+
+/** A root, a month letter and a two-digit year: CLZ26, ETHX26, 6EH27. */
+const LISTED_CONTRACT_CODE = /^([A-Z0-9]{1,4})([FGHJKMNQUVXZ])(\d{2})$/;
+
+/**
+ * A listed contract's code as CTM prints it (ETHX26, CLZ26), as the symbol
+ * its quote has (ETHX26.CME, CLZ26.NYM): the code with its root's venue.
+ * Null for any other text, and for a root neither the board nor CME crypto,
+ * micros included, has.
+ */
+export function listedFuturesSymbol(code: unknown): string | null {
+  const match = LISTED_CONTRACT_CODE.exec(typed(code));
+  if (!match) return null;
+  const root = match[1]!;
+  const venue = BY_CODE.get(root)?.venue
+    ?? (CME_CRYPTO_FUTURES.some((row) => row.code === root) || CME_MICRO_CRYPTO_ROOTS.has(root) ? "CME" : null);
+  return venue ? `${match[0]}.${venue}` : null;
+}
+
 /** The board row a bare code names, in any case: NG is Natural Gas whether or not a security also uses NG. */
 export function futuresContractByCode(code: unknown): FuturesContract | null {
   return BY_CODE.get(typed(code)) ?? null;

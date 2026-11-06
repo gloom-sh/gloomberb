@@ -3,6 +3,7 @@ import { apiClient } from "../../api-client";
 import { getLoadablePlugins } from "../../plugins/catalog";
 import { centralBankRatesModule } from "../../plugins/builtin/central-bank-rates";
 import { futuresCurveModule } from "../../plugins/builtin/futures-curve";
+import { cryptoBoardModule } from "../../plugins/builtin/crypto-board";
 import { volatilityModule } from "../../plugins/builtin/volatility";
 import { chartComposerModule } from "../../plugins/builtin/chart-composer";
 import { creditBoardsModule } from "../../plugins/builtin/credit-boards";
@@ -263,6 +264,19 @@ test("VX and vix futures open CTM VIX, and VVIX, a keyword of VIX's, says it ope
   expect((await resolvePaneFunction(vol, context, parsePaneFunctionArgsFor(vol, ["VVIX"]))).token).toBe("VIX");
   // A function's own code or name says nothing.
   for (const word of ["VIX", "CTM", "VOLS", "Futures Curve"]) expect(parsePaneFunctionArgsFor(vol, [word]).listingNotes).toBeUndefined();
+});
+
+test("TVL and stablecoins open CRYP on those lists though both are also its keywords", () => {
+  const crypto: PaneFunctionCatalog = {
+    panes: new Map(cryptoBoardModule.panes!.map((entry) => [entry.id, entry])),
+    paneTemplates: new Map(cryptoBoardModule.paneTemplates!.map((entry) => [entry.id, entry])),
+    destroy: () => {},
+  };
+  expect(parsePaneFunctionArgsFor(crypto, ["TVL"])).toMatchObject({ target: "CRYP", arg: "defi", listingNotes: ["TVL opened CRYP defi, Crypto."] });
+  expect(parsePaneFunctionArgsFor(crypto, ["stablecoins"])).toMatchObject({ target: "CRYP", arg: "stablecoin" });
+  // CRYP itself, and a keyword that names no list, open the board as typed.
+  expect(parsePaneFunctionArgsFor(crypto, ["CRYP", "tvl"])).toMatchObject({ target: "CRYP", arg: "tvl" });
+  expect(parsePaneFunctionArgsFor(crypto, ["bitcoin"])).toMatchObject({ target: "bitcoin", listingNotes: ["bitcoin opened CRYP, Crypto."] });
 });
 
 test("a central bank's name or short form typed as a function points to CBR, and a function that owns the word keeps it", async () => {
