@@ -422,7 +422,8 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
     const history = supply ? supplyHistoryTable(supply) : null;
     // A supply outage is a caveat, not a failure: the prices are the report, and they are complete.
     const notes = [
-      ...capNote,
+      // A coin with a supply is valued on it, so its row counts one supply.
+      ...(supply?.coins.length ? ["Market cap is price times the supply shown, else times circulating supply."] : capNote),
       ...(supply?.warnings ?? []),
       ...(supplyResult && "error" in supplyResult
         ? [`${supplyFailure(errorMessage(supplyResult.error)).replace(/\.$/, "")}; the prices are complete without it.`]
