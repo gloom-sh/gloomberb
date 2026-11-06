@@ -1,11 +1,7 @@
 import type { PricePoint } from "../../../types/financials";
 import type { ChartRequest, InstrumentRef } from "../../../market-data/request-types";
-import type { QueryEntry } from "../../../market-data/result-types";
 import { dailyBarDate, getPricePointTimestamp } from "../../../utils/price-history";
-import { sessionCalendarTimeZone } from "../../../market-data/market/freshness";
-import { zonedDateTimeParts } from "../../../utils/zoned-date-time";
-
-const DAY_MS = 86_400_000;
+import { calendarMonthReturnsRequest, trailingDailyClosesRequest, venueMonth } from "../../../time-series/calendar-month-returns";
 
 export const KELLY_HISTORY_DEFAULT_YEARS = 5;
 export const KELLY_HISTORY_MAX_YEARS = 5;
@@ -35,46 +31,14 @@ export function clampKellyHistoryYears(value: unknown): number {
   return Number.isFinite(years) ? Math.min(KELLY_HISTORY_MAX_YEARS, Math.max(1, years)) : KELLY_HISTORY_DEFAULT_YEARS;
 }
 
-/** The month now on the venue's calendar, as YYYY-MM: a coin's, and a venue without a known zone's, in UTC. */
-function venueMonth(now: number, exchange: string): { year: number; month: number } {
-  const { year, month } = zonedDateTimeParts(now, sessionCalendarTimeZone(exchange) ?? "UTC");
-  return { year, month };
-}
-
-/**
- * The daily closes the History tab and the KELLY report both read: from the
- * first day of the month before the window's first month, so each of the
- * `years` × 12 months has the close it is measured from, to the end of the
- * UTC day, so a day keeps one request. A trailing five-year range starts days
- * into that month and gave 59 returns.
- */
+/** KELLY's dated daily closes (`calendarMonthReturnsRequest`) over a lookback clamped to its one to five years. */
 export function kellyHistoryRequest(instrument: InstrumentRef, years: number, now = Date.now()): ChartRequest {
-  const lookback = clampKellyHistoryYears(years);
-  const { year, month } = venueMonth(now, instrument.exchange ?? "");
-  return {
-    ...kellyTrailingHistoryRequest(instrument, lookback),
-    granularity: "detail",
-    barSize: "1d",
-    startDate: new Date(Date.UTC(year, month - 1 - (lookback * 12 + 1), 1)),
-    endDate: new Date(Math.floor(now / DAY_MS) * DAY_MS + DAY_MS),
-  };
+  return calendarMonthReturnsRequest(instrument, clampKellyHistoryYears(years), now);
 }
 
-/**
- * The trailing range of daily closes (one or five years) read when a source
- * answers no dated history (`kellyHistoryRequest` failed or came back empty):
- * it starts days into the month before the window, so five years give 59
- * returns, and the window says so. The History tab and the KELLY report both
- * fall back to it.
- */
+/** The trailing range the History tab and the KELLY report both fall back to without dated closes. */
 export function kellyTrailingHistoryRequest(instrument: InstrumentRef, years: number): ChartRequest {
-  return { instrument, bufferRange: clampKellyHistoryYears(years) <= 1 ? "1Y" : "5Y", granularity: "resolution", resolution: "1d" };
-}
-
-/** Whether a dated history read is over and gave no closes, so the trailing range is read instead. */
-export function kellyHistoryUnanswered(entry: Pick<QueryEntry<PricePoint[]>, "phase" | "data" | "lastGoodData"> | null | undefined): boolean {
-  if (!entry || (entry.phase !== "ready" && entry.phase !== "error")) return false;
-  return !(entry.data ?? entry.lastGoodData)?.length;
+  return trailingDailyClosesRequest(instrument, clampKellyHistoryYears(years));
 }
 
 /**

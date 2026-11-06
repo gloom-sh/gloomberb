@@ -66,9 +66,9 @@ import {
   KELLY_HISTORY_DEFAULT_YEARS,
   KELLY_HISTORY_MIN_PERIODS,
   kellyHistoryRequest,
-  kellyHistoryUnanswered,
   kellyTrailingHistoryRequest,
 } from "./history";
+import { historyReadUnanswered } from "../../../time-series/calendar-month-returns";
 import { kellyCount, kellyCountMultiplier } from "./units";
 import { KELLY_PANE_ID } from "./constants";
 import {
@@ -311,7 +311,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const historyEntries = useChartQueries(historyRequest ? [historyRequest] : []);
   const datedEntry = historyRequest ? historyEntries.get(buildChartKey(historyRequest)) ?? null : null;
   // A source with no dated history answers from its trailing range, as the KELLY report does.
-  const datedUnanswered = kellyHistoryUnanswered(datedEntry);
+  const datedUnanswered = historyReadUnanswered(datedEntry);
   const trailingRequest = useMemo(
     () => datedUnanswered && ticker
       ? kellyTrailingHistoryRequest({ symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange ?? "" }, historyYears)

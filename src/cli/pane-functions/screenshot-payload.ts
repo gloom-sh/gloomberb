@@ -15,7 +15,7 @@ import { CHART_COMPOSER_PANE_ID, type AppConfig } from "../../types/config";
 import type { OptionsChain, PricePoint, TickerFinancials } from "../../types/financials";
 import type { InstrumentRef } from "../../market-data/request-types";
 import { fetchHistoryResult } from "../../sources/history-result";
-import { clampKellyHistoryYears, kellyHistoryRequest, kellyTrailingHistoryRequest } from "../../plugins/builtin/kelly-sizer/history";
+import { calendarMonthReturnsRequest, trailingDailyClosesRequest } from "../../time-series/calendar-month-returns";
 import type { TickerRecord } from "../../types/ticker";
 import { slugifyName } from "../../utils/slugify";
 import { LIST_FINANCIALS_CONCURRENCY, mapWithConcurrency } from "../../utils/concurrency";
@@ -298,7 +298,7 @@ export async function buildDesktopShotPayload(
     // KELLY's History tab reads monthly returns off the daily closes its own request names, from the month-end
     // before the window, as the KELLY report does; a source with no dated history, its trailing range.
     const kellyHistory = resolved.pane.id === "kelly-sizer"
-      ? await loadKellyShotHistory(context, entry.instrument, exchange, resolved.options.years) : null;
+      ? await loadKellyShotHistory(context, entry.instrument, exchange, kellyShotYears(resolved)) : null;
     if (kellyHistory) {
       data = { ...data, priceHistory: kellyHistory };
     } else if (fiveYearsDaily || resolved.pane.id === "kelly-sizer" || resolved.pane.id === "iv-screen" || resolved.pane.id === "short-watch"
@@ -311,7 +311,7 @@ export async function buildDesktopShotPayload(
       }
       const priceHistory = await context.dataProvider.getPriceHistoryForResolution(
         entry.instrument.symbol, exchange,
-        resolved.pane.id === "kelly-sizer" ? kellyTrailingHistoryRequest(entry.instrument, clampKellyHistoryYears(resolved.options.years)).bufferRange
+        resolved.pane.id === "kelly-sizer" ? trailingDailyClosesRequest(entry.instrument, kellyShotYears(resolved)).bufferRange
           : fiveYearsDaily ? "5Y" : resolved.pane.id === "backtest" ? "ALL" : "1Y",
         "1d", toMarketDataContext(entry.instrument),
       );
@@ -473,17 +473,22 @@ export async function buildDesktopShotPayload(
 export const COLLECTION_PANE_IDS = new Set(["portfolio-list", "analytics", "kelly-sizer", "earnings-calendar"]);
 
 /** The row saved for a listing key (0700:HKEX), under that key or bare on its venue; null when none is. */
+/** KELLY's lookback: `--years` (checked against the function's bounds when read), else the function's default. */
+function kellyShotYears(resolved: ResolvedPaneFunction): number {
+  return Number(resolved.options.years ?? findCapabilityOption(resolved.capability, "years")?.defaultValue ?? 5);
+}
+
 /**
- * The daily closes KELLY's History tab asks for (`kellyHistoryRequest`), from
+ * The daily closes KELLY's History tab asks for (`calendarMonthReturnsRequest`), from
  * the month-end before its window. Captured history answers every request, so
  * the trailing five years stood in for that window and gave 59 returns where
  * the KELLY report reads 60. Null when the source answers no dated history:
  * the trailing range is captured instead, as the pane falls back to it.
  */
 async function loadKellyShotHistory(
-  context: MarketContext, instrument: InstrumentRef, exchange: string, years: unknown,
+  context: MarketContext, instrument: InstrumentRef, exchange: string, years: number,
 ): Promise<PricePoint[] | null> {
-  const request = kellyHistoryRequest({ symbol: instrument.symbol, exchange }, clampKellyHistoryYears(years));
+  const request = calendarMonthReturnsRequest({ symbol: instrument.symbol, exchange }, years);
   const result = await fetchHistoryResult(context.dataProvider, instrument.symbol, exchange,
     { kind: "detail", start: request.startDate!, end: request.endDate!, interval: request.barSize! }, toMarketDataContext(instrument))
     .catch(logFailure("cli.pane-functions-screenshot-payload", "Read KELLY's dated daily closes failed", null));

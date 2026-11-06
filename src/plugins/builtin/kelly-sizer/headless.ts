@@ -12,10 +12,10 @@ import {
   KELLY_HISTORY_MAX_YEARS,
   KELLY_HISTORY_MIN_PERIODS,
   kellyHistoryRequest,
-  kellyHistoryUnanswered,
   kellyTrailingHistoryRequest,
   type KellyHistoryInputs,
 } from "./history";
+import { historyReadUnanswered } from "../../../time-series/calendar-month-returns";
 import { formatPct, formatSignedPct } from "./view";
 import { logFailure } from "../../../utils/log-failure";
 import { loadFuturesContractTerms } from "../../../market-data/futures-contract";
@@ -101,7 +101,7 @@ export const kellyHeadless: HeadlessPaneDefinition<"bundle"> = {
     const loadHistory = async () => {
       const dated = await coordinator.loadChart(kellyHistoryRequest({ symbol, exchange }, years), { forceRefresh: ctx.refresh });
       // A source with no dated history answers from its trailing range, as the History tab does.
-      return kellyHistoryUnanswered(dated)
+      return historyReadUnanswered(dated)
         ? coordinator.loadChart(kellyTrailingHistoryRequest({ symbol, exchange }, years), { forceRefresh: ctx.refresh })
         : dated;
     };
