@@ -48,7 +48,7 @@ import {
   runPaneFunctionHelp,
   runPaneScreenshot,
 } from "./pane-functions";
-import { catalogPointer, tickerPointer, type CatalogCommandHit } from "./unknown-command";
+import { catalogPointer, subcommandPointer, tickerPointer, type CatalogCommandHit } from "./unknown-command";
 import { bankFigurePointer, exportCommandPointer } from "./known-gaps";
 import { catalogFredSeriesIds } from "./series-search";
 import { primeBoardCoins } from "./board-coins";
@@ -387,6 +387,15 @@ async function unknownCommandPointers(
  */
 function failUnknownCommand(token: string, commands: CliCommandDef[], pointers: UnknownCommandPointers): never {
   if (pointers.fn) fail(`${pointers.fn.code} is a function: ${pointers.fn.command}`);
+  // A subcommand typed without its command (`position set`, `cash set`) is pointed at the command it belongs to.
+  const subcommand = subcommandPointer(token, pointers.args,
+    commands.map((command) => ({ name: command.name, usage: command.help?.usage ?? [] })));
+  if (subcommand) {
+    const owners = subcommand.owners.length > 1
+      ? `${subcommand.owners.slice(0, -1).join(", ")} and ${subcommand.owners.at(-1)}` : subcommand.owners[0];
+    fail(`Unknown command "${token}": it is a subcommand of ${owners}.`,
+      subcommand.run.map((command) => `Run: ${command}`).join("\n"));
+  }
   // A bank figure's name (`nim JPM`, `deposits WFC`) is where it is: the Bank section of fundamentals, NIM in EQS.
   const bank = bankFigurePointer(token, pointers.args[0] ?? "");
   if (bank) fail(`Unknown command "${token}": a bank's figures are in the Bank section of fundamentals.`, bank.details);

@@ -4,7 +4,7 @@ import { createDefaultConfig } from "../types/config";
 import { nearFunctionCodes } from "./pane-functions/catalog";
 import { createPaneCatalog } from "./pane-functions/discovery";
 import type { MarketContext } from "./types";
-import { catalogPointer, tickerPointer, type CatalogCommandHit } from "./unknown-command";
+import { catalogPointer, subcommandPointer, tickerPointer, type CatalogCommandHit } from "./unknown-command";
 
 const RV: CatalogCommandHit = { code: "RV", label: "Relative Valuation", argKind: "tickers", argPlaceholder: null, peers: true };
 const EQS: CatalogCommandHit = { code: "EQS", label: "Equity Screener", argKind: "none", argPlaceholder: null, peers: false };
@@ -51,4 +51,21 @@ test("a ticker typed as a command is pointed at quote and search, and taken for 
   } finally {
     registry.destroy();
   }
+});
+
+test("a subcommand typed without its command points at the command it belongs to, run with what was typed", () => {
+  const commands = [
+    { name: "portfolio", usage: ["portfolio show <name>", "portfolio add <portfolio> <symbols...>", "portfolio position set <portfolio> <symbol> <shares> <avg-cost>"] },
+    { name: "watchlist", usage: ["watchlist add <name> <symbols...>"] },
+    { name: "fn", usage: ["fn <function> [argument]"] },
+  ];
+  expect(subcommandPointer("position", ["set", "Izmir", "THYAO", "100", "280"], commands)).toEqual({
+    owners: ["portfolio"], run: ["gloom portfolio position set Izmir THYAO 100 280"],
+  });
+  expect(subcommandPointer("add", ["Izm", "Turk Hava Yollari"], commands)?.run).toEqual([
+    'gloom portfolio add Izm "Turk Hava Yollari"', 'gloom watchlist add Izm "Turk Hava Yollari"',
+  ]);
+  // A word that is only an argument in a usage line, or a placeholder, belongs to no command.
+  expect(subcommandPointer("set", [], commands)).toBeNull();
+  expect(subcommandPointer("<function>", [], commands)).toBeNull();
 });

@@ -170,6 +170,52 @@ export interface RiskDisplayRow {
    * the evidence: the basket share an episode replays by beta proxy ("22% proxy").
    */
   marker?: string;
+  /** Factor rows only: how much of the basket's daily moves the factor explains over the last 60 sessions; null without a fit. */
+  rSquared?: number | null;
+}
+
+/** Below this R² a factor explains too little of the basket's moves for its beta to be read as an exposure. */
+export const WEAK_FACTOR_FIT = 0.1;
+
+/** "Factors are US ETF proxies; ASELS, THYAO and 4 more trade outside the US and are measured against them." */
+export function usFactorProxyNote(symbols: readonly string[]): string {
+  const sorted = [...symbols].sort();
+  const named = sorted.length <= 6 ? sorted : [...sorted.slice(0, 5), `${sorted.length - 5} more`];
+  const list = named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : named[0] ?? "";
+  return `Factors are US ETF proxies; ${list} ${sorted.length === 1 ? "trades" : "trade"} outside the US and ${sorted.length === 1 ? "is" : "are"} measured against them.`;
+}
+
+/** "76% USD, 24% TRY": each currency's share of the values given, largest first; currencies under half a percent left out. */
+export function bookCurrencyShares(lines: ReadonlyArray<{ currency: string; value: number | null }>): string {
+  const totals = new Map<string, number>();
+  for (const line of lines) {
+    if (line.value == null || !Number.isFinite(line.value) || line.value <= 0) continue;
+    const currency = resolveCurrencyUnit(line.currency).currency;
+    totals.set(currency, (totals.get(currency) ?? 0) + line.value);
+  }
+  const total = [...totals.values()].reduce((sum, value) => sum + value, 0);
+  if (!(total > 0)) return "no valued holdings";
+  return [...totals]
+    .sort((a, b) => b[1] - a[1])
+    .filter(([, value]) => value / total >= 0.005)
+    .map(([currency, value]) => `${Math.round((value / total) * 100)}% ${currency}`)
+    .join(", ");
+}
+
+/** A factor row's evidence without its fit, for a table that gives the fit a column of its own. */
+export function withoutFactorFit(detail: string): string {
+  return detail.replace(/; R² (?:--|[0-9.]+(?:, weak fit)?)/, "");
+}
+
+/** Whether a fit is weak as it reads to two decimals: 0.0999 shows as 0.10 and is not. */
+export function isWeakFactorFit(rSquared: number | null | undefined): boolean {
+  return rSquared != null && Number.isFinite(rSquared) && Number(rSquared.toFixed(2)) < WEAK_FACTOR_FIT;
+}
+
+/** "R² 0.28", or "R² 0.03, weak fit" below WEAK_FACTOR_FIT; "R² --" without a fit. */
+export function factorFitText(rSquared: number | null | undefined): string {
+  if (rSquared == null || !Number.isFinite(rSquared)) return "R² --";
+  return `R² ${rSquared.toFixed(2)}${isWeakFactorFit(rSquared) ? ", weak fit" : ""}`;
 }
 /** The tail-loss rows, which also read in money on the covered basket. */
 const TAIL_ROW_IDS: ReadonlySet<string> = new Set(["var", "es"]);
@@ -847,6 +893,8 @@ export function buildPortfolioRisk(
           "Converted holdings are matched to the US close of the same date; where their market closes at another time, correlations and betas to US holdings read lower than they are.",
         ]
       : []),
+    // The factors are US ETFs: holdings listed elsewhere are measured against them, there being no local factor model.
+    ...(converted ? [usFactorProxyNote(members.filter((row) => row.convertedFrom != null).map((row) => row.symbol))] : []),
     // A pair's daily closes skip Good Friday, Easter Monday, 25 Dec and 1 Jan; returns across them use the close before.
     ...fxBridgeNotes(members),
   ];
@@ -924,6 +972,18 @@ export function buildPortfolioRisk(
   const metrics = filed
     ? sinceBasketRisk(sample, filed, RISK_BENCHMARK)
     : rollingBasketRisk(sample, undefined, RISK_BENCHMARK);
+  // USD/account currency over each basket session, from the account's daily closes (USD per unit): the dollar's move in it.
+  const dollarMoves = account && !account.error
+    ? spy.flatMap((point) => {
+        const start = accountClose(point.startDateKey)?.rate, end = accountClose(point.dateKey)?.rate;
+        return start && end ? [{ startDateKey: point.startDateKey, dateKey: point.dateKey, value: start / end - 1 }] : [];
+      })
+    : [];
+  // The book's share in each currency it is exposed to, holdings at their listing's currency and cash at its own.
+  const currencyShares = bookCurrencyShares([
+    ...holdings.map((row) => ({ currency: row.convertedFrom ?? row.currency, value: row.marketValue })),
+    ...cashHoldings.map((row) => ({ currency: row.currency, value: row.value == null ? null : Math.abs(row.value) })),
+  ]);
   // Factor proxies stay in USD: a beta is the account-currency move per unit of the factor as it trades.
   const factors = [
     { id: "market", label: "Market (SPY)", series: spy },
@@ -953,6 +1013,10 @@ export function buildPortfolioRisk(
       label: "Credit (HYG - IEF)",
       series: subtractReturns(proxy("HYG"), proxy("IEF")),
     },
+    // A non-USD account's book moves with the dollar against its currency: its beta to USD/account currency.
+    ...(account && !account.error && dollarMoves.length
+      ? [{ id: "currency", label: `Currency (USD/${portfolio.currency})`, series: dollarMoves }]
+      : []),
   ].map((factor) => ({
     ...rollingBeta(basket, factor.series, factor.label, factor.id),
     regression: regressReturns(basket.slice(-60), factor.series),
@@ -1092,7 +1156,10 @@ export function buildPortfolioRisk(
     factors: factors.map((row) => ({
       ...row,
       percentile: row.rank.percentile,
-      detail: `${row.samples} sessions; R² ${row.regression?.rSquared?.toFixed(2) ?? "--"}; independent ETF proxy`,
+      rSquared: row.regression?.rSquared ?? null,
+      detail: row.id === "currency"
+        ? `${currencyShares} of book; ${row.samples} sessions; ${factorFitText(row.regression?.rSquared)}; daily ${account?.pair ?? "FX"} closes`
+        : `${row.samples} sessions; ${factorFitText(row.regression?.rSquared)}; independent ETF proxy`,
     })),
     // Largest current value first, left-out holdings and each currency's cash in place; unvalued ones last.
     holdings: [

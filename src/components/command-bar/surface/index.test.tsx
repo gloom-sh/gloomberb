@@ -136,6 +136,22 @@ describe("CommandBar", () => {
     expect(checks).toBe(1);
   });
 
+  // "quit" and "exit" used to run the first hit, Add a Desk.
+  test.each(["quit", "exit"])("%s is the first row and quits when chosen", async (query) => {
+    let quits = 0;
+    await tui.render(<CommandBarHarness query={query} onQuit={() => { quits += 1; }} />, { width: 100, height: 24 });
+    await tui.waitForFrameToContain("QUIT Quit");
+    // Under its section heading, before anything else the word finds.
+    const rows = tui.frame().split("\n").slice(1).filter((line) => line.trim());
+    expect(rows.slice(0, 2).map((line) => line.trim())).toEqual(["Navigation", "QUIT Quit"]);
+
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
+    });
+    expect(quits).toBe(1);
+  });
+
   test("Check for Updates is inert once the terminal binary is swapped in", async () => {
     let checks = 0;
     await tui.render(<CommandBarHarness

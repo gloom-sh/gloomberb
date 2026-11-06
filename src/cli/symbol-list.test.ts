@@ -162,3 +162,15 @@ test("a pasted grid keeps every cell when some are a terminal's codes or numeric
   expect(parseSymbolText("AAPL\tHOLD\nMSFT\tBUY\n")).toEqual({ symbols: ["AAPL", "MSFT"], ignored: ["HOLD", "BUY"] });
   expect(parseSymbolText("AAPL\tHOLD\nMSFT\t100\nNVDA\tAMD\n").symbols).toEqual(["AAPL", "MSFT", "NVDA"]);
 });
+
+test("a first row of words over rows of numbers is a header in any language, skipped and said to be", async () => {
+  // "Hisse" was looked up as a fund, and "Sembol" was not found.
+  const read = (text: string) => readSymbolList({ args: ["-"], readStdin: async () => text, readEntries: async (entries) => entries });
+  expect(await read("Hisse,Adet,Maliyet\nTHYAO,100,280\nGARAN,50,120.5\n")).toMatchObject({
+    symbols: ["THYAO", "GARAN"], notes: ["Skipped the first row as a header: Hisse, Adet, Maliyet.", expect.stringContaining("280")],
+  });
+  expect((await read("Sembol;Adet\nASELS;200\n")).symbols).toEqual(["ASELS"]);
+  // Symbols with a word beside them on every row are no header: the first row is read like the others.
+  expect(parseSymbolText("AAPL,BUY\nMSFT,HOLD\n").symbols).toEqual(["AAPL", "MSFT"]);
+  expect(parseSymbolText("AAPL,BUY\nMSFT,HOLD\n").header).toBeUndefined();
+});

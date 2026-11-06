@@ -3,7 +3,7 @@ import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { InstrumentSearchResult } from "../types/instrument";
 import { canonicalExchange, isUsEquityExchange, isUsListingExchange, parsePublicTickerKey } from "../utils/exchanges";
-import { companyLines, companyNameExtraWords, companyNameMatch, namedByService, runTogether, shortCompanyName } from "./company-name";
+import { companyLines, companyNameExtraWords, companyNameMatch, foldNameLetters, namedByService, runTogether, sameCompany, shortCompanyName } from "./company-name";
 import { LISTING_SEARCH_LIMIT } from "./search";
 import { lineDistance, primaryCompanyLine } from "./search/home-listing";
 import { classifyInstrumentKind, isCryptoInstrumentType } from "./search/ranking";
@@ -11,6 +11,7 @@ import { isProviderBusy, type ProviderBusyError } from "../sources/provider-erro
 import { readTerminalListingCode, type TerminalListing, type TerminalListingCode } from "./terminal-codes";
 import { hasNonLatinLetters } from "../utils/typed-text";
 import { formerIssuerLine } from "./ticker-changes";
+import { listingSuffixVenue } from "../sources/listing-symbols";
 
 export interface CompanyNameListing {
   symbol: string;
@@ -48,12 +49,42 @@ export type MovedLineLookup = (
 
 /** Share lines that are not the company's common stock, though search may type them as such. */
 const NOT_COMMON = /preferred|warrant|right|unit|note|bond|debenture/i;
+/**
+ * A bond a venue lists under its issuer's name and types as common stock
+ * ("Turkiye Is Bankasi A.S. 9.125% Perpetual Junior Subordinated Notes" in
+ * Munich): a coupon, a maturity or subordinated debt in the name. Never a stock's name.
+ */
+const DEBT_NAME = /\d(?:[.,]\d+)?\s?%|\bsubordinated\b|\b(?:notes?|bonds?|debentures?)\s+due\b|\bdue\s+(?:\d{1,2}\s+\p{L}+\s+)?(?:19|20)\d{2}\b/iu;
+
+/** Whether a search row is a bond, by its type or by its name. */
+function isDebtLine(type: string, name: string | null | undefined): boolean {
+  return NOT_COMMON.test(type) || DEBT_NAME.test(name ?? "");
+}
+
+/** Venues past which a company counts as listed broadly: its home market and at least two more lines abroad or by receipt. */
+const BROAD_COMPANY_LINES = 3;
 const RECEIPT = /depositary|^(?:ADR|ADS|GDR|CDR|BDR)$/i;
 
-/** The searches `findListingOfCompanyName` asks for a name: as typed, and without its legal form. */
+/**
+ * The searches `findListingOfCompanyName` asks for a name: as typed, without
+ * its legal form, and in plain letters (Sabanci for Sabancı), as search finds
+ * a name venues spell without its accents.
+ */
 export function companyNameQueries(typed: string): string[] {
   const name = typed.trim();
-  return [...new Set([name, shortCompanyName(name)])].filter(Boolean);
+  return [...new Set([name, shortCompanyName(name), foldNameLetters(shortCompanyName(name))])].filter(Boolean);
+}
+
+/**
+ * The search asked when the first answers list a company of three words or
+ * more only abroad or by receipts: its name without the first word, which
+ * finds the home line search misses under the whole name ("Hava Yollari"
+ * lists Türk Hava Yolları in Istanbul, "Is Bankasi" Türkiye İş Bankası).
+ * Null for a shorter name.
+ */
+function homeLineQuery(typed: string): string | null {
+  const words = foldNameLetters(shortCompanyName(typed.trim())).split(/\s+/).filter(Boolean);
+  return words.length >= 3 ? words.slice(1).join(" ") : null;
 }
 
 /** A list entry with a space inside is a company's name, never a symbol: "Whirlpool Corporation". */
@@ -108,13 +139,34 @@ export async function findListingOfCompanyName(
   const queries = companyNameQueries(name);
   const answers = await Promise.all(queries.map((query) => searchListings(dataProvider, query)));
   const busy = answers.find(isProviderBusy);
-  const results = answers.flatMap((answer) => Array.isArray(answer) ? answer : []);
-  const listed = results.flatMap((result, order) => {
+  let results = answers.flatMap((answer) => Array.isArray(answer) ? answer : []);
+  let listed = rankCompanyLines(name, results, options);
+  // A company the answers list only abroad or by receipts (Türk Hava Yolları on Frankfurt and OTC) is searched again
+  // under its later words, which can list its home line: THYAO in Istanbul.
+  const lead = listed.find((listing) => listing.namesCompany);
+  const again = !options.oneWord && (!lead || (!lead.home && lead.rank[3]! > 1)) ? homeLineQuery(name) : null;
+  if (again && !queries.includes(again)) {
+    const more = await searchListings(dataProvider, again);
+    if (Array.isArray(more) && more.length) {
+      results = [...results, ...more];
+      listed = rankCompanyLines(name, results, options);
+    }
+  }
+  // The service's first answer, marked as its company's home, with every word typed in its name word for word.
+  const servedFirst = listed.some((listing) => namedByService(name, listing.result)) ? undefined
+    : listed.find((listing) => listing.served && listing.namesCompany && listing.result.symbol.toUpperCase() !== name.toUpperCase());
+  const first = servedFirst ?? (options.oneWord ? broadlyListedInstead(listed) : undefined) ?? listed.find((listing) => listing.namesCompany);
+  return settleCompanyListing(dataProvider, name, first, listed, results, busy, options);
+}
+
+/** Search's rows that can be the company a name means, nearest the name first (`findListingOfCompanyName`). */
+function rankCompanyLines(name: string, results: readonly InstrumentSearchResult[], options: { oneWord?: boolean }) {
+  return results.flatMap((result, order) => {
     const exchange = listedExchange(result);
     const type = listedType(result);
     const named = namedByService(name, result);
     const match = named ? { extra: 0, abbreviated: 0 } : companyNameMatch(name, result.name);
-    if (!exchange || match == null || classifyInstrumentKind(type) === "derivative" || NOT_COMMON.test(type)
+    if (!exchange || match == null || classifyInstrumentKind(type) === "derivative" || isDebtLine(type, result.name)
       || parsePublicTickerKey(result.symbol).exchange) return [];
     // A word alone names a company by these lines only; the company's other lines are still its lines.
     const namesCompany = !(options.oneWord && (match.abbreviated > 0 || isCryptoInstrumentType(type) || !(order === 0 || named || match.extra === 0)));
@@ -132,13 +184,27 @@ export async function findListingOfCompanyName(
     const at = left.rank.findIndex((value, index) => value !== right.rank[index]);
     return at < 0 ? 0 : left.rank[at]! - right.rank[at]!;
   });
-  // The company the service answers the name with first, and marks the home line of, is the one it means, though
-  // another line's name is nearer the one typed: "Panasonic" is Panasonic Holdings on JPX, not a Frankfurt line
-  // under the name it had before (Panasonic Corporation), whose lines would lead it to a Malaysian subsidiary.
-  // The row the service marks with the name outranks that answer, and a line whose symbol is the word typed is no answer to a name.
-  const servedFirst = listed.some((listing) => namedByService(name, listing.result)) ? undefined
-    : listed.find((listing) => listing.served && listing.namesCompany && listing.result.symbol.toUpperCase() !== name.toUpperCase());
-  const first = servedFirst ?? listed.find((listing) => listing.namesCompany);
+}
+
+type RankedCompanyLine = ReturnType<typeof rankCompanyLines>[number];
+
+/**
+ * The listing `findListingOfCompanyName` settles on from its first pick: the
+ * company's primary line, a quoted one, or the line it moved to.
+ * The company the service answers the name with first, and marks the home line of, is the one it means, though
+ * another line's name is nearer the one typed: "Panasonic" is Panasonic Holdings on JPX, not a Frankfurt line
+ * under the name it had before (Panasonic Corporation), whose lines would lead it to a Malaysian subsidiary.
+ * The row the service marks with the name outranks that answer, and a line whose symbol is the word typed is no answer to a name.
+ */
+async function settleCompanyListing(
+  dataProvider: Pick<DataProvider, "search"> & Partial<Pick<DataProvider, "getQuote">>,
+  name: string,
+  first: RankedCompanyLine | undefined,
+  listed: readonly RankedCompanyLine[],
+  results: readonly InstrumentSearchResult[],
+  busy: ProviderBusyError | undefined,
+  options: { meant?: boolean; quoted?: boolean; movedLine?: MovedLineLookup },
+): Promise<CompanyNameListing | null> {
   // Listings are named in Latin letters: a name in another script ("任天堂 ソニー") names none, answered or not.
   if (!first && busy && !hasNonLatinLetters(name)) throw busy;
   if (!first) return null;
@@ -170,7 +236,8 @@ export async function findListingOfCompanyName(
     // The line it moved to is a US symbol, read bare as `quote` reads one (GETYQ, which trades over the counter).
     ? { symbol: quoted.moved.symbol, exchange: "", name: best.result.name, moved: quoted.moved.note }
     : {
-      symbol: best.result.symbol.toUpperCase(), exchange: best.exchange, name: best.result.name,
+      // A vendor's venue suffix on the venue it names is the listing's own code: GARAN.IS on BIST is GARAN there.
+      symbol: suffixFree(best.result.symbol.toUpperCase(), best.exchange), exchange: best.exchange, name: best.result.name,
       ...namedByService(name, best.result) ? { named: true as const } : {},
       ...best.home ? { home: true as const } : {},
     };
@@ -274,14 +341,41 @@ async function firstQuoted<T extends RankedListing>(
   return only(next.find((_, index) => priced[index]) ?? first);
 }
 
+/**
+ * For a word that names several companies on one market ("Garanti"), the one
+ * the answer lists broadly when its top answer is a company it lists once:
+ * Türkiye Garanti Bankası, listed in Istanbul, over the counter and by
+ * receipts in New York and Frankfurt, is GARAN rather than Garanti Faktoring,
+ * the top answer. The company's line on the top answer's market is the
+ * listing. Undefined when the top answer is no lone company's stock or no
+ * other company named with the word, word for word, is listed broadly there.
+ */
+function broadlyListedInstead<T extends { result: InstrumentSearchResult; exchange: string; stock: number; namesCompany: boolean; rank: number[] }>(
+  listed: readonly T[],
+): T | undefined {
+  const top = listed.find((listing) => listing.rank.at(-1) === 0);
+  if (!top || !top.namesCompany || top.stock !== 0) return undefined;
+  const linesOf = (lead: T) => listed.filter((listing) => sameCompany(listing.result.name, lead.result.name));
+  if (new Set(linesOf(top).map((listing) => listing.exchange)).size > 1) return undefined;
+  return listed.find((listing) => listing.exchange === top.exchange && listing.stock === 0 && listing.rank[1] === 0
+    && !sameCompany(listing.result.name, top.result.name)
+    && linesOf(listing).length >= BROAD_COMPANY_LINES
+    && new Set(linesOf(listing).map((line) => line.exchange)).size >= BROAD_COMPANY_LINES - 1);
+}
+
 /** A name as two venues may spell it alike: "SIEMENS LTD" for Siemens Ltd. */
 /** A listing as `companyLines` weighs it. */
 function lineFacts({ result, exchange, home }: { result: InstrumentSearchResult; exchange: string; home: boolean }) {
   return { name: result.name, exchange, receipt: RECEIPT.test(listedType(result)), home };
 }
 
+function suffixFree(symbol: string, exchange: string): string {
+  const own = listingSuffixVenue(symbol, exchange);
+  return own && own.exchange === exchange ? own.symbol : symbol;
+}
+
 function plainName(name: string | null | undefined): string {
-  return (name ?? "").normalize("NFKD").replace(/\p{M}/gu, "").toUpperCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  return foldNameLetters(name ?? "").toUpperCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
 function listingKey({ result, exchange }: RankedListing): string {

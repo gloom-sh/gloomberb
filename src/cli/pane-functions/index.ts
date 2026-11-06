@@ -426,6 +426,24 @@ export function emptySeriesExport(
 /** How long a capture's process may stay up after its output, for a report it stopped waiting for. */
 const STALLED_REPORT_EXIT_MS = 1_000;
 
+/** A capture still going after this long says what it is doing, so it never looks stuck. */
+const SHOT_PROGRESS_AFTER_MS = 3_000;
+
+/**
+ * One line on standard error when a capture is slow: "Still loading the data
+ * for PORT izmir." while its data is read, "Still drawing PORT izmir." once
+ * the page draws it. Nothing for a quick capture, or with --quiet.
+ */
+export function shotProgressNotice(ctx: Pick<CliCommandContext, "cliOptions">, label: string, afterMs = SHOT_PROGRESS_AFTER_MS): { drawing(): void; stop(): void } {
+  if (ctx.cliOptions.quiet) return { drawing: () => {}, stop: () => {} };
+  let drawing = false;
+  const timer = setTimeout(() => {
+    console.error(cliStyles.muted(drawing ? `Still drawing ${label}.` : `Still loading the data for ${label}.`));
+  }, afterMs);
+  (timer as { unref?: () => void }).unref?.();
+  return { drawing: () => { drawing = true; }, stop: () => clearTimeout(timer) };
+}
+
 export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) {
   let stalledReport = false;
   try {
@@ -455,6 +473,7 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
       const outputPath = parsed.outputPath
         ? resolve(process.cwd(), ensurePngExtension(parsed.outputPath))
         : defaultScreenshotPath(resolved, parsed.arg);
+      const progress = shotProgressNotice(ctx, [resolved.token, parsed.arg].filter(Boolean).join(" "));
       const result = await renderDesktopShot({
         resolved,
         context,
@@ -469,7 +488,8 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
         fitRows: parsed.heightGiven !== true,
         options: parsed.options,
         onStalledReport,
-      }).catch(async (error: unknown) => {
+        onDrawing: progress.drawing,
+      }).finally(progress.stop).catch(async (error: unknown) => {
         // A company's name typed where its ticker goes fails as `fn` words it, with the company search finds.
         const { quote, error: quoteError } = parsed.listing ? await loadListingQuoteAnswer(context.dataProvider, parsed.listing) : { quote: null, error: undefined };
         const stop = parsed.listing && !quote ? await notATickerStop(quoteError, parsed.listing, context) : null;

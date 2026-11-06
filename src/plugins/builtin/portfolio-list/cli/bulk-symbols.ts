@@ -256,19 +256,22 @@ export function retryNotice(ctx: CliCommandContext): (count: number, waitMs: num
   };
 }
 
-/** A list this long says how far its lookup has got, so a long add never looks stuck. */
-const PROGRESS_FROM = 50;
+/** A lookup this slow says how far it has got, so an add never looks stuck: first after two seconds, then every five. */
+const PROGRESS_AFTER_MS = 2_000;
 const PROGRESS_EVERY_MS = 5_000;
 
 /**
- * Lines on standard error while a long add looks its symbols up: "Looked up
- * 120 of 300 symbols." every few seconds, and nothing for a short list.
+ * Lines on standard error while an add of several symbols is slow to look
+ * them up: "Looked up 4 of 10 symbols." two seconds in, then every few
+ * seconds, and nothing for one symbol or a lookup that is quick.
  */
 export function progressNotice(ctx: CliCommandContext, now = () => Date.now()): (looked: number, total: number) => void {
   let last = now();
+  let wait = PROGRESS_AFTER_MS;
   return (looked, total) => {
-    if (ctx.cliOptions.quiet || total < PROGRESS_FROM || looked >= total || now() - last < PROGRESS_EVERY_MS) return;
+    if (ctx.cliOptions.quiet || total < 2 || looked >= total || now() - last < wait) return;
     last = now();
+    wait = PROGRESS_EVERY_MS;
     console.error(cliStyles.muted(`Looked up ${looked} of ${total} symbols.`));
   };
 }

@@ -269,6 +269,7 @@ export function CommandBarHarness({
   dataProvider = makeDataProvider(),
   hasPaneSettings,
   onCheckForUpdates,
+  onQuit,
   onAction,
   onUnhandledEnter,
   remoteRegistry,
@@ -287,6 +288,7 @@ export function CommandBarHarness({
   dataProvider?: DataProvider;
   hasPaneSettings?: (paneId: string) => boolean;
   onCheckForUpdates?: () => void | Promise<void>;
+  onQuit?: () => void;
   onAction?: (action: AppAction) => void;
   onUnhandledEnter?: () => void;
   /** The registry the app would own, to see what remote control sees. */
@@ -365,7 +367,7 @@ export function CommandBarHarness({
               dataProvider={dataProvider}
               tickerRepository={tickerRepository as any}
               pluginRegistry={pluginRegistry}
-              quitApp={() => {}}
+              quitApp={() => onQuit?.()}
               onCheckForUpdates={onCheckForUpdates}
             />
           )}

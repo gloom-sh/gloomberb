@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { DEFAULT_PORTFOLIO_COLUMN_IDS, type ColumnConfig } from "../../../types/config";
 import { resolveVisibleColumns } from "./settings";
 import { createTestFinancials, createTestQuote } from "../../../test-support/data-provider";
-import { companyDataSettled, fitPortfolioColumns } from "./table";
+import { companyDataSettled, fitPortfolioColumns, marketCapColumn } from "./table";
 
 const book = resolveVisibleColumns([...DEFAULT_PORTFOLIO_COLUMN_IDS], true, { otherCurrencies: true });
 const ids = (columns: readonly ColumnConfig[]) => columns.map((column) => column.id);
@@ -44,4 +44,13 @@ test("a company column hides only once every row's company data has answered, an
   // Once it answers with a figure, the column comes back; a settled row with one brings it back at once too.
   expect(ids(fitPortfolioColumns(book, [row(false), row(true)], undefined, hidden))).toContain("market_cap");
   expect(ids(fitPortfolioColumns(book, [row(true), row(false, false)], undefined, hidden))).toContain("market_cap");
+});
+
+test("the market cap column names the book's currency its caps read in when a row's price is in another", () => {
+  const cap = book.find((column) => column.id === "market_cap")!;
+  // A lira book holding BRK.B: its cap reads 58.22T beside a dollar price, so the header says TRY.
+  expect(marketCapColumn(cap, "TRY", ["TRY", "USD"])).toMatchObject({ label: `${cap.label} TRY`, width: Math.max(cap.width, `${cap.label} TRY`.length) });
+  // Every price in the book's currency, pence in pounds included, leaves the header as it was.
+  expect(marketCapColumn(cap, "TRY", ["TRY", undefined])).toBe(cap);
+  expect(marketCapColumn(cap, "GBP", ["GBp", "GBP"])).toBe(cap);
 });

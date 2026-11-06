@@ -2,7 +2,7 @@ import { loadPortfolioOptionBook } from "./risk-options";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchPortfolioRiskMarket, RISK_HISTORY_LIMIT } from "./risk-client";
 import { parsePortfolioRiskEvidence } from "./risk-evidence";
-import { cloudEpisodeReader, fetchRiskEpisodeHistory, riskEpisodeTargets } from "./risk-episodes";
+import { cloudEpisodeReader, fetchRiskEpisodeHistory, onceEpisodeReader, riskEpisodeTargets } from "./risk-episodes";
 import { describeCollections } from "../../../portfolio/collection-name";
 import { shellWord } from "../../../utils/shell-word";
 import { formatShocks, parseAssetShifts, parseFxShifts, riskCashLines } from "./risk-book";
@@ -29,6 +29,9 @@ import {
   type RiskDisplayRow,
   type RiskView,
 } from "./risk-model";
+
+/** Holdings up to which a report's episode closes are read with its recent ones, not after them. */
+const EPISODE_WARM_LIMIT = 30;
 
 const RISK_COLUMNS = [
   { key: "label", header: "Metric" },
@@ -295,6 +298,17 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
     const localOnly =
       ["performance", "attribution", "greeks"].includes(view) &&
       evidence != null;
+    // The episodes read years-old closes of each holding, so only a report that prints Stress loads them.
+    const wantsEpisodes = !localOnly && (!requestedView || requestedView === "stress");
+    const episodeReader = onceEpisodeReader(cloudEpisodeReader(ctx.apiClient));
+    // A small book's are read alongside its recent closes rather than after them; those the basket leaves out
+    // go unused. A bigger book waits for the basket, so it reads no closes it does not replay.
+    const warming = wantsEpisodes && tickers.length <= EPISODE_WARM_LIMIT
+      ? fetchRiskEpisodeHistory(
+          tickers.map((ticker) => ({ instrument: { symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange }, currency: null })),
+          local.portfolio.currency, episodeReader, ctx.signal,
+        ).catch(() => undefined)
+      : undefined;
     const [prices, brokerOptions] = await Promise.all([
       localOnly
         ? Promise.resolve({
@@ -316,13 +330,13 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
         ? Promise.resolve(undefined)
         : loadPortfolioOptionBook(tickers, local.portfolio),
     ]);
-    // The episodes read years-old closes of each holding, so only a report that prints Stress loads them.
-    const episodeTargets = !localOnly && (!requestedView || requestedView === "stress")
+    const episodeTargets = wantsEpisodes
       ? riskEpisodeTargets(prices, tickers.map((ticker) => ({ symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange })))
       : [];
     const episodes = episodeTargets.length
-      ? await fetchRiskEpisodeHistory(episodeTargets, local.portfolio.currency, cloudEpisodeReader(ctx.apiClient), ctx.signal)
+      ? await fetchRiskEpisodeHistory(episodeTargets, local.portfolio.currency, episodeReader, ctx.signal)
       : undefined;
+    void warming;
     const market = { ...prices, brokerOptions, ...(episodes ? { episodes } : {}) };
     if (ctx.signal.aborted) throw new Error("Portfolio risk load cancelled");
     const model = buildPortfolioRisk(

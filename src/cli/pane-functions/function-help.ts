@@ -1468,4 +1468,11 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: null,
     bloomberg: [],
   },
+  QUIT: {
+    summary: "Quit Gloom from the command bar. EXIT does too; the browser app, which cannot close its tab, does not list it.",
+    usage: ["QUIT"],
+    keys: [],
+    data: null,
+    bloomberg: [],
+  },
 };

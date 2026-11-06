@@ -251,3 +251,42 @@ test("a name the service answers first with a line it marks as its company's hom
     expect(`${lead?.symbol}:${lead?.result?.exchange}`, `command bar ${typed}`).toBe(key);
   }
 });
+
+// Trimmed from the service's answers on 2026-11-06: it spells Turkish names with and without their letters, lists
+// Istanbul home lines under part of the name only, and types an issuer's bonds as common stock.
+const ISTANBUL: Record<string, string[]> = {
+  "SABANCI HOLDING": ["SAHOL.IS | Haci Ömer Sabanci Holding A.S. | BIST | EQUITY"],
+  "TURK HAVA YOLLARI": [
+    "TKHVY | Türk Hava Yollari Anonim Ortakligi | PNK | Depositary Receipt",
+    "TU5A | Turk Hava Yollari A.O. Unsponsored ADR | XDUS | American Depositary Receipt",
+    "TU5A | Türk Hava Yollari Anonim Ortakligi | FWB2 | EQUITY",
+  ],
+  "HAVA YOLLARI": ["THYAO.IS | Türk Hava Yollari Anonim Ortakligi | BIST | EQUITY", "TU5A | Türk Hava Yollari Anonim Ortakligi | FWB2 | EQUITY"],
+  "TURKIYE IS BANKASI": [
+    "XS297014501 | Turkiye Is Bankasi A.S. 9.125% Perpetual Junior Subordinated Notes | MUNICH | Common Stock",
+    "XS317436815 | Turkiye Is Bankasi A.S. 7.375% Notes due 2 April 2036 | MUNICH | Common Stock",
+  ],
+  GARANTI: [
+    "GARFA | Garanti Faktoring A.S. | BIST | Common Stock",
+    "GRNYO | Garanti Yatirim Ortakligi A.S. | BIST | Common Stock",
+    "GARAN | Türkiye Garanti Bankası A.Ş. | BIST | Common Stock",
+    "TKGBY | Turkiye Garanti Bankasi A.S. | OTC | American Depositary Receipt",
+    "GBKB | Turkiye Garanti Bankasi A.S. ADR | FWB2 | American Depositary Receipt",
+    "XS320571561 | Türkiye Garanti Bankası Anonim Şirketi 7.625% Subordinated Notes due 2036 | MUNICH | Common Stock",
+    "TKGBF | Türkiye Garanti Bankasi A.Ş. | OTC | Common Stock",
+  ],
+};
+
+test("a Turkish name, with its letters or without, is its company's Istanbul line, never a line abroad, a receipt or a bond", async () => {
+  const istanbul = answering(ISTANBUL);
+  const read = async (typed: string, options = {}) => (await findListingOfCompanyName(istanbul, typed, options))?.symbol ?? null;
+  // ı does not decompose: "Sabancı" is searched as Sabanci, and GARAN.IS on BIST is GARAN there.
+  expect(await findListingOfCompanyName(istanbul, "Sabancı Holding")).toMatchObject({ symbol: "SAHOL", exchange: "BIST" });
+  // The whole name lists the airline only in Frankfurt, over the counter and by receipt; its later words list THYAO.
+  expect(await read("Turk Hava Yollari")).toBe("THYAO");
+  expect(await read("Türk Hava Yolları")).toBe("THYAO");
+  // Bonds named for their issuer and typed as common stock are no answer to its name.
+  expect(await read("Turkiye Is Bankasi")).toBeNull();
+  // One word that names a factoring company first is the bank listed broadly on the same market.
+  expect(await findListingOfCompanyName(istanbul, "Garanti", { oneWord: true })).toMatchObject({ symbol: "GARAN", exchange: "BIST" });
+});

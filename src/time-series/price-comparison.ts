@@ -13,16 +13,34 @@ import {
 const PRICE_COMPARISON_BASIS = "Price returns in each listing's currency; cash distributions and FX conversion excluded.";
 const TOTAL_COMPARISON_BASIS = "Total returns in each listing's currency; cash distributions reinvested at the ex-date close, FX conversion excluded.";
 
+/** `MSFT and THYAO:BIST from TRY`: the legs converted into the chart's currency, by the currency each was in. */
+function convertedText(legs: ReadonlyArray<{ label: string; entry: ResolvedSeries | undefined }>): string | null {
+  const byCurrency = new Map<string, string[]>();
+  for (const { label, entry } of legs) {
+    if (entry?.convertedFrom) byCurrency.set(entry.convertedFrom, [...byCurrency.get(entry.convertedFrom) ?? [], label]);
+  }
+  if (!byCurrency.size) return null;
+  return [...byCurrency].map(([currency, labels]) => `${listLabels(labels)} from ${currency}`).join(", ");
+}
+
 /**
  * What a comparison's returns are: price returns, or total returns when the
  * chart asked for them, naming any leg whose distributions could not be read
- * (it stays a price return, and the others do not wait for it).
+ * (it stays a price return, and the others do not wait for it). A chart in one
+ * currency names the legs converted into it.
  */
 function comparisonBasis(spec: ChartSpec, legs: ReadonlyArray<{ label: string; entry: ResolvedSeries | undefined }>): string {
-  if (spec.viewport.totalReturn !== true) return PRICE_COMPARISON_BASIS;
-  const priceOnly = legs.filter(({ entry }) => entry?.returnBasis === "price").map(({ label }) => label);
-  if (priceOnly.length === legs.length && legs.length > 0) return PRICE_COMPARISON_BASIS;
-  return priceOnly.length ? `${TOTAL_COMPARISON_BASIS} Price return for ${priceOnly.join(", ")}: distribution history unavailable.` : TOTAL_COMPARISON_BASIS;
+  const target = spec.viewport.currency;
+  const priceOnly = spec.viewport.totalReturn === true ? legs.filter(({ entry }) => entry?.returnBasis === "price").map(({ label }) => label) : [];
+  const total = spec.viewport.totalReturn === true && !(priceOnly.length === legs.length && legs.length > 0);
+  if (!target) {
+    if (!total) return PRICE_COMPARISON_BASIS;
+    return priceOnly.length ? `${TOTAL_COMPARISON_BASIS} Price return for ${priceOnly.join(", ")}: distribution history unavailable.` : TOTAL_COMPARISON_BASIS;
+  }
+  const converted = convertedText(legs);
+  const basis = `${total ? "Total" : "Price"} returns in ${target}${converted ? `, ${converted} at each day's FX close` : ""}; ${
+    total ? "cash distributions reinvested at the ex-date close." : "cash distributions excluded."}`;
+  return total && priceOnly.length ? `${basis} Price return for ${priceOnly.join(", ")}: distribution history unavailable.` : basis;
 }
 
 export interface PriceComparison {
@@ -150,14 +168,19 @@ export function priceComparisonSeriesIds(spec: ChartSpec): string[] | null {
 /**
  * What a total-return chart's price levels are when it is not a comparison (the
  * raw price axis): prices with cash distributions reinvested, not what the
- * listing quotes. Null for a price chart, and when no leg is a total return.
+ * listing quotes. A chart in one currency names the legs converted into it.
+ * Null for a price chart in each listing's currency, and when no leg is a
+ * total return or was converted.
  */
-export function totalReturnLevelsNotice(spec: ChartSpec, series: readonly ResolvedSeries[]): string | null {
-  if (spec.viewport.totalReturn !== true) return null;
-  const legs = series.filter((entry) => entry.returnBasis !== undefined);
-  if (!legs.some((entry) => entry.returnBasis === "total")) return null;
+export function priceLevelsNotice(spec: ChartSpec, series: readonly ResolvedSeries[]): string | null {
+  const target = spec.viewport.currency;
+  const converted = target ? convertedText(series.map((entry) => ({ label: entry.label.replace(/ (?:Close|Price|Open|High|Low|Total return)$/, ""), entry }))) : null;
+  const conversion = converted ? `${converted} at each day's FX close` : null;
+  const legs = spec.viewport.totalReturn === true ? series.filter((entry) => entry.returnBasis !== undefined) : [];
+  if (!legs.some((entry) => entry.returnBasis === "total")) return conversion ? `Prices in ${target}: ${conversion}.` : null;
   const priceOnly = legs.filter((entry) => entry.returnBasis === "price").map((entry) => entry.label);
-  return `Total return levels in each listing's currency: prices include cash distributions reinvested at the ex-date close, so they are not quoted prices; FX conversion excluded.${
+  return `Total return levels in ${target ?? "each listing's currency"}: prices include cash distributions reinvested at the ex-date close, so they are not quoted prices; ${
+    conversion ?? (target ? "none needed converting" : "FX conversion excluded")}.${
     priceOnly.length ? ` Price only for ${priceOnly.join(", ")}: distribution history unavailable.` : ""}`;
 }
 

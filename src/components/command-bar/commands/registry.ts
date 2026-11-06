@@ -50,6 +50,14 @@ export const commands: Command[] = [
     category: "Navigation",
   },
   {
+    id: "quit",
+    prefix: "QUIT",
+    aliases: ["EXIT"],
+    label: "Quit",
+    description: "Quit Gloom",
+    category: "Navigation",
+  },
+  {
     id: "send-feedback",
     prefix: "FB",
     aliases: ["FEEDBACK", "BUG"],

@@ -86,3 +86,32 @@ export function catalogPointer(token: string, hits: readonly CatalogCommandHit[]
     `Search the catalog: ${more}`,
   ].join("\n");
 }
+
+/** A command's name and the usage lines its help gives, as `gloom help` prints them. */
+export interface CommandUsage {
+  name: string;
+  usage: readonly string[];
+}
+
+/**
+ * What a subcommand typed on its own (`gloom position set Izmir THYAO 100 280`)
+ * is answered with: the command it belongs to, run with what was typed after
+ * it (`gloom portfolio position set Izmir THYAO 100 280`), or each command it
+ * belongs to when several share it (`add`). Read from the commands' usage
+ * lines; null when no usage line has the word after a command's name.
+ */
+export function subcommandPointer(
+  token: string,
+  args: readonly string[],
+  commands: readonly CommandUsage[],
+): { owners: string[]; run: string[] } | null {
+  const word = token.trim().toLowerCase();
+  if (!/^[a-z][a-z-]*$/.test(word)) return null;
+  const owners = commands.filter((command) => command.usage.some((line) => {
+    const [name, sub] = line.trim().split(/\s+/);
+    return name === command.name && sub === word;
+  }));
+  if (owners.length === 0) return null;
+  const typed = [word, ...args].map(shellWord).join(" ");
+  return { owners: owners.map((command) => command.name), run: owners.map((command) => `gloom ${command.name} ${typed}`) };
+}

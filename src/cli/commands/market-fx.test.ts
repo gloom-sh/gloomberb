@@ -17,7 +17,7 @@ const fx = marketDataCliCommands.find((command) => command.name === "fx")!;
 /** A pair's quote as Gloom Cloud serves it: a price, when it printed, delayed 15 minutes unless said otherwise. */
 type PairQuote = number | {
   price: number; minutesAgo?: number; lastUpdated?: number; dataSource?: "live" | "delayed"; stale?: boolean;
-  intradayBar?: { start: number; minutes: number }; staleReason?: string;
+  intradayBar?: { start: number; minutes: number }; staleReason?: string; currency?: string;
 };
 
 function pairQuote(symbol: string, given: PairQuote): Quote {
@@ -111,6 +111,21 @@ test("a cross reads its own quote when it has one and crosses the dollar pairs o
   await expect(fx.execute(["USD/XYZ"], harness("USD", {}).context)).rejects.toThrow("Exchange rate unavailable for XYZ.");
   await expect(fx.execute(["XAU"], harness("USD", { "XAUUSD=X": "Spot gold is not quoted; GC=F is the front-month future." }).context))
     .rejects.toThrow("Spot gold is not quoted; GC=F is the front-month future.");
+});
+
+test("gold with no spot quote is priced from its front-month future and the dollar pair, and says it is derived", async () => {
+  const noSpot = "Spot gold is not quoted; GC=F is the front-month future.";
+  const quotes = { "XAUUSD=X": noSpot, "XAUTRY=X": noSpot, "GC=F": { price: 4070.1, currency: "USD" }, "USDTRY=X": 50.1511 };
+  const lira = harness("USD", quotes);
+  await fx.execute(["XAU/TRY"], lira.context);
+  expect(lira.rows()[0]).toMatchObject([{ pair: "XAU/TRY", via: "USD", derived: true, derivedFrom: "GC=F", quotes: ["GC=F", "USDTRY=X"] }]);
+  expect(lira.rows()[0][0].rate).toBeCloseTo(4070.1 * 50.1511, 6);
+  expect(lira.output("text")[0]).toContain("via USD: XAU/USD 4070.10, USD/TRY 50.1511  ·  derived: gold from GC=F, the front-month future (spot gold is not quoted)");
+  // In dollars it is the future itself; with no future either, the service's reason still stands.
+  const dollars = harness("USD", quotes);
+  await fx.execute(["XAU/USD"], dollars.context);
+  expect(dollars.rows()[0]).toMatchObject([{ rate: 4070.1, derivedFrom: "GC=F" }]);
+  await expect(fx.execute(["XAU/TRY"], harness("USD", { "XAUUSD=X": noSpot, "USDTRY=X": 50.1511 }).context)).rejects.toThrow(noSpot);
 });
 
 test("a currency priced in itself reads nothing and cites nothing", async () => {

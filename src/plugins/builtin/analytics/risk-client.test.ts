@@ -133,7 +133,8 @@ test("a cancelled load stops requesting histories and passes the signal to each 
 
   await expect(fetchPortfolioRiskMarket(holdings, client as any, now, controller.signal)).rejects.toThrow();
 
-  // Four workers each had one request in flight; none started another.
-  expect(requested.length).toBeLessThanOrEqual(4);
+  // The factor proxies' histories go out with the quotes; once cancelled, no holding's history is asked for.
+  expect(requested.filter((symbol) => /^H\d+$/.test(symbol))).toEqual([]);
+  expect(requested.length).toBeLessThanOrEqual(RISK_FACTOR_INSTRUMENTS.length);
   expect(signals.every((signal) => signal === controller.signal)).toBe(true);
 });
