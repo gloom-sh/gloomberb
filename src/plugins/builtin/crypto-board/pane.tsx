@@ -36,6 +36,7 @@ import { publicTickerKey } from "../../../utils/exchanges";
 import { formatCompact, formatCompactAmount } from "../../../utils/format";
 import { SERIES_COLORS } from "../../../theme/series-colors";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
+import { useCommandTab } from "../shared/command-tab";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { INITIAL_STREAM_RANGE, streamWindowRows } from "../shared/use-quote-board";
@@ -74,6 +75,7 @@ const CRYPTO_BOARD_REFRESH_MS = 15_000;
 const CRYPTO_BOARD_STREAMING_REFRESH_MS = 60_000;
 
 const NO_QUOTES = new Map<string, QueryEntry<Quote>>();
+const CRYPTO_TAB_VALUES = CRYPTO_TABS.map((tab) => tab.value);
 
 /** Supply moves once a day; the server reads its source daily, so half-hourly is plenty. */
 const SUPPLY_REFRESH_MS = 30 * 60_000;
@@ -192,7 +194,8 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const data = resource.data?.payload;
   const { pinTicker } = usePluginTickerActions();
   const liveStreaming = useLiveStreamingSetting();
-  const [activeTab, setActiveTab] = usePluginPaneState<CryptoTab>("activeTab", "coin");
+  // `CRYP stablecoin` and `CRYP tvl` open on that list, again each time either is typed.
+  const [activeTab, setActiveTab] = useCommandTab<CryptoTab>("crypto-board", "activeTab", CRYPTO_TAB_VALUES, "coin");
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
   // Kept with the pane, so `shot CRYP --sort offpeg` opens on the order it asked for.
   const [savedSort, setSavedSort] = usePluginPaneState<unknown>("sort", DEFAULT_CRYPTO_SORT);

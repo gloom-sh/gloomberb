@@ -790,7 +790,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 
 `PERP` opens the [perpetuals board](perpetuals.md), and `PERP [market]` that market's History.
 
-**`CRYP`** opens the top 100 coins by market cap, with stablecoins on the second tab. Prices refresh every 15 seconds and stream in real time where the plan allows. Enter or click opens the coin in the ticker pane, column headers sort and `r` refreshes. `gloom fn CRYP --json` returns the board, and `--list stablecoin` the stablecoins with their supply ([stablecoin supply](research-data.md#stablecoin-supply)).
+**`CRYP`** opens the top 100 coins by market cap, with stablecoins on the second tab. Prices refresh every 15 seconds and stream in real time where the plan allows. Enter or click opens the coin in the ticker pane, column headers sort and `r` refreshes. `gloom fn CRYP --json` returns the board, and `--list stablecoin` the stablecoins with their supply ([stablecoin supply](research-data.md#stablecoin-supply)). A list's name after the code opens it, in the command bar and with `fn`: `CRYP stablecoin`, `CRYP tvl` (DeFi TVL), and `fn TVL` and `fn STABLECOINS` open CRYP on those lists. A name it has no list for is refused with the ones it has. `--limit 10` keeps the first 10 rows of a list; `fn PERP --limit 10` the first 10 of each table.
 
 ### Workspace and App Controls
 

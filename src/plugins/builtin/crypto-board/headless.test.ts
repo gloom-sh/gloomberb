@@ -152,3 +152,26 @@ test("--sort offpeg lists the stablecoins furthest off their peg first, a bond t
     .toEqual({ pluginState: { "market-overview": { sort: { columnId: "offPegBp", direction: "desc" } } } });
   await expect(cryptoBoardHeadless.load({ ...ARGS, options: { sort: "offpeg" } }, ctx)).rejects.toThrow("add --list stablecoin");
 });
+
+test("a word after CRYP opens that list as --list does, an unknown one names the lists, and --limit keeps the first rows", async () => {
+  const apiClient = {
+    getCloudCryptoMarkets: async () => cryptoFixture(),
+    getCloudStablecoinSupply: async () => stablecoinSupplyFixture(),
+    getCloudDefiTvl: async () => defiTvlFixture(),
+  };
+  const ctx = { apiClient, signal: new AbortController().signal } as unknown as HeadlessPaneContext;
+  const run = (argument: string | null, options: Record<string, unknown> = {}) =>
+    cryptoBoardHeadless.load({ rawArgument: argument ?? "", argument, symbols: [], options: { list: "coin", ...options } }, ctx);
+  expect((await run("tvl")).metadata).toMatchObject({ list: "defi", by: "protocol" });
+  expect((await run("stablecoins")).metadata).toMatchObject({ list: "stablecoin" });
+  expect((cryptoBoardHeadless.describe as (args: unknown) => string)({ rawArgument: "tvl", argument: "tvl", symbols: [], options: { list: "coin", by: "chain" } }))
+    .toBe("Crypto | DeFi TVL by chain");
+  // The shot opens the pane on the list named.
+  expect(cryptoBoardHeadless.shotState!({ rawArgument: "stablecoin", argument: "stablecoin", symbols: [], options: {} } as never, null as never, new Set()))
+    .toEqual({ pluginState: { "market-overview": { activeTab: "stablecoin" } } });
+  await expect(run("foo")).rejects.toThrow('No list "foo". CRYP lists: coin, stablecoin, defi (or tvl).');
+  const coins = await run(null);
+  const limited = await run(null, { limit: 2 });
+  expect(limited.rows.map((row) => row.code)).toEqual(coins.rows.slice(0, 2).map((row) => row.code));
+  expect((await run("defi", { limit: 1 })).rows).toHaveLength(1);
+});
