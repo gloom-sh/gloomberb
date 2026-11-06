@@ -53,8 +53,8 @@ describe("tax-equivalent yield", () => {
     expect(mub.basis).toEqual({ kind: "sec", value: 4.0418, asOf: "2026-10-15", label: "30-day SEC yield" });
     expect(taxEquivalentLines(mub).map((line) => [line.label, line.text])).toEqual([
       ["Tax rate", "40.8% (federal; no state rate given)"],
-      ["Tax-equivalent yield", "6.83% (30-day SEC yield 4.04% as of 2026-10-15 / (1 - 40.8%))"],
-      ["Muni/Treasury ratio", "81.2% (SEC yield 4.04% / 7Y Treasury 4.98% on 2026-10-16, the tenor nearest its 7.13-year duration)"],
+      ["Tax-equivalent yield", "6.83% (30-day SEC yield 4.0418% as of 2026-10-15 / (1 - 40.8%))"],
+      ["Muni/Treasury ratio", "81.2% (SEC yield 4.0418% / 7Y Treasury 4.98% on 2026-10-16, the tenor nearest its 7.13-year duration)"],
     ]);
   });
 

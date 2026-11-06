@@ -204,7 +204,7 @@ test("the bond fund and muni words are found by plain names, and DVD explains th
   const tey = GLOSSARY.find((entry) => entry.term === "Tax-equivalent yield")!;
   expect(tey.definition).toContain("yield / (1 - (federal rate + state rate))");
   // An example with numbers says when they were: they move with the market.
-  expect(tey.definition).toContain("MUB's 3.80% SEC yield of 2026-11-04 was 6.41%");
+  expect(tey.definition).toContain("MUB's SEC yield of 3.7955% on 2026-11-04 was 6.41%");
   expect(["NIIT", "net investment income tax", "AMT", "private activity bonds", "amt free"].map(exact)).toEqual([
     ["Net investment income tax"], ["Net investment income tax"], ["Alternative minimum tax"], ["Alternative minimum tax"], ["Alternative minimum tax"],
   ]);

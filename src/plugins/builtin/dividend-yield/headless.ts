@@ -22,11 +22,10 @@ import { MAX_RANKED_SYMBOLS, readDividendRanking, type DividendRankingReads } fr
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
 import type { FundBondFacts } from "../../../api-client/fund-facts";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
-import { isUsListingExchange } from "../../../utils/exchanges";
 import { bondClassText, bondFigures, fetchFundBondFacts, NOT_SEC_YIELD, type BondFigure } from "../../../market-data/bond-funds";
 import {
-  analyzeTaxEquivalent, distributionBasis, loadTreasuryTenors, parseTaxRates, TAX_RATE_EXAMPLES, TAX_RATE_OPTIONS, taxEquivalentJson, taxEquivalentSection,
-  type TaxEquivalentAnalysis, type TreasuryTenor,
+  analyzeTaxEquivalent, distributionBasis, loadTreasuryTenors, noBondFigures, parseTaxRates, TAX_RATE_EXAMPLES, TAX_RATE_OPTIONS, taxEquivalentJson,
+  taxEquivalentSection, type NoBondFigures, type TaxEquivalentAnalysis, type TreasuryTenor,
 } from "../../../market-data/tax-equivalent";
 
 /** The history options' defaults: a ranking lists no history, so only these leave it unchanged. */
@@ -56,14 +55,22 @@ export type DividendReadContext = Pick<HeadlessPaneContext, "marketData" | "apiC
 
 export interface DividendYieldHeadlessDependencies {
   loadData(symbol: string, context: DividendReadContext): Promise<DividendData>;
-  /** A US-listed fund's bond facts (SEC yield, yield to worst, duration); null for any other listing. */
-  loadBond?(symbol: string, context: DividendReadContext): Promise<FundBondFacts | null>;
+  /**
+   * A US-listed fund's bond facts (SEC yield, yield to worst, duration), null
+   * for a fund without them, or why the listing has none to read
+   * (NoBondFigures: not a fund, or a fund listed abroad). Rejects when the
+   * check itself fails.
+   */
+  loadBond?(symbol: string, context: DividendReadContext): Promise<FundBondFacts | NoBondFigures | null>;
   /** The Treasury par curve GC shows, for the muni/Treasury ratio; null when it cannot be read. */
   loadTreasury?(context: HeadlessPaneContext): Promise<TreasuryTenor[] | null>;
 }
 
 /** Already logged at the quote boundary; keep it distinct from absent bond facts. */
 class BondClassificationError extends Error {}
+
+/** What a failed fund facts read leaves in place of the tax-equivalent yield. */
+const BOND_FACTS_CHECK_FAILED = "Bond fund facts check failed";
 
 const defaultDependencies: DividendYieldHeadlessDependencies = {
   async loadData(symbol, context) {
@@ -105,8 +112,7 @@ const defaultDependencies: DividendYieldHeadlessDependencies = {
         throw new BondClassificationError("Bond fund quote check failed");
       });
     const venue = exchange || quote?.exchangeName || "";
-    if (resolveTickerInstrumentKind(null, { quote }) !== "fund" || (venue && !isUsListingExchange(venue))) return null;
-    return fetchFundBondFacts(instrument?.symbol ?? symbol, context.apiClient);
+    return noBondFigures(resolveTickerInstrumentKind(null, { quote }), venue) ?? fetchFundBondFacts(instrument?.symbol ?? symbol, context.apiClient);
   },
   loadTreasury: (context) => loadTreasuryTenors(context.apiClient),
 };
@@ -114,7 +120,9 @@ const defaultDependencies: DividendYieldHeadlessDependencies = {
 /**
  * How a ranking reads each ticker: `fn DVD`'s, and the DVD pane's with the
  * app's market data, so both read the same listing at the same price. A
- * fund's bond facts never fail its row: without them it ranks as before.
+ * fund's bond facts never fail its row: a check that fails is kept on it
+ * (`bondError`, in the words single-ticker DVD uses), and without them it
+ * ranks as before.
  */
 export function dividendRankingReads(
   context: DividendReadContext,
@@ -124,8 +132,11 @@ export function dividendRankingReads(
   return {
     loadData: (symbol) => dependencies.loadData(symbol, context),
     ...loadBond ? {
-      loadBond: (symbol: string) => loadBond(symbol, context).catch((error) => error instanceof BondClassificationError ? null
-        : logFailure("dividend-yield.headless", "Read bond fund facts for ranking failed", null)(error)),
+      loadBond: (symbol: string) => loadBond(symbol, context).catch((error) => {
+        if (error instanceof BondClassificationError) throw error;
+        logFailure("dividend-yield.headless", "Read bond fund facts for ranking failed")(error);
+        throw new Error(BOND_FACTS_CHECK_FAILED);
+      }),
     } : {},
   };
 }
@@ -364,7 +375,7 @@ export function createDividendYieldHeadless(
       if (args.symbols.length <= 1) {
         const symbol = args.symbols[0] ?? String(args.argument);
         let bondCheckError: string | undefined;
-        const [data, bond, treasury] = await Promise.all([
+        const [data, bondRead, treasury] = await Promise.all([
           dependencies.loadData(symbol, context),
           // Optional enrichment without a tax rate; a requested tax check must distinguish failure from absence.
           dependencies.loadBond?.(symbol, context)
@@ -373,16 +384,19 @@ export function createDividendYieldHeadless(
                 bondCheckError = error.message;
               } else {
                 logFailure("dividend-yield.headless", "Read bond fund facts for report failed")(error);
-                bondCheckError = "Bond fund facts check failed";
+                bondCheckError = BOND_FACTS_CHECK_FAILED;
               }
               return null;
             }) ?? null,
           rates ? dependencies.loadTreasury?.(context)
             .catch(logFailure("dividend-yield.headless", "Read Treasury curve for tax comparison failed", null)) ?? null : null,
         ]);
+        // A stock, or a fund listed abroad, has no bond figures, and its tax line says why rather than that none are loaded.
+        const bond = typeof bondRead === "string" ? null : bondRead;
         const forward = data.metrics.lapse ? null : distributionBasis(data.metrics.forwardYield, "forward", data.metrics.forwardRateAsOf ?? null);
         const tax = rates ? analyzeTaxEquivalent({
           symbol: symbol.toUpperCase(), bond, rates, treasury, checkError: bondCheckError,
+          noBondFigures: typeof bondRead === "string" ? bondRead : null,
           distribution: forward ?? distributionBasis(data.metrics.trailingYield, "trailing"),
         }) : null;
         return projectDividendYieldHeadless(data, args, { bond, tax });

@@ -34,6 +34,8 @@ export interface ScenarioMarketSnapshot {
   dividendYieldBasis?: ModelDividendYield["basis"] | null;
   /** The last distribution's ex-date of a dividend that stopped (basis `stopped`). */
   dividendLastPaid?: string | null;
+  /** The last ex-date of a monthly payer's history that ends there, beside a stated yield (ModelDividendYield.historyEnds). */
+  dividendHistoryEnds?: string | null;
   source: string | null;
   underlyingQuote: Quote | null;
   rateAsOf: string[];
@@ -180,6 +182,7 @@ export async function loadScenarioMarket(
     asOf: quoteCurrent && positive(quote!.lastUpdated) ? quote!.lastUpdated : now,
     chain, expirationDates, rate: rate.rate, dividendYield: dividend?.value ?? null, dividendYieldBasis: dividend?.basis ?? null,
     ...(dividend?.basis === "stopped" ? { dividendLastPaid: dividend.lastPaid ?? null } : {}),
+    ...(dividend?.historyEnds ? { dividendHistoryEnds: dividend.historyEnds } : {}),
     source: quoteCurrent ? quoteEntry?.source ?? quote!.providerId ?? null : null,
     underlyingQuote: quoteCurrent ? quote : null, rateAsOf: rate.asOf, warnings: [...new Set(warnings)],
     ...(missingExpiry ? { missingExpiry } : {}),

@@ -1,8 +1,8 @@
 import { useCallback } from "react";
 import type { FundBondFacts } from "../../../../api-client/fund-facts";
 import {
-  analyzeTaxEquivalent, loadTreasuryTenors, taxEquivalentLines,
-  type TaxEquivalentAnalysis, type TaxRates, type YieldBasis,
+  analyzeTaxEquivalent, formatMuniTreasuryRatio, loadTreasuryTenors, taxEquivalentLines,
+  type NoBondFigures, type TaxEquivalentAnalysis, type TaxRates, type YieldBasis,
 } from "../../../../market-data/tax-equivalent";
 import { useAsyncResource } from "../../../../react/async-resource";
 import { formatFundYield } from "../../../../market-data/bond-funds";
@@ -21,15 +21,19 @@ export function useOverviewTaxEquivalent(input: {
   /** The fund's bond facts once read: null for a fund without them, undefined while they are read. */
   bond: FundBondFacts | null | undefined;
   distribution: YieldBasis | null;
+  /** Why the listing has no bond figures to read: not a fund, or a fund listed abroad. */
+  noBondFigures?: NoBondFigures | null;
 }): TaxEquivalentAnalysis | { error: string } | null {
   const rates = input.tax && "rates" in input.tax ? input.tax.rates : null;
   const loader = useCallback(() => loadTreasuryTenors(), []);
-  const treasury = useAsyncResource(rates ? loader : null);
+  // A listing with no bond figures to read has no ratio to divide either.
+  const treasury = useAsyncResource(rates && !input.noBondFigures ? loader : null);
   if (!input.tax) return null;
   if ("error" in input.tax) return input.tax;
   if (input.bond === undefined || (treasury.loading && !treasury.data)) return null;
   return analyzeTaxEquivalent({
     symbol: input.symbol, bond: input.bond, rates: input.tax.rates, distribution: input.distribution, treasury: treasury.data ?? null,
+    noBondFigures: input.noBondFigures ?? null,
   });
 }
 
@@ -58,7 +62,7 @@ export function taxEquivalentFields(analysis: TaxEquivalentAnalysis | { error: s
       : [`on ${basis.label}`, "on dist yield", "dist"] });
   const ratio = analysis.ratio;
   fields.push(ratio
-    ? { label: "Muni/Tsy", value: `${(ratio.value * 100).toFixed(1)}%`,
+    ? { label: "Muni/Tsy", value: formatMuniTreasuryRatio(ratio.value),
       detail: [`vs ${ratio.treasury.tenor} ${formatFundYield(ratio.treasury.yield)}${ratio.treasury.asOf ? ` ${ratio.treasury.asOf}` : ""}`, `vs ${ratio.treasury.tenor} ${formatFundYield(ratio.treasury.yield)}`, `vs ${ratio.treasury.tenor}`] }
     : missing("Muni/Tsy", (analysis.ratioNote ?? "").replace(/^no ratio: /, "")));
   return fields;

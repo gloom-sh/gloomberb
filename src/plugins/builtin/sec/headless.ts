@@ -265,20 +265,27 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
       const rates = parseTaxRates({ taxRate: args.options["tax-rate"], stateRate: args.options["state-rate"], state: args.options.state });
       const abroad = venueAbroad(symbol);
       if (abroad) {
+        // --tax-rate reads US tax on a US fund's income: a fund listed abroad says it does not apply rather than drop it.
+        const taxed = (result: HeadlessBundleResult): HeadlessBundleResult => {
+          if (!rates) return result;
+          const tax = analyzeTaxEquivalent({ symbol: symbol.toUpperCase(), bond: null, rates, noBondFigures: "listed-abroad" });
+          return { ...result, sections: [...result.sections, taxEquivalentSection(tax)],
+            metadata: { ...result.metadata, taxEquivalent: taxEquivalentJson(tax) } };
+        };
         // A Hong Kong spot coin fund has its issuer's figures; any other fund abroad, or a server without them, keeps the issuer link.
         const facts = hasFundFactsAbroad(abroad)
           ? await dependencies.loadFacts(symbol, ctx).catch(logFailure("sec.fund-headless", "Read fund facts abroad failed", null))
           : null;
-        if (facts?.covered) return fundAbroadFactsResult(symbol, abroad, facts);
+        if (facts?.covered) return taxed(fundAbroadFactsResult(symbol, abroad, facts));
         try {
           const profile = await (dependencies.loadAbroadProfile ?? defaultFundDependencies.loadAbroadProfile)(symbol, ctx);
-          return fundAbroadResult(symbol, abroad, profile);
+          return taxed(fundAbroadResult(symbol, abroad, profile));
         } catch (error) {
-          return {
+          return taxed({
             ...fundAbroadResult(symbol, abroad, null),
             complete: false,
             errors: [`Fund profile unavailable: ${errorMessage(error)}`],
-          };
+          });
         }
       }
       const limit = Number(args.options.limit);
@@ -317,6 +324,8 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
         tax = analyzeTaxEquivalent({
           symbol: symbol.toUpperCase(), bond, rates, distribution, treasury: await treasury,
           ...factsResult.status === "rejected" ? { checkError: `no tax-equivalent yield: ${fundFactsErrorText(factsResult.reason)}` } : {},
+          // A stock (fn ETF KO) is not on the SEC's lists of funds, and says so rather than that no bond figures are loaded.
+          noBondFigures: facts?.status === "not-a-fund" ? "not-a-fund" : null,
         });
       }
       return {

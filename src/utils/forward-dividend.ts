@@ -84,8 +84,16 @@ const MAX_GRACE_DAYS = 90;
  * lapsed forward yield too.
  */
 const UNKNOWN_CADENCE_WINDOW_DAYS = 455;
-/** The shortest a dividend can take to lapse: a monthly payer's interval and grace. */
-const SHORTEST_WINDOW_DAYS = CADENCE_DAYS[0] + MIN_GRACE_DAYS;
+/** Past this many days a monthly payer's next distribution would have gone ex: a history without it ends early. */
+const MONTHLY_HISTORY_END_DAYS = 40;
+/**
+ * Past this many days a monthly payer has stopped paying (FXF, last paid
+ * 2024-04-01) rather than its history ended early: Gloom Cloud no longer asks
+ * for the distributions after it.
+ */
+const MONTHLY_STOPPED_DAYS = 183;
+/** The shortest a forward yield can take to be withheld: a monthly payer's history that ends (monthlyHistoryEnd). */
+const SHORTEST_WINDOW_DAYS = MONTHLY_HISTORY_END_DAYS;
 
 function dayNumber(day: string): number {
   return Date.parse(`${day}T00:00:00Z`) / DAY_MS;
@@ -116,7 +124,10 @@ function distributionIntervalDays(exDates: readonly (string | Date)[]): number |
   return recent.length < 3 ? Math.max(nearest, CADENCE_DAYS[1]) : nearest;
 }
 
-/** A dividend that has stopped: no forward yield, only the day the last distribution went ex. */
+/**
+ * A dividend that has stopped, or a monthly payer's history that ends: no
+ * forward yield, only the day the last distribution went ex.
+ */
 export interface DividendLapse {
   /** YYYY-MM-DD; null when no date is known. */
   lastPaid: string | null;
@@ -149,14 +160,17 @@ export function distributionHistory(actions: CorporateActionsData | null | undef
 
 /**
  * Whether the dividend behind a forward rate dated `asOf` (the ex-date of the
- * distribution it annualizes) has stopped. It is current while its latest
- * distribution went ex within its usual interval plus grace: half an interval,
- * at least a month and at most three, so a monthly payer lapses about two
- * months after its last ex-date, a quarterly one after four and a half months,
- * a semiannual one after nine and an annual one after fifteen (the window
- * Gloom Cloud uses). The interval comes from the issuer's own history, at
- * least quarterly when it has only two distributions; without one (fewer than
- * two distributions, or no history) the annual window applies.
+ * distribution it annualizes) has stopped, or its history ended. A monthly
+ * payer's history with no ex-date in the last 40 days ends there
+ * (monthlyHistoryEnd, `historyEnds`), until it has been silent more than 183
+ * days, when its dividend has stopped. Otherwise it is current while its
+ * latest distribution went ex within its usual interval plus grace: half an
+ * interval, at least a month and at most three, so a quarterly payer lapses
+ * after four and a half months, a semiannual one after nine and an annual one
+ * after fifteen (the window Gloom Cloud uses). The interval comes from the
+ * issuer's own history, at least quarterly when it has only two
+ * distributions; without one (fewer than two distributions, or no history) the
+ * annual window applies.
  * A distribution declared and not yet ex, the rate's own or one in the
  * history, keeps it current. Null while current or when nothing is known.
  */
@@ -171,21 +185,22 @@ export function lapsedDividend(
     return day ? [day] : [];
   });
   if (days.some((day) => day > today) || (history?.declared?.length ?? 0) > 0) return null;
+  const historyEnd = monthlyHistoryEnd(history, now);
+  if (historyEnd) return { lastPaid: historyEnd, historyEnds: true };
   const paid = [...new Set(days)];
   if (paid.length === 0) return null;
   const lastPaid = paid.reduce((latest, day) => (day > latest ? day : latest));
   const interval = history?.exDates ? distributionIntervalDays(paid) : null;
   const window = interval == null ? UNKNOWN_CADENCE_WINDOW_DAYS
     : interval + Math.min(MAX_GRACE_DAYS, Math.max(MIN_GRACE_DAYS, interval / 2));
-  if (dayNumber(today) - dayNumber(lastPaid) <= window) return null;
-  // A monthly payer two months silent is more often a history that stopped short than a fund that stopped paying.
-  return interval === CADENCE_DAYS[0] ? { lastPaid, historyEnds: true } : { lastPaid };
+  return dayNumber(today) - dayNumber(lastPaid) <= window ? null : { lastPaid };
 }
 
 /**
  * Whether a forward rate dated `asOf` could have lapsed by `now`, so the
  * history is worth reading: never while its ex-date is ahead or more recent
- * than the shortest window, a monthly payer's.
+ * than the shortest window, the 40 days after which a monthly payer's history
+ * ends.
  */
 export function forwardDividendMayHaveLapsed(asOf: string | Date | null | undefined, now = new Date()): boolean {
   const rateDay = isoDay(asOf);
@@ -203,17 +218,16 @@ export function forwardYieldMayHaveLapsed(
   return fundamentals?.dividendYieldBasis === "forward" && forwardDividendMayHaveLapsed(fundamentals.exDividendDate, now);
 }
 
-/** Past this many days a monthly payer's next distribution would have gone ex: a history without it ends early. */
-const MONTHLY_HISTORY_END_DAYS = 40;
-
 /**
  * The last ex-date of a monthly payer's history that stops more than 40 days
- * before `now`, read from its paid ex-dates alone: MUB's history ending at
- * 2026-09-01 while the fund paid on 1 October and 2 November. A forward
- * rate, trailing yield and last ex-date read from that history then all stop
- * there too, and say so, rather than read the missing months as a dividend
- * that stopped. Null for any other cadence, a history that is current, and
- * one with a distribution declared or still ahead.
+ * and at most 183 days before `now`, read from its paid ex-dates alone: MUB's
+ * history ending at 2026-09-01 while the fund paid on 1 October and 2
+ * November. A forward rate, trailing yield and last ex-date read from that
+ * history then all stop there too, and say so, rather than read the missing
+ * months as a dividend that stopped. Silent longer, the fund stopped paying
+ * (FXF, last paid 2024-04-01), which lapsedDividend says. Null for any other
+ * cadence, a history that is current, and one with a distribution declared or
+ * still ahead.
  */
 export function monthlyHistoryEnd(history: DistributionHistory | null | undefined, now = new Date()): string | null {
   if (!history?.exDates || (history.declared?.length ?? 0) > 0) return null;
@@ -223,7 +237,8 @@ export function monthlyHistoryEnd(history: DistributionHistory | null | undefine
     return day ? [day] : [];
   }))].sort();
   const last = days.at(-1);
-  if (!last || last > today || dayNumber(today) - dayNumber(last) <= MONTHLY_HISTORY_END_DAYS) return null;
+  const silent = last ? dayNumber(today) - dayNumber(last) : 0;
+  if (!last || last > today || silent <= MONTHLY_HISTORY_END_DAYS || silent > MONTHLY_STOPPED_DAYS) return null;
   return distributionIntervalDays(days) === CADENCE_DAYS[0] ? last : null;
 }
 
@@ -233,10 +248,18 @@ export function historyEndsText(day: string): string {
 }
 
 export const NO_CURRENT_DIVIDEND = "no current dividend";
+/** What a short cell reads for a monthly payer's history that ends (DividendLapse.historyEnds), beside `last ex 2026-09-01`. */
+const HISTORY_ENDS = "history ends";
 
-/** `last paid 2026-02-27`, the note beside "no current dividend"; null when the date is unknown. */
+/** What a short cell reads in place of a lapsed forward yield: `history ends` for a history that ends, else `no current dividend`. */
+export function lapseValue(lapse: DividendLapse): string {
+  return lapse.historyEnds && lapse.lastPaid ? HISTORY_ENDS : NO_CURRENT_DIVIDEND;
+}
+
+/** `last paid 2026-02-27` beside "no current dividend", `last ex 2026-09-01` beside "history ends"; null when the date is unknown. */
 export function lastPaidNote(lapse: DividendLapse): string | null {
-  return lapse.lastPaid ? `last paid ${lapse.lastPaid}` : null;
+  if (!lapse.lastPaid) return null;
+  return lapse.historyEnds ? `last ex ${lapse.lastPaid}` : `last paid ${lapse.lastPaid}`;
 }
 
 /**

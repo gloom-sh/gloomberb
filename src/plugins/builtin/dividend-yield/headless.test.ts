@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import type { DividendData } from "./client";
 import type { FundBondFacts } from "../../../api-client/fund-facts";
+import type { NoBondFigures } from "../../../market-data/tax-equivalent";
 import { createDividendYieldHeadless } from "./headless";
 import { headlessReportTables, renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
@@ -247,31 +248,38 @@ describe("a bond fund's yields", () => {
     expect(text).toContain([
       "Tax-equivalent yield",
       "Tax rate              40.8% (federal; no state rate given)",
-      "Tax-equivalent yield  6.83% (30-day SEC yield 4.04% as of 2026-10-15 / (1 - 40.8%))",
-      "Muni/Treasury ratio   81.2% (SEC yield 4.04% / 7Y Treasury 4.98% on 2026-10-16, the tenor nearest its 7.13-year duration)",
+      // Each yield in a formula as precisely as it was worked with, so the line adds up from what it shows.
+      "Tax-equivalent yield  6.83% (30-day SEC yield 4.0418% as of 2026-10-15 / (1 - 40.8%))",
+      "Muni/Treasury ratio   81.2% (SEC yield 4.0418% / 7Y Treasury 4.98% on 2026-10-16, the tenor nearest its 7.13-year duration)",
     ].join("\n"));
     expect(result.metadata).toMatchObject({
       bondFund: { kind: "municipal", class: "Municipal, national" },
       taxEquivalent: { federalRate: 40.8, combinedRate: 40.8, muniTreasuryRatio: { tenor: "7Y", treasuryYield: 4.98 } },
     });
     expect((result.metadata as { taxEquivalent: { taxEquivalentYield: number } }).taxEquivalent.taxEquivalentYield).toBeCloseTo(6.8274, 4);
+    // A listing its quote classes as a stock says it is not a fund, never that its bond figures are not loaded.
+    const ko = createDividendYieldHeadless({ loadData: async () => mubData, loadBond: async () => "not-a-fund", loadTreasury: async () => treasury });
+    expect(renderHeadlessPaneText(ko, await ko.load(request, context), request, "DVD")).toContain("Tax-equivalent yield  no tax-equivalent yield: MUB is not a fund");
   });
 
-  test("--tax-rate ranks several funds with their yield to worst, duration, tax-equivalent yield and ratio; a taxable fund says why it has none", async () => {
+  test("--tax-rate ranks several funds with their yield to worst, duration, tax-equivalent yield and ratio; a taxable fund or a stock says why it has none", async () => {
     const LQD: FundBondFacts = { kind: "taxable", state: null, secYield: { value: 5.92, asOf: "2026-11-04", ...ISHARES },
       yieldToWorst: { value: 5.1, asOf: "2026-11-04", ...ISHARES }, duration: { value: 8.2, asOf: "2026-11-04", measure: "effective", ...ISHARES } };
     const priced = (trailingYield: number): DividendData => ({ ...mubData, currency: "USD", priceAsOf: "2026-10-16T20:00:00.000Z",
       metrics: { ...mubData.metrics, trailingYield } });
-    const bonds: Record<string, FundBondFacts | null> = { MUB, LQD, KO: null };
+    const bonds: Record<string, FundBondFacts | NoBondFigures | null> = { MUB, LQD, KO: "not-a-fund" };
     const definition = createDividendYieldHeadless({ loadData: async (symbol) => priced(symbol === "LQD" ? 0.044 : 0.0334),
       loadBond: async (symbol) => bonds[symbol] ?? null, loadTreasury: async () => treasury });
     const request: HeadlessPaneLoadArgs = { rawArgument: "MUB LQD KO", argument: "MUB LQD KO", symbols: ["MUB", "LQD", "KO"], options: { "tax-rate": "40.8" } };
     const result = await definition.load(request, context);
     const text = renderHeadlessPaneText(definition, result, request, "DVD");
     expect(text).toMatch(/Ticker +Yield TTM +Fwd yield +SEC yield +SEC as of +YTW +Duration +TEY +Muni\/Tsy +Tenor +Payout/);
-    expect(text).toMatch(/\nMUB +3\.34% +3\.27% +4\.04% +2026-10-15 +4\.16% +7\.13 yrs +6\.83% +81\.16% +7Y /);
+    // The ratio to one decimal, as single-ticker DVD and DES draw it.
+    expect(text).toMatch(/\nMUB +3\.34% +3\.27% +4\.04% +2026-10-15 +4\.16% +7\.13 yrs +6\.83% +81\.2% +7Y /);
     expect(text).toMatch(/\nLQD +4\.40% .*5\.92% +2026-11-04 +5\.10% +8\.20 yrs +— +— +— .*taxable fund/);
-    expect(text).toMatch(/\nKO .*no sponsor bond figures/);
+    expect(text).toMatch(/\nKO .*not a fund\n/);
+    expect(text).not.toContain("Note");
+    expect(result.complete).not.toBe(false);
     expect(result.sections[0]!.rows!.find((row) => row.symbol === "MUB"))
       .toMatchObject({ yieldToWorst: 0.0416, duration: 7.12591, taxEquivalentYield: 0.068274, muniTreasuryRatio: 0.811606, treasuryTenor: "7Y", taxNote: null });
     expect(result.metadata).toMatchObject({ taxRates: { federal: 40.8 } });
@@ -281,6 +289,16 @@ describe("a bond fund's yields", () => {
     expect(csv.find((line) => line.startsWith("MUB,"))).toMatch(/^MUB,3\.34,3\.27,4\.0418,2026-10-15,4\.16,7\.12591,6\.8274,81\.1606,7Y,/);
 
     await expect(definition.load(withOptions({ "tax-rate": "40.8", "state-rate": "13.3" }), context)).rejects.toThrow("--state-rate and --state go together");
+
+    // A fund whose bond facts check fails is a failed check, not a fund without figures: its row says so, and the ranking is partial.
+    const failing = createDividendYieldHeadless({ loadData: async (symbol) => priced(symbol === "LQD" ? 0.044 : 0.0334),
+      loadBond: async (symbol) => { if (symbol === "MUB") throw new Error("offline"); return bonds[symbol] ?? null; }, loadTreasury: async () => treasury });
+    const partial = await failing.load(request, context);
+    expect(renderHeadlessPaneText(failing, partial, request, "DVD")).toMatch(/\nMUB +3\.34% .* +— +— +— .*bond facts check failed\n/);
+    expect(partial).toMatchObject({ complete: false, errors: ["MUB: Bond fund facts check failed"] });
+    // Without --tax-rate the same failure ranks as before.
+    const plain = await failing.load({ ...request, options: {} }, context);
+    expect(plain.complete).not.toBe(false);
   });
 
   test("one fund's CSV writes each figure as a number in its unit, dated by its own observation, as the ranking's does", async () => {

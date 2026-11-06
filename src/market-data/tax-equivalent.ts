@@ -2,6 +2,7 @@ import { apiClient } from "../api-client";
 import type { FundBondFacts } from "../api-client/fund-facts";
 import type { HeadlessPaneEntry, HeadlessPaneOptionDef } from "../types/headless";
 import { formatFundYield, NOT_SEC_YIELD } from "./bond-funds";
+import { isUsListingExchange } from "../utils/exchanges";
 
 /**
  * Tax-equivalent yield and the muni/Treasury ratio, for `fundamentals`,
@@ -18,7 +19,7 @@ import { formatFundYield, NOT_SEC_YIELD } from "./bond-funds";
  * fund's income is taxed by the state like a taxable bond's, so the state
  * rate cancels out. The two rates add up without netting a federal deduction
  * for state tax, which the SALT cap mostly removes: this is how iShares
- * computes the tax-equivalent yields it publishes (on 2026-10-15, MUB 4.04% at
+ * computes the tax-equivalent yields it publishes (on 2026-10-15, MUB 4.0418% at
  * 40.8%: 6.83%; CMF 3.87% at 40.8% + 13.3% California: 8.43%). The ratio
  * compares pre-tax yields, the convention for muni/Treasury ratios.
  */
@@ -226,23 +227,63 @@ function formatRate(value: number): string {
 }
 
 /**
+ * A yield a formula is worked from, to the precision it was worked at, so the
+ * line adds up from what it shows: MUB's SEC yield of 3.7955% over (1 -
+ * 40.8%) is 6.41%, where `3.80%` would give 6.42%. Two decimals at least,
+ * four at most.
+ */
+function formulaPercent(value: number): string {
+  const text = value.toFixed(4).replace(/0{1,2}$/, "");
+  return `${text}%`;
+}
+
+/** A muni/Treasury ratio as every view draws it: `80.8%`. */
+export function formatMuniTreasuryRatio(ratio: number): string {
+  return `${(ratio * 100).toFixed(1)}%`;
+}
+
+/**
+ * Why `--tax-rate` has no bond fund figures to read for a listing, which it
+ * says in place of the tax-equivalent yield: a stock or anything else that is
+ * not a fund, or a fund listed outside the US, whose income US tax rates do
+ * not describe.
+ */
+export type NoBondFigures = "not-a-fund" | "listed-abroad";
+
+/** NoBondFigures for a listing of `kind` (resolveTickerInstrumentKind) on `exchange`; null for a fund listed in the US or on no known venue. */
+export function noBondFigures(kind: string | null | undefined, exchange: string | null | undefined): NoBondFigures | null {
+  if (kind !== "fund") return "not-a-fund";
+  return exchange && !isUsListingExchange(exchange) ? "listed-abroad" : null;
+}
+
+/** `KO is not a fund`, or `--tax-rate does not apply to 3046, a fund listed outside the US`. */
+function noBondFiguresText(symbol: string, reason: NoBondFigures): string {
+  return reason === "not-a-fund" ? `${symbol} is not a fund` : `--tax-rate does not apply to ${symbol}, a fund listed outside the US`;
+}
+
+/**
  * A fund's tax-equivalent yield and muni/Treasury ratio from its bond facts,
  * the distribution yield it falls back to, and the Treasury curve. Only a
- * fund its sponsor classes as municipal has one; any other says why not.
+ * fund its sponsor classes as municipal has one; any other says why not, and
+ * a listing that is not a US fund (`noBondFigures`) says so rather than that
+ * its figures are not loaded.
  */
 export function analyzeTaxEquivalent({
-  symbol, bond, rates, distribution, treasury, checkError,
+  symbol, bond, rates, distribution, treasury, checkError, noBondFigures: notFund,
 }: {
   symbol: string;
   bond: FundBondFacts | null | undefined;
   rates: TaxRates;
   checkError?: string;
+  /** Why the listing has no bond fund figures to read at all; absent for a US-listed fund. */
+  noBondFigures?: NoBondFigures | null;
   /** The distribution yield in percent and its label, for a fund without a SEC yield. */
   distribution?: YieldBasis | null;
   /** The Treasury curve's points, or null when it could not be read. */
   treasury?: readonly TreasuryTenor[] | null;
 }): TaxEquivalentAnalysis {
   if (checkError) return { symbol, rates, checkError };
+  if (notFund) return { symbol, rates, notApplicable: `no tax-equivalent yield: ${noBondFiguresText(symbol, notFund)}` };
   if (!bond) {
     return { symbol, rates, notApplicable: `no tax-equivalent yield: no sponsor bond figures are loaded for ${symbol} (they are for iShares, Vanguard, SPDR and VanEck bond ETFs)` };
   }
@@ -281,9 +322,9 @@ export function analyzeTaxEquivalent({
   };
 }
 
-/** A short form of the basis for the ratio line: `SEC yield 4.04%`, `distribution yield 3.27%`. */
+/** A short form of the basis for the ratio line: `SEC yield 4.0418%`, `distribution yield 3.27%`. */
 function basisShort(basis: YieldBasis): string {
-  return `${basis.kind === "sec" ? "SEC yield" : "distribution yield"} ${formatFundYield(basis.value)}`;
+  return `${basis.kind === "sec" ? "SEC yield" : "distribution yield"} ${formulaPercent(basis.value)}`;
 }
 
 /** One report line: its label, its text, and the raw value JSON keeps. */
@@ -308,8 +349,11 @@ const exportPercent = (text: string, asOf: string | null) => ({ formatted: text,
  * The analysis as report lines, each saying what it was computed from:
  *
  *   Tax rate              40.8% (federal; MUB is a national fund, no state rate)
- *   Tax-equivalent yield  6.83% (30-day SEC yield 4.04% as of 2026-10-15 / (1 - 40.8%))
- *   Muni/Treasury ratio   81.0% (SEC yield 4.04% / 7Y Treasury 4.99% on 2026-10-16, the tenor nearest its 7.13-year duration)
+ *   Tax-equivalent yield  6.83% (30-day SEC yield 4.0418% as of 2026-10-15 / (1 - 40.8%))
+ *   Muni/Treasury ratio   81.0% (SEC yield 4.0418% / 7Y Treasury 4.99% on 2026-10-16, the tenor nearest its 7.13-year duration)
+ *
+ * Each yield in a formula is written as precisely as it was worked with
+ * (formulaPercent), so the line adds up from what it shows.
  */
 export function taxEquivalentLines(analysis: TaxEquivalentAnalysis): TaxEquivalentLine[] {
   if (analysis.checkError) {
@@ -332,7 +376,7 @@ export function taxEquivalentLines(analysis: TaxEquivalentAnalysis): TaxEquivale
   lines.push({
     key: "taxEquivalentYield",
     label: "Tax-equivalent yield",
-    text: `${formatFundYield(analysis.taxEquivalentYield)} (${basis.label} ${formatFundYield(basis.value)}${basis.asOf ? ` as of ${basis.asOf}` : ""} / (1 - ${formatRate(combined)}))`,
+    text: `${formatFundYield(analysis.taxEquivalentYield)} (${basis.label} ${formulaPercent(basis.value)}${basis.asOf ? ` as of ${basis.asOf}` : ""} / (1 - ${formatRate(combined)}))`,
     value: Math.round(analysis.taxEquivalentYield * 10_000) / 10_000,
     unit: "%",
     export: exportPercent(formatFundYield(analysis.taxEquivalentYield), basis.asOf),
@@ -340,12 +384,12 @@ export function taxEquivalentLines(analysis: TaxEquivalentAnalysis): TaxEquivale
   const ratio = analysis.ratio;
   // The ratio is as old as the older of the two yields it divides.
   const ratioAsOf = ratio ? [basis.asOf, ratio.treasury.asOf].filter((day): day is string => !!day).sort()[0] ?? null : null;
-  const ratioText = ratio ? `${(ratio.value * 100).toFixed(1)}%` : null;
+  const ratioText = ratio ? formatMuniTreasuryRatio(ratio.value) : null;
   lines.push(ratio && ratioText
     ? {
       key: "muniTreasuryRatio",
       label: "Muni/Treasury ratio",
-      text: `${ratioText} (${basisShort(basis)} / ${ratio.treasury.tenor} Treasury ${formatFundYield(ratio.treasury.yield)}`
+      text: `${ratioText} (${basisShort(basis)} / ${ratio.treasury.tenor} Treasury ${formulaPercent(ratio.treasury.yield)}`
         + `${ratio.treasury.asOf ? ` on ${ratio.treasury.asOf}` : ""}, the tenor nearest its ${ratio.durationYears.toFixed(2)}-year duration)`,
       value: Math.round(ratio.value * 10_000) / 10_000,
       export: exportPercent(ratioText, ratioAsOf),

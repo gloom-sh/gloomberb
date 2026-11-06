@@ -26,7 +26,7 @@ import {
 import { reportedQuoteVolume } from "../../../../market-data/market/index-level";
 import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
 import type { OverviewDividendState } from "./dividend";
-import { NO_CURRENT_DIVIDEND } from "../../../../utils/forward-dividend";
+import { lapseValue } from "../../../../utils/forward-dividend";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../../../portfolio/position-metrics";
 import { listingDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../../../market-data/quotes/live-valuation";
 import { atRegularSessionPrice } from "../../../../market-data/quotes/regular-session-valuation";
@@ -52,9 +52,6 @@ const ADR_PAIR: OverviewFunctionLink = { name: "ADR vs Home", tabId: ADR_PAIR_TA
 
 /** A bond fund's sponsor figures in a narrow grid: `SEC Yield 4.04% 2026-10-15`. */
 const BOND_STAT_LABELS = { secYield: "SEC Yield", yieldToWorst: "Yld to Worst" } as const;
-
-/** What a forward yield reads for a monthly payer whose distribution history ends early (DividendLapse.historyEnds). */
-const HISTORY_ENDS = "history ends";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -278,7 +275,7 @@ export function buildOverviewStats({
   const notSec = bond ? { detail: ["not SEC yield", "not SEC"] } : {};
   if (fundamentals && lapse) {
     // A monthly payer's history that ends early (MUB's at 2026-09-01) says so, beside the last ex-date it holds.
-    stats.push({ label: `Fwd ${kind} Yld`, value: lapse.historyEnds ? HISTORY_ENDS : NO_CURRENT_DIVIDEND });
+    stats.push({ label: `Fwd ${kind} Yld`, value: lapseValue(lapse) });
   } else if (fundamentals && dividendYield != null && !dividend?.pending) {
     const basis = fundamentals.dividendYieldBasis;
     const label = basis === "forward" ? `Fwd ${kind} Yld` : basis === "trailing" ? `TTM ${kind} Yld` : `${kind} Yield`;

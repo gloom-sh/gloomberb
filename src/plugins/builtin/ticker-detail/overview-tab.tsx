@@ -208,7 +208,8 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   ].filter((part) => part.length > 0);
 
   // A US-listed fund's facts (fee, NAV, premium, net assets) stand where a company's fundamentals would; each opens ETF.
-  const fundFactsSymbol = resolveTickerInstrumentKind(ticker, financials) === "fund" && mayBeUsEquityOrFundTicker(ticker) ? ticker.metadata.ticker : null;
+  const instrumentKind = resolveTickerInstrumentKind(ticker, financials);
+  const fundFactsSymbol = instrumentKind === "fund" && mayBeUsEquityOrFundTicker(ticker) ? ticker.metadata.ticker : null;
   const fundFactsResource = useFundFacts(fundFactsSymbol);
   const fundFacts = fundFactsResource.data?.payload;
   // With --tax-rate: on the sponsor's SEC yield, else the distribution yield fundamentals states, as `fundamentals` reads it.
@@ -217,6 +218,8 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     tax,
     bond: !fundFactsSymbol ? null : fundFacts ? (fundFacts.covered ? fundFacts.bond ?? null : null)
       : fundFactsResource.loading ? undefined : null,
+    // A stock, or a fund listed abroad, has no bond figures to read, and says why once its quote says what it is.
+    noBondFigures: !financials?.quote ? null : instrumentKind !== "fund" ? "not-a-fund" : !fundFactsSymbol ? "listed-abroad" : null,
     distribution: distributionBasis(financials?.fundamentals?.dividendYield, financials?.fundamentals?.dividendYieldBasis === "trailing" ? "trailing" : "forward"),
   });
   const taxFields = taxEquivalent ? taxEquivalentFields(taxEquivalent) : [];

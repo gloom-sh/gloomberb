@@ -141,7 +141,7 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
       ? scenarioSpotBasis({}, { spot: market.spot!, legs: [] }, market) : null;
     const currency = position ? currencyLabel(position.currency) : null;
     const dividendNote = supplied(settings.dividendYield) ? null
-      : modelDividendYieldNote({ basis: market.dividendYieldBasis ?? "stated", lastPaid: market.dividendLastPaid });
+      : modelDividendYieldNote({ basis: market.dividendYieldBasis ?? "stated", lastPaid: market.dividendLastPaid, historyEnds: market.dividendHistoryEnds });
     // Value, P&L, risk and the grid add every contract; entry prices and spot are per share.
     const valueUnit = position ? scenarioValueUnit(position) : null;
     const per = `${currency} ${valueUnit}`;

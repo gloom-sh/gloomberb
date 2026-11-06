@@ -1,6 +1,6 @@
 import type { CorporateActionsData, Fundamentals } from "../types/financials";
 import { abortable, settleWithin } from "../utils/async-deadline";
-import { distributionHistory, forwardYieldMayHaveLapsed, lapsedDividend, lastPaidNote, NO_CURRENT_DIVIDEND } from "../utils/forward-dividend";
+import { distributionHistory, forwardYieldMayHaveLapsed, historyEndsText, lapsedDividend, lastPaidNote, NO_CURRENT_DIVIDEND } from "../utils/forward-dividend";
 
 /**
  * How long a distribution history must go without a dividend before it says a
@@ -29,6 +29,10 @@ const HISTORY_DEADLINE_MS = 5_000;
  *   paid 2026-02-27, whose stated 12.91% annualized a payment that did not
  *   recur. `lastPaid` dates it.
  *
+ * A monthly payer's history that ends (lapsedDividend's `historyEnds`) says
+ * nothing of whether it still pays: a stated yield stands, with `historyEnds`
+ * the last ex-date its history holds, and none stated stays unknown.
+ *
  * Null when none says: an unknown yield is never taken as 0.
  */
 export interface ModelDividendYield {
@@ -37,6 +41,8 @@ export interface ModelDividendYield {
   basis: "stated" | "none-paid" | "stopped";
   /** The last distribution's ex-date (YYYY-MM-DD) of a `stopped` dividend; null when unknown. */
   lastPaid?: string | null;
+  /** A `stated` yield's last ex-date (YYYY-MM-DD) in a monthly payer's history that ends there. */
+  historyEnds?: string | null;
 }
 
 /** What the yield is read from: the fundamentals' yield, its basis, and the ex-date of the distribution it annualizes. */
@@ -61,10 +67,16 @@ function paysNoDividend(actions: CorporateActionsData, now: number): boolean {
     && !(actions.declaredDividends ?? []).some((dividend) => recent(dividend.exDate));
 }
 
-/** 0, dated by the last distribution, when the current history shows the dividend dated `asOf` stopped (lapsedDividend). */
-function stoppedDividend(asOf: string | undefined, actions: CorporateActionsData, now: number): ModelDividendYield | null {
+/**
+ * 0, dated by the last distribution, when the current history shows the
+ * dividend dated `asOf` stopped (lapsedDividend); `stated`, with the day it
+ * ends, when a monthly payer's history ends; else `stated`.
+ */
+function checkedDividend(stated: ModelDividendYield | null, asOf: string | undefined, actions: CorporateActionsData, now: number): ModelDividendYield | null {
   const lapse = lapsedDividend(asOf, distributionHistory(actions, new Date(now)), new Date(now));
-  return lapse ? { value: 0, basis: "stopped", lastPaid: lapse.lastPaid } : null;
+  if (!lapse) return stated;
+  if (lapse.historyEnds) return stated ? { ...stated, historyEnds: lapse.lastPaid } : null;
+  return { value: 0, basis: "stopped", lastPaid: lapse.lastPaid };
 }
 
 interface DividendHistoryOptions {
@@ -96,9 +108,9 @@ export async function loadModelDividendYield(
   const read = await abortable(settleWithin(Promise.resolve().then(loadActions), timeoutMs), signal, "Dividend history read was cancelled");
   const actions = currentHistory(read, symbol) ? read : null;
   if (!actions) return statedYield;
-  if (statedYield) return stoppedDividend(stated?.exDividendDate, actions, now) ?? statedYield;
+  if (statedYield) return checkedDividend(statedYield, stated?.exDividendDate, actions, now);
   if (paysNoDividend(actions, now)) return { value: 0, basis: "none-paid" };
-  return stoppedDividend(stated?.exDividendDate, actions, now);
+  return checkedDividend(null, stated?.exDividendDate, actions, now);
 }
 
 /** What a yield the history shows none paid is, beside the 0%: `no dividend in the last 15 months`. */
@@ -107,9 +119,12 @@ const NO_DIVIDEND_PAID = "no dividend in the last 15 months";
 /**
  * What a yield read as 0 is, beside the 0%: `no dividend in the last 15
  * months`, or `no current dividend, last paid 2026-02-27` in the words every
- * pane reads a stopped dividend in. Null for a stated yield.
+ * pane reads a stopped dividend in; beside a stated yield whose monthly
+ * history ends, `distribution history ends 2026-09-01`. Null for any other
+ * stated yield.
  */
-export function modelDividendYieldNote(dividend: Pick<ModelDividendYield, "basis" | "lastPaid"> | null | undefined): string | null {
+export function modelDividendYieldNote(dividend: Pick<ModelDividendYield, "basis" | "lastPaid" | "historyEnds"> | null | undefined): string | null {
+  if (dividend?.basis === "stated" && dividend.historyEnds) return historyEndsText(dividend.historyEnds);
   if (dividend?.basis === "none-paid") return NO_DIVIDEND_PAID;
   if (dividend?.basis !== "stopped") return null;
   const lastPaid = lastPaidNote({ lastPaid: dividend.lastPaid ?? null });

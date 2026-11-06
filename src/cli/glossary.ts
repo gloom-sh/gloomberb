@@ -542,7 +542,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "Tax-equivalent yield", short: "TEY", aliases: ["tax equivalent yield", "taxable equivalent yield", "taxable-equivalent yield", "tax equivalent"],
     functions: ["DVD", "ETF", "DES"], shown: ["Tax-equivalent yield", "Tax-Equivalent Yield", "TEY", "Tax-Eq Yld"],
     definition: "The yield a taxable bond needs to match a tax-exempt muni fund after tax: yield / (1 - (federal rate + state rate)), on the SEC yield, "
-      + "else the distribution yield. At 40.8% (37% plus the 3.8% NIIT), MUB's 3.80% SEC yield of 2026-11-04 was 6.41%. A state rate counts only for a "
+      + "else the distribution yield. At 40.8% (37% plus the 3.8% NIIT), MUB's SEC yield of 3.7955% on 2026-11-04 was 6.41%. A state rate counts only for a "
       + "single-state fund of that state (CMF, VTEC for California). gloom fn DVD (one fund or a ranking of several), ETF, DES and fundamentals take "
       + "--tax-rate, --state-rate and --state.",
   },
@@ -564,7 +564,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "Alternative minimum tax", short: "AMT", aliases: ["alternative minimum tax", "private activity bond", "private activity bonds", "amt-free", "amt free"],
     functions: ["DVD", "ETF", "DES"],
     definition: "A parallel US federal income tax, with fewer deductions, that a taxpayer owes when it comes to more than the regular tax. Interest on "
-      + "private activity munis (airports, housing, hospitals) counts toward it, so an AMT payer owes tax on part of a fund that holds them; AMT-free "
+      + "private activity munis (airports, housing, student loans) counts toward it, so an AMT payer owes tax on part of a fund that holds them; AMT-free "
       + "muni funds hold none. The tax-equivalent yield treats a muni fund's income as wholly exempt, so for an AMT payer it overstates such a fund.",
   },
   // Index and sovereign CDS (CDX, SOVR), in the order CDX's columns run, then the trade terms behind them.

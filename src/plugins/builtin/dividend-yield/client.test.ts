@@ -64,6 +64,11 @@ describe("cash distribution calculations", () => {
     // Once the missing months are filled the fund is current, and its stated rate stands.
     const filled = buildDividendMetrics([...history, payment("2026-10-01", 0.3), payment("2026-11-02", 0.3)], summary, 100, { now: at });
     expect(filled).toMatchObject({ forwardRate: 3.6, forwardRateAsOf: "2026-11-02", lapse: null, lastExDividendDate: new Date("2026-11-02") });
+    // Silent more than 183 days, a monthly fund stopped paying (FXF, last paid 2024-04-01): no current dividend.
+    const fxf = buildDividendMetrics(["2024-01-02", "2024-02-01", "2024-03-01", "2024-04-01"].map((day) => payment(day, 0.3)),
+      { ...summary, forwardRateAsOf: "2024-04-01", exDividendDate: Date.parse("2024-04-01T00:00:00Z") / 1000 }, 100, { now: at });
+    expect(fxf).toMatchObject({ forwardRate: null, lapse: { lastPaid: "2024-04-01" } });
+    expect(fxf.lapse?.historyEnds).toBeUndefined();
   });
 
   test("a payout over zero or negative earnings is not meaningful, whatever the source states", () => {

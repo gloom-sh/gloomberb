@@ -272,7 +272,7 @@ import { liveCompanyQuestion } from "../company-name-hint";
 import { bareListingNote, listingFateNotes, loadNoQuoteLastTraded, noLongerTradingNote, noQuoteLastTraded, noQuoteLastTradeNote, SUCCESSOR_CHANGE_WAIT_MS, tradingListing, usVenueOf, type NoQuoteLastTrade } from "../../tickers/listing-fate";
 import { isYieldIndexSymbol } from "../../tickers/index-roots";
 import {
-  analyzeTaxEquivalent, distributionBasis, loadTreasuryTenors, parseTaxRates, TAX_RATE_HELP_OPTIONS, taxEquivalentJson, type TaxRates,
+  analyzeTaxEquivalent, distributionBasis, loadTreasuryTenors, noBondFigures, parseTaxRates, TAX_RATE_HELP_OPTIONS, taxEquivalentJson, type TaxRates,
 } from "../../market-data/tax-equivalent";
 import { CBOE_YIELD_INDEX_CLOSE } from "../../plugins/builtin/shared/treasury-cutoffs";
 import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote, undatedListingsNote } from "../earnings-calendar";
@@ -294,6 +294,7 @@ import { phraseSearchReport } from "./search";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol, isRoundTheClockCoin } from "../../utils/crypto-pair";
 import { isUsListingExchange } from "../../utils/exchanges";
+import { resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
 import {
   describeFormerIssuer, describeTickerChange, movedAwayChange, startTickerChangeLookup, tickerChangeLine, type FormerIssuer, type TickerChange,
 } from "../../tickers/ticker-changes";
@@ -2240,9 +2241,8 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     const distributions = view === "statements" ? null : loadDividendDistributions(
       market.dataProvider, listing.request, financials, { declared: ctx.cliOptions.format !== "json" });
     // A fund's facts: its bond figures beside its distribution yield, and whether fn ETF has any to point to.
-    const fundFacts = view === "statements" ? null : loadReportFundFacts(listing.request.symbol,
-      financials.quote?.tradingExchangeName || listing.request.exchange || financials.quote?.listingExchangeName || financials.quote?.exchangeName,
-      financials, listing.saved);
+    const fundVenue = financials.quote?.tradingExchangeName || listing.request.exchange || financials.quote?.listingExchangeName || financials.quote?.exchangeName;
+    const fundFacts = view === "statements" ? null : loadReportFundFacts(listing.request.symbol, fundVenue, financials, listing.saved);
     const treasury = rates ? loadTreasuryTenors() : null;
     const identity = listingIdentity(listing, financials.quote);
     const choice = await listingChoiceNotes(listing, market, financials.quote, venues);
@@ -2274,6 +2274,9 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       // On the SEC yield when the sponsor publishes one, else the distribution yield the line above shows.
       const taxEquivalent = rates ? analyzeTaxEquivalent({
         symbol: identity.symbol || listing.key, bond, rates, treasury: await treasury,
+        // A stock, or a fund listed abroad, says why it has no bond figures rather than that none are loaded,
+        // once its quote says what it is.
+        noBondFigures: financials.quote ? noBondFigures(resolveTickerInstrumentKind(listing.saved, financials), fundVenue) : null,
         distribution: distributionBasis(priced.fundamentals?.dividendYield, priced.fundamentals?.dividendYieldBasis === "trailing" ? "trailing" : "forward"),
       }) : null;
       const report = { ...data, distributions: await distributions, statementFilings, bank: bank.bank, bankNote: bank.note, bondFund: bond, fundFacts: facts, taxEquivalent,

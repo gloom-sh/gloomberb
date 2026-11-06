@@ -451,8 +451,8 @@ test("ETF with --tax-rate adds the tax-equivalent section DVD and fundamentals s
   const section = result.sections.find((entry) => entry.title === "Tax-equivalent yield")!;
   expect(section.textEntries!.map((entry) => entry.formatted)).toEqual([
     "40.8% (federal; no state rate given)",
-    "6.41% (30-day SEC yield 3.80% as of 2026-11-04 / (1 - 40.8%))",
-    "80.8% (SEC yield 3.80% / 7Y Treasury 4.70% on 2026-11-05, the tenor nearest its 7.15-year duration)",
+    "6.41% (30-day SEC yield 3.7955% as of 2026-11-04 / (1 - 40.8%))",
+    "80.8% (SEC yield 3.7955% / 7Y Treasury 4.70% on 2026-11-05, the tenor nearest its 7.15-year duration)",
   ]);
   expect(section.entries!.find((entry) => entry.label === "Tax-equivalent yield")).toMatchObject({ formatted: "6.41%", exportUnit: "pct", asOf: "2026-11-04" });
   expect(result.metadata).toMatchObject({ taxEquivalent: { combinedRate: 40.8, muniTreasuryRatio: { tenor: "7Y", seriesId: "DGS7" } } });
@@ -464,4 +464,15 @@ test("ETF with --tax-rate adds the tax-equivalent section DVD and fundamentals s
   expect((await hyd.load(fundArgs("HYD"), createTestHeadlessContext())).sections.map((entry) => entry.title)).toEqual(["Fund facts", "Fund filings"]);
   await expect(hyd.load({ ...fundArgs("HYD"), options: { limit: 50, "tax-rate": "40.8", "state-rate": "9" } }, createTestHeadlessContext()))
     .rejects.toThrow("--state-rate and --state go together");
+
+  // A stock is not a fund, and a fund listed abroad is not a US fund: each says so, never that its figures are not loaded.
+  const taxLine = (result: Awaited<ReturnType<typeof hyd.load>>) =>
+    result.sections.find((entry) => entry.title === "Tax-equivalent yield")?.textEntries?.[1]?.formatted;
+  const ko = createFundHeadless({ loadFacts: async () => ({ ...SPY_FACTS, ticker: "KO", covered: false, status: "not-a-fund" }), loadFilings: async () => [],
+    loadTreasury: async () => null });
+  expect(taxLine(await ko.load({ ...fundArgs("KO"), options: { limit: 50, "tax-rate": "40.8" } }, createTestHeadlessContext())))
+    .toBe("no tax-equivalent yield: KO is not a fund");
+  const abroad = createFundHeadless({ loadFacts: async () => SPY_FACTS, loadFilings: async () => [], loadAbroadProfile: async () => null });
+  expect(taxLine(await abroad.load({ ...fundArgs("VUSA:LSE"), options: { limit: 50, "tax-rate": "40.8" } }, createTestHeadlessContext())))
+    .toBe("no tax-equivalent yield: --tax-rate does not apply to VUSA:LSE, a fund listed outside the US");
 });

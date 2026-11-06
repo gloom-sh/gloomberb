@@ -5,14 +5,18 @@ import { formatDividendYield, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, trail
 import type { FundBondFacts } from "../../../api-client/fund-facts";
 import { NOT_SEC_YIELD } from "../../../market-data/bond-funds";
 import { historyEndsText } from "../../../utils/forward-dividend";
-import { analyzeTaxEquivalent, distributionBasis, type TaxEquivalentAnalysis, type TaxRates, type TreasuryTenor } from "../../../market-data/tax-equivalent";
+import {
+  analyzeTaxEquivalent, distributionBasis, formatMuniTreasuryRatio, type NoBondFigures, type TaxEquivalentAnalysis, type TaxRates, type TreasuryTenor,
+} from "../../../market-data/tax-equivalent";
 
 /**
  * One symbol of `fn DVD A B C`: what DVD read for it, or why it read nothing.
- * A bond fund's facts give its SEC yield, which its cash yields are not.
+ * A bond fund's facts give its SEC yield, which its cash yields are not; a
+ * listing that has none says why (`noBondFigures`), and a check of them that
+ * failed says so (`bondError`), which leaves a `--tax-rate` ranking partial.
  */
 export type DividendRankingEntry =
-  | { symbol: string; data: DividendData; bond?: FundBondFacts | null }
+  | { symbol: string; data: DividendData; bond?: FundBondFacts | null; noBondFigures?: NoBondFigures; bondError?: string }
   | { symbol: string; error: string };
 
 const isoDay = (date: Date | null | undefined): string | null => date ? date.toISOString().slice(0, 10) : null;
@@ -63,9 +67,10 @@ function yieldBasis(entry: DividendRankingEntry): string | null {
 }
 
 /** What a row is missing, in full, for the report's errors; null for a whole read. */
-function incompleteReason(entry: DividendRankingEntry): string | null {
+function incompleteReason(entry: DividendRankingEntry, tax = false): string | null {
   if ("error" in entry) return entry.error;
-  const reasons = [entry.data.historyError, entry.data.summaryError].filter((reason): reason is string => !!reason);
+  // With --tax-rate a failed bond facts check leaves the row's tax figures unknown, as it does single-ticker DVD's.
+  const reasons = [entry.data.historyError, entry.data.summaryError, tax ? entry.bondError : null].filter((reason): reason is string => !!reason);
   return reasons.length > 0 ? reasons.join(" ") : null;
 }
 
@@ -92,13 +97,16 @@ function rankingTaxAnalysis(entry: DividendRankingEntry, tax: RankingTaxOptions)
   return analyzeTaxEquivalent({
     symbol: entry.symbol.toUpperCase(), bond: entry.bond ?? null, rates: tax.rates, treasury: tax.treasury,
     distribution: forward ?? distributionBasis(metrics.trailingYield, "trailing"),
+    ...entry.bondError ? { checkError: entry.bondError } : {}, noBondFigures: entry.noBondFigures ?? null,
   });
 }
 
 /** Why a row has no tax-equivalent yield, or what it is on when not the SEC yield, in a few words. */
 function taxNote(analysis: TaxEquivalentAnalysis | null, entry: DividendRankingEntry): string | null {
-  if (!analysis) return "error" in entry ? "not read" : null;
-  if (!("data" in entry) || !entry.bond) return "no sponsor bond figures";
+  if (!analysis || !("data" in entry)) return "error" in entry ? "not read" : null;
+  if (entry.bondError) return "bond facts check failed";
+  if (entry.noBondFigures) return entry.noBondFigures === "not-a-fund" ? "not a fund" : "fund listed outside the US";
+  if (!entry.bond) return "no sponsor bond figures";
   if (entry.bond.kind !== "municipal") return "taxable fund";
   if (analysis.taxEquivalentYield == null) return "no yield";
   const notes = [analysis.basis?.kind === "distribution" ? "on distribution yield" : null, analysis.ratio ? null : "no duration for a ratio"];
@@ -227,7 +235,9 @@ const TAX_COLUMNS: HeadlessPaneColumn[] = [
     description: "A bond fund's duration in years as its sponsor publishes it (durationAsOf dates it)." },
   { key: "taxEquivalentYield", header: "TEY", align: "right", format: ratio,
     description: "A muni fund's tax-equivalent yield at --tax-rate: its SEC yield (else its distribution yield) / (1 - the rate). Blank for a taxable fund." },
-  { key: "muniTreasuryRatio", header: "Muni/Tsy", align: "right", format: ratio,
+  // To one decimal, as single-ticker DVD and DES draw it.
+  { key: "muniTreasuryRatio", header: "Muni/Tsy", align: "right",
+    format: (value) => typeof value === "number" && Number.isFinite(value) ? formatMuniTreasuryRatio(value) : "—",
     description: "A muni fund's yield over the Treasury par yield at the tenor nearest its duration (treasuryTenor)." },
   { key: "treasuryTenor", header: "Tenor", format: day, shrink: false, stackPriority: 4,
     description: "The Treasury tenor the muni/Treasury ratio divides by." },
@@ -235,7 +245,7 @@ const TAX_COLUMNS: HeadlessPaneColumn[] = [
 
 /** Shown with `--tax-rate` once a row has no tax-equivalent yield, or one on its distribution yield. */
 const TAX_NOTE_COLUMN: HeadlessPaneColumn = { key: "taxNote", header: "Tax note", format: (value) => typeof value === "string" ? value : "",
-  description: "Why a row has no tax-equivalent yield (a taxable fund, no sponsor bond figures), or what it is on when not the SEC yield." };
+  description: "Why a row has no tax-equivalent yield (a taxable fund, not a fund, a fund listed outside the US, no sponsor bond figures, or a bond facts check that failed), or what it is on when not the SEC yield." };
 
 /** The ranking's columns: a bond fund's SEC yield after the forward yield once one is ranked, and with `--tax-rate` its tax columns after it. */
 function rankingColumns(bonds: boolean, tax = false): HeadlessPaneColumn[] {
@@ -258,7 +268,7 @@ export function projectDividendRanking(entries: readonly DividendRankingEntry[],
   const bonds = !!tax || entries.some(isBondEntry);
   // A failed read, or one without its cash history or summary, is as incomplete as single-ticker DVD says it is.
   const incomplete = entries.flatMap((entry) => {
-    const reason = incompleteReason(entry);
+    const reason = incompleteReason(entry, !!tax);
     return reason ? [{ symbol: entry.symbol, reason }] : [];
   });
   return {
@@ -269,7 +279,7 @@ export function projectDividendRanking(entries: readonly DividendRankingEntry[],
     } : {}),
     sections: [{
       title: `Ranked by trailing yield; payout is over TTM diluted EPS${bonds ? `; a bond fund's yields are distribution yields, ${NOT_SEC_YIELD}` : ""}`,
-      columns: [...rankingColumns(bonds, !!tax), ...incomplete.length > 0 ? [NOTE_COLUMN] : [], ...rows.some((row) => row.yieldBasis) ? [YIELD_BASIS_COLUMN] : [],
+      columns: [...rankingColumns(bonds, !!tax), ...rows.some((row) => row.note) ? [NOTE_COLUMN] : [], ...rows.some((row) => row.yieldBasis) ? [YIELD_BASIS_COLUMN] : [],
         ...tax && rows.some((row) => row.taxNote) ? [TAX_NOTE_COLUMN] : []],
       rows,
       // Every figure is a percent; each exported row names its ticker and the time of the price its yields are over.
