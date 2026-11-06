@@ -117,10 +117,14 @@ test("a symbol nothing quotes is refused and nothing is stored, with the nearest
 });
 
 test("a price alert says what delivers it, and the app is the one thing that always does", async () => {
+  // After the close, when the fixture's after-hours quote is current: before the next open it reads as stale,
+  // and an alert added on a stale quote has no venue to name yet.
+  setSystemTime(new Date("2026-11-05T22:00:00Z"));
   const { printed, stored } = await addAlert(["AAPL", "above", "250"]);
   expect(stored).toHaveLength(1);
   const text = printed!.options!.text!(printed!.result.data);
-  expect(text).toContain("AAPL above 250.00 (the app alerts while it is running;");
+  // The listing with its venue, as every alert message names it.
+  expect(text).toContain("AAPL:NASDAQ above 250.00 (the app alerts while it is running;");
   // Signed in, Cloud emails or pushes it only once the app has been closed for a while: never promised to everyone.
   expect(text).toContain("sign in with Cloud sync for email or phone alerts when it is closed");
 });
