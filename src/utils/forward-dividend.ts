@@ -204,7 +204,7 @@ export function forwardYieldMayHaveLapsed(
 }
 
 /** Past this many days a monthly payer's next distribution would have gone ex: a history without it ends early. */
-export const MONTHLY_HISTORY_END_DAYS = 40;
+const MONTHLY_HISTORY_END_DAYS = 40;
 
 /**
  * The last ex-date of a monthly payer's history that stops more than 40 days

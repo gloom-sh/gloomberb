@@ -85,7 +85,7 @@ export interface RankingTaxOptions {
 }
 
 /** A row's tax-equivalent yield and muni/Treasury ratio, on its SEC yield or else its distribution yield, as single-fund DVD reads them. */
-export function rankingTaxAnalysis(entry: DividendRankingEntry, tax: RankingTaxOptions): TaxEquivalentAnalysis | null {
+function rankingTaxAnalysis(entry: DividendRankingEntry, tax: RankingTaxOptions): TaxEquivalentAnalysis | null {
   if (!("data" in entry)) return null;
   const metrics = entry.data.metrics;
   const forward = metrics.lapse ? null : distributionBasis(metrics.forwardYield, "forward", metrics.forwardRateAsOf ?? null);
