@@ -45,6 +45,10 @@ function paymentColumns(converted: boolean, subUnit?: string) {
   ];
 }
 
+/** Last, once a fund's sponsor gave a row its history lacks: who published each row so given. */
+const SOURCE_COLUMN = { key: "source", header: "Source",
+  format: (value: unknown) => typeof value === "string" ? value : "" };
+
 /** After the amount, for a company declaring in another currency than the listing pays: what it declared. */
 const DECLARED_COLUMN = { key: "declared", header: "Declared", align: "right" as const,
   format: (value: unknown, row: Record<string, unknown>) => typeof value === "number" && typeof row.declaredCurrency === "string"
@@ -186,14 +190,18 @@ export function projectDividendYieldHeadless(
       declarationDate: payment?.declarationDate?.toISOString() ?? null,
       type: payment?.type ?? null,
       ...(row.declared ? { declared: row.declared.amount, declaredCurrency: row.declared.currency } : {}),
+      ...(payment?.source ? { source: payment.source.publisher, sourceUrl: payment.source.url } : {}),
     };
   });
   // A listing paid in another currency than its company declares (South32's rand) has its amounts converted from that one.
   const convertedFrom = data.convertedFrom;
   const subUnit = data.convertedSubUnit;
   const paymentColumnList = paymentColumns(!!convertedFrom, subUnit);
-  const declaredColumns = rows.some((row) => row.declared)
-    ? [...paymentColumnList.slice(0, 2), DECLARED_COLUMN, ...paymentColumnList.slice(2)] : paymentColumnList;
+  const historyColumns = [
+    ...(rows.some((row) => row.declared)
+      ? [...paymentColumnList.slice(0, 2), DECLARED_COLUMN, ...paymentColumnList.slice(2)] : paymentColumnList),
+    ...(rows.some((row) => row.source) ? [SOURCE_COLUMN] : []),
+  ];
   const metrics = data.metrics;
   const currency = data.currency ?? data.payments[0]?.currency ?? "";
   const cashRate = (value: number | null) => !currency ? "—" : !convertedFrom ? formatDistributionAmount(value ?? undefined, currency)
@@ -283,7 +291,7 @@ export function projectDividendYieldHeadless(
       ...(tax ? [taxEquivalentSection(tax)] : []),
       {
         title: convertedFrom ? `Dividend history (amounts ${convertedFromText(convertedFrom)})` : "Dividend history",
-        columns: declaredColumns,
+        columns: historyColumns,
         rows,
         // Each amount is in its own row's currency.
         rowUnitKey: "currency",

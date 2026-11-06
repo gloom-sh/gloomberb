@@ -11,6 +11,8 @@ export interface DividendPayment {
   type: "cash" | "special" | "stock" | "unknown";
   /** The amount as the company declared it, in another currency than `currency` (BP's dollars beside the pence its London line paid). */
   declared?: { amount: number; currency: string };
+  /** Who published it when not the listing's history: the fund's sponsor (DividendAction.source). */
+  source?: { publisher: string; url: string };
 }
 
 /** A short year a growth figure would compare: its payments, and the day it ends (absent for the trailing year). */
