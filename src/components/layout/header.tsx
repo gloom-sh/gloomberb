@@ -7,6 +7,7 @@ import {
   useActionShortcut,
   useCommandBarShortcut,
   useRendererHost,
+  useShortcutLabel,
   useUiCapabilities,
   type InputRenderable,
 } from "../../ui";
@@ -17,6 +18,7 @@ import {
   commandBarPanelBg,
   commandBarSubtleText,
   commandBarText,
+  placeholderText,
 } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { NATIVE_COMMAND_SURFACE, nativeCommandSurfaceBorder } from "../command-bar/panel/native-surface";
@@ -38,6 +40,7 @@ import { useWindowFullscreen } from "./window-fullscreen";
 import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-controls";
 import { Button, terminalButtonColumns } from "../ui/button";
 import { DelayedMark, delayedMarkWidth } from "../ui/delayed-mark";
+import { KeyHints, keyHintsText } from "../ui/key-hints";
 
 const UPDATE_NOTICE_DURATION_MS = 5_000;
 /** Kept clear after the terminal update status, so its last character never touches the Help pill. */
@@ -78,6 +81,8 @@ function resolveHeaderPromptContent(width: number, shortcutLabel: string): {
 const PROMPT_CARET = "> ";
 /** Room for a pasted list of a few thousand symbols. */
 const COMMAND_BAR_MAX_LENGTH = 20_000;
+/** Cells kept clear between what the open prompt shows and the keys it names at its end. */
+const PROMPT_HINT_GAP = 2;
 
 /**
  * The topbar's own fill in the terminal. The prompt used to be the only thing
@@ -156,10 +161,16 @@ function HeaderPromptInput({
   width: number;
 }) {
   const colors = useThemeColors();
+  const formatKey = useShortcutLabel();
   const inputRef = useRef<InputRenderable | null>(null);
-  const { ghostSuffix, onQueryChange, placeholder, query, screenKey } = binding;
+  const { ghostSuffix, keyHints, onQueryChange, placeholder, query, screenKey } = binding;
   const textColor = commandBarText(colors);
   const subtleColor = commandBarSubtleText(colors);
+  // The placeholder role, lifted for the command surface this input sits on.
+  const placeholderColor = placeholderText(colors, nativePaneChrome ? commandBarPanelBg(colors) : commandBarBg(colors));
+  // What the field already shows, which the keys at its end must stay clear of.
+  const shownColumns = query ? displayWidth(query) + displayWidth(ghostSuffix ?? "") : displayWidth(placeholder);
+  const hintColumns = keyHints ? displayWidth(keyHintsText(keyHints, formatKey)) : 0;
 
   // The buffer is the source of truth while typing; only an outside change,
   // such as Ctrl+U or a popped route restoring its query, has to be written back.
@@ -198,7 +209,7 @@ function HeaderPromptInput({
         focusedBackgroundColor="transparent"
         textColor={textColor}
         focusedTextColor={textColor}
-        placeholderColor={subtleColor}
+        placeholderColor={placeholderColor}
         cursorColor={colors.textBright}
       />
       {ghostSuffix && (nativePaneChrome ? (
@@ -212,6 +223,28 @@ function HeaderPromptInput({
           <Text fg={subtleColor}>{truncateToDisplayWidth(ghostSuffix, Math.max(0, width - ghostLeft))}</Text>
         </Box>
       ))}
+      {keyHints && (nativePaneChrome ? (
+        // At the field's end, in the room the typed text leaves: the row wraps
+        // and hides its second line, so keys with too little room go whole.
+        <Box
+          position="absolute"
+          top={0}
+          height={1}
+          flexDirection="row"
+          alignItems="center"
+          justifyContent="flex-end"
+          overflow="hidden"
+          data-gloom-role="command-bar-key-hints"
+          style={{ left: `${shownColumns + PROMPT_HINT_GAP}ch`, right: 0, flexWrap: "wrap", alignContent: "flex-start", pointerEvents: "none" }}
+        >
+          <Box width={0} height={1} />
+          <KeyHints keys={keyHints} color={placeholderColor} />
+        </Box>
+      ) : shownColumns + PROMPT_HINT_GAP + hintColumns <= width ? (
+        <Box position="absolute" top={0} left={width - hintColumns} width={hintColumns} height={1}>
+          <KeyHints keys={keyHints} color={placeholderColor} />
+        </Box>
+      ) : null)}
     </Box>
   );
 }
@@ -244,10 +277,10 @@ function HeaderCommandPrompt({
   const caretColor = open
     ? commandBarText(colors)
     : nativePaneChrome ? colors.text : blendHex(colors.headerText, colors.header, 0.15);
-  const mutedColor = nativePaneChrome ? colors.textDim : blendHex(colors.headerText, colors.header, 0.42);
-  // Dimmer than the placeholder it trails: the label is what names the control,
-  // the binding is a footnote to it.
-  const shortcutColor = nativePaneChrome ? colors.textMuted : blendHex(colors.headerText, colors.header, 0.62);
+  // Every field's placeholder colour, lifted only as far as the header needs to
+  // keep it as readable there. The key after it is in the same quiet colour: a
+  // keycap on the desktop, as the open prompt's keys and Help's are.
+  const mutedColor = placeholderText(colors, nativePaneChrome ? colors.header : idleBg);
   // Desktop hover lifts the prompt off the header itself, which is the only
   // thing telling the pointer this text is a control. The terminal has no
   // chrome, so it lifts off the strip fill the whole row already wears.
@@ -293,16 +326,21 @@ function HeaderCommandPrompt({
           flexGrow={1}
           flexShrink={1}
           minWidth={0}
+          alignItems="center"
           overflow="hidden"
           style={{ flexWrap: "wrap", alignContent: "flex-start" }}
         >
           <Text fg={mutedColor}>{placeholder}</Text>
-          {shortcut ? <Text fg={shortcutColor}>{`  ${shortcut}`}</Text> : null}
+          {shortcut ? (
+            <Box flexShrink={0} style={{ marginLeft: "var(--gloom-space-sm)" }}>
+              <KeyHints keys={[{ key: shortcut, label: "" }]} color={mutedColor} />
+            </Box>
+          ) : null}
         </Box>
       ) : (
         <>
           <Text fg={mutedColor}>{placeholder}</Text>
-          {shortcut ? <Text fg={shortcutColor}>{`  ${shortcut}`}</Text> : null}
+          {shortcut ? <Text fg={mutedColor}>{`  ${shortcut}`}</Text> : null}
           <Box flexGrow={1} minWidth={0} />
         </>
       )}

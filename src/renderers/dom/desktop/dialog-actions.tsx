@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 import type { CSSProperties } from "react";
 import type { DialogActionsProps, DialogHintsProps } from "../../../components/ui/dialog-actions";
+import type { KeyHintsProps } from "../../../components/ui/key-hints";
 import { t } from "../../../i18n";
 import { useThemeColors } from "../../../theme/theme-context";
 import { formatShortcutForHost, keyNotationFor } from "../../../app/keybindings/labels";
@@ -49,7 +50,7 @@ export function WebKeycap({ keyName, fg, style }: { keyName: string; fg?: string
 }
 
 /** Keycap and word pairs, then a quiet note: what a dialog says once its buttons carry their keys. */
-export function WebKeyHints({ keys = [], note, style }: DialogHintsProps & { style?: CSSProperties }) {
+export function WebKeyHints({ keys = [], note, style, keyColor }: DialogHintsProps & { style?: CSSProperties; keyColor?: string }) {
   const colors = useThemeColors();
   if (keys.length === 0 && !note) return null;
   return (
@@ -73,13 +74,21 @@ export function WebKeyHints({ keys = [], note, style }: DialogHintsProps & { sty
           className="gloom-key-hint"
           style={{ display: "inline-flex", alignItems: "center", gap: "var(--gloom-space-xs)", whiteSpace: "nowrap" }}
         >
-          <WebKeycap keyName={hint.key} fg={colors.textDim} />
-          <span>{t(hint.label)}</span>
+          <WebKeycap keyName={hint.key} fg={keyColor ?? colors.textDim} />
+          {hint.label ? <span>{t(hint.label)}</span> : null}
         </span>
       ))}
       {note ? <span style={{ fontVariantNumeric: "tabular-nums" }}>{t(note)}</span> : null}
     </div>
   );
+}
+
+/**
+ * The kit's KeyHints: the same keycaps and words, kept on one line. `color`
+ * sets the keys and the words for hints on a surface of their own.
+ */
+export function WebKeyHintsLine({ keys, color }: KeyHintsProps) {
+  return <WebKeyHints keys={keys} keyColor={color} style={{ flexWrap: "nowrap", ...(color ? { color } : {}) }} />;
 }
 
 /**

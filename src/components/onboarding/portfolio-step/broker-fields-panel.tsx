@@ -76,7 +76,6 @@ export function BrokerFieldsPanel({
                     focused
                     backgroundColor={colors.panel}
                     textColor={colors.text}
-                    placeholderColor={colors.textDim}
                     onChange={(nextValue) => onBrokerFieldChange(selectedBrokerId, field.key, nextValue)}
                     onSubmit={() => onSubmitBrokerField?.()}
                   />
