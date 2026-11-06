@@ -42,6 +42,8 @@ test("a confirmed date beats an estimated one, whichever source has it", async (
   const estimated = event("JPM", "2027-01-20T12:30:00Z", { isDateEstimate: true });
   expect(resolveEarningsActions([confirmed], estimated, TODAY)).toEqual([confirmed]);
   expect(upcomingReportDate(resolveCalendarEvent(estimated, [confirmed], TODAY))).toBe("2027-01-13");
+  // A time announced for the calendar's date is not said of the record's other date.
+  expect(resolveCalendarEvent({ ...estimated, releaseAt: "2027-01-20T12:30:00Z" }, [confirmed], TODAY).releaseAt ?? null).toBeNull();
   // `earnings`, OSA and the LEAPS column read the record for a date the calendar has not confirmed, and only then.
   const read: string[] = [];
   const provider = {
