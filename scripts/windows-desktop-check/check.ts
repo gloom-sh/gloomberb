@@ -499,12 +499,6 @@ const PAGE_HELPER = String.raw`(() => {
         pick("[data-gloom-role=pane-header] [data-gloom-role=icon-button][title]", "a pane header button"),
       ].filter(Boolean);
     },
-    /** The page's own tooltips on screen, with what they say. */
-    tooltips() {
-      return [...document.querySelectorAll("[role=tooltip]")]
-        .map((el) => ({ text: (el.textContent || "").trim(), rect: rect(el) }))
-        .filter((entry) => entry.text && entry.rect.width > 0 && entry.rect.height > 0);
-    },
     /** A bare point on a pane's header bar, or its title. */
     paneHeaderPoint(id) {
       const pane = q('[data-gloom-role=pane-window][data-gloom-pane-id="' + id + '"]');
@@ -522,8 +516,8 @@ const PAGE_HELPER = String.raw`(() => {
 interface PaneLayout { id: string; floating: boolean; rect: CssRect; title: CssRect | null; resize: CssRect | null }
 /** Something on the page with a title, as `titled` finds it: the point to rest the pointer on, in CSS pixels. */
 interface TitledTarget { what: string; title: string; x: number; y: number; rect: CssRect }
-/** A tooltip on screen: a window of its own (`hwnd`), or the page's. */
-interface FoundTooltip { rect: Rect; source: string; hwnd: number | null }
+/** A tooltip on screen: the window it shows in. */
+interface FoundTooltip { hwnd: number; rect: Rect; source: string }
 interface CssRect { x: number; y: number; width: number; height: number }
 interface PageLayout {
   innerWidth: number; innerHeight: number; dpr: number; visibility: string;
@@ -2407,10 +2401,10 @@ class Run {
 
   /**
    * Rests the pointer on things in the main window that carry a title, as a
-   * person waits for a tooltip, and reads what comes up: the window the
-   * browser engine opens at the pointer, or the page's own tooltip. It has
-   * to show its text, readable: a box with nothing in it fails, as a blank
-   * window does. On a fresh app in the theme a new install opens with.
+   * person waits for a tooltip, and reads the window the browser engine opens
+   * for it at the pointer. It has to show its text, readable: a box with
+   * nothing in it fails, as a blank window does. On a fresh app in the theme
+   * a new install opens with.
    */
   async tooltipSteps(): Promise<void> {
     const main = this.main;
@@ -2447,11 +2441,10 @@ class Run {
     await sleep(80);
     win.moveMouse(point);
     const hovered = Date.now();
-    const look = async () => this.nativeTooltip(before, point) ?? await this.pageTooltip(window);
-    let found = await look();
+    let found = this.tooltipWindow(before, point);
     while (!found && Date.now() - hovered < 4_000) {
       await sleep(150);
-      found = await look();
+      found = this.tooltipWindow(before, point);
     }
     const targetTopLeft = this.toScreen(window, { x: target.rect.x, y: target.rect.y });
     const targetBottomRight = this.toScreen(window, { x: target.rect.x + target.rect.width, y: target.rect.y + target.rect.height });
@@ -2467,19 +2460,21 @@ class Run {
     const shown = Date.now();
     while ((ink.ink < TOOLTIP_MIN_INK || ink.contrast < TOOLTIP_MIN_CONTRAST) && Date.now() - shown < 1_500) {
       await sleep(250);
-      const now = await look();
+      const now = this.tooltipWindow(before, point);
       if (!now) break;
       tip = now;
       ink = tooltipInk(win.captureScreen(tip.rect));
     }
     const around = {
-      left: Math.min(targetTopLeft.x, tip.rect.left) - 40, top: Math.min(targetTopLeft.y, tip.rect.top) - 30,
-      right: Math.max(targetBottomRight.x, tip.rect.right) + 40, bottom: Math.max(targetBottomRight.y, tip.rect.bottom) + 30,
+      left: Math.min(targetTopLeft.x, tip.rect.left) - 160, top: Math.min(targetTopLeft.y, tip.rect.top) - 80,
+      right: Math.max(targetBottomRight.x, tip.rect.right) + 160, bottom: Math.max(targetBottomRight.y, tip.rect.bottom) + 80,
     };
     const shot = this.shots.take("tooltip", around);
     if (shot) shots.push(shot);
     const readable = ink.ink >= TOOLTIP_MIN_INK && ink.contrast >= TOOLTIP_MIN_CONTRAST;
-    const windowDetail = tip.hwnd && win.isWindow(tip.hwnd)
+    // How the window is drawn, to tell a cause apart: WS_EX_NOREDIRECTIONBITMAP
+    // (0x00200000) leaves it nothing to show but what DirectComposition puts there.
+    const windowDetail = win.isWindow(tip.hwnd)
       ? `, style ${win.windowStyle(tip.hwnd).value} ex ${win.windowExStyle(tip.hwnd)}, ${win.windowDpi(tip.hwnd).dpi} dpi, children ${win.childWindows(tip.hwnd).map((child) => child.className).join(" ") || "none"}`
       : "";
     return {
@@ -2488,8 +2483,11 @@ class Run {
     };
   }
 
-  /** A window that opened at the pointer since `before`, the size of a tooltip: how the browser engine shows a title. */
-  nativeTooltip(before: Set<number>, point: Point): FoundTooltip | null {
+  /**
+   * A window that opened at the pointer since `before`, the size of a
+   * tooltip: how the browser engine, Chromium or WebView2, shows a title.
+   */
+  tooltipWindow(before: Set<number>, point: Point): FoundTooltip | null {
     for (const info of win.topLevelWindows()) {
       if (!info.visible || before.has(info.hwnd) || info.className === "BasicWindowClass") continue;
       const rect = win.visibleRect(info.hwnd);
@@ -2497,19 +2495,9 @@ class Run {
       if (width < 8 || height < 8 || width > 1600 || height > 400) continue;
       // Below and right of the pointer, or above it near the bottom of the screen.
       if (rect.left > point.x + 100 || rect.right < point.x - 100 || rect.top > point.y + 100 || rect.bottom < point.y - 140) continue;
-      return { rect, source: `a ${info.className} window${info.title ? ` "${info.title}"` : ""}`, hwnd: info.hwnd };
+      return { hwnd: info.hwnd, rect, source: `a ${info.className} window${info.title ? ` "${info.title}"` : ""}` };
     }
     return null;
-  }
-
-  /** The page's own tooltip, when it draws one. */
-  async pageTooltip(window: AppWindow): Promise<FoundTooltip | null> {
-    const tips = await evaluate<Array<{ text: string; rect: CssRect }>>(window.page.cdp, "window.__winCheck.tooltips()", 3_000).catch(() => []);
-    const tip = tips[0];
-    if (!tip) return null;
-    const topLeft = this.toScreen(window, { x: tip.rect.x, y: tip.rect.y });
-    const bottomRight = this.toScreen(window, { x: tip.rect.x + tip.rect.width, y: tip.rect.y + tip.rect.height });
-    return { rect: { left: topLeft.x, top: topLeft.y, right: bottomRight.x, bottom: bottomRight.y }, source: `the page's tooltip ${JSON.stringify(tip.text.slice(0, 40))}`, hwnd: null };
   }
 
   /**
