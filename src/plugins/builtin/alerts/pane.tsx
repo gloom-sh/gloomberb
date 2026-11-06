@@ -32,6 +32,7 @@ import {
   serializeAlerts,
 } from "./alert-engine";
 import { parseAlertEdit } from "./command";
+import { MOVE_CHECKS_KEY, readMoveChecks, withMoveChecks } from "./move-checks";
 import { ALERT_TABS, ALERTS_KEY } from "./constants";
 import {
   alertListing,
@@ -167,6 +168,9 @@ export function AlertsPane(props: PaneProps) {
   );
 }
 
+/** No readings yet, one object for every render: a fresh `{}` each time would read as a change. */
+const NO_MOVE_CHECKS = {};
+
 function PriceAlertsPane({ focused, width, height }: PaneProps) {
   const [alertsJson, setAlertsJson] = usePluginConfigState<unknown>(ALERTS_KEY, "[]");
   const [metricsJson, setMetricsJson] = usePluginConfigState<unknown>(METRIC_ALERTS_KEY, "[]");
@@ -175,6 +179,8 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   const { openPluginCommandWorkflow, notify } = usePluginAppActions();
   // Deleting or re-arming a rule goes in this device's alert log, beside the alerts that fired.
   const [, setAlertLog] = usePluginState<unknown>(FIRED_LOG_KEY, []);
+  // A move rule's readings, and whether it went off this session, are this device's, beside the synced rules.
+  const [savedMoveChecks, setMoveChecks] = usePluginState<unknown>(MOVE_CHECKS_KEY, NO_MOVE_CHECKS);
   const dialog = useDialog();
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -191,7 +197,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   const storeError = stores.error;
 
   const { alerts, rows } = useMemo(() => {
-    const parsed = stores.alerts;
+    const parsed = withMoveChecks(stores.alerts, readMoveChecks(savedMoveChecks));
     const activeAlerts = parsed.filter((a) => a.status === "active");
     const triggeredAlerts = parsed
       .filter((a) => a.status === "triggered")
@@ -201,7 +207,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       alerts: parsed,
       rows: [...activeAlerts, ...triggeredAlerts],
     };
-  }, [stores]);
+  }, [savedMoveChecks, stores]);
 
   const focusedAlertId = useSyncExternalStore(subscribePriceAlertFocus, getPriceAlertFocus, getPriceAlertFocus);
   useEffect(() => {
@@ -272,6 +278,15 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   }, [alerts, dialog, notify, rows.length, savePaneAlerts, setAlertLog]);
 
   const rearmAlert = useCallback((id: string) => {
+    // A move rule that went off this session is armed again on this device alone, where it went off: its reading goes, the rule stays.
+    const move = alerts.find((alert) => alert.id === id && alert.move);
+    if (move) {
+      if (move.status !== "triggered") return;
+      setMoveChecks((saved: unknown) => Object.fromEntries(Object.entries(readMoveChecks(saved)).filter(([key]) => key !== id)));
+      setAlertLog((saved: unknown) => withAlertChange(saved, "rearmed", move));
+      syncAlertQuoteStream();
+      return;
+    }
     // Only an alert that went off is re-armed, as the store reads at the write: one still waiting is left, and not logged.
     const rearmed: AlertRule[] = [];
     const error = savePaneAlerts(id, (current) => current.map((a) => {
@@ -284,7 +299,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       return;
     }
     for (const alert of rearmed) setAlertLog((saved: unknown) => withAlertChange(saved, "rearmed", alert));
-  }, [notify, savePaneAlerts, setAlertLog]);
+  }, [alerts, notify, savePaneAlerts, setAlertLog, setMoveChecks]);
 
   const startAddAlert = useCallback(() => {
     openPluginCommandWorkflow("set-alert");
@@ -319,8 +334,8 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
             type: "text",
             key: "alert",
             label: "Edit alert",
-            description: "SYMBOL above|below|crosses PRICE",
-            placeholder: "AAPL above 200",
+            description: selected.move ? "SYMBOL moves|up|down PERCENT" : "SYMBOL above|below|crosses PRICE",
+            placeholder: selected.move ? "GBPUSD=X moves 0.5%" : "AAPL above 200",
           }}
           currentValue={relativeAlertText(selected) ?? (selected.metric ? formatAlertDescription(selected).replace(" (TTM)", "").replace(" · on daily close", "")
             : selected.move ? `${selected.symbol} ${moveRuleWords(selected)}` : `${selected.symbol} ${selected.condition} ${selected.targetPrice}`)}

@@ -8,6 +8,7 @@ import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchange
 import { chunked, mapWithConcurrency } from "../../../utils/concurrency";
 import type { QuoteBatchResult } from "../../../types/data-provider";
 import { findCollection } from "../portfolio-list/cli/render";
+import { alertListing } from "./format";
 import { createAlert, sameLevelRule } from "./alert-engine";
 import { moveBasisText, moveCondition, movePercentText, moveReached, moveRuleWords, parseMovePercent } from "./move";
 import { moveQuoteFields } from "./quotes";
@@ -163,6 +164,8 @@ export interface MovePlan {
   added: AlertRule[];
   /** Symbols whose alert was there already (the same listing, move and direction), with that alert. */
   existing: Array<{ input: string; alert: AlertRule }>;
+  /** Symbols that name a listing another symbol of the same command made the alert for (7203.T beside `7203 JP`), with it. */
+  sameListing: Array<{ input: string; alert: AlertRule }>;
   failed: Array<{ input: string; error: string }>;
 }
 
@@ -172,7 +175,7 @@ export interface MovePlan {
  * rule already saved) is one alert.
  */
 export function planMoveAlerts(request: MoveAddRequest, listings: readonly MoveListing[], saved: readonly AlertRule[], now = Date.now()): MovePlan {
-  const plan: MovePlan = { added: [], existing: [], failed: [] };
+  const plan: MovePlan = { added: [], existing: [], sameListing: [], failed: [] };
   for (const entry of listings) {
     if (!entry.listing || !entry.quote) {
       plan.failed.push({ input: entry.input, error: entry.error ?? "no quote" });
@@ -183,11 +186,30 @@ export function planMoveAlerts(request: MoveAddRequest, listings: readonly MoveL
       move: true,
       ...moveQuoteFields(entry.quote, now),
     };
-    const same = [...saved, ...plan.added].find((other) => sameLevelRule(other, alert));
-    if (same) plan.existing.push({ input: entry.input, alert: same });
+    const savedRule = saved.find((other) => sameLevelRule(other, alert));
+    const made = savedRule ? undefined : plan.added.find((other) => sameLevelRule(other, alert));
+    if (savedRule) plan.existing.push({ input: entry.input, alert: savedRule });
+    else if (made) plan.sameListing.push({ input: entry.input, alert: made });
     else plan.added.push(alert);
   }
   return plan;
+}
+
+/** Listings a bulk add's one log entry names before "and N more". */
+const LOGGED_LISTINGS = 3;
+
+/**
+ * A bulk move add as the alert log keeps it, one entry for all its alerts:
+ * `109 move alerts up 3.00% on Book's listings: 1605:JPX, 2413:JPX, 2914:JPX
+ * and 106 more`.
+ */
+export function bulkMoveLogRule(added: readonly AlertRule[], watchlist?: string): { kind: string; ruleId: string; rule: string } {
+  const listings = added.slice(0, LOGGED_LISTINGS).map((alert) => alertListing(alert));
+  const more = added.length > LOGGED_LISTINGS ? ` and ${added.length - LOGGED_LISTINGS} more` : "";
+  return {
+    kind: "move", ruleId: added[0]?.id ?? "",
+    rule: `${added.length} move alerts ${moveRuleWords(added[0]!)}${watchlist ? ` on ${watchlist}'s listings` : ""}: ${listings.join(", ")}${more}`,
+  };
 }
 
 /** How a move rule reaches you, as docs/usage.md states it: only the running app reads moves. */

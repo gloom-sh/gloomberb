@@ -31,6 +31,7 @@ import { ALERT_HISTORY_VIA, mergeAlertHistory, type AlertHistoryRow } from "./hi
 import { IV_LEVEL_CHECKS_KEY, ivLevelCheckText, readIvLevelChecks, type IvLevelCheck } from "./iv-level";
 import { readScheduledRule, scheduledEventName } from "./scheduled";
 import { readAlertStores } from "./storage";
+import { MOVE_CHECKS_KEY, readMoveChecks, withMoveChecks } from "./move-checks";
 import type { AlertRule } from "./types";
 
 type AlertsTab = "prices" | "events" | "history";
@@ -276,6 +277,7 @@ export const alertsHeadless: HeadlessPaneDefinition<"rows"> = {
     return tab === "events"
       ? eventsResult(events.rules, events.error, readIvLevelChecks(ctx.readDeviceState?.(ALERTS_PLUGIN_ID, IV_LEVEL_CHECKS_KEY)), !!ctx.apiClient.getSessionToken?.(),
         readerTimeZone(ctx.config.timezone))
-      : pricesResult(alerts, alertsError, events.rules.length);
+      // A move rule with this device's last reading of it, and whether it went off this session.
+      : pricesResult(withMoveChecks(alerts, readMoveChecks(ctx.readDeviceState?.(ALERTS_PLUGIN_ID, MOVE_CHECKS_KEY))), alertsError, events.rules.length);
   },
 };

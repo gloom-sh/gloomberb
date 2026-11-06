@@ -48,7 +48,9 @@ import {
   quoteAlertFields,
   quoteErrorAlertFields,
   resolveAlertQuote,
+  resolveAlertQuotes,
 } from "./quotes";
+import { MOVE_CHECKS_KEY, moveChecksOf, readMoveChecks, withMoveChecks } from "./move-checks";
 import {
   loadAlerts,
   saveAlerts,
@@ -107,7 +109,8 @@ export const alertsPlugin: GloomPlugin = {
       // The price at the instrument's precision, as the quote that fired it says it (1.33702, 69.80p).
       const priced = { ...alert, ...quoteAlertFields(quote) };
       recordFired({
-        kind: "price", ruleId: alert.id, rule: `${alert.exchange ? `${alert.symbol}:${alert.exchange}` : alert.symbol} ${alert.condition} ${alert.targetPrice}`,
+        // The rule as every other entry of the log names it: the listing once, the level at its precision and in its unit.
+        kind: "price", ruleId: alert.id, rule: alertLogRule(priced).rule,
         firedAt, value: price, ...(quote.currency ? { unit: quote.currency } : {}),
         quoteAt: firedAlertTime(quote.lastUpdated), source: quoteSourceWords(quote.dataSource),
         symbol: alert.symbol, ...(alert.exchange ? { exchange: alert.exchange } : {}),
@@ -150,6 +153,21 @@ export const alertsPlugin: GloomPlugin = {
       return true;
     };
 
+    // Move rules are judged with this device's readings of them, and their readings are kept here, never in the synced
+    // list: five hundred rules checked every minute write nothing another device pulls.
+    const loadJudgedAlerts = () => {
+      const alerts = loadAlerts(ctx);
+      return alerts.some((alert) => alert.move) ? withMoveChecks(alerts, readMoveChecks(ctx.resume.getState(MOVE_CHECKS_KEY))) : alerts;
+    };
+    const saveMoveChecks = (alerts: readonly AlertRule[]) => {
+      if (!alerts.some((alert) => alert.move)) return;
+      try {
+        ctx.resume.setState(MOVE_CHECKS_KEY, moveChecksOf(alerts));
+      } catch (failure) {
+        ctx.log.warn("Move alert readings not kept", { error: String(failure) });
+      }
+    };
+
     // The last price each alert was judged on by the stream. `crosses` needs
     // it tick to tick, and writing it to the store on every tick would churn
     // the saved config.
@@ -157,10 +175,11 @@ export const alertsPlugin: GloomPlugin = {
     let lastStreamPersistAt = 0;
     const evaluateStreamed = () => {
       if (generation !== pollGeneration) return;
-      const alerts = loadAlerts(ctx);
+      const alerts = loadJudgedAlerts();
       const now = Date.now();
       let persist = false;
       let touched = false;
+      let movesTouched = false;
       for (const alert of alerts) {
         if (alert.metric || (alert.status !== "active" && !alert.move)) continue;
         const quote = readStreamedAlertQuote(alert, undefined, now);
@@ -169,6 +188,7 @@ export const alertsPlugin: GloomPlugin = {
           const status = alert.status;
           if (checkMove(alert, quote, now) || alert.status !== status) persist = true;
           touched = true;
+          movesTouched = true;
           continue;
         }
         // A re-armed or new alert has no stored baseline: judge nothing on this
@@ -190,6 +210,7 @@ export const alertsPlugin: GloomPlugin = {
       }
       if (!persist && !(touched && now - lastStreamPersistAt >= STREAM_PERSIST_MS)) return;
       lastStreamPersistAt = now;
+      if (movesTouched) saveMoveChecks(alerts);
       void saveAlerts(ctx, alerts, "price").catch(logFailure("alerts.stream", "Save streamed price alerts failed"));
       if (persist) alertStream?.sync();
     };
@@ -391,14 +412,21 @@ export const alertsPlugin: GloomPlugin = {
     const pollLevels = async (metrics: boolean) => {
       alertStream?.sync();
       // A move rule that went off is asked for too: the next session's quote arms it again.
-      const pending = loadAlerts(ctx).filter((alert) => Boolean(alert.metric) === metrics && (alert.status === "active" || alert.move) && !readStreamedAlertQuote(alert));
+      const pending = loadJudgedAlerts().filter((alert) => Boolean(alert.metric) === metrics && (alert.status === "active" || alert.move) && !readStreamedAlertQuote(alert));
       if (pending.length === 0) return;
 
       ctx.log.info("poll", { active: pending.length });
 
       // One batched pass over the distinct symbols: the alerts pane reads the same
       // persisted store, so this is the only place that talks to the provider.
-      const quoteKeys = [...new Set(pending.filter(alert => !alert.metric).map((alert) => `${alert.symbol}\0${alert.exchange ?? ""}`))];
+      const keyOf = (alert: AlertRule) => `${alert.symbol}\0${alert.exchange ?? ""}`;
+      // Move rules, up to five hundred from one bulk add, are asked a hundred listings to a request.
+      const moveKeys = [...new Set(pending.filter((alert) => alert.move).map(keyOf))];
+      const quoteKeys = [...new Set(pending.filter(alert => !alert.metric && !alert.move).map(keyOf))].filter((key) => !moveKeys.includes(key));
+      const moveQuotes = moveKeys.length === 0 ? [] : await resolveAlertQuotes(ctx.marketData, moveKeys.map((key) => {
+        const [symbol = "", exchange = ""] = key.split("\0");
+        return { symbol, exchange };
+      }));
       const results = await Promise.all(quoteKeys.map(async (key): Promise<[string, Quote | string]> => {
         const [symbol, exchange = ""] = key.split("\0");
         try {
@@ -415,11 +443,11 @@ export const alertsPlugin: GloomPlugin = {
         catch (error) { readings.set(alert.id, { armedAt: alert.armedAt ?? alert.createdAt, reading: error instanceof Error ? error.message : String(error) }); }
       }
       if (generation !== pollGeneration) return;
-      const quotes = new Map<string, Quote | string>(results);
+      const quotes = new Map<string, Quote | string>([...results, ...moveKeys.map((key, index) => [key, moveQuotes[index]!] as [string, Quote | string])]);
 
       // Read the store again: the stream or the pane may have changed an alert
       // while the quotes were in flight, and an alert must trigger only once.
-      const alerts = loadAlerts(ctx).filter(alert => Boolean(alert.metric) === metrics);
+      const alerts = loadJudgedAlerts().filter(alert => Boolean(alert.metric) === metrics);
       let changed = false;
       for (const alert of alerts) {
         if (alert.status !== "active" && !alert.move) continue;
@@ -478,6 +506,7 @@ export const alertsPlugin: GloomPlugin = {
       }
 
       if (changed) {
+        if (!metrics) saveMoveChecks(alerts);
         await saveAlerts(ctx, alerts, metrics ? "metric" : "price");
       }
     };

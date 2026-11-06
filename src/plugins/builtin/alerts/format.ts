@@ -92,7 +92,7 @@ export function isoUtc(value: number | null | undefined): string {
  * until it has been checked.
  */
 export function alertListing(alert: Pick<AlertRule, "symbol" | "exchange" | "lastQuoteExchange">): string {
-  // A pair written as Yahoo writes it names itself: GBPUSD=X, never GBPUSD=X:CCY.
+  // A pair written with its `=X` suffix names itself: GBPUSD=X, never GBPUSD=X:CCY.
   if (/=X$/i.test(alert.symbol)) return alert.symbol;
   // One key however the listing was typed: 7203.T, `7203 JP` and 7203:JPX are all 7203:JPX.
   return alertListingKey(alert);

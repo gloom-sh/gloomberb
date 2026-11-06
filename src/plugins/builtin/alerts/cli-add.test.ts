@@ -528,3 +528,23 @@ test("a daily technical alert is saved while its close cannot be read yet, and s
   expect(saved).toMatchObject({ symbol: "AAPL", metric: { kind: "rsi", period: 14 }, status: "active", lastQuoteCurrency: "USD" });
   expect(saved!.lastCheckedPrice).toBeUndefined();
 });
+
+test("a move add of one symbol typed twice that quotes nothing is refused; a bulk add names an alias as the same listing, logs once and keeps readings on the device", async () => {
+  const desk = await profile();
+  expect(await desk.run(["add", "ZZZQQQ", "zzzqqq", "up", "3%"])).toMatchObject({ error: expect.stringContaining("Not a ticker: ZZZQQQ.") });
+  expect((await desk.stored()).alerts).toEqual([]);
+
+  const bulk = await desk.run(["add", "AAPL", "USDMXN=X", "MXN=X", "up", "3%"]);
+  expect(bulk.error).toBeNull();
+  expect(bulk.output).toContain("Same listing as USDMXN=X in this command: MXN=X.");
+  expect(bulk.output).not.toContain("Already set");
+  // One entry in the log for the add, however many alerts it made.
+  expect(desk.log().map((entry) => [entry.action, entry.rule])).toEqual([["created", "2 move alerts up 3.00%: AAPL:NASDAQ, USDMXN=X"]]);
+  // The rules sync without their readings; the readings are this device's, and `alerts list` says the moves are app-only.
+  const { alerts } = await desk.stored();
+  expect(alerts.map((alert) => [alert.symbol, alert.lastCheckedAt, alert.lastQuoteCurrency])).toEqual([["AAPL", undefined, undefined], ["USDMXN=X", undefined, undefined]]);
+  const list = await desk.run(["list"]);
+  expect(list.output).toContain("Move, app only");
+  expect(list.printed!.result.warnings).toContain("Move alerts notify only while the app is running, even when signed in with Cloud sync: no email or phone alert.");
+  expect(list.printed!.result.data.find((row: { symbol?: string }) => row.symbol === "USDMXN=X")).toMatchObject({ lastQuoteCurrency: "MXN" });
+});

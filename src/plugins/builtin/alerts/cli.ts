@@ -5,7 +5,7 @@ import { firstDailyCheck, metricAvailabilityError, metricReadings } from "./metr
 import { ALERT_ADD_FORMS, ALERT_KINDS_TEXT, parseRuleAddArgs, RULE_US_DATA, ruleDelivery, type RuleAddRequest } from "./cli-forms";
 import { alertChangeEntry, appendAlertLog, type AlertLogAction } from "./fired-log";
 import { alertLogRule } from "./alert-log";
-import { alertListing, alertReadingAt, alertReadingText, isoUtc, listingWithCurrency, NOT_CHECKED_YET } from "./format";
+import { alertListing, alertReadingAt, alertReadingText, isoUtc, listingWithCurrency, measureLabel, NOT_CHECKED_YET } from "./format";
 import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
 import { quoteAlertFields } from "./quotes";
 import { createEventAlert } from "./events";
@@ -81,10 +81,11 @@ import {
 import { scheduledEventSources } from "./scheduled-sources";
 import { readAlertStores, writeLevelAlertStores } from "./storage";
 import {
-  MOVE_REARM, moveNowText, parseMoveAddArgs, planMoveAlerts, quoteSavedListings, quoteTypedSymbols, uniqueInputs, venueCounts,
-  watchlistListings, MAX_BULK_ALERTS, type MoveAddRequest, type MoveListing,
+  bulkMoveLogRule, MOVE_REARM, moveNowText, parseMoveAddArgs, planMoveAlerts, quoteSavedListings, quoteTypedSymbols, uniqueInputs, venueCounts,
+  watchlistListings, MAX_BULK_ALERTS, type MoveAddRequest, type MoveListing, type MovePlan,
 } from "./cli-move";
 import { MOVE_APP_ONLY, moveRuleWords } from "./move";
+import { MOVE_CHECKS_KEY, moveChecksOf, readMoveChecks, withMoveChecks, type MoveCheck } from "./move-checks";
 import { listAddLookups } from "../portfolio-list/cli/bulk-symbols";
 import type { AlertCondition, AlertRule } from "./types";
 
@@ -148,12 +149,20 @@ const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1
 
 /** The lines under a bulk move add: what was set already, what quoted nothing, what was dropped, each named. */
 function moveSummaryLines(
-  plan: { existing: Array<{ input: string; alert: AlertRule }>; failed: Array<{ input: string; error: string }> },
+  plan: Pick<MovePlan, "existing" | "sameListing" | "failed">,
   moves: { repeats: number; leftOut: number },
 ): string[] {
   const names = (inputs: string[]) => inputs.length > 12 ? `${inputs.slice(0, 12).join(", ")} and ${inputs.length - 12} more` : inputs.join(", ");
+  // 7203.T beside `7203 JP` is the alert the command just made, not one set before: "Same listing as 7203:JPX in this command: 7203.T."
+  const same = new Map<string, string[]>();
+  for (const entry of plan.sameListing) {
+    const listing = alertListing(entry.alert);
+    same.set(listing, [...same.get(listing) ?? [], entry.input]);
+  }
   return [
     ...plan.existing.length ? [`  Already set (${plan.existing.length}): ${names(plan.existing.map((entry) => entry.input))}.`] : [],
+    ...[...same].slice(0, 12).map(([listing, inputs]) => `  Same listing as ${listing} in this command: ${names(inputs)}.`),
+    ...same.size > 12 ? [`  And ${same.size - 12} more listings typed twice.`] : [],
     // Each with why, on its own line: `ZZZQQQ: Not a ticker: ZZZQQQ.`
     ...plan.failed.length ? [`  Not added (${plan.failed.length}):`, ...plan.failed.slice(0, 12).map((entry) => `    ${entry.input}: ${entry.error.split("\n")[0]}`),
       ...plan.failed.length > 12 ? [`    and ${plan.failed.length - 12} more: ${plan.failed.slice(12).map((entry) => entry.input).join(", ")}`] : []] : [],
@@ -484,7 +493,7 @@ function priceRow(alert: AlertRule): AlertListRow {
   return {
     ...alert, kind: alert.metric?.kind ?? (alert.move ? "move" : "price"), rule: alert.metric ? metricDescription(alert) : undefined,
     // A move's rule in the words it was added with: `up 3.00%`, `moves 0.50%`.
-    ...alert.move ? { rule: `${moveRuleWords(alert)} from the previous close` } : {},
+    ...alert.move ? { rule: `${moveRuleWords(alert)} from the previous close`, appOnly: true } : {},
     // The listing as it was kept: 7203:JPX, never 7203:JPX:JPX.
     target: alertListing({ symbol: alert.symbol, exchange: alert.exchange }),
     // The listing it is checked on, in its currency, and its last reading in words with when it is from.
@@ -557,6 +566,11 @@ async function cloudRuleStates(rules: readonly EventAlertRule[], session: string
 }
 
 /** The Gloom Cloud session the app saved after sign-in, as `fn` and market commands read with; null signed out. */
+/** This device's readings of its move rules, as the app keeps them: never in the synced list. */
+function savedMoveChecks(config: Partial<Pick<ConfigContext, "persistence">>): Record<string, MoveCheck> {
+  return readMoveChecks(config.persistence?.pluginState?.get(ALERTS_PLUGIN_ID, resumeStateKey(MOVE_CHECKS_KEY))?.value);
+}
+
 function savedSession(config: Partial<Pick<ConfigContext, "persistence">>): string | null {
   const persistence = config.persistence;
   return apiClient.getSessionToken() ?? (persistence?.pluginState ? resolvePersistedCloudSessionToken({ persistence }) : null);
@@ -582,7 +596,8 @@ function textRow(row: AlertListRow): Record<string, unknown> {
   const price = row.kind === "price";
   return {
     id: row.id,
-    kind: price ? "Price" : alertKindLabel(row.kind),
+    // A move says in its row that only the running app hears of it, as ALRT's Measure does.
+    kind: price ? "Price" : row.kind === "move" ? measureLabel({ move: true }) : alertKindLabel(row.kind),
     target: row.target,
     // A level at the instrument's precision, in the unit its quote shows: below 1.3375, below 70.00p.
     trigger: row.rule ?? (price
@@ -837,13 +852,15 @@ export const alertsCliCommand: CliCommandDef = {
           const unique = uniqueInputs(list.listings);
           return { listings: await quoteSavedListings(market, unique.inputs), repeats: 0, leftOut: unique.leftOut, watchlist: list.name };
         }
-        // One symbol fails the command with why, as a price alert's does; of several, each that fails is named in the summary.
-        if (move.symbols.length === 1) {
-          const quoted = await requireQuotedListing(move.symbols[0]!, exchangeOption, market, ctx, "alerts add");
-          const exchange = quoted.listing.exchange || canonicalExchange(quoted.quote.listingExchangeName || quoted.quote.exchangeName);
-          return { listings: [{ input: move.symbols[0]!, listing: { symbol: quoted.listing.key, ...exchange ? { exchange } : {} }, quote: quoted.quote, notes: quoted.notes }], repeats: 0, leftOut: 0 };
-        }
         const unique = uniqueInputs(move.symbols.map((input) => ({ input })));
+        // One symbol, however often it was typed (`ZZZQQQ zzzqqq`), fails the command with why, as a price alert's does;
+        // of several, each that fails is named in the summary.
+        if (unique.inputs.length === 1) {
+          const input = unique.inputs[0]!.input;
+          const quoted = await requireQuotedListing(input, exchangeOption, market, ctx, "alerts add");
+          const exchange = quoted.listing.exchange || canonicalExchange(quoted.quote.listingExchangeName || quoted.quote.exchangeName);
+          return { listings: [{ input, listing: { symbol: quoted.listing.key, ...exchange ? { exchange } : {} }, quote: quoted.quote, notes: quoted.notes }], repeats: unique.repeats, leftOut: 0 };
+        }
         const listings = await quoteTypedSymbols(unique.inputs.map((entry) => entry.input), (symbol) => requireQuotedListing(symbol, exchangeOption, market, PROBE, "alerts add"));
         return { listings, repeats: unique.repeats, leftOut: unique.leftOut };
       });
@@ -1047,12 +1064,16 @@ export const alertsCliCommand: CliCommandDef = {
     }
 
     if (action === "list") {
-      // An IV level's last reading is this device's, beside the rules.
-      const { alerts, alertsError, events, checks, session } = await withConfigData(ctx, (config) => ({
-        ...readAlertStores(config.config),
-        checks: readIvLevelChecks(config.persistence?.pluginState?.get(ALERTS_PLUGIN_ID, resumeStateKey(IV_LEVEL_CHECKS_KEY))?.value),
-        session: savedSession(config),
-      }));
+      // An IV level's last reading is this device's, beside the rules, as are a move rule's and whether it went off this session.
+      const { alerts, alertsError, events, checks, session } = await withConfigData(ctx, (config) => {
+        const stores = readAlertStores(config.config);
+        return {
+          ...stores,
+          alerts: withMoveChecks(stores.alerts, savedMoveChecks(config)),
+          checks: readIvLevelChecks(config.persistence?.pluginState?.get(ALERTS_PLUGIN_ID, resumeStateKey(IV_LEVEL_CHECKS_KEY))?.value),
+          session: savedSession(config),
+        };
+      });
       // Earnings dates come through market data; CPI, FOMC and calendar dates do not need it.
       const lookup = (targets: ScheduledEventTarget[]) => targets.some((target) => target.kind === "earnings")
         ? withMarketData(ctx, (market) => lookupScheduledDates(targets, scheduledEventSources(market.dataProvider), today, now))
@@ -1064,7 +1085,7 @@ export const alertsCliCommand: CliCommandDef = {
       ];
       const waiting = rows.filter((row) => row.status === NEEDS_SIGN_IN).length;
       const allWarnings = [...(alertsError ? [alertsError] : []), ...(events.error ? [events.error] : []), ...warnings, ...cloud.warning ? [cloud.warning] : [],
-        ...waiting ? [needsSignInNote(waiting)] : []];
+        ...waiting ? [needsSignInNote(waiting)] : [], ...alerts.some((alert) => alert.move) ? [MOVE_APP_ONLY] : []];
       ctx.printResult({ data: rows, ...(allWarnings.length ? { warnings: allWarnings } : {}) }, {
         rows: (data) => data.map(textRow),
         textColumns: [
@@ -1086,7 +1107,20 @@ export const alertsCliCommand: CliCommandDef = {
     }
 
     await withConfigData(ctx, async (config) => {
-      const { pluginState, alerts, alertsError, levelErrors, events } = readAlertStores(config.config);
+      const stores = readAlertStores(config.config);
+      const { pluginState, alertsError, levelErrors, events } = stores;
+      // Move rules as this device reads them; saving writes the rules alone (`writeLevelAlertStores`).
+      const alerts = withMoveChecks(stores.alerts, savedMoveChecks(config));
+      // A move rule's readings are this device's, kept beside its alert log; a dry run keeps nothing.
+      const keepMoveChecks = (update: (checks: Record<string, MoveCheck>) => Record<string, MoveCheck>) => {
+        const state = config.persistence?.pluginState;
+        if (ctx.cliOptions.dryRun || !state) return;
+        try {
+          state.set(ALERTS_PLUGIN_ID, resumeStateKey(MOVE_CHECKS_KEY), update(savedMoveChecks(config)));
+        } catch (error) {
+          logFailure("alerts.cli", "Keep move alert readings failed")(error);
+        }
+      };
       const save = async (next: { alerts?: AlertRule[]; events?: EventAlertRule[] }) => {
         if (next.alerts) for (const [key, value] of Object.entries(writeLevelAlertStores(next.alerts))) {
           if (levelErrors[key] && value !== "[]") ctx.fail(levelErrors[key]!);
@@ -1111,14 +1145,14 @@ export const alertsCliCommand: CliCommandDef = {
         return events.rules;
       };
       // Each rule created, re-armed or deleted here goes in this device's alert log, beside the alerts that fired.
-      const record = (action: AlertLogAction, rule: AlertRule | EventAlertRule) => {
+      const record = (action: AlertLogAction, rule: AlertRule | EventAlertRule | Parameters<typeof alertChangeEntry>[1]) => {
         const state = config.persistence?.pluginState;
         if (ctx.cliOptions.dryRun || !state) return;
         try {
           appendAlertLog({
             get: (key) => state.get(ALERTS_PLUGIN_ID, resumeStateKey(key))?.value,
             set: (key, value) => state.set(ALERTS_PLUGIN_ID, resumeStateKey(key), value),
-          }, [alertChangeEntry(action, alertLogRule(rule), Date.now())]);
+          }, [alertChangeEntry(action, "ruleId" in rule ? rule : alertLogRule(rule), Date.now())]);
         } catch (error) {
           logFailure("alerts.cli", "Record alert change failed")(error);
         }
@@ -1133,12 +1167,18 @@ export const alertsCliCommand: CliCommandDef = {
           const rearm = existing.status === "triggered" ? "; it went off this session and arms again in the next" : "";
           ctx.fail(`${formatAlertDescription(existing)} already exists as alert ${existing.id}${rearm}. Nothing was added.`);
         }
+        // One symbol that made no alert fails with why, never prints an alert it did not make.
+        if (single && plan.added.length === 0) ctx.fail(plan.failed[0]?.error ?? "No move alert was added.");
         if (plan.added.length === 0 && !single) {
           ctx.fail(`No move alert was added: ${[plan.existing.length ? `${plan.existing.length} already set` : "", plan.failed.length ? `${plan.failed.length} not quoted` : ""].filter(Boolean).join(", ")}.`,
             moveSummaryLines(plan, moves).join("\n") || undefined);
         }
         await save({ alerts: [...alerts, ...plan.added] });
-        for (const alert of plan.added) record("created", alert);
+        // The reading each was added on is its first, on this device, until the app's next check.
+        keepMoveChecks((checks) => ({ ...checks, ...moveChecksOf(plan.added) }));
+        // One entry for the add, however many alerts it made: "109 move alerts up 3.00% on Book's listings: 1605:JPX, … and 106 more".
+        if (plan.added.length === 1) record("created", plan.added[0]!);
+        else if (plan.added.length > 1) record("created", bulkMoveLogRule(plan.added, moves.watchlist));
         const notes = [...request.readAs ? [request.readAs] : [], ...moves.listings.flatMap((entry) => entry.notes ?? [])];
         if (single) {
           const alert = plan.added[0]!;
@@ -1275,7 +1315,9 @@ export const alertsCliCommand: CliCommandDef = {
         if (!level && !rule && alertsError) ctx.fail(alertsError);
         // An alert still waiting to go off has nothing to re-arm, and is left as it is.
         const active = level ? level.status === "active" : rule ? eventRuleArmed(rule, now) : false;
-        if (level && !active) await save({ alerts: alerts.map((alert) => alert.id === id ? rearmAlert(alert) : alert) });
+        // A move rule that went off this session is armed again on this device, where it went off: its reading goes, the rule stays.
+        if (level?.move && !active) keepMoveChecks((checks) => Object.fromEntries(Object.entries(checks).filter(([key]) => key !== id)));
+        else if (level && !active) await save({ alerts: alerts.map((alert) => alert.id === id ? rearmAlert(alert) : alert) });
         if (rule && !active) {
           // A scheduled alert alerts again for its coming event; any other event alert resumes.
           const next = readScheduledRule(rule) ? rearmScheduledAlert(rule)

@@ -76,13 +76,16 @@ export interface MoveReading {
   percent: number;
   basis: QuoteChangeBasis;
   /**
-   * The session the move is of, named by the close it is measured from (the
-   * 2026-11-05 close); a rule that went off in one arms again in the next.
+   * The session the move is of, as a date: the close it is measured from (the
+   * 2026-11-05 close) for a listing or a pair, the UTC day for a coin. Null
+   * when nothing dates it, as for a pair's print after the week's close: such
+   * a reading can set off an armed rule, never arm one again.
    */
-  session: string;
+  session: string | null;
 }
 
 const utcDay = (time: number) => new Date(time).toISOString().slice(0, 10);
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * The move a quote reports for a rule to judge: its change percent (the
@@ -95,10 +98,30 @@ export function readMove(quote: Quote, now = Date.now()): MoveReading | null {
   if (!Number.isFinite(percent)) return null;
   const basis = quoteChangeBasis(quote, { session: "active" });
   if (!basis) return null;
-  const session = "date" in basis ? basis.date
-    : basis.kind === "previous close" ? `close:${quote.previousClose ?? ""}`
-    : utcDay(now);
+  const session = "date" in basis ? basis.date : basis.kind === "utc day" || basis.kind === "24h" ? utcDay(now) : null;
   return { percent, basis, session };
+}
+
+/** A reading this recent dates an undated one after it: the same session, read by a stream and a poll that disagree. */
+const DATED_READING_MS = 12 * 60 * 60_000;
+
+/**
+ * The session a rule that goes off on `reading` went off in: the reading's
+ * own, or for an undated one the session of the dated reading just before
+ * it, else the UTC day, so it is never armed again in the session it went
+ * off in (at worst it waits a session longer).
+ */
+function firedSession(alert: AlertRule, reading: MoveReading, now: number): string {
+  if (reading.session) return reading.session;
+  const before = alert.lastMoveBasis && "date" in alert.lastMoveBasis ? alert.lastMoveBasis.date : null;
+  const recent = alert.lastCheckedAt != null && now - alert.lastCheckedAt <= DATED_READING_MS;
+  return before && recent ? before : utcDay(now);
+}
+
+/** The session a rule went off in, as a date: its own, or the UTC day it went off for one that names none. */
+function lastFiredSession(alert: AlertRule): string | null {
+  if (alert.moveSession && ISO_DAY.test(alert.moveSession)) return alert.moveSession;
+  return alert.triggeredAt ? utcDay(alert.triggeredAt) : null;
 }
 
 /** Whether a move reaches a rule: either way by its size, or up or down by it. */
@@ -111,18 +134,23 @@ export function moveReached(alert: Pick<AlertRule, "condition" | "targetPrice">,
 }
 
 /**
- * A move rule judged on a quote. One that went off in an earlier session is
- * armed again first; then it goes off when the move reaches it, once for the
+ * A move rule judged on a quote. One that went off is armed again only by a
+ * dated session later than the one it went off in: a print after the close,
+ * a weekend quote, or a stream and a poll that date the move a day apart
+ * never arm it twice. Then it goes off when the move reaches it, once for the
  * session. Returns the rule with its reading, and whether it went off now.
  */
 export function judgeMove(alert: AlertRule, quote: Quote, now = Date.now()): { alert: AlertRule; fired: boolean; reading: MoveReading | null } {
   const reading = readMove(quote, now);
   if (!reading) return { alert, fired: false, reading };
   let next: AlertRule = { ...alert, lastCheckedPrice: reading.percent, lastMoveBasis: reading.basis };
+  const last = lastFiredSession(alert);
   // Armed again for a new session: `triggeredAt` is cleared rather than left out, so it clears on a rule merged into.
-  if (next.status === "triggered" && next.moveSession !== reading.session) next = { ...next, status: "active", triggeredAt: undefined };
-  const fired = next.status === "active" && next.moveSession !== reading.session && moveReached(next, reading.percent);
-  if (fired) next = { ...next, status: "triggered", triggeredAt: now, moveSession: reading.session };
+  if (next.status === "triggered" && reading.session && (!last || reading.session > last)) next = { ...next, status: "active", triggeredAt: undefined };
+  // A session it already went off in, as a dated reading says, never sets it off again.
+  const wentOff = !!reading.session && !!last && reading.session <= last && next.moveSession != null;
+  const fired = next.status === "active" && !wentOff && moveReached(next, reading.percent);
+  if (fired) next = { ...next, status: "triggered", triggeredAt: now, moveSession: firedSession(alert, reading, now) };
   return { alert: next, fired, reading };
 }
 

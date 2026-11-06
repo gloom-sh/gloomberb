@@ -9,6 +9,7 @@ import {
 import { ALERTS_KEY, ALERTS_PLUGIN_ID } from "./constants";
 import { readEventAlertStores } from "./events";
 import { MOVE_ALERTS_KEY } from "./move";
+import { moveRuleOnly } from "./move-checks";
 import type { AlertRule } from "./types";
 
 export function loadAlerts(ctx: GloomPluginContext): AlertRule[] {
@@ -31,7 +32,10 @@ export async function saveAlerts(
   for (const [key, value] of entries) {
     const current = ctx.configState.get<unknown>(key);
     // A list never written that stays empty (moves, on a profile without them) is left unwritten.
-    if (current !== value && !(current == null && value === "[]")) await ctx.configState.set(key, value);
+    if (current === value || (current == null && value === "[]")) continue;
+    // Move rules that read as the ones to write are left as written, whatever the order of their fields: a check changes no rule.
+    if (key === MOVE_ALERTS_KEY && !stores.errors[key] && serializeAlerts(deserializeAlerts(current).map(moveRuleOnly)) === value) continue;
+    await ctx.configState.set(key, value);
   }
 }
 
@@ -65,7 +69,9 @@ export function readLevelAlertStores(get: (key: string) => unknown): { alerts: A
   return { alerts, errors, error: Object.values(errors).filter(Boolean).join(" ") || null };
 }
 export function writeLevelAlertStores(alerts: AlertRule[]): Record<string, string> {
-  return Object.fromEntries(LEVEL_ALERT_KEYS.map(key => [key, serializeAlerts(alerts.filter(a => levelAlertStoreKey(a) === key))]));
+  // A move rule is written as the rule alone: its readings are this device's (`MOVE_CHECKS_KEY`), so a check never changes the list.
+  return Object.fromEntries(LEVEL_ALERT_KEYS.map(key => [key, serializeAlerts(alerts.filter(a => levelAlertStoreKey(a) === key)
+    .map((alert) => alert.move ? moveRuleOnly(alert) : alert))]));
 }
 /** Price, valuation/technical, relative strength and move rules each keep their own synced list. */
 const LEVEL_ALERT_KEYS = [ALERTS_KEY, METRIC_ALERTS_KEY, RELATIVE_ALERTS_KEY, MOVE_ALERTS_KEY] as const;
