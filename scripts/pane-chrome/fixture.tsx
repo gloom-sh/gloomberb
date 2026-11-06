@@ -1424,7 +1424,9 @@ function config() {
   const layouts = scenario === "chat" ? chatLatencyLayouts(layout) : [{ name: "Fixture", layout: cloneLayout(layout) }];
   if (scenario === "theme") layouts.push({ name: "Alternate", layout: cloneLayout(layout) });
   const fontSize = Number(params.get("font")) || base.fontSize;
-  return { ...base, theme: params.get("theme") ?? base.theme, fontSize, layout, layouts, activeLayoutIndex: 0 };
+  // The header follows a named benchmark rather than the zone of the machine the page runs on.
+  const headerMarket = { benchmark: params.get("market") ?? "sp500" };
+  return { ...base, theme: params.get("theme") ?? base.theme, fontSize, layout, layouts, activeLayoutIndex: 0, headerMarket };
 }
 
 const paneRegistry = registry();

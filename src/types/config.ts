@@ -371,7 +371,15 @@ export interface AppConfig {
    * status bar, for a screen that is shown rather than worked at. Absent is off.
    */
   presentationMode?: boolean;
+  /**
+   * The market the header shows. Absent until the user picks one: the
+   * benchmark of this machine's time zone. Kept on this machine only.
+   */
+  headerMarket?: HeaderMarketChoice;
 }
+
+/** A benchmark the header offers, by its id (`hang-seng`), or any listing the user searched for. */
+export type HeaderMarketChoice = { benchmark: string } | { symbol: string; exchange?: string };
 
 export const TICKER_RESEARCH_PANE_ID = "ticker-research";
 export const LEGACY_TICKER_DETAIL_PANE_ID = "ticker-detail";

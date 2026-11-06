@@ -20,6 +20,7 @@ import type { Command } from "../registry";
 import type { AppConfig, BrokerInstanceConfig } from "../../../../types/config";
 import { requestFeedbackDialog } from "../../../feedback-dialog";
 import type { OpenInlineConfirm } from "../../routing/confirm";
+import { HEADER_MARKET_SEARCH } from "../../../../core/state/app/command-bar-launch";
 import {
   isRouteCommandId,
   routeCommandIdToScreen,
@@ -60,7 +61,7 @@ export function runDirectCommandAction(options: {
   onRunSetupAgain?: () => Promise<void>;
   openBuiltInWorkflow: (actionId: string) => void;
   openInlineConfirm: OpenInlineConfirm;
-  openModeRoute: (screen: "ticker-search" | "layout", initialQuery?: string) => void;
+  openModeRoute: (screen: "ticker-search" | "layout", initialQuery?: string, payload?: Record<string, unknown>) => void;
   openPaneSettings: (paneId: string | null) => void;
   pluginRegistry: PluginRegistry;
   persistConfig: (nextConfig: AppState["config"]) => void;
@@ -328,6 +329,9 @@ export function runDirectCommandAction(options: {
       closeAll({ revertThemePreview: false });
       return;
     }
+    case "header-market":
+      openModeRoute("ticker-search", arg, HEADER_MARKET_SEARCH);
+      return;
     case "toggle-value-flashing": {
       const nextConfig = {
         ...state.config,

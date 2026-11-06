@@ -18,6 +18,7 @@ import type { matchPrefix } from "../commands/registry";
 import { fuzzyFilter } from "../../../utils/fuzzy-search";
 import type { CommandBarRoute } from "../workflow/types";
 import { t, tc } from "../../../i18n";
+import { HEADER_MARKET_TITLE, isHeaderMarketRoute } from "../routes/header-market";
 
 type ActiveCommandMatch = ReturnType<typeof matchPrefix>;
 
@@ -27,6 +28,10 @@ interface BuildRouteListStateOptions {
     item: ResultItem,
     routePayload: Record<string, unknown> | undefined,
   ) => ResultItem;
+  /** The header market picker's ticker rows: choosing one sets the header's market. */
+  adaptHeaderMarketResult: (item: ResultItem) => ResultItem;
+  /** The header market picker's benchmark rows for a query. */
+  headerMarketItems: (query: string) => ResultItem[];
   buildLayoutItems: (query: string) => ResultItem[];
   currentRoute: CommandBarRoute | null;
   orderedRootResults: ResultItem[];
@@ -44,9 +49,11 @@ interface BuildRouteListStateOptions {
 function buildRouteListState(options: BuildRouteListStateOptions): ListScreenState | null {
   const {
     activeMatch,
+    adaptHeaderMarketResult,
     adaptTickerSearchRouteResult,
     buildLayoutItems,
     currentRoute,
+    headerMarketItems,
     orderedRootResults,
     rootHoveredIdx,
     rootModeKind,
@@ -102,6 +109,33 @@ function buildRouteListState(options: BuildRouteListStateOptions): ListScreenSta
         };
       }
       case "ticker-search": {
+        if (isHeaderMarketRoute(currentRoute.payload)) {
+          const query = currentRoute.query;
+          const searched = query.trim().length > 0;
+          // Bare, the picker is its benchmarks; typed, the tickers the search finds follow the ones that match,
+          // and a search that finds nothing says so only when no benchmark matched either.
+          const benchmarks = headerMarketItems(query);
+          const found = searched
+            ? tickerSearchResults.filter((item) => benchmarks.length === 0 || item.id !== "no-results").map(adaptHeaderMarketResult)
+            : [];
+          const results = [...benchmarks, ...found];
+          const emptyState = getEmptyState("search", query, query);
+          return {
+            kind: "mode",
+            title: HEADER_MARKET_TITLE,
+            subtitle: "Pick a benchmark, or search for any ticker.",
+            query,
+            selectedIdx: currentRoute.selectedIdx,
+            hoveredIdx: currentRoute.hoveredIdx,
+            results: orderListResults(results, { sectionOrder: "ranked" }),
+            searching: searched && tickerSearchPending,
+            emptyLabel: emptyState.label,
+            emptyDetail: emptyState.detail,
+            footerLeft: getScreenFooterLeft(currentRoute),
+            footerRight: getScreenFooterRight(currentRoute),
+            sectionOrder: "ranked",
+          };
+        }
         const results = tickerSearchResults.map((item) => adaptTickerSearchRouteResult(item, currentRoute.payload));
         const emptyState = getEmptyState("search", currentRoute.query, currentRoute.query);
         return {
@@ -165,9 +199,11 @@ function buildRouteListState(options: BuildRouteListStateOptions): ListScreenSta
 export function useRouteListState(options: BuildRouteListStateOptions): ListScreenState | null {
   const {
     activeMatch,
+    adaptHeaderMarketResult,
     adaptTickerSearchRouteResult,
     buildLayoutItems,
     currentRoute,
+    headerMarketItems,
     orderedRootResults,
     rootCategoryPriorities,
     rootHoveredIdx,
@@ -182,9 +218,11 @@ export function useRouteListState(options: BuildRouteListStateOptions): ListScre
 
   return useMemo(() => buildRouteListState(options), [
     activeMatch,
+    adaptHeaderMarketResult,
     adaptTickerSearchRouteResult,
     buildLayoutItems,
     currentRoute,
+    headerMarketItems,
     orderedRootResults,
     rootCategoryPriorities,
     rootHoveredIdx,

@@ -9,6 +9,7 @@ import { updateFailureReason } from "../../../../updater/failure";
 import { t, tf } from "../../../../i18n";
 import { isPrereleaseVersion } from "../../../../utils/semver";
 import { VERSION } from "../../../../version";
+import { resolveHeaderMarket, systemTimeZone } from "../../../../market-data/market/header-market";
 
 /** "Update failed: download interrupted", as the header says it. */
 function failedUpdateLabel(progress: UpdateProgress): string {
@@ -169,6 +170,8 @@ export function createRootCommandItemBuilder({
         }
         if (state.updateNotice) return state.updateNotice;
         return command.description;
+      case "header-market":
+        return `Currently ${resolveHeaderMarket(state.config.headerMarket, systemTimeZone()).label}`;
       case "toggle-value-flashing":
         return state.config.valueFlashingEnabled ? "Currently on" : "Currently off";
       case "toggle-presentation-mode":

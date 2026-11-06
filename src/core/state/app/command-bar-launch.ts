@@ -10,3 +10,6 @@ export type TickerSearchPayload = Readonly<Record<string, unknown>>;
  * mode. Only the backtick and a pane header's ticker search for the focused pane.
  */
 export const SECURITY_DESCRIPTION_SEARCH: TickerSearchPayload = { action: "security-description" };
+
+/** The header's market picker: its benchmarks lead the rows, and the row chosen becomes the market the header shows. */
+export const HEADER_MARKET_SEARCH: TickerSearchPayload = { action: "header-market" };

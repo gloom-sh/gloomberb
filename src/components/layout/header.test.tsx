@@ -6,15 +6,59 @@ import { createDefaultConfig } from "../../types/config";
 import { act } from "react";
 import { Header } from "./header";
 import { publishCommandBarPrompt } from "../command-bar/panel/prompt-binding";
+import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../market-data/coordinator";
+import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 
 const tui = createOpenTuiTestHarness();
 
+/**
+ * The header otherwise follows the machine's time zone, and the room its
+ * market takes depends on that exchange's state at the hour the test runs.
+ * BTC names no exchange and has no state, so what is beside it stays put.
+ */
+function headerConfig() {
+  return { ...createDefaultConfig("/tmp/gloomberb-header-test"), headerMarket: { benchmark: "btc" } };
+}
+
 afterEach(() => {
   publishCommandBarPrompt(null);
+  setSharedMarketDataCoordinator(null);
+});
+
+/**
+ * A source can answer an index with no price (a zero level, an empty
+ * status): the header then shows the listing that tracks it, under that
+ * listing's own symbol, rather than a zero level under the index's name.
+ */
+test("shows a benchmark's listing under its own symbol when the index has no usable quote", async () => {
+  const asked: string[] = [];
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    getQuote: async (symbol) => {
+      asked.push(symbol);
+      return symbol === "SPY"
+        ? createTestQuote({ symbol: "SPY", instrumentType: "ETF", price: 687.18, change: -3.66, changePercent: -0.53, marketState: "REGULAR" })
+        : createTestQuote({ symbol, instrumentType: "INDEX", price: 0, change: 0, changePercent: 0 });
+    },
+  })));
+  const config = { ...createDefaultConfig("/tmp/gloomberb-header-test"), headerMarket: { benchmark: "sp500" } };
+  await tui.render(
+    <AppContext value={createStaticAppStore(createInitialState(config))}>
+      <Header />
+    </AppContext>,
+    { width: 120, height: 1 },
+  );
+  for (let attempt = 0; attempt < 20 && !tui.frame().includes("SPY $687.18"); attempt += 1) {
+    await act(async () => { await Bun.sleep(10); });
+    await tui.setup().renderOnce();
+  }
+  const frame = tui.frame().split("\n")[0]!;
+  expect(frame).toMatch(/SPY \$687\.18 -0\.53%/);
+  expect(frame).not.toContain("S&P 500");
+  expect(asked).toEqual(["^GSPC", "SPY"]);
 });
 
 test("opens the command bar by clicking the header prompt", async () => {
-  const state = createInitialState(createDefaultConfig("/tmp/gloomberb-header-test"));
+  const state = createInitialState(headerConfig());
   const actions: Array<{ type: string; open?: boolean; query?: string }> = [];
   await tui.render(
     <AppContext value={createStaticAppStore(state, (action) => actions.push(action as { type: string }))}>
@@ -42,7 +86,7 @@ test("opens the command bar by clicking the header prompt", async () => {
  */
 test("hosts the command bar input while a list screen is published", async () => {
   const state = {
-    ...createInitialState(createDefaultConfig("/tmp/gloomberb-header-test")),
+    ...createInitialState(headerConfig()),
     commandBarOpen: true,
   };
   const typed: string[] = [];
@@ -84,7 +128,7 @@ test("hosts the command bar input while a list screen is published", async () =>
 /** The keys the open prompt names for the selected row sit at its end, and give way whole to the typed text. */
 test("names the selected row's keys at the end of the open prompt while the query leaves room", async () => {
   const state = {
-    ...createInitialState(createDefaultConfig("/tmp/gloomberb-header-test")),
+    ...createInitialState(headerConfig()),
     commandBarOpen: true,
   };
   await tui.render(
@@ -120,7 +164,7 @@ test("names the selected row's keys at the end of the open prompt while the quer
  * in, so it only says to restart and has nothing to press.
  */
 test("offers a clickable Restart for a downloaded desktop update, and only text for a terminal one", async () => {
-  const config = createDefaultConfig("/tmp/gloomberb-header-test");
+  const config = headerConfig();
   const desktop = { ...createInitialState(config), updateProgress: { phase: "ready" as const, canRestart: true } };
   let restarts = 0;
   await tui.render(
@@ -164,7 +208,7 @@ test("offers a clickable Restart for a downloaded desktop update, and only text 
 test("gives a failed update room at common terminal widths and keeps it clear of its neighbours", async () => {
   const release = { version: "9.9.9", tagName: "v9.9.9", downloadUrl: "", publishedAt: "", updateAction: { kind: "desktop" as const } };
   const state = {
-    ...createInitialState(createDefaultConfig("/tmp/gloomberb-header-test")),
+    ...createInitialState({ ...createDefaultConfig("/tmp/gloomberb-header-test"), headerMarket: { benchmark: "sp500" } }),
     updateAvailable: release,
     updateProgress: {
       phase: "error" as const,
@@ -196,7 +240,7 @@ test("gives a failed update room at common terminal widths and keeps it clear of
     expect(slot.trim()).toMatch(/^(?:\S+\s+)?Update failed/);
     expect(frame.slice(helpX)).not.toMatch(/Update|retry|\.\.\./);
     // The market summary is right of the pill, whole, and not pushed off the row.
-    if (width >= 80) expect(frame.slice(helpX)).toMatch(/Help \? +SPY — base USD/);
+    if (width >= 80) expect(frame.slice(helpX)).toMatch(/^Help \? +(?:NYSE .+ )?S&P 500 — *$/);
     // The raw error, with its URL, stays out of the header.
     expect(frame).not.toContain("example.test");
   }
@@ -217,7 +261,7 @@ test("gives a failed update room at common terminal widths and keeps it clear of
  */
 test.each([60, 70, 80, 100, 120, 160])("keeps update parts whole at %i columns with the prompt open or closed", async (width) => {
   const release = { version: "9.9.9", tagName: "v9.9.9", downloadUrl: "", publishedAt: "", updateAction: { kind: "desktop" as const } };
-  const config = createDefaultConfig("/tmp/gloomberb-header-test");
+  const config = headerConfig();
   for (const commandBarOpen of [false, true]) {
     let helpClicks = 0;
     let restarts = 0;
@@ -268,7 +312,7 @@ test("clips a transient update notice to its slot", async () => {
   for (const width of [60, 80, 120]) {
     await tui.render(
       <AppContext value={createStaticAppStore({
-        ...createInitialState(createDefaultConfig("/tmp/gloomberb-header-test")),
+        ...createInitialState(headerConfig()),
         updateNotice: "Update check failed: no connection, and some more words than fit",
       })}>
         <Header onOpenHelp={() => {}} />
@@ -286,7 +330,7 @@ test("clips a transient update notice to its slot", async () => {
 
 test("uses the classified failure instead of a raw error containing a user path", async () => {
   const state = {
-    ...createInitialState(createDefaultConfig("/tmp/gloomberb-header-test")),
+    ...createInitialState(headerConfig()),
     updateProgress: {
       phase: "error" as const,
       error: "EACCES: permission denied, rename '/Users/someone/Gloomberb.app'",
@@ -310,7 +354,7 @@ test("uses the classified failure instead of a raw error containing a user path"
  * app quits under it.
  */
 test("lets a passing update notice go, and keeps an install that is restarting", async () => {
-  const config = createDefaultConfig("/tmp/gloomberb-header-test");
+  const config = headerConfig();
   const actions: AppAction[] = [];
   const renderWith = async (state: Partial<AppState>) => {
     await tui.render(
@@ -332,7 +376,8 @@ test("lets a passing update notice go, and keeps an install that is restarting",
 
     actions.length = 0;
     await renderWith({ updateProgress: { phase: "done", message: "Update installed, restarting..." } });
-    jest.advanceTimersByTime(60_000);
+    // A minute on, the market's clock turns over too.
+    act(() => { jest.advanceTimersByTime(60_000); });
     await tui.setup().renderOnce();
     expect(actions).toEqual([]);
     expect(tui.frame()).toContain("Update installed, restarting...");

@@ -1,7 +1,7 @@
 // Published full-day closures (weekend dates omitted) for Asia-Pacific venues, EGX and Wiener
 // Boerse, not a holiday-rule engine. A year a venue has not published is unknown, not
-// open: every weekday of it reads as a session. Half-day sessions (HKEX and
-// SGX eves, ASX's 14:10 closes) are not modelled. Checked 2026-10-09:
+// open: every weekday of it reads as a session. The half-day sessions of HKEX, SGX and
+// ASX are listed below the closures (PUBLISHED_APAC_EARLY_CLOSES). Checked 2026-10-09:
 // KRX, also KOSDAQ: http://open.krx.co.kr/contents/MKD/01/0110/01100305/MKD01100305.jsp
 // TWSE, whose closures TPEx shares: https://www.twse.com.tw/en/trading/holiday.html
 //   (2027 not yet published; 12 and 13 Feb 2026 are clearing-only days without trading)
@@ -92,6 +92,44 @@ export const PUBLISHED_APAC_CLOSURES: Readonly<Record<string, Record<number, rea
     ],
   },
 };
+
+const HKEX_HALF_DAY_CLOSE = 12 * 60 + 10;
+const SGX_HALF_DAY_CLOSE = 12 * 60 + 20;
+const ASX_EARLY_CLOSE = 14 * 60 + 15;
+
+/**
+ * Half-day sessions, as the local close with the closing auction rounded up
+ * the way freshness.ts lists regular closes (a weekend eve has none):
+ * - HKEX trades its morning session only on the eves of Lunar New Year,
+ *   Christmas and New Year, its closing auction ending by 12:10 (the circulars
+ *   above, and hkex.com.hk Trading Hours, Securities Market).
+ * - SGX trades to 12:00 on the same eves, its closing routine and trade at
+ *   close ending 12:16 (sgx.com/stock-exchange/trading; 2027 by that rule from
+ *   the MOM holidays above).
+ * - ASX closes at 14:10 with its closing auction on the last business day
+ *   before Christmas and the last of the year (ASX Notice 1245.26, Oct 2026,
+ *   and the trading calendar above).
+ */
+const PUBLISHED_APAC_EARLY_CLOSES: Readonly<Record<string, Record<number, Readonly<Record<string, number>>>>> = {
+  HKEX: {
+    2026: { "02-16": HKEX_HALF_DAY_CLOSE, "12-24": HKEX_HALF_DAY_CLOSE, "12-31": HKEX_HALF_DAY_CLOSE },
+    2027: { "02-05": HKEX_HALF_DAY_CLOSE, "12-24": HKEX_HALF_DAY_CLOSE, "12-31": HKEX_HALF_DAY_CLOSE },
+  },
+  SGX: {
+    2026: { "02-16": SGX_HALF_DAY_CLOSE, "12-24": SGX_HALF_DAY_CLOSE, "12-31": SGX_HALF_DAY_CLOSE },
+    2027: { "02-05": SGX_HALF_DAY_CLOSE, "12-24": SGX_HALF_DAY_CLOSE, "12-31": SGX_HALF_DAY_CLOSE },
+  },
+  ASX: {
+    2026: { "12-24": ASX_EARLY_CLOSE, "12-31": ASX_EARLY_CLOSE },
+    2027: { "12-24": ASX_EARLY_CLOSE, "12-31": ASX_EARLY_CLOSE },
+  },
+};
+
+/** The local close, in minutes of the day, of a published half-day session on `date`; undefined on any other day. */
+export function publishedApacEarlyClose(exchange: string, date: string): number | undefined {
+  if (!Object.hasOwn(PUBLISHED_APAC_EARLY_CLOSES, exchange)) return undefined;
+  return PUBLISHED_APAC_EARLY_CLOSES[exchange]![Number(date.slice(0, 4))]?.[date.slice(5)];
+}
 
 /** True only for a published full-day closure; unpublished years are unknown, not open. */
 export function isPublishedApacClosure(exchange: string, date: string): boolean {

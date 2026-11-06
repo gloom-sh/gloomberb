@@ -231,6 +231,13 @@ export const commands: Command[] = [
     category: "Config",
   },
   {
+    id: "header-market",
+    prefix: "",
+    label: "Header Market",
+    description: "Choose the market the header shows, from the benchmarks or any ticker",
+    category: "Config",
+  },
+  {
     id: "toggle-value-flashing",
     prefix: "VF",
     label: "Toggle Value Flashing",

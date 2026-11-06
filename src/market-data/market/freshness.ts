@@ -1,6 +1,6 @@
 import type { MarketState, QuoteIndexSession } from "../../types/financials";
 import { canonicalExchange, EXCHANGE_TIME_ZONES, isUsListingExchange } from "../../utils/exchanges";
-import { hasPublishedApacCalendar, isPublishedApacClosure } from "../published-apac-sessions";
+import { hasPublishedApacCalendar, isPublishedApacClosure, publishedApacEarlyClose } from "../published-apac-sessions";
 import { hasPublishedCnCalendar, isPublishedCnClosure } from "../published-cn-sessions";
 import { hasPublishedFuturesCalendar, isPublishedFuturesClosure, isPublishedFuturesVenue } from "../published-futures-sessions";
 import { hasPublishedJpxCalendar, isPublishedJpxClosure } from "../published-jpx-sessions";
@@ -343,8 +343,10 @@ function localWeekday(date: string): number | null {
   return day == null ? null : new Date(day * MS_PER_DAY).getUTCDay();
 }
 
-/** The local close of the venue's regular session on `date`, in minutes of the day. */
+/** The local close of the venue's regular session on `date`, in minutes of the day, a published half day's included. */
 function regularCloseMinutes(exchange: string, date: string): number | undefined {
+  const early = publishedApacEarlyClose(exchange, date);
+  if (early !== undefined) return early;
   const weekday = localWeekday(date);
   return (weekday == null ? undefined : WEEKDAY_CLOSE_MINUTES[exchange]?.[weekday]) ?? REGULAR_CLOSE_MINUTES[exchange];
 }
@@ -602,18 +604,33 @@ export function isMiddayBreakPrint(
   now: number,
   feedLagMs: number,
 ): boolean {
+  if (!Number.isFinite(timestampMs) || timestampMs > now) return false;
+  const pause = middayBreakOn(exchange, now);
+  if (!pause) return false;
+  return now >= pause.start && now <= pause.end + feedLagMs + MIDDAY_BREAK_MARGIN_MS
+    && timestampMs >= pause.start - MIDDAY_BREAK_MARGIN_MS;
+}
+
+/**
+ * The venue's midday break on the local day `now` falls in (HKEX pauses
+ * 12:00 to 13:00), whatever the time of day: when it starts and when the
+ * afternoon session opens. Null for a venue that trades through the day, on a
+ * day outside its trading week, and on a half day that closes before the
+ * afternoon session would open (HKEX's Christmas Eve).
+ */
+export function middayBreakOn(exchange: string | undefined, now: number): { start: number; end: number } | null {
   const canonical = canonicalExchange(exchange);
   const pause = MIDDAY_BREAKS[canonical];
   const timeZone = pause?.timeZone ?? EXCHANGE_TIME_ZONES[canonical];
-  if (!pause || !timeZone || !Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now) return false;
+  if (!pause || !timeZone || !Number.isFinite(now)) return null;
   const { year, month, day } = zonedDateTimeParts(now, timeZone);
   const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-  if (!isTradingWeekday(canonical, weekday)) return false;
+  if (!isTradingWeekday(canonical, weekday)) return null;
   const [start, end] = weekday === 5 && pause.friday ? pause.friday : pause.weekdays;
+  const close = regularCloseMinutes(canonical, `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+  if (close !== undefined && close <= end) return null;
   const at = (minutes: number) => zonedWallClockToUtcMs(timeZone, year, month, day, Math.floor(minutes / 60), minutes % 60, 0);
-  const breakStart = at(start);
-  return now >= breakStart && now <= at(end) + feedLagMs + MIDDAY_BREAK_MARGIN_MS
-    && timestampMs >= breakStart - MIDDAY_BREAK_MARGIN_MS;
+  return { start: at(start), end: at(end) };
 }
 
 function usSessionState(timestampMs: number): UsSessionState {

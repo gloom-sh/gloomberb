@@ -16,6 +16,7 @@ import {
   useCommandBarSearchProviders,
 } from "../routes/root/search-providers";
 import { useRouteListState } from "../routing/list-state";
+import { useHeaderMarketPicker } from "../routes/header-market";
 import { useCommandBarRootRuntime } from "../routes/root/runtime";
 import { useRootPickPrefetch } from "../routes/root/pick-prefetch";
 import { createQuickLookTickerCandidates } from "../routes/ticker-search/results";
@@ -572,9 +573,22 @@ export function CommandBar({
     if (runRootQuery(launch.query)) settleSearchReport();
   }, [runRootQuery, settleSearchReport, state.commandBarLaunchRequest, state.commandBarOpen]);
 
+  const getLiveState = useCallback(() => stateRef.current, [stateRef]);
+  const notifyFromPicker = useCallback((body: string, options?: { type?: "info" | "success" | "error" }) => {
+    pluginRegistry.notify({ body, ...options });
+  }, [pluginRegistry]);
+  const { adaptHeaderMarketResult, headerMarketItems } = useHeaderMarketPicker({
+    closeAll: closeAfterRun,
+    dispatch,
+    getState: getLiveState,
+    notify: notifyFromPicker,
+    persistConfig,
+  });
   const routeListState = useRouteListState({
     activeMatch,
+    adaptHeaderMarketResult,
     adaptTickerSearchRouteResult,
+    headerMarketItems,
     buildLayoutItems,
     currentRoute,
     orderedRootResults,
