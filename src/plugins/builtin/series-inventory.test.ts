@@ -19,7 +19,7 @@ const NOT_MODULES = new Set(["shared"]);
 // storage operators' transparency platform, which asks to be named as the source of its data; IMF
 // PortWatch publishes the chokepoint transits, and the IMF's terms ask for attribution; TurkStat, Türkiye's
 // statistics institute, compiles the Turkish CPI the central bank republishes.
-const PUBLISHERS = new Set(["FRED", "BIS", "EIA", "CFTC", "FINRA", "Bundesbank", "Bank of England", "Japan Ministry of Finance", "Bank of Canada", "ECB", "U.S. Treasury", "SEC", "Ember", "EEX", "GIE AGSI+", "IMF PortWatch", "TurkStat", "IBGE", "NAHB"]);
+const PUBLISHERS = new Set(["FRED", "BIS", "EIA", "CFTC", "FINRA", "Bundesbank", "Bank of England", "Japan Ministry of Finance", "Bank of Canada", "ECB", "U.S. Treasury", "SEC", "Ember", "EEX", "GIE AGSI+", "IMF PortWatch", "TurkStat", "IBGE", "NAHB", "MAS"]);
 const SAMPLE_INPUTS = { ticker: "AAPL", option: "AAPL260618C00200000", crypto: "BTC-USD" } as const;
 
 function sourceFiles(dir: string): string[] {
@@ -92,5 +92,8 @@ describe("built-in series inventory", () => {
       if (!definition.group) problems.push(`${definition.id} has no group`);
     }
     expect(problems).toEqual([]);
+    // MAS's licence asks for its attribution wherever SORA is shown as MAS's: the catalog lists it beside the series.
+    expect(registry.list().find(({ definition }) => definition.id === "fred:SORA")?.definition)
+      .toMatchObject({ publisher: "MAS", limitation: expect.stringContaining("Singapore Open Data Licence") });
   });
 });

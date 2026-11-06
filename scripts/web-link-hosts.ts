@@ -29,6 +29,8 @@ export const WEB_LINK_ONLY_HOSTS: ReadonlySet<string> = new Set([
   "crypto.com",
   "ember-energy.org",
   "en.wikipedia.org",
+  // MAS's interest rates page, credited as SORA's source; the rate itself comes through Gloom Cloud.
+  "eservices.mas.gov.sg",
   "exchange.gemini.com",
   "fred.stlouisfed.org",
   "kalshi.com",

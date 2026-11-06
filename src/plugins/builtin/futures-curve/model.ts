@@ -3,7 +3,7 @@ import type { CurvePalette, CurveSeries } from "../../../components/chart/curve/
 import { spanDigits } from "../../../components/chart-table";
 import { compositeAxisTicks } from "../../../components/chart/composite/format";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { FUTURES_CONTRACTS, futuresBoardContractForTicker, futuresContractByCode, tickDecimals } from "../../../market-data/futures-board";
+import { CME_CRYPTO_FUTURES, FUTURES_CONTRACTS, futuresBoardContractForTicker, futuresContractByCode, tickDecimals } from "../../../market-data/futures-board";
 import { futuresContractCode } from "../../../market-data/futures-contract";
 import { contractMonthLabel } from "../../../utils/contract-month";
 import { formatPercentileRank } from "../../../utils/format";
@@ -14,15 +14,8 @@ import { zonedDateKey, zonedWallClockToUtcMs } from "../../../utils/zoned-date-t
 import { dateOptionError, dateOptionFormatsOr, readCalendarDate } from "../../../utils/calendar-date";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 
-/**
- * CME crypto futures have a curve but no FUT board row, so their name and tick
- * live here rather than in the catalogue the board lists. Outright ticks:
- * BTC $5, ETH $0.50, SOL $0.05, XRP $0.0005 (each $25 a contract).
- */
-const CRYPTO_CURVE_ROOTS: readonly { code: string; name: string; tick: number }[] = [
-  { code: "BTC", name: "Bitcoin", tick: 5 }, { code: "ETH", name: "Ether", tick: 0.5 },
-  { code: "SOL", name: "Solana", tick: 0.05 }, { code: "XRP", name: "XRP", tick: 0.0005 },
-];
+/** CME crypto futures have a curve but no FUT board row: their name and tick live with the board's. */
+const CRYPTO_CURVE_ROOTS = CME_CRYPTO_FUTURES;
 const rootLabel = (code: string, name: string) => name === code ? code : `${code} ${name}`;
 
 export const CURVE_ROOTS = [

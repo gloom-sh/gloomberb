@@ -6,6 +6,7 @@ import { cliStyles, cliTerminalWidth, wrapText } from "../../utils/cli-output";
 import { isFiniteNumber } from "../../utils/guards";
 import { calculateOptionGreeks, ivSolvedNote, solveChainVolatilities } from "../../plugins/builtin/options/analytics";
 import { optionQuoteSide } from "../../plugins/builtin/options/market-reference";
+import { withQuotesUnderIntrinsicMarked } from "../../plugins/builtin/shared/volatility";
 import {
   formatModelSpotPrice, modelSpotLabel, optionModelSpot, type OptionModelSpot,
 } from "../../plugins/builtin/options/model-spot";
@@ -222,8 +223,10 @@ export function valueChainAtModelSpot(
   chain: OptionsChain, inputs: OptionModelInputs, now: number, exchange?: string,
 ): { chain: OptionsChain; spot: OptionModelSpot | null } {
   const spot = optionModelSpot(inputs.quote, chain, now, exchange);
+  // A quote under intrinsic at that spot is shown marked stale, as the server marks one.
+  const marked = withQuotesUnderIntrinsicMarked(chain, spot?.price ?? inputs.spot);
   return {
-    chain: chainWithModelFigures(chain, spot ? { spot: spot.price, dividendYield: inputs.dividendYield, now: spot.valuationTime } : inputs),
+    chain: chainWithModelFigures(marked, spot ? { spot: spot.price, dividendYield: inputs.dividendYield, now: spot.valuationTime } : inputs),
     spot,
   };
 }
@@ -261,12 +264,19 @@ export function optionsBasisFootnote(basis: OptionsChainBasis, chain?: OptionsCh
     parts.push(Number.isFinite(asOf) ? `OI live, ${formatUtcTime(new Date(asOf).toISOString())}` : openInterestAsOfLabel(basis.openInterest));
     return parts.join(" · ");
   }
-  if (basis.spot) {
+  // An adjusted contract delivers something other than 100 shares: the fund's price values none of it.
+  if (chain && [...chain.calls, ...chain.puts].some((contract) => contract.adjusted)) {
+    parts.push("adjusted: each delivers what its Deliverable says, so no IV or delta is read at the fund's price");
+  } else if (basis.spot) {
     parts.push(`Greeks at spot ${formatModelSpotPrice(basis.spot.price)} (${modelSpotLabel(basis.spot)}), `
       // An unknown yield is valued as none, and says so rather than read as a stated 0%.
       + `dividend yield ${basis.dividendYield == null ? "unknown (valued at 0%)" : `${Number((basis.dividendYield * 100).toFixed(2))}%`}, `
       + `rate ${Number((OPTION_MODEL_RATE * 100).toFixed(2))}%`);
     parts.push(ivSolvedNote(basis.ivFilled === true));
+  }
+  // A quote that cannot be priced is shown, and its IV cell says why it values nothing.
+  if (chain && [...chain.calls, ...chain.puts].some((contract) => contract.quoteStale)) {
+    parts.push("stale: quoted before the session or under intrinsic, no IV or delta");
   }
   const oi = basis.openInterest;
   parts.push(oi?.date ? openInterestAsOfLabel(oi)
@@ -302,10 +312,13 @@ export function optionRows(chain: OptionsChain) {
       ask: contract.ask,
       volume: contract.volume,
       openInterest: contract.openInterest,
-      iv: modeled.iv ?? null,
+      // A stale quote (from before the session, or under intrinsic) is shown but values nothing.
+      iv: contract.quoteStale ? null : modeled.iv ?? null,
       // Solved from the strike's quote, or filled from its neighbours when it has none to solve from; a venue's own mark is neither.
-      ivSource: modeled.iv == null ? null : contract.mark ? "mark" : modeled.ivFilled ? "filled" : "solved",
-      delta: modeled.delta ?? null,
+      ivSource: contract.quoteStale ? "stale quote" : modeled.iv == null ? null : contract.mark ? "mark" : modeled.ivFilled ? "filled" : "solved",
+      delta: contract.quoteStale ? null : modeled.delta ?? null,
+      quoteStale: contract.quoteStale === true,
+      ...(contract.adjusted ? { root: contract.adjusted.root, deliverable: contract.adjusted.deliverable } : {}),
       expiration: expiryIsoDate(contract.expiration),
       // A venue's marks and coin prices (Deribit), beside the dollar ones.
       ...(contract.mark ? {
@@ -340,8 +353,12 @@ export function formatOptionQuoteCell(row: Record<string, unknown>, side: "bid" 
   return quote == null ? "—" : String(quote);
 }
 
-/** Implied volatility as a percent; a dash when it could not be solved, never 0.0%, and a leading "~" when it was filled from neighbouring strikes. */
+/**
+ * Implied volatility as a percent; a dash when it could not be solved, never 0.0%, and a leading "~" when it was filled
+ * from neighbouring strikes. A stale quote says so in its place: its bid and ask are shown, but value nothing.
+ */
 export function formatOptionIvCell(value: unknown, row?: Record<string, unknown>): string {
+  if (row?.quoteStale === true) return "stale";
   if (!isFiniteNumber(value) || !(value > 0)) return "—";
   const text = `${(value * 100).toFixed(1)}%`;
   return row?.ivSource === "filled" ? `~${text}` : text;

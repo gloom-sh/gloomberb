@@ -69,6 +69,10 @@ test("the DeFi list states the total and its source, ranks protocols or chains, 
   expect(protocols.text).not.toContain("Fees");
   // Daily figures from a publisher, dated by their day: never a live feed.
   expect(protocols.freshness).toMatchObject({ status: "not-a-feed", publisher: "DefiLlama", asOf: "2026-09-23" });
+  // A day's close is aged from the day's end: 23 Sep's is current until 36 hours after it, noon on the 25th.
+  const at = (time: string) => deriveHeadlessFreshness(cryptoBoardHeadless, protocols.result, Date.parse(time)).status;
+  expect(at("2026-09-25T11:00:00Z")).toBe("not-a-feed");
+  expect(at("2026-09-25T13:00:00Z")).toBe("stale");
 
   const chains = await defi("chain");
   expect(chains.text).toMatch(/Chain\s+Token\s+TVL USD\s+7D\s+7D %\s+30D\s+30D %\s+Share/);
@@ -147,4 +151,38 @@ test("--sort offpeg lists the stablecoins furthest off their peg first, a bond t
   expect(cryptoBoardHeadless.shotState!(args as never, null as never, new Set(["list", "sort"])))
     .toEqual({ pluginState: { "market-overview": { sort: { columnId: "offPegBp", direction: "desc" } } } });
   await expect(cryptoBoardHeadless.load({ ...ARGS, options: { sort: "offpeg" } }, ctx)).rejects.toThrow("add --list stablecoin");
+});
+
+test("a word after CRYP opens that list as --list does, an unknown one names the lists, and --limit keeps the first rows", async () => {
+  const apiClient = {
+    getCloudCryptoMarkets: async () => cryptoFixture(),
+    getCloudStablecoinSupply: async () => stablecoinSupplyFixture(),
+    getCloudDefiTvl: async () => defiTvlFixture(),
+  };
+  const ctx = { apiClient, signal: new AbortController().signal } as unknown as HeadlessPaneContext;
+  const run = (argument: string | null, options: Record<string, unknown> = {}) =>
+    cryptoBoardHeadless.load({ rawArgument: argument ?? "", argument, symbols: [], options: { list: "coin", ...options } }, ctx);
+  expect((await run("tvl")).metadata).toMatchObject({ list: "defi", by: "protocol" });
+  expect((await run("stablecoins")).metadata).toMatchObject({ list: "stablecoin" });
+  expect((cryptoBoardHeadless.describe as (args: unknown) => string)({ rawArgument: "tvl", argument: "tvl", symbols: [], options: { list: "coin", by: "chain" } }))
+    .toBe("Crypto | DeFi TVL by chain");
+  // The shot opens the pane on the list named.
+  expect(cryptoBoardHeadless.shotState!({ rawArgument: "stablecoin", argument: "stablecoin", symbols: [], options: {} } as never, null as never, new Set()))
+    .toEqual({ pluginState: { "market-overview": { activeTab: "stablecoin" } } });
+  await expect(run("foo")).rejects.toThrow('No list "foo". CRYP lists: coin, stablecoin, defi (or tvl).');
+  const coins = await run(null);
+  const limited = await run(null, { limit: 2 });
+  expect(limited.rows.map((row) => row.code)).toEqual(coins.rows.slice(0, 2).map((row) => row.code));
+  expect((await run("defi", { limit: 1 })).rows).toHaveLength(1);
+});
+
+test("a supply a day older than the prices beside it is headed with its day", async () => {
+  const supplyHeader = async (supplyAsOf: string) => {
+    const apiClient = { getCloudCryptoMarkets: async () => cryptoFixture(), getCloudStablecoinSupply: async () => ({ ...stablecoinSupplyFixture(), asOf: supplyAsOf }) };
+    const result = await cryptoBoardHeadless.load(ARGS, { apiClient, signal: new AbortController().signal } as unknown as HeadlessPaneContext);
+    const column = result.columns!.find((entry) => entry.key === "supply")!;
+    return column.textHeader ?? column.header;
+  };
+  expect(await supplyHeader("2026-09-22")).toBe("Supply 09-22");
+  expect(await supplyHeader("2026-09-23")).toBe("Supply");
 });

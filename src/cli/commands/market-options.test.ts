@@ -154,7 +154,7 @@ test("an options export says on every row what it is, the spot and time behind I
     expect(listedOpenInterest).toHaveBeenCalledWith("open-interest?symbol=GOOGL&expiry=2028-03-17", expect.anything());
     const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, render).split("\n");
     const [header, ...rows] = csv.filter((line) => line && !line.startsWith("#"));
-    expect(header).toBe(["Side,Contract,Expiry,Strike,Last,Bid,Ask,IV (annualized decimal),IV source,Delta (decimal),Vol,OI",
+    expect(header).toBe(["Side,Contract,Expiry,Strike,Last,Bid,Ask,IV (annualized decimal),IV source,Delta (decimal),Vol,OI,Quote stale",
       "Spot,Spot basis,Spot as of,OI as of", ...EXPORT_IDENTITY_COLUMNS].join(","));
     expect(rows).toHaveLength(4);
     for (const row of rows) {
@@ -167,6 +167,38 @@ test("an options export says on every row what it is, the spot and time behind I
       model: { spot: 352.72, spotBasis: "close", spotAsOf: "2026-10-12T20:00:00.000Z" }, openInterest: { asOf: "2026-10-09" } });
     expect(json.source).toMatchObject({ name: "Gloom Cloud", observationDate: "2026-10-12T19:59:59.000Z" });
     expect(render!.footnote).toBe("Greeks at spot 352.72 (close Mon 12 Oct), dividend yield 0%, rate 4% · IV solved from quote mids · OI as of Fri 9 Oct");
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("--adjusted lists what each adjusted contract delivers, and values none of them at the fund's price", async () => {
+  const expiration = EXPIRIES[1]!;
+  const closeAt = Date.parse("2026-10-12T19:59:59Z");
+  // ETHA1's strike 5 call delivers less than 100 ETHA: an ask of 13.35 with ETHA at 50.77 is not under its intrinsic.
+  const contract = (side: "C" | "P", strike: number, deliverable: string | null) => ({
+    contractSymbol: `ETHA1280317${side}${String(strike * 1000).padStart(8, "0")}`, strike, currency: "USD", lastPrice: 0,
+    change: 0, percentChange: 0, bid: 11.55, ask: 13.35, impliedVolatility: 0, inTheMoney: true, expiration, lastTradeDate: closeAt / 1000,
+    adjusted: { root: "ETHA1", deliverable },
+  });
+  const chain = { underlyingSymbol: "ETHA", expirationDates: EXPIRIES, asOf: new Date(closeAt).toISOString(), dataSource: "delayed",
+    delayMinutes: 15, calls: [contract("C", 5, "15 ETHA + 120.5 USD cash")], puts: [contract("P", 5, null)] };
+  const quote = { symbol: "ETHA", price: 50.77, currency: "USD", change: 0, changePercent: 0, lastUpdated: closeAt };
+  const asked: unknown[] = [];
+  setSystemTime(new Date("2026-10-12T21:00:00Z"));
+  try {
+    const cli = createTestCliContext({ dataProvider: { getOptionsChain: async (...args: unknown[]) => { asked.push(args[3]); return chain; },
+      getQuote: async () => quote,
+      getTickerFinancials: async () => ({ quote, fundamentals: { dividendYield: 0 }, annualStatements: [], quarterlyStatements: [], priceHistory: [] }) } });
+    await options.execute(["ETHA", "--expiration", "2028-03-17", "--adjusted"], cli.context);
+    const { result, options: render } = cli.printed[0]!;
+    expect(asked).toContainEqual(expect.objectContaining({ adjustedOptions: true }));
+    const rows = (render!.rows as (data: unknown) => Array<Record<string, unknown>>)(result.data);
+    expect(rows.map((row) => [row.contract, row.iv, row.delta, row.quoteStale, row.deliverable])).toEqual([
+      ["ETHA1280317C00005000", null, null, false, "15 ETHA + 120.5 USD cash"],
+      ["ETHA1280317P00005000", null, null, false, null],
+    ]);
+    expect(render!.footnote).toStartWith("adjusted: each delivers what its Deliverable says, so no IV or delta is read at the fund's price · ");
   } finally {
     setSystemTime();
   }

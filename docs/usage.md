@@ -792,7 +792,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 
 `PERP` opens the [perpetuals board](perpetuals.md), and `PERP [market]` that market's History.
 
-**`CRYP`** opens the top 100 coins by market cap, with stablecoins on the second tab. Prices refresh every 15 seconds and stream in real time where the plan allows. Enter or click opens the coin in the ticker pane, column headers sort and `r` refreshes. `gloom fn CRYP --json` returns the board, and `--list stablecoin` the stablecoins with their supply ([stablecoin supply](research-data.md#stablecoin-supply)).
+**`CRYP`** opens the top 100 coins by market cap, with stablecoins on the second tab. Prices refresh every 15 seconds and stream in real time where the plan allows. Enter or click opens the coin in the ticker pane, column headers sort and `r` refreshes. `gloom fn CRYP --json` returns the board, and `--list stablecoin` the stablecoins with their supply ([stablecoin supply](research-data.md#stablecoin-supply)). A list's name after the code opens it, in the command bar and with `fn`: `CRYP stablecoin`, `CRYP tvl` (DeFi TVL), and `fn TVL` and `fn STABLECOINS` open CRYP on those lists. A name it has no list for is refused with the ones it has. `--limit 10` keeps the first 10 rows of a list; `fn PERP --limit 10` the first 10 of each table.
 
 ### Workspace and App Controls
 
@@ -1298,7 +1298,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 **Forwards.** `gloom fx USD/MXN --forward 30d` gives the forward implied by covered interest parity, labelled `implied by rates, not a dealer quote`: spot × (1 + quote rate × days/basis) / (1 + base rate × days/basis).
 
 - The answer shows the forward points (pips of 0.0001, 0.01 against JPY), the premium or discount over spot for the period and a year, and both rates with their day and publisher.
-- The rates are SOFR (USD), €STR (EUR), SONIA (GBP) and Banxico's TIIE 28d (MXN), so any pair of those works (`fx EUR/USD --forward 3m`). A missing rate says which one.
+- The rates are SOFR (USD), €STR (EUR), SONIA (GBP), Banxico's TIIE 28d (MXN) and MAS's SORA (SGD, ACT/365), so any pair of those works (`fx EUR/USD --forward 3m`, `fx USD/SGD --forward 3m`). A missing rate says which one. SORA comes under MAS's Singapore Open Data Licence, so a forward through SGD, `fred SORA` and the series catalog carry the attribution it asks for.
 - Tenors count calendar days from today (`30d`, `2w`, `3m`, `1y`, up to a year). `--forward` with `--date` fails and names the command for that day's close.
 - `--json` carries `forward`, `points`, `premiumPercent`, `annualizedPercent`, `baseRate` and `quoteRate`. `catalog forward` points here.
 
@@ -1532,6 +1532,10 @@ In short DVD panes, Page Up/Down scroll the summary, arrows or j/k navigate hist
 `gloom options AAPL` prints the nearest expiry's contracts and lists every expiry above them (the nearest 40 when a chain has more). `--expiration` takes a date (`2028-01-21`) or Unix seconds, and a date the chain does not list fails with the nearest listed dates.
 
 IV is solved from quote midpoints (not the provider's own implied volatility), and delta from that IV, the underlying's current price, its dividend yield and a 4% risk-free rate. A contract with no two-sided quote, no current underlying price or no time left shows a dash. A chain still quoting the last close is valued at that close.
+
+A quote from before the chain's session, or with its ask more than 2% of the underlying under the option's intrinsic value, is shown with its bid and ask and `stale` in the IV column; no IV, delta or greek is read from it, here, in `OMON` and in the volatility surface, and the line under the table says so. Exports carry it as `Quote stale`. Only an option that can be exercised early, a US stock or fund's, is held to intrinsic: a European one can be worth less (a deep in-the-money SPX put a year out), so cash-settled index roots (SPX, SPXW, XSP, NDX, NDXP, RUT, RUTW, VIX, VIXW and the like), a coin option the venue marks (Deribit's) and `--adjusted` contracts never are. A fresh streamed bid and ask replace a stale quote and clear its mark, and are checked against intrinsic again.
+
+The chain is the standard contracts. Contracts a corporate action adjusted (listed under a numbered root, such as ETHA1 beside ETHA after a split) deliver something other than 100 shares, so their prices do not compare with the standard ones at the same strike. `gloom options ETHA --adjusted` lists them instead, each with its deliverable (`15 ETHA + 120.5 USD cash`, or `not stated` when the source does not say).
 
 The line under the table names the spot and time they are valued at and the open interest's date: `Greeks at spot 89.79 (close Mon 12 Oct), dividend yield 2.34%, rate 4% · OI as of Fri 9 Oct` (`OI date not published` when it cannot be established; [method](research-data.md#greeks-spot-and-time)).
 
@@ -2531,9 +2535,9 @@ Select a coloured table row to locate its trail, and open it for dated strength 
 `KELLY <ticker>` sizes a position with the Kelly criterion:
 
 - **Binary, Scenario, Risk, Market and Asym** take your own probabilities and payoffs.
-- **History** reads them off the ticker's own daily closes: the share of up months, the mean gain of the up months and the mean loss of the down months, over non-overlapping 21-session returns for the last five years (`Years` sets one to five). It is sized as a binary bet, so full Kelly maximizes expected log growth. Past months are not a forecast, and fewer than six of them give no inputs.
+- **History** reads them off the ticker's own daily closes: the share of up months, the mean gain of the up months and the mean loss of the down months, over calendar months, each month-end close against the one before, for the last five years, 60 returns (`Years` sets one to five), the month in progress at the venue left out; a coin and a stock are sized on the same months. A source without dated daily history answers from its trailing five years, which start days into the first month and give 59; the window says which. It is sized as a binary bet, so full Kelly maximizes expected log growth. Past months are not a forecast, and fewer than six of them give no inputs.
 
-`gloom fn KELLY LIT` prints History's inputs (window, win rate, average gain and loss, payoff ratio, edge a month) and full, half and quarter Kelly as a share of bankroll. `--bankroll 250000` (or `250k`, `1.5m`) sizes each in your base currency, and `--years 1` shortens the window. `gloom shot KELLY LIT --bankroll 250000` opens the pane on History with that bankroll.
+`gloom fn KELLY LIT` prints History's inputs (window, win rate, average gain and loss, payoff ratio, edge a month) and full, half and quarter Kelly as a share of bankroll. `--bankroll 250000` (or `250k`, `1.5m`) sizes each in your base currency, counted in shares of a stock, units of a coin or contracts of a future (price times the contract's multiplier), and `--years 1` shortens the window. `gloom shot KELLY LIT --bankroll 250000` opens the pane on History with that bankroll.
 
 ## Portfolio risk depth: PORT and MARS
 

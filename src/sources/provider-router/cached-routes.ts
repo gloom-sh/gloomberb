@@ -222,13 +222,25 @@ export class ProviderRouterCachedRoutes {
         acceptCached: (data: CorporateActionsData) => !data.stale && !Object.values(data.coverage ?? {}).includes("unavailable"), throwLastError: true,
         error: `No corporate actions provider available for ${ticker}`,
       };
-      case "getOptionsChain": return {
-        ...tickerRoute("options-chain", "optionsChain"),
-        variants: [...new Set([buildVariantKey([["exchange", canonicalExchange(exchange)], ["expiration", extra ?? "default"]]), buildVariantKey([["expiration", extra ?? "default"]]), ""])],
-        request: (provider, force) => provider.getOptionsChain?.(ticker, exchange, extra, force ? { ...context, cacheMode: "refresh" } : context),
-        brokerRequest: { ticker, exchange, expiration: extra, context },
-        error: `No options provider available for ${ticker}`,
-      };
+      case "getOptionsChain": {
+        // The contracts a corporate action adjusted (ETHA1) are a list of their own: kept under their own key, never
+        // read for the standard chain nor answered with it, and no broker's chain stands in for them.
+        if (context?.adjustedOptions) {
+          return {
+            ...tickerRoute("options-chain", "optionsChain"),
+            variants: [buildVariantKey([["exchange", canonicalExchange(exchange)], ["expiration", extra ?? "default"], ["adjusted", 1]])],
+            request: (provider, force) => provider.getOptionsChain?.(ticker, exchange, extra, force ? { ...context, cacheMode: "refresh" } : context),
+            error: `No options provider available for ${ticker}`,
+          };
+        }
+        return {
+          ...tickerRoute("options-chain", "optionsChain"),
+          variants: [...new Set([buildVariantKey([["exchange", canonicalExchange(exchange)], ["expiration", extra ?? "default"]]), buildVariantKey([["expiration", extra ?? "default"]]), ""])],
+          request: (provider, force) => provider.getOptionsChain?.(ticker, exchange, extra, force ? { ...context, cacheMode: "refresh" } : context),
+          brokerRequest: { ticker, exchange, expiration: extra, context },
+          error: `No options provider available for ${ticker}`,
+        };
+      }
       case "getSecFilings": {
         const [symbol, count = 15, listingExchange, requestContext] = args as CachedAssetArgs<"getSecFilings">;
         const exact = buildVariantKey([["exchange", canonicalExchange(listingExchange)], ["count", count]]);

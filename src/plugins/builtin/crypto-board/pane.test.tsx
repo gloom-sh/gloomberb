@@ -179,7 +179,8 @@ test("the stablecoin tab charts supply above its rows, the legend and the table 
   // The legend reads each coin's own supply, not the stack's height at it.
   expect(frame).toMatch(/USDT 180\.00B \+ USDC 72\.00B × Other 48\.00B/);
   expect(frame).toMatch(/MCAP\s+SUPPLY\s+SUP 7D%\s+SUP 7D\s+SUP 30D%\s+SUP 30D\s+SHARE/);
-  expect(frame).toMatch(/1\s+USDT\s+Tether USDt .*180\.00B\s+180\.00B\s+-0\.33%\s+-600\.00M\s+\+0\.11%\s+\+200\.00M\s+60\.00%/);
+  // Its market cap is its price (0.9998) times the supply it shows.
+  expect(frame).toMatch(/1\s+USDT\s+Tether USDt .*179\.96B\s+180\.00B\s+-0\.33%\s+-600\.00M\s+\+0\.11%\s+\+200\.00M\s+60\.00%/);
 });
 
 test("a supply outage leaves the stablecoin board as it is without supply and says the chart is unavailable", async () => {
