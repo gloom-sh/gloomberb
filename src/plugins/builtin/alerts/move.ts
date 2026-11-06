@@ -24,6 +24,13 @@ export function moveCondition(word: string | undefined): AlertCondition | null {
   return word ? MOVE_WORDS[word.toLowerCase()] ?? null : null;
 }
 
+/**
+ * Who hears of a move: only the running app checks moves, so no email or
+ * phone alert comes of one, signed in or not. Said where a move alert is
+ * made and listed, so nobody waits for an email.
+ */
+export const MOVE_APP_ONLY = "Move alerts notify only while the app is running, even when signed in with Cloud sync: no email or phone alert.";
+
 /** The largest move a rule takes, in percent: a fall cannot pass 100%. */
 const MAX_MOVE_PERCENT = 100;
 

@@ -155,7 +155,8 @@ export function triggerLabel(alert: Pick<AlertRule, "condition" | "move" | "metr
 
 /** The Measure cell: Price, Move, or the measure's name. */
 export function measureLabel(alert: Pick<AlertRule, "move" | "metric">): string {
-  return alert.metric ? metricName(alert.metric) : alert.move ? "Move" : "Price";
+  // A move says in its row that only the running app hears of it (MOVE_APP_ONLY).
+  return alert.metric ? metricName(alert.metric) : alert.move ? "Move, app only" : "Price";
 }
 
 export function conditionLabel(condition: AlertCondition): string {

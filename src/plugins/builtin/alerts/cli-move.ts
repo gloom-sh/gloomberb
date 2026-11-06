@@ -191,7 +191,7 @@ export function planMoveAlerts(request: MoveAddRequest, listings: readonly MoveL
 }
 
 /** How a move rule reaches you, as docs/usage.md states it: only the running app reads moves. */
-export const MOVE_DELIVERY = "the app alerts while it is running, once a session, and arms it again for the next one";
+export const MOVE_REARM = "once a session, armed again for the next one";
 
 /** "now -0.38% vs Thu 5 Nov close", and that it goes off at the next check when the move is there already. */
 export function moveNowText(alert: AlertRule, now = Date.now()): string | null {

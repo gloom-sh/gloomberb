@@ -931,8 +931,8 @@ A symbol is read as `gloom quote` reads it and must be a US listing, as in the d
 **Moves from the previous close.** `alerts add <symbol> moves|up|down <percent>` alerts on the day's move rather than a level, for any listing or currency pair: `alerts add GBPUSD=X moves 0.5%` either way, `alerts add AZN.L down 3%`. The move is the one the quote's change shows, measured from the close it names (`-0.43% vs Thu 5 Nov close`). A rule goes off once a session and arms itself again for the next one. A level written with a signed percent is that move (`below -3%` is down 3%, said so); one with an unsigned percent (`below 3%`) is refused, as a price level is a price.
 
 - Several symbols in one command (`alerts add HSBA.L BARC.L down 3%`), or `--watchlist <name>` for every listing of a watchlist (`alerts add --watchlist Book up 3%`), make one alert per listing, up to 500. Repeats and a rule already set are added once, and one summary counts them by venue and names each symbol that could not be quoted.
-- Move rules keep a synced list of their own, and only the running app checks them: Cloud sync carries them to your other devices, but they are not emailed or pushed.
-- **Levels** shows them with **Move** as the measure, the move as the reading and the close it is from in the detail.
+- Move alerts notify only while the app is running, even when signed in with Cloud sync: they are never emailed or pushed. Cloud sync carries the rules to your other devices, in a list of their own. The reply that adds one says so.
+- **Levels** and `fn ALRT` show them with **Move, app only** as the measure, the move as the reading, and in the detail the close it is from and who is notified.
 
 **Price alerts** are checked by the running app on every price tick, and it notifies you there. Signed in with Cloud sync on, an alert the app has synced also reaches you with the app closed:
 

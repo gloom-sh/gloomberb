@@ -1,5 +1,5 @@
 import { closeBasis, metricReadingText } from "./metric-model";
-import { moveBasisText, movePercentText } from "./move";
+import { MOVE_APP_ONLY, moveBasisText, movePercentText } from "./move";
 /**
  * `gloom fn ALRT`: the Alerts pane's three tabs as reports. Prices lists
  * the price alerts as the pane's table does, Events the event alerts (earnings,
@@ -133,13 +133,17 @@ function priceRow(alert: AlertRule): HeadlessPaneRow {
 function pricesResult(alerts: readonly AlertRule[], error: string | null, events: number): HeadlessRowsResult {
   const active = alerts.filter((alert) => alert.status === "active");
   const triggered = alerts.filter((alert) => alert.status === "triggered").sort((a, b) => (b.triggeredAt ?? 0) - (a.triggeredAt ?? 0));
+  const notes = [
+    ...alerts.some((alert) => alert.move) ? [MOVE_APP_ONLY] : [],
+    ...events > 0 ? [`${plural(events, "event alert")} not listed here: gloom fn ALRT --tab events`] : [],
+  ];
   return {
     columns: PRICE_COLUMNS,
     textColumns: PRICE_TEXT_COLUMNS,
     rows: [...active, ...triggered].map(priceRow),
     empty: "No level alerts. Add one with gloom alerts add AAPL above 250.",
     ...(error ? { errors: [error], complete: false } : {}),
-    ...(events > 0 ? { notes: [`${plural(events, "event alert")} not listed here: gloom fn ALRT --tab events`] } : {}),
+    ...(notes.length ? { notes } : {}),
   };
 }
 

@@ -81,10 +81,10 @@ import {
 import { scheduledEventSources } from "./scheduled-sources";
 import { readAlertStores, writeLevelAlertStores } from "./storage";
 import {
-  MOVE_DELIVERY, moveNowText, parseMoveAddArgs, planMoveAlerts, quoteSavedListings, quoteTypedSymbols, uniqueInputs, venueCounts,
+  MOVE_REARM, moveNowText, parseMoveAddArgs, planMoveAlerts, quoteSavedListings, quoteTypedSymbols, uniqueInputs, venueCounts,
   watchlistListings, MAX_BULK_ALERTS, type MoveAddRequest, type MoveListing,
 } from "./cli-move";
-import { moveRuleWords } from "./move";
+import { MOVE_APP_ONLY, moveRuleWords } from "./move";
 import { listAddLookups } from "../portfolio-list/cli/bulk-symbols";
 import type { AlertCondition, AlertRule } from "./types";
 
@@ -1144,7 +1144,7 @@ export const alertsCliCommand: CliCommandDef = {
           const alert = plan.added[0]!;
           const nowText = moveNowText(alert, now);
           ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert }, ...(notes.length ? { warnings: notes } : {}) }, {
-            text: (data) => `Added alert ${data.alert.id}: ${formatAlertDescription(data.alert)} (${MOVE_DELIVERY}).${nowText ? ` ${capitalize(nowText)}.` : ""}${dryRunNote(data.dryRun)}`,
+            text: (data) => `Added alert ${data.alert.id}: ${formatAlertDescription(data.alert)} (${MOVE_REARM}).${nowText ? ` ${capitalize(nowText)}.` : ""}${dryRunNote(data.dryRun)}\n${MOVE_APP_ONLY}`,
           });
           return;
         }
@@ -1156,7 +1156,8 @@ export const alertsCliCommand: CliCommandDef = {
           ...(notes.length ? { warnings: notes } : {}),
         }, {
           text: (data) => [
-            `Added ${data.added.length} move ${data.added.length === 1 ? "alert" : "alerts"}${source ? ` ${source}` : ""}: ${rule} from the previous close (${MOVE_DELIVERY}).${dryRunNote(data.dryRun)}`,
+            `Added ${data.added.length} move ${data.added.length === 1 ? "alert" : "alerts"}${source ? ` ${source}` : ""}: ${rule} from the previous close (${MOVE_REARM}).${dryRunNote(data.dryRun)}`,
+            ...data.added.length ? [`  ${MOVE_APP_ONLY}`] : [],
             ...data.added.length ? [`  By venue: ${venueCounts(data.added)}.`] : [],
             ...moveSummaryLines(plan, moves),
           ].join("\n"),
