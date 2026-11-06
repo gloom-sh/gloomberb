@@ -262,6 +262,7 @@ import {
   movedSymbolLine,
   ListingArgError,
   isNoProviderError,
+  isTitleCaseWord,
   requireCliListing,
   resolveCliListing,
   type CliListing,
@@ -435,9 +436,12 @@ function normalizeSymbols(args: string[]): string[] {
   return uniqueEntries(splitSymbolArgs(args));
 }
 
-/** Each entry once, a symbol upper-cased and a company's name in its typed case. */
+/**
+ * Each entry once, a symbol upper-cased and a company's name in its typed case, a word written as a name
+ * (`Aeon`) too: it may be a company's name as much as a ticker (`titleCaseCompanyName`).
+ */
 function uniqueEntries(entries: readonly string[]): string[] {
-  return uniqueSecuritySymbols(entries.map((entry) => isCompanyNameInput(entry) ? entry : entry.toUpperCase()));
+  return uniqueSecuritySymbols(entries.map((entry) => isCompanyNameInput(entry) || isTitleCaseWord(entry) ? entry : entry.toUpperCase()));
 }
 
 /**

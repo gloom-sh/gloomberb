@@ -26,6 +26,8 @@ import {
   movedSymbolLine,
   notTradedMessage,
   oneWordCompanyName,
+  isTitleCaseWord,
+  titleCaseCompanyName,
   parseListingArg,
   quoteBareListing,
   resolveCliListing,
@@ -692,6 +694,8 @@ export async function resolveTickersForCli(
     }
     // A company's name typed as one word (Canon, ADVANTEST) that no listing trades as is read as `quote` reads it.
     lookups = await withOneWordNames(lookups, store, dataProvider, { retry, askWhenAmbiguous });
+    // One written as a name (Aeon) that went to another company's ticker is the company of that name.
+    lookups = await withTitleCaseNames(lookups, store, dataProvider, { retry, askWhenAmbiguous });
     if (!failing) return lookups;
     // Still refused after the last wait: a failure may only be the refusal, so none is called not found,
     // and a match whose quote was refused is not taken as trading.
@@ -730,6 +734,36 @@ async function withOneWordNames(
     } catch (error) {
       // A name that cannot be read keeps the word's own "not found".
       logFailure("cli.ticker-resolution", "Read a word as a company's name failed")(error);
+      return entry;
+    }
+  })).map((entry) => [entry.input, entry] as const));
+  return lookups.map((entry) => read.get(entry.input) ?? entry);
+}
+
+/**
+ * The lookups, each word written as a company's name (`Aeon`) that went to
+ * another company's ticker read as the company of that name, as `quote`
+ * reads it (`titleCaseCompanyName`): "Aeon" is 8267:JPX (Aeon Co., Ltd.), not
+ * AEON Biopharma's AEON, and its row says so. A word that names no such
+ * company keeps its ticker.
+ */
+async function withTitleCaseNames(
+  lookups: CliTickerResolution[],
+  store: AppTickerRepositoryPort,
+  dataProvider: DataProvider,
+  options: Pick<CliTickerOptions, "retry" | "askWhenAmbiguous">,
+): Promise<CliTickerResolution[]> {
+  const words = lookups.filter((entry) => !entry.error && !entry.readAs && isTitleCaseWord(entry.input));
+  if (words.length === 0) return lookups;
+  const read = new Map((await mapWithConcurrency(words, NAME_CONCURRENCY, async (entry): Promise<CliTickerResolution> => {
+    try {
+      const named = await titleCaseCompanyName(entry.input, { symbol: entry.ticker!.metadata.ticker, name: entry.ticker!.metadata.name }, { dataProvider });
+      if (!named) return entry;
+      const found = await resolveCliTicker(named.key, store, dataProvider, undefined, { ...options, ownExchangeWins: true, changeGraceMs: LOOKUP_TIMEOUT_MS });
+      return { input: entry.input, ...found, readAs: named.readAs ?? found.readAs };
+    } catch (error) {
+      // A name that cannot be read keeps the ticker the word went to.
+      logFailure("cli.ticker-resolution", "Read a word written as a name failed")(error);
       return entry;
     }
   })).map((entry) => [entry.input, entry] as const));

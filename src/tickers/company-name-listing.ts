@@ -20,6 +20,8 @@ export interface CompanyNameListing {
   name: string;
   /** The service marked the listing with the name as typed (`searchAliases`): the company it means by it. */
   named?: true;
+  /** The service marks the listing as its company's home line (`homeListing`). */
+  home?: true;
   /**
    * When the listing is a fund or an index carrying the name ("JP Morgan" read
    * as ^JTEK, JP MORGAN ETF TRUS), the company's common stock the name says
@@ -122,13 +124,21 @@ export async function findListingOfCompanyName(
     const line = home ? 0 : 1 + lineDistance(type, exchange, result.symbol);
     return [{
       result, exchange, stock, home, namesCompany,
+      // The service's first answer, marked as its company's home, with every word typed in its name word for word.
+      served: order === 0 && home && match.abbreviated === 0 && stock === 0 && classifyInstrumentKind(type) === "equity",
       rank: [match.extra, match.abbreviated, stock, line, named ? 0 : 1, isUsListingExchange(exchange) ? 0 : 1, result.symbol.length, order],
     }];
   }).sort((left, right) => {
     const at = left.rank.findIndex((value, index) => value !== right.rank[index]);
     return at < 0 ? 0 : left.rank[at]! - right.rank[at]!;
   });
-  const first = listed.find((listing) => listing.namesCompany);
+  // The company the service answers the name with first, and marks the home line of, is the one it means, though
+  // another line's name is nearer the one typed: "Panasonic" is Panasonic Holdings on JPX, not a Frankfurt line
+  // under the name it had before (Panasonic Corporation), whose lines would lead it to a Malaysian subsidiary.
+  // The row the service marks with the name outranks that answer, and a line whose symbol is the word typed is no answer to a name.
+  const servedFirst = listed.some((listing) => namedByService(name, listing.result)) ? undefined
+    : listed.find((listing) => listing.served && listing.namesCompany && listing.result.symbol.toUpperCase() !== name.toUpperCase());
+  const first = servedFirst ?? listed.find((listing) => listing.namesCompany);
   // Listings are named in Latin letters: a name in another script ("任天堂 ソニー") names none, answered or not.
   if (!first && busy && !hasNonLatinLetters(name)) throw busy;
   if (!first) return null;
@@ -162,6 +172,7 @@ export async function findListingOfCompanyName(
     : {
       symbol: best.result.symbol.toUpperCase(), exchange: best.exchange, name: best.result.name,
       ...namedByService(name, best.result) ? { named: true as const } : {},
+      ...best.home ? { home: true as const } : {},
     };
   const meant = best.stock && options.meant ? await stockNamedRunTogether(dataProvider, name, results) : null;
   return meant ? { ...found, meant } : found;

@@ -594,7 +594,8 @@ test("a company's name typed as one word no listing trades as is quoted as its l
   expect((result.data as Array<{ target: QuoteSubscriptionTarget }>).map((row) => row.target.symbol)).toEqual(["AAPL:NASDAQ", "GOLD", "GRP"]);
   expect(asked).toEqual([["APPLE", "GOLD", "GRP"], ["AAPL:NASDAQ"]]);
   const read = result.warnings!.find((warning) => warning.startsWith("Read "))!;
-  expect(read).toBe('Read "APPLE" as AAPL:NASDAQ (Apple Inc.).');
+  // A word written as a name keeps its spelling through; the hints put back any other's.
+  expect(read).toBe('Read "Apple" as AAPL:NASDAQ (Apple Inc.).');
   expect(withSearchHints(read, ["Apple", "GOLD", "grp"])).toBe('Read "Apple" as AAPL:NASDAQ (Apple Inc.).');
   expect(result.warnings).toContain("Not a ticker: GRP.");
 });
@@ -871,4 +872,28 @@ test("a file's line that is a company's name before its legal form is the compan
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("a word written as a name that is another company's ticker is the company of that name; in capitals, or the ticker's own name, it stays the ticker", async () => {
+  // `search Aeon` against the service, 2026-11-06, trimmed: AEON is AEON Biopharma; the service marks Aeon Co., Ltd.'s Tokyo line as its home.
+  const row = (symbol: string, name: string, exchange: string, homeListing = false) =>
+    ({ providerId: "test", symbol, name, exchange, type: "Common Stock", currency: "USD", ...homeListing ? { homeListing } : {} });
+  const answer = [
+    row("AEON", "AEON Biopharma, Inc.", "AMEX"), row("8267", "Aeon Co., Ltd.", "JPX", true), row("SNAP", "Snap Inc.", "NYSE", true),
+  ];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => answer.filter((entry) => entry.name.toUpperCase().startsWith(query.toUpperCase())),
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => ({
+      target, quote: createTestQuote({ symbol: target.symbol, name: answer.find((entry) => target.symbol.startsWith(entry.symbol))?.name }),
+    })),
+  });
+  const quoted = async (typed: string) => {
+    const cli = createTestCliContext({ dataProvider });
+    await quoteCommand.execute([typed], cli.context);
+    const { result } = cli.printed[0] as PrintedCliResult;
+    return [(result.data as Array<{ target: QuoteSubscriptionTarget }>)[0]?.target.symbol, result.warnings?.find((warning) => warning.startsWith("Read ")) ?? null];
+  };
+  expect(await quoted("Aeon")).toEqual(["8267:JPX", 'Read "Aeon" as 8267:JPX (Aeon Co., Ltd.); the ticker AEON is AEON Biopharma, Inc.']);
+  expect(await quoted("AEON")).toEqual(["AEON", null]);
+  expect(await quoted("Snap")).toEqual(["SNAP", null]);
 });

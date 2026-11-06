@@ -224,3 +224,30 @@ test("a bare symbol read on a minor listing abroad finds the listing the service
   expect(await serviceMarkedOtherListing(ntt, "NTT", "JPX")).toBeNull();
   expect(await serviceMarkedOtherListing(answering({ NTT: ["NTT | NTT System S.A. | WSE | Common Stock"] }), "NTT", "WSE")).toBeNull();
 });
+
+test("a name the service answers first with a line it marks as its company's home is that line, though another line is named nearer", async () => {
+  // `search Panasonic` and `search "Nippon Yusen"` against the service, 2026-11-06, trimmed. Before: 3719 on BURSAMY, a
+  // Malaysian subsidiary reached through a Frankfurt line under Panasonic's old name, and an ISIN-coded Stuttgart line
+  // named "Nippon Yusen K.K.", the same legal form spelled short.
+  const answers: Record<string, string[]> = {
+    PANASONIC: [
+      "6752 | Panasonic Holdings Corporation | JPX | Common Stock | home",
+      "PCRHY | Panasonic Holdings Corp | OTC | American Depositary Receipt",
+      "PCRFF | Panasonic Holdings Corporation | OTC | Common Stock",
+      "3719 | Panasonic Manufacturing Malaysia Berhad | BURSAMY | Common Stock",
+      "MAT1 | Panasonic Holdings Corporation | FWB2 | Common Stock",
+      "MATA | Panasonic Corporation | FWB2 | Common Stock",
+    ],
+    "NIPPON YUSEN": [
+      "9101 | Nippon Yusen Kabushiki Kaisha | JPX | Common Stock | home",
+      "NYKA | Nippon Yusen Kabushiki Kaisha | FWB2 | Common Stock",
+      "JP3753000003 | Nippon Yusen K.K. | XSTU | Common Stock",
+    ],
+  };
+  for (const [typed, key, options] of [["Panasonic", "6752:JPX", { oneWord: true }], ["Nippon Yusen", "9101:JPX", {}]] as const) {
+    const found = await findListingOfCompanyName(answering(answers), typed, options);
+    expect(`${found?.symbol}:${found?.exchange}`, typed).toBe(key);
+    const [lead] = buildTickerSearchCandidates({ query: typed, tickers: new Map(), providerResults: answers[typed.toUpperCase()]!.map(row) });
+    expect(`${lead?.symbol}:${lead?.result?.exchange}`, `command bar ${typed}`).toBe(key);
+  }
+});

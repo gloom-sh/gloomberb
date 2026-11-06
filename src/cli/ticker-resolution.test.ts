@@ -476,3 +476,20 @@ test("a list's one-word company name no listing trades as is read as quote reads
     .toEqual(["7751:JPX", 'No ticker match found for "ZORBLAXX".']);
   expect(results[0]?.readAs).toBe('Read "Canon" as 7751:JPX (Canon Inc.).');
 });
+
+test("a list's word written as a name that went to another company's ticker is the company of that name, as quote reads it", async () => {
+  const listed = (symbol: string, name: string, exchange: string, homeListing = false) =>
+    ({ providerId: "test", symbol, name, exchange, type: "Common Stock", currency: "USD", ...homeListing ? { homeListing } : {} });
+  const answer = [listed("AEON", "AEON Biopharma, Inc.", "AMEX"), listed("8267", "Aeon Co., Ltd.", "JPX", true)];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => /^(aeon|8267)\b/i.test(query) ? answer : [],
+    getQuote: async (symbol, exchange) => createTestQuote({
+      symbol, exchange: exchange || "AMEX", name: exchange === "JPX" || symbol.startsWith("8267") ? "Aeon Co., Ltd." : "AEON Biopharma, Inc.",
+    }),
+  });
+  resetBoardCoins([]);
+  const results = await resolveTickersForCli(["Aeon", "AEON"], tickerStore(), dataProvider, undefined, { retryWaitsMs: [] }).finally(() => resetBoardCoins());
+  expect(results.map((result) => result.ticker ? `${result.ticker.metadata.ticker}:${result.ticker.metadata.exchange}` : result.error?.message))
+    .toEqual(["8267:JPX", "AEON:AMEX"]);
+  expect(results[0]?.readAs).toBe('Read "Aeon" as 8267:JPX (Aeon Co., Ltd.); the ticker AEON is AEON Biopharma, Inc.');
+});

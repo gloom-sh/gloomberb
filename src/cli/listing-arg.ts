@@ -22,7 +22,7 @@ import { movedAwayChange, startTickerChangeLookup, type MovedTickerChange } from
 import { lineMayHaveMoved, listingChangeLine, loadListingFate, MovedSymbolError, SUCCESSOR_CHANGE_WAIT_MS, type ListingFate } from "../tickers/listing-fate";
 import { quotedListingName } from "../tickers/listing-name";
 import { cliStyles } from "../utils/cli-output";
-import { groupByCompany, namesDepositaryReceipt, sameCompany, sameListedName, shortCompanyName } from "../tickers/company-name";
+import { companyNameExtraWords, groupByCompany, namesDepositaryReceipt, sameCompany, sameListedName, shortCompanyName } from "../tickers/company-name";
 import {
   canonicalExchange,
   exchangeCodeVenues,
@@ -1470,6 +1470,39 @@ export async function serviceNamedCompany(typed: string, deps: Pick<ListingDeps,
   const found = await findOneWordCompany(typed, deps);
   if (!found?.named || found.symbol.toUpperCase() === typed.trim().toUpperCase()) return null;
   return companyListingArg(typed, found);
+}
+
+/** A word written as a company's name is (`Aeon`, `Panasonic`): a capital, then small letters, never a ticker's capitals. */
+const TITLE_CASE_WORD = /^\p{Lu}\p{Ll}[\p{L}&'’.-]*$/u;
+
+/** Whether a word is written as a company's name is (`Aeon`), never as a ticker is (`AEON`, `aeon`). */
+export function isTitleCaseWord(text: string): boolean {
+  return TITLE_CASE_WORD.test(text.trim());
+}
+
+/**
+ * A word written as a company's name (`Aeon`, not `AEON` or `aeon`) that is
+ * also a ticker, read as the company named exactly that word whose home line
+ * the service marks, when the ticker's company is named more than the word:
+ * "Aeon" in a pasted book is Aeon Co., Ltd. (8267:JPX), not AEON Biopharma,
+ * whose ticker it is ("Read "Aeon" as 8267:JPX (Aeon Co., Ltd.); the ticker
+ * AEON is AEON Biopharma, Inc."). A word in capitals stays the ticker, and
+ * so does one whose ticker's company bears the name (`Snap` is Snap Inc.).
+ * Null otherwise, and when search names no such company or is too busy to say.
+ */
+export async function titleCaseCompanyName(
+  typed: string,
+  ticker: { symbol: string; name: string | null | undefined },
+  deps: Pick<ListingDeps, "dataProvider">,
+): Promise<ListingArg | null> {
+  const word = typed.trim();
+  if (!TITLE_CASE_WORD.test(word) || companyNameExtraWords(word, ticker.name) === 0) return null;
+  const found = await findOneWordCompany(word, deps);
+  if (!found?.home || found.moved || companyNameExtraWords(word, found.name) !== 0) return null;
+  const listing = companyListingArg(word, found);
+  if (listing.key.toUpperCase() === ticker.symbol.toUpperCase()) return null;
+  const owner = ticker.name?.trim().replace(/\.$/, "") || "another company";
+  return { ...listing, readAs: `${listing.readAs!.replace(/\.$/, "")}; the ticker ${ticker.symbol.toUpperCase()} is ${owner}.` };
 }
 
 /** The company `oneWordCompanyName` reads a word as, before it is read as a listing. */
