@@ -11,8 +11,8 @@ import { useRemoteUiNode } from "../../../../remote/semantic-tree";
 import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
 import { nativePaneFooterRows } from "../sizing";
 import {
-  DESKTOP_HINT_METRICS,
   EMPTY_FOOTER,
+  desktopHintMetrics,
   PANE_FOOTER_SEPARATOR,
   fitPaneFooterInfo,
   separatesPaneFooterSegments,
@@ -272,9 +272,10 @@ function FooterContent({
   const availableWidth = width && width > 0 ? Math.floor(width) : null;
   const iconReserve = footer.info.reduce((total, segment) => total + iconSegmentReserve(segment, focused, nativePaneChrome), 0);
   // Measured as the keys show: `[⌃S]` on a Mac takes fewer cells than `[Ctrl+S]`, and
-  // on the desktop and the web as a keycap and the whole words.
+  // on the desktop and the web as a keycap and the whole words, on the live grid.
   const keyLabel = useShortcutLabel();
-  const metrics = nativePaneChrome ? DESKTOP_HINT_METRICS : terminalHintMetrics(keyLabel);
+  const { cellWidthPx = 8 } = useUiCapabilities();
+  const metrics = nativePaneChrome ? desktopHintMetrics(cellWidthPx) : terminalHintMetrics(keyLabel);
   const row = availableWidth !== null
     ? layoutPaneFooterHintRow({ ...footer, hints: actionableHints }, availableWidth, iconReserve, metrics)
     : null;

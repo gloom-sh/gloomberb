@@ -113,30 +113,41 @@ export function keycapText(key: string): string {
 }
 
 /*
- * A key hint's size on the desktop and the web, in grid cells (8px at the
- * default 12px text), from styles.css: a keycap at the caption size (10px)
- * with 4px either side and at least 14px wide, 4px, then the words at the
- * text size. Monospace fonts advance about 0.6em a character (SF Mono,
- * Menlo, DejaVu Sans Mono; Consolas less), so a character is 0.9 of a cell
- * and a caption one 0.75; these allow a little more, as a hint must never be
- * wider than the room it was given. A symbol (⌘, ↵, ←) may come from a wider
- * fallback font, so it counts as a whole cell. Hints sit 12px apart.
+ * A key hint's size on the desktop and the web, in grid cells, from
+ * styles.css. The text scales with the font size (FONT- and FONT+) and so
+ * does the cell, 8px at the default 12px text, so text measures the same
+ * number of cells at every size. Monospace fonts advance about 0.6em a
+ * character (SF Mono, Menlo, DejaVu Sans Mono; Consolas less): 0.9 of a cell
+ * at the text size and 0.75 at the keycap's caption size. These allow a
+ * little more, as a hint must never be wider than the room it was given. A
+ * symbol (⌘, ↵, ←) may come from a wider fallback font, so it counts as a
+ * whole em of the caption. The spacing does not scale: the keycap's 4px
+ * either side and 14px at least, the 4px before the words and the 12px
+ * between two hints are pixels, so they take more cells at a small size
+ * (6.67px cells at 10px text) and fewer at a large one.
  */
 const TEXT_CHAR_CELLS = 0.92;
 const CAPTION_CHAR_CELLS = 0.77;
-const KEYCAP_PADDING_CELLS = 1;
-const KEYCAP_MIN_CELLS = 14 / 8;
-const KEYCAP_WORD_GAP_CELLS = 0.5;
-/** Cells between two key hints on the desktop and the web (`--gloom-space-md`). */
-export const KEY_HINT_GAP_CELLS = 1.5;
+const CAPTION_SYMBOL_CELLS = 10 / 8;
+const KEYCAP_PADDING_PX = 8;
+const KEYCAP_MIN_PX = 14;
+const KEYCAP_WORD_GAP_PX = 4;
+/** Pixels between two key hints on the desktop and the web (`--gloom-space-md`). */
+export const KEY_HINT_GAP_PX = 12;
+/** The grid's cell at the default text size; `cellPx` is the live one (useUiCapabilities().cellWidthPx). */
+const DEFAULT_CELL_PX = 8;
 
-function keycapCells(keycap: string): number {
-  let glyphs = 0;
-  for (const char of keycap) glyphs += /[\x20-\x7e]/.test(char) ? CAPTION_CHAR_CELLS : 1;
-  return Math.max(KEYCAP_MIN_CELLS, glyphs + KEYCAP_PADDING_CELLS);
+function keycapPx(keycap: string, cellPx: number): number {
+  let glyphCells = 0;
+  for (const char of keycap) glyphCells += /[\x20-\x7e]/.test(char) ? CAPTION_CHAR_CELLS : CAPTION_SYMBOL_CELLS;
+  return Math.max(KEYCAP_MIN_PX, glyphCells * cellPx + KEYCAP_PADDING_PX);
 }
 
-/** Cells one key hint takes on the desktop and the web: the keycap of `keycap`, then `words`. */
-export function keyHintCells(keycap: string, words: string): number {
-  return keycapCells(keycap) + (words ? KEYCAP_WORD_GAP_CELLS + displayWidth(words) * TEXT_CHAR_CELLS : 0);
+/**
+ * Cells one key hint takes on the desktop and the web, on a grid of `cellPx`
+ * cells: the keycap of `keycap`, then `words`.
+ */
+export function keyHintCells(keycap: string, words: string, cellPx = DEFAULT_CELL_PX): number {
+  const px = keycapPx(keycap, cellPx) + (words ? KEYCAP_WORD_GAP_PX + displayWidth(words) * TEXT_CHAR_CELLS * cellPx : 0);
+  return px / cellPx;
 }

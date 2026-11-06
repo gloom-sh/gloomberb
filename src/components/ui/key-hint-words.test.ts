@@ -46,19 +46,31 @@ describe("a key hint's words", () => {
 });
 
 describe("a key hint's width on the desktop", () => {
-  // What the web draws, in 8px cells: a monospace font advances 0.6em, 7.2px of 12px text and 6px
-  // of the keycap's 10px; the keycap has 4px either side and is 14px at least, 4px from the words.
-  const drawn = (keycap: string, words: string) => Math.max(14, keycap.length * 6 + 8) / 8 + (words ? (4 + words.length * 7.2) / 8 : 0);
+  // What the web draws at a text size, as font-scale.ts sets it: the cell is 8px at 12px text and
+  // scales with it, as does the type (12px text, 10px keycap caption). A monospace font advances
+  // 0.6em. The spacing is pixels at every size: the keycap's 4px either side and 14px at least,
+  // and 4px before the words.
+  const grid = (fontPx: number) => {
+    const scale = Math.round((fontPx / 12) * 100) / 100;
+    return { cellPx: Math.round(8 * scale * 100) / 100, captionPx: 10 * scale, textPx: fontPx };
+  };
+  const drawnPx = (fontPx: number, keycap: string, words: string) => {
+    const { captionPx, textPx } = grid(fontPx);
+    return Math.max(14, keycap.length * 0.6 * captionPx + 8) + (words ? 4 + words.length * 0.6 * textPx : 0);
+  };
 
-  test("a hint is measured no narrower than the web draws it, so a row it fits never clips", () => {
+  // The smallest, the default and the largest text sizes FONT- and FONT+ reach.
+  test.each([10, 11, 12, 16, 20])("at %ipx text a hint is measured no narrower than the web draws it, so a row it fits never clips", (fontPx) => {
+    const { cellPx } = grid(fontPx);
     for (const [keycap, words] of [["s", "series"], ["Esc", "tabs"], ["Ctrl+S", "save search"], ["}", ""], ["m", "re-arm"]] as const) {
-      expect(keyHintCells(keycap, words)).toBeGreaterThanOrEqual(drawn(keycap, words));
+      const measured = keyHintCells(keycap, words, cellPx) * cellPx;
+      expect(measured).toBeGreaterThanOrEqual(drawnPx(fontPx, keycap, words));
       // ...and not so much wider that hints go under More for nothing.
-      expect(keyHintCells(keycap, words)).toBeLessThan(drawn(keycap, words) * 1.08);
+      expect(measured).toBeLessThan(drawnPx(fontPx, keycap, words) * 1.08);
     }
   });
 
-  test("a symbol counts a whole cell, more than a letter, as a fallback font may draw it wider", () => {
+  test("a symbol counts a whole em of the caption, more than a letter, as a fallback font may draw it wider", () => {
     expect(keyHintCells("⌘⇧S", "")).toBeGreaterThan(keyHintCells("CSS", ""));
   });
 });

@@ -4,7 +4,7 @@ import { type CompanyFrom, companyFromLabel } from "../../../../types/company-fr
 import { clipToDisplayWidth, displayWidth } from "../../../../utils/format";
 import { formatShortDate } from "../../../../utils/datetime-format";
 import { getShortcutHintWidth } from "../../../ui/shortcut-hint";
-import { KEY_HINT_GAP_CELLS, keycapText, keyHintCells, keyHintTitle, keyHintWords } from "../../../ui/key-hint-words";
+import { KEY_HINT_GAP_PX, keycapText, keyHintCells, keyHintTitle, keyHintWords } from "../../../ui/key-hint-words";
 
 export interface PaneFooterRegistration {
   order?: number;
@@ -242,7 +242,8 @@ export interface PaneHint {
    * The action's full name in the pane menu. Defaults to the hint read as one
    * word (`[a]dd` is "Add"); set it when the key is not the first letter, and
    * when the label is a whole word right after a letter key (`[m]re-arm`), so
-   * the desktop reads "re-arm", not "mre-arm".
+   * the desktop reads "re-arm", not "mre-arm". An `id` that names the label
+   * (`id: "rearm"`) does the same for the desktop.
    */
   title?: string;
   onPress?: (event?: PaneFooterPressEvent) => void;
@@ -317,11 +318,17 @@ export function terminalHintMetrics(keyLabel: PaneHintKeyLabel = KEY_AS_WRITTEN)
   return { width: (hint) => getShortcutHintWidth(keyLabel(hint.key), hint.label), gap: HINT_GAP };
 }
 
-/** The desktop's and the web's hints: a keycap and the whole words (KeyHint), farther apart. */
-export const DESKTOP_HINT_METRICS: PaneHintMetrics = {
-  width: (hint) => keyHintCells(keycapText(hint.key), keyHintWords(hint)),
-  gap: KEY_HINT_GAP_CELLS,
-};
+/**
+ * The desktop's and the web's hints: a keycap and the whole words (KeyHint),
+ * farther apart, on a grid of `cellPx` cells. The text scales with the cell
+ * and the spacing does not, so pass the live cell (useUiCapabilities().cellWidthPx).
+ */
+export function desktopHintMetrics(cellPx: number): PaneHintMetrics {
+  return {
+    width: (hint) => keyHintCells(keycapText(hint.key), keyHintWords(hint), cellPx),
+    gap: KEY_HINT_GAP_PX / cellPx,
+  };
+}
 
 const TERMINAL_HINT_METRICS = terminalHintMetrics();
 
