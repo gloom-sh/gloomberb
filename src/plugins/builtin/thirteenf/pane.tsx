@@ -38,7 +38,7 @@ import {
   FUND_DETAIL_TABS,
   THIRTEENF_PANE_ID,
   amendmentKind,
-  hasComparable13FQuarter,
+  comparedWith,
   browserSortFor,
   buildBrowserColumns,
   buildFilingPositionColumns,
@@ -48,6 +48,7 @@ import {
   buildTimelineColumns,
   buildTimelineRows,
   inferBrowserTabFromQuery,
+  nextThirteenFDue,
   quartersBehindLatest,
   selectedIndexById,
   sortBrowserRows,
@@ -55,7 +56,7 @@ import {
   sortHoldingRows,
   sortTimelineRows,
 } from "./model";
-import { filingGapText, holdingUnreadNotes, isOptionType, isStaleFiling, quartersOldText } from "./report-notes";
+import { filingGapText, holdingUnreadNotes, isOptionType, isStaleFiling, nextFilingText, quartersOldText } from "./report-notes";
 import {
   renderBrowserCell,
   renderFilingPositionCell,
@@ -522,17 +523,16 @@ export function FundDetailView({
   });
 
   const quartersBehind = quartersBehindLatest(data?.latestForm?.periodOfReport);
+  const nextDue = nextThirteenFDue(data?.latestForm?.periodOfReport);
+  const nextFiling = nextDue ? nextFilingText(nextDue) : null;
   const staleFiling = isStaleFiling(quartersBehind);
   const holdingStats: StatItem[] = [
     { id: "reported", label: "Reported", value: data?.latestForm?.periodOfReport ?? "--",
       detail: `filed ${data?.latestForm?.filedAsOfDate || "--"}${data?.latestForm && amendmentKind(data.latestForm) === "restatement" ? ", restated" : ""}${staleFiling ? `, ${quartersOldText(quartersBehind)}` : ""}`,
       ...(staleFiling ? { tone: "warning" as const } : {}) },
-    data && hasComparable13FQuarter(data)
-      ? { id: "compared", label: "Compared with", value: data.previousForm!.periodOfReport }
-      // The quarter the changes will compare with, dim until both are in.
-      : data?.loading && hasComparable13FQuarter({ ...data, loading: undefined })
-        ? { id: "compared", label: "Compared with", value: data.previousForm!.periodOfReport, tone: "muted" }
-        : { id: "compared", label: "Compared with", value: "No prior quarter", tone: "muted" },
+    { id: "compared", label: "Compared with", ...comparedWith(data) },
+    // When the next quarter's holdings come out: 45 days after it ends, moved past a weekend or holiday.
+    ...(nextFiling ? [{ id: "next", label: "Next 13F", value: nextFiling.quarter, detail: nextFiling.due }] : []),
     ...(data?.latestReport && data.latestReport.filings.length > 1
       ? [{ id: "combined", label: "Combined", value: `${data.latestReport.filings.length} filings` }]
       : []),

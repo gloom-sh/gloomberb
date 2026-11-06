@@ -103,6 +103,12 @@ export interface FundDetailData {
   savedAt?: number;
   /** The parts still loading, while the fund fills in (loadFundDetail's `onProgress`); absent once whole. */
   loading?: ThirteenFDetailLoading;
+  /**
+   * The prior quarter is on file but its holdings did not load: the header
+   * says so rather than "No prior quarter". `retryAfterSeconds` when the
+   * service said how long to wait.
+   */
+  comparisonFailed?: { retryAfterSeconds: number | null };
 }
 
 /** Parts of a fund's detail still loading. */

@@ -74,8 +74,8 @@ test("a term's related terms hold its word whole; a word no term names still fin
   // `float` is the float of a stock: the floating rate note only starts with the same letters, so it is not related.
   const float = lookupGlossary("float");
   expect([...terms(float.exact), ...terms(float.partial)]).toEqual(["Float"]);
-  // Target and Drift hold "weight" whole; WIRP's Monthly-weighted method only starts with it.
-  expect(terms(lookupGlossary("weight").partial)).toEqual(["Target", "Drift"]);
+  // Target, Drift and the 13F weight hold "weight" whole; WIRP's Monthly-weighted method only starts with it.
+  expect(terms(lookupGlossary("weight").partial)).toEqual(["Target", "Drift", "13F weight"]);
   expect(terms(lookupGlossary("settle").partial)).toEqual([]);
   // A plural holds its word whole; a search that names no term keeps the word starts after the whole words.
   expect(terms(lookupGlossary("asset").partial)).toEqual(["Fed assets", "NAV", "Asset manager/institutional"]);
@@ -274,4 +274,15 @@ test("CRYP's stablecoin words are found by plain names and explained from what i
   expect(terms(reportGlossary("CRYP", stablecoins))).toEqual(["Off peg", "24h low/high", "Supply", "Share"]);
   // The coin list prints none of them.
   expect(reportGlossary("CRYP", " #  Coin  Name     Price USD  Chg % UTC  7D %  Market cap USD")).toEqual([]);
+});
+
+// `catalog glossary AMC` found nothing, and `fn 13F --explain` said 13F shows no glossary terms.
+test("ERN's timing labels and the 13F report's words are found by the labels they print, and 13F explains its own", () => {
+  const exact = (query: string) => terms(lookupGlossary(query).exact);
+  expect(["AMC", "bmo", "DMH", "13F", "QoQ", "Est P&L", "13F %"].map(exact)).toEqual([
+    ["After market close"], ["Before market open"], ["During market hours"], ["13F"], ["Quarter over quarter"], ["Estimated P&L"], ["13F"],
+  ]);
+  const report = "Berkshire Hathaway 13F, Q2 2026\nTicker  13F %  Shares  QoQ  Est P&L\nAAPL    22.0%  227.9M  -7%  +$9.1B";
+  expect(reportGlossary("13F", report).map((entry) => entry.term)).toEqual(["13F", "13F weight", "Quarter over quarter", "Estimated P&L"]);
+  expect(reportGlossary("ERN", "2026-11-09  AMC  1.47").map((entry) => entry.term)).toEqual(["After market close"]);
 });

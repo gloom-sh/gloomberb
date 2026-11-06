@@ -10,7 +10,7 @@ import {
 import { ApiRequestError } from "../../../api-client/errors";
 import { corporateSplitFactor, createFundPrefetcher, prefetchFundDetail, loadBrowserRows as loadRankedRows, loadFilingGap, loadFilingPositions, loadFundDetail, loadFundPerformance, loadSplitFactors } from "./data";
 import { filingGapText } from "./report-notes";
-import { buildFundHoldingRows, hasComparable13FQuarter } from "./model";
+import { buildFundHoldingRows, comparedWith, comparedWithText, hasComparable13FQuarter } from "./model";
 import type { FundDetailData, ThirteenFFormSummary, ThirteenFHoldingRecord } from "./types";
 
 async function loadBrowserRows(...args: Parameters<typeof loadRankedRows>) {
@@ -459,6 +459,30 @@ test("a large filing shows its first rows, then the whole filing, then the quart
     expect(hasComparable13FQuarter(detail)).toBe(true);
     expect(detail.latestHoldings).toHaveLength(5_000);
     expect(detail.previousHoldings).toHaveLength(10);
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+// Signed out, after a few 13F reads, Berkshire's prior quarter was refused and its header read "No prior quarter".
+test("a prior quarter the service refused says it did not load and when to try again, never that there is none", async () => {
+  const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>) => {
+    if (path === "/forms") return [filedForm("current", "2026-06-30", 10), filedForm("previous", "2026-03-31", 10)];
+    if (path !== "/holdings") throw new Error(`unexpected ${path}`);
+    if (params.accession_number === "previous") {
+      throw new ApiRequestError("Anonymous 13F rate limit exceeded", 429, 39_200);
+    }
+    return { rows: holdingRows("current", 0, 10), complete: true };
+  }) as never);
+  // The direct read is refused as well; the service's wait is what the reader is told.
+  setHttpFetchTransport(async () => new Response("", { status: 429 }));
+  try {
+    const detail = await loadFundDetail("1067983", "Fund", undefined, { filingGap: false });
+    expect(detail.comparisonFailed).toEqual({ retryAfterSeconds: 40 });
+    expect(comparedWith(detail)).toEqual({ value: "Previous quarter did not load", detail: "try again in 40 s", tone: "warning" });
+    expect(comparedWithText(detail)).toBe("previous quarter did not load, try again in 40 s");
+    // A fund with no quarter before is still said so.
+    expect(comparedWith({ ...detail, previousForm: null, previousReport: undefined, comparisonFailed: undefined }).value).toBe("No prior quarter");
   } finally {
     spy.mockRestore();
   }

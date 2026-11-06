@@ -94,7 +94,7 @@ function TerminalMenu({ items, onSelect, selection = "none", title, onClose }: M
               {`${marker}${item.label}`}
             </Text>
             {item.hint && <Box flexGrow={1} />}
-            {item.hint && <Text fg={colors.textMuted}>{` ${item.hint}`}</Text>}
+            {item.hint && <Text fg={active ? colors.selectedText : colors.textMuted}>{` ${item.hint}`}</Text>}
           </Box>
         );
       })}

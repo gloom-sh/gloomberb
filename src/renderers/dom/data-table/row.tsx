@@ -12,6 +12,8 @@ import { tableColumnLeadGap } from "../../../components/ui/table-layout";
 import { WebIcon } from "../desktop/icons";
 import { useFrozenColumnInsets } from "./frozen-column";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
+import { selectedCellColor } from "../../../theme/colors";
+import { useThemeColors } from "../../../theme/theme-context";
 import {
   CSS_BG,
   CSS_PANEL,
@@ -244,6 +246,7 @@ function WebDataTableRowInner<
   selectedTextOverridesCellColor: boolean;
 }) {
   const { ref, insets } = useFrozenColumnInsets(freezeFirstColumn === true, scrollLeft, viewportWidth, columns, columnGap * WEB_CELL_WIDTH);
+  const colors = useThemeColors();
   const sectionHeader: DataTableSectionHeader | null =
     renderSectionHeader?.(item, index) ?? null;
   const baseRowStyle: CSSProperties = {
@@ -445,7 +448,7 @@ function WebDataTableRowInner<
                 column={column}
                 color={selected && (cell.color === undefined || (selectedTextOverridesCellColor && !cell.keepColorWhenSelected))
                   ? CSS_SELECTED_TEXT
-                  : cell.color ?? CSS_TEXT}
+                  : selected ? selectedCellColor(cell.color, colors) ?? CSS_TEXT : cell.color ?? CSS_TEXT}
               />
             )}
           </div>

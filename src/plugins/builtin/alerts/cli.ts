@@ -879,9 +879,18 @@ export const alertsCliCommand: CliCommandDef = {
         ctx.fail(error instanceof Error ? error.message : String(error));
       }
     }
+    if (formRule?.thirteenFFilerOf && priceListing) {
+      // The fund the company files its 13F as: the CIK its SEC filings are listed under.
+      const filer = await withMarketData(ctx, (market) => market.dataProvider.getSecFilings?.(priceListing.symbol, 1, priceListing.exchange))
+        .then((filings) => filings?.[0] ?? null, (error: unknown) => ctx.fail(`${priceListing.key}'s SEC filer could not be read for its 13F alert: ${error instanceof Error ? error.message : String(error)}`));
+      if (!filer?.cik) ctx.fail(`${priceListing.key} has no SEC filer to follow 13F filings for. A 13F alert follows a fund by its CIK: gloom alerts add 13f 1067983.`);
+      const cik = filer!.cik.replace(/^0+/, "");
+      Object.assign(formRule, { symbol: null, values: { value: cik } });
+      read = [...read, `A 13F alert follows ${priceListing.key}'s filer, ${filer!.companyName || "its company"} (CIK ${cik}), as gloom alerts add 13f ${cik} does.`];
+    }
     if (formRule) {
       try {
-        newResearchRule = createFormRule(formRule, priceListing);
+        newResearchRule = createFormRule(formRule, formRule.thirteenFFilerOf ? null : priceListing);
       } catch (error) {
         ctx.fail(error instanceof Error ? error.message : String(error));
       }

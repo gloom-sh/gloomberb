@@ -1550,6 +1550,7 @@ export const es: Record<string, string> = {
   "YOUR WORKSPACE": "TU ESPACIO DE TRABAJO",
   "Your holdings as a heatmap, a watchlist, and {ticker} charted. Every pane moves; {shortcut} adds more.": "Tus posiciones como mapa de calor, una lista de seguimiento y el gráfico de {ticker}. Cada panel se mueve; {shortcut} añade más.",
   "b: sign in with the browser instead": "b: iniciar sesión con el navegador",
+  "Esc, then b: sign in with the browser instead": "Esc y luego b: iniciar sesión con el navegador",
   "Sign in with the browser instead": "Iniciar sesión con el navegador",
   "Real-time market data": "Datos de mercado en tiempo real",
   // ── Onboarding desks ─────────────────────────────────────────

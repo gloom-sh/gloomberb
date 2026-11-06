@@ -920,6 +920,44 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "An estimate of this quarter's GDP growth from the data already out, revised as each release lands until the official figure. "
       + "ECST shows the Atlanta Fed's GDPNow, annualized, against its own history; ECO lists each update as a release.",
   },
+  // Earnings dates (ERN).
+  {
+    term: "Before market open", short: "BMO", aliases: ["before the open", "before open"],
+    functions: ["ERN"], shown: ["BMO"],
+    definition: "The company reports before the US market opens (9:30 a.m. New York time), so its stock first trades on the results at that day's open. "
+      + "With a timezone set, the report also gives that time in yours.",
+  },
+  {
+    term: "During market hours", short: "DMH", aliases: ["during the session", "intraday report"], functions: ["ERN"], shown: ["DMH"],
+    definition: "The company reports while the US market is open (9:30 a.m. to 4:00 p.m. New York time), so its stock trades on the results the same session.",
+  },
+  {
+    term: "After market close", short: "AMC", aliases: ["after the close", "after close"],
+    functions: ["ERN"], shown: ["AMC"],
+    definition: "The company reports after the US market closes (4:00 p.m. New York time), so its stock first trades on the results after hours and at the next "
+      + "day's open. In Asia that is usually the next morning; with a timezone set, the report gives the time in yours.",
+  },
+  // Institutional holdings (13F).
+  {
+    term: "13F", aliases: ["13f filing", "form 13f", "13f-hr", "13f report"], functions: ["13F"], shown: ["13F"],
+    definition: "The quarterly report an investment manager with $100 million or more in US-listed stocks files with the SEC: its long positions on the "
+      + "quarter's last day, filed up to 45 days later. Shorts, cash and most foreign stocks are absent, so it is weeks old and not the whole portfolio.",
+  },
+  {
+    // Headed `13F %`; as an abbreviation it would read as the 13F itself.
+    term: "13F weight", aliases: ["13f percent", "13f share"], functions: ["13F"], shown: ["13F %"],
+    definition: "A position's share of everything the manager reported in its 13F: its value over the filing's total value, not over the whole fund.",
+  },
+  {
+    term: "Quarter over quarter", short: "QoQ", aliases: ["qoq change", "quarter on quarter", "q/q"], functions: ["13F"], shown: ["QoQ"],
+    definition: "The change from the quarter before: in a 13F, the shares held at this quarter's end against those in the previous quarter's filing.",
+  },
+  {
+    term: "Estimated P&L", short: "Est P&L", aliases: ["est pnl", "estimated profit", "estimated pnl", "p&l"], functions: ["13F"],
+    shown: ["Est P&L"],
+    definition: "What a position held through the quarter gained or lost, estimated from the two filings alone: the shares kept, priced at each quarter "
+      + "end from the filings' own values. Trades inside the quarter are not reported, so it is not the fund's real result.",
+  },
 ];
 
 const ANSI = /\x1b\[[0-9;]*m/g;

@@ -163,6 +163,17 @@ function quarterText(period: string): string {
   return day ? `Q${Math.floor(day.getUTCMonth() / 3) + 1} ${day.getUTCFullYear()}` : period;
 }
 
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+/** "Q3 2026" and "due Mon 16 Nov 2026": when the fund's next 13F is due, the weekday shown since the deadline moves off a weekend. */
+export function nextFilingText(next: { period: string; due: string }): { quarter: string; due: string } {
+  const day = calendarDay(next.due);
+  return {
+    quarter: quarterText(next.period),
+    due: `due ${day ? `${WEEKDAYS[day.getUTCDay()]} ` : ""}${filingDayText(next.due)}`,
+  };
+}
+
 /** The fund to open for a manager: its CIK, else its quoted name. */
 function openCommand(manager: ThirteenFOtherManager): string {
   return manager.cik ? `fn 13F ${manager.cik}` : `fn 13F "${manager.name}"`;

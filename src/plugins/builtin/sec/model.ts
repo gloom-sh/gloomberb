@@ -1,6 +1,6 @@
 import type { SecFilingItem } from "../../../types/data-provider";
 import { secFilingItemCodes } from "../../../utils/sec";
-import { currentReportItemNames, isCurrentReportForm as isCurrentReport } from "../../../utils/sec-filings";
+import { currentReportItemNames, form4TradeText, isCurrentReportForm as isCurrentReport } from "../../../utils/sec-filings";
 
 function getDisplayFormLabel(form: string): string {
   const trimmed = form.trim();
@@ -66,6 +66,9 @@ function periodicReportPeriod(filing: Pick<SecFilingItem, "form" | "primaryDocum
 
 /** The adjacent FORM column already identifies the form. Keep its meaning here: what the filing reports. */
 export function getFilingColumnText(filing: SecFilingItem): string {
+  // A Form 4 Gloom Cloud read says its trade, and whose shares when they are another company's.
+  const trade = form4TradeText(filing);
+  if (trade) return trade;
   const description = getMeaningfulPrimaryDescription(filing);
   const meaning = getFormDescription(filing.form);
   if (!description) {

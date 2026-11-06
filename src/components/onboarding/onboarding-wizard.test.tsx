@@ -29,7 +29,7 @@ import {
   type AppConfig,
 } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
-import { OnboardingWizard } from "./onboarding-wizard";
+import { cardKey, coachStepsAside, OnboardingWizard } from "./onboarding-wizard";
 import { useRunSetupAgain } from "./run-setup-again";
 import { loadFuturesContractTermsCached } from "../../market-data/futures-contract";
 
@@ -101,8 +101,11 @@ async function createDeskRegistry(tickerRepository: AppTickerRepositoryPort): Pr
   return { ...createPluginRegistry({ tickerRepository }), ...await builtInFunctions } as PluginRegistry;
 }
 
+let capturedDispatch: ReturnType<typeof useAppDispatch> | null = null;
+
 function StateCapture() {
   capturedConfig = useAppSelector((state) => state.config);
+  capturedDispatch = useAppDispatch();
   capturedBrokerAccounts = useAppSelector((state) => state.brokerAccounts);
   return null;
 }
@@ -667,9 +670,11 @@ describe("OnboardingWizard", () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-skip-portfolio-"));
     await tui.render(<WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={createPluginRegistry()} />, { width: 80, height: 24 });
     await tui.setup().renderOnce();
-    expect(tui.frame()).toMatch(/Skip\s+s/);
-    // The ticker field has the keyboard, so s types; Esc lets it go first.
+    // The ticker field has the keyboard, so s types there: Skip shows no key until Esc lets the field go.
+    expect(tui.frame()).toMatch(/Skip\s+Continue/);
     await pressEscape();
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(tui.frame()).toMatch(/Skip\s+s/);
     await emitKeypress({ name: "s", sequence: "s" });
     await skipDesks();
     await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "the research stage");
@@ -1435,6 +1440,54 @@ describe("OnboardingWizard", () => {
     await tui.emitKeypress({ name: "return", sequence: "\r", meta: true }, { trackPropagation: true });
     await waitForFrame("Connect Gloom Cloud");
     expect(capturedConfig?.onboardingProgress?.stage).toBe("account");
+  });
+
+  // The YOUR WORKSPACE card covered a floating 13F pane opened under it, and its Alt+Backspace acted on that pane.
+  test("the research coach takes its dismiss key ahead of the panes, and steps aside for a pane opened after it", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-coach-aside-"));
+    const reached: string[] = [];
+    const config = {
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: { version: 1 as const, stage: "research" as const, path: "manual" as const, portfolioId: "main", tickerSymbol: "AAPL" },
+    };
+    await tui.render(
+      <WizardHarness config={config} pluginRegistry={createPluginRegistry()} after={<KeyProbe seen={reached} />} />,
+      { width: 100, height: 32 },
+    );
+    await tui.setup().renderOnce();
+    await waitForFrame("Built around AAPL");
+
+    // A pane opens: the card is gone, and the keys it showed are the pane's again.
+    const opened = { ...capturedConfig!, layout: { ...capturedConfig!.layout, instances: [
+      ...capturedConfig!.layout.instances, { instanceId: "13f:opened", paneId: "thirteenf" } as never,
+    ] } };
+    await act(async () => { capturedDispatch!({ type: "SET_CONFIG", config: opened }); });
+    await act(async () => { await Bun.sleep(20); await tui.setup().renderOnce(); });
+    expect(tui.frame()).not.toContain("Built around AAPL");
+    await tui.emitKeypress({ name: "backspace", meta: true }, { trackPropagation: true });
+    expect(reached).toEqual(["backspace"]);
+    expect(capturedConfig?.onboardingComplete).not.toBe(true);
+
+    // Closed again: the card is back, and its key acts on it before any pane sees it.
+    await act(async () => { capturedDispatch!({ type: "SET_CONFIG", config: { ...opened, layout: config.layout } }); });
+    await waitForFrame("Built around AAPL");
+    await tui.emitKeypress({ name: "backspace", meta: true }, { trackPropagation: true });
+    expect(reached).toEqual(["backspace"]);
+    await waitUntil(() => capturedConfig?.onboardingComplete === true, "the dismiss key finishes onboarding");
+  });
+
+  test("a card button shows its letter only while no field is being typed in", () => {
+    expect(cardKey("s", true)).toBeUndefined();
+    expect(cardKey("s", false)).toBe("s");
+    // Keys a field does not type still work there.
+    expect(cardKey("Enter", true)).toBe("Enter");
+    const config = createDefaultConfig("/tmp/unused");
+    const shownWith = new Set([config.layout, ...config.layouts.map((saved) => saved.layout)]
+      .flatMap((layout) => layout.instances.map((instance) => instance.instanceId)));
+    expect(coachStepsAside(shownWith, config)).toBe(false);
+    // Another desk's panes were there when it came up: switching to it is not a new pane.
+    expect(coachStepsAside(shownWith, { ...config, layout: config.layouts[1]!.layout })).toBe(false);
+    expect(coachStepsAside(null, config)).toBe(false);
   });
 
   test("Back and Esc from Gloom Cloud return to the workspace it was opened from, never to the finished portfolio", async () => {

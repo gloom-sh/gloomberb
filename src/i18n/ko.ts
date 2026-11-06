@@ -1545,6 +1545,7 @@ export const ko: Record<string, string> = {
   "YOUR WORKSPACE": "내 워크스페이스",
   "Your holdings as a heatmap, a watchlist, and {ticker} charted. Every pane moves; {shortcut} adds more.": "보유 종목 히트맵, 관심 목록, {ticker} 차트. 모든 패널을 옮길 수 있고 {shortcut}로 더 추가합니다.",
   "b: sign in with the browser instead": "b: 브라우저로 로그인",
+  "Esc, then b: sign in with the browser instead": "Esc 다음 b: 브라우저로 로그인",
   "Sign in with the browser instead": "브라우저로 로그인",
   "Real-time market data": "실시간 시장 데이터",
   // ── Onboarding desks ─────────────────────────────────────────

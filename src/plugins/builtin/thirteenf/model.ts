@@ -137,6 +137,28 @@ export function newestDueQuarter(now = new Date()): { period: string; due: strin
 }
 
 /**
+ * The fund's next 13F: the first quarter after its latest report whose
+ * deadline (thirteenFDueDate: 45 days, past a weekend or Presidents' Day) is
+ * today or later in New York. Q3 2026's falls on Saturday 14 Nov, so it is
+ * due Monday 16 Nov. A quarter it is already late for is the filing gap's.
+ */
+export function nextThirteenFDue(
+  latestPeriod: string | null | undefined,
+  now = new Date(),
+): { period: string; due: string } | null {
+  if (!latestPeriod || !/^\d{4}-\d{2}-\d{2}$/.test(latestPeriod)) return null;
+  const today = zonedDateKey(now.getTime(), "America/New_York");
+  const year = Number(latestPeriod.slice(0, 4));
+  const month = Number(latestPeriod.slice(5, 7));
+  for (let ahead = 1; ahead <= 8; ahead += 1) {
+    const period = new Date(Date.UTC(year, month + ahead * 3, 0)).toISOString().slice(0, 10);
+    const due = thirteenFDueDate(period);
+    if (due >= today) return { period, due };
+  }
+  return null;
+}
+
+/**
  * What a fund whose latest report is `latestPeriod` filed for the newest
  * quarter past its deadline, or null when that report is not behind it.
  * `status` is EDGAR's list of the fund's filings, null when it could not be
@@ -554,6 +576,39 @@ export function hasComparable13FQuarter(data: FundDetailData): boolean {
   return adjacentQuarterPeriods(current, previous);
 }
 
+/**
+ * What the fund's holdings are compared with, as its header says it: the
+ * prior quarter, dim while it loads; that it did not load, and when to try
+ * again, when it is on file but failed ("No prior quarter" read as if the
+ * fund had none); or that there is none.
+ */
+export function comparedWith(data: FundDetailData | null | undefined): {
+  value: string;
+  detail?: string;
+  tone?: "muted" | "warning";
+} {
+  if (data && hasComparable13FQuarter(data)) return { value: data.previousForm!.periodOfReport };
+  if (data?.comparisonFailed) {
+    const seconds = data.comparisonFailed.retryAfterSeconds;
+    return {
+      value: "Previous quarter did not load",
+      detail: seconds != null ? `try again in ${seconds} s` : "try again",
+      tone: "warning",
+    };
+  }
+  // The quarter the changes will compare with, dim until both are in.
+  if (data?.loading && hasComparable13FQuarter({ ...data, loading: undefined })) {
+    return { value: data.previousForm!.periodOfReport, tone: "muted" };
+  }
+  return { value: "No prior quarter", tone: "muted" };
+}
+
+/** comparedWith in one line: "previous quarter did not load, try again in 40 s". */
+export function comparedWithText(data: FundDetailData | null | undefined): string {
+  const compared = comparedWith(data);
+  return [compared.value, compared.detail].filter(Boolean).join(", ").replace(/^./, (first) => first.toLowerCase());
+}
+
 function adjacentQuarterPeriods(current: string | undefined, previous: string | undefined): boolean {
   if (!current || !previous) return false;
   const date = new Date(`${current}T00:00:00Z`);
@@ -897,7 +952,7 @@ export function buildHoldingColumns(): FundHoldingColumn[] {
 
 export function buildTimelineColumns(width: number): FundTimelineColumn[] {
   const periodWidth = 10;
-  const filedWidth = 9;
+  const filedWidth = 10;
   const valueWidth = 12;
   const rowsWidth = 6;
   const changeWidth = 9;

@@ -59,7 +59,18 @@ export interface ButtonProps {
   stopPropagation?: boolean;
 }
 
-function resolveButtonColors(variant: ButtonVariant, active: boolean, disabled: boolean, colors: ThemeColors, tone?: ButtonProps["tone"]): { bg?: string; fg: string } {
+/**
+ * The colour of a button's key: its label's on a filled button, whose fill the
+ * page's dim text does not read on (Alt+Enter on Connect was 2.07:1 in
+ * colorblind-light), and the quieter dim or muted text beside an unfilled one.
+ */
+export function buttonShortcutColor(palette: { bg?: string; fg: string }, inert: boolean, colors: ThemeColors): string {
+  const filled = palette.bg !== undefined && palette.bg !== colors.bg && palette.bg !== colors.panel;
+  if (filled) return palette.fg;
+  return inert ? colors.textMuted : colors.textDim;
+}
+
+export function resolveButtonColors(variant: ButtonVariant, active: boolean, disabled: boolean, colors: ThemeColors, tone?: ButtonProps["tone"]): { bg?: string; fg: string } {
   if (variant === "quiet") return { bg: active ? colors.selected : undefined, fg: disabled ? colors.textMuted : active ? colors.textBright : colors.textDim };
   if (variant === "plain") {
     return { fg: disabled ? colors.textMuted : active ? colors.textBright : colors.textDim };
@@ -180,7 +191,7 @@ export function Button({
         {compact ? displayLabel ?? label : ` ${displayLabel ?? label} `}
       </Text>}
       {shortcut && (
-        <Text fg={inert ? colors.textMuted : colors.textDim}>
+        <Text fg={buttonShortcutColor(palette, inert, colors)}>
           {` ${shortcut}`}
         </Text>
       )}

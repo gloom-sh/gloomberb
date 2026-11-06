@@ -114,6 +114,29 @@ function cacheKey(path: string, params: URLSearchParams): string {
   return query ? `${path}?${query}` : path;
 }
 
+const isRateLimited = (error: unknown): error is ApiRequestError => error instanceof ApiRequestError && error.status === 429;
+
+/** How long to wait before asking again, in whole seconds, from a rate limit's `Retry-After`. */
+export function retryAfterSeconds(error: unknown): number | null {
+  return isRateLimited(error) && error.retryAfterMs != null && error.retryAfterMs > 0
+    ? Math.ceil(error.retryAfterMs / 1000)
+    : null;
+}
+
+/**
+ * A 13F read the service refused for its signed-out limit says how long to
+ * wait and that signing in lifts it ("Anonymous 13F rate limit exceeded"
+ * said neither); the limit itself is the service's.
+ */
+export function thirteenFReadError(error: unknown): unknown {
+  if (!isRateLimited(error)) return error;
+  const seconds = retryAfterSeconds(error);
+  return new ApiRequestError(
+    `Too many 13F reads without signing in: try again in ${seconds != null ? `${seconds} s` : "a minute"}, or sign in to lift the limit.`,
+    429, error.retryAfterMs, error.code, error.details,
+  );
+}
+
 async function fetchForms13F<T>(
   path: string,
   params: Record<string, string | number | undefined>,
@@ -154,15 +177,22 @@ async function fetchForms13F<T>(
       let value: T;
       try {
         value = await apiClient.getCloudSec13F(path, params, { signal: options.signal }) as T;
-      } catch (error) {
+      } catch (cloudError) {
         options.signal?.throwIfAborted();
+        const error = thirteenFReadError(cloudError);
         if (options.cloudOnly) throw error;
         const url = `${FORMS_13F_BASE_URL}${path}?${searchParams.toString()}`;
+        // The service's own limit says when to ask again; a direct read that fails as well says less.
         const response = await httpFetch(url, {
           headers: { Accept: "application/json" },
           signal: options.signal,
+        }).catch((fallbackError: unknown) => {
+          throw isRateLimited(error) ? error : fallbackError;
         });
-        if (!response.ok) throw new ApiRequestError(`Forms13F ${response.status} for ${path}`, response.status);
+        if (!response.ok) {
+          if (isRateLimited(error)) throw error;
+          throw new ApiRequestError(`Forms13F ${response.status} for ${path}`, response.status);
+        }
         value = await response.json() as T;
       }
       options.signal?.throwIfAborted();

@@ -28,6 +28,7 @@ import {
   isOptionType,
   isStaleFiling,
   markedPositionType,
+  nextFilingText,
   OPTION_ROWS_NOTE,
   restatedValuesText,
   splitAdjustedText,
@@ -59,10 +60,12 @@ import {
   buildTimelineRows,
   filingGapFor,
   inferBrowserTabFromQuery,
+  comparedWithText,
   hasComparable13FQuarter,
   isCikQuery,
   isTickerShapedQuery,
   newestDueQuarter,
+  nextThirteenFDue,
   oneFundPerCik,
   positionType,
   quartersBehindLatest,
@@ -168,11 +171,8 @@ const HOLDING_COLUMNS: HeadlessPaneColumn[] = [
 
 const FILING_COLUMNS: HeadlessPaneColumn[] = [
   { key: "periodOfReport", header: "Period" },
-  {
-    key: "filedAsOfDate",
-    header: "Filed",
-    format: (value) => formatShortDate(typeof value === "string" ? value : null, FILING_DAY_FORMAT),
-  },
+  // The whole day, as the period beside it: the list spans years.
+  { key: "filedAsOfDate", header: "Filed", format: (value) => (typeof value === "string" && value) || "--" },
   {
     key: "tableValueTotal",
     header: "Value (USD)",
@@ -761,6 +761,8 @@ export function createThirteenFHeadless(
         );
         const previousPeriod = detail.previousForm?.periodOfReport ?? null;
         const comparable = hasComparable13FQuarter(detail);
+        const nextDue = nextThirteenFDue(latestPeriod);
+        const nextFiling = nextDue ? nextFilingText(nextDue) : null;
         const filed = detail.latestForm?.filedAsOfDate || null;
         const cut = cutText(all.length, limit, "positions, exits included");
         // Values, weights and Est P&L read both compared quarters' filings.
@@ -802,7 +804,13 @@ export function createThirteenFHeadless(
             truncated: all.length > limit,
             notices: [
               ...flagNotices,
-              [`CIK ${detail.cik}`, filedPeriodText(latestPeriod, filed, comparable ? previousPeriod : null)].filter(Boolean).join(" | "),
+              [
+                `CIK ${detail.cik}`,
+                filedPeriodText(latestPeriod, filed, comparable ? previousPeriod : null),
+                // The prior quarter on file that did not load is said, never left out as if there were none.
+                ...(detail.comparisonFailed ? [`QoQ: ${comparedWithText(detail)}`] : []),
+                ...(nextFiling ? [`Next 13F ${nextFiling.quarter}, ${nextFiling.due}`] : []),
+              ].filter(Boolean).join(" | "),
               AS_FILED_VALUE,
               ...(restated ? [restated] : []),
               ...holdingSplitNotes(rows),

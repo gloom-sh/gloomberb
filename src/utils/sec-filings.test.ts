@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { currentReportItemsLabel, hiddenFilingsNote, isPricingSupplement, isScheduleAboutAnotherCompany, loadLatestFilings, pricingSupplementTest } from "./sec-filings";
+import { currentReportItemsLabel, form4TradeText, hiddenFilingsNote, isPricingSupplement, isScheduleAboutAnotherCompany, loadLatestFilings, pricingSupplementTest } from "./sec-filings";
 import type { SecFilingItem } from "../types/data-provider";
 
 test.each([
@@ -119,4 +119,18 @@ test("a read that leaves the list short is followed by a larger one, up to the i
   expect(await loadLatestFilings(async (count) => { reads.push(count); return few.slice(0, count); }, 5, { schedulesAboutOthers: true }))
     .toMatchObject({ hidden: { pricingSupplements: 10, ownershipReportsAboutOthers: 1 }, filings: [{ form: "8-K" }, { form: "10-Q" }] });
   expect(reads).toEqual([200]);
+});
+
+// `filings BRK.B` listed Berkshire's Form 4s of Sirius XM as "BERKSHIRE HATHAWAY INC / Insider Transaction".
+test("a Form 4 row says whose shares, which way, how many and at what price", () => {
+  const trade = { ownerName: "BERKSHIRE HATHAWAY INC", issuerName: "SIRIUS XM HOLDINGS INC.", issuerTicker: "SIRI", issuerCik: "908937",
+    code: "P", side: "buy" as const, shares: 924_281, price: 29.0975 };
+  // Filed as an owner of another company's shares: that company is named, since the list names only the filer.
+  expect(form4TradeText({ cik: "0001067983", form4: trade })).toBe("Bought 924.3k SIRI shares at $29.10 (SIRIUS XM HOLDINGS INC.)");
+  // An insider of the company itself: who traded.
+  expect(form4TradeText({ cik: "0001067983", form4: { ...trade, ownerName: "Jain Ajit", issuerName: "BERKSHIRE HATHAWAY INC",
+    issuerTicker: "BRK.A", issuerCik: "1067983", code: "G", side: "disposed", shares: 19, price: null } })).toBe("Jain Ajit: Gift of 19 shares");
+  expect(form4TradeText({ cik: "320193", form4: { ...trade, issuerCik: "320193", ownerName: "COOK TIMOTHY D", code: "S", side: "sell", shares: 120_000, price: 231.5 } }))
+    .toBe("COOK TIMOTHY D: Sold 120k shares at $231.50");
+  expect(form4TradeText({ cik: "320193" })).toBeNull();
 });

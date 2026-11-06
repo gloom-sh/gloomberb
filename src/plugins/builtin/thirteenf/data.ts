@@ -9,6 +9,7 @@ import {
   lookupThirteenFHoldersByCusip,
   lookupThirteenFTickers,
   normalizeCik,
+  retryAfterSeconds,
   searchThirteenFFunds,
 } from "./api";
 import { isoDateDaysAgo, isoDateToday, isoDateYearsAgo } from "../../../utils/calendar-date";
@@ -604,7 +605,7 @@ export async function loadFundDetail(
   const latestForm = latestReport?.filings.at(-1) ?? null;
   const previousForm = previousReport?.filings.at(-1) ?? null;
   const checkGap = options.filingGap !== false;
-  const parts: Pick<FundDetailData, "latestHoldings" | "previousHoldings" | "filingGap"> & { loading: ThirteenFDetailLoading } = {
+  const parts: Pick<FundDetailData, "latestHoldings" | "previousHoldings" | "filingGap" | "comparisonFailed"> & { loading: ThirteenFDetailLoading } = {
     latestHoldings: [],
     previousHoldings: [],
     filingGap: null,
@@ -624,6 +625,7 @@ export async function loadFundDetail(
       previousReport,
       warnings: [...warnings],
       filingGap: parts.filingGap,
+      ...(parts.comparisonFailed ? { comparisonFailed: parts.comparisonFailed } : {}),
       ...(saved.savedAt != null ? { savedAt: saved.savedAt } : {}),
       ...(Object.keys(loading).length ? { loading } : {}),
     };
@@ -667,6 +669,7 @@ export async function loadFundDetail(
     loadReport(previousReport).catch((error) => {
       if (signal?.aborted) throw error;
       if (previousReport) previousReport.complete = false;
+      parts.comparisonFailed = { retryAfterSeconds: retryAfterSeconds(error) };
       warnings.push(`${previousReport?.periodOfReport ?? "Prior quarter"}: holdings unavailable; comparison unavailable.`);
       return [];
     }).then((rows) => {

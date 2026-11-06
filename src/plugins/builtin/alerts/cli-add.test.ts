@@ -66,6 +66,11 @@ function cloud() {
     getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => (
       quotes[target.symbol] ? { target, quote: quotes[target.symbol]! } : { target, quote: null, error: `Not a ticker: ${target.symbol}.` }
     )),
+    // The filer a listing's SEC filings are under, as a 13F alert by symbol reads it.
+    getSecFilings: async (symbol: string) => symbol === "AAPL" ? [{
+      accessionNumber: "0000320193-26-000101", form: "8-K", filingDate: new Date("2026-10-20"), cik: "0000320193",
+      companyName: "Apple Inc.", filingUrl: "https://www.sec.gov/101",
+    }] : [],
   });
 }
 
@@ -474,6 +479,18 @@ test("an alert only a signed-in account gets checked is saved signed out and rea
   expect(apiClient.getSessionToken()).toBe("session-token");
   expect(signedIn.printed!.result.warnings?.some((warning) => warning.includes("needs sign-in"))).toBe(false);
   expect((await desk.run(["add", "AAPL", "filing", "8-K"])).output).not.toContain("needs sign-in");
+});
+
+// `alerts add BRK.B filing 13F` was refused with the list of filing forms.
+test("a 13F typed as a filing form is the 13F alert on the company's own filer, saved by its CIK and said so", async () => {
+  expect(parseAlertAddArgs(["BRK.B", "filing", "13F-HR"], undefined)).toMatchObject({ event: "thirteenf-fund", symbol: "BRK.B", thirteenFFilerOf: true });
+  const desk = await profile();
+  const added = await desk.run(["add", "AAPL", "filing", "13F"]);
+  expect(added.error).toBeNull();
+  expect(added.output).toContain("13F filing CIK 0000320193");
+  expect(added.printed!.result.warnings).toContain("A 13F alert follows AAPL's filer, Apple Inc. (CIK 320193), as gloom alerts add 13f 320193 does.");
+  // The same rule `alerts add 13f 320193` saves: the fund by its CIK, not the stock.
+  expect((await desk.stored()).events.rules).toEqual([expect.objectContaining({ kind: "thirteenf_filing", target: "fund", value: "0000320193" })]);
 });
 
 test("alerts add takes every kind Add Event Alert offers, by the words a desk types", () => {

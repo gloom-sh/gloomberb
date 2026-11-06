@@ -163,7 +163,8 @@ export function renderTimelineCell(
         attributes: TextAttributes.BOLD,
       };
     case "filed":
-      return { text: formatShortDate(row.filedAsOfDate, FILING_DAY_FORMAT), color: colors.textDim };
+      // The whole day, as the period beside it: the list spans years.
+      return { text: row.filedAsOfDate || "--", color: colors.textDim };
     case "value":
       return { text: formatMoneyCompact(row.tableValueTotal), color: colors.text };
     case "rows":

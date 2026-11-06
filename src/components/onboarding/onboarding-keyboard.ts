@@ -62,7 +62,7 @@ export function useOnboardingKeyboard({
   submitAccountField, backPortfolio, continuePortfolio, setPortfolioOptionIdx, activeBrokerFields,
   brokerFieldIdx, setBrokerSelectIdx, brokerChoices, openBrokerGuide, chosenDesks, finishDesks,
   setDeskCursor, deskCursor, setChosenDesks, continueAccount, skipSetup, primaryUpgradeAction,
-  setBillingInterval, keybindings, dialogOpen, commandBarOpen, saveProgressInBackground, goBack,
+  setBillingInterval, keybindings, dialogOpen, commandBarOpen, saveProgressInBackground, goBack, coachAside = false,
 }: {
   stage: OnboardingStage;
   progress: OnboardingProgress;
@@ -109,6 +109,8 @@ export function useOnboardingKeyboard({
   saveProgressInBackground: (patch: Partial<OnboardingProgress> & Pick<OnboardingProgress, "stage">, baseConfig?: AppConfig | undefined) => void;
   /** Back on the card: to the step the user came from. */
   goBack: () => void;
+  /** The workspace coach has stepped aside for a pane opened after it, and takes no keys. */
+  coachAside?: boolean;
 }) {
   const activeSection: OnboardingSectionId = stage === "portfolio" || stage === "desks"
     ? "portfolio"
@@ -304,11 +306,12 @@ export function useOnboardingKeyboard({
 
   /**
    * The research coach floats over a live workspace, so it takes no key a pane
-   * could want. It answers the notification keys, like a toast that stays up,
-   * and only when nothing else used them.
+   * could want. It answers the notification keys, like a toast that stays up:
+   * after a toast's own (the shell's handler is older and runs first), and
+   * before the focused pane or field, so the key its buttons show acts on the
+   * card only, never on the pane under it (Alt+Backspace deleted a word there).
    */
   useShortcut((event) => {
-    if (event.targetEditable) return;
     const connect = matchesKeybindingAction(keybindings, "notification-action", event);
     const dismiss = matchesKeybindingAction(keybindings, "notification-dismiss", event) || isPlainKey(event, "f10");
     if (!connect && !dismiss) return;
@@ -317,7 +320,8 @@ export function useOnboardingKeyboard({
     if (connect) saveProgressInBackground({ stage: "account" });
     else void finish();
   }, {
-    phase: "after",
-    enabled: stage === "research" && !helpFocused && !dialogOpen && !commandBarOpen,
+    phase: "before",
+    allowEditable: true,
+    enabled: stage === "research" && !helpFocused && !coachAside && !dialogOpen && !commandBarOpen,
   });
 }

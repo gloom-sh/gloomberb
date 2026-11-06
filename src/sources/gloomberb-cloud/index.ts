@@ -18,6 +18,7 @@ import type {
   EarningsEvent,
   SecFilingDocument,
   SecFilingItem,
+  SecForm4Trade,
   BatchedReadMethod,
   MarketDataRequestContext,
   QuoteBatchOptions,
@@ -131,7 +132,9 @@ function mapCloudSecFiling(item: {
   fileNumber?: string;
   fundSeries?: boolean;
   pressReleaseUrl?: string;
+  form4?: unknown;
 }): SecFilingItem {
+  const form4 = readForm4Trade(item.form4);
   return {
     accessionNumber: item.accessionNumber,
     form: item.form,
@@ -150,6 +153,30 @@ function mapCloudSecFiling(item: {
     ...(typeof item.fundSeries === "boolean" ? { fundSeries: item.fundSeries } : {}),
     ...(typeof item.pressReleaseUrl === "string" && /^https:\/\/www\.sec\.gov\//.test(item.pressReleaseUrl)
       ? { pressReleaseUrl: item.pressReleaseUrl } : {}),
+    ...(form4 ? { form4 } : {}),
+  };
+}
+
+/** A Form 4's trade as the service summarized it, or null when it sent none or an unreadable one. */
+function readForm4Trade(value: unknown): SecForm4Trade | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const text = (field: unknown) => typeof field === "string" && field.trim() ? field.trim() : null;
+  const issuerName = text(raw.issuerName);
+  const sides = ["buy", "sell", "acquired", "disposed"] as const;
+  const side = sides.find((entry) => entry === raw.side);
+  const shares = typeof raw.shares === "number" && Number.isFinite(raw.shares) && raw.shares > 0 ? raw.shares : null;
+  if (!issuerName || !side || shares == null) return null;
+  const price = typeof raw.price === "number" && Number.isFinite(raw.price) && raw.price > 0 ? raw.price : null;
+  return {
+    ownerName: text(raw.ownerName) ?? "",
+    issuerName,
+    issuerTicker: text(raw.issuerTicker),
+    issuerCik: text(raw.issuerCik),
+    code: text(raw.code) ?? "",
+    side,
+    shares,
+    price,
   };
 }
 

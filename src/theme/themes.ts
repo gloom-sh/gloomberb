@@ -34,9 +34,27 @@ export interface Theme {
 
   commandBg: string;
   commandBorder: string;
+
+  /**
+   * The up, down, warning and neutral colours in a selected row, read against
+   * its fill. Only a light or colour-blind theme has them, set by the registry:
+   * it reads its tones at body contrast (TONE_TEXT_MIN) everywhere, so it lifts
+   * them there (the vermillion of a loss read 3.16:1 on colorblind-light's
+   * selection). Without them a tone is drawn as it is.
+   */
+  selectedPositive?: string;
+  selectedNegative?: string;
+  selectedWarning?: string;
+  selectedNeutral?: string;
 }
 
 const BODY_TEXT_MIN = 4.5;
+/**
+ * What the up, down, warning and neutral colours keep in a light or colour-blind
+ * theme, on the page and in a selected row: body contrast, because a loss, a
+ * delay or a warning is read, not just seen. Dark themes keep SUBTLE_TEXT_MIN.
+ */
+export const TONE_TEXT_MIN = 4.5;
 /** What muted text and the up, down and warning colours keep against the page. */
 export const SUBTLE_TEXT_MIN = 3.6;
 const SELECTED_SURFACE_MIN = 1.75;
@@ -49,7 +67,25 @@ function highestMinimumContrast(surfaces: readonly string[], candidates: readonl
   });
 }
 
-function normalizeTheme(theme: Theme): Theme {
+/**
+ * `base` walked toward `toward` in small steps until it reads at `min` on every
+ * surface: the least change that does, so a tone keeps its hue. `toward` itself
+ * when no step reads.
+ */
+function tintForContrast(base: string, surfaces: readonly string[], toward: string, min: number): string {
+  for (let step = 0; step <= 50; step += 1) {
+    const candidate = step === 0 ? base : blendHex(base, toward, step / 50);
+    if (surfaces.every((surface) => contrastRatio(candidate, surface) >= min)) return candidate;
+  }
+  return toward;
+}
+
+interface ThemeNorms {
+  /** Light and colour-blind themes: tones at TONE_TEXT_MIN on the page and in a selected row. */
+  readableTones: boolean;
+}
+
+function normalizeTheme(theme: Theme, { readableTones }: ThemeNorms): Theme {
   const bodySurfaces = [theme.bg, theme.panel] as const;
   const bodyContrastExtreme = highestMinimumContrast(bodySurfaces, ["#ffffff", "#000000"]);
   const text = blendForContrastOnSurfaces(
@@ -112,19 +148,22 @@ function normalizeTheme(theme: Theme): Theme {
     highestMinimumContrast([selected], [text, theme.textBright, "#f2f2f2"]),
     BODY_TEXT_MIN,
   );
-
+  const tones = { positive, negative, warning, neutral };
+  if (!readableTones) return { ...theme, text, textDim, textMuted, ...tones, headerText, selected, selectedText };
+  // Toward the page's far end on the page; toward the row's far end in a selected row.
+  const bodyExtreme = highestMinimumContrast(bodySurfaces, ["#ffffff", "#000000"]);
+  const selectedExtreme = highestMinimumContrast([selected], ["#ffffff", "#000000"]);
+  const readable = (tone: string) => tintForContrast(tone, bodySurfaces, bodyExtreme, TONE_TEXT_MIN);
+  const onSelected = (tone: string) => tintForContrast(tone, [selected], selectedExtreme, TONE_TEXT_MIN);
+  const page = {
+    positive: readable(positive), negative: readable(negative), warning: readable(warning), neutral: readable(neutral),
+  };
   return {
-    ...theme,
-    text,
-    textDim,
-    textMuted,
-    positive,
-    negative,
-    neutral,
-    warning,
-    headerText,
-    selected,
-    selectedText,
+    ...theme, text, textDim, textMuted, ...page, headerText, selected, selectedText,
+    selectedPositive: onSelected(page.positive),
+    selectedNegative: onSelected(page.negative),
+    selectedWarning: onSelected(page.warning),
+    selectedNeutral: onSelected(page.neutral),
   };
 }
 
@@ -674,7 +713,9 @@ const rawThemes: Record<string, Theme> = {
     textBright: "#000000",
     textMuted: "#646b75",
     positive: "#0072b2",
-    negative: "#a84100",
+    // A shade under the Okabe-Ito vermillion: the amber warning, darkened to
+    // 4.5:1 on the panel, would otherwise sit too close to it for protanopia.
+    negative: "#9e3400",
     neutral: "#5f6670",
     warning: "#a27409",
     header: "#e9ecef",
@@ -711,8 +752,13 @@ const rawThemes: Record<string, Theme> = {
   },
 };
 
+/** The colour-blind safe themes (THEME_TRAITS), which read their tones at body contrast as the light ones do. */
+const COLORBLIND_SAFE_THEMES = new Set(["colorblind", "colorblind-light", "high-contrast"]);
+
 export const themes: Record<string, Theme> = Object.fromEntries(
-  Object.entries(rawThemes).map(([id, theme]) => [id, normalizeTheme(theme)]),
+  Object.entries(rawThemes).map(([id, theme]) => [id, normalizeTheme(theme, {
+    readableTones: COLORBLIND_SAFE_THEMES.has(id) || relativeLuminance(theme.text) < relativeLuminance(theme.bg),
+  })]),
 ) as Record<string, Theme>;
 
 // The monochrome theme the website and web app show, so a new install looks
@@ -740,6 +786,7 @@ export function getTheme(id: string): Theme {
 
 type ThemeTrait = "colorblind-safe" | "high-contrast";
 
+// Keep the colour-blind safe ids in COLORBLIND_SAFE_THEMES as well.
 const THEME_TRAITS: Readonly<Record<string, readonly ThemeTrait[]>> = {
   colorblind: ["colorblind-safe"],
   "colorblind-light": ["colorblind-safe"],

@@ -11,12 +11,14 @@ import {
   inferBrowserTabFromQuery,
   latestLikely13FQuarter,
   newestDueQuarter,
+  nextThirteenFDue,
   thirteenFDueDate,
   buildPeriodReports,
   oneFundPerCik,
   quartersBehindLatest,
   sortFilingPositionRows,
 } from "./model";
+import { nextFilingText } from "./report-notes";
 import type { FundDetailData, ThirteenFFormSummary, ThirteenFHoldingRecord } from "./types";
 
 function form(overrides: Partial<ThirteenFFormSummary>): ThirteenFFormSummary {
@@ -97,6 +99,19 @@ describe("13F model", () => {
     // Still 14 Aug in New York, so Q2 is not missed yet; four hours later it is.
     expect(newestDueQuarter(new Date("2026-08-15T03:00:00Z"))).toEqual({ period: "2026-03-31", due: "2026-05-15" });
     expect(newestDueQuarter(new Date("2026-08-15T05:00:00Z"))).toEqual({ period: "2026-06-30", due: "2026-08-14" });
+  });
+
+  test("a fund's next 13F is the first quarter after its latest whose deadline has not passed in New York", () => {
+    // Berkshire on Fri 6 Nov 2026, with Q2 on file: Q3's deadline is Saturday 14 Nov, so Monday 16 Nov.
+    const next = nextThirteenFDue("2026-06-30", new Date("2026-11-06T12:35:00Z"));
+    expect(next).toEqual({ period: "2026-09-30", due: "2026-11-16" });
+    expect(nextFilingText(next!)).toEqual({ quarter: "Q3 2026", due: "due Mon 16 Nov 2026" });
+    // Q4's 14 Feb 2027 is a Sunday before Presidents' Day.
+    expect(nextFilingText(nextThirteenFDue("2026-09-30", new Date("2026-11-20T12:00:00Z"))!).due).toBe("due Tue 16 Feb 2027");
+    // Still 16 Nov in New York: Q3 is still the next one, not Q4.
+    expect(nextThirteenFDue("2026-06-30", new Date("2026-11-17T04:00:00Z"))?.period).toBe("2026-09-30");
+    expect(nextThirteenFDue("2026-06-30", new Date("2026-11-17T06:00:00Z"))?.period).toBe("2026-12-31");
+    expect(nextThirteenFDue(undefined)).toBeNull();
   });
 
   test("the latest EDGAR filing for the missed quarter decides what a fund behind it filed", () => {
