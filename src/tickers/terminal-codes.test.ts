@@ -255,6 +255,7 @@ test.each([
   expect(parseListingArg(typed)).toMatchObject({ key, readAs: `Read ${typed} as ${key}.` });
 });
 
-test.each(["SAN:EPA", "BATS:LSE", "7203:JPX", "AAPL"])("%s is not written venue first", (typed) => {
+// A ticker that is also a venue's code, before a two-letter market code, is written symbol first, as before.
+test.each(["SAN:EPA", "BATS:LSE", "ICE:NYSE", "7203:JPX", "AAPL", "ICE:US", "CME:US", "NEO:US", "OTC:US", "ASX:AU", "BSE:IN", "AMS:SW"])("%s is not written venue first", (typed) => {
   expect(readVenueFirstListing(typed)).toBeNull();
 });

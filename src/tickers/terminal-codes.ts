@@ -482,9 +482,11 @@ const VENUE_FIRST = /^([A-Z][A-Z0-9]{1,11}):([A-Z0-9][A-Z0-9.&-]{0,19})$/;
  * (`7203:JPX`, `LSEG:LSE`, `AAPL:NASDAQ`): the part before the colon is an
  * exchange code the app knows and the part after it is none, so `SAN:EPA`,
  * written symbol first, and `BATS:LSE`, whose symbol is also a venue's code,
- * stay as typed. A code that names several venues (`TSE:7203`) is kept for
- * the listing to settle. A prediction market's id (`KALSHI:...`) is not a
- * listing. Null for anything else.
+ * stay as typed, as does a ticker before a two-letter market code (`ICE:US`,
+ * `ASX:AU`, `BSE:IN`, `AMS:SW`), the code it is written symbol first with.
+ * A code that names several venues (`TSE:7203`) is kept for the listing to
+ * settle. A prediction market's id (`KALSHI:...`) is not a listing. Null for
+ * anything else.
  */
 export function readVenueFirstListing(raw: string): NearMissListing | null {
   const typed = raw.trim();
@@ -492,6 +494,7 @@ export function readVenueFirstListing(raw: string): NearMissListing | null {
   if (!match) return null;
   const [, code, symbol] = match as unknown as [string, string, string];
   if (!isKnownExchangeCode(code) || isKnownExchangeCode(symbol) || isPredictionMarketExchange(code)) return null;
+  if (symbol.length === 2 && BLOOMBERG_MARKETS[symbol]) return null;
   return { typed, symbol: `${symbol}:${isSharedExchangeCode(code) ? code : canonicalExchange(code)}` };
 }
 

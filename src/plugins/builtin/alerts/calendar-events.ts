@@ -297,21 +297,37 @@ function matchCalendarWords(
     const ranked = slipped.sort((left, right) => IMPACT_RANK[left.impact] - IMPACT_RANK[right.impact] || left.words.length - right.words.length);
     return { kind: "none", suggestions: [...ranked, ...alike].slice(0, 3).map(strip) };
   }
-  const ranked = named.sort((left, right) => IMPACT_RANK[left.impact] - IMPACT_RANK[right.impact]
+  const rank = (list: readonly RankedChoice[]) => [...list].sort((left, right) => IMPACT_RANK[left.impact] - IMPACT_RANK[right.impact]
     || (left.next ? 0 : 1) - (right.next ? 0 : 1)
     || (left.words.length - right.words.length)
     || (left.next?.date.getTime() ?? 0) - (right.next?.date.getTime() ?? 0)
     || left.name.localeCompare(right.name));
+  // A word for one series' headline release is that release (`employment` is US payrolls), the rest it names after it.
+  const series = HEADLINE_WORDS[words.join(" ")];
+  const headlined = series ? named.filter((choice) => choice.rows.some((row) => eventSeriesId(row) === series)) : [];
+  // Otherwise the releases listed ahead are what an alert follows: `GDP` is a GDP release still to come, never one
+  // whose next print the calendar does not list yet, which is only offered beside it.
+  const dated = named.filter((choice) => choice.next);
+  const ranked = rank(headlined.length > 0 ? headlined : dated.length > 0 ? dated : named);
+  const rest = rank(named.filter((choice) => !ranked.includes(choice)));
   const countries = [...new Set(ranked.map((choice) => choice.country))];
   // A high-impact headline release outranking every other country's is the one meant (US payrolls over France's
   // quarterly private payrolls), and the match names the rest; releases alike in impact ask which country.
   const best = ranked[0]!;
-  const headline = best.impact === "high" && ranked.every((choice) => choice.country === best.country || IMPACT_RANK[choice.impact] > IMPACT_RANK.high);
+  const headline = headlined.length > 0
+    || (best.impact === "high" && ranked.every((choice) => choice.country === best.country || IMPACT_RANK[choice.impact] > IMPACT_RANK.high));
   if (countries.length > 1 && !headline) {
     return { kind: "countries", choices: countries.map((code) => strip(ranked.find((choice) => choice.country === code)!)) };
   }
-  return { kind: "match", choice: strip(ranked[0]!), others: ranked.slice(1).map(strip) };
+  return { kind: "match", choice: strip(best), others: [...ranked.slice(1), ...rest].map(strip) };
 }
+
+/**
+ * Words that name one series' headline release when typed alone, as a reader
+ * means them: `employment` is the jobs report's payrolls (Non-Farm
+ * Employment Change), not every country's employment change.
+ */
+const HEADLINE_WORDS: Readonly<Record<string, string>> = { employment: "PAYEMS" };
 
 function strip({ words: _words, shownWords: _shown, names: _names, rows: _rows, ...choice }: RankedChoice): CalendarEventChoice {
   return choice;
