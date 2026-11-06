@@ -63,10 +63,7 @@ export const TOOLTIP_SURFACE_STYLE = {
 export interface DialogKeyHint {
   /** As the terminal names it: "Enter", "Esc", "Shift+Enter", "Tab", "↑↓", "y". */
   key: string;
-  /**
-   * What it does, short and lowercase; translated where it is drawn. Empty for
-   * a key shown beside the control it opens, such as the closed prompt's.
-   */
+  /** What it does, short and lowercase; translated where it is drawn. */
   label: string;
 }
 

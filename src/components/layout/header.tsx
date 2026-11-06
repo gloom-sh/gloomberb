@@ -278,8 +278,8 @@ function HeaderCommandPrompt({
     ? commandBarText(colors)
     : nativePaneChrome ? colors.text : blendHex(colors.headerText, colors.header, 0.15);
   // Every field's placeholder colour, lifted only as far as the header needs to
-  // keep it as readable there. The key after it is in the same quiet colour: a
-  // keycap on the desktop, as the open prompt's keys and Help's are.
+  // keep it as readable there. The key after it is in the same quiet colour:
+  // one level, a placeholder, not a label and its footnote.
   const mutedColor = placeholderText(colors, nativePaneChrome ? colors.header : idleBg);
   // Desktop hover lifts the prompt off the header itself, which is the only
   // thing telling the pointer this text is a control. The terminal has no
@@ -326,16 +326,11 @@ function HeaderCommandPrompt({
           flexGrow={1}
           flexShrink={1}
           minWidth={0}
-          alignItems="center"
           overflow="hidden"
           style={{ flexWrap: "wrap", alignContent: "flex-start" }}
         >
           <Text fg={mutedColor}>{placeholder}</Text>
-          {shortcut ? (
-            <Box flexShrink={0} style={{ marginLeft: "var(--gloom-space-sm)" }}>
-              <KeyHints keys={[{ key: shortcut, label: "" }]} color={mutedColor} />
-            </Box>
-          ) : null}
+          {shortcut ? <Text fg={mutedColor}>{`  ${shortcut}`}</Text> : null}
         </Box>
       ) : (
         <>

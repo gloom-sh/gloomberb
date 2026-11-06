@@ -75,7 +75,7 @@ export function WebKeyHints({ keys = [], note, style, keyColor }: DialogHintsPro
           style={{ display: "inline-flex", alignItems: "center", gap: "var(--gloom-space-xs)", whiteSpace: "nowrap" }}
         >
           <WebKeycap keyName={hint.key} fg={keyColor ?? colors.textDim} />
-          {hint.label ? <span>{t(hint.label)}</span> : null}
+          <span>{t(hint.label)}</span>
         </span>
       ))}
       {note ? <span style={{ fontVariantNumeric: "tabular-nums" }}>{t(note)}</span> : null}

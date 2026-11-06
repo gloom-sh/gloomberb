@@ -16,7 +16,7 @@ export interface KeyHintsProps {
  * host's notation (useShortcutLabel).
  */
 export function keyHintsText(keys: readonly DialogKeyHint[], formatKey: (key: string) => string = (key) => key): string {
-  return keys.map((hint) => (hint.label ? `${formatKey(hint.key)} ${t(hint.label)}` : formatKey(hint.key))).join(" · ");
+  return keys.map((hint) => `${formatKey(hint.key)} ${t(hint.label)}`).join(" · ");
 }
 
 /**
