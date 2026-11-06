@@ -144,7 +144,7 @@ export function parsePaneFunctionArgsFor(
   args: string[],
   globalOptions: { limit?: number; tail?: number } = {},
 ): ParsedPaneFunctionArgs {
-  const parsed = withOpeningWord(registry, withKeywordNote(registry, parsePaneFunctionArgs(args, globalOptions)));
+  const parsed = withKeywordNote(registry, withOpeningWord(registry, parsePaneFunctionArgs(args, globalOptions)));
   const found = parsed.target ? findPaneFunction(registry, parsed.target) : null;
   if (!found?.pane) return parsed;
   const capability = getPaneFunctionCapability(found.template, found.pane);
@@ -156,13 +156,15 @@ export function parsePaneFunctionArgsFor(
 }
 
 /**
- * A word that opens no function by its code but names one case of a function
- * (`discovery.opens`: `VX`, `vix futures`) runs that function on the case's
- * argument, and says so: `fn VX` is `fn CTM VIX`. A word typed with an
- * argument of its own keeps it.
+ * A word that opens no function by its code or name but names one case of a
+ * function (`discovery.opens`: `VX`, `vix futures`) runs that function on the
+ * case's argument, and says so: `fn VX` is `fn CTM VIX`, and `fn TVL` is
+ * `fn CRYP defi` though TVL is also one of CRYP's keywords. A word typed with
+ * an argument of its own keeps it.
  */
 function withOpeningWord(registry: PaneFunctionCatalog, parsed: ParsedPaneFunctionArgs): ParsedPaneFunctionArgs {
-  if (!parsed.target || findPaneFunction(registry, parsed.target)) return parsed;
+  const found = parsed.target ? findPaneFunction(registry, parsed.target) : null;
+  if (!parsed.target || (found?.pane && namesFunction(found.template, found.pane, parsed.target))) return parsed;
   const wanted = normalizeLookupToken(parsed.target);
   for (const template of registry.paneTemplates.values()) {
     const pane = registry.panes.get(template.paneId);
@@ -185,13 +187,18 @@ function withKeywordNote(registry: PaneFunctionCatalog, parsed: ParsedPaneFuncti
   const found = parsed.target ? findPaneFunction(registry, parsed.target) : null;
   if (!found?.pane || !found.template) return parsed;
   const { template, pane } = found;
-  const wanted = normalizeLookupToken(parsed.target);
-  const headless = getHeadlessPaneDefinition(template, pane);
-  const names = [template.shortcut?.prefix, ...template.shortcut?.aliases ?? [], template.id, template.label, pane.id, pane.name,
-    headless?.discovery?.id, ...headless?.discovery?.aliases ?? []];
-  if (names.some((name) => name && normalizeLookupToken(name) === wanted)) return parsed;
+  if (namesFunction(template, pane, parsed.target)) return parsed;
   const code = paneFunctionCode(template, pane);
   return { ...parsed, listingNotes: [...parsed.listingNotes ?? [], `${parsed.target} opened ${code}, ${template.label}.`] };
+}
+
+/** Whether a word is the function's code, an alias or a name, rather than one of its keywords. */
+function namesFunction(template: PaneTemplateDef | undefined, pane: PaneDef, word: string): boolean {
+  const wanted = normalizeLookupToken(word);
+  const headless = getHeadlessPaneDefinition(template, pane);
+  const names = [template?.shortcut?.prefix, ...template?.shortcut?.aliases ?? [], template?.id, template?.label, pane.id, pane.name,
+    headless?.discovery?.id, ...headless?.discovery?.aliases ?? []];
+  return names.some((name) => name && normalizeLookupToken(name) === wanted);
 }
 
 /**

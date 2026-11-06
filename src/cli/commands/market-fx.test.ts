@@ -355,6 +355,33 @@ test("fx --forward implies the forward from both short rates, shows them with th
   }
 });
 
+test("fx --forward through SGD says what MAS's licence asks of SORA, and that a rate MAS has not answered for is a kept copy", async () => {
+  setSystemTime(new Date("2026-11-06T03:00:00Z"));
+  const attribution = { text: "Contains information from MAS's Domestic Interest Rates, made available under the Singapore Open Data Licence version 1.0",
+    licenceUrl: "https://www.mas.gov.sg/terms-of-use" };
+  const spy = spyOn(apiClient, "getCloudShortRates").mockImplementation(async () => {
+    const payload = shortRates();
+    return { ...payload, rates: [...payload.rates, { ...payload.rates[0]!, currency: "SGD", name: "SORA", value: 1.2081, asOf: "2026-11-04",
+      dayCountBasis: 365 as const, publisher: "Monetary Authority of Singapore", stale: true, attribution }] };
+  });
+  try {
+    const run = harness("USD", { "USDSGD=X": 1.3 });
+    await fx.execute(["USD/SGD", "--forward", "3m"], run.context);
+    const [row] = run.rows()[0] as Record<string, unknown>[];
+    expect(row).toMatchObject({ quoteRate: { currency: "SGD", name: "SORA", stale: true, attribution } });
+    const text = run.output("text")[0]!;
+    expect(text).toContain("SGD rate: SORA 1.2081% (Monetary Authority of Singapore, 2026-11-04; ACT/365)");
+    expect(text).toContain("SORA: Contains information from MAS's Domestic Interest Rates, made available under the Singapore Open Data Licence version 1.0 (https://www.mas.gov.sg/terms-of-use).");
+    expect(run.output("json")[0]).toContain("SORA (SGD) is the last copy read, dated 2026-11-04; its source could not be read since.");
+    // A rate whose publisher asks for none says nothing of a licence.
+    const other = harness("USD", { "USDMXN=X": 18.35 });
+    await fx.execute(["USD/MXN", "--forward", "30d"], other.context);
+    expect(other.output("text")[0]).not.toContain("Licence");
+  } finally {
+    spy.mockRestore();
+  }
+});
+
 test("fx --forward with --date says the forward is today's only and how to get either, reading nothing", async () => {
   setSystemTime(new Date("2026-10-21T15:00:00Z"));
   const spy = spyOn(apiClient, "getCloudShortRates").mockImplementation(async () => shortRates());

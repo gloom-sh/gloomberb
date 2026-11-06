@@ -241,6 +241,13 @@ export interface HeadlessPaneEntry {
    */
   unit?: string;
   /**
+   * The unit an export names in `currency_or_unit` for a figure written as
+   * `formatted` draws it, where `value` is not in that unit and `unit` would
+   * rescale what JSON keeps: a ratio drawn as a percent (`pct`). Named only
+   * beside a number; a figure missing with its reason has no unit.
+   */
+  exportUnit?: string;
+  /**
    * In a report with `exportDated`, where this line is not of the section's own period and release (a previous
    * reading, a year ago): the period it covers, when it was released and what it is as of. A null `released`
    * or `asOf` leaves the cell blank rather than borrow the section's.

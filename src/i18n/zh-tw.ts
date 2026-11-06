@@ -1683,6 +1683,8 @@ export const zhTW: Record<string, string> = {
   "Denied in {seconds} s": "{seconds} 秒後拒絕",
   "choose": "選擇",
   "select": "選定",
+  "here": "此處",
+  "new pane": "新面板",
   "confirm": "確認",
   "presets": "預設",
   "add": "新增",

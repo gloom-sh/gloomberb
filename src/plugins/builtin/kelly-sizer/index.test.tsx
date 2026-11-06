@@ -1,9 +1,13 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import { act } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { KellySizerHarness, createFinancials, createSizerConfig, createTicker } from "./test-support";
+import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
+import type { PricePoint } from "../../../types/financials";
+import { kellyHeadless } from "./headless";
+import { formatPct } from "./view";
 
 const tui = createOpenTuiTestHarness();
 
@@ -185,6 +189,54 @@ describe("KellySizerPane", () => {
     await press({ name: "tab", sequence: "\t", shift: true });
     await press({ name: "s", sequence: "s" });
     expect(tui.frame()).toContain("Sensitivity");
+  });
+
+  test("History reads the window and numbers the KELLY report reads, and without dated closes both read the trailing range", async () => {
+    // 6 Nov 2026: five years run November 2021 to October 2026, measured from October 2021's close.
+    const now = Date.parse("2026-11-06T03:00:00Z");
+    setSystemTime(new Date(now));
+    const weekdays: PricePoint[] = [];
+    for (let time = Date.UTC(2021, 9, 1); time < now - 43_200_000; time += 86_400_000) {
+      const date = new Date(time);
+      // Up 2% a month, and down 3.1% every third month.
+      const month = (date.getUTCFullYear() - 2021) * 12 + date.getUTCMonth();
+      if (date.getUTCDay() !== 0 && date.getUTCDay() !== 6) weekdays.push({ date, close: 100 * 1.02 ** month * (month % 3 === 2 ? 0.95 : 1) });
+    }
+    const trailing = weekdays.filter((point) => point.date >= new Date("2021-11-06"));
+    const sources = (dated: boolean) => ({
+      getDetailedPriceHistory: async (_symbol: string, _exchange: string, start: Date, end: Date) => {
+        if (!dated) throw new Error("No dated history");
+        return weekdays.filter((point) => point.date >= start && point.date < end);
+      },
+      getPriceHistoryForResolution: async () => trailing,
+      getPriceHistory: async () => trailing,
+    });
+    const report = (dated: boolean) => kellyHeadless.load(
+      createTestHeadlessArgs({ symbols: ["AAPL"], options: { years: 5 } }),
+      createTestHeadlessContext({ resolveInstrument: async () => ({ symbol: "AAPL", exchange: "" }),
+        marketData: createTestDataProvider(sources(dated)) }),
+    );
+    try {
+      for (const [dated, window] of [[true, "2021-10-29 to 2026-10-30, 60 monthly returns"],
+        [false, "2021-11-30 to 2026-10-30, 59 monthly returns"]] as const) {
+        const result = await report(dated);
+        expect(result.sections![0]!.entries!.find((entry) => entry.key === "window")!.formatted).toBe(window);
+        const fullKelly = result.sections![1]!.rows!.find((row) => row.id === "full")!.fraction as number;
+        const { wins, periods } = result.metadata!.inputs as { wins: number; periods: number };
+        setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider(sources(dated))));
+        await renderPane({ paneState: { mode: "history" } });
+        const [range, count] = window.split(", ");
+        const frame = await tui.waitForFrameToContain(count!);
+        expect(frame).toContain(range!);
+        expect(frame).toContain(`${wins}/${periods}`);
+        // The same Full Kelly as the report, to the pane's one decimal.
+        expect(frame).toMatch(new RegExp(`Full Kelly\\s+${formatPct(fullKelly, 1).replace(".", "\\.")}`));
+        tui.destroy();
+        setSharedMarketDataCoordinator(null);
+      }
+    } finally {
+      setSystemTime();
+    }
   });
 
   test("focuses ticker search with slash", async () => {

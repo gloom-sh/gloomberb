@@ -105,6 +105,7 @@ test("hosts the command bar input while a list screen is published", async () =>
       query: "QQ",
       placeholder: "Command or plain English…",
       ghostSuffix: " AAPL",
+      keyHints: null,
       onQueryChange: (query) => typed.push(query),
     });
     await tui.setup().renderOnce();
@@ -122,6 +123,39 @@ test("hosts the command bar input while a list screen is published", async () =>
     await tui.setup().renderOnce();
   });
   expect(tui.frame()).not.toContain("QQ");
+});
+
+/** The keys the open prompt names for the selected row sit at its end, and give way whole to the typed text. */
+test("names the selected row's keys at the end of the open prompt while the query leaves room", async () => {
+  const state = {
+    ...createInitialState(createDefaultConfig("/tmp/gloomberb-header-test")),
+    commandBarOpen: true,
+  };
+  await tui.render(
+    <AppContext value={createStaticAppStore(state)}>
+      <Header />
+    </AppContext>,
+    { width: 80, height: 1 },
+  );
+  const show = async (query: string) => {
+    await act(async () => {
+      publishCommandBarPrompt({
+        screenKey: "root:Commands",
+        query,
+        placeholder: "Search or run a command",
+        ghostSuffix: null,
+        keyHints: [{ key: "Enter", label: "here" }, { key: "Shift+Enter", label: "new pane" }],
+        onQueryChange: () => {},
+      });
+      await tui.setup().renderOnce();
+    });
+    return tui.frame().split("\n")[0]!;
+  };
+  // 80 columns: a 49-column prompt, 45 of them for the field.
+  expect(await show("MSFT")).toMatch(/> MSFT {2,}Enter here · Shift\+Enter new pane/);
+  const long = await show("MSFT GOOGL NVDA");
+  expect(long).toContain("> MSFT GOOGL NVDA");
+  expect(long).not.toMatch(/Enter|new pane/);
 });
 
 /**

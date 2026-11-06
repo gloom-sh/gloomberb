@@ -1683,6 +1683,8 @@ export const zhCN: Record<string, string> = {
   "Denied in {seconds} s": "{seconds} 秒后拒绝",
   "choose": "选择",
   "select": "选定",
+  "here": "此处",
+  "new pane": "新面板",
   "confirm": "确认",
   "presets": "预设",
   "add": "添加",

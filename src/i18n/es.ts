@@ -1686,6 +1686,8 @@ export const es: Record<string, string> = {
   "Denied in {seconds} s": "Se deniega en {seconds} s",
   "choose": "elegir",
   "select": "seleccionar",
+  "here": "aquí",
+  "new pane": "panel nuevo",
   "confirm": "confirmar",
   "presets": "preajustes",
   "add": "añadir",

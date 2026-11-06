@@ -24,6 +24,7 @@ import { getSharedRegistry } from "../plugins/registry";
 import { useViewport } from "../react/input";
 import { useAppStateRef } from "../state/app/context";
 import { useThemeColors } from "../theme/theme-context";
+import { placeholderText } from "../theme/colors";
 import {
   Box,
   Text,
@@ -214,7 +215,7 @@ function FeedbackDialog({
             placeholder={t("What happened, or what would you like to see?")}
             focused
             textColor={colors.text}
-            placeholderColor={colors.textDim}
+            placeholderColor={placeholderText(colors)}
             backgroundColor={colors.panel}
             flexGrow={1}
             wrapText

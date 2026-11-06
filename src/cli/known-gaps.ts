@@ -73,9 +73,9 @@ export function isSubMinuteInterval(value: string): boolean {
  * (checked 2026-10-19).
  */
 export const MUNI_LINE = "Municipal bonds: no AAA muni curve (MMD and BVAL are licensed). Muni bond funds: MUB, VTEB, TFI (national), SUB (short-term), "
-  + "CMF, VTEC (California), NYF, MUNY (New York). SEC yield, distribution yield, yield to worst and duration: gloom fn DVD <fund> or "
-  + "gloom fundamentals <fund>; tax-equivalent yield and muni/Treasury ratio: add --tax-rate 40.8 (with --state-rate 13.3 --state CA for a "
-  + "single-state fund).";
+  + "CMF, VTEC (California), NYF, MUNY (New York). SEC yield, distribution yield, yield to worst and duration: gloom fn DVD <fund>, fn ETF <fund>, "
+  + "fn DES <fund> or gloom fundamentals <fund>; tax-equivalent yield and muni/Treasury ratio: add --tax-rate 40.8, as in gloom fn DVD MUB --tax-rate 40.8 "
+  + "(with --state-rate 13.3 --state CA for a single-state fund), and gloom fn DVD MUB VTEB SUB LQD --tax-rate 40.8 ranks several.";
 
 /**
  * Data people look for under a name search cannot find: where the app has it,

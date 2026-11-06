@@ -1,5 +1,6 @@
 import { ApiRequestError } from "../../../api-client/errors";
 import type { FundBondFacts } from "../../../api-client/fund-facts";
+import type { NoBondFigures } from "../../../market-data/tax-equivalent";
 import { createConcurrencyLimiter } from "../../../utils/concurrency";
 import type { DividendData } from "./client";
 import type { DividendRankingEntry } from "./ranking";
@@ -18,8 +19,12 @@ const rankingReads = createConcurrencyLimiter(RANKING_CONCURRENCY);
 /** How a ranking reads one ticker. */
 export interface DividendRankingReads {
   loadData(symbol: string): Promise<DividendData>;
-  /** A fund's bond facts, null for any other listing. It never rejects: without them the fund ranks as before. */
-  loadBond?(symbol: string): Promise<FundBondFacts | null>;
+  /**
+   * A fund's bond facts, null for a fund without them, or why the listing has
+   * none (NoBondFigures). A rejection is a check that failed, which the row
+   * keeps as `bondError`; the fund ranks as before either way.
+   */
+  loadBond?(symbol: string): Promise<FundBondFacts | NoBondFigures | null>;
 }
 
 interface RankingReadOptions {
@@ -63,9 +68,11 @@ export function readDividendRanking(
   { sleep = wait }: RankingReadOptions = {},
 ): Promise<DividendRankingEntry[]> {
   return Promise.all(symbols.slice(0, MAX_RANKED_SYMBOLS).map((symbol) => rankingReads(async (): Promise<DividendRankingEntry> => {
-    const bond = reads.loadBond?.(symbol) ?? null;
+    const bond = Promise.resolve(reads.loadBond?.(symbol) ?? null).then(
+      (read) => typeof read === "string" ? { bond: null, noBondFigures: read } : { bond: read },
+      (error: unknown) => ({ bond: null, bondError: error instanceof Error ? error.message : String(error) }));
     try {
-      return { symbol, data: await retryRateLimitedOnce(() => reads.loadData(symbol), sleep), bond: await bond };
+      return { symbol, data: await retryRateLimitedOnce(() => reads.loadData(symbol), sleep), ...await bond };
     } catch (error) {
       return { symbol, error: error instanceof Error ? error.message : String(error) };
     }

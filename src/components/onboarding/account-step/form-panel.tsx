@@ -49,7 +49,6 @@ function TuiFieldRow({
             focused
             backgroundColor={colors.panel}
             textColor={colors.text}
-            placeholderColor={colors.textDim}
             onChange={onChange}
           />
         ) : (
@@ -111,7 +110,6 @@ export function AccountFormPanel({
           focused={onEmail && editing && !submitting}
           backgroundColor={colors.panel}
           textColor={colors.text}
-          placeholderColor={colors.textDim}
           onMouseDown={() => onFieldFocus(0)}
           onChange={onEmailChange}
         />
@@ -126,7 +124,6 @@ export function AccountFormPanel({
           focused={!onEmail && editing && !submitting}
           backgroundColor={colors.panel}
           textColor={colors.text}
-          placeholderColor={colors.textDim}
           onMouseDown={() => onFieldFocus(1)}
           onChange={onPasswordChange}
         />

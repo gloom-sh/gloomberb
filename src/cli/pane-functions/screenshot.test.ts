@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import { assessPaneScreenshot, filledKeyValueCount, isPaneScreenshotUsable, liveDomRowCount, missingActiveTabSelections, shotLoadedNothing, shotTableRows } from "./screenshot-assessment";
 import { buildDesktopShotPayload } from "./screenshot-payload";
@@ -29,6 +29,7 @@ import { draftFromCalculatorInputs } from "../../plugins/builtin/options-calcula
 import { optionsCalculatorHeadless } from "../../plugins/builtin/options-calculator/headless";
 import { valueOption, solveImpliedVolatility } from "../../plugins/builtin/shared/volatility";
 import { loadSeasonalityHistory } from "../../plugins/builtin/seasonality/client";
+import { estimateKellyHistoryInputs, kellyHistoryRequest } from "../../plugins/builtin/kelly-sizer/history";
 import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../test-support/data-provider";
 import { accountManagementModule } from "../../plugins/builtin/account-management";
 import { brokerManagerModule } from "../../plugins/builtin/broker-manager";
@@ -250,6 +251,59 @@ describe("realized volatility screenshot history", () => {
     }]]);
     const captured = createSnapshotDataProvider(shot, {} as MarketContext["dataProvider"]);
     expect(await captured.getPriceHistoryForResolution!("AAPL", "NASDAQ", "1Y", "1d")).toEqual(daily);
+  });
+});
+
+describe("KELLY screenshot history", () => {
+  // 6 Nov 2026: the five-year window runs November 2021 to October 2026, measured from October 2021's close.
+  const now = Date.parse("2026-11-06T03:00:00Z");
+  const kelly = {
+    pane: { id: "kelly-sizer" }, capability: { id: "kelly-sizer", options: [] },
+    instance: { instanceId: "kelly:test", paneId: "kelly-sizer", binding: { kind: "none" }, params: { symbol: "AAPL" } },
+    createOptions: { symbol: "AAPL" }, options: {},
+  } as unknown as ResolvedPaneFunction;
+  const weekdays: PricePoint[] = [];
+  for (let time = Date.UTC(2021, 9, 1); time < now - 43_200_000; time += 86_400_000) {
+    const date = new Date(time);
+    if (date.getUTCDay() !== 0 && date.getUTCDay() !== 6) weekdays.push({ date, close: 100 + (date.getUTCMonth() % 3 ? 4 : 0) });
+  }
+  const financials = { quote: { symbol: "AAPL", listingExchangeName: "NASDAQ" }, annualStatements: [], quarterlyStatements: [], priceHistory: [] };
+  const capture = (provider: object) => buildDesktopShotPayload(kelly, {
+    config: createDefaultConfig("/tmp/kelly-shot-test"),
+    store: { loadTicker: async () => null, loadAllTickers: async () => [] },
+    dataProvider: { getTickerFinancials: async () => financials, ...provider },
+  } as unknown as MarketContext, "AAPL", {}, 800, 600, null, 1, null);
+  afterEach(() => setSystemTime());
+
+  test("captures the dated closes the History tab asks for, so it reads the 60 returns the KELLY report does", async () => {
+    setSystemTime(new Date(now));
+    const asked: Array<[Date, Date]> = [];
+    const shot = await capture({
+      async getDetailedPriceHistory(_symbol: string, _exchange: string, start: Date, end: Date) {
+        asked.push([start, end]);
+        return weekdays.filter((point) => point.date >= start && point.date < end);
+      },
+      async getPriceHistoryForResolution() { throw new Error("The trailing range starts after October's close"); },
+    });
+    expect(asked.map(([start]) => start.toISOString())).toEqual(["2021-10-01T00:00:00.000Z"]);
+    // The pane's own request, answered from the capture, reads the same window as the report.
+    const request = kellyHistoryRequest({ symbol: "AAPL", exchange: "NASDAQ" }, 5);
+    const captured = createSnapshotDataProvider(shot, {} as MarketContext["dataProvider"]);
+    const points = await captured.getDetailedPriceHistory!("AAPL", "NASDAQ", request.startDate!, request.endDate!, "1d");
+    expect(estimateKellyHistoryInputs(points, 5, { exchange: "NASDAQ" }))
+      .toMatchObject({ periods: 60, start: "2021-10-29", end: "2026-10-30" });
+  });
+
+  test("a source with no dated history is captured over the trailing range the pane falls back to", async () => {
+    setSystemTime(new Date(now));
+    const trailing = weekdays.filter((point) => point.date >= new Date("2021-11-06"));
+    const calls: unknown[][] = [];
+    const shot = await capture({
+      async getDetailedPriceHistory() { throw new Error("No dated history"); },
+      async getPriceHistoryForResolution(...args: unknown[]) { calls.push(args.slice(0, 4)); return trailing; },
+    });
+    expect(calls).toEqual([["AAPL", "NASDAQ", "5Y", "1d"]]);
+    expect(shot.financials[0]![1].priceHistory).toEqual(trailing);
   });
 });
 

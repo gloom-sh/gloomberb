@@ -23,7 +23,7 @@ import { TextAttributes, useUiCapabilities } from "../../../ui";
 import { displayWidth, formatCurrency, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
-import { forwardDividendNote, lastPaidNote, NO_CURRENT_DIVIDEND, UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
+import { forwardDividendNote, lapseValue, lastPaidNote, UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
@@ -114,9 +114,10 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
     { id: "ttm-yield", label: ttmLabel, value: formatDividendYield(metrics.trailingYield), color: priceColor(metrics.trailingYield ?? 0),
       ...(trailingNote ? { detail: trailingNote } : {}) },
     // Dated by the distribution it annualizes, or marked declared (with its stated amount) beside the next ex-date;
-    // a dividend that stopped has none, dated by its last ex-date. docs/research-data.md says how it is built.
+    // a dividend that stopped has none, dated by its last ex-date, and a monthly payer's history that ends says so.
+    // docs/research-data.md says how it is built.
     metrics.lapse
-      ? { id: "forward-yield", label: fwdLabel, value: NO_CURRENT_DIVIDEND, ...(forwardNote ? { detail: forwardNote } : {}) }
+      ? { id: "forward-yield", label: fwdLabel, value: lapseValue(metrics.lapse), ...(forwardNote ? { detail: forwardNote } : {}) }
       : { id: "forward-yield", label: fwdLabel, value: formatDividendYield(metrics.forwardYield), color: priceColor(metrics.forwardYield ?? 0),
         ...(forwardNote ? { detail: forwardNote } : {}) },
     // The 30-day SEC yield as the fund's sponsor publishes it, dated.

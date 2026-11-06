@@ -695,6 +695,8 @@ export interface UiHost {
   DialogFrame?: ComponentType<any>;
   /** Props are `DialogActionsProps` from components/ui/dialog-actions. */
   DialogActions?: ComponentType<any>;
+  /** Props are `KeyHintsProps` from components/ui/key-hints. */
+  KeyHints?: ComponentType<any>;
   PageStackView?: ComponentType<any>;
   Tabs?: ComponentType<HostTabsProps>;
   Checkbox?: ComponentType<HostCheckboxProps>;

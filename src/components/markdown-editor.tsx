@@ -2,7 +2,7 @@ import { Textarea, useSyntaxStyleFactory } from "../ui";
 import { type SyntaxStyleLike } from "../ui";
 import { useRef, useEffect, useCallback } from "react";
 import { type Highlight, type TextareaRenderable } from "../ui";
-import { colors } from "../theme/colors";
+import { colors, placeholderText } from "../theme/colors";
 
 interface LinePattern {
   regex: RegExp;
@@ -138,7 +138,7 @@ export function MarkdownEditor({
       placeholder={placeholder}
       focused={focused}
       textColor={colors.text}
-      placeholderColor={colors.textDim}
+      placeholderColor={placeholderText()}
       backgroundColor={focused ? colors.panel : colors.bg}
       flexGrow={1}
       height="100%"

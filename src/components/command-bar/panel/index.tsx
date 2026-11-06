@@ -79,6 +79,7 @@ export function CommandBarPanel({
   trailingWidth,
   tickerSearchTarget = null,
   onRunSecondary,
+  selectionKeyHints = null,
   visibleListState,
 }: CommandBarPanelProps) {
   const colors = useThemeColors();
@@ -113,9 +114,10 @@ export function CommandBarPanel({
       query: visibleListState.query,
       placeholder: resolvePromptPlaceholder(visibleListState, example),
       ghostSuffix: visibleListState.kind === "root" ? rootGhostSuffix : null,
+      keyHints: selectionKeyHints,
       onQueryChange,
     });
-  }, [example, onQueryChange, rootGhostSuffix, visibleListState]);
+  }, [example, onQueryChange, rootGhostSuffix, selectionKeyHints, visibleListState]);
   useLayoutEffect(() => () => publishCommandBarPrompt(null), []);
 
   useLayoutEffect(() => {

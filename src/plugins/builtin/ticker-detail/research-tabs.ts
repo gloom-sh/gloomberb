@@ -1,14 +1,10 @@
-import type { TickerFinancials } from "../../../types/financials";
 import type { TickerResearchTabDef } from "../../../types/plugin";
 import { FinancialsResearchTab } from "./financials/pane";
 import { OverviewResearchTab } from "./overview/pane";
 import { AdrPairResearchTab } from "./adr-pair/tab";
 import { ADR_PAIR_TAB_ID } from "./adr-pair/model";
 import { listingDepositaryPair } from "../../../market-data/depositary-pair";
-
-function hasStatementFinancials(financials: TickerFinancials | null | undefined): boolean {
-  return (financials?.annualStatements.length ?? 0) > 0 || (financials?.quarterlyStatements.length ?? 0) > 0;
-}
+import { hasStatementFinancials } from "./financials/model";
 
 /**
  * Tabs this module owns. They are registered through `setup()` like any other

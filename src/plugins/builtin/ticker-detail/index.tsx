@@ -1,4 +1,5 @@
 import { publicTickerBindingSymbol } from "../../../tickers/selection";
+import { TAX_RATE_PANE_OPTIONS } from "../../../market-data/tax-equivalent";
 import type { PluginModule } from "../plugin-module";
 import { holdsActiveTicker } from "../../../shares/pane-image";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
@@ -55,6 +56,8 @@ export const tickerDetailModule: PluginModule = {
         return tab === "thesis" || holdsActiveTicker(context) ? "holdings" : null;
       },
       defaultMode: "floating",
+      // `fn DES MUB --tax-rate 40.8`: a muni fund's tax-equivalent yield and muni/Treasury ratio under its fundamentals.
+      reportOptions: TAX_RATE_PANE_OPTIONS,
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
       settings: (context) => withLiveStreamingSetting(
         buildTickerResearchSettingsDef(getTickerResearchPaneSettings(context.settings)),

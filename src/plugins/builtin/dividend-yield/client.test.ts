@@ -46,6 +46,31 @@ describe("cash distribution calculations", () => {
     expect(buildDividendMetrics([payment("2023-08-01")], null, 100, { now: afterSuspension }).growth1Y).toBeNull();
   });
 
+  test("a monthly fund whose history ends early says so, and its forward rate, trailing yield and last ex-date all stop there", () => {
+    // IEF on 2026-11-06: the history ends at 2026-09-01 while the summary states a rate as of 2026-11-02.
+    const months = ["2025-11-03", "2025-12-01", "2026-01-02", "2026-02-02", "2026-03-02", "2026-04-01", "2026-05-01", "2026-06-01", "2026-07-01", "2026-08-03", "2026-09-01"];
+    const history = months.map((day) => payment(day, 0.3));
+    const summary: DividendSummary = { trailingAnnualDividendRate: null, trailingAnnualDividendYield: null, forwardAnnualDividendRate: 3.6,
+      forwardRateAsOf: "2026-11-02", exDividendDate: Date.parse("2026-11-02T00:00:00Z") / 1000, dividendDate: null, currency: "USD", payoutRatio: null };
+    const at = new Date("2026-11-06T15:00:00Z");
+    const metrics = buildDividendMetrics(history, summary, 100, { now: at });
+    expect(metrics).toMatchObject({ forwardRate: null, forwardYield: null, lapse: { lastPaid: "2026-09-01", historyEnds: true },
+      lastExDividendDate: new Date("2026-09-01") });
+    const entries = projectDividendYieldHeadless({ payments: history, metrics, price: 100, currency: "USD" },
+      { rawArgument: "IEF", argument: "IEF", symbols: ["IEF"], options: {} }).sections[0]!.textEntries!;
+    expect(entries.find((entry) => entry.label === "Forward yield")?.formatted).toBe("distribution history ends 2026-09-01");
+    expect(entries.find((entry) => entry.label === "Trailing yield")?.formatted).toContain("distribution history ends 2026-09-01");
+    expect(entries.find((entry) => entry.label === "Last ex-dividend")?.formatted).toBe("2026-09-01");
+    // Once the missing months are filled the fund is current, and its stated rate stands.
+    const filled = buildDividendMetrics([...history, payment("2026-10-01", 0.3), payment("2026-11-02", 0.3)], summary, 100, { now: at });
+    expect(filled).toMatchObject({ forwardRate: 3.6, forwardRateAsOf: "2026-11-02", lapse: null, lastExDividendDate: new Date("2026-11-02") });
+    // Silent more than 183 days, a monthly fund stopped paying (FXF, last paid 2024-04-01): no current dividend.
+    const fxf = buildDividendMetrics(["2024-01-02", "2024-02-01", "2024-03-01", "2024-04-01"].map((day) => payment(day, 0.3)),
+      { ...summary, forwardRateAsOf: "2024-04-01", exDividendDate: Date.parse("2024-04-01T00:00:00Z") / 1000 }, 100, { now: at });
+    expect(fxf).toMatchObject({ forwardRate: null, lapse: { lastPaid: "2024-04-01" } });
+    expect(fxf.lapse?.historyEnds).toBeUndefined();
+  });
+
   test("a payout over zero or negative earnings is not meaningful, whatever the source states", () => {
     const summary = (trailingEps: number | undefined, payoutRatio: number | null = 20): DividendSummary => ({
       trailingAnnualDividendRate: null, trailingAnnualDividendYield: null, forwardAnnualDividendRate: null,
@@ -158,7 +183,7 @@ describe("cash distribution calculations", () => {
     expect(metrics).toMatchObject({ forwardRate: 0.556718, forwardRateAsOf: "2026-08-13", forwardBasis: "uneven", trailingRate: 0.556718 });
     expect(metrics.forwardYield).toBeCloseTo(0.0408, 4);
     const entries = projectDividendYieldHeadless({ payments: hsba, metrics, price: 13.654, currency: "GBP" },
-      { rawArgument: "HSBA:LSE", argument: "HSBA:LSE", symbols: ["HSBA:LSE"], options: {} }).sections[0]!.entries!;
+      { rawArgument: "HSBA:LSE", argument: "HSBA:LSE", symbols: ["HSBA:LSE"], options: {} }).sections[0]!.textEntries!;
     expect(entries.find((entry) => entry.label === "Forward yield")?.formatted).toBe("4.08% (trailing regular payments: uneven interims)");
 
     // Even quarters, and a year with a hole in it, keep the stated rate.
@@ -238,7 +263,7 @@ describe("cash distribution calculations", () => {
     expect(data.forwardFromFundamentals).toBe(true);
     expect(data.summaryError).toBe("Dividend summary unavailable (last tried 2026-10-27 15:38 UTC); no payout ratio or pay date.");
     const request = { rawArgument: "DUK", argument: "DUK", symbols: ["DUK"], options: {} };
-    expect(projectDividendYieldHeadless(data, request).sections[0]?.entries?.find((entry) => entry.label === "Forward yield")?.formatted)
+    expect(projectDividendYieldHeadless(data, request).sections[0]?.textEntries?.find((entry) => entry.label === "Forward yield")?.formatted)
       .toBe(`3.50% (annualized from the declared distribution, ex ${day(16)})`);
     // A rate stated in another currency than the cash is not taken.
     const pounds = await fetchDividendData("DUK", 124, "", "USD", { loadStatedForwardRate: async () => ({ ...stated, currency: "GBP" }) });
@@ -344,7 +369,7 @@ describe("cash distribution calculations", () => {
     expect(data.metrics).toMatchObject({ trailingRate: 17.8, forwardRate: 18.04, forwardRateAsOf: day(-37) });
     expect(data.metrics.forwardYield).toBeCloseTo(18.04 / 307.87, 12);
     const entries = projectDividendYieldHeadless(data, { rawArgument: "SBK.JO", argument: "SBK.JO", symbols: ["SBK.JO"], options: {} })
-      .sections[0]!.entries!;
+      .sections[0]!.textEntries!;
     expect(entries.filter((entry) => entry.label.endsWith("rate")).map((entry) => entry.formatted?.replace(/\s/g, " "))).toEqual(["ZAR 17.80", "ZAR 18.04"]);
     // An older server stated the summary in ZAc, beside rates in an unstated unit (17.8 was rand): none is read.
     serve(cash(-37), { currency: "ZAc", trailingAnnualDividendRate: 17.8, forwardAnnualDividendRate: 1804 });

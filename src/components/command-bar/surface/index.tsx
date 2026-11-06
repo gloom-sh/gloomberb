@@ -38,6 +38,8 @@ import { useCommandBarEnvironment } from "./environment";
 import { useCommandBarActionRuntime } from "../action-runtime";
 import { requestKeybindingCapture } from "../../../app/keybindings";
 import { resolveTickerRetargetPane } from "../../../layout/ticker-retarget";
+import { resolveTickerEnterTarget } from "../pane-actions";
+import { resolveSelectionKeyHints } from "../selection-hint";
 import { findPaneInstance } from "../../../types/config";
 import { getBasePaneDisplayTitle } from "../../layout/pane/title";
 import { isDialogOpen } from "../../../ui/dialog-stack";
@@ -663,7 +665,24 @@ export function CommandBar({
   }, [currentRoute, pluginRegistry.panes, state]);
   const runSecondary = useCallback(() => activateListSelection({ secondary: true }), [activateListSelection]);
 
+  // Where Enter and Shift+Enter open the selected row in different places, the
+  // prompt says so. Plain ticker search says it in its own chrome row
+  // (tickerSearchTarget), and Enter on an add row's listing adds it instead.
+  const { visibleListState } = panelProps;
+  const addingListing = !currentRoute && state.commandBarLaunchRequest?.kind === "add-listing" && !!listingChoiceQuery(rootQuery);
+  const plainTickerSearch = currentRoute?.kind === "mode" && currentRoute.screen === "ticker-search" && !currentRoute.payload?.action;
+  const enterChangesFocusedPane = !!resolveTickerEnterTarget(state.config.layout, state.focusedPaneId, pluginRegistry.panes, "des");
+  const selectedRow = visibleListState?.results[visibleListState.selectedIdx];
+  const selectionKeyHints = themePickerActive || addingListing || plainTickerSearch
+    ? null
+    : resolveSelectionKeyHints(selectedRow, enterChangesFocusedPane);
+
   return (
-    <CommandBarPanel {...panelProps} tickerSearchTarget={tickerSearchTarget} onRunSecondary={runSecondary} />
+    <CommandBarPanel
+      {...panelProps}
+      tickerSearchTarget={tickerSearchTarget}
+      onRunSecondary={runSecondary}
+      selectionKeyHints={selectionKeyHints}
+    />
   );
 }

@@ -373,6 +373,8 @@ test("a strike whose IV was filled from its neighbours prints ~, says so in the 
   // No bid on the 120 call: it has no two-sided quote to solve, so its IV is read off the strikes either side.
   const chain = makeChain([100, 101, 120], 101);
   chain.calls = chain.calls.map((contract) => contract.strike === 120 ? { ...contract, bid: 0, ask: 0.05, lastPrice: 0.02 } : contract);
+  // The 120 put is quoted above its 19.00 intrinsic, so the strike has a market to fill.
+  chain.puts = chain.puts.map((contract) => contract.strike === 120 ? { ...contract, bid: 19.9, ask: 20.1, lastPrice: 20 } : contract);
   setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getOptionsChain: async () => chain })));
   const registry = createRemoteUiRegistry();
   await act(async () => {
