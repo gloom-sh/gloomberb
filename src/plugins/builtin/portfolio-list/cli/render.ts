@@ -1408,22 +1408,32 @@ async function valueWatchlistRows({
   quotes: ReadonlyMap<string, CollectionQuote>;
   dataProvider: Pick<DataProvider, "getTickerFinancials" | "getTickerFinancialsBatch">;
   currency: string;
-  toBase: (value: number, fromCurrency: string) => Promise<number>;
+  toBase: ((value: number, fromCurrency: string) => Promise<number>) & { usdRate?: (currency: string) => Promise<unknown> };
 }): Promise<WatchlistRowValue[]> {
+  // Every currency's rate asked at once, beside the financials, not one after another as the rows reach a new
+  // one: a list across five currencies waited a second and more for them.
+  const warmRates = (codes: readonly string[]) => toBase.usdRate ? Promise.all([...new Set(codes)].map((code) => toBase.usdRate!(code))) : null;
   const [financials, perpetualFunding] = await Promise.all([
     loadMarketCapFinancials(tickers, quotes, dataProvider),
     loadPerpetualFunding(tickers),
+    warmRates([currency, ...[...quotes.values()].flatMap((quote) => quote?.currency ? [quote.currency] : [])]),
   ]);
   const known = (value: number | null | undefined): number | null => value != null && Number.isFinite(value) ? value : null;
   // The export carries funding on the table's terms: only for a list that holds perpetual markets.
   const hasPerpetuals = perpetualFunding.size > 0;
+  const caps = tickers.map((ticker) => {
+    const quote = quotes.get(ticker.metadata.ticker);
+    const snapshot = financials.get(ticker.metadata.ticker);
+    return liveMarketCapitalization(quote, snapshot?.fundamentals) ?? liveMarketCapitalization(snapshot?.quote, snapshot?.fundamentals);
+  });
+  await warmRates(caps.flatMap((cap) => cap ? [cap.currency] : []));
   const values: WatchlistRowValue[] = [];
-  for (const ticker of tickers) {
+  for (const [index, ticker] of tickers.entries()) {
     const symbol = ticker.metadata.ticker;
     const quote = quotes.get(symbol);
     const snapshot = financials.get(symbol);
     const { headline, extended } = collectionQuoteHeadline(quote);
-    const cap = liveMarketCapitalization(quote, snapshot?.fundamentals) ?? liveMarketCapitalization(snapshot?.quote, snapshot?.fundamentals);
+    const cap = caps[index];
     const marketCap = cap ? listedMarketCapitalization(known(await toBase(cap.value, cap.currency))) : null;
     const kind = resolveTickerInstrumentKind(ticker, { quote: quote ?? snapshot?.quote });
     const venue = exchangeShortName(quote?.tradingExchangeName || quote?.exchangeName, quote?.fullExchangeName) || ticker.metadata.exchange || null;
