@@ -307,7 +307,9 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       ? fetchRiskEpisodeHistory(
           tickers.map((ticker) => ({ instrument: { symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange }, currency: null })),
           local.portfolio.currency, episodeReader, ctx.signal,
-        ).catch(() => undefined)
+        ).catch(() => {
+          // Intentional ignore: the replayed load below reads the same closes and reports their failures.
+        })
       : undefined;
     const [prices, brokerOptions] = await Promise.all([
       localOnly

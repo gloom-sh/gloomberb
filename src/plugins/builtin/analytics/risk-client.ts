@@ -400,8 +400,9 @@ export async function fetchPortfolioRiskMarket(
   const early = new Map<string, ReturnType<RiskCloudClient["getCloudHistory"]>>();
   const fetchEarly = (symbol: string, exchange: string) => {
     const loading = client.getCloudHistory(symbol, exchange, historyParams, signal ? { signal } : undefined);
-    // Intentional ignore: the failure is raised where the history is read.
-    loading.catch(() => undefined);
+    loading.catch(() => {
+      // Intentional ignore: the failure is raised where the history is read.
+    });
     early.set(`${symbol}|${exchange}`, loading);
   };
   const historyOf = (symbol: string, exchange: string) => {
@@ -414,8 +415,9 @@ export async function fetchPortfolioRiskMarket(
   if (accountConversion && accountConversion.divisor === 1)
     fetchEarly(accountConversion.leg.instrument.symbol, accountConversion.leg.instrument.exchange ?? "");
   const accountRate = account ? client.getCloudExchangeRate(account) : null;
-  // Intentional ignore: the failure is raised where the rate is read.
-  accountRate?.catch(() => undefined);
+  accountRate?.catch(() => {
+    // Intentional ignore: the failure is raised where the rate is read.
+  });
   // The Treasury yield and the VIX, which settle rather than fail.
   const fredWork = Promise.allSettled(
     ["DGS10", "VIXCLS"].map(async (id) =>

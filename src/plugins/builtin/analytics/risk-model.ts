@@ -175,10 +175,10 @@ export interface RiskDisplayRow {
 }
 
 /** Below this R² a factor explains too little of the basket's moves for its beta to be read as an exposure. */
-export const WEAK_FACTOR_FIT = 0.1;
+const WEAK_FACTOR_FIT = 0.1;
 
 /** "Factors are US ETF proxies; ASELS, THYAO and 4 more trade outside the US and are measured against them." */
-export function usFactorProxyNote(symbols: readonly string[]): string {
+function usFactorProxyNote(symbols: readonly string[]): string {
   const sorted = [...symbols].sort();
   const named = sorted.length <= 6 ? sorted : [...sorted.slice(0, 5), `${sorted.length - 5} more`];
   const list = named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : named[0] ?? "";
@@ -186,7 +186,7 @@ export function usFactorProxyNote(symbols: readonly string[]): string {
 }
 
 /** "76% USD, 24% TRY": each currency's share of the values given, largest first; currencies under half a percent left out. */
-export function bookCurrencyShares(lines: ReadonlyArray<{ currency: string; value: number | null }>): string {
+function bookCurrencyShares(lines: ReadonlyArray<{ currency: string; value: number | null }>): string {
   const totals = new Map<string, number>();
   for (const line of lines) {
     if (line.value == null || !Number.isFinite(line.value) || line.value <= 0) continue;

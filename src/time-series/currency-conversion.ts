@@ -38,7 +38,7 @@ function scaled(value: number | null | undefined, factor: number): number | null
  * price in pence or cents. A point with no close in the week before it is
  * left out, not converted at another day's rate. Volume is left alone.
  */
-export function convertPricePoints(
+function convertPricePoints(
   points: readonly TimeSeriesPoint[],
   { dayOf, divisor = 1, fromCloses, toCloses }: {
     dayOf: (point: TimeSeriesPoint) => string;

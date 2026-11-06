@@ -74,6 +74,7 @@ export function buildHelpFunctionIndex(sources: HelpFunctionSources): HelpFuncti
       aliases,
       paneId: COMMAND_PANES[command.id],
       argPlaceholder: command.hasArg ? command.argPlaceholder : undefined,
+      ...(command.listed === false ? { unlisted: true as const } : {}),
     }));
   }
   for (const command of sources.pluginCommands) {

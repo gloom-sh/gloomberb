@@ -28,7 +28,7 @@ export const CPI_SOURCES: Readonly<Record<string, CpiSource>> = {
 };
 
 /** One published CPI value the figure was read from, as the source gives it. */
-export interface CpiReading {
+interface CpiReading {
   series: string;
   /** YYYY-MM. */
   month: string;

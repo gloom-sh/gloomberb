@@ -24,6 +24,8 @@ export interface Command {
   shortcut?: string;
   category: string;
   execute?: CommandExecutor;
+  /** A code the bar runs that is no function (QUIT): no help card, docs entry or place in HELP's lists. */
+  listed?: false;
 }
 
 export const commands: Command[] = [
@@ -56,6 +58,7 @@ export const commands: Command[] = [
     label: "Quit",
     description: "Quit Gloom",
     category: "Navigation",
+    listed: false,
   },
   {
     id: "send-feedback",
