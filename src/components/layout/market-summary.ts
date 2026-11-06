@@ -21,7 +21,6 @@ import { classifyInstrumentType } from "../../tickers/instrument-kind";
 import { canonicalExchange } from "../../utils/exchanges";
 import { timeZoneLabel, zonedDateKey, zonedDateTimeParts } from "../../utils/zoned-date-time";
 import type { MarketState, Quote } from "../../types/financials";
-import { useDelayedMarkMinutes } from "../ui/delayed-mark";
 import { logFailure } from "../../utils/log-failure";
 
 /**
@@ -63,11 +62,6 @@ export interface MarketSummary {
   /** `quoteText` without its move, for a header too narrow for both. */
   quotePriceText: string;
   quoteColor: string;
-  /**
-   * Minutes the quote is late for this account (signed out or free), drawn as the delayed
-   * mark beside it; null when live, and while the status bar's delayed note says it for the app.
-   */
-  quoteDelayMinutes: number | null;
 }
 
 export interface MarketSummaryFit {
@@ -283,16 +277,15 @@ export function headerMarketState(
 }
 
 /** Cells the cluster's parts take, each with the gap after it, as `resolveMarketSummaryFit` reads them. */
-export function marketSummaryWidths(summary: MarketSummary, delayedMarkWidth: number): {
+export function marketSummaryWidths(summary: MarketSummary): {
   quoteWidth: number;
   quoteMoveWidth: number;
   stateWidths: Record<MarketStateForm, number>;
   detailWidth: number;
 } {
-  const mark = summary.quoteDelayMinutes != null ? delayedMarkWidth + 1 : 0;
   const stateWidth = (label: string) => label ? displayWidth(label) + 1 : 0;
   return {
-    quoteWidth: displayWidth(summary.quoteLabel) + 1 + displayWidth(summary.quoteText) + 1 + mark,
+    quoteWidth: displayWidth(summary.quoteLabel) + 1 + displayWidth(summary.quoteText) + 1,
     quoteMoveWidth: displayWidth(summary.quoteText) - displayWidth(summary.quotePriceText),
     stateWidths: {
       full: stateWidth(summary.marketLabels.full),
@@ -377,7 +370,6 @@ export function useMarketSummary(): MarketSummary {
   }, [appActive, instrument.symbol, instrument.exchange]);
 
   const { quoteColor, quotePriceText, quoteText } = headerQuoteSummary(quote, colors);
-  const quoteDelayMinutes = useDelayedMarkMinutes(quote);
   const state = headerMarketState(target, quote, now, colors);
 
   return {
@@ -386,6 +378,5 @@ export function useMarketSummary(): MarketSummary {
     quoteColor,
     quotePriceText,
     quoteText,
-    quoteDelayMinutes,
   };
 }

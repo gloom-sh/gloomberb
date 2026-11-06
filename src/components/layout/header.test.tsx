@@ -57,6 +57,32 @@ test("shows a benchmark's listing under its own symbol when the index has no usa
   expect(asked).toEqual(["^GSPC", "SPY"]);
 });
 
+/**
+ * The delay is said by the status bar and each pane's footer, never beside the
+ * header's market, even where nothing else on screen says it (status bar hidden).
+ */
+test("draws no delayed mark beside a delayed market", async () => {
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    getQuote: async (symbol) => createTestQuote({
+      symbol, instrumentType: "INDEX", price: 6843.21, change: 13.66, changePercent: 0.2, marketState: "REGULAR", dataSource: "delayed",
+    }),
+  })));
+  const config = { ...createDefaultConfig("/tmp/gloomberb-header-test"), headerMarket: { benchmark: "sp500" } };
+  await tui.render(
+    <AppContext value={createStaticAppStore(createInitialState(config))}>
+      <Header />
+    </AppContext>,
+    { width: 200, height: 1 },
+  );
+  for (let attempt = 0; attempt < 20 && !tui.frame().includes("6,843"); attempt += 1) {
+    await act(async () => { await Bun.sleep(10); });
+    await tui.setup().renderOnce();
+  }
+  const frame = tui.frame().split("\n")[0]!;
+  expect(frame).toMatch(/S&P 500 6,843 \+0\.20%/);
+  expect(frame).not.toMatch(/◷|15m/);
+});
+
 test("opens the command bar by clicking the header prompt", async () => {
   const state = createInitialState(headerConfig());
   const actions: Array<{ type: string; open?: boolean; query?: string }> = [];

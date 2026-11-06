@@ -1066,7 +1066,7 @@ Signed in, they also merge in the alerts Gloom Cloud delivered to your phone or 
 
 Prices come from one shared stream, and a symbol shown in several panes is subscribed once. Rows on screen and the selected symbol update about 10 times a second, everything else about once a second. Minimizing or hiding the app pauses streams and polling, and plans that cap streamed symbols spend them on the rows in view.
 
-Signed out or on Free, Gloom Cloud's stock and options quotes are 15 minutes behind (crypto is real-time). The status bar says so once, `◷ 15m delayed`, and a click on it starts Pro; each pane whose prices are late has a yellow clock in its footer (`◷15m` in the terminal), its tooltip saying how late. A price outside a pane footer, such as the header's market or a quote's headline, carries the clock and `15m` itself only while the status bar is hidden.
+Signed out or on Free, Gloom Cloud's stock and options quotes are 15 minutes behind (crypto is real-time). The status bar says so once, `◷ 15m delayed`, and a click on it starts Pro; each pane whose prices are late has a yellow clock in its footer (`◷15m` in the terminal), its tooltip saying how late. A price outside a pane footer, such as a quote's headline, carries the clock and `15m` itself only while the status bar is hidden. The header's market never carries it.
 
 What moves while you watch:
 
