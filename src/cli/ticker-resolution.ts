@@ -15,7 +15,7 @@ import {
   upsertTickerFromSearchResult,
   type ResolvedTickerSearch,
 } from "../tickers/search";
-import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
+import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../utils/exchanges";
 import {
   chosenListingNote,
   isNoProviderError,
@@ -26,6 +26,7 @@ import {
   movedSymbolLine,
   notTradedMessage,
   oneWordCompanyName,
+  serviceNamedCompany,
   isTitleCaseWord,
   titleCaseCompanyName,
   parseListingArg,
@@ -318,6 +319,15 @@ export async function resolveCliTicker(
     return withChange({ ...ended, otherVenues: bareNote ? bareVenues : null, ...uncheckedIf(listing, local, ended.ended) }, local.quote ? tradingListing(local.quote) : { name: local.ticker.metadata.name });
   }
 
+  // A bare word no quote of its own placed, which search read on a listing abroad, is the company the service marks
+  // with the word, as `quote` reads it: VISA is V:NYSE (Visa Inc.), not a receipt on Toronto; SHELL is SHEL:LSE.
+  const abroad = !listing.exchange && !!listing.typed && !isUsListingExchange(canonicalExchange(resolved.result.exchange));
+  const marked = abroad ? await serviceNamedCompany(listing.typed!, deps)
+    .catch(logFailure("cli.ticker-resolution", "Read a word the service marks as a name failed", null)) : null;
+  if (marked) {
+    const found = await resolveCliTicker(marked.key, store, dataProvider, undefined, options);
+    return { ...found, readAs: marked.readAs ?? found.readAs };
+  }
   const { ticker, created } = await upsertTickerFromSearchResult(store, resolved.result);
   // A listing saved before (by an earlier look at a list) is read again too: its quote says whether it still trades.
   const named = created || !bareQuote ? await nameFromListingQuote(ticker, store, dataProvider, bareQuote) : { ticker, quote: bareQuote };

@@ -493,3 +493,21 @@ test("a list's word written as a name that went to another company's ticker is t
     .toEqual(["8267:JPX", "AEON:AMEX"]);
   expect(results[0]?.readAs).toBe('Read "Aeon" as 8267:JPX (Aeon Co., Ltd.); the ticker AEON is AEON Biopharma, Inc.');
 });
+
+test("a list's word the service marks as a company's name is that company, before a line abroad under the word, as quote reads it", async () => {
+  // `search VISA` against the service, 2026-11-06, trimmed: VISA is a receipt on Toronto; the service marks Visa Inc.'s V with the word.
+  const listed = (symbol: string, name: string, exchange: string, extra: Record<string, unknown> = {}) =>
+    ({ providerId: "test", symbol, name, exchange, type: "Common Stock", currency: "USD", ...extra });
+  const answer = [listed("VISA", "Visa Inc.", "TSX", { currency: "CAD" }), listed("V", "Visa Inc.", "NYSE", { homeListing: true, searchAliases: ["visa"] })];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => /^(visa|v)\b/i.test(query) ? answer : [],
+    getQuote: async (symbol, exchange) => {
+      if (exchange) return createTestQuote({ symbol, exchange, name: "Visa Inc." });
+      throw new Error(`No quote provider available for ${symbol}`);
+    },
+  });
+  resetBoardCoins([]);
+  const results = await resolveTickersForCli(["VISA"], tickerStore(), dataProvider, undefined, { retryWaitsMs: [] }).finally(() => resetBoardCoins());
+  expect(results.map((result) => result.ticker ? `${result.ticker.metadata.ticker}:${result.ticker.metadata.exchange}` : result.error?.message)).toEqual(["V:NYSE"]);
+  expect(results[0]?.readAs).toBe('Read "VISA" as V:NYSE (Visa Inc.).');
+});

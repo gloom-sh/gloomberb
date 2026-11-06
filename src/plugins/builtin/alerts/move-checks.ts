@@ -75,7 +75,7 @@ export function readMoveChecks(value: unknown): Record<string, MoveCheck> {
 const armingOf = (alert: Pick<AlertRule, "armedAt" | "createdAt">) => alert.armedAt ?? alert.createdAt;
 
 /** A judged move rule's reading, as this device keeps it; null before its first check. */
-export function moveCheckOf(alert: AlertRule): MoveCheck | null {
+function moveCheckOf(alert: AlertRule): MoveCheck | null {
   if (!alert.move || alert.lastCheckedAt == null) return null;
   return {
     armedAt: armingOf(alert),
@@ -99,7 +99,7 @@ export function moveCheckOf(alert: AlertRule): MoveCheck | null {
  * arming (before an edit or a re-arm) is not its own. Any other rule, and a
  * move rule never read here, is returned as the rule.
  */
-export function withMoveCheck(alert: AlertRule, check: MoveCheck | undefined): AlertRule {
+function withMoveCheck(alert: AlertRule, check: MoveCheck | undefined): AlertRule {
   if (!alert.move) return alert;
   const rule = moveRuleOnly(alert);
   if (!check || check.armedAt !== armingOf(alert)) return rule;

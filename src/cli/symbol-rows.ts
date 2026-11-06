@@ -18,6 +18,7 @@ import {
 } from "./ticker-resolution";
 import { isUsSymbolVenue, LOOKUP_TIMEOUT_MS, movedAwayChange, tickerChangeLine, tickerChangeSymbol, type MovedTickerChange } from "../tickers/ticker-changes";
 import { isVenueAbroad } from "../tickers/listing-fate";
+import { serviceMarkedOtherListing } from "../tickers/company-name-listing";
 import { sameCompany } from "../tickers/company-name";
 import { tickerHasListingSuffix } from "../sources/listing-symbols";
 import { canonicalExchange, exchangeLabel, isUsListingExchange, resolveExchangeTimeZone } from "../utils/exchanges";
@@ -241,7 +242,13 @@ async function meantInstead(symbol: string, deps: SymbolDeps): Promise<string | 
 async function settleAbroad(resolution: CliTicker, deps: SymbolDeps): Promise<{ abroad: string | null; meant: string | null; onlyAbroad: boolean }> {
   if (!await listedOnlyAbroad(resolution, deps)) return { abroad: null, meant: null, onlyAbroad: false };
   const meant = await meantInstead(resolution.bareSymbol!, deps);
-  return { abroad: meant ? null : abroadOnlyNote(resolution), meant, onlyAbroad: true };
+  if (meant) return { abroad: null, meant, onlyAbroad: true };
+  // The listing the service names by the word, as `quote` says beside a minor line: "...; also 9432:JPX NTT, Inc.".
+  const marked = await serviceMarkedOtherListing(deps.dataProvider, resolution.bareSymbol!, resolution.ticker.metadata.exchange ?? "")
+    .catch(logFailure("cli.symbol-rows", "Read the listing a word names failed", null));
+  const note = abroadOnlyNote(resolution);
+  const also = marked ? `${note.replace(/\.$/, "")}; also ${marked.symbol}:${marked.exchange} ${marked.name}` : null;
+  return { abroad: also ? /\.$/.test(also) ? also : `${also}.` : note, meant: null, onlyAbroad: true };
 }
 
 /** Whether a YYYY-MM-DD day is within `ms` before `now`. */
