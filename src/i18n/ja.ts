@@ -1566,7 +1566,7 @@ export const ja: Record<string, string> = {
   "Your last payment didn't go through": "前回のお支払いが完了しませんでした",
   "Pro is paused until your open invoice is paid. Pay it with another card and real-time data comes straight back.": "未払いの請求書が支払われるまで Pro は一時停止中です。別のカードで支払うと、リアルタイムデータがすぐに戻ります。",
   "Pay with another card": "別のカードで支払う",
-  "Stop trading on stale prices": "古い株価で売買するのはもうやめよう",
+  "One better trade pays for Pro": "良い取引ひとつで Pro の元が取れる",
   "Pro is free for {days} days. $0 today, then {price} from {date}. Card required. Cancel before and you pay nothing.": "Pro は {days} 日間無料。本日 $0、{date} から {price}。カード登録が必要。それまでに解約すれば料金はかかりません。",
   "Continue to checkout": "チェックアウトへ進む",
   "{price}, billed today. Cancel anytime.": "{price}、本日請求。いつでも解約可。",
