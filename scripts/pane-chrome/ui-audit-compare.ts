@@ -174,8 +174,10 @@ export function pixelChange(before: string, after: string, command: Command = sp
   const result = command(["compare", "-regard-warnings", "-metric", "AE", "-fuzz", "2%", `${before}${region}`, `${after}${region}`, "null:"]);
   if (result.exitCode !== 0 && result.exitCode !== 1) return { status: "error", error: `compare failed (exit ${result.exitCode}): ${firstLine(result.stderr) || "no message"}` };
   const text = result.stderr.trim();
-  if (!/^\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(text)) return { status: "error", error: `compare gave no pixel count: "${text.slice(0, 120)}"` };
-  return { status: "compared", change: Number(text) / (b.width * height) };
+  // ImageMagick 6 prints the count alone; 7 adds its normalized value in brackets: `1234 (0.0123)`.
+  const counted = /^(\d+(?:\.\d+)?(?:e[+-]?\d+)?)(?:\s+\([^)]*\))?$/i.exec(text);
+  if (!counted) return { status: "error", error: `compare gave no pixel count: "${text.slice(0, 120)}"` };
+  return { status: "compared", change: Number(counted[1]) / (b.width * height) };
 }
 
 function run(command: string[]): void {
