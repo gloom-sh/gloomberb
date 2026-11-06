@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode, type RefObject } from "react";
 import { Box, Input, Text, useUiCapabilities, type InputRenderable } from "../../ui";
-import { colors } from "../../theme/colors";
+import { colors, placeholderText } from "../../theme/colors";
 import { Icon } from "./icon";
 import type { PastedLines } from "../../utils/pasted-lines";
 
@@ -74,7 +74,7 @@ export function InlineQuickAddRow({
       value={value}
       focused={active && paneFocused}
       placeholder={placeholder}
-      placeholderColor={colors.textMuted}
+      placeholderColor={placeholderText()}
       textColor={colors.text}
       backgroundColor={nativePaneChrome ? "transparent" : colors.panel}
       onInput={onChange}

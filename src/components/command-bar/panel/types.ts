@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import type { LayoutBounds } from "../../../layout/pane-manager";
 import type { ScrollBoxRenderable } from "../../../ui";
+import type { DialogKeyHint } from "../../ui/frame";
 import type { CommandBarListRow, ListScreenState, ResultItem } from "../list/model";
 import type { CommandBarListScrollEvent } from "../list/view";
 import type { ThemePickerHandle } from "../theme-picker";
@@ -55,5 +56,7 @@ export interface CommandBarPanelProps {
   tickerSearchTarget?: string | null;
   /** Runs the selected row's secondary action, as Shift+Enter does. */
   onRunSecondary?: () => void;
+  /** What Enter and Shift+Enter do with the selected row, for the prompt to name (selection-hint.ts). */
+  selectionKeyHints?: DialogKeyHint[] | null;
   visibleListState: ListScreenState | null;
 }

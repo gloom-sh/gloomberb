@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import type { DialogKeyHint } from "../../ui/frame";
 
 /**
  * What the header prompt needs to act as the command bar's input while the bar
@@ -16,6 +17,8 @@ export interface CommandBarPromptBinding {
   placeholder: string;
   /** Completion drawn after the typed text on the root screen, e.g. the ticker after "QQ". */
   ghostSuffix: string | null;
+  /** Keys the prompt names at its end for the selected row (selection-hint.ts), or null. */
+  keyHints: DialogKeyHint[] | null;
   onQueryChange: (query: string) => void;
 }
 
@@ -29,6 +32,7 @@ function sameBinding(a: CommandBarPromptBinding | null, b: CommandBarPromptBindi
     && a.query === b.query
     && a.placeholder === b.placeholder
     && a.ghostSuffix === b.ghostSuffix
+    && a.keyHints === b.keyHints
     && a.onQueryChange === b.onQueryChange;
 }
 

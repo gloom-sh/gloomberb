@@ -287,7 +287,8 @@ export function WebTextField({
   const colors = useThemeColors();
   const resolvedBackgroundColor = backgroundColor ?? "var(--gloom-surface-sunken)";
   const resolvedTextColor = textColor ?? colors.text;
-  const resolvedPlaceholderColor = placeholderColor ?? colors.textDim;
+  // The placeholder takes the role from styles.css unless the caller lifts it for its surface.
+  const labelColor = placeholderColor ?? colors.textDim;
   const localInputRef = useRef<InputRenderable>(null);
   const resolvedInputRef = inputRef ?? localInputRef;
   const renderer = useRendererHost();
@@ -301,7 +302,7 @@ export function WebTextField({
       {label && (
         <Box height={comfortable ? undefined : 1} style={comfortable ? { height: 16 } : undefined}>
           <Text
-            fg={focused ? colors.textBright : resolvedPlaceholderColor}
+            fg={focused ? colors.textBright : labelColor}
             style={{ fontWeight: "var(--gloom-weight-bold)", ...(comfortable ? { lineHeight: "16px" } : {}) }}
           >
             {label}
@@ -349,7 +350,7 @@ export function WebTextField({
           focused={focused}
           textColor={resolvedTextColor}
           focusedTextColor={resolvedTextColor}
-          placeholderColor={resolvedPlaceholderColor}
+          placeholderColor={placeholderColor}
           backgroundColor={plain ? "transparent" : resolvedBackgroundColor}
           focusedBackgroundColor={plain ? "transparent" : resolvedBackgroundColor}
           cursorColor={colors.textBright}
@@ -435,7 +436,6 @@ export function WebMessageComposer({
           height={height}
           focused={focused}
           placeholder={placeholder}
-          placeholderColor={colors.textMuted}
           textColor={colors.text}
           backgroundColor="transparent"
           focusedBackgroundColor="transparent"

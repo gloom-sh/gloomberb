@@ -1,7 +1,7 @@
 import { Box, Text, Textarea, useUiHost } from "../../ui";
 import { type ComponentType, type ReactNode, type RefObject } from "react";
 import { type TextareaRenderable } from "../../ui";
-import { colors } from "../../theme/colors";
+import { colors, placeholderText } from "../../theme/colors";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { remoteStringValue } from "../../remote/semantic-helpers";
 
@@ -153,7 +153,7 @@ export function MessageComposer({
             height={height}
             focused={focused}
             placeholder={placeholder}
-            placeholderColor={colors.textMuted}
+            placeholderColor={placeholderText()}
             textColor={colors.text}
             backgroundColor={colors.bg}
             focusedBackgroundColor={colors.bg}

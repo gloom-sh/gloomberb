@@ -19,7 +19,7 @@ import { displayWidth } from "../../../utils/format";
 import { useChartQueries, useFxRatesMap } from "../../../market-data/hooks";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
 import { useLiveTickerFinancialsMap, useSampledValue } from "../../../state/hooks/live-ticker-financials";
-import { blendHex, colors } from "../../../theme/colors";
+import { blendHex, colors, placeholderText } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import {
   Box,
@@ -936,7 +936,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                     placeholder={t("Short profile bio")}
                     focused={focused && activeField === "bio"}
                     textColor={colors.text}
-                    placeholderColor={colors.textDim}
+                    placeholderColor={placeholderText()}
                     backgroundColor={nativePaneChrome ? "transparent" : colors.panel}
                     flexGrow={1}
                     wrapText

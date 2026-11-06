@@ -190,7 +190,6 @@ function DesktopPositionsPanel({
     size: "comfortable" as const,
     backgroundColor: colors.panel,
     textColor: colors.text,
-    placeholderColor: colors.textDim,
     onMouseDown: () => state.focusField(index),
   });
 
@@ -271,7 +270,6 @@ function TuiFieldRow({
             focused={!state.submitting}
             backgroundColor={colors.panel}
             textColor={colors.text}
-            placeholderColor={colors.textDim}
             onChange={(next) => state.setField(field, next)}
           />
         ) : (
