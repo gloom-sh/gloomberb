@@ -155,3 +155,37 @@ describe("ERN rows", () => {
     expect(renderHistoryCell(settled, move, () => 0.017)).toEqual({ text: "-2.1%", color: colors.negative });
   });
 });
+
+describe("ERN for a Hong Kong listing", () => {
+  type Report = EarningsHistoryPayload["reports"][number];
+  const quarter = (fields: Partial<Report> & Pick<Report, "date">): Report => ({
+    symbol: "0700:HKEX", name: "Tencent", timing: null, timingSource: null, reportedAt: null, fiscalPeriod: "2026-06",
+    marketCap: null, epsEstimate: 7.23544, epsActual: 7.433, epsAnalysts: null, revenueEstimate: null, revenueAnalysts: null,
+    implied: null, realized: null, revenueActual: null, currency: "CNY", dateStatus: "reported", fiscalYear: 2026, fiscalQuarter: 2, ...fields,
+  });
+  const payload = (reports: Report[]): EarningsHistoryPayload => ({
+    asOf: `${TODAY}T15:00:00Z`, symbol: "0700:HKEX", name: "Tencent",
+    fiscalAnchor: { fiscalPeriod: "2025-12", fiscalYear: 2025, fiscalQuarter: 4 }, reports,
+  });
+
+  test("names its period column PERIOD whether its rows are quarters only or hold a half, and a US listing's stays QTR", () => {
+    const label = (reports: Report[], abroad: boolean) =>
+      historyColumns(2000, historyRows(payload(reports), TODAY, null, { abroad }), { abroad }).find((column) => column.id === "period")?.label;
+    const quarters = [quarter({ date: "2026-08-12" })];
+    const withHalf = [...quarters, quarter({ date: "2026-08-13", periodKind: "half", periodMonths: 6, fiscalQuarter: null, fiscalHalf: 1,
+      epsEstimate: null, epsActual: 12.1, epsActualSource: "filing" })];
+    expect([label(quarters, true), label(withHalf, true)]).toEqual(["PERIOD", "PERIOD"]);
+    expect(label([quarter({ date: "2026-08-12", currency: undefined })], false)).toBe("QTR");
+  });
+
+  test("names the calendar's next quarter by its fiscal year from the company's year end, as its past quarters are", () => {
+    const rows = historyRows(payload([quarter({ date: "2026-08-12" })]), TODAY, {
+      symbol: "0700:HKEX", name: "Tencent", earningsDate: new Date("2026-11-18T08:10:00Z"), isDateEstimate: false, timing: "",
+      epsEstimate: 7.22, epsActual: null, revenueEstimate: null, revenueActual: null, surprise: null,
+      estimateBasis: { epsEstimate: { source: "earningsTrend", sourceValue: 7.22, period: "0q", periodEndDate: "2026-09-30", currency: "CNY" } },
+    }, { abroad: true });
+    const columns = historyColumns(2000, rows, { abroad: true });
+    const period = columns.find((column) => column.id === "period")!;
+    expect(rows.map((row) => renderHistoryCell(row, period).text)).toEqual(["Q3 FY26", "Q2 FY26"]);
+  });
+});
