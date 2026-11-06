@@ -93,7 +93,8 @@ export function createAlertQuoteStream({
     const next = getSharedMarketDataCoordinator();
     const instruments = new Map<string, InstrumentRef>();
     for (const alert of readAlerts()) {
-      if (alert.metric || alert.status !== "active") continue;
+      // A move rule that went off is still followed: the next session's quote arms it again.
+      if (alert.metric || (alert.status !== "active" && !alert.move)) continue;
       const instrument = alertInstrument(alert);
       instruments.set(buildQuoteKey(instrument), instrument);
     }

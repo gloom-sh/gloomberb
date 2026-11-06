@@ -25,3 +25,24 @@ test("a rejected collection quote leaves the other tickers quoted and logs no re
     now.mockRestore();
   }
 });
+
+test("a watchlist's quotes are asked in one batch, matched by listing rather than order, and one the batch left out is asked alone", async () => {
+  const batches: string[][] = [];
+  const singles: string[] = [];
+  const quote = (symbol: string) => ({ symbol, price: 1 }) as Quote;
+  const tickers = [createTestTicker("ACME"), createTestTicker("OTHER"), createTestTicker("LEFT")];
+  const quotes = await loadCollectionQuotes(tickers, { kind: "watchlist", id: "fixture" }, {
+    getQuotesBatch: async (targets) => {
+      batches.push(targets.map((target) => target.symbol));
+      // Answered out of order, and without LEFT.
+      return [{ target: targets[1]!, quote: quote("OTHER") }, { target: targets[0]!, quote: quote("ACME") }];
+    },
+    getQuote: async (symbol) => {
+      singles.push(symbol);
+      return quote(symbol);
+    },
+  });
+  expect(batches).toEqual([["ACME", "OTHER", "LEFT"]]);
+  expect(singles).toEqual(["LEFT"]);
+  expect([...quotes].map(([symbol, entry]) => [symbol, entry.symbol])).toEqual([["ACME", "ACME"], ["OTHER", "OTHER"], ["LEFT", "LEFT"]]);
+});

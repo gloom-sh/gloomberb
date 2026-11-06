@@ -15,6 +15,7 @@ export interface AlertAddForm {
 
 export const ALERT_ADD_FORMS: readonly AlertAddForm[] = [
   { name: "price", usage: "<symbol> <above|below|crosses> <price>" },
+  { name: "move from the previous close", usage: "<symbol...|--watchlist <name>> <moves|up|down> <percent>" },
   { name: "P/E, P/S or RSI", usage: "<symbol> <pe|ps|rsi(14)> <above|below> <level>" },
   { name: "moving average crossover", usage: "<symbol> ma(50) crosses <above|below> ma(200)" },
   { name: "close against a moving average", usage: "<symbol> closes <above|below> ma(200)" },

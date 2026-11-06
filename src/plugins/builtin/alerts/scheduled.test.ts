@@ -91,7 +91,7 @@ test("event rules keep their dates through storage and take only US listings and
 });
 
 test("alerts add reads price, earnings and calendar event forms and names what it takes", () => {
-  expect(parseAlertAddArgs(["AAPL", "above", "250"], undefined)).toEqual({ kind: "price", symbol: "AAPL", condition: "above", price: 250 });
+  expect(parseAlertAddArgs(["AAPL", "above", "250"], undefined)).toEqual({ kind: "price", symbol: "AAPL", condition: "above", price: 250, typed: "250" });
   expect(parseAlertAddArgs(["CRWV", "earnings"], "3")).toEqual({ kind: "earnings", symbol: "CRWV", leadDays: 3 });
   expect(parseAlertAddArgs(["CRWV", "earnings", "results"], undefined)).toEqual({ kind: "earnings", symbol: "CRWV", leadDays: 0, results: true });
   expect(() => parseAlertAddArgs(["CRWV", "earnings", "results"], "2")).toThrow("takes no --days");

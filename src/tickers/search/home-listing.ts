@@ -1,5 +1,5 @@
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
-import { companyLines, companyNameExtraWords, namedByService, type CompanyLineFacts } from "../company-name";
+import { companyLines, companyNameExtraWords, companyNameMatch, namedByService, type CompanyLineFacts } from "../company-name";
 import { answersOnlyByKeyword, isQualifiedTickerQuery } from "./ranking";
 import type { TickerSearchCandidate } from "./types";
 
@@ -134,6 +134,16 @@ export function withHomeListingLead<T extends TickerSearchCandidate>(items: T[],
     && !answersOnlyByKeyword(item, query));
   if (!lead || !isListedEquity(lead)) return items;
   const typedSymbol = lead.symbol.toUpperCase() === query.trim().toUpperCase();
+  // A name (not a row's symbol) the service answers first with a line it marks as its company's home, every word
+  // typed in its name, is that company: "Panasonic" is Panasonic Holdings on JPX, not a Frankfurt line under the
+  // name it had before, nor the Malaysian subsidiary that line's company would lead to.
+  const served = typedSymbol ? undefined : items.find((item) => item.providerRank === 0);
+  if (served && served !== lead && isListedEquity(served) && served.instrumentClass === "equity" && served.result?.homeListing === true
+    && lead.result?.homeListing !== true
+    && !items.some((item) => item.symbol.toUpperCase() === query.trim().toUpperCase() || (!!item.result && namedByService(query, item.result)))
+    && companyNameMatch(query, candidateName(served))?.abbreviated === 0) {
+    return moveAhead(items, served, lead);
+  }
   const meant = typedSymbol && !isUsListingExchange(candidateExchange(lead)) && !(lead.result && namedByService(query, lead.result))
     // A company's shares under another symbol: an index the code also names (SPX) or the word's own line elsewhere (SAP) is not it.
     ? items.find((item) => item !== lead && isListedEquity(item) && item.instrumentClass === "equity" && !!item.result

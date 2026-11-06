@@ -1,7 +1,7 @@
 import { futuresContractByCode } from "../market-data/futures-board";
 import { getListingSymbol, hongKongListingCode, tickerHasListingSuffix } from "../sources/listing-symbols";
 import { isCurrencyCode } from "../utils/currency-pair";
-import { isKnownExchangeCode, isUsListingExchange } from "../utils/exchanges";
+import { canonicalExchange, isKnownExchangeCode, isPredictionMarketExchange, isSharedExchangeCode, isUsListingExchange } from "../utils/exchanges";
 
 /**
  * A listing written the way a market data terminal names it, read as the
@@ -471,6 +471,31 @@ export function readNearMissListing(raw: string): NearMissListing | null {
   const venue = BLOOMBERG_MARKETS[suffixed[2]!]!.venues[0]!;
   const symbol = getListingSymbol(suffixed[1]!, venue);
   return tickerHasListingSuffix(symbol) ? { typed, symbol } : null;
+}
+
+/** `TYO:7203`, `LON:LSEG`, `NASDAQ:AAPL`: an exchange's code, a colon, then the symbol, as spreadsheets and quote sites write a listing. */
+const VENUE_FIRST = /^([A-Z][A-Z0-9]{1,11}):([A-Z0-9][A-Z0-9.&-]{0,19})$/;
+
+/**
+ * A listing written venue first, as Google Sheets and quote sites write it
+ * (`TYO:7203`, `LON:LSEG`, `NASDAQ:AAPL`), read as the symbol on that venue
+ * (`7203:JPX`, `LSEG:LSE`, `AAPL:NASDAQ`): the part before the colon is an
+ * exchange code the app knows and the part after it is none, so `SAN:EPA`,
+ * written symbol first, and `BATS:LSE`, whose symbol is also a venue's code,
+ * stay as typed, as does a ticker before a two-letter market code (`ICE:US`,
+ * `ASX:AU`, `BSE:IN`, `AMS:SW`), the code it is written symbol first with.
+ * A code that names several venues (`TSE:7203`) is kept for the listing to
+ * settle. A prediction market's id (`KALSHI:...`) is not a listing. Null for
+ * anything else.
+ */
+export function readVenueFirstListing(raw: string): NearMissListing | null {
+  const typed = raw.trim();
+  const match = VENUE_FIRST.exec(typed.toUpperCase());
+  if (!match) return null;
+  const [, code, symbol] = match as unknown as [string, string, string];
+  if (!isKnownExchangeCode(code) || isKnownExchangeCode(symbol) || isPredictionMarketExchange(code)) return null;
+  if (symbol.length === 2 && BLOOMBERG_MARKETS[symbol]) return null;
+  return { typed, symbol: `${symbol}:${isSharedExchangeCode(code) ? code : canonicalExchange(code)}` };
 }
 
 /** `Read WFC.N as WFC:NYSE.`, for a command's warnings. */

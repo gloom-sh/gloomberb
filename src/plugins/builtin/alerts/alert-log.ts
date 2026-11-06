@@ -1,3 +1,5 @@
+import { moveRuleWords } from "./move";
+import { alertPriceText } from "./price-text";
 import { metricDescription } from "./metric-model";
 import { eventAlertTarget, type EventAlertRule } from "./events";
 import { alertChangeEntry, appendFiredAlert, readFiredAlerts, type AlertLogAction, type FiredAlert } from "./fired-log";
@@ -13,8 +15,10 @@ import type { AlertRule } from "./types";
 export function alertLogRule(rule: AlertRule | EventAlertRule) {
   if ("symbol" in rule) {
     return {
-      kind: rule.metric?.kind ?? "price", ruleId: rule.id,
-      rule: rule.metric ? metricDescription(rule) : `${alertListing(rule)} ${rule.condition} ${rule.targetPrice}`,
+      kind: rule.metric?.kind ?? (rule.move ? "move" : "price"), ruleId: rule.id,
+      rule: rule.metric ? metricDescription(rule) : rule.move ? `${alertListing(rule)} ${moveRuleWords(rule)}`
+        // The level at its instrument's precision and in its unit: below 1.33750, below 70.00p.
+        : `${alertListing(rule)} ${rule.condition} ${alertPriceText(rule, rule.targetPrice).replaceAll(",", "")}`,
       symbol: rule.symbol, ...rule.exchange ? { exchange: rule.exchange } : {},
     };
   }

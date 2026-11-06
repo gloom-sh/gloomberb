@@ -289,12 +289,30 @@ function statNamesOf(seriesId: string): readonly string[] {
   return statNames.get(seriesId) ?? [];
 }
 
+/** The FRED series ECST names by each of its labels and aliases, compacted: `nonfarmpayrolls` is PAYEMS. */
+let statSeries: ReadonlyMap<string, string> | null = null;
+
+/**
+ * The FRED series a calendar row is a release of, when one is known: its
+ * name as the series map reads it (Non-Farm Employment Change is PAYEMS),
+ * else a US row named as ECST names a series (Non Farm Payrolls, one feed's
+ * name for the same release). One release listed under two names is one
+ * series. Null for any other row.
+ */
+export function eventSeriesId(event: Pick<EconEvent, "country" | "event">): string | null {
+  const mapped = resolveFredMapping(event.event, event.country)?.seriesId;
+  if (mapped) return mapped;
+  if (eventCountry(event) !== "US") return null;
+  statSeries ??= new Map(STATS.flatMap((stat) => [stat.label, ...stat.aliases ?? []].map((name) => [compactName(name), stat.seriesId] as const)));
+  return statSeries.get(compactName(event.event)) ?? null;
+}
+
 /**
  * The names a row is searched by, compacted: the feed's own and the one the
  * calendar shows, then what ECST calls the series the release is of
  * (Non-Farm Employment Change is also nonfarm payrolls, nfp and the jobs report).
  */
-function eventSearchNames(event: Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior">): string[] {
+export function eventSearchNames(event: Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior">): string[] {
   const series = resolveFredMapping(event.event, event.country)?.seriesId;
   return [...[event.event, econEventName(event)].map(compactName), ...series ? statNamesOf(series) : []];
 }

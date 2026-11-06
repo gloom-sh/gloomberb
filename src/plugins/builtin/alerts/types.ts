@@ -1,4 +1,5 @@
 import type { QuoteDataSource } from "../../../types/financials";
+import type { QuoteChangeBasis } from "../../../market-data/market/change-basis";
 
 export type AlertCondition = "above" | "below" | "crosses";
 export type AlertStatus = "active" | "triggered" | "expired";
@@ -10,6 +11,16 @@ export interface AlertRule {
   condition: AlertCondition;
   targetPrice: number;
   metric?: import("./metric-model").AlertMetric;
+  /**
+   * A move from the previous close rather than a price level: `targetPrice` is
+   * the move in percent, `above` a rise, `below` a fall and `crosses` either.
+   * Kept in its own synced list (`MOVE_ALERTS_KEY`).
+   */
+  move?: boolean;
+  /** The session a move rule last went off in (the close it was measured from); it arms again in the next one. */
+  moveSession?: string;
+  /** What the last move read was measured from, as its quote's change line names it. */
+  lastMoveBasis?: QuoteChangeBasis;
   lastDailyClose?: string;
   lastCheckedTarget?: number;
   createdAt: number;
@@ -27,5 +38,7 @@ export interface AlertRule {
   lastQuoteCurrency?: string;
   /** The venue that quote was from (ARCA), which names the listing of a rule set by symbol alone. */
   lastQuoteExchange?: string;
+  /** That quote was of a London line in pence (117.35p), whose levels are written in pence. */
+  lastQuotePence?: boolean;
   message?: string;
 }

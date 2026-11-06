@@ -120,7 +120,7 @@ test("a price alert says what delivers it, and the app is the one thing that alw
   const { printed, stored } = await addAlert(["AAPL", "above", "250"]);
   expect(stored).toHaveLength(1);
   const text = printed!.options!.text!(printed!.result.data);
-  expect(text).toContain("AAPL above 250 (the app alerts while it is running;");
+  expect(text).toContain("AAPL above 250.00 (the app alerts while it is running;");
   // Signed in, Cloud emails or pushes it only once the app has been closed for a while: never promised to everyone.
   expect(text).toContain("sign in with Cloud sync for email or phone alerts when it is closed");
 });
@@ -281,7 +281,7 @@ test("a calendar name that is ambiguous or matches nothing is refused with the w
   serveCalendar({ offline: true });
   const offline = await addAlert(["AAPL"]);
   expect(offline.error).toStartWith('Unknown event "AAPL": the economic calendar could not be loaded to look it up');
-  expect(offline.error).toContain("gloom alerts add takes price, P/E, P/S or RSI");
+  expect(offline.error).toContain("gloom alerts add takes price, move from the previous close, P/E, P/S or RSI");
 });
 
 test("the FOMC's calendar row by name is the FOMC alert, and a release already out today is followed to its next listing", async () => {
@@ -391,7 +391,7 @@ test("a second add of one alert names it and adds nothing, re-arming an active o
   const desk = await profile();
   const added = await desk.run(["add", "AAPL", "above", "260"]);
   const id = added.printed!.result.data.alert.id as string;
-  expect(await desk.run(["add", "aapl", "above", "260"])).toMatchObject({ error: `AAPL:NASDAQ above 260 already exists as alert ${id}. Nothing was added.` });
+  expect(await desk.run(["add", "aapl", "above", "260"])).toMatchObject({ error: `AAPL:NASDAQ above 260.00 already exists as alert ${id}. Nothing was added.` });
   expect((await desk.stored()).alerts.map((alert) => alert.id)).toEqual([id]);
   // Another level on the same listing is another alert.
   const other = await desk.run(["add", "AAPL", "above", "270"]);
@@ -413,10 +413,10 @@ test("a second add of one alert names it and adds nothing, re-arming an active o
 
   // Beside the alerts that fired, the device's log keeps what was done to each rule here; a dry run changes nothing.
   expect(desk.log().map((entry) => [entry.action, entry.ruleId === id, entry.rule])).toEqual([
-    ["created", true, "AAPL:NASDAQ above 260"],
-    ["created", false, "AAPL:NASDAQ above 270"],
-    ["rearmed", true, "AAPL:NASDAQ above 260"],
-    ["deleted", true, "AAPL:NASDAQ above 260"],
+    ["created", true, "AAPL:NASDAQ above 260.00"],
+    ["created", false, "AAPL:NASDAQ above 270.00"],
+    ["rearmed", true, "AAPL:NASDAQ above 260.00"],
+    ["deleted", true, "AAPL:NASDAQ above 260.00"],
   ]);
 });
 
@@ -433,10 +433,10 @@ test("alerts list --csv keeps its columns in their order and adds when each aler
   expect(csv[0]).toBe("id,kind,target,trigger,eventDate,status,lastCheckedPrice,triggeredAt,createdAt,listing,currency,lastReading,lastReadingAt");
   const rows = csv.slice(1).map((line) => line.split(","));
   // Its first reading is the price it was added at, as the app checks it (after hours, the after-hours price).
-  expect(rows[0]!.slice(1, 7)).toEqual(["Price", "AAPL", "above 260", "", "active", "300"]);
+  expect(rows[0]!.slice(1, 7)).toEqual(["Price", "AAPL", "above 260.00", "", "active", "300"]);
   expect(rows[0]![8]).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
   expect(rows[0]!.slice(9, 11)).toEqual(["AAPL:NASDAQ", "USD"]);
-  expect(rows[0]![11]).toMatch(/^300 USD as of \d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z$/);
+  expect(rows[0]![11]).toMatch(/^300\.00 USD as of \d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z$/);
   expect(rows[0]![12]).toMatch(/Z$/);
   expect(rows[1]!.slice(8)).toEqual(["2026-10-20T09:30:00Z", "LINK", "", "not checked yet", ""]);
   // Gloom Cloud checks a 52-week rule for a signed-in account; signed out, nothing has read it yet.
@@ -544,4 +544,24 @@ test("a daily technical alert is saved while its close cannot be read yet, and s
   const [saved] = (await desk.stored()).alerts;
   expect(saved).toMatchObject({ symbol: "AAPL", metric: { kind: "rsi", period: 14 }, status: "active", lastQuoteCurrency: "USD" });
   expect(saved!.lastCheckedPrice).toBeUndefined();
+});
+
+test("a move add of one symbol typed twice that quotes nothing is refused; a bulk add names an alias as the same listing, logs once and keeps readings on the device", async () => {
+  const desk = await profile();
+  expect(await desk.run(["add", "ZZZQQQ", "zzzqqq", "up", "3%"])).toMatchObject({ error: expect.stringContaining("Not a ticker: ZZZQQQ.") });
+  expect((await desk.stored()).alerts).toEqual([]);
+
+  const bulk = await desk.run(["add", "AAPL", "USDMXN=X", "MXN=X", "up", "3%"]);
+  expect(bulk.error).toBeNull();
+  expect(bulk.output).toContain("Same listing as USDMXN=X in this command: MXN=X.");
+  expect(bulk.output).not.toContain("Already set");
+  // One entry in the log for the add, however many alerts it made.
+  expect(desk.log().map((entry) => [entry.action, entry.rule])).toEqual([["created", "2 move alerts up 3.00%: AAPL:NASDAQ, USDMXN=X"]]);
+  // The rules sync without their readings; the readings are this device's, and `alerts list` says the moves are app-only.
+  const { alerts } = await desk.stored();
+  expect(alerts.map((alert) => [alert.symbol, alert.lastCheckedAt, alert.lastQuoteCurrency])).toEqual([["AAPL", undefined, undefined], ["USDMXN=X", undefined, undefined]]);
+  const list = await desk.run(["list"]);
+  expect(list.output).toContain("Move, app only");
+  expect(list.printed!.result.warnings).toContain("Move alerts notify only while the app is running, even when signed in with Cloud sync: no email or phone alert.");
+  expect(list.printed!.result.data.find((row: { symbol?: string }) => row.symbol === "USDMXN=X")).toMatchObject({ lastQuoteCurrency: "MXN" });
 });

@@ -241,35 +241,65 @@ export function findCollection(config: AppConfig, name: string): CollectionMatch
 
 type CollectionQuote = Awaited<ReturnType<DataProvider["getQuote"]>>;
 
+/** Listings of a watchlist quoted in one request: as many as a signed-out caller's batch may read. */
+const QUOTE_BATCH_SIZE = 100;
+
 /**
  * Current quotes for a collection's tickers, keyed by symbol. A portfolio
  * quotes each holding's own contract; a failed quote leaves its ticker out so
- * the rest still values.
+ * the rest still values. A watchlist's tickers, which name no contract, are
+ * asked in batch requests where the source takes them: a list of two hundred
+ * names is a couple of requests, not two hundred at once.
  */
 export async function loadCollectionQuotes(
   tickers: readonly TickerRecord[],
   collection: Pick<CollectionMatch, "kind" | "id">,
-  dataProvider: Pick<DataProvider, "getQuote">,
+  dataProvider: Pick<DataProvider, "getQuote"> & Partial<Pick<DataProvider, "getQuotesBatch">>,
   /** The report prints what the day's move is from (`Day's move ... vs Thu 22 Oct close`). */
   { datesChangeBasis = false }: { datesChangeBasis?: boolean } = {},
 ): Promise<Map<string, CollectionQuote>> {
   const isPortfolio = collection.kind === "portfolio";
   const quotes = new Map<string, CollectionQuote>();
-  await Promise.all(
-    tickers.map(async (ticker) => {
-      try {
-        const instrument = isPortfolio ? instrumentFromTicker(ticker, ticker.metadata.ticker, { portfolioId: collection.id }) : null;
-        if (isPortfolio && !instrument) return;
-        const context = instrument ? toMarketDataContext(instrument) : undefined;
-        const quote = await dataProvider.getQuote(ticker.metadata.ticker, ticker.metadata.exchange,
-          datesChangeBasis ? { ...context, datesChangeBasis } : context);
-        quotes.set(ticker.metadata.ticker, quote);
-      } catch (error) {
-        // A partial quote failure leaves the rest of the table rendering.
-        logFailure("portfolio-list.cli.render", "Load collection quote failed")(error);
-      }
-    }),
-  );
+  const failed = logFailure("portfolio-list.cli.render", "Load collection quote failed");
+  const quoteOne = async (ticker: TickerRecord) => {
+    try {
+      const instrument = isPortfolio ? instrumentFromTicker(ticker, ticker.metadata.ticker, { portfolioId: collection.id }) : null;
+      if (isPortfolio && !instrument) return;
+      const context = instrument ? toMarketDataContext(instrument) : undefined;
+      const quote = await dataProvider.getQuote(ticker.metadata.ticker, ticker.metadata.exchange,
+        datesChangeBasis ? { ...context, datesChangeBasis } : context);
+      quotes.set(ticker.metadata.ticker, quote);
+    } catch (error) {
+      // A partial quote failure leaves the rest of the table rendering.
+      failed(error);
+    }
+  };
+  const batch = !isPortfolio && tickers.length > 1 ? dataProvider.getQuotesBatch : undefined;
+  if (!batch) {
+    await Promise.all(tickers.map(quoteOne));
+    return quotes;
+  }
+  const targets = tickers.map((ticker) => ({ symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange ?? "", surface: "watchlist" as const }));
+  // A hundred listings a request, as many as the service reads in one for a signed-out caller.
+  const results = (await Promise.all(chunked(targets, QUOTE_BATCH_SIZE).map((chunk) =>
+    batch.call(dataProvider, chunk, datesChangeBasis ? { datesChangeBasis } : undefined).catch((error: unknown) => {
+      failed(error);
+      return [];
+    })))).flat();
+  // A batch that failed, or left a ticker without a quote or a reason, asks those one at a time.
+  // Each answer by the listing it names, never by its place: a source may answer in another order.
+  const key = (target: { symbol: string; exchange?: string }) => `${target.symbol.toUpperCase()}|${(target.exchange ?? "").toUpperCase()}`;
+  const answered = new Map(results.map((result) => [result.target, result] as const));
+  const byListing = new Map(results.map((result) => [key(result.target), result] as const));
+  const retry: TickerRecord[] = [];
+  tickers.forEach((ticker, index) => {
+    const target = targets[index]!;
+    const result = answered.get(target) ?? byListing.get(key(target));
+    if (result?.quote) quotes.set(ticker.metadata.ticker, result.quote);
+    else if (result?.error) failed(result.error);
+    else retry.push(ticker);
+  });
+  await Promise.all(retry.map(quoteOne));
   return quotes;
 }
 
@@ -1378,22 +1408,32 @@ async function valueWatchlistRows({
   quotes: ReadonlyMap<string, CollectionQuote>;
   dataProvider: Pick<DataProvider, "getTickerFinancials" | "getTickerFinancialsBatch">;
   currency: string;
-  toBase: (value: number, fromCurrency: string) => Promise<number>;
+  toBase: ((value: number, fromCurrency: string) => Promise<number>) & { usdRate?: (currency: string) => Promise<unknown> };
 }): Promise<WatchlistRowValue[]> {
+  // Every currency's rate asked at once, beside the financials, not one after another as the rows reach a new
+  // one: a list across five currencies waited a second and more for them.
+  const warmRates = (codes: readonly string[]) => toBase.usdRate ? Promise.all([...new Set(codes)].map((code) => toBase.usdRate!(code))) : null;
   const [financials, perpetualFunding] = await Promise.all([
     loadMarketCapFinancials(tickers, quotes, dataProvider),
     loadPerpetualFunding(tickers),
+    warmRates([currency, ...[...quotes.values()].flatMap((quote) => quote?.currency ? [quote.currency] : [])]),
   ]);
   const known = (value: number | null | undefined): number | null => value != null && Number.isFinite(value) ? value : null;
   // The export carries funding on the table's terms: only for a list that holds perpetual markets.
   const hasPerpetuals = perpetualFunding.size > 0;
+  const caps = tickers.map((ticker) => {
+    const quote = quotes.get(ticker.metadata.ticker);
+    const snapshot = financials.get(ticker.metadata.ticker);
+    return liveMarketCapitalization(quote, snapshot?.fundamentals) ?? liveMarketCapitalization(snapshot?.quote, snapshot?.fundamentals);
+  });
+  await warmRates(caps.flatMap((cap) => cap ? [cap.currency] : []));
   const values: WatchlistRowValue[] = [];
-  for (const ticker of tickers) {
+  for (const [index, ticker] of tickers.entries()) {
     const symbol = ticker.metadata.ticker;
     const quote = quotes.get(symbol);
     const snapshot = financials.get(symbol);
     const { headline, extended } = collectionQuoteHeadline(quote);
-    const cap = liveMarketCapitalization(quote, snapshot?.fundamentals) ?? liveMarketCapitalization(snapshot?.quote, snapshot?.fundamentals);
+    const cap = caps[index];
     const marketCap = cap ? listedMarketCapitalization(known(await toBase(cap.value, cap.currency))) : null;
     const kind = resolveTickerInstrumentKind(ticker, { quote: quote ?? snapshot?.quote });
     const venue = exchangeShortName(quote?.tradingExchangeName || quote?.exchangeName, quote?.fullExchangeName) || ticker.metadata.exchange || null;
