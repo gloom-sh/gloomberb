@@ -172,7 +172,8 @@ export function validateDebtMaturities(
   data: DebtMaturitiesPayload,
   symbol: string,
 ): DebtMaturitiesPayload {
-  if (data?.version === 2 && data.latest && "sourceBuckets" in data.latest) return validateBands(data, symbol);
+  if (data?.version === 2 && typeof data.latest === "object" && data.latest !== null && "sourceBuckets" in data.latest)
+    return validateBands(data, symbol);
   if (!data || typeof data !== "object" || !("latestQuarter" in data)) return validateSchedule(data, symbol);
   const { latestQuarter, ...schedule } = data;
   const valid = validateSchedule(schedule, symbol);
@@ -507,9 +508,15 @@ export async function fetchDebtMaturities(
     );
   } catch (error) {
     if (abroad && error instanceof ApiRequestError && error.status === 404) return noSchedule(answered);
+    // The server sends its own payload with a 503 when no schedule could be
+    // read (SEC or the store failing): said in one line, its status kept so a
+    // saved copy still answers for it.
+    if (error instanceof ApiRequestError && (error.status ?? 0) >= 500)
+      throw new ApiRequestError(NOT_READ, error.status, error.retryAfterMs, error.code, error.details);
     throw unavailableOnServer(error, "Debt maturities are not available yet.");
   }
 }
+const NOT_READ = "No maturity schedule could be read for this listing.";
 
 function noSchedule(symbol: string): DebtMaturitiesPayload {
   return {

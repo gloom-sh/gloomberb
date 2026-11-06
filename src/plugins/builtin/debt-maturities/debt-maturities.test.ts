@@ -7,7 +7,7 @@ import type {
   DebtMetric,
   DebtQuarter,
 } from "../../../api-client/debt-maturities";
-import { ApiRequestError } from "../../../api-client/errors";
+import { ApiRequestError, isTransientFailure } from "../../../api-client/errors";
 import type { IssuerListingParams } from "../../../api-client/paths";
 import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
@@ -351,6 +351,14 @@ describe("debt maturity Cloud boundary", () => {
         },
       }),
     ).rejects.toBe(denied);
+    // The server's 503 (its own payload, no message) is one short line, still a failure a saved copy answers for.
+    const failed = fetchDebtMaturities("300750", {
+      getCloudDebtMaturities: async () => {
+        throw new ApiRequestError("The server returned an error without a message.", 503, 30_000, undefined, { status: "unavailable" });
+      },
+    });
+    await expect(failed).rejects.toMatchObject({ message: "No maturity schedule could be read for this listing.", status: 503, retryAfterMs: 30_000 });
+    expect(isTransientFailure(await failed.catch((error: unknown) => error))).toBe(true);
   });
 
   test("SAN in Paris is cached apart from SAN in New York and a 404 for it is no schedule", async () => {
@@ -393,6 +401,9 @@ describe("debt maturity Cloud boundary", () => {
     expect(read.latest?.sourceBuckets?.map((band) => band.label)).toEqual(["Within 1 year", "1 to 2 years", "2 to 5 years", "After 5 years"]);
     // The same answer marked version 1 is not one a version 1 server sends: refused, as released clients refuse it.
     expect(() => validateDebtMaturities({ ...bands, version: 1 }, "0019")).toThrow("invalid debt maturity");
+    // A schedule that is no object is refused, not a crash of the check.
+    for (const latest of ["ladder", 7, true])
+      expect(() => validateDebtMaturities({ ...bands, latest } as never, "0019")).toThrow("invalid debt maturity");
     // A schedule by year reads the same under either version.
     expect(validateDebtMaturities({ ...fixture(), version: 2 }, "TEST").latest?.buckets).toHaveLength(6);
     // A company with nothing in its bands either: no schedule, under any standard, with the report's link or none.
