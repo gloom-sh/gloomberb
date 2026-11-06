@@ -141,22 +141,32 @@ export function parseRetryAfterMs(
 }
 
 export function parseApiErrorMessage(body: string): string {
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(body) as Record<string, unknown>;
-    const parts = [
-      parsed.message,
-      parsed.error,
-      parsed.code,
-      parsed.reason,
-    ].filter(
-      (value): value is string =>
-        typeof value === "string" && value.trim().length > 0,
-    );
-    return parts.join(" ") || validationErrorText(parsed) || body;
+    parsed = JSON.parse(body);
   } catch {
     return htmlErrorTitle(body) ?? body;
   }
+  if (typeof parsed === "string") return parsed.trim() ? parsed : body;
+  if (!parsed || typeof parsed !== "object") return body;
+  // A JSON object or list that says nothing in words (a route's own payload
+  // sent with its error status) is never shown as it came: an object stays
+  // in `details`.
+  if (Array.isArray(parsed)) return NO_MESSAGE;
+  const record = parsed as Record<string, unknown>;
+  const parts = [
+    record.message,
+    record.error,
+    record.code,
+    record.reason,
+  ].filter(
+    (value): value is string =>
+      typeof value === "string" && value.trim().length > 0,
+  );
+  return parts.join(" ") || validationErrorText(record) || NO_MESSAGE;
 }
+
+const NO_MESSAGE = "The server returned an error without a message.";
 
 /**
  * A request the API's schema refused comes back as the values it was sent

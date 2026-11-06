@@ -9,6 +9,10 @@ test("an HTML error page from the proxy or a schema refusal becomes words, not r
   expect(parseApiErrorMessage(JSON.stringify({ error: "Senate PTR filings are unavailable right now." })))
     .toBe("Senate PTR filings are unavailable right now.");
   expect(parseApiErrorMessage("plain text")).toBe("plain text");
+  // A route's own payload sent with its error status is no message: never shown as it came.
+  const payload = JSON.stringify({ version: 1, symbol: "300750", status: "unavailable", warnings: ["SEC debt maturity history is temporarily unavailable."] });
+  expect(parseApiErrorMessage(payload)).toBe("The server returned an error without a message.");
+  expect(parseApiErrorMessage("[1,2]")).toBe("The server returned an error without a message.");
   // A schema refusal echoes the query it was sent, never a message.
   expect(parseApiErrorMessage(JSON.stringify({ type: "validation", on: "query", found: { from: "14/10/2026", limit: "100" } })))
     .toBe("Gloom Cloud did not accept an option or filter value.");
