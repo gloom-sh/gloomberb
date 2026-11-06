@@ -294,10 +294,13 @@ export function CommandBarHarness({
   /** Receives the live store, to dispatch as the rest of the app would. */
   storeRef?: { current: AppContextStoreValue | null };
 }) {
-  let config = {
+  let config: AppConfig = {
     ...createDefaultConfig("/tmp/gloomberb-test"),
     recentTickers: ["AAPL", "MSFT"],
     disabledPlugins,
+    // The header otherwise follows the machine's time zone and names an
+    // exchange (NYSE, LSE) a test may look for in the rows; BTC names none.
+    headerMarket: { benchmark: "btc" },
   };
   if (configureConfig) {
     config = configureConfig(config);

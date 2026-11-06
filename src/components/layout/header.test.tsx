@@ -11,6 +11,15 @@ import { createTestDataProvider, createTestQuote } from "../../test-support/data
 
 const tui = createOpenTuiTestHarness();
 
+/**
+ * The header otherwise follows the machine's time zone, and the room its
+ * market takes depends on that exchange's state at the hour the test runs.
+ * BTC names no exchange and has no state, so what is beside it stays put.
+ */
+function headerConfig() {
+  return { ...createDefaultConfig("/tmp/gloomberb-header-test"), headerMarket: { benchmark: "btc" } };
+}
+
 afterEach(() => {
   publishCommandBarPrompt(null);
   setSharedMarketDataCoordinator(null);
@@ -49,7 +58,7 @@ test("shows a benchmark's listing under its own symbol when the index has no usa
 });
 
 test("opens the command bar by clicking the header prompt", async () => {
-  const state = createInitialState(createDefaultConfig("/tmp/gloomberb-header-test"));
+  const state = createInitialState(headerConfig());
   const actions: Array<{ type: string; open?: boolean; query?: string }> = [];
   await tui.render(
     <AppContext value={createStaticAppStore(state, (action) => actions.push(action as { type: string }))}>
@@ -77,7 +86,7 @@ test("opens the command bar by clicking the header prompt", async () => {
  */
 test("hosts the command bar input while a list screen is published", async () => {
   const state = {
-    ...createInitialState(createDefaultConfig("/tmp/gloomberb-header-test")),
+    ...createInitialState(headerConfig()),
     commandBarOpen: true,
   };
   const typed: string[] = [];
@@ -121,7 +130,7 @@ test("hosts the command bar input while a list screen is published", async () =>
  * in, so it only says to restart and has nothing to press.
  */
 test("offers a clickable Restart for a downloaded desktop update, and only text for a terminal one", async () => {
-  const config = createDefaultConfig("/tmp/gloomberb-header-test");
+  const config = headerConfig();
   const desktop = { ...createInitialState(config), updateProgress: { phase: "ready" as const, canRestart: true } };
   let restarts = 0;
   await tui.render(
@@ -218,7 +227,7 @@ test("gives a failed update room at common terminal widths and keeps it clear of
  */
 test.each([60, 70, 80, 100, 120, 160])("keeps update parts whole at %i columns with the prompt open or closed", async (width) => {
   const release = { version: "9.9.9", tagName: "v9.9.9", downloadUrl: "", publishedAt: "", updateAction: { kind: "desktop" as const } };
-  const config = createDefaultConfig("/tmp/gloomberb-header-test");
+  const config = headerConfig();
   for (const commandBarOpen of [false, true]) {
     let helpClicks = 0;
     let restarts = 0;
@@ -269,7 +278,7 @@ test("clips a transient update notice to its slot", async () => {
   for (const width of [60, 80, 120]) {
     await tui.render(
       <AppContext value={createStaticAppStore({
-        ...createInitialState(createDefaultConfig("/tmp/gloomberb-header-test")),
+        ...createInitialState(headerConfig()),
         updateNotice: "Update check failed: no connection, and some more words than fit",
       })}>
         <Header onOpenHelp={() => {}} />
@@ -287,7 +296,7 @@ test("clips a transient update notice to its slot", async () => {
 
 test("uses the classified failure instead of a raw error containing a user path", async () => {
   const state = {
-    ...createInitialState(createDefaultConfig("/tmp/gloomberb-header-test")),
+    ...createInitialState(headerConfig()),
     updateProgress: {
       phase: "error" as const,
       error: "EACCES: permission denied, rename '/Users/someone/Gloomberb.app'",
@@ -311,7 +320,7 @@ test("uses the classified failure instead of a raw error containing a user path"
  * app quits under it.
  */
 test("lets a passing update notice go, and keeps an install that is restarting", async () => {
-  const config = createDefaultConfig("/tmp/gloomberb-header-test");
+  const config = headerConfig();
   const actions: AppAction[] = [];
   const renderWith = async (state: Partial<AppState>) => {
     await tui.render(
