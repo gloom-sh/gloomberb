@@ -47,6 +47,13 @@ export interface BatchedLookups {
   dataProvider: DataProvider;
   /** Whether a symbol's searches were all answered in a batch, so its lookup asks the sources for quotes alone. */
   answered(plan: ListLookupPlan): boolean;
+  /**
+   * Whether the service answered every search a symbol's lookup runs, found or
+   * not, and its own quote without refusing it: a symbol it then finds nothing
+   * for is not found, whatever it refused the others, and asking again gives
+   * the same answer.
+   */
+  settled(plan: ListLookupPlan): boolean;
 }
 
 const searchKey = (query: string) => query.trim().toUpperCase();
@@ -66,7 +73,7 @@ export async function batchedListLookups(
   plans: readonly ListLookupPlan[],
 ): Promise<BatchedLookups> {
   // Symbols that are all saved already are looked up with no source at all.
-  if (!dataProvider) return { dataProvider, answered: () => false };
+  if (!dataProvider) return { dataProvider, answered: () => false, settled: () => false };
   const queries = [...new Set(plans.flatMap((plan) => plan.searches.map(searchKey)))];
   const changeSymbols = [...new Set(plans.flatMap((plan) => plan.changes ? [plan.changes] : []))];
   // The changes first: a request or so for the whole list, which the searches,
@@ -81,7 +88,7 @@ export async function batchedListLookups(
   const searches = queries.length && dataProvider.searchBatch
     ? await dataProvider.searchBatch(queries, { limit: BATCHED_SEARCH_LIMIT }).catch(logFailure("tickers.batched-lookups", "Batched search failed", null))
     : null;
-  if (!searches?.size && !changes?.size && !quotes) return { dataProvider, answered: () => false };
+  if (!searches?.size && !changes?.size && !quotes) return { dataProvider, answered: () => false, settled: () => false };
 
   // An empty answer is asked again on its own, so a fallback source still gets its turn.
   const searched = (query: string) => (searches?.get(searchKey(query))?.length ?? 0) > 0;
@@ -107,6 +114,8 @@ export async function batchedListLookups(
   return {
     dataProvider: withOverrides(dataProvider, overrides),
     answered: (plan) => plan.searches.length > 0 && plan.searches.every(searched),
+    settled: (plan) => plan.searches.length > 0 && plan.searches.every((query) => !!searches?.has(searchKey(query)))
+      && (!plan.quote || !quotes || quotes.answered(plan.quote, "")),
   };
 }
 
@@ -156,6 +165,8 @@ interface PendingQuote {
  */
 class QuoteGatherer {
   private readonly answers = new Map<string, Promise<Quote>>();
+  /** Listings the service answered, with a quote or with why there is none, rather than refusing. */
+  private readonly told = new Set<string>();
   private pending: PendingQuote[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -169,9 +180,17 @@ class QuoteGatherer {
       this.pending.push({ ticker, exchange, resolve, reject });
     });
     this.answers.set(key, answer);
+    answer.then(() => this.told.add(key), (error: unknown) => {
+      if (!isProviderBusy(error) && !isRateRefusal(error)) this.told.add(key);
+    });
     if (this.pending.length >= QUOTE_BATCH_SIZE) this.flush();
     else this.timer ??= setTimeout(() => this.flush(), QUOTE_GATHER_MS);
     return answer;
+  }
+
+  /** Whether a listing's quote was answered rather than refused. */
+  answered(ticker: string, exchange: string): boolean {
+    return this.told.has(listingKey(ticker, exchange));
   }
 
   private flush(): void {

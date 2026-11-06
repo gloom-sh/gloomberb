@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { InstrumentSearchResult } from "../types/instrument";
 import type { Quote } from "../types/financials";
 import { ProviderBusyError } from "../sources/provider-errors";
-import { findListingOfCompanyName } from "./company-name-listing";
+import { findListingOfCompanyName, serviceMarkedOtherListing } from "./company-name-listing";
 import { buildTickerSearchCandidates } from "./search";
 import { search } from "../cli/commands/search";
 import { createTestDataProvider } from "../test-support/data-provider";
@@ -214,4 +214,13 @@ test("a word of the name may be its short form, and the listing whose name says 
   expect(await findListingOfCompanyName({ search: async () => philip }, "philip morris intl"))
     .toEqual({ symbol: "PM", exchange: "NYSE", name: "Philip Morris International Inc." });
   expect(await findListingOfCompanyName({ search: async () => philip }, "phillip morris intl")).toBeNull();
+});
+
+test("a bare symbol read on a minor listing abroad finds the listing the service marks with the word on another venue", async () => {
+  // 6 Nov 2026: `quote NTT` gave NTT System (Warsaw) with no note, though search names 9432 on JPX as NTT, Inc.
+  const ntt = answering({ NTT: ["NTT | NTT System S.A. | WSE | Common Stock", "9432 | NTT, Inc. | JPX | Common Stock | home | NTT"] });
+  expect(await serviceMarkedOtherListing(ntt, "NTT", "WSE")).toEqual({ symbol: "9432", exchange: "JPX", name: "NTT, Inc." });
+  // Read there already, or marked nowhere, there is nothing to add.
+  expect(await serviceMarkedOtherListing(ntt, "NTT", "JPX")).toBeNull();
+  expect(await serviceMarkedOtherListing(answering({ NTT: ["NTT | NTT System S.A. | WSE | Common Stock"] }), "NTT", "WSE")).toBeNull();
 });

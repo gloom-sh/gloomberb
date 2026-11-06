@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Quote } from "../../types/financials";
-import { isQuoteStaleForCurrentSession, noPrintsTodayText } from "./freshness";
+import { awaitingFirstDelayedPrint, isQuoteStaleForCurrentSession, noPrintsTodayText } from "./freshness";
+import { quoteSessionLabel } from "../market/status";
 import { createDailyNavQuote } from "../../test-support/daily-nav";
 
 function quote(overrides: Partial<Quote>): Quote {
@@ -400,4 +401,17 @@ describe("quote freshness", () => {
       ),
     ).toBe(true);
   });
+});
+
+test("a venue open by its calendar before its delayed feed's first print reads open, its last price the previous close, until that print is due", () => {
+  // Vodafone at 08:09 London on Fri 6 Nov: the feed, 15 minutes behind, still carries Thursday's close and says CLOSED.
+  const vod = quote({ symbol: "VOD", currency: "GBP", listingExchangeName: "LSE", exchangeName: "LSE", price: 1.194,
+    lastUpdated: Date.parse("2026-11-05T16:35:00Z"), marketState: "CLOSED" });
+  const at = Date.parse("2026-11-06T08:09:00Z");
+  expect(awaitingFirstDelayedPrint(vod, at)).toEqual({ open: Date.parse("2026-11-06T08:00:00Z"), expected: Date.parse("2026-11-06T08:15:00Z") });
+  expect(quoteSessionLabel(vod, at)).toBe("OPEN");
+  // Before the open, once the first print is long overdue, and once it has printed, the feed's own state stands.
+  expect(awaitingFirstDelayedPrint(vod, Date.parse("2026-11-06T07:55:00Z"))).toBeNull();
+  expect(awaitingFirstDelayedPrint(vod, Date.parse("2026-11-06T09:00:00Z"))).toBeNull();
+  expect(awaitingFirstDelayedPrint({ ...vod, lastUpdated: Date.parse("2026-11-06T08:01:00Z") }, at)).toBeNull();
 });

@@ -241,6 +241,9 @@ export function findCollection(config: AppConfig, name: string): CollectionMatch
 
 type CollectionQuote = Awaited<ReturnType<DataProvider["getQuote"]>>;
 
+/** Listings of a watchlist quoted in one request: as many as a signed-out caller's batch may read. */
+const QUOTE_BATCH_SIZE = 100;
+
 /**
  * Current quotes for a collection's tickers, keyed by symbol. A portfolio
  * quotes each holding's own contract; a failed quote leaves its ticker out so
@@ -277,15 +280,17 @@ export async function loadCollectionQuotes(
     return quotes;
   }
   const targets = tickers.map((ticker) => ({ symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange ?? "", surface: "watchlist" as const }));
-  const results = await batch.call(dataProvider, targets, datesChangeBasis ? { datesChangeBasis } : undefined).catch((error: unknown) => {
-    failed(error);
-    return null;
-  });
+  // A hundred listings a request, as many as the service reads in one for a signed-out caller.
+  const results = (await Promise.all(chunked(targets, QUOTE_BATCH_SIZE).map((chunk) =>
+    batch.call(dataProvider, chunk, datesChangeBasis ? { datesChangeBasis } : undefined).catch((error: unknown) => {
+      failed(error);
+      return [];
+    })))).flat();
   // A batch that failed, or left a ticker without a quote or a reason, asks those one at a time.
   // Each answer by the listing it names, never by its place: a source may answer in another order.
   const key = (target: { symbol: string; exchange?: string }) => `${target.symbol.toUpperCase()}|${(target.exchange ?? "").toUpperCase()}`;
-  const answered = new Map(results?.map((result) => [result.target, result] as const) ?? []);
-  const byListing = new Map(results?.map((result) => [key(result.target), result] as const) ?? []);
+  const answered = new Map(results.map((result) => [result.target, result] as const));
+  const byListing = new Map(results.map((result) => [key(result.target), result] as const));
   const retry: TickerRecord[] = [];
   tickers.forEach((ticker, index) => {
     const target = targets[index]!;

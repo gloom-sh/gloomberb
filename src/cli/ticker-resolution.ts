@@ -656,9 +656,14 @@ export async function resolveTickersForCli(
   const plans = new Map(symbols.map((input) => [input, listLookupPlan(input, exchange)] as const));
   let settled = 0;
   const progress = onProgress ? () => onProgress(++settled, symbols.length) : undefined;
+  // Symbols every search and own quote of which the service answered in some look: one found nothing for is not
+  // found, whatever it refused the others, so it is neither looked up again nor offered to try again.
+  const told = new Set<string>();
+  const notFound = (entry: CliTickerResolution) => entry.error instanceof TickerNotFoundError && told.has(entry.input);
   // Each look asks for its symbols' searches and changes in batches first.
   const look = async (inputs: readonly string[], concurrency: number, looked?: () => void): Promise<Map<string, CliTickerResolution>> => {
     const batched = await batchedListLookups(dataProvider, inputs.map((input) => plans.get(input)!));
+    for (const input of inputs) if (batched.settled(plans.get(input)!)) told.add(input);
     const resolve = (symbol: string) => resolveCliTicker(symbol, store, batched.dataProvider, exchange, {
       retry, askWhenAmbiguous, ownExchangeWins: true, changeGraceMs: LOOKUP_TIMEOUT_MS,
     });
@@ -676,7 +681,7 @@ export async function resolveTickersForCli(
     let failing = failedRequests.count() > 0 || lookups.some(busyLookup);
     for (const waitMs of retryWaitsMs) {
       // A match whose quote was refused is looked at again too, so it gets the check a first look gives.
-      const failed = lookups.filter(lookAgain).map((entry) => entry.input);
+      const failed = lookups.filter((entry) => lookAgain(entry) && !notFound(entry)).map((entry) => entry.input);
       if (!failing || failed.length === 0) break;
       onRetry?.(failed.length, waitMs);
       await new Promise((resolveWait) => setTimeout(resolveWait, waitMs));
@@ -690,7 +695,7 @@ export async function resolveTickersForCli(
     if (!failing) return lookups;
     // Still refused after the last wait: a failure may only be the refusal, so none is called not found,
     // and a match whose quote was refused is not taken as trading.
-    return lookups.map((entry) => lookAgain(entry)
+    return lookups.map((entry) => lookAgain(entry) && !notFound(entry)
       ? { input: entry.input, error: new LookupUnansweredError(entry.input) }
       : entry);
   } finally {

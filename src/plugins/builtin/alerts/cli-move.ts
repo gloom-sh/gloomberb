@@ -5,13 +5,17 @@
 import type { MarketContext } from "../../../cli/types";
 import type { Quote } from "../../../types/financials";
 import { canonicalExchange, exchangeLabel, parsePublicTickerKey } from "../../../utils/exchanges";
-import { mapWithConcurrency } from "../../../utils/concurrency";
+import { chunked, mapWithConcurrency } from "../../../utils/concurrency";
+import type { QuoteBatchResult } from "../../../types/data-provider";
 import { findCollection } from "../portfolio-list/cli/render";
 import { createAlert, sameLevelRule } from "./alert-engine";
 import { alertListing } from "./format";
 import { moveBasisText, moveCondition, movePercentText, moveReached, moveRuleWords, parseMovePercent, readMove } from "./move";
 import { moveQuoteFields } from "./quotes";
 import type { AlertCondition, AlertRule } from "./types";
+
+/** Listings quoted in one request: as many as a signed-out caller's batch may read. */
+const QUOTE_BATCH_SIZE = 100;
 
 /** The most alerts one command adds: a pasted book of a few hundred names fits, a whole index does not. */
 export const MAX_BULK_ALERTS = 500;
@@ -98,7 +102,9 @@ export async function watchlistListings(
     name: collection.name,
     listings: tickers.map((ticker) => {
       const key = parsePublicTickerKey(ticker.metadata.ticker);
-      return { input: ticker.metadata.ticker, symbol: key.symbol, exchange: canonicalExchange(key.exchange || ticker.metadata.exchange || "") };
+      const exchange = canonicalExchange(key.exchange || ticker.metadata.exchange || "");
+      // Named as the list shows it, with its venue: 7203:JPX.
+      return { input: exchange && !key.exchange ? `${key.symbol}:${exchange}` : ticker.metadata.ticker, symbol: key.symbol, exchange };
     }),
   };
 }
@@ -109,12 +115,17 @@ export async function quoteSavedListings(
   listings: ReadonlyArray<{ input: string; symbol: string; exchange: string }>,
 ): Promise<MoveListing[]> {
   const targets = listings.map((listing) => ({ symbol: listing.symbol, exchange: listing.exchange }));
-  const results = targets.length ? await market.dataProvider.getQuotesBatch(targets, { revalidate: true }) : [];
+  // A hundred listings a request, as many as a signed-out caller's batch may read, one after another.
+  const results: QuoteBatchResult[] = [];
+  for (const chunk of chunked(targets, QUOTE_BATCH_SIZE)) {
+    results.push(...await market.dataProvider.getQuotesBatch(chunk).catch((error: unknown) => chunk.map((target) => ({ target, quote: null, error }))));
+  }
   const byTarget = new Map(results.map((result) => [result.target, result] as const));
   return listings.map((listing, index) => {
     const result = byTarget.get(targets[index]!) ?? results.find((entry) => entry.target.symbol === listing.symbol && (entry.target.exchange ?? "") === listing.exchange);
     // Kept as the watchlist keeps it (7203:JPX), as a price alert keeps the listing `quote` prints.
     if (result?.quote) return { input: listing.input, listing: { symbol: listing.input, ...listing.exchange ? { exchange: listing.exchange } : {} }, quote: result.quote };
+    if (result?.error instanceof Error && result.error.message) return { input: listing.input, error: result.error.message };
     const reason = result?.error instanceof Error ? result.error.message : typeof result?.error === "string" ? result.error : "no quote";
     return { input: listing.input, error: reason };
   });

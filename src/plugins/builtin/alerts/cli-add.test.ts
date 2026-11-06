@@ -276,7 +276,7 @@ test("a calendar name that is ambiguous or matches nothing is refused with the w
   serveCalendar({ offline: true });
   const offline = await addAlert(["AAPL"]);
   expect(offline.error).toStartWith('Unknown event "AAPL": the economic calendar could not be loaded to look it up');
-  expect(offline.error).toContain("gloom alerts add takes price, P/E, P/S or RSI");
+  expect(offline.error).toContain("gloom alerts add takes price, move from the previous close, P/E, P/S or RSI");
 });
 
 test("the FOMC's calendar row by name is the FOMC alert, and a release already out today is followed to its next listing", async () => {

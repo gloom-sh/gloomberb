@@ -12,6 +12,7 @@ import { ApiRequestError, markAskedTwice } from "../api-client/errors";
 import { createProviderMiss, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../sources/provider-errors";
 import { ListingChoiceError, resolveCliTicker, resolveTickerForCli, resolveTickersForCli } from "./ticker-resolution";
 import { addSymbols, failedReason, failedRow } from "./symbol-rows";
+import { resetBoardCoins } from "./board-coins";
 
 const persistences: AppPersistence[] = [];
 
@@ -152,6 +153,35 @@ test("a symbol whose search the service refused is looked up again, never report
     search: async () => { if (retries.length === 0) throw new ProviderBusyError(SEARCH_BUSY_MESSAGE); return [nvda]; },
   }), undefined, { retryWaitsMs: [0, 0], onRetry: (count) => retries.push(count) });
   expect({ retries, ticker: entry?.ticker?.metadata.ticker }).toEqual({ retries: [1], ticker: "NVDA" });
+});
+
+test("a symbol the service answered nothing for stays not found while it refuses the others, never offered to try again", async () => {
+  // 6 Nov 2026: a book's 46 refused symbols came back with "Try again in a minute", and that command returned the same 46.
+  const looked: string[][] = [];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => {
+      connectionHealth.reportRequest(GLOOM_CLOUD_HTTP_CONNECTION_ID, {
+        operation: "GET /market/search", success: false, latencyMs: looked.length, error: new Error("Anonymous market rate limit exceeded"),
+      });
+      return [];
+    },
+    getQuote: async (symbol) => { throw new Error(`Not a ticker: ${symbol}.`); },
+  });
+  // The batch answers XXXXX, found nothing; NVDA's search it leaves out, as a refused query.
+  dataProvider.searchBatch = async (queries) => {
+    looked.push([...queries]);
+    return new Map(queries.filter((query) => query.startsWith("XXXXX")).map((query) => [query, []]));
+  };
+  dataProvider.getQuotesBatch = async (targets) => targets.map((target) => ({ target, quote: null, error: `Not a ticker: ${target.symbol}.` }));
+  const retries: number[] = [];
+  const results = await resolveTickersForCli(["NVDA", "XXXXX"], tickerStore(), dataProvider, undefined, {
+    retryWaitsMs: [0, 0], onRetry: (count) => retries.push(count),
+  });
+  expect(retries).toEqual([1, 1]);
+  expect(results.map((result) => result.error?.message)).toEqual([
+    "Could not look up NVDA: Gloom Cloud did not answer. Try again in a minute.",
+    'No ticker match found for "XXXXX".',
+  ]);
 });
 
 test("what cannot be a symbol fails before any request, and never makes a list wait to look it up again", async () => {
@@ -428,4 +458,21 @@ test("a list add never stores a listing that cannot quote or stopped trading sil
   ]);
   // Nothing that needs a choice is stored; BRK-B is BRK.B's row.
   expect((await store.loadAllTickers()).map(({ metadata }) => `${metadata.ticker}:${metadata.exchange}`).sort()).toEqual(["BRK.B:NYSE", "ZION:IEX"]);
+});
+
+test("a list's one-word company name no listing trades as is read as quote reads it; a word that names none stays not found", async () => {
+  const listed = (symbol: string, name: string, exchange: string) => ({ providerId: "test", symbol, name, exchange, type: "Common Stock", currency: "JPY" });
+  const dataProvider = createTestDataProvider({
+    search: async (query) => /^(canon|7751)\b/i.test(query) ? [listed("7751", "Canon Inc.", "JPX")] : [],
+    getQuote: async (symbol, exchange) => {
+      if (exchange === "JPX") return createTestQuote({ symbol, exchange: "JPX", currency: "JPY" });
+      throw new Error(`Not a ticker: ${symbol}.`);
+    },
+  });
+  // The crypto board, read before a word is taken as a company, lists no Canon (and is never fetched here).
+  resetBoardCoins([]);
+  const results = await resolveTickersForCli(["Canon", "Zorblaxx"], tickerStore(), dataProvider, undefined, { retryWaitsMs: [] }).finally(() => resetBoardCoins());
+  expect(results.map((result) => result.ticker ? `${result.ticker.metadata.ticker}:${result.ticker.metadata.exchange}` : result.error?.message))
+    .toEqual(["7751:JPX", 'No ticker match found for "ZORBLAXX".']);
+  expect(results[0]?.readAs).toBe('Read "Canon" as 7751:JPX (Canon Inc.).');
 });

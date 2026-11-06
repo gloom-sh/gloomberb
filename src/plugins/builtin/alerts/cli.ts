@@ -85,6 +85,7 @@ import {
   watchlistListings, MAX_BULK_ALERTS, type MoveAddRequest, type MoveListing,
 } from "./cli-move";
 import { moveRuleWords } from "./move";
+import { listAddLookups } from "../portfolio-list/cli/bulk-symbols";
 import type { AlertCondition, AlertRule } from "./types";
 
 /**
@@ -753,10 +754,15 @@ export const alertsCliCommand: CliCommandDef = {
       { flags: "--days <n>", description: `Days before the event the alert goes off, 1 to ${MAX_LEAD_DAYS} (default 1); earnings and calendar event alerts` },
       { flags: "--country <code>", description: "The country of a calendar event, as econ --country takes it (CN, US, DE); a code before the name does the same (alerts add CN PMI)" },
       { flags: "--benchmark <symbol>", description: "The listing an RRG alert is measured against; SPY by default, as in RRG" },
+      { flags: "--watchlist <name>", description: `A move alert on each listing of the watchlist, up to ${MAX_BULK_ALERTS} (alerts add --watchlist Book up 3%)` },
     ],
     examples: [
       "alerts",
       "alerts add AAPL above 250",
+      "alerts add GBPUSD=X moves 0.5%",
+      "alerts add HSBA.L BARC.L down 3%",
+      "alerts add --watchlist Book up 3%",
+      "alerts add VOD.L below 70p",
       "alerts add AAPL pe below 25",
       "alerts add AAPL ps above 8",
       'alerts add NVDA "rsi(14)" under 30',
@@ -822,7 +828,9 @@ export const alertsCliCommand: CliCommandDef = {
     if (typedRequest?.kind === "move") {
       const move = typedRequest;
       if (watchlistName && exchangeOption) ctx.fail("--exchange names a symbol's venue; a watchlist's listings keep their own.");
-      moves = await withMarketData(ctx, async (market) => {
+      moves = await withMarketData(ctx, async (opened) => {
+        // Signed out, a list's quotes wait for room in the service's allowance rather than being refused.
+        const market = { ...opened, dataProvider: await listAddLookups(opened.dataProvider) as typeof opened.dataProvider };
         if (watchlistName) {
           const list = await watchlistListings(market, watchlistName, ctx.fail);
           if (list.listings.length === 0) ctx.fail(`Watchlist "${list.name}" has no listings. Add some with gloom watchlist add ${list.name} <symbols>.`);

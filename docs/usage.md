@@ -926,6 +926,12 @@ A symbol is read as `gloom quote` reads it and must be a US listing, as in the d
 | options flow on your lists | `FLOW` |
 | breaking news with no symbol | `FIRST` |
 
+**Moves from the previous close.** `alerts add <symbol> moves|up|down <percent>` alerts on the day's move rather than a level, for any listing or currency pair: `alerts add GBPUSD=X moves 0.5%` either way, `alerts add AZN.L down 3%`. The move is the one the quote's change shows, measured from the close it names (`-0.43% vs Thu 5 Nov close`). A rule goes off once a session and arms itself again for the next one. A level written with a signed percent is that move (`below -3%` is down 3%, said so); one with an unsigned percent (`below 3%`) is refused, as a price level is a price.
+
+- Several symbols in one command (`alerts add HSBA.L BARC.L down 3%`), or `--watchlist <name>` for every listing of a watchlist (`alerts add --watchlist Book up 3%`), make one alert per listing, up to 500. Repeats and a rule already set are added once, and one summary counts them by venue and names each symbol that could not be quoted.
+- Move rules keep a synced list of their own, and only the running app checks them: Cloud sync carries them to your other devices, but they are not emailed or pushed.
+- **Levels** shows them with **Move** as the measure, the move as the reading and the close it is from in the detail.
+
 **Price alerts** are checked by the running app on every price tick, and it notifies you there. Signed in with Cloud sync on, an alert the app has synced also reaches you with the app closed:
 
 - Gloom Cloud pushes it to the phone app when one is registered.
@@ -935,6 +941,8 @@ A symbol is read as `gloom quote` reads it and must be a US listing, as in the d
 - The symbol is read as `quote` reads it, so `USDMXN` and `USD/MXN` are the one pair `USDMXN=X`. A symbol that quotes nothing is refused with the nearest listing (`did you mean AAPL`), and a bare code kept on a listing abroad names it.
 - A bare ticker of a top coin (BTC, ETH, SOL, LINK) read as another listing says so as `quote`, `ticker`, `history`, `options`, `news`, `fn` and the portfolio and watchlist adds do. A fund named for the coin, or a stale or delisted listing, gets `SOL is Emeren Group Ltd, not solana. For solana use SOL-USD.`; a live company that shares the letters gets the softer `LINK is Interlink Electronics, Inc. Also a coin: LINK-USD.`. A listing named with its exchange (`ETH:ARCA`, `--exchange`) gets neither.
 - A target more than 10 times the last price, or under a tenth of it, is refused, in **Add Alert** too (`alerts add btc above 85000` is bitcoin's price typed on the fund).
+- Prices are written at the instrument's precision everywhere (**Levels**, `fn ALRT`, `alerts list`, the toast): a pair as `quote` prints it (`1.33750`), yen with no decimals, a London line in the pence its quote shows (`70.00p`). A level there is typed in pence (`alerts add VOD.L below 70p`), and a bare `70` on a line quoted in pence is read as pence when 70 pounds would be ten times its price, saying so. Pence on a line not quoted in them is refused.
+- An alert is kept once per listing, shown with its venue: `7203.T`, `7203 JP` and `7203:JPX` are one alert, `7203:JPX`, and adding it again under another of them names the alert there is.
 - A price reads the same in `alerts add`, the `SA` shortcut and the **Add Alert** form: `81000`, `81,000.50`, `1.350,5` and `81k` or `1.5m` (a thousand and a million). A comma before exactly three digits (`81,000`) could be thousands or a decimal comma, so it names both readings and adds nothing; text that is no number is refused with the format to type (`type 81000 or 81k`).
 - If saved price alerts cannot be read, the app and CLI leave the data unchanged and price checks pause until it is repaired. The pane and `gloom alerts list` show the read error, and event alerts stay usable.
 - On **Levels**, Enter opens an alert in full: its state, the listing it is checked on with its currency, the price and how far it is from the level, when its quote was checked, and when it was created (ISO, UTC). An alert that could not get a quote shows that in red on its row, and its detail says why. An alert no check has read yet says `not checked yet`. A pane wide enough for every column adds **Since**, the day each alert was made, as **Events** lists its rules. `m` re-arms an alert that went off.
@@ -1000,8 +1008,10 @@ The next date comes from `ERN`, the BLS release calendar behind `CPI`, the Fed m
 
 **A release by name.** `alerts add <event> [--country <code>] [--days <n>]` takes any release in the economic calendar, as `econ` names it:
 
-- Some of its words are enough: `NBS PMI` is `NBS Manufacturing PMI`, a word's start (`manuf`) or a name's initials (`NFP`) read too, and `CPI` reads as a country's `Inflation Rate YoY`. Of several releases the words name, the highest impact wins, then the shortest name; the reply says what it read the words as and lists the others.
-- A country code first (`CN PMI`) or `--country` (`CN`, `UK`, a region such as `G7`) narrows it. A name listed in several countries without one is refused with the best of each, and a name nothing matches with the nearest names (`Did you mean NBS Manufacturing PMI (CN)?`).
+- Some of its words are enough: `NBS PMI` is `NBS Manufacturing PMI`, a word's start (`manuf`) or a name's initials read too, and `CPI` reads as a country's `Inflation Rate YoY`. It also finds what `econ --search` finds, ECST's names for a release's series included: `NFP`, `jobs report` and `nonfarm payrolls` are `Non-Farm Employment Change`. Of several releases the words name, the highest impact wins, then the shortest name; the reply says what it read the words as and lists the others.
+- One release the feeds list under two names (`Non Farm Payrolls` one month, `Non-Farm Employment Change` the next) is one series: an alert on either follows both, so it waits for the next print, today's included, under whichever name it comes.
+- A country code first (`CN PMI`) or `--country` (`CN`, `UK`, a region such as `G7`) narrows it. A name listed in several countries without one is the high-impact headline release when only one country has it (`nonfarm payrolls` is the US release, not France's quarterly private payrolls), and is otherwise refused with the best of each; a name nothing matches is refused with the nearest names (`Did you mean NBS Manufacturing PMI (CN)?`).
+- The reply gives the print time in UTC, and on your clock beside it when a time zone is set (`gloom config set timezone America/New_York`); the **Events** tab and `fn ALRT --tab events` show it beside the day.
 - `CPI` and `FOMC`, alone or in the US, stay the CPI and FOMC alerts above.
 - A release the calendar lists only in the past is followed once its next date is listed, about two weeks ahead.
 
@@ -1597,6 +1607,9 @@ In an argument with commas, semicolons, tabs or newlines, an entry with spaces i
 - A listing's vendor suffix is read as its venue, so `GARAN.IS`, `GARAN:BIST` and `GARAN` are one row, `GARAN:BIST`, whether added, pasted, imported or given to `position set`. A one-letter suffix can also be a US share class (`MKC.V` is McCormick's voting class on NYSE), so `7203.T` or `VOD.L` is read as its venue only when the listing's quote, or a row saved there, names that venue. `remove` takes the venue's row, else a row still saved under the suffixed key (a broker's). A symbol whose own quote names its listing (as `quote` reads it) is added without a search, so a busy search never blocks it.
 - Rows a portfolio or watchlist holds under a suffix (`GARAN.IS:BIST`, from before) merge into their listing's row when the app launches, after a sync pull, and before a `portfolio` or `watchlist` command changes a list (never on `--dry-run`, and never for a command that only reads). Lots are added once each, and lists, tags and target weights move over; a custom field keeps the listing's value where it has one, and the suffixed row keeps a value it differed on. A merge saves under the venue's key (`SHOP.TO` becomes `SHOP:TSX`), so a bare `SHOP` still means the US listing. A broker's rows stay as the broker keys them.
 - When search finds none, the entry is the symbols its words are when each is written as a symbol or has a quote: `BRK.B BF-B, NVDA` is three symbols and `aapl msft` two. Otherwise it stays one name that is not found.
+- A one-word entry no listing trades as is read as a company's name, as `quote` reads it: `Canon` is 7751:JPX and `ADVANTEST` 6857:JPX, each with a line saying so.
+- A terminal's code (`VOD LN`, `7203 JT`, `SAFE LN Equity`) and a listing written venue first, as spreadsheets write it (`LON:LSEG`, `TYO:7203`, `NASDAQ:AAPL`), are that listing: `Read TYO:7203 as 7203:JPX.`
+- `--exchange LSE` is the venue of every bare symbol of the list (`BP` is BP:LSE); an entry naming its own venue keeps it.
 
 `quote`, `compare`, `earnings` and functions that take several tickers read their arguments the same way. `quote` and `compare` given one quoted argument with spaces read it as a company's name when search finds it (`quote "Apple Inc"`), as symbols when none of the words is known to be no ticker (`quote "AAPL MSFT"`), and otherwise as a phrase, answered with what `search` finds (`quote "10 year yield"` never quotes YEAR and YIELD).
 
@@ -1620,7 +1633,7 @@ In an argument with commas, semicolons, tabs or newlines, an entry with spaces i
 
 #### What it prints
 
-Each symbol gets a line (`Added AAPL:NASDAQ (Apple Inc.)`, `Already in the list: ...`, `Not found: XXXXX`), then a summary such as `Watchlist "Growth": 251 added, 5 already in the list, 43 not found: XXXXX, FAKE123.`
+Each symbol gets a line (`Added AAPL:NASDAQ (Apple Inc.)`, `Already in the list: ...`, `Not found: XXXXX`), then a summary such as `Watchlist "Growth": 251 added, 5 already in the list, 43 not found: XXXXX, FAKE123.` A list of ten or more names the rows that landed outside its main venues (the venues a tenth of it or more is on, the US exchanges counting as one): `3 landed outside the list's main venues (LSE, JPX): BP as BP:NYSE, NTT as NTT:WSE, ...`, to check or add again with their venue or `--exchange`.
 
 - One symbol that fails never stops the others, and the list is written once at the end. The command exits 0 when at least one symbol was added (or removed) or already was, and 1 when none resolved.
 - `--json` and `--csv` give a row per symbol with its `status` (`added`, `already_listed`, `removed`, `not_listed`, `not_found`, `needs_choice`, `failed`, `not_a_symbol` or `not_looked_up`), the listing and the reason. Counts and summary are in the JSON metadata and on standard error beside CSV.
@@ -1640,7 +1653,7 @@ Each symbol gets a line (`Added AAPL:NASDAQ (Apple Inc.)`, `Already in the list:
 - A symbol that only ever listed abroad is added on that listing, with a line naming its venue and currency: `GARAN has no US listing; it trades on BIST, in TRY.` (`abroad` in a `--json` row, a warning for one symbol). One more likely typed for something else stays a choice: `APPL` is one slip from AAPL, and `MXN` is also a currency.
 - The summary counts them (`3 need a choice: DFS, NYCB, BRKL`), and `--json` puts the company's symbol now in each row's `tradesAs` and the count in `metadata.needsChoice`.
 
-**Batches and retries.** Symbols are looked up in batches. If Gloom Cloud refuses requests meanwhile (signed out, it limits how many a minute), the symbols that may have failed for that are listed together, not as "not found", with one command that adds them again: `Try again in a minute: gloom watchlist add Growth NVDA 'philip morris intl'`.
+**Batches and retries.** Symbols are looked up in batches, and a list of 50 or more says how far it has got every few seconds. Signed out, requests wait for room in the service's allowance rather than being refused, and a listing the service said has no quote is not asked again, so a pasted list of 250 lines takes about 20 seconds. If Gloom Cloud refuses requests meanwhile (signed out, it limits how many a minute), the symbols that may have failed for that are listed together, not as "not found", with one command that adds them again: `Try again in a minute: gloom watchlist add Growth NVDA 'philip morris intl'`.
 
 #### In the app
 

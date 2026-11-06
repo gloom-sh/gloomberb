@@ -3,6 +3,7 @@
 // close its change line names, for any listing or currency pair. One goes off
 // once per session and arms itself again for the next one.
 import { changeBasisLabel, quoteChangeBasis, type QuoteChangeBasis } from "../../../market-data/market/change-basis";
+import { getActiveQuoteDisplay } from "../../../market-data/market/status";
 import type { Quote } from "../../../types/financials";
 import type { AlertCondition, AlertRule } from "./types";
 
@@ -86,7 +87,7 @@ const utcDay = (time: number) => new Date(time).toISOString().slice(0, 10);
  * over 24 hours the UTC day's. Null for a quote with no move.
  */
 export function readMove(quote: Quote, now = Date.now()): MoveReading | null {
-  const percent = quote.changePercent;
+  const percent = getActiveQuoteDisplay(quote)?.changePercent ?? quote.changePercent;
   if (!Number.isFinite(percent)) return null;
   const basis = quoteChangeBasis(quote, { session: "active" });
   if (!basis) return null;
