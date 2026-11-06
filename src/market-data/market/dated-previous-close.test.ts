@@ -77,6 +77,27 @@ test("a history whose latest close is not the previous close names no day, until
   expect(asked).toEqual(["SHEL.L", "SHEL.L"]);
 });
 
+test("an index moves from its daily close of the day its move is dated from, whatever its source said", async () => {
+  // ^HSI as a source served it on Fri 6 Nov 2026: Wed 4 Nov's close "vs Thu 5 Nov close", +2.35% for a -1.27% day.
+  const hsi = createTestQuote({ symbol: "^HSI", currency: "HKD", instrumentType: "INDEX", listingExchangeName: "HKSE", exchangeName: "HKSE",
+    price: 24481.86, change: 562.36, changePercent: 2.35, previousClose: 23919.5, changeSessionDate: "2026-11-06",
+    marketState: "CLOSED", lastUpdated: Date.parse("2026-11-06T08:09:00Z") });
+  const closes: Record<string, Record<string, number>> = { "^HSI": { "2026-11-04": 23919.5, "2026-11-05": 24796.98046875 } };
+  const { asked, label, date } = dailyCloses(closes);
+  expect(label(hsi)).toBe("vs Thu 5 Nov close");
+  const measured = await date(hsi);
+  expect(measured).toMatchObject({ previousClose: 24796.98046875, previousCloseDate: "2026-11-05" });
+  expect(measured.changePercent).toBeCloseTo(-1.2708, 3);
+  expect(label(measured)).toBe("vs Thu 5 Nov close");
+  // A copy with the right close is checked once and left as it is; history without that day leaves the source's close.
+  const right = { ...hsi, previousClose: 24796.98, change: -315.12, changePercent: -1.27 };
+  expect(await date(right)).toMatchObject({ previousClose: 24796.98, change: -315.12 });
+  expect(asked).toEqual(["^HSI", "^HSI"]);
+  delete closes["^HSI"]!["2026-11-05"];
+  const behind = { ...hsi, changeSessionDate: "2026-11-09", previousClose: 23900, lastUpdated: Date.parse("2026-11-09T08:09:00Z") };
+  expect((await date(behind)).previousClose).toBe(23900);
+});
+
 test("a quote its venue's calendar or its source dates asks for no history", async () => {
   const { dates, asked } = dailyCloses({});
   expect(dates.observe(hk, listing(hk))).toBe(hk);

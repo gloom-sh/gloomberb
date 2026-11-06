@@ -8,6 +8,7 @@ import { regularHistorySessionStaleness } from "../market-data/history-session";
 import type { HistorySession } from "../types/price-history";
 import { BAR_INTERVAL_UNIT_MS, parseBarInterval } from "../time-series/resolution";
 import { parseOptionTicker } from "./options";
+import { indexSessionVenue } from "../market-data/market/index-session-venues";
 
 // A venue without session hours here (OTC Markets, Cboe Canada) has no
 // session to hold: its copy is current while the latest bar is this recent.
@@ -239,7 +240,7 @@ export function isPriceHistoryStaleForCurrentWindow(
   // labelled by its start, so an hourly bar ending at the break is judged by
   // when it ends.
   const latestBarEnd = intervalMs != null ? Math.min(latestTime + intervalMs, now) : latestTime;
-  if (isMiddayBreakPrint(latestBarEnd, options.exchange, now, 0)) return false;
+  if (isMiddayBreakPrint(latestBarEnd, options.exchange || indexSessionVenue(options.symbol) || undefined, now, 0)) return false;
   const sessions = listingSessionsAt(now, options);
   if (!sessions) return age > UNSCHEDULED_HISTORY_MAX_AGE_MS;
   const fetchedAt = options.fetchedAt ?? Number.NEGATIVE_INFINITY;
@@ -247,7 +248,7 @@ export function isPriceHistoryStaleForCurrentWindow(
   // A venue whose chart source files another week (DFM's Sunday to Thursday)
   // may end on the last session that week has: current under either week.
   // Bars of a day that week lacks (a DFM Friday) answer to the venue's own.
-  const exchange = listingSessionExchange(options.exchange);
+  const exchange = listingSessionExchange(options.exchange, options.symbol);
   const sourceWeekendDays = historySourceWeekendDays(exchange);
   const timeZone = sessionCalendarTimeZone(exchange);
   const latestWeekday = timeZone ? zonedWeekday(latestTime, timeZone) : null;
@@ -256,9 +257,9 @@ export function isPriceHistoryStaleForCurrentWindow(
   return !sourceSessions || !holdsLatestSession(latestTime, now, sourceSessions, allowedLag, fetchedAt);
 }
 
-/** Bare symbols resolve to their US listing at the sources. */
-function listingSessionExchange(exchange: string | undefined): string {
-  return canonicalExchange(exchange) || "NYSE";
+/** Bare symbols resolve to their US listing at the sources; a bare index symbol to the venue whose sessions it follows. */
+function listingSessionExchange(exchange: string | undefined, symbol?: string): string {
+  return canonicalExchange(exchange) || indexSessionVenue(symbol) || "NYSE";
 }
 
 interface ListingSessions {
@@ -285,7 +286,7 @@ function listingSessionsAt(
     return { liveOpen: isFxMarketOpen(time) ? latestFxWeekOpen(time) : null,
       last: close !== null && open !== null ? { open, close } : null };
   }
-  const exchange = listingSessionExchange(options.exchange);
+  const exchange = listingSessionExchange(options.exchange, options.symbol);
   const open = latestRegularSessionOpen(exchange, time, weekendDays);
   if (open === null) return null;
   const latest = latestRegularSessionClose(exchange, time, weekendDays);

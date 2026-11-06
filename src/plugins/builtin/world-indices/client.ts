@@ -33,8 +33,10 @@ export async function loadWorldIndexQuotes(
     else errors.push(`${symbol}: ${message}`);
   };
   if (provider.getQuotesBatch) {
+    // Each row's change is a move from a dated close: an index's is checked against its daily closes first.
     const results = await provider.getQuotesBatch(
       entries.map((entry) => ({ symbol: entry.symbol, exchange: "" })),
+      { datesChangeBasis: true },
     );
     const bySymbol = new Map(results.map((result) => [result.target.symbol, result]));
     for (const entry of entries) {
