@@ -230,10 +230,19 @@ export interface PaneFooterPart {
 export interface PaneHint {
   id: string;
   key: string;
+  /**
+   * What the terminal writes after `[key]`: the rest of the word when a letter
+   * key starts it (`"dd"`, `[a]dd`), a space and the words when it does not
+   * (`" remove"`, `[x] remove`), and the words after any other key (`"pick"`
+   * after `Enter`). The desktop and the web show the key in a keycap before
+   * the whole words, read from this (keyHintWords).
+   */
   label: string;
   /**
    * The action's full name in the pane menu. Defaults to the hint read as one
-   * word (`[a]dd` is "Add"); set it when the key is not the first letter.
+   * word (`[a]dd` is "Add"); set it when the key is not the first letter, and
+   * when the label is a whole word right after a letter key (`[m]re-arm`), so
+   * the desktop reads "re-arm", not "mre-arm".
    */
   title?: string;
   onPress?: (event?: PaneFooterPressEvent) => void;
