@@ -1,5 +1,7 @@
 import { PerpEquityRow } from "../../perps/equity-row";
 import { PerpMarketsSection } from "../../perps/markets-section";
+import { TickerNewsHeadlines } from "../../news/overview-headlines";
+import { TICKER_NEWS_TAB_ID, TICKER_NEWS_TEMPLATE_ID } from "../../news/ticker-news";
 import { perpetualListing } from "../../../../tickers/perpetual-listing";
 import { useCallback } from "react";
 import type { TickerResearchTabProps } from "../../../../types/plugin";
@@ -16,9 +18,13 @@ import { useOpenResearchTab } from "../research-tab-navigation";
 import type { OverviewFunctionLink } from "./types";
 import { useOverviewDividend } from "./dividend";
 import { useTickerSnapshotState } from "../../../../market-data/hooks";
+import { PaneLinkMenu } from "../../../../components";
+import { FunctionLinkRow } from "./components";
 
 /** Registered by the chart composer, in the same plugin as this tab. */
 const CHART_TAB_ID = "chart";
+/** The ticker's news: Buzz's News view in this pane, otherwise CN. */
+const NEWS: OverviewFunctionLink = { name: "News", tabId: TICKER_NEWS_TAB_ID, templateId: TICKER_NEWS_TEMPLATE_ID };
 
 export function OverviewResearchTab({ width, height, focused }: TickerResearchTabProps) {
   const { symbol, ticker, financials } = usePaneTicker();
@@ -40,6 +46,8 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
     const symbol = ticker?.metadata.ticker;
     if (symbol) createPaneFromTemplate(link.templateId, { symbol, symbols: [symbol], ticker });
   }, [createPaneFromTemplate, openResearchTab, ticker]);
+  // A headline opens its story in this pane's News view when it has one.
+  const openNewsView = useCallback(() => !!openResearchTab?.(TICKER_NEWS_TAB_ID), [openResearchTab]);
   return (
     <OverviewTab
       width={width}
@@ -51,6 +59,11 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
       onOpenFunction={openFunction}
       dividend={dividend}
       snapshot={snapshot}
+      news={ticker ? (contentWidth: number) => (
+        <TickerNewsHeadlines ticker={ticker} width={contentWidth} openNewsView={openNewsView}>
+          <PaneLinkMenu><FunctionLinkRow link={NEWS} onOpen={openFunction} /></PaneLinkMenu>
+        </TickerNewsHeadlines>
+      ) : undefined}
       perpetuals={ticker ? (contentWidth: number) => {
         const instrumentType = financials?.quote?.instrumentType ?? ticker.metadata.assetCategory;
         // A contract's own DES shows its funding and premium; a stock or a coin lists its markets across venues.

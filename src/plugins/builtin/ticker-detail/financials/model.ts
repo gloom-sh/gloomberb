@@ -21,6 +21,11 @@ export { computeTTM } from "./aggregation";
 export { FINANCIAL_SUB_TABS } from "./schema";
 export type { FinancialPeriod } from "./aggregation";
 
+/** A ticker with statements to show: what the Financials view needs, and what Overview's way into it asks for. */
+export function hasStatementFinancials(financials: TickerFinancials | null | undefined): boolean {
+  return (financials?.annualStatements.length ?? 0) > 0 || (financials?.quarterlyStatements.length ?? 0) > 0;
+}
+
 type FinancialMetricFormat = "compact" | "eps" | "percent";
 export type FinancialGrowthDirection = "higher" | "lower" | "neutral";
 

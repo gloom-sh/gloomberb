@@ -44,7 +44,7 @@ import { dashedCoinPair, exchangeLineCoinListing, isSpotCommodityOrCurrencyPair,
 import { boardCoinFor, primeBoardCoins } from "./board-coins";
 import { knownGapMessage } from "./known-gaps";
 import { currencyPairSpelling } from "../utils/currency-pair";
-import { bareFuturesCode, futuresContractByCode } from "../market-data/futures-board";
+import { bareFuturesCode, futuresContractByCode, listedFuturesSymbol } from "../market-data/futures-board";
 import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
 import type { InstrumentOfKind } from "../tickers/instrument-coverage";
 import { brokerIndexCode, brokerIndexReadAs } from "./index-roots";
@@ -226,6 +226,9 @@ function parseCleanListingArg(
   if (pair && !pair.ambiguous) return { symbol: pair.symbol, exchange: "", key: pair.symbol };
   const shared = isSharedExchangeCode(code) ? { sharedCode: code } : {};
   if (exchange) return { symbol: parsed.symbol, exchange, key: `${parsed.symbol}:${exchange}`, ...shared };
+  // A contract as CTM prints it is its listing: ETHX26 is ETHX26.CME, CLZ26 is CLZ26.NYM.
+  const listed = listedFuturesSymbol(parsed.symbol);
+  if (listed) return { symbol: listed, exchange: "", key: listed };
   // A futures board code no security uses is its future: TTF is TTF=F.
   const symbol = bareFuturesCode(parsed.symbol)?.symbol ?? parsed.symbol;
   return { symbol, exchange, key: symbol };

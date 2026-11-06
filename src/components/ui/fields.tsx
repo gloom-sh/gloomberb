@@ -2,6 +2,7 @@ import { Box, Input, Span, Text, TextAttributes, useUiCapabilities, useUiHost } 
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type RefObject } from "react";
 import { type InputRenderable } from "../../ui";
 import { useThemeColors } from "../../theme/theme-context";
+import { placeholderText } from "../../theme/colors";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { remoteStringValue } from "../../remote/semantic-helpers";
 import { truncateWithEllipsis } from "../../utils/text-wrap";
@@ -162,7 +163,9 @@ function TextFieldControl({
   const colors = useThemeColors();
   backgroundColor ??= variant === "well" ? colors.panel : colors.bg;
   textColor ??= colors.text;
-  placeholderColor ??= colors.textDim;
+  // The label takes a caller's placeholder colour, dim otherwise; the placeholder is the role.
+  const labelColor = placeholderColor ?? colors.textDim;
+  const placeholderFg = placeholderColor ?? placeholderText(colors);
   useRemoteUiNode({
     role: "text-field",
     label: accessibleLabel ?? label ?? placeholder,
@@ -217,7 +220,7 @@ function TextFieldControl({
   const currentValue = value ?? "";
   const maskedValue = maskPassword(currentValue);
   const maskedDisplay = maskedValue.length > 0 ? maskedValue : (placeholder ?? "");
-  const maskedTextColor = maskedValue.length > 0 ? textColor : placeholderColor;
+  const maskedTextColor = maskedValue.length > 0 ? textColor : placeholderFg;
 
   useEffect(() => {
     currentValueRef.current = currentValue;
@@ -239,7 +242,7 @@ function TextFieldControl({
     <Box flexDirection="column">
       {label && (
         <Box height={1}>
-          <Text fg={placeholderColor}>{active === undefined ? label : `${active ? "> " : "  "}${label}`}</Text>
+          <Text fg={labelColor}>{active === undefined ? label : `${active ? "> " : "  "}${label}`}</Text>
         </Box>
       )}
       <Box height={1} onMouseDown={() => {
@@ -256,7 +259,7 @@ function TextFieldControl({
           {...(maxLength === undefined ? {} : { maxLength })}
           focused={focused && !disabled}
           textColor={isPassword ? backgroundColor : textColor}
-          placeholderColor={placeholderColor}
+          placeholderColor={placeholderFg}
           backgroundColor={backgroundColor}
           selectionBg={isPassword ? backgroundColor : undefined}
           selectionFg={isPassword ? backgroundColor : undefined}

@@ -64,6 +64,15 @@ test("a futures board code no security uses is its future; one a security keeps,
   expect(parseListingArg(" $ttf ")).toEqual({ symbol: "TTF=F", exchange: "", key: "TTF=F" });
   expect(parseListingArg("NG").key).toBe("NG");
   expect(parseListingArg("TTF", "LSE").key).toBe("TTF:LSE");
+  // A contract as CTM prints it is its listing on the root's venue, CME crypto included; another root stays as typed.
+  expect(parseListingArg("ETHX26")).toEqual({ symbol: "ETHX26.CME", exchange: "", key: "ETHX26.CME" });
+  // CME's micro crypto contracts too, though they have no curve: MetLife stays MET.
+  expect(["MBTX26", "metz26", "MSLX26", "MXPF27"].map((code) => parseListingArg(code).key))
+    .toEqual(["MBTX26.CME", "METZ26.CME", "MSLX26.CME", "MXPF27.CME"]);
+  expect(parseListingArg("MET").key).toBe("MET");
+  expect(parseListingArg("clz26").key).toBe("CLZ26.NYM");
+  expect(parseListingArg("ZNH27").key).toBe("ZNH27.CBT");
+  expect(parseListingArg("ABCX26").key).toBe("ABCX26");
 });
 
 test("an exchange code the app does not know is refused unless the symbol trades there", async () => {

@@ -930,12 +930,13 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     rejectPerpetual(ticker, exchange, "options chains");
     const target = cloudInstrumentTarget(ticker, exchange);
     return withCloudFallback(async () => {
-      const response = await apiClient.getCloudOptionsChain(target.symbol, target.exchange, expirationDate, { batch: _context?.batch });
+      const adjusted = _context?.adjustedOptions === true;
+      const response = await apiClient.getCloudOptionsChain(target.symbol, target.exchange, expirationDate, { batch: _context?.batch, adjusted });
       const chain = unwrapRequiredCloudResponse(
         response,
         `Cloud options chains are unavailable for ${ticker}`,
       );
-      return mapOptionsChain(chain);
+      return mapOptionsChain(chain, { adjusted });
     }, `Cloud options chains are unavailable for ${ticker}`);
   }
 

@@ -3,6 +3,7 @@ import { matchesKeybindingAction, useKeybindings, type KeyChordEventLike } from 
 import { t } from "../../i18n";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { useThemeColors } from "../../theme/theme-context";
+import { placeholderText } from "../../theme/colors";
 import {
   Box,
   Text,
@@ -124,7 +125,7 @@ function FormTextarea({
         placeholder={field.placeholder ? t(field.placeholder) : ""}
         focused={focused}
         textColor={colors.text}
-        placeholderColor={colors.textDim}
+        placeholderColor={placeholderText(colors)}
         // On the desktop the frame's sunken fill shows through.
         backgroundColor={desktop ? "transparent" : colors.panel}
         flexGrow={1}

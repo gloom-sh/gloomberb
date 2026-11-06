@@ -3,7 +3,7 @@ import type { OptionContract, OptionsChain, Quote } from "../../../types/financi
 import type { QueryEntry } from "../../../market-data/result-types";
 import { buildQuoteKey, instrumentFromQuoteTarget } from "../../../market-data/selectors";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../options-calculator/model";
-import { daysToExpiryFrom, solveImpliedVolatility, valueOption } from "../shared/volatility";
+import { daysToExpiryFrom, solveImpliedVolatility, valueOption, withQuotesUnderIntrinsicMarked } from "../shared/volatility";
 import { calculateOptionGreeks, solveChainVolatilities } from "./analytics";
 import type { OptionTableRow } from "./types";
 import {
@@ -382,6 +382,23 @@ test("LAST only advances for a dated executed trade, never a mark or older trade
   expect(overlayOptionContractQuote(updated, { ...quote, lastTradePrice: 5,
     lastTradeTime: 1_789_000_000_000 })!.lastPrice).toBe(7);
   expect(overlayOptionContractQuote(original, { ...quote, lastTradeTime: undefined })!.lastPrice).toBe(original.lastPrice);
+});
+
+test("a fresh streamed bid and ask clear the snapshot's stale mark; a trade alone keeps it, and the pane checks intrinsic again", () => {
+  // AAPL's 100 call at the open, still carrying yesterday's quote from before the session.
+  const stale = { ...contract(100, "C"), bid: 30, ask: 31, quoteStale: true };
+  const quote: Quote = { symbol: stale.contractSymbol, price: 42.5, currency: "USD", change: 0, changePercent: 0,
+    lastUpdated: 1_800_000_000_000, bid: 42.4, ask: 42.6 };
+  const live = overlayOptionContractQuote(stale, quote)!;
+  expect(live).toMatchObject({ bid: 42.4, ask: 42.6 });
+  expect(live.quoteStale).toBeUndefined();
+  expect(withQuotesUnderIntrinsicMarked({ calls: [live], puts: [] }, 142).calls[0]!.quoteStale).toBeUndefined();
+  // A streamed book under intrinsic at the live spot is marked again.
+  expect(withQuotesUnderIntrinsicMarked({ calls: [live], puts: [] }, 150).calls[0]!.quoteStale).toBe(true);
+  // A print without a book leaves the stale bid and ask, and their mark.
+  const trade = overlayOptionContractQuote(stale, { ...quote, bid: undefined, ask: undefined, lastTradePrice: 42.5,
+    lastTradeTime: 1_800_000_000_000 })!;
+  expect(trade).toMatchObject({ bid: 30, ask: 31, quoteStale: true });
 });
 
 test("streamed session volume grows the contract's volume and never shrinks it", () => {
