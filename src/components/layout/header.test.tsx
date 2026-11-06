@@ -128,7 +128,7 @@ test("hosts the command bar input while a list screen is published", async () =>
 /** The keys the open prompt names for the selected row sit at its end, and give way whole to the typed text. */
 test("names the selected row's keys at the end of the open prompt while the query leaves room", async () => {
   const state = {
-    ...createInitialState(createDefaultConfig("/tmp/gloomberb-header-test")),
+    ...createInitialState(headerConfig()),
     commandBarOpen: true,
   };
   await tui.render(
