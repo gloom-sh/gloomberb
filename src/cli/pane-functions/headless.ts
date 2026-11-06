@@ -815,7 +815,9 @@ export function headlessReportTables(
           // A line of its own period or release (a previous reading) names them rather than the section's.
           const own = (entry: HeadlessPaneEntry): ExportIdentity | undefined => {
             const identity = {
-              ...(entry.unit?.trim() ? { currencyOrUnit: entry.unit.trim() } : {}),
+              // An export unit names a number's unit: a figure missing with its reason has none.
+              ...(entry.unit?.trim() ? { currencyOrUnit: entry.unit.trim() }
+                : entry.exportUnit?.trim() && typeof entry.value === "number" && Number.isFinite(entry.value) ? { currencyOrUnit: entry.exportUnit.trim() } : {}),
               ...(entry.period !== undefined ? { period: entry.period } : {}),
               ...(entry.released !== undefined ? { released: entry.released } : {}),
               ...(entry.asOf !== undefined ? { asOf: entry.asOf } : {}),

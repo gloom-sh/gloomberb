@@ -52,6 +52,9 @@ const ADR_PAIR: OverviewFunctionLink = { name: "ADR vs Home", tabId: ADR_PAIR_TA
 /** A bond fund's sponsor figures in a narrow grid: `SEC Yield 4.04% 2026-10-15`. */
 const BOND_STAT_LABELS = { secYield: "SEC Yield", yieldToWorst: "Yld to Worst" } as const;
 
+/** What a forward yield reads for a monthly payer whose distribution history ends early (DividendLapse.historyEnds). */
+const HISTORY_ENDS = "history ends";
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -273,7 +276,8 @@ export function buildOverviewStats({
   const kind = bond ? "Dist" : "Div";
   const notSec = bond ? { detail: ["not SEC yield", "not SEC"] } : {};
   if (fundamentals && lapse) {
-    stats.push({ label: `Fwd ${kind} Yld`, value: NO_CURRENT_DIVIDEND });
+    // A monthly payer's history that ends early (MUB's at 2026-09-01) says so, beside the last ex-date it holds.
+    stats.push({ label: `Fwd ${kind} Yld`, value: lapse.historyEnds ? HISTORY_ENDS : NO_CURRENT_DIVIDEND });
   } else if (fundamentals && dividendYield != null && !dividend?.pending) {
     const basis = fundamentals.dividendYieldBasis;
     const label = basis === "forward" ? `Fwd ${kind} Yld` : basis === "trailing" ? `TTM ${kind} Yld` : `${kind} Yield`;
@@ -291,7 +295,7 @@ export function buildOverviewStats({
   if (exDividendDate && ISO_DATE.test(exDividendDate)) {
     const days = today ? daysUntil(exDividendDate, today) : -1;
     stats.push({
-      label: lapse ? "Last Paid" : "Ex-Dividend",
+      label: lapse ? (lapse.historyEnds ? "Last Ex" : "Last Paid") : "Ex-Dividend",
       value: calendarDate(exDividendDate, today ?? exDividendDate),
       detail: days >= 0 ? daysAhead(days) : undefined,
       link: DIVIDENDS,

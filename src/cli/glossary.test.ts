@@ -203,7 +203,11 @@ test("the bond fund and muni words are found by plain names, and DVD explains th
   ]);
   const tey = GLOSSARY.find((entry) => entry.term === "Tax-equivalent yield")!;
   expect(tey.definition).toContain("yield / (1 - (federal rate + state rate))");
-  expect(tey.definition).toContain("MUB's 4.04% is 6.83%");
+  // An example with numbers says when they were: they move with the market.
+  expect(tey.definition).toContain("MUB's 3.80% SEC yield of 2026-11-04 was 6.41%");
+  expect(["NIIT", "net investment income tax", "AMT", "private activity bonds", "amt free"].map(exact)).toEqual([
+    ["Net investment income tax"], ["Net investment income tax"], ["Alternative minimum tax"], ["Alternative minimum tax"], ["Alternative minimum tax"],
+  ]);
   expect(GLOSSARY.find((entry) => entry.term === "Muni/Treasury ratio")!.definition).toContain("MMD or BVAL, which are licensed");
   const report = [
     "Forward distribution yield (not SEC yield)   3.27% (latest distribution annualized, as of 2026-10-01)",
@@ -215,6 +219,10 @@ test("the bond fund and muni words are found by plain names, and DVD explains th
   ].join("\n");
   expect(terms(reportGlossary("DVD", report))).toEqual([
     "SEC yield", "Yield to worst", "Distribution yield", "Duration", "Tax-equivalent yield", "Muni/Treasury ratio",
+  ]);
+  // A ranking with --tax-rate heads its columns with the short names.
+  expect(terms(reportGlossary("DVD", "Ticker  Yield TTM  SEC yield  YTW  Duration  TEY  Muni/Tsy  Tenor"))).toEqual([
+    "SEC yield", "Yield to worst", "Duration", "Tax-equivalent yield", "Muni/Treasury ratio",
   ]);
   // A stock's DVD report prints none of them.
   expect(reportGlossary("DVD", "Trailing yield  2.24% (last 12 months of distributions)\nForward yield  2.26%")).toEqual([]);

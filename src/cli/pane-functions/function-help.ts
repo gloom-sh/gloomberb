@@ -98,8 +98,9 @@ const CHART_KEYS = [key("s", "eries"), key("i", "ndicators"), key("b", "ars"), k
 export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   // Research companies
   DES: {
-    summary: "The starting point for any ticker: live quote, day and 52-week range, price chart, fundamentals, and tabs into every other research pane.",
-    usage: ["DES NVDA"],
+    summary: "The starting point for any ticker: live quote, day and 52-week range, price chart, fundamentals, and tabs into every other research pane. "
+      + "A bond fund shows its SEC yield, yield to worst and duration beside its distribution yield; --tax-rate 40.8 adds a muni fund's tax-equivalent yield and muni/Treasury ratio.",
+    usage: ["DES NVDA", "DES MUB --tax-rate 40.8"],
     keys: [TABS, key(".", " go to tab")],
     data: QUOTES,
     bloomberg: ["DES"],
@@ -423,8 +424,9 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     summary: "Cash distributions, trailing yield, the forward yield fundamentals show (the latest distribution annualized, or the declared one once announced), and payout growth. Future payments are not forecast. "
       + "For a bond fund these are distribution yields, not its SEC yield, which follows them with its date, yield to worst and duration. "
       + "--tax-rate 40.8 adds a muni fund's tax-equivalent yield, yield / (1 - (federal + state rate)) on the SEC yield (else the distribution yield), "
-      + "and its muni/Treasury ratio against the GC tenor nearest its duration; --state-rate 13.3 --state CA counts only for a CA fund.",
-    usage: ["DVD KO", "DVD MUB --tax-rate 40.8", "DVD CMF --tax-rate 40.8 --state-rate 13.3 --state CA"],
+      + "and its muni/Treasury ratio against the GC tenor nearest its duration; --state-rate 13.3 --state CA counts only for a CA fund. "
+      + "Several tickers rank in one table; with --tax-rate it adds yield to worst, duration, the tax-equivalent yield and the ratio.",
+    usage: ["DVD KO", "DVD MUB --tax-rate 40.8", "DVD CMF --tax-rate 40.8 --state-rate 13.3 --state CA", "DVD MUB VTEB SUB LQD --tax-rate 40.8"],
     keys: [STEP],
     data: same("Daily"),
     bloomberg: ["DVD"],
@@ -1082,8 +1084,9 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CF"],
   },
   ETF: {
-    summary: "A US-listed fund's facts, a leveraged or inverse fund's daily objective among them, then its own SEC filings: registration statements and prospectus updates, shareholder reports, N-CEN and N-PORT reports. Open any of them inline.",
-    usage: ["ETF SPY"],
+    summary: "A US-listed fund's facts, a leveraged or inverse fund's daily objective and a bond fund's SEC yield, yield to worst and duration among them, then its own SEC filings: registration statements and prospectus updates, shareholder reports, N-CEN and N-PORT reports. Open any of them inline. "
+      + "--tax-rate 40.8 adds a muni fund's tax-equivalent yield and muni/Treasury ratio, as DVD does.",
+    usage: ["ETF SPY", "ETF MUB --tax-rate 40.8"],
     keys: [OPEN, OPEN_SOURCE],
     data: AS_FILED,
     bloomberg: [],

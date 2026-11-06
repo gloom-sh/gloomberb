@@ -22,6 +22,10 @@ import { REPORT_ROWS } from "../shared/headless-options";
 import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
 import { listingAnnouncementsPage } from "../../../utils/exchange-announcements";
 import { companyDataNotes } from "../../../types/company-from";
+import {
+  analyzeTaxEquivalent, distributionBasis, loadTreasuryTenors, parseTaxRates, TAX_RATE_EXAMPLES, TAX_RATE_OPTIONS, taxEquivalentJson, taxEquivalentSection,
+  type TaxEquivalentAnalysis, type TreasuryTenor, type YieldBasis,
+} from "../../../market-data/tax-equivalent";
 
 const SEC_COLUMNS: HeadlessPaneColumn[] = [
   {
@@ -163,11 +167,20 @@ export const secHeadless = createSecHeadless();
 export interface FundHeadlessDependencies extends SecHeadlessDependencies {
   loadFacts(symbol: string, ctx: HeadlessPaneContext): Promise<FundFactsPayload>;
   loadAbroadProfile?(key: string, ctx: HeadlessPaneContext): Promise<FundAbroadProfile | null>;
+  /** With `--tax-rate`: the Treasury par curve GC shows, for the muni/Treasury ratio; null when it cannot be read. */
+  loadTreasury?(ctx: HeadlessPaneContext): Promise<TreasuryTenor[] | null>;
+  /** With `--tax-rate`, for a muni fund whose sponsor publishes no SEC yield: its distribution yield, as `fundamentals` states it. */
+  loadDistribution?(symbol: string, ctx: HeadlessPaneContext): Promise<YieldBasis | null>;
 }
 
 const defaultFundDependencies = {
   ...defaultDependencies,
   loadFacts: (symbol: string, ctx: HeadlessPaneContext) => fetchFundFacts(symbol, ctx.apiClient),
+  loadTreasury: (ctx: HeadlessPaneContext) => loadTreasuryTenors(ctx.apiClient),
+  async loadDistribution(symbol: string, ctx: HeadlessPaneContext): Promise<YieldBasis | null> {
+    const fundamentals = (await ctx.marketData.getTickerFinancials(symbol, "")).fundamentals;
+    return distributionBasis(fundamentals?.dividendYield, fundamentals?.dividendYieldBasis === "trailing" ? "trailing" : "forward");
+  },
   async loadAbroadProfile(key: string, ctx: HeadlessPaneContext): Promise<FundAbroadProfile | null> {
     const { symbol, exchange } = parsePublicTickerKey(key);
     return fundAbroadProfile(await ctx.marketData.getTickerFinancials(symbol, exchange));
@@ -232,7 +245,8 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
   return {
     shape: "bundle",
     freshness: { source: "Fund sponsors and SEC EDGAR", status: "not-a-feed", basis: "published fund data" },
-    argument: { kind: "ticker", placeholder: "ticker", description: "US-listed fund ticker. A fund listed abroad gets its issuer's page." },
+    argument: { kind: "ticker", placeholder: "ticker", description: "US-listed fund ticker. A fund listed abroad gets its issuer's page.",
+      examples: TAX_RATE_EXAMPLES.slice(0, 2) },
     options: [{
       key: "limit",
       shot: REPORT_ROWS,
@@ -242,11 +256,13 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
       defaultValue: 50,
       minimum: 1,
       maximum: 200,
-    }],
+    }, ...TAX_RATE_OPTIONS],
     discovery: { limitations: ["Fund facts cover the sponsors Gloom collects; other funds point to their SEC filings."] },
     describe: (args) => `ETF | ${args.symbols[0]}`,
     async load(args, ctx) {
       const symbol = args.symbols[0]!;
+      // Checked before anything is read: a state rate without its state is refused, not ignored.
+      const rates = parseTaxRates({ taxRate: args.options["tax-rate"], stateRate: args.options["state-rate"], state: args.options.state });
       const abroad = venueAbroad(symbol);
       if (abroad) {
         // A Hong Kong spot coin fund has its issuer's figures; any other fund abroad, or a server without them, keeps the issuer link.
@@ -266,6 +282,8 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
         }
       }
       const limit = Number(args.options.limit);
+      const treasury = rates ? (dependencies.loadTreasury ?? defaultFundDependencies.loadTreasury)(ctx)
+        .catch(logFailure("sec.fund-headless", "Read Treasury curve for tax-equivalent yield failed", null)) : null;
       const [factsResult, filingsResult] = await Promise.allSettled([
         dependencies.loadFacts(symbol, ctx),
         dependencies.loadFilings(symbol, SEC_FILING_FETCH_LIMIT, args, ctx),
@@ -288,9 +306,23 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
           : fundFactsEmpty(symbol, facts, !filingsPointToSec) };
       const publishers = facts?.covered ? fundFactPublishers(facts) : [];
       const filingRows = buildSecFilingRows(filings);
+      // With --tax-rate, the section DVD and fundamentals show, on the sponsor's SEC yield (else the distribution yield).
+      let tax: TaxEquivalentAnalysis | null = null;
+      if (rates) {
+        const bond = facts?.covered ? facts.bond ?? null : null;
+        const distribution = bond?.kind === "municipal" && !bond.secYield
+          ? await (dependencies.loadDistribution ?? defaultFundDependencies.loadDistribution)(symbol, ctx)
+            .catch(logFailure("sec.fund-headless", "Read distribution yield for tax-equivalent yield failed", null))
+          : null;
+        tax = analyzeTaxEquivalent({
+          symbol: symbol.toUpperCase(), bond, rates, distribution, treasury: await treasury,
+          ...factsResult.status === "rejected" ? { checkError: `no tax-equivalent yield: ${fundFactsErrorText(factsResult.reason)}` } : {},
+        });
+      }
       return {
         sections: [
           factsSection,
+          ...tax ? [taxEquivalentSection(tax)] : [],
           { title: "Fund filings", columns: SEC_COLUMNS, textColumns: fundFilingTextColumns(filingRows), rows: filingRows, ...(filings.length === 0 ? { empty: filingsEmpty } : {}) },
         ],
         complete: !!facts?.covered && filingsResult.status === "fulfilled" && searchedAll,
@@ -316,6 +348,7 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
           forms: [...ETF_FILING_FORMS],
           searchedFilings: issuerFilings.length,
           issuers: secFilingIssuers(filings),
+          ...tax ? { taxEquivalent: taxEquivalentJson(tax) } : {},
         },
       };
     },

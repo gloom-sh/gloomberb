@@ -120,6 +120,12 @@ function distributionIntervalDays(exDates: readonly (string | Date)[]): number |
 export interface DividendLapse {
   /** YYYY-MM-DD; null when no date is known. */
   lastPaid: string | null;
+  /**
+   * A monthly payer's history that stops at `lastPaid` (monthlyHistoryEnd):
+   * the distributions after it are missing from the history, which says
+   * nothing of whether the fund stopped paying.
+   */
+  historyEnds?: true;
 }
 
 /** What a forward yield is checked against: the issuer's own distributions. */
@@ -171,7 +177,9 @@ export function lapsedDividend(
   const interval = history?.exDates ? distributionIntervalDays(paid) : null;
   const window = interval == null ? UNKNOWN_CADENCE_WINDOW_DAYS
     : interval + Math.min(MAX_GRACE_DAYS, Math.max(MIN_GRACE_DAYS, interval / 2));
-  return dayNumber(today) - dayNumber(lastPaid) > window ? { lastPaid } : null;
+  if (dayNumber(today) - dayNumber(lastPaid) <= window) return null;
+  // A monthly payer two months silent is more often a history that stopped short than a fund that stopped paying.
+  return interval === CADENCE_DAYS[0] ? { lastPaid, historyEnds: true } : { lastPaid };
 }
 
 /**
@@ -195,6 +203,35 @@ export function forwardYieldMayHaveLapsed(
   return fundamentals?.dividendYieldBasis === "forward" && forwardDividendMayHaveLapsed(fundamentals.exDividendDate, now);
 }
 
+/** Past this many days a monthly payer's next distribution would have gone ex: a history without it ends early. */
+export const MONTHLY_HISTORY_END_DAYS = 40;
+
+/**
+ * The last ex-date of a monthly payer's history that stops more than 40 days
+ * before `now`, read from its paid ex-dates alone: MUB's history ending at
+ * 2026-09-01 while the fund paid on 1 October and 2 November. A forward
+ * rate, trailing yield and last ex-date read from that history then all stop
+ * there too, and say so, rather than read the missing months as a dividend
+ * that stopped. Null for any other cadence, a history that is current, and
+ * one with a distribution declared or still ahead.
+ */
+export function monthlyHistoryEnd(history: DistributionHistory | null | undefined, now = new Date()): string | null {
+  if (!history?.exDates || (history.declared?.length ?? 0) > 0) return null;
+  const today = isoDay(now)!;
+  const days = [...new Set(history.exDates.flatMap((value) => {
+    const day = isoDay(value);
+    return day ? [day] : [];
+  }))].sort();
+  const last = days.at(-1);
+  if (!last || last > today || dayNumber(today) - dayNumber(last) <= MONTHLY_HISTORY_END_DAYS) return null;
+  return distributionIntervalDays(days) === CADENCE_DAYS[0] ? last : null;
+}
+
+/** `distribution history ends 2026-09-01`: what a monthly payer's ended history says in place of a yield it cannot give. */
+export function historyEndsText(day: string): string {
+  return `distribution history ends ${day}`;
+}
+
 export const NO_CURRENT_DIVIDEND = "no current dividend";
 
 /** `last paid 2026-02-27`, the note beside "no current dividend"; null when the date is unknown. */
@@ -202,8 +239,13 @@ export function lastPaidNote(lapse: DividendLapse): string | null {
   return lapse.lastPaid ? `last paid ${lapse.lastPaid}` : null;
 }
 
-/** `no current dividend (last paid 2026-02-27)`, what a lapsed forward yield reads instead of a percentage. */
+/**
+ * `no current dividend (last paid 2026-02-27)`, what a lapsed forward yield
+ * reads instead of a percentage; for a monthly payer's history that ends
+ * early, `distribution history ends 2026-09-01`.
+ */
 export function noCurrentDividend(lapse: DividendLapse): string {
+  if (lapse.historyEnds && lapse.lastPaid) return historyEndsText(lapse.lastPaid);
   const note = lastPaidNote(lapse);
   return note ? `${NO_CURRENT_DIVIDEND} (${note})` : NO_CURRENT_DIVIDEND;
 }

@@ -16,6 +16,7 @@ import { useOpenResearchTab } from "../research-tab-navigation";
 import type { OverviewFunctionLink } from "./types";
 import { useOverviewDividend } from "./dividend";
 import { useTickerSnapshotState } from "../../../../market-data/hooks";
+import { taxRatesFromSettings } from "../../../../market-data/tax-equivalent";
 
 /** Registered by the chart composer, in the same plugin as this tab. */
 const CHART_TAB_ID = "chart";
@@ -51,6 +52,7 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
       onOpenFunction={openFunction}
       dividend={dividend}
       snapshot={snapshot}
+      tax={taxRatesFromSettings(paneInstance?.settings)}
       perpetuals={ticker ? (contentWidth: number) => {
         const instrumentType = financials?.quote?.instrumentType ?? ticker.metadata.assetCategory;
         // A contract's own DES shows its funding and premium; a stock or a coin lists its markets across venues.
