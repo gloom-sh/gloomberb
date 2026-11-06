@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { FundBondFacts } from "../api-client/fund-facts";
 import {
   analyzeTaxEquivalent, distributionBasis, loadTreasuryTenors, nearestTenor, parseTaxRates, taxEquivalentJson, taxEquivalentLines,
-  taxEquivalentYield, type TreasuryTenor,
+  taxEquivalentYield, treasurySeriesId, type TreasuryTenor,
 } from "./tax-equivalent";
 
 const ISHARES = { source: "iShares", url: "https://www.ishares.com/us/products/239766/ishares-national-muni-bond-etf" };
@@ -53,8 +53,8 @@ describe("tax-equivalent yield", () => {
     expect(mub.basis).toEqual({ kind: "sec", value: 4.0418, asOf: "2026-10-15", label: "30-day SEC yield" });
     expect(taxEquivalentLines(mub).map((line) => [line.label, line.text])).toEqual([
       ["Tax rate", "40.8% (federal; no state rate given)"],
-      ["Tax-equivalent yield", "6.83% (30-day SEC yield 4.04% as of 2026-10-15 / (1 - 40.8%))"],
-      ["Muni/Treasury ratio", "81.2% (SEC yield 4.04% / 7Y Treasury 4.98% on 2026-10-16, the tenor nearest its 7.13-year duration)"],
+      ["Tax-equivalent yield", "6.83% (30-day SEC yield 4.0418% as of 2026-10-15 / (1 - 40.8%))"],
+      ["Muni/Treasury ratio", "81.2% (SEC yield 4.0418% / 7Y Treasury 4.98% on 2026-10-16, the tenor nearest its 7.13-year duration)"],
     ]);
   });
 
@@ -97,12 +97,13 @@ describe("tax-equivalent yield", () => {
   test("a taxable bond fund and a listing with no bond facts get none, saying why", () => {
     const agg = analyzeTaxEquivalent({ symbol: "AGG", bond: AGG, rates: FEDERAL, treasury: CURVE });
     expect(agg.taxEquivalentYield).toBeUndefined();
-    expect(taxEquivalentLines(agg)).toEqual([
+    expect(taxEquivalentLines(agg).map(({ export: _, ...line }) => line)).toEqual([
       { key: "taxRate", label: "Tax rate", text: "40.8% (federal)", value: 40.8, unit: "%" },
       { key: "taxEquivalentYield", label: "Tax-equivalent yield", text: "no tax-equivalent yield: AGG is a taxable bond fund, its income is taxed", value: null },
     ]);
-    expect(analyzeTaxEquivalent({ symbol: "KO", bond: null, rates: FEDERAL }).notApplicable)
-      .toBe("no tax-equivalent yield: KO is not a bond fund with sponsor figures (iShares, Vanguard and SPDR bond ETFs have them)");
+    // A fund whose sponsor's figures are not loaded is not said not to be a bond fund (HYD before VanEck's were read).
+    expect(analyzeTaxEquivalent({ symbol: "HYD", bond: null, rates: FEDERAL }).notApplicable)
+      .toBe("no tax-equivalent yield: no sponsor bond figures are loaded for HYD (they are for iShares, Vanguard, SPDR and VanEck bond ETFs)");
   });
 });
 
@@ -122,7 +123,7 @@ describe("muni/Treasury ratio", () => {
   test("says why it is missing: no duration, or no curve", () => {
     const noDuration = analyzeTaxEquivalent({ symbol: "MUB", bond: { ...MUB, duration: null }, rates: FEDERAL, treasury: CURVE });
     expect(noDuration.ratio).toBeNull();
-    expect(taxEquivalentLines(noDuration)[2]!.text).toBe("no ratio: MUB's sponsor publishes no duration to match a Treasury tenor");
+    expect(taxEquivalentLines(noDuration)[2]!.text).toBe("no ratio: no sponsor duration is loaded for MUB to match a Treasury tenor");
     const noCurve = analyzeTaxEquivalent({ symbol: "MUB", bond: MUB, rates: FEDERAL, treasury: null });
     expect(taxEquivalentLines(noCurve)[2]!.text).toBe("no ratio: the Treasury curve could not be read");
   });
@@ -132,12 +133,13 @@ describe("muni/Treasury ratio", () => {
       getCloudCurve: async () => ({ asOf: "2026-10-16", points: [{ tenor: "7Y", years: 7, yield: 4.98 }, { tenor: "10Y", years: 10, yield: null }] }),
       getCloudYieldCurve: async () => { throw new Error("not asked"); },
     } as unknown as Parameters<typeof loadTreasuryTenors>[0];
-    expect(await loadTreasuryTenors(stored)).toEqual([{ tenor: "7Y", years: 7, yield: 4.98, asOf: "2026-10-16" }]);
+    // Each tenor names the constant-maturity series it is (DGS7), to read its history by.
+    expect(await loadTreasuryTenors(stored)).toEqual([{ tenor: "7Y", years: 7, yield: 4.98, asOf: "2026-10-16", seriesId: "DGS7" }]);
     const fred = {
       getCloudCurve: async () => { throw new Error("offline"); },
       getCloudYieldCurve: async () => [{ maturity: "7Y", maturityYears: 7, yield: 4.97, asOf: "2026-10-15" }],
     } as unknown as Parameters<typeof loadTreasuryTenors>[0];
-    expect(await loadTreasuryTenors(fred)).toEqual([{ tenor: "7Y", years: 7, yield: 4.97, asOf: "2026-10-15" }]);
+    expect(await loadTreasuryTenors(fred)).toEqual([{ tenor: "7Y", years: 7, yield: 4.97, asOf: "2026-10-15", seriesId: "DGS7" }]);
     const none = { getCloudCurve: async () => { throw new Error("offline"); }, getCloudYieldCurve: async () => { throw new Error("offline"); } } as
       unknown as Parameters<typeof loadTreasuryTenors>[0];
     expect(await loadTreasuryTenors(none)).toBeNull();
@@ -153,9 +155,10 @@ test("JSON keeps the rates, the yield it was taken on, both results and the form
     stateRate: { rate: 13.3, code: "CA", applied: false },
     combinedRate: 40.8,
     basis: { kind: "sec", value: 4.0418 },
-    muniTreasuryRatio: { tenor: "7Y", treasuryYield: 4.98, treasuryAsOf: "2026-10-16", durationYears: 7.12591 },
+    muniTreasuryRatio: { tenor: "7Y", seriesId: "DGS7", treasuryYield: 4.98, treasuryAsOf: "2026-10-16", durationYears: 7.12591 },
     notes: ["--state-rate not added: MUB is a national fund, its income is taxed by CA"],
   });
   expect(json.formula).toContain("yield / (1 - (federal rate + state rate))");
   expect(json.ratioFormula).toContain("nearest the fund's duration");
+  expect(["7Y", "7 Yr", "1M", "30y", "2M"].map(treasurySeriesId)).toEqual(["DGS7", "DGS7", "DGS1MO", "DGS30", null]);
 });

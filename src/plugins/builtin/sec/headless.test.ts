@@ -432,3 +432,47 @@ test("ETF for a fund listed abroad says what ticker says, with its issuer's page
   expect(failed.complete).toBe(false);
   expect(failed.errors).toEqual(["Fund profile unavailable: Profile outage"]);
 });
+
+test("ETF with --tax-rate adds the tax-equivalent section DVD and fundamentals show, on the sponsor's SEC yield", async () => {
+  const ISHARES = { source: "iShares", url: "https://www.ishares.com/us/products/239766/ishares-national-muni-bond-etf" };
+  const mub: FundFactsPayload = { ...SPY_FACTS, ticker: "MUB", name: "iShares National Muni Bond ETF", bond: {
+    kind: "municipal", state: null,
+    secYield: { value: 3.7955, asOf: "2026-11-04", ...ISHARES },
+    yieldToWorst: { value: 3.89, asOf: "2026-11-04", ...ISHARES },
+    duration: { value: 7.15, asOf: "2026-11-04", measure: "effective", ...ISHARES },
+  } };
+  const headless = createFundHeadless({
+    loadFacts: async () => mub, loadFilings: async () => [],
+    loadTreasury: async () => [{ tenor: "7Y", years: 7, yield: 4.7, asOf: "2026-11-05", seriesId: "DGS7" }],
+    loadDistribution: async () => { throw new Error("Must not read a distribution yield beside a SEC yield"); },
+  });
+  const args: HeadlessPaneLoadArgs = { ...fundArgs("MUB"), options: { limit: 50, "tax-rate": "40.8" } };
+  const result = await headless.load(args, createTestHeadlessContext());
+  const section = result.sections.find((entry) => entry.title === "Tax-equivalent yield")!;
+  expect(section.textEntries!.map((entry) => entry.formatted)).toEqual([
+    "40.8% (federal; no state rate given)",
+    "6.41% (30-day SEC yield 3.7955% as of 2026-11-04 / (1 - 40.8%))",
+    "80.8% (SEC yield 3.7955% / 7Y Treasury 4.70% on 2026-11-05, the tenor nearest its 7.15-year duration)",
+  ]);
+  expect(section.entries!.find((entry) => entry.label === "Tax-equivalent yield")).toMatchObject({ formatted: "6.41%", exportUnit: "pct", asOf: "2026-11-04" });
+  expect(result.metadata).toMatchObject({ taxEquivalent: { combinedRate: 40.8, muniTreasuryRatio: { tenor: "7Y", seriesId: "DGS7" } } });
+
+  // A fund whose sponsor's figures are not loaded says so rather than that it is no bond fund; without --tax-rate there is no section.
+  const hyd = createFundHeadless({ loadFacts: async () => ({ ...SPY_FACTS, ticker: "HYD", bond: null }), loadFilings: async () => [], loadTreasury: async () => null });
+  const plain = await hyd.load({ ...fundArgs("HYD"), options: { limit: 50, "tax-rate": "40.8" } }, createTestHeadlessContext());
+  expect(plain.sections.find((entry) => entry.title === "Tax-equivalent yield")!.textEntries![1]!.formatted).toContain("no sponsor bond figures are loaded for HYD");
+  expect((await hyd.load(fundArgs("HYD"), createTestHeadlessContext())).sections.map((entry) => entry.title)).toEqual(["Fund facts", "Fund filings"]);
+  await expect(hyd.load({ ...fundArgs("HYD"), options: { limit: 50, "tax-rate": "40.8", "state-rate": "9" } }, createTestHeadlessContext()))
+    .rejects.toThrow("--state-rate and --state go together");
+
+  // A stock is not a fund, and a fund listed abroad is not a US fund: each says so, never that its figures are not loaded.
+  const taxLine = (result: Awaited<ReturnType<typeof hyd.load>>) =>
+    result.sections.find((entry) => entry.title === "Tax-equivalent yield")?.textEntries?.[1]?.formatted;
+  const ko = createFundHeadless({ loadFacts: async () => ({ ...SPY_FACTS, ticker: "KO", covered: false, status: "not-a-fund" }), loadFilings: async () => [],
+    loadTreasury: async () => null });
+  expect(taxLine(await ko.load({ ...fundArgs("KO"), options: { limit: 50, "tax-rate": "40.8" } }, createTestHeadlessContext())))
+    .toBe("no tax-equivalent yield: KO is not a fund");
+  const abroad = createFundHeadless({ loadFacts: async () => SPY_FACTS, loadFilings: async () => [], loadAbroadProfile: async () => null });
+  expect(taxLine(await abroad.load({ ...fundArgs("VUSA:LSE"), options: { limit: 50, "tax-rate": "40.8" } }, createTestHeadlessContext())))
+    .toBe("no tax-equivalent yield: --tax-rate does not apply to VUSA:LSE, a fund listed outside the US");
+});

@@ -499,7 +499,8 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
       + "Read as the peso price over the D line's dollar price; it sits near the CCL rate, usually a little under it.",
   },
   // Bond spreads and yields (CRD, the data catalog's ICE BofA yields, TRACE), a fund's SEC yield, which DVD's cash yield is not,
-  // and the bond fund figures and tax-equivalent maths DVD and fundamentals give with --tax-rate.
+  // and the bond fund figures and tax-equivalent maths DVD, ETF, DES and fundamentals give with --tax-rate, and the taxes behind its rates.
+  // An example with numbers carries its date: they move with the market.
   {
     term: "Option-adjusted spread", short: "OAS", aliases: ["spread over treasuries", "corporate spread"], functions: ["CRD"],
     definition: "How much more a corporate bond index yields than Treasuries of the same maturities, once the value of the issuers' right to call their bonds early is taken out. "
@@ -521,7 +522,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   },
   {
     term: "Yield to worst", short: "YTW", aliases: ["worst yield", "yield-to-worst"], functions: ["TRACE", "DVD", "ETF"],
-    shown: ["Yield to worst", "Yield to Worst", "Yld to Worst"], shownBy: { TRACE: ["Yield"] },
+    shown: ["Yield to worst", "Yield to Worst", "Yld to Worst", "YTW"], shownBy: { TRACE: ["Yield"] },
     definition: "The lowest yield a bond can pay without its issuer defaulting: the lower of its yield to maturity and its yield to each date it can be called. "
       + "The yield TRACE shows for a sale is this one, worked out from the sale price; a bond fund's is the average over its holdings, as its sponsor publishes it.",
   },
@@ -533,23 +534,38 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   },
   {
     term: "Duration", aliases: ["effective duration", "average duration", "option-adjusted duration", "eff duration", "avg duration"],
-    functions: ["DVD", "ETF"], shown: ["Effective duration", "Average duration", "Effective Duration", "Average Duration", "Eff Duration", "Avg Duration"],
+    functions: ["DVD", "ETF"], shown: ["Effective duration", "Average duration", "Effective Duration", "Average Duration", "Eff Duration", "Avg Duration", "Duration"],
     definition: "How far a bond fund's price moves when rates move: 7 years of duration is about 7% for a 1 percentage point change. "
       + "Effective (option-adjusted) duration allows for calls; Vanguard publishes an average duration as of the month end.",
   },
   {
     term: "Tax-equivalent yield", short: "TEY", aliases: ["tax equivalent yield", "taxable equivalent yield", "taxable-equivalent yield", "tax equivalent"],
-    functions: ["DVD"], shown: ["Tax-equivalent yield", "Tax-Equivalent Yield"],
+    functions: ["DVD", "ETF", "DES"], shown: ["Tax-equivalent yield", "Tax-Equivalent Yield", "TEY", "Tax-Eq Yld"],
     definition: "The yield a taxable bond needs to match a tax-exempt muni fund after tax: yield / (1 - (federal rate + state rate)), on the SEC yield, "
-      + "else the distribution yield. At 40.8% (37% plus the 3.8% net investment income tax), MUB's 4.04% is 6.83%. A state rate counts only for a "
-      + "single-state fund of that state (CMF, VTEC for California). gloom fn DVD and fundamentals take --tax-rate, --state-rate and --state.",
+      + "else the distribution yield. At 40.8% (37% plus the 3.8% NIIT), MUB's SEC yield of 3.7955% on 2026-11-04 was 6.41%. A state rate counts only for a "
+      + "single-state fund of that state (CMF, VTEC for California). gloom fn DVD (one fund or a ranking of several), ETF, DES and fundamentals take "
+      + "--tax-rate, --state-rate and --state.",
   },
   {
     term: "Muni/Treasury ratio", aliases: ["muni treasury ratio", "muni-to-treasury ratio", "muni/ust ratio", "muni ratio", "municipal treasury ratio"],
-    functions: ["DVD"], shown: ["Muni/Treasury ratio"],
+    functions: ["DVD", "ETF", "DES"], shown: ["Muni/Treasury ratio", "Muni/Tsy"],
     definition: "A muni yield over the Treasury yield of the same maturity, both before tax: under 100% munis yield less than Treasuries, as their tax "
-      + "exemption usually makes them. DVD and fundamentals divide a muni fund's SEC yield by the GC Treasury par yield at the tenor nearest its duration "
-      + "(MUB's 7.13 years: the 7Y). Market ratios read the AAA muni curve, MMD or BVAL, which are licensed and not in the terminal.",
+      + "exemption usually makes them. DVD, ETF, DES and fundamentals divide a muni fund's SEC yield by the GC Treasury par yield at the tenor nearest its "
+      + "duration (MUB's 7.15 years on 2026-11-04: the 7Y, FRED's DGS7). Market ratios read the AAA muni curve, MMD or BVAL, which are licensed and not in the terminal.",
+  },
+  {
+    term: "Net investment income tax", short: "NIIT", aliases: ["net investment income tax", "medicare surtax", "unearned income medicare contribution tax", "3.8% tax"],
+    functions: ["DVD", "ETF", "DES"],
+    definition: "A 3.8% US federal tax on investment income (interest, dividends, capital gains) above $200,000 of modified adjusted gross income, "
+      + "$250,000 for a married couple filing jointly. With the 37% top bracket it makes the 40.8% top rate on taxable bond income that --tax-rate "
+      + "examples use; muni bond interest is exempt from it, as from the regular federal income tax.",
+  },
+  {
+    term: "Alternative minimum tax", short: "AMT", aliases: ["alternative minimum tax", "private activity bond", "private activity bonds", "amt-free", "amt free"],
+    functions: ["DVD", "ETF", "DES"],
+    definition: "A parallel US federal income tax, with fewer deductions, that a taxpayer owes when it comes to more than the regular tax. Interest on "
+      + "private activity munis (airports, housing, student loans) counts toward it, so an AMT payer owes tax on part of a fund that holds them; AMT-free "
+      + "muni funds hold none. The tax-equivalent yield treats a muni fund's income as wholly exempt, so for an AMT payer it overstates such a fund.",
   },
   // Index and sovereign CDS (CDX, SOVR), in the order CDX's columns run, then the trade terms behind them.
   {

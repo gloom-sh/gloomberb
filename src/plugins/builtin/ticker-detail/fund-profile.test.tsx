@@ -176,3 +176,41 @@ test("a US-listed fund's overview shows its fund facts where a company's fundame
     fundFactsCache.reset();
   }
 });
+
+test("DES with --tax-rate draws a muni fund's tax-equivalent yield and muni/Treasury ratio under its fundamentals", async () => {
+  fundFactsCache.reset();
+  const mub = createTestTicker("MUB", "iShares National Muni Bond ETF", { assetCategory: "ETF", exchange: "NYSE", currency: "USD" });
+  const ISHARES = { source: "iShares", url: "https://www.ishares.com/us/products/239766/ishares-national-muni-bond-etf" };
+  const facts = spyOn(apiClient, "getFundFacts").mockImplementation(async () => ({
+    ticker: "MUB", covered: true, name: "iShares National Muni Bond ETF", structure: "registered",
+    expenseRatio: null, nav: null, closingPrice: null, premiumDiscount: null, netAssets: null, sponsor: null, inception: null, index: null,
+    bond: { kind: "municipal", state: null, secYield: { value: 3.7955, asOf: "2026-11-04", ...ISHARES },
+      yieldToWorst: { value: 3.89, asOf: "2026-11-04", ...ISHARES }, duration: { value: 7.15, asOf: "2026-11-04", measure: "effective", ...ISHARES } },
+    stale: false, fetchedAt: null,
+  }));
+  const curve = spyOn(apiClient, "getCloudCurve").mockImplementation(async () => ({ asOf: "2026-11-05", points: [{ tenor: "7Y", years: 7, yield: 4.7 }] }) as never);
+  try {
+    const financials: TickerFinancials = { quote: { ...quote, symbol: "MUB", currency: "USD" }, priceHistory: [], annualStatements: [], quarterlyStatements: [] };
+    const draw = async (tax: Parameters<typeof OverviewTab>[0]["tax"]) => {
+      await act(async () => {
+        await tui.render(<AppContext value={createStaticAppStore(createInitialState(config))}>
+          <OverviewTab ticker={mub} financials={financials} width={120} tax={tax} />
+        </AppContext>, { width: 120, height: 60 });
+      });
+      await settleFrame(tui.setup(), 10);
+      return tui.frame();
+    };
+    const frame = await draw({ rates: { federal: 40.8, state: null } });
+    expect(frame).toContain("Tax-Equivalent Yield");
+    expect(frame).toMatch(/Tax Rate\s+40\.8% federal/);
+    // As narrow as the bond figures above it: what the yield is on, and the Treasury the ratio divides by.
+    expect(frame).toMatch(/Tax-Eq Yld\s+6\.41% on SEC yield/);
+    expect(frame).toMatch(/Muni\/Tsy\s+80\.8% vs 7Y 4\.70%/);
+    // Without a rate the overview is as it was; rates that do not go together say why.
+    expect(await draw(null)).not.toContain("Tax-Equivalent Yield");
+    expect(await draw({ error: "--state-rate and --state go together" })).toMatch(/Tax-Eq Yld\s+— --state-rate and --s/);
+  } finally {
+    facts.mockRestore();
+    curve.mockRestore();
+  }
+});

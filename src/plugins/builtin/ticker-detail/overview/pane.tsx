@@ -18,6 +18,7 @@ import { useOpenResearchTab } from "../research-tab-navigation";
 import type { OverviewFunctionLink } from "./types";
 import { useOverviewDividend } from "./dividend";
 import { useTickerSnapshotState } from "../../../../market-data/hooks";
+import { taxRatesFromSettings } from "../../../../market-data/tax-equivalent";
 import { PaneLinkMenu } from "../../../../components";
 import { FunctionLinkRow } from "./components";
 
@@ -59,6 +60,7 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
       onOpenFunction={openFunction}
       dividend={dividend}
       snapshot={snapshot}
+      tax={taxRatesFromSettings(paneInstance?.settings)}
       news={ticker ? (contentWidth: number) => (
         <TickerNewsHeadlines ticker={ticker} width={contentWidth} openNewsView={openNewsView}>
           <PaneLinkMenu><FunctionLinkRow link={NEWS} onOpen={openFunction} /></PaneLinkMenu>

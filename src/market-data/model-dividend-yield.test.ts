@@ -56,3 +56,13 @@ test("a dividend that stopped by its own cadence is 0 and dated by its last dist
   expect(asked).toBe(1);
   expect(modelDividendYieldNote({ basis: "stated" })).toBeNull();
 });
+
+test("a monthly payer's history that ends keeps its stated yield and says where it ends; none stated stays unknown", async () => {
+  // MUB on 2026-11-06: the history stops at 2026-09-01 while the fund paid on 1 October and 2 November.
+  const mub = history({ symbol: "MUB", dividends: ["2026-05-01", "2026-06-01", "2026-07-01", "2026-08-03", "2026-09-01"].map((exDate) => ({ exDate, amount: 0.27 })) });
+  const at = { now: Date.UTC(2026, 10, 6) };
+  const ended = await loadModelDividendYield({ dividendYield: 0.0299, dividendYieldBasis: "forward", exDividendDate: "2026-09-01" }, "MUB", async () => mub, at);
+  expect(ended).toEqual({ value: 0.0299, basis: "stated", historyEnds: "2026-09-01" });
+  expect(modelDividendYieldNote(ended)).toBe("distribution history ends 2026-09-01");
+  expect(await loadModelDividendYield(null, "MUB", async () => mub, at)).toBeNull();
+});

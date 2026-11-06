@@ -85,7 +85,7 @@ test("a successful bond check distinguishes a municipal yield from confirmed abs
     if (facts) expect(tax.taxEquivalentYield).toBeCloseTo(4 / 0.6, 10);
     else {
       expect(tax.taxEquivalentYield).toBeNull();
-      expect(tax.notes[0]).toContain("is not a bond fund");
+      expect(tax.notes[0]).toContain("no sponsor bond figures are loaded for MUNI");
     }
     expect(factsReads()).toBe(1);
   }

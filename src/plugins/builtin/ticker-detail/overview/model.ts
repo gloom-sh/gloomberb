@@ -26,7 +26,7 @@ import {
 import { reportedQuoteVolume } from "../../../../market-data/market/index-level";
 import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
 import type { OverviewDividendState } from "./dividend";
-import { NO_CURRENT_DIVIDEND } from "../../../../utils/forward-dividend";
+import { lapseValue } from "../../../../utils/forward-dividend";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../../../portfolio/position-metrics";
 import { listingDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../../../market-data/quotes/live-valuation";
 import { atRegularSessionPrice } from "../../../../market-data/quotes/regular-session-valuation";
@@ -274,7 +274,8 @@ export function buildOverviewStats({
   const kind = bond ? "Dist" : "Div";
   const notSec = bond ? { detail: ["not SEC yield", "not SEC"] } : {};
   if (fundamentals && lapse) {
-    stats.push({ label: `Fwd ${kind} Yld`, value: NO_CURRENT_DIVIDEND });
+    // A monthly payer's history that ends early (MUB's at 2026-09-01) says so, beside the last ex-date it holds.
+    stats.push({ label: `Fwd ${kind} Yld`, value: lapseValue(lapse) });
   } else if (fundamentals && dividendYield != null && !dividend?.pending) {
     const basis = fundamentals.dividendYieldBasis;
     const label = basis === "forward" ? `Fwd ${kind} Yld` : basis === "trailing" ? `TTM ${kind} Yld` : `${kind} Yield`;
@@ -292,7 +293,7 @@ export function buildOverviewStats({
   if (exDividendDate && ISO_DATE.test(exDividendDate)) {
     const days = today ? daysUntil(exDividendDate, today) : -1;
     stats.push({
-      label: lapse ? "Last Paid" : "Ex-Dividend",
+      label: lapse ? (lapse.historyEnds ? "Last Ex" : "Last Paid") : "Ex-Dividend",
       value: calendarDate(exDividendDate, today ?? exDividendDate),
       detail: days >= 0 ? daysAhead(days) : undefined,
       link: DIVIDENDS,

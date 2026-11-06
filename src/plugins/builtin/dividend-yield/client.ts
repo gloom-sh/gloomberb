@@ -10,7 +10,7 @@ import { mapQuote } from "../../../sources/gloomberb-cloud/normalizers";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { declaredDividends } from "../../../utils/declared-dividends";
 import { cashInMajorUnits } from "../../../utils/dividend-cash";
-import { lapsedDividend } from "../../../utils/forward-dividend";
+import { lapsedDividend, monthlyHistoryEnd } from "../../../utils/forward-dividend";
 import type { DeclaredCash, DeclaredDividendAction, TickerFinancials } from "../../../types/financials";
 import { logFailure } from "../../../utils/log-failure";
 
@@ -273,7 +273,7 @@ export function buildDividendMetrics(
   const reportedExDate = reportedDividendDate(quoteFields?.exDividendDate ?? null);
   const pastExDates = payments.filter((payment) => payment.exDate <= now).map((payment) => payment.exDate.getTime());
   if (reportedExDate && reportedExDate <= now) pastExDates.push(reportedExDate.getTime());
-  const lastExDividendDate = pastExDates.length > 0 ? new Date(Math.max(...pastExDates)) : null;
+  const latestExDate = pastExDates.length > 0 ? new Date(Math.max(...pastExDates)) : null;
   const upcomingExDates = payments.filter((payment) => payment.exDate > now).map((payment) => payment.exDate.getTime());
   if (reportedExDate && reportedExDate > now) upcomingExDates.push(reportedExDate.getTime());
   const nextExDividendDate = upcomingExDates.length > 0 ? new Date(Math.min(...upcomingExDates)) : null;
@@ -285,10 +285,18 @@ export function buildDividendMetrics(
   // A dividend that has stopped has no forward rate, whatever is still stated for it.
   // Without a usable history only the latest date known says it, on the annual window.
   const declared = options.declared ?? [];
-  const lapse = options.historyAvailable !== false
+  // A monthly payer's history that stops short says so, and its forward rate, trailing yield and last ex-date stop with it:
+  // a rate stated for a distribution the history does not hold (IEF's as of 2026-11-02 beside its 2026-09-01) is not shown.
+  const historyEnd = options.historyAvailable !== false
+    ? monthlyHistoryEnd({ exDates: eligible.map((payment) => payment.exDate), declared: [
+      ...declared, ...payments.filter((payment) => payment.exDate > now).map((payment) => ({ exDate: payment.exDate.toISOString().slice(0, 10) })),
+    ] }, now)
+    : null;
+  const lastExDividendDate = historyEnd ? new Date(historyEnd) : latestExDate;
+  const lapse = historyEnd ? { lastPaid: historyEnd, historyEnds: true as const } : options.historyAvailable !== false
     ? lapsedDividend(statedAsOf, {
-      exDates: [...payments.map((payment) => payment.exDate), ...lastExDividendDate ? [lastExDividendDate] : []], declared }, now)
-    : lapsedDividend([statedAsOf, lastExDividendDate?.toISOString().slice(0, 10)]
+      exDates: [...payments.map((payment) => payment.exDate), ...latestExDate ? [latestExDate] : []], declared }, now)
+    : lapsedDividend([statedAsOf, latestExDate?.toISOString().slice(0, 10)]
       .filter((day): day is string => !!day).sort().at(-1), { exDates: null, declared }, now);
   // A year whose regular payments differ widely (HSBC's final beside its interims) has no one payment to annualize: its total stands.
   const uneven = statedRate != null && !lapse && options.historyAvailable !== false ? unevenRegularPayments(eligible, now) : null;

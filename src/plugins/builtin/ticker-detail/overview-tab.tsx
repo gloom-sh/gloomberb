@@ -68,6 +68,8 @@ import { DelayedMark, delayedMarkWidth, useDelayedMarkMinutes } from "../../../c
 import { safeExternalUrl } from "../../../utils/external-url";
 import { cashRunway, SHORT_RUNWAY_HISTORY } from "../../../utils/cash-runway";
 import { useOfferingNote } from "./financials/offerings";
+import { taxEquivalentFields, useOverviewTaxEquivalent } from "./overview/tax-equivalent";
+import { distributionBasis, type TaxRates } from "../../../market-data/tax-equivalent";
 
 /** Cells between the Day and 52W ranges when they share a row. */
 const RANGE_PAIR_GAP = 4;
@@ -108,6 +110,8 @@ interface OverviewTabProps {
   dividend?: OverviewDividendState;
   /** Where the ticker's snapshot load stands (useTickerSnapshotState), for the state shown before anything of it is in. */
   snapshot?: TickerSnapshotState;
+  /** The rates `fn DES --tax-rate` set (taxRatesFromSettings): a fund's tax-equivalent yield and muni/Treasury ratio follow its facts. */
+  tax?: { rates: TaxRates } | { error: string } | null;
 }
 
 /** Nothing of the ticker is in yet: no quote, profile, figures or history. */
@@ -139,7 +143,7 @@ export function OverviewTab(props: OverviewTabProps) {
 /** Where a fund's facts open: the ETF function, its facts over its filings. */
 const FUND_FACTS_LINK: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
 
-function ResolvedOverviewTab({ width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, news, dividend }: OverviewTabProps & { ticker: TickerRecord }) {
+function ResolvedOverviewTab({ width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, news, dividend, tax = null }: OverviewTabProps & { ticker: TickerRecord }) {
   const trade = useResearchTrading();
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const portfolios = useAppSelector((state) => state.config.portfolios);
@@ -204,8 +208,21 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   ].filter((part) => part.length > 0);
 
   // A US-listed fund's facts (fee, NAV, premium, net assets) stand where a company's fundamentals would; each opens ETF.
-  const fundFactsSymbol = resolveTickerInstrumentKind(ticker, financials) === "fund" && mayBeUsEquityOrFundTicker(ticker) ? ticker.metadata.ticker : null;
-  const fundFacts = useFundFacts(fundFactsSymbol).data?.payload;
+  const instrumentKind = resolveTickerInstrumentKind(ticker, financials);
+  const fundFactsSymbol = instrumentKind === "fund" && mayBeUsEquityOrFundTicker(ticker) ? ticker.metadata.ticker : null;
+  const fundFactsResource = useFundFacts(fundFactsSymbol);
+  const fundFacts = fundFactsResource.data?.payload;
+  // With --tax-rate: on the sponsor's SEC yield, else the distribution yield fundamentals states, as `fundamentals` reads it.
+  const taxEquivalent = useOverviewTaxEquivalent({
+    symbol: ticker.metadata.ticker,
+    tax,
+    bond: !fundFactsSymbol ? null : fundFacts ? (fundFacts.covered ? fundFacts.bond ?? null : null)
+      : fundFactsResource.loading ? undefined : null,
+    // A stock, or a fund listed abroad, has no bond figures to read, and says why once its quote says what it is.
+    noBondFigures: !financials?.quote ? null : instrumentKind !== "fund" ? "not-a-fund" : !fundFactsSymbol ? "listed-abroad" : null,
+    distribution: distributionBasis(financials?.fundamentals?.dividendYield, financials?.fundamentals?.dividendYieldBasis === "trailing" ? "trailing" : "forward"),
+  });
+  const taxFields = taxEquivalent ? taxEquivalentFields(taxEquivalent) : [];
   // Each figure dated; one older than it looks takes the warning colour, as in ETF.
   const fundFactFields: StatField[] = fundFacts?.covered
     ? fundFactOverviewFields(fundFacts).map(({ warn, ...field }) => ({ ...field, ...(warn ? { valueColor: colors.warning } : {}), link: FUND_FACTS_LINK }))
@@ -616,6 +633,13 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
               {/* The statements behind the figures, for a company that has them. */}
               {onOpenFunction && hasStatementFinancials(financials) ? <FunctionLinkRow link={FINANCIALS} onOpen={onOpenFunction} /> : null}
             </PaneLinkMenu>
+          </Box>
+        )}
+
+        {taxFields.length > 0 && (
+          <Box flexDirection="column">
+            <SectionHeading title={t("Tax-Equivalent Yield")} />
+            <FundamentalsGrid fields={taxFields} width={contentWidth} />
           </Box>
         )}
 

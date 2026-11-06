@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { forwardDividendBasis, forwardDividendNote, lapsedDividend } from "./forward-dividend";
+import { forwardDividendBasis, forwardDividendNote, lapsedDividend, lapseValue, lastPaidNote, monthlyHistoryEnd, noCurrentDividend } from "./forward-dividend";
 
 test("a forward rate is never as of a day that has not come: an ex-date ahead names the declared distribution", () => {
   const now = new Date("2026-10-13T17:00:00Z");
@@ -43,10 +43,11 @@ test("a dividend lapses past its own usual interval plus grace, read from the is
   expect(lapsedDividend("2026-02-27", { exDates: ["2026-02-27", "2026-03-20"] }, at("2026-05-29"))).toBeNull();
   expect(lapsedDividend("2026-02-27", { exDates: ["2026-02-27", "2026-03-20"] }, at("2026-08-03"))).toBeNull();
   expect(lapsedDividend("2026-02-27", { exDates: ["2026-02-27", "2026-03-20"] }, at("2026-08-04"))).toEqual({ lastPaid: "2026-03-20" });
-  // Monthly: a month and a month's grace (at least a month), so day 60 is current and day 61 is not.
+  // Monthly: day 40 is current, and from day 41 the history ends rather than the dividend stopped (monthlyHistoryEnd).
   const monthly = ["2026-06-30", "2026-07-31", "2026-08-31", "2026-09-30"];
-  expect(lapsedDividend("2026-09-30", { exDates: monthly }, at("2026-11-29"))).toBeNull();
-  expect(lapsedDividend("2026-09-30", { exDates: monthly }, at("2026-11-30"))).toEqual({ lastPaid: "2026-09-30" });
+  expect(lapsedDividend("2026-09-30", { exDates: monthly }, at("2026-11-09"))).toBeNull();
+  expect(lapsedDividend("2026-09-30", { exDates: monthly }, at("2026-11-10"))).toEqual({ lastPaid: "2026-09-30", historyEnds: true });
+  expect(noCurrentDividend({ lastPaid: "2026-09-30", historyEnds: true })).toBe("distribution history ends 2026-09-30");
   // Annual, and without a history to read it from: fifteen months, as Gloom Cloud withdraws a yield.
   expect(lapsedDividend("2025-05-10", { exDates: ["2024-05-12", "2025-05-10"] }, at("2026-08-08"))).toBeNull();
   expect(lapsedDividend("2025-05-10", { exDates: ["2024-05-12", "2025-05-10"] }, at("2026-08-09"))).toEqual({ lastPaid: "2025-05-10" });
@@ -56,4 +57,31 @@ test("a dividend lapses past its own usual interval plus grace, read from the is
   expect(lapsedDividend("2026-02-27", { exDates: [...quarterly, "2026-06-01"] }, at("2026-07-14"))).toBeNull();
   expect(lapsedDividend("2026-11-19", { exDates: quarterly }, at("2026-10-16"))).toBeNull();
   expect(lapsedDividend("2026-02-27", { exDates: quarterly, declared: [{ exDate: "2026-11-02" }] }, at("2026-10-16"))).toBeNull();
+});
+
+test("a monthly payer's history ends once its latest distribution is more than 40 days old", () => {
+  const at = (day: string) => new Date(`${day}T15:00:00Z`);
+  // MUB on 2026-11-06: the history stops at 2026-09-01 while the fund paid on 1 October and 2 November.
+  const mub = ["2026-05-01", "2026-06-01", "2026-07-01", "2026-08-03", "2026-09-01"];
+  expect(monthlyHistoryEnd({ exDates: mub }, at("2026-11-06"))).toBe("2026-09-01");
+  expect(monthlyHistoryEnd({ exDates: mub }, at("2026-10-11"))).toBeNull();
+  // A quarterly payer is due later, and a declared distribution says the next one is known.
+  expect(monthlyHistoryEnd({ exDates: ["2025-12-15", "2026-03-16", "2026-06-15", "2026-09-15"] }, at("2026-11-06"))).toBeNull();
+  expect(monthlyHistoryEnd({ exDates: mub, declared: [{ exDate: "2026-12-01" }] }, at("2026-11-06"))).toBeNull();
+  expect(monthlyHistoryEnd({ exDates: null }, at("2026-11-06"))).toBeNull();
+});
+
+test("a monthly payer silent more than 183 days stopped paying, and says so wherever its yield shows", () => {
+  const at = (day: string) => new Date(`${day}T15:00:00Z`);
+  // FXF paid monthly until 2024-04-01: 183 days on, its history still ends there; from day 184 it has no current dividend.
+  const fxf = ["2024-01-02", "2024-02-01", "2024-03-01", "2024-04-01"];
+  expect(lapsedDividend("2024-04-01", { exDates: fxf }, at("2024-10-01"))).toEqual({ lastPaid: "2024-04-01", historyEnds: true });
+  expect(lapsedDividend("2024-04-01", { exDates: fxf }, at("2024-10-02"))).toEqual({ lastPaid: "2024-04-01" });
+  expect(monthlyHistoryEnd({ exDates: fxf }, at("2026-11-06"))).toBeNull();
+  const lapse = lapsedDividend("2024-04-01", { exDates: fxf }, at("2026-11-06"))!;
+  expect(noCurrentDividend(lapse)).toBe("no current dividend (last paid 2024-04-01)");
+  expect([lapseValue(lapse), lastPaidNote(lapse)]).toEqual(["no current dividend", "last paid 2024-04-01"]);
+  // A history that ends reads the same in a short cell: `history ends`, beside its last ex-date.
+  const ended = lapsedDividend("2024-04-01", { exDates: fxf }, at("2024-06-01"))!;
+  expect([lapseValue(ended), lastPaidNote(ended)]).toEqual(["history ends", "last ex 2024-04-01"]);
 });
