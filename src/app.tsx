@@ -10,7 +10,7 @@ import {
   type AppState,
 } from "./state/app/context";
 import type { AppAction } from "./core/state/app/state";
-import { bindAppActivity, useAppActive, useAppVisible } from "./state/app/activity";
+import { bindAppActivity, isAppVisible, subscribeAppVisibility, useAppActive, useAppVisible } from "./state/app/activity";
 import { Header } from "./components/layout/header";
 import { StatusBar } from "./components/layout/status-bar";
 import { useAppChromeShown } from "./components/layout/presentation";
@@ -42,6 +42,7 @@ import type { MarketDataCoordinator } from "./market-data/coordinator";
 import { createAppNotifier } from "./notifications/app-notifier";
 import { attachSeenPaneNotices } from "./components/pane-notice-seen";
 import { attachNotificationLog } from "./notifications/notification-log";
+import { attachListingIndex } from "./tickers/search/listing-index";
 import { useBrokerImportRuntime } from "./app/runtime/broker-import";
 import { useDesktopDeepLinkRuntime } from "./app/runtime/desktop-deeplink";
 import { useDesktopApplicationMenuRuntime } from "./app/runtime/desktop-menu";
@@ -443,6 +444,15 @@ function AppInner({
   useEffect(() => (
     appWideWorkElsewhere ? undefined : attachSeenPaneNotices(pluginRegistry.persistence.pluginState)
   ), [appWideWorkElsewhere, pluginRegistry]);
+  // The listings a typed symbol names before search answers. Every window reads
+  // them; the main window keeps what search answers and, while it can be seen,
+  // refreshes the shipped ones.
+  useEffect(() => attachListingIndex({
+    pluginState: pluginRegistry.persistence.pluginState,
+    writable: !appWideWorkElsewhere,
+    searchBatch: dataProvider.searchBatch ? (queries, options) => dataProvider.searchBatch!(queries, options) : null,
+    visibility: { isVisible: isAppVisible, subscribe: subscribeAppVisibility },
+  }), [appWideWorkElsewhere, dataProvider, pluginRegistry]);
 
   // Persist layout changes (switching, saving, deleting, renaming layouts).
   // The saved layouts also mirror live pane state and focus, so they change on

@@ -65,6 +65,7 @@
     "desktop:release:windows": "electrobun build --env=stable && bun scripts/name-desktop-artifacts.ts artifacts stable",
     "desktop:sync": "electrobun sync && bun run scripts/patch-electrobun-devkit.ts",
     "docs:snapshot": "bun run scripts/update-docs-snapshot.ts",
+    "listings:snapshot": "bun run scripts/update-major-listings.ts",
     "plugins:manifest": "bun run scripts/generate-plugin-manifest.ts",
     "plugins:manifest:check": "bun run scripts/generate-plugin-manifest.ts --check",
     "plugins:registry:check": "bun run scripts/check-registry-plugins.ts",
