@@ -708,11 +708,20 @@ export class CloudDataApi {
     symbol: string,
     exchange: string,
     params: CloudHistoryParams = {},
-    options: { signal?: AbortSignal } & BatchableRead = {},
+    options: {
+      signal?: AbortSignal;
+      /**
+       * With `batch`, the dates are the window every read asked with this one
+       * shares (a portfolio's holdings over the risk model's months), so they
+       * go out together over it.
+       */
+      sharedWindow?: boolean;
+    } & BatchableRead = {},
   ): Promise<CloudMarketResponse<CloudPricePointPayload[]>> {
-    // Bars asked with others, not a session or recovery of their own, may go out with the others asked in the same moment over the same window.
-    const shared = options.batch && !options.signal && !params.historyRecovery && !params.session;
     const dated = Boolean(params.startDate || params.endDate);
+    // Trailing bars asked with others, or bars over a window shared with them, not a session or recovery of their own,
+    // may go out with the others asked in the same moment.
+    const shared = options.batch && !options.signal && !params.historyRecovery && !params.session && (!dated || options.sharedWindow);
     return this.readListing(() => shared
       ? (dated ? this.datedHistories : this.histories).read({
         symbol,

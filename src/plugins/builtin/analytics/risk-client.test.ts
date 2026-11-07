@@ -151,7 +151,7 @@ test("a cancelled load stops requesting histories, which go out batched; its oth
       symbol: string,
       _exchange: string,
       _params: unknown,
-      options?: { signal?: AbortSignal; batch?: boolean },
+      options?: { signal?: AbortSignal; batch?: boolean; sharedWindow?: boolean },
     ) => {
       requested.push(symbol);
       historyOptions.push(options);
@@ -173,5 +173,5 @@ test("a cancelled load stops requesting histories, which go out batched; its oth
   expect(requested.length).toBeLessThanOrEqual(RISK_FACTOR_INSTRUMENTS.length);
   expect(signals.every((signal) => signal === controller.signal)).toBe(true);
   // Shared with other reads in a batch request, a history is not stopped by one load's signal.
-  expect(historyOptions.every((options) => JSON.stringify(options) === JSON.stringify({ batch: true }))).toBe(true);
+  expect(historyOptions.every((options) => JSON.stringify(options) === JSON.stringify({ batch: true, sharedWindow: true }))).toBe(true);
 });

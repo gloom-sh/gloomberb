@@ -81,9 +81,10 @@ test("histories over one window go out together with it, and a service that answ
       }
       return inWindow(-1);
     });
-    const closes = await Promise.all(["AAPL", "MSFT", "SPY"].map((symbol) => api.getCloudHistory(symbol, "", window, BATCH)));
+    const shared = { ...BATCH, sharedWindow: true };
+    const closes = await Promise.all(["AAPL", "MSFT", "SPY"].map((symbol) => api.getCloudHistory(symbol, "", window, shared)));
     // The next load's reads: batched again, or on their own while the window is not read.
-    const again = await Promise.all(["QQQ", "IWM"].map((symbol) => api.getCloudHistory(symbol, "", window, BATCH)));
+    const again = await Promise.all(["QQQ", "IWM"].map((symbol) => api.getCloudHistory(symbol, "", window, shared)));
     return { closes: [...closes, ...again].map((history) => history.data?.[0]?.close), asked: asked.map((request) => request.path.split("?")[0]), first: asked[0]! };
   };
   const served = await read(true);
