@@ -140,6 +140,20 @@ export function withSecurityHeaders(response: Response, options: { share?: boole
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
+/**
+ * Where a `/api/...` request goes: the API origin followed by the rest of the
+ * path, which must start with exactly one slash. The path is appended, never
+ * resolved against the origin, since `//host/x` (or `\host/x`, which the URL
+ * parser reads as the same) resolves to another host. Anything that does not
+ * end up on the API origin gets no upstream.
+ */
+function apiUpstreamUrl(url: URL): URL | null {
+  const path = url.pathname.slice("/api".length) || "/";
+  if (!path.startsWith("/") || /^\/[/\\]/.test(path)) return null;
+  const upstream = new URL(`${API_ORIGIN}${path}${url.search}`);
+  return upstream.origin === API_ORIGIN ? upstream : null;
+}
+
 async function proxyApi(request: Request, fetchApi: ApiFetch): Promise<Response> {
   const url = new URL(request.url);
   if (!API_METHODS.has(request.method)) {
@@ -152,7 +166,8 @@ async function proxyApi(request: Request, fetchApi: ApiFetch): Promise<Response>
   if (origin && origin !== url.origin) {
     return Response.json({ error: "Origin not allowed" }, { status: 403 });
   }
-  const upstreamUrl = new URL(`${url.pathname.slice(4) || "/"}${url.search}`, API_ORIGIN);
+  const upstreamUrl = apiUpstreamUrl(url);
+  if (!upstreamUrl) return Response.json({ error: "Not found" }, { status: 404 });
   return fetchApi(new Request(upstreamUrl, request));
 }
 

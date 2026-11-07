@@ -190,6 +190,48 @@ describe("static Cloudflare host", () => {
     expect(proxied).toBe(false);
   });
 
+  test("keeps every proxied API request on api.gloom.sh", async () => {
+    const { env } = fixture();
+    const proxy = async (path: string) => {
+      const upstream: string[] = [];
+      const response = await handleRequest(new Request(`https://term.example${path}`, {
+        headers: { Cookie: "session=browser-cookie" },
+      }), env, async (request) => {
+        upstream.push(request.url);
+        return Response.json({ ok: true });
+      });
+      return { status: response.status, upstream };
+    };
+
+    // A path starting with two slashes (the URL parser reads `\` as `/`) names
+    // another host when resolved against the API origin.
+    for (const path of [
+      "/api//example.com/x",
+      "/api/\\example.com/x",
+      "/api/\\/example.com/x",
+      "/api//\\example.com/x",
+      "/api///example.com/x",
+      "/api/\t/example.com/x",
+      "/api//example.com/x?next=/",
+    ]) {
+      expect(await proxy(path)).toEqual({ status: 404, upstream: [] });
+    }
+
+    // Encoded separators are path text on the API host, not an authority.
+    for (const [path, expected] of [
+      ["/api/%2F%2Fexample.com/x", "https://api.gloom.sh/%2F%2Fexample.com/x"],
+      ["/api/%5Cexample.com/x", "https://api.gloom.sh/%5Cexample.com/x"],
+      ["/api/%5C%5Cexample.com/x", "https://api.gloom.sh/%5C%5Cexample.com/x"],
+      ["/api/@example.com/x", "https://api.gloom.sh/@example.com/x"],
+      ["/api", "https://api.gloom.sh/"],
+      ["/api/", "https://api.gloom.sh/"],
+      ["/api/auth/get-session", "https://api.gloom.sh/auth/get-session"],
+      ["/api/news?q=//example.com&limit=2", "https://api.gloom.sh/news?q=//example.com&limit=2"],
+    ] as const) {
+      expect(await proxy(path)).toEqual({ status: 200, upstream: [expected] });
+    }
+  });
+
   test("checks plugin proxy sessions with api.gloom.sh, sending only the session cookie", async () => {
     const { env, requests } = fixture();
     const checks: Request[] = [];
