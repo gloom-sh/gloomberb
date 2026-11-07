@@ -49,10 +49,10 @@ test("equal symbols on different venues retain separate sectors even when the ba
   const { createTestDataProvider } = await import("../../../test-support/data-provider");
   const { collectionHoldingsHeadless } = await import("../portfolio-list/headless");
   const { portfolioRiskHeadless } = await import("./risk-headless");
-  const holdings = spyOn(collectionHoldingsHeadless, "load").mockResolvedValue({
+  const holdings = spyOn(collectionHoldingsHeadless, "load").mockImplementation(async () => ({
     rows: [{ symbol: "SAN", exchange: "NYSE", marketValue: 50 }, { symbol: "SAN", exchange: "EPA", marketValue: 50 }],
     complete: true, metadata: { positions: 2, totals: { total: 100 } },
-  });
+  }));
   try {
     const context = createTestHeadlessContext({
       marketData: createTestDataProvider({ getTickerFinancialsBatch: async targets => targets.map(target => ({ target,
