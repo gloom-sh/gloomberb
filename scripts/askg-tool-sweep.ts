@@ -9,6 +9,9 @@
  *   GLOOMBERB_HOME=~/.cache/gloom-smoke/sweep GLOOMBERB_SESSION_TOKEN=... \
  *     bun scripts/askg-tool-sweep.ts [--runs 3] [--only 13f,pf] [--budget-ms 20000] [--json out.json]
  *
+ * `--check` runs nothing: offline, it fails when a tool has no case or a case
+ * names no tool (scripts/askg-tool-sweep-cases.test.ts runs it in CI).
+ *
  * GLOOMBERB_HOME must be a throwaway profile: the sweep seeds a watchlist
  * and a portfolio into it. Without a session the tools run signed out, which
  * limits some of them. Cases live in askg-tool-sweep-cases.ts.
@@ -23,6 +26,8 @@ import { buildASKGClientManifest } from "../src/plugins/builtin/cloud/askg/manif
 import { createASKGToolExecutor } from "../src/plugins/builtin/cloud/askg/executor";
 import type { ToolResultPayload } from "../src/plugins/builtin/cloud/askg/protocol";
 import type { TickerRecord } from "../src/types/ticker";
+import type { MarketContext } from "../src/cli/types";
+import { createDefaultConfig } from "../src/types/config";
 import { apiClient } from "../src/api-client";
 import { resolvePersistedCloudSessionToken } from "../src/cli/pane-functions/cloud-session";
 import {
@@ -39,12 +44,34 @@ const { values: flags } = parseArgs({
     only: { type: "string" },
     "budget-ms": { type: "string", default: "20000" },
     json: { type: "string" },
+    check: { type: "boolean", default: false },
   },
 });
 const runs = Math.max(1, Number(flags.runs));
 const budgetMs = Number(flags["budget-ms"]);
 /** Long enough to see how slow a slow tool really is. */
 const CALL_TIMEOUT_MS = 90_000;
+
+/** The tools without a case and the cases naming no tool, against the tools Ask Gloom is offered. */
+function coverage(tools: readonly string[], swept: readonly string[]): { unswept: string[]; unknown: string[] } {
+  return {
+    unswept: tools.filter((name) => !swept.includes(name)),
+    unknown: [...new Set(swept.filter((name) => !tools.includes(name)))],
+  };
+}
+
+if (flags.check) {
+  // Discovery stays offline (src/cli/pane-functions/catalog.test.ts), so the manifest needs no profile or session.
+  const context = { config: createDefaultConfig("/synthetic/askg-tool-sweep") } as MarketContext;
+  const offered = (await buildASKGClientManifest(await createPaneCatalog(context, getLoadablePlugins()))).tools
+    .filter((tool) => tool.source === "headless")
+    .map((tool) => tool.name);
+  const { unswept, unknown } = coverage(offered, SWEEP_CASES.map((entry) => entry.tool));
+  if (unswept.length) console.log(`No case for: ${unswept.join(", ")} (add one to scripts/askg-tool-sweep-cases.ts)`);
+  if (unknown.length) console.log(`Not offered to Ask Gloom: ${unknown.join(", ")}`);
+  console.log(`${offered.length} tools, ${SWEEP_CASES.length} cases`);
+  process.exit(unswept.length || unknown.length ? 1 : 0);
+}
 
 const home = process.env.GLOOMBERB_HOME;
 if (!home || resolve(home) === resolve(process.env.HOME ?? "", ".gloomberb")) {
@@ -144,9 +171,8 @@ const executor = createASKGToolExecutor({
 
 const only = flags.only ? new Set(flags.only.split(",").map((name) => name.trim().toLowerCase())) : null;
 const cases = SWEEP_CASES.filter((entry) => !only || only.has(entry.tool));
-const advertised = new Set(headless.map((tool) => tool.name));
-const unknown = [...new Set(cases.map((entry) => entry.tool).filter((tool) => !advertised.has(tool)))];
-const unswept = only ? [] : headless.map((tool) => tool.name).filter((name) => !SWEEP_CASES.some((entry) => entry.tool === name));
+const { unswept: allUnswept, unknown } = coverage(headless.map((tool) => tool.name), cases.map((entry) => entry.tool));
+const unswept = only ? [] : allUnswept;
 
 const results: CaseResult[] = [];
 let sequence = 0;
