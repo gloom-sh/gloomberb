@@ -44,6 +44,7 @@ import {
   eventCountry,
   matchesCountry,
   matchesEventSearch,
+  policyDecisionsNamed,
   matchesImpact,
   NO_CONSENSUS_NOTE,
   noScheduledReleasesMessage,
@@ -410,6 +411,18 @@ function econEmptyMessage(from: string | null, listedThrough: string | null, sto
 }
 
 /**
+ * What an empty search for a bank's own names could mean: `selic` is the
+ * Copom's decision, none of which falls in the window, and CBR has the rate
+ * and its next decision. Null for any other search.
+ */
+function policyDecisionHint(search: string): string | null {
+  const named = policyDecisionsNamed(search);
+  if (named.length === 0) return null;
+  const events = named.map(({ country, event }) => `${event} (${country})`).join(", ");
+  return `"${search}" is the ${events}; none falls in this window. The rate and its next decision: gloom fn CBR.`;
+}
+
+/**
  * A date option, read as an ISO date; null when it was not given. `expand`
  * reads a shorthand as a full date first, and `form` is how the message names
  * what the option takes.
@@ -592,7 +605,8 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     }, {
       dateKey: "date",
       defaultLimit: 50,
-      empty: allUnscheduled ? noScheduledReleasesMessage(unscheduled) : econEmptyMessage(from, listedThrough, listedAfter != null),
+      empty: allUnscheduled ? noScheduledReleasesMessage(unscheduled)
+        : [econEmptyMessage(from, listedThrough, listedAfter != null), search == null ? null : policyDecisionHint(search)].filter(Boolean).join(" "),
       ...(footnote ? { footnote } : {}),
       // What the text says under the table, a script reads in the CSV's closing lines.
       exportNotes: notes,

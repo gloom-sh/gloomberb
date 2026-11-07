@@ -19,6 +19,8 @@ import {
   resetEconCalendarPersistence,
   actualColor,
   valueColumnWidth,
+  matchesEventSearch,
+  policyDecisionsNamed,
 } from "./calendar-model";
 import { colors } from "../../../theme/colors";
 
@@ -269,4 +271,17 @@ describe("econ calendar energy units", () => {
     expect(actualColor("-3.061M bbl", "-4.000M bbl")).toBe(colors.positive);
     expect(actualColor("0.034M b/d", "0.034M b/d")).toBe(colors.text);
   });
+});
+
+test("a bank's own names find its decision, and an empty search names the decisions they mean", () => {
+  const decision = (country: string, event: string) => ({ country, event, actual: null, forecast: null, prior: "13.75%", source: { name: "Central Bank of Brazil" } });
+  expect(matchesEventSearch(decision("BR", "Copom Interest Rate Decision"), "selic")).toBe(true);
+  expect(matchesEventSearch(decision("MX", "Banxico Interest Rate Decision"), "tasa objetivo")).toBe(true);
+  expect(matchesEventSearch(decision("BR", "Copom Interest Rate Decision"), "policy rate")).toBe(true);
+  // Another bank's name, or another release, is not a match.
+  expect(matchesEventSearch(decision("MX", "Banxico Interest Rate Decision"), "selic")).toBe(false);
+  expect(matchesEventSearch(decision("BR", "IPCA CPI m/m"), "selic")).toBe(false);
+  expect(policyDecisionsNamed("selic")).toEqual([{ country: "BR", event: "Copom Interest Rate Decision" }]);
+  expect(policyDecisionsNamed("banxico")).toEqual([{ country: "MX", event: "Banxico Interest Rate Decision" }]);
+  expect(policyDecisionsNamed("nonfarm")).toEqual([]);
 });

@@ -314,8 +314,67 @@ export function eventSeriesId(event: Pick<EconEvent, "country" | "event">): stri
  */
 export function eventSearchNames(event: Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior">): string[] {
   const series = resolveFredMapping(event.event, event.country)?.seriesId;
-  return [...[event.event, econEventName(event)].map(compactName), ...series ? statNamesOf(series) : []];
+  const policy = POLICY_DECISION.test(event.event) ? policyRateNames(event.country) : [];
+  return [...[event.event, econEventName(event)].map(compactName), ...series ? statNamesOf(series) : [], ...policy];
 }
+
+/** A central bank's decision or fixing, under the titles the calendar gives them. */
+const POLICY_DECISION = /interest rate decision|rate decision|loan prime rate|policy rate|cash rate|bank rate|funds rate|deposit facility rate|selic|repo rate|key rate/i;
+
+/**
+ * The names people give a bank's policy rate and its committee, so `--search
+ * selic` finds the Copom's decision and `--search banxico` Banxico's: by the
+ * calendar's country, with the names every bank's decision answers to.
+ */
+const POLICY_RATE_NAMES: Readonly<Record<string, readonly string[]>> = {
+  US: ["fed funds", "federal funds", "FOMC", "Federal Reserve"],
+  EU: ["ECB", "deposit rate", "deposit facility", "refi rate"],
+  GB: ["Bank Rate", "BoE", "MPC"],
+  JP: ["BoJ", "Bank of Japan"],
+  CA: ["BoC", "overnight rate"],
+  AU: ["RBA", "cash rate"],
+  NZ: ["RBNZ", "OCR", "official cash rate"],
+  CH: ["SNB"],
+  CN: ["LPR", "loan prime rate", "PBoC"],
+  IN: ["RBI", "repo rate"],
+  ID: ["BI rate", "Bank Indonesia"],
+  KR: ["BoK", "base rate"],
+  BR: ["Selic", "Copom", "Banco Central do Brasil", "BCB"],
+  MX: ["Banxico", "Banco de Mexico", "tasa objetivo", "target rate"],
+  RU: ["key rate", "Bank of Russia", "CBR"],
+  TR: ["CBRT", "TCMB", "one-week repo"],
+  ZA: ["SARB", "repo rate"],
+  NO: ["Norges Bank", "sight deposit rate"],
+  SE: ["Riksbank"],
+};
+const ANY_POLICY_RATE = ["policy rate", "rate decision", "interest rate", "central bank", "monetary policy"];
+
+function policyRateNames(country: string): string[] {
+  return [...POLICY_RATE_NAMES[country.toUpperCase()] ?? [], ...ANY_POLICY_RATE].map(compactName);
+}
+
+/**
+ * The decisions a search for a bank's own names means, for an empty answer to
+ * say: `selic` is Brazil's Copom decision. Every word of the query must be in
+ * one of the bank's names; empty for a query no bank's names hold, and for the
+ * names every bank's decision answers to (a query of those already lists them).
+ */
+export function policyDecisionsNamed(query: string): Array<{ country: string; event: string }> {
+  const words = query.split(/\s+/).map(compactName).filter(Boolean);
+  if (words.length === 0) return [];
+  return Object.entries(POLICY_RATE_NAMES).flatMap(([country, names]) =>
+    names.map(compactName).some((name) => words.every((word) => name.includes(word)))
+      ? [{ country, event: POLICY_DECISION_TITLES[country] ?? "Interest Rate Decision" }] : []);
+}
+
+/** How the calendar titles each bank's decision (China's is its LPR fixing). */
+const POLICY_DECISION_TITLES: Readonly<Record<string, string>> = {
+  US: "Fed Interest Rate Decision", EU: "ECB Interest Rate Decision", GB: "BoE Interest Rate Decision", JP: "BoJ Interest Rate Decision",
+  CA: "BoC Interest Rate Decision", AU: "RBA Interest Rate Decision", NZ: "RBNZ Interest Rate Decision", CH: "SNB Interest Rate Decision",
+  CN: "1-y Loan Prime Rate", IN: "RBI Interest Rate Decision", ID: "BI Interest Rate Decision", KR: "BoK Interest Rate Decision",
+  BR: "Copom Interest Rate Decision", MX: "Banxico Interest Rate Decision", RU: "Bank of Russia Interest Rate Decision",
+  TR: "CBRT Interest Rate Decision", ZA: "SARB Interest Rate Decision", NO: "Norges Bank Interest Rate Decision", SE: "Riksbank Interest Rate Decision",
+};
 
 /**
  * Whether a row carries every word of `query` in one of its names or its
