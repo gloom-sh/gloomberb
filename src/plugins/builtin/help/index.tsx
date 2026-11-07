@@ -357,7 +357,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
       ],
     },
     {
-      // Docked panes keep the saved layout and floating ones follow the pointer; the keyboard's way is Window Mode below.
+      // Panes in the layout keep the saved layout and floating ones follow the pointer; the keyboard's way is Window Mode below.
       label: "Layout",
       items: [
         keyEntry("layout-drag", ["Drag"], "Floating panes can be dragged by the title bar and resized from the lower-right corner."),
@@ -374,8 +374,8 @@ function HelpPane({ focused, width, height }: PaneProps) {
           ? [entry("enter-resize", windowResizeBadges, "Enter window mode to resize the focused window.")]
           : []),
         keyEntry("mode", ["m", "r"], "Switch between move and resize."),
-        keyEntry("dock", ["d"], "Dock or float the selected window."),
-        keyEntry("move", ["Arrows", "h/j/k/l"], "Move, resize, or choose a dock target."),
+        keyEntry("float", ["d"], "Float the selected window, or return it to the layout."),
+        keyEntry("move", ["Arrows", "h/j/k/l"], "Move, resize, or choose where it goes in the layout."),
         keyEntry("step", ["Shift"], "Use larger move and resize steps with direction keys."),
         keyEntry("cycle", ["Tab", "w"], "Cycle windows or resize handles."),
         keyEntry("commit", ["Enter", "Esc"], "Commit pending changes or exit window mode."),

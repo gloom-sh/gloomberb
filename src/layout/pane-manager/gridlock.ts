@@ -1,5 +1,6 @@
 import type { DockLayoutNode, FloatingPaneEntry, LayoutConfig } from "../../types/config";
 import { buildDockStack, isDockStack } from "./dock-stack";
+import { floatingStacks, hiddenFloatingTabIds } from "./floating-stack";
 import type { AppNotificationRequest } from "../../types/plugin";
 import {
   boundsForRects,
@@ -165,7 +166,10 @@ export function gridlockAllPanes(
   const dockedRects: GridlockRect[] = leaves.map((leaf) => ({ instanceId: leaf.instanceId, ...leaf.rect }));
   // A stack is tiled as the tab it shows and keeps its other tabs.
   const stacks = new Map(leaves.flatMap((leaf) => (leaf.stack ? [[leaf.instanceId, leaf.stack] as const] : [])));
-  const floatingRects: GridlockRect[] = visibleLayout.floating.map((entry) => ({
+  // A floating stack is tiled as the tab it shows, and keeps its tabs as a docked stack.
+  for (const [shown, members] of floatingStacks(visibleLayout.floating)) stacks.set(shown, members);
+  const hiddenTabs = hiddenFloatingTabIds(visibleLayout.floating);
+  const floatingRects: GridlockRect[] = visibleLayout.floating.filter((entry) => !hiddenTabs.has(entry.instanceId)).map((entry) => ({
     instanceId: entry.instanceId,
     x: entry.x,
     y: entry.y,

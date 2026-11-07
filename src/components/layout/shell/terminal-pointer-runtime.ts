@@ -1,10 +1,11 @@
 import { useCallback, type Dispatch, type SetStateAction } from "react";
-import type {
-  DockDividerLayout,
-  DockLeafLayout,
-  FloatingRect,
-  LayoutBounds,
-  ResolvedPane,
+import {
+  floatingStacks,
+  type DockDividerLayout,
+  type DockLeafLayout,
+  type FloatingRect,
+  type LayoutBounds,
+  type ResolvedPane,
 } from "../../../layout/pane-manager";
 import {
   constrainFloatingRectToBounds,
@@ -48,6 +49,8 @@ interface UseShellTerminalPointerRuntimeOptions {
   setMenuState: Dispatch<SetStateAction<ActionMenuState | null>>;
   transientFocusActive: boolean;
   visibleFloatingPanes: VisibleFloatingPane[];
+  /** The layout's floating windows in its order: a floating stack's tabs. */
+  floatingOrder: readonly { instanceId: string }[];
   width: number;
   windowMode: WindowEditState | null;
 }
@@ -105,6 +108,7 @@ export function useShellTerminalPointerRuntime({
   setMenuState,
   transientFocusActive,
   visibleFloatingPanes,
+  floatingOrder,
   width,
   windowMode,
 }: UseShellTerminalPointerRuntimeOptions) {
@@ -262,15 +266,19 @@ export function useShellTerminalPointerRuntime({
           return;
         }
         if (relativeY === 0) {
+          // A press on a tab of a floating stack pulls that tab out; the rest
+          // of the bar moves the stack. A floating title bar is always framed.
+          const stack = floatingStacks(visibleFloatingPanes.map((entry) => entry.pane.floating!), floatingOrder).get(paneId);
+          const tabId = stack ? stackTabAt(stack, relativeX - paneHeaderTitleStart(true), paneMap, getPaneTitle) : null;
           startDrag({
             type: "pane-drag",
-            paneId,
-            mode: "floating",
+            paneId: tabId ?? paneId,
+            mode: tabId ? "tab" : "floating",
             startX: preciseX,
             startY: preciseShellY,
             origRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
           });
-          updateDragFloatingRect({ paneId, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
+          if (!tabId) updateDragFloatingRect({ paneId, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
           event.stopPropagation();
           event.preventDefault();
           return;
@@ -379,6 +387,7 @@ export function useShellTerminalPointerRuntime({
     dockDividerLayouts,
     dockLeafLayouts,
     focusPane,
+    floatingOrder,
     focusedPaneId,
     getPaneTitle,
     handleActiveDrag,

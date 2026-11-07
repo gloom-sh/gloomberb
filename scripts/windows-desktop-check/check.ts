@@ -459,11 +459,17 @@ const PAGE_HELPER = String.raw`(() => {
       return null;
     },
     /**
-     * The cells of the drop grid shown over a docked pane while another pane
-     * is dragged over it. They carry no name: absolute boxes, the center one
-     * stacked above the rest.
+     * Where a pane on the move can land, drawn while it moves: the squares of
+     * the target on the pane under the pointer (its middle one stacks the
+     * pane there as a tab) and the strips along the window's edges. Builds
+     * before them drew a drop grid over a docked pane instead, of unnamed
+     * absolute boxes, the center one stacked above the rest.
      */
     dropGrid() {
+      const named = [...document.querySelectorAll("[data-gloom-role=drop-zone], [data-gloom-role=drop-strip]")]
+        .map((el) => ({ center: el.getAttribute("data-side") === "center", r: el.getBoundingClientRect() }))
+        .filter(({ r }) => r.width > 0 && r.height > 0);
+      if (named.length) return named.map(({ center, r }) => ({ center, x: r.left, y: r.top, width: r.width, height: r.height }));
       return [...document.querySelectorAll("div")]
         .filter((el) => el.style.position === "absolute" && (el.style.zIndex === "97" || el.style.zIndex === "98"))
         .map((el) => ({ center: el.style.zIndex === "98", r: el.getBoundingClientRect() }))
@@ -1923,7 +1929,7 @@ class Run {
       const from = this.toScreen(main, point);
       const page = await layoutOf(main.page);
       const floor = page.status ? page.status.y : page.innerHeight;
-      // Within the window, clear of its edges, where a drop snaps the pane to a half.
+      // Within the window, clear of its edges, where a drop places the pane along that edge.
       const room = {
         left: before.rect.x - 60, right: page.innerWidth - 60 - (before.rect.x + before.rect.width),
         up: before.rect.y - 60, down: floor - 60 - (before.rect.y + before.rect.height),
@@ -1936,18 +1942,22 @@ class Run {
       let to = { x: from.x + Math.round(move.x * main.scale), y: from.y + Math.round(move.y * main.scale) };
       await win.drag(from, to, {
         whileHeld: async () => {
-          // A drop on the grid over a docked pane docks it: let go beside the
-          // grid, a little higher or lower, as a person would.
+          // A drop on a target puts the pane in the layout: let go beside the
+          // targets, a little higher or lower, as a person would. They are drawn
+          // on the pane under the pointer, so each try looks again once there.
           const fits = (dy: number) => before.rect.y + dy >= 30 && before.rect.y + before.rect.height + dy <= floor - 10;
-          for (const nudge of [30, -30, 60, -60, 90, -90, 0]) {
+          const first = move.y;
+          for (const nudge of [0, 30, -30, 60, -60, 90, -90, 120, -120]) {
+            if (nudge && !fits(first + nudge)) continue;
+            if (nudge) {
+              move = { x: move.x, y: first + nudge };
+              to = { x: from.x + Math.round(move.x * main.scale), y: from.y + Math.round(move.y * main.scale) };
+              win.moveMouse(to);
+              await sleep(250);
+            }
             const at = { x: point.x + move.x, y: point.y + move.y };
             const grid = await evaluate<CssRect[]>(main.page.cdp, "window.__winCheck.dropGrid()");
             if (!grid.some((cell) => at.x >= cell.x - 4 && at.x <= cell.x + cell.width + 4 && at.y >= cell.y - 4 && at.y <= cell.y + cell.height + 4)) break;
-            if (!nudge || !fits(move.y + nudge)) continue;
-            move = { x: move.x, y: move.y + nudge };
-            to = { x: from.x + Math.round(move.x * main.scale), y: from.y + Math.round(move.y * main.scale) };
-            win.moveMouse(to);
-            await sleep(250);
           }
           during = (await layoutOf(main.page)).panes.find((pane) => pane.id === before.id)?.rect ?? null;
         },
@@ -1999,15 +2009,44 @@ class Run {
       };
     });
 
-    // Dropped on another docked pane's title bar, a pane stacks there as a tab,
-    // shown. Builds before tabs showed a drop grid over the pane instead, whose
-    // center cell swapped the two.
-    await this.step("dock-drop", "Drag a docked pane onto another's title bar to take its place", async (shots) => {
+    // Dropped on the middle of the target drawn on another docked pane, a pane
+    // stacks there as a tab, shown. Builds before the targets took the drop on
+    // the pane's title bar, and builds before tabs showed a drop grid whose
+    // center cell swapped the two. A target acts on the pane in front under
+    // the pointer, so the floating pane goes to the bottom left quarter first
+    // (window mode, 3), clear of the research pane's middle at every scale.
+    await this.step("dock-drop", "Drag a docked pane onto the middle of another's target to take its place", async (shots) => {
       await this.reset(main, this.baseRect);
+      const floating = (await layoutOf(main.page)).panes.find((pane) => pane.floating);
+      if (floating) {
+        const body = await evaluate<{ x: number; y: number } | null>(main.page.cdp, `window.__winCheck.panePoint(${JSON.stringify(floating.id)})`);
+        if (!body) return { status: "fail", detail: "no spot on the floating pane to click" };
+        await win.click(this.toScreen(main, body));
+        await sleep(300);
+        await win.pressChord([win.VK.control, win.VK.shift], "m", 300);
+        await sleep(400);
+        if (!await evaluate<boolean>(main.page.cdp, `!!document.querySelector("[data-gloom-role=window-mode-status]")`)) {
+          return { status: "fail", detail: "Ctrl+Shift+M did not open window mode on the floating pane" };
+        }
+        // 3 puts it in the bottom left quarter; Enter commits, Enter again leaves.
+        await win.pressKeys("3");
+        await sleep(300);
+        await win.pressKeys(win.VK.enter);
+        await sleep(300);
+        await win.pressKeys(win.VK.enter);
+        await sleep(600);
+      }
       const before = await layoutOf(main.page);
       const source = before.panes.find((pane) => pane.id === "portfolio-list:main");
       const target = before.panes.find((pane) => pane.id === "ticker-research:spy");
       if (!source || !target) return { status: "fail", detail: "the list or research pane is missing" };
+      const middle = { x: target.rect.x + target.rect.width / 2, y: target.rect.y + target.rect.height / 2 };
+      const covered = await evaluate<string | null>(main.page.cdp, `(() => {
+        const hit = document.elementFromPoint(${middle.x}, ${middle.y});
+        const pane = hit && hit.closest("[data-gloom-role=pane-window]");
+        return pane && pane.getAttribute("data-gloom-pane-id") === ${JSON.stringify(target.id)} ? null : window.__winCheck.whatIsAt(${middle.x}, ${middle.y});
+      })()`);
+      if (covered) return { status: "fail", detail: `the research pane's middle is under ${covered}` };
       const point = await evaluate<{ x: number; y: number } | null>(main.page.cdp, `window.__winCheck.paneHeaderPoint(${JSON.stringify(source.id)})`);
       const onto = await evaluate<{ x: number; y: number } | null>(main.page.cdp, `window.__winCheck.paneHeaderPoint(${JSON.stringify(target.id)})`);
       if (!point || !onto) return { status: "fail", detail: "no header on the list or research pane" };

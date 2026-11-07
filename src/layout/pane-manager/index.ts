@@ -54,6 +54,17 @@ export {
   swapPanes,
 } from "./docking";
 
+export {
+  floatingSplitRects,
+  floatingStackMembers,
+  floatingStacks,
+  hiddenFloatingTabIds,
+  splitFloating,
+  stackFloatingOnto,
+  unstackFloating,
+  type FloatingSplitSide,
+} from "./floating-stack";
+
 export { restoreHiddenPanes } from "./hidden-panes";
 export {
   removeFloatingPanes,

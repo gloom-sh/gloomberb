@@ -704,25 +704,31 @@ function renderTableLayout(
   const renderBelow = (index: number) => (options.below?.[index] ?? []).flatMap((line) => (
     available == null ? [line] : options.cutBelow ? [truncateDisplay(line, belowWidth)] : wrapText(line, belowWidth)
   )).map((line) => `${belowIndent}${cliStyles.muted(line)}`.trimEnd());
+  // A moved column every row has the same value in (one currency, one feed) prints once under the table, not under each row.
+  const shared = rows.length > 1 ? stacked.filter(({ index }) => {
+    const first = rows[0]![index] ?? "";
+    return !EMPTY_CELL.test(stripAnsi(first).trim()) && rows.every((row) => (row[index] ?? "") === first);
+  }) : [];
+  const ownStacked = stacked.filter((entry) => !shared.includes(entry));
   // Columns moved under the rows print there as `Header value`, as many to a line as fit.
-  const renderStacked = (cells: string[], rowIndex: number): string[] => {
+  const renderStacked = (entries: readonly TableEntry[], cells: string[], rowIndex: number, lineIndent: string, width: number): string[] => {
     const lines: string[] = [];
     let line = "";
-    for (const { column, index } of stacked) {
+    for (const { column, index } of entries) {
       const value = cells[index] ?? "";
       if (rowIndex >= (column.stackRows ?? Infinity) || EMPTY_CELL.test(stripAnsi(value).trim())) continue;
       const piece = `${cliStyles.muted(column.header)} ${value}`;
-      if (line && visibleLength(line) + COLUMN_GAP + visibleLength(piece) <= belowWidth) {
+      if (line && visibleLength(line) + COLUMN_GAP + visibleLength(piece) <= width) {
         line += `${" ".repeat(COLUMN_GAP)}${piece}`;
         continue;
       }
       if (line) lines.push(line);
       line = piece;
-      if (visibleLength(piece) <= belowWidth) continue;
+      if (visibleLength(piece) <= width) continue;
       // Too long for one line: the value wraps under itself, or under its header when the header is long too.
-      const hangs = visibleLength(column.header) + 1 <= belowWidth / 2;
+      const hangs = visibleLength(column.header) + 1 <= width / 2;
       const valueIndent = " ".repeat(hangs ? visibleLength(column.header) + 1 : COLUMN_GAP);
-      const [first = "", ...rest] = wrapText(value, Math.max(1, belowWidth - valueIndent.length));
+      const [first = "", ...rest] = wrapText(value, Math.max(1, width - valueIndent.length));
       lines.push(
         ...hangs ? [`${cliStyles.muted(column.header)} ${first}`] : [cliStyles.muted(column.header), `${valueIndent}${first}`],
         ...rest.map((part) => `${valueIndent}${part}`),
@@ -730,16 +736,23 @@ function renderTableLayout(
       line = "";
     }
     if (line) lines.push(line);
-    return lines.map((text) => `${belowIndent}${text}`.trimEnd());
+    return lines.map((text) => `${lineIndent}${text}`.trimEnd());
   };
-  return [header, ...divider, ...rows.flatMap((row, index) => [renderRow(row), ...renderStacked(row, index), ...renderBelow(index)])].join("\n");
+  const sharedLines = shared.length > 0 ? renderStacked(shared, rows[0]!, 0, indent, Math.max(1, available ?? 0)) : [];
+  return [
+    header,
+    ...divider,
+    ...rows.flatMap((row, index) => [renderRow(row), ...renderStacked(ownStacked, row, index, belowIndent, belowWidth), ...renderBelow(index)]),
+    ...sharedLines,
+  ].join("\n");
 }
 
 /**
  * A table fitted to the terminal (or `--width`), or whole when output is
  * piped. A table too wide never cuts a cell short, unless its column is free
  * text marked `shrink: true`: text wraps in its cell and columns move under
- * their rows, each value whole after its header. Of the ways that fit, the
+ * their rows, each value whole after its header, or once under the table when
+ * every row has the same one (a currency, a feed). Of the ways that fit, the
  * one with the fewest lines prints, the one that moves fewer columns on a tie.
  * Plain output (`setCliPlainOverride`) has no rule under the header, words
  * for arrows and "—" in every empty cell.

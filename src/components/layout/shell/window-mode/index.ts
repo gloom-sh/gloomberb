@@ -24,11 +24,11 @@ import {
   setWindowEditMode,
   setWindowEditPane,
   snapPositionFromWindowEditKey,
+  snapRect,
   snapWindowEditPane,
   windowEditHasPendingCommit,
   type WindowEditState,
 } from "../../window-edit/mode";
-import { makeSnapGuides } from "../drag";
 import { resolveWindowEditDockMovePreview } from "../../window-edit/presentation";
 import { resolveNativeWindowEditPanelRect } from "../../window-edit/status";
 
@@ -240,15 +240,13 @@ export function useShellWindowMode({
             }
         : current);
     } else if (windowMode.mode === "move" && snapPositionFromWindowEditKey(event)) {
-      // The same half or quarter a drag to that edge or corner snaps to.
-      const position = snapPositionFromWindowEditKey(event);
-      const guide = makeSnapGuides(bounds.width, bounds.height).find((entry) => entry.position === position);
-      if (guide) {
-        const rect = { ...guide.previewRect, x: bounds.x + guide.previewRect.x, y: bounds.y + guide.previewRect.y };
-        setWindowMode((current) => current
-          ? snapWindowEditPane(current, rect, bounds, dockGeometryOptions)
-          : current);
-      }
+      // The window floats in that half or quarter of the screen.
+      const position = snapPositionFromWindowEditKey(event)!;
+      const snapped = snapRect(position, bounds.width, bounds.height);
+      const rect = { ...snapped, x: bounds.x + snapped.x, y: bounds.y + snapped.y };
+      setWindowMode((current) => current
+        ? snapWindowEditPane(current, rect, bounds, dockGeometryOptions)
+        : current);
     } else {
       const direction = directionFromWindowEditKey(event);
       if (direction) {

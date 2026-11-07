@@ -21,11 +21,12 @@ import {
 import { linkHostPackages } from "../../plugins/host-link";
 import {
   installedPluginDirectories,
+  installedPluginDirectoriesNamed,
+  installedPluginId,
   loadRegistryListings,
   readPluginRemote,
   readPluginRemoteHeads,
   updatePlugin,
-  validatePluginDirectoryName,
   type RegistryListing,
 } from "../../plugins/installer";
 import { isReservedBuiltinPluginId } from "../../plugins/ownership";
@@ -58,8 +59,19 @@ function absorbedNotice(absorbed: AbsorbedPlugin, directory: string | null): str
   return directory ? `${built}; remove this copy with "gloom remove ${directory}".` : `${built}.`;
 }
 
+/**
+ * The folder of the installed plugin a command names, by its id or by its
+ * folder; fails when none, or more than one, answers to it.
+ */
+export function installedPluginArg(name: string): string {
+  const matches = installedPluginDirectoriesNamed(name);
+  if (matches.length > 1) fail(`"${name}" is the id of ${matches.length} installed plugins: ${matches.join(", ")}.`, "Name one by its folder.");
+  if (matches.length === 0) fail(`Plugin "${name}" was not found.`, PLUGINS_DIR);
+  return matches[0]!;
+}
+
 export async function updatePlugins(name?: string) {
-  const dirs = name ? [validatePluginDirectoryName(name)] : installedPluginDirectories();
+  const dirs = name ? [installedPluginArg(name)] : installedPluginDirectories();
 
   if (dirs.length === 0) {
     console.log(cliStyles.muted("No plugins installed."));
@@ -197,7 +209,7 @@ function listedHostImports<T>(
  * build the desktop and web app need actually compiles.
  */
 async function doctorPlugin(nameOrPath: string): Promise<PluginDoctorReport> {
-  const candidate = nameOrPath.includes("/") || nameOrPath.startsWith(".") ? resolve(nameOrPath) : join(PLUGINS_DIR, nameOrPath);
+  const candidate = nameOrPath.includes("/") || nameOrPath.startsWith(".") ? resolve(nameOrPath) : join(PLUGINS_DIR, installedPluginArg(nameOrPath));
   if (!existsSync(candidate)) fail(`Plugin "${nameOrPath}" was not found.`, PLUGINS_DIR);
   const directory = basename(candidate);
   const linked = lstatSync(candidate).isSymbolicLink();
@@ -272,6 +284,8 @@ async function doctorPlugin(nameOrPath: string): Promise<PluginDoctorReport> {
 
   if (!plugin.version) add("version", "warn", "No version; the marketplace cannot tell when an update is available.");
   if (isReservedBuiltinPluginId(plugin.id)) add("id", "fail", `"${plugin.id}" is reserved by a built-in module.`);
+  // gloom plugins and the plugin directory read gloom.json's; plugin enable takes the export's.
+  else if (manifest.id && manifest.id !== plugin.id) add("id", "warn", `gloom.json says "${manifest.id}" and the plugin exports "${plugin.id}": make them the same.`);
   else add("id", "ok", plugin.id);
 
   const badTargets = (plugin.targets ?? []).filter((target) => !ALL_PLUGIN_TARGETS.includes(target as PluginTarget));
@@ -316,6 +330,9 @@ export async function doctorPlugins(nameOrPath?: string): Promise<PluginDoctorRe
 }
 
 export interface InstalledPluginRow {
+  /** What `plugin info|enable|disable` take; every other plugin command takes it too. */
+  id: string;
+  /** The folder under the plugins directory, which every plugin command also takes. */
   name: string;
   version: string;
   commit: string;
@@ -361,6 +378,7 @@ async function readInstalledPlugins(options: { check?: boolean }): Promise<Insta
     const commit = readPluginCommit(dir);
     const blocked = builtIn ? absorbedNotice(builtIn, name) : linked ? null : checkPluginCompatibility(dir)?.error;
     const row: InstalledPluginRow = {
+      id: installedPluginId(name),
       name,
       version,
       commit: linked ? "linked" : commit ? commit.slice(0, 7) : "",
@@ -383,8 +401,11 @@ async function readInstalledPlugins(options: { check?: boolean }): Promise<Insta
 
 export async function listPlugins(ctx: CliCommandContext, options: { check?: boolean } = {}) {
   const plugins = await readInstalledPlugins(options);
+  // The folder `gloom install` names for the repository, where it is not the id.
+  const folders = plugins.some((plugin) => plugin.name !== plugin.id);
   const columns = [
-    { key: "name", header: "Plugin", shrink: false },
+    { key: "id", header: "Plugin", shrink: false },
+    ...(folders ? [{ key: "folder", header: "Folder", value: (row: Record<string, unknown>) => row.name }] : []),
     { key: "version", header: "Version" },
     { key: "commit", header: "Commit" },
     ...(options.check ? [{ key: "update", header: "Update" }] : []),
@@ -400,11 +421,12 @@ export async function listPlugins(ctx: CliCommandContext, options: { check?: boo
         renderTable(
           columns.map(({ header, shrink }) => ({ header, shrink })),
           rows.map((row) => columns.map(({ key }) => {
+            if (key === "folder") return row.name === row.id ? "" : cliStyles.muted(row.name);
             const value = String(row[key as keyof InstalledPluginRow] ?? "");
             return key === "update" && value && value !== "up to date" ? cliStyles.warning(value) : value;
           })),
         ),
-        ...rows.filter((row) => row.blocked).map((row) => cliStyles.warning(`${row.name} is not loaded: ${row.blocked}`)),
+        ...rows.filter((row) => row.blocked).map((row) => cliStyles.warning(`${row.id} is not loaded: ${row.blocked}`)),
         "",
         renderStats([["Directory", cliStyles.muted(PLUGINS_DIR)]]),
       ].join("\n");

@@ -10,7 +10,7 @@ import type {
   HeadlessRowsResult,
 } from "../../../types/plugin";
 import { buildEventRows, eventSourceNotice, type EventRow } from "./event-model";
-import { EVENT_COLUMNS, loadEventSources } from "./event-sources";
+import { EARNINGS_ESTIMATE_COLUMNS, loadEventSources } from "./event-sources";
 import { REPORTED_DATA } from "../shared/report-freshness";
 import { EPS_BASIS_NOTE } from "../shared/earnings-report";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
@@ -73,7 +73,7 @@ function projectEarningsEstimatesHeadless(
   if (unmatchedReportedPeriods.length) errors.push(`No statement period identified for ${unmatchedReportedPeriods.length} reported earnings row(s); quarterly revenue is unavailable.`);
 
   return {
-    columns: EVENT_COLUMNS,
+    columns: EARNINGS_ESTIMATE_COLUMNS,
     rows,
     errors: errors.length ? errors : undefined,
     metadata: {
@@ -124,7 +124,7 @@ export function createEarningsEstimatesHeadless(
         maximum: 200,
       },
     ],
-    columns: EVENT_COLUMNS,
+    columns: EARNINGS_ESTIMATE_COLUMNS,
     describe: (args) => `Earnings Estimates | ${String(args.argument)}`,
     async load(args, context) {
       return projectEarningsEstimatesHeadless(

@@ -43,7 +43,24 @@ export function detachPaneToFrame(
   });
 }
 
+/**
+ * `instanceId` floating at `rect`, in front unless `rect` says its z. A tab of
+ * a floating stack keeps its place in the list (the stack's tab order), and
+ * the other tabs move with it.
+ */
 export function floatAtRect(layout: LayoutConfig, instanceId: string, rect: FloatingRect): LayoutConfig {
+  const stack = layout.floating.find((entry) => entry.instanceId === instanceId)?.stack;
+  if (stack) {
+    const placed = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    const zIndex = rect.zIndex ?? maxFloatingZ(layout) + 1;
+    return finalizeLayout({
+      ...layout,
+      floating: compactFloatingZ(layout.floating.map((entry) => {
+        if (entry.instanceId === instanceId) return { ...entry, ...placed, zIndex };
+        return entry.stack === stack ? { ...entry, ...placed } : entry;
+      })),
+    });
+  }
   const base = detachPane(layout, instanceId);
   return finalizeLayout({
     ...base,

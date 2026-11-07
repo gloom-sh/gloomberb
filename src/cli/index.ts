@@ -37,7 +37,7 @@ import { overviewCliCommands } from "./commands/overview";
 import { remoteCliCommand } from "./commands/remote";
 import { createSystemCliCommands } from "./commands/system";
 import { brokerCliCommand, ibkrCliCommand } from "./commands/broker";
-import { listPlugins, updatePlugins } from "./commands/plugins";
+import { installedPluginArg, listPlugins, updatePlugins } from "./commands/plugins";
 import { installListedPlugin, removePlugin } from "../plugins/installer";
 import {
   catalogCommandHits,
@@ -276,17 +276,17 @@ export function createCoreCliCommands(
     },
     {
       name: "update",
-      description: "Update installed plugins, or one by name",
+      description: "Update installed plugins, or one by id or folder",
       help: {
         group: CLI_COMMAND_GROUPS.plugins,
-        usage: ["update [name]"],
+        usage: ["update [plugin]"],
         sections: [{
           title: "Updating Gloom itself",
           lines: [
             "The app updates itself from stable releases. config set updates.channel nightly adds the nightly build of main; see gloom help config.",
           ],
         }],
-        examples: ["update", "update gloom-tv"],
+        examples: ["update", "update tv"],
       },
       execute: async (args) => {
         await updatePlugins(args[0]);
@@ -298,15 +298,15 @@ export function createCoreCliCommands(
       description: "Remove an installed plugin",
       help: {
         group: CLI_COMMAND_GROUPS.plugins,
-        usage: ["remove <name>"],
-        examples: ["remove gloom-tv"],
+        usage: ["remove <plugin>"],
+        examples: ["remove tv"],
       },
       execute: async (args) => {
         const name = args[0];
         if (!name) {
-          fail("Usage: gloom remove <name>");
+          fail("Usage: gloom remove <plugin>");
         }
-        await removePlugin(name);
+        await removePlugin(installedPluginArg(name));
       },
     },
     apiCliCommand,

@@ -197,7 +197,7 @@ export function menuForPane(
   if (pane.floating) {
     baseActions.push({
       id: "dock",
-      label: "Dock Pane",
+      label: "Return to Layout",
       accelerator: accelerators.toggleFloating,
       onSelect: () => {
         persistLayout(applyDrop(layout, pane.instance.instanceId, { kind: "frame", edge: "right" }));

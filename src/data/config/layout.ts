@@ -20,6 +20,7 @@ import {
   removeUnreachablePaneInstances,
 } from "../../types/config";
 import { compactFloatingZ } from "../../layout/pane-manager/floating";
+import { alignFloatingStacks } from "../../layout/pane-manager/floating-stack";
 import {
   migrateChartPaneSettings,
   type LegacyChartMigrationContext,
@@ -257,8 +258,10 @@ function sanitizeFloatingEntries(value: unknown, validInstanceIds: Set<string>):
       height: Math.max(1, Math.round(entry.height)),
       zIndex: typeof entry.zIndex === "number" ? Math.round(entry.zIndex) : entry.zIndex,
     }));
-  // A stack raised past the shell's menus and previews in an older session is renumbered in the same order.
-  return compactFloatingZ(entries);
+  // A stack raised past the shell's menus and previews in an older session is
+  // renumbered in the same order. Windows stacked as tabs share the rect of
+  // the one they show, whatever a client that does not know stacks did.
+  return compactFloatingZ(alignFloatingStacks(entries));
 }
 
 function sanitizeDetachedEntries(value: unknown, validInstanceIds: Set<string>): LayoutConfig["detached"] {

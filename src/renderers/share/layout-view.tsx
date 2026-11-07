@@ -116,7 +116,7 @@ export function LayoutShareView({
       <section className="layout-workspace" aria-label={`${entry.name} layout preview`}>
         {entry.layout.dockRoot
           ? <DockPreview node={entry.layout.dockRoot} panes={panes} />
-          : <p>No docked panes</p>}
+          : <p>No panes in the layout</p>}
         {extra.length > 0 ? (
           <div className="layout-extra-panes">
             {extra.map((pane) => <PaneCard key={pane.instanceId} pane={pane} />)}

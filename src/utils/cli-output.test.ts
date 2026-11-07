@@ -162,6 +162,23 @@ describe("renderTable", () => {
     ]);
   });
 
+  test("a moved column every row has the same value in prints once under the table; one whose rows differ stays under each row", () => {
+    const columns = [{ header: "Symbol" }, { header: "Last", align: "right" as const }, { header: "Cur" }, { header: "Feed" }];
+    const rows = [["AAPL", "$342.37", "USD", "delayed"], ["SHOP.TO", "CA$210.47", "CAD", "delayed"]];
+    expect(plain(() => renderTable(columns, rows, { maxWidth: 22 })).slice(2)).toEqual([
+      "AAPL       $342.37",
+      "  Cur USD",
+      "SHOP.TO  CA$210.47",
+      "  Cur CAD",
+      "Feed delayed",
+    ]);
+    // Piped, every row keeps its cells.
+    expect(plain(() => renderTable(columns, rows, { maxWidth: null })).slice(2)).toEqual([
+      "AAPL       $342.37  USD  delayed",
+      "SHOP.TO  CA$210.47  CAD  delayed",
+    ]);
+  });
+
   test("minTableWidth leaves a column out of a narrower fitted table even when it would fit, never out of piped output", () => {
     const columns = [{ header: "Filed" }, { header: "Accepted", minTableWidth: 100 }, { header: "Form" }];
     const rows = [["2026-09-28", "2026-09-28 21:57:22 UTC", "497J"]];

@@ -2544,6 +2544,9 @@
    "tags": [
     "PF",
     "portfolio",
+    "currency",
+    "TRY",
+    "cost FX",
     "target weights",
     "drift",
     "rebalance",
@@ -2576,6 +2579,23 @@
     {
      "type": "code",
      "code": "gloom portfolio create Core\ngloom portfolio position set Core VTI 40 280\ngloom portfolio position set Core BND 60 72\ngloom portfolio cash set Core 2000 USD"
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "A portfolio in another currency"
+    },
+    {
+     "type": "paragraph",
+     "text": "A portfolio totals in your base currency unless you give it its own. Holdings in other currencies are converted into it:"
+    },
+    {
+     "type": "code",
+     "code": "gloom portfolio create Lira --currency TRY\ngloom portfolio position set Lira THYAO 100 280                     # a BIST stock, cost in TRY\ngloom portfolio position set Lira BRK-B 10 20310 TRY                # a US stock at what it cost in lira\ngloom portfolio position set Lira BRK-B 10 410 USD --date 2024-03-01   # or in dollars, converted at that day's FX close\ngloom portfolio position set Lira KO 40 62.50 USD --cost-fx 32.15      # or at the rate you paid, TRY per USD\ngloom portfolio show Lira --from 2025-11-06                          # P&L since a date, with the currency's move on its own line"
+    },
+    {
+     "type": "paragraph",
+     "text": "A cost in the holding's own currency without `--date` or `--cost-fx` converts at today's rate, and `portfolio show` names the holdings it does that for. Use the date or the rate so P&L carries the currency's move since you bought. A name whose last word is a currency code in capitals (`Baht THB`) creates the portfolio in that currency too."
     },
     {
      "type": "heading",
@@ -5736,8 +5756,8 @@
        "Earnings dates; a currency into your base currency"
       ],
       [
-       "`econ [--country US|G7|EU|all] [--impact high|medium|low|all]`",
-       "Economic calendar"
+       "`econ [--country all|US|G7|EU|<codes>] [--impact high|medium|low|all] [--search <words>] [--from <date>] [--tz <zone>]`",
+       "Economic calendar; `--country` also takes countries by their two-letter codes, comma separated (`TR`, `MX,BR,ZA`), and `--from` an earlier day lists past events with their actuals"
       ],
       [
        "`fred <series>`, `yield-curve`",
@@ -5763,15 +5783,19 @@
      "rows": [
       [
        "`portfolio list|show|create|delete <name>`",
-       "Manual portfolios; `show` lists value, weight, a year of dividend income and its yield, target, drift and the trade to rebalance; `show --explain` adds what those terms mean, and `show --drip [--years 1-5] [--withholding <pct>]` projects reinvested dividends"
+       "Manual portfolios; `show` lists value, weight, a year of dividend income and its yield, target, drift and the trade to rebalance; `show --explain` adds what those terms mean, `show --drip [--years 1-5] [--withholding <pct>]` projects reinvested dividends, and `show --from <date> [--to <date>]` gives the P&L between two closes with the FX move"
+      ],
+      [
+       "`portfolio create <name> --currency <code>`",
+       "A portfolio that totals in another currency than your base currency (`--currency TRY`); a name's last word in capitals (`Baht THB`) is read as one too"
       ],
       [
        "`portfolio add|remove <portfolio> <symbols...> [--file <csv|txt>]`",
        "Add or remove tickers: several at once (commas, spaces or lines), a CSV or text file, or piped input (`-`); one line per symbol and a summary of what was not found"
       ],
       [
-       "`portfolio position set <portfolio> <symbol> <shares> <avg-cost> [currency]`",
-       "Set a position"
+       "`portfolio position set <portfolio> <symbol> <shares> <avg-cost> [currency] [--date <purchase date> | --cost-fx <rate>]`",
+       "Set a position. The cost is in the currency named after it, else the listing's. A holding in another currency than the portfolio's can be entered at its cost in the portfolio's currency, or in its own with `--date` (that day's FX close) or `--cost-fx` (the rate paid, portfolio currency per unit of the holding's), so P&L carries the currency's move"
       ],
       [
        "`portfolio import <file> [--name <portfolio>] [--merge|--replace] [--dry-run]`",

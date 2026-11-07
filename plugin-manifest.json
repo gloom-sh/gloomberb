@@ -531,12 +531,12 @@
           {
             "code": "ERN",
             "name": "Earnings Calendar",
-            "description": "The market's report days with implied and past moves; with a ticker, its report history."
+            "description": "A company's report history with surprises and moves; several tickers, their next reports; none, the market board."
           },
           {
             "code": "EVTS",
             "name": "Earnings Days",
-            "description": "The market's report days with implied and past moves; a ticker picks its row."
+            "description": "The market board: report days by week or day, with implied and past moves; a ticker highlights its row."
           },
           {
             "code": "CALLS",

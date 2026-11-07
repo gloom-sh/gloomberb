@@ -70,10 +70,10 @@ describe("action menu sizing", () => {
     const previousLanguage = getLanguage();
     try {
       setLanguage("ja");
-      const translatedWidth = displayWidth(t("Dock Pane")) + 2;
+      const translatedWidth = displayWidth(t("Float Pane")) + 2;
 
-      expect(actionMenuWidth([{ label: "Dock Pane" }], 44)).toBe(translatedWidth);
-      expect(translatedWidth).toBeGreaterThan(18);
+      expect(actionMenuWidth([{ label: "Float Pane" }], 44)).toBe(translatedWidth);
+      expect(translatedWidth).toBeGreaterThan(displayWidth("Float Pane") + 2);
     } finally {
       setLanguage(previousLanguage);
     }

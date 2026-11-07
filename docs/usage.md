@@ -44,7 +44,7 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | `Ctrl+W` | Close focused pane (unless it is locked) |
 | `Esc` `Esc` | Close focused pane, even one that could still go back, and focus the next floating pane. Not over a typed draft or with a menu or dialog open |
 | `Ctrl+Shift+M` | Move focused window (`WIN resize` starts resize mode) |
-| `Ctrl+Shift+D` | Dock or float focused pane |
+| `Ctrl+Shift+D` | Float the focused pane, or return it to the layout |
 | `Ctrl+Shift+N` | Move the focused pane to a new layout of its own; again to move it back |
 | `Ctrl+Shift+E` | Export focused pane table as CSV |
 | `Cmd/Ctrl+Shift+S` | Share the focused pane: post to chat or copy link |
@@ -108,7 +108,7 @@ A pane that shows one ticker (`GP`, `GIP`, `GF`, `GE`, `OMON`, `OPX`, `SEAS`, `F
 
 Takes the focused pane out of its layout into a new layout tab named after it (`Chart: NVDA`), where it fills the window. Use `Ctrl+Shift+N` (`Cmd+Shift+N` in the macOS desktop app), the pane menu or the command bar. In the browser `Ctrl+Shift+N` opens a private window, so use the pane menu.
 
-**Move Back to** in the pane menu, or the same shortcut while the pane is alone, returns it to its place and removes the empty layout (if that layout was deleted, the pane docks in the first other tab). The pane keeps its ticker, tab, settings and lock.
+**Move Back to** in the pane menu, or the same shortcut while the pane is alone, returns it to its place and removes the empty layout (if that layout was deleted, the pane goes into the first other tab). The pane keeps its ticker, tab, settings and lock.
 
 ### More windows (desktop)
 
@@ -118,18 +118,23 @@ Closing a window gives its tabs back to the main window. Closing the main window
 
 ### Moving and resizing
 
-Drag the line between docked panes, or a floating pane's bottom-right corner (any edge or corner on the desktop and web).
+Drag the line between two panes in the layout to resize both, or a floating pane's bottom-right corner (any edge or corner on the desktop and web). Floating windows that sit edge to edge resize together when you drag the edge they share; hold `Alt` (`Option` on macOS) to resize one alone.
 
 A new floating pane opens where there is room: clear of the other floating panes and of the pane you are working in, or one step down and to the right of the frontmost window when the screen is full. It never opens exactly on top of another window.
 
-While you move or resize a floating pane, its edges stick to the edges of other panes and of the window when they come close (8 px on the desktop, one cell in the terminal), and let go when you pull a little further. Hold `Alt` (`Option` on macOS) to place it freely. Where a release would put the pane somewhere else, an outline shows where it will land; on the desktop and web the pane turns see-through over it.
+While you move or resize a floating pane, its edges stick to the edges of other panes and of the window when they come close (8 px on the desktop, one cell in the terminal), and let go when you pull a little further. Hold `Alt` (`Option` on macOS) to place it freely. The magnets only line windows up: they never put a pane in the layout.
 
-A pane you move, floating or docked, finds its place in the dock two ways:
+A pane you move, from the layout or floating, lands where the target under the pointer says, and nowhere else. The targets show while you drag, the same on the desktop, the web and in the terminal:
 
-- **Join:** push one of its edges flush against the same edge of a docked pane, where that pane meets another (the edge sticks), and hold it there a moment: the outline shows the pane's place in the dock, and letting go there joins it on that side, sharing the room and resizing with its neighbours. This works over its title bar too, so lining the top edges up joins above it. Let go before the outline shows and it stays floating, or over a title bar stacks as a tab. A pane parked against an edge or a corner of the window stays floating too.
-- **Tab:** drop it on a docked pane's title bar and the two share that spot as tabs, the one you dropped shown, unless an edge held flush there has shown a join's outline. Laid squarely over a pane its size, it always stacks. A click on a tab shows that pane, and dragging a tab out of the title bar takes it out of the stack. A pane closed or floated from a stack leaves the others where they are, and a floated tab docks back into its stack.
+- **Over a pane,** a small target of five squares shows in its middle. The centre square makes the pane you move a tab there, shown in front. A side square splits that pane on that side: a pane in the layout gives up half its place, a floating window half its rect, the two edge to edge.
+- **Along the window's edges,** a thin strip puts the pane along that whole edge of the layout.
+- **Anywhere else** it floats where you let go.
 
-`Alt` while you move keeps the pane floating wherever you drop it, apart from a title bar, where it always stacks.
+The square or strip under the pointer lights up, and an outline shows exactly where the pane will land; on the desktop and web the pane turns see-through over it. Nothing depends on how long you hold it.
+
+Panes stacked as tabs show them in the title bar. A click on a tab shows that pane, dragging a tab out takes that pane out of the stack, and the rest of a floating stack's title bar moves the whole window. A pane closed or floated from a stack leaves the others where they are.
+
+Without a mouse, window mode (`Ctrl+Shift+M`) moves the focused pane: the arrows pick a pane in the layout and the side to join it on, `d` floats it or returns it to the layout, and `1` to `8` float it in a quarter or half of the window. `Enter` applies the move.
 
 ### Docs inside the app
 
@@ -1095,7 +1100,7 @@ Running `gloom` with no arguments launches the terminal UI. Normal commands run 
 
 Human-readable output is the default: tables fit the terminal width, and a single result prints as aligned label and value lines. Piped text keeps every cell whole.
 
-- `--json`, `--csv` and `--ndjson` give structured output, which is how to export anything (`gloom history LMT --csv > lmt.csv`). JSON uses the richest model and includes display-column metadata. CSV and NDJSON use the tabular rows.
+- `--json`, `--csv` and `--ndjson` give structured output, which is how to export anything (`gloom history LMT --csv > lmt.csv`). JSON uses the richest model and includes display-column metadata. CSV and NDJSON use the tabular rows. All three write a figure without binary floating-point noise: a change is `-1.8`, never `-1.8000000000000114`. That is twelve significant digits, and eight decimals on figures of ten thousand or more up to fifteen digits, so sub-penny prices, FX rates, yields and coin holdings keep every digit their source gives.
 - `gloom fn <function> --output <path>` (or `--out`) writes the report to a file in the format asked for (`fn RV NEE,FSLR --csv --output rv.csv`), as a redirect would, and prints `Saved` with the file's absolute path. The path can be relative, absolute or under `~`, and folders it names are created. The file is readable by you alone (mode 600 on macOS and Linux), and a path that names a link, a device or anything else that is not a plain file is refused. A report with no data writes nothing and fails. `fn` refuses what only `shot` draws (`--theme`, `--height`, `--scale`, `--watermark`, `--no-status`) rather than ignore it.
 - Common global flags: `--limit`, `--tail`, `--width`, `--refresh`, `--quiet`, `--no-color`, `--plain`, `--no-plain`, `--dry-run`, `--yes`.
 
@@ -1111,7 +1116,7 @@ Cboe's Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) print their level
 
 `--width <n>` fits text tables, help and notes to n columns, in a terminal or piped (`gloom quote AAPL TSLA NVDA MSFT --width 80`). Without it a terminal's own width applies, and piped output fits the `COLUMNS` variable when it is set (`COLUMNS=60 gloom fn CRYP --plain | less`), else is not fitted. With `--plain`, a table too narrow for every column keeps the columns that say what a row is (symbol and name) on its first line and moves its figures under it.
 
-- A table gives up its least useful columns first (`compare` drops Cur, Volume and Day Range). `quote` drops none: at 80 or 100 columns it moves Updated, Feed, Cur and Chg Basis onto a labelled line under each row (`Feed delayed  Updated 2026-10-23 15:40 UTC`). No cell is cut short: text wraps, and columns that still do not fit move onto indented lines under each row.
+- A table gives up its least useful columns first (`compare` drops Cur, Volume and Day Range). `quote` drops none: at 80 or 100 columns it moves Updated, Feed, Cur and Chg Basis onto a labelled line under each row (`Feed delayed  Updated 2026-10-23 15:40 UTC`). No cell is cut short: text wraps, and columns that still do not fit move onto indented lines under each row. A moved column whose value is the same on every row (one currency, one feed) is said once, on a line under the table; rows that differ keep their own.
 - The function list of `catalog` is the one table that cuts (a description ends in `…`, and `catalog <function>` prints it whole).
 
 `shot` has its own `--width`, in pixels. The layout is 720 to 2400 wide and 360 to 1800 tall (`--height`), and the PNG is drawn at twice that size, so the default 1280 by 720 writes 2560 by 1440.
@@ -1314,7 +1319,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 `gloom fx NGN` prints one unit of a currency in your base currency. A pair reads as markets quote it: `gloom fx USD/NGN` is how many naira one dollar buys.
 
 - The rate is the pair's own quote, the one `gloom quote USDSGD=X` and `FXC` show, in either direction (`fx SGD/USD` reads USD/SGD). A pair with no quote of its own crosses through the dollar quotes and names them: `via USD: USD/ZAR 16.13650, USD/NGN 1328.39` (`gloom fx ZAR/NGN`).
-- The line states both directions, such as `1 EUR = 1.12650 USD  (USD/EUR 0.887705)`. The side that is the pair as markets quote it prints the quote as it was sent, never rounded, and at least to the pair's precision: three decimals in yen from 1 up (`USD/JPY 157.848`), five from 1 up (`EUR/USD 1.12650`), three from 50 up and two from 1000 up (`USD/NGN 1328.39`), and five significant digits below 1, yen too (`IDR/JPY 0.0096120`). The other side is its inverse to six significant figures. `--json` keeps `rate` and `inverse` at full precision.
+- The line states both directions, such as `1 EUR = 1.12650 USD  (USD/EUR 0.887705)`. The side that is the pair as markets quote it prints the quote as it was sent, never rounded, and at least to the pair's precision: three decimals in yen from 1 up (`USD/JPY 157.848`), five from 1 up (`EUR/USD 1.12650`), three from 50 up and two from 1000 up (`USD/NGN 1328.39`), and five significant digits below 1, yen too (`IDR/JPY 0.0096120`). The other side is its inverse to six significant figures. `--json` keeps `rate` as sent and `inverse` to twelve significant digits.
 - A pair is written as `quote` takes it: `EUR/USD`, `eurusd`, `gbp-chf` or `EURUSD=X`.
 - A currency's name stands for its code (`gloom fx yen` is JPY, `rand` ZAR, `Swiss franc` CHF) and the answer says which it read. A name several currencies share lists them (`peso`: MXN, ARS, COP, CLP, PHP, UYU, DOP) and you type the code. A code with no rate fails naming that code.
 - The answer ends with the source line of [How current a report is](#how-current-a-report-is), dated by the quote's own time (the older dollar quote's for a cross): `Source: Gloom Cloud · Thu 5 Nov 2026 04:52 UTC · 15 min delayed · markets open` (`live` with real-time access). A rate is marked stale there, with its age (`stale (2 hours old)`), and as `stale: true` in exports when the service says so, as `quote` marks the same quote, or once it is older than the feed's delay and 15 minutes, counted while the FX market trades: Friday's close stays current over the weekend.
@@ -1547,13 +1552,13 @@ In short DVD panes, Page Up/Down scroll the summary, arrows or j/k navigate hist
 | `gloom fn [...]` | Run a pane-backed report command |
 | `gloom shot [...]` | Capture a pane-backed screenshot |
 | `gloom predictions [...]` | Launch Prediction Markets ([Prediction Markets plugin](https://github.com/gloom-sh/gloom-prediction-markets)) |
-| `gloom plugins` | List installed plugins |
+| `gloom plugins` | List installed plugins, by id and folder |
 | `gloom install <user/repo>` | Install a plugin from GitHub, at the commit the registry reviewed when it is listed |
-| `gloom remove <name>` | Remove an installed plugin |
-| `gloom update [name]` | Update plugins to the next reviewed commit |
+| `gloom remove <plugin>` | Remove an installed plugin, named by its id or folder |
+| `gloom update [plugin]` | Update plugins, or one, to the next reviewed commit |
 | `gloom plugin enable\|disable <id>` | Turn a plugin on or off without removing it |
 | `gloom plugin link <path>` | Load a plugin from a local checkout while developing it |
-| `gloom plugin doctor [name]` | Check that a plugin loads, declares its hosts, and compiles for the desktop |
+| `gloom plugin doctor [plugin]` | Check that a plugin loads, declares its hosts, and compiles for the desktop |
 
 ### `news`, `13f`, `holders` and `filings`
 

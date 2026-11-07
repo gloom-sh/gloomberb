@@ -78,7 +78,7 @@ describe("serializeCliResult", () => {
     expect(output).toBe('Symbol,Name\nAAPL,"Apple, Inc."');
   });
 
-  test("prints one record as aligned label/value lines while CSV keeps raw keys and values", () => {
+  test("prints one record as aligned label/value lines while CSV and JSON keep raw keys and every real digit, float noise dropped", () => {
     const data = { dataDir: "/tmp/gloom", changePercent: 0.9499999999999886, enabled: true, tags: [] };
 
     const text = serializeCliResult({ data }, baseOptions);
@@ -89,7 +89,11 @@ describe("serializeCliResult", () => {
       "Tags            none",
     ]);
     expect(serializeCliResult({ data }, { ...baseOptions, format: "csv" }))
-      .toBe("dataDir,changePercent,enabled,tags\n/tmp/gloom,0.9499999999999886,true,[]");
+      .toBe("dataDir,changePercent,enabled,tags\n/tmp/gloom,0.95,true,[]");
+    // A change from a subtraction loses its noise; a sub-penny price, an FX rate and a coin holding keep every digit.
+    const figures = { change: 342.37 - 344.17, price: 0.00001234, rate: 1.083456, holding: 12345.67890123, cap: 4974636099999.9995 };
+    expect(JSON.parse(serializeCliResult({ data: figures }, { ...baseOptions, format: "json" })).data)
+      .toEqual({ change: -1.8, price: 0.00001234, rate: 1.083456, holding: 12345.67890123, cap: 4974636100000 });
   });
 
   test("text-only columns reshape the table but leave CSV on the data keys", () => {

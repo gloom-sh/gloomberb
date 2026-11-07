@@ -28,6 +28,8 @@ gloom remove my-plugin
 gloom plugin enable my-plugin  # or disable, without removing it
 ```
 
+Each command takes the plugin's id or its folder, which `install` names for the repository: `gloom-sh/gloom-hackernews` installs `hackernews` in `gloom-hackernews`. `gloom plugins` lists both.
+
 Plugins live in the `plugins` folder of your [data folder](docs/installation.md#where-your-data-lives) (`~/.gloomberb/plugins/` by default); `gloom plugins` prints it.
 
 A plugin listed at [gloom.sh/plugins](https://gloom.sh/plugins) installs and updates at the tag or commit the registry pins, and the installer checks that the checkout matches a pinned commit. A listing is not a review or an endorsement. Without a pin, including when the registry cannot be read, installs and updates follow the repository's default branch. A plugin that builds on another (IBKR Gateway on Interactive Brokers) brings that one along.

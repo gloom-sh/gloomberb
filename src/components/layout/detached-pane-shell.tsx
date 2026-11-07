@@ -232,7 +232,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     }
     items.push(pluginContextMenuSlot("pane"));
     if (dockPane) {
-      items.push({ id: "dock", label: "Dock in Main Window", accelerator: accelerators.toggleFloating, onSelect: dockPane });
+      items.push({ id: "dock", label: "Return to Main Window", accelerator: accelerators.toggleFloating, onSelect: dockPane });
     }
     items.push({
       id: "toggle-pane-lock",

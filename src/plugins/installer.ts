@@ -4,6 +4,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, syml
 import { execFile as execFileCallback, execFileSync, spawn } from "child_process";
 import { promisify } from "util";
 import { findAbsorbedPlugin, type AbsorbedPlugin } from "./absorbed";
+import { checkPluginCompatibility, readPluginManifest } from "./compat";
 import type { PluginPin } from "./marketplace/store";
 import { bunCommand, missingPluginDependencies, recordDependencyInstall } from "./dependencies";
 import { linkHostPackages, missingPeerPlugins } from "./host-link";
@@ -847,6 +848,50 @@ export function installedPluginDirectories(): string[] {
   return readdirSync(PLUGINS_DIR, { withFileTypes: true })
     .filter((entry) => isPluginDirectory(entry.name) && isDirectoryOrLink(entry, join(PLUGINS_DIR, entry.name)))
     .map((entry) => entry.name);
+}
+
+/**
+ * The id an installed plugin goes by: the one its gloom.json declares, which
+ * every registry plugin has and which its export repeats, else its folder.
+ * Read without importing the plugin.
+ */
+export function installedPluginId(directory: string): string {
+  return readPluginManifest(join(PLUGINS_DIR, directory)).id ?? directory;
+}
+
+/**
+ * The installed folders `name` names: the folder itself, or else every
+ * folder whose plugin goes by that id. `gloom install` names the folder for
+ * the repository (`gloom-hackernews`) while `gloom plugins` and `plugin
+ * enable` use the id (`hackernews`), so every command takes either. Two
+ * checkouts of one plugin, a clone and a linked copy, share an id.
+ */
+export function installedPluginDirectoriesNamed(name: string): string[] {
+  const dirs = installedPluginDirectories();
+  if (dirs.includes(name)) return [name];
+  return dirs.filter((dir) => installedPluginId(dir) === name);
+}
+
+/**
+ * The id the plugin in `directory` registers under, which is what the running
+ * app keys it by. Read from gloom.json when it declares one, which the export
+ * repeats (`plugin doctor` warns when it does not); otherwise from the export,
+ * but only for a checkout the loader would import, so the import is the one
+ * it already made. Null when neither answers.
+ */
+export async function installedPluginRegistryId(directory: string): Promise<string | null> {
+  const dir = join(PLUGINS_DIR, directory);
+  const declared = readPluginManifest(dir).id;
+  if (declared) return declared;
+  if (findAbsorbedCheckout(dir) || checkPluginCompatibility(dir)) return null;
+  const entry = await resolvePluginEntry(dir);
+  if (!entry) return null;
+  try {
+    return pluginFromModule(await import(entry))?.id ?? null;
+  } catch (error) {
+    logFailure("plugin-installer", "Installed plugin id read failed")(error);
+    return null;
+  }
 }
 
 /**

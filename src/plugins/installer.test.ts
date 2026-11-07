@@ -400,3 +400,34 @@ test.skipIf(process.platform === "win32")("git is resolved before entering a plu
     else process.env.PATH = previousPath;
   }
 });
+
+// `gloom install` names the folder for the repository and the app names the
+// plugin by its id, so a command given either has to land on the same folder,
+// and refuse to guess when a clone and a linked copy share the id.
+test("an installed plugin is found by its folder or by its gloom.json id", async () => {
+  const root = mkdtempSync(join(tmpdir(), "gloom-plugin-names-"));
+  scratch.push(root);
+  const home = join(root, "home");
+  const plugin = (folder: string, id?: string) => {
+    mkdirSync(join(home, "plugins", folder), { recursive: true });
+    writeFileSync(join(home, "plugins", folder, "index.ts"), "export default {};\n");
+    if (id) writeFileSync(join(home, "plugins", folder, "gloom.json"), JSON.stringify({ id }));
+  };
+  plugin("gloom-hackernews", "hackernews");
+  plugin("my-hn", "hackernews");
+  plugin("gloom-polls", "polls");
+  plugin("side-loaded");
+
+  const found = await runIsolated(root, `
+    return Object.fromEntries(["gloom-hackernews", "polls", "hackernews", "side-loaded", "nope"]
+      .map((name) => [name, installer.installedPluginDirectoriesNamed(name).sort()]));
+  `, { GLOOMBERB_HOME: home });
+
+  expect(found).toEqual({
+    "gloom-hackernews": ["gloom-hackernews"],
+    polls: ["gloom-polls"],
+    hackernews: ["gloom-hackernews", "my-hn"],
+    "side-loaded": ["side-loaded"],
+    nope: [],
+  });
+});
