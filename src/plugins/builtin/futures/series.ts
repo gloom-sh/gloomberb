@@ -1,5 +1,5 @@
 import type { SeriesDefinition } from "../../../series/types";
-import { FUTURES_CONTRACTS, FUTURES_SECTOR_LABELS, type FuturesContract } from "../../../market-data/futures-board";
+import { FUTURES_CONTRACTS, FUTURES_SECTOR_LABELS, futuresGroupTags, type FuturesContract } from "../../../market-data/futures-board";
 
 /**
  * Grains and softs the board quotes in US cents with no unit of its own
@@ -37,14 +37,15 @@ const CONTRACT_TAGS: Readonly<Record<string, readonly string[]>> = {
   "6S": ["CHF", "franc", "swiss franc", "safe haven"],
 };
 
-/** Each continuous front-month contract on the futures board, as `FUT:ES`. */
+/** Each continuous front-month contract on the futures board, as `FUT:ES`, found by its sector and group words too (`catalog softs`). */
 const FRONT_MONTH_SERIES: readonly SeriesDefinition[] = FUTURES_CONTRACTS.map((contract) => ({
   id: `fut:${contract.code}`,
   name: contract.name,
   unit: futuresSeriesUnit(contract),
   frequency: "daily",
   group: "Futures",
-  tags: [contract.code, FUTURES_SECTOR_LABELS[contract.sector], "futures", "front month", ...CONTRACT_TAGS[contract.code] ?? []],
+  tags: [...new Set([contract.code, FUTURES_SECTOR_LABELS[contract.sector], ...futuresGroupTags(contract), "futures", "front month",
+    ...CONTRACT_TAGS[contract.code] ?? []])],
   expression: `FUT:${contract.code}`,
 }));
 

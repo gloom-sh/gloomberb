@@ -257,12 +257,13 @@ describe("FuturesPane", () => {
     const ttf = tui.frame().split("\n").find((line) => line.includes("Dutch TTF Gas"));
     expect(ttf).toContain("EUR / MWh");
     expect(ttf).not.toContain("rolled");
-    // A narrow board keeps the month the quote prices and the unit, and drops the note it has no room for.
+    // A narrow board keeps the month the quote prices and its move, and drops the note it has no room for.
     await tui.render(<Harness height={64} />, { width: 80, height: 64 });
     await renderSettled();
     const narrow = tui.frame().split("\n").find((line) => line.includes("WTI Crude Oil"));
     expect(narrow).toContain("WTI Crude Oil Dec 2026");
-    expect(narrow).toContain("USD / barrel");
+    expect(narrow).not.toContain("rolled");
+    expect(narrow).toContain("+1.00%");
   });
 
   test("over the weekend every row reads closed, not the open its Friday tick stamped", async () => {

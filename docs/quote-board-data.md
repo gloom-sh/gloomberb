@@ -34,8 +34,8 @@ for CME's support of zero and negative energy futures prices.
 
 The futures board uses Gloom Cloud's continuous aliases, which quote each root's
 front month until a stated roll date and name the nearer month while it still
-trades after the roll, and the day's most active month by volume when it is
-another one (see the `Front month` glossary entry). Each row's unit comes from the contract terms
+trades after the roll (see the `Front month` glossary entry); the day's most
+active month by volume is in `quote`'s contract lines, never beside the price. Each row's unit comes from the contract terms
 `quote` shows. The aliases do not establish an explicit expiry curve, contract
 quantity, physical-unit conversion, or roll-adjusted investment return. Quote
 validation does not add those capabilities.

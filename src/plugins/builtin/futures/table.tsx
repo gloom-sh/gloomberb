@@ -42,16 +42,22 @@ const DEFAULT_FUTURES_COLUMN_IDS = FUTURES_COLUMN_DEFS.map((column) => column.id
 /**
  * Extra columns only earn their width once the board is wide enough to keep a
  * readable contract name (24 cells or more); a narrow pane drops them instead
- * of clipping. The unit a price counts outranks its session change in points,
- * which the change in percent still gives. The previous close (the last price
- * less the change) goes first, then each row's quote time (the status line
- * dates the newest), which leaves a 1280-pixel shot room for "WTI Crude Oil
- * Dec 2026, rolled (Nov expires 20 Oct)".
+ * of clipping. The change in percent always shows, and the week's and month's
+ * returns come next: the unit a price counts goes before them, so a board
+ * fullscreen on an 80-cell terminal (78 cells) reads SYM CONTRACT LAST CHG%
+ * 1W 1M, and a floating one never hides the move behind a scroll (a cent
+ * price still says so on itself, 280.15¢).
+ * The unit outranks the session change in points, which the change in
+ * percent still gives. The previous close (the last price less the change)
+ * goes first, then each row's quote time (the status line dates the newest),
+ * which leaves a 1280-pixel shot room for "WTI Crude Oil Dec 2026, rolled
+ * (Nov expires 20 Oct)".
  */
 const COLUMN_MIN_PANE_WIDTH: Partial<Record<FuturesColumnId, number>> = {
-  change: 100,
-  return1w: 108,
-  return1m: 117,
+  return1w: 71,
+  return1m: 78,
+  unit: 98,
+  change: 108,
   returnYtd: 126,
   volume: 136,
   time: 170,

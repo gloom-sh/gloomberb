@@ -3,6 +3,9 @@ import type { Quote } from "../../../types/financials";
 import { cycleSortPreference } from "../../../utils/sort-values";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
 import { getContractsBySector, type FuturesSector } from "../../../market-data/futures-board";
+import { findCatalogSeries } from "../../../cli/series-search";
+import { cotContractCode } from "../cot/model";
+import { FUTURES_SERIES } from "./series";
 import {
   buildFuturesRows,
   DEFAULT_FUTURES_SORT,
@@ -54,7 +57,7 @@ describe("buildFuturesRows search", () => {
     expect(futuresContractName(contract("CL=F"), { symbol: "OTHER", name: "Crude Oil Nov 26" } as Quote)).toBe("WTI Crude Oil");
   });
 
-  test("names the nearer month and its expiry once the alias has rolled past it, and the day's most active month apart", () => {
+  test("names the nearer month and its expiry once the alias has rolled past it, and no month but the one priced", () => {
     const crude = [...contractsBySector.values()].flat().find((row) => row.symbol === "CL=F")!;
     // 2026-10-19, CLX26's roll date: CL=F is on December while November trades until the 20th.
     const december = { symbol: "CL=F", name: "WTI Crude Oil Dec 26" } as Quote;
@@ -74,20 +77,13 @@ describe("buildFuturesRows search", () => {
     expect(futuresContractHeadline(crude, december, { deliveryMonth: "2026-12", nearest: { ...nearest, lastTrade: null } }))
       .toBe("WTI Crude Oil Dec 2026, rolled (Nov still trading)");
 
-    // 2026-10-16: CL=F on November, its front until the roll; the day's volume was December's.
-    const november = { symbol: "CL=F", name: "WTI Crude Oil Nov 26" } as Quote;
-    const mostActive = { contract: "CLZ26", contractSymbol: "CLZ26.NYM", deliveryMonth: "2026-12", volume: 304_249, date: "2026-10-16" };
-    expect(futuresContractHeadline(crude, november, { deliveryMonth: "2026-11", nearest: null, mostActive }))
-      .toBe("WTI Crude Oil Nov 2026, Dec most active");
-    // The most active month in another year says which; the month the alias prices adds nothing.
-    expect(futuresContractHeadline(crude, november, { deliveryMonth: "2026-11", mostActive: { ...mostActive, deliveryMonth: "2027-01" } }))
-      .toBe("WTI Crude Oil Nov 2026, Jan 2027 most active");
-    expect(futuresContractHeadline(crude, november, { deliveryMonth: "2026-11", mostActive: { ...mostActive, deliveryMonth: "2026-11" } }))
-      .toBe("WTI Crude Oil Nov 2026");
-    // Both notes: the roll's first; a column without room for the second drops it.
-    const both = { ...terms, mostActive: { ...mostActive, deliveryMonth: "2027-03" } };
-    expect(futuresContractHeadline(crude, december, both)).toBe("WTI Crude Oil Dec 2026, rolled (Nov expires 20 Oct), Mar 2027 most active");
-    expect(futuresContractHeadline(crude, december, both, 60)).toBe("WTI Crude Oil Dec 2026, rolled (Nov expires 20 Oct)");
+    // The label names only the month whose price the row shows: "Cocoa Dec 2026, Mar 2027 most active" read as March's
+    // price. The day's most active month stays in `quote`'s contract lines.
+    const mostActive = { contract: "CLH27", contractSymbol: "CLH27.NYM", deliveryMonth: "2027-03", volume: 304_249, date: "2026-10-16" };
+    const withActive = { ...terms, mostActive };
+    expect(futuresContractHeadline(crude, december, withActive)).toBe("WTI Crude Oil Dec 2026, rolled (Nov expires 20 Oct)");
+    const frontActive = { deliveryMonth: "2026-12", nearest: null, mostActive };
+    expect(futuresContractHeadline(crude, december, frontActive)).toBe("WTI Crude Oil Dec 2026");
   });
 
   test("a row's unit is the exchange's from its terms, else the catalog's", () => {
@@ -105,6 +101,24 @@ describe("buildFuturesRows search", () => {
       .toEqual(["header:energy", "CL=F", "BZ=F", "QM=F", "MCL=F"]);
     expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, { query: "6J=f" })))
       .toEqual(["header:currencies", "6J=F"]);
+  });
+
+  test("a sector or group word lists its rows, and a number reads alike as No. 11 or #11, in FUT, COT and the catalog", () => {
+    // `fn FUT softs` and `catalog softs` found nothing; `fn COT "SUGAR NO. 11"`, the CFTC's name, was an unknown market.
+    const search = (query: string) => rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, { query }));
+    expect(search("softs")).toEqual(["header:agriculture", "KC=F", "SB=F", "CC=F", "CT=F", "OJ=F"]);
+    expect(search("Grains")).toEqual(["header:agriculture", "ZC=F", "ZS=F", "ZM=F", "ZL=F", "ZW=F", "KE=F"]);
+    expect(search("agriculture")).toEqual(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES))
+      .filter((id) => id === "header:agriculture" || contractsBySector.get("agriculture")!.some((row) => row.symbol === id)));
+    // A sector word is that sector: "energy" is not the S&P Energy sector future.
+    expect(search("energy")[0]).toBe("header:energy");
+    expect(search("energy")).not.toContain("header:equity-sectors");
+    expect(search("SUGAR NO. 11")).toEqual(["header:agriculture", "SB=F"]);
+    expect(search("sugar #11")).toEqual(["header:agriculture", "SB=F"]);
+    expect(cotContractCode("SUGAR NO. 11")).toBe(cotContractCode("SB"));
+    expect(cotContractCode("Cotton No. 2")).toBe(cotContractCode("CT"));
+    expect(findCatalogSeries([{ series: FUTURES_SERIES }], "softs").map((match) => match.id))
+      .toEqual(["fut:KC", "fut:SB", "fut:CC", "fut:CT", "fut:OJ"]);
   });
 
   test("drops a sector header when every contract in it is filtered out", () => {

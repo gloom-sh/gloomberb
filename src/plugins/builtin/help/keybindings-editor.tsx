@@ -42,6 +42,7 @@ import {
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
+  type DataTableVisibleRange,
   type SectionedRow,
 } from "../../../components";
 import { t, tf } from "../../../i18n";
@@ -61,8 +62,19 @@ import { badgeCell, badgeColumnWidth, mutedCell } from "./table-cells";
 const CAPTURE_SCOPE = "help-keybinding-capture";
 const FOOTER_ID = "help-keybindings";
 const NOTE_COLUMN_WIDTH = 26;
-/** Below this the note column is dropped; the footer still carries the detail. */
-const NOTE_COLUMN_MIN_TABLE_WIDTH = 76;
+/** What the table takes besides its columns: its side padding, the gaps between columns and the scrollbar. */
+const TABLE_CHROME = 5;
+/** ACTION keeps at least this beside NOTE; narrower, NOTE is dropped and the footer carries the selected row's. */
+const ACTION_MIN_WIDTH = 30;
+
+/**
+ * Whether the NOTE column shows: only while a row on screen has a note, and
+ * ACTION keeps ACTION_MIN_WIDTH cells beside it. At 80 cells an empty NOTE
+ * took 26 while ACTION read "Change the focused pa…".
+ */
+function showsKeybindingNotes(width: number, keyColumnWidth: number, noteOnScreen: boolean): boolean {
+  return noteOnScreen && width - TABLE_CHROME - keyColumnWidth - NOTE_COLUMN_WIDTH >= ACTION_MIN_WIDTH;
+}
 
 type KeybindingColumnId = "key" | "action" | "note";
 type KeybindingColumn = DataTableColumn & { id: KeybindingColumnId };
@@ -371,13 +383,19 @@ export function KeybindingsEditor({
     () => badgeColumnWidth([...bindableRows.map((row) => row.chords), [t("Press a key")]]),
     [bindableRows],
   );
+  const [visibleRange, setVisibleRange] = useState<DataTableVisibleRange | null>(null);
+  const noteOnScreen = useMemo(
+    () => (visibleRange ? rows.slice(visibleRange.start, visibleRange.end) : rows).some((row) => isSectionedItemRow(row) && !!row.item.note),
+    [rows, visibleRange],
+  );
+  const showNotes = showsKeybindingNotes(width, keyColumnWidth, noteOnScreen);
   const columns = useMemo<KeybindingColumn[]>(() => [
     { id: "key", label: "KEY", width: keyColumnWidth, align: "left" },
     { id: "action", label: "ACTION", width: 20, align: "left", flexGrow: 1 },
-    ...(width >= NOTE_COLUMN_MIN_TABLE_WIDTH
+    ...(showNotes
       ? [{ id: "note" as const, label: "NOTE", width: NOTE_COLUMN_WIDTH, align: "left" as const }]
       : []),
-  ], [keyColumnWidth, width]);
+  ], [keyColumnWidth, showNotes]);
 
   const renderCell = useCallback((
     row: EditorRow,
@@ -429,6 +447,7 @@ export function KeybindingsEditor({
       sortColumnId={null}
       sortDirection="asc"
       getItemKey={(row) => row.key}
+      onVisibleRangeChange={setVisibleRange}
       renderSectionHeader={renderSectionedRowHeader}
       renderCell={renderCell}
       emptyStateTitle="No keybindings"

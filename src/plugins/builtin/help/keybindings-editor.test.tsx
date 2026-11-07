@@ -21,7 +21,7 @@ const WAIT_ATTEMPTS = 60;
 let latestState: AppState | null = null;
 let dataDir = "";
 
-function Harness({ keybindings }: { keybindings?: KeybindingsConfig }) {
+function Harness({ keybindings, width = 90 }: { keybindings?: KeybindingsConfig; width?: number }) {
   const config = createTestPaneConfig(dataDir, { instanceId: id, paneId: "help", binding: { kind: "none" } });
   config.keybindings = keybindings;
   const initial = createInitialState(config);
@@ -29,7 +29,7 @@ function Harness({ keybindings }: { keybindings?: KeybindingsConfig }) {
   const [state, dispatch] = useReducer(appReducer, initial);
   latestState = state;
   return (
-    <TestPaneFrame state={state} dispatch={dispatch} paneId={id} pluginId="help" runtime={createTestPluginRuntime()} width={90} height={30}>
+    <TestPaneFrame state={state} dispatch={dispatch} paneId={id} pluginId="help" runtime={createTestPluginRuntime()} width={width} height={30}>
       {(body) => <HelpPane paneId={id} paneType="help" focused {...body} />}
     </TestPaneFrame>
   );
@@ -42,8 +42,8 @@ async function frame() {
   });
 }
 
-async function openShortcutsTab() {
-  await act(async () => { await tui.render(<Harness />, { width: 90, height: 30 }); });
+async function openShortcutsTab(width = 90) {
+  await act(async () => { await tui.render(<Harness width={width} />, { width, height: 30 }); });
   await frame();
   await act(async () => { await tui.clickFrameText("Shortcuts"); });
   // The table measures its viewport before it can lay columns and rows out.
@@ -101,6 +101,33 @@ test("rebinding from the help pane captures the next chord, shows the way back, 
   await frame();
   expect(latestState?.config.keybindings).toEqual({ actions: { "ticker-search": null } });
   expect(tui.frame()).toContain("unbound");
+});
+
+test("NOTE shows only while a row on screen has a note and ACTION keeps 30 cells beside it", async () => {
+  const rebindTickerSearch = async () => {
+    await tui.emitKeypress({ name: "j" });
+    await tui.emitKeypress({ name: "return" });
+    await frame();
+    await tui.emitKeypress({ name: "y", ctrl: true, shift: true });
+    await frame();
+  };
+  // 90 columns: no note on screen, no NOTE; the rebound row's note brings it.
+  await openShortcutsTab(90);
+  expect(tui.frame()).not.toContain("NOTE");
+  await rebindTickerSearch();
+  expect(tui.frame()).toContain("NOTE");
+  await tui.emitKeypress({ name: "0" });
+  await frame();
+  await act(async () => { await tui.destroy(); });
+
+  // 80 columns cut "Change the focused pa…" beside an empty 26-cell NOTE. With a note, NOTE would leave ACTION
+  // 25 cells, so the footer carries it.
+  await openShortcutsTab(80);
+  expect(tui.frame()).toContain("Change the focused pane's ticker.");
+  expect(tui.frame()).not.toContain("NOTE");
+  await rebindTickerSearch();
+  expect(tui.frame()).not.toContain("NOTE");
+  expect(tui.frame()).toContain("Bound to Ctrl+Shift+Y.");
 });
 
 test("a capture landing on a built-in action's chord is refused, names that action and saves nothing", async () => {

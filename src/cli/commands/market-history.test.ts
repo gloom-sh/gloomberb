@@ -934,3 +934,19 @@ test("a range is read in any case and as other tools spell it", () => {
     ["max", "ALL"], ["all", "ALL"]] as const) expect(readHistoryRange(typed), typed).toBe(range);
   for (const typed of ["2mo", "1h", "month"]) expect(readHistoryRange(typed), typed).toBeNull();
 });
+
+test("a range typed in a symbol's place says to give it as --range, and a bare word stays a symbol", async () => {
+  // `history CC=F 1mo` loaded 1MO, a Milan listing, beside cocoa.
+  let asked: string[] = [];
+  const bars = async (symbol: string) => {
+    asked.push(symbol);
+    return dailyBar(100);
+  };
+  await expect(runList(["CC=F", "1mo"], bars)).rejects.toThrow('"1mo" reads as a range, not a symbol: give it as --range 1M.');
+  await expect(runList(["CC=F", "KC=F", "3 months"], bars)).rejects.toThrow("give it as --range 3M");
+  expect(asked).toEqual([]);
+  // ALL and MAX are listings, and a range already given leaves every entry a symbol.
+  expect((await runList(["CC=F", "ALL"], bars)).symbols).toEqual(["CC=F", "ALL"]);
+  asked = [];
+  expect((await runList(["CC=F", "1mo", "--range", "1Y"], bars)).symbols).toEqual(["CC=F", "1MO"]);
+});

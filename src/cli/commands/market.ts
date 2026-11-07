@@ -418,6 +418,16 @@ export function readHistoryRange(value: string): HistoryRange | null {
   return VALID_RANGES.has(range) ? range : null;
 }
 
+/**
+ * The range a symbol's place holds, typed as a count and a unit (`1mo`, `3m`,
+ * `5 days`), or null. `history CC=F 1mo` loaded 1MO, a Milan listing, beside
+ * cocoa. A bare word stays a symbol: ALL and MAX are listings, and YTD only
+ * means a range after --range.
+ */
+function rangeTypedAsSymbol(entry: string): HistoryRange | null {
+  return /^\s*\d+\s*[a-z]+\s*$/i.test(entry) ? readHistoryRange(entry) : null;
+}
+
 function parseRange(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): HistoryRange {
   const range = readHistoryRange(value ?? "1Y");
   if (!range) ctx.fail(`Unknown range "${value}".`, `Use one of ${HISTORY_RANGES.join(", ")}.`);
@@ -1800,6 +1810,13 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const currency = file != null || requestedExchange ? null : currencyNameStop(args, "history");
   if (currency) ctx.fail(currency.message, currency.details);
   if (wide || file != null || args.includes("-") || uniqueEntries(args).length > 1 || args.some((arg) => /[,;]/.test(arg))) {
+    // `history CC=F 1mo` asks for a month of cocoa, not for cocoa and 1MO: it says which option reads it.
+    const typedRange = rangeOption == null && !window ? args.find((arg) => rangeTypedAsSymbol(arg)) : undefined;
+    if (typedRange) {
+      const others = args.filter((arg) => arg !== typedRange).map((arg) => /[\s"'$`\\!&|;<>()*?#~]/.test(arg) ? `"${arg.replace(/(["\\$`])/g, "\\$1")}"` : arg).join(" ");
+      ctx.fail(`"${typedRange}" reads as a range, not a symbol: give it as --range ${rangeTypedAsSymbol(typedRange)}.`,
+        `gloom history ${others} --range ${rangeTypedAsSymbol(typedRange)}`);
+    }
     if (backAdjust) ctx.fail("--back-adjust stitches one continuous future, such as ES=F.", `Usage: gloom ${HISTORY_USAGE}`);
     return runHistoryList(args, file, requestedExchange, ask, ctx, { wide });
   }

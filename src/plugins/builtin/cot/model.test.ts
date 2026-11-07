@@ -322,6 +322,27 @@ test("--report tff and --positions combined read the TFF board and contracts wit
   await expect(run(undefined, ["--report", "tff", "--traderClass", "managed-money"], "futures-only")).rejects.toThrow("does not belong");
 });
 
+test("the board's net column names the class it counts", async () => {
+  // `fn COT` headed sugar's +185,473 "Net"; the disaggregated report's managed money nets +223,784 on the same market.
+  const capability = getPaneFunctionCapability({ id: "cot-pane", paneId: "cot", label: "COT", description: "COT", headless: cotHeadless },
+    { id: "cot", name: "COT", component: () => null, defaultPosition: "right" });
+  const header = async (flags: string[]) => {
+    const global = parseCliGlobalArgs(["fn", "COT", ...flags]);
+    const options = normalizeCapabilityOptions(capability, parsePaneFunctionArgs(global.args.slice(1), global.options).options, { strict: true });
+    const board = await cotHeadless.load({ symbols: [], options } as never, { apiClient: {
+      getCloudCotBoard: async (family: string, traderClass: string) => {
+        const { contract, positions, history, sourceUrl, openInterest, ...base } = payload();
+        return { ...base, reportFamily: family, traderClass, status: "available", gaps: [], classes: [{ id: traderClass, label: traderClass }],
+          rows: [{ ...contract!, reportDate: "2026-09-15", openInterest: 200, position: { ...positions[0]!, id: traderClass }, status: "available" }] };
+      },
+    } } as never) as { sections: Array<{ columns: Array<{ key: string; header: string }> }> };
+    return board.sections[0]!.columns.map((column) => column.header);
+  };
+  expect(await header([])).toEqual(["Market", "Code", "Net noncommercial", "1W Δ", "Net % OI", "Pctl 1Y", "Pctl 3Y", "Pctl All", "Open interest", "As of"]);
+  expect(await header(["--report", "disaggregated"])).toContain("Net managed money");
+  expect(await header(["--report", "legacy", "--traderClass", "commercial"])).toContain("Net commercial");
+});
+
 test("the API asks for a scope only when it is combined, so the default request is the one it always was", async () => {
   const { CloudDataApi } = await import("../../../api-client/data");
   const paths: string[] = [];

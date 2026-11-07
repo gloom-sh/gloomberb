@@ -1,3 +1,6 @@
+/** The Commodities & Energy workspace's pane id: FUT, CTM, COT and the others open as its tabs. */
+export const COMMODITIES_ENERGY_PANE_ID = "commodities-energy";
+
 /**
  * The pane state each Commodities & Energy tab keeps its own under, which the
  * workspace wraps it with and a function's options write to for `shot`.

@@ -109,7 +109,7 @@ import { readFundFacts } from "../../market-data/fund-facts";
 import { taxEquivalentLines, type TaxEquivalentAnalysis } from "../../market-data/tax-equivalent";
 import { isRoundTheClockCoin } from "../../utils/crypto-pair";
 import { ipoDetailNotes, ipoMetricRows, loadTickerIpo, type TickerIpo } from "../../plugins/builtin/ipo-calendar/listing-ipo";
-import { coinNewsFallbackNotice } from "../../sources/gloomberb-cloud/news";
+import { newsFallbackNotice } from "../../sources/gloomberb-cloud/news";
 
 const NEWS_ITEM_LIMIT = 5;
 const SEC_FILING_LIMIT = 5;
@@ -1497,7 +1497,7 @@ export async function buildTickerReport({
     // A summary that only says the headline again is left out; JSON keeps it.
     body: item.summary && !summaryRestatesHeadline(item.title, item.summary) ? item.summary : undefined,
     link: item.url,
-  })), recentNews[0]?.searchedFor ? coinNewsFallbackNotice(symbol, recentNews[0].searchedFor) : null);
+  })), recentNews[0]?.searchedFor ? newsFallbackNotice(symbol, recentNews[0].searchedFor) : null);
 
   appendFeedSection(lines, "Recent SEC Filings", recentSecFilings.map((filing) => ({
     title: (() => {
@@ -1839,7 +1839,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     // stopped trading shows none of the profile and figures another listing under its symbol was served with.
     const shownFinancials = await atReportTtmRate(otherProfile ? withoutResearch(resolvedFinancials) : resolvedFinancials, toBase);
     if (dependencies.printResult) {
-      const newsNote = recentNews[0]?.searchedFor ? coinNewsFallbackNotice(requestSymbol, recentNews[0].searchedFor) : null;
+      const newsNote = recentNews[0]?.searchedFor ? newsFallbackNotice(requestSymbol, recentNews[0].searchedFor) : null;
       const warnings = [...choiceNotes, quoteNote, newsNote].filter((note): note is string => !!note);
       dependencies.printResult({
         freshness,

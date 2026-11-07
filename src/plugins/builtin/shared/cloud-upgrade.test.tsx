@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, setSystemTime, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient, type AccountProfile } from "../../../api-client";
+import { AuthDialogHost } from "../../../account/auth-dialog";
 import { setCheckoutHandoffPollForTests } from "../../../account/checkout-handoff";
 import { accountSession, registerAccountSession } from "../../../account/session";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
@@ -224,6 +225,35 @@ test("while checkout is open the account is read again, one read at a time, unti
     setCheckoutHandoffPollForTests();
     registerAccountSession(previousSession);
   }
+});
+
+test("signed out, an upgrade opens the sign-up dialog, not a browser page a terminal may never show", async () => {
+  // Over SSH, `$` and the menu's "Upgrade to Pro" opened the Cloud page in no browser and seemed to do nothing.
+  apiClient.setSessionToken(null);
+  apiClient.restoreCachedUser(null);
+  let upgrade!: (options?: unknown) => Promise<void>;
+  function Footer() {
+    upgrade = useCloudUpgradeAction("ticker-footer");
+    useRendererHost().openExternal = async (url: string) => {
+      opened.push(url);
+    };
+    return <AuthDialogHost />;
+  }
+  await tui.render(<Footer />, { width: 90, height: 30 });
+  await act(async () => {
+    await upgrade();
+  });
+  await tui.waitForFrameToContain("Create your free Gloom Cloud account");
+  expect(opened).toEqual([]);
+  await tui.destroy();
+
+  // With no dialog host to ask, the Cloud page is still where it goes.
+  const bare = await renderUpgradeAction();
+  await act(async () => {
+    await bare();
+  });
+  expect(opened).toHaveLength(1);
+  expect(opened[0]).toContain("gloom.sh/cloud");
 });
 
 test("the UPGRADE command still opens checkout after the newest prompt closes", async () => {

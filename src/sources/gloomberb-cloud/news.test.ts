@@ -53,6 +53,22 @@ test("a coin pair with no story filed under it reads the stories that mention th
   expect(other.searches).toEqual([["hyperliquid", 20]]);
 });
 
+test("a future with no story filed under it reads the stories that mention its commodity, as `news` does", async () => {
+  // The CC=F pane's news read "No news for CC=F" while `news CC=F` listed cocoa's stories.
+  for (const [ticker, exchange, searched] of [["CC=F", "NYB", "cocoa"], ["KC=F", undefined, "coffee"], ["ZW=F", "CBT", "wheat"]] as const) {
+    const { client, searches } = cloud();
+    const read = await readCloudNews(client as never, { feed: "ticker", ticker, exchange, limit: 20 });
+    expect(searches).toEqual([[searched, 20]]);
+    expect(read.searchedFor).toBe(searched);
+  }
+  // A future with no commodity name, and a stock that shares a board code (CC is Chemours), keep the empty feed.
+  for (const query of [{ ticker: "ES=F", exchange: "CME" }, { ticker: "CC", exchange: "NYSE" }]) {
+    const { client, searches } = cloud();
+    expect((await readCloudNews(client as never, { feed: "ticker", limit: 20, ...query })).searchedFor).toBeUndefined();
+    expect(searches).toEqual([]);
+  }
+});
+
 test("only an empty first page of a coin pair's feed falls back, and a failed search keeps the empty answer", async () => {
   const cases: Array<[string, NewsQuery, Parameters<typeof cloud>[0]]> = [
     ["a company", { feed: "ticker", ticker: "AAPL", exchange: "NASDAQ", limit: 20 }, {}],

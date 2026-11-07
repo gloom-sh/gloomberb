@@ -173,6 +173,41 @@ export const FUTURES_SECTOR_ORDER: FuturesSector[] = [
   "currencies",
 ];
 
+/**
+ * The board's groups a reader names by a word: its sectors in any of their
+ * forms, and the two the Agriculture sector holds that traders name apart,
+ * the softs (grown, not mined, and traded in New York) and the grains with
+ * their soybean products.
+ */
+const FUTURES_GROUP_WORDS: ReadonlyArray<{ words: readonly string[]; label: string; matches: (contract: FuturesContract) => boolean }> = [
+  { words: ["softs", "soft", "soft commodities"], label: "softs", matches: (contract) => ["KC", "SB", "CC", "CT", "OJ"].includes(contract.code) },
+  { words: ["grains", "grain", "grains and oilseeds"], label: "grains", matches: (contract) => ["ZC", "ZS", "ZM", "ZL", "ZW", "KE"].includes(contract.code) },
+  { words: ["agriculture", "agricultural", "ags", "ag", "agri"], label: "agriculture", matches: (contract) => contract.sector === "agriculture" },
+  { words: ["metals", "metal"], label: "metals", matches: (contract) => contract.sector === "metals" },
+  { words: ["energy", "energies"], label: "energy", matches: (contract) => contract.sector === "energy" },
+  { words: ["livestock", "meats"], label: "livestock", matches: (contract) => contract.sector === "livestock" },
+  { words: ["currencies", "currency", "fx"], label: "currencies", matches: (contract) => contract.sector === "currencies" },
+  { words: ["rates", "interest rates", "treasuries"], label: "rates", matches: (contract) => contract.sector === "rates" },
+  { words: ["equity index", "equity indices", "indices", "stock index", "stock indices"], label: "equity index",
+    matches: (contract) => contract.sector === "equity-index" },
+  { words: ["equity sectors", "sector futures"], label: "equity sectors", matches: (contract) => contract.sector === "equity-sectors" },
+];
+
+/**
+ * The rows a group word stands for (`FUT softs`, `FUT agriculture`), or null
+ * for any other search. A sector's word lists that sector alone: "energy"
+ * is the energy futures, not the S&P Energy sector future beside them.
+ */
+export function futuresGroupFilter(query: string): ((contract: FuturesContract) => boolean) | null {
+  const typed = query.trim().toLowerCase().replace(/\s+/g, " ");
+  return FUTURES_GROUP_WORDS.find((group) => group.words.includes(typed))?.matches ?? null;
+}
+
+/** The group words a contract is found by, as a catalog search reads them: KC is softs and agriculture. */
+export function futuresGroupTags(contract: FuturesContract): string[] {
+  return FUTURES_GROUP_WORDS.filter((group) => group.matches(contract)).map((group) => group.label);
+}
+
 export function getContractsBySector(): Map<FuturesSector, FuturesContract[]> {
   const map = new Map<FuturesSector, FuturesContract[]>();
   for (const sector of FUTURES_SECTOR_ORDER) {
@@ -235,7 +270,17 @@ export function futuresBoardContract(value: unknown): FuturesContract | null {
   return BY_SYMBOL.get(typed(value)) ?? futuresContractByCode(value);
 }
 
-const nameWords = (text: string) => text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+/**
+ * A contract's name as a reader may type it, with its number marked any way:
+ * "SUGAR NO. 11", the CFTC's name, and "Sugar #11", the board's, are both
+ * "sugar 11". Lower case, "No."/"Nr." before a number and "#" dropped,
+ * spaces collapsed.
+ */
+export function futuresNameKey(text: string): string {
+  return text.toLowerCase().replace(/\b(?:no|nr)\.?\s*(?=\d)/g, " ").replace(/#/g, " ").replace(/\s+/g, " ").trim();
+}
+
+const nameWords = (text: string) => futuresNameKey(text).split(/[^a-z0-9]+/).filter(Boolean);
 
 /**
  * The item a typed name means: every word of it starts a word of the item's

@@ -32,7 +32,7 @@ function cellText(
 ): string {
   const contract = { ...contractFor(sector), tick };
   const row: FuturesTableRow = { type: "row", contract };
-  const column = createFuturesColumns(100).find((candidate) => candidate.id === id) as FuturesColumn;
+  const column = createFuturesColumns(110).find((candidate) => candidate.id === id) as FuturesColumn;
   const quotes: BoardQuoteMap = new Map([
     ["X=F", { quote: quote as Quote, loading: false, error: null, stale: false }],
   ]);
@@ -127,9 +127,16 @@ describe("futures columns", () => {
   });
 
   test("drops the extra columns a narrow board cannot fit instead of clipping them", () => {
+    // A floating board at 80x24 (53 cells) showed SYM CONTRACT LAST UNIT and hid CHG% past a scroll Right cannot
+    // reach (it switches tabs); fullscreen (78) dropped 1W and 1M. The move outranks the unit.
+    const floating = createFuturesColumns(53).map((column) => column.id);
+    expect(floating).toEqual(["status", "code", "name", "price", "changePercent"]);
+    const fullscreen = createFuturesColumns(78);
+    expect(fullscreen.map((column) => column.id)).toEqual(["status", "code", "name", "price", "changePercent", "return1w", "return1m"]);
+    expect(fullscreen.find((column) => column.id === "name")!.width).toBeGreaterThanOrEqual("WTI Crude Oil Dec 2026".length);
     // The unit a price counts outranks the change in points, which the change in percent still gives.
-    const narrow = createFuturesColumns(80).map((column) => column.id);
-    expect(narrow).toEqual(["status", "code", "name", "price", "unit", "changePercent"]);
+    expect(createFuturesColumns(100).map((column) => column.id)).toContain("unit");
+    expect(createFuturesColumns(100).map((column) => column.id)).not.toContain("change");
 
     // Returns outrank volume and time, and those the previous close, as the board narrows.
     const medium = createFuturesColumns(130).map((column) => column.id);
