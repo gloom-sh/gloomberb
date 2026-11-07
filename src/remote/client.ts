@@ -59,7 +59,7 @@ async function liveEndpoint(dataDir: string, appKind?: RemoteAppKind): Promise<R
   try {
     endpoint = await readRemoteEndpoint(dataDir, appKind);
   } catch {
-    // Absent, or cut short by an app that died writing it: no app to reach through it.
+    // Intentional ignore: a file that is absent, or cut short by an app that died writing it, names no app to reach.
     return null;
   }
   if (processAlive(endpoint.pid)) return endpoint;
