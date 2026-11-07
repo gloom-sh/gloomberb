@@ -32,7 +32,7 @@ function cellText(
 ): string {
   const contract = { ...contractFor(sector), tick };
   const row: FuturesTableRow = { type: "row", contract };
-  const column = createFuturesColumns(100).find((candidate) => candidate.id === id) as FuturesColumn;
+  const column = createFuturesColumns(120).find((candidate) => candidate.id === id) as FuturesColumn;
   const quotes: BoardQuoteMap = new Map([
     ["X=F", { quote: quote as Quote, loading: false, error: null, stale: false }],
   ]);
@@ -127,9 +127,20 @@ describe("futures columns", () => {
   });
 
   test("drops the extra columns a narrow board cannot fit instead of clipping them", () => {
+    // A floating board at 80x24 (53 cells) showed SYM CONTRACT LAST UNIT and hid CHG% past a scroll Right cannot
+    // reach (it switches tabs). The move outranks the unit.
+    const floating = createFuturesColumns(53).map((column) => column.id);
+    expect(floating).toEqual(["status", "code", "name", "price", "changePercent"]);
+    expect(createFuturesColumns(78).map((column) => column.id)).toEqual(["status", "code", "name", "price", "changePercent", "return1w"]);
     // The unit a price counts outranks the change in points, which the change in percent still gives.
-    const narrow = createFuturesColumns(80).map((column) => column.id);
-    expect(narrow).toEqual(["status", "code", "name", "price", "unit", "changePercent"]);
+    expect(createFuturesColumns(106).map((column) => column.id)).toContain("unit");
+    expect(createFuturesColumns(106).map((column) => column.id)).not.toContain("change");
+    // CONTRACT keeps 24 cells at every width that can hold them: at 100 to 116 the unit and the change cut it to 15-18,
+    // "WTI Crude Oil Dec 2026" with it.
+    for (let width = 62; width <= 210; width += 1) {
+      const name = createFuturesColumns(width).find((column) => column.id === "name")!;
+      expect(name.width, `CONTRACT at ${width} cells`).toBeGreaterThanOrEqual(24);
+    }
 
     // Returns outrank volume and time, and those the previous close, as the board narrows.
     const medium = createFuturesColumns(130).map((column) => column.id);

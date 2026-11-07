@@ -185,11 +185,11 @@ import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { bareFuturesCode, futuresBoardContract, futuresContractByWord } from "../../market-data/futures-board";
 import { commodityNamedIn, commoditySearchName } from "../../market-data/commodity-names";
 import { newsEmptyMessage } from "./news-hints";
+import { METALS_NEWS_TOPIC } from "../../sources/gloomberb-cloud/news";
 import {
   closestStoriesReason,
   commodityNewsRoute,
   commonWordCandidate,
-  METALS_NEWS_TOPIC,
   metalCodeNewsRoute,
   type MetalNewsRoute,
   metalNewsHeading,
@@ -198,6 +198,7 @@ import {
   newsSearchHeading,
   newsSearchText,
   newsSearchTextProblem,
+  newestFirst,
   noMetalStoriesMessage,
   noStoriesMessage,
   quotedSearchCommand,
@@ -416,6 +417,16 @@ export function readHistoryRange(value: string): HistoryRange | null {
   const spelled = /^(\d+)(D|DAYS?|W|WKS?|WEEKS?|M|MOS?|MONTHS?|Y|YRS?|YEARS?)$/.exec(typed);
   const range = (spelled ? `${spelled[1]}${spelled[2]![0]}` : typed) as HistoryRange;
   return VALID_RANGES.has(range) ? range : null;
+}
+
+/**
+ * The range a symbol's place holds, typed as a count and a unit (`1mo`, `3m`,
+ * `5 days`), or null. `history CC=F 1mo` loaded 1MO, a Milan listing, beside
+ * cocoa. A bare word stays a symbol: ALL and MAX are listings, and YTD only
+ * means a range after --range.
+ */
+function rangeTypedAsSymbol(entry: string): HistoryRange | null {
+  return /^\s*\d+\s*[a-z]+\s*$/i.test(entry) ? readHistoryRange(entry) : null;
 }
 
 function parseRange(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): HistoryRange {
@@ -1800,6 +1811,19 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const currency = file != null || requestedExchange ? null : currencyNameStop(args, "history");
   if (currency) ctx.fail(currency.message, currency.details);
   if (wide || file != null || args.includes("-") || uniqueEntries(args).length > 1 || args.some((arg) => /[,;]/.test(arg))) {
+    // `history CC=F 1mo` asks for a month of cocoa, not for cocoa and 1MO: it says which option reads it.
+    const typedRange = rangeOption == null && !window ? args.find((arg) => rangeTypedAsSymbol(arg)) : undefined;
+    if (typedRange) {
+      // The command as typed with the range moved to --range: its other options (--wide, --exchange) and the output
+      // flags read before the command (--csv, --limit) stay.
+      const range = rangeTypedAsSymbol(typedRange)!;
+      const at = rawArgs.indexOf(typedRange);
+      const { format, limit, tail } = ctx.cliOptions;
+      const words = [...rawArgs.filter((_arg, index) => index !== at), "--range", range,
+        ...format === "text" ? [] : [`--${format}`], ...limit == null ? [] : ["--limit", String(limit)], ...tail == null ? [] : ["--tail", String(tail)]];
+      const shell = (arg: string) => /[\s"'$`\\!&|;<>()*?#~]/.test(arg) ? `"${arg.replace(/(["\\$`])/g, "\\$1")}"` : arg;
+      ctx.fail(`"${typedRange}" reads as a range, not a symbol: give it as --range ${range}.`, `gloom history ${words.map(shell).join(" ")}`);
+    }
     if (backAdjust) ctx.fail("--back-adjust stitches one continuous future, such as ES=F.", `Usage: gloom ${HISTORY_USAGE}`);
     return runHistoryList(args, file, requestedExchange, ask, ctx, { wide });
   }
@@ -2557,6 +2581,14 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       quoteLoad,
     ]);
     const searchedFor = listing ? articles[0]?.searchedFor : undefined;
+    // A future's feed already searched its commodity's stories when none are filed under it (the pane reads the same
+    // way): they print as they did when this command searched them, newest first under "the commodity KC=F trades".
+    const searchedFuture = listing && searchedFor && !listing.exchange && !feed && isFuturesInstrument(listing.symbol, quote?.instrumentType)
+      ? futuresBoardContract(listing.symbol) ?? bareFuturesCode(args[0]) : null;
+    if (searchedFuture && commoditySearchName(searchedFuture) === searchedFor) {
+      await printNewsSearch(searchedFor, newestFirst(articles), { reason: `the commodity ${searchedFuture.symbol} trades`, commodity: false }, ctx);
+      return;
+    }
     if (listing && searchedFor) {
       await printNewsSearch(searchedFor, articles, { reason: `no stories filed under ${listing.symbol}`, ticker: listing.key }, ctx);
       return;

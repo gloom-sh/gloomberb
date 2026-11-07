@@ -51,9 +51,9 @@ function loadTerms(symbol: string, batch: boolean): Promise<boolean> {
 
 /**
  * Each listed row's contract terms, as `quote` reads them: the unit its price
- * counts, the nearer month still trading once its continuous symbol has
- * rolled, and the day's most active month. Only the rows the board lists are asked for,
- * and a row whose terms have not arrived (or that has none) renders without them.
+ * counts and the nearer month still trading once its continuous symbol has
+ * rolled. Only the rows the board lists are asked for, and a row whose terms
+ * have not arrived (or that has none) renders without them.
  */
 export function useFuturesBoardTerms(contracts: readonly FuturesContract[], enabled: boolean): FuturesTermsMap {
   const symbolKey = contracts.map((contract) => contract.symbol).join(",");

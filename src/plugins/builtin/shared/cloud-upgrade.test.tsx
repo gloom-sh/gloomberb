@@ -1,6 +1,8 @@
-import { afterEach, beforeEach, expect, setSystemTime, test } from "bun:test";
+import { afterEach, beforeEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient, type AccountProfile } from "../../../api-client";
+import { AuthDialogHost, interceptAuthDialogForTests, type AuthDialogRequest } from "../../../account/auth-dialog";
+import * as researchActivity from "../../../api-client/research-activity";
 import { setCheckoutHandoffPollForTests } from "../../../account/checkout-handoff";
 import { accountSession, registerAccountSession } from "../../../account/session";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
@@ -223,6 +225,84 @@ test("while checkout is open the account is read again, one read at a time, unti
   } finally {
     setCheckoutHandoffPollForTests();
     registerAccountSession(previousSession);
+  }
+});
+
+test("signed out, an upgrade opens the sign-up dialog, not a browser page a terminal may never show, and counts one press", async () => {
+  // Over SSH, `$` and the menu's "Upgrade to Pro" opened the Cloud page in no browser and seemed to do nothing.
+  apiClient.setSessionToken(null);
+  apiClient.restoreCachedUser(null);
+  const intents = spyOn(researchActivity, "recordResearchActivity").mockImplementation(() => {});
+  try {
+    let upgrade!: (options?: unknown) => Promise<void>;
+    function Footer() {
+      upgrade = useCloudUpgradeAction("ticker-footer");
+      useRendererHost().openExternal = async (url: string) => {
+        opened.push(url);
+      };
+      return <AuthDialogHost />;
+    }
+    await tui.render(<Footer />, { width: 90, height: 30 });
+    await act(async () => {
+      await upgrade();
+    });
+    await tui.waitForFrameToContain("Create your free Gloom Cloud account");
+    expect(opened).toEqual([]);
+    expect(intents.mock.calls.filter(([event]) => event === "upgrade_intent")).toHaveLength(1);
+    // Another press while the dialog is up asks for nothing new and counts nothing.
+    await act(async () => {
+      await upgrade();
+    });
+    expect(intents.mock.calls.filter(([event]) => event === "upgrade_intent")).toHaveLength(1);
+    await tui.destroy();
+  } finally {
+    intents.mockRestore();
+  }
+
+  // With no dialog host to ask, the Cloud page is still where it goes.
+  const bare = await renderUpgradeAction();
+  await act(async () => {
+    await bare();
+  });
+  expect(opened).toHaveLength(1);
+  expect(opened[0]).toContain("gloom.sh/cloud");
+});
+
+test("once signed in from the sign-up dialog, a new account gets the upgrade sheet and a Pro login nothing", async () => {
+  const pricing = spyOn(apiClient, "getCloudPricing").mockRejectedValue(new Error("Fixture has no pricing"));
+  const portal = spyOn(apiClient, "createBillingPortal").mockResolvedValue({ url: "https://portal.example/session" } as never);
+  const requests: AuthDialogRequest[] = [];
+  const release = interceptAuthDialogForTests((request) => requests.push(request));
+  try {
+    const signIn = async (user: Parameters<typeof apiClient.restoreCachedUser>[0] & object) => {
+      apiClient.setSessionToken(null);
+      apiClient.restoreCachedUser(null);
+      const upgrade = await renderUpgradeAction();
+      await act(async () => {
+        await upgrade();
+      });
+      expect(requests.at(-1)?.mode).toBe("signup");
+      apiClient.setSessionToken("cloud-upgrade-session");
+      apiClient.restoreCachedUser(user);
+      await act(async () => {
+        requests.at(-1)!.onSignedIn!(user as never);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+    };
+    await signIn({ id: "user-new", email: "new@example.com", emailVerified: true, plan: "free" });
+    await tui.waitForFrameToContain("One better trade pays for Pro");
+    await tui.destroy();
+
+    await signIn({ id: "user-pro", email: "pro@example.com", emailVerified: true, plan: "pro" });
+    await tui.renderFrames(2);
+    expect(tui.frame()).not.toContain("One better trade pays for Pro");
+    expect(opened).toEqual([]);
+    expect(portal).not.toHaveBeenCalled();
+    expect(checkouts).toBe(0);
+  } finally {
+    release();
+    pricing.mockRestore();
+    portal.mockRestore();
   }
 });
 

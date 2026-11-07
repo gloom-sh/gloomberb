@@ -14,7 +14,7 @@ import {
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { usePaneVisible } from "../../../state/app/activity";
-import { usePaneInstance } from "../../../state/app/context";
+import { usePaneInstance, usePaneSettingValue } from "../../../state/app/context";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -68,12 +68,15 @@ import {
 } from "./table";
 import { useFuturesBoardTerms } from "./use-board-terms";
 import { useFrontContractReturns } from "./use-front-returns";
+import { COMMODITIES_ENERGY_PANE_ID } from "../commodities-energy/view-state";
 
 const FUTURES_PANE_ID = "futures";
 
 const FUTURES_SYMBOLS = FUTURES_CONTRACTS.map((contract) => contract.symbol);
 
 const alwaysNavigable = () => true;
+/** How long the cursor rests on a row before the workspace's Curve tab follows it. */
+const CURVE_FOLLOW_MS = 150;
 const NO_BOARD_QUOTES: BoardQuoteMap = new Map();
 /** Columns whose order moves with every tick; the others keep a fixed order. */
 const LIVE_SORT_COLUMNS = new Set<string>([
@@ -197,7 +200,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
       futuresSessionQuote(row.contract, quote)?.marketState,
       values?.loading, ...Object.values(values?.values ?? {}),
       contract?.loading, contract?.terms?.spec?.unit, contract?.terms?.deliveryMonth, contract?.terms?.nearest?.contract,
-      contract?.terms?.nearest?.lastTrade, contract?.terms?.mostActive?.contract,
+      contract?.terms?.nearest?.lastTrade,
     ].join(":");
   }, [returns, shownQuotes, terms]);
 
@@ -244,6 +247,21 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
     const firstNavigable = rows.find((row) => row.type === "row") ?? rows[0];
     setSelectedId(firstNavigable ? futuresRowId(firstNavigable) : null);
   }, [rows, selectedId]);
+
+  // In the Commodities & Energy workspace the Curve tab shows the market in view here: the row picked, or the one a
+  // search left at the top (`FUT cocoa` opened Curve on ES). The first row an unsearched board selects by itself moves
+  // nothing, so `CTM CC` keeps CC when Markets is opened beside it.
+  const [picked, setPicked] = useState(false);
+  const [, setCurveRoot] = usePaneSettingValue<string | undefined>("root", undefined);
+  const selectedRow = rows.find((row) => row.type === "row" && futuresRowId(row) === selectedId);
+  const marketInView = paneInstance?.paneId === COMMODITIES_ENERGY_PANE_ID && (picked || searchQuery.trim()) && selectedRow?.type === "row"
+    ? selectedRow.contract.code : null;
+  useEffect(() => {
+    if (!marketInView) return;
+    // Arrowing down the board writes the row it stops on, not every row it passes.
+    const timer = setTimeout(() => setCurveRoot(marketInView), CURVE_FOLLOW_MS);
+    return () => clearTimeout(timer);
+  }, [marketInView, setCurveRoot]);
 
   // The footer binds the `/` search hint.
   const handlePaneKey = useCallback((event: DataTableKeyEvent): boolean => {
@@ -334,7 +352,10 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
         kind: "id",
         selectedId,
         getId: (row) => futuresRowId(row),
-        onChange: (id) => setSelectedId(id),
+        onChange: (id) => {
+          setSelectedId(id);
+          setPicked(true);
+        },
       }}
       isNavigable={alwaysNavigable}
       onActivate={(row) => {
@@ -426,7 +447,7 @@ export const futuresModule: PluginModule = {
       paneId: FUTURES_PANE_ID,
       label: "Futures Board",
       description:
-        "Each root's front futures contract (until its stated roll date) and the day's most active month across equity index, equity sectors, rates, energy, metals, agriculture, livestock, and FX with last price, unit, session change, search, and collapsible sectors.",
+        "Each root's front futures contract (until its stated roll date) across equity index, equity sectors, rates, energy, metals, agriculture, livestock, and FX with last price, unit, session change, search, and collapsible sectors.",
       keywords: [
         "futures",
         "commodities",

@@ -15,6 +15,7 @@ import { freeQuotesDelayMinutes, resolvePlanAccess, usePlanAccess, type PlanAcce
 import { useViewport } from "../../../react/input";
 import { type DialogApi, useOptionalDialog } from "../../../ui/dialog";
 import { promptCloudUpgrade } from "../../../account/upgrade-dialog";
+import { isAuthDialogOpen, requestAuthDialog } from "../../../account/auth-dialog";
 import { type CheckoutHandoffTarget, promptCheckoutHandoff } from "../../../account/checkout-handoff";
 
 const CLOUD_UPGRADE_URL = "https://gloom.sh/cloud?upgrade=pro";
@@ -195,8 +196,14 @@ function isCloudUpgradeOptions(value: unknown): value is CloudUpgradeOptions {
  *
  * A signed-in account without Pro sees the upgrade sheet first (what Pro adds,
  * what today costs), and checkout opens only once they choose to go on, with
- * the checkout hand-off over the app until Pro arrives. Signed-out users get
- * the public Cloud page and Pro accounts the billing portal, as before.
+ * the checkout hand-off over the app until Pro arrives. Signed out, the
+ * sign-up dialog opens first, as the UPGRADE command's does, and the upgrade
+ * goes on once signed in, to the sheet for an account without Pro and to
+ * nothing for one that has it: the Cloud page it opened before left a
+ * terminal over SSH with no browser looking as if `$` did nothing. A press
+ * while the dialog is up does nothing. Only with no dialog host (an isolated
+ * render) does it open the public Cloud page. Pro accounts get the billing
+ * portal.
  */
 export function useCloudUpgradeAction(placement: string): (options?: unknown) => Promise<void> {
   const rendererHost = useRendererHost();
@@ -227,6 +234,20 @@ export function useCloudUpgradeAction(placement: string): (options?: unknown) =>
         })
       )).catch(logFailure("shared.cloud-upgrade", "Open Cloud upgrade page failed"));
     };
+    if (checkout.sheet !== false && !apiClient.isSignedIn()) {
+      // A press while the sign-up dialog is up asks for nothing new, and counts nothing.
+      if (isAuthDialogOpen()) return;
+      // Counted once, on this press: the upgrade that goes on after sign-up does not count it again. An account that
+      // signs in with Pro already has what the press was for, so nothing more opens.
+      const continueSignedIn = () => {
+        if (resolvePlanAccess(apiClient.getCurrentUser()).hasProAccess) return;
+        void openUpgradeRef.current({ ...checkout, recordIntent: false });
+      };
+      if (requestAuthDialog({ mode: "signup", onSignedIn: continueSignedIn })) {
+        if (checkout.recordIntent !== false) recordUpgradeIntent(checkout.placement);
+        return;
+      }
+    }
     if (
       checkout.sheet === false ||
       !dialog ||
@@ -236,7 +257,7 @@ export function useCloudUpgradeAction(placement: string): (options?: unknown) =>
       await openCheckout(checkout);
       return;
     }
-    recordUpgradeIntent(checkout.placement);
+    if (checkout.recordIntent !== false) recordUpgradeIntent(checkout.placement);
     // Checkout is opening or just opened: a second sheet would lead nowhere.
     if (isCloudUpgradeBlocked("checkout")) return;
     const interval = await promptCloudUpgrade(dialog, {
@@ -245,6 +266,9 @@ export function useCloudUpgradeAction(placement: string): (options?: unknown) =>
     });
     if (interval) await openCheckout({ ...checkout, interval, recordIntent: false });
   }, [dialog, placement, rendererHost]);
+  // The sign-up dialog's continuation runs the newest action, after the sign-in re-rendered it.
+  const openUpgradeRef = useRef(openUpgrade);
+  openUpgradeRef.current = openUpgrade;
   useEffect(() => {
     cloudUpgradeOpeners.add(openUpgrade);
     return () => {

@@ -6,7 +6,7 @@ import type {
 } from "../../../types/plugin";
 import type { NewsArticle, NewsQuery } from "../../../news/types";
 import {
-  coinNewsFallbackNotice,
+  newsFallbackNotice,
   mapCloudNewsArticle,
   readCloudNews,
   type CloudNewsRead,
@@ -102,7 +102,7 @@ function projectNewsHeadless(
     freshness: cloudNewsFreshness(realtime),
     // A coin pair no story is filed under shows the stories that mention the coin, and says so.
     ...(response.searchedFor && args.symbols[0]
-      ? { notes: [coinNewsFallbackNotice(parsePublicTickerKey(args.symbols[0]).symbol, response.searchedFor)] }
+      ? { notes: [newsFallbackNotice(parsePublicTickerKey(args.symbols[0]).symbol, response.searchedFor)] }
       // A receipt's or foreign line's stories are its company's, read from the home line.
       : response.companyFrom ? { notes: companyDataNotes(readCompanyFrom(response.companyFrom)) } : {}),
     metadata: {

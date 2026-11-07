@@ -77,7 +77,7 @@ export function newsFallbackText(symbol: string): string | null {
  * the list is then read by date, which its help promises. A story with no
  * date goes last; equal dates keep the service's order.
  */
-function newestFirst(articles: readonly NewsArticle[]): NewsArticle[] {
+export function newestFirst(articles: readonly NewsArticle[]): NewsArticle[] {
   const time = (article: NewsArticle) => {
     const at = new Date(article.publishedAt as Date | string | number).getTime();
     return Number.isFinite(at) ? at : -Infinity;
@@ -123,8 +123,6 @@ export function closestStoriesReason(text: string): string {
   return `no story has every word of "${text}"; the closest, most words first`;
 }
 
-/** The NI code of the metal markets: prices, futures, bullion and the trusts that hold it, not a miner's releases. */
-export const METALS_NEWS_TOPIC = "metals";
 
 /** A metal's market news, for what `news` was given: its name, its future, or its board code. */
 export interface MetalNewsRoute {

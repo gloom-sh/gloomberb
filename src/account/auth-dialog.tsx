@@ -45,12 +45,27 @@ export interface AuthDialogRequest {
 }
 
 const authDialogListeners = new Set<(request: AuthDialogRequest) => void>();
+/** How many hosts show the dialog now; a request while one does is ignored. */
+let openAuthDialogs = 0;
 
 /** Returns false when no dialog host is mounted, so callers can fall back. */
 export function requestAuthDialog(request: AuthDialogRequest = {}): boolean {
   if (authDialogListeners.size === 0) return false;
   for (const listener of authDialogListeners) listener(request);
   return true;
+}
+
+/** Whether the dialog is on screen, so a press that would only ask for it again can do nothing. */
+export function isAuthDialogOpen(): boolean {
+  return openAuthDialogs > 0;
+}
+
+/** Takes the requests a host would, for a test that signs in without the form. */
+export function interceptAuthDialogForTests(listener: (request: AuthDialogRequest) => void): () => void {
+  authDialogListeners.add(listener);
+  return () => {
+    authDialogListeners.delete(listener);
+  };
 }
 
 export function AuthDialogHost() {
@@ -61,6 +76,7 @@ export function AuthDialogHost() {
     const listener = (request: AuthDialogRequest) => {
       if (openRef.current) return;
       openRef.current = true;
+      openAuthDialogs += 1;
       void dialog
         .prompt<AuthUser | undefined>({
           closeOnClickOutside: false,
@@ -76,6 +92,7 @@ export function AuthDialogHost() {
         })
         .finally(() => {
           openRef.current = false;
+          openAuthDialogs -= 1;
         });
     };
     authDialogListeners.add(listener);

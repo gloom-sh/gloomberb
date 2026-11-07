@@ -49,6 +49,7 @@ import {
   FunctionLinkRow,
   PositionTable,
   QuoteBook,
+  rangeEndpointStyle,
   rangeEndpointWidth,
   rangeRowChrome,
   textGridColumns,
@@ -361,14 +362,20 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     yearRange ? displayWidth(yearRangeLabel) : 0,
   );
   // Both ranges share one endpoint width, so stacked tracks start and end in the same column.
-  const rangeEndpointCells = rangeEndpointWidth([
-    ...(hasDayRange ? [quote.low!, quote.high!] : []),
-    ...(yearRange ? [yearRange.low, yearRange.high] : []),
-  ], quoteCurrency, moneyOptions);
+  const rangeValues: Array<[number, number]> = [
+    ...(hasDayRange ? [[quote.low!, quote.high!] as [number, number]] : []),
+    ...(yearRange ? [[yearRange.low, yearRange.high] as [number, number]] : []),
+  ];
+  const rangePriceCells = rangeEndpointWidth(rangeValues, quoteCurrency, moneyOptions);
   const rangeHalfWidth = Math.floor((contentWidth - RANGE_PAIR_GAP) / 2);
   const rangeInline = hasDayRange && yearRange != null
-    && rangeHalfWidth - rangeRowChrome(rangeLabelWidth, rangeEndpointCells) >= RANGE_INLINE_MIN_TRACK;
+    && rangeHalfWidth - rangeRowChrome(rangeLabelWidth, rangePriceCells) >= RANGE_INLINE_MIN_TRACK;
   const rangeWidth = rangeInline ? rangeHalfWidth : contentWidth;
+  // A pane too narrow for both priced ends beside a track writes them compact, both ranges alike.
+  const rangeShortLabelWidth = Math.max(hasDayRange ? displayWidth(delisted ? t("Last") : t("Day")) : 0, yearRange ? displayWidth(t("52W")) : 0);
+  const rangeEndpoints = rangeEndpointStyle(rangeWidth, rangeShortLabelWidth, rangePriceCells);
+  const rangeEndpointCells = rangeEndpoints === "price" ? rangePriceCells
+    : rangeEndpointWidth(rangeValues, quoteCurrency, moneyOptions, rangeEndpoints);
   const contractLines = contractTerms ? futuresContractLines(contractTerms, futuresSymbol) : [];
   // Columns that keep every term whole; a narrow pane stacks them in one.
   const contractColumns = textGridColumns(contractLines.map(contractField), contentWidth);
@@ -559,6 +566,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
                 grow={rangeInline}
                 currency={quoteCurrency}
                 priceOptions={moneyOptions}
+                endpoints={rangeEndpoints}
               />
             )}
             {yearRange && (
@@ -574,6 +582,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
                 grow={rangeInline}
                 currency={quoteCurrency}
                 priceOptions={moneyOptions}
+                endpoints={rangeEndpoints}
               />
             )}
           </Box>

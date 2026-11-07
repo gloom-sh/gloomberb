@@ -12,6 +12,8 @@ import type {
 import type { CloudNewsParams } from "../../api-client/paths";
 import { parsePublicTickerKey, publicExchange } from "../../utils/exchanges";
 import { coinSearchName } from "../../utils/crypto-pair";
+import { commoditySearchName } from "../../market-data/commodity-names";
+import { futuresBoardContractForTicker } from "../../market-data/futures-board";
 import { logFailure } from "../../utils/log-failure";
 import { getListingSymbol, tickerHasListingSuffix } from "../listing-symbols";
 
@@ -195,12 +197,33 @@ export function cloudNewsAccess(
 type CloudNewsClient = Pick<typeof apiClient, "getCloudNews" | "searchCloudNews">
   & Partial<Pick<typeof apiClient, "hasSessionCredential">>;
 
+/** The NI code of the metal markets: prices, futures, bullion and the trusts that hold it, not a miner's releases. */
+export const METALS_NEWS_TOPIC = "metals";
+
+/**
+ * What a ticker no story is filed under is searched by: a coin pair's coin
+ * ("bitcoin" for BTC-USD), or a futures board symbol's commodity ("cocoa" for
+ * CC=F), as `news` searches them. A metal's future (GC=F, SI=F, HG=F, PL=F,
+ * PA=F, ALI=F) searches the metals stories only, as `news GC=F` does: the
+ * stories that merely name gold are mostly miners' releases. Null for
+ * anything else, and for a future with no commodity name (ES=F, ZN=F).
+ */
+function newsFallbackSearch(query: Pick<NewsQuery, "ticker" | "exchange" | "listingName">): { text: string; topics?: string[] } | null {
+  const coin = coinSearchName(query.ticker, query.exchange, query.listingName);
+  if (coin) return { text: coin };
+  const future = query.ticker ? futuresBoardContractForTicker(parsePublicTickerKey(query.ticker).symbol) : null;
+  const text = future ? commoditySearchName(future) : null;
+  if (!future || !text) return null;
+  return future.sector === "metals" ? { text, topics: [METALS_NEWS_TOPIC] } : { text };
+}
+
 /**
  * A news query's first page from Gloom Cloud. Stories are filed under company
- * tickers, and a coin pair (BTC-USD) rarely has any filed under it, so its
- * empty feed falls back to the stories that mention the coin ("bitcoin"),
- * marked with what was searched. A later page, a failed search or a coin with
- * no name to search keeps the empty answer.
+ * tickers, and a coin pair (BTC-USD) or a future (CC=F) rarely has any filed
+ * under it, so its empty feed falls back to the stories that mention the coin
+ * or the commodity ("bitcoin", "cocoa"), marked with what was searched. A
+ * later page, a failed search or a ticker with no name to search keeps the
+ * empty answer.
  */
 export async function readCloudNews(client: CloudNewsClient, query: NewsQuery): Promise<CloudNewsRead> {
   // Asked in the tick the request goes out in, which is when its headers take the session.
@@ -208,16 +231,16 @@ export async function readCloudNews(client: CloudNewsClient, query: NewsQuery): 
   const response = await client.getCloudNews(cloudNewsParams(query));
   const read: CloudNewsRead = { ...response, access: cloudNewsAccess(response, sentSession) };
   if (response.items.length > 0 || query.cursor || normalizeNewsFeed(query) !== "ticker") return read;
-  const text = coinSearchName(query.ticker, query.exchange, query.listingName);
-  if (!text) return read;
-  const found = await client.searchCloudNews(text, query.limit)
-    .catch(logFailure("sources.gloomberb-cloud.news", "Search a coin's stories failed", null));
+  const search = newsFallbackSearch(query);
+  if (!search) return read;
+  const found = await client.searchCloudNews(search.text, query.limit, search.topics)
+    .catch(logFailure("sources.gloomberb-cloud.news", "Search the stories that mention a ticker's coin or commodity failed", null));
   return found && found.items.length > 0
-    ? { items: found.items, nextCursor: null, searchedFor: text, access: cloudNewsAccess(found, sentSession) }
+    ? { items: found.items, nextCursor: null, searchedFor: search.text, access: cloudNewsAccess(found, sentSession) }
     : read;
 }
 
-/** A read's stories as articles, each marked with the text a coin's fallback searched for. */
+/** A read's stories as articles, each marked with the text a coin's or a future's fallback searched for. */
 export function cloudNewsReadArticles(read: CloudNewsRead, ticker?: string): NewsArticle[] {
   return read.items.map((item) => {
     const article = mapCloudNewsArticle(item, read.searchedFor ? undefined : ticker);
@@ -225,7 +248,7 @@ export function cloudNewsReadArticles(read: CloudNewsRead, ticker?: string): New
   });
 }
 
-/** What a pane or report says above the stories a coin's fallback found: "No stories are filed under BTC-USD; these mention bitcoin." */
-export function coinNewsFallbackNotice(ticker: string, searchedFor: string): string {
+/** What a pane or report says above the stories a fallback found: "No stories are filed under CC=F; these mention cocoa." */
+export function newsFallbackNotice(ticker: string, searchedFor: string): string {
   return `No stories are filed under ${ticker}; these mention ${searchedFor}.`;
 }

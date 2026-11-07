@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { ActionRow, ColumnGrid, ColumnGridPair, RangeTrack, usePaneLinkMenuEntry, type ColumnGridCell, type ColumnGridColumn } from "../../../../components";
 import { t, tf } from "../../../../i18n";
-import { formatMarketPriceWithCurrency, liveQuoteFormatOptions, type MarketFormatOptions } from "../../../../market-data/market/format";
+import { formatMarketPrice, formatMarketPriceWithCurrency, liveQuoteFormatOptions, type MarketFormatOptions } from "../../../../market-data/market/format";
 import { colors, hoverBg, priceColor } from "../../../../theme/colors";
 import type { Quote } from "../../../../types/financials";
 import { Box, Text, useUiCapabilities } from "../../../../ui";
@@ -35,14 +35,61 @@ export function rangeRowChrome(labelWidth: number, endpointWidth: number): numbe
   return labelWidth + 1 + endpointWidth * 2 + 2;
 }
 
-/** The longest endpoint among ranges drawn together, so stacked tracks start and end in one column. */
-export function rangeEndpointWidth(
-  values: readonly number[],
+/**
+ * How a range row writes its ends: as the quote prints a price ($5,072.00),
+ * or, on a row too narrow for those beside a track even under its short
+ * label, the bare number: a 27-cell CC=F pane cut its highs, "Day $5,072.00
+ * ● $5,28". From 100 up a compact end drops the decimals the low and the
+ * high do not need to read apart (5,072 and 5,287, but 150.1 and 150.4, never
+ * 150 twice); below 100 it keeps them, or 18.13 and 18.60 would read 18 and 19.
+ */
+type RangeEndpointStyle = "price" | "compact";
+
+const fractionDigits = (text: string) => /\.(\d+)\D*$/.exec(text)?.[1]!.length ?? 0;
+
+/** The options a compact range writes its two ends with: the fewest decimals that still tell them apart. */
+function compactRangeOptions(low: number, high: number, priceOptions: MarketFormatOptions): MarketFormatOptions {
+  if (Math.max(Math.abs(low), Math.abs(high)) < 100) return priceOptions;
+  // The decimals the price has, read without the cell cap, which drops them to fit.
+  const unbounded = { ...priceOptions, maxWidth: undefined };
+  const full = Math.max(fractionDigits(formatMarketPrice(low, unbounded)), fractionDigits(formatMarketPrice(high, unbounded)));
+  for (let digits = 0; digits < full; digits += 1) {
+    const options = { ...priceOptions, fixedFractionDigits: digits, minimumFractionDigits: digits, referencePrice: undefined };
+    if (formatMarketPrice(low, options) !== formatMarketPrice(high, options)) return options;
+  }
+  return priceOptions;
+}
+
+/** A range's two ends, in `style`. */
+function formatRangeEndpoints(
+  low: number,
+  high: number,
   currency: string,
   priceOptions: MarketFormatOptions,
+  style: RangeEndpointStyle = "price",
+): [string, string] {
+  if (style === "price") return [formatMarketPriceWithCurrency(low, currency, priceOptions), formatMarketPriceWithCurrency(high, currency, priceOptions)];
+  const options = compactRangeOptions(low, high, priceOptions);
+  return [formatMarketPrice(low, options), formatMarketPrice(high, options)];
+}
+
+/** The longest endpoint among ranges drawn together, so stacked tracks start and end in one column. */
+export function rangeEndpointWidth(
+  ranges: ReadonlyArray<readonly [low: number, high: number]>,
+  currency: string,
+  priceOptions: MarketFormatOptions,
+  style: RangeEndpointStyle = "price",
 ): number {
-  const widths = values.map((value) => displayWidth(formatMarketPriceWithCurrency(value, currency, priceOptions)));
+  const widths = ranges.flatMap(([low, high]) => formatRangeEndpoints(low, high, currency, priceOptions, style).map(displayWidth));
   return Math.min(RANGE_ENDPOINT_WIDTH, Math.max(1, ...widths));
+}
+
+/**
+ * The ends rows of `width` write: the prices while they leave a track of
+ * RANGE_MIN_TRACK_WIDTH under the short label, else the compact numbers.
+ */
+export function rangeEndpointStyle(width: number, shortLabelWidth: number, priceEndpointWidth: number): RangeEndpointStyle {
+  return width - rangeRowChrome(shortLabelWidth, priceEndpointWidth) < RANGE_MIN_TRACK_WIDTH ? "compact" : "price";
 }
 
 /**
@@ -62,6 +109,7 @@ export function CompactRangeBar({
   grow = false,
   currency,
   priceOptions,
+  endpoints = "price",
 }: {
   current: number;
   low: number;
@@ -80,6 +128,8 @@ export function CompactRangeBar({
   currency: string;
   /** The quote's live price options, so the endpoints keep the price's decimals. */
   priceOptions: MarketFormatOptions;
+  /** Shared by ranges drawn together, as `endpointWidth` is (rangeEndpointStyle). */
+  endpoints?: RangeEndpointStyle;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
   const range = high - low;
@@ -89,8 +139,7 @@ export function CompactRangeBar({
   const shownLabel = useShortLabel ? shortLabel : label;
   const shownLabelWidth = useShortLabel ? displayWidth(shortLabel) : labelWidth;
   const endpointOptions = { ...priceOptions, maxWidth: endpointWidth };
-  const lowText = formatMarketPriceWithCurrency(low, currency, endpointOptions);
-  const highText = formatMarketPriceWithCurrency(high, currency, endpointOptions);
+  const [lowText, highText] = formatRangeEndpoints(low, high, currency, endpointOptions, endpoints);
   const barWidth = Math.max(1, width - rangeRowChrome(shownLabelWidth, endpointWidth));
 
   // The desktop and the web size the row and its track by CSS, so the high end keeps to the pane's edge on every frame of a

@@ -771,11 +771,12 @@ That returns valuation, cash flows and yield shocks. Use `--price 103.333937` in
 
 `FUT` keeps each rolling quote alias as its symbol and names the contract it quotes, the root's front month. Gloom Cloud rolls an alias (CL=F), like the first generic (CL1), on a stated roll date, which `quote CL=F` prints under Rolls.
 
-- From then until the old month stops trading the row names it: "WTI Crude Oil Dec 2026, rolled (Nov expires 20 Oct)". The most active month is named when it is another month: "WTI Crude Oil Nov 2026, Dec most active".
+- From then until the old month stops trading the row names it: "WTI Crude Oil Dec 2026, rolled (Nov expires 20 Oct)". The row's label names only the contract whose price it shows; the day's most active month is in `quote CL=F` under Most Active.
 - `quote` on a deferred contract or a later generic (NGF27.NYM, NG2) prints the front contract and its price, and the quote, chart and `history` follow the same month.
 - Watchlist and portfolio tables add a muted front reference beside the ticker (or Name when shown), such as `front NGX26 3.116`. It follows the front quote, leaves Last at the row's own contract price, and hides when the whole note cannot fit.
 - Generic tickers take OI for the open interest switch (CL1OI). UNIT says what a price counts, as `quote` does ("USD / barrel", "US cents / bushel").
-- Search matches the root's name and code. `FUT TTF` (`gloom fn FUT TTF`, `shot FUT TTF`) opens the board searched for that contract.
+- Search matches the root's name and code, "No. 11" and "#11" alike (`FUT "sugar no. 11"`). A sector or group word lists its rows: `FUT softs` (coffee, sugar, cocoa, cotton, orange juice), `grains`, `agriculture`, `metals`, `energy`, `livestock`, `currencies`, `rates`. `FUT TTF` (`gloom fn FUT TTF`, `shot FUT TTF`) opens the board searched for that contract.
+- CHG% always shows, and the week's and month's returns come before UNIT (a cent price still reads 280.15¢). CONTRACT keeps at least 24 cells, so 1W joins from a 71-cell board, 1M from 80, UNIT from 106 and CHG from 117.
 - `--tab markets|inventories|positioning|crops` opens the workspace on that board (`gloom fn FUT --tab inventories`). FUT takes no other option and refuses one it does not know.
 - FUT and CTM list COMEX metals (HG copper, ALI aluminium), not LME or Shanghai (SHFE) contracts. The IMF's monthly world prices are the nearest public series: `gloom fred PCOPPUSDM` and `gloom fred PALUMUSDM`, in USD per metric ton.
 
@@ -1254,6 +1255,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 
 **Ranges**
 
+- A range typed in a symbol's place beside another symbol (`history CC=F 1mo`) is not read as a listing: the command ends with `"1mo" reads as a range, not a symbol: give it as --range 1M.` and the command to run. A bare word such as ALL or MAX stays a symbol.
 - `--range YTD` (any case) is the year's daily bars from the prior year's last close, the one year-to-date returns are measured from (`history LMT --range YTD` starts at 31 Dec 2025).
 - `--range ALL` reaches back up to 50 years. When the source's first bar is well inside that, a warning says where it starts (`ALL starts 2014-09; the source has no earlier bar` for BTC-USD), or why nothing older is served (`Price history starts 1992-12-01; old-shekel quotes before 1992 are not served.`).
 - `gloom help history` ends with where long history is. ZAR has daily FRED data from 1980 (`fred DEXSFUS`). NGN, SAR and ILS have no FRED series, daily bars for the last five years (`fn G USDNGN=X --rangePreset 5Y --chartResolution 1d`) and monthly bars only before that (`history USDNGN=X --range ALL`).

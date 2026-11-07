@@ -1,4 +1,4 @@
-import type { CotClass, CotClassSummary, CotContractPayload, CotHistoryPoint } from "../../../api-client/cot";
+import type { CotClass, CotClassSummary, CotContractPayload, CotFamily, CotHistoryPoint } from "../../../api-client/cot";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchCotBoard, fetchCotContract } from "./client";
 import { COT_CLASSES, COT_FAMILIES, COT_MAJOR_CODES, COT_POSITIONS, COT_SCOPES, cotClass, cotContractCode, cotContractUnitText, cotFamily, cotInteger, cotMarketName, cotPositions, cotPositionsText, cotProxyFor, cotProxyNote, cotReleaseTime, cotScope, cotUnknownMarketMessage } from "./model";
@@ -50,6 +50,17 @@ const TRADER_CLASSES = [...new Set(Object.values(COT_CLASSES).flat().map(({ valu
 function cotWeeklyRows(history: readonly CotHistoryPoint[], limit: number | null): CotHistoryPoint[] {
   const newest = [...history].reverse();
   return limit == null ? newest : newest.slice(0, limit);
+}
+
+/**
+ * What the text board heads its net column with: the class it counts, "Net
+ * noncommercial" or "Net managed money". The same market nets +185,473 as one
+ * and +223,784 as the other, and a bare "Net" left a reader to guess which.
+ * Exports keep `Net`, the column scripts read it by.
+ */
+function cotBoardNetHeader(family: CotFamily, traderClass: CotClass): string {
+  const label = COT_CLASSES[family].find((row) => row.value === traderClass)?.label ?? traderClass;
+  return `Net ${label.toLowerCase()}`;
 }
 
 const POSITION_COLUMNS: HeadlessPaneColumn[] = [
@@ -150,7 +161,8 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
     const rows = data.rows.filter((row) => scope === "all" || COT_MAJOR_CODES.has(row.contractCode));
     const publishedAt = cotPublishedAt(data);
     return { sections: [{ title: positions === "combined" ? `Positioning extremes  ·  ${cotPositionsText(positions)}` : "Positioning extremes",
-      columns: [{ key: "marketName", header: "Market" }, { key: "contractCode", header: "Code" }, ...POSITION_COLUMNS,
+      columns: [{ key: "marketName", header: "Market" }, { key: "contractCode", header: "Code" },
+        ...POSITION_COLUMNS.map((column) => column.key === "net" ? { ...column, textHeader: cotBoardNetHeader(family, traderClass) } : column),
         { key: "openInterest", header: "Open interest", align: "right", format: count }, { key: "reportDate", header: "As of" }],
       rows: rows.map((row) => ({ contractCode: row.contractCode, marketName: cotMarketName(row.marketName), reportDate: row.reportDate, openInterest: row.openInterest, ...cotPositionRow(row.position) })) }],
     errors: data.gaps, metadata: { ...data, scope, publishedAt, complete: data.status === "available" }, ...cotReleased(publishedAt) };

@@ -18,9 +18,7 @@ import { curveTitle, normalizeCurveRoot, paneCurveRoot } from "../futures-curve/
 import { JodiPane } from "../jodi/pane";
 import { jodiModule } from "../jodi";
 import type { PluginModule } from "../plugin-module";
-import { COMMODITIES_VIEW_STATE } from "./view-state";
-
-const COMMODITIES_ENERGY_PANE_ID = "commodities-energy";
+import { COMMODITIES_ENERGY_PANE_ID, COMMODITIES_VIEW_STATE } from "./view-state";
 const COMMODITIES_ENERGY_TITLE = "Commodities & Energy";
 const TAB_STATE_KEY = "commodities-energy:tab";
 

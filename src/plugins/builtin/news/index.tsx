@@ -7,7 +7,7 @@ import { useCallback } from "react";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
 import { EmptyState, PaneStatusBody, QueryBar, usePaneNoticeFooter } from "../../../components";
 import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
-import { coinNewsFallbackNotice } from "../../../sources/gloomberb-cloud/news";
+import { newsFallbackNotice } from "../../../sources/gloomberb-cloud/news";
 import { newsMuteSettingsDef, newsMutesApplyToFeed, useNewsMuteFilter } from "./wire/mutes";
 import { newsListEmptyCopy } from "./wire/filter-articles";
 import { NEWS_LIST_SEARCH_PLACEHOLDER, useNewsListSearch, useNewsListSearchHint } from "./wire/news/list-search";
@@ -88,11 +88,11 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
   }, [markArticleRead, popOutArticle, readableArticle]);
 
   useNewsListSearchHint("ticker-news", focused && !detailOpen, search.focusSearch);
-  // A coin pair no story is filed under lists the stories that mention the coin; the footer says so.
+  // A coin pair or a future no story is filed under lists the stories that mention the coin or the commodity; the footer says so.
   const searchedFor = loaded[0]?.searchedFor;
   usePaneNoticeFooter({
     registrationId: "ticker-news-notices",
-    notices: searchedFor && instrument ? [coinNewsFallbackNotice(instrument.symbol, searchedFor)] : [],
+    notices: searchedFor && instrument ? [newsFallbackNotice(instrument.symbol, searchedFor)] : [],
     focused,
   });
   useNewsArticleFooter({
