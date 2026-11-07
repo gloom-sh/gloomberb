@@ -3651,7 +3651,14 @@ async function runFxOnDate(
 async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const dateOption = takeOption(args, "--date");
+  const forwardAsked = args.some((arg) => arg === "--forward" || arg.startsWith("--forward="));
   const forwardOption = takeOption(args, "--forward");
+  // `fx USD/BRL --forward` and `fx --forward USD/BRL` name no tenor: say what --forward takes, never print spot alone
+  // or the bare usage line.
+  if (forwardAsked && (!forwardOption?.trim() || (args.length === 0 && !/^\s*\d/.test(forwardOption)))) {
+    const pair = args.length ? args.join(" ") : forwardOption?.trim() || "<base>/<quote>";
+    ctx.fail("--forward takes a tenor: 30d, 2w, 3m, up to 1y.", `For the 3-month forward: gloom fx ${pair} --forward 3m`);
+  }
   if (args.length === 0) ctx.fail(`Usage: gloom ${FX_USAGE}`);
   // A forward is implied from today's spot and the latest short rates, which are all Gloom Cloud serves.
   if (dateOption != null && forwardOption != null) {
