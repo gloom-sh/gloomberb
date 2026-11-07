@@ -62,6 +62,7 @@ import { useQuoteDelayFooter } from "../shared/cloud-upgrade";
 import { SignInWall } from "../cloud/auth-actions";
 import { CriterionEditor } from "./criterion-editor";
 import { ideaMetricSetting, SCREEN_IDEAS, screenIdea } from "./ideas";
+import { screenNotices, screenResultInfo } from "./footer";
 import { ScreenTickerCheck } from "./ticker-check";
 import {
   fetchSavedScreens,
@@ -675,22 +676,7 @@ function EquityScreenView({
               },
             ]
           : []),
-        ...(data?.snapshot
-          ? [
-              {
-                id: "asof",
-                parts: [
-                  {
-                    text: `${data.universe.matched.toLocaleString("en-US")} of ${data.universe.covered.toLocaleString("en-US")} covered`,
-                  },
-                  {
-                    text: `· ${data.definition.currency ?? "native currencies"} · snapshot ${data.snapshot.assembledAt.slice(0, 16).replace("T", " ")} UTC`,
-                    tone: "muted" as const,
-                  },
-                ],
-              },
-            ]
-          : []),
+        ...screenResultInfo(data),
         ...(saving || exporting
           ? [
               {
@@ -724,8 +710,8 @@ function EquityScreenView({
     focused,
     enabled: !check,
     notices: [
-      ...(data?.warnings ?? []),
-      ...(opened?.warnings ?? []),
+      ...screenNotices(data?.warnings),
+      ...screenNotices(opened?.warnings),
       ...[
         results.error,
         fields.error,
