@@ -31,7 +31,7 @@ import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolio
 import { listingDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../../../market-data/quotes/live-valuation";
 import { atRegularSessionPrice } from "../../../../market-data/quotes/regular-session-valuation";
 import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../../../utils/reported-money";
-import { enterpriseValueCheck, enterpriseValueNotMeaningful, fundamentalsCurrency, isBankEnterpriseValue, fundamentalsEpsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
+import { enterpriseValueCheck, enterpriseValueGapIsLarge, enterpriseValueNotMeaningful, fundamentalsCurrency, isBankEnterpriseValue, fundamentalsEpsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
 import { formatShortDate } from "../../../../utils/datetime-format";
 import { safeExternalUrl } from "../../../../utils/external-url";
 import type { FundBondFacts } from "../../../../api-client/fund-facts";
@@ -334,9 +334,11 @@ export function buildOverviewStats({
   } else if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
     stats.push({ label: "EV", value: "—" });
   } else if (enterpriseValue != null) {
-    // More than 5% from market cap + debt - cash: the provider's, with the computed figure where it fits.
+    // More than 10% from market cap + debt - cash: the provider's, with the computed figure where it fits.
+    // Closer than that it is the valuation panes' detail (enterpriseValueGapIsLarge).
     const check = enterpriseValueCheck(priced);
-    const computed = check?.status === "differs" && check.computed != null ? formatCompact(check.computed) : undefined;
+    const computed = check?.status === "differs" && check.computed != null && enterpriseValueGapIsLarge(priced)
+      ? formatCompact(check.computed) : undefined;
     stats.push({
       label: "EV",
       value: formatCompactCurrency(enterpriseValue, quoteCurrency),

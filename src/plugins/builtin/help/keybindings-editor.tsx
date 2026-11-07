@@ -256,7 +256,7 @@ export function KeybindingsEditor({
       return;
     }
     // A built-in action's key is refused, so a binding never leaves the command bar or close pane dead.
-    const core = coreActionOnChord(resolved, chord, capture.kind === "row" ? capture.row.action?.id : undefined);
+    const core = coreActionOnChord(resolved, chord, capture.kind === "row" ? capture.row.action?.id : undefined, { command: isCommand });
     if (core) {
       setFeedback({ tone: "warning", text: takenChordMessage(formatChord(chord), core) });
       return;

@@ -3,8 +3,11 @@ import { usePaneFooter, useQueryBarSearch } from "../../../../../components";
 import type { NewsArticle } from "../../../../../news/types";
 import { filterNewsArticles } from "../filter-articles";
 
-/** Only what the list has loaded is filtered; older stories load as the list scrolls. */
-export const NEWS_LIST_SEARCH_PLACEHOLDER = "filter loaded stories";
+/**
+ * Only what the list has loaded is filtered; older stories load as the list scrolls. A narrow pane's field shows
+ * the short form whole rather than "filter loaded st".
+ */
+export const NEWS_LIST_SEARCH_PLACEHOLDER = ["filter loaded stories", "filter stories"] as const;
 
 export function useNewsListSearch<T extends NewsArticle>(articles: readonly T[]) {
   const [searchQuery, setSearchQuery] = useState("");

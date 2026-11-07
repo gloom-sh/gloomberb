@@ -18,7 +18,8 @@ import { useChartViewReset } from "../chart/core/view-reset";
 export interface QueryBarSearch {
   value: string;
   onChange: (query: string) => void;
-  placeholder: string;
+  /** Longest first: a narrow field shows the first that fits (`["filter loaded stories", "filter stories"]`). */
+  placeholder: string | readonly string[];
   /** The pane is focused. */
   focused: boolean;
   /** The field owns the keyboard. */

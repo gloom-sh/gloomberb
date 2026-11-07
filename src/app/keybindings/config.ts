@@ -19,7 +19,8 @@ export function updateKeybindingsConfig(config: AppConfig, keybindings: Keybindi
 function defaultChordsFor(actionId: string, defaults?: readonly KeyChord[]): readonly KeyChord[] {
   if (defaults) return defaults;
   const def = getKeybindingAction(actionId);
-  return def ? def.defaults.map((text) => parseKeyChord(text)!).filter(Boolean) : [];
+  // Every host's defaults, as the table with no host has them.
+  return def ? [...def.defaults, ...def.terminalDefaults ?? []].map((text) => parseKeyChord(text)!).filter(Boolean) : [];
 }
 
 function sameChords(left: readonly KeyChord[], right: readonly KeyChord[]): boolean {

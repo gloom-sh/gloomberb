@@ -323,8 +323,14 @@ describe("useAppGlobalShortcuts", () => {
       actions: [{ type: "SWITCH_LAYOUT", index: 2 }],
       consumed: true,
     },
-    // Alt-digit keeps its terminal meaning; only the primary modifier switches.
-    { name: "ignores Alt-number", state: () => layoutState(), key: { name: "2", alt: true }, consumed: false },
+    // A terminal without the kitty protocol never sends Ctrl with a digit, so Alt switches layouts too.
+    {
+      name: "switches layouts with Alt-number",
+      state: () => layoutState(),
+      key: { name: "2", alt: true },
+      actions: [{ type: "SWITCH_LAYOUT", index: 1 }],
+      consumed: true,
+    },
     // Leaving the digit unclaimed lets the desktop webview treat Cmd-digit as its
     // own browser tab shortcut, which navigates the app away.
     {

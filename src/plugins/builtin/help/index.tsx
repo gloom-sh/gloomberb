@@ -23,6 +23,8 @@ import { logFailure } from "../../../utils/log-failure";
 import { VERSION } from "../../../version";
 import { getCurrentPluginTarget } from "../../current-target";
 import { openUrl } from "../../../components/ui/external-link";
+import { useShortcut } from "../../../react/input";
+import { isPlainKey } from "../../../utils/keyboard";
 
 const HELP_TABS = [
   { label: "Basics", value: "basics" },
@@ -68,7 +70,15 @@ const KEY_COLUMN_MAX_SHARE = 0.4;
 
 function HelpPane({ focused, width, height }: PaneProps) {
   const registry = getSharedRegistry();
-  const { openCommandBar, showPane, createPaneFromTemplate } = usePluginAppActions();
+  const { openCommandBar, showPane, hidePane, createPaneFromTemplate } = usePluginAppActions();
+  // Esc closes Help, once nothing in it took the key: a search, a key
+  // capture or a form backs out first.
+  useShortcut((event) => {
+    if (!isPlainKey(event, "escape", "esc")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    hidePane("help");
+  }, { phase: "idle", enabled: focused });
   // A key capture requested from the command bar belongs to the Shortcuts
   // tab, whether the pane is already open or is being opened for it.
   const [activeTabId, setActiveTabId] = usePluginPaneState<HelpTabId>("activeTab", "basics");
