@@ -406,6 +406,8 @@ async function setPositionCommand(
       }
       await store.saveTicker(result.ticker);
       if (adopted) await saveConfig(adopted);
+      // Said, never silent: a book named "LatAm Book USD" otherwise totals in BRL from its first PETR4 lot on.
+      if (adopted && portfolioCurrency !== portfolio.currency) notes.push(firstPositionCurrencyNote(portfolio.name, portfolioCurrency, portfolio.currency));
       const saved = savedListingName(result.ticker);
       const quantity = formatMarketQuantity(shares, { assetCategory: result.ticker.metadata.assetCategory });
       // A cost in another currency converts at the rate it was bought at when the lot has one, else at the close of the
@@ -453,6 +455,18 @@ async function setPositionCommand(
       failPortfolioCommand(ctx, error, `Failed to set position for ${symbol} in "${portfolioName}".`);
     }
   });
+}
+
+/**
+ * What the first position of a book that follows its holdings' currency says
+ * when it moves the book off the one it had: `"LatAm Book USD" now totals in
+ * BRL, the currency of its first position. To total it in USD, create it
+ * with --currency USD: ...`.
+ */
+export function firstPositionCurrencyNote(name: string, adopted: string, was: string): string {
+  const quoted = JSON.stringify(name);
+  return `"${name}" now totals in ${adopted}, the currency of its first position. To total it in ${was}, create it with --currency ${was}: `
+    + `gloom portfolio delete ${quoted}, then gloom portfolio create ${quoted} --currency ${was}, and set the position again.`;
 }
 
 /**

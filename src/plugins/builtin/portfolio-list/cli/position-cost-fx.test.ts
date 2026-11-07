@@ -1,4 +1,7 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { apiClient } from "../../../../api-client";
 import { serializeCliResult } from "../../../../cli/result";
 import { DEFAULT_CLI_OPTIONS } from "../../../../cli/options";
@@ -230,4 +233,20 @@ test("position set over several lots keeps their earliest date and cost-weighted
   const refused = positionSet(liraConfig(), mixed, ["Lira", "AAPL", "30", "400", "USD"]);
   await expect(refused).rejects.toThrow("Of the 2 lots, 1 converts its cost at the FX rate it was bought at and 1 at today's, so one position cannot keep their rates.");
   expect((await positionSet(liraConfig(), mixed, ["Lira", "AAPL", "30", "400", "USD", "--cost-fx", "33"])).lot?.costFxRate).toBe(33);
+});
+
+test("the first position of a book that follows its holdings says the book's currency followed it, and how to keep its own", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "gloom-first-position-"));
+  const config = createDefaultConfig(dir);
+  config.portfolios = [{ id: "latam", name: "LatAm Book USD", currency: "USD" }];
+  const petr4 = createTestTicker("PETR4", "Petrobras", { exchange: "B3", currency: "BRL", portfolios: ["latam"] });
+  const cli = createTestCliContext({ config,
+    store: { loadTicker: async () => petr4, loadAllTickers: async () => [], saveTicker: async () => {} },
+    dataProvider: createTestDataProvider({ getExchangeRate: async () => 1 }),
+  });
+  await portfolioCliCommand.execute(["position", "set", "LatAm Book USD", "PETR4", "100", "45.30"], cli.context);
+  const warnings = cli.printed[0]!.result.warnings ?? [];
+  expect(warnings.join(" ")).toContain("\"LatAm Book USD\" now totals in BRL, the currency of its first position.");
+  expect(warnings.join(" ")).toContain("gloom portfolio create \"LatAm Book USD\" --currency USD");
+  rmSync(dir, { recursive: true, force: true });
 });
