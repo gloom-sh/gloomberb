@@ -45,7 +45,9 @@ import {
   quotedPriceDivisor,
 } from "../../../cli/history-rows";
 import { formatUtcTime } from "../../../utils/utc-time";
-import { maxDrawdown, maxDrawdownText } from "../../../utils/max-drawdown";
+import { closeMoves } from "../../../utils/max-drawdown";
+import { isYieldIndexSymbol } from "../../../tickers/index-roots";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { isPastPriceWindow, loadPriceWindowHistory, priceWindowText, readPriceWindow, type PriceWindow } from "../../../utils/price-window";
 import { historyCoverageNotice } from "../../../sources/history-coverage";
 import { getChartResolutionLabel, isIntradayResolution, RANGE_HISTORY_RESOLUTION, type ManualChartResolution } from "../../../time-series/resolution";
@@ -461,13 +463,12 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
       ...(forming ? { periodToDate: forming } : closedDay ? { asOf: closedDay } : quotedAt ? { asOf: quotedAt } : {}),
       ...(dayToDate ? { basis: "daily bars", note: `the newest bar is ${DAY_SO_FAR_TEXT}`, ...(quote ? { asOf: new Date(quote.lastUpdated).toISOString() } : {}) } : {}),
     };
-    // The largest fall from a close to a later one in the bars shown, said under the title.
-    const drawdown = maxDrawdown(shown);
-    const drawdownLine = drawdown ? maxDrawdownText(drawdown, { basis: `${historyBarSizeWord(size)} closes`, price: (value) => formatBarPrice(value, decimals),
-      date: (value) => isDailyOrLongerBar(size) ? value.slice(0, 10) : formatUtcTime(value) }) : null;
+    // The largest fall from a close to a later one in the bars shown, said under the title; a yield's in bp, with its largest rise.
+    const { drawdown, runUp, lines: moveLines } = closeMoves(shown, drawdownScaleOf(symbol), { basis: `${historyBarSizeWord(size)} closes`,
+      price: (value) => formatBarPrice(value, decimals), date: (value) => isDailyOrLongerBar(size) ? value.slice(0, 10) : formatUtcTime(value) });
     // A wick left out of the range is said, though the bar's close still counts.
     const wickNotice = priceHistoryWickNotice(points.filter((point) => pricePointWickFlags(point).length > 0).length);
-    const reportNotices = [drawdownLine, notice, wickNotice].filter((line): line is string => line != null);
+    const reportNotices = [...moveLines, notice, wickNotice].filter((line): line is string => line != null);
     return {
       rows: shown,
       columns: historyColumns(size, marked, false, false, decimals),
@@ -478,7 +479,7 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
       ...(notice ? { complete: false } : {}),
       unavailableSymbols: rows.some((row) => row.close !== null) ? [] : [symbol],
       metadata: { symbol, range: window ? null : range, ...(window ? { requestedWindow: window } : {}), ...(size === "intraday" ? {} : { interval: size }),
-        ...(allStart ? { sourceStart: allStart } : {}), maxDrawdown: drawdown,
+        ...(allStart ? { sourceStart: allStart } : {}), maxDrawdown: drawdown, ...(runUp ? { maxRunUp: runUp } : {}),
         ...(reportNotices.length ? { notices: reportNotices } : {}) },
     };
   },
@@ -535,10 +536,9 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     const dayToDate = isTodayReturnRow(returns.at(-1), series.resolution, venue, now);
     const rows = forming || dayToDate ? [...unmarked.slice(0, -1), { ...unmarked.at(-1)!, partial: true }] : unmarked;
     const price = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(decimals) : "-";
-    // The largest fall from a close to a later one in the window, said under the title.
-    const drawdown = maxDrawdown(unmarked.map((row) => ({ date: row.time, close: row.close })));
-    const maxDrawdownLine = drawdown ? maxDrawdownText(drawdown, { basis: `${BAR_INTERVAL_LABELS[series.resolution]} closes`, price,
-      date: (value) => intraday ? formatUtcTime(value) : value.slice(0, 10) }) : null;
+    // The largest fall from a close to a later one in the window, said under the title; a yield's in bp, with its largest rise.
+    const { drawdown, runUp, lines: moveLines } = closeMoves(unmarked.map((row) => ({ date: row.time, close: row.close })), drawdownScaleOf(symbol),
+      { basis: `${BAR_INTERVAL_LABELS[series.resolution]} closes`, price, date: (value) => intraday ? formatUtcTime(value) : value.slice(0, 10) });
     const figures: HeadlessPaneColumn[] = [
       { key: "close", header: "Price", align: "right", format: price },
       { key: "intervalChange", header: "Int $", align: "right", format: price },
@@ -565,7 +565,7 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     const textColumns: HeadlessPaneColumn[] = [timeColumn(true), ...textFigures];
     // An interval the range is too long for is served in the nearest longer bar; say so rather than switch silently.
     const notices = [
-      maxDrawdownLine,
+      ...moveLines,
       baseDay ? `Totals ${periodBaseText(baseDay, now)}.` : null,
       series.resolution !== requested
         ? `${getChartResolutionLabel(requested)} bars do not ${window ? `cover ${priceWindowText(window)}` : `reach back ${range}`}; these are ${getChartResolutionLabel(series.resolution)} bars.`
@@ -605,8 +605,12 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
         ...(series.lastSession ? { marketClosed: true, lastSession: series.lastSession } : {}),
         basis: "Price returns of bar closes; dividends are not included",
         maxDrawdown: drawdown,
+        ...(runUp ? { maxRunUp: runUp } : {}),
         ...(notices.length ? { notices } : {}),
       },
     };
   },
 };
+
+/** A Cboe yield index (^TNX) moves by its level, in bp; anything else by its return. */
+const drawdownScaleOf = (symbol: string) => isYieldIndexSymbol(parsePublicTickerKey(symbol).symbol) ? "yield" as const : "return" as const;

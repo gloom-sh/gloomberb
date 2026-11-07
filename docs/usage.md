@@ -1307,6 +1307,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 
 - It is read off closes, so monthly bars can miss a fall that recovered within the month.
 - `--json` carries it as `metadata.maxDrawdown` (`peak`, `trough`, `drawdown` as a fraction, `recovered`, `through`), and the CSV of `fn HP` and `fn RETURN` ends with it as a note.
+- A yield (`^TNX`, `^IRX`, `^FVX`, `^TYX`, each a yield in percent) falls and rises by its level, so its drawdown is the largest fall in basis points, and its largest rise follows on the next line: `Max drawdown -16bp (daily closes): peak 4.157 on 2025-11-05, trough 3.998 on 2025-11-26, ...` and `Max run-up +20bp (daily closes): low 3.953 on 2025-10-22, high 4.157 on 2025-11-05, ...`. `--json` adds `bp` to `maxDrawdown` and carries the rise as `metadata.maxRunUp` (`low`, `high`, `bp`, `recovered`, `through`).
 
 ### Several symbols
 
