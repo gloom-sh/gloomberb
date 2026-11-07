@@ -292,9 +292,9 @@ test("dates a rendered FXC by the observations behind its rates, in the report a
   } as unknown as PaneScreenshotResult;
 
   const report = await buildDomPaneReportFromRender(resolved, screenshot);
-  expect(formatFreshnessLine(report.data.freshness!)).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed");
+  expect(formatFreshnessLine(report.data.freshness!)).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed · reopens Sun 21:00 UTC, 17:00 ET");
   expect(report.data.freshness).toMatchObject({ status: "delayed", asOf: "2026-10-09T20:59:00.000Z", asOfClose: "2026-10-09", market: { state: "closed" } });
-  expect(renderReportCsv(report.tables)).toContain("# Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed");
+  expect(renderReportCsv(report.tables)).toContain("# Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed · reopens Sun 21:00 UTC, 17:00 ET");
 
   // A pane that publishes nothing keeps the unknown status in data, without filler in its line.
   const bare = { ...screenshot, render: { ...screenshot.render, semanticUi: [] } } as unknown as PaneScreenshotResult;

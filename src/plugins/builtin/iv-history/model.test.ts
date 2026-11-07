@@ -5,11 +5,14 @@ import { statSource } from "./format";
 import { hvOn, midrankPercentile, projectIvHistory, projectRichCheap, readingSource, richCheapDates, screenCoverage, screenPaneNotices, screenStaleNote, sessionsBehind, staleReadingsNote, verdictFor } from "./model";
 
 const DAY = 86_400_000;
+/** An exchange's sessions: weekdays, less a holiday about every five weeks (an FX pair's every weekday reads 260 bars a year). */
 const sessions = (count: number, end = "2026-09-22") => {
   const dates: string[] = [];
+  let weekdays = 0;
   for (let time = Date.parse(`${end}T00:00:00Z`); dates.length < count; time -= DAY) {
     const weekday = new Date(time).getUTCDay();
-    if (weekday !== 0 && weekday !== 6) dates.unshift(new Date(time).toISOString().slice(0, 10));
+    if (weekday === 0 || weekday === 6) continue;
+    if (++weekdays % 25 !== 0) dates.unshift(new Date(time).toISOString().slice(0, 10));
   }
   return dates;
 };

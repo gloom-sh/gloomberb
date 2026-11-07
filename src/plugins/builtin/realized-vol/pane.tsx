@@ -202,7 +202,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
       : proxyData ? [
         { id: "proxy-iv", label: fxProxyLabel(proxyData), value: percent(proxyData.iv30?.value), detail: proxyData.iv30?.date },
         { id: "proxy-spread", label: "IV30 - HV20", value: proxySpread.spread == null ? "--" : points(proxySpread.spread), detail: "pts" },
-        { id: "proxy-expiries", label: "ATM expiries", value: proxyData.expiries ? `${proxyData.expiries.usable} of ${proxyData.expiries.read}` : "--" },
+        { id: "proxy-expiries", label: "Expiries with ATM IV", value: proxyData.expiries ? `${proxyData.expiries.usable} of ${proxyData.expiries.read}` : "--" },
       ] : [];
   const contentHeight = Math.max(4, height - 1 - tabRows - statGridRows(coneStats, width));
   // The table's selected window is the chart's cursor, so its legend reads that row's figures.

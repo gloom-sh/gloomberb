@@ -54,11 +54,11 @@ test("over a weekend the matrix is Friday's close while its rates are, and a tic
     CAD: snapshot("2026-10-09T20:41:11Z"),
   };
   const { line, freshness } = reportLine("2026-10-10T18:45:00Z", friday);
-  expect(line).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed");
+  expect(line).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed · reopens Sun 21:00 UTC, 17:00 ET");
   expect(freshness).toMatchObject({ status: "delayed", delayMinutes: 15, asOf: "2026-10-09T20:59:00.000Z", asOfClose: "2026-10-09", market: { state: "closed" } });
   // A rate ticked on Saturday is no close: the line dates it.
   expect(reportLine("2026-10-10T18:45:00Z", { ...friday, GBP: snapshot("2026-10-10T14:50:28Z") }).line)
-    .toBe("Source: Gloom Cloud · Sat 10 Oct 2026 14:50 UTC · 15 min delayed · markets closed");
+    .toBe("Source: Gloom Cloud · Sat 10 Oct 2026 14:50 UTC · 15 min delayed · markets closed · reopens Sun 21:00 UTC, 17:00 ET");
 });
 
 test("on a weekday it is dated by the newest pair quote, with the feed's delay and the market open", () => {
@@ -107,11 +107,11 @@ test("a currency with no pair quote in the matrix is dated by its loaded rate, i
   // Alone, on a weekend, it is dated by the close like any other pair: the data service dates the close by the week's last minute.
   expect(reportLine("2026-10-10T18:45:00Z", {
     SAR: snapshot("2026-10-09T20:59:00Z"), NGN: snapshot("2026-10-09T20:59:00Z"),
-  }).line).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed");
+  }).line).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed · reopens Sun 21:00 UTC, 17:00 ET");
   // A rate from earlier that day is no close: it keeps its own time.
   expect(reportLine("2026-10-10T18:45:00Z", {
     SAR: snapshot("2026-10-09T20:39:15Z"), NGN: snapshot("2026-10-09T20:39:13Z"),
-  }).line).toBe("Source: Gloom Cloud · Fri 9 Oct 2026 20:39 UTC · 15 min delayed · markets closed");
+  }).line).toBe("Source: Gloom Cloud · Fri 9 Oct 2026 20:39 UTC · 15 min delayed · markets closed · reopens Sun 21:00 UTC, 17:00 ET");
   // A rate the matrix cannot draw is no observation, and the base currency has none.
   expect(fxRateObservations(["USD", "SAR", "NGN"], new Map([["SAR", 0.2663]]), (currency) => ({ entry: snapshot("2026-10-10T03:09:15Z"), legQuote: null }), at("2026-10-10T18:45:00Z")))
     .toHaveLength(1);
