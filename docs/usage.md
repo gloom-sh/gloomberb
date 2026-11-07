@@ -1538,13 +1538,13 @@ In short DVD panes, Page Up/Down scroll the summary, arrows or j/k navigate hist
 | `gloom fn [...]` | Run a pane-backed report command |
 | `gloom shot [...]` | Capture a pane-backed screenshot |
 | `gloom predictions [...]` | Launch Prediction Markets ([Prediction Markets plugin](https://github.com/gloom-sh/gloom-prediction-markets)) |
-| `gloom plugins` | List installed plugins |
+| `gloom plugins` | List installed plugins, by id and folder |
 | `gloom install <user/repo>` | Install a plugin from GitHub, at the commit the registry reviewed when it is listed |
-| `gloom remove <name>` | Remove an installed plugin |
-| `gloom update [name]` | Update plugins to the next reviewed commit |
+| `gloom remove <plugin>` | Remove an installed plugin, named by its id or folder |
+| `gloom update [plugin]` | Update plugins, or one, to the next reviewed commit |
 | `gloom plugin enable\|disable <id>` | Turn a plugin on or off without removing it |
 | `gloom plugin link <path>` | Load a plugin from a local checkout while developing it |
-| `gloom plugin doctor [name]` | Check that a plugin loads, declares its hosts, and compiles for the desktop |
+| `gloom plugin doctor [plugin]` | Check that a plugin loads, declares its hosts, and compiles for the desktop |
 
 ### `news`, `13f`, `holders` and `filings`
 
