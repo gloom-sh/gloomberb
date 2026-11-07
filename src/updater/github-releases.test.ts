@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { fetchChangelogReleases, normalizeChangelogRelease } from "./github-releases";
+import { fetchChangelogReleases, fetchChangelogSummaries, normalizeChangelogRelease } from "./github-releases";
 
 const originalFetch = globalThis.fetch;
 
@@ -69,5 +69,28 @@ describe("fetchChangelogReleases", () => {
       "https://api.github.com/repos/gloom-sh/gloomberb/releases?per_page=22&page=1",
       "https://api.github.com/repos/gloom-sh/gloomberb/releases?per_page=22&page=2",
     ]);
+  });
+});
+
+describe("fetchChangelogSummaries", () => {
+  test("reads CHANGELOG.md as written through the API, null when there is none, and fails on any other answer", async () => {
+    const answers = [
+      new Response("## 0.20: A, B, and C", { status: 200 }),
+      new Response("Not Found", { status: 404 }),
+      new Response("rate limited", { status: 403 }),
+    ];
+    const requests: Array<{ url: string; accept: string | null }> = [];
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      requests.push({ url: String(input), accept: new Headers(init?.headers).get("accept") });
+      return answers.shift()!;
+    }) as typeof fetch;
+
+    expect(await fetchChangelogSummaries()).toBe("## 0.20: A, B, and C");
+    expect(await fetchChangelogSummaries()).toBeNull();
+    await expect(fetchChangelogSummaries()).rejects.toThrow("GitHub returned 403");
+    expect(requests[0]).toEqual({
+      url: "https://api.github.com/repos/gloom-sh/gloomberb/contents/CHANGELOG.md",
+      accept: "application/vnd.github.raw+json",
+    });
   });
 });

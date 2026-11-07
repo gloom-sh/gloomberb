@@ -8,7 +8,7 @@ import { appReducer, createInitialState, type AppAction, type AppState } from ".
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { PaneProps } from "../../../types/plugin";
-import { ChangelogPane } from "../changelog";
+import { ChangelogPane, resetChangelogCacheForTests } from "../changelog";
 import { RoadmapClientContext, RoadmapPane, type RoadmapClient } from "./pane";
 
 const PANE = "roadmap:test";
@@ -293,9 +293,13 @@ const GITHUB_RELEASES = [
 ];
 let releaseReads = 0;
 function stubReleases() {
+  resetChangelogCacheForTests();
   const realFetch = globalThis.fetch;
   fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input);
+    // No CHANGELOG.md, from Gloom Cloud or GitHub: each version reads its own updates.
+    if (url.endsWith("/public/releases/summaries")) return Response.json({ markdown: null });
+    if (url === "https://api.github.com/repos/gloom-sh/gloomberb/contents/CHANGELOG.md") return new Response("Not Found", { status: 404 });
     if (!url.startsWith("https://api.github.com/repos/gloom-sh/gloomberb/releases")) return realFetch(input, init);
     releaseReads += 1;
     return new Response(JSON.stringify(GITHUB_RELEASES), { status: 200 });
@@ -305,7 +309,7 @@ function stubReleases() {
 const lines = (frame: string) => frame.split("\n");
 const changelogPane = { paneId: "changelog", component: ChangelogPane };
 
-test("ROADMAP opens on the roadmap; the Changelog tab lists the releases, and switching back keeps the roadmap's place", async () => {
+test("ROADMAP opens on the roadmap; the Changelog tab lists the versions, and switching back keeps the roadmap's place", async () => {
   stubReleases();
   signedIn("pro");
   const votes: Array<[string, boolean]> = [];
@@ -318,9 +322,9 @@ test("ROADMAP opens on the roadmap; the Changelog tab lists the releases, and sw
   const reads = releaseReads;
   frame = await press("l");
   expect(lines(frame)[0]).toMatch(/Features\s+Changelog/);
-  expect(lines(frame)[1]).toMatch(/DATE\b.*VERSION\s+TITLE/);
-  expect(lines(frame).find((line) => line.includes("v0.19.1"))).toMatch(/Oct 29, 2026\s+v0\.19\.1\s+Roadmap and votes/);
-  expect(lines(frame).find((line) => line.includes("v0.19.0"))).toMatch(/Oct 22, 2026\s+v0\.19\.0\s+Faster charts/);
+  expect(lines(frame)[1]).toMatch(/DATE\b.*VERSION\b.*TITLE\s+UPDATES/);
+  // One row for 0.19, its newest update's date and its first update's title.
+  expect(lines(frame).find((line) => line.includes("v0.19"))).toMatch(/Oct 29, 2026\s+v0\.19\s+Faster charts\s+2/);
   expect(frame).not.toContain("nightly");
   expect(frame).not.toContain("Threads in chat");
   // The roadmap's vote hint belongs to its own view.
@@ -340,13 +344,19 @@ test("ROADMAP opens on the roadmap; the Changelog tab lists the releases, and sw
   expect(votes).toEqual([["chat", true]]);
 });
 
+async function pressEnter(): Promise<string> {
+  await act(async () => { tui.setup().mockInput.pressEnter(); });
+  await settle();
+  return tui.frame();
+}
+
 test("the Changelog view draws what CHG draws, row for row, a release's notes too, from the same read", async () => {
   stubReleases();
   await render(client({ items: ITEMS, canVote: false }));
   const inRoadmap = await press("l");
-  await act(async () => { tui.setup().mockInput.pressEnter(); });
-  await settle();
-  const notesInRoadmap = tui.frame();
+  // The version, then its newest update.
+  await pressEnter();
+  const notesInRoadmap = await pressEnter();
   expect(notesInRoadmap).toContain("ROADMAP lists what is building, planned and shipped.");
   expect(notesInRoadmap).toMatch(/\[o\]pen/);
   const reads = releaseReads;
@@ -354,9 +364,8 @@ test("the Changelog view draws what CHG draws, row for row, a release's notes to
 
   // CHG on its own, one row shorter: ROADMAP's first row is its tabs.
   const alone = await render(client({ items: ITEMS, canVote: false }), 100, 15, changelogPane);
-  await act(async () => { tui.setup().mockInput.pressEnter(); });
-  await settle();
-  const notesAlone = tui.frame();
+  await pressEnter();
+  const notesAlone = await pressEnter();
 
   expect(lines(inRoadmap)[0]).toMatch(/Features\s+Changelog/);
   expect(lines(inRoadmap).slice(1)).toEqual(lines(alone));

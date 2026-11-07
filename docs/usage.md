@@ -824,7 +824,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 | `THESIS [tickers]` | Investment theses board (Gloom Cloud) |
 | `IBKR` | IBKR trading pane |
 | `BR` | Broker connections |
-| `CHG` | Changelog |
+| `CHG` | Changelog, one row per version ([Changelog](#changelog)) |
 | `ROADMAP` | What is being built, planned and shipped, and the Changelog; Pro members vote ([Roadmap](#roadmap)) |
 | `HELP` | Open shortcut and layout help |
 | `AW` / `AP <ticker>` | Add a ticker to the active watchlist or portfolio. `AW` also takes a pasted list of tickers |
@@ -2431,6 +2431,12 @@ A thesis is why you hold something, written so it can be checked: the instrument
 - Pro members vote on what is building or planned with `v`, once per item, and `v` again takes the vote back. A check beside the count marks your own vote. A shipped item's count is final.
 - A vote that did not go through says so on its row, and the item's detail says why.
 - The roadmap is the Features tab; the Changelog tab beside it shows the release notes as `CHG` does. `h` and `l` switch between the tabs, and each keeps its place.
+
+## Changelog
+
+`CHG` lists Gloom's versions, one row per minor version (0.20, 0.19, ...), newest first, with the day of its latest update and how many updates it had. Enter opens a version: its highlights, each naming the update it shipped in, over a table of its updates. Enter on an update opens its full release notes, and Back returns one level at a time. After an update, the app opens on the new release's notes inside its version.
+
+A version's title and highlights come from [`CHANGELOG.md`](../CHANGELOG.md), edited by hand when a version ships. A version it does not cover yet takes its first update's title and the top highlight of each update.
 
 ## Localized interface
 
