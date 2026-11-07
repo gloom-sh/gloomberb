@@ -184,11 +184,13 @@ const GROUPS: ReadonlyArray<{ group: string; rows: readonly FredRow[] }> = [
     ],
   },
   {
-    // The IMF's monthly world prices: the closest public series to LME copper and aluminium, which FUT does not list.
+    // The IMF's monthly world prices: the closest public series to LME copper and aluminium, which FUT does not list,
+    // and to iron ore, whose futures are licensed.
     group: "Commodities",
     rows: [
       ["PCOPPUSDM", "Global price of copper", "USD/ton", "monthly", ["copper", "metals", "LME"]],
       ["PALUMUSDM", "Global price of aluminum", "USD/ton", "monthly", ["aluminum", "aluminium", "metals", "LME"]],
+      ["PIORECRUSDM", "Global price of iron ore", "USD/dry metric ton", "monthly", ["iron ore", "iron", "steel", "metals"]],
     ],
   },
   {

@@ -1312,9 +1312,13 @@ function refusedLine(refused: ReadonlyArray<{ input: string }>): string {
   return `Not ${refused.length === 1 ? "a symbol" : "symbols"}, not quoted: ${refusedList(refused)}.`;
 }
 
-/** A symbol of a list that names no listing: `Not quoted: EQT:NYSE:US (Unknown exchange US for EQT:NYSE).` */
+/**
+ * A symbol of a list that names no listing: `Not quoted: EQT:NYSE:US (Unknown exchange US for EQT:NYSE).`, or
+ * after it a reason of several sentences: `Not quoted: iron ore. Iron ore: no live price (...). ...`.
+ */
 function unreadLine({ symbol, error }: { symbol: string; error: ListingArgError }): string {
-  return `Not quoted: ${symbol} (${error.message.replace(/\.$/, "")}).`;
+  const reason = error.message.replace(/\.$/, "");
+  return reason.includes(". ") ? `Not quoted: ${symbol}. ${reason}.` : `Not quoted: ${symbol} (${reason}).`;
 }
 
 /**
