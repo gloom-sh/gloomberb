@@ -6,14 +6,21 @@ const days = (from: string, count: number, skip: (weekday: number) => boolean = 
   return Array.from({ length: count }, (_, index) => start + index * 86_400_000).filter((time) => !skip(new Date(time).getUTCDay()));
 };
 
-test("weekend observations make a series 24/7; an exchange calendar, however shifted, stays at 252 sessions", () => {
+test("weekend observations make a series 24/7; every weekday for a year is an FX pair's 260; an exchange calendar, however shifted, stays at 252 sessions", () => {
   expect(barsPerYear(days("2025-01-01", 60))).toBe(365);
   expect(barsPerYear(days("2025-01-01", 60, (weekday) => weekday === 0 || weekday === 6))).toBe(252);
   // Sunday to Thursday, and bars stamped late on the previous evening, have a Sunday but no Saturday.
   expect(barsPerYear(days("2025-01-01", 60, (weekday) => weekday === 5 || weekday === 6))).toBe(252);
   // One stray weekend print in a long exchange history does not change the convention.
-  const sessions = days("2023-01-02", 520, (weekday) => weekday === 0 || weekday === 6);
+  const weekdays = days("2023-01-02", 520, (weekday) => weekday === 0 || weekday === 6);
+  // An exchange shuts on holidays (here one weekday in 25, about ten a year), so 4% of weekdays carry no bar.
+  const sessions = weekdays.filter((_, index) => index % 25 !== 24);
   expect(barsPerYear([...sessions, Date.parse("2024-06-01")])).toBe(252);
+  // An FX pair has a bar on every weekday, holidays included, and a missing print or two does not make it an exchange.
+  expect(barsPerYear(weekdays)).toBe(260);
+  expect(barsPerYear(weekdays.filter((_, index) => index !== 100 && index !== 200))).toBe(260);
+  // Under a year, an exchange that met no holiday is not told apart from a pair.
+  expect(barsPerYear(days("2025-01-01", 60, (weekday) => weekday === 0 || weekday === 6))).toBe(252);
   expect(barsPerYear(["2025-01-03", new Date("2025-01-04"), Date.parse("2025-01-05")])).toBe(365);
   expect(barsPerYearLabel(365)).toBe("365 bars/yr");
 });

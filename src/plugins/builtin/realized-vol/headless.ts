@@ -7,6 +7,30 @@ import { atmIvObservedLabel, projectRealizedVolatility, type CurrentAtmIvSnapsho
 import { ESTIMATOR_OPTIONS, selectedWindows } from "./settings";
 import { DAILY_CLOSES } from "../shared/report-freshness";
 import { listingAbroadVenue } from "../../../utils/sec";
+import { fxVolatilityPair } from "../../../market-data/options-alternatives";
+import { fxProxyIvLessRv, fxProxyLabel, fxProxyNote, loadFxVolProxy, type FxVolProxy } from "./fx-proxy";
+import type { HeadlessBundleSection } from "../../../types/headless";
+
+const percent = (value: number | null | undefined) => value == null ? "--" : `${(value * 100).toFixed(2)}%`;
+
+/**
+ * An FX pair's IV section: the fund whose options stand in, its IV30 and the
+ * close it is from, how many of its expiries price, and IV30 less the pair's
+ * HV20 on that close. There is no ATM IV of the pair's own to show.
+ */
+function fxProxySection(proxy: FxVolProxy, history: Parameters<typeof fxProxyIvLessRv>[1]): HeadlessBundleSection {
+  const { hv20, spread } = fxProxyIvLessRv(proxy, history);
+  return { title: "FX vol proxy", entries: [
+    { label: "Proxy", value: proxy.fund, formatted: fxProxyNote(proxy) },
+    { label: fxProxyLabel(proxy), value: proxy.iv30?.value ?? null, formatted: percent(proxy.iv30?.value) },
+    { label: "Close", value: proxy.iv30?.date ?? null,
+      formatted: proxy.iv30 ? `${proxy.iv30.date}${proxy.iv30.method === "quote-mid" ? " (quote mid)" : ""}` : "--" },
+    { label: "Expiries with ATM IV", value: proxy.expiries?.usable ?? null,
+      formatted: proxy.expiries ? `${proxy.expiries.usable} of ${proxy.expiries.read}` : "--" },
+    { label: "Pair HV20", value: hv20, formatted: percent(hv20) },
+    { label: "IV30 - HV20", value: spread, formatted: spread == null ? "--" : `${spread >= 0 ? "+" : ""}${(spread * 100).toFixed(2)} pts` },
+  ] };
+}
 
 export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPaneDefinition<"bundle"> {
   return {
@@ -30,8 +54,10 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
       const instrument = await resolveHeadlessInstrument(ctx, args.symbols[0]!);
       // Options are US listings'; SAN:EPA has none, and bare SAN's chain is another company's.
       const abroad = listingAbroadVenue(args.symbols[0]!) != null;
+      // An FX pair or currency future has no chain of its own: a currency fund's options stand in, labelled so.
+      const fx = fxVolatilityPair(instrument.symbol, instrument.exchange) != null;
       const currentIv = async (): Promise<CurrentAtmIvSnapshot | null> => {
-        if (!args.options.showIv) return null;
+        if (!args.options.showIv || fx) return null;
         if (abroad) return { reference: null, error: null, warnings: [], noOptionChain: true };
         try {
           const quote = await ctx.marketData.getQuote(instrument.symbol, instrument.exchange);
@@ -43,8 +69,12 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
           return { reference: null, warnings: [], error: `Current ATM IV: ${error instanceof Error ? error.message : String(error)}` };
         }
       };
-      const [history, iv] = await Promise.all([
+      const fxProxy = async (): Promise<FxVolProxy | null> => !args.options.showIv || !fx ? null
+        : loadFxVolProxy({ symbol: instrument.symbol, exchange: instrument.exchange, signal: ctx.signal },
+          { iv: ctx.apiClient, surface: createSurfaceDependencies(ctx.marketData, ctx.apiClient) });
+      const [history, iv, proxy] = await Promise.all([
         loadRealizedVolatilityHistory({ instrument, signal: ctx.signal }, createRealizedVolatilityDependencies(ctx.marketData)), currentIv(),
+        fxProxy(),
       ]);
       ctx.signal.throwIfAborted();
       const model = projectRealizedVolatility(history.history, { symbol: instrument.symbol,
@@ -65,7 +95,7 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
             { key: "percentile", header: "Percentile", format: (value) => typeof value === "number" ? `${value.toFixed(1)}%` : "--" },
             { key: "sampleSize", header: "Samples" },
           ], rows: model.cone.map((row) => ({ ...row })) },
-          { title: "Current IV", entries: [
+          ...proxy ? [fxProxySection(proxy, history.history)] : fx ? [] : [{ title: "Current IV", entries: [
             { label: "ATM IV", value: iv?.reference?.value ?? null, formatted: iv?.reference ? `${(iv.reference.value * 100).toFixed(2)}%` : "--" },
             { label: "Expiry", value: iv?.reference?.expiration ?? null,
               formatted: iv?.reference ? new Date(iv.reference.expiration * 1000).toISOString().slice(0, 10) : "--" },
@@ -74,15 +104,17 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
             // To the minute, as the pane reads it; the JSON keeps the chain's read time whole.
             { label: "Observed", value: iv?.reference?.date.toISOString() ?? null,
               formatted: iv?.reference ? atmIvObservedLabel(iv.reference.date) : "--" },
-          ] },
+          ] }],
         ],
         // A short history is whole: the windows it is too short for have no estimate yet, and the note says when it starts.
         complete: model.cone.every((row) => row.current != null || model.shortWindows.includes(row.window))
           && model.warnings.length === 0 && !history.stale && errors.length === 0
-          && (!args.options.showIv || iv?.reference != null || iv?.noOptionChain === true),
+          && (!args.options.showIv || fx || iv?.reference != null || iv?.noOptionChain === true),
         unavailableSymbols: model.history.length ? [] : [instrument.symbol], errors,
-        notes: [barsPerYearLabel(model.barsPerYear), ...model.historyNote ? [model.historyNote] : []],
+        // A proxy that could not be read leaves the pair's own volatility whole: said, not failed.
+        notes: [barsPerYearLabel(model.barsPerYear), ...model.historyNote ? [model.historyNote] : [], ...proxy?.error ? [proxy.error] : []],
         metadata: { unit: "decimal annualized volatility", annualization: model.barsPerYear, model, currentIv: iv,
+          ...proxy ? { fxVolProxy: { ...proxy, ...fxProxyIvLessRv(proxy, history.history) } } : {},
           ...(abroad && args.options.showIv ? { notices: [`Options data covers US listings only, so ${args.symbols[0]} has no current IV.`] } : {}),
           source: history.source, stale: history.stale, fetchedAt: history.fetchedAt,
           methodology: "docs/research-data.md#shared-volatility-calculations" },

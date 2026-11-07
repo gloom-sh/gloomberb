@@ -168,7 +168,12 @@ export function formatFeedTime(value: DisplayDateValue, now = Date.now(), fallba
   return formatShortDate(date, { year: sameYear ? false : "2-digit", utc });
 }
 
-export function formatDetailDate(value: DisplayDateValue, fallback = "-"): string {
+/**
+ * A date and time in the host's zone, with the zone named: "Oct 7, 2026 at
+ * 11:38 PM GMT+2", "... 5:38 PM EDT", "... 9:38 PM UTC". Without the zone a
+ * time read beside a list in UTC looks two hours off.
+ */
+export function formatDetailDate(value: DisplayDateValue, fallback = "-", timeZone?: string): string {
   const date = parseDisplayDate(value);
   if (!date) return fallback;
 
@@ -176,10 +181,13 @@ export function formatDetailDate(value: DisplayDateValue, fallback = "-"): strin
     month: "short",
     day: "numeric",
     year: "numeric",
+    timeZone,
   });
   const timePart = date.toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
+    timeZoneName: "short",
+    timeZone,
   });
   return `${datePart} at ${timePart}`;
 }

@@ -484,7 +484,7 @@ describe("report freshness", () => {
       .toBe("Source: Gloom Cloud · Fri 9 Oct 2026 02:00 UTC · stale (3 hours old)");
   });
 
-  test("a currency pair is closed from Friday 17:00 New York, its prints up to then are that Friday's close, and a weekend tick keeps its time", () => {
+  test("a currency pair is closed from Friday 17:00 New York until Sunday 17:00, as it says, its prints up to then are that Friday's close, and a weekend tick keeps its time", () => {
     const pair = (lastUpdated: string, marketState = "CLOSED") => ({
       dataSource: "delayed", delayMinutes: 15, stale: false, sessionExchange: "CCY", marketState, lastUpdated: Date.parse(lastUpdated),
     });
@@ -493,17 +493,17 @@ describe("report freshness", () => {
     );
     // Saturday afternoon: a major's last print before the close, at the close itself, or a tick after it.
     expect(at("2026-10-10T18:45:00Z", pair("2026-10-09T20:59:00Z")))
-      .toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed");
+      .toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed · reopens Sun 21:00 UTC, 17:00 ET");
     expect(at("2026-10-10T18:45:00Z", pair("2026-10-09T21:00:00Z")))
-      .toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed");
+      .toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed · reopens Sun 21:00 UTC, 17:00 ET");
     expect(at("2026-10-10T18:45:00Z", pair("2026-10-09T21:29:00Z")))
-      .toBe("Source: Gloom Cloud · Fri 9 Oct 2026 21:29 UTC · 15 min delayed · markets closed");
+      .toBe("Source: Gloom Cloud · Fri 9 Oct 2026 21:29 UTC · 15 min delayed · markets closed · reopens Sun 21:00 UTC, 17:00 ET");
     // A quiet tick the next morning is no close: the line dates it (USD/CHF's 05:21 on Sunday 25 Oct 2026).
     expect(at("2026-10-10T18:45:00Z", pair("2026-10-09T20:59:00Z"), pair("2026-10-10T14:50:28Z")))
-      .toBe("Source: Gloom Cloud · Sat 10 Oct 2026 14:50 UTC · 15 min delayed · markets closed");
+      .toBe("Source: Gloom Cloud · Sat 10 Oct 2026 14:50 UTC · 15 min delayed · markets closed · reopens Sun 21:00 UTC, 17:00 ET");
     // A pair that last printed before the final trading day is no close; the line dates it.
     expect(at("2026-10-10T18:45:00Z", pair("2026-10-07T15:00:00Z")))
-      .toBe("Source: Gloom Cloud · Wed 7 Oct 2026 15:00 UTC · 15 min delayed · markets closed");
+      .toBe("Source: Gloom Cloud · Wed 7 Oct 2026 15:00 UTC · 15 min delayed · markets closed · reopens Sun 21:00 UTC, 17:00 ET");
     // While the FX week trades, a closed state a source stamped is no closure: the pair trades, and its print keeps its time.
     expect(at("2026-10-13T12:00:00Z", pair("2026-10-13T09:30:00Z")))
       .toBe("Source: Gloom Cloud · Tue 13 Oct 2026 09:30 UTC · 15 min delayed · markets open");
@@ -522,7 +522,7 @@ describe("report freshness", () => {
     // Before the reopen both are Friday's close.
     for (const state of ["CLOSED", "REGULAR"]) {
       expect(at("2026-10-25T20:59:00Z", state), state)
-        .toBe("Source: Gloom Cloud · FX trading day Fri 23 Oct 2026 close · 15 min delayed · markets closed");
+        .toBe("Source: Gloom Cloud · FX trading day Fri 23 Oct 2026 close · 15 min delayed · markets closed · reopens 21:00 UTC, 17:00 ET");
     }
     // At 21:19 UTC the quote still stored as CLOSED on Friday's print, and the rate placed on the clock, both trade.
     for (const state of ["CLOSED", "REGULAR"]) {

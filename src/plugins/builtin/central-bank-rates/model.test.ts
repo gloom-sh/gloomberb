@@ -124,10 +124,10 @@ describe("a board with stale rows", () => {
     expect(shotStatusIssues(withReportCoverage(captured, clean))).toEqual([]);
   });
 
-  test("--explain lists the terms the report shows, with the change date defined as the first observation", async () => {
+  test("--explain lists the terms the report shows, with the change date defined as the decision or the first observation", async () => {
     const { definition, args, result } = await load(board());
     const entries = reportGlossary("CBR", renderHeadlessPaneText(definition, result, args, "CBR"));
-    expect(entries.map((entry) => entry.term)).toEqual(["Last move", "Change observed", "Pctl 1Y", "Status"]);
+    expect(entries.map((entry) => entry.term)).toEqual(["Last change", "Changed", "Pctl 1Y", "Status"]);
     expect(entries[1]!.definition).toContain("first date the new rate level appears in the data");
   });
 });
@@ -141,7 +141,8 @@ const board = (): CentralBankRatesPayload => ({ generatedAt: "2026-10-12T10:00:0
   row({ asOf: "2026-10-11", value: 3.875, range: { lower: 3.75, upper: 4 }, previousValue: 3.625,
     notes: ["Midpoint of the target range, not the effective federal funds rate.", "Change date is the first observed new level, not necessarily the announcement or effective date."],
     nextMeeting: { date: "2026-10-28", sourceUrl: "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm", verifiedAt: "2026-10-12", kind: "decision" }, nextMeetingStatus: "scheduled",
-    lastDecision: { date: "2026-09-16", sourceUrl: "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm", verifiedAt: "2026-10-12", kind: "decision" } }),
+    lastDecision: { date: "2026-09-16", sourceUrl: "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm", verifiedAt: "2026-10-12", kind: "decision" },
+    latestDecision: { date: "2026-09-16", sourceUrl: "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm", verifiedAt: "2026-10-12", kind: "decision" } }),
   bis("GB", { seriesNotes: ["From 3 Aug 2006 onwards: official bank rate."], notes: ["From 3 Aug 2006 onwards: official bank rate.", "Change date is the first observed new level, not necessarily the announcement or effective date."],
     nextMeeting: { date: "2026-11-05", sourceUrl: "https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates", verifiedAt: "2026-10-12", kind: "decision" }, nextMeetingStatus: "scheduled" }),
   bis("CN", { asOf: "2026-07-23", lastChangeDate: "2026-07-01", previousAsOf: "2026-06-30", nextMeeting: { date: "2026-10-20", sourceUrl: "https://www.pbc.gov.cn/en/3688253/3689009/3788480/2025092319423510791/index.html", verifiedAt: "2026-10-12", kind: "fixing" } }),
@@ -169,7 +170,7 @@ describe("citable central bank exports", () => {
     const report = headlessReportTables(centralBankRatesHeadless, result, { rawArgument: "", argument: null, symbols: [], options: {} }, "CBR", freshness,
       { complete: true, unavailableSymbols: [] });
     const [table] = report.tables;
-    expect(table!.columns).toEqual(["Jurisdiction", "Rate (%)", "Range lower (%)", "Range upper (%)", "Last move (bp)", "Change observed", "Pctl 1Y", "As of", "Status", "Instrument",
+    expect(table!.columns).toEqual(["Jurisdiction", "Rate (%)", "Range lower (%)", "Range upper (%)", "Last change (bp)", "Changed", "Pctl 1Y", "As of", "Status", "Instrument",
       "central_bank", "source", "series_id", "source_url", "as_of", "last_decision", "next_meeting", "next_meeting_kind", "next_meeting_source_url", "next_meeting_verified_at",
       "citation", "notes",
       // A reason drawn for a missing figure, beside the board's own Status.
@@ -206,6 +207,27 @@ describe("citable central bank exports", () => {
     expect(text).toContain("Federal Reserve · last decision 2026-09-16 · next decision 2026-10-28");
     expect(text).toContain("as of 2026-10-11\n  Midpoint of the target range, not the effective federal funds rate.");
     expect(text).not.toContain("Argentina  ");
+  });
+
+  test("the last decision is the latest meeting, a hold included, and the last change has one date: the decision it came from", async () => {
+    const boj = { sourceUrl: "https://www.boj.or.jp/en/mopo/mpmsche_minu/index.htm", verifiedAt: "2026-10-12", kind: "decision" as const };
+    // 7 Nov 2026: the BoJ held on 30 Oct; its last change is the 18 Sep hike, which BIS observed 24 Sep.
+    const japan = bis("JP", { centralBank: "Bank of Japan", value: 1.25, asOf: "2026-11-03", changeBps: 25, previousValue: 1, direction: "hike",
+      lastChangeDate: "2026-09-24", previousAsOf: "2026-09-23", lastDecision: { date: "2026-09-18", ...boj }, latestDecision: { date: "2026-10-30", ...boj },
+      nextMeeting: { date: "2026-12-18", ...boj }, nextMeetingStatus: "scheduled", notes: [] });
+    // A change no decision is credited with keeps the day it was observed.
+    const uk = bis("GB", { lastChangeDate: "2025-12-18", previousAsOf: "2025-12-17", latestDecision: { date: "2026-11-05", ...boj }, asOf: "2026-11-02" });
+    const data: CentralBankRatesPayload = { generatedAt: "2026-11-07T02:05:00Z", status: "available", gaps: [], rows: [japan, uk] };
+    const result = await load(validateCentralBankRates(data));
+    expect(result.sections[0]!.rows!.map((entry) => [entry.id, entry.changeText, entry.changeDate, entry.last_decision])).toEqual([
+      ["JP", "+25bp ↑", "2026-09-18", "2026-10-30"], ["GB", "-25bp ↓", "2025-12-18", "2026-11-05"],
+    ]);
+    const text = renderHeadlessPaneText(centralBankRatesHeadless, result, { rawArgument: "", argument: null, symbols: [], options: {} }, "CBR");
+    expect(text).toContain("Bank of Japan · last decision 2026-10-30 · next decision 2026-12-18");
+    expect(text).not.toContain("2026-09-24");
+    // A latest decision that is no real day, or cites no https page, is left out.
+    const broken = { ...data, rows: [{ ...japan, latestDecision: { ...boj, date: "2026-13-01" } }] };
+    expect(validateCentralBankRates(broken).rows[0]!.latestDecision).toBeUndefined();
   });
 
   test("an older server's null meeting reads as not published, and a field it does not know is dropped, not fatal", async () => {

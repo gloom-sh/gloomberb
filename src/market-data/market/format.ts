@@ -36,6 +36,12 @@ export interface MarketFormatOptions extends AssetDisplayContext {
   quotedUnitDivisor?: number;
   /** Write the currency's code after a money price (259.36 USD) instead of its sign ($259.36): a report for a base currency other than USD. */
   currencyCode?: boolean;
+  /**
+   * A futures contract's tick, the smallest move its price makes: the price
+   * prints to the tick's decimals, 0.0063535 for the yen's 0.0000005 and
+   * 1.11570 for the euro's 0.00005, never fewer.
+   */
+  tick?: number;
   /** A price that holds still for the session, such as the previous close. With
    * `fixedFractionDigits`, the kind's decimal ceiling is read at this price
    * instead of at the value, so a live price keeps its decimals as it moves. */
@@ -389,6 +395,11 @@ export function formatThirtySeconds(value: number): string {
   return `${sign}${points}-${String(Math.floor(rest / 8)).padStart(2, "0")}${EIGHTHS[rest % 8]}`;
 }
 
+/** The decimals a contract's tick is written with (0.0000005 is 7, 0.25 is 2); undefined without one. */
+function tickFractionDigits(tick: number | undefined): number | undefined {
+  return tick != null && Number.isFinite(tick) && tick > 0 ? writtenFractionDigits(tick, 10) : undefined;
+}
+
 export function formatMarketPrice(value: number | undefined, options: MarketFormatOptions = {}): string {
   if (value === undefined || value === null || Number.isNaN(value)) return "—";
   const basis = resolvePriceBasis(options.priceBasis, options.assetCategory);
@@ -410,7 +421,7 @@ export function formatMarketPrice(value: number | undefined, options: MarketForm
         ? getBasePriceMaxFractionDigits(kind, value, options.currency) + quotedUnitDigits
         : marketPriceFractionDigitCeiling(reference, options) + quotedUnitDigits;
     let digits = Math.max(0, Math.min(fixedFractionDigits, maxFractionDigits));
-    const tick = kind === "equity" || kind === "other" ? listingTickDigits(options.listingTickTable, reference ?? value) : undefined;
+    const tick = kind === "equity" || kind === "other" ? listingTickDigits(options.listingTickTable, reference ?? value) : tickFractionDigits(options.tick);
     if (tick !== undefined) digits = Math.max(digits, tick);
     // A live price keeps its instrument's decimals, but a trade finer than the
     // session prices showed (a half-yen print after whole-yen closes) is not
@@ -422,8 +433,8 @@ export function formatMarketPrice(value: number | undefined, options: MarketForm
       ? fitted
       : scientificPrice(value, options.maxWidth);
   }
-  // A listing whose tick is finer than its currency's minor unit keeps the tick's decimals (an HKEX ETF's 5.325).
-  const tick = kind === "equity" || kind === "other" ? listingTickDigits(options.listingTickTable, value) : undefined;
+  // A listing whose tick is finer than its currency's minor unit keeps the tick's decimals (an HKEX ETF's 5.325), as a contract does its own.
+  const tick = kind === "equity" || kind === "other" ? listingTickDigits(options.listingTickTable, value) : tickFractionDigits(options.tick);
   const baseFractionDigits = getBasePriceMaxFractionDigits(kind, value, options.currency);
   const minimumFractionDigits = Math.max(
     0,

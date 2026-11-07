@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
-import { formatFeedTime, formatRelativeAge, formatRelativeTime, formatShortDate, formatTimeAgo } from "./datetime-format";
+import { formatDetailDate, formatFeedTime, formatRelativeAge, formatRelativeTime, formatShortDate, formatTimeAgo } from "./datetime-format";
 
 afterEach(() => setSystemTime());
 
@@ -85,4 +85,10 @@ test("feed times read as a clock today, a weekday this week and a date before", 
   ];
   for (const [date, label] of cases) expect(formatFeedTime(date, now)).toBe(label);
   expect(formatFeedTime("not a date", now)).toBe("-");
+});
+
+test("a detail date names its zone, so a story read beside a list in UTC is not two hours off", () => {
+  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "UTC")).toBe("Oct 7, 2026 at 9:38 PM UTC");
+  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "Europe/Berlin")).toBe("Oct 7, 2026 at 11:38 PM GMT+2");
+  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "America/New_York")).toBe("Oct 7, 2026 at 5:38 PM EDT");
 });

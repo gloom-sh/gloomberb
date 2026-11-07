@@ -13,7 +13,7 @@ import { formatPercentileRank } from "../../../utils/format";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedCentralBankRates, loadCentralBankRates } from "./client";
-import { hasNoPolicyRate, policyBoardRow, policyChange, policyHistory, policyLevel, policyNotices, policyRate } from "./model";
+import { hasNoPolicyRate, policyBoardRow, policyChange, policyChangeDate, policyHistory, policyLevel, policyNotices, policyRate } from "./model";
 
 const PANELS = [{ id: "main" }];
 
@@ -27,13 +27,14 @@ function PolicyDetail({ row, width, height, focused }: { row: CentralBankRow; wi
   const items: StatItem[] = [
     { id: "level", label: row.range ? "Target range" : "Policy rate", value: policyLevel(row),
       detail: formatPercentileRank(p.value, "1Y") },
-    { id: "move", label: "Last move", value: policyChange(row), detail: row.lastChangeDate ?? undefined },
+    { id: "move", label: "Last change", value: policyChange(row), detail: policyChangeDate(row) ?? undefined },
     // A target range ranks and charts its midpoint, which the band's range would not say.
     { id: "range", label: "1Y range", value: `${policyRate(p.min)} to ${policyRate(p.max)}`, detail: row.range ? "midpoint" : undefined },
     { id: "asOf", label: "As of", value: row.asOf ?? "--", tone: row.status === "stale" ? "warning" : undefined,
       detail: [row.publicationFrequency, row.lagDays == null ? null : `${row.lagDays}d lag`,
         row.confirmedAt ? `confirmed ${row.confirmedAt.slice(0, 10)}` : null, row.status === "stale" ? "stale" : null]
         .filter(Boolean).join(" · ") || undefined },
+    { id: "decided", label: row.latestDecision?.kind === "fixing" ? "Last fixing" : "Last decision", value: row.latestDecision?.date ?? "--" },
     { id: "meeting", label: row.nextMeeting?.kind === "fixing" ? "Next fixing" : "Next meeting", value: row.nextMeeting?.date ?? "--" },
     { id: "source", label: "Source", value: row.source?.toUpperCase() ?? "--", detail: row.sourceSeriesIds.join(", ") || undefined },
     { id: "instrument", label: "Instrument", value: row.instrument, detail: row.centralBank ?? undefined, wide: true },
@@ -68,7 +69,7 @@ export function CentralBankRatesPane({ width, height, focused }: PaneProps) {
       empty={!resource.loading && !resource.error && !data} subject="central bank rates">
       {data ? <MarketBoardStack rows={rows} width={width} height={height} focused={focused}
         selectedId={selectedId} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
-        valueWidth={14} changeLabel="LAST MOVE" labelHeader="JURISDICTION" labelWidth={14} labelDetailHeader="INSTRUMENT" renderDetail={(row) => <PolicyDetail row={row.observation} width={width} height={Math.max(5, height - 2)} focused={focused} />} /> : null}
+        valueWidth={14} changeLabel="LAST CHANGE" labelHeader="JURISDICTION" labelWidth={14} labelDetailHeader="INSTRUMENT" renderDetail={(row) => <PolicyDetail row={row.observation} width={width} height={Math.max(5, height - 2)} focused={focused} />} /> : null}
     </PaneStatusBody>
   </Box>;
 }

@@ -7,6 +7,12 @@ export const policyRate = (value: number | null) => value == null ? "--" : `${pe
 export const policyLevel = (row: CentralBankRow) => row.range ? `${percentText(row.range.lower)}-${percentText(row.range.upper)}%` : policyRate(row.value);
 export const policyChange = (row: CentralBankRow) => row.changeBps == null ? "--"
   : `${row.changeBps > 0 ? "+" : ""}${Number(row.changeBps.toFixed(1))}bp ${row.direction === "hike" ? "↑" : row.direction === "cut" ? "↓" : ""}`.trim();
+/**
+ * The one date of the last change: the decision it came from, when the server
+ * credits one (the BoJ's 18 Sep hike, which BIS observed 24 Sep), or the day
+ * the new level was first observed.
+ */
+export const policyChangeDate = (row: CentralBankRow) => row.lastDecision?.date ?? row.lastChangeDate;
 /** Members with no policy rate to publish, kept out of the board and the notices; docs/research-data.md explains them. */
 export const hasNoPolicyRate = (row: CentralBankRow) => row.status === "unavailable"
   && (row.unavailableReason === "no-policy-rate" || row.unavailableReason === "no-unified-rate");
@@ -23,7 +29,7 @@ export function policyBoardRow(row: CentralBankRow): PolicyBoardRow {
   // One country's bank leads with its flag; the euro area's with the EU's.
   const country = row.countryCodes.length === 1 ? row.countryCodes[0]! : row.label;
   return { id: row.id, label: row.label, labelDetail: row.instrument, country, value: row.value, valueText: policyLevel(row),
-    change: row.changeBps, changeText: policyChange(row), changeAsOf: row.lastChangeDate,
+    change: row.changeBps, changeText: policyChange(row), changeAsOf: policyChangeDate(row),
     percentile: row.percentile.value, asOf: row.asOf, status: row.status, observation: row,
     history: policyHistory(row).flatMap((point) => point.value == null ? [] : [{ date: new Date(point.date), close: point.value }]) };
 }
@@ -99,11 +105,13 @@ export function policyNextMeetingText(row: CentralBankRow): string {
 }
 
 /**
- * `last decision 2026-09-18 · ` (or `last LPR fixing`) before the next
- * meeting on a row's detail line; nothing when the server gives no date.
+ * `last decision 2026-10-30 · ` (or `last LPR fixing`) before the next
+ * meeting on a row's detail line: the bank's latest meeting, a hold as much
+ * as a move, never the one its last change came from; nothing when the
+ * server gives no date.
  */
 export function policyLastDecisionText(row: CentralBankRow): string {
-  const decision = row.lastDecision;
+  const decision = row.latestDecision;
   if (!decision) return "";
   return `last ${decision.kind === "fixing" ? "LPR fixing" : "decision"} ${decision.date} · `;
 }
@@ -112,8 +120,10 @@ export function policyLastDecisionText(row: CentralBankRow): string {
  * What an export says about one row, history aside: the board's figures, a
  * target range's bounds as numbers (`rangeLower`, `rangeUpper`; the rate is
  * its midpoint) and a citation block, `central_bank` to `citation`, named as
- * CSV heads them. `last_decision` is the bank's latest kept decision on or
- * before the observed change. Notes keep the caveats on the latest rate; the
+ * CSV heads them. `last_decision` is the bank's latest meeting, a hold as
+ * much as a move, and `changeDate` the one date of the last change (the
+ * decision it came from, else when it was observed; `lastChangeDate` stays the
+ * observation). Notes keep the caveats on the latest rate; the
  * BIS series definition goes with the history (`--history`).
  */
 export function policyExportRow(row: CentralBankRow) {
@@ -122,11 +132,11 @@ export function policyExportRow(row: CentralBankRow) {
   return {
     id: row.id, label: row.label, instrument: row.instrument, central_bank: row.centralBank,
     value: row.value, unit: row.unit, range: row.range, rangeLower: row.range?.lower ?? null, rangeUpper: row.range?.upper ?? null,
-    valueText: board.valueText, changeBps: row.changeBps, changeText: board.changeText, lastChangeDate: row.lastChangeDate,
+    valueText: board.valueText, changeBps: row.changeBps, changeText: board.changeText, changeDate: policyChangeDate(row), lastChangeDate: row.lastChangeDate,
     previousValue: row.previousValue, percentileValue: row.percentile.value,
     asOf: row.asOf, lagDays: row.lagDays, status: row.status, unavailableReason: row.unavailableReason,
     source: policySource(row), series_id: row.sourceSeriesIds.join(", ") || null, source_url: policySeriesUrls(row).join(" ") || null,
-    as_of: row.asOf, last_decision: row.lastDecision?.date ?? null, next_meeting: meeting.text, next_meeting_kind: meeting.kind,
+    as_of: row.asOf, last_decision: row.latestDecision?.date ?? null, next_meeting: meeting.text, next_meeting_kind: meeting.kind,
     next_meeting_source_url: meeting.sourceUrl, next_meeting_verified_at: meeting.verifiedAt,
     citation: policyCitation(row), notes: row.notes.filter((note) => !row.seriesNotes?.includes(note)),
   };

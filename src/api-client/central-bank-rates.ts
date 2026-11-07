@@ -37,6 +37,11 @@ export interface CentralBankRow {
    * that far or no change is observed; older servers leave it out.
    */
   lastDecision?: { date: string; sourceUrl: string; verifiedAt: string; kind?: "decision" | "fixing" } | null
+  /**
+   * The bank's latest kept decision (China's LPR fixing) already announced, a hold as much as a move: the Bank of
+   * Japan's 30 Oct 2026 hold, where `lastDecision` is its 18 Sep hike. Older servers leave it out.
+   */
+  latestDecision?: { date: string; sourceUrl: string; verifiedAt: string; kind?: "decision" | "fixing" } | null
   /** Why `nextMeeting` is null; older servers leave it out, and a null meeting then reads as not published. */
   nextMeetingStatus?: "scheduled" | "not-published" | "not-verified" | "no-policy-rate"
   /** The BIS series definition and breaks, also in `notes`: history a citation of the latest rate leaves out. */

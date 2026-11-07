@@ -192,6 +192,7 @@ function coverageTime(value: Date, storyDay: Date): string {
 function NewsStoryTimelineItemView({
   item,
   storyTitle,
+  storySummary,
   storyDay,
   width,
   nativePaneChrome,
@@ -199,13 +200,15 @@ function NewsStoryTimelineItemView({
   item: NewsStoryItem;
   /** An outlet's headline that is the story's own is not printed again. */
   storyTitle: string;
+  /** Nor its summary, when it is the story's lead, printed above. */
+  storySummary: string | undefined;
   storyDay: Date;
   width: number;
   nativePaneChrome: boolean;
 }) {
   const time = coverageTime(storyItemDate(item.publishedAt), storyDay);
   const title = item.title.trim() === storyTitle.trim() ? "" : item.title;
-  const summary = item.summary && item.summary.trim() !== item.title.trim() ? item.summary : "";
+  const summary = item.summary && item.summary.trim() !== item.title.trim() && item.summary.trim() !== storySummary?.trim() ? item.summary : "";
   const source = item.sourceName || item.sourceKey;
   const contentWidth = Math.max(10, width - 2);
   const sourceLabel = nativePaneChrome ? source : truncateToDisplayWidth(source, Math.max(4, width - time.length - 4));
@@ -317,6 +320,7 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
               key={timelineItem.id}
               item={timelineItem}
               storyTitle={item.title}
+              storySummary={item.summary}
               storyDay={lastUpdatedAt}
               width={coverageWidth}
               nativePaneChrome={nativePaneChrome === true}

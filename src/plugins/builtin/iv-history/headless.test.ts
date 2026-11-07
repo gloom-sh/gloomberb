@@ -39,12 +39,12 @@ const load = async (rows: IvScreenRow[], marketData: DataProvider = createTestDa
 };
 
 describe("VCA dates", () => {
-  test("a quote reading and the close it is ranked on are each dated once, and the footer agrees", async () => {
+  test("IV30 and its rank are one dated close, said once, ahead of a newer quote, and the footer agrees", async () => {
     const { title, keys, footer } = await load([
       row("NVDA", reading("2026-10-09", "quote-mid", 0.293), "2026-10-09"),
       row("AAPL", reading("2026-10-09", "quote-mid", 0.265), "2026-10-09"),
     ]);
-    expect(title).toContain("IV30 2026-10-09 quote · IVR/IVP vs 52 weeks to 2026-10-09 close");
+    expect(title.endsWith("· 2026-10-09 close")).toBe(true);
     expect(title).not.toContain("live");
     expect(keys).not.toContain("date");
     expect(keys).not.toContain("rankDate");
@@ -56,7 +56,7 @@ describe("VCA dates", () => {
     expect(title.endsWith("· 2026-10-09 close")).toBe(true);
   });
 
-  test("rows on different readings or rank dates get a column each, and the footer is the newest reading", async () => {
+  test("rows ranked on different closes get a date column, and the footer is the newest", async () => {
     const { title, keys, cell, footer } = await load([
       row("NVDA", reading("2026-10-09", "quote-mid", 0.293), "2026-10-09"),
       row("XLF", reading("2026-10-09", "trade-close", 0.171), "2026-10-09"),
@@ -64,19 +64,18 @@ describe("VCA dates", () => {
     ]);
     expect(title).toBe("Rich/cheap · Custom symbols");
     expect(keys).toContain("date");
-    expect(keys).toContain("rankDate");
-    expect([0, 1, 2].map((index) => cell("date", index))).toEqual(["2026-10-09 quote", "2026-10-09 close", "2026-10-08 quote"]);
-    expect([0, 1, 2].map((index) => cell("rankDate", index))).toEqual(["2026-10-09 close", "2026-10-09 close", "2026-10-08 close"]);
+    expect([0, 1, 2].map((index) => cell("date", index))).toEqual(["2026-10-09 close", "2026-10-09 close", "2026-10-08 close"]);
     expect(footer).toContain(" · Fri 9 Oct 2026 · ");
   });
 
-  test("a quote ahead of its rank says which close the rank is on", async () => {
-    const { title, keys } = await load([
+  test("a quote a session ahead of its rank is not the IV30 shown: the ranked close is", async () => {
+    const { title, keys, cell } = await load([
       row("NVDA", reading("2026-10-09", "quote-mid", 0.293), "2026-10-08"),
       row("AAPL", reading("2026-10-09", "quote-mid", 0.265), "2026-10-08"),
     ]);
-    expect(title).toContain("IV30 2026-10-09 quote · IVR/IVP vs 52 weeks to 2026-10-08 close");
+    expect(title.endsWith("· 2026-10-08 close")).toBe(true);
     expect(keys).not.toContain("rankDate");
+    expect(cell("iv30", 0)).toBe("30.0%");
   });
 
   test("IV1Y and its percentile join only when a row has them, ranked on the same close", async () => {
@@ -87,7 +86,8 @@ describe("VCA dates", () => {
     };
     const { keys, cell } = await load([oneYear("NVDA", "2026-10-09"), oneYear("AAPL", "2026-10-08")]);
     expect(keys.slice(keys.indexOf("verdict"), keys.indexOf("verdict") + 3)).toEqual(["verdict", "iv1y", "iv1yPercentile"]);
-    expect([0, 1].map((index) => [cell("iv1y", index), cell("iv1yPercentile", index)])).toEqual([["31.0%", "22"], ["31.0%", "--"]]);
+    // The IV30's own close: the 1Y read that session, ranked; none from another.
+    expect([0, 1].map((index) => [cell("iv1y", index), cell("iv1yPercentile", index)])).toEqual([["30.0%", "22"], ["--", "--"]]);
   });
 
   test("skew from an older capture than the reading is dated", async () => {

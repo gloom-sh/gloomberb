@@ -8,7 +8,7 @@ import {
   nextRegularSessionOpen,
 } from "../../market-data/market/freshness";
 import { futuresWeekendClosure } from "../../market-data/market/futures-week";
-import { currentFxClosureStart, isFxMarketOpen, isFxWeekClosePrint } from "../../utils/fx-market-hours";
+import { currentFxClosureStart, isFxWeekClosePrint, nextFxWeekOpen } from "../../utils/fx-market-hours";
 import { zonedDateKey } from "../../utils/zoned-date-time";
 import type { ReportTime } from "../../utils/utc-time";
 import type { QuoteIndexSession } from "../../types/financials";
@@ -65,7 +65,12 @@ function venueSession(exchange: string, marketState: string | undefined, now: nu
   // Spot FX trades its week, Sunday 17:00 to Friday 17:00 New York, by the clock as an exchange rate's line has it.
   // A source's own state is not its week: a quote source stamps a pair CLOSED from that open to London's midnight, which read
   // `markets closed` beside `fx`'s `markets open` for the same pair.
-  if (exchange === FX_VENUE) return { state: isFxMarketOpen(now) ? "open" : "closed" };
+  // Shut, it says when it reopens, as a futures venue's weekend does: the week's first trade, Sunday 17:00 New York.
+  if (exchange === FX_VENUE) {
+    const reopens = nextFxWeekOpen(now);
+    return reopens == null ? { state: "open" } : { state: "closed", timeZone: US_EXCHANGE_TIME_ZONE,
+      next: { date: zonedDateKey(reopens, US_EXCHANGE_TIME_ZONE), open: reopens, firstTrade: true } };
+  }
   const next = nextRegularSessionOpen(exchange, now);
   if (next) {
     const { timeZone } = next;
