@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { createDefaultConfig, type SavedLayout } from "../../types/config";
+import { createDefaultConfig, type DockLayoutNode, type SavedLayout } from "../../types/config";
+import { getDockedInstanceIds } from "../../layout/pane-manager/dock-tree";
 import type { TickerRecord } from "../../types/ticker";
 import {
   FIRST_RUN_PANE_IDS,
   applyFirstRunLayout,
   buildFirstRunLayout,
+  isCompactHomeViewport,
   onboardingDeskLayoutId,
   planFirstRunWatchlist,
   setupDeskPicks,
@@ -74,6 +76,29 @@ describe("first-run workspace", () => {
     // Without the gauge, the indices take its place.
     const withoutGauge = build((id) => id !== "fear-greed" && panes.includes(id));
     expect(besideNews(withoutGauge)).toMatchObject({ tabs: { active: FIRST_RUN_PANE_IDS.indices } });
+  });
+
+  // At 80x24 five spots cut the headlines to nine characters and the titles to "Main P...".
+  test("a small terminal gets three spots, with every other pane a tab behind the news", () => {
+    expect(isCompactHomeViewport({ width: 80, height: 24 })).toBe(true);
+    expect(isCompactHomeViewport({ width: 120, height: 36 })).toBe(false);
+    const build = (holdings: boolean) => buildFirstRunLayout({
+      symbol: "MSFT", portfolioId: "main", watchlistId: "watchlist", hasPane: () => true, compact: true, holdings,
+    });
+    expect(build(false).layout.dockRoot).toMatchObject({
+      kind: "split",
+      axis: "vertical",
+      first: {
+        first: { kind: "pane", instanceId: FIRST_RUN_PANE_IDS.watchlist },
+        second: { kind: "pane", instanceId: FIRST_RUN_PANE_IDS.chart },
+      },
+      second: { tabs: { active: FIRST_RUN_PANE_IDS.news } },
+    });
+    const tabs = (home: SavedLayout) => getDockedInstanceIds((home.layout.dockRoot as { second: DockLayoutNode }).second);
+    expect(tabs(build(false))).toEqual([FIRST_RUN_PANE_IDS.news, FIRST_RUN_PANE_IDS.sentiment, FIRST_RUN_PANE_IDS.trending, FIRST_RUN_PANE_IDS.heatmap]);
+    // Holdings go beside the chart, and the watchlist behind the news.
+    expect(build(true).layout.dockRoot).toMatchObject({ first: { first: { instanceId: FIRST_RUN_PANE_IDS.heatmap } } });
+    expect(tabs(build(true)).at(-1)).toBe(FIRST_RUN_PANE_IDS.watchlist);
   });
 
   test("skips panes the host cannot render instead of leaving placeholders", () => {
