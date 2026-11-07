@@ -86,6 +86,7 @@ const TOOL_TITLES: Record<string, string> = {
 const RESOURCE_SUBJECTS: Record<string, string> = {
   "app://accounts": "broker accounts",
   "app://snapshot": "your layout",
+  "app://snapshot/full": "your layout",
   "app://panes": "open panes",
   "app://config": "settings",
   "app://layout/current": "your layout",

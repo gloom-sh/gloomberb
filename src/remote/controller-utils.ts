@@ -78,10 +78,22 @@ function panePlacement(layout: LayoutConfig, instanceId: string): "docked" | "fl
 
 export function paneSnapshot(state: AppState, pane: PaneInstanceConfig) {
   return {
+    ...paneSummary(state, pane),
+    runtimeState: state.paneState[pane.instanceId] ?? {},
+  };
+}
+
+/**
+ * A pane as the snapshot and every call's answer list it: where it is and
+ * whether it has focus, without its runtime state, which can hold everything
+ * it loaded (a news pane's stories). app://panes and app://pane-state/{paneId}
+ * carry that.
+ */
+export function paneSummary(state: AppState, pane: PaneInstanceConfig) {
+  return {
     ...pane,
     placement: panePlacement(state.config.layout, pane.instanceId),
     focused: state.focusedPaneId === pane.instanceId,
-    runtimeState: state.paneState[pane.instanceId] ?? {},
   };
 }
 

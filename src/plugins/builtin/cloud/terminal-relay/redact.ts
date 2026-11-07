@@ -6,7 +6,9 @@
  * through here, with every such value replaced, so an assistant steered by
  * what it reads cannot copy a credential out of the terminal.
  */
-const SECRET_KEY = /(pass(word|phrase)?|secret|token|api[-_]?key|private[-_]?key|credential|cookie)/i;
+
+import { SECRET_NAME } from "../../../../remote/secrets";
+
 /** Fields of a form field or input that hold what was typed. */
 const TYPED_VALUE_KEYS = ["value", "summary", "defaultValue", "initialValue"];
 export const REDACTED = "[redacted]";
@@ -24,7 +26,7 @@ function redactSecrets(value: unknown, depth = 0, withheld?: (secret: unknown) =
   const result: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(record)) {
     const filled = entry !== null && entry !== undefined && entry !== "" && typeof entry !== "boolean";
-    if (filled && (SECRET_KEY.test(key) || (password && TYPED_VALUE_KEYS.includes(key)))) {
+    if (filled && (SECRET_NAME.test(key) || (password && TYPED_VALUE_KEYS.includes(key)))) {
       withheld?.(entry);
       result[key] = REDACTED;
     } else {
@@ -62,7 +64,7 @@ export function redactConfig(config: unknown): unknown {
 /** Resources that carry the whole configuration, before the general pass. */
 export function redactResource(resource: string, value: unknown): unknown {
   if (resource === "app://config") return redactConfig(value);
-  if (resource === "app://snapshot" && value && typeof value === "object") {
+  if ((resource === "app://snapshot" || resource === "app://snapshot/full") && value && typeof value === "object") {
     const snapshot = value as Record<string, unknown>;
     return { ...snapshot, config: redactConfig(snapshot.config) };
   }

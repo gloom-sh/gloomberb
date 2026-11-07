@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import type { RemoteAppKind, RemoteControlRequest, RemoteControlResponse, RemoteEndpoint } from "./types";
 import { REMOTE_CONTROL_PROTOCOL_VERSION } from "./types";
-import { removeRemoteEndpointFiles, writeRemoteEndpointFiles } from "./endpoint";
+import { currentPidNamespace, removeRemoteEndpointFiles, writeRemoteEndpointFiles } from "./endpoint";
 
 export interface RemoteControlServerOptions {
   dataDir: string;
@@ -44,6 +44,7 @@ export async function startRemoteControlServer(options: RemoteControlServerOptio
     port: address.port,
     token,
     startedAt: new Date().toISOString(),
+    pidNamespace: currentPidNamespace(),
   };
   try {
     await writeRemoteEndpointFiles(options.dataDir, endpoint);

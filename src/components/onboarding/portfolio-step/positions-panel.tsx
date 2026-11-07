@@ -9,6 +9,8 @@ import { formatPercentRaw } from "../../../utils/format";
 import { Button, NumberField, TextField } from "../../ui";
 import { DelayedMark } from "../../ui/delayed-mark";
 import { useFreeQuoteDelay } from "../../../api-client/plan-access";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
+import { remoteStringValue } from "../../../remote/semantic-helpers";
 import { ONBOARDING_DESKTOP } from "../onboarding-frame";
 import {
   POSITION_FIELDS,
@@ -379,7 +381,66 @@ export interface PositionsPanelProps {
   shortcut: string;
 }
 
+/**
+ * One field of the position form as remote control fills it, the same on both
+ * hosts: the terminal draws only the field being typed in as an input, and
+ * Enter there is the card's key, not the input's. `submit` adds the position,
+ * as the desktop's Add button does.
+ */
+function RemotePositionField({ field, index, state, editing }: { field: PositionFieldId; index: number; state: OnboardingPositionsState; editing: boolean }) {
+  useRemoteUiNode({
+    role: "form-field",
+    label: fieldLabel(field, state),
+    disabled: state.submitting,
+    actions: {
+      focus: () => state.focusField(index),
+      setValue: (input) => state.setField(field, remoteStringValue(input)),
+      submit: () => state.addPosition(),
+    },
+    metadata: {
+      fieldId: field,
+      fieldType: field === "shares" || field === "avgCost" ? "number" : "text",
+      active: editing && index === state.fieldIdx,
+      value: state.draft[field],
+      placeholder: fieldPlaceholder(field, state),
+      ...(field === "ticker" && state.error ? { error: state.error } : {}),
+    },
+  });
+  return null;
+}
+
+/** The positions added so far, as remote control reads them; `remove` takes one off by its symbol or index. */
+function RemotePositionList({ state }: { state: OnboardingPositionsState }) {
+  useRemoteUiNode({
+    role: "list",
+    label: t("Positions"),
+    actions: {
+      remove: (input) => {
+        const record = input && typeof input === "object" ? input as { id?: unknown; index?: unknown } : {};
+        const symbol = typeof record.index === "number"
+          ? state.positions[record.index]?.symbol
+          : typeof record.id === "string" ? record.id : remoteStringValue(input, "");
+        const row = state.positions.find((entry) => entry.symbol === symbol?.toUpperCase());
+        if (!row) throw new Error(`No position ${symbol ? `"${symbol}"` : "at that index"} is listed.`);
+        return state.removePosition(row.symbol);
+      },
+    },
+    metadata: {
+      items: state.positions.map((row, index) => ({ index, id: row.symbol, label: row.symbol, detail: positionSummary(row) })),
+    },
+  });
+  return null;
+}
+
 export function PositionsPanel(props: PositionsPanelProps) {
   const desktop = useUiCapabilities().nativePaneChrome === true;
-  return desktop ? <DesktopPositionsPanel {...props} /> : <TuiPositionsPanel {...props} />;
+  return (
+    <>
+      {POSITION_FIELDS.map((field, index) => (
+        <RemotePositionField key={field} field={field} index={index} state={props.state} editing={props.editing} />
+      ))}
+      <RemotePositionList state={props.state} />
+      {desktop ? <DesktopPositionsPanel {...props} /> : <TuiPositionsPanel {...props} />}
+    </>
+  );
 }
