@@ -25,9 +25,8 @@ import type { TreasuryAuction } from "./types";
 export type AuctionView = "results" | "after";
 export const AUCTION_VIEWS: readonly AuctionView[] = ["results", "after"];
 
-export const PERCENTILE_LOOKBACK = 24;
+const PERCENTILE_LOOKBACK = 24;
 const PERCENTILE_MIN = 12;
-export const AFTER_SESSIONS = [1, 5, 20] as const;
 
 export interface AuctionAfter {
   btcPercentile: number | null;
@@ -52,18 +51,18 @@ export function afterWindowStart(window: AuctionHistoryWindow, now = Date.now())
   return window === AUCTION_HISTORY_ALL ? undefined : new Date(now - window * 86_400_000).toISOString().slice(0, 10);
 }
 
-export const NO_AFTER: AuctionAfter = {
+const NO_AFTER: AuctionAfter = {
   btcPercentile: null, indirectPercentile: null, dealerPercentile: null, after1d: null, after5d: null, after20d: null, cmt: null,
 };
 
 /** The tenor an auction ranks within: its type and the benchmark it was sold as. */
-export function auctionTenorKey(auction: TreasuryAuction): string | null {
+function auctionTenorKey(auction: TreasuryAuction): string | null {
   const benchmark = auctionBenchmark(auction.securityTerm);
   return benchmark ? `${auction.secType}|${benchmark.count}${benchmark.unit}` : null;
 }
 
 /** 0 to 100: the share of `history` below `value`, half of those equal. */
-export function percentileOf(value: number, history: readonly number[]): number | null {
+function percentileOf(value: number, history: readonly number[]): number | null {
   if (history.length < PERCENTILE_MIN) return null;
   const below = history.filter((entry) => entry < value).length;
   const equal = history.filter((entry) => entry === value).length;
@@ -126,7 +125,7 @@ export function cmtFor(auction: TreasuryAuction): { curve: CloudCurveId; tenor: 
   return { curve: real ? "us-real" : "us", tenor };
 }
 
-export const cmtLabel = (cmt: { curve: CloudCurveId; tenor: string }) => cmt.curve === "us-real" ? `${cmt.tenor} real` : cmt.tenor;
+const cmtLabel = (cmt: { curve: CloudCurveId; tenor: string }) => cmt.curve === "us-real" ? `${cmt.tenor} real` : cmt.tenor;
 
 /** A curve tenor's closes, oldest first, as `date` and `value` (percent). */
 export type CurveCloses = ReadonlyArray<{ date: string; value: number }>;
@@ -165,7 +164,7 @@ export function projectAuctionAfter(
   }));
 }
 
-export const curveKey = (cmt: { curve: CloudCurveId; tenor: string }) => `${cmt.curve}:${cmt.tenor}`;
+const curveKey = (cmt: { curve: CloudCurveId; tenor: string }) => `${cmt.curve}:${cmt.tenor}`;
 
 /** The curve read for a tenor; ten minutes, since a session's close lands once a day. */
 const curveCache = createTtlCache<CloudCurveHistory>({ ttlMs: 10 * 60_000, maxEntries: 64 });

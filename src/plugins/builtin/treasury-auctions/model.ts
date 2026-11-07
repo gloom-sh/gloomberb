@@ -1,5 +1,5 @@
 import type { DataTableColumn } from "../../../components";
-import { dropColumnsToFit, tableColumnWidth } from "../../../components/ui/table-layout";
+import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import { displayWidth } from "../../../utils/format";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { AUCTION_HISTORY_ALL, AUCTION_HISTORY_DAYS, AUCTION_HISTORY_START, type AuctionHistoryWindow } from "./client";
@@ -484,9 +484,6 @@ export function buildAuctionColumns(options: {
   // Without the CUSIP nothing grows: the figures keep their places at the left.
   return shown.length === columns.length ? shown : shown.map((column) => ({ ...column, flexGrow: undefined }));
 }
-
-/** The widest a header row needs, for tests and the pane's own width checks. */
-export const auctionColumnWidth = (column: AuctionColumn) => tableColumnWidth(column);
 
 /**
  * What `AUCT 10Y --history-days 3650` asks of the pane, typed in the command
