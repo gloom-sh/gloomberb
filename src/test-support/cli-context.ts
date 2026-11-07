@@ -23,6 +23,8 @@ export function createTestCliContext(
     persistence: { close: () => { closed += 1; } },
     // Commands look up the saved listing of every symbol they are given.
     store: { loadTicker: async () => null, loadAllTickers: async () => [] },
+    // A yen pair's notes read Japan's intervention record from Gloom Cloud; a test has none unless it brings one.
+    fxInterventions: async () => null,
     ...market,
   });
   const context = {

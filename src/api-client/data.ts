@@ -35,6 +35,7 @@ import type { OrganizationTickersResponse } from "./organization-tickers";
 import type { BitcoinNetworkPayload, CryptoMarketsPayload, DefiTvlPayload, StablecoinSupplyHistoryPayload, StablecoinSupplyPayload } from "./crypto-markets";
 import type { CryptoEtfFlowAsset, CryptoEtfFlowsPayload } from "./crypto-etf-flows";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
+import type { FxInterventionsPayload } from "./fx-interventions";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
 import type { MoneyMarketsPayload } from "./money-markets";
 import type { CloudCurveHistory, CloudCurveId, CloudCurveView, CloudWorldCurves } from "./yield-curves";
@@ -1087,6 +1088,11 @@ export class CloudDataApi {
 
   async getCloudCentralBankRates(): Promise<CentralBankRatesPayload> {
     return this.request<CentralBankRatesPayload>("/cloud/econ/central-bank-rates", { signal: AbortSignal.timeout(45_000) });
+  }
+
+  /** Japan's foreign exchange interventions as its Ministry of Finance publishes them. */
+  async getCloudFxInterventions(signal?: AbortSignal): Promise<FxInterventionsPayload> {
+    return this.request<FxInterventionsPayload>("/cloud/econ/fx-interventions", { signal: signalWithTimeout(signal, 20_000) });
   }
 
   /** A live scan's matches against Gloom Cloud's newest market-wide snapshot for this account's tier. */

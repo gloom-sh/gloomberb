@@ -468,8 +468,11 @@ export function StaticXMarkerLabels({
     if (left + labelWidth > width) {
       left = Math.max(nextAvailableLeft, width - labelWidth);
     }
-    nextAvailableLeft = Math.min(width, left + labelWidth + 1);
-    return { marker, label, labelWidth, left };
+    // A label the ones before it leave too little room for ends in an ellipsis, so it reads as cut.
+    const room = Math.max(0, Math.min(labelWidth, width - left));
+    const shown = room < label.length ? `${label.slice(0, Math.max(0, room - 1))}…` : label;
+    nextAvailableLeft = Math.min(width, left + room + 1);
+    return { marker, label: room > 1 ? shown : "", labelWidth: room > 1 ? room : 0, left };
   }).filter((placement) => placement.labelWidth > 0 && placement.left < width);
 
   return (

@@ -64,7 +64,7 @@ import {
 } from "./interactions";
 import { NO_VALUE_SCALES, resolveAxisDragSpanFactor } from "./value-scale";
 import { useCompositeValueScales } from "./use-composite-value-scales";
-import { COMPOSITE_RIGHT_OFFSET_RATIO } from "./time-scale";
+import { COMPOSITE_RIGHT_OFFSET_RATIO, projectCompositeTimestamp } from "./time-scale";
 import {
   allocateCompositePanelHeights,
   buildCompositeChartScene,
@@ -77,6 +77,7 @@ import type {
   CompositeChartColors,
   CompositeChartProps,
   CompositeChartScene,
+  CompositeChartEvent,
   CompositeChartXMarker,
   CompositePanelScene,
 } from "./types";
@@ -104,6 +105,8 @@ function chartWatermarkScale(plotWidthPx: number, plotHeightPx: number): number 
 }
 
 const NO_X_MARKERS: readonly CompositeChartXMarker[] = [];
+const NO_EVENTS: readonly CompositeChartEvent[] = [];
+const NO_PROJECTED_EVENTS: readonly { id: string; xRatio: number; label?: string; dotted: boolean }[] = [];
 const subscribeToNothing = () => () => {};
 const holdsNothing = () => false;
 
@@ -207,6 +210,7 @@ function ThemedCompositeChart({
   panelRules = !navigable,
   formatAxisValue,
   xAxis,
+  events,
   remoteKind,
   allowHistoricalBackfill = false,
   axisWidth = 9,
@@ -336,8 +340,15 @@ function ThemedCompositeChart({
   // The pane's range control asks for this when its selected range is chosen again.
   useChartViewResetListener(resetView, interactive);
   const timeAxisRows = showTimeAxis ? 1 : 0;
-  const xMarkers = xAxis?.markers ?? NO_X_MARKERS;
-  const xMarkerRows = xMarkers.some((marker) => marker.label) ? 1 : 0;
+  const axisMarkers = xAxis?.markers ?? NO_X_MARKERS;
+  // Events in the view, decided before the plot is laid out: a caption takes a row only while one is in view.
+  const viewStart = effectiveViewport?.start.getTime() ?? null;
+  const viewEnd = effectiveViewport?.end.getTime() ?? null;
+  const eventsInView = useMemo(() => (
+    !events?.length || xAxis || viewStart === null || viewEnd === null ? NO_EVENTS
+      : events.filter((event) => event.time >= viewStart && event.time <= viewEnd)
+  ), [events, viewEnd, viewStart, xAxis]);
+  const xMarkerRows = axisMarkers.some((marker) => marker.label) || eventsInView.some((event) => event.label) ? 1 : 0;
   const panelCount = new Set(panelSeries.map((entry) => entry.panelId)).size;
   // One legend line, or up to a few when its entries cannot share one and each
   // panel keeps a readable plot: the legend says how many it needs while no
@@ -493,18 +504,32 @@ function ThemedCompositeChart({
     1,
     Math.round(plotWidth * cellWidthPx * Math.max(1, pixelRatio)),
   );
+  // An event is a guide at its time on the scale the bars are drawn on, so it sits on its bar.
+  const projectedEvents = useMemo(() => {
+    if (eventsInView.length === 0 || !projectedScene) return NO_PROJECTED_EVENTS;
+    const projected = eventsInView.flatMap((event) => {
+      const ratio = projectCompositeTimestamp(projectedScene.timeScale, event.time)?.ratio;
+      return ratio == null || ratio < 0 || ratio > 1 ? [] : [{ id: event.id, xRatio: ratio, label: event.label, dotted: event.dotted === true }];
+    });
+    return projected.length > 0 ? projected : NO_PROJECTED_EVENTS;
+  }, [eventsInView, projectedScene]);
   const baseScene = useMemo<CompositeChartScene | null>(() => {
     if (!projectedScene || !layoutPanels) return null;
+    const eventGuides = projectedEvents.length > 0 ? projectedEvents.map(({ xRatio, dotted }) => ({ xRatio, dotted })) : null;
     const laidOut: CompositeChartScene = {
       ...projectedScene,
       width: plotWidth,
       height: layoutPanels.reduce((sum, panel) => sum + panel.height, 0),
-      panels: layoutPanels,
+      panels: eventGuides ? layoutPanels.map((panel) => ({ ...panel, eventGuides })) : layoutPanels,
       // A panel with the whole plot still leaves the legend every series' value.
       ...(maximizedPanelId ? { cursorPanels: projectedScene.panels } : {}),
     };
     return downsampleCompositeChartScene(laidOut, downsampleWidth);
-  }, [downsampleWidth, layoutPanels, maximizedPanelId, plotWidth, projectedScene]);
+  }, [downsampleWidth, layoutPanels, maximizedPanelId, plotWidth, projectedEvents, projectedScene]);
+  // The axis markers' captions, then the events': both share the row under the axis.
+  const xMarkerLabels = useMemo<readonly CompositeChartXMarker[]>(() => (
+    projectedEvents.length > 0 ? [...axisMarkers, ...projectedEvents.map(({ id, xRatio, label }) => ({ id, xRatio, label }))] : axisMarkers
+  ), [axisMarkers, projectedEvents]);
   // The cursor shown: the chart's own, or else the owner's.
   const currentCursorTimestamp = useCallback(
     () => (ownsCursor ? ownCursor.get() : null) ?? ownerCursorTimestamp,
@@ -1207,7 +1232,7 @@ function ThemedCompositeChart({
           <AsciiText text="Gloomberb" font="wordmark" scale={watermarkScale} color={resolvedColors.textDim} />
         </Box>
       ) : null}
-      {xMarkers.length > 0 ? (
+      {axisMarkers.length > 0 ? (
         <Box
           position="absolute"
           left={leftPadding}
@@ -1218,7 +1243,7 @@ function ThemedCompositeChart({
           style={isDesktopWeb ? { ...plotInsetStyle, pointerEvents: "none" } : undefined}
         >
           <StaticXMarkerOverlay
-            markers={xMarkers}
+            markers={axisMarkers}
             width={plotWidth}
             height={plotHeight}
             fallbackColor={resolvedColors.textDim}
@@ -1256,7 +1281,7 @@ function ThemedCompositeChart({
         <Box flexDirection="row" width={totalWidth} height={1} style={isDesktopWeb ? DESKTOP_FULL_ROW : undefined}>
           {leftPadding > 0 ? <Box width={leftPadding} /> : null}
           <StaticXMarkerLabels
-            markers={xMarkers}
+            markers={xMarkerLabels}
             width={plotWidth}
             fallbackColor={resolvedColors.textDim}
           />

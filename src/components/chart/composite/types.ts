@@ -147,6 +147,8 @@ export interface CompositePanelScene {
   lastPrice?: CompositeLastPriceMarker;
   /** Present on a panel holding a volume-profile study. */
   volumeProfile?: CompositeVolumeProfile;
+  /** Guides at dated events, shared by every panel and drawn under the marks. */
+  eventGuides?: readonly CompositeEventGuide[];
   /** Plot spans (x ratios) of intraday bars outside the regular session, shared by every panel. */
   extendedHours?: readonly CompositeExtendedHoursSpan[];
   /** The previous session's close on a one-day chart, drawn as a dotted reference line. */
@@ -227,6 +229,27 @@ export interface CompositeChartXMarker {
   lineChar?: string;
 }
 
+/**
+ * Something that happened at a time (an intervention): a guide through every
+ * panel at that time, drawn under the marks, and its caption in the row below
+ * the axis that `xAxis.markers` caption. One outside the view is not drawn,
+ * and its caption takes no row.
+ */
+export interface CompositeChartEvent {
+  id: string;
+  /** The instant, in ms: the time of the bar it belongs on, so the guide is on that bar. */
+  time: number;
+  label?: string;
+  /** Its day is not known yet (a total for a period): the guide is dotted and the caption names the period. */
+  dotted?: boolean;
+}
+
+/** Where a `CompositeChartEvent` falls in the plot. */
+export interface CompositeEventGuide {
+  xRatio: number;
+  dotted: boolean;
+}
+
 /** Replaces the date axis for charts whose x is not time: a fraction, a tenor, a return. */
 export interface CompositeChartXAxis {
   /** Evenly spread labels drawn instead of date ticks. */
@@ -305,6 +328,8 @@ export interface CompositeChartProps {
    */
   formatAxisValue?: (value: number, domain: CompositeAxisDomain) => string;
   xAxis?: CompositeChartXAxis;
+  /** Dated events on a time axis; a chart with `xAxis` has no time to put them at. */
+  events?: readonly CompositeChartEvent[];
   /** Tagged onto the plot's semantic node so remote clients can find this chart. */
   remoteKind?: string;
   /** Permit panning into an older unloaded window so the owner can backfill it. */
