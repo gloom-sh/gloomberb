@@ -129,7 +129,8 @@ function tileVersion(
   isPortfolioTab: boolean,
   weight: number | undefined,
 ): string {
-  return `${isPortfolioTab}|${weight ?? ""}|${objectVersion(ticker)}|${objectVersion(financials)}|${
+  // The label names the venue by the list's home market (BA:LSE in a US list), so a tile is rebuilt when it changes.
+  return `${isPortfolioTab}|${weight ?? ""}|${context.homeMarket ?? ""}|${objectVersion(ticker)}|${objectVersion(financials)}|${
     TILE_COLUMN_IDS.map((columnId) => columnContextVersion(columnId, context)).join("|")}`;
 }
 

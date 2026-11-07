@@ -311,7 +311,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   // extended-hours line hangs below, as it comes and goes with the session. Without a
   // price the logo keeps two rows.
   const hasLogo = nativePaneChrome === true
-    && resolveCompanyLogoSrc({ symbol: ticker.metadata.ticker, assetCategory: ticker.metadata.assetCategory }) != null;
+    && resolveCompanyLogoSrc({ symbol: ticker.metadata.ticker, assetCategory: ticker.metadata.assetCategory, exchange: ticker.metadata.exchange }) != null;
   const priceInk = figureLineInk();
   // The top snaps up to a whole px so it never starts below the capitals; the bottom lands
   // on the device pixel nearest the baseline.
@@ -449,6 +449,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
             <CompanyLogo
               symbol={ticker.metadata.ticker}
               assetCategory={ticker.metadata.assetCategory}
+              exchange={ticker.metadata.exchange}
               name={ticker.metadata.name || quote?.name}
               width={logoPx / cellWidthPx}
               height={logoPx / cellHeightPx}

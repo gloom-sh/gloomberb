@@ -17,4 +17,9 @@ test("a row outside its list's home market shows its venue, so BA on LSE never r
   expect(london.map((ticker) => listedSymbol(ticker, ticker.metadata.ticker, listHomeMarket(london)))).toEqual(["BA", "VOD", "AAPL:NASDAQ"]);
   // An export always names the venue of a listing; an index or a future is its symbol.
   expect(us.map(exportedListingKey)).toEqual(["LMT:NYSE", "NOC:NYSE", "RTX:NYSE", "BA:LSE", "RHM:XETRA", "0005:HKEX", "^HSI", "CL=F"]);
+  // A row saved by its vendor symbol (BA.L) is the listing it names, and a broker's SMART routing and OTC are US.
+  const saved = [listing("BA.L", "LSE"), listing("TSM", "SMART"), listing("NSRGY", "OTC"), listing("AAPL", "NASDAQ")];
+  expect(listHomeMarket(saved)).toBe("US");
+  expect(saved.map((ticker) => listedSymbol(ticker, ticker.metadata.ticker, "US"))).toEqual(["BA:LSE", "TSM", "NSRGY", "AAPL"]);
+  expect(exportedListingKey(saved[0]!)).toBe("BA:LSE");
 });

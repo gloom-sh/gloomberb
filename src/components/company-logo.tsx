@@ -6,14 +6,29 @@ import { resolveAssetDisplayKind } from "../market-data/market/format";
 import { colors } from "../theme/colors";
 import type { DataTableCell } from "./ui/data-table";
 import { LogoMark, type LogoMarkProps } from "./ui/logo-mark";
+import { canonicalExchange, canonicalTickerKey, isUsEquityExchange } from "../utils/exchanges";
+import { tickerHasListingSuffix } from "../sources/listing-symbols";
+
+/**
+ * A company's listing as the logo service knows it: one abroad by its venue
+ * (BA on LSE is BA:LSE, BAE Systems, never BA, Boeing), a US listing, a
+ * broker's SMART routing and a vendor's suffixed symbol (BA.L) as written.
+ */
+function logoListing(symbol: string, exchange: string | undefined): string {
+  if (!exchange || symbol.includes(":") || tickerHasListingSuffix(symbol)) return symbol;
+  const venue = canonicalExchange(exchange);
+  return !venue || venue === "SMART" || isUsEquityExchange(venue) ? symbol : canonicalTickerKey(symbol, venue);
+}
 
 export function resolveCompanyLogoSrc(input: {
   symbol: string;
   assetCategory?: string;
+  /** The listing's venue, so a symbol a US company also uses draws its own company's logo. */
+  exchange?: string;
 }): string | null {
   const kind = logoKindForAsset(input.assetCategory);
   if (!kind) return null;
-  const path = cloudLogoPath(kind, input.symbol);
+  const path = cloudLogoPath(kind, kind === "ticker" ? logoListing(input.symbol, input.exchange) : input.symbol);
   return path ? `${getCloudApiBaseUrl()}${path}` : null;
 }
 
@@ -56,6 +71,7 @@ export function withCompanyLogo(cell: DataTableCell, subject: CompanyLogoSubject
 export function CompanyLogo({
   symbol,
   assetCategory,
+  exchange,
   name,
   width = 5,
   height = 2,
@@ -63,6 +79,8 @@ export function CompanyLogo({
 }: {
   symbol: string;
   assetCategory?: string;
+  /** The listing's venue (resolveCompanyLogoSrc). */
+  exchange?: string;
   name?: string;
   width?: number;
   height?: number;
@@ -70,7 +88,7 @@ export function CompanyLogo({
   style?: { marginTop?: number; marginRight?: number };
 }) {
   const { nativePaneChrome, cellWidthPx = 8, cellHeightPx = 18 } = useUiCapabilities();
-  const src = nativePaneChrome === true ? resolveCompanyLogoSrc({ symbol, assetCategory }) : null;
+  const src = nativePaneChrome === true ? resolveCompanyLogoSrc({ symbol, assetCategory, exchange }) : null;
   if (!src) return null;
 
   return (
