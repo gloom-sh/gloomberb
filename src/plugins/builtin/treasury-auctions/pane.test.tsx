@@ -253,7 +253,9 @@ describe("TreasuryAuctionsPane after view", () => {
     const record = { value: [...extra, ...SEVENS], fetchedAt: Date.now(), stale: false, staleAt: Date.now() + 60_000, expiresAt: Date.now() + 60_000 };
     attachTreasuryAuctionsPersistence({ getResource: () => record, setResource: () => record } as unknown as PluginPersistence);
   };
-  const rowDates = () => tui.frame().split("\n").filter((line) => line.includes("7-Year")).flatMap((line) => line.match(/^\s*([A-Z][a-z]{2} \d+)/)?.[1] ?? []);
+  // A row's date, after the cursor bar the focused table draws beside the selected row.
+  const ROW_DATE = /^[\s▌]*([A-Z][a-z]{2} \d+)\s/;
+  const rowDates = () => tui.frame().split("\n").filter((line) => line.includes("7-Year")).flatMap((line) => line.match(ROW_DATE)?.[1] ?? []);
   /** Waits, up to about two seconds, for the frame to pass `done`: the yield moves arrive after the board. */
   const until = async (done: () => boolean) => {
     for (let attempt = 0; attempt < 80 && !done(); attempt += 1) {
@@ -327,8 +329,8 @@ describe("TreasuryAuctionsPane after view", () => {
     await act(async () => runCommand(""));
     await renderSettled();
     await until(() => !tui.frame().includes("B/C PCTL"));
-    const rows = tui.frame().split("\n").filter((line) => /^\s*[A-Z][a-z]{2} \d+ /.test(line));
+    const rows = tui.frame().split("\n").filter((line) => ROW_DATE.test(line));
     expect(rows[0]).toMatch(/Nov 2\s+Bill\s+13-Week\s+3\.900%/);
-    expect(rows.slice(1, 4).map((line) => line.trim().slice(0, 6))).toEqual(["Oct 28", "Sep 28", "Aug 28"]);
+    expect(rows.slice(1, 4).map((line) => line.match(ROW_DATE)?.[1])).toEqual(["Oct 28", "Sep 28", "Aug 28"]);
   });
 });
