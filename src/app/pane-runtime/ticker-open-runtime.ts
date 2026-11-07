@@ -6,31 +6,40 @@ import {
   getDockedPaneIds,
   isPaneInLayout,
   isPaneDocked,
+  removePane,
 } from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
 import { PluginOffError, notifyPluginOff } from "../../plugins/plugin-off";
 import { findFixedTickerPaneForSymbol } from "../../layout/ticker-navigation";
 import type { AppAction, AppState } from "../../state/app/context";
-import { TICKER_RESEARCH_PANE_ID, normalizePaneId } from "../../types/config";
+import { findPaneInstance, TICKER_RESEARCH_PANE_ID, normalizePaneId } from "../../types/config";
 import type {
   LayoutConfig,
   PaneBinding,
   PaneInstanceConfig,
 } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
-import type { PinTickerOptions } from "../../types/plugin";
+import type { PaneDef, PinTickerOptions } from "../../types/plugin";
+import type { BrokerContractRef } from "../../types/instrument";
+import type { TickerRecord } from "../../types/ticker";
 import {
   resolveTickerOpenTarget,
   tickerOpenFailureMessage,
   type TickerOpenTarget,
 } from "../../tickers/open-target";
-import { findExactTickerSearchMatch, upsertTickerFromSearchResult } from "../../tickers/search";
+import {
+  createLocalTickerSearchCandidates,
+  findExactTickerSearchMatch,
+  upsertTickerFromSearchResult,
+} from "../../tickers/search";
 import { offerTickerListings, publishTickerOpenTarget as publishOpenTarget } from "./ticker-open-target";
 import { parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 import { attentionActionForPane, captureAttentionAction } from "../../telemetry/attention-counts";
 import { tickerHasListingSuffix } from "../../sources/listing-symbols";
 import { instrumentFromTicker } from "../../market-data/request-types";
 import { tickerInstrumentLabel } from "../../tickers/instrument-label";
+import { markTickerPaneOpening } from "../../state/opening-ticker-panes";
+import { stableStringify } from "../../utils/hash";
 
 interface UseAppTickerOpenRuntimeOptions {
   activatePane: (paneId: string) => void;
@@ -44,10 +53,91 @@ interface UseAppTickerOpenRuntimeOptions {
   dataProvider: DataProvider;
   dispatch: Dispatch<AppAction>;
   focusVisiblePane: (paneId: string, layout?: LayoutConfig) => void;
-  persistLayout: (layout: LayoutConfig, options?: { pushHistory?: boolean }) => void;
+  persistLayout: (layout: LayoutConfig, options?: { pushHistory?: boolean; focusedPaneId?: string | null }) => void;
   pluginRegistry: PluginRegistry;
   stateRef: { current: AppState };
   tickerRepository: AppTickerRepositoryPort;
+}
+
+/** A research pane opened ahead of the lookup that finds its ticker (`openPaneAhead`). */
+interface PaneAhead {
+  instanceId: string;
+  /** The key it is bound to until the lookup settles it. */
+  symbol: string;
+  /** The pane focused before it opened, which focus goes back to when nothing opens. */
+  sourcePaneId: string | null;
+  stopOpening: () => void;
+}
+
+/** The binding a resolved target opens with, and its broker contract (`null` for the public listing). */
+function targetPaneBinding(target: TickerOpenTarget, options?: PinTickerOptions): {
+  binding: PaneBinding;
+  instrument: BrokerContractRef | null | undefined;
+} {
+  const instrument = options?.instrument !== undefined ? options.instrument
+    : target.instrument !== undefined ? target.instrument : instrumentFromTicker(target.ticker)?.instrument ?? undefined;
+  const listing = options?.listing ?? target.listing;
+  return {
+    binding: { kind: "fixed", symbol: target.symbol, ...(instrument !== undefined ? { instrument } : {}), ...(listing ? { listing } : {}) },
+    instrument,
+  };
+}
+
+/**
+ * The pane of `paneType` already showing the target in `layout`, which an
+ * open brings forward instead of adding another, and whether its binding
+ * stays as it is.
+ */
+function findTargetPane(
+  state: AppState,
+  layout: LayoutConfig,
+  paneType: string,
+  target: TickerOpenTarget,
+  instrument: BrokerContractRef | null | undefined,
+  options?: PinTickerOptions,
+  typed?: string,
+): { existing: PaneInstanceConfig | null; keepBinding: boolean } {
+  if (options?.forceNewPane) return { existing: null, keepBinding: false };
+  const symbol = target.symbol;
+  let existing = findFixedTickerPaneForSymbol(layout, paneType, symbol, instrument);
+  // A pane bound to the key as typed (the web terminal's first pane for ?ticker=7203:TSE) is the one the
+  // resolved listing (7203:JPX) settles.
+  const typedKey = typed?.trim().toUpperCase();
+  if (!existing && typedKey && typedKey !== symbol) {
+    existing = findFixedTickerPaneForSymbol(layout, paneType, typedKey, instrument);
+  }
+  // Without a broker route, the public listing and an unnamed route are the same security: a link that names
+  // neither still finds the DES the command bar opened on the public listing, and leaves its binding as it is.
+  let keepBinding = false;
+  if (!existing && !instrument && !target.ticker.metadata.broker_contracts?.length) {
+    existing = findFixedTickerPaneForSymbol(layout, paneType, symbol, instrument === null ? undefined : null);
+    keepBinding = !!existing && instrument === undefined;
+  }
+  if (!existing && !instrument && (parsePublicTickerKey(symbol).exchange || tickerHasListingSuffix(symbol))) {
+    existing = layout.instances.find((instance) => {
+      if (instance.paneId !== paneType || instance.binding?.kind !== "fixed" || instance.binding.instrument || !isPaneInLayout(layout, instance.instanceId)) return false;
+      const ticker = state.tickers.get(instance.binding.symbol);
+      return !!ticker?.metadata.exchange && !!findExactTickerSearchMatch([
+        { label: instance.binding.symbol, right: ticker.metadata.exchange },
+      ], symbol);
+    }) ?? null;
+  }
+  return { existing, keepBinding };
+}
+
+/**
+ * Whether the app holds a ticker the key names, so opening it resolves here
+ * without a network lookup, as `resolveTickerSearch` reads a saved symbol.
+ */
+function holdsTicker(tickers: ReadonlyMap<string, TickerRecord>, symbol: string): boolean {
+  return tickers.has(symbol) || !!findExactTickerSearchMatch(createLocalTickerSearchCandidates(tickers.values()), symbol);
+}
+
+/** Whether a pane opened ahead is still in the layout on its key: not closed, nor pointed at another ticker. */
+function isPaneAheadInPlace(layout: LayoutConfig, ahead: PaneAhead): boolean {
+  const instance = findPaneInstance(layout, ahead.instanceId);
+  return !!instance && isPaneInLayout(layout, ahead.instanceId)
+    && instance.binding?.kind === "fixed" && instance.binding.symbol === ahead.symbol;
 }
 
 export function useAppTickerOpenRuntime({
@@ -102,6 +192,46 @@ export function useAppTickerOpenRuntime({
     return true;
   }, [pluginRegistry, stateRef]);
 
+  /**
+   * Adds a new pane of `paneType` bound to `binding`, floating or docked as
+   * asked, and focuses it. `beforePlace` runs with its id before it is placed.
+   */
+  const addTickerPane = useCallback((
+    paneType: string,
+    paneDef: PaneDef,
+    binding: PaneBinding,
+    title: string,
+    options?: PinTickerOptions,
+    beforePlace?: (instanceId: string) => void,
+  ): string | null => {
+    const instance = buildPaneInstance(paneType, { title, binding });
+    if (!instance) return null;
+    beforePlace?.(instance.instanceId);
+
+    const currentState = stateRef.current;
+    const currentLayout = currentState.config.layout;
+    const { width, height } = pluginRegistry.getTermSize();
+    const shouldFloat = options?.floating ?? true;
+    const nextLayout = shouldFloat
+      ? addPaneFloating(currentLayout, instance, width, height, paneDef, { focusedPaneId: currentState.focusedPaneId })
+      : addPaneToLayout(
+        currentLayout,
+        instance,
+        {
+          relativeTo: currentState.focusedPaneId && isPaneDocked(currentLayout, currentState.focusedPaneId)
+            ? currentState.focusedPaneId
+            : (getDockedPaneIds(currentLayout).at(-1) ?? instance.instanceId),
+          position: "right",
+        },
+      );
+    persistLayout(nextLayout);
+    if (paneType === TICKER_RESEARCH_PANE_ID && options?.tabId) {
+      dispatch({ type: "UPDATE_PANE_STATE", paneId: instance.instanceId, patch: { ...options.tabState, activeTabId: options.tabId } });
+    }
+    activatePane(instance.instanceId);
+    return instance.instanceId;
+  }, [activatePane, buildPaneInstance, dispatch, persistLayout, pluginRegistry, stateRef]);
+
   const placePinnedTickerTarget = useCallback((target: TickerOpenTarget, options?: PinTickerOptions, typed?: string) => {
     const paneType = normalizePaneId(options?.paneType ?? TICKER_RESEARCH_PANE_ID);
     const paneDef = pluginRegistry.panes.get(paneType);
@@ -110,37 +240,10 @@ export function useAppTickerOpenRuntime({
 
     publishTickerOpenTarget(target);
     const symbol = target.symbol;
-    const instrument = options?.instrument !== undefined ? options.instrument
-      : target.instrument !== undefined ? target.instrument : instrumentFromTicker(target.ticker)?.instrument ?? undefined;
-    const listing = options?.listing ?? target.listing;
-    const binding = { kind: "fixed" as const, symbol, ...(instrument !== undefined ? { instrument } : {}), ...(listing ? { listing } : {}) };
+    const { binding, instrument } = targetPaneBinding(target, options);
     const currentState = stateRef.current;
     const currentLayout = currentState.config.layout;
-    let existing = options?.forceNewPane
-      ? null
-      : findFixedTickerPaneForSymbol(currentLayout, paneType, symbol, instrument);
-    // A pane bound to the key as typed (the web terminal's first pane for ?ticker=7203:TSE) is the one the
-    // resolved listing (7203:JPX) settles.
-    const typedKey = typed?.trim().toUpperCase();
-    if (!options?.forceNewPane && !existing && typedKey && typedKey !== symbol) {
-      existing = findFixedTickerPaneForSymbol(currentLayout, paneType, typedKey, instrument);
-    }
-    // Without a broker route, the public listing and an unnamed route are the same security: a link that names
-    // neither still finds the DES the command bar opened on the public listing, and leaves its binding as it is.
-    let keepBinding = false;
-    if (!options?.forceNewPane && !existing && !instrument && !target.ticker.metadata.broker_contracts?.length) {
-      existing = findFixedTickerPaneForSymbol(currentLayout, paneType, symbol, instrument === null ? undefined : null);
-      keepBinding = !!existing && instrument === undefined;
-    }
-    if (!options?.forceNewPane && !existing && !instrument && (parsePublicTickerKey(symbol).exchange || tickerHasListingSuffix(symbol))) {
-      existing = currentLayout.instances.find((instance) => {
-        if (instance.paneId !== paneType || instance.binding?.kind !== "fixed" || instance.binding.instrument || !isPaneInLayout(currentLayout, instance.instanceId)) return false;
-        const ticker = currentState.tickers.get(instance.binding.symbol);
-        return !!ticker?.metadata.exchange && !!findExactTickerSearchMatch([
-          { label: instance.binding.symbol, right: ticker.metadata.exchange },
-        ], symbol);
-      }) ?? null;
-    }
+    const { existing, keepBinding } = findTargetPane(currentState, currentLayout, paneType, target, instrument, options, typed);
     if (existing) {
       // A reload can qualify a previously bare saved symbol. Reuse only the
       // verified same listing, retaining its pane identity and its followers.
@@ -164,34 +267,9 @@ export function useAppTickerOpenRuntime({
       return;
     }
 
-    const instance = buildPaneInstance(paneType, {
-      title: tickerInstrumentLabel(symbol, instrument),
-      binding,
-    });
-    if (!instance) return;
-
-    const { width, height } = pluginRegistry.getTermSize();
-    const shouldFloat = options?.floating ?? true;
-    const nextLayout = shouldFloat
-      ? addPaneFloating(currentLayout, instance, width, height, paneDef, { focusedPaneId: currentState.focusedPaneId })
-      : addPaneToLayout(
-        currentLayout,
-        instance,
-        {
-          relativeTo: currentState.focusedPaneId && isPaneDocked(currentLayout, currentState.focusedPaneId)
-            ? currentState.focusedPaneId
-            : (getDockedPaneIds(currentLayout).at(-1) ?? instance.instanceId),
-          position: "right",
-        },
-      );
-    persistLayout(nextLayout);
-    if (paneType === TICKER_RESEARCH_PANE_ID && options?.tabId) {
-      dispatch({ type: "UPDATE_PANE_STATE", paneId: instance.instanceId, patch: { ...options.tabState, activeTabId: options.tabId } });
-    }
-    activatePane(instance.instanceId);
+    addTickerPane(paneType, paneDef, binding, tickerInstrumentLabel(symbol, instrument), options);
   }, [
-    activatePane,
-    buildPaneInstance,
+    addTickerPane,
     dispatch,
     focusVisiblePane,
     persistLayout,
@@ -200,6 +278,88 @@ export function useAppTickerOpenRuntime({
     refuseWhileOwnerOff,
     stateRef,
   ]);
+
+  /**
+   * Opens the research pane of a ticker the app does not hold yet before the
+   * network lookup that finds it (search and the listing's quote, seconds on
+   * a slow connection), bound to the key as given and marked as opening; the
+   * lookup settles it (`settlePaneAhead`). Null when the open waits for the
+   * lookup instead: another pane type, a broker contract, a ticker the app
+   * holds (it resolves here, at once), or a research pane already on the key.
+   */
+  const openPaneAhead = useCallback((rawSymbol: string, options?: PinTickerOptions): PaneAhead | null => {
+    const paneType = normalizePaneId(options?.paneType ?? TICKER_RESEARCH_PANE_ID);
+    const paneDef = pluginRegistry.panes.get(paneType);
+    const symbol = rawSymbol.trim().toUpperCase();
+    if (paneType !== TICKER_RESEARCH_PANE_ID || !paneDef || !symbol || options?.instrument) return null;
+    const state = stateRef.current;
+    const layout = state.config.layout;
+    if (holdsTicker(state.tickers, symbol)) return null;
+    if (!options?.forceNewPane && layout.instances.some((instance) => instance.paneId === paneType
+      && instance.binding?.kind === "fixed" && instance.binding.symbol === symbol && isPaneInLayout(layout, instance.instanceId))) return null;
+    const binding: PaneBinding = {
+      kind: "fixed",
+      symbol,
+      ...(options?.instrument !== undefined ? { instrument: options.instrument } : {}),
+      ...(options?.listing ? { listing: options.listing } : {}),
+    };
+    const sourcePaneId = state.focusedPaneId;
+    // Marked before it is placed, so its first frame already says it is loading.
+    let stopOpening = () => {};
+    const instanceId = addTickerPane(paneType, paneDef, binding, tickerInstrumentLabel(symbol, options?.instrument), options, (id) => {
+      stopOpening = markTickerPaneOpening(id);
+    });
+    if (!instanceId) return null;
+    return { instanceId, symbol, sourcePaneId, stopOpening };
+  }, [addTickerPane, pluginRegistry, stateRef]);
+
+  /**
+   * Settles a pane opened ahead once the lookup answers: it is bound to the
+   * listing found, or gives way to a pane already showing that listing, or
+   * closes when nothing opens (no listing, or a choice of listings the
+   * command bar now offers), focus going back where it was. A pane closed or
+   * pointed at another ticker meanwhile is left alone. True when the open
+   * landed in a pane.
+   */
+  const settlePaneAhead = useCallback((
+    ahead: PaneAhead,
+    target: TickerOpenTarget | null,
+    options: PinTickerOptions | undefined,
+    typed: string,
+  ): boolean => {
+    if (target) publishTickerOpenTarget(target);
+    const state = stateRef.current;
+    const layout = state.config.layout;
+    if (!isPaneAheadInPlace(layout, ahead)) return false;
+    const focusedHere = state.focusedPaneId === ahead.instanceId;
+    const without = removePane(layout, ahead.instanceId);
+    if (!target) {
+      const backTo = ahead.sourcePaneId && isPaneInLayout(without, ahead.sourcePaneId) ? ahead.sourcePaneId : null;
+      persistLayout(without, { pushHistory: false, ...(focusedHere ? { focusedPaneId: backTo } : {}) });
+      return false;
+    }
+    const { binding, instrument } = targetPaneBinding(target, options);
+    const { existing } = findTargetPane(state, without, TICKER_RESEARCH_PANE_ID, target, instrument, options, typed);
+    if (existing) {
+      persistLayout(without, { pushHistory: false });
+      if (options?.tabId) {
+        dispatch({ type: "UPDATE_PANE_STATE", paneId: existing.instanceId, patch: { ...options.tabState, activeTabId: options.tabId } });
+      }
+      if (focusedHere) focusVisiblePane(existing.instanceId, without);
+      return true;
+    }
+    const instance = findPaneInstance(layout, ahead.instanceId)!;
+    const title = !instance.title || instance.title === tickerInstrumentLabel(ahead.symbol, options?.instrument)
+      ? tickerInstrumentLabel(target.symbol, instrument)
+      : instance.title;
+    if (title !== instance.title || stableStringify(instance.binding) !== stableStringify(binding)) {
+      persistLayout({
+        ...layout,
+        instances: layout.instances.map((pane) => pane.instanceId === ahead.instanceId ? { ...pane, binding, title } : pane),
+      }, { pushHistory: false });
+    }
+    return true;
+  }, [dispatch, focusVisiblePane, persistLayout, publishTickerOpenTarget, stateRef]);
 
   const openPinnedTicker = useCallback(async (rawSymbol: string, options?: PinTickerOptions) => {
     // Before resolving, so a refused open adds no ticker either.
@@ -218,16 +378,35 @@ export function useAppTickerOpenRuntime({
       });
     }
     const selectedTicker = selected?.ticker;
-    const target = selectedTicker
-      ? { symbol: selectedTicker.metadata.ticker, ticker: selectedTicker, created: selected!.created, instrument: options?.instrument, listing: options?.listing }
-      : await resolveOpenTickerTarget(rawSymbol, options?.instrument === null);
-    if (!target) return;
-    placePinnedTickerTarget(target, options, rawSymbol);
+    let target: TickerOpenTarget | null;
+    let placed = true;
+    if (selectedTicker) {
+      target = { symbol: selectedTicker.metadata.ticker, ticker: selectedTicker, created: selected!.created, instrument: options?.instrument, listing: options?.listing };
+      placePinnedTickerTarget(target, options, rawSymbol);
+    } else {
+      // The pane of a ticker found over the network shows now, not once the lookup answers.
+      const ahead = openPaneAhead(rawSymbol, options);
+      if (!ahead) {
+        target = await resolveOpenTickerTarget(rawSymbol, options?.instrument === null);
+        if (target) placePinnedTickerTarget(target, options, rawSymbol);
+      } else {
+        // Cleared once it settles, so no frame between says no ticker is selected.
+        try {
+          // A failure, or the choice of listings, is said only while the pane still waits: one closed was given up.
+          target = await resolveOpenTickerTarget(rawSymbol, options?.instrument === null,
+            () => isPaneAheadInPlace(stateRef.current.config.layout, ahead));
+          placed = settlePaneAhead(ahead, target, options, rawSymbol);
+        } finally {
+          ahead.stopOpening();
+        }
+      }
+    }
+    if (!target || !placed) return;
     const action = attentionActionForPane(options?.paneType ?? TICKER_RESEARCH_PANE_ID);
     if (action && pluginRegistry.panes.has(options?.paneType ?? TICKER_RESEARCH_PANE_ID)) {
       recordAttention(publicTickerKey(target.symbol, target.listing?.exchange ?? target.ticker.metadata.exchange), action);
     }
-  }, [placePinnedTickerTarget, pluginRegistry, refuseWhileOwnerOff, resolveOpenTickerTarget, tickerRepository]);
+  }, [openPaneAhead, placePinnedTickerTarget, pluginRegistry, refuseWhileOwnerOff, resolveOpenTickerTarget, settlePaneAhead, stateRef, tickerRepository]);
 
   return {
     openPinnedTicker,
