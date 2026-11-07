@@ -2342,6 +2342,8 @@ The sources stay in the app until you share them. **Copy Answer with Source Link
 
 **What to ask next.** Under the newest answer, up to three questions to ask next, each the same chip with its key in the square (`1`, `2`, `3`). A click on one, or its key once Esc has left the question field, asks it. They are questions Gloom's tools can answer, and a reopened conversation shows its answers without them.
 
+**Credentials.** As with remote control, what Ask Gloom reads from the app leaves out broker profile settings, passwords, and plugin keys and tokens. Watchlist and portfolio names and ids stay readable, so it can still use them.
+
 **Watchlist changes.** Ask Gloom can add a ticker to one of your own watchlists (the one you name, else your first) or take one off. Team watchlists and portfolios it leaves alone. It asks first, naming the list, the ticker and its exchange: `y` or Approve makes the change, `n` or Decline leaves it. Unanswered for about a minute, it closes and nothing changes.
 
 **Buttons and commands.** Ask Gloom scrolls, selects, fills in fields, focuses and opens panes or tickers without asking. Before it presses, submits or toggles a control, opens a row, chooses an action from a menu or runs a command from the command bar, it asks. The question names the control and the pane it is in (`Press "Place order" (button)?`), and a row or menu item by what it shows. Deleting a layout asks too, naming the layout. If what the question named has changed by the time you answer, nothing runs. Unanswered, the question closes on its own and nothing runs. Ask Gloom never answers its own questions and asks one at a time: while one waits, it changes nothing else in the app, though it can still read.
