@@ -29,6 +29,10 @@ test("a commodity's name finds its board row: the plainest match first, then boa
 test("a commodity's word typed as a symbol names its future, and a ticker that only starts one names none", () => {
   // `quote BRENT WTI GOLD OIL` read two ETPs, W&T Offshore, Gold.com and a dead ETN with no word of the futures.
   const word = (symbol: string) => futuresContractByWord(symbol)?.symbol ?? null;
-  expect(["BRENT", "WTI", "wti", "GOLD", "OIL", "CRUDE"].map(word)).toEqual(["BZ=F", "CL=F", "CL=F", "GC=F", "CL=F", "CL=F"]);
-  expect(["COP", "SIL", "AAPL", "BZ", "GC=F", "OI"].map(word)).toEqual([null, null, null, null, null, null]);
+  expect(["BRENT", "WTI", "wti", "GOLD", "OIL", "CRUDE", "NATGAS", "COPPER", "CORN", "CATTLE", "HOGS"].map(word))
+    .toEqual(["BZ=F", "CL=F", "CL=F", "GC=F", "CL=F", "CL=F", "NG=F", "HG=F", "ZC=F", "LE=F", "HE=F"]);
+  // Words of a row's name that are no commodity name none: DOW is the Dow, not YM=F; NOTE, BOND and DOLLAR rates and
+  // currencies; NAT and LIVE halves of a name.
+  expect(["DOW", "NAT", "LIVE", "NOTE", "BOND", "DOLLAR", "COP", "SIL", "AAPL", "BZ", "GC=F", "OI"].map(word))
+    .toEqual(Array(12).fill(null));
 });

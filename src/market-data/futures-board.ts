@@ -271,27 +271,48 @@ export function futuresContractByName(value: unknown): FuturesContract | null {
 }
 
 /**
- * The board row a commodity's word names whole when typed as a symbol: BRENT
- * is Brent Crude Oil (BZ=F), WTI and OIL are WTI Crude Oil (CL=F), GOLD is
- * Gold (GC=F). A word of the name or an alias, in full and of three letters
- * or more, so a ticker that only starts one (COP, SIL) names none; the row
- * whose name has the fewest other words wins, then the board's order.
+ * The commodity words that name a board row when typed as a symbol, and the
+ * future each stands for: energy, metals, grains and softs, livestock. A list,
+ * not the words of every row's name, so DOW, NOTE, BOND, DOLLAR, NAT and LIVE,
+ * words of index, rate, currency and livestock rows, name none.
+ */
+const COMMODITY_WORDS: Readonly<Record<string, string>> = {
+  BRENT: "BZ=F",
+  WTI: "CL=F",
+  OIL: "CL=F",
+  CRUDE: "CL=F",
+  NATGAS: "NG=F",
+  GASOLINE: "RB=F",
+  RBOB: "RB=F",
+  GOLD: "GC=F",
+  SILVER: "SI=F",
+  COPPER: "HG=F",
+  ALUMINUM: "ALI=F",
+  ALUMINIUM: "ALI=F",
+  PLATINUM: "PL=F",
+  PALLADIUM: "PA=F",
+  CORN: "ZC=F",
+  WHEAT: "ZW=F",
+  SOYBEANS: "ZS=F",
+  SOYBEAN: "ZS=F",
+  SOY: "ZS=F",
+  COFFEE: "KC=F",
+  SUGAR: "SB=F",
+  COCOA: "CC=F",
+  COTTON: "CT=F",
+  LUMBER: "LBR=F",
+  CATTLE: "LE=F",
+  HOGS: "HE=F",
+};
+
+/**
+ * The board row a commodity's word names when typed as a symbol (BRENT is
+ * Brent Crude Oil, BZ=F; WTI, OIL and CRUDE are WTI Crude Oil, CL=F; GOLD is
+ * GC=F), from COMMODITY_WORDS alone. Null for any other word.
  */
 export function futuresContractByWord(symbol: unknown): FuturesContract | null {
-  const word = typed(symbol).toLowerCase();
-  if (!/^[a-z]{3,}$/.test(word)) return null;
-  let best: FuturesContract | null = null;
-  let fewest = Number.POSITIVE_INFINITY;
-  for (const contract of FUTURES_CONTRACTS) {
-    for (const name of [contract.name, ...contract.aliases ?? []]) {
-      const words = nameWords(name);
-      if (words.length < fewest && words.includes(word)) {
-        best = contract;
-        fewest = words.length;
-      }
-    }
-  }
-  return best;
+  const future = COMMODITY_WORDS[typed(symbol).toUpperCase()];
+  return future ? FUTURES_CONTRACTS.find((contract) => contract.symbol === future) ?? null : null;
 }
 
 /**
