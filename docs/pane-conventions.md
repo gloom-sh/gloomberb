@@ -839,10 +839,14 @@ header, with the detail's height.
   does) and so no typed draft is lost; an Esc while a menu, dialog or
   overlay is open, and one that closes a menu or popover of the pane's own
   (call `keepEscapeFromClosing(event)`); and a held Esc, which closes one
-  pane. A scoped `before` handler (a form, key capture) runs ahead of the
-  counting, so its Esc never counts. An unscoped `before` handler can run
-  ahead of it too (a pane restored at launch), so one that goes back calls
-  `countEscapeTowardClose(event)` itself.
+  pane. Closing pane after pane has no wait: the desktop app and the web
+  tell a held key from separate presses with `event.repeat`, and a terminal
+  that cannot say ignores only the Esc that follows another within 110 ms
+  right after a close, which is a held key's repeat. A scoped `before` handler (a form,
+  key capture) runs ahead of the counting, so its Esc never counts. An
+  unscoped `before` handler can run ahead of it too (a pane restored at
+  launch), so one that goes back calls `countEscapeTowardClose(event)`
+  itself.
 - The pane menu (`.`, Shift+F10, the `...` button) is where the keyboard
   finds everything: it lists the footer hints with their keys, what kit
   controls add (table sort, query-bar filters, tab add/close/move, empty-state

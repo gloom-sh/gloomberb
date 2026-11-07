@@ -61,7 +61,8 @@ export function toKeyEventLike(event: {
     alt: event.alt === true || event.meta === true || event.option === true,
     meta: event.super === true,
     super: event.super === true,
-    repeat: event.repeated === true,
+    // Left unset unless the terminal says so: a press it does not flag may still be a repeat.
+    repeat: event.repeated === true ? true : undefined,
     get defaultPrevented() {
       return event.defaultPrevented ?? false;
     },

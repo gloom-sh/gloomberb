@@ -34,8 +34,11 @@ interface DoubleEscapeCloseOptions {
  *   counts it because nothing typed is left behind (an empty composer);
  * - an Esc while a menu, dialog or overlay is open, and one that closes a
  *   menu or popover of the pane's own (`keepEscapeFromClosing`);
- * - a held Esc, which closes one pane: the shortcut registry drops its
- *   repeats, and a stream without the flag cools down in `arm`.
+ * - a held Esc, which closes one pane: the shortcut registry drops the
+ *   repeats a host flags, and a stream the host cannot flag (a terminal)
+ *   arms and closes nothing for as long as its presses come faster than a
+ *   person's. A host that reports repeats has no such pause: Esc Esc, Esc
+ *   Esc closes two panes however fast the presses come.
  *
  * A surface that takes Esc in a scoped `before` handler (onboarding, a form,
  * key capture) runs ahead of the arming and so never counts.
@@ -59,7 +62,7 @@ export function useDoubleEscapeClose({ targetId, overlayOpen, editing, dragging,
     const at = Date.now();
     offerEscapeTowardClose(event, {
       count: () => {
-        if (!live.current.overlayOpen) armDoubleEscapeClose(state, live.current.targetId, at);
+        if (!live.current.overlayOpen) armDoubleEscapeClose(state, live.current.targetId, at, event.repeat);
       },
       keep: () => resetDoubleEscapeClose(state),
     });
@@ -69,7 +72,7 @@ export function useDoubleEscapeClose({ targetId, overlayOpen, editing, dragging,
   // with more to go back through still closes. Not in a text field.
   useShortcut((event) => {
     if (!isEscapeKey(event) || overlayOpen || editing || dragging?.()) return;
-    if (takeDoubleEscapeClose(stateRef.current, targetId, Date.now()) && close()) {
+    if (takeDoubleEscapeClose(stateRef.current, targetId, Date.now(), event.repeat) && close()) {
       event.preventDefault();
       event.stopPropagation();
     }
@@ -85,6 +88,6 @@ export function useDoubleEscapeClose({ targetId, overlayOpen, editing, dragging,
       return;
     }
     if (editing || isEscapeKeptFromClosing(event)) return;
-    armDoubleEscapeClose(state, targetId, Date.now());
+    armDoubleEscapeClose(state, targetId, Date.now(), event.repeat);
   }, { phase: "before" });
 }
