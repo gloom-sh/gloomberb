@@ -1,3 +1,4 @@
+import { portfolioSectorReport } from "./risk-sectors";
 import { loadPortfolioOptionBook } from "./risk-options";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchPortfolioRiskMarket, RISK_HISTORY_LIMIT } from "./risk-client";
@@ -188,8 +189,8 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       type: "enum",
       settingKey: "riskView",
       // No default: left out, the report prints every view.
-      values: RISK_VIEWS.map((value) => ({ value })),
-      description: "One portfolio risk view; every view when left out.",
+      values: [...RISK_VIEWS, "sectors"].map((value) => ({ value })),
+      description: "One portfolio risk view; sectors compares direct company sector weights, cash and unclassified holdings against SPY (S&P 500) in percentage points. Every standard risk view when left out.",
     },
     {
       key: "since",
@@ -262,6 +263,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
   describe: (args, result) =>
     `Portfolio risk | ${reportPortfolioName(result?.metadata) || args.rawArgument || "local portfolio"}`,
   async load(args, ctx) {
+    if (args.options.view === "sectors") return portfolioSectorReport(args, ctx);
     // The host reads the argument by id or name, in any case; everything after goes by the configured id.
     const requested = args.rawArgument.trim() || ctx.config.portfolios[0]?.id;
     if (!requested || !ctx.resolvePortfolio)

@@ -112,7 +112,7 @@ test("every column PF declares is a field of its position rows, the listing incl
 
 test("a watchlist reads by name, and an unknown id lists the ones that exist", async () => {
   const watchlist = await collectionHoldingsHeadless.load(args("tech"), context());
-  expect(watchlist.rows).toEqual([{ symbol: "SPY", name: "SPDR S&P 500", exchange: "NASDAQ", price: 500, priceCurrency: "USD", changePercent: 1.5, extendedSession: null, extendedPrice: null, extendedChange: null, extendedChangePercent: null, stale: false, updatedAt: expect.any(Number) }]);
+  expect(watchlist.rows).toEqual([{ symbol: "SPY", name: "SPDR S&P 500", exchange: "NASDAQ", price: 500, priceCurrency: "USD", changePercent: 1.5, changeBasis: "regular-session", extendedChangeBasis: null, extendedSession: null, extendedPrice: null, extendedChange: null, extendedChangePercent: null, stale: false, updatedAt: expect.any(Number) }]);
   expect(watchlist.metadata).toMatchObject({ collection: { kind: "watchlist", id: "tech" }, tickers: 1 });
 
   await expect(collectionHoldingsHeadless.load(args("default"), context()))
@@ -300,4 +300,10 @@ test("fn PF --from lists the period's P&L largest first within --limit, with the
   // --close already is what --from reads; a watchlist holds no positions.
   await expect(collectionHoldingsHeadless.load(period({ close: true }), ctx)).rejects.toThrow("leave out --close");
   await expect(collectionHoldingsHeadless.load({ ...period({}), rawArgument: "tech", argument: "tech" }, ctx)).rejects.toThrow("a watchlist holds no positions");
+});
+
+test("a pre-market quote without a known regular close supplies no regular-session change", async () => {
+  const ctx = { ...context(), marketData: createTestDataProvider({ getQuote: async symbol => createTestQuote({ symbol, price: 101, marketState: "PRE", changePercent: 1 }) }) } as HeadlessPaneContext;
+  const result = await collectionHoldingsHeadless.load(args("tech"), ctx);
+  expect(result.rows[0]).toMatchObject({ changePercent: null, changeBasis: null });
 });

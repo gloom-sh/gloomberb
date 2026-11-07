@@ -1685,3 +1685,17 @@ Both views are available without signing in, like daily short volume.
 same observations; `gloom shot FTD AAPL` and `gloom shot ATS AAPL`
 open the respective tabs. Report metadata includes publication coverage,
 source dates and any partial-history warnings.
+
+### Portfolio sector comparison in reports
+
+`gloom fn PORT <portfolio> --view sectors` compares direct company sector weights
+with the S&P 500 in percentage points. It uses signed position values divided by
+net liquidation, cash included. The benchmark names the returned fund and its
+holdings-file date: the SPY index alias currently reads IVV holdings. Unknown
+company sectors and funds remain visible in an unclassified bucket; funds are
+not looked through. A list above 200 position rows reports its incomplete coverage.
+
+EPS estimates in headless EE reports carry an explicit basis: GAAP, adjusted, or
+unknown when the estimate source does not identify it. A reported quarter's basis
+is not assumed to apply to an unlabelled estimate. Portfolio report changes label
+the regular session separately from extended moves measured from its close.
