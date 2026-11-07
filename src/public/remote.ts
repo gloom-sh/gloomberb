@@ -13,7 +13,13 @@
  * compile, which is the correct answer for a browser context.
  */
 
-export { sendRemoteControlRequest } from "../remote/client";
+export {
+  RemoteAppAmbiguousError,
+  RemoteAppError,
+  RemoteAppNotRunningError,
+  RemoteAppUnreachableError,
+  sendRemoteControlRequest,
+} from "../remote/client";
 export type { SendRemoteControlRequestOptions } from "../remote/client";
 export type {
   RemoteAppKind,
