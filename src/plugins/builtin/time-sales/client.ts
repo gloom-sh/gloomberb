@@ -61,25 +61,23 @@ export function validateTape(data: TapeSnapshot, symbol: string, exchange: strin
 /** The latest tape, or with a `range` that window of the session. */
 export async function fetchTape(symbol: string, exchange: string, signal?: AbortSignal,
   client: Pick<typeof apiClient, "getCloudTape"> = apiClient, range?: TapeRange): Promise<TapeSnapshot> {
-  try { return validateTape(await (range ? client.getCloudTape(symbol, exchange, signal, range) : client.getCloudTape(symbol, exchange, signal)), symbol, exchange); }
+  // The tape names US venues by their codes: a listing found as NYSEARCA is asked as ARCA, as it is answered.
+  const venue = canonicalExchange(exchange);
+  try { return validateTape(await (range ? client.getCloudTape(symbol, venue, signal, range) : client.getCloudTape(symbol, venue, signal)), symbol, exchange); }
   catch (error) {
     if (error instanceof ApiRequestError && [404, 503].includes(error.status ?? 0)) throw new Error("Time and sales is not available yet.");
     // A rejected request answers with an unavailable snapshot; show its reason, not the JSON body.
     if (error instanceof ApiRequestError) {
-      const reason = tapeRejection(error.message);
+      const reason = tapeGap(error.details);
       if (reason) throw new Error(reason);
     }
     throw error;
   }
 }
 
-/** The first stated gap of an unavailable tape snapshot sent as an error body. */
-export function tapeRejection(body: string): string | null {
-  try {
-    const value = JSON.parse(body) as { gaps?: unknown };
-    return Array.isArray(value?.gaps) && typeof value.gaps[0] === "string" ? value.gaps[0] : null;
-  } catch {
-    // Intentional ignore: an error body that is not JSON names no gap, so the request's own error stands.
-    return null;
-  }
+/** The first stated gap of an unavailable tape snapshot, as the request's parsed error body holds it. */
+function tapeGap(details: Readonly<Record<string, unknown>> | undefined): string | null {
+  const gaps = details?.gaps;
+  return Array.isArray(gaps) && typeof gaps[0] === "string" ? gaps[0] : null;
 }
+

@@ -83,15 +83,20 @@ export interface RiskMarketSnapshot {
 }
 /**
  * The most holdings one load requests daily history for, largest current USD
- * value first. Each holding costs one Cloud request of up to 18 months of
- * closes, four in flight, again after every two-minute cache expiry, and the
+ * value first. Each holding costs one read of up to 18 months of closes,
+ * sixteen to a batch request, again after every two-minute cache expiry, and the
  * correlation view pairs every basket holding with every other. See
  * docs/research-data.md for the measured cost behind the number.
  */
 export const RISK_HISTORY_LIMIT = 150;
 /** Holdings quoted in one load, 50 to a batch request. */
 const RISK_QUOTE_LIMIT = 500;
-const HISTORY_CONCURRENCY = 4;
+/**
+ * Histories asked at once. They go out sixteen to a batch request, side by
+ * side (getCloudHistory's `batch`): a 60-holding book is four requests, where
+ * four single reads at a time took about 6 s.
+ */
+const HISTORY_CONCURRENCY = 64;
 const MAX_FX_CURRENCIES = 24;
 export const BEYOND_SIZE_REASON = `Beyond the supported size: only the ${RISK_HISTORY_LIMIT} largest holdings by value are modelled`;
 // Listing venues as the quotes report them; MTUM and QUAL list on Cboe BZX, not Arca.
@@ -402,7 +407,8 @@ export async function fetchPortfolioRiskMarket(
     const key = `${canonicalExchange(exchange)}:${normalizeSymbol(symbol)}`;
     let loading = dailyHistories.get(key);
     if (!loading) {
-      dailyHistories.set(key, loading = client.getCloudHistory(symbol, exchange, historyParams, signal ? { signal } : undefined));
+      // Batched reads are shared and so not stopped by one load's signal; the load checks it between reads.
+      dailyHistories.set(key, loading = client.getCloudHistory(symbol, exchange, historyParams, { batch: true }));
       loading.catch(() => {
         // Intentional ignore: the failure is raised where the history is read.
       });

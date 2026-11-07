@@ -32,6 +32,24 @@ export function normalizeCurveRoot(value: unknown): string | null {
   return CURVE_ROOTS.some((row) => row.value === root) ? root : null;
 }
 
+/** What a commodity is called rather than coded: the WTI and Brent crude curves by the words they are asked for in. */
+const CURVE_ROOT_WORDS: Readonly<Record<string, string>> = { "CRUDE": "CL", "CRUDE OIL": "CL", "OIL": "CL", "WTI": "CL", "BRENT": "BZ" };
+
+/**
+ * A root named in words, as a typed argument or a question asks for it
+ * ("gold", "Natural Gas futures", "crude oil"): a listed root's name, or a
+ * crude benchmark's. Not for the ticker under the cursor, where GOLD is a
+ * security, so only CTM's typed argument reads it.
+ */
+export function curveRootNamed(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const words = value.trim().toUpperCase().replace(/\s+/g, " ").replace(/( (FUTURES?|CURVE))+$/, "");
+  if (!words) return null;
+  return CURVE_ROOT_WORDS[words]
+    ?? CURVE_ROOTS.find((row) => row.label.toUpperCase() === `${row.value} ${words}`)?.value
+    ?? null;
+}
+
 /**
  * A curve's window title, its root ("Curve · BZ"), so two curves open at once
  * are told apart in their windows and in the layout list.

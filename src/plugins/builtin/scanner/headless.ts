@@ -84,6 +84,10 @@ function projectHiloSnapshot(
   return {
     asOf: new Date(payload.asOf).toISOString(),
     items: [...lows, ...highs],
+    // The lists are the session's: between sessions the scanner holds none, and last session's are not today's.
+    empty: payload.status === "closed" ? "The US market is closed. New highs and lows list again from the next session's open."
+      : payload.status === "starting" ? "The scanner is starting for this session. New highs and lows list as they print."
+        : "No new highs or lows under these filters this session.",
     ...(payload.status === "degraded" ? { errors: ["Scanner feed degraded"] } : {}),
     freshness: scannerFreshness(payload),
     metadata: {

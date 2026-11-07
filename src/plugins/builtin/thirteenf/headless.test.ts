@@ -187,6 +187,47 @@ describe("13F headless model", () => {
     expect(exact.metadata?.cik).toBe(detail.cik);
   });
 
+  test("reads a manager's name as said: without its legal form, or as the first whole words of one name", async () => {
+    const resolved: string[] = [];
+    const headless = createThirteenFHeadless({
+      loadBrowser: async (_tab, query) => ({ rows: query.startsWith("ARK") ? [
+        { id: "spark", cik: "0001554871", name: "Spark Investment Management LLC", source: "funds" },
+        { id: "ark", cik: "0001697748", name: "ARK Investment Management LLC", source: "funds" },
+      ] : [
+        { id: "advisors", cik: "0001600319", name: "Bridgewater Advisors Inc.", source: "funds" },
+        { id: "associates", cik: "0001350694", name: "Bridgewater Associates, LP", source: "funds", tableValueTotal: 25e9 },
+      ] }),
+      loadDetail: async (cik) => { resolved.push(cik); return detail; },
+    });
+    for (const argument of ["ARK Investment Management", "ARK Investment", "Bridgewater Associates"]) {
+      await headless.load({ ...args("filings"), argument }, createTestHeadlessContext());
+    }
+    expect(resolved).toEqual(["0001697748", "0001697748", "0001350694"]);
+    // Two managers start with the word: both are named, the larger book first.
+    await expect(headless.load({ ...args("filings"), argument: "Bridgewater" }, createTestHeadlessContext()))
+      .rejects.toThrow(/Ambiguous 13F fund "Bridgewater".*: Bridgewater Associates, LP \(0001350694, \$25\.00B reported\); Bridgewater Advisors/);
+  });
+
+  test("reads the splits of the positions it shows, not of the whole book", async () => {
+    const row = (cusip: string, value: number) => ({ ...detail.latestHoldings[0]!, cusip, ticker: cusip, value });
+    // Shares up tenfold at a tenth of the value per share: every line moves like a 10:1 split.
+    const latest = [row("BIG", 900), row("MID", 500), row("SMALL", 100)].map((holding) => ({ ...holding, shares: holding.value / 10 }));
+    const previous = latest.map((holding) => ({ ...holding, accessionNumber: "previous", shares: holding.shares / 10 }));
+    const asked: string[][] = [];
+    const headless = createThirteenFHeadless({
+      loadBrowser: async () => ({ rows: [] }),
+      loadDetail: async () => ({ ...detail, latestHoldings: latest, previousHoldings: previous }),
+      loadSplitFactors: async (_detail, _ctx, only) => {
+        asked.push([...only ?? []]);
+        return new Map([...only ?? []].map((id) => [id, 10]));
+      },
+    });
+    const result = await headless.load(args("holdings", 2), createTestHeadlessContext());
+    expect(result.rows.map((holding) => holding.ticker)).toEqual(["BIG", "MID"]);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]!.map((id) => id.split("|")[0])).toEqual(["BIG", "MID"]);
+  });
+
   test("projects browser rows and switches to fund holdings", async () => {
     const headless = createThirteenFHeadless({
       loadBrowser: async () => ({
