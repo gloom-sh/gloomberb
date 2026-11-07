@@ -47,6 +47,8 @@ describe("chart composer CLI options", () => {
     expect(total.viewport.totalReturn).toBe(true);
     expect(applyChartComposerCapabilityOptions(buildComparisonChartPreset(["AAPL", "MSFT"]), "price-comparison", {}).viewport.totalReturn).toBeUndefined();
     expect(applyChartComposerCapabilityOptions(buildPriceChartPreset("AAPL"), "price-chart", { totalReturn: true }).viewport.totalReturn).toBeUndefined();
+    // So does a comparison's currency.
+    expect(applyChartComposerCapabilityOptions(buildComparisonChartPreset(["THYAO:BIST", "MSFT"]), "price-comparison", { currency: "USD" }).viewport.currency).toBe("USD");
 
     // YTD is a year of bars shown from the prior year's last close, the one YTD returns are measured from.
     const ytd = applyChartComposerCapabilityOptions(

@@ -377,6 +377,62 @@ export async function fetchPortfolioRiskMarket(
       ...factors,
     ]).values(),
   ];
+  const start = new Date(now);
+  start.setUTCMonth(start.getUTCMonth() - 18);
+  start.setUTCDate(1);
+  const today = now.toISOString().slice(0, 10);
+  const startDate = start.toISOString().slice(0, 10),
+    endDate = new Date(Date.parse(today) - 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+  const historyParams = {
+    interval: "1day",
+    startDate,
+    // validateRiskHistory drops today's bar; ending on yesterday
+    // loses yesterday's close for most listings.
+    endDate: today,
+    outputsize: 1000,
+    rangeKey: "2Y",
+  } as const;
+  const account = accountCurrency === "USD" ? null : accountCurrency;
+  // Every daily history is read once per listing, under one key: a factor proxy's is the holding's of the same
+  // listing however the book names its venue (SPY, ARCA:SPY), and the account currency's pair is its FX leg's.
+  const dailyHistories = new Map<string, ReturnType<RiskCloudClient["getCloudHistory"]>>();
+  const historyOf = (symbol: string, exchange: string) => {
+    const key = `${canonicalExchange(exchange)}:${normalizeSymbol(symbol)}`;
+    let loading = dailyHistories.get(key);
+    if (!loading) {
+      dailyHistories.set(key, loading = client.getCloudHistory(symbol, exchange, historyParams, signal ? { signal } : undefined));
+      loading.catch(() => {
+        // Intentional ignore: the failure is raised where the history is read.
+      });
+    }
+    return loading;
+  };
+  // What needs no quote goes out with the quotes, not after them: the factor proxies' histories, and the account
+  // currency's rate and daily closes.
+  for (const instrument of factors.values()) void historyOf(instrument.symbol, instrument.exchange || "");
+  const accountConversion = account ? riskConversion(account) : null;
+  if (accountConversion && accountConversion.divisor === 1)
+    void historyOf(accountConversion.leg.instrument.symbol, accountConversion.leg.instrument.exchange ?? "");
+  const accountRate = account ? client.getCloudExchangeRate(account) : null;
+  accountRate?.catch(() => {
+    // Intentional ignore: the failure is raised where the rate is read.
+  });
+  // The Treasury yield and the VIX, which settle rather than fail.
+  const fredWork = Promise.allSettled(
+    ["DGS10", "VIXCLS"].map(async (id) =>
+      validateFred(
+        await client.getCloudFredSeries(id, {
+          startDate,
+          endDate,
+          limit: 1000,
+          sortOrder: "asc",
+        }, signal ? { signal } : undefined),
+        id,
+      ),
+    ),
+  );
   const quotes = new Map<string, CloudQuotePayload>();
   const listings = new Map<string, { price: number; currency: string }>();
   // Listings quoted in another currency that convert to USD, and why the others do not.
@@ -441,7 +497,6 @@ export async function fetchPortfolioRiskMarket(
   }
   // Current rates value a foreign holding: its rank, its mark, and its size when left out.
   // The account currency's comes first: it values every holding.
-  const account = accountCurrency === "USD" ? null : accountCurrency;
   const fxCurrencies = [
     ...new Set(
       [...(account ? [account] : []), ...[...entries.values()].flatMap((row) => {
@@ -457,7 +512,7 @@ export async function fetchPortfolioRiskMarket(
   ].slice(0, MAX_FX_CURRENCIES);
   const fx = await Promise.allSettled(
     fxCurrencies.map(async (currency) => {
-      const response = await client.getCloudExchangeRate(currency);
+      const response = await (currency === account && accountRate ? accountRate : client.getCloudExchangeRate(currency));
       const rate = response.status === "success" || response.status === "partial"
         ? response.data?.rate
         : undefined;
@@ -501,23 +556,6 @@ export async function fetchPortfolioRiskMarket(
   const instruments = [
     ...new Map([...factors, ...[...entries.values()].map((row) => [row.id, row.instrument] as const)]).entries(),
   ];
-  const start = new Date(now);
-  start.setUTCMonth(start.getUTCMonth() - 18);
-  start.setUTCDate(1);
-  const today = now.toISOString().slice(0, 10);
-  const startDate = start.toISOString().slice(0, 10),
-    endDate = new Date(Date.parse(today) - 86_400_000)
-      .toISOString()
-      .slice(0, 10);
-  const historyParams = {
-    interval: "1day",
-    startDate,
-    // validateRiskHistory drops today's bar; ending on yesterday
-    // loses yesterday's close for most listings.
-    endDate: today,
-    outputsize: 1000,
-    rangeKey: "2Y",
-  } as const;
   const histories: RiskMarketHistory[] = instruments.map(([id, instrument]) => {
     const quote = quotes.get(id) ?? null,
       listing = listings.get(id) ?? null;
@@ -548,7 +586,7 @@ export async function fetchPortfolioRiskMarket(
         let closes: FxCloses;
         try {
           closes = validateFxHistory(
-            await client.getCloudHistory(symbol, exchange ?? "", historyParams, signal ? { signal } : undefined),
+            await historyOf(symbol, exchange ?? ""),
             conversion.leg,
             now,
           );
@@ -597,12 +635,7 @@ export async function fetchPortfolioRiskMarket(
           { instrument, quote } = entry;
         try {
           const fxCloses = conversion ? await fxHistory(conversion) : null;
-          const response = await client.getCloudHistory(
-            instrument.symbol,
-            instrument.exchange || quote?.listingExchangeName || "",
-            historyParams,
-            signal ? { signal } : undefined,
-          );
+          const response = await historyOf(instrument.symbol, instrument.exchange || quote?.listingExchangeName || "");
           const { latestClose, fxBridged, ...resolved } = validateRiskHistory(
             response,
             instrument,
@@ -644,19 +677,7 @@ export async function fetchPortfolioRiskMarket(
   );
   const [, fred, accountFx] = await Promise.all([
     historyWork,
-    Promise.allSettled(
-      ["DGS10", "VIXCLS"].map(async (id) =>
-        validateFred(
-          await client.getCloudFredSeries(id, {
-            startDate,
-            endDate,
-            limit: 1000,
-            sortOrder: "asc",
-          }, signal ? { signal } : undefined),
-          id,
-        ),
-      ),
-    ),
+    fredWork,
     accountWork,
   ]);
   signal?.throwIfAborted();

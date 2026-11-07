@@ -7,6 +7,19 @@ import type { InstrumentSearchResult } from "../types/instrument";
  * they are compared by the words that say whose they are.
  */
 
+// Letters that do not decompose into a plain one and an accent: Sabancı is Sabanci as venues and search spell it.
+const UNDECOMPOSED_LETTERS: Readonly<Record<string, string>> = {
+  "ı": "i", "ø": "o", "Ø": "O", "ß": "ss", "æ": "ae", "Æ": "AE", "œ": "oe", "Œ": "OE", "đ": "d", "Đ": "D", "ł": "l", "Ł": "L",
+};
+
+/**
+ * A name's letters without their accents, as search folds them: "Türk Hava
+ * Yolları" is "Turk Hava Yollari", "BİM Mağazalar" "BIM Magazalar".
+ */
+export function foldNameLetters(text: string): string {
+  return text.normalize("NFKD").replace(/\p{M}/gu, "").replace(/[ıøØßæÆœŒđĐłŁ]/g, (letter) => UNDECOMPOSED_LETTERS[letter] ?? letter);
+}
+
 // Words that differ between one company's listings: legal forms, and how a depositary receipt is named.
 const NAME_NOISE = new Set([
   "co", "company", "corp", "corporation", "inc", "incorporated", "ltd", "limited", "llc", "lp", "plc", "sa", "ag", "nv", "se",
@@ -14,19 +27,27 @@ const NAME_NOISE = new Set([
   "sponsored", "unsponsored", "cdr", "cdi", "aktiengesellschaft", "aktiebolag",
   // A Japanese company's legal form, spelled out or short: Nippon Yusen Kabushiki Kaisha is Nippon Yusen K.K.
   "kabushiki", "kaisha", "kk",
+  // A Turkish one: Türk Hava Yolları Anonim Ortaklığı is Türk Hava Yolları A.O., Türkiye Garanti Bankası A.Ş. and T.A.Ş.
+  "anonim", "sirketi", "ortakligi",
 ]);
+// Turkish legal forms short enough to open another company's name (AO Smith, AO World): a legal form only as its last word.
+const LAST_WORD_NOISE = new Set(["ao", "tas"]);
 // Words a venue adds to the share it lists ("Microsoft Corporation Common Stock"), never part of whose it is.
 const SHARE_NOISE = new Set(["common", "ordinary", "stock", "shares"]);
 
 /** A company's name for comparing its listings: "Kotobuki Spirits Co., Ltd." is "kotobuki spirits". */
 function companyKey(name: string): string {
-  return name.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+  const words = foldNameLetters(name).toLowerCase()
     .replace(/\([^)]*\)/g, " ")
     .replace(/\b(?:(?:american|global) )?depositary (?:shares?|receipts?)\b/g, " ")
     .replace(/\./g, "")
     .split(/[^\p{L}\p{N}]+/u)
-    .filter((word) => word && !NAME_NOISE.has(word))
-    .join(" ");
+    .filter((word) => word && !NAME_NOISE.has(word));
+  // The last word before any share wording, never a name's only one.
+  let last = words.length - 1;
+  while (last > 0 && SHARE_NOISE.has(words[last]!)) last--;
+  if (last > 0 && LAST_WORD_NOISE.has(words[last]!)) words.splice(last, 1);
+  return words.join(" ");
 }
 
 function companyWords(name: string | null | undefined): Set<string> {
@@ -233,9 +254,10 @@ export function cleanListingName(name: string): string {
 export function shortCompanyName(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
   const legal = (word: string) => {
-    const plain = word.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+    const plain = foldNameLetters(word).toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
     // "Public Limited Company" is a legal form too, though "Public" alone can be a name.
-    return NAME_NOISE.has(plain) || SHARE_NOISE.has(plain) || (plain === "public" && words.length > 2);
+    return NAME_NOISE.has(plain) || LAST_WORD_NOISE.has(plain) || SHARE_NOISE.has(plain)
+      || (plain === "public" && words.length > 2);
   };
   const joining = (word: string) => word === "&" || word.toLowerCase() === "and";
   while (words.length > 1 && (legal(words[words.length - 1]!) || joining(words[words.length - 1]!))) words.pop();
@@ -315,7 +337,7 @@ export function companyNameCase(name: string): string {
 
 /** Letters and digits only, in capitals: "JP Morgan" and "JPMorgan" are JPMORGAN. */
 export function runTogether(text: string): string {
-  return text.normalize("NFKD").replace(/\p{M}/gu, "").toUpperCase().replace(/[^\p{L}\p{N}]/gu, "");
+  return foldNameLetters(text).toUpperCase().replace(/[^\p{L}\p{N}]/gu, "");
 }
 
 /** Whether the service marked the row with the name as typed: the company it means by it. */

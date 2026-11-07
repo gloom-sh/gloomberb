@@ -6,6 +6,7 @@ import type { DataProvider, MarketDataRequestContext } from "../types/data-provi
 import type { CorporateActionsData, EarningsAction, Quote, QuoteMetadata, TickerFinancials } from "../types/financials";
 import type { EarningsHistoryPayload } from "../api-client/earnings";
 import type { FredSeriesLoadResult, FredSeriesRequest } from "../sources/gloomberb-cloud/fred-series";
+import type { LoadFxCloses } from "./currency-conversion";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { publicTickerKey } from "../utils/exchanges";
 import type {
@@ -40,6 +41,8 @@ export interface ChartResolveSources {
    * the terms do not say. Without it a future's price is in its currency alone.
    */
   loadFuturesPriceUnit?: (symbol: string) => Promise<string | null>;
+  /** A currency's daily USD closes, for a chart converted into one currency (`viewport.currency`). */
+  loadFxCloses?: LoadFxCloses;
   /** Provider-neutral boundary for plugin-owned chart series. */
   resolveCapabilitySeries?: (
     source: Extract<ChartSeriesSpec["source"], { kind: "capability" }>,

@@ -16,23 +16,23 @@ afterEach(() => { setSystemTime(); setCliColorEnabledOverride(null); });
 
 const day = (date: string, close: number): PricePoint => ({ date: new Date(`${date}T00:00:00Z`), close });
 const DAILY: Record<string, PricePoint[]> = {
-  AAPL: [day("2026-10-23", 347.73), day("2026-10-30", 344.63)],
-  GDX: [day("2026-10-23", 80.2), day("2026-10-30", 77.09)],
-  "2382": [day("2026-10-23", 63.15), day("2026-10-30", 63.3)],
+  AAPL: [day("2026-07-31", 300), day("2026-10-23", 347.73), day("2026-10-30", 344.63)],
+  GDX: [day("2026-07-31", 70), day("2026-10-23", 80.2), day("2026-10-30", 77.09)],
+  "2382": [day("2026-07-31", 60), day("2026-10-23", 63.15), day("2026-10-30", 63.3)],
 };
 const held = (symbol: string, exchange: string, currency: string, shares: number, dateAcquired = "2026-10-01") => createTestTicker(symbol, symbol, {
   exchange, currency, portfolios: ["model"], positions: [{ portfolio: "model", shares, broker: "manual", dateAcquired }],
 });
 const fx: CostFxHistoryClient = {
   getCloudHistory: async (symbol, _exchange, params) => {
-    const closes: Record<string, number> = symbol === "HKD=X" ? { "2026-10-23": 7.8, "2026-10-30": 7.75 } : {};
+    const closes: Record<string, number> = symbol === "HKD=X" ? { "2026-07-31": 7.85, "2026-10-23": 7.8, "2026-10-30": 7.75 } : {};
     const data: CloudPricePointPayload[] = Object.entries(closes).filter(([date]) => date >= params.startDate! && date <= params.endDate!)
       .map(([date, close]) => ({ date: `${date}T00:00:00.000Z`, close }));
     return { status: "success", data } as Awaited<ReturnType<CostFxHistoryClient["getCloudHistory"]>>;
   },
 };
 
-async function show(format: "text" | "json" | "csv") {
+async function show(format: "text" | "json" | "csv", options: Partial<Parameters<typeof showCollection>[2]> = {}) {
   setSystemTime(new Date("2026-11-05T13:00:00Z"));
   setCliColorEnabledOverride(false);
   const config = createDefaultConfig("/unused-period-report");
@@ -50,7 +50,7 @@ async function show(format: "text" | "json" | "csv") {
   const lines: string[] = [];
   const log = spyOn(console, "log").mockImplementation((...parts: unknown[]) => { lines.push(parts.join(" ")); });
   try {
-    await showCollection("model", cli.context, { period: { from: "2026-10-26", to: "2026-10-30" }, costFxHistory: fx });
+    await showCollection("model", cli.context, { period: { from: "2026-10-26", to: "2026-10-30" }, costFxHistory: fx, ...options });
   } finally {
     log.mockRestore();
   }
@@ -86,4 +86,24 @@ test("portfolio show --from prints each position's P&L, the FX line and a total 
   const csv = (await show("csv")).out.trim().split("\n");
   expect(csv[0]).toContain("symbol");
   expect(csv.map((line) => line.split(",")[0])).toEqual(expect.arrayContaining(["AAPL", "GDX", "2382", "FX", "TOTAL"]));
+});
+
+test("portfolio show --from --real deflates the total by the CPI from the month before the start to the month before the end", async () => {
+  const levels: Record<string, number> = { "2026-06": 329, "2026-07": 330, "2026-08": 331, "2026-09": 332.65 };
+  const cpi = {
+    getCloudFredSeries: async (id: string, params: { startDate: string }) => ({
+      observations: id === "CPIAUCNS" ? Object.entries(levels).filter(([month]) => `${month}-01` >= params.startDate).map(([month, value]) => ({ date: `${month}-01`, value })) : [],
+    }) as never,
+  };
+  const period = { from: "2026-08-03", to: "2026-10-30" };
+  const json = JSON.parse((await show("json", { period, real: true, cpi })).out);
+  // JSON keeps the two published levels it was read from.
+  expect(json.metadata.real).toMatchObject({
+    cpi: "US CPI", fromMonth: "2026-07", toMonth: "2026-09", latestPublished: false, inflationPercent: expect.closeTo((332.65 / 330 - 1) * 100, 9),
+    readings: [{ series: "CPIAUCNS", month: "2026-07", value: 330 }, { series: "CPIAUCNS", month: "2026-09", value: 332.65 }],
+  });
+  const real = ((1 + json.metadata.real.nominalPercent / 100) / (332.65 / 330) - 1) * 100;
+  expect(json.metadata.real.realPercent).toBeCloseTo(real, 9);
+  const { text } = await show("text", { period, real: true, cpi });
+  expect(text).toContain(`Real: +${real.toFixed(2)}% after US CPI +0.80%, Jul 2026 to Sep 2026; the BLS index.`);
 });

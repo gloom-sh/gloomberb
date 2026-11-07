@@ -376,6 +376,10 @@ export function runDirectCommandAction(options: {
       closeAll({ revertThemePreview: false });
       return;
     }
+    case "quit":
+      closeAll({ revertThemePreview: false });
+      quitApp();
+      return;
     case "check-for-updates":
       void onCheckForUpdates?.();
       closeAll({ revertThemePreview: false });

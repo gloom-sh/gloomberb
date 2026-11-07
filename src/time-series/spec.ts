@@ -334,6 +334,7 @@ export function normalizeChartSpec(value: unknown, fallback: ChartSpec = DEFAULT
         : undefined,
       ...(viewport?.extendedHours === true ? { extendedHours: true } : {}),
       ...(viewport?.totalReturn === true ? { totalReturn: true } : {}),
+      ...(typeof viewport?.currency === "string" && /^[A-Z]{3}$/.test(viewport.currency) ? { currency: viewport.currency } : {}),
     },
     panels,
     series,

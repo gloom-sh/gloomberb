@@ -4,6 +4,7 @@ import { CHART_BAR_SIZE_PRESETS, parseChartBarSize } from "../../../time-series/
 import { FINANCIAL_PERIOD_OPTION, FINANCIAL_PERIOD_COUNT_OPTION, HISTORY_RANGE_VALUES, RETURN_RANGE_VALUES } from "../shared/headless-options";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP } from "../../../utils/price-window";
+import { isCurrencyCode } from "../../../utils/currency-pair";
 
 type PaneSchema = Pick<HeadlessPaneDefinition, "argument" | "options" | "discovery">;
 
@@ -31,6 +32,13 @@ function normalizeBarSize(value: string, auto: boolean): string {
   throw new Error(count
     ? `Invalid --chart-resolution value "${value}". Write ${count}m for ${count} minutes or ${count}mo for ${count} months.`
     : `Invalid --chart-resolution value "${value}". Use ${auto ? "auto, or " : ""}a count and a unit: 10m, 4h, 2d, 1wk, 3mo (up to a day of minutes or hours, a year of days or weeks, 12 months).`);
+}
+
+/** `usd` as USD; anything but a three-letter currency code is refused with the form it takes. */
+function normalizeCurrencyCode(value: string): string {
+  const code = value.trim().toUpperCase();
+  if (!isCurrencyCode(code)) throw new Error(`Invalid --currency value "${value}". Use a three-letter currency code: USD, EUR, TRY.`);
+  return code;
 }
 
 export const paneSchemas = {
@@ -155,6 +163,14 @@ export const paneSchemas = {
         defaultValue: false,
       },
       {
+        key: "currency",
+        type: "string",
+        placeholder: "code",
+        description: "Convert every ticker into this currency at each day's FX close, so the returns carry its move against theirs",
+        example: "--currency USD",
+        normalize: normalizeCurrencyCode,
+      },
+      {
         key: "chartResolution",
         description: BAR_SIZE_DESCRIPTION,
         type: "enum",
@@ -167,7 +183,7 @@ export const paneSchemas = {
     discovery: {
       id: "price-comparison",
       aliases: ["stock comparison", "price performance comparison", "returns comparison", "compare stock prices"],
-      limitations: ["Compares closing-price changes in each listing's currency over shared observation dates. Cash distributions and FX conversion are excluded unless totalReturn is set, which reinvests each distribution at its ex-date close; FX conversion is never applied."],
+      limitations: ["Compares closing-price changes over shared observation dates, in each listing's currency unless currency is set, which converts each close at that day's FX close. Cash distributions are excluded unless totalReturn is set, which reinvests each distribution at its ex-date close."],
       screenshotReadiness: "ready",
     },
   },

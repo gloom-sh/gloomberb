@@ -1,7 +1,7 @@
 import { cliStyles, cliTerminalWidth, renderDefinitions, renderSection, wrapText } from "../utils/cli-output";
 
 /**
- * Plain-words meanings of the rates, auction, credit and bond yield, energy, perpetual-futures, portfolio,
+ * Plain-words meanings of the rates, auction, credit and bond yield, energy, perpetual-futures, portfolio, portfolio risk (beta, R², VaR, HHI),
  * fund, bond fund (SEC yield, tax-equivalent yield, muni/Treasury ratio), short interest, quote-board, futures (basis, contango, roll yield), VIX curve (term structure, 3M/30D, VVIX), CFTC positioning (COT trader classes, net % of open interest), depositary receipt (ADR ratio, premium, implied FX, the peso's CCL and MEP rates) and economic-calendar terms the functions
  * show in their rows, headers and footers.
  * `catalog glossary` lists them, `catalog explain <term>` prints one, and
@@ -425,6 +425,29 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     shown: ["Drift", "pp"],
     definition: "The plain difference between two percentages. A 22% weight against a 20% target is 2pp over it, not 10%, "
       + "and gas storage going from 74.31% to 74.46% full is up 0.15pp.",
+  },
+  // Portfolio risk (PORT): the factor table's betas and fits, the tail loss, concentration.
+  {
+    term: "Beta", aliases: ["betas", "factor beta", "market beta", "beta to spy", "exposure", "factor exposure"], functions: ["PORT"],
+    shown: ["beta", "Beta"],
+    definition: "How far a basket moves with a factor: a beta of 0.54 to SPY means it rose 0.54% on average for each 1% SPY rose. "
+      + "PORT estimates it from the last 60 daily returns; read it with its R², since a beta from a weak fit says little about an exposure.",
+  },
+  {
+    term: "R²", aliases: ["r-squared", "r squared", "r2", "coefficient of determination", "goodness of fit", "weak fit"], functions: ["PORT"],
+    definition: "R-squared: the share of a basket's daily moves a factor explains, from 0 (none) to 1 (all), over the same 60 sessions as its beta. "
+      + "Under 0.1 PORT marks the factor a weak fit: the beta beside it is mostly noise, not an exposure.",
+  },
+  {
+    term: "Value at risk", short: "VaR", aliases: ["value-at-risk", "var 95%", "1d var", "historical var", "expected shortfall", "cvar", "tail loss"],
+    functions: ["PORT"], shown: ["VaR", "expected shortfall"],
+    definition: "The loss a basket went beyond on only 5% of its last 60 trading days, as a share of its value and in money: a 1-day VaR 95% of 1.19% means "
+      + "about one day in twenty lost more than that. Expected shortfall is the average loss on those worst days. Both read the past, not a limit on the next loss.",
+  },
+  {
+    term: "HHI", aliases: ["herfindahl", "herfindahl index", "herfindahl-hirschman index", "concentration index", "effective holdings"], functions: ["PORT"],
+    definition: "Herfindahl-Hirschman index: each holding's weight squared and added up, from near 0 for a book spread thin to 1 for a single holding. "
+      + "One over it is the effective number of holdings: 0.20 reads as a book of five equal positions.",
   },
   // Financial statements and ratios (FA).
   {
@@ -963,12 +986,15 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
 const ANSI = /\x1b\[[0-9;]*m/g;
 
 /** Letters and digits only, lower case: `stop-out`, `Stop Out` and `stopout` are one lookup. */
+// A superscript two is a two: R² is looked up as r2.
+const plainDigits = (text: string) => text.toLowerCase().replace(/²/g, "2");
+
 function lookupKey(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return plainDigits(text).replace(/[^a-z0-9]/g, "");
 }
 
 function words(text: string): string[] {
-  return text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  return plainDigits(text).split(/[^a-z0-9]+/).filter(Boolean);
 }
 
 function names(entry: GlossaryEntry): string[] {

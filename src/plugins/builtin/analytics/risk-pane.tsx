@@ -67,6 +67,8 @@ import {
   riskReturnsCurrency,
   riskValue,
   RISK_VIEWS,
+  isWeakFactorFit,
+  withoutFactorFit,
   type PortfolioRiskModel,
   type RiskDisplayRow,
   type RiskView,
@@ -763,6 +765,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     };
   }, [chartRow, marketLoading, model, sharedUnit, view]);
   const attributionParts = view === "attribution" && rows.some((row) => row.allocation != null);
+  const factorFits = rows.some((row) => row.rSquared !== undefined);
   const valueHeader = attributionParts
     ? "Total pp"
     : sharedUnit
@@ -786,6 +789,10 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
       ...(attributionParts
         ? ATTRIBUTION_PARTS.map((part) => ({ id: part.id, label: part.label, width: 11, align: "right" as const }))
         : []),
+      // A factor's beta reads with how much of the basket it explains; a weak fit says so.
+      ...(factorFits
+        ? [{ id: "rSquared", label: "R²", width: 9, align: "right" as const }]
+        : []),
       ...(showPercentile
         ? [{ id: "percentile", label: "Pctl 1Y", width: 8, align: "right" as const }]
         : []),
@@ -805,7 +812,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
           ]
         : []),
     ],
-    [width, view, valueHeader, sharedUnit, attributionParts, footerEvidence, showPercentile, sharedDate, rows],
+    [width, view, valueHeader, sharedUnit, attributionParts, factorFits, footerEvidence, showPercentile, sharedDate, rows],
   );
   const selectView = (value: string) => {
     setView(value);
@@ -956,17 +963,22 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
           // Without the evidence column an episode says beside its label how much of it is proxied.
           if (column.id === "label")
             return { text: row.marker && !columns.some((entry) => entry.id === "detail") ? `${row.label} (${row.marker})` : row.label };
+          const weakFit = isWeakFactorFit(row.rSquared);
           if (column.id === "value")
             return row.leftOut
               ? { text: "left out", value: null, color: colors.textMuted }
-              : { text: sharedUnit || attributionParts ? bareValue(row) : riskValue(row) };
+              : { text: sharedUnit || attributionParts ? bareValue(row) : riskValue(row), ...(weakFit ? { color: colors.textMuted } : {}) };
+          if (column.id === "rSquared")
+            return row.rSquared == null
+              ? { text: "--" }
+              : { text: `${weakFit ? "weak " : ""}${row.rSquared.toFixed(2)}`, value: row.rSquared, ...(weakFit ? { color: colors.textMuted } : {}) };
           if (column.id === "percentile") return { text: riskPercentile(row) };
           if (column.id === "asOf") return { text: row.asOf?.slice(0, 10) ?? "--" };
           if (column.id === "allocation" || column.id === "selection" || column.id === "interaction") {
             const part = row[column.id];
             return { text: part == null ? "--" : part.toFixed(2) };
           }
-          return { text: row.detail };
+          return { text: factorFits ? withoutFactorFit(row.detail) : row.detail };
         }}
         selectedTextOverridesCellColor
         onActivate={(row) => setOpen(row.id)}

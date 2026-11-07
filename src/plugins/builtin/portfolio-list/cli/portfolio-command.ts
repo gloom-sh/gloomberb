@@ -973,7 +973,7 @@ export const portfolioCliCommand: CliCommandDef = {
     usage: [
       "portfolio [list]",
       "portfolio show <name> [--close] [--explain] [--drip [--years 1-5] [--withholding <pct>]]",
-      "portfolio show <name> --from <date> [--to <date>]",
+      "portfolio show <name> --from <date> [--to <date>] [--real]",
       "portfolio create <name> [--currency <code>]",
       "portfolio delete <name>",
       "portfolio add <portfolio> <symbols...> [--file <path>]",
@@ -993,6 +993,7 @@ export const portfolioCliCommand: CliCommandDef = {
       { flags: "--close", description: "show: value the book at the regular close (futures at the settlement), not the latest print" },
       { flags: "--from <date>", description: "show: P&L and contribution by position from the close before this date (a year or a date)" },
       { flags: "--to <date>", description: "show --from: to the last close on or before this date (default today)" },
+      { flags: "--real", description: "show --from: the total's return after the portfolio currency's consumer prices too (USD and TRY), and the CPI months it used" },
       { flags: "--drip", description: "show: project the shares and income reinvested dividends add, year by year" },
       { flags: "--years <1-5>", description: `show --drip: how many years to project (default ${DRIP_DEFAULT_YEARS})` },
       { flags: "--withholding <pct>", description: "show --drip: tax withheld from each dividend, in percent (default 0)" },
@@ -1055,13 +1056,16 @@ export const portfolioCliCommand: CliCommandDef = {
     const hasWithholding = args.some((arg) => arg === "--withholding" || arg.startsWith("--withholding="));
     const yearsText = hasYears ? takeOption(args, "--years") ?? "" : undefined;
     const withholdingText = hasWithholding ? takeOption(args, "--withholding") ?? "" : undefined;
+    const real = takeFlag(args, "--real");
     const hasFrom = args.some((arg) => arg === "--from" || arg.startsWith("--from="));
     const hasTo = args.some((arg) => arg === "--to" || arg.startsWith("--to="));
     const fromText = hasFrom ? takeOption(args, "--from") ?? "" : undefined;
     const toText = hasTo ? takeOption(args, "--to") ?? "" : undefined;
     // A bare name shows the portfolio, as `show` does.
     const shows = action === "show" || (action != null && !KNOWN_ACTIONS.has(action));
-    const periodUsage = "Usage: gloom portfolio show <name> --from <date> [--to <date>]";
+    const periodUsage = "Usage: gloom portfolio show <name> --from <date> [--to <date>] [--real]";
+    if (real && !shows) ctx.fail(`--real is an option of portfolio show --from, not portfolio ${action ?? "list"}.`, periodUsage);
+    if (real && !hasFrom) ctx.fail("--real deflates the return between two dates by consumer prices; add --from <date>.", periodUsage);
     if ((hasFrom || hasTo) && !shows) ctx.fail(`${hasFrom ? "--from" : "--to"} is an option of portfolio show, not portfolio ${action ?? "list"}.`, periodUsage);
     let period: PriceWindow | undefined;
     try {
@@ -1121,7 +1125,7 @@ export const portfolioCliCommand: CliCommandDef = {
     if (action === "show") {
       const name = args.slice(1).join(" ");
       if (!name) ctx.fail("Usage: gloom portfolio show <name> [--close] [--explain] [--drip] [--from <date> [--to <date>]]");
-      await showCollection(name, ctx, { explain, basis, drip, ...(period ? { period } : {}) });
+      await showCollection(name, ctx, { explain, basis, drip, ...(period ? { period } : {}), ...(real ? { real } : {}) });
       return;
     }
 

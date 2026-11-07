@@ -48,8 +48,7 @@ import {
   runPaneFunctionHelp,
   runPaneScreenshot,
 } from "./pane-functions";
-import { catalogPointer, tickerPointer, type CatalogCommandHit } from "./unknown-command";
-import { bankFigurePointer, exportCommandPointer } from "./known-gaps";
+import { type UnknownCommandPointers, unknownCommandReply } from "./unknown-command";
 import { catalogFredSeriesIds } from "./series-search";
 import { primeBoardCoins } from "./board-coins";
 
@@ -353,17 +352,6 @@ function nearCommand(token: string, commands: CliCommandDef[]): string | null {
   );
 }
 
-interface UnknownCommandPointers {
-  /** The word is a function's code: the command that runs it. */
-  fn: { code: string; command: string } | null;
-  /** The word is a slip from one function's code (RCDF for RDCF), read only when it is no code, no command is close to it and the catalog finds nothing for it. */
-  nearFn: { code: string; label: string; command: string } | null;
-  /** Functions the catalog finds for the word, read only when it is no code and no command is close to it. */
-  hits: CatalogCommandHit[];
-  /** What the reader typed after the word, which a pointer runs the function with. */
-  args: readonly string[];
-}
-
 /** What an unknown command word may point at: a function's code first, then what the catalog finds for it. */
 async function unknownCommandPointers(
   ctx: CliCommandContext,
@@ -379,32 +367,12 @@ async function unknownCommandPointers(
   return { fn, nearFn, hits, args };
 }
 
-/**
- * A function's code is pointed at `fn`; a typo of a command at the command;
- * a typo of a function's code (`RCDF`) at that function; a word the catalog
- * knows (`comps`, `peers`) at the functions it finds. A word written as a
- * ticker (`PLTR`) is also pointed at `quote` and `search`.
- */
+/** An unknown command word, answered as unknownCommandReply says. */
 function failUnknownCommand(token: string, commands: CliCommandDef[], pointers: UnknownCommandPointers): never {
-  if (pointers.fn) fail(`${pointers.fn.code} is a function: ${pointers.fn.command}`);
-  // A bank figure's name (`nim JPM`, `deposits WFC`) is where it is: the Bank section of fundamentals, NIM in EQS.
-  const bank = bankFigurePointer(token, pointers.args[0] ?? "");
-  if (bank) fail(`Unknown command "${token}": a bank's figures are in the Bank section of fundamentals.`, bank.details);
-  const ticker = tickerPointer(token);
-  const suggestion = nearCommand(token, commands);
-  if (!suggestion && pointers.nearFn) {
-    fail(
-      `Unknown command "${token}". Did you mean the function ${pointers.nearFn.code} (${pointers.nearFn.label})?`,
-      [`Run: ${pointers.nearFn.command}`, ticker].filter(Boolean).join("\n"),
-    );
-  }
-  // Exporting is a flag, not a command: `export LMT` says how, rather than listing functions that mention exports.
-  const exported = suggestion ? null : exportCommandPointer(token, pointers.args);
-  const catalog = suggestion ? null : exported ?? catalogPointer(token, pointers.hits, pointers.args);
-  const help = suggestion
-    ? `Did you mean ${suggestion}? Run gloom help to see every command.`
-    : catalog ? `${catalog}\nRun gloom help to see every command.` : "Run gloom help to see every command.";
-  fail(`Unknown command "${token}".`, ticker ? `${ticker}\n${help}` : help);
+  const reply = unknownCommandReply(token,
+    commands.map((command) => ({ name: command.name, usage: command.help?.usage ?? [] })),
+    pointers, nearCommand(token, commands));
+  fail(reply.message, reply.details);
 }
 
 const CLI_DESCRIPTION = "Market research and portfolio tracker for the terminal";
