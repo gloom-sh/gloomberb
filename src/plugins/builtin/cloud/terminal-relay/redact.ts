@@ -2,9 +2,9 @@
  * Configuration holds broker passwords, API secrets and plugin tokens, and
  * pane settings, pane state, layouts and the UI tree are free-form maps that
  * can carry the same (a token a plugin keeps in its settings, a password
- * typed into a form). Everything the relay sends back passes through here,
- * with every such value replaced, so a prompt-injected assistant cannot copy
- * a credential out of the terminal.
+ * typed into a form). Everything the relay and Ask Gloom send back passes
+ * through here, with every such value replaced, so an assistant steered by
+ * what it reads cannot copy a credential out of the terminal.
  */
 const SECRET_KEY = /(pass(word|phrase)?|secret|token|api[-_]?key|private[-_]?key|credential|cookie)/i;
 /** Fields of a form field or input that hold what was typed. */
@@ -15,18 +15,20 @@ function isPasswordField(record: Record<string, unknown>): boolean {
   return record.fieldType === "password" || record.inputType === "password" || record.type === "password";
 }
 
-function redactSecrets(value: unknown, depth = 0): unknown {
+/** `withheld` hears each value replaced, so the credentials themselves can be listed. */
+function redactSecrets(value: unknown, depth = 0, withheld?: (secret: unknown) => void): unknown {
   if (depth > 32 || value === null || typeof value !== "object") return value;
-  if (Array.isArray(value)) return value.map((entry) => redactSecrets(entry, depth + 1));
+  if (Array.isArray(value)) return value.map((entry) => redactSecrets(entry, depth + 1, withheld));
   const record = value as Record<string, unknown>;
   const password = isPasswordField(record);
   const result: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(record)) {
     const filled = entry !== null && entry !== undefined && entry !== "" && typeof entry !== "boolean";
     if (filled && (SECRET_KEY.test(key) || (password && TYPED_VALUE_KEYS.includes(key)))) {
+      withheld?.(entry);
       result[key] = REDACTED;
     } else {
-      result[key] = redactSecrets(entry, depth + 1);
+      result[key] = redactSecrets(entry, depth + 1, withheld);
     }
   }
   return result;
@@ -70,4 +72,43 @@ export function redactResource(resource: string, value: unknown): unknown {
 /** The last step before any answer leaves the app: every free-form map, at any depth. */
 export function redactRelayResult<T>(result: T): T {
   return redactSecrets(result) as T;
+}
+
+/**
+ * Shorter values are left to the key-based pass: as plain text they would
+ * match ordinary words and numbers in a result.
+ */
+const MIN_CREDENTIAL_LENGTH = 8;
+
+/**
+ * The credentials this configuration stores, as text, longest first: every
+ * value the key-based pass withholds. Other broker profile settings (a host,
+ * an account number) are withheld from configuration too, but they are not
+ * secrets a pane's rows must lose.
+ */
+export function storedCredentials(config: unknown): string[] {
+  const found = new Set<string>();
+  redactSecrets(config, 0, (secret) => {
+    if (typeof secret === "string" && secret.trim().length >= MIN_CREDENTIAL_LENGTH) found.add(secret.trim());
+  });
+  return [...found].sort((left, right) => right.length - left.length);
+}
+
+/**
+ * A result that is not configuration, such as a pane function's rows, is
+ * checked for the stored credentials themselves rather than by its keys: a
+ * column named "token" there is a crypto token, not a secret. Any text that
+ * holds one has it replaced.
+ */
+export function withoutStoredCredentials<T>(value: T, credentials: readonly string[]): T {
+  if (credentials.length === 0) return value;
+  const strip = (entry: unknown, depth: number): unknown => {
+    if (typeof entry === "string") {
+      return credentials.reduce((text, secret) => (text.includes(secret) ? text.split(secret).join(REDACTED) : text), entry);
+    }
+    if (depth > 32 || entry === null || typeof entry !== "object") return entry;
+    if (Array.isArray(entry)) return entry.map((item) => strip(item, depth + 1));
+    return Object.fromEntries(Object.entries(entry as Record<string, unknown>).map(([key, item]) => [key, strip(item, depth + 1)]));
+  };
+  return strip(value, 0) as T;
 }
