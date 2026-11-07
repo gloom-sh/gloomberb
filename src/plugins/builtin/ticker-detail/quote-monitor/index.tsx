@@ -23,6 +23,7 @@ import { QuoteMonitorCard } from "./card";
 import { useLiveStreamingSetting } from "../../../../state/hooks/live-streaming";
 import { registerPaneTableExporter } from "../../../../state/pane-table-export-registry";
 import { quoteMonitorCsv } from "./export";
+import { getSharedRegistry } from "../../../registry";
 
 interface BoardEntry {
   symbol: string;
@@ -185,7 +186,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
     symbol: entry.symbol,
     instrument: entry.instrument,
     quote: (entry.quoteKey ? resolveEntryData(quoteEntries.get(entry.quoteKey)) : null) ?? financialsBySymbol.get(entry.symbol)?.quote,
-  })));
+  })), Date.now(), (providerId) => getSharedRegistry()?.getBrokerAdapter(providerId)?.name);
   useEffect(() => {
     if (!renderer.saveTextFile) return;
     return registerPaneTableExporter(paneId, (filename) => renderer.saveTextFile!({

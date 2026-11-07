@@ -11,6 +11,7 @@ import { serializeCsv } from "../utils/csv";
 import {
   BLANK_DISPLAY,
   DISPLAY_PLACEHOLDER,
+  figureAsDrawn,
   labelWithUnit,
   parseDisplayNumber,
   type DisplayNumber,
@@ -71,6 +72,8 @@ export interface CliReportColumn<Row = Record<string, unknown>> {
    * rows loaded (a market cap in one currency for some peers, in another for others).
    */
   unitColumn?: boolean;
+  /** CSV and NDJSON write the figure to the digits `format` draws (figureAsDrawn); JSON keeps it whole. */
+  exportAsShown?: boolean;
 }
 
 /** A label/value line of a report. `unit` names the unit of a numeric `value` when `formatted` cannot say it. */
@@ -477,9 +480,10 @@ export function exportRowsTable<Row extends Record<string, unknown>>(
     const { header, cells } = resolveColumn(
       column.header,
       rows.map((row, index): Cell => {
-        const value = values[index];
         const unit = column.unitKey ? (row as Record<string, unknown> | undefined)?.[column.unitKey] : undefined;
-        const drawn = column.format ? column.format(value, row) : null;
+        const drawn = column.format ? column.format(values[index], row) : null;
+        const value = column.exportAsShown && drawn != null && typeof values[index] === "number"
+          ? figureAsDrawn(values[index], drawn) : values[index];
         // A figure the text leaves out of this row (another session's print) is not one of its figures.
         const left = drawn != null && readDisplay(drawn) === BLANK_DISPLAY;
         if (!left && typeof value === "number" && Number.isFinite(value) && (inRowUnit || (typeof unit === "string" && unit))) {

@@ -353,7 +353,9 @@ export function TickerListTableView({
   const exportIdentity = useMemo(() => ({
     headers: QUOTE_EXPORT_IDENTITY_HEADERS,
     cells: (ticker: TickerRecord) => isTickerRow(ticker)
-      ? quoteExportIdentityCells(exportedListingKey(ticker), financialsRef.current.get(ticker.metadata.ticker)?.quote)
+      ? quoteExportIdentityCells(exportedListingKey(ticker), financialsRef.current.get(ticker.metadata.ticker)?.quote, Date.now(),
+        // A broker's quote names the broker as its source.
+        (providerId) => getSharedRegistry()?.getBrokerAdapter(providerId)?.name)
       : null,
   }), []);
 

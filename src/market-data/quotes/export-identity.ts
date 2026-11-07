@@ -35,6 +35,20 @@ export function quoteExportUnit(symbol: string, quote: Pick<Quote, "currency" | 
   return currency;
 }
 
+/** A broker's name by the id its quotes carry (`ibkr`: Interactive Brokers); null for no broker of that id. */
+export type BrokerNameOf = (providerId: string) => string | null | undefined;
+
+/**
+ * Where a quote is from, as an export's `source` names it: Gloom Cloud, or
+ * the broker whose feed it is, by its name. Blank for a source with no name
+ * to give, never its internal id.
+ */
+export function quoteSourceName(quote: Pick<Quote, "providerId"> | null | undefined, brokerName?: BrokerNameOf): string {
+  if (!quote) return "";
+  if (!quote.providerId || quote.providerId === CLOUD_PROVIDER_ID) return CLOUD_SOURCE;
+  return brokerName?.(quote.providerId)?.trim() || "";
+}
+
 /** Whether a quote's feed is live, delayed or stale, as the Feed cell of `quote` says it. */
 export function quoteExportFeed(quote: Quote | null | undefined, now = Date.now()): string {
   if (!quote) return "";
@@ -47,7 +61,7 @@ export function quoteExportFeed(quote: Quote | null | undefined, now = Date.now(
  * row's listing with its venue (BA:LSE), the as-of the ISO instant its Last
  * was observed (each row its own: Hong Kong's close beside New York's).
  */
-export function quoteExportIdentityCells(listing: string, quote: Quote | null | undefined, now = Date.now()): string[] {
+export function quoteExportIdentityCells(listing: string, quote: Quote | null | undefined, now = Date.now(), brokerName?: BrokerNameOf): string[] {
   const asOf = quote?.lastUpdated ? new Date(quoteHeadlineTime(quote)).toISOString() : "";
   return [
     quote ? quoteSessionStateLabel(quote, now) ?? "" : "",
@@ -56,7 +70,7 @@ export function quoteExportIdentityCells(listing: string, quote: Quote | null | 
     listing,
     quoteExportUnit(listing, quote) ?? "",
     "",
-    quote && (!quote.providerId || quote.providerId === CLOUD_PROVIDER_ID) ? CLOUD_SOURCE : "",
+    quoteSourceName(quote, brokerName),
     asOf,
   ];
 }
