@@ -34,7 +34,9 @@ export async function saveAlerts(
     // A list never written that stays empty (moves, on a profile without them) is left unwritten.
     if (current === value || (current == null && value === "[]")) continue;
     // Move rules that read as the ones to write are left as written, whatever the order of their fields: a check changes no rule.
-    if (key === MOVE_ALERTS_KEY && !stores.errors[key] && serializeAlerts(deserializeAlerts(current).map(moveRuleOnly)) === value) continue;
+    // A list an older app wrote, without `syncsMoveDay`, is written once more, so Gloom Cloud may judge its rules.
+    if (key === MOVE_ALERTS_KEY && !stores.errors[key] && serializeAlerts(deserializeAlerts(current).map(moveRuleOnly)) === value
+      && deserializeAlerts(current).every((alert) => alert.syncsMoveDay === true)) continue;
     await ctx.configState.set(key, value);
   }
 }

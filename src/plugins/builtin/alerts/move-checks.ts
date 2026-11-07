@@ -140,7 +140,8 @@ export function moveChecksOf(alerts: readonly AlertRule[]): Record<string, MoveC
  * check writes the list another device pulls. Always active there: whether
  * it went off this session is this device's to say. The latest session it
  * went off in (`moveDay`) goes with it, so Gloom Cloud never alerts on that
- * session again; it changes at most once a session.
+ * session again; it changes at most once a session. `syncsMoveDay` says this
+ * app keeps `moveDay`, so Gloom Cloud may judge the rule.
  */
 export function moveRuleOnly(alert: AlertRule): AlertRule {
   return {
@@ -155,5 +156,6 @@ export function moveRuleOnly(alert: AlertRule): AlertRule {
     ...alert.message ? { message: alert.message } : {},
     ...alert.moveDay ? { moveDay: alert.moveDay } : {},
     move: true,
+    syncsMoveDay: true,
   };
 }

@@ -844,7 +844,7 @@ test("the poll asks for move rules' quotes a hundred to a request, and keeps the
     // Every rule went off and was read; the synced list is the rules as they were, with the session each went off in.
     const synced = deserializeAlerts(store.get("moveAlerts"));
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(Date.now());
-    expect(synced).toEqual(rules.map((rule) => ({ ...rule, moveDay: today })));
+    expect(synced).toEqual(rules.map((rule) => ({ ...rule, moveDay: today, syncsMoveDay: true })));
     const checks = device.get("moveChecks") as Record<string, { percent: number; fired: boolean }>;
     expect(Object.keys(checks)).toHaveLength(150);
     expect(checks.m0).toMatchObject({ percent: -4, fired: true });

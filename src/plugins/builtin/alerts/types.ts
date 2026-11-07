@@ -25,6 +25,12 @@ export interface AlertRule {
    * pushes or emails a session the app already alerted on.
    */
   moveDay?: string;
+  /**
+   * Written on every synced move rule by an app that syncs `moveDay`. Gloom
+   * Cloud judges only rules that carry it: an older app alerts on its own and
+   * syncs nothing of it, and drops the field when it rewrites the list.
+   */
+  syncsMoveDay?: true;
   /** What the last move read was measured from, as its quote's change line names it. */
   lastMoveBasis?: QuoteChangeBasis;
   lastDailyClose?: string;
