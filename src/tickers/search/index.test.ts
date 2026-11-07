@@ -491,6 +491,20 @@ describe("ticker-search utilities", () => {
     expect(await resolveTickerSearch({ query: "ttf", activeTicker: null, tickers: new Map(), dataProvider })).toMatchObject({ kind: "provider", symbol: "TTF=F" });
   });
 
+  test("a listing's old name and symbol lead to the one it trades as now, saying what it was, without the stale row", async () => {
+    // Search on 7 Nov 2026: "eletrobras" listed nothing, and "AXIA3" listed a stale ELET3 B3 row under the new name.
+    const dataProvider = createTestDataProvider({
+      search: async (query) => query === "AXIA3"
+        ? [makeSearchResult("AXIA3", "AXIA Energia S.A.", { exchange: "B3", type: "EQUITY" })]
+        : query.startsWith("ELET3") ? [makeSearchResult("ELET3", "AXIA Energia S.A.", { exchange: "B3", type: "EQUITY" })] : [],
+    });
+    for (const query of ["eletrobras", "ELET3", "ELET3.SA"]) {
+      const candidates = await searchTickerCandidates({ query, tickers: new Map(), dataProvider });
+      expect(candidates.map((item) => `${item.symbol}:${item.result?.exchange}`), query).toEqual(["AXIA3:B3"]);
+      expect(candidates[0]!.result?.formerName).toBe("Eletrobras (ELET3)");
+    }
+  });
+
   test("a trailing class code keeps that class and also asks for its market spelling", async () => {
     const asked: string[] = [];
     const dataProvider = createTestDataProvider({

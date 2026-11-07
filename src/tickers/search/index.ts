@@ -35,6 +35,7 @@ import {
 } from "./result";
 
 import { typedPerpetualListing } from "../perpetual-listing";
+import { renamedListingFor, type RenamedListing } from "../renamed-listings";
 import { endsInLegalForm, readNearMissListing, readVenueFirstListing, readTerminalListingCode } from "../terminal-codes";
 import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
 import { settleWithin } from "../../utils/async-deadline";
@@ -268,13 +269,19 @@ export async function searchTickerCandidates({
     // A search that hides contracts still shows them when asked: "AAPL OPT".
     includeOptionContracts: includeOptionContracts || parseAssetClassQuery(query)?.code === "OPT",
   });
-  const { results, busy, unreachable } = await searchProviderResults(
-    dataProvider,
-    query,
-    searchContext,
-    onPartial ? (found) => onPartial(assemble(found)) : undefined,
-    true,
-  );
+  const renamed = renamedListingFor(rawQuery);
+  const [searched, renamedRow] = await Promise.all([
+    searchProviderResults(
+      dataProvider,
+      query,
+      searchContext,
+      onPartial ? (found) => onPartial(assemble(found)) : undefined,
+      true,
+    ),
+    renamed ? renamedListingRow(dataProvider, renamed, searchContext) : null,
+  ]);
+  const { busy, unreachable } = searched;
+  const results = renamedRow ? withRenamedListingRow(searched.results, renamedRow) : searched.results;
   // The symbol's lines are named at once the next time it is typed. An answer that may have
   // been cut short and found none of the lines leaves the ones search named before standing,
   // as the bar showed them, unless the search was a broker account's own.
@@ -320,6 +327,34 @@ export function buildTickerSearchCandidates({
   const providerItems = createProviderTickerSearchCandidates(filteredProviderResults, tickers, candidateOptions);
   const ranked = withHomeListingLead(withSuccessorFirst(rankTickerSearchItems([...localItems, ...providerItems], query), query), query);
   return limitTickerSearchCandidates(companyListingsFirst(assignTickerSearchCategories(ranked, query), query), totalLimit, localLimit);
+}
+
+/**
+ * The row of the listing a renamed one moved to (AXIA3 for ELET3 or
+ * "eletrobras"), as search lists it under its new symbol, carrying the old
+ * name and symbol so it answers to them and says what it was. Null when
+ * search does not list it.
+ */
+async function renamedListingRow(
+  dataProvider: DataProvider,
+  renamed: RenamedListing,
+  searchContext?: SearchRequestContext,
+): Promise<InstrumentSearchResult | null> {
+  const found = await searchProviderResults(dataProvider, renamed.to, searchContext).catch(() => null);
+  const row = found?.results.find((result) => result.symbol.toUpperCase() === renamed.to
+    && canonicalExchange(result.exchange) === canonicalExchange(renamed.exchange));
+  return row ? {
+    ...row,
+    searchAliases: [...new Set([...(row.searchAliases ?? []), renamed.formerName, renamed.from, `${renamed.from}${renamed.suffix}`])],
+    formerName: `${renamed.formerName} (${renamed.from})`,
+  } : null;
+}
+
+/** Search's rows with the renamed listing's row first, in place of the row it already had of it and of its old symbol on the venue. */
+function withRenamedListingRow(results: InstrumentSearchResult[], row: InstrumentSearchResult): InstrumentSearchResult[] {
+  const venue = canonicalExchange(row.exchange);
+  return [row, ...results.filter((result) => canonicalExchange(result.exchange) !== venue
+    || (result.symbol.toUpperCase() !== row.symbol.toUpperCase() && !row.searchAliases?.includes(result.symbol.toUpperCase())))];
 }
 
 /** Whether a query is the start of a merged company's name, as the service matched it ("Golden Ocean"). */
