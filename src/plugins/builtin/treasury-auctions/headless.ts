@@ -2,6 +2,8 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
+import type { HeadlessPaneColumn } from "../../../types/headless";
+import { afterLoadWindow, afterWindowStart, AUCTION_VIEWS, loadAuctionCurves, projectAuctionAfter, type AuctionCurveRead, type AuctionView } from "./after";
 import { formatCompact } from "../../../utils/format";
 import { AUCTION_HISTORY_ALL, AUCTION_HISTORY_START, fetchTreasuryAuctions, type AuctionHistoryWindow } from "./client";
 import { loadTreasuryAuctions, type TreasuryAuctionsResult } from "./cache";
@@ -11,20 +13,28 @@ import { FIXED_INCOME_VIEW_STATE } from "../fixed-income/model";
 import {
   AUCTION_HISTORY_WINDOWS,
   AUCTION_SEARCH_FIELDS,
+  AUCTION_SORT_NAMES,
   auctionHistoryPhrase,
   auctionHistoryWindow,
   auctionSize,
+  auctionSortColumn,
   dealerPct,
   DEFAULT_AUCTION_SORT,
   directPct,
+  firstAuctionSortDirection,
   formatAuctionRate,
   indirectPct,
+  isAfterColumn,
+  isBill,
   isPendingAuction,
+  namesOtherMarket,
   nextAuctionHistoryWindow,
+  rateColumnLabel,
   rateQualifier,
   rateValue,
-  stopOutVsAverageBp,
+  stopOutVsMedianBp,
   visibleAuctions,
+  widerWindowCouldAdd,
   type AuctionFilter,
 } from "./model";
 
@@ -40,7 +50,7 @@ const RESULTS_NOT_PUBLISHED = "results not published";
 const pending = (row: Record<string, unknown>) => isPendingAuction(row as unknown as TreasuryAuction);
 
 /** Why the stop-out column is not a tail; the docs page says the same at length. */
-const STOP_OUT_NOTE = "Stop-out vs avg is the high yield minus the average/median yield, in bp (bills: discount rates). "
+const STOP_OUT_NOTE = "Stop-out vs median is the high yield minus the median yield, in bp (bills: discount rates). "
   + "A true tail, the stop-out against the 1 pm when-issued yield, needs the when-issued yield, which the source does not carry.";
 
 const MISSING_METRICS_NOTE = "A blank B/C or bidder share is one the source does not have for that auction: "
@@ -61,7 +71,7 @@ const rateCell = (value: unknown, row: Record<string, unknown>) => {
   return qualifier ? `${text} ${qualifier}` : text;
 };
 
-const COLUMNS = [
+const LEAD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "auctionDate", header: "Date" },
   { key: "secType", header: "Type" },
   { key: "securityTerm", header: "Term" },
@@ -74,8 +84,17 @@ const COLUMNS = [
     ),
     textFormat: rateCell,
   },
+];
+
+/** A bill's high discount rate, beside the investment rate its Rate is: the rate Treasury's announcement leads with. */
+const DISCOUNT_RATE_COLUMN: HeadlessPaneColumn = {
+  key: "highDiscountRate", header: "Discount rate", align: "right" as const,
+  format: (value: unknown, row: Record<string, unknown>) => value == null ? pending(row) ? "" : "-" : `${Number(value).toFixed(3)}%`,
+};
+
+const RESULT_COLUMNS: HeadlessPaneColumn[] = [
   {
-    key: "stopOutVsAvgBp", header: "Stop-out vs avg (bp)", align: "right" as const,
+    key: "stopOutVsMedianBp", header: "Stop-out vs median (bp)", align: "right" as const,
     format: (value: unknown, row: Record<string, unknown>) => value == null ? pending(row) ? "" : "-" : Number(value).toFixed(1),
   },
   { key: "bidToCoverRatio", header: "B/C", align: "right" as const, format: (value: unknown) => value == null ? "" : Number(value).toFixed(2) },
@@ -86,22 +105,51 @@ const COLUMNS = [
   { key: "cusip", header: "CUSIP" },
 ];
 
+const percentile = (value: unknown) => value == null ? "" : String(value);
+const bpMove = (value: unknown) => value == null ? "" : `${Number(value) > 0 ? "+" : ""}${Number(value).toFixed(0)}`;
+
+/** The after view: each auction against its tenor's last 24, and the matching Treasury yield's moves after it. */
+const AFTER_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "bidToCoverRatio", header: "B/C", align: "right" as const, format: (value: unknown) => value == null ? "" : Number(value).toFixed(2) },
+  { key: "btcPercentile", header: "B/C pctl", align: "right" as const, format: percentile },
+  { key: "indirectPercentile", header: "Indirect pctl", align: "right" as const, format: percentile },
+  { key: "dealerPercentile", header: "Dealer pctl", align: "right" as const, format: percentile },
+  { key: "cmt", header: "Yield", description: "The Treasury par yield the moves are read on: the auction's tenor, real for a TIPS." },
+  { key: "after1d", header: "+1d (bp)", align: "right" as const, format: bpMove },
+  { key: "after5d", header: "+5d (bp)", align: "right" as const, format: bpMove },
+  { key: "after20d", header: "+20d (bp)", align: "right" as const, format: bpMove },
+  { key: "cusip", header: "CUSIP" },
+];
+
+/** The columns a board lists: a bill board heads its rate as the investment rate and puts the discount rate beside it. */
+function columnsFor(view: AuctionView, auctions: readonly TreasuryAuction[]): HeadlessPaneColumn[] {
+  const rate = { ...LEAD_COLUMNS[3]!, textHeader: rateColumnLabel(auctions, "report") };
+  const discount = auctions.some(isBill) ? [DISCOUNT_RATE_COLUMN] : [];
+  return [...LEAD_COLUMNS.slice(0, 3), rate, ...discount, ...view === "after" ? AFTER_COLUMNS : RESULT_COLUMNS];
+}
+
+const AFTER_NOTE = "Percentiles rank each auction against its tenor's previous 24 (at least 12); the moves are the Treasury par yield "
+  + "of its tenor (real for TIPS) from the auction day's close, in bp. Treasury par yields start in 1990, real yields in 2003.";
+
 interface TreasuryAuctionsHeadlessDependencies {
   load(args: HeadlessPaneLoadArgs, window: AuctionHistoryWindow): Promise<TreasuryAuctionsResult>;
+  curves(shown: readonly TreasuryAuction[]): Promise<AuctionCurveRead>;
 }
 
 const defaultDependencies: TreasuryAuctionsHeadlessDependencies = {
   load: (_args, window) => loadTreasuryAuctions(false, fetchTreasuryAuctions, window),
+  curves: (shown) => loadAuctionCurves(shown),
 };
 
-/** An empty table says what was searched, in which window, and what the search understands. */
+/** An empty table says what was searched, in which window, and what the search understands; another market's paper, what AUCT covers. */
 function emptyNote(query: string, filter: AuctionFilter, historyDays: AuctionHistoryWindow): string {
+  if (namesOtherMarket(query)) return `AUCT covers US Treasury auctions; "${query.trim()}" is not one. Search by ${AUCTION_SEARCH_FIELDS}.`;
   const searched = query.trim() ? `match "${query.trim()}"` : "found";
   const group = filter === "all" ? "" : ` in the ${filter} group`;
   return `No auctions ${searched}${group} in ${auctionHistoryPhrase(historyDays)}. Search by ${AUCTION_SEARCH_FIELDS}.`;
 }
 
-function createTreasuryAuctionsHeadless(
+export function createTreasuryAuctionsHeadless(
   dependencies: TreasuryAuctionsHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   return {
@@ -119,6 +167,7 @@ function createTreasuryAuctionsHeadless(
         aliases: ["history"],
         settingKey: "historyDays",
         description: `Auction history window in days, up to 3650 (10 years), or all: every auction since ${AUCTION_HISTORY_START}.`,
+        example: "--history-days 3650",
         type: "enum",
         values: AUCTION_HISTORY_WINDOWS.map((days) => ({ value: String(days) })),
         defaultValue: "120",
@@ -131,8 +180,25 @@ function createTreasuryAuctionsHeadless(
         defaultValue: "all",
         pluginState: { pluginId: FIXED_INCOME_VIEW_STATE.treasuryAuctions, key: "activeTab" },
       },
+      {
+        key: "view",
+        description: "results: each auction's figures; after: its B/C, indirect and dealer percentiles against the tenor's last 24 auctions, and the matching Treasury yield's change 1, 5 and 20 sessions later (bp).",
+        type: "enum",
+        values: AUCTION_VIEWS.map((value) => ({ value })),
+        defaultValue: "results",
+        example: "7Y --view after --history-days 3650",
+        pluginState: { pluginId: FIXED_INCOME_VIEW_STATE.treasuryAuctions, key: "view" },
+      },
+      {
+        key: "sort",
+        description: "Row order, by a column: largest first for a figure, newest first for date, A to Z for type and term. An after-view column (btc-pctl, 1d...) shows the after view.",
+        type: "enum",
+        values: AUCTION_SORT_NAMES.map((entry) => ({ value: entry.value, ...(entry.aliases ? { aliases: entry.aliases } : {}) })),
+        example: "7Y --view after --sort btc-pctl",
+        pluginState: { pluginId: FIXED_INCOME_VIEW_STATE.treasuryAuctions, key: "sortColumn" },
+      },
     ],
-    columns: COLUMNS,
+    columns: columnsFor("results", []),
     describe: (args) => {
       const window = auctionHistoryWindow({ historyDays: args.options.historyDays });
       return `Treasury Auctions | ${window === AUCTION_HISTORY_ALL ? "all" : `${window} days`} | ${String(args.options.filter)}`;
@@ -140,40 +206,50 @@ function createTreasuryAuctionsHeadless(
     async load(args) {
       const historyDays = auctionHistoryWindow({ historyDays: args.options.historyDays });
       const filter = args.options.filter as AuctionFilter;
-      const result = await dependencies.load(args, historyDays);
+      const sortColumn = typeof args.options.sort === "string" ? auctionSortColumn(args.options.sort) : null;
+      // A sort by an after-view column is a request for that view.
+      const view: AuctionView = args.options.view === "after" || (sortColumn && isAfterColumn(sortColumn)) ? "after" : "results";
+      const sort = sortColumn ? { columnId: sortColumn, direction: firstAuctionSortDirection(sortColumn) } : DEFAULT_AUCTION_SORT;
+      // The after view reads two more years than it lists, for the oldest rows' percentiles.
+      const result = await dependencies.load(args, view === "after" ? afterLoadWindow(historyDays) : historyDays);
       const query = typeof args.argument === "string" ? args.argument : "";
-      const auctions = visibleAuctions(result.auctions, {
-        filter,
-        query,
-        sort: DEFAULT_AUCTION_SORT,
-      });
-      const nextWindow = nextAuctionHistoryWindow(historyDays);
+      const from = view === "after" ? afterWindowStart(historyDays) : undefined;
+      const listed = visibleAuctions(result.auctions, { filter, query, sort: DEFAULT_AUCTION_SORT, from });
+      const curves = view === "after" ? await dependencies.curves(listed) : null;
+      const after = curves ? projectAuctionAfter(listed, result.auctions, curves.curves) : null;
+      const auctions = sortColumn ? visibleAuctions(listed, { filter: "all", query: "", sort, ...(after ? { after } : {}) }) : listed;
       const notes = [
         ...(auctions.length === 0 ? [emptyNote(query, filter, historyDays)] : []),
-        // ALL is the whole history: nothing older to point to.
-        ...(nextWindow ? [`Older auctions: use --historyDays ${nextWindow}.`] : []),
-        ...(auctions.length > 0 ? [STOP_OUT_NOTE] : []),
+        // Only where a longer window could list more: never past ALL, for another market, or for a CUSIP whose first auction is listed.
+        ...(nextAuctionHistoryWindow(historyDays) && widerWindowCouldAdd(query, auctions, historyDays)
+          ? [`Older auctions: use --history-days ${nextAuctionHistoryWindow(historyDays)}.`] : []),
+        ...(auctions.length > 0 && view === "results" ? [STOP_OUT_NOTE] : []),
+        ...(auctions.length > 0 && view === "after" ? [AFTER_NOTE] : []),
         ...(auctions.some(lacksMetrics) ? [MISSING_METRICS_NOTE] : []),
       ];
       return {
-        complete: !result.refreshError,
+        complete: !result.refreshError && !curves?.errors.length,
         // A saved copy answering the failed refresh ends the report by saying when it was saved instead.
-        errors: [unansweredRefreshError(result)].filter((error): error is string => !!error),
+        errors: [unansweredRefreshError(result), ...curves?.errors ?? []].filter((error): error is string => !!error),
         notes,
+        columns: columnsFor(view, auctions),
         rows: auctions.map((auction) => ({
           ...auction,
           rate: rateValue(auction),
-          stopOutVsAvgBp: stopOutVsAverageBp(auction),
+          stopOutVsMedianBp: stopOutVsMedianBp(auction),
           indirectPercent: indirectPct(auction),
           directPercent: directPct(auction),
           dealerPercent: dealerPct(auction),
           size: auctionSize(auction),
+          ...(after ? after.get(auction.id) : {}),
         })),
         metadata: {
           fetchedAt: result.fetchedAt,
           stale: result.stale,
           historyDays,
           filter,
+          view,
+          ...(sortColumn ? { sort: args.options.sort } : {}),
         },
       };
     },

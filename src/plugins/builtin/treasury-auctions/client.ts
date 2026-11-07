@@ -14,6 +14,7 @@ const FIELDS = [
   "high_investment_rate",
   "high_yield",
   "avg_med_yield",
+  "low_yield",
   "high_price",
   "low_price",
   "avg_med_price",
@@ -29,6 +30,7 @@ const FIELDS = [
   "high_discnt_margin",
   "high_discnt_rate",
   "avg_med_discnt_rate",
+  "low_discnt_rate",
 ].join(",");
 
 export const AUCTION_HISTORY_DAYS = 120;
@@ -123,6 +125,29 @@ function toNumber(value: string | undefined | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/**
+ * A high and low in the order the auction cleared them. Fiscal Data has some
+ * early rows the other way round (the 30-year bond of 1982-02-04: high 14.47%,
+ * median 14.56%, low 14.61%): a high below its low is read swapped when the
+ * median sits between them, and dropped when it does not, so neither reaches
+ * the stop-out as a negative spread. Prices follow a swapped pair.
+ */
+export function inClearingOrder(auction: TreasuryAuction): TreasuryAuction {
+  let next = auction;
+  for (const [high, median, low] of [["highYield", "avgMedYield", "lowYield"], ["highDiscountRate", "avgMedDiscountRate", "lowDiscountRate"]] as const) {
+    const top = next[high], bottom = next[low], middle = next[median];
+    if (top == null || bottom == null || top >= bottom) continue;
+    if (middle != null && middle >= top && middle <= bottom) {
+      const prices = next.highPrice != null && next.lowPrice != null && next.highPrice > next.lowPrice
+        ? { highPrice: next.lowPrice, lowPrice: next.highPrice } : {};
+      next = { ...next, [high]: bottom, [low]: top, ...prices };
+    } else {
+      next = { ...next, [high]: null, [low]: null };
+    }
+  }
+  return next;
+}
+
 export function normalizeAuction(raw: unknown): TreasuryAuction | null {
   if (!raw || typeof raw !== "object") return null;
   const record = raw as TreasuryAuctionRaw;
@@ -132,7 +157,7 @@ export function normalizeAuction(raw: unknown): TreasuryAuction | null {
   const cusip = (record.cusip ?? "").trim();
   if (!secType || !auctionDate) return null;
 
-  return {
+  return inClearingOrder({
     // A reopening reuses its original CUSIP but is auctioned on its own date,
     // so CUSIP plus date is what keeps reopenings from collapsing into one row.
     id: cusip ? `${cusip}|${auctionDate}` : `${secType}|${auctionDate}|${securityTerm}`,
@@ -145,9 +170,11 @@ export function normalizeAuction(raw: unknown): TreasuryAuction | null {
     highInvestmentRate: toNumber(record.high_investment_rate),
     highDiscountRate: toNumber(record.high_discnt_rate),
     avgMedDiscountRate: toNumber(record.avg_med_discnt_rate),
+    lowDiscountRate: toNumber(record.low_discnt_rate),
     highDiscountMargin: toNumber(record.high_discnt_margin),
     highYield: toNumber(record.high_yield),
     avgMedYield: toNumber(record.avg_med_yield),
+    lowYield: toNumber(record.low_yield),
     highPrice: toNumber(record.high_price),
     lowPrice: toNumber(record.low_price),
     avgMedPrice: toNumber(record.avg_med_price),
@@ -158,7 +185,7 @@ export function normalizeAuction(raw: unknown): TreasuryAuction | null {
     primaryDealerAccepted: toNumber(record.primary_dealer_accepted),
     totalAccepted: toNumber(record.total_accepted),
     offeringAmount: toNumber(record.offering_amt),
-  };
+  });
 }
 
 export function parseTreasuryAuctionsPayload(body: unknown): TreasuryAuction[] {

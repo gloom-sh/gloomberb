@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
   AUCTION_HISTORY_WINDOWS,
   DEFAULT_AUCTION_SORT,
+  auctionHistoryLabel,
   auctionHistoryWindow,
+  buildAuctionColumns,
+  namesOtherMarket,
+  parseAuctionCommandArg,
+  widerWindowCouldAdd,
   auctionSize,
   dealerPct,
   directPct,
@@ -15,7 +20,7 @@ import {
   nextFilter,
   rateLabel,
   rateValue,
-  stopOutVsAverageBp,
+  stopOutVsMedianBp,
   termLengthDays,
   visibleAuctions,
 } from "./model";
@@ -111,20 +116,20 @@ describe("auction metrics", () => {
     expect(dealerPct(auction({ secType: "Note", securityTerm: "2-Year", primaryDealerAccepted: 0, competitiveAccepted: 100 }))).toBe(0);
   });
 
-  test("stop-out vs average is the high rate minus the average/median, in basis points", () => {
+  test("stop-out vs median is the high rate minus the median, in basis points", () => {
     // 2026-10-07 10-Year reopening: 5.300% high yield against a 5.255% median.
-    expect(stopOutVsAverageBp(auction({ secType: "Note", securityTerm: "9-Year 10-Month", highYield: 5.3, avgMedYield: 5.255 }))).toBe(4.5);
-    expect(stopOutVsAverageBp(auction({ secType: "TIPS", securityTerm: "10-Year", highYield: 2.438, avgMedYield: 2.43 }))).toBe(0.8);
-    // Bills trade on the discount rate, so that is the pair compared; the investment rate has no average.
-    expect(stopOutVsAverageBp(auction({
+    expect(stopOutVsMedianBp(auction({ secType: "Note", securityTerm: "9-Year 10-Month", highYield: 5.3, avgMedYield: 5.255 }))).toBe(4.5);
+    expect(stopOutVsMedianBp(auction({ secType: "TIPS", securityTerm: "10-Year", highYield: 2.438, avgMedYield: 2.43 }))).toBe(0.8);
+    // Bills trade on the discount rate, so that is the pair compared; the investment rate has no median.
+    expect(stopOutVsMedianBp(auction({
       secType: "Bill", securityTerm: "4-Week",
       highInvestmentRate: 4.048, highDiscountRate: 3.98, avgMedDiscountRate: 3.91,
     }))).toBe(7);
-    // A stop-out on the average is a real zero; a missing leg, an FRN or an unannounced result is unknown.
-    expect(stopOutVsAverageBp(auction({ secType: "Bond", securityTerm: "30-Year", highYield: 5.1, avgMedYield: 5.1 }))).toBe(0);
-    expect(stopOutVsAverageBp(auction({ secType: "Note", securityTerm: "10-Year", highYield: 4.6 }))).toBeNull();
-    expect(stopOutVsAverageBp(auction({ secType: "FRN", securityTerm: "2-Year", highYield: 4.6, avgMedYield: 4.5 }))).toBeNull();
-    expect(stopOutVsAverageBp(auction({ secType: "Bill", securityTerm: "13-Week", highInvestmentRate: 4.1 }))).toBeNull();
+    // A stop-out on the median is a real zero; a missing leg, an FRN or an unannounced result is unknown.
+    expect(stopOutVsMedianBp(auction({ secType: "Bond", securityTerm: "30-Year", highYield: 5.1, avgMedYield: 5.1 }))).toBe(0);
+    expect(stopOutVsMedianBp(auction({ secType: "Note", securityTerm: "10-Year", highYield: 4.6 }))).toBeNull();
+    expect(stopOutVsMedianBp(auction({ secType: "FRN", securityTerm: "2-Year", highYield: 4.6, avgMedYield: 4.5 }))).toBeNull();
+    expect(stopOutVsMedianBp(auction({ secType: "Bill", securityTerm: "13-Week", highInvestmentRate: 4.1 }))).toBeNull();
   });
 
   test("sizes completed and announced auctions by the offering, not SOMA-inflated accepted totals", () => {
@@ -276,6 +281,50 @@ describe("history windows", () => {
     expect(auctionHistoryWindow({ historyDays: "ALL" })).toBe("all");
     expect(auctionHistoryWindow({ historyDays: "7300" })).toBe(120);
     expect(auctionHistoryWindow(undefined)).toBe(120);
+  });
+});
+
+describe("command bar, notes and columns", () => {
+  test("the command bar reads AUCT's flags as fn AUCT does and searches the rest", () => {
+    expect(parseAuctionCommandArg("10Y --history-days 3650")).toEqual({ search: "10Y", historyDays: 3650 });
+    expect(parseAuctionCommandArg("7Y --historyDays=all --view after --sort BTC-PCTL --filter note"))
+      .toEqual({ search: "7Y", historyDays: "all", view: "after", sort: "btc-pctl", filter: "note" });
+    // A value that is not one of the flag's own is dropped, not searched.
+    expect(parseAuctionCommandArg("tips --history-days 7300 --sort nonsense")).toEqual({ search: "tips" });
+    expect(parseAuctionCommandArg(undefined)).toEqual({ search: "" });
+    expect(auctionHistoryLabel(120)).toBe("120 days (default)");
+  });
+
+  test("names a longer window only when it could list more", () => {
+    const now = Date.parse("2026-11-07T12:00:00Z");
+    const first = auction({ secType: "Note", securityTerm: "10-Year", cusip: "91282CRF0", auctionDate: "2026-08-12" });
+    const reopening = auction({ secType: "Note", securityTerm: "9-Year 10-Month", cusip: "91282CRF0", auctionDate: "2026-10-07" });
+    expect(widerWindowCouldAdd("", [first], 120, now)).toBe(true);
+    expect(widerWindowCouldAdd("7Y", [first], 3650, now)).toBe(true);
+    expect(widerWindowCouldAdd("7Y", [first], "all", now)).toBe(false);
+    // A CUSIP whose first auction is listed has nothing older; one listing only reopenings does.
+    expect(widerWindowCouldAdd("91282CRF0", [reopening, first], 120, now)).toBe(false);
+    expect(widerWindowCouldAdd("91282CRF0", [reopening], 120, now)).toBe(true);
+    // A date inside the window, and another market's paper, cannot gain rows.
+    expect(widerWindowCouldAdd("2026-10", [], 120, now)).toBe(false);
+    expect(widerWindowCouldAdd("2024-10", [], 120, now)).toBe(true);
+    expect(widerWindowCouldAdd("JGB", [], 120, now)).toBe(false);
+    expect(namesOtherMarket("10Y gilt")).toBe(true);
+    expect(namesOtherMarket("10Y")).toBe(false);
+  });
+
+  test("TERM is as wide as the terms listed, and the CUSIP shows where the pane has room for it", () => {
+    const sevens = [auction({ secType: "Note", securityTerm: "7-Year" }), auction({ secType: "Note", securityTerm: "6-Year 11-Month" })];
+    const columns = buildAuctionColumns({ rows: sevens, width: 120 });
+    expect(columns.find((column) => column.id === "term")!.width).toBe(15);
+    expect(columns.at(-1)).toMatchObject({ id: "cusip", flexGrow: 1 });
+    expect(columns.find((column) => column.id === "stopOut")!.label).toBe("VS MED");
+    const narrow = buildAuctionColumns({ rows: sevens, width: 80 });
+    expect(narrow.map((column) => column.id)).not.toContain("cusip");
+    expect(narrow.some((column) => column.flexGrow)).toBe(false);
+    // A bill board heads its rate as the investment rate.
+    expect(buildAuctionColumns({ rows: [auction({ secType: "Bill", securityTerm: "6-Week" })] })
+      .find((column) => column.id === "rate")!.label).toBe("INV RATE");
   });
 });
 

@@ -1,5 +1,5 @@
 import { KeyValueRow } from "../../../components";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import {
   DataTableStackView,
   EmptyState,
@@ -29,28 +29,34 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useCommandValue } from "../shared/command-tab";
 import { FIXED_INCOME_PANE_ID } from "../fixed-income/model";
+import { afterLoadWindow, afterWindowStart, AUCTION_VIEWS, loadAuctionCurves, projectAuctionAfter, type AuctionAfter, type AuctionView } from "./after";
 import { loadTreasuryAuctions } from "./cache";
 import {
+  AUCTION_AFTER_SORT_COLUMN_IDS,
   AUCTION_FILTERS,
   AUCTION_SEARCH_FIELDS,
   AUCTION_SORT_COLUMN_IDS,
+  AUCTION_SORT_NAMES,
   DEFAULT_AUCTION_SORT,
   auctionDatesShowYear,
   auctionHistoryPhrase,
   auctionHistoryWindow,
   auctionSize,
+  auctionSortColumn,
   buildAuctionColumns,
   dealerPct,
   directPct,
   firstAuctionSortDirection,
   formatAuctionRate,
   indirectPct,
+  isAfterColumn,
+  isBill,
   isPendingAuction,
   nextAuctionHistoryWindow,
   nextFilter,
   rateLabel,
   rateValue,
-  stopOutVsAverageBp,
+  stopOutVsMedianBp,
   visibleAuctions,
   type AuctionColumn,
   type AuctionColumnId,
@@ -81,10 +87,17 @@ function formatPct(value: number | null, auction?: TreasuryAuction): string {
   return `${value.toFixed(1)}%`;
 }
 
-/** The stop-out against the average reads in basis points, like an FRN margin. */
+/** The stop-out against the median reads in basis points, like an FRN margin. */
 function formatBp(value: number | null): string {
   return value == null ? "—" : `${value.toFixed(1)}bp`;
 }
+
+/** A yield's move after the auction, in whole bp under a header that says bp; blank until the session is in. */
+function formatMove(value: number | null): string {
+  return value == null ? "" : `${value > 0 ? "+" : ""}${value.toFixed(0)}`;
+}
+
+const VIEW_OPTIONS = AUCTION_VIEWS.map((value) => ({ value, label: value === "after" ? "After" : "Results" }));
 
 function formatMoney(value: number | null): string {
   return value == null ? "—" : `$${formatCompact(value)}`;
@@ -118,6 +131,7 @@ function renderAuctionCell(
   column: AuctionColumn,
   rowState: { selected: boolean },
   showYear: boolean,
+  after: AuctionAfter | undefined,
 ): DataTableCell {
   const selected = rowState.selected ? colors.selectedText : undefined;
   const dimmed = selected ?? colors.textDim;
@@ -144,7 +158,7 @@ function renderAuctionCell(
         ? { text: RESULTS_PENDING, color: dimmed }
         : { text: formatAuctionRate(auction, rateValue(auction), "—"), color: selected ?? colors.textBright };
     case "stopOut":
-      return { text: formatBp(stopOutVsAverageBp(auction)), color: selected ?? colors.text };
+      return { text: formatBp(stopOutVsMedianBp(auction)), color: selected ?? colors.text };
     case "btc":
       return { text: formatRatio(auction.bidToCoverRatio, auction), color: selected ?? colors.text };
     case "indirect":
@@ -155,11 +169,26 @@ function renderAuctionCell(
       return { text: formatPct(dealerPct(auction), auction), color: selected ?? colors.text };
     case "size":
       return { text: formatMoney(auctionSize(auction)), color: dimmed };
+    case "cusip":
+      return { text: auction.cusip ?? "", color: dimmed };
+    case "btcPctl":
+    case "indirectPctl":
+    case "dealerPctl": {
+      const key = column.id === "btcPctl" ? "btcPercentile" : column.id === "indirectPctl" ? "indirectPercentile" : "dealerPercentile";
+      const value = after?.[key] ?? null;
+      return { text: value == null ? "" : String(value), value, color: selected ?? colors.text };
+    }
+    case "after1d":
+    case "after5d":
+    case "after20d": {
+      const value = after?.[column.id] ?? null;
+      return { text: formatMove(value), value, color: selected ?? colors.text };
+    }
   }
 }
 
 
-function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; width: number }) {
+function TreasuryAuctionDetail({ auction, width, after }: { auction: TreasuryAuction; width: number; after?: AuctionAfter }) {
   const share = (value: number | null, total: number | null): string => (
     value == null || !total ? formatMoney(value) : `${formatMoney(value)} (${((value / total) * 100).toFixed(1)}%)`
   );
@@ -174,16 +203,22 @@ function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; w
         </Box>
         <Box height={1} />
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label={rateLabel(auction)} value={formatAuctionRate(auction, rateValue(auction), "—")} />
+        {isBill(auction) && auction.highDiscountRate != null && (
+          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="High discount rate" value={formatRate(auction.highDiscountRate)} />
+        )}
+        {isBill(auction) && auction.avgMedDiscountRate != null && (
+          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Median discount rate" value={formatRate(auction.avgMedDiscountRate)} />
+        )}
         {auction.avgMedYield != null && (
           <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Median yield" value={formatRate(auction.avgMedYield)} />
         )}
-        {stopOutVsAverageBp(auction) != null && (
-          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Stop-out vs average" value={formatBp(stopOutVsAverageBp(auction))} />
+        {stopOutVsMedianBp(auction) != null && (
+          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Stop-out vs median" value={formatBp(stopOutVsMedianBp(auction))} />
         )}
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Bid-to-cover" value={formatRatio(auction.bidToCoverRatio)} />
         <Box height={1} />
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="High price" value={auction.highPrice?.toFixed(4) ?? "—"} />
-        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Avg/median price" value={auction.avgMedPrice?.toFixed(4) ?? "—"} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Median price" value={auction.avgMedPrice?.toFixed(4) ?? "—"} />
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Low price" value={auction.lowPrice?.toFixed(4) ?? "—"} />
         <Box height={1} />
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Offering" value={formatMoney(auction.offeringAmount)} />
@@ -192,6 +227,16 @@ function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; w
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Indirect" value={share(auction.indirectAccepted, auction.competitiveAccepted)} />
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Direct" value={share(auction.directAccepted, auction.competitiveAccepted)} />
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Primary dealer" value={share(auction.primaryDealerAccepted, auction.competitiveAccepted)} />
+        {after && <>
+          <Box height={1} />
+          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="B/C percentile" value={after.btcPercentile == null ? "—" : String(after.btcPercentile)} />
+          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Indirect percentile" value={after.indirectPercentile == null ? "—" : String(after.indirectPercentile)} />
+          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Dealer percentile" value={after.dealerPercentile == null ? "—" : String(after.dealerPercentile)} />
+          {after.cmt && ([[1, after.after1d], [5, after.after5d], [20, after.after20d]] as const).map(([sessions, value]) => (
+            <KeyValueRow key={sessions} labelWidth={22} width={Math.max(1, width - 2)} emphasis={false}
+              label={`${after.cmt} yield +${sessions}d`} value={value == null ? "—" : `${formatMove(value)}bp`} />
+          ))}
+        </>}
       </Box>
     </ScrollBox>
   );
@@ -199,11 +244,38 @@ function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; w
 
 const NO_AUCTIONS: TreasuryAuction[] = [];
 
+/** A sort as kept in pane state and typed after --sort: the column's name, and `:asc` or `:desc` once the pane flips it. */
+function readSort(value: string | null): AuctionSortPreference | null {
+  if (!value) return null;
+  const [name, direction] = value.split(":");
+  const columnId = auctionSortColumn(name ?? "");
+  if (!columnId) return null;
+  return { columnId, direction: direction === "asc" || direction === "desc" ? direction : firstAuctionSortDirection(columnId) };
+}
+
+function writeSort(sort: AuctionSortPreference): string | null {
+  const name = AUCTION_SORT_NAMES.find((entry) => entry.column === sort.columnId)?.value;
+  return name ? `${name}:${sort.direction}` : null;
+}
+
+/** A command's value for this pane's auctions tab, from `AUCT 7Y --view after` and the like. */
+const auctionParam = (key: string) => (params: Readonly<Record<string, string>>) => params.view === "auctions" ? params[key] ?? null : null;
+
 export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   const historyDays = auctionHistoryWindow(usePaneInstance()?.settings);
+  const [viewChoice, setView] = useCommandValue<string>(FIXED_INCOME_PANE_ID, "view", auctionParam("auctionView"), "results");
+  const [sortValue, setSortValue] = useCommandValue<string | null>(FIXED_INCOME_PANE_ID, "sortColumn", auctionParam("auctionSort"), null);
+  const sortPreference = useMemo(() => readSort(sortValue) ?? DEFAULT_AUCTION_SORT, [sortValue]);
+  const setSortPreference = useCallback((next: AuctionSortPreference | ((current: AuctionSortPreference) => AuctionSortPreference)) => {
+    setSortValue(writeSort(typeof next === "function" ? next(readSort(sortValue) ?? DEFAULT_AUCTION_SORT) : next));
+  }, [setSortValue, sortValue]);
+  // A sort by an after column shows the after view, as `fn AUCT --sort btc-pctl` does.
+  const view: AuctionView = viewChoice === "after" || isAfterColumn(sortPreference.columnId) ? "after" : "results";
+  // The after view reads two more years than it lists, for the oldest rows' percentiles.
+  const loadWindow = view === "after" ? afterLoadWindow(historyDays) : historyDays;
   const loadAuctions = useCallback(
-    (force: boolean) => loadTreasuryAuctions(force, undefined, historyDays),
-    [historyDays],
+    (force: boolean) => loadTreasuryAuctions(force, undefined, loadWindow),
+    [loadWindow],
   );
   // A new history window keeps the loaded auctions up until its own answer.
   const resource = useAsyncResource(loadAuctions, { keepPreviousData: true });
@@ -216,10 +288,10 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   const error = resource.error ?? (resource.loading || savedAt != null ? null : resource.data?.refreshError ?? null);
   // Once auctions have loaded, a refresh runs without a loading state.
   const loading = resource.loading && !resource.data;
-  const [filter, setFilter] = usePluginPaneState<AuctionFilter>("activeTab", "all");
+  const [filter, setFilter] = useCommandValue<AuctionFilter>(FIXED_INCOME_PANE_ID, "activeTab",
+    (params) => AUCTION_FILTERS.find((entry) => entry.value === auctionParam("auctionFilter")(params))?.value ?? null, "all");
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
   const [detailOpen, setDetailOpen] = usePluginPaneState<boolean>("detailOpen", false);
-  const [sortPreference, setSortPreference] = useState<AuctionSortPreference>(DEFAULT_AUCTION_SORT);
   // `AUCT 10Y` opens on that search, as `fn AUCT 10Y` reads it; a later `AUCT 5Y` replaces it.
   const [searchQuery, setSearchQuery] = useCommandValue(
     FIXED_INCOME_PANE_ID,
@@ -232,9 +304,20 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   // The cache decides whether a tick becomes a request; only [r] forces it.
   useAutoRefresh(stale ? null : fetchedAt, resource.load);
 
+  const listed = useMemo(
+    () => visibleAuctions(auctions, { filter, query: searchQuery, sort: DEFAULT_AUCTION_SORT,
+      ...(view === "after" ? { from: afterWindowStart(historyDays) } : {}) }),
+    [auctions, filter, historyDays, searchQuery, view],
+  );
+  const loadCurves = useCallback(() => loadAuctionCurves(listed), [listed]);
+  const curves = useAsyncResource(view === "after" ? loadCurves : null, { keepPreviousData: true });
+  // Percentiles need only the board; the yield moves fill in when the curves arrive.
+  const after = useMemo(() => view === "after" ? projectAuctionAfter(listed, auctions, curves.data?.curves ?? new Map()) : null,
+    [auctions, curves.data, listed, view]);
+  const yieldsError = view === "after" ? curves.error ?? curves.data?.errors[0] ?? null : null;
   const rows = useMemo(
-    () => visibleAuctions(auctions, { filter, query: searchQuery, sort: sortPreference }),
-    [auctions, filter, searchQuery, sortPreference],
+    () => visibleAuctions(listed, { filter: "all", query: "", sort: sortPreference, ...(after ? { after } : {}) }),
+    [after, listed, sortPreference],
   );
   const selected = rows.find((auction) => auction.id === selectedId) ?? null;
 
@@ -257,15 +340,20 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     setDetailOpen(false);
   }, []);
   const cycleFilter = useCallback(() => {
-    setFilter((current) => nextFilter(current));
+    setFilter(nextFilter(filter));
     setDetailOpen(false);
-  }, []);
+  }, [filter, setFilter]);
   const cycleSort = useCallback((step: 1 | -1) => {
     setSortPreference((current) => {
-      const next = cycleSortPreference<AuctionColumnId>(AUCTION_SORT_COLUMN_IDS, current, step);
+      const next = cycleSortPreference<AuctionColumnId>(view === "after" ? AUCTION_AFTER_SORT_COLUMN_IDS : AUCTION_SORT_COLUMN_IDS, current, step);
       return { columnId: next.columnId ?? DEFAULT_AUCTION_SORT.columnId, direction: next.direction };
     });
-  }, []);
+  }, [setSortPreference, view]);
+  const selectView = useCallback((next: AuctionView) => {
+    setView(next);
+    // The results view has no after columns to sort by.
+    if (next === "results" && isAfterColumn(sortPreference.columnId)) setSortValue(null);
+  }, [setSortValue, setView, sortPreference.columnId]);
 
   usePaneRefreshKey(() => void resource.reload(), { focused, enabled: !searchFocused });
 
@@ -296,16 +384,18 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   }, [focusSearch, handlePaneKey]);
 
   const showYear = auctionDatesShowYear(historyDays);
-  const columns = useMemo(() => buildAuctionColumns(showYear), [showYear]);
+  // A table that scrolls down keeps a cell for its scrollbar.
+  const columns = useMemo(() => buildAuctionColumns({ showYear, view, rows, width: width - 1 }), [rows, showYear, view, width]);
   const renderAuctionRow = useCallback((
     auction: TreasuryAuction,
     column: AuctionColumn,
     _index: number,
     rowState: { selected: boolean },
-  ) => renderAuctionCell(auction, column, rowState, showYear), [showYear]);
+  ) => renderAuctionCell(auction, column, rowState, showYear, after?.get(auction.id)), [after, showYear]);
 
   usePaneFooter(TREASURY_AUCTIONS_PANE_ID, () => {
     const info = loadingErrorFooterInfo(loading, error);
+    if (yieldsError) info.push({ id: "yields", parts: [{ text: "Treasury yields unavailable", tone: "warning" as const }] });
     if (savedAt != null) info.push(...savedCopyFooterInfo([savedAt]));
     else if (stale) info.push(STALE_SEGMENT);
     if (fetchedAt && savedAt == null) {
@@ -325,6 +415,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     cycleFilter,
     detailOpen,
     error,
+    yieldsError,
     fetchedAt,
     focusSearch,
     loading,
@@ -379,7 +470,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
         focused={focused && !searchFocused}
         detailOpen={detailOpen && !!selected}
         onBack={() => setDetailOpen(false)}
-        detailContent={selected ? <TreasuryAuctionDetail auction={selected} width={width} /> : null}
+        detailContent={selected ? <TreasuryAuctionDetail auction={selected} width={width} after={after?.get(selected.id)} /> : null}
         detailTitle={selected ? `${selected.secType} ${selected.securityTerm}` : undefined}
         rootBefore={(
           <QueryBar
@@ -391,6 +482,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
               focused: focused && !detailOpen,
               ...searchProps,
             }}
+            view={{ value: view, options: VIEW_OPTIONS, onChange: selectView }}
           />
         )}
         onRootKeyDown={handleRootKeyDown}

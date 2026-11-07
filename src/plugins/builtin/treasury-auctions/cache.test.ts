@@ -5,6 +5,7 @@ import { MemoryPluginPersistence } from "../../../test-support/plugin-persistenc
 import { AUCTION_ARCHIVE_PAGE_SIZE, auctionArchiveBoundary, fetchAuctionPages, type AuctionQuery } from "./client";
 import {
   attachTreasuryAuctionsPersistence,
+  CACHE_SCHEMA_VERSION,
   loadTreasuryAuctions,
   resetTreasuryAuctionsPersistence,
   TREASURY_DIRECT_CONNECTION_ID,
@@ -67,7 +68,7 @@ describe("loadTreasuryAuctions", () => {
       sourceKey: "treasury-fiscal-data", schemaVersion: 2,
     });
     persistence.seedResource("treasury-auctions", "recent:30", [auctionFixture("current")], {
-      sourceKey: "treasury-fiscal-data", schemaVersion: 4,
+      sourceKey: "treasury-fiscal-data", schemaVersion: CACHE_SCHEMA_VERSION,
     });
     attachTreasuryAuctionsPersistence(persistence);
     let calls = 0;
@@ -229,7 +230,7 @@ describe("loadTreasuryAuctions with TreasuryDirect", () => {
   const savedFiscalBoard = () => {
     const persistence = new MemoryPluginPersistence();
     persistence.seedResource("treasury-auctions", "recent:120", recordedFiscalData(), {
-      sourceKey: "treasury-fiscal-data", schemaVersion: 4, stale: true,
+      sourceKey: "treasury-fiscal-data", schemaVersion: CACHE_SCHEMA_VERSION, stale: true,
     });
     return persistence;
   };

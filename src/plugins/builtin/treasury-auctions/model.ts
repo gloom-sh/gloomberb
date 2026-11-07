@@ -1,4 +1,6 @@
 import type { DataTableColumn } from "../../../components";
+import { dropColumnsToFit, tableColumnWidth } from "../../../components/ui/table-layout";
+import { displayWidth } from "../../../utils/format";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { AUCTION_HISTORY_ALL, AUCTION_HISTORY_DAYS, AUCTION_HISTORY_START, type AuctionHistoryWindow } from "./client";
 import type { TreasuryAuction } from "./types";
@@ -20,9 +22,10 @@ const AUCTION_HISTORY_LABELS: Record<string, { label: string; phrase: string }> 
   [AUCTION_HISTORY_ALL]: { label: `All, since ${AUCTION_HISTORY_START.slice(0, 4)}`, phrase: `every auction since ${AUCTION_HISTORY_START}` },
 };
 
-/** The window as the settings menu names it: "120 days", "5 years". */
+/** The window as the settings menu names it: "120 days", "5 years"; the default says so. */
 export function auctionHistoryLabel(window: AuctionHistoryWindow): string {
-  return AUCTION_HISTORY_LABELS[window]?.label ?? `${window} days`;
+  const label = AUCTION_HISTORY_LABELS[window]?.label ?? `${window} days`;
+  return window === AUCTION_HISTORY_DAYS ? `${label} (default)` : label;
 }
 
 /** The window inside a sentence: "the last 120 days", "the last 5 years". */
@@ -48,7 +51,18 @@ export function auctionHistoryWindow(settings: Record<string, unknown> | undefin
 export const AUCTION_SEARCH_FIELDS = "type, benchmark (10Y), term, CUSIP, or date (YYYY-MM-DD)";
 
 export type AuctionColumnId =
-  | "date" | "type" | "term" | "rate" | "stopOut" | "btc" | "indirect" | "direct" | "dealer" | "size";
+  | "date" | "type" | "term" | "rate" | "stopOut" | "btc" | "indirect" | "direct" | "dealer" | "size" | "cusip"
+  | "btcPctl" | "indirectPctl" | "dealerPctl" | "after1d" | "after5d" | "after20d";
+
+/** What the after view adds to a row: its percentiles and the yield's moves after it (after.ts). */
+export interface AuctionAfterFigures {
+  btcPercentile: number | null;
+  indirectPercentile: number | null;
+  dealerPercentile: number | null;
+  after1d: number | null;
+  after5d: number | null;
+  after20d: number | null;
+}
 
 export interface AuctionColumn extends DataTableColumn {
   id: AuctionColumnId;
@@ -76,6 +90,36 @@ export const AUCTION_SORT_COLUMN_IDS: readonly AuctionColumnId[] = [
   "dealer",
   "size",
 ];
+
+/** The after view's columns, in the order [ and ] step through them. */
+export const AUCTION_AFTER_SORT_COLUMN_IDS: readonly AuctionColumnId[] = [
+  "date", "type", "term", "rate", "btc", "btcPctl", "indirectPctl", "dealerPctl", "after1d", "after5d", "after20d",
+];
+
+/** `--sort` as typed, and the column it sorts. */
+export const AUCTION_SORT_NAMES: ReadonlyArray<{ value: string; column: AuctionColumnId; aliases?: string[] }> = [
+  { value: "date", column: "date" },
+  { value: "type", column: "type" },
+  { value: "term", column: "term" },
+  { value: "rate", column: "rate", aliases: ["yield"] },
+  { value: "vs-median", column: "stopOut", aliases: ["stop-out", "stopout"] },
+  { value: "btc", column: "btc", aliases: ["b/c", "bid-to-cover", "bc"] },
+  { value: "indirect", column: "indirect" },
+  { value: "direct", column: "direct" },
+  { value: "dealer", column: "dealer" },
+  { value: "size", column: "size" },
+  { value: "cusip", column: "cusip" },
+  { value: "btc-pctl", column: "btcPctl", aliases: ["btc-percentile", "bc-pctl"] },
+  { value: "indirect-pctl", column: "indirectPctl", aliases: ["indirect-percentile"] },
+  { value: "dealer-pctl", column: "dealerPctl", aliases: ["dealer-percentile"] },
+  { value: "1d", column: "after1d", aliases: ["after-1d", "+1d"] },
+  { value: "5d", column: "after5d", aliases: ["after-5d", "+5d"] },
+  { value: "20d", column: "after20d", aliases: ["after-20d", "+20d"] },
+];
+
+/** The after view's columns are its own; the results view's sort by its own. */
+export const isAfterColumn = (column: AuctionColumnId) =>
+  column === "btcPctl" || column === "indirectPctl" || column === "dealerPctl" || column === "after1d" || column === "after5d" || column === "after20d";
 
 export type AuctionFilter = "all" | "bill" | "note" | "bond";
 
@@ -133,7 +177,7 @@ interface Benchmark {
  * at auction is what the market calls the auction, so a 5-year auction that
  * reopens an older 7-year note is still the 5Y.
  */
-function auctionBenchmark(term: string): Benchmark | null {
+export function auctionBenchmark(term: string): Benchmark | null {
   const parts = termParts(term);
   if (!parts) return null;
   if (parts.year) {
@@ -245,16 +289,16 @@ export function dealerPct(auction: TreasuryAuction): number | null {
 }
 
 /**
- * The stop-out (high yield) minus the average/median yield Treasury publishes
- * for the same auction, in basis points; a wider gap means the last dollars
- * had to clear well above where most of the auction priced. Bills compare
- * discount rates, which is how they trade. FRNs and auctions missing either
- * leg are null.
+ * The stop-out (high yield) minus the median yield Treasury publishes for the
+ * same auction (its average/median field, the median for every auction since
+ * the 1980s), in basis points; a wider gap means the last dollars had to clear
+ * well above where most of the auction priced. Bills compare discount rates,
+ * which is how they trade. FRNs and auctions missing either leg are null.
  *
  * This is not a tail: a tail is the stop-out against the 1 pm when-issued
  * yield, which the source does not carry.
  */
-export function stopOutVsAverageBp(auction: TreasuryAuction): number | null {
+export function stopOutVsMedianBp(auction: TreasuryAuction): number | null {
   if (auction.secType === "FRN") return null;
   const bill = FILTER_TYPES.bill.has(auction.secType);
   const high = bill ? auction.highDiscountRate : auction.highYield;
@@ -276,7 +320,16 @@ export function rateValue(auction: TreasuryAuction): number | null {
 /** Treasury's name for the rate rateValue reports; a bill's High Rate is its discount rate. */
 export function rateLabel(auction: TreasuryAuction): string {
   if (auction.secType === "FRN") return "High discount margin";
-  return FILTER_TYPES.bill.has(auction.secType) ? "Investment rate" : "High yield";
+  return isBill(auction) ? "Investment rate" : "High yield";
+}
+
+/** A bill or cash management bill: its headline rate is the investment rate, and it trades on its discount rate. */
+export const isBill = (auction: TreasuryAuction) => FILTER_TYPES.bill.has(auction.secType);
+
+/** The rate column's heading: a board of bills says its rate is the investment rate Treasury states beside the discount rate. */
+export function rateColumnLabel(auctions: readonly TreasuryAuction[], style: "pane" | "report"): string {
+  const bills = auctions.length > 0 && auctions.every(isBill);
+  return style === "pane" ? bills ? "INV RATE" : "RATE" : bills ? "Investment rate" : "Rate";
 }
 
 /**
@@ -329,7 +382,7 @@ export function auctionSize(auction: TreasuryAuction): number | null {
   return auction.offeringAmount ?? auction.totalAccepted;
 }
 
-function sortValue(auction: TreasuryAuction, columnId: AuctionColumnId): number | string | null {
+function sortValue(auction: TreasuryAuction, columnId: AuctionColumnId, after?: AuctionAfterFigures): number | string | null {
   switch (columnId) {
     case "date": return auctionDateValue(auction.auctionDate);
     case "type": return auction.secType;
@@ -338,24 +391,32 @@ function sortValue(auction: TreasuryAuction, columnId: AuctionColumnId): number 
       return days === Number.MAX_SAFE_INTEGER ? null : days;
     }
     case "rate": return rateValue(auction);
-    case "stopOut": return stopOutVsAverageBp(auction);
+    case "stopOut": return stopOutVsMedianBp(auction);
     case "btc": return auction.bidToCoverRatio;
     case "indirect": return indirectPct(auction);
     case "direct": return directPct(auction);
     case "dealer": return dealerPct(auction);
     case "size": return auctionSize(auction);
+    case "cusip": return auction.cusip;
+    case "btcPctl": return after?.btcPercentile ?? null;
+    case "indirectPctl": return after?.indirectPercentile ?? null;
+    case "dealerPctl": return after?.dealerPercentile ?? null;
+    case "after1d": return after?.after1d ?? null;
+    case "after5d": return after?.after5d ?? null;
+    case "after20d": return after?.after20d ?? null;
   }
 }
 
 export function visibleAuctions(
   auctions: readonly TreasuryAuction[],
-  options: { filter: AuctionFilter; query: string; sort: AuctionSortPreference },
+  options: { filter: AuctionFilter; query: string; sort: AuctionSortPreference; after?: ReadonlyMap<string, AuctionAfterFigures>; from?: string },
 ): TreasuryAuction[] {
   return auctions
-    .filter((auction) => matchesFilter(auction, options.filter) && matchesAuctionQuery(auction, options.query))
+    .filter((auction) => matchesFilter(auction, options.filter) && matchesAuctionQuery(auction, options.query)
+      && (!options.from || auction.auctionDate >= options.from))
     .sort((left, right) => {
-      const leftValue = sortValue(left, options.sort.columnId);
-      const rightValue = sortValue(right, options.sort.columnId);
+      const leftValue = sortValue(left, options.sort.columnId, options.after?.get(left.id));
+      const rightValue = sortValue(right, options.sort.columnId, options.after?.get(right.id));
       const comparison = compareSortValues(
         typeof leftValue === "string" ? leftValue.toLowerCase() : leftValue,
         typeof rightValue === "string" ? rightValue.toLowerCase() : rightValue,
@@ -369,7 +430,7 @@ export function visibleAuctions(
 
 /** Text columns read best ascending; every metric reads best highest-first. */
 export function firstAuctionSortDirection(columnId: AuctionColumnId): SortDirection {
-  return columnId === "type" || columnId === "term" ? "asc" : "desc";
+  return columnId === "type" || columnId === "term" || columnId === "cusip" ? "asc" : "desc";
 }
 
 /**
@@ -382,21 +443,138 @@ export function auctionDatesShowYear(window: AuctionHistoryWindow): boolean {
 
 /**
  * Widths are the data's own; the table widens a column to its label plus the
- * sort arrow. All ten columns then take 93 cells. TERM takes the spare width
- * but never less than the longest term ("29-Year 10-Month"), so a narrower
- * pane scrolls sideways instead of clipping it.
+ * sort arrow. TERM is as wide as the longest term listed, and the CUSIP closes
+ * the row where the pane has room for it, taking what width is left; a pane
+ * too narrow for the rest scrolls sideways instead of clipping a figure.
  */
-export function buildAuctionColumns(showYear = false): AuctionColumn[] {
-  return [
+export function buildAuctionColumns(options: {
+  showYear?: boolean;
+  view?: "results" | "after";
+  rows?: readonly TreasuryAuction[];
+  /** The table's width; without one every column is listed. */
+  width?: number;
+} = {}): AuctionColumn[] {
+  const { showYear = false, view = "results", rows = [], width } = options;
+  const term = Math.max(6, ...rows.map((auction) => displayWidth(auction.securityTerm)));
+  const lead: AuctionColumn[] = [
     { id: "date", label: "DATE", width: showYear ? 10 : 6, align: "left" },
     { id: "type", label: "TYPE", width: 6, align: "left" },
-    { id: "term", label: "TERM", width: 16, align: "left", flexGrow: 1 },
-    { id: "rate", label: "RATE", width: 7, align: "right" },
-    { id: "stopOut", label: "VS AVG", width: 7, align: "right" },
+    { id: "term", label: "TERM", width: term, align: "left" },
+    { id: "rate", label: rateColumnLabel(rows, "pane"), width: 7, align: "right" },
+  ];
+  const figures: AuctionColumn[] = view === "after" ? [
+    { id: "btc", label: "B/C", width: 5, align: "right" },
+    { id: "btcPctl", label: "B/C PCTL", width: 4, align: "right", title: "Bid-to-cover percentile against the tenor's last 24 auctions" },
+    { id: "indirectPctl", label: "IND PCTL", width: 4, align: "right", title: "Indirect share percentile against the tenor's last 24 auctions" },
+    { id: "dealerPctl", label: "DLR PCTL", width: 4, align: "right", title: "Dealer share percentile against the tenor's last 24 auctions" },
+    { id: "after1d", label: "+1D BP", width: 5, align: "right", title: "Treasury yield change one session after the auction, bp" },
+    { id: "after5d", label: "+5D BP", width: 5, align: "right", title: "Treasury yield change five sessions after the auction, bp" },
+    { id: "after20d", label: "+20D BP", width: 5, align: "right", title: "Treasury yield change twenty sessions after the auction, bp" },
+  ] : [
+    { id: "stopOut", label: "VS MED", width: 7, align: "right", title: "Stop-out vs median yield, bp" },
     { id: "btc", label: "B/C", width: 5, align: "right" },
     { id: "indirect", label: "INDIRECT", width: 8, align: "right" },
     { id: "direct", label: "DIRECT", width: 6, align: "right" },
     { id: "dealer", label: "DEALER", width: 6, align: "right" },
     { id: "size", label: "SIZE", width: 7, align: "right" },
   ];
+  const columns: AuctionColumn[] = [...lead, ...figures, { id: "cusip", label: "CUSIP", width: 9, align: "left", flexGrow: 1 }];
+  if (width == null) return columns;
+  const shown = dropColumnsToFit(columns, width, ["cusip"]);
+  // Without the CUSIP nothing grows: the figures keep their places at the left.
+  return shown.length === columns.length ? shown : shown.map((column) => ({ ...column, flexGrow: undefined }));
+}
+
+/** The widest a header row needs, for tests and the pane's own width checks. */
+export const auctionColumnWidth = (column: AuctionColumn) => tableColumnWidth(column);
+
+/**
+ * What `AUCT 10Y --history-days 3650` asks of the pane, typed in the command
+ * bar as it is to `fn AUCT`: the search, and the window, group, view and sort
+ * given as flags (`--history-days`, `--historyDays` or `--history`;
+ * `--filter`, `--view`, `--sort`), each as `--flag value` or `--flag=value`.
+ * A flag whose value is not one of its own is left out.
+ */
+export function parseAuctionCommandArg(arg: string | undefined): {
+  search: string;
+  historyDays?: AuctionHistoryWindow;
+  filter?: AuctionFilter;
+  view?: "results" | "after";
+  /** The sort's name as `--sort` takes it: "btc-pctl". */
+  sort?: string;
+} {
+  const tokens = (arg ?? "").trim().split(/\s+/).filter(Boolean);
+  const words: string[] = [];
+  const parsed: ReturnType<typeof parseAuctionCommandArg> = { search: "" };
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index]!;
+    const flag = /^--([a-z-]+)(?:=(.*))?$/i.exec(token);
+    if (!flag) {
+      words.push(token);
+      continue;
+    }
+    const name = flag[1]!.toLowerCase().replace(/-/g, "");
+    const value = (flag[2] ?? tokens[++index] ?? "").toLowerCase();
+    if (name === "historydays" || name === "history") {
+      const window = auctionHistoryWindow({ historyDays: value });
+      if (value === AUCTION_HISTORY_ALL || String(window) === value) parsed.historyDays = window;
+    } else if (name === "filter") {
+      const filter = AUCTION_FILTERS.find((entry) => entry.value === value)?.value;
+      if (filter) parsed.filter = filter;
+    } else if (name === "view") {
+      if (value === "results" || value === "after") parsed.view = value;
+    } else if (name === "sort") {
+      const sort = auctionSortColumn(value);
+      const name = sort && AUCTION_SORT_NAMES.find((entry) => entry.column === sort)?.value;
+      if (name) parsed.sort = name;
+    }
+  }
+  parsed.search = words.join(" ");
+  return parsed;
+}
+
+/** The column `--sort` names, by its name or an alias; null for anything else. */
+export function auctionSortColumn(value: string): AuctionColumnId | null {
+  const name = value.trim().toLowerCase();
+  return AUCTION_SORT_NAMES.find((entry) => entry.value === name || entry.aliases?.includes(name))?.column ?? null;
+}
+
+/** A query for a market AUCT does not cover: another country's government paper. */
+const NON_US_PAPER = /\b(jgb|jgbs|gilt|gilts|bund|bunds|bobl|schatz|oat|oats|btp|btps|bono|bonos|acgb|cgb|cgbs|ktb|ktbs|sgs|btf|euro|eur|gbp|jpy|uk|japan|japanese|german|germany|france|french|italy|italian|spain|canada|canadian|australia|australian|china|chinese|korea|singapore|india|indian|brazil|mexico)\b/i;
+
+/** Whether a search names another market's government paper, which AUCT does not list. */
+export function namesOtherMarket(query: string): boolean {
+  return NON_US_PAPER.test(query.trim());
+}
+
+/** A whole CUSIP: nine letters and digits with a digit. */
+const isWholeCusip = (query: string) => /^[a-z0-9]{9}$/i.test(query.trim()) && /\d/.test(query);
+
+/**
+ * Whether a longer window could list more rows for this search: not with
+ * every auction already read, not for another market's paper, not for a
+ * CUSIP whose first auction is listed (its reopenings come after it), and not
+ * for a date inside the window.
+ */
+export function widerWindowCouldAdd(query: string, rows: readonly TreasuryAuction[], window: AuctionHistoryWindow, now = Date.now()): boolean {
+  if (window === AUCTION_HISTORY_ALL) return false;
+  const text = query.trim();
+  if (!text) return true;
+  if (namesOtherMarket(text)) return false;
+  const from = new Date(now - window * 86_400_000).toISOString().slice(0, 10);
+  const date = /\b(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?\b/.exec(text);
+  if (date && !parseBenchmarkQuery(text.toLowerCase())) {
+    // The latest day the search can mean: a year's last day, a month's last day, the day itself.
+    const latest = date[3] ? date[0] : date[2] ? `${date[1]}-${date[2]}-31` : `${date[1]}-12-31`;
+    return latest < from;
+  }
+  if (isWholeCusip(text)) {
+    // A reopening's term has a month part (9-Year 10-Month); a first auction's is whole (10-Year), or a bill's.
+    const first = rows.some((auction) => {
+      const parts = termParts(auction.securityTerm);
+      return !!parts && Object.keys(parts).length === 1;
+    });
+    return !first;
+  }
+  return true;
 }

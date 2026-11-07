@@ -6,7 +6,7 @@ import { colors } from "../../theme/colors";
 import { useViewport } from "../../react/input";
 import { DialogFrame, ListView } from "../ui";
 import type { ListViewProps } from "../ui/list-view";
-import { isPaneSettingDisabled, noteColor, summarizePaneSettingValue } from "./value";
+import { isPaneSettingDisabled, noteColor, paneSettingValue, summarizePaneSettingValue } from "./value";
 
 /** Terminal rows a settings dialog spends around its list: edge, frame, title, description. */
 const TUI_DIALOG_LIST_CHROME_ROWS = 11;
@@ -82,7 +82,7 @@ export function TuiPaneSettingsDialogBody({
           id: field.key,
           label: t(field.label),
           description: notes[index]?.text ?? (field.description ? t(field.description) : field.description),
-          detail: notes[index]?.status ?? summarizePaneSettingValue(field, settings[field.key]),
+          detail: notes[index]?.status ?? summarizePaneSettingValue(field, paneSettingValue(field, settings)),
           disabled: isPaneSettingDisabled(field),
         }))}
         descriptionColor={(index) => (notes[index]?.text ? noteColor(notes[index]) : undefined)}
