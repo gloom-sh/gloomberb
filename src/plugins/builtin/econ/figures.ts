@@ -40,6 +40,19 @@ export function parseEconFigure(text: string | null | undefined): EconFigure | n
   return { value: Object.is(value, -0) ? 0 : value, unit: percent ? "%" : word ?? "", scale: 10 ** digits };
 }
 
+/**
+ * A figure with the currency its amount is in beside it, as the calendar
+ * states it: Japan's current account `-556.5B JPY` and its reserves
+ * `1178.4B USD`, which both read "B" alone. A percent or a figure in a unit
+ * of its own (`3%`, `-4.1M bbl`), a text that is no figure, and a row with no
+ * currency (an older server) read as printed.
+ */
+export function figureWithCurrency(text: string | null | undefined, currency: string | null | undefined): string | null {
+  if (text == null) return null;
+  if (!currency || parseEconFigure(text)?.unit !== "") return text;
+  return `${text.trim()} ${currency}`;
+}
+
 /** What a row's Actual, Forecast and Prior say in numbers, with the unit they share and the scale the first is drawn in. */
 export interface EconRowFigures {
   actual: number | null;

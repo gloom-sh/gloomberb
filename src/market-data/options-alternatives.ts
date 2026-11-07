@@ -74,8 +74,7 @@ export function isOptionsUnavailableError(error: unknown): boolean {
  */
 export function optionsUnavailableTitle(symbol: string): string {
   const typed = symbol.trim().toUpperCase();
-  const currency = currencyFutureName(typed);
-  return currency ? `Options on CME ${currency} futures (${typed}) are not served.` : `Options are not available for ${typed}.`;
+  return currencyFutureName(typed) ? fxVolatilityLead(typed) : `Options are not available for ${typed}.`;
 }
 
 /**

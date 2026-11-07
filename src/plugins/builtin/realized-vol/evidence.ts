@@ -31,6 +31,8 @@ export interface RealizedVolEvidenceStatus {
    */
   fxPair?: boolean;
   proxyIv?: { fund: string; value: number; date: string } | null;
+  /** The proxy's IV30 is over 5 sessions behind the pair's last bar: no current IV, so the capture is not whole. */
+  proxyStale?: boolean;
 }
 
 /** The IV point the history view draws: the ATM IV, or for an FX pair the proxy fund's IV30. */
@@ -65,7 +67,7 @@ export function realizedVolSemanticEvidence(series: readonly ResolvedSeries[], s
     complete: !status.loading && !status.stale && status.errors.length === 0 && !!status.asOf
       && plotted.length > 0 && plotted.some((entry) => entry.points.some((point) => isFiniteNumber(point.value)))
       && plotted.every((entry) => shortSeries(entry.id, status.shortWindows) || entry.points.some((point) => isFiniteNumber(point.value)))
-      && !missingIv(status),
+      && !missingIv(status) && status.proxyStale !== true,
   };
 }
 
@@ -85,6 +87,7 @@ function readRealizedVolEvidence(value: unknown): RealizedVolEvidence | null {
     || (value.shortWindows !== undefined && (!Array.isArray(value.shortWindows) || !value.shortWindows.every(isFiniteNumber)))
     || (value.ivErrors !== undefined && !isStringArray(value.ivErrors))
     || (value.fxPair !== undefined && typeof value.fxPair !== "boolean")
+    || (value.proxyStale !== undefined && typeof value.proxyStale !== "boolean")
     || (value.proxyIv != null && (!isRecord(value.proxyIv) || typeof value.proxyIv.fund !== "string"
       || !isFiniteNumber(value.proxyIv.value) || !isDateString(value.proxyIv.date)))
     || !Array.isArray(value.series) || !value.series.every((entry) => isRecord(entry) && typeof entry.id === "string"
@@ -107,7 +110,7 @@ function readRealizedVolEvidence(value: unknown): RealizedVolEvidence | null {
     if (points.length !== 1 || points[0]!.date !== point.date || points[0]!.value !== point.value) return null;
   }
   if (evidence.complete && (evidence.loading || evidence.stale || evidence.errors.length > 0
-    || missingIv(evidence)
+    || missingIv(evidence) || evidence.proxyStale === true
     || evidence.series.some((entry) => !shortSeries(entry.id, evidence.shortWindows) && !entry.points.some((point) => isFiniteNumber(point.value))))) return null;
   return evidence;
 }
@@ -143,6 +146,10 @@ export const realizedVolScreenshotEvidence: PaneScreenshotEvidenceHook<RealizedV
     if (evidence?.complete && !evidence.loading) return [];
     // The volatility drawn whole and only the IV point missing: the capture names the IV, not the symbol.
     if (evidence && missingOnlyIv(evidence)) return [`${symbol ?? evidence.symbol} current ATM IV`];
+    // An FX pair whose proxy IV30 is stale: what is missing is a current IV30 of the fund.
+    if (evidence?.proxyStale && evidence.proxyIv && !evidence.loading && !evidence.stale && evidence.errors.length === 0) {
+      return [`${evidence.proxyIv.fund} current IV30`];
+    }
     return [symbol ?? "realized volatility"];
   },
 };

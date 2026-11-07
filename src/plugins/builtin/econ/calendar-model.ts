@@ -3,7 +3,7 @@ import type { DataTableColumn } from "../../../components";
 import { colors } from "../../../theme/colors";
 import { displayWidth, MISSING_VALUE } from "../../../utils/format";
 import { fetchEconCalendar } from "./calendar-source";
-import { parseEconFigure } from "./figures";
+import { figureWithCurrency, parseEconFigure } from "./figures";
 import { resolveFredMapping } from "./fred-series-map";
 import { STATS } from "../econ-statistics/stats";
 import { isAllDayEvent, type EconEvent, type EconImpact } from "./types";
@@ -507,7 +507,7 @@ const MAX_VALUE_WIDTH = 12;
  */
 export function valueColumnWidth(events: readonly EconEvent[], key: "actual" | "forecast" | "prior", base: number): number {
   let width = base;
-  for (const event of events) width = Math.max(width, Math.min(MAX_VALUE_WIDTH, displayWidth(event[key] ?? "")));
+  for (const event of events) width = Math.max(width, Math.min(MAX_VALUE_WIDTH, displayWidth(figureWithCurrency(event[key], event.currency) ?? "")));
   return width;
 }
 

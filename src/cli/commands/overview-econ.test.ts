@@ -318,6 +318,21 @@ test("an export carries the calendar's figures as numbers with their unit and sc
   expect(text).not.toContain("Scale");
 });
 
+test("an amount reads with the currency the server states beside it, and counts it in the exports; an older server's reads as before", async () => {
+  const trade = (currency?: string) => ({ ...event("2026-10-14T23:50:00.000Z", "JP", "low", "Balance of Trade"),
+    actual: "-556.5B", forecast: "-181B", prior: "-1121B", ...(currency ? { currency } : {}) });
+  const inflation = { ...event("2026-10-14T23:30:00.000Z", "JP", "low", "Inflation Rate YoY"), prior: "2.9%", currency: "JPY" };
+  const text = await econText([trade("JPY"), inflation], ["--from", "2026-10-14"]);
+  expect(text).toMatch(/Balance of Trade\s+-556\.5B JPY\s+-181B JPY\s+-1121B JPY/);
+  // A percent is no amount: no currency beside it.
+  expect(text).not.toContain("2.9% JPY");
+  const { result } = await econPrinted([trade("JPY")], ["--from", "2026-10-14"]);
+  expect((result.data as Record<string, unknown>[])[0]).toMatchObject({ actual: -556.5e9, unit: "JPY", actualText: "-556.5B" });
+  const older = await econText([trade()], ["--from", "2026-10-14"]);
+  expect(older).toMatch(/Balance of Trade\s+-556\.5B\s+-181B\s+-1121B/);
+  expect(older).not.toContain("JPY");
+});
+
 test("the CSV, NDJSON and JSON of the same calendar say the same, and the CSV adds nothing the JSON lacks", async () => {
   const { result, options } = await econPrinted(exportCalendar, ["--from", "2026-10-14"]);
   const json = JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, options)) as {

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { colors } from "../../../theme/colors";
 import { actualColor } from "./calendar-model";
-import { econRowFigures, parseEconFigure, withPercentUnits } from "./figures";
+import { econRowFigures, figureWithCurrency, parseEconFigure, withPercentUnits } from "./figures";
 
 test("a drawn figure reads back as its number, unit and scale, every digit exact", () => {
   expect(parseEconFigure("3%")).toEqual({ value: 3, unit: "%", scale: 1 });
@@ -68,4 +68,14 @@ test("a percent indicator's figures carry % on every row, and other indicators k
   ]);
   // The same name in another country is another indicator.
   expect(withPercentUnits([row("Retail Sales", "1.2%", null, null, "GB"), row("Retail Sales", "0.4", null, null, "US")])[1]!.actual).toBe("0.4");
+});
+
+test("an amount reads with its currency beside it; a percent, a figure in its own unit, a bound and an older server's row as printed", () => {
+  expect(figureWithCurrency("-556.5B", "JPY")).toBe("-556.5B JPY");
+  expect(figureWithCurrency("1178.4B", "USD")).toBe("1178.4B USD");
+  expect(figureWithCurrency("2.9%", "JPY")).toBe("2.9%");
+  expect(figureWithCurrency("-4.1M bbl", "USD")).toBe("-4.1M bbl");
+  expect(figureWithCurrency("<1.25%", "JPY")).toBe("<1.25%");
+  expect(figureWithCurrency("-556.5B", undefined)).toBe("-556.5B");
+  expect(figureWithCurrency(null, "JPY")).toBeNull();
 });

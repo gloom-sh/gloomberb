@@ -88,7 +88,7 @@ test("a signal on the final session does not trade", () => {
   expect(result.strategy.exposurePct).toBe(0);
 });
 
-test("rolling windows are one year of bars: 365 for a 24/7 series, 260 for an FX pair's weekdays, 252 for exchange sessions", () => {
+test("rolling windows are one year of bars: 365 for a 24/7 series, 260 for a currency pair, 252 for exchange sessions", () => {
   // Steady rise: always-in matches buy-and-hold minus nothing; never-in loses every window.
   const closes = Array.from({ length: 400 }, (_, index) => 100 + index);
   const options = { lookbackYears: null, costBps: 0 };
@@ -98,14 +98,17 @@ test("rolling windows are one year of bars: 365 for a 24/7 series, 260 for an FX
   expect(never.rollingWin.sharePct).toBe(0);
   expect(never.benchmark.totalReturnPct).toBeGreaterThan(0);
   expect(never.strategy.maxDrawdownPct).toBe(0);
-  // An exchange shuts on holidays: one weekday in 25 here.
-  const exchangeDay = (index: number) => sessionDay(index + Math.floor(index / 24));
-  const sessions = runBacktest(bars(closes, undefined, exchangeDay), parseRule("close < 0"), parseRule("close < 0"), options);
+  const sessions = runBacktest(bars(closes, undefined, sessionDay), parseRule("close < 0"), parseRule("close < 0"), options);
   expect(sessions.barsPerYear).toBe(252);
   expect(sessions.rollingWin.windows).toBe(400 - 252);
-  const pair = runBacktest(bars(closes, undefined, sessionDay), parseRule("close < 0"), parseRule("close < 0"), options);
+  // The same weekdays of a currency pair are its 260-bar year, by what it is; a short run of it too.
+  const pair = runHistoryBacktest({ symbol: "USDJPY=X", bars: bars(closes, undefined, sessionDay), skippedDates: [], undatedSkipped: 0 },
+    parseRule("close < 0"), parseRule("close < 0"), options);
   expect(pair.barsPerYear).toBe(260);
   expect(pair.rollingWin.windows).toBe(400 - 260);
+  const month = runHistoryBacktest({ symbol: "USDJPY=X", bars: bars(closes.slice(0, 40), undefined, sessionDay), skippedDates: [], undatedSkipped: 0 },
+    parseRule("close < 0"), parseRule("close < 0"), options);
+  expect(month.barsPerYear).toBe(260);
 });
 
 test("volatility and Sharpe annualize at the series' bars per year", () => {

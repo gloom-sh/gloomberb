@@ -5,14 +5,11 @@ import { statSource } from "./format";
 import { hvOn, midrankPercentile, projectIvHistory, projectRichCheap, readingSource, richCheapDates, screenCoverage, screenPaneNotices, screenStaleNote, sessionsBehind, staleReadingsNote, verdictFor } from "./model";
 
 const DAY = 86_400_000;
-/** An exchange's sessions: weekdays, less a holiday about every five weeks (an FX pair's every weekday reads 260 bars a year). */
 const sessions = (count: number, end = "2026-09-22") => {
   const dates: string[] = [];
-  let weekdays = 0;
   for (let time = Date.parse(`${end}T00:00:00Z`); dates.length < count; time -= DAY) {
     const weekday = new Date(time).getUTCDay();
-    if (weekday === 0 || weekday === 6) continue;
-    if (++weekdays % 25 !== 0) dates.unshift(new Date(time).toISOString().slice(0, 10));
+    if (weekday !== 0 && weekday !== 6) dates.unshift(new Date(time).toISOString().slice(0, 10));
   }
   return dates;
 };
@@ -157,7 +154,10 @@ test("no verdict without an IV30: a newest reading without one leaves the ranked
     latest: { date: "2026-11-06", method: "trade-close", basis: "mixed", capturedAt: "", spot: 29.13, iv7: null, iv30: null, iv60: 0.0876, iv90: null, iv180: null, iv365: null },
   };
   const [row] = projectRichCheap([uup], new Map([["UUP", hvSeries([["2026-11-05", 0.05], ["2026-11-06", 0.05]])]]));
-  expect(row).toMatchObject({ iv30: 0.0926, date: "2026-11-05", rank: 42.6, percentile: 82, rankDate: "2026-11-05", verdict: "rich", termSlope: null });
+  // Spot is of that row's date too: the 6 Nov capture's 29.13 is another session's, so none.
+  expect(row).toMatchObject({ iv30: 0.0926, date: "2026-11-05", rank: 42.6, percentile: 82, rankDate: "2026-11-05", verdict: "rich", termSlope: null,
+    spot: null });
+  expect(projectRichCheap([{ ...uup, latest: { ...uup.latest!, date: "2026-11-05" } }])[0]!.spot).toBe(29.13);
   expect(row!.ivHv).toBeCloseTo(1.852, 3);
   // With no IV30 anywhere, a rank on its own is no verdict.
   const unranked = projectRichCheap([{ ...uup, iv30: { ...uup.iv30!, value: Number.NaN } }])[0]!;
@@ -172,9 +172,10 @@ test("a queued symbol does not break a date every other row shares", () => {
   });
   const queued: IvScreenRow = { symbol: "ZZZZ", status: "queued", iv30: null, iv90: null, latest: null, skew: null };
   expect(richCheapDates(projectRichCheap([ready("A", "2026-09-22"), queued, ready("B", "2026-09-22")])))
-    .toEqual({ reading: { date: "2026-09-22", method: "trade-close", basis: null }, rank: "2026-09-22", rankApart: false, skewApart: false, hvApart: false });
+    .toEqual({ reading: { date: "2026-09-22", method: "trade-close", basis: null }, rank: "2026-09-22", skewApart: false, hvApart: false });
+  // Ranks on two closes are dated as their rows are: by the As of column, with no column of their own.
   expect(richCheapDates(projectRichCheap([ready("A", "2026-09-22"), ready("B", "2026-09-21")])))
-    .toMatchObject({ reading: null, rank: null, rankApart: true });
+    .toEqual({ reading: null, rank: null, skewApart: false, hvApart: false });
 });
 
 describe("VCA backfill states", () => {

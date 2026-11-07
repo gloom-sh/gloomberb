@@ -1,4 +1,4 @@
-import { barsPerYear, type BarsPerYear } from "../../../market-data/bars-per-year";
+import { barsPerYear, type BarsPerYear, type BarsPerYearInstrument } from "../../../market-data/bars-per-year";
 import { evaluateRule, ruleWarmup, type BacktestBar, type Rule } from "./rules";
 
 const DAY_MS = 86_400_000;
@@ -8,6 +8,8 @@ export interface BacktestOptions {
   lookbackYears: number | null;
   /** Cost per side in basis points, applied to each fill price. */
   costBps: number;
+  /** What the bars are of, where that sets the year: a currency pair's is 260 bars, whatever the range (`barsPerYear`). */
+  instrument?: BarsPerYearInstrument;
 }
 export interface BacktestTrade {
   entryDate: string;
@@ -159,7 +161,7 @@ export function runBacktest(
     };
   });
   // A one-year window is as many bars as the series has in a year, so it spans a calendar year for 24/7 assets too.
-  const yearBars = barsPerYear(dates);
+  const yearBars = barsPerYear(dates, options.instrument);
   let beat = 0, windows = 0;
   for (let index = yearBars; index < strategy.length; index += 1) {
     windows += 1;

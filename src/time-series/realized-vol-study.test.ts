@@ -62,6 +62,13 @@ test("all five studies use shared annualized math with their exact warmup", () =
   }
 });
 
+test("a currency pair's realized volatility on a short chart range is annualised at its 260-bar year, a stock's at 252", () => {
+  const weekdays = history(60).filter((point) => point.date.getUTCDay() !== 0 && point.date.getUTCDay() !== 6);
+  const latest = (listing: ResolvedSeries["listing"]) =>
+    resolveStudies([{ ...input(weekdays), listing }], [study()], "1d").series[0]!.points.at(-1)!.value!;
+  expect(latest({ symbol: "USDJPY=X", exchange: "" }) / latest({ symbol: "TEST", exchange: "NASDAQ" })).toBeCloseTo(Math.sqrt(260 / 252), 10);
+});
+
 test("missing and contradictory bars interrupt windows until every rejected input rolls out", () => {
   for (const rejected of [
     { close: Number.NaN },

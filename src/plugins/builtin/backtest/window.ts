@@ -1,4 +1,5 @@
 import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { currencyPairInstrument } from "../../../market-data/bars-per-year";
 import { futuresGenericCaption, futuresGenericListing } from "../../../utils/futures-generic";
 import type { BacktestHistory } from "./client";
 import { runBacktest, type BacktestOptions, type BacktestResult } from "./engine";
@@ -100,7 +101,8 @@ export function runHistoryBacktest(
   options: BacktestOptions & BacktestWindowOptions,
 ): HistoryBacktestResult {
   const window = backtestWindow(history, options);
-  const result = runBacktest(window.bars, entry, exit, options);
+  // A currency pair's year is every weekday, however short the run.
+  const result = runBacktest(window.bars, entry, exit, { ...options, instrument: options.instrument ?? currencyPairInstrument(history.symbol) });
   return { ...result, warnings: [...window.warnings, ...result.warnings], repeatable: window.repeatable };
 }
 

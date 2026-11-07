@@ -65,6 +65,8 @@ describe("VCA dates", () => {
     expect(title).toBe("Rich/cheap · Custom symbols");
     expect(keys).toContain("date");
     expect([0, 1, 2].map((index) => cell("date", index))).toEqual(["2026-10-09 close", "2026-10-09 close", "2026-10-08 close"]);
+    // Each rank is its row's close, which the As of column already dates: no Rank as of column.
+    expect(keys).not.toContain("rankDate");
     expect(footer).toContain(" · Fri 9 Oct 2026 · ");
   });
 

@@ -48,7 +48,32 @@ test("IV30 less the pair's HV20 is read on the IV30's close, not on the pair's n
   expect(fxProxyIvLessRv(proxy, [...history, ...after])).toEqual(calm);
   expect(calm.hv20).toBeGreaterThan(0);
   expect(calm.spread).toBeCloseTo(0.08 - calm.hv20!, 12);
-  expect(fxProxyIvLessRv({ ...proxy, iv30: null }, history)).toEqual({ hv20: null, spread: null });
+  expect(fxProxyIvLessRv({ ...proxy, iv30: null }, history)).toEqual({ hv20: null, spread: null, stale: false, note: null });
+});
+
+test("a proxy IV30 over 5 sessions behind the pair's last bar is stale: no IV30 - HV20, and a capture of it is not whole", () => {
+  // GBPUSD's daily bars to Fri 6 Nov; FXB's last IV30 is May's.
+  const history: PricePoint[] = Array.from({ length: 200 }, (_, index) => ({
+    date: new Date(Date.UTC(2026, 10, 6) - (199 - index) * day), close: 1.3 * (1 + 0.002 * Math.sin(index)) }));
+  const fxb = (date: string) => ({ pair: "GBPUSD", fund: "FXB", iv30: { value: 0.0854, date, method: "trade-close" as const }, expiries: null, error: null });
+  expect(fxProxyIvLessRv(fxb("2026-05-18"), history)).toEqual({ hv20: null, spread: null, stale: true, note: "FXB has no IV30 since 2026-05-18" });
+  // Six US sessions behind is stale; five is not.
+  expect(fxProxyIvLessRv(fxb("2026-10-29"), history).stale).toBe(true);
+  const current = fxProxyIvLessRv(fxb("2026-10-30"), history);
+  expect(current).toMatchObject({ stale: false, note: null });
+  expect(current.spread).not.toBeNull();
+  // The history chart draws May's point, dated, and is not whole for it.
+  const rolling = history.map((point) => ({ date: point.date as Date, values: { 10: 0.05 } }));
+  const date = new Date(Date.UTC(2026, 4, 18));
+  const status: RealizedVolEvidenceStatus = { symbol: "GBPUSD=X", view: "graph", estimator: "close-to-close", windows: [10], lookbackYears: 1,
+    showIv: true, loading: false, stale: false, source: "test", asOf: "2026-11-06T00:00:00.000Z", errors: [], currentIv: null,
+    fxPair: true, proxyIv: { fund: "FXB", value: 0.0854 * 100, date: date.toISOString() }, proxyStale: true };
+  const capture = realizedVolSemanticEvidence(realizedChartSeries({ history, rolling, windows: [10], priceUnit: "USD",
+    iv: { value: 0.0854, date, label: "FXB IV30" } }, ["#fff", "#000"]), status);
+  expect(capture.complete).toBe(false);
+  const context = { resolved: { createOptions: { symbol: "GBPUSD=X" }, options: { windows: "10" } }, payload: { financials: [] } } as never;
+  expect(realizedVolScreenshotEvidence.unavailable(realizedVolScreenshotEvidence.read(capture), context)).toEqual(["FXB current IV30"]);
+  expect(realizedVolScreenshotEvidence.read({ ...capture, complete: true })).toBeNull();
 });
 
 test("an FX pair's history chart is whole without an ATM IV, and draws the proxy's IV30 when there is one", () => {

@@ -24,7 +24,6 @@ const COLUMNS: DataTableColumn[] = [
   { id: "iv30", label: "IV30", width: 7, align: "right" },
   { id: "date", label: "As of", width: 11, align: "right" },
   { id: "spot", label: "Spot", width: 9, align: "right" },
-  { id: "rankDate", label: "Rank as of", width: 11, align: "right" },
   { id: "rank", label: "IVR", width: 5, align: "right" },
   { id: "percentile", label: "IVP", width: 5, align: "right" },
   { id: "verdict", label: "Rich/Cheap", width: 11, align: "left" },
@@ -90,7 +89,6 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
   const columns = useMemo(() => COLUMNS.filter((column) => {
     switch (column.id) {
       case "date": return !dates.reading;
-      case "rankDate": return dates.rankApart;
       case "iv1y": return rows.some((row) => row.iv1y != null);
       case "iv1yPercentile": return rows.some((row) => row.iv1yPercentile != null);
       case "riskReversal": return hasSkew;
@@ -126,7 +124,6 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
       case "spot": return { text: formatSpot(row.spot), color: colors.textDim };
       case "date": return { text: row.date ? readingLabel(row.date, row.method, true, { basis: row.basis, stale: row.stale })
         : row.status === "queued" || row.status === "backfilling" ? row.status : "--", color: row.stale ? colors.warning : colors.textDim };
-      case "rankDate": return { text: row.rankDate ? `${shortDate(row.rankDate)} close` : "--", color: colors.textDim };
       case "rank": return { text: formatRank(row.rank) };
       case "percentile": return { text: formatRank(row.percentile) };
       case "verdict": return { text: verdictLabel(row.verdict), color: row.verdict === "rich" ? colors.negative : row.verdict === "cheap" ? colors.positive : colors.textDim };

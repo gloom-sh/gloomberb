@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, useChartTableSelection, usePaneFooter, usePaneNoticeFooter, usePaneTabs,
   usePaneTicker, type DataTableColumn, type StatItem } from "../../../components";
-import { barsPerYearLabel } from "../../../market-data/bars-per-year";
+import { barsPerYearLabel, currencyPairInstrument } from "../../../market-data/bars-per-year";
 import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "../../../market-data/request-types";
 import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -130,9 +130,10 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   // The proxy's IV30 is a dated close: drawn on its session, as the ATM IV is on its observation.
   const proxyPoint = proxyData?.iv30
     ? { value: proxyData.iv30.value, date: new Date(`${proxyData.iv30.date}T00:00:00Z`), label: fxProxyLabel(proxyData) } : null;
-  const proxySpread = useMemo(() => fxProxyIvLessRv(proxyData, history.data?.history ?? []), [proxyData, history.data]);
+  const proxySpread = useMemo(() => fxProxyIvLessRv(proxyData, history.data?.history ?? [],
+    currencyPairInstrument(instrument?.symbol, instrument?.exchange)), [proxyData, history.data, instrumentKey]);
   const model = useMemo(() => history.data ? projectRealizedVolatility(history.data.history, {
-    symbol: history.data.symbol, estimator, windows, lookbackYears: Number(lookback) === 2 ? 2 : 1,
+    symbol: history.data.symbol, exchange: instrument?.exchange, estimator, windows, lookbackYears: Number(lookback) === 2 ? 2 : 1,
   }) : null, [history.data, estimator, windows, lookback]);
   const chartInput = useMemo(() => model ? { history: model.history, rolling: model.series, windows: model.windows,
     priceUnit: priceSeriesUnit(quote?.currency ?? "", quote?.instrumentType, quote?.priceBasis), iv: showIv ? iv.data?.reference ?? proxyPoint : null } : null,
@@ -140,7 +141,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   const notices = [identityError, history.error, history.data?.error, iv.error, ivRefresh.error, iv.data?.error,
     ...(model?.warnings ?? []), model?.historyNote, model?.formingNote, ...(showIv ? iv.data?.warnings ?? [] : []),
     ...(showIv && symbol && !spotAvailable && !fxPair ? ["Current ATM IV unavailable: underlying quote is missing or stale"] : []),
-    proxy.error, proxyData?.error,
+    proxy.error, proxyData?.error, proxySpread.note,
   ].filter((value): value is string => !!value);
   usePaneNoticeFooter({ registrationId: "realized-vol-notices", notices: [...new Set(notices)], focused });
   const cycleView = () => setView(view === "graph" ? "cone" : "graph");
@@ -191,7 +192,8 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
       date: iv.data.reference.date.toISOString(), label: iv.data.reference.label,
       source: iv.data.reference.source, expiration: iv.data.reference.expiration } : null,
     ...(fxPair ? { fxPair, proxyIv: showIv && proxyPoint && proxyData
-      ? { fund: proxyData.fund, value: proxyPoint.value * 100, date: proxyPoint.date.toISOString() } : null } : {}),
+      ? { fund: proxyData.fund, value: proxyPoint.value * 100, date: proxyPoint.date.toISOString() } : null,
+    proxyStale: showIv && proxySpread.stale } : {}),
   };
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: view, onSelect: setView, focused, dense: true });
   const reference = showIv ? iv.data?.reference ?? null : null;
@@ -200,7 +202,9 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   const coneStats: StatItem[] = view !== "cone" || !model ? []
     : reference ? [{ id: "atm-iv", label: "ATM IV", value: percent(reference.value), detail: `${Math.round(reference.daysToExpiry)}d` }]
       : proxyData ? [
-        { id: "proxy-iv", label: fxProxyLabel(proxyData), value: percent(proxyData.iv30?.value), detail: proxyData.iv30?.date },
+        // A stale IV30 is marked here and said in the footer ("FXB has no IV30 since 2026-05-18").
+        { id: "proxy-iv", label: fxProxyLabel(proxyData), value: percent(proxyData.iv30?.value), detail: proxyData.iv30?.date,
+          tone: proxySpread.stale ? "warning" : undefined },
         { id: "proxy-spread", label: "IV30 - HV20", value: proxySpread.spread == null ? "--" : points(proxySpread.spread), detail: "pts" },
         { id: "proxy-expiries", label: "Expiries with ATM IV", value: proxyData.expiries ? `${proxyData.expiries.usable} of ${proxyData.expiries.read}` : "--" },
       ] : [];

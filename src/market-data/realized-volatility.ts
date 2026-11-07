@@ -1,5 +1,5 @@
 import type { PricePoint } from "../types/financials";
-import { barsPerYear } from "./bars-per-year";
+import { barsPerYear, type BarsPerYearInstrument } from "./bars-per-year";
 import {
   mergePriceHistoryIntegrity,
   pricePointIntegrity,
@@ -37,6 +37,8 @@ export interface RealizedVolatilityResult {
 export interface RollingRealizedVolatilityOptions {
   windows?: readonly number[];
   estimator?: RealizedVolatilityEstimator;
+  /** What the series is of, where that sets its year: a currency pair's is 260 bars (`barsPerYear`). */
+  instrument?: BarsPerYearInstrument;
 }
 
 export interface RollingRealizedVolatilityPoint {
@@ -219,14 +221,14 @@ function estimateWindow(
   return { value: Math.sqrt(Math.max(0, variance) * barsInYear) };
 }
 
-/** The series' own bars per year: 365 when it has weekend observations, else 252. */
-function seriesBarsPerYear(history: readonly Observation[]): number {
-  return barsPerYear(history.map((point) => point.time));
+/** The series' bars per year: 365 when it has weekend observations, 260 for a currency pair, else 252. */
+function seriesBarsPerYear(history: readonly Observation[], instrument: BarsPerYearInstrument = {}): number {
+  return barsPerYear(history.map((point) => point.time), instrument);
 }
 
 /**
  * Latest n-bar estimate, annualised at the series' bars per year (365 for a
- * 24/7 series, 252 for exchange sessions). Close-to-close and Yang-Zhang need
+ * 24/7 series, 260 for a currency pair, 252 for exchange sessions). Close-to-close and Yang-Zhang need
  * n+1 observations; range estimators need n. Holidays and missing sessions cannot
  * be inferred without an exchange calendar. Supplied invalid observations remain
  * gaps, never bridges.
@@ -235,10 +237,12 @@ export function realizedVolatilityResult(
   points: readonly PricePoint[],
   window = 30,
   estimator: RealizedVolatilityEstimator = "close-to-close",
+  instrument: BarsPerYearInstrument = {},
 ): RealizedVolatilityResult {
   if (!validWindow(window)) return unavailable("invalid-window");
   const history = observations(points);
-  return history === null ? unavailable("invalid-date") : estimateWindow(history, history.length - 1, window, estimator, seriesBarsPerYear(history));
+  return history === null ? unavailable("invalid-date")
+    : estimateWindow(history, history.length - 1, window, estimator, seriesBarsPerYear(history, instrument));
 }
 
 export function realizedVolatility(
@@ -258,7 +262,7 @@ export function rollingRealizedVolatility(
   if (history === null) return [];
   const windows = [...new Set(options.windows ?? REALIZED_VOLATILITY_WINDOWS)];
   const estimator = options.estimator ?? "close-to-close";
-  const bars = seriesBarsPerYear(history);
+  const bars = seriesBarsPerYear(history, options.instrument);
   return history.map((point, index) => ({
     date: new Date(point.time),
     values: Object.fromEntries(windows.map((window) => [window, estimateWindow(history, index, window, estimator, bars).value])),

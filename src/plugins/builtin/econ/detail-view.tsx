@@ -34,6 +34,7 @@ import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { useOpenTickerChoice } from "../shared/ticker-choice";
 import { resolveFredMapping, projectFredHistory, fredHistoryUnits } from "./fred-series-map";
 import { actualColor, CALENDAR_TIME_ZONE_LABEL, econEventName, timeLabel } from "./calendar-model";
+import { figureWithCurrency } from "./figures";
 import { hasNoStatedTime, isAllDayEvent, type EconEvent } from "./types";
 
 interface EconDetailViewProps {
@@ -228,9 +229,10 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
   // The stack bar names the event; the detail opens on the release figures,
   // the outcome first so a short detail keeps it.
   const releaseItems: StatItem[] = [
-    ...(event.actual ? [{ id: "actual", label: "Actual", value: event.actual, color: actualColor(event.actual, event.forecast) }] : []),
-    ...(event.forecast ? [{ id: "forecast", label: "Forecast", value: event.forecast }] : []),
-    ...(event.prior ? [{ id: "prior", label: "Prior", value: event.prior }] : []),
+    // An amount with its currency beside it (-556.5B JPY), where the server says it.
+    ...(event.actual ? [{ id: "actual", label: "Actual", value: figureWithCurrency(event.actual, event.currency)!, color: actualColor(event.actual, event.forecast) }] : []),
+    ...(event.forecast ? [{ id: "forecast", label: "Forecast", value: figureWithCurrency(event.forecast, event.currency)! }] : []),
+    ...(event.prior ? [{ id: "prior", label: "Prior", value: figureWithCurrency(event.prior, event.currency)! }] : []),
     // The date the prior rate was observed, labelled as Central Bank Rates labels it.
     ...(event.prior && event.priorAsOf ? [{ id: "priorAsOf", label: "As of", value: event.priorAsOf }] : []),
     // A bank that states no time has none here, and says so; a publisher's own clock sits under the time.

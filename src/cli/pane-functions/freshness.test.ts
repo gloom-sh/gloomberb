@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { nextFxWeekOpen } from "../../utils/fx-market-hours";
 import type { HeadlessPaneDefinition, HeadlessPaneResult } from "../../types/plugin";
 import { cloudNewsFreshness, quoteObservation, SEC_FILING_ROWS } from "../../plugins/builtin/shared/report-freshness";
 import { createTestQuote } from "../../test-support/data-provider";
@@ -533,6 +534,27 @@ describe("report freshness", () => {
     const sunday = { ...row("CLOSED"), lastUpdated: Date.parse("2026-10-25T21:55:00Z") };
     expect(formatFreshnessLine(deriveHeadlessFreshness(rows(), { rows: [sunday] }, Date.parse("2026-10-25T22:10:00Z"))))
       .toBe("Source: Gloom Cloud · Sun 25 Oct 2026 21:55 UTC · 15 min delayed · markets open");
+  });
+
+  test("a currency pair's reopen is Sunday 17:00 New York in UTC on either side of a daylight saving switch", () => {
+    const pair = { dataSource: "delayed", delayMinutes: 15, stale: false, sessionExchange: "CCY", marketState: "CLOSED",
+      lastUpdated: Date.parse("2026-11-06T21:59:00Z") };
+    const at = (now: string, lastUpdated = pair.lastUpdated) => formatFreshnessLine(
+      deriveHeadlessFreshness(rows(), { rows: [{ ...pair, lastUpdated }] }, Date.parse(now)),
+    );
+    // After New York leaves daylight saving (1 Nov 2026), the week opens at 22:00 UTC.
+    expect(nextFxWeekOpen(Date.parse("2026-11-07T12:00:00Z"))).toBe(Date.parse("2026-11-08T22:00:00Z"));
+    expect(at("2026-11-07T12:00:00Z")).toEndWith("markets closed · reopens Sun 22:00 UTC, 17:00 ET");
+    // Sunday 21:30 UTC in winter is still shut: the open that day is half an hour on.
+    expect(nextFxWeekOpen(Date.parse("2026-11-08T21:30:00Z"))).toBe(Date.parse("2026-11-08T22:00:00Z"));
+    expect(at("2026-11-08T21:30:00Z")).toEndWith("markets closed · reopens 22:00 UTC, 17:00 ET");
+    // Friday 21:30 UTC in winter still trades: no reopen to give.
+    expect(nextFxWeekOpen(Date.parse("2026-11-06T21:30:00Z"))).toBeNull();
+    expect(at("2026-11-06T21:30:00Z", Date.parse("2026-11-06T21:29:00Z"))).toEndWith("markets open");
+    // On 14 Mar 2027 New York moves to daylight saving at 02:00: that Sunday's open is 21:00 UTC.
+    expect(nextFxWeekOpen(Date.parse("2027-03-13T12:00:00Z"))).toBe(Date.parse("2027-03-14T21:00:00Z"));
+    expect(nextFxWeekOpen(Date.parse("2027-03-14T20:30:00Z"))).toBe(Date.parse("2027-03-14T21:00:00Z"));
+    expect(at("2027-03-13T12:00:00Z", Date.parse("2027-03-12T21:59:00Z"))).toEndWith("markets closed · reopens Sun 21:00 UTC, 17:00 ET");
   });
 
   test("futures are closed from the Friday close to the Sunday open, whatever state a quote stamped before it", () => {

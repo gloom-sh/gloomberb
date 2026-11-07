@@ -13,7 +13,7 @@ import { collectNewsDisplayTickers } from "../../../../../news/ticker-symbols";
 import { useInlineTickers } from "../../../../../state/hooks/inline-tickers";
 import { truncateToDisplayWidth } from "../../../../../utils/format";
 import { wrapTextLines } from "../../../../../utils/text-wrap";
-import { formatDetailDate } from "../../../../../utils/datetime-format";
+import { formatDetailDate, formatDetailTime } from "../../../../../utils/datetime-format";
 import { logFailure } from "../../../../../utils/log-failure";
 import { mergeNewsArticle } from "../../../../../news/news-model";
 import { usePluginPaneState } from "../../../../runtime";
@@ -182,11 +182,9 @@ function TextLines({
   ));
 }
 
-/** The time alone on the story's own day, which the header already dates; the date otherwise. */
+/** The time alone, its zone named as the header's is, on the story's own day, which the header already dates; the date otherwise. */
 function coverageTime(value: Date, storyDay: Date): string {
-  return value.toDateString() === storyDay.toDateString()
-    ? value.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
-    : formatDetailDate(value);
+  return value.toDateString() === storyDay.toDateString() ? formatDetailTime(value) : formatDetailDate(value);
 }
 
 function NewsStoryTimelineItemView({

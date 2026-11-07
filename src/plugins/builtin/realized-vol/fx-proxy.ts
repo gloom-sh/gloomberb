@@ -1,9 +1,11 @@
 import { apiClient } from "../../../api-client";
+import type { BarsPerYearInstrument } from "../../../market-data/bars-per-year";
 import { fxVolatilityPair, fxVolatilityProxyFund } from "../../../market-data/options-alternatives";
 import type { PricePoint } from "../../../types/financials";
 import { abortError } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
 import { loadIvHistory, type ImpliedVolatilityApi, type IvHistoryPayload, type IvMethod } from "../iv-history/client";
+import { staleness } from "../iv-history/model";
 import { realizedVolatilityResult } from "../shared/volatility";
 import { createSurfaceDependencies, loadVolatilitySurface, type SurfaceLoaderDependencies } from "../vol-surface/client";
 import type { SurfaceSnapshot } from "../vol-surface/model";
@@ -89,17 +91,42 @@ export async function loadFxVolProxy(
   return { pair, fund, iv30, expiries, error: error ?? (iv30 ? null : `${fund} has no IV30 yet`) };
 }
 
+/** The day of a bar, UTC. */
+const barDay = (point: PricePoint) => new Date(point.date).toISOString().slice(0, 10);
+
+export interface FxProxyReading {
+  /** The pair's close-to-close HV20 on the proxy's IV30 close; null when the IV30 is stale or missing. */
+  hv20: number | null;
+  /** IV30 less that HV20; null as HV20 is. */
+  spread: number | null;
+  /**
+   * The IV30 is over 5 of the fund's sessions behind the pair's last bar, as HIVG
+   * counts a stale reading: FXB's IV30 of 18 May beside a November cone.
+   */
+  stale: boolean;
+  /** What a stale IV30 says: "FXB has no IV30 since 2026-05-18". */
+  note: string | null;
+}
+
 /**
- * The pair's 20-bar realized volatility on the proxy's IV30 date, and the IV30
- * less it: HIVG's IV30 - HV20, with the fund's IV against the pair's own moves.
- * Close to close, whatever the pane's estimator, as HIVG reads it.
+ * The proxy's IV30 read against the pair: its age against the pair's last bar
+ * (stale over 5 sessions, iv-history's `staleness`), and while it is current,
+ * the pair's 20-bar realized volatility on the IV30's close and the IV30 less
+ * it, HIVG's IV30 - HV20 with the fund's IV against the pair's own moves.
+ * Close to close, whatever the pane's estimator, as HIVG reads it, and over
+ * the pair's year (`instrument`: 260 bars for USDJPY=X, 252 for 6J=F). A stale
+ * IV30 is no reading of the pair now: IV30 - HV20 is left out.
  */
-export function fxProxyIvLessRv(proxy: FxVolProxy | null, history: readonly PricePoint[]): { hv20: number | null; spread: number | null } {
-  if (!proxy?.iv30) return { hv20: null, spread: null };
+export function fxProxyIvLessRv(proxy: FxVolProxy | null, history: readonly PricePoint[], instrument: BarsPerYearInstrument = {}): FxProxyReading {
+  if (!proxy?.iv30) return { hv20: null, spread: null, stale: false, note: null };
   const through = proxy.iv30.date;
-  const upTo = history.filter((point) => new Date(point.date).toISOString().slice(0, 10) <= through);
-  const hv20 = upTo.length ? realizedVolatilityResult(upTo, 20, "close-to-close").value : null;
-  return { hv20, spread: hv20 == null ? null : proxy.iv30.value - hv20 };
+  const lastBar = history.length ? history.map(barDay).sort().at(-1)! : null;
+  if (staleness(through, lastBar).stale) {
+    return { hv20: null, spread: null, stale: true, note: `${proxy.fund} has no IV30 since ${through}` };
+  }
+  const upTo = history.filter((point) => barDay(point) <= through);
+  const hv20 = upTo.length ? realizedVolatilityResult(upTo, 20, "close-to-close", instrument).value : null;
+  return { hv20, spread: hv20 == null ? null : proxy.iv30.value - hv20, stale: false, note: null };
 }
 
 /** "FXY IV30", the label the proxy reads under in the pane, the chart legend and the report. */

@@ -183,11 +183,17 @@ export function formatDetailDate(value: DisplayDateValue, fallback = "-", timeZo
     year: "numeric",
     timeZone,
   });
-  const timePart = date.toLocaleTimeString("en-US", {
+  return `${datePart} at ${formatDetailTime(date, fallback, timeZone)}`;
+}
+
+/** The time of `formatDetailDate` alone, its zone named: "11:38 PM GMT+2", for a day stated beside it. */
+export function formatDetailTime(value: DisplayDateValue, fallback = "-", timeZone?: string): string {
+  const date = parseDisplayDate(value);
+  if (!date) return fallback;
+  return date.toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
     timeZoneName: "short",
     timeZone,
   });
-  return `${datePart} at ${timePart}`;
 }

@@ -46,8 +46,8 @@ function newestSession(...dates: ReadonlyArray<string | null | undefined>): stri
   return dates.filter((date): date is string => !!date).map((date) => date.slice(0, 10)).sort().at(-1) ?? null;
 }
 
-/** How many sessions a reading is behind the newest, and whether that makes it stale. */
-function staleness(date: string | null | undefined, newest: string | null): { sessionsBehind: number | null; stale: boolean } {
+/** How many sessions a reading is behind the newest, and whether that makes it stale (over `STALE_AFTER_SESSIONS`). */
+export function staleness(date: string | null | undefined, newest: string | null): { sessionsBehind: number | null; stale: boolean } {
   const behind = date && newest ? sessionsBehind(date.slice(0, 10), newest) : null;
   return { sessionsBehind: behind, stale: behind != null && behind > STALE_AFTER_SESSIONS };
 }
@@ -389,15 +389,14 @@ export interface RichCheapRow {
 /**
  * The dates the screened rows agree on, so each is said once instead of per
  * row. The reading (IV30, term slope, IV/HV) and the rank (IVR, IVP) are one
- * ranked close where a symbol has one; an unranked reading is dated alone. A
- * group the rows disagree on gets its own column.
+ * ranked close where a symbol has one, so a rank is dated as its row is; an
+ * unranked reading is dated alone. A group the rows disagree on gets its own
+ * column.
  */
 export interface RichCheapDates {
   reading: { date: string; method: IvMethod; basis: IvCloseBasis | null } | null;
   /** The trade close every ranked row is ranked on. */
   rank: string | null;
-  /** Ranked rows are ranked on different closes. */
-  rankApart: boolean;
   /** Some risk reversal comes from a different session than its row's reading. */
   skewApart: boolean;
   /** Some HV is dated on a different session than the IV it sits beside. */
@@ -413,7 +412,6 @@ export function richCheapDates(rows: readonly RichCheapRow[]): RichCheapDates {
     reading: first && read.every((row) => row.date === first.date && readingSource(row.method, row.basis) === readingSource(first.method, first.basis) && !row.stale)
       ? { date: first.date!, method: first.method!, basis: first.basis } : null,
     rank: firstRanked && ranked.every((row) => row.rankDate === firstRanked.rankDate) ? firstRanked.rankDate : null,
-    rankApart: !!firstRanked && ranked.some((row) => row.rankDate !== firstRanked.rankDate),
     skewApart: rows.some((row) => row.riskReversal != null && row.skewDate !== row.date),
     hvApart: rows.some((row) => row.hv != null && row.hvDate != null && row.hvDate !== row.date),
   };
@@ -456,7 +454,8 @@ export function projectRichCheap(rows: readonly IvScreenRow[], hv: ReadonlyMap<s
       symbol: row.symbol, status: row.coverageStatus ?? row.status, queuedAt: row.coverage?.addedAt ?? null,
       backfilledThrough: row.coverage?.backfilledThrough ?? null, warning: row.warnings?.[0] ?? null,
       iv30, date, method: reading?.method ?? null, basis: reading?.basis ?? null,
-      stale, sessionsBehind: behind, spot: latest?.spot ?? null,
+      // The underlying's price on the row's own date: the newest capture's when it is of that session, else none.
+      stale, sessionsBehind: behind, spot: latest && date != null && latest.date === date ? latest.spot ?? null : null,
       rank: rankedNow ? ranked.rank ?? null : null, percentile, rankDate: rankedNow ? ranked.date : null,
       termSlope: iv30 != null && iv90 != null ? iv30 - iv90 : null,
       iv1y,

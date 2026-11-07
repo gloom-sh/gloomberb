@@ -202,9 +202,8 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
         ...(dates.reading ? [] : [{ key: "date", header: "As of", format: (value: unknown, row?: unknown) =>
           typeof value === "string" ? readingLabel(value, (row as RichCheapRow).method, false,
             { basis: (row as RichCheapRow).basis, stale: (row as RichCheapRow).stale }) : "--" }]),
-        // The underlying price each reading was taken at, on the date the title or the As of column gives.
+        // The underlying's price on the row's own date, the title's or the As of column's; blank when no capture of it is that day's.
         { key: "spot", header: "Spot", format: (value: unknown) => typeof value === "number" ? formatSpot(value) : "--" },
-        ...(dates.rankApart ? [{ key: "rankDate", header: "Rank as of", format: (value: unknown) => typeof value === "string" ? `${value} close` : "--" }] : []),
         { key: "rank", header: "IVR", format: (value: unknown) => formatRank(value as number | null) },
         { key: "percentile", header: "IVP", format: (value: unknown) => formatRank(value as number | null) },
         { key: "verdict", header: "Rich/Cheap", format: (value: unknown) => verdictLabel(value as never) },

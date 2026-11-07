@@ -1,5 +1,6 @@
 import { mergePriceHistoryIntegrity } from "../../utils/price-history-integrity";
 import { isRealizedVolatilityEstimator, rollingRealizedVolatility } from "../../market-data/realized-volatility";
+import { currencyPairInstrument } from "../../market-data/bars-per-year";
 import { INDEX_MEMBERS_VOLUME_LABEL } from "../../market-data/market/index-level";
 import { averageTrueRange } from "../trader-studies";
 import type { ChartStudySpec, ResolvedSeries, TimeSeriesPoint } from "../types";
@@ -107,6 +108,8 @@ export function resolveRealizedVolatility(spec: ChartStudySpec, input: ResolvedS
   // would turn two separated returns into adjacent observations.
   const byDate = new Map(input.points.map((point) => [point.date.getTime(), point]));
   const source = [...byDate.values()].sort((a, b) => a.date.getTime() - b.date.getTime());
+  // A currency pair's year is every weekday (260 bars), however short the range charted.
+  const instrument = currencyPairInstrument(input.listing?.symbol, input.listing?.exchange);
   const calculated = rollingRealizedVolatility(source.map((point) => ({
     date: point.date,
     close: point.provenance?.priceHistoryIntegrity || point.provenance?.valuationPriceIssues?.length
@@ -114,7 +117,7 @@ export function resolveRealizedVolatility(spec: ChartStudySpec, input: ResolvedS
     open: point.open ?? undefined,
     high: point.high ?? undefined,
     low: point.low ?? undefined,
-  })), { windows: [window], estimator });
+  })), { windows: [window], estimator, instrument });
   const warmup = studyWarmupPoints(spec);
   const points = calculated.map((point, index): TimeSeriesPoint => {
     const original = source[index]!;
