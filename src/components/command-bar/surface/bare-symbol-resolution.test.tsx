@@ -25,8 +25,10 @@ const listings: Record<string, InstrumentSearchResult[]> = {
 
 // Before its search answers, a typed ticker command opens the listing the shared
 // resolver reads (DES HFC is the former US line, as `quote HFC` reads it). Once
-// rows are up, Enter opens exactly the highlighted one: search relevance leads
-// with another company here, and that is the row Enter opens.
+// rows are up, Enter opens exactly the highlighted one: search leads HFC with a
+// company still trading, and that is the row Enter opens. SAN leads with its US
+// listing, as the resolver reads it, ahead of Sanofi in Paris.
+const firstShown: Record<string, InstrumentSearchResult> = { HFC: listings.HFC![0]!, SAN: listings.SAN![1]! };
 for (const suggestionsReady of [false, true]) {
   for (const [query, expectedSymbol, expectedExchange, expectedName] of [
     ["DES HFC", "HFC", "NYSE", "HollyFrontier Corporation"],
@@ -39,7 +41,7 @@ for (const suggestionsReady of [false, true]) {
     const symbol = query.replace(/^DES /, "").split(":")[0]!;
     // The highlighted row once the answer is in: the first, unless the query named the venue.
     const highlighted = !suggestionsReady || query.includes(":") ? { exchange: expectedExchange, name: expectedName }
-      : { exchange: listings[symbol]![0]!.exchange, name: listings[symbol]![0]!.name };
+      : { exchange: firstShown[symbol]!.exchange, name: firstShown[symbol]!.name };
     test(`${query} with suggestions ${suggestionsReady ? "loaded opens the highlighted row" : "pending resolves the typed listing"}`, async () => {
       const opened: string[] = [];
       const saved: TickerRecord[] = [];

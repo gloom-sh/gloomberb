@@ -280,8 +280,8 @@ describe("ticker-search utilities", () => {
 
       const wtiRows = [wti, stock("WTI", "WTI Oil Exchange Traded Commodity", "LSE", "ETF"), stock("WTI", "W&T Offshore Inc", "NYSE"),
         stock("WTII", "Water Technologies International,Inc.", "OTC")];
-      // The exact tickers follow in the order the server gave them.
-      expect(order("wti", wtiRows).slice(0, 3)).toEqual(["CL=F:NYM", "WTI:LSE", "WTI:NYSE"]);
+      // The exact tickers follow, the company listed in the US first, as `quote WTI` reads the symbol.
+      expect(order("wti", wtiRows).slice(0, 3)).toEqual(["CL=F:NYM", "WTI:NYSE", "WTI:LSE"]);
 
       const goldRows = [gold, stock("GOLD", "Gold.com, Inc.", "NYSE"), stock("GOLD", "GoldMining Inc.", "TSX"),
         stock("GOLD", "Amundi Physical Gold ETC", "AMS", "ETF")];
@@ -1317,8 +1317,8 @@ describe("ticker-search utilities", () => {
       const typed = toyota.map((result) => result.symbol === "TM" ? { ...result, type: "Depositary Receipt" } : result);
       expect(symbols("Toyota", typed)).toEqual(["7203", "TOYOF", "TOM", "TM", "8015"]);
       expect(primary("Toyota", typed)).toBe("7203");
-      // The receipt's own ticker lists the company's own shares first when the answer holds them, the receipt under them.
-      expect(symbols("TM", typed).slice(0, 2)).toEqual(["7203", "TM"]);
+      // The receipt's own ticker is the receipt, as `quote TM` reads it, the company's own shares right under it.
+      expect(symbols("TM", typed).slice(0, 2)).toEqual(["TM", "7203"]);
       expect(symbols("TM", typed.filter((result) => result.exchange !== "JPX"))[0]).toBe("TM");
     });
 
@@ -1332,7 +1332,8 @@ describe("ticker-search utilities", () => {
       ];
       expect(symbols("Toyota", toyota)).toEqual(["7203", "TM", "8015"]);
       expect(symbols("Taiwan Semiconductor", taiwan.map((result) => result.symbol === "2330" ? home(result) : result))[0]).toBe("2330");
-      // "Sony" is the receipts' ticker; the home line of the same company, not Sony Financial's, takes the lead.
+      // "Sony", written as a name, is also the receipts' ticker; the home line of the same company, not Sony
+      // Financial's, takes the lead. In capitals it is the ticker, its NYSE line first and the home line next.
       const sony = [
         listing("SONY", "Sony Group Corporation ADR", "NYSE", 13830500, "American Depositary Receipt"),
         listing("SONY", "Sony Group Corporation", "NEO", undefined, "Depositary Receipt"),
@@ -1340,6 +1341,7 @@ describe("ticker-search utilities", () => {
         home(listing("6758", "Sony Group Corp.", "JPX", 20772)),
       ];
       expect(symbols("Sony", sony).slice(0, 3)).toEqual(["6758", "SONY", "SONY"]);
+      expect(symbols("SONY", sony).slice(0, 3)).toEqual(["SONY", "6758", "SONY"]);
       // A venue named asks for that line.
       expect(symbols("SONY:NYSE", sony)[0]).toBe("SONY");
       // Without the mark (older servers), a receipt in the lead gives way to the company's own shares.
@@ -1363,9 +1365,9 @@ describe("ticker-search utilities", () => {
       ];
       const ranked = build("YAR", yar);
       expect(ranked.find((item) => item.category === "Primary Listing")?.result?.exchange).toBe("OSL");
-      // A home line of its own leads only a regional line: a symbol's line on its home exchange keeps the lead.
+      // It leads another company's line on that company's own exchange too: Yari Minerals has no home line.
       const yari = [yar[3]!, yar[4]!];
-      expect(build("YAR", yari)[0]?.result?.exchange).toBe("ASX");
+      expect(build("YAR", yari)[0]?.result?.exchange).toBe("OSL");
     });
   });
 
