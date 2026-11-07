@@ -1980,7 +1980,7 @@ A book that holds a short is weighed against its gross exposure, not its total: 
 A portfolio's header totals and its COST, MKT VAL, DAY, P&L and MCAP columns are in the portfolio's currency, as are `PORT` and `portfolio show`. LAST, AVG COST and TARGET stay in the listing's currency, and a row priced in another currency than the totals gets a CCY column after LAST.
 
 - A broker portfolio uses its account currency.
-- A manual portfolio uses your base currency (`config set baseCurrency CAD`, an ISO 4217 code in any case). With the default USD base it takes the currency of its first position instead: a portfolio of ASX shares bought in AUD totals in AUD, and later holdings in other currencies convert into it.
+- A manual portfolio uses your base currency (`config set baseCurrency CAD`, an ISO 4217 code in any case). With the default USD base it takes the currency of its first position instead: a portfolio of ASX shares bought in AUD totals in AUD, and later holdings in other currencies convert into it. `position set` says so in a line; it warns when the portfolio already holds cash or targets, which were set beside its old totals.
 - `portfolio create Baht --currency THB` makes a manual portfolio that totals in THB whatever the base currency, and its first position does not change that. An ISO code in capitals ending the name is read the same way: `portfolio create Baht THB` creates "Baht" in THB and says so. Quote the name as one argument (`portfolio create "Baht THB"`) to keep the code in it.
 - Totals lead with the currency symbol (A$108.6k) unless both they and the base currency are USD.
 

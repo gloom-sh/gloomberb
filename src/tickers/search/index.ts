@@ -35,7 +35,7 @@ import {
 } from "./result";
 
 import { typedPerpetualListing } from "../perpetual-listing";
-import { renamedListingFor, type RenamedListing } from "../renamed-listings";
+import { renamedListingFor, renamedListingFormerLine, type RenamedListing } from "../renamed-listings";
 import { endsInLegalForm, readNearMissListing, readVenueFirstListing, readTerminalListingCode } from "../terminal-codes";
 import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
 import { settleWithin } from "../../utils/async-deadline";
@@ -346,8 +346,8 @@ async function renamedListingRow(
     && canonicalExchange(result.exchange) === canonicalExchange(renamed.exchange));
   return row ? {
     ...row,
-    searchAliases: [...new Set([...(row.searchAliases ?? []), renamed.formerName, renamed.from, `${renamed.from}${renamed.suffix}`])],
-    formerName: `${renamed.formerName} (${renamed.from})`,
+    searchAliases: [...new Set([...(row.searchAliases ?? []), ...renamed.formerNames, renamed.from, `${renamed.from}${renamed.suffix}`])],
+    formerName: renamedListingFormerLine(renamed),
   } : null;
 }
 
@@ -968,7 +968,9 @@ function assignTickerSearchCategories<T extends TickerSearchCandidate>(items: T[
  * funds search ranked above it. Only when the primary listing's name holds
  * every word of the query and every fund ranked above it is a mutual fund: a
  * future or an ETF the query names keeps its lead (GC=F for "gold", LIT for
- * "lithium").
+ * "lithium", Fidelity's ETFs for "fidelity"). Only the primary listing and
+ * the lines under its own name move: another company's listing keeps its
+ * place behind the funds.
  */
 function companyListingsFirst<T extends TickerSearchCandidate>(items: T[], query: string): T[] {
   const primary = items.findIndex((item) => item.category === "Primary Listing");
@@ -978,9 +980,10 @@ function companyListingsFirst<T extends TickerSearchCandidate>(items: T[], query
   if (!ahead.every((item) => /mutual\s*fund/i.test(item.instrumentType ?? item.result?.type ?? ""))) return items;
   const wanted = normalizeSearchText(query).split(" ").filter(Boolean);
   const lead = items[primary]!;
-  const name = ` ${normalizeSearchText(lead.result?.name ?? lead.ticker?.metadata.name ?? lead.detail ?? "")} `;
-  if (!wanted.length || !wanted.every((word) => name.includes(` ${word} `))) return items;
-  const listings = items.filter((item) => item.category === "Primary Listing" || item.category === "Other Listings");
+  const leadName = normalizeSearchText(lead.result?.name ?? lead.ticker?.metadata.name ?? lead.detail ?? "");
+  if (!wanted.length || !wanted.every((word) => ` ${leadName} `.includes(` ${word} `))) return items;
+  const listings = items.filter((item) => item === lead || (item.category === "Other Listings"
+    && normalizeSearchText(item.result?.name ?? item.ticker?.metadata.name ?? item.detail ?? "") === leadName));
   const before = items.slice(0, firstFund).filter((item) => !listings.includes(item));
   const rest = items.slice(firstFund).filter((item) => !listings.includes(item));
   return [...before, ...listings, ...rest];

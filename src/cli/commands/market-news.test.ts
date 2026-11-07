@@ -340,13 +340,41 @@ test("oil and crude are the oil market's energy stories, and a central bank's na
 
   requests.length = 0;
   await news.execute(["copom", "selic"], cli.context);
-  // Every name is searched once, the acronym BCB none: it is BCB Bancorp's too.
+  // The text as typed and every name, once each, the acronym BCB none: it is BCB Bancorp's too.
   expect(requests.map((url) => url.searchParams.get("query")).sort()).toEqual(
-    ["Banco Central do Brasil", "Brazil central bank", "Central Bank of Brazil", "Copom", "Selic"].sort());
+    ["copom selic", "Banco Central do Brasil", "Brazil central bank", "Central Bank of Brazil", "Copom", "Selic"].sort());
   const printed = cli.printed[2]!;
   expect(render(printed).split("\n")[0]).toBe('Stories matching "copom selic"  ·  the Central Bank of Brazil\'s stories, under each name it is reported by');
   // Newest first, once each, and only the stories that name the bank.
   expect((printed.result.data as NewsArticle[]).map((article) => article.id)).toEqual(["rbi", "copom"]);
+});
+
+test("a bank's short name finds its stories as a word in capitals, and what else the search asks is kept", async () => {
+  // The ECB, RBA and FOMC go by their acronyms in headlines; "fed rate cut" searched the Fed's names alone.
+  const requests = serveSearch([
+    story("ecb", "ECB holds deposit rate at 2% as inflation cools", "2026-10-29T13:15:00.000Z"),
+    story("fomc", "FOMC cuts rates by a quarter point", "2026-10-28T18:00:00.000Z"),
+    story("rba", "RBA cuts cash rate to 3.35%", "2026-11-03T03:30:00.000Z"),
+    story("feed", "Feedlot cattle prices rise", "2026-11-02T10:00:00.000Z"),
+  ]);
+  const cli = createTestCliContext({ dataProvider: { getNews: async () => [], getQuote: async (symbol: string) => { throw new Error(`Not a ticker: ${symbol}.`); } } });
+  const ids = (index: number) => (cli.printed[index]!.result.data as NewsArticle[]).map((article) => article.id);
+
+  await news.execute(["ECB"], cli.context);
+  expect(requests.map((url) => url.searchParams.get("query")).sort()).toEqual(["ECB", "Euro area central bank", "European Central Bank"]);
+  expect(ids(0)).toEqual(["ecb"]);
+
+  requests.length = 0;
+  await news.execute(["fed", "rate", "cut"], cli.context);
+  // "Fed rate cut" is the text as typed, searched once.
+  expect(requests.map((url) => url.searchParams.get("query")).sort()).toEqual([
+    "fed rate cut", "Federal Reserve Board rate cut", "Federal Reserve System rate cut", "Federal Reserve rate cut", "FOMC rate cut",
+    "United States central bank rate cut",
+  ].sort());
+  expect(ids(1)).toEqual(["fomc"]);
+
+  await news.execute(["rba"], cli.context);
+  expect(ids(2)).toEqual(["rba"]);
 });
 
 test("a real listing, with or without stories, never falls back to a text search", async () => {

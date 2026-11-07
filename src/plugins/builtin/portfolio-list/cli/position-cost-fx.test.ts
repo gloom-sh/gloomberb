@@ -6,7 +6,7 @@ import { apiClient } from "../../../../api-client";
 import { serializeCliResult } from "../../../../cli/result";
 import { DEFAULT_CLI_OPTIONS } from "../../../../cli/options";
 import { createDefaultConfig, type AppConfig } from "../../../../types/config";
-import type { TickerPosition, TickerRecord } from "../../../../types/ticker";
+import type { Portfolio, TickerPosition, TickerRecord } from "../../../../types/ticker";
 import { createTestDataProvider } from "../../../../test-support/data-provider";
 import { createTestCliContext } from "../../../../test-support/cli-context";
 import { createTestTicker } from "../../../../test-support/ticker";
@@ -235,18 +235,30 @@ test("position set over several lots keeps their earliest date and cost-weighted
   expect((await positionSet(liraConfig(), mixed, ["Lira", "AAPL", "30", "400", "USD", "--cost-fx", "33"])).lot?.costFxRate).toBe(33);
 });
 
-test("the first position of a book that follows its holdings says the book's currency followed it, and how to keep its own", async () => {
+test("the first position of a book that follows its holdings says the book's currency followed it, warning only where it holds cash or targets", async () => {
   const dir = mkdtempSync(join(tmpdir(), "gloom-first-position-"));
-  const config = createDefaultConfig(dir);
-  config.portfolios = [{ id: "latam", name: "LatAm Book USD", currency: "USD" }];
-  const petr4 = createTestTicker("PETR4", "Petrobras", { exchange: "B3", currency: "BRL", portfolios: ["latam"] });
-  const cli = createTestCliContext({ config,
-    store: { loadTicker: async () => petr4, loadAllTickers: async () => [], saveTicker: async () => {} },
-    dataProvider: createTestDataProvider({ getExchangeRate: async () => 1 }),
-  });
-  await portfolioCliCommand.execute(["position", "set", "LatAm Book USD", "PETR4", "100", "45.30"], cli.context);
-  const warnings = cli.printed[0]!.result.warnings ?? [];
-  expect(warnings.join(" ")).toContain("\"LatAm Book USD\" now totals in BRL, the currency of its first position.");
-  expect(warnings.join(" ")).toContain("gloom portfolio create \"LatAm Book USD\" --currency USD");
+  const firstPosition = async (book: Partial<Portfolio>) => {
+    const config = createDefaultConfig(dir);
+    config.portfolios = [{ id: "latam", name: "LatAm Book USD", currency: "USD", ...book }];
+    const petr4 = createTestTicker("PETR4", "Petrobras", { exchange: "B3", currency: "BRL", portfolios: ["latam"] });
+    const cli = createTestCliContext({ config,
+      store: { loadTicker: async () => petr4, loadAllTickers: async () => [], saveTicker: async () => {} },
+      dataProvider: createTestDataProvider({ getExchangeRate: async () => 1 }),
+    });
+    await portfolioCliCommand.execute(["position", "set", "LatAm Book USD", "PETR4", "100", "45.30"], cli.context);
+    const printed = cli.printed[0]!;
+    return { warnings: printed.result.warnings ?? [], text: serializeCliResult(printed.result, { ...DEFAULT_CLI_OPTIONS, format: "text", color: false }, printed.options),
+      data: printed.result.data as { totalsCurrency?: string } };
+  };
+  // An empty book: one line, no warning.
+  const empty = await firstPosition({});
+  expect(empty.warnings).toEqual([]);
+  expect(empty.text).toContain("\"LatAm Book USD\" now totals in BRL, its first position's currency.");
+  expect(empty.data.totalsCurrency).toBe("BRL");
+  // Cash or targets were set beside its USD totals: a warning, and how to keep USD.
+  const funded = await firstPosition({ cash: { amount: 5_000, currency: "USD" }, targetWeights: { PETR4: 40 } });
+  expect(funded.warnings).toEqual([
+    "\"LatAm Book USD\" now totals in BRL, its first position's currency, its cash and targets included. To keep USD, recreate it with --currency USD.",
+  ]);
   rmSync(dir, { recursive: true, force: true });
 });

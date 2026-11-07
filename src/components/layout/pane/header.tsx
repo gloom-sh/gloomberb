@@ -409,6 +409,7 @@ export function PaneHeader({
               activeValue={stack.active}
               onSelect={stack.onSelect}
               variant="header"
+              background={backgroundColor}
               focused={visuallyFocused}
               keyboardNavigation={false}
               paneMenu={false}
@@ -468,6 +469,7 @@ export function PaneHeader({
               activeValue={tabs.activeValue}
               onSelect={tabs.onSelect}
               variant="header"
+              background={backgroundColor}
               focused={tabs.focused}
               keyboardNavigation={tabs.keyboardNavigation}
               onAdd={tabs.onAdd}

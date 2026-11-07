@@ -1,7 +1,7 @@
 import { apiClient } from "../../api-client";
 import type { NewsArticle } from "../../news/types";
 import { ENERGY_NEWS_TOPIC, mapCloudNewsArticle, METALS_NEWS_TOPIC } from "../../sources/gloomberb-cloud/news";
-import { centralBankNewsQueries, storyNamesCentralBank, type CentralBank } from "../../utils/central-banks";
+import { centralBankNewsQueries, centralBankNewsTopic, storyNamesCentralBank, type CentralBank } from "../../utils/central-banks";
 import { cliStyles } from "../../utils/cli-output";
 import { logFailure } from "../../utils/log-failure";
 import { commodityNamedIn, commoditySearchName, isCommodityName } from "../../market-data/commodity-names";
@@ -194,13 +194,20 @@ export function noMetalStoriesMessage(route: MetalNewsRoute): string {
 
 /**
  * A central bank's latest decision stories, for its name or the committee and
- * rate its decisions go by (`centralBankInNews`): every name it is reported
- * under searched at once (`centralBankNewsQueries`), newest first. "banxico"
- * alone found May's cut, not November's, reported as the Bank of Mexico's.
- * Fails only when every search failed.
+ * rate its decisions go by (`centralBankInNews`): the text as typed and every
+ * name it is reported under (`centralBankNewsQueries`), each with what else
+ * the text asks (`centralBankNewsTopic`: "rate cut" of "fed rate cut"),
+ * searched at once, newest first, and only the stories that name the bank.
+ * "banxico" alone found May's cut, not November's, reported as the Bank of
+ * Mexico's. Fails only when every search failed.
  */
-export async function searchCentralBankStories(bank: CentralBank, limit: number): Promise<NewsArticle[]> {
-  const answers = await Promise.allSettled(centralBankNewsQueries(bank).map((query) => searchNewsStories(query, limit)));
+export async function searchCentralBankStories(bank: CentralBank, limit: number, typed = ""): Promise<NewsArticle[]> {
+  const topic = centralBankNewsTopic(bank, typed);
+  const queries = new Map<string, string>();
+  for (const query of [typed.trim(), ...centralBankNewsQueries(bank).map((name) => topic ? `${name} ${topic}` : name)]) {
+    if (query && !queries.has(query.toLowerCase())) queries.set(query.toLowerCase(), query);
+  }
+  const answers = await Promise.allSettled([...queries.values()].map((query) => searchNewsStories(query, limit)));
   const found = answers.flatMap((answer) => answer.status === "fulfilled" ? answer.value : []);
   const failed = answers.find((answer): answer is PromiseRejectedResult => answer.status === "rejected");
   if (failed && answers.every((answer) => answer.status === "rejected")) throw failed.reason;

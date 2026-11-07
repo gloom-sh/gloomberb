@@ -88,6 +88,28 @@ test("a BMV move is dated by the session right before its official close, and a 
   expect((await date({ ...petr4, marketState: "REGULAR" })).regularClose).toBeUndefined();
 });
 
+test("a closed B3 quote read before its session's official close is in the history is read again until it lands", async () => {
+  // PETR4.SA read on the evening of Fri 6 Nov 2026, before the day's bar: the previous close is dated, the close is not.
+  const petr4 = createTestQuote({ symbol: "PETR4.SA", currency: "BRL", listingExchangeName: "B3", exchangeName: "B3",
+    price: 45.36, change: -0.59, changePercent: -1.28, previousClose: 45.95, lastUpdated: Date.parse("2026-11-06T21:00:13Z"),
+    changeSessionDate: "2026-11-06", marketState: "CLOSED" });
+  const closes: Record<string, Record<string, number>> = { "PETR4.SA": { "2026-11-05": 45.95 } };
+  const { asked, label, date, advance } = dailyCloses(closes);
+  const early = await date(petr4);
+  expect(label(early)).toBe("vs Thu 5 Nov close");
+  expect(early.regularClose).toBeUndefined();
+  // Not again within the retry window, then again once it is old: the bar has landed.
+  expect((await date(petr4)).regularClose).toBeUndefined();
+  closes["PETR4.SA"]!["2026-11-06"] = 45.3;
+  advance(11 * 60_000);
+  expect(await date(petr4)).toMatchObject({ regularClose: 45.3, regularCloseSessionDate: "2026-11-06", previousCloseDate: "2026-11-05" });
+  expect(asked).toEqual(["PETR4.SA", "PETR4.SA"]);
+  // Once it has, the reading stands.
+  advance(11 * 60_000);
+  await date(petr4);
+  expect(asked).toHaveLength(2);
+});
+
 test("a history whose latest close is not the previous close names no day, until it is read again later", async () => {
   const closes: Record<string, Record<string, number>> = { "SHEL.L": { "2026-10-20": 39, "2026-10-21": 39.09 } };
   const { asked, label, date, advance } = dailyCloses(closes);

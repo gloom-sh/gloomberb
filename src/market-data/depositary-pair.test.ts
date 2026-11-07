@@ -82,7 +82,7 @@ test("the peso's CCL comes from the receipt and the C line, its MEP from the D l
 test("a home line names its receipt's ratio in shares, one share included", () => {
   expect(depositaryPairText({ receipt: "RWEOY", ratio: 1, ordinary: ["RWE.DE"] }, false)).toBe("1 RWEOY ADR = 1 of these shares");
   expect(depositaryPairText({ receipt: "GGAL", ratio: 10, ordinary: ["GGAL.BA"] }, false)).toBe("1 GGAL ADR = 10 of these shares");
-  expect(depositaryPairText({ receipt: "RIO", ratio: 1, ordinary: ["RIO.L"] }, true)).toBe("1 ADR = 1 ordinary share of RIO.L");
+  expect(depositaryPairText({ receipt: "RIO", ratio: 1, ordinary: ["RIO.L"] }, true)).toBe("1 ADR = 1 share of RIO.L");
 });
 
 test("a receipt names its home line's class: preferred on B3, units and CPOs on the BMV", () => {

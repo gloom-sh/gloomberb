@@ -140,7 +140,7 @@ export function createYieldCurveHeadless(
   return {
     shape: "rows",
     argument: { kind: "free-text", optional: true, placeholder: "[curve] [date]",
-      description: "A curve (ust, tips, breakeven, euro, bund, gilt, jgb, canada) and a historical as-of date; omit for the latest UST curve." },
+      description: "A curve (ust, tips, breakeven, euro, bund, gilt, jgb, canada, mexico, brazil) and a historical as-of date; omit for the latest UST curve." },
     options: [
       { key: "date", type: "string", settingKey: "asOfDate", placeholder: "date", description: `Historical as-of date, as ${DATE_OPTION_EXAMPLES}; uses the latest session on or before it.` },
       { key: "curve", type: "string", description: "ust (default), tips, breakeven, euro, bund, gilt, jgb, canada, mexico or brazil." },

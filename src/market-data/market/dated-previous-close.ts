@@ -17,9 +17,10 @@ const SAME_CLOSE_RELATIVE = 1e-5;
  */
 const SAME_INDEX_CLOSE_RELATIVE = 1e-4;
 /**
- * How long a reading that named no day, or corrected an index's close,
- * stands before the closes are read again: a history a session behind
- * catches up, a failed read is retried, a correction is checked again.
+ * How long a reading that named no day, corrected an index's close, or found
+ * no official close yet for a closed B3 session stands before the closes are
+ * read again: a history a session behind catches up, a failed read is
+ * retried, a correction is checked again.
  */
 const UNDATED_RETRY_MS = 10 * 60_000;
 /** Readings kept at once; the oldest goes first. */
@@ -61,6 +62,8 @@ export interface PreviousCloseDatesOptions {
   indexWaitMs?: number;
 }
 
+type ReadingFields = Pick<Reading, "date" | "close" | "sessionClose" | "awaitsSessionClose">;
+
 interface Reading {
   date: string | null;
   /**
@@ -70,6 +73,8 @@ interface Reading {
   close?: number;
   /** The official close of the quote's own session, from its daily bar, where the quote ends on a later print (B3). */
   sessionClose?: number;
+  /** A closed quote on such a venue whose session's bar was not in the history yet: read again until it lands. */
+  awaitsSessionClose?: boolean;
   at: number;
 }
 
@@ -174,16 +179,19 @@ function weekdayBefore(date: string): string {
 /**
  * The official close of a closed quote's own session on a venue whose quote
  * can end on a later print (DAILY_BAR_CLOSE_VENUES): the session's finished
- * daily bar, when it differs from the quote's price; undefined otherwise.
+ * daily bar, when it differs from the quote's price; undefined when it does
+ * not. `awaits` when the history has no finished bar of that session yet.
  */
-function sessionCloseOf(points: readonly DailyClose[], quote: Quote): number | undefined {
-  if (quote.marketState !== "CLOSED" || !DAILY_BAR_CLOSE_VENUES.has(calendarVenue(quote))) return undefined;
-  if (typeof quote.regularClose === "number" && quote.regularClose > 0) return undefined;
+function sessionCloseOf(points: readonly DailyClose[], quote: Quote): { close?: number; awaits?: true } {
+  if (quote.marketState !== "CLOSED" || !DAILY_BAR_CLOSE_VENUES.has(calendarVenue(quote))) return {};
+  if (typeof quote.regularClose === "number" && quote.regularClose > 0) return {};
   const sessionDate = changeBasisSessionDate(quote);
-  const bar = sessionDate ? closedBars(points, quote).findLast((point) => point.date === sessionDate && point.close > 0) : undefined;
-  if (!bar || !(quote.price > 0) || sameClose(bar.close, quote.price)) return undefined;
+  if (!sessionDate) return {};
+  const bar = closedBars(points, quote).findLast((point) => point.date === sessionDate && point.close > 0);
+  if (!bar) return { awaits: true };
+  if (!(quote.price > 0) || sameClose(bar.close, quote.price)) return {};
   const close = cleanFloat32Price(bar.close);
-  return Math.abs(close / quote.price - 1) <= MAX_SESSION_CLOSE_MOVE ? close : undefined;
+  return Math.abs(close / quote.price - 1) <= MAX_SESSION_CLOSE_MOVE ? { close } : {};
 }
 
 /**
@@ -214,11 +222,15 @@ function indexCloseOn(points: readonly DailyClose[], quote: Quote, date: string)
   return Math.abs(previousClose - close) <= close * SAME_INDEX_CLOSE_RELATIVE ? { date } : { date, close };
 }
 
-function readingOf(points: readonly DailyClose[], quote: Quote): Pick<Reading, "date" | "close" | "sessionClose"> {
+function readingOf(points: readonly DailyClose[], quote: Quote): ReadingFields {
   const indexDate = datedIndexClose(quote);
   if (indexDate) return indexCloseOn(points, quote, indexDate);
-  const sessionClose = sessionCloseOf(points, quote);
-  return { date: latestCloseBefore(points, quote), ...sessionClose != null ? { sessionClose } : {} };
+  const session = sessionCloseOf(points, quote);
+  return {
+    date: latestCloseBefore(points, quote),
+    ...session.close != null ? { sessionClose: session.close } : {},
+    ...session.awaits ? { awaitsSessionClose: true } : {},
+  };
 }
 
 function withDate<T extends Quote | null | undefined>(quote: T, date: string | null | undefined): T {
@@ -269,7 +281,7 @@ function withDatedReading<T extends Quote | null | undefined>(quote: T, reading:
  */
 export class PreviousCloseDates {
   private readonly readings = new Map<string, Reading>();
-  private readonly pending = new Map<string, Promise<Pick<Reading, "date" | "close" | "sessionClose">>>();
+  private readonly pending = new Map<string, Promise<ReadingFields>>();
   /** The latest copy of each quote a read is pending for, which the read dates when it lands. */
   private readonly latestCopies = new Map<string, { quote: Quote; listing: DatedCloseListing }>();
   /** Dating reads and index checks queue apart, so neither waits behind the other. */
@@ -333,21 +345,23 @@ export class PreviousCloseDates {
    * Whether a reading answers without another read: a day it named that
    * agreed with the quote's close, or any other reading taken lately. A
    * correction (an index's close the quote disagreed with) is read again as
-   * an undated one is, so a wrong close cannot stand for the session.
+   * an undated one is, so a wrong close cannot stand for the session, and so
+   * is a closed B3 quote's whose session's official close had not landed.
    */
   private stands(reading: Reading | undefined): boolean {
-    return !!reading && ((!!reading.date && reading.close == null) || this.now() - reading.at < UNDATED_RETRY_MS);
+    return !!reading && ((!!reading.date && reading.close == null && !reading.awaitsSessionClose)
+      || this.now() - reading.at < UNDATED_RETRY_MS);
   }
 
-  private start(key: string, quote: Quote, listing: DatedCloseListing): Promise<Pick<Reading, "date" | "close" | "sessionClose">> {
+  private start(key: string, quote: Quote, listing: DatedCloseListing): Promise<ReadingFields> {
     this.latestCopies.set(key, { quote, listing });
     return this.pending.get(key) ?? this.read(key, quote, listing);
   }
 
-  private read(key: string, quote: Quote, listing: DatedCloseListing): Promise<Pick<Reading, "date" | "close" | "sessionClose">> {
+  private read(key: string, quote: Quote, listing: DatedCloseListing): Promise<ReadingFields> {
     const read = this.inSlot(datedIndexClose(quote) ? "index" : "dating", () => withDeadline(Promise.resolve().then(() => this.readCloses(listing)), this.readDeadlineMs, "Reading daily closes timed out"))
       .then((points) => readingOf(points, quote))
-      .catch(logFailure("market-data.dated-previous-close", "Read daily closes failed", { date: null } as Pick<Reading, "date" | "close" | "sessionClose">))
+      .catch(logFailure("market-data.dated-previous-close", "Read daily closes failed", { date: null } as ReadingFields))
       .then((reading) => {
         this.pending.delete(key);
         this.readings.delete(key);

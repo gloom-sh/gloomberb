@@ -69,6 +69,12 @@ export interface TabsProps {
   paneMenu?: boolean;
   scrollable?: boolean;
   scrollId?: string;
+  /**
+   * The surface the strip sits on (the status bar's panel, a pane's title
+   * bar): the cells the strip draws over its tabs, the edge markers, are
+   * painted with it. The app's background by default.
+   */
+  background?: string;
 }
 
 const WHEEL_DELTA_PER_CELL = 8;
@@ -93,6 +99,7 @@ function TabsView({
   paneMenu = true,
   scrollable = true,
   scrollId,
+  background,
 }: TabsProps) {
   // While a chart the user moved into holds the keys, the strip draws as
   // unfocused, so it shows where the arrows went.
@@ -124,7 +131,7 @@ function TabsView({
     activePillFg: colors.selectedText,
     closeFg: colors.textMuted,
     addFg: colors.textMuted,
-    bg: colors.bg,
+    bg: background ?? colors.bg,
   };
   const handleSelect = useCallback((value: string) => {
     navigationValueRef.current = value;
@@ -665,7 +672,8 @@ function OpenTuiTabs({
 
   if (!scrollable) return tabRow;
 
-  // Drawn over the strip's end cells, so showing one never narrows the strip and moves what it reveals.
+  // Drawn over the strip's end cells, so showing one never narrows the strip and moves what it reveals,
+  // on the surface the strip sits on (`background`), so it reads as the strip's edge and not a tab's cell.
   const edgeMarker = (direction: -1 | 1) => (
     <Box
       position="absolute"

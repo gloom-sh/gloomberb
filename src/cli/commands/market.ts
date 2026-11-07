@@ -2597,7 +2597,7 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     // "copom selic", "Bank of Mexico": the bank's latest decision stories, under every name it is reported by.
     const bank = centralBankInNews(text);
     if (bank) {
-      await printNewsSearch(text, await searchCentralBankStories(bank, limit), { reason: centralBankNewsReason(bank), commodity: false }, ctx);
+      await printNewsSearch(text, await searchCentralBankStories(bank, limit, text), { reason: centralBankNewsReason(bank), commodity: false }, ctx);
       return;
     }
     const answer = await searchClosestNewsStories(text, limit);
@@ -2673,7 +2673,7 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       // A central bank's name no ticker answers to ("banxico") is its decision stories, under every name it goes by.
       const bank = !resolved && !commodity ? centralBankInNews(word) : null;
       // The lookup that found no ticker already answered; a search that fails leaves that answer.
-      const search = await (bank ? searchCentralBankStories(bank, limit) : searchNewsStories(word, limit)).then((found) => ({ found, failure: undefined }), (error: unknown) => {
+      const search = await (bank ? searchCentralBankStories(bank, limit, word) : searchNewsStories(word, limit)).then((found) => ({ found, failure: undefined }), (error: unknown) => {
         logFailure("cli.commands-market", "Search news stories failed")(error);
         return { found: [], failure: errorMessage(error) ?? "no answer" };
       });

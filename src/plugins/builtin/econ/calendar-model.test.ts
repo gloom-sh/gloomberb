@@ -284,4 +284,14 @@ test("a bank's own names find its decision, and an empty search names the decisi
   expect(policyDecisionsNamed("selic")).toEqual([{ country: "BR", event: "Copom Interest Rate Decision" }]);
   expect(policyDecisionsNamed("banxico")).toEqual([{ country: "MX", event: "Banxico Interest Rate Decision" }]);
   expect(policyDecisionsNamed("nonfarm")).toEqual([]);
+  // Whole words: "cbr" is the Bank of Russia's, not the CBRT's; "bi" is Bank Indonesia's, not the RBI's; "bank" no bank's.
+  expect(policyDecisionsNamed("cbr")).toEqual([{ country: "RU", event: "Bank of Russia Interest Rate Decision" }]);
+  expect(policyDecisionsNamed("bi")).toEqual([{ country: "ID", event: "BI Interest Rate Decision" }]);
+  expect(policyDecisionsNamed("bank")).toEqual([]);
+  expect(policyDecisionsNamed("Bank of Japan")).toEqual([{ country: "JP", event: "BoJ Interest Rate Decision" }]);
+  expect(policyDecisionsNamed("fedfunds")).toEqual([{ country: "US", event: "Fed Interest Rate Decision" }]);
+  // Only the countries the calendar lists: `--country BR` does not say what Banxico is.
+  expect(policyDecisionsNamed("banxico", "BR")).toEqual([]);
+  expect(policyDecisionsNamed("banxico", "MX,BR")).toEqual([{ country: "MX", event: "Banxico Interest Rate Decision" }]);
+  expect(policyDecisionsNamed("fomc", "G7")).toEqual([{ country: "US", event: "Fed Interest Rate Decision" }]);
 });

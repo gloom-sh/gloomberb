@@ -353,18 +353,32 @@ function policyRateNames(country: string): string[] {
   return [...POLICY_RATE_NAMES[country.toUpperCase()] ?? [], ...ANY_POLICY_RATE].map(compactName);
 }
 
+const nameWords = (text: string) => text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+/** Words of many banks' names that name none alone: "bank" is the BoE's, the BoJ's and three more. */
+const SHARED_NAME_WORDS = new Set(["bank", "of", "de", "do", "rate", "central"]);
+
 /**
  * The decisions a search for a bank's own names means, for an empty answer to
- * say: `selic` is Brazil's Copom decision. Every word of the query must be in
- * one of the bank's names; empty for a query no bank's names hold, and for the
- * names every bank's decision answers to (a query of those already lists them).
+ * say: `selic` is Brazil's Copom decision. Every word of the query must be a
+ * whole word of one of the bank's names, or the name run together (`fedfunds`):
+ * `cbr` is the Bank of Russia's and not the CBRT's, and words many names share
+ * name none alone (`bank`, SHARED_NAME_WORDS). Only the
+ * banks of the countries the calendar lists (`countries`, as --country reads).
+ * Empty for a query no bank's names hold, and for the names every bank's
+ * decision answers to (a query of those already lists them).
  */
-export function policyDecisionsNamed(query: string): Array<{ country: string; event: string }> {
-  const words = query.split(/\s+/).map(compactName).filter(Boolean);
-  if (words.length === 0) return [];
-  return Object.entries(POLICY_RATE_NAMES).flatMap(([country, names]) =>
-    names.map(compactName).some((name) => words.every((word) => name.includes(word)))
-      ? [{ country, event: POLICY_DECISION_TITLES[country] ?? "Interest Rate Decision" }] : []);
+export function policyDecisionsNamed(query: string, countries: CountryFilter = "all"): Array<{ country: string; event: string }> {
+  const words = nameWords(query);
+  if (words.every((word) => SHARED_NAME_WORDS.has(word))) return [];
+  return Object.entries(POLICY_RATE_NAMES).flatMap(([country, names]) => {
+    const event = POLICY_DECISION_TITLES[country] ?? "Interest Rate Decision";
+    if (!matchesCountry({ country, event }, countries)) return [];
+    const named = names.some((name) => {
+      const parts = nameWords(name);
+      return words.every((word) => parts.includes(word) || word === compactName(name));
+    });
+    return named ? [{ country, event }] : [];
+  });
 }
 
 /** How the calendar titles each bank's decision (China's is its LPR fixing). */

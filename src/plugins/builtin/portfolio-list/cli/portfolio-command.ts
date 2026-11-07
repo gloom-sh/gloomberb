@@ -407,7 +407,9 @@ async function setPositionCommand(
       await store.saveTicker(result.ticker);
       if (adopted) await saveConfig(adopted);
       // Said, never silent: a book named "LatAm Book USD" otherwise totals in BRL from its first PETR4 lot on.
-      if (adopted && portfolioCurrency !== portfolio.currency) notes.push(firstPositionCurrencyNote(portfolio.name, portfolioCurrency, portfolio.currency));
+      const currencyNote = adopted && portfolioCurrency !== portfolio.currency
+        ? firstPositionCurrencyNote(portfolio, portfolioCurrency) : null;
+      if (currencyNote?.warning) notes.push(currencyNote.text);
       const saved = savedListingName(result.ticker);
       const quantity = formatMarketQuantity(shares, { assetCategory: result.ticker.metadata.assetCategory });
       // A cost in another currency converts at the rate it was bought at when the lot has one, else at the close of the
@@ -428,6 +430,7 @@ async function setPositionCommand(
           ...(future ? { contractMultiplier: multiplier ?? null, contractSize: size?.size ?? null } : {}),
           ...(purchaseDate ? { dateAcquired: purchaseDate } : {}),
           ...(foreign ? { costFxRate: boughtRate, costFxCurrency: portfolioCurrency, costFxDate: rateDate } : {}),
+          ...(currencyNote ? { totalsCurrency: portfolioCurrency } : {}),
         },
         warnings: notes.length > 0 ? notes : undefined,
       }, {
@@ -449,6 +452,7 @@ async function setPositionCommand(
               ? `Cost converted at today's rate into ${portfolioCurrency}: the FX close of the purchase date could not be read.`
               : `Cost converted at today's rate into ${portfolioCurrency}; add --date or --cost-fx to use the rate when bought.`)]
             : []),
+          ...(currencyNote && !currencyNote.warning ? [cliStyles.muted(currencyNote.text)] : []),
         ].join("\n"),
       });
     } catch (error) {
@@ -459,14 +463,21 @@ async function setPositionCommand(
 
 /**
  * What the first position of a book that follows its holdings' currency says
- * when it moves the book off the one it had: `"LatAm Book USD" now totals in
- * BRL, the currency of its first position. To total it in USD, create it
- * with --currency USD: ...`.
+ * when it moves the book off the one it had: a line, `"LatAm Book USD" now
+ * totals in BRL, its first position's currency.`, and a warning only when
+ * the book holds cash or targets already, which were set beside its old
+ * totals: `..., its cash and targets included. To keep USD, recreate it with
+ * --currency USD.`
  */
-function firstPositionCurrencyNote(name: string, adopted: string, was: string): string {
-  const quoted = JSON.stringify(name);
-  return `"${name}" now totals in ${adopted}, the currency of its first position. To total it in ${was}, create it with --currency ${was}: `
-    + `gloom portfolio delete ${quoted}, then gloom portfolio create ${quoted} --currency ${was}, and set the position again.`;
+function firstPositionCurrencyNote(portfolio: Portfolio, adopted: string): { text: string; warning: boolean } {
+  const note = `"${portfolio.name}" now totals in ${adopted}, its first position's currency`;
+  const held = [
+    portfolio.cash && portfolio.cash.amount !== 0 ? "cash" : null,
+    Object.keys(portfolio.targetWeights ?? {}).length > 0 ? "targets" : null,
+  ].filter((part): part is string => part !== null);
+  if (held.length === 0) return { text: `${note}.`, warning: false };
+  const was = portfolio.currency;
+  return { text: `${note}, its ${held.join(" and ")} included. To keep ${was}, recreate it with --currency ${was}.`, warning: true };
 }
 
 /**

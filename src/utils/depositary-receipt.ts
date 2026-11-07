@@ -67,8 +67,10 @@ export function sharesOutstandingInReceipts(
  * code: a B3 code ending in 4 to 8 is a preferred share (PETR4, ITUB4) and
  * one ending in 11 a unit; a BMV line marked CPO holds certificates
  * (TLEVISACPO) and one marked UB, UBD or UBL units (FEMSAUBD, KOFUBL); a
- * Korean code ending in 5, 7 or 9 is a preferred share (005935). Any other
- * home line, or none, holds ordinary shares.
+ * Korean code ending in 5, 7 or 9 is a preferred share (005935), and any
+ * other line on those three markets an ordinary share (VALE3, WALMEX). A home
+ * line elsewhere, or none, says plain shares: its code does not say its class
+ * (PFBCOLOM is Bancolombia's preferred).
  */
 function homeShareClass(home: string | null | undefined): { one: string; many: string } {
   const ticker = (home ?? "").trim().toUpperCase();
@@ -81,10 +83,10 @@ function homeShareClass(home: string | null | undefined): { one: string; many: s
   if (bmv && /CPO$/.test(code)) return { one: "CPO", many: "CPOs" };
   if (bmv && /UB[DLC]?$/.test(code)) return { one: "unit", many: "units" };
   if (korea && /^\d{5}[579]$/.test(code)) return { one: "preferred share", many: "preferred shares" };
-  return { one: "ordinary share", many: "ordinary shares" };
+  return b3 || bmv || korea ? { one: "ordinary share", many: "ordinary shares" } : { one: "share", many: "shares" };
 }
 
-/** "1 ADR = 2 ordinary shares" ("2 preferred shares" of PETR4.SA, `homeShareClass`), or null without a usable ratio. */
+/** "1 ADR = 2 shares" ("2 preferred shares" of PETR4.SA, `homeShareClass`), or null without a usable ratio. */
 export function adrRatioText(ratio: number | null | undefined, home?: string | null): string | null {
   if (typeof ratio !== "number" || !Number.isFinite(ratio) || ratio <= 0) return null;
   const count = Number.isInteger(ratio) ? String(ratio) : String(Number(ratio.toPrecision(6)));

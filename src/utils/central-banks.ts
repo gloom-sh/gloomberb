@@ -15,6 +15,8 @@ export interface CentralBank {
   fredSeriesIds?: readonly string[];
   /** The committee and the rate its decisions are reported by, where those are not its names: Copom, Selic. */
   decisionWords?: readonly string[];
+  /** Names another company goes by in the news too (BCB Bancorp), never searched for its stories or matched in them. */
+  sharedNames?: readonly string[];
 }
 
 /**
@@ -37,7 +39,7 @@ export const CENTRAL_BANKS: readonly CentralBank[] = [
   { id: "ID", place: "Indonesia", name: "Bank Indonesia", short: "Bank Indonesia", instrument: "7-day reverse repo rate", aliases: [] },
   { id: "KR", place: "South Korea", name: "Bank of Korea", short: "BoK", instrument: "base rate", aliases: [] },
   { id: "BR", place: "Brazil", name: "Central Bank of Brazil", short: "BCB", instrument: "Selic target",
-    aliases: ["Banco Central do Brasil"], decisionWords: ["Copom", "Selic"] },
+    aliases: ["Banco Central do Brasil"], decisionWords: ["Copom", "Selic"], sharedNames: ["BCB"] },
   { id: "MX", place: "Mexico", name: "Bank of Mexico", short: "Banxico", instrument: "overnight rate target",
     aliases: ["Banco de México"] },
   { id: "RU", place: "Russia", name: "Bank of Russia", short: "Bank of Russia", instrument: "key rate",
@@ -138,25 +140,52 @@ export function centralBankInNews(query: string): CentralBank | null {
   }) ?? null;
 }
 
+/** Words that ask for the newest of something without being what a story says: "latest Fed decision". */
+const ASKING_WORDS = new Set(["current", "latest", "today"]);
+
+/**
+ * What a news search asks of the bank besides naming it, lower case: "rate
+ * cut" of "fed rate cut", "" of "copom selic" or "Bank of Mexico". Its
+ * names, place and decision words are taken out, and the words that only ask
+ * for the newest.
+ */
+export function centralBankNewsTopic(bank: CentralBank, query: string): string {
+  let words = nameKey(query).split(" ").filter(Boolean);
+  const names = [`${bank.place} central bank`, ...centralBankNames(bank), bank.place, ...bank.decisionWords ?? []]
+    .map((name) => nameKey(name).split(" ")).sort((left, right) => right.length - left.length);
+  for (const name of names) {
+    for (let start = wordsIndex(words, name); start >= 0; start = wordsIndex(words, name)) {
+      words = [...words.slice(0, start), ...words.slice(start + name.length)];
+    }
+  }
+  return words.filter((word) => !ASKING_WORDS.has(word)).join(" ");
+}
+
 /**
  * What a bank's decisions are reported under, for a news search of each: its
  * name, what a sentence calls it, its other names, "<place> central bank" and
  * the committee and rate (Copom, Selic). Stories of the 5 Nov 2026 Banxico cut
- * said "Bank of Mexico" or "Mexico's central bank", rarely "Banxico".
+ * said "Bank of Mexico" or "Mexico's central bank", rarely "Banxico". A name
+ * another company shares (BCB) is left out.
  */
 export function centralBankNewsQueries(bank: CentralBank): string[] {
-  // An acronym (BCB, SNB) is another company's too: BCB Bancorp's results are no Copom story.
-  const names = centralBankNames(bank).filter((name) => !/^[A-Z]{2,5}$/.test(name));
+  const names = centralBankNames(bank).filter((name) => !bank.sharedNames?.includes(name));
   return [...new Set([...names, `${bank.place} central bank`, ...bank.decisionWords ?? []])];
 }
 
+/** An acronym (ECB, RBA, FOMC) is matched as a word in capitals: "the fomc" in lower case is no headline's. */
+const ACRONYM = /^[A-Z]{2,5}$/;
+
 /**
  * Whether a story is about the bank: its title or summary names it as one of
- * the phrases it is searched by, or as "<place>'s central bank". The search
- * matches words anywhere, so "Bank of Mexico" also finds Citi Mexico's banks.
+ * the phrases it is searched by, or as "<place>'s central bank", each as
+ * whole words. The search matches words anywhere, so "Bank of Mexico" also
+ * finds Citi Mexico's banks.
  */
 export function storyNamesCentralBank(bank: CentralBank, text: string): boolean {
   const story = ` ${nameKey(text)} `;
   const phrases = [...centralBankNewsQueries(bank), `${bank.place}s central bank`];
-  return phrases.some((phrase) => story.includes(` ${nameKey(phrase)} `));
+  return phrases.some((phrase) => ACRONYM.test(phrase)
+    ? new RegExp(`(^|[^A-Za-z0-9])${phrase}([^A-Za-z0-9]|$)`).test(text)
+    : story.includes(` ${nameKey(phrase)} `));
 }

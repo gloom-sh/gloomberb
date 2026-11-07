@@ -503,6 +503,10 @@ describe("ticker-search utilities", () => {
       expect(candidates.map((item) => `${item.symbol}:${item.result?.exchange}`), query).toEqual(["AXIA3:B3"]);
       expect(candidates[0]!.result?.formerName).toBe("Eletrobras (ELET3)");
     }
+    // A preferred class converted into the common shares leads there, and says when.
+    const converted = await searchTickerCandidates({ query: "ELET6", tickers: new Map(), dataProvider });
+    expect(converted.map((item) => `${item.symbol}:${item.result?.exchange}`)).toEqual(["AXIA3:B3"]);
+    expect(converted[0]!.result?.formerName).toBe("Eletrobras (ELET6, converted 5 Jun 2026)");
   });
 
   test("a trailing class code keeps that class and also asks for its market spelling", async () => {
@@ -1155,6 +1159,31 @@ describe("ticker-search utilities", () => {
       ]);
       // A fund that is not named after the company keeps its place.
       expect(build("generali", banorte)[0]).toBe("XXINTEAB2P06:Funds & Derivatives");
+      // Another company's listing with the word in its name stays behind the funds.
+      const bank = makeSearchResult("SEGBNRT", "Seguros y Pensiones Banorte Generali, S.A. de C.V.", { exchange: "OTC", type: "EQUITY" });
+      expect(build("banorte", [...banorte, bank])).toEqual([
+        "GFNORTEO:Primary Listing", "GBOOY:Other Listings", "XXINTEAB2P06:Funds & Derivatives", "XXINTEBB2P09:Funds & Derivatives",
+        "SEGBNRT:Other Listings",
+      ]);
+    });
+
+    test("fidelity keeps its funds first: an ETF among them is what the word names", () => {
+      // /market/search?q=fidelity on 7 Nov 2026: Fidelity's ETFs and a mutual fund, then FIS on three venues.
+      const fidelity = [
+        makeSearchResult("FTEC", "Fidelity MSCI Information Technology Index ETF", { exchange: "ARCA", type: "ETF" }),
+        makeSearchResult("FDVV", "Fidelity High Dividend ETF", { exchange: "ARCA", type: "ETF" }),
+        makeSearchResult("SPHIX", "Fidelity High Income Fund", { exchange: "NASDAQ", type: "Mutual Fund" }),
+        makeSearchResult("FIS", "Fidelity National Information Services, Inc.", { exchange: "NYSE", type: "Common Stock" }),
+        makeSearchResult("FIS", "Fidelity National Information Services, Inc.", { exchange: "BMV", type: "Common Stock" }),
+        makeSearchResult("FNF", "Fidelity National Financial, Inc.", { exchange: "NYSE", type: "Common Stock" }),
+      ];
+      expect(build("fidelity", fidelity).slice(0, 3)).toEqual([
+        "FTEC:Funds & Derivatives", "FDVV:Funds & Derivatives", "SPHIX:Funds & Derivatives",
+      ]);
+      // Mutual funds alone ahead: FIS and its own lines lead, Fidelity National Financial stays behind the funds.
+      expect(build("fidelity", fidelity.slice(2))).toEqual([
+        "FIS:Primary Listing", "FIS:Other Listings", "SPHIX:Funds & Derivatives", "FNF:Other Listings",
+      ]);
     });
 
     test("the companies sent with a theme follow its funds, as related, before the names; older servers' rows are dropped", () => {
