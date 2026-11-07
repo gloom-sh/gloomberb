@@ -1,5 +1,13 @@
-import { describe, expect, test } from "bun:test";
-import { auctionPercentiles, cmtFor, loadAuctionCurves, projectAuctionAfter, yieldChangeAfter } from "./after";
+import { afterEach, describe, expect, test } from "bun:test";
+import {
+  auctionPercentiles,
+  cmtFor,
+  loadAuctionCurves,
+  projectAuctionAfter,
+  resetAuctionCurvesForTests,
+  widerAfterWindow,
+  yieldChangeAfter,
+} from "./after";
 import { DEFAULT_AUCTION_SORT, visibleAuctions } from "./model";
 import { auction } from "./test-fixture";
 
@@ -31,6 +39,41 @@ describe("percentiles", () => {
   });
 });
 
+afterEach(resetAuctionCurvesForTests);
+
+describe("the window the after view reads", () => {
+  const NOW = Date.parse("2026-11-07T12:00:00Z");
+  /** `count` auctions of `term`, `months` apart, the last on 2026-10-15. */
+  const series = (secType: string, securityTerm: string, count: number, months: number) => Array.from({ length: count }, (_, index) => {
+    const date = new Date(Date.UTC(2026, 9 - (count - 1 - index) * months, 15)).toISOString().slice(0, 10);
+    return auction({ secType, securityTerm, auctionDate: date, id: `${secType}|${securityTerm}|${date}`, bidToCoverRatio: 2.4 });
+  });
+
+  test("widens while a listed tenor has fewer than 24 before its oldest row and was already sold when the window starts", () => {
+    // 30-year TIPS twice a year since 1998: five years read hold 10, ten years 20, so the view asks for ten years, then all.
+    const tips = series("TIPS", "29-Year 6-Month", 56, 6);
+    const listed = tips.slice(-1);
+    const within = (days: number) => tips.filter((entry) => Date.parse(entry.auctionDate) >= NOW - days * 86_400_000);
+    expect(widerAfterWindow(listed, within(1825), 1825, NOW)).toBe(3650);
+    expect(widerAfterWindow(listed, within(3650), 3650, NOW)).toBe("all");
+    expect(widerAfterWindow(listed, tips, "all", NOW)).toBeNull();
+    // A monthly tenor has its 24 in five years.
+    const sevens = series("Note", "7-Year", 60, 1);
+    expect(widerAfterWindow(sevens.slice(-1), sevens, 1825, NOW)).toBeNull();
+  });
+
+  test("a tenor that began inside the window, and a cash management bill, do not widen it", () => {
+    // The 6-week bill, weekly since early 2025: fewer than 24 before a row listed in March 2025, but none before 2025.
+    const sixWeek = Array.from({ length: 80 }, (_, index) => {
+      const date = new Date(Date.UTC(2025, 1, 18) + index * 7 * 86_400_000).toISOString().slice(0, 10);
+      return auction({ secType: "Bill", securityTerm: "6-Week", auctionDate: date, id: `6w|${date}`, highInvestmentRate: 4 });
+    });
+    expect(widerAfterWindow(sixWeek.slice(5), sixWeek, 1825, NOW)).toBeNull();
+    const cmb = [auction({ secType: "CMB", securityTerm: "10-Day", auctionDate: "2026-10-20", id: "cmb", highInvestmentRate: 4 })];
+    expect(widerAfterWindow(cmb, cmb, 1825, NOW)).toBeNull();
+  });
+});
+
 describe("yield after an auction", () => {
   const closes = [
     { date: "2026-10-28", value: 4.9 }, { date: "2026-10-29", value: 4.95 }, { date: "2026-10-30", value: 4.88 },
@@ -55,18 +98,22 @@ describe("yield after an auction", () => {
     expect(cmtFor(auction({ secType: "FRN", securityTerm: "1-Year 10-Month" }))).toBeNull();
   });
 
-  test("reads each curve point once, from the oldest auction shown, and an after column sorts with blanks last", async () => {
+  test("reads each curve point once from the window's start, again only for older closes, and an after column sorts with blanks last", async () => {
     const shown = [
       auction({ secType: "Note", securityTerm: "7-Year", auctionDate: "2026-10-29", id: "a", highYield: 4.894 }),
       auction({ secType: "Note", securityTerm: "7-Year", auctionDate: "2026-10-28", id: "b", highYield: 4.9 }),
       auction({ secType: "Note", securityTerm: "6-Year 11-Month", auctionDate: "2026-11-04", id: "c", highYield: 4.8 }),
     ];
     const reads: string[] = [];
-    const read = await loadAuctionCurves(shown, async (curve, tenor, from) => {
+    const reader = async (curve: string, tenor: string, from: string | null) => {
       reads.push(`${curve}:${tenor}:${from}`);
       return { curve, tenor, points: closes } as never;
-    });
-    expect(reads).toEqual(["us:7Y:2026-10-28"]);
+    };
+    const read = await loadAuctionCurves(shown, "2026-07-10", reader);
+    // A list that changes within the window reads nothing again; a window reaching further back does.
+    await loadAuctionCurves(shown.slice(1), "2026-08-01", reader);
+    await loadAuctionCurves(shown, "2025-07-10", reader);
+    expect(reads).toEqual(["us:7Y:2026-07-10", "us:7Y:2025-07-10"]);
     const after = projectAuctionAfter(shown, shown, read.curves);
     expect(after.get("a")).toMatchObject({ after1d: -7, after5d: -17, after20d: null, cmt: "7Y" });
     const bySoonest = visibleAuctions(shown, { filter: "all", query: "", sort: { columnId: "after1d", direction: "asc" }, after });

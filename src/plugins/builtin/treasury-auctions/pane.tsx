@@ -1,5 +1,5 @@
 import { KeyValueRow } from "../../../components";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DataTableStackView,
   EmptyState,
@@ -29,8 +29,11 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useCommandValue } from "../shared/command-tab";
 import { FIXED_INCOME_PANE_ID } from "../fixed-income/model";
-import { afterLoadWindow, afterWindowStart, AUCTION_VIEWS, loadAuctionCurves, projectAuctionAfter, type AuctionAfter, type AuctionView } from "./after";
+import {
+  afterLoadWindow, afterWindowStart, AUCTION_VIEWS, loadAuctionCurves, projectAuctionAfter, widerAfterWindow, type AuctionAfter, type AuctionView,
+} from "./after";
 import { loadTreasuryAuctions } from "./cache";
+import type { AuctionHistoryWindow } from "./client";
 import {
   AUCTION_AFTER_SORT_COLUMN_IDS,
   AUCTION_FILTERS,
@@ -56,7 +59,10 @@ import {
   nextFilter,
   rateLabel,
   rateValue,
-  stopOutVsMedianBp,
+  middleRateLabel,
+  publishesMedian,
+  stopOutLabel,
+  stopOutSpreadBp,
   visibleAuctions,
   type AuctionColumn,
   type AuctionColumnId,
@@ -158,7 +164,7 @@ function renderAuctionCell(
         ? { text: RESULTS_PENDING, color: dimmed }
         : { text: formatAuctionRate(auction, rateValue(auction), "—"), color: selected ?? colors.textBright };
     case "stopOut":
-      return { text: formatBp(stopOutVsMedianBp(auction)), color: selected ?? colors.text };
+      return { text: formatBp(stopOutSpreadBp(auction)), color: selected ?? colors.text };
     case "btc":
       return { text: formatRatio(auction.bidToCoverRatio, auction), color: selected ?? colors.text };
     case "indirect":
@@ -207,18 +213,18 @@ function TreasuryAuctionDetail({ auction, width, after }: { auction: TreasuryAuc
           <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="High discount rate" value={formatRate(auction.highDiscountRate)} />
         )}
         {isBill(auction) && auction.avgMedDiscountRate != null && (
-          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Median discount rate" value={formatRate(auction.avgMedDiscountRate)} />
+          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label={middleRateLabel(auction, "discount rate")} value={formatRate(auction.avgMedDiscountRate)} />
         )}
         {auction.avgMedYield != null && (
-          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Median yield" value={formatRate(auction.avgMedYield)} />
+          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label={middleRateLabel(auction, "yield")} value={formatRate(auction.avgMedYield)} />
         )}
-        {stopOutVsMedianBp(auction) != null && (
-          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Stop-out vs median" value={formatBp(stopOutVsMedianBp(auction))} />
+        {stopOutSpreadBp(auction) != null && (
+          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label={stopOutLabel(auction)} value={formatBp(stopOutSpreadBp(auction))} />
         )}
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Bid-to-cover" value={formatRatio(auction.bidToCoverRatio)} />
         <Box height={1} />
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="High price" value={auction.highPrice?.toFixed(4) ?? "—"} />
-        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Median price" value={auction.avgMedPrice?.toFixed(4) ?? "—"} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label={publishesMedian(auction) ? "Median price" : "Average price"} value={auction.avgMedPrice?.toFixed(4) ?? "—"} />
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Low price" value={auction.lowPrice?.toFixed(4) ?? "—"} />
         <Box height={1} />
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Offering" value={formatMoney(auction.offeringAmount)} />
@@ -271,10 +277,24 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   }, [setSortValue, sortValue]);
   // A sort by an after column shows the after view, as `fn AUCT --sort btc-pctl` does.
   const view: AuctionView = viewChoice === "after" || isAfterColumn(sortPreference.columnId) ? "after" : "results";
-  // The after view reads two more years than it lists, for the oldest rows' percentiles.
-  const loadWindow = view === "after" ? afterLoadWindow(historyDays) : historyDays;
+  const [filter, setFilter] = useCommandValue<AuctionFilter>(FIXED_INCOME_PANE_ID, "activeTab",
+    (params) => AUCTION_FILTERS.find((entry) => entry.value === auctionParam("auctionFilter")(params))?.value ?? null, "all");
+  // `AUCT 10Y` opens on that search, as `fn AUCT 10Y` reads it; a later `AUCT 5Y` replaces it.
+  const [searchQuery, setSearchQuery] = useCommandValue(
+    FIXED_INCOME_PANE_ID,
+    "search",
+    (params) => params.view === "auctions" ? params.search ?? "" : null,
+    "",
+  );
+  // The after view reads more than it lists, until each listed tenor has its 24 before the oldest row
+  // (widerAfterWindow); the widening holds for one list, and a new search, group or window starts over.
+  const listKey = `${historyDays}|${filter}|${searchQuery}`;
+  const [widened, setWidened] = useState<{ key: string; window: AuctionHistoryWindow } | null>(null);
+  const loadWindow = view === "after"
+    ? widened?.key === listKey ? widened.window : afterLoadWindow(historyDays)
+    : historyDays;
   const loadAuctions = useCallback(
-    (force: boolean) => loadTreasuryAuctions(force, undefined, loadWindow),
+    (force: boolean) => loadTreasuryAuctions(force, undefined, loadWindow).then((result) => ({ ...result, window: loadWindow })),
     [loadWindow],
   );
   // A new history window keeps the loaded auctions up until its own answer.
@@ -288,17 +308,8 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   const error = resource.error ?? (resource.loading || savedAt != null ? null : resource.data?.refreshError ?? null);
   // Once auctions have loaded, a refresh runs without a loading state.
   const loading = resource.loading && !resource.data;
-  const [filter, setFilter] = useCommandValue<AuctionFilter>(FIXED_INCOME_PANE_ID, "activeTab",
-    (params) => AUCTION_FILTERS.find((entry) => entry.value === auctionParam("auctionFilter")(params))?.value ?? null, "all");
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
   const [detailOpen, setDetailOpen] = usePluginPaneState<boolean>("detailOpen", false);
-  // `AUCT 10Y` opens on that search, as `fn AUCT 10Y` reads it; a later `AUCT 5Y` replaces it.
-  const [searchQuery, setSearchQuery] = useCommandValue(
-    FIXED_INCOME_PANE_ID,
-    "search",
-    (params) => params.view === "auctions" ? params.search ?? "" : null,
-    "",
-  );
   const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
 
   // The cache decides whether a tick becomes a request; only [r] forces it.
@@ -309,7 +320,14 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
       ...(view === "after" ? { from: afterWindowStart(historyDays) } : {}) }),
     [auctions, filter, historyDays, searchQuery, view],
   );
-  const loadCurves = useCallback(() => loadAuctionCurves(listed), [listed]);
+  const loadedWindow = resource.data?.window ?? null;
+  useEffect(() => {
+    if (view !== "after" || loadedWindow !== loadWindow) return;
+    const wider = widerAfterWindow(listed, auctions, loadWindow);
+    if (wider) setWidened({ key: listKey, window: wider });
+  }, [auctions, listKey, listed, loadWindow, loadedWindow, view]);
+  const curvesFrom = afterWindowStart(historyDays) ?? null;
+  const loadCurves = useCallback(() => loadAuctionCurves(listed, curvesFrom), [curvesFrom, listed]);
   const curves = useAsyncResource(view === "after" ? loadCurves : null, { keepPreviousData: true });
   // Percentiles need only the board; the yield moves fill in when the curves arrive.
   const after = useMemo(() => view === "after" ? projectAuctionAfter(listed, auctions, curves.data?.curves ?? new Map()) : null,
@@ -351,8 +369,9 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   }, [setSortPreference, view]);
   const selectView = useCallback((next: AuctionView) => {
     setView(next);
-    // The results view has no after columns to sort by.
-    if (next === "results" && isAfterColumn(sortPreference.columnId)) setSortValue(null);
+    // A sort the next view has no column for goes back to the newest first.
+    const columns = next === "after" ? AUCTION_AFTER_SORT_COLUMN_IDS : AUCTION_SORT_COLUMN_IDS;
+    if (!columns.includes(sortPreference.columnId)) setSortValue(null);
   }, [setSortValue, setView, sortPreference.columnId]);
 
   usePaneRefreshKey(() => void resource.reload(), { focused, enabled: !searchFocused });

@@ -99,9 +99,13 @@ export interface MacroDayModel {
   asOf: string | null;
 }
 
-/** The release's name, with the earnings marker on a day that is the ticker's own report reaction. */
+/** The release's name as it reads in the table: a policy decision's move after it (FOMC held), and the earnings marker. */
 export const macroDayEventLabel = (event: Pick<MacroDayEvent, "kind" | "earnings" | "figures">) =>
   [MACRO_EVENT_LABELS[event.kind], macroDayEventNote(event)].filter(Boolean).join(" ");
+
+/** The release's name alone, with the earnings marker, as exports name it: the decision is a field of its own. */
+export const macroDayReleaseName = (event: Pick<MacroDayEvent, "kind" | "earnings">) =>
+  event.earnings ? `${MACRO_EVENT_LABELS[event.kind]} (earnings)` : MACRO_EVENT_LABELS[event.kind];
 
 /** One line for each release day the economic calendar covers that has no figures, saying why. */
 export const macroFigureGapNotices = (events: readonly Pick<MacroDayEvent, "kind" | "date" | "figures" | "figuresMissing">[]) =>

@@ -3,7 +3,7 @@ import type { CloudCurveHistory, CloudCurveId } from "../../../api-client/yield-
 import { createTtlCache } from "../../../data/ttl-cache";
 import { toBasisPoints } from "../../../utils/basis-points";
 import { AUCTION_HISTORY_ALL, type AuctionHistoryWindow } from "./client";
-import { AUCTION_HISTORY_WINDOWS, auctionBenchmark, dealerPct, indirectPct, isPendingAuction } from "./model";
+import { AUCTION_HISTORY_WINDOWS, auctionBenchmark, dealerPct, indirectPct, isPendingAuction, nextAuctionHistoryWindow } from "./model";
 import type { TreasuryAuction } from "./types";
 
 /**
@@ -40,7 +40,11 @@ export interface AuctionAfter {
   cmt: string | null;
 }
 
-/** The window the after view reads: two years more than it lists, so the oldest rows listed have their tenor's 24 before them. */
+/**
+ * The window the after view reads first: two years more than it lists, which
+ * gives most tenors their 24 before the oldest row listed. A tenor sold a few
+ * times a year (the 30-year TIPS) needs more: widerAfterWindow.
+ */
 export function afterLoadWindow(window: AuctionHistoryWindow): AuctionHistoryWindow {
   if (window === AUCTION_HISTORY_ALL) return AUCTION_HISTORY_ALL;
   return AUCTION_HISTORY_WINDOWS.find((next) => next === AUCTION_HISTORY_ALL || next >= window + 730) ?? AUCTION_HISTORY_ALL;
@@ -49,6 +53,48 @@ export function afterLoadWindow(window: AuctionHistoryWindow): AuctionHistoryWin
 /** The first day the after view lists, for a window it read more than: undefined for ALL. */
 export function afterWindowStart(window: AuctionHistoryWindow, now = Date.now()): string | undefined {
   return window === AUCTION_HISTORY_ALL ? undefined : new Date(now - window * 86_400_000).toISOString().slice(0, 10);
+}
+
+const DAY_MS = 86_400_000;
+/** A tenor's oldest auction read this close to the window's start may have older ones before it. */
+const MIN_GAP_MS = 400 * DAY_MS;
+
+/**
+ * The next window the after view should read, or null when the one read is
+ * enough: every listed tenor has its 24 auctions before the oldest one listed,
+ * or began inside the window (its oldest auction read is further from the
+ * window's start than its longest gap between auctions, and at least 400
+ * days), or the window is already ALL. Cash management bills are one-offs and
+ * never ask for more.
+ */
+export function widerAfterWindow(
+  listed: readonly TreasuryAuction[],
+  loaded: readonly TreasuryAuction[],
+  window: AuctionHistoryWindow,
+  now = Date.now(),
+): AuctionHistoryWindow | null {
+  if (window === AUCTION_HISTORY_ALL) return null;
+  const start = now - window * DAY_MS;
+  const byTenor = new Map<string, number[]>();
+  for (const auction of loaded) {
+    const key = auctionTenorKey(auction);
+    if (key && !isPendingAuction(auction)) byTenor.set(key, [...byTenor.get(key) ?? [], Date.parse(auction.auctionDate)]);
+  }
+  const oldestListed = new Map<string, number>();
+  for (const auction of listed) {
+    const key = auctionTenorKey(auction);
+    if (!key || auction.secType === "CMB" || isPendingAuction(auction)) continue;
+    const date = Date.parse(auction.auctionDate);
+    oldestListed.set(key, Math.min(oldestListed.get(key) ?? date, date));
+  }
+  for (const [key, oldest] of oldestListed) {
+    const dates = (byTenor.get(key) ?? []).toSorted((left, right) => left - right);
+    if (dates.filter((date) => date < oldest).length >= PERCENTILE_LOOKBACK) continue;
+    let gap = MIN_GAP_MS;
+    for (let index = 1; index < dates.length; index++) gap = Math.max(gap, dates[index]! - dates[index - 1]!);
+    if (dates.length && dates[0]! - start <= gap) return nextAuctionHistoryWindow(window);
+  }
+  return null;
 }
 
 const NO_AFTER: AuctionAfter = {
@@ -166,8 +212,26 @@ export function projectAuctionAfter(
 
 const curveKey = (cmt: { curve: CloudCurveId; tenor: string }) => `${cmt.curve}:${cmt.tenor}`;
 
-/** The curve read for a tenor; ten minutes, since a session's close lands once a day. */
-const curveCache = createTtlCache<CloudCurveHistory>({ ttlMs: 10 * 60_000, maxEntries: 64 });
+/**
+ * A curve tenor's closes as read, from `from` (null: its whole history); ten
+ * minutes, since a session's close lands once a day. Keyed by curve and tenor
+ * alone, so a list that changes reads again only when it needs older closes.
+ */
+const curveCache = createTtlCache<{ from: string | null; history: CloudCurveHistory }>({ ttlMs: 10 * 60_000, maxEntries: 64 });
+
+export function resetAuctionCurvesForTests(): void {
+  curveCache.clear();
+}
+
+type CurveRead = (curve: CloudCurveId, tenor: string, from: string | null) => Promise<CloudCurveHistory>;
+
+async function readCurve(curve: CloudCurveId, tenor: string, from: string | null, read: CurveRead): Promise<CloudCurveHistory> {
+  const key = curveKey({ curve, tenor });
+  const load = async () => ({ from, history: await read(curve, tenor, from) });
+  const held = await curveCache.load(key, load);
+  const covers = held.from == null || (from != null && held.from <= from);
+  return covers ? held.history : (await curveCache.load(key, load, { force: true })).history;
+}
 
 export interface AuctionCurveRead {
   curves: Map<string, CurveCloses>;
@@ -175,25 +239,25 @@ export interface AuctionCurveRead {
   errors: string[];
 }
 
-/** The closes of every curve tenor the shown auctions match, from the oldest of them on. */
+/**
+ * The closes of every curve tenor the shown auctions match, from `from`, the
+ * first day of the window listed (null for ALL: the whole curve).
+ */
 export async function loadAuctionCurves(
   shown: readonly TreasuryAuction[],
-  read: (curve: CloudCurveId, tenor: string, from: string) => Promise<CloudCurveHistory> =
-  (curve, tenor, from) => apiClient.getCloudCurveHistory(curve, tenor, from),
+  from: string | null,
+  read: CurveRead = (curve, tenor, start) => apiClient.getCloudCurveHistory(curve, tenor, start),
 ): Promise<AuctionCurveRead> {
-  const needed = new Map<string, { curve: CloudCurveId; tenor: string; from: string }>();
+  const needed = new Map<string, { curve: CloudCurveId; tenor: string }>();
   for (const auction of shown) {
     const cmt = cmtFor(auction);
-    if (!cmt || isPendingAuction(auction)) continue;
-    const key = curveKey(cmt);
-    const current = needed.get(key);
-    if (!current || auction.auctionDate < current.from) needed.set(key, { ...cmt, from: auction.auctionDate });
+    if (cmt && !isPendingAuction(auction)) needed.set(curveKey(cmt), cmt);
   }
   const curves = new Map<string, CurveCloses>();
   const errors: string[] = [];
-  await Promise.all([...needed].map(async ([key, { curve, tenor, from }]) => {
+  await Promise.all([...needed].map(async ([key, { curve, tenor }]) => {
     try {
-      const history = await curveCache.load(`${key}:${from}`, () => read(curve, tenor, from));
+      const history = await readCurve(curve, tenor, from, read);
       curves.set(key, history.points);
     } catch (error) {
       errors.push(`${cmtLabel({ curve, tenor })} Treasury yields unavailable: ${error instanceof Error ? error.message : String(error)}`);

@@ -128,21 +128,25 @@ function toNumber(value: string | undefined | null): number | null {
 /**
  * A high and low in the order the auction cleared them. Fiscal Data has some
  * early rows the other way round (the 30-year bond of 1982-02-04: high 14.47%,
- * median 14.56%, low 14.61%): a high below its low is read swapped when the
- * median sits between them, and dropped when it does not, so neither reaches
- * the stop-out as a negative spread. Prices follow a swapped pair.
+ * median 14.56%, low 14.61%; about 420 bills of 1979-83): a high below its low
+ * is read swapped when the median sits between them, and dropped when it does
+ * not, so neither reaches the stop-out as a negative spread. Prices follow a
+ * swapped pair. A bill's investment rate restates its high discount rate as
+ * the source had it, so once that pair is swapped or dropped the investment
+ * rate is blank rather than disagree with the discount rate beside it.
  */
 export function inClearingOrder(auction: TreasuryAuction): TreasuryAuction {
   let next = auction;
   for (const [high, median, low] of [["highYield", "avgMedYield", "lowYield"], ["highDiscountRate", "avgMedDiscountRate", "lowDiscountRate"]] as const) {
     const top = next[high], bottom = next[low], middle = next[median];
     if (top == null || bottom == null || top >= bottom) continue;
+    const investment = high === "highDiscountRate" ? { highInvestmentRate: null } : {};
     if (middle != null && middle >= top && middle <= bottom) {
       const prices = next.highPrice != null && next.lowPrice != null && next.highPrice > next.lowPrice
         ? { highPrice: next.lowPrice, lowPrice: next.highPrice } : {};
-      next = { ...next, [high]: bottom, [low]: top, ...prices };
+      next = { ...next, [high]: bottom, [low]: top, ...prices, ...investment };
     } else {
-      next = { ...next, [high]: null, [low]: null };
+      next = { ...next, [high]: null, [low]: null, ...investment };
     }
   }
   return next;

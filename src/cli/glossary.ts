@@ -67,9 +67,10 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   },
   {
     term: "Stop-out vs median", aliases: ["stop-out vs med", "vs med", "stop-out vs average", "stop-out vs avg", "vs avg"], functions: ["AUCT"],
-    shown: ["Stop-out vs median", "VS MED"],
+    shown: ["Stop-out vs median", "Stop-out vs average", "Stop-out vs average/median", "VS MED", "VS AVG", "VS AVG/MED"],
     definition: "The high (stop-out) yield minus the auction's median yield, in basis points; bills compare discount rates. "
-      + "Treasury publishes the median accepted bid in the field it names average/median. "
+      + "Treasury has sold at a single price since November 1998 and publishes the median accepted bid; before, most auctions "
+      + "were multiple-price and the figure is the average, so older auctions read stop-out vs average. "
       + "A wider gap means the last accepted bids cleared well above where most of the auction priced.",
   },
   {

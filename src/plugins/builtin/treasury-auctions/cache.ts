@@ -18,8 +18,8 @@ const DIRECT_CACHE_SOURCE = "treasury-direct";
  * 4: boards carry direct takedown and bill discount rates, which a v3 board lacks.
  * 5: boards carry the low yield and discount rate, and early rows with their high and low swapped are put right.
  */
-/** Raised when a board gains fields (5: the low yield), so a saved board never lacks a column the pane shows. */
-export const CACHE_SCHEMA_VERSION = 5;
+/** Raised when a board gains fields (5: the low yield; 6: early bills blank an investment rate their swapped discount rates contradict), so a saved board never lacks a column the pane shows. */
+export const CACHE_SCHEMA_VERSION = 6;
 export const DIRECT_CACHE_SCHEMA_VERSION = 2;
 export const TREASURY_FISCAL_DATA_CONNECTION_ID = "treasury-fiscal-data";
 export const TREASURY_DIRECT_CONNECTION_ID = "treasury-direct";

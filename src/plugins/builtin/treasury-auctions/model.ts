@@ -89,11 +89,12 @@ export const AUCTION_SORT_COLUMN_IDS: readonly AuctionColumnId[] = [
   "direct",
   "dealer",
   "size",
+  "cusip",
 ];
 
 /** The after view's columns, in the order [ and ] step through them. */
 export const AUCTION_AFTER_SORT_COLUMN_IDS: readonly AuctionColumnId[] = [
-  "date", "type", "term", "rate", "btc", "btcPctl", "indirectPctl", "dealerPctl", "after1d", "after5d", "after20d",
+  "date", "type", "term", "rate", "btc", "btcPctl", "indirectPctl", "dealerPctl", "after1d", "after5d", "after20d", "cusip",
 ];
 
 /** `--sort` as typed, and the column it sorts. */
@@ -102,7 +103,7 @@ export const AUCTION_SORT_NAMES: ReadonlyArray<{ value: string; column: AuctionC
   { value: "type", column: "type" },
   { value: "term", column: "term" },
   { value: "rate", column: "rate", aliases: ["yield"] },
-  { value: "vs-median", column: "stopOut", aliases: ["vs-med", "stop-out", "stopout"] },
+  { value: "vs-median", column: "stopOut", aliases: ["vs-med", "vs-average", "vs-avg", "stop-out", "stopout"] },
   { value: "btc", column: "btc", aliases: ["b/c", "bid-to-cover", "bc"] },
   { value: "indirect", column: "indirect" },
   { value: "direct", column: "direct" },
@@ -289,16 +290,45 @@ export function dealerPct(auction: TreasuryAuction): number | null {
 }
 
 /**
+ * Treasury has sold every note, bond and bill at a single price since November
+ * 1998, and publishes the median accepted bid in its average/median field.
+ * Before, most auctions were multiple-price and the field is the average.
+ */
+const SINGLE_PRICE_FROM = "1998-11-01";
+
+/** Whether an auction's average/median figure is the median (single-price) rather than the average. */
+export const publishesMedian = (auction: Pick<TreasuryAuction, "auctionDate">) => auction.auctionDate >= SINGLE_PRICE_FROM;
+
+/** The detail's name for the stop-out spread: against the median, or the average before November 1998. */
+export const stopOutLabel = (auction: TreasuryAuction) => publishesMedian(auction) ? "Stop-out vs median" : "Stop-out vs average";
+
+/** The detail's name for the middle figure itself: "Median yield", "Average discount rate". */
+export function middleRateLabel(auction: TreasuryAuction, rate: "yield" | "discount rate"): string {
+  return `${publishesMedian(auction) ? "Median" : "Average"} ${rate}`;
+}
+
+/**
+ * The stop-out column's heading for a list: VS MED when every row is from
+ * November 1998 on, VS AVG when every row is older, both when it spans the change.
+ */
+export function stopOutColumnLabel(auctions: readonly TreasuryAuction[], style: "pane" | "report"): string {
+  const median = auctions.some(publishesMedian);
+  const average = auctions.some((auction) => !publishesMedian(auction));
+  const which = median && average ? ["AVG/MED", "average/median"] : average ? ["AVG", "average"] : ["MED", "median"];
+  return style === "pane" ? `VS ${which[0]}` : `Stop-out vs ${which[1]} (bp)`;
+}
+
+/**
  * The stop-out (high yield) minus the median yield Treasury publishes for the
- * same auction (its average/median field, the median for every auction since
- * the 1980s), in basis points; a wider gap means the last dollars had to clear
- * well above where most of the auction priced. Bills compare discount rates,
- * which is how they trade. FRNs and auctions missing either leg are null.
+ * same auction (the average before November 1998: publishesMedian), in basis
+ * points; a wider gap means the last dollars had to clear well above where
+ * most of the auction priced. Bills compare discount rates, which is how they
+ * trade. FRNs and auctions missing either leg are null.
  *
  * This is not a tail: a tail is the stop-out against the 1 pm when-issued
  * yield, which the source does not carry.
  */
-export function stopOutVsMedianBp(auction: TreasuryAuction): number | null {
+export function stopOutSpreadBp(auction: TreasuryAuction): number | null {
   if (auction.secType === "FRN") return null;
   const bill = FILTER_TYPES.bill.has(auction.secType);
   const high = bill ? auction.highDiscountRate : auction.highYield;
@@ -346,9 +376,14 @@ export function formatAuctionRate(auction: TreasuryAuction, value: number | null
   return auction.secType === "FRN" ? `${(value * 100).toFixed(1)}bp` : `${value.toFixed(3)}%`;
 }
 
-/** Announced auctions appear in the feed days before any results are published. */
+/**
+ * Announced auctions appear in the feed days before any results are published.
+ * An early bill whose investment rate was blanked (inClearingOrder) still has
+ * its discount rates, so it is a result, not an announcement.
+ */
 export function isPendingAuction(auction: TreasuryAuction): boolean {
-  return rateValue(auction) == null && auction.bidToCoverRatio == null;
+  return rateValue(auction) == null && auction.bidToCoverRatio == null
+    && auction.highDiscountRate == null && auction.avgMedDiscountRate == null && auction.avgMedYield == null;
 }
 
 /**
@@ -391,7 +426,7 @@ function sortValue(auction: TreasuryAuction, columnId: AuctionColumnId, after?: 
       return days === Number.MAX_SAFE_INTEGER ? null : days;
     }
     case "rate": return rateValue(auction);
-    case "stopOut": return stopOutVsMedianBp(auction);
+    case "stopOut": return stopOutSpreadBp(auction);
     case "btc": return auction.bidToCoverRatio;
     case "indirect": return indirectPct(auction);
     case "direct": return directPct(auction);
@@ -471,7 +506,7 @@ export function buildAuctionColumns(options: {
     { id: "after5d", label: "+5D BP", width: 5, align: "right", title: "Treasury yield change five sessions after the auction, bp" },
     { id: "after20d", label: "+20D BP", width: 5, align: "right", title: "Treasury yield change twenty sessions after the auction, bp" },
   ] : [
-    { id: "stopOut", label: "VS MED", width: 7, align: "right", title: "Stop-out vs median yield, bp" },
+    { id: "stopOut", label: stopOutColumnLabel(rows, "pane"), width: 7, align: "right", title: "Stop-out vs median yield (average before November 1998), bp" },
     { id: "btc", label: "B/C", width: 5, align: "right" },
     { id: "indirect", label: "INDIRECT", width: 8, align: "right" },
     { id: "direct", label: "DIRECT", width: 6, align: "right" },
@@ -492,7 +527,7 @@ export function buildAuctionColumns(options: {
  * `--filter`, `--view`, `--sort`), each as `--flag value` or `--flag=value`.
  * A flag whose value is not one of its own is left out.
  */
-export function parseAuctionCommandArg(arg: string | undefined): {
+function parseAuctionCommandArg(arg: string | undefined): {
   search: string;
   historyDays?: AuctionHistoryWindow;
   filter?: AuctionFilter;
@@ -528,6 +563,23 @@ export function parseAuctionCommandArg(arg: string | undefined): {
   }
   parsed.search = words.join(" ");
   return parsed;
+}
+
+/**
+ * What `AUCT <arg>` asks of the pane: the search and every view key, defaults
+ * included, since an open pane merges a command's params into its own; a plain
+ * `AUCT 10Y` after `AUCT 7Y --view after --sort 5d --filter note` opens on
+ * results, newest first, all types. A window is a setting, sent when named.
+ */
+export function auctionCommandRequest(arg: string | undefined): {
+  params: Record<string, string>;
+  settings: Record<string, string> | null;
+} {
+  const { search, historyDays, filter, view, sort } = parseAuctionCommandArg(arg);
+  return {
+    params: { search, auctionView: view ?? "results", auctionSort: sort ?? "date", auctionFilter: filter ?? "all" },
+    settings: historyDays != null ? { historyDays: String(historyDays) } : null,
+  };
 }
 
 /** The column `--sort` names, by its name or an alias; null for anything else. */
@@ -566,10 +618,11 @@ export function widerWindowCouldAdd(query: string, rows: readonly TreasuryAuctio
     return latest < from;
   }
   if (isWholeCusip(text)) {
-    // A reopening's term has a month part (9-Year 10-Month); a first auction's is whole (10-Year), or a bill's.
+    // A note or bond reopening's term has a month part (9-Year 10-Month); its first auction's is whole (10-Year).
+    // A bill's term is whole either way: a 13-week bill can reopen a 26-week CUSIP, so a bill is never known first.
     const first = rows.some((auction) => {
       const parts = termParts(auction.securityTerm);
-      return !!parts && Object.keys(parts).length === 1;
+      return !isBill(auction) && !!parts && Object.keys(parts).length === 1;
     });
     return !first;
   }

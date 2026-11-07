@@ -2,10 +2,10 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { loadMacroDayEarnings, loadMacroDayHistory, loadMacroDaySeriesHistory, loadMacroReleases, macroDayEarningsNotice, type MacroDayEarnings } from "./client";
 import { fredSeriesArgument } from "../../../series/fred-argument";
-import { formatMacroDayMove, macroDayEventLabel, macroDayStats, macroFigureGapNotices, matchesSurprise, projectMacroDays, type MacroDayEvent,
+import { formatMacroDayMove, macroDayEventLabel, macroDayReleaseName, macroDayStats, macroFigureGapNotices, matchesSurprise, projectMacroDays, type MacroDayEvent,
   type MacroDayStats } from "./model";
 import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, MACRO_RELEASE_SOURCES, MACRO_SURPRISE_LABELS, MACRO_SURPRISES, staleMacroReleasesNotice,
-  type MacroEventKind, type MacroSurprise } from "./releases";
+  type MacroEventKind, type MacroReleaseFigures, type MacroSurprise } from "./releases";
 
 // A mean that rounds to zero reads 0.00%, never -0.00%.
 const percent = (value: unknown) => typeof value !== "number" ? "--" : /[1-9]/.test((value * 100).toFixed(2)) ? `${(value * 100).toFixed(2)}%` : "0.00%";
@@ -79,14 +79,17 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
           { key: "mean", header: header("Avg move"), format: move }, { key: "hitRate", header: "Up", format: share }],
         rows: [...model.kinds.map((kind) => row(MACRO_EVENT_LABELS[kind], model.byKind[kind])), ...selected,
           row(model.kinds.includes("ipca") ? "Any US release" : "Any release", model.allEvents), ...(model.earnings.count ? [row("Earnings", model.earnings)] : []), row("Normal day", model.normal)] },
-        { title: "Release days", columns: [{ key: "date", header: "Date" }, { key: "event", header: "Release" },
+        { title: "Release days", columns: [{ key: "date", header: "Date" },
+          // The text table reads the decision beside its release (FOMC held), as the pane does; exports keep the two apart.
+          { key: "event", header: "Release", textFormat: (_value, row) => macroDayEventLabel({ kind: row.kind as MacroEventKind,
+            earnings: row.earnings === true, figures: typeof row.decision === "string" ? { decision: row.decision } as MacroReleaseFigures : null }) },
           { key: "actual", header: "Actual" }, { key: "forecast", header: "Forecast" }, { key: "prior", header: "Prior" },
           { key: "surprise", header: "Surprise" },
           { key: "session", header: "Session" }, { key: "move", header: header("Move"), format: move }, { key: "multiple", header: "vs normal", format: multiple }],
         rows: events.map((day) => {
           const { figures, figuresMissing: _gap, ...event } = day;
           const why = missing(day);
-          return { ...event, event: macroDayEventLabel(day), actual: figures?.actual ?? null,
+          return { ...event, event: macroDayReleaseName(day), actual: figures?.actual ?? null,
             forecast: figures?.forecast ?? null, prior: figures?.prior ?? null, surprise: figures?.surprise ?? null,
             ...(figures ? { headline: figures.event } : {}), ...(figures?.decision ? { decision: figures.decision } : {}),
             ...(why ? { figuresMissing: why } : {}) };

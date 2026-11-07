@@ -7,7 +7,7 @@ import {
   TREASURY_DIRECT_CONNECTION_ID,
   TREASURY_FISCAL_DATA_CONNECTION_ID,
 } from "./cache";
-import { AUCTION_HISTORY_WINDOWS, auctionHistoryLabel, parseAuctionCommandArg } from "./model";
+import { AUCTION_HISTORY_WINDOWS, auctionCommandRequest, auctionHistoryLabel } from "./model";
 import { AUCTION_HISTORY_DAYS } from "./client";
 import { createPublicPaneShare } from "../shared/public-pane";
 import { treasuryAuctionsHeadless } from "./headless";
@@ -99,19 +99,8 @@ export const treasuryAuctionsModule: PluginModule = {
         shortcut: { prefix: "AUCT", argKind: "text", argOptional: true, argPlaceholder: "search" },
         headless: treasuryAuctionsHeadless,
         createInstance: (_context, options) => {
-          // `AUCT 10Y --history-days 3650 --view after` reads its flags as `fn AUCT` does; the rest is the search.
-          const { search, historyDays, filter, view, sort } = parseAuctionCommandArg(options?.arg);
-          const params = {
-            ...(search ? { search } : {}),
-            ...(view ? { auctionView: view } : {}),
-            ...(sort ? { auctionSort: sort } : {}),
-            ...(filter ? { auctionFilter: filter } : {}),
-          };
-          return {
-            placement: "floating",
-            ...(Object.keys(params).length ? { params } : {}),
-            ...(historyDays != null ? { settings: { historyDays: String(historyDays) } } : {}),
-          };
+          const { params, settings } = auctionCommandRequest(options?.arg);
+          return { placement: "floating", params, ...(settings ? { settings } : {}) };
         },
         publicShare: createPublicPaneShare("Treasury Auctions"),
       }, "treasury", "auctions"),

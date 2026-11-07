@@ -10,7 +10,7 @@ import {
   parseTreasuryAuctionsPayload,
   totalPages,
 } from "./client";
-import { stopOutVsMedianBp } from "./model";
+import { isPendingAuction, stopOutSpreadBp } from "./model";
 
 // Shape captured from the live auctions_query endpoint on 2026-08-18.
 const LIVE_NOTE_ROW = {
@@ -71,15 +71,17 @@ describe("normalizeAuction", () => {
       high_yield: "14.470000", avg_med_yield: "14.560000", low_yield: "14.610000", high_price: "99.5", low_price: "98.9",
     })!;
     expect(swapped).toMatchObject({ highYield: 14.61, lowYield: 14.47, highPrice: 98.9, lowPrice: 99.5 });
-    expect(stopOutVsMedianBp(swapped)).toBe(5);
+    expect(stopOutSpreadBp(swapped)).toBe(5);
     const unreadable = normalizeAuction({ ...LIVE_NOTE_ROW, high_yield: "4.500000", avg_med_yield: "4.700000", low_yield: "4.600000" })!;
     expect(unreadable).toMatchObject({ highYield: null, lowYield: null });
     // A bill's discount rates the same way; a pair in order is left alone.
     const bill = normalizeAuction({
       security_type: "Bill", security_term: "13-Week", auction_date: "1980-03-10", cusip: "912793AB1",
-      high_discnt_rate: "15.100000", avg_med_discnt_rate: "15.150000", low_discnt_rate: "15.200000",
+      high_investment_rate: "15.820000", high_discnt_rate: "15.100000", avg_med_discnt_rate: "15.150000", low_discnt_rate: "15.200000",
     })!;
-    expect(bill).toMatchObject({ highDiscountRate: 15.2, lowDiscountRate: 15.1 });
+    // Its investment rate restated the discount rate the source called high: blank, not a rate that disagrees with it.
+    expect(bill).toMatchObject({ highDiscountRate: 15.2, lowDiscountRate: 15.1, highInvestmentRate: null });
+    expect(isPendingAuction(bill)).toBe(false);
     expect(normalizeAuction(LIVE_NOTE_ROW)!.highYield).toBe(4.683);
   });
 

@@ -3,7 +3,9 @@ import type {
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import type { HeadlessPaneColumn } from "../../../types/headless";
-import { afterLoadWindow, afterWindowStart, AUCTION_VIEWS, loadAuctionCurves, projectAuctionAfter, type AuctionCurveRead, type AuctionView } from "./after";
+import {
+  afterLoadWindow, afterWindowStart, AUCTION_VIEWS, loadAuctionCurves, projectAuctionAfter, widerAfterWindow, type AuctionCurveRead, type AuctionView,
+} from "./after";
 import { formatCompact } from "../../../utils/format";
 import { AUCTION_HISTORY_ALL, AUCTION_HISTORY_START, fetchTreasuryAuctions, type AuctionHistoryWindow } from "./client";
 import { loadTreasuryAuctions, type TreasuryAuctionsResult } from "./cache";
@@ -32,7 +34,8 @@ import {
   rateColumnLabel,
   rateQualifier,
   rateValue,
-  stopOutVsMedianBp,
+  stopOutColumnLabel,
+  stopOutSpreadBp,
   visibleAuctions,
   widerWindowCouldAdd,
   type AuctionFilter,
@@ -50,7 +53,8 @@ const RESULTS_NOT_PUBLISHED = "results not published";
 const pending = (row: Record<string, unknown>) => isPendingAuction(row as unknown as TreasuryAuction);
 
 /** Why the stop-out column is not a tail; the docs page says the same at length. */
-const STOP_OUT_NOTE = "Stop-out vs median is the high yield minus the median yield, in bp (bills: discount rates). "
+const STOP_OUT_NOTE = "Stop-out vs median is the high yield minus the median yield, in bp (bills: discount rates); "
+  + "before November 1998, when most auctions were multiple-price, Treasury published the average, so older rows read against the average. "
   + "A true tail, the stop-out against the 1 pm when-issued yield, needs the when-issued yield, which the source does not carry.";
 
 const MISSING_METRICS_NOTE = "A blank B/C or bidder share is one the source does not have for that auction: "
@@ -94,7 +98,7 @@ const DISCOUNT_RATE_COLUMN: HeadlessPaneColumn = {
 
 const RESULT_COLUMNS: HeadlessPaneColumn[] = [
   {
-    key: "stopOutVsMedianBp", header: "Stop-out vs median (bp)", align: "right" as const,
+    key: "stopOutSpreadBp", header: "Stop-out spread (bp)", align: "right" as const,
     format: (value: unknown, row: Record<string, unknown>) => value == null ? pending(row) ? "" : "-" : Number(value).toFixed(1),
   },
   { key: "bidToCoverRatio", header: "B/C", align: "right" as const, format: (value: unknown) => value == null ? "" : Number(value).toFixed(2) },
@@ -125,7 +129,9 @@ const AFTER_COLUMNS: HeadlessPaneColumn[] = [
 function columnsFor(view: AuctionView, auctions: readonly TreasuryAuction[]): HeadlessPaneColumn[] {
   const rate = { ...LEAD_COLUMNS[3]!, textHeader: rateColumnLabel(auctions, "report") };
   const discount = auctions.some(isBill) ? [DISCOUNT_RATE_COLUMN] : [];
-  return [...LEAD_COLUMNS.slice(0, 3), rate, ...discount, ...view === "after" ? AFTER_COLUMNS : RESULT_COLUMNS];
+  // The spread is against the median from November 1998 and the average before: the heading says which the rows hold.
+  const results = RESULT_COLUMNS.map((column) => column.key === "stopOutSpreadBp" ? { ...column, textHeader: stopOutColumnLabel(auctions, "report") } : column);
+  return [...LEAD_COLUMNS.slice(0, 3), rate, ...discount, ...view === "after" ? AFTER_COLUMNS : results];
 }
 
 const AFTER_NOTE = "Percentiles rank each auction against its tenor's previous 24 (at least 12); the moves are the Treasury par yield "
@@ -133,12 +139,12 @@ const AFTER_NOTE = "Percentiles rank each auction against its tenor's previous 2
 
 interface TreasuryAuctionsHeadlessDependencies {
   load(args: HeadlessPaneLoadArgs, window: AuctionHistoryWindow): Promise<TreasuryAuctionsResult>;
-  curves(shown: readonly TreasuryAuction[]): Promise<AuctionCurveRead>;
+  curves(shown: readonly TreasuryAuction[], from: string | null): Promise<AuctionCurveRead>;
 }
 
 const defaultDependencies: TreasuryAuctionsHeadlessDependencies = {
   load: (_args, window) => loadTreasuryAuctions(false, fetchTreasuryAuctions, window),
-  curves: (shown) => loadAuctionCurves(shown),
+  curves: (shown, from) => loadAuctionCurves(shown, from),
 };
 
 /** An empty table says what was searched, in which window, and what the search understands; another market's paper, what AUCT covers. */
@@ -210,12 +216,19 @@ export function createTreasuryAuctionsHeadless(
       // A sort by an after-view column is a request for that view.
       const view: AuctionView = args.options.view === "after" || (sortColumn && isAfterColumn(sortColumn)) ? "after" : "results";
       const sort = sortColumn ? { columnId: sortColumn, direction: firstAuctionSortDirection(sortColumn) } : DEFAULT_AUCTION_SORT;
-      // The after view reads two more years than it lists, for the oldest rows' percentiles.
-      const result = await dependencies.load(args, view === "after" ? afterLoadWindow(historyDays) : historyDays);
       const query = typeof args.argument === "string" ? args.argument : "";
       const from = view === "after" ? afterWindowStart(historyDays) : undefined;
-      const listed = visibleAuctions(result.auctions, { filter, query, sort: DEFAULT_AUCTION_SORT, from });
-      const curves = view === "after" ? await dependencies.curves(listed) : null;
+      // The after view reads more than it lists, until each listed tenor has its 24 before the oldest row (or ALL).
+      let window = view === "after" ? afterLoadWindow(historyDays) : historyDays;
+      let result = await dependencies.load(args, window);
+      let listed = visibleAuctions(result.auctions, { filter, query, sort: DEFAULT_AUCTION_SORT, from });
+      for (let wider = view === "after" ? widerAfterWindow(listed, result.auctions, window) : null; wider;
+        wider = widerAfterWindow(listed, result.auctions, window)) {
+        window = wider;
+        result = await dependencies.load(args, window);
+        listed = visibleAuctions(result.auctions, { filter, query, sort: DEFAULT_AUCTION_SORT, from });
+      }
+      const curves = view === "after" ? await dependencies.curves(listed, from ?? null) : null;
       const after = curves ? projectAuctionAfter(listed, result.auctions, curves.curves) : null;
       const auctions = sortColumn ? visibleAuctions(listed, { filter: "all", query: "", sort, ...(after ? { after } : {}) }) : listed;
       const notes = [
@@ -236,7 +249,7 @@ export function createTreasuryAuctionsHeadless(
         rows: auctions.map((auction) => ({
           ...auction,
           rate: rateValue(auction),
-          stopOutVsMedianBp: stopOutVsMedianBp(auction),
+          stopOutSpreadBp: stopOutSpreadBp(auction),
           indirectPercent: indirectPct(auction),
           directPercent: directPct(auction),
           dealerPercent: dealerPct(auction),
