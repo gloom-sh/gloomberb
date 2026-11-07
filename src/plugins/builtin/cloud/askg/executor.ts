@@ -23,6 +23,12 @@ import {
 } from "./protocol";
 import { normalizeJson } from "./json";
 import {
+  redactRelayResult,
+  redactResource,
+  storedCredentials,
+  withoutStoredCredentials,
+} from "../terminal-relay/redact";
+import {
   capToolNote,
   joinToolNotes,
   summarizeToolWarnings,
@@ -33,6 +39,7 @@ import {
   remoteRequestForTool,
   resolveRemoteToolBinding,
   toolExecutionTimeoutMs,
+  type RemoteToolBinding,
 } from "./manifest";
 import {
   ASKGUndoManager,
@@ -239,6 +246,15 @@ function inferRemoteRowCount(value: unknown): number | undefined {
 }
 
 /**
+ * An app resource or operation result as an assistant may read it, by the
+ * same rules as the terminal relay: configuration without its credentials
+ * and broker settings, and no secret-named or typed-password value anywhere.
+ */
+function redactRemoteData(binding: RemoteToolBinding, args: Record<string, JsonValue>, data: unknown): unknown {
+  return redactRelayResult(binding.kind === "resource" ? redactResource(String(args.resource), data) : data);
+}
+
+/**
  * How much longer the server waits for this call, by its frame: its timeout,
  * and never past the time it expires.
  */
@@ -347,15 +363,17 @@ export function createASKGToolExecutor(
     options: ASKGToolExecutionOptions = {},
   ): Promise<ToolResultPayload> => {
     const startedAt = now();
+    // Whatever leaves the app, a pane function's rows included, without a credential the config stores.
+    const credentials = storedCredentials(dependencies.context?.config);
     const base = (value: ExecutionValue): ToolResultPayload => withBoundedPayload({
       turnId: call.turnId,
       toolCallId: call.toolCallId,
       status: value.status,
-      ...(value.result !== undefined ? { result: normalizeJson(value.result) } : {}),
+      ...(value.result !== undefined ? { result: withoutStoredCredentials(normalizeJson(value.result), credentials) } : {}),
       ...(value.rowCount !== undefined ? { rowCount: value.rowCount } : {}),
       truncated: value.truncated ?? false,
       elapsedMs: Math.max(0, now() - startedAt),
-      ...(value.note ? { note: capToolNote(value.note) } : {}),
+      ...(value.note ? { note: capToolNote(withoutStoredCredentials(value.note, credentials)) } : {}),
       ...(value.rev ? { rev: value.rev } : {}),
       ...(value.undoToken ? { undoToken: value.undoToken } : {}),
     });
@@ -410,7 +428,7 @@ export function createASKGToolExecutor(
         if (!response.ok) {
           return {
             status: "error",
-            result: { code: response.error.code, ...(response.error.details !== undefined ? { details: response.error.details } : {}) },
+            result: redactRemoteData(binding, call.args, { code: response.error.code, ...(response.error.details !== undefined ? { details: response.error.details } : {}) }),
             note: toolErrorNote(response.error.message),
           };
         }
@@ -425,7 +443,7 @@ export function createASKGToolExecutor(
         }
         return {
           status: "ok",
-          result: response.data,
+          result: redactRemoteData(binding, call.args, response.data),
           rowCount: inferRemoteRowCount(response.data),
           ...(undoNote ? { note: undoNote } : {}),
           ...(response.rev ? { rev: response.rev } : response.state?.rev ? { rev: response.state.rev } : {}),

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { MarketContext } from "../../../../cli/types";
 import type { PaneFunctionCatalog } from "../../../../cli/pane-functions/catalog";
 import type { RemoteCallContext, RemoteControlResponse } from "../../../../remote/types";
-import { createDefaultConfig } from "../../../../types/config";
+import { createDefaultConfig, type AppConfig } from "../../../../types/config";
 import type { HeadlessPaneDefinition, PaneDef, PaneTemplateDef } from "../../../../types/plugin";
 import {
   MAX_TOOL_RESULT_BYTES,
@@ -10,6 +10,7 @@ import {
   type ClientToolManifest,
 } from "./protocol";
 import { createASKGToolExecutor } from "./executor";
+import { REDACTED } from "../terminal-relay/redact";
 
 const emptyRegistry: PaneFunctionCatalog = {
   panes: new Map(),
@@ -328,6 +329,46 @@ describe("ASKG delegated tool executor", () => {
       result: { code: "upstream_unavailable" },
       note: "Upstream source is unavailable.",
       truncated: false,
+    });
+  });
+
+  describe("credentials stay on the device", () => {
+    const config = {
+      ...createDefaultConfig("/tmp/askg-redaction"),
+      portfolios: [{ id: "pf-main", name: "Main", currency: "USD" }],
+      watchlists: [{ id: "wl-tech", name: "Tech", tickers: ["MSFT"] }],
+      brokerInstances: [{ id: "ibkr-1", brokerType: "ibkr", label: "IBKR", config: { username: "ada", password: "hunter2-broker-pass" } }],
+      pluginConfig: { "gloom-fred": { apiKey: "fred-key-0123456789", series: "GDP" } },
+    } as unknown as AppConfig;
+    const tools = (data: unknown, headless?: Parameters<typeof executor>[0]["headlessExecutor"]) => createASKGToolExecutor({
+      manifests: [resourceManifest, headlessManifest],
+      registry: emptyRegistry,
+      context: { config } as MarketContext,
+      remoteHandler: async () => ({ ok: true, data }),
+      ...(headless ? { headlessExecutor: headless } : {}),
+    });
+    const read = async (resource: string, data: unknown) => (
+      await tools(data).execute(call(resourceManifest, { args: { resource } }))
+    ).result as Record<string, any>;
+
+    test("app://config and app://snapshot keep ids and lose broker settings and plugin keys", async () => {
+      const fromConfig = await read("app://config", config);
+      const fromSnapshot = (await read("app://snapshot", { rev: "r1", config, panes: [] })).config;
+      for (const read of [fromConfig, fromSnapshot]) {
+        expect(read.brokerInstances[0].config).toEqual({ username: REDACTED, password: REDACTED });
+        expect(read.pluginConfig["gloom-fred"]).toEqual({ apiKey: REDACTED, series: "GDP" });
+        expect(read.portfolios[0].id).toBe("pf-main");
+        expect(read.watchlists[0].id).toBe("wl-tech");
+      }
+    });
+
+    test("a pane function's rows lose a stored credential, not a column named like one", async () => {
+      const result = await tools(null, async () => ({
+        result: { rows: [{ token: "ETH", source: "https://api.example.com/series?key=fred-key-0123456789" }] },
+        rowCount: 1,
+      })).execute(call(headlessManifest));
+
+      expect(result.result).toEqual({ rows: [{ token: "ETH", source: `https://api.example.com/series?key=${REDACTED}` }] });
     });
   });
 });
