@@ -189,7 +189,7 @@ import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { bareFuturesCode, futuresBoardContract, futuresContractByWord } from "../../market-data/futures-board";
 import { commodityNamedIn, commoditySearchName } from "../../market-data/commodity-names";
 import { newsEmptyMessage } from "./news-hints";
-import { centralBankInNews } from "../../utils/central-banks";
+import { centralBankInNews, centralBankShortNamed } from "../../utils/central-banks";
 import {
   closestStoriesReason,
   commodityNewsRoute,
@@ -2508,7 +2508,7 @@ const newsRowNote = (row: Record<string, unknown>) => typeof row.summary === "st
 async function printNewsSearch(
   text: string,
   articles: NewsArticle[],
-  { reason, empty, commodity = true, failure, ticker = null, closest = false }: {
+  { reason, empty, commodity = true, failure, ticker = null, closest = false, listing }: {
     reason?: string;
     empty?: string;
     commodity?: boolean;
@@ -2517,6 +2517,8 @@ async function printNewsSearch(
     ticker?: string | null;
     /** No story has every word: these are the ones with the most. */
     closest?: boolean;
+    /** The listing the typed word also names, and how to read its news: a bank's short name ahead of a listing abroad. */
+    listing?: { key: string; note: string };
   },
   ctx: Parameters<CliCommandDef["execute"]>[1],
 ) {
@@ -2527,7 +2529,8 @@ async function printNewsSearch(
   ctx.printResult({
     data: articles,
     ...(searched ? {} : { warnings: [`Searching stories for "${text}" failed: ${failure}`] }),
-    metadata: { ticker, search: text, feed: null, ...(closestReason ? { match: "closest" } : {}), ...(route ? { futuresNews: route.command } : {}) },
+    metadata: { ticker, search: text, feed: null, ...(closestReason ? { match: "closest" } : {}), ...(route ? { futuresNews: route.command } : {}),
+      ...(listing ? { listing: listing.key } : {}) },
     freshness: rowsFreshness(newsRows(articles), cloudNewsFreshness(await cloudRealtimeAccess())),
   }, {
     heading: newsSearchHeading(text, [reason, closestReason].filter(Boolean).join("  ·  ") || undefined),
@@ -2535,6 +2538,7 @@ async function printNewsSearch(
     columns: NEWS_COLUMNS,
     rowNote: newsRowNote,
     empty: named ? noStoriesMessage(text, route) : empty ?? (searched ? noStoriesMessage(text, null) : "No stories to show."),
+    ...(listing ? { footnote: listing.note } : {}),
   });
 }
 
@@ -2614,6 +2618,28 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   await withMarketData(ctx, async (market) => {
     const listing = args[0] ? await requireCliListing(args[0], exchangeOption, market, ctx) : null;
     const quoteLoad = listing ? loadListingQuote(market.dataProvider, listing) : Promise.resolve(null);
+    // A bank's short name typed on its own (ECB, FED, RBI) is the bank's stories ahead of a listing outside the US
+    // that trades under it (ECB S.A. on the WSE, "No news" on 7 Nov 2026), which its venue still reaches (ECB:WSE).
+    // A US listing (RBA, RB Global) keeps the name.
+    const shortBank = listing && !listing.exchange && !feed && args.length === 1 ? centralBankShortNamed(args[0]!) : null;
+    if (shortBank) {
+      const quote = await quoteLoad;
+      const identity = listingIdentity(listing!, quote);
+      if (!isUsListingExchange(identity.exchange)) {
+        const resolved = quote !== null || identity.name != null;
+        const key = identity.exchange ? `${listing!.symbol}:${identity.exchange}` : null;
+        const typed = args[0]!.trim();
+        const stories = await searchCentralBankStories(shortBank, limit, typed).then((found) => ({ found, failure: undefined }), (error: unknown) => {
+          logFailure("cli.commands-market", "Search a central bank's stories failed")(error);
+          return { found: [], failure: errorMessage(error) ?? "no answer" };
+        });
+        await printNewsSearch(typed, stories.found, {
+          reason: centralBankNewsReason(shortBank), commodity: false, failure: stories.failure,
+          ...(resolved && key ? { listing: { key, note: `${typed} is also ${identity.name ?? listing!.symbol} (${identity.exchange}): gloom news ${key}` } } : {}),
+        }, ctx);
+        return;
+      }
+    }
     // A coin pair's feed searches for the coin when no story is filed under the pair, by the name its quote gives.
     const coin = !!listing && !feed && isRoundTheClockCoin(listing.request.symbol, listing.request.exchange);
     const loadNews = async () => market.dataProvider.getNews({
