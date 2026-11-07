@@ -11,14 +11,37 @@ export interface FxInterventionDay {
   pair: string;
 }
 
-/** One monthly release: the total for its period, which names no day and no pair. */
-export interface FxInterventionPeriod {
+/** Operations in one pair and direction, each at most four calendar days after the last, summed: one intervention, counted once. */
+export interface FxInterventionRun {
+  from: string;
+  to: string;
+  /** Days with an operation. */
+  days: number;
+  amountJpy: number;
+  sold: string | null;
+  bought: string | null;
+  pair: string;
+}
+
+/** One monthly release: the total for its period, which names no day and no pair until its quarter is released. */
+export interface FxInterventionMonth {
   from: string;
   to: string;
   amountJpy: number;
   /** The day the ministry published it. */
-  releasedOn?: string;
+  releasedOn: string;
   url?: string;
+  /** How far the daily record reaches into the period. */
+  daysKnown: "all" | "partial" | "none";
+  /** The part of its total no served day accounts for yet: what is not dated, counted once. */
+  undatedAmountJpy: number;
+}
+
+/** One quarter's total. */
+interface FxInterventionQuarter {
+  from: string;
+  to: string;
+  amountJpy: number;
 }
 
 /** `GET /cloud/econ/fx-interventions`: Japan's interventions as the Ministry of Finance publishes them. */
@@ -27,12 +50,14 @@ export interface FxInterventionsPayload {
   status: "available" | "unavailable";
   /** Each operation, oldest first. */
   days: FxInterventionDay[];
+  /** The operations as interventions, oldest first. */
+  interventions: FxInterventionRun[];
   /** The last day `days` covers; a monthly total after it names no day yet. */
   dailyThrough: string | null;
   /** Every monthly release read, oldest first. */
-  months: FxInterventionPeriod[];
+  months: FxInterventionMonth[];
   /** Quarterly totals, oldest first. */
-  quarters: FxInterventionPeriod[];
+  quarters: FxInterventionQuarter[];
   fetchedAt: string | null;
   sourceUrl: string;
   notes: string[];

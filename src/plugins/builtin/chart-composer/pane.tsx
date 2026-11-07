@@ -25,8 +25,8 @@ import { useChartViewReset, useChartViewResetListener } from "../../../component
 import { formatCompositeDatasetDate } from "../../../components/chart/composite/format";
 import type { CompositeChartLevels, CompositeLevelEdit } from "../../../components/chart/composite/levels";
 import type { FxInterventionsPayload } from "../../../api-client/fx-interventions";
-import { fxInterventionMarkers, fxInterventionPair, loadFxInterventions } from "../../../market-data/fx-interventions";
-import { interventionChartEvents } from "./intervention-events";
+import { loadFxInterventions } from "../../../market-data/fx-interventions";
+import { chartInterventionPair, chartInterventions, rawPriceEntry } from "./intervention-events";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import type { ChartResolution, TimeRange } from "../../../components/chart/core/types";
 import type { ChartSpec, ResolvedSeries } from "../../../time-series/types";
@@ -265,14 +265,9 @@ function levelListing(spec: ChartSpec, series: readonly ResolvedSeries[]): {
   instrument: InstrumentRef;
   lastPrice: number | null;
 } | null {
-  const entry = spec.series.find((candidate) => (
-    candidate.visible !== false
-    && candidate.transform === "raw"
-    && candidate.source.kind === "security"
-    && (candidate.source.fieldId === "market.ohlcv" || candidate.source.fieldId === "market.close")
-  ));
+  const entry = rawPriceEntry(spec);
   const resolved = entry ? series.find((candidate) => candidate.id === entry.id) : undefined;
-  if (!entry || entry.source.kind !== "security" || !resolved) return null;
+  if (!entry || !resolved) return null;
   const exchange = resolved.timeBasis?.exchange || canonicalExchange(entry.source.instrument.exchange) || undefined;
   const last = resolved.points.findLast((point) => Number.isFinite(point.close ?? point.value));
   return {
@@ -613,26 +608,19 @@ function ChartComposerSurface({
     };
   }, [alertAtLevel, alertsJson, alertsOn, editLevels, levelStore, listing, trade?.levels, trade?.contract]);
   // A yen pair's chart marks Japan's interventions in it, from the Ministry of Finance's releases.
-  const interventionPair = useMemo(
-    () => listing ? fxInterventionPair(listing.target.symbol, listing.target.exchange) : null,
-    [listing],
-  );
   const [interventions, setInterventions] = useState<FxInterventionsPayload | null>(null);
-  const wantsInterventions = interventionPair !== null;
+  const wantsInterventions = chartInterventionPair(spec) !== null;
   useEffect(() => {
     if (!wantsInterventions) return;
     let live = true;
     void loadFxInterventions().then((payload) => { if (live) setInterventions(payload); });
     return () => { live = false; };
   }, [wantsInterventions]);
-  const interventionBars = interventionPair && listing
-    ? (resolution.bufferedSeries ?? resolution.series).find((entry) => entry.id === listing.seriesId)
-    : undefined;
-  const chartEvents = useMemo(() => {
-    if (!interventions || !interventionPair || !interventionBars) return undefined;
-    const markers = fxInterventionMarkers(interventions, interventionPair);
-    return markers.length > 0 ? interventionChartEvents(markers, interventionBars.points.map((point) => point.date.getTime())) : undefined;
-  }, [interventionBars, interventionPair, interventions]);
+  const chartSeries = resolution.bufferedSeries ?? resolution.series;
+  const interventionMarks = useMemo(
+    () => wantsInterventions ? chartInterventions(spec, chartSeries, interventions) : null,
+    [chartSeries, interventions, spec, wantsInterventions],
+  );
   const [interactionCaptured, setInteractionCapturedState] = useState(false);
   // Typing in quick-add must not freeze the plot: it only takes the keyboard.
   const [modalCaptured, setModalCaptured] = useState(false);
@@ -1366,7 +1354,8 @@ function ChartComposerSurface({
           timePick={timePick}
           pricePick={pricePick}
           levels={chartLevels}
-          events={chartEvents}
+          events={interventionMarks?.events}
+          mergeEventCaptions={interventionMarks?.merge}
           rangeStatisticsSeriesId={rangeStatisticsSeriesId}
           emptyMessage={emptyMessage}
           emptyDetail={emptyDetail}

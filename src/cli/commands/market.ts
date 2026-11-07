@@ -1509,13 +1509,23 @@ function loadInterventionsFor(pair: FxInterventionPair | null, market: MarketCon
   return pair ? settleWithin((market.fxInterventions ?? (() => loadFxInterventions()))(), INTERVENTION_NOTE_WAIT_MS) : Promise.resolve(null);
 }
 
-/** The interventions between the first and the last bar shown. */
+/** The last day a bar's period covers: a weekly bar's Sunday, a monthly bar's month end, else its own day. */
+function barPeriodEnd(date: string, interval: string | null | undefined): string {
+  const start = Date.parse(`${date}T00:00:00Z`);
+  if (interval === "1wk") return new Date(start + 6 * 86_400_000).toISOString().slice(0, 10);
+  if (interval !== "1mo") return date;
+  const day = new Date(start);
+  return new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+}
+
+/** The interventions from the first bar shown to the end of the last one's period. */
 async function interventionWindowNote(
   record: Promise<FxInterventionsPayload | null>,
   pair: FxInterventionPair | null,
-  rows: readonly { date: string }[],
+  rows: readonly { date: string; interval?: string | null }[],
 ): Promise<string | null> {
-  const first = rows[0]?.date.slice(0, 10), last = rows.at(-1)?.date.slice(0, 10);
+  const first = rows[0]?.date.slice(0, 10), lastRow = rows.at(-1);
+  const last = lastRow ? barPeriodEnd(lastRow.date.slice(0, 10), lastRow.interval) : undefined;
   if (!pair || !first || !last) return null;
   const payload = await record;
   return payload ? fxInterventionWindowNote(payload, pair, first, last) : null;

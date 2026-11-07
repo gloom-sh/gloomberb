@@ -620,7 +620,7 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 
 #### Japan's interventions
 
-A yen pair's price chart (`G USDJPY=X`, `G EURJPY=X`) marks each intervention Japan's Ministry of Finance made in that pair, on the bar of its first day, with its yen amount under the time axis (`MoF ¥9.8tn`). A total the ministry has published only for a period of about a month, whose days come with its quarterly release, is dotted at the period's first day and names the period (`MoF ¥15.4tn 30 Jul–26 Aug`). The marks are drawn under the bars. A caption with no room left ends in `…`; `gloom history USDJPY=X` names the same interventions in full ([`fx`](#fx) says what the ministry publishes when).
+A yen pair's price chart (`G USDJPY=X`, `G EURJPY=X`) marks each intervention Japan's Ministry of Finance made in that pair on the bar of its first day, drawn under the bars and captioned under the time axis with its amount and side (`MoF ¥9.8tn yen bought`). On USD/JPY, a monthly total whose days are not published yet is dotted from its first day to its last (`MoF ¥15.4tn 30 Jul–26 Aug, pair not yet published`). Where captions crowd, they drop `MoF`, then the side, and neighbours share one (`MoF ¥9.2tn ×2`); `gloom history USDJPY=X` names each ([`fx`](#fx) says what the ministry publishes when).
 
 #### Session low and high
 
@@ -1260,7 +1260,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 
 **What the output says**
 
-- A yen pair's bars (`history USDJPY=X`) end with a note naming Japan's interventions in that pair between their first and last bar, the newest six by day and yen amount with older ones counted, and a monthly total in them whose days are not published yet. See [`fx`](#fx) for what the ministry publishes when.
+- A yen pair's bars (`history USDJPY=X`) end with a note naming Japan's interventions in that pair from the first bar to the end of the last bar's week or month, the newest six by day and amount (`29 Apr–1 May 2024 ¥9.8tn`) with older ones counted, and on USD/JPY a monthly total whose days are not published yet. See [`fx`](#fx) for what the ministry publishes when.
 - The line under the heading names the currency the prices are in (an FX pair reads `ZAR per USD`, an index `Index points`, a sub-unit `ILA (agorot, 1/100 ILS)`, `Currency unknown` when no source states one), the bar size served, the first and last bar and the bar count.
 - `--json` carries the same in `metadata` (`currency`, `unit`, `interval`, `firstDate`, `lastDate`, `bars`, `requestedRange`, `asOf`). Every row has `currency`, `unit` (what one price is: `USD`, `index points`, `ZAR per USD`), `interval` and `flag`.
 - A continuous future (`NG=F`) is the front month: the heading reads `Natural Gas front month`, each row has the `contract` it closes on, the row it rolled at says `roll to NGZ26`, and a note names each roll. The max drawdown is read within one contract, never from one month's close to the next one's across a roll, and names that contract. A bar that traded under 5% of the volume of the contract's bars around it says `thin`; a stock's or a coin's quiet day, and a bar with no trade at all, is never marked. Without contracts on the bars (an older server), the history reads as before.
@@ -1319,13 +1319,14 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 - A currency's name stands for its code (`gloom fx yen` is JPY, `rand` ZAR, `Swiss franc` CHF) and the answer says which it read. A name several currencies share lists them (`peso`: MXN, ARS, COP, CLP, PHP, UYU, DOP) and you type the code. A code with no rate fails naming that code.
 - The answer ends with the source line of [How current a report is](#how-current-a-report-is), dated by the quote's own time (the older dollar quote's for a cross): `Source: Gloom Cloud · Thu 5 Nov 2026 04:52 UTC · 15 min delayed · markets open` (`live` with real-time access). A rate is marked stale there, with its age (`stale (2 hours old)`), and as `stale: true` in exports when the service says so, as `quote` marks the same quote, or once it is older than the feed's delay and 15 minutes, counted while the FX market trades: Friday's close stays current over the weekend.
 
-**The yen.** A yen pair's rate (`gloom fx USD/JPY`, `fx EUR/JPY`; not a conversion) ends with a note on Japan's interventions as its Ministry of Finance publishes them: any monthly total whose days are not out yet, then the last intervention dated in that pair, with its days and yen amount, and how far the records run:
+**The yen.** A yen pair's rate (`gloom fx USD/JPY`, `fx EUR/JPY`; not a conversion) ends with a note on Japan's interventions as its Ministry of Finance publishes them: on USD/JPY any monthly total whose days are not out yet, then the last intervention dated in that pair, with its days and yen amount, and how far the records run:
 
 ```
-warning: Japan's Ministry of Finance reported ¥15,399.3 billion of intervention from 30 Jul to 26 Aug 2026, a monthly total: its days and pair come with the quarterly release. Its last dated intervention in USD/JPY: 30 Apr–6 May 2026, ¥11,734.8 billion of dollars sold for yen on 3 days. Records through 28 Oct 2026.
+warning: Japan's Ministry of Finance reported ¥15,399.3 billion of intervention from 30 Jul to 26 Aug 2026, a monthly total released 28 Aug 2026: its days and pair come with the quarterly release. Its last dated intervention in USD/JPY: 30 Apr–6 May 2026, ¥11,734.8 billion of dollars sold for yen on 3 days. Records through 28 Oct 2026.
 ```
 
-The ministry publishes a total for about a month on the month's last business day, and each day with its pair about five weeks after the quarter ends. Operations in one pair and direction a weekend or holiday apart read as one intervention, and its amount is the sum of its days as published: the ministry rounds each day and each quarter's total on its own, so a sum can differ from its quarter's total by ¥0.1 billion. `history` names the interventions its bars span, and a yen pair's chart marks them.
+The ministry publishes a month's total on its last business day and the days, with their pair, about five weeks after the quarter ends.
+An intervention sums days in one pair and direction a weekend or holiday apart, so it can differ from its quarter's total by ¥0.1 billion.
 
 **The peso.** `gloom fx USD/ARS` (or `ARS/USD`) labels its rate the official wholesale one, then lists the market dollar rates Buenos Aires prices imply, pesos per dollar, each with its formula and the time of every price in it: CCL via the GGAL ADR (GGAL.BA × 10 / GGAL), CCL via the BYMA C line (GGAL.BA / GGALC.BA) and MEP via the D line (GGAL.BA / GGALD.BA). A price that did not come back leaves its rate out and says so. `--json` adds `spotKind` and `impliedRates` (`kind`, `rate`, `formula` and each input's `price`, `currency`, `observedAt` and `sessionOpen`). `gloom fn ADR <ticker>` compares any other receipt with its home listing the same way.
 

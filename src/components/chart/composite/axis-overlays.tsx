@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { Box, Text, useUiCapabilities } from "../../../ui";
 import type { CompositeChartXMarker } from "./types";
+import type { EventCaptionPlacement } from "./event-captions";
 
 export interface StaticChartXAxisLabel {
   label: string;
@@ -468,11 +469,8 @@ export function StaticXMarkerLabels({
     if (left + labelWidth > width) {
       left = Math.max(nextAvailableLeft, width - labelWidth);
     }
-    // A label the ones before it leave too little room for ends in an ellipsis, so it reads as cut.
-    const room = Math.max(0, Math.min(labelWidth, width - left));
-    const shown = room < label.length ? `${label.slice(0, Math.max(0, room - 1))}…` : label;
-    nextAvailableLeft = Math.min(width, left + room + 1);
-    return { marker, label: room > 1 ? shown : "", labelWidth: room > 1 ? room : 0, left };
+    nextAvailableLeft = Math.min(width, left + labelWidth + 1);
+    return { marker, label, labelWidth, left };
   }).filter((placement) => placement.labelWidth > 0 && placement.left < width);
 
   return (
@@ -493,6 +491,27 @@ export function StaticXMarkerLabels({
           </Box>
         );
       })}
+    </Box>
+  );
+}
+
+/** Events' captions in the row under the axis, laid out by `layoutEventCaptions`. */
+export function EventCaptions({
+  captions,
+  width,
+  color,
+}: {
+  captions: readonly EventCaptionPlacement[];
+  width: number;
+  color?: string;
+}) {
+  return (
+    <Box position="relative" width={width} height={1}>
+      {captions.map(({ id, left, text }) => (
+        <Box key={id} position="absolute" left={left} top={0} width={text.length} height={1} overflow="hidden" zIndex={2}>
+          <Text fg={color}>{text}</Text>
+        </Box>
+      ))}
     </Box>
   );
 }

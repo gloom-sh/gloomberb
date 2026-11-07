@@ -15,13 +15,16 @@ const USD_SOLD = { sold: "USD", bought: "JPY", pair: "the US dollar (sold) the J
 const RECORD: FxInterventionsPayload = {
   authority: "Japan Ministry of Finance",
   status: "available",
-  days: [
-    { date: "2024-04-29", amountJpy: 5_918_500_000_000, ...USD_SOLD },
-    { date: "2024-05-01", amountJpy: 3_870_000_000_000, ...USD_SOLD },
-    { date: "2026-04-30", amountJpy: 6_278_700_000_000, ...USD_SOLD },
+  days: [],
+  interventions: [
+    { from: "2024-04-29", to: "2024-05-01", days: 2, amountJpy: 9_788_500_000_000, ...USD_SOLD },
+    { from: "2024-07-11", to: "2024-07-12", days: 2, amountJpy: 5_534_800_000_000, ...USD_SOLD },
+    { from: "2026-04-30", to: "2026-04-30", days: 1, amountJpy: 6_278_700_000_000, ...USD_SOLD },
   ],
   dailyThrough: "2026-06-30",
-  months: [{ from: "2026-07-30", to: "2026-08-26", amountJpy: 15_399_300_000_000 }],
+  months: [{
+    from: "2026-07-30", to: "2026-08-26", amountJpy: 15_399_300_000_000, releasedOn: "2026-08-28", daysKnown: "none", undatedAmountJpy: 15_399_300_000_000,
+  }],
   quarters: [],
   fetchedAt: "2026-11-07T07:37:53.746Z",
   sourceUrl: "https://www.mof.go.jp/english/policy/international_policy/reference/feio/index.html",
@@ -35,8 +38,10 @@ function pairQuote(symbol: string, price: number): Quote {
   } as Quote;
 }
 
+const DAILY = ["2024-04-26", "2024-04-29", "2024-04-30", "2024-05-01", "2024-05-02"];
+
 /** The commands over the given quotes and bars, with the record Gloom Cloud serves; every read of it is counted. */
-function harness() {
+function harness(bars = { resolution: "1d", dates: DAILY }) {
   let reads = 0;
   const cli = createTestCliContext({
     config: createDefaultConfig("/tmp/gloom-fx-interventions-fixture"),
@@ -47,8 +52,8 @@ function harness() {
       )),
       getQuote: async () => createTestQuote({ symbol: "USDJPY=X", currency: "JPY", exchangeName: "CCY", instrumentType: "CURRENCY" }),
       getPriceHistoryWithMetadata: async () => ({
-        resolution: "1d",
-        points: ["2024-04-26", "2024-04-29", "2024-04-30", "2024-05-01", "2024-05-02"].map((date, index) => (
+        resolution: bars.resolution,
+        points: bars.dates.map((date, index) => (
           { date: new Date(`${date}T00:00:00Z`), open: 158 - index, high: 160 - index, low: 155 - index, close: 157 - index }
         )),
       }),
@@ -63,7 +68,7 @@ test("a yen pair's rate names Japan's latest intervention in it; a conversion an
   const run = harness();
   await fx.execute(["USD/JPY"], run.cli.context);
   expect(run.warnings()[0]).toContain(
-    "Japan's Ministry of Finance reported ¥15,399.3 billion of intervention from 30 Jul to 26 Aug 2026, a monthly total: its days and pair come with the quarterly release. "
+    "Japan's Ministry of Finance reported ¥15,399.3 billion of intervention from 30 Jul to 26 Aug 2026, a monthly total released 28 Aug 2026: its days and pair come with the quarterly release. "
     + "Its last dated intervention in USD/JPY: 30 Apr 2026, ¥6,278.7 billion of dollars sold for yen. Records through 26 Aug 2026.",
   );
   await fx.execute(["100", "JPY"], run.cli.context);
@@ -72,10 +77,12 @@ test("a yen pair's rate names Japan's latest intervention in it; a conversion an
   expect(run.warnings().slice(1).flat().join(" ")).not.toContain("Ministry of Finance");
 });
 
-test("a yen pair's bars name the interventions they span", async () => {
+test("a yen pair's bars name the interventions they span, through the whole of the last weekly bar's week", async () => {
   const run = harness();
   await history.execute(["USDJPY=X", "--from", "2024-04-26", "--to", "2024-05-02"], run.cli.context);
-  expect(run.warnings()[0]).toContain(
-    "Japan's Ministry of Finance intervened in USD/JPY in these bars: 29 Apr–1 May 2024, ¥9,788.5 billion of dollars sold for yen on 2 days.",
-  );
+  expect(run.warnings()[0]).toContain("Japan's Ministry of Finance bought yen in USD/JPY in these bars: 29 Apr–1 May 2024 ¥9.8tn.");
+  // The last bar is the week of Monday 8 July: 11 and 12 July are in it.
+  const weekly = harness({ resolution: "1wk", dates: ["2024-06-17", "2024-06-24", "2024-07-01", "2024-07-08"] });
+  await history.execute(["USDJPY=X", "--from", "2024-06-17", "--to", "2024-07-12"], weekly.cli.context);
+  expect(weekly.warnings()[0]).toContain("Japan's Ministry of Finance bought yen in USD/JPY in these bars: 11–12 Jul 2024 ¥5.5tn.");
 });
