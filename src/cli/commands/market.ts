@@ -3686,11 +3686,12 @@ async function carryInCurrency(
     return `${quoted.pair} ${quoted.rate.toFixed(fxRateDigits(quoted.pair.slice(4), quoted.rate))}`;
   };
   if (reader === base) return { rate: 1 / spot, text: `spot ${marketText(1 / spot)}` };
+  // A failed read is said in the carry's warning, with the reason it gave; the forward itself stands.
   const read = await readFxQuoteRate(quote, reader, (targets, options) => market.dataProvider.getQuotesBatch(targets, options),
-    { forceRefresh: forceRefresh === true }).catch(() => null);
-  return read && "rate" in read
-    ? { rate: read.rate, text: marketText(read.rate) }
-    : { missing: `The carry is not shown in ${reader}, your base currency: no ${quote}/${reader} rate came back.` };
+    { forceRefresh: forceRefresh === true }).catch((error: unknown) => ({ failed: errorMessage(error) }));
+  if (read && "rate" in read) return { rate: read.rate, text: marketText(read.rate) };
+  const reason = read && "failed" in read && read.failed ? ` (${read.failed})` : "";
+  return { missing: `The carry is not shown in ${reader}, your base currency: no ${quote}/${reader} rate came back${reason}.` };
 }
 
 /**
