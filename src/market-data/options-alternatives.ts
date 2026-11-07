@@ -67,9 +67,14 @@ export function isOptionsUnavailableError(error: unknown): boolean {
   return /\boptions provider available for\b/i.test(message);
 }
 
-/** "Options are not available for GC=F.": the dead end itself, before any follow-up. */
+/**
+ * "Options are not available for GC=F.": the dead end itself, before any
+ * follow-up. A CME currency future says what is not served: "Options on CME
+ * yen futures (6J=F) are not served." CME lists them; this app does not.
+ */
 export function optionsUnavailableTitle(symbol: string): string {
-  return `Options are not available for ${symbol.trim().toUpperCase()}.`;
+  const typed = symbol.trim().toUpperCase();
+  return currencyFutureName(typed) ? fxVolatilityLead(typed) : `Options are not available for ${typed}.`;
 }
 
 /**
@@ -139,6 +144,19 @@ const FX_FUTURES_PAIRS: Readonly<Record<string, string>> = {
   "6E": "EURUSD", "6J": "USDJPY", "6B": "GBPUSD", "6A": "AUDUSD", "6C": "USDCAD", "6S": "USDCHF", "6N": "NZDUSD", "6M": "USDMXN",
 };
 
+/** What each CME currency future is a future on, as a sentence names it. */
+const FX_FUTURES_CURRENCIES: Readonly<Record<string, string>> = {
+  "6E": "euro", "6J": "yen", "6B": "pound", "6A": "Australian dollar", "6C": "Canadian dollar", "6S": "Swiss franc",
+  "6N": "New Zealand dollar", "6M": "Mexican peso",
+};
+
+/** "yen" for a CME currency future (6J=F, 6JZ26, 6J1); null for anything else. */
+function currencyFutureName(symbol: string): string | null {
+  if (currencyPairCode(symbol)) return null;
+  const root = futuresRoot(symbol, (candidate) => !!FX_FUTURES_PAIRS[candidate]);
+  return root ? FX_FUTURES_CURRENCIES[root] ?? null : null;
+}
+
 /** The US-listed currency funds whose options stand in for an FX pair's volatility, by the currency they hold. */
 const FX_VOL_FUNDS: Readonly<Record<string, string>> = { EUR: "FXE", JPY: "FXY", GBP: "FXB" };
 /** The fund that holds the dollar against a basket, for a pair none of the single-currency funds holds. */
@@ -164,6 +182,17 @@ function fxVolatilityFunds(pair: string): string[] {
 }
 
 /**
+ * The one fund whose options stand in for a pair's volatility: the fund that
+ * holds its euro, yen or pound (USDJPY: FXY), else the dollar fund for a
+ * dollar pair (AUDUSD: UUP). Null for a cross two funds hold, or none.
+ */
+export function fxVolatilityProxyFund(pair: string): string | null {
+  const funds = fxVolatilityFunds(pair);
+  if (funds === FX_VOL_FUND_LIST) return pair.includes("USD") ? DOLLAR_FUND : null;
+  return funds.length === 1 ? funds[0]! : null;
+}
+
+/**
  * What exists instead for the volatility of an FX pair or currency future,
  * worded as one line for the CLI: OTC FX volatility is not served, the
  * currency funds' options are the nearest listed thing (the one that holds
@@ -178,8 +207,14 @@ function fxVolatilityAnswer(code: string, symbol: string): string | null {
   const funds = fxVolatilityFunds(pair);
   // VCA screens every fund; the others read the pair's own, or the dollar's when it has none.
   const read = code === "VCA" ? funds.join(",") : funds === FX_VOL_FUND_LIST ? DOLLAR_FUND : funds[0]!;
-  return `OTC FX volatility is not covered for ${typed}. Currency-ETF options are the listed proxy: `
+  return `${fxVolatilityLead(typed)} Currency-ETF options are the listed proxy: `
     + `${funds.join(", ")} (gloom fn ${code} ${read}). Realized volatility: gloom fn HVT ${typed}.`;
+}
+
+/** What is not served: options on a CME currency future, which CME lists, or OTC volatility for a spot pair. */
+function fxVolatilityLead(typed: string): string {
+  const currency = currencyFutureName(typed);
+  return currency ? `Options on CME ${currency} futures (${typed}) are not served.` : `OTC FX volatility is not covered for ${typed}.`;
 }
 
 /**
@@ -189,7 +224,7 @@ function fxVolatilityAnswer(code: string, symbol: string): string | null {
 export function fxVolatilityNote(symbol: string, exchange?: string): string | null {
   const pair = fxVolatilityPair(symbol, exchange);
   if (!pair) return null;
-  return `OTC FX volatility is not covered for ${symbol.trim().toUpperCase()}. Currency-ETF options are the listed proxy: `
+  return `${fxVolatilityLead(symbol.trim().toUpperCase())} Currency-ETF options are the listed proxy: `
     + `${fxVolatilityFunds(pair).join(", ")}. HVT shows the pair's realized volatility.`;
 }
 

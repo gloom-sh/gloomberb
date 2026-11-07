@@ -13,7 +13,7 @@ import { collectNewsDisplayTickers } from "../../../../../news/ticker-symbols";
 import { useInlineTickers } from "../../../../../state/hooks/inline-tickers";
 import { truncateToDisplayWidth } from "../../../../../utils/format";
 import { wrapTextLines } from "../../../../../utils/text-wrap";
-import { formatDetailDate } from "../../../../../utils/datetime-format";
+import { formatDetailDate, formatDetailTime } from "../../../../../utils/datetime-format";
 import { logFailure } from "../../../../../utils/log-failure";
 import { mergeNewsArticle } from "../../../../../news/news-model";
 import { usePluginPaneState } from "../../../../runtime";
@@ -182,16 +182,15 @@ function TextLines({
   ));
 }
 
-/** The time alone on the story's own day, which the header already dates; the date otherwise. */
+/** The time alone, its zone named as the header's is, on the story's own day, which the header already dates; the date otherwise. */
 function coverageTime(value: Date, storyDay: Date): string {
-  return value.toDateString() === storyDay.toDateString()
-    ? value.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
-    : formatDetailDate(value);
+  return value.toDateString() === storyDay.toDateString() ? formatDetailTime(value) : formatDetailDate(value);
 }
 
 function NewsStoryTimelineItemView({
   item,
   storyTitle,
+  storySummary,
   storyDay,
   width,
   nativePaneChrome,
@@ -199,13 +198,15 @@ function NewsStoryTimelineItemView({
   item: NewsStoryItem;
   /** An outlet's headline that is the story's own is not printed again. */
   storyTitle: string;
+  /** Nor its summary, when it is the story's lead, printed above. */
+  storySummary: string | undefined;
   storyDay: Date;
   width: number;
   nativePaneChrome: boolean;
 }) {
   const time = coverageTime(storyItemDate(item.publishedAt), storyDay);
   const title = item.title.trim() === storyTitle.trim() ? "" : item.title;
-  const summary = item.summary && item.summary.trim() !== item.title.trim() ? item.summary : "";
+  const summary = item.summary && item.summary.trim() !== item.title.trim() && item.summary.trim() !== storySummary?.trim() ? item.summary : "";
   const source = item.sourceName || item.sourceKey;
   const contentWidth = Math.max(10, width - 2);
   const sourceLabel = nativePaneChrome ? source : truncateToDisplayWidth(source, Math.max(4, width - time.length - 4));
@@ -317,6 +318,7 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
               key={timelineItem.id}
               item={timelineItem}
               storyTitle={item.title}
+              storySummary={item.summary}
               storyDay={lastUpdatedAt}
               width={coverageWidth}
               nativePaneChrome={nativePaneChrome === true}

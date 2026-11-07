@@ -43,7 +43,7 @@ import {
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { changeBasisJson, futuresQuoteFromSettle, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
 import {
-  futuresContractLines, futuresPricePer, isFuturesInstrument, loadFuturesContractTerms, loadUsdPerMmbtu, usdPerMmbtuText, type UsdPerMmbtu,
+  futuresContractLines, futuresPricePer, futuresTickOption, isFuturesInstrument, loadFuturesContractTerms, loadUsdPerMmbtu, usdPerMmbtuText, type UsdPerMmbtu,
 } from "../../market-data/futures-contract";
 import { currencyCodeLabel, heldCurrencyUnit } from "../../utils/currency-units";
 import { quotedFxPair } from "../../utils/currency-pair";
@@ -1238,7 +1238,9 @@ export async function buildTickerReport({
   const priceReturns = computeTickerPriceReturns(financials, tickerFile?.metadata.assetCategory);
   const profile = financials.profile;
   const name = quote?.name || tickerFile?.metadata.name || symbol;
-  const baseQuoteOptions = quoteFormatOptions(quote, tickerFile?.metadata.assetCategory, financials.quoteMetadata?.instrumentType);
+  // A contract prints to its tick, as `quote` prints it.
+  const baseQuoteOptions = { ...quoteFormatOptions(quote, tickerFile?.metadata.assetCategory, financials.quoteMetadata?.instrumentType),
+    ...futuresTickOption(futuresContract) };
   const baseCurrency = config.baseCurrency.trim().toUpperCase();
   const codes = writesCurrencyCodes(config);
   const rates: ReportRateNotes = {

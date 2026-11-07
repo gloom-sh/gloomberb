@@ -19,6 +19,8 @@ export interface CloudEconEventPayload {
   timeNote?: string | null;
   priorAsOf?: string | null;
   referencePeriod?: string | null;
+  /** The currency the row's amounts are in (`JPY`, `USD`), beside figures that never name it; absent from an older server. */
+  currency?: string | null;
   /** Who publishes the release (Freddie Mac for the 30-year mortgage rate), and its page when one is named. */
   source?: { name: string; url?: string };
   /**

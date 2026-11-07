@@ -26,6 +26,10 @@ test("options on a future with no chain names the listed alternative and OSA, no
   expect(failure!.details).toContain("gloom options GLD");
   expect(failure!.details).toContain("gloom fn OSA GLD");
   expect(`${failure!.message} ${failure!.details}`).not.toMatch(/provider/i);
+  // CME lists options on its yen future; the app does not serve them, and says so, with FXY as the proxy.
+  await expect(marketDataCliCommands.find((command) => command.name === "options")!.execute(["6J=F"], cli.context))
+    .rejects.toThrow("Options on CME yen futures (6J=F) are not served.");
+  expect(failure!.details).toContain("gloom options FXY");
 });
 
 test("a spot pair in any spelling and a currency future in any contract are one FX pair; a stock, a coin, spot gold and a fund are none", () => {

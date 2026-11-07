@@ -203,7 +203,8 @@ test("a pair ends with the source line a quote does, held back as its quote is",
   setSystemTime(new Date("2026-10-10T18:45:00Z"));
   const weekend = harness("USD", { "USDSAR=X": { price: 3.75516, lastUpdated: Date.parse("2026-10-09T20:59:00Z") } });
   await fx.execute(["USD/SAR"], weekend.context);
-  expect(weekend.output("text")[0]).toBe("1 USD = 3.75516 SAR  (SAR/USD 0.2663)\n\nSource: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed");
+  // Shut, it says when the FX week reopens, as a future's line does.
+  expect(weekend.output("text")[0]).toBe("1 USD = 3.75516 SAR  (SAR/USD 0.2663)\n\nSource: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed · reopens Sun 21:00 UTC, 17:00 ET");
   // A real-time account's quote is live.
   setSystemTime(new Date("2026-10-14T14:00:00Z"));
   const live = harness("EUR", { "EURGBP=X": { price: 0.8, minutesAgo: 1, dataSource: "live" } });

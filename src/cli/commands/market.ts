@@ -75,7 +75,7 @@ import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { currencyCodeLabel } from "../../utils/currency-units";
 import {
-  futuresContractLines, futuresPricePer, futuresRollLines, isFuturesInstrument, loadFuturesPriceUnit, loadUsdPerMmbtu, usdPerMmbtuText, type UsdPerMmbtu,
+  futuresContractLines, futuresPricePer, futuresRollLines, futuresTickOption, isFuturesInstrument, loadFuturesPriceUnit, loadUsdPerMmbtu, usdPerMmbtuText, type UsdPerMmbtu,
 } from "../../market-data/futures-contract";
 import {
   chainHasExpiry,
@@ -783,6 +783,8 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
     const nearParDigits = nearParCoinPriceDigits(quote);
     const options = {
       ...quoteFormatOptions(quote),
+      // A contract prints to its tick: the yen's 0.0063270, the euro's 1.11570.
+      ...futuresTickOption(result.futuresContract),
       minimumFractionDigits: indexPoints ? 2 : currencyPriceMinDigits(quote?.currency),
       // A coin near a dollar prints to four decimals, as `ticker`, `G` and CRYP print it.
       ...nearParDigits != null ? { fixedFractionDigits: nearParDigits } : {},
@@ -1368,7 +1370,8 @@ function quoteFuturesContractText(data: QuoteCliRecord[]): string {
     // The move Chg% gives, in the quote's money and with what it is measured from: "vs Fri settle".
     const session = getRegularSessionDisplay(row.quote);
     const change: Array<[string, string]> = session?.change != null && Number.isFinite(session.change)
-      ? [["Change", quoteChangeText(row.quote, session, withCurrencyMinorDigits(quoteFormatOptions(row.quote, "FUTURE"), row.quote.currency), terms)]]
+      ? [["Change", quoteChangeText(row.quote, session, { ...withCurrencyMinorDigits(quoteFormatOptions(row.quote, "FUTURE"), row.quote.currency),
+        ...futuresTickOption(terms) }, terms)]]
       : [];
     // European gas beside Henry Hub: "≈ $30.832/MMBtu at EUR/USD 1.1650", a conversion that says so.
     const inUsd = row.usdPerMmbtu;

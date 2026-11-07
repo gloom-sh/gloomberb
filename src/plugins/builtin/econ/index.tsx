@@ -66,6 +66,7 @@ import {
   type EconCalendarLoadResult,
   type ImpactFilter,
 } from "./calendar-model";
+import { figureWithCurrency } from "./figures";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { tableColumnWidth } from "../../../components/ui/table-layout";
@@ -444,15 +445,16 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       }
       case "event":
         return { text: econEventName(ev), color: colors.text };
+      // An amount reads with its currency beside it (-556.5B JPY), where the server says it.
       case "actual":
         return {
-          text: ev.actual ?? "—",
+          text: figureWithCurrency(ev.actual, ev.currency) ?? "—",
           color: actualColor(ev.actual, ev.forecast),
         };
       case "forecast":
-        return { text: ev.forecast ?? "—", color: colors.textDim };
+        return { text: figureWithCurrency(ev.forecast, ev.currency) ?? "—", color: colors.textDim };
       case "prior":
-        return { text: ev.prior ?? "—", color: colors.textDim };
+        return { text: figureWithCurrency(ev.prior, ev.currency) ?? "—", color: colors.textDim };
     }
   }, [flagged, readerZone]);
 

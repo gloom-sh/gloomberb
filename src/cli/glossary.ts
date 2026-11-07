@@ -234,12 +234,12 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   },
   // Central bank rates (CBR), in the order its columns run. Pctl 1Y sits between them, shared with BTMM and WIRP.
   {
-    term: "Last move", aliases: ["latest move"], functions: ["CBR"],
+    term: "Last change", aliases: ["last move", "latest move"], functions: ["CBR"],
     definition: "The latest change in the policy rate, in basis points: up for a hike, down for a cut. The US figure is the move in the midpoint of the target range.",
   },
   {
-    term: "Change observed", aliases: ["last change", "change date"], functions: ["CBR"],
-    definition: "The first date the new rate level appears in the data, not necessarily the announcement or effective date.",
+    term: "Changed", aliases: ["change date", "change observed"], functions: ["CBR"],
+    definition: "The date of the latest change: the decision it came from, or, where no decision is on record, the first date the new rate level appears in the data. The last decision under each row is the bank's latest meeting, a hold included.",
   },
   {
     term: "Pctl 1Y", aliases: ["percentile", "1y percentile", "1-year percentile", "pctl"], functions: ["BTMM", "WIRP", "CBR", "CDX", "SOVR", "COT"],

@@ -122,7 +122,7 @@ export function fitFuturesContractLines(lines: readonly FuturesContractLine[], m
 /**
  * The exchange settlement dated by its session, `$4,216.30 (2026-10-09)`, as
  * `ticker` prints a futures price: in the quote's currency, padded to its minor
- * unit and at the contract's own precision, with or without a quote to hand.
+ * unit and at the contract's own precision (its tick's decimals), with or without a quote to hand.
  * Without a quote currency the price is a bare number, never a guessed `$`: a
  * grain settles in cents. A contract without a confirmed settlement reads
  * `--`: never an older settlement, and never the last trade.
@@ -135,15 +135,21 @@ export function fitFuturesContractLines(lines: readonly FuturesContractLine[], m
  * session is not confirmed yet. A settlement of that session or a later one
  * is shown: the same session, or the one the move itself belongs to.
  */
+/** The contract's tick for a price format (`MarketFormatOptions.tick`), so its prices print to it; none without terms. */
+export function futuresTickOption(terms: { spec?: Pick<FuturesContractSpec, "tick"> | null } | null | undefined): { tick?: number } {
+  const tick = terms?.spec?.tick;
+  return tick != null && Number.isFinite(tick) && tick > 0 ? { tick } : {};
+}
+
 export function futuresSettleText(
-  terms: Pick<FuturesContractTermsPayload, "settlement">,
+  terms: Pick<FuturesContractTermsPayload, "settlement"> & { spec?: Pick<FuturesContractSpec, "tick"> | null },
   quote: Pick<Quote, "currency" | "instrumentType" | "priceBasis" | "providerPriceDivisor"> | null | undefined,
   movesFrom?: string | null,
 ): string {
   if (!terms.settlement) return FUTURES_MISSING;
   if (movesFrom && terms.settlement.date < movesFrom) return `${FUTURES_MISSING} (${movesFrom} not confirmed yet)`;
   const currency = quote?.currency;
-  const options = withCurrencyMinorDigits(quoteFormatOptions(quote, "FUTURE"), currency);
+  const options = { ...withCurrencyMinorDigits(quoteFormatOptions(quote, "FUTURE"), currency), ...futuresTickOption(terms) };
   const price = currency ? formatMarketPriceWithCurrency(terms.settlement.price, currency, options) : formatMarketPrice(terms.settlement.price, options);
   return `${price} (${terms.settlement.date})`;
 }

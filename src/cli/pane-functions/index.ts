@@ -319,6 +319,8 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       // A report that fails or comes back empty for an exchange the symbol is not listed on says so.
       // A report written to a file is drawn for it as it is built: no colour and no terminal width, as a redirect gets it.
       const buildReport = () => buildFunctionReport(resolved, context, parsed.arg);
+      // A report still loading after a few seconds (a chain the server reads cold) says so, so it never looks stuck.
+      const progress = progressNotice(ctx, [resolved.token, parsed.arg].filter(Boolean).join(" "), FN_PROGRESS_AFTER_MS);
       const report = await refuseMovedListing(fate, moved, () => withPersistedCloudSession(
         context,
         () => loadForListing(
@@ -328,7 +330,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
           outputPath ? () => buildForFile(buildReport) : buildReport,
           (built) => built.data.empty || !built.data.complete,
         ),
-      ));
+      )).finally(progress.stop);
       // A company's name typed where its ticker goes (`fn RDCF Palantir`) found nothing: the answer is `quote`'s,
       // "Not a ticker: PALANTIR. Did you mean PLTR (Palantir Technologies Inc.)?", not an empty report. A source that
       // could not answer for the word (a timeout) says nothing of it, but when search finds the company it is that.
@@ -432,13 +434,15 @@ const STALLED_REPORT_EXIT_MS = 1_000;
 
 /** A capture still going after this long says what it is doing, so it never looks stuck. */
 const SHOT_PROGRESS_AFTER_MS = 3_000;
+/** A report, which most often prints within this, says so only past it. */
+const FN_PROGRESS_AFTER_MS = 5_000;
 
 /**
- * One line on standard error when a capture is slow: "Still loading the data
- * for PORT izmir." while its data is read, "Still drawing PORT izmir." once
- * the page draws it. Nothing for a quick capture, or with --quiet.
+ * One line on standard error when a capture or report is slow: "Still loading
+ * the data for PORT izmir." while its data is read, "Still drawing PORT
+ * izmir." once a capture's page draws it. Nothing for a quick one, or with --quiet.
  */
-function shotProgressNotice(ctx: Pick<CliCommandContext, "cliOptions">, label: string, afterMs = SHOT_PROGRESS_AFTER_MS): { drawing(): void; stop(): void } {
+function progressNotice(ctx: Pick<CliCommandContext, "cliOptions">, label: string, afterMs = SHOT_PROGRESS_AFTER_MS): { drawing(): void; stop(): void } {
   if (ctx.cliOptions.quiet) return { drawing: () => {}, stop: () => {} };
   let drawing = false;
   const timer = setTimeout(() => {
@@ -477,7 +481,7 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
       const outputPath = parsed.outputPath
         ? resolve(process.cwd(), ensurePngExtension(parsed.outputPath))
         : defaultScreenshotPath(resolved, parsed.arg);
-      const progress = shotProgressNotice(ctx, [resolved.token, parsed.arg].filter(Boolean).join(" "));
+      const progress = progressNotice(ctx, [resolved.token, parsed.arg].filter(Boolean).join(" "));
       const result = await renderDesktopShot({
         resolved,
         context,

@@ -176,6 +176,6 @@ describe("FxMatrixPane", () => {
       sessionExchange: "CCY", marketState: "CLOSED",
     });
     const freshness = deriveRenderedFreshness(undefined, { footerText: "", cellTimes: [], observed });
-    expect(formatFreshnessLine(freshness)).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed");
+    expect(formatFreshnessLine(freshness)).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed · reopens Sun 21:00 UTC, 17:00 ET");
   });
 });

@@ -1,5 +1,9 @@
+import { isCurrencyPairListing } from "../utils/fx-market-hours";
+
 /** Daily bars in a year for an exchange: one per trading session. */
 const SESSION_BARS_PER_YEAR = 252;
+/** Daily bars in a year for a currency pair, which trades every weekday, holidays included: 52 weeks of 5. */
+const WEEKDAY_BARS_PER_YEAR = 260;
 /** Daily bars in a year for an asset that trades every day, such as crypto. */
 const CALENDAR_BARS_PER_YEAR = 365;
 /**
@@ -10,17 +14,30 @@ const CALENDAR_BARS_PER_YEAR = 365;
 const MIN_WEEKEND_DAY_SHARE = 0.05;
 const DAY_MS = 86_400_000;
 
-export type BarsPerYear = typeof SESSION_BARS_PER_YEAR | typeof CALENDAR_BARS_PER_YEAR;
+export type BarsPerYear = typeof SESSION_BARS_PER_YEAR | typeof WEEKDAY_BARS_PER_YEAR | typeof CALENDAR_BARS_PER_YEAR;
+
+/** What the series is a history of, where that sets its year rather than its dates. */
+export interface BarsPerYearInstrument {
+  /** A currency pair (USDJPY=X), whose year is every weekday whatever range of it is loaded. */
+  currencyPair?: boolean;
+}
+
+/** Whether a listing is a currency pair, for `barsPerYear`: USDJPY=X or a CCY listing, not a currency future (6J=F). */
+export function currencyPairInstrument(symbol: string | undefined, exchange?: string): BarsPerYearInstrument {
+  return { currencyPair: isCurrencyPairListing(symbol, exchange) };
+}
 
 /**
- * Daily bars the series holds in a year, read from its own dates: 365 when it
- * has both Saturday and Sunday observations (24/7 assets), 252 otherwise
- * (exchange sessions). Both days are required so a venue that trades Sunday
- * to Thursday, or whose bars start late on the previous evening in UTC, is not
- * read as trading every day. Annualised volatility and Sharpe scale with the
- * square root of this, and a one-year window is this many bars.
+ * Daily bars the series holds in a year: 365 when it has both Saturday and
+ * Sunday observations (24/7 assets), 260 for a currency pair, which trades on
+ * every weekday with no exchange holidays, and 252 otherwise (exchange
+ * sessions). A pair is told by what it is, not by its dates, so a month of it
+ * is annualised as a year is. Both weekend days are required so a venue that
+ * trades Sunday to Thursday, or whose bars start late on the previous evening
+ * in UTC, is not read as trading every day. Annualised volatility and Sharpe
+ * scale with the square root of this, and a one-year window is this many bars.
  */
-export function barsPerYear(times: Iterable<Date | string | number>): BarsPerYear {
+export function barsPerYear(times: Iterable<Date | string | number>, instrument: BarsPerYearInstrument = {}): BarsPerYear {
   const days = new Set<number>();
   for (const value of times) {
     const time = value instanceof Date ? value.getTime() : typeof value === "number" ? value : Date.parse(value);
@@ -34,7 +51,8 @@ export function barsPerYear(times: Iterable<Date | string | number>): BarsPerYea
     else if (weekday === 0) sundays += 1;
   }
   const minimum = Math.max(1, days.size * MIN_WEEKEND_DAY_SHARE);
-  return saturdays >= minimum && sundays >= minimum ? CALENDAR_BARS_PER_YEAR : SESSION_BARS_PER_YEAR;
+  if (saturdays >= minimum && sundays >= minimum) return CALENDAR_BARS_PER_YEAR;
+  return instrument.currencyPair ? WEEKDAY_BARS_PER_YEAR : SESSION_BARS_PER_YEAR;
 }
 
 /** The one line every report that annualises states its convention in. */

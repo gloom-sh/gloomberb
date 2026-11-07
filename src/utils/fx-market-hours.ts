@@ -86,6 +86,17 @@ export function latestFxWeekOpen(time: number): number | null {
 }
 
 /**
+ * When the FX week opens again, Sunday 17:00 New York, for a moment it is
+ * shut; null while it trades. A closure lasts two days, so the open is the
+ * latest one three days on.
+ */
+export function nextFxWeekOpen(time: number): number | null {
+  if (!Number.isFinite(time) || isFxMarketOpen(time)) return null;
+  const open = latestFxWeekOpen(time + 3 * DAY_MS);
+  return open != null && open > time ? open : null;
+}
+
+/**
  * How close to the FX week's close a print is its close: Gloom Cloud dates the
  * week's close by its last minute (20:59Z, or 21:59Z in winter).
  */

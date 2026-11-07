@@ -279,3 +279,12 @@ test("a newer detail fallback is preferred to an older primary response", async 
   expect(capture()).toContain("Timeline cash consideration 2");
   expect(capture()).not.toContain("Timeline cash consideration 1");
 });
+
+test("an outlet's summary that is the story's lead is printed once", async () => {
+  const detail = story("acme", "Acme plans acquisition", 1, true);
+  const item = { ...detail.items![0]!, summary: detail.summary! };
+  await mount(async () => [story()], async () => ({ ...detail, items: [item] }));
+  await key("return");
+  expect(capture()).toContain("Timeline cash consideration 1");
+  expect(capture().split("Acme cash consideration version 1").length - 1).toBe(1);
+});

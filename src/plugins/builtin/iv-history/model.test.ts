@@ -129,20 +129,39 @@ test("rich and cheap follow the IV percentile", () => {
     latest: { date: "2026-09-23", method: "quote-mid", capturedAt: "", spot: 200, iv7: null, iv30: 0.32, iv60: null, iv90: 0.3, iv180: null, iv365: null },
     skew: { date: "2026-09-23", put25: 0.36, call25: 0.29, skew: 0.07 },
   };
-  const [projected] = projectRichCheap([row, { symbol: "ZZZZ", status: "queued", iv30: null, iv90: null, latest: null, skew: null }],
-    new Map([["AAPL", hvSeries([["2026-09-23", 0.25]])]]));
-  expect(projected).toMatchObject({ iv30: 0.32, rankDate: "2026-09-22", verdict: "rich", iv1y: null, iv1yPercentile: null });
+  const [projected] = projectRichCheap([{ ...row, iv90: { ...row.iv30!, value: 0.29 } }, { symbol: "ZZZZ", status: "queued", iv30: null, iv90: null, latest: null, skew: null }],
+    new Map([["AAPL", hvSeries([["2026-09-22", 0.25], ["2026-09-23", 0.26]])]]));
+  // IV30, its rank and the verdict are one dated row, the ranked close's, not the newer quote's IV30 beside it.
+  expect(projected).toMatchObject({ iv30: 0.3, date: "2026-09-22", method: "trade-close", rankDate: "2026-09-22", verdict: "rich", iv1y: null, iv1yPercentile: null });
   // The server stores put minus call; the row is the risk reversal OVDV shows, call minus put.
   expect(projected!.riskReversal).toBeCloseTo(-0.07, 10);
-  // IVP1Y shows only when the 1Y series was ranked on the close IVR and IVP are.
+  // IV1Y and its percentile are the same session's too.
   const oneYear = (date: string) => ({ ...row, latest: { ...row.latest!, iv365: 0.28 },
     iv365: { ...row.iv30!, value: 0.27, percentile: 35, date } });
-  expect(projectRichCheap([oneYear("2026-09-22")])[0]).toMatchObject({ iv1y: 0.28, iv1yPercentile: 35 });
-  expect(projectRichCheap([oneYear("2026-09-19")])[0]).toMatchObject({ iv1y: 0.28, iv1yPercentile: null });
-  // A percentile never stands without the IV1Y it describes.
-  expect(projectRichCheap([{ ...oneYear("2026-09-22"), latest: row.latest }])[0]).toMatchObject({ iv1y: null, iv1yPercentile: null });
-  expect(projected!.termSlope).toBeCloseTo(0.02);
-  expect(projected!.ivHv).toBeCloseTo(1.28);
+  expect(projectRichCheap([oneYear("2026-09-22")])[0]).toMatchObject({ iv1y: 0.27, iv1yPercentile: 35 });
+  expect(projectRichCheap([oneYear("2026-09-19")])[0]).toMatchObject({ iv1y: null, iv1yPercentile: null });
+  // The term slope and IV/HV are of the IV30's session.
+  expect(projected!.termSlope).toBeCloseTo(0.01);
+  expect(projected!.ivHv).toBeCloseTo(1.2);
+});
+
+test("no verdict without an IV30: a newest reading without one leaves the ranked close's row whole", () => {
+  // UUP on 7 Nov 2026: the 6 Nov close solved no IV30; 5 Nov's, 9.3%, is ranked at the 82nd percentile.
+  const uup: IvScreenRow = {
+    symbol: "UUP", status: "ready", coverageStatus: "ready", skew: null,
+    iv30: { value: 0.0926, date: "2026-11-05", method: "trade-close", basis: "mixed", rank: 42.6, percentile: 82, low: 0.047, high: 0.154, samples: 172, windowStart: "2025-11-05" },
+    iv90: { value: 0.085, date: "2026-10-15", method: "trade-close", rank: 16.5, percentile: 59, low: null, high: null, samples: 150, windowStart: null },
+    latest: { date: "2026-11-06", method: "trade-close", basis: "mixed", capturedAt: "", spot: 29.13, iv7: null, iv30: null, iv60: 0.0876, iv90: null, iv180: null, iv365: null },
+  };
+  const [row] = projectRichCheap([uup], new Map([["UUP", hvSeries([["2026-11-05", 0.05], ["2026-11-06", 0.05]])]]));
+  // Spot is of that row's date too: the 6 Nov capture's 29.13 is another session's, so none.
+  expect(row).toMatchObject({ iv30: 0.0926, date: "2026-11-05", rank: 42.6, percentile: 82, rankDate: "2026-11-05", verdict: "rich", termSlope: null,
+    spot: null });
+  expect(projectRichCheap([{ ...uup, latest: { ...uup.latest!, date: "2026-11-05" } }])[0]!.spot).toBe(29.13);
+  expect(row!.ivHv).toBeCloseTo(1.852, 3);
+  // With no IV30 anywhere, a rank on its own is no verdict.
+  const unranked = projectRichCheap([{ ...uup, iv30: { ...uup.iv30!, value: Number.NaN } }])[0]!;
+  expect(unranked).toMatchObject({ iv30: null, date: "2026-11-06", rank: null, percentile: null, verdict: null });
 });
 
 test("a queued symbol does not break a date every other row shares", () => {
@@ -153,9 +172,10 @@ test("a queued symbol does not break a date every other row shares", () => {
   });
   const queued: IvScreenRow = { symbol: "ZZZZ", status: "queued", iv30: null, iv90: null, latest: null, skew: null };
   expect(richCheapDates(projectRichCheap([ready("A", "2026-09-22"), queued, ready("B", "2026-09-22")])))
-    .toEqual({ reading: { date: "2026-09-23", method: "quote-mid", basis: null }, rank: "2026-09-22", rankApart: false, skewApart: false, hvApart: false });
+    .toEqual({ reading: { date: "2026-09-22", method: "trade-close", basis: null }, rank: "2026-09-22", skewApart: false, hvApart: false });
+  // Ranks on two closes are dated as their rows are: by the As of column, with no column of their own.
   expect(richCheapDates(projectRichCheap([ready("A", "2026-09-22"), ready("B", "2026-09-21")])))
-    .toMatchObject({ rank: null, rankApart: true });
+    .toEqual({ reading: null, rank: null, skewApart: false, hvApart: false });
 });
 
 describe("VCA backfill states", () => {
@@ -326,7 +346,8 @@ describe("stale readings", () => {
     const rows = (...bases: Basis[]) => projectRichCheap(bases.map((basis, index) => {
       const row = screened(`S${index}`, "2026-10-22");
       // An older server sends no basis at all.
-      return { ...row, latest: { ...row.latest!, ...basis === undefined ? {} : { basis } } };
+      const given = basis === undefined ? {} : { basis };
+      return { ...row, latest: { ...row.latest!, ...given }, iv30: { ...row.iv30!, ...given } };
     }));
     // Mid and mixed are both "close mid"; null, absent and print are all "close".
     expect(richCheapDates(rows("mid", "mixed")).reading).toMatchObject({ date: "2026-10-22" });

@@ -53,7 +53,7 @@ import {
   type ImpactFilter,
 } from "../../plugins/builtin/econ/calendar-model";
 import { hasNoReleaseTime, hasNoStatedTime, type EconEvent } from "../../plugins/builtin/econ/types";
-import { econRowFigures } from "../../plugins/builtin/econ/figures";
+import { econRowFigures, figureWithCurrency } from "../../plugins/builtin/econ/figures";
 import { isoDate, rejectExtraArgs, requireArg, requireOneArg, takeFlag, takeOption } from "./command-utils";
 import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix/model";
 import { alignDailyCloses, correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
@@ -364,12 +364,16 @@ function econTextHeadColumns(viewerZone: string | null, publisherTimed: boolean)
 }
 
 /**
- * Actual, Forecast and Prior: as the text draws them (`30.3K`, `-4.1M bbl`) in the table, as
- * numbers in the exports (30300, -4100000), where Unit and Scale say what they count and how they were drawn.
+ * Actual, Forecast and Prior: as the text draws them (`30.3K`, `-4.1M bbl`) in the table, an amount with the
+ * currency the server states beside it (`-556.5B JPY`), as numbers in the exports (30300, -4100000), where Unit
+ * and Scale say what they count (`JPY` for that amount) and how they were drawn.
  */
 function econFigureColumns(text: boolean): CliResultColumn[] {
+  const shown = (key: string) => (row: Record<string, unknown>) =>
+    figureWithCurrency(row[key] as string | null, typeof row.currency === "string" ? row.currency : null);
   return text
-    ? [{ key: "actualText", header: "Actual" }, { key: "forecastText", header: "Forecast" }, { key: "priorText", header: "Prior" }]
+    ? [{ key: "actualText", header: "Actual", value: shown("actualText") }, { key: "forecastText", header: "Forecast", value: shown("forecastText") },
+      { key: "priorText", header: "Prior", value: shown("priorText") }]
     : [{ key: "actual", header: "Actual" }, { key: "forecast", header: "Forecast" }, { key: "prior", header: "Prior" }];
 }
 
@@ -542,7 +546,9 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
           actual: figures.actual,
           forecast: figures.forecast,
           prior: figures.prior,
-          unit: figures.unit,
+          // A plain amount counts the currency the server states it in (JPY for Japan's current account).
+          unit: figures.unit ?? (figures.scale != null ? event.currency ?? null : null),
+          currency: event.currency ?? null,
           scale: figures.scale,
           actualText: event.actual ?? null,
           forecastText: event.forecast ?? null,

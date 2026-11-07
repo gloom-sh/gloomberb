@@ -119,12 +119,12 @@ test("the report is dated by its legs as the pane's capture is, not by the cross
     loadedRate("JPY", 1 / 158, "2026-10-09T20:59:00Z"),
     loadedRate("CAD", 0.7, "2026-10-09T20:41:11Z"),
     loadedRate("GBP", 1.32, "2026-10-09T20:58:28Z"),
-  ))).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed");
+  ))).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed · reopens Sun 21:00 UTC, 17:00 ET");
   // A leg ticked on Saturday is no close, and the report dates it.
   expect(reportOf("2026-10-10T18:45:00Z", readings(
     loadedRate("EUR", 1.12, "2026-10-09T20:59:00Z"),
     loadedRate("CAD", 0.7, "2026-10-10T13:51:26Z"),
-  ))).toBe("Source: Gloom Cloud · Sat 10 Oct 2026 13:51 UTC · 15 min delayed · markets closed");
+  ))).toBe("Source: Gloom Cloud · Sat 10 Oct 2026 13:51 UTC · 15 min delayed · markets closed · reopens Sun 21:00 UTC, 17:00 ET");
 
   // One stale leg of four is one stale rate, though it sits in 8 of the 20 crosses.
   expect(reportOf("2026-10-14T14:00:00Z", readings(

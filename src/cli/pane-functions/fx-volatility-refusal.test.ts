@@ -39,8 +39,10 @@ const refusal = (code: keyof typeof registries, ...args: string[]) =>
 test("OVDV, HIVG and VCA answer an FX pair or currency future in one line, before any request: OTC FX vol is not covered, the currency ETF to read instead, and HVT", async () => {
   expect((await refusal("OVDV", "EURUSD=X"))?.message).toBe(
     "OTC FX volatility is not covered for EURUSD=X. Currency-ETF options are the listed proxy: FXE (gloom fn OVDV FXE). Realized volatility: gloom fn HVT EURUSD=X.");
+  // A CME currency future has options at CME: the app does not serve them, and the fund is the proxy.
   expect((await refusal("OVDV", "6E=F"))?.message).toBe(
-    "OTC FX volatility is not covered for 6E=F. Currency-ETF options are the listed proxy: FXE (gloom fn OVDV FXE). Realized volatility: gloom fn HVT 6E=F.");
+    "Options on CME euro futures (6E=F) are not served. Currency-ETF options are the listed proxy: FXE (gloom fn OVDV FXE). Realized volatility: gloom fn HVT 6E=F.");
+  expect((await refusal("OVDV", "6J=F"))?.message).toStartWith("Options on CME yen futures (6J=F) are not served. Currency-ETF options are the listed proxy: FXY (gloom fn OVDV FXY).");
   expect((await refusal("HIVG", "6J=F"))?.message).toContain("FXY (gloom fn HIVG FXY). Realized volatility: gloom fn HVT 6J=F.");
   // One line: nothing follows it.
   expect((await refusal("OVDV", "EURUSD=X"))?.details).toBeUndefined();

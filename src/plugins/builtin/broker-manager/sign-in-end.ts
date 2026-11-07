@@ -27,7 +27,7 @@ export function signInEndStatus(endsAt: number, now = Date.now()): string {
   return endsAt > now ? tf("Ends {date}", { date }) : tf("Ended {date}", { date });
 }
 
-/** The profile detail's note: "Sign-in ends Oct 10, 2026 at 3:00 PM". */
+/** The profile detail's note: "Sign-in ends Oct 10, 2026 at 3:00 PM EDT". */
 export function signInEndNote(endsAt: number, now = Date.now()): string {
   const when = formatDetailDate(endsAt);
   return endsAt > now ? tf("Sign-in ends {when}", { when }) : tf("Sign-in ended {when}", { when });

@@ -54,6 +54,10 @@ export function validateCentralBankRates(payload: CentralBankRatesPayload): Cent
     if (decision !== undefined && decision !== null && (typeof decision !== "object" || decision.date == null || !dateOrNull(decision.date)
       || row.lastChangeDate == null || decision.date > row.lastChangeDate || decision.sourceUrl == null || !urlOrNull(decision.sourceUrl)
       || !Number.isFinite(Date.parse(decision.verifiedAt)) || decision.kind !== undefined && decision.kind !== "decision" && decision.kind !== "fixing")) delete row.lastDecision;
+    const latest = row.latestDecision;
+    if (latest !== undefined && latest !== null && (typeof latest !== "object" || latest.date == null || !dateOrNull(latest.date)
+      || latest.sourceUrl == null || !urlOrNull(latest.sourceUrl) || !Number.isFinite(Date.parse(latest.verifiedAt))
+      || latest.kind !== undefined && latest.kind !== "decision" && latest.kind !== "fixing")) delete row.latestDecision;
   }
   return payload;
 }
