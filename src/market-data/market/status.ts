@@ -89,9 +89,25 @@ export function quoteBookSessionLabel(quote: Quote): string | null {
   if (extended) return extended;
   const day = quoteTradingDay(quote);
   const date = day ? new Date(`${day}T00:00:00Z`) : null;
-  return date && Number.isFinite(date.getTime())
+  const label = date && Number.isFinite(date.getTime())
     ? `last quote, ${WEEKDAYS[date.getUTCDay()]} ${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`
     : "last quote";
+  return offMarketBook(quote) ? `${label}, off-market` : label;
+}
+
+/** Past this share of the last price, a closed market's bid or ask is no market for it. */
+const OFF_MARKET_SHARE = 0.05;
+
+/**
+ * Whether a closed market's last bid or ask is more than 5% off the last
+ * price: FMX's $118.00 / $135.00 around a $129.85 close on 6 Nov 2026 is a
+ * book left after the close, not where it trades.
+ */
+export function offMarketBook(quote: Pick<Quote, "price" | "bid" | "ask">): boolean {
+  const last = quote.price;
+  if (typeof last !== "number" || !Number.isFinite(last) || last <= 0) return false;
+  return [quote.bid, quote.ask].some((side) =>
+    typeof side === "number" && Number.isFinite(side) && side > 0 && Math.abs(side - last) / last > OFF_MARKET_SHARE);
 }
 
 /** `Thu close`: the weekday of the session whose close a quote still stands at. */
