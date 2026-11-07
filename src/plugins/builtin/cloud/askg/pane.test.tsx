@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { act, useReducer } from "react";
 import { apiClient, setCloudApiFetchTransport } from "../../../../api-client";
 import { PaneFooterBar, PaneFooterProvider } from "../../../../components/layout/pane/footer";
@@ -316,6 +316,46 @@ describe("ASKGPane tool rows", () => {
     expect(lines[4]).toMatch(/^▸ CPI +\] +300 ms x$/);
     expect(lines[5]?.trim()).toBe("Could not load this");
     expect(tui.frame()).not.toMatch(/metadata|Internal server error|E_ARG/);
+  });
+});
+
+describe("ASKGPane while Gloom answers", () => {
+  test("the progress line stays under the tool rows until the answer is done", async () => {
+    let finish: () => void = () => {};
+    const finished = new Promise<void>((resolve) => { finish = resolve; });
+    spyOn(apiClient.askg, "isStreamingSupported").mockReturnValue(true);
+    const stream = spyOn(apiClient.askg, "streamTurn").mockImplementation(async (_session, request, options) => {
+      const turnId = request.turnId;
+      options.onEvent({ seq: 1, type: "session", sessionId: "s1", turnId, model: "gloom-1", promptVersion: "v1" });
+      // A server read reports only once it is done: nothing else says Gloom is still at it.
+      options.onEvent({
+        seq: 2, type: "tool-executed", turnId, toolCallId: "q1", name: "market.quotes", source: "server", status: "ok",
+        summary: { rowCount: 1, elapsedMs: 400, truncated: false }, args: { symbols: ["NVDA"] },
+      });
+      await finished;
+      // The trailer of questions to ask next is held back, and its blank lines are not.
+      options.onEvent({ seq: 3, type: "text-delta", turnId, delta: "NVDA is up 2%.\n\n" });
+      options.onEvent({ seq: 4, type: "follow-ups", turnId, questions: ["What moved AMD today?"] });
+      options.onEvent({ seq: 5, type: "done", turnId, reason: "complete" });
+      return "complete";
+    });
+    try {
+      const running = await ask("how is nvda doing");
+      expect(running).toContain("Quotes");
+      expect(running).toContain("Gloom is thinking…");
+
+      finish();
+      await flush();
+      const lines = tui.frame().split("\n");
+      expect(lines.join("\n")).not.toContain("Gloom is thinking…");
+      const answer = lines.findIndex((line) => line.includes("NVDA is up 2%."));
+      expect(answer).toBeGreaterThan(-1);
+      // One blank row between the answer and the question to ask next, as between every block.
+      expect(lines[answer + 1]?.trim()).toBe("");
+      expect(lines[answer + 2]).toContain("What moved AMD today?");
+    } finally {
+      stream.mockRestore();
+    }
   });
 });
 

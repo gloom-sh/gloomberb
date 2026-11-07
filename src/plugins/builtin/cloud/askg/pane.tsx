@@ -32,7 +32,6 @@ import {
   MessageComposer,
   Prose,
   shouldShowPaneSidebar,
-  Spinner,
   usePaneFooter,
   type PaneHint,
 } from "../../../../components";
@@ -141,6 +140,7 @@ import {
   UNDO_KEY,
 } from "./tool-timeline";
 import { ClippedText } from "../../../../components/ui/display";
+import { TurnProgress, TurnQuestion } from "./turn-parts";
 import { logFailure } from "../../../../utils/log-failure";
 
 export const ASKG_PANE_ID = "askg";
@@ -498,27 +498,25 @@ function TurnView({
   onShare: () => void;
 }) {
   const colors = useThemeColors();
+  // The server holds back the questions to ask next and leaves the blank
+  // lines before them, which would open a gap under the answer. A first
+  // line keeps its indent: it can start a block of code.
+  const answerText = turn.answer.replace(/^(?:[ \t]*\r?\n)+/, "").trimEnd();
   // A citation opens its source; one that opens nothing stays the text it was.
-  const answer = useMemo(() => linkCitations(turn.answer, new Set(sources.flatMap((source) => (
+  const answer = useMemo(() => linkCitations(answerText, new Set(sources.flatMap((source) => (
     source.ref !== null && source.target.kind === "pane" ? [source.ref] : []
-  )))), [sources, turn.answer]);
+  )))), [answerText, sources]);
   const openLink = useCallback((href: string) => {
     const ref = sourceRefFromHref(href);
     const source = ref === null ? undefined : sources.find((entry) => entry.ref === ref);
     if (source) onOpenSource(source);
   }, [onOpenSource, sources]);
-  const finished = turn.status === "complete" && turn.answer.trim().length > 0;
+  const finished = turn.status === "complete" && answerText.length > 0;
   return (
     <Box flexDirection="column" paddingTop={1}>
-      <Prose
-        text={turn.prompt}
-        width={width}
-        color={colors.textBright}
-        figures={false}
-        attributes={TextAttributes.BOLD}
-      />
+      <TurnQuestion text={turn.prompt} width={width} />
       {tools}
-      {turn.answer ? (
+      {answerText ? (
         <Box paddingTop={1}>
           <MarkdownText
             text={answer}
@@ -531,9 +529,8 @@ function TurnView({
             linkChips
           />
         </Box>
-      ) : turn.status === "streaming" && turn.tools.length === 0 ? (
-        <Box paddingTop={1}><Spinner label="Gloom is thinking…" /></Box>
       ) : null}
+      {turn.status === "streaming" ? <TurnProgress turn={turn} /> : null}
       {finished ? (
         <AnswerSources
           sources={sources}

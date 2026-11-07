@@ -1,11 +1,24 @@
+import { blendHex, colors } from "../../theme/colors";
 import { CARD_ACCENT_RULE } from "./card";
+
+/** How far a quote's band leans toward the colour it belongs to, in percent. */
+const ACCENT_TINT_PERCENT = 7;
 
 /**
  * Desktop and web: the faint tint of the colour a quote or a band belongs to,
  * laid over whatever surface is under it.
  */
 export function accentTint(accent = "var(--gloom-accent)") {
-  return `color-mix(in srgb, ${accent} 7%, transparent)`;
+  return `color-mix(in srgb, ${accent} ${ACCENT_TINT_PERCENT}%, transparent)`;
+}
+
+/**
+ * Terminal: the same tint over the background, as a cell colour. A band the
+ * terminal draws for a quote takes it, with the accent rule as a heavy line
+ * down its first column.
+ */
+export function terminalAccentTint(palette: { bg: string; borderFocused: string } = colors, accent = palette.borderFocused) {
+  return blendHex(palette.bg, accent, ACCENT_TINT_PERCENT / 100);
 }
 
 /**
