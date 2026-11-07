@@ -1,11 +1,14 @@
 /** @jsxImportSource react */
-import { expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { act } from "react";
 import { useShortcut, type KeyEventLike } from "../../react/input";
+import { TestShellPaneKeys } from "../../test-support/shell-pane-keys";
 import { WebInputHostProvider } from "./input-host";
 import { createDomTestHarness } from "./test-utils";
 
 const { window: testWindow, render: renderDom } = createDomTestHarness({ withUi: false });
+
+afterEach(() => setSystemTime());
 
 function Probe({ onKey }: { onKey: (event: KeyEventLike) => void }) {
   useShortcut(onKey, { phase: "before" });
@@ -132,4 +135,38 @@ test("keeps repeating the keys that move", async () => {
   await pressKey("Escape", { repeat: true });
 
   expect(seen.map((event) => event.name)).toEqual(["down", "down", "j", "escape"]);
+});
+
+// The browser says which Esc is a held key's repeat, so closing panes Esc Esc,
+// Esc Esc has no pause after a close, even for a press 50 ms after it.
+test("closes pane after pane on Esc Esc however fast, and closes nothing on a held Esc", async () => {
+  setSystemTime(new Date("2026-03-02T10:00:00Z"));
+  let closes = 0;
+  await renderDom(
+    <WebInputHostProvider>
+      <TestShellPaneKeys
+        focusedPaneId="a"
+        closeFocusedPane={() => {
+          closes += 1;
+          return true;
+        }}
+      />
+    </WebInputHostProvider>,
+  );
+  const escape = async (afterMs: number, repeat = false) => {
+    setSystemTime(new Date(Date.now() + afterMs));
+    await pressKey("Escape", { repeat });
+  };
+
+  await escape(0);
+  await escape(100);
+  expect(closes).toBe(1);
+  await escape(50);
+  await escape(100);
+  expect(closes).toBe(2);
+
+  // Held on the next pane: the first press arms it, the repeats are flagged.
+  await escape(300);
+  for (let index = 0; index < 60; index += 1) await escape(33, true);
+  expect(closes).toBe(2);
 });

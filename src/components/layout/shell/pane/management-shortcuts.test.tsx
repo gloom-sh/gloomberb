@@ -176,6 +176,54 @@ describe("pane shortcuts held down", () => {
 
     expect(closes).toBe(1);
   });
+
+  test("a held Esc whose repeats the terminal flags closes nothing", async () => {
+    setSystemTime(new Date("2026-03-02T10:00:00Z"));
+    let closes = 0;
+    await tui.render(
+      <TestShellPaneKeys
+        focusedPaneId="a"
+        closeFocusedPane={() => {
+          closes += 1;
+          return true;
+        }}
+      />,
+      { width: 20, height: 4 },
+    );
+
+    await tui.emitKeypress({ name: "escape" }, { trackPropagation: true });
+    setSystemTime(new Date(Date.now() + 400));
+    for (let index = 0; index < 60; index += 1) {
+      await tui.emitKeypress({ name: "escape", repeated: true }, { trackPropagation: true });
+      setSystemTime(new Date(Date.now() + 33));
+    }
+
+    expect(closes).toBe(0);
+  });
+
+  test("Esc Esc, Esc Esc closes pane after pane with no wait between", async () => {
+    setSystemTime(new Date("2026-03-02T10:00:00Z"));
+    let closes = 0;
+    await tui.render(
+      <TestShellPaneKeys
+        focusedPaneId="a"
+        closeFocusedPane={() => {
+          closes += 1;
+          return true;
+        }}
+      />,
+      { width: 20, height: 4 },
+    );
+
+    // 150 ms between the two Esc of a pair, 200 ms from the close to the next pair.
+    for (let pair = 1; pair <= 4; pair += 1) {
+      await tui.emitKeypress({ name: "escape" }, { trackPropagation: true });
+      setSystemTime(new Date(Date.now() + 150));
+      await tui.emitKeypress({ name: "escape" }, { trackPropagation: true });
+      setSystemTime(new Date(Date.now() + 200));
+      expect(closes).toBe(pair);
+    }
+  });
 });
 
 /** A pane that takes every Esc for itself, the way a stack's back or a menu does. */
