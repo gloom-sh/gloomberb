@@ -22,7 +22,7 @@ export interface RenamedListing {
 }
 
 /** The name it went by: "Eletrobras". */
-export function renamedListingFormerName(listing: RenamedListing): string {
+function renamedListingFormerName(listing: RenamedListing): string {
   return listing.formerNames[0];
 }
 
