@@ -382,7 +382,7 @@ One-year percentiles use the dated history of the same contract or rate, with mi
 
 The backend feed supplies dated daily histories for monthly `ZQ` contracts. The backend feed's daily bars for quarterly `SR3` contracts hold only the current session, so Cloud builds SR3 one-year history from hourly bars grouped by CME trade date, keeping the last close before the 14:00 CT settlement. These are last trades, not official settlements. The FOMC calendar and SEP are maintained source snapshots with their source URLs, verification date and coverage in structured reports. Tentative future meeting dates may change; schedule coverage is never extended by guessing. Missing history or meetings appear in the pane's warning disclosure and exported metadata.
 
-GC plots a government bond curve against maturity on a log axis: the US Treasury par curve (UST, the default), TIPS real yields, US breakevens, the euro area AAA curve, German Bunds, UK Gilts, Japanese JGBs and Canada. `GC JGB`, `GC TIPS 2024-01-02` or `GC 2024-01-02` pick the curve and date; the Curve select in the query bar switches it. Each curve comes from its official publisher and keeps the date that publisher gives it, so two curves can show different sessions:
+GC plots a government bond curve against maturity on a log axis: the US Treasury par curve (UST, the default), TIPS real yields, US breakevens, the euro area AAA curve, German Bunds, UK Gilts, Japanese JGBs, Canada, and Mexico's and Brazil's 2- and 10-year yields. `GC JGB`, `GC TIPS 2024-01-02` or `GC 2024-01-02` pick the curve and date; the Curve select in the query bar switches it. Each curve comes from its official publisher and keeps the date that publisher gives it, so two curves can show different sessions:
 
 | Curve | Publisher and series | Tenors | Out (observed September 2026) | History |
 |---|---|---|---|---|
@@ -394,6 +394,8 @@ GC plots a government bond curve against maturity on a log axis: the US Treasury
 | Gilt | Bank of England nominal spot (zero-coupon) curve | 6M to 40Y | the next morning, around 10:00 London | 1979 |
 | JGB | Ministry of Finance JGB interest rates | 1Y to 10Y, 15Y to 40Y | the next business day | 1974 (10Y from 1986) |
 | Canada | Bank of Canada Treasury bill yields and benchmark bond yields | 1M to 1Y bills, 2Y to 10Y, 30Y (the long benchmark) | the next business day; bills can land before bonds | 2001 |
+| Mexico | Banxico's daily price vector of on-the-run government securities: the 2-year Cetes yield as printed, and the on-the-run 10-year M bono's yield solved from its price on the M bono convention (182-day coupons, actual/360) | 2Y, 10Y | the next morning | 2003 (2Y from 2022) |
+| Brazil | Tesouro Direto's daily rates: the fixed-rate title (Tesouro Prefixado, or com Juros Semestrais) maturing nearest each tenor, at the midpoint of the morning's buy and sell rates, annual over 252 business days | 2Y, 10Y | the next morning | 2007 |
 
 A publisher's day counts as a curve once it has a 10-year yield, so a day with only bills (Canada) or the oldest JGB rows, which stop at nine years, are not shown as curves. The Gilt curve is a zero-coupon curve: when the curve slopes up it reads a few basis points above par yields at the same maturity, and it is labelled as such in the chart. Italy and France have no free daily source yet, so there is no BTP or OAT curve. Before Treasury's files begin, or when the stored curve cannot be read, UST falls back to FRED's constant-maturity series, which carry the same yields a business day later.
 

@@ -112,6 +112,8 @@ const CURVE_PUBLISHERS: Record<CurveId, string> = {
   gb: "Bank of England",
   jp: "Japan Ministry of Finance",
   ca: "Bank of Canada",
+  mx: "Banxico",
+  br: "Tesouro Nacional",
 };
 
 /** Whose business days each curve's dates are, so a report names the day it means. */
@@ -124,6 +126,8 @@ const CURVE_MARKETS: Record<CurveId, string> = {
   gb: "UK",
   jp: "Japan",
   ca: "Canada",
+  mx: "Mexico",
+  br: "Brazil",
 };
 
 export function createYieldCurveHeadless(
@@ -139,7 +143,7 @@ export function createYieldCurveHeadless(
       description: "A curve (ust, tips, breakeven, euro, bund, gilt, jgb, canada) and a historical as-of date; omit for the latest UST curve." },
     options: [
       { key: "date", type: "string", settingKey: "asOfDate", placeholder: "date", description: `Historical as-of date, as ${DATE_OPTION_EXAMPLES}; uses the latest session on or before it.` },
-      { key: "curve", type: "string", description: "ust (default), tips, breakeven, euro, bund, gilt, jgb or canada." },
+      { key: "curve", type: "string", description: "ust (default), tips, breakeven, euro, bund, gilt, jgb, canada, mexico or brazil." },
       { key: "compare", type: "string", description: `Compare with a date (${DATE_OPTION_EXAMPLES}) or a span back from the curve's session (1D, 1W, 1M, 3M, 1Y).` },
       { key: "view", type: "enum", values: [{ value: "curve" }, { value: "difference", aliases: ["diff"] }],
         description: "With a compare date: both curves, or the bp change by tenor as bars.",

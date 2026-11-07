@@ -461,7 +461,7 @@ describe("resolveChartSpecData", () => {
     const missing = await resolveChartSpecData(spec, sources);
     expect(missing.series).toHaveLength(1);
     expect(missing.series[0]?.points).toEqual([]);
-    expect(missing.errors[0]).toContain('CAP:charts.test:one is not covered: no chart series source is called "charts.test".');
+    expect(missing.errors[0]).toContain('CAP:charts.test:one is not covered: no chart series is called "charts.test:one".');
 
     const resolved = await resolveChartSpecData(spec, {
       ...sources,

@@ -303,10 +303,10 @@ test("a CAP series no source answers to is not covered and names the nearest ser
     capabilityManifests: () => [],
     invokeCapability: (capabilityId, operationId, payload) => registry.invoke(capabilityId, operationId, payload),
   });
-  const asked = resolve({ kind: "capability", capabilityId: "bond-yield", seriesId: "br-10y" }, {} as never, {} as never);
+  const asked = resolve({ kind: "capability", capabilityId: "bond-yield", seriesId: "za-10y" }, {} as never, {} as never);
   await expect(asked).rejects.toThrow(
-    'CAP:bond-yield:br-10y is not covered: no chart series source is called "bond-yield". The nearest: UST:10Y, the US 10-year Treasury yield; '
-    + "the 2- and 10-year government yields of each market GC covers are on gloom fn GC --tab world.",
+    'CAP:bond-yield:za-10y is not covered: no chart series is called "bond-yield:za-10y". The government yields a chart can name are listed by '
+    + 'gloom catalog "10Y government bond" (CAP:bond-yield:de-10y, UST:10Y); the 2- and 10-year yields of every market GC covers are on gloom fn GC --tab world.',
   );
   const other = resolve({ kind: "capability", capabilityId: "widgets", seriesId: "count" }, {} as never, {} as never);
   await expect(other).rejects.toThrow("Series a chart can name: SYMBOL, SYMBOL:field, FUT:code, UST:maturity, FRED:series and GEO:series");
