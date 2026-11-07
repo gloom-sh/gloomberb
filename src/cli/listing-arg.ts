@@ -44,7 +44,7 @@ import { dashedCoinPair, exchangeLineCoinListing, isSpotCommodityOrCurrencyPair,
 import { boardCoinFor, primeBoardCoins } from "./board-coins";
 import { knownGapMessage } from "./known-gaps";
 import { currencyPairSpelling } from "../utils/currency-pair";
-import { bareFuturesCode, futuresContractByCode, listedFuturesSymbol } from "../market-data/futures-board";
+import { bareFuturesCode, futuresContractByCode, futuresContractByWord, listedFuturesSymbol } from "../market-data/futures-board";
 import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
 import type { InstrumentOfKind } from "../tickers/instrument-coverage";
 import { brokerIndexCode, brokerIndexReadAs } from "./index-roots";
@@ -663,8 +663,9 @@ function retryCommand(request: Pick<ListingDataRequest, "command" | "retry">, ke
  * code a security keeps (GC, NG) when that security has no data: the future is
  * the other thing the code names. Null for any other symbol.
  */
-export function futuresTryLine(symbol: string, request: ListingDataRequest): string | null {
-  const future = futuresContractByCode(symbol);
+export function futuresTryLine(symbol: string, request: ListingDataRequest, { words = false }: { words?: boolean } = {}): string | null {
+  // With `words`, a commodity's word (BRENT, GOLD) names its future too, beside the securities that share it.
+  const future = futuresContractByCode(symbol) ?? (words ? futuresContractByWord(symbol) : null);
   if (!future) return null;
   const retry = retryCommand(request, future.symbol);
   return `${future.symbol} ${future.name} future${retry ? ` (try: ${retry})` : ""}`;
@@ -682,7 +683,8 @@ function describeOtherListings(
   /** Listings just asked that had none: named as having none, never offered to try. */
   without: readonly ListingVenue[] = [],
 ): OtherListingsMessage | null {
-  const future = futuresTryLine(listing.symbol, request);
+  // BRENT's listings are two ETPs: Brent crude itself is the future BZ=F, offered beside them.
+  const future = futuresTryLine(listing.symbol, request, { words: true });
   const offered = others.filter((venue) => !without.includes(venue));
   if (offered.length === 0 && !future && without.length === 0) return null;
   const name = resolved?.name || listing.saved?.metadata.name?.trim() || "";
@@ -709,7 +711,7 @@ function describeOtherListings(
       : `${listing.symbol} resolved to ${name ? `${name} (${exchange})` : exchange}, which has no ${request.noun}.`,
     details,
     heading,
-    listings: [...named.map((venue) => venueKey(listing.symbol, venue)), ...future ? [futuresContractByCode(listing.symbol)!.symbol] : []],
+    listings: [...named.map((venue) => venueKey(listing.symbol, venue)), ...future ? [(futuresContractByCode(listing.symbol) ?? futuresContractByWord(listing.symbol))!.symbol] : []],
     choices: offered.slice(0, MAX_OTHER_LISTINGS).map((venue) => ({ key: venueKey(listing.symbol, venue), name: venue.name || null })),
     choose,
   };

@@ -61,3 +61,18 @@ export function labelWithUnit(label: string, unit: string): string {
       : label.includes(unit);
   return named ? label : `${label} (${unit})`;
 }
+
+/**
+ * A figure to the digits its cell draws: -315.12 for the -315.12046875 drawn
+ * "-HK$315.12", -1.27 for a percent drawn "-1.27%". The figure as it is where
+ * the cell draws no number, or draws it in another scale (a yield's 0.022 as
+ * "+2.2bp"), so a figure is never cut to what another reading shows.
+ */
+export function figureAsDrawn(value: number, drawn: string): number {
+  if (!Number.isFinite(value)) return value;
+  const read = parseDisplayNumber(drawn);
+  if (!read || read === BLANK_DISPLAY) return value;
+  const shown = Number(read.number);
+  return Math.abs(Math.abs(shown) - Math.abs(value)) <= (read.step / 2) * (1 + 1e-9) + Number.EPSILON
+    ? Math.sign(value) * Math.abs(shown) : value;
+}

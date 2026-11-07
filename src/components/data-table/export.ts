@@ -21,7 +21,9 @@ function rawExportValue(value: NonNullable<DataTableCell["value"]> | null): unkn
  * the cell shows. A cell's own `value` wins over both.
  */
 function exportColumn(column: DataTableColumn, cells: readonly DataTableCell[]): { label: string; values: unknown[] } {
-  const label = column.label.trim();
+  // Values in a unit their text leaves out (a market cap in the base currency) name it in the header, when they share one.
+  const valueUnits = new Set(cells.flatMap((cell) => cell.value != null && cell.valueUnit ? [cell.valueUnit] : []));
+  const label = valueUnits.size === 1 ? labelWithUnit(column.label.trim(), [...valueUnits][0]!) : column.label.trim();
   const shown = (cell: DataTableCell) => cell.value !== undefined
     ? rawExportValue(cell.value)
     : PLACEHOLDER.test(cell.text.trim()) ? "" : cell.text;
@@ -56,13 +58,16 @@ export function createDataTableCsv<
   renderCell,
   renderSectionHeader,
   getExportMetadata,
-}: Pick<DataTableProps<T, C>, "columns" | "items" | "renderCell" | "renderSectionHeader" | "getExportMetadata">): string {
+  exportIdentity,
+}: Pick<DataTableProps<T, C>, "columns" | "items" | "renderCell" | "renderSectionHeader" | "getExportMetadata" | "exportIdentity">): string {
   // A pane that exports a table it does not draw (all its columns) reads the figures as the table draws them.
   const cell = figureColumnCells(renderCell);
-  const cells = items.flatMap((item, index) => {
-    if (renderSectionHeader?.(item, index)) return [];
-    return [columns.map((column) => cell(item, column, index, { selected: false }))];
-  });
+  const records = items.flatMap((item, index) => renderSectionHeader?.(item, index) ? [] : [{ item, index }]);
+  const cells = records.map(({ item, index }) => columns.map((column) => cell(item, column, index, { selected: false })));
+  // What each row is, after the table's own columns: its listing, unit, source and as-of, as `quote --csv` ends a row.
+  const identity = exportIdentity
+    ? records.map(({ item }) => exportIdentity.cells(item) ?? exportIdentity.headers.map(() => ""))
+    : null;
   // A column drawn only as graphics (a bar, a sparkline) has no value to export.
   const exported = columns.flatMap((column, index) => (
     cells.length && cells.every((row) => row[index]!.content != null && !row[index]!.text && row[index]!.value === undefined)
@@ -72,8 +77,8 @@ export function createDataTableCsv<
   const metadata = orderMetadata(getExportMetadata?.() ?? []);
   // Notes go under the table after a blank row, so the first line stays the header.
   return serializeCsv([
-    exported.map((column) => column.label),
-    ...cells.map((_, row) => exported.map((column) => column.values[row])),
+    [...exported.map((column) => column.label), ...exportIdentity?.headers ?? []],
+    ...cells.map((_, row) => [...exported.map((column) => column.values[row]), ...identity?.[row] ?? []]),
     ...(metadata.length ? [[], ...metadata] : []),
   ], { excelCompatible: true });
 }

@@ -97,3 +97,26 @@ test("a card of a listing that no longer trades says when, not that its quote is
     clock.mockRestore();
   }
 });
+
+test("each card says what its own price is as of: Hong Kong's close beside a delayed New York after hours", async () => {
+  const clock = spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-06T21:35:00Z"));
+  const hsi: Quote = {
+    symbol: "^HSI", name: "HANG SENG INDEX", instrumentType: "INDEX", currency: "HKD", exchangeName: "HKSE",
+    price: 24481.86, change: -315.12, changePercent: -1.27, marketState: "CLOSED", dataSource: "delayed",
+    providerId: "gloomberb-cloud", lastUpdated: Date.parse("2026-11-06T08:09:00Z"),
+  };
+  const aapl: Quote = {
+    symbol: "AAPL", currency: "USD", listingExchangeName: "NASDAQ", price: 270.5, change: 1.2, changePercent: 0.45,
+    marketState: "POST", postMarketPrice: 270.9, postMarketChange: 0.4, postMarketChangePercent: 0.15,
+    dataSource: "delayed", providerId: "gloomberb-cloud", lastUpdated: Date.parse("2026-11-06T21:20:00Z"),
+  };
+  try {
+    const ready = (quote: Quote) => ({ ...createIdleEntry<Quote>(), phase: "ready" as const, data: quote });
+    expect(await renderCard(ready(hsi), 40, 6)).toContain("CLOSED · 08:09 UTC");
+    expect(await renderCard(ready(aapl), 40, 6)).toContain("15 min delayed · 21:20 UTC");
+    // A short card keeps its sparkline's rows; the line waits for room.
+    expect(await renderCard(ready(hsi), 40, 4)).not.toContain("UTC");
+  } finally {
+    clock.mockRestore();
+  }
+});

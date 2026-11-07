@@ -17,6 +17,7 @@ import { objectVersion } from "../../../utils/object-version";
 import { columnContextVersion, PERPETUAL_COLUMN_IDS } from "./cell-version";
 import { getColumnValue, type ColumnContext } from "./metrics";
 import { periodPnlFigure, tickerDisplayName } from "../../../portfolio/column-values";
+import { listedSymbol } from "../../../portfolio/listed-symbol";
 import { displayWidth } from "../../../utils/format";
 import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import { sinceLastSeenTint, type SinceLastSeenRecap } from "./since-last-seen";
@@ -198,6 +199,7 @@ export function PortfolioTickerTable({
   rootHeight,
   width,
   answeredSnapshots,
+  exportName,
 }: {
   columns: ColumnConfig[];
   focused?: boolean;
@@ -230,6 +232,8 @@ export function PortfolioTickerTable({
   width?: number;
   /** Rows whose financial snapshot answered: until then a company column's dash may still fill in. */
   answeredSnapshots?: ReadonlySet<string>;
+  /** The list's name, which names its exported file. */
+  exportName?: string;
 }) {
   const cellCacheRef = useRef(createRowValueCache<string, ReturnType<typeof getColumnValue> & TickerTableCell>(5000));
   const openPerpetualRef = useRef(onOpenPerpetual);
@@ -275,11 +279,11 @@ export function PortfolioTickerTable({
     (widest, ticker) => Math.max(widest, displayWidth(resolveCell(sharesColumn, ticker, tableFinancialsMap.get(ticker.metadata.ticker)).text)),
     sharesColumn.width,
   )) : 0;
-  // The Ticker column grows to its longest symbol, so ETH-USD shows whole beside its market-state dot.
+  // The Ticker column grows to its longest symbol, so ETH-USD and BA:LSE show whole beside their market-state dot.
   const tickerWidth = useMemo(() => Math.min(MAX_TICKER_COLUMN_WIDTH, sortedTickers.reduce(
-    (widest, ticker) => Math.max(widest, TICKER_DOT_WIDTH + displayWidth(tickerDisplayName(ticker))),
+    (widest, ticker) => Math.max(widest, TICKER_DOT_WIDTH + displayWidth(listedSymbol(ticker, tickerDisplayName(ticker), columnContext.homeMarket))),
     0,
-  )), [sortedTickers]);
+  )), [columnContext.homeMarket, sortedTickers]);
   // A book that holds a short weighs its positions against gross exposure, and the header says so.
   const grossWeights = columnContext.portfolioWeightBasis === "gross";
   // Market caps read in the book's currency: beside a price in another, the header names it (Mkt Cap TRY by a USD price).
@@ -364,6 +368,7 @@ export function PortfolioTickerTable({
       addTickerShortcut={addTickerShortcut}
       summaryRows={summaryRows}
       rootHeight={rootHeight}
+      exportName={exportName}
     />
   );
 }

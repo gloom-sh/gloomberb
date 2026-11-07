@@ -5,6 +5,7 @@ import { HISTORY_DEFAULT_RANGE } from "./data-panes/history-bars";
 import { RETURN_INTERVAL_VALUES, RETURN_RANGES } from "./data-panes/returns-model";
 import { PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP } from "../../../utils/price-window";
 import type { HeadlessPaneOptionDef } from "../../../types/headless";
+import { QUOTE_MONITOR_MAX_TICKERS } from "../../../tickers/list";
 
 /** `--from 2007 --to 2009`: the report's bars for those dates. The pane keeps its range, so a capture refuses them. */
 const WINDOW_OPTIONS: HeadlessPaneOptionDef[] = [
@@ -50,7 +51,7 @@ export const paneSchemas = {
     },
   },
   "quote-monitor-pane": {
-    argument: { kind: "tickers" },
+    argument: { kind: "tickers", maximum: QUOTE_MONITOR_MAX_TICKERS },
     options: [],
     discovery: {
       id: "quote-comparison",

@@ -1,4 +1,5 @@
-import { INDEX_POINTS_EXPORT_UNIT, INDEX_POINTS_LABEL, isIndexLevel } from "../market-data/market/index-level";
+import { INDEX_POINTS_EXPORT_UNIT, INDEX_POINTS_LABEL, isIndexLevel, YIELD_INDEX_EXPORT_UNIT } from "../market-data/market/index-level";
+import { isYieldIndexSymbol } from "../tickers/index-roots";
 import type { PricePoint } from "../types/financials";
 import { formatPriceObservation, marketPriceFractionDigitCeiling, resolveAssetDisplayKind } from "../market-data/market/format";
 import { TIME_RANGES, type TimeRange } from "../time-series/range";
@@ -24,9 +25,13 @@ import { barLastSession, barPeriodToDate, type BarPeriodToDate } from "../market
 import { barSizeFromGap, medianBarGap } from "../time-series/bar-spacing";
 import { isRegularSessionTime, sessionCalendarTimeZone } from "../market-data/market/freshness";
 import { zonedDateKey } from "../utils/zoned-date-time";
+import { cleanFloat32Price, decimalPlaces } from "../utils/float32-price";
 import { futuresBoardContract } from "../market-data/futures-board";
 import { isFuturesInstrument } from "../market-data/futures-contract";
 import { contractPriceUnit } from "../time-series/price-units";
+
+/** A float32 price as the decimal it is, which a quote's dated close is cleaned with too (utils/float32-price). */
+export { cleanFloat32Price };
 
 const PRICE_KEYS = ["open", "high", "low", "close"] as const;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -107,29 +112,6 @@ export interface HistoryRow {
 /** A coin's volume: traded value in its quote currency, per UTC day on daily bars. */
 export interface HistoryVolume {
   unit: string;
-}
-
-function decimalPlaces(value: number): number {
-  const [mantissa = "", exponent = "0"] = Math.abs(value).toString().split("e");
-  return Math.max(0, (mantissa.split(".")[1]?.length ?? 0) - Number(exponent));
-}
-
-/**
- * Providers serve prices as float32: The feed sends the exact float
- * (340.33 arrives as 340.3299865722656) and the cloud a float already rounded
- * to a few decimals (254.42999). Return the shortest decimal that is the same
- * float32. Values with fewer than five decimals are left alone, and a precise
- * double only moves within float32 precision (about seven significant digits).
- */
-export function cleanFloat32Price(value: number): number {
-  if (!Number.isFinite(value) || value === 0 || decimalPlaces(value) < 5) return value;
-  const target = Math.fround(value);
-  for (let digits = 1; digits <= 9; digits++) {
-    const candidate = Number(value.toPrecision(digits));
-    if (Math.fround(candidate) !== target) continue;
-    return candidate.toString().length < value.toString().length ? candidate : value;
-  }
-  return value;
 }
 
 /**
@@ -832,6 +814,8 @@ export function historyUnit(
     const [base, counter] = [pair.slice(0, 3), pair.slice(3)];
     return { kind: "pair", currency: counter, unit: `${counter} per ${base}` };
   }
+  // A Cboe yield index is a yield in percent, the unit `quote` exports it in, not index points.
+  if (isYieldIndexSymbol(listing)) return { kind: "points", currency: null, unit: YIELD_INDEX_EXPORT_UNIT };
   if (isIndexLevel(quote?.instrumentType)) return { kind: "points", currency: null, unit: INDEX_POINTS_EXPORT_UNIT };
   const code = quote?.currency?.trim();
   // A future is priced in its contract's unit, spelled one way in the text, CSV and JSON.
@@ -869,7 +853,7 @@ export function historyFacts(unit: HistoryUnit, rows: readonly Pick<HistoryRow, 
   const interval = rows[0]?.interval;
   const unbroken = historyUnbrokenFrom(rows);
   return [
-    unit.kind === "pair" ? unit.unit! : unit.kind === "points" ? INDEX_POINTS_LABEL
+    unit.kind === "pair" ? unit.unit! : unit.kind === "points" ? unit.unit === YIELD_INDEX_EXPORT_UNIT ? "Yield, percent" : INDEX_POINTS_LABEL
       : unit.kind === "contract" ? `Unit ${unit.unit}` : `Currency ${unit.unit ?? "unknown"}`,
     interval ? `${BAR_INTERVAL_LABELS[interval]} bars` : "",
     first && last ? (first === last ? historyDate(first) : `${historyDate(first)} to ${historyDate(last)}`) : "",

@@ -3,18 +3,16 @@ import {
 } from "../../../utils/financial-statements";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
-import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, quoteHeadlineTime, type ExtendedSession } from "../../../market-data/market/status";
+import { quoteMonitorColumns, quoteMonitorRow, QUOTE_MONITOR_BASE_COLUMNS, QUOTE_MONITOR_ROW_KEYS } from "./quote-monitor/rows";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneOptionValues } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
-import { formatNumber, formatPercentRaw } from "../../../utils/format";
-import {
-  formatMarketChangeWithCurrency, formatMarketPrice, formatMarketPriceWithCurrency, formatPriceObservation, penceFigure, quoteFormatOptions,
-  resolveAssetDisplayKind, withCurrencyMinorDigits, type MarketFormatOptions,
-} from "../../../market-data/market/format";
+import { formatNumber } from "../../../utils/format";
+import { formatPriceObservation, penceFigure, quoteFormatOptions } from "../../../market-data/market/format";
 import {
   MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, pricePointWickFlags, priceHistoryIntegrityNotice,
   priceHistoryWickNotice,
 } from "../../../utils/price-history-integrity";
+import { indexBarVolume } from "../../../market-data/market/index-level";
 import {
   buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations,
   financialStatementPeriods, financialSubTabFields, formatFinancialHeader, isPerShareFinancialRow, receiptShareCountLabel,
@@ -41,7 +39,7 @@ import {
 import {
   loadHeadlessFinancials, loadHeadlessPriceHistory, loadHeadlessSymbols, resolveHeadlessInstrument,
 } from "../shared/headless-market-data";
-import { barHistoryFreshness, quoteFreshnessFields, REPORTED_DATA } from "../shared/report-freshness";
+import { barHistoryFreshness, REPORTED_DATA } from "../shared/report-freshness";
 import {
   BAR_INTERVAL_LABELS, barPriceDecimals, cleanBarPrice, cleanFloat32Price, formatBarPrice, historyAllStart, historyAllStartNote, historyMissingPeriodsNote, historyPriceDecimals,
   quotedPriceDivisor,
@@ -314,78 +312,34 @@ async function loadRatioReport(
   };
 }
 
-function quoteAmount(value: unknown, row: Record<string, unknown>, signed = false): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
-  const currency = typeof row.currency === "string" && row.currency.trim() ? row.currency : undefined;
-  const base: MarketFormatOptions = { assetCategory: typeof row.instrumentType === "string" ? row.instrumentType : undefined,
-    priceBasis: row.priceBasis === "per-unit" || row.priceBasis === "percent-of-par" ? row.priceBasis : undefined };
-  // Par quotes keep two decimals; money pads to its currency's minor unit (none for JPY).
-  const options = base.priceBasis === "percent-of-par" ? { ...base, minimumFractionDigits: 2 } : withCurrencyMinorDigits(base, currency);
-  // A currency pair's move is written at the pair's precision, as its price is (-$0.00108 on EUR/USD 1.16023).
-  if (signed && currency && typeof row.price === "number" && resolveAssetDisplayKind(options) === "cash") {
-    return formatMarketChangeWithCurrency(value, currency, options, row.price);
-  }
-  const amount = currency
-    ? formatMarketPriceWithCurrency(value, currency, options)
-    : formatMarketPrice(value, options);
-  return amount === "—" ? amount : `${signed && value >= 0 ? "+" : ""}${amount}`;
-}
-
-function percentCell(value: unknown): string {
-  return formatPercentRaw(typeof value === "number" && Number.isFinite(value) ? value : undefined);
-}
-
-const QUOTE_MONITOR_COLUMNS: HeadlessPaneColumn[] = [
-  { key: "symbol", header: "Ticker" },
-  { key: "name", header: "Name" },
-  { key: "price", header: "Last", align: "right", format: (value, row) => quoteAmount(value, row) },
-  { key: "change", header: "Change", align: "right", format: (value, row) => quoteAmount(value, row, true) },
-  { key: "changePercent", header: "Change %", align: "right", format: percentCell },
-];
-
-/** The pre-market, after-hours or overnight print and its move from the regular close, for the rows that have one. */
-function extendedSessionColumn(session: ExtendedSession): HeadlessPaneColumn {
-  return {
-    key: "extendedPrice", header: EXTENDED_SESSION_LABELS[session], align: "right",
-    format: (value, row) => row.extendedSession === session
-      ? `${quoteAmount(value, row)} ${percentCell(row.extendedChangePercent)}`
-      : "—",
-  };
-}
-
 export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["quote-monitor-pane"],
   shape: "rows",
   description: "Current quotes for one or more tickers: name, the regular session's last price, change and percent change, and any pre-market or after-hours print.",
   describe: ({ symbols }) => `Quote Monitor | ${symbols.join(", ")}`,
-  columns: QUOTE_MONITOR_COLUMNS,
+  columns: QUOTE_MONITOR_BASE_COLUMNS,
+  // A board across markets (Hong Kong beside New York) dates each market's session and says when each opens.
+  freshness: { datesEachVenue: true },
   async load({ symbols }, ctx) {
     const loaded = await loadHeadlessSymbols(symbols, ctx, async (key) => {
       const { symbol, exchange } = await resolveHeadlessInstrument(ctx, key);
-      const quote = await ctx.marketData.getQuote(symbol, exchange);
+      // Each move is printed with the close it is from, so the close is checked against its date first.
+      const quote = await ctx.marketData.getQuote(symbol, exchange, { datesChangeBasis: true });
       if (!quote) throw new Error(`Quote is unavailable for ${key}`);
       if (!hasValidQuoteObservationTime(quote)) throw new Error(`Quote observation time is unavailable for ${key}`);
       return quote;
     });
-    const rows = loaded.entries.map(({ symbol, data: quote }) => {
-      // As the pane's cards show them: the regular session, then any extended print from its close.
-      const { price, change, changePercent, ...extended } = getQuoteSessionFields(quote);
-      return {
-        symbol, name: quote.name ?? "", price, currency: quote.currency,
-        ...(quote.instrumentType ? { instrumentType: quote.instrumentType } : {}),
-        ...(quote.priceBasis ? { priceBasis: quote.priceBasis } : {}),
-        change, changePercent, ...extended,
-        marketCap: quote.marketCap ?? null, updatedAt: quoteHeadlineTime(quote),
-        ...quoteFreshnessFields(quote),
-      };
-    });
-    // An extended column only when a row has a print for it, so a closed board stays as narrow as before.
-    const extendedColumns = (["PRE", "POST", "OVERNIGHT"] as const)
-      .filter((session) => rows.some((row) => row.extendedSession === session))
-      .map(extendedSessionColumn);
+    const now = Date.now();
+    // A broker's quote names the broker as its source.
+    const brokerName = (providerId: string) => ctx.resolveBroker?.(providerId)?.name;
+    const rows = loaded.entries.map(({ symbol, data: quote }) => quoteMonitorRow(symbol, quote, now, brokerName));
+    const columns = quoteMonitorColumns(rows);
     return {
       rows,
-      ...(extendedColumns.length > 0 ? { columns: [...QUOTE_MONITOR_COLUMNS, ...extendedColumns] } : {}),
+      // An extended column or Chg bp only when a row has one, so a closed board stays as narrow as before.
+      ...(columns.length > QUOTE_MONITOR_BASE_COLUMNS.length ? { columns } : {}),
+      // Each exported row names its ticker, its unit, its source and when its own price was observed.
+      ...QUOTE_MONITOR_ROW_KEYS,
       unavailableSymbols: loaded.unavailableSymbols, errors: loaded.errors,
     };
   },
@@ -470,7 +424,8 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
       const values = pricePointValues(point);
       return {
         date: Number.isFinite(date.getTime()) ? date.toISOString() : String(point.date),
-        open: clean(values.open), high: clean(values.high), low: clean(values.low), close: clean(values.close), volume: values.volume,
+        open: clean(values.open), high: clean(values.high), low: clean(values.low), close: clean(values.close),
+        volume: indexBarVolume(values.volume, quote?.instrumentType),
         ...(values.integrity ? { integrity: values.integrity } : {}),
         ...(point.partial ? { partial: true } : {}),
         // A coin's day Gloom Cloud rebuilt from hourly bars has no volume of its own, as `history` marks it.

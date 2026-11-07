@@ -70,6 +70,7 @@ import { cashRunway, SHORT_RUNWAY_HISTORY } from "../../../utils/cash-runway";
 import { useOfferingNote } from "./financials/offerings";
 import { taxEquivalentFields, useOverviewTaxEquivalent } from "./overview/tax-equivalent";
 import { distributionBasis, type TaxRates } from "../../../market-data/tax-equivalent";
+import { currentListingName } from "../../../tickers/listing-name";
 
 /** Cells between the Day and 52W ranges when they share a row. */
 const RANGE_PAIR_GAP = 4;
@@ -295,7 +296,8 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   // The days the venue was closed since that close, under the move: "HKEX closed Mon 19 Oct, holiday".
   const changeBasisNoteText = changeBasisNote(changeBasis);
   // The pane title already names the ticker, so the line leads with the company and drops a name that only repeats it.
-  const companyName = [ticker.metadata.name, quote?.name].find((name) => name && name !== ticker.metadata.ticker) ?? "";
+  // The listing's own quote names it first: BA on LSE is BAE Systems, whatever name a search gave the row it was saved from.
+  const companyName = currentListingName(ticker, quote) ?? "";
   const venueText = listingVenue ? (companyName ? ` (${listingVenue})` : listingVenue) : "";
   const sessionLabel = quoteSessionLabel(quote);
   const marketStateText = sessionLabel ? t(sessionLabel) : "";
@@ -309,7 +311,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   // extended-hours line hangs below, as it comes and goes with the session. Without a
   // price the logo keeps two rows.
   const hasLogo = nativePaneChrome === true
-    && resolveCompanyLogoSrc({ symbol: ticker.metadata.ticker, assetCategory: ticker.metadata.assetCategory }) != null;
+    && resolveCompanyLogoSrc({ symbol: ticker.metadata.ticker, assetCategory: ticker.metadata.assetCategory, exchange: ticker.metadata.exchange }) != null;
   const priceInk = figureLineInk();
   // The top snaps up to a whole px so it never starts below the capitals; the bottom lands
   // on the device pixel nearest the baseline.
@@ -447,6 +449,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
             <CompanyLogo
               symbol={ticker.metadata.ticker}
               assetCategory={ticker.metadata.assetCategory}
+              exchange={ticker.metadata.exchange}
               name={ticker.metadata.name || quote?.name}
               width={logoPx / cellWidthPx}
               height={logoPx / cellHeightPx}

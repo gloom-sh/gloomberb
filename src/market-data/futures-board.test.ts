@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { bareFuturesCode, FUTURES_CONTRACTS, futuresBoardContract, futuresBoardContractForTicker, futuresContractByName } from "./futures-board";
+import { bareFuturesCode, FUTURES_CONTRACTS, futuresBoardContract, futuresBoardContractForTicker, futuresContractByName, futuresContractByWord } from "./futures-board";
 
 test("every board row is its future as a typed argument, and under the cursor only where no security keeps its code", () => {
   for (const row of FUTURES_CONTRACTS) {
@@ -24,4 +24,15 @@ test("a commodity's name finds its board row: the plainest match first, then boa
     .toEqual(["CC", "SB", "OJ", "ZS", "CL", "CL", "NG", "6J", "ZW", "NG"]);
   // Two letters are a slip of a code, not a name; a word no row holds is nothing.
   expect(["co", "", "pork bellies", null].map(named)).toEqual([null, null, null, null]);
+});
+
+test("a commodity's word typed as a symbol names its future, and a ticker that only starts one names none", () => {
+  // `quote BRENT WTI GOLD OIL` read two ETPs, W&T Offshore, Gold.com and a dead ETN with no word of the futures.
+  const word = (symbol: string) => futuresContractByWord(symbol)?.symbol ?? null;
+  expect(["BRENT", "WTI", "wti", "GOLD", "OIL", "CRUDE", "NATGAS", "COPPER", "CORN", "CATTLE", "HOGS"].map(word))
+    .toEqual(["BZ=F", "CL=F", "CL=F", "GC=F", "CL=F", "CL=F", "NG=F", "HG=F", "ZC=F", "LE=F", "HE=F"]);
+  // Words of a row's name that are no commodity name none: DOW is the Dow, not YM=F; NOTE, BOND and DOLLAR rates and
+  // currencies; NAT and LIVE halves of a name.
+  expect(["DOW", "NAT", "LIVE", "NOTE", "BOND", "DOLLAR", "COP", "SIL", "AAPL", "BZ", "GC=F", "OI"].map(word))
+    .toEqual(Array(12).fill(null));
 });

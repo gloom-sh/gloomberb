@@ -77,6 +77,72 @@ test("a history whose latest close is not the previous close names no day, until
   expect(asked).toEqual(["SHEL.L", "SHEL.L"]);
 });
 
+test("an index moves from its daily close of the day its move is dated from, whatever its source said", async () => {
+  // ^HSI as a source served it on Fri 6 Nov 2026: Wed 4 Nov's close "vs Thu 5 Nov close", +2.35% for a -1.27% day.
+  const hsi = createTestQuote({ symbol: "^HSI", currency: "HKD", instrumentType: "INDEX", listingExchangeName: "HKSE", exchangeName: "HKSE",
+    price: 24481.86, change: 562.36, changePercent: 2.35, previousClose: 23919.5, changeSessionDate: "2026-11-06",
+    marketState: "CLOSED", lastUpdated: Date.parse("2026-11-06T08:09:00Z") });
+  const closes: Record<string, Record<string, number>> = { "^HSI": { "2026-11-04": 23919.5, "2026-11-05": 24796.98046875 } };
+  const { asked, label, date } = dailyCloses(closes);
+  expect(label(hsi)).toBe("vs Thu 5 Nov close");
+  const measured = await date(hsi);
+  // The bar's float32 close is the decimal it is, as Gloom Cloud serves it.
+  expect(measured).toMatchObject({ previousClose: 24796.98, previousCloseDate: "2026-11-05" });
+  expect(measured.changePercent).toBeCloseTo(-1.2708, 3);
+  expect(label(measured)).toBe("vs Thu 5 Nov close");
+  // A copy with the right close is checked once and left as it is; history without that day leaves the source's close.
+  const right = { ...hsi, previousClose: 24796.98, change: -315.12, changePercent: -1.27 };
+  expect(await date(right)).toMatchObject({ previousClose: 24796.98, change: -315.12 });
+  expect(asked).toEqual(["^HSI", "^HSI"]);
+  delete closes["^HSI"]!["2026-11-05"];
+  const behind = { ...hsi, changeSessionDate: "2026-11-09", previousClose: 23900, lastUpdated: Date.parse("2026-11-09T08:09:00Z") };
+  expect((await date(behind)).previousClose).toBe(23900);
+});
+
+test("an index's bars are dated where it trades, and a bar not closed yet is no close", async () => {
+  // The Nikkei's bars stamped at Tokyo's midnight: by the UTC date, Fri 6 Nov's bar would be read as Thursday's close.
+  const nikkei = createTestQuote({ symbol: "^N225", currency: "JPY", instrumentType: "INDEX", listingExchangeName: "OSAKA",
+    exchangeName: "OSAKA", price: 57434.77, change: -2565.23, changePercent: -4.28, previousClose: 60000, changeSessionDate: "2026-11-06",
+    marketState: "CLOSED", lastUpdated: Date.parse("2026-11-06T06:45:00Z") });
+  const tokyo = [
+    { date: new Date("2026-11-04T15:00:00Z"), close: 61077.8984375 },
+    { date: new Date("2026-11-05T15:00:00Z"), close: 57434.77 },
+  ];
+  // A copy of the Hang Seng's bars kept from Thursday's session, its Thursday bar still forming.
+  const hsi = createTestQuote({ symbol: "^HSI", currency: "HKD", instrumentType: "INDEX", listingExchangeName: "HKSE", exchangeName: "HKSE",
+    price: 24481.86, change: -315.12, changePercent: -1.27, previousClose: 24796.98, changeSessionDate: "2026-11-06",
+    marketState: "CLOSED", lastUpdated: Date.parse("2026-11-06T08:09:00Z") });
+  const kept = [
+    { date: new Date("2026-11-04T01:30:00Z"), close: 23919.5 },
+    { date: new Date("2026-11-05T01:30:00Z"), close: 24500.12, partial: true },
+  ];
+  const dates = new PreviousCloseDates(async ({ symbol }) => symbol === "^N225" ? tokyo : kept, { now: () => NOW });
+  await dates.settle([entry(nikkei), entry(hsi)], { waitMs: 5_000 });
+  expect(dates.known(nikkei, listing(nikkei))).toMatchObject({ previousClose: 61077.9, previousCloseDate: "2026-11-05" });
+  expect(dates.known(hsi, listing(hsi))).toMatchObject({ previousClose: 24796.98, change: -315.12 });
+  expect(dates.known(hsi, listing(hsi)).previousCloseDate).toBeUndefined();
+});
+
+test("an index close corrected from its bars is read again ten minutes on, so a wrong bar cannot stand for the session", async () => {
+  const hsi = createTestQuote({ symbol: "^HSI", currency: "HKD", instrumentType: "INDEX", listingExchangeName: "HKSE", exchangeName: "HKSE",
+    price: 24481.86, change: -315.12, changePercent: -1.27, previousClose: 24796.98, changeSessionDate: "2026-11-06",
+    marketState: "CLOSED", lastUpdated: Date.parse("2026-11-06T08:09:00Z") });
+  const closes: Record<string, Record<string, number>> = { "^HSI": { "2026-11-05": 24500 } };
+  const { dates, asked, advance } = dailyCloses(closes);
+  await dates.settle([entry(hsi)], { waitMs: 5_000 });
+  expect(dates.known(hsi, listing(hsi)).previousClose).toBe(24500);
+  // Within ten minutes the correction answers without a read.
+  advance(5 * 60_000);
+  expect(dates.observe(hsi, listing(hsi)).previousClose).toBe(24500);
+  expect(asked).toEqual(["^HSI"]);
+  // Past them the bars are read again; once they agree with the source, its close stands.
+  closes["^HSI"]!["2026-11-05"] = 24796.98;
+  advance(6 * 60_000);
+  await dates.settle([entry(hsi)], { waitMs: 5_000 });
+  expect(asked).toEqual(["^HSI", "^HSI"]);
+  expect(dates.known(hsi, listing(hsi))).toMatchObject({ previousClose: 24796.98, previousCloseDate: "2026-11-05" });
+});
+
 test("a quote its venue's calendar or its source dates asks for no history", async () => {
   const { dates, asked } = dailyCloses({});
   expect(dates.observe(hk, listing(hk))).toBe(hk);
@@ -131,4 +197,29 @@ test("waiting for the closes stops at its limit or when the caller stops waiting
   await dates.settle([entry(neste)], { waitMs: 60_000, signal: controller.signal });
   expect(performance.now() - started).toBeLessThan(5_000);
   expect(dates.known(shell, listing(shell))).toBe(shell);
+});
+
+test("a board of indices checks them side by side and waits briefly; a Cboe index is left to Cboe's closes", async () => {
+  // `fn WEI` checks two dozen indices: queued six at a time behind the dating reads, it ran 2.5 s slower than before.
+  let inFlight = 0;
+  let most = 0;
+  const asked: string[] = [];
+  const dates = new PreviousCloseDates(async ({ symbol }) => {
+    asked.push(symbol);
+    inFlight += 1;
+    most = Math.max(most, inFlight);
+    await Bun.sleep(symbol === "^SLOW" ? 5_000 : 20);
+    inFlight -= 1;
+    return [{ date: new Date("2026-11-05T01:30:00Z"), close: 100 }];
+  }, { now: () => NOW, maxReadsInFlight: 2, indexWaitMs: 100 });
+  const index = (symbol: string, venue = "HKSE") => createTestQuote({ symbol, instrumentType: "INDEX", listingExchangeName: venue,
+    exchangeName: venue, price: 101, change: 2, changePercent: 2, previousClose: 99, changeSessionDate: "2026-11-06",
+    marketState: "CLOSED", lastUpdated: Date.parse("2026-11-06T08:09:00Z") });
+  const board = [...Array.from({ length: 12 }, (_, at) => index(`^I${at}`)), index("^SLOW"), index("^VIX", "CBOE INDICES")];
+  const started = performance.now();
+  await dates.settle(board.map(entry), { waitMs: 2_500 });
+  expect(performance.now() - started).toBeLessThan(1_000);
+  expect(most).toBe(13);
+  expect(asked).not.toContain("^VIX");
+  expect(dates.known(board[0]!, listing(board[0]!))).toMatchObject({ previousClose: 100, change: 1 });
 });

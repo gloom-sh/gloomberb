@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import type { Quote } from "../../types/financials";
 import { createTestCliContext } from "../../test-support/cli-context";
@@ -64,4 +64,41 @@ test("beside other symbols the yield rows keep their own units and the header st
   expect(result.data[1]).not.toHaveProperty("unit");
   const compared = await quote([yields[0]!], "compare");
   expect(compared.text.split("\n").find((line) => line.startsWith("^TNX"))).toMatch(/ 5\.24% +\+1\.3bp .* 5\.23%( |$)/);
+});
+
+test("an index's final close reads CLOSED, not after hours, and a yield exports the bp move the table shows", async () => {
+  // ^VIX and ^TNX after Cboe's close read "AFTER-HRS · 15 min delayed", and ^TNX's CSV held 0.45 beside "+2.2bp".
+  setSystemTime(new Date("2026-11-06T21:35:00Z"));
+  try {
+    const closed = { marketState: "POST", lastUpdated: Date.parse("2026-11-06T21:15:00Z") } satisfies Partial<Quote>;
+    const vix = { ...base, ...closed, symbol: "^VIX", price: 25.64, change: -2.54, changePercent: -9.01 } as Quote;
+    const tnx = { ...base, ...closed, symbol: "^TNX", price: 4.859, change: 0.022, changePercent: 0.4548,
+      lastUpdated: Date.parse("2026-11-06T19:59:00Z") } as Quote;
+    const { result, options } = await quote([vix, tnx]);
+    const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
+    const header = csv[0]!.split(",");
+    const cell = (symbol: string, column: string) => csv.find((line) => line.startsWith(symbol))!.split(",")[header.indexOf(column)];
+    expect([cell("^VIX", "Session"), cell("^TNX", "Session")]).toEqual(["CLOSED", "CLOSED"]);
+    expect([cell("^TNX", "Chg%"), cell("^TNX", "Chg bp"), cell("^TNX", "currency_or_unit")]).toEqual(["0.45", "2.2", "pct"]);
+    expect(cell("^VIX", "Chg bp")).toBe("");
+    // Each row is as of its own price, not the table's latest.
+    expect([cell("^VIX", "as_of"), cell("^TNX", "as_of")]).toEqual(["2026-11-06T21:15:00.000Z", "2026-11-06T19:59:00.000Z"]);
+    // A stock's after-hours session is still one.
+    const { result: stockResult, options: stockOptions } = await quote([{ ...stock, ...closed }]);
+    const stockCsv = serializeCliResult(stockResult, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, stockOptions).split("\n");
+    expect(stockCsv[1]!.split(",")[stockCsv[0]!.split(",").indexOf("Session")]).toBe("AFTER-HRS");
+    expect(stockCsv[0]).not.toContain("Chg bp");
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("a home line's quote says nothing of an ADR unless its receipt is quoted beside it", async () => {
+  // RHM.DE and BA.L each warned "1 RNMBY ADR = 0.2 of these shares" on a plain quote.
+  const pair = { receipt: "BAESY", ratio: 4, ordinary: ["BA.L"] };
+  const home = { ...base, instrumentType: "EQUITY", currency: "GBP", symbol: "BA.L", price: 18.46, change: -0.34, changePercent: -1.83, depositaryPair: pair } as Quote;
+  const receipt = { ...base, instrumentType: "EQUITY", symbol: "BAESY", price: 98.5, change: -1.2, changePercent: -1.2, depositaryPair: pair, isDepositaryReceipt: true } as Quote;
+  expect((await quote([home])).result.warnings ?? []).toEqual([]);
+  expect((await quote([home, receipt])).result.warnings).toEqual(["BA.L: 1 BAESY ADR = 4 of these shares.", "BAESY: 1 ADR = 4 ordinary shares of BA.L."]);
+  expect((await quote([receipt])).result.warnings).toEqual(["BAESY: 1 ADR = 4 ordinary shares of BA.L."]);
 });

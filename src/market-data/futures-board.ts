@@ -271,6 +271,51 @@ export function futuresContractByName(value: unknown): FuturesContract | null {
 }
 
 /**
+ * The commodity words that name a board row when typed as a symbol, and the
+ * future each stands for: energy, metals, grains and softs, livestock. A list,
+ * not the words of every row's name, so DOW, NOTE, BOND, DOLLAR, NAT and LIVE,
+ * words of index, rate, currency and livestock rows, name none.
+ */
+const COMMODITY_WORDS: Readonly<Record<string, string>> = {
+  BRENT: "BZ=F",
+  WTI: "CL=F",
+  OIL: "CL=F",
+  CRUDE: "CL=F",
+  NATGAS: "NG=F",
+  GASOLINE: "RB=F",
+  RBOB: "RB=F",
+  GOLD: "GC=F",
+  SILVER: "SI=F",
+  COPPER: "HG=F",
+  ALUMINUM: "ALI=F",
+  ALUMINIUM: "ALI=F",
+  PLATINUM: "PL=F",
+  PALLADIUM: "PA=F",
+  CORN: "ZC=F",
+  WHEAT: "ZW=F",
+  SOYBEANS: "ZS=F",
+  SOYBEAN: "ZS=F",
+  SOY: "ZS=F",
+  COFFEE: "KC=F",
+  SUGAR: "SB=F",
+  COCOA: "CC=F",
+  COTTON: "CT=F",
+  LUMBER: "LBR=F",
+  CATTLE: "LE=F",
+  HOGS: "HE=F",
+};
+
+/**
+ * The board row a commodity's word names when typed as a symbol (BRENT is
+ * Brent Crude Oil, BZ=F; WTI, OIL and CRUDE are WTI Crude Oil, CL=F; GOLD is
+ * GC=F), from COMMODITY_WORDS alone. Null for any other word.
+ */
+export function futuresContractByWord(symbol: unknown): FuturesContract | null {
+  const future = COMMODITY_WORDS[typed(symbol).toUpperCase()];
+  return future ? FUTURES_CONTRACTS.find((contract) => contract.symbol === future) ?? null : null;
+}
+
+/**
  * The future a bare symbol typed for a security stands for: a code no listed
  * security answers to (TTF is TTF=F). Null for every other symbol, and for a
  * code a security keeps (NG), whose future is NG=F.

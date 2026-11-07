@@ -1,3 +1,4 @@
+import { futuresContractByWord } from "../market-data/futures-board";
 import { notATickerSymbol } from "../sources/provider-errors";
 import { boardCoinFor } from "./board-coins";
 import { currencyNameHint } from "./currency-name-hint";
@@ -54,8 +55,11 @@ export function withSearchHints(text: string, args: readonly string[], isFredSer
       const coin = boardCoinFor(id);
       if (coin) return `${sentence} Did you mean ${coin.symbol}${coin.name && coin.name.toUpperCase() !== coin.symbol ? ` (${coin.name})` : ""}?`;
       const tenor = treasuryYieldTenor(typed);
-      // A currency's name (`yen`) is its rate and its pair, not a ticker search could find.
-      return `${sentence} ${tenor ? treasuryYieldHint(tenor) : currencyNameHint(typed) ?? searchHint(typed)}`;
+      // A currency's name (`yen`) is its rate and its pair, not a ticker search could find; a commodity's word
+      // (`oil`, `brent`) is its future, which no search for the word finds first.
+      const future = futuresContractByWord(id);
+      const commodity = future ? `For ${future.name}, quote the future ${future.symbol}.` : null;
+      return `${sentence} ${tenor ? treasuryYieldHint(tenor) : currencyNameHint(typed) ?? commodity ?? searchHint(typed)}`;
     })
     : named;
 }

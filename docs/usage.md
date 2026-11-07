@@ -622,7 +622,7 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 
 `gloom fn GIP <ticker>` ends with the session's low and high and the UTC time each traded (`USDT-USD:CCC session low  0.99833 at 2026-10-17 11:30 UTC`; over several sessions they read low and high). `GIP` dates sessions on the listing's exchange clock, read from its exchange or its suffix (`RMS.AX` is the ASX). A bare symbol with no known exchange is dated in UTC.
 
-A US listing's bars are the regular session only, from the 09:30 New York open, and the report says so (in `--csv`, as a `# note:` line): an 08:30 release falls before its first bar. `--csv` writes each price as the decimal it traded at (`85.1`, not the feed's `85.099998`; a sub-penny print such as `86.3775` stays), under `Open,High,Low,Close,Volume` with no `Value` column repeating Close; `--json` keeps `value` beside `close`.
+A US listing's bars are the regular session only, from the 09:30 New York open, and the report says so (with `--csv`, as a `note:` line on stderr): an 08:30 release falls before its first bar. `--csv` writes each price as the decimal it traded at (`85.1`, not the feed's `85.099998`; a sub-penny print such as `86.3775` stays), under `Open,High,Low,Close,Volume` with no `Value` column repeating Close; `--json` keeps `value` beside `close`.
 
 A zero or negative price is kept for a futures instrument. For any other instrument a nonpositive close in the window makes the result unavailable, and JSON metadata keeps the rejected values and dates in `intradayPriceDomainFailures`.
 
@@ -1215,7 +1215,7 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 - `released` is when the figure came out: the row's time (a day alone for a row that states no time), empty until the row has an actual. A row with no figures at all (a speech, a meeting) has come out once its time has passed, so it carries its own time; one still to come, and a release with a forecast and no actual yet, leave it empty. It is the row's `as_of`. `period` is the reference period as its publisher words it (`Sep 2026`, `Q3 2026`, `22 Oct 2026`), `retrieved` when this export read the calendar. `--json` has `referencePeriod` and `released` on the row, and the retrieval time in `metadata.freshness.retrievedAt`.
 - `indicatorId` (`symbol_or_series` in CSV and NDJSON) names the indicator a row is a release of: `us-unemployment-rate`, `gb-services-pmi-flash`. It is the same every month and whichever listing the row comes from; a row's own id changes when it moves from the week's listing to the stored calendar, so it is not kept. It is empty for a row the server sends none for.
 - `consensusFeed` and `consensusReadAt` (`consensus_feed` and `consensus_read_at` in CSV) say which feed the forecast was read from, `week-feed` or `release-calendar`, and when that feed was read. They are empty for a row with no forecast and for one kept before the read was recorded.
-- A window the default cap of 50 rows cut says so as the last lines of a `--csv` (`# note: showing the oldest 50 of 751 rows; --tail 50 for the latest`), as the text and `--json` do, with `--limit` to raise it; `--ndjson` writes it to stderr, so its stdout stays rows. The lines the text prints under the table (where the stored calendar starts, a bank that gives no time) are `# note:` lines in `--csv` too, and on stderr in `--ndjson`.
+- A window the default cap of 50 rows cut says so on stderr with `--csv` and `--ndjson` (`note: showing the oldest 50 of 751 rows; --tail 50 for the latest`), as the text and `--json` do, with `--limit` to raise it, so stdout stays rows. The lines the text prints under the table (where the stored calendar starts, a bank that gives no time) are `note:` lines on stderr too.
 
 **Central banks and CPI dates.** The calendar also lists the rate decisions of the central banks `fn CBR` follows (Banxico, Copom, SARB, CBRT, RBI, BoK and the rest), each with the policy rate before it as Prior, and the CPI release dates INEGI (Mexico) and IBGE (Brazil) publish.
 
@@ -1352,7 +1352,7 @@ By rating, AAA to BBB: `BAMLC0A1CAAAEY`, `BAMLC0A2CAAEY`, `BAMLC0A3CAEY`, `BAMLC
 
 **Start dates.** Without `--start` it begins at 2021-01-01 and says so under the table. `--start` takes a date as any date option does, or `yyyy` and `yyyy-mm`.
 
-- A series that begins later starts at its first observation (`fred DEXSFUS --start 1975` begins 1980-01-02), and says when, under the table and as a `# note:` line at the end of `--csv`. A day FRED has no value for inside the series (a holiday) stays a row with a blank value.
+- A series that begins later starts at its first observation (`fred DEXSFUS --start 1975` begins 1980-01-02), and says when, under the table and as a `note:` line on stderr with `--csv`. A day FRED has no value for inside the series (a holiday) stays a row with a blank value.
 - A start past the series' last observation names the latest one, and `--csv` and `--ndjson` fail with a `--start` that reaches it.
 
 **What the table prints**
@@ -1724,7 +1724,7 @@ A company's listings are the ones Gloom Cloud groups under one issuer (share cla
 **Functions behind the sign-in wall.** A pane behind the wall, such as `fn DIAG MSTR` signed out, says `Requires a free Gloom sign-in`, and `catalog DIAG` lists it under Requires (`gloom catalog` lists each with what it Requires).
 
 - A report that read nothing because a wall covered the whole pane cites no source and says `the pane is locked, so no values were read` (`--json` marks it `locked`).
-- A function a wall covers whole says what a free account can still read instead and names the app's Log In and UPGRADE commands, in the same three lines as text, as the `reason` of `--json` and as the `# incomplete` line of `--csv`. An account whose email is not verified yet is told to resend the verification email.
+- A function a wall covers whole says what a free account can still read instead and names the app's Log In and UPGRADE commands, in the same three lines as text, as the `reason` of `--json` and, with `--csv`, as the `incomplete:` line it writes to stderr. An account whose email is not verified yet is told to resend the verification email.
 - `fn EM`, `fn GUID` and `fn BUZZ` need only a free sign-in (`needs a free Gloom sign-in` instead of Pro). EM and GUID point at `earnings` and `fn GUIDE`, and BUZZ has no free route.
 
 The free routes the wall names, only when they have data for the ticker:
@@ -1764,7 +1764,7 @@ A FRED series ID given where a ticker goes says to chart it as `fn G fred:DEXSFU
 
 **Bars the source does not serve.** A chart asked for bars the source does not serve for the range (`fn G USDZAR=X --rangePreset ALL --chartResolution 1d`) says so on stderr and in `--json` (`warnings`, `data.metadata.resolution`): `1d is not available for ALL on USDZAR=X (1d bars go back 5Y at most); returning 1mo bars.` Each row's `interval` is the bars returned.
 
-**Trailing lines.** After the data, CSV ends with `#` lines: the source, as-of and status line the text prints, the [export source lines](#how-current-a-report-is), `# incomplete` with what is missing (`# incomplete: 19 of 20 available`), and `# error:` and `# note:` lines, among them what a `--limit` or a command's default cap left out (`# note: showing the oldest 50 of 751 rows; --tail 50 for the latest`). `--ndjson` says that on stderr. `pandas.read_csv(..., comment="#")` skips them.
+**Trailing lines.** A CSV written to standard output or `--output` holds its rows alone, so a spreadsheet opens it without junk rows. Its closing lines go to stderr, beside the warnings: the source, as-of and status line the text prints, the [export source lines](#how-current-a-report-is), `incomplete` with what is missing (`incomplete: 19 of 20 available`), and `error:` and `note:` lines, among them what a `--limit` or a command's default cap left out (`note: showing the oldest 50 of 751 rows; --tail 50 for the latest`). `--ndjson` says the same on stderr. Every row still names its source and as-of in its own columns (below). A report of several tables keeps a `# section:` line over each.
 
 #### What every exported row says
 
@@ -1775,8 +1775,8 @@ Exports end each row with five fixed columns, so a row still says what it is aft
 | `symbol_or_series` | The symbol or series ID asked for: `USDZAR=X`, `SAN:EPA`, `DEXSFUS`; each row's own ticker in a table of several (`fn DVD MUB VTEB`); blank for a report about no one symbol |
 | `currency_or_unit` | The currency or unit of the values: `ZAR`, `USD`, `JPY per USD` (a pair's quote currency per base), `bp`, `pct`, `index points`; blank when the values mix units (their headers name them) |
 | `interval` | The bar interval or observation frequency actually returned: `1d`, `1mo`, `daily`, `monthly`, `spot` for an FX rate, `snapshot` for an options chain |
-| `source` | The source the `# Source:` line names: `Gloom Cloud`, `FRED` |
-| `as_of` | The `# Observation date:` of the export in ISO 8601, the same on every row; blank when it reads `not published`. Rows dated apart carry their own (a `fn DVD` ranking dates each ticker's row by the price its yields are over). In a statistic's export (below) it is the day or time the figure was released |
+| `source` | The source the `Source:` line names: `Gloom Cloud`, `FRED` |
+| `as_of` | The `Observation date:` of the export in ISO 8601, the same on every row; blank when it reads `not published`. Rows dated apart carry their own (a `fn DVD` ranking dates each ticker's row by the price its yields are over). In a statistic's export (below) it is the day or time the figure was released |
 
 `econ`, `fred` and `fn ECST` also end each row with three more columns, after the five: `period` (the period the figure covers), `released` (when it came out, empty where the data does not say) and `retrieved` (when the export read it, an ISO time in UTC). Their `as_of` is the release, never the retrieval time or the first day of the period. In `fn ECST` the table's own `period` and `released` columns stand in for them, and `Previous period` says which period `Previous` is. `history` and the other market data keep `as_of` as the time of their last bar or quote.
 
@@ -1786,7 +1786,7 @@ A row's own `symbol` and `currency` fill the first two when a command does not s
 
 **How far back.** `financials` and `fn FA` close with how far back their periods go (`annual history from 2021; older years not served`, and for `--period quarterly` the oldest quarter), and the route to more when there is one: `gloom fn GF KO --period annual --periods 40` reads one metric over every period it holds. A listing whose `GF` history goes no further back (most listings outside the US start in 2022) says `older years not available for this listing` instead. Quarterly growth is vs prior quarter. A company that reports half-yearly (Qantas on ASX) has no quarters: `--period quarterly` says so and names `--period annual`. A share count of zero, or one a thousandth of the company's usual count, is shown as missing.
 
-**An old latest period.** A latest period over 15 months old is said first (`Latest period 2024-06-30 is 27 months old.`), and a newer column with only some figures (an EPS alone) is named instead of read as current. FA's ratio tabs say it too, and it is a `# note:` in `--csv` and `notes` in `--json`.
+**An old latest period.** A latest period over 15 months old is said first (`Latest period 2024-06-30 is 27 months old.`), and a newer column with only some figures (an EPS alone) is named instead of read as current. FA's ratio tabs say it too, and it is a `note:` on stderr with `--csv` and `notes` in `--json`.
 
 **ASX listings whose statements lag.** Gloom Cloud fills the newer years from ASX's key statistics (revenue and net income, and the newest year's total assets and liabilities for a company reporting in AUD), never a year the statements already have. The next line names them (`From ASX key statistics (read 2026-10-22): 2026-06-30 revenue, net income; ...`), and each row carries `filledFrom` in `--json`.
 
@@ -1800,7 +1800,7 @@ The plain commands that print market data end the same way: `quote`, `compare`, 
 
 A top-level `source` object has `name`, `publisher`, `observationDate`, `publicationTime`, `retrievalTime`.
 
-**In `--csv`,** the line ends the export as a `#` comment after the rows, followed by `# Publisher:`, `# Observation date:` (with `# Oldest observation:` for a portfolio whose rows are dated apart, see [What a portfolio is priced at](#what-a-portfolio-is-priced-at)), `# Publication time:` and `# Retrieval time:` (UTC).
+**In `--csv`,** the line goes to stderr after the rows, followed by `Publisher:`, `Observation date:` (with `Oldest observation:` for a portfolio whose rows are dated apart, see [What a portfolio is priced at](#what-a-portfolio-is-priced-at)), `Publication time:` and `Retrieval time:` (UTC); the file keeps the rows alone.
 
 `--ndjson` stays rows only, each ending with the [five fixed fields](#what-every-exported-row-says). A field the data does not state reads `not published` in CSV and `null` in JSON, never a guess.
 
@@ -1912,7 +1912,7 @@ A future has no regular close. At the close it is priced at its exchange settlem
 The `--json` and `--csv` rows of `portfolio show` and `fn PF` end with `valuationBasis` (`latest-print` or `regular-close`), `valuationPrice` (the price Value uses, in the quote's currency) and `valuationAsOf` (an ISO time in UTC, or a date for a close whose hour the venue's calendar does not give), followed in `--csv` by the [five fixed columns](#what-every-exported-row-says). `quoteAsOf` keeps the quote's own time.
 
 - `portfolio show --json` adds `metadata.valuationBasis`, and with `--close` `dayChange` and `dayChangePercent` (in `metadata.totals` for `fn PF`). A future valued at its settlement adds `valuationPriceKind: "settle"`.
-- `# Observation date:` is the newest of those prices and `# Oldest observation:` the oldest when the rows differ (`source.oldestObservationDate` in JSON).
+- `Observation date:` is the newest of those prices and `Oldest observation:` the oldest when the rows differ (`source.oldestObservationDate` in JSON).
 
 ## P&L over a period
 

@@ -1,5 +1,6 @@
 import { classifyInstrumentType, isCryptoVenuePerpetual } from "../../tickers/instrument-kind";
 import type { PriceBasis } from "../../types/instrument";
+import type { MarketState, Quote } from "../../types/financials";
 
 /**
  * The unit an index level is in, as a chart's axis and series name it. A
@@ -19,6 +20,9 @@ export const INDEX_POINTS_LABEL = "Index points";
 /** How an export names it, in `currency_or_unit` and a `unit` field. */
 export const INDEX_POINTS_EXPORT_UNIT = "index points";
 
+/** How an export names a Cboe yield index's unit (^TNX at 4.859 is a yield in percent), in `quote` and `history` alike. */
+export const YIELD_INDEX_EXPORT_UNIT = "pct";
+
 /**
  * An index level is points, not money: ^GSPC at 7,805.45 or ^VIX at 19.99 has
  * no currency to name, wherever it is shown, though its quote names the
@@ -26,6 +30,31 @@ export const INDEX_POINTS_EXPORT_UNIT = "index points";
  */
 export function isIndexLevel(instrumentType: string | null | undefined): boolean {
   return classifyInstrumentType(instrumentType) === "index";
+}
+
+/**
+ * A bar's volume as an index level reports it. An index's 0 is a volume its
+ * source does not count (^HSI's hourly bars, a day built from its quote),
+ * never a session without trades: none, as `quote` leaves it blank. An index
+ * whose source sums its members' volume (^GSPC) keeps it, as any other bar does.
+ */
+export function indexBarVolume(volume: number | null | undefined, instrumentType: string | null | undefined): number | null {
+  if (volume == null || !Number.isFinite(volume)) return null;
+  return volume === 0 && isIndexLevel(instrumentType) ? null : volume;
+}
+
+/**
+ * The market state an index level's quote is read in. An index is computed in
+ * its regular session only: a source's POST beside no after-hours print is that
+ * session's final close (^VIX and ^TNX after Cboe's close), so it reads CLOSED,
+ * as the status cell and the source line say it. Any other quote keeps its state.
+ */
+export function indexLevelMarketState(quote: Pick<Quote, "marketState" | "instrumentType" | "postMarketPrice">): MarketState | undefined {
+  const state = quote.marketState;
+  if ((state === "POST" || state === "POSTPOST") && isIndexLevel(quote.instrumentType) && !(quote.postMarketPrice != null && quote.postMarketPrice > 0)) {
+    return "CLOSED";
+  }
+  return state;
 }
 
 /** The currency a quote's price is in: none for an index level, nor for a quote that names none. */

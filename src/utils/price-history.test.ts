@@ -130,6 +130,15 @@ describe("normalizePriceHistory", () => {
     expect(isPriceHistoryStaleForCurrentWindow(london, Date.parse("2026-10-02T19:00:00Z"), { exchange: "LSE", intervalMs: 60_000 })).toBe(false);
   });
 
+  test("reads a bare index symbol's bars against the venue its sessions follow, not New York's", () => {
+    // ^HSI's last hourly bar of Fri 6 Nov 2026 (15:30 to 16:30 Hong Kong), read that night, over the weekend and on Monday.
+    const hsi = [{ date: new Date("2026-11-06T07:30:00Z"), close: 24481.86 }];
+    const stale = (at: string) => isPriceHistoryStaleForCurrentWindow(hsi, Date.parse(at), { symbol: "^HSI", exchange: "", intervalMs: priceHistoryIntervalMs("1h") });
+    expect(stale("2026-11-06T21:50:00Z")).toBe(false);
+    expect(stale("2026-11-08T12:00:00Z")).toBe(false);
+    expect(stale("2026-11-09T04:00:00Z")).toBe(true);
+  });
+
   test("keeps the last session current after the next open until its first delayed bar is due", () => {
     const stale = (date: string, at: string, interval: string) => isPriceHistoryStaleForCurrentWindow(
       [{ date: new Date(date), close: 100 }], Date.parse(at), { exchange: "LSE", intervalMs: priceHistoryIntervalMs(interval) });

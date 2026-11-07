@@ -8,7 +8,7 @@ import { findNamedCollection, readWatchlistArgument } from "../../../portfolio/c
 import type { DataProvider } from "../../../types/data-provider";
 import type { Portfolio, TickerRecord, Watchlist } from "../../../types/ticker";
 import { AmbiguousTickerError, resolveTickerSearch, upsertTickerFromSearchResult } from "../../../tickers/search";
-import { parseTickerListInput } from "../../../tickers/list";
+import { MAX_TICKER_LIST_SIZE, parseTickerListInput } from "../../../tickers/list";
 import { resolveTickerOpenTarget, type TickerOpenTarget } from "../../../tickers/open-target";
 import { settleTypedListingKey } from "../../../tickers/listing-venues";
 import { tickerHasListingSuffix } from "../../../sources/listing-symbols";
@@ -286,7 +286,8 @@ export async function resolveTickerListInput(
     return read.symbols;
   }
 
-  const tokens = parseTickerListInput(rawInput);
+  // A function that takes more than ten (QQ) reads its own cap, as `fn` does.
+  const tokens = parseTickerListInput(rawInput, reading?.maximum ?? MAX_TICKER_LIST_SIZE);
   const symbols: string[] = [];
   const seen = new Set<string>();
 

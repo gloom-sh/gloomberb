@@ -85,6 +85,8 @@ export const tickerDetailModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 72, height: 10 },
+      // The board's quotes as `fn QQ --csv` writes them.
+      tableExport: true,
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
       settings: (context) => withLiveStreamingSetting(
         buildQuoteMonitorSettingsDef(context.settings),

@@ -19,7 +19,7 @@ import type {
   TickerFinancials,
 } from "../../types/financials";
 import { currencyPriceMinDigits, formatMarketPrice, formatMarketPriceWithCurrency, nearParCoinPriceDigits, penceFigure, quoteFormatOptions, withCurrencyMinorDigits } from "../../market-data/market/format";
-import { INDEX_POINTS_EXPORT_UNIT, isIndexLevel, reportedQuoteVolume } from "../../market-data/market/index-level";
+import { INDEX_POINTS_EXPORT_UNIT, indexBarVolume, isIndexLevel, reportedQuoteVolume, YIELD_INDEX_EXPORT_UNIT } from "../../market-data/market/index-level";
 import { changeBasisJson, changeBasisLabel, changeBasisNote, futuresQuoteFromSettle, printPredatesChangeBasis, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
 import {
   EXTENDED_SESSION_LABELS,
@@ -182,7 +182,7 @@ import { fail, isCliFailure, NO_DATA_CODE } from "../errors";
 import { createConcurrencyLimiter, mapWithConcurrency } from "../../utils/concurrency";
 import { MISSING_VOLUME_TEXT } from "../../utils/price-history-integrity";
 import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
-import { bareFuturesCode, futuresBoardContract } from "../../market-data/futures-board";
+import { bareFuturesCode, futuresBoardContract, futuresContractByWord } from "../../market-data/futures-board";
 import { commodityNamedIn, commoditySearchName } from "../../market-data/commodity-names";
 import { newsEmptyMessage } from "./news-hints";
 import {
@@ -568,7 +568,8 @@ const CHANGE_BASIS_EXPORT_COLUMNS = [
  * low and high) are already in the table's own cells.
  */
 function quoteTextColumns<Column extends { key: string }>(columns: Column[]): Array<Column | typeof CHANGE_BASIS_COLUMN> {
-  const exported = new Set([...CHANGE_BASIS_EXPORT_COLUMNS, ...EXTENDED_CHANGE_EXPORT_COLUMNS, ...DAY_RANGE_EXPORT_COLUMNS].map((column) => column.key));
+  const exported = new Set([...CHANGE_BASIS_EXPORT_COLUMNS, ...EXTENDED_CHANGE_EXPORT_COLUMNS, ...DAY_RANGE_EXPORT_COLUMNS, CHANGE_BP_EXPORT_COLUMN]
+    .map((column) => column.key));
   const kept = columns.filter((column) => !exported.has(column.key));
   const at = kept.findIndex((column) => column.key === "changePercent") + 1;
   return [...kept.slice(0, at), CHANGE_BASIS_COLUMN, ...kept.slice(at)];
@@ -684,6 +685,14 @@ function quoteColumns() {
     ...EXTENDED_CHANGE_EXPORT_COLUMNS,
   ];
 }
+
+/**
+ * A yield index's move in basis points, the move the table shows (`+2.2bp`), which an export of a table holding a
+ * yield adds after its other columns; Chg% keeps the percent change it always held, blank for no yield.
+ */
+const CHANGE_BP_EXPORT_COLUMN = {
+  key: "changeBasisPoints", header: "Chg bp", value: (row: QuoteRow) => row.yieldIndex ? row.changeBasisPoints : null,
+};
 
 /** The day's low and high as numbers, after the columns an export already had. */
 const DAY_RANGE_EXPORT_COLUMNS = [
@@ -1208,18 +1217,31 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
           : null;
         return [ended ?? (quiet ? `${label}: ${quiet}` : waiting ?? []), quoteBarNotes(label, row.quote, now)].flat();
       }),
-      // A receipt and its home line each say the ratio, as `ticker` does; a CEDEAR names itself in its own.
+      // A receipt says the ratio, as `ticker` does, and its home line too when the receipt is in the table; a CEDEAR names itself
+      // in its own. A plain RHM.DE or BA.L quote involves no ADR, so it says nothing of one.
       ...data.flatMap((row) => {
         const cedear = listingCedearRatio({ quote: row.quote });
         if (cedear) return [`${cedearRatioText(cedear)}.`];
         const pair = listingDepositaryPair({ quote: row.quote });
-        return pair ? [`${row.target.symbol}: ${depositaryPairText(pair, isReceiptSide({ quote: row.quote }))}.`] : [];
+        if (!pair) return [];
+        const receiptSide = isReceiptSide({ quote: row.quote });
+        const receiptQuoted = receiptSide || data.some((other) => other !== row && isReceiptSide({ quote: other.quote })
+          && listingDepositaryPair({ quote: other.quote })?.receipt === pair.receipt);
+        return receiptQuoted ? [`${row.target.symbol}: ${depositaryPairText(pair, receiptSide)}.`] : [];
       }),
       ...endedNotes.flatMap((note) => note ?? []),
+      // A commodity's word read as a security's ticker (WTI is W&T Offshore, GOLD is Gold.com) names the future it may have meant.
+      ...data.flatMap((row, index) => {
+        const listing = asked[index]!;
+        const contract = listing.exchange || !row.quote || isFuturesInstrument(row.target.symbol, row.quote.instrumentType)
+          ? null : futuresContractByWord(row.target.symbol);
+        return contract ? [`${row.target.symbol} is ${row.listing.name || "a security"}; for ${contract.name}, quote the future ${contract.symbol}.`] : [];
+      }),
       // A cell shows only "unavailable", and an exported row only its status, so stderr names each failure; the JSON rows carry each reason.
       ...ctx.cliOptions.format !== "json" ? quoteNotes(data.filter((_row, index) => !endedNotes[index])) : [],
     ];
-    const columns = commandName === "compare" ? compareColumns() : quoteColumns();
+    const holdsYield = data.some((row) => isYieldIndexSymbol(row.target.symbol));
+    const columns = [...commandName === "compare" ? compareColumns() : quoteColumns(), ...holdsYield ? [CHANGE_BP_EXPORT_COLUMN] : []];
     const basisNotes = changeBasisNotes(data, now);
     const midNotes = extendedMidNotes(data);
     if (ctx.cliOptions.format !== "json") await primeBoardCoins(notes);
@@ -1243,7 +1265,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
         symbolOrSeries: row.symbol,
         // A pair's rate is its quote currency per base: JPY per USD, as `history` and `fx` export it.
         currencyOrUnit: (row.currency && pairExportUnit(row.symbol, row.currency))
-          || row.currency || (row.yieldIndex ? "pct" : isIndexLevel(row.instrumentType) ? INDEX_POINTS_EXPORT_UNIT : null),
+          || row.currency || (row.yieldIndex ? YIELD_INDEX_EXPORT_UNIT : isIndexLevel(row.instrumentType) ? INDEX_POINTS_EXPORT_UNIT : null),
+        // Each row as of its own price (^TNX's 19:59 beside ^VIX's 21:15), as Updated says; a row with none is blank.
+        asOf: row.updatedAt || null,
       }),
       // A row with no price or move says why in its status column, as the warnings do.
       exportStatus: quoteExportStatus,
@@ -1563,7 +1587,14 @@ async function loadListingHistory(
   const pair = quote?.instrumentType === "CURRENCY" || isCurrencyPairListing(symbol, exchange);
   // A London line's bars were priced in pence: cleaned there, and printed to the pence decimals `quote` shows.
   const priceDivisor = quotedPriceDivisor(quote);
-  const barRows = historyRows(pair ? points.map(({ volume: _volume, ...point }) => point) : points, resolution, unit.currency, unit.unit, volume, priceDivisor);
+  // An index's uncounted 0 (^HSI's hourly bars) is blank, as `quote` and HP leave it.
+  const instrumentType = quote?.instrumentType ?? listed?.instrumentType;
+  const counted = pair ? points.map(({ volume: _volume, ...point }) => point)
+    : isIndexLevel(instrumentType) ? points.map(({ volume: barVolume, ...point }) => {
+      const reported = indexBarVolume(barVolume, instrumentType);
+      return reported == null ? point : { ...point, volume: reported };
+    }) : points;
+  const barRows = historyRows(counted, resolution, unit.currency, unit.unit, volume, priceDivisor);
   // A monthly bar whose prices contradict each other keeps its close; its open, high and low come from the daily bars.
   const rows = await withMonthlyBarsRebuilt(barRows, market, symbol, exchange, context, priceDivisor,
     quote?.listingExchangeName || exchange || "");

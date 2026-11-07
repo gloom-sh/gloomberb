@@ -4,8 +4,10 @@ import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/h
 import { createTestFinancials, createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import { HistoryRetentionError } from "../../../sources/history-retention";
 import { createTestHeadlessContext } from "../../../test-support/headless";
-import type { QuoteContribution } from "../../../types/financials";
-import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import type { Quote, QuoteContribution } from "../../../types/financials";
+import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { renderReportCsv } from "../../../cli/report-tables";
 import { setCliColorEnabledOverride, setCliWidthOverride } from "../../../utils/cli-output";
 import { financialStatementsHeadless, historicalPricesHeadless, quoteComparisonHeadless, returnsHeadless } from "./headless";
 
@@ -175,15 +177,16 @@ test("quote comparison retains successful exchange-qualified inputs when a peer 
   } as HeadlessPaneContext;
   const result = await quoteComparisonHeadless.load(args(["ABC", "MISSING"]), ctx);
   expect(result.rows).toEqual([{
-    symbol: "ABC", name: "Company", price: 105, change: 5, changePercent: 5, currency: "USD",
+    symbol: "ABC", name: "Company", price: 105, change: 5, changePercent: 5, currency: "USD", unit: "USD",
     extendedSession: null, extendedPrice: null, extendedChange: null, extendedChangePercent: null,
+    session: "", feed: "", changeBasis: "vs prev close", source: "Gloom Cloud",
     marketCap: null, updatedAt: 123, stale: false,
   }]);
   expect(result.unavailableSymbols).toEqual(["MISSING"]);
   expect(result.errors).toEqual(["MISSING: No quote"]);
 });
 
-test("quote monitor exports retain FX precision and small changes without altering raw values", async () => {
+test("quote monitor JSON keeps FX precision and small changes whole; CSV writes the move as the board shows it", async () => {
   // Retained public EUR/USD quote fields; provider retrieval is not replayed here.
   const quote = { symbol: "EURUSD=X", name: "EUR/USD", instrumentType: "CURRENCY",
     price: 1.1602274179458618, change: -0.0010778820541381684,
@@ -191,7 +194,11 @@ test("quote monitor exports retain FX precision and small changes without alteri
   const ctx = { signal: new AbortController().signal, marketData: createTestDataProvider({ getQuote: async () => quote }) } as HeadlessPaneContext;
   const input = args([quote.symbol]);
   const result = await quoteComparisonHeadless.load(input, ctx);
-  expect(result.rows[0]).toMatchObject({ price: quote.price, change: quote.change, instrumentType: "CURRENCY" });
+  expect(result.rows[0]).toMatchObject({ price: quote.price, change: quote.change, changePercent: quote.changePercent, instrumentType: "CURRENCY" });
+  // The CSV's move is the one read on the board, -$0.00108 and -0.09%; Last keeps the pair's digits, as quote --csv does.
+  const freshness = deriveHeadlessFreshness(quoteComparisonHeadless, result);
+  const csv = renderReportCsv(headlessReportTables(quoteComparisonHeadless, result, input, "QQ", freshness, { complete: true, unavailableSymbols: [] }), freshness);
+  expect(csv.split("\n")[1]).toStartWith("EURUSD=X,EUR/USD,1.1602274,-0.00108,-0.09,");
   const text = renderHeadlessPaneText(quoteComparisonHeadless, result, input, "Quote Monitor");
   expect(text).toContain("$1.16023");
   expect(text).toContain("-$0.00108");
@@ -213,6 +220,49 @@ test("quote monitor shows an index in points, as quote does, whatever its curren
   expect(text).toContain("-1.79");
   expect(text).toContain("+33.23");
   expect(text).not.toMatch(/[$¥]/);
+});
+
+test("quote monitor exports date each row by its own price, with its session, feed and unit, as quote --csv does", async () => {
+  // Every row of `fn QQ "CL=F ^HSI 0005.HK RHM.DE ^TNX" --csv` was dated 21:20 UTC, with status, symbol and unit blank.
+  setSystemTime(new Date("2026-11-06T21:35:00Z"));
+  try {
+    const quotes = [
+      { symbol: "^HSI", name: "HANG SENG INDEX", instrumentType: "INDEX", currency: "HKD", price: 24481.86, change: -315.12046875,
+        changePercent: -1.2707964, previousClose: 24796.98, marketState: "CLOSED", exchangeName: "HKSE", dataSource: "delayed",
+        lastUpdated: Date.parse("2026-11-06T08:09:00Z") },
+      { symbol: "^TNX", name: "CBOE Interest Rate 10 Year T Note", instrumentType: "INDEX", currency: "USD", price: 4.859, change: 0.022,
+        changePercent: 0.454827372338, marketState: "POST", exchangeName: "CBOE INDICES", dataSource: "delayed",
+        lastUpdated: Date.parse("2026-11-06T19:59:00Z") },
+    ] as Quote[];
+    const contexts: unknown[] = [];
+    const ctx = createTestHeadlessContext({ marketData: createTestDataProvider({ getQuote: async (symbol, _exchange, context) => {
+      contexts.push(context);
+      return quotes.find((quote) => quote.symbol === symbol)!;
+    } }) });
+    const input = args(["^HSI", "^TNX"]);
+    const result = await quoteComparisonHeadless.load(input, ctx);
+    // The CLI waits for the daily close each move is dated from, as `quote` does.
+    expect(contexts).toEqual([{ datesChangeBasis: true }, { datesChangeBasis: true }]);
+    expect(result.rows.map((row) => [row.unit, row.change, row.changePercent, row.session, row.feed, row.changeBasisPoints ?? null])).toEqual([
+      ["index points", -315.12046875, -1.2707964, "CLOSED", "delayed", null],
+      ["pct", 0.022, 0.454827372338, "CLOSED", "delayed", 2.2],
+    ]);
+    expect(result).toMatchObject({ rowSymbolKey: "symbol", rowUnitKey: "unit", rowAsOfKey: "updatedAt", rowSourceKey: "source" });
+    // The CSV rounds as the board shows, dates each row by its own price, and carries ^TNX's bp move as `quote --csv` does.
+    const freshness = deriveHeadlessFreshness(quoteComparisonHeadless, result);
+    const csv = renderReportCsv(headlessReportTables(quoteComparisonHeadless, result, input, "QQ", freshness, { complete: true, unavailableSymbols: [] }), freshness)
+      .split("\n");
+    expect(csv.slice(0, 3)).toEqual([
+      "Ticker,Name,Last,Change,Change %,Chg Basis,Session,Feed,Chg bp,status,symbol_or_series,currency_or_unit,interval,source,as_of",
+      "^HSI,HANG SENG INDEX,24481.86,-315.12,-1.27,vs prev close,CLOSED,delayed,,,^HSI,index points,,Gloom Cloud,2026-11-06T08:09:00.000Z",
+      "^TNX,CBOE Interest Rate 10 Year T Note,4.859,0.022,0.45,vs prev close,CLOSED,delayed,2.2,,^TNX,pct,,Gloom Cloud,2026-11-06T19:59:00.000Z",
+    ]);
+    expect(result.rows.map((row) => new Date(row.updatedAt as number).toISOString())).toEqual(["2026-11-06T08:09:00.000Z", "2026-11-06T19:59:00.000Z"]);
+    const text = renderHeadlessPaneText(quoteComparisonHeadless, result, input, "Quote Monitor");
+    expect(text.split("\n").find((line) => line.startsWith("^HSI"))).toMatch(/24,481\.86 +-315\.12 +-1\.27% +vs prev close +CLOSED +delayed/);
+  } finally {
+    setSystemTime();
+  }
 });
 
 test("historical prices use remembered exchanges and clip and sort the full OHLCV history", async () => {

@@ -33,6 +33,12 @@ export interface DataTableCell {
    * numbers exports them read back from `text`.
    */
   value?: number | string | Date | null;
+  /**
+   * The unit `value` is in where `text` does not say it (USD for a market cap
+   * shown as 72.26B). A column whose values share one names it in its export
+   * header: MCAP (USD).
+   */
+  valueUnit?: string;
   content?: ReactNode;
   /**
    * Artwork drawn before `text` on the desktop and the web, such as a flag.
@@ -173,6 +179,18 @@ export interface DataTableProps<
   freezeFirstColumn?: boolean;
   /** Append export-only source records after the displayed table. */
   getExportMetadata?: () => readonly (readonly unknown[])[];
+  /** What the table is of, which names its exported file (`Asia shock-2026-…csv`) in place of the pane's title. */
+  exportName?: string;
+  /**
+   * Columns an export adds after the table's own, naming what each row is, as
+   * `quote --csv` ends its rows (`QUOTE_EXPORT_IDENTITY_HEADERS`): their
+   * headers, and each row's cells, or null for a row that is no record (a
+   * summary line), which exports them empty.
+   */
+  exportIdentity?: {
+    headers: readonly string[];
+    cells: (item: T) => readonly unknown[] | null;
+  };
   /**
    * What Export CSV writes in place of the rows drawn, for a pane whose
    * export is the data behind its view rather than one table: the backtest

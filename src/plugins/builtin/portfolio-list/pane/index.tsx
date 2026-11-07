@@ -1,3 +1,4 @@
+import { listHomeMarket } from "../../../../portfolio/listed-symbol";
 import { Box, useUiCapabilities } from "../../../../ui";
 import { brokerPortfolioLogo } from "../../../../brokers/logos";
 import { LogoMark } from "../../../../components/ui/logo-mark";
@@ -315,8 +316,11 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   );
 
   const now = useColumnClock(columns, appActive && viewMode === "table");
+  // A row outside the list's home market shows its venue (BA:LSE in a US list).
+  const homeMarket = useMemo(() => listHomeMarket(collectionTickers), [collectionTickers]);
   const baseColumnContext = useMemo(() => ({
     activeTab: isPortfolioTab ? activeCollectionId : undefined,
+    homeMarket,
     baseCurrency: totalsCurrency,
     exchangeRates,
     valuationBasis,
@@ -336,6 +340,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     activeCollectionId,
     exchangeRates,
     futuresTerms,
+    homeMarket,
     isPortfolioTab,
     periodColumns,
     perpetuals,
@@ -853,6 +858,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
           rootHeight={contentHeight}
           width={width}
           answeredSnapshots={answeredSnapshots}
+          exportName={activeCollectionEntry?.name}
         />
       ) : (
         <PortfolioGrid

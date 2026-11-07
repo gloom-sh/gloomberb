@@ -22,6 +22,7 @@ import { tickerDisplayName } from "../../../portfolio/column-values";
 import { PORTFOLIO_ROW_MENU_KEYS } from "./row-actions";
 import { PORTFOLIO_REORDER_THROTTLE_MS } from "./use-throttled-ticker-order";
 import { useThrottledMemo } from "./use-throttled-memo";
+import { listedSymbol } from "../../../portfolio/listed-symbol";
 
 // Tile text and colour follow quotes a few times a second; tile areas only
 // move on the reorder cadence, so a tick does not reshuffle the layout.
@@ -128,7 +129,8 @@ function tileVersion(
   isPortfolioTab: boolean,
   weight: number | undefined,
 ): string {
-  return `${isPortfolioTab}|${weight ?? ""}|${objectVersion(ticker)}|${objectVersion(financials)}|${
+  // The label names the venue by the list's home market (BA:LSE in a US list), so a tile is rebuilt when it changes.
+  return `${isPortfolioTab}|${weight ?? ""}|${context.homeMarket ?? ""}|${objectVersion(ticker)}|${objectVersion(financials)}|${
     TILE_COLUMN_IDS.map((columnId) => columnContextVersion(columnId, context)).join("|")}`;
 }
 
@@ -173,8 +175,8 @@ function buildPortfolioGridItem(
 
   return {
     id: symbol,
-    // As the table's Ticker column names it: an option reads as its contract, not its OCC code.
-    label: tickerDisplayName(ticker),
+    // As the table's Ticker column names it: an option reads as its contract, not its OCC code, BA on LSE in a US list as BA:LSE.
+    label: listedSymbol(ticker, tickerDisplayName(ticker), context.homeMarket),
     weight: layoutWeight ?? tileWeight(ticker, financials, context, isPortfolioTab),
     colorValue: positionAdjustedChangePercent(ticker, financials, context, held),
     primaryText: primary,

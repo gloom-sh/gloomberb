@@ -7,6 +7,7 @@ import { awaitingFirstDelayedPrint, isQuoteBeforeLatestSession } from "../quotes
 import { delistingLabel, delistingStateLabel } from "../quotes/delisting";
 import { preMarketOpenOn, regularSessionCloseOn, venueSessionOnOrBefore } from "./freshness";
 import { futuresWeekendClosure } from "./futures-week";
+import { indexLevelMarketState } from "./index-level";
 
 const CLOSED_CHANGE_MUTING_RATIO = 0.55;
 const US_SESSION_TIME = new Intl.DateTimeFormat("en-US", {
@@ -108,7 +109,9 @@ function quoteMarketState(quote: Quote | null | undefined, now = Date.now()): Ma
   if (!quote?.marketState) return undefined;
   if (futuresWeekendClosure(quote.listingExchangeName || quote.exchangeName, now)) return "CLOSED";
   // The session follows the venue's calendar: LSE is open at 08:09, though its delayed feed has not printed in it yet.
-  return quote.marketState !== "REGULAR" && awaitingFirstDelayedPrint(quote, now) ? "REGULAR" : quote.marketState;
+  if (quote.marketState !== "REGULAR" && awaitingFirstDelayedPrint(quote, now)) return "REGULAR";
+  // An index's final close is a close, not an after-hours session.
+  return indexLevelMarketState(quote);
 }
 
 /**

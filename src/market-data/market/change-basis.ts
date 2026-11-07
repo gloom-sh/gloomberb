@@ -89,8 +89,8 @@ const INDEX_CALENDAR_VENUES: Readonly<Record<string, string>> = {
   "CHICAGO OPTIONS": "CBOE",
 };
 
-/** The venue whose published calendar dates the quote's sessions. */
-function calendarVenue(quote: Quote): string {
+/** The venue whose published calendar dates the quote's sessions, and whose zone dates its daily bars. */
+export function calendarVenue(quote: Quote): string {
   const venue = quoteVenue(quote);
   const index = classifyInstrumentType(quote.instrumentType) === "index" || kindFromListingSyntax(quote.symbol) === "index";
   return (index && INDEX_CALENDAR_VENUES[venue]) || venue;

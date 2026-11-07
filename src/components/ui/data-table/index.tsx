@@ -40,7 +40,7 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
       name: filename,
       text: propsRef.current.exportCsv?.() ?? createDataTableCsv(propsRef.current),
       mimeType: "text/csv;charset=utf-8",
-    }));
+    }), () => propsRef.current.exportName);
   }, [paneId, renderer]);
 
   useRemoteUiNode({

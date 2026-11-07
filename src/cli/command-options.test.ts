@@ -54,11 +54,16 @@ test("an undeclared option fails with the command's options, a close match and i
   );
 });
 
-test("--currency, which no command takes, names fx with the code typed", () => {
+test("--currency and --xlsx, which no command takes, name what does, as the command was typed", () => {
   const quote: BuiltinCliCommandDef = { ...history, name: "quote", unknownOptionHint: undefined, help: { options: [{ flags: "--exchange <code>", description: "" }] } };
   expect(failure(() => check(quote, ["SBLK", "--currency", "EUR"])).details).toStartWith(
     "Prices are in each listing's own currency. To convert an amount, use fx: gloom fx 100 USD/EUR.");
   expect(failure(() => check(quote, ["SBLK", "--ccy=gbp"])).details).toContain("gloom fx 100 USD/GBP");
+  const exports = "Exports are --csv (opens in Excel and Google Sheets), --json or --ndjson: ";
+  expect(failure(() => check(quote, ["^VIX", "BA:LSE", "--xlsx"])).details).toStartWith(`${exports}gloom quote ^VIX BA:LSE --csv > quote.csv.`);
+  // The file the flag named keeps its name, as a CSV.
+  expect(failure(() => check(history, ["^TNX", "--range", "1Y", "--xlsx=rates.xlsx"])).details)
+    .toStartWith(`${exports}gloom history ^TNX --range 1Y --csv > rates.csv.`);
 });
 
 test("financials --quarterly points at the functions that list quarters, with the symbol typed", () => {

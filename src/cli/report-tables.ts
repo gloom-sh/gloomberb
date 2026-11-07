@@ -11,6 +11,7 @@ import { serializeCsv } from "../utils/csv";
 import {
   BLANK_DISPLAY,
   DISPLAY_PLACEHOLDER,
+  figureAsDrawn,
   labelWithUnit,
   parseDisplayNumber,
   type DisplayNumber,
@@ -71,6 +72,8 @@ export interface CliReportColumn<Row = Record<string, unknown>> {
    * rows loaded (a market cap in one currency for some peers, in another for others).
    */
   unitColumn?: boolean;
+  /** CSV and NDJSON write the figure to the digits `format` draws (figureAsDrawn); JSON keeps it whole. */
+  exportAsShown?: boolean;
 }
 
 /** A label/value line of a report. `unit` names the unit of a numeric `value` when `formatted` cannot say it. */
@@ -477,9 +480,10 @@ export function exportRowsTable<Row extends Record<string, unknown>>(
     const { header, cells } = resolveColumn(
       column.header,
       rows.map((row, index): Cell => {
-        const value = values[index];
         const unit = column.unitKey ? (row as Record<string, unknown> | undefined)?.[column.unitKey] : undefined;
-        const drawn = column.format ? column.format(value, row) : null;
+        const drawn = column.format ? column.format(values[index], row) : null;
+        const value = column.exportAsShown && drawn != null && typeof values[index] === "number"
+          ? figureAsDrawn(values[index], drawn) : values[index];
         // A figure the text leaves out of this row (another session's print) is not one of its figures.
         const left = drawn != null && readDisplay(drawn) === BLANK_DISPLAY;
         if (!left && typeof value === "number" && Number.isFinite(value) && (inRowUnit || (typeof unit === "string" && unit))) {
@@ -664,6 +668,22 @@ export function renderReportCsv(report: CliReportTables, freshness?: ReportFresh
     ...(table.columns.length > 0 ? [[table.columns, ...table.rows].map(csvLine).join("\n")] : []),
   ].join("\n"));
   return withCsvFooter(blocks.join("\n\n"), report.footer);
+}
+
+/**
+ * A CSV as `withCsvFooter` writes it, split into its rows and its closing
+ * lines (without their `# `): what goes to the file or pipe, where a
+ * spreadsheet would read a `#` line as a row of junk, and what goes to
+ * standard error beside the warnings. Every row already names its source and
+ * as-of in its own columns. A section's `# section:` line stays with its rows.
+ */
+export function splitCsvFooter(text: string): { csv: string; footer: string[] } {
+  const isComment = (line: string) => line.startsWith("# ");
+  const blocks = text.split("\n\n");
+  const last = blocks.at(-1) ?? "";
+  const lines = last.split("\n");
+  if (!last || !lines.every(isComment) || lines.some((line) => line.startsWith("# section: "))) return { csv: text, footer: [] };
+  return { csv: blocks.slice(0, -1).join("\n\n"), footer: lines.map((line) => line.slice(2)) };
 }
 
 /** CSV with its closing `#` lines after a blank line. */

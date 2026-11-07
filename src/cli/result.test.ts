@@ -259,6 +259,27 @@ test("a CSV or NDJSON export a --limit cut says so: CSV in a closing note line, 
   expect(quiet.stderr).toBe("");
 });
 
+test("a printed CSV is rows alone, its closing source and note lines on stderr, so a spreadsheet opens the file without junk rows", async () => {
+  const rows = [{ date: "2026-10-05" }, { date: "2026-10-06" }, { date: "2026-10-07" }];
+  const freshness = { source: "Gloom Cloud", asOf: "2026-10-23T15:48:00Z", status: "not-a-feed", basis: "calendar" } as ReportFreshness;
+  const printed = await captureConsole(() => printCliResult({ data: rows, freshness }, { ...baseOptions, format: "csv", limit: 2 }, { dateKey: "date" }));
+  expect(printed.stdout.split("\n")).toEqual([
+    "date,symbol_or_series,currency_or_unit,interval,source,as_of",
+    "2026-10-05,,,,Gloom Cloud,2026-10-23T15:48:00Z",
+    "2026-10-06,,,,Gloom Cloud,2026-10-23T15:48:00Z",
+  ]);
+  const notes = printed.stderr.split("\n");
+  expect(notes[0]).toStartWith("Source: Gloom Cloud");
+  expect(notes.at(-1)).toBe("note: showing the oldest 2 of 3 rows; --tail 2 for the latest");
+  expect(notes.some((line) => line.startsWith("#"))).toBe(false);
+  // Several tables keep the `# section:` line over each, which says whose rows follow.
+  const sections = await captureConsole(() => printCliResult({ data: rows }, { ...baseOptions, format: "csv" }, {
+    tables: { tables: [{ title: "A", columns: ["x"], rows: [[1]] }, { title: "B", columns: ["y"], rows: [[2]] }], footer: ["note: two tables"] },
+  }));
+  expect(sections.stdout).toBe("# section: A\nx\n1\n\n# section: B\ny\n2");
+  expect(sections.stderr).toBe("note: two tables");
+});
+
 test("plain output words the arrows of its tables and nothing else: a note, an answer or an error prints as written", async () => {
   setCliPlainOverride(true);
   setCliColorEnabledOverride(false);

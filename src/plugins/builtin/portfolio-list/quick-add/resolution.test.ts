@@ -38,6 +38,28 @@ describe("quick-add listing resolution", () => {
     expect(validation).toEqual({ status: "choose", query: "NET" });
   });
 
+  test("a listing is named by its own quote when search names another listing's company", async () => {
+    // Search served BA on LSE as "The Boeing Company"; its quote is BAE Systems, and the row was saved as Boeing.
+    const boeingOnLse: InstrumentSearchResult = {
+      providerId: "test", symbol: "BA", name: "The Boeing Company", exchange: "LSE", currency: "GBp", type: "Common Stock",
+    };
+    setSharedRegistryForTests({
+      marketData: createTestDataProvider({
+        search: async () => [boeingOnLse],
+        getQuote: async (_symbol, exchange) => createTestQuote({
+          symbol: "BA.L", name: "BAE Systems plc", listingExchangeName: exchange, currency: "GBP", price: 18.46,
+        }),
+      }),
+    } as PluginRegistry);
+    const validation = await resolveQuickAddValidation({
+      query: "BA:LSE", collectionId: "watchlist", collectionKind: "watchlist", tickers: new Map(), financials: new Map(),
+    });
+    expect(validation.status).toBe("ready");
+    if (validation.status !== "ready") return;
+    expect(tickerNameFromValidation(validation)).toBe("BAE Systems plc");
+    expect(validation.resolved.kind === "provider" && validation.resolved.result.name).toBe("BAE Systems plc");
+  });
+
   test("a qualified listing neither borrows nor duplicates another listing saved under its symbol", async () => {
     setSharedRegistryForTests({
       marketData: createTestDataProvider({

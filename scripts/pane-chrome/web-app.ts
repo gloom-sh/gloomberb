@@ -295,7 +295,15 @@ export async function routeDirectReads(cdp: Cdp, replay: Replay): Promise<void> 
 }
 
 /** Saved settings a sweep can give the page beyond its layout: the theme, or onboarding left to run. */
-export interface SeedOptions { theme?: string; onboardingComplete?: boolean }
+/** A ticker a seeded workspace holds: its listing, and the watchlists it is on. */
+interface SeedTicker { ticker: string; exchange: string; currency: string; name: string; assetCategory?: string; watchlists?: string[] }
+
+export interface SeedOptions {
+  theme?: string;
+  onboardingComplete?: boolean;
+  /** The tickers the workspace holds instead of the starter watchlist; each is on the default watchlist unless it says. */
+  tickers?: SeedTicker[];
+}
 
 /** A fresh workspace each load: one layout, onboarding done, usage and crash reports off, and the sweep's clock. */
 export function seedScript(layout: object, clockMs: number, focused?: string, options: SeedOptions = {}): string {
@@ -311,7 +319,15 @@ export function seedScript(layout: object, clockMs: number, focused?: string, op
   const RealDate = Date, startedAt = RealDate.now(), now = () => ${clockMs} + (RealDate.now() - startedAt);
   globalThis.Date = class extends RealDate { constructor(...args) { if (args.length === 0) super(now()); else super(...args); } static now() { return now(); } };
 })();
-localStorage.clear(); localStorage.setItem("gloomberb.web.config.v1", ${JSON.stringify(JSON.stringify(config))});`;
+localStorage.clear(); localStorage.setItem("gloomberb.web.config.v1", ${JSON.stringify(JSON.stringify(config))});${
+  options.tickers ? ` localStorage.setItem("gloomberb.web.tickers.v1", ${JSON.stringify(JSON.stringify(seededTickers(options.tickers)))});` : ""}`;
+}
+
+/** Seeded tickers as the web app keeps them (BROWSER_STORAGE_KEYS.tickers): their metadata by symbol. */
+function seededTickers(tickers: SeedTicker[]): Record<string, object> {
+  return Object.fromEntries(tickers.map(({ watchlists = ["watchlist"], ...listing }) => [listing.ticker.toUpperCase(), {
+    ...listing, portfolios: [], watchlists, positions: [], broker_contracts: [], custom: {}, tags: [],
+  }]));
 }
 
 export async function loadLayout(cdp: Cdp, url: string, replay: Replay, layout: object, focused?: string, options?: SeedOptions): Promise<void> {

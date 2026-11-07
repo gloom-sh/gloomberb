@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { formatMarketPriceWithCurrency } from "./format";
-import { INDEX_POINTS_UNIT, priceSeriesUnit, quotePriceCurrency, reportedQuoteVolume } from "./index-level";
+import { INDEX_POINTS_UNIT, indexBarVolume, indexLevelMarketState, priceSeriesUnit, quotePriceCurrency, reportedQuoteVolume } from "./index-level";
 
 test("an index level is points with no currency, by its type however a source spells it, and a stock keeps its currency", () => {
   for (const instrumentType of ["INDEX", "index", "IND"]) {
@@ -30,4 +30,17 @@ test("a volume of 0 nobody counts is no volume, while a stock's 0 and an index's
   expect(reportedQuoteVolume({ volume: Number.NaN, instrumentType: "EQUITY" })).toBeNull();
   expect(reportedQuoteVolume({ instrumentType: "EQUITY" })).toBeNull();
   expect(reportedQuoteVolume(null)).toBeNull();
+});
+
+test("an index's final close is CLOSED and its bar's uncounted 0 is no volume; a stock's after hours and 0 are kept", () => {
+  // ^VIX and ^TNX read AFTER-HRS beside no after-hours print once Cboe closed.
+  expect(indexLevelMarketState({ marketState: "POST", instrumentType: "INDEX" })).toBe("CLOSED");
+  expect(indexLevelMarketState({ marketState: "POSTPOST", instrumentType: "INDEX" })).toBe("CLOSED");
+  expect(indexLevelMarketState({ marketState: "POST", instrumentType: "INDEX", postMarketPrice: 25.1 })).toBe("POST");
+  expect(indexLevelMarketState({ marketState: "POST", instrumentType: "EQUITY" })).toBe("POST");
+  // HP ^HSI read Volume 0 on its last day; ^GSPC's summed volume and a halted stock's 0 stand.
+  expect(indexBarVolume(0, "INDEX")).toBeNull();
+  expect(indexBarVolume(3_385_400_000, "INDEX")).toBe(3_385_400_000);
+  expect(indexBarVolume(0, "EQUITY")).toBe(0);
+  expect(indexBarVolume(null, "EQUITY")).toBeNull();
 });

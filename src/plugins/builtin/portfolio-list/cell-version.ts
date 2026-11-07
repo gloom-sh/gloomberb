@@ -69,6 +69,7 @@ export function columnContextVersion(columnId: string, ctx: ColumnContext): stri
   if (PERPETUAL_COLUMN_IDS.has(columnId)) version += `|${ctx.perpetualsVersion ?? 0}`;
   if (FUTURES_TERMS_COLUMN_IDS.has(columnId)) version += `|${ctx.futuresTermsVersion ?? 0}`;
   if (columnId === "pnl" || columnId === "pnl_pct") version += `|${ctx.periodPnl ? ctx.periodPnlVersion ?? 0 : "cost"}`;
+  if (columnId === "ticker") version += `|${ctx.homeMarket ?? ""}`;
   if (columnId === "latency") version += `|${ctx.now}`;
   if (DAY_CLOCK_COLUMN_IDS.has(columnId)) version += `|${Math.floor(ctx.now / DAY_MS)}`;
   return version;

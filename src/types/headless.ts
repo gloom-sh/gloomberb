@@ -220,6 +220,11 @@ export interface HeadlessPaneColumn {
   /** With `unitKey`: always a `<header> unit` column, so the header is the same whichever rows loaded. */
   unitColumn?: boolean;
   /**
+   * CSV and NDJSON write the figure to the digits `format` draws (-315.12 for -315.12046875), as it is read on
+   * screen; JSON keeps the row's figure whole.
+   */
+  exportAsShown?: boolean;
+  /**
    * The text report prints the value on its own lines under the row instead
    * of in a column, for a footnote that belongs to that row; an empty value
    * prints nothing. Exports keep it as a column. `"line"`: one line cut to
