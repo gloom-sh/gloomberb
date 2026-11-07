@@ -2,6 +2,15 @@
 
 // The package installs this as both `gloom` and `gloomberb`.
 //
+// npm on a machine without Bun points this file at Node instead
+// (without-bun.cjs, its preinstall): Node hands over to Bun once there is
+// one, or says in one line how to get it.
+if (!process.versions.bun) {
+  const { runWithoutBun } = await import("./without-bun.cjs");
+  const { fileURLToPath } = await import("node:url");
+  process.exit(await runWithoutBun(fileURLToPath(import.meta.url), process.argv.slice(2)));
+}
+
 // Bun applies patchedDependencies only to the root project, so a global
 // `bun install -g` runs react-reconciler without
 // patches/react-reconciler@0.33.0.patch. Its dev build then records a
