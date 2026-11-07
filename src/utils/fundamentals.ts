@@ -127,6 +127,20 @@ export function enterpriseValueLabel(fundamentals: Parameters<typeof enterpriseV
 }
 
 /**
+ * Whether a company's overview names the gap between the provider's EV and market cap + debt - cash: past 10% of
+ * the computed figure. A smaller gap (a 4.87T EV beside 5T computed) is a data detail the
+ * valuation panes (RV, the reverse DCF) still give in full, not a warning to greet a first look at the company.
+ * Any other check (withdrawn, not meaningful) is always named: it is why a figure is missing.
+ */
+export function enterpriseValueGapIsLarge(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): boolean {
+  const check = enterpriseValueCheck(fundamentals);
+  if (check?.status !== "differs" || !finiteNumber(check.source) || !finiteNumber(check.computed) || check.computed <= 0) return true;
+  return Math.abs(check.source / check.computed - 1) > OVERVIEW_ENTERPRISE_VALUE_GAP;
+}
+
+const OVERVIEW_ENTERPRISE_VALUE_GAP = 0.1;
+
+/**
  * The reconciliation line under a labelled, withdrawn or not meaningful EV: "EV 61.75B USD (provider) vs 63.75B
  * computed from market cap + total debt - cash (balance sheet 2026-06-30).", "EV N/M: cash and short-term investments
  * exceed market cap + total debt (balance sheet 2026-06-30)." A balance sheet in another currency names the rate it

@@ -409,14 +409,18 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
       .filter((command) => command.id !== "quit")
       .map((command) => commandToItem(command))
       .filter((item): item is ResultItem => item !== null);
+    const pluginItems = pluginCommandItems();
+    // A layout action that is also a command (Add a Desk, DESK) is listed once, as the command.
+    const commandRows = new Set([...commandItems, ...pluginItems].map((item) => `${item.label}\u0000${item.right ?? ""}`));
     const allItems = [
       ...commandItems,
-      ...buildLayoutItems("", { confirmDangerousActions: true }),
+      ...buildLayoutItems("", { confirmDangerousActions: true })
+        .filter((item) => !commandRows.has(`${item.label}\u0000${item.right ?? ""}`)),
       ...buildPaneSettingItems(state.focusedPaneId, rootQuery),
       ...paneShortcutItems({ includePromptableTickerTemplates: true }),
       ...nonShortcutPaneTemplateItems(),
       ...tickerActionItems(),
-      ...pluginCommandItems(),
+      ...pluginItems,
     ];
     if (pastedList) items.push(pastedListItem(pastedList, executeCollectionCommand));
     items.push(...rankMatchBlock(allItems, providerMatchItems, rootQuery));

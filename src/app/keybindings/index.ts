@@ -37,6 +37,7 @@ export {
   takenChordMessage,
 } from "./labels";
 export { KeybindingsProvider, getDefaultKeybindings, useKeybindings, useResolvedKeybindings } from "./react";
+export { useTerminalReportsControlKeys } from "./terminal-keys";
 export {
   applyActionBinding,
   removeCommandBinding,

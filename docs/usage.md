@@ -52,6 +52,8 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | `Ctrl+Shift+G` | Tidy windows |
 | `Alt+A` | Ask Gloom about the focused pane, in a new conversation with the pane attached |
 | `Tab` | Switch panes |
+| `Ctrl+1`-`9` or `Alt+1`-`9` | Switch layout tabs. Only terminals with the kitty keyboard protocol (Ghostty, Kitty, WezTerm) send `Ctrl` with a digit, so the tabs show `Alt+1` everywhere else. On a Mac terminal `Alt` is `Option` once it is set to send Meta (Terminal.app: Use Option as Meta key; iTerm2: Option key as Esc+) |
+| `?` | Open Help; `?` or `Esc` again closes it |
 | `j` / `k` | Navigate lists |
 | `Home` / `End`, `PageUp` / `PageDown` | Jump through lists and tables |
 | `Enter` / `Esc` | Open the selected row / go back |
@@ -167,7 +169,7 @@ gloom config get keybindings
 gloom config set keybindings.actions.ticker-search "Ctrl+T"
 gloom config set keybindings.actions.help null
 gloom config set keybindings.actions.ticker-search default
-gloom config set keybindings.commands.Alt+1 "DES AAPL"
+gloom config set keybindings.commands.Alt+D "DES AAPL"
 ```
 
 ```json
@@ -178,7 +180,7 @@ gloom config set keybindings.commands.Alt+1 "DES AAPL"
     "help": null
   },
   "commands": {
-    "Alt+1": "DES AAPL",
+    "Alt+D": "DES AAPL",
     "F5": "CN"
   }
 }
@@ -188,6 +190,7 @@ Chords use `Ctrl`, `Cmd`, `Alt`, `Shift` and `CmdOrCtrl` (Control in the termina
 
 - Action ids are listed by `gloom config get keybindings`. Plugin shortcuts use `plugin:<shortcut id>`.
 - A command binding runs its text as typed and needs a modifier or a function key. Control chords yield to a focused text field.
+- A command may take one layout digit (`Alt+1`): that key runs the command, and the other digits still switch layouts.
 - Bindings are per machine and not synced. A binding that does not parse or lands on a taken key is reported at launch and in Help > Shortcuts.
 
 ## Command Reference

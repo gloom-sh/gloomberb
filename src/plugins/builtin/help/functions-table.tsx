@@ -154,7 +154,7 @@ export function FunctionsTable({
           search={{
             value: query,
             onChange: setQuery,
-            placeholder: "function or description",
+            placeholder: ["function or description", "search functions"],
             focused,
             active: searching,
             onActiveChange: onSearchingChange,

@@ -79,7 +79,6 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
   const rendererHost = useRendererHost();
   const commandBarShortcut = useCommandBarShortcut();
   const notificationActionShortcut = useActionShortcut("notification-action");
-  const notificationDismissShortcut = useActionShortcut("notification-dismiss");
   const keybindings = useKeybindings();
   const dialogOpen = useDialogState((dialog) => dialog.isOpen);
   const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
@@ -326,7 +325,7 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
   return {
     coachAside,
     coachKeysHidden: inputCaptured || typingInField,
-    helpFocused, stage, progress, notificationDismissShortcut, finish, notificationActionShortcut,
+    helpFocused, stage, progress, finish, notificationActionShortcut,
     saveProgressInBackground, colors, commandBarShortcut, selectedBrokerId, brokerOptions, portfolioSub,
     sectionAvailability, goToSection, skipSetup, isFinishing, isBrokerCommitting, desktop, positions,
     inputRef, editingField, selectedPositionSymbol, brokerChoices, portfolioOptionIdx, setPortfolioOptionIdx,
@@ -379,7 +378,7 @@ function useCoachStepsAside(config: AppConfig, stage: OnboardingStage): boolean 
 export function OnboardingWizard(props: OnboardingWizardProps) {
   const {
     coachAside, coachKeysHidden,
-    helpFocused, stage, progress, notificationDismissShortcut, finish, notificationActionShortcut,
+    helpFocused, stage, progress, finish, notificationActionShortcut,
     saveProgressInBackground, colors, commandBarShortcut, selectedBrokerId, brokerOptions, portfolioSub,
     sectionAvailability, goToSection, skipSetup, isFinishing, isBrokerCommitting, desktop, positions,
     inputRef, editingField, selectedPositionSymbol, brokerChoices, portfolioOptionIdx, setPortfolioOptionIdx,
@@ -401,15 +400,16 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
       title={tf("Built around {ticker}", { ticker })}
       actions={<>
         {/* Each button shows its key, as Connect shows Alt+Enter; in the
-            terminal the second wraps under the first. The desktop card has no
-            room for both: like a toast, its dismiss key is in the tooltip.
-            F10 also dismisses it. In a field, or with a pane holding the
+            terminal the second wraps under the first where the row is short.
+            The desktop card has no room for both: its dismiss key is in the
+            tooltip. Esc puts it away as it closes any card; the notification
+            dismiss key and F10 do too. In a field, or with a pane holding the
             keyboard, the keys are the field's: the card shows none. */}
         <OnboardingButton
           label="Keep exploring"
           variant="ghost"
-          shortcut={!desktop && !coachKeysHidden && notificationDismissShortcut ? notificationDismissShortcut : undefined}
-          title={desktop && notificationDismissShortcut ? `${t("Keep exploring")} (${notificationDismissShortcut})` : undefined}
+          shortcut={!desktop && !coachKeysHidden ? "Esc" : undefined}
+          title={desktop ? `${t("Keep exploring")} (Esc)` : undefined}
           onPress={() => { void finish(); }}
         />
         <OnboardingButton
