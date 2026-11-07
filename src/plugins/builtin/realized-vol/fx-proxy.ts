@@ -52,7 +52,7 @@ function proxySpot(payload: IvHistoryPayload): number | null {
 }
 
 /** How many expiries read price an ATM IV that is not stale or failed. */
-export function usableExpiries(surface: SurfaceSnapshot): FxVolProxy["expiries"] {
+function usableExpiries(surface: SurfaceSnapshot): FxVolProxy["expiries"] {
   if (!surface.expiries.length) return null;
   return { usable: surface.expiries.filter((expiry) => usableAtm(expiry.atmIV) && !expiry.stale && !expiry.error).length,
     read: surface.expiries.length };

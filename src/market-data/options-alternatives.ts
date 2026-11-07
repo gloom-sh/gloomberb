@@ -152,7 +152,7 @@ const FX_FUTURES_CURRENCIES: Readonly<Record<string, string>> = {
 };
 
 /** "yen" for a CME currency future (6J=F, 6JZ26, 6J1); null for anything else. */
-export function currencyFutureName(symbol: string): string | null {
+function currencyFutureName(symbol: string): string | null {
   if (currencyPairCode(symbol)) return null;
   const root = futuresRoot(symbol, (candidate) => !!FX_FUTURES_PAIRS[candidate]);
   return root ? FX_FUTURES_CURRENCIES[root] ?? null : null;

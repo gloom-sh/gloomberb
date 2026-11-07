@@ -438,7 +438,7 @@ const FN_PROGRESS_AFTER_MS = 5_000;
  * the data for PORT izmir." while its data is read, "Still drawing PORT
  * izmir." once a capture's page draws it. Nothing for a quick one, or with --quiet.
  */
-export function progressNotice(ctx: Pick<CliCommandContext, "cliOptions">, label: string, afterMs = SHOT_PROGRESS_AFTER_MS): { drawing(): void; stop(): void } {
+function progressNotice(ctx: Pick<CliCommandContext, "cliOptions">, label: string, afterMs = SHOT_PROGRESS_AFTER_MS): { drawing(): void; stop(): void } {
   if (ctx.cliOptions.quiet) return { drawing: () => {}, stop: () => {} };
   let drawing = false;
   const timer = setTimeout(() => {
