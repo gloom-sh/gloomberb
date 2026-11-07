@@ -68,7 +68,7 @@ test("portfolio and watchlist show headline the regular close beside the extende
     for (const row of rows) expect(row).toMatch(figures);
     // JSON writes the move as every export does, its float noise dropped.
     expect(json).toMatchObject({ quotePrice: headline.price, extendedSession: extended.session, extendedPrice: extended.price,
-      extendedChange: exportNumber(extended.change), extendedChangePercent: exportNumber(extended.changePercent) });
+      extendedChange: exportNumber(extended.change!), extendedChangePercent: exportNumber(extended.changePercent!) });
     // The position is still worth its shares at the live print.
     expect(json.marketValue).toBeCloseTo(10 * extended.price, 8);
   }
