@@ -29,6 +29,8 @@ export const CURVE_OPTIONS: readonly CurveOption[] = [
   { id: "gb", label: "Gilt", aliases: ["gilt", "gilts", "uk", "gb", "gbp"] },
   { id: "jp", label: "JGB", aliases: ["jgb", "jgbs", "jp", "japan", "jpy"] },
   { id: "ca", label: "Canada", aliases: ["canada", "ca", "goc", "cad"] },
+  { id: "mx", label: "Mexico", aliases: ["mexico", "mx", "mbono", "mbonos", "bono", "bonos", "cetes", "mxn"] },
+  { id: "br", label: "Brazil", aliases: ["brazil", "br", "brl", "prefixado", "ltn", "ntn-f", "ntnf"] },
 ];
 
 export function isCurveId(value: unknown): value is CurveId {
@@ -50,7 +52,7 @@ export function curveOption(id: CurveId): CurveOption {
  * `GC`, `GC 2026-01-02`, `GC JGB`, `GC TIPS 2024-01-02`: a curve word and a
  * date, either order. Words with no digit are no date: one that names no
  * curve (`GC world`, `GC "South Africa"`) lists the curves and points at the
- * world tab, which has the other countries' government yields.
+ * world tab, which sets them side by side, as does a second curve word.
  */
 export function parseCurveArgument(value: unknown, now = new Date()): { curve: CurveId | null; date: string } {
   const words = typeof value === "string" ? value.trim().split(/\s+/).filter(Boolean) : [];
@@ -58,7 +60,11 @@ export function parseCurveArgument(value: unknown, now = new Date()): { curve: C
   const rest: string[] = [];
   for (const word of words) {
     const match = CURVE_OPTIONS.find((option) => option.aliases.includes(word.toLowerCase()));
-    if (match && !curve) curve = match.id;
+    if (match && curve && match.id !== curve) {
+      throw new Error(`GC shows one curve: ${curveOption(curve).aliases[0]} or ${match.aliases[0]}. `
+        + "The world tab sets every market's 2- and 10-year yields side by side: gloom fn GC --tab world.");
+    }
+    if (match) curve = match.id;
     else rest.push(word);
   }
   const text = rest.join(" ");
@@ -66,11 +72,11 @@ export function parseCurveArgument(value: unknown, now = new Date()): { curve: C
   return { curve, date: yieldCurveDate(text || null, now) };
 }
 
-/** `Unknown curve "world"`, with the curves there are and where the rest of the world's yields are. */
+/** `Unknown curve "world"`, with the curves there are and where they are side by side. */
 export function unknownCurveMessage(word: string): string {
   const names = CURVE_OPTIONS.map((option) => option.aliases[0]);
   return `Unknown curve "${word}"; the curves are ${names.slice(0, -1).join(", ")} and ${names.at(-1)}. `
-    + "Other countries' government bond yields are on the world tab: gloom fn GC --tab world.";
+    + "The world tab sets their 2- and 10-year yields side by side: gloom fn GC --tab world.";
 }
 
 /**

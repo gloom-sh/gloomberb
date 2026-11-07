@@ -20,6 +20,26 @@ import type {
 } from "./types";
 
 export const CHART_SERIES_CAPABILITY_KIND = "chart-series";
+
+/** Words that ask for a government bond yield. */
+const BOND_YIELD_WORDS = /\b(?:yield|yields|bond|bonds|treasury|treasuries|gilt|gilts|bund|bunds|govt|sovereign|mbono|bono|cetes|prefixado|jgb)\b/i;
+
+/**
+ * What a chart says of a `CAP:` series nothing answers to, whether no source
+ * has its first word or its source has no series by the rest: that it is not
+ * covered, and where the nearest series are, never that a plugin or provider
+ * should be enabled (none would chart it). A government yield the curves do
+ * not carry (`CAP:bond-yield:za-10y`) points at the catalog of those they do
+ * and the world grid of 2- and 10-year yields.
+ */
+export function uncoveredCapabilityMessage(capabilityId: string, seriesId?: string): string {
+  const name = seriesId ? `${capabilityId}:${seriesId}` : capabilityId;
+  const words = name.replace(/[^A-Za-z0-9]+/g, " ");
+  const nearest = BOND_YIELD_WORDS.test(words)
+    ? "The government yields a chart can name are listed by gloom catalog \"10Y government bond\" (CAP:bond-yield:de-10y, UST:10Y); the 2- and 10-year yields of every market GC covers are on gloom fn GC --tab world."
+    : "Series a chart can name: SYMBOL, SYMBOL:field, FUT:code, UST:maturity, FRED:series and GEO:series; gloom catalog lists them.";
+  return `CAP:${name} is not covered: no chart series is called "${name}". ${nearest}`;
+}
 export const MAX_CHART_SERIES_CATALOG_ITEMS = 32;
 export const MAX_CHART_SERIES_POINTS = 20_000;
 
@@ -351,5 +371,11 @@ export function createChartSeriesResolver(invoker: CapabilityInvoker) {
     source.capabilityId,
     "resolve",
     { seriesId: source.seriesId, viewport } satisfies ChartSeriesResolveRequest,
-  );
+  ).catch((error: unknown) => {
+    // No source registered under the id: it is not covered. A source turned off still says to turn it on.
+    if (error instanceof Error && error.message === `Capability "${source.capabilityId}" is not available.`) {
+      throw new Error(uncoveredCapabilityMessage(source.capabilityId, source.seriesId));
+    }
+    throw error;
+  });
 }

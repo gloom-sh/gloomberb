@@ -774,7 +774,8 @@ export function getColumnValue(
       // An export writes the date with it, as ISO: 16:49 alone says nothing of which day.
       const iso = new Date(time.time).toISOString();
       return {
-        text: time.dateOnly ? formatShortDate(time.time, MONTH_DAY) : formatFeedTime(time.time, ctx.now, "—", { utc: true }),
+        // Every row names its day: a bare 00:47 beside Fri 21:00 reads as the same evening.
+        text: time.dateOnly ? formatShortDate(time.time, MONTH_DAY) : formatFeedTime(time.time, ctx.now, "—", { utc: true, dayToday: true }),
         value: time.dateOnly ? iso.slice(0, 10) : iso,
       };
     }

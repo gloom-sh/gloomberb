@@ -424,3 +424,24 @@ test("a US-only alert on a suffixed listing abroad names its venue from the quot
     details: "A currency pair trades over the counter, with no exchange volume to follow.",
   });
 });
+
+test("a listing that moved to a new symbol, typed by its old symbol or its old name, is the one it trades as now", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const deps = { store: new TickerRepository(persistence.tickers), dataProvider: createTestDataProvider({ search: async () => [] }) };
+  for (const typed of ["ELET3.SA", "ELET3", "eletrobras", "Centrais Eletricas Brasileiras"]) {
+    const listing = await resolveCliListing(typed, undefined, deps);
+    expect(listing.request.symbol, typed).toBe("AXIA3.SA");
+    const shown = /^ELET/.test(typed) ? typed : `"${typed}"`;
+    expect(listing.readAs, typed).toStartWith(`Read ${shown} as AXIA3.SA: Eletrobras is AXIA Energia now.`);
+  }
+  // The preferred lines took AXIA6 and AXIA5, then were converted into the common shares on 5 Jun 2026.
+  for (const typed of ["ELET6", "ELET5.SA", "AXIA6", "AXIA5.SA"]) {
+    const listing = await resolveCliListing(typed, undefined, deps);
+    expect(listing.request.symbol, typed).toBe("AXIA3.SA");
+    expect(listing.readAs, typed).toStartWith(
+      `Read ${typed} as AXIA3.SA: those preferred shares were converted into AXIA Energia's common shares on 5 Jun 2026.`);
+  }
+  // Named on a venue, the old symbol is what was asked for.
+  expect((await resolveCliListing("ELET3", "B3", deps)).request.symbol).not.toBe("AXIA3.SA");
+});

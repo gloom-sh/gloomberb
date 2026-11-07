@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { RGBA } from "@opentui/core";
 import { act, useEffect, useState } from "react";
 import { getDockedPaneIds } from "../../layout/pane-manager";
 import { setSharedRegistryForTests } from "../../plugins/registry";
@@ -9,6 +10,7 @@ import { cloneLayout, createDefaultConfig, createPaneInstance, type LayoutConfig
 import type { AppNotificationRequest } from "../../types/plugin";
 import { subscribeFormModalRequests } from "../form-modal/request";
 import { StatusBar } from "./status-bar";
+import { colors } from "../../theme/colors";
 import { ConnectionHealthRegistry, GLOOM_CLOUD_HTTP_CONNECTION_ID, registerGloomCloudConnectionSources } from "../../core/connection-health";
 import { TransientLayoutProvider, useTransientLayout } from "./transient-layout";
 
@@ -198,6 +200,7 @@ describe("StatusBar", () => {
     config.layouts = ["Default", "FX Desk - CIO"].map((name) => ({ name, layout: cloneLayout(config.layout) }));
     config.activeLayoutIndex = 1;
     const lines = new Map<number, string>();
+    let markerBg: string | undefined;
     for (const width of [56, 44, 40]) {
       await tui.render(
         <AppContext value={createStaticAppStore({ ...createInitialState(config), statusBarVisible: true }, () => {})}>
@@ -209,15 +212,19 @@ describe("StatusBar", () => {
       for (let frame = 0; frame < 3; frame++) await act(async () => { await tui.setup().renderOnce(); });
       const line = tui.frame().split("\n")[0] ?? "";
       lines.set(width, line);
+      if (width === 56) markerBg = tui.setup().captureSpans().lines[0]?.spans.find((span) => span.text.includes("‹"))?.bg.toInts().join(",");
       expect(line).toContain("Feedback");
       tui.destroy();
     }
     // Scrolled to the layout in front, the strip starts at a tab's edge: "^1 Default" is out of view whole, not
-    // cut to "lt".
-    expect(lines.get(56)).toStartWith("  ^2 FX Desk - CIO  ");
+    // cut to "lt", and the marker over the tab's blank first cell says a layout is to its left.
+    expect(lines.get(56)).toStartWith(" ‹^2 FX Desk - CIO  ");
+    // The marker sits on the bar's own panel background, not the app's.
+    expect(colors.panel).not.toBe(colors.bg);
+    expect(markerBg).toBe(RGBA.fromHex(colors.panel).toInts().join(","));
     // A strip narrower than that tab shows the start of its name, and narrower still, without its key.
-    expect(lines.get(44)).toStartWith("  ^2 FX D…  ");
-    expect(lines.get(40)).toStartWith("  FX…  ");
+    expect(lines.get(44)).toStartWith(" ‹^2 FX D…  ");
+    expect(lines.get(40)).toStartWith(" ‹FX…  ");
   });
 
   test("a terminal 80 columns or wider keeps every name at its full length and scrolls the strip, as it did", async () => {

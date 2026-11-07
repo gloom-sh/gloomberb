@@ -1,5 +1,6 @@
 import { futuresContractByWord } from "../market-data/futures-board";
 import { notATickerSymbol } from "../sources/provider-errors";
+import { renamedListingFor, renamedListingHint } from "../tickers/renamed-listings";
 import { boardCoinFor } from "./board-coins";
 import { currencyNameHint } from "./currency-name-hint";
 import { splitSymbolArgs, splitSymbolWords } from "./symbol-args";
@@ -52,6 +53,9 @@ export function withSearchHints(text: string, args: readonly string[], isFredSer
       const typed = typedSymbol(symbol, args);
       const id = typed.toUpperCase();
       if (/^[A-Z0-9]+$/.test(id) && isFredSeries(id)) return `${sentence} Try \`gloom fred ${id}\`.`;
+      // A listing that moved to a new symbol (ELET3 is AXIA3) points to it, never to a search for the dead one.
+      const renamed = renamedListingFor(typed);
+      if (renamed) return `${sentence} ${renamedListingHint(renamed)}`;
       const coin = boardCoinFor(id);
       if (coin) return `${sentence} Did you mean ${coin.symbol}${coin.name && coin.name.toUpperCase() !== coin.symbol ? ` (${coin.name})` : ""}?`;
       const tenor = treasuryYieldTenor(typed);

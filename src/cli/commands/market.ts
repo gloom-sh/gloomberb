@@ -189,7 +189,7 @@ import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { bareFuturesCode, futuresBoardContract, futuresContractByWord } from "../../market-data/futures-board";
 import { commodityNamedIn, commoditySearchName } from "../../market-data/commodity-names";
 import { newsEmptyMessage } from "./news-hints";
-import { METALS_NEWS_TOPIC } from "../../sources/gloomberb-cloud/news";
+import { centralBankInNews } from "../../utils/central-banks";
 import {
   closestStoriesReason,
   commodityNewsRoute,
@@ -204,6 +204,8 @@ import {
   newsSearchTextProblem,
   newestFirst,
   noMetalStoriesMessage,
+  searchCentralBankStories,
+  centralBankNewsReason,
   noStoriesMessage,
   quotedSearchCommand,
   searchClosestNewsStories,
@@ -312,8 +314,8 @@ import { answerQuote, errorMessage, notUsTickerSentence } from "../quote-answer"
 import { crossRate, describeFxConversion, describeFxLegs, describeFxRate, formatFxRate, FX_USAGE, parseFxArgs, type FxQuotedFigure } from "../fx-pair";
 import {
   describeShortRate,
+  shortRateGrowthText,
   formatForwardPoints,
-  formatRatePercent,
   formatSignedPercent,
   IMPLIED_FORWARD_LABEL,
   impliedForward,
@@ -1312,9 +1314,13 @@ function refusedLine(refused: ReadonlyArray<{ input: string }>): string {
   return `Not ${refused.length === 1 ? "a symbol" : "symbols"}, not quoted: ${refusedList(refused)}.`;
 }
 
-/** A symbol of a list that names no listing: `Not quoted: EQT:NYSE:US (Unknown exchange US for EQT:NYSE).` */
+/**
+ * A symbol of a list that names no listing: `Not quoted: EQT:NYSE:US (Unknown exchange US for EQT:NYSE).`, or
+ * after it a reason of several sentences: `Not quoted: iron ore. Iron ore: no live price (...). ...`.
+ */
 function unreadLine({ symbol, error }: { symbol: string; error: ListingArgError }): string {
-  return `Not quoted: ${symbol} (${error.message.replace(/\.$/, "")}).`;
+  const reason = error.message.replace(/\.$/, "");
+  return reason.includes(". ") ? `Not quoted: ${symbol}. ${reason}.` : `Not quoted: ${symbol} (${reason}).`;
 }
 
 /**
@@ -2551,8 +2557,8 @@ async function tickerOfWord(word: string, market: MarketContext): Promise<{ symb
  * name is in capitals, whose company news `news GOLD` keeps.
  */
 async function printMetalNews(route: MetalNewsRoute, limit: number, ctx: Parameters<CliCommandDef["execute"]>[1], market?: MarketContext) {
-  const search = searchNewsStories(route.metal, limit, [METALS_NEWS_TOPIC]).then((found) => ({ found, failure: undefined }), (error: unknown) => {
-    logFailure("cli.commands-market", "Search metals news failed")(error);
+  const search = searchNewsStories(route.metal, limit, [route.topic]).then((found) => ({ found, failure: undefined }), (error: unknown) => {
+    logFailure("cli.commands-market", `Search ${route.topic} news failed`)(error);
     return { found: [] as NewsArticle[], failure: errorMessage(error) ?? "no answer" };
   });
   const word = route.word;
@@ -2564,8 +2570,8 @@ async function printMetalNews(route: MetalNewsRoute, limit: number, ctx: Paramet
   const companyNews = ticker ? `gloom news ${ticker.symbol}` : null;
   ctx.printResult({
     data: found,
-    ...(failure === undefined ? {} : { warnings: [`Searching metals stories for "${route.metal}" failed: ${failure}`] }),
-    metadata: { ticker: null, search: route.metal, topics: [METALS_NEWS_TOPIC], feed: null, ...(companyNews ? { companyNews } : {}) },
+    ...(failure === undefined ? {} : { warnings: [`Searching ${route.label.toLowerCase()} stories for "${route.metal}" failed: ${failure}`] }),
+    metadata: { ticker: null, search: route.metal, topics: [route.topic], feed: null, ...(companyNews ? { companyNews } : {}) },
     freshness: rowsFreshness(newsRows(found), cloudNewsFreshness(await cloudRealtimeAccess())),
   }, {
     heading: metalNewsHeading(route),
@@ -2588,6 +2594,12 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     if (exchangeOption || feed) ctx.fail(`${exchangeOption ? "--exchange" : "--feed"} goes with a symbol, not with text to search stories for.`, "Usage: gloom news <query>");
     const problem = newsSearchTextProblem(text);
     if (problem) ctx.fail(problem);
+    // "copom selic", "Bank of Mexico": the bank's latest decision stories, under every name it is reported by.
+    const bank = centralBankInNews(text);
+    if (bank) {
+      await printNewsSearch(text, await searchCentralBankStories(bank, limit, text), { reason: centralBankNewsReason(bank), commodity: false }, ctx);
+      return;
+    }
     const answer = await searchClosestNewsStories(text, limit);
     await printNewsSearch(text, answer.found, { closest: answer.closest }, ctx);
     return;
@@ -2658,13 +2670,16 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       return;
     }
     if (word && reason) {
+      // A central bank's name no ticker answers to ("banxico") is its decision stories, under every name it goes by.
+      const bank = !resolved && !commodity ? centralBankInNews(word) : null;
       // The lookup that found no ticker already answered; a search that fails leaves that answer.
-      const search = await searchNewsStories(word, limit).then((found) => ({ found, failure: undefined }), (error: unknown) => {
+      const search = await (bank ? searchCentralBankStories(bank, limit, word) : searchNewsStories(word, limit)).then((found) => ({ found, failure: undefined }), (error: unknown) => {
         logFailure("cli.commands-market", "Search news stories failed")(error);
         return { found: [], failure: errorMessage(error) ?? "no answer" };
       });
       const searched = search.failure === undefined;
-      await printNewsSearch(word, search.found, { reason, empty: emptyMessage(searched && !commodity), commodity: !commodity, failure: search.failure }, ctx);
+      await printNewsSearch(word, search.found, { reason: bank ? `${reason}; ${centralBankNewsReason(bank)}` : reason,
+        empty: emptyMessage(searched && !commodity), commodity: !commodity, failure: search.failure }, ctx);
       return;
     }
     const empty = emptyMessage(false);
@@ -3636,7 +3651,14 @@ async function runFxOnDate(
 async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const dateOption = takeOption(args, "--date");
+  const forwardAsked = args.some((arg) => arg === "--forward" || arg.startsWith("--forward="));
   const forwardOption = takeOption(args, "--forward");
+  // `fx USD/BRL --forward` and `fx --forward USD/BRL` name no tenor: say what --forward takes, never print spot alone
+  // or the bare usage line.
+  if (forwardAsked && (!forwardOption?.trim() || (args.length === 0 && !/^\s*\d/.test(forwardOption)))) {
+    const pair = args.length ? args.join(" ") : forwardOption?.trim() || "<base>/<quote>";
+    ctx.fail("--forward takes a tenor: 30d, 2w, 3m, up to 1y.", `For the 3-month forward: gloom fx ${pair} --forward 3m`);
+  }
   if (args.length === 0) ctx.fail(`Usage: gloom ${FX_USAGE}`);
   // A forward is implied from today's spot and the latest short rates, which are all Gloom Cloud serves.
   if (dateOption != null && forwardOption != null) {
@@ -3722,7 +3744,8 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
       const forwardDate = new Date(Math.floor(Date.now() / 86_400_000) * 86_400_000 + tenor.days * 86_400_000).toISOString().slice(0, 10);
       const rateFields = (short: typeof base.rate) => ({
         currency: short.currency, name: short.name, tenor: short.tenor, value: short.value, asOf: short.asOf,
-        dayCountBasis: short.dayCountBasis, publisher: short.publisher, sourceUrl: short.sourceUrl, stale: short.stale,
+        dayCountBasis: short.dayCountBasis, ...(short.compounding ? { compounding: short.compounding } : {}),
+        publisher: short.publisher, sourceUrl: short.sourceUrl, stale: short.stale,
         ...(short.attribution ? { attribution: short.attribution } : {}),
       });
       // A publisher's licence asks for its attribution wherever its rate is shown (MAS's SORA).
@@ -3735,7 +3758,8 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
         points: implied.points, pointSize: implied.pointSize, premiumPercent: implied.premiumPercent, annualizedPercent: implied.annualizedPercent,
         baseRate: rateFields(base.rate), quoteRate: rateFields(quote.rate), method: "covered interest parity", label: IMPLIED_FORWARD_LABEL,
       };
-      const growth = (short: typeof base.rate) => `(1 + ${formatRatePercent(short.value)} × ${tenor.days}/${short.dayCountBasis})`;
+      const growth = (short: typeof base.rate) => shortRateGrowthText(short, tenor.days);
+      const compounded = [base.rate, quote.rate].filter((short) => short.compounding === "business-252").map((short) => short.name);
       // A currency typed as its name (yen) says which code it was read as, as the spot answer does.
       const forwardWarnings = [...request.readAs ?? [], ...rateNotes, ...staleRates];
       return ctx.printResult({ data: [forwardRow], freshness, ...(forwardWarnings.length > 0 ? { warnings: forwardWarnings } : {}) }, {
@@ -3744,7 +3768,9 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
           `Spot ${formatFxRate(rate)} · forward points ${formatForwardPoints(implied.points)} (pips of ${implied.pointSize}) · ${implied.premiumPercent >= 0 ? "premium" : "discount"} ${formatSignedPercent(implied.premiumPercent)} over ${tenor.days} days to ${forwardDate}, ${formatSignedPercent(implied.annualizedPercent, 2)} a year (×360/${tenor.days})`,
           `${currency} rate: ${describeShortRate(base.rate)}`,
           `${baseCurrency} rate: ${describeShortRate(quote.rate)}`,
-          `Covered interest parity: ${formatFxRate(rate)} × ${growth(quote.rate)} / ${growth(base.rate)}; each rate earns simple interest over the ${tenor.days} days, standing in for a ${tenor.label} term rate.`,
+          `Covered interest parity: ${formatFxRate(rate)} × ${growth(quote.rate)} / ${growth(base.rate)}; ${compounded.length > 0
+            ? `${compounded.join(" and ")} compounds over business days (252 a year, taken as 252/365 of the ${tenor.days} days), the other rate earns simple interest`
+            : `each rate earns simple interest over the ${tenor.days} days`}, standing in for a ${tenor.label} term rate.`,
           ...attributions,
         ].join("\n"),
         exportIdentity: { symbolOrSeries: pair, currencyOrUnit: `${baseCurrency} per ${currency}`, interval: `forward ${tenor.label}` },

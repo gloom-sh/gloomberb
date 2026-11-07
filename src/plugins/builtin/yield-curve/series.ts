@@ -58,6 +58,16 @@ const CURVES: ReadonlyArray<{
     tenors: ["1M", "3M", "6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "30Y"],
   },
   {
+    curve: "mx", publisher: "Banxico", tags: ["Mexico", "M bono", "Mbono", "Cetes", "peso"],
+    name: (tenor) => tenor === "2Y" ? "Mexico 2Y Cetes yield" : `Mexico ${tenor} M bono yield`,
+    tenors: ["2Y", "10Y"],
+  },
+  {
+    curve: "br", publisher: "Tesouro Nacional", tags: ["Brazil", "prefixado", "LTN", "NTN-F", "real"],
+    name: (tenor) => `Brazil ${tenor} prefixado yield`,
+    tenors: ["2Y", "10Y"],
+  },
+  {
     curve: "eu-aaa", publisher: "ECB", tags: ["euro area", "AAA", "euro"],
     name: (tenor) => `Euro area AAA ${tenor} yield`,
     tenors: ["3M", "6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "15Y", "20Y", "30Y"],

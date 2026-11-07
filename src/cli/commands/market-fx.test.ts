@@ -399,6 +399,22 @@ test("fx --forward through SGD says what MAS's licence asks of SORA, and that a 
   }
 });
 
+test("fx --forward without a tenor, before or after the pair, says what it takes and how to write it, reading nothing", async () => {
+  const spy = spyOn(apiClient, "getCloudShortRates").mockImplementation(async () => shortRates());
+  try {
+    const run = datedHarness("USD", CAD_CLOSES);
+    const context = { ...run.context, fail: (message: string, details?: unknown): never => { throw new Error(`${message}\n${String(details)}`); } };
+    for (const args of [["USD/BRL", "--forward"], ["--forward", "USD/BRL"]]) {
+      await expect(fx.execute(args, context)).rejects.toThrow(
+        "--forward takes a tenor: 30d, 2w, 3m, up to 1y.\nFor the 3-month forward: gloom fx USD/BRL --forward 3m");
+    }
+    expect(spy).not.toHaveBeenCalled();
+    expect(run.asked).toEqual([]);
+  } finally {
+    spy.mockRestore();
+  }
+});
+
 test("fx --forward with --date says the forward is today's only and how to get either, reading nothing", async () => {
   setSystemTime(new Date("2026-10-21T15:00:00Z"));
   const spy = spyOn(apiClient, "getCloudShortRates").mockImplementation(async () => shortRates());

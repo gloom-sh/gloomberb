@@ -42,7 +42,8 @@ import { stripStrayEdges } from "./symbol-args";
 import { isNoProviderMessage, isNoSourceAnswer, isProviderBusy } from "../sources/provider-errors";
 import { dashedCoinPair, exchangeLineCoinListing, isSpotCommodityOrCurrencyPair, MAJOR_COIN_NAMES, TOP_COIN_NAMES } from "../utils/crypto-pair";
 import { boardCoinFor, primeBoardCoins } from "./board-coins";
-import { knownGapMessage } from "./known-gaps";
+import { knownGapMessage, unquotedGapMessage } from "./known-gaps";
+import { renamedListingFor, renamedListingReadAs, renamedListingSymbol } from "../tickers/renamed-listings";
 import { currencyPairSpelling } from "../utils/currency-pair";
 import { bareFuturesCode, futuresContractByCode, futuresContractByWord, listedFuturesSymbol } from "../market-data/futures-board";
 import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
@@ -1287,6 +1288,15 @@ export async function resolveCliListing(
   if (fred) {
     const { message, details } = fredSeriesNotListing(fred);
     throw new ListingArgError(message, details);
+  }
+  // "iron ore" has no live price: it says so and where the monthly one is, never Kumba Iron Ore's stock.
+  const unquoted = exchangeOption?.trim() ? null : unquotedGapMessage(typed);
+  if (unquoted) throw new ListingArgError(unquoted);
+  // A listing that moved to a new symbol (ELET3, "eletrobras") is the one it trades as now, saying so.
+  const renamed = exchangeOption?.trim() ? null : renamedListingFor(typed);
+  if (renamed) {
+    const now = await resolveCliListing(renamedListingSymbol(renamed), null, deps, options);
+    return { ...now, readAs: [renamedListingReadAs(typed, renamed), now.readAs].filter(Boolean).join(" "), readFromName: true };
   }
   const read = await readTerminalCodeArg(deps.dataProvider, typed);
   // A company's name, an entry of a comma list (`WHR, Whirlpool Corporation`), is the listing search names for it.

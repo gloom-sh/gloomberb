@@ -3,6 +3,7 @@ import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
 import { formatNumber } from "../utils/format";
 import { formatUtcDayTime } from "../utils/utc-time";
 import { heldCurrencyUnit } from "../utils/currency-units";
+import { adrRatioText } from "../utils/depositary-receipt";
 import { regularSessionCloseOn } from "./market/freshness";
 import { getRegularSessionDisplay, regularSessionDisplayDate } from "./market/status";
 
@@ -72,12 +73,13 @@ function homeLineRatioText(pair: DepositaryPair): string {
 
 /**
  * The ratio as a listing's report states it, from its side of the pair:
- * `1 ADR = 10 ordinary shares of GGAL.BA` on the receipt, `1 GGAL ADR = 10
- * of these shares` on a home line.
+ * `1 ADR = 10 ordinary shares of GGAL.BA` on the receipt (`2 preferred
+ * shares of PETR4.SA`, homeShareClass), `1 GGAL ADR = 10 of these shares`
+ * on a home line.
  */
 export function depositaryPairText(pair: DepositaryPair, receiptSide: boolean): string {
   if (!receiptSide) return homeLineRatioText(pair);
-  return `1 ADR = ${ratioCount(pair.ratio)} ordinary share${pair.ratio === 1 ? "" : "s"} of ${pair.ordinary.join(" / ")}`;
+  return `${adrRatioText(pair.ratio, pair.ordinary[0]) ?? `1 ADR = ${ratioCount(pair.ratio)}`} of ${pair.ordinary.join(" / ")}`;
 }
 
 /** A price as the comparison reads it, with when it was observed. */

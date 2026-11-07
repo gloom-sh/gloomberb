@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { Quote } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
-import { adrPairComparison, adrPairInputRows, adrPairLegs } from "./model";
+import { adrPairComparison, adrPairFigures, adrPairInputRows, adrPairLegs } from "./model";
 
 const GSK = { receipt: "GSK", ratio: 2, ordinary: ["GSK.L"] };
 
@@ -45,4 +45,23 @@ test("both legs' prices keep their instrument's decimals, as the quote monitor w
     quote({ price: 1650, currency: "GBp", previousClose: 1648.5 }),
     { receipt: "GSK", ratio: 2, ordinary: ["GSK.L"] },
   )).toEqual(["16.50 GBP", "$48.10"]);
+});
+
+test("the ratio figure names the home line's class only where its code says it", () => {
+  const FRI_CLOSE = Date.UTC(2026, 10, 6, 21, 0);
+  const quote = (fields: Partial<Quote>) => ({ symbol: "X", change: 0, changePercent: 0, lastUpdated: FRI_CLOSE, marketState: "CLOSED", ...fields }) as Quote;
+  const ratio = (pair: { receipt: string; ratio: number; ordinary: string[] }, homeCurrency: string) => {
+    const legs = adrPairLegs(records(true, pair), null, pair.receipt)!;
+    const comparison = adrPairComparison(legs, {
+      receipt: quote({ price: 40, currency: "USD", previousClose: 40 }),
+      home: quote({ symbol: pair.ordinary[0]!, price: 100, currency: homeCurrency, previousClose: 100 }),
+    }, null)!;
+    return adrPairFigures(comparison).find((figure) => figure.id === "ratio")?.value;
+  };
+  // B3 and the BMV write the class into the code; Bogotá's PFBCOLOM and London's GSK.L do not.
+  expect(ratio({ receipt: "PBR.A", ratio: 2, ordinary: ["PETR4.SA"] }, "BRL")).toBe("1 ADR = 2 preferred shares");
+  expect(ratio({ receipt: "FMX", ratio: 10, ordinary: ["FEMSAUBD.MX"] }, "MXN")).toBe("1 ADR = 10 units");
+  expect(ratio({ receipt: "VALE", ratio: 1, ordinary: ["VALE3.SA"] }, "BRL")).toBe("1 ADR = 1 ordinary share");
+  expect(ratio({ receipt: "CIB", ratio: 4, ordinary: ["PFBCOLOM.CL"] }, "COP")).toBe("1 ADR = 4 shares");
+  expect(ratio(GSK, "GBP")).toBe("1 ADR = 2 shares");
 });

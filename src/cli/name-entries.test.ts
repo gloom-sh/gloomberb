@@ -66,6 +66,9 @@ test("one quoted argument with spaces is a company, a line of tickers, or a phra
   expect(batches).toEqual([["10", "YEAR", "YIELD"]]);
   expect(await readPhraseArgument("aapl MSFT brk.b SAN:EPA", provider)).toEqual({ kind: "symbols", symbols: ["aapl", "MSFT", "brk.b", "SAN:EPA"] });
   expect(await readPhraseArgument("Whirlpool Corporation", provider)).toEqual({ kind: "name", name: "Whirlpool Corporation" });
+  // A renamed company's former legal name is a name, whatever search finds for it today.
+  expect(await readPhraseArgument("Centrais Elétricas Brasileiras", provider))
+    .toEqual({ kind: "name", name: "Centrais Elétricas Brasileiras" });
   // A word the source could not answer for, as in an outage, is not taken as proof of a phrase.
   const down = { ...provider, getQuotesBatch: async (targets: QuoteSubscriptionTarget[]) => targets.map((target) => ({ target, quote: null, error: new Error("timeout") })) };
   expect(await readPhraseArgument("AAPL MSFT", down)).toEqual({ kind: "symbols", symbols: ["AAPL", "MSFT"] });

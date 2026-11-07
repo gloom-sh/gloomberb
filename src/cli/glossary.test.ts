@@ -102,7 +102,7 @@ test("ADR's ratio, premium and implied rate and the peso's CCL and MEP are found
     "Implied USD/ARS  1,651.28 (CCL)",
     "Spot USD/ARS     1,529.00 (official wholesale)",
     "ADR vs home      -7.4% discount (at spot)",
-    "Ratio            1 ADR = 10 ordinary shares",
+    "Ratio            1 ADR = 10 shares",
   ].join("\n");
   expect(terms(reportGlossary("ADR", report))).toEqual(["ADR ratio", "ADR premium", "Implied FX", "Contado con liquidación"]);
 });

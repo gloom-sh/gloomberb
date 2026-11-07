@@ -563,6 +563,7 @@ function StatusBarLayoutControl({
   | "layoutTabItems"
   | "layoutTabsWidth"
 > & { nativePaneChrome: boolean }) {
+  const colors = useThemeColors();
   if (!hasMultipleLayouts) return null;
   // On the desktop and the web the strip is as wide as its tabs, gives way
   // first when the bar runs out of room and scrolls inside, like the
@@ -583,6 +584,7 @@ function StatusBarLayoutControl({
           onReorder={handleLayoutReorder}
           compact
           variant="pill"
+          background={colors.panel}
         />
       </Box>
     </Box>

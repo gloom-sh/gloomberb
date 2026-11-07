@@ -415,8 +415,8 @@ const WORLD_COLUMNS: DataTableColumn[] = [
   { id: "asOf", label: "As of", width: 10, align: "left" },
 ];
 const worldKey = (row: WorldRow) => row.id;
-/** Palette slots far enough apart that six curves on one axis read apart (skips the orange beside yellow). */
-const MARKET_COLOR_SLOTS = [0, 1, 2, 3, 4, 7] as const;
+/** Palette slots far enough apart that the markets' curves on one axis read apart; the orange and green come last. */
+const MARKET_COLOR_SLOTS = [0, 1, 2, 3, 4, 7, 5, 8] as const;
 
 /** One row per market, each on the session its publisher last printed. */
 function WorldTab({ onOpen, focused, width, height }: {
@@ -504,7 +504,7 @@ export const yieldCurveModule: PluginModule = {
     label: "Yield Curve",
     description: "Government bond curves, a world grid, and USD SOFR swap rates, swap spreads and tenor history.",
     keywords: ["yield", "curve", "treasury", "bonds", "rates", "gc", "interest", "tips", "breakeven", "bund", "gilt", "jgb",
-      "sovereign", "world", "forward", "swaps", "sofr", "ois", "swap spread", "2s10s", "steepener", "flattener"],
+      "mbono", "cetes", "prefixado", "sovereign", "world", "forward", "swaps", "sofr", "ois", "swap spread", "2s10s", "steepener", "flattener"],
     shortcut: { prefix: "GC", argPlaceholder: "[curve] [date]", argKind: "text", argOptional: true },
     headless: yieldCurveHeadless,
     createInstance: (_context, options) => {

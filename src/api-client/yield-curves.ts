@@ -1,5 +1,5 @@
 /** Government bond curves stored from their official publishers, in percent. */
-export type CloudCurveId = "us" | "us-real" | "us-breakeven" | "eu-aaa" | "de" | "gb" | "jp" | "ca";
+export type CloudCurveId = "us" | "us-real" | "us-breakeven" | "eu-aaa" | "de" | "gb" | "jp" | "ca" | "mx" | "br";
 
 export interface CloudCurvePoint {
   tenor: string;

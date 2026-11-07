@@ -42,7 +42,7 @@ export const SERIES_INVENTORY: readonly SeriesInventoryEntry[] = [
   { module: "options-scenario", chart: "Option payoff by underlying price", notInCatalog: "not-a-time-series", reason: "A payoff curve over prices." },
   { module: "kelly-sizer", chart: "Position size against win rate", notInCatalog: "account", reason: "Drawn from the inputs typed into the sizer." },
   { module: "yield-curve", chart: "Treasury curve and each maturity's history", series: ["ust:*", "fred:T10Y2Y", "fred:T10Y3M", "fred:DFII*"] },
-  { module: "yield-curve", chart: "Government curves for Germany, the UK, Japan, Canada and euro AAA", series: ["bond-yield:*"] },
+  { module: "yield-curve", chart: "Government curves for Germany, the UK, Japan, Canada, euro AAA, Mexico and Brazil", series: ["bond-yield:*"] },
   { module: "rate-path", chart: "Implied policy path by meeting", notInCatalog: "not-a-time-series", reason: "A path over future meetings; the rates it starts from are FRED series in the catalog." },
   { module: "money-markets", chart: "Money market rates, bill yields, liquidity and net liquidity", series: ["money-markets:*", "fred:SOFR", "fred:EFFR", "fred:IORB", "fred:OBFR", "fred:DTB*", "fred:RRPONTSYD", "fred:WDTGAL", "fred:WRESBAL", "fred:WALCL"] },
   { module: "central-bank-rates", chart: "Policy rate history for each central bank", series: ["policy-rate:*"] },

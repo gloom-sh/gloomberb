@@ -82,5 +82,14 @@ test("the peso's CCL comes from the receipt and the C line, its MEP from the D l
 test("a home line names its receipt's ratio in shares, one share included", () => {
   expect(depositaryPairText({ receipt: "RWEOY", ratio: 1, ordinary: ["RWE.DE"] }, false)).toBe("1 RWEOY ADR = 1 of these shares");
   expect(depositaryPairText({ receipt: "GGAL", ratio: 10, ordinary: ["GGAL.BA"] }, false)).toBe("1 GGAL ADR = 10 of these shares");
-  expect(depositaryPairText({ receipt: "RIO", ratio: 1, ordinary: ["RIO.L"] }, true)).toBe("1 ADR = 1 ordinary share of RIO.L");
+  expect(depositaryPairText({ receipt: "RIO", ratio: 1, ordinary: ["RIO.L"] }, true)).toBe("1 ADR = 1 share of RIO.L");
+});
+
+test("a receipt names its home line's class: preferred on B3, units and CPOs on the BMV", () => {
+  expect(depositaryPairText({ receipt: "PBR.A", ratio: 2, ordinary: ["PETR4.SA"] }, true)).toBe("1 ADR = 2 preferred shares of PETR4.SA");
+  expect(depositaryPairText({ receipt: "ITUB", ratio: 1, ordinary: ["ITUB4.SA"] }, true)).toBe("1 ADR = 1 preferred share of ITUB4.SA");
+  expect(depositaryPairText({ receipt: "PBR", ratio: 2, ordinary: ["PETR3.SA"] }, true)).toBe("1 ADR = 2 ordinary shares of PETR3.SA");
+  expect(depositaryPairText({ receipt: "FMX", ratio: 10, ordinary: ["FEMSAUBD.MX"] }, true)).toBe("1 ADR = 10 units of FEMSAUBD.MX");
+  expect(depositaryPairText({ receipt: "TV", ratio: 5, ordinary: ["TLEVISACPO.MX"] }, true)).toBe("1 ADR = 5 CPOs of TLEVISACPO.MX");
+  expect(depositaryPairText({ receipt: "WMMVY", ratio: 10, ordinary: ["WALMEX.MX"] }, true)).toBe("1 ADR = 10 ordinary shares of WALMEX.MX");
 });

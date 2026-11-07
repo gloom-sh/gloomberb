@@ -155,15 +155,24 @@ function utcMidnight(date: Date): number {
  * in another year). A weekday never names a day a week or more back. With
  * `utc`, the same in UTC, for a column whose header names the zone.
  */
-export function formatFeedTime(value: DisplayDateValue, now = Date.now(), fallback = "-", { utc = false }: { utc?: boolean } = {}): string {
+export function formatFeedTime(
+  value: DisplayDateValue,
+  now = Date.now(),
+  fallback = "-",
+  { utc = false, dayToday = false }: {
+    utc?: boolean;
+    /** Today's time carries its weekday too ("Sat 00:47"), for a column whose other rows name theirs ("Fri 21:00"). */
+    dayToday?: boolean;
+  } = {},
+): string {
   const date = parseDisplayDate(value);
   if (!date) return fallback;
   const today = new Date(now);
   const midnight = utc ? utcMidnight : localMidnight;
   // Rounded, since a day with a DST change is 23 or 25 hours long.
   const daysAgo = Math.round((midnight(today) - midnight(date)) / 86_400_000);
-  if (daysAgo === 0) return (utc ? utcClockFormatter : clockFormatter).format(date);
-  if (daysAgo > 0 && daysAgo < 7) return (utc ? utcWeekdayClockFormatter : weekdayClockFormatter).format(date).replace(",", "");
+  if (daysAgo === 0 && !dayToday) return (utc ? utcClockFormatter : clockFormatter).format(date);
+  if (daysAgo >= 0 && daysAgo < 7) return (utc ? utcWeekdayClockFormatter : weekdayClockFormatter).format(date).replace(",", "");
   const sameYear = utc ? date.getUTCFullYear() === today.getUTCFullYear() : date.getFullYear() === today.getFullYear();
   return formatShortDate(date, { year: sameYear ? false : "2-digit", utc });
 }

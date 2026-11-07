@@ -104,7 +104,8 @@ test("quote marks each stale row in its Feed cell, as many as the closing line c
 });
 
 test("ticker names the book out of regular hours: the extended session's, or a closed market's last quote; an open book stays bare", async () => {
-  const book = { ...afterHours, bid: 202, ask: 208.74, bidSize: 100, askSize: 1400 };
+  // ITA's book around its $206.65 close.
+  const book = { ...afterHours, price: 206.65, bid: 202, ask: 208.74, bidSize: 100, askSize: 1400 };
   const report = (quote: Quote) => buildTickerReport({
     symbol: quote.symbol,
     tickerFile: null,
@@ -119,6 +120,8 @@ test("ticker names the book out of regular hours: the extended session's, or a c
   expect(await report({ ...book, marketState: "REGULAR" })).toMatch(/Bid \/ Ask +\$202\.00 x 100 \/ \$208\.74 x 1,400\n/);
   // Without a quoted book there is nothing to date.
   expect(await report({ ...book, bid: undefined, ask: undefined })).not.toContain("last quote");
+  // FMX's $118.00 / $135.00 around a $129.85 close is more than 5% off: no market for it.
+  expect(await report({ ...book, price: 129.85, bid: 118, ask: 135 })).toContain("(last quote, Fri 9 Oct, off-market)");
 });
 
 // NEM after Friday's close, as Gloom Cloud sends it: the price is the after-hours

@@ -152,7 +152,7 @@ test("financial exports put share counts in ADRs only for the periods the servic
   const receipts = await load([fy("2025-06-30", "depositary_receipt", 2_536_000_000), fy("2026-06-30", "depositary_receipt", 2_540_081_549)]);
   expect(receipts.rows.find((row) => row.id === "ordinarySharesNumber:1")?.metric).toBe("Ordinary Shares (bn ADRs)");
   expect(receipts.metadata).toMatchObject({ shareBasis: "depositary_receipt", adrRatio: 2 });
-  expect(receipts.metadata?.notices).toContain("Share counts are in ADRs and EPS is per ADR; 1 ADR = 2 ordinary shares.");
+  expect(receipts.metadata?.notices).toContain("Share counts are in ADRs and EPS is per ADR; 1 ADR = 2 shares.");
 
   // An older period the service left unclaimed still counts ordinaries: no label, and no growth across the bases.
   const mixed = await load([fy("2025-06-30", undefined, 5_080_163_098), fy("2026-06-30", "depositary_receipt", 2_540_081_549)]);
@@ -160,7 +160,7 @@ test("financial exports put share counts in ADRs only for the periods the servic
   expect(ordinary.metric).toBe("Ordinary Shares (bn)");
   expect((ordinary.cells as Array<{ growth: number | null }>)[0]!.growth).toBeNull();
   expect(mixed.metadata?.shareBasis).toBeNull();
-  expect(mixed.metadata?.notices).toContain("Share counts are in ADRs and EPS is per ADR for 2026-06-30 (1 ADR = 2 ordinary shares); other periods as reported.");
+  expect(mixed.metadata?.notices).toContain("Share counts are in ADRs and EPS is per ADR for 2026-06-30 (1 ADR = 2 shares); other periods as reported.");
 });
 
 test("quote comparison retains successful exchange-qualified inputs when a peer fails", async () => {

@@ -37,8 +37,8 @@ describe("holder report header", () => {
 
   test("says which rows are receipts, or that a receipt line's rows all are", () => {
     const home = [{ shareBasis: "ordinary" }, { shareBasis: "depositary_receipt" }];
-    expect(holderShareBasisNote({ adrRatio: 2 }, home)).toBe("ADR: shares held as depositary receipts (1 ADR = 2 ordinary shares).");
-    expect(holderShareBasisNote({ shareBasis: "depositary_receipt", adrRatio: 2 }, [{}, {}])).toBe("Shares are depositary receipts (1 ADR = 2 ordinary shares).");
+    expect(holderShareBasisNote({ adrRatio: 2 }, home)).toBe("ADR: shares held as depositary receipts (1 ADR = 2 shares).");
+    expect(holderShareBasisNote({ shareBasis: "depositary_receipt", adrRatio: 2 }, [{}, {}])).toBe("Shares are depositary receipts (1 ADR = 2 shares).");
     expect(holderShareBasisNote({ shareBasis: "ordinary" }, [{ shareBasis: "ordinary" }])).toBeNull();
     expect(holderShareBasisNote({}, [{}])).toBeNull();
   });

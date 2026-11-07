@@ -98,7 +98,14 @@ export const MUNI_LINE = "Municipal bonds: no AAA muni curve (MMD and BVAL are l
  * carriers"). An entry without `words` matches the whole query alone, since
  * its terms are words of company names too ("carbon", "second").
  */
-const KNOWN_GAPS: ReadonlyArray<{ terms: readonly string[]; words?: readonly string[]; tickers?: readonly string[]; message: string }> = [
+const KNOWN_GAPS: ReadonlyArray<{
+  terms: readonly string[];
+  words?: readonly string[];
+  tickers?: readonly string[];
+  /** A price the terminal has none of: where a ticker goes, the query answers this line rather than a company's name holding its words. */
+  unquoted?: boolean;
+  message: string;
+}> = [
   {
     terms: ["EUA", "EUAs", "EU ETS", "EU allowance", "EU allowances", "EU carbon", "carbon", "carbon allowance", "carbon allowances",
       "carbon price", "carbon prices", "carbon credits", "emission allowances", "emissions allowances"],
@@ -126,6 +133,17 @@ const KNOWN_GAPS: ReadonlyArray<{ terms: readonly string[]; words?: readonly str
     tickers: ["BDI"],
     message: "Baltic indices (BDI, Capesize, Panamax, Supramax) and freight forwards (FFA) are not covered. Traded proxies: BDRY (freight futures ETF), "
       + "SBLK, GNK, DSX (dry-bulk shipowners); chokepoint transits: fn CHOKE; news \"dry bulk\".",
+  },
+  {
+    // Live iron ore futures (SGX, DCE, CME) are licensed; the IMF's monthly world price is the one the terminal has.
+    // "iron ore" typed for a quote was Kumba Iron Ore's stock, which its own name still finds.
+    terms: ["iron ore", "iron ore price", "iron ore prices", "iron ore futures", "iron ore 62", "62% Fe", "iron ore 62% Fe",
+      "iron ore fines", "SGX iron ore", "DCE iron ore", "iron ore spot"],
+    words: ["price", "prices", "futures", "future", "spot", "62", "fe", "cfr", "china", "fines", "monthly", "chart", "today",
+      "current", "latest", "live", "quote", "the", "of"],
+    unquoted: true,
+    message: "Iron ore: no live price (SGX, DCE and CME iron ore futures are licensed). The IMF's monthly world price: gloom fred PIORECRUSDM. "
+      + "Producers: VALE, RIO, BHP, KIO:JSE (Kumba Iron Ore).",
   },
   {
     // What the terminal has for munis, and what it does not: the AAA curve every muni ratio quotes is licensed.
@@ -495,6 +513,14 @@ function namesKnownGap(gap: (typeof KNOWN_GAPS)[number], query: string): boolean
     return containsWords(asked, parts) ? parts : [];
   }));
   return named.size > 0 && asked.every((word) => named.has(word) || gap.words!.includes(word));
+}
+
+/**
+ * The line for a price the terminal has none of, typed where a ticker goes ("iron ore"), so it is never read as the
+ * company whose name holds its words (Kumba Iron Ore); null for anything else.
+ */
+export function unquotedGapMessage(query: string): string | null {
+  return KNOWN_GAPS.find((gap) => gap.unquoted && namesKnownGap(gap, query))?.message ?? null;
 }
 
 /**
