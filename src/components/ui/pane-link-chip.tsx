@@ -3,7 +3,8 @@ import { tf } from "../../i18n";
 import { Box, Span, Text, TextAttributes } from "../../ui";
 import { blendHex, colors } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
-import { truncateWithEllipsis } from "../../utils/text-wrap";
+import { RADIUS } from "../../theme/ui-tokens";
+import { truncateWithEllipsis, wrapTextLines } from "../../utils/text-wrap";
 import { IconButton } from "./icon";
 
 /**
@@ -19,14 +20,19 @@ export interface PaneLinkChipContent {
   detail: string;
   /** The lead square: the opened pane's letter, or what ties the chip to its text (a source's number, a key). */
   icon: string;
+  /** `item` only: a line or two of what the item says, under its title. */
+  excerpt?: string;
 }
 
 /**
  * - `card`: a shared pane, two lines beside its square (or the picture its sender posted).
+ * - `item`: a shared pane and what it was on: the item's title, a line or two
+ *   of it, and under them the pane it opens as the `line` chip draws it (or
+ *   beside them, the picture its sender posted).
  * - `line`: one line, as a Wire post's story or calendar.
  * - `inline`: the height of the line of text it is written in, as a function in a message.
  */
-type PaneLinkChipVariant = "card" | "line" | "inline";
+type PaneLinkChipVariant = "card" | "item" | "line" | "inline";
 
 interface DomEventLike {
   preventDefault(): void;
@@ -40,9 +46,20 @@ interface DomEventLike {
 const PICTURE_CHIP_HEIGHT = 74;
 const CARD_CHIP_HEIGHT = 48;
 const LINE_CHIP_HEIGHT = 28;
+/** An item's title line, two lines of excerpt and its pane's line chip, inside the frame's air. */
+const ITEM_CHIP_HEIGHT = 96;
+/** Three lines for the title and the excerpt between them. */
+const ITEM_TEXT_LINES = 3;
+const ITEM_TEXT_LINE = 17;
 const THUMB = { width: 112, height: 64 };
+/** As tall as an item card's content, at the shape of the picture a share posts. */
+const ITEM_THUMB = { width: 142, height: 80 };
 const ICON_SIZE = 38;
+const LINE_ICON_SIZE = 18;
 const CHIP_MAX_WIDTH = 420;
+const LINE_PADDING = "0 10px 0 5px";
+/** An item card's air: a picture sits as close to the frame as a card's square does. */
+const ITEM_PADDING = "var(--gloom-space-xs) var(--gloom-space-sm)";
 
 /** The lead square's colour, which an inline marker shares so the two read as one family. */
 function leadSurface(panel: string, text: string, hovered = false): string {
@@ -91,10 +108,11 @@ export function DesktopPaneLinkChip({
   const pressableChip = !!onOpen;
   const lit = hovered && pressableChip;
   const compact = variant === "line";
-  const height = compact ? LINE_CHIP_HEIGHT : picture ? PICTURE_CHIP_HEIGHT : CARD_CHIP_HEIGHT;
+  const item = variant === "item";
+  const height = compact ? LINE_CHIP_HEIGHT : item ? ITEM_CHIP_HEIGHT : picture ? PICTURE_CHIP_HEIGHT : CARD_CHIP_HEIGHT;
   const border = lit ? themeColors.borderFocused : blendHex(themeColors.border, themeColors.bg, 0.35);
   const surface = blendHex(themeColors.panel, themeColors.bg, lit ? 0.2 : 0.5);
-  const label = [content.title, content.detail].filter(Boolean).join(", ");
+  const label = [content.title, content.excerpt, content.detail].filter(Boolean).join(", ");
   const pressable = pressableChip
     ? {
       "aria-label": label || undefined,
@@ -141,14 +159,31 @@ export function DesktopPaneLinkChip({
     }, content.title);
   }
   const showPicture = !!picture && failedUrl !== picture.url;
-  const leadSize = compact ? 18 : ICON_SIZE;
+  const thumb = item ? ITEM_THUMB : THUMB;
+  const square = (size: number, small: boolean, key: string) => createElement("span", {
+    key,
+    "aria-hidden": true,
+    style: {
+      width: size,
+      height: size,
+      flex: "none",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: RADIUS.sm,
+      fontWeight: 600,
+      fontSize: small ? "0.86em" : "1em",
+      color: themeColors.textBright,
+      background: leadSurface(themeColors.panel, themeColors.text, item && lit),
+    },
+  }, content.icon);
   const lead = showPicture
     ? createElement("img", {
       key: "picture",
       src: picture!.url,
       alt: "",
-      width: THUMB.width,
-      height: THUMB.height,
+      width: thumb.width,
+      height: thumb.height,
       loading: "lazy",
       decoding: "async",
       draggable: false,
@@ -157,8 +192,8 @@ export function DesktopPaneLinkChip({
         onPictureError?.();
       },
       style: {
-        width: THUMB.width,
-        height: THUMB.height,
+        width: thumb.width,
+        height: thumb.height,
         flex: "none",
         objectFit: "cover",
         objectPosition: "top left",
@@ -167,25 +202,10 @@ export function DesktopPaneLinkChip({
         background: blendHex(themeColors.panel, themeColors.bg, 0.5),
       },
     })
-    : createElement("span", {
-      key: "icon",
-      "aria-hidden": true,
-      style: {
-        width: leadSize,
-        height: leadSize,
-        flex: "none",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        borderRadius: 3,
-        fontWeight: 600,
-        fontSize: compact ? "0.86em" : "1em",
-        color: themeColors.textBright,
-        background: leadSurface(themeColors.panel, themeColors.text),
-      },
-    }, content.icon);
-  const line = (text: string, tone: "title" | "detail") => createElement("span", {
-    key: tone,
+    // An item's square is in its line chip, under the text.
+    : item ? null : square(compact ? LINE_ICON_SIZE : ICON_SIZE, compact, "icon");
+  const line = (text: string, tone: "title" | "detail", key: string = tone) => createElement("span", {
+    key,
     style: {
       display: "block",
       minWidth: 0,
@@ -197,38 +217,89 @@ export function DesktopPaneLinkChip({
       fontSize: tone === "title" ? undefined : "0.92em",
     },
   }, text);
+  // The line chip's frame: a Wire post's story, and the pane an item card opens.
+  const lineFrame = {
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: LINE_CHIP_HEIGHT,
+    padding: LINE_PADDING,
+    border: `1px solid ${border}`,
+    borderRadius: RADIUS.md,
+    background: surface,
+    overflow: "hidden",
+  };
   const text = compact
     ? createElement("span", {
       key: "text",
       style: { display: "flex", flexDirection: "row", gap: 6, minWidth: 0, alignItems: "baseline" },
     }, line(content.title, "title"), content.detail ? line(content.detail, "detail") : null)
-    : createElement("span", {
-      key: "text",
-      style: { display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 0, flex: "1 1 auto", gap: 1 },
-    }, line(content.title, "title"), line(content.detail, "detail"));
+    : item
+      ? createElement("span", {
+        key: "text",
+        style: { display: "flex", flexDirection: "column", minWidth: 0, flex: "1 1 auto", height: "100%" },
+      },
+      // The title, then the excerpt in the lines it leaves: a long headline
+      // wraps rather than being cut, and the text never outgrows its lines.
+      createElement("span", {
+        key: "words",
+        style: {
+          display: "-webkit-box",
+          WebkitBoxOrient: "vertical",
+          WebkitLineClamp: ITEM_TEXT_LINES,
+          overflow: "hidden",
+          minWidth: 0,
+          flex: "none",
+          height: ITEM_TEXT_LINE * ITEM_TEXT_LINES,
+          lineHeight: `${ITEM_TEXT_LINE}px`,
+          overflowWrap: "anywhere",
+        },
+      },
+      createElement("span", { key: "title", style: { color: themeColors.textBright, fontWeight: "var(--gloom-weight-bold)" } }, content.title),
+      content.excerpt ? createElement("br", { key: "break" }) : null,
+      content.excerpt ? createElement("span", { key: "excerpt", style: { color: themeColors.text } }, content.excerpt) : null),
+      content.detail
+        ? createElement("span", {
+          key: "pane",
+          style: { ...lineFrame, alignSelf: "flex-start", maxWidth: "100%", marginTop: "auto" },
+        }, square(LINE_ICON_SIZE, true, "pane-icon"), line(content.detail, "title", "pane-name"))
+        : null)
+      : createElement("span", {
+        key: "text",
+        style: { display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 0, flex: "1 1 auto", gap: 1 },
+      }, line(content.title, "title"), line(content.detail, "detail"));
   const frame = {
-    boxSizing: "border-box",
-    display: "flex",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: compact ? 6 : 8,
-    height,
-    width: compact || fit ? "auto" : `min(100%, ${CHIP_MAX_WIDTH}px)`,
-    maxWidth: fit ? `min(100%, ${CHIP_MAX_WIDTH}px)` : "100%",
+    ...(compact ? {
+      ...lineFrame,
+      width: "auto",
+      maxWidth: fit ? `min(100%, ${CHIP_MAX_WIDTH}px)` : "100%",
+    } : {
+      boxSizing: "border-box",
+      display: "flex",
+      flexDirection: "row",
+      alignItems: item ? "stretch" : "center",
+      gap: 8,
+      height,
+      width: fit ? "auto" : `min(100%, ${CHIP_MAX_WIDTH}px)`,
+      maxWidth: fit ? `min(100%, ${CHIP_MAX_WIDTH}px)` : "100%",
+      padding: item ? ITEM_PADDING : "4px 10px 4px 4px",
+      border: `1px solid ${border}`,
+      borderRadius: 6,
+      background: surface,
+      overflow: "hidden",
+    }),
     flex: "none",
     margin: "2px 0",
-    padding: compact ? "0 10px 0 5px" : "4px 10px 4px 4px",
-    border: `1px solid ${border}`,
-    borderRadius: 6,
-    background: surface,
     opacity: dimmed ? 0.6 : 1,
-    overflow: "hidden",
   };
   if (!onRemove) {
     return createElement(element, { ...elementProps, ...dataAttributes, ...pressable, style: { ...frame, ...buttonReset } }, lead, text);
   }
-  // The same chip with its x inside the frame, where a waiting image keeps its own.
-  return createElement("div", { ...dataAttributes, style: { ...frame, paddingRight: 4 } },
+  // The same chip with its x inside the frame, where a waiting image keeps its own
+  // (an item card's at its top corner, beside the title).
+  return createElement("div", { ...dataAttributes, style: { ...frame, paddingRight: 4, ...(item ? { alignItems: "flex-start" } : {}) } },
     createElement(element, {
       key: "open",
       ...elementProps,
@@ -237,7 +308,8 @@ export function DesktopPaneLinkChip({
         ...buttonReset,
         display: "flex",
         flexDirection: "row",
-        alignItems: "center",
+        alignItems: item ? "stretch" : "center",
+        ...(item ? { alignSelf: "stretch" } : {}),
         gap: frame.gap,
         flex: "1 1 auto",
         minWidth: 0,
@@ -284,6 +356,82 @@ export function TerminalPaneLinkChip({
     >
       <Text fg={selected ? selectedTextColor : onOpen ? colors.textBright : colors.textMuted} attributes={TextAttributes.BOLD}>{icon}</Text>
       <Text fg={fg}>{`${text} `}</Text>
+    </Box>
+  );
+}
+
+/** The rows a shared item's card takes in the terminal: its title and excerpt, and the pane it opens. */
+export const TERMINAL_ITEM_CHIP_ROWS = 3;
+const TERMINAL_ITEM_TEXT_ROWS = TERMINAL_ITEM_CHIP_ROWS - 1;
+
+/** `text` wrapped to `width`, in at most `rows` rows, the last cut with an ellipsis when it does not fit. */
+function clampedRows(text: string, width: number, rows: number): string[] {
+  if (rows <= 0 || !text) return [];
+  const lines = wrapTextLines(text, width);
+  if (lines.length <= rows) return lines;
+  return [...lines.slice(0, rows - 1), truncateWithEllipsis(lines.slice(rows - 1).join(" "), width)];
+}
+
+/**
+ * The `item` card in the terminal: the chip's fill as a block, with the item's
+ * title and what it says in the two rows the title leaves, and under them its
+ * pane as the one-row chip draws it. As wide as its longest line, up to
+ * `width`; always three rows.
+ */
+export function TerminalPaneLinkItemCard({
+  content,
+  width,
+  selected = false,
+  selectedTextColor = colors.textBright,
+  onOpen,
+}: {
+  content: PaneLinkChipContent;
+  width: number;
+  selected?: boolean;
+  selectedTextColor?: string;
+  /** Unset: the card says what it is, in muted text, and opens nothing. */
+  onOpen?: () => void;
+}) {
+  const oneLine = (text: string | undefined) => (text ?? "").replace(/\s+/g, " ").trim();
+  const title = oneLine(content.title);
+  const excerpt = oneLine(content.excerpt);
+  const pane = content.detail ? { title: content.detail, detail: "", icon: content.icon } : null;
+  const paneWidth = pane ? (pane.icon ? pane.icon.length + 2 : 1) + pane.title.length + 1 : 0;
+  const cardWidth = Math.max(1, Math.min(width, Math.max(title.length, excerpt.length, paneWidth - 2) + 2));
+  const textWidth = Math.max(cardWidth - 2, 1);
+  // The title wraps, then the excerpt takes the rows it leaves, as on the desktop.
+  const titleRows = clampedRows(title, textWidth, TERMINAL_ITEM_TEXT_ROWS);
+  const excerptRows = excerpt ? clampedRows(excerpt, textWidth, TERMINAL_ITEM_TEXT_ROWS - titleRows.length) : [];
+  const fill = leadSurface(colors.panel, colors.text);
+  const titleColor = selected ? selectedTextColor : onOpen ? colors.textBright : colors.textMuted;
+  const excerptColor = selected ? selectedTextColor : colors.text;
+  const rows = [
+    ...titleRows.map((text) => ({ text, color: titleColor, bold: true })),
+    ...excerptRows.map((text) => ({ text, color: excerptColor, bold: false })),
+  ];
+  return (
+    <Box
+      flexDirection="column"
+      width={cardWidth}
+      height={TERMINAL_ITEM_CHIP_ROWS}
+      backgroundColor={fill}
+      onMouseDown={onOpen ? (event: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        onOpen();
+      } : undefined}
+    >
+      {Array.from({ length: TERMINAL_ITEM_TEXT_ROWS }, (_, index) => {
+        const row = rows[index];
+        return (
+          <Box key={index} height={1}>
+            {row ? <Text fg={row.color} attributes={row.bold ? TextAttributes.BOLD : 0}>{` ${row.text}`}</Text> : null}
+          </Box>
+        );
+      })}
+      <Box height={1} flexDirection="row">
+        {pane ? <TerminalPaneLinkChip content={pane} width={cardWidth} selected={selected} selectedTextColor={selectedTextColor} onOpen={onOpen} /> : null}
+      </Box>
     </Box>
   );
 }

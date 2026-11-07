@@ -2281,6 +2281,8 @@ A message can carry up to four images (PNG, JPEG, WebP or GIF, up to 5 MB each).
 
 Share copies a public Gloom link to the pane at once and says `Link copied`. The link opens the same view in the recipient's terminal or on the web. It carries the pane's function and settings, without the fields the pane keeps private, and no picture. A portfolio pane opens on the recipient's own portfolios.
 
+The link also keeps what the pane was on: the story open in a news pane, the result picked in Search, the indicator open in a series list, the ticker a research pane shows, or what its function was opened with (`NI CRYPTO`). It keeps its title and a line or two of it, which chat cards, link previews in other apps (Slack, X, Discord, iMessage) and the chat's bots show. A pane that shows your own data keeps none, and a pane on nothing in particular is named by its own title.
+
 - Sharing needs a signed-in account with a verified email. Signed out, Share says so with Sign in and copies the link once you are in.
 - A pane with no public view, or a link the service could not make, says so in the toast and copies nothing.
 
@@ -2298,7 +2300,7 @@ To show a picture of a pane in chat, copy it with Copy Screenshot and paste it i
 
 ### Share links in chat
 
-In chat, a Gloom share link is a chip instead of an address: the share's title and the pane it holds, with the picture it was posted with as a preview on the desktop and the web.
+In chat, a Gloom share link is a card instead of an address: what the pane was on (a story's headline, a ticker's name), a line or two of it, and the pane it opens, with the picture it was posted with as a preview on the desktop and the web. A share made by an older app shows its own title and its pane's description.
 
 - A share link pasted on its own at the end of the message field, or into an empty one, becomes a chip above the field (a link pasted inside your text stays text). The chip's x, or Backspace in an empty field, takes one back out.
 - A click on the chip, or `o` on its message, opens that pane in your own terminal. A share that cannot be reached from the app, or that holds a snapshot, opens its web page instead, and an expired one says so.

@@ -6,6 +6,7 @@ import type { PluginRegistry } from "../plugins/registry";
 import type { PaneInstanceConfig } from "../types/config";
 import type { PaneDef, PaneTemplateDef } from "../types/plugin";
 import type { TickerRecord } from "../types/ticker";
+import type { ShareItem } from "./item";
 import { parseSharePayload, type PaneShareData, type SharePayload } from "./payload";
 
 export function buildPaneSharePayload(
@@ -15,6 +16,8 @@ export function buildPaneSharePayload(
   resolvedTicker?: string | null,
   tickers?: ReadonlyMap<string, TickerRecord>,
   pinnedTime?: number | null,
+  /** What the pane is on (pane-item.ts), kept beside its settings. */
+  item?: ShareItem | null,
 ): Extract<SharePayload, { kind: "pane" }> | null {
   const def = pluginRegistry.panes.get(pane.paneId);
   if (!def) return null;
@@ -37,6 +40,7 @@ export function buildPaneSharePayload(
         ...(description ? { description } : {}),
         layout,
       },
+      ...(item ? { item } : {}),
     });
     return payload?.kind === "pane" ? payload : null;
   } catch (error) {

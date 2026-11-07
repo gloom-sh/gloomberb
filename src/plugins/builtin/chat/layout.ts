@@ -13,6 +13,7 @@ import type { InlineTickerCatalogEntry } from "../../../state/hooks/inline-ticke
 import { STICKY_BOTTOM_THRESHOLD_PX } from "../../../ui/sticky-scroll";
 import { terminalReactionRows } from "./reactions";
 import { chatMessagePaneLinks } from "./pane-links/model";
+import { TERMINAL_ITEM_CHIP_ROWS } from "../../../components/ui/pane-link-chip";
 import { chatInlineTokens, type ChatInlineToken, type ChatTextStyle } from "./markdown";
 
 const MESSAGE_GROUP_THRESHOLD_MS = 5 * 60 * 1000;
@@ -329,7 +330,7 @@ export function estimateMessageHeight(
   const headerHeight = grouped ? 0 : 1;
   const contentLineWidth = Math.max(width - 4, 1);
   const imageCount = message.attachments?.length ?? 0;
-  // A chip row for each share link or Wire post link, in place of the link's text.
+  // A share link's card rows or a Wire post link's chip row, in place of the link's text.
   const { links, content } = chatMessagePaneLinks(message);
   // The terminal draws a row per image and one for a review note; an image-only message has no text row.
   const bodyLineCount = content.length === 0 && (imageCount > 0 || links.length > 0)
@@ -337,7 +338,8 @@ export function estimateMessageHeight(
     : getMessageBodyTokenLines(content, contentLineWidth, catalog ?? {}).length;
   const reviewNoteHeight = message.attachmentReview ? 1 : 0;
   const reactionRows = message.reactions?.length ? terminalReactionRows(message.reactions, contentLineWidth).length : 0;
-  return headerHeight + (message.replyTo ? 1 : 0) + bodyLineCount + links.length + imageCount + reviewNoteHeight + reactionRows;
+  const linkRows = links.reduce((rows, link) => rows + (link.kind === "share" ? TERMINAL_ITEM_CHIP_ROWS : 1), 0);
+  return headerHeight + (message.replyTo ? 1 : 0) + bodyLineCount + linkRows + imageCount + reviewNoteHeight + reactionRows;
 }
 
 export function estimateComposerHeight(text: string, width: number) {

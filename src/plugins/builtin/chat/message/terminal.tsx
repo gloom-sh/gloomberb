@@ -11,7 +11,7 @@ import { Button } from "../../../../components/ui";
 import { canReactToMessage } from "../reactions";
 import { TerminalChatReactions } from "./reactions";
 import { TerminalChatMessageRow } from "./inline-tokens";
-import { TerminalChatPaneChip } from "./pane-chip";
+import { TerminalChatPaneChip, terminalChatPaneChipRows } from "./pane-chip";
 import { chatMessagePaneLinks } from "../pane-links/model";
 import { useSlowPendingSend } from "./pending-send";
 import { getChatMessageRenderState } from "./render-state";
@@ -171,7 +171,7 @@ export function TerminalChatMessage({
           key={`${msg.id}:pane:${link.kind === "share" ? link.id : link.link.kind}`}
           {...messageRowProps}
           paddingLeft={3}
-          height={1}
+          height={terminalChatPaneChipRows(link)}
           flexDirection="row"
           position={state.grouped && bodyLines.length === 0 && linkIndex === 0 ? "relative" : undefined}
         >

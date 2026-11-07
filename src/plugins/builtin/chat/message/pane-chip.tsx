@@ -2,7 +2,9 @@ import type { ChatAttachment } from "../../../../api-client";
 import {
   DesktopPaneLinkChip,
   IconButton,
+  TERMINAL_ITEM_CHIP_ROWS,
   TerminalPaneLinkChip,
+  TerminalPaneLinkItemCard,
   type PaneLinkChipContent,
 } from "../../../../components/ui";
 import { tf } from "../../../../i18n";
@@ -14,12 +16,18 @@ import type { ComposerShareLink } from "../pane-links/composer";
 import { DESKTOP_DRAFT_STRIP_STYLE } from "../attachments/desktop";
 
 /**
- * A chip for something a message opens in the terminal: a shared pane (its
- * title and the pane it is, with the picture its sender posted when there is
- * one), a Gloom Wire post's story or calendar, or a function written in
- * backticks, drawn in its line of text. It always takes the same room, before
- * and after the share is read, so the transcript never moves.
+ * A chip for something a message opens in the terminal: a shared pane as a
+ * card (the item it was on, a line or two of it and the pane it opens, with
+ * the picture its sender posted when there is one), a Gloom Wire post's story
+ * or calendar, or a function written in backticks, drawn in its line of text.
+ * It always takes the same room, before and after the share is read, so the
+ * transcript never moves.
  */
+
+/** The rows a chip takes in the terminal: a share's card, or one row. */
+export function terminalChatPaneChipRows(link: ChatMessagePaneLink): number {
+  return link.kind === "share" ? TERMINAL_ITEM_CHIP_ROWS : 1;
+}
 
 /** What a chip says, from the share or the post and nothing of the reader's own. */
 function useChatPaneChipContent(link: ChatMessagePaneLink): PaneLinkChipContent {
@@ -29,9 +37,12 @@ function useChatPaneChipContent(link: ChatMessagePaneLink): PaneLinkChipContent 
   if (link.kind === "share") {
     if (preview.status !== "ready") return { title: link.url, detail: "", icon: "" };
     const pane = chatPaneLinkPane(preview.paneId);
+    // A share from before items says what its pane is, in the pane's own words.
+    const item = preview.item ?? { pane: "", title: preview.title, excerpt: preview.description };
     return {
-      title: preview.title,
-      detail: pane && pane.name !== preview.title ? pane.name : "",
+      title: item.title,
+      excerpt: item.excerpt ?? "",
+      detail: pane?.name ?? item.pane,
       icon: pane?.icon ?? "",
     };
   }
@@ -71,7 +82,7 @@ export function DesktopChatPaneChip({
   return (
     <DesktopPaneLinkChip
       content={content}
-      variant={link.kind === "command" ? "inline" : link.kind === "wire" ? "line" : "card"}
+      variant={link.kind === "command" ? "inline" : link.kind === "wire" ? "line" : "item"}
       picture={link.kind === "command" ? null : preview}
       dimmed={dimmed}
       onOpen={() => onOpen(link)}
@@ -109,7 +120,7 @@ export function DesktopComposerPaneChips({
   );
 }
 
-/** The terminal's composer rows for waiting share links: the chip a message draws, then its x at the row's end. */
+/** The terminal's composer rows for waiting share links: the card a message draws, then its x at the end of its first row. */
 export function TerminalComposerPaneChips({
   links,
   width,
@@ -128,7 +139,7 @@ export function TerminalComposerPaneChips({
   return (
     <>
       {links.map((link, index) => (
-        <Box key={`${index}:${link.id}`} width={width} height={1} flexDirection="row">
+        <Box key={`${index}:${link.id}`} width={width} height={terminalChatPaneChipRows(link)} flexDirection="row">
           <Box width={inset} />
           <TerminalChatPaneChip
             link={link}
@@ -138,7 +149,9 @@ export function TerminalComposerPaneChips({
             onOpen={onOpen}
           />
           <Box flexGrow={1} />
-          <TerminalComposerChipRemove link={link} onRemove={() => onRemove(index)} />
+          <Box height={1}>
+            <TerminalComposerChipRemove link={link} onRemove={() => onRemove(index)} />
+          </Box>
         </Box>
       ))}
     </>
@@ -150,7 +163,7 @@ function TerminalComposerChipRemove({ link, onRemove }: { link: ComposerShareLin
   return <IconButton icon="close" label={tf("Remove {name}", { name: content.title })} onPress={onRemove} />;
 }
 
-/** One row in the terminal: the pane's letter, the title and the pane, cut to the line. */
+/** A share's card in the terminal, or one row: the pane's letter, the title and the pane, cut to the line. */
 export function TerminalChatPaneChip({
   link,
   width,
@@ -165,8 +178,9 @@ export function TerminalChatPaneChip({
   onOpen: (link: ChatMessagePaneLink) => void;
 }) {
   const content = useChatPaneChipContent(link);
+  const Chip = link.kind === "share" ? TerminalPaneLinkItemCard : TerminalPaneLinkChip;
   return (
-    <TerminalPaneLinkChip
+    <Chip
       content={content}
       width={width}
       selected={selected}

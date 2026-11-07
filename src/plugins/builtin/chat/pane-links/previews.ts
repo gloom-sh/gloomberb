@@ -1,14 +1,24 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { getShare } from "../../../../shares/api";
+import type { ShareItem } from "../../../../shares/item";
 import type { PaneDef } from "../../../../types/plugin";
 
 /**
  * What a share chip shows, read from the share itself and nothing else: its
- * title and the pane it holds. The read does not count as a view of the share.
+ * title, the pane it holds and what that pane says it is, and the item the
+ * pane was on when it was shared. The read does not count as a view of the
+ * share.
  */
 export type SharePreview =
   | { status: "loading" }
-  | { status: "ready"; title: string; paneId: string | null }
+  | {
+    status: "ready";
+    title: string;
+    paneId: string | null;
+    /** The pane's own description, kept with shares made before items were. */
+    description?: string;
+    item?: ShareItem;
+  }
   | { status: "unavailable" };
 
 const LOADING: SharePreview = { status: "loading" };
@@ -61,10 +71,17 @@ function pump(): void {
           settle(id, { status: "unavailable" }, false);
           return;
         }
-        const paneId = share.kind === "pane" && share.data.version === 2
-          ? share.data.layout.layout.instances[0]?.paneId ?? null
+        const pane = share.kind === "pane" ? share : null;
+        const paneId = pane?.data.version === 2
+          ? pane.data.layout.layout.instances[0]?.paneId ?? null
           : null;
-        settle(id, { status: "ready", title: share.data.title, paneId }, false);
+        settle(id, {
+          status: "ready",
+          title: share.data.title,
+          paneId,
+          ...(pane?.data.description ? { description: pane.data.description } : {}),
+          ...(pane?.item ? { item: pane.item } : {}),
+        }, false);
       })
       .catch(() => settle(id, LOADING, true))
       .finally(() => {
@@ -81,6 +98,11 @@ function request(id: string): void {
   entry.pending = true;
   queue.push(id);
   pump();
+}
+
+/** What a share is called where one line names it (the Open list): the item it is on, else its own title. */
+export function sharePreviewTitle(preview: Extract<SharePreview, { status: "ready" }>): string {
+  return preview.item?.title ?? preview.title;
 }
 
 /** What chips show for a share now, for code outside React (the Open list). */

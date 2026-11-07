@@ -6,7 +6,7 @@ import { t } from "../../../../i18n";
 import { truncateToDisplayWidth } from "../../../../utils/format";
 import type { ChatMessage } from "../../../../api-client";
 import { InlineAuthActions } from "../../cloud/auth-actions";
-import { Button, ListView } from "../../../../components/ui";
+import { Button, ListView, TERMINAL_ITEM_CHIP_ROWS } from "../../../../components/ui";
 import { COMPOSER_ACTION_WIDTH } from "../layout";
 import { isManagedBot } from "../ghost-user";
 import { ChatBotIcon } from "../message/person-icons";
@@ -300,5 +300,6 @@ export function getChatComposerAreaHeight({
     + (editingMessage || replyTo ? 1 : 0)
     + Math.max(0, mentionSuggestionCount ?? 0)
     + (!nativePaneChrome && !editingMessage ? draftAttachmentCount : 0)
-    + (!nativePaneChrome ? draftLinkCount : 0);
+    // Each waiting share link is its card.
+    + (!nativePaneChrome ? draftLinkCount * TERMINAL_ITEM_CHIP_ROWS : 0);
 }

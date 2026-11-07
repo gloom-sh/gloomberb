@@ -4,6 +4,7 @@ import {
 } from "./portable-layout";
 import { safeExternalUrl } from "../utils/external-url";
 import { isRecord } from "../utils/guards";
+import { parseShareItem, type ShareItem } from "./item";
 
 const MAX_SHARE_BYTES = 128 * 1024;
 const MAX_TITLE_LENGTH = 200;
@@ -69,7 +70,8 @@ export type SharePayload =
   | { kind: "table"; data: TableShareData }
   | { kind: "chart"; data: ChartShareData }
   | { kind: "article"; data: ArticleShareData }
-  | { kind: "pane"; data: PaneShareData };
+  /** `item` sits beside `data`, which apps before it read strictly and would refuse with it inside. */
+  | { kind: "pane"; data: PaneShareData; item?: ShareItem };
 
 function shortString(value: unknown, max = MAX_TITLE_LENGTH): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= max;
@@ -195,12 +197,14 @@ export function parseSharePayload(value: unknown): SharePayload | null {
   let json: string;
   try { json = JSON.stringify(value); } catch { /* Intentional ignore: Circular or unserializable input is not a valid share payload. */ return null; }
   if (new TextEncoder().encode(json).byteLength > MAX_SHARE_BYTES) return null;
-  if (value.kind === "table" && isTableData(value.data)) return value as unknown as SharePayload;
-  if (value.kind === "chart" && isChartData(value.data)) return value as unknown as SharePayload;
-  if (value.kind === "article" && isArticleData(value.data)) return value as unknown as SharePayload;
+  if (value.kind === "table" && isTableData(value.data)) return { kind: "table", data: value.data };
+  if (value.kind === "chart" && isChartData(value.data)) return { kind: "chart", data: value.data };
+  if (value.kind === "article" && isArticleData(value.data)) return { kind: "article", data: value.data };
   if (value.kind === "pane") {
     const data = parsePaneData(value.data);
-    if (data) return { kind: "pane", data };
+    // An item this app cannot read leaves the pane as it was shared, without one.
+    const item = parseShareItem(value.item);
+    if (data) return { kind: "pane", data, ...(item ? { item } : {}) };
   }
   return null;
 }
