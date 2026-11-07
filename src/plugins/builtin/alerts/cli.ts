@@ -84,7 +84,7 @@ import {
   bulkMoveLogRule, MOVE_REARM, moveNowText, parseMoveAddArgs, planMoveAlerts, quoteSavedListings, quoteTypedSymbols, uniqueInputs, venueCounts,
   watchlistListings, MAX_BULK_ALERTS, type MoveAddRequest, type MoveListing, type MovePlan,
 } from "./cli-move";
-import { MOVE_APP_ONLY, moveRuleWords } from "./move";
+import { MOVE_DELIVERY, moveRuleWords } from "./move";
 import { MOVE_CHECKS_KEY, moveChecksOf, readMoveChecks, withMoveChecks, type MoveCheck } from "./move-checks";
 import { listAddLookups } from "../portfolio-list/cli/bulk-symbols";
 import type { AlertCondition, AlertRule } from "./types";
@@ -1094,7 +1094,7 @@ export const alertsCliCommand: CliCommandDef = {
       ];
       const waiting = rows.filter((row) => row.status === NEEDS_SIGN_IN).length;
       const allWarnings = [...(alertsError ? [alertsError] : []), ...(events.error ? [events.error] : []), ...warnings, ...cloud.warning ? [cloud.warning] : [],
-        ...waiting ? [needsSignInNote(waiting)] : [], ...alerts.some((alert) => alert.move) ? [MOVE_APP_ONLY] : []];
+        ...waiting ? [needsSignInNote(waiting)] : []];
       ctx.printResult({ data: rows, ...(allWarnings.length ? { warnings: allWarnings } : {}) }, {
         rows: (data) => data.map(textRow),
         textColumns: [
@@ -1193,7 +1193,7 @@ export const alertsCliCommand: CliCommandDef = {
           const alert = plan.added[0]!;
           const nowText = moveNowText(alert, now);
           ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert }, ...(notes.length ? { warnings: notes } : {}) }, {
-            text: (data) => `Added alert ${data.alert.id}: ${formatAlertDescription(data.alert)} (${MOVE_REARM}).${nowText ? ` ${capitalize(nowText)}.` : ""}${dryRunNote(data.dryRun)}\n${MOVE_APP_ONLY}`,
+            text: (data) => `Added alert ${data.alert.id}: ${formatAlertDescription(data.alert)} (${MOVE_REARM}).${nowText ? ` ${capitalize(nowText)}.` : ""}${dryRunNote(data.dryRun)}\n${MOVE_DELIVERY}`,
           });
           return;
         }
@@ -1206,7 +1206,7 @@ export const alertsCliCommand: CliCommandDef = {
         }, {
           text: (data) => [
             `Added ${data.added.length} move ${data.added.length === 1 ? "alert" : "alerts"}${source ? ` ${source}` : ""}: ${rule} from the previous close (${MOVE_REARM}).${dryRunNote(data.dryRun)}`,
-            ...data.added.length ? [`  ${MOVE_APP_ONLY}`] : [],
+            ...data.added.length ? [`  ${MOVE_DELIVERY}`] : [],
             ...data.added.length ? [`  By venue: ${venueCounts(data.added)}.`] : [],
             ...moveSummaryLines(plan, moves),
           ].join("\n"),

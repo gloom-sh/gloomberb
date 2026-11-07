@@ -3,8 +3,8 @@ import type { Quote } from "../../../types/financials";
 import { parseAlertAddArgs } from "./cli";
 import { planMoveAlerts, uniqueInputs, MAX_BULK_ALERTS } from "./cli-move";
 import { judgeMove, moveReached } from "./move";
-import { readLevelAlertStores, writeLevelAlertStores } from "./storage";
-import { evaluateAlert } from "./alert-engine";
+import { readLevelAlertStores, saveAlerts, writeLevelAlertStores } from "./storage";
+import { deserializeAlerts, editAlert, evaluateAlert, serializeAlerts } from "./alert-engine";
 import { parseAlertEdit, parseAlertShortcutValues } from "./command";
 import { moveChecksOf, readMoveChecks, withMoveChecks } from "./move-checks";
 import { moveQuoteFields } from "./quotes";
@@ -55,7 +55,7 @@ test("move rules keep a synced list of their own, which no price reader sees", (
   const move: AlertRule = { id: "m", symbol: "AZN.L", condition: "below", targetPrice: 3, createdAt: 0, status: "active", move: true };
   const stores = writeLevelAlertStores([price, move]);
   expect(JSON.parse(stores.alerts!)).toEqual([price]);
-  expect(JSON.parse(stores.moveAlerts!)).toEqual([move]);
+  expect(JSON.parse(stores.moveAlerts!)).toEqual([{ ...move, syncsMoveDay: true }]);
   expect(readLevelAlertStores((key) => stores[key]).alerts.map((alert) => alert.id).sort()).toEqual(["m", "p"]);
 });
 
@@ -104,7 +104,7 @@ test("a move rule that went off is armed again only by a later dated session: ne
   expect(judgeMove(undated.alert, at("2026-11-09T08:06:00Z", -0.9), Date.parse("2026-11-09T08:06:00Z")).fired).toBe(false);
 });
 
-test("a move rule's readings stay on the device: the synced list holds the rule alone and changes only when the rule does", () => {
+test("a move rule's readings stay on the device: the synced list holds the rule and changes only when the rule does or goes off on a dated move", () => {
   const rule: AlertRule = { id: "m", symbol: "GBPUSD=X", condition: "crosses", targetPrice: 0.5, createdAt: 10, status: "active", move: true };
   const judged = judgeMove(rule, quote(-0.6, 1.345), Date.parse("2026-11-06T09:00:00Z")).alert;
   const checked = { ...judged, ...moveQuoteFields(quote(-0.6, 1.345), Date.parse("2026-11-06T09:00:00Z")), status: judged.status };
@@ -115,7 +115,53 @@ test("a move rule's readings stay on the device: the synced list holds the rule 
   // Read back on the device it is the fired rule; a reading from before an edit is not its own.
   const saved = readMoveChecks(JSON.parse(JSON.stringify(checks)));
   expect(withMoveChecks([rule], saved)[0]).toMatchObject({ status: "triggered", lastCheckedPrice: -0.6, moveSession: "2026-11-05" });
-  expect(withMoveChecks([{ ...rule, armedAt: 20 }], saved)[0]).toEqual({ ...rule, armedAt: 20 });
+  expect(withMoveChecks([{ ...rule, armedAt: 20 }], saved)[0]).toEqual({ ...rule, armedAt: 20, syncsMoveDay: true });
+});
+
+test("a move rule that goes off syncs the session of the move, once a session, so Gloom Cloud never alerts on it again", () => {
+  const rule: AlertRule = { id: "m", symbol: "AZN.L", exchange: "LSE", condition: "below", targetPrice: 3, createdAt: 10, status: "active", move: true };
+  const at = (time: string, changePercent: number, changeSessionDate: string) =>
+    quote(changePercent, 120, { lastUpdated: Date.parse(time), changeSessionDate, exchangeName: "LSE" });
+  const synced = (alert: AlertRule) => JSON.parse(writeLevelAlertStores([alert]).moveAlerts!)[0];
+  // Checked without going off: the synced rule is as it was.
+  const quiet = judgeMove(rule, at("2026-11-06T09:00:00Z", -1, "2026-11-06"), Date.parse("2026-11-06T09:00:00Z"));
+  expect(synced(quiet.alert)).toEqual({ ...rule, syncsMoveDay: true });
+  // Gone off: the move's session goes with the rule, as the quote dates it.
+  const fired = judgeMove(quiet.alert, at("2026-11-06T10:00:00Z", -3.2, "2026-11-06"), Date.parse("2026-11-06T10:00:00Z"));
+  expect(fired.fired).toBe(true);
+  expect(synced(fired.alert)).toEqual({ ...rule, moveDay: "2026-11-06", syncsMoveDay: true });
+  // Later checks that session, or an older quote, leave it; the next session's going off moves it on.
+  const later = judgeMove(fired.alert, at("2026-11-06T11:00:00Z", -4, "2026-11-06"), Date.parse("2026-11-06T11:00:00Z"));
+  expect(writeLevelAlertStores([later.alert]).moveAlerts).toBe(writeLevelAlertStores([fired.alert]).moveAlerts);
+  const monday = judgeMove(later.alert, at("2026-11-09T10:00:00Z", -3.5, "2026-11-09"), Date.parse("2026-11-09T10:00:00Z"));
+  expect(monday.fired).toBe(true);
+  expect(synced(monday.alert).moveDay).toBe("2026-11-09");
+  // Read back on the device it keeps the session; an edit starts afresh without it.
+  expect(withMoveChecks([synced(monday.alert)], {})[0]?.moveDay).toBe("2026-11-09");
+  expect(editAlert(monday.alert, "AZN.L", "below", 2).moveDay).toBeUndefined();
+});
+
+test("a move list an older app synced is written once more with the marker Gloom Cloud judges by, then left as written", async () => {
+  // An older app alerts on its own and never syncs the session: Gloom Cloud leaves rules without the marker alone.
+  const older: AlertRule[] = [
+    { id: "a", symbol: "AZN.L", exchange: "LSE", condition: "below", targetPrice: 3, createdAt: 10, status: "active", move: true },
+    { id: "g", symbol: "GBPUSD=X", condition: "crosses", targetPrice: 0.5, createdAt: 11, status: "active", move: true },
+  ];
+  const store = new Map<string, unknown>([["moveAlerts", serializeAlerts(older)]]);
+  const writes: string[] = [];
+  const ctx = {
+    configState: {
+      get: (key: string) => store.get(key) ?? null,
+      set: async (key: string, value: unknown) => { writes.push(key); store.set(key, value); },
+    },
+  };
+  // Nothing about the rules changed, yet the list is written with the marker on every rule.
+  await saveAlerts(ctx as any, deserializeAlerts(store.get("moveAlerts")), "price");
+  expect(writes).toEqual(["moveAlerts"]);
+  expect(deserializeAlerts(store.get("moveAlerts"))).toEqual(older.map((rule) => ({ ...rule, syncsMoveDay: true })));
+  // Once marked, a check that changes no rule writes nothing.
+  await saveAlerts(ctx as any, deserializeAlerts(store.get("moveAlerts")), "price");
+  expect(writes).toEqual(["moveAlerts"]);
 });
 
 test("a move rule is edited as a move, and refused as a price level; a price alert is refused as a move", () => {

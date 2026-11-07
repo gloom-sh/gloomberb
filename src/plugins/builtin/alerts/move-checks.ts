@@ -1,7 +1,8 @@
 // What this device read of each move rule, kept apart from the rules. The
-// synced `moveAlerts` list holds the rules alone, so it changes only when a
-// rule does; every check, every session a rule went off in and every re-arm
-// for the next session stay in plugin resume state, as IV levels' readings do.
+// synced `moveAlerts` list holds the rules and the latest session each went off
+// in (`moveDay`, for Gloom Cloud), so it changes only when a rule does or goes
+// off; every check and every re-arm for the next session stay in plugin resume
+// state, as IV levels' readings do.
 import type { QuoteChangeBasis } from "../../../market-data/market/change-basis";
 import type { QuoteDataSource } from "../../../types/financials";
 import type { AlertRule } from "./types";
@@ -135,9 +136,12 @@ export function moveChecksOf(alerts: readonly AlertRule[]): Record<string, MoveC
 }
 
 /**
- * A move rule as the synced list keeps it: the rule alone, never a reading,
- * so no check writes the list another device pulls. Always active there:
- * whether it went off this session is this device's to say.
+ * A move rule as the synced list keeps it: the rule, never a reading, so no
+ * check writes the list another device pulls. Always active there: whether
+ * it went off this session is this device's to say. The latest session it
+ * went off in (`moveDay`) goes with it, so Gloom Cloud never alerts on that
+ * session again; it changes at most once a session. `syncsMoveDay` says this
+ * app keeps `moveDay`, so Gloom Cloud may judge the rule.
  */
 export function moveRuleOnly(alert: AlertRule): AlertRule {
   return {
@@ -150,6 +154,8 @@ export function moveRuleOnly(alert: AlertRule): AlertRule {
     ...alert.armedAt != null ? { armedAt: alert.armedAt } : {},
     status: "active",
     ...alert.message ? { message: alert.message } : {},
+    ...alert.moveDay ? { moveDay: alert.moveDay } : {},
     move: true,
+    syncsMoveDay: true,
   };
 }

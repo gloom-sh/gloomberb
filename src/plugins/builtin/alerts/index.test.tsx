@@ -807,7 +807,7 @@ test("a slow valuation read leaves price delivery independent and cannot overwri
   } finally { alertsPlugin.dispose?.(); financials.resolve({}); }
 });
 
-test("the poll asks for move rules' quotes a hundred to a request, and keeps their readings on the device, never in the synced list", async () => {
+test("the poll asks for move rules' quotes a hundred to a request, and keeps their readings on the device; the synced list gains only the session each went off in", async () => {
   const rules: AlertRule[] = Array.from({ length: 150 }, (_, index) => ({
     ...makeAlert(`m${index}`, `S${index}:LSE`, "below", 3), exchange: "LSE", move: true,
   }));
@@ -841,8 +841,10 @@ test("the poll asks for move rules' quotes a hundred to a request, and keeps the
     await alertsPlugin.setup?.(ctx as any);
     await done.promise;
     expect({ batches, single }).toEqual({ batches: [100, 50], single: 0 });
-    // Every rule went off and was read; the synced list is the rules as they were.
-    expect(store.get("moveAlerts")).toBe(moves);
+    // Every rule went off and was read; the synced list is the rules as they were, with the session each went off in.
+    const synced = deserializeAlerts(store.get("moveAlerts"));
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(Date.now());
+    expect(synced).toEqual(rules.map((rule) => ({ ...rule, moveDay: today, syncsMoveDay: true })));
     const checks = device.get("moveChecks") as Record<string, { percent: number; fired: boolean }>;
     expect(Object.keys(checks)).toHaveLength(150);
     expect(checks.m0).toMatchObject({ percent: -4, fired: true });
