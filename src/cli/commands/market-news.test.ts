@@ -377,6 +377,42 @@ test("a bank's short name finds its stories as a word in capitals, and what else
   expect(ids(2)).toEqual(["rba"]);
 });
 
+test("a bank's short name is its stories ahead of a listing abroad, which its venue still reaches; a US listing keeps it", async () => {
+  // 7 Nov 2026: `news ECB` opened ECB S.A. on the WSE with "No news", FED Fast Ejendom on CPH.
+  const requests = serveSearch([story("ecb", "ECB holds deposit rate at 2% as inflation cools", "2026-10-29T13:15:00.000Z")]);
+  const listings: Record<string, { symbol: string; name: string; exchangeName: string }> = {
+    ECB: { symbol: "ECB", name: "ECB S.A.", exchangeName: "WSE" },
+    RBA: { symbol: "RBA", name: "RB Global, Inc.", exchangeName: "NYSE" },
+  };
+  const asked: string[] = [];
+  const cli = createTestCliContext({
+    dataProvider: {
+      getNews: async (request: { ticker?: string }) => { asked.push(request.ticker ?? ""); return []; },
+      getQuote: async (symbol: string) => {
+        const quote = listings[symbol.toUpperCase()];
+        if (!quote) throw new Error(`Not a ticker: ${symbol}.`);
+        return quote;
+      },
+    },
+  });
+
+  await news.execute(["ECB"], cli.context);
+  expect(asked).toEqual([]);
+  expect(requests.map((url) => url.searchParams.get("query")).sort()).toEqual(["ECB", "Euro area central bank", "European Central Bank"]);
+  const text = render(cli.printed[0]!);
+  expect(text.split("\n")[0]).toBe('Stories matching "ECB"  ·  the European Central Bank\'s stories, under each name it is reported by');
+  expect(text).toContain("ECB is also ECB S.A. (WSE): gloom news ECB:WSE");
+  expect(cli.printed[0]!.result.metadata).toMatchObject({ listing: "ECB:WSE" });
+
+  // The listing by its venue, and a US listing by its symbol, are the listings' own news.
+  requests.length = 0;
+  await news.execute(["ECB:WSE"], cli.context);
+  await news.execute(["RBA"], cli.context);
+  expect(asked).toEqual(["ECB:WSE", "RBA"]);
+  expect(requests).toHaveLength(0);
+  expect(render(cli.printed[2]!)).toContain("No news for RB Global, Inc. (NYSE).");
+});
+
 test("a real listing, with or without stories, never falls back to a text search", async () => {
   const requests = serveSearch(STORIES);
   const quiet = createTestCliContext({

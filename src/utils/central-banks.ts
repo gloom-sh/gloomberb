@@ -73,6 +73,18 @@ export function centralBankNamed(query: string): CentralBank | null {
   return CENTRAL_BANKS.find((bank) => centralBankNames(bank).some((name) => nameKey(name) === wanted)) ?? null;
 }
 
+/**
+ * The bank a single word is the short name of, in any case: what a sentence
+ * calls it or a one-word alias (ECB, BoJ, RBA, Fed, FOMC, Banxico). Never a
+ * name it shares with a company (BCB, BCB Bancorp's too). Null otherwise.
+ */
+export function centralBankShortNamed(word: string): CentralBank | null {
+  const wanted = nameKey(word);
+  if (!wanted || wanted.includes(" ")) return null;
+  return CENTRAL_BANKS.find((bank) => [bank.short, ...bank.aliases]
+    .some((name) => nameKey(name) === wanted && !(bank.sharedNames ?? []).some((shared) => nameKey(shared) === wanted))) ?? null;
+}
+
 /** Words a query puts beside a bank's name when it asks for its policy rate: "Bank of Japan rate", "ECB rate decision", "Fed funds rate". */
 const POLICY_RATE_WORDS = new Set([
   "rate", "rates", "policy", "interest", "decision", "decisions", "meeting", "meetings", "target", "funds",
