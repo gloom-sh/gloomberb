@@ -29,7 +29,9 @@ function reportColumns(mode: CompanyMode, history: boolean, revisions: boolean, 
     ...(revisions ? [{ id: "revision", label: "Revision", width: 12, align: "left" as const }] : [])];
   return [...withoutQuietColumns(columns, rows, (row, id) => companyCellText(row, id, observations), QUIET_COLUMNS).map((column): HeadlessPaneColumn => ({
     key: column.id === "value" && mode === "guidance" ? "rangeText" : ROW_KEYS[column.id] ?? column.id, header: column.label, align: column.align === "right" ? "right" : "left",
-    format: (_value, row) => companyCellText(row as unknown as CompanyRow, column.id, observations),
+    format: (_value, row) => mode === "guidance" && column.id === "value" && typeof row.rangeText === "string" && /plus or minus|±/i.test(row.rangeText)
+      ? `${row.rangeText}${row.currency ? ` ${row.currency}` : ""}`
+      : companyCellText(row as unknown as CompanyRow, column.id, observations),
   })), { key: "asOf", header: "As of", format: (value) => typeof value === "string" ? value.slice(0, 10) : "--" }];
 }
 

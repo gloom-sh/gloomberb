@@ -176,6 +176,8 @@ describe("CDS report", () => {
       load: async () => ({ ...FORD, query: "Barclays PLC", issuer: "Barclays PLC", trades: [] }),
       loadHistory: async () => barclays,
     });
+    expect(result.sections[0]?.rows?.[0]).toMatchObject({ status: "not-derivable", spreadBp: null });
+    expect(result.errors).toBeUndefined();
     expect(result.notes).toEqual(["5Y level not derivable: DTCC prints carry upfront without payer side."]);
     expect(text).toContain("5Y level not derivable: DTCC prints carry upfront without payer side");
     expect(text).not.toContain("No 5Y spread level");

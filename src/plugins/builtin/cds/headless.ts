@@ -273,6 +273,10 @@ function projectCdsHeadless({ activity, history, levels, sort, days = DAILY_DAYS
     // The 5Y figures are dated by their level's day, each trade and each daily level by its own.
     const levelDate = line ? spreadSummary(line)?.date : undefined;
     const sections: HeadlessBundleSection[] = [
+      ...(!entries.length ? [{ title: "Level coverage", columns: [
+        { key: "issuer", header: "Issuer" }, { key: "tenor", header: "Tenor" }, { key: "status", header: "Status" }, { key: "reason", header: "Reason" },
+      ], rows: [{ issuer: name, tenor: "5Y", status: history instanceof Error ? "check-failed" : unmatched ? "not-covered" : why ? "not-derivable" : "no-traded-level",
+        spreadBp: null, reason: history instanceof Error ? "The spread history check failed." : unmatched ? empty : why ?? `No traded 5Y level on file for ${name} in the last two years.` }] }] : []),
       ...(entries.length ? [{ title: name, entries, symbol: name, ...(levelDate ? { asOf: levelDate } : {}) }] : []),
       {
         title: "Trades",

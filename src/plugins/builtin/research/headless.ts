@@ -30,6 +30,8 @@ export interface EarningsEstimatesHeadlessDependencies {
   ): Promise<EarningsEstimateSources>;
 }
 
+const ESTIMATE_COLUMNS = [...EARNINGS_ESTIMATE_COLUMNS, { key: "epsBasis", header: "EPS basis" }];
+
 const defaultDependencies: EarningsEstimatesHeadlessDependencies = {
   async loadSources(symbol, context) {
     const { actions, estimates, financials, currency, ...failures } = await loadEventSources(context.marketData, symbol);
@@ -63,7 +65,11 @@ function projectEarningsEstimatesHeadless(
     sources.financials,
     sources.currency,
   ).filter((row) => matchesKind(row, kind));
-  const rows = matching.slice(0, limit).map((row) => ({ ...row }));
+  const rows = matching.slice(0, limit).map((row) => ({ ...row,
+    ...(row.status === "Q Est" || row.status === "FY Est" ? {
+      epsBasis: row.estimateInputs?.eps?.epsBasis === "gaap" ? "GAAP" : row.estimateInputs?.eps?.epsBasis === "adjusted" ? "adjusted" : "unknown",
+    } : {}),
+  }));
   const notice = eventSourceNotice({ variant: "earnings-estimates", symbol: args.symbols[0] ?? String(args.argument ?? ""),
     actions: sources.actions, estimates: sources.estimates,
     actionsError: sources.actions ? null : "Source unavailable", estimatesError: sources.estimates ? null : "Source unavailable",
@@ -73,7 +79,7 @@ function projectEarningsEstimatesHeadless(
   if (unmatchedReportedPeriods.length) errors.push(`No statement period identified for ${unmatchedReportedPeriods.length} reported earnings row(s); quarterly revenue is unavailable.`);
 
   return {
-    columns: EARNINGS_ESTIMATE_COLUMNS,
+    columns: ESTIMATE_COLUMNS,
     rows,
     errors: errors.length ? errors : undefined,
     metadata: {
@@ -83,7 +89,7 @@ function projectEarningsEstimatesHeadless(
       returned: rows.length,
       truncated: rows.length < matching.length,
       coverageNote: notice?.text,
-      epsBasis: `${EPS_BASIS_NOTE} The TTM row's EPS is the GAAP diluted trailing figure ticker shows as EPS (TTM): the last four filed quarters', or Gloom Cloud's TTM (named so) when they give none, or the four statement quarters' diluted EPS when neither is there; reported quarters of different bases are never summed, and the row adds an adjusted sum only when all four quarters are adjusted.`,
+      epsBasis: `Estimate basis is unknown unless the estimate source explicitly identifies GAAP or adjusted; never assume it matches a reported quarter. ${EPS_BASIS_NOTE} The TTM row's EPS is the GAAP diluted trailing figure ticker shows as EPS (TTM): the last four filed quarters', or Gloom Cloud's TTM (named so) when they give none, or the four statement quarters' diluted EPS when neither is there; reported quarters of different bases are never summed, and the row adds an adjusted sum only when all four quarters are adjusted.`,
       dateNote: "Fiscal period dates are not announcement dates. Revenue is attached only to an identified statement period.",
       unmatchedReportedPeriods,
     },
@@ -124,7 +130,7 @@ export function createEarningsEstimatesHeadless(
         maximum: 200,
       },
     ],
-    columns: EARNINGS_ESTIMATE_COLUMNS,
+    columns: ESTIMATE_COLUMNS,
     describe: (args) => `Earnings Estimates | ${String(args.argument)}`,
     async load(args, context) {
       return projectEarningsEstimatesHeadless(
