@@ -4,6 +4,7 @@ import type { ChatMessage } from "../../../../api-client";
 import { registerShareOpener } from "../../../../shares/open";
 import { ONE_SHOT_COOLDOWN_MS } from "../../../../utils/one-shot";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
+import { displayWidth } from "../../../../utils/format";
 import { createChatTestHarness, createController, makeMessage } from "../test-harness";
 import { attachChatPaneLinkPanes } from "./previews";
 
@@ -16,6 +17,15 @@ const tui = createChatTestHarness();
 const SHARE = "c0ffee00".repeat(4);
 const PANE_SHARE = "7095e000".repeat(4);
 const ITEM_SHARE = "17e70000".repeat(4);
+/** A story in Chinese, whose characters take two cells each, and a share the service is slow to answer. */
+const CJK_SHARE = "c1c00000".repeat(4);
+const HELD_SHARE = "4e1d0000".repeat(4);
+const CJK_STORY = {
+  pane: "Top News",
+  title: "英伟达发布新一代人工智能芯片",
+  excerpt: "公司表示新芯片将于下季度开始供货，订单大增。",
+};
+let releaseHeld: () => void = () => {};
 const STORY = {
   pane: "Top News",
   title: "Sample Corp weighs sale of packaging unit",
@@ -58,6 +68,11 @@ beforeEach(() => {
     if (String(input).includes(`/shares/${SHARE}`)) return shareAnswer("DES SAMPL Options", "ticker-research");
     if (String(input).includes(`/shares/${ITEM_SHARE}`)) return shareAnswer("Top News", "news-top", { item: STORY });
     if (String(input).includes(`/shares/${PANE_SHARE}`)) return shareAnswer("Top News", "news-top", {}, "Curated top market stories ranked by importance");
+    if (String(input).includes(`/shares/${CJK_SHARE}`)) return shareAnswer("Top News", "news-top", { item: CJK_STORY });
+    if (String(input).includes(`/shares/${HELD_SHARE}`)) {
+      await new Promise<void>((resolve) => { releaseHeld = resolve; });
+      return shareAnswer("Top News", "news-top", { item: { pane: "Top News", title: "Sample Corp names a new chief", excerpt: "The board picked its finance head." } });
+    }
     return new Response(null, { status: 404 });
   }) as typeof fetch;
   detach = [
@@ -123,6 +138,32 @@ test("the terminal draws a share link as a card as tall as what it says, the pan
   await tui.clickFrameText(STORY.title);
   await tui.clickFrameText("Economic Calendar");
   expect(opened).toEqual([`share:${ITEM_SHARE}`, "template:econ-calendar-pane"]);
+});
+
+test("a card measures its words in terminal cells, so a story in Chinese fits it whole, and a share being read keeps the rows a card takes", async () => {
+  const cjk: ChatMessage = { ...makeMessage(2), content: `https://term.gloom.sh/api/shares/${CJK_SHARE}/open` };
+  const held: ChatMessage = { ...makeMessage(3), content: `https://term.gloom.sh/api/shares/${HELD_SHARE}/open` };
+  const controller = createController({ messages: [makeMessage(1), cjk, held, makeMessage(4)] });
+  await tui.mountChat(controller, { width: 60, height: 26 });
+
+  const frame = await tui.waitForFrameToContain("英伟达发布");
+  // Each character is two cells wide: the card is as wide as that, so the title and its
+  // line fit whole, one row each, over its pane, and nothing runs past the edge.
+  const rows = frame.split("\n");
+  const at = rows.findIndex((row) => row.includes("英伟达发布"));
+  expect(rows.slice(at, at + 3).map((row) => row.trim())).toEqual([CJK_STORY.title, CJK_STORY.excerpt, "T Top News"]);
+  expect(rows.every((row) => displayWidth(row.trimEnd()) <= 60)).toBe(true);
+  expect(rows[at + 3]).toContain("user3");
+
+  // Before its share arrives a card is its link over the rows of a title, a line of it and
+  // its pane, so the message under it is where it will stay.
+  const waiting = rows.findIndex((row) => row.includes(HELD_SHARE.slice(0, 16)));
+  expect(waiting).toBeGreaterThan(at);
+  expect(rows[waiting + 3]).toContain("user4");
+  releaseHeld();
+  const read = (await tui.waitForFrameToContain("Sample Corp names a new chief")).split("\n");
+  expect(read.findIndex((row) => row.includes("Sample Corp names a new chief"))).toBe(waiting);
+  expect(read[waiting + 3]).toContain("user4");
 });
 
 test("a news post that still ends in the publisher's address draws the story chip only, and Open takes the story without asking", async () => {

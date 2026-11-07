@@ -170,6 +170,13 @@ export interface PaneDef {
   /** Portable sharing is public by default; list the few pane-owned fields that must remain local. */
   portableShare?: PanePortableShareDef;
   /**
+   * What a public link to the pane may name as the item it was on, beside the
+   * pane (`shares/pane-item.ts`); unset, the link names the pane alone. Only for
+   * a pane of public data, and only the app's own panes: a plugin loaded from
+   * outside the app names nothing, whatever it sets here.
+   */
+  shareItem?: PaneShareItemDef;
+  /**
    * The person's own data the pane shows, so copying a public link to it,
    * posting its picture in a bug report and attaching it to an Ask Gloom
    * question ask first. A function decides
@@ -187,6 +194,21 @@ export interface PaneDef {
    * toggle field in settings, or a two-option select field when `onValue` is set.
    */
   quickSettings?: readonly PaneQuickSettingDef[];
+}
+
+export interface PaneShareItemDef {
+  /**
+   * What the pane has open or picked: what it says with `usePaneShareItem`,
+   * else its stack's detail title and its reader's opening.
+   */
+  open?: true;
+  /** The one ticker the pane shows, when it follows one (`tickerFollower`). */
+  ticker?: true;
+  /**
+   * The option the pane's function was opened with (`NI CRYPTO`), when the
+   * function lists it (`argOptions`). Free text is never named.
+   */
+  argument?: true;
 }
 
 /**

@@ -5,7 +5,7 @@ import { volSurfaceHeadless } from "./headless";
 export const volSurfaceModule: PluginModule = {
   panes: [{
     id: "vol-surface", name: "Volatility Surface", icon: "V", get component(): typeof import("./pane").VolSurfacePane { const { VolSurfacePane } = require("./pane"); return VolSurfacePane; },
-    defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 126, height: 36 },
+    defaultPosition: "right", shareItem: { ticker: true }, tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 126, height: 36 },
     tableExport: true, headless: volSurfaceHeadless,
     settings: {
       title: "Volatility Surface Settings",

@@ -4,7 +4,9 @@ import { Box, Span, Text, TextAttributes } from "../../ui";
 import { blendHex, colors } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { RADIUS } from "../../theme/ui-tokens";
-import { truncateWithEllipsis, wrapTextLines } from "../../utils/text-wrap";
+import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
+import { wrapTextLines } from "../../utils/text-wrap";
+import { plainUntrustedLine } from "../../utils/untrusted-text";
 import { IconButton } from "./icon";
 
 /**
@@ -25,6 +27,12 @@ export interface PaneLinkChipContent {
    * no title it is one line: a pane's own description over its row.
    */
   excerpt?: string;
+  /**
+   * `item` only: what it opens is still being read. The card keeps the room
+   * most cards take (two lines over their pane's row) with its `title` (the
+   * link) on the first, so it does not jump when the share arrives.
+   */
+  pending?: boolean;
 }
 
 /**
@@ -52,6 +60,8 @@ const CARD_CHIP_HEIGHT = 48;
 const LINE_CHIP_HEIGHT = 28;
 /** At most three lines for an item's title and the excerpt under it. */
 const ITEM_TEXT_LINES = 3;
+/** The lines a card waiting for its share keeps: a title and a line of it, as most cards say. */
+const PENDING_TEXT_LINES = 2;
 const ITEM_TEXT_LINE = 17;
 const THUMB = { width: 112, height: 64 };
 /** As tall as an item card's content, at the shape of the picture a share posts. */
@@ -245,12 +255,13 @@ export function DesktopPaneLinkChip({
         style: { display: "flex", flexDirection: "column", minWidth: 0, flex: "1 1 auto", gap: "var(--gloom-space-xs)" },
       },
       itemWords(content, themeColors),
-      content.detail
+      content.detail || content.pending
         ? createElement("span", {
           key: "pane",
           "data-gloom-chip-part": "pane",
+          "aria-hidden": content.pending ? true : undefined,
           style: { ...lineFrame, alignSelf: "flex-start", maxWidth: "100%" },
-        }, square(LINE_ICON_SIZE, true, "pane-icon"), line(content.detail, "title", "pane-name"))
+        }, square(LINE_ICON_SIZE, true, "pane-icon"), content.detail ? line(content.detail, "title", "pane-name") : null)
         : null)
       : createElement("span", {
         key: "text",
@@ -311,9 +322,26 @@ export function DesktopPaneLinkChip({
 /**
  * An item card's words: the title, wrapping, then the excerpt in the lines it
  * leaves. A card with no title is its pane's description, one line; one that
- * opens no pane yet (a share being read, or gone) is its one line of link.
+ * opens no pane (a share that is gone) is its one line of link, and one
+ * waiting for its share keeps two lines, its link muted on the first.
  */
-function itemWords(content: PaneLinkChipContent, themeColors: { textBright: string; text: string }) {
+function itemWords(content: PaneLinkChipContent, themeColors: { textBright: string; text: string; textMuted: string }) {
+  if (content.pending) {
+    return createElement("span", {
+      key: "words",
+      "data-gloom-chip-part": "words",
+      style: {
+        display: "block",
+        minWidth: 0,
+        height: ITEM_TEXT_LINE * PENDING_TEXT_LINES,
+        lineHeight: `${ITEM_TEXT_LINE}px`,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        color: themeColors.textMuted,
+      },
+    }, content.title);
+  }
   if (!content.title && !content.excerpt) return null;
   const lines = content.title && content.detail ? ITEM_TEXT_LINES : 1;
   return createElement("span", {
@@ -350,10 +378,10 @@ export function TerminalPaneLinkChip({
   /** Unset: the chip says what it is, in muted text, and opens nothing. */
   onOpen?: () => void;
 }) {
-  const icon = content.icon ? ` ${content.icon} ` : " ";
-  const text = truncateWithEllipsis(
-    [content.title, content.detail].filter(Boolean).join(" · ").replace(/\s+/g, " ").trim(),
-    Math.max(width - icon.length - 1, 1),
+  const icon = content.icon ? ` ${plainUntrustedLine(content.icon)} ` : " ";
+  const text = truncateToDisplayWidth(
+    plainUntrustedLine([content.title, content.detail].filter(Boolean).join(" · ")),
+    Math.max(width - displayWidth(icon) - 1, 1),
   );
   const fg = selected ? selectedTextColor : onOpen ? colors.text : colors.textMuted;
   return (
@@ -376,29 +404,40 @@ export function TerminalPaneLinkChip({
 /** The most rows an item card's words take in the terminal, over its pane's row. */
 const TERMINAL_ITEM_TEXT_ROWS = 2;
 
-/** `text` wrapped to `width`, in at most `rows` rows, the last cut with an ellipsis when it does not fit. */
+/**
+ * `text` wrapped to `width` terminal cells, in at most `rows` rows, the last
+ * cut with an ellipsis when it does not fit. Cells, not characters: a CJK
+ * character or an emoji takes two.
+ */
 function clampedRows(text: string, width: number, rows: number): string[] {
   if (rows <= 0 || !text) return [];
   const lines = wrapTextLines(text, width);
   if (lines.length <= rows) return lines;
-  return [...lines.slice(0, rows - 1), truncateWithEllipsis(lines.slice(rows - 1).join(" "), width)];
+  return [...lines.slice(0, rows - 1), truncateToDisplayWidth(lines.slice(rows - 1).join(" "), width)];
 }
 
 /**
  * How an item card lays out in the terminal: as wide as its longest line, up
- * to `width`, its title wrapping and its excerpt in the rows the title
+ * to `width` cells, its title wrapping and its excerpt in the rows the title
  * leaves, as on the desktop. With no title, the excerpt (a pane's own
- * description) is one row; a card that opens no pane yet is its one row of
- * link.
+ * description) is one row; a card that opens no pane is its one row of link,
+ * and one waiting for its share keeps the rows most cards take, its link on
+ * the first. Every word is made plain again here: it came from another
+ * person's app, and a terminal would run an escape in it.
  */
 function terminalItemCardLayout(content: PaneLinkChipContent, width: number) {
-  const oneLine = (text: string | undefined) => (text ?? "").replace(/\s+/g, " ").trim();
-  const title = oneLine(content.title);
-  const excerpt = oneLine(content.excerpt);
-  const pane = content.detail ? { title: content.detail, detail: "", icon: content.icon } : null;
-  const paneWidth = pane ? (pane.icon ? pane.icon.length + 2 : 1) + pane.title.length + 1 : 0;
-  const cardWidth = Math.max(1, Math.min(width, Math.max(title.length, excerpt.length, paneWidth - 2) + 2));
+  const title = plainUntrustedLine(content.title);
+  const excerpt = plainUntrustedLine(content.excerpt ?? "");
+  const pane = content.detail || content.pending
+    ? { title: plainUntrustedLine(content.detail), detail: "", icon: plainUntrustedLine(content.icon) }
+    : null;
+  const paneWidth = pane ? (pane.icon ? displayWidth(pane.icon) + 2 : 1) + displayWidth(pane.title) + 1 : 0;
+  const cardWidth = Math.max(1, Math.min(width, Math.max(displayWidth(title), displayWidth(excerpt), paneWidth - 2) + 2));
   const textWidth = Math.max(cardWidth - 2, 1);
+  if (content.pending) {
+    const titleRows = clampedRows(title, textWidth, 1);
+    return { cardWidth, pane, titleRows, excerptRows: Array.from({ length: TERMINAL_ITEM_TEXT_ROWS - titleRows.length }, () => "") };
+  }
   const textRows = title && pane ? TERMINAL_ITEM_TEXT_ROWS : 1;
   const titleRows = clampedRows(title, textWidth, textRows);
   const excerptRows = clampedRows(excerpt, textWidth, title ? textRows - titleRows.length : 1);
@@ -432,10 +471,10 @@ export function TerminalPaneLinkItemCard({
 }) {
   const { cardWidth, pane, titleRows, excerptRows } = terminalItemCardLayout(content, width);
   const fill = leadSurface(colors.panel, colors.text);
-  const titleColor = selected ? selectedTextColor : onOpen ? colors.textBright : colors.textMuted;
+  const titleColor = selected ? selectedTextColor : onOpen && !content.pending ? colors.textBright : colors.textMuted;
   const excerptColor = selected ? selectedTextColor : colors.text;
   const rows = [
-    ...titleRows.map((text) => ({ text, color: titleColor, bold: true })),
+    ...titleRows.map((text) => ({ text, color: titleColor, bold: !content.pending })),
     ...excerptRows.map((text) => ({ text, color: excerptColor, bold: false })),
   ];
   return (

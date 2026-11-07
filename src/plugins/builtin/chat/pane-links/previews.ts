@@ -1,6 +1,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { getShare } from "../../../../shares/api";
 import type { ShareItem } from "../../../../shares/item";
+import { plainUntrustedLine } from "../../../../utils/untrusted-text";
 import type { PaneDef } from "../../../../types/plugin";
 
 /**
@@ -75,11 +76,13 @@ function pump(): void {
         const paneId = pane?.data.version === 2
           ? pane.data.layout.layout.instances[0]?.paneId ?? null
           : null;
+        // The sender's app wrote the title and description: plain lines, as its item is (parseShareItem).
+        const description = pane?.data.description ? plainUntrustedLine(pane.data.description) : "";
         settle(id, {
           status: "ready",
-          title: share.data.title,
+          title: plainUntrustedLine(share.data.title),
           paneId,
-          ...(pane?.data.description ? { description: pane.data.description } : {}),
+          ...(description ? { description } : {}),
           ...(pane?.item ? { item: pane.item } : {}),
         }, false);
       })

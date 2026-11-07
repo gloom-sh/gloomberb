@@ -67,11 +67,12 @@ let disposeBreakingNewsNotifications: (() => void) | null = null;
 const NEWS_REPORT_FRESHNESS: PaneDef["reportFreshness"] = { status: "not-a-feed", basis: "published stories" };
 
 const newsWirePanes: PluginModule["panes"] = [
-    { id: "news-top", reportFreshness: NEWS_REPORT_FRESHNESS, name: "Top News", icon: "T", component: TopPane, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 90, height: 30 } },
+    { id: "news-top", reportFreshness: NEWS_REPORT_FRESHNESS, name: "Top News", icon: "T", shareItem: { open: true }, component: TopPane, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 90, height: 30 } },
     {
       id: "news-feed",
       name: "News Feed",
       icon: "N",
+      shareItem: { open: true },
       component: FeedPane,
       defaultPosition: "right",
       defaultMode: "floating",
@@ -83,6 +84,7 @@ const newsWirePanes: PluginModule["panes"] = [
       reportFreshness: NEWS_REPORT_FRESHNESS,
       name: TOPIC_NEWS_TITLE,
       icon: "S",
+      shareItem: { open: true, argument: true },
       component: IndustryPane,
       defaultPosition: "right",
       defaultMode: "floating",
@@ -95,6 +97,7 @@ const newsWirePanes: PluginModule["panes"] = [
       reportArgument: { kind: "free-text", placeholder: "story id", description: "The id of the story to open.", identifier: true },
       name: "Story",
       icon: "A",
+      shareItem: { open: true },
       component: NewsStoryPane,
       defaultPosition: "right",
       defaultMode: "floating",
@@ -105,6 +108,7 @@ const newsWirePanes: PluginModule["panes"] = [
       reportFreshness: NEWS_REPORT_FRESHNESS,
       name: "Breaking News",
       icon: "!",
+      shareItem: { open: true },
       component: BreakingPane,
       defaultPosition: "right",
       defaultMode: "floating",

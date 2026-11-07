@@ -1271,6 +1271,40 @@ export const chatSteps: ChatStep[] = [
     },
   },
   {
+    name: "chat chips: a card waiting for its share keeps the room most cards take, its link over an empty pane button, so it does not jump when the share arrives",
+    scenario: "chat&chips=1&items=1&shares=held",
+    async run(cdp) {
+      await ready(cdp);
+      if (!await waitFor(cdp, `window.__chatFake.shareReads >= 4 && !!__chat.chips(${JSON.stringify(ITEM_ROWS.ticker)})[0]`, 3_000)) fail("the item cards never asked for their shares");
+      await frames(cdp, 4);
+      const waiting = {
+        story: await oneChip(cdp, ITEM_ROWS.story),
+        ticker: await oneChip(cdp, ITEM_ROWS.ticker),
+        pane: await oneChip(cdp, ITEM_ROWS.pane),
+      };
+      for (const card of Object.values(waiting)) {
+        if (!card.text.includes("gloom.sh")) fail("a waiting card does not show its link", card);
+        if (card.paneToEdge === null || card.textToPane === null) fail("a waiting card keeps no room for its pane's button", card);
+      }
+      await evaluate(cdp, "window.__chatFake.releaseShares()");
+      if (!await waitFor(cdp, `__chat.chips(${JSON.stringify(ITEM_ROWS.pane)})[0]?.text.includes("Curated")`, 3_000)) fail("the shares were never read", await chips(cdp, ITEM_ROWS.pane));
+      await frames(cdp, 4);
+      const read = {
+        story: await oneChip(cdp, ITEM_ROWS.story),
+        ticker: await oneChip(cdp, ITEM_ROWS.ticker),
+        pane: await oneChip(cdp, ITEM_ROWS.pane),
+      };
+      // A title and a line of it is what most cards say: that card does not move at all,
+      // and no card grows or shrinks by more than a line of text.
+      if (Math.abs(read.ticker.height - waiting.ticker.height) > 0.5) fail("a two-line card changed height when its share arrived", { waiting: waiting.ticker, read: read.ticker });
+      for (const key of ["story", "pane"] as const) {
+        if (Math.abs(read[key].height - waiting[key].height) > 18) fail("a card jumped by more than a line when its share arrived", { key, waiting: waiting[key], read: read[key] });
+      }
+      const after = await state(cdp);
+      if (after.fromBottom > 4) fail("reading the shares moved a reader at the bottom", after);
+    },
+  },
+  {
     name: "chat chips: every share card is as tall as what it says, with the same gap over its pane, in messages and in the composer, and names its pane once",
     scenario: "chat&chips=1&items=1&draft=item",
     async run(cdp) {

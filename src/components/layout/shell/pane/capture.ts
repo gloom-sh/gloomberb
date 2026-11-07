@@ -84,7 +84,7 @@ export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
         resolveTickerForPane(state, paneId),
         state.tickers,
         pinnedTabTime(state),
-        paneShareItemFor({ pane, state, templates: pluginRegistry.paneTemplates, personal: personalData !== null }),
+        paneShareItemFor({ pane, state, registry: pluginRegistry, personal: personalData !== null }),
       ) : null,
       personalData,
     };

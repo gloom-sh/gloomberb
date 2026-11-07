@@ -59,6 +59,7 @@ function createDividendYieldModule({
         icon: "D",
         component,
         defaultPosition: "right",
+        shareItem: { ticker: true },
         tickerFollower: true,
         defaultMode: "floating",
         defaultFloatingSize: { width: 90, height: 28 },

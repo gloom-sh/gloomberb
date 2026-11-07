@@ -50,6 +50,7 @@ export const filingEventsModule: PluginModule = {
       icon: "K",
       component: FilingEventsPane,
       defaultPosition: "right",
+      shareItem: { ticker: true },
       tickerFollower: true,
       instruments: ["equity"],
       defaultMode: "floating",

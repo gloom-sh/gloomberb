@@ -24,7 +24,7 @@ const shortcut = (prefix: string, tab: DoeTab | null) => ({
 
 export const doeModule: PluginModule = {
   series: DOE_CATALOG_SERIES,
-  panes: [{ id: "doe", name: "Oil and Gas Inventories", icon: "D", get component(): typeof import("./pane").DoePane { const { DoePane } = require("./pane"); return DoePane; },
+  panes: [{ id: "doe", name: "Oil and Gas Inventories", icon: "D", shareItem: { argument: true }, get component(): typeof import("./pane").DoePane { const { DoePane } = require("./pane"); return DoePane; },
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 96, height: 34 },
     tableExport: true, headless: doeHeadless("all") }],
   paneTemplates: [{

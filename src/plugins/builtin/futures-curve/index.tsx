@@ -4,7 +4,7 @@ import { futuresCurveHeadless } from "./headless";
 import { BASIS_FORMULA, CURVE_HORIZONS, CURVE_ROOTS, curveRootForTicker, curveTitle, DEFAULT_CURVE_HORIZON, normalizeCurveRoot } from "./model";
 
 export const futuresCurveModule: PluginModule = {
-  panes: [{ id: "futures-curve", name: "Futures Curve", icon: "F", get component(): typeof import("./pane").FuturesCurvePane { const { FuturesCurvePane } = require("./pane"); return FuturesCurvePane; },
+  panes: [{ id: "futures-curve", name: "Futures Curve", icon: "F", shareItem: { argument: true }, get component(): typeof import("./pane").FuturesCurvePane { const { FuturesCurvePane } = require("./pane"); return FuturesCurvePane; },
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 98, height: 30 },
     tableExport: true, headless: futuresCurveHeadless,
     settings: (context) => ({ title: "Futures Curve Settings",

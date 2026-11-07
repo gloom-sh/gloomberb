@@ -11,9 +11,11 @@ function sameName(a: string, b: string): boolean {
  * the pane it opens. Without an item, or with one named as its pane, the pane
  * is said once: its row (with the share's own title when that says more, as
  * `DES SAMPL Options · Research`) under its own description. Before the share
- * is read, or once it is gone, the card is its link.
+ * is read the card is its link in the room most cards take; once it is gone,
+ * its link alone.
  */
 export function shareCardContent(url: string, preview: SharePreview): PaneLinkChipContent {
+  if (preview.status === "loading") return { title: url, detail: "", icon: "", pending: true };
   if (preview.status !== "ready") return { title: url, detail: "", icon: "" };
   const pane = chatPaneLinkPane(preview.paneId);
   const paneName = pane?.name ?? preview.item?.pane ?? "";

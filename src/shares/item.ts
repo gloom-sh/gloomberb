@@ -1,5 +1,6 @@
 import { markdownPlainText } from "../utils/markdown";
 import { isRecord } from "../utils/guards";
+import { plainUntrustedLine } from "../utils/untrusted-text";
 
 /**
  * What a shared pane was on when it was shared: the story it had open, the
@@ -20,12 +21,8 @@ const SHARE_ITEM_LIMITS = { pane: 80, title: 200, excerpt: 300 } as const;
 /** About two lines of a chat card and what link previews show of a description. */
 const EXCERPT_LENGTH = 240;
 
-/** Control characters and halves of a broken surrogate pair, which the share service cannot store. */
-const UNSTORABLE = /[\u0000-\u001f\u007f-\u009f]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
-
-function oneLine(value: string): string {
-  return value.replace(UNSTORABLE, " ").replace(/\s+/g, " ").trim();
-}
+/** One line of plain text, as the share service keeps it and every reader draws it (untrusted-text.ts). */
+const oneLine = plainUntrustedLine;
 
 /** `text` cut to `max` characters at a word, with an ellipsis when it was cut. */
 function clip(text: string, max: number): string {
@@ -52,18 +49,25 @@ export function shareItem(pane: string, part: { title?: string | null; excerpt?:
   return { pane: name, title, ...(excerpt && excerpt !== title ? { excerpt } : {}) };
 }
 
-function boundedText(value: unknown, max: number): value is string {
-  return typeof value === "string" && value.trim().length > 0 && value.length <= max;
+/** `value` as one line of plain text within `max`, or null when it is not text, says nothing, or is over. */
+function boundedText(value: unknown, max: number): string | null {
+  if (typeof value !== "string") return null;
+  const text = oneLine(value);
+  return text && text.length <= max ? text : null;
 }
 
-/** An item read back from a share, or null for anything else. */
+/**
+ * An item read back from a share, or null for anything else. Another person's
+ * app wrote it, so its text is made plain again here, whatever the service
+ * kept: no escape sequence, control, bidi or zero-width character reaches a
+ * card.
+ */
 export function parseShareItem(value: unknown): ShareItem | null {
   if (!isRecord(value) || !Object.keys(value).every((key) => key === "pane" || key === "title" || key === "excerpt")) return null;
-  if (!boundedText(value.pane, SHARE_ITEM_LIMITS.pane) || !boundedText(value.title, SHARE_ITEM_LIMITS.title)) return null;
-  if (value.excerpt !== undefined && !boundedText(value.excerpt, SHARE_ITEM_LIMITS.excerpt)) return null;
-  return {
-    pane: value.pane,
-    title: value.title,
-    ...(value.excerpt === undefined ? {} : { excerpt: value.excerpt }),
-  };
+  const pane = boundedText(value.pane, SHARE_ITEM_LIMITS.pane);
+  const title = boundedText(value.title, SHARE_ITEM_LIMITS.title);
+  if (!pane || !title) return null;
+  if (value.excerpt === undefined) return { pane, title };
+  const excerpt = boundedText(value.excerpt, SHARE_ITEM_LIMITS.excerpt);
+  return excerpt ? { pane, title, excerpt } : null;
 }

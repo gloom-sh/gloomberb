@@ -151,11 +151,11 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     [hits, openHitId],
   );
   const openHit = openHitIndex >= 0 ? hits[openHitIndex]! : null;
-  // A link to the pane says what it is on: the result open or picked, else what it searched for.
+  // A link to the pane says what it is on: the result open or picked. Never
+  // the words typed in the search, which are the person's own.
   usePaneShareItem(() => {
     const picked = openHit ?? hits.find((hit) => hit.id === selectedHitId);
-    if (picked) return { title: picked.title, excerpt: shareItemExcerpt(snippetPlainText(picked.snippet)) };
-    return mode === "results" && trimmedQuery ? { title: trimmedQuery } : null;
+    return picked ? { title: picked.title, excerpt: shareItemExcerpt(snippetPlainText(picked.snippet)) } : null;
   });
   // The document the cache holds paints at once; another document never
   // shows under this hit's title while its own loads.

@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { usePaneFooterScopeActive } from "../components/layout/pane/footer/registration";
 import type { ResolvedPane } from "../layout/pane-manager";
+import { listExternalPlugins } from "../plugins/external-runtime";
+import type { PluginRegistry } from "../plugins/registry";
 import { resolveTickerForPane, useOptionalPaneInstanceId, type AppState } from "../state/app/context";
 import type { PaneTemplateDef } from "../types/plugin";
 import { logFailure } from "../utils/log-failure";
@@ -31,7 +33,8 @@ let nextOrder = 0;
  * it is read only when a link is made. A tab that is not shown says nothing. `kit` marks the shared components'
  * own guesses (a stack's detail title, a reader's opening), which a pane's
  * own item outranks; they combine, so a stack's title takes its reader's
- * opening as its excerpt.
+ * opening as its excerpt. Any pane may say; a link reads it only from a pane
+ * that opts in with `shareItem.open` (paneShareItemFor).
  */
 export function usePaneShareItem(item: PaneShareItemInput, options: { paneId?: string; kit?: boolean } = {}): void {
   const contextPaneId = useOptionalPaneInstanceId();
@@ -87,8 +90,8 @@ function declaredPaneShareItem(paneId: string): PaneShareItemPart | null {
 }
 
 export interface PaneShareItemSource {
-  /** The pane's instance id. */
-  paneId: string;
+  /** The pane's instance id, when what it says it is on may name the item (`shareItem.open`); null when not. */
+  paneId: string | null;
   /** The pane's name. */
   paneName: string;
   /** The one ticker the pane shows, with what is known of it; not a list's cursor. */
@@ -103,7 +106,7 @@ export interface PaneShareItemSource {
  * none of these.
  */
 export function resolvePaneShareItem(source: PaneShareItemSource): ShareItem | null {
-  const declared = shareItem(source.paneName, declaredPaneShareItem(source.paneId));
+  const declared = source.paneId ? shareItem(source.paneName, declaredPaneShareItem(source.paneId)) : null;
   if (declared) return declared;
   const ticker = source.ticker;
   if (ticker?.symbol) {
@@ -120,8 +123,9 @@ export function resolvePaneShareItem(source: PaneShareItemSource): ShareItem | n
 
 /**
  * The argument a pane's function was opened with, read from its title as the
- * function wrote it (`NI CRYPTO`), named as the function's options name it. A
- * ticker is not one: the pane's ticker says more.
+ * function wrote it (`NI CRYPTO`), named as the function's options name it.
+ * Only an option the function lists: words typed after it (a search, a note)
+ * are the person's own, and a ticker is not one (the pane's ticker says more).
  */
 function functionArgument(
   templates: ReadonlyMap<string, PaneTemplateDef>,
@@ -135,15 +139,15 @@ function functionArgument(
   const template = [...templates.values()].find((candidate) => candidate.paneId === paneType
     && !!candidate.shortcut
     && (opens(candidate.shortcut.prefix) || (candidate.shortcut.aliases ?? []).some(opens)));
-  const shortcut = template?.shortcut;
-  if (!shortcut || shortcut.argKind === "ticker") return null;
-  let label: string | undefined;
+  const options = template?.shortcut?.argKind === "ticker" ? undefined : template?.shortcut?.argOptions;
+  if (!template || !options) return null;
   try {
-    label = shortcut.argOptions?.().find((option) => option.value.toUpperCase() === argument.toUpperCase())?.label;
+    const label = options().find((option) => option.value.toUpperCase() === argument.toUpperCase())?.label;
+    return label ? { label, description: template.description } : null;
   } catch (error) {
     logFailure("shares.pane-item", "Reading a function's argument options failed")(error);
+    return null;
   }
-  return { label: label ?? argument, description: template.description };
 }
 
 /** Fields the pane keeps on the device when shared, so nothing it shows may stand in for them. */
@@ -152,25 +156,42 @@ function keepsFieldsPrivate(pane: Pick<ResolvedPane, "def">): boolean {
   return !!kept && Object.values(kept).some((fields) => fields === true || (Array.isArray(fields) && fields.length > 0));
 }
 
+/** Whether a plugin loaded from outside the app (a registry or local plugin) owns the pane. */
+function fromExternalPlugin(registry: Pick<PluginRegistry, "getPanePluginId">, paneType: string): boolean {
+  const owner = registry.getPanePluginId(paneType);
+  return !!owner && listExternalPlugins().some((entry) => entry.plugin.id === owner);
+}
+
+/** Whether the pane shows one ticker now: a chart of one security, not a comparison or a list. */
+function showsOneTicker(pane: Pick<ResolvedPane, "instance" | "def">): boolean {
+  const { def, instance } = pane;
+  if (def.tickerSource) return false;
+  return typeof def.tickerFollower === "function" ? def.tickerFollower(instance) : def.tickerFollower === true;
+}
+
 /**
- * The item a public link to the pane keeps, or null. A pane that shows the
- * person's own data, or keeps fields of its own off a share, keeps none: what
- * it is on would say what its settings leave out.
+ * The item a public link to the pane keeps, or null. Only from what the pane
+ * opts into (`PaneDef.shareItem`): an alert, a form's title or a search typed
+ * in a pane that says nothing never reaches a link, nor anything from a
+ * plugin loaded from outside the app. A pane that shows the person's own data,
+ * or keeps fields of its own off a share, keeps none either: what it is on
+ * would say what its settings leave out.
  */
-export function paneShareItemFor({ pane, state, templates, personal }: {
+export function paneShareItemFor({ pane, state, registry, personal }: {
   pane: Pick<ResolvedPane, "instance" | "def">;
   state: Pick<AppState, "tickers"> & Parameters<typeof resolveTickerForPane>[0];
-  templates: ReadonlyMap<string, PaneTemplateDef>;
+  registry: Pick<PluginRegistry, "paneTemplates" | "getPanePluginId">;
   /** Whether the pane shows the person's own data now (personal-pane.ts). */
   personal: boolean;
 }): ShareItem | null {
-  if (personal || keepsFieldsPrivate(pane)) return null;
   const { instance, def } = pane;
-  // A list's cursor is where the list is, not something picked to share.
-  const symbol = def.tickerSource ? null : resolveTickerForPane(state, instance.instanceId);
+  const allowed = def.shareItem;
+  if (!allowed || personal || keepsFieldsPrivate(pane) || fromExternalPlugin(registry, instance.paneId)) return null;
+  // The one ticker it shows; a list's cursor is where the list is, not something picked to share.
+  const symbol = allowed.ticker && showsOneTicker(pane) ? resolveTickerForPane(state, instance.instanceId) : null;
   const metadata = symbol ? state.tickers.get(symbol)?.metadata : undefined;
   return resolvePaneShareItem({
-    paneId: instance.instanceId,
+    paneId: allowed.open ? instance.instanceId : null,
     paneName: def.name,
     ticker: symbol ? {
       symbol,
@@ -179,6 +200,6 @@ export function paneShareItemFor({ pane, state, templates, personal }: {
       sector: metadata?.sector,
       industry: metadata?.industry,
     } : null,
-    argument: functionArgument(templates, instance.paneId, instance.title),
+    argument: allowed.argument ? functionArgument(registry.paneTemplates, instance.paneId, instance.title) : null,
   });
 }

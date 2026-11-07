@@ -640,6 +640,7 @@ export const secModule: PluginModule = {
       icon: "S",
       component: SecView,
       defaultPosition: "right",
+      shareItem: { ticker: true },
       tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 32 },
