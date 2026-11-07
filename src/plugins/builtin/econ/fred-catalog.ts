@@ -190,7 +190,7 @@ const GROUPS: ReadonlyArray<{ group: string; rows: readonly FredRow[] }> = [
     rows: [
       ["PCOPPUSDM", "Global price of copper", "USD/ton", "monthly", ["copper", "metals", "LME"]],
       ["PALUMUSDM", "Global price of aluminum", "USD/ton", "monthly", ["aluminum", "aluminium", "metals", "LME"]],
-      ["PIORECRUSDM", "Global price of iron ore", "USD/dry metric ton", "monthly", ["iron ore", "iron", "steel", "metals"]],
+      ["PIORECRUSDM", "Global price of iron ore (dry metric ton)", "USD/ton", "monthly", ["iron ore", "iron", "steel", "metals"]],
     ],
   },
   {

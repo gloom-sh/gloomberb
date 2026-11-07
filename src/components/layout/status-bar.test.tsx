@@ -213,11 +213,11 @@ describe("StatusBar", () => {
       tui.destroy();
     }
     // Scrolled to the layout in front, the strip starts at a tab's edge: "^1 Default" is out of view whole, not
-    // cut to "lt".
-    expect(lines.get(56)).toStartWith("  ^2 FX Desk - CIO  ");
+    // cut to "lt", and the marker over the tab's blank first cell says a layout is to its left.
+    expect(lines.get(56)).toStartWith(" ‹^2 FX Desk - CIO  ");
     // A strip narrower than that tab shows the start of its name, and narrower still, without its key.
-    expect(lines.get(44)).toStartWith("  ^2 FX D…  ");
-    expect(lines.get(40)).toStartWith("  FX…  ");
+    expect(lines.get(44)).toStartWith(" ‹^2 FX D…  ");
+    expect(lines.get(40)).toStartWith(" ‹FX…  ");
   });
 
   test("a terminal 80 columns or wider keeps every name at its full length and scrolls the strip, as it did", async () => {

@@ -420,6 +420,8 @@ function OpenTuiTabs({
   };
   // Which edges of an overflowing strip hide tabs: each shows a marker, so a cut strip says there is more.
   const [edges, setEdges] = useState<{ left: boolean; right: boolean }>({ left: false, right: false });
+  // What the markers show, read before setting them: an unchanged strip schedules no render.
+  const edgesRef = useRef(edges);
   const updateEdges = useCallback(() => {
     const scrollBox = scrollRef.current;
     const viewportWidth = scrollBox?.viewport?.width || scrollBox?.width || 0;
@@ -428,7 +430,9 @@ function OpenTuiTabs({
     const next = viewportWidth > 0
       ? { left: left > 0, right: left + viewportWidth < stripWidth }
       : { left: false, right: false };
-    setEdges((current) => (current.left === next.left && current.right === next.right ? current : next));
+    if (edgesRef.current.left === next.left && edgesRef.current.right === next.right) return;
+    edgesRef.current = next;
+    setEdges(next);
   }, []);
   // Blank cells after the last tab, so the strip can start at a tab's edge
   // when it reveals the last ones (see revealActiveTab).

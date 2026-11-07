@@ -340,7 +340,8 @@ async function renamedListingRow(
   renamed: RenamedListing,
   searchContext?: SearchRequestContext,
 ): Promise<InstrumentSearchResult | null> {
-  const found = await searchProviderResults(dataProvider, renamed.to, searchContext).catch(() => null);
+  const found = await searchProviderResults(dataProvider, renamed.to, searchContext)
+    .catch(logFailure("tickers.search", "Search for a renamed listing's new symbol failed", null));
   const row = found?.results.find((result) => result.symbol.toUpperCase() === renamed.to
     && canonicalExchange(result.exchange) === canonicalExchange(renamed.exchange));
   return row ? {
