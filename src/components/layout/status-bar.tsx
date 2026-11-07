@@ -18,6 +18,7 @@ import {
   advertisedChord,
   formatChordForHost,
   useKeybindings,
+  useTerminalReportsControlKeys,
   type KeyChord,
 } from "../../app/keybindings";
 import { getShortcutDisplayMode, type ShortcutDisplayMode } from "../../utils/shortcut-labels";
@@ -144,7 +145,9 @@ export function StatusBar() {
   };
   // Tabs name the digit that switches to them, as bound on this host. Past
   // nine there is no digit, and a rebinding off the digits has none either.
-  const switchChord = advertisedChord(keybindings, "switch-layout", shortcutMode);
+  // A terminal that cannot send Control with a digit names Alt+1 instead.
+  const legacyTerminal = useTerminalReportsControlKeys() === false;
+  const switchChord = advertisedChord(keybindings, "switch-layout", shortcutMode, { legacyTerminal });
   const tabKey = (index: number): string => (
     switchChord?.key === "digit" && index < 9 ? `${compactChordLabel(switchChord, shortcutMode, index + 1)} ` : ""
   );

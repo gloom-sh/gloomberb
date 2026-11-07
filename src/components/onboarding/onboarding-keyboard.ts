@@ -4,6 +4,7 @@ import type { BrokerConfigField } from "../../types/broker";
 import { useShortcut, type KeyEventLike } from "../../react/input";
 import { matchKeybinding, matchesKeybindingAction, type ResolvedKeybindings } from "../../app/keybindings";
 import { isPlainKey } from "../../utils/keyboard";
+import { keepEscapeFromClosing } from "../../utils/double-escape-close";
 import { isCopyShortcut, isPasteShortcut } from "../../utils/selection-clipboard";
 import type { CloudBillingInterval } from "../../account/billing";
 import type { usePlanAccess } from "../../api-client/plan-access";
@@ -331,6 +332,21 @@ export function useOnboardingKeyboard({
     else void finish();
   }, {
     phase: "before",
+    enabled: stage === "research" && !helpFocused && !coachAside && !inputCaptured && !dialogOpen && !commandBarOpen,
+  });
+
+  // Esc puts the card away, as it closes any card. Scoped, so it runs ahead
+  // of the shell's double-Esc arming: this Esc is not half of closing the
+  // pane under the card.
+  useShortcut((event) => {
+    if (event.targetEditable === true || !isPlainKey(event, "escape", "esc")) return;
+    keepEscapeFromClosing(event);
+    event.preventDefault();
+    event.stopPropagation();
+    void finish();
+  }, {
+    phase: "before",
+    scope: "onboarding:research",
     enabled: stage === "research" && !helpFocused && !coachAside && !inputCaptured && !dialogOpen && !commandBarOpen,
   });
 }

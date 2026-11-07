@@ -14,6 +14,7 @@ import {
   type PrimaryModifier,
 } from "./chord";
 import type { ResolvedKeybindingAction, ResolvedKeybindings } from "./resolve";
+import { legacyTerminalSends } from "./terminal-keys";
 
 /** What `CmdOrCtrl` is on this host: Control in a terminal, Command on a Mac desktop. */
 export function primaryModifierFor(
@@ -103,10 +104,14 @@ export function advertisedChord(
   resolved: ResolvedKeybindings,
   actionId: string,
   mode: ShortcutDisplayMode,
+  { legacyTerminal = false }: {
+    /** The terminal answered without the kitty protocol: a chord it can send goes first (Alt+1 over Ctrl+1). */
+    legacyTerminal?: boolean;
+  } = {},
 ): KeyChord | null {
   const chords = chordsForHost(resolved.actionsById.get(actionId)?.chords ?? [], mode);
   if (chords.length === 0) return null;
-  if (mode === "terminal") return chords[0]!;
+  if (mode === "terminal") return (legacyTerminal ? chords.find(legacyTerminalSends) : undefined) ?? chords[0]!;
   return chords.find((chord) => chord.primary || chord.cmd) ?? chords[0]!;
 }
 

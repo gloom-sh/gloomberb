@@ -284,7 +284,10 @@ export function useAppGlobalShortcuts({
       if (ranAlready(action)) return;
       event.preventDefault();
       event.stopPropagation();
-      pluginRegistry.showPane("help");
+      // The key that opened Help closes it again while it has focus.
+      const focused = state.focusedPaneId ? findPaneInstance(state.config.layout, state.focusedPaneId) : undefined;
+      if (focused?.paneId === "help") pluginRegistry.hidePane("help");
+      else pluginRegistry.showPane("help");
       return;
     }
 

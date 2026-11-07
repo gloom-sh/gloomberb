@@ -113,6 +113,10 @@ function parseDefaults(texts: readonly string[]): KeyChord[] {
 }
 
 const DEFAULT_CHORDS = new Map(KEYBINDING_ACTIONS.map((action) => [action.id, parseDefaults(action.defaults)]));
+const TERMINAL_DEFAULT_CHORDS = new Map(KEYBINDING_ACTIONS.map((action) => [
+  action.id,
+  [...DEFAULT_CHORDS.get(action.id)!, ...parseDefaults(action.terminalDefaults ?? [])],
+]));
 
 /**
  * Two chords fire on the same keypress somewhere: identical, or one says
@@ -179,11 +183,13 @@ export function resolveKeybindings(
   const hostActions = KEYBINDING_ACTIONS.filter((def) => (
     options.host === "desktop" ? !def.terminalOnly : options.host === "terminal" ? !def.desktopOnly : true
   ));
+  // With no host the table is every host's at once (the CLI), so it has the terminal's chords too.
+  const defaults = options.host === "desktop" ? DEFAULT_CHORDS : TERMINAL_DEFAULT_CHORDS;
   const actions: ResolvedKeybindingAction[] = hostActions.map((def) => resolveAction(
     def,
     undefined,
     def.id,
-    DEFAULT_CHORDS.get(def.id)!,
+    defaults.get(def.id)!,
     overrides,
     issues,
   ));
@@ -229,12 +235,18 @@ export function resolveKeybindings(
 
 /**
  * The first action or command whose chord the event is, in table order. Actions
- * win over commands, so a stray command binding never shadows a core key.
+ * win over commands, so a stray command binding never shadows a core key. The
+ * one exception is a command on a single key of the 1-9 family (`Alt+1`):
+ * that key was bound by hand, the family by default, so the command keeps it.
  */
 export function matchKeybinding(resolved: ResolvedKeybindings, event: KeyChordEventLike): KeybindingMatch | null {
   for (const action of resolved.actions) {
     for (const chord of action.chords) {
       if (!matchesKeyChord(chord, event)) continue;
+      const command = chord.key === "digit"
+        ? resolved.commands.find((entry) => matchesKeyChord(entry.chord, event))
+        : undefined;
+      if (command) return { kind: "command", command };
       return {
         kind: "action",
         id: action.id,
@@ -255,11 +267,18 @@ export function matchKeybinding(resolved: ResolvedKeybindings, event: KeyChordEv
  * switcher's 1-9 included. Capture refuses such a chord, so a new binding never
  * leaves a core key (the command bar, close pane, quit) dead. Null when no
  * built-in action has it; a plugin shortcut or a bound command does not count.
+ * A command may take one digit of the 1-9 family (`Alt+1`): it wins that key
+ * (matchKeybinding), and the other eight still switch layouts.
  */
-export function coreActionOnChord(resolved: ResolvedKeybindings, chord: KeyChord, exceptId?: string): ResolvedKeybindingAction | null {
+export function coreActionOnChord(
+  resolved: ResolvedKeybindings,
+  chord: KeyChord,
+  exceptId?: string,
+  { command = false }: { command?: boolean } = {},
+): ResolvedKeybindingAction | null {
   return resolved.actions.find((action) => action.def && action.id !== exceptId
     && action.chords.some((existing) => keyChordsOverlap(existing, chord)
-      || (existing.key === "digit" && /^[1-9]$/.test(chord.key) && keyChordsOverlap({ ...existing, key: chord.key }, chord))))
+      || (!command && existing.key === "digit" && /^[1-9]$/.test(chord.key) && keyChordsOverlap({ ...existing, key: chord.key }, chord))))
     ?? null;
 }
 

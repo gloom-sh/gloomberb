@@ -44,6 +44,8 @@ export interface KeybindingActionDef {
   /** Help text. Kept in English here; the help pane translates it. */
   description: string;
   defaults: readonly string[];
+  /** Default chords the terminal adds after `defaults`, for keys only a terminal needs. */
+  terminalDefaults?: readonly string[];
   /** Only the desktop app has this action; the terminal hides the row. */
   desktopOnly?: boolean;
   /** Only the terminal has this action; the desktop app hides the row. */
@@ -109,6 +111,10 @@ export const KEYBINDING_ACTIONS: readonly KeybindingActionDef[] = [
     category: "Global Keys",
     description: "Switch saved layouts by number.",
     defaults: ["CmdOrCtrl+Digit"],
+    // A terminal without the kitty protocol never sends Control with a digit
+    // (Ctrl+1 arrives as 1, Ctrl+3 as Esc), but it sends Alt+1. A browser
+    // keeps Alt+1 for its own tabs, and a Mac types ¡ with it.
+    terminalDefaults: ["Alt+Digit"],
   },
   {
     id: "focus-next-pane",
