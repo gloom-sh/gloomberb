@@ -319,7 +319,7 @@ export function buildTickerSearchCandidates({
   );
   const providerItems = createProviderTickerSearchCandidates(filteredProviderResults, tickers, candidateOptions);
   const ranked = withHomeListingLead(withSuccessorFirst(rankTickerSearchItems([...localItems, ...providerItems], query), query), query);
-  return limitTickerSearchCandidates(assignTickerSearchCategories(ranked, query), totalLimit, localLimit);
+  return limitTickerSearchCandidates(companyListingsFirst(assignTickerSearchCategories(ranked, query), query), totalLimit, localLimit);
 }
 
 /** Whether a query is the start of a merged company's name, as the service matched it ("Golden Ocean"). */
@@ -923,6 +923,31 @@ function assignTickerSearchCategories<T extends TickerSearchCandidate>(items: T[
     }
     return { ...item, category: "Other Listings" };
   }) as T[];
+}
+
+/**
+ * A query that names a company lists the company's listings before the
+ * mutual funds that carry its name: "banorte" is GFNORTEO (Grupo Financiero
+ * Banorte) and its other lines first, then the four Banorte Siefore pension
+ * funds search ranked above it. Only when the primary listing's name holds
+ * every word of the query and every fund ranked above it is a mutual fund: a
+ * future or an ETF the query names keeps its lead (GC=F for "gold", LIT for
+ * "lithium").
+ */
+function companyListingsFirst<T extends TickerSearchCandidate>(items: T[], query: string): T[] {
+  const primary = items.findIndex((item) => item.category === "Primary Listing");
+  const firstFund = items.findIndex((item) => item.category === "Funds & Derivatives");
+  if (primary < 0 || firstFund < 0 || firstFund > primary) return items;
+  const ahead = items.slice(0, primary).filter((item) => item.category === "Funds & Derivatives");
+  if (!ahead.every((item) => /mutual\s*fund/i.test(item.instrumentType ?? item.result?.type ?? ""))) return items;
+  const wanted = normalizeSearchText(query).split(" ").filter(Boolean);
+  const lead = items[primary]!;
+  const name = ` ${normalizeSearchText(lead.result?.name ?? lead.ticker?.metadata.name ?? lead.detail ?? "")} `;
+  if (!wanted.length || !wanted.every((word) => name.includes(` ${word} `))) return items;
+  const listings = items.filter((item) => item.category === "Primary Listing" || item.category === "Other Listings");
+  const before = items.slice(0, firstFund).filter((item) => !listings.includes(item));
+  const rest = items.slice(firstFund).filter((item) => !listings.includes(item));
+  return [...before, ...listings, ...rest];
 }
 
 function limitTickerSearchCandidates<T extends TickerSearchCandidate>(

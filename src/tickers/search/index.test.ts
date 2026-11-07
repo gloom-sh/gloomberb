@@ -1129,6 +1129,20 @@ describe("ticker-search utilities", () => {
       makeSearchResult("COPX", "Global X Copper Miners ETF", { exchange: "ARCA", type: "ETF" }),
     ];
 
+    test("a company's name lists its listings before the mutual funds named after it", () => {
+      const banorte = [
+        makeSearchResult("XXINTEAB2P06", "Banorte Multi De Prev 1 Generali Siefore Fund", { exchange: "BMV", type: "MUTUALFUND" }),
+        makeSearchResult("XXINTEBB2P09", "Banorte Multi De Prev 2 Generali Siefore Fund", { exchange: "BMV", type: "MUTUALFUND" }),
+        makeSearchResult("GFNORTEO", "Grupo Financiero Banorte, S.A.B. de C.V.", { exchange: "BMV", type: "EQUITY" }),
+        makeSearchResult("GBOOY", "Grupo Financiero Banorte, S.A.B. de C.V.", { exchange: "OTC", type: "EQUITY" }),
+      ];
+      expect(build("banorte", banorte)).toEqual([
+        "GFNORTEO:Primary Listing", "GBOOY:Other Listings", "XXINTEAB2P06:Funds & Derivatives", "XXINTEBB2P09:Funds & Derivatives",
+      ]);
+      // A fund that is not named after the company keeps its place.
+      expect(build("generali", banorte)[0]).toBe("XXINTEAB2P06:Funds & Derivatives");
+    });
+
     test("the companies sent with a theme follow its funds, as related, before the names; older servers' rows are dropped", () => {
       expect(build("lithium", rows)).toEqual([
         "LIT:Funds & Derivatives", "ALB:Related", "SQM:Related", "LAC:Primary Listing",
