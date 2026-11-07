@@ -22,6 +22,14 @@ test.each([
 
 test("a coin-typed listing named as derivatives is a perpetual price, not a coin; a derivatives fund is neither", () => {
   expect(instrumentTypeLabel("CRYPTOCURRENCY", "Natural Gas (Derivatives) USD")).toBe("Perpetual futures price");
-  expect(instrumentTypeLabel("CRYPTOCURRENCY", "Bitcoin USD")).toBe("CRYPTOCURRENCY");
+  expect(instrumentTypeLabel("CRYPTOCURRENCY", "Bitcoin USD")).toBe("Cryptocurrency");
   expect(instrumentTypeLabel("ETF", "Samsung KODEX Gold Futures Special Asset ETF - Gold-Derivatives (H)")).toBe("ETF");
+});
+
+test("a provider's type code reads in the words the other types use; a generic EQUITY is a stock, never claimed common", () => {
+  expect(instrumentTypeLabel("EQUITY", "Apple Inc.")).toBe("Stock");
+  expect(instrumentTypeLabel("INDEX", "S&P 500")).toBe("Index");
+  expect(instrumentTypeLabel("Common Stock", "Apple Inc.")).toBe("Common Stock");
+  // A broker's code stays as filed: its STK covers funds too.
+  expect(instrumentTypeLabel("STK", "iShares Bitcoin Trust")).toBe("STK");
 });

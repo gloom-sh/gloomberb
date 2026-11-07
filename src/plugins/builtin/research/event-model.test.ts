@@ -107,6 +107,13 @@ test("an upcoming report takes the currency its reported quarters agree on", () 
     .find((row) => row.earningsState === "pending");
   expect(pending(earnings)?.epsCurrency).toBe("USD");
   expect(pending([...earnings, { date: "2026-03-31", dateType: "fiscal-period-end", epsActual: 4.27, currency: "EUR" }])?.epsCurrency).toBeUndefined();
+  // An unlabelled old quarter takes it only where the company's own EPS is in it too.
+  const old = [...earnings, { date: "2023-11-02", epsActual: 1.46 }];
+  const oldCurrency = (financials: EventFinancials | null) => buildEventRows({ symbol: "MSFT", currency: "USD", dividends: [], splits: [], earnings: old },
+    null, financials, "USD").find((row) => row.date === "2023-11-02")?.epsCurrency;
+  expect(oldCurrency({ quarterlyStatements: [], financialCurrency: "USD", fundamentals: { epsCurrency: "USD" } })).toBe("USD");
+  expect(oldCurrency({ quarterlyStatements: [], financialCurrency: "AUD", fundamentals: { epsCurrency: "AUD" } })).toBeUndefined();
+  expect(oldCurrency(null)).toBeUndefined();
 });
 
 test("partial and stale corporate data are not described as an empty event history", () => {

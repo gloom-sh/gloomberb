@@ -133,7 +133,7 @@ test("an insurer's EV keeps its investments and says so, and one at or below zer
   expect(capless).toContain("EV N/M: cash and investments exceed market cap + debt in the source's EV.");
 });
 
-test("an EV off market cap + debt - cash is labelled as the provider's with the reconciliation, a withdrawn one is unavailable", async () => {
+test("an EV off market cap + debt - cash is labelled as the provider's with the reconciliation (ticker gives the computed one alone), a withdrawn one is unavailable", async () => {
   // Synthetic, shaped like WPM (differs) and GFI (withdrawn).
   const check = { currency: "USD", marketCap: 62e9, totalDebt: 2e9, cash: 0.1e9, balanceSheetDate: "2026-06-30", computed: 63.9e9 };
   const withCheck = (fundamentals: TickerFinancials["fundamentals"]): TickerFinancials => ({
@@ -146,7 +146,10 @@ test("an EV off market cap + debt - cash is labelled as the provider's with the 
   expect(valuation(differs)).toContain("Enterprise Value 61.8B USD (provider)");
   expect(valuation(differs)).toContain(
     "EV 61.8B USD (provider) vs 63.9B computed from market cap + total debt - cash (balance sheet 2026-06-30).");
-  expect(await report(differs)).toContain("Enterprise Value 61.8B USD (provider)");
+  // The overview says EV once: the computed figure, with no label and no reconciliation line.
+  const overview = await report(differs);
+  expect(overview).toMatch(/^Enterprise Value 63\.9B USD$/m);
+  expect(overview).not.toContain("61.8B");
   const withdrawn = withCheck({
     unavailableFields: ["enterpriseValue", "enterpriseToRevenue"],
     enterpriseValueCheck: { ...check, status: "withdrawn", source: 128e9 },

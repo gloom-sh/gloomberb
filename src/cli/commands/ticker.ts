@@ -2,7 +2,8 @@ import { logFailure } from "../../utils/log-failure";
 import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../utils/reported-money";
 import {
-  appTtmRate, BANK_ENTERPRISE_VALUE, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueLabel, enterpriseValueReconciliationNote,
+  appTtmRate, BANK_ENTERPRISE_VALUE, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueCheck, enterpriseValueLabel,
+  enterpriseValueReconciliationNote,
   epsConversionNote, fundamentalsCurrency, isBankEnterpriseValue, reportedEnterpriseValue, trailingEpsSourceNote, ttmAtAppRate, ttmConversionNote,
   withBankEnterpriseValue,
 } from "../../utils/fundamentals";
@@ -55,6 +56,7 @@ import { instrumentTypeLabel, resolveTickerInstrumentKind } from "../../tickers/
 import { INDEX_POINTS_LABEL, isIndexLevel, reportedQuoteVolume } from "../../market-data/market/index-level";
 import type { SecFilingItem } from "../../types/data-provider";
 import type { NewsArticle } from "../../news/types";
+import { summaryRestatesHeadline } from "../../news/news-model";
 import type { TickerRecord } from "../../types/ticker";
 import type { CliCommandContext } from "../../types/plugin";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, lotCostFxRate, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../portfolio/position-metrics";
@@ -193,26 +195,48 @@ function cashRunwayText(runway: CashRunway): string {
   return [part(quarter, "quarter"), trailing ? part(trailing, "TTM") : `TTM ${runway.trailingGap === "short-history" ? SHORT_RUNWAY_HISTORY : "not reported"}`].filter((text): text is string => !!text).join(" \u00b7 ");
 }
 
-function buildStatementMetrics(statement: FinancialStatement, currency?: string, codes = false, runway?: CashRunway | null): Array<[string, string]> {
+/** The balance sheet lines of a statement: a quarter that ends on the year's closing day shares them with the year. */
+const BALANCE_SHEET_FIELDS = [
+  "cashAndCashEquivalents", "cashCashEquivalentsAndShortTermInvestments", "totalAssets", "totalLiabilities", "totalDebt", "totalEquity",
+] as const satisfies ReadonlyArray<keyof FinancialStatement>;
+
+/**
+ * A statement's lines. Income incl. NCI and Income Common print only where they read differently from Net Income,
+ * and `sameDay`, the year a quarter closes with, leaves out the balance sheet lines it already shows with the same
+ * figure: the two statements' balance sheets are one, on one date.
+ */
+function buildStatementMetrics(
+  statement: FinancialStatement,
+  currency?: string,
+  codes = false,
+  runway?: CashRunway | null,
+  sameDay?: FinancialStatement | null,
+): Array<[string, string]> {
   const money = (value: number | undefined, perShare = false) => formatReportedMoney(value, currency, perShare, codes);
+  const netIncome = money(statement.netIncome);
+  const income = (value: number | undefined) => (value != null && money(value) === netIncome ? "—" : money(value));
+  const balance = (field: (typeof BALANCE_SHEET_FIELDS)[number]) => {
+    const text = money(statement[field]);
+    return sameDay?.date === statement.date && statement[field] != null && money(sameDay[field]) === text ? "—" : text;
+  };
   return [
     ["Revenue", money(statement.totalRevenue)],
     ["Gross Profit", money(statement.grossProfit)],
     ["Operating Income", money(statement.operatingIncome)],
-    ["Net Income", money(statement.netIncome)],
-    ["Income incl. NCI", money(statement.netIncomeIncludingNoncontrollingInterests)],
-    ["Income Common", money(statement.netIncomeCommonStockholders)],
+    ["Net Income", netIncome],
+    ["Income incl. NCI", income(statement.netIncomeIncludingNoncontrollingInterests)],
+    ["Income Common", income(statement.netIncomeCommonStockholders)],
     ["EBITDA", money(statement.ebitda)],
     ["Operating Cash Flow", money(statement.operatingCashFlow)],
     ["Free Cash Flow", money(statement.freeCashFlow)],
-    ["Cash", money(statement.cashAndCashEquivalents)],
-    ["Cash + ST Inv", money(statement.cashCashEquivalentsAndShortTermInvestments)],
+    ["Cash", balance("cashAndCashEquivalents")],
+    ["Cash + ST Inv", balance("cashCashEquivalentsAndShortTermInvestments")],
     // The latest quarter's only: months of cash at its burn and the trailing year's.
     ...runway ? [["Cash Runway", cashRunwayText(runway)] as [string, string]] : [],
-    ["Total Assets", money(statement.totalAssets)],
-    ["Total Liabilities", money(statement.totalLiabilities)],
-    ["Total Debt", money(statement.totalDebt)],
-    ["Equity", money(statement.totalEquity)],
+    ["Total Assets", balance("totalAssets")],
+    ["Total Liabilities", balance("totalLiabilities")],
+    ["Total Debt", balance("totalDebt")],
+    ["Equity", balance("totalEquity")],
     ["Diluted EPS", money(statement.eps, true)],
     // Labelled only when the service says the row counts receipts.
     ["Diluted Shares", statement.dilutedShares != null && statement.shareBasis === "depositary_receipt"
@@ -589,6 +613,21 @@ function enterpriseValueFigure(figure: MetricFigure, fundamentals: TickerFinanci
   if (label === "not-meaningful") return { ...multipleFigure(NOT_MEANINGFUL), unit: figure.unit };
   if (label === "unavailable") return { text: "unavailable", value: null, unit: figure.unit };
   return label === "provider" && figure.text !== "—" ? { ...figure, text: `${figure.text} (provider)` } : figure;
+}
+
+/**
+ * The fundamentals `ticker` reads its one EV from: where the provider's is more than 5% from market cap + debt - cash,
+ * the computed figure in its place, so the overview gives one number and no reconciliation line (`fundamentals` and
+ * `valuation` keep both, and JSON keeps the provider's beside its check).
+ */
+function withComputedEnterpriseValue(
+  fundamentals: TickerFinancials["fundamentals"],
+  currency: string | undefined,
+): TickerFinancials["fundamentals"] {
+  const check = enterpriseValueLabel(fundamentals) === "provider" ? enterpriseValueCheck(fundamentals) : undefined;
+  if (!fundamentals || !check || !(typeof check.computed === "number" && check.computed > 0)
+    || (currency && check.currency && check.currency !== currency)) return fundamentals;
+  return { ...fundamentals, enterpriseValue: check.computed, enterpriseValueCheck: undefined };
 }
 
 function percentFigure(fraction: number | null | undefined, format: (value: number) => string): MetricFigure {
@@ -1329,8 +1368,9 @@ export async function buildTickerReport({
     ? `${formatCompact(capitalization.value)} ${capitalization.currency}${await inBase(capitalization.value, capitalization.currency)}`
     : "—";
   // Shown in the same currency as the market cap, so the two can be compared.
-  const enterpriseValue = reportedEnterpriseValue(priced.fundamentals);
   const evCurrency = enterpriseValueCurrency(quote, fundamentals);
+  const shownFundamentals = withComputedEnterpriseValue(priced.fundamentals, evCurrency);
+  const enterpriseValue = reportedEnterpriseValue(shownFundamentals);
   const enterpriseValueText = `${formatReportedMoney(enterpriseValue, evCurrency)}${enterpriseValue != null && evCurrency
     ? await inBase(enterpriseValue, evCurrency) : ""}`;
 
@@ -1389,7 +1429,7 @@ export async function buildTickerReport({
 
   // A listing of the last year may have no statements yet: its IPO says how recent it is.
   const listing = { listedSince: ipo ? ipo.deal.listingDate ?? ipo.deal.firstDay?.session ?? null : null };
-  const metrics = withoutStockRows(fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns,
+  const metrics = withoutStockRows(fundamentalsMetrics(quote, shownFundamentals, profile, { text: marketCapText }, priceReturns,
     fundamentalsCurrency(financials, listing), { text: enterpriseValueText }, distributions, bondFund, codes), isFund);
   const reportedCurrency = financials.financialCurrency?.trim();
   const statements = [...financials.annualStatements, ...financials.quarterlyStatements];
@@ -1401,7 +1441,7 @@ export async function buildTickerReport({
 
   const beforeFundamentals = lines.length;
   appendMetricSection(lines, "Fundamentals", metricLines(metrics));
-  for (const note of fundamentalsNotes(priced, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
+  for (const note of fundamentalsNotes({ ...priced, fundamentals: shownFundamentals }, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
   // The trailing block beside statements in another currency, when no conversion says why.
   const split = metrics.some((metric) => TRAILING_MONEY_METRICS.has(metric.label) && metric.text !== "—")
     ? ttmCurrencySplitNote(priced.fundamentals, [latestAnnual, latestQuarter].flatMap((row) => row ? [statementCurrency(row)] : []))
@@ -1431,7 +1471,7 @@ export async function buildTickerReport({
   if (latestQuarter) {
     const runway = cashRunway(financials);
     appendMetricSection(lines, `Latest Quarter (${statementPeriodText(latestQuarter.date, statementFilings?.latestQuarter ?? null)})`,
-      buildStatementMetrics(latestQuarter, statementCurrency(latestQuarter), codes, runway));
+      buildStatementMetrics(latestQuarter, statementCurrency(latestQuarter), codes, runway, latestAnnual));
     unsourced(latestQuarter);
     // How the months are counted, and an offering since the balance sheet that the cash does not include yet.
     if (burnsCash(runway)) lines.push(cliStyles.muted(runwayMethod(runway.includesShortTerm)));
@@ -1454,7 +1494,8 @@ export async function buildTickerReport({
         return publishedAt ? formatTimestamp(publishedAt.getTime()) : "";
       })(),
     ],
-    body: item.summary,
+    // A summary that only says the headline again is left out; JSON keeps it.
+    body: item.summary && !summaryRestatesHeadline(item.title, item.summary) ? item.summary : undefined,
     link: item.url,
   })), recentNews[0]?.searchedFor ? coinNewsFallbackNotice(symbol, recentNews[0].searchedFor) : null);
 

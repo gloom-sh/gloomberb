@@ -5,6 +5,7 @@ import type {
   TickerFinancials,
 } from "../../../types/financials";
 import { formatEventMetric } from "./event-model";
+import { formatPercent, formatPercentRaw } from "../../../utils/format";
 import { loadEarningsCalendar } from "../earnings/data/cache";
 import { calendarEventOf, newYorkDay, withResolvedEarnings } from "../shared/earnings-calendar";
 
@@ -25,6 +26,27 @@ export const EVENT_COLUMNS = [
   { key: "annualEps", header: "Annual EPS", align: "right" as const, format: metricFormat("epsCurrency", "eps") },
   { key: "annualRevenue", header: "Annual revenue", align: "right" as const, format: metricFormat("revenueCurrency", "revenue") },
   { key: "value", header: "Value", align: "right" as const },
+  { key: "detail", header: "Detail" },
+];
+
+/**
+ * The columns of the earnings estimates report, as its pane heads them: what corporate actions
+ * call Value is a reported quarter's EPS surprise or an estimate's growth over the year-ago
+ * figure, each in a column of its own.
+ */
+export const EARNINGS_ESTIMATE_COLUMNS = [
+  ...EVENT_COLUMNS.filter((column) => column.key !== "value" && column.key !== "detail"),
+  {
+    key: "surprisePercent", header: "EPS surp", align: "right" as const,
+    format: (value: unknown) => value == null ? "-" : formatPercentRaw(Number(value)),
+  },
+  {
+    key: "estimateGrowth", header: "YoY growth", align: "right" as const,
+    format: (value: unknown) => value == null ? "-" : formatPercent(Number(value)),
+    // The text says which figure grew, as the pane does; exports keep the percent a number.
+    textFormat: (value: unknown, row: Record<string, unknown>) => value == null ? "-"
+      : `${formatPercent(Number(value))} ${row.estimateGrowthMetric === "revenue" ? "rev" : "EPS"}`,
+  },
   { key: "detail", header: "Detail" },
 ];
 
