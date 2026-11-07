@@ -62,7 +62,7 @@ import {
   middleRateLabel,
   publishesMedian,
   stopOutLabel,
-  stopOutSpreadBp,
+  stopOutVsAvgBp,
   visibleAuctions,
   type AuctionColumn,
   type AuctionColumnId,
@@ -164,7 +164,7 @@ function renderAuctionCell(
         ? { text: RESULTS_PENDING, color: dimmed }
         : { text: formatAuctionRate(auction, rateValue(auction), "—"), color: selected ?? colors.textBright };
     case "stopOut":
-      return { text: formatBp(stopOutSpreadBp(auction)), color: selected ?? colors.text };
+      return { text: formatBp(stopOutVsAvgBp(auction)), color: selected ?? colors.text };
     case "btc":
       return { text: formatRatio(auction.bidToCoverRatio, auction), color: selected ?? colors.text };
     case "indirect":
@@ -218,8 +218,8 @@ function TreasuryAuctionDetail({ auction, width, after }: { auction: TreasuryAuc
         {auction.avgMedYield != null && (
           <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label={middleRateLabel(auction, "yield")} value={formatRate(auction.avgMedYield)} />
         )}
-        {stopOutSpreadBp(auction) != null && (
-          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label={stopOutLabel(auction)} value={formatBp(stopOutSpreadBp(auction))} />
+        {stopOutVsAvgBp(auction) != null && (
+          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label={stopOutLabel(auction)} value={formatBp(stopOutVsAvgBp(auction))} />
         )}
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Bid-to-cover" value={formatRatio(auction.bidToCoverRatio)} />
         <Box height={1} />

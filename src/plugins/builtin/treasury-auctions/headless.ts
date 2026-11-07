@@ -35,7 +35,7 @@ import {
   rateQualifier,
   rateValue,
   stopOutColumnLabel,
-  stopOutSpreadBp,
+  stopOutVsAvgBp,
   visibleAuctions,
   widerWindowCouldAdd,
   type AuctionFilter,
@@ -98,7 +98,8 @@ const DISCOUNT_RATE_COLUMN: HeadlessPaneColumn = {
 
 const RESULT_COLUMNS: HeadlessPaneColumn[] = [
   {
-    key: "stopOutSpreadBp", header: "Stop-out spread (bp)", align: "right" as const,
+    // Exports keep the name scripts read it by: the spread against the published average, or the median from November 1998.
+    key: "stopOutVsAvgBp", header: "Stop-out vs avg (bp)", align: "right" as const,
     format: (value: unknown, row: Record<string, unknown>) => value == null ? pending(row) ? "" : "-" : Number(value).toFixed(1),
   },
   { key: "bidToCoverRatio", header: "B/C", align: "right" as const, format: (value: unknown) => value == null ? "" : Number(value).toFixed(2) },
@@ -130,7 +131,7 @@ function columnsFor(view: AuctionView, auctions: readonly TreasuryAuction[]): He
   const rate = { ...LEAD_COLUMNS[3]!, textHeader: rateColumnLabel(auctions, "report") };
   const discount = auctions.some(isBill) ? [DISCOUNT_RATE_COLUMN] : [];
   // The spread is against the median from November 1998 and the average before: the heading says which the rows hold.
-  const results = RESULT_COLUMNS.map((column) => column.key === "stopOutSpreadBp" ? { ...column, textHeader: stopOutColumnLabel(auctions, "report") } : column);
+  const results = RESULT_COLUMNS.map((column) => column.key === "stopOutVsAvgBp" ? { ...column, textHeader: stopOutColumnLabel(auctions, "report") } : column);
   return [...LEAD_COLUMNS.slice(0, 3), rate, ...discount, ...view === "after" ? AFTER_COLUMNS : results];
 }
 
@@ -249,7 +250,7 @@ export function createTreasuryAuctionsHeadless(
         rows: auctions.map((auction) => ({
           ...auction,
           rate: rateValue(auction),
-          stopOutSpreadBp: stopOutSpreadBp(auction),
+          stopOutVsAvgBp: stopOutVsAvgBp(auction),
           indirectPercent: indirectPct(auction),
           directPercent: directPct(auction),
           dealerPercent: dealerPct(auction),

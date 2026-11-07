@@ -328,7 +328,7 @@ export function stopOutColumnLabel(auctions: readonly TreasuryAuction[], style: 
  * This is not a tail: a tail is the stop-out against the 1 pm when-issued
  * yield, which the source does not carry.
  */
-export function stopOutSpreadBp(auction: TreasuryAuction): number | null {
+export function stopOutVsAvgBp(auction: TreasuryAuction): number | null {
   if (auction.secType === "FRN") return null;
   const bill = FILTER_TYPES.bill.has(auction.secType);
   const high = bill ? auction.highDiscountRate : auction.highYield;
@@ -426,7 +426,7 @@ function sortValue(auction: TreasuryAuction, columnId: AuctionColumnId, after?: 
       return days === Number.MAX_SAFE_INTEGER ? null : days;
     }
     case "rate": return rateValue(auction);
-    case "stopOut": return stopOutSpreadBp(auction);
+    case "stopOut": return stopOutVsAvgBp(auction);
     case "btc": return auction.bidToCoverRatio;
     case "indirect": return indirectPct(auction);
     case "direct": return directPct(auction);

@@ -28,7 +28,9 @@ test("a TIPS rate reads as a real yield and an FRN's as a spread in the text, an
   expect(table.rows.map((entry) => entry[table.columns.indexOf("Rate unit")])).toEqual(["%", "%", "%", "bp", ""]);
   // The export says it once, in the row's status, and leaves the figures blank.
   expect(table.rows.map((entry) => entry[table.columns.indexOf("status")])).toEqual(["", "", "", "", "Rate: results not published"]);
-  expect(table.rows[4]!.slice(table.columns.indexOf("Stop-out vs median (bp)"), table.columns.indexOf("Dealer (%)") + 1).every((cell) => cell === "")).toBe(true);
+  const stopOut = table.columns.indexOf("Stop-out vs avg (bp)");
+  expect(stopOut).toBeGreaterThan(rate);
+  expect(table.rows[4]!.slice(stopOut, table.columns.indexOf("Dealer (%)") + 1).every((cell) => cell === "")).toBe(true);
 });
 
 afterEach(() => {
@@ -73,6 +75,11 @@ test("a bill board heads its rate as the investment rate and lists the discount 
   const [header, line] = renderHeadlessPaneText(headless, result, args, "AUCT").split("\n").filter((entry) => /^(Date|2026)/.test(entry));
   expect(header).toMatch(/Investment rate\s+Discount rate\s+Stop-out vs median \(bp\)/);
   expect(line).toMatch(/4\.013%\s+3\.940%\s+3\.0/);
+  // The text says median; exports keep the name scripts read the spread by, whichever figure Treasury published.
+  expect(result.rows[0]).toMatchObject({ stopOutVsAvgBp: 3 });
+  const freshness = deriveHeadlessFreshness(headless, result);
+  const table = headlessReportTables(headless, result, args, "AUCT", freshness, { complete: true, unavailableSymbols: [] }).tables[0]!;
+  expect(table.rows[0]![table.columns.indexOf("Stop-out vs avg (bp)")]).toBe(3);
 });
 
 test("--sort by an after column shows the after view, and the export carries its percentiles and moves", async () => {
