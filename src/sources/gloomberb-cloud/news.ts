@@ -199,6 +199,8 @@ type CloudNewsClient = Pick<typeof apiClient, "getCloudNews" | "searchCloudNews"
 
 /** The NI code of the metal markets: prices, futures, bullion and the trusts that hold it, not a miner's releases. */
 export const METALS_NEWS_TOPIC = "metals";
+/** The topic the service tags oil, gas and power market stories with. */
+export const ENERGY_NEWS_TOPIC = "energy";
 
 /**
  * What a ticker no story is filed under is searched by: a coin pair's coin

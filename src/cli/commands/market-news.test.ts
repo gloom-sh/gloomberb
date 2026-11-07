@@ -325,6 +325,30 @@ test("a metal's future, name or bare board code is the metal's market news (NI M
   expect(render(cli.printed[8]!)).toContain(`No metals stories match "platinum". For every story that mentions it, try: gloom news '"platinum"'`);
 });
 
+test("oil and crude are the oil market's energy stories, and a central bank's name its decision stories under every name it goes by", async () => {
+  // OIL is the iPath ETN, whose stories were Oil India's.
+  const requests = serveSearch([
+    story("rbi", "Brazil's central bank ends run of rate cuts after Lula election win", "2026-11-04T21:39:00.000Z"),
+    story("bcb", "BCB Bancorp, Inc. Announces Results for the Third Quarter 2026", "2026-10-29T11:49:00.000Z"),
+    story("copom", "Brazil's Copom cuts the Selic rate", "2026-06-17T23:51:00.000Z"),
+  ]);
+  const cli = createTestCliContext({ dataProvider: { getNews: async () => [], getQuote: async (symbol: string) => { throw new Error(`Not a ticker: ${symbol}.`); } } });
+  await news.execute(["oil"], cli.context);
+  await news.execute(["crude"], cli.context);
+  expect(requests.map((url) => [url.searchParams.get("query"), url.searchParams.get("topics")])).toEqual([["oil", "energy"], ["crude", "energy"]]);
+  expect(render(cli.printed[0]!).split("\n")[0]).toBe('Energy news matching "oil"');
+
+  requests.length = 0;
+  await news.execute(["copom", "selic"], cli.context);
+  // Every name is searched once, the acronym BCB none: it is BCB Bancorp's too.
+  expect(requests.map((url) => url.searchParams.get("query")).sort()).toEqual(
+    ["Banco Central do Brasil", "Brazil central bank", "Central Bank of Brazil", "Copom", "Selic"].sort());
+  const printed = cli.printed[2]!;
+  expect(render(printed).split("\n")[0]).toBe('Stories matching "copom selic"  ·  the Central Bank of Brazil\'s stories, under each name it is reported by');
+  // Newest first, once each, and only the stories that name the bank.
+  expect((printed.result.data as NewsArticle[]).map((article) => article.id)).toEqual(["rbi", "copom"]);
+});
+
 test("a real listing, with or without stories, never falls back to a text search", async () => {
   const requests = serveSearch(STORIES);
   const quiet = createTestCliContext({

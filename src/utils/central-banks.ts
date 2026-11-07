@@ -13,6 +13,8 @@ export interface CentralBank {
   aliases: readonly string[];
   /** The FRED series the board reads the row from; the other rows come from BIS. */
   fredSeriesIds?: readonly string[];
+  /** The committee and the rate its decisions are reported by, where those are not its names: Copom, Selic. */
+  decisionWords?: readonly string[];
 }
 
 /**
@@ -35,7 +37,7 @@ export const CENTRAL_BANKS: readonly CentralBank[] = [
   { id: "ID", place: "Indonesia", name: "Bank Indonesia", short: "Bank Indonesia", instrument: "7-day reverse repo rate", aliases: [] },
   { id: "KR", place: "South Korea", name: "Bank of Korea", short: "BoK", instrument: "base rate", aliases: [] },
   { id: "BR", place: "Brazil", name: "Central Bank of Brazil", short: "BCB", instrument: "Selic target",
-    aliases: ["Banco Central do Brasil"] },
+    aliases: ["Banco Central do Brasil"], decisionWords: ["Copom", "Selic"] },
   { id: "MX", place: "Mexico", name: "Bank of Mexico", short: "Banxico", instrument: "overnight rate target",
     aliases: ["Banco de México"] },
   { id: "RU", place: "Russia", name: "Bank of Russia", short: "Bank of Russia", instrument: "key rate",
@@ -115,4 +117,46 @@ export function centralBankAskedAbout(query: string): CentralBank | null {
 export function centralBankCiting(fredSeriesId: string): CentralBank | null {
   const wanted = fredSeriesId.trim().toUpperCase();
   return CENTRAL_BANKS.find((bank) => bank.fredSeriesIds?.includes(wanted)) ?? null;
+}
+
+/**
+ * The bank a news search names: by its names as `centralBankAskedAbout` reads
+ * them, or by the committee and rate its decisions are reported by ("copom",
+ * "copom selic", "Selic rate"). Null for anything else.
+ */
+export function centralBankInNews(query: string): CentralBank | null {
+  const asked = centralBankAskedAbout(query);
+  if (asked) return asked;
+  const words = nameKey(query).split(" ").filter(Boolean);
+  if (words.length === 0) return null;
+  return CENTRAL_BANKS.find((bank) => {
+    const decision = (bank.decisionWords ?? []).map((word) => nameKey(word).split(" "));
+    if (decision.length === 0) return false;
+    // Every word is one of the decision words or a word asking for the rate, and at least one is a decision word.
+    const named = words.filter((word) => decision.some((parts) => parts.includes(word)));
+    return named.length > 0 && words.every((word) => named.includes(word) || POLICY_RATE_WORDS.has(word));
+  }) ?? null;
+}
+
+/**
+ * What a bank's decisions are reported under, for a news search of each: its
+ * name, what a sentence calls it, its other names, "<place> central bank" and
+ * the committee and rate (Copom, Selic). Stories of the 5 Nov 2026 Banxico cut
+ * said "Bank of Mexico" or "Mexico's central bank", rarely "Banxico".
+ */
+export function centralBankNewsQueries(bank: CentralBank): string[] {
+  // An acronym (BCB, SNB) is another company's too: BCB Bancorp's results are no Copom story.
+  const names = centralBankNames(bank).filter((name) => !/^[A-Z]{2,5}$/.test(name));
+  return [...new Set([...names, `${bank.place} central bank`, ...bank.decisionWords ?? []])];
+}
+
+/**
+ * Whether a story is about the bank: its title or summary names it as one of
+ * the phrases it is searched by, or as "<place>'s central bank". The search
+ * matches words anywhere, so "Bank of Mexico" also finds Citi Mexico's banks.
+ */
+export function storyNamesCentralBank(bank: CentralBank, text: string): boolean {
+  const story = ` ${nameKey(text)} `;
+  const phrases = [...centralBankNewsQueries(bank), `${bank.place}s central bank`];
+  return phrases.some((phrase) => story.includes(` ${nameKey(phrase)} `));
 }

@@ -189,7 +189,7 @@ import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { bareFuturesCode, futuresBoardContract, futuresContractByWord } from "../../market-data/futures-board";
 import { commodityNamedIn, commoditySearchName } from "../../market-data/commodity-names";
 import { newsEmptyMessage } from "./news-hints";
-import { METALS_NEWS_TOPIC } from "../../sources/gloomberb-cloud/news";
+import { centralBankInNews } from "../../utils/central-banks";
 import {
   closestStoriesReason,
   commodityNewsRoute,
@@ -204,6 +204,8 @@ import {
   newsSearchTextProblem,
   newestFirst,
   noMetalStoriesMessage,
+  searchCentralBankStories,
+  centralBankNewsReason,
   noStoriesMessage,
   quotedSearchCommand,
   searchClosestNewsStories,
@@ -2555,8 +2557,8 @@ async function tickerOfWord(word: string, market: MarketContext): Promise<{ symb
  * name is in capitals, whose company news `news GOLD` keeps.
  */
 async function printMetalNews(route: MetalNewsRoute, limit: number, ctx: Parameters<CliCommandDef["execute"]>[1], market?: MarketContext) {
-  const search = searchNewsStories(route.metal, limit, [METALS_NEWS_TOPIC]).then((found) => ({ found, failure: undefined }), (error: unknown) => {
-    logFailure("cli.commands-market", "Search metals news failed")(error);
+  const search = searchNewsStories(route.metal, limit, [route.topic]).then((found) => ({ found, failure: undefined }), (error: unknown) => {
+    logFailure("cli.commands-market", `Search ${route.topic} news failed`)(error);
     return { found: [] as NewsArticle[], failure: errorMessage(error) ?? "no answer" };
   });
   const word = route.word;
@@ -2568,8 +2570,8 @@ async function printMetalNews(route: MetalNewsRoute, limit: number, ctx: Paramet
   const companyNews = ticker ? `gloom news ${ticker.symbol}` : null;
   ctx.printResult({
     data: found,
-    ...(failure === undefined ? {} : { warnings: [`Searching metals stories for "${route.metal}" failed: ${failure}`] }),
-    metadata: { ticker: null, search: route.metal, topics: [METALS_NEWS_TOPIC], feed: null, ...(companyNews ? { companyNews } : {}) },
+    ...(failure === undefined ? {} : { warnings: [`Searching ${route.label.toLowerCase()} stories for "${route.metal}" failed: ${failure}`] }),
+    metadata: { ticker: null, search: route.metal, topics: [route.topic], feed: null, ...(companyNews ? { companyNews } : {}) },
     freshness: rowsFreshness(newsRows(found), cloudNewsFreshness(await cloudRealtimeAccess())),
   }, {
     heading: metalNewsHeading(route),
@@ -2592,6 +2594,12 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     if (exchangeOption || feed) ctx.fail(`${exchangeOption ? "--exchange" : "--feed"} goes with a symbol, not with text to search stories for.`, "Usage: gloom news <query>");
     const problem = newsSearchTextProblem(text);
     if (problem) ctx.fail(problem);
+    // "copom selic", "Bank of Mexico": the bank's latest decision stories, under every name it is reported by.
+    const bank = centralBankInNews(text);
+    if (bank) {
+      await printNewsSearch(text, await searchCentralBankStories(bank, limit), { reason: centralBankNewsReason(bank), commodity: false }, ctx);
+      return;
+    }
     const answer = await searchClosestNewsStories(text, limit);
     await printNewsSearch(text, answer.found, { closest: answer.closest }, ctx);
     return;
@@ -2662,13 +2670,16 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       return;
     }
     if (word && reason) {
+      // A central bank's name no ticker answers to ("banxico") is its decision stories, under every name it goes by.
+      const bank = !resolved && !commodity ? centralBankInNews(word) : null;
       // The lookup that found no ticker already answered; a search that fails leaves that answer.
-      const search = await searchNewsStories(word, limit).then((found) => ({ found, failure: undefined }), (error: unknown) => {
+      const search = await (bank ? searchCentralBankStories(bank, limit) : searchNewsStories(word, limit)).then((found) => ({ found, failure: undefined }), (error: unknown) => {
         logFailure("cli.commands-market", "Search news stories failed")(error);
         return { found: [], failure: errorMessage(error) ?? "no answer" };
       });
       const searched = search.failure === undefined;
-      await printNewsSearch(word, search.found, { reason, empty: emptyMessage(searched && !commodity), commodity: !commodity, failure: search.failure }, ctx);
+      await printNewsSearch(word, search.found, { reason: bank ? `${reason}; ${centralBankNewsReason(bank)}` : reason,
+        empty: emptyMessage(searched && !commodity), commodity: !commodity, failure: search.failure }, ctx);
       return;
     }
     const empty = emptyMessage(false);
