@@ -47,6 +47,8 @@ Or with [Bun](https://bun.sh), on any of them:
 bun install -g @gloom-sh/terminal
 ```
 
+`npm install -g @gloom-sh/terminal` works too, but the command runs on Bun, so install [Bun](https://bun.sh) first.
+
 Then run `gloom` (`gloomberb`, its old name, still works). On Apple Silicon the script also installs the desktop app, Gloom.app. Homebrew, the Windows desktop installer and manual downloads are in the [installation guide](docs/installation.md).
 
 Charts draw as images in Kitty-compatible terminals such as Ghostty, Kitty and WezTerm, and as text elsewhere.
