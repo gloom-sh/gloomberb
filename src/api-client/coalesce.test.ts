@@ -69,6 +69,42 @@ test("reads asked with others in the same moment go out in batches, each answere
     .toEqual(["/cloud/futures/contract/BADZ26", "/cloud/futures/contract/YM%3DF", "/market/history", "/market/history"]);
 });
 
+// A portfolio's stress replay reads every holding's closes of the same years.
+test("histories over one window go out together after one read probes the service, and a service without windows has each asked on its own", async () => {
+  const window = { interval: "1day", outputsize: 1500, startDate: "2019-12-01", endDate: "2025-04-08" };
+  const inWindow = (close: number) => ({ status: "success", data: [{ date: "2020-03-02T00:00:00.000Z", close }] });
+  const read = async (service_: "windowed" | "latest" | "refused") => {
+    const { api, asked } = service((path, body) => {
+      if (path === "/market/history/batch") {
+        // A service from before windowed batches answers its latest bars, whatever window it was sent, or refuses the window.
+        if (service_ === "refused") return new ApiRequestError("Unrecognized key: startDate", 422);
+        return { status: "success", data: { items: body.targets.map((_: unknown, index: number) => (service_ === "windowed" ? inWindow(index) : bars(index))) } };
+      }
+      return inWindow(-1);
+    });
+    const shared = { ...BATCH, sharedWindow: true };
+    const closes = await Promise.all(["AAPL", "MSFT", "SPY"].map((symbol) => api.getCloudHistory(symbol, "", window, shared)));
+    // The next load's reads: batched again, or on their own while the window is not read.
+    const again = await Promise.all(["QQQ", "IWM"].map((symbol) => api.getCloudHistory(symbol, "", window, shared)));
+    return {
+      closes: [...closes, ...again].map((history) => history.data?.[0]?.close),
+      asked: asked.map((request) => (request.body ? `${request.path} ${request.body.targets.length}` : request.path.split("?")[0])),
+      first: asked[0]!,
+    };
+  };
+  const served = await read("windowed");
+  // The probe's one read is answered from the probe, not asked again.
+  expect(served.closes).toEqual([0, 0, 1, 0, 1]);
+  expect(served.asked).toEqual(["/market/history/batch 1", "/market/history/batch 2", "/market/history/batch 2"]);
+  expect(served.first.body).toMatchObject({ outputsize: "1500", startDate: "2019-12-01", endDate: "2025-04-08" });
+  // Finding no window costs one listing's bars, then every read goes on its own until the route is asked again.
+  for (const service_ of ["latest", "refused"] as const) {
+    const ignored = await read(service_);
+    expect(ignored.closes).toEqual([-1, -1, -1, -1, -1]);
+    expect(ignored.asked).toEqual(["/market/history/batch 1", ...Array.from({ length: 5 }, () => "/market/history")]);
+  }
+});
+
 // The app updates before the service does, or reaches an instance a deploy has not replaced yet: a 404 batch route is a
 // service without it for now.
 test("against a service without the batch route, reads go one at a time, a few at once, until the route is asked again", async () => {

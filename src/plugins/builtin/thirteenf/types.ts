@@ -195,6 +195,8 @@ export interface FundHoldingRow {
   splitRatio?: number;
   /** The line moved as across a split and its corporate actions could not be read to tell: Est P&L is left empty, not priced as a crash or a surge, and its share change stays as filed. */
   splitUnread?: boolean;
+  /** With `splitUnread`: the lookups' time ran out before its corporate actions were read. */
+  splitLate?: boolean;
   sharesChange: number | null;
   sharesChangePercent: number | null;
   action: HoldingAction;

@@ -133,10 +133,11 @@ test("without a current quote a dated USD history marks the holding at its lates
   expect(() => validateRiskHistory(unlabelled, { symbol: "SPY", exchange: "LSE" }, null, now)).toThrow("Current USD listing identity unavailable");
 });
 
-test("a cancelled load stops requesting histories and passes the signal to each request", async () => {
+test("a cancelled load stops requesting histories and passes the signal to each request, batched histories too", async () => {
   const controller = new AbortController();
   const requested: string[] = [];
   const signals: Array<AbortSignal | undefined> = [];
+  const batched: Array<boolean | undefined> = [];
   const client = {
     getCloudQuotesBatch: async (
       targets: Array<{ symbol: string; exchange: string }>,
@@ -150,10 +151,11 @@ test("a cancelled load stops requesting histories and passes the signal to each 
       symbol: string,
       _exchange: string,
       _params: unknown,
-      options?: { signal?: AbortSignal },
+      options?: { signal?: AbortSignal; batch?: boolean; sharedWindow?: boolean },
     ) => {
       requested.push(symbol);
       signals.push(options?.signal);
+      batched.push(options?.batch && options.sharedWindow);
       // The turn is cancelled while the first history is loading.
       controller.abort();
       return riskHistory();
@@ -171,4 +173,5 @@ test("a cancelled load stops requesting histories and passes the signal to each 
   expect(requested.filter((symbol) => /^H\d+$/.test(symbol))).toEqual([]);
   expect(requested.length).toBeLessThanOrEqual(RISK_FACTOR_INSTRUMENTS.length);
   expect(signals.every((signal) => signal === controller.signal)).toBe(true);
+  expect(batched.every(Boolean)).toBe(true);
 });
