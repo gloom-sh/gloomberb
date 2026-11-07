@@ -1,4 +1,4 @@
-import { afterEach, expect, jest, test } from "bun:test";
+import { afterEach, expect, jest, setSystemTime, test } from "bun:test";
 import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { AppContext, createInitialState, type AppAction, type AppState } from "../../state/app/context";
 import { createStaticAppStore } from "../../test-support/app-store";
@@ -10,6 +10,13 @@ import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../mar
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 
 const tui = createOpenTuiTestHarness();
+
+/**
+ * Wed 4 Nov 2026 10:00 ET: the NYSE is open. The S&P 500's market state and
+ * how much of it fits depend on the hour (on a weekend a narrow header shows
+ * `closed` alone), so a test that reads it sets the clock here.
+ */
+const NYSE_OPEN = new Date("2026-11-04T15:00:00Z");
 
 /**
  * The header otherwise follows the machine's time zone, and the room its
@@ -232,6 +239,15 @@ test("offers a clickable Restart for a downloaded desktop update, and only text 
  * placeholder, the Help pill or the market cluster, at any width.
  */
 test("gives a failed update room at common terminal widths and keeps it clear of its neighbours", async () => {
+  setSystemTime(NYSE_OPEN);
+  try {
+    await expectFailedUpdateRoom();
+  } finally {
+    setSystemTime();
+  }
+});
+
+async function expectFailedUpdateRoom(): Promise<void> {
   const release = { version: "9.9.9", tagName: "v9.9.9", downloadUrl: "", publishedAt: "", updateAction: { kind: "desktop" as const } };
   const state = {
     ...createInitialState({ ...createDefaultConfig("/tmp/gloomberb-header-test"), headerMarket: { benchmark: "sp500" } }),
@@ -278,7 +294,7 @@ test("gives a failed update room at common terminal widths and keeps it clear of
   // 120: the reason whole; 160 and wider: with the retry key after it.
   expect(seen.get(120)).toContain("Update failed: download interrupted");
   for (const width of [160, 200, 300]) expect(seen.get(width)).toMatch(/Update failed: download interrupted {2}\S+ retry/);
-});
+}
 
 /**
  * The status yields whole parts before Help or the market summary loses a
