@@ -51,6 +51,19 @@ describe("macro release list", () => {
       .toEqual([...floor.releases, { kind: "cpi", date: "2026-10-14" }]);
   });
 
+  test("a policy decision's move and the reason a covered day has no figures come with the days", () => {
+    const merged = mergeMacroReleases(floor, {
+      ...served("2026-11-06", { jobs: ["2026-11-06"], fomc: ["2026-10-28"] }), figuresFrom: "2026-01-02",
+      figures: { fomc: { "2026-10-28": { event: "Federal funds target range", actual: "3.75-4.00%", forecast: "3.75-4.00%",
+        prior: "3.75-4.00%", surprise: "in-line", decision: "held" } } },
+      figureGaps: { jobs: { "2026-11-06": "the economic calendar has no Non Farm Payrolls row that day" } },
+    });
+    expect(merged.figuresFrom).toBe("2026-01-02");
+    expect(merged.releases.find((release) => release.date === "2026-10-28")?.figures?.decision).toBe("held");
+    expect(merged.releases.find((release) => release.date === "2026-11-06")).toEqual({ kind: "jobs", date: "2026-11-06",
+      figuresMissing: "the economic calendar has no Non Farm Payrolls row that day" });
+  });
+
   test("a failed read keeps the last list read, and the bundled one without any", async () => {
     macroReleaseCache.attach(new MemoryPluginPersistence());
     const down = () => Promise.reject(new Error("offline"));

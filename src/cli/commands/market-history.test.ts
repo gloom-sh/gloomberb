@@ -960,3 +960,24 @@ test("a range typed in a symbol's place says to give it as --range, and a bare w
   asked = [];
   expect((await runList(["CC=F", "1mo", "--range", "1Y"], bars)).symbols).toEqual(["CC=F", "1MO"]);
 });
+
+test("a yield's history reads its drawdown and its run-up in bp, each on its own, in the text and the JSON", async () => {
+  setSystemTime(new Date("2025-12-08T12:00:00Z"));
+  try {
+    const close = (day: string, value: number) => ({ date: new Date(`${day}T00:00:00Z`), open: value, high: value, low: value, close: value, volume: 0 });
+    // ^TNX from 20 Oct to 5 Dec 2025, as the issue read it: a percent drawdown of a yield said -3.8%.
+    const points = [close("2025-10-20", 4.0), close("2025-10-22", 3.953), close("2025-11-05", 4.157), close("2025-11-26", 3.998), close("2025-12-05", 4.1)];
+    const run = await historyOutputs(["^TNX", "--start", "2025-10-20", "--end", "2025-12-05"], points, { symbol: "^TNX", name: "CBOE 10 Year Treasury Yield" });
+    const lines = run.text.split("\n");
+    expect(lines.find((line) => line.startsWith("Max drawdown"))).toBe(
+      "Max drawdown -16bp (daily closes): peak 4.157 on 2025-11-05, trough 3.998 on 2025-11-26, not back to the peak by 2025-12-05");
+    // The run-up is found on its own: from the low before the peak, not after the drawdown.
+    expect(lines.find((line) => line.startsWith("Max run-up"))).toBe(
+      "Max run-up +20bp (daily closes): low 3.953 on 2025-10-22, high 4.157 on 2025-11-05, not back to the low by 2025-12-05");
+    const metadata = JSON.parse(run.json).metadata;
+    expect(metadata.maxDrawdown).toMatchObject({ bp: -15.9 });
+    expect(metadata.maxRunUp).toMatchObject({ low: { date: "2025-10-22", close: 3.953 }, high: { date: "2025-11-05", close: 4.157 } });
+  } finally {
+    setSystemTime();
+  }
+});

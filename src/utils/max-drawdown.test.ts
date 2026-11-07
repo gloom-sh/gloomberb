@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { maxDrawdown, maxDrawdownText } from "./max-drawdown";
+import { closeMoves, maxDrawdown, maxDrawdownText, maxRunUp, maxRunUpText } from "./max-drawdown";
 
 const bar = (date: string, close: number | null) => ({ date, close });
 
@@ -29,4 +29,23 @@ test("a later, smaller fall does not replace the larger one, the recovery is the
   // A fall that rounds to nothing is not printed as -0.0%.
   expect(maxDrawdownText(maxDrawdown([bar("2020-01-01", 100), bar("2020-01-02", 99.96)])!, { basis: "daily closes", price: String }))
     .toBe("Max drawdown under 0.1% (daily closes): peak 100 on 2020-01-01, trough 99.96 on 2020-01-02, not back to the peak by 2020-01-02");
+});
+
+test("a yield falls and rises by its level, in bp: the deepest fall in points, not the largest ratio", () => {
+  // ^TNX from 20 Oct to 5 Dec 2025: 4.157 to 3.998 is -15.9bp.
+  const tnx = [bar("2025-10-20", 3.986), bar("2025-10-22", 3.953), bar("2025-11-05", 4.157), bar("2025-11-26", 3.998), bar("2025-12-05", 4.139)];
+  const text = { basis: "daily closes", price: (value: number) => value.toFixed(3) };
+  const drawdown = maxDrawdown(tnx, "yield")!;
+  expect([drawdown.peak.close, drawdown.trough.close, drawdown.bp]).toEqual([4.157, 3.998, -15.9]);
+  expect(maxDrawdownText(drawdown, text))
+    .toBe("Max drawdown -16bp (daily closes): peak 4.157 on 2025-11-05, trough 3.998 on 2025-11-26, not back to the peak by 2025-12-05");
+  expect(maxRunUpText(maxRunUp(tnx)!, text))
+    .toBe("Max run-up +20bp (daily closes): low 3.953 on 2025-10-22, high 4.157 on 2025-11-05, not back to the low by 2025-12-05");
+  // By level a fall from 1.00 to 0.50 (50bp) is smaller than one from 5.00 to 4.00 (100bp), though its ratio is larger; a yield at zero is a close.
+  const levels = [bar("2020-01-01", 5), bar("2020-02-01", 4), bar("2020-03-01", 1), bar("2020-04-01", 0.5), bar("2020-05-01", 0)];
+  expect(maxDrawdown(levels, "yield")!.bp).toBe(-500);
+  expect(closeMoves(levels.slice(2), "yield", text).lines).toEqual([
+    "Max drawdown -100bp (daily closes): peak 1.000 on 2020-03-01, trough 0.000 on 2020-05-01, not back to the peak by 2020-05-01",
+    "Max run-up 0bp (daily closes): no close rose above an earlier one",
+  ]);
 });

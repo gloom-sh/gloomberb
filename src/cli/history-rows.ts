@@ -19,7 +19,7 @@ import {
   isWickFlag, latestTradeIndex, missingVolumeNotice, pricePointIntegrityFlags, pricePointValues, pricePointWickFlags,
 } from "../utils/price-history-integrity";
 import { formatUtcTime } from "../utils/utc-time";
-import { maxDrawdown, type MaxDrawdown } from "../utils/max-drawdown";
+import { maxDrawdown, type DrawdownScale, type MaxDrawdown } from "../utils/max-drawdown";
 import { historyCoverageNotice } from "../sources/history-coverage";
 import { barLastSession, barPeriodToDate, type BarPeriodToDate } from "../market-data/market/bar-period";
 import { barSizeFromGap, medianBarGap } from "../time-series/bar-spacing";
@@ -486,12 +486,14 @@ function historyContractRuns<Row extends Pick<HistoryRow, "contract" | "roll">>(
  */
 export function historyContractDrawdown(
   rows: readonly Pick<HistoryRow, "date" | "close" | "contract" | "roll">[],
+  scale: DrawdownScale = "return",
 ): { drawdown: MaxDrawdown; contract: string | null } | null {
   const runs = historyContractRuns(rows);
   let deepest: { drawdown: MaxDrawdown; contract: string | null } | null = null;
+  const depth = (drawdown: MaxDrawdown) => drawdown.bp ?? drawdown.drawdown;
   for (const run of runs) {
-    const drawdown = maxDrawdown(run.rows);
-    if (drawdown && (!deepest || drawdown.drawdown < deepest.drawdown.drawdown)) deepest = { drawdown, contract: runs.length > 1 ? run.contract : null };
+    const drawdown = maxDrawdown(run.rows, scale);
+    if (drawdown && (!deepest || depth(drawdown) < depth(deepest.drawdown))) deepest = { drawdown, contract: runs.length > 1 ? run.contract : null };
   }
   return deepest;
 }

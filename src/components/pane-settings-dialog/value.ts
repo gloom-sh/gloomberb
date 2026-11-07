@@ -17,6 +17,12 @@ export function noteColor(note: PaneSettingRowNote | null | undefined): string |
   return note.tone === "negative" ? colors.negative : colors.warning;
 }
 
+/** A field's value in a pane's settings, an unset select reading as its default option. */
+export function paneSettingValue(field: PaneSettingField, settings: Readonly<Record<string, unknown>>): unknown {
+  const value = settings[field.key];
+  return value == null && field.type === "select" ? field.defaultValue : value;
+}
+
 export function summarizePaneSettingValue(field: PaneSettingField, value: unknown): string {
   switch (field.type) {
     case "action":

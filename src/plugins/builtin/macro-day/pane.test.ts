@@ -16,6 +16,12 @@ test("figure columns carry the economic calendar's labels, each as wide as its h
   expect(figures.map((column) => column.width)).toEqual([8, 10, 7]);
   // Days without figures show none of the three columns.
   expect(columnsFor("all", [day(null)]).map((column) => column.id)).toEqual(["date", "release", "move", "multiple"]);
+  // A policy decision widens the release's name; with one release picked, it is the row's note.
+  const fomc = { ...day({ event: "Federal funds target range", actual: "3.75-4.00%", forecast: null, prior: "3.50-3.75%", surprise: null,
+    decision: "raised 25bp" }), kind: "fomc" as const };
+  expect(columnsFor("all", [fomc]).find((column) => column.id === "release")!.width).toBe("FOMC raised 25bp".length);
+  expect(columnsFor("fomc", [fomc]).find((column) => column.id === "release")!.label).toBe("Note");
+  expect(columnsFor("jobs", [day(null)]).map((column) => column.id)).toEqual(["date", "move", "multiple"]);
   // A yield's moves are basis points, and the column says so.
   expect(columnsFor("all", [day(null)], "yield").find((column) => column.id === "move")!.label).toBe("Move bp");
 });

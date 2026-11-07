@@ -133,7 +133,7 @@ import type { FxInterventionsPayload } from "../../api-client/fx-interventions";
 import {
   fxInterventionLatestNote, fxInterventionPair, fxInterventionWindowNote, loadFxInterventions, type FxInterventionPair,
 } from "../../market-data/fx-interventions";
-import { maxDrawdownText } from "../../utils/max-drawdown";
+import { maxDrawdownText, maxRunUp, maxRunUpText } from "../../utils/max-drawdown";
 import { isPastPriceWindow, loadPriceWindowHistory, PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP, priceWindowText, readPriceWindow, type PriceWindow } from "../../utils/price-window";
 import {
   BAR_INTERVAL_LABELS,
@@ -1891,8 +1891,13 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       : { ...column, format: historyVolumeCell(() => missingVolume) });
     // The largest fall from a close to a later one in the bars shown, said under the heading: within one contract
     // of a continuous future, never from one month's close to another's across a roll.
-    const contractDrawdown = historyContractDrawdown(data);
+    // A yield (^TNX) falls and rises by its level, in bp, and its largest rise is said too.
+    const yieldUnits = isYieldIndexSymbol(history.listing.symbol);
+    const contractDrawdown = historyContractDrawdown(data, yieldUnits ? "yield" : "return");
     const drawdown = contractDrawdown?.drawdown ?? null;
+    const runUp = yieldUnits ? maxRunUp(data) : null;
+    const moveText = interval ? { basis: `${BAR_INTERVAL_LABELS[interval]} closes${contractDrawdown?.contract ? `, ${contractDrawdown.contract}` : ""}`, price,
+      date: (text: string) => intraday ? formatUtcTime(text) : text.slice(0, 10) } : null;
     ctx.printResult({
       data,
       metadata: {
@@ -1910,6 +1915,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         unbrokenFrom: historyUnbrokenFrom(data) ?? data[0]?.date ?? null,
         bars: data.length,
         maxDrawdown: drawdown && contractDrawdown?.contract ? { ...drawdown, contract: contractDrawdown.contract } : drawdown,
+        ...(runUp ? { maxRunUp: runUp } : {}),
         asOf: freshness?.asOf ?? null,
         ...(volume ? { volumeUnit: volume.unit, volumePeriod: interval === "1d" ? "UTC day" : interval } : {}),
         ...(stitched ? { backAdjust: { method: backAdjust, rolls: stitched.rolls, ...(stitched.unstitched.length > 0 ? { unstitched: stitched.unstitched } : {}) } } : {}),
@@ -1918,9 +1924,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       freshness,
     }, {
       heading: [listingHeading(frontMonthIdentity(identity, history.listing.symbol, data)), cliStyles.muted(historyFacts(unit, data).join("  ·  ")),
-        ...drawdown && interval ? [cliStyles.muted(maxDrawdownText(drawdown, {
-          basis: `${BAR_INTERVAL_LABELS[interval]} closes${contractDrawdown?.contract ? `, ${contractDrawdown.contract}` : ""}`, price,
-          date: (text) => intraday ? formatUtcTime(text) : text.slice(0, 10) }))] : []].join("\n"),
+        ...drawdown && moveText ? [cliStyles.muted(maxDrawdownText(drawdown, moveText))] : [],
+        ...runUp && moveText ? [cliStyles.muted(maxRunUpText(runUp, moveText))] : []].join("\n"),
       dateKey: "date",
       textColumns: [...textColumns, HISTORY_FLAG_TEXT_COLUMN],
       // One header whatever the market is doing, for one symbol as for a list (historyExportColumns).
@@ -3987,7 +3992,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
           `Each range comes in one bar size: ${historyIntervalsByRange()}. The line under the heading, and the --json metadata, give the currency, the bar size actually served, the first and last bar and the bar count. A warning says when the bars are coarser, or start later, than the range asked for, and for a coin, which trades every day, names each day it has no bar for.`,
           "A bar whose prices contradict each other (high below the open or close, or low above them) is left blank and flagged, such as high<open, with the count in a warning. A low under half the open and close, or a high over twice them, is left blank alone and flagged low<close/2 or high>2*open. --json rows carry currency, unit, interval and flag.",
           "A break in the series flags the bar after it, which keeps its prices: gap after more than three months with no bar (weeks for weekly, daily and intraday bars), jump when the close is over 100 times the one before or under a hundredth of it. A warning names each break, and the heading says the date the series runs unbroken from.",
-          "The heading's last line is the max drawdown of the bars shown: the largest fall from a close to a later close, with the peak and the trough, their dates, and the date a close got back to the peak, if one did (maxDrawdown in --json).",
+          "The heading's last line is the max drawdown of the bars shown: the largest fall from a close to a later close, with the peak and the trough, their dates, and the date a close got back to the peak, if one did (maxDrawdown in --json). A yield (^TNX) reads it in bp, with its max run-up beside it: the largest rise from a close to a later close, found on its own (maxRunUp).",
         ],
       }, {
         title: "CSV",

@@ -40,6 +40,8 @@ export interface PaneSettingTextField extends PaneSettingFieldBase {
 interface PaneSettingSelectField extends PaneSettingFieldBase {
   type: "select";
   options: PaneSettingOption[];
+  /** The option an unset value reads as: shown as the current choice, and where the picker starts. */
+  defaultValue?: string;
 }
 
 interface PaneSettingMultiSelectField extends PaneSettingFieldBase {
