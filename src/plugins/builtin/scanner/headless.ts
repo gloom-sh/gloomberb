@@ -40,6 +40,14 @@ import { captureScannerEvent, SCANNER_SNAPSHOT_TIMEOUT_MS } from "../shared/scan
 import { flowLockNote } from "./lock-note";
 import { buildHiloBarRows, filterHiloRows, formatHiloPrice, type HiloMinPrice, type HiloSort } from "./hilo-model";
 
+/**
+ * How long a report waits for a scanner that is starting: an idle one can take
+ * most of the 30 s a capture gives it to win its lock and seed (a cold HILO
+ * took 30 s on a weekend), past what an Ask Gloom call is given. After this it
+ * answers with what the starting scanner holds, said to be stale.
+ */
+const HEADLESS_SCANNER_WAIT_MS = 12_000;
+
 function loadScannerSnapshot<T extends ScannerPayload>(
   client: Pick<HeadlessPaneApiClient, "subscribeScanner">,
   scanner: ScannerKind,
@@ -70,7 +78,7 @@ export function loadHiloSnapshot(
  */
 function scannerFreshness(payload: Pick<ScannerHiloPayload, "access" | "delayMinutes" | "status">): HeadlessPaneFreshness {
   if (payload.status === "closed") return { status: "not-a-feed", basis: "closed session" };
-  if (payload.status === "degraded") return { status: "stale" };
+  if (payload.status === "degraded" || payload.status === "starting") return { status: "stale" };
   return payload.access === "realtime" ? { status: "live" } : { status: "delayed", delayMinutes: payload.delayMinutes };
 }
 
@@ -86,7 +94,7 @@ function projectHiloSnapshot(
     items: [...lows, ...highs],
     // The lists are the session's: between sessions the scanner holds none, and last session's are not today's.
     empty: payload.status === "closed" ? "The US market is closed. New highs and lows list again from the next session's open."
-      : payload.status === "starting" ? "The scanner is starting for this session. New highs and lows list as they print."
+      : payload.status === "starting" ? "The scanner is still starting and has no list yet. Ask again in a few seconds."
         : "No new highs or lows under these filters this session.",
     ...(payload.status === "degraded" ? { errors: ["Scanner feed degraded"] } : {}),
     freshness: scannerFreshness(payload),
@@ -111,7 +119,7 @@ export interface HiloHeadlessDependencies {
 }
 
 const defaultDependencies: HiloHeadlessDependencies = {
-  load: (_args, client, signal) => loadHiloSnapshot(client, signal),
+  load: (_args, client, signal) => loadHiloSnapshot(client, signal, HEADLESS_SCANNER_WAIT_MS),
 };
 
 export function createHiloHeadless(
@@ -335,7 +343,7 @@ interface FlowHeadlessDependencies {
 }
 
 const flowDependencies: FlowHeadlessDependencies = {
-  load: (_args, client, signal) => loadScannerSnapshot<ScannerFlowPayload>(client, "flow", signal),
+  load: (_args, client, signal) => loadScannerSnapshot<ScannerFlowPayload>(client, "flow", signal, HEADLESS_SCANNER_WAIT_MS),
   recorded: (search, client, signal) => client.getScannerFlowHistory(search, signalWithTimeout(signal, 20_000)),
   session: (search, client, signal) => client.getScannerFlowSession(search, signalWithTimeout(signal, 20_000)),
 };
