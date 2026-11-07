@@ -80,5 +80,6 @@ describe("earnings estimates headless", () => {
     expect(result.rows).toHaveLength(1);
     expect(["Q Est", "FY Est"]).toContain(String(result.rows[0]?.status));
     expect(result.metadata).toMatchObject({ kind: "estimates", total: 2, truncated: true });
+    expect(result.rows[0]?.epsBasis).toBe("unknown");
   });
 });

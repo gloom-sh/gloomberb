@@ -32,7 +32,7 @@ import { valuationBasisLabel, type PortfolioValuationBasis } from "../../../port
 import { futuresQuantityText, isFuturesTicker } from "../../../portfolio/futures-positions";
 import { dailyFuturesHistory, loadPortfolioFuturesTerms } from "../../../portfolio/futures-terms";
 import { loadPurchaseDateCostFx } from "../../../portfolio/cost-fx";
-import { EXTENDED_SESSION_LABELS, quoteHeadlineTime, type ExtendedSession } from "../../../market-data/market/status";
+import { EXTENDED_SESSION_LABELS, getCompletedRegularSessionDisplay, quoteHeadlineTime, type ExtendedSession } from "../../../market-data/market/status";
 import {
   BROKER_ACCOUNT_MISSING_NOTE,
   CASH_SYMBOL,
@@ -52,6 +52,13 @@ import { currentListingName } from "../../../tickers/listing-name";
 import { REPORT_ROWS } from "../shared/headless-options";
 import { readPriceWindow, type PriceWindow } from "../../../utils/price-window";
 import { loadPeriodPnl, periodBasisText, periodBoughtText, periodUnpricedText } from "./period-pnl";
+
+/** An extended print without a known regular close cannot supply a regular-session change. */
+function regularChangeFields(quote: Quote | undefined, change: unknown) {
+  const known = quote && (!quote.marketState || quote.marketState === "REGULAR" || getCompletedRegularSessionDisplay(quote));
+  const value = known && typeof change === "number" && Number.isFinite(change) ? change : null;
+  return { changePercent: value, changeBasis: value == null ? null : "regular-session" };
+}
 
 const DEFAULT_ROW_LIMIT = 50;
 const MAX_ROW_LIMIT = 200;
@@ -94,7 +101,7 @@ const POSITION_COLUMNS: HeadlessPaneColumn[] = [
   { key: "avgCost", header: "Avg Cost", align: "right", format: unitMoney("positionCurrency"), description: "Per unit, in the position's currency." },
   { key: "price", header: "Last", align: "right", format: unitMoney("priceCurrency"), description: "In the quote's currency." },
   { key: "priceCurrency", header: "Ccy" },
-  { key: "changePercent", header: "Chg", align: "right", format: percent },
+  { key: "changePercent", header: "Regular %", align: "right", format: percent },
   { key: "marketValue", header: "Mkt Val", align: "right", format: wholeAmount, description: "In the portfolio's currency; negative for shorts." },
   { key: "unrealizedPnl", header: "P&L", align: "right", format: amount, description: "Unrealized, in the portfolio's currency." },
   { key: "weight", header: "Weight", align: "right", format: weight, description: "Percent of the total value, cash included; unpriced holdings are left out." },
@@ -147,7 +154,7 @@ const WATCHLIST_COLUMNS: HeadlessPaneColumn[] = [
   { key: "exchange", header: "Exchange" },
   { key: "price", header: "Last", align: "right" },
   { key: "priceCurrency", header: "Ccy" },
-  { key: "changePercent", header: "Chg", align: "right", format: percent },
+  { key: "changePercent", header: "Regular %", align: "right", format: percent },
 ];
 
 /**
@@ -359,7 +366,8 @@ async function portfolioHoldings(
         // Last and Chg are the regular session; market value and P&L are at `valuationPrice`.
         price: finite(row.quotePrice),
         priceCurrency: row.quoteCurrency ?? null,
-        changePercent: finite(headline?.changePercent),
+        ...regularChangeFields(quotes.get(ticker.metadata.ticker), headline?.changePercent),
+        extendedChangeBasis: extended ? "from-regular-close" : null,
         ...extendedQuoteFields(extended),
         marketValue,
         unrealizedPnl: finite(row.unrealizedPnl),
@@ -467,7 +475,7 @@ const PERIOD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "shares", header: "Qty", align: "right", format: quantity },
   { key: "startPrice", header: "Start", align: "right", format: unitMoney("priceCurrency"), description: "The close before the window, in the quote's currency." },
   { key: "endPrice", header: "End", align: "right", format: unitMoney("priceCurrency"), description: "The last close in the window, in the quote's currency." },
-  { key: "changePercent", header: "Chg", align: "right", format: percent },
+  { key: "changePercent", header: "Period %", align: "right", format: percent },
   { key: "pnl", header: "P&L", align: "right", format: amount, description: "The price move times the units held now, in the portfolio's currency at the end's rate." },
   { key: "contribution", header: "Contribution", align: "right", format: percent, description: "P&L over the book's value at the start, gross when it holds a short, in percent." },
 ];
@@ -584,7 +592,8 @@ async function watchlistHoldings(
       exchange: ticker.metadata.exchange || null,
       price: finite(headline?.price ?? quote?.price),
       priceCurrency: quote?.currency ?? null,
-      changePercent: finite(headline ? headline.changePercent : quote?.changePercent),
+      ...regularChangeFields(quote, headline ? headline.changePercent : quote?.changePercent),
+      extendedChangeBasis: extended ? "from-regular-close" : null,
       ...extendedQuoteFields(extended),
     };
   });
