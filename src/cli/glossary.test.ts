@@ -16,7 +16,7 @@ test("a term is found by its name, abbreviation or another name, whatever its ca
   expect(terms(lookupGlossary("carry").partial)).toEqual(["Futures basis"]);
   // Every name leads to one entry, so a lookup never has to pick between two.
   const keys = GLOSSARY.flatMap((entry) => [...new Set([entry.term, entry.short, ...entry.aliases].filter(Boolean)
-    .map((name) => name!.toLowerCase().replace(/[^a-z0-9]/g, "")))]);
+    .map((name) => name!.toLowerCase().replace(/²/g, "2").replace(/[^a-z0-9]/g, "")))]);
   expect(keys.filter((key, index) => keys.indexOf(key) !== index)).toEqual([]);
 });
 
@@ -285,4 +285,12 @@ test("ERN's timing labels and the 13F report's words are found by the labels the
   const report = "Berkshire Hathaway 13F, Q2 2026\nTicker  13F %  Shares  QoQ  Est P&L\nAAPL    22.0%  227.9M  -7%  +$9.1B";
   expect(reportGlossary("13F", report).map((entry) => entry.term)).toEqual(["13F", "13F weight", "Quarter over quarter", "Estimated P&L"]);
   expect(reportGlossary("ERN", "2026-11-09  AMC  1.47").map((entry) => entry.term)).toEqual(["After market close"]);
+});
+
+test("PORT's risk words are found by the names a reader types, R² with or without its superscript", () => {
+  const exact = (query: string) => terms(lookupGlossary(query).exact);
+  expect(["beta", "R²", "r2", "r-squared", "weak fit", "var", "VaR 95%", "expected shortfall", "hhi", "herfindahl"].map(exact))
+    .toEqual([["Beta"], ["R²"], ["R²"], ["R²"], ["R²"], ["Value at risk"], ["Value at risk"], ["Value at risk"], ["HHI"], ["HHI"]]);
+  const report = "Metric  Value  Evidence\n1D VaR 95% (60D)  1.19%  historical\nMarket (SPY)  0.54 beta  60 sessions\nHHI  0.20  4.9 effective holdings\nFactor  Value  R²";
+  expect(terms(reportGlossary("PORT", report))).toEqual(["Beta", "R²", "Value at risk", "HHI"]);
 });

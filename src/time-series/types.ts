@@ -115,6 +115,12 @@ export interface ChartViewportSpec {
    * is reinvested at the close of its ex-date bar. Price returns otherwise.
    */
   totalReturn?: boolean;
+  /**
+   * Security price series are converted into this currency (ISO code) at each
+   * day's FX close, so their returns carry their currency's move. Each in its
+   * listing's currency otherwise.
+   */
+  currency?: string;
 }
 
 export interface ChartSpec {
@@ -196,6 +202,8 @@ export interface ResolvedSeries {
    * source gave none to reinvest (`warning` says why).
    */
   returnBasis?: "total" | "price";
+  /** The listing currency a price series was converted from into the chart's `viewport.currency`. */
+  convertedFrom?: string;
   unitGroup: string;
   /**
    * The unit the legend states beside each value, read bare as FUT prints its

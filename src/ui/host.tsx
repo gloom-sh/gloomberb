@@ -728,6 +728,8 @@ export interface SaveTextFileRequest {
 
 export interface RendererHost {
   requestExit(): void;
+  /** False where the app cannot quit itself (a browser tab): Quit is not offered. */
+  canExit?: boolean;
   /**
    * From a press on a title bar. `press.detail` counts the clicks: where the
    * system's title bars maximize on a double-click, the second press does that

@@ -304,7 +304,7 @@ export function renderFuturesCell(
     case "status":
       // A contract that trades Globex's whole day reads open from the reopen, not from the first print its feed shows.
       return renderQuoteBoardCell("status", state?.quote ? { ...state, quote: futuresSessionQuote(contract, state.quote, options?.now) ?? null } : state,
-        { sessionText: options?.sessionText, formatPrice: (quoted) => formatContractPrice(quoted, contract),
+        { sessionText: options?.sessionText, now: options?.now, formatPrice: (quoted) => formatContractPrice(quoted, contract),
           formatChange: (quoted) => formatContractChange(quoted, contract) });
     default:
       return renderQuoteBoardCell(column.id, state, {

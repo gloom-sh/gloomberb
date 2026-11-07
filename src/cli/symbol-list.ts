@@ -208,6 +208,40 @@ interface SymbolText {
    * Group`), or symbols written on one line (`AAPL MSFT`).
    */
   entries?: true;
+  /** A first row read as a header in words no header list knows (`Hisse,Adet,Maliyet`), skipped and named. */
+  header?: string[];
+}
+
+/** Words a sheet writes where a value is missing, beside the marks isJunkCell knows (`N/A`, `-`, `—`). */
+const MISSING_WORD = /^(?:na|nan|none|null|nil)$/i;
+
+/**
+ * Whether the first row of a delimited table is a header in any language:
+ * every cell of it a word, none a figure, over columns that turn from a word
+ * there to a number on every later row that fills them (`Hisse,Adet,Maliyet`
+ * over `THYAO,100,280`): two such columns, or one with no column of words
+ * beside it. A row of symbols with a rating or a name beside it (`AAPL,BUY`),
+ * or a grid with a numeric code in it (`AAL,czr us equity,UAL` over
+ * `DAL,2007,ULCC`), is no header. A mark for a missing value (`n/a`, `-`,
+ * `—`, `NA`) is a data row's, never a column's name: a first row with one is
+ * no header, and one on a later row leaves its column's numbers numbers.
+ */
+function isWordHeader(records: readonly string[][]): boolean {
+  const [first, ...rest] = records;
+  if (!first || first.length < 2 || rest.length === 0) return false;
+  const missing = (cell: string) => isJunkCell(cell) || MISSING_WORD.test(cell.trim());
+  const word = (cell: string | undefined) =>
+    !!cell && !missing(cell) && /\p{L}/u.test(cell) && !isFigure(cell) && !isNumberCell(cell);
+  if (!first.every((cell) => !cell || word(cell)) || !word(first[0])) return false;
+  const width = Math.max(...records.map((cells) => cells.length));
+  let numbers = 0, words = 0;
+  for (let index = 1; index < width; index++) {
+    const below = rest.map((cells) => cells[index]).filter((cell): cell is string => !!cell && !missing(cell));
+    if (!below.length) continue;
+    if (word(first[index]) && below.every(isFigure)) numbers += 1;
+    else if (!below.every(isFigure)) words += 1;
+  }
+  return numbers >= 2 || (numbers === 1 && words === 0);
 }
 
 /**
@@ -242,6 +276,11 @@ export function parseSymbolText(text: string): SymbolText {
   // Without one, a delimited export's Name or Company column holds the companies, read as typed names are.
   const nameColumn = delimited ? header.findIndex((cell) => NAME_HEADERS.has(cell)) : -1;
   if (nameColumn >= 0) return { symbols: records.slice(1).map((cells) => cells[nameColumn] ?? "").filter(Boolean), ignored: [], entries: true };
+  // A header in words no list here knows (Turkish `Hisse,Adet,Maliyet`) is skipped, and the table below it read as one.
+  if (delimited && isWordHeader(records)) {
+    const below = records.slice(1).map((cells) => cells.join("\t")).join("\n");
+    return { ...parseSymbolText(below), header: records[0]!.filter(Boolean) };
+  }
   // A separator or quote mark stuck to a cell is dropped (and named) when it is read, so it does not make the list a table.
   const cleaned = records.map((cells) => cells.map((cell) => stripStrayEdges(cell).text));
   const figures = cleaned.some((cells) => cells.some((cell, index) => index > 0 && isFigure(cell)));
@@ -395,7 +434,9 @@ export async function readSymbolList(source: SymbolListSource): Promise<{ symbol
   // A separator left on the end of what was typed: `UPST;`, or a list that ends in a comma.
   const strays = new Set<string>(stripStrayEdges(typedArgs.join(" ")).notes);
   const ignored: string[] = [];
-  const addCells = async ({ symbols, ignored: beside, entries: whole }: SymbolText) => {
+  const headers: string[] = [];
+  const addCells = async ({ symbols, ignored: beside, entries: whole, header }: SymbolText) => {
+    if (header) headers.push(`Skipped the first row as a header: ${listCells(header)}.`);
     const cells = symbols.map((cell) => {
       const cleaned = stripStrayEdges(cell);
       cleaned.notes.forEach((note) => strays.add(note));
@@ -422,5 +463,5 @@ export async function readSymbolList(source: SymbolListSource): Promise<{ symbol
   // A number where a symbol goes (a line of prices, a typed 1.899) is left out with those typed beside a symbol.
   const numbers = [...figures, ...collected.filter(isNumberCell)];
   const notes = [ignoredCellsNote(ignored), ignoredNumbersNote(numbers)].filter((note): note is string => !!note);
-  return { ...uniqueSymbols(collected.filter((symbol) => !isNumberCell(symbol))), notes: [...strays, ...notes] };
+  return { ...uniqueSymbols(collected.filter((symbol) => !isNumberCell(symbol))), notes: [...headers, ...strays, ...notes] };
 }

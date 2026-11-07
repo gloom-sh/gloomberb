@@ -660,7 +660,7 @@ export async function resolveTickersForCli(
   }: Pick<CliTickerOptions, "retry" | "askWhenAmbiguous"> & {
     /** Told before each new look, with how many symbols and how long it waits first. */
     onRetry?: (count: number, waitMs: number) => void;
-    /** Told as each symbol of the first look is settled, with how many are and how many there are. */
+    /** Told (0, total) as the first look starts, then as each of its symbols is settled, with how many are and how many there are. */
     onProgress?: (looked: number, total: number) => void;
     retryWaitsMs?: readonly number[];
   } = {},
@@ -668,6 +668,8 @@ export async function resolveTickersForCli(
   const plans = new Map(symbols.map((input) => [input, listLookupPlan(input, exchange)] as const));
   let settled = 0;
   const progress = onProgress ? () => onProgress(++settled, symbols.length) : undefined;
+  // Told before any answer, so a slow first answer is said to be awaited.
+  onProgress?.(0, symbols.length);
   // Symbols every search and own quote of which the service answered in some look: one found nothing for is not
   // found, whatever it refused the others, so it is neither looked up again nor offered to try again.
   const told = new Set<string>();

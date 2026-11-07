@@ -231,6 +231,8 @@ export function createRootCommandItemBuilder({
         return "nightly stable beta prerelease update updates channel";
       case "run-setup-again":
         return "settings onboarding wizard guide first run start over desks holdings";
+      case "quit":
+        return "quit exit";
       default:
         return "";
     }

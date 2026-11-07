@@ -48,13 +48,15 @@ import { chartPriceHistoryIntegrityNotices } from "./market";
 import { maxStudyWarmupPoints, resolveStudies } from "./studies/resolve";
 import { clipSeriesToWindow } from "./alignment";
 import { totalReturnSeries } from "./total-return";
+import { currencySeries } from "./currency-conversion";
 import {
   bufferPriceComparison,
   clipPriceComparison,
+  observationDate,
   priceComparisonBoundsForSeries,
   priceComparisonSeriesIds,
   resolvePriceComparison,
-  totalReturnLevelsNotice,
+  priceLevelsNotice,
 } from "./price-comparison";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { coinLegsAtSessionClose } from "./coin-session-close";
@@ -991,6 +993,16 @@ async function resolveChartSpecPass(
         result = outcome.series;
         if (outcome.notice) warnings.push(`${instrumentLabel(resolvedSource)}: ${outcome.notice}`);
       }
+      // A chart in one currency converts each price at its day's FX close, after any distributions are reinvested in the listing's own.
+      const targetCurrency = spec.viewport.currency;
+      if (targetCurrency && totalReturnFieldId(source.fieldId)) {
+        const converted = await currencySeries(result, {
+          target: targetCurrency, priceCurrency: merged.quote?.currency || quoteMetadata?.currency,
+          loadCloses: sources.loadFxCloses, dayOf: (point) => observationDate(point.date.getTime(), result),
+        });
+        result = converted.series;
+        if (converted.notice) warnings.push(`${instrumentLabel(resolvedSource)}: ${converted.notice}`);
+      }
       if (marketField && history?.historyStart !== undefined && Number.isFinite(history.historyStart)) {
         result.historyStart = new Date(history.historyStart);
       }
@@ -1145,7 +1157,7 @@ async function resolveChartSpecPass(
   );
   if (priceComparison) warnings.push(priceComparison.notice);
   // A raw-price chart of total returns is no comparison, and its levels say what they are instead.
-  const returnBasisNotice = priceComparison ? null : totalReturnLevelsNotice(spec, rawSeries);
+  const returnBasisNotice = priceComparison ? null : priceLevelsNotice(spec, rawSeries);
   if (returnBasisNotice) warnings.push(returnBasisNotice);
   warnings.push(...chartPriceHistoryIntegrityNotices(priceHistoryIntegrity));
   warnings.push(...financialPeriodCoverageWarnings(financialPeriodCoverage(spec, resolved)));

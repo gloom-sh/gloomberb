@@ -15,6 +15,8 @@ import type { CliCommandContext } from "../../../../types/plugin";
 import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import { cliStyles, colorBySign, renderTable } from "../../../../utils/cli-output";
 import type { PriceWindow } from "../../../../utils/price-window";
+import { apiClient } from "../../../../api-client";
+import { inflationMethodText, loadPeriodInflation, monthText, realReturn } from "../../../../portfolio/real-return";
 import { loadPeriodPnl, periodBasisText, periodBoughtText, periodSharedDay, periodUnpricedText, type LoadedPeriodPnl } from "../period-pnl";
 
 const signedPercent = (value: number | null) => value == null || !Number.isFinite(value) ? "—"
@@ -29,7 +31,7 @@ const dayText = (day: string, year: number) => periodDayText(day, year);
  * book's currency. JSON and CSV carry the same rows, the FX line and the
  * total as rows of their own, as `portfolio show` exports its cash and total.
  */
-export async function showPeriodPnl({ ctx, portfolio, name, tickers, currency, window, provider, fxHistory, quotes, futures, source, listingLabel, explain = false }: {
+export async function showPeriodPnl({ ctx, portfolio, name, tickers, currency, window, provider, fxHistory, quotes, futures, source, listingLabel, explain = false, real = false, cpi = apiClient }: {
   ctx: CliCommandContext;
   portfolio: Portfolio;
   name: string;
@@ -45,10 +47,26 @@ export async function showPeriodPnl({ ctx, portfolio, name, tickers, currency, w
   listingLabel: (ticker: TickerRecord) => string;
   /** `--explain`: follow the report with what its terms mean (Contribution). */
   explain?: boolean;
+  /** `--real`: the total's return after the book currency's consumer prices too. */
+  real?: boolean;
+  /** Where the CPI is read; Gloom Cloud by default. */
+  cpi?: Parameters<typeof loadPeriodInflation>[2];
 }) {
   const explained = explain ? reportGlossary("PF", "Contribution") : [];
   const structured = ctx.cliOptions?.format != null && ctx.cliOptions.format !== "text";
-  const result: LoadedPeriodPnl = await loadPeriodPnl({ tickers, portfolioId: portfolio.id, currency, window, provider, fxHistory, quotes, futures, refresh: !!ctx.cliOptions?.refresh });
+  const [result, inflation]: [LoadedPeriodPnl, Awaited<ReturnType<typeof loadPeriodInflation>> | null] = await Promise.all([
+    loadPeriodPnl({ tickers, portfolioId: portfolio.id, currency, window, provider, fxHistory, quotes, futures, refresh: !!ctx.cliOptions?.refresh }),
+    real ? loadPeriodInflation(currency, window, cpi) : null,
+  ]);
+  // The total's return after consumer prices: (1 + nominal) / (1 + inflation) - 1, on the same book value as Contribution.
+  const deflated = inflation && !("error" in inflation) && result.totalContribution != null
+    ? { ...inflation, nominal: result.totalContribution / 100, real: realReturn(result.totalContribution / 100, inflation.inflation) }
+    : null;
+  const realNote = !inflation ? null : "error" in inflation ? cliStyles.warning(`Real return: ${inflation.error}`)
+    : deflated && inflation.fromMonth === inflation.toMonth
+      ? `Real: ${signedPercent(deflated.real * 100)}, the total itself: no ${inflation.source.label} month after ${monthText(inflation.fromMonth)} is out by the end.`
+    : deflated ? `Real: ${signedPercent(deflated.real * 100)} after ${inflation.source.label} ${signedPercent(inflation.inflation * 100)}, ${monthText(inflation.fromMonth)} to ${monthText(inflation.toMonth)}${inflation.latestPublished ? " (the latest published)" : ""}; ${inflationMethodText(inflation)}. (1 + total) / (1 + inflation) - 1.`
+      : cliStyles.warning("Real return: the total has no return to deflate.");
   const bySymbol = new Map(tickers.map((ticker) => [ticker.metadata.ticker, ticker]));
   const label = (symbol: string) => {
     const ticker = bySymbol.get(symbol);
@@ -91,6 +109,13 @@ export async function showPeriodPnl({ ctx, portfolio, name, tickers, currency, w
       complete: result.unpriced.length === 0, unpricedSymbols: result.unpriced, unpriced: result.unpricedReasons, failures: result.failures,
       boughtInWindowSymbols: result.boughtInWindow, latestPriceAt: result.latestPriceAt == null ? null : new Date(result.latestPriceAt).toISOString(),
       ...(explain ? { glossary: explained.map(({ term, definition }) => ({ term, definition })) } : {}),
+      ...(inflation ? { real: "error" in inflation ? { error: inflation.error } : {
+        cpi: inflation.source.label, publisher: inflation.source.publisher, method: inflationMethodText(inflation),
+        fromMonth: inflation.fromMonth, toMonth: inflation.toMonth, latestPublished: inflation.latestPublished,
+        inflationPercent: inflation.inflation * 100, nominalPercent: deflated ? deflated.nominal * 100 : null, realPercent: deflated ? deflated.real * 100 : null,
+        // The published values it was read from, as the source gives them: levels, or changes in percent.
+        readings: inflation.readings,
+      } } : {}),
       method: "Each holding's price move times the units held now (contracts times their size for a future), converted at the end's FX rate; the FX line is each holding's start value times its currency's move. Contribution divides by the book's value at the start, gross when it holds a short.",
     }, freshness }, { rows: (rows) => [...(rows as Record<string, unknown>[]), ...extraRows] });
     return;
@@ -144,6 +169,7 @@ export async function showPeriodPnl({ ctx, portfolio, name, tickers, currency, w
   };
   if (fxRows.length) notes.push(`FX: ${[...new Set(fxRows.map(rateText))].join("; ")}. P&L converts at the end's rate; the FX line is the currency's move on the start value.`);
   if (contributionNote) notes.push(contributionNote);
+  if (realNote) notes.push(realNote);
   const unpricedText = periodUnpricedText(result, label);
   if (unpricedText) notes.push(cliStyles.warning(unpricedText));
   const boughtText = periodBoughtText(result, label);
