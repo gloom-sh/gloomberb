@@ -2,7 +2,7 @@ import { TextAttributes } from "../../../../ui";
 import { blendHex, colors, hoverBg } from "../../../../theme/colors";
 import type { ChatMessage } from "../../../../api-client";
 import { formatTimeAgo } from "../../../../utils/datetime-format";
-import { accentTint } from "../../../../components/ui/quote";
+import { accentTint, terminalAccentTint } from "../../../../components/ui/quote";
 import { isGroupedWithPrevious, MESSAGE_ACTION_WIDTH } from "../layout";
 import { chatAuthorNameColor } from "../people";
 
@@ -10,9 +10,6 @@ import { chatAuthorNameColor } from "../people";
 export function chatHighlightBg(palette = colors): string {
   return blendHex(palette.bg, palette.borderFocused, 0.22);
 }
-
-/** How far an announcement's band leans toward the accent in the terminal: a quote's faint tint. */
-const ANNOUNCEMENT_TINT = 0.07;
 
 /**
  * An announcement's band at rest, well under a message the reader was sent
@@ -23,7 +20,7 @@ const ANNOUNCEMENT_TINT = 0.07;
  */
 export function chatAnnouncementBg(host: "desktop" | "terminal", palette = colors, hovered = false): string {
   if (host === "desktop") return accentTint();
-  const band = blendHex(palette.bg, palette.borderFocused, ANNOUNCEMENT_TINT);
+  const band = terminalAccentTint(palette);
   return hovered ? blendHex(band, palette.selected, 0.5) : band;
 }
 
