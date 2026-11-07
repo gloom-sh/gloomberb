@@ -102,7 +102,7 @@ export const AUCTION_SORT_NAMES: ReadonlyArray<{ value: string; column: AuctionC
   { value: "type", column: "type" },
   { value: "term", column: "term" },
   { value: "rate", column: "rate", aliases: ["yield"] },
-  { value: "vs-median", column: "stopOut", aliases: ["stop-out", "stopout"] },
+  { value: "vs-median", column: "stopOut", aliases: ["vs-med", "stop-out", "stopout"] },
   { value: "btc", column: "btc", aliases: ["b/c", "bid-to-cover", "bc"] },
   { value: "indirect", column: "indirect" },
   { value: "direct", column: "direct" },
