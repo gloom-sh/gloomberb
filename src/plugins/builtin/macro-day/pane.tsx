@@ -14,7 +14,8 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { loadMacroDayEarnings, loadMacroDayHistory, loadMacroReleases, macroDayEarningsNotice } from "./client";
 import {
-  formatMacroDayMove, macroDayEventLabel, macroDayMoveDecimals, macroDayStats, matchesSurprise, projectMacroDays, type MacroDayEvent,
+  formatMacroDayMove, macroDayEventLabel, macroDayEventNote, macroDayMoveDecimals, macroDayStats, matchesSurprise, macroFigureGapNotices,
+  projectMacroDays, type MacroDayEvent,
   type MacroDayModel, type MacroDayMoveBasis,
 } from "./model";
 import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, MACRO_SURPRISE_LABELS, MACRO_SURPRISES, staleMacroReleasesNotice, type MacroEventKind,
@@ -26,7 +27,6 @@ const SURPRISE_OPTIONS = [{ value: "all", label: "All" }, ...MACRO_SURPRISES.map
 
 const times = (value: number | null | undefined) => value == null ? "--" : `${value.toFixed(1)}x`;
 
-const EARNINGS_MARK = "earnings";
 const DATE: DataTableColumn = { id: "date", label: "Date", width: 19, align: "left" };
 /** The move and its multiple of a normal day's; a yield's move is in basis points, and its header says so. */
 const moveColumns = (basis: MacroDayMoveBasis): DataTableColumn[] => [
@@ -44,14 +44,16 @@ function figureColumns(rows: readonly MacroDayEvent[]): DataTableColumn[] {
 }
 
 /**
- * With every release listed, the release's name, widened to take the earnings marker where a row has one. With one
- * selected, a column only for the marker: every row would repeat the name.
+ * With every release listed, the release's name, widened to take a policy decision and the earnings marker where a row
+ * has them. With one selected, a column only for those: every row would repeat the name.
  */
 export function columnsFor(release: string, rows: readonly MacroDayEvent[], basis: MacroDayMoveBasis = "return"): DataTableColumn[] {
-  const marked = rows.some((event) => event.earnings);
   const values = [...figureColumns(rows), ...moveColumns(basis)];
-  if (release === "all") return [DATE, { id: "release", label: "Release", width: marked ? 15 : 8, align: "left" }, ...values];
-  return marked ? [DATE, { id: "release", label: "Note", width: EARNINGS_MARK.length, align: "left" }, ...values] : [DATE, ...values];
+  if (release === "all") return [DATE, { id: "release", label: "Release", align: "left",
+    width: tableColumnWidth({ label: "Release", width: Math.max(6, ...rows.map((event) => displayWidth(macroDayEventLabel(event)))) }) }, ...values];
+  const notes = rows.map((event) => displayWidth(macroDayEventNote(event)));
+  return notes.some(Boolean) ? [DATE, { id: "release", label: "Note", align: "left", width: tableColumnWidth({ label: "Note", width: Math.max(...notes) }) },
+    ...values] : [DATE, ...values];
 }
 
 /** By the sign the text shows: an average that rounds to 0.00% (or 0.0bp) is neither up nor down. */
@@ -127,8 +129,11 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
     [model, release, surprise, rows]);
   const columns = useMemo(() => columnsFor(release, rows, model?.basis), [model?.basis, release, rows]);
 
+  // A covered release day the calendar left without figures says why; days before the calendar are the docs' to explain.
+  const figureGaps = useMemo(() => macroFigureGapNotices(rows), [rows]);
   usePaneNoticeFooter({ registrationId: "macro-day-notices", focused,
-    notices: [...new Set([identityError, history.error, history.data?.error, releasesNotice, earningsNotice].filter((value): value is string => !!value))] });
+    notices: [...new Set([identityError, history.error, history.data?.error, releasesNotice, earningsNotice, ...figureGaps]
+      .filter((value): value is string => !!value))] });
   usePaneFooter("macro-day", () => ({ info: [
     ...(history.loading ? [{ id: "loading", parts: [{ text: "loading history", tone: "muted" as const }] }] : []),
     ...(history.data?.stale || history.data?.earnings.stale ? [{ id: "stale", parts: [{ text: "stale history", tone: "warning" as const }] }] : []),
@@ -137,7 +142,7 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
 
   const renderCell = useCallback((event: MacroDayEvent, column: DataTableColumn): DataTableCell => {
     if (column.id === "date") return { text: event.session === event.date ? event.date : `${event.date} → ${event.session.slice(5)}`, value: event.date };
-    if (column.id === "release") return { text: release === "all" ? macroDayEventLabel(event) : event.earnings ? EARNINGS_MARK : "" };
+    if (column.id === "release") return { text: release === "all" ? macroDayEventLabel(event) : macroDayEventNote(event) };
     // The print colored against the consensus, as the economic calendar colors it.
     if (column.id === "actual") return { text: event.figures?.actual ?? "", color: event.figures?.surprise === "hot" ? colors.positive
       : event.figures?.surprise === "cool" ? colors.negative : undefined };
