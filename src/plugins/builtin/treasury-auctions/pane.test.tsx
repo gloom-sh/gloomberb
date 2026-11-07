@@ -9,6 +9,8 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { PluginPersistence } from "../../../types/plugin";
 import {
   attachTreasuryAuctionsPersistence,
+  CACHE_SCHEMA_VERSION,
+  DIRECT_CACHE_SCHEMA_VERSION,
   resetTreasuryAuctionsPersistence,
 } from "./cache";
 import { TreasuryAuctionsPane } from "./pane";
@@ -133,8 +135,8 @@ describe("TreasuryAuctionsPane", () => {
   test("an auction Fiscal Data has no results for reads its results from TreasuryDirect, and the announced ones show", async () => {
     setSystemTime(new Date(RECORDED_NOW));
     const persistence = new MemoryPluginPersistence();
-    persistence.seedResource("treasury-auctions", "recent:120", recordedFiscalData(), { sourceKey: "treasury-fiscal-data", schemaVersion: 4 });
-    persistence.seedResource("treasury-auctions", "direct:60", recordedTreasuryDirect(), { sourceKey: "treasury-direct", schemaVersion: 1 });
+    persistence.seedResource("treasury-auctions", "recent:120", recordedFiscalData(), { sourceKey: "treasury-fiscal-data", schemaVersion: CACHE_SCHEMA_VERSION });
+    persistence.seedResource("treasury-auctions", "direct:60", recordedTreasuryDirect(), { sourceKey: "treasury-direct", schemaVersion: DIRECT_CACHE_SCHEMA_VERSION });
     attachTreasuryAuctionsPersistence(persistence);
     await tui.render(<Harness height={60} />, { width: 92, height: 60 });
     await renderSettled();

@@ -66,15 +66,16 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
       + "Every winning bid is filled at it; for TIPS it is a real yield.",
   },
   {
-    term: "Stop-out vs average", aliases: ["stop-out vs avg", "vs avg", "stop-out vs median"], functions: ["AUCT"],
-    shown: ["Stop-out vs avg", "Stop-out vs average"],
-    definition: "The high (stop-out) yield minus the auction's average/median yield, in basis points; bills compare discount rates. "
+    term: "Stop-out vs median", aliases: ["stop-out vs med", "vs med", "stop-out vs average", "stop-out vs avg", "vs avg"], functions: ["AUCT"],
+    shown: ["Stop-out vs median", "VS MED"],
+    definition: "The high (stop-out) yield minus the auction's median yield, in basis points; bills compare discount rates. "
+      + "Treasury publishes the median accepted bid in the field it names average/median. "
       + "A wider gap means the last accepted bids cleared well above where most of the auction priced.",
   },
   {
     term: "Tail", aliases: ["tailed", "tailing", "auction tail"], functions: ["AUCT"], shown: ["tail"],
     definition: "How far an auction's high yield cleared above the when-issued yield at the 1 pm bid deadline; a tail reads as weak demand. "
-      + "AUCT cannot show one, as its source has no when-issued yields, so it shows stop-out vs average instead.",
+      + "AUCT cannot show one, as its source has no when-issued yields, so it shows stop-out vs median instead.",
   },
   {
     term: "When-issued", short: "WI", aliases: ["when issued", "wi yield", "when-issued yield"], functions: ["AUCT"],
@@ -86,6 +87,18 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     shown: ["Investment rate", "Bill", "CMB"],
     definition: "A bill's yield at the highest accepted (stop-out) rate, restated as a bond-equivalent yield so it compares with "
       + "note yields. It reads higher than the bill's discount rate.",
+  },
+  {
+    term: "Discount rate", aliases: ["bank discount rate", "high discount rate", "discount yield"], functions: ["AUCT"],
+    shown: ["Discount rate"],
+    definition: "How a bill is bid and quoted: the discount from face value as an annual rate on a 360-day year. "
+      + "The auction's high discount rate is the one its investment rate restates.",
+  },
+  {
+    term: "Auction percentile", aliases: ["b/c percentile", "b/c pctl", "indirect percentile", "dealer percentile"], functions: ["AUCT"],
+    shown: ["B/C pctl", "Indirect pctl", "Dealer pctl"],
+    definition: "Where an auction's bid-to-cover, indirect or dealer share ranks among the previous 24 auctions of the same "
+      + "tenor and type, from 0 (the lowest) to 100 (the highest). Blank with fewer than 12 before it.",
   },
   {
     term: "High discount margin", aliases: ["discount margin", "frn margin"], functions: ["AUCT"],
@@ -1005,7 +1018,7 @@ export interface GlossaryLookup {
   /** The entries the query names: by the term, its abbreviation or an alias. */
   exact: GlossaryEntry[];
   /**
-   * The others whose names hold each word of the query: `stop-out` finds stop-out vs average. Beside a term the
+   * The others whose names hold each word of the query: `stop-out` finds stop-out vs median. Beside a term the
    * query names they hold the words whole; otherwise a word start is enough, and the whole ones come first.
    */
   partial: GlossaryEntry[];

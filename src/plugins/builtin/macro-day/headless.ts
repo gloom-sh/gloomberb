@@ -2,7 +2,8 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { loadMacroDayEarnings, loadMacroDayHistory, loadMacroDaySeriesHistory, loadMacroReleases, macroDayEarningsNotice, type MacroDayEarnings } from "./client";
 import { fredSeriesArgument } from "../../../series/fred-argument";
-import { formatMacroDayMove, macroDayEventLabel, macroDayStats, matchesSurprise, projectMacroDays, type MacroDayStats } from "./model";
+import { formatMacroDayMove, macroDayEventLabel, macroDayStats, macroFigureGapNotices, matchesSurprise, projectMacroDays, type MacroDayEvent,
+  type MacroDayStats } from "./model";
 import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, MACRO_RELEASE_SOURCES, MACRO_SURPRISE_LABELS, MACRO_SURPRISES, staleMacroReleasesNotice,
   type MacroEventKind, type MacroSurprise } from "./releases";
 
@@ -22,7 +23,8 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { screenshotReadiness: "live-dom", limitations: [
     "US listings, or a FRED series (FRED:T10Y2Y, whose moves in a rate or spread read in bp); close-to-close on the release day.",
     "Published CPI, jobs and FOMC days, and Brazil's IPCA days from Gloom Cloud; sessions after the list's last covered day (releasesThrough) are left out.",
-    "Actual, forecast and prior for the days Gloom Cloud has them (the US headlines from its kept economic calendar, IPCA from the central bank's SGS series); --surprise keeps the days that came in hot, cool or in line with the forecast.",
+    "Actual, forecast and prior for the days Gloom Cloud has them (the US headlines from its kept economic calendar, under either feed's title; an FOMC day's are the federal funds target range and whether it held or moved; IPCA from the central bank's SGS series); --surprise keeps the days that came in hot, cool or in line with the forecast.",
+    "A release day without figures says why: before the kept calendar starts, or listed without them.",
     "A release day that is also the reaction session of the company's own earnings report is marked earnings and left out of the release averages and the normal day.",
   ] },
   options: [
@@ -61,6 +63,15 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
     // The days the filter keeps get a row of their own: how the name moved on hot CPI days.
     const selected = surprise === "all" ? [] : [row(`${MACRO_SURPRISE_LABELS[surprise]} ${release === "all" ? "release"
       : MACRO_EVENT_LABELS[release as MacroEventKind]}`, macroDayStats(events, model.normal.meanAbs))];
+    // A day without figures says why: before the kept calendar (one note for them all), or the calendar's own gap.
+    const figuresFrom = releases.figuresFrom;
+    const beforeCalendar = (event: MacroDayEvent) => !!figuresFrom && event.kind !== "ipca" && !event.figures && event.date < figuresFrom;
+    const missing = (event: MacroDayEvent) => event.figures ? null : event.figuresMissing
+      ?? (beforeCalendar(event) ? `before ${figuresFrom}, when Gloom Cloud's economic calendar starts` : null);
+    const figureNotes = [
+      ...(events.some(beforeCalendar) ? [`Release days before ${figuresFrom} have no actual, forecast or prior: Gloom Cloud's economic calendar starts then.`] : []),
+      ...macroFigureGapNotices(events),
+    ];
     return {
       sections: [
         { title: "By release", columns: [{ key: "label", header: "Day" }, { key: "count", header: "Days" },
@@ -72,14 +83,19 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
           { key: "actual", header: "Actual" }, { key: "forecast", header: "Forecast" }, { key: "prior", header: "Prior" },
           { key: "surprise", header: "Surprise" },
           { key: "session", header: "Session" }, { key: "move", header: header("Move"), format: move }, { key: "multiple", header: "vs normal", format: multiple }],
-        rows: events.map(({ figures, ...event }) => ({ ...event, event: macroDayEventLabel(event), actual: figures?.actual ?? null,
-          forecast: figures?.forecast ?? null, prior: figures?.prior ?? null, surprise: figures?.surprise ?? null,
-          ...(figures ? { headline: figures.event } : {}) })) },
+        rows: events.map((day) => {
+          const { figures, figuresMissing: _gap, ...event } = day;
+          const why = missing(day);
+          return { ...event, event: macroDayEventLabel(day), actual: figures?.actual ?? null,
+            forecast: figures?.forecast ?? null, prior: figures?.prior ?? null, surprise: figures?.surprise ?? null,
+            ...(figures ? { headline: figures.event } : {}), ...(figures?.decision ? { decision: figures.decision } : {}),
+            ...(why ? { figuresMissing: why } : {}) };
+        }) },
       ],
       complete: !history.stale && !earnings.stale && !history.error && !notes.length && model.events.length > 0,
       unavailableSymbols: model.events.length ? [] : [symbol],
       errors: history.error ? [history.error] : [],
-      ...(notes.length ? { notes } : {}),
+      ...(notes.length || figureNotes.length ? { notes: [...notes, ...figureNotes] } : {}),
       metadata: { unit: yieldMoves ? `change in the ${seriesId ? "rate" : "yield"} in percentage points, close to close on the release day`
         : "decimal return, close to close on the release day", start: model.start, asOf: model.asOf,
         releasesThrough: releases.coveredThrough, releaseSources: Object.values(MACRO_RELEASE_SOURCES),

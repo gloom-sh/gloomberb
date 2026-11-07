@@ -19,7 +19,7 @@ import {
   TuiPaneSettingsDialogBody,
   TuiUnavailablePaneSettingsDialog,
 } from "./pane-settings-dialog/tui";
-import { isPaneSettingDisabled, isSpaceKey, stepPaneSettingSelect } from "./pane-settings-dialog/value";
+import { isPaneSettingDisabled, isSpaceKey, paneSettingValue, stepPaneSettingSelect } from "./pane-settings-dialog/value";
 import { useRowNotes } from "./ui/row-notes";
 import { logFailure } from "../utils/log-failure";
 
@@ -118,7 +118,7 @@ export function PaneSettingsDialogContent({
       if (!closed && mounted.current) setSettingsRevision((revision) => revision + 1);
       return;
     }
-    const currentValue = descriptor.context.settings[field.key];
+    const currentValue = paneSettingValue(field, descriptor.context.settings);
 
     if (field.type === "toggle") {
       await applyAndRefresh(field, currentValue !== true);
@@ -175,7 +175,7 @@ export function PaneSettingsDialogContent({
   /** Left and right change a toggle or step a select in place, the way a settings list does. */
   const stepField = (field: PaneSettingField | undefined, direction: -1 | 1) => {
     if (!field || !descriptor) return;
-    const currentValue = descriptor.context.settings[field.key];
+    const currentValue = paneSettingValue(field, descriptor.context.settings);
     if (field.type === "toggle") {
       void applyAndRefresh(field, currentValue !== true).catch(logFailure("pane-settings-dialog", "Toggle pane setting failed"));
       return;

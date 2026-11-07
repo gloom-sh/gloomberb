@@ -1,5 +1,6 @@
 import { ApiRequestError } from "../../../api-client/errors";
 import { createThrottledFetch } from "../../../utils/throttled-fetch";
+import { inClearingOrder } from "./client";
 import type { TreasuryAuction } from "./types";
 
 /**
@@ -78,7 +79,7 @@ export function normalizeDirectAuction(raw: unknown): TreasuryAuction | null {
   const securityType = text(record.securityType);
   if (!cusip || !auctionDate || !securityType) return null;
   const bill = securityType === "Bill";
-  return {
+  return inClearingOrder({
     id: `${cusip}|${auctionDate}`,
     cusip,
     secType: text(record.inflationProtected) === "Yes" ? "TIPS" : text(record.floatingRate) === "Yes" ? "FRN" : securityType,
@@ -88,9 +89,11 @@ export function normalizeDirectAuction(raw: unknown): TreasuryAuction | null {
     // A bill's `highRate` is its discount rate; a note or bond states its coupon elsewhere.
     highDiscountRate: bill ? toNumber(record.highRate) : null,
     avgMedDiscountRate: bill ? toNumber(record.medianRate) : null,
+    lowDiscountRate: bill ? toNumber(record.lowRate) : null,
     highDiscountMargin: toNumber(record.highDiscountMargin),
     highYield: toNumber(record.highYield),
     avgMedYield: toNumber(record.medianYield),
+    lowYield: toNumber(record.lowYield),
     highPrice: toNumber(record.highPrice),
     lowPrice: toNumber(record.lowPrice),
     avgMedPrice: toNumber(record.averagePrice),
@@ -101,7 +104,7 @@ export function normalizeDirectAuction(raw: unknown): TreasuryAuction | null {
     primaryDealerAccepted: toNumber(record.primaryDealersCompetitiveParAwarded),
     totalAccepted: toNumber(record.grandTotalParAwarded),
     offeringAmount: toNumber(record.offeringAmount),
-  };
+  });
 }
 
 /**

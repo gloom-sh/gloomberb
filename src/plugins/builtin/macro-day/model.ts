@@ -62,6 +62,8 @@ export interface MacroDayEvent {
   multiple: number | null;
   /** What the release came out with, when the list has it. */
   figures: MacroReleaseFigures | null;
+  /** Why it has none, when the list says. */
+  figuresMissing?: string;
 }
 
 export interface MacroDayStats {
@@ -98,8 +100,17 @@ export interface MacroDayModel {
 }
 
 /** The release's name, with the earnings marker on a day that is the ticker's own report reaction. */
-export const macroDayEventLabel = (event: Pick<MacroDayEvent, "kind" | "earnings">) =>
-  event.earnings ? `${MACRO_EVENT_LABELS[event.kind]} (earnings)` : MACRO_EVENT_LABELS[event.kind];
+export const macroDayEventLabel = (event: Pick<MacroDayEvent, "kind" | "earnings" | "figures">) =>
+  [MACRO_EVENT_LABELS[event.kind], macroDayEventNote(event)].filter(Boolean).join(" ");
+
+/** One line for each release day the economic calendar covers that has no figures, saying why. */
+export const macroFigureGapNotices = (events: readonly Pick<MacroDayEvent, "kind" | "date" | "figures" | "figuresMissing">[]) =>
+  events.filter((event) => !event.figures && event.figuresMissing)
+    .map((event) => `${event.date} ${MACRO_EVENT_LABELS[event.kind]} has no figures: ${event.figuresMissing}.`);
+
+/** What a row adds to its release's name: a policy decision's move, and the earnings marker. */
+export const macroDayEventNote = (event: Pick<MacroDayEvent, "earnings" | "figures">) =>
+  [event.figures?.decision, event.earnings ? "(earnings)" : null].filter(Boolean).join(" ");
 
 /** Daily labels at UTC midnight name that date; any other stamp reads in New York. */
 function sessionDate(time: number): string {
@@ -215,7 +226,8 @@ export function projectMacroDays(history: readonly PricePoint[], options: {
     const move = moves.get(session);
     if (move == null || (session !== release.date && skipsAnotherWeekday(release.date, sessions[at - 1]!, session))) continue;
     if (US_KINDS.has(release.kind)) reactionSessions.add(session);
-    found.push({ kind: release.kind, date: release.date, session, move, figures: release.figures ?? null });
+    found.push({ kind: release.kind, date: release.date, session, move, figures: release.figures ?? null,
+      ...(release.figuresMissing ? { figuresMissing: release.figuresMissing } : {}) });
   }
 
   const normalMoves = [...moves].filter(([date]) => !reactionSessions.has(date)).map(([, move]) => move);

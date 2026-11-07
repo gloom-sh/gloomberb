@@ -1,7 +1,7 @@
 import type { PluginRegistry } from "../../plugins/registry";
 import { fuzzyFilter } from "../../utils/fuzzy-search";
 import type { ResultItem } from "./list/model";
-import { summarizePaneSettingValue } from "../pane-settings-dialog/value";
+import { paneSettingValue, summarizePaneSettingValue } from "../pane-settings-dialog/value";
 
 /**
  * The focused pane's settings as root search results. The bar only finds a
@@ -21,7 +21,7 @@ export function buildPaneSettingResultItems(options: {
   const category = descriptor.settingsDef.title || "Pane Settings";
   const paneLabel = descriptor.pane.title || descriptor.paneDef.name || descriptor.pane.paneId;
   const items = descriptor.settingsDef.fields.map((field): ResultItem => {
-    const currentValue = descriptor.context.settings[field.key];
+    const currentValue = paneSettingValue(field, descriptor.context.settings);
     const actionSearchText = field.type === "action"
       ? `${field.actionId} ${field.actionLabel ?? ""}`
       : "";
