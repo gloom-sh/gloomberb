@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { Box, Text, useUiCapabilities } from "../../../ui";
 import type { CompositeChartXMarker } from "./types";
+import type { EventCaptionPlacement } from "./event-captions";
 
 export interface StaticChartXAxisLabel {
   label: string;
@@ -490,6 +491,27 @@ export function StaticXMarkerLabels({
           </Box>
         );
       })}
+    </Box>
+  );
+}
+
+/** Events' captions in the row under the axis, laid out by `layoutEventCaptions`. */
+export function EventCaptions({
+  captions,
+  width,
+  color,
+}: {
+  captions: readonly EventCaptionPlacement[];
+  width: number;
+  color?: string;
+}) {
+  return (
+    <Box position="relative" width={width} height={1}>
+      {captions.map(({ id, left, text }) => (
+        <Box key={id} position="absolute" left={left} top={0} width={text.length} height={1} overflow="hidden" zIndex={2}>
+          <Text fg={color}>{text}</Text>
+        </Box>
+      ))}
     </Box>
   );
 }

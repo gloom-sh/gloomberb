@@ -147,6 +147,8 @@ export interface CompositePanelScene {
   lastPrice?: CompositeLastPriceMarker;
   /** Present on a panel holding a volume-profile study. */
   volumeProfile?: CompositeVolumeProfile;
+  /** Guides at dated events, shared by every panel and drawn under the marks. */
+  eventGuides?: readonly CompositeEventGuide[];
   /** Plot spans (x ratios) of intraday bars outside the regular session, shared by every panel. */
   extendedHours?: readonly CompositeExtendedHoursSpan[];
   /** The previous session's close on a one-day chart, drawn as a dotted reference line. */
@@ -227,6 +229,31 @@ export interface CompositeChartXMarker {
   lineChar?: string;
 }
 
+/**
+ * Something that happened at a time (an intervention): a guide through every
+ * panel at that time, drawn under the marks, and its caption in the row below
+ * the axis. The row is kept while the chart has events, so the plot does not
+ * move as one pans in or out of view; one outside the view is not drawn.
+ */
+export interface CompositeChartEvent {
+  id: string;
+  /** The instant, in ms: the time of the bar it belongs on, so the guide is on that bar. */
+  time: number;
+  /** A period's last bar: the event is shaded from `time` to it, with a guide at each end. */
+  endTime?: number;
+  /** Its caption, longest first: the row shows the longest that fits beside the guide. */
+  captions?: readonly string[];
+  /** Its day is not known yet (a total for a period): the guides are dotted. */
+  dotted?: boolean;
+}
+
+/** Where a `CompositeChartEvent` falls in the plot; a period partly in view has an edge outside 0-1. */
+export interface CompositeEventGuide {
+  xRatio: number;
+  endXRatio?: number;
+  dotted: boolean;
+}
+
 /** Replaces the date axis for charts whose x is not time: a fraction, a tenor, a return. */
 export interface CompositeChartXAxis {
   /** Evenly spread labels drawn instead of date ticks. */
@@ -305,6 +332,10 @@ export interface CompositeChartProps {
    */
   formatAxisValue?: (value: number, domain: CompositeAxisDomain) => string;
   xAxis?: CompositeChartXAxis;
+  /** Dated events on a time axis; a chart with `xAxis` has no time to put them at. */
+  events?: readonly CompositeChartEvent[];
+  /** One caption, longest first, for events too close to caption apart; without it the older caption is left out. */
+  mergeEventCaptions?: (events: readonly CompositeChartEvent[]) => readonly string[];
   /** Tagged onto the plot's semantic node so remote clients can find this chart. */
   remoteKind?: string;
   /** Permit panning into an older unloaded window so the owner can backfill it. */

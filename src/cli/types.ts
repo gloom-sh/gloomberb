@@ -29,6 +29,8 @@ export type MarketContext = ConfigContext & {
   statementSources?: StatementReportSources;
   /** Daily FX closes (`fx --date`, converted INS values); Gloom Cloud unless a test stands in for it. */
   fxHistory?: FxHistoryClient;
+  /** Japan's intervention record for a yen pair's notes; Gloom Cloud unless a test stands in for it. */
+  fxInterventions?: () => Promise<import("../api-client/fx-interventions").FxInterventionsPayload | null>;
 };
 
 export type CliServicesContext = {

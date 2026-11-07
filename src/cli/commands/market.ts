@@ -129,6 +129,10 @@ import {
 import { historyCoverageNotice } from "../../sources/history-coverage";
 import { fetchHistoryResult } from "../../sources/history-result";
 import { settleWithin } from "../../utils/async-deadline";
+import type { FxInterventionsPayload } from "../../api-client/fx-interventions";
+import {
+  fxInterventionLatestNote, fxInterventionPair, fxInterventionWindowNote, loadFxInterventions, type FxInterventionPair,
+} from "../../market-data/fx-interventions";
 import { maxDrawdownText } from "../../utils/max-drawdown";
 import { isPastPriceWindow, loadPriceWindowHistory, PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP, priceWindowText, readPriceWindow, type PriceWindow } from "../../utils/price-window";
 import {
@@ -1508,6 +1512,35 @@ function historyCommand({ range, window }: HistoryAsk): string {
 
 /** How long `history` waits for a future's contract terms to name its unit before using the catalog's. */
 const HISTORY_PRICE_UNIT_WAIT_MS = 1_500;
+/** How long a yen pair's answer waits for Japan's intervention record, read beside it; the note is left out after. */
+const INTERVENTION_NOTE_WAIT_MS = 3_000;
+
+/** Japan's intervention record for a yen pair, read beside its rate or bars; null for any other pair, or none in time. */
+function loadInterventionsFor(pair: FxInterventionPair | null, market: MarketContext): Promise<FxInterventionsPayload | null> {
+  return pair ? settleWithin((market.fxInterventions ?? (() => loadFxInterventions()))(), INTERVENTION_NOTE_WAIT_MS) : Promise.resolve(null);
+}
+
+/** The last day a bar's period covers: a weekly bar's Sunday, a monthly bar's month end, else its own day. */
+function barPeriodEnd(date: string, interval: string | null | undefined): string {
+  const start = Date.parse(`${date}T00:00:00Z`);
+  if (interval === "1wk") return new Date(start + 6 * 86_400_000).toISOString().slice(0, 10);
+  if (interval !== "1mo") return date;
+  const day = new Date(start);
+  return new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+}
+
+/** The interventions from the first bar shown to the end of the last one's period. */
+async function interventionWindowNote(
+  record: Promise<FxInterventionsPayload | null>,
+  pair: FxInterventionPair | null,
+  rows: readonly { date: string; interval?: string | null }[],
+): Promise<string | null> {
+  const first = rows[0]?.date.slice(0, 10), lastRow = rows.at(-1);
+  const last = lastRow ? barPeriodEnd(lastRow.date.slice(0, 10), lastRow.interval) : undefined;
+  if (!pair || !first || !last) return null;
+  const payload = await record;
+  return payload ? fxInterventionWindowNote(payload, pair, first, last) : null;
+}
 
 /** How long `history` waits for the daily bars that rebuild contradictory monthly bars before printing them with blanks. */
 const MONTHLY_REBUILD_WAIT_MS = 8_000;
@@ -1569,6 +1602,9 @@ async function loadListingHistory(
   // A future's prices are in its contract's unit (US cents / bushel), as FUT and G spell it; asked beside the bars.
   const priceUnit = isFuturesInstrument(symbol, null) ? settleWithin(loadFuturesPriceUnit(symbol), HISTORY_PRICE_UNIT_WAIT_MS) : Promise.resolve(null);
   const quoted = quoteAnswer.then((answer) => answer.quote);
+  // USDJPY=X's bars name Japan's interventions they span.
+  const interventionPair = fxInterventionPair(symbol, exchange);
+  const interventions = loadInterventionsFor(interventionPair, market);
   const fate = lookups ? listingFateLoader(listing, market, quoted, { successor: true }) : null;
   const request = { command: historyCommand(ask), noun: "history", ...(fate ? { fate } : {}) };
   const [answered, quote] = await Promise.all([
@@ -1671,6 +1707,7 @@ async function loadListingHistory(
     // NG=F's rows are November's to the 23rd and December's from the 26th: each roll named, and thin bars said.
     historyRollNote(listing.symbol, data) ?? [], historyThinNote(data) ?? [],
     historyBarStatusNote(forming ? served : data, { tradingDay: venueTradingDay(venue, Date.now()) }) ?? [],
+    await interventionWindowNote(interventions, interventionPair, data) ?? [],
   ].flat();
   return {
     listing, identity, unit, data, resolution, interval, intraday, volume, freshness, notes,
@@ -3628,6 +3665,10 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
       (payload) => ({ payload }),
       (error: unknown) => ({ error: unavailableOnServer(error, "Forwards are not available from Gloom Cloud yet: it serves no short rates.") }),
     ) : null;
+    // A yen pair's rate names Japan's latest intervention in it; a conversion is about the amount, not the pair.
+    const interventionPair = amount == null && !tenor && currency !== baseCurrency && (currency === "JPY" || baseCurrency === "JPY")
+      ? { base: currency, quote: baseCurrency } : null;
+    const interventions = loadInterventionsFor(interventionPair, market);
     // The pair's own quote, as `quote` and the FX board read it; a pair with none is crossed through the dollar.
     const now = Date.now();
     const read = await readFxQuoteRate(currency, baseCurrency, (targets, options) => market.dataProvider.getQuotesBatch(targets, options),
@@ -3729,6 +3770,9 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
         : [],
       ...rateNotes,
     ];
+    const record = await interventions;
+    const interventionNote = record && interventionPair ? fxInterventionLatestNote(record, interventionPair) : null;
+    if (interventionNote) warnings.push(interventionNote);
     // The peso's dollar rate is the official one; the market rates Buenos Aires prices imply follow it, each with its inputs.
     const peso = isPesoDollarPair(currency, baseCurrency)
       ? await loadPesoDollarRates((targets) => market.dataProvider.getQuotesBatch(targets, { forceRefresh: ctx.cliOptions.refresh }))

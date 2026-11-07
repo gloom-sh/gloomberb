@@ -14,6 +14,7 @@ import {
   type CompositeColumnGroupCenter,
   type CompositeColumnLayout,
 } from "./column-layout";
+import { paintEventGuides } from "./event-guides";
 import { compositeGridRatios } from "./format";
 import { projectCompositeValue } from "./scene";
 import { paintVolumeProfile } from "./volume-profile-paint";
@@ -553,6 +554,7 @@ export function renderCompositePanelBitmap(
     fillRect(data, width, height, 0, y, width - 1, y + 0.6, grid, 0.42);
   }
   if (panel.volumeProfile) paintVolumeProfile(data, width, height, panel.volumeProfile);
+  if (panel.eventGuides) paintEventGuides(data, width, height, panel.eventGuides, options.colors.textDim);
   // Under the bars, which read across it.
   if (panel.priorClose) {
     drawDashedLevel(data, width, height, panel.priorClose.yRatio, parseHex(options.colors.textDim),

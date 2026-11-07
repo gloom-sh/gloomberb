@@ -1,4 +1,5 @@
 import { displayWidth, padTo } from "../../../utils/format";
+import { writeEventGuidesText } from "./event-guides";
 import { compositeAxisTicks, compositeGridRatios, type CompositeAxisValueFormatter } from "./format";
 import { resolveCompositeObservationWidth } from "./rasterizer";
 import { buildCompositeColumnLayout, type CompositeColumnLayout } from "./column-layout";
@@ -336,6 +337,7 @@ export function renderCompositePanelText(
 
   if (panel.volumeProfile) writeVolumeProfileText(rows, plotWidth, panel.volumeProfile);
   if (panel.extendedHours) writeSessionBreaksText(rows, plotWidth, panel.extendedHours);
+  if (panel.eventGuides) writeEventGuidesText(rows, plotWidth, panel.eventGuides);
 
   // Blank cells only, so the dashed level reads as if it ran under the marks.
   if (panel.lastPrice) {
