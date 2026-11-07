@@ -20,6 +20,25 @@ import type {
 } from "./types";
 
 export const CHART_SERIES_CAPABILITY_KIND = "chart-series";
+
+/** Words that ask for a government bond yield, which the series a chart can name carry only for the US. */
+const BOND_YIELD_WORDS = /\b(?:yield|yields|bond|bonds|treasury|treasuries|gilt|gilts|bund|bunds|govt|sovereign|mbono|jgb)\b/i;
+
+/**
+ * What a chart says of a `CAP:` series no source answers to: that it is not
+ * covered, and the nearest series it can chart instead, never that a plugin
+ * or provider should be enabled (none would chart it). A government yield
+ * asked by country (`CAP:bond-yield:br-10y`) names the US Treasury series and
+ * the world grid of 2- and 10-year yields.
+ */
+export function uncoveredCapabilityMessage(capabilityId: string, seriesId?: string): string {
+  const expression = `CAP:${capabilityId}${seriesId ? `:${seriesId}` : ""}`;
+  const words = `${capabilityId} ${seriesId ?? ""}`.replace(/[^A-Za-z0-9]+/g, " ");
+  const nearest = BOND_YIELD_WORDS.test(words)
+    ? "The nearest: UST:10Y, the US 10-year Treasury yield; the 2- and 10-year government yields of each market GC covers are on gloom fn GC --tab world."
+    : "Series a chart can name: SYMBOL, SYMBOL:field, FUT:code, UST:maturity, FRED:series and GEO:series; gloom catalog lists them.";
+  return `${expression} is not covered: no chart series source is called "${capabilityId}". ${nearest}`;
+}
 export const MAX_CHART_SERIES_CATALOG_ITEMS = 32;
 export const MAX_CHART_SERIES_POINTS = 20_000;
 
@@ -351,5 +370,11 @@ export function createChartSeriesResolver(invoker: CapabilityInvoker) {
     source.capabilityId,
     "resolve",
     { seriesId: source.seriesId, viewport } satisfies ChartSeriesResolveRequest,
-  );
+  ).catch((error: unknown) => {
+    // No source registered under the id: it is not covered. A source turned off still says to turn it on.
+    if (error instanceof Error && error.message === `Capability "${source.capabilityId}" is not available.`) {
+      throw new Error(uncoveredCapabilityMessage(source.capabilityId, source.seriesId));
+    }
+    throw error;
+  });
 }

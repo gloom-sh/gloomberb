@@ -38,5 +38,5 @@ export {
   CHART_SERIES_CAPABILITY_KIND, chartSeriesCapabilityManifests, chartSeriesCatalogOutputSchema,
   chartSeriesCatalogRequestSchema, chartSeriesResolveOutputSchema, chartSeriesResolveRequestSchema,
   chartSeriesSourceKey, createChartSeriesResolver, isValidChartCapabilityId, isValidChartSeriesId,
-  MAX_CHART_SERIES_CATALOG_ITEMS, MAX_CHART_SERIES_POINTS, searchChartSeriesCapabilities,
+  MAX_CHART_SERIES_CATALOG_ITEMS, MAX_CHART_SERIES_POINTS, searchChartSeriesCapabilities, uncoveredCapabilityMessage,
 } from "./chart-series";

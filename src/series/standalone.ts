@@ -1,5 +1,5 @@
 import { logFailure } from "../utils/log-failure";
-import { chartSeriesResolveRequestSchema } from "../capabilities/chart-series";
+import { chartSeriesResolveRequestSchema, uncoveredCapabilityMessage } from "../capabilities/chart-series";
 import type { CapabilityInvoker } from "../capabilities/types";
 import type { GloomPlugin } from "../types/plugin";
 import { resolveRegisteredSeries } from "./capability";
@@ -43,7 +43,7 @@ export function standaloneSeriesInvoker(
       registry ??= build();
       const request = chartSeriesResolveRequestSchema.parse(payload);
       const resolved = await resolveRegisteredSeries(await registry, capabilityId, request.seriesId, request.viewport, options?.signal);
-      if (!resolved) throw new Error(`Chart series capability "${capabilityId}" is unavailable. Enable its plugin or provider.`);
+      if (!resolved) throw new Error(uncoveredCapabilityMessage(capabilityId, request.seriesId));
       return resolved as T;
     },
   };

@@ -29,7 +29,7 @@ import type { InstrumentRef } from "../../../market-data/request-types";
 import type { HistorySession } from "../../../types/price-history";
 import type { TickerFinancials, PricePoint, Quote } from "../../../types/financials";
 import { chartQuoteOverrideKeyForTarget, getLiveChartQuoteTargets } from "../../../time-series/live-quotes";
-import { createChartSeriesResolver } from "../../../capabilities";
+import { createChartSeriesResolver, uncoveredCapabilityMessage } from "../../../capabilities";
 import { loadFuturesContractTerms, loadFuturesPriceUnit } from "../../../market-data/futures-contract";
 import { loadDailyFxCloses } from "../../../time-series/currency-conversion";
 import { canonicalExchange, isKnownExchangeCode, isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
@@ -86,7 +86,7 @@ function headlessCapabilityResolver(context: HeadlessPaneContext) {
       const request = <T,>(path: string, init?: RequestInit) => context.apiClient.geo<T>(path, { ...init, signal: init?.signal ?? context.signal });
       return resolveGeoChartSeries(request, source.seriesId, viewport, context.signal);
     }
-    if (!registry) throw new Error(`Chart series capability "${source.capabilityId}" is unavailable. Enable its plugin or provider.`);
+    if (!registry) throw new Error(uncoveredCapabilityMessage(source.capabilityId, source.seriesId));
     return registry(source, viewport, spec);
   };
 }
