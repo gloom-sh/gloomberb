@@ -48,13 +48,24 @@ import { buildHiloBarRows, filterHiloRows, formatHiloPrice, type HiloMinPrice, t
  */
 const HEADLESS_SCANNER_WAIT_MS = 12_000;
 
+/**
+ * The most a FLOW report waits in all, inside the 20 s a script gives a call:
+ * its recorded prints and session sums get what the live feed's wait left,
+ * and one not answered by then is said under errors.
+ */
+const FLOW_REPORT_BUDGET_MS = 16_000;
+
+/** What a report of a scanner still starting says in place of its empty list. */
+const SCANNER_STARTING_TEXT = "The scanner is still starting and has nothing to list yet. Ask again in a few seconds.";
+
 function loadScannerSnapshot<T extends ScannerPayload>(
   client: Pick<HeadlessPaneApiClient, "subscribeScanner">,
   scanner: ScannerKind,
   signal: AbortSignal,
   timeoutMs = SCANNER_SNAPSHOT_TIMEOUT_MS,
+  options: { acceptStarting?: boolean } = {},
 ): Promise<T> {
-  return captureScannerEvent(client, scanner, signal, timeoutMs).then((event) => {
+  return captureScannerEvent(client, scanner, signal, timeoutMs, options).then((event) => {
     if (event.type !== "denied") return event.payload as T;
     // The refusal a read gets from the server: 402 for a plan without access, 401 for no session.
     throw event.reason === "pro_required"
@@ -69,6 +80,15 @@ export function loadHiloSnapshot(
   timeoutMs = SCANNER_SNAPSHOT_TIMEOUT_MS,
 ): Promise<ScannerHiloPayload> {
   return loadScannerSnapshot<ScannerHiloPayload>(client, "hilo", signal, timeoutMs);
+}
+
+/** A report's read of a scanner: HEADLESS_SCANNER_WAIT_MS at most, after which a starting scanner is answered as one. */
+function loadReportSnapshot<T extends ScannerPayload>(
+  client: Pick<HeadlessPaneApiClient, "subscribeScanner">,
+  scanner: ScannerKind,
+  signal: AbortSignal,
+): Promise<T> {
+  return loadScannerSnapshot<T>(client, scanner, signal, HEADLESS_SCANNER_WAIT_MS, { acceptStarting: true });
 }
 
 /**
@@ -94,7 +114,7 @@ function projectHiloSnapshot(
     items: [...lows, ...highs],
     // The lists are the session's: between sessions the scanner holds none, and last session's are not today's.
     empty: payload.status === "closed" ? "The US market is closed. New highs and lows list again from the next session's open."
-      : payload.status === "starting" ? "The scanner is still starting and has no list yet. Ask again in a few seconds."
+      : payload.status === "starting" ? SCANNER_STARTING_TEXT
         : "No new highs or lows under these filters this session.",
     ...(payload.status === "degraded" ? { errors: ["Scanner feed degraded"] } : {}),
     freshness: scannerFreshness(payload),
@@ -119,7 +139,7 @@ export interface HiloHeadlessDependencies {
 }
 
 const defaultDependencies: HiloHeadlessDependencies = {
-  load: (_args, client, signal) => loadHiloSnapshot(client, signal, HEADLESS_SCANNER_WAIT_MS),
+  load: (_args, client, signal) => loadReportSnapshot<ScannerHiloPayload>(client, "hilo", signal),
 };
 
 export function createHiloHeadless(
@@ -291,7 +311,8 @@ function projectFlowReport(
       title: symbol ? `${symbol} prints` : "Prints",
       columns: PRINT_COLUMNS,
       rows: prints.map((event) => ({ ...event })),
-      empty: symbol ? `No ${symbol} prints under these filters.` : "No prints on the tape under these filters.",
+      empty: payload.status === "starting" ? SCANNER_STARTING_TEXT
+        : symbol ? `No ${symbol} prints under these filters.` : "No prints on the tape under these filters.",
     });
   }
   if (shows("tide")) {
@@ -343,7 +364,7 @@ interface FlowHeadlessDependencies {
 }
 
 const flowDependencies: FlowHeadlessDependencies = {
-  load: (_args, client, signal) => loadScannerSnapshot<ScannerFlowPayload>(client, "flow", signal, HEADLESS_SCANNER_WAIT_MS),
+  load: (_args, client, signal) => loadReportSnapshot<ScannerFlowPayload>(client, "flow", signal),
   recorded: (search, client, signal) => client.getScannerFlowHistory(search, signalWithTimeout(signal, 20_000)),
   session: (search, client, signal) => client.getScannerFlowSession(search, signalWithTimeout(signal, 20_000)),
 };
@@ -387,11 +408,17 @@ export function createFlowHeadless(
       const refuse = async (error: unknown): Promise<never> => {
         throw await explainRefusal(error, flowLockNote, { symbol, context: ctx });
       };
-      // The live feed answers the entitlement first, as the pane's does.
+      // The live feed answers the entitlement first, as the pane's does; it waits HEADLESS_SCANNER_WAIT_MS at most.
+      const startedAt = Date.now();
       const payload = await dependencies.load(args, ctx.apiClient, ctx.signal).catch(refuse);
-      // The recorded prints and the session's sums add to the tape: one that
-      // fails (a timeout, a server without the route) is said under errors and
-      // the rest of the report stands. A wall still refuses the whole read.
+      // The recorded prints and the session's sums add to the tape in what is
+      // left of FLOW_REPORT_BUDGET_MS: one that fails (a timeout, a server
+      // without the route) is said under errors and the rest of the report
+      // stands. A wall still refuses the whole read.
+      const leftMs = Math.max(0, FLOW_REPORT_BUDGET_MS - (Date.now() - startedAt));
+      const outOfTime = new AbortController();
+      const deadline = setTimeout(() => outOfTime.abort(), leftMs);
+      const budget = AbortSignal.any([ctx.signal, outOfTime.signal]);
       const failures: string[] = [];
       const extra = async <T>(load: Promise<T> | null, what: string): Promise<T | null> => {
         if (!load) return null;
@@ -399,7 +426,7 @@ export function createFlowHeadless(
           return await load;
         } catch (error) {
           if (ctx.signal.aborted || refusedLock(error)) return refuse(error);
-          failures.push(`${what} unavailable: ${errorMessage(error)}`);
+          failures.push(`${what} unavailable: ${outOfTime.signal.aborted ? `no answer within ${Math.round(leftMs / 1000)} s` : errorMessage(error)}`);
           return null;
         }
       };
@@ -407,10 +434,10 @@ export function createFlowHeadless(
       const wantsSession = !tab || tab === "tide" || tab === "strikes";
       const [recorded, session] = await Promise.all([
         extra(symbol && wantsPrints
-          ? dependencies.recorded(flowHistorySearch(flowHistoryQuery(filters, scope, undefined, FLOW_REPORT_RECORDED)), ctx.apiClient, ctx.signal)
+          ? dependencies.recorded(flowHistorySearch(flowHistoryQuery(filters, scope, undefined, FLOW_REPORT_RECORDED)), ctx.apiClient, budget)
           : null, "Recorded prints"),
-        extra(wantsSession ? dependencies.session(flowSessionSearch(filters, scope), ctx.apiClient, ctx.signal) : null, "Session totals"),
-      ]);
+        extra(wantsSession ? dependencies.session(flowSessionSearch(filters, scope), ctx.apiClient, budget) : null, "Session totals"),
+      ]).finally(() => clearTimeout(deadline));
       // Asked for the session's sums alone, a failure to read them is the report's.
       if (!wantsPrints && failures.length > 0) throw new Error(failures[0]);
       const report = projectFlowReport({ payload, recorded, session }, filters, scope, wantsSession && !session ? "prints" : tab);

@@ -51,14 +51,16 @@ const SCANNER_LABELS: Record<ScannerKind, string> = {
  * Resolves on the first live or closed payload, or on the server's refusal. A
  * degraded payload is kept and returned only if nothing better arrives before
  * the deadline, since a scanner warming up can pass through a stale row on its
- * way to live; so is a starting one, which still carries the session's lists
- * the scanner last published.
+ * way to live. With `acceptStarting`, so is a starting one, for a report that
+ * says the scanner is starting rather than failing; a screenshot keeps failing
+ * on one, as it would only picture an empty pane.
  */
 export function captureScannerEvent(
   client: ScannerClient,
   scanner: ScannerKind,
   signal: AbortSignal,
   timeoutMs = SCANNER_SNAPSHOT_TIMEOUT_MS,
+  { acceptStarting = false }: { acceptStarting?: boolean } = {},
 ): Promise<ScannerFeedEvent> {
   const label = SCANNER_LABELS[scanner];
   return new Promise((resolve, reject) => {
@@ -89,7 +91,7 @@ export function captureScannerEvent(
         return;
       }
       if (event.payload.status === "starting") {
-        starting = event;
+        if (acceptStarting) starting = event;
         return;
       }
       if (event.payload.status === "degraded") {
