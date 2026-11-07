@@ -10,7 +10,7 @@ export interface RenamedListing {
   from: string;
   /** The symbol it trades as now. */
   to: string;
-  /** Yahoo's suffix for the venue, as `quote` takes it (`.SA`). */
+  /** The venue's symbol suffix, as `quote` takes it (`.SA`). */
   suffix: string;
   exchange: string;
   /** Its name now. */
