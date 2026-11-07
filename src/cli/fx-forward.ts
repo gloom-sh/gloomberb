@@ -72,11 +72,10 @@ export interface ImpliedForward {
 export function impliedForward(
   spot: number,
   days: number,
-  base: Pick<CloudShortRate, "dayCountBasis"> & { value: number },
-  quote: Pick<CloudShortRate, "dayCountBasis"> & { value: number; currency: string },
+  base: Pick<CloudShortRate, "dayCountBasis" | "compounding"> & { value: number },
+  quote: Pick<CloudShortRate, "dayCountBasis" | "compounding"> & { value: number; currency: string },
 ): ImpliedForward {
-  const growth = (rate: { value: number; dayCountBasis: number }) => 1 + (rate.value / 100) * days / rate.dayCountBasis;
-  const forward = spot * growth(quote) / growth(base);
+  const forward = spot * shortRateGrowth(quote, days) / shortRateGrowth(base, days);
   const pointSize = forwardPointSize(quote.currency);
   const premiumPercent = (forward / spot - 1) * 100;
   return {
@@ -87,6 +86,24 @@ export function impliedForward(
     premiumPercent,
     annualizedPercent: premiumPercent * 360 / days,
   };
+}
+
+/**
+ * What one unit grows to over `days` at a short rate: simple interest on its
+ * day count, or, for a rate compounded over 252 business days (CDI),
+ * (1 + r)^(days / 365), business days taken as 252/365 of the calendar days.
+ */
+export function shortRateGrowth(rate: Pick<CloudShortRate, "dayCountBasis" | "compounding"> & { value: number }, days: number): number {
+  return rate.compounding === "business-252"
+    ? (1 + rate.value / 100) ** (days / 365)
+    : 1 + (rate.value / 100) * days / rate.dayCountBasis;
+}
+
+/** `(1 + 3.92% × 92/360)`, or `(1 + 13.65%)^(92/365)` for a compounded rate: one leg of the parity, as `fx --forward` prints it. */
+export function shortRateGrowthText(rate: Pick<CloudShortRate, "dayCountBasis" | "compounding"> & { value: number }, days: number): string {
+  return rate.compounding === "business-252"
+    ? `(1 + ${formatRatePercent(rate.value)})^(${days}/365)`
+    : `(1 + ${formatRatePercent(rate.value)} × ${days}/${rate.dayCountBasis})`;
 }
 
 /** A rate the forward can use: listed for the currency, with a value. */
@@ -124,7 +141,8 @@ export function formatForwardPoints(points: number): string {
   return `${points >= 0 ? "+" : ""}${points.toFixed(1)}`;
 }
 
-/** `TIIE 28d 6.776% (Banco de México, 2026-10-20; ACT/360)`. */
+/** `TIIE 28d 6.776% (Banco de México, 2026-10-20; ACT/360)`, `CDI 13.65% (Banco Central do Brasil, 2026-11-05; BUS/252 compounded)`. */
 export function describeShortRate(rate: CloudShortRate & { value: number }): string {
-  return `${rate.name} ${formatRatePercent(rate.value)} (${rate.publisher}, ${rate.asOf ?? "undated"}; ACT/${rate.dayCountBasis})`;
+  const basis = rate.compounding === "business-252" ? "BUS/252 compounded" : `ACT/${rate.dayCountBasis}`;
+  return `${rate.name} ${formatRatePercent(rate.value)} (${rate.publisher}, ${rate.asOf ?? "undated"}; ${basis})`;
 }

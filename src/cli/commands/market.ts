@@ -314,8 +314,8 @@ import { answerQuote, errorMessage, notUsTickerSentence } from "../quote-answer"
 import { crossRate, describeFxConversion, describeFxLegs, describeFxRate, formatFxRate, FX_USAGE, parseFxArgs, type FxQuotedFigure } from "../fx-pair";
 import {
   describeShortRate,
+  shortRateGrowthText,
   formatForwardPoints,
-  formatRatePercent,
   formatSignedPercent,
   IMPLIED_FORWARD_LABEL,
   impliedForward,
@@ -3737,7 +3737,8 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
       const forwardDate = new Date(Math.floor(Date.now() / 86_400_000) * 86_400_000 + tenor.days * 86_400_000).toISOString().slice(0, 10);
       const rateFields = (short: typeof base.rate) => ({
         currency: short.currency, name: short.name, tenor: short.tenor, value: short.value, asOf: short.asOf,
-        dayCountBasis: short.dayCountBasis, publisher: short.publisher, sourceUrl: short.sourceUrl, stale: short.stale,
+        dayCountBasis: short.dayCountBasis, ...(short.compounding ? { compounding: short.compounding } : {}),
+        publisher: short.publisher, sourceUrl: short.sourceUrl, stale: short.stale,
         ...(short.attribution ? { attribution: short.attribution } : {}),
       });
       // A publisher's licence asks for its attribution wherever its rate is shown (MAS's SORA).
@@ -3750,7 +3751,8 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
         points: implied.points, pointSize: implied.pointSize, premiumPercent: implied.premiumPercent, annualizedPercent: implied.annualizedPercent,
         baseRate: rateFields(base.rate), quoteRate: rateFields(quote.rate), method: "covered interest parity", label: IMPLIED_FORWARD_LABEL,
       };
-      const growth = (short: typeof base.rate) => `(1 + ${formatRatePercent(short.value)} × ${tenor.days}/${short.dayCountBasis})`;
+      const growth = (short: typeof base.rate) => shortRateGrowthText(short, tenor.days);
+      const compounded = [base.rate, quote.rate].filter((short) => short.compounding === "business-252").map((short) => short.name);
       // A currency typed as its name (yen) says which code it was read as, as the spot answer does.
       const forwardWarnings = [...request.readAs ?? [], ...rateNotes, ...staleRates];
       return ctx.printResult({ data: [forwardRow], freshness, ...(forwardWarnings.length > 0 ? { warnings: forwardWarnings } : {}) }, {
@@ -3759,7 +3761,9 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
           `Spot ${formatFxRate(rate)} · forward points ${formatForwardPoints(implied.points)} (pips of ${implied.pointSize}) · ${implied.premiumPercent >= 0 ? "premium" : "discount"} ${formatSignedPercent(implied.premiumPercent)} over ${tenor.days} days to ${forwardDate}, ${formatSignedPercent(implied.annualizedPercent, 2)} a year (×360/${tenor.days})`,
           `${currency} rate: ${describeShortRate(base.rate)}`,
           `${baseCurrency} rate: ${describeShortRate(quote.rate)}`,
-          `Covered interest parity: ${formatFxRate(rate)} × ${growth(quote.rate)} / ${growth(base.rate)}; each rate earns simple interest over the ${tenor.days} days, standing in for a ${tenor.label} term rate.`,
+          `Covered interest parity: ${formatFxRate(rate)} × ${growth(quote.rate)} / ${growth(base.rate)}; ${compounded.length > 0
+            ? `${compounded.join(" and ")} compounds over business days (252 a year, taken as 252/365 of the ${tenor.days} days), the other rate earns simple interest`
+            : `each rate earns simple interest over the ${tenor.days} days`}, standing in for a ${tenor.label} term rate.`,
           ...attributions,
         ].join("\n"),
         exportIdentity: { symbolOrSeries: pair, currencyOrUnit: `${baseCurrency} per ${currency}`, interval: `forward ${tenor.label}` },

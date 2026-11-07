@@ -1345,7 +1345,7 @@ An intervention sums days in one pair and direction a weekend or holiday apart, 
 **Forwards.** `gloom fx USD/MXN --forward 30d` gives the forward implied by covered interest parity, labelled `implied by rates, not a dealer quote`: spot × (1 + quote rate × days/basis) / (1 + base rate × days/basis).
 
 - The answer shows the forward points (pips of 0.0001, 0.01 against JPY), the premium or discount over spot for the period and a year, and both rates with their day and publisher.
-- The rates are SOFR (USD), €STR (EUR), SONIA (GBP), Banxico's TIIE 28d (MXN) and MAS's SORA (SGD, ACT/365), so any pair of those works (`fx EUR/USD --forward 3m`, `fx USD/SGD --forward 3m`). A missing rate says which one. SORA comes under MAS's Singapore Open Data Licence, so a forward through SGD, `fred SORA` and the series catalog carry the attribution it asks for.
+- The rates are SOFR (USD), €STR (EUR), SONIA (GBP), Banxico's TIIE 28d (MXN), BCB's CDI (BRL) and MAS's SORA (SGD, ACT/365), so any pair of those works (`fx EUR/USD --forward 3m`, `fx USD/BRL --forward 3m`). The CDI compounds over 252 business days a year, so its leg is (1 + CDI)^(days/365), business days taken as 252/365 of the calendar days. A missing rate says which one. SORA comes under MAS's Singapore Open Data Licence, so a forward through SGD, `fred SORA` and the series catalog carry the attribution it asks for.
 - Tenors count calendar days from today (`30d`, `2w`, `3m`, `1y`, up to a year). `--forward` with `--date` fails and names the command for that day's close.
 - `--json` carries `forward`, `points`, `premiumPercent`, `annualizedPercent`, `baseRate` and `quoteRate`. `catalog forward` points here.
 

@@ -47,6 +47,12 @@ export interface CloudShortRate {
   tenorDays: number;
   /** Days in the year the rate is quoted over. */
   dayCountBasis: 360 | 365;
+  /**
+   * "business-252": compounded over 252 business days a year (Brazil's CDI),
+   * grown as (1 + r)^(days / 365), business days taken as 252/365 of the
+   * calendar days. Absent: simple interest on `dayCountBasis`.
+   */
+  compounding?: "business-252" | null;
   publisher: string;
   sourceUrl: string;
   /** Percent a year; null when it could not be read. */
