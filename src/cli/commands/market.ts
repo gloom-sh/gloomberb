@@ -318,7 +318,6 @@ import {
   describeShortRate,
   forwardCarry,
   shortRateGrowthText,
-  shortRateStandInNote,
   formatForwardPoints,
   formatSignedPercent,
   IMPLIED_FORWARD_LABEL,
@@ -3574,7 +3573,7 @@ function readFxDate(value: string, ctx: Parameters<CliCommandDef["execute"]>[1])
   const today = isoDateToday();
   // A weekend has no close of its own, so today's, on a Saturday or a Sunday, is the Friday close, which is final.
   if (date > today || (date === today && !isWeekendDay(date))) {
-    return ctx.fail(`${date} has no daily close yet: --date takes a day before today (${today}), or today on a weekend.`, "Without --date, fx gives the latest rate.");
+    return ctx.fail(`${date} has no daily close yet: --date takes a day before today (${today} UTC), or today on a weekend.`, "Without --date, fx gives the latest rate.");
   }
   return date;
 }
@@ -3685,7 +3684,7 @@ async function carryInCurrency(
     const quoted = quotedFxPair(quote, reader, rate);
     return `${quoted.pair} ${quoted.rate.toFixed(fxRateDigits(quoted.pair.slice(4), quoted.rate))}`;
   };
-  if (reader === base) return { rate: 1 / spot, text: `spot ${marketText(1 / spot)}` };
+  if (reader === base) return { rate: 1 / spot, text: marketText(1 / spot) };
   // A failed read is said in the carry's warning, with the reason it gave; the forward itself stands.
   const read = await readFxQuoteRate(quote, reader, (targets, options) => market.dataProvider.getQuotesBatch(targets, options),
     { forceRefresh: forceRefresh === true }).catch((error: unknown) => ({ failed: errorMessage(error) }));
@@ -3735,6 +3734,11 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     const { currency, baseCurrency } = request;
     const pair = `${currency}/${baseCurrency}`;
     if (tenor && currency === baseCurrency) ctx.fail(`${pair} has no forward: both sides are ${currency}.`, `Usage: gloom ${FX_FORWARD_USAGE}`);
+    // A carry is on an amount held: zero or less holds nothing, and a sign would turn who earns it around.
+    if (tenor && amount != null && !(amount > 0)) {
+      ctx.fail(`The carry is on an amount above zero; ${args[0]!.trim()} is not.`,
+        `For the forward alone, drop the amount: gloom fx ${pair} --forward ${forwardOption}.`);
+    }
     // The short rates are read alongside spot. A failed read is held as a value, not left to reject
     // unobserved while spot loads, and is raised where the forward needs the rates.
     const shortRates = tenor && !("error" in tenor) ? apiClient.getCloudShortRates().then(
@@ -3827,11 +3831,20 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
         } : {}),
       };
       const growth = (short: typeof base.rate) => shortRateGrowthText(short, tenor.days);
-      const compounded = [base.rate, quote.rate].filter((short) => short.compounding === "business-252").map((short) => short.name);
+      const compoundedOverBusinessDays = [base.rate, quote.rate].filter((short) => short.compounding === "business-252").map((short) => short.name);
+      const compoundedDaily = [base.rate, quote.rate].filter((short) => short.compounding === "daily-365").map((short) => short.name);
+      const simple = [base.rate, quote.rate].filter((short) => !short.compounding).map((short) => short.name);
+      // How each leg grows, named: a compounded rate by how it compounds, the rest as simple interest.
+      const growthNote = [
+        ...compoundedOverBusinessDays.length > 0
+          ? [`${compoundedOverBusinessDays.join(" and ")} compounds over business days (252 a year, taken as 252/365 of the ${tenor.days} days)`] : [],
+        ...compoundedDaily.length > 0 ? [`${compoundedDaily.join(" and ")} compounds daily on ACT/365`] : [],
+        ...simple.length === 2 ? [`each rate earns simple interest over the ${tenor.days} days`]
+          : simple.length === 1 ? [`${simple[0]} earns simple interest`] : [],
+      ].join(", ");
       // A currency typed as its name (yen) says which code it was read as, as the spot answer does.
       const forwardWarnings = [
         ...request.readAs ?? [], ...rateNotes, ...staleRates,
-        ...[base.rate, quote.rate].flatMap((short) => shortRateStandInNote(short) ?? []),
         ...toUsdByDefault && amount != null
           ? [`No second currency given, so ${currency} is priced against USD; for another, write fx ${args[0]!.trim()} ${currency}/<to> --forward ${tenor.label}.`]
           : [],
@@ -3843,13 +3856,11 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
           `Spot ${formatFxRate(rate)} · forward points ${formatForwardPoints(implied.points)} (pips of ${implied.pointSize}) · ${implied.premiumPercent >= 0 ? "premium" : "discount"} ${formatSignedPercent(implied.premiumPercent)} over ${tenor.days} days to ${forwardDate}, ${formatSignedPercent(implied.annualizedPercent, 2)} a year (×360/${tenor.days})`,
           `${currency} rate: ${describeShortRate(base.rate)}`,
           `${baseCurrency} rate: ${describeShortRate(quote.rate)}`,
-          `Covered interest parity: ${formatFxRate(rate)} × ${growth(quote.rate)} / ${growth(base.rate)}; ${compounded.length > 0
-            ? `${compounded.join(" and ")} compounds over business days (252 a year, taken as 252/365 of the ${tenor.days} days), the other rate earns simple interest`
-            : `each rate earns simple interest over the ${tenor.days} days`}, standing in for a ${tenor.label} term rate.`,
+          `Covered interest parity: ${formatFxRate(rate)} × ${growth(quote.rate)} / ${growth(base.rate)}; ${growthNote}, standing in for a ${tenor.label} term rate.`,
           ...carry ? [
             `Carry on ${formatFxAmount(carry.amount, currency)} over ${tenor.days} days: ${formatFxAmount(carry.value, baseCurrency)}${carryConversion && "rate" in carryConversion
-              ? `, ${formatFxAmount(carry.value * carryConversion.rate, readerCurrency)} at ${carryConversion.text}` : ""}`,
-            describeCarrySides(carry, currency, baseCurrency),
+              ? `, ${formatFxAmount(carry.value * carryConversion.rate, readerCurrency)} at spot ${carryConversion.text}` : ""}`,
+            describeCarrySides(carry, currency, baseCurrency, tenor.days),
           ] : [],
           ...attributions,
         ].join("\n"),
@@ -4358,9 +4369,9 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       }, {
         title: "Forwards",
         lines: [
-          "--forward <tenor> gives the forward implied by covered interest parity: spot × (1 + quote rate × days/basis) / (1 + base rate × days/basis), with the forward points (pips of 0.0001, 0.01 against JPY) and the premium over spot for the period and a year. It is implied by rates, not a dealer quote.",
-          "The rates are SOFR (USD), €STR (EUR), SONIA (GBP), TIIE 28d (MXN), CDI (BRL), SORA (SGD), ZARONIA (ZAR) and TLREF (TRY), each with its day and publisher; when TLREF cannot be read, the CBRT's one-week repo rate stands in for it and the answer says so. A pair whose rate is missing says which one. Tenors count calendar days from today: 30d, 2w, 3m, 1y. The forward is today's: it does not take --date, as only the latest short rates are served.",
-          "An amount in front gives the carry on it: fx 5000000 USD/MXN --forward 30d is the forward points on 5,000,000 USD over the 30 days, in MXN and in your base currency at spot, and which side earns it. The side holding the higher-yielding currency earns it: short USD/MXN (selling USD forward) when the forward is above spot.",
+          "--forward <tenor> gives the forward implied by covered interest parity: spot × (1 + quote rate × days/basis) / (1 + base rate × days/basis), a compounded rate (CDI, ZARONIA) grown as it compounds, with the forward points (pips of 0.0001, 0.01 against JPY) and the premium over spot for the period and a year. It is implied by rates, not a dealer quote.",
+          "The rates are SOFR (USD), €STR (EUR), SONIA (GBP), TIIE 28d (MXN), CDI (BRL), SORA (SGD) and ZARONIA (ZAR), and for TRY the CBRT's policy rate (one-week repo), each with its day and publisher. A pair whose rate is missing says which one. Tenors count calendar days from today: 30d, 2w, 3m, 1y. The forward is today's: it does not take --date, as only the latest short rates are served.",
+          "An amount in front gives the carry on it: fx 5000000 USD/MXN --forward 30d is the forward points on 5,000,000 USD over the 30 days, in MXN and in your base currency at spot, and which side earns it. The side holding the currency whose rate earns more over the tenor earns it: short USD/MXN (selling USD forward) when the forward is above spot. The amount is above zero, and a forward at spot has no carry.",
         ],
       }],
       examples: ["fx EUR", "fx NGN", "fx yen", "fx USD/NGN", "fx ZAR/NGN", "fx 1234.5 EUR/USD", "fx 1234,5 EUR USD", "fx USD/CAD --date 2026-09-02", "fx JPY --json", "fx USD/MXN --forward 30d", "fx EUR/USD --forward 3m", "fx 5000000 USD/MXN --forward 30d"],

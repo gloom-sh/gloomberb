@@ -61,6 +61,9 @@ export interface ImpliedForward {
   premiumPercent: number;
   /** The same premium a year: `premiumPercent` × 360 / days. */
   annualizedPercent: number;
+  /** What one unit of the base and of the quote currency grows to over the tenor at its own rate. */
+  baseGrowth: number;
+  quoteGrowth: number;
 }
 
 /**
@@ -75,7 +78,9 @@ export function impliedForward(
   base: Pick<CloudShortRate, "dayCountBasis" | "compounding"> & { value: number },
   quote: Pick<CloudShortRate, "dayCountBasis" | "compounding"> & { value: number; currency: string },
 ): ImpliedForward {
-  const forward = spot * shortRateGrowth(quote, days) / shortRateGrowth(base, days);
+  const baseGrowth = shortRateGrowth(base, days);
+  const quoteGrowth = shortRateGrowth(quote, days);
+  const forward = spot * quoteGrowth / baseGrowth;
   const pointSize = forwardPointSize(quote.currency);
   const premiumPercent = (forward / spot - 1) * 100;
   return {
@@ -85,25 +90,32 @@ export function impliedForward(
     pointSize,
     premiumPercent,
     annualizedPercent: premiumPercent * 360 / days,
+    baseGrowth,
+    quoteGrowth,
   };
 }
 
 /**
  * What one unit grows to over `days` at a short rate: simple interest on its
- * day count, or, for a rate compounded over 252 business days (CDI),
- * (1 + r)^(days / 365), business days taken as 252/365 of the calendar days.
+ * day count; for a rate compounded over 252 business days (CDI),
+ * (1 + r)^(days / 365), business days taken as 252/365 of the calendar days;
+ * for one compounded daily on ACT/365 (ZARONIA), (1 + r / 365)^days.
  */
 function shortRateGrowth(rate: Pick<CloudShortRate, "dayCountBasis" | "compounding"> & { value: number }, days: number): number {
-  return rate.compounding === "business-252"
-    ? (1 + rate.value / 100) ** (days / 365)
-    : 1 + (rate.value / 100) * days / rate.dayCountBasis;
+  if (rate.compounding === "business-252") return (1 + rate.value / 100) ** (days / 365);
+  if (rate.compounding === "daily-365") return (1 + rate.value / 100 / 365) ** days;
+  return 1 + (rate.value / 100) * days / rate.dayCountBasis;
 }
 
-/** `(1 + 3.92% × 92/360)`, or `(1 + 13.65%)^(92/365)` for a compounded rate: one leg of the parity, as `fx --forward` prints it. */
+/**
+ * `(1 + 3.92% × 92/360)`, `(1 + 13.65%)^(92/365)` for a rate compounded over
+ * business days, `(1 + 7.099%/365)^92` for one compounded daily: one leg of
+ * the parity, as `fx --forward` prints it.
+ */
 export function shortRateGrowthText(rate: Pick<CloudShortRate, "dayCountBasis" | "compounding"> & { value: number }, days: number): string {
-  return rate.compounding === "business-252"
-    ? `(1 + ${formatRatePercent(rate.value)})^(${days}/365)`
-    : `(1 + ${formatRatePercent(rate.value)} × ${days}/${rate.dayCountBasis})`;
+  if (rate.compounding === "business-252") return `(1 + ${formatRatePercent(rate.value)})^(${days}/365)`;
+  if (rate.compounding === "daily-365") return `(1 + ${formatRatePercent(rate.value)}/365)^${days}`;
+  return `(1 + ${formatRatePercent(rate.value)} × ${days}/${rate.dayCountBasis})`;
 }
 
 /** A rate the forward can use: listed for the currency, with a value. */
@@ -142,52 +154,59 @@ export function formatForwardPoints(points: number): string {
 }
 
 /**
- * `TIIE 28d 6.776% (Banco de México, 2026-10-20; ACT/360)`, `CDI 13.65% (Banco Central do Brasil, 2026-11-05; BUS/252 compounded)`.
- * A rate served in place of the currency's benchmark says which one it stands in for.
+ * `TIIE 28d 6.776% (Banco de México, 2026-10-20; ACT/360)`, `CDI 13.65% (Banco Central do Brasil, 2026-11-05; BUS/252 compounded)`,
+ * `ZARONIA 7.099% (South African Reserve Bank, 2026-11-05; ACT/365 compounded daily)`.
  */
 export function describeShortRate(rate: CloudShortRate & { value: number }): string {
-  const basis = rate.compounding === "business-252" ? "BUS/252 compounded" : `ACT/${rate.dayCountBasis}`;
-  const standIn = rate.standsInFor ? `, standing in for ${rate.standsInFor}` : "";
-  return `${rate.name} ${formatRatePercent(rate.value)} (${rate.publisher}, ${rate.asOf ?? "undated"}; ${basis})${standIn}`;
-}
-
-/** The warning for a rate served in place of its currency's benchmark: which, and why. */
-export function shortRateStandInNote(rate: CloudShortRate): string | null {
-  return rate.standsInFor
-    ? `${rate.standsInFor} (${rate.currency}) could not be read, so the ${rate.name} stands in for it.`
-    : null;
+  const basis = rate.compounding === "business-252" ? "BUS/252 compounded"
+    : rate.compounding === "daily-365" ? "ACT/365 compounded daily" : `ACT/${rate.dayCountBasis}`;
+  return `${rate.name} ${formatRatePercent(rate.value)} (${rate.publisher}, ${rate.asOf ?? "undated"}; ${basis})`;
 }
 
 /**
- * The carry of a forward on an amount of the pair's base currency: the
- * forward points on it over the tenor, in the quote currency. The side that
- * holds the higher-yielding currency earns it: with the forward above spot,
- * the seller of the base currency forward (short the pair); below spot, the
- * buyer (long).
+ * The carry of a forward on an amount of the pair's base currency, above
+ * zero: the forward points on it over the tenor, in the quote currency. The
+ * side that holds the currency whose rate earns more over the tenor (the
+ * larger growth factor) earns it: with the forward above spot, the seller of
+ * the base currency forward (short the pair); below spot, the buyer (long).
+ * A forward at spot has no carry.
  */
 export interface ForwardCarry {
   /** The amount, in the pair's base currency. */
   amount: number;
-  /** Amount × (forward - spot), in the quote currency, never negative: what one side pays the other. */
+  /** Amount × |forward - spot|, in the quote currency: what one side pays the other. */
   value: number;
-  /** The side that earns it. */
-  earnedBy: "long" | "short";
+  /** The side that earns it; null when the forward is at spot. */
+  earnedBy: "long" | "short" | null;
+  /** The currency whose rate earns more over the tenor, from the two growth factors; null when they are equal. */
+  higher: "base" | "quote" | null;
 }
 
-export function forwardCarry(amount: number, implied: Pick<ImpliedForward, "spot" | "forward">): ForwardCarry {
-  const points = amount * (implied.forward - implied.spot);
-  return { amount, value: Math.abs(points), earnedBy: points > 0 ? "short" : "long" };
+export function forwardCarry(
+  amount: number,
+  implied: Pick<ImpliedForward, "spot" | "forward" | "baseGrowth" | "quoteGrowth">,
+): ForwardCarry {
+  const difference = implied.forward - implied.spot;
+  return {
+    amount,
+    value: Math.abs(amount * difference),
+    earnedBy: difference > 0 ? "short" : difference < 0 ? "long" : null,
+    higher: implied.quoteGrowth > implied.baseGrowth ? "quote" : implied.quoteGrowth < implied.baseGrowth ? "base" : null,
+  };
 }
 
 /**
  * Who earns the carry and who pays it, by side of the pair: `Short USD/MXN
  * (selling USD forward) earns it and long USD/MXN (buying USD forward) pays
- * it: MXN's rate is the higher.`
+ * it: MXN's rate earns more over the 30 days.` A forward at spot has none.
  */
-export function describeCarrySides(carry: ForwardCarry, base: string, quote: string): string {
+export function describeCarrySides(carry: ForwardCarry, base: string, quote: string, days: number): string {
+  if (carry.earnedBy == null || carry.higher == null) {
+    return `No carry: at these rates ${base} and ${quote} earn the same over the ${days} days, so the forward is at spot.`;
+  }
   const short = `short ${base}/${quote} (selling ${base} forward)`;
   const long = `long ${base}/${quote} (buying ${base} forward)`;
   const [earns, pays] = carry.earnedBy === "short" ? [short, long] : [long, short];
-  const higher = carry.earnedBy === "short" ? quote : base;
-  return `${earns.charAt(0).toUpperCase()}${earns.slice(1)} earns it and ${pays} pays it: ${higher}'s rate is the higher.`;
+  const higher = carry.higher === "quote" ? quote : base;
+  return `${earns.charAt(0).toUpperCase()}${earns.slice(1)} earns it and ${pays} pays it: ${higher}'s rate earns more over the ${days} days.`;
 }

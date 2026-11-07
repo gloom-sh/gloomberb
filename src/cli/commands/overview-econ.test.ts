@@ -38,14 +38,14 @@ const twoWeeks = [
  * events and `storedFrom`; "none" is a server that keeps no past events (404),
  * a number another status and "offline" no network for it.
  */
-async function econText(events: unknown[], args: string[], cliOptions: Partial<CliGlobalOptions> = {}, storedFrom: string | null | "none" | "offline" | number = "none"): Promise<string> {
-  const { result, options } = await econPrinted(events, args, cliOptions, storedFrom);
+async function econText(events: unknown[], args: string[], cliOptions: Partial<CliGlobalOptions> = {}, storedFrom: string | null | "none" | "offline" | number = "none", listedThrough?: string): Promise<string> {
+  const { result, options } = await econPrinted(events, args, cliOptions, storedFrom, listedThrough);
   // Warnings print apart from the table, as `warning: ...` lines.
   return [serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, ...cliOptions, format: "text" }, options),
     ...(result.warnings ?? []).map((warning) => `warning: ${warning}`)].join("\n");
 }
 
-async function econPrinted(events: unknown[], args: string[], cliOptions: Partial<CliGlobalOptions> = {}, storedFrom: string | null | "none" | "offline" | number = "none") {
+async function econPrinted(events: unknown[], args: string[], cliOptions: Partial<CliGlobalOptions> = {}, storedFrom: string | null | "none" | "offline" | number = "none", listedThrough?: string) {
   resetEconCalendarPersistence();
   attachEconCalendarPersistence(new MemoryPluginPersistence());
   setCloudApiFetchTransport(async (url) => {
@@ -57,7 +57,7 @@ async function econPrinted(events: unknown[], args: string[], cliOptions: Partia
       status,
       headers: new Headers(),
       text: async () => status === 422 ? JSON.stringify({ message: "The calendar reaches back 400 days" })
-        : status !== 200 ? JSON.stringify({ message: "Unavailable" }) : JSON.stringify(history ? { events, storedFrom } : events),
+        : status !== 200 ? JSON.stringify({ message: "Unavailable" }) : JSON.stringify(history ? { events, storedFrom, ...listedThrough ? { listedThrough } : {} } : events),
     } as Response;
   });
   const cli = createTestCliContext({}, cliOptions);
@@ -150,7 +150,7 @@ test("--country takes ISO codes, comma lists and regions; a country with nothing
 });
 
 // `econ --from 2026-12-01 --country TR,MX` said only "No scheduled releases for TR or MX in this window".
-test("past the last release, the listing's end is said, and each bank's next decision is listed as one", async () => {
+test("the listing's end is said as Gloom Cloud gives it, and each bank's next decision past it is listed as one", async () => {
   setSystemTime(new Date("2026-11-07T20:06:00.000Z"));
   const decision = (date: string, country: string, name: string) => ({ ...event(date, country, "high", name), kind: "central-bank-decision" });
   const listing = [
@@ -158,22 +158,29 @@ test("past the last release, the listing's end is said, and each bank's next dec
     event("2026-11-20T13:30:00.000Z", "US", "high", "Housing Starts"),
     decision("2026-11-19T13:00:00.000Z", "ZA", "SARB Interest Rate Decision"),
   ];
-  // A filter with nothing in the window names where the releases end.
+  // A filter with nothing in the window names where the releases end: from a server that does not say, its last row.
   expect(await econText(listing, ["--from", "2026-12-01", "--country", "TR,MX"]))
     .toContain("No scheduled releases for TR or MX in this window; releases are listed through 2026-11-20.");
-  // The banks' next decisions past it are rows, and the end is still the last release's, not theirs.
-  const next = [...listing, decision("2026-12-10T11:00:00.000Z", "TR", "CBRT Interest Rate Decision"),
-    decision("2026-12-17T19:00:00.000Z", "MX", "Banxico Interest Rate Decision"), decision("2027-01-28T13:00:00.000Z", "ZA", "SARB Interest Rate Decision")];
+  // The banks' next decisions past it are rows the server marks, each saying where the listing ends.
+  const past = (date: string, country: string, name: string) => ({ ...decision(date, country, name), pastListing: true, listedThrough: "2026-11-21" });
+  const next = [...listing, past("2026-12-10T11:00:00.000Z", "TR", "CBRT Interest Rate Decision"),
+    past("2026-12-17T19:00:00.000Z", "MX", "Banxico Interest Rate Decision"), past("2027-01-28T13:00:00.000Z", "ZA", "SARB Interest Rate Decision")];
   const later = await econText(next, ["--from", "2026-12-01", "--country", "TR,MX"]);
   expect(later).toContain("CBRT Interest Rate Decision");
   expect(later).toContain("Banxico Interest Rate Decision");
-  expect(later).toContain("No releases listed after 2026-11-20; the rows after it are each central bank's next decision");
+  expect(later).toContain("No releases listed after 2026-11-21; the rows after it are each central bank's next decision");
   expect(later).not.toContain("No events listed after");
   const { result } = await econPrinted(next, ["--from", "2026-12-01", "--country", "TR,MX"]);
-  expect(result.metadata).toMatchObject({ listedThrough: "2026-11-20" });
+  expect(result.metadata).toMatchObject({ listedThrough: "2026-11-21" });
+  // A country with no next decision there names the same end.
+  expect(await econText(next, ["--from", "2026-12-01", "--country", "IN"]))
+    .toContain("No scheduled releases for IN in this window; releases are listed through 2026-11-21.");
   // Rows within the listing say nothing about its end; from today, the next decision past it says it under them.
   expect(await econText(next, ["--country", "US"])).not.toContain("listed after");
   expect(await econText(next, ["--country", "MX"])).toContain("CPI y/y");
+  // The calendar from an earlier day says the end itself.
+  const stored = await econText(listing, ["--from", "2026-11-01", "--country", "TR"], {}, "2026-10-01", "2026-11-21");
+  expect(stored).toContain("No scheduled releases for TR in this window; releases are listed through 2026-11-21.");
 });
 
 test("rows a bank or a statistics office times itself show its clock; a bank that states no time leaves the time blank and says why", async () => {

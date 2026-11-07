@@ -49,8 +49,8 @@ import {
   NO_CONSENSUS_NOTE,
   noScheduledReleasesMessage,
   parseCountryFilter,
+  listingEnd,
   pastReleaseListing,
-  releaseListingEnd,
   shortCalendarEnd,
   type CountryFilter,
   type ImpactFilter,
@@ -526,11 +526,10 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     // alone keeps the newest events of the whole calendar, the past week's too.
     const from = fromOption ?? (ctx.cliOptions.tail != null ? null : new Date(todayStart).toISOString().slice(0, 10));
     const fromTime = from == null ? Number.NEGATIVE_INFINITY : Date.parse(`${from}T00:00:00Z`);
-    // The listing ends with its last release: past it, Gloom Cloud lists each central bank's next decision.
-    const lastEvent = releaseListingEnd(events);
-    const listedThrough = lastEvent ? lastEvent.toISOString().slice(0, 10) : null;
+    // The last day the listing reaches, as Gloom Cloud says it: past it, it lists each central bank's next decision.
+    const listedThrough = listingEnd(events, past?.listedThrough);
     // A calendar that stops short of a week ahead says so under the table.
-    const listedAfter = shortCalendarEnd(events, Math.max(todayStart, fromTime)) ? `No events listed after ${listedThrough}` : null;
+    const listedAfter = shortCalendarEnd(events, Math.max(todayStart, fromTime), past?.listedThrough) ? `No events listed after ${listedThrough}` : null;
     // A day before anything the calendar holds says where its listing starts.
     const firstEvent = events.reduce<Date | null>((first, event) => (!first || event.date < first ? event.date : first), null);
     const listedFrom = firstEvent ? firstEvent.toISOString().slice(0, 10) : null;
@@ -593,7 +592,7 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     // the listing ends.
     const allUnscheduled = unscheduled.length > 0 && unscheduled.length === country.split(",").length;
     // Rows after the listing's end are each bank's next decision, and say so where the end is said.
-    const listedPast = listed.some((event) => pastReleaseListing(event, listedThrough))
+    const listedPast = listed.some(pastReleaseListing)
       ? `No releases listed after ${listedThrough}; the rows after it are each central bank's next decision` : null;
     const notes = [listedBefore, listedPast ?? listedAfter, ...(rows.length > 0 ? blankTimeNotes(rows) : []),
       rows.length > 0 && unscheduled.length > 0 ? noScheduledReleasesMessage(unscheduled) : null,

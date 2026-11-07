@@ -30,16 +30,30 @@ export function newsSearchText(args: readonly string[]): string | null {
 export const quotedSearchCommand = (word: string) => `gloom news '"${word}"'`;
 
 /**
+ * The words of a company's name, lower-cased, each run of letters split where
+ * its case changes from lower to upper: "PesoRama Inc." is peso, rama and inc.
+ */
+export function companyNameWords(companyName: string): string[] {
+  return companyName
+    .replace(/(\p{Ll})(\p{Lu})/gu, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter(Boolean);
+}
+
+/**
  * Whether a word typed for `news` may mean more than the listing it found:
  * a plain word (letters only, three or more, typed with a lower-case letter,
- * as a word is and a ticker rarely is) that one of the words of the
- * company's name is or starts with ("gold" for Gold.com Inc., "gap" for The
- * Gap, "peso" for PesoRama Inc.). The stories then decide (`wordMeansMore`).
+ * as a word is and a ticker rarely is) that is a whole word of the company's
+ * name, the name split at its case changes too ("gold" for Gold.com Inc.,
+ * "gap" for The Gap, "peso" for PesoRama Inc.); a word a name only starts
+ * with ("cost" in Costco, "app" in AppLovin) is not. The stories then decide
+ * (`wordMeansMore`).
  */
 export function commonWordCandidate(typed: string, companyName: string | null | undefined): boolean {
-  const word = typed.trim().toLowerCase();
-  if (!/^[A-Za-z]{3,}$/.test(typed.trim()) || !/[a-z]/.test(typed) || !companyName) return false;
-  return companyName.toLowerCase().split(/[^a-z]+/).some((part) => part.startsWith(word));
+  const word = typed.trim();
+  if (!/^[A-Za-z]{3,}$/.test(word) || !/[a-z]/.test(word) || !companyName) return false;
+  return companyNameWords(companyName).includes(word.toLowerCase());
 }
 
 /**

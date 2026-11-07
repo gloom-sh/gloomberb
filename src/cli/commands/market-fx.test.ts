@@ -31,7 +31,7 @@ function pairQuote(symbol: string, given: PairQuote): Quote {
 }
 
 /** `fx` over the quotes `quote` reads, by listing; every batch asked for is kept, and whether it forced a refresh. */
-function harness(baseCurrency: string, quotes: Record<string, PairQuote | string>, cliOptions: { refresh?: boolean } = {}) {
+function harness(baseCurrency: string, quotes: Record<string, PairQuote | string | { throws: string }>, cliOptions: { refresh?: boolean } = {}) {
   const config = createDefaultConfig("/tmp/gloom-fx-command-fixture");
   config.baseCurrency = baseCurrency;
   const batches: string[][] = [];
@@ -43,8 +43,10 @@ function harness(baseCurrency: string, quotes: Record<string, PairQuote | string
       getQuotesBatch: async (targets: { symbol: string; exchange: string }[], options?: { forceRefresh?: boolean }) => {
         batches.push(targets.map((target) => target.symbol));
         forced.push(options?.forceRefresh === true);
+        const thrown = targets.map((target) => quotes[target.symbol]).find((given) => typeof given === "object" && "throws" in given);
+        if (thrown) throw new Error((thrown as { throws: string }).throws);
         return targets.map((target) => {
-          const given = quotes[target.symbol];
+          const given = quotes[target.symbol] as PairQuote | string | undefined;
           // A string is the reason the service gave for having no quote.
           if (given == null || typeof given === "string") return { target, quote: null, error: given ?? `Not a ticker: ${target.symbol}.` };
           return { target, quote: pairQuote(target.symbol, given) };
@@ -306,7 +308,7 @@ test("fx --date gives the rate at that day's daily closes, dated by the source l
 test("fx --date refuses a weekday's today and a day ahead, and a week with no close, before or instead of guessing", async () => {
   setSystemTime(new Date("2026-10-20T15:00:00Z"));
   const run = datedHarness("USD", CAD_CLOSES);
-  await expect(fx.execute(["USD/CAD", "--date", "2026-10-20"], run.context)).rejects.toThrow("2026-10-20 has no daily close yet: --date takes a day before today (2026-10-20), or today on a weekend.");
+  await expect(fx.execute(["USD/CAD", "--date", "2026-10-20"], run.context)).rejects.toThrow("2026-10-20 has no daily close yet: --date takes a day before today (2026-10-20 UTC), or today on a weekend.");
   await expect(fx.execute(["USD/CAD", "--date", "2026-08-01"], run.context)).rejects.toThrow("No USD/CAD daily close in the week up to 2026-08-01.");
   await expect(fx.execute(["USD/CAD", "--date", "9/2/2026"], run.context)).rejects.toThrow(/Use a --date date as YYYY-MM-DD/);
   expect(run.rows()).toEqual([]);
@@ -397,37 +399,67 @@ test("fx --forward with an amount gives the carry in the quote currency and in t
     expect(row!.carry as number).toBeCloseTo(carry, 6);
     expect(row!.carryConverted as number).toBeCloseTo(carry / 20.5, 6);
     const text = run.output("text")[0]!;
-    expect(text).toContain("Carry on 5,000,000.00 USD over 30 days: 221,473.66 MXN, 10,803.59 EUR at EUR/MXN 20.50000\n"
-      + "Short USD/MXN (selling USD forward) earns it and long USD/MXN (buying USD forward) pays it: MXN's rate is the higher.");
-    // Below spot the buyer earns it; a reader whose base is the quote currency needs no conversion.
+    expect(text).toContain("Carry on 5,000,000.00 USD over 30 days: 221,473.66 MXN, 10,803.59 EUR at spot EUR/MXN 20.50000\n"
+      + "Short USD/MXN (selling USD forward) earns it and long USD/MXN (buying USD forward) pays it: MXN's rate earns more over the 30 days.");
+    // Below spot the buyer earns it; a reader whose base is the quote currency needs no conversion, one whose base
+    // is the pair's converts at the pair's own spot, said the same way.
     const inverse = harness("USD", { "USDMXN=X": 18.35 });
     await fx.execute(["1000000", "MXN/USD", "--forward", "30d"], inverse.context);
     expect((inverse.rows()[0] as Record<string, unknown>[])[0]).toMatchObject({ carryEarnedBy: "long", carryCurrency: "USD" });
     expect(inverse.output("text")[0]).toContain("Carry on 1,000,000.00 MXN over 30 days: 131.23 USD\n"
-      + "Long MXN/USD (buying MXN forward) earns it and short MXN/USD (selling MXN forward) pays it: MXN's rate is the higher.");
+      + "Long MXN/USD (buying MXN forward) earns it and short MXN/USD (selling MXN forward) pays it: MXN's rate earns more over the 30 days.");
+    const mexican = harness("MXN", { "USDMXN=X": 18.35 });
+    await fx.execute(["1000000", "MXN/USD", "--forward", "30d"], mexican.context);
+    expect(mexican.output("text")[0]).toContain("131.23 USD, 2,408.07 MXN at spot USD/MXN 18.35000");
+
+    // A conversion rate that does not come back, or whose read fails, leaves the carry in the quote currency and says why.
+    const unquoted = harness("EUR", { "USDMXN=X": 18.35 });
+    await fx.execute(["5000000", "USD/MXN", "--forward", "30d"], unquoted.context);
+    expect(unquoted.rows()[0]).not.toMatchObject([{ carryConvertedCurrency: "EUR" }]);
+    expect(unquoted.output("json")[0]).toContain("The carry is not shown in EUR, your base currency: no MXN/EUR rate came back.");
+    const failing = harness("EUR", { "USDMXN=X": 18.35, "EURMXN=X": { throws: "quote service timed out" } });
+    await fx.execute(["5000000", "USD/MXN", "--forward", "30d"], failing.context);
+    expect(failing.output("json")[0]).toContain("no MXN/EUR rate came back (quote service timed out).");
+
+    // Rates that earn the same over the tenor leave the forward at spot: no carry, and no side said to earn it.
+    spy.mockImplementation(async () => shortRates({ MXN: { value: 3.87 } }));
+    const flat = harness("USD", { "USDMXN=X": 18.35 });
+    await fx.execute(["5000000", "USD/MXN", "--forward", "30d"], flat.context);
+    expect(flat.rows()[0]).toMatchObject([{ carry: 0, carryEarnedBy: null }]);
+    expect(flat.output("text")[0]).toContain("No carry: at these rates USD and MXN earn the same over the 30 days, so the forward is at spot.");
+
+    // An amount of zero or less holds nothing to earn on, and is refused before anything is read.
+    for (const amount of ["0", "-5000000"]) {
+      const refused = harness("USD", { "USDMXN=X": 18.35 });
+      await expect(fx.execute([amount, "USD/MXN", "--forward", "30d"], refused.context)).rejects.toThrow(`The carry is on an amount above zero; ${amount} is not.`);
+    }
   } finally {
     spy.mockRestore();
   }
 });
 
-// `fx USD/ZAR --forward 30d` had no ZAR rate; TRY's benchmark has a stand-in that must never pass for it.
-test("fx --forward prices ZAR on ZARONIA's 365-day year, and names a rate that stands in for TRY's benchmark", async () => {
+// `fx USD/ZAR --forward 30d` had no ZAR rate.
+test("fx --forward grows ZARONIA compounded daily on ACT/365 and TRY's policy rate as simple interest, each named", async () => {
   setSystemTime(new Date("2026-11-07T20:06:00Z"));
   const payload = shortRates();
   const spy = spyOn(apiClient, "getCloudShortRates").mockImplementation(async () => ({ ...payload, rates: [...payload.rates,
-    { ...payload.rates[0]!, currency: "ZAR", name: "ZARONIA", dayCountBasis: 365, value: 7.099, asOf: "2026-11-05", publisher: "South African Reserve Bank" },
+    { ...payload.rates[0]!, currency: "ZAR", name: "ZARONIA", dayCountBasis: 365, compounding: "daily-365", value: 7.099, asOf: "2026-11-05",
+      publisher: "South African Reserve Bank" },
     { ...payload.rates[0]!, currency: "TRY", name: "CBRT policy rate (one-week repo)", tenor: "1 week", tenorDays: 7, dayCountBasis: 365, value: 38,
-      asOf: "2026-11-06", publisher: "Central Bank of the Republic of Türkiye", standsInFor: "TLREF" },
+      asOf: "2026-11-06", publisher: "Central Bank of the Republic of Türkiye" },
   ] }));
   try {
     const zar = harness("USD", { "USDZAR=X": 16.5 });
     await fx.execute(["USD/ZAR", "--forward", "30d"], zar.context);
-    expect((zar.rows()[0] as Record<string, unknown>[])[0]!.forward as number).toBeCloseTo(16.5 * (1 + 0.07099 * 30 / 365) / (1 + 0.0387 * 30 / 360), 9);
-    expect(zar.output("text")[0]).toContain("ZAR rate: ZARONIA 7.099% (South African Reserve Bank, 2026-11-05; ACT/365)");
+    expect((zar.rows()[0] as Record<string, unknown>[])[0]!.forward as number)
+      .toBeCloseTo(16.5 * (1 + 0.07099 / 365) ** 30 / (1 + 0.0387 * 30 / 360), 9);
+    const text = zar.output("text")[0]!;
+    expect(text).toContain("ZAR rate: ZARONIA 7.099% (South African Reserve Bank, 2026-11-05; ACT/365 compounded daily)");
+    expect(text).toContain("16.5 × (1 + 7.099%/365)^30 / (1 + 3.87% × 30/360); ZARONIA compounds daily on ACT/365, SOFR earns simple interest");
     const lira = harness("USD", { "USDTRY=X": 42 });
     await fx.execute(["USD/TRY", "--forward", "30d"], lira.context);
-    expect(lira.output("text")[0]).toContain("TRY rate: CBRT policy rate (one-week repo) 38% (Central Bank of the Republic of Türkiye, 2026-11-06; ACT/365), standing in for TLREF");
-    expect(lira.output("json")[0]).toContain("TLREF (TRY) could not be read, so the CBRT policy rate (one-week repo) stands in for it.");
+    expect((lira.rows()[0] as Record<string, unknown>[])[0]!.forward as number).toBeCloseTo(42 * (1 + 0.38 * 30 / 365) / (1 + 0.0387 * 30 / 360), 9);
+    expect(lira.output("text")[0]).toContain("TRY rate: CBRT policy rate (one-week repo) 38% (Central Bank of the Republic of Türkiye, 2026-11-06; ACT/365)");
   } finally {
     spy.mockRestore();
   }

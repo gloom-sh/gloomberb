@@ -123,37 +123,41 @@ export function dayLabel(d: Date, today: Date): string {
 const MIN_DAYS_LISTED_AHEAD = 7;
 
 /**
- * The time of the last release the calendar lists: its latest event that is
- * not a central bank's decision. Past the end of its listing Gloom Cloud adds
- * each bank's next decision, which says when the bank decides next, not how
- * far the listing runs. Every event counts when it holds only decisions; null
- * when it lists nothing.
+ * The last UTC day the calendar lists releases for, YYYY-MM-DD, as Gloom Cloud
+ * says it: on the calendar from a day (`served`), or on each central bank's
+ * next decision it lists past the end (`listedThrough`). From a server that
+ * says neither, which lists nothing past the end, the day of the last event.
+ * Null when it lists nothing.
  */
-export function releaseListingEnd(events: readonly Pick<EconEvent, "date" | "kind">[]): Date | null {
+export function listingEnd(
+  events: readonly Pick<EconEvent, "date" | "listedThrough">[],
+  served?: string | null,
+): string | null {
+  const said = served ?? events.find((event) => event.listedThrough)?.listedThrough;
+  if (said && /^\d{4}-\d{2}-\d{2}$/.test(said)) return said;
   let last: Date | null = null;
-  let lastDecision: Date | null = null;
   for (const event of events) {
-    if (event.kind === "central-bank-decision") {
-      if (!lastDecision || event.date.getTime() > lastDecision.getTime()) lastDecision = event.date;
-    } else if (!last || event.date.getTime() > last.getTime()) {
-      last = event.date;
-    }
+    if (!last || event.date.getTime() > last.getTime()) last = event.date;
   }
-  return last ?? lastDecision;
+  return last ? dateKey(last) : null;
 }
 
 /**
- * When the calendar stops short of a week past `windowStart`, the time of its
- * last release (`releaseListingEnd`); null when it reaches that far or lists nothing.
+ * When the listing (`listingEnd`) stops short of a week past `windowStart`,
+ * its last day; null when it reaches that far or lists nothing.
  */
-export function shortCalendarEnd(events: readonly EconEvent[], windowStart: number): Date | null {
-  const last = releaseListingEnd(events);
-  return last && last.getTime() < windowStart + MIN_DAYS_LISTED_AHEAD * 86_400_000 ? last : null;
+export function shortCalendarEnd(
+  events: readonly Pick<EconEvent, "date" | "listedThrough">[],
+  windowStart: number,
+  served?: string | null,
+): string | null {
+  const end = listingEnd(events, served);
+  return end && Date.parse(`${end}T00:00:00Z`) + 86_400_000 <= windowStart + MIN_DAYS_LISTED_AHEAD * 86_400_000 ? end : null;
 }
 
-/** Whether a row falls after the day the release listing ends (`listedThrough`, YYYY-MM-DD): a bank's next decision. */
-export function pastReleaseListing(event: Pick<EconEvent, "date">, listedThrough: string | null): boolean {
-  return listedThrough != null && event.date.toISOString().slice(0, 10) > listedThrough;
+/** Whether a row is a central bank's next decision Gloom Cloud lists past the end of the listing. */
+export function pastReleaseListing(event: Pick<EconEvent, "pastListing">): boolean {
+  return event.pastListing === true;
 }
 
 /**

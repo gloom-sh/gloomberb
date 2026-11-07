@@ -99,11 +99,11 @@ describe("FxMatrixPane", () => {
     const frame = tui.frame();
     // EUR/USD is a real cross built from the two USD legs.
     expect(frame).toContain("1.08000");
-    // The terminal draws no flags: codes only, after the day's move against the dollar.
+    // The terminal draws no flags: codes only, after each currency's move in dollars on the day.
     // Under the amount field.
     const [, header, usdRow] = frame.split("\n");
-    expect(header!.trim().split(/\s+/)).toEqual(["1D", "VS", "USD", "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD"]);
-    expect(header!.indexOf("1D VS USD")).toBe(8);
+    expect(header!.trim().split(/\s+/)).toEqual(["1D", "IN", "USD", "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD"]);
+    expect(header!.indexOf("1D IN USD")).toBe(8);
     expect(usdRow!.indexOf("USD")).toBe(1);
 
     // Regression: a currency with no rate rendered 1.0000 against everything.
@@ -126,7 +126,9 @@ describe("FxMatrixPane", () => {
     // The field holds the amount, and its column the amount in each currency at the board's rates: 1.08 / 1.27 for GBP.
     expect(lines()[0]).toContain("2,500,000 EUR");
     const header = lines()[1]!;
-    expect(header.trim().split(/\s+/).slice(0, 4)).toEqual(["AMOUNT", "1D", "VS", "USD"]);
+    // No room for the day's move beside the currencies: it gives way, the amount stays first.
+    expect(header.trim().split(/\s+/).slice(0, 2)).toEqual(["AMOUNT", "USD"]);
+    expect(header).not.toContain("1D");
     // The table's own sign that columns go on past the edge.
     expect(header.trimEnd().endsWith("→")).toBe(true);
     expect(header).not.toContain("JPY");
@@ -142,6 +144,18 @@ describe("FxMatrixPane", () => {
     }
     expect(lines()[1]).toContain("JPY");
     expect(row("EUR").trimStart().startsWith("EUR")).toBe(true);
+  });
+
+  // A board saved at the width that fit the eight majors before the move column came keeps showing all eight.
+  test("the day's move gives way where the pane cannot fit it beside all eight currencies", async () => {
+    installCoordinator();
+    await tui.render(<Harness width={103} />, { width: 103, height: 14 });
+    await act(async () => {
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
+    });
+    const header = tui.frame().split("\n")[1]!;
+    expect(header.trim().split(/\s+/)).toEqual(["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD"]);
   });
 
   test("publishes what the rates it draws are, for a report to date them", async () => {

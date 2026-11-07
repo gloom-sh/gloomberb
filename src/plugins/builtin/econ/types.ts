@@ -36,6 +36,9 @@ export interface EconEvent {
   indicatorId?: string | null;
   /** Which feed the forecast was read from (`week-feed`, `release-calendar`) and when that feed was read. */
   consensus?: { source: string; readAt: string } | null;
+  /** A central bank's next decision Gloom Cloud lists past the end of the listing, which ends on `listedThrough` (UTC). */
+  pastListing?: boolean;
+  listedThrough?: string;
 }
 
 /** Whether a row's time is blank because its publisher states none (a bank whose calendar gives the day only). */
