@@ -106,8 +106,8 @@ export function useAppPaneRuntime({
     ));
   }, [dispatch, stateRef]);
 
-  const activatePane = useCallback((paneId: string) => {
-    dispatch({ type: "FOCUS_PANE", paneId });
+  const activatePane = useCallback((paneId: string, options?: { trackTicker?: boolean }) => {
+    dispatch({ type: "FOCUS_PANE", paneId, ...options });
   }, [dispatch]);
 
   const {
