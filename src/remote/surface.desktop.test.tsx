@@ -17,7 +17,7 @@ import { createRemoteUiRegistry, RemoteUiRegistryProvider } from "./semantic-tre
 
 const { render } = createDomTestHarness();
 
-test("the setup card reads as the open form: step, title, fields and buttons, with submit, cancel and matching acting on it", async () => {
+test("the setup card reads as the open form: step, title, fields (no secrets) and buttons, with submit, cancel and matching acting on it", async () => {
   const registry = createRemoteUiRegistry();
   const pressed: string[] = [];
   await render(
@@ -29,6 +29,7 @@ test("the setup card reads as the open form: step, title, fields and buttons, wi
           <OnboardingTitle title="Connect Gloom Cloud" description="Free account." />
           <TextField label="Email" value="ada@example.com" onChange={() => {}} />
           <TextField label="Password" type="password" value="hunter22" onChange={() => {}} />
+          <TextField placeholder="Enter api key" value="k-live-123" onChange={() => {}} />
           <OnboardingActions>
             <OnboardingButton label="Back" variant="ghost" onPress={() => pressed.push("back")} />
             <OnboardingButton label="Continue" variant="primary" shortcut="Enter" onPress={() => pressed.push("continue")} />
@@ -53,9 +54,11 @@ test("the setup card reads as the open form: step, title, fields and buttons, wi
   expect((form.fields as Array<Record<string, unknown>>).map(({ label, value, type, filled }) => ({ label, value, type, filled })))
     .toEqual([
       { label: "Email", value: "ada@example.com", type: undefined, filled: undefined },
-      // A password says it is filled, never what it is.
+      // A password says it is filled, never what it is, and so does a key typed in the clear.
       { label: "Password", value: undefined, type: "password", filled: true },
+      { label: "Enter api key", value: undefined, type: undefined, filled: true },
     ]);
+  expect(JSON.stringify(form)).not.toContain("k-live-123");
   expect((form.buttons as Array<{ label: string }>).map((button) => button.label)).toEqual(["Skip setup", "Back", "Continue"]);
 
   // The card covers the panes, so its own Back is the one a match presses.

@@ -394,6 +394,9 @@ describe("createAppRemoteController", () => {
       .toMatchObject({ ok: true, warnings: [behind] });
     expect((await controller.handle({ type: "call", operation: "ui.invokeMatching", input: { role: "button", label: "Skip" } })).warnings)
       .toBeUndefined();
+    // What a settings dialog edits is not behind it.
+    expect((await controller.handle({ type: "call", operation: "pane.setState", input: { paneId, patch: { tab: 1 } } })).warnings)
+      .toBeUndefined();
     expect(await controller.handle({ type: "batch", requests: [{ type: "call", operation: "layout.undo", input: {} }] }))
       .toMatchObject({ ok: true, warnings: [behind] });
 

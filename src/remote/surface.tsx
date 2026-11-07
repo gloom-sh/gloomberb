@@ -8,6 +8,7 @@ import {
   type RemoteUiNodeRegistration,
   type RemoteUiRegistry,
 } from "./semantic-tree";
+import { namesSecret } from "./secrets";
 import type { RemoteUiNodeSnapshot } from "./types";
 
 /** What the surface's own title and header say about it, set by the components that draw them. */
@@ -46,6 +47,7 @@ function surfaceRegistry(parent: RemoteUiRegistry, own: Map<string, RemoteUiNode
       parent.unregister(id);
     },
     snapshot: () => parent.snapshot(),
+    snapshotRole: (role) => parent.snapshotRole?.(role) ?? parent.snapshot().filter((node) => node.role === role),
     detail: (nodeId) => parent.detail(nodeId),
     invoke: (nodeId, action, input) => parent.invoke(nodeId, action, input),
   };
@@ -72,18 +74,24 @@ function isPassword(metadata: Record<string, unknown>): boolean {
 
 const FIELD_KEYS = ["placeholder", "active", "focused", "required", "error", "options", "items", "selectedIndex", "checked"] as const;
 
-/** A field as the surface lists it; a password says whether it is filled, never what. */
+/**
+ * A field as the surface lists it. A password, or a field whose id, label or
+ * placeholder names a credential (an API key typed in the clear), says
+ * whether it is filled, never what.
+ */
 function surfaceField(node: RemoteUiNodeSnapshot) {
   const metadata = node.metadata ?? {};
   const value = metadata.value;
+  const password = isPassword(metadata);
+  const secret = password || namesSecret(metadata.fieldId, node.label, metadata.placeholder);
   const kept = Object.fromEntries(FIELD_KEYS.filter((key) => metadata[key] != null).map((key) => [key, metadata[key]]));
   return {
     nodeId: node.id,
     ...(typeof metadata.fieldId === "string" ? { id: metadata.fieldId } : {}),
     role: node.role,
     label: node.label ?? null,
-    ...(isPassword(metadata)
-      ? { type: "password", filled: typeof value === "string" && value.length > 0 }
+    ...(secret
+      ? { ...(password ? { type: "password" } : {}), secret: true, filled: typeof value === "string" && value.length > 0 }
       : node.role === "list" || node.role === "checkbox" ? {} : { value: value ?? null }),
     ...kept,
     ...(node.disabled ? { disabled: true } : {}),

@@ -1,3 +1,4 @@
+import type { RemoteUiRegistry } from "./semantic-tree";
 import type { RemoteUiNodeSnapshot } from "./types";
 
 /**
@@ -15,6 +16,12 @@ export function formSnapshot(nodes: RemoteUiNodeSnapshot[], dialogOpen: boolean)
   if (!node) return dialogOpen ? { open: false, otherDialogOpen: true } : { open: false };
   const { scope: _scope, covered, ...form } = node.metadata ?? {};
   return { open: true, nodeId: node.id, actions: node.actions, ...form, ...(covered === true ? { covered } : {}) };
+}
+
+/** The nodes `formSnapshot` reads, without projecting the rest of the tree where the registry can. */
+export function formNodes(registry: Pick<RemoteUiRegistry, "snapshot" | "snapshotRole"> | null | undefined): RemoteUiNodeSnapshot[] {
+  if (!registry) return [];
+  return registry.snapshotRole?.("form") ?? registry.snapshot();
 }
 
 /** The form on top: the last one opened that nothing covers, else the last one. */

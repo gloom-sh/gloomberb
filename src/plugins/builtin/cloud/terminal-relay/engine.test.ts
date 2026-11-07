@@ -374,6 +374,39 @@ describe("terminal relay engine", () => {
     expect(JSON.stringify(content.items)).not.toContain("hunter2");
   });
 
+  test("the snapshot tool reads the app's lean snapshot: layouts by name, panes, and the setup dialog as the open form", async () => {
+    // app://snapshot as the app answers it: no schema or guide, no layout paneState, no pane runtimeState.
+    const lean = {
+      rev: "r1",
+      app: { focusedPaneId: "quote:1", commandBarOpen: false },
+      config: { activeLayoutIndex: 1, layouts: [{ name: "Home", layout: { instances: [] } }, { name: "Monitor", layout: { instances: [] } }] },
+      panes: [{ instanceId: "quote:1", paneId: "quote", placement: "docked", focused: true }],
+      commandBar: { open: false, query: "", results: [] },
+      form: {
+        open: true,
+        kind: "setup",
+        step: "PORTFOLIO",
+        title: "What do you hold?",
+        fields: [{ nodeId: "ui:7", label: "API key", secret: true, filled: true }],
+      },
+      ui: [],
+      references: { full: "app://snapshot/full has all of it inline." },
+    };
+    const h = harness({ handle: async () => ({ ok: true, data: lean }) });
+    h.grants.decide(ASSISTANT.id, ASSISTANT.name, "always");
+    h.call("c1", "snapshot");
+    await settle();
+    const snapshot = h.results()[0]!.data as Record<string, unknown>;
+    expect(snapshot).toMatchObject({
+      rev: "r1",
+      activeLayout: { index: 1, name: "Monitor" },
+      layouts: [{ index: 0, name: "Home" }, { index: 1, name: "Monitor" }],
+      commandBar: { open: false, query: "", results: 0 },
+      form: lean.form,
+      items: lean.panes,
+    });
+  });
+
   test("a pane screenshot runs on the approval alone and its PNG leaves beside the items, not in them", async () => {
     const png = "iVBORw0KGgo".padEnd(600_000, "A");
     const h = harness({

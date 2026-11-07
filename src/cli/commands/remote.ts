@@ -1,6 +1,6 @@
 import { getDataDir } from "../../data/config/store";
 import type { CliCommandContext } from "../../types/plugin";
-import { RemoteAppAmbiguousError, RemoteAppNotRunningError, sendRemoteControlRequest } from "../../remote/client";
+import { RemoteAppError, RemoteAppNotRunningError, sendRemoteControlRequest } from "../../remote/client";
 import type { RemoteAppKind, RemoteControlRequest, RemoteControlResponse } from "../../remote/types";
 import { CLI_COMMAND_GROUPS } from "../help";
 import type { BuiltinCliCommandDef } from "../command-options";
@@ -50,7 +50,7 @@ export const remoteCliCommand: BuiltinCliCommandDef = {
     if (!dataDir) failToReachApp(new RemoteAppNotRunningError(parsed.appKind));
     const send = (request: RemoteControlRequest) => sendRemoteControlRequest(request, { dataDir, appKind: parsed.appKind })
       .catch((error: unknown) => {
-        if (error instanceof RemoteAppNotRunningError || error instanceof RemoteAppAmbiguousError) failToReachApp(error);
+        if (error instanceof RemoteAppError) failToReachApp(error);
         throw error;
       });
 
@@ -72,8 +72,8 @@ export const remoteCliCommand: BuiltinCliCommandDef = {
   },
 };
 
-/** No app answers, or two do: in the app's words, with how to start one or which to pick. */
-function failToReachApp(error: RemoteAppNotRunningError | RemoteAppAmbiguousError): never {
+/** No app answers, two do, or one cannot be reached from here: with how to start one, which to pick, or what may block it. */
+function failToReachApp(error: RemoteAppError): never {
   return failWithError({ code: error.code, message: error.message, details: error.details });
 }
 

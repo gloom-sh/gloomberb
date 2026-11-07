@@ -1555,6 +1555,14 @@ const response = await sendRemoteControlRequest(
 
 It reads the endpoint file from the data directory, so it is native only: a renderer bundle that imports it fails to compile, which is the correct answer for a browser context.
 
+When no app takes the request it throws a `RemoteAppError`, exported beside it, with a `code` and `details` saying what to do:
+
+- `app_not_running` (`RemoteAppNotRunningError`): no app of this profile runs. An endpoint file left by an app that exited without quitting is removed once its process is gone and its port refuses.
+- `app_ambiguous` (`RemoteAppAmbiguousError`): both apps run and neither is the one started last; pass `appKind`.
+- `app_unreachable` (`RemoteAppUnreachableError`): the file names an app whose port does not answer from here, and nothing proves it gone, as inside a sandbox that blocks localhost. The file is kept.
+
+The client asks the port's `/health` first and sends the token only to a Gloom app that answers it.
+
 ### Network access
 
 List every third-party host a plugin fetches from in its `hosts` field, as bare domains. The terminal and desktop reach anything, so there it is documentation. On the web, the browser cannot call a host without CORS headers, and the hosted app proxies exactly the hosts that the plugins in its build, built-in or bundled, export in `hosts`. A host left out works on the desktop and fails on the web.

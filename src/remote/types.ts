@@ -9,6 +9,11 @@ export interface RemoteEndpoint {
   port: number;
   token: string;
   startedAt: string;
+  /**
+   * The process-id namespace `pid` belongs to, on Linux. A client in another
+   * one (a sandbox, a container) cannot tell from `pid` whether the app runs.
+   */
+  pidNamespace?: string;
 }
 
 export interface RemoteJsonPatchOperation {

@@ -7,10 +7,10 @@ import { setPaneSettings } from "../pane-settings";
 import { findPaneInstance, type LayoutConfig } from "../types/config";
 import { getBasePaneDisplayTitle } from "../components/layout/pane/title";
 import { commandBarResultsFromNodes, commandBarSnapshot } from "./command-bar";
-import { formSnapshot } from "./form";
+import { formNodes, formSnapshot } from "./form";
 import type { RemoteUiRegistry } from "./semantic-tree";
 import { REMOTE_AGENT_HELP, remoteControlSchema } from "./schema";
-import type { RemoteIncludedState, RemoteStateInclude } from "./types";
+import type { RemoteIncludedState, RemoteStateInclude, RemoteUiNodeSnapshot } from "./types";
 import {
   activeLayoutRev,
   normalizeIncludes,
@@ -98,8 +98,8 @@ export function createRemoteResources({
 }: RemoteResourceContext) {
   const getResource = (resource: string): unknown => {
     const state = getState();
-    const uiNodes = uiRegistry?.snapshot() ?? [];
     if (resource === "app://snapshot" || resource === "app://snapshot/full") {
+      const uiNodes = uiRegistry?.snapshot() ?? [];
       const full = resource === "app://snapshot/full";
       return {
         rev: activeLayoutRev(state),
@@ -167,14 +167,14 @@ export function createRemoteResources({
         hasWizard: !!command.wizard?.length,
       }));
     }
-    if (resource === "app://command-bar") return commandBarSnapshot(state, uiNodes);
-    if (resource === "app://command-bar/results") return commandBarResultsFromNodes(uiNodes);
-    if (resource === "app://form") return formSnapshot(uiNodes, isDialogOpen());
+    if (resource === "app://command-bar") return commandBarSnapshot(state, uiRegistry?.snapshot() ?? []);
+    if (resource === "app://command-bar/results") return commandBarResultsFromNodes(uiRegistry?.snapshot() ?? []);
+    if (resource === "app://form") return formSnapshot(formNodes(uiRegistry), isDialogOpen());
     if (resource === "app://capabilities") return pluginRegistry.capabilities.manifests();
     if (resource === "app://auth") return apiClient.describeAuthState();
     if (resource === "app://accounts") return brokerAccountsResource(state);
     if (resource === "app://remote/help") return REMOTE_AGENT_HELP;
-    if (resource === "ui://tree") return uiNodes;
+    if (resource === "ui://tree") return uiRegistry?.snapshot() ?? [];
     if (resource.startsWith("ui://node/")) {
       const nodeId = decodeURIComponent(resource.slice("ui://node/".length));
       const node = uiRegistry?.detail(nodeId);
@@ -192,7 +192,9 @@ export function createRemoteResources({
     const included = normalizeIncludes(include, defaults);
     if (included.length === 0) return undefined;
     const state = getState();
-    const uiNodes = uiRegistry?.snapshot() ?? [];
+    // The whole tree only for what lists from it; the form is read on its own.
+    let tree: RemoteUiNodeSnapshot[] | undefined;
+    const uiNodes = () => (tree ??= uiRegistry?.snapshot() ?? []);
     const result: RemoteIncludedState = {
       rev: activeLayoutRev(state),
       included,
@@ -215,13 +217,13 @@ export function createRemoteResources({
       result.panes = state.config.layout.instances.map((pane) => paneSummary(state, pane));
     }
     if (included.includes("commandBar") || included.includes("commandBar.results")) {
-      const commandBar = commandBarSnapshot(state, uiNodes);
+      const commandBar = commandBarSnapshot(state, uiNodes());
       result.commandBar = included.includes("commandBar")
         ? commandBar
         : { results: commandBar.results };
     }
-    if (included.includes("form")) result.form = formSnapshot(uiNodes, isDialogOpen());
-    if (included.includes("ui")) result.ui = uiNodes;
+    if (included.includes("form")) result.form = formSnapshot(formNodes(uiRegistry), isDialogOpen());
+    if (included.includes("ui")) result.ui = uiNodes();
     if (included.includes("schema")) result.schema = remoteControlSchema();
     if (included.includes("help")) result.help = REMOTE_AGENT_HELP;
     return result;

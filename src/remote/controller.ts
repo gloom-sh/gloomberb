@@ -37,7 +37,7 @@ import type {
 } from "./types";
 import type { RemoteUiRegistry } from "./semantic-tree";
 import { commandBarResultsFromNodes, isCommandBarInputNode } from "./command-bar";
-import { commandBarBlockedBy, coveredByWarning, formSnapshot, noDialogToClose } from "./form";
+import { commandBarBlockedBy, coveredByWarning, formNodes, formSnapshot, noDialogToClose } from "./form";
 import { findCommandBarResult, findMatchingUiNode } from "./matching";
 import { REMOTE_AGENT_HELP, REMOTE_OPERATIONS, remoteControlSchema } from "./schema";
 import {
@@ -108,7 +108,11 @@ const READ_OPERATIONS = new Set(REMOTE_OPERATIONS.filter((entry) => entry.sideEf
  */
 const NOT_BEHIND_A_DIALOG = new Set([
   "app.closeDialog",
+  "app.closeCommandBar",
   "app.notify",
+  // What the pane settings dialog edits, and how an agent edits it while it is open.
+  "pane.setSetting",
+  "pane.setState",
   "capability.invoke",
   "watchlist.add",
   "watchlist.remove",
@@ -287,7 +291,7 @@ export function createAppRemoteController({
   };
 
   /** The open form, confirm or setup, as `app://form` reads it. */
-  const currentForm = () => formSnapshot(uiRegistry?.snapshot() ?? [], isDialogOpen());
+  const currentForm = () => formSnapshot(formNodes(uiRegistry), isDialogOpen());
 
   const openCommandBar = async (input: Record<string, unknown>): Promise<unknown> => {
     const mode = optionalString(input, "mode") ?? "command";

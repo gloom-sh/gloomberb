@@ -35,6 +35,11 @@ export interface RemoteUiRegistry {
   register(id: string, registration: RemoteUiNodeRegistration): void;
   unregister(id: string): void;
   snapshot(): RemoteUiNodeSnapshot[];
+  /**
+   * The nodes of one role, without projecting the rest (a table's rows, a
+   * chart's data): the open form is read this way on every change.
+   */
+  snapshotRole?(role: string): RemoteUiNodeSnapshot[];
   /** One node as the tree has it, with its detail; null when it is not on screen. */
   detail(nodeId: string): RemoteUiNodeSnapshot | null;
   invoke(nodeId: string, action: string, input?: unknown): Promise<unknown>;
@@ -74,6 +79,9 @@ export function createRemoteUiRegistry(): RemoteUiRegistry {
     },
     snapshot() {
       return [...nodes.values()].map(nodeSnapshot);
+    },
+    snapshotRole(role) {
+      return [...nodes.values()].filter((node) => node.registration.role === role).map(nodeSnapshot);
     },
     detail(nodeId) {
       const node = nodes.get(nodeId);

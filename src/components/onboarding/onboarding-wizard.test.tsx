@@ -32,6 +32,8 @@ import type { DataProvider } from "../../types/data-provider";
 import { cardKey, coachStepsAside, OnboardingWizard } from "./onboarding-wizard";
 import { useRunSetupAgain } from "./run-setup-again";
 import { loadFuturesContractTermsCached } from "../../market-data/futures-contract";
+import { formSnapshot } from "../../remote/form";
+import { createRemoteUiRegistry, RemoteUiRegistryProvider } from "../../remote/semantic-tree";
 
 const tui = createOpenTuiTestHarness();
 let tempDataDir: string | null = null;
@@ -674,6 +676,52 @@ describe("OnboardingWizard", () => {
     expect(completionCount).toBe(0);
     expect(capturedConfig?.onboardingProgress?.stage ?? "portfolio").toBe("portfolio");
     expect(tui.frame()).toContain("What do you hold?");
+  });
+
+  test("remote control reads the terminal card as the setup form, adds and removes a position through it, and sends the step", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-remote-"));
+    const registry = createRemoteUiRegistry();
+    await tui.render(
+      <RemoteUiRegistryProvider registry={registry}>
+        <WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={createPluginRegistry()} />
+      </RemoteUiRegistryProvider>,
+      { width: 100, height: 32 },
+    );
+    await tui.setup().renderOnce();
+    type Form = { nodeId: string; fields: Array<{ nodeId: string; id?: string; label: string; items?: Array<{ id: string }> }> };
+    const form = () => formSnapshot(registry.snapshot(), false) as Record<string, unknown> & Form;
+    const field = (label: string) => form().fields.find((entry) => entry.label === label)!;
+
+    // The terminal draws only the field being typed in, yet every field is listed.
+    expect(form()).toMatchObject({ open: true, kind: "setup", step: "PORTFOLIO", title: "What do you hold?" });
+    expect(form().fields.map((entry) => entry.label)).toEqual(["Ticker", "Shares", "Avg cost", "Currency", "Positions"]);
+
+    await act(async () => {
+      await registry.invoke(field("Ticker").nodeId, "setValue", { value: "NVDA" });
+    });
+    await act(async () => {
+      await registry.invoke(field("Ticker").nodeId, "submit");
+    });
+    await waitForAddedPosition();
+    expect(field("Positions").items?.map((item) => item.id)).toEqual(["NVDA"]);
+
+    await act(async () => {
+      await registry.invoke(field("Positions").nodeId, "remove", { id: "NVDA" });
+    });
+    await waitUntil(() => field("Positions").items?.length === 0, "the position removed");
+
+    await act(async () => {
+      await registry.invoke(field("Ticker").nodeId, "setValue", { value: "MSFT" });
+    });
+    await act(async () => {
+      await registry.invoke(field("Ticker").nodeId, "submit");
+    });
+    await waitUntil(() => field("Positions").items?.length === 1 && !tui.frame().includes("adding..."), "the position added");
+    await act(async () => {
+      await registry.invoke(form().nodeId, "submit");
+    });
+    await waitForFrame("What do you trade most?");
+    expect(form()).toMatchObject({ open: true, kind: "setup", step: "DESKS" });
   });
 
   test("holding nothing, Skip (s) leaves the portfolio step at 80x24 as the Desks step's does, and the workspace is built around SPY", async () => {
