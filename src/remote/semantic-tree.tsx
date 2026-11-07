@@ -19,6 +19,11 @@ export interface RemoteUiNodeRegistration {
   metadata?: Record<string, unknown>;
   /** Defers expensive metadata projection until a remote snapshot requests it. */
   getMetadata?: () => Record<string, unknown>;
+  /**
+   * What the tree leaves out for its size, read only for this one node
+   * (`ui://node/{id}`): a table's every row. Merged over its metadata.
+   */
+  getDetail?: () => Record<string, unknown>;
 }
 
 interface RegisteredRemoteUiNode {
@@ -30,10 +35,28 @@ export interface RemoteUiRegistry {
   register(id: string, registration: RemoteUiNodeRegistration): void;
   unregister(id: string): void;
   snapshot(): RemoteUiNodeSnapshot[];
+  /** One node as the tree has it, with its detail; null when it is not on screen. */
+  detail(nodeId: string): RemoteUiNodeSnapshot | null;
   invoke(nodeId: string, action: string, input?: unknown): Promise<unknown>;
 }
 
 const RemoteUiRegistryContext = createContext<RemoteUiRegistry | null>(null);
+
+function nodeSnapshot(node: RegisteredRemoteUiNode): RemoteUiNodeSnapshot {
+  const registration = node.registration;
+  return {
+    id: node.id,
+    role: registration.role,
+    label: registration.label,
+    disabled: registration.disabled,
+    actions: Object.entries(registration.actions ?? {})
+      .filter((entry): entry is [string, RemoteUiAction] => typeof entry[1] === "function")
+      .map(([action]) => action)
+      .sort(),
+    metadata: registration.getMetadata?.() ?? registration.metadata,
+    ...(registration.paneId ? { paneId: registration.paneId } : {}),
+  };
+}
 
 export function createRemoteUiRegistry(): RemoteUiRegistry {
   const nodes = new Map<string, RegisteredRemoteUiNode>();
@@ -46,21 +69,14 @@ export function createRemoteUiRegistry(): RemoteUiRegistry {
       nodes.delete(id);
     },
     snapshot() {
-      return [...nodes.values()].map((node) => {
-        const registration = node.registration;
-        return {
-          id: node.id,
-          role: registration.role,
-          label: registration.label,
-          disabled: registration.disabled,
-          actions: Object.entries(registration.actions ?? {})
-            .filter((entry): entry is [string, RemoteUiAction] => typeof entry[1] === "function")
-            .map(([action]) => action)
-            .sort(),
-          metadata: registration.getMetadata?.() ?? registration.metadata,
-          ...(registration.paneId ? { paneId: registration.paneId } : {}),
-        };
-      });
+      return [...nodes.values()].map(nodeSnapshot);
+    },
+    detail(nodeId) {
+      const node = nodes.get(nodeId);
+      if (!node) return null;
+      const snapshot = nodeSnapshot(node);
+      const detail = node.registration.getDetail?.();
+      return detail ? { ...snapshot, metadata: { ...snapshot.metadata, ...detail } } : snapshot;
     },
     async invoke(nodeId, action, input) {
       const node = nodes.get(nodeId);
@@ -149,6 +165,7 @@ export function useRemoteUiNode(registration: RemoteUiNodeRegistration | null | 
       get actions() { return registrationRef.current?.actions; },
       get metadata() { return registrationRef.current?.metadata; },
       get getMetadata() { return registrationRef.current?.getMetadata; },
+      get getDetail() { return registrationRef.current?.getDetail; },
     };
   }
   const nodeId = nodeIdRef.current;

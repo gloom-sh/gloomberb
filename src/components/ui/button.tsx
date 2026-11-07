@@ -179,6 +179,8 @@ export function Button({
       flexDirection="row"
       backgroundColor={palette.bg}
       cursor={inert ? "default" : "pointer"}
+      // The button is in the remote tree already, by its label and scope.
+      data-gloom-remote-hidden
       onMouseDown={(event: { preventDefault?: () => void; stopPropagation?: () => void }) => {
         if (stopPropagation) {
           event.preventDefault?.();

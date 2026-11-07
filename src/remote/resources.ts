@@ -4,7 +4,8 @@ import { apiClient } from "../api-client";
 import type { AppAction, AppState } from "../state/app/context";
 import type { PaneRuntimeState } from "../core/state/app/state";
 import { setPaneSettings } from "../pane-settings";
-import type { LayoutConfig } from "../types/config";
+import { findPaneInstance, type LayoutConfig } from "../types/config";
+import { getBasePaneDisplayTitle } from "../components/layout/pane/title";
 import { commandBarResultsFromNodes, commandBarSnapshot } from "./command-bar";
 import { formSnapshot } from "./form";
 import type { RemoteUiRegistry } from "./semantic-tree";
@@ -150,6 +151,16 @@ export function createRemoteResources({
     if (resource === "app://accounts") return brokerAccountsResource(state);
     if (resource === "app://remote/help") return REMOTE_AGENT_HELP;
     if (resource === "ui://tree") return uiNodes;
+    if (resource.startsWith("ui://node/")) {
+      const nodeId = decodeURIComponent(resource.slice("ui://node/".length));
+      const node = uiRegistry?.detail(nodeId);
+      if (!node) throw new Error(`No UI node "${nodeId}" is on screen. Read ui://tree for the current ones.`);
+      const pane = node.paneId ? findPaneInstance(state.config.layout, node.paneId) : undefined;
+      const paneDef = pane ? pluginRegistry.panes.get(pane.paneId) : undefined;
+      return pane && paneDef
+        ? { ...node, paneTitle: getBasePaneDisplayTitle(state, pane, paneDef, pluginRegistry.panes) }
+        : node;
+    }
     throw new Error(`Unknown remote resource "${resource}".`);
   };
 
