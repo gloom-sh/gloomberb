@@ -39,15 +39,25 @@ export interface MacroReleaseFigures {
   forecast: string | null;
   prior: string | null;
   surprise: MacroSurprise | null;
+  /** A policy decision's move: "held", "cut 25bp", "raised 50bp". */
+  decision?: string;
 }
 
-export interface MacroRelease { kind: MacroEventKind; date: string; figures?: MacroReleaseFigures }
+export interface MacroRelease {
+  kind: MacroEventKind;
+  date: string;
+  figures?: MacroReleaseFigures;
+  /** Why a day Gloom Cloud's economic calendar covers has no figures: it lists the release without them, or not at all. */
+  figuresMissing?: string;
+}
 
 export interface MacroReleaseList {
   /** Oldest first. */
   releases: MacroRelease[];
   /** The last day the list is complete for: later sessions are left out, release day or not. */
   coveredThrough: string;
+  /** The first day Gloom Cloud's economic calendar covers: US days before it have no figures. */
+  figuresFrom?: string;
 }
 
 const DAY_MS = 86_400_000;
@@ -70,19 +80,24 @@ function servedFigures(value: unknown): MacroReleaseFigures | undefined {
   const event = text(figures?.event);
   if (!event) return undefined;
   const surprise = MACRO_SURPRISES.find((candidate) => candidate === figures?.surprise) ?? null;
-  return { event, actual: text(figures?.actual), forecast: text(figures?.forecast), prior: text(figures?.prior), surprise };
+  const decision = text(figures?.decision);
+  return { event, actual: text(figures?.actual), forecast: text(figures?.forecast), prior: text(figures?.prior), surprise,
+    ...(decision ? { decision } : {}) };
 }
 
 /**
  * The served list extends the floor past its end; the floor keeps its own
  * days up to there. IPCA, which the floor does not carry, is the served list's
  * through its end, and left out when the server lists none. Every day takes
- * the figures the server has for it. A served list that breaks the contract,
- * or ends no later than the floor, adds nothing.
+ * the figures the server has for it, or the reason it gives for having none;
+ * US days before its economic calendar (`figuresFrom`) have none. A served
+ * list that breaks the contract, or ends no later than the floor, adds
+ * nothing.
  */
 export function mergeMacroReleases(floor: MacroReleaseList, served: unknown): MacroReleaseList {
   const payload = served as { coveredThrough?: unknown; releases?: Partial<Record<MacroEventKind, unknown>>;
-    figures?: Partial<Record<MacroEventKind, Record<string, unknown>>> } | null;
+    figures?: Partial<Record<MacroEventKind, Record<string, unknown>>>; figuresFrom?: unknown;
+    figureGaps?: Partial<Record<MacroEventKind, Record<string, unknown>>> } | null;
   const coveredThrough = payload?.coveredThrough;
   if (!isDate(coveredThrough) || coveredThrough <= floor.coveredThrough) return floor;
   const later: MacroRelease[] = [];
@@ -97,11 +112,14 @@ export function mergeMacroReleases(floor: MacroReleaseList, served: unknown): Ma
   if (Array.isArray(ipca) && ipca.every(isDate)) {
     for (const date of new Set(ipca)) if (date <= coveredThrough) later.push({ kind: "ipca", date });
   }
+  const figuresFrom = isDate(payload?.figuresFrom) ? payload.figuresFrom : null;
   const figuresOf = (release: MacroRelease): MacroRelease => {
     const figures = servedFigures(payload?.figures?.[release.kind]?.[release.date]);
-    return figures ? { ...release, figures } : release;
+    if (figures) return { ...release, figures };
+    const missing = text(payload?.figureGaps?.[release.kind]?.[release.date]);
+    return missing ? { ...release, figuresMissing: missing } : release;
   };
-  return { releases: [...floor.releases, ...later].map(figuresOf).sort(byDate), coveredThrough };
+  return { releases: [...floor.releases, ...later].map(figuresOf).sort(byDate), coveredThrough, ...(figuresFrom ? { figuresFrom } : {}) };
 }
 
 /** Whole days from the list's last covered day to today in New York. */

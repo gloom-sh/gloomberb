@@ -7,7 +7,7 @@ import { Checkbox } from "../ui/checkbox";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/display";
 import { DialogFrame } from "../ui/frame";
-import { isPaneSettingDisabled, noteColor, summarizePaneSettingValue } from "./value";
+import { isPaneSettingDisabled, noteColor, paneSettingValue, summarizePaneSettingValue } from "./value";
 
 const DESKTOP_TEXT_STYLE = {
   letterSpacing: 0,
@@ -190,7 +190,7 @@ function DesktopSettingsList({
           key={field.key}
           field={field}
           selected={index === selectedIndex}
-          currentValue={settings[field.key]}
+          currentValue={paneSettingValue(field, settings)}
           note={noteFor?.(field) ?? null}
           onHover={() => onHover(field, index)}
           onEdit={() => onEdit(field, index)}

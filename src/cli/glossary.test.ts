@@ -4,13 +4,13 @@ import { GLOSSARY, lookupGlossary, reportGlossary } from "./glossary";
 const terms = (entries: readonly { term: string }[]) => entries.map((entry) => entry.term);
 
 test("a term is found by its name, abbreviation or another name, whatever its case and punctuation", () => {
-  // The stop-out is the high yield; the column that compares it with the average comes with it.
+  // The stop-out is the high yield; the column that compares it with the median comes with it.
   expect(lookupGlossary("Stop Out")).toEqual(lookupGlossary("stop-out"));
   expect(terms(lookupGlossary("stop-out").exact)).toEqual(["High yield"]);
-  expect(terms(lookupGlossary("stop-out").partial)).toEqual(["Stop-out vs average"]);
+  expect(terms(lookupGlossary("stop-out").partial)).toEqual(["Stop-out vs median"]);
   expect(lookupGlossary("b/c")).toEqual({ exact: [GLOSSARY.find((entry) => entry.short === "B/C")!], partial: [] });
   expect(terms(lookupGlossary("dealers").exact)).toEqual(["Dealer"]);
-  expect(terms(lookupGlossary("discount").partial)).toEqual(["High discount margin", "Premium/discount", "ADR premium"]);
+  expect(terms(lookupGlossary("discount").partial)).toEqual(["Discount rate", "High discount margin", "Premium/discount", "ADR premium"]);
   // Carry is no entry of its own, but the basis trade it names is: found as a related term.
   expect(terms(lookupGlossary("carry").exact)).toEqual([]);
   expect(terms(lookupGlossary("carry").partial)).toEqual(["Futures basis"]);
@@ -22,7 +22,7 @@ test("a term is found by its name, abbreviation or another name, whatever its ca
 
 test("a report explains the terms its own function shows, read as whole labels", () => {
   const auctions = [
-    "Date        Type  Term     Rate  Stop-out vs avg (bp)   B/C  Indirect  Direct  Dealer   Size  CUSIP",
+    "Date        Type  Term     Rate  Stop-out vs median (bp)   B/C  Indirect  Direct  Dealer   Size  CUSIP",
     "2026-10-08  Bill  4-Week  4.048%                  1.5  2.40     57.3%   30.0%   12.7%  $110B  912797VW4",
     "2026-09-23  FRN   1-Year 10-Month  4.0bp            -  2.63     59.1%   30.0%   10.9%   $28B  91282CRD5",
     "",
@@ -30,7 +30,7 @@ test("a report explains the terms its own function shows, read as whole labels",
   ].join("\n");
   // A Bill row's rate is an investment rate and an FRN's a discount margin; no Note row, no high yield.
   expect(terms(reportGlossary("AUCT", `\x1b[1m${auctions}\x1b[0m`))).toEqual([
-    "Bid-to-cover", "Indirect", "Direct", "Dealer", "Stop-out vs average", "Investment rate", "High discount margin",
+    "Bid-to-cover", "Indirect", "Direct", "Dealer", "Stop-out vs median", "Investment rate", "High discount margin",
     "Term", "CUSIP", "Bill", "FRN", "Basis point",
   ]);
   // `bp` inside `4.0bp` is a unit, not the heading GC's `Chg bp` is; another function's terms stay out.

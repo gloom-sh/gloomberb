@@ -106,7 +106,13 @@ export interface CloudMacroReleaseDaysPayload {
     prior: string | null;
     /** Above the consensus (hot), below it (cool), at it (in-line); null without both. */
     surprise: "hot" | "cool" | "in-line" | null;
+    /** An FOMC day's move in the target range: "held", "cut 25bp", "raised 50bp". */
+    decision?: string;
   }>>>;
+  /** The first New York day the kept economic calendar covers: US days before it have no figures. */
+  figuresFrom?: string;
+  /** Why a US release day from `figuresFrom` on has no figures, by kind and day. */
+  figureGaps?: Partial<Record<"cpi" | "jobs" | "fomc", Record<string, string>>>;
 }
 
 export interface CloudFredObservationPayload {

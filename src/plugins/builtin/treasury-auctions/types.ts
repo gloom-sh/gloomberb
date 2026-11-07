@@ -22,12 +22,16 @@ export interface TreasuryAuction {
   highDiscountMargin?: number | null;
   /** Bill high (stop-out) discount rate, in percentage points. */
   highDiscountRate: number | null;
-  /** Bill average discount rate, in percentage points. */
+  /** Bill median discount rate, in percentage points (Treasury's average/median discount rate). */
   avgMedDiscountRate: number | null;
+  /** Bill low discount rate, in percentage points. */
+  lowDiscountRate?: number | null;
   /** High (stop-out) yield, reported by Notes, Bonds, and TIPS. */
   highYield: number | null;
   /** Median yield for notes, bonds and TIPS, as Treasury publishes it. */
   avgMedYield: number | null;
+  /** Low yield for notes, bonds and TIPS. */
+  lowYield?: number | null;
   highPrice: number | null;
   lowPrice: number | null;
   avgMedPrice: number | null;
@@ -54,6 +58,7 @@ export interface TreasuryAuctionRaw {
   high_investment_rate?: string;
   high_yield?: string;
   avg_med_yield?: string;
+  low_yield?: string;
   high_price?: string;
   low_price?: string;
   avg_med_price?: string;
@@ -69,4 +74,5 @@ export interface TreasuryAuctionRaw {
   high_discnt_margin?: string;
   high_discnt_rate?: string;
   avg_med_discnt_rate?: string;
+  low_discnt_rate?: string;
 }

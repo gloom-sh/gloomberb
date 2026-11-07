@@ -5,12 +5,15 @@ import { MemoryPluginPersistence } from "../../../test-support/plugin-persistenc
 import { AUCTION_ARCHIVE_PAGE_SIZE, auctionArchiveBoundary, fetchAuctionPages, type AuctionQuery } from "./client";
 import {
   attachTreasuryAuctionsPersistence,
+  CACHE_SCHEMA_VERSION,
   loadTreasuryAuctions,
   resetTreasuryAuctionsPersistence,
   TREASURY_DIRECT_CONNECTION_ID,
   TREASURY_FISCAL_DATA_CONNECTION_ID,
 } from "./cache";
 import { isPendingAuction } from "./model";
+import { AppPersistence } from "../../../data/app-persistence";
+import { createCommandPluginPersistence } from "../../../cli/saved-copy-persistence";
 import { auction, RECORDED_NOW, recordedFiscalData, recordedTreasuryDirect } from "./test-fixture";
 import { ApiRequestError } from "../../../api-client/errors";
 import { outage } from "../../../test-support/outage";
@@ -67,7 +70,7 @@ describe("loadTreasuryAuctions", () => {
       sourceKey: "treasury-fiscal-data", schemaVersion: 2,
     });
     persistence.seedResource("treasury-auctions", "recent:30", [auctionFixture("current")], {
-      sourceKey: "treasury-fiscal-data", schemaVersion: 4,
+      sourceKey: "treasury-fiscal-data", schemaVersion: CACHE_SCHEMA_VERSION,
     });
     attachTreasuryAuctionsPersistence(persistence);
     let calls = 0;
@@ -213,6 +216,29 @@ describe("loadTreasuryAuctions", () => {
     expect(queries.slice(2)).toEqual([{ from: boundary }]);
   });
 
+  test("a later command reads ALL's archive from the copy an earlier one saved, and asks the source for the recent side only", async () => {
+    const store = new AppPersistence(":memory:");
+    try {
+      const queries: AuctionQuery[] = [];
+      const loader = async (query: AuctionQuery) => {
+        queries.push(query);
+        return query.before ? [auctionFixture("1979")] : [auctionFixture("recent")];
+      };
+      // A command answers from what it fetched itself, so each run is a new command persistence on the one profile.
+      attachTreasuryAuctionsPersistence(createCommandPluginPersistence(store.resources, "plugin:treasury-auctions"));
+      await loadTreasuryAuctions(false, loader, "all");
+      expect(queries.filter((query) => query.before)).toHaveLength(1);
+      resetTreasuryAuctionsPersistence();
+      attachTreasuryAuctionsPersistence(createCommandPluginPersistence(store.resources, "plugin:treasury-auctions"));
+      const warm = await loadTreasuryAuctions(false, loader, "all");
+      expect(warm.auctions.map((entry) => entry.id)).toEqual(["recent", "1979"]);
+      expect(queries.filter((query) => query.before)).toHaveLength(1);
+      expect(queries.filter((query) => !query.before)).toHaveLength(2);
+    } finally {
+      store.close();
+    }
+  });
+
   test("works with no persistence attached at all", async () => {
     const result = await loadTreasuryAuctions(true, async () => [auctionFixture("network")]);
     expect(result.auctions[0]!.id).toBe("network");
@@ -229,7 +255,7 @@ describe("loadTreasuryAuctions with TreasuryDirect", () => {
   const savedFiscalBoard = () => {
     const persistence = new MemoryPluginPersistence();
     persistence.seedResource("treasury-auctions", "recent:120", recordedFiscalData(), {
-      sourceKey: "treasury-fiscal-data", schemaVersion: 4, stale: true,
+      sourceKey: "treasury-fiscal-data", schemaVersion: CACHE_SCHEMA_VERSION, stale: true,
     });
     return persistence;
   };

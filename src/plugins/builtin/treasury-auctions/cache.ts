@@ -16,8 +16,11 @@ const DIRECT_CACHE_SOURCE = "treasury-direct";
 /**
  * 3: every reported page was validated before this board was cached.
  * 4: boards carry direct takedown and bill discount rates, which a v3 board lacks.
+ * 5: boards carry the low yield and discount rate, and early rows with their high and low swapped are put right.
  */
-const CACHE_SCHEMA_VERSION = 4;
+/** Raised when a board gains fields (5: the low yield; 6: early bills blank an investment rate their swapped discount rates contradict), so a saved board never lacks a column the pane shows. */
+export const CACHE_SCHEMA_VERSION = 6;
+export const DIRECT_CACHE_SCHEMA_VERSION = 2;
 export const TREASURY_FISCAL_DATA_CONNECTION_ID = "treasury-fiscal-data";
 export const TREASURY_DIRECT_CONNECTION_ID = "treasury-direct";
 /**
@@ -59,7 +62,7 @@ const archiveCache = createPluginCache<TreasuryAuction[]>({
 });
 /** TreasuryDirect's last weeks and announcements, refreshed as often as the board they are merged into. */
 const directCache = createPluginCache<TreasuryAuction[]>({
-  kind: CACHE_KIND, source: DIRECT_CACHE_SOURCE, schemaVersion: 1, policy: CACHE_POLICY, decode,
+  kind: CACHE_KIND, source: DIRECT_CACHE_SOURCE, schemaVersion: DIRECT_CACHE_SCHEMA_VERSION, policy: CACHE_POLICY, decode,
 });
 let connectionHealth: ConnectionHealthRegistry | null = null;
 
@@ -168,6 +171,17 @@ function answered(result: TreasuryAuctionsResult): TreasuryAuctionsResult {
 }
 
 /**
+ * The archive as saved, while it is still fresh: results that do not change,
+ * so a command reads the copy an earlier run saved (a command otherwise asks
+ * the source again: saved-copy-persistence.ts) and ALL answers in a second or
+ * two instead of walking 10,000 auctions again.
+ */
+function savedArchive(key: string): Promise<PluginCacheResult<TreasuryAuction[]>> | null {
+  const saved = archiveCache.get(key, { allowExpired: true });
+  return saved && !saved.stale ? Promise.resolve(saved) : null;
+}
+
+/**
  * ALL: the recent auctions since the archive boundary, refreshed hourly, and
  * the archive before it, from 1979-10-31, cached for weeks and never forced:
  * a refresh only refetches what can still change. Both must load; a board
@@ -175,9 +189,10 @@ function answered(result: TreasuryAuctionsResult): TreasuryAuctionsResult {
  */
 async function loadAllTreasuryAuctions(force: boolean, loader: AuctionLoader, direct: DirectLoader | null): Promise<TreasuryAuctionsResult> {
   const boundary = auctionArchiveBoundary();
+  const key = `archive:${boundary}`;
   const [recent, archive] = await Promise.all([
     loadRecentBoard(force, `since:${boundary}`, () => loader({ from: boundary }), direct && { days: DIRECT_LOOKBACK_DAYS, load: direct }, () => boundary),
-    archiveCache.load(`archive:${boundary}`, walk(FISCAL_DATA, () => loader({
+    savedArchive(key) ?? archiveCache.load(key, walk(FISCAL_DATA, () => loader({
       from: AUCTION_HISTORY_START, before: boundary, pageSize: AUCTION_ARCHIVE_PAGE_SIZE,
     }))).then(savedCopyForTransientFailure),
   ]);
