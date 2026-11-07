@@ -39,6 +39,7 @@ export const researchSearchPlugin: GloomPlugin = {
       reportFreshness: { status: "not-a-feed", basis: "search results" },
       name: "Research Search",
       icon: "RS",
+      shareItem: { open: true },
       get component(): typeof import("./pane").ResearchSearchPane { const { ResearchSearchPane } = require("./pane"); return ResearchSearchPane; },
       defaultPosition: "right",
       defaultMode: "floating",

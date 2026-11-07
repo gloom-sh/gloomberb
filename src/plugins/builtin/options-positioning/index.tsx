@@ -46,6 +46,7 @@ export const optionsPositioningModule: PluginModule = {
     icon: "O",
     get component(): typeof import("./pane").OptionsPositioningPane { const { OptionsPositioningPane } = require("./pane"); return OptionsPositioningPane; },
     defaultPosition: "right",
+    shareItem: { ticker: true },
     tickerFollower: true,
     defaultMode: "floating",
     defaultFloatingSize: { width: 104, height: 34 },

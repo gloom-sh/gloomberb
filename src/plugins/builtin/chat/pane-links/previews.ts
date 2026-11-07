@@ -1,14 +1,25 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { getShare } from "../../../../shares/api";
+import type { ShareItem } from "../../../../shares/item";
+import { plainUntrustedLine } from "../../../../utils/untrusted-text";
 import type { PaneDef } from "../../../../types/plugin";
 
 /**
  * What a share chip shows, read from the share itself and nothing else: its
- * title and the pane it holds. The read does not count as a view of the share.
+ * title, the pane it holds and what that pane says it is, and the item the
+ * pane was on when it was shared. The read does not count as a view of the
+ * share.
  */
 export type SharePreview =
   | { status: "loading" }
-  | { status: "ready"; title: string; paneId: string | null }
+  | {
+    status: "ready";
+    title: string;
+    paneId: string | null;
+    /** The pane's own description, kept with shares made before items were. */
+    description?: string;
+    item?: ShareItem;
+  }
   | { status: "unavailable" };
 
 const LOADING: SharePreview = { status: "loading" };
@@ -61,10 +72,19 @@ function pump(): void {
           settle(id, { status: "unavailable" }, false);
           return;
         }
-        const paneId = share.kind === "pane" && share.data.version === 2
-          ? share.data.layout.layout.instances[0]?.paneId ?? null
+        const pane = share.kind === "pane" ? share : null;
+        const paneId = pane?.data.version === 2
+          ? pane.data.layout.layout.instances[0]?.paneId ?? null
           : null;
-        settle(id, { status: "ready", title: share.data.title, paneId }, false);
+        // The sender's app wrote the title and description: plain lines, as its item is (parseShareItem).
+        const description = pane?.data.description ? plainUntrustedLine(pane.data.description) : "";
+        settle(id, {
+          status: "ready",
+          title: plainUntrustedLine(share.data.title),
+          paneId,
+          ...(description ? { description } : {}),
+          ...(pane?.item ? { item: pane.item } : {}),
+        }, false);
       })
       .catch(() => settle(id, LOADING, true))
       .finally(() => {
@@ -83,9 +103,35 @@ function request(id: string): void {
   pump();
 }
 
+/** What a share is called where one line names it (the Open list): the item it is on, else its own title. */
+export function sharePreviewTitle(preview: Extract<SharePreview, { status: "ready" }>): string {
+  return preview.item?.title ?? preview.title;
+}
+
 /** What chips show for a share now, for code outside React (the Open list). */
 export function peekSharePreview(id: string): SharePreview {
   return entries.get(id)?.preview ?? LOADING;
+}
+
+/**
+ * Whether each of the shares is read yet, as one string that changes when one
+ * of them is: for a parent that sizes its children's cards by what they say
+ * (the terminal's composer). Reads each share as `useSharePreview` does.
+ */
+export function useSharePreviewStates(ids: readonly string[]): string {
+  const key = ids.join(",");
+  const subscribe = useCallback((listener: () => void) => {
+    const watched = key ? key.split(",") : [];
+    for (const id of watched) {
+      entryFor(id).listeners.add(listener);
+      request(id);
+    }
+    return () => {
+      for (const id of watched) entries.get(id)?.listeners.delete(listener);
+    };
+  }, [key]);
+  const read = useCallback(() => (key ? key.split(",").map((id) => peekSharePreview(id).status).join(",") : ""), [key]);
+  return useSyncExternalStore(subscribe, read, read);
 }
 
 /** The share's title and pane, loaded once per session for every chip that shows it; "" reads nothing. */

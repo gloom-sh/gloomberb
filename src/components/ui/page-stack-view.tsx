@@ -2,6 +2,7 @@ import { Box, Text, TextAttributes, useUiHost } from "../../ui";
 import { useShortcut } from "../../react/input";
 import { useCallback, type ComponentType, type ReactNode } from "react";
 import { colors } from "../../theme/colors";
+import { usePaneShareItem } from "../../shares/pane-item";
 import {
   isDetailBackNavigationKey,
   isMouseBackNavigationEvent,
@@ -31,6 +32,8 @@ export function PageStackView({
   backHint,
 }: PageStackViewProps) {
   const HostPageStackView = useUiHost().PageStackView as ComponentType<PageStackViewProps> | undefined;
+  // The open detail's title names what the pane is on, for a link to it.
+  usePaneShareItem(detailOpen && detailTitle ? { title: detailTitle } : null, { kit: true });
   const props = {
     focused,
     detailOpen,

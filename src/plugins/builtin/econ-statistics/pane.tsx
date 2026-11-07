@@ -88,6 +88,11 @@ function buildColumns(width: number, stacked: boolean): Column[] {
   ];
 }
 
+/** A link to the pane names the statistic its chart shows, with its latest print. */
+function statShareItem(view: StatViewModel) {
+  return { title: view.stat.label, excerpt: [view.stat.formatValue(view.latest.value), view.period].filter(Boolean).join(" · ") };
+}
+
 /**
  * The previous print rather than the difference. For a statistic that is already a
  * change, like payrolls, a delta would be a second derivative and mean very little.
@@ -142,6 +147,7 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
     onSelect: setStatId,
     reload,
     range: { value: range, options: RANGE_OPTIONS, onChange: setRange, chartRange: true },
+    shareItem: statShareItem,
   });
   const { selected, searchFocused } = list;
   const rows = useMemo(() => withCategoryHeaders(list.visible), [list.visible]);

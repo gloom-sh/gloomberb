@@ -37,6 +37,7 @@ export const executivesModule: PluginModule = {
       icon: "X",
       component: ExecutivesPane,
       defaultPosition: "right",
+      shareItem: { ticker: true },
       tickerFollower: true,
       instruments: ["equity"],
       defaultMode: "floating",

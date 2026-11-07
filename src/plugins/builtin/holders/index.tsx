@@ -25,6 +25,7 @@ export const holdersModule: PluginModule = {
       icon: "H",
       get component(): typeof import("./pane").HoldersView { const { HoldersView } = require("./pane"); return HoldersView; },
       defaultPosition: "right",
+      shareItem: { ticker: true },
       tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 105, height: 34 },

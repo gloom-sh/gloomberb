@@ -9,6 +9,7 @@ export const commodityBalancesModule: PluginModule = {
       id: "commodity-balances",
       name: "Crop Balances",
       icon: "B",
+      shareItem: { argument: true },
       get component(): typeof import("./pane").CommodityBalancesPane { const { CommodityBalancesPane } = require("./pane"); return CommodityBalancesPane; },
       defaultPosition: "right",
       defaultMode: "floating",

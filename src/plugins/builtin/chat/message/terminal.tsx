@@ -11,7 +11,7 @@ import { Button } from "../../../../components/ui";
 import { canReactToMessage } from "../reactions";
 import { TerminalChatReactions } from "./reactions";
 import { TerminalChatMessageRow } from "./inline-tokens";
-import { TerminalChatPaneChip } from "./pane-chip";
+import { TerminalChatPaneChipRow } from "./pane-chip";
 import { chatMessagePaneLinks } from "../pane-links/model";
 import { useSlowPendingSend } from "./pending-send";
 import { getChatMessageRenderState } from "./render-state";
@@ -167,23 +167,21 @@ export function TerminalChatMessage({
         </Box>
       ))}
       {paneLinks.map((link, linkIndex) => (
-        <Box
+        <TerminalChatPaneChipRow
           key={`${msg.id}:pane:${link.kind === "share" ? link.id : link.link.kind}`}
-          {...messageRowProps}
-          paddingLeft={3}
-          height={1}
-          flexDirection="row"
-          position={state.grouped && bodyLines.length === 0 && linkIndex === 0 ? "relative" : undefined}
+          link={link}
+          width={messageBodyWidth}
+          rowProps={{
+            ...messageRowProps,
+            paddingLeft: 3,
+            position: state.grouped && bodyLines.length === 0 && linkIndex === 0 ? "relative" : undefined,
+          }}
+          selected={state.isSelected}
+          selectedTextColor={state.selectedTextColor}
+          onOpen={openPaneLink}
         >
-          <TerminalChatPaneChip
-            link={link}
-            width={messageBodyWidth}
-            selected={state.isSelected}
-            selectedTextColor={state.selectedTextColor}
-            onOpen={openPaneLink}
-          />
           {state.grouped && bodyLines.length === 0 && linkIndex === 0 && <ChatMessageActions floating {...actionProps} />}
-        </Box>
+        </TerminalChatPaneChipRow>
       ))}
       {attachments.map((attachment, imageIndex) => (
         <Box

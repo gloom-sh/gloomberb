@@ -12,6 +12,7 @@ export const econStatisticsModule: PluginModule = {
     id: ECON_STATISTICS_PANE_ID,
     name: "Economic Statistics",
     icon: "E",
+    shareItem: { open: true, argument: true },
     get component(): typeof import("./pane").EconStatisticsPane { const { EconStatisticsPane } = require("./pane"); return EconStatisticsPane; },
     defaultPosition: "right",
     defaultMode: "floating",

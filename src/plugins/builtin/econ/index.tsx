@@ -544,6 +544,7 @@ export const economicCalendarModule: PluginModule = {
     id: "econ-calendar",
     reportFreshness: { status: "not-a-feed", basis: "calendar" },
     name: "Economic Calendar",
+    shareItem: { argument: true },
     icon: "E",
     component: EconCalendarPane,
     defaultPosition: "right",

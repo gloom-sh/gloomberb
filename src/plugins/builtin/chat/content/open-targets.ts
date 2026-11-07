@@ -3,7 +3,7 @@ import type { ChatAttachment } from "../../../../api-client";
 import { chatMessageTokens } from "../markdown";
 import { chatImageLabel } from "../attachments/model";
 import { wirePaneTarget, type ChatMessagePaneLink } from "../pane-links/model";
-import { chatPaneLinkPane, peekSharePreview } from "../pane-links/previews";
+import { chatPaneLinkPane, peekSharePreview, sharePreviewTitle } from "../pane-links/previews";
 import { resolveChatCommand, type ChatFunction } from "../pane-links/commands";
 
 export type ChatOpenTarget =
@@ -12,12 +12,12 @@ export type ChatOpenTarget =
   | { kind: "link"; url: string; label: string }
   | { kind: "image"; index: number; url: string; label: string };
 
-/** What the Open list calls a chip: the share's title once read, else its link; a Wire post's pane; a function as written. */
+/** What the Open list calls a chip: the share's item or title once read, else its link; a Wire post's pane; a function as written. */
 function paneLinkLabel(link: ChatMessagePaneLink): string {
   if (link.kind === "command") return link.query;
   if (link.kind === "share") {
     const preview = peekSharePreview(link.id);
-    return preview.status === "ready" ? preview.title : link.url;
+    return preview.status === "ready" ? sharePreviewTitle(preview) : link.url;
   }
   const target = wirePaneTarget(link.link);
   const name = chatPaneLinkPane(target.paneId)?.name ?? target.name;
