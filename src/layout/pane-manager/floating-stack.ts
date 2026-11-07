@@ -91,6 +91,18 @@ export function hiddenFloatingTabIds(floating: readonly FloatingPaneEntry[]): Se
 }
 
 /**
+ * A key no stack has yet, for a stack `instanceId` starts: its own id unless
+ * that is taken. A tab pulled out of a stack leaves the key with the tabs
+ * that stay, so the id of the window that started a stack may still name it.
+ */
+function newStackKey(floating: readonly FloatingPaneEntry[], instanceId: string): string {
+  const taken = new Set(floating.flatMap((entry) => (entry.stack ? [entry.stack] : [])));
+  let key = instanceId;
+  for (let n = 2; taken.has(key); n += 1) key = `${instanceId}#${n}`;
+  return key;
+}
+
+/**
  * `draggedId` as the last tab of the floating window `targetId` (or its
  * stack), shown, at its rect. The dragged pane leaves wherever it was: the
  * dock, another stack, a floating spot of its own.
@@ -99,7 +111,7 @@ export function stackFloatingOnto(layout: LayoutConfig, draggedId: string, targe
   if (draggedId === targetId) return layout;
   const target = layout.floating.find((entry) => entry.instanceId === targetId);
   if (!target) return layout;
-  const key = target.stack ?? target.instanceId;
+  const key = target.stack ?? newStackKey(layout.floating, target.instanceId);
   const base = detachPane(layout, draggedId);
   const floating = base.floating.map((entry) => (entry.instanceId === targetId ? { ...entry, stack: key } : entry));
   floating.push({
