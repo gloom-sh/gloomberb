@@ -149,8 +149,26 @@ export function isCryptoVenuePerpetual(type: string | null | undefined, name: st
 }
 
 /**
- * A listing's type, in plain words where the provider's type misleads (a
- * perpetual typed as a coin). `detail` says what it is not, for a report line.
+ * A quote type's code in the words the other types are written in ("Common
+ * Stock", "Depositary Receipt"), so one search lists one vocabulary. A generic
+ * EQUITY is any share, a receipt's too, so it reads as Stock, never Common
+ * Stock. A broker's own codes (STK, CASH) stay as the broker files them.
+ */
+const TYPE_CODE_WORDS: Record<string, string> = {
+  EQUITY: "Stock",
+  CRYPTOCURRENCY: "Cryptocurrency",
+  INDEX: "Index",
+  FUTURE: "Future",
+  MUTUALFUND: "Mutual Fund",
+  MONEYMARKET: "Money Market Fund",
+  CURRENCY: "Currency",
+  OPTION: "Option",
+};
+
+/**
+ * A listing's type, in plain words: a provider's type code as the words the
+ * others use, and where the type misleads (a perpetual typed as a coin), what
+ * it is. `detail` says what it is not, for a report line.
  */
 export function instrumentTypeLabel(
   type: string | null | undefined,
@@ -161,5 +179,7 @@ export function instrumentTypeLabel(
     return options.detail ? "Perpetual futures price (24/7 on crypto venues; not the listed future, not spot)" : "Perpetual futures price";
   }
   if (classifyInstrumentType(type) === "perpetual") return "Perpetual futures";
-  return type?.trim() || undefined;
+  const written = type?.trim();
+  // Only a code: a type written in words ("Equity Fund") stays as written.
+  return (written && written === written.toUpperCase() ? TYPE_CODE_WORDS[written] : undefined) ?? (written || undefined);
 }

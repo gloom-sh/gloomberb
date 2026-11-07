@@ -16,6 +16,8 @@ If saved news feed settings contain unreadable JSON, the News Feed status report
 
 `gloom rss fetch <url>` exits with a non-zero status when the feed cannot be fetched or parsed. A valid feed with no items still succeeds; text output says "The feed has no items."
 
+The CLI's text lists (`news`, `fn CN` and the Recent News of `ticker`) print a story's summary under its headline only when it adds something: a summary that says the headline again in other words (at most a third of its words are ones the headline lacks) is left out. `--json` and the exports keep every summary.
+
 ## Sources, times, tickers and topics
 
 The SOURCE column names the publisher of the story's lead article as a reader knows it: FT, Reuters, Business Wire, the SEC for an 8-K, an X account as its handle. A story often merges the same event from several outlets; its detail lists each one. Times are in your local time: the clock time today, the weekday and time for the six days before, and the date for anything older.

@@ -69,6 +69,8 @@ export interface EventRow {
   /** Keep the supplied ranges and comparison inputs available in detail/export. */
   estimateInputs?: { eps?: AnalystEstimateRecord; revenue?: AnalystEstimateRecord };
   estimateGrowthMetric?: "eps" | "revenue";
+  /** An estimate row's growth over the year-ago figure, as a fraction, of `estimateGrowthMetric`. */
+  estimateGrowth?: number;
   fiscalPeriodEnd?: string;
   periodDateSource?: FinancialStatement["dateSource"];
   providerPeriodDate?: string;
@@ -341,6 +343,10 @@ export function buildEventRows(
   // quarters give it when they all agree on one.
   const feedCurrencies = new Set(earnings.map((earning) => earning.currency).filter(Boolean));
   const feedCurrency = feedCurrencies.size === 1 ? [...feedCurrencies][0] : undefined;
+  // So do the oldest reported quarters (before 2024), which the feed leaves unlabelled, but only where the
+  // company's own EPS is in that currency too: one company's EPS then reads in one unit down the table, and an
+  // unlabelled figure nothing else vouches for stays unlabelled.
+  const reportedCurrency = feedCurrency && fundamentalsEpsCurrency(financials) === feedCurrency ? feedCurrency : undefined;
   for (const [index, earning] of earnings.entries()) {
     // A pending announcement must never inherit the previous report's actuals.
     const statement = earning.epsActual == null ? undefined : statementForEarningsDate(quarterlyStatements, earning);
@@ -357,7 +363,7 @@ export function buildEventRows(
       period: statement ? quarterLabel(statement.date) : earning.fiscalPeriod ? quarterLabel(earning.fiscalPeriod) : "-",
       ...(earning.time?.trim() ? { reportTime: earning.time.trim() } : {}),
       detail: upcomingEarningsDetail(earning),
-      epsCurrency: earning.currency ?? (earning.epsActual == null ? feedCurrency : undefined),
+      epsCurrency: earning.currency ?? (earning.epsActual == null ? feedCurrency : reportedCurrency),
       revenueCurrency: statement ? statement.currency ?? financials?.financialCurrency : undefined,
       qEps: earning.epsActual ?? earning.epsEstimate,
       qRevenue: statement?.totalRevenue,
@@ -386,6 +392,7 @@ export function buildEventRows(
   for (const pair of buildEstimatePairs(estimates)) {
     const isFiscal = isFiscalEstimatePeriod(pair.period);
     if (!isFiscal && isReportedQuarter(pair.date, reportedPeriodEnds)) continue;
+    const growth = pair.eps?.growth ?? pair.revenue?.growth;
     rows.push({
       id: `estimate:${pair.date}:${pair.period}`,
       date: pair.date,
@@ -399,6 +406,7 @@ export function buildEventRows(
         ...(pair.revenue ? { revenue: { ...pair.revenue } } : {}),
       },
       estimateGrowthMetric: pair.eps?.growth != null ? "eps" : pair.revenue?.growth != null ? "revenue" : undefined,
+      ...growth != null ? { estimateGrowth: growth } : {},
       epsCurrency: pair.eps?.currency,
       revenueCurrency: pair.revenue?.currency,
       qEps: isFiscal ? undefined : pair.eps?.average,

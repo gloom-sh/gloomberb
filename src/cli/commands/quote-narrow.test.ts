@@ -13,7 +13,7 @@ afterEach(() => {
   setCliColorEnabledOverride(null);
 });
 
-test("quote at 80 and 100 columns drops no column: Chg Basis, Cur, Feed and Updated move to labelled lines under their row", async () => {
+test("quote at 80 and 100 columns drops no column, and says a value every row shares once rather than under each row", async () => {
   // Midday in New York: after the close the feed reads stale.
   setSystemTime(new Date("2026-10-22T16:00:00Z"));
   const listed = { marketState: "REGULAR", listingExchangeName: "NYSE", exchangeName: "NYSE", dataSource: "delayed", previousClose: 25.62 } as const;
@@ -34,11 +34,11 @@ test("quote at 80 and 100 columns drops no column: Chg Basis, Cur, Feed and Upda
       const lines = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, width }, options).split("\n");
       const text = lines.join("\n");
       expect(lines.every((line) => visibleLength(line) <= width)).toBe(true);
-      // Each fact is in the table under its header or on a line under its row after it.
+      // Each fact is in the table under its header, or after it on a line under the table, as both rows share it.
       for (const header of ["Symbol", "Name", "Last", "Chg%", "Chg Basis", "Session", "Cur", "Feed", "Updated"]) expect(text).toContain(header);
-      expect(text.match(/USD/g)).toHaveLength(2);
-      expect(text.match(/delayed/g)!.length).toBeGreaterThanOrEqual(2);
-      expect(text.match(/vs \w{3} \d{1,2} \w{3} close/g)).toHaveLength(2);
+      expect(lines.filter((line) => /^\s+(?:Chg Basis|Cur|Feed|Updated) /.test(line))).toEqual([]);
+      expect(text).toMatch(/USD/);
+      expect(text).toMatch(/vs \w{3} \d{1,2} \w{3} close/);
       // The name stays whole, wrapped in its cell at most.
       expect(text).toMatch(/Petroleo Brasileiro(?: S\.A\.)?\s/);
       expect(text).toMatch(/(?:S\.A\. )?Petrobras ADR/);

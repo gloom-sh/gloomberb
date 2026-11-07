@@ -135,14 +135,26 @@ export function float32Shortest(value: number): number | null {
 }
 
 /**
- * A number without binary floating-point noise (47.350000000000364, 0.0615 * 100),
- * as the text view drops it: twelve significant digits, whole numbers and
- * amounts of a billion or more as they are.
+ * A number without binary floating-point noise (47.350000000000364, 0.0615 * 100,
+ * a change of -1.8000000000000114), as the text view drops it and every export
+ * writes it, JSON included: twelve significant digits, and on figures of ten
+ * thousand or more eight decimals (a coin holding to the satoshi) as far as
+ * fifteen significant digits, so an amount in the trillions keeps its cents.
+ * Sub-penny prices, FX rates and yields keep every digit a source quotes.
+ * Whole numbers stay as they are.
  */
 export function exportNumber(value: number): number {
-  if (Number.isInteger(value) || Math.abs(value) >= 1e9) return Object.is(value, -0) ? 0 : value;
-  const rounded = float32Shortest(value) ?? Number(value.toPrecision(12));
+  if (!Number.isFinite(value) || Number.isInteger(value)) return Object.is(value, -0) ? 0 : value;
+  const magnitude = Math.floor(Math.log10(Math.abs(value)));
+  const rounded = float32Shortest(value) ?? (magnitude < 4
+    ? Number(value.toPrecision(12))
+    : Number(value.toFixed(Math.max(0, Math.min(8, 14 - magnitude)))));
   return Object.is(rounded, -0) ? 0 : rounded;
+}
+
+/** `JSON.stringify`'s replacer for what the CLI writes as JSON: every number as `exportNumber` writes it. */
+export function exportJsonValue(_key: string, value: unknown): unknown {
+  return typeof value === "number" ? exportNumber(value) : value;
 }
 
 function isoInstant(time: number): string {
@@ -706,7 +718,7 @@ export function renderReportNdjson(report: CliReportTables, freshness?: ReportFr
         const value = row[index];
         object[column] = value === undefined || value === "" ? null : value;
       });
-      return JSON.stringify(object);
+      return JSON.stringify(object, exportJsonValue);
     });
   }).join("\n");
 }

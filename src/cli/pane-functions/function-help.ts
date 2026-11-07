@@ -408,7 +408,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CACS"],
   },
   EVTS: {
-    summary: "The market's report days with implied and past moves, or a past or coming week or day of them; a ticker picks its row.",
+    summary: "The market board: report days with implied and past moves, or a past or coming week or day of them; a ticker highlights its row.",
     usage: ["EVTS", "EVTS NVDA", "gloom fn EVTS --week last", "gloom fn EVTS --date 2026-10-15"],
     keys: [key("t", "icker"), key("e", "stimates"), key("c", "alls"), key("a", "nalysts")],
     data: EARNINGS_DAYS,
@@ -416,7 +416,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     docs: "ERN",
   },
   ERN: {
-    summary: "The market's report days with implied and past moves. Alone it is the market board; with tickers, just those names and their report history.",
+    summary: "A company's report history with its surprises and moves, or several tickers' next reports. Alone it is the market board EVTS shows.",
     usage: ["ERN", "ERN NVDA, AAPL, MSFT"],
     keys: [key("t", "icker"), key("e", "stimates"), key("c", "alls"), key("a", "nalysts")],
     data: EARNINGS_DAYS,

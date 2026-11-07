@@ -115,7 +115,7 @@ export const earningsModule: PluginModule = {
       id: "earnings-calendar-pane",
       paneId: "earnings-calendar",
       label: "Earnings Calendar",
-      description: "The market's report days with implied and past moves; with a ticker, its report history.",
+      description: "A company's report history with surprises and moves; several tickers, their next reports; none, the market board.",
       keywords: ["earn", "earnings", "calendar", "implied move", "surprise", "eps", "revenue", "quarterly"],
       // ERN works on the loaded security: typed alone it takes the active
       // ticker, and with none active it opens the market's report days.
@@ -139,7 +139,7 @@ export const earningsModule: PluginModule = {
       id: "earnings-board-pane",
       paneId: "earnings-calendar",
       label: "Earnings Days",
-      description: "The market's report days with implied and past moves; a ticker picks its row.",
+      description: "The market board: report days by week or day, with implied and past moves; a ticker highlights its row.",
       keywords: ["evts", "events", "earnings calendar", "earnings season", "reporting today"],
       // Bloomberg's calendar: the market board always, never one company's history.
       shortcut: { prefix: "EVTS", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },

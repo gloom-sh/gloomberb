@@ -16,7 +16,15 @@ import { serializeCsv } from "../utils/csv";
 import { formatUtcTime, isEpochMilliseconds, isZonedIsoDateTime } from "../utils/utc-time";
 import { formatFreshnessLine, withSavedCopy, type ReportFreshness } from "./pane-functions/freshness";
 import { withSearchHints, type FredSeriesCheck } from "./not-a-ticker";
-import { renderReportCsv, renderReportNdjson, splitCsvFooter, withCsvFooter, type CliReportTables } from "./report-tables";
+import {
+  exportJsonValue,
+  exportNumber,
+  renderReportCsv,
+  renderReportNdjson,
+  splitCsvFooter,
+  withCsvFooter,
+  type CliReportTables,
+} from "./report-tables";
 import {
   EXPORT_DATING_COLUMNS,
   EXPORT_IDENTITY_COLUMNS,
@@ -383,7 +391,7 @@ function renderCsv<Row extends Record<string, unknown>>(
       const blanked = resolvedColumns.flatMap((column, index) => isNonFiniteNumber(values[index]) ? [column.header] : []);
       const datingCells = dating?.(row) ?? [];
       return [
-        ...values.map((value) => isNonFiniteNumber(value) ? "" : value),
+        ...values.map((value) => isNonFiniteNumber(value) ? "" : typeof value === "number" ? exportNumber(value) : value),
         ...status ? [exportStatusText(status(row), blanked)] : [],
         ...identity?.(row) ?? [],
         ...datingAdded.map((index) => datingCells[index] ?? ""),
@@ -532,7 +540,7 @@ export function serializeCliResult<T, Row extends Record<string, unknown> = Reco
       ...(cited ? { source: exportSource(cited) } : {}),
       ...(columns?.length ? { columns } : {}),
     };
-    return JSON.stringify(envelope, null, 2);
+    return JSON.stringify(envelope, exportJsonValue, 2);
   }
   const body = serializeCliRows(rest, options, renderOptions, cited);
   if (options.format !== "text" || !freshness) return body;
@@ -559,14 +567,14 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
   if (options.format === "ndjson") {
     const statusKey = ndjsonStatusKey(rows, renderOptions.columns as readonly CliResultColumn<never>[] | undefined);
     return rows.map((row) => {
-      if (!isPlainObject(row)) return JSON.stringify(row);
+      if (!isPlainObject(row)) return JSON.stringify(row, exportJsonValue);
       const fields = ndjsonRow(row as Row, status, statusKey);
-      if (!cited) return JSON.stringify(fields);
+      if (!cited) return JSON.stringify(fields, exportJsonValue);
       const identity = rowIdentity(row as Row, renderOptions.exportIdentity);
       // A dated export's own fields (a row's `released`) keep their values.
       const dating = renderOptions.exportDated
         ? Object.fromEntries(Object.entries(exportDatingFields(cited, identity)).filter(([key]) => !(key in fields))) : {};
-      return JSON.stringify({ ...fields, ...exportIdentityFields(cited, identity), ...dating });
+      return JSON.stringify({ ...fields, ...exportIdentityFields(cited, identity), ...dating }, exportJsonValue);
     }).join("\n");
   }
   if (options.format === "csv") {
@@ -674,7 +682,7 @@ function exportNdjsonNotes<T, Row extends Record<string, unknown>>(
 
 export function serializeCliError(error: CliErrorObject, options: CliGlobalOptions): string {
   if (options.format === "json" || options.format === "ndjson") {
-    return JSON.stringify({ ok: false, error }, null, options.format === "json" ? 2 : 0);
+    return JSON.stringify({ ok: false, error }, exportJsonValue, options.format === "json" ? 2 : 0);
   }
   return error.details == null ? error.message : `${error.message}\n${String(error.details)}`;
 }

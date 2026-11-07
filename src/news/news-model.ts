@@ -246,13 +246,55 @@ export function filterNewsArticlesForQuery(items: NewsArticle[], query: NewsQuer
   return filtered.slice(0, MAX_ARTICLES);
 }
 
+/** Words that carry no news of their own: a summary made of them and the headline's words says nothing new. */
+const FILLER_WORDS = new Set([
+  "a", "an", "the", "and", "or", "but", "of", "to", "in", "on", "at", "for", "from", "by", "with", "as", "into", "onto",
+  "over", "through", "about", "after", "amid", "than", "that", "this", "these", "those", "it", "its", "their", "his",
+  "her", "they", "is", "are", "was", "were", "be", "been", "being", "has", "have", "had", "will", "would", "could",
+  "may", "might", "can", "also", "which", "who", "while", "more", "some",
+]);
+
+/** A word cut to its stem, near enough to match its other forms: seeking and seeks, restricts and restrictions. */
+function wordStem(word: string): string {
+  const bare = word.replace(/['\u2019]s$/, "");
+  let stem = bare.length > 5 ? bare.replace(/(?:ing|ed)$/, "") : bare;
+  stem = stem.length > 3 ? stem.replace(/e?s$/, "") : stem;
+  return stem.length >= 3 ? stem : bare;
+}
+
+function newsWordStems(text: string): string[] {
+  return (text.toLowerCase().match(/[\p{L}\p{N}]+(?:['\u2019][\p{L}]+)?/gu) ?? [])
+    .filter((word) => !FILLER_WORDS.has(word))
+    .map(wordStem);
+}
+
+/** How much of a summary may be words its headline lacks and the summary still only restate it. */
+const RESTATED_NEW_WORDS = 1 / 3;
+
+/**
+ * Whether a story's summary only says its headline again, in other words or
+ * not: at most a third of its words (fillers aside) are words the headline
+ * lacks, in any of their forms. "Apple is seeking to raise about $7 billion
+ * through a bond sale, Bloomberg News reports." restates "Apple seeks about $7
+ * billion from bond sale, Bloomberg News reports"; a summary that adds the
+ * why or the numbers does not.
+ */
+export function summaryRestatesHeadline(title: string, summary: string): boolean {
+  const headline = newsWordStems(title);
+  const words = newsWordStems(summary);
+  if (words.length === 0) return true;
+  const known = (word: string) => headline.some((stem) => stem === word
+    || (Math.min(stem.length, word.length) >= 4 && (stem.startsWith(word) || word.startsWith(stem))));
+  return words.filter((word) => !known(word)).length <= words.length * RESTATED_NEW_WORDS;
+}
+
 /**
  * A story's summary as one line under its row in a text list (`news`,
  * `fn CN`): its whitespace and line breaks run together, null when it has
- * none or only repeats the headline.
+ * none or only restates the headline (summaryRestatesHeadline).
  */
 export function newsSummaryLine(article: Pick<NewsArticle, "title" | "summary">): string | null {
   const summary = article.summary?.replace(/\s+/g, " ").trim();
-  if (!summary || summary.toLowerCase() === article.title.trim().toLowerCase()) return null;
+  if (!summary || summaryRestatesHeadline(article.title, summary)) return null;
   return summary;
 }
