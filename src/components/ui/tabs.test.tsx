@@ -124,8 +124,8 @@ test("revealing a tab starts the strip at a tab's edge, and the wheel reaches as
   const line = () => tui.frame().split("\n")[0]!;
   const revealed = tabsScroll().scrollLeft;
   expect(line()).toContain("Notes");
-  // Whole tabs only, from the first cell of one.
-  expect(line()).toMatch(/^ (Hiring|Peers|News) /);
+  // Whole tabs only, from the first cell of one, the marker that more tabs are to the left over its blank first cell.
+  expect(line()).toMatch(/^‹(Hiring|Peers|News) /);
 
   const wheel = async (direction: "up" | "down", ticks: number) => {
     await act(async () => {
@@ -137,7 +137,29 @@ test("revealing a tab starts the strip at a tab's edge, and the wheel reaches as
   expect(tabsScroll().scrollLeft).toBeLessThan(revealed);
   await wheel("down", 40);
   expect(tabsScroll().scrollLeft).toBe(revealed);
-  expect(line()).toMatch(/^ (Hiring|Peers|News) /);
+  expect(line()).toMatch(/^‹(Hiring|Peers|News) /);
+});
+
+// At 80x24 a research float cut its strip at "Options Eve" with nothing to say more tabs were there.
+test("a strip that overflows marks the edges that hide tabs, and a click on a marker scrolls toward them", async () => {
+  await act(async () => {
+    await tui.render(<TabsHarness />, { width: 30, height: 4 });
+  });
+  for (let frame = 0; frame < 2; frame++) await act(async () => { await tui.setup().renderOnce(); });
+  const line = () => tui.frame().split("\n")[0]!;
+  expect(line().trimEnd().endsWith("›")).toBe(true);
+  expect(line().startsWith("‹")).toBe(false);
+  await act(async () => {
+    await tui.setup().mockMouse.click(29, 0);
+    await tui.setup().renderOnce();
+  });
+  await tui.setup().renderOnce();
+  expect(tabsScroll().scrollLeft).toBeGreaterThan(0);
+  expect(line().startsWith("‹")).toBe(true);
+  // Where every tab fits, nothing is marked.
+  await act(async () => { resizeTabs?.(200); });
+  for (let frame = 0; frame < 2; frame++) await act(async () => { await tui.setup().renderOnce(); });
+  expect(line()).not.toMatch(/[‹›]/);
 });
 
 test("retranslates stable tab items when the app language changes", async () => {

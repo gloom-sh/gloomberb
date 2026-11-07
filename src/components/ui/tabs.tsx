@@ -124,6 +124,7 @@ function TabsView({
     activePillFg: colors.selectedText,
     closeFg: colors.textMuted,
     addFg: colors.textMuted,
+    bg: colors.bg,
   };
   const handleSelect = useCallback((value: string) => {
     navigationValueRef.current = value;
@@ -333,6 +334,7 @@ function OpenTuiTabs({
     activePillFg: string;
     closeFg: string;
     addFg: string;
+    bg: string;
   };
 }) {
   const [hoveredValue, setHoveredValue] = useState<string | null>(null);
@@ -409,12 +411,25 @@ function OpenTuiTabs({
   // the viewport several times a second. Only a change of the active tab or of
   // the strip geometry is allowed to move it.
   const revealKey = `${activeValue ?? ""}|${tabs.map((tab, index) => `${tab.value}:${tabWidths[index]}`).join(",")}`;
-  const revealRef = useRef({ tabWidths, totalWidth, activeIndex: -1 });
+  const revealRef = useRef({ tabWidths, totalWidth, activeIndex: -1, dense });
   revealRef.current = {
     tabWidths,
     totalWidth,
     activeIndex: tabs.findIndex((tab) => tab.value === activeValue),
+    dense,
   };
+  // Which edges of an overflowing strip hide tabs: each shows a marker, so a cut strip says there is more.
+  const [edges, setEdges] = useState<{ left: boolean; right: boolean }>({ left: false, right: false });
+  const updateEdges = useCallback(() => {
+    const scrollBox = scrollRef.current;
+    const viewportWidth = scrollBox?.viewport?.width || scrollBox?.width || 0;
+    const { totalWidth: stripWidth } = revealRef.current;
+    const left = scrollBox?.scrollLeft ?? 0;
+    const next = viewportWidth > 0
+      ? { left: left > 0, right: left + viewportWidth < stripWidth }
+      : { left: false, right: false };
+    setEdges((current) => (current.left === next.left && current.right === next.right ? current : next));
+  }, []);
   // Blank cells after the last tab, so the strip can start at a tab's edge
   // when it reveals the last ones (see revealActiveTab).
   const [revealPad, setRevealPad] = useState(0);
@@ -423,7 +438,7 @@ function OpenTuiTabs({
   const revealedRef = useRef<{ geometry: string; pendingLeft: number | null }>({ geometry: "", pendingLeft: null });
   const revealActiveTab = useCallback(() => {
     const scrollBox = scrollRef.current;
-    const { tabWidths: widths, totalWidth: stripWidth, activeIndex } = revealRef.current;
+    const { tabWidths: widths, totalWidth: stripWidth, activeIndex, dense: denseStrip } = revealRef.current;
     const viewportWidth = scrollBox?.viewport?.width || scrollBox?.width || 0;
     if (!scrollBox || activeIndex < 0 || viewportWidth <= 0) return;
     const geometry = `${activeIndex}|${viewportWidth}|${stripWidth}|${widths.join(",")}`;
@@ -441,8 +456,11 @@ function OpenTuiTabs({
     }
     revealedRef.current = { geometry, pendingLeft: null };
 
-    const activeLeft = widths.slice(0, activeIndex).reduce((sum, width) => sum + width, 0);
-    const activeRight = activeLeft + widths[activeIndex]!;
+    // A dense tab has no blank cell before its label: a strip scrolled to it starts on the blank after the tab before,
+    // which the edge marker covers, never on the label's first letter.
+    const edge = (start: number) => (denseStrip && start > 0 ? start - 1 : start);
+    const activeLeft = edge(widths.slice(0, activeIndex).reduce((sum, width) => sum + width, 0));
+    const activeRight = widths.slice(0, activeIndex + 1).reduce((sum, width) => sum + width, 0);
     const currentLeft = scrollBox.scrollLeft ?? 0;
     const currentRight = currentLeft + viewportWidth;
     const scrollToLeft = (left: number) => {
@@ -455,7 +473,7 @@ function OpenTuiTabs({
       setRevealPad(pad);
     };
     // Where each tab starts: a strip scrolled to between two of them shows the end of a label.
-    const starts = widths.map((_, index) => widths.slice(0, index).reduce((sum, width) => sum + width, 0));
+    const starts = widths.map((_, index) => edge(widths.slice(0, index).reduce((sum, width) => sum + width, 0)));
     const cutAtStart = currentLeft > 0 && !starts.includes(currentLeft);
 
     if (stripWidth <= viewportWidth) {
@@ -475,11 +493,34 @@ function OpenTuiTabs({
       if ((scrollBox.scrollLeft ?? 0) !== left) revealedRef.current.pendingLeft = left;
     }
   }, []);
-  useEffect(revealActiveTab, [revealActiveTab, revealKey]);
+  const revealAndMark = useCallback(() => {
+    revealActiveTab();
+    updateEdges();
+  }, [revealActiveTab, updateEdges]);
+  useEffect(revealAndMark, [revealAndMark, revealKey]);
   // React effects can run before a floating pane's native viewport has its
   // new width. Retry after computed layout, preserving ScrollBox's range update.
-  useEffect(() => observeScrollBoxViewportSize(scrollRef.current, revealActiveTab), [revealActiveTab, scrollable]);
-  useEffect(() => observeScrollBoxContentSize(scrollRef.current, revealActiveTab), [revealActiveTab, scrollable]);
+  useEffect(() => observeScrollBoxViewportSize(scrollRef.current, revealAndMark), [revealAndMark, scrollable]);
+  useEffect(() => observeScrollBoxContentSize(scrollRef.current, revealAndMark), [revealAndMark, scrollable]);
+
+  /** Scrolls the strip a viewport's width toward an edge marker that was clicked, starting at a tab's edge. */
+  const scrollToward = (direction: -1 | 1) => {
+    const scrollBox = scrollRef.current;
+    const viewportWidth = scrollBox?.viewport?.width || scrollBox?.width || 0;
+    if (!scrollBox || viewportWidth <= 0) return;
+    const starts = tabWidths.map((_, index) => tabWidths.slice(0, index).reduce((sum, width) => sum + width, 0))
+      .map((start) => (dense && start > 0 ? start - 1 : start));
+    const current = scrollBox.scrollLeft ?? 0;
+    const maxLeft = Math.max(0, totalWidth + revealPadRef.current - viewportWidth);
+    // Right: the first tab cut at the right edge starts the strip. Left: the strip ends where it started.
+    const target = direction > 0
+      ? starts.find((start, index) => start + tabWidths[index]! > current + viewportWidth) ?? maxLeft
+      : starts.findLast((start) => start <= Math.max(0, current - viewportWidth)) ?? 0;
+    const left = Math.max(0, Math.min(maxLeft, target));
+    scrollBox.scrollLeft = left;
+    scrollBox.scrollTo({ x: left, y: scrollBox.scrollTop });
+    updateEdges();
+  };
 
   const handleMouseScroll = (event?: {
     preventDefault?: () => void;
@@ -506,6 +547,7 @@ function OpenTuiTabs({
     );
     scrollBox.scrollLeft = nextLeft;
     scrollBox.scrollTo({ x: nextLeft, y: scrollBox.scrollTop });
+    updateEdges();
   };
 
   const tabRow = (
@@ -619,18 +661,42 @@ function OpenTuiTabs({
 
   if (!scrollable) return tabRow;
 
-  return (
-    <ScrollBox
-      id={scrollId}
-      ref={scrollRef}
-      width="100%"
+  // Drawn over the strip's end cells, so showing one never narrows the strip and moves what it reveals.
+  const edgeMarker = (direction: -1 | 1) => (
+    <Box
+      position="absolute"
+      top={0}
+      {...direction < 0 ? { left: 0 } : { right: 0 }}
+      width={1}
       height={1}
-      scrollX
-      focusable={false}
-      horizontalScrollbarOptions={{ visible: false }}
-      onMouseScroll={handleMouseScroll}
+      zIndex={1}
+      backgroundColor={palette.bg}
+      onMouseDown={(event: TabPointerEvent) => {
+        event.preventDefault();
+        event.stopPropagation?.();
+        scrollToward(direction);
+      }}
     >
-      {tabRow}
-    </ScrollBox>
+      <Text fg={palette.addFg}>{direction < 0 ? "‹" : "›"}</Text>
+    </Box>
+  );
+
+  return (
+    <Box width="100%" height={1}>
+      <ScrollBox
+        id={scrollId}
+        ref={scrollRef}
+        width="100%"
+        height={1}
+        scrollX
+        focusable={false}
+        horizontalScrollbarOptions={{ visible: false }}
+        onMouseScroll={handleMouseScroll}
+      >
+        {tabRow}
+      </ScrollBox>
+      {edges.left ? edgeMarker(-1) : null}
+      {edges.right ? edgeMarker(1) : null}
+    </Box>
   );
 }
