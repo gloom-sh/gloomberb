@@ -32,7 +32,6 @@ import {
   MessageComposer,
   Prose,
   shouldShowPaneSidebar,
-  Spinner,
   usePaneFooter,
   type PaneHint,
 } from "../../../../components";
@@ -141,6 +140,7 @@ import {
   UNDO_KEY,
 } from "./tool-timeline";
 import { ClippedText } from "../../../../components/ui/display";
+import { TurnProgress, TurnQuestion } from "./turn-parts";
 import { logFailure } from "../../../../utils/log-failure";
 
 export const ASKG_PANE_ID = "askg";
@@ -352,26 +352,37 @@ function isSourceLink(href: string): boolean {
   return href.startsWith(SOURCE_LINK_SCHEME);
 }
 
-/** Rows the confirmation block reserves for the dry run preview. */
-const MAX_PREVIEW_LINES = 4;
+/**
+ * Rows the confirmation's preview always gets. It takes every line it has
+ * while the conversation keeps its slice, so an order shows its size and
+ * price, not only its symbol and side.
+ */
+const MIN_PREVIEW_LINES = 4;
 
-function confirmationBlockHeight(row: ASKGToolRow): number {
-  return 3 + Math.min(MAX_PREVIEW_LINES, previewLines(row.preview).length);
+function confirmationPreviewRows(row: ASKGToolRow, room: number): number {
+  return Math.min(previewLines(row.preview).length, Math.max(MIN_PREVIEW_LINES, room));
+}
+
+/** The title row, then the preview, then the buttons under a blank row. */
+function confirmationBlockHeight(previewRows: number): number {
+  return 3 + previewRows;
 }
 
 function ConfirmationPrompt({
   row,
+  previewRows,
   width,
   onApprove,
   onDecline,
 }: {
   row: ASKGToolRow;
+  previewRows: number;
   width: number;
   onApprove: () => void;
   onDecline: () => void;
 }) {
   const colors = useThemeColors();
-  const lines = previewLines(row.preview).slice(0, MAX_PREVIEW_LINES);
+  const lines = previewLines(row.preview).slice(0, previewRows);
   return (
     // Marked so no assistant's UI call can press Approve here (terminal-relay/policy.ts).
     <RemoteUiScope scope={ASKG_PROMPT_SCOPE}>
@@ -379,7 +390,7 @@ function ConfirmationPrompt({
         flexDirection="column"
         flexShrink={0}
         paddingX={1}
-        height={confirmationBlockHeight(row)}
+        height={confirmationBlockHeight(lines.length)}
         backgroundColor={colors.panel}
       >
         <Box flexDirection="row" height={1}>
@@ -498,27 +509,25 @@ function TurnView({
   onShare: () => void;
 }) {
   const colors = useThemeColors();
+  // The server holds back the questions to ask next and leaves the blank
+  // lines before them, which would open a gap under the answer. A first
+  // line keeps its indent: it can start a block of code.
+  const answerText = turn.answer.replace(/^(?:[ \t]*\r?\n)+/, "").trimEnd();
   // A citation opens its source; one that opens nothing stays the text it was.
-  const answer = useMemo(() => linkCitations(turn.answer, new Set(sources.flatMap((source) => (
+  const answer = useMemo(() => linkCitations(answerText, new Set(sources.flatMap((source) => (
     source.ref !== null && source.target.kind === "pane" ? [source.ref] : []
-  )))), [sources, turn.answer]);
+  )))), [answerText, sources]);
   const openLink = useCallback((href: string) => {
     const ref = sourceRefFromHref(href);
     const source = ref === null ? undefined : sources.find((entry) => entry.ref === ref);
     if (source) onOpenSource(source);
   }, [onOpenSource, sources]);
-  const finished = turn.status === "complete" && turn.answer.trim().length > 0;
+  const finished = turn.status === "complete" && answerText.length > 0;
   return (
     <Box flexDirection="column" paddingTop={1}>
-      <Prose
-        text={turn.prompt}
-        width={width}
-        color={colors.textBright}
-        figures={false}
-        attributes={TextAttributes.BOLD}
-      />
+      <TurnQuestion text={turn.prompt} width={width} />
       {tools}
-      {turn.answer ? (
+      {answerText ? (
         <Box paddingTop={1}>
           <MarkdownText
             text={answer}
@@ -531,9 +540,8 @@ function TurnView({
             linkChips
           />
         </Box>
-      ) : turn.status === "streaming" && turn.tools.length === 0 ? (
-        <Box paddingTop={1}><Spinner label="Gloom is thinking…" /></Box>
       ) : null}
+      {turn.status === "streaming" ? <TurnProgress turn={turn} /> : null}
       {finished ? (
         <AnswerSources
           sources={sources}
@@ -1396,7 +1404,6 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   // section bar, column header and rows), up to half the pane.
   const expandedNeed = 3 + (expandedTables.length > 1 ? 1 : 0)
     + Math.max(0, ...expandedTables.map((table) => table.rows.length));
-  const confirmationHeight = confirmation ? confirmationBlockHeight(confirmation) : 0;
   const attachedHeight = attachedPaneBlockHeight(attached);
   const draftLines = useMemo(() => {
     const textWidth = Math.max(8, width - sidebarWidth - (nativePaneChrome ? 6 : 5));
@@ -1405,6 +1412,10 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   const composerHeight = nativePaneChrome ? draftLines + 2 : draftLines;
   const composerBlockHeight = nativePaneChrome ? composerHeight : composerHeight + 2;
   // The conversation keeps a readable slice no matter what else is open.
+  const confirmationPreview = confirmation
+    ? confirmationPreviewRows(confirmation, height - composerBlockHeight - attachedHeight - confirmationBlockHeight(0) - 6)
+    : 0;
+  const confirmationHeight = confirmation ? confirmationBlockHeight(confirmationPreview) : 0;
   const detailBudget = height - composerBlockHeight - confirmationHeight - attachedHeight - 6;
   const detailHeight = expandedRow && expandedHasRows && detailBudget >= MIN_DETAIL_HEIGHT
     ? Math.min(Math.floor(height / 2), detailBudget, Math.max(MIN_DETAIL_HEIGHT, expandedNeed))
@@ -1978,6 +1989,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       {confirmation ? (
         <ConfirmationPrompt
           row={confirmation}
+          previewRows={confirmationPreview}
           width={contentWidth}
           onApprove={() => controller.resolveConfirmation(confirmation.toolCallId, true)}
           onDecline={() => controller.resolveConfirmation(confirmation.toolCallId, false)}

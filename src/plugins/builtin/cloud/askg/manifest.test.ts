@@ -10,6 +10,7 @@ import { getLoadablePlugins } from "../../../catalog";
 import {
   buildASKGToolManifests,
   hashASKGToolManifests,
+  toolExecutionTimeoutMs,
 } from "./manifest";
 import type { ClientToolManifest } from "./protocol";
 
@@ -159,10 +160,16 @@ describe("ASKG client manifest", () => {
       // The person gets a minute to answer; the server holds the call that long.
       timeoutMs: 60_000,
     });
-    // Every tool that asks first gets the minute, and nothing else does.
+    // Every tool that asks first gets the minute, and so does a UI action
+    // that may ask (a press, a menu item, a command-bar command); nothing else does.
+    const mayAsk = ["command_bar.activate_result", "ui.invoke", "ui.invoke_matching"];
     const remote = tools.filter(({ source }) => source === "remote-op");
+    expect(remote.filter(({ name }) => mayAsk.includes(name)).map(({ name, confirm, timeoutMs }) => ({ name, confirm, timeoutMs })))
+      .toEqual(mayAsk.map((name) => ({ name, confirm: "never", timeoutMs: 60_000 })));
     expect(remote.filter(({ confirm }) => confirm === "always").every(({ timeoutMs }) => timeoutMs === 60_000)).toBe(true);
-    expect(remote.filter(({ confirm }) => confirm === "never").every(({ timeoutMs }) => timeoutMs === 10_000)).toBe(true);
+    expect(remote.filter(({ confirm, name }) => confirm === "never" && !mayAsk.includes(name)).every(({ timeoutMs }) => timeoutMs === 10_000)).toBe(true);
+    // The minute is the person's: the action itself still has the 10 s every app action has.
+    expect(remote.every((tool) => toolExecutionTimeoutMs(tool) === 10_000)).toBe(true);
   });
 
   test("hash is order-independent and changes with the surface", async () => {

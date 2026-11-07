@@ -92,6 +92,15 @@ const RELEASE_BODY = [
   "[Full diff](https://example.invalid/compare/v0.9.8...v0.9.9)",
 ].join("\n");
 
+/** The invented version's summary, long enough to wrap in a narrow pane. */
+const SUMMARIES = [
+  "# Changelog",
+  "",
+  "## 0.9: An invented version, its title long enough to wrap where the pane is narrow",
+  "",
+  ...Array.from({ length: 4 }, (_, index) => `- **An invented highlight ${index + 1}.** ${SENTENCES[index % SENTENCES.length]} ${SENTENCES[(index + 3) % SENTENCES.length]} (0.9.${9 - index})`),
+].join("\n");
+
 const RELEASES = Array.from({ length: 6 }, (_, index) => ({
   id: 9000 + index,
   tag_name: `v0.9.${9 - index}`,
@@ -111,6 +120,8 @@ export function installLayoutFetches(params?: URLSearchParams): void {
       return Response.json({ studies: Array.from({ length: 12 }, (_, index) => inventedStudy(index)) });
     }
     if (url.startsWith("https://api.github.com/repos/") && url.includes("/releases")) return Response.json(RELEASES);
+    // Gloom Cloud serves the summaries; GitHub's own copy is not asked for then.
+    if (url.endsWith("/public/releases/summaries")) return Response.json({ fetchedAt: new Date(0).toISOString(), stale: false, markdown: SUMMARIES });
     return null;
   };
   setHttpFetchTransport(async (url) => answer(url) ?? new Response("Not in the fixture", { status: 404 }));

@@ -1,4 +1,4 @@
-import { getDockedPaneIds } from "../../layout/pane-manager";
+import { getDockedPaneIds, removePane } from "../../layout/pane-manager";
 import { expect, test } from "bun:test";
 import { act } from "react";
 import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
@@ -12,6 +12,7 @@ import { useAppTickerOpenRuntime } from "./ticker-open-runtime";
 import { researchEntryFromSearch } from "../../renderers/browser/research-entry";
 import { createTestTicker } from "../../test-support/ticker";
 import { SECURITY_DESCRIPTION_SEARCH } from "../../core/state/app/command-bar-launch";
+import { isTickerPaneOpening } from "../../state/opening-ticker-panes";
 
 const tui = createOpenTuiTestHarness({ width: 20, height: 2 });
 
@@ -61,8 +62,10 @@ test("a slow linked ticker applies its tab to the reused or new pane after hydra
     const opening = runtime.openPinnedTicker(entry.symbol, { tabId: entry.tab, floating: true, tabState: { requestedView: "one-use-token", activeTabId: "ignored" } });
     // Focus may change while the provider is still resolving the linked listing.
     stateRef.current.focusedPaneId = "world-indices:main";
-    // Explicit exact local matches may resolve without the deferred provider.
-    if (savedExchange !== "LSE") expect(actions).toEqual([]);
+    // Explicit exact local matches may resolve without the deferred provider. A listing no pane shows
+    // yet gets its pane, on its tab, before the provider answers.
+    if (reusePane && savedExchange !== "LSE") expect(actions).toEqual([]);
+    if (!reusePane) expect(actions).toEqual([{ type: "UPDATE_PANE_STATE", paneId: "ticker-detail:linked", patch: { requestedView: "one-use-token", activeTabId: "financials" } }]);
     releaseSearch();
     await act(async () => { await opening; });
     const paneId = reusePane ? BROWSER_RESEARCH_PANE_ID : "ticker-detail:linked";
@@ -72,7 +75,8 @@ test("a slow linked ticker applies its tab to the reused or new pane after hydra
     expect(stateRef.current.config.layout.instances.find((pane) => pane.instanceId === paneId)?.binding)
       .toMatchObject({ kind: "fixed", symbol: "VOD:XLON" });
     expect(focused).toEqual([paneId]);
-    expect(layouts).toBe(1);
+    // A new pane is placed, then bound to the listing found.
+    expect(layouts).toBe(reusePane ? 1 : 2);
     expect(stateRef.current.config.layout.instances.filter((pane) => pane.paneId === TICKER_RESEARCH_PANE_ID))
       .toHaveLength(reusePane ? 1 : 2);
   }
@@ -102,7 +106,7 @@ test.each(["ambiguous", "missing"])("%s ticker feedback waits for current naviga
       }),
       tickerRepository: { createTicker: async () => { throw new Error("Must not create an ambiguous ticker"); } } as any,
       dispatch: (action) => { actions.push(action); },
-      pluginRegistry: { notify: ({ body }: { body: string }) => { notifications.push(body); }, getDisabledPaneOwner: () => null } as any,
+      pluginRegistry: { panes: new Map(), notify: ({ body }: { body: string }) => { notifications.push(body); }, getDisabledPaneOwner: () => null } as any,
       buildPaneInstance: () => null, persistLayout() {}, activatePane() {}, focusVisiblePane() {},
     });
     return <text>Research</text>;
@@ -155,6 +159,79 @@ test.each(["floating", "docked", "only-floating"])("ticker research opens visibl
   expect(activated).toEqual(["ticker-detail:opened"]);
   if (mode !== "docked") expect(layout.floating.map((pane) => pane.instanceId)).toContain(source.instanceId);
   else expect(getDockedPaneIds(layout)).toContain(source.instanceId);
+});
+
+// Regression: a 13F, screener or news row's ticker the app did not hold yet showed no pane until search and
+// the listing's quote answered, seconds on a slow connection. The pane shows first; the lookup settles it.
+test.each(["found", "missing", "closed"] as const)("a row's ticker opens its pane before the lookup answers (%s)", async (outcome) => {
+  const source = createPaneInstance("13f", { instanceId: "13f:crowding", binding: { kind: "none" } });
+  const config = createDefaultConfig(":memory:");
+  config.layout = { dockRoot: { kind: "pane", instanceId: source.instanceId }, instances: [source], floating: [], detached: [] };
+  const stateRef = { current: createInitialState(config) };
+  stateRef.current.focusedPaneId = source.instanceId;
+  const lookup = Promise.withResolvers<void>();
+  const actions: AppAction[] = [];
+  const notifications: string[] = [];
+  const paneId = "ticker-research:opened";
+  let runtime!: ReturnType<typeof useAppTickerOpenRuntime>;
+  function Harness() {
+    runtime = useAppTickerOpenRuntime({
+      stateRef,
+      dataProvider: createTestDataProvider({
+        search: async () => {
+          await lookup.promise;
+          return outcome === "missing" ? [] : [{ providerId: "cloud", symbol: "WRBY", name: "Warby Parker Inc.", exchange: "NYSE", currency: "USD", type: "Common Stock" }];
+        },
+        getQuote: async () => { await lookup.promise; throw new Error("No quote available"); },
+      }),
+      tickerRepository: {
+        loadTicker: async () => null,
+        createTicker: async (metadata: TickerRecord["metadata"]) => ({ metadata }),
+      } as any,
+      dispatch: (action) => { actions.push(action); },
+      pluginRegistry: { panes: new Map([[TICKER_RESEARCH_PANE_ID, { id: TICKER_RESEARCH_PANE_ID }]]), events: { emit() {} },
+        notify: ({ body }: { body: string }) => { notifications.push(body); },
+        getTermSize: () => ({ width: 120, height: 40 }), getDisabledPaneOwner: () => null } as any,
+      buildPaneInstance: (type, options) => createPaneInstance(type, { ...options, instanceId: paneId }),
+      persistLayout: (layout, options) => {
+        stateRef.current.config.layout = layout;
+        if (options && "focusedPaneId" in options) stateRef.current.focusedPaneId = options.focusedPaneId ?? null;
+      },
+      activatePane: (id) => { stateRef.current.focusedPaneId = id; },
+      focusVisiblePane: (id) => { stateRef.current.focusedPaneId = id; },
+    });
+    return <text>Research</text>;
+  }
+  const rendered = await tui.render(<Harness />);
+  await act(async () => { await rendered.renderOnce(); });
+  const research = () => stateRef.current.config.layout.instances.find((pane) => pane.instanceId === paneId);
+
+  const opening = runtime.openPinnedTicker("WRBY", { floating: true });
+  // Search has not answered: the pane is already there, focused, and says it is loading.
+  expect(research()?.binding).toEqual({ kind: "fixed", symbol: "WRBY" });
+  expect(stateRef.current.config.layout.floating.map((pane) => pane.instanceId)).toEqual([paneId]);
+  expect(stateRef.current.focusedPaneId).toBe(paneId);
+  expect(isTickerPaneOpening(paneId)).toBe(true);
+  if (outcome === "closed") stateRef.current.config.layout = removePane(stateRef.current.config.layout, paneId);
+
+  lookup.resolve();
+  await act(async () => { await opening; });
+  expect(isTickerPaneOpening(paneId)).toBe(false);
+  if (outcome === "found") {
+    expect(research()?.binding).toMatchObject({ kind: "fixed", symbol: "WRBY", instrument: null, listing: { exchange: "NYSE" } });
+    expect(actions).toContainEqual(expect.objectContaining({ type: "UPDATE_TICKER", ticker: { metadata: expect.objectContaining({ ticker: "WRBY", exchange: "NYSE" }) } }));
+    expect(stateRef.current.focusedPaneId).toBe(paneId);
+    expect(notifications).toEqual([]);
+  } else if (outcome === "missing") {
+    // Nothing to open: the pane goes as it came, focus back on the row's pane, and the open says why.
+    expect(research()).toBeUndefined();
+    expect(stateRef.current.focusedPaneId).toBe(source.instanceId);
+    expect(notifications).toEqual(["Could not open WRBY: no quote or listing found."]);
+  } else {
+    // Closed while it loaded: the lookup does not open it again.
+    expect(research()).toBeUndefined();
+    expect(notifications).toEqual([]);
+  }
 });
 
 // `DES NEE` binds the public listing; a ticker link names no route. Both are the one security without a broker.

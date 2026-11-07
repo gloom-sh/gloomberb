@@ -4,7 +4,13 @@ import {
   type ASKGToolResultOutcome,
   type ASKGTransport,
 } from "../../../../api-client/askg";
-import { toolCallRemainingMs, type ASKGToolExecutor, type ASKGToolGate, type ASKGToolPreview } from "./executor";
+import {
+  CONFIRMATION_WAITING_NOTE,
+  toolCallRemainingMs,
+  type ASKGToolExecutor,
+  type ASKGToolGate,
+  type ASKGToolPreview,
+} from "./executor";
 import {
   activeTurn,
   askgReducer,
@@ -167,6 +173,15 @@ export class ASKGSessionController {
   private sessionRequest: Promise<ASKGSessionStartResponse> | null = null;
   private manifest: ASKGControllerManifest | null = null;
   private readonly confirmations = new Map<string, (answer: ConfirmationAnswer) => void>();
+  /**
+   * Calls that change the app, or ask first, take turns here (enterLane): each
+   * decides whether to ask, asks and runs before the next one starts, so at
+   * most one question is ever open and nothing it would press changes under
+   * it. Reads run at once.
+   */
+  private laneTail: Promise<void> = Promise.resolve();
+  /** Calls waiting for their turn, by tool call id; a question that opens refuses them. */
+  private readonly queued = new Map<string, () => void>();
   private readonly toolTasks = new Set<Promise<void>>();
   private turnAbort: AbortController | null = null;
   /** Ratings of one answer go out in the order they were made. */
@@ -409,7 +424,41 @@ export class ASKGSessionController {
       return;
     }
 
+    const refuse = (): Promise<void> => this.deliver({
+      turnId: call.turnId,
+      toolCallId: call.toolCallId,
+      status: "denied",
+      truncated: false,
+      elapsedMs: Math.max(0, this.now() - startedAt),
+      note: CONFIRMATION_WAITING_NOTE,
+    });
+    // Decided before anything is awaited, so two calls that arrive together
+    // take turns in the order they came.
+    const exclusive = this.takesTurns(call);
+    if (exclusive && this.confirmations.size > 0) {
+      await refuse();
+      return;
+    }
+    const turn = exclusive ? this.enterLane(call.toolCallId) : null;
+
     try {
+      if (turn && !(await turn.ready)) {
+        await refuse();
+        return;
+      }
+      if (signal?.aborted || this.toolRowStatus(call.toolCallId) !== "pending") return;
+      // Its turn came after the server stopped waiting for it.
+      if (turn && toolCallRemainingMs(call, this.now()) <= 0) {
+        await this.deliver({
+          turnId: call.turnId,
+          toolCallId: call.toolCallId,
+          status: "timeout",
+          truncated: false,
+          elapsedMs: Math.max(0, this.now() - startedAt),
+          note: "Tool call timed out.",
+        });
+        return;
+      }
       // A call that acts on what is on screen goes by the policy shared with
       // the terminal relay: a press asks, a scroll does not, and nothing acts
       // on a confirmation or while one waits.
@@ -446,6 +495,8 @@ export class ASKGSessionController {
         if (preview?.kind === "no-change") {
           confirmed = true;
         } else {
+          // One question at a time: every call still waiting for its turn is refused.
+          this.refuseQueued();
           this.dispatch({
             type: "tool-awaiting-confirmation",
             toolCallId: call.toolCallId,
@@ -506,14 +557,56 @@ export class ASKGSessionController {
       ));
     } finally {
       this.confirmations.delete(call.toolCallId);
+      turn?.leave();
     }
   }
 
-  /** The shared policy's word on a call that acts on what is on screen; null for any other call. */
+  /**
+   * Whether a call takes turns with the others: anything but a read this
+   * app's manifest knows, and anything that asks first. A tool the manifest
+   * does not know waits its turn too; the executor refuses it anyway.
+   */
+  private takesTurns(call: ASKGToolCallEvent): boolean {
+    const tool = this.manifest?.tools.find((entry) => entry.name === call.name);
+    return !tool
+      || tool.writeTier !== "read"
+      || call.writeTier !== "read"
+      || tool.confirm === "always"
+      || requiresLocalConfirmation(call);
+  }
+
+  /** Queues a call behind the ones before it; `ready` is false when a question opened while it waited. */
+  private enterLane(toolCallId: string): { ready: Promise<boolean>; leave: () => void } {
+    const ahead = this.laneTail;
+    let leave!: () => void;
+    const left = new Promise<void>((resolve) => {
+      leave = resolve;
+    });
+    this.laneTail = ahead.then(() => left);
+    const ready = new Promise<boolean>((resolve) => {
+      this.queued.set(toolCallId, () => resolve(false));
+      void ahead.then(() => {
+        this.queued.delete(toolCallId);
+        resolve(true);
+      });
+    });
+    return { ready, leave };
+  }
+
+  private refuseQueued(): void {
+    for (const refuse of this.queued.values()) refuse();
+    this.queued.clear();
+  }
+
+  /**
+   * The shared policy's word on a call that acts on what is on screen or a
+   * confirmed operation it describes; null for any other call. Throws when
+   * it cannot tell, and the call does not run.
+   */
   private async gateCall(call: ASKGToolCallEvent, signal?: AbortSignal): Promise<ASKGToolGate | null> {
     const manifest = this.manifest ?? await this.options.loadManifest();
     this.manifest = manifest;
-    return await this.options.getExecutor(manifest)?.gate?.(call, {
+    return await this.options.getExecutor(manifest)?.gate(call, {
       promptOpen: this.confirmationOpen(call.toolCallId),
       ...(signal ? { signal } : {}),
     }) ?? null;

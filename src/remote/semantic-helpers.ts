@@ -105,7 +105,7 @@ interface RemoteIndexSelectors<T> {
   value?: RemoteItemSelector<T>;
 }
 
-export function resolveRemoteItemIndex<T>(
+function resolveRemoteItemIndex<T>(
   input: unknown,
   items: readonly T[],
   selectors: RemoteIndexSelectors<T>,
@@ -123,6 +123,34 @@ export function resolveRemoteItemIndex<T>(
     }
   }
   return -1;
+}
+
+// How each kit control picks an item for a remote action. The control and the
+// policy that names the item before it runs (terminal-relay/policy.ts) both
+// call these, so the item a person is asked about is the one that runs.
+
+/** A Menu's `select`: the id itself, or `{ id }`, and nothing else. */
+export function remoteMenuItemId(input: unknown): string | undefined {
+  if (typeof input === "string") return input;
+  const id = remoteObjectProp(input, "id");
+  return typeof id === "string" ? id : undefined;
+}
+
+/** A ListView's `select` and `activate`: by index, id or label. */
+export function resolveRemoteListIndex<T extends { id?: unknown; label?: unknown }>(input: unknown, items: readonly T[]): number {
+  return resolveRemoteItemIndex(input, items, {
+    id: (item) => (typeof item.id === "string" ? item.id : undefined),
+    label: (item) => (typeof item.label === "string" ? item.label : undefined),
+  });
+}
+
+/** A DataTable's `selectRow` and `activateRow`: by index, or by the row's key as `id` or `key`. */
+export function resolveRemoteRowIndex<T>(
+  input: unknown,
+  rows: readonly T[],
+  keyOf: (row: T, index: number) => string | undefined,
+): number {
+  return resolveRemoteItemIndex(input, rows, { id: keyOf, key: keyOf });
 }
 
 function remoteChartScroll(input: unknown) {

@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState, type ComponentType, type Reac
 import { TextAttributes, type ScrollBoxRenderable } from "../../ui";
 import { hoverBg } from "../../theme/colors";
 import { t } from "../../i18n";
-import { useRemoteUiNode } from "../../remote/semantic-tree";
-import { resolveRemoteItemIndex } from "../../remote/semantic-helpers";
+import { useRemoteUiNode, useRemoteUiScope } from "../../remote/semantic-tree";
+import { resolveRemoteListIndex } from "../../remote/semantic-helpers";
 import { observeScrollBoxContentSize, observeScrollBoxViewportSize } from "../../renderers/opentui/scrollbox-layout";
 import { isPlainKey, type KeyboardModifierEventLike } from "../../utils/keyboard";
 
@@ -211,16 +211,18 @@ export function ListView({
   remoteMetadata,
 }: ListViewProps) {
   const colors = useThemeColors();
+  // Drawn inside a prompt (a dialog that lists a prompt's answers), it carries the prompt's scope.
+  const contextScope = useRemoteUiScope();
   useRemoteUiNode({
     role: remoteRole,
     label: remoteLabel ?? emptyMessage,
     actions: {
       select: (input) => {
-        const index = resolveListIndex(input, items);
+        const index = resolveRemoteListIndex(input, items);
         if (index >= 0 && !items[index]?.disabled) onSelect?.(index);
       },
       activate: (input) => {
-        const index = resolveListIndex(input, items);
+        const index = resolveRemoteListIndex(input, items);
         const item = index >= 0 ? items[index] : undefined;
         if (item && !item.disabled) {
           onSelect?.(index);
@@ -230,7 +232,7 @@ export function ListView({
     },
     metadata: {
       ...remoteMetadata,
-      scope: remoteScope,
+      scope: remoteScope ?? contextScope ?? undefined,
       selectedIndex,
       items: items.map((item, index) => ({
         index,
@@ -393,11 +395,4 @@ export function ListView({
       )}
     </Box>
   );
-}
-
-function resolveListIndex(input: unknown, items: ListViewItem[]): number {
-  return resolveRemoteItemIndex(input, items, {
-    id: (item) => item.id,
-    label: (item) => item.label,
-  });
 }

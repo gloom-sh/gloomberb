@@ -1,6 +1,7 @@
 import { beforeEach } from "bun:test";
 import { resetSeenPaneNoticesForTest } from "../components/pane-notice-seen";
 import { resetListingIndexForTests } from "../tickers/search/listing-index";
+import { resetOpeningTickerPanesForTests } from "../state/opening-ticker-panes";
 import { resetCrashReporterForTests } from "../telemetry/crash-reports";
 import { setCliAsciiLocaleOverride, setCliColorEnabledOverride, setCliPlainOverride, setCliWidthOverride } from "../utils/cli-output";
 
@@ -19,12 +20,14 @@ import { setCliAsciiLocaleOverride, setCliColorEnabledOverride, setCliPlainOverr
  * Data warnings the user has opened are remembered the same way, and would
  * leave a later test's footer icon muted instead of warning yellow. So are the
  * listings search answered, which would name a later test's symbol before its
- * own search does.
+ * own search does, and so are panes still waiting on a ticker lookup, which
+ * would show a later test's pane as loading.
  */
 beforeEach(() => {
   resetCrashReporterForTests();
   resetSeenPaneNoticesForTest();
   resetListingIndexForTests();
+  resetOpeningTickerPanesForTests();
   setCliAsciiLocaleOverride(null);
   setCliColorEnabledOverride(null);
   setCliPlainOverride(null);

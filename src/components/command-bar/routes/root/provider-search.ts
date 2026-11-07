@@ -14,6 +14,7 @@ import {
   QUICK_LOOK_TICKER_SEARCH_OPTIONS,
   tickerSearchFailureItems,
   venueDropdownResults,
+  withMajorCoinCandidate,
   type RootTickerReading,
 } from "../ticker-search/results";
 import { ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../../../sources/provider-errors";
@@ -78,19 +79,19 @@ function buildInstantAnswer(options: {
   const { query, fromIndex, cached, tickers, savedSymbolKeys, buildTickerSearchResultItems, localTickerSearchResultItems } = options;
   const localItems = () => localTickerSearchResultItems(query, { limit: 6 });
   if (cached) {
-    return { query, items: mergeTickerSearchResultItems(query, buildTickerSearchResultItems(cached, query), localItems()), fromIndex: false };
+    return { query, items: mergeTickerSearchResultItems(query, buildTickerSearchResultItems(withMajorCoinCandidate(query, cached, tickers), query), localItems()), fromIndex: false };
   }
   if (!fromIndex) return null;
   const symbol = symbolSearchQuery(query);
   const known = knownListings(symbol);
   if (known.length === 0 && !savedSymbolKeys.has(listingIndexKey(symbol))) return null;
-  const candidates = buildTickerSearchCandidates({
+  const candidates = withMajorCoinCandidate(symbol, buildTickerSearchCandidates({
     query: symbol,
     tickers,
     providerResults: known,
     totalLimit: LISTING_SEARCH_LIMIT,
     ...QUICK_LOOK_TICKER_SEARCH_OPTIONS,
-  });
+  }), tickers);
   if (candidates.length === 0) return null;
   // Only the exact lines: looser matches are search's to rank.
   const items = mergeTickerSearchResultItems(query, buildTickerSearchResultItems(candidates, query), localItems())
@@ -264,7 +265,7 @@ export function useRootProviderSearch(options: {
         published = true;
         setRootProviderResults(mergeTickerSearchResultItems(
           searchQuery,
-          buildTickerSearchResultItems(candidates, searchQuery),
+          buildTickerSearchResultItems(withMajorCoinCandidate(searchQuery, candidates, tickers), searchQuery),
           localTickerSearchResultItems(searchQuery, { limit: 6 }),
         ));
         setRootProviderResultsQuery(searchQuery);

@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { act, useReducer } from "react";
 import { apiClient, setCloudApiFetchTransport } from "../../../../api-client";
-import { PaneFooterProvider } from "../../../../components/layout/pane/footer";
+import { PaneFooterBar, PaneFooterProvider } from "../../../../components/layout/pane/footer";
+import { createRemoteUiRegistry, RemoteUiRegistryProvider, type RemoteUiRegistry } from "../../../../remote/semantic-tree";
 import { createOpenTuiTestHarness, TestDialogProvider } from "../../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../../test-support/pane";
@@ -33,6 +34,9 @@ let sessionStatus = 200;
 let storedConversations: Array<Record<string, unknown>> = [];
 let storedTranscripts: Record<string, Record<string, unknown>> = {};
 
+/** Set by a test that reads the remote UI tree: the pane renders under it, with the real footer bar. */
+let remoteRegistry: RemoteUiRegistry | null = null;
+
 function Harness({ paneWidth = PANE_WIDTH, focused = true }: { paneWidth?: number; focused?: boolean }) {
   const [state, dispatch] = useReducer(appReducer, undefined, () => {
     const initial = createInitialState(createTestPaneConfig("/tmp/gloomberb-askg-pane", {
@@ -43,7 +47,7 @@ function Harness({ paneWidth = PANE_WIDTH, focused = true }: { paneWidth?: numbe
     initial.config = { ...initial.config, portfolios: configPortfolios };
     return initial;
   });
-  return (
+  const pane = (
     <TestDialogProvider>
       <Box flexDirection="column" width={paneWidth} height={24}>
         <TestPaneProvider state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="gloomberb-cloud" runtime={createTestPluginRuntime()}>
@@ -52,6 +56,7 @@ function Harness({ paneWidth = PANE_WIDTH, focused = true }: { paneWidth?: numbe
               <>
                 <ASKGPane paneId={PANE_ID} paneType="askg" focused={focused} width={paneWidth} height={20} />
                 <Text>{`footer: ${footer.hints.map((hint) => `[${hint.key}]${hint.label}`).join(" ")}`}</Text>
+                {remoteRegistry ? <PaneFooterBar footer={footer} focused={focused} width={paneWidth} /> : null}
               </>
             )}
           </PaneFooterProvider>
@@ -59,6 +64,7 @@ function Harness({ paneWidth = PANE_WIDTH, focused = true }: { paneWidth?: numbe
       </Box>
     </TestDialogProvider>
   );
+  return remoteRegistry ? <RemoteUiRegistryProvider registry={remoteRegistry}>{pane}</RemoteUiRegistryProvider> : pane;
 }
 
 const tick = () => act(async () => {
@@ -101,71 +107,10 @@ beforeEach(() => {
   storedConversations = [];
   storedTranscripts = {};
   askgConversationListStore.reset();
+  remoteRegistry = null;
   // A transport that buffers whole responses, which is what the desktop had
   // before the streaming bridge: `isStreamingSupported` is false.
-  setCloudApiFetchTransport(async (url, init) => {
-    const parsed = new URL(url);
-    requests.push(`${init?.method ?? "GET"} ${parsed.pathname}`);
-    if (parsed.pathname === "/askg/session") {
-      if (typeof init?.body === "string") sessionBodies.push(JSON.parse(init.body));
-      if (sessionStatus !== 200) {
-        return new Response(JSON.stringify({ message: "Ask Gloom is unavailable." }), {
-          status: sessionStatus,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      return new Response(JSON.stringify({
-        protocolVersion: 1,
-        sessionId: "s1",
-        manifestHash: "sha256:test",
-        serverTools: [],
-        acceptedTools: [],
-        rejectedTools: [],
-        limits: {
-          requestsPerMinute: 20,
-          turnsPerDay: 300,
-          turnsRemainingToday: 300,
-          maxToolCallsPerTurn: 8,
-          turnWallClockMs: 60_000,
-          clientToolTimeoutMs: 10_000,
-        },
-        tier: "pro",
-        model: "gloom-1",
-        promptVersion: "v1",
-        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-      }), { status: 200, headers: { "content-type": "application/json" } });
-    }
-    if (parsed.pathname.startsWith("/askg/turns/") && init?.method === "PUT") {
-      const body = JSON.parse(String(init.body)) as Record<string, unknown>;
-      feedbackBodies.push(body);
-      // Like the route: the stored rating, and once sent always sent.
-      const shared = body.share === true || feedbackBodies.some((entry) => entry.share === true);
-      return new Response(JSON.stringify({
-        turnId: decodeURIComponent(parsed.pathname.split("/")[3] ?? ""),
-        rating: body.rating,
-        reason: body.reason ?? null,
-        shared,
-        updatedAt: "2026-09-20T10:01:00.000Z",
-      }), { status: 200, headers: { "content-type": "application/json" } });
-    }
-    if (parsed.pathname === "/askg/conversations") {
-      return new Response(
-        JSON.stringify({ count: storedConversations.length, items: storedConversations }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    }
-    const stored = parsed.pathname.startsWith("/askg/conversations/")
-      ? storedTranscripts[decodeURIComponent(parsed.pathname.split("/").at(-1) ?? "")]
-      : undefined;
-    if (parsed.pathname.startsWith("/askg/conversations/")) {
-      if (!stored) return new Response("{}", { status: 404 });
-      return new Response(JSON.stringify(stored), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    }
-    return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
-  });
+  setCloudApiFetchTransport(cloudFetch);
   apiClient.setSessionToken("askg-pane-session");
   apiClient.restoreCachedUser({ id: "u0", username: "ada", emailVerified: true, plan: "pro" });
   // The manifest only needs the pane catalog; no pane has to be registered for
@@ -176,6 +121,70 @@ beforeEach(() => {
     paneTemplates: new Map(),
   } as unknown as PluginRegistry);
 });
+
+async function cloudFetch(url: string, init?: RequestInit): Promise<Response> {
+  const parsed = new URL(url);
+  requests.push(`${init?.method ?? "GET"} ${parsed.pathname}`);
+  if (parsed.pathname === "/askg/session") {
+    if (typeof init?.body === "string") sessionBodies.push(JSON.parse(init.body));
+    if (sessionStatus !== 200) {
+      return new Response(JSON.stringify({ message: "Ask Gloom is unavailable." }), {
+        status: sessionStatus,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({
+      protocolVersion: 1,
+      sessionId: "s1",
+      manifestHash: "sha256:test",
+      serverTools: [],
+      acceptedTools: [],
+      rejectedTools: [],
+      limits: {
+        requestsPerMinute: 20,
+        turnsPerDay: 300,
+        turnsRemainingToday: 300,
+        maxToolCallsPerTurn: 8,
+        turnWallClockMs: 60_000,
+        clientToolTimeoutMs: 10_000,
+      },
+      tier: "pro",
+      model: "gloom-1",
+      promptVersion: "v1",
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (parsed.pathname.startsWith("/askg/turns/") && init?.method === "PUT") {
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    feedbackBodies.push(body);
+    // Like the route: the stored rating, and once sent always sent.
+    const shared = body.share === true || feedbackBodies.some((entry) => entry.share === true);
+    return new Response(JSON.stringify({
+      turnId: decodeURIComponent(parsed.pathname.split("/")[3] ?? ""),
+      rating: body.rating,
+      reason: body.reason ?? null,
+      shared,
+      updatedAt: "2026-09-20T10:01:00.000Z",
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (parsed.pathname === "/askg/conversations") {
+    return new Response(
+      JSON.stringify({ count: storedConversations.length, items: storedConversations }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }
+  const stored = parsed.pathname.startsWith("/askg/conversations/")
+    ? storedTranscripts[decodeURIComponent(parsed.pathname.split("/").at(-1) ?? "")]
+    : undefined;
+  if (parsed.pathname.startsWith("/askg/conversations/")) {
+    if (!stored) return new Response("{}", { status: 404 });
+    return new Response(JSON.stringify(stored), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+}
 
 afterEach(() => {
   setCloudApiFetchTransport(null);
@@ -310,6 +319,46 @@ describe("ASKGPane tool rows", () => {
   });
 });
 
+describe("ASKGPane while Gloom answers", () => {
+  test("the progress line stays under the tool rows until the answer is done", async () => {
+    let finish: () => void = () => {};
+    const finished = new Promise<void>((resolve) => { finish = resolve; });
+    spyOn(apiClient.askg, "isStreamingSupported").mockReturnValue(true);
+    const stream = spyOn(apiClient.askg, "streamTurn").mockImplementation(async (_session, request, options) => {
+      const turnId = request.turnId;
+      options.onEvent({ seq: 1, type: "session", sessionId: "s1", turnId, model: "gloom-1", promptVersion: "v1" });
+      // A server read reports only once it is done: nothing else says Gloom is still at it.
+      options.onEvent({
+        seq: 2, type: "tool-executed", turnId, toolCallId: "q1", name: "market.quotes", source: "server", status: "ok",
+        summary: { rowCount: 1, elapsedMs: 400, truncated: false }, args: { symbols: ["NVDA"] },
+      });
+      await finished;
+      // The trailer of questions to ask next is held back, and its blank lines are not.
+      options.onEvent({ seq: 3, type: "text-delta", turnId, delta: "NVDA is up 2%.\n\n" });
+      options.onEvent({ seq: 4, type: "follow-ups", turnId, questions: ["What moved AMD today?"] });
+      options.onEvent({ seq: 5, type: "done", turnId, reason: "complete" });
+      return "complete";
+    });
+    try {
+      const running = await ask("how is nvda doing");
+      expect(running).toContain("Quotes");
+      expect(running).toContain("Gloom is thinking…");
+
+      finish();
+      await flush();
+      const lines = tui.frame().split("\n");
+      expect(lines.join("\n")).not.toContain("Gloom is thinking…");
+      const answer = lines.findIndex((line) => line.includes("NVDA is up 2%."));
+      expect(answer).toBeGreaterThan(-1);
+      // One blank row between the answer and the question to ask next, as between every block.
+      expect(lines[answer + 1]?.trim()).toBe("");
+      expect(lines[answer + 2]).toContain("What moved AMD today?");
+    } finally {
+      stream.mockRestore();
+    }
+  });
+});
+
 describe("ASKGPane context", () => {
   test("a question carries the user's portfolio ids, so Gloom does not guess them", async () => {
     sessionStatus = 503;
@@ -441,6 +490,108 @@ describe("ASKGPane asked about a pane", () => {
     await flush();
     expect(JSON.stringify(sessionBodies[0]?.context)).not.toContain("120 shares");
     expect(sessionLayout()?.attachedPane?.contents).toContain("not attached");
+  });
+});
+
+describe("ASKGPane prompts and assistants", () => {
+  /** The nodes an assistant's UI call could reach, by what they answer. */
+  function promptNodes(registry: RemoteUiRegistry, labels: string[], hintIds: string[]) {
+    const nodes = registry.snapshot();
+    return {
+      buttons: nodes.filter((node) => node.role === "button" && labels.includes(node.label ?? "")),
+      hints: nodes.filter((node) => node.role === "pane-hint" && hintIds.includes(String(node.metadata?.id))),
+    };
+  }
+
+  test("Approve, Decline and their keys in the footer are marked as Ask Gloom's own prompt", async () => {
+    remoteRegistry = createRemoteUiRegistry();
+    const encoder = new TextEncoder();
+    // A turn that asks to delete a layout and then waits for the answer.
+    setCloudApiFetchTransport(cloudFetch, {
+      streamFetch: async (url, init) => {
+        requests.push(`${init?.method ?? "GET"} ${new URL(url).pathname}`);
+        const { turnId } = JSON.parse(String(init?.body)) as { turnId: string };
+        const call = {
+          seq: 1,
+          type: "tool-call",
+          turnId,
+          toolCallId: "call-1",
+          name: "layout.delete",
+          args: { index: 0 },
+          writeTier: "ui-write",
+          requiresConfirmation: true,
+          preview: null,
+          timeoutMs: 60_000,
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        };
+        return new Response(new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(`id: 1\nevent: tool-call\ndata: ${JSON.stringify(call)}\n\n`));
+            init?.signal?.addEventListener("abort", () => controller.close());
+          },
+        }), { status: 200, headers: { "content-type": "text/event-stream" } });
+      },
+    });
+    await ask("delete my first layout");
+    expect(tui.frame()).toContain("Approve");
+
+    const { buttons, hints } = promptNodes(remoteRegistry, ["Approve", "Decline"], ["approve", "decline"]);
+    expect(buttons.map((node) => [node.label, node.metadata?.scope])).toEqual([["Approve", "askg-prompt"], ["Decline", "askg-prompt"]]);
+    expect(hints.map((node) => [node.metadata?.id, node.metadata?.scope])).toEqual([["approve", "askg-prompt"], ["decline", "askg-prompt"]]);
+  });
+
+  test("an order's question shows every line of it, its size and price included", async () => {
+    const lines = ["Symbol: AAPL", "Side: buy", "Size: 100", "Order type: limit", "Price: 187.5", "Time in force: day", "Account: U123"];
+    const encoder = new TextEncoder();
+    setCloudApiFetchTransport(cloudFetch, {
+      streamFetch: async (url, init) => {
+        requests.push(`${init?.method ?? "GET"} ${new URL(url).pathname}`);
+        const { turnId } = JSON.parse(String(init?.body)) as { turnId: string };
+        const call = {
+          seq: 1,
+          type: "tool-call",
+          turnId,
+          toolCallId: "call-1",
+          name: "capability.invoke",
+          args: {
+            capabilityId: "broker.example",
+            operationId: "placeOrder",
+            payload: { symbol: "AAPL", side: "buy", quantity: 100, orderType: "limit", limitPrice: 187.5, timeInForce: "day", accountId: "U123" },
+          },
+          writeTier: "broker",
+          requiresConfirmation: true,
+          // As the app words an order (terminal-relay/policy.ts): one line a field.
+          preview: lines.join("\n"),
+          timeoutMs: 60_000,
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        };
+        return new Response(new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(`id: 1\nevent: tool-call\ndata: ${JSON.stringify(call)}\n\n`));
+            init?.signal?.addEventListener("abort", () => controller.close());
+          },
+        }), { status: 200, headers: { "content-type": "text/event-stream" } });
+      },
+    });
+    await ask("buy 100 AAPL at 187.50");
+    const frame = tui.frame();
+    expect(frame).toContain("Approve");
+    for (const line of lines) expect(frame).toContain(line);
+  });
+
+  test("Attach, Leave out and their keys in the footer are marked as Ask Gloom's own prompt", async () => {
+    remoteRegistry = createRemoteUiRegistry();
+    sessionStatus = 503;
+    await renderPane(PANE_WIDTH);
+    await act(async () => {
+      requestASKGPaneAttachment(askedPane({ paneId: "portfolio-list:main", paneType: "portfolio-list", personal: true }));
+    });
+    await flush();
+    expect(tui.frame()).toContain("Leave out");
+
+    const { buttons, hints } = promptNodes(remoteRegistry, ["Attach", "Leave out"], ["attach-pane", "leave-out-pane"]);
+    expect(buttons.map((node) => [node.label, node.metadata?.scope])).toEqual([["Attach", "askg-prompt"], ["Leave out", "askg-prompt"]]);
+    expect(hints.map((node) => [node.metadata?.id, node.metadata?.scope])).toEqual([["attach-pane", "askg-prompt"], ["leave-out-pane", "askg-prompt"]]);
   });
 });
 

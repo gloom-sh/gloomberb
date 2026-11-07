@@ -34,6 +34,8 @@ export interface PaneMenuEntry {
   accelerator?: string;
   checked?: boolean;
   divider?: boolean;
+  /** See ContextMenuActionItem.remoteScope. */
+  remoteScope?: string;
   action: () => void;
 }
 
@@ -65,7 +67,13 @@ export function paneFooterMenuItems(footer: CombinedPaneFooter | undefined): Con
   for (const hint of footer.hints) {
     if (hint.disabled || !hint.onPress) continue;
     const onPress = hint.onPress;
-    items.push({ id: `pane-hint:${hint.id}`, label: paneHintTitle(hint), accelerator: hint.key, onSelect: () => onPress() });
+    items.push({
+      id: `pane-hint:${hint.id}`,
+      label: paneHintTitle(hint),
+      accelerator: hint.key,
+      onSelect: () => onPress(),
+      ...(hint.remoteScope ? { remoteScope: hint.remoteScope } : {}),
+    });
   }
   for (const segment of footer.info) {
     if (segment.disabled || !segment.onPress || !segment.shortcut) continue;
@@ -293,6 +301,7 @@ export function menuItemsForFallback(
       accelerator: item.accelerator
         ? formatShortcutForHost(item.accelerator, shortcutDisplayMode)
         : undefined,
+      ...(item.remoteScope ? { remoteScope: item.remoteScope } : {}),
       action: () => { void item.onSelect?.(); },
     }];
   });

@@ -528,10 +528,12 @@ describe("OnboardingWizard", () => {
       expect(frame).toContain(label);
     }
 
-    // Continue waits for a desk.
+    // Continue waits for a desk: Enter with none ticked ticks the highlighted one instead, and Space unticks it.
     await pressEnter();
     await act(async () => { await Bun.sleep(20); await tui.setup().renderOnce(); });
     expect(capturedConfig?.onboardingProgress?.stage ?? "desks").toBe("desks");
+    expect(tui.frame()).toContain("[✓] Equities");
+    await pressSpace();
 
     // Rates, then Equities, then FX & macro with the mouse; Options is a fourth
     // and stays unticked; then Equities off again.
