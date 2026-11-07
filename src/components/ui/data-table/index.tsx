@@ -6,7 +6,7 @@ import type {
   DataTableProps,
 } from "./types";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
-import { remoteNumberValue, resolveRemoteItemIndex } from "../../../remote/semantic-helpers";
+import { remoteNumberValue, resolveRemoteRowIndex } from "../../../remote/semantic-helpers";
 import { useOptionalPaneInstanceId } from "../../../state/app/context";
 import { registerPaneTableExporter } from "../../../state/pane-table-export-registry";
 import { createDataTableCsv } from "../../data-table/export";
@@ -124,8 +124,7 @@ function resolveTableIndex<T, C extends DataTableColumn>(
   props: DataTableProps<T, C>,
 ): number {
   // `id` reads the same key the snapshot publishes as `selectedId`.
-  const key = (item: T, index: number) => props.getItemKey(item, index);
-  return resolveRemoteItemIndex(input, props.items, { id: key, key });
+  return resolveRemoteRowIndex(input, props.items, (item, index) => props.getItemKey(item, index));
 }
 
 /**

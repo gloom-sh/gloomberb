@@ -500,6 +500,45 @@ describe("ASKGPane prompts and assistants", () => {
     expect(hints.map((node) => [node.metadata?.id, node.metadata?.scope])).toEqual([["approve", "askg-prompt"], ["decline", "askg-prompt"]]);
   });
 
+  test("an order's question shows every line of it, its size and price included", async () => {
+    const lines = ["Symbol: AAPL", "Side: buy", "Size: 100", "Order type: limit", "Price: 187.5", "Time in force: day", "Account: U123"];
+    const encoder = new TextEncoder();
+    setCloudApiFetchTransport(cloudFetch, {
+      streamFetch: async (url, init) => {
+        requests.push(`${init?.method ?? "GET"} ${new URL(url).pathname}`);
+        const { turnId } = JSON.parse(String(init?.body)) as { turnId: string };
+        const call = {
+          seq: 1,
+          type: "tool-call",
+          turnId,
+          toolCallId: "call-1",
+          name: "capability.invoke",
+          args: {
+            capabilityId: "broker.example",
+            operationId: "placeOrder",
+            payload: { symbol: "AAPL", side: "buy", quantity: 100, orderType: "limit", limitPrice: 187.5, timeInForce: "day", accountId: "U123" },
+          },
+          writeTier: "broker",
+          requiresConfirmation: true,
+          // As the app words an order (terminal-relay/policy.ts): one line a field.
+          preview: lines.join("\n"),
+          timeoutMs: 60_000,
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        };
+        return new Response(new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(`id: 1\nevent: tool-call\ndata: ${JSON.stringify(call)}\n\n`));
+            init?.signal?.addEventListener("abort", () => controller.close());
+          },
+        }), { status: 200, headers: { "content-type": "text/event-stream" } });
+      },
+    });
+    await ask("buy 100 AAPL at 187.50");
+    const frame = tui.frame();
+    expect(frame).toContain("Approve");
+    for (const line of lines) expect(frame).toContain(line);
+  });
+
   test("Attach, Leave out and their keys in the footer are marked as Ask Gloom's own prompt", async () => {
     remoteRegistry = createRemoteUiRegistry();
     sessionStatus = 503;

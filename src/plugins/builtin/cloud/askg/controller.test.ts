@@ -985,12 +985,17 @@ function screenHarness() {
     { key: "MSFT", cells: [{ text: "MSFT" }, { text: "40" }] },
   ];
   const layouts = [{ name: "Main" }, { name: "Semis" }];
-  let treeFails = false;
+  const capabilities = [{ id: "broker.example", name: "Example Broker", operations: [{ id: "placeOrder", title: "Place order" }] }];
+  let treeFailures = 0;
   const ran: RemoteControlRequest[] = [];
   const remoteHandler = async (request: RemoteControlRequest): Promise<RemoteControlResponse> => {
     if (request.type === "get") {
       if (request.resource === "ui://tree") {
-        return treeFails ? { ok: false, error: { code: "remote_error", message: "The screen could not be read." } } : { ok: true, data: screen };
+        if (treeFailures > 0) {
+          treeFailures -= 1;
+          return { ok: false, error: { code: "remote_error", message: "The screen could not be read." } };
+        }
+        return { ok: true, data: screen };
       }
       if (request.resource.startsWith("ui://node/")) {
         const node = screen.find((entry) => entry.id === decodeURIComponent(request.resource.slice("ui://node/".length)));
@@ -1005,6 +1010,7 @@ function screenHarness() {
         };
       }
       if (request.resource === "app://layouts") return { ok: true, data: layouts };
+      if (request.resource === "app://capabilities") return { ok: true, data: capabilities };
       return { ok: true, data: [] };
     }
     ran.push(request);
@@ -1038,8 +1044,9 @@ function screenHarness() {
     paneTitles,
     tableRows,
     layouts,
-    failTree: () => {
-      treeFails = true;
+    /** The next `times` reads of the screen fail; every one, unless told. */
+    failTree: (times = Number.POSITIVE_INFINITY) => {
+      treeFailures = times;
     },
     call,
     /** The UI and layout operations that ran, not the reads and dry runs that vetted them. */
@@ -1254,6 +1261,50 @@ describe("Ask Gloom acting on the screen", () => {
     h.controller.resolveConfirmation(remove, true);
     await flush();
     expect(h.ran()).toEqual(["layout.delete"]);
+    h.controller.dispose();
+  });
+
+  test("an order through a plugin is asked about with every line of it, not the plugin's ids again", async () => {
+    const h = screenHarness();
+    await flush();
+    const id = h.call("capability.invoke", {
+      capabilityId: "broker.example",
+      operationId: "placeOrder",
+      payload: { symbol: "AAPL", side: "buy", quantity: 100, orderType: "limit", limitPrice: 187.5, timeInForce: "day", accountId: "U123" },
+    });
+    await flush();
+    expect(h.question()).toMatchObject({
+      toolCallId: id,
+      confirmTitle: "Place order with Example Broker",
+      preview: "Symbol: AAPL\nSide: buy\nSize: 100\nOrder type: limit\nPrice: 187.5\nTime in force: day\nAccount: U123",
+    });
+    h.controller.dispose();
+  });
+
+  test("a call whose screen could not be read, or whose turn was stopped, lets the next call have its turn", async () => {
+    const h = screenHarness();
+    await flush();
+    // The first look at the screen fails; the call behind it still gets asked about.
+    h.failTree(1);
+    const unread = h.call("ui.invoke_matching", PLACE_ORDER);
+    const next = h.call("ui.invoke_matching", PLACE_ORDER);
+    await flush();
+    expect(h.result(unread)?.status).toBe("error");
+    expect(h.question()?.toolCallId).toBe(next);
+
+    // Stopped while its question waits: the next turn's call is not left behind it.
+    h.controller.cancel();
+    await flush();
+    expect(h.question()).toBeNull();
+    void h.controller.ask("try again");
+    await flush();
+    const retried = h.call("ui.invoke_matching", PLACE_ORDER);
+    await flush();
+    expect(h.question()?.toolCallId).toBe(retried);
+    h.controller.resolveConfirmation(retried, true);
+    await flush();
+    expect(h.result(retried)?.status).toBe("ok");
+    expect(h.ran()).toEqual(["ui.invokeMatching"]);
     h.controller.dispose();
   });
 

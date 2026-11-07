@@ -109,6 +109,7 @@ export function ChoiceDialog({
           selectedIndex={selectedIndex}
           bgColor={bgColor ?? colors.bg}
           emptyMessage={t("No choices.")}
+          remoteLabel={title}
           rowGap={0}
           surface="framed"
           height={Math.min(Math.max(items.length, 1), MAX_VISIBLE_CHOICE_ROWS)}

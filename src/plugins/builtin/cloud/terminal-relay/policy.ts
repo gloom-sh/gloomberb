@@ -1,5 +1,6 @@
 import { commandBarResultsFromNodes } from "../../../../remote/command-bar";
 import { findCommandBarResult, findMatchingUiNode } from "../../../../remote/matching";
+import { remoteMenuItemId, resolveRemoteListIndex, resolveRemoteRowIndex } from "../../../../remote/semantic-helpers";
 import type { RemoteSideEffectLevel, RemoteUiNodeSnapshot } from "../../../../remote/types";
 import { logFailure } from "../../../../utils/log-failure";
 import { keyArgumentLines, shortValue, type CallSummary } from "./summary";
@@ -224,49 +225,32 @@ function controlName(node: RemoteUiNodeSnapshot): string {
   return node.label ? `"${shortValue(node.label)}" (${node.role})` : `an unlabelled ${node.role}`;
 }
 
-/** Actions that pick one row or item of the control, by index, id, key or label. */
+/** Actions that run one row or item of the control: a menu's item, a table's row, a list's entry. */
 const ITEM_ACTIONS: ReadonlySet<string> = new Set(["activate", "activateRow", "select"]);
 
-interface ItemEntry {
-  index: number;
-  keys: string[];
-  label: string;
+function textOf(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
 }
 
-/** A list's or menu's items (`metadata.items`), or a table's rows from its detail. */
-function itemEntries(metadata: Record<string, unknown> | undefined): ItemEntry[] {
-  const items = Array.isArray(metadata?.items) ? metadata.items : [];
-  if (items.length > 0) {
-    return items.flatMap((entry, position) => {
-      if (!isRecord(entry) || typeof entry.label !== "string") return [];
-      return [{
-        index: typeof entry.index === "number" ? entry.index : position,
-        keys: [entry.id, entry.label, entry.value].filter((key): key is string => typeof key === "string"),
-        label: entry.label,
-      }];
-    });
+/**
+ * The label of the item an action's input picks, found the way the control
+ * itself finds it (semantic-helpers.ts): a Menu by id alone, a DataTable's
+ * row by index or key, a ListView's entry by index, id or label.
+ */
+function pickedItemLabel(role: string, metadata: Record<string, unknown> | undefined, input: unknown): string | undefined {
+  if (role === "menu") {
+    const id = remoteMenuItemId(input);
+    const items = Array.isArray(metadata?.items) ? metadata.items.filter(isRecord) : [];
+    return id === undefined ? undefined : textOf(items.find((item) => item.id === id)?.label);
   }
-  const rows = Array.isArray(metadata?.rows) ? metadata.rows : [];
-  return rows.flatMap((row, position) => {
-    if (!isRecord(row) || row.section === true) return [];
-    const cells = Array.isArray(row.cells) ? row.cells.filter(isRecord) : [];
-    const label = cells.map((cell) => (typeof cell.text === "string" ? cell.text : "")).find(Boolean);
-    if (!label) return [];
-    return [{ index: position, keys: typeof row.key === "string" ? [row.key] : [], label }];
-  });
-}
-
-/** The row or item an action's input picks, as the control resolves it (resolveRemoteItemIndex). */
-function pickedItem(entries: ItemEntry[], input: unknown): ItemEntry | undefined {
-  if (typeof input === "number") return entries.find((entry) => entry.index === input);
-  if (typeof input === "string") return entries.find((entry) => entry.keys.includes(input));
-  if (!isRecord(input)) return undefined;
-  if (typeof input.index === "number") return entries.find((entry) => entry.index === input.index);
-  for (const key of ["id", "key", "label", "value"]) {
-    const value = input[key];
-    if (typeof value === "string") return entries.find((entry) => entry.keys.includes(value));
+  if (role === "table") {
+    const rows = Array.isArray(metadata?.rows) ? metadata.rows.map((row) => (isRecord(row) ? row : {})) : [];
+    const row = rows[resolveRemoteRowIndex(input, rows, (entry) => (typeof entry.key === "string" ? entry.key : undefined))];
+    const cells = Array.isArray(row?.cells) ? row.cells.filter(isRecord) : [];
+    return cells.map((cell) => textOf(cell.text)).find(Boolean);
   }
-  return undefined;
+  const items = Array.isArray(metadata?.items) ? metadata.items.map((item) => (isRecord(item) ? item : {})) : [];
+  return textOf(items[resolveRemoteListIndex(input, items)]?.label);
 }
 
 /** One node with its pane's title and its detail (a table's rows); null when unreadable. */
@@ -308,7 +292,7 @@ async function describeTarget(
   const detail = await readNodeDetail(node.id, read);
   const paneTitle = typeof detail?.paneTitle === "string" && detail.paneTitle.trim() ? shortValue(detail.paneTitle) : null;
   const metadata = isRecord(detail?.metadata) ? detail.metadata : node.metadata;
-  const item = ITEM_ACTIONS.has(action) ? pickedItem(itemEntries(metadata), input)?.label : undefined;
+  const item = ITEM_ACTIONS.has(action) ? pickedItemLabel(node.role, metadata, input) : undefined;
   const control = controlName(node);
   const title = item
     ? `Choose "${shortValue(item)}" ${node.role === "menu" ? "from" : "in"} ${control}`
@@ -358,7 +342,14 @@ async function planLocalUiCall(
   if (!actionRunsSomething(target, action)) {
     return {
       confirm: null,
-      recheck: async (open) => (open || isPromptNode(await find()) ? PROMPT_OPEN : null),
+      // Nothing was asked, so it runs only if it still runs nothing: the
+      // control may have appeared, or a select field's menu given way to a
+      // plain one, since the screen was read.
+      recheck: async (open) => {
+        const now = await find();
+        if (open || isPromptNode(now)) return PROMPT_OPEN;
+        return actionRunsSomething(now, action) ? TARGET_CHANGED : null;
+      },
     };
   }
   const asked = await describeTarget(target, action, input.input, read);
@@ -461,13 +452,11 @@ export async function describeConfirmedOperation(
       logFailure("cloud.terminal-relay", "Read plugin names for a confirmation failed")(error);
     }
     return {
+      // The title names the plugin and the operation; the lines are the
+      // order itself, every one of them in sight (symbol, side, size, price).
       confirm: {
         title: `${shortValue(operationTitle)} with ${shortValue(plugin)}`,
-        lines: [
-          { label: "Plugin", value: `${shortValue(plugin)}${plugin !== capabilityId ? ` (${shortValue(capabilityId)})` : ""}` },
-          { label: "Operation", value: shortValue(operationId) },
-          ...keyArgumentLines(input.payload),
-        ],
+        lines: keyArgumentLines(input.payload),
       },
     };
   }

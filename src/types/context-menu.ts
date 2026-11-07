@@ -27,6 +27,8 @@ export interface ContextMenuActionItem extends ContextMenuItemBase {
   label: string;
   onSelect?: () => void | Promise<void>;
   submenu?: ContextMenuItem[];
+  /** The prompt the item answers (a pane's Approve), as `metadata.scope` on the menu drawn in the app. */
+  remoteScope?: string;
 }
 
 export interface ContextMenuRoleItem extends ContextMenuItemBase {
