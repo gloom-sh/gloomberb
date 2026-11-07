@@ -415,13 +415,34 @@ main() {
     fi
   fi
 
+  # A folder this shell does not search (~/.local/bin on a new Mac) cannot run
+  # the command by name: the first run goes by its path, so the line printed
+  # works pasted into this same terminal, and the PATH line, appended to the
+  # login shell's startup file, makes the name work in every new one.
   case ":$PATH:" in
-    *":$INSTALL_DIR:"*) ;;
-    *) echo "Warning: $INSTALL_DIR is not in your PATH. Add it with:"
-       echo "  export PATH=\"$INSTALL_DIR:\$PATH\"" ;;
+    *":$INSTALL_DIR:"*)
+      echo "Run '${RUN_COMMAND}' to start."
+      ;;
+    *)
+      case "$INSTALL_DIR" in
+        "$HOME"/*) path_dir="\$HOME/${INSTALL_DIR#"$HOME"/}" ;;
+        *) path_dir="$INSTALL_DIR" ;;
+      esac
+      case "${SHELL##*/}" in
+        zsh) path_hint="echo 'export PATH=\"${path_dir}:\$PATH\"' >> ~/.zshrc" ;;
+        bash)
+          if [ "$os" = "darwin" ]; then bash_profile="~/.bash_profile"; else bash_profile="~/.bashrc"; fi
+          path_hint="echo 'export PATH=\"${path_dir}:\$PATH\"' >> ${bash_profile}"
+          ;;
+        fish) path_hint="fish_add_path ${INSTALL_DIR}" ;;
+        *) path_hint="export PATH=\"${INSTALL_DIR}:\$PATH\"  (in your shell's startup file)" ;;
+      esac
+      echo "${INSTALL_DIR} is not on your PATH yet, so start Gloom with:"
+      echo "  ${INSTALL_DIR}/${RUN_COMMAND}"
+      echo "To run it as '${RUN_COMMAND}' in new terminals, add the folder to your PATH:"
+      echo "  ${path_hint}"
+      ;;
   esac
-
-  echo "Run '${RUN_COMMAND}' to start."
 }
 
 # Keep invocation last: a truncated download must not begin installing.
