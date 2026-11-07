@@ -9,6 +9,7 @@ import { Button, ListView, type ListViewItem } from "../ui";
 import type { ButtonProps } from "../ui/button";
 import { ListRowLines } from "../ui/list-row-lines";
 import { TITLEBAR_OVERLAY_HEIGHT_PX } from "../layout/titlebar-overlay";
+import { RemoteSurface, useRemoteSurfaceHeader, useRemoteSurfaceHeading } from "../../remote/surface";
 
 /**
  * Spacing for the DOM card, in px. The card is a form the user fills in, not
@@ -58,6 +59,9 @@ export function OnboardingModal({
   const desktop = useUiCapabilities().nativePaneChrome === true;
   const viewport = useViewport();
 
+  // It covers the app, so remote control reads it as the open form.
+  const content = <RemoteSurface kind="setup">{children}</RemoteSurface>;
+
   if (desktop) {
     return (
       <Box
@@ -92,7 +96,7 @@ export function OnboardingModal({
           }}
           data-gloom-role="onboarding-modal"
         >
-          {children}
+          {content}
         </Box>
       </Box>
     );
@@ -126,7 +130,7 @@ export function OnboardingModal({
         borderColor={colors.borderFocused}
         data-gloom-role="onboarding-modal"
       >
-        {children}
+        {content}
       </Box>
     </Box>
   );
@@ -245,6 +249,7 @@ export function OnboardingTitle({
 }) {
   const colors = useThemeColors();
   const desktop = useUiCapabilities().nativePaneChrome === true;
+  useRemoteSurfaceHeading({ step, title: titleSuffix ? `${title} ${titleSuffix}` : title, description });
 
   if (desktop) {
     return (
@@ -340,6 +345,10 @@ export function OnboardingHeader({
     { id: "cloud", label: t("Gloom Cloud") },
     { id: "pro", label: t("Pro") },
   ];
+  useRemoteSurfaceHeader({
+    section: sections.find((section) => section.id === active)?.label,
+    cancel: showDismiss && !dismissing && !dismissDisabled ? onDismiss : undefined,
+  });
 
   if (!desktop) {
     return (

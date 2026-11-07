@@ -364,6 +364,61 @@ describe("createAppRemoteController", () => {
     expect((await controller.handle({ type: "call", operation: "app.search", input: { query: "NVDA" } })).ok).toBe(true);
   });
 
+  test("with the setup dialog over the app, the bar stays shut and a change made behind it says so", async () => {
+    const { controller, getState, setUiNodes } = createRegistryHarness();
+    const paneId = getState().config.layout.instances[0]!.instanceId;
+    setUiNodes([
+      { id: "ui:pane-row", role: "button", label: "NVDA", paneId, actions: ["press"] },
+      { id: "ui:skip", role: "button", label: "Skip", actions: ["press"], metadata: { scope: "form" } },
+      { id: "ui:setup", role: "form", label: "What do you hold?", actions: ["submit"], metadata: { scope: "form", kind: "setup", title: "What do you hold?" } },
+    ]);
+    const behind = 'The setup dialog "What do you hold?" covers the app, so this change is behind it until setup is finished or skipped. app://form lists its fields and buttons.';
+
+    const batch = await controller.handle({
+      type: "batch",
+      requests: [
+        { type: "call", operation: "app.search", input: { mode: "ticker", query: "nvidia" } },
+        { type: "call", operation: "commandBar.activateResult", input: { index: 0 } },
+      ],
+    });
+    expect(batch).toMatchObject({
+      ok: true,
+      data: { ok: false, haltedAt: 0, responses: [{ ok: false, error: { message: expect.stringContaining("the command bar would open behind it") } }] },
+    });
+    expect(getState().commandBarOpen).toBe(false);
+
+    // A pane change, or a press on a pane's control, lands behind it; the setup's own controls do not.
+    expect(await controller.handle({ type: "call", operation: "pane.focus", input: { paneId } }))
+      .toMatchObject({ ok: true, warnings: [behind] });
+    expect(await controller.handle({ type: "call", operation: "ui.invoke", input: { nodeId: "ui:pane-row" } }))
+      .toMatchObject({ ok: true, warnings: [behind] });
+    expect((await controller.handle({ type: "call", operation: "ui.invokeMatching", input: { role: "button", label: "Skip" } })).warnings)
+      .toBeUndefined();
+    expect(await controller.handle({ type: "batch", requests: [{ type: "call", operation: "layout.undo", input: {} }] }))
+      .toMatchObject({ ok: true, warnings: [behind] });
+
+    // It is not a dialog of the stack: app.closeDialog says how it is left instead.
+    expect(await controller.handle({ type: "call", operation: "app.closeDialog", input: {} }))
+      .toMatchObject({ ok: false, error: { message: expect.stringContaining("cannot skip the whole setup") } });
+  });
+
+  test("the snapshot leaves out the schema, the guide and what panes loaded, and names where they are; /full keeps them", async () => {
+    const { controller, getState } = createRegistryHarness();
+    const paneId = getState().config.layout.instances[0]!.instanceId;
+    await controller.handle({ type: "call", operation: "pane.setState", input: { paneId, patch: { stories: ["a", "b"] } } });
+
+    const lean = await controller.handle({ type: "get", resource: "app://snapshot" });
+    const full = await controller.handle({ type: "get", resource: "app://snapshot/full" });
+    if (!lean.ok || !full.ok) throw new Error("snapshot read failed");
+    const leanData = lean.data as Record<string, unknown> & { panes: Array<Record<string, unknown>> };
+    const fullData = full.data as Record<string, unknown> & { panes: Array<Record<string, unknown>> };
+    expect(Object.keys(leanData)).toEqual(["rev", "app", "config", "panes", "commandBar", "form", "ui", "references"]);
+    expect(leanData.panes.find((pane) => pane.instanceId === paneId)).not.toHaveProperty("runtimeState");
+    expect(Object.keys(fullData)).toEqual(["rev", "app", "config", "panes", "commandBar", "form", "ui", "schema", "help"]);
+    expect(fullData.panes.find((pane) => pane.instanceId === paneId)?.runtimeState).toEqual({ stories: ["a", "b"] });
+    expect(JSON.stringify(leanData).length).toBeLessThan(JSON.stringify(fullData).length / 2);
+  });
+
   test("exposes and activates semantic command-bar results", async () => {
     const { controller, invokedUiActions, setUiNodes } = createRegistryHarness();
     setUiNodes([

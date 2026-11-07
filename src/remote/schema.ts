@@ -14,7 +14,8 @@ import {
 } from "./pane-screenshot";
 
 export const REMOTE_RESOURCES: RemoteResourceSchema[] = [
-  { uri: "app://snapshot", description: "Current app snapshot including layout, focus, panes, command bar, and plugin/capability catalogs. app.activePanel is deprecated and always \"left\"; read app.focusedPaneId." },
+  { uri: "app://snapshot", description: "What is on screen, in one read: focus, config with the layouts, panes, the command bar, the open form or setup dialog (form), and the labelled UI nodes (ui). Left out for size, and named in references: the schema and this guide, what each pane loaded (runtime state), and unlabelled UI nodes. app.activePanel is deprecated and always \"left\"; read app.focusedPaneId." },
+  { uri: "app://snapshot/full", description: "app://snapshot with everything it leaves out inline: the schema and guide, pane runtime state and every UI node. Often several times the size." },
   { uri: "app://config", description: "Current app config.", patchable: true },
   { uri: "app://layout/current", description: "Current active layout.", patchable: true },
   { uri: "app://layouts", description: "Saved layouts." },
@@ -26,7 +27,7 @@ export const REMOTE_RESOURCES: RemoteResourceSchema[] = [
   { uri: "app://commands", description: "Registered command-bar commands." },
   { uri: "app://command-bar", description: "Current command-bar state and semantic result rows." },
   { uri: "app://command-bar/results", description: "Current semantic command-bar result rows." },
-  { uri: "app://form", description: "The open form or confirm: kind, title, fields with values and options, error, pending state, and submit label, with covered: true while another dialog sits over it; { open: false } when none is open, with otherDialogOpen: true while another dialog (pane settings) is." },
+  { uri: "app://form", description: "The open form or confirm: kind, title, fields with values and options, error, pending state, and submit label, with covered: true while another dialog sits over it; { open: false } when none is open, with otherDialogOpen: true while another dialog (pane settings) is. The first-run setup dialog reads as kind 'setup', with its step, title, fields and buttons by node id." },
   { uri: "app://capabilities", description: "Registered plugin capability manifests." },
   { uri: "app://accounts", description: "Broker profiles and their accounts: net liquidation, cash by currency, margin requirements, margin loan, leverage, day and unrealized P&L, with source and as-of times." },
   { uri: "app://auth", description: "What the client believes about its cloud session: credential present, checked, cached user plan and verification. No secrets." },
@@ -74,7 +75,7 @@ const watchlistChangeInput = objectSchema({
 export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   op(
     "app.openCommandBar",
-    "Open the command bar with an optional query and optional mode. Fails while a dialog (a form, a confirm, pane settings) is open.",
+    "Open the command bar with an optional query and optional mode. Fails while a dialog (a form, a confirm, pane settings) or the setup dialog is open.",
     "{ query?: string, mode?: 'command' | 'ticker' | 'default' }",
     "local-write",
     objectSchema({
@@ -85,7 +86,7 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   op("app.closeCommandBar", "Close the command bar.", "{}", "local-write", objectSchema()),
   op(
     "app.closeDialog",
-    "Close the dialog on top, as Esc would: a form, a confirm, pane settings, or a picker opened over a form. Fails when no dialog is open.",
+    "Close the dialog on top, as Esc would: a form, a confirm, pane settings, or a picker opened over a form. Fails when no dialog is open; the setup dialog is left with its own buttons (app://form).",
     "{}",
     "local-write",
     objectSchema(),
@@ -99,7 +100,7 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   ),
   op(
     "app.search",
-    "Open command-bar search without requiring UI prefix syntax. Fails while a dialog is open.",
+    "Open command-bar search without requiring UI prefix syntax. Fails while a dialog or the setup dialog is open.",
     "{ mode?: 'command' | 'ticker' | 'default', query?: string }",
     "local-write",
     objectSchema({
@@ -361,7 +362,7 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   ),
   op(
     "ui.invokeMatching",
-    "Invoke an action on the first semantic UI node matching role, label, index, or metadata. While a form or confirm is open, its own nodes (metadata.scope 'form') match first; while another dialog covers it, they do not match.",
+    "Invoke an action on the first semantic UI node matching role, label, index, or metadata. While a form, confirm or the setup dialog is open, its own nodes (metadata.scope 'form') match first; while another dialog covers it, they do not match.",
     "{ role?: string, label?: string, contains?: string, index?: number, action?: string, input?: any, metadata?: object }",
     "local-write",
     objectSchema({
@@ -379,7 +380,8 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
 export const REMOTE_AGENT_HELP = {
   title: "Gloom remote control guide",
   quickStart: [
-    "Read app://snapshot once to orient; it includes schema, current layout, panes, command bar state, and semantic UI nodes.",
+    "Read app://snapshot once to orient: focus, layout, panes, command bar, the open form or setup dialog (form), and the labelled UI nodes. Read the schema ({ type: 'schema' }, gloom remote schema) once for every operation and its input.",
+    "When form.open is true, a form or the setup dialog covers the app: deal with it first. A change made behind it answers with a warning that says so.",
     "Prefer app-level operations such as app.search, layout.setGrid, layout.closeFloating, and ticker.pin before falling back to ui.invoke.",
     "Use commandBar.activateResult with label, itemId, or index after app.search; avoid raw node ids unless there is no stable semantic selector.",
     "For list-like surfaces, prefer semantic list activation through commandBar.activateResult or ui.invokeMatching.",
@@ -388,8 +390,8 @@ export const REMOTE_AGENT_HELP = {
   resources: [
     { uri: "app://command-bar", use: "Current command-bar query, open state, selected row, and semantic result rows." },
     { uri: "app://command-bar/results", use: "Just the visible command-bar result/list rows." },
-    { uri: "app://form", use: "The open form or confirm, with field ids, values, options, error and pending state, or whether another dialog is open. Every call includes it as `form`." },
-    { uri: "ui://tree", use: "Low-level live semantic controls; use when no app-level operation exists." },
+    { uri: "app://form", use: "The open form, confirm or setup dialog, with field ids, values, options, error and pending state, or whether another dialog is open. Every call includes it as `form`." },
+    { uri: "ui://tree", use: "Every live semantic control, unlabelled click areas too (app://snapshot lists the labelled ones); use when no app-level operation exists." },
     { uri: "app://panes", use: "Pane instances, placement, focus, and runtime state." },
   ],
   recipes: [
@@ -425,6 +427,14 @@ export const REMOTE_AGENT_HELP = {
       ],
     },
     {
+      goal: "Get past the first-run setup dialog (form.kind 'setup')",
+      requests: [
+        { type: "call", operation: "ui.invokeMatching", input: { role: "form-field", metadata: { fieldId: "ticker" }, action: "setValue", input: "NVDA" } },
+        { type: "call", operation: "ui.invokeMatching", input: { role: "form-field", metadata: { fieldId: "ticker" }, action: "submit" } },
+        { type: "call", operation: "ui.invokeMatching", input: { role: "form", action: "submit" } },
+      ],
+    },
+    {
       goal: "Activate a visible semantic control without knowing its node id",
       request: { type: "call", operation: "ui.invokeMatching", input: { role: "button", label: "Done", action: "press" } },
     },
@@ -448,10 +458,12 @@ export const REMOTE_AGENT_HELP = {
   caveats: [
     "Capability manifests are for plugin services; UI control should rely on app-level operations and shared semantic UI nodes so plugins remain remote-agnostic.",
     "If an operation changes UI, request include: ['commandBar'] or use batch include to avoid a follow-up get.",
+    "Panes in app://snapshot and in call answers leave out runtimeState, which can hold everything a pane loaded; read app://pane-state/{paneId} for one pane, or app://panes.",
     "For charts, use visible semantic chart nodes with actions such as moveCursor, press, drag, release, and scroll.",
     "A command with hasWizard in app://commands opens a form in a centered dialog when activated, and the command bar closes. Read `form` in the response, set fields with ui.invokeMatching { role: 'form-field', metadata: { fieldId }, action: 'setValue' }, then send with { role: 'form', action: 'submit' } or close with action 'cancel'. Selects take an option value, toggles a boolean; neither needs to be opened.",
     "While a dialog is open (form.open or form.otherDialogOpen), app.openCommandBar and app.search fail; close a form or confirm with { role: 'form', action: 'cancel' }, and any dialog on top with app.closeDialog.",
     "A form with covered: true has another dialog over it, such as a listing picker or a sign-in; its controls wait until that one is answered or closed with app.closeDialog.",
+    "On a new profile the setup dialog covers the app: form.kind is 'setup', with its step, title, fields and buttons by node id. Fill a field with ui.invokeMatching { role: 'form-field', metadata: { fieldId }, action: 'setValue' } (submit on the Ticker field adds the position), press a button with { role: 'button', label }, go on with { role: 'form', action: 'submit' } (the button Enter presses), and skip the whole setup with { role: 'form', action: 'cancel' } where a step offers it. Skip leaves one step without filling it. app.closeDialog does not close it.",
     "Pane settings open in their own dialog, not as command-bar rows; change one with pane.setSetting, read them from app://pane-settings/{paneId}, and close the dialog with app.closeDialog.",
     "watchlist.add and watchlist.remove wait while the person answers a confirmation in the app and return what changed; with dryRun they return what would change without asking.",
     "pane.screenshot returns the pane's PNG as base64 in image.data, with its pixel size; the terminal (TUI) app answers that it needs the desktop app.",

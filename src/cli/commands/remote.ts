@@ -1,9 +1,10 @@
 import { getDataDir } from "../../data/config/store";
 import type { CliCommandContext } from "../../types/plugin";
-import { sendRemoteControlRequest } from "../../remote/client";
+import { RemoteAppAmbiguousError, RemoteAppNotRunningError, sendRemoteControlRequest } from "../../remote/client";
 import type { RemoteAppKind, RemoteControlRequest, RemoteControlResponse } from "../../remote/types";
 import { CLI_COMMAND_GROUPS } from "../help";
 import type { BuiltinCliCommandDef } from "../command-options";
+import { failWithError } from "../errors";
 
 interface RemoteArgs {
   args: string[];
@@ -34,7 +35,7 @@ export const remoteCliCommand: BuiltinCliCommandDef = {
       { flags: "--interval <ms>", description: "How often watch polls, at least 100 (default 1000)" },
       { flags: "--dry-run", description: "Check a call, patch, or batch without applying it" },
     ],
-    examples: ["remote schema", "remote get layout", "remote watch layout --limit 5"],
+    examples: ["remote help", "remote get app://snapshot", "remote get app://form", "remote watch app://layout/current --limit 5"],
   },
   execute: async (rawArgs, ctx) => {
     const parsed = parseRemoteArgs(rawArgs);
@@ -46,10 +47,12 @@ export const remoteCliCommand: BuiltinCliCommandDef = {
 
     // No data folder means this profile never opened the app, so none is running to drive.
     const dataDir = await getDataDir();
-    if (!dataDir) {
-      ctx.fail("No running Gloom app found.", "Open the desktop app or run gloom, then try again.");
-      return;
-    }
+    if (!dataDir) failToReachApp(new RemoteAppNotRunningError(parsed.appKind));
+    const send = (request: RemoteControlRequest) => sendRemoteControlRequest(request, { dataDir, appKind: parsed.appKind })
+      .catch((error: unknown) => {
+        if (error instanceof RemoteAppNotRunningError || error instanceof RemoteAppAmbiguousError) failToReachApp(error);
+        throw error;
+      });
 
     if (action === "watch") {
       const resource = parsed.args[1];
@@ -59,24 +62,20 @@ export const remoteCliCommand: BuiltinCliCommandDef = {
       }
       const limit = ctx.cliOptions.limit ?? Number.POSITIVE_INFINITY;
       for (let index = 0; index < limit; index += 1) {
-        const response = await sendRemoteControlRequest({ type: "get", resource }, {
-          dataDir,
-          appKind: parsed.appKind,
-        });
-        printRemoteResponse(response, ctx);
+        printRemoteResponse(await send({ type: "get", resource }), ctx);
         if (index < limit - 1) await new Promise((resolve) => setTimeout(resolve, parsed.intervalMs));
       }
       return;
     }
 
-    const request = buildRemoteRequest(action, parsed, ctx.cliOptions.dryRun);
-    const response = await sendRemoteControlRequest(request, {
-      dataDir,
-      appKind: parsed.appKind,
-    });
-    printRemoteResponse(response, ctx);
+    printRemoteResponse(await send(buildRemoteRequest(action, parsed, ctx.cliOptions.dryRun)), ctx);
   },
 };
+
+/** No app answers, or two do: in the app's words, with how to start one or which to pick. */
+function failToReachApp(error: RemoteAppNotRunningError | RemoteAppAmbiguousError): never {
+  return failWithError({ code: error.code, message: error.message, details: error.details });
+}
 
 function parseRemoteArgs(rawArgs: string[]): RemoteArgs {
   const args: string[] = [];

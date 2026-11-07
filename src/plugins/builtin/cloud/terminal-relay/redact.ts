@@ -62,7 +62,7 @@ export function redactConfig(config: unknown): unknown {
 /** Resources that carry the whole configuration, before the general pass. */
 export function redactResource(resource: string, value: unknown): unknown {
   if (resource === "app://config") return redactConfig(value);
-  if (resource === "app://snapshot" && value && typeof value === "object") {
+  if ((resource === "app://snapshot" || resource === "app://snapshot/full") && value && typeof value === "object") {
     const snapshot = value as Record<string, unknown>;
     return { ...snapshot, config: redactConfig(snapshot.config) };
   }

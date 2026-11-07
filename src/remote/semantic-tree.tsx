@@ -43,9 +43,13 @@ export interface RemoteUiRegistry {
 const RemoteUiRegistryContext = createContext<RemoteUiRegistry | null>(null);
 
 function nodeSnapshot(node: RegisteredRemoteUiNode): RemoteUiNodeSnapshot {
-  const registration = node.registration;
+  return remoteUiNodeSnapshot(node.id, node.registration);
+}
+
+/** A registered node as `ui://tree` lists it. */
+export function remoteUiNodeSnapshot(id: string, registration: RemoteUiNodeRegistration): RemoteUiNodeSnapshot {
   return {
-    id: node.id,
+    id,
     role: registration.role,
     label: registration.label,
     disabled: registration.disabled,
