@@ -1,8 +1,9 @@
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import { Box, Text, useUiCapabilities } from "../../../ui";
 import { MenuPopover } from "../../ui/menu";
 import { colors } from "../../../theme/colors";
 import { MENU_Z_INDEX, type PaneMenuEntry } from "./menu";
+import { RemoteUiScope } from "../../../remote/semantic-tree";
 import { t } from "../../../i18n";
 import { displayWidth, padTo, truncateToDisplayWidth } from "../../../utils/format";
 
@@ -46,9 +47,13 @@ export function ShellActionMenuOverlay({
     startRef.current = 0;
     return null;
   }
+  // A menu that holds a prompt's answers (Ask Gloom's Approve) is that
+  // prompt's as a whole, so no assistant's UI call chooses from it.
+  const scope = menuState.items.find((item) => item.remoteScope)?.remoteScope;
+  const scoped = (menu: ReactNode) => (scope ? <RemoteUiScope scope={scope}>{menu}</RemoteUiScope> : menu);
 
   if (nativePaneChrome) {
-    return (
+    return scoped(
       <MenuPopover
         open
         onOpenChange={(open) => { if (!open) onClose(); }}
@@ -63,7 +68,7 @@ export function ShellActionMenuOverlay({
           onClose();
           item?.action();
         }}
-      />
+      />,
     );
   }
 
@@ -82,7 +87,7 @@ export function ShellActionMenuOverlay({
     event.preventDefault?.();
   };
 
-  return (
+  return scoped(
     <Box
       position="absolute"
       left={menuState.x}
@@ -144,6 +149,6 @@ export function ShellActionMenuOverlay({
           </Box>
         );
       })}
-    </Box>
+    </Box>,
   );
 }

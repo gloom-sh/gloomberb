@@ -7,7 +7,7 @@ import { keyHintWords } from "../../../ui/key-hint-words";
 import { Button } from "../../../ui/button";
 import { ChoiceDialog } from "../../../ui/choice-dialog";
 import { Icon, IconButton } from "../../../ui/icon";
-import { useRemoteUiNode } from "../../../../remote/semantic-tree";
+import { RemoteUiScope, useRemoteUiNode } from "../../../../remote/semantic-tree";
 import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
 import { nativePaneFooterRows } from "../sizing";
 import {
@@ -226,21 +226,27 @@ function FooterOverflowMenu({ hints, width, label, nativePaneChrome }: { hints: 
   const keyLabel = useShortcutLabel();
   const open = () => {
     if (!dialog || hints.length === 0) return;
+    // A list that holds a prompt's answers (Ask Gloom's Approve) is that
+    // prompt's as a whole, so no assistant's UI call picks from it.
+    const scope = hints.find((hint) => hint.remoteScope)?.remoteScope;
     void dialog.prompt<string>({
       closeOnClickOutside: true,
-      content: (context: PromptContext<string>) => (
-        <ChoiceDialog
-          {...context}
-          title={t("Pane actions")}
-          // The desktop names each action as its menu does, with the key after it, never inside the word.
-          choices={hints.map((hint, index) => ({
-            id: String(index),
-            label: nativePaneChrome ? paneHintTitle(hint) : `[${keyLabel(hint.key)}]${hint.label}`,
-            ...(nativePaneChrome ? { detail: keyLabel(hint.key) } : {}),
-            disabled: !hint.onPress,
-          }))}
-        />
-      ),
+      content: (context: PromptContext<string>) => {
+        const choices = (
+          <ChoiceDialog
+            {...context}
+            title={t("Pane actions")}
+            // The desktop names each action as its menu does, with the key after it, never inside the word.
+            choices={hints.map((hint, index) => ({
+              id: String(index),
+              label: nativePaneChrome ? paneHintTitle(hint) : `[${keyLabel(hint.key)}]${hint.label}`,
+              ...(nativePaneChrome ? { detail: keyLabel(hint.key) } : {}),
+              disabled: !hint.onPress,
+            }))}
+          />
+        );
+        return scope ? <RemoteUiScope scope={scope}>{choices}</RemoteUiScope> : choices;
+      },
     }).then((selected) => {
       if (selected) hints[Number(selected)]?.onPress?.();
     }, logFailure("layout.pane-footer", "Open pane actions menu failed"));

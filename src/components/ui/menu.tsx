@@ -3,7 +3,8 @@ import { Box, Text, TextAttributes, useUiHost, type HostMenuProps, type HostMenu
 import { useThemeColors } from "../../theme/theme-context";
 import { useShortcut } from "../../react/input";
 import { keepEscapeFromClosing } from "../../utils/double-escape-close";
-import { useRemoteUiNode } from "../../remote/semantic-tree";
+import { useRemoteUiNode, useRemoteUiScope } from "../../remote/semantic-tree";
+import { remoteMenuItemId } from "../../remote/semantic-helpers";
 import { readsAtBodyContrast } from "../../theme/tone-contrast";
 import { Popover } from "./popover";
 
@@ -19,12 +20,14 @@ export type MenuProps = HostMenuProps;
  */
 export function Menu(props: MenuProps) {
   const HostMenu = useUiHost().Menu as ComponentType<MenuProps> | undefined;
+  // A menu that lists a prompt's answers (a pane's Approve) carries the prompt's scope.
+  const scope = useRemoteUiScope();
   useRemoteUiNode({
     role: "menu",
     label: props.label ?? props.title ?? "Menu",
     actions: {
       select: (input) => {
-        const id = typeof input === "string" ? input : (input as { id?: string } | null)?.id;
+        const id = remoteMenuItemId(input);
         const item = props.items.find((entry) => entry.id === id && entry.kind !== "divider" && entry.kind !== "heading" && !entry.disabled);
         if (item) props.onSelect(item.id);
       },
@@ -32,6 +35,7 @@ export function Menu(props: MenuProps) {
     metadata: {
       selection: props.selection ?? "none",
       items: props.items.filter((item) => item.kind !== "divider").map((item) => ({ id: item.id, label: item.label, selected: item.selected, checked: item.checked })),
+      ...(scope ? { scope } : {}),
     },
   });
   if (HostMenu) return <HostMenu {...props} />;
