@@ -163,13 +163,19 @@ export function useShellActiveDrag({
     memo.pace.cancel();
     // Every other pane on screen, docked or floating, whose edges a floating
     // pane's edges stick to. Alt (Option) lets it go anywhere.
-    // A resize leaves out the windows it moves along a shared edge.
+    // A resize leaves out the windows it moves along a shared edge. A stack
+    // counts once, as the tab it shows, and the pane's own stack not at all:
+    // its tabs sit where it started, and would hold it there.
     const magnetTargets = (paneId: string) => {
+      if (memo.magnetTargets) return memo.magnetTargets;
       const moving = memo.shared?.ids;
-      memo.magnetTargets ??= [
+      const hidden = hiddenFloatingTabIds(baseLayout.floating);
+      const own = baseLayout.floating.find((entry) => entry.instanceId === paneId)?.stack;
+      memo.magnetTargets = [
         ...dockLeafLayouts.filter((leaf) => leaf.instanceId !== paneId).map((leaf) => leaf.rect),
         ...baseLayout.floating
           .filter((entry) => entry.instanceId !== paneId && paneMap.has(entry.instanceId) && !moving?.has(entry.instanceId))
+          .filter((entry) => !hidden.has(entry.instanceId) && (!own || entry.stack !== own))
           .map(({ x, y, width: w, height: h }) => ({ x, y, width: w, height: h })),
       ];
       return memo.magnetTargets;

@@ -870,6 +870,43 @@ describe("Shell", () => {
     expect(rest()).toBe(before);
   });
 
+  // A floating stack's other tabs wait where it started, under the one it
+  // shows: their edges must not hold it there.
+  test("terminal: a floating stack moved by a cell is not held back by its own tabs", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-stack-magnet-test");
+    const main = requireLayoutInstance(config, "portfolio-list:main");
+    const detail = requireLayoutInstance(config, "ticker-detail:main");
+    const layout: LayoutConfig = {
+      dockRoot: { kind: "pane", instanceId: main.instanceId },
+      instances: [{ ...main }, { ...detail }, { ...detail, instanceId: "ticker-detail:two" }],
+      floating: [
+        { instanceId: detail.instanceId, x: 40, y: 4, width: 30, height: 8, zIndex: 50, stack: "s" },
+        { instanceId: "ticker-detail:two", x: 40, y: 4, width: 30, height: 8, zIndex: 51, stack: "s" },
+      ],
+      detached: [],
+    };
+    const { actions } = await renderShell(createShellStateWithLayout(config, layout, "ticker-detail:two"));
+    const rows = tui.frame().split("\n");
+    const row = rows.findIndex((line) => line.includes("┌::"));
+    // On its grip, which moves the stack whole; the pointer's rows count from the top bar.
+    const [x, y] = [rows[row]!.indexOf("┌::") + 1, row + 1];
+    await act(async () => {
+      const mouse = tui.setup().mockMouse;
+      await mouse.pressDown(x, y);
+      for (const [dx, dy] of [[0, 1], [1, 2]] as const) {
+        await mouse.moveTo(x + dx, y + dy);
+        await tui.setup().renderOnce();
+      }
+      await mouse.release(x + 1, y + 2);
+      await tui.setup().renderOnce();
+    });
+    const moved = actions.filter((action) => action.type === "UPDATE_LAYOUT").at(-1)?.layout as LayoutConfig | undefined;
+    expect(moved?.floating.map(({ instanceId, x: left, y: top, stack }) => ({ instanceId, x: left, y: top, stack }))).toEqual([
+      { instanceId: detail.instanceId, x: 41, y: 6, stack: "s" },
+      { instanceId: "ticker-detail:two", x: 41, y: 6, stack: "s" },
+    ]);
+  });
+
   test("each tab of a stack keeps its own state as the tabs switch, never another tab's", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-stack-state-test");
     const main = requireLayoutInstance(config, "portfolio-list:main");
