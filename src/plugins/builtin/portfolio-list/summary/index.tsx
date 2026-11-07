@@ -528,7 +528,9 @@ export function renderSummarySegments(segments: PortfolioSummarySegment[], width
         <Box key={segment.id} flexDirection="row">
           {segmentIndex > 0 && <Text fg={colors.textDim}>{"  "}</Text>}
           {segment.parts.map((part, partIndex) => (
-            <Box key={`${segment.id}:${partIndex}`} flexDirection="row">
+            // A row too narrow for its segment cuts the muted basis ("vs Thu 5 Nov close"), never the
+            // label or the figure: "Avg +1." read as a different number than +1.02%.
+            <Box key={`${segment.id}:${partIndex}`} flexDirection="row" flexShrink={part.tone === "muted" ? 1 : 0}>
               {partIndex > 0 && <Text fg={colors.textDim}>{" "}</Text>}
               <Text
                 fg={part.color ?? (part.tone === "label" || part.tone === "muted" ? colors.textDim : colors.text)}

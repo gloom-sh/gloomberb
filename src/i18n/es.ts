@@ -1548,6 +1548,7 @@ export const es: Record<string, string> = {
   "Transcripts, summaries, guidance and scores.": "Transcripciones, resúmenes, guías y puntuaciones.",
   "YOUR WORKSPACE": "TU ESPACIO DE TRABAJO",
   "Your holdings as a heatmap, a watchlist, and {ticker} charted. Every pane moves; {shortcut} adds more.": "Tus posiciones como mapa de calor, una lista de seguimiento y el gráfico de {ticker}. Cada panel se mueve; {shortcut} añade más.",
+  "A watchlist, the top news, and {ticker} charted. Every pane moves; {shortcut} adds more.": "Una lista de seguimiento, las noticias principales y el gráfico de {ticker}. Cada panel se mueve; {shortcut} añade más.",
   "b: sign in with the browser instead": "b: iniciar sesión con el navegador",
   "Esc, then b: sign in with the browser instead": "Esc y luego b: iniciar sesión con el navegador",
   "Sign in with the browser instead": "Iniciar sesión con el navegador",
@@ -1564,6 +1565,7 @@ export const es: Record<string, string> = {
   "FX & macro": "Divisas y macro",
   "Active trading": "Trading activo",
   "Your holdings as a heatmap, a watchlist, and {ticker} charted. Your desks are tabs at the bottom; {shortcut} adds more.": "Tus posiciones como mapa de calor, una lista de seguimiento y el gráfico de {ticker}. Tus mesas son pestañas abajo; {shortcut} añade más.",
+  "A watchlist, the top news, and {ticker} charted. Your desks are tabs at the bottom; {shortcut} adds more.": "Una lista de seguimiento, las noticias principales y el gráfico de {ticker}. Tus mesas son pestañas abajo; {shortcut} añade más.",
   // ── Upgrade sheet ─────────────────────────────────────────
   "Start free trial": "Iniciar prueba gratis",
   "Your last payment didn't go through": "Tu último pago no se completó",

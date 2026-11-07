@@ -1545,6 +1545,7 @@ export const zhTW: Record<string, string> = {
   "Transcripts, summaries, guidance and scores.": "逐字稿、摘要、財測和評分。",
   "YOUR WORKSPACE": "你的工作區",
   "Your holdings as a heatmap, a watchlist, and {ticker} charted. Every pane moves; {shortcut} adds more.": "持股熱力圖、觀察清單和 {ticker} 的圖表。每個面板都可移動；{shortcut} 可新增更多。",
+  "A watchlist, the top news, and {ticker} charted. Every pane moves; {shortcut} adds more.": "觀察清單、頭條新聞和 {ticker} 的圖表。每個面板都可移動；{shortcut} 可新增更多。",
   "b: sign in with the browser instead": "b：改用瀏覽器登入",
   "Esc, then b: sign in with the browser instead": "按 Esc 後按 b：改用瀏覽器登入",
   "Sign in with the browser instead": "改用瀏覽器登入",
@@ -1561,6 +1562,7 @@ export const zhTW: Record<string, string> = {
   "FX & macro": "外匯與總經",
   "Active trading": "積極交易",
   "Your holdings as a heatmap, a watchlist, and {ticker} charted. Your desks are tabs at the bottom; {shortcut} adds more.": "持股熱力圖、觀察清單和 {ticker} 的圖表。你的交易台在底部分頁；{shortcut} 可新增更多。",
+  "A watchlist, the top news, and {ticker} charted. Your desks are tabs at the bottom; {shortcut} adds more.": "觀察清單、頭條新聞和 {ticker} 的圖表。你的交易台在底部分頁；{shortcut} 可新增更多。",
   // ── Upgrade sheet ─────────────────────────────────────────
   "Start free trial": "開始免費試用",
   "Your last payment didn't go through": "上次付款未成功",

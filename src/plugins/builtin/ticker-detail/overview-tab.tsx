@@ -336,6 +336,16 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     ? truncateToDisplayWidth(usdPerMmbtuText({ value: gasInUsd, currency: gasCurrency, usdPerUnit: gasUsdPerUnit }),
       Math.max(1, quoteTextWidth - displayWidth(inUsdLabel) - 1))
     : "";
+  // The extended session's line keeps its label and price whole on a narrow pane: the move gives
+  // way to its percent, then goes, rather than wrapping a figure across two lines ("(+0." / "08%)").
+  const extendedLabelText = extendedQuote ? `${extendedSessionLineLabel(extendedQuote, t)}:` : "";
+  const extendedPriceText = extendedQuote ? formatMarketPriceWithCurrency(extendedQuote.price, quote?.currency, moneyOptions) : "";
+  const extendedMoveText = extendedQuote
+    ? [
+      `${formatSignedMarketPrice(extendedQuote.change, moneyOptions)} (${formatPercentRaw(extendedQuote.changePercent)})`,
+      formatPercentRaw(extendedQuote.changePercent),
+    ].find((move) => displayWidth(extendedLabelText) + 2 + displayWidth(extendedPriceText) + 2 + displayWidth(move) <= quoteTextWidth) ?? ""
+    : "";
   const quoteChangeCells = delisted ? 0 : figureCells(quoteChangeText, "sub") + 1 + figureCells(quotePercentText, "sub");
   const stackQuoteChange = quoteChangeCells > quoteTextWidth;
   const stackQuoteSummary = figureCells(quotePriceText) + 2 + quoteChangeCells > quoteTextWidth;
@@ -510,14 +520,10 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
               </Box>
             ) : null}
             {extendedQuote && (
-              <Box flexDirection="row" gap={2}>
-                <Text fg={colors.textDim}>{extendedSessionLineLabel(extendedQuote, t)}:</Text>
-                <Text fg={priceColor(extendedQuote.change ?? 0)}>
-                  {formatMarketPriceWithCurrency(extendedQuote.price, quote?.currency, moneyOptions)}
-                </Text>
-                <Text fg={priceColor(extendedQuote.change ?? 0)}>
-                  {formatSignedMarketPrice(extendedQuote.change, moneyOptions)} ({formatPercentRaw(extendedQuote.changePercent)})
-                </Text>
+              <Box flexDirection="row" gap={2} minWidth={0} overflow="hidden">
+                <Text flexShrink={0} fg={colors.textDim}>{extendedLabelText}</Text>
+                <Text flexShrink={0} fg={priceColor(extendedQuote.change ?? 0)}>{extendedPriceText}</Text>
+                {extendedMoveText ? <Text flexShrink={0} fg={priceColor(extendedQuote.change ?? 0)}>{extendedMoveText}</Text> : null}
               </Box>
             )}
             {settleText && (
