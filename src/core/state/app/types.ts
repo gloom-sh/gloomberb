@@ -1,5 +1,5 @@
 import type { BrokerAccount } from "../../../types/trading";
-import type { AppConfig, KeybindingsConfig, LayoutConfig, LayoutOrigin, OnboardingProgress, StarPromptConfig } from "../../../types/config";
+import type { AppConfig, KeybindingsConfig, LayoutConfig, LayoutOrigin, OnboardingProgress, PaneInstanceConfig, StarPromptConfig } from "../../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../../types/desktop-window";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
@@ -18,6 +18,20 @@ export interface PaneRuntimeState {
 export interface LayoutHistoryEntry {
   past: LayoutConfig[];
   future: LayoutConfig[];
+}
+
+/** How a research pane opened ahead of the lookup that finds its ticker settled. */
+export interface OpeningPaneSettlement {
+  paneId: string;
+  /** The key it was bound to while it loaded. */
+  symbol: string;
+  /**
+   * The binding and title the lookup gave it, or null when its open came to
+   * nothing: no listing, a choice of listings, or another pane already on it.
+   */
+  settled: Pick<PaneInstanceConfig, "binding" | "title"> | null;
+  /** The history before the open, when no step was taken, undone or redone since. */
+  before?: LayoutHistoryEntry;
 }
 
 type SortDirection = "asc" | "desc";
@@ -194,7 +208,13 @@ export type AppAction =
   | { type: "MOVE_PANE_TO_NEW_LAYOUT"; paneId: string; name: string; sourceLayoutId: string }
   /** Returns a pane Move to New Layout moved to the layout it came from, which becomes active. */
   | { type: "MOVE_PANE_BACK"; paneId: string }
-  | { type: "FOCUS_PANE"; paneId: string }
+  /** `trackTicker: false` keeps the pane's ticker out of the recent tickers: a pane still looking its ticker up. */
+  | { type: "FOCUS_PANE"; paneId: string; trackTicker?: boolean }
+  /**
+   * A research pane opened ahead of the lookup that finds its ticker settles
+   * in the active layout's undo history (`settleOpeningPaneHistory`).
+   */
+  | { type: "SETTLE_OPENING_PANE"; settlement: OpeningPaneSettlement }
   | { type: "FOCUS_NEXT"; paneOrder: string[] }
   | { type: "FOCUS_PREV"; paneOrder: string[] }
   | { type: "HYDRATE_DESKTOP_SNAPSHOT"; snapshot: DesktopSharedStateSnapshot }

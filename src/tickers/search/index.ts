@@ -386,22 +386,47 @@ export function symbolSearchQuery(query: string): string {
   return trimmed.slice(0, -1).toUpperCase();
 }
 
-export function resolveTickerSearch(options: ResolveTickerSearchOptions): Promise<ResolvedTickerSearch | null> {
-  const requested = normalizeTickerInput(options.activeTicker, options.query);
-  if (!requested) return Promise.resolve(null);
+/** The symbol `resolveTickerSearch` looks a normalized query up as first, and the spellings it reads it in. */
+function lookupSpelling(requested: string, tickers: ReadonlyMap<string, TickerRecord>) {
   // `NET:` lists NET's venues instead of settling on one.
   const pickListing = isListingPickerQuery(requested);
   const typed = symbolSearchQuery(requested);
   // A futures board code no security uses is its future (TTF is TTF=F), unless a saved ticker holds it.
-  const future = pickListing || options.tickers.has(typed) ? null : bareFuturesCode(typed);
+  const future = pickListing || tickers.has(typed) ? null : bareFuturesCode(typed);
   // A currency pair is the one listing the service has for it, however it is written: EUR/USD and
   // JPY=X are EURUSD=X and USDJPY=X. USD-NGN and USDNGN, which a security could also be written as
   // (MNT-USD is a coin), are the pair only when nothing is listed under those letters.
   const pair = pickListing || future ? null : currencyPairSpelling(typed);
   // A coin pair written as crypto exchanges write it (BTC/GBP, or BTC/GBP:KRAKEN) is the crypto venue's BTC-GBP,
   // and what was typed when the venue has no such coin.
-  const coin = pickListing || future || pair || options.tickers.has(typed) ? null : typedCoinPairListing(typed);
+  const coin = pickListing || future || pair || tickers.has(typed) ? null : typedCoinPairListing(typed);
   const symbol = future?.symbol ?? coin?.symbol ?? (pair && !pair.ambiguous ? pair.symbol : typed);
+  return { pickListing, typed, pair, coin, symbol };
+}
+
+/** The saved ticker a symbol names, as written or as a saved listing reads it. */
+function savedTickerFor(symbol: string, tickers: ReadonlyMap<string, TickerRecord>): TickerRecord | null {
+  return tickers.get(symbol)
+    ?? findExactTickerSearchMatch(createLocalTickerSearchCandidates(tickers.values()), symbol)?.ticker
+    ?? null;
+}
+
+/**
+ * The saved ticker a query names as `resolveTickerSearch` reads it, with no
+ * source asked: `JPM US Equity` is JPM, `BRK/B` BRK-B, `TTF` its future TTF=F.
+ * Null when none is saved, or for `NET:`, which asks for a choice of listings.
+ */
+export function savedTickerForQuery(query: string, tickers: ReadonlyMap<string, TickerRecord>): TickerRecord | null {
+  const requested = normalizeTickerInput(null, query);
+  if (!requested) return null;
+  const { pickListing, symbol } = lookupSpelling(requested, tickers);
+  return pickListing ? null : savedTickerFor(symbol, tickers);
+}
+
+export function resolveTickerSearch(options: ResolveTickerSearchOptions): Promise<ResolvedTickerSearch | null> {
+  const requested = normalizeTickerInput(options.activeTicker, options.query);
+  if (!requested) return Promise.resolve(null);
+  const { pickListing, typed, pair, coin, symbol } = lookupSpelling(requested, options.tickers);
   const literal = resolveTickerSymbol(symbol, options, pickListing ? requested : null);
   const alternatives = pickListing ? [] : [...dottedVenueQueries(symbol), ...pair?.ambiguous ? [pair.symbol] : [], ...coin ? [typed] : []];
   // A listing suffix search does not carry (CEZ.PR) is read from its own quote, as `quote` reads it.
@@ -473,9 +498,7 @@ async function resolveTickerSymbol(
   /** The `NET:` text that asked for every venue, or null to settle on one. */
   pickerQuery: string | null,
 ): Promise<ResolvedTickerSearch | null> {
-  const local = tickers.get(symbol)
-    ?? findExactTickerSearchMatch(createLocalTickerSearchCandidates(tickers.values()), symbol)?.ticker
-    ?? null;
+  const local = savedTickerFor(symbol, tickers);
   if (local) {
     const contracts = new Map((local.metadata.broker_contracts ?? []).flatMap((brokerContract) => {
       const key = searchContractKey({ brokerContract, type: local.metadata.assetCategory || "" });
