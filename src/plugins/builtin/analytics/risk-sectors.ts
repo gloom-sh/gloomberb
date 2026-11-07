@@ -1,4 +1,5 @@
 import type { HeadlessBundleResult, HeadlessPaneContext, HeadlessPaneLoadArgs, HeadlessPaneRow } from "../../../types/headless";
+import { canonicalTickerKey } from "../../../utils/exchanges";
 import { formatNumber } from "../../../utils/format";
 import { CASH_SYMBOL } from "../../../portfolio/allocation";
 import type { FundMembersPayload } from "../../../api-client/members";
@@ -28,7 +29,7 @@ export function comparePortfolioSectors(positions: HeadlessPaneRow[], total: num
   if (![...index.values()].some(weight => weight > 0)) throw new Error("No benchmark sector weights are available.");
   for (const position of positions) {
     const symbol = String(position.symbol);
-    const sector = symbol === CASH_SYMBOL ? "Cash" : sectorName(sectors.get(symbol)) ?? "Unclassified / funds";
+    const sector = symbol === CASH_SYMBOL ? "Cash" : sectorName(sectors.get(canonicalTickerKey(symbol, typeof position.exchange === "string" ? position.exchange : undefined))) ?? "Unclassified / funds";
     const value = position.marketValue;
     if (typeof value !== "number" || !Number.isFinite(value)) {
       unknown.push({ symbol, reason: "Position has no market value", weightPercent: null });
@@ -61,10 +62,10 @@ export async function portfolioSectorReport(args: HeadlessPaneLoadArgs, ctx: Hea
     for (let offset = 0; offset < missing.length; offset += 50) {
       const chunk = missing.slice(offset, offset + 50);
       const loaded = await ctx.marketData.getTickerFinancialsBatch(chunk.map(row => ({ symbol: String(row.symbol), exchange: String(row.exchange ?? "") })));
-      loaded.forEach((result, index) => {
+      loaded.forEach(result => {
         const financials = result.financials;
         const fund = /ETF|FUND|MUTUAL/i.test(financials?.quote?.instrumentType ?? "");
-        sectors.set(String(chunk[index]!.symbol), fund ? null : financials?.profile?.sector ?? null);
+        sectors.set(canonicalTickerKey(result.target.symbol, result.target.exchange), fund ? null : financials?.profile?.sector ?? null);
       });
     }
   }

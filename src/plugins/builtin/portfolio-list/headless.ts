@@ -475,7 +475,7 @@ const PERIOD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "shares", header: "Qty", align: "right", format: quantity },
   { key: "startPrice", header: "Start", align: "right", format: unitMoney("priceCurrency"), description: "The close before the window, in the quote's currency." },
   { key: "endPrice", header: "End", align: "right", format: unitMoney("priceCurrency"), description: "The last close in the window, in the quote's currency." },
-  { key: "changePercent", header: "Regular %", align: "right", format: percent },
+  { key: "changePercent", header: "Period %", align: "right", format: percent },
   { key: "pnl", header: "P&L", align: "right", format: amount, description: "The price move times the units held now, in the portfolio's currency at the end's rate." },
   { key: "contribution", header: "Contribution", align: "right", format: percent, description: "P&L over the book's value at the start, gross when it holds a short, in percent." },
 ];

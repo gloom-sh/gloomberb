@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import type { FundMembersPayload } from "../../../api-client/members";
 import { comparePortfolioSectors } from "./risk-sectors";
 
@@ -19,7 +19,6 @@ test("sector active weights use net liquidation with cash and shorts, combine al
   expect(() => comparePortfolioSectors([], 0, benchmark, new Map())).toThrow("positive net liquidation");
   expect(() => comparePortfolioSectors([], 100, { members: [] } as never, new Map())).toThrow("benchmark");
 });
-
 
 test("the sector view labels the returned benchmark and its holdings date, without loading risk histories", async () => {
   const { createTestHeadlessContext, createTestHeadlessArgs } = await import("../../../test-support/headless");
@@ -43,4 +42,30 @@ test("the sector view labels the returned benchmark and its holdings date, witho
   expect(result.complete).toBe(true);
   expect(result.metadata).toMatchObject({ benchmark: "IVV", benchmarkAsOf: "2026-11-05" });
   expect(result.sections[0]?.rows?.find(row => row.sector === "Information Technology")).toMatchObject({ portfolioWeightPercent: 100, activeWeightPp: 40 });
+});
+
+test("equal symbols on different venues retain separate sectors even when the batch returns in reverse order", async () => {
+  const { createTestHeadlessContext, createTestHeadlessArgs } = await import("../../../test-support/headless");
+  const { createTestDataProvider } = await import("../../../test-support/data-provider");
+  const { collectionHoldingsHeadless } = await import("../portfolio-list/headless");
+  const { portfolioRiskHeadless } = await import("./risk-headless");
+  const holdings = spyOn(collectionHoldingsHeadless, "load").mockResolvedValue({
+    rows: [{ symbol: "SAN", exchange: "NYSE", marketValue: 50 }, { symbol: "SAN", exchange: "EPA", marketValue: 50 }],
+    complete: true, metadata: { positions: 2, totals: { total: 100 } },
+  });
+  try {
+    const context = createTestHeadlessContext({
+      marketData: createTestDataProvider({ getTickerFinancialsBatch: async targets => targets.map(target => ({ target,
+        financials: { annualStatements: [], quarterlyStatements: [], priceHistory: [], profile: { sector: target.exchange === "NYSE" ? "Financial Services" : "Healthcare" } },
+      })).reverse() }),
+      apiClient: { getFundMembers: async () => ({ fund: { ticker: "IVV" }, asOf: "2026-11-05", stale: false,
+        members: [{ sector: "Financials", weight: .5 }, { sector: "Health Care", weight: .5 }] }) } as never,
+    });
+    const result = await portfolioRiskHeadless.load(createTestHeadlessArgs({ options: { view: "sectors" } }), context);
+    expect(result.complete).toBe(true);
+    expect(result.sections[0]?.rows).toEqual([
+      { sector: "Financials", portfolioWeightPercent: 50, benchmarkWeightPercent: 50, activeWeightPp: 0 },
+      { sector: "Health Care", portfolioWeightPercent: 50, benchmarkWeightPercent: 50, activeWeightPp: 0 },
+    ]);
+  } finally { holdings.mockRestore(); }
 });

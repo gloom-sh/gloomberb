@@ -307,3 +307,22 @@ test("a pre-market quote without a known regular close supplies no regular-sessi
   const result = await collectionHoldingsHeadless.load(args("tech"), ctx);
   expect(result.rows[0]).toMatchObject({ changePercent: null, changeBasis: null });
 });
+
+test("a multi-month window labels its 20% return as Period %, separately from the 1% regular-session move", async () => {
+  setSystemTime(new Date("2026-11-05T13:00:00Z"));
+  const base = context([holding("AAPL", 10, 80, MANUAL.id)]);
+  const ctx = { ...base, marketData: createTestDataProvider({
+    getQuote: async () => createTestQuote({ symbol: "AAPL", price: 120, changePercent: 1, marketState: "REGULAR" }),
+    getDetailedPriceHistoryWithMetadata: async (_symbol, _exchange, _start, _end, interval) => ({
+      points: [{ date: new Date("2026-07-31T00:00:00Z"), close: 100 }, { date: new Date("2026-10-30T00:00:00Z"), close: 120 }],
+      resolution: interval as ManualChartResolution,
+    }),
+  }) } as HeadlessPaneContext;
+  const period = await collectionHoldingsHeadless.load(args(MANUAL.id, { from: "2026-08-01", to: "2026-10-30" } as never), ctx);
+  const regular = await collectionHoldingsHeadless.load(args(MANUAL.id), ctx);
+  expect(period.rows.find(row => row.symbol === "AAPL")?.changePercent).toBeCloseTo(20);
+  expect(period.columns?.find(column => column.key === "changePercent")?.header).toBe("Period %");
+  expect(period.columns?.find(column => column.key === "changePercent")?.header).not.toBe("Regular %");
+  expect(regular.rows.find(row => row.symbol === "AAPL")?.changePercent).toBe(1);
+  expect(regular.columns?.find(column => column.key === "changePercent")?.header).toBe("Regular %");
+});
