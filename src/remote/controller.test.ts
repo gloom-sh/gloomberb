@@ -153,6 +153,7 @@ function createRegistryHarness(options: {
     register: () => {},
     unregister: () => {},
     snapshot: () => uiNodes,
+    detail: (nodeId) => uiNodes.find((node) => node.id === nodeId) ?? null,
     invoke: async (nodeId, action, input) => {
       invokedUiActions.push({ nodeId, action, input });
       return { nodeId, action, input };

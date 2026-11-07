@@ -2,7 +2,7 @@ import { createElement, forwardRef, memo, useCallback, useRef, type ComponentPro
 import { useForwardedScrollBoxRef, useRegisterPaneScrollBox } from "../state/pane-scroll-registry";
 import { useUiHost, type UiHost } from "./host";
 import { scrollBoxScrollsVertically } from "./scroll-box-axis";
-import { useRemoteUiNode } from "../remote/semantic-tree";
+import { useRemoteUiNode, useRemoteUiScope } from "../remote/semantic-tree";
 import { markPure, samePureProps } from "./same-props";
 import { assignRef } from "../react/assign-ref";
 import {
@@ -62,14 +62,22 @@ export type {
   TextareaRenderable,
 } from "./host";
 
-export const Box = markPure(memo(forwardRef<any, ComponentProps<UiHost["Box"]>>((props, ref) => {
+export const Box = markPure(memo(forwardRef<any, ComponentProps<UiHost["Box"]> & { "data-gloom-remote-hidden"?: boolean }>(({
+  "data-gloom-remote-hidden": remoteHidden,
+  ...props
+}, ref) => {
   const { Box: HostBox } = useUiHost();
   const rawProps = props as Record<string, unknown>;
   const onMouseDown = rawProps.onMouseDown as ((event?: unknown) => unknown) | undefined;
   const onMouseUp = rawProps.onMouseUp as ((event?: unknown) => unknown) | undefined;
   const onContextMenu = rawProps.onContextMenu as ((event?: unknown) => unknown) | undefined;
+  // A prompt's scope reaches every control drawn in it, so no assistant's UI
+  // call acts on one (terminal-relay/policy.ts).
+  const scope = useRemoteUiScope();
+  // An owner that registers the control itself (a kit Button) hides this
+  // node, which would be the same control again without its label.
   const remoteNodeId = useRemoteUiNode(
-    onMouseDown || onMouseUp || onContextMenu
+    !remoteHidden && (onMouseDown || onMouseUp || onContextMenu)
       ? {
         role: remotePropRole(rawProps, "box"),
         label: remotePropLabel(rawProps),
@@ -81,6 +89,7 @@ export const Box = markPure(memo(forwardRef<any, ComponentProps<UiHost["Box"]>>(
         metadata: {
           width: rawProps.width,
           height: rawProps.height,
+          ...(scope ? { scope } : {}),
         },
       }
       : null,
@@ -93,6 +102,7 @@ export const Text = markPure(memo(forwardRef<any, ComponentProps<UiHost["Text"]>
   const { Text: HostText } = useUiHost();
   const rawProps = props as Record<string, unknown>;
   const onMouseDown = rawProps.onMouseDown as ((event?: unknown) => unknown) | undefined;
+  const scope = useRemoteUiScope();
   const remoteNodeId = useRemoteUiNode(
     onMouseDown
       ? {
@@ -103,6 +113,7 @@ export const Text = markPure(memo(forwardRef<any, ComponentProps<UiHost["Text"]>
         actions: {
           press: (input) => onMouseDown(remoteEvent(input)),
         },
+        ...(scope ? { metadata: { scope } } : {}),
       }
       : null,
   );

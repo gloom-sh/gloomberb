@@ -1,7 +1,8 @@
 import { commandBarResultsFromNodes } from "../../../../remote/command-bar";
 import { findCommandBarResult, findMatchingUiNode } from "../../../../remote/matching";
 import type { RemoteSideEffectLevel, RemoteUiNodeSnapshot } from "../../../../remote/types";
-import { shortValue, type CallSummary } from "./summary";
+import { logFailure } from "../../../../utils/log-failure";
+import { keyArgumentLines, shortValue, type CallSummary } from "./summary";
 
 /**
  * What a remote assistant connected through Gloom Cloud may do in this app.
@@ -17,7 +18,8 @@ import { shortValue, type CallSummary } from "./summary";
  *   order, a transfer, a message, a plugin capability) asks each time.
  * - `local-ui`: `allow` for semantic UI actions that only move, select or
  *   type inside the app; `confirm` for every other action (press, submit,
- *   activate), since a button can send an order or a message.
+ *   activate, an item of a plain menu), since a button can send an order or a
+ *   message.
  * - `navigation`: `allow` when the command-bar row opens a ticker or a pane;
  *   `confirm` for rows that run a command.
  *
@@ -119,7 +121,8 @@ export function operationPolicy(operation: string): TerminalRelayPolicyEntry {
 /**
  * UI actions that only scroll, move a cursor, select or type inside the app.
  * Everything else a node exposes (press, submit, activate, toggle, release)
- * may act outside it and asks each time.
+ * may act outside it and asks each time, and so does `select` on a plain
+ * menu, which runs the item (actionRunsSomething).
  */
 const LOCAL_UI_ACTIONS: ReadonlySet<string> = new Set([
   "scroll",
@@ -156,6 +159,8 @@ export const ASKG_PROMPT_SCOPE = "askg-prompt";
 /**
  * The prompts that ask the person about an assistant's calls. No UI call acts
  * on one, whichever assistant sent it: it could otherwise approve itself.
+ * Every control drawn inside one carries its scope (RemoteUiScope), labelled
+ * or not.
  */
 const PROMPT_SCOPES: ReadonlySet<string> = new Set([RELAY_PROMPT_SCOPE, ASKG_PROMPT_SCOPE]);
 
@@ -180,17 +185,38 @@ export interface UiCallPlan {
   confirm: CallSummary | null;
   /**
    * Right before the call runs, after any answer: why it may no longer run (a
-   * confirmation is open, the call now aims at a prompt, or the control the
-   * person allowed is not the one there now), or null.
+   * confirmation is open, the call now aims at a prompt, or what the person
+   * allowed is not what is there now), or null.
    */
   recheck(promptOpen: boolean): Promise<string | null>;
 }
 
 export interface UiCallContext {
-  /** The live semantic UI tree (`ui://tree`). */
-  uiNodes(): Promise<RemoteUiNodeSnapshot[]>;
+  /** Reads one app resource (`ui://tree`, `ui://node/{id}`, `app://layouts`). */
+  read(resource: string): Promise<unknown>;
   /** One of the caller's own confirmations waits for the person. */
   promptOpen: boolean;
+}
+
+type ReadResource = UiCallContext["read"];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+async function readUiTree(read: ReadResource): Promise<RemoteUiNodeSnapshot[]> {
+  const nodes = await read("ui://tree");
+  return Array.isArray(nodes) ? nodes as RemoteUiNodeSnapshot[] : [];
+}
+
+/**
+ * Whether a UI action runs something rather than only moving, selecting or
+ * typing. A plain menu's `select` runs the item it picks (a pane's action
+ * menu); a select field's menu only picks a value.
+ */
+function actionRunsSomething(node: RemoteUiNodeSnapshot | undefined, action: string): boolean {
+  if (!LOCAL_UI_ACTIONS.has(action)) return true;
+  return action === "select" && node?.role === "menu" && (node.metadata?.selection ?? "none") === "none";
 }
 
 /** A control by what the person sees: `"Place order" (button)`. */
@@ -198,8 +224,103 @@ function controlName(node: RemoteUiNodeSnapshot): string {
   return node.label ? `"${shortValue(node.label)}" (${node.role})` : `an unlabelled ${node.role}`;
 }
 
-function nodeFingerprint(node: RemoteUiNodeSnapshot | undefined): string {
-  return node ? `${node.id}|${node.role}|${node.label ?? ""}` : "";
+/** Actions that pick one row or item of the control, by index, id, key or label. */
+const ITEM_ACTIONS: ReadonlySet<string> = new Set(["activate", "activateRow", "select"]);
+
+interface ItemEntry {
+  index: number;
+  keys: string[];
+  label: string;
+}
+
+/** A list's or menu's items (`metadata.items`), or a table's rows from its detail. */
+function itemEntries(metadata: Record<string, unknown> | undefined): ItemEntry[] {
+  const items = Array.isArray(metadata?.items) ? metadata.items : [];
+  if (items.length > 0) {
+    return items.flatMap((entry, position) => {
+      if (!isRecord(entry) || typeof entry.label !== "string") return [];
+      return [{
+        index: typeof entry.index === "number" ? entry.index : position,
+        keys: [entry.id, entry.label, entry.value].filter((key): key is string => typeof key === "string"),
+        label: entry.label,
+      }];
+    });
+  }
+  const rows = Array.isArray(metadata?.rows) ? metadata.rows : [];
+  return rows.flatMap((row, position) => {
+    if (!isRecord(row) || row.section === true) return [];
+    const cells = Array.isArray(row.cells) ? row.cells.filter(isRecord) : [];
+    const label = cells.map((cell) => (typeof cell.text === "string" ? cell.text : "")).find(Boolean);
+    if (!label) return [];
+    return [{ index: position, keys: typeof row.key === "string" ? [row.key] : [], label }];
+  });
+}
+
+/** The row or item an action's input picks, as the control resolves it (resolveRemoteItemIndex). */
+function pickedItem(entries: ItemEntry[], input: unknown): ItemEntry | undefined {
+  if (typeof input === "number") return entries.find((entry) => entry.index === input);
+  if (typeof input === "string") return entries.find((entry) => entry.keys.includes(input));
+  if (!isRecord(input)) return undefined;
+  if (typeof input.index === "number") return entries.find((entry) => entry.index === input.index);
+  for (const key of ["id", "key", "label", "value"]) {
+    const value = input[key];
+    if (typeof value === "string") return entries.find((entry) => entry.keys.includes(value));
+  }
+  return undefined;
+}
+
+/** One node with its pane's title and its detail (a table's rows); null when unreadable. */
+async function readNodeDetail(nodeId: string, read: ReadResource): Promise<Record<string, unknown> | null> {
+  try {
+    const detail = await read(`ui://node/${encodeURIComponent(nodeId)}`);
+    return isRecord(detail) ? detail : null;
+  } catch {
+    // Intentional ignore: the tree already named the control, and the pane and the row only add to it.
+    return null;
+  }
+}
+
+interface TargetDescription {
+  title: string;
+  lines: CallSummary["lines"];
+  /** The same while the call would act on the same control, pane and row. */
+  fingerprint: string;
+}
+
+/**
+ * What a UI action that runs something is asked as: the control by label and
+ * role, the pane it is in, and for a row or item the label it shows.
+ */
+async function describeTarget(
+  node: RemoteUiNodeSnapshot | undefined,
+  action: string,
+  input: unknown,
+  read: ReadResource,
+): Promise<TargetDescription> {
+  const inputLine = input !== undefined ? [{ label: "Input", value: shortValue(input) }] : [];
+  if (!node) {
+    return {
+      title: action === "press" ? "Press a control" : `Run "${shortValue(action)}" on a control`,
+      lines: [{ label: "Control", value: "none visible yet" }, ...inputLine],
+      fingerprint: "",
+    };
+  }
+  const detail = await readNodeDetail(node.id, read);
+  const paneTitle = typeof detail?.paneTitle === "string" && detail.paneTitle.trim() ? shortValue(detail.paneTitle) : null;
+  const metadata = isRecord(detail?.metadata) ? detail.metadata : node.metadata;
+  const item = ITEM_ACTIONS.has(action) ? pickedItem(itemEntries(metadata), input)?.label : undefined;
+  const control = controlName(node);
+  const title = item
+    ? `Choose "${shortValue(item)}" ${node.role === "menu" ? "from" : "in"} ${control}`
+    : action === "press" ? `Press ${control}` : `Run "${shortValue(action)}" on ${control}`;
+  return {
+    title,
+    lines: [
+      ...(paneTitle ? [{ label: "Pane", value: paneTitle }] : []),
+      ...(item ? [] : inputLine),
+    ],
+    fingerprint: [node.id, node.role, node.label ?? "", paneTitle ?? "", item ?? ""].join("|"),
+  };
 }
 
 /**
@@ -223,42 +344,41 @@ export async function planUiCall(
 async function planLocalUiCall(
   operation: string,
   input: Record<string, unknown>,
-  { uiNodes, promptOpen }: UiCallContext,
+  { read, promptOpen }: UiCallContext,
 ): Promise<UiCallPlan> {
   const action = typeof input.action === "string" && input.action ? input.action : "press";
   const find = async () => {
-    const nodes = await uiNodes();
+    const nodes = await readUiTree(read);
     return operation === "ui.invoke"
       ? nodes.find((node) => node.id === input.nodeId)
       : findMatchingUiNode(nodes, input);
   };
   const target = await find();
   if (promptOpen || isPromptNode(target)) throw new UiCallRefusal("not_allowed", PROMPT_OPEN);
-  const local = LOCAL_UI_ACTIONS.has(action);
-  const fingerprint = nodeFingerprint(target);
-  const control = target ? controlName(target) : "a control";
+  if (!actionRunsSomething(target, action)) {
+    return {
+      confirm: null,
+      recheck: async (open) => (open || isPromptNode(await find()) ? PROMPT_OPEN : null),
+    };
+  }
+  const asked = await describeTarget(target, action, input.input, read);
   return {
-    confirm: local ? null : {
-      title: action === "press" ? `Press ${control}` : `Run "${shortValue(action)}" on ${control}`,
-      lines: [
-        ...(target ? [] : [{ label: "Control", value: "none visible yet" }]),
-        ...(input.input !== undefined ? [{ label: "Input", value: shortValue(input.input) }] : []),
-      ],
-    },
+    confirm: { title: asked.title, lines: asked.lines },
     recheck: async (open) => {
       const now = await find();
       if (open || isPromptNode(now)) return PROMPT_OPEN;
-      return !local && nodeFingerprint(now) !== fingerprint ? TARGET_CHANGED : null;
+      const current = await describeTarget(now, action, input.input, read);
+      return current.fingerprint === asked.fingerprint ? null : TARGET_CHANGED;
     },
   };
 }
 
 async function planCommandBarCall(
   input: Record<string, unknown>,
-  { uiNodes, promptOpen }: UiCallContext,
+  { read, promptOpen }: UiCallContext,
 ): Promise<UiCallPlan> {
   if (promptOpen) throw new UiCallRefusal("not_allowed", PROMPT_OPEN);
-  const find = async () => findCommandBarResult(commandBarResultsFromNodes(await uiNodes()), input);
+  const find = async () => findCommandBarResult(commandBarResultsFromNodes(await readUiTree(read)), input);
   const result = await find();
   if (!result) throw new UiCallRefusal("invalid_input", "No matching command-bar result is visible.");
   const kindOf = (row: typeof result) => (typeof row.kind === "string" ? row.kind : "");
@@ -283,6 +403,77 @@ async function planCommandBarCall(
   };
 }
 
+/** A `confirm` operation as the person is asked about it, and what is checked again before it runs. */
+export interface ConfirmedOperationPlan {
+  confirm: CallSummary;
+  /** Why the call may no longer run (what it named is gone or changed), or null. */
+  recheck?: () => Promise<string | null>;
+}
+
+/**
+ * How the relay and Ask Gloom ask about a `confirm` operation that has no dry
+ * run of its own: the layout a delete removes, by name, and the plugin and
+ * operation a capability call runs. Null leaves the caller's own wording.
+ */
+export async function describeConfirmedOperation(
+  operation: string,
+  input: Record<string, unknown>,
+  read: ReadResource,
+): Promise<ConfirmedOperationPlan | null> {
+  if (operation === "layout.delete") {
+    const layoutName = async (): Promise<string | null> => {
+      const layouts = await read("app://layouts");
+      const layout = Array.isArray(layouts) && typeof input.index === "number" ? layouts[input.index] : undefined;
+      return isRecord(layout) && typeof layout.name === "string" ? layout.name : null;
+    };
+    let name: string | null = null;
+    try {
+      name = await layoutName();
+    } catch (error) {
+      // The index still identifies it.
+      logFailure("cloud.terminal-relay", "Read layout names for a confirmation failed")(error);
+    }
+    return {
+      confirm: {
+        title: `Delete the layout ${name ? `"${shortValue(name)}"` : `#${String(input.index)}`}`,
+        lines: [{ label: "Undo", value: "Not available for a deleted layout" }],
+      },
+      // The layout at that place now is not the one the person agreed to lose.
+      recheck: name === null ? undefined : async () => ((await layoutName()) === name ? null : TARGET_CHANGED),
+    };
+  }
+  if (operation === "capability.invoke") {
+    const capabilityId = typeof input.capabilityId === "string" ? input.capabilityId : "";
+    const operationId = typeof input.operationId === "string" ? input.operationId : "";
+    let plugin = capabilityId;
+    let operationTitle = operationId;
+    try {
+      const manifests = await read("app://capabilities");
+      const manifest = Array.isArray(manifests)
+        ? manifests.find((entry) => isRecord(entry) && entry.id === capabilityId) as Record<string, unknown> | undefined
+        : undefined;
+      if (manifest && typeof manifest.name === "string") plugin = manifest.name;
+      const operations = manifest && Array.isArray(manifest.operations) ? manifest.operations : [];
+      const described = operations.find((entry) => isRecord(entry) && entry.id === operationId) as Record<string, unknown> | undefined;
+      if (described && typeof described.title === "string") operationTitle = described.title;
+    } catch (error) {
+      // The ids alone still say what runs.
+      logFailure("cloud.terminal-relay", "Read plugin names for a confirmation failed")(error);
+    }
+    return {
+      confirm: {
+        title: `${shortValue(operationTitle)} with ${shortValue(plugin)}`,
+        lines: [
+          { label: "Plugin", value: `${shortValue(plugin)}${plugin !== capabilityId ? ` (${shortValue(capabilityId)})` : ""}` },
+          { label: "Operation", value: shortValue(operationId) },
+          ...keyArgumentLines(input.payload),
+        ],
+      },
+    };
+  }
+  return null;
+}
+
 /** What the policy carries into a tool's description. */
 export function policySentence(policy: TerminalRelayPolicy): string {
   switch (policy) {
@@ -291,7 +482,7 @@ export function policySentence(policy: TerminalRelayPolicy): string {
     case "confirm":
       return "The person confirms each call in Gloom; unanswered after 60 s it is denied.";
     case "local-ui":
-      return "Scroll, select, setValue and focus run once the assistant is approved; press, submit and other actions are confirmed by the person on each call.";
+      return "Scroll, select, setValue and focus run once the assistant is approved; press, submit, choosing a menu item and other actions are confirmed by the person on each call.";
     case "navigation":
       return "Rows that open a ticker or a pane run once the assistant is approved; rows that run a command are confirmed by the person on each call.";
   }

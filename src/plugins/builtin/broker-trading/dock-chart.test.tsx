@@ -151,6 +151,8 @@ test("c picks the ticket's price on the chart: Enter takes the cursor's price, a
   await tui.emitKeypress({ name: "t" });
   await tui.waitForFrameToContain("Buy 1 AAPL");
   const limit = () => fieldValue("Limit");
+  // The limit fills in from the quote a frame or two after the ticket opens.
+  await settle(() => limit() !== "");
   const before = limit();
   await tui.emitKeypress({ name: "c" });
   await tui.waitForFrameToContain("set limit");
@@ -316,6 +318,7 @@ test("a price pick ends when the pane loses focus, so a later press on the chart
   await settle(() => tui.frame().includes("Volume"));
   await tui.emitKeypress({ name: "t" });
   await tui.waitForFrameToContain("Buy 1 AAPL");
+  await settle(() => fieldValue("Limit") !== "");
   const before = fieldValue("Limit");
   await tui.emitKeypress({ name: "c" });
   await tui.waitForFrameToContain("set limit");

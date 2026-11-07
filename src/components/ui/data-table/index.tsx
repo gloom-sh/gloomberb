@@ -98,6 +98,8 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
       selectedId: firstSelectedId(props),
       ...(props.reportEveryRow ? { rows: cachedReportedRows(props, reportedRowsRef) } : {}),
     }),
+    // Read for this table alone: a confirmation names the row a call would open.
+    getDetail: () => ({ rows: cachedReportedRows(props, reportedRowsRef) }),
   });
   // Header labels read the same in every table whatever case a pane wrote
   // them in. Exports and automation keep the pane's own labels.

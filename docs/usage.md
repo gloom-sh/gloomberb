@@ -2182,7 +2182,7 @@ The key is shown once and saved nowhere, so copy it before you close the dialog.
 
 An assistant connected to the Gloom Cloud MCP with Terminal control (Cloud settings, Agents) can drive this app while it is open and signed in: read what is on screen, open and arrange panes, navigate tickers and switch layouts. It needs no setup in the app. The first time an assistant asks, a prompt names it: `s` allows it for this session, `a` always, `n` or Esc denies.
 
-- Plugin actions, button presses, commands and anything that reaches an outside service (an order, a transfer, a message) ask on every call, with what the call will do: `y` allows that one call, and one left unanswered for 60 seconds is denied. Deleting a layout and adding or removing a watchlist ticker (naming the list, ticker and exchange) ask too.
+- Plugin actions, button presses, menu actions, commands and anything that reaches an outside service (an order, a transfer, a message) ask on every call, with what the call will do: `y` allows that one call, and one left unanswered for 60 seconds is denied. Deleting a layout and adding or removing a watchlist ticker (naming the list, ticker and exchange) ask too.
 - While an assistant works, its name shows in the status bar. A click opens Account Management on the Agents tab, where `r` revokes it so its next call asks again. The `MCP` dialog says how many assistants are allowed, and `m` opens the same tab.
 - Credentials in the configuration never leave the app.
 
@@ -2346,7 +2346,7 @@ The sources stay in the app until you share them. **Copy Answer with Source Link
 
 **Watchlist changes.** Ask Gloom can add a ticker to one of your own watchlists (the one you name, else your first) or take one off. Team watchlists and portfolios it leaves alone. It asks first, naming the list, the ticker and its exchange: `y` or Approve makes the change, `n` or Decline leaves it. Unanswered for about a minute, it closes and nothing changes.
 
-**Buttons and commands.** Ask Gloom scrolls, selects, fills in fields, focuses and opens panes or tickers without asking. Before it presses, submits or toggles a control, or runs a command from the command bar, it asks, naming the control (`Press "Place order" (button)?`). Deleting a layout asks too. Unanswered, the question closes on its own and nothing runs. Ask Gloom never answers its own questions, and while one waits it does nothing else on screen.
+**Buttons and commands.** Ask Gloom scrolls, selects, fills in fields, focuses and opens panes or tickers without asking. Before it presses, submits or toggles a control, opens a row, chooses an action from a menu or runs a command from the command bar, it asks. The question names the control and the pane it is in (`Press "Place order" (button)?`), and a row or menu item by what it shows. Deleting a layout asks too, naming the layout. If what the question named has changed by the time you answer, nothing runs. Unanswered, the question closes on its own and nothing runs. Ask Gloom never answers its own questions and asks one at a time: while one waits, it changes nothing else in the app, though it can still read.
 
 **Keys.** Esc leaves the question field for the answer, Enter goes back to the field.
 

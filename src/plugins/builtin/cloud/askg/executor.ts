@@ -47,8 +47,7 @@ import {
   type InProcessRemoteControlHandler,
 } from "./undo";
 import { logFailure } from "../../../../utils/log-failure";
-import type { RemoteUiNodeSnapshot } from "../../../../remote/types";
-import { planUiCall, UiCallRefusal, type UiCallPlan } from "../terminal-relay/policy";
+import { describeConfirmedOperation, planUiCall, UiCallRefusal, type UiCallPlan } from "../terminal-relay/policy";
 
 interface HeadlessExecution {
   result: unknown;
@@ -90,15 +89,19 @@ interface ASKGToolExecutionOptions {
 /**
  * What the per-operation policy shared with the terminal relay
  * (terminal-relay/policy.ts) says about a call that acts on what is on
- * screen: a press, a submit, a command-bar row.
+ * screen (a press, a submit, a command-bar row), or about a confirmed
+ * operation it describes (a layout delete, by the layout's name).
  */
 export type ASKGToolGate =
   /** Refused before anything is asked: it aims at a confirmation, or one is open. */
   | { kind: "refusal"; message: string }
   /** Scroll, select, setValue, focus, a row that opens a ticker or a pane. */
   | { kind: "silent"; recheck: UiCallPlan["recheck"] }
-  /** Asks first, naming the control it presses by label and role. */
+  /** Asks first, naming the control and its pane, the row it opens, or the layout it deletes. */
   | { kind: "ask"; title: string; lines: string[]; recheck: UiCallPlan["recheck"] };
+
+/** Why a call that changes the app did not run while one of Ask Gloom's questions waited (controller.ts). */
+export const CONFIRMATION_WAITING_NOTE = "Gloom is waiting for the person to answer a confirmation, and nothing else that changes the app runs until then. This call did not run; retry it after they answer.";
 
 /**
  * What a call needing approval will change, from the operation's own dry run:
@@ -122,8 +125,11 @@ export interface ASKGToolExecutor {
   ): Promise<ToolResultPayload>;
   /** Null when the call has no dry run that says more than its arguments. */
   preview?(call: ASKGToolCallEvent, signal?: AbortSignal): Promise<ASKGToolPreview | null>;
-  /** Null when the call does not act on what is on screen. */
-  gate?(call: ASKGToolCallEvent, options: { promptOpen: boolean; signal?: AbortSignal }): Promise<ASKGToolGate | null>;
+  /**
+   * Null when the policy has nothing to add for the call. Throws when it
+   * cannot tell (the screen could not be read): the call does not run.
+   */
+  gate(call: ASKGToolCallEvent, options: { promptOpen: boolean; signal?: AbortSignal }): Promise<ASKGToolGate | null>;
   undo(token: string, signal?: AbortSignal): Promise<AppliedUndo>;
 }
 
@@ -380,14 +386,14 @@ export function createASKGToolExecutor(
     ?? defaultHeadlessExecutor(dependencies.registry, dependencies.context);
   const undoManager = dependencies.undoManager ?? new ASKGUndoManager(dependencies.remoteHandler);
 
-  const readUiNodes = async (signal?: AbortSignal): Promise<RemoteUiNodeSnapshot[]> => {
+  const readResource = async (resource: string, signal?: AbortSignal): Promise<unknown> => {
     const response = await runWithDeadline(
-      () => dependencies.remoteHandler({ type: "get", resource: "ui://tree" }),
+      () => dependencies.remoteHandler({ type: "get", resource }),
       PREVIEW_TIMEOUT_MS,
       signal,
     );
     if (!response.ok) throw new Error(response.error.message);
-    return Array.isArray(response.data) ? response.data as RemoteUiNodeSnapshot[] : [];
+    return response.data;
   };
 
   const gate = async (
@@ -397,17 +403,28 @@ export function createASKGToolExecutor(
     if (manifests.get(call.name)?.source !== "remote-op") return null;
     const binding = resolveRemoteToolBinding(call.name);
     if (binding?.kind !== "operation") return null;
+    const read = (resource: string) => readResource(resource, signal);
     try {
-      const plan = await planUiCall(binding.operation, call.args, { uiNodes: () => readUiNodes(signal), promptOpen });
-      if (!plan) return null;
-      return plan.confirm
-        ? {
-          kind: "ask",
-          title: plan.confirm.title,
-          lines: plan.confirm.lines.map(({ label, value }) => `${label}: ${value}`),
-          recheck: plan.recheck,
-        }
-        : { kind: "silent", recheck: plan.recheck };
+      const plan = await planUiCall(binding.operation, call.args, { read, promptOpen });
+      if (plan) {
+        return plan.confirm
+          ? {
+            kind: "ask",
+            title: plan.confirm.title,
+            lines: plan.confirm.lines.map(({ label, value }) => `${label}: ${value}`),
+            recheck: plan.recheck,
+          }
+          : { kind: "silent", recheck: plan.recheck };
+      }
+      const described = await describeConfirmedOperation(binding.operation, call.args, read);
+      if (!described) return null;
+      const recheck = described.recheck;
+      return {
+        kind: "ask",
+        title: described.confirm.title,
+        lines: described.confirm.lines.map(({ label, value }) => `${label}: ${value}`),
+        recheck: async () => (recheck ? recheck() : null),
+      };
     } catch (error) {
       if (error instanceof UiCallRefusal) return { kind: "refusal", message: error.message };
       throw error;
@@ -491,6 +508,8 @@ export function createASKGToolExecutor(
         // The last look before it acts: the screen may have changed while the person decided.
         const stale = await screenGate?.recheck(promptOpen());
         if (stale) return { status: "denied", note: stale };
+        // Nothing that changes the app runs while one of Ask Gloom's questions waits.
+        if (manifest.writeTier !== "read" && promptOpen()) return { status: "denied", note: CONFIRMATION_WAITING_NOTE };
 
         const response = await dependencies.remoteHandler(remoteRequestForTool(binding, call.args), {
           signal,

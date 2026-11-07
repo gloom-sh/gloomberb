@@ -32,6 +32,7 @@ export const REMOTE_RESOURCES: RemoteResourceSchema[] = [
   { uri: "app://auth", description: "What the client believes about its cloud session: credential present, checked, cached user plan and verification. No secrets." },
   { uri: "app://remote/help", description: "Agent-oriented remote usage guide with efficient recipes and caveats." },
   { uri: "ui://tree", description: "Live semantic UI node tree populated by shared controls and interactive primitives." },
+  { uri: "ui://node/{nodeId}", description: "One node of ui://tree with what the tree leaves out: the title of the pane it is in and, for a table, every row." },
 ];
 
 const stringSchema = { type: "string" } satisfies RemoteJsonSchema;

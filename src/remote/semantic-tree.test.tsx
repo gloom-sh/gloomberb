@@ -1,8 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
+import { Button } from "../components/ui/button";
+import { Box, Text } from "../ui";
 import {
   RemoteUiRegistryProvider,
+  RemoteUiScope,
   createRemoteUiRegistry,
   useRemoteUiNode,
 } from "./semantic-tree";
@@ -99,4 +102,44 @@ test("semantic nodes keep current behavior without re-registering on every rende
     metadata: { value: 2 },
   });
   expect(await registry.invoke(nodeId, "read")).toBe(2);
+});
+
+test("a prompt's scope reaches every control drawn in it, and a kit button is in the tree once", async () => {
+  const registry = createRemoteUiRegistry();
+  await tui.render(
+    <RemoteUiRegistryProvider registry={registry}>
+      <RemoteUiScope scope="askg-prompt">
+        <Box flexDirection="column">
+          <Button label="Approve" onPress={() => {}} />
+          <Box height={1} onMouseDown={() => {}}><Text>row</Text></Box>
+          <Text onMouseDown={() => {}}>{"link"}</Text>
+        </Box>
+      </RemoteUiScope>
+    </RemoteUiRegistryProvider>,
+    { width: 30, height: 4 },
+  );
+
+  expect(registry.snapshot().map((node) => [node.role, node.label ?? null, node.metadata?.scope])).toEqual([
+    ["button", "Approve", "askg-prompt"],
+    ["box", null, "askg-prompt"],
+    ["text", "link", "askg-prompt"],
+  ]);
+});
+
+test("a node's detail is read for that node alone, never with the tree", () => {
+  const registry = createRemoteUiRegistry();
+  let rowsRead = 0;
+  registry.register("ui:table", {
+    role: "table",
+    metadata: { rowCount: 2 },
+    getDetail: () => {
+      rowsRead += 1;
+      return { rows: [{ key: "AAPL" }, { key: "MSFT" }] };
+    },
+  });
+
+  expect(registry.snapshot()[0]?.metadata).toEqual({ rowCount: 2 });
+  expect(rowsRead).toBe(0);
+  expect(registry.detail("ui:table")?.metadata).toEqual({ rowCount: 2, rows: [{ key: "AAPL" }, { key: "MSFT" }] });
+  expect(registry.detail("ui:gone")).toBeNull();
 });
