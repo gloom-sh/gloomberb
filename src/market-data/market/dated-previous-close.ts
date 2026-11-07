@@ -5,7 +5,8 @@ import { canonicalExchange } from "../../utils/exchanges";
 import { logFailure } from "../../utils/log-failure";
 import { dailyBarDate } from "../../utils/price-history";
 import { classifyInstrumentType } from "../../tickers/instrument-kind";
-import { changeBasisSessionDate, isChangeBasisDatedWithoutCloses, quoteChangeBasis } from "./change-basis";
+import { calendarVenue, changeBasisSessionDate, isChangeBasisDatedWithoutCloses, quoteChangeBasis } from "./change-basis";
+import { cleanFloat32Price } from "../../utils/float32-price";
 
 /** History closes come as float32 (30.93000030517578) where the quote says 30.93: one close. */
 const SAME_CLOSE_RELATIVE = 1e-5;
@@ -16,14 +17,26 @@ const SAME_CLOSE_RELATIVE = 1e-5;
  */
 const SAME_INDEX_CLOSE_RELATIVE = 1e-4;
 /**
- * How long a reading that named no day stands before the closes are read
- * again: a history a session behind catches up, a failed read is retried.
+ * How long a reading that named no day, or corrected an index's close,
+ * stands before the closes are read again: a history a session behind
+ * catches up, a failed read is retried, a correction is checked again.
  */
 const UNDATED_RETRY_MS = 10 * 60_000;
 /** Readings kept at once; the oldest goes first. */
 const MAX_READINGS = 2_000;
 /** Daily histories read at once. */
 const MAX_READS_IN_FLIGHT = 6;
+/**
+ * Index checks read at once, in a pool of their own: a board of the world's
+ * indices (`fn WEI`) checks two dozen at the same time, each one small read.
+ */
+const MAX_INDEX_READS_IN_FLIGHT = 32;
+/**
+ * The longest a caller waits for an index check. Gloom Cloud measures an
+ * index's move from its previous session's bar already: this check stands
+ * behind it, so it must never make a board of indices slow.
+ */
+const INDEX_CHECK_WAIT_MS = 300;
 /** How long one read may take before its slot goes to the next: a hung read must not stall the rest. */
 const READ_DEADLINE_MS = 10_000;
 
@@ -34,8 +47,9 @@ export interface DatedCloseListing {
   context?: MarketDataRequestContext;
 }
 
-/** A listing's recent daily closes (a month is enough). */
-export type ReadDailyCloses = (listing: DatedCloseListing) => Promise<readonly Pick<PricePoint, "date" | "close">[]>;
+/** A listing's recent daily closes (a month is enough), with the flags that say a bar had not closed yet. */
+export type ReadDailyCloses = (listing: DatedCloseListing) => Promise<readonly DailyClose[]>;
+type DailyClose = Pick<PricePoint, "date" | "close" | "partial" | "unsettled">;
 
 export interface PreviousCloseDatesOptions {
   /** Called with the latest copy of a quote, dated, when a read lands that names its day. */
@@ -43,6 +57,8 @@ export interface PreviousCloseDatesOptions {
   now?: () => number;
   maxReadsInFlight?: number;
   readDeadlineMs?: number;
+  /** The longest `settle` waits for index checks (INDEX_CHECK_WAIT_MS). */
+  indexWaitMs?: number;
 }
 
 interface Reading {
@@ -75,8 +91,9 @@ function sameClose(left: number, right: number): boolean {
  */
 function readingKey(quote: Quote | null | undefined, listing: DatedCloseListing, now: number): string | null {
   if (!quote || classifyInstrumentType(quote.instrumentType) === "option") return null;
-  // An index's dated close is checked against its daily close of that day as well (indexCloseOn).
-  if (datedIndexClose(quote)) return datedReadingKey(quote, listing);
+  // An index's dated close is checked against its daily close of that day as well (indexCloseOn), but for a Cboe
+  // index's, which Gloom Cloud checks against Cboe's own closes.
+  if (datedIndexClose(quote)) return calendarVenue(quote) === "CBOE" ? null : datedReadingKey(quote, listing);
   if (isChangeBasisDatedWithoutCloses(quote, now)) return null;
   if (quoteChangeBasis(quote)?.kind !== "previous close") return null;
   return datedReadingKey(quote, listing);
@@ -90,17 +107,29 @@ function datedReadingKey(quote: Quote, listing: DatedCloseListing): string | nul
 }
 
 /**
+ * The closed daily bars of a history, dated where the listing trades: by the
+ * venue whose calendar its sessions follow (HKSE's bars by HKEX's zone, not
+ * UTC). A bar whose period had not ended when it was served (`partial`), or a
+ * future's session awaiting settlement, is no close: a copy kept from the
+ * session before (a US holiday) must never stand for that session's close.
+ */
+function closedBars(points: readonly DailyClose[], quote: Quote): Array<{ date: string; close: number }> {
+  const venue = calendarVenue(quote);
+  return points.flatMap((point) => {
+    const time = new Date(point.date).getTime();
+    if (point.partial || point.unsettled || !Number.isFinite(time) || !Number.isFinite(point.close)) return [];
+    return [{ date: dailyBarDate(time, venue), close: point.close }];
+  });
+}
+
+/**
  * The day of the latest daily close before the move's session, when that
  * close is the quote's previous close; null otherwise, so a gap in the
  * history never names the wrong day.
  */
-function latestCloseBefore(points: readonly Pick<PricePoint, "date" | "close">[], quote: Quote): string | null {
+function latestCloseBefore(points: readonly DailyClose[], quote: Quote): string | null {
   const sessionDate = changeBasisSessionDate(quote)!;
-  const exchange = quote.listingExchangeName ?? quote.exchangeName ?? "";
-  const before = points
-    .map((point) => ({ time: new Date(point.date).getTime(), close: point.close }))
-    .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.close))
-    .map((point) => ({ date: dailyBarDate(point.time, exchange), close: point.close }))
+  const before = closedBars(points, quote)
     .filter((point) => point.date < sessionDate)
     .sort((left, right) => left.date.localeCompare(right.date))
     .at(-1);
@@ -126,18 +155,16 @@ function datedIndexClose(quote: Quote): string | null {
  * close of Thu 5 Nov, the one HP charts, was 24,796.98: +2.35% beside -1.27%.
  * The reading names the day either way, and the close when it disagrees.
  */
-function indexCloseOn(points: readonly Pick<PricePoint, "date" | "close">[], quote: Quote, date: string): { date: string | null; close?: number } {
-  const exchange = quote.listingExchangeName ?? quote.exchangeName ?? "";
-  const bar = points
-    .map((point) => ({ time: new Date(point.date).getTime(), close: point.close }))
-    .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.close) && point.close > 0)
-    .findLast((point) => dailyBarDate(point.time, exchange) === date);
+function indexCloseOn(points: readonly DailyClose[], quote: Quote, date: string): { date: string | null; close?: number } {
+  const bar = closedBars(points, quote).findLast((point) => point.close > 0 && point.date === date);
   if (!bar) return { date: null };
+  // Bars come as float32 (24796.98046875): the close is the decimal it is, as Gloom Cloud serves it.
+  const close = cleanFloat32Price(bar.close);
   const previousClose = quote.previousClose!;
-  return Math.abs(previousClose - bar.close) <= bar.close * SAME_INDEX_CLOSE_RELATIVE ? { date } : { date, close: bar.close };
+  return Math.abs(previousClose - close) <= close * SAME_INDEX_CLOSE_RELATIVE ? { date } : { date, close };
 }
 
-function readingOf(points: readonly Pick<PricePoint, "date" | "close">[], quote: Quote): { date: string | null; close?: number } {
+function readingOf(points: readonly DailyClose[], quote: Quote): { date: string | null; close?: number } {
   const indexDate = datedIndexClose(quote);
   return indexDate ? indexCloseOn(points, quote, indexDate) : { date: latestCloseBefore(points, quote) };
 }
@@ -172,23 +199,29 @@ function withReading<T extends Quote | null | undefined>(quote: T, reading: Pick
  * measured from its previous session's close (indexCloseOn). The closes are read once
  * per listing, session and close, and the answer is kept: a refresh, a tick
  * or a cached read of the same quote is dated without another read. A few
- * reads run at once, each for at most ten seconds.
+ * reads run at once, each for at most ten seconds; index checks run in a
+ * wider pool of their own.
  */
 export class PreviousCloseDates {
   private readonly readings = new Map<string, Reading>();
   private readonly pending = new Map<string, Promise<Pick<Reading, "date" | "close">>>();
   /** The latest copy of each quote a read is pending for, which the read dates when it lands. */
   private readonly latestCopies = new Map<string, { quote: Quote; listing: DatedCloseListing }>();
-  private readonly waiting: Array<() => void> = [];
-  private active = 0;
+  /** Dating reads and index checks queue apart, so neither waits behind the other. */
+  private readonly pools: Record<"dating" | "index", { active: number; waiting: Array<() => void>; max: number }>;
   private readonly now: () => number;
-  private readonly maxReadsInFlight: number;
   private readonly readDeadlineMs: number;
+  private readonly indexWaitMs: number;
 
   constructor(private readonly readCloses: ReadDailyCloses, private readonly options: PreviousCloseDatesOptions = {}) {
     this.now = options.now ?? (() => Date.now());
-    this.maxReadsInFlight = options.maxReadsInFlight ?? MAX_READS_IN_FLIGHT;
+    const max = options.maxReadsInFlight ?? MAX_READS_IN_FLIGHT;
+    this.pools = {
+      dating: { active: 0, waiting: [], max },
+      index: { active: 0, waiting: [], max: Math.max(max, MAX_INDEX_READS_IN_FLIGHT) },
+    };
     this.readDeadlineMs = options.readDeadlineMs ?? READ_DEADLINE_MS;
+    this.indexWaitMs = options.indexWaitMs ?? INDEX_CHECK_WAIT_MS;
   }
 
   /** The quote dated by what was already read for it; as it was when nothing was. Never reads. */
@@ -213,6 +246,7 @@ export class PreviousCloseDates {
   /**
    * Starts the reads these quotes need and waits for them, at most `waitMs`
    * in all and no longer than `signal` lets it; `known` then dates them.
+   * Index checks run side by side and are waited for at most `indexWaitMs`.
    */
   async settle(
     entries: ReadonlyArray<{ quote: Quote; listing: DatedCloseListing }>,
@@ -220,16 +254,24 @@ export class PreviousCloseDates {
   ): Promise<void> {
     if (signal?.aborted) return;
     const reads: Promise<unknown>[] = [];
+    const checks: Promise<unknown>[] = [];
     for (const { quote, listing } of entries) {
       const key = readingKey(quote, listing, this.now());
-      if (key && !this.stands(this.readings.get(key))) reads.push(this.start(key, quote, listing));
+      if (key && !this.stands(this.readings.get(key))) (datedIndexClose(quote) ? checks : reads).push(this.start(key, quote, listing));
     }
-    if (reads.length) await settleWithin(abortable(Promise.all(reads), signal, "Stopped waiting for daily closes"), waitMs);
+    const within = (all: Promise<unknown>[], ms: number) => all.length
+      ? settleWithin(abortable(Promise.all(all), signal, "Stopped waiting for daily closes"), ms) : null;
+    await Promise.all([within(reads, waitMs), within(checks, Math.min(waitMs, this.indexWaitMs))]);
   }
 
-  /** Whether a reading answers without another read: a day it named, or no day named lately. */
+  /**
+   * Whether a reading answers without another read: a day it named that
+   * agreed with the quote's close, or any other reading taken lately. A
+   * correction (an index's close the quote disagreed with) is read again as
+   * an undated one is, so a wrong close cannot stand for the session.
+   */
   private stands(reading: Reading | undefined): boolean {
-    return !!reading && (!!reading.date || this.now() - reading.at < UNDATED_RETRY_MS);
+    return !!reading && ((!!reading.date && reading.close == null) || this.now() - reading.at < UNDATED_RETRY_MS);
   }
 
   private start(key: string, quote: Quote, listing: DatedCloseListing): Promise<Pick<Reading, "date" | "close">> {
@@ -238,7 +280,7 @@ export class PreviousCloseDates {
   }
 
   private read(key: string, quote: Quote, listing: DatedCloseListing): Promise<Pick<Reading, "date" | "close">> {
-    const read = this.inSlot(() => withDeadline(Promise.resolve().then(() => this.readCloses(listing)), this.readDeadlineMs, "Reading daily closes timed out"))
+    const read = this.inSlot(datedIndexClose(quote) ? "index" : "dating", () => withDeadline(Promise.resolve().then(() => this.readCloses(listing)), this.readDeadlineMs, "Reading daily closes timed out"))
       .then((points) => readingOf(points, quote))
       .catch(logFailure("market-data.dated-previous-close", "Read daily closes failed", { date: null }))
       .then((reading) => {
@@ -261,16 +303,17 @@ export class PreviousCloseDates {
     return read;
   }
 
-  private async inSlot<T>(work: () => Promise<T>): Promise<T> {
-    if (this.active < this.maxReadsInFlight) this.active += 1;
-    else await new Promise<void>((resolve) => this.waiting.push(resolve));
+  private async inSlot<T>(kind: "dating" | "index", work: () => Promise<T>): Promise<T> {
+    const pool = this.pools[kind];
+    if (pool.active < pool.max) pool.active += 1;
+    else await new Promise<void>((resolve) => pool.waiting.push(resolve));
     try {
       return await work();
     } finally {
       // A finished read hands its slot to the next one waiting.
-      const next = this.waiting.shift();
+      const next = pool.waiting.shift();
       if (next) next();
-      else this.active -= 1;
+      else pool.active -= 1;
     }
   }
 }
