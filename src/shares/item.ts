@@ -16,7 +16,7 @@ export interface ShareItem {
   excerpt?: string;
 }
 
-export const SHARE_ITEM_LIMITS = { pane: 80, title: 200, excerpt: 300 } as const;
+const SHARE_ITEM_LIMITS = { pane: 80, title: 200, excerpt: 300 } as const;
 /** About two lines of a chat card and what link previews show of a description. */
 const EXCERPT_LENGTH = 240;
 

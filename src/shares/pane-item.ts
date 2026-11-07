@@ -74,7 +74,7 @@ function readEntry(entry: Entry): PaneShareItemPart | null {
  * the one shown last first within each. A title without an excerpt takes the
  * kit's excerpt (a stack's title, its reader's opening).
  */
-export function declaredPaneShareItem(paneId: string): PaneShareItemPart | null {
+function declaredPaneShareItem(paneId: string): PaneShareItemPart | null {
   const said = [...entries.get(paneId) ?? []]
     .sort((a, b) => Number(a.kit) - Number(b.kit) || b.order - a.order)
     .map((entry) => ({ entry, part: readEntry(entry) }))
