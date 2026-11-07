@@ -18,6 +18,7 @@ import { isAccessDenied } from "../../../api-client/errors";
 import type { ScreenDefinition } from "../../../api-client/equity-screener";
 import { useThemeColors } from "../../../theme/theme-context";
 import { fetchScreenCheck } from "./client";
+import { screenNotices } from "./footer";
 import { checkRows, screenCheckSummary } from "./screen-check";
 
 interface ScreenTickerCheckProps {
@@ -80,7 +81,7 @@ export function ScreenTickerCheck({
   usePaneNoticeFooter({
     registrationId: "equity-screener:check-notices",
     focused,
-    notices: [...(data?.warnings ?? []), ...(error ? [error] : [])],
+    notices: [...screenNotices(data?.warnings), ...(error ? [error] : [])],
   });
   const rows = data ? checkRows(data) : [];
   const columns: DataTableColumn[] = [
