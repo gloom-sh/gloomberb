@@ -70,7 +70,7 @@ export function sharesOutstandingInReceipts(
  * Korean code ending in 5, 7 or 9 is a preferred share (005935). Any other
  * home line, or none, holds ordinary shares.
  */
-export function homeShareClass(home: string | null | undefined): { one: string; many: string } {
+function homeShareClass(home: string | null | undefined): { one: string; many: string } {
   const ticker = (home ?? "").trim().toUpperCase();
   const [code = "", venue = ""] = ticker.includes(":") ? ticker.split(":") : [ticker.replace(/\.[A-Z]+$/, ""), ticker.match(/\.([A-Z]+)$/)?.[1] ?? ""];
   const b3 = venue === "SA" || venue === "B3" || venue === "BVMF" || venue === "SAO" || venue === "BOVESPA";

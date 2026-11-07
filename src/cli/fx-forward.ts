@@ -93,7 +93,7 @@ export function impliedForward(
  * day count, or, for a rate compounded over 252 business days (CDI),
  * (1 + r)^(days / 365), business days taken as 252/365 of the calendar days.
  */
-export function shortRateGrowth(rate: Pick<CloudShortRate, "dayCountBasis" | "compounding"> & { value: number }, days: number): number {
+function shortRateGrowth(rate: Pick<CloudShortRate, "dayCountBasis" | "compounding"> & { value: number }, days: number): number {
   return rate.compounding === "business-252"
     ? (1 + rate.value / 100) ** (days / 365)
     : 1 + (rate.value / 100) * days / rate.dayCountBasis;
@@ -126,7 +126,7 @@ export function shortRateFor(currency: string, rates: readonly CloudShortRate[])
 }
 
 /** `6.776%`: a rate as its publisher prints it, to four decimals at most. */
-export function formatRatePercent(value: number): string {
+function formatRatePercent(value: number): string {
   return `${Number(value.toFixed(4))}%`;
 }
 

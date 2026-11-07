@@ -463,7 +463,7 @@ async function setPositionCommand(
  * BRL, the currency of its first position. To total it in USD, create it
  * with --currency USD: ...`.
  */
-export function firstPositionCurrencyNote(name: string, adopted: string, was: string): string {
+function firstPositionCurrencyNote(name: string, adopted: string, was: string): string {
   const quoted = JSON.stringify(name);
   return `"${name}" now totals in ${adopted}, the currency of its first position. To total it in ${was}, create it with --currency ${was}: `
     + `gloom portfolio delete ${quoted}, then gloom portfolio create ${quoted} --currency ${was}, and set the position again.`;
