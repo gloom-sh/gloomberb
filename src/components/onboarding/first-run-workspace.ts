@@ -99,22 +99,42 @@ export function planFirstRunWatchlist(
 }
 
 /**
+ * Below this many columns or rows the first-run Home shows three spots, not
+ * five: at 80x24 five cut headlines to nine characters and pane titles to
+ * "Main P...". 120x36 and up keep all five side by side.
+ */
+const COMPACT_HOME_BELOW = { width: 100, height: 30 } as const;
+
+export function isCompactHomeViewport(viewport: { width: number; height: number }): boolean {
+  return viewport.width < COMPACT_HOME_BELOW.width || viewport.height < COMPACT_HOME_BELOW.height;
+}
+
+/**
  * The workspace a first run lands on: the holdings as a mark-to-market
  * heatmap, a watchlist, the largest position's chart, the top news wire, and
  * a market read beside it. Everything is docked, so the first screen reads at
  * any window size. Anything the host cannot render is left out rather than
  * shown as a placeholder.
+ *
+ * `compact` (a small terminal, isCompactHomeViewport) keeps the same panes in
+ * three spots: the watchlist beside the chart (the heatmap with `holdings`),
+ * and the news across the whole width with the market read, Trending and the
+ * other list as tabs behind it.
  */
 export function buildFirstRunLayout({
   symbol,
   portfolioId,
   watchlistId,
   hasPane,
+  compact = false,
+  holdings = false,
 }: {
   symbol: string;
   portfolioId: string;
   watchlistId: string;
   hasPane: (paneId: string) => boolean;
+  compact?: boolean;
+  holdings?: boolean;
 }): SavedLayout {
   const instances: PaneInstanceConfig[] = [
     {
@@ -173,10 +193,32 @@ export function buildFirstRunLayout({
   if (readPaneId) instances.push({ instanceId: readId, paneId: readPaneId, binding: { kind: "none" } });
   const trending = hasPane("attention-trending");
   if (trending) instances.push({ instanceId: FIRST_RUN_PANE_IDS.trending, paneId: "attention-trending", binding: { kind: "none" } });
-  const beside = buildDockStack([
+  const readIds = [
     ...(readPaneId ? [readId] : []),
     ...(trending ? [FIRST_RUN_PANE_IDS.trending] : []),
-  ]);
+  ];
+  if (compact) {
+    // The list beside the chart is the holdings when there are any, else the watchlist; the other one is the
+    // last tab behind the news, where the strip has room to name it.
+    const [list, other] = holdings
+      ? [FIRST_RUN_PANE_IDS.heatmap, FIRST_RUN_PANE_IDS.watchlist]
+      : [FIRST_RUN_PANE_IDS.watchlist, FIRST_RUN_PANE_IDS.heatmap];
+    const top = { kind: "split" as const, axis: "horizontal" as const, ratio: 0.42,
+      first: { kind: "pane" as const, instanceId: list }, second: { kind: "pane" as const, instanceId: FIRST_RUN_PANE_IDS.chart } };
+    const below = buildDockStack([...(secondary ? [secondary.instanceId] : []), ...readIds, other]);
+    return {
+      name: "Home",
+      layout: {
+        dockRoot: below ? { kind: "split", axis: "vertical", ratio: 0.55, first: top, second: below } : top,
+        instances,
+        floating: [],
+        detached: [],
+      },
+      paneState: {},
+      focusedPaneId: FIRST_RUN_PANE_IDS.chart,
+    };
+  }
+  const beside = buildDockStack(readIds);
   const lower = secondary && beside ? { kind: "split" as const, axis: "horizontal" as const, ratio: 0.6,
     first: { kind: "pane" as const, instanceId: secondary.instanceId }, second: beside }
     : secondary ? { kind: "pane" as const, instanceId: secondary.instanceId } : beside;
