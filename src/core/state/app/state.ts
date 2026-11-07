@@ -265,7 +265,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case "FOCUS_PANE": {
-      return focusPaneState(state, action.paneId);
+      return focusPaneState(state, action.paneId, action.trackTicker ?? true);
     }
 
     case "FOCUS_NEXT": {

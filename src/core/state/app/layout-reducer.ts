@@ -9,6 +9,7 @@ import {
   removeHistoryIndex,
   resolveTickerForPane,
   setHistoryForIndex,
+  settleOpeningPaneHistory,
   syncConfigActiveLayoutState,
   withFocusedPane,
 } from "./layout";
@@ -41,6 +42,12 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
         ...state,
         layoutHistory: setHistoryForIndex(state.layoutHistory, currentIndex, entry),
       };
+    }
+
+    case "SETTLE_OPENING_PANE": {
+      const currentIndex = state.config.activeLayoutIndex;
+      const entry = settleOpeningPaneHistory(historyForIndex(state.layoutHistory, currentIndex), state.config.layout, action.settlement);
+      return { ...state, layoutHistory: setHistoryForIndex(state.layoutHistory, currentIndex, entry) };
     }
 
     case "UNDO_LAYOUT": {
