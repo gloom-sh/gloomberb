@@ -16,9 +16,12 @@
  * and a portfolio into it. Without a session the tools run signed out, which
  * limits some of them. Cases live in askg-tool-sweep-cases.ts.
  */
-import { resolve } from "path";
+import { realpathSync } from "fs";
+import { homedir } from "os";
+import { dirname, join, resolve } from "path";
 import { parseArgs } from "util";
-import { initDataDir, saveConfig } from "../src/data/config/store";
+import { getDataDir, initDataDir, saveConfig } from "../src/data/config/store";
+import { getGloomberbDirs } from "../src/data/config/home";
 import { initMarketData } from "../src/cli/context";
 import { createPaneCatalog } from "../src/cli/pane-functions/discovery";
 import { getLoadablePlugins } from "../src/plugins/catalog";
@@ -73,14 +76,30 @@ if (flags.check) {
   process.exit(unswept.length || unknown.length ? 1 : 0);
 }
 
-const home = process.env.GLOOMBERB_HOME;
-if (!home || resolve(home) === resolve(process.env.HOME ?? "", ".gloomberb")) {
+/** A folder as the file system names it, through links and `..`, so two spellings of one folder compare equal. */
+function canonical(path: string): string {
+  const full = resolve(path);
+  try {
+    return realpathSync(full);
+  } catch {
+    // Not created yet: it cannot be a link to a profile that exists.
+    return full;
+  }
+}
+
+// The profile the sweep opens, resolved as the app resolves it (a leading ~, a data folder its config.json records),
+// must be none of the user's own: their data folder and config folder without GLOOMBERB_HOME, or ~/.gloomberb.
+const { GLOOMBERB_HOME: override, ...userEnv } = process.env;
+const profile = override?.trim() ? (await getDataDir()) ?? getGloomberbDirs().data : null;
+const userDirs = getGloomberbDirs(userEnv);
+const own = [userDirs.data, dirname(userDirs.configFile), join(userEnv.HOME || homedir(), ".gloomberb")].map(canonical);
+if (!profile || own.includes(canonical(profile))) {
   console.error("Set GLOOMBERB_HOME to a throwaway profile; the sweep writes a watchlist and a portfolio into it.");
   process.exit(2);
 }
 
 async function seedProfile(): Promise<void> {
-  const config = await initDataDir(home!);
+  const config = await initDataDir(profile!);
   await saveConfig({
     ...config,
     portfolios: [
