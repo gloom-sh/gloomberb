@@ -13,7 +13,7 @@ import type { InlineTickerCatalogEntry } from "../../../state/hooks/inline-ticke
 import { STICKY_BOTTOM_THRESHOLD_PX } from "../../../ui/sticky-scroll";
 import { terminalReactionRows } from "./reactions";
 import { chatMessagePaneLinks } from "./pane-links/model";
-import { TERMINAL_ITEM_CHIP_ROWS } from "../../../components/ui/pane-link-chip";
+import { terminalChatPaneChipRows } from "./pane-links/share-card";
 import { chatInlineTokens, type ChatInlineToken, type ChatTextStyle } from "./markdown";
 
 const MESSAGE_GROUP_THRESHOLD_MS = 5 * 60 * 1000;
@@ -338,7 +338,8 @@ export function estimateMessageHeight(
     : getMessageBodyTokenLines(content, contentLineWidth, catalog ?? {}).length;
   const reviewNoteHeight = message.attachmentReview ? 1 : 0;
   const reactionRows = message.reactions?.length ? terminalReactionRows(message.reactions, contentLineWidth).length : 0;
-  const linkRows = links.reduce((rows, link) => rows + (link.kind === "share" ? TERMINAL_ITEM_CHIP_ROWS : 1), 0);
+  // A share's card is as tall as what it says, as it reads now.
+  const linkRows = links.reduce((rows, link) => rows + terminalChatPaneChipRows(link, contentLineWidth), 0);
   return headerHeight + (message.replyTo ? 1 : 0) + bodyLineCount + linkRows + imageCount + reviewNoteHeight + reactionRows;
 }
 

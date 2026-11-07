@@ -110,6 +110,27 @@ export function peekSharePreview(id: string): SharePreview {
   return entries.get(id)?.preview ?? LOADING;
 }
 
+/**
+ * Whether each of the shares is read yet, as one string that changes when one
+ * of them is: for a parent that sizes its children's cards by what they say
+ * (the terminal's composer). Reads each share as `useSharePreview` does.
+ */
+export function useSharePreviewStates(ids: readonly string[]): string {
+  const key = ids.join(",");
+  const subscribe = useCallback((listener: () => void) => {
+    const watched = key ? key.split(",") : [];
+    for (const id of watched) {
+      entryFor(id).listeners.add(listener);
+      request(id);
+    }
+    return () => {
+      for (const id of watched) entries.get(id)?.listeners.delete(listener);
+    };
+  }, [key]);
+  const read = useCallback(() => (key ? key.split(",").map((id) => peekSharePreview(id).status).join(",") : ""), [key]);
+  return useSyncExternalStore(subscribe, read, read);
+}
+
 /** The share's title and pane, loaded once per session for every chip that shows it; "" reads nothing. */
 export function useSharePreview(id: string): SharePreview {
   const subscribe = useCallback((listener: () => void) => {

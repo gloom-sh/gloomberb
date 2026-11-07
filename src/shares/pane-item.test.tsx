@@ -3,7 +3,7 @@ import { act } from "react";
 import { Text } from "../ui";
 import { PaneFooterProvider } from "../components/layout/pane/footer";
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
-import { shareItemExcerpt } from "./item";
+import { shareItem, shareItemExcerpt } from "./item";
 import { paneShareItemFor, resolvePaneShareItem, usePaneShareItem, type PaneShareItemPart } from "./pane-item";
 
 const tui = createOpenTuiTestHarness();
@@ -54,6 +54,9 @@ test("without a word from the pane, its ticker, then its function's argument, is
   expect(excerpt).toEndWith("…");
   expect(excerpt.length).toBeLessThanOrEqual(240);
   expect(excerpt).not.toContain("Second");
+
+  // Nothing the share service cannot store: control characters and a broken surrogate pair go.
+  expect(shareItem("Top\u0000 News", { title: "A\ud800 story\u0007", excerpt: "\udc00" })).toEqual({ pane: "Top News", title: "A story" });
 
   const pane = { instance: { instanceId: "p2", paneId: "portfolio" }, def: { id: "portfolio", name: "Portfolio" } } as never;
   expect(paneShareItemFor({ pane, state: {} as never, templates: new Map(), personal: true })).toBeNull();

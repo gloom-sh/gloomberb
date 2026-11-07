@@ -20,7 +20,10 @@ export interface PaneLinkChipContent {
   detail: string;
   /** The lead square: the opened pane's letter, or what ties the chip to its text (a source's number, a key). */
   icon: string;
-  /** `item` only: a line or two of what the item says, under its title. */
+  /**
+   * `item` only: a line or two of what the item says, under its title. With
+   * no title it is one line: a pane's own description over its row.
+   */
   excerpt?: string;
 }
 
@@ -28,7 +31,8 @@ export interface PaneLinkChipContent {
  * - `card`: a shared pane, two lines beside its square (or the picture its sender posted).
  * - `item`: a shared pane and what it was on: the item's title, a line or two
  *   of it, and under them the pane it opens as the `line` chip draws it (or
- *   beside them, the picture its sender posted).
+ *   beside them, the picture its sender posted). As tall as what it says, with
+ *   the same gap over the pane on every card.
  * - `line`: one line, as a Wire post's story or calendar.
  * - `inline`: the height of the line of text it is written in, as a function in a message.
  */
@@ -40,15 +44,13 @@ interface DomEventLike {
 }
 
 /**
- * Each kind of chip keeps one height, known before anything loads, so a list
- * of them never moves as they fill in.
+ * Each kind of chip but an item card keeps one height, known before anything
+ * loads, so a list of them never moves as they fill in.
  */
 const PICTURE_CHIP_HEIGHT = 74;
 const CARD_CHIP_HEIGHT = 48;
 const LINE_CHIP_HEIGHT = 28;
-/** An item's title line, two lines of excerpt and its pane's line chip, inside the frame's air. */
-const ITEM_CHIP_HEIGHT = 96;
-/** Three lines for the title and the excerpt between them. */
+/** At most three lines for an item's title and the excerpt under it. */
 const ITEM_TEXT_LINES = 3;
 const ITEM_TEXT_LINE = 17;
 const THUMB = { width: 112, height: 64 };
@@ -109,7 +111,7 @@ export function DesktopPaneLinkChip({
   const lit = hovered && pressableChip;
   const compact = variant === "line";
   const item = variant === "item";
-  const height = compact ? LINE_CHIP_HEIGHT : item ? ITEM_CHIP_HEIGHT : picture ? PICTURE_CHIP_HEIGHT : CARD_CHIP_HEIGHT;
+  const height = compact ? LINE_CHIP_HEIGHT : picture ? PICTURE_CHIP_HEIGHT : CARD_CHIP_HEIGHT;
   const border = lit ? themeColors.borderFocused : blendHex(themeColors.border, themeColors.bg, 0.35);
   const surface = blendHex(themeColors.panel, themeColors.bg, lit ? 0.2 : 0.5);
   const label = [content.title, content.excerpt, content.detail].filter(Boolean).join(", ");
@@ -239,31 +241,15 @@ export function DesktopPaneLinkChip({
     : item
       ? createElement("span", {
         key: "text",
-        style: { display: "flex", flexDirection: "column", minWidth: 0, flex: "1 1 auto", height: "100%" },
+        "data-gloom-chip-part": "text",
+        style: { display: "flex", flexDirection: "column", minWidth: 0, flex: "1 1 auto", gap: "var(--gloom-space-xs)" },
       },
-      // The title, then the excerpt in the lines it leaves: a long headline
-      // wraps rather than being cut, and the text never outgrows its lines.
-      createElement("span", {
-        key: "words",
-        style: {
-          display: "-webkit-box",
-          WebkitBoxOrient: "vertical",
-          WebkitLineClamp: ITEM_TEXT_LINES,
-          overflow: "hidden",
-          minWidth: 0,
-          flex: "none",
-          height: ITEM_TEXT_LINE * ITEM_TEXT_LINES,
-          lineHeight: `${ITEM_TEXT_LINE}px`,
-          overflowWrap: "anywhere",
-        },
-      },
-      createElement("span", { key: "title", style: { color: themeColors.textBright, fontWeight: "var(--gloom-weight-bold)" } }, content.title),
-      content.excerpt ? createElement("br", { key: "break" }) : null,
-      content.excerpt ? createElement("span", { key: "excerpt", style: { color: themeColors.text } }, content.excerpt) : null),
+      itemWords(content, themeColors),
       content.detail
         ? createElement("span", {
           key: "pane",
-          style: { ...lineFrame, alignSelf: "flex-start", maxWidth: "100%", marginTop: "auto" },
+          "data-gloom-chip-part": "pane",
+          style: { ...lineFrame, alignSelf: "flex-start", maxWidth: "100%" },
         }, square(LINE_ICON_SIZE, true, "pane-icon"), line(content.detail, "title", "pane-name"))
         : null)
       : createElement("span", {
@@ -279,9 +265,10 @@ export function DesktopPaneLinkChip({
       boxSizing: "border-box",
       display: "flex",
       flexDirection: "row",
-      alignItems: item ? "stretch" : "center",
+      alignItems: item ? "flex-start" : "center",
       gap: 8,
-      height,
+      // An item card is as tall as what it says.
+      height: item ? "auto" : height,
       width: fit ? "auto" : `min(100%, ${CHIP_MAX_WIDTH}px)`,
       maxWidth: fit ? `min(100%, ${CHIP_MAX_WIDTH}px)` : "100%",
       padding: item ? ITEM_PADDING : "4px 10px 4px 4px",
@@ -299,7 +286,7 @@ export function DesktopPaneLinkChip({
   }
   // The same chip with its x inside the frame, where a waiting image keeps its own
   // (an item card's at its top corner, beside the title).
-  return createElement("div", { ...dataAttributes, style: { ...frame, paddingRight: 4, ...(item ? { alignItems: "flex-start" } : {}) } },
+  return createElement("div", { ...dataAttributes, style: { ...frame, paddingRight: 4 } },
     createElement(element, {
       key: "open",
       ...elementProps,
@@ -308,18 +295,44 @@ export function DesktopPaneLinkChip({
         ...buttonReset,
         display: "flex",
         flexDirection: "row",
-        alignItems: item ? "stretch" : "center",
-        ...(item ? { alignSelf: "stretch" } : {}),
+        alignItems: item ? "flex-start" : "center",
         gap: frame.gap,
         flex: "1 1 auto",
         minWidth: 0,
-        height: "100%",
+        height: item ? "auto" : "100%",
         padding: 0,
         border: "none",
         background: "transparent",
       },
     }, lead, text),
-    <IconButton key="remove" icon="close" label={tf("Remove {name}", { name: content.title })} onPress={onRemove} />);
+    <IconButton key="remove" icon="close" label={tf("Remove {name}", { name: content.title || content.detail })} onPress={onRemove} />);
+}
+
+/**
+ * An item card's words: the title, wrapping, then the excerpt in the lines it
+ * leaves. A card with no title is its pane's description, one line; one that
+ * opens no pane yet (a share being read, or gone) is its one line of link.
+ */
+function itemWords(content: PaneLinkChipContent, themeColors: { textBright: string; text: string }) {
+  if (!content.title && !content.excerpt) return null;
+  const lines = content.title && content.detail ? ITEM_TEXT_LINES : 1;
+  return createElement("span", {
+    key: "words",
+    "data-gloom-chip-part": "words",
+    style: {
+      display: "-webkit-box",
+      WebkitBoxOrient: "vertical",
+      WebkitLineClamp: lines,
+      overflow: "hidden",
+      minWidth: 0,
+      lineHeight: `${ITEM_TEXT_LINE}px`,
+      maxHeight: ITEM_TEXT_LINE * lines,
+      overflowWrap: "anywhere",
+    },
+  },
+  content.title ? createElement("span", { key: "title", style: { color: themeColors.textBright, fontWeight: "var(--gloom-weight-bold)" } }, content.title) : null,
+  content.title && content.excerpt ? createElement("br", { key: "break" }) : null,
+  content.excerpt ? createElement("span", { key: "excerpt", style: { color: themeColors.text } }, content.excerpt) : null);
 }
 
 /** One row in the terminal: the lead square, then the title and the pane, cut to the line. */
@@ -360,9 +373,8 @@ export function TerminalPaneLinkChip({
   );
 }
 
-/** The rows a shared item's card takes in the terminal: its title and excerpt, and the pane it opens. */
-export const TERMINAL_ITEM_CHIP_ROWS = 3;
-const TERMINAL_ITEM_TEXT_ROWS = TERMINAL_ITEM_CHIP_ROWS - 1;
+/** The most rows an item card's words take in the terminal, over its pane's row. */
+const TERMINAL_ITEM_TEXT_ROWS = 2;
 
 /** `text` wrapped to `width`, in at most `rows` rows, the last cut with an ellipsis when it does not fit. */
 function clampedRows(text: string, width: number, rows: number): string[] {
@@ -373,10 +385,36 @@ function clampedRows(text: string, width: number, rows: number): string[] {
 }
 
 /**
+ * How an item card lays out in the terminal: as wide as its longest line, up
+ * to `width`, its title wrapping and its excerpt in the rows the title
+ * leaves, as on the desktop. With no title, the excerpt (a pane's own
+ * description) is one row; a card that opens no pane yet is its one row of
+ * link.
+ */
+function terminalItemCardLayout(content: PaneLinkChipContent, width: number) {
+  const oneLine = (text: string | undefined) => (text ?? "").replace(/\s+/g, " ").trim();
+  const title = oneLine(content.title);
+  const excerpt = oneLine(content.excerpt);
+  const pane = content.detail ? { title: content.detail, detail: "", icon: content.icon } : null;
+  const paneWidth = pane ? (pane.icon ? pane.icon.length + 2 : 1) + pane.title.length + 1 : 0;
+  const cardWidth = Math.max(1, Math.min(width, Math.max(title.length, excerpt.length, paneWidth - 2) + 2));
+  const textWidth = Math.max(cardWidth - 2, 1);
+  const textRows = title && pane ? TERMINAL_ITEM_TEXT_ROWS : 1;
+  const titleRows = clampedRows(title, textWidth, textRows);
+  const excerptRows = clampedRows(excerpt, textWidth, title ? textRows - titleRows.length : 1);
+  return { cardWidth, pane, titleRows, excerptRows };
+}
+
+/** The rows an item card takes in the terminal: its words, then its pane's row. */
+export function terminalItemCardRows(content: PaneLinkChipContent, width: number): number {
+  const { pane, titleRows, excerptRows } = terminalItemCardLayout(content, width);
+  return Math.max(1, titleRows.length + excerptRows.length + (pane ? 1 : 0));
+}
+
+/**
  * The `item` card in the terminal: the chip's fill as a block, with the item's
- * title and what it says in the two rows the title leaves, and under them its
- * pane as the one-row chip draws it. As wide as its longest line, up to
- * `width`; always three rows.
+ * title and what it says, and under them its pane as the one-row chip draws
+ * it. As tall as what it says (terminalItemCardRows).
  */
 export function TerminalPaneLinkItemCard({
   content,
@@ -392,16 +430,7 @@ export function TerminalPaneLinkItemCard({
   /** Unset: the card says what it is, in muted text, and opens nothing. */
   onOpen?: () => void;
 }) {
-  const oneLine = (text: string | undefined) => (text ?? "").replace(/\s+/g, " ").trim();
-  const title = oneLine(content.title);
-  const excerpt = oneLine(content.excerpt);
-  const pane = content.detail ? { title: content.detail, detail: "", icon: content.icon } : null;
-  const paneWidth = pane ? (pane.icon ? pane.icon.length + 2 : 1) + pane.title.length + 1 : 0;
-  const cardWidth = Math.max(1, Math.min(width, Math.max(title.length, excerpt.length, paneWidth - 2) + 2));
-  const textWidth = Math.max(cardWidth - 2, 1);
-  // The title wraps, then the excerpt takes the rows it leaves, as on the desktop.
-  const titleRows = clampedRows(title, textWidth, TERMINAL_ITEM_TEXT_ROWS);
-  const excerptRows = excerpt ? clampedRows(excerpt, textWidth, TERMINAL_ITEM_TEXT_ROWS - titleRows.length) : [];
+  const { cardWidth, pane, titleRows, excerptRows } = terminalItemCardLayout(content, width);
   const fill = leadSurface(colors.panel, colors.text);
   const titleColor = selected ? selectedTextColor : onOpen ? colors.textBright : colors.textMuted;
   const excerptColor = selected ? selectedTextColor : colors.text;
@@ -413,7 +442,7 @@ export function TerminalPaneLinkItemCard({
     <Box
       flexDirection="column"
       width={cardWidth}
-      height={TERMINAL_ITEM_CHIP_ROWS}
+      height={terminalItemCardRows(content, width)}
       backgroundColor={fill}
       onMouseDown={onOpen ? (event: { preventDefault?: () => void; stopPropagation?: () => void }) => {
         event.preventDefault?.();
@@ -421,17 +450,16 @@ export function TerminalPaneLinkItemCard({
         onOpen();
       } : undefined}
     >
-      {Array.from({ length: TERMINAL_ITEM_TEXT_ROWS }, (_, index) => {
-        const row = rows[index];
-        return (
-          <Box key={index} height={1}>
-            {row ? <Text fg={row.color} attributes={row.bold ? TextAttributes.BOLD : 0}>{` ${row.text}`}</Text> : null}
-          </Box>
-        );
-      })}
-      <Box height={1} flexDirection="row">
-        {pane ? <TerminalPaneLinkChip content={pane} width={cardWidth} selected={selected} selectedTextColor={selectedTextColor} onOpen={onOpen} /> : null}
-      </Box>
+      {rows.map((row, index) => (
+        <Box key={index} height={1}>
+          <Text fg={row.color} attributes={row.bold ? TextAttributes.BOLD : 0}>{` ${row.text}`}</Text>
+        </Box>
+      ))}
+      {pane ? (
+        <Box height={1} flexDirection="row">
+          <TerminalPaneLinkChip content={pane} width={cardWidth} selected={selected} selectedTextColor={selectedTextColor} onOpen={onOpen} />
+        </Box>
+      ) : null}
     </Box>
   );
 }

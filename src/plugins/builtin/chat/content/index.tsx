@@ -60,6 +60,9 @@ import { openChatPaneLink } from "../pane-links/open";
 import { runChatCommand, useChatFunctions } from "../pane-links/commands";
 import type { ChatMessagePaneLink } from "../pane-links/model";
 import { splitComposerDraft, type ComposerShareLink } from "../pane-links/composer";
+import { useSharePreviewStates } from "../pane-links/previews";
+import { terminalChatPaneChipRows } from "../pane-links/share-card";
+import { terminalComposerChipWidth } from "../message/pane-chip";
 import { teamStore } from "../../../../team/store";
 import { requestAccountManagementTab } from "../../account-management/navigation";
 import {
@@ -377,6 +380,13 @@ function ChatConversation({
   useEffect(() => {
     setMentionSelectedIndex(0);
   }, [suggestionTriggerKey]);
+  // The waiting links' cards are as tall as what they say, which changes as each share is read.
+  const draftLinkStates = useSharePreviewStates(nativePaneChrome ? [] : draftLinks.map((link) => link.id));
+  const draftLinkRows = useMemo(
+    () => draftLinks.reduce((rows, link) => rows + terminalChatPaneChipRows(link, terminalComposerChipWidth(contentWidth)), 0),
+    // The rows are read from the share previews' cache, which `draftLinkStates` follows.
+    [contentWidth, draftLinkStates, draftLinks],
+  );
   const {
     composerHeight,
     messageAreaHeight,
@@ -390,7 +400,7 @@ function ChatConversation({
     replyTo,
     stackHeader: stackedNav && !channelListOpen,
     draftAttachmentCount: draftAttachments.length,
-    draftLinkCount: draftLinks.length,
+    draftLinkRows,
     promptRows: canSend && !nativePaneChrome ? chatHandlePromptRows(handlePrompt, contentWidth) : 0,
   });
   const {
@@ -948,7 +958,7 @@ function ChatConversation({
     setSelectedIdx,
     stickyTranscript,
     useDefaultControllerChannel,
-    composerLayoutKey: `${editingMessage ? "" : draftAttachments.map((attachment) => attachment.status).join(",")}:${draftLinks.length}`,
+    composerLayoutKey: `${editingMessage ? "" : draftAttachments.map((attachment) => attachment.status).join(",")}:${draftLinks.length}:${draftLinkRows}`,
     highlightMessage,
     clearHover,
     clearHighlight,

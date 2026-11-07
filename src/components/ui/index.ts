@@ -75,7 +75,7 @@ export { InlineQuickAddRow } from "./inline-quick-add";
 export type { InlineQuickAddRowProps } from "./inline-quick-add";
 
 export { ExternalLink, ExternalLinkText, openUrl, PaneLinkMenu, usePaneLinkMenuEntry } from "./external-link";
-export { DesktopPaneLinkChip, TERMINAL_ITEM_CHIP_ROWS, TerminalPaneLinkChip, TerminalPaneLinkItemCard } from "./pane-link-chip";
+export { DesktopPaneLinkChip, TerminalPaneLinkChip, TerminalPaneLinkItemCard, terminalItemCardRows } from "./pane-link-chip";
 export type { PaneLinkChipContent } from "./pane-link-chip";
 export { ButtonActionScope } from "./action-scope";
 export { RemoteImage } from "./remote-image";

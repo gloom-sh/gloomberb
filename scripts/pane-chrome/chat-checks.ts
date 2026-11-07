@@ -138,12 +138,23 @@ window.__chat = {
     const r = document.querySelector('[data-gloom-role=pane-window][data-gloom-pane-id="plain:a"]')?.getBoundingClientRect();
     return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
   },
-  /** A message's chips: what each says, where it is, and whether it shows a picture. */
+  /**
+   * A message's chips: what each says, where it is, whether it shows a
+   * picture, and on a share's card the gap from its last line of text to its
+   * pane's button and from that button to the card's bottom edge.
+   */
   chips(id) {
     const row = this.rows().find((r) => r.getAttribute('data-gloom-chat-message-id') === id);
     return [...(row?.querySelectorAll('[data-gloom-role=chat-pane-chip]') ?? [])].map((chip) => {
       const r = chip.getBoundingClientRect();
-      return { link: chip.getAttribute('data-gloom-pane-link'), text: chip.textContent, picture: !!chip.querySelector('img'), x: r.x + r.width / 2, y: r.y + r.height / 2, height: r.height };
+      const words = chip.querySelector('[data-gloom-chip-part=words]')?.getBoundingClientRect();
+      const pane = chip.querySelector('[data-gloom-chip-part=pane]')?.getBoundingClientRect();
+      return {
+        link: chip.getAttribute('data-gloom-pane-link'), text: chip.textContent, picture: !!chip.querySelector('img'),
+        x: r.x + r.width / 2, y: r.y + r.height / 2, height: r.height,
+        textToPane: words && pane ? pane.top - words.bottom : null,
+        paneToEdge: pane ? r.bottom - pane.bottom : null,
+      };
     });
   },
   /** Everything a message row draws, chips and controls included. */
@@ -434,11 +445,13 @@ function expectUnmoved(before: NameState, after: NameState, what: string): void 
   if (moved) fail(`${what} moved the name, its status or the row`, { before, after });
 }
 
-interface Chip { link: string; text: string; picture: boolean; x: number; y: number; height: number }
+interface Chip { link: string; text: string; picture: boolean; x: number; y: number; height: number; textToPane: number | null; paneToEdge: number | null }
 
 /** The invented shares and the last three messages the `chips=1` channel ends on. */
 const SHARES = { posted: "5ea7c0de".repeat(4), bare: "b0a7c0de".repeat(4) };
 const CHIP_ROWS = { wire: "m87", posted: "m88", bare: "m89" };
+/** The shares `items=1` adds after those: a story's with its item, a ticker's, and Top News made before items. */
+const ITEM_ROWS = { story: "m91", ticker: "m92", pane: "m93" };
 /** An invented Wire news post from before the wire dropped the publisher's address; it sits above the three. */
 const LEGACY_NEWS = { row: "m86", story: "story-sample", address: "news.example.com" };
 const chips = (cdp: Cdp, id: string) => evaluate<Chip[]>(cdp, `__chat.chips(${JSON.stringify(id)})`);
@@ -1228,12 +1241,11 @@ export const chatSteps: ChatStep[] = [
     },
   },
   {
-    name: "chat chips: a share link is a chip with the share's title and pane, and its row keeps its height while the share is read",
+    name: "chat chips: a share link is a card with the share's title and pane, which grows to what it says once the share is read and keeps a reader at the bottom there",
     scenario: "chat&chips=1&shares=held",
     async run(cdp) {
       await ready(cdp);
       if (!await waitFor(cdp, "window.__chatFake.shareReads >= 2", 3_000)) fail("the chips never asked for their shares");
-      const rowsBefore = await Promise.all(Object.values(CHIP_ROWS).map((id) => evaluate<{ height: number }>(cdp, `__chat.rowRect(${JSON.stringify(id)})`)));
       const bare = await oneChip(cdp, CHIP_ROWS.bare);
       if (bare.link !== `share:${SHARES.bare}`) fail("the bare link's chip opens the wrong share", bare);
       // The link is the chip now: no bare address in the text, and a message that was only a link has no text row.
@@ -1254,12 +1266,41 @@ export const chatSteps: ChatStep[] = [
       await frames(cdp, 4);
       const readChip = await oneChip(cdp, CHIP_ROWS.bare);
       if (!readChip.text.includes("Research")) fail("the chip does not say which pane the share holds", readChip);
-      const rowsAfter = await Promise.all(Object.values(CHIP_ROWS).map((id) => evaluate<{ height: number }>(cdp, `__chat.rowRect(${JSON.stringify(id)})`)));
-      rowsBefore.forEach((before, index) => {
-        if (Math.abs(before.height - rowsAfter[index]!.height) > 0.5) fail("a chip's row changed height when its share was read", { before, after: rowsAfter[index] });
-      });
       const after = await state(cdp);
       if (after.fromBottom > 4) fail("reading the shares moved a reader at the bottom", after);
+    },
+  },
+  {
+    name: "chat chips: every share card is as tall as what it says, with the same gap over its pane, in messages and in the composer, and names its pane once",
+    scenario: "chat&chips=1&items=1&draft=item",
+    async run(cdp) {
+      await ready(cdp);
+      if (!await waitFor(cdp, `__chat.chips(${JSON.stringify(ITEM_ROWS.pane)})[0]?.text.includes("Curated")`, 3_000)) fail("the shares were never read", await chips(cdp, ITEM_ROWS.pane));
+      await frames(cdp, 4);
+      const cards = {
+        story: await oneChip(cdp, ITEM_ROWS.story),
+        ticker: await oneChip(cdp, ITEM_ROWS.ticker),
+        pane: await oneChip(cdp, ITEM_ROWS.pane),
+        bare: await oneChip(cdp, CHIP_ROWS.bare),
+        composer: (await evaluate<Chip[]>(cdp, `[...document.querySelectorAll('[data-gloom-role=chat-draft-links] [data-gloom-role=chat-pane-chip]')].map((chip) => {
+          const r = chip.getBoundingClientRect();
+          const words = chip.querySelector('[data-gloom-chip-part=words]')?.getBoundingClientRect();
+          const pane = chip.querySelector('[data-gloom-chip-part=pane]')?.getBoundingClientRect();
+          return { text: chip.textContent, height: r.height, textToPane: words && pane ? pane.top - words.bottom : null, paneToEdge: pane ? r.bottom - pane.bottom : null };
+        })`))[0],
+      };
+      if (!cards.composer) fail("the waiting share has no card in the composer");
+      const withText = [cards.story, cards.ticker, cards.pane, cards.composer!];
+      const gaps = withText.map((card) => card.textToPane);
+      if (gaps.some((gap) => gap === null || Math.abs(gap - gaps[0]!) > 0.5)) fail("the gap from a card's last line to its pane's button differs between cards", { gaps, cards });
+      const edges = [...withText, cards.bare].map((card) => card.paneToEdge);
+      if (edges.some((edge) => edge === null || Math.abs(edge - edges[0]!) > 0.5)) fail("a card keeps room under its pane's button", { edges, cards });
+      // One line of excerpt is a line shorter than two: the card is as tall as what it says.
+      if (cards.ticker.height >= cards.story.height) fail("a card with less to say is as tall as one with more", cards);
+      // A share without an item names its pane once, under its description.
+      const named = (text: string, name: string) => text.split(name).length - 1;
+      if (named(cards.pane.text, "Top News") !== 1) fail("a share with no item names its pane twice", cards.pane);
+      if (named(cards.bare.text, "Research") !== 1 || !cards.bare.text.includes("DES SAMPL Options")) fail("a share with no item and its own title lost the title or doubled the pane", cards.bare);
     },
   },
   {

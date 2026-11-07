@@ -8,8 +8,13 @@ import { createChatTestHarness, createController, makeMessage } from "../test-ha
 import { attachChatPaneLinkPanes } from "./previews";
 
 const tui = createChatTestHarness();
-/** A share made before shares kept an item, and one made with the story its pane had open. */
+/**
+ * Two shares made before shares kept an item (one titled apart from its pane,
+ * one with its pane's name and description), and one made with the story its
+ * pane had open.
+ */
 const SHARE = "c0ffee00".repeat(4);
+const PANE_SHARE = "7095e000".repeat(4);
 const ITEM_SHARE = "17e70000".repeat(4);
 const STORY = {
   pane: "Top News",
@@ -20,13 +25,14 @@ const originalFetch = globalThis.fetch;
 let opened: string[] = [];
 let detach: Array<() => void> = [];
 
-function shareAnswer(title: string, paneId: string, extra: Record<string, unknown> = {}) {
+function shareAnswer(title: string, paneId: string, extra: Record<string, unknown> = {}, description?: string) {
   return Response.json({
     kind: "pane",
     ...extra,
     data: {
       version: 2,
       title,
+      ...(description ? { description } : {}),
       layout: {
         schemaVersion: 2,
         sourceConfigVersion: 1,
@@ -51,6 +57,7 @@ beforeEach(() => {
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     if (String(input).includes(`/shares/${SHARE}`)) return shareAnswer("DES SAMPL Options", "ticker-research");
     if (String(input).includes(`/shares/${ITEM_SHARE}`)) return shareAnswer("Top News", "news-top", { item: STORY });
+    if (String(input).includes(`/shares/${PANE_SHARE}`)) return shareAnswer("Top News", "news-top", {}, "Curated top market stories ranked by importance");
     return new Response(null, { status: 404 });
   }) as typeof fetch;
   detach = [
@@ -77,19 +84,20 @@ function rowsFrom(frame: string, text: string, count: number): string[] {
   return at < 0 ? [] : rows.slice(at, at + count).map((row) => row.trim());
 }
 
-test("the terminal draws a share link as a card of its item and a Wire post's link as a one-row chip, each opening on a click", async () => {
+test("the terminal draws a share link as a card as tall as what it says, the pane once, and a Wire post's link as a one-row chip, each opening on a click", async () => {
   const share: ChatMessage = { ...makeMessage(2), content: `https://term.gloom.sh/api/shares/${ITEM_SHARE}/open` };
   const legacy: ChatMessage = { ...makeMessage(3), content: `https://term.gloom.sh/api/shares/${SHARE}/open` };
+  const paneOnly: ChatMessage = { ...makeMessage(4), content: `https://term.gloom.sh/api/shares/${PANE_SHARE}/open` };
   const wire: ChatMessage = {
-    ...makeMessage(4),
+    ...makeMessage(5),
     content: "Macro calendar for Thu, Oct 8",
     paneLink: { kind: "economic-calendar", date: "2026-10-08" },
   };
-  const controller = createController({ messages: [makeMessage(1), share, legacy, wire] });
+  const controller = createController({ messages: [makeMessage(1), share, legacy, paneOnly, wire] });
   const runtime = createTestPluginRuntime({
     createPaneFromTemplate: (templateId) => { opened.push(`template:${templateId}`); },
   });
-  await tui.mountChat(controller, { width: 72, height: 22, runtime });
+  await tui.mountChat(controller, { width: 72, height: 26, runtime });
 
   const frame = await tui.waitForFrameToContain(STORY.title);
   expect(frame).not.toContain("term.gloom.sh");
@@ -98,9 +106,15 @@ test("the terminal draws a share link as a card of its item and a Wire post's li
   expect(title).toBe(STORY.title);
   expect(excerpt).toStartWith("Sample Corp is weighing a sale");
   expect(pane).toBe("T Top News");
-  // A share made before items keeps its own title, over the pane it opens.
-  await tui.waitForFrameToContain("DES SAMPL Options");
-  expect(rowsFrom(tui.frame(), "DES SAMPL Options", 3)).toEqual(["DES SAMPL Options", "", "D Research"]);
+  // Shares made before items say their pane once: its description over its row, which
+  // keeps the share's own title when that says more. No row is left blank.
+  await tui.waitForFrameToContain("Curated top market stories");
+  expect(rowsFrom(tui.frame(), "Curated top market stories", 3)).toEqual([
+    "Curated top market stories ranked by importance",
+    "T Top News",
+    "user5 3/30/26",
+  ]);
+  expect(rowsFrom(tui.frame(), "DES SAMPL Options", 2)).toEqual(["D DES SAMPL Options · Research", "user4 3/30/26"]);
   // A plain message reads as before; the Wire post keeps its text and gains its chip.
   expect(frame).toContain("message 1");
   expect(frame).toContain("Macro calendar for Thu, Oct 8");
@@ -150,14 +164,14 @@ test("a share link pasted into the composer is its chip above the field; Enter s
     await tui.setup().mockInput.typeText("Chain");
     await tui.setup().mockInput.pasteBracketedText(` ${link}`);
   });
-  const frame = await tui.waitForFrameToContain("D Research");
+  const frame = await tui.waitForFrameToContain("D DES SAMPL Options · Research");
   expect(frame).not.toContain("term.gloom.sh");
   const rows = frame.split("\n");
   const chipRow = rows.findIndex((row) => row.includes("DES SAMPL Options"));
-  // The card the message will show, its x on its first row, right above the field, which keeps what was typed.
-  expect(rows[chipRow]).toMatch(/DES SAMPL Options\s+x/);
-  expect(rows[chipRow + 2]).toContain("D Research");
-  expect(rows[chipRow + 4]).toContain("> Chain");
+  // The card the message will show (this share's is its pane's row alone), its x on its
+  // first row, right above the field, which keeps what was typed.
+  expect(rows[chipRow]).toMatch(/D DES SAMPL Options · Research\s+x/);
+  expect(rows[chipRow + 2]).toContain("> Chain");
   await tui.emitKeypress({ name: "return" });
   expect(sent).toEqual([`Chain\n\n${link}`]);
 
@@ -167,7 +181,7 @@ test("a share link pasted into the composer is its chip above the field; Enter s
     await tui.setup().mockInput.pasteBracketedText(link);
     await tui.setup().mockInput.pasteBracketedText(other);
   });
-  await tui.waitForFrameToContain("D Research");
+  await tui.waitForFrameToContain("DES SAMPL Options · Research");
   await tui.waitForFrameToContain("0".repeat(16));
   setSystemTime(new Date("2026-10-12T00:00:00Z"));
   await tui.emitKeypress({ name: "backspace" });

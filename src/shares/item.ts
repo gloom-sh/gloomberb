@@ -20,8 +20,11 @@ const SHARE_ITEM_LIMITS = { pane: 80, title: 200, excerpt: 300 } as const;
 /** About two lines of a chat card and what link previews show of a description. */
 const EXCERPT_LENGTH = 240;
 
+/** Control characters and halves of a broken surrogate pair, which the share service cannot store. */
+const UNSTORABLE = /[\u0000-\u001f\u007f-\u009f]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
+
 function oneLine(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
+  return value.replace(UNSTORABLE, " ").replace(/\s+/g, " ").trim();
 }
 
 /** `text` cut to `max` characters at a word, with an ellipsis when it was cut. */

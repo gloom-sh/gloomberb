@@ -2300,7 +2300,7 @@ To show a picture of a pane in chat, copy it with Copy Screenshot and paste it i
 
 ### Share links in chat
 
-In chat, a Gloom share link is a card instead of an address: what the pane was on (a story's headline, a ticker's name), a line or two of it, and the pane it opens, with the picture it was posted with as a preview on the desktop and the web. A share made by an older app shows its own title and its pane's description.
+In chat, a Gloom share link is a card instead of an address: what the pane was on (a story's headline, a ticker's name), a line or two of it, and the pane it opens, with the picture it was posted with as a preview on the desktop and the web. A card is as tall as what it says. A share with no item (one made by an older app, or of a pane on nothing in particular) names its pane once: the pane's description over its row.
 
 - A share link pasted on its own at the end of the message field, or into an empty one, becomes a chip above the field (a link pasted inside your text stays text). The chip's x, or Backspace in an empty field, takes one back out.
 - A click on the chip, or `o` on its message, opens that pane in your own terminal. A share that cannot be reached from the app, or that holds a snapshot, opens its web page instead, and an expired one says so.

@@ -19,8 +19,8 @@
  * posted with its picture and a bare share link, with an in-page stand-in for
  * the share service; `shares=held` holds its answers until `releaseShares()`.
  * `items=1` ends it on a Wire news post, then a share of the same story made
- * with its item and one of a ticker's pane, and `draft=item` waits that
- * story's share in the composer.
+ * with its item, one of a ticker's pane, and one of Top News made before
+ * shares kept an item; `draft=item` waits that story's share in the composer.
  * `handle=placeholder` signs you in on a signup placeholder handle, so the
  * composer offers to choose one; saving `taken` is refused as taken, and
  * `solo=1` gives the chat the whole page.
@@ -137,13 +137,14 @@ function quoteOf(message: ChatMessage | undefined): ChatMessage["replyTo"] {
 
 const count = Number(params.get("count") ?? 90);
 /**
- * Invented shares: one posted with its picture, one pasted on its own (both
- * made before shares kept an item), and two made with the item their pane was
- * on: a story and a ticker.
+ * Invented shares: one posted with its picture, one pasted on its own and one
+ * of a pane named as its pane (all made before shares kept an item), and two
+ * made with the item their pane was on: a story and a ticker.
  */
 const FIXTURE_SHARES = {
   posted: "5ea7c0de".repeat(4),
   bare: "b0a7c0de".repeat(4),
+  pane: "9a4ec0de".repeat(4),
   story: "57a7c0de".repeat(4),
   ticker: "7c4ec0de".repeat(4),
 };
@@ -191,6 +192,7 @@ function withItems(messages: ChatMessage[]): ChatMessage[] {
     next(0, { user: MEMBERS.gloomwire!, content: `${ITEM_STORY.title} (Example Wire, Jan 8) $EXMPL`, paneLink: { kind: "news-story", storyId: "story-item" } }),
     next(1, { user: MEMBERS.marlow!, content: `what do you make of this one\n\n${shareLink(FIXTURE_SHARES.story)}` }),
     next(2, { user: MEMBERS.quill!, content: shareLink(FIXTURE_SHARES.ticker) }),
+    next(3, { user: MEMBERS.marlow!, content: `the list it came from\n\n${shareLink(FIXTURE_SHARES.pane)}` }),
   ];
 }
 
@@ -284,6 +286,7 @@ if (params.get("shares") !== "held") sharesHeld.resolve();
 const SHARES: Record<string, { title: string; paneId: string; description?: string; item?: { pane: string; title: string; excerpt?: string } }> = {
   [FIXTURE_SHARES.posted]: { title: "DES EXMPL Options", paneId: "ticker-research" },
   [FIXTURE_SHARES.bare]: { title: "DES SAMPL Options", paneId: "ticker-research" },
+  [FIXTURE_SHARES.pane]: { title: "Top News", paneId: "news-top", description: "Curated top market stories ranked by importance" },
   [FIXTURE_SHARES.story]: {
     title: "Top News",
     paneId: "news-top",
