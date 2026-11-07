@@ -27,6 +27,12 @@ function selectDockedOutline(geometry: LiveDragGeometry) {
 const selectDockPreview = (geometry: LiveDragGeometry) => geometry.dockPreview;
 const selectZones = (geometry: LiveDragGeometry) => geometry.zones;
 const selectPaneDragActive = (geometry: LiveDragGeometry) => geometry.paneDrag !== null;
+/**
+ * The targets show once the pane is on the move: past the drag threshold the
+ * drag always has a zone, if only "nowhere". A press that has not moved yet,
+ * a click to focus or to pick a tab, draws nothing.
+ */
+const selectTargetsShown = (geometry: LiveDragGeometry) => geometry.paneDrag !== null && geometry.zones !== null;
 const selectOutlineWidth = (geometry: LiveDragGeometry) => selectDockedOutline(geometry)?.width ?? null;
 const selectOutlineHeight = (geometry: LiveDragGeometry) => selectDockedOutline(geometry)?.height ?? null;
 
@@ -82,11 +88,11 @@ function TerminalDragOverlays({
   metrics: DropZoneMetrics;
 }) {
   const dockPreview = useLiveDrag(live, selectDockPreview);
-  const dragging = useLiveDrag(live, selectPaneDragActive);
+  const targetsShown = useLiveDrag(live, selectTargetsShown);
   const effectiveDockPreview = dockPreview ?? externalDockPreview;
   return (
     <>
-      {dragging && <TerminalDropTargets live={live} area={area} metrics={metrics} />}
+      {targetsShown && <TerminalDropTargets live={live} area={area} metrics={metrics} />}
 
       {!effectiveDockPreview && <TerminalDockedDragOutline live={live} />}
 
@@ -294,11 +300,12 @@ function DesktopDragOverlays({
   metrics: DropZoneMetrics;
 }) {
   const dragging = useLiveDrag(live, selectPaneDragActive);
+  const targetsShown = useLiveDrag(live, selectTargetsShown);
   if (!dragging && !externalDockPreview) return null;
   return (
     <>
       <DesktopDragOverlayLayers externalDockPreview={externalDockPreview} live={live} />
-      {dragging && <DesktopDropTargets live={live} area={area} metrics={metrics} />}
+      {targetsShown && <DesktopDropTargets live={live} area={area} metrics={metrics} />}
     </>
   );
 }

@@ -830,6 +830,46 @@ describe("Shell", () => {
     if (landed !== "float") expect(released?.floating ?? []).toEqual([]);
   });
 
+  // The targets follow a move, not a press: a click on a title bar (to focus,
+  // or to pick a tab) must leave every cell as it was.
+  test("terminal: a press on a title bar that does not move draws no targets", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-drop-target-press-test");
+    const main = requireLayoutInstance(config, "portfolio-list:main");
+    const detail = requireLayoutInstance(config, "ticker-detail:main");
+    const layout: LayoutConfig = {
+      dockRoot: { kind: "split", axis: "vertical", ratio: 0.5, first: { kind: "pane", instanceId: main.instanceId }, second: { kind: "pane", instanceId: detail.instanceId } },
+      instances: [{ ...main }, { ...detail }, { ...detail, instanceId: "ticker-detail:float" }],
+      floating: [{ instanceId: "ticker-detail:float", x: 40, y: 2, width: 30, height: 6 }],
+      detached: [],
+    };
+    await renderShell(createShellStateWithLayout(config, layout, "ticker-detail:float"));
+    const rest = () => JSON.stringify(tui.setup().captureSpans());
+    const before = rest();
+    // The pointer's rows count from the top bar, which the shell leaves out here.
+    const float = tui.frame().split("\n").findIndex((row) => row.includes("┌::")) + 1;
+    const lower = tui.frame().split("\n").findIndex((row, index) => index > 2 && row.startsWith("::")) + 1;
+    const mouse = tui.setup().mockMouse;
+    for (const [x, y] of [[48, float], [4, lower]] as const) {
+      await act(async () => {
+        await mouse.pressDown(x, y);
+        await tui.setup().renderOnce();
+      });
+      expect(rest()).toBe(before);
+      expect(tui.frame()).not.toContain("[█]");
+      await act(async () => {
+        await mouse.release(x, y);
+        await tui.setup().renderOnce();
+      });
+    }
+    // Let go where it was pressed, the focused floating pane draws as before.
+    await act(async () => {
+      await mouse.pressDown(48, float);
+      await mouse.release(48, float);
+      await tui.setup().renderOnce();
+    });
+    expect(rest()).toBe(before);
+  });
+
   test("each tab of a stack keeps its own state as the tabs switch, never another tab's", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-stack-state-test");
     const main = requireLayoutInstance(config, "portfolio-list:main");

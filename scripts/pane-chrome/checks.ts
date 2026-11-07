@@ -169,8 +169,9 @@ const dropPreviewRect = (cdp: Cdp) => evaluate<Rect | null>(cdp, `(() => { const
 async function dropOnTarget(cdp: Cdp, paneId: string, part: string, hostId: string | null, selector: string): Promise<{ target: Rect; preview: Rect }> {
   const from = await pointOf(cdp, paneId, part);
   const host = hostId ? await rectOf(cdp, hostId) ?? fail(`no ${hostId}`) : null;
-  // Over the host off its target's squares (a quarter of the way in), or for a strip straight there.
-  const over = host ? { x: host.x + host.width / 4, y: host.y + host.height * 0.7 } : null;
+  // Over the host off its target's squares (a quarter of the way in); for a
+  // strip, a little way on, as the targets show once the pane is on the move.
+  const over = host ? { x: host.x + host.width / 4, y: host.y + host.height * 0.7 } : { x: from.x + 24, y: from.y + 24 };
   await mouse(cdp, "mouseMoved", from.x, from.y, false);
   await mouse(cdp, "mousePressed", from.x, from.y, true);
   await frames(cdp);
@@ -183,9 +184,9 @@ async function dropOnTarget(cdp: Cdp, paneId: string, part: string, hostId: stri
     at = to;
   };
   try {
-    if (over) await moveTo(over);
+    await moveTo(over);
     const target = await dropTargetRect(cdp, selector) ?? fail(`no ${selector} while ${paneId} moved over ${hostId ?? "the window"}`);
-    if (over && target.active) fail(`${selector} was lit before the pointer was on it`);
+    if (target.active) fail(`${selector} was lit before the pointer was on it`);
     await moveTo(center(target), 6);
     await frames(cdp, 2);
     const lit = await dropTargetRect(cdp, selector);
@@ -1164,6 +1165,30 @@ const steps: Step[] = [
         if (await evaluate(cdp, `__check.pane("plain:float")?.getAttribute("data-floating")`) !== "true") {
           fail(`a window parked at the screen's ${corner} docked`, { before: round(pane), after: round(after), area: round(area) });
         }
+      }
+    },
+  },
+  {
+    // The targets follow a move, not a press: a click on a title bar to focus
+    // a pane or pick a tab draws none of them, held or let go.
+    name: "floating pane: a press on a title bar that does not move draws no drop targets",
+    scenario: "floating&titlebar=1",
+    async run(cdp) {
+      const targets = `document.querySelectorAll('[data-gloom-role="drop-strip"], [data-gloom-role="drop-zone"]').length`;
+      for (const paneId of ["plain:float", "plain:a"]) {
+        const at = await pointOf(cdp, paneId, "title");
+        await mouse(cdp, "mouseMoved", at.x, at.y, false);
+        await mouse(cdp, "mousePressed", at.x, at.y, true);
+        try {
+          await frames(cdp, 3);
+          const held = await evaluate<number>(cdp, targets);
+          if (held) fail(`a press on ${paneId}'s title bar drew ${held} drop targets before it moved`);
+        } finally {
+          await mouse(cdp, "mouseReleased", at.x, at.y, false);
+          await frames(cdp, 2);
+        }
+        const after = await evaluate<number>(cdp, targets);
+        if (after) fail(`${after} drop targets stayed after a click on ${paneId}'s title bar`);
       }
     },
   },
