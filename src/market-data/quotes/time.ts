@@ -1,6 +1,10 @@
 import type { Quote } from "../../types/financials";
 import { getLanguage, tf } from "../../i18n";
-import { dailyNavDate } from "./freshness";
+import { isPerpetualExchange } from "../../tickers/perpetual-listing";
+import { formatUtcDayTime, formatUtcWeekdayTime } from "../../utils/utc-time";
+import { delayedFeedLagMs } from "../market/freshness";
+import { quoteHeadlineTime, quoteSessionStateLabel } from "../market/status";
+import { dailyNavDate, isQuoteStaleForCurrentSession } from "./freshness";
 
 /** The published NAV session date, independent of local time and receipt time. */
 export function formatQuoteNavAsOf(quote: Quote | null | undefined, now = Date.now()): string | null {
@@ -14,6 +18,43 @@ export function formatQuoteNavAsOf(quote: Quote | null | undefined, now = Date.n
     ...(sourceDate.getUTCFullYear() !== new Date(now).getUTCFullYear() ? { year: "numeric" as const } : {}),
   }).format(sourceDate);
   return tf("NAV · as of {date}", { date: dateText });
+}
+
+const CLOUD_PROVIDER_ID = "gloomberb-cloud";
+const WEEK_MS = 7 * 86_400_000;
+
+/** How current a quote's feed is: `15 min delayed` (Gloom Cloud knows each venue's lag), `delayed`, `real-time`. */
+function quoteFeedWord(quote: Quote): string | null {
+  if (quote.dataSource === "live") return "real-time";
+  if (quote.dataSource !== "delayed") return null;
+  const exchange = quote.listingExchangeName || quote.exchangeName;
+  // A perpetual's venue is read about once a minute, not held back by a feed lag.
+  if (quote.providerId !== CLOUD_PROVIDER_ID || isPerpetualExchange(exchange)) return "delayed";
+  return `${Math.round(delayedFeedLagMs(exchange) / 60_000)} min delayed`;
+}
+
+/** `08:09 UTC` on today's UTC date, `Thu 08:09 UTC` within the week, `Thu 29 Oct 08:09 UTC` before it. */
+function asOfClock(time: number, now: number): string {
+  const iso = new Date(time).toISOString();
+  if (iso.slice(0, 10) === new Date(now).toISOString().slice(0, 10)) return `${iso.slice(11, 16)} UTC`;
+  return `${now - time < WEEK_MS ? formatUtcWeekdayTime(time) : formatUtcDayTime({ time, dateOnly: false }, now)} UTC`;
+}
+
+/**
+ * What a quote card's price is as of: CLOSED while its market is, else how
+ * current its feed is, and when the price was observed (quoteHeadlineTime,
+ * as an export's as_of dates it): `CLOSED · 08:09 UTC` for Hong Kong's close
+ * beside `15 min delayed · 21:20 UTC` for New York's after hours. Null for a
+ * fund priced by its NAV (formatQuoteNavAsOf dates it), a listing that no
+ * longer trades and a quote stale for its session, whose own status says so.
+ */
+export function formatQuoteSessionAsOf(quote: Quote | null | undefined, now = Date.now()): string | null {
+  if (!quote || quote.delisting || !(quote.lastUpdated > 0) || dailyNavDate(quote, now)) return null;
+  if (isQuoteStaleForCurrentSession(quote, now)) return null;
+  const session = quoteSessionStateLabel(quote, now);
+  const state = session === "CLOSED" ? session : quoteFeedWord(quote) ?? session;
+  const clock = asOfClock(Math.min(quoteHeadlineTime(quote), now), now);
+  return state ? `${state} · ${clock}` : clock;
 }
 
 function clampQuoteTimestamp(lastUpdated: number | undefined, now = Date.now()): number | null {

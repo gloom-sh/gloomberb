@@ -21,7 +21,8 @@ import {
 import { t } from "../../../../i18n";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
 import { delistingLabel, delistingStateLabel } from "../../../../market-data/quotes/delisting";
-import { formatQuoteNavAsOf } from "../../../../market-data/quotes/time";
+import { formatQuoteNavAsOf, formatQuoteSessionAsOf } from "../../../../market-data/quotes/time";
+import { ClippedText } from "../../../../components/ui/display";
 import { useQuoteFlashDirection } from "../../../../components/quote-flash";
 import { followLiveSparklinePrice } from "../../../../components/price-sparkline/model";
 import {
@@ -61,6 +62,21 @@ function extendedLineParts(
 }
 
 const DESKTOP_DETAIL_TEXT_STYLE = { fontSize: "var(--gloom-type-ui)", lineHeight: "14px", whiteSpace: "nowrap" };
+
+/** The desktop card's muted lines: the name under its symbol, and what the price is as of. */
+/** A line set over the sparkline, backed in the card's colour (the theme's, as drawn) so the line does not run through it. */
+function backedLineStyle() {
+  return { alignSelf: "start", maxWidth: "100%", backgroundColor: colors.bg, boxShadow: `0 0 0 2px ${colors.bg}`, paddingRight: 2 };
+}
+
+const DESKTOP_META_LINE_STYLE = {
+  fontSize: "var(--gloom-type-ui)",
+  lineHeight: "14px",
+  maxWidth: "100%",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
 
 function ExtendedSessionLine({
   parts,
@@ -170,6 +186,10 @@ export function QuoteMonitorCard({
   const quoteStatus = resolveQuoteStatus(quoteEntry, symbol, quote);
   const quoteFailed = quoteStatus.failed && !!display;
   const navAsOf = formatQuoteNavAsOf(quote);
+  // Each card says what its own price is as of (`CLOSED · 08:09 UTC` beside `15 min delayed · 21:20 UTC`);
+  // a fund says its NAV's date instead.
+  const sessionAsOf = quoteStatus.ended ? null : formatQuoteSessionAsOf(quote);
+  const desktopAsOf = nativePaneChrome ? navAsOf ?? sessionAsOf : null;
   const changeColor = quoteFailed ? colors.textDim : priceColor(display?.change ?? 0);
   const flashing = !!flashDirection && !headlineHolds;
   const currency = quote?.currency || ticker?.metadata.currency || "USD";
@@ -206,8 +226,12 @@ export function QuoteMonitorCard({
   const trend = quoteTrend(display?.change);
   const terminalSparklineHeight = !nativePaneChrome && !stacked && height >= 4 ? 2 : 1;
   const statusRows = (quoteFailed && !compactQuoteFailure ? 1 : 0) + (navAsOf && !compactNavAsOf ? 1 : 0);
+  const headerRows = stacked ? 3 : 2;
   const showTerminalSparkline = (!quoteFailed && !navAsOf)
-    || height >= (stacked ? 3 : 2) + statusRows + terminalSparklineHeight;
+    || height >= headerRows + statusRows + terminalSparklineHeight;
+  // The terminal gives the as-of line a row only where the card has one to spare: the sparkline keeps its rows.
+  const showTerminalSessionAsOf = !!sessionAsOf
+    && height >= headerRows + statusRows + (perpetuals ? 1 : 0) + (showTerminalSparkline ? terminalSparklineHeight : 0) + 1;
   // Figures sit over the sparkline, so the desktop rings them in the card colour.
   const figureHalo = { textShadow: `0 1px 2px ${colors.bg}` };
   // The card's title: a heading over the app's 12px name, under the 20px price.
@@ -272,7 +296,8 @@ export function QuoteMonitorCard({
             display: "grid",
             // The name gives way first; the price keeps its natural width.
             gridTemplateColumns: "minmax(0, 1fr) auto",
-            gridTemplateRows: "auto 1fr auto auto",
+            // The symbol and price, what the price is as of, an extended print, the range, a perpetual.
+            gridTemplateRows: "auto auto 1fr auto auto",
             columnGap: "var(--gloom-space-md)",
             width: "100%",
             height: "100%",
@@ -283,7 +308,7 @@ export function QuoteMonitorCard({
             minWidth={0}
             style={{
               gridColumn: "1",
-              gridRow: extendedParts || endedRow ? "1" : "1 / span 2",
+              gridRow: extendedParts || endedRow || desktopAsOf ? "1" : "1 / span 3",
               minWidth: 0,
               overflow: "hidden",
             }}
@@ -297,23 +322,8 @@ export function QuoteMonitorCard({
               </Text>
             )}
             {!quoteFailed && ticker?.metadata.name && (
-              <Text
-                fg={colors.textDim}
-                style={{
-                  fontSize: "var(--gloom-type-ui)",
-                  lineHeight: "14px",
-                  maxWidth: "100%",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
+              <Text fg={colors.textDim} style={DESKTOP_META_LINE_STYLE}>
                 {ticker.metadata.name}
-              </Text>
-            )}
-            {navAsOf && (
-              <Text fg={colors.textDim} style={{ fontSize: "var(--gloom-type-ui)", lineHeight: "14px" }}>
-                {navAsOf}
               </Text>
             )}
           </Box>
@@ -339,6 +349,16 @@ export function QuoteMonitorCard({
             </Box>
           </Box>
 
+          {desktopAsOf && (
+            // Across the card under the name and the price, so the time is never cut beside a wide price.
+            <Text
+              fg={colors.textDim}
+              style={{ ...DESKTOP_META_LINE_STYLE, gridColumn: "1 / -1", gridRow: "2", justifySelf: "start", ...backedLineStyle() }}
+            >
+              {desktopAsOf}
+            </Text>
+          )}
+
           {endedRow && (
             // Under the price, across the card, so the date is never cut on a narrow card;
             // backed like the price so the sparkline does not run through it.
@@ -346,7 +366,7 @@ export function QuoteMonitorCard({
               fg={colors.warning}
               style={{
                 gridColumn: "1 / -1",
-                gridRow: "2",
+                gridRow: "3",
                 justifySelf: "start",
                 alignSelf: "start",
                 fontSize: "var(--gloom-type-ui)",
@@ -368,7 +388,7 @@ export function QuoteMonitorCard({
               dim={extendedDim}
               desktopStyle={{
                 gridColumn: "1 / -1",
-                gridRow: "2",
+                gridRow: "3",
                 justifySelf: "start",
                 alignSelf: "start",
                 maxWidth: "100%",
@@ -380,13 +400,13 @@ export function QuoteMonitorCard({
             />
           )}
 
-          {perpetuals && <Box style={{ gridColumn: "1 / -1", gridRow: "4", alignSelf: "end" }}>{perpetuals}</Box>}
+          {perpetuals && <Box style={{ gridColumn: "1 / -1", gridRow: "5", alignSelf: "end" }}>{perpetuals}</Box>}
           {rangeLabel && (
             <Text
               fg={colors.textDim}
               style={{
                 gridColumn: "2",
-                gridRow: "3",
+                gridRow: "4",
                 justifySelf: "end",
                 alignSelf: "end",
                 fontSize: "var(--gloom-type-ui)",
@@ -465,6 +485,9 @@ export function QuoteMonitorCard({
           )}
           {navAsOf && !compactNavAsOf && (
             <Box height={1} overflow="hidden"><Text fg={colors.textDim}>{navAsOf}</Text></Box>
+          )}
+          {showTerminalSessionAsOf && (
+            <Box height={1} overflow="hidden"><ClippedText text={sessionAsOf!} width={Math.max(1, width - 2)} fg={colors.textDim} /></Box>
           )}
           {perpetuals}
           {showTerminalSparkline && <Box height={terminalSparklineHeight} flexDirection="row" alignItems="center" gap={1}>
