@@ -11,6 +11,7 @@ export const fixedIncomeModule: PluginModule = {
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 116, height: 32 },
+    shareItem: { ticker: true },
     tickerFollower: true,
     tableExport: true,
     settings: {

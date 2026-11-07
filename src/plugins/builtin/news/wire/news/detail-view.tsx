@@ -18,6 +18,8 @@ import { logFailure } from "../../../../../utils/log-failure";
 import { mergeNewsArticle } from "../../../../../news/news-model";
 import { usePluginPaneState } from "../../../../runtime";
 import { formatNewsCategory } from "../categories";
+import { shareItemExcerpt } from "../../../../../shares/item";
+import { usePaneShareItem } from "../../../../../shares/pane-item";
 
 function hasStoryItems(article: MarketNewsItem | null): boolean {
   return (article?.items?.length ?? 0) > 0;
@@ -233,6 +235,8 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
   showTitle?: boolean;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
+  // The story is what a link to the pane is about: its headline and summary.
+  usePaneShareItem(() => ({ title: item.title, excerpt: shareItemExcerpt(item.summary) }));
   const tickers = useMemo(
     () => collectNewsDisplayTickers(item.tickers),
     [item.tickers],

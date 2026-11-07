@@ -520,6 +520,7 @@ export const chartComposerModule: PluginModule = {
     icon: "G",
     component: ChartComposerPane,
     defaultPosition: "right",
+    shareItem: { ticker: true },
     tickerFollower: chartShowsOneSecurity,
     retargetTicker: retargetChartTicker,
     defaultMode: "floating",

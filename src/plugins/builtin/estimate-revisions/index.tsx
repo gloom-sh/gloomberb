@@ -13,6 +13,7 @@ export const estimateRevisionsModule: PluginModule = {
       icon: "E",
       get component(): typeof import("./pane").EstimateRevisionsPane { const { EstimateRevisionsPane } = require("./pane"); return EstimateRevisionsPane; },
       defaultPosition: "right",
+      shareItem: { ticker: true },
       tickerFollower: true,
       instruments: ["equity"],
       defaultMode: "floating",

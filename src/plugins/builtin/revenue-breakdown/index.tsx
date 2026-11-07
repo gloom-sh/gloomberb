@@ -33,6 +33,7 @@ export const revenueBreakdownModule: PluginModule = {
       icon: "R",
       component: RevenueBreakdownPane,
       defaultPosition: "right",
+      shareItem: { ticker: true },
       tickerFollower: true,
       instruments: ["equity"],
       defaultMode: "floating",

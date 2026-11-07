@@ -66,6 +66,13 @@ function buildColumns(width: number, stacked: boolean): Column[] {
   ];
 }
 
+/** A link to the pane names the indicator its chart shows, with its reading. */
+function indicatorShareItem(row: IndicatorRow) {
+  const cells = cellsFor(row);
+  const reading = row.view?.zone ? [cells.value.text, row.view.zone.label].filter(Boolean).join(" · ") : null;
+  return { title: row.indicator.label, excerpt: reading };
+}
+
 // Stable table adapters so memoized rows survive pane re-renders.
 const indicatorKey = (row: IndicatorRow) => row.indicator.id;
 const renderIndicatorCell = (row: IndicatorRow, column: Column) => cellsFor(row)[column.id];
@@ -124,6 +131,7 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
     onSelect: setIndicatorId,
     reload: refresh,
     range: { value: range, options: RANGE_VIEW_OPTIONS, onChange: setRange, chartRange: true },
+    shareItem: indicatorShareItem,
   });
   const { selected } = list;
   const selectedView = selected?.view;

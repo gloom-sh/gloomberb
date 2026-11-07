@@ -15,6 +15,7 @@ import { FILL_REST } from "../../../components/ui/fill";
 import { useShortcut } from "../../../react/input";
 import { Box, ScrollBox, useUiCapabilities } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
+import { usePaneShareItem, type PaneShareItemPart } from "../../../shares/pane-item";
 
 /** Below this the detail sits under the table instead of beside it. */
 const SPLIT_MIN_WIDTH = 108;
@@ -54,6 +55,7 @@ export function useSeriesList<Item, R extends string>({
   onSelect,
   reload,
   range,
+  shareItem,
 }: {
   focused: boolean;
   /** Every selectable series, in list order. */
@@ -66,6 +68,8 @@ export function useSeriesList<Item, R extends string>({
   onSelect: (id: string) => void;
   reload: () => void;
   range: Pick<QueryBarView<R>, "value" | "options" | "onChange" | "chartRange">;
+  /** What a link to the pane says it is on: the series its detail shows. */
+  shareItem?: (item: Item) => PaneShareItemPart | null;
 }) {
   const [query, setQuery] = useState("");
   const { active: searchFocused, searchProps } = useQueryBarSearch();
@@ -93,6 +97,7 @@ export function useSeriesList<Item, R extends string>({
   const selected = items.find((item) => getId(item) === selectedId) ?? items[0] ?? null;
   const selectedItemId = selected ? getId(selected) : null;
   const selectionOnScreen = visible.some((item) => getId(item) === selectedItemId);
+  usePaneShareItem(selected && shareItem ? () => shareItem(selected) : null);
 
   const choose = useCallback((id: string, reason: DataTableSelectionChangeReason) => {
     if (!shouldPersistSelection({

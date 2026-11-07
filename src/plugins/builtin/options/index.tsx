@@ -99,6 +99,7 @@ export const optionsModule: PluginModule = {
       icon: "O",
       component: OptionsPane,
       defaultPosition: "right",
+      shareItem: { ticker: true },
       tickerFollower: true,
       // An option the person holds shows their position.
       personalData: (context) => (holdsActiveTicker(context) ? "holdings" : null),

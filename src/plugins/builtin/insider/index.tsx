@@ -728,6 +728,7 @@ export const insiderModule: PluginModule = {
       icon: "I",
       component: InsiderPane,
       defaultPosition: "right",
+      shareItem: { ticker: true },
       tickerFollower: true,
       instruments: ["equity"],
       defaultMode: "floating",

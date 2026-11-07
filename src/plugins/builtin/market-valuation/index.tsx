@@ -40,6 +40,7 @@ export const marketValuationModule: PluginModule = {
     id: MARKET_VALUATION_PANE_ID,
     name: "Market Valuation",
     icon: "V",
+    shareItem: { open: true, argument: true },
     get component(): typeof import("./pane").MarketValuationPane { const { MarketValuationPane } = require("./pane"); return MarketValuationPane; },
     defaultPosition: "right",
     defaultMode: "floating",

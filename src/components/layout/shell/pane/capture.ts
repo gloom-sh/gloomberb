@@ -10,6 +10,7 @@ import { pinnedTabTime } from "../../../../state/app/tab-cursor";
 import type { LayoutConfig } from "../../../../types/config";
 import { useRendererHost, useUiCapabilities, type NativeRendererHost } from "../../../../ui";
 import { buildPaneSharePayload } from "../../../../shares/pane";
+import { paneShareItemFor } from "../../../../shares/pane-item";
 import { preparePaneShare } from "../../../../shares/prepare";
 import { sharePaneLink, type PaneShareView } from "../../../../shares/flow";
 import { reportPaneBug } from "../../../../shares/bug-report-flow";
@@ -74,6 +75,7 @@ export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
     const pane = current.paneMap.get(paneId);
     if (!pane) throw new Error("Focus a pane to share it.");
     const state = stateRef.current;
+    const personalData = panePersonalData({ registry: current.pluginRegistry, state, layout: current.layout, pane });
     return {
       sharePayload: publicSharing ? buildPaneSharePayload(
         pluginRegistry,
@@ -82,8 +84,9 @@ export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
         resolveTickerForPane(state, paneId),
         state.tickers,
         pinnedTabTime(state),
+        paneShareItemFor({ pane, state, registry: pluginRegistry, personal: personalData !== null }),
       ) : null,
-      personalData: panePersonalData({ registry: current.pluginRegistry, state, layout: current.layout, pane }),
+      personalData,
     };
   }, [pluginRegistry, publicSharing, stateRef]);
 

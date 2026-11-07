@@ -49,6 +49,7 @@ export const worldVenueMapModule: PluginModule = {
       defaultMode: "floating",
       defaultFloatingSize: { width: 124, height: 36 },
       // Linked to a list, a map with the app's own layers (facilities) shows the selected company's.
+      shareItem: { ticker: true, argument: true },
       tickerFollower: mapFollowsTicker,
       // The layer picker comes from the server's catalog; without one the pane keeps its old settings.
       settings: (context) => buildMapSettingsDef(context.settings, peekGeoCatalog()?.layers) ?? { fields: [] },

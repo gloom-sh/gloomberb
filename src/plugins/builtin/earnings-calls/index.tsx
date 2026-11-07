@@ -38,6 +38,7 @@ export const earningsCallsModule: PluginModule = {
       icon: "C",
       component: EarningsCallsPane,
       defaultPosition: "right",
+      shareItem: { ticker: true },
       tickerFollower: true,
       instruments: ["equity"],
       defaultMode: "floating",

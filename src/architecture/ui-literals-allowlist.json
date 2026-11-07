@@ -43,7 +43,7 @@
   "src/components/ui/pane-link-chip.tsx": {
     "literals": {
       "font weight": 1,
-      "radius": 3,
+      "radius": 2,
       "spacing": 2
     },
     "why": "Chat's pane-link chip, moved here unchanged so Ask Gloom's sources draw the same chip; its literals were allowed in chat (its own owner and conventions), and moving it onto the tokens would change every chip in chat."

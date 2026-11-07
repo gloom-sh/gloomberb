@@ -279,7 +279,7 @@ export function getChatComposerAreaHeight({
   replyTo,
   mentionSuggestionCount,
   draftAttachmentCount = 0,
-  draftLinkCount = 0,
+  draftLinkRows = 0,
   promptRows = 0,
 }: {
   canSend: boolean;
@@ -290,8 +290,8 @@ export function getChatComposerAreaHeight({
   mentionSuggestionCount?: number;
   /** The terminal draws a row per waiting image; the desktop strip sizes itself. */
   draftAttachmentCount?: number;
-  /** The same for waiting share links, which an edit shows too. */
-  draftLinkCount?: number;
+  /** The terminal rows the waiting share links' cards take, which an edit shows too; the desktop strip sizes itself. */
+  draftLinkRows?: number;
   /** Terminal rows the handle prompt above the composer takes. */
   promptRows?: number;
 }) {
@@ -300,5 +300,6 @@ export function getChatComposerAreaHeight({
     + (editingMessage || replyTo ? 1 : 0)
     + Math.max(0, mentionSuggestionCount ?? 0)
     + (!nativePaneChrome && !editingMessage ? draftAttachmentCount : 0)
-    + (!nativePaneChrome ? draftLinkCount : 0);
+    // The waiting share links' cards, each as tall as what it says.
+    + (!nativePaneChrome ? draftLinkRows : 0);
 }

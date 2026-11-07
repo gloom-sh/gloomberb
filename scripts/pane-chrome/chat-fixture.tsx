@@ -18,6 +18,9 @@
  * publisher's address (it still ends in it), a Wire calendar post, a share
  * posted with its picture and a bare share link, with an in-page stand-in for
  * the share service; `shares=held` holds its answers until `releaseShares()`.
+ * `items=1` ends it on a Wire news post, then a share of the same story made
+ * with its item, one of a ticker's pane, and one of Top News made before
+ * shares kept an item; `draft=item` waits that story's share in the composer.
  * `handle=placeholder` signs you in on a signup placeholder handle, so the
  * composer offers to choose one; saving `taken` is refused as taken, and
  * `solo=1` gives the chat the whole page.
@@ -133,8 +136,18 @@ function quoteOf(message: ChatMessage | undefined): ChatMessage["replyTo"] {
 }
 
 const count = Number(params.get("count") ?? 90);
-/** Two invented shares: one posted with its picture, one pasted on its own. */
-const FIXTURE_SHARES = { posted: "5ea7c0de".repeat(4), bare: "b0a7c0de".repeat(4) };
+/**
+ * Invented shares: one posted with its picture, one pasted on its own and one
+ * of a pane named as its pane (all made before shares kept an item), and two
+ * made with the item their pane was on: a story and a ticker.
+ */
+const FIXTURE_SHARES = {
+  posted: "5ea7c0de".repeat(4),
+  bare: "b0a7c0de".repeat(4),
+  pane: "9a4ec0de".repeat(4),
+  story: "57a7c0de".repeat(4),
+  ticker: "7c4ec0de".repeat(4),
+};
 const shareLink = (id: string) => `https://term.gloom.sh/api/shares/${id}/open`;
 
 /** An invented news post as the wire wrote it before: headline, source, date, then the publisher's address. */
@@ -164,6 +177,23 @@ function withChips(messages: ChatMessage[]): ChatMessage[] {
   });
   replace(1, { user: MEMBERS.quill!, content: shareLink(FIXTURE_SHARES.bare) });
   return messages;
+}
+
+/** An invented story as the Wire posts it, then shared from the pane it was open in, and a ticker's pane shared. */
+const ITEM_STORY = {
+  title: "Example Corp weighs sale of packaging unit, people familiar say",
+  summary: "Example Corp is weighing a sale of its packaging unit that could value the business at about $4 billion, as the company narrows its focus on consumer brands. No decision has been made.",
+};
+function withItems(messages: ChatMessage[]): ChatMessage[] {
+  const at = messages.length;
+  const next = (offset: number, change: Partial<ChatMessage>): ChatMessage => invented(at + offset, change);
+  return [
+    ...messages,
+    next(0, { user: MEMBERS.gloomwire!, content: `${ITEM_STORY.title} (Example Wire, Jan 8) $EXMPL`, paneLink: { kind: "news-story", storyId: "story-item" } }),
+    next(1, { user: MEMBERS.marlow!, content: `what do you make of this one\n\n${shareLink(FIXTURE_SHARES.story)}` }),
+    next(2, { user: MEMBERS.quill!, content: shareLink(FIXTURE_SHARES.ticker) }),
+    next(3, { user: MEMBERS.marlow!, content: `the list it came from\n\n${shareLink(FIXTURE_SHARES.pane)}` }),
+  ];
 }
 
 /** An invented announcement as Gloom would post it, with a member's message and a bot's before it and a reply after. */
@@ -201,10 +231,10 @@ if (replies) {
     initialMessages[index] = { ...initialMessages[index]!, replyToId: quoted.id, replyTo: { content: quoted.content, user: { id: quoted.user.id, username: quoted.user.username ?? "" } } };
   }
 }
+const withChipMessages = params.get("chips") === "1" ? withChips(initialMessages) : initialMessages;
+const withItemMessages = params.get("items") === "1" ? withItems(withChipMessages) : withChipMessages;
 const fake: ChatFake = {
-  messages: params.get("announcement") === "1"
-    ? withAnnouncement(params.get("chips") === "1" ? withChips(initialMessages) : initialMessages)
-    : params.get("chips") === "1" ? withChips(initialMessages) : initialMessages,
+  messages: params.get("announcement") === "1" ? withAnnouncement(withItemMessages) : withItemMessages,
   historyRequests: 0,
   sent: [],
   connected: () => (sockets.get("everyone")?.size ?? 0) > 0,
@@ -252,10 +282,22 @@ const fake: ChatFake = {
 const sharesHeld = Promise.withResolvers<void>();
 if (params.get("shares") !== "held") sharesHeld.resolve();
 
-/** The share service as the page reads it, for the two invented shares only. */
-const SHARE_TITLES: Record<string, string> = {
-  [FIXTURE_SHARES.posted]: "DES EXMPL Options",
-  [FIXTURE_SHARES.bare]: "DES SAMPL Options",
+/** The share service as the page reads it, for the invented shares only. */
+const SHARES: Record<string, { title: string; paneId: string; description?: string; item?: { pane: string; title: string; excerpt?: string } }> = {
+  [FIXTURE_SHARES.posted]: { title: "DES EXMPL Options", paneId: "ticker-research" },
+  [FIXTURE_SHARES.bare]: { title: "DES SAMPL Options", paneId: "ticker-research" },
+  [FIXTURE_SHARES.pane]: { title: "Top News", paneId: "news-top", description: "Curated top market stories ranked by importance" },
+  [FIXTURE_SHARES.story]: {
+    title: "Top News",
+    paneId: "news-top",
+    description: "Curated top market stories ranked by importance",
+    item: { pane: "Top News", title: ITEM_STORY.title, excerpt: ITEM_STORY.summary },
+  },
+  [FIXTURE_SHARES.ticker]: {
+    title: "EXMPL",
+    paneId: "ticker-research",
+    item: { pane: "Research", title: "Example Corp (EXMPL)", excerpt: "NASDAQ · Consumer Defensive · Packaged Foods" },
+  },
 };
 const pageFetch = window.fetch.bind(window);
 window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -264,19 +306,22 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (!id) return pageFetch(input, init);
   fake.shareReads += 1;
   await sharesHeld.promise;
-  const title = SHARE_TITLES[id];
-  if (!title) return new Response(JSON.stringify({ error: "Share not found." }), { status: 404 });
+  const share = SHARES[id];
+  if (!share) return new Response(JSON.stringify({ error: "Share not found." }), { status: 404 });
+  const { title, paneId } = share;
   return Response.json({
     kind: "pane",
+    ...(share.item ? { item: share.item } : {}),
     data: {
       version: 2,
       title,
+      ...(share.description ? { description: share.description } : {}),
       layout: {
         schemaVersion: 2,
         sourceConfigVersion: 1,
         layout: {
           dockRoot: { kind: "pane", instanceId: "p1" },
-          instances: [{ instanceId: "p1", paneId: "ticker-research", title, binding: { kind: "fixed", symbol: "EXMPL" } }],
+          instances: [{ instanceId: "p1", paneId, title, binding: { kind: "fixed", symbol: "EXMPL" } }],
           floating: [],
           detached: [],
         },
@@ -294,6 +339,7 @@ attachChatPaneLinkPanes((paneId) => ({
   "ticker-research": { name: "Research", icon: "D" },
   "econ-calendar": { name: "Economic Calendar", icon: "E" },
   "news-story": { name: "Story", icon: "A" },
+  "news-top": { name: "Top News", icon: "T" },
 })[paneId]);
 // The functions a message can name: a few invented panes beside the app's own DES and HELP.
 const FUNCTIONS = chatFunctionsFrom({
@@ -423,6 +469,7 @@ function createController(): ChatController {
 }
 
 const controller = createController();
+if (params.get("draft") === "item") controller.setDraft(`this one\n\n${shareLink(FIXTURE_SHARES.story)}`);
 if (params.get("latencyCheck") === "1") await installChatLatencyRuntime(controller);
 const runtime = createTestPluginRuntime({
   createPaneFromTemplate: (templateId, options) => {
