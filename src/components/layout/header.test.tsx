@@ -1,4 +1,4 @@
-import { afterEach, expect, jest, test } from "bun:test";
+import { afterEach, beforeEach, expect, jest, setSystemTime, test } from "bun:test";
 import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { AppContext, createInitialState, type AppAction, type AppState } from "../../state/app/context";
 import { createStaticAppStore } from "../../test-support/app-store";
@@ -20,7 +20,19 @@ function headerConfig() {
   return { ...createDefaultConfig("/tmp/gloomberb-header-test"), headerMarket: { benchmark: "btc" } };
 }
 
+/**
+ * An exchange's state reads the clock, so the header's text depends on the
+ * hour a test runs. Every test here starts on a Tuesday morning, with the NYSE
+ * open, unless it sets the hour it is about.
+ */
+const TUESDAY_OPEN = "2026-11-03T15:00:00Z";
+
+beforeEach(() => {
+  setSystemTime(new Date(TUESDAY_OPEN));
+});
+
 afterEach(() => {
+  setSystemTime();
   publishCommandBarPrompt(null);
   setSharedMarketDataCoordinator(null);
 });
@@ -185,6 +197,47 @@ test("names the selected row's keys at the end of the open prompt while the quer
 });
 
 /**
+ * The exchange's state at the hours the header's wording depends on: while it
+ * trades, in the evening, over a weekend and on a holiday. A header with room
+ * for it says `NYSE closed`; where the quote leaves less than that the state
+ * drops the exchange's name, as the header always did (`CLOSED`), and a wider
+ * one adds when the session changes (`opens Mon 9:30 ET`, `6h left`).
+ */
+test.each([
+  // Tuesday 10:00 in New York.
+  ["open", TUESDAY_OPEN, { 100: "NYSE open", 120: "NYSE open · 6h left", 200: "NYSE open · 6h left" }],
+  // Monday 22:00 in New York: the next session is tomorrow's, so its time has no weekday.
+  ["closed in the evening", "2026-11-04T03:00:00Z", { 100: "closed", 120: "NYSE closed", 200: "NYSE closed · opens 9:30 ET" }],
+  // Friday 20:03 in New York, which is 01:03 UTC on a Saturday: the hour this file first failed at.
+  ["closed for the weekend", "2026-11-07T01:03:00Z", { 100: "closed", 120: "NYSE closed", 200: "NYSE closed · opens Mon 9:30 ET" }],
+  ["closed on a Saturday", "2026-11-07T15:00:00Z", { 100: "closed", 120: "NYSE closed", 200: "NYSE closed · opens Mon 9:30 ET" }],
+  // Thanksgiving: the holiday is named where there is room, and reads as closed where there is not.
+  ["closed for a holiday", "2026-11-26T15:00:00Z", { 100: "closed", 120: "NYSE holiday", 200: "NYSE holiday · opens 9:30 ET" }],
+] as const)("says the NYSE is %s, naming it only where the header has room", async (_name, at, expected) => {
+  setSystemTime(new Date(at));
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    getQuote: async (symbol) => createTestQuote({
+      symbol, instrumentType: "INDEX", price: 6843.21, change: 13.66, changePercent: 0.2, marketState: "REGULAR",
+    }),
+  })));
+  const config = { ...createDefaultConfig("/tmp/gloomberb-header-test"), headerMarket: { benchmark: "sp500" } };
+  for (const [width, state] of Object.entries(expected)) {
+    await tui.render(
+      <AppContext value={createStaticAppStore(createInitialState(config))}>
+        <Header onOpenHelp={() => {}} />
+      </AppContext>,
+      { width: Number(width), height: 1 },
+    );
+    for (let attempt = 0; attempt < 20 && !tui.frame().includes("6,843"); attempt += 1) {
+      await act(async () => { await Bun.sleep(10); });
+      await tui.setup().renderOnce();
+    }
+    const frame = tui.frame().split("\n")[0]!;
+    expect(frame.slice(frame.indexOf("Help ?")), `${width} columns`).toBe(`Help ? ${state} S&P 500 6,843 +0.20% `);
+  }
+});
+
+/**
  * A downloaded desktop update waits for the user: the header names it and
  * offers Restart, which is clickable. The terminal binary is already swapped
  * in, so it only says to restart and has nothing to press.
@@ -231,7 +284,13 @@ test("offers a clickable Restart for a downloaded desktop update, and only text 
  * banner says the reason in a few words. It must never reach into the prompt's
  * placeholder, the Help pill or the market cluster, at any width.
  */
-test("gives a failed update room at common terminal widths and keeps it clear of its neighbours", async () => {
+test.each([
+  // The NYSE trades: its name and the time to the close are in the cluster.
+  ["while the market is open", TUESDAY_OPEN, /NYSE open(?: · \S+ left)?/],
+  // Closed (here, Friday evening into Saturday), the narrowest state may drop the exchange's name (`closed`).
+  ["while the market is closed", "2026-11-07T01:03:00Z", /(?:NYSE )?closed(?: · opens (?:Mon )?9:30 ET)?/],
+] as const)("gives a failed update room at common terminal widths and keeps it clear of its neighbours %s", async (_name, at, stateText) => {
+  setSystemTime(new Date(at));
   const release = { version: "9.9.9", tagName: "v9.9.9", downloadUrl: "", publishedAt: "", updateAction: { kind: "desktop" as const } };
   const state = {
     ...createInitialState({ ...createDefaultConfig("/tmp/gloomberb-header-test"), headerMarket: { benchmark: "sp500" } }),
@@ -266,7 +325,7 @@ test("gives a failed update room at common terminal widths and keeps it clear of
     expect(slot.trim()).toMatch(/^(?:\S+\s+)?Update failed/);
     expect(frame.slice(helpX)).not.toMatch(/Update|retry|\.\.\./);
     // The market summary is right of the pill, whole, and not pushed off the row.
-    if (width >= 80) expect(frame.slice(helpX)).toMatch(/^Help \? +(?:NYSE .+ )?S&P 500 — *$/);
+    if (width >= 80) expect(frame.slice(helpX)).toMatch(new RegExp(`^Help \\? +${stateText.source} S&P 500 — *$`));
     // The raw error, with its URL, stays out of the header.
     expect(frame).not.toContain("example.test");
   }
