@@ -121,7 +121,7 @@ export function operationPolicy(operation: string): TerminalRelayPolicyEntry {
  * Everything else a node exposes (press, submit, activate, toggle, release)
  * may act outside it and asks each time.
  */
-export const LOCAL_UI_ACTIONS: ReadonlySet<string> = new Set([
+const LOCAL_UI_ACTIONS: ReadonlySet<string> = new Set([
   "scroll",
   "scrollBy",
   "scrollTo",
@@ -139,7 +139,7 @@ export const LOCAL_UI_ACTIONS: ReadonlySet<string> = new Set([
 ]);
 
 /** Command-bar rows that only open a ticker or a pane. */
-export const NAVIGATION_RESULT_KINDS: ReadonlySet<string> = new Set([
+const NAVIGATION_RESULT_KINDS: ReadonlySet<string> = new Set([
   "ticker",
   "ticker-search",
   "pane",
