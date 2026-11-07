@@ -297,7 +297,8 @@ function stubReleases() {
   const realFetch = globalThis.fetch;
   fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input);
-    // No CHANGELOG.md: each version reads its own updates.
+    // No CHANGELOG.md, from Gloom Cloud or GitHub: each version reads its own updates.
+    if (url.endsWith("/public/releases/summaries")) return Response.json({ markdown: null });
     if (url === "https://api.github.com/repos/gloom-sh/gloomberb/contents/CHANGELOG.md") return new Response("Not Found", { status: 404 });
     if (!url.startsWith("https://api.github.com/repos/gloom-sh/gloomberb/releases")) return realFetch(input, init);
     releaseReads += 1;
@@ -321,7 +322,7 @@ test("ROADMAP opens on the roadmap; the Changelog tab lists the versions, and sw
   const reads = releaseReads;
   frame = await press("l");
   expect(lines(frame)[0]).toMatch(/Features\s+Changelog/);
-  expect(lines(frame)[1]).toMatch(/DATE\b.*VERSION\s+TITLE\s+UPDATES/);
+  expect(lines(frame)[1]).toMatch(/DATE\b.*VERSION\b.*TITLE\s+UPDATES/);
   // One row for 0.19, its newest update's date and its first update's title.
   expect(lines(frame).find((line) => line.includes("v0.19"))).toMatch(/Oct 29, 2026\s+v0\.19\s+Faster charts\s+2/);
   expect(frame).not.toContain("nightly");

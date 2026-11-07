@@ -14,6 +14,7 @@ import {
 import { DetailReader } from "../../../components/reader/detail-reader";
 import { DESKTOP_LINE_HEIGHT, READER_COLUMN_FONT, READER_MEASURE } from "../../../components/reader/reader-text";
 import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { getReleaseSummaries } from "../../../api-client/release-summaries";
 import { createTtlCache } from "../../../data/ttl-cache";
 import {
   fetchChangelogReleases,
@@ -32,6 +33,7 @@ import {
   resolveSelectedReleaseIndex,
   sortChangelogReleases,
   type ChangelogColumnId,
+  type ChangelogSortPreference,
 } from "./model";
 import {
   DEFAULT_CHANGELOG_VERSION_SORT,
@@ -45,8 +47,12 @@ import {
   type ChangelogVersionColumnId,
 } from "./versions";
 
-/** Enough releases for every recent version whole; the oldest, cut short, is left out. */
-const CHANGELOG_LIMIT = 100;
+/**
+ * The releases read: one page of GitHub's list holds them beside the nightly
+ * builds, so a load is one request unless nightlies crowd the page. The
+ * oldest version, maybe cut short, is left out.
+ */
+const CHANGELOG_LIMIT = 80;
 /** GitHub can hang or be blocked outright; the pane must still reach a verdict. */
 const CHANGELOG_TIMEOUT_MS = 5_000;
 const CHANGELOG_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -65,6 +71,20 @@ const CHANGELOG = "changelog";
 /** Every test reads its own answers, whichever file ran first. */
 export function resetChangelogCacheForTests(): void {
   changelogCache.clear();
+}
+
+/**
+ * CHANGELOG.md from Gloom Cloud, which reads GitHub with its own credentials,
+ * else from GitHub itself; null when neither has it, and then each version
+ * shows its updates' own highlights.
+ */
+async function readSummaries(signal: AbortSignal): Promise<string | null> {
+  try {
+    return await getReleaseSummaries(signal);
+  } catch (error) {
+    logFailure("changelog", "Read release summaries from Gloom Cloud failed")(error);
+  }
+  return fetchChangelogSummaries(signal).catch(logFailure("changelog", "Read CHANGELOG.md from GitHub failed", null));
 }
 
 type VersionColumn = DataTableColumn & { id: ChangelogVersionColumnId };
@@ -188,6 +208,8 @@ function VersionDetail({
   selectedReleaseId,
   onSelectRelease,
   onOpenRelease,
+  sortPreference,
+  onSortChange,
 }: {
   version: ChangelogVersion;
   focused: boolean;
@@ -195,8 +217,10 @@ function VersionDetail({
   selectedReleaseId: string | null;
   onSelectRelease: (id: string) => void;
   onOpenRelease: (id: string) => void;
+  /** The pane's, so it outlasts an update's notes opened over the table. */
+  sortPreference: ChangelogSortPreference;
+  onSortChange: (update: (current: ChangelogSortPreference) => ChangelogSortPreference) => void;
 }) {
-  const [sortPreference, setSortPreference] = useState(DEFAULT_CHANGELOG_SORT);
   const releases = useMemo(
     () => sortChangelogReleases(version.releases, sortPreference),
     [version.releases, sortPreference],
@@ -222,7 +246,7 @@ function VersionDetail({
       items={releases}
       sortColumnId={sortPreference.columnId}
       sortDirection={sortPreference.direction}
-      onHeaderClick={(columnId) => setSortPreference((current) => nextChangelogSortPreference(current, columnId))}
+      onHeaderClick={(columnId) => onSortChange((current) => nextChangelogSortPreference(current, columnId))}
       getItemKey={(release) => release.id}
       renderCell={renderReleaseCell}
       selectedTextOverridesCellColor
@@ -252,6 +276,7 @@ export function ChangelogPane({ focused, width, height }: PaneProps) {
   const [selectedReleaseId, setSelectedReleaseId] = usePluginPaneState<string | null>("selectedReleaseId", null);
   const [openReleaseId, setOpenReleaseId] = usePluginPaneState<string | null>("openReleaseId", null);
   const [sortPreference, setSortPreference] = useState(DEFAULT_CHANGELOG_VERSION_SORT);
+  const [updateSort, setUpdateSort] = useState<ChangelogSortPreference>(DEFAULT_CHANGELOG_SORT);
   const detailScrollRef = useRef<ScrollBoxRenderable>(null);
   const abortRef = useRef<AbortController | null>(null);
   const requestedVersionOpenedRef = useRef(false);
@@ -279,8 +304,7 @@ export function ChangelogPane({ focused, width, height }: PaneProps) {
     try {
       const [releases, summaries] = await Promise.all([
         fetchChangelogReleases(CHANGELOG_LIMIT, controller.signal),
-        // Without the summaries each version shows its updates' own highlights.
-        fetchChangelogSummaries(controller.signal).catch(logFailure("changelog", "Read CHANGELOG.md failed", null)),
+        readSummaries(controller.signal),
       ]);
       const next = { releases, summaries };
       changelogCache.set(CHANGELOG, next);
@@ -417,6 +441,8 @@ export function ChangelogPane({ focused, width, height }: PaneProps) {
           selectedReleaseId={selectedReleaseId}
           onSelectRelease={setSelectedReleaseId}
           onOpenRelease={setOpenReleaseId}
+          sortPreference={updateSort}
+          onSortChange={setUpdateSort}
         />
       ) : (
         <Box flexGrow={1} />

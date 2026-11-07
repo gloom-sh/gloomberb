@@ -44,17 +44,29 @@ const SUMMARIES = [
   "- **The Windows app stays responsive.** Menus no longer freeze it. (0.20.1)",
 ].join("\n");
 
-const reads: string[] = [];
-function stubGithub() {
+let reads: string[] = [];
+/**
+ * GitHub and Gloom Cloud. `cloud` is what the service says of the summaries:
+ * the file, that there is none, or nothing (a service without the route).
+ */
+function stubGithub({ cloud = "file" }: { cloud?: "file" | "none" | "missing" } = {}) {
   resetChangelogCacheForTests();
+  reads = [];
   fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request) => {
     const url = String(input instanceof Request ? input.url : input);
     reads.push(url);
+    if (url.endsWith("/public/releases/summaries")) {
+      return cloud === "missing"
+        ? Response.json({ message: "Not found" }, { status: 404 })
+        : Response.json({ fetchedAt: "2026-11-07T10:00:00.000Z", stale: false, markdown: cloud === "file" ? SUMMARIES : null });
+    }
     if (url === "https://api.github.com/repos/gloom-sh/gloomberb/contents/CHANGELOG.md") return new Response(SUMMARIES, { status: 200 });
     if (url.startsWith("https://api.github.com/repos/gloom-sh/gloomberb/releases")) return new Response(JSON.stringify(RELEASES), { status: 200 });
     return new Response("Not Found", { status: 404 });
   }) as typeof fetch);
 }
+
+const githubReads = () => reads.filter((url) => url.startsWith("https://api.github.com/"));
 
 async function settle() {
   for (let index = 0; index < 6; index += 1) {
@@ -99,11 +111,11 @@ async function press(key: "enter" | "escape" | "backspace" | string): Promise<st
 const lines = (frame: string) => frame.split("\n");
 const lineWith = (frame: string, text: string) => lines(frame).find((line) => line.includes(text));
 
-test("lists one row per minor version, newest first: its newest update's date, its title and how many updates it had", async () => {
+test("lists one row per minor version, highest first: its newest update's date, its title and how many updates it had", async () => {
   stubGithub();
   const frame = await render();
 
-  expect(lines(frame).find((line) => /DATE/.test(line))).toMatch(/DATE\b.*VERSION\s+TITLE\s+UPDATES/);
+  expect(lines(frame).find((line) => /DATE/.test(line))).toMatch(/DATE\s+VERSION ▼\s+TITLE\s+UPDATES/);
   expect(lineWith(frame, "v0.20")).toMatch(/Nov 4, 2026\s+v0\.20\s+A faster desktop app, and a responsive one on Windows\s+2/);
   // No summary for 0.19: its first update's title.
   expect(lineWith(frame, "v0.19")).toMatch(/Oct 29, 2026\s+v0\.19\s+Options strategy screens\s+2/);
@@ -133,11 +145,53 @@ test("Enter opens a version's highlights over its updates, Enter an update's not
   expect(back).not.toContain("Menus run off the main thread.");
 
   const root = await press("backspace");
-  expect(root).toMatch(/DATE\b.*VERSION\s+TITLE\s+UPDATES/);
+  expect(root).toMatch(/DATE\b.*VERSION\b.*TITLE\s+UPDATES/);
   expect(root).not.toContain("It starts about a third faster.");
 });
 
-test("a version without a summary shows each update's top claim, oldest first, and a plain bullet's first clause", async () => {
+test("reads the summaries from Gloom Cloud and makes one request to GitHub, for the first page of releases", async () => {
+  stubGithub();
+  await render();
+
+  expect(reads.filter((url) => url.endsWith("/public/releases/summaries"))).toHaveLength(1);
+  expect(githubReads()).toEqual(["https://api.github.com/repos/gloom-sh/gloomberb/releases?per_page=100&page=1"]);
+});
+
+test("a service without the summaries sends the pane to GitHub's copy; a service that says there is none does not", async () => {
+  stubGithub({ cloud: "missing" });
+  const fromGithub = await render();
+  expect(lineWith(fromGithub, "v0.20")).toContain("A faster desktop app, and a responsive one on Windows");
+  expect(githubReads()).toContain("https://api.github.com/repos/gloom-sh/gloomberb/contents/CHANGELOG.md");
+
+  await tui.destroy();
+  fetchSpy?.mockRestore();
+  stubGithub({ cloud: "none" });
+  const none = await render();
+  // No file: the version's first update's title, and GitHub is not asked for one.
+  expect(lineWith(none, "v0.20")).toMatch(/v0\.20\s+Faster desktop app\s+2/);
+  expect(githubReads()).not.toContain("https://api.github.com/repos/gloom-sh/gloomberb/contents/CHANGELOG.md");
+});
+
+test("going back from an update keeps the version's updates in the order chosen", async () => {
+  stubGithub();
+  await render();
+  const version = await press("enter");
+  const header = lines(version).findIndex((line) => /DATE.*VERSION.*TITLE/.test(line));
+  expect(lines(version)[header + 1]).toContain("v0.20.1");
+
+  // Oldest first, by a click on the Date header.
+  await act(async () => {
+    await tui.setup().mockMouse.click(3, header);
+  });
+  await settle();
+  expect(lines(tui.frame())[header + 1]).toContain("v0.20.0");
+
+  await press("enter");
+  const back = await press("escape");
+  expect(lines(back)[header + 1]).toContain("v0.20.0");
+});
+
+test("a version without a summary shows the top claims of its newest updates, in the order they shipped, and a plain bullet's first clause", async () => {
   stubGithub();
   await render();
   await press("j");

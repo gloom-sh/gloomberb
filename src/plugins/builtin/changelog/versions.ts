@@ -15,8 +15,10 @@ import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
  *   - **A faster, lighter desktop app.** Starts a third faster on Mac. (0.20.0)
  *     ![SCAN](https://gloom.sh/screenshots/fn/SCAN.png)
  *
- * Anything else (the title, the intro, HTML comments, other headings, the
- * pictures) is skipped here.
+ * A bullet may wrap onto the lines under it, as markdown lets it, up to a
+ * blank line or the next bullet. Anything else (the title, the intro, HTML
+ * comments, other headings, paragraphs between bullets, the pictures) is
+ * skipped here.
  */
 
 /** Highlights shown for a version at most. */
@@ -56,12 +58,29 @@ const VERSIONS = /\s*\(\s*(v?\d+\.\d+\.\d+(?:\s*,\s*v?\d+\.\d+\.\d+)*)\s*\)\s*$/
 const BULLET = /^[-*]\s+(.+)$/;
 const BOLD_LEAD = /^\*\*(.+?)\*\*\s*(.*)$/;
 const PULL_REFS = /\s*\(\s*#\d+(?:\s*,\s*#\d+)*\s*\)\s*$/;
+const IMAGE = /^!\[[^\]]*\]\([^)\s]+\)$/;
 
 /** "**Claim.** Line" as its claim and its line; text without a claim is all claim. */
 function splitLead(text: string): { lead: string; detail: string } {
   const match = text.match(BOLD_LEAD);
   if (match?.[1]) return { lead: match[1].trim(), detail: match[2]?.trim() ?? "" };
   return { lead: text.trim(), detail: "" };
+}
+
+/** A bullet as written, its wrapped lines joined: `paused` after a blank line, when only an indented line continues it. */
+interface OpenBullet {
+  text: string;
+  paused: boolean;
+}
+
+function readBullet(text: string): ChangelogHighlight | null {
+  const versions = text.match(VERSIONS);
+  const claim = versions ? text.slice(0, versions.index).trim() : text;
+  if (!claim) return null;
+  return {
+    ...splitLead(claim),
+    versions: versions?.[1] ? versions[1].split(",").map((version) => version.trim().replace(/^v/i, "")) : [],
+  };
 }
 
 export function parseVersionSummaries(markdown: string | null | undefined): Map<string, VersionSummary> {
@@ -71,10 +90,22 @@ export function parseVersionSummaries(markdown: string | null | undefined): Map<
   // HTML comments hold the format notes and an example section.
   const lines = markdown.replace(/<!--[\s\S]*?(-->|$)/g, "").replace(/\r\n/g, "\n").split("\n");
   let current: VersionSummary | null = null;
+  let open: OpenBullet | null = null;
+
+  const close = () => {
+    const highlight = open ? readBullet(open.text) : null;
+    if (current && highlight) current.highlights.push(highlight);
+    open = null;
+  };
 
   for (const line of lines) {
     const trimmed = line.trim();
+    if (!trimmed) {
+      if (open) open.paused = true;
+      continue;
+    }
     if (/^#{1,6}\s/.test(trimmed)) {
+      close();
       const section = trimmed.match(SECTION);
       current = null;
       // The newest section for a version wins over a repeated one below it.
@@ -84,24 +115,31 @@ export function parseVersionSummaries(markdown: string | null | undefined): Map<
       }
       continue;
     }
+    if (!current) continue;
 
-    const bullet = current ? line.match(BULLET) : null;
-    if (!current || !bullet?.[1]) continue;
-    const text = bullet[1].trim();
-    const versions = text.match(VERSIONS);
-    const claim = versions ? text.slice(0, versions.index).trim() : text;
-    if (!claim) continue;
-    current.highlights.push({
-      ...splitLead(claim),
-      versions: versions?.[1] ? versions[1].split(",").map((version) => version.trim().replace(/^v/i, "")) : [],
-    });
+    const bullet = line.match(BULLET);
+    if (bullet?.[1]) {
+      close();
+      open = { text: bullet[1].trim(), paused: false };
+      continue;
+    }
+    // A picture under a highlight is the website's; it does not end the bullet.
+    if (IMAGE.test(trimmed)) continue;
+    // A wrapped line of the bullet: right under it, or indented under it.
+    if (open && (!open.paused || /^\s/.test(line))) {
+      open.text = `${open.text} ${trimmed}`;
+      open.paused = false;
+      continue;
+    }
+    close();
   }
+  close();
 
   return summaries;
 }
 
 /** "v0.20.3" is 0.20; a tag that is not a version stands alone. */
-export function minorOf(tagName: string): string {
+function minorOf(tagName: string): string {
   return tagName.match(/^v?(\d+\.\d+)\.\d+$/i)?.[1] ?? tagName;
 }
 
@@ -140,7 +178,18 @@ function fallbackTitle(releases: ChangelogRelease[], minor: string): string {
 }
 
 /**
- * The releases (newest first) as one version per minor, newest first. A
+ * The highest version first, by number, so a fix shipped to 0.19 after 0.20
+ * came out stays under 0.20; a tag that is not a version goes after them.
+ */
+function compareMinors(left: string, right: string): number {
+  const a = left.match(/^(\d+)\.(\d+)$/);
+  const b = right.match(/^(\d+)\.(\d+)$/);
+  if (!a || !b) return Number(!a) - Number(!b);
+  return Number(b[1]) - Number(a[1]) || Number(b[2]) - Number(a[2]);
+}
+
+/**
+ * The releases (newest first) as one version per minor, the highest first. A
  * version's title and highlights come from its summary; what the summary
  * leaves out comes from the updates themselves, so a missing or half-written
  * summary never empties a row. With `cut`, the list stopped at its limit, so
@@ -159,20 +208,24 @@ export function groupChangelogVersions(
     else byMinor.set(minor, [release]);
   }
 
-  const versions = [...byMinor].map(([minor, group]): ChangelogVersion => {
-    const summary = summaries.get(minor);
-    // Oldest first: the version's story in the order it shipped.
-    const highlights = summary?.highlights.length ? summary.highlights : [...group].reverse().map(topHighlight);
-    return {
-      id: /^\d+\.\d+$/.test(minor) ? `v${minor}` : minor,
-      minor,
-      title: summary?.title ?? fallbackTitle(group, minor),
-      highlights: highlights.slice(0, HIGHLIGHTS_MAX),
-      releases: group,
-      firstPublishedAt: group.at(-1)?.publishedAt ?? "",
-      lastPublishedAt: group[0]?.publishedAt ?? "",
-    };
-  });
+  const versions = [...byMinor]
+    .sort(([left], [right]) => compareMinors(left, right))
+    .map(([minor, group]): ChangelogVersion => {
+      const summary = summaries.get(minor);
+      const highlights = summary?.highlights.length
+        ? summary.highlights.slice(0, HIGHLIGHTS_MAX)
+        // The newest updates', in the order they shipped.
+        : group.slice(0, HIGHLIGHTS_MAX).reverse().map(topHighlight);
+      return {
+        id: /^\d+\.\d+$/.test(minor) ? `v${minor}` : minor,
+        minor,
+        title: summary?.title ?? fallbackTitle(group, minor),
+        highlights,
+        releases: group,
+        firstPublishedAt: group.at(-1)?.publishedAt ?? "",
+        lastPublishedAt: group[0]?.publishedAt ?? "",
+      };
+    });
   return cut && versions.length > 1 ? versions.slice(0, -1) : versions;
 }
 
@@ -199,7 +252,8 @@ export interface ChangelogVersionSort {
   direction: SortDirection;
 }
 
-export const DEFAULT_CHANGELOG_VERSION_SORT: ChangelogVersionSort = { columnId: "date", direction: "desc" };
+/** The highest version first: a fix to an older version shipped later does not move it above the newer one. */
+export const DEFAULT_CHANGELOG_VERSION_SORT: ChangelogVersionSort = { columnId: "version", direction: "desc" };
 
 function isVersionColumnId(columnId: string): columnId is ChangelogVersionColumnId {
   return columnId === "date" || columnId === "version" || columnId === "title" || columnId === "updates";

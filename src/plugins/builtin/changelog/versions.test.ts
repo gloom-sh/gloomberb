@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { join } from "path";
 import type { ChangelogRelease } from "../../../updater/github-releases";
 import {
+  DEFAULT_CHANGELOG_VERSION_SORT,
   groupChangelogVersions,
   HIGHLIGHTS_MAX,
   nextChangelogVersionSort,
@@ -30,7 +31,12 @@ describe("parseVersionSummaries", () => {
       "- **Faster `DES`.** It starts sooner. (v0.20.0 ,0.20.2 )",
       "  ![HM](https://gloom.sh/screenshots/fn/HM.png)",
       "* A claim without a bold lead (0.20.1)",
+      "- **A claim that wraps",
+      "  onto a second line.** Its detail wraps",
+      "too, and names its update. (0.20.3)",
+      "  ![SCAN](https://gloom.sh/screenshots/fn/SCAN.png)",
       "- **No update named.** Kept.",
+      "",
       "Stray paragraph.",
       "## 0.19",
       "- **Untitled version.** (0.19.0)",
@@ -46,6 +52,7 @@ describe("parseVersionSummaries", () => {
       highlights: [
         { lead: "Faster `DES`.", detail: "It starts sooner.", versions: ["0.20.0", "0.20.2"] },
         { lead: "A claim without a bold lead", detail: "", versions: ["0.20.1"] },
+        { lead: "A claim that wraps onto a second line.", detail: "Its detail wraps too, and names its update.", versions: ["0.20.3"] },
         { lead: "No update named.", detail: "Kept.", versions: [] },
       ],
     });
@@ -95,6 +102,31 @@ describe("groupChangelogVersions", () => {
     expect(versionOfRelease(versions, "v0.20.0")?.id).toBe("v0.20");
     // A list cut at its limit leaves its oldest version, maybe missing updates, out.
     expect(groupChangelogVersions(releases, new Map(), { cut: true }).map((version) => version.id)).toEqual(["v0.20", "v0.19"]);
+  });
+
+  test("puts the highest version first, even after a fix to an older one shipped last", () => {
+    const versions = groupChangelogVersions([
+      release("v0.19.7", "", "2026-11-06T10:00:00Z"),
+      release("v0.20.0", "", "2026-11-03T10:00:00Z"),
+      release("v0.9.4", "", "2026-11-02T10:00:00Z"),
+      release("v0.19.6", "", "2026-11-02T10:00:00Z"),
+      release("v0.10.0", "", "2026-11-01T10:00:00Z"),
+    ], new Map());
+
+    expect(versions.map((version) => version.id)).toEqual(["v0.20", "v0.19", "v0.10", "v0.9"]);
+    expect(versions[1]?.lastPublishedAt).toBe("2026-11-06T10:00:00Z");
+    // The pane opens on the same order, and a list cut short leaves out its lowest version.
+    expect(sortChangelogVersions(versions, DEFAULT_CHANGELOG_VERSION_SORT).map((version) => version.id)).toEqual(["v0.20", "v0.19", "v0.10", "v0.9"]);
+    expect(groupChangelogVersions([release("v0.19.7"), release("v0.20.0"), release("v0.19.6")], new Map(), { cut: true }).map((version) => version.id)).toEqual(["v0.20"]);
+  });
+
+  test("without a summary, takes the top claims of the newest five updates, in the order they shipped", () => {
+    const [version] = groupChangelogVersions(
+      Array.from({ length: 7 }, (_, index) => release(`v0.19.${6 - index}`, `- **Claim ${6 - index}.** More.`)),
+      new Map(),
+    );
+
+    expect(version?.highlights.map((highlight) => highlight.lead)).toEqual(["Claim 2.", "Claim 3.", "Claim 4.", "Claim 5.", "Claim 6."]);
   });
 
   test("a plain bullet's claim stops at its first sentence or colon, never inside code", () => {

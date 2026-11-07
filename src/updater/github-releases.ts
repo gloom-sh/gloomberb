@@ -147,9 +147,13 @@ export async function fetchChangelogReleases(
  * Through the API rather than raw.githubusercontent.com, which the web
  * app's content policy does not reach.
  */
-export const CHANGELOG_SUMMARIES_API_URL = `https://api.github.com/repos/${GLOOMBERB_REPO}/contents/CHANGELOG.md`;
+const CHANGELOG_SUMMARIES_API_URL = `https://api.github.com/repos/${GLOOMBERB_REPO}/contents/CHANGELOG.md`;
 
-/** CHANGELOG.md as written, or null when the repository has none. */
+/**
+ * CHANGELOG.md read from GitHub itself, as written, or null when the
+ * repository has none: the Changelog's second source, after Gloom Cloud
+ * (src/api-client/release-summaries.ts).
+ */
 export async function fetchChangelogSummaries(signal?: AbortSignal): Promise<string | null> {
   const response = await fetch(CHANGELOG_SUMMARIES_API_URL, {
     signal,

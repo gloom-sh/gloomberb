@@ -120,7 +120,8 @@ export function installLayoutFetches(params?: URLSearchParams): void {
       return Response.json({ studies: Array.from({ length: 12 }, (_, index) => inventedStudy(index)) });
     }
     if (url.startsWith("https://api.github.com/repos/") && url.includes("/releases")) return Response.json(RELEASES);
-    if (url.startsWith("https://api.github.com/repos/") && url.endsWith("/contents/CHANGELOG.md")) return new Response(SUMMARIES);
+    // Gloom Cloud serves the summaries; GitHub's own copy is not asked for then.
+    if (url.endsWith("/public/releases/summaries")) return Response.json({ fetchedAt: new Date(0).toISOString(), stale: false, markdown: SUMMARIES });
     return null;
   };
   setHttpFetchTransport(async (url) => answer(url) ?? new Response("Not in the fixture", { status: 404 }));
