@@ -527,10 +527,15 @@ export function createSystemCliCommands(): CliCommandDef[] {
         "plugin info <id>",
         "plugin enable <id>",
         "plugin disable <id>",
-        "plugin doctor [name-or-path]",
+        "plugin doctor [id-or-path]",
         "plugin link <path>",
       ],
       sections: [{
+        title: "Naming a plugin",
+        lines: [
+          "Every plugin command takes an installed plugin's id or its folder, as gloom plugins lists them.",
+        ],
+      }, {
         title: "Developing a plugin",
         lines: [
           "link puts a symlink to a local checkout in the plugins folder, so edits are live on the next start.",
@@ -583,19 +588,30 @@ export function createSystemCliCommands(): CliCommandDef[] {
           )).length,
         }));
 
+        // An installed plugin by its folder too: `gloom install` names the
+        // folder for the repository (`gloom-hackernews`), and `gloom plugins`
+        // shows it beside the id (`hackernews`).
+        const pluginId = async (name: string): Promise<string> => {
+          if (services.services.pluginRegistry.allPlugins.has(name) || builtinPluginGroupMembers(name)) return name;
+          const { installedPluginDirectoriesNamed, installedPluginRegistryId } = await import("../../plugins/installer");
+          const [directory, ...others] = installedPluginDirectoriesNamed(name);
+          if (!directory || others.length > 0) return name;
+          return await installedPluginRegistryId(directory) ?? name;
+        };
+
         if (action === "list") {
           ctx.printResult({ data: pluginRows() });
           return;
         }
         if (action === "info") {
-          const id = requireArg(args[1], "Usage: gloom plugin info <id>", ctx);
+          const id = await pluginId(requireArg(args[1], "Usage: gloom plugin info <id>", ctx));
           const row = pluginRows().find((plugin) => plugin.id === id);
           if (!row) ctx.fail(`Plugin "${id}" is not available.`);
           ctx.printResult({ data: row });
           return;
         }
         if (action === "enable" || action === "disable") {
-          const id = requireArg(args[1], `Usage: gloom plugin ${action} <id>`, ctx);
+          const id = await pluginId(requireArg(args[1], `Usage: gloom plugin ${action} <id>`, ctx));
           // A retired id that now names a group of built-ins switches all of them.
           const targetIds = builtinPluginGroupMembers(id) ?? [id];
           for (const targetId of targetIds) {
