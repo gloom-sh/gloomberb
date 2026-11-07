@@ -56,7 +56,7 @@ On macOS, Linux or Windows with [Bun](https://bun.sh) installed:
 bun install -g @gloom-sh/terminal
 ```
 
-`npm install -g @gloom-sh/terminal` works too, but the command still runs on Bun, so Bun must be on your `PATH`. An install of the older `gloomberb` package keeps working.
+`npm install -g @gloom-sh/terminal` (or `npx @gloom-sh/terminal`) works too, but the command still runs on Bun, so Bun must be on your `PATH`. Without Bun, `gloom` prints one line naming the two ways out, installing Bun or using the install script above, instead of the shell's `env: bun: No such file or directory`, and starts on Bun once you install it, with no reinstall. npm 12 blocks the install step that does this until you allow it with `--allow-scripts=@gloom-sh/terminal`; without that the old shell error is what you see. An install of the older `gloomberb` package keeps working.
 
 ## What the install script does
 
