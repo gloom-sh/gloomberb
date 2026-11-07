@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
+import { exportNumber } from "../../../../cli/report-tables";
 import { serializeCliResult } from "../../../../cli/result";
 import { DEFAULT_CLI_OPTIONS } from "../../../../cli/options";
 import { renderHeadlessPaneText } from "../../../../cli/pane-functions/headless";
@@ -65,8 +66,9 @@ test("portfolio and watchlist show headline the regular close beside the extende
     // The portfolio's row, then the watchlist's.
     expect(rows).toHaveLength(2);
     for (const row of rows) expect(row).toMatch(figures);
+    // JSON writes the move as every export does, its float noise dropped.
     expect(json).toMatchObject({ quotePrice: headline.price, extendedSession: extended.session, extendedPrice: extended.price,
-      extendedChange: extended.change, extendedChangePercent: extended.changePercent });
+      extendedChange: exportNumber(extended.change), extendedChangePercent: exportNumber(extended.changePercent) });
     // The position is still worth its shares at the live print.
     expect(json.marketValue).toBeCloseTo(10 * extended.price, 8);
   }
