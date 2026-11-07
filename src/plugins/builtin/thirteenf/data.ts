@@ -429,6 +429,14 @@ const SPLIT_LOOKUP_CONCURRENCY = 6;
 /** How long one ticker's corporate actions are waited for before its split reads as unconfirmed. */
 const SPLIT_LOOKUP_TIMEOUT_MS = 10_000;
 
+/** Which split candidates loadSplitFactors reads. */
+export interface SplitFactorScope {
+  /** Only these row ids: a report of a large filer's biggest positions reads theirs, not the hundreds of lines across its book that move like a split. */
+  only?: ReadonlySet<string>;
+  /** How long the whole pass may take. Lines are read largest first, and one not answered by then reads as unconfirmed, as a lookup past its own timeout does. */
+  budgetMs?: number;
+}
+
 /**
  * The split factor between a fund's two quarter ends for each of its split
  * candidates (filingSplitCandidates), by row id, for estimateFilingQuarterReturn
@@ -437,15 +445,18 @@ const SPLIT_LOOKUP_TIMEOUT_MS = 10_000;
  * is null, unconfirmed. Only an abort rejects. A fund with no candidates, or
  * without two comparable quarters, makes no lookup.
  */
-export async function loadSplitFactors(detail: FundDetailData, lookup: SplitFactorLookup, signal?: AbortSignal): Promise<Map<string, number | null>> {
+export async function loadSplitFactors(detail: FundDetailData, lookup: SplitFactorLookup, signal?: AbortSignal, scope: SplitFactorScope = {}): Promise<Map<string, number | null>> {
   const period = detail.latestForm?.periodOfReport;
   const previousPeriod = detail.previousForm?.periodOfReport;
   if (!period || !previousPeriod) return new Map();
-  return new Map(await mapWithConcurrency(filingSplitCandidates(detail), SPLIT_LOOKUP_CONCURRENCY, async (line) => {
+  const candidates = filingSplitCandidates(detail).filter((line) => !scope.only || scope.only.has(line.id));
+  const endsAt = scope.budgetMs == null ? Infinity : Date.now() + scope.budgetMs;
+  return new Map(await mapWithConcurrency(candidates, SPLIT_LOOKUP_CONCURRENCY, async (line) => {
     signal?.throwIfAborted();
-    if (!line.ticker) return [line.id, null] as const;
+    const left = Math.min(SPLIT_LOOKUP_TIMEOUT_MS, endsAt - Date.now());
+    if (!line.ticker || left <= 0) return [line.id, null] as const;
     const factor = await abortable(
-      withDeadline(lookup(line.ticker, previousPeriod, period), SPLIT_LOOKUP_TIMEOUT_MS, `${line.ticker} split lookup timed out`),
+      withDeadline(lookup(line.ticker, previousPeriod, period), left, `${line.ticker} split lookup timed out`),
       signal,
       "Split lookup aborted",
     ).catch((error: unknown) => {
@@ -468,7 +479,7 @@ export async function loadFundPerformance(
   cik: string,
   fallbackName: string,
   signal?: AbortSignal,
-  options: Pick<Forms13FReadOptions, "forceRefresh" | "onSavedCopy"> & { splitFactor?: SplitFactorLookup } = {},
+  options: Pick<Forms13FReadOptions, "forceRefresh" | "onSavedCopy"> & { splitFactor?: SplitFactorLookup; splitBudgetMs?: number } = {},
 ): Promise<FundPerformanceResult> {
   const warnings: string[] = [];
   const saved = savedCopies(options.onSavedCopy);
@@ -490,7 +501,7 @@ export async function loadFundPerformance(
   const own = ranked?.find((fund) => fund.cik === detail.cik && fund.periodOfReport === period);
   const ranking = !quarter ? null : !ranked ? "unavailable" : own ? "ranked" : "unranked";
   // A line that moved as across a split is priced by its corporate actions: split-adjusted, as a trade, or left out unread.
-  const factors = own?.pnl != null || !options.splitFactor ? new Map<string, number | null>() : await loadSplitFactors(detail, options.splitFactor, signal);
+  const factors = own?.pnl != null || !options.splitFactor ? new Map<string, number | null>() : await loadSplitFactors(detail, options.splitFactor, signal, { budgetMs: options.splitBudgetMs });
   const filed = own?.pnl != null ? null : estimateFilingQuarterReturn(detail, factors);
   const estimate = own?.pnl ?? filed?.percent ?? null;
   const basis = own?.pnl != null ? "ranking" : estimate != null ? "filings" : null;

@@ -447,8 +447,12 @@ export function createEarningsCallsHeadless(
         return projectEarningsCallsHeadless(calls, { ...args, options: { ...args.options, limit: args.options.limit ?? 50 } }, now);
       }
       const quarter = String(args.options.quarter || "latest");
-      const selected = findCallForQuarter(calls.calls, quarter);
+      // A call still to come has no transcript to read, and asking for one would ask the server to produce it before
+      // the call is held: the latest is the latest held, and a quarter whose call is ahead says when it is.
+      const selected = findCallForQuarter(calls.calls.filter((call) => !isUpcomingCall(call, now)), quarter);
       if (!selected) {
+        const ahead = findCallForQuarter(calls.calls, quarter);
+        if (ahead) throw new Error(`${ticker}'s ${quarter} call is still to come. ${nextCallNotice(ahead, now)}`);
         if (calls.unknownTicker) throw new Error(`${ticker} is not a known listed company.`);
         if (calls.pending) throw new Error(`Earnings call discovery for ${ticker} is still pending.`);
         if (calls.sourceLimitReached ?? calls.calls.length >= (calls.sourceLimit ?? 200)) {

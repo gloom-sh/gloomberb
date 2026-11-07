@@ -56,6 +56,14 @@ describe("highs and lows headless model", () => {
       },
     }, new AbortController().signal, 5);
     expect(stuck.status).toBe("degraded");
+    // So does one still starting, with the lists it holds, rather than no answer at all.
+    const warming = await loadHiloSnapshot({
+      subscribeScanner(_scanner, listener) {
+        listener({ type: "data", payload: { ...payload, status: "starting" } });
+        return () => {};
+      },
+    }, new AbortController().signal, 5);
+    expect(warming).toMatchObject({ status: "starting", highs: payload.highs });
   });
 
   test("reports a degraded stream as partial data", async () => {

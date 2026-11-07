@@ -51,7 +51,8 @@ const SCANNER_LABELS: Record<ScannerKind, string> = {
  * Resolves on the first live or closed payload, or on the server's refusal. A
  * degraded payload is kept and returned only if nothing better arrives before
  * the deadline, since a scanner warming up can pass through a stale row on its
- * way to live.
+ * way to live; so is a starting one, which still carries the session's lists
+ * the scanner last published.
  */
 export function captureScannerEvent(
   client: ScannerClient,
@@ -64,6 +65,7 @@ export function captureScannerEvent(
     let settled = false;
     let unsubscribe: (() => void) | null = null;
     let degraded: ScannerFeedEvent | null = null;
+    let starting: ScannerFeedEvent | null = null;
     const finish = (callback: () => void) => {
       if (settled) return;
       settled = true;
@@ -76,7 +78,8 @@ export function captureScannerEvent(
       ? signal.reason
       : new Error(`${label} snapshot aborted`)));
     const timer = setTimeout(() => finish(() => {
-      if (degraded) resolve(degraded);
+      const latest = degraded ?? starting;
+      if (latest) resolve(latest);
       else reject(new Error(`${label} snapshot timed out`));
     }), timeoutMs);
     signal.addEventListener("abort", onAbort, { once: true });
@@ -85,7 +88,10 @@ export function captureScannerEvent(
         finish(() => resolve(event));
         return;
       }
-      if (event.payload.status === "starting") return;
+      if (event.payload.status === "starting") {
+        starting = event;
+        return;
+      }
       if (event.payload.status === "degraded") {
         degraded = event;
         return;

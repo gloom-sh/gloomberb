@@ -72,7 +72,8 @@ export interface RiskEpisodeTarget {
 const DAY_MS = 86_400_000;
 /** A boundary close may be this many days before its date: a weekend, a holiday or a market's own closure. */
 const BOUNDARY_DAYS = 7;
-const EPISODE_CONCURRENCY = 4;
+/** Reads asked at once; they go out sixteen to a batch request over the episodes' one window. */
+const EPISODE_CONCURRENCY = 64;
 const SPY = RISK_FACTOR_INSTRUMENTS[0]!;
 
 /** The one window every episode fits in, with room for a start date's close a holiday before it. */
@@ -149,12 +150,14 @@ export function cloudEpisodeReader(client: EpisodeClient = apiClient): EpisodeRe
   const params = { interval: "1day", ...episodeSpan(), outputsize: 1500 } as const;
   return {
     async instrument(instrument, signal) {
-      return episodeCloses(dailyCloses(await client.getCloudHistory(instrument.symbol, instrument.exchange, params, signal ? { signal } : undefined)));
+      signal?.throwIfAborted();
+      return episodeCloses(dailyCloses(await client.getCloudHistory(instrument.symbol, instrument.exchange, params, { batch: true, sharedWindow: true })));
     },
     async currency(currency, signal) {
       const leg = riskConversion(currency)?.leg;
       if (!leg) throw new Error(`No daily FX pair for ${currency}`);
-      const points = dailyCloses(await client.getCloudHistory(leg.instrument.symbol, leg.instrument.exchange ?? "", params, signal ? { signal } : undefined));
+      signal?.throwIfAborted();
+      const points = dailyCloses(await client.getCloudHistory(leg.instrument.symbol, leg.instrument.exchange ?? "", params, { batch: true, sharedWindow: true }));
       return episodeCloses(points.map((point) => ({ ...point, close: leg.invert ? 1 / point.close : point.close })));
     },
   };
@@ -181,7 +184,7 @@ export function onceEpisodeReader(reader: EpisodeReader): EpisodeReader {
 /**
  * The closes the episode replays read: SPY's, every target's, and the daily
  * FX closes of each currency a target quotes in and of a non-USD account,
- * four reads at a time. A read that fails is named in `errors`, and the
+ * all asked at once, sixteen to a batch request. A read that fails is named in `errors`, and the
  * replays move that holding by proxy; the signal stops the load.
  */
 export async function fetchRiskEpisodeHistory(

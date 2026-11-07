@@ -69,6 +69,33 @@ test("reads asked with others in the same moment go out in batches, each answere
     .toEqual(["/cloud/futures/contract/BADZ26", "/cloud/futures/contract/YM%3DF", "/market/history", "/market/history"]);
 });
 
+// A portfolio's stress replay reads every holding's closes of the same years.
+test("histories over one window go out together with it, and a service that answers other bars has each asked on its own", async () => {
+  const window = { interval: "1day", outputsize: 1500, startDate: "2019-12-01", endDate: "2025-04-08" };
+  const inWindow = (close: number) => ({ status: "success", data: [{ date: "2020-03-02T00:00:00.000Z", close }] });
+  const read = async (windowed: boolean) => {
+    const { api, asked } = service((path, body) => {
+      if (path === "/market/history/batch") {
+        // A service from before windowed batches answers its latest bars, whatever window it was sent.
+        return { status: "success", data: { items: body.targets.map((_: unknown, index: number) => (windowed ? inWindow(index) : bars(index))) } };
+      }
+      return inWindow(-1);
+    });
+    const shared = { ...BATCH, sharedWindow: true };
+    const closes = await Promise.all(["AAPL", "MSFT", "SPY"].map((symbol) => api.getCloudHistory(symbol, "", window, shared)));
+    // The next load's reads: batched again, or on their own while the window is not read.
+    const again = await Promise.all(["QQQ", "IWM"].map((symbol) => api.getCloudHistory(symbol, "", window, shared)));
+    return { closes: [...closes, ...again].map((history) => history.data?.[0]?.close), asked: asked.map((request) => request.path.split("?")[0]), first: asked[0]! };
+  };
+  const served = await read(true);
+  expect(served.closes).toEqual([0, 1, 2, 0, 1]);
+  expect(served.asked).toEqual(["/market/history/batch", "/market/history/batch"]);
+  expect(served.first.body).toMatchObject({ outputsize: "1500", startDate: "2019-12-01", endDate: "2025-04-08" });
+  const ignored = await read(false);
+  expect(ignored.closes).toEqual([-1, -1, -1, -1, -1]);
+  expect(ignored.asked).toEqual(["/market/history/batch", ...Array.from({ length: 5 }, () => "/market/history")]);
+});
+
 // The app updates before the service does, or reaches an instance a deploy has not replaced yet: a 404 batch route is a
 // service without it for now.
 test("against a service without the batch route, reads go one at a time, a few at once, until the route is asked again", async () => {

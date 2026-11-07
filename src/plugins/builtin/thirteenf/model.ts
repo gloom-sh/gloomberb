@@ -531,7 +531,11 @@ export function formatSplitRatio(ratio: number): string {
  * no factor is known.
  */
 export function filingSplitCandidates(data: FundDetailData): Array<FilingLine & { id: string }> {
-  return buildFundHoldingRows(data).filter((row) => row.splitUnread).map((row) => ({ id: row.id, ticker: row.ticker, issuer: row.issuer }));
+  return buildFundHoldingRows(data)
+    .filter((row) => row.splitUnread)
+    // Largest at the start of the quarter first: the lines that weigh most on an estimate are read first.
+    .sort((a, b) => (b.previousValue ?? 0) - (a.previousValue ?? 0))
+    .map((row) => ({ id: row.id, ticker: row.ticker, issuer: row.issuer }));
 }
 
 /**
