@@ -325,8 +325,12 @@ export type FuturesChangeTerms = Pick<FuturesContractTermsPayload, "settlement">
  *   is confirmed: Wednesday's 7,720.50 close at 23:18 UTC, "+14 vs Wed 4 Nov
  *   close", never +137.75 from Tuesday's settlement, two sessions. At any
  *   other time the terms are behind and nothing dates it (null);
- * - without a settlement in the terms, or once the move's own session has
- *   settled, is the session before's close, which nothing else checks.
+ * - once the move's own session has settled, is the session before's
+ *   settlement when the quote closes on its own (Gloom Cloud then measures
+ *   it from the one before: CC=F's 5,155 on Fri 6 Nov 2026, "-26 vs Thu 5
+ *   Nov settle"), and otherwise the session before's close;
+ * - without a settlement in the terms, is the session before's close, which
+ *   nothing else checks.
  * On a venue without a calendar only a settlement is named. Null without a
  * session date, a move or terms.
  */
@@ -350,9 +354,14 @@ export function futuresChangeBasis(
   if (settled && settled.date <= session && Math.abs(reference - settled.price) <= settlementTolerance(terms.spec?.tick, settled.price)) {
     return { kind: "settle", session: settled.date };
   }
+  const sameContract = !!move.month && terms.deliveryMonth?.slice(0, 7) === move.month;
   if (settled && previous && settled.date === previous) {
-    const sameContract = !!move.month && terms.deliveryMonth?.slice(0, 7) === move.month;
     return sameContract && Number.isFinite(move.price) ? { kind: "settle", session: previous, from: settled.price } : null;
+  }
+  // The move's own session settled, and the quote closes on that settlement: Gloom Cloud measures it from the one before.
+  if (settled && previous && settled.date === session && sameContract
+    && Math.abs(move.price - settled.price) <= settlementTolerance(terms.spec?.tick, settled.price)) {
+    return { kind: "settle", session: previous };
   }
   if (settled && previous && settled.date < previous) return print?.overnight && print.tradeDate === moveDate ? { kind: "close", session: previous } : null;
   return previous ? { kind: "close", session: previous } : null;
