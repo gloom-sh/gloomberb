@@ -46,6 +46,8 @@ import {
 } from "../../../../state/app/context";
 import { useInlineTickers } from "../../../../state/hooks/inline-tickers";
 import { useRemoteControlHandler } from "../../../../remote/app-host";
+import { RemoteUiScope } from "../../../../remote/semantic-tree";
+import { ASKG_PROMPT_SCOPE } from "../terminal-relay/policy";
 import { useThemeColors } from "../../../../theme/theme-context";
 import type { PaneProps } from "../../../../types/plugin";
 import type { ContextMenuItem } from "../../../../types/context-menu";
@@ -371,30 +373,40 @@ function ConfirmationPrompt({
   const colors = useThemeColors();
   const lines = previewLines(row.preview).slice(0, MAX_PREVIEW_LINES);
   return (
-    <Box
-      flexDirection="column"
-      flexShrink={0}
-      paddingX={1}
-      height={confirmationBlockHeight(row)}
-      backgroundColor={colors.panel}
-    >
-      <Box flexDirection="row" height={1}>
-        <Text fg={colors.warning} attributes={TextAttributes.BOLD}>{`Approve ${toolTitle(row.name)}?`}</Text>
-        <Text fg={colors.textDim}>
-          {`  changes ${tierLabel(row) ?? "data"}${row.argumentSummary ? ` · ${row.argumentSummary}` : ""}`}
-        </Text>
-      </Box>
-      {lines.map((line, index) => (
-        <Box key={index} height={1}>
-          <ClippedText fg={colors.text} text={line} width={Math.max(10, width - 2)} cut={truncateWithEllipsis} />
+    // Marked so no assistant's UI call can press Approve here (terminal-relay/policy.ts).
+    <RemoteUiScope scope={ASKG_PROMPT_SCOPE}>
+      <Box
+        flexDirection="column"
+        flexShrink={0}
+        paddingX={1}
+        height={confirmationBlockHeight(row)}
+        backgroundColor={colors.panel}
+      >
+        <Box flexDirection="row" height={1}>
+          {row.confirmTitle ? (
+            // A UI action: the control it presses, by label and role.
+            <ClippedText fg={colors.warning} attributes={TextAttributes.BOLD} text={`${row.confirmTitle}?`} width={Math.max(10, width - 2)} cut={truncateWithEllipsis} />
+          ) : (
+            <>
+              <Text fg={colors.warning} attributes={TextAttributes.BOLD}>{`Approve ${toolTitle(row.name)}?`}</Text>
+              <Text fg={colors.textDim}>
+                {`  changes ${tierLabel(row) ?? "data"}${row.argumentSummary ? ` · ${row.argumentSummary}` : ""}`}
+              </Text>
+            </>
+          )}
         </Box>
-      ))}
-      <Box flexDirection="row" height={2} paddingTop={1}>
-        <Button label="Approve" variant="primary" shortcut="y" onPress={onApprove} />
-        <Box width={2} />
-        <Button label="Decline" shortcut="n" onPress={onDecline} />
+        {lines.map((line, index) => (
+          <Box key={index} height={1}>
+            <ClippedText fg={colors.text} text={line} width={Math.max(10, width - 2)} cut={truncateWithEllipsis} />
+          </Box>
+        ))}
+        <Box flexDirection="row" height={2} paddingTop={1}>
+          <Button label="Approve" variant="primary" shortcut="y" onPress={onApprove} />
+          <Box width={2} />
+          <Button label="Decline" shortcut="n" onPress={onDecline} />
+        </Box>
       </Box>
-    </Box>
+    </RemoteUiScope>
   );
 }
 
@@ -1661,13 +1673,13 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     if (!planAccess.emailVerified) return list;
     if (confirmation) {
       list.push(
-        { id: "approve", key: "y", label: "es approve", title: "Approve", onPress: () => controller.resolveConfirmation(confirmation.toolCallId, true) },
-        { id: "decline", key: "n", label: "o decline", title: "Decline", onPress: () => controller.resolveConfirmation(confirmation.toolCallId, false) },
+        { id: "approve", key: "y", label: "es approve", title: "Approve", remoteScope: ASKG_PROMPT_SCOPE, onPress: () => controller.resolveConfirmation(confirmation.toolCallId, true) },
+        { id: "decline", key: "n", label: "o decline", title: "Decline", remoteScope: ASKG_PROMPT_SCOPE, onPress: () => controller.resolveConfirmation(confirmation.toolCallId, false) },
       );
     } else if (paneConsentPending) {
       list.push(
-        { id: "attach-pane", key: ATTACH_PANE_KEY, label: " attach", title: "Attach the Pane's Contents", onPress: () => answerPaneConsent(true) },
-        { id: "leave-out-pane", key: LEAVE_OUT_PANE_KEY, label: " leave out", title: "Leave Out the Pane's Contents", onPress: () => answerPaneConsent(false) },
+        { id: "attach-pane", key: ATTACH_PANE_KEY, label: " attach", title: "Attach the Pane's Contents", remoteScope: ASKG_PROMPT_SCOPE, onPress: () => answerPaneConsent(true) },
+        { id: "leave-out-pane", key: LEAVE_OUT_PANE_KEY, label: " leave out", title: "Leave Out the Pane's Contents", remoteScope: ASKG_PROMPT_SCOPE, onPress: () => answerPaneConsent(false) },
       );
     }
     if (showSidebar) {

@@ -192,6 +192,7 @@ function usePaneHintRemoteNode(hint: PaneHint) {
       id: hint.id,
       key: hint.key,
       label: hint.label,
+      ...(hint.remoteScope ? { scope: hint.remoteScope } : {}),
     },
   });
 }

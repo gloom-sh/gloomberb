@@ -1,6 +1,8 @@
 import { Box, Text, TextAttributes } from "../../../../ui";
 import { Badge, Button, IconButton } from "../../../../components";
+import { RemoteUiScope } from "../../../../remote/semantic-tree";
 import { useThemeColors } from "../../../../theme/theme-context";
+import { ASKG_PROMPT_SCOPE } from "../terminal-relay/policy";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import { attachedPaneLabel, type ASKGAttachedPane } from "./pane-attachment";
 
@@ -49,11 +51,14 @@ export function AttachedPaneBlock({
             {truncateWithEllipsis("It shows your own data. Only what is on screen goes, as text.", textWidth)}
           </Text>
         </Box>
-        <Box flexDirection="row" height={2} paddingTop={1}>
-          <Button label="Attach" variant="primary" shortcut={ATTACH_PANE_KEY} onPress={onAttach} />
-          <Box width={2} />
-          <Button label="Leave out" shortcut={LEAVE_OUT_PANE_KEY} onPress={onLeaveOut} />
-        </Box>
+        {/* The person's answer: no assistant's UI call reaches it (terminal-relay/policy.ts). */}
+        <RemoteUiScope scope={ASKG_PROMPT_SCOPE}>
+          <Box flexDirection="row" height={2} paddingTop={1}>
+            <Button label="Attach" variant="primary" shortcut={ATTACH_PANE_KEY} onPress={onAttach} />
+            <Box width={2} />
+            <Button label="Leave out" shortcut={LEAVE_OUT_PANE_KEY} onPress={onLeaveOut} />
+          </Box>
+        </RemoteUiScope>
       </Box>
     );
   }

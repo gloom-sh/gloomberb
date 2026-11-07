@@ -2327,6 +2327,8 @@ The sources stay in the app until you share them. **Copy Answer with Source Link
 
 **Watchlist changes.** Ask Gloom can add a ticker to one of your own watchlists (the one you name, else your first) or take one off. Team watchlists and portfolios it leaves alone. It asks first, naming the list, the ticker and its exchange: `y` or Approve makes the change, `n` or Decline leaves it. Unanswered for about a minute, it closes and nothing changes.
 
+**Buttons and commands.** Ask Gloom scrolls, selects, fills in fields, focuses and opens panes or tickers without asking. Before it presses, submits or toggles a control, or runs a command from the command bar, it asks, naming the control (`Press "Place order" (button)?`). Deleting a layout asks too. Unanswered, the question closes on its own and nothing runs. Ask Gloom never answers its own questions, and while one waits it does nothing else on screen.
+
 **Keys.** Esc leaves the question field for the answer, Enter goes back to the field.
 
 | Key | Action |

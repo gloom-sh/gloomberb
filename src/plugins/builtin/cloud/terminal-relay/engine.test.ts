@@ -57,6 +57,7 @@ function harness(options: {
           { id: "ui:3", role: "button", label: "Always allow", actions: ["press"], metadata: { scope: "terminal-relay-prompt" } },
           { id: "ui:4", role: "form-field", label: "Password", actions: ["setValue"], metadata: { fieldType: "password", value: "hunter2", summary: "hunter2" }, paneId: "brokers:main" },
           { id: "ui:5", role: "input", actions: ["setValue"], metadata: { inputType: "password", value: "hunter2" }, paneId: "brokers:main" },
+          { id: "ui:6", role: "button", label: "Approve", actions: ["press"], metadata: { scope: "askg-prompt" } },
         ] };
       }
       if (request.type === "get" && request.resource.startsWith("app://pane-settings/")) {
@@ -301,7 +302,7 @@ describe("terminal relay engine", () => {
     }
   });
 
-  test("semantic UI: scrolling runs, pressing asks, and the relay's own prompt is out of reach", async () => {
+  test("semantic UI: scrolling runs, pressing asks, and the confirmation prompts are out of reach", async () => {
     const h = harness();
     h.grants.decide(ASSISTANT.id, ASSISTANT.name, "always");
     h.call("c1", "ui.invoke", { nodeId: "ui:2", action: "scrollBy", input: { delta: 3 } });
@@ -310,14 +311,17 @@ describe("terminal relay engine", () => {
 
     h.call("c2", "ui.invoke_matching", { role: "button", label: "Submit order" });
     await settle();
-    expect(h.confirmations[0]!.title).toBe("Press \"Submit order\"");
+    expect(h.confirmations[0]!.title).toBe("Press \"Submit order\" (button)");
     h.confirmations[0]!.answer("allow");
     await settle();
     expect(ran(h, "ui.invokeMatching")).toBe(1);
 
     h.call("c3", "ui.invoke", { nodeId: "ui:3", action: "press" });
+    // Ask Gloom's approval row is out of reach as well.
+    h.call("c4", "ui.invoke", { nodeId: "ui:6", action: "press" });
     await settle();
     expect(h.results().find((frame) => frame.id === "c3")).toMatchObject({ ok: false, error: { code: "not_allowed" } });
+    expect(h.results().find((frame) => frame.id === "c4")).toMatchObject({ ok: false, error: { code: "not_allowed" } });
     expect(h.confirmations).toHaveLength(1);
   });
 
