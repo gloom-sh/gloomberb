@@ -55,7 +55,7 @@ import type { GpuBoardPayload, GpuEventsPayload, GpuHistoryPayload, GpuHistoryQu
 import type { CpiBoardPayload } from "./cpi";
 import type { TapeRange, TapeSnapshot } from "./tape";
 import { LIVE_SCAN_PATH, type LiveScanPayload, type LiveScanWireDefinition } from "./live-scan";
-import { signalWithTimeout } from "../utils/async-deadline";
+import { abortable, signalWithTimeout } from "../utils/async-deadline";
 import { ApiRequestError, isRetryableApiError, markAskedTwice } from "./errors";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { RatePathPayload } from "./rates";
@@ -235,6 +235,15 @@ export interface BatchableRead {
   batch?: boolean;
 }
 
+const DAY_MS = 86_400_000;
+
+/** A YYYY-MM-DD date `days` away as a UTC time, or null for any other form, which bounds nothing. */
+function dayTime(date: string | undefined, days: number): number | null {
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const time = Date.parse(`${date}T00:00:00Z`);
+  return Number.isFinite(time) ? time + days * DAY_MS : null;
+}
+
 /**
  * Whether every bar falls in the window asked, give or take the day a daily
  * bar's UTC time may stand from its session's date. A server from before
@@ -242,11 +251,16 @@ export interface BatchableRead {
  */
 function withinWindow(points: readonly CloudPricePointPayload[] | null | undefined, startDate?: string, endDate?: string): boolean {
   if (!Array.isArray(points)) return true;
-  const day = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString();
-  const from = startDate ? day(startDate, -2) : null;
-  const before = endDate ? day(endDate, 2) : null;
-  return points.every((point) => (!from || point.date >= from) && (!before || point.date < before));
+  const from = dayTime(startDate, -2);
+  const before = dayTime(endDate, 2);
+  return points.every((point) => {
+    const time = Date.parse(point.date);
+    return !Number.isFinite(time) || ((from == null || time >= from) && (before == null || time < before));
+  });
 }
+
+/** What a service without windowed batches is taken to have answered: the route missing, so the reads go out alone until it is asked again. */
+const WINDOWLESS_BATCH = "The history batch route does not read a window of dates";
 
 export class CloudDataApi {
   constructor(
@@ -268,11 +282,17 @@ export class CloudDataApi {
   /**
    * The same over one window of dates (a portfolio's holdings over the risk
    * model's months or the stress episodes' years). A service from before
-   * windowed batches answers its latest bars instead: that reads as the route
-   * missing, so the reads are asked on their own, four at a time, until it is
-   * asked again.
+   * windowed batches answers its latest bars instead, or refuses the window:
+   * that reads as the route missing, so the reads are asked on their own,
+   * four at a time, until it is asked again. Until a windowed batch has been
+   * answered, one read is asked as a batch of its own first (`windowProbe`),
+   * so finding that out costs one listing's bars, not every batch's.
    */
   private readonly datedHistories = this.historyCoalescer(true);
+  /** The first windowed batch, of one read, that the others wait on; null until asked, and again after it found no windows. */
+  private windowProbe: Promise<CloudMarketResponse<CloudPricePointPayload[]> | undefined> | null = null;
+  /** Whether a windowed batch has come back over its window: the probe is not asked again. */
+  private windowsAnswered = false;
 
   private historyCoalescer(dated: boolean) {
     return createReadCoalescer<
@@ -284,32 +304,69 @@ export class CloudDataApi {
       fallbackConcurrency: 4,
       group: ({ params }) => [params.interval, params.outputsize, params.rangeKey, params.startDate, params.endDate].map((value) => value ?? "").join("|"),
       single: ({ symbol, exchange, params }) => this.request(cloudHistoryPath(symbol, exchange, params)),
-      batch: async (keys) => {
-        const { interval, outputsize, rangeKey, startDate, endDate } = keys[0]!.params;
-        // The server answers each target in the order asked, so a listing asked twice is asked once.
-        const targetKey = ({ symbol, exchange }: { symbol: string; exchange: string }) => `${symbol}\u001f${exchange}`;
-        const targets = [...new Map(keys.map((key) => [targetKey(key), { symbol: key.symbol, exchange: key.exchange }])).values()];
-        const response = await this.request<CloudMarketResponse<{ items: Array<CloudMarketResponse<CloudPricePointPayload[]>> }>>("/market/history/batch", {
-          method: "POST",
-          body: JSON.stringify({
-            targets,
-            interval: interval ?? "1day",
-            ...(outputsize != null ? { outputsize: String(outputsize) } : {}),
-            ...(rangeKey ? { rangeKey } : {}),
-            ...(dated && startDate ? { startDate } : {}),
-            ...(dated && endDate ? { endDate } : {}),
-          }),
-        });
-        const items = response.data?.items;
-        // An answer that does not line up with the targets asked is not matched by place: each read is asked on its own.
-        if (!Array.isArray(items) || items.length !== targets.length) return keys.map(() => undefined);
-        if (dated && items.some((item) => !withinWindow(item.data, startDate, endDate))) {
-          throw new ApiRequestError("The history batch route does not read a window of dates", 404);
-        }
-        const byTarget = new Map(targets.map((target, index) => [targetKey(target), items[index]]));
-        return keys.map((key) => byTarget.get(targetKey(key)));
-      },
+      batch: (keys) => (dated ? this.windowedBatch(keys) : this.historyBatch(keys, false)),
     });
+  }
+
+  private async historyBatch(
+    keys: Array<{ symbol: string; exchange: string; params: Pick<CloudHistoryParams, "interval" | "outputsize" | "rangeKey" | "startDate" | "endDate"> }>,
+    dated: boolean,
+  ): Promise<Array<CloudMarketResponse<CloudPricePointPayload[]> | undefined>> {
+    const { interval, outputsize, rangeKey, startDate, endDate } = keys[0]!.params;
+    // The server answers each target in the order asked, so a listing asked twice is asked once.
+    const targetKey = ({ symbol, exchange }: { symbol: string; exchange: string }) => `${symbol}\u001f${exchange}`;
+    const targets = [...new Map(keys.map((key) => [targetKey(key), { symbol: key.symbol, exchange: key.exchange }])).values()];
+    const response = await this.request<CloudMarketResponse<{ items: Array<CloudMarketResponse<CloudPricePointPayload[]>> }>>("/market/history/batch", {
+      method: "POST",
+      body: JSON.stringify({
+        targets,
+        interval: interval ?? "1day",
+        ...(outputsize != null ? { outputsize: String(outputsize) } : {}),
+        ...(rangeKey ? { rangeKey } : {}),
+        ...(dated && startDate ? { startDate } : {}),
+        ...(dated && endDate ? { endDate } : {}),
+      }),
+    }).catch((error: unknown) => {
+      // A service that does not take a window in a batch may refuse it as asked rather than answer its latest bars.
+      if (dated && error instanceof ApiRequestError && (error.status === 400 || error.status === 422)) throw new ApiRequestError(WINDOWLESS_BATCH, 404);
+      throw error;
+    });
+    const items = response.data?.items;
+    // An answer that does not line up with the targets asked is not matched by place: each read is asked on its own.
+    if (!Array.isArray(items) || items.length !== targets.length) return keys.map(() => undefined);
+    if (dated && items.some((item) => !withinWindow(item.data, startDate, endDate))) throw new ApiRequestError(WINDOWLESS_BATCH, 404);
+    const byTarget = new Map(targets.map((target, index) => [targetKey(target), items[index]]));
+    return keys.map((key) => byTarget.get(targetKey(key)));
+  }
+
+  /**
+   * A batch over a window, once a windowed batch has been answered; before
+   * that, the first batch's first read goes out alone as the probe and every
+   * batch waits on it. A probe answered with bars outside its window, or
+   * refused, fails them all as the missing route; one answered with bars in it
+   * lets them go, and its own read is not asked again.
+   */
+  private async windowedBatch(
+    keys: Array<{ symbol: string; exchange: string; params: Pick<CloudHistoryParams, "interval" | "outputsize" | "rangeKey" | "startDate" | "endDate"> }>,
+  ): Promise<Array<CloudMarketResponse<CloudPricePointPayload[]> | undefined>> {
+    if (this.windowsAnswered) return this.historyBatch(keys, true);
+    const probing = !this.windowProbe;
+    const probe = this.windowProbe ??= this.historyBatch(keys.slice(0, 1), true).then(([item]) => {
+      // An empty answer shows no window either way: the batches that follow are checked as they come.
+      if (Array.isArray(item?.data) && item.data.length > 0) this.windowsAnswered = true;
+      return item;
+    });
+    let probed: CloudMarketResponse<CloudPricePointPayload[]> | undefined;
+    try {
+      probed = await probe;
+    } catch (error) {
+      // Asked again once the route is, after the missing route's wait.
+      if (this.windowProbe === probe) this.windowProbe = null;
+      throw error;
+    }
+    if (!probing) return this.historyBatch(keys, true);
+    const rest = keys.length > 1 ? await this.historyBatch(keys.slice(1), true) : [];
+    return [probed, ...rest];
   }
 
   /**
@@ -720,14 +777,15 @@ export class CloudDataApi {
   ): Promise<CloudMarketResponse<CloudPricePointPayload[]>> {
     const dated = Boolean(params.startDate || params.endDate);
     // Trailing bars asked with others, or bars over a window shared with them, not a session or recovery of their own,
-    // may go out with the others asked in the same moment.
-    const shared = options.batch && !options.signal && !params.historyRecovery && !params.session && (!dated || options.sharedWindow);
+    // may go out with the others asked in the same moment. A read over a shared window keeps its signal: the batch it
+    // went out in is others' too and runs on, but the read stops waiting for it.
+    const shared = options.batch && !params.historyRecovery && !params.session && (dated ? options.sharedWindow : !options.signal);
     return this.readListing(() => shared
-      ? (dated ? this.datedHistories : this.histories).read({
+      ? abortable((dated ? this.datedHistories : this.histories).read({
         symbol,
         exchange,
         params: { interval: params.interval, outputsize: params.outputsize, rangeKey: params.rangeKey, startDate: params.startDate, endDate: params.endDate },
-      })
+      }), options.signal, "History read aborted")
       : this.request<CloudMarketResponse<CloudPricePointPayload[]>>(
         cloudHistoryPath(symbol, exchange, params),
         options.signal ? { signal: options.signal } : undefined,

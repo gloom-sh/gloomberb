@@ -407,8 +407,8 @@ export async function fetchPortfolioRiskMarket(
     const key = `${canonicalExchange(exchange)}:${normalizeSymbol(symbol)}`;
     let loading = dailyHistories.get(key);
     if (!loading) {
-      // Batched reads are shared and so not stopped by one load's signal; the load checks it between reads.
-      dailyHistories.set(key, loading = client.getCloudHistory(symbol, exchange, historyParams, { batch: true, sharedWindow: true }));
+      // Read over the window every holding shares, so they go out together; the signal stops the wait, not a batch others share.
+      dailyHistories.set(key, loading = client.getCloudHistory(symbol, exchange, historyParams, { batch: true, sharedWindow: true, ...(signal ? { signal } : {}) }));
       loading.catch(() => {
         // Intentional ignore: the failure is raised where the history is read.
       });

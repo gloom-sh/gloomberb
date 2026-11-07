@@ -150,14 +150,12 @@ export function cloudEpisodeReader(client: EpisodeClient = apiClient): EpisodeRe
   const params = { interval: "1day", ...episodeSpan(), outputsize: 1500 } as const;
   return {
     async instrument(instrument, signal) {
-      signal?.throwIfAborted();
-      return episodeCloses(dailyCloses(await client.getCloudHistory(instrument.symbol, instrument.exchange, params, { batch: true, sharedWindow: true })));
+      return episodeCloses(dailyCloses(await client.getCloudHistory(instrument.symbol, instrument.exchange, params, { batch: true, sharedWindow: true, ...(signal ? { signal } : {}) })));
     },
     async currency(currency, signal) {
       const leg = riskConversion(currency)?.leg;
       if (!leg) throw new Error(`No daily FX pair for ${currency}`);
-      signal?.throwIfAborted();
-      const points = dailyCloses(await client.getCloudHistory(leg.instrument.symbol, leg.instrument.exchange ?? "", params, { batch: true, sharedWindow: true }));
+      const points = dailyCloses(await client.getCloudHistory(leg.instrument.symbol, leg.instrument.exchange ?? "", params, { batch: true, sharedWindow: true, ...(signal ? { signal } : {}) }));
       return episodeCloses(points.map((point) => ({ ...point, close: leg.invert ? 1 / point.close : point.close })));
     },
   };
