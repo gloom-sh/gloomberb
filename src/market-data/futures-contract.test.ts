@@ -118,6 +118,9 @@ test("a futures move names what it is measured from, as far as the settlement in
   expect(basis({ price: 5645, date: "2026-10-16" }, 5626, -19)).toEqual({ kind: "settle", session: "2026-10-16" });
   // Once Monday settles the terms no longer hold Friday's settlement: Friday's close, unchecked.
   expect(basis({ price: 5630, date: "2026-10-19" }, 5626, -19)).toEqual({ kind: "close", session: "2026-10-16" });
+  // Unless the quote closes on Monday's settlement, which Gloom Cloud measures from Friday's (CC=F at 5,155 on Sat 7 Nov 2026).
+  expect(basis({ price: 5630, date: "2026-10-19" }, 5630, -15)).toEqual({ kind: "settle", session: "2026-10-16" });
+  expect(basis({ price: 5630, date: "2026-10-19" }, 5630, -15, "2026-10-19", "2027-03")).toEqual({ kind: "close", session: "2026-10-16" });
   // A move from Monday's own settlement is from Monday, whatever the date it carries.
   expect(basis({ price: 5630, date: "2026-10-19" }, 5640, 10)).toEqual({ kind: "settle", session: "2026-10-19" });
   // Not Friday's settlement, for the contract the quote prices: measured again from it, one session still.
