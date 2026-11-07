@@ -499,8 +499,9 @@ function TurnView({
 }) {
   const colors = useThemeColors();
   // The server holds back the questions to ask next and leaves the blank
-  // lines before them, which would open a gap under the answer.
-  const answerText = turn.answer.trim();
+  // lines before them, which would open a gap under the answer. A first
+  // line keeps its indent: it can start a block of code.
+  const answerText = turn.answer.replace(/^(?:[ \t]*\r?\n)+/, "").trimEnd();
   // A citation opens its source; one that opens nothing stays the text it was.
   const answer = useMemo(() => linkCitations(answerText, new Set(sources.flatMap((source) => (
     source.ref !== null && source.target.kind === "pane" ? [source.ref] : []
