@@ -81,7 +81,7 @@ function failUnknownOption(
   const suggestion = suggestCliOption(flag, flags);
   const help = `See gloom help ${command.name}.`;
   fail(`Unknown option ${flag} for ${command.name}.`, [
-    command.unknownOptionHint?.(flag, args) ?? currencyOptionHint(flag, args) ?? spreadsheetOptionHint(flag) ?? (flag === "--explain" ? EXPLAIN_HINT : ""),
+    command.unknownOptionHint?.(flag, args) ?? currencyOptionHint(flag, args) ?? spreadsheetOptionHint(flag, command.name, args) ?? (flag === "--explain" ? EXPLAIN_HINT : ""),
     suggestion ? `Did you mean ${suggestion}?` : "",
     flags.length > 0 ? `Options: ${flags.join(", ")}. ${help}` : `${command.name} takes no options. ${help}`,
   ].filter(Boolean).join("\n"));

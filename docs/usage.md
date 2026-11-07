@@ -1722,7 +1722,7 @@ A company's listings are the ones Gloom Cloud groups under one issuer (share cla
 **Functions behind the sign-in wall.** A pane behind the wall, such as `fn DIAG MSTR` signed out, says `Requires a free Gloom sign-in`, and `catalog DIAG` lists it under Requires (`gloom catalog` lists each with what it Requires).
 
 - A report that read nothing because a wall covered the whole pane cites no source and says `the pane is locked, so no values were read` (`--json` marks it `locked`).
-- A function a wall covers whole says what a free account can still read instead and names the app's Log In and UPGRADE commands, in the same three lines as text, as the `reason` of `--json` and as the `# incomplete` line of `--csv`. An account whose email is not verified yet is told to resend the verification email.
+- A function a wall covers whole says what a free account can still read instead and names the app's Log In and UPGRADE commands, in the same three lines as text, as the `reason` of `--json` and, with `--csv`, as the `incomplete:` line it writes to stderr. An account whose email is not verified yet is told to resend the verification email.
 - `fn EM`, `fn GUID` and `fn BUZZ` need only a free sign-in (`needs a free Gloom sign-in` instead of Pro). EM and GUID point at `earnings` and `fn GUIDE`, and BUZZ has no free route.
 
 The free routes the wall names, only when they have data for the ticker:

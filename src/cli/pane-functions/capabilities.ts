@@ -295,6 +295,14 @@ function normalizeOptionValue(
   return rawValue;
 }
 
+/** A function's argument and options as they were typed (`^HSI,^TNX --range 1Y`), for a pointer to name the command. */
+function typedFunctionArgs(argument: string | null | undefined, options: Record<string, string | true>): string[] {
+  return [
+    ...argument?.trim() ? [argument.trim()] : [],
+    ...Object.entries(options).flatMap(([key, value]) => value === true ? [optionFlag(key)] : [optionFlag(key), value]),
+  ];
+}
+
 export function normalizeCapabilityOptions(
   capability: PaneFunctionCapability,
   options: Record<string, string | true>,
@@ -329,7 +337,8 @@ export function normalizeCapabilityOptions(
       const supported = capability.options.map(({ key }) => optionFlag(key)).join(", ");
       throw new Error(
         [`${settings.code ?? capability.id} does not support ${optionFlag(rawKey)}.${supported ? ` Supported options: ${supported}.` : " It has no options."}`,
-          spreadsheetOptionHint(optionFlag(rawKey))].filter(Boolean).join(" "),
+          spreadsheetOptionHint(optionFlag(rawKey), `fn ${settings.code ?? capability.id}`, typedFunctionArgs(settings.argument, options))]
+          .filter(Boolean).join(" "),
       );
     }
     normalized[option.key] = normalizeOptionValue(option, rawValue, settings.argument);
