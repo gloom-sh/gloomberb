@@ -140,3 +140,22 @@ export async function fetchChangelogReleases(
 
   return releases.slice(0, wanted);
 }
+
+/**
+ * The repository's CHANGELOG.md: the title and highlights of each minor
+ * version, written by hand at release time (the Changelog's version rows).
+ * Through the API rather than raw.githubusercontent.com, which the web
+ * app's content policy does not reach.
+ */
+export const CHANGELOG_SUMMARIES_API_URL = `https://api.github.com/repos/${GLOOMBERB_REPO}/contents/CHANGELOG.md`;
+
+/** CHANGELOG.md as written, or null when the repository has none. */
+export async function fetchChangelogSummaries(signal?: AbortSignal): Promise<string | null> {
+  const response = await fetch(CHANGELOG_SUMMARIES_API_URL, {
+    signal,
+    headers: { Accept: "application/vnd.github.raw+json" },
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`GitHub returned ${response.status}`);
+  return response.text();
+}

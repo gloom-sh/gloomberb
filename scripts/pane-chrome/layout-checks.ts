@@ -7,8 +7,8 @@ import { LAYOUT_MEASURE, layoutFailures, type LayoutMeasure } from "./layout-mea
  * and every wrapped text uses the width it sits in. A box sized in cells, or
  * text wrapped at a count of columns, leaves a band above the footer or a gap
  * at the right edge that grows and shrinks with the pane. The open
- * Trials study and Changelog release are opened as a person does, by double
- * clicking a row.
+ * Trials study, and the Changelog version and the release in it, are opened
+ * as a person does, by double clicking a row, and each level is measured.
  *
  * The full registry, on the real web build: `bun run check:pane-layout`
  * (layout-sweep.ts).
@@ -30,9 +30,10 @@ export const LAYOUT_SIZES = [
 /** The size every other step expects (checks.ts). */
 const RESTORE = { width: 1400, height: 900 };
 
-const PANES: Array<{ id: string; label: string; opens?: string }> = [
-  { id: "trials", label: "Trials study", opens: "a study" },
-  { id: "changelog", label: "Changelog release", opens: "a release" },
+/** `opens`: what a double click on a row opens, then on a row in that, and so on. */
+const PANES: Array<{ id: string; label: string; opens?: string[] }> = [
+  { id: "trials", label: "Trials study", opens: ["a study"] },
+  { id: "changelog", label: "Changelog version and release", opens: ["a version", "a release"] },
   { id: "reader", label: "article reader" },
   { id: "markdown", label: "markdown in a detail body" },
   { id: "prose", label: "prose paragraphs in a detail body" },
@@ -64,29 +65,41 @@ async function openLayout(cdp: Cdp, paneId: string, mode: "dock" | "float", size
   if (!await waitFor(cdp, "window.__paneChrome?.ready === true", 15_000)) fail("the layout fixture did not render");
 }
 
-async function measureOpen(cdp: Cdp, paneId: string, opens: string | undefined): Promise<LayoutMeasure> {
-  const instanceId = `${paneId}:layout`;
-  const pane = `document.querySelector('[data-gloom-pane-id="${instanceId}"]')`;
-  const body = `${pane}?.querySelector("[data-gloom-role=pane-body]")`;
-  if (!await waitFor(cdp, `(${body}?.innerText?.length ?? 0) > 100 || ${body}?.querySelector("canvas") != null`, 10_000)) {
-    fail(`${paneId} drew no content`, await evaluate(cdp, `${pane}?.innerText?.slice(0, 200)`));
-  }
-  if (opens) {
-    const row = await evaluate<{ x: number; y: number } | null>(cdp, `(() => {
-      const row = ${pane}.querySelector("[data-gloom-role=data-table-row]");
-      if (!row) return null;
-      const r = row.getBoundingClientRect();
-      return { x: r.x + r.width / 3, y: r.y + r.height / 2 };
-    })()`) ?? fail(`${paneId} has no row to open`);
-    await doubleClick(cdp, row.x, row.y);
-    if (!await waitFor(cdp, `(${pane}.querySelector("[data-gloom-role=page-stack-detail]")?.innerText?.length ?? 0) > 300`, 5_000)) {
-      fail(`double clicking a row did not open ${opens}`);
-    }
-  }
+async function measure(cdp: Cdp, instanceId: string): Promise<LayoutMeasure> {
   // Fonts and the reader's own measuring settle in a frame or two.
   await frames(cdp, 3);
   await sleep(50);
   return await evaluate<LayoutMeasure>(cdp, LAYOUT_MEASURE(instanceId));
+}
+
+/** The pane, then each level `opens` names, measured as it opens; the last level stays open. */
+async function measureOpen(cdp: Cdp, paneId: string, opens: string[] = []): Promise<Array<{ level: string; measure: LayoutMeasure }>> {
+  const instanceId = `${paneId}:layout`;
+  const pane = `document.querySelector('[data-gloom-pane-id="${instanceId}"]')`;
+  const body = `${pane}?.querySelector("[data-gloom-role=pane-body]")`;
+  const detail = `${pane}?.querySelector("[data-gloom-role=page-stack-detail]")`;
+  if (!await waitFor(cdp, `(${body}?.innerText?.length ?? 0) > 100 || ${body}?.querySelector("canvas") != null`, 10_000)) {
+    fail(`${paneId} drew no content`, await evaluate(cdp, `${pane}?.innerText?.slice(0, 200)`));
+  }
+  if (opens.length === 0) return [{ level: "", measure: await measure(cdp, instanceId) }];
+  const measures: Array<{ level: string; measure: LayoutMeasure }> = [];
+  for (const [index, opened] of opens.entries()) {
+    // The first row of the pane, then the first row of what is open.
+    const within = index === 0 ? pane : detail;
+    const before = await evaluate<string>(cdp, `${detail}?.innerText ?? ""`);
+    const row = await evaluate<{ x: number; y: number } | null>(cdp, `(() => {
+      const row = ${within}?.querySelector("[data-gloom-role=data-table-row]");
+      if (!row) return null;
+      const r = row.getBoundingClientRect();
+      return { x: r.x + r.width / 3, y: r.y + r.height / 2 };
+    })()`) ?? fail(`${paneId} has no row to open ${opened}`);
+    await doubleClick(cdp, row.x, row.y);
+    if (!await waitFor(cdp, `(() => { const text = ${detail}?.innerText ?? ""; return text.length > 300 && text !== ${JSON.stringify(before)}; })()`, 5_000)) {
+      fail(`double clicking a row did not open ${opened}`);
+    }
+    measures.push({ level: `${opened}: `, measure: await measure(cdp, instanceId) });
+  }
+  return measures;
 }
 
 export const layoutSteps: LayoutStep[] = PANES.flatMap(({ id, label, opens }) => (["dock", "float"] as const).map((mode): LayoutStep => ({
@@ -97,9 +110,10 @@ export const layoutSteps: LayoutStep[] = PANES.flatMap(({ id, label, opens }) =>
     try {
       for (const size of LAYOUT_SIZES) {
         await openLayout(cdp, id, mode, size);
-        const measure = await measureOpen(cdp, id, opens);
-        if (measure.missing) fail(`no ${id} pane at ${size.width}x${size.height}`);
-        for (const failure of layoutFailures(measure)) problems.push(`${size.width}x${size.height}: ${failure}`);
+        for (const { level, measure } of await measureOpen(cdp, id, opens)) {
+          if (measure.missing) fail(`no ${id} pane at ${size.width}x${size.height}`);
+          for (const failure of layoutFailures(measure)) problems.push(`${size.width}x${size.height}: ${level}${failure}`);
+        }
         // The release's last line is a link, not the markdown it was written as.
         if (id === "changelog") {
           const read = await evaluate<{ links: string[]; raw: boolean }>(cdp, `(() => {
