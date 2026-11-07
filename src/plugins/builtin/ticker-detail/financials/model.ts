@@ -99,6 +99,18 @@ export function statementMetricValue(
 
 export const FINANCIAL_COL_W = 18;
 export const FINANCIAL_LABEL_W = 28;
+const FINANCIAL_LABEL_MIN_W = 12;
+
+/**
+ * The metric column's width in a table `width` cells wide: 28 where a period
+ * fits beside it, narrower (down to 12, labels cut with an ellipsis) where it
+ * would otherwise take every value off screen, as a 36-column Financials pane
+ * once showed nothing but metric names and "more →". The other 6 cells are the
+ * pane's padding, the table's, the column gap and the scrollbar.
+ */
+export function financialLabelWidth(width: number): number {
+  return Math.max(FINANCIAL_LABEL_MIN_W, Math.min(FINANCIAL_LABEL_W, width - FINANCIAL_COL_W - 6));
+}
 const FINANCIAL_GROWTH_W = 7;
 const FINANCIAL_VALUE_W = FINANCIAL_COL_W - FINANCIAL_GROWTH_W;
 

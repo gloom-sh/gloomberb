@@ -19,7 +19,7 @@ import { padTo } from "../../../../utils/format";
 import { filledPeriodsNote, stalePeriodNote } from "../../../../utils/financial-statements";
 import {
   FINANCIAL_COL_W,
-  FINANCIAL_LABEL_W,
+  financialLabelWidth,
   FINANCIAL_SUB_TABS,
   buildFinancialRows,
   canCompareFinancialRow,
@@ -305,7 +305,7 @@ export function ResolvedFinancialsTab({
       id: "metric",
       kind: "metric",
       label: "Metric",
-      width: FINANCIAL_LABEL_W,
+      width: financialLabelWidth(width),
       align: "left",
     },
     ...displayStatements.map((statement, index): FinancialTableColumn => ({
@@ -323,7 +323,7 @@ export function ResolvedFinancialsTab({
       align: "right",
       headerColor: statement.date === "TTM" ? colors.textBright : colors.textDim,
     })),
-  ], [annualDates, comparisonCurrency, displayStatements, isAnnual, yearEndMonth]);
+  ], [annualDates, comparisonCurrency, displayStatements, isAnnual, width, yearEndMonth]);
   const { rows, unit } = useMemo(
     () => shareFinancialUnit(buildFinancialRows(subTab.rows, displayStatements, collapsedGroups)),
     [collapsedGroups, displayStatements, subTab.rows],
@@ -440,9 +440,9 @@ export function ResolvedFinancialsTab({
     isValuation, quarterlyStatements, ratioTab, resolvedPeriod, financials?.profile,
   ]);
   const ratioColumns = useMemo<RatioTableColumn[]>(() => [
-    ratioMetricColumn(),
+    ratioMetricColumn(width),
     ...columns.flatMap((column, index) => column.kind === "statement" ? [{ ...column, index: index - 1 }] : []),
-  ], [columns]);
+  ], [columns, width]);
 
   // The Balance Sheet and Liquidity show cash, which an offering filed since the latest balance sheet is not in yet.
   const { symbol: boundSymbol, exchange: boundExchange } = useBoundTicker();
