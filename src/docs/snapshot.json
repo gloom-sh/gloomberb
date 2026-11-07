@@ -1,7 +1,7 @@
 {
  "format": 1,
  "site": "https://gloom.sh",
- "updatedAt": "2026-11-06",
+ "updatedAt": "2026-11-07",
  "categories": [
   {
    "id": "research",
@@ -41,7 +41,7 @@
    "code": "DES",
    "name": "Security overview",
    "description": "Quote, chart, and research tabs",
-   "detail": "The starting point for any ticker: live quote, day and 52-week range, price chart, fundamentals, and tabs into every other research pane. A bond fund shows its SEC yield, yield to worst and duration beside its distribution yield. T is the same pane; search Ticker Research to open a second one.",
+   "detail": "The starting point for any ticker: live quote, day and 52-week range, price chart, fundamentals, and tabs into every other research pane. A bond fund shows its SEC yield, yield to worst and duration beside its distribution yield, and --tax-rate 40.8 adds a muni fund's tax-equivalent yield and muni/Treasury ratio. T is the same pane; search Ticker Research to open a second one.",
    "category": "research",
    "arg": "NVDA",
    "shot": "https://gloom.sh/screenshots/fn/DES.png",
@@ -430,7 +430,7 @@
    "code": "DVD",
    "name": "Dividend yield",
    "description": "Payout history and yield",
-   "detail": "Cash distributions, trailing yield, indicated rate when available, and payout growth. A bond fund's distribution yield is labelled as not its SEC yield, which follows it dated with yield to worst and duration; --tax-rate 40.8 adds a muni fund's tax-equivalent yield and muni/Treasury ratio. Several tickers rank in one table. Future payments are not forecast.",
+   "detail": "Cash distributions, trailing yield, indicated rate when available, and payout growth. A bond fund's distribution yield is labelled as not its SEC yield, which follows it dated with yield to worst and duration; --tax-rate 40.8 adds a muni fund's tax-equivalent yield and muni/Treasury ratio. Several tickers rank in one table, with those columns too under --tax-rate. Future payments are not forecast.",
    "category": "research",
    "arg": "KO",
    "shot": "https://gloom.sh/screenshots/fn/DVD.png",
@@ -1388,7 +1388,7 @@
    "code": "ETF",
    "name": "ETF facts and filings",
    "description": "A fund's facts and SEC filings",
-   "detail": "A US-listed fund's facts from its sponsor (fee, NAV, premium, net assets, and a bond fund's SEC yield, yield to worst and duration), then its SEC filings: registration statements, prospectus updates, shareholder reports, N-CEN and N-PORT reports. Open any of them inline.",
+   "detail": "A US-listed fund's facts from its sponsor (fee, NAV, premium, net assets, and a bond fund's SEC yield, yield to worst and duration), then its SEC filings: registration statements, prospectus updates, shareholder reports, N-CEN and N-PORT reports. Open any of them inline. --tax-rate 40.8 adds a muni fund's tax-equivalent yield and muni/Treasury ratio.",
    "category": "ownership",
    "arg": "SPY",
    "shot": "https://gloom.sh/screenshots/fn/ETF.png",
@@ -2547,6 +2547,8 @@
     "currency",
     "TRY",
     "cost FX",
+    "real return",
+    "inflation",
     "target weights",
     "drift",
     "rebalance",
@@ -2565,7 +2567,7 @@
     "E*TRADE",
     "Merrill"
    ],
-   "updatedAt": "2026-11-06",
+   "updatedAt": "2026-11-07",
    "blocks": [
     {
      "type": "heading",
@@ -2591,11 +2593,22 @@
     },
     {
      "type": "code",
-     "code": "gloom portfolio create Lira --currency TRY\ngloom portfolio position set Lira THYAO 100 280                     # a BIST stock, cost in TRY\ngloom portfolio position set Lira BRK-B 10 20310 TRY                # a US stock at what it cost in lira\ngloom portfolio position set Lira BRK-B 10 410 USD --date 2024-03-01   # or in dollars, converted at that day's FX close\ngloom portfolio position set Lira KO 40 62.50 USD --cost-fx 32.15      # or at the rate you paid, TRY per USD\ngloom portfolio show Lira --from 2025-11-06                          # P&L since a date, with the currency's move on its own line"
+     "code": "gloom portfolio create Lira --currency TRY\ngloom portfolio position set Lira THYAO 100 280                     # a BIST stock, cost in TRY\ngloom portfolio position set Lira BRK-B 10 20310 TRY                # a US stock at what it cost in lira\ngloom portfolio position set Lira BRK-B 10 410 USD --date 2024-03-01   # or in dollars, converted at that day's FX close\ngloom portfolio position set Lira KO 40 62.50 USD --cost-fx 32.15      # or at the rate you paid, TRY per USD\ngloom portfolio show Lira --from 2025-11-06                          # P&L since a date, with the currency's move on its own line\ngloom portfolio show Lira --from 2025-11-06 --real                   # and the return after Turkish consumer prices"
     },
     {
      "type": "paragraph",
      "text": "A cost in the holding's own currency without `--date` or `--cost-fx` converts at today's rate, and `portfolio show` names the holdings it does that for. Use the date or the rate so P&L carries the currency's move since you bought. A name whose last word is a currency code in capitals (`Baht THB`) creates the portfolio in that currency too."
+    },
+    {
+     "type": "paragraph",
+     "text": "`--real` deflates the period's total by the consumer prices of the portfolio's currency, from the CPI month before the start's month to the one before the end's (or the latest month published), and names both months:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**USD**: the ratio of the BLS index at those two months, not seasonally adjusted (FRED's `CPIAUCNS`), as a period's inflation is quoted. A month the BLS did not publish reads the month before it.",
+      "**TRY**: the central bank's table gives TurkStat's changes rather than the index, so the figure is chained from the end month back. Each whole year takes TurkStat's year-on-year change, and each month left over takes its monthly change. Every change is applied as one plus the change, and the factors are multiplied. A twelve-month period is TurkStat's published annual rate: October 2025 to October 2026 reads 29.77%. A month without its change leaves the period without a real return."
+     ]
     },
     {
      "type": "heading",
@@ -5642,7 +5655,7 @@
     "functions",
     "screenshots"
    ],
-   "updatedAt": "2026-11-06",
+   "updatedAt": "2026-11-07",
    "blocks": [
     {
      "type": "paragraph",
@@ -5718,6 +5731,10 @@
        "Revenue and EPS, profile, multiples, dividends and splits, ratings and targets"
       ],
       [
+       "`fn CMP <symbols> [--from <date>] [--to <date>] [--total-return] [--currency <code>]`",
+       "Returns side by side, each in its listing's currency: price returns, or with `--total-return` each distribution reinvested at its ex-date close. `--currency USD` converts every close at that day's FX close, so a lira stock's return carries the lira's move"
+      ],
+      [
        "`fn DVD <symbols>`",
        "Dividend yield and history; several symbols rank in one table by yield, with payout, growth, last ex-date and pay date"
       ],
@@ -5753,7 +5770,7 @@
       ],
       [
        "`earnings <symbols>`, `fx <currency>`",
-       "Earnings dates; a currency into your base currency"
+       "Earnings dates; a currency into your base currency. Gold, silver, platinum and palladium have no spot quote, so `fx XAU/TRY` is derived from the front-month future (GC=F) and the dollar pair, and says so"
       ],
       [
        "`econ [--country all|US|G7|EU|<codes>] [--impact high|medium|low|all] [--search <words>] [--from <date>] [--tz <zone>]`",
@@ -5783,7 +5800,7 @@
      "rows": [
       [
        "`portfolio list|show|create|delete <name>`",
-       "Manual portfolios; `show` lists value, weight, a year of dividend income and its yield, target, drift and the trade to rebalance; `show --explain` adds what those terms mean, `show --drip [--years 1-5] [--withholding <pct>]` projects reinvested dividends, and `show --from <date> [--to <date>]` gives the P&L between two closes with the FX move"
+       "Manual portfolios; `show` lists value, weight, a year of dividend income and its yield, target, drift and the trade to rebalance; `show --explain` adds what those terms mean, `show --drip [--years 1-5] [--withholding <pct>]` projects reinvested dividends, and `show --from <date> [--to <date>]` gives the P&L between two closes with the FX move; `--real` adds the return after the portfolio currency's consumer prices (USD and TRY) and names the CPI months it used"
       ],
       [
        "`portfolio create <name> --currency <code>`",
@@ -5907,7 +5924,7 @@
       ],
       [
        "`catalog glossary [term]`, `catalog explain <term>`",
-       "What a term means, such as `stop-out`, `B/C`, `drift` or `NAV`"
+       "What a term means, such as `stop-out`, `B/C`, `drift`, `NAV`, `beta`, `R²` or `VaR`"
       ],
       [
        "`fn <function> [argument] [--option value] [--explain]`",
