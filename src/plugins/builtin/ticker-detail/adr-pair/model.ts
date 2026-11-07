@@ -90,7 +90,7 @@ export function adrPairFigures(comparison: DepositaryPairComparison): AdrPairFig
       value: comparison.premiumPercent == null ? "—" : premiumText(comparison.premiumPercent),
       ...(comparison.premiumPercent == null ? {} : { detail: "at spot" }),
     },
-    { id: "ratio", label: "Ratio", value: adrRatioText(comparison.ratio) ?? `1:${ratioCount(comparison.ratio)}` },
+    { id: "ratio", label: "Ratio", value: adrRatioText(comparison.ratio, comparison.home.symbol) ?? `1:${ratioCount(comparison.ratio)}` },
   ];
 }
 
