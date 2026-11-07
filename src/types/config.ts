@@ -132,6 +132,11 @@ export interface FloatingPaneEntry {
   width: number;
   height: number;
   zIndex?: number;
+  /**
+   * Floating windows stacked as tabs share this key and one rect; the one
+   * in front (highest z) is shown (layout/pane-manager/floating-stack.ts).
+   */
+  stack?: string;
 }
 
 interface DetachedPaneEntry {

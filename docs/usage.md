@@ -44,7 +44,7 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | `Ctrl+W` | Close focused pane (unless it is locked) |
 | `Esc` `Esc` | Close focused pane, even one that could still go back, and focus the next floating pane. Not over a typed draft or with a menu or dialog open |
 | `Ctrl+Shift+M` | Move focused window (`WIN resize` starts resize mode) |
-| `Ctrl+Shift+D` | Dock or float focused pane |
+| `Ctrl+Shift+D` | Float the focused pane, or return it to the layout |
 | `Ctrl+Shift+N` | Move the focused pane to a new layout of its own; again to move it back |
 | `Ctrl+Shift+E` | Export focused pane table as CSV |
 | `Cmd/Ctrl+Shift+S` | Share the focused pane: post to chat or copy link |
@@ -108,7 +108,7 @@ A pane that shows one ticker (`GP`, `GIP`, `GF`, `GE`, `OMON`, `OPX`, `SEAS`, `F
 
 Takes the focused pane out of its layout into a new layout tab named after it (`Chart: NVDA`), where it fills the window. Use `Ctrl+Shift+N` (`Cmd+Shift+N` in the macOS desktop app), the pane menu or the command bar. In the browser `Ctrl+Shift+N` opens a private window, so use the pane menu.
 
-**Move Back to** in the pane menu, or the same shortcut while the pane is alone, returns it to its place and removes the empty layout (if that layout was deleted, the pane docks in the first other tab). The pane keeps its ticker, tab, settings and lock.
+**Move Back to** in the pane menu, or the same shortcut while the pane is alone, returns it to its place and removes the empty layout (if that layout was deleted, the pane goes into the first other tab). The pane keeps its ticker, tab, settings and lock.
 
 ### More windows (desktop)
 
@@ -118,18 +118,23 @@ Closing a window gives its tabs back to the main window. Closing the main window
 
 ### Moving and resizing
 
-Drag the line between docked panes, or a floating pane's bottom-right corner (any edge or corner on the desktop and web).
+Drag the line between two panes in the layout to resize both, or a floating pane's bottom-right corner (any edge or corner on the desktop and web). Floating windows that sit edge to edge resize together when you drag the edge they share; hold `Alt` (`Option` on macOS) to resize one alone.
 
 A new floating pane opens where there is room: clear of the other floating panes and of the pane you are working in, or one step down and to the right of the frontmost window when the screen is full. It never opens exactly on top of another window.
 
-While you move or resize a floating pane, its edges stick to the edges of other panes and of the window when they come close (8 px on the desktop, one cell in the terminal), and let go when you pull a little further. Hold `Alt` (`Option` on macOS) to place it freely. Where a release would put the pane somewhere else, an outline shows where it will land; on the desktop and web the pane turns see-through over it.
+While you move or resize a floating pane, its edges stick to the edges of other panes and of the window when they come close (8 px on the desktop, one cell in the terminal), and let go when you pull a little further. Hold `Alt` (`Option` on macOS) to place it freely. The magnets only line windows up: they never put a pane in the layout.
 
-A pane you move, floating or docked, finds its place in the dock two ways:
+A pane you move, from the layout or floating, lands where the target under the pointer says, and nowhere else. The targets show while you drag, the same on the desktop, the web and in the terminal:
 
-- **Join:** push one of its edges flush against the same edge of a docked pane, where that pane meets another (the edge sticks), and hold it there a moment: the outline shows the pane's place in the dock, and letting go there joins it on that side, sharing the room and resizing with its neighbours. This works over its title bar too, so lining the top edges up joins above it. Let go before the outline shows and it stays floating, or over a title bar stacks as a tab. A pane parked against an edge or a corner of the window stays floating too.
-- **Tab:** drop it on a docked pane's title bar and the two share that spot as tabs, the one you dropped shown, unless an edge held flush there has shown a join's outline. Laid squarely over a pane its size, it always stacks. A click on a tab shows that pane, and dragging a tab out of the title bar takes it out of the stack. A pane closed or floated from a stack leaves the others where they are, and a floated tab docks back into its stack.
+- **Over a pane,** a small target of five squares shows in its middle. The centre square makes the pane you move a tab there, shown in front. A side square splits that pane on that side: a pane in the layout gives up half its place, a floating window half its rect, the two edge to edge.
+- **Along the window's edges,** a thin strip puts the pane along that whole edge of the layout.
+- **Anywhere else** it floats where you let go.
 
-`Alt` while you move keeps the pane floating wherever you drop it, apart from a title bar, where it always stacks.
+The square or strip under the pointer lights up, and an outline shows exactly where the pane will land; on the desktop and web the pane turns see-through over it. Nothing depends on how long you hold it.
+
+Panes stacked as tabs show them in the title bar. A click on a tab shows that pane, dragging a tab out takes that pane out of the stack, and the rest of a floating stack's title bar moves the whole window. A pane closed or floated from a stack leaves the others where they are.
+
+Without a mouse, window mode (`Ctrl+Shift+M`) moves the focused pane: the arrows pick a pane in the layout and the side to join it on, `d` floats it or returns it to the layout, and `1` to `8` float it in a quarter or half of the window. `Enter` applies the move.
 
 ### Docs inside the app
 

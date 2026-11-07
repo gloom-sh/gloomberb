@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef } from "react";
 import {
   floatAtRect,
+  floatingSplitRects,
+  floatingStackMembers,
   getDockSplitGeometry,
+  getRememberedFloatingRect,
+  hiddenFloatingTabIds,
   MIN_FLOAT_HEIGHT,
   MIN_FLOAT_WIDTH,
-  getRememberedFloatingRect,
   resizeSplitAtPath,
   simulateDrop,
   type DockGeometryOptions,
@@ -16,19 +19,16 @@ import {
 } from "../../../layout/pane-manager";
 import type { LayoutConfig } from "../../../types/config";
 import {
+  constrainFloatingRectToBounds,
   finalizePaneDragRelease,
-  freePaneDragRect,
   isMeaningfulPaneDrag,
-  JOIN_DWELL_MS,
-  makeSnapGuides,
   PANE_DRAG_THRESHOLD,
   PRECISE_PANE_DRAG_THRESHOLD,
   resolveDividerPreviewRect,
   resolveFloatResizeRect,
   resolvePaneDragFloatingRect,
-  resolvePaneDropTarget,
-  resolveSnapGuide,
   type DragPreview,
+  type PaneDragMode,
 } from "./drag";
 import type { ShellDragRuntimeState, ShellMouseEvent } from "./drag/runtime";
 import type { WindowEditState } from "../window-edit/mode";
@@ -44,21 +44,8 @@ import {
   type MagnetLatch,
   type MagnetPace,
 } from "./drag/magnets";
-import { paneHeaderRows } from "../pane/sizing";
-
-/** A join the pointer has lined up: armed once it has held for JOIN_DWELL_MS. */
-interface PendingJoin {
-  key: string;
-  armed: boolean;
-  timer: ReturnType<typeof setTimeout> | null;
-  /** Where the pointer began to hold it, when that was over a title bar. */
-  at: { x: number; y: number } | null;
-}
-
-function dropPendingJoin(memo: { join: PendingJoin | null }) {
-  if (memo.join?.timer) clearTimeout(memo.join.timer);
-  memo.join = null;
-}
+import { applySharedEdges, NO_SHARED_EDGES, resolveSharedEdges, type SharedEdgeGroups } from "./drag/shared-edges";
+import { resolveDropZone, type DropZoneHost, type DropZoneMetrics, type DropZoneState } from "./drag/drop-zones";
 
 /** A resize without edges is the bottom-right corner's (the terminal's only one). */
 const CORNER_EDGES = { x: 1, y: 1 } as const;
@@ -73,11 +60,12 @@ interface UseShellActiveDragOptions {
   focusPane: (paneId: string) => void;
   /** How close a moving or resizing pane's edge comes to another before it sticks, in cells. */
   magnetDistances: MagnetDistances;
+  /** The size of the drop targets a moving pane is offered, in cells. */
+  dropZoneMetrics: DropZoneMetrics;
   nativePaneChrome: boolean;
   paneMap: Map<string, ResolvedPane>;
   persistLayout: (nextLayout: LayoutConfig, options?: { pushHistory?: boolean }) => void;
   precisePointer: boolean | undefined;
-  snapGuides: ReturnType<typeof makeSnapGuides>;
   updateWindowModePreviewLayout: (nextLayout: LayoutConfig, paneId?: string) => void;
   visibleLayout: LayoutConfig;
   width: number;
@@ -93,11 +81,11 @@ export function useShellActiveDrag({
   dragRuntime,
   focusPane,
   magnetDistances,
+  dropZoneMetrics,
   nativePaneChrome,
   paneMap,
   persistLayout,
   precisePointer,
-  snapGuides,
   updateWindowModePreviewLayout,
   visibleLayout,
   width,
@@ -111,31 +99,33 @@ export function useShellActiveDrag({
     updateDividerPreview,
     updateDockPreview,
     updateDragFloatingRect,
+    updateDragPartners,
+    updateDropZone,
   } = dragRuntime;
-  // What one drag keeps between moves: a docked pane's floating size, the
-  // last drop it simulated, so a move over the same target computes nothing,
-  // the edges its magnets hold, with the other panes' rects they hold to, the
-  // join it is holding still for, and on the desktop where the pointer has
-  // been lately (the magnets wait for it to slow down) with the check that
-  // catches once it rests, and where the pane is drawn against where the
-  // pointer puts it, with the frame that moves it there while the pointer is
-  // still.
+  // What one drag keeps between moves: a layout pane's floating size, the
+  // panes it can land on and the last target it laid out, so a move over the
+  // same target computes nothing, the edges its magnets hold, with the other
+  // panes' rects they hold to, a resize's windows snapped edge to edge with
+  // it, and on the desktop where the pointer has been lately (the magnets wait
+  // for it to slow down) with the check that catches once it rests, and where
+  // the pane is drawn against where the pointer puts it, with the frame that
+  // moves it there while the pointer is still.
   const memoRef = useRef<{
     drag: unknown;
     baseRect: FloatingRect | null;
+    hosts: DropZoneHost[] | null;
     dropKey: string | null;
     drop: DragPreview | null;
     latch: MagnetLatch;
     magnetTargets: LayoutBounds[] | null;
-    join: PendingJoin | null;
+    shared: SharedEdgeGroups | null;
     pace: MagnetPace;
     glide: MagnetGlide;
   }>({
-    drag: null, baseRect: null, dropKey: null, drop: null, latch: NO_LATCH, magnetTargets: null, join: null,
-    pace: createMagnetPace(), glide: createMagnetGlide(),
+    drag: null, baseRect: null, hosts: null, dropKey: null, drop: null, latch: NO_LATCH, magnetTargets: null,
+    shared: null, pace: createMagnetPace(), glide: createMagnetGlide(),
   });
   useEffect(() => () => {
-    dropPendingJoin(memoRef.current);
     memoRef.current.pace.reset();
     memoRef.current.glide.reset();
   }, []);
@@ -164,24 +154,54 @@ export function useShellActiveDrag({
       memo.drop = null;
       memo.latch = NO_LATCH;
       memo.magnetTargets = null;
+      memo.shared = null;
+      memo.hosts = null;
       memo.pace.reset();
       memo.glide.reset();
-      dropPendingJoin(memo);
     }
     // Any later event supersedes the rest check of an earlier move.
     memo.pace.cancel();
     // Every other pane on screen, docked or floating, whose edges a floating
     // pane's edges stick to. Alt (Option) lets it go anywhere.
+    // A resize leaves out the windows it moves along a shared edge. A stack
+    // counts once, as the tab it shows, and the pane's own stack not at all:
+    // its tabs sit where it started, and would hold it there.
     const magnetTargets = (paneId: string) => {
-      memo.magnetTargets ??= [
+      if (memo.magnetTargets) return memo.magnetTargets;
+      const moving = memo.shared?.ids;
+      const hidden = hiddenFloatingTabIds(baseLayout.floating);
+      const own = baseLayout.floating.find((entry) => entry.instanceId === paneId)?.stack;
+      memo.magnetTargets = [
         ...dockLeafLayouts.filter((leaf) => leaf.instanceId !== paneId).map((leaf) => leaf.rect),
         ...baseLayout.floating
-          .filter((entry) => entry.instanceId !== paneId && paneMap.has(entry.instanceId))
+          .filter((entry) => entry.instanceId !== paneId && paneMap.has(entry.instanceId) && !moving?.has(entry.instanceId))
+          .filter((entry) => !hidden.has(entry.instanceId) && (!own || entry.stack !== own))
           .map(({ x, y, width: w, height: h }) => ({ x, y, width: w, height: h })),
       ];
       return memo.magnetTargets;
     };
+    // The windows on screen a resize can share an edge with: each stack once, as the tab it shows.
+    const sharedEdgesOf = (paneId: string, origRect: FloatingRect, edges: { x: -1 | 0 | 1; y: -1 | 0 | 1 }) => {
+      if (memo.shared) return memo.shared;
+      const hidden = hiddenFloatingTabIds(baseLayout.floating);
+      const own = baseLayout.floating.find((entry) => entry.instanceId === paneId)?.stack;
+      const windows = baseLayout.floating
+        .filter((entry) => paneMap.has(entry.instanceId) && !hidden.has(entry.instanceId) && (!own || entry.stack !== own))
+        .map((entry) => ({ id: entry.instanceId, rect: { x: entry.x, y: entry.y, width: entry.width, height: entry.height, zIndex: entry.zIndex } }));
+      memo.shared = resolveSharedEdges(windows, { id: paneId, rect: origRect }, edges);
+      return memo.shared;
+    };
     const magnetsOff = event.modifiers?.alt === true;
+    // A resize as the pointer has it: the window, and those it moves along a
+    // shared edge. Alt (Option) resizes the window alone.
+    const resizeWithShared = (paneId: string, origRect: FloatingRect, resized: FloatingRect, edges: { x: -1 | 0 | 1; y: -1 | 0 | 1 }) => {
+      const shared = sharedEdgesOf(paneId, origRect, edges);
+      if (shared === NO_SHARED_EDGES || magnetsOff) return { rect: resized, partners: null };
+      const rects = applySharedEdges(shared, paneId, resized, { width, height: contentHeight });
+      const rect = { ...(rects.get(paneId) ?? resized), zIndex: resized.zIndex };
+      rects.delete(paneId);
+      return { rect, partners: rects };
+    };
     const magnetArea = { x: 0, y: 0, width, height: contentHeight };
     // Desktop: past the travel speed a release lands the pane where the
     // pointer puts it, its magnets left out (the rest check runs the last move
@@ -251,16 +271,68 @@ export function useShellActiveDrag({
       const delta = drag.axis === "horizontal" ? x - drag.startX : y - drag.startY;
       return Math.max(0.1, Math.min(0.9, drag.startRatio + (delta / Math.max(1, total))));
     };
+    // The panes a moving pane can land on, front to back, each once: floating
+    // windows (a stack as the tab it shows), then the spots of the layout.
+    // Its own window or spot is no target, but the other tabs of its stack are.
+    const dropHostsOf = (paneId: string, mode: PaneDragMode): DropZoneHost[] => {
+      if (memo.hosts) return memo.hosts;
+      const hidden = hiddenFloatingTabIds(baseLayout.floating);
+      const ownStack = baseLayout.floating.find((entry) => entry.instanceId === paneId)?.stack;
+      const floatingHosts = baseLayout.floating
+        .filter((entry) => paneMap.has(entry.instanceId) && !hidden.has(entry.instanceId))
+        .filter((entry) => (mode === "floating" ? entry.instanceId !== paneId && (!ownStack || entry.stack !== ownStack) : true))
+        .sort((a, b) => (b.zIndex ?? 50) - (a.zIndex ?? 50))
+        .flatMap((entry): DropZoneHost[] => {
+          const rect = constrainFloatingRectToBounds(entry, width, contentHeight);
+          if (entry.instanceId !== paneId) return [{ id: entry.instanceId, rect, docked: false }];
+          // A tab dragged out of the stack it shows: the stack is still there, as its other tabs.
+          const other = floatingStackMembers(baseLayout.floating, paneId).find((member) => member.instanceId !== paneId);
+          return other ? [{ id: other.instanceId, rect, docked: false }] : [];
+        });
+      const dockedHosts = dockLeafLayouts.flatMap((leaf): DropZoneHost[] => {
+        const own = leaf.instanceId === paneId || (leaf.stack?.includes(paneId) ?? false);
+        const id = !own ? leaf.instanceId : leaf.stack?.find((member) => member !== paneId);
+        return id ? [{ id, rect: leaf.rect, docked: true }] : [];
+      });
+      memo.hosts = [...floatingHosts, ...dockedHosts];
+      return memo.hosts;
+    };
+    // What a release over `zone` lays out, as the preview shows it: its place
+    // in the layout, or the floating window's rect or half.
+    const previewOfZone = (paneId: string, zone: DropZoneState): DragPreview | null => {
+      const key = zone.edge ? `edge:${zone.edge}` : zone.host && zone.side ? `${zone.host.id}:${zone.side}` : null;
+      if (!key) return null;
+      if (memo.dropKey === key) return memo.drop;
+      memo.dropKey = key;
+      const dock = (target: DropTarget): DragPreview | null => {
+        const simulation = simulateDrop(baseLayout, paneId, target, bounds, dockGeometryOptions);
+        return simulation.previewRect ? { kind: "dock", target, rect: simulation.previewRect } : null;
+      };
+      if (zone.edge) {
+        memo.drop = dock({ kind: "frame", edge: zone.edge });
+      } else if (zone.host && zone.side) {
+        const { host, side } = zone;
+        if (host.docked) {
+          memo.drop = dock(side === "center" ? { kind: "tab", targetId: host.id } : { kind: "leaf", targetId: host.id, position: side });
+        } else if (side === "center") {
+          memo.drop = { kind: "float", drop: { type: "tab", targetId: host.id }, rect: host.rect };
+        } else {
+          memo.drop = { kind: "float", drop: { type: "split", targetId: host.id, side }, rect: floatingSplitRects(host.rect, side)[0] };
+        }
+      }
+      return memo.drop;
+    };
     const dragBaseRect = () => {
       if (drag.type !== "pane-drag") return null;
       if (drag.mode === "floating") return drag.origRect;
+      // A tab pulled out of a floating stack keeps the stack's size.
+      if (drag.mode === "tab") return drag.origRect;
       memo.baseRect ??= getRememberedFloatingRect(baseLayout, drag.paneId, width, contentHeight, paneMap.get(drag.paneId)?.def);
       return memo.baseRect;
     };
 
     if (event.type === "drag-cancel") {
       // The window lost focus or the system took the pointer: put everything back.
-      dropPendingJoin(memo);
       memo.glide.reset();
       cancelActiveDrag();
       event.stopPropagation();
@@ -291,6 +363,7 @@ export function useShellActiveDrag({
         if (!isMeaningfulPaneDrag(drag.startX, drag.startY, preciseX, preciseShellY, dragThreshold)) {
           memo.glide.reset();
           updateDockPreview(null);
+          updateDropZone(null);
           if (drag.mode === "floating") {
             updateDragFloatingRect({ paneId: drag.paneId, rect: drag.origRect });
           }
@@ -300,72 +373,31 @@ export function useShellActiveDrag({
         }
 
         const freeRect = resolvePaneDragFloatingRect(drag, dragBaseRect()!, drawX, drawShellY, width, contentHeight);
-        const moved = snapMove(drag.paneId, freeRect);
-        const nextRect = moved.rect;
-        drawMove(drag.paneId, freeRect, moved);
+        drawMove(drag.paneId, freeRect, snapMove(drag.paneId, freeRect));
 
-        // Over a title bar it would be a tab there; pushed against a docked
-        // pane's edge it would join the dock on that side once that has held,
-        // over the title bar too.
-        const { tab, join } = resolvePaneDropTarget({
+        // The targets in sight decide, and nothing else: over a pane, the
+        // square of its target under the pointer; along the window's edge,
+        // its strip; anywhere else the pane floats where it is drawn.
+        const zone = resolveDropZone({
           x: hitX,
           y: hitShellY,
-          rect: nextRect,
-          free: freePaneDragRect(drag, dragBaseRect()!, drawX, drawShellY, width, contentHeight),
-          leaves: dockLeafLayouts,
-          paneId: drag.paneId,
+          hosts: dropHostsOf(drag.paneId, drag.mode),
           area: bounds,
-          flush: { x: magnetDistances.catchX, y: magnetDistances.catchY },
-          headerRows: paneHeaderRows(nativePaneChrome),
-          join: !magnetsOff,
+          metrics: dropZoneMetrics,
         });
-        const showSnapGuide = () => {
-          const snapGuide = resolveSnapGuide(hitX, hitShellY, snapGuides);
-          updateDockPreview(snapGuide ? { kind: "snap", position: snapGuide.position, rect: snapGuide.previewRect } : null);
-        };
-        const showDrop = (target: DropTarget) => {
-          const dropKey = target.kind === "tab" ? `tab:${target.targetId}` : target.kind === "leaf" ? `${target.targetId}:${target.position}` : target.edge;
-          if (memo.dropKey !== dropKey) {
-            const simulation = simulateDrop(baseLayout, drag.paneId, target, bounds, dockGeometryOptions);
-            memo.dropKey = dropKey;
-            memo.drop = simulation.previewRect ? { kind: "dock", target, rect: simulation.previewRect } : null;
-          }
-          updateDockPreview(memo.drop);
-        };
-        // Before a join arms, a release on a title bar makes a tab there and
-        // anywhere else leaves the pane where it is drawn.
-        const showUnarmed = () => (tab ? showDrop(tab) : showSnapGuide());
-        if (join) {
-          // A join arms once the edge has held, and shows its preview then.
-          // Over a title bar the pane must hold still there too: one moved
-          // along the bar, on its way to a drop there, stays a tab.
-          const joinKey = `${join.targetId}:${join.position}`;
-          const since = memo.join?.key === joinKey ? memo.join.at : null;
-          const movedOn = !!tab && !!since && (
-            Math.abs(hitX - since.x) > magnetDistances.catchX || Math.abs(hitShellY - since.y) > magnetDistances.catchY
-          );
-          if (memo.join?.key !== joinKey || movedOn) {
-            dropPendingJoin(memo);
-            const pending: PendingJoin = { key: joinKey, armed: false, timer: null, at: tab ? { x: hitX, y: hitShellY } : null };
-            pending.timer = setTimeout(() => {
-              if (memo.join !== pending || dragRef.current !== drag) return;
-              pending.armed = true;
-              pending.timer = null;
-              showDrop(join);
-            }, JOIN_DWELL_MS);
-            memo.join = pending;
-          }
-          if (memo.join?.armed) showDrop(join);
-          else showUnarmed();
-        } else {
-          dropPendingJoin(memo);
-          showUnarmed();
-        }
+        updateDropZone(zone);
+        updateDockPreview(previewOfZone(drag.paneId, zone));
       } else if (drag.type === "float-resize") {
-        updateDragFloatingRect({
-          paneId: drag.paneId,
-          rect: snapResize(drag.paneId, resolveFloatResizeRect(drag, preciseX, preciseShellY, width, contentHeight), drag.edges ?? CORNER_EDGES),
-        });
+        const edges = drag.edges ?? CORNER_EDGES;
+        sharedEdgesOf(drag.paneId, drag.origRect, edges);
+        const resized = resizeWithShared(
+          drag.paneId,
+          drag.origRect,
+          snapResize(drag.paneId, resolveFloatResizeRect(drag, preciseX, preciseShellY, width, contentHeight), edges),
+          edges,
+        );
+        updateDragFloatingRect({ paneId: drag.paneId, rect: resized.rect });
+        updateDragPartners(resized.partners);
       }
       event.stopPropagation();
       event.preventDefault();
@@ -373,7 +405,6 @@ export function useShellActiveDrag({
     }
 
     if (event.type === "up" || event.type === "drag-end") {
-      dropPendingJoin(memo);
       memo.glide.reset();
       if (drag.type === "divider") {
         if (live.get().divider) {
@@ -389,12 +420,13 @@ export function useShellActiveDrag({
         const movedEnough = isMeaningfulPaneDrag(drag.startX, drag.startY, preciseX, preciseShellY, dragThreshold);
         if (!movedEnough) {
           updateDockPreview(null);
+          updateDropZone(null);
           updateDragFloatingRect(null);
           // A click on a stack's tab shows that pane.
-          if (drag.mode === "docked") focusPane(drag.paneId);
+          if (drag.mode !== "floating") focusPane(drag.paneId);
         } else {
           const releaseRect = snapMove(drag.paneId, resolvePaneDragFloatingRect(drag, dragBaseRect()!, preciseX, preciseShellY, width, contentHeight)).rect;
-          const nextLayout = finalizePaneDragRelease(baseLayout, drag.paneId, releaseRect, live.get().dockPreview);
+          const nextLayout = finalizePaneDragRelease(baseLayout, drag.paneId, releaseRect, live.get().dockPreview, drag.mode);
           if (windowMode) {
             updateWindowModePreviewLayout(nextLayout, drag.paneId);
           } else {
@@ -402,17 +434,27 @@ export function useShellActiveDrag({
           }
           focusPane(drag.paneId);
           updateDockPreview(null);
+          updateDropZone(null);
           updateDragFloatingRect(null);
         }
       } else if (drag.type === "float-resize") {
-        const releaseRect = snapResize(drag.paneId, resolveFloatResizeRect(drag, preciseX, preciseShellY, width, contentHeight), drag.edges ?? CORNER_EDGES);
-        const nextLayout = floatAtRect(baseLayout, drag.paneId, releaseRect);
+        const edges = drag.edges ?? CORNER_EDGES;
+        sharedEdgesOf(drag.paneId, drag.origRect, edges);
+        const released = resizeWithShared(
+          drag.paneId,
+          drag.origRect,
+          snapResize(drag.paneId, resolveFloatResizeRect(drag, preciseX, preciseShellY, width, contentHeight), edges),
+          edges,
+        );
+        let nextLayout = floatAtRect(baseLayout, drag.paneId, released.rect);
+        for (const [partnerId, rect] of released.partners ?? []) nextLayout = floatAtRect(nextLayout, partnerId, rect);
         if (windowMode) {
           updateWindowModePreviewLayout(nextLayout, drag.paneId);
         } else {
           persistLayout(nextLayout);
         }
         updateDragFloatingRect(null);
+        updateDragPartners(null);
       }
       endDrag();
       event.stopPropagation();
@@ -426,6 +468,7 @@ export function useShellActiveDrag({
     dockGeometryOptions,
     dockLeafLayouts,
     dragRef,
+    dropZoneMetrics,
     endDrag,
     focusPane,
     live,
@@ -434,10 +477,11 @@ export function useShellActiveDrag({
     paneMap,
     persistLayout,
     precisePointer,
-    snapGuides,
     updateDividerPreview,
     updateDockPreview,
     updateDragFloatingRect,
+    updateDragPartners,
+    updateDropZone,
     updateWindowModePreviewLayout,
     visibleLayout,
     windowMode,

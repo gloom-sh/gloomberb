@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo, useRef, type RefObject } from "react";
 import { Box, type BoxRenderable, type LiveBoxFrame } from "../../../../ui";
 import { resolveOccludedPaneIds } from "../pane-occlusion";
 import {
+  floatingStacks,
   SHELL_DRAG_Z,
   type DockDividerLayout,
   type DockLeafLayout,
@@ -82,6 +83,8 @@ interface ShellPaneLayersProps {
   startNativeDockedDrag: (paneId: string, rect: LayoutBounds, event: any, options?: { focus?: boolean }) => void;
   startNativeFloatingDrag: (paneId: string, rect: FloatingRect, event: any) => void;
   startNativeFloatResize: (paneId: string, rect: FloatingRect, event: any, edges?: ResizeEdges) => void;
+  /** A press on a tab of a floating stack. */
+  startNativeTabDrag: (paneId: string, rect: FloatingRect, event: any) => void;
   transientFocusActive: boolean;
   transientFocusPaneId: string | null;
   visibleFloatingPanes: VisibleFloatingPane[];
@@ -102,6 +105,8 @@ interface PaneLayerActions {
   dockedDragStart: (paneId: string, rect: LayoutBounds, event: any, options?: { focus?: boolean }) => void;
   floatingDragStart: (paneId: string, rect: FloatingRect, event: any) => void;
   floatResizeStart: (paneId: string, rect: FloatingRect, event: any, edges?: ResizeEdges) => void;
+  /** A press on a tab of a floating stack: a move pulls it out. */
+  tabDragStart: (paneId: string, rect: FloatingRect, event: any) => void;
   drag: ShellMouseHandler;
   contextMenu: (paneId: string, rect: LayoutBounds, event: any) => void;
   menu: (paneId: string, rect: LayoutBounds, event: any) => void;
@@ -139,7 +144,7 @@ interface PaneLayerProps {
   movable: boolean;
   /** Desktop, docked: the sides that face another pane across the gap between them. */
   dockEdges?: readonly DockEdge[];
-  /** Docked: the panes stacked as tabs in this spot, this one shown. */
+  /** The panes stacked as tabs in this spot or floating window, this one shown. */
   stackTabs?: ReadonlyArray<{ id: string; title: string }>;
   nativePaneChrome: boolean;
   nativeContextMenu: boolean;
@@ -346,6 +351,7 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
   canAsk,
   getPaneQuickSettings,
   actions,
+  stackTabs,
   zIndex,
   frameRef,
 }: PaneLayerProps & {
@@ -358,6 +364,14 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
   const quickSettings = usePaneQuickSettings(getPaneQuickSettings, paneId);
   const nativeMove = nativePaneChrome && movable;
   const captureStamp = usePaneCaptureStamp(paneId);
+  // A floating stack's tabs: a click shows one, a press on one pulls it out;
+  // the rest of the title bar moves the whole stack.
+  const stack = useMemo<PaneHeaderStack | null>(() => (stackTabs ? {
+    tabs: stackTabs,
+    active: paneId,
+    onSelect: actions.showTab,
+    onTabMouseDown: nativeMove ? (tabId, event) => actions.tabDragStart(tabId, rect, event) : undefined,
+  } : null), [actions, nativeMove, paneId, rect, stackTabs]);
   return (
     <PaneFooterProvider>
       {(registeredFooter) => {
@@ -405,6 +419,7 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
             onResizeMouseDrag={nativeMove ? actions.drag : undefined}
             onResizeMouseDragEnd={nativeMove ? actions.drag : undefined}
             frameRef={frameRef}
+            stack={stack}
           >
             <PaneFooterKeys paneId={paneId} footer={registeredFooter} focused={focused} />
             <PaneContent
@@ -527,7 +542,12 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
   const paneId = frame.pane.instance.instanceId;
   const slide = frame.nativePaneChrome;
   const selectRedraw = useCallback((geometry: LiveDragGeometry) => {
+    // A window a resize moves along a shared edge.
+    const partner = geometry.partners?.get(paneId);
+    if (partner) return slide ? null : partner;
     if (geometry.floating?.paneId !== paneId) return null;
+    // A tab pulled out of this stack moves as an outline; the stack stays.
+    if (geometry.paneDrag?.paneId === paneId && geometry.paneDrag.mode === "tab") return null;
     // A desktop move or resize follows by restyling the pane instead.
     if (slide && (geometry.paneDrag?.paneId === paneId || geometry.paneResize?.paneId === paneId)) return null;
     return geometry.floating.rect;
@@ -535,13 +555,18 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
   const dragRect = useLiveDrag(live, selectRedraw);
   const layerRef = useRef<BoxRenderable | null>(null);
   const frameOf = useMemo(() => (slide ? (geometry: LiveDragGeometry): LiveBoxFrame | null => {
+    const partner = geometry.partners?.get(paneId);
+    if (partner) {
+      const resized = constrainFloatingRectToBounds(partner, width, contentHeight);
+      return { dx: resized.x - rect.x, dy: resized.y - rect.y };
+    }
     // A resize keeps the pane on its own layer too: the panes it uncovers or
     // covers never repaint, only the pane does. A left or top edge moves it.
     if (geometry.paneResize?.paneId === paneId) {
       const resized = geometry.floating?.paneId === paneId ? constrainFloatingRectToBounds(geometry.floating.rect, width, contentHeight) : null;
       return resized ? { dx: resized.x - rect.x, dy: resized.y - rect.y } : { dx: 0, dy: 0 };
     }
-    if (geometry.paneDrag?.paneId !== paneId) return null;
+    if (geometry.paneDrag?.paneId !== paneId || geometry.paneDrag.mode === "tab") return null;
     const moving = geometry.floating?.paneId === paneId ? geometry.floating.rect : null;
     // Promoted from the press, so the first move already only slides it.
     if (!moving) return { dx: 0, dy: 0 };
@@ -551,12 +576,22 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
   useLiveBoxFrame(live, layerRef, frameOf);
   const frameRef = useRef<BoxRenderable | null>(null);
   const sizeOf = useMemo(() => (slide ? (geometry: LiveDragGeometry): CellSize | null => {
+    const partner = geometry.partners?.get(paneId);
+    if (partner) {
+      const at = constrainFloatingRectToBounds(partner, width, contentHeight);
+      return { width: at.width, height: at.height };
+    }
     if (geometry.paneResize?.paneId !== paneId || geometry.floating?.paneId !== paneId) return null;
     const at = constrainFloatingRectToBounds(geometry.floating.rect, width, contentHeight);
     return { width: at.width, height: at.height };
   } : null), [contentHeight, paneId, slide, width]);
   useLiveBoxFrame(live, frameRef, sizeOf);
   const selectCatchUp = useMemo(() => (slide ? (geometry: LiveDragGeometry) => {
+    const partner = geometry.partners?.get(paneId);
+    if (partner) {
+      const resized = constrainFloatingRectToBounds(partner, width, contentHeight);
+      return sameRect(resized, rect) ? null : resized;
+    }
     if (geometry.paneResize?.paneId !== paneId || geometry.floating?.paneId !== paneId) return null;
     const resized = constrainFloatingRectToBounds(geometry.floating.rect, width, contentHeight);
     return sameRect(resized, rect) ? null : resized;
@@ -565,7 +600,7 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
   // Over somewhere to land, the desktop pane rises over its landing preview
   // and turns see-through, so the preview shows under it.
   const selectArmed = useCallback((geometry: LiveDragGeometry) => (
-    geometry.paneDrag?.paneId === paneId && geometry.dockPreview !== null
+    geometry.paneDrag?.paneId === paneId && geometry.paneDrag.mode !== "tab" && geometry.dockPreview !== null
   ), [paneId]);
   const armed = useLiveDrag(live, slide ? selectArmed : selectNoDrag);
   const preview = dragRect
@@ -700,6 +735,7 @@ export function ShellPaneLayers({
   startNativeDockedDrag,
   startNativeFloatingDrag,
   startNativeFloatResize,
+  startNativeTabDrag,
   transientFocusActive,
   transientFocusPaneId,
   visibleFloatingPanes,
@@ -746,9 +782,28 @@ export function ShellPaneLayers({
       cache.set(key, kept);
       byId.set(leaf.instanceId, kept);
     }
+    // A floating stack's tabs, by the pane in front.
+    for (const [shown, members] of floatingStacks(visibleFloatingPanes.map(({ pane }) => pane.floating!), floatingOrder)) {
+      const tabs = members.map((id) => {
+        const member = paneMap.get(id);
+        return { id, title: member ? getPaneTitle(member) : id };
+      });
+      const key = tabs.map((tab) => `${tab.id}\u0000${tab.title}`).join("\u0001");
+      const kept = stackTabsCache.current.get(key) ?? tabs;
+      cache.set(key, kept);
+      byId.set(shown, kept);
+    }
     stackTabsCache.current = cache;
     return byId;
-  }, [dockLeafLayouts, getPaneTitle, paneMap]);
+  }, [dockLeafLayouts, floatingOrder, getPaneTitle, paneMap, visibleFloatingPanes]);
+  // The floating panes behind the tab their stack shows: mounted, out of sight.
+  const hiddenFloatingTabs = useMemo(() => {
+    const hidden = new Set<string>();
+    for (const [shown, members] of floatingStacks(visibleFloatingPanes.map(({ pane }) => pane.floating!))) {
+      for (const id of members) if (id !== shown) hidden.add(id);
+    }
+    return hidden;
+  }, [visibleFloatingPanes]);
 
   const handlersRef = useRef({
     handleFloatingClose,
@@ -766,6 +821,7 @@ export function ShellPaneLayers({
     startNativeDockedDrag,
     startNativeFloatingDrag,
     startNativeFloatResize,
+    startNativeTabDrag,
     focusPane,
   });
   handlersRef.current = {
@@ -784,6 +840,7 @@ export function ShellPaneLayers({
     startNativeDockedDrag,
     startNativeFloatingDrag,
     startNativeFloatResize,
+    startNativeTabDrag,
     focusPane,
   };
   // Only called from events, never while rendering, so reading the latest handlers is safe.
@@ -793,6 +850,7 @@ export function ShellPaneLayers({
     dockedDragStart: (paneId, rect, event, options) => handlersRef.current.startNativeDockedDrag(paneId, rect, event, options),
     floatingDragStart: (paneId, rect, event) => handlersRef.current.startNativeFloatingDrag(paneId, rect, event),
     floatResizeStart: (paneId, rect, event, edges) => handlersRef.current.startNativeFloatResize(paneId, rect, event, edges),
+    tabDragStart: (paneId, rect, event) => handlersRef.current.startNativeTabDrag(paneId, rect, event),
     drag: (event) => handlersRef.current.handleNativeDrag(event),
     contextMenu: (paneId, rect, event) => handlersRef.current.handleNativePaneContextMenu(paneId, rect, event),
     menu: (paneId, rect, event) => handlersRef.current.handlePaneAction(paneId, rect, event),
@@ -877,11 +935,17 @@ export function ShellPaneLayers({
       })}
 
       {floatingLayers.map(({ pane, rect }) => {
-        if (transientFocusActive && pane.instance.instanceId !== transientFocusPaneId) return null;
+        const paneId = pane.instance.instanceId;
+        if (transientFocusActive && paneId !== transientFocusPaneId) return null;
+        const props = layerProps(pane, transientFocusActive ? fullscreenRect : rect);
+        const hiddenTab = !transientFocusActive && hiddenFloatingTabs.has(paneId);
         return (
           <FloatingPaneLayer
-            key={`float:${pane.instance.instanceId}`}
-            {...layerProps(pane, transientFocusActive ? fullscreenRect : rect)}
+            key={`float:${paneId}`}
+            {...props}
+            hidden={props.hidden || hiddenTab}
+            inView={props.inView && !hiddenTab}
+            stackTabs={transientFocusActive ? undefined : stackTabsById.get(paneId)}
             rect={transientFocusActive ? fullscreenRect : rect}
             zIndex={pane.floating?.zIndex ?? 50}
             live={live}

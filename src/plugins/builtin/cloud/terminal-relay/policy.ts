@@ -76,7 +76,7 @@ export const TERMINAL_RELAY_OPERATION_POLICY: Readonly<Record<string, TerminalRe
   "layout.focusRegion": { policy: "allow", reason: OPEN },
   "layout.setGrid": { policy: "allow", reason: ARRANGE },
   "desktop.popOutPane": { policy: "allow", reason: "Moves a pane into its own desktop window." },
-  "desktop.dockPane": { policy: "allow", reason: "Docks a detached desktop pane back." },
+  "desktop.dockPane": { policy: "allow", reason: "Returns a popped-out desktop pane to the main window." },
   "desktop.closeDetachedPane": { policy: "allow", reason: "Closes a detached desktop window." },
   "desktop.focusDetachedPane": { policy: "allow", reason: "Focuses a detached desktop window." },
   "capability.invoke": {

@@ -27,14 +27,21 @@ function normalizeFloatingEntries(layout: LayoutConfig): FloatingPaneEntry[] {
   const dockedIds = new Set(getDockedInstanceIds(layout.dockRoot));
   const detachedIds = new Set((layout.detached ?? []).map((entry) => entry.instanceId));
   const seen = new Set<string>();
-  return layout.floating
+  const kept = layout.floating
     .filter((entry) => !dockedIds.has(entry.instanceId) && !detachedIds.has(entry.instanceId))
     .filter((entry) => {
       if (seen.has(entry.instanceId)) return false;
       seen.add(entry.instanceId);
       return true;
-    })
-    .map((entry) => ({ ...entry }));
+    });
+  // A floating stack left with one tab is a window of its own again.
+  const stackSizes = new Map<string, number>();
+  for (const entry of kept) if (entry.stack) stackSizes.set(entry.stack, (stackSizes.get(entry.stack) ?? 0) + 1);
+  return kept.map((entry) => {
+    if (!entry.stack || (stackSizes.get(entry.stack) ?? 0) > 1) return { ...entry };
+    const { stack: _stack, ...rest } = entry;
+    return rest;
+  });
 }
 
 function normalizeDetachedEntries(layout: LayoutConfig) {

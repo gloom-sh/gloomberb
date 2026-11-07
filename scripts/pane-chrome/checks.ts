@@ -151,17 +151,67 @@ const near = (a: Rect | null, b: Rect | null, tolerance = 2) => !!a && !!b
   && Math.abs(a.width - b.width) <= tolerance && Math.abs(a.height - b.height) <= tolerance;
 const round = (rect: Rect | null) => rect && Object.fromEntries(Object.entries(rect).map(([key, value]) => [key, Math.round(value)]));
 
+/** A drop target drawn while a pane moves: a square of the target on the pane under the pointer, or a strip along the window's edge. */
+const dropTargetRect = (cdp: Cdp, selector: string) => evaluate<(Rect & { active: boolean }) | null>(cdp, `(() => {
+  const element = document.querySelector(${JSON.stringify(selector)});
+  const r = element && __check.rect(element);
+  return r && { ...r, active: element.getAttribute("data-active") === "true" };
+})()`);
+
+/** The landing preview, while it shows. */
+const dropPreviewRect = (cdp: Cdp) => evaluate<Rect | null>(cdp, `(() => { const el = document.querySelector('[data-gloom-role="drop-preview"]'); if (!el || getComputedStyle(el).opacity === "0") return null; return __check.rect(el); })()`);
+
 /**
- * Drags `paneId` by `part` onto the title bar of `targetId`, which stacks it
- * there as the shown tab, and checks the spot now holds both as tabs.
+ * Drags `paneId` by `part` over `hostId` and on to the target `selector`
+ * picks out (read while the pointer is over the host, where it is drawn),
+ * checks that target is lit and a preview shows, and lets go on it.
  */
-async function dockStack(cdp: Cdp, paneId: string, part: string, targetId: string): Promise<void> {
+async function dropOnTarget(cdp: Cdp, paneId: string, part: string, hostId: string | null, selector: string): Promise<{ target: Rect; preview: Rect }> {
+  const from = await pointOf(cdp, paneId, part);
+  const host = hostId ? await rectOf(cdp, hostId) ?? fail(`no ${hostId}`) : null;
+  // Over the host off its target's squares (a quarter of the way in); for a
+  // strip, a little way on, as the targets show once the pane is on the move.
+  const over = host ? { x: host.x + host.width / 4, y: host.y + host.height * 0.7 } : { x: from.x + 24, y: from.y + 24 };
+  await mouse(cdp, "mouseMoved", from.x, from.y, false);
+  await mouse(cdp, "mousePressed", from.x, from.y, true);
+  await frames(cdp);
+  let at = from;
+  const moveTo = async (to: Point, steps = 10) => {
+    for (let step = 1; step <= steps; step += 1) {
+      await mouse(cdp, "mouseMoved", at.x + ((to.x - at.x) * step) / steps, at.y + ((to.y - at.y) * step) / steps, true);
+      await frames(cdp);
+    }
+    at = to;
+  };
+  try {
+    await moveTo(over);
+    const target = await dropTargetRect(cdp, selector) ?? fail(`no ${selector} while ${paneId} moved over ${hostId ?? "the window"}`);
+    if (target.active) fail(`${selector} was lit before the pointer was on it`);
+    await moveTo(center(target), 6);
+    await frames(cdp, 2);
+    const lit = await dropTargetRect(cdp, selector);
+    if (!lit?.active) fail(`${selector} was not lit with the pointer on it`, lit);
+    const preview = await dropPreviewRect(cdp) ?? fail(`no landing preview over ${selector}`);
+    return { target, preview };
+  } finally {
+    await mouse(cdp, "mouseReleased", at.x, at.y, false);
+    await frames(cdp, 2);
+  }
+}
+
+/**
+ * Drags `paneId` by `part` onto the centre of the target on `targetId`,
+ * which stacks it there as the shown tab, and checks the spot now holds both
+ * as tabs.
+ */
+async function stackOnto(cdp: Cdp, paneId: string, part: string, targetId: string): Promise<void> {
   const before = { pane: await rectOf(cdp, paneId), target: await rectOf(cdp, targetId) };
   if (!before.pane || !before.target) fail("pane missing", before);
-  await drag(cdp, await pointOf(cdp, paneId, part), [await pointOf(cdp, targetId, "title")]);
+  const { preview } = await dropOnTarget(cdp, paneId, part, targetId, "[data-gloom-role=drop-zone][data-side=center]");
+  if (!near(preview, before.target)) fail(`the tab's preview is not ${targetId} whole`, { preview: round(preview), target: round(before.target) });
   const stacked = `(() => { const tabs = __check.stackTabs(${JSON.stringify(paneId)}); return !__check.shown(${JSON.stringify(targetId)}) && tabs?.length === 2 && tabs.at(-1).selected; })()`;
   if (await waitFor(cdp, stacked)) return;
-  fail(`dropping ${paneId} on the title bar of ${targetId} did not stack them`, {
+  fail(`dropping ${paneId} on the centre of ${targetId}'s target did not stack them`, {
     stack: await evaluate(cdp, `__check.stackTabs(${JSON.stringify(paneId)})`),
     target: round(await rectOf(cdp, targetId)),
   });
@@ -793,21 +843,21 @@ const steps: Step[] = [
     name: `first paint has no blank or provisional chart and no blank overview frame (${theme})`, scenario: `paint&theme=${theme}`, run: checkFirstPaint,
   })),
   ...PRESS_POINTS.map(([label, part]): Step => ({
-    name: `docked pane: drag by the ${label} onto a title bar stacks it there`,
+    name: `pane in the layout: drag by the ${label} onto the centre of another's target stacks it there`,
     scenario: "docked&titlebar=1",
-    run: (cdp) => dockStack(cdp, "plain:a", part, "plain:c"),
+    run: (cdp) => stackOnto(cdp, "plain:a", part, "plain:c"),
   })),
   ...PRESS_POINTS.map(([label, part]): Step => ({
-    name: `tabbed pane: drag by the ${label} onto a title bar stacks it there`,
+    name: `tabbed pane: drag by the ${label} onto the centre of another's target stacks it there`,
     scenario: "docked&titlebar=1",
-    run: (cdp) => dockStack(cdp, "tabs:a", part, "plain:c"),
+    run: (cdp) => stackOnto(cdp, "tabs:a", part, "plain:c"),
   })),
   ...PRESS_POINTS.map(([label, part]): Step => ({
-    name: `error card pane: drag by the ${label} onto a title bar stacks it there`,
+    name: `error card pane: drag by the ${label} onto the centre of another's target stacks it there`,
     scenario: "docked&titlebar=1",
     async run(cdp) {
       if (!await waitFor(cdp, `__check.pane("broken:a")?.textContent.includes("stopped working")`)) fail("broken:a shows no failure card");
-      await dockStack(cdp, "broken:a", part, "plain:b");
+      await stackOnto(cdp, "broken:a", part, "plain:b");
     },
   })),
   ...PRESS_POINTS.map(([label, part]): Step => ({
@@ -1003,59 +1053,91 @@ const steps: Step[] = [
     name: "stack: a click on a tab shows that pane, a drag takes it out of the stack",
     scenario: "docked&titlebar=1",
     async run(cdp) {
-      await dockStack(cdp, "plain:a", "title", "plain:c");
+      await stackOnto(cdp, "plain:a", "title", "plain:c");
       const tabOf = (id: string) => evaluate<Rect | null>(cdp, `__check.stackTabs("plain:a")?.find((tab) => tab.value === ${JSON.stringify(id)})?.rect ?? __check.stackTabs("plain:c")?.find((tab) => tab.value === ${JSON.stringify(id)})?.rect ?? null`);
       await click(cdp, center(await tabOf("plain:c") ?? fail("no plain:c tab")));
       if (!await waitFor(cdp, `!__check.shown("plain:a") && __check.stackTabs("plain:c")?.find((tab) => tab.selected)?.value === "plain:c"`)) {
         fail("clicking the plain:c tab did not show it", await evaluate(cdp, `__check.stackTabs("plain:c")`));
       }
-      // Out over the middle of another pane, clear of its edges: it floats there.
+      // Out over another pane, off its target: it floats there.
       const away = await rectOf(cdp, "plain:b") ?? fail("no plain:b");
-      await drag(cdp, center(await tabOf("plain:a") ?? fail("no plain:a tab")), [{ x: away.x + away.width / 2, y: away.y + away.height / 2 }]);
+      await drag(cdp, center(await tabOf("plain:a") ?? fail("no plain:a tab")), [{ x: away.x + away.width / 4, y: away.y + away.height * 0.7 }]);
       const out = `__check.pane("plain:a")?.getAttribute("data-floating") === "true" && !__check.stackTabs("plain:c") && __check.pane("plain:c")?.getAttribute("data-floating") === "false"`;
       if (!await waitFor(cdp, out)) fail("dragging the plain:a tab out did not float it and leave plain:c alone", await evaluate(cdp, `({ a: __check.pane("plain:a")?.getAttribute("data-floating"), c: __check.stackTabs("plain:c") })`));
     },
   },
-  {
-    name: "floating pane: held flush against a docked pane's edge, it joins the dock there once the preview shows",
+  ...(["left", "right", "top", "bottom"] as const).map((side): Step => ({
+    name: `floating pane: let go on the ${side} square of a pane's target, it splits that pane on that side`,
     scenario: "floating&titlebar=1",
     async run(cdp) {
-      const pane = await rectOf(cdp, "plain:float") ?? fail("no floating pane");
       const target = await rectOf(cdp, "plain:b") ?? fail("no plain:b");
-      const from = await pointOf(cdp, "plain:float", "title");
-      // The left edge a few px inside plain:b's, where it meets tabs:a, which
-      // the magnet pulls flush; the pointer over plain:b's body, clear of its title bar.
-      const to = { x: target.x + 3 + (from.x - pane.x), y: target.y + target.height / 2 };
-      const preview = `(() => { const el = document.querySelector('[data-gloom-role="drop-preview"]'); if (!el || getComputedStyle(el).opacity === "0") return null; const r = el.getBoundingClientRect(); return Math.abs(r.x - ${target.x}) <= 2 ? true : null; })()`;
-      await dragHolding(cdp, from, to, async () => {
-        if (await evaluate(cdp, preview)) fail("the join preview showed before the edge had held");
-        if (!await waitFor(cdp, preview)) fail("holding the edge flush never showed the join preview");
-      });
-      const joined = `(() => { const r = __check.paneRect("plain:float"); return r && __check.pane("plain:float").getAttribute("data-floating") === "false" && Math.abs(r.x - ${target.x}) <= 2; })()`;
-      if (!await waitFor(cdp, joined)) fail("releasing on the join preview did not dock it against plain:b's left edge", { before: round(pane), target: round(target), after: round(await rectOf(cdp, "plain:float")) });
+      const { preview } = await dropOnTarget(cdp, "plain:float", "title", "plain:b", `[data-gloom-role=drop-zone][data-side=${side}]`);
+      // The preview is the half of plain:b's spot on that side.
+      const across = side === "left" || side === "right";
+      const half = across ? preview.width < target.width * 0.75 && Math.abs(preview.height - target.height) <= 2 : preview.height < target.height * 0.75 && Math.abs(preview.width - target.width) <= 2;
+      const flush = side === "left" ? Math.abs(preview.x - target.x) <= 2 : side === "right" ? Math.abs(preview.x + preview.width - target.x - target.width) <= 2
+        : side === "top" ? Math.abs(preview.y - target.y) <= 2 : Math.abs(preview.y + preview.height - target.y - target.height) <= 2;
+      if (!half || !flush) fail(`the preview is not the ${side} half of plain:b`, { preview: round(preview), target: round(target) });
+      const landed = `(() => { const r = __check.paneRect("plain:float"); return r && __check.pane("plain:float").getAttribute("data-floating") === "false" && Math.abs(r.x - ${preview.x}) <= 2 && Math.abs(r.y - ${preview.y}) <= 2 && Math.abs(r.width - ${preview.width}) <= 2 && Math.abs(r.height - ${preview.height}) <= 2; })()`;
+      if (!await waitFor(cdp, landed)) fail(`it did not land where the preview showed, ${side} of plain:b`, { preview: round(preview), after: round(await rectOf(cdp, "plain:float")) });
+    },
+  })),
+  ...(["left", "top", "right", "bottom"] as const).map((edge): Step => ({
+    name: `floating pane: let go on the strip along the window's ${edge} edge, it goes along that whole edge of the layout`,
+    scenario: "floating&titlebar=1",
+    async run(cdp) {
+      const ids = ["plain:a", "tabs:a", "plain:b", "broken:a", "plain:c"];
+      const rects = await Promise.all(ids.map(async (id) => await rectOf(cdp, id) ?? fail(`no ${id}`)));
+      const area = { x: Math.min(...rects.map((r) => r.x)), y: Math.min(...rects.map((r) => r.y)), right: Math.max(...rects.map((r) => r.x + r.width)), bottom: Math.max(...rects.map((r) => r.y + r.height)) };
+      const { preview } = await dropOnTarget(cdp, "plain:float", "title", null, `[data-gloom-role=drop-strip][data-edge=${edge}]`);
+      const along = edge === "left" || edge === "right"
+        ? Math.abs(preview.y - area.y) <= 2 && Math.abs(preview.y + preview.height - area.bottom) <= 2 && (edge === "left" ? Math.abs(preview.x - area.x) <= 2 : Math.abs(preview.x + preview.width - area.right) <= 2)
+        : Math.abs(preview.x - area.x) <= 2 && Math.abs(preview.x + preview.width - area.right) <= 2 && (edge === "top" ? Math.abs(preview.y - area.y) <= 2 : Math.abs(preview.y + preview.height - area.bottom) <= 2);
+      if (!along) fail(`the preview does not run along the layout's whole ${edge} edge`, { preview: round(preview), area });
+      const landed = `(() => { const r = __check.paneRect("plain:float"); return r && __check.pane("plain:float").getAttribute("data-floating") === "false" && Math.abs(r.x - ${preview.x}) <= 2 && Math.abs(r.y - ${preview.y}) <= 2 && Math.abs(r.width - ${preview.width}) <= 2 && Math.abs(r.height - ${preview.height}) <= 2; })()`;
+      if (!await waitFor(cdp, landed)) fail(`it did not land along the ${edge} edge where the preview showed`, { preview: round(preview), after: round(await rectOf(cdp, "plain:float")) });
+    },
+  })),
+  {
+    name: "floating windows: a pane let go on the centre of a floating window's target stacks them there as tabs; a tab dragged out floats alone",
+    scenario: "floating&titlebar=1",
+    async run(cdp) {
+      const window = await rectOf(cdp, "plain:float") ?? fail("no floating pane");
+      const { preview } = await dropOnTarget(cdp, "plain:a", "title", "plain:float", "[data-gloom-role=drop-zone][data-side=center]");
+      if (!near(preview, window)) fail("the tab's preview is not the floating window whole", { preview: round(preview), window: round(window) });
+      const stacked = `(() => { const tabs = __check.stackTabs("plain:a"); return __check.pane("plain:a")?.getAttribute("data-floating") === "true" && !__check.shown("plain:float") && tabs?.map((tab) => tab.value).join() === "plain:float,plain:a" && tabs.at(-1).selected; })()`;
+      if (!await waitFor(cdp, stacked)) fail("dropping plain:a on the floating window's centre did not stack them there", await evaluate(cdp, `__check.stackTabs("plain:a")`));
+      if (!near(await rectOf(cdp, "plain:a"), window)) fail("the stack did not keep the floating window's rect", { window: round(window), stack: round(await rectOf(cdp, "plain:a")) });
+      // The other tab, out over a pane of the layout off its target: it floats there on its own, the stack's last tab a window again.
+      const tab = await evaluate<Rect | null>(cdp, `__check.stackTabs("plain:a")?.find((tab) => tab.value === "plain:float")?.rect ?? null`) ?? fail("no plain:float tab");
+      const away = await rectOf(cdp, "plain:b") ?? fail("no plain:b");
+      await drag(cdp, center(tab), [{ x: away.x + away.width / 4, y: away.y + away.height * 0.7 }]);
+      const apart = `__check.pane("plain:float")?.getAttribute("data-floating") === "true" && __check.shown("plain:float") && __check.shown("plain:a") && !__check.stackTabs("plain:a") && !__check.stackTabs("plain:float")`;
+      if (!await waitFor(cdp, apart)) fail("dragging the plain:float tab out did not leave two windows", await evaluate(cdp, `({ a: __check.stackTabs("plain:a"), float: __check.stackTabs("plain:float") })`));
     },
   },
   {
-    name: "floating pane: its top edge held flush with a docked pane's, the pointer on that pane's title bar, it joins above it once the preview shows",
+    name: "floating windows: a pane let go on a side square of a floating window's target shares its rect edge to edge, and their shared edge resizes both",
     scenario: "floating&titlebar=1",
     async run(cdp) {
-      const pane = await rectOf(cdp, "plain:float") ?? fail("no floating pane");
-      const target = await rectOf(cdp, "plain:c") ?? fail("no plain:c");
-      const from = await pointOf(cdp, "plain:float", "title");
-      // The top edge a few px below plain:c's, where it meets plain:b, which
-      // the magnet pulls flush, and well inside it across: held by its title,
-      // the pointer is on plain:c's title bar.
-      const to = { x: target.x + 60 + (from.x - pane.x), y: target.y + 3 + (from.y - pane.y) };
-      const preview = `(() => { const el = document.querySelector('[data-gloom-role="drop-preview"]'); if (!el || getComputedStyle(el).opacity === "0") return null; const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })()`;
-      const above = `(() => { const r = ${preview}; return r && Math.abs(r.y - ${target.y}) <= 2 && r.height < ${target.height * 0.75} ? r : null; })()`;
-      await dragHolding(cdp, from, to, async () => {
-        // Until the edge has held, a release there stacks it: the tab's preview, plain:c whole.
-        const early = await evaluate<Rect | null>(cdp, preview);
-        if (!early || Math.abs(early.height - target.height) > 2) fail("before the edge had held, the title bar did not show the tab's preview", { early: round(early), target: round(target) });
-        if (!await waitFor(cdp, above)) fail("holding the top edge flush never showed the join preview above plain:c", round(await evaluate<Rect | null>(cdp, preview)));
+      const window = await rectOf(cdp, "plain:float") ?? fail("no floating pane");
+      const { preview } = await dropOnTarget(cdp, "plain:a", "title", "plain:float", "[data-gloom-role=drop-zone][data-side=right]");
+      if (Math.abs(preview.x + preview.width - window.x - window.width) > 2 || preview.width > window.width * 0.75) fail("the preview is not the floating window's right half", { preview: round(preview), window: round(window) });
+      const split = `(() => { const a = __check.paneRect("plain:a"); const f = __check.paneRect("plain:float"); return a && f && __check.pane("plain:a").getAttribute("data-floating") === "true" && Math.abs(f.x + f.width - a.x) <= 2 && Math.abs(f.x - ${window.x}) <= 2 && Math.abs(a.x + a.width - ${window.x + window.width}) <= 2 ? { a, f } : null; })()`;
+      const halves = await waitFor<{ a: Rect; f: Rect } | null>(cdp, split) ?? fail("plain:a did not take the right half of the floating window", { a: round(await rectOf(cdp, "plain:a")), float: round(await rectOf(cdp, "plain:float")) });
+      // The edge they share, dragged left: both follow, still edge to edge.
+      const from = { x: halves.f.x + halves.f.width, y: halves.f.y + halves.f.height / 2 };
+      const by = -64;
+      await dragHolding(cdp, from, { x: from.x + by, y: from.y }, async () => {
+        const f = await rectOf(cdp, "plain:float");
+        const a = await rectOf(cdp, "plain:a");
+        if (!f || !a || Math.abs(f.x + f.width - (from.x + by)) > 2 || Math.abs(a.x - (from.x + by)) > 2) {
+          fail("mid-drag, the shared edge did not move both windows with the pointer", { float: round(f), a: round(a), edge: from.x + by });
+        }
       });
-      const joined = `(() => { const r = __check.paneRect("plain:float"); const c = __check.paneRect("plain:c"); return r && c && __check.pane("plain:float").getAttribute("data-floating") === "false" && !__check.stackTabs("plain:float") && Math.abs(r.y - ${target.y}) <= 2 && c.y >= r.y + r.height; })()`;
-      if (!await waitFor(cdp, joined)) fail("releasing on the join preview did not dock it above plain:c", { before: round(pane), target: round(target), after: round(await rectOf(cdp, "plain:float")), c: round(await rectOf(cdp, "plain:c")) });
+      const cell = await evaluate<{ width: number; height: number }>(cdp, "window.__paneChrome.cell");
+      const settled = `(() => { const a = __check.paneRect("plain:a"); const f = __check.paneRect("plain:float"); return a && f && Math.abs(f.x + f.width - a.x) <= 2 && Math.abs(a.x - ${from.x + by}) <= ${cell.width / 2 + 1} && Math.abs(a.x + a.width - ${halves.a.x + halves.a.width}) <= 2; })()`;
+      if (!await waitFor(cdp, settled)) fail("releasing the shared edge did not keep both windows edge to edge", { float: round(await rectOf(cdp, "plain:float")), a: round(await rectOf(cdp, "plain:a")) });
     },
   },
   {
@@ -1071,7 +1153,7 @@ const steps: Step[] = [
         const pane = await rectOf(cdp, "plain:float") ?? fail("no floating pane");
         const from = await pointOf(cdp, "plain:float", "title");
         // A few px short of the right edge, which the magnet pulls flush, and
-        // for the corner the bottom one too; held well past the join's dwell.
+        // for the corner the bottom one too; held a while, as no time decides anything.
         const dx = area.x + area.width - 3 - (pane.x + pane.width);
         const dy = corner === "corner" ? area.y + area.height - 3 - (pane.y + pane.height) : 0;
         const to = { x: from.x + dx, y: from.y + dy };
@@ -1083,6 +1165,30 @@ const steps: Step[] = [
         if (await evaluate(cdp, `__check.pane("plain:float")?.getAttribute("data-floating")`) !== "true") {
           fail(`a window parked at the screen's ${corner} docked`, { before: round(pane), after: round(after), area: round(area) });
         }
+      }
+    },
+  },
+  {
+    // The targets follow a move, not a press: a click on a title bar to focus
+    // a pane or pick a tab draws none of them, held or let go.
+    name: "floating pane: a press on a title bar that does not move draws no drop targets",
+    scenario: "floating&titlebar=1",
+    async run(cdp) {
+      const targets = `document.querySelectorAll('[data-gloom-role="drop-strip"], [data-gloom-role="drop-zone"]').length`;
+      for (const paneId of ["plain:float", "plain:a"]) {
+        const at = await pointOf(cdp, paneId, "title");
+        await mouse(cdp, "mouseMoved", at.x, at.y, false);
+        await mouse(cdp, "mousePressed", at.x, at.y, true);
+        try {
+          await frames(cdp, 3);
+          const held = await evaluate<number>(cdp, targets);
+          if (held) fail(`a press on ${paneId}'s title bar drew ${held} drop targets before it moved`);
+        } finally {
+          await mouse(cdp, "mouseReleased", at.x, at.y, false);
+          await frames(cdp, 2);
+        }
+        const after = await evaluate<number>(cdp, targets);
+        if (after) fail(`${after} drop targets stayed after a click on ${paneId}'s title bar`);
       }
     },
   },

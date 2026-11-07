@@ -17,7 +17,6 @@ import {
 } from "../../../layout/pane-manager";
 import type { WindowEditMode } from "../../../plugins/registry";
 import type { LayoutConfig } from "../../../types/config";
-import type { SnapGuidePosition } from "../shell/drag";
 
 export type WindowEditDockMovePosition = "left" | "right" | "above" | "below";
 
@@ -42,11 +41,18 @@ const FLOATING_RESIZE_CORNERS: FloatingResizeCorner[] = ["top-left", "bottom-rig
 const WINDOW_EDIT_MOVE_STEP = { x: 2, y: 1 };
 const WINDOW_EDIT_FAST_STEP = { x: 10, y: 5 };
 
-/**
- * What 1-8 snap a window to in move mode, the same places dragging it to an
- * edge or corner does: the quarters in reading order, then the halves.
- */
-const WINDOW_EDIT_SNAP_POSITIONS: readonly SnapGuidePosition[] = [
+export type SnapPosition =
+  | "left"
+  | "right"
+  | "top"
+  | "bottom"
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right";
+
+/** What 1-8 snap a window to in move mode: the quarters in reading order, then the halves. */
+const WINDOW_EDIT_SNAP_POSITIONS: readonly SnapPosition[] = [
   "top-left",
   "top-right",
   "bottom-left",
@@ -57,9 +63,35 @@ const WINDOW_EDIT_SNAP_POSITIONS: readonly SnapGuidePosition[] = [
   "bottom",
 ];
 
-export function snapPositionFromWindowEditKey(event: { name?: string; key?: string }): SnapGuidePosition | null {
+export function snapPositionFromWindowEditKey(event: { name?: string; key?: string }): SnapPosition | null {
   const name = event.name ?? event.key ?? "";
   return /^[1-8]$/.test(name) ? WINDOW_EDIT_SNAP_POSITIONS[Number(name) - 1] ?? null : null;
+}
+
+/** The half or quarter of a `width` by `height` area a snap to `position` fills. */
+export function snapRect(position: SnapPosition, width: number, height: number): FloatingRect {
+  const halfWidth = Math.max(1, Math.floor(width / 2));
+  const halfHeight = Math.max(1, Math.floor(height / 2));
+  const right = Math.max(0, width - halfWidth);
+  const bottom = Math.max(0, height - halfHeight);
+  switch (position) {
+    case "top-left":
+      return { x: 0, y: 0, width: halfWidth, height: halfHeight };
+    case "top-right":
+      return { x: right, y: 0, width: halfWidth, height: halfHeight };
+    case "bottom-left":
+      return { x: 0, y: bottom, width: halfWidth, height: halfHeight };
+    case "bottom-right":
+      return { x: right, y: bottom, width: halfWidth, height: halfHeight };
+    case "left":
+      return { x: 0, y: 0, width: halfWidth, height };
+    case "right":
+      return { x: right, y: 0, width: halfWidth, height };
+    case "top":
+      return { x: 0, y: 0, width, height: halfHeight };
+    case "bottom":
+      return { x: 0, y: bottom, width, height: halfHeight };
+  }
 }
 
 /** Floats the window at a snap rect, docked or not, keeping its place in the stack. */

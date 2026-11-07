@@ -145,7 +145,7 @@ export const layoutManagerModule: PluginModule = {
     ctx.registerCommand({
       id: "float-pane",
       label: "Float Pane",
-      description: "Detach a docked pane into a floating window",
+      description: "Take a pane out of the layout into a floating window",
       keywords: ["float", "detach", "undock", "window", "pane"],
       category: "config",
       execute: async () => {
@@ -154,7 +154,7 @@ export const layoutManagerModule: PluginModule = {
         const { layout, termWidth, termHeight, focusedPaneId } = getStateRef();
         const focusedPane = getFocusedPane(layout, focusedPaneId);
         if (!focusedPane || !isPaneDocked(layout, focusedPane.instanceId)) {
-          notify("Focus a docked pane to float it", { type: "info" });
+          notify("Focus a pane in the layout to float it", { type: "info" });
           return;
         }
 
@@ -167,9 +167,9 @@ export const layoutManagerModule: PluginModule = {
 
     ctx.registerCommand({
       id: "dock-pane",
-      label: "Dock Pane",
-      description: "Dock a floating pane back into the layout",
-      keywords: ["dock", "attach", "pin", "pane"],
+      label: "Return to Layout",
+      description: "Put a floating pane back into the layout",
+      keywords: ["return", "layout", "tile", "attach", "pin", "pane", "dock"],
       category: "config",
       execute: async () => {
         if (!getStateRef) return;
@@ -177,7 +177,7 @@ export const layoutManagerModule: PluginModule = {
         const { layout, focusedPaneId } = getStateRef();
         const focusedPane = getFocusedPane(layout, focusedPaneId);
         if (!focusedPane || !layout.floating.some((entry) => entry.instanceId === focusedPane.instanceId)) {
-          notify("Focus a floating pane to dock it", { type: "info" });
+          notify("Focus a floating pane to return it to the layout", { type: "info" });
           return;
         }
 
@@ -281,11 +281,11 @@ export const layoutManagerModule: PluginModule = {
         const focusedPane = getFocusedPane(layout, focusedPaneId);
         const dockedPaneIds = getDockedPaneIds(layout);
         if (dockedPaneIds.length < 2) {
-          notify("Need at least 2 docked panes to swap", { type: "info" });
+          notify("Need at least 2 panes in the layout to swap", { type: "info" });
           return;
         }
         if (!focusedPane || !isPaneDocked(layout, focusedPane.instanceId)) {
-          notify("Focus a docked pane to swap it", { type: "info" });
+          notify("Focus a pane in the layout to swap it", { type: "info" });
           return;
         }
 

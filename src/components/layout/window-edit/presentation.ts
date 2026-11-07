@@ -84,7 +84,7 @@ export function windowEditHelpItems(state: WindowEditState, pending: boolean): s
     }
     const floating = state.previewLayout.floating.some((entry) => entry.instanceId === state.paneId);
     return floating
-      ? [...leave, "arrows move", "Shift fast", "Tab window", "d dock", "r resize", ...snap]
+      ? [...leave, "arrows move", "Shift fast", "Tab window", "d layout", "r resize", ...snap]
       : [...leave, "arrows target", "Tab window", "d float", "r resize", ...snap];
   }
   if (state.focus.kind === "floating-resize") {

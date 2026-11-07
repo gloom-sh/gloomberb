@@ -53,7 +53,7 @@ export function buildNativeTransientOccluders({
   nativeWindowModePanelRect,
   windowModeDockMovePreview,
 }: {
-  activePaneDrag: { paneId: string; mode: "docked" | "floating" } | null;
+  activePaneDrag: { paneId: string; mode: "docked" | "floating" | "tab" } | null;
   commandBarNativeOccluder: LayoutBounds | null;
   dragFloatingRect: FloatingPreviewRect | null;
   dockPreview: DragPreview | null;
@@ -64,7 +64,7 @@ export function buildNativeTransientOccluders({
   const occluders: NativeTransientOccluder[] = [];
 
   if (activePaneDrag
-    && activePaneDrag.mode === "docked"
+    && activePaneDrag.mode !== "floating"
     && dragFloatingRect?.paneId === activePaneDrag.paneId
     && !dockPreview) {
     occluders.push({
