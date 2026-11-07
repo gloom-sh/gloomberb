@@ -674,39 +674,35 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="dock-divider"] {
   background: transparent !important;
 }
-/* Where a moving pane would land (a split, a tab, an edge of the layout, a
-   floating window's tab or half, window mode's keyboard move): the exact
-   rectangle, outlined in the accent over a light tint of it, so the panes
-   under it still show. */
+/* Where a moving pane can land and where it will: one look for all of it
+   (shell/drag/drop-zones.ts, shell/drag/overlays.tsx). The accent outlines a
+   tint of itself, 12% at rest and 40% under the pointer. The landing preview
+   is the exact rectangle the pane takes (a split, a tab, an edge of the
+   layout, a floating window's tab or half, window mode's keyboard move),
+   see-through so the panes under it still show. A strip along each edge of
+   the window is see-through too, and thinner. A square of the target on the
+   pane under the pointer sits raised and opaque over it. */
 [data-gloom-role="drop-preview"],
-[data-gloom-role="window-mode-drop-preview"] {
+[data-gloom-role="window-mode-drop-preview"],
+[data-gloom-role="drop-strip"],
+[data-gloom-role="drop-zone"] {
+  --drop-tint: 12%;
+  --drop-under: transparent;
   border: 2px solid var(--gloom-accent);
   border-radius: var(--gloom-radius-md);
-  background: color-mix(in srgb, var(--gloom-accent) 12%, transparent);
+  background: color-mix(in srgb, var(--gloom-accent) var(--drop-tint), var(--drop-under));
 }
-/* The targets a pane on the move can land on (shell/drag/drop-zones.ts):
-   the five squares of the target on the pane under the pointer, and a strip
-   along each edge of the window. One look, the landing preview's: the accent
-   over a tint of it, filled stronger on the one under the pointer, while the
-   preview shows where the pane lands. A square sits raised and opaque over
-   the pane it is on; a strip lies over the panes' edges, see-through. */
-[data-gloom-role="drop-zone"],
 [data-gloom-role="drop-strip"] {
-  border: 1px solid var(--gloom-accent);
+  border-width: 1px;
   border-radius: var(--gloom-radius-sm);
-  background: color-mix(in srgb, var(--gloom-accent) 12%, transparent);
 }
 [data-gloom-role="drop-zone"] {
-  border-width: 2px;
-  border-radius: var(--gloom-radius-md);
-  background: color-mix(in srgb, var(--gloom-accent) 12%, var(--gloom-bg));
+  --drop-under: var(--gloom-bg);
   box-shadow: var(--gloom-elevation);
 }
-[data-gloom-role="drop-strip"][data-active="true"] {
-  background: color-mix(in srgb, var(--gloom-accent) 40%, transparent);
-}
+[data-gloom-role="drop-strip"][data-active="true"],
 [data-gloom-role="drop-zone"][data-active="true"] {
-  background: color-mix(in srgb, var(--gloom-accent) 40%, var(--gloom-bg));
+  --drop-tint: 40%;
 }
 /* Inside a square, the part of the pane the moving one takes: all of it for a tab, a half for a side. */
 [data-gloom-role="drop-zone"]::before {

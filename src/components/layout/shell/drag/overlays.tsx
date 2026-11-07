@@ -6,13 +6,11 @@ import { SHELL_DRAG_Z, type LayoutBounds } from "../../../../layout/pane-manager
 import type { DragPreview } from "./index";
 import { useLiveBoxFrame, useLiveDrag, type LiveDragGeometry, type LiveDragStore } from "./live";
 import { placeStyle } from "./slide";
-import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../../theme/font-scale";
 import {
-  desktopDropZoneMetrics,
   dropStrips,
   dropZoneSquares,
-  TERMINAL_DROP_ZONE_METRICS,
   type DropStripEdge,
+  type DropZoneMetrics,
   type DropZoneSide,
   type DropZoneState,
 } from "./drop-zones";
@@ -38,6 +36,8 @@ export function ShellDragOverlays(props: {
   live: LiveDragStore;
   /** The shell's content area, whose edges have the strips that put a pane along them. */
   area: LayoutBounds;
+  /** The size of the targets, in cells. */
+  metrics: DropZoneMetrics;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
   return nativePaneChrome ? <DesktopDragOverlays {...props} /> : <TerminalDragOverlays {...props} />;
@@ -74,17 +74,19 @@ function TerminalDragOverlays({
   externalDockPreview,
   live,
   area,
+  metrics,
 }: {
   externalDockPreview: DragPreview | null;
   live: LiveDragStore;
   area: LayoutBounds;
+  metrics: DropZoneMetrics;
 }) {
   const dockPreview = useLiveDrag(live, selectDockPreview);
   const dragging = useLiveDrag(live, selectPaneDragActive);
   const effectiveDockPreview = dockPreview ?? externalDockPreview;
   return (
     <>
-      {dragging && <TerminalDropTargets live={live} area={area} />}
+      {dragging && <TerminalDropTargets live={live} area={area} metrics={metrics} />}
 
       {!effectiveDockPreview && <TerminalDockedDragOutline live={live} />}
 
@@ -133,10 +135,10 @@ function translucent(hex: string, alpha: number): string {
  * under the pointer, the five squares of its target, each three cells wide.
  * The one under the pointer is tinted stronger and its mark drawn full.
  */
-function TerminalDropTargets({ live, area }: { live: LiveDragStore; area: LayoutBounds }) {
+function TerminalDropTargets({ live, area, metrics }: { live: LiveDragStore; area: LayoutBounds; metrics: DropZoneMetrics }) {
   const zones: DropZoneState | null = useLiveDrag(live, selectZones);
-  const strips = dropStrips(area, TERMINAL_DROP_ZONE_METRICS);
-  const squares = zones?.host ? dropZoneSquares(zones.host.rect, TERMINAL_DROP_ZONE_METRICS) : null;
+  const strips = dropStrips(area, metrics);
+  const squares = zones?.host ? dropZoneSquares(zones.host.rect, metrics) : null;
   const accent = colors.borderFocused;
   const rest = blendHex(colors.bg, accent, TERMINAL_TARGET_TINT.rest);
   const lit = blendHex(colors.bg, accent, TERMINAL_TARGET_TINT.lit);
@@ -284,29 +286,38 @@ function DesktopDragOverlays({
   externalDockPreview,
   live,
   area,
+  metrics,
 }: {
   externalDockPreview: DragPreview | null;
   live: LiveDragStore;
   area: LayoutBounds;
+  metrics: DropZoneMetrics;
 }) {
   const dragging = useLiveDrag(live, selectPaneDragActive);
   if (!dragging && !externalDockPreview) return null;
   return (
     <>
       <DesktopDragOverlayLayers externalDockPreview={externalDockPreview} live={live} />
-      {dragging && <DesktopDropTargets live={live} area={area} />}
+      {dragging && <DesktopDropTargets live={live} area={area} metrics={metrics} />}
     </>
   );
 }
 
-/** Where a box at `rect` (cells) sits, in px from the shell's corner. */
-function pxStyle(rect: LayoutBounds): CSSProperties {
-  return {
-    ...placeStyle(rect.x, rect.y),
-    width: rect.width * WEB_CELL_WIDTH,
-    height: rect.height * WEB_CELL_HEIGHT,
-    pointerEvents: "none",
-  };
+/** Desktop: one drop target, a square or a strip, at `rect` (cells) from the shell's corner. */
+function DesktopDropTarget({ rect, role, attributes }: { rect: LayoutBounds; role: string; attributes: Record<string, string> }) {
+  return (
+    <Box
+      position="absolute"
+      left={0}
+      top={0}
+      width={rect.width}
+      height={rect.height}
+      zIndex={SHELL_DRAG_Z.targets}
+      data-gloom-role={role}
+      {...attributes}
+      style={{ ...placeStyle(rect.x, rect.y), pointerEvents: "none" }}
+    />
+  );
 }
 
 /**
@@ -317,37 +328,26 @@ function pxStyle(rect: LayoutBounds): CSSProperties {
  * under the pointer lit. They render when what the pointer is over changes,
  * never on a move.
  */
-function DesktopDropTargets({ live, area }: { live: LiveDragStore; area: LayoutBounds }) {
+function DesktopDropTargets({ live, area, metrics }: { live: LiveDragStore; area: LayoutBounds; metrics: DropZoneMetrics }) {
   const zones: DropZoneState | null = useLiveDrag(live, selectZones);
-  const metrics = desktopDropZoneMetrics({ width: WEB_CELL_WIDTH, height: WEB_CELL_HEIGHT });
   const strips = dropStrips(area, metrics);
   const squares = zones?.host ? dropZoneSquares(zones.host.rect, metrics) : null;
   return (
     <>
       {STRIP_EDGES.map((edge) => (
-        <Box
+        <DesktopDropTarget
           key={`strip:${edge}`}
-          position="absolute"
-          left={0}
-          top={0}
-          zIndex={SHELL_DRAG_Z.targets}
-          data-gloom-role="drop-strip"
-          data-edge={edge}
-          data-active={zones?.edge === edge ? "true" : "false"}
-          style={pxStyle(strips[edge])}
+          rect={strips[edge]}
+          role="drop-strip"
+          attributes={{ "data-edge": edge, "data-active": zones?.edge === edge ? "true" : "false" }}
         />
       ))}
       {squares && ZONE_SIDES.map((side) => (
-        <Box
+        <DesktopDropTarget
           key={`zone:${side}`}
-          position="absolute"
-          left={0}
-          top={0}
-          zIndex={SHELL_DRAG_Z.targets}
-          data-gloom-role="drop-zone"
-          data-side={side}
-          data-active={zones?.side === side ? "true" : "false"}
-          style={pxStyle(squares[side])}
+          rect={squares[side]}
+          role="drop-zone"
+          attributes={{ "data-side": side, "data-active": zones?.side === side ? "true" : "false" }}
         />
       ))}
     </>

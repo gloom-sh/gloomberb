@@ -102,7 +102,7 @@ export function dropStrips(area: LayoutBounds, metrics: DropZoneMetrics): Record
   };
 }
 
-export const NO_DROP_ZONE: DropZoneState = { host: null, side: null, edge: null };
+const NO_DROP_ZONE: DropZoneState = { host: null, side: null, edge: null };
 
 /**
  * What the pointer at (`x`, `y`), in shell cells, is over. A strip first: the

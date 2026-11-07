@@ -45,14 +45,7 @@ import {
   type MagnetPace,
 } from "./drag/magnets";
 import { applySharedEdges, NO_SHARED_EDGES, resolveSharedEdges, type SharedEdgeGroups } from "./drag/shared-edges";
-import {
-  desktopDropZoneMetrics,
-  resolveDropZone,
-  TERMINAL_DROP_ZONE_METRICS,
-  type DropZoneHost,
-  type DropZoneState,
-} from "./drag/drop-zones";
-import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
+import { resolveDropZone, type DropZoneHost, type DropZoneMetrics, type DropZoneState } from "./drag/drop-zones";
 
 /** A resize without edges is the bottom-right corner's (the terminal's only one). */
 const CORNER_EDGES = { x: 1, y: 1 } as const;
@@ -67,6 +60,8 @@ interface UseShellActiveDragOptions {
   focusPane: (paneId: string) => void;
   /** How close a moving or resizing pane's edge comes to another before it sticks, in cells. */
   magnetDistances: MagnetDistances;
+  /** The size of the drop targets a moving pane is offered, in cells. */
+  dropZoneMetrics: DropZoneMetrics;
   nativePaneChrome: boolean;
   paneMap: Map<string, ResolvedPane>;
   persistLayout: (nextLayout: LayoutConfig, options?: { pushHistory?: boolean }) => void;
@@ -86,6 +81,7 @@ export function useShellActiveDrag({
   dragRuntime,
   focusPane,
   magnetDistances,
+  dropZoneMetrics,
   nativePaneChrome,
   paneMap,
   persistLayout,
@@ -381,9 +377,7 @@ export function useShellActiveDrag({
           y: hitShellY,
           hosts: dropHostsOf(drag.paneId, drag.mode),
           area: bounds,
-          metrics: nativePaneChrome
-            ? desktopDropZoneMetrics({ width: WEB_CELL_WIDTH, height: WEB_CELL_HEIGHT })
-            : TERMINAL_DROP_ZONE_METRICS,
+          metrics: dropZoneMetrics,
         });
         updateDropZone(zone);
         updateDockPreview(previewOfZone(drag.paneId, zone));
@@ -468,6 +462,7 @@ export function useShellActiveDrag({
     dockGeometryOptions,
     dockLeafLayouts,
     dragRef,
+    dropZoneMetrics,
     endDrag,
     focusPane,
     live,

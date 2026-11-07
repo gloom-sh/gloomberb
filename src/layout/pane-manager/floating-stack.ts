@@ -20,7 +20,7 @@ export function floatingStackMembers(floating: readonly FloatingPaneEntry[], ins
 }
 
 /** The member a stack shows: the one in front. */
-export function shownStackMember(members: readonly FloatingPaneEntry[]): FloatingPaneEntry | undefined {
+function shownStackMember(members: readonly FloatingPaneEntry[]): FloatingPaneEntry | undefined {
   let shown: FloatingPaneEntry | undefined;
   for (const member of members) {
     if (!shown || (member.zIndex ?? 50) >= (shown.zIndex ?? 50)) shown = member;

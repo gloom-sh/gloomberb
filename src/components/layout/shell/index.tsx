@@ -41,6 +41,7 @@ import { tickerLinkMenuItems } from "./ticker-link-menu";
 import { resolveTickerRetargetPane } from "../../../layout/ticker-retarget";
 import { resolveExternalDockPreview } from "./drag";
 import { magnetDistancesFor } from "./drag/magnets";
+import { desktopDropZoneMetrics, TERMINAL_DROP_ZONE_METRICS } from "./drag/drop-zones";
 import { resolveAppHeaderHeightCells } from "./chrome";
 import { useAppChromeShown } from "../presentation";
 import { useShellWindowMode } from "./window-mode";
@@ -205,6 +206,10 @@ export function Shell({
   const bounds = useMemo<LayoutBounds>(() => ({ x: 0, y: 0, width, height: contentHeight }), [contentHeight, width]);
   const magnetDistances = useMemo(() => magnetDistancesFor(
     nativePaneChrome ? { width: cellWidthPx ?? 8, height: cellHeightPx ?? 18 } : null,
+  ), [cellHeightPx, cellWidthPx, nativePaneChrome]);
+  const dropZoneMetrics = useMemo(() => (nativePaneChrome
+    ? desktopDropZoneMetrics({ width: cellWidthPx ?? 8, height: cellHeightPx ?? 18 })
+    : TERMINAL_DROP_ZONE_METRICS
   ), [cellHeightPx, cellWidthPx, nativePaneChrome]);
 
   // Every edit here starts from the visible layout, so the panes it hides go
@@ -808,6 +813,7 @@ export function Shell({
     focusedPaneId,
     handleFloatingClose,
     magnetDistances,
+    dropZoneMetrics,
     restoreFullscreen: exitTransientFocusLayout,
     menuState,
     nativePaneChrome,
@@ -972,6 +978,7 @@ export function Shell({
         externalDockPreview={externalDockPreview}
         live={live}
         area={bounds}
+        metrics={dropZoneMetrics}
       />
 
       <ShellActionMenuOverlay

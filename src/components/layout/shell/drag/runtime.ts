@@ -27,7 +27,7 @@ import type { ActionMenuState } from "../action-menu-overlay";
 import type { DividerPreviewState } from "../native/window-state";
 import { createLiveDragStore, IDLE_DRAG, type LiveDockGeometry, type LiveDragStore } from "./live";
 import type { MagnetDistances } from "./magnets";
-import { sameDropZone, type DropZoneState } from "./drop-zones";
+import { sameDropZone, type DropZoneMetrics, type DropZoneState } from "./drop-zones";
 import { beginLiveResize, createCatchUp } from "../../../../ui/live-resize";
 import type { WindowEditState } from "../../window-edit/mode";
 import { useShellActiveDrag } from "../active-drag";
@@ -242,6 +242,8 @@ interface UseShellPointerRuntimeOptions {
   handleFloatingClose: (paneId: string) => void;
   /** How close a moving or resizing pane's edge comes to another before it sticks, in cells. */
   magnetDistances: MagnetDistances;
+  /** The size of the drop targets a moving pane is offered, in cells. */
+  dropZoneMetrics: DropZoneMetrics;
   restoreFullscreen: () => void;
   menuState: ActionMenuState | null;
   nativePaneChrome: boolean;
@@ -281,6 +283,7 @@ export function useShellPointerRuntime({
   focusedPaneId,
   handleFloatingClose,
   magnetDistances,
+  dropZoneMetrics,
   restoreFullscreen,
   menuState,
   nativePaneChrome,
@@ -310,6 +313,7 @@ export function useShellPointerRuntime({
     focusPane,
     dragRuntime,
     magnetDistances,
+    dropZoneMetrics,
     nativePaneChrome,
     paneMap,
     persistLayout,

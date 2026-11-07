@@ -17,7 +17,7 @@ import type { LayoutConfig } from "../../../../types/config";
 import { PANE_HEADER_ACTION, PANE_HEADER_CLOSE, PANE_HEADER_HELP, PANE_HEADER_RESTORE } from "../../pane/header";
 
 /** A release onto a floating window: a tab of it, or half of its rect beside it. */
-export type FloatDrop =
+type FloatDrop =
   | { type: "tab"; targetId: string }
   | { type: "split"; targetId: string; side: FloatingSplitSide };
 
@@ -123,7 +123,7 @@ export function constrainFloatingRectToBounds(
  * hold it in: a docked pane at its floating size, held where it was pressed
  * (as far into it as it reaches); a floating one moved by the pointer.
  */
-export function freePaneDragRect(
+function freePaneDragRect(
   drag: PaneDragRectState,
   baseRect: FloatingRect,
   pointerX: number,

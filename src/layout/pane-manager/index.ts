@@ -59,7 +59,6 @@ export {
   floatingStackMembers,
   floatingStacks,
   hiddenFloatingTabIds,
-  shownStackMember,
   splitFloating,
   stackFloatingOnto,
   unstackFloating,
