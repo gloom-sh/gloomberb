@@ -7,6 +7,7 @@ import {
   mergeTickerSearchResultItems,
   QUICK_LOOK_TICKER_SEARCH_OPTIONS,
   tickerSearchFailureItems,
+  withMajorCoinCandidate,
 } from "./results";
 import type { ResultItem } from "../../list/model";
 
@@ -81,7 +82,7 @@ export function useTickerSearchRouteResults(options: {
       brokerInstanceId,
     );
     setTickerSearchResults(cachedCandidates
-      ? mergeTickerSearchResultItems(searchQuery, buildTickerSearchResultItems(cachedCandidates, searchQuery), localItems)
+      ? mergeTickerSearchResultItems(searchQuery, buildTickerSearchResultItems(withMajorCoinCandidate(searchQuery, cachedCandidates, getTickers()), searchQuery), localItems)
       : localItems);
     const requestId = ++searchRequestIdRef.current;
     const searchDelay = skipTickerSearchDebounceRef.current ? 0 : 200;
@@ -114,7 +115,7 @@ export function useTickerSearchRouteResults(options: {
         );
         setTickerSearchResults(mergeTickerSearchResultItems(
           searchQuery,
-          buildTickerSearchResultItems(combined, searchQuery),
+          buildTickerSearchResultItems(withMajorCoinCandidate(searchQuery, combined, getTickers()), searchQuery),
           localTickerSearchResultItems(searchQuery, { limit: 6 }),
         ));
       } catch (error) {

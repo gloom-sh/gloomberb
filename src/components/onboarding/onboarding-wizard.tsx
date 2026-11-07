@@ -419,9 +419,14 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
           onPress={() => saveProgressInBackground({ stage: "account" })}
         />
       </>}>
-      <Text fg={colors.textDim} wrapText>{tf(progress.desks?.length
-        ? "Your holdings as a heatmap, a watchlist, and {ticker} charted. Your desks are tabs at the bottom; {shortcut} adds more."
-        : "Your holdings as a heatmap, a watchlist, and {ticker} charted. Every pane moves; {shortcut} adds more.", {
+      {/* A skipped "What do you hold?" leaves no holdings to draw: the card names what is there. */}
+      <Text fg={colors.textDim} wrapText>{tf(progress.positionsImported === 0
+        ? progress.desks?.length
+          ? "A watchlist, the top news, and {ticker} charted. Your desks are tabs at the bottom; {shortcut} adds more."
+          : "A watchlist, the top news, and {ticker} charted. Every pane moves; {shortcut} adds more."
+        : progress.desks?.length
+          ? "Your holdings as a heatmap, a watchlist, and {ticker} charted. Your desks are tabs at the bottom; {shortcut} adds more."
+          : "Your holdings as a heatmap, a watchlist, and {ticker} charted. Every pane moves; {shortcut} adds more.", {
         ticker,
         shortcut: commandBarShortcut,
       })}</Text>

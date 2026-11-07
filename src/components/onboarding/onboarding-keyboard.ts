@@ -230,7 +230,11 @@ export function useOnboardingKeyboard({
 
       if (stage === "desks") {
         if (enter) {
+          // Nothing ticked yet: Enter ticks the highlighted desk, as Space does, rather than
+          // doing nothing while Continue waits for one. The next Enter continues.
+          const desk = DESKS[deskCursor];
           if (chosenDesks.length > 0) finishDesks(chosenDesks);
+          else if (desk) setChosenDesks((current) => toggleDeskChoice(current, desk.key));
         } else if (letter(SKIP_DESKS_KEY)) {
           finishDesks([]);
         } else if (!chord && (name === "up" || name === "k")) {

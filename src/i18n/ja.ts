@@ -1545,6 +1545,7 @@ export const ja: Record<string, string> = {
   "Transcripts, summaries, guidance and scores.": "書き起こし、要約、ガイダンス、スコア。",
   "YOUR WORKSPACE": "あなたのワークスペース",
   "Your holdings as a heatmap, a watchlist, and {ticker} charted. Every pane moves; {shortcut} adds more.": "保有銘柄のヒートマップ、ウォッチリスト、{ticker} のチャート。ペインは自由に動かせ、{shortcut} で追加できます。",
+  "A watchlist, the top news, and {ticker} charted. Every pane moves; {shortcut} adds more.": "ウォッチリスト、トップニュース、{ticker} のチャート。ペインは自由に動かせ、{shortcut} で追加できます。",
   "b: sign in with the browser instead": "b: ブラウザーでサインイン",
   "Esc, then b: sign in with the browser instead": "Esc のあと b: ブラウザーでサインイン",
   "Sign in with the browser instead": "ブラウザーでサインイン",
@@ -1561,6 +1562,7 @@ export const ja: Record<string, string> = {
   "FX & macro": "為替・マクロ",
   "Active trading": "アクティブトレード",
   "Your holdings as a heatmap, a watchlist, and {ticker} charted. Your desks are tabs at the bottom; {shortcut} adds more.": "保有銘柄のヒートマップ、ウォッチリスト、{ticker} のチャート。デスクは下部のタブにあり、{shortcut} で追加できます。",
+  "A watchlist, the top news, and {ticker} charted. Your desks are tabs at the bottom; {shortcut} adds more.": "ウォッチリスト、トップニュース、{ticker} のチャート。デスクは下部のタブにあり、{shortcut} で追加できます。",
   // ── Upgrade sheet ─────────────────────────────────────────
   "Start free trial": "無料トライアルを開始",
   "Your last payment didn't go through": "前回のお支払いが完了しませんでした",

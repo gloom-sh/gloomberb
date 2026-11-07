@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import type { ResultItem } from "../../list/model";
-import { DID_YOU_MEAN_CATEGORY, formatInstrumentBadge, mergePlainRootTickerResults, mergeTickerSearchResultItems, readRootTickerQuery, venueDropdownResults } from "./results";
+import { buildTickerSearchCandidates } from "../../../../tickers/search";
+import type { InstrumentSearchResult } from "../../../../types/instrument";
+import { DID_YOU_MEAN_CATEGORY, formatInstrumentBadge, mergePlainRootTickerResults, mergeTickerSearchResultItems, readRootTickerQuery, venueDropdownResults, withMajorCoinCandidate } from "./results";
 
 function resultItem(id: string, label: string, right: string, kind: ResultItem["kind"] = "ticker"): ResultItem {
   return {
@@ -63,6 +65,35 @@ test("crypto punctuation aliases never outrank the verified exact symbol in comm
   expect(rows[0]?.category).not.toBe("Exact Match");
   expect(rows[1]?.category).toBe("Exact Match");
   expect(mergePlainRootTickerResults("SHIB-USD", rows, [resultItem("pane", "Research", "", "action")])[0]?.id).toBe("exact");
+});
+
+// Search sends no coin for BTC (or sends it last): the bar showed Grayscale's trust and four companies, never bitcoin.
+test("a major coin's bare ticker offers the coin, first when the listing ahead cannot be it", () => {
+  const listing = (symbol: string, name: string, exchange: string, type = "Common Stock"): InstrumentSearchResult => (
+    { providerId: "gloomberb-cloud", symbol, name, exchange, type }
+  );
+  const order = (query: string, results: InstrumentSearchResult[]) => withMajorCoinCandidate(
+    query,
+    buildTickerSearchCandidates({ query, tickers: new Map(), providerResults: results, totalLimit: 30 }),
+    new Map(),
+  ).map((candidate) => `${candidate.symbol}:${candidate.result?.exchange}`);
+
+  // A fund named for the coin cannot be it: the coin leads, the row search sent last moving up.
+  expect(order("BTC", [
+    listing("BTC", "Grayscale Bitcoin Mini Trust ETF", "ARCA", "ETF"),
+    listing("BTC", "BTC Health Ltd.", "CXA"),
+    listing("BTC-USD", "Bitcoin USD", "CCC", "CRYPTOCURRENCY"),
+  ]).slice(0, 2)).toEqual(["BTC-USD:CCC", "BTC:ARCA"]);
+  // A live company of those letters keeps the lead; the coin, which search did not send, follows it.
+  expect(order("LINK", [listing("LINK", "Interlink Electronics, Inc.", "NASDAQ"), listing("LINK", "Link Net Tbk.", "JAKARTA")]))
+    .toEqual(["LINK:NASDAQ", "LINK-USD:CCC", "LINK:JAKARTA"]);
+  expect(order("AAPL", [listing("AAPL", "Apple Inc.", "NASDAQ")])).toEqual(["AAPL:NASDAQ"]);
+
+  const rows = mergeTickerSearchResultItems("BTC", [
+    { ...resultItem("coin", "BTC-USD", "CCC", "search"), category: "Other Listings", instrumentType: "CRYPTOCURRENCY" },
+    { ...resultItem("pair", "BCH-USD", "CCC", "search"), category: "Other Listings", instrumentType: "CRYPTOCURRENCY" },
+  ], []);
+  expect(rows.map((row) => row.category)).toEqual(["Exact Match", "Other Listings"]);
 });
 
 test("an index typed by its code is the exact match; the fund named for it and a name search are not", () => {

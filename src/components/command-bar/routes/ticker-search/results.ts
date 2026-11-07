@@ -1,9 +1,11 @@
 import type { TickerRecord } from "../../../../types/ticker";
 import {
+  buildTickerSearchCandidates,
   createLocalTickerSearchCandidates,
   findExactTickerSearchMatch,
   type TickerSearchCandidate,
 } from "../../../../tickers/search";
+import { MAJOR_COIN_NAMES } from "../../../../utils/crypto-pair";
 import {
   assetClassMarketSymbol,
   instrumentClassCode,
@@ -83,7 +85,56 @@ export function isExactTickerResultMatch(item: ResultItem, rawQuery: string): bo
     || answersToIndexCode(item, query)
     // "brent" and "oil" are how a benchmark future is typed; its own symbol is BZ=F or CL=F.
     || answersToFutureName(item, query)
+    // BTC is how bitcoin is typed; its own symbol is BTC-USD.
+    || majorCoinPairSymbol(query) === parsePublicTickerKey(item.label.trim().toUpperCase()).symbol
   ));
+}
+
+/** BTC-USD for BTC: the dollar pair of a coin whose bare ticker is how it is typed (`MAJOR_COIN_NAMES`). */
+function majorCoinPairSymbol(query: string): string | null {
+  const base = query.trim().toUpperCase();
+  return MAJOR_COIN_NAMES.has(base) ? `${base}-USD` : null;
+}
+
+/**
+ * A major coin's bare ticker (BTC, ETH, SOL) is how the coin is asked for, but
+ * search lists only the funds and companies of those letters (BTC is
+ * Grayscale's Bitcoin Mini Trust), with no coin among them. The bar adds the
+ * coin's dollar pair, the row search sends for "bitcoin", as the CLI's quote
+ * points to it ("For bitcoin use BTC-USD"); a pair search sends far down its
+ * list (ETH-USD after every ETH listing) moves up the same way. It leads when
+ * the listing it would follow cannot be what was meant: one named for the coin,
+ * or one that stopped trading. A live company of those letters (LINK is
+ * Interlink Electronics) keeps the lead, with the coin right after it.
+ */
+export function withMajorCoinCandidate(
+  query: string,
+  candidates: TickerSearchCandidate[],
+  tickers: ReadonlyMap<string, TickerRecord>,
+): TickerSearchCandidate[] {
+  const symbol = majorCoinPairSymbol(query);
+  const coin = MAJOR_COIN_NAMES.get(query.trim().toUpperCase());
+  if (!symbol || !coin) return candidates;
+  const isPair = (candidate: TickerSearchCandidate) => parsePublicTickerKey(candidate.symbol).symbol === symbol;
+  const sent = candidates.find(isPair);
+  const name = coin.replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+  const [pair] = sent ? [sent] : buildTickerSearchCandidates({
+    query: symbol,
+    tickers,
+    providerResults: [{ providerId: "gloomberb-cloud", symbol, name, exchange: "CCC", type: "CRYPTOCURRENCY", currency: "USD" }],
+    totalLimit: 1,
+    localLimit: 0,
+  });
+  if (!pair) return candidates;
+  const rest = candidates.filter((candidate) => !isPair(candidate));
+  const base = query.trim().toUpperCase();
+  const at = rest.findIndex((candidate) => parsePublicTickerKey(candidate.symbol).symbol === base);
+  if (at < 0) return [pair, ...rest];
+  const listing = rest[at]!;
+  const listingName = listing.result?.name ?? listing.ticker?.metadata.name ?? "";
+  const cannotBeIt = !!listing.result?.delisting || new RegExp(`\\b${coin}\\b`, "i").test(listingName);
+  const index = cannotBeIt ? at : at + 1;
+  return [...rest.slice(0, index), pair, ...rest.slice(index)];
 }
 
 export function mergeTickerSearchResultItems(

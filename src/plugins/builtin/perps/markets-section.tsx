@@ -52,8 +52,11 @@ const COLUMNS: readonly Column[] = [
   { id: "oi", label: "OI USD", width: 7, align: "right" },
   { id: "volume", label: "Vol 24h", width: 7, align: "right" },
 ];
-/** What a narrow overview gives up first: the volume, then the contract, then the premium. */
-const DROP_ORDER: readonly Column["id"][] = ["volume", "contract", "premium"];
+/**
+ * What a narrow overview gives up first: the volume, then the contract, the premium, the open interest and the
+ * funding, so the columns left fit whole rather than squeezed into cut figures ("+0." for +0.0050%).
+ */
+const DROP_ORDER: readonly Column["id"][] = ["volume", "contract", "premium", "oi", "funding"];
 const GAP = 2;
 const span = (columns: readonly Column[]) => columns.reduce((sum, column) => sum + column.width, 0) + GAP * (columns.length - 1);
 
