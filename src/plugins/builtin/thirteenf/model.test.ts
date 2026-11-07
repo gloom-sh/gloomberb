@@ -268,7 +268,7 @@ describe("13F model", () => {
     const steady = { previous: holding({ cusip: "B", ticker: "BBB", value: 1000, shares: 100 }), current: holding({ cusip: "B", ticker: "BBB", value: 1100, shares: 100 }) };
     const forward = fund([holding({ cusip: "A", value: 1000, shares: 10 }), steady.previous], [holding({ cusip: "A", value: 1200, shares: 100 }), steady.current]);
     expect(filingSplitCandidates(forward)).toEqual([expect.objectContaining({ ticker: "AAA" })]);
-    expect(quarter(forward, { AAA: 10 })).toEqual({ percent: expect.closeTo(15), splits: [{ ticker: "AAA", issuer: "Issuer", ratio: 10 }], skipped: [] });
+    expect(quarter(forward, { AAA: 10 })).toEqual({ percent: expect.closeTo(15), splits: [{ ticker: "AAA", issuer: "Issuer", ratio: 10 }], skipped: [], skippedShare: null });
     // Sold down to 73 of the 100 split shares, the 73 held through gain 2 each on a start of 10: (146 + 100) / (730 + 1000).
     const traded = fund([holding({ cusip: "A", value: 1000, shares: 10 }), steady.previous], [holding({ cusip: "A", value: 876, shares: 73 }), steady.current]);
     expect(quarter(traded, { AAA: 10 })).toMatchObject({ percent: expect.closeTo((246 / 1730) * 100), splits: [expect.objectContaining({ ratio: 10 })] });
@@ -280,9 +280,12 @@ describe("13F model", () => {
     expect([1.5, 1.25, 50].map(formatSplitRatio)).toEqual(["3:2", "5:4", "50:1"]);
     // Half the shares sold into a 32% rally (Berkshire's Nucor in 2026Q2) moves the same way; with no split it is a trim.
     const trim = fund([holding({ cusip: "A", value: 660_686_383, shares: 3_907_075 })], [holding({ cusip: "A", value: 413_814_258, shares: 1_857_752 })]);
-    expect(quarter(trim, { AAA: 1 })).toEqual({ percent: expect.closeTo((222.75 / 169.1 - 1) * 100, 1), splits: [], skipped: [] });
-    // Unchecked, a candidate is left out rather than read as a crash or a split it may not be.
-    expect(quarter(forward)).toEqual({ percent: expect.closeTo(10), splits: [], skipped: [{ ticker: "AAA", issuer: "Issuer" }] });
+    expect(quarter(trim, { AAA: 1 })).toEqual({ percent: expect.closeTo((222.75 / 169.1 - 1) * 100, 1), splits: [], skipped: [], skippedShare: null });
+    // Unchecked, a candidate is left out rather than read as a crash or a split it may not be, with what it weighed
+    // at the quarter's start (half the book here), and whether the lookups' time ran out on it.
+    expect(quarter(forward)).toEqual({ percent: expect.closeTo(10), splits: [], skipped: [{ ticker: "AAA", issuer: "Issuer", previousValue: 1000 }], skippedShare: 0.5 });
+    const late = Object.assign(new Map<string, number | null>(), { late: new Set(filingSplitCandidates(forward).map((line) => line.id)) });
+    expect(estimateFilingQuarterReturn(forward, late).skipped).toEqual([{ ticker: "AAA", issuer: "Issuer", previousValue: 1000, late: true }]);
     // A crash without a share change, or an add with the price flat, is no candidate.
     for (const current of [holding({ cusip: "A", value: 100, shares: 10 }), holding({ cusip: "A", value: 10000, shares: 100 })]) {
       expect(filingSplitCandidates(fund([holding({ cusip: "A", value: 1000, shares: 10 })], [current]))).toEqual([]);

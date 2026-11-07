@@ -140,19 +140,40 @@ export function splitAdjustedText(lines: readonly (SplitLine & { ratio: number }
   return `${prefix}: ${listedLines(lines, (line) => `${lineName(line)} ${formatSplitRatio(line.ratio)}`)} (split between the filings, as the corporate actions show)`;
 }
 
-/** "No Est P&L: XYZ (shares and value per share moved as across a split, and the corporate actions could not be read to tell)": lines left without a figure, `leftOut` opening it. */
-export function splitUnreadText(lines: readonly SplitLine[], leftOut: string): string {
-  return `${leftOut}: ${listedLines(lines, lineName)} (shares and value per share moved as across a split, and the corporate actions could not be read to tell)`;
+/** Why lines that moved as across a split have no figure: their corporate actions could not be read, or the time to read them ran out. */
+function unreadReason(lines: readonly (SplitLine & { late?: boolean })[]): string {
+  const late = lines.filter((line) => line.late).length;
+  const failed = lines.length - late;
+  if (late === 0) return "the corporate actions could not be read to tell";
+  if (failed === 0) return "the report ran out of time before reading their corporate actions";
+  return `the report ran out of time before reading the corporate actions of ${count(late)}; those of ${count(failed)} could not be read`;
 }
 
+/** "4.2%" of a book, or "under 0.1%". */
+function bookShareText(share: number): string {
+  return share < 0.001 ? "under 0.1%" : `${(share * 100).toFixed(1)}%`;
+}
+
+/**
+ * "No Est P&L: XYZ (shares and value per share moved as across a split, and the corporate actions could not be
+ * read to tell)": lines left without a figure, in the order given (largest first), `leftOut` opening it, and with
+ * `bookShare` what they weighed in the book at the quarter's start.
+ */
+export function splitUnreadText(lines: readonly (SplitLine & { late?: boolean })[], leftOut: string, bookShare?: number | null): string {
+  const share = bookShare != null && bookShare > 0 ? `, ${bookShareText(bookShare)} of the book at the quarter's start` : "";
+  return `${leftOut}${share}: ${listedLines(lines, lineName)} (shares and value per share moved as across a split, and ${unreadReason(lines)})`;
+}
+
+type UnreadRow = SplitLine & { splitUnread?: boolean; splitLate?: boolean };
+
 /** The note for the lines of a Holdings table left without an Est P&L because their split could not be confirmed: a data limitation, the pane's notice as well as the report's. */
-export function holdingUnreadNotes(rows: readonly (SplitLine & { splitUnread?: boolean })[]): string[] {
-  const unread = rows.filter((row) => row.splitUnread);
+export function holdingUnreadNotes(rows: readonly UnreadRow[]): string[] {
+  const unread = rows.filter((row) => row.splitUnread).map((row) => ({ ...row, late: row.splitLate }));
   return unread.length ? [splitUnreadText(unread, "No Est P&L")] : [];
 }
 
 /** What a Holdings report says of its lines that moved as across a split: the ones priced split-adjusted (method, so a report's note only), and the ones left without a figure. */
-export function holdingSplitNotes(rows: readonly (SplitLine & { splitRatio?: number; splitUnread?: boolean })[]): string[] {
+export function holdingSplitNotes(rows: readonly (UnreadRow & { splitRatio?: number })[]): string[] {
   const adjusted = rows.flatMap((row) => row.splitRatio ? [{ ...row, ratio: row.splitRatio }] : []);
   return [...(adjusted.length ? [splitAdjustedText(adjusted, "Est P&L split-adjusted")] : []), ...holdingUnreadNotes(rows)];
 }

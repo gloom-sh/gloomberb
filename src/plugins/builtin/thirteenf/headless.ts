@@ -72,6 +72,7 @@ import {
   sortBrowserRows,
   sortHoldingRows,
   sortTimelineRows,
+  type SplitFactors,
 } from "./model";
 import {
   actionLabel,
@@ -217,7 +218,7 @@ export interface ThirteenFHeadlessDependencies {
     ctx: HeadlessPaneContext,
   ): Promise<FundDetailData>;
   /** The split factor of each of a fund's split candidates between its two quarter ends (loadSplitFactors), for its Est P&L; with `only`, of those rows alone. */
-  loadSplitFactors?(detail: FundDetailData, ctx: HeadlessPaneContext, only?: ReadonlySet<string>): Promise<Map<string, number | null>>;
+  loadSplitFactors?(detail: FundDetailData, ctx: HeadlessPaneContext, only?: ReadonlySet<string>): Promise<SplitFactors>;
   /** What a fund in a search filed for the newest quarter past its deadline, from EDGAR. */
   loadFilingGap?(cik: string, latestPeriod: string | null | undefined, ctx: HeadlessPaneContext): Promise<ThirteenFFilingGap | null>;
   /** 13F filers whose names contain `query`, without their reports. */
@@ -256,12 +257,14 @@ async function readingSavedCopies<T extends object>(ctx: HeadlessPaneContext, ru
 }
 
 /**
- * How long a report's Est 13F waits on its split lookups. A large filer off
- * the ranking has a few hundred lines that move like a split; read cold, they
- * took 25 to 35 s, past what an Ask Gloom tool call is given. The lines not
- * read in time are left out of the estimate and named.
+ * How long a report waits on its split lookups, largest lines first. A large
+ * filer off the ranking has a few hundred lines that move like a split (its
+ * Est 13F reads them all), and its 200 largest can hold dozens (its Holdings
+ * read theirs); read cold, they took 15 to 35 s, past what an Ask Gloom tool
+ * call is given. A line not read in time has no Est P&L, is left out of the
+ * Est 13F, and is named as one the time ran out on.
  */
-const PERFORMANCE_SPLIT_BUDGET_MS = 8_000;
+const SPLIT_LOOKUP_BUDGET_MS = 8_000;
 
 const defaultDependencies: Required<ThirteenFHeadlessDependencies> = {
   loadBrowser: (tab, query, limit, _args, ctx) => loadBrowserRows(
@@ -276,13 +279,13 @@ const defaultDependencies: Required<ThirteenFHeadlessDependencies> = {
     detail,
     (ticker, after, through) => corporateSplitFactor(ctx.marketData, ticker, after, through),
     ctx.signal,
-    { only },
+    { only, budgetMs: SPLIT_LOOKUP_BUDGET_MS },
   ),
   loadFilingGap: (cik, latestPeriod, ctx) => loadFilingGap(cik, latestPeriod, ctx.signal),
   searchFunds: (query, ctx) => searchThirteenFFunds(query, THIRTEENF_MAX_LIMIT, ctx.signal),
   loadPerformance: (cik, name, ctx) => loadFundPerformance(cik, name, ctx.signal, {
     splitFactor: (ticker, after, through) => corporateSplitFactor(ctx.marketData, ticker, after, through),
-    splitBudgetMs: PERFORMANCE_SPLIT_BUDGET_MS,
+    splitBudgetMs: SPLIT_LOOKUP_BUDGET_MS,
     onSavedCopy: noteSavedCopy(ctx),
   }),
   loadEtfFunds: async (ctx) => (await fetchFunds(ctx.apiClient)).funds,
@@ -377,9 +380,14 @@ async function findThirteenFFund(
   const named = candidates.filter((row) => spokenName(row.name) === said);
   const leading = candidates.filter((row) => spokenName(row.name).startsWith(`${said} `) || spokenName(row.name) === said);
   const only = (rows: typeof candidates) => (rows.length === 1 ? rows[0] : undefined);
-  const match = only(exact) ?? only(named);
-  if (exactOnly) return match ? { cik: match.cik, name: match.name } : null;
-  const fund = match ?? only(leading) ?? (candidates.length === 1 && !result.hasMore ? candidates[0] : undefined);
+  // A word that may be a ticker ("SPY") names a manager only by its exact name, never by "SPY Inc".
+  if (exactOnly) {
+    const match = only(exact);
+    return match ? { cik: match.cik, name: match.name } : null;
+  }
+  // A name only some funds start with names one of them only when the search listed every fund it matched.
+  const complete = !result.hasMore;
+  const fund = only(exact) ?? only(named) ?? (complete ? only(leading) : undefined) ?? (candidates.length === 1 && complete ? candidates[0] : undefined);
   if (candidates.length === 0) throw new Error(notFound ?? `No 13F fund found for "${query}". ${SEARCH_HINT}`);
   if (!fund) {
     const fits = new Set(leading);
@@ -900,7 +908,7 @@ export function createThirteenFHeadless(
               ...flagNotices,
               estimated ? `Est 13F: from the ${estimated} filings, the Est P&L of positions held through the quarter over their value at its start${rankingText ? ` (${rankingText})` : ""}` : "",
               performance.splits?.length ? splitAdjustedText(performance.splits) : "",
-              performance.skipped?.length ? splitUnreadText(performance.skipped, "Left out of Est 13F") : "",
+              performance.skipped?.length ? splitUnreadText(performance.skipped, "Left out of Est 13F", performance.skippedShare) : "",
               performance.unavailable ? `No Est 13F${rankingText ? ` (${rankingText})` : ""}: ${performance.unavailable}` : "",
               ...filingGapNotes(performance.period ?? null, performance.filingGap ?? null),
               `Copy this basket: gloom portfolio import --13f ${row.cik}`,

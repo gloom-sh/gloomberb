@@ -55,6 +55,7 @@ export const SWEEP_CASES: SweepCase[] = [
   { tool: "13f", args: { text: "Millennium Management", view: "holdings" } },
   { tool: "13f", args: { text: "0001273087", view: "holdings", limit: 200 } },
   { tool: "13f", args: { text: "Citadel Advisors", view: "holdings" } },
+  { tool: "13f", args: { text: "Citadel Advisors", view: "holdings", limit: 200 } },
   { tool: "13f", args: { text: "BlackRock Inc", view: "holdings", limit: 25 } },
   { tool: "13f", args: { text: "Vanguard Group", view: "holdings", limit: 25 } },
   { tool: "13f", args: { text: "Bridgewater Associates", view: "holdings" } },

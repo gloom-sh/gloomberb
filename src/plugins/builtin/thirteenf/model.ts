@@ -434,8 +434,9 @@ interface HoldingLine {
 /**
  * Each line's split factor by row id, new shares per old: 1 when its corporate
  * actions show no split between the filings, null when they could not be read.
+ * `late` holds the lines left unread because the lookups' time ran out.
  */
-export type SplitFactors = ReadonlyMap<string, number | null>;
+export type SplitFactors = ReadonlyMap<string, number | null> & { readonly late?: ReadonlySet<string> };
 
 /**
  * The Est P&L of a line held through the quarter, and the value of the shares
@@ -490,8 +491,13 @@ export interface FilingQuarterReturn {
   percent: number | null;
   /** Lines split between the filings, priced on split-adjusted shares, with the new shares per old (10 for 10:1, 0.1 for 1:10). */
   splits: Array<FilingLine & { ratio: number }>;
-  /** Lines that moved as across a split whose corporate actions could not be read, left out. */
-  skipped: FilingLine[];
+  /**
+   * Lines that moved as across a split whose corporate actions could not be read, left out, largest at the
+   * quarter's start first; `late` when the lookups' time ran out before them.
+   */
+  skipped: Array<FilingLine & { previousValue: number; late?: boolean }>;
+  /** What `skipped` weighed in the book at the quarter's start, as a fraction; null when none is left out or the book has no value. */
+  skippedShare: number | null;
 }
 
 /** The least change in a line's share count that reads as a split: 3:2. */
@@ -555,20 +561,26 @@ export function filingSplitCandidates(data: FundDetailData): Array<FilingLine & 
  */
 export function estimateFilingQuarterReturn(data: FundDetailData, splits: SplitFactors = new Map()): FilingQuarterReturn {
   const adjusted: FilingQuarterReturn["splits"] = [];
-  const skipped: FilingLine[] = [];
-  if (!hasComparable13FQuarter(data)) return { percent: null, splits: adjusted, skipped };
+  const skipped: FilingQuarterReturn["skipped"] = [];
+  if (!hasComparable13FQuarter(data)) return { percent: null, splits: adjusted, skipped, skippedShare: null };
   let pnl = 0;
   let base = 0;
+  let book = 0;
   for (const row of buildFundHoldingRows(data)) {
+    book += row.previousValue != null && row.previousValue > 0 ? row.previousValue : 0;
     const estimate = estimateHolding(row, splits);
     const line = { ticker: row.ticker, issuer: row.issuer };
-    if (estimate.kind === "unread") skipped.push(line);
+    if (estimate.kind === "unread") {
+      skipped.push({ ...line, previousValue: row.previousValue ?? 0, ...(splits.late?.has(row.id) ? { late: true } : {}) });
+    }
     if (estimate.kind !== "priced") continue;
     if (estimate.ratio !== 1) adjusted.push({ ...line, ratio: estimate.ratio });
     pnl += estimate.pnl;
     base += estimate.base;
   }
-  return { percent: base > 0 ? (pnl / base) * 100 : null, splits: adjusted, skipped };
+  skipped.sort((left, right) => right.previousValue - left.previousValue);
+  const left = skipped.reduce((sum, line) => sum + line.previousValue, 0);
+  return { percent: base > 0 ? (pnl / base) * 100 : null, splits: adjusted, skipped, skippedShare: skipped.length && book > 0 ? left / book : null };
 }
 
 export function hasComparable13FQuarter(data: FundDetailData): boolean {
@@ -676,7 +688,7 @@ export function buildFundHoldingRows(data: FundDetailData | null, splits?: Split
       valueChange,
       estimatedPnl: estimate.kind === "priced" ? estimate.pnl : null,
       ...(ratio !== 1 ? { splitRatio: ratio } : {}),
-      ...(estimate.kind === "unread" ? { splitUnread: true } : {}),
+      ...(estimate.kind === "unread" ? { splitUnread: true, ...(splits?.late?.has(id) ? { splitLate: true } : {}) } : {}),
       sharesChange,
       sharesChangePercent,
       action: comparable ? resolveAction(currentHolding, previousHolding, ratio) : "unknown",

@@ -190,7 +190,8 @@ describe("13F headless model", () => {
   test("reads a manager's name as said: without its legal form, or as the first whole words of one name", async () => {
     const resolved: string[] = [];
     const headless = createThirteenFHeadless({
-      loadBrowser: async (_tab, query) => ({ rows: query.startsWith("ARK") ? [
+      // A search for a single word lists more funds than it returns.
+      loadBrowser: async (_tab, query) => ({ hasMore: query === "ARK", rows: query.startsWith("ARK") ? [
         { id: "spark", cik: "0001554871", name: "Spark Investment Management LLC", source: "funds" },
         { id: "ark", cik: "0001697748", name: "ARK Investment Management LLC", source: "funds" },
       ] : [
@@ -203,6 +204,8 @@ describe("13F headless model", () => {
       await headless.load({ ...args("filings"), argument }, createTestHeadlessContext());
     }
     expect(resolved).toEqual(["0001697748", "0001697748", "0001350694"]);
+    // Funds the search did not list may start with the same words: a name is not picked from part of the list.
+    await expect(headless.load({ ...args("filings"), argument: "ARK" }, createTestHeadlessContext())).rejects.toThrow(/Ambiguous 13F fund "ARK"/);
     // Two managers start with the word: both are named, the larger book first.
     await expect(headless.load({ ...args("filings"), argument: "Bridgewater" }, createTestHeadlessContext()))
       .rejects.toThrow(/Ambiguous 13F fund "Bridgewater".*: Bridgewater Associates, LP \(0001350694, \$25\.00B reported\); Bridgewater Advisors/);
@@ -291,12 +294,17 @@ describe("13F headless model", () => {
     expect(await notices({ basis: "ranking", ranking: "ranked" })).toEqual([]);
     expect(await notices({
       splits: [{ ticker: "NVDA", issuer: "NVIDIA", ratio: 10 }, { ticker: "", issuer: "Odd Co", ratio: 0.1 }],
-      skipped: [{ ticker: "XYZ", issuer: "Xyz" }],
+      skipped: [{ ticker: "XYZ", issuer: "Xyz", previousValue: 1_000 }],
     })).toEqual([
       `${est} (not in the 2026Q2 ranking)`,
       "Split-adjusted: NVDA 10:1, Odd Co 1:10 (split between the filings, as the corporate actions show)",
       "Left out of Est 13F: XYZ (shares and value per share moved as across a split, and the corporate actions could not be read to tell)",
     ]);
+    // Lines the lookups' time ran out on are said as such, with what the lines left out weighed.
+    expect((await notices({
+      skipped: [{ ticker: "BIG", issuer: "Big", previousValue: 900, late: true }, { ticker: "ODD", issuer: "Odd", previousValue: 100 }],
+      skippedShare: 0.042,
+    })).at(-1)).toBe("Left out of Est 13F, 4.2% of the book at the quarter's start: BIG, ODD (shares and value per share moved as across a split, and the report ran out of time before reading the corporate actions of 1; those of 1 could not be read)");
     expect(await notices({ basis: null, ranking: "ranked", unavailable: "No comparable quarter before 2026-06-30 to estimate a return from." }))
       .toEqual(["No Est 13F (the 2026Q2 ranking lists it without a return): No comparable quarter before 2026-06-30 to estimate a return from."]);
     expect(await notices({ basis: null, ranking: null, quarter: undefined, unavailable: "No 13F filing in the last four years." }))
@@ -592,7 +600,10 @@ describe("13F overlap against an ETF and flags", () => {
   const etfFunds = [{ ticker: "IVV", name: "S&P 500", aliases: ["SPY", "SPX"], changes: "sp500" as const, asOf: "2026-10-08" }, { ticker: "IWM", name: "Russell 2000", aliases: [], changes: "none" as const, asOf: "2026-10-08" }];
   const etfFile = { fund: etfFunds[0]!, asOf: "2026-10-08", stale: false, members: [{ symbol: "AAPL", weight: 0.07 }, { symbol: "MSFT", weight: 0.93 }] } as never;
   const searched: string[] = [];
-  const managers = [{ id: "spy", cik: "0000000009", name: "Spyglass Capital Management LLC", source: "funds" as const }];
+  const managers = [
+    { id: "spy", cik: "0000000009", name: "Spyglass Capital Management LLC", source: "funds" as const },
+    { id: "vtv", cik: "0000000010", name: "VTV Inc", source: "funds" as const },
+  ];
   const headless = createThirteenFHeadless({
     loadBrowser: async (_tab, query) => { searched.push(query); return { rows: managers.filter((row) => row.name.toLowerCase().includes(query.toLowerCase())) }; },
     loadDetail: async (cik) => cik === detail.cik ? detail : { ...detail, cik, name: "Spyglass Capital Management LLC" },
@@ -616,6 +627,7 @@ describe("13F overlap against an ETF and flags", () => {
     ]));
   });
 
+  // VTV Inc is a manager, but a ticker-shaped word names one only by its exact name.
   test("an uncovered ticker names the covered ETFs and never falls back to a partial manager name", async () => {
     await expect(load({ view: "overlap", compare: "VTV" })).rejects.toThrow(
       'VTV is not an ETF MEMB covers (covered: IVV (also SPY, SPX), IWM), and no 13F manager is named "VTV". For a manager, use its CIK or full name.',

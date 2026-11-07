@@ -13,7 +13,7 @@ import {
   searchThirteenFFunds,
 } from "./api";
 import { isoDateDaysAgo, isoDateToday, isoDateYearsAgo } from "../../../utils/calendar-date";
-import { abortable, withDeadline } from "../../../utils/async-deadline";
+import { abortable, OperationTimeoutError, withDeadline } from "../../../utils/async-deadline";
 import { logFailure } from "../../../utils/log-failure";
 import {
   amendmentKind,
@@ -27,6 +27,7 @@ import {
   dedupeLatestForms,
   filingSplitCandidates,
   type FilingQuarterReturn,
+  type SplitFactors,
 } from "./model";
 import { mapWithConcurrency } from "../../../utils/concurrency";
 import { describeTickerChange, movedAwayChange, startTickerChangeLookup } from "../../../tickers/ticker-changes";
@@ -373,6 +374,8 @@ export interface FundPerformanceResult extends BrowserLoadResult {
   /** Lines of a filings estimate split between the filings (priced split-adjusted) and those left out; see estimateFilingQuarterReturn. */
   splits?: FilingQuarterReturn["splits"];
   skipped?: FilingQuarterReturn["skipped"];
+  /** What the lines left out weighed in the book at the quarter's start, as a fraction. */
+  skippedShare?: number;
   /** What EDGAR shows for the quarter after the fund's latest report, when it is behind (loadFundDetail). */
   filingGap?: ThirteenFFilingGap | null;
   /** Why there is no estimate, when there is none. */
@@ -433,7 +436,10 @@ const SPLIT_LOOKUP_TIMEOUT_MS = 10_000;
 export interface SplitFactorScope {
   /** Only these row ids: a report of a large filer's biggest positions reads theirs, not the hundreds of lines across its book that move like a split. */
   only?: ReadonlySet<string>;
-  /** How long the whole pass may take. Lines are read largest first, and one not answered by then reads as unconfirmed, as a lookup past its own timeout does. */
+  /**
+   * How long the whole pass may take. Lines are read largest first, and one not answered by then reads as
+   * unconfirmed, as a lookup past its own timeout does, and is listed in the result's `late`.
+   */
   budgetMs?: number;
 }
 
@@ -442,29 +448,44 @@ export interface SplitFactorScope {
  * candidates (filingSplitCandidates), by row id, for estimateFilingQuarterReturn
  * and the Holdings rows: a few lookups at once, each as the lookup answers it.
  * A line the lookup cannot answer for (no ticker, a failure, no answer in time)
- * is null, unconfirmed. Only an abort rejects. A fund with no candidates, or
- * without two comparable quarters, makes no lookup.
+ * is null, unconfirmed; one the budget ran out on is in `late` as well. Only
+ * an abort rejects. A fund with no candidates, or without two comparable
+ * quarters, makes no lookup.
  */
-export async function loadSplitFactors(detail: FundDetailData, lookup: SplitFactorLookup, signal?: AbortSignal, scope: SplitFactorScope = {}): Promise<Map<string, number | null>> {
+export async function loadSplitFactors(
+  detail: FundDetailData,
+  lookup: SplitFactorLookup,
+  signal?: AbortSignal,
+  scope: SplitFactorScope = {},
+): Promise<Map<string, number | null> & { late: ReadonlySet<string> }> {
+  const late = new Set<string>();
   const period = detail.latestForm?.periodOfReport;
   const previousPeriod = detail.previousForm?.periodOfReport;
-  if (!period || !previousPeriod) return new Map();
+  if (!period || !previousPeriod) return Object.assign(new Map<string, number | null>(), { late });
   const candidates = filingSplitCandidates(detail).filter((line) => !scope.only || scope.only.has(line.id));
   const endsAt = scope.budgetMs == null ? Infinity : Date.now() + scope.budgetMs;
-  return new Map(await mapWithConcurrency(candidates, SPLIT_LOOKUP_CONCURRENCY, async (line) => {
+  const factors = await mapWithConcurrency(candidates, SPLIT_LOOKUP_CONCURRENCY, async (line) => {
     signal?.throwIfAborted();
+    if (!line.ticker) return [line.id, null] as const;
     const left = Math.min(SPLIT_LOOKUP_TIMEOUT_MS, endsAt - Date.now());
-    if (!line.ticker || left <= 0) return [line.id, null] as const;
+    if (left <= 0) {
+      late.add(line.id);
+      return [line.id, null] as const;
+    }
+    // A deadline shorter than a lookup's own is the budget's end.
+    const budgetEnds = left < SPLIT_LOOKUP_TIMEOUT_MS;
     const factor = await abortable(
       withDeadline(lookup(line.ticker, previousPeriod, period), left, `${line.ticker} split lookup timed out`),
       signal,
       "Split lookup aborted",
     ).catch((error: unknown) => {
       if (signal?.aborted) throw error;
+      if (budgetEnds && error instanceof OperationTimeoutError) late.add(line.id);
       return null;
     });
     return [line.id, factor] as const;
-  }));
+  });
+  return Object.assign(new Map<string, number | null>(factors), { late });
 }
 
 /**
@@ -501,7 +522,7 @@ export async function loadFundPerformance(
   const own = ranked?.find((fund) => fund.cik === detail.cik && fund.periodOfReport === period);
   const ranking = !quarter ? null : !ranked ? "unavailable" : own ? "ranked" : "unranked";
   // A line that moved as across a split is priced by its corporate actions: split-adjusted, as a trade, or left out unread.
-  const factors = own?.pnl != null || !options.splitFactor ? new Map<string, number | null>() : await loadSplitFactors(detail, options.splitFactor, signal, { budgetMs: options.splitBudgetMs });
+  const factors: SplitFactors = own?.pnl != null || !options.splitFactor ? new Map() : await loadSplitFactors(detail, options.splitFactor, signal, { budgetMs: options.splitBudgetMs });
   const filed = own?.pnl != null ? null : estimateFilingQuarterReturn(detail, factors);
   const estimate = own?.pnl ?? filed?.percent ?? null;
   const basis = own?.pnl != null ? "ranking" : estimate != null ? "filings" : null;
@@ -531,6 +552,7 @@ export async function loadFundPerformance(
     rows: [row], ...(quarter ? { quarter } : {}), ...(period ? { period } : {}), hasMore: false, basis, ranking,
     ...(filed?.splits.length ? { splits: filed.splits } : {}),
     ...(filed?.skipped.length ? { skipped: filed.skipped } : {}),
+    ...(filed?.skippedShare != null ? { skippedShare: filed.skippedShare } : {}),
     ...(detail.filingGap ? { filingGap: detail.filingGap } : {}),
     ...(unavailable ? { unavailable } : {}), ...(warning ? { warning } : {}),
   };

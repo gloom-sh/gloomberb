@@ -775,7 +775,8 @@ test("split factors are looked up for the lines that move like a split only; a f
   const hung = loadSplitFactors(detail, () => new Promise(() => {}), controller.signal);
   controller.abort(new Error("pane closed"));
   await expect(hung).rejects.toThrow();
-  // Within a budget the largest line is read first, and one not answered by its end reads unconfirmed instead of holding the load.
+  // Within a budget the largest line is read first, and one not answered by its end reads unconfirmed instead of
+  // holding the load, listed as one the time ran out on.
   detail.previousHoldings = [row("AAA", "A", 1000, 10), row("BBB", "B", 3000, 30), row("DDD", "D", 1000, 100)];
   detail.latestHoldings = [row("AAA", "A", 1200, 100), row("BBB", "B", 3600, 300), row("DDD", "D", 1100, 100)];
   const order: string[] = [];
@@ -787,6 +788,7 @@ test("split factors are looked up for the lines that move like a split only; a f
   expect(Date.now() - started).toBeLessThan(1_000);
   expect(order).toEqual(["BBB", "AAA"]);
   expect(Object.fromEntries(budgeted)).toEqual({ "B||SH": 10, "A||SH": null });
+  expect([...budgeted.late]).toEqual(["A||SH"]);
 });
 
 test("a ticker's split factor is the product of its share splits between the quarter ends, and unknown without its actions", async () => {
