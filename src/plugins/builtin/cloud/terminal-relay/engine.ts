@@ -1,5 +1,3 @@
-import { commandBarResultsFromNodes } from "../../../../remote/command-bar";
-import { findCommandBarResult, findMatchingUiNode } from "../../../../remote/matching";
 import type {
   RemoteCallContext,
   RemoteControlRequest,
@@ -16,10 +14,11 @@ import {
   type TerminalRelayToolKind,
 } from "./manifest";
 import {
-  LOCAL_UI_ACTIONS,
-  NAVIGATION_RESULT_KINDS,
   operationPolicy,
   patchPolicy,
+  planUiCall,
+  UiCallRefusal,
+  type UiCallPlan,
 } from "./policy";
 import { REDACTED, redactConfig, redactRelayResult, redactResource } from "./redact";
 import { keyArgumentLines, shortValue, type CallSummary } from "./summary";
@@ -41,7 +40,6 @@ import { logFailure } from "../../../../utils/log-failure";
  * 60 s for an answer, then up to 15 s for the operation.
  */
 
-export const RELAY_PROMPT_SCOPE = "terminal-relay-prompt";
 export const CONFIRM_WINDOW_MS = 60_000;
 const EXECUTION_BUDGET_MS = 15_000;
 /** Answers the server cannot take (a call frame tens of megabytes long) are cut to fit. */
@@ -112,10 +110,8 @@ interface PlannedCall {
    * run. Passed back once the person allows it, so the app does not ask twice.
    */
   confirmKey?: string;
-  /** Re-reads the target right before running; false when it changed while the person decided. */
-  stillSame?: () => Promise<boolean>;
-  /** Refuses a semantic action aimed at the relay's own prompt. */
-  targetsPrompt?: () => Promise<boolean>;
+  /** A call that acts on what is on screen, checked again right before it runs (policy.ts). */
+  recheck?: UiCallPlan["recheck"];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -328,12 +324,8 @@ export class TerminalRelayEngine {
       if (this.options.grants.decision(caller.id) === "deny" || this.options.grants.decision(caller.id) === null) {
         throw new RelayRefusal("revoked", "This assistant's access to the terminal was revoked.");
       }
-      if (plan.targetsPrompt && (this.promptOpen || await plan.targetsPrompt())) {
-        throw new RelayRefusal("not_allowed", "A Gloom confirmation is open; the assistant cannot act on it.");
-      }
-      if (plan.stillSame && !(await plan.stillSame())) {
-        throw new RelayRefusal("not_allowed", "What the call pointed at changed while the person decided, so it did not run. Read the state again and retry.");
-      }
+      const stale = await plan.recheck?.(this.promptOpen);
+      if (stale) throw new RelayRefusal("not_allowed", stale);
       if (!this.isLive(call)) return;
 
       const result = await this.execute(binding, plan, input, call);
@@ -485,63 +477,14 @@ export class TerminalRelayEngine {
     const { policy } = operationPolicy(operation);
     if (policy === "allow") return { request, binding, confirm: null };
 
-    if (policy === "local-ui") {
-      const action = typeof input.action === "string" && input.action ? input.action : "press";
-      const find = async () => {
-        const nodes = await this.uiNodes();
-        return operation === "ui.invoke"
-          ? nodes.find((node) => node.id === input.nodeId)
-          : findMatchingUiNode(nodes, input);
-      };
-      const target = await find();
-      const targetsPrompt = async () => (await find())?.metadata?.scope === RELAY_PROMPT_SCOPE;
-      if (target?.metadata?.scope === RELAY_PROMPT_SCOPE || this.promptOpen) {
-        throw new RelayRefusal("not_allowed", "A Gloom confirmation is open; the assistant cannot act on it.");
-      }
-      if (LOCAL_UI_ACTIONS.has(action)) return { request, binding, confirm: null, targetsPrompt };
-      const fingerprint = target ? `${target.id}|${target.role}|${target.label ?? ""}` : "";
-      return {
-        request,
-        binding,
-        targetsPrompt,
-        stillSame: async () => {
-          const now = await find();
-          return (now ? `${now.id}|${now.role}|${now.label ?? ""}` : "") === fingerprint;
-        },
-        confirm: {
-          title: `${action === "press" ? "Press" : `Run "${action}" on`} ${target?.label ? `"${shortValue(target.label)}"` : "a control"}`,
-          lines: [
-            { label: "Control", value: target ? `${target.label ? shortValue(target.label) : "unlabelled"} (${target.role})` : "none visible yet" },
-            { label: "Action", value: action },
-            ...(input.input !== undefined ? [{ label: "Input", value: shortValue(input.input) }] : []),
-          ],
-        },
-      };
+    let ui: UiCallPlan | null;
+    try {
+      ui = await planUiCall(operation, input, { uiNodes: () => this.uiNodes(), promptOpen: this.promptOpen });
+    } catch (error) {
+      if (error instanceof UiCallRefusal) throw new RelayRefusal(error.code, error.message);
+      throw error;
     }
-
-    if (policy === "navigation") {
-      const find = async () => findCommandBarResult(commandBarResultsFromNodes(await this.uiNodes()), input);
-      const result = await find();
-      if (!result) throw new RelayRefusal("invalid_input", "No matching command-bar result is visible.");
-      const kind = typeof result.kind === "string" ? result.kind : "";
-      if (NAVIGATION_RESULT_KINDS.has(kind)) return { request, binding, confirm: null };
-      const fingerprint = `${shortValue(result.label)}|${kind}|${shortValue(result.itemId)}`;
-      return {
-        request,
-        binding,
-        stillSame: async () => {
-          const now = await find();
-          return !!now && `${shortValue(now.label)}|${typeof now.kind === "string" ? now.kind : ""}|${shortValue(now.itemId)}` === fingerprint;
-        },
-        confirm: {
-          title: `Run "${shortValue(result.label)}" from the command bar`,
-          lines: [
-            { label: "Command", value: shortValue(result.label) },
-            ...(result.detail ? [{ label: "Detail", value: shortValue(result.detail) }] : []),
-          ],
-        },
-      };
-    }
+    if (ui) return { request, binding, confirm: ui.confirm, recheck: ui.recheck };
 
     const planned = await this.plannedChange(operation, input);
     if (planned) return { request, binding, ...planned };

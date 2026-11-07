@@ -5,8 +5,12 @@ import type {
   ASKGToolResultOutcome,
   ASKGTransport,
 } from "../../../../api-client/askg";
-import { ASKGSessionController, CONFIRMATION_CLOSE_MARGIN_MS } from "./controller";
-import type { ASKGToolExecutor } from "./executor";
+import type { MarketContext } from "../../../../cli/types";
+import type { PaneFunctionCatalog } from "../../../../cli/pane-functions/catalog";
+import type { RemoteControlRequest, RemoteControlResponse, RemoteUiNodeSnapshot } from "../../../../remote/types";
+import { ASKGSessionController, CONFIRMATION_CLOSE_MARGIN_MS, type ASKGControllerManifest } from "./controller";
+import { createASKGToolExecutor, type ASKGToolExecutor } from "./executor";
+import { buildASKGToolManifests } from "./manifest";
 import { canRateTurn, NOT_APPROVED_IN_TIME_NOTE, pendingConfirmation } from "./model";
 import type {
   ASKGFeedback,
@@ -16,6 +20,7 @@ import type {
   ASKGSseEvent,
   ASKGTurnRequest,
   ClientToolManifest,
+  JsonValue,
   ToolResultPayload,
 } from "./protocol";
 
@@ -39,13 +44,13 @@ const WRITE_TOOL: ClientToolManifest = {
 
 const MANIFEST = { tools: [READ_TOOL, WRITE_TOOL], manifestHash: "sha256:test" };
 
-function sessionResponse(): ASKGSessionStartResponse {
+function sessionResponse(manifest: ASKGControllerManifest = MANIFEST): ASKGSessionStartResponse {
   return {
     protocolVersion: 1,
     sessionId: "s1",
-    manifestHash: MANIFEST.manifestHash,
+    manifestHash: manifest.manifestHash,
     serverTools: [],
-    acceptedTools: MANIFEST.tools.map((tool) => tool.name),
+    acceptedTools: manifest.tools.map((tool) => tool.name),
     rejectedTools: [],
     limits: {
       requestsPerMinute: 20,
@@ -90,6 +95,7 @@ interface Harness {
 function createHarness(options: {
   script: ASKGSseEvent[];
   executor?: ASKGToolExecutor;
+  manifest?: ASKGControllerManifest;
   toolResultOutcome?: ASKGToolResultOutcome;
   toolResultError?: Error;
 } ): Harness {
@@ -103,7 +109,7 @@ function createHarness(options: {
     isStreamingSupported: () => true,
     async startSession(request) {
       sessionRequests.push(request);
-      return sessionResponse();
+      return sessionResponse(options.manifest);
     },
     async streamTurn(_sessionId: string, request: ASKGTurnRequest, streamOptions: ASKGStreamOptions) {
       turnRequests.push(request);
@@ -124,7 +130,7 @@ function createHarness(options: {
 
   const controller = new ASKGSessionController({
     transport,
-    loadManifest: async () => MANIFEST,
+    loadManifest: async () => options.manifest ?? MANIFEST,
     getExecutor: () => options.executor ?? null,
     client: { kind: "tui", version: "1" },
     createId: () => "turn-1",
@@ -935,5 +941,135 @@ describe("ASKGSessionController answer ratings", () => {
     await controller.shareAnswer(turn().id);
 
     expect(turn().feedback).toMatchObject({ rating: "down", shared: false, shareFailed: true });
+  });
+});
+
+/**
+ * The app's real manifest and executor over a screen of semantic controls, so
+ * a UI call goes through the policy it shares with the terminal relay.
+ */
+function screenHarness() {
+  const catalog: PaneFunctionCatalog = { panes: new Map(), paneTemplates: new Map(), destroy() {} };
+  const tools = buildASKGToolManifests(catalog).tools;
+  const manifest = { tools, manifestHash: "sha256:screen" };
+  const screen: RemoteUiNodeSnapshot[] = [
+    { id: "ui:1", role: "button", label: "Place LIVE order", actions: ["press"], paneId: "broker-ticket:1" },
+    { id: "ui:2", role: "form-field", label: "Symbol", actions: ["setValue"], paneId: "broker-ticket:1" },
+    { id: "ui:3", role: "table", label: "Positions", actions: ["scrollBy", "selectRow"] },
+  ];
+  const ran: RemoteControlRequest[] = [];
+  const remoteHandler = async (request: RemoteControlRequest): Promise<RemoteControlResponse> => {
+    if (request.type === "get") return { ok: true, data: request.resource === "ui://tree" ? screen : [] };
+    ran.push(request);
+    return { ok: true, data: { done: true } };
+  };
+  const executor = createASKGToolExecutor({ manifests: tools, registry: catalog, context: {} as MarketContext, remoteHandler });
+  const harness = createHarness({ script: [], executor, manifest });
+  let seq = 0;
+  const call = (operation: string, args: Record<string, JsonValue>): string => {
+    const tool = tools.find((entry) => entry.name === operation)!;
+    seq += 1;
+    harness.emit({
+      seq,
+      type: "tool-call",
+      turnId: "turn-1",
+      toolCallId: `call-${seq}`,
+      name: tool.name,
+      args,
+      writeTier: tool.writeTier,
+      requiresConfirmation: tool.confirm === "always",
+      preview: null,
+      timeoutMs: tool.timeoutMs,
+      expiresAt: new Date(Date.now() + tool.timeoutMs).toISOString(),
+    });
+    return `call-${seq}`;
+  };
+  return {
+    ...harness,
+    screen,
+    call,
+    /** The UI and layout operations that ran, not the reads and dry runs that vetted them. */
+    ran: () => ran.flatMap((request) => (request.type === "call" && !request.dryRun ? [request.operation] : [])),
+    result: (toolCallId: string) => harness.posted.find((payload) => payload.toolCallId === toolCallId),
+  };
+}
+
+/** The executor reads the screen and runs under timers, past what microtasks settle. */
+const flush = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+describe("Ask Gloom acting on the screen", () => {
+  test("a press on a button asks first, naming the control by label and role", async () => {
+    const h = screenHarness();
+    await flush();
+    const id = h.call("ui.invoke_matching", { role: "button", label: "Place LIVE order" });
+    await flush();
+
+    expect(pendingConfirmation(h.controller.getState())).toMatchObject({
+      toolCallId: id,
+      confirmTitle: "Press \"Place LIVE order\" (button)",
+    });
+    expect(h.ran()).toEqual([]);
+
+    h.controller.resolveConfirmation(id, true);
+    await flush();
+    expect(h.ran()).toEqual(["ui.invokeMatching"]);
+    expect(h.result(id)?.status).toBe("ok");
+    h.controller.dispose();
+  });
+
+  test("scrolling and setting a field's value run without asking", async () => {
+    const h = screenHarness();
+    await flush();
+    const scroll = h.call("ui.invoke", { nodeId: "ui:3", action: "scrollBy", input: { delta: 3 } });
+    const type = h.call("ui.invoke_matching", { role: "form-field", label: "Symbol", action: "setValue", input: "AAPL" });
+    await flush();
+
+    expect(pendingConfirmation(h.controller.getState())).toBeNull();
+    expect(h.ran()).toEqual(["ui.invoke", "ui.invokeMatching"]);
+    expect([h.result(scroll)?.status, h.result(type)?.status]).toEqual(["ok", "ok"]);
+    h.controller.dispose();
+  });
+
+  test("deleting a layout asks first", async () => {
+    const h = screenHarness();
+    await flush();
+    const id = h.call("layout.delete", { index: 1 });
+    await flush();
+
+    expect(pendingConfirmation(h.controller.getState())?.toolCallId).toBe(id);
+    expect(h.ran()).toEqual([]);
+    h.controller.dispose();
+  });
+
+  test("a press on Ask Gloom's own Approve is refused, whatever the call says", async () => {
+    const h = screenHarness();
+    // Another conversation's approval row is on screen; this one waits for nothing.
+    h.screen.push({ id: "ui:9", role: "button", label: "Approve", actions: ["press"], metadata: { scope: "askg-prompt" } });
+    await flush();
+    const byLabel = h.call("ui.invoke_matching", { role: "button", label: "Approve" });
+    const byId = h.call("ui.invoke", { nodeId: "ui:9", action: "press" });
+    await flush();
+
+    expect(pendingConfirmation(h.controller.getState())).toBeNull();
+    expect([h.result(byLabel)?.status, h.result(byId)?.status]).toEqual(["denied", "denied"]);
+    expect(h.ran()).toEqual([]);
+    h.controller.dispose();
+  });
+
+  test("no UI call runs while one of its confirmations waits, not even a scroll", async () => {
+    const h = screenHarness();
+    await flush();
+    const remove = h.call("layout.delete", { index: 1 });
+    await flush();
+    const scroll = h.call("ui.invoke", { nodeId: "ui:3", action: "scrollBy", input: { delta: 3 } });
+    const press = h.call("ui.invoke_matching", { role: "button", label: "Place LIVE order" });
+    await flush();
+
+    expect(h.result(scroll)).toMatchObject({ status: "denied", note: "A Gloom confirmation is open; the assistant cannot act on it." });
+    expect(h.result(press)?.status).toBe("denied");
+    // The question on screen is still the layout's, and nothing ran.
+    expect(pendingConfirmation(h.controller.getState())?.toolCallId).toBe(remove);
+    expect(h.ran()).toEqual([]);
+    h.controller.dispose();
   });
 });

@@ -8,6 +8,7 @@ import {
   remoteOperationToolName,
 } from "../../../../remote/schema";
 import type { RemoteControlRequest } from "../../../../remote/types";
+import { operationPolicy } from "../terminal-relay/policy";
 import type {
   HeadlessPaneDefinition,
   PaneDef,
@@ -193,7 +194,7 @@ function remoteCandidates(registry: PaneFunctionCatalog): ManifestCandidate[] {
       description: descriptor.description,
       writeTier: descriptor.writeTier,
       inputSchema: descriptor.inputSchema,
-      ...remoteConfirmation(descriptor.writeTier),
+      ...remoteConfirmation(operationsByName.get(descriptor.name)!.id, descriptor.writeTier),
     },
   }));
 
@@ -226,9 +227,17 @@ function remoteCandidates(registry: PaneFunctionCatalog): ManifestCandidate[] {
   return candidates;
 }
 
-/** Account and broker writes ask first, and get the minute that takes. */
-function remoteConfirmation(writeTier: ClientToolManifest["writeTier"]): Pick<ClientToolManifest, "confirm" | "timeoutMs"> {
-  return writeTier === "user-data" || writeTier === "broker"
+/**
+ * Account and broker writes ask first, and so does every operation the
+ * per-operation policy confirms each time (terminal-relay/policy.ts); they get
+ * the minute that takes. A UI action is asked about call by call instead
+ * (executor.ts), since scrolling or selecting asks nothing.
+ */
+function remoteConfirmation(
+  operation: string,
+  writeTier: ClientToolManifest["writeTier"],
+): Pick<ClientToolManifest, "confirm" | "timeoutMs"> {
+  return writeTier === "user-data" || writeTier === "broker" || operationPolicy(operation).policy === "confirm"
     ? { confirm: "always", timeoutMs: CONFIRM_TOOL_TIMEOUT_MS }
     : { confirm: "never", timeoutMs: REMOTE_TOOL_TIMEOUT_MS };
 }

@@ -50,6 +50,11 @@ export interface ASKGToolRow {
   requiresConfirmation: boolean;
   /** Dry run description shown before a `user-data` or `broker` call runs. */
   preview?: JsonValue;
+  /**
+   * What the approval asks, when the call says more than its tool: the
+   * control a UI action presses, by label and role.
+   */
+  confirmTitle?: string;
   rowCount?: number;
   elapsedMs?: number;
   truncated?: boolean;
@@ -152,8 +157,11 @@ export type ASKGAction =
   | { type: "feedback"; turnId: string; feedback: ASKGTurnFeedback | null }
   | { type: "feedback-unavailable" }
   | { type: "event"; event: ASKGSseEvent }
-  /** `preview` is what the app resolved the call to, in place of the server's account of its arguments. */
-  | { type: "tool-awaiting-confirmation"; toolCallId: string; preview?: string }
+  /**
+   * `preview` is what the app resolved the call to, in place of the server's
+   * account of its arguments; `title` names what a UI action will press.
+   */
+  | { type: "tool-awaiting-confirmation"; toolCallId: string; preview?: string; title?: string }
   | { type: "tool-running"; toolCallId: string }
   | { type: "tool-result"; payload: ToolResultPayload }
   | { type: "tool-expanded"; toolCallId: string; expanded: boolean }
@@ -166,8 +174,9 @@ export type ASKGAction =
   | { type: "reset" };
 
 /**
- * Tiers that never run without the user saying so. `read` is silent and
- * `ui-write` is reversible, so only account and broker writes stop the turn.
+ * Tiers that never run without the user saying so. `read` is silent; a
+ * `ui-write` call that presses something on screen is asked about call by
+ * call (executor.ts gate), the rest of `ui-write` is reversible.
  */
 export function requiresLocalConfirmation(call: {
   writeTier: WriteTier;
@@ -483,6 +492,7 @@ export function askgReducer(
         ...row,
         status: "awaiting-confirmation",
         ...(action.preview !== undefined ? { preview: action.preview } : {}),
+        ...(action.title !== undefined ? { confirmTitle: action.title } : {}),
       }));
     case "tool-running":
       return patchToolRow(state, action.toolCallId, (row) => ({ ...row, status: "running" }));

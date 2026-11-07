@@ -9,7 +9,8 @@ import { useThemeColors } from "../../../../theme/theme-context";
 import { type DialogApi, type PromptContext, useDialogKeyboard } from "../../../../ui/dialog";
 import { isPlainKey } from "../../../../utils/keyboard";
 import type { AssistantDecision } from "./grants";
-import { CONFIRM_WINDOW_MS, RELAY_PROMPT_SCOPE, type ApprovalAnswer, type ConfirmationAnswer, type RelayCaller, type RelayPrompts } from "./engine";
+import { CONFIRM_WINDOW_MS, type ApprovalAnswer, type ConfirmationAnswer, type RelayCaller, type RelayPrompts } from "./engine";
+import { RELAY_PROMPT_SCOPE } from "./policy";
 import type { CallSummary } from "./summary";
 import { logFailure } from "../../../../utils/log-failure";
 

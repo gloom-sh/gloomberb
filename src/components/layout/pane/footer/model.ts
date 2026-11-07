@@ -262,6 +262,12 @@ export interface PaneHint {
    * the component's `keys` stay bound.
    */
   besideOthers?: boolean;
+  /**
+   * The surface the hint answers for, as `metadata.scope` on its semantic UI
+   * node, like a kit button inside RemoteUiScope: the footer is drawn outside
+   * the pane's own tree, so it cannot inherit one.
+   */
+  remoteScope?: string;
 }
 
 export interface CombinedPaneFooter {

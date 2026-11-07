@@ -1,7 +1,13 @@
-import type { RemoteSideEffectLevel } from "../../../../remote/types";
+import { commandBarResultsFromNodes } from "../../../../remote/command-bar";
+import { findCommandBarResult, findMatchingUiNode } from "../../../../remote/matching";
+import type { RemoteSideEffectLevel, RemoteUiNodeSnapshot } from "../../../../remote/types";
+import { shortValue, type CallSummary } from "./summary";
 
 /**
  * What a remote assistant connected through Gloom Cloud may do in this app.
+ * Ask Gloom applies the same table to its own calls (askg/executor.ts), with
+ * no approval step: it is the person's own assistant, but it reads the same
+ * untrusted text.
  *
  * - `allow`: runs once the person approved the assistant for this terminal
  *   (one prompt per assistant, see grants.ts).
@@ -115,7 +121,7 @@ export function operationPolicy(operation: string): TerminalRelayPolicyEntry {
  * Everything else a node exposes (press, submit, activate, toggle, release)
  * may act outside it and asks each time.
  */
-export const LOCAL_UI_ACTIONS: ReadonlySet<string> = new Set([
+const LOCAL_UI_ACTIONS: ReadonlySet<string> = new Set([
   "scroll",
   "scrollBy",
   "scrollTo",
@@ -133,7 +139,7 @@ export const LOCAL_UI_ACTIONS: ReadonlySet<string> = new Set([
 ]);
 
 /** Command-bar rows that only open a ticker or a pane. */
-export const NAVIGATION_RESULT_KINDS: ReadonlySet<string> = new Set([
+const NAVIGATION_RESULT_KINDS: ReadonlySet<string> = new Set([
   "ticker",
   "ticker-search",
   "pane",
@@ -142,6 +148,140 @@ export const NAVIGATION_RESULT_KINDS: ReadonlySet<string> = new Set([
   "search",
   "mode",
 ]);
+
+/** `metadata.scope` of the relay's own prompts (prompts.tsx). */
+export const RELAY_PROMPT_SCOPE = "terminal-relay-prompt";
+/** `metadata.scope` of Ask Gloom's approval row, its keys and the pane-consent prompt. */
+export const ASKG_PROMPT_SCOPE = "askg-prompt";
+/**
+ * The prompts that ask the person about an assistant's calls. No UI call acts
+ * on one, whichever assistant sent it: it could otherwise approve itself.
+ */
+const PROMPT_SCOPES: ReadonlySet<string> = new Set([RELAY_PROMPT_SCOPE, ASKG_PROMPT_SCOPE]);
+
+function isPromptNode(node: RemoteUiNodeSnapshot | undefined): boolean {
+  const scope = node?.metadata?.scope;
+  return typeof scope === "string" && PROMPT_SCOPES.has(scope);
+}
+
+const PROMPT_OPEN = "A Gloom confirmation is open; the assistant cannot act on it.";
+const TARGET_CHANGED = "What the call pointed at changed while the person decided, so it did not run. Read the state again and retry.";
+
+/** A UI call the policy refuses outright, before anything is asked. */
+export class UiCallRefusal extends Error {
+  constructor(readonly code: "not_allowed" | "invalid_input", message: string) {
+    super(message);
+  }
+}
+
+/** What the policy says about one call that acts on what is on screen. */
+export interface UiCallPlan {
+  /** What the person is asked before it runs; null runs it without asking. */
+  confirm: CallSummary | null;
+  /**
+   * Right before the call runs, after any answer: why it may no longer run (a
+   * confirmation is open, the call now aims at a prompt, or the control the
+   * person allowed is not the one there now), or null.
+   */
+  recheck(promptOpen: boolean): Promise<string | null>;
+}
+
+export interface UiCallContext {
+  /** The live semantic UI tree (`ui://tree`). */
+  uiNodes(): Promise<RemoteUiNodeSnapshot[]>;
+  /** One of the caller's own confirmations waits for the person. */
+  promptOpen: boolean;
+}
+
+/** A control by what the person sees: `"Place order" (button)`. */
+function controlName(node: RemoteUiNodeSnapshot): string {
+  return node.label ? `"${shortValue(node.label)}" (${node.role})` : `an unlabelled ${node.role}`;
+}
+
+function nodeFingerprint(node: RemoteUiNodeSnapshot | undefined): string {
+  return node ? `${node.id}|${node.role}|${node.label ?? ""}` : "";
+}
+
+/**
+ * The per-call policy of an operation that acts on what is on screen
+ * (`local-ui`, `navigation`), for every assistant that drives the app: the
+ * terminal relay and Ask Gloom. Null for any other policy, which the caller
+ * applies as the table says. Throws UiCallRefusal for a call that may not run
+ * at all: one aimed at a confirmation prompt, or any while one is open.
+ */
+export async function planUiCall(
+  operation: string,
+  input: Record<string, unknown>,
+  context: UiCallContext,
+): Promise<UiCallPlan | null> {
+  const { policy } = operationPolicy(operation);
+  if (policy === "local-ui") return planLocalUiCall(operation, input, context);
+  if (policy === "navigation") return planCommandBarCall(input, context);
+  return null;
+}
+
+async function planLocalUiCall(
+  operation: string,
+  input: Record<string, unknown>,
+  { uiNodes, promptOpen }: UiCallContext,
+): Promise<UiCallPlan> {
+  const action = typeof input.action === "string" && input.action ? input.action : "press";
+  const find = async () => {
+    const nodes = await uiNodes();
+    return operation === "ui.invoke"
+      ? nodes.find((node) => node.id === input.nodeId)
+      : findMatchingUiNode(nodes, input);
+  };
+  const target = await find();
+  if (promptOpen || isPromptNode(target)) throw new UiCallRefusal("not_allowed", PROMPT_OPEN);
+  const local = LOCAL_UI_ACTIONS.has(action);
+  const fingerprint = nodeFingerprint(target);
+  const control = target ? controlName(target) : "a control";
+  return {
+    confirm: local ? null : {
+      title: action === "press" ? `Press ${control}` : `Run "${shortValue(action)}" on ${control}`,
+      lines: [
+        ...(target ? [] : [{ label: "Control", value: "none visible yet" }]),
+        ...(input.input !== undefined ? [{ label: "Input", value: shortValue(input.input) }] : []),
+      ],
+    },
+    recheck: async (open) => {
+      const now = await find();
+      if (open || isPromptNode(now)) return PROMPT_OPEN;
+      return !local && nodeFingerprint(now) !== fingerprint ? TARGET_CHANGED : null;
+    },
+  };
+}
+
+async function planCommandBarCall(
+  input: Record<string, unknown>,
+  { uiNodes, promptOpen }: UiCallContext,
+): Promise<UiCallPlan> {
+  if (promptOpen) throw new UiCallRefusal("not_allowed", PROMPT_OPEN);
+  const find = async () => findCommandBarResult(commandBarResultsFromNodes(await uiNodes()), input);
+  const result = await find();
+  if (!result) throw new UiCallRefusal("invalid_input", "No matching command-bar result is visible.");
+  const kindOf = (row: typeof result) => (typeof row.kind === "string" ? row.kind : "");
+  const fingerprintOf = (row: typeof result) => `${shortValue(row.label)}|${kindOf(row)}|${shortValue(row.itemId)}`;
+  if (NAVIGATION_RESULT_KINDS.has(kindOf(result))) {
+    return { confirm: null, recheck: async (open) => (open ? PROMPT_OPEN : null) };
+  }
+  const fingerprint = fingerprintOf(result);
+  return {
+    confirm: {
+      title: `Run "${shortValue(result.label)}" from the command bar`,
+      lines: [
+        { label: "Command", value: shortValue(result.label) },
+        ...(result.detail ? [{ label: "Detail", value: shortValue(result.detail) }] : []),
+      ],
+    },
+    recheck: async (open) => {
+      if (open) return PROMPT_OPEN;
+      const now = await find();
+      return now && fingerprintOf(now) === fingerprint ? null : TARGET_CHANGED;
+    },
+  };
+}
 
 /** What the policy carries into a tool's description. */
 export function policySentence(policy: TerminalRelayPolicy): string {

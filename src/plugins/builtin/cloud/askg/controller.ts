@@ -4,7 +4,7 @@ import {
   type ASKGToolResultOutcome,
   type ASKGTransport,
 } from "../../../../api-client/askg";
-import { toolCallRemainingMs, type ASKGToolExecutor, type ASKGToolPreview } from "./executor";
+import { toolCallRemainingMs, type ASKGToolExecutor, type ASKGToolGate, type ASKGToolPreview } from "./executor";
 import {
   activeTurn,
   askgReducer,
@@ -410,10 +410,31 @@ export class ASKGSessionController {
     }
 
     try {
+      // A call that acts on what is on screen goes by the policy shared with
+      // the terminal relay: a press asks, a scroll does not, and nothing acts
+      // on a confirmation or while one waits.
+      const gate = await this.gateCall(call, signal);
+      if (signal?.aborted || this.toolRowStatus(call.toolCallId) !== "pending") return;
+      if (gate?.kind === "refusal") {
+        await this.deliver({
+          turnId: call.turnId,
+          toolCallId: call.toolCallId,
+          status: "denied",
+          truncated: false,
+          elapsedMs: Math.max(0, this.now() - startedAt),
+          note: gate.message,
+        });
+        return;
+      }
+      // This app's own manifest says which tools ask first, whatever the frame says.
+      const asks = requiresLocalConfirmation(call)
+        || this.manifest?.tools.find((tool) => tool.name === call.name)?.confirm === "always"
+        || gate?.kind === "ask";
       let confirmed = false;
       let confirmedChange: string | undefined;
-      if (requiresLocalConfirmation(call)) {
-        const preview = await this.previewCall(call, signal);
+      if (asks) {
+        // A UI action is described by the control it presses; there is no dry run for it.
+        const preview = gate?.kind === "ask" ? null : await this.previewCall(call, signal);
         // The turn ended or moved on while the app looked.
         if (signal?.aborted || this.toolRowStatus(call.toolCallId) !== "pending") return;
         if (preview?.kind === "refusal") {
@@ -428,7 +449,9 @@ export class ASKGSessionController {
           this.dispatch({
             type: "tool-awaiting-confirmation",
             toolCallId: call.toolCallId,
-            ...(preview?.kind === "change" ? { preview: preview.summary } : {}),
+            ...(gate?.kind === "ask"
+              ? { title: gate.title, ...(gate.lines.length > 0 ? { preview: gate.lines.join("\n") } : {}) }
+              : preview?.kind === "change" ? { preview: preview.summary } : {}),
           });
           const answer = await this.awaitConfirmation(
             call.toolCallId,
@@ -470,8 +493,10 @@ export class ASKGSessionController {
         return;
       }
       const payload = await executor.execute(call, {
-        confirmed: confirmed || !requiresLocalConfirmation(call),
+        confirmed: confirmed || !asks,
         ...(confirmedChange ? { confirmedChange } : {}),
+        ...(gate ? { gate } : {}),
+        promptOpen: () => this.confirmationOpen(call.toolCallId),
         ...(signal ? { signal } : {}),
       });
       await this.deliver(payload);
@@ -482,6 +507,24 @@ export class ASKGSessionController {
     } finally {
       this.confirmations.delete(call.toolCallId);
     }
+  }
+
+  /** The shared policy's word on a call that acts on what is on screen; null for any other call. */
+  private async gateCall(call: ASKGToolCallEvent, signal?: AbortSignal): Promise<ASKGToolGate | null> {
+    const manifest = this.manifest ?? await this.options.loadManifest();
+    this.manifest = manifest;
+    return await this.options.getExecutor(manifest)?.gate?.(call, {
+      promptOpen: this.confirmationOpen(call.toolCallId),
+      ...(signal ? { signal } : {}),
+    }) ?? null;
+  }
+
+  /** A confirmation other than this call's waits for the person. */
+  private confirmationOpen(toolCallId: string): boolean {
+    for (const pending of this.confirmations.keys()) {
+      if (pending !== toolCallId) return true;
+    }
+    return false;
   }
 
   /**
