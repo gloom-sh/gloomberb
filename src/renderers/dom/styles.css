@@ -674,16 +674,54 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="dock-divider"] {
   background: transparent !important;
 }
-/* Where a moving pane would land (a spot it would join or stack in, a
-   screen-edge snap, window mode's keyboard move): the exact rectangle,
-   outlined in the accent over a light tint of it, so the panes under it still
-   show. */
+/* Where a moving pane would land (a split, a tab, an edge of the layout, a
+   floating window's tab or half, window mode's keyboard move): the exact
+   rectangle, outlined in the accent over a light tint of it, so the panes
+   under it still show. */
 [data-gloom-role="drop-preview"],
 [data-gloom-role="window-mode-drop-preview"] {
   border: 2px solid var(--gloom-accent);
   border-radius: var(--gloom-radius-md);
   background: color-mix(in srgb, var(--gloom-accent) 12%, transparent);
 }
+/* The targets a pane on the move can land on (shell/drag/drop-zones.ts):
+   the five squares of the target on the pane under the pointer, and a strip
+   along each edge of the window. One look, the landing preview's: the accent
+   over a tint of it, filled stronger on the one under the pointer, while the
+   preview shows where the pane lands. A square sits raised and opaque over
+   the pane it is on; a strip lies over the panes' edges, see-through. */
+[data-gloom-role="drop-zone"],
+[data-gloom-role="drop-strip"] {
+  border: 1px solid var(--gloom-accent);
+  border-radius: var(--gloom-radius-sm);
+  background: color-mix(in srgb, var(--gloom-accent) 12%, transparent);
+}
+[data-gloom-role="drop-zone"] {
+  border-width: 2px;
+  border-radius: var(--gloom-radius-md);
+  background: color-mix(in srgb, var(--gloom-accent) 12%, var(--gloom-bg));
+  box-shadow: var(--gloom-elevation);
+}
+[data-gloom-role="drop-strip"][data-active="true"] {
+  background: color-mix(in srgb, var(--gloom-accent) 40%, transparent);
+}
+[data-gloom-role="drop-zone"][data-active="true"] {
+  background: color-mix(in srgb, var(--gloom-accent) 40%, var(--gloom-bg));
+}
+/* Inside a square, the part of the pane the moving one takes: all of it for a tab, a half for a side. */
+[data-gloom-role="drop-zone"]::before {
+  content: "";
+  position: absolute;
+  inset: var(--gloom-space-xs);
+  border-radius: var(--gloom-radius-sm);
+  background: var(--gloom-accent);
+  opacity: .5;
+}
+[data-gloom-role="drop-zone"][data-side="left"]::before { right: 50%; }
+[data-gloom-role="drop-zone"][data-side="right"]::before { left: 50%; }
+[data-gloom-role="drop-zone"][data-side="top"]::before { bottom: 50%; }
+[data-gloom-role="drop-zone"][data-side="bottom"]::before { top: 50%; }
+[data-gloom-role="drop-zone"][data-active="true"]::before { opacity: 1; }
 /* The gap between the panes is the divider at rest; its line shows while it
    is dragged or resized from the keyboard. */
 [data-gloom-role="dock-divider"]::before {

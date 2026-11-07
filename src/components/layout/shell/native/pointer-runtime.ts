@@ -125,6 +125,30 @@ export function useShellNativePointerRuntime({
     event.preventDefault();
   }, [commandBarOpen, focusNativePane, getShellPointer, nativePaneChrome, startDrag, transientFocusActive, windowMode]);
 
+  /**
+   * A press on a tab of a floating stack: a move pulls that tab out as an
+   * outline, the stack staying where it is; a release where it was pressed
+   * shows the tab.
+   */
+  const startNativeTabDrag = useCallback((paneId: string, rect: FloatingRect, event: ShellMouseEvent) => {
+    if (!nativePaneChrome) return;
+    if (commandBarOpen) return;
+    if (windowMode) return;
+    if (transientFocusActive) return;
+    if (event.button === 2) return;
+
+    const pointer = getShellPointer(event);
+    startDrag({
+      type: "pane-drag",
+      paneId,
+      mode: "tab",
+      startX: pointer.x,
+      startY: pointer.y,
+      origRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+    });
+    event.preventDefault();
+  }, [commandBarOpen, getShellPointer, nativePaneChrome, startDrag, transientFocusActive, windowMode]);
+
   const startNativeFloatResize = useCallback((paneId: string, rect: FloatingRect, event: ShellMouseEvent, edges?: ResizeEdges) => {
     if (!nativePaneChrome) return;
     if (commandBarOpen) return;
@@ -210,5 +234,6 @@ export function useShellNativePointerRuntime({
     startNativeDockedDrag,
     startNativeFloatingDrag,
     startNativeFloatResize,
+    startNativeTabDrag,
   };
 }

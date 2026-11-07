@@ -3,7 +3,11 @@ import {
   MIN_FLOAT_WIDTH,
   applyDrop,
   floatAtRect,
-  type DockLeafLayout,
+  floatingStackMembers,
+  splitFloating,
+  stackFloatingOnto,
+  unstackFloating,
+  type FloatingSplitSide,
   type DropTarget,
   type FloatingRect,
   type LayoutBounds,
@@ -12,36 +16,35 @@ import type { DesktopDockPreviewState } from "../../../../types/desktop-window";
 import type { LayoutConfig } from "../../../../types/config";
 import { PANE_HEADER_ACTION, PANE_HEADER_CLOSE, PANE_HEADER_HELP, PANE_HEADER_RESTORE } from "../../pane/header";
 
-export type SnapGuidePosition =
-  | "left"
-  | "right"
-  | "top"
-  | "bottom"
-  | "top-left"
-  | "top-right"
-  | "bottom-left"
-  | "bottom-right";
+/** A release onto a floating window: a tab of it, or half of its rect beside it. */
+export type FloatDrop =
+  | { type: "tab"; targetId: string }
+  | { type: "split"; targetId: string; side: FloatingSplitSide };
 
-export interface SnapGuide {
-  position: SnapGuidePosition;
-  triggerRect: LayoutBounds;
-  previewRect: FloatingRect;
-}
-
+/** Where a release lands a pane on the move, outlined while it would. */
 export type DragPreview =
   | {
+    /** A place in the layout: a split, a tab, or along a whole edge. */
     kind: "dock";
     target: DropTarget;
     rect: LayoutBounds;
   }
   | {
-    kind: "snap";
-    position: SnapGuidePosition;
-    rect: FloatingRect;
+    /** On a floating window: a tab of it, or half of it. */
+    kind: "float";
+    drop: FloatDrop;
+    rect: LayoutBounds;
   };
 
+/**
+ * What a pane move takes: a pane in the layout (drawn as an outline until it
+ * lands), a floating window with every tab of its stack, or one tab pulled
+ * out of a floating stack (an outline too, the stack staying where it is).
+ */
+export type PaneDragMode = "docked" | "floating" | "tab";
+
 export interface PaneDragRectState {
-  mode: "docked" | "floating";
+  mode: PaneDragMode;
   startX: number;
   startY: number;
   origRect: FloatingRect;
@@ -128,7 +131,7 @@ export function freePaneDragRect(
   totalWidth: number,
   totalHeight: number,
 ): FloatingRect {
-  if (drag.mode === "docked") {
+  if (drag.mode !== "floating") {
     const fittedRect = constrainFloatingRectToBounds(baseRect, totalWidth, totalHeight);
     const pointerOffsetX = Math.max(0, Math.min(fittedRect.width - 1, drag.startX - drag.origRect.x));
     const pointerOffsetY = Math.max(0, Math.min(fittedRect.height - 1, drag.startY - drag.origRect.y));
@@ -182,122 +185,6 @@ export function resolveFloatResizeRect(
   return constrainFloatingRectToBounds({ x, y, width, height, zIndex: origRect.zIndex }, totalWidth, totalHeight);
 }
 
-/** A distance on each axis, in cells. */
-export interface AxisDistance {
-  x: number;
-  y: number;
-}
-
-const JOIN_SIDES = [
-  ["left", "x"],
-  ["right", "x"],
-  ["top", "y"],
-  ["bottom", "y"],
-] as const;
-
-type JoinSide = (typeof JOIN_SIDES)[number][0];
-
-/** Where a pane on the move could land on release, if anywhere but where it is drawn. */
-export interface PaneDropTargets {
-  /** Over another spot's title bar: a tab there, what a release makes until a join has held. */
-  tab: Extract<DropTarget, { kind: "tab" }> | null;
-  /** An edge held flush: a join on that side, once it has held (JOIN_DWELL_MS), over the tab too. */
-  join: Extract<DropTarget, { kind: "leaf" }> | null;
-}
-
-const NO_DROP: PaneDropTargets = { tab: null, join: null };
-
-/**
- * Where a pane on the move could land on release. Over another spot's title
- * bar it becomes a tab there. Its edge pushed flush against the same edge of
- * the spot under the pointer, where that spot meets another (never the dock's
- * own edge, so a window parked at the screen's edge or corner stays
- * floating), it joins the dock on that side: where it is drawn and where the
- * pointer puts it, that edge is within `flush` of the spot's. The pointer may
- * be on that spot's title bar: a pane is held by its own, so it is there for
- * every join above a spot and for a side join with the two title bars level.
- * An axis the pane spans from edge to edge of the spot gives it no side to
- * join on there, so a pane laid squarely on a spot of its size is a tab. The
- * caller arms a join only once it has held (see JOIN_DWELL_MS); until then a
- * release on the title bar makes the tab. `join` false (Alt) leaves the
- * edges out.
- */
-export function resolvePaneDropTarget({
-  x,
-  y,
-  rect,
-  free,
-  leaves,
-  paneId,
-  area,
-  flush,
-  headerRows,
-  join,
-}: {
-  /** The pointer, in shell cells. */
-  x: number;
-  y: number;
-  /** Where the moving pane is drawn, its edges caught by the magnets. */
-  rect: LayoutBounds;
-  /** Where the pointer alone puts it, past the screen's edges if it goes there. */
-  free: LayoutBounds;
-  leaves: readonly DockLeafLayout[];
-  paneId: string;
-  /** The dock area. */
-  area: LayoutBounds;
-  /** How close its edge comes to a spot's edge to count as flush (the magnets' catch). */
-  flush: AxisDistance;
-  /** A docked pane's title bar, in rows. */
-  headerRows: number;
-  join: boolean;
-}): PaneDropTargets {
-  if (!pointInRect(area, x, y)) return NO_DROP;
-  const leaf = leaves.find((entry) => pointInRect(entry.rect, x, y));
-  if (!leaf) return NO_DROP;
-  // Its own spot: alone there, nothing to land on; a tab of a stack can
-  // leave it for a side of the stack, but is a tab of it already, and its
-  // title bar is where the tab is pulled out from.
-  const own = leaf.instanceId === paneId || (leaf.stack?.includes(paneId) ?? false);
-  const targetId = leaf.instanceId !== paneId ? leaf.instanceId : leaf.stack?.find((id) => id !== paneId);
-  if (!targetId) return NO_DROP;
-  const onTitleBar = y < leaf.rect.y + headerRows;
-  if (onTitleBar && own) return NO_DROP;
-  const tab = onTitleBar ? { kind: "tab" as const, targetId } : null;
-  if (!join) return { tab, join: null };
-  const edgeOf = (box: LayoutBounds, side: JoinSide) => (
-    side === "left" ? box.x : side === "right" ? box.x + box.width : side === "top" ? box.y : box.y + box.height
-  );
-  // How far the edge on `side` is from the spot's, in catches, where it is
-  // drawn; null unless it is flush there and where the pointer puts it.
-  const closenessAt = (side: JoinSide, axis: keyof AxisDistance) => {
-    const line = edgeOf(leaf.rect, side);
-    if (Math.abs(edgeOf(free, side) - line) > flush[axis]) return null;
-    const closeness = Math.abs(edgeOf(rect, side) - line) / Math.max(flush[axis], 1e-6);
-    return closeness <= 1 ? closeness : null;
-  };
-  const spans = {
-    x: closenessAt("left", "x") !== null && closenessAt("right", "x") !== null,
-    y: closenessAt("top", "y") !== null && closenessAt("bottom", "y") !== null,
-  };
-  // The closest edge wins; level with another, the first of left, right, top, bottom.
-  let best: { side: JoinSide; closeness: number } | null = null;
-  for (const [side, axis] of JOIN_SIDES) {
-    if (spans[axis]) continue;
-    // The dock's own edge is the screen's: parking there is not joining.
-    if (Math.abs(edgeOf(leaf.rect, side) - edgeOf(area, side)) <= flush[axis]) continue;
-    const closeness = closenessAt(side, axis);
-    if (closeness !== null && (!best || closeness < best.closeness)) best = { side, closeness };
-  }
-  return { tab, join: best ? { kind: "leaf", targetId, position: best.side } : null };
-}
-
-/**
- * How long an edge holds flush before the join arms and its preview shows, so
- * a window moved past a docked pane's edge, or briefly lined up with it, does
- * not dock on release.
- */
-export const JOIN_DWELL_MS = 350;
-
 export function resolveDividerPreviewRect(
   axis: "horizontal" | "vertical",
   bounds: LayoutBounds,
@@ -336,90 +223,32 @@ export function finalizePaneDragRelease(
   paneId: string,
   previewRect: FloatingRect,
   dockPreview: DragPreview | null,
+  mode: PaneDragMode = "floating",
 ): LayoutConfig {
+  // A floating stack moved by its title bar lands whole: its other tabs follow as tabs of the one moved.
+  const others = mode === "floating"
+    ? floatingStackMembers(layout.floating, paneId).map((entry) => entry.instanceId).filter((id) => id !== paneId)
+    : [];
   if (dockPreview?.kind === "dock") {
-    return applyDrop(layout, paneId, dockPreview.target);
+    let next = applyDrop(layout, paneId, dockPreview.target);
+    for (const id of others) next = applyDrop(next, id, { kind: "tab", targetId: paneId });
+    return next;
   }
-  if (dockPreview?.kind === "snap") {
-    return floatAtRect(layout, paneId, dockPreview.rect);
+  if (dockPreview?.kind === "float") {
+    const { drop } = dockPreview;
+    if (drop.type === "tab") {
+      let next = layout;
+      for (const id of others) next = stackFloatingOnto(next, id, drop.targetId);
+      return stackFloatingOnto(next, paneId, drop.targetId);
+    }
+    let next = splitFloating(layout, paneId, drop.targetId, drop.side);
+    for (const id of others) next = stackFloatingOnto(next, id, paneId);
+    return next;
   }
-  return floatAtRect(layout, paneId, previewRect);
-}
-
-export function makeSnapGuides(width: number, height: number): SnapGuide[] {
-  const halfWidth = Math.max(1, Math.floor(width / 2));
-  const halfHeight = Math.max(1, Math.floor(height / 2));
-  const cornerWidth = Math.max(8, Math.min(16, Math.floor(width * 0.2)));
-  const cornerHeight = Math.max(4, Math.min(8, Math.floor(height * 0.22)));
-  const edgeWidth = Math.max(6, Math.min(10, Math.floor(width * 0.1)));
-  const topBottomEdgeHeight = Math.max(2, Math.min(4, Math.floor(height * 0.1)));
-
-  return [
-    {
-      position: "top-left",
-      triggerRect: { x: 0, y: 0, width: cornerWidth, height: cornerHeight },
-      previewRect: { x: 0, y: 0, width: halfWidth, height: halfHeight },
-    },
-    {
-      position: "top-right",
-      triggerRect: { x: Math.max(0, width - cornerWidth), y: 0, width: cornerWidth, height: cornerHeight },
-      previewRect: { x: Math.max(0, width - halfWidth), y: 0, width: halfWidth, height: halfHeight },
-    },
-    {
-      position: "bottom-left",
-      triggerRect: { x: 0, y: Math.max(0, height - cornerHeight), width: cornerWidth, height: cornerHeight },
-      previewRect: { x: 0, y: Math.max(0, height - halfHeight), width: halfWidth, height: halfHeight },
-    },
-    {
-      position: "bottom-right",
-      triggerRect: {
-        x: Math.max(0, width - cornerWidth),
-        y: Math.max(0, height - cornerHeight),
-        width: cornerWidth,
-        height: cornerHeight,
-      },
-      previewRect: {
-        x: Math.max(0, width - halfWidth),
-        y: Math.max(0, height - halfHeight),
-        width: halfWidth,
-        height: halfHeight,
-      },
-    },
-    {
-      position: "left",
-      triggerRect: { x: 0, y: cornerHeight, width: edgeWidth, height: Math.max(1, height - (cornerHeight * 2)) },
-      previewRect: { x: 0, y: 0, width: halfWidth, height },
-    },
-    {
-      position: "right",
-      triggerRect: {
-        x: Math.max(0, width - edgeWidth),
-        y: cornerHeight,
-        width: edgeWidth,
-        height: Math.max(1, height - (cornerHeight * 2)),
-      },
-      previewRect: { x: Math.max(0, width - halfWidth), y: 0, width: halfWidth, height },
-    },
-    {
-      position: "top",
-      triggerRect: { x: cornerWidth, y: 0, width: Math.max(1, width - (cornerWidth * 2)), height: topBottomEdgeHeight },
-      previewRect: { x: 0, y: 0, width, height: halfHeight },
-    },
-    {
-      position: "bottom",
-      triggerRect: {
-        x: cornerWidth,
-        y: Math.max(0, height - topBottomEdgeHeight),
-        width: Math.max(1, width - (cornerWidth * 2)),
-        height: topBottomEdgeHeight,
-      },
-      previewRect: { x: 0, y: Math.max(0, height - halfHeight), width, height: halfHeight },
-    },
-  ];
-}
-
-export function resolveSnapGuide(x: number, y: number, guides: SnapGuide[]): SnapGuide | null {
-  return guides.find((guide) => pointInRect(guide.triggerRect, x, y)) ?? null;
+  // Anywhere else it floats where it is drawn: a tab pulled out of a
+  // floating stack on its own, a stack moved by its title bar whole.
+  const from = mode === "tab" ? unstackFloating(layout, paneId) : layout;
+  return floatAtRect(from, paneId, previewRect);
 }
 
 export function resolveHeaderHitAreas(

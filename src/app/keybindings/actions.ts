@@ -173,7 +173,7 @@ export const KEYBINDING_ACTIONS: readonly KeybindingActionDef[] = [
   {
     id: "pane-close",
     category: "Pane Management",
-    description: "Close the focused pane, docked or floating. Locked panes stay open.",
+    description: "Close the focused pane, in the layout or floating. Locked panes stay open.",
     defaults: ["CmdOrCtrl+W"],
   },
   {
@@ -205,7 +205,7 @@ export const KEYBINDING_ACTIONS: readonly KeybindingActionDef[] = [
   {
     id: "pane-float",
     category: "Pane Management",
-    description: "Dock or float the focused pane.",
+    description: "Float the focused pane, or return it to the layout.",
     defaults: ["CmdOrCtrl+Shift+D"],
   },
   {

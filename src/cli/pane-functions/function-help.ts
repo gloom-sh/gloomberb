@@ -1351,7 +1351,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   LMA: {
-    summary: "Float, dock, swap, remove and save panes and layouts.",
+    summary: "Float panes or return them to the layout, swap, remove and save panes and layouts.",
     usage: ["LMA", "LMA float"],
     keys: [],
     data: null,

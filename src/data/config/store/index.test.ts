@@ -210,6 +210,63 @@ test("existing users retain pending and completed plugin migrations", async () =
   expect((await loadConfig(dataDir)).pluginSeedFailure).toBeUndefined();
 });
 
+// The drop targets added nothing to how a layout is saved but the `stack` key
+// of floating windows stacked as tabs. A layout saved before opens and saves
+// back as it was, and a client that does not know the key keeps it.
+describe("saved layouts and floating stacks", () => {
+  const pane = (instanceId: string, paneId: string) => ({ instanceId, paneId, binding: { kind: "none" } });
+  const savedBefore = {
+    dockRoot: {
+      kind: "split",
+      axis: "horizontal",
+      ratio: 0.6,
+      first: { kind: "pane", instanceId: "portfolio-list:main" },
+      second: { kind: "split", axis: "horizontal", ratio: 0.5, first: { kind: "pane", instanceId: "news:main" }, second: { kind: "pane", instanceId: "ticker-research:main" }, tabs: { active: "ticker-research:main" } },
+    },
+    instances: [
+      pane("portfolio-list:main", "portfolio-list"),
+      pane("news:main", "news"),
+      { instanceId: "ticker-research:main", paneId: "ticker-research", binding: { kind: "follow", sourceInstanceId: "portfolio-list:main" } },
+      { instanceId: "ticker-research:float", paneId: "ticker-research", binding: { kind: "follow", sourceInstanceId: "portfolio-list:main" } },
+    ],
+    floating: [{ instanceId: "ticker-research:float", x: 10, y: 4, width: 40, height: 12, zIndex: 51 }],
+    detached: [],
+  };
+
+  test("a layout saved before opens and saves back exactly as it was", async () => {
+    const dataDir = await createTempConfigDir();
+    await writeConfigJson(dataDir, createSavedConfig({ layout: savedBefore, layouts: [{ name: "Desk", layout: savedBefore }] }));
+    const loaded = await loadConfig(dataDir);
+    expect(loaded.layout).toEqual(savedBefore as never);
+    await saveConfig(loaded);
+    const written = JSON.parse(await readFile(join(dataDir, "config.json"), "utf-8"));
+    expect(written.layout).toEqual(savedBefore);
+    expect(written.layouts[0].layout).toEqual(savedBefore);
+  });
+
+  test("windows stacked as tabs keep their stack, at the rect of the tab shown; a key alone or not a name is dropped", () => {
+    const instances = [...savedBefore.instances, pane("news:float", "news"), pane("portfolio-list:float", "portfolio-list")];
+    const layout = sanitizeLayout({
+      dockRoot: { kind: "pane", instanceId: "portfolio-list:main" },
+      instances,
+      floating: [
+        // Moved apart by a client that draws each member as a window of its own.
+        { instanceId: "ticker-research:float", x: 30, y: 9, width: 20, height: 8, zIndex: 51, stack: "s1" },
+        { instanceId: "news:float", x: 10, y: 4, width: 40, height: 12, zIndex: 52, stack: "s1" },
+        { instanceId: "portfolio-list:float", x: 2, y: 2, width: 20, height: 6, zIndex: 50, stack: "alone" },
+        { instanceId: "ticker-research:main", x: 2, y: 2, width: 20, height: 6, zIndex: 49, stack: 7 },
+      ],
+      detached: [],
+    }, DEFAULT_LAYOUT);
+    expect(layout.floating).toEqual([
+      { instanceId: "ticker-research:float", x: 10, y: 4, width: 40, height: 12, zIndex: 51, stack: "s1" },
+      { instanceId: "news:float", x: 10, y: 4, width: 40, height: 12, zIndex: 52, stack: "s1" },
+      { instanceId: "portfolio-list:float", x: 2, y: 2, width: 20, height: 6, zIndex: 50 },
+      { instanceId: "ticker-research:main", x: 2, y: 2, width: 20, height: 6, zIndex: 49 },
+    ]);
+  });
+});
+
 describe("sanitizeLayout", () => {
   test("disk reload keeps explicit public and broker selections for fixed panes and their followers", async () => {
     const dataDir = await createTempConfigDir();

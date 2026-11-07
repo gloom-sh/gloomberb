@@ -3,7 +3,7 @@ import type { ReactNode, RefObject } from "react";
 import { colors, floatingPaneBg } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { PaneBodyFrame, getPaneWindowAttributes } from "./pane/frame";
-import { PaneHeader, type PaneHeaderQuickSetting } from "./pane/header";
+import { PaneHeader, type PaneHeaderQuickSetting, type PaneHeaderStack } from "./pane/header";
 import { PaneHeaderTabsProvider, usePaneHeaderTabsHost } from "./pane/header-tabs";
 import { hasPaneFooterContent, PaneFooterBar, type CombinedPaneFooter } from "./pane/footer";
 import { resolvePaneBodyFrame, shouldReservePaneFooter } from "./pane/sizing";
@@ -49,6 +49,8 @@ interface FloatingPaneWrapperProps {
   footer?: CombinedPaneFooter | null;
   /** The pane's frame, which a desktop resize sizes outside React; its header, body and footer stretch with it. */
   frameRef?: RefObject<BoxRenderable | null>;
+  /** Windows stacked as tabs here: their tabs replace the title. */
+  stack?: PaneHeaderStack | null;
   children: ReactNode;
 }
 
@@ -105,6 +107,7 @@ export function FloatingPaneWrapper({
   onResizeMouseDragEnd,
   footer,
   frameRef,
+  stack = null,
   children,
 }: FloatingPaneWrapperProps) {
   const { nativePaneChrome } = useUiCapabilities();
@@ -153,6 +156,7 @@ export function FloatingPaneWrapper({
         showActions={showActions}
         quickSettings={quickSettings}
         tabs={headerTabs}
+        stack={stack}
         bodyBackground={bg}
         topRule
         onHeaderMouseMove={onHeaderMouseMove}

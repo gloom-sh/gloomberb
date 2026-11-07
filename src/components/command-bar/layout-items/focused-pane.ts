@@ -71,8 +71,8 @@ export function buildFocusedPaneLayoutItems({
   return [
     {
       id: "layout-toggle-mode",
-      label: focusedFloating ? "Dock Pane" : "Float Pane",
-      detail: focusedFloating ? "Return the focused window to the layout" : "Detach the focused pane into a floating window",
+      label: focusedFloating ? "Return to Layout" : "Float Pane",
+      detail: focusedFloating ? "Return the focused window to the layout" : "Take the focused pane out of the layout into a floating window",
       category: "Focused Pane",
       kind: "action",
       action: () => {
@@ -115,7 +115,7 @@ export function buildFocusedPaneLayoutItems({
       label: tf("Move Back to {layout}", { layout: moveBack.name }),
       detail: moveBack.original
         ? "Return the focused pane to the layout it came from"
-        : "The layout it came from is gone, so it docks in this one instead",
+        : "The layout it came from is gone, so it goes into this one instead",
       category: "Focused Pane",
       kind: "action" as const,
       action: () => {
@@ -157,8 +157,8 @@ export function buildFocusedPaneLayoutItems({
             return {
               id: paneId,
               label: instance.title || pluginRegistry.panes.get(instance.paneId)?.name || instance.paneId,
-              detail: isFloating ? "Floating window" : "Docked pane",
-              description: isFloating ? "Floating window" : "Docked pane",
+              detail: isFloating ? "Floating window" : "In the layout",
+              description: isFloating ? "Floating window" : "In the layout",
             };
           });
         if (pickerOptions.length === 0) return;

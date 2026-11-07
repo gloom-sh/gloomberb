@@ -81,7 +81,7 @@ Some changes need one more check:
 | Build scripts, the terminal entry point, the modules the host serves to plugins (`src/plugins/host-modules.ts`, `host-resolver.ts`) or dependencies (`package.json`, `bun.lock`) | `bun run build`, then `bun run plugins:registry:packaged --terminal dist/gloomberb-<target>.gz --desktop-tui`: loads every plugin the registry lists in the compiled binary and in the desktop's bundled terminal (needs the network; the `registry-plugins-packaged` job runs it on every pull request) |
 | Tables, rendering, or market data stores | `bun run benchmark:tui:compare --base <main checkout>` and `bun run benchmark:tui:memory` (need tmux); the Performance workflow runs both on every PR |
 | What runs before the first frame: the terminal entry point, app startup, the desktop Bun process, or the page and launch frame of the desktop and web apps | `bun run benchmark:startup <tui\|desktop\|web> --base <main checkout>` (add `--cold` for a first launch; the desktop needs Linux with Xvfb, the terminal tmux) |
-| Pane chrome, docking, the DOM renderer or the desktop view | `bun run check:pane-chrome` and `bun run benchmark:pane-drag:compare --base <main checkout>`; see [Pane chrome checks](#pane-chrome-checks) |
+| Pane chrome, moving panes, the DOM renderer or the desktop view | `bun run check:pane-chrome` and `bun run benchmark:pane-drag:compare --base <main checkout>`; see [Pane chrome checks](#pane-chrome-checks) |
 | Anything a pane or plugin draws on the desktop or web (components, the DOM renderer, plugin code, styles.css, the theme) | `bun run check:ui-tokens` and `bun run ui:benchmark --base origin/main`, and attach the blast-radius sheet to the PR; the UI tokens and UI benchmark workflows run both. See [Holding the line](docs/pane-conventions.md#holding-the-line) |
 | Cloud sync, the portfolio analytics it values, or the desktop view's RPC path (Electrobun's patch included) | `bun scripts/pane-chrome/sync-poll.ts --check` (needs Playwright WebKit): the longest main-thread block of a sync on a large invented workspace and of a 4 MB message through Electrobun's preload codec, against a budget; the Performance workflow runs it for those paths |
 
@@ -89,7 +89,7 @@ Try UI changes in the app as well. [`.agents/skills/tui-testing/SKILL.md`](.agen
 
 ### Pane chrome checks
 
-Unit tests press a pane's header with synthetic events, which is how v0.16.1 shipped panes that only moved from the grip and the title. `scripts/pane-chrome` drives the real desktop shell in headless Chrome with real pointer input instead, over fixture layouts with no network: pane drags and resizes, docking, charts, text selection, the top bar, pane layout and the UI token audit.
+Unit tests press a pane's header with synthetic events, which is how v0.16.1 shipped panes that only moved from the grip and the title. `scripts/pane-chrome` drives the real desktop shell in headless Chrome with real pointer input instead, over fixture layouts with no network: pane drags and resizes, drop targets, charts, text selection, the top bar, pane layout and the UI token audit.
 
 `bun run check:pane-chrome` runs every step once (`--only <text>` picks steps by name). The Pane chrome workflow runs them on pull requests that touch the paths under `pull_request` in `.github/workflows/pane-chrome.yml`, and a failed step fails the pull request. [scripts/pane-chrome/README.md](scripts/pane-chrome/README.md) describes every check, the benchmarks beside them, and how to add a case.
 
