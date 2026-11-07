@@ -19,7 +19,8 @@ import {
 } from "../../../state/app/context";
 import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { getSharedRegistry } from "../../registry";
-import { ChoiceDialog, EmptyState, NestedPaneTabs, PaneFooterScope, usePaneFooter, usePaneMenuItems, usePaneTabs } from "../../../components";
+import { ChoiceDialog, EmptyState, NestedPaneTabs, PaneFooterScope, PaneStatusBody, usePaneFooter, usePaneMenuItems, usePaneTabs } from "../../../components";
+import { useTickerPaneOpening } from "../../../state/opening-ticker-panes";
 import { useOptionalDialog, type PromptContext } from "../../../ui/dialog";
 import { useThrottledCommitValue } from "../../../react/use-throttled-commit-value";
 import { resolveOptionsTarget } from "../../../utils/options";
@@ -155,7 +156,9 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   const { createPaneFromTemplate } = usePluginAppActions();
   const config = usePaneAppConfig();
   const paneInstance = usePaneInstance();
-  const { ticker, financials, error: instrumentError } = usePaneTicker();
+  const { symbol, ticker, financials, error: instrumentError } = usePaneTicker();
+  // Opened before its listing was found: the pane says so until the lookup settles it.
+  const opening = useTickerPaneOpening(paneInstance?.instanceId);
   const liveStreaming = useLiveStreamingSetting();
   const streamingTarget = quoteSubscriptionTargetFromTicker(ticker, ticker?.metadata.ticker, "provider");
   const streamingTargets = useMemo(() => (
@@ -433,6 +436,8 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
       return sameStringSet(current, next) ? current : next;
     });
   }, [shownTabId, visibleTabIds]);
+
+  if (!ticker && opening && symbol) return <PaneStatusBody loading subject={symbol} />;
 
   if (!ticker) {
     const isEmptyFollowCollection = paneInstance?.binding?.kind === "follow" && !!collectionId && collectionTickerCount === 0;
