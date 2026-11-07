@@ -4,13 +4,14 @@
 // once per session and arms itself again for the next one.
 import { changeBasisLabel, quoteChangeBasis, type QuoteChangeBasis } from "../../../market-data/market/change-basis";
 import { getActiveQuoteDisplay } from "../../../market-data/market/status";
+import { quoteTradingDay } from "../../../market-data/quotes/day-range";
 import type { Quote } from "../../../types/financials";
 import type { AlertCondition, AlertRule } from "./types";
 
 /**
  * Move rules keep a synced list of their own: an app or a Gloom Cloud that
- * reads `alerts` would judge `up 3` as a price above 3. Only the running app
- * checks them.
+ * reads `alerts` would judge `up 3` as a price above 3. The running app checks
+ * them, and for a signed-in account with Cloud sync, Gloom Cloud does too.
  */
 export const MOVE_ALERTS_KEY = "moveAlerts";
 
@@ -25,11 +26,13 @@ export function moveCondition(word: string | undefined): AlertCondition | null {
 }
 
 /**
- * Who hears of a move: only the running app checks moves, so no email or
- * phone alert comes of one, signed in or not. Said where a move alert is
- * made and listed, so nobody waits for an email.
+ * Who hears of a move, as docs/usage.md states it: the running app checks its
+ * move rules. Signed in with Cloud sync, Gloom Cloud checks them too and, with
+ * the app closed, pushes one that goes off to a registered phone and lists it
+ * in the day's market email, unless the app already alerted on that session
+ * (`moveDay`). Said where a move alert is made, as a price alert's add says it.
  */
-export const MOVE_APP_ONLY = "Move alerts notify only while the app is running, even when signed in with Cloud sync: no email or phone alert.";
+export const MOVE_DELIVERY = "The app alerts while it is running; sign in with Cloud sync for a phone alert and a line in the day's market email when it is closed.";
 
 /** The largest move a rule takes, in percent: a fall cannot pass 100%. */
 const MAX_MOVE_PERCENT = 100;
@@ -82,6 +85,12 @@ export interface MoveReading {
    * a reading can set off an armed rule, never arm one again.
    */
   session: string | null;
+  /**
+   * The move's own session, as the quote dates its change (changeSessionDate,
+   * the 2026-11-06 session), the way Gloom Cloud dates the moves it judges;
+   * null when nothing dates it.
+   */
+  day: string | null;
 }
 
 const utcDay = (time: number) => new Date(time).toISOString().slice(0, 10);
@@ -99,7 +108,15 @@ export function readMove(quote: Quote, now = Date.now()): MoveReading | null {
   const basis = quoteChangeBasis(quote, { session: "active" });
   if (!basis) return null;
   const session = "date" in basis ? basis.date : basis.kind === "utc day" || basis.kind === "24h" ? utcDay(now) : null;
-  return { percent, basis, session };
+  return { percent, basis, session, day: moveDayOf(quote, basis, now) };
+}
+
+/** The session a quote dates its move to: its changeSessionDate, a coin's UTC day, else its trading day. */
+function moveDayOf(quote: Quote, basis: QuoteChangeBasis, now: number): string | null {
+  if (quote.changeSessionDate && ISO_DAY.test(quote.changeSessionDate)) return quote.changeSessionDate;
+  if (basis.kind === "utc day" || basis.kind === "24h") return utcDay(now);
+  const day = quoteTradingDay(quote);
+  return day && ISO_DAY.test(day) ? day : null;
 }
 
 /** A reading this recent dates an undated one after it: the same session, read by a stream and a poll that disagree. */
@@ -138,7 +155,8 @@ export function moveReached(alert: Pick<AlertRule, "condition" | "targetPrice">,
  * dated session later than the one it went off in: a print after the close,
  * a weekend quote, or a stream and a poll that date the move a day apart
  * never arm it twice. Then it goes off when the move reaches it, once for the
- * session. Returns the rule with its reading, and whether it went off now.
+ * session, and the rule keeps the move's session (`moveDay`, the latest) for
+ * Gloom Cloud. Returns the rule with its reading, and whether it went off now.
  */
 export function judgeMove(alert: AlertRule, quote: Quote, now = Date.now()): { alert: AlertRule; fired: boolean; reading: MoveReading | null } {
   const reading = readMove(quote, now);
@@ -150,7 +168,10 @@ export function judgeMove(alert: AlertRule, quote: Quote, now = Date.now()): { a
   // A session it already went off in, as a dated reading says, never sets it off again.
   const wentOff = !!reading.session && !!last && reading.session <= last && next.moveSession != null;
   const fired = next.status === "active" && !wentOff && moveReached(next, reading.percent);
-  if (fired) next = { ...next, status: "triggered", triggeredAt: now, moveSession: firedSession(alert, reading, now) };
+  if (fired) {
+    const day = reading.day && (!alert.moveDay || reading.day > alert.moveDay) ? { moveDay: reading.day } : {};
+    next = { ...next, status: "triggered", triggeredAt: now, moveSession: firedSession(alert, reading, now), ...day };
+  }
   return { alert: next, fired, reading };
 }
 

@@ -69,7 +69,7 @@ export function readLevelAlertStores(get: (key: string) => unknown): { alerts: A
   return { alerts, errors, error: Object.values(errors).filter(Boolean).join(" ") || null };
 }
 export function writeLevelAlertStores(alerts: AlertRule[]): Record<string, string> {
-  // A move rule is written as the rule alone: its readings are this device's (`MOVE_CHECKS_KEY`), so a check never changes the list.
+  // A move rule is written as the rule and the session it last went off in: its readings are this device's (`MOVE_CHECKS_KEY`), so a check never changes the list.
   return Object.fromEntries(LEVEL_ALERT_KEYS.map(key => [key, serializeAlerts(alerts.filter(a => levelAlertStoreKey(a) === key)
     .map((alert) => alert.move ? moveRuleOnly(alert) : alert))]));
 }

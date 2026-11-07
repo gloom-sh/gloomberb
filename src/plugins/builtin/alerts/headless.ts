@@ -1,5 +1,5 @@
 import { closeBasis, metricReadingText } from "./metric-model";
-import { MOVE_APP_ONLY, moveBasisText, movePercentText } from "./move";
+import { moveBasisText, movePercentText } from "./move";
 /**
  * `gloom fn ALRT`: the Alerts pane's three tabs as reports. Prices lists
  * the price alerts as the pane's table does, Events the event alerts (earnings,
@@ -135,7 +135,6 @@ function pricesResult(alerts: readonly AlertRule[], error: string | null, events
   const active = alerts.filter((alert) => alert.status === "active");
   const triggered = alerts.filter((alert) => alert.status === "triggered").sort((a, b) => (b.triggeredAt ?? 0) - (a.triggeredAt ?? 0));
   const notes = [
-    ...alerts.some((alert) => alert.move) ? [MOVE_APP_ONLY] : [],
     ...events > 0 ? [`${plural(events, "event alert")} not listed here: gloom fn ALRT --tab events`] : [],
   ];
   return {

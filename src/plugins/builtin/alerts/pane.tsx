@@ -116,8 +116,6 @@ function AlertDetail({ alert, scrollRef }: { alert: AlertRule; scrollRef: RefObj
         {reason ? null : <KeyValueRow {...DETAIL_ROW} label={alert.move ? "Move" : "Current"} value={formatCurrentPrice(alert, 24)} />}
         {/* What a move is measured from, as the quote's change line names it. */}
         {!reason && alert.move ? <KeyValueRow {...DETAIL_ROW} label="From" value={moveBasisText(alert.lastMoveBasis).replace(/^vs /, "")} tone="muted" /> : null}
-        {/* Only the running app checks a move: no email or phone alert comes of it, signed in or not. */}
-        {alert.move ? <KeyValueRow {...DETAIL_ROW} label="Notifies" value="Only while the app is running; no email or phone alert, even with Cloud sync" /> : null}
         {/* The two readings that place the quadrant, as RRG states them. */}
         {!reason && alert.metric?.kind === "rrg" && alert.lastCheckedPrice != null && alert.lastCheckedTarget != null ? <>
           <KeyValueRow {...DETAIL_ROW} label="Strength" value={alert.lastCheckedPrice.toFixed(2)} />

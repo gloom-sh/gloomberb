@@ -19,6 +19,12 @@ export interface AlertRule {
   move?: boolean;
   /** The session a move rule last went off in (the close it was measured from); it arms again in the next one. */
   moveSession?: string;
+  /**
+   * The latest session a move rule went off in on a device, as its quote dates
+   * the move (changeSessionDate). Kept in the synced rule, so Gloom Cloud never
+   * pushes or emails a session the app already alerted on.
+   */
+  moveDay?: string;
   /** What the last move read was measured from, as its quote's change line names it. */
   lastMoveBasis?: QuoteChangeBasis;
   lastDailyClose?: string;
