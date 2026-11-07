@@ -5,7 +5,8 @@ import { DEFAULT_CLI_OPTIONS } from "../options";
 import { serializeCliResult } from "../result";
 import { marketDataCliCommands } from "./market";
 import type { NewsArticle } from "../../news/types";
-import { mapCloudNewsArticle } from "../../sources/gloomberb-cloud/news";
+import { cloudNewsReadArticles, mapCloudNewsArticle, readCloudNews } from "../../sources/gloomberb-cloud/news";
+import { apiClient } from "../../api-client";
 import { commonWordCandidate, newsSearchText, wordMeansMore } from "./news-search";
 import { setCliWidthOverride } from "../../utils/cli-output";
 
@@ -181,6 +182,35 @@ test("a commodity's future searches the stories of its commodity, and offers no 
   await news.execute(["KC=F"], coffee.context);
   expect(none).toHaveLength(1);
   expect(render(coffee.printed[1]!)).toContain("No news for Coffee Dec 26 (NYB): news is filed under company tickers, not futures");
+});
+
+test("a future's feed read by the cloud reader, which searches its commodity itself, keeps the commodity heading, newest first", async () => {
+  // The feed reader now searches a future's commodity when no story is filed under it, for the pane; `news KC=F`
+  // read those as a coin's search ("no stories filed under KC=F", best match first).
+  const requests: URL[] = [];
+  setCloudApiFetchTransport(async (url) => {
+    const asked = new URL(url);
+    requests.push(asked);
+    const items = asked.pathname.endsWith("/news/search") ? [STORIES[0], STORIES[1]].map((item) => ({ ...item, id: `${item.id}-search` })) : [];
+    return new Response(JSON.stringify({ items, nextCursor: null }), { headers: { "Content-Type": "application/json" } });
+  });
+  const coffee = createTestCliContext({
+    dataProvider: {
+      getNews: async (query) => cloudNewsReadArticles(await readCloudNews(apiClient, query), query.ticker),
+      getQuote: async () => ({ symbol: "KC=F", name: "Coffee Dec 26", instrumentType: "FUTURE", exchangeName: "NYB" }),
+    },
+  });
+  await news.execute(["KC=F"], coffee.context);
+  expect(requests.map((url) => [url.pathname.replace(/^.*\/news/, "/news"), url.searchParams.get("query")])).toEqual([["/news", null], ["/news/search", "coffee"]]);
+  const lines = render(coffee.printed[0]!).split("\n");
+  expect(lines[0]).toBe('Stories matching "coffee"  ·  the commodity KC=F trades');
+  expect(lines.findIndex((line) => line.includes("could hit 105"))).toBeLessThan(lines.findIndex((line) => line.includes("holds TTF")));
+
+  // A metal's future reads the metals stories in the pane, as `news GC=F` does.
+  requests.length = 0;
+  await readCloudNews(apiClient, { feed: "ticker", ticker: "GC=F", limit: 20 });
+  expect(requests.at(-1)!.searchParams.get("topics")).toBe("metals");
+  expect(requests.at(-1)!.searchParams.get("query")).toBe("gold");
 });
 
 test("a search no story matches says so, never a near miss, and offers the commodity's future only when its news has stories", async () => {

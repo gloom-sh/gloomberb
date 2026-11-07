@@ -53,9 +53,10 @@ function cotWeeklyRows(history: readonly CotHistoryPoint[], limit: number | null
 }
 
 /**
- * The board's net column names the class it counts, "Net noncommercial" or
- * "Net managed money": the same market nets +185,473 as one and +223,784 as
- * the other, and a bare "Net" left a reader to guess which.
+ * What the text board heads its net column with: the class it counts, "Net
+ * noncommercial" or "Net managed money". The same market nets +185,473 as one
+ * and +223,784 as the other, and a bare "Net" left a reader to guess which.
+ * Exports keep `Net`, the column scripts read it by.
  */
 function cotBoardNetHeader(family: CotFamily, traderClass: CotClass): string {
   const label = COT_CLASSES[family].find((row) => row.value === traderClass)?.label ?? traderClass;
@@ -161,7 +162,7 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
     const publishedAt = cotPublishedAt(data);
     return { sections: [{ title: positions === "combined" ? `Positioning extremes  ·  ${cotPositionsText(positions)}` : "Positioning extremes",
       columns: [{ key: "marketName", header: "Market" }, { key: "contractCode", header: "Code" },
-        ...POSITION_COLUMNS.map((column) => column.key === "net" ? { ...column, header: cotBoardNetHeader(family, traderClass) } : column),
+        ...POSITION_COLUMNS.map((column) => column.key === "net" ? { ...column, textHeader: cotBoardNetHeader(family, traderClass) } : column),
         { key: "openInterest", header: "Open interest", align: "right", format: count }, { key: "reportDate", header: "As of" }],
       rows: rows.map((row) => ({ contractCode: row.contractCode, marketName: cotMarketName(row.marketName), reportDate: row.reportDate, openInterest: row.openInterest, ...cotPositionRow(row.position) })) }],
     errors: data.gaps, metadata: { ...data, scope, publishedAt, complete: data.status === "available" }, ...cotReleased(publishedAt) };

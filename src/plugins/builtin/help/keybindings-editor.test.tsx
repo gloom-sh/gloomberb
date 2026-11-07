@@ -103,7 +103,7 @@ test("rebinding from the help pane captures the next chord, shows the way back, 
   expect(tui.frame()).toContain("unbound");
 });
 
-test("NOTE shows only while a row on screen has a note and ACTION keeps 30 cells beside it", async () => {
+test("NOTE shows only while a row has a note and ACTION keeps 30 cells beside it, wherever the table is scrolled", async () => {
   const rebindTickerSearch = async () => {
     await tui.emitKeypress({ name: "j" });
     await tui.emitKeypress({ name: "return" });
@@ -116,8 +116,11 @@ test("NOTE shows only while a row on screen has a note and ACTION keeps 30 cells
   expect(tui.frame()).not.toContain("NOTE");
   await rebindTickerSearch();
   expect(tui.frame()).toContain("NOTE");
-  await tui.emitKeypress({ name: "0" });
+  // Scrolled past the rebound row, the columns hold: NOTE is decided from every row, not the rows on screen.
+  for (let step = 0; step < 40; step += 1) await tui.emitKeypress({ name: "j" });
   await frame();
+  expect(tui.frame()).not.toContain("Change the focused pane's ticker.");
+  expect(tui.frame()).toContain("NOTE");
   await act(async () => { await tui.destroy(); });
 
   // 80 columns cut "Change the focused pa…" beside an empty 26-cell NOTE. With a note, NOTE would leave ACTION

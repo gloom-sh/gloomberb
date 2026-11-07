@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
-import { act } from "react";
+import { act, useReducer } from "react";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { FuturesContractTermsPayload } from "../../../api-client/futures-curve";
 import { createOpenTuiTestHarness, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
-import { createInitialState } from "../../../state/app/context";
-import { createDefaultConfig } from "../../../types/config";
+import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
+import { createDefaultConfig, findPaneInstance } from "../../../types/config";
 import type { QuoteBatchResult } from "../../../types/data-provider";
 import type { PinTickerOptions } from "../../../types/plugin";
 import type { PluginRuntimeAccess } from "../../runtime";
 import { futuresModule } from "./index";
-import { TestPaneFrame, TestPaneProvider } from "../../../test-support/pane";
+import { TestPaneFrame, TestPaneProvider, createTestPaneConfig } from "../../../test-support/pane";
 import type { Quote } from "../../../types/financials";
 import { resetFuturesBoardTerms } from "./use-board-terms";
 import { resetFrontContractReturns } from "./use-front-returns";
@@ -215,6 +215,49 @@ describe("FuturesPane", () => {
     const searching = tui.frame();
     expect(searching).toContain("E-Mini Dow");
     expect(searching).toContain("▾ Equity Index");
+  });
+
+  test("in the Commodities & Energy workspace the Curve tab follows a search and a picked row, and an unsearched board leaves it", async () => {
+    // `FUT cocoa` opened the workspace's Curve tab on ES.
+    const id = "commodities:test";
+    let latest: AppState | null = null;
+    function Workspace({ query, root }: { query?: string; root: string }) {
+      const config = createTestPaneConfig("/tmp/gloomberb-futures-pane-test", {
+        instanceId: id, paneId: "commodities-energy", binding: { kind: "none" }, settings: { root }, ...(query ? { params: { query } } : {}),
+      });
+      const [state, dispatch] = useReducer(appReducer, createInitialState(config));
+      latest = state;
+      return (
+        <TestPaneProvider state={state} dispatch={dispatch} paneId={id} runtime={makeRuntime()} pluginId="market-overview">
+          <FuturesPane paneId={id} paneType="commodities-energy" focused width={80} height={24} />
+        </TestPaneProvider>
+      );
+    }
+    const curveRoot = () => findPaneInstance(latest!.config.layout, id)?.settings?.root;
+    const rest = () => act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await tui.setup().renderOnce();
+    });
+
+    // A search: the row it leaves at the top, then the row picked.
+    await tui.render(<Workspace query="softs" root="ES" />, { width: 80, height: 24 });
+    await renderSettled();
+    await rest();
+    expect(curveRoot()).toBe("KC");
+    await emitKeypress({ name: "down", sequence: "\u001B[B" });
+    await rest();
+    expect(curveRoot()).toBe("SB");
+
+    // `CTM CC` then Markets: the first row an unsearched board selects by itself moves nothing.
+    await tui.render(<Workspace root="CC" />, { width: 80, height: 24 });
+    await renderSettled();
+    await rest();
+    expect(tui.frame()).toContain("E-Mini S&P 500");
+    expect(curveRoot()).toBe("CC");
+    // Picking a row does.
+    await emitKeypress({ name: "down", sequence: "\u001B[B" });
+    await rest();
+    expect(curveRoot()).not.toBe("CC");
   });
 
   test("opens the selected contract in ticker research", async () => {

@@ -776,7 +776,7 @@ That returns valuation, cash flows and yield shocks. Use `--price 103.333937` in
 - Watchlist and portfolio tables add a muted front reference beside the ticker (or Name when shown), such as `front NGX26 3.116`. It follows the front quote, leaves Last at the row's own contract price, and hides when the whole note cannot fit.
 - Generic tickers take OI for the open interest switch (CL1OI). UNIT says what a price counts, as `quote` does ("USD / barrel", "US cents / bushel").
 - Search matches the root's name and code, "No. 11" and "#11" alike (`FUT "sugar no. 11"`). A sector or group word lists its rows: `FUT softs` (coffee, sugar, cocoa, cotton, orange juice), `grains`, `agriculture`, `metals`, `energy`, `livestock`, `currencies`, `rates`. `FUT TTF` (`gloom fn FUT TTF`, `shot FUT TTF`) opens the board searched for that contract.
-- On an 80-cell board the week's and month's returns come before UNIT; a narrower one keeps CHG% and drops UNIT first (a cent price still reads 280.15¢).
+- CHG% always shows, and the week's and month's returns come before UNIT (a cent price still reads 280.15¢). CONTRACT keeps at least 24 cells, so 1W joins from a 71-cell board, 1M from 80, UNIT from 106 and CHG from 117.
 - `--tab markets|inventories|positioning|crops` opens the workspace on that board (`gloom fn FUT --tab inventories`). FUT takes no other option and refuses one it does not know.
 - FUT and CTM list COMEX metals (HG copper, ALI aluminium), not LME or Shanghai (SHFE) contracts. The IMF's monthly world prices are the nearest public series: `gloom fred PCOPPUSDM` and `gloom fred PALUMUSDM`, in USD per metric ton.
 

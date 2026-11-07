@@ -42,7 +42,6 @@ import {
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
-  type DataTableVisibleRange,
   type SectionedRow,
 } from "../../../components";
 import { t, tf } from "../../../i18n";
@@ -68,12 +67,12 @@ const TABLE_CHROME = 5;
 const ACTION_MIN_WIDTH = 30;
 
 /**
- * Whether the NOTE column shows: only while a row on screen has a note, and
- * ACTION keeps ACTION_MIN_WIDTH cells beside it. At 80 cells an empty NOTE
- * took 26 while ACTION read "Change the focused pa…".
+ * Whether the NOTE column shows: only while some row has a note, and ACTION
+ * keeps ACTION_MIN_WIDTH cells beside it. At 80 cells an empty NOTE took 26
+ * while ACTION read "Change the focused pa…".
  */
-function showsKeybindingNotes(width: number, keyColumnWidth: number, noteOnScreen: boolean): boolean {
-  return noteOnScreen && width - TABLE_CHROME - keyColumnWidth - NOTE_COLUMN_WIDTH >= ACTION_MIN_WIDTH;
+function showsKeybindingNotes(width: number, keyColumnWidth: number, anyNote: boolean): boolean {
+  return anyNote && width - TABLE_CHROME - keyColumnWidth - NOTE_COLUMN_WIDTH >= ACTION_MIN_WIDTH;
 }
 
 type KeybindingColumnId = "key" | "action" | "note";
@@ -383,12 +382,9 @@ export function KeybindingsEditor({
     () => badgeColumnWidth([...bindableRows.map((row) => row.chords), [t("Press a key")]]),
     [bindableRows],
   );
-  const [visibleRange, setVisibleRange] = useState<DataTableVisibleRange | null>(null);
-  const noteOnScreen = useMemo(
-    () => (visibleRange ? rows.slice(visibleRange.start, visibleRange.end) : rows).some((row) => isSectionedItemRow(row) && !!row.item.note),
-    [rows, visibleRange],
-  );
-  const showNotes = showsKeybindingNotes(width, keyColumnWidth, noteOnScreen);
+  // Decided from every row, not the rows on screen, so ACTION's width holds while the table scrolls.
+  const anyNote = useMemo(() => bindableRows.some((row) => !!row.note), [bindableRows]);
+  const showNotes = showsKeybindingNotes(width, keyColumnWidth, anyNote);
   const columns = useMemo<KeybindingColumn[]>(() => [
     { id: "key", label: "KEY", width: keyColumnWidth, align: "left" },
     { id: "action", label: "ACTION", width: 20, align: "left", flexGrow: 1 },
@@ -447,7 +443,6 @@ export function KeybindingsEditor({
       sortColumnId={null}
       sortDirection="asc"
       getItemKey={(row) => row.key}
-      onVisibleRangeChange={setVisibleRange}
       renderSectionHeader={renderSectionedRowHeader}
       renderCell={renderCell}
       emptyStateTitle="No keybindings"

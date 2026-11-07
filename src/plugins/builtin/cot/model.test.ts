@@ -322,11 +322,11 @@ test("--report tff and --positions combined read the TFF board and contracts wit
   await expect(run(undefined, ["--report", "tff", "--traderClass", "managed-money"], "futures-only")).rejects.toThrow("does not belong");
 });
 
-test("the board's net column names the class it counts", async () => {
+test("the text board's net column names the class it counts, and the export keeps Net", async () => {
   // `fn COT` headed sugar's +185,473 "Net"; the disaggregated report's managed money nets +223,784 on the same market.
   const capability = getPaneFunctionCapability({ id: "cot-pane", paneId: "cot", label: "COT", description: "COT", headless: cotHeadless },
     { id: "cot", name: "COT", component: () => null, defaultPosition: "right" });
-  const header = async (flags: string[]) => {
+  const columns = async (flags: string[]) => {
     const global = parseCliGlobalArgs(["fn", "COT", ...flags]);
     const options = normalizeCapabilityOptions(capability, parsePaneFunctionArgs(global.args.slice(1), global.options).options, { strict: true });
     const board = await cotHeadless.load({ symbols: [], options } as never, { apiClient: {
@@ -335,12 +335,15 @@ test("the board's net column names the class it counts", async () => {
         return { ...base, reportFamily: family, traderClass, status: "available", gaps: [], classes: [{ id: traderClass, label: traderClass }],
           rows: [{ ...contract!, reportDate: "2026-09-15", openInterest: 200, position: { ...positions[0]!, id: traderClass }, status: "available" }] };
       },
-    } } as never) as { sections: Array<{ columns: Array<{ key: string; header: string }> }> };
-    return board.sections[0]!.columns.map((column) => column.header);
+    } } as never) as { sections: Array<{ columns: Array<{ key: string; header: string; textHeader?: string }> }> };
+    return board.sections[0]!.columns;
   };
-  expect(await header([])).toEqual(["Market", "Code", "Net noncommercial", "1W Δ", "Net % OI", "Pctl 1Y", "Pctl 3Y", "Pctl All", "Open interest", "As of"]);
-  expect(await header(["--report", "disaggregated"])).toContain("Net managed money");
-  expect(await header(["--report", "legacy", "--traderClass", "commercial"])).toContain("Net commercial");
+  const text = async (flags: string[]) => (await columns(flags)).map((column) => column.textHeader ?? column.header);
+  expect(await text([])).toEqual(["Market", "Code", "Net noncommercial", "1W Δ", "Net % OI", "Pctl 1Y", "Pctl 3Y", "Pctl All", "Open interest", "As of"]);
+  expect(await text(["--report", "disaggregated"])).toContain("Net managed money");
+  expect(await text(["--report", "legacy", "--traderClass", "commercial"])).toContain("Net commercial");
+  // A CSV column is read by its name, so the export's stays Net whatever the class.
+  expect((await columns(["--report", "disaggregated"])).find((column) => column.key === "net")!.header).toBe("Net");
 });
 
 test("the API asks for a scope only when it is combined, so the default request is the one it always was", async () => {

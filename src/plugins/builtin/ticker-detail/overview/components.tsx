@@ -38,33 +38,49 @@ export function rangeRowChrome(labelWidth: number, endpointWidth: number): numbe
 /**
  * How a range row writes its ends: as the quote prints a price ($5,072.00),
  * or, on a row too narrow for those beside a track even under its short
- * label, the bare number, whole from 100 up (5,072): a 27-cell CC=F pane cut
- * its highs, "Day $5,072.00 ● $5,28". Below 100 the decimals stay, or 18.13
- * and 18.60 would both read 18.
+ * label, the bare number: a 27-cell CC=F pane cut its highs, "Day $5,072.00
+ * ● $5,28". From 100 up a compact end drops the decimals the low and the
+ * high do not need to read apart (5,072 and 5,287, but 150.1 and 150.4, never
+ * 150 twice); below 100 it keeps them, or 18.13 and 18.60 would read 18 and 19.
  */
 type RangeEndpointStyle = "price" | "compact";
 
-/** One end of a range, in `style`. */
-function formatRangeEndpoint(
-  value: number,
+const fractionDigits = (text: string) => /\.(\d+)\D*$/.exec(text)?.[1]!.length ?? 0;
+
+/** The options a compact range writes its two ends with: the fewest decimals that still tell them apart. */
+function compactRangeOptions(low: number, high: number, priceOptions: MarketFormatOptions): MarketFormatOptions {
+  if (Math.max(Math.abs(low), Math.abs(high)) < 100) return priceOptions;
+  // The decimals the price has, read without the cell cap, which drops them to fit.
+  const unbounded = { ...priceOptions, maxWidth: undefined };
+  const full = Math.max(fractionDigits(formatMarketPrice(low, unbounded)), fractionDigits(formatMarketPrice(high, unbounded)));
+  for (let digits = 0; digits < full; digits += 1) {
+    const options = { ...priceOptions, fixedFractionDigits: digits, minimumFractionDigits: digits, referencePrice: undefined };
+    if (formatMarketPrice(low, options) !== formatMarketPrice(high, options)) return options;
+  }
+  return priceOptions;
+}
+
+/** A range's two ends, in `style`. */
+function formatRangeEndpoints(
+  low: number,
+  high: number,
   currency: string,
   priceOptions: MarketFormatOptions,
   style: RangeEndpointStyle = "price",
-): string {
-  if (style === "price") return formatMarketPriceWithCurrency(value, currency, priceOptions);
-  return formatMarketPrice(value, Math.abs(value) >= 100
-    ? { ...priceOptions, fixedFractionDigits: 0, minimumFractionDigits: 0, referencePrice: undefined }
-    : priceOptions);
+): [string, string] {
+  if (style === "price") return [formatMarketPriceWithCurrency(low, currency, priceOptions), formatMarketPriceWithCurrency(high, currency, priceOptions)];
+  const options = compactRangeOptions(low, high, priceOptions);
+  return [formatMarketPrice(low, options), formatMarketPrice(high, options)];
 }
 
 /** The longest endpoint among ranges drawn together, so stacked tracks start and end in one column. */
 export function rangeEndpointWidth(
-  values: readonly number[],
+  ranges: ReadonlyArray<readonly [low: number, high: number]>,
   currency: string,
   priceOptions: MarketFormatOptions,
   style: RangeEndpointStyle = "price",
 ): number {
-  const widths = values.map((value) => displayWidth(formatRangeEndpoint(value, currency, priceOptions, style)));
+  const widths = ranges.flatMap(([low, high]) => formatRangeEndpoints(low, high, currency, priceOptions, style).map(displayWidth));
   return Math.min(RANGE_ENDPOINT_WIDTH, Math.max(1, ...widths));
 }
 
@@ -123,8 +139,7 @@ export function CompactRangeBar({
   const shownLabel = useShortLabel ? shortLabel : label;
   const shownLabelWidth = useShortLabel ? displayWidth(shortLabel) : labelWidth;
   const endpointOptions = { ...priceOptions, maxWidth: endpointWidth };
-  const lowText = formatRangeEndpoint(low, currency, endpointOptions, endpoints);
-  const highText = formatRangeEndpoint(high, currency, endpointOptions, endpoints);
+  const [lowText, highText] = formatRangeEndpoints(low, high, currency, endpointOptions, endpoints);
   const barWidth = Math.max(1, width - rangeRowChrome(shownLabelWidth, endpointWidth));
 
   // The desktop and the web size the row and its track by CSS, so the high end keeps to the pane's edge on every frame of a

@@ -197,17 +197,24 @@ export function cloudNewsAccess(
 type CloudNewsClient = Pick<typeof apiClient, "getCloudNews" | "searchCloudNews">
   & Partial<Pick<typeof apiClient, "hasSessionCredential">>;
 
+/** The NI code of the metal markets: prices, futures, bullion and the trusts that hold it, not a miner's releases. */
+export const METALS_NEWS_TOPIC = "metals";
+
 /**
- * The text a ticker no story is filed under is searched by: a coin pair's
- * coin ("bitcoin" for BTC-USD), or a futures board symbol's commodity
- * ("cocoa" for CC=F), as `news` searches them. Null for anything else, and
- * for a future with no commodity name (ES=F, ZN=F).
+ * What a ticker no story is filed under is searched by: a coin pair's coin
+ * ("bitcoin" for BTC-USD), or a futures board symbol's commodity ("cocoa" for
+ * CC=F), as `news` searches them. A metal's future (GC=F, SI=F, HG=F, PL=F,
+ * PA=F, ALI=F) searches the metals stories only, as `news GC=F` does: the
+ * stories that merely name gold are mostly miners' releases. Null for
+ * anything else, and for a future with no commodity name (ES=F, ZN=F).
  */
-function newsFallbackSearch(query: Pick<NewsQuery, "ticker" | "exchange" | "listingName">): string | null {
+function newsFallbackSearch(query: Pick<NewsQuery, "ticker" | "exchange" | "listingName">): { text: string; topics?: string[] } | null {
   const coin = coinSearchName(query.ticker, query.exchange, query.listingName);
-  if (coin) return coin;
+  if (coin) return { text: coin };
   const future = query.ticker ? futuresBoardContractForTicker(parsePublicTickerKey(query.ticker).symbol) : null;
-  return future ? commoditySearchName(future) : null;
+  const text = future ? commoditySearchName(future) : null;
+  if (!future || !text) return null;
+  return future.sector === "metals" ? { text, topics: [METALS_NEWS_TOPIC] } : { text };
 }
 
 /**
@@ -224,12 +231,12 @@ export async function readCloudNews(client: CloudNewsClient, query: NewsQuery): 
   const response = await client.getCloudNews(cloudNewsParams(query));
   const read: CloudNewsRead = { ...response, access: cloudNewsAccess(response, sentSession) };
   if (response.items.length > 0 || query.cursor || normalizeNewsFeed(query) !== "ticker") return read;
-  const text = newsFallbackSearch(query);
-  if (!text) return read;
-  const found = await client.searchCloudNews(text, query.limit)
+  const search = newsFallbackSearch(query);
+  if (!search) return read;
+  const found = await client.searchCloudNews(search.text, query.limit, search.topics)
     .catch(logFailure("sources.gloomberb-cloud.news", "Search the stories that mention a ticker's coin or commodity failed", null));
   return found && found.items.length > 0
-    ? { items: found.items, nextCursor: null, searchedFor: text, access: cloudNewsAccess(found, sentSession) }
+    ? { items: found.items, nextCursor: null, searchedFor: search.text, access: cloudNewsAccess(found, sentSession) }
     : read;
 }
 

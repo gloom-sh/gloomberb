@@ -362,9 +362,9 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     yearRange ? displayWidth(yearRangeLabel) : 0,
   );
   // Both ranges share one endpoint width, so stacked tracks start and end in the same column.
-  const rangeValues = [
-    ...(hasDayRange ? [quote.low!, quote.high!] : []),
-    ...(yearRange ? [yearRange.low, yearRange.high] : []),
+  const rangeValues: Array<[number, number]> = [
+    ...(hasDayRange ? [[quote.low!, quote.high!] as [number, number]] : []),
+    ...(yearRange ? [[yearRange.low, yearRange.high] as [number, number]] : []),
   ];
   const rangePriceCells = rangeEndpointWidth(rangeValues, quoteCurrency, moneyOptions);
   const rangeHalfWidth = Math.floor((contentWidth - RANGE_PAIR_GAP) / 2);

@@ -945,6 +945,16 @@ test("a range typed in a symbol's place says to give it as --range, and a bare w
   await expect(runList(["CC=F", "1mo"], bars)).rejects.toThrow('"1mo" reads as a range, not a symbol: give it as --range 1M.');
   await expect(runList(["CC=F", "KC=F", "3 months"], bars)).rejects.toThrow("give it as --range 3M");
   expect(asked).toEqual([]);
+  // The command it suggests is the one typed with the range moved: its options and output flags stay.
+  const suggested = async (args: string[], options: Partial<typeof DEFAULT_CLI_OPTIONS>) => {
+    const cli = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-command-fixture"), dataProvider: createTestDataProvider({}) },
+      { ...DEFAULT_CLI_OPTIONS, ...options });
+    cli.context.fail = (message: string, details?: string): never => { throw new Error(`${message}\n${details}`); };
+    return history.execute(args, cli.context).then(() => "", (error: Error) => error.message.split("\n")[1]);
+  };
+  expect(await suggested(["CC=F", "KC=F", "1mo", "--wide", "--exchange", "NYB"], { format: "csv", limit: 5 }))
+    .toBe("gloom history CC=F KC=F --wide --exchange NYB --range 1M --csv --limit 5");
+  expect(await suggested(["Coca Cola", "PEP", "1y"], {})).toBe('gloom history "Coca Cola" PEP --range 1Y');
   // ALL and MAX are listings, and a range already given leaves every entry a symbol.
   expect((await runList(["CC=F", "ALL"], bars)).symbols).toEqual(["CC=F", "ALL"]);
   asked = [];
