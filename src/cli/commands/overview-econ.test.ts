@@ -137,8 +137,8 @@ test("--country takes ISO codes, comma lists and regions; a country with nothing
   expect(turkey).toContain("29.73%");
   expect(turkey).not.toContain("Housing Starts");
   // A real country with no rows is a quiet window, never an unknown country; UK is GB's common name.
-  expect(await econText(withTurkey, ["--country", "MX"])).toContain("No scheduled releases for MX in this window.");
-  expect(await econText(withTurkey, ["--country", "UK"])).toContain("No scheduled releases for GB in this window.");
+  expect(await econText(withTurkey, ["--country", "MX"])).toContain("No scheduled releases for MX in this window; releases are listed through 2026-11-03.");
+  expect(await econText(withTurkey, ["--country", "UK"])).toContain("No scheduled releases for GB in this window; releases are listed through 2026-11-03.");
   // A list lists what its countries have, and names the ones with nothing.
   const list = await econText(withTurkey, ["--country", "MX,tr, us"]);
   expect(list).toContain("CPI y/y");
@@ -147,6 +147,33 @@ test("--country takes ISO codes, comma lists and regions; a country with nothing
   expect(list).toContain("No scheduled releases for MX in this window.");
   await expect(econText(withTurkey, ["--country", "TUR"])).rejects.toThrow('Unknown country "TUR".');
   await expect(econText(withTurkey, ["--country", "MX,XQ"])).rejects.toThrow('Unknown country "XQ".');
+});
+
+// `econ --from 2026-12-01 --country TR,MX` said only "No scheduled releases for TR or MX in this window".
+test("past the last release, the listing's end is said, and each bank's next decision is listed as one", async () => {
+  setSystemTime(new Date("2026-11-07T20:06:00.000Z"));
+  const decision = (date: string, country: string, name: string) => ({ ...event(date, country, "high", name), kind: "central-bank-decision" });
+  const listing = [
+    event("2026-11-09T12:00:00.000Z", "MX", "high", "CPI y/y"),
+    event("2026-11-20T13:30:00.000Z", "US", "high", "Housing Starts"),
+    decision("2026-11-19T13:00:00.000Z", "ZA", "SARB Interest Rate Decision"),
+  ];
+  // A filter with nothing in the window names where the releases end.
+  expect(await econText(listing, ["--from", "2026-12-01", "--country", "TR,MX"]))
+    .toContain("No scheduled releases for TR or MX in this window; releases are listed through 2026-11-20.");
+  // The banks' next decisions past it are rows, and the end is still the last release's, not theirs.
+  const next = [...listing, decision("2026-12-10T11:00:00.000Z", "TR", "CBRT Interest Rate Decision"),
+    decision("2026-12-17T19:00:00.000Z", "MX", "Banxico Interest Rate Decision"), decision("2027-01-28T13:00:00.000Z", "ZA", "SARB Interest Rate Decision")];
+  const later = await econText(next, ["--from", "2026-12-01", "--country", "TR,MX"]);
+  expect(later).toContain("CBRT Interest Rate Decision");
+  expect(later).toContain("Banxico Interest Rate Decision");
+  expect(later).toContain("No releases listed after 2026-11-20; the rows after it are each central bank's next decision");
+  expect(later).not.toContain("No events listed after");
+  const { result } = await econPrinted(next, ["--from", "2026-12-01", "--country", "TR,MX"]);
+  expect(result.metadata).toMatchObject({ listedThrough: "2026-11-20" });
+  // Rows within the listing say nothing about its end; from today, the next decision past it says it under them.
+  expect(await econText(next, ["--country", "US"])).not.toContain("listed after");
+  expect(await econText(next, ["--country", "MX"])).toContain("CPI y/y");
 });
 
 test("rows a bank or a statistics office times itself show its clock; a bank that states no time leaves the time blank and says why", async () => {

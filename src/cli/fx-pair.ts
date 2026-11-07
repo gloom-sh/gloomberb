@@ -161,7 +161,7 @@ export function parseFxArgs(words: readonly string[], baseCurrency: string): FxA
  * An amount in its currency's minor units, grouped (1,234.50 EUR; 1,235 JPY).
  * One too small for them keeps six significant figures instead of reading 0.
  */
-function formatFxAmount(amount: number, currency: string): string {
+export function formatFxAmount(amount: number, currency: string): string {
   const digits = currencyMinorDigits(currency);
   const rounded = Number(amount.toFixed(digits));
   if (rounded === 0 && amount !== 0) return `${formatFxRate(amount)} ${currency}`;

@@ -32,14 +32,14 @@ export const quotedSearchCommand = (word: string) => `gloom news '"${word}"'`;
 /**
  * Whether a word typed for `news` may mean more than the listing it found:
  * a plain word (letters only, three or more, typed with a lower-case letter,
- * as a word is and a ticker rarely is) that is one of the words of the
- * company's name ("gold" for Gold.com Inc., "gap" for The Gap). The stories
- * then decide (`wordMeansMore`).
+ * as a word is and a ticker rarely is) that one of the words of the
+ * company's name is or starts with ("gold" for Gold.com Inc., "gap" for The
+ * Gap, "peso" for PesoRama Inc.). The stories then decide (`wordMeansMore`).
  */
 export function commonWordCandidate(typed: string, companyName: string | null | undefined): boolean {
-  const word = typed.trim();
-  if (!/^[A-Za-z]{3,}$/.test(word) || !/[a-z]/.test(word) || !companyName) return false;
-  return companyName.toLowerCase().split(/[^a-z]+/).includes(word.toLowerCase());
+  const word = typed.trim().toLowerCase();
+  if (!/^[A-Za-z]{3,}$/.test(typed.trim()) || !/[a-z]/.test(typed) || !companyName) return false;
+  return companyName.toLowerCase().split(/[^a-z]+/).some((part) => part.startsWith(word));
 }
 
 /**
@@ -48,10 +48,11 @@ export function commonWordCandidate(typed: string, companyName: string | null | 
  * them filed under the ticker. "gold" is mostly the metal's market; "meta"
  * is mostly Meta Platforms.
  */
-export function wordMeansMore(stories: readonly NewsArticle[], symbol: string): boolean {
+export function wordMeansMore(stories: readonly NewsArticle[], symbol: string, key = symbol): boolean {
   if (stories.length < 3) return false;
-  const ticker = symbol.toUpperCase();
-  const filed = stories.filter((story) => (story.tickers ?? []).some((entry) => entry.toUpperCase() === ticker)).length;
+  // A listing outside the US is tagged with its venue (PESO:TSXV), a US one bare.
+  const tickers = new Set([symbol.toUpperCase(), key.toUpperCase()]);
+  const filed = stories.filter((story) => (story.tickers ?? []).some((entry) => tickers.has(entry.toUpperCase()))).length;
   return filed * 2 < stories.length;
 }
 

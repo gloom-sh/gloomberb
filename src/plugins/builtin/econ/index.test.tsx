@@ -264,6 +264,10 @@ describe("EconCalendarPane", () => {
     expect(frame).toContain("39.50%");
     // The decision's row has no time: its line holds the flag, the country and the event, nothing in the time column.
     expect(frame.split("\n").find((line) => line.includes("CBRT Interest Rate Decision"))).not.toMatch(/\d\d:\d\d/);
+    // a dash, as the CLI prints, and on the row in hand the footer says why, as the CLI does under its table.
+    expect(frame.split("\n").find((line) => line.includes("CBRT Interest Rate Decision"))!.trimStart()).toStartWith("—");
+    const wide = await renderPane(170, "all", true, { country: "MX,TR", tabAt: "3" });
+    expect(wide).toContain("no time stated");
     expect(frame).not.toContain("Core PCE");
     expect(frame).toContain("next CBRT Interest Rate Decision Sat");
     expect(frame).not.toMatch(/CBRT Interest Rate Decision in \d/);

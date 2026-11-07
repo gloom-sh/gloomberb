@@ -447,6 +447,10 @@ test("only several words, or one that kept its quotes, are text up front; a bare
 test("a word that is also its company's name hints at the text search only when its stories are mostly elsewhere", () => {
   const filed = (tickers: string[]) => ({ tickers }) as unknown as NewsArticle;
   expect(commonWordCandidate("gold", "Gold.com Inc.")).toBe(true);
+  // A name that runs the word into another, as a listing abroad does with its venue in the tag.
+  expect(commonWordCandidate("peso", "PesoRama Inc.")).toBe(true);
+  expect(wordMeansMore([filed([]), filed(["PESO:TSXV", "ZE6:FWB2"]), filed([]), filed([])], "PESO", "PESO:TSXV")).toBe(true);
+  expect(wordMeansMore([filed(["PESO:TSXV"]), filed(["PESO:TSXV"]), filed([])], "PESO", "PESO:TSXV")).toBe(false);
   // Typed as a ticker, or not a word of the name: no lookup of the stories at all.
   expect(commonWordCandidate("GOLD", "Gold.com Inc.")).toBe(false);
   expect(commonWordCandidate("tsla", "Tesla, Inc.")).toBe(false);

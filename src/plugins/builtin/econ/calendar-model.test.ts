@@ -16,7 +16,9 @@ import {
   noScheduledReleasesMessage,
   parseCountryFilter,
   pendingHighImpactPrints,
+  releaseListingEnd,
   resetEconCalendarPersistence,
+  shortCalendarEnd,
   actualColor,
   valueColumnWidth,
   matchesEventSearch,
@@ -222,6 +224,22 @@ describe("country filters", () => {
     expect(noScheduledReleasesMessage(["MX"])).toBe("No scheduled releases for MX in this window.");
     expect(noScheduledReleasesMessage(["ZA", "IN"])).toBe("No scheduled releases for ZA or IN in this window.");
     expect(noScheduledReleasesMessage(["MX", "BR", "ZA", "IN", "KR"])).toBe("No scheduled releases for MX, BR, ZA, IN or KR in this window.");
+    expect(noScheduledReleasesMessage(["TR", "MX"], "2026-11-20")).toBe("No scheduled releases for TR or MX in this window; releases are listed through 2026-11-20.");
+  });
+
+  // past the feeds' end Gloom Cloud lists each bank's next decision, which must not move where the listing ends.
+  test("the listing ends with its last release, not with a bank's next decision past it", () => {
+    const at = (date: string, kind?: EconEvent["kind"]) => ({ ...makeEvent(date), date: new Date(date), ...(kind ? { kind } : {}) });
+    const today = Date.parse("2026-11-07T00:00:00Z");
+    const releases = [at("2026-11-09T12:00:00Z", "statistics-release"), at("2026-11-20T13:30:00Z"), at("2026-11-19T13:00:00Z", "central-bank-decision")];
+    const decisions = [at("2026-12-10T11:00:00Z", "central-bank-decision"), at("2027-01-28T13:00:00Z", "central-bank-decision")];
+    expect(releaseListingEnd([...releases, ...decisions])?.toISOString()).toBe("2026-11-20T13:30:00.000Z");
+    // A listing that ends less than a week past the start stops short, whatever decisions follow it.
+    expect(shortCalendarEnd([...releases, ...decisions], today)).toBeNull();
+    expect(shortCalendarEnd([...releases, ...decisions], Date.parse("2026-11-15T00:00:00Z"))?.toISOString()).toBe("2026-11-20T13:30:00.000Z");
+    // A calendar of decisions alone ends with its last.
+    expect(releaseListingEnd(decisions)?.toISOString()).toBe("2027-01-28T13:00:00.000Z");
+    expect(releaseListingEnd([])).toBeNull();
   });
 
   test("a national euro-area release is its member's by the adjective its title starts with, and still the euro area's", () => {

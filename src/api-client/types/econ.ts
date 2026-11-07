@@ -64,6 +64,8 @@ export interface CloudShortRate {
   unavailableReason: string | null;
   /** The attribution the publisher's licence asks for wherever the rate is shown (MAS's SORA); absent otherwise. */
   attribution?: { text: string; licenceUrl: string } | null;
+  /** The benchmark this rate is served in place of when that one could not be read (TLREF, with the CBRT's policy rate served); absent otherwise. */
+  standsInFor?: string | null;
 }
 
 export interface CloudShortRatesPayload {

@@ -90,7 +90,7 @@ afterEach(() => {
 describe("FxMatrixPane", () => {
   test("renders a missing rate as unavailable instead of parity", async () => {
     installCoordinator();
-    await tui.render(<Harness />, { width: 100, height: 14 });
+    await tui.render(<Harness width={110} />, { width: 110, height: 14 });
     await act(async () => {
       await tui.setup().renderOnce();
       await tui.setup().renderOnce();
@@ -99,11 +99,11 @@ describe("FxMatrixPane", () => {
     const frame = tui.frame();
     // EUR/USD is a real cross built from the two USD legs.
     expect(frame).toContain("1.08000");
-    // The terminal draws no flags: codes only, in the columns it always had.
+    // The terminal draws no flags: codes only, after the day's move against the dollar.
     // Under the amount field.
     const [, header, usdRow] = frame.split("\n");
-    expect(header!.trim().split(/\s+/)).toEqual(["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD"]);
-    expect(header!.indexOf("USD")).toBe(13);
+    expect(header!.trim().split(/\s+/)).toEqual(["1D", "VS", "USD", "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD"]);
+    expect(header!.indexOf("1D VS USD")).toBe(8);
     expect(usdRow!.indexOf("USD")).toBe(1);
 
     // Regression: a currency with no rate rendered 1.0000 against everything.
@@ -126,7 +126,7 @@ describe("FxMatrixPane", () => {
     // The field holds the amount, and its column the amount in each currency at the board's rates: 1.08 / 1.27 for GBP.
     expect(lines()[0]).toContain("2,500,000 EUR");
     const header = lines()[1]!;
-    expect(header.trim().split(/\s+/).slice(0, 2)).toEqual(["AMOUNT", "USD"]);
+    expect(header.trim().split(/\s+/).slice(0, 4)).toEqual(["AMOUNT", "1D", "VS", "USD"]);
     // The table's own sign that columns go on past the edge.
     expect(header.trimEnd().endsWith("→")).toBe(true);
     expect(header).not.toContain("JPY");

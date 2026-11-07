@@ -141,8 +141,53 @@ export function formatForwardPoints(points: number): string {
   return `${points >= 0 ? "+" : ""}${points.toFixed(1)}`;
 }
 
-/** `TIIE 28d 6.776% (Banco de México, 2026-10-20; ACT/360)`, `CDI 13.65% (Banco Central do Brasil, 2026-11-05; BUS/252 compounded)`. */
+/**
+ * `TIIE 28d 6.776% (Banco de México, 2026-10-20; ACT/360)`, `CDI 13.65% (Banco Central do Brasil, 2026-11-05; BUS/252 compounded)`.
+ * A rate served in place of the currency's benchmark says which one it stands in for.
+ */
 export function describeShortRate(rate: CloudShortRate & { value: number }): string {
   const basis = rate.compounding === "business-252" ? "BUS/252 compounded" : `ACT/${rate.dayCountBasis}`;
-  return `${rate.name} ${formatRatePercent(rate.value)} (${rate.publisher}, ${rate.asOf ?? "undated"}; ${basis})`;
+  const standIn = rate.standsInFor ? `, standing in for ${rate.standsInFor}` : "";
+  return `${rate.name} ${formatRatePercent(rate.value)} (${rate.publisher}, ${rate.asOf ?? "undated"}; ${basis})${standIn}`;
+}
+
+/** The warning for a rate served in place of its currency's benchmark: which, and why. */
+export function shortRateStandInNote(rate: CloudShortRate): string | null {
+  return rate.standsInFor
+    ? `${rate.standsInFor} (${rate.currency}) could not be read, so the ${rate.name} stands in for it.`
+    : null;
+}
+
+/**
+ * The carry of a forward on an amount of the pair's base currency: the
+ * forward points on it over the tenor, in the quote currency. The side that
+ * holds the higher-yielding currency earns it: with the forward above spot,
+ * the seller of the base currency forward (short the pair); below spot, the
+ * buyer (long).
+ */
+export interface ForwardCarry {
+  /** The amount, in the pair's base currency. */
+  amount: number;
+  /** Amount × (forward - spot), in the quote currency, never negative: what one side pays the other. */
+  value: number;
+  /** The side that earns it. */
+  earnedBy: "long" | "short";
+}
+
+export function forwardCarry(amount: number, implied: Pick<ImpliedForward, "spot" | "forward">): ForwardCarry {
+  const points = amount * (implied.forward - implied.spot);
+  return { amount, value: Math.abs(points), earnedBy: points > 0 ? "short" : "long" };
+}
+
+/**
+ * Who earns the carry and who pays it, by side of the pair: `Short USD/MXN
+ * (selling USD forward) earns it and long USD/MXN (buying USD forward) pays
+ * it: MXN's rate is the higher.`
+ */
+export function describeCarrySides(carry: ForwardCarry, base: string, quote: string): string {
+  const short = `short ${base}/${quote} (selling ${base} forward)`;
+  const long = `long ${base}/${quote} (buying ${base} forward)`;
+  const [earns, pays] = carry.earnedBy === "short" ? [short, long] : [long, short];
+  const higher = carry.earnedBy === "short" ? quote : base;
+  return `${earns.charAt(0).toUpperCase()}${earns.slice(1)} earns it and ${pays} pays it: ${higher}'s rate is the higher.`;
 }

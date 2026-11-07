@@ -303,13 +303,26 @@ test("fx --date gives the rate at that day's daily closes, dated by the source l
   expect(run.asked).toEqual(["CAD=X", "CAD=X", "EURUSD=X", "CAD=X"]);
 });
 
-test("fx --date refuses today and a day ahead, and a week with no close, before or instead of guessing", async () => {
+test("fx --date refuses a weekday's today and a day ahead, and a week with no close, before or instead of guessing", async () => {
   setSystemTime(new Date("2026-10-20T15:00:00Z"));
   const run = datedHarness("USD", CAD_CLOSES);
-  await expect(fx.execute(["USD/CAD", "--date", "2026-10-20"], run.context)).rejects.toThrow("2026-10-20 has no daily close yet: --date takes a day before today (2026-10-20).");
+  await expect(fx.execute(["USD/CAD", "--date", "2026-10-20"], run.context)).rejects.toThrow("2026-10-20 has no daily close yet: --date takes a day before today (2026-10-20), or today on a weekend.");
   await expect(fx.execute(["USD/CAD", "--date", "2026-08-01"], run.context)).rejects.toThrow("No USD/CAD daily close in the week up to 2026-08-01.");
   await expect(fx.execute(["USD/CAD", "--date", "9/2/2026"], run.context)).rejects.toThrow(/Use a --date date as YYYY-MM-DD/);
   expect(run.rows()).toEqual([]);
+});
+
+// on Saturday 7 Nov `fx USD/MXN --date 2026-11-07` was refused while a past Sunday read the Friday close.
+test("fx --date on a Saturday or Sunday that is today reads the Friday close and says so; the next day is still ahead", async () => {
+  setSystemTime(new Date("2026-09-05T20:06:00Z"));
+  const run = datedHarness("USD", CAD_CLOSES);
+  await fx.execute(["USD/CAD", "--date", "2026-09-05"], run.context);
+  expect(run.rows()[0]).toMatchObject([{ rate: 1.38376, asOf: "2026-09-04", date: "2026-09-05" }]);
+  expect(run.printed[0]!.result.warnings).toEqual(["No daily close on 2026-09-05, a weekend or market holiday: this is the close of 2026-09-04, the trading day before it."]);
+  await expect(fx.execute(["USD/CAD", "--date", "2026-09-06"], run.context)).rejects.toThrow("2026-09-06 has no daily close yet");
+  setSystemTime(new Date("2026-09-06T23:00:00Z"));
+  await fx.execute(["USD/CAD", "--date", "2026-09-06"], run.context);
+  expect(run.rows()[1]).toMatchObject([{ rate: 1.38376, asOf: "2026-09-04", date: "2026-09-06" }]);
 });
 
 function shortRates(overrides: Record<string, Partial<CloudShortRate>> = {}) {
@@ -364,12 +377,78 @@ test("fx --forward implies the forward from both short rates, shows them with th
     const named = harness("USD", { "EURUSD=X": 1.12 });
     await fx.execute(["euro/USD", "--forward", "3m"], named.context);
     expect(named.output("json")[0]).toContain("Read euro as EUR.");
-    // A bad tenor or an amount is refused before anything is read.
+    // A bad tenor is refused before anything is read.
     await expect(fx.execute(["USD/MXN", "--forward", "30"], harness("USD", {}).context)).rejects.toThrow("is not a tenor");
-    await expect(fx.execute(["100", "USD/MXN", "--forward", "30d"], harness("USD", { "USDMXN=X": 20 }).context)).rejects.toThrow("--forward prices a pair, not an amount.");
   } finally {
     spy.mockRestore();
   }
+});
+
+// `fx 5000000 USD/MXN --forward 30d` was a usage error, and the forward never said who earns the points.
+test("fx --forward with an amount gives the carry in the quote currency and in the reader's base currency, and which side earns it", async () => {
+  setSystemTime(new Date("2026-10-21T15:00:00Z"));
+  const spy = spyOn(apiClient, "getCloudShortRates").mockImplementation(async () => shortRates());
+  try {
+    const run = harness("EUR", { "USDMXN=X": 18.35, "EURMXN=X": 20.5 });
+    await fx.execute(["5000000", "USD/MXN", "--forward", "30d"], run.context);
+    const [row] = run.rows()[0] as Record<string, unknown>[];
+    const carry = 5_000_000 * (18.35 * (1 + 0.06776 * 30 / 360) / (1 + 0.0387 * 30 / 360) - 18.35);
+    expect(row).toMatchObject({ amount: 5_000_000, carryCurrency: "MXN", carryEarnedBy: "short", carryConvertedCurrency: "EUR" });
+    expect(row!.carry as number).toBeCloseTo(carry, 6);
+    expect(row!.carryConverted as number).toBeCloseTo(carry / 20.5, 6);
+    const text = run.output("text")[0]!;
+    expect(text).toContain("Carry on 5,000,000.00 USD over 30 days: 221,473.66 MXN, 10,803.59 EUR at EUR/MXN 20.50000\n"
+      + "Short USD/MXN (selling USD forward) earns it and long USD/MXN (buying USD forward) pays it: MXN's rate is the higher.");
+    // Below spot the buyer earns it; a reader whose base is the quote currency needs no conversion.
+    const inverse = harness("USD", { "USDMXN=X": 18.35 });
+    await fx.execute(["1000000", "MXN/USD", "--forward", "30d"], inverse.context);
+    expect((inverse.rows()[0] as Record<string, unknown>[])[0]).toMatchObject({ carryEarnedBy: "long", carryCurrency: "USD" });
+    expect(inverse.output("text")[0]).toContain("Carry on 1,000,000.00 MXN over 30 days: 131.23 USD\n"
+      + "Long MXN/USD (buying MXN forward) earns it and short MXN/USD (selling MXN forward) pays it: MXN's rate is the higher.");
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+// `fx USD/ZAR --forward 30d` had no ZAR rate; TRY's benchmark has a stand-in that must never pass for it.
+test("fx --forward prices ZAR on ZARONIA's 365-day year, and names a rate that stands in for TRY's benchmark", async () => {
+  setSystemTime(new Date("2026-11-07T20:06:00Z"));
+  const payload = shortRates();
+  const spy = spyOn(apiClient, "getCloudShortRates").mockImplementation(async () => ({ ...payload, rates: [...payload.rates,
+    { ...payload.rates[0]!, currency: "ZAR", name: "ZARONIA", dayCountBasis: 365, value: 7.099, asOf: "2026-11-05", publisher: "South African Reserve Bank" },
+    { ...payload.rates[0]!, currency: "TRY", name: "CBRT policy rate (one-week repo)", tenor: "1 week", tenorDays: 7, dayCountBasis: 365, value: 38,
+      asOf: "2026-11-06", publisher: "Central Bank of the Republic of Türkiye", standsInFor: "TLREF" },
+  ] }));
+  try {
+    const zar = harness("USD", { "USDZAR=X": 16.5 });
+    await fx.execute(["USD/ZAR", "--forward", "30d"], zar.context);
+    expect((zar.rows()[0] as Record<string, unknown>[])[0]!.forward as number).toBeCloseTo(16.5 * (1 + 0.07099 * 30 / 365) / (1 + 0.0387 * 30 / 360), 9);
+    expect(zar.output("text")[0]).toContain("ZAR rate: ZARONIA 7.099% (South African Reserve Bank, 2026-11-05; ACT/365)");
+    const lira = harness("USD", { "USDTRY=X": 42 });
+    await fx.execute(["USD/TRY", "--forward", "30d"], lira.context);
+    expect(lira.output("text")[0]).toContain("TRY rate: CBRT policy rate (one-week repo) 38% (Central Bank of the Republic of Türkiye, 2026-11-06; ACT/365), standing in for TLREF");
+    expect(lira.output("json")[0]).toContain("TLREF (TRY) could not be read, so the CBRT policy rate (one-week repo) stands in for it.");
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+// `fx USD/MXN` gave no day's move where `quote USDMXN=X` read -0.68%.
+test("fx gives the day's move of the pair as markets quote it, from its own close or both dollar pairs' closes", async () => {
+  setSystemTime(new Date("2026-11-07T20:06:00Z"));
+  const friday = Date.parse("2026-11-06T21:59:00Z");
+  const run = harness("USD", { "USDMXN=X": { price: 18.63161, previousClose: 18.75924, lastUpdated: friday } as PairQuote });
+  await fx.execute(["MXN/USD"], run.context);
+  expect(run.output("text")[0]).toStartWith("1 MXN = 0.0536722 USD  (USD/MXN 18.63161)  ·  USD/MXN -0.68% on the day (previous close 18.75924)");
+  expect(run.rows()[0]).toMatchObject([{ previousClose: 1 / 18.75924 }]);
+  expect((run.rows()[0] as Record<string, number>[])[0]!.changePercent).toBeCloseTo((18.75924 / 18.63161 - 1) * 100, 9);
+  const cross = harness("USD", {
+    "ZARNGN=X": "Not a ticker: ZARNGN=X.",
+    "USDZAR=X": { price: 16.5, previousClose: 16.6, lastUpdated: friday } as PairQuote,
+    "USDNGN=X": { price: 1350, previousClose: 1350, lastUpdated: friday } as PairQuote,
+  });
+  await fx.execute(["ZAR/NGN"], cross.context);
+  expect(cross.output("text")[0]).toContain(`ZAR/NGN +0.61% on the day (previous close ${(1350 / 16.6).toFixed(3)})`);
 });
 
 test("fx --forward through SGD says what MAS's licence asks of SORA, and that a rate MAS has not answered for is a kept copy", async () => {

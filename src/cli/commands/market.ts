@@ -74,6 +74,7 @@ import { loadBankFigures } from "../bank-section";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { currencyCodeLabel } from "../../utils/currency-units";
+import { fxRateDigits, quotedFxPair } from "../../utils/currency-pair";
 import {
   futuresContractLines, futuresPricePer, futuresRollLines, futuresTickOption, isFuturesInstrument, loadFuturesPriceUnit, loadUsdPerMmbtu, usdPerMmbtuText, type UsdPerMmbtu,
 } from "../../market-data/futures-contract";
@@ -219,7 +220,7 @@ import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
 import { withBankEnterpriseValue } from "../../utils/fundamentals";
 import { fundamentalsFreshness, quotesFreshness, rowsFreshness, valuationFreshness } from "../freshness";
-import { fxPairListing, fxQuoteRateObservation, METAL_NAMES, readFxQuoteRate } from "../fx-quote-rate";
+import { fxPairListing, fxQuoteRateMove, fxQuoteRateObservation, METAL_NAMES, readFxQuoteRate } from "../fx-quote-rate";
 import { quoteBarNotes } from "../../market-data/quotes/intraday-bar";
 import { cedearRatioText, depositaryPairText, isReceiptSide, listingCedearRatio, listingDepositaryPair } from "../../market-data/depositary-pair";
 import { isPesoDollarPair, loadPesoDollarRates, pesoDollarRateLines, pesoDollarRatesJson } from "../peso-dollar-rates";
@@ -311,10 +312,13 @@ import { noSecReportsNotice, nonUsSecListingVenue, secFilingItemCodes } from "..
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
 import { answerQuote, errorMessage, notUsTickerSentence } from "../quote-answer";
-import { crossRate, describeFxConversion, describeFxLegs, describeFxRate, formatFxRate, FX_USAGE, parseFxArgs, type FxQuotedFigure } from "../fx-pair";
+import { crossRate, describeFxConversion, describeFxLegs, describeFxRate, formatFxAmount, formatFxRate, FX_USAGE, parseFxArgs, type FxQuotedFigure } from "../fx-pair";
 import {
+  describeCarrySides,
   describeShortRate,
+  forwardCarry,
   shortRateGrowthText,
+  shortRateStandInNote,
   formatForwardPoints,
   formatSignedPercent,
   IMPLIED_FORWARD_LABEL,
@@ -328,7 +332,7 @@ import { unavailableOnServer } from "../../plugins/builtin/shared/cloud-resource
 const utcClock = (time: number) => new Date(time).toISOString().slice(11, 16);
 
 /** `fx`'s forward form, for its usage line. */
-const FX_FORWARD_USAGE = "fx <base>/<quote> --forward <tenor>";
+const FX_FORWARD_USAGE = "fx [amount] <base>/<quote> --forward <tenor>";
 import {
   holderListFacts,
   holderListPeriod,
@@ -2685,11 +2689,13 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     const empty = emptyMessage(false);
     // A bare coin ticker read as another listing (ETH, the Grayscale fund) says where the coin is, as `quote` does.
     const read = listing ? [...listingReadNotes(listing), ...coinListingNotes(listing, quote)] : [];
-    // A word that is also the company's name ("gold" for Gold.com Inc.) says once which ticker it found and how
-    // to search the stories that mention it instead, when those stories are mostly about something else.
+    // A word that is also the company's name ("gold" for Gold.com Inc., "peso" for PesoRama on the TSX Venture)
+    // says once which ticker it found and how to search the stories that mention it instead, when those stories
+    // are mostly about something else. The word is bare, so a listing abroad is one the lookup found, not one typed.
     const typed = args[0]?.trim() ?? "";
-    const wordHint = listing && resolved && !listing.exchange && !feed && !exchangeOption && commonWordCandidate(typed, identity?.name)
-      && wordMeansMore(await searchNewsStories(typed, 20).catch(logFailure("cli.commands-market", "Search news stories for a ticker word failed", [])), listing.symbol)
+    const wordHint = listing && resolved && !feed && !exchangeOption && commonWordCandidate(typed, identity?.name)
+      && wordMeansMore(await searchNewsStories(typed, 20).catch(logFailure("cli.commands-market", "Search news stories for a ticker word failed", [])), listing.symbol,
+        listing.exchange ? `${listing.symbol}:${listing.exchange}` : listing.symbol)
       ? `${typed} ${cliArrow("→")} ${identity?.name ?? listing.symbol} (ticker ${listing.symbol}). For stories that mention ${typed.toLowerCase()}, try: ${quotedSearchCommand(typed.toLowerCase())}`
       : null;
     ctx.printResult({
@@ -3546,7 +3552,17 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
 /** What an options chain export's `interval` says: one quote snapshot, not bars. */
 const OPTIONS_EXPORT_INTERVAL = "snapshot";
 
-/** `fx --date`: a past day as YYYY-MM-DD; today's close is not in yet, so it is refused, as is a day ahead. */
+/** Saturday or Sunday, for a YYYY-MM-DD day. */
+function isWeekendDay(date: string): boolean {
+  const day = new Date(`${date}T00:00:00Z`).getUTCDay();
+  return day === 0 || day === 6;
+}
+
+/**
+ * `fx --date`: a past day as YYYY-MM-DD, or today on a weekend, which reads the
+ * Friday close; a weekday's close is not in yet, so today is refused then, as
+ * is a day ahead.
+ */
 function readFxDate(value: string, ctx: Parameters<CliCommandDef["execute"]>[1]): string {
   let date: string;
   try {
@@ -3556,8 +3572,9 @@ function readFxDate(value: string, ctx: Parameters<CliCommandDef["execute"]>[1])
   }
   if (!date) return ctx.fail("--date takes a day, such as --date 2026-09-02.");
   const today = isoDateToday();
-  if (date >= today) {
-    return ctx.fail(`${date} has no daily close yet: --date takes a day before today (${today}).`, "Without --date, fx gives the latest rate.");
+  // A weekend has no close of its own, so today's, on a Saturday or a Sunday, is the Friday close, which is final.
+  if (date > today || (date === today && !isWeekendDay(date))) {
+    return ctx.fail(`${date} has no daily close yet: --date takes a day before today (${today}), or today on a weekend.`, "Without --date, fx gives the latest rate.");
   }
   return date;
 }
@@ -3648,6 +3665,45 @@ async function runFxOnDate(
   });
 }
 
+/**
+ * What one unit of `quote` (a forward's quote currency) is worth in the
+ * reader's currency at spot, to show a carry in it: 1 when they are the same,
+ * the forward's own spot inverted when the reader's is the pair's base,
+ * otherwise the pair's own quote. Null when no conversion is needed; the
+ * sentence saying why it is missing when no quote came back.
+ */
+async function carryInCurrency(
+  quote: string,
+  reader: string,
+  base: string,
+  spot: number,
+  market: MarketContext,
+  forceRefresh: boolean | undefined,
+): Promise<{ rate: number; text: string } | { missing: string } | null> {
+  if (reader === quote) return null;
+  const marketText = (rate: number) => {
+    const quoted = quotedFxPair(quote, reader, rate);
+    return `${quoted.pair} ${quoted.rate.toFixed(fxRateDigits(quoted.pair.slice(4), quoted.rate))}`;
+  };
+  if (reader === base) return { rate: 1 / spot, text: `spot ${marketText(1 / spot)}` };
+  const read = await readFxQuoteRate(quote, reader, (targets, options) => market.dataProvider.getQuotesBatch(targets, options),
+    { forceRefresh: forceRefresh === true }).catch(() => null);
+  return read && "rate" in read
+    ? { rate: read.rate, text: marketText(read.rate) }
+    : { missing: `The carry is not shown in ${reader}, your base currency: no ${quote}/${reader} rate came back.` };
+}
+
+/**
+ * `USD/MXN -0.68% on the day (previous close 18.75924)`: the move of the pair
+ * as markets quote it, as `quote` gives it, whichever way round it was asked.
+ */
+function describeFxMove(currency: string, baseCurrency: string, rate: number, move: { percent: number; previousRate: number }): string {
+  const now = quotedFxPair(currency, baseCurrency, rate);
+  const before = quotedFxPair(currency, baseCurrency, move.previousRate);
+  const percent = (now.rate / before.rate - 1) * 100;
+  return `${now.pair} ${formatSignedPercent(percent, 2)} on the day (previous close ${before.rate.toFixed(fxRateDigits(before.pair.slice(4), before.rate))})`;
+}
+
 async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const dateOption = takeOption(args, "--date");
@@ -3677,10 +3733,7 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     const { request, amount, toUsdByDefault } = parsed;
     const { currency, baseCurrency } = request;
     const pair = `${currency}/${baseCurrency}`;
-    if (tenor) {
-      if (amount != null) ctx.fail("--forward prices a pair, not an amount.", `Usage: gloom ${FX_FORWARD_USAGE}`);
-      if (currency === baseCurrency) ctx.fail(`${pair} has no forward: both sides are ${currency}.`, `Usage: gloom ${FX_FORWARD_USAGE}`);
-    }
+    if (tenor && currency === baseCurrency) ctx.fail(`${pair} has no forward: both sides are ${currency}.`, `Usage: gloom ${FX_FORWARD_USAGE}`);
     // The short rates are read alongside spot. A failed read is held as a value, not left to reject
     // unobserved while spot loads, and is raised where the forward needs the rates.
     const shortRates = tenor && !("error" in tenor) ? apiClient.getCloudShortRates().then(
@@ -3715,8 +3768,11 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     // A rate older than its feed's delay is stale, as `quote` says of the same quote.
     const stale = observation?.stale === true;
     const converted = amount == null ? null : amount * rate;
+    // The day's move, as `quote` gives the pair's: against the previous daily close.
+    const move = quoted ? fxQuoteRateMove(quoted) : null;
     const row = {
       currency, baseCurrency, rate, asOf, stale, pair, inverse: 1 / rate,
+      ...(move ? { changePercent: move.percent, previousClose: move.previousRate } : {}),
       ...(quoted ? { quotes: quoted.quotes.map(({ symbol }) => symbol), ...(quoted.viaUsd ? { via: "USD" } : {}) } : {}),
       ...(quoted?.derivedFrom ? { derived: true, derivedFrom: quoted.derivedFrom } : {}),
       ...(amount == null ? {} : { amount, converted }),
@@ -3753,15 +3809,33 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
         ? [`${short.name}: ${short.attribution.text.replace(/\.$/, "")} (${short.attribution.licenceUrl}).`] : []))];
       const staleRates = [base.rate, quote.rate].filter((short) => short.stale)
         .map((short) => `${short.name} (${short.currency}) is the last copy read, dated ${short.asOf ?? "undated"}; its source could not be read since.`);
+      // With an amount, the carry: the forward points on it over the tenor, in the quote currency and in the
+      // reader's base currency at spot, and the side that earns it.
+      const carry = amount == null ? null : forwardCarry(amount, implied);
+      const readerCurrency = market.config.baseCurrency;
+      const carryConversion = carry ? await carryInCurrency(baseCurrency, readerCurrency, currency, rate, market, ctx.cliOptions.refresh) : null;
       const forwardRow = {
         pair, tenor: tenor.label, days: tenor.days, forwardDate, spot: rate, spotAsOf: asOf, forward: implied.forward,
         points: implied.points, pointSize: implied.pointSize, premiumPercent: implied.premiumPercent, annualizedPercent: implied.annualizedPercent,
         baseRate: rateFields(base.rate), quoteRate: rateFields(quote.rate), method: "covered interest parity", label: IMPLIED_FORWARD_LABEL,
+        ...(carry ? {
+          amount, carry: carry.value, carryCurrency: baseCurrency, carryEarnedBy: carry.earnedBy,
+          ...(carryConversion && "rate" in carryConversion
+            ? { carryConverted: carry.value * carryConversion.rate, carryConvertedCurrency: readerCurrency, carryConversionRate: carryConversion.rate }
+            : {}),
+        } : {}),
       };
       const growth = (short: typeof base.rate) => shortRateGrowthText(short, tenor.days);
       const compounded = [base.rate, quote.rate].filter((short) => short.compounding === "business-252").map((short) => short.name);
       // A currency typed as its name (yen) says which code it was read as, as the spot answer does.
-      const forwardWarnings = [...request.readAs ?? [], ...rateNotes, ...staleRates];
+      const forwardWarnings = [
+        ...request.readAs ?? [], ...rateNotes, ...staleRates,
+        ...[base.rate, quote.rate].flatMap((short) => shortRateStandInNote(short) ?? []),
+        ...toUsdByDefault && amount != null
+          ? [`No second currency given, so ${currency} is priced against USD; for another, write fx ${args[0]!.trim()} ${currency}/<to> --forward ${tenor.label}.`]
+          : [],
+        ...carryConversion && "missing" in carryConversion ? [carryConversion.missing] : [],
+      ];
       return ctx.printResult({ data: [forwardRow], freshness, ...(forwardWarnings.length > 0 ? { warnings: forwardWarnings } : {}) }, {
         text: () => [
           `${pair} ${tenor.label} forward ${formatFxRate(implied.forward)}, ${IMPLIED_FORWARD_LABEL}`,
@@ -3771,6 +3845,11 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
           `Covered interest parity: ${formatFxRate(rate)} × ${growth(quote.rate)} / ${growth(base.rate)}; ${compounded.length > 0
             ? `${compounded.join(" and ")} compounds over business days (252 a year, taken as 252/365 of the ${tenor.days} days), the other rate earns simple interest`
             : `each rate earns simple interest over the ${tenor.days} days`}, standing in for a ${tenor.label} term rate.`,
+          ...carry ? [
+            `Carry on ${formatFxAmount(carry.amount, currency)} over ${tenor.days} days: ${formatFxAmount(carry.value, baseCurrency)}${carryConversion && "rate" in carryConversion
+              ? `, ${formatFxAmount(carry.value * carryConversion.rate, readerCurrency)} at ${carryConversion.text}` : ""}`,
+            describeCarrySides(carry, currency, baseCurrency),
+          ] : [],
           ...attributions,
         ].join("\n"),
         exportIdentity: { symbolOrSeries: pair, currencyOrUnit: `${baseCurrency} per ${currency}`, interval: `forward ${tenor.label}` },
@@ -3784,6 +3863,15 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
           { key: "points", header: "Points", align: "right" },
           { key: "premiumPercent", header: "Premium %", align: "right" },
           { key: "annualizedPercent", header: "Annualized %", align: "right" },
+          ...(carry ? [
+            { key: "amount", header: "Amount", align: "right" as const },
+            { key: "carry", header: "Carry", align: "right" as const },
+            { key: "carryCurrency", header: "Carry currency" },
+            { key: "carryEarnedBy", header: "Earned by" },
+            ...(carryConversion && "rate" in carryConversion ? [
+              { key: "carryConverted", header: `Carry (${readerCurrency})`, align: "right" as const },
+            ] : []),
+          ] : []),
         ],
       });
     }
@@ -3809,6 +3897,7 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     const metal = quoted?.derivedFrom ? (METAL_NAMES[currency] ? currency : baseCurrency) : null;
     const rateText = [
       describeFxRate(request, rate, quoted && !quoted.viaUsd ? quoted.quotes[0] : undefined),
+      ...move ? [describeFxMove(currency, baseCurrency, rate, move)] : [],
       ...quoted?.viaUsd ? [describeFxLegs(quoted.quotes)] : [],
       ...metal ? [`derived: ${METAL_NAMES[metal]!.toLowerCase()} from ${quoted!.derivedFrom}, the front-month future (spot ${METAL_NAMES[metal]!.toLowerCase()} is not quoted)`] : [],
       ...peso ? [`${peso.spotKind} rate`] : [],
@@ -3830,6 +3919,10 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
         { key: "stale", header: "Stale" },
         { key: "pair", header: "Pair" },
         { key: "inverse", header: "Inverse", align: "right" },
+        ...(move ? [
+          { key: "changePercent", header: "Chg %", align: "right" as const },
+          { key: "previousClose", header: "Previous close", align: "right" as const },
+        ] : []),
         ...(amount == null ? [] : [
           { key: "amount", header: "Amount", align: "right" as const },
           { key: "converted", header: "Converted", align: "right" as const },
@@ -4242,14 +4335,14 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       usage: ["fx <currency>", "fx <base>/<quote>", "fx <amount> <from>/<to>", "fx <amount> <from> <to>", "fx <pair> --date <day>", FX_FORWARD_USAGE],
       options: [
         { flags: "--date <day>", description: `The rate at that day's daily FX close, such as a transaction date (${DATE_OPTION_EXAMPLES}); a weekend or holiday reads the trading day before it` },
-        { flags: "--forward <tenor>", description: "The forward implied by both currencies' short rates (covered interest parity), not a dealer quote: 30d, 2w, 3m, up to 1y; today's only, so not with --date" },
+        { flags: "--forward <tenor>", description: "The forward implied by both currencies' short rates (covered interest parity), not a dealer quote: 30d, 2w, 3m, up to 1y; with an amount, the carry on it and who earns it; today's only, so not with --date" },
       ],
       sections: [{
         title: "Direction",
         lines: [
           "A bare code is one unit of it in your base currency. A pair reads as markets quote it: USD/NGN is how many NGN one USD buys. Two codes neither of which is USD, such as ZAR/NGN, cross through their USD rates.",
           "A currency's name stands for its code: fx yen is JPY, fx rand ZAR, fx Swiss franc CHF, and the answer says which it read. A name several currencies share (peso, dollar, franc, krona, rupee) lists them: write one as its code.",
-          "The answer states both directions: 1 NGN = 0.000752791 USD  (USD/NGN 1328.39). --json, --csv and --ndjson carry rate (base currency per currency), pair, inverse, asOf and stale.",
+          "The answer states both directions: 1 NGN = 0.000752791 USD  (USD/NGN 1328.39), then the day's move of the pair as markets quote it, against its previous daily close, as quote gives it. --json, --csv and --ndjson carry rate (base currency per currency), pair, inverse, asOf, stale, and changePercent and previousClose of the rate as asked.",
         ],
       }, {
         title: "Amounts",
@@ -4259,16 +4352,17 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       }, {
         title: "A past day",
         lines: [
-          "--date gives the rate at that day's daily FX close instead of the latest: fx USD/CAD --date 2026-09-02, or with an amount, fx 1250 USD/CAD --date 2026-09-02. Each currency's USD pair is read at its close of that day and crossed through USD, as the latest rate is. A weekend or market holiday has no close: the answer then gives the trading day before it and says so. The source line dates the close; --json adds date (the day asked for) and asOf (the close used).",
+          "--date gives the rate at that day's daily FX close instead of the latest: fx USD/CAD --date 2026-09-02, or with an amount, fx 1250 USD/CAD --date 2026-09-02. Each currency's USD pair is read at its close of that day and crossed through USD, as the latest rate is. A weekend or market holiday has no close: the answer then gives the trading day before it and says so, today included on a Saturday or Sunday. The source line dates the close; --json adds date (the day asked for) and asOf (the close used).",
         ],
       }, {
         title: "Forwards",
         lines: [
           "--forward <tenor> gives the forward implied by covered interest parity: spot × (1 + quote rate × days/basis) / (1 + base rate × days/basis), with the forward points (pips of 0.0001, 0.01 against JPY) and the premium over spot for the period and a year. It is implied by rates, not a dealer quote.",
-          "The rates are SOFR (USD), €STR (EUR), SONIA (GBP) and TIIE 28d (MXN), each with its day and publisher. A pair whose rate is missing says which one. Tenors count calendar days from today: 30d, 2w, 3m, 1y. The forward is today's: it does not take --date, as only the latest short rates are served.",
+          "The rates are SOFR (USD), €STR (EUR), SONIA (GBP), TIIE 28d (MXN), CDI (BRL), SORA (SGD), ZARONIA (ZAR) and TLREF (TRY), each with its day and publisher; when TLREF cannot be read, the CBRT's one-week repo rate stands in for it and the answer says so. A pair whose rate is missing says which one. Tenors count calendar days from today: 30d, 2w, 3m, 1y. The forward is today's: it does not take --date, as only the latest short rates are served.",
+          "An amount in front gives the carry on it: fx 5000000 USD/MXN --forward 30d is the forward points on 5,000,000 USD over the 30 days, in MXN and in your base currency at spot, and which side earns it. The side holding the higher-yielding currency earns it: short USD/MXN (selling USD forward) when the forward is above spot.",
         ],
       }],
-      examples: ["fx EUR", "fx NGN", "fx yen", "fx USD/NGN", "fx ZAR/NGN", "fx 1234.5 EUR/USD", "fx 1234,5 EUR USD", "fx USD/CAD --date 2026-09-02", "fx JPY --json", "fx USD/MXN --forward 30d", "fx EUR/USD --forward 3m"],
+      examples: ["fx EUR", "fx NGN", "fx yen", "fx USD/NGN", "fx ZAR/NGN", "fx 1234.5 EUR/USD", "fx 1234,5 EUR USD", "fx USD/CAD --date 2026-09-02", "fx JPY --json", "fx USD/MXN --forward 30d", "fx EUR/USD --forward 3m", "fx 5000000 USD/MXN --forward 30d"],
     },
     execute: runFx,
   },

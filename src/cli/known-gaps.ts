@@ -352,13 +352,15 @@ const COMMAND_POINTERS: ReadonlyArray<{
   },
   {
     // A currency forward, not a forward rate on a yield curve, forward guidance, a forward P/E or the forward
-    // inflation series: a query that says more than "forward" has to name FX.
-    names: ["forward", "forwards", "fwd", "fwds"],
-    words: ["rate", "rates", "implied", "hedge", "hedging", "cost", "costs", "premium", "interest", "1w", "2w", "30d", "1m", "3m",
+    // inflation series: a query that says more than "forward" has to name FX. A hedge or a carry alone is the
+    // forward's too (a hedge fund or a carry cost is not).
+    names: ["forward", "forwards", "fwd", "fwds", "hedge", "hedging", "carry"],
+    words: ["rate", "rates", "implied", "cost", "costs", "premium", "interest", "1w", "2w", "30d", "1m", "3m",
       "6m", "1y"],
-    qualifiers: ["fx", "currency", "currencies", "point", "points", "pips", "cip", "covered", "parity", "outright",
-      "usd", "mxn", "eur", "gbp", "usdmxn", "eurusd", "gbpusd", "eurmxn", "peso", "dollar", "euro", "sterling"],
-    line: "FX forwards implied by both currencies' short rates (covered interest parity), with forward points and the hedge cost: gloom fx USD/MXN --forward 30d",
+    qualifiers: ["fx", "currency", "currencies", "point", "points", "pips", "cip", "covered", "parity", "outright", "trade",
+      "usd", "mxn", "eur", "gbp", "zar", "try", "usdmxn", "eurusd", "gbpusd", "eurmxn", "usdzar", "usdtry", "peso", "dollar", "euro",
+      "sterling", "rand", "lira"],
+    line: "FX forwards implied by both currencies' short rates (covered interest parity), with forward points, the hedge cost and, for an amount, the carry and who earns it: gloom fx 5000000 USD/MXN --forward 30d",
   },
   {
     names: ["defi", "tvl", "tvls", "total value locked", "on-chain", "onchain", "aave", "lido", "eigenlayer", "morpho"],

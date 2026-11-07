@@ -85,7 +85,8 @@ test("the desktop and web draw a flag beside each currency code in the row label
   const container = await desktop.render(<Pane />);
 
   const rows = [...container.querySelectorAll('[data-gloom-role="data-table-row"]')];
-  const headers = [...container.querySelectorAll('[data-gloom-role="data-table-header-cell"]')].slice(1);
+  // After the codes and the day's move against the dollar.
+  const headers = [...container.querySelectorAll('[data-gloom-role="data-table-header-cell"]')].slice(2);
   expect(rows).toHaveLength(8);
   expect(headers).toHaveLength(8);
 
@@ -142,7 +143,7 @@ async function tintedCrosses() {
   const codes = ["USD", "EUR", "GBP", "JPY", "CHF", "AUD", "CAD"];
   const container = await desktop.render(<Pane currencies={codes} />);
   const background = (row: string, column: string) => {
-    const index = codes.indexOf(column) + 1;
+    const index = codes.indexOf(column) + 2;
     const cell = container.querySelector(`[data-gloom-row-key="${row}"]`)!.querySelectorAll('[data-gloom-role="data-table-cell"]')[index] as HTMLElement;
     return cell.style.backgroundColor;
   };
@@ -161,6 +162,10 @@ async function tintedCrosses() {
   // Stale, previous-close-less and unfetched legs, and the diagonal, stay plain.
   expect(["JPY", "CHF", "CAD"].flatMap((leg) => [tinted(leg, "USD"), tinted("EUR", leg), tinted(leg, "EUR")])).not.toContain(true);
   expect(tinted("EUR", "EUR")).toBe(false);
+  // each currency's move against the dollar, as `fx` gives it, from the same closes; none for the dollar
+  // itself, nor for a leg with no close to read against.
+  const move = (row: string) => container.querySelector(`[data-gloom-row-key="${row}"]`)!.querySelectorAll('[data-gloom-role="data-table-cell"]')[1]!.textContent;
+  expect(["USD", "EUR", "GBP", "JPY", "CHF"].map(move)).toEqual(["—", "+1.85%", "0.00%", "—", "—"]);
 }
 
 test("without desktop chrome the matrix keeps its plain codes and its original base column", async () => {
