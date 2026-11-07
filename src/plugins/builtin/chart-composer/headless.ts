@@ -31,6 +31,7 @@ import type { TickerFinancials, PricePoint, Quote } from "../../../types/financi
 import { chartQuoteOverrideKeyForTarget, getLiveChartQuoteTargets } from "../../../time-series/live-quotes";
 import { createChartSeriesResolver } from "../../../capabilities";
 import { loadFuturesContractTerms, loadFuturesPriceUnit } from "../../../market-data/futures-contract";
+import { loadDailyFxCloses } from "../../../time-series/currency-conversion";
 import { canonicalExchange, isKnownExchangeCode, isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { zonedDateKey, zonedDateTimeParts } from "../../../utils/zoned-date-time";
 import { futuresSessionOpenMinute } from "../../../market-data/market/trading-sessions";
@@ -157,6 +158,7 @@ export async function loadChartPaneModel(
     resolveCapabilitySeries: headlessCapabilityResolver(context),
     loadFuturesPriceUnit: (symbol) => loadFuturesPriceUnit(symbol, (key) => loadFuturesContractTerms(key, context.apiClient)),
     loadEarningsHistory: (symbol) => context.apiClient.getCloudEarningsHistory(symbol, 100),
+    loadFxCloses: (currency, startDate) => loadDailyFxCloses(currency, startDate, context.apiClient),
     loadFredSeries: async (request) => ({
       data: await context.apiClient.getCloudFredSeries(request.seriesId, {
         startDate: request.startDate,

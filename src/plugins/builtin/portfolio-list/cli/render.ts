@@ -213,6 +213,10 @@ export interface ShowCollectionOptions {
   costFxHistory?: CostFxHistoryClient;
   /** `--from`/`--to`: P&L and contribution by position between two closes, in place of the valuation. */
   period?: PriceWindow;
+  /** `--real`: the period's return after the book currency's consumer prices too. */
+  real?: boolean;
+  /** Where `--real` reads the CPI; Gloom Cloud by default. */
+  cpi?: Parameters<typeof showPeriodPnl>[0]["cpi"];
 }
 
 export async function showCollection(name: string, ctx: CliCommandContext, options: ShowCollectionOptions = {}) {
@@ -787,7 +791,7 @@ async function showCollectionWithMarketData(
   name: string,
   ctx: CliCommandContext,
   { config, store, dataProvider, persistence }: MarketContext,
-  { explain = false, basis = "latest-print", drip, dividendDeadlineMs = DIVIDEND_READ_DEADLINE_MS, futuresSources, costFxHistory = apiClient, period }: ShowCollectionOptions,
+  { explain = false, basis = "latest-print", drip, dividendDeadlineMs = DIVIDEND_READ_DEADLINE_MS, futuresSources, costFxHistory = apiClient, period, real = false, cpi }: ShowCollectionOptions,
 ) {
   const tickers = (await store.loadAllTickers()).sort((left, right) =>
     left.metadata.ticker.localeCompare(right.metadata.ticker)
@@ -849,7 +853,7 @@ async function showCollectionWithMarketData(
     : broker ? "Your broker account and Gloom Cloud" : "Local portfolio and Gloom Cloud";
   if (matchedPortfolio && period) {
     await showPeriodPnl({ ctx, portfolio: matchedPortfolio, name: displayName, tickers: filtered, currency, window: period, provider: dataProvider,
-      fxHistory: costFxHistory, quotes, futures: futures ?? new Map(), source, listingLabel, explain });
+      fxHistory: costFxHistory, quotes, futures: futures ?? new Map(), source, listingLabel, explain, real, ...(cpi ? { cpi } : {}) });
     return;
   }
   let freshness = isPortfolio ? undefined : quotesFreshness(quotes.values(), { source });

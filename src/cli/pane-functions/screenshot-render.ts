@@ -225,6 +225,7 @@ export async function renderDesktopShot({
   options,
   captureImage = true,
   onStalledReport,
+  onDrawing,
 }: {
   resolved: ResolvedPaneFunction;
   context: MarketContext;
@@ -251,6 +252,8 @@ export async function renderDesktopShot({
    * may keep the process alive.
    */
   onStalledReport?: () => void;
+  /** Called once the pane's data is read and the page starts to draw it. */
+  onDrawing?: () => void;
 }): Promise<PaneScreenshotResult> {
   prepareDesktopPaneShotView();
   if (captureImage) await createOutputFolder(outputPath);
@@ -289,6 +292,7 @@ export async function renderDesktopShot({
       watermark ?? null,
       loadModel,
     );
+    onDrawing?.();
     if (statusLine && captureImage && shotHasStatusLine(resolved)) payload.statusLine = true;
     const fitRoles = [
       ...(fitRows && paneFitsRows(resolved) ? ["data-table-body-scroll"] : []),

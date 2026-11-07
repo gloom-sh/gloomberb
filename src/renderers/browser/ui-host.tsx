@@ -14,6 +14,7 @@ export const browserUiHost: UiHost = createDomUiHost("browser", {
 export const browserRendererHost: RendererHost = {
   supportsNativeDesktopNotifications: false,
   requestExit() {},
+  canExit: false,
   notify() {},
   async openExternal(rawUrl) {
     const url = safeExternalUrl(rawUrl);

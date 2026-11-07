@@ -2,6 +2,8 @@ import { expect, test } from "bun:test";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import {
   buildPortfolioRisk,
+  factorFitText,
+  withoutFactorFit,
   portfolioRiskRequests,
   portfolioRiskTickers,
   riskCoverageLine,
@@ -11,7 +13,7 @@ import {
   riskReturnsCurrency,
   HOLDINGS_SUMMARY_ROW_IDS,
 } from "./risk-model";
-import { FX_NO_PAIR } from "./risk-fx";
+import { bridgedFxClose, FX_NO_PAIR } from "./risk-fx";
 import { parseFxShifts, repriceBook, riskCashLines, type RiskAssetShift, type RiskFxShift } from "./risk-book";
 import { rollingBeta, subtractReturns } from "./risk-math";
 import {
@@ -192,6 +194,21 @@ test("a TRY account converts each holding's USD returns at its own dates' USD/TR
   const usdReturns = (symbol: string) => market.histories.find((row) => row.instrument.symbol === symbol)!.returns;
   const quality = rollingBeta(model.basket, subtractReturns(usdReturns("QUAL"), usdReturns("SPY")), "", "quality");
   expect(model.factors.find((row) => row.id === "quality")!.value).toBeCloseTo(quality.value!, 12);
+  // The book's beta to the dollar against the lira, from the account's own closes over the basket's sessions; a USD account has none.
+  const close = (date: string) => bridgedFxClose((day) => fx.closes[day], date)?.rate;
+  const dollar = usdReturns("SPY").flatMap((row) => {
+    const start = close(row.startDateKey), end = close(row.dateKey);
+    return start && end ? [{ ...row, value: start / end - 1 }] : [];
+  });
+  const currency = model.factors.find((row) => row.id === "currency")!;
+  expect(currency.label).toBe("Currency (USD/TRY)");
+  expect(currency.value).toBeCloseTo(rollingBeta(model.basket, dollar, "", "currency").value!, 12);
+  expect(usd.factors.some((row) => row.id === "currency")).toBe(false);
+  // Its evidence gives the book's share in each currency; every factor row carries its fit for the pane's R² column.
+  expect(model.rows.factors.find((row) => row.id === "currency")!.detail).toMatch(/^\d+% USD, \d+% JPY(, \d+% SAR)? of book; 60 sessions; R² /);
+  expect(model.rows.factors.every((row) => row.rSquared !== undefined)).toBe(true);
+  // A holding listed outside the US is measured against US factor proxies, and the notes say which.
+  expect(model.notes).toContain("Factors are US ETF proxies; JPY1 trades outside the US and is measured against them.");
 
   // A missing lira close on a holding's dates converts at the close before it, and the notes say which.
   const gap = held("US01", usd).returns[10]!.dateKey;
@@ -619,4 +636,13 @@ test("broker option matching requires one exact conId and source contract, prese
     dependencies,
   );
   expect(ambiguous.warnings[0]).toContain("Exact broker");
+});
+
+test("a factor that explains under a tenth of the basket's moves reads as a weak fit, and a table with an R² column drops it from the evidence", () => {
+  expect(factorFitText(0.28)).toBe("R² 0.28");
+  expect(factorFitText(0.094)).toBe("R² 0.09, weak fit");
+  expect(factorFitText(0.0999)).toBe("R² 0.10");
+  expect(factorFitText(null)).toBe("R² --");
+  expect(withoutFactorFit("60 sessions; R² 0.01, weak fit; independent ETF proxy")).toBe("60 sessions; independent ETF proxy");
+  expect(withoutFactorFit("76% USD, 24% TRY of book; 60 sessions; R² 0.28; daily USD/TRY closes")).toBe("76% USD, 24% TRY of book; 60 sessions; daily USD/TRY closes");
 });

@@ -35,7 +35,18 @@ export interface FxQuoteRate {
   quotes: ({ symbol: string; quote: Quote } & FxQuotedFigure)[];
   /** Crossed through the dollar: the pair has no quote of its own. */
   viaUsd: boolean;
+  /** A metal with no spot quote, priced from its front-month future instead: the future's listing (GC=F). */
+  derivedFrom?: string;
 }
+
+/**
+ * The front-month future a metal with no spot quote is priced from, in USD per
+ * troy ounce: COMEX gold and silver, NYMEX platinum and palladium.
+ */
+const METAL_FRONT_MONTH: Readonly<Record<string, string>> = { XAU: "GC=F", XAG: "SI=F", XPT: "PL=F", XPD: "PA=F" };
+
+/** "Gold", for the line that says a metal's rate is derived from its future. */
+export const METAL_NAMES: Readonly<Record<string, string>> = { XAU: "Gold", XAG: "Silver", XPT: "Platinum", XPD: "Palladium" };
 
 export interface FxQuoteMiss {
   /** The currencies no quote priced. */
@@ -109,7 +120,44 @@ export async function readFxQuoteRate(
   const missing = crossed
     ? [currency, baseCurrency].filter((_code, index) => read[index + 1]?.rate == null)
     : [currency === "USD" ? baseCurrency : currency];
-  return { missing, errors: read.flatMap((entry) => entry.rate == null && entry.error != null ? [entry.error] : []) };
+  const miss = { missing, errors: read.flatMap((entry) => entry.rate == null && entry.error != null ? [entry.error] : []) };
+  return (await metalFromFuture(currency, baseCurrency, read, getQuotesBatch, options.forceRefresh === true)) ?? miss;
+}
+
+/**
+ * A metal with no spot quote (gold in lira), priced from its front-month
+ * future in dollars and, for another currency, the dollar pair already read:
+ * derived, and said to be. Null when neither side is a metal or a price is missing.
+ */
+async function metalFromFuture(
+  currency: string,
+  baseCurrency: string,
+  read: ReadonlyArray<{ leg: FxQuoteLeg; quote: Quote | null; rate: number | null }>,
+  getQuotesBatch: (targets: QuoteSubscriptionTarget[], options?: QuoteBatchOptions) => Promise<QuoteBatchResult[]>,
+  forceRefresh: boolean,
+): Promise<FxQuoteRate | null> {
+  const metal = [currency, baseCurrency].find((code) => METAL_FRONT_MONTH[code]);
+  const other = metal === currency ? baseCurrency : currency;
+  if (!metal || METAL_FRONT_MONTH[other]) return null;
+  const future = METAL_FRONT_MONTH[metal]!;
+  const [result] = await getQuotesBatch([{ symbol: future, exchange: "" }], { forceRefresh, revalidate: true });
+  const quote = result?.quote ?? null;
+  const ounce = quote?.currency && quote.currency !== "USD" ? null : legFigure(quote);
+  if (ounce == null) return null;
+  // The other side's dollar pair, as the cross already read it: USD per lira.
+  const dollar = other === "USD" ? null : read.find((entry) => entry.leg.symbol === dollarPairListing(other));
+  if (other !== "USD" && dollar?.rate == null) return null;
+  const usdPerOther = dollar?.rate ?? 1;
+  const metalRate = ounce / usdPerOther;
+  return {
+    rate: metal === currency ? metalRate : 1 / metalRate,
+    quotes: [
+      { symbol: future, quote: quote!, pair: `${metal}/USD`, figure: ounce },
+      ...(dollar ? [quotedLeg(dollar.leg, dollar.quote!)] : []),
+    ],
+    viaUsd: other !== "USD",
+    derivedFrom: future,
+  };
 }
 
 /** How long past its feed's delay a weekday FX rate stays current, counted while the FX market trades. */

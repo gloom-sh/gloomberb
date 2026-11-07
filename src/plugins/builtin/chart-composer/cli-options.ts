@@ -101,6 +101,11 @@ export function applyChartComposerCapabilityOptions(
     next = { ...next, viewport: { ...next.viewport, totalReturn: true } };
   }
 
+  // --currency USD: every leg converted into it at each day's FX close.
+  if (capabilityId === "price-comparison" && typeof options.currency === "string" && /^[A-Z]{3}$/.test(options.currency)) {
+    next = { ...next, viewport: { ...next.viewport, currency: options.currency } };
+  }
+
   if (PRICE_CAPABILITIES.has(capabilityId) && options.axisMode) {
     const transform = options.axisMode === "percent" ? "percent" : "raw";
     next = {

@@ -161,6 +161,24 @@ export function cloudEpisodeReader(client: EpisodeClient = apiClient): EpisodeRe
 }
 
 /**
+ * A reader that asks for each listing's and currency's closes once: a read
+ * started early is the one a later load of the same closes waits on.
+ */
+export function onceEpisodeReader(reader: EpisodeReader): EpisodeReader {
+  const instruments = new Map<string, Promise<EpisodeClosesById>>();
+  const currencies = new Map<string, Promise<EpisodeClosesById>>();
+  const once = (reads: Map<string, Promise<EpisodeClosesById>>, key: string, read: () => Promise<EpisodeClosesById>) => {
+    let pending = reads.get(key);
+    if (!pending) reads.set(key, pending = read());
+    return pending;
+  };
+  return {
+    instrument: (instrument, signal) => once(instruments, riskInstrumentId(instrument), () => reader.instrument(instrument, signal)),
+    currency: (currency, signal) => once(currencies, currency, () => reader.currency(currency, signal)),
+  };
+}
+
+/**
  * The closes the episode replays read: SPY's, every target's, and the daily
  * FX closes of each currency a target quotes in and of a non-USD account,
  * four reads at a time. A read that fails is named in `errors`, and the

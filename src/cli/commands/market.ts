@@ -212,7 +212,7 @@ import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
 import { withBankEnterpriseValue } from "../../utils/fundamentals";
 import { fundamentalsFreshness, quotesFreshness, rowsFreshness, valuationFreshness } from "../freshness";
-import { fxPairListing, fxQuoteRateObservation, readFxQuoteRate } from "../fx-quote-rate";
+import { fxPairListing, fxQuoteRateObservation, METAL_NAMES, readFxQuoteRate } from "../fx-quote-rate";
 import { quoteBarNotes } from "../../market-data/quotes/intraday-bar";
 import { cedearRatioText, depositaryPairText, isReceiptSide, listingCedearRatio, listingDepositaryPair } from "../../market-data/depositary-pair";
 import { isPesoDollarPair, loadPesoDollarRates, pesoDollarRateLines, pesoDollarRatesJson } from "../peso-dollar-rates";
@@ -3589,6 +3589,7 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     const row = {
       currency, baseCurrency, rate, asOf, stale, pair, inverse: 1 / rate,
       ...(quoted ? { quotes: quoted.quotes.map(({ symbol }) => symbol), ...(quoted.viaUsd ? { via: "USD" } : {}) } : {}),
+      ...(quoted?.derivedFrom ? { derived: true, derivedFrom: quoted.derivedFrom } : {}),
       ...(amount == null ? {} : { amount, converted }),
     };
     // The closing line is the quote's own, as `quote` prints it: its time, and stale once older than the feed's delay.
@@ -3668,9 +3669,12 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
       : null;
     if (peso && peso.missing.length > 0) warnings.push(`No price for ${peso.missing.join(", ")}, so the rates from ${peso.missing.length === 1 ? "it are" : "them are"} left out.`);
     // A cross says so, naming the dollar pairs it is read from: the pair has no quote of its own.
+    // A metal with no spot quote is priced from its front-month future, and says so.
+    const metal = quoted?.derivedFrom ? (METAL_NAMES[currency] ? currency : baseCurrency) : null;
     const rateText = [
       describeFxRate(request, rate, quoted && !quoted.viaUsd ? quoted.quotes[0] : undefined),
       ...quoted?.viaUsd ? [describeFxLegs(quoted.quotes)] : [],
+      ...metal ? [`derived: ${METAL_NAMES[metal]!.toLowerCase()} from ${quoted!.derivedFrom}, the front-month future (spot ${METAL_NAMES[metal]!.toLowerCase()} is not quoted)`] : [],
       ...peso ? [`${peso.spotKind} rate`] : [],
     ].join("  ·  ");
     ctx.printResult({ data: [peso ? { ...row, ...pesoDollarRatesJson(peso) } : row], freshness, warnings: warnings.length > 0 ? warnings : undefined }, {
@@ -3681,7 +3685,7 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
         ...peso ? pesoDollarRateLines(peso) : [],
       ].join("\n"),
       // The rate is the base currency's price of one unit of the other, at the latest quote of each leg: USD per ZAR.
-      exportIdentity: { symbolOrSeries: pair, currencyOrUnit: `${baseCurrency} per ${currency}`, interval: "spot" },
+      exportIdentity: { symbolOrSeries: pair, currencyOrUnit: `${baseCurrency} per ${currency}`, interval: quoted?.derivedFrom ? `derived from ${quoted.derivedFrom}` : "spot" },
       columns: [
         { key: "currency", header: "Currency" },
         { key: "baseCurrency", header: "Base" },

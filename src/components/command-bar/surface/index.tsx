@@ -4,6 +4,7 @@ import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { LayoutBounds } from "../../../layout/pane-manager";
 import { usePlanAccess } from "../../../api-client/plan-access";
+import { useRendererHost } from "../../../ui/host";
 import { buildAssistCommandInventory } from "../assist/inventory";
 import { useCommandBarAssist } from "../assist/runtime";
 import { shouldAutoAskAssist, type AssistRowHandlers } from "../assist/model";
@@ -88,12 +89,15 @@ export function CommandBar({
     titleBarOverlay,
     visibleListStateRef,
   } = useCommandBarEnvironment();
+  const canExit = useRendererHost().canExit !== false;
   // Without an updater (the web terminal) neither checking nor a channel means anything.
   const availableCommands = useMemo(() => allAvailableCommands.filter((command) => {
     if (command.id === "check-for-updates" || command.id === "release-channel") return !!onCheckForUpdates;
     if (command.id === "run-setup-again") return !!onRunSetupAgain;
+    // A browser tab is closed by the browser; the page cannot quit.
+    if (command.id === "quit") return canExit;
     return true;
-  }), [allAvailableCommands, onCheckForUpdates, onRunSetupAgain]);
+  }), [allAvailableCommands, canExit, onCheckForUpdates, onRunSetupAgain]);
   const {
     applyThemePreview,
     clearThemePreview,
