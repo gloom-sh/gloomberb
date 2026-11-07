@@ -9,6 +9,8 @@ import { DetailScrollBody } from "../ui/detail-scroll-body";
 import { KeyValueRow } from "../ui/display";
 import { ExternalLink, usePaneLinkMenuEntry } from "../ui/external-link";
 import { parseArticle } from "./article-text";
+import { shareItemExcerpt } from "../../shares/item";
+import { usePaneShareItem } from "../../shares/pane-item";
 import { DESKTOP_LINE_HEIGHT, READER_APP_FONT, READER_COLUMN_FONT, READER_HEADING_STYLE, READER_MEASURE, ReaderBlock, ReaderText, type ReaderGeometry } from "./reader-text";
 
 export interface DetailFact {
@@ -82,6 +84,8 @@ export const DetailReader = forwardRef<ScrollBoxRenderable, DetailReaderProps>(f
   ref,
 ) {
   const { nativePaneChrome } = useUiCapabilities();
+  // The text's opening says what the open item is about, for a link to the pane.
+  usePaneShareItem(body ? () => ({ excerpt: shareItemExcerpt(body, { markdown: bodyFormat === "markdown" }) }) : null, { kit: true });
   return (
     <DetailScrollBody ref={ref} resetScrollKey={resetScrollKey}>
       {nativePaneChrome

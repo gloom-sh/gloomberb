@@ -5,7 +5,7 @@ import { formatPercentRaw } from "../../../utils/format";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 import { fetchFuturesCurve, loadCurveSpot, loadCurveSpotBars, loadCurveSpotCloses, loadFuturesCurveAsOf } from "./client";
-import { basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveCache, curveSpotBars, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveSettleShown, curveUnitLabel, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, skippedSpreadNotice, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
+import { basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveCache, curveSpotBars, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveSettleShown, curveUnitLabel, curveRootNamed, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, skippedSpreadNotice, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 import { knownGapMessage } from "../../../cli/known-gaps";
 
@@ -171,7 +171,7 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
     "Ann Basis is simple actual/365, each last trade against spot in the same minute, and noisy under 7 days to expiry."],
     intents: ["futures basis trade", "cash and carry", "basis against spot"],
     opens: [{ words: ["VX", "vix futures", "vix futures curve"], argument: "VIX" }] },
-  shape: "bundle", argument: { kind: "free-text", optional: true, placeholder: "root", description: "FUT root such as CL, ES, ZN or VX, or a CME crypto root (BTC, ETH, SOL, XRP). Defaults to ES.",
+  shape: "bundle", argument: { kind: "free-text", optional: true, placeholder: "root", description: "FUT root such as CL, ES, ZN or VX, a CME crypto root (BTC, ETH, SOL, XRP), or a root's name (gold, natural gas, crude oil). Defaults to ES.",
     examples: ["VIX", "CL", "BTC"] },
   // Only the pane reads the tab; the report always carries both.
   options: [{ key: "tab", description: "Curve or the full contract table.", type: "enum",
@@ -181,7 +181,7 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
   describe: (args) => `Futures curve ${args.argument || DEFAULT_ROOT}`,
   async load(args, ctx) {
     const input = args.argument || DEFAULT_ROOT;
-    const root = normalizeCurveRoot(input);
+    const root = normalizeCurveRoot(input) ?? curveRootNamed(input);
     if (!root) {
       // A subject no source carries (`fn CTM BDI`, the Baltic Dry Index) is said with its proxies, as search says it.
       const gap = typeof input === "string" ? knownGapMessage(input) : null;

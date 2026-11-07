@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { parseKeyChord } from "./chord";
-import { formatChordForHost, formatShortcutForHost } from "./labels";
+import { advertisedChord, formatChordForHost, formatShortcutForHost } from "./labels";
+import { resolveKeybindings } from "./resolve";
 
 const chord = (text: string) => parseKeyChord(text)!;
 
@@ -31,5 +32,13 @@ describe("key labels per host", () => {
     expect(formatChordForHost(chord("CmdOrCtrl+Shift+F"), "platform", "darwin", { compact: true })).toBe("⇧⌘F");
     expect(formatChordForHost(chord("Alt+1"), "platform", "linux", { compact: true })).toBe("Alt+1");
     expect(formatChordForHost(chord("Cmd+K"), "platform", "linux", { compact: true })).toBe("Super+K");
+  });
+
+  test("a terminal without the kitty protocol is shown the layout key it can send", () => {
+    const resolved = resolveKeybindings(undefined, { host: "terminal" });
+    const label = (legacyTerminal: boolean) => formatChordForHost(
+      { ...advertisedChord(resolved, "switch-layout", "terminal", { legacyTerminal })!, key: "2" }, "terminal", "linux", { compact: true });
+    expect(label(false)).toBe("^2");
+    expect(label(true)).toBe("Alt+2");
   });
 });

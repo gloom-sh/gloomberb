@@ -14,7 +14,7 @@ const socialMentionsSettings = [
 export const socialMentionsModule: PluginModule = {
   series: SOCIAL_MENTION_SERIES,
   panes: [{ id: "social-mentions", reportLockNote: socialMentionsLockNote, name: "Social Mentions", icon: "B", get component(): typeof import("./pane").SocialMentionsPane { const { SocialMentionsPane } = require("./pane"); return SocialMentionsPane; },
-    defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 96, height: 30 },
+    defaultPosition: "right", shareItem: { ticker: true }, tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 96, height: 30 },
     tableExport: true, headless: socialMentionsHeadless, settings: { title: "Social Mentions", fields: socialMentionsSettings } }],
   paneTemplates: [{ ...createTickerSurfacePaneTemplate({ id: "social-mentions-pane", paneId: "social-mentions", label: "Social Mentions",
     description: "Daily posts on X naming the ticker's cashtag, the day's top posts and their stance; alone, the tickers whose posts jump above their own median.",

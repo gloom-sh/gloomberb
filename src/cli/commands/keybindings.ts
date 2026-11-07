@@ -44,10 +44,10 @@ export function describeKeybindingsForCli(config: AppConfig): Record<string, unk
  * table is the terminal's and the desktop's at once, so an action either has
  * keeps its key.
  */
-function takenByCoreAction(config: AppConfig, chords: readonly KeyChord[], exceptId?: string): string | null {
+function takenByCoreAction(config: AppConfig, chords: readonly KeyChord[], exceptId?: string, command = false): string | null {
   const resolved = resolveKeybindings(config.keybindings);
   for (const chord of chords) {
-    const core = coreActionOnChord(resolved, chord, exceptId);
+    const core = coreActionOnChord(resolved, chord, exceptId, { command });
     if (core) return takenChordMessage(formatChordForHost(chord, "terminal"), core);
   }
   return null;
@@ -87,7 +87,7 @@ export function applyKeybindingCliSet(config: AppConfig, key: string, rawValue: 
     const chords = [];
     for (const text of value.split(/\s+/)) {
       const chord = parseKeyChord(text);
-      if (!chord) return { ok: false, message: `"${text}" is not a key chord. Examples: Ctrl+T, CmdOrCtrl+Shift+F, Alt+1, F5, \`` };
+      if (!chord) return { ok: false, message: `"${text}" is not a key chord. Examples: Ctrl+T, CmdOrCtrl+Shift+F, Alt+D, F5, \`` };
       chords.push(chord);
     }
     const taken = takenByCoreAction(config, chords, target);
@@ -101,7 +101,7 @@ export function applyKeybindingCliSet(config: AppConfig, key: string, rawValue: 
 
   if (section === "commands") {
     const chord = parseKeyChord(target);
-    if (!chord) return { ok: false, message: `"${target}" is not a key chord. Examples: Alt+1, CmdOrCtrl+Shift+N, F5` };
+    if (!chord) return { ok: false, message: `"${target}" is not a key chord. Examples: Alt+D, CmdOrCtrl+Shift+N, F5` };
     if (UNBIND_WORDS.has(value.toLowerCase()) || value === "") {
       return {
         ok: true,
@@ -112,7 +112,7 @@ export function applyKeybindingCliSet(config: AppConfig, key: string, rawValue: 
     if (isTypingChord(chord)) {
       return { ok: false, message: `"${target}" would fire while typing; command bindings need Ctrl, Cmd, Alt or a function key.` };
     }
-    const taken = takenByCoreAction(config, [chord]);
+    const taken = takenByCoreAction(config, [chord], undefined, true);
     if (taken) return { ok: false, message: taken };
     return {
       ok: true,

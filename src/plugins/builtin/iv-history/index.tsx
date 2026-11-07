@@ -10,7 +10,7 @@ export const ivHistoryModule: PluginModule = {
   series: IV_SERIES,
   panes: [{
     id: "iv-history", name: "Implied Volatility History", icon: "V", get component(): typeof import("./pane").IvHistoryPane { const { IvHistoryPane } = require("./pane"); return IvHistoryPane; },
-    defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 118, height: 36 },
+    defaultPosition: "right", shareItem: { ticker: true }, tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 118, height: 36 },
     tableExport: true,
     settings: { title: "Implied Volatility History", fields: [
       { key: "lookback", label: "Lookback", type: "select", options: [{ value: "1Y", label: "1 year" }, { value: "2Y", label: "2 years" }, { value: "ALL", label: "All stored" }] },

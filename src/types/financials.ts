@@ -546,6 +546,7 @@ export interface AnalystRatingRecord {
 }
 
 export interface AnalystEstimateRecord {
+  epsBasis?: "gaap" | "adjusted" | "unknown";
   date: string;
   period: string;
   /** Explicit currency for these estimates; independent of the listing currency. */

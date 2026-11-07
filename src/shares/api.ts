@@ -58,17 +58,28 @@ async function readJson(response: Response): Promise<unknown> {
   try { return await response.json(); } catch { throw new Error("The share service returned an invalid response."); }
 }
 
+/**
+ * A service from before shares kept an item refuses one it does not know with
+ * a 400: the share is made again without it, as that service would keep it.
+ */
+function withoutItem(payload: SharePayload): SharePayload | null {
+  return payload.kind === "pane" && payload.item ? { kind: "pane", data: payload.data } : null;
+}
+
 export async function createShare(payload: SharePayload, fetchImpl?: ShareFetch): Promise<CreatedShare> {
   const validated = parseSharePayload(payload);
   if (!validated) throw new Error("Invalid share payload.");
   let body: unknown;
   if (fetchImpl) {
-    const response = await fetchImpl(`${SHARE_API_ORIGIN}/shares`, {
+    const post = (share: SharePayload) => fetchImpl(`${SHARE_API_ORIGIN}/shares`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(validated),
+      body: JSON.stringify(share),
     });
+    let response = await post(validated);
+    const plain = response.status === 400 ? withoutItem(validated) : null;
+    if (plain) response = await post(plain);
     if (!response.ok) {
       if (response.status === 401) throw new Error("Sign in to Gloom Cloud to share.");
       if (response.status === 403) throw new Error("Verify your Gloom Cloud email to share.");
@@ -80,7 +91,13 @@ export async function createShare(payload: SharePayload, fetchImpl?: ShareFetch)
     // client when an interactive app creates a share, not on every public view.
     const { apiClient } = await import("../api-client").catch((error: unknown) => { throw shareFailed(error); });
     try {
-      body = await apiClient.createTerminalShare(validated);
+      try {
+        body = await apiClient.createTerminalShare(validated);
+      } catch (error) {
+        const plain = error instanceof ApiRequestError && error.status === 400 ? withoutItem(validated) : null;
+        if (!plain) throw error;
+        body = await apiClient.createTerminalShare(plain);
+      }
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 401) throw new Error("Sign in to Gloom Cloud to share.");
       if (error instanceof ApiRequestError && error.status === 403) throw new Error("Verify your Gloom Cloud email to share.");
@@ -112,7 +129,7 @@ export async function getShare(
   const body = await readJson(response);
   if (!body || typeof body !== "object") return null;
   const object = body as Record<string, unknown>;
-  const payload = parseSharePayload({ kind: object.kind, data: object.data });
+  const payload = parseSharePayload({ kind: object.kind, data: object.data, item: object.item });
   if (!payload || !validDate(object.createdAt) || !validDate(object.expiresAt)) return null;
   return {
     ...payload,

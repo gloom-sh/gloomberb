@@ -137,4 +137,43 @@ describe("share API client", () => {
     ]);
     expect(openLiveShareUrl(shareId)).toBe(`https://term.gloom.sh/api/shares/${shareId}/open`);
   });
+
+  test("a pane share keeps its item beside its data, reads one back, and drops one it cannot read", async () => {
+    const item = { pane: "Top News", title: "Iran reviewing proposals", excerpt: "Negotiators are reviewing proposals." };
+    expect(parseSharePayload({ ...portablePane, item })).toEqual({ ...portablePane, item });
+    // Anything else in an item, or an item where a pane has none, leaves the share as it was.
+    expect(parseSharePayload({ ...portablePane, item: { ...item, url: "https://example.com" } })).toEqual(portablePane);
+    expect(parseSharePayload({ ...portablePane, item: { pane: "Top News", title: "" } })).toEqual(portablePane);
+    expect(parseSharePayload({ ...article, item })).toEqual(article);
+
+    const fetchImpl = (async () => Response.json({
+      ...portablePane,
+      item,
+      createdAt: "2026-08-21T00:00:00Z",
+      expiresAt: "2026-09-20T00:00:00Z",
+    })) as unknown as typeof fetch;
+    const share = await getShare(shareId, fetchImpl);
+    expect(share?.kind === "pane" ? share.item : null).toEqual(item);
+  });
+
+  test("a share service from before items refuses one with a 400, and the share is made again without it", async () => {
+    const bodies: unknown[] = [];
+    const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      bodies.push(body);
+      return "item" in body
+        ? Response.json({ error: "Invalid share payload." }, { status: 400 })
+        : Response.json({ id: shareId, expiresAt: "2026-09-20T00:00:00.000Z" });
+    }) as typeof fetch;
+    const item = { pane: "Top News", title: "Iran reviewing proposals" };
+    expect(await createShare({ ...portablePane, item } as never, fetchImpl)).toEqual({ id: shareId, expiresAt: "2026-09-20T00:00:00.000Z" });
+    expect(bodies).toEqual([{ ...portablePane, item }, portablePane]);
+    // A share without an item that the service refuses is not sent twice.
+    bodies.length = 0;
+    await expect(createShare({ ...portablePane, data: { ...portablePane.data, title: "item" } } as never, (async (_url: string | URL | Request, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return Response.json({ error: "Invalid share payload." }, { status: 400 });
+    }) as typeof fetch)).rejects.toThrow("Could not create share.");
+    expect(bodies).toHaveLength(1);
+  });
 });

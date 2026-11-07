@@ -60,6 +60,10 @@ async function runInstall(machine: FakeMachine, options: {
   existingInstall?: string;
   /** Puts other files in the install folder before the run. */
   prepare?: (installDir: string) => void;
+  /** The install folder is on PATH, as `~/.local/bin` is on most Linux desktops (the default). */
+  installDirOnPath?: boolean;
+  /** The login shell, `$SHELL`. */
+  shell?: string;
 } = {}): Promise<InstallRun> {
   const binDir = join(workDir, "bin");
   const installDir = join(workDir, "install");
@@ -130,7 +134,8 @@ async function runInstall(machine: FakeMachine, options: {
     cwd: workDir,
     env: {
       ...process.env,
-      PATH: `${binDir}:${process.env.PATH ?? ""}`,
+      PATH: [binDir, ...(options.installDirOnPath === false ? [] : [installDir]), process.env.PATH ?? ""].join(":"),
+      SHELL: options.shell ?? "/bin/sh",
       HOME: workDir,
       TMPDIR: tempDir,
       GLOOMBERB_INSTALL_DIR: installDir,
@@ -284,6 +289,23 @@ describe("install.sh verification", () => {
     expect(run.stdout).toContain(assetUrl);
     expect(run.stdout).toContain(join(workDir, "install", "gloom"));
     expect(run.temporaryFiles).toEqual([]);
+  });
+
+  // ~/.local/bin is not on a new Mac's PATH: "Run 'gloom' to start." then
+  // failed with "command not found". The first run goes by the path, and the
+  // line that puts the folder on PATH is the login shell's.
+  test.each([
+    ["/bin/zsh", `echo 'export PATH="$HOME/install:$PATH"' >> ~/.zshrc`],
+    ["/bin/bash", `echo 'export PATH="$HOME/install:$PATH"' >> ~/.bashrc`],
+    ["/usr/bin/fish", "fish_add_path <install>"],
+  ])("names the command by its path when the install folder is not on PATH (%s)", async (shell, hint) => {
+    const run = await runInstall(linuxMachine, { downloads: released(assetName, compressed), installDirOnPath: false, shell });
+    const installDir = join(workDir, "install");
+
+    expect(run.exitCode).toBe(0);
+    expect(run.stdout).not.toContain("Run 'gloom' to start.");
+    expect(run.stdout).toContain(`start Gloom with:\n  ${join(installDir, "gloom")}\n`);
+    expect(run.stdout).toContain(`  ${hint.replace("<install>", installDir)}\n`);
   });
 
   // Installs from before the rename have the binary itself at gloomberb.

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ScannerFlowEvent, ScannerFlowPayload, ScannerHiloPayload } from "../../../api-client";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { createFlowHeadless, createHiloHeadless, FLOW_SIDE_RULE, loadHiloSnapshot } from "./headless";
+import { captureScannerEvent } from "../shared/scanner-capture";
 
 const payload: ScannerHiloPayload = {
   status: "live",
@@ -56,6 +57,16 @@ describe("highs and lows headless model", () => {
       },
     }, new AbortController().signal, 5);
     expect(stuck.status).toBe("degraded");
+    // One still starting fails a screenshot, which would picture an empty pane; a report asks for it and says so.
+    const warming = {
+      subscribeScanner(_scanner: unknown, listener: (event: { type: "data"; payload: ScannerHiloPayload }) => void) {
+        listener({ type: "data", payload: { ...payload, status: "starting" } });
+        return () => {};
+      },
+    } as Parameters<typeof captureScannerEvent>[0];
+    await expect(captureScannerEvent(warming, "hilo", new AbortController().signal, 5)).rejects.toThrow("Highs and lows snapshot timed out");
+    expect(await captureScannerEvent(warming, "hilo", new AbortController().signal, 5, { acceptStarting: true }))
+      .toMatchObject({ payload: { status: "starting", highs: payload.highs } });
   });
 
   test("reports a degraded stream as partial data", async () => {
@@ -143,6 +154,17 @@ describe("options flow report", () => {
     expect(nvda.errors).toEqual(["Recorded prints unavailable: Request timed out", "Session totals unavailable: Not Found"]);
     // Asked for the sums alone, there is nothing left to report.
     await expect(failing.load(args(null, { tab: "tide" }), ctx)).rejects.toThrow("Session totals unavailable");
+  });
+
+  test("a starting feed says so instead of an empty tape", async () => {
+    const starting = createFlowHeadless({
+      load: async () => ({ ...feed, status: "starting", events: [] }),
+      recorded: async () => ({ events: [], hasMore: false }),
+      session: async () => { throw new Error("Not Found"); },
+    });
+    const report = await starting.load(args(null, { tab: "prints" }), ctx);
+    expect((report.sections[0] as { empty?: string }).empty).toBe("The scanner is still starting and has nothing to list yet. Ask again in a few seconds.");
+    expect(report.freshness).toEqual({ status: "stale" });
   });
 
   test("the market reads the live tape alone, a tab one section, and strikes need a ticker", async () => {

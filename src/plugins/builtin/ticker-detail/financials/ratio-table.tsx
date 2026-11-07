@@ -12,7 +12,7 @@ import type { PricePoint } from "../../../../types/financials";
 import { padTo } from "../../../../utils/format";
 import { useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
 import type { FinancialTableStatement } from "./aggregation";
-import { FINANCIAL_COL_W, FINANCIAL_LABEL_W } from "./model";
+import { FINANCIAL_COL_W, financialLabelWidth } from "./model";
 import { loadPeriodEndHistory } from "./period-end-history";
 import {
   formatRatioInput,
@@ -170,6 +170,6 @@ export function RatioTable({
   );
 }
 
-export function ratioMetricColumn(): RatioTableColumn {
-  return { id: "metric", kind: "metric", label: "Ratio", width: FINANCIAL_LABEL_W, align: "left" };
+export function ratioMetricColumn(width: number): RatioTableColumn {
+  return { id: "metric", kind: "metric", label: "Ratio", width: financialLabelWidth(width), align: "left" };
 }

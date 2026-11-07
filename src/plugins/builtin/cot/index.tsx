@@ -6,7 +6,7 @@ import { COT_SERIES } from "./series";
 
 export const cotModule: PluginModule = {
   series: COT_SERIES,
-  panes: [{ id: "cot", name: "CFTC Positioning", icon: "P", get component(): typeof import("./pane").CotPane { const { CotPane } = require("./pane"); return CotPane; },
+  panes: [{ id: "cot", name: "CFTC Positioning", icon: "P", shareItem: { argument: true }, get component(): typeof import("./pane").CotPane { const { CotPane } = require("./pane"); return CotPane; },
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 106, height: 30 },
     tableExport: true, headless: cotHeadless }],
   paneTemplates: [{ id: "cot-cot", paneId: "cot", label: "CFTC Positioning",

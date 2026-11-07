@@ -58,6 +58,7 @@ export const shortInterestModule: PluginModule = {
       icon: "S",
       component: ShortInterestSurface,
       defaultPosition: "right",
+      shareItem: { ticker: true },
       tickerFollower: followsWithoutFinraOverride,
       defaultMode: "floating",
       defaultFloatingSize: { width: 90, height: 25 },

@@ -7,7 +7,7 @@ import { LOOKBACK_OPTIONS, MacroDayPane } from "./pane";
 export const macroDayModule: PluginModule = {
   panes: [{
     id: "macro-day", name: "Macro-Day Reaction", icon: "M", component: MacroDayPane,
-    defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 76, height: 26 },
+    defaultPosition: "right", shareItem: { ticker: true }, tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 76, height: 26 },
     tableExport: true,
     settings: { title: "Macro-Day Reaction Settings", fields: [
       { key: "lookbackYears", label: "Lookback", type: "select", options: LOOKBACK_OPTIONS },

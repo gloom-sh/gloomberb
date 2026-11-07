@@ -283,7 +283,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
         "config set timezone Asia/Tokyo",
         "config get keybindings",
         "config set keybindings.actions.ticker-search \"Ctrl+T\"",
-        "config set keybindings.commands.Alt+1 \"DES AAPL\"",
+        "config set keybindings.commands.Alt+D \"DES AAPL\"",
       ],
     },
     execute: async (args, ctx) => {

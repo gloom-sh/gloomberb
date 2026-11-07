@@ -14,6 +14,7 @@ import {
   applyFirstRunLayout,
   buildFirstRunLayout,
   FIRST_RUN_WATCHLIST,
+  isCompactHomeViewport,
   onboardingDeskLayoutId,
   planFirstRunWatchlist,
   setupDeskPicks,
@@ -28,6 +29,7 @@ import {
   type BrokerOption,
 } from "./wizard-model";
 import { logFailure } from "../../utils/log-failure";
+import { useViewport } from "../../react/input";
 
 const onboardingLog = debugLog.createLogger("onboarding");
 
@@ -109,6 +111,10 @@ export function useOnboardingWorkspace({
   const [deskCursor, setDeskCursor] = useState(0);
   const [buildingDesks, setBuildingDesks] = useState(false);
   const buildingDesksRef = useRef(false);
+  // The window the workspace is built for: a small terminal gets the compact Home.
+  const viewport = useViewport();
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
 
   /**
    * Seeds the watchlist and swaps Home for the first-run workspace built
@@ -152,18 +158,20 @@ export function useOnboardingWorkspace({
         onboardingLog.error("First-run watchlist update failed", { symbol: ticker.metadata.ticker, error: String(error) });
       }
     }
+    const { tickers, financials } = stateRef.current;
+    const held = [...tickers.values()]
+      .filter((ticker) => ticker.metadata.portfolios.includes(portfolioId))
+      .map((ticker) => ticker.metadata.ticker);
     const home = buildFirstRunLayout({
       symbol,
       portfolioId,
       watchlistId,
       hasPane: (paneId) => pluginRegistry.panes?.has(paneId) ?? false,
+      compact: isCompactHomeViewport(viewportRef.current),
+      holdings: held.length > 0,
     });
     const workspace = applyFirstRunLayout(config, home, [], { rerun });
     if (desks.length === 0) return workspace;
-    const { tickers, financials } = stateRef.current;
-    const held = [...tickers.values()]
-      .filter((ticker) => ticker.metadata.portfolios.includes(portfolioId))
-      .map((ticker) => ticker.metadata.ticker);
     const company = pickDeskCompany([symbol, ...held], (candidate) => (
       isDeskStock(tickers.get(candidate), financials.get(candidate))
     ));

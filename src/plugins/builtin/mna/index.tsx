@@ -35,6 +35,7 @@ export const mnaModule: PluginModule = {
       // MA and DIST open this pane: DIST sets the tab param, MA a ticker.
       identitySettings: ["ticker"],
       defaultPosition: "right",
+      shareItem: { ticker: true },
       tickerFollower: true,
       instruments: ["equity"],
       defaultMode: "floating",

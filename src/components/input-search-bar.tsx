@@ -31,7 +31,8 @@ export function InputSearchBar({
   width: number | "100%";
   focusToken: number;
   inputRef: RefObject<InputRenderable | null>;
-  placeholder: string;
+  /** Longest first: a field too narrow for one shows the next that fits. */
+  placeholder: string | readonly string[];
   debounceMs: number;
   /** Leading marker; override when a pane shows more than one field. */
   glyph?: string;
@@ -137,7 +138,7 @@ export function InputSearchBar({
         ref={inputRef}
         value={draft}
         focused={focused && active}
-        placeholder={placeholder}
+        placeholder={fittedPlaceholder(placeholder, typeof width === "number" ? width - (appearance === "strip" ? 2 : 0) : null)}
         placeholderColor={placeholderText()}
         textColor={colors.text}
         focusedTextColor={colors.text}
@@ -154,6 +155,12 @@ export function InputSearchBar({
       />
     </Box>
   );
+}
+
+/** The first placeholder that fits `room` cells (all of them when the field has no fixed width), else the last. */
+function fittedPlaceholder(placeholder: string | readonly string[], room: number | null): string {
+  if (typeof placeholder === "string") return placeholder;
+  return placeholder.find((text) => room === null || text.length <= room) ?? placeholder.at(-1) ?? "";
 }
 
 const SEARCH_ICON_STYLE = { marginRight: "var(--gloom-space-xs)" } as const;

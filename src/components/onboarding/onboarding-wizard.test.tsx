@@ -1500,7 +1500,7 @@ describe("OnboardingWizard", () => {
     );
     await tui.setup().renderOnce();
     await waitForFrame("Built around AAPL");
-    expect(tui.frame()).toContain("Alt+Backspace");
+    expect(tui.frame()).toContain("Keep exploring  Esc");
 
     // The field has the keyboard.
     Object.defineProperty(tui.setup().renderer, "currentFocusedEditor", { configurable: true, get: () => ({}) });
@@ -1508,7 +1508,7 @@ describe("OnboardingWizard", () => {
     expect(text.value).toBe("berkshire ");
     await act(async () => { await Bun.sleep(20); await tui.setup().renderOnce(); });
     expect(tui.frame()).toContain("Built around AAPL");
-    expect(tui.frame()).not.toContain("Alt+Backspace");
+    expect(tui.frame()).not.toContain("Keep exploring  Esc");
     expect(tui.frame()).not.toContain("Alt+Enter");
     expect(capturedConfig?.onboardingComplete).not.toBe(true);
 
@@ -1565,7 +1565,7 @@ describe("OnboardingWizard", () => {
     await backOnWorkspace();
   });
 
-  test("the research coach shows its dismiss key beside Keep exploring at 80x24, and the key dismisses it", async () => {
+  test("the research coach shows Esc beside Keep exploring at 80x24, and Esc dismisses it", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-coach-dismiss-"));
     const config = {
       ...createDefaultConfig(tempDataDir),
@@ -1574,14 +1574,14 @@ describe("OnboardingWizard", () => {
     await tui.render(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} />, { width: 80, height: 24 });
     await tui.setup().renderOnce();
     const lines = (await waitForFrame("Keep exploring")).split("\n");
-    // Both keys do not fit one row of the card: Connect wraps under Keep exploring, each inside the border.
-    const keep = lines.findIndex((line) => /Keep exploring\s+Alt\+Backspace/.test(line));
+    // Each key stays beside its button, inside the border.
+    const keep = lines.findIndex((line) => /Keep exploring\s+Esc/.test(line));
     const connect = lines.findIndex((line) => /Connect free Cloud\s+Alt\+Enter/.test(line));
     expect(keep).toBeGreaterThanOrEqual(0);
-    expect(connect).toBe(keep + 1);
+    expect(connect).toBeGreaterThanOrEqual(keep);
     for (const line of [lines[keep]!, lines[connect]!]) expect(line.trimEnd().endsWith("│")).toBe(true);
 
-    await tui.emitKeypress({ name: "backspace", meta: true });
-    await waitUntil(() => capturedConfig?.onboardingComplete === true, "the dismiss key finishes onboarding");
+    await pressEscape();
+    await waitUntil(() => capturedConfig?.onboardingComplete === true, "Esc finishes onboarding");
   });
 });

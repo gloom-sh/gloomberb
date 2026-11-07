@@ -1,6 +1,6 @@
 {
   "name": "gloomberb",
-  "version": "0.20.3",
+  "version": "0.20.4",
   "packageManager": "bun@1.3.14",
   "description": "Market research and portfolio tracker for the terminal",
   "module": "src/public/index.ts",
@@ -51,6 +51,7 @@
     "patches"
   ],
   "scripts": {
+    "preinstall": "node bin/without-bun.cjs || exit 0",
     "dev": "bun run --watch src/cli/entry.ts",
     "start": "bun src/cli/entry.ts",
     "build": "bun run scripts/build.ts",
@@ -94,6 +95,7 @@
     "check:pane-layout": "bun run scripts/pane-chrome/layout-sweep.ts",
     "check:ui-tokens": "bun run scripts/pane-chrome/ui-tokens.ts",
     "ui:benchmark": "bun run scripts/pane-chrome/ui-benchmark.ts",
+    "askg:tool-sweep": "bun run scripts/askg-tool-sweep.ts",
     "ui:badge-ink": "bun run scripts/pane-chrome/badge-ink.ts",
     "audit:ui": "bun run scripts/pane-chrome/ui-audit.ts",
     "check:call-player": "bun run scripts/pane-chrome/call-player.ts",

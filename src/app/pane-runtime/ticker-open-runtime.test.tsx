@@ -5,7 +5,7 @@ import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import { AssetDataRouter } from "../../sources/provider-router";
 import { createBrowserResearchLayout, BROWSER_RESEARCH_PANE_ID } from "../../renderers/browser/config-host";
-import { createInitialState, type AppAction } from "../../state/app/context";
+import { appReducer, createInitialState, type AppAction } from "../../state/app/context";
 import { createDefaultConfig, createPaneInstance, TICKER_RESEARCH_PANE_ID } from "../../types/config";
 import type { TickerRecord } from "../../types/ticker";
 import { useAppTickerOpenRuntime } from "./ticker-open-runtime";
@@ -162,17 +162,27 @@ test.each(["floating", "docked", "only-floating"])("ticker research opens visibl
 });
 
 // Regression: a 13F, screener or news row's ticker the app did not hold yet showed no pane until search and
-// the listing's quote answered, seconds on a slow connection. The pane shows first; the lookup settles it.
-test.each(["found", "missing", "closed"] as const)("a row's ticker opens its pane before the lookup answers (%s)", async (outcome) => {
+// the listing's quote answered, seconds on a slow connection. The pane shows first; the lookup settles it, and
+// undo, redo and the recent tickers end as they would had the open waited for the lookup.
+test.each(["found", "missing", "ambiguous", "failed", "closed", "edited"] as const)("a row's ticker opens its pane before the lookup answers (%s)", async (outcome) => {
   const source = createPaneInstance("13f", { instanceId: "13f:crowding", binding: { kind: "none" } });
   const config = createDefaultConfig(":memory:");
   config.layout = { dockRoot: { kind: "pane", instanceId: source.instanceId }, instances: [source], floating: [], detached: [] };
   const stateRef = { current: createInitialState(config) };
-  stateRef.current.focusedPaneId = source.instanceId;
+  const earlier = { dockRoot: null, instances: [], floating: [], detached: [] };
+  const later = { ...config.layout, instances: [{ ...source, title: "Crowding" }] };
+  stateRef.current = { ...stateRef.current, focusedPaneId: source.instanceId, recentTickers: ["AAPL"],
+    layoutHistory: { 0: { past: [earlier], future: [later] } } };
+  const historyBefore = stateRef.current.layoutHistory[0];
   const lookup = Promise.withResolvers<void>();
   const actions: AppAction[] = [];
   const notifications: string[] = [];
   const paneId = "ticker-research:opened";
+  const dispatch = (action: AppAction) => {
+    actions.push(action);
+    stateRef.current = appReducer(stateRef.current, action);
+  };
+  const listing = (exchange: string) => ({ providerId: "cloud", symbol: "WRBY", name: "Warby Parker Inc.", exchange, currency: "USD", type: "Common Stock" });
   let runtime!: ReturnType<typeof useAppTickerOpenRuntime>;
   function Harness() {
     runtime = useAppTickerOpenRuntime({
@@ -180,31 +190,42 @@ test.each(["found", "missing", "closed"] as const)("a row's ticker opens its pan
       dataProvider: createTestDataProvider({
         search: async () => {
           await lookup.promise;
-          return outcome === "missing" ? [] : [{ providerId: "cloud", symbol: "WRBY", name: "Warby Parker Inc.", exchange: "NYSE", currency: "USD", type: "Common Stock" }];
+          if (outcome === "missing" || outcome === "edited") return [];
+          return outcome === "ambiguous" ? [listing("NYSE"), listing("BMV")] : [listing("NYSE")];
         },
         getQuote: async () => { await lookup.promise; throw new Error("No quote available"); },
       }),
       tickerRepository: {
         loadTicker: async () => null,
-        createTicker: async (metadata: TickerRecord["metadata"]) => ({ metadata }),
+        createTicker: async (metadata: TickerRecord["metadata"]) => {
+          if (outcome === "failed") throw new Error("Disk is full");
+          return { metadata };
+        },
       } as any,
-      dispatch: (action) => { actions.push(action); },
+      dispatch,
       pluginRegistry: { panes: new Map([[TICKER_RESEARCH_PANE_ID, { id: TICKER_RESEARCH_PANE_ID }]]), events: { emit() {} },
         notify: ({ body }: { body: string }) => { notifications.push(body); },
         getTermSize: () => ({ width: 120, height: 40 }), getDisabledPaneOwner: () => null } as any,
       buildPaneInstance: (type, options) => createPaneInstance(type, { ...options, instanceId: paneId }),
+      // As the app persists a layout: a step to undo first, unless asked not to.
       persistLayout: (layout, options) => {
-        stateRef.current.config.layout = layout;
-        if (options && "focusedPaneId" in options) stateRef.current.focusedPaneId = options.focusedPaneId ?? null;
+        if (options?.pushHistory !== false) dispatch({ type: "PUSH_LAYOUT_HISTORY" });
+        dispatch(options && "focusedPaneId" in options
+          ? { type: "UPDATE_LAYOUT", layout, focusedPaneId: options.focusedPaneId ?? null }
+          : { type: "UPDATE_LAYOUT", layout });
       },
-      activatePane: (id) => { stateRef.current.focusedPaneId = id; },
-      focusVisiblePane: (id) => { stateRef.current.focusedPaneId = id; },
+      activatePane: (id, options) => { dispatch({ type: "FOCUS_PANE", paneId: id, ...options }); },
+      focusVisiblePane: (id) => { dispatch({ type: "FOCUS_PANE", paneId: id }); },
     });
     return <text>Research</text>;
   }
   const rendered = await tui.render(<Harness />);
   await act(async () => { await rendered.renderOnce(); });
   const research = () => stateRef.current.config.layout.instances.find((pane) => pane.instanceId === paneId);
+  const persist = (layout: typeof config.layout) => {
+    dispatch({ type: "PUSH_LAYOUT_HISTORY" });
+    dispatch({ type: "UPDATE_LAYOUT", layout });
+  };
 
   const opening = runtime.openPinnedTicker("WRBY", { floating: true });
   // Search has not answered: the pane is already there, focused, and says it is loading.
@@ -212,26 +233,83 @@ test.each(["found", "missing", "closed"] as const)("a row's ticker opens its pan
   expect(stateRef.current.config.layout.floating.map((pane) => pane.instanceId)).toEqual([paneId]);
   expect(stateRef.current.focusedPaneId).toBe(paneId);
   expect(isTickerPaneOpening(paneId)).toBe(true);
-  if (outcome === "closed") stateRef.current.config.layout = removePane(stateRef.current.config.layout, paneId);
+  expect(stateRef.current.recentTickers).toEqual(["AAPL"]);
+  if (outcome === "closed") persist(removePane(stateRef.current.config.layout, paneId));
+  if (outcome === "edited") {
+    const layout = stateRef.current.config.layout;
+    persist({ ...layout, floating: layout.floating.map((pane) => ({ ...pane, x: pane.x + 10 })) });
+  }
 
   lookup.resolve();
   await act(async () => { await opening; });
   expect(isTickerPaneOpening(paneId)).toBe(false);
+  const undo = () => dispatch({ type: "UNDO_LAYOUT" });
   if (outcome === "found") {
     expect(research()?.binding).toMatchObject({ kind: "fixed", symbol: "WRBY", instrument: null, listing: { exchange: "NYSE" } });
     expect(actions).toContainEqual(expect.objectContaining({ type: "UPDATE_TICKER", ticker: { metadata: expect.objectContaining({ ticker: "WRBY", exchange: "NYSE" }) } }));
     expect(stateRef.current.focusedPaneId).toBe(paneId);
     expect(notifications).toEqual([]);
-  } else if (outcome === "missing") {
-    // Nothing to open: the pane goes as it came, focus back on the row's pane, and the open says why.
+    expect(stateRef.current.recentTickers).toEqual(["WRBY", "AAPL"]);
+    // One step opened it, as when the open waits.
+    undo();
     expect(research()).toBeUndefined();
-    expect(stateRef.current.focusedPaneId).toBe(source.instanceId);
-    expect(notifications).toEqual(["Could not open WRBY: no quote or listing found."]);
-  } else {
-    // Closed while it loaded: the lookup does not open it again.
+    undo();
+    expect(stateRef.current.config.layout.instances).toEqual([]);
+  } else if (outcome === "closed") {
+    // Closed while it loaded: the lookup does not open it again, and undoing the close brings it back on the listing found.
     expect(research()).toBeUndefined();
     expect(notifications).toEqual([]);
+    undo();
+    expect(research()?.binding).toMatchObject({ kind: "fixed", symbol: "WRBY", listing: { exchange: "NYSE" } });
+  } else if (outcome === "edited") {
+    // Moved while it loaded, then nothing found: no step brings back a pane on a key that names nothing.
+    expect(research()).toBeUndefined();
+    expect(stateRef.current.recentTickers).toEqual(["AAPL"]);
+    undo();
+    expect(research()).toBeUndefined();
+  } else {
+    // Nothing to open: the pane goes as it came, focus back on the row's pane, and the open says why.
+    // It leaves no step to undo, keeps the redo step, and the key never was a recent ticker.
+    expect(research()).toBeUndefined();
+    expect(stateRef.current.focusedPaneId).toBe(source.instanceId);
+    expect(notifications).toEqual([{
+      missing: "Could not open WRBY: no quote or listing found.",
+      ambiguous: expect.stringMatching(/^Failed to open WRBY: /),
+      failed: "Failed to open WRBY: Disk is full",
+    }[outcome]]);
+    expect(stateRef.current.layoutHistory[0]).toEqual(historyBefore);
+    expect(stateRef.current.recentTickers).toEqual(["AAPL"]);
+    // A choice of listings is offered in ticker search.
+    expect(actions.some((action) => action.type === "SET_COMMAND_BAR")).toBe(outcome === "ambiguous");
   }
+});
+
+// A ticker the app holds opens on it at once, however the key spells it: no pane waits on a search for it.
+test.each([["JPM US Equity", "JPM"], ["700.HK", "0700.HK"], ["TTF", "TTF=F"]])("%s opens the saved %s without a lookup", async (typed, saved) => {
+  const config = createDefaultConfig(":memory:");
+  const stateRef = { current: createInitialState(config) };
+  stateRef.current.tickers.set(saved, createTestTicker(saved, saved));
+  let runtime!: ReturnType<typeof useAppTickerOpenRuntime>;
+  function Harness() {
+    runtime = useAppTickerOpenRuntime({ stateRef, tickerRepository: { loadTicker: async () => null } as any, dispatch() {},
+      // Never answers: an open that asks it never lands.
+      dataProvider: createTestDataProvider({ search: () => new Promise(() => {}), getQuote: () => new Promise(() => {}) }),
+      pluginRegistry: { panes: new Map([[TICKER_RESEARCH_PANE_ID, { id: TICKER_RESEARCH_PANE_ID }]]), events: { emit() {} }, notify() {},
+        getTermSize: () => ({ width: 120, height: 40 }), getDisabledPaneOwner: () => null } as any,
+      buildPaneInstance: (paneId, options) => createPaneInstance(paneId, { ...options, instanceId: "ticker-research:held" }),
+      persistLayout: (layout) => { stateRef.current.config.layout = layout; },
+      activatePane() {}, focusVisiblePane() {},
+    });
+    return <text>Research</text>;
+  }
+  const rendered = await tui.render(<Harness />);
+  await act(async () => { await rendered.renderOnce(); });
+  const research = () => stateRef.current.config.layout.instances.filter((pane) => pane.instanceId === "ticker-research:held");
+  const opening = runtime.openPinnedTicker(typed, { floating: true });
+  // No pane on the key as typed, saying it is loading.
+  expect(research()).toEqual([]);
+  await act(async () => { await opening; });
+  expect(research().map((pane) => pane.binding)).toEqual([{ kind: "fixed", symbol: saved }]);
 });
 
 // `DES NEE` binds the public listing; a ticker link names no route. Both are the one security without a broker.

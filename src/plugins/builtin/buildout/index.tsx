@@ -47,6 +47,7 @@ export const buildoutModule: PluginModule = {
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 120, height: 32 },
+    shareItem: { ticker: true },
     tickerFollower: true,
     instruments: ["equity"],
     reportOptions: [COMPANY_TAB_OPTION],

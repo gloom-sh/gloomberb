@@ -72,6 +72,7 @@ import {
   sortBrowserRows,
   sortHoldingRows,
   sortTimelineRows,
+  type SplitFactors,
 } from "./model";
 import {
   actionLabel,
@@ -216,8 +217,8 @@ export interface ThirteenFHeadlessDependencies {
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
   ): Promise<FundDetailData>;
-  /** The split factor of each of a fund's split candidates between its two quarter ends (loadSplitFactors), for its Est P&L. */
-  loadSplitFactors?(detail: FundDetailData, ctx: HeadlessPaneContext): Promise<Map<string, number | null>>;
+  /** The split factor of each of a fund's split candidates between its two quarter ends (loadSplitFactors), for its Est P&L; with `only`, of those rows alone. */
+  loadSplitFactors?(detail: FundDetailData, ctx: HeadlessPaneContext, only?: ReadonlySet<string>): Promise<SplitFactors>;
   /** What a fund in a search filed for the newest quarter past its deadline, from EDGAR. */
   loadFilingGap?(cik: string, latestPeriod: string | null | undefined, ctx: HeadlessPaneContext): Promise<ThirteenFFilingGap | null>;
   /** 13F filers whose names contain `query`, without their reports. */
@@ -255,6 +256,16 @@ async function readingSavedCopies<T extends object>(ctx: HeadlessPaneContext, ru
   }
 }
 
+/**
+ * How long a report waits on its split lookups, largest lines first. A large
+ * filer off the ranking has a few hundred lines that move like a split (its
+ * Est 13F reads them all), and its 200 largest can hold dozens (its Holdings
+ * read theirs); read cold, they took 15 to 35 s, past what an Ask Gloom tool
+ * call is given. A line not read in time has no Est P&L, is left out of the
+ * Est 13F, and is named as one the time ran out on.
+ */
+const SPLIT_LOOKUP_BUDGET_MS = 8_000;
+
 const defaultDependencies: Required<ThirteenFHeadlessDependencies> = {
   loadBrowser: (tab, query, limit, _args, ctx) => loadBrowserRows(
     tab,
@@ -264,15 +275,17 @@ const defaultDependencies: Required<ThirteenFHeadlessDependencies> = {
   ),
   // An overlap never shows a fund's missed quarter, so it does not ask EDGAR.
   loadDetail: (cik, name, args, ctx) => loadFundDetail(cik, name, ctx.signal, { filingGap: !isOverlapLoad(args), onSavedCopy: noteSavedCopy(ctx) }),
-  loadSplitFactors: (detail, ctx) => loadSplitFactors(
+  loadSplitFactors: (detail, ctx, only) => loadSplitFactors(
     detail,
     (ticker, after, through) => corporateSplitFactor(ctx.marketData, ticker, after, through),
     ctx.signal,
+    { only, budgetMs: SPLIT_LOOKUP_BUDGET_MS },
   ),
   loadFilingGap: (cik, latestPeriod, ctx) => loadFilingGap(cik, latestPeriod, ctx.signal),
   searchFunds: (query, ctx) => searchThirteenFFunds(query, THIRTEENF_MAX_LIMIT, ctx.signal),
   loadPerformance: (cik, name, ctx) => loadFundPerformance(cik, name, ctx.signal, {
     splitFactor: (ticker, after, through) => corporateSplitFactor(ctx.marketData, ticker, after, through),
+    splitBudgetMs: SPLIT_LOOKUP_BUDGET_MS,
     onSavedCopy: noteSavedCopy(ctx),
   }),
   loadEtfFunds: async (ctx) => (await fetchFunds(ctx.apiClient)).funds,
@@ -333,10 +346,24 @@ function browserTab(view: HeadlessThirteenFView, query: string): ThirteenFBrowse
 /** What to search by instead, after a search that found no 13F filer. */
 const SEARCH_HINT = 'Search by fund name or CIK, as in fn 13F "Berkshire Hathaway".';
 
+/** Legal forms a manager's filed name ends with and nobody says: "Citadel Advisors" is CITADEL ADVISORS LLC. */
+const LEGAL_FORMS = new Set(["llc", "lp", "llp", "lllp", "pllc", "inc", "incorporated", "corp", "corporation", "co", "company", "ltd", "limited", "plc", "sa", "ag", "gmbh", "nv", "bv", "se", "the"]);
+
+/** A manager's name as said: lowercase words, without punctuation or a trailing legal form. */
+function spokenName(name: string): string {
+  const words = name.toLocaleLowerCase().replace(/\./g, "").split(/[^\p{L}\p{N}&]+/u).filter(Boolean);
+  while (words.length > 1 && LEGAL_FORMS.has(words.at(-1)!)) words.pop();
+  return words.join(" ");
+}
+
 /**
  * The manager a fund name or CIK names: a CIK as given, else the one fund
- * whose name matches exactly, else the only match. `search` lists funds by
- * name, as the 13F browser does.
+ * whose name matches exactly, as said without its legal form, or as the
+ * first whole words of its name ("ARK Investment Management" is ARK
+ * Investment Management LLC, not Spark Investment Management), else the only
+ * match. Several managers that fit are named, those that fit first and the
+ * largest books first, for the caller to pick one by CIK. `search` lists
+ * funds by name, as the 13F browser does.
  */
 async function findThirteenFFund(
   query: string,
@@ -348,13 +375,27 @@ async function findThirteenFFund(
   const result = await search(query, 25);
   await result.reportsLoaded;
   const candidates = [...new Map(result.rows.map((row) => [row.cik, row])).values()];
+  const said = spokenName(query);
   const exact = candidates.filter((row) => row.name.toLocaleLowerCase() === query.toLocaleLowerCase());
-  if (exactOnly) return exact.length === 1 ? { cik: exact[0]!.cik, name: exact[0]!.name } : null;
-  const fund = exact.length === 1 ? exact[0]
-    : candidates.length === 1 && !result.hasMore ? candidates[0] : undefined;
+  const named = candidates.filter((row) => spokenName(row.name) === said);
+  const leading = candidates.filter((row) => spokenName(row.name).startsWith(`${said} `) || spokenName(row.name) === said);
+  const only = (rows: typeof candidates) => (rows.length === 1 ? rows[0] : undefined);
+  // A word that may be a ticker ("SPY") names a manager only by its exact name, never by "SPY Inc".
+  if (exactOnly) {
+    const match = only(exact);
+    return match ? { cik: match.cik, name: match.name } : null;
+  }
+  // A name only some funds start with names one of them only when the search listed every fund it matched.
+  const complete = !result.hasMore;
+  const fund = only(exact) ?? only(named) ?? (complete ? only(leading) : undefined) ?? (candidates.length === 1 && complete ? candidates[0] : undefined);
   if (candidates.length === 0) throw new Error(notFound ?? `No 13F fund found for "${query}". ${SEARCH_HINT}`);
   if (!fund) {
-    const choices = candidates.slice(0, 5).map((row) => `${row.name} (${row.cik})`).join("; ");
+    const fits = new Set(leading);
+    const choices = candidates
+      .toSorted((left, right) => Number(fits.has(right)) - Number(fits.has(left)) || (right.tableValueTotal ?? -1) - (left.tableValueTotal ?? -1))
+      .slice(0, 5)
+      .map((row) => `${row.name} (${row.cik}${row.tableValueTotal ? `, ${formatMoneyCompact(row.tableValueTotal)} reported` : ""})`)
+      .join("; ");
     throw new Error(`Ambiguous 13F fund "${query}". Use an exact fund name or CIK: ${choices}.`);
   }
   return { cik: fund.cik, name: fund.name };
@@ -755,8 +796,11 @@ export function createThirteenFHeadless(
           };
         }
         // A line that moved as across a split gets its Est P&L from its corporate actions: split-adjusted, as a trade, or none.
+        // The rows go largest value first, which no split moves, so only the rows shown have theirs read: a large
+        // filer's book holds hundreds of such lines (Citadel's 264 took 27 s), its top 50 a handful.
+        const shown = new Set(sortHoldingRows(buildFundHoldingRows(detail), DEFAULT_HOLDING_SORT).slice(0, limit).map((row) => row.id));
         const all = sortHoldingRows(
-          buildFundHoldingRows(detail, await dependencies.loadSplitFactors(detail, ctx)),
+          buildFundHoldingRows(detail, await dependencies.loadSplitFactors(detail, ctx, shown)),
           DEFAULT_HOLDING_SORT,
         );
         const previousPeriod = detail.previousForm?.periodOfReport ?? null;
@@ -864,7 +908,7 @@ export function createThirteenFHeadless(
               ...flagNotices,
               estimated ? `Est 13F: from the ${estimated} filings, the Est P&L of positions held through the quarter over their value at its start${rankingText ? ` (${rankingText})` : ""}` : "",
               performance.splits?.length ? splitAdjustedText(performance.splits) : "",
-              performance.skipped?.length ? splitUnreadText(performance.skipped, "Left out of Est 13F") : "",
+              performance.skipped?.length ? splitUnreadText(performance.skipped, "Left out of Est 13F", performance.skippedShare) : "",
               performance.unavailable ? `No Est 13F${rankingText ? ` (${rankingText})` : ""}: ${performance.unavailable}` : "",
               ...filingGapNotes(performance.period ?? null, performance.filingGap ?? null),
               `Copy this basket: gloom portfolio import --13f ${row.cik}`,

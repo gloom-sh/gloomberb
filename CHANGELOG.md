@@ -22,7 +22,7 @@ How to edit this file (update it in the release commit):
 - **A faster, lighter desktop app.** It starts about a third faster on Mac and uses less memory. (0.20.0)
 - **Import positions from your broker's CSV.** For brokers Gloom does not sync, in the app or the CLI. (0.20.2)
 - **Pick the market in the header.** Follow any index or ticker, with its exchange's own hours. (0.20.3)
-- **Ask Gloom shows where each figure came from.** Every figure links to the data behind it. (0.20.2)
+- **Ask Gloom shows its sources and asks before it acts.** Every figure links to the data behind it, and it asks before it presses a button. (0.20.2, 0.20.4)
 - **Hong Kong listings read correctly.** `ERN` shows HK reports in their own period and currency, and HK crypto ETFs get their fund facts. (0.20.1, 0.20.2)
 
 ## 0.19: Option strategy screens, a deeper EQS, and panes that stack as tabs

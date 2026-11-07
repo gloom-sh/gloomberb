@@ -184,6 +184,22 @@ describe("earnings transcript headless", () => {
     expect(title(transcriptArgs({ section: "guidance" }))).toBe("Earnings Call Transcript | AMD | latest");
   });
 
+  // Between calls, the next one is already listed with no transcript: the latest is the last call held.
+  test("the latest transcript is the last call held, and a quarter whose call is ahead says when it is", async () => {
+    const next: CloudEarningsCallPayload = { ...calls[1]!, id: "amd-fq3-2026", fiscalQuarter: 3, callAt: "2026-11-03T21:30:00.000Z", status: "scheduled" };
+    const asked: string[] = [];
+    const definition = createEarningsCallsHeadless({
+      ...dependencies(),
+      now: () => Date.parse("2026-10-20T12:00:00.000Z"),
+      loadCalls: async () => ({ calls: [next, ...calls], fetchedAt: 123, stale: false }),
+      loadTranscript: async (id) => { asked.push(id); return transcript; },
+    });
+    const latest = await definition.load(transcriptArgs({ section: "transcript", quarter: "latest" }), context);
+    expect(latest.metadata).toMatchObject({ fiscalQuarter: 2 });
+    await expect(definition.load(transcriptArgs({ section: "transcript", quarter: "Q3" }), context)).rejects.toThrow("AMD's Q3 call is still to come. Next call");
+    expect(asked).toEqual(["amd-fq2-2026"]);
+  });
+
   test("selects a quarter and filters speakers by role acronym", async () => {
     const definition = createEarningsCallsHeadless(dependencies());
 

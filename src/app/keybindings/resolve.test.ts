@@ -40,7 +40,10 @@ describe("resolveKeybindings", () => {
     const resolved = resolveKeybindings({
       commands: { "Alt+1": "DES AAPL", F5: " NEWS ", "CmdOrCtrl+W": "HN", a: "HN", "": "HN", "Alt+2": "" },
     });
+    // A command keeps the one digit it is on; the terminal's Alt+1-9 still switches layouts on the rest.
     expect(matchKeybinding(resolved, { ...base, name: "1", alt: true })).toMatchObject({ kind: "command", command: { query: "DES AAPL" } });
+    expect(matchKeybinding(resolved, { ...base, name: "2", alt: true })).toMatchObject({ kind: "action", id: "switch-layout", digit: 2 });
+    expect(matchKeybinding(resolveKeybindings(undefined, { host: "desktop" }), { ...base, name: "2", alt: true })).toBeNull();
     expect(matchKeybinding(resolved, { ...base, name: "f5" })).toMatchObject({ kind: "command", command: { query: "NEWS" } });
     expect(matchKeybinding(resolved, { ...base, name: "w", ctrl: true })).toMatchObject({ kind: "action", id: "pane-close" });
     expect(resolved.commands.map((command) => command.text)).toEqual(["Alt+1", "F5", "CmdOrCtrl+W"]);

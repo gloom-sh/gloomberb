@@ -14,6 +14,7 @@ export const cryptoBoardModule: PluginModule = {
       id: "crypto-board",
       name: "Crypto",
       icon: "C",
+      shareItem: { argument: true },
       get component(): typeof import("./pane").CryptoBoardPane { const { CryptoBoardPane } = require("./pane"); return CryptoBoardPane; },
       defaultPosition: "right",
       defaultMode: "floating",

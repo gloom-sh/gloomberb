@@ -39,6 +39,7 @@ export const jobsModule: PluginModule = {
       icon: "J",
       component: JobsPane,
       defaultPosition: "right",
+      shareItem: { ticker: true },
       tickerFollower: true,
       instruments: ["equity"],
       defaultMode: "floating",

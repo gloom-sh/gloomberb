@@ -21,15 +21,15 @@ import type {
 import type { DataProvider } from "../../types/data-provider";
 import type { PaneDef, PinTickerOptions } from "../../types/plugin";
 import type { BrokerContractRef } from "../../types/instrument";
-import type { TickerRecord } from "../../types/ticker";
 import {
   resolveTickerOpenTarget,
   tickerOpenFailureMessage,
   type TickerOpenTarget,
 } from "../../tickers/open-target";
 import {
-  createLocalTickerSearchCandidates,
   findExactTickerSearchMatch,
+  normalizeTickerInput,
+  savedTickerForQuery,
   upsertTickerFromSearchResult,
 } from "../../tickers/search";
 import { offerTickerListings, publishTickerOpenTarget as publishOpenTarget } from "./ticker-open-target";
@@ -41,8 +41,11 @@ import { tickerInstrumentLabel } from "../../tickers/instrument-label";
 import { markTickerPaneOpening } from "../../state/opening-ticker-panes";
 import { stableStringify } from "../../utils/hash";
 
+type LayoutHistoryEntry = AppState["layoutHistory"][number];
+
 interface UseAppTickerOpenRuntimeOptions {
-  activatePane: (paneId: string) => void;
+  /** `trackTicker: false` keeps a pane still looking its ticker up out of the recent tickers. */
+  activatePane: (paneId: string, options?: { trackTicker?: boolean }) => void;
   buildPaneInstance: (paneType: string, options?: {
     title?: string;
     binding?: PaneBinding;
@@ -66,6 +69,10 @@ interface PaneAhead {
   symbol: string;
   /** The pane focused before it opened, which focus goes back to when nothing opens. */
   sourcePaneId: string | null;
+  /** The layout it opened in, its undo history before the open, and that history as the open left it. */
+  layoutIndex: number;
+  historyBefore: LayoutHistoryEntry;
+  historyOpened: LayoutHistoryEntry | undefined;
   stopOpening: () => void;
 }
 
@@ -123,14 +130,6 @@ function findTargetPane(
     }) ?? null;
   }
   return { existing, keepBinding };
-}
-
-/**
- * Whether the app holds a ticker the key names, so opening it resolves here
- * without a network lookup, as `resolveTickerSearch` reads a saved symbol.
- */
-function holdsTicker(tickers: ReadonlyMap<string, TickerRecord>, symbol: string): boolean {
-  return tickers.has(symbol) || !!findExactTickerSearchMatch(createLocalTickerSearchCandidates(tickers.values()), symbol);
 }
 
 /** Whether a pane opened ahead is still in the layout on its key: not closed, nor pointed at another ticker. */
@@ -194,7 +193,8 @@ export function useAppTickerOpenRuntime({
 
   /**
    * Adds a new pane of `paneType` bound to `binding`, floating or docked as
-   * asked, and focuses it. `beforePlace` runs with its id before it is placed.
+   * asked, and focuses it. `opening` runs with its id before it is placed, for
+   * a pane still looking its ticker up, which stays out of the recent tickers.
    */
   const addTickerPane = useCallback((
     paneType: string,
@@ -202,11 +202,11 @@ export function useAppTickerOpenRuntime({
     binding: PaneBinding,
     title: string,
     options?: PinTickerOptions,
-    beforePlace?: (instanceId: string) => void,
+    opening?: (instanceId: string) => void,
   ): string | null => {
     const instance = buildPaneInstance(paneType, { title, binding });
     if (!instance) return null;
-    beforePlace?.(instance.instanceId);
+    opening?.(instance.instanceId);
 
     const currentState = stateRef.current;
     const currentLayout = currentState.config.layout;
@@ -228,7 +228,7 @@ export function useAppTickerOpenRuntime({
     if (paneType === TICKER_RESEARCH_PANE_ID && options?.tabId) {
       dispatch({ type: "UPDATE_PANE_STATE", paneId: instance.instanceId, patch: { ...options.tabState, activeTabId: options.tabId } });
     }
-    activatePane(instance.instanceId);
+    activatePane(instance.instanceId, opening ? { trackTicker: false } : undefined);
     return instance.instanceId;
   }, [activatePane, buildPaneInstance, dispatch, persistLayout, pluginRegistry, stateRef]);
 
@@ -285,16 +285,17 @@ export function useAppTickerOpenRuntime({
    * a slow connection), bound to the key as given and marked as opening; the
    * lookup settles it (`settlePaneAhead`). Null when the open waits for the
    * lookup instead: another pane type, a broker contract, a ticker the app
-   * holds (it resolves here, at once), or a research pane already on the key.
+   * holds however the key spells it (it resolves here, at once), or a
+   * research pane already on the key.
    */
   const openPaneAhead = useCallback((rawSymbol: string, options?: PinTickerOptions): PaneAhead | null => {
     const paneType = normalizePaneId(options?.paneType ?? TICKER_RESEARCH_PANE_ID);
     const paneDef = pluginRegistry.panes.get(paneType);
-    const symbol = rawSymbol.trim().toUpperCase();
+    const symbol = normalizeTickerInput(null, rawSymbol);
     if (paneType !== TICKER_RESEARCH_PANE_ID || !paneDef || !symbol || options?.instrument) return null;
     const state = stateRef.current;
     const layout = state.config.layout;
-    if (holdsTicker(state.tickers, symbol)) return null;
+    if (savedTickerForQuery(rawSymbol, state.tickers)) return null;
     if (!options?.forceNewPane && layout.instances.some((instance) => instance.paneId === paneType
       && instance.binding?.kind === "fixed" && instance.binding.symbol === symbol && isPaneInLayout(layout, instance.instanceId))) return null;
     const binding: PaneBinding = {
@@ -304,13 +305,16 @@ export function useAppTickerOpenRuntime({
       ...(options?.listing ? { listing: options.listing } : {}),
     };
     const sourcePaneId = state.focusedPaneId;
+    const layoutIndex = state.config.activeLayoutIndex;
+    const historyBefore = state.layoutHistory[layoutIndex] ?? { past: [], future: [] };
     // Marked before it is placed, so its first frame already says it is loading.
     let stopOpening = () => {};
     const instanceId = addTickerPane(paneType, paneDef, binding, tickerInstrumentLabel(symbol, options?.instrument), options, (id) => {
       stopOpening = markTickerPaneOpening(id);
     });
     if (!instanceId) return null;
-    return { instanceId, symbol, sourcePaneId, stopOpening };
+    const historyOpened = stateRef.current.layoutHistory[layoutIndex];
+    return { instanceId, symbol, sourcePaneId, layoutIndex, historyBefore, historyOpened, stopOpening };
   }, [addTickerPane, pluginRegistry, stateRef]);
 
   /**
@@ -318,8 +322,9 @@ export function useAppTickerOpenRuntime({
    * listing found, or gives way to a pane already showing that listing, or
    * closes when nothing opens (no listing, or a choice of listings the
    * command bar now offers), focus going back where it was. A pane closed or
-   * pointed at another ticker meanwhile is left alone. True when the open
-   * landed in a pane.
+   * pointed at another ticker meanwhile is left alone. The undo history and
+   * the recent tickers end as if the open had waited for the lookup. True
+   * when the open landed in a pane.
    */
   const settlePaneAhead = useCallback((
     ahead: PaneAhead,
@@ -330,34 +335,57 @@ export function useAppTickerOpenRuntime({
     if (target) publishTickerOpenTarget(target);
     const state = stateRef.current;
     const layout = state.config.layout;
-    if (!isPaneAheadInPlace(layout, ahead)) return false;
-    const focusedHere = state.focusedPaneId === ahead.instanceId;
+    const inPlace = isPaneAheadInPlace(layout, ahead);
+    const focusedHere = inPlace && state.focusedPaneId === ahead.instanceId;
     const without = removePane(layout, ahead.instanceId);
-    if (!target) {
-      const backTo = ahead.sourcePaneId && isPaneInLayout(without, ahead.sourcePaneId) ? ahead.sourcePaneId : null;
-      persistLayout(without, { pushHistory: false, ...(focusedHere ? { focusedPaneId: backTo } : {}) });
+    const resolved = target ? targetPaneBinding(target, options) : null;
+    const existing = inPlace && target && resolved
+      ? findTargetPane(state, without, TICKER_RESEARCH_PANE_ID, target, resolved.instrument, options, typed).existing
+      : null;
+    const instance = findPaneInstance(layout, ahead.instanceId);
+    const settled = target && resolved && !existing ? {
+      binding: resolved.binding,
+      title: inPlace && instance?.title && instance.title !== tickerInstrumentLabel(ahead.symbol, options?.instrument)
+        ? instance.title
+        : tickerInstrumentLabel(target.symbol, resolved.instrument),
+    } : null;
+    // The steps taken while it loaded hold it on its key. An open that came to nothing leaves
+    // no step, and the history it found comes back whole when nothing was done since.
+    const settleHistory = () => {
+      if (stateRef.current.config.activeLayoutIndex !== ahead.layoutIndex) return;
+      const untouched = !settled && state.layoutHistory[ahead.layoutIndex] === ahead.historyOpened;
+      dispatch({
+        type: "SETTLE_OPENING_PANE",
+        settlement: { paneId: ahead.instanceId, symbol: ahead.symbol, settled, ...(untouched ? { before: ahead.historyBefore } : {}) },
+      });
+    };
+    if (!inPlace || !instance) {
+      settleHistory();
       return false;
     }
-    const { binding, instrument } = targetPaneBinding(target, options);
-    const { existing } = findTargetPane(state, without, TICKER_RESEARCH_PANE_ID, target, instrument, options, typed);
-    if (existing) {
-      persistLayout(without, { pushHistory: false });
-      if (options?.tabId) {
-        dispatch({ type: "UPDATE_PANE_STATE", paneId: existing.instanceId, patch: { ...options.tabState, activeTabId: options.tabId } });
+    if (!settled) {
+      if (existing) {
+        persistLayout(without, { pushHistory: false });
+        if (options?.tabId) {
+          dispatch({ type: "UPDATE_PANE_STATE", paneId: existing.instanceId, patch: { ...options.tabState, activeTabId: options.tabId } });
+        }
+        if (focusedHere) focusVisiblePane(existing.instanceId, without);
+      } else {
+        const backTo = ahead.sourcePaneId && isPaneInLayout(without, ahead.sourcePaneId) ? ahead.sourcePaneId : null;
+        persistLayout(without, { pushHistory: false, ...(focusedHere ? { focusedPaneId: backTo } : {}) });
       }
-      if (focusedHere) focusVisiblePane(existing.instanceId, without);
-      return true;
+      settleHistory();
+      return !!existing;
     }
-    const instance = findPaneInstance(layout, ahead.instanceId)!;
-    const title = !instance.title || instance.title === tickerInstrumentLabel(ahead.symbol, options?.instrument)
-      ? tickerInstrumentLabel(target.symbol, instrument)
-      : instance.title;
-    if (title !== instance.title || stableStringify(instance.binding) !== stableStringify(binding)) {
+    if (settled.title !== instance.title || stableStringify(instance.binding) !== stableStringify(settled.binding)) {
       persistLayout({
         ...layout,
-        instances: layout.instances.map((pane) => pane.instanceId === ahead.instanceId ? { ...pane, binding, title } : pane),
+        instances: layout.instances.map((pane) => pane.instanceId === ahead.instanceId ? { ...pane, ...settled } : pane),
       }, { pushHistory: false });
     }
+    settleHistory();
+    // Focusing it left its key out of the recent tickers; the listing found goes in.
+    if (focusedHere && target) dispatch({ type: "TRACK_TICKER", symbol: target.symbol });
     return true;
   }, [dispatch, focusVisiblePane, persistLayout, publishTickerOpenTarget, stateRef]);
 

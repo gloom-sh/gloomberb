@@ -1,8 +1,11 @@
+import type { ReactNode } from "react";
 import type { ChatAttachment } from "../../../../api-client";
 import {
   DesktopPaneLinkChip,
   IconButton,
   TerminalPaneLinkChip,
+  TerminalPaneLinkItemCard,
+  terminalItemCardRows,
   type PaneLinkChipContent,
 } from "../../../../components/ui";
 import { tf } from "../../../../i18n";
@@ -10,15 +13,16 @@ import { Box } from "../../../../ui";
 import { colors } from "../../../../theme/colors";
 import { wirePaneTarget, type ChatMessagePaneLink } from "../pane-links/model";
 import { chatPaneLinkPane, useSharePreview } from "../pane-links/previews";
+import { shareCardContent } from "../pane-links/share-card";
 import type { ComposerShareLink } from "../pane-links/composer";
 import { DESKTOP_DRAFT_STRIP_STYLE } from "../attachments/desktop";
 
 /**
- * A chip for something a message opens in the terminal: a shared pane (its
- * title and the pane it is, with the picture its sender posted when there is
- * one), a Gloom Wire post's story or calendar, or a function written in
- * backticks, drawn in its line of text. It always takes the same room, before
- * and after the share is read, so the transcript never moves.
+ * A chip for something a message opens in the terminal: a shared pane as a
+ * card (the item it was on, a line or two of it and the pane it opens, with
+ * the picture its sender posted when there is one), a Gloom Wire post's story
+ * or calendar, or a function written in backticks, drawn in its line of text.
+ * A share's card is as tall as what it says; the other chips keep one height.
  */
 
 /** What a chip says, from the share or the post and nothing of the reader's own. */
@@ -26,15 +30,7 @@ function useChatPaneChipContent(link: ChatMessagePaneLink): PaneLinkChipContent 
   const shareId = link.kind === "share" ? link.id : "";
   const preview = useSharePreview(shareId);
   if (link.kind === "command") return { title: link.query, detail: link.name, icon: "" };
-  if (link.kind === "share") {
-    if (preview.status !== "ready") return { title: link.url, detail: "", icon: "" };
-    const pane = chatPaneLinkPane(preview.paneId);
-    return {
-      title: preview.title,
-      detail: pane && pane.name !== preview.title ? pane.name : "",
-      icon: pane?.icon ?? "",
-    };
-  }
+  if (link.kind === "share") return shareCardContent(link.url, preview);
   const target = wirePaneTarget(link.link);
   const pane = chatPaneLinkPane(target.paneId);
   return { title: pane?.name ?? target.name, detail: target.day ?? "", icon: pane?.icon ?? "" };
@@ -71,7 +67,7 @@ export function DesktopChatPaneChip({
   return (
     <DesktopPaneLinkChip
       content={content}
-      variant={link.kind === "command" ? "inline" : link.kind === "wire" ? "line" : "card"}
+      variant={link.kind === "command" ? "inline" : link.kind === "wire" ? "line" : "item"}
       picture={link.kind === "command" ? null : preview}
       dimmed={dimmed}
       onOpen={() => onOpen(link)}
@@ -109,7 +105,16 @@ export function DesktopComposerPaneChips({
   );
 }
 
-/** The terminal's composer rows for waiting share links: the chip a message draws, then its x at the row's end. */
+/** How wide a waiting link's card is in the terminal's composer of `width`: lined up with the field's text, its x after it. */
+export function terminalComposerChipWidth(width: number): number {
+  return Math.max(1, width - COMPOSER_CHIP_INSET - COMPOSER_CHIP_REMOVE_WIDTH - 1);
+}
+
+// Lined up with the field's text after its prompt, as a message's chips line up with its text.
+const COMPOSER_CHIP_INSET = 3;
+const COMPOSER_CHIP_REMOVE_WIDTH = 3;
+
+/** The terminal's composer rows for waiting share links: the card a message draws, then its x at the end of its first row. */
 export function TerminalComposerPaneChips({
   links,
   width,
@@ -122,24 +127,24 @@ export function TerminalComposerPaneChips({
   /** Takes out the chip at this place in `links`, as on the desktop. */
   onRemove: (index: number) => void;
 }) {
-  // Lined up with the field's text after its prompt, as a message's chips line up with its text.
-  const inset = 3;
-  const removeWidth = 3;
   return (
     <>
       {links.map((link, index) => (
-        <Box key={`${index}:${link.id}`} width={width} height={1} flexDirection="row">
-          <Box width={inset} />
-          <TerminalChatPaneChip
-            link={link}
-            width={Math.max(1, width - inset - removeWidth - 1)}
-            selected={false}
-            selectedTextColor={colors.textBright}
-            onOpen={onOpen}
-          />
+        <TerminalChatPaneChipRow
+          key={`${index}:${link.id}`}
+          link={link}
+          width={terminalComposerChipWidth(width)}
+          rowProps={{ width }}
+          selected={false}
+          selectedTextColor={colors.textBright}
+          onOpen={onOpen}
+          lead={<Box width={COMPOSER_CHIP_INSET} />}
+        >
           <Box flexGrow={1} />
-          <TerminalComposerChipRemove link={link} onRemove={() => onRemove(index)} />
-        </Box>
+          <Box height={1}>
+            <TerminalComposerChipRemove link={link} onRemove={() => onRemove(index)} />
+          </Box>
+        </TerminalChatPaneChipRow>
       ))}
     </>
   );
@@ -147,31 +152,47 @@ export function TerminalComposerPaneChips({
 
 function TerminalComposerChipRemove({ link, onRemove }: { link: ComposerShareLink; onRemove: () => void }) {
   const content = useChatPaneChipContent(link);
-  return <IconButton icon="close" label={tf("Remove {name}", { name: content.title })} onPress={onRemove} />;
+  return <IconButton icon="close" label={tf("Remove {name}", { name: content.title || content.detail })} onPress={onRemove} />;
 }
 
-/** One row in the terminal: the pane's letter, the title and the pane, cut to the line. */
-export function TerminalChatPaneChip({
+/**
+ * A chip's row in the terminal, as tall as the chip: a share's card as it
+ * reads now, or one row. `lead` goes before the chip and `children` after it.
+ */
+export function TerminalChatPaneChipRow({
   link,
   width,
+  rowProps,
   selected,
   selectedTextColor,
   onOpen,
+  lead,
+  children,
 }: {
   link: ChatMessagePaneLink;
+  /** The chip's own width. */
   width: number;
+  rowProps: Record<string, unknown>;
   selected: boolean;
   selectedTextColor: string;
   onOpen: (link: ChatMessagePaneLink) => void;
+  lead?: ReactNode;
+  children?: ReactNode;
 }) {
   const content = useChatPaneChipContent(link);
+  const share = link.kind === "share";
+  const Chip = share ? TerminalPaneLinkItemCard : TerminalPaneLinkChip;
   return (
-    <TerminalPaneLinkChip
-      content={content}
-      width={width}
-      selected={selected}
-      selectedTextColor={selectedTextColor}
-      onOpen={() => onOpen(link)}
-    />
+    <Box {...rowProps} height={share ? terminalItemCardRows(content, width) : 1} flexDirection="row">
+      {lead}
+      <Chip
+        content={content}
+        width={width}
+        selected={selected}
+        selectedTextColor={selectedTextColor}
+        onOpen={() => onOpen(link)}
+      />
+      {children}
+    </Box>
   );
 }

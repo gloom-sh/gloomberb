@@ -11,6 +11,7 @@ import { buildTerminalMediaArgs, createTerminalMediaReaper, terminalMediaStateFi
 import { saveTextFileToDownloads } from "../../utils/save-text-file";
 import { installInteractionPerformanceRecorder } from "./interaction-performance";
 import { provideKittyServices } from "./kitty-services";
+import { setTerminalReportsControlKeys } from "../../app/keybindings/terminal-keys";
 import { captureRendererFrame } from "./frame-capture";
 import {
   createTimerFrameDriver,
@@ -120,6 +121,11 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
   // at 11 is not a leak here, and it prints over the panes.
   renderer.setMaxListeners(0);
   installResolutionEventBridge(renderer);
+  // Whether Control reaches a digit, once the terminal has answered: the
+  // layout tabs name Alt+1 where it does not. Unknown until then.
+  renderer.on("capabilities", (capabilities: { kitty_keyboard?: boolean } | null) => {
+    setTerminalReportsControlKeys(capabilities?.kitty_keyboard === true);
+  });
   // Streamed quotes apply and notify on one clock of up to 10 Hz: every
   // visible row stays live while a burst of ticks costs one terminal redraw,
   // and a layout whose redraws are expensive gets fewer of them.
