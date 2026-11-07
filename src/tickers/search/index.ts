@@ -224,6 +224,7 @@ function createProviderTickerSearchCandidates(
       providerRank,
       popularity: searchResultPopularity(result),
       ...(result.homeListing === true ? { homeListing: true } : {}),
+      ...(result.delisting ? { delisted: true } : {}),
       category: saved ? "Saved" : "Other Listings",
       kind: "search",
       saved,

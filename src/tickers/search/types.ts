@@ -28,6 +28,8 @@ export interface TickerSearchRankableItem {
   popularity?: number;
   /** The service marks the row as its company's home line (`InstrumentSearchResult.homeListing`). */
   homeListing?: boolean;
+  /** The service says the line no longer trades (`InstrumentSearchResult.delisting`). */
+  delisted?: boolean;
   searchAliases?: string[];
   /**
    * The names the service sent the row for (`InstrumentSearchResult.searchAliases`: a trade name, or the name a

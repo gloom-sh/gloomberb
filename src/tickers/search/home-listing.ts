@@ -1,6 +1,6 @@
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
 import { companyLines, companyNameExtraWords, companyNameMatch, namedByService, type CompanyLineFacts } from "../company-name";
-import { answersOnlyByKeyword, isQualifiedTickerQuery } from "./ranking";
+import { answersOnlyByKeyword, isPlaceholderLine, isQualifiedTickerQuery, readsAsUsTicker } from "./ranking";
 import type { TickerSearchCandidate } from "./types";
 
 /** Venues that only quote shares listed elsewhere: the OTC tiers, Frankfurt's open market and Germany's regional exchanges. */
@@ -26,7 +26,9 @@ export function listingDistance(candidate: TickerSearchCandidate): 0 | 1 | 2 {
 /** `listingDistance` of a line by its type, its canonical venue and its symbol. */
 export function lineDistance(type: string, exchange: string, symbol: string): 0 | 1 | 2 {
   if (RECEIPT_TYPE.test(type)) return 2;
-  return SECONDARY_VENUES.has(exchange) || /\d/.test(symbol) && /[A-Za-z]/.test(symbol) ? 1 : 0;
+  // A code mixing digits and letters is a secondary line (Milan's 4MSFT, London's 0R1I), except on SGX, whose
+  // own codes mix them (D05, 5E2).
+  return SECONDARY_VENUES.has(exchange) || exchange !== "SGX" && /\d/.test(symbol) && /[A-Za-z]/.test(symbol) ? 1 : 0;
 }
 
 /** How the primary-listing choice weighs one of a company's lines. */
@@ -134,6 +136,9 @@ export function withHomeListingLead<T extends TickerSearchCandidate>(items: T[],
     && !answersOnlyByKeyword(item, query));
   if (!lead || !isListedEquity(lead)) return items;
   const typedSymbol = lead.symbol.toUpperCase() === query.trim().toUpperCase();
+  // A lettered symbol typed whole is its US listing, as the app resolves a bare symbol (`quote RACE` is Ferrari on
+  // NYSE): the company's home line abroad comes right after it rather than ahead.
+  const usLead = typedSymbol && readsAsUsTicker(query) && isUsListingExchange(candidateExchange(lead));
   // A name (not a row's symbol) the service answers first with a line it marks as its company's home, every word
   // typed in its name, is that company: "Panasonic" is Panasonic Holdings on JPX, not a Frankfurt line under the
   // name it had before, nor the Malaysian subsidiary that line's company would lead to.
@@ -152,11 +157,15 @@ export function withHomeListingLead<T extends TickerSearchCandidate>(items: T[],
   if (meant) return moveAhead(items, meant, lead);
   // A line abroad that only quotes shares listed elsewhere (a German regional venue) gives way to the line the
   // service marks as a company's home under the same symbol: YAR is Yara on Oslo, not Americold on Hanover.
-  const homeOfSymbol = typedSymbol && lead.result?.homeListing !== true && listingDistance(lead) === 1
-    && !isUsListingExchange(candidateExchange(lead))
-    ? items.find((item) => item !== lead && isListedEquity(item) && item.result?.homeListing === true
-      && item.symbol.toUpperCase() === lead.symbol.toUpperCase())
-    : undefined;
+  // A code with digits led by such a line or a receipt is the first line on an exchange of its own, as a bare
+  // symbol resolves: 5E2 is Seatrium on SGX, not Energy Recovery's Frankfurt line.
+  const abroadLead = typedSymbol && lead.result?.homeListing !== true && !isUsListingExchange(candidateExchange(lead));
+  const sameSymbol = (item: T) => item !== lead && isListedEquity(item) && item.symbol.toUpperCase() === lead.symbol.toUpperCase();
+  const homeOfSymbol = !abroadLead ? undefined
+    : listingDistance(lead) === 1 && items.find((item) => sameSymbol(item) && item.result?.homeListing === true)
+      || /\d/.test(query) && listingDistance(lead) >= 1
+        && items.find((item) => sameSymbol(item) && listingDistance(item) === 0 && !isPlaceholderLine(item))
+      || undefined;
   if (homeOfSymbol) return moveAhead(items, homeOfSymbol, lead);
   const name = candidateName(lead);
   const lines = companyRows(lead, items).filter((item) => item !== lead);
@@ -170,7 +179,10 @@ export function withHomeListingLead<T extends TickerSearchCandidate>(items: T[],
     : typedSymbol ? own
     : primaryLineOf(own ?? lead, [lead, ...lines], query);
   if (!home || home === lead) return items;
-  return moveAhead(items, home, lead);
+  if (!usLead) return moveAhead(items, home, lead);
+  const rest = items.filter((item) => item !== home);
+  const after = rest.indexOf(lead) + 1;
+  return [...rest.slice(0, after), home, ...rest.slice(after)];
 }
 
 /** `items` with `home` moved just ahead of `lead`. */
