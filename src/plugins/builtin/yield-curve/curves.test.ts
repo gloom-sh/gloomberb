@@ -8,10 +8,13 @@ describe("the curve argument", () => {
     expect(parseCurveArgument("jgb 2026-01-02", now)).toEqual({ curve: "jp", date: "2026-01-02" });
     expect(parseCurveArgument("Oct 1 2026 gilt", now)).toEqual({ curve: "gb", date: "2026-10-01" });
     expect(parseCurveArgument("latest", now)).toEqual({ curve: null, date: "" });
-    for (const words of ["world", "South Africa", "ust brazil"]) {
-      expect(() => parseCurveArgument(words, now)).toThrow("the curves are ust, tips, breakeven, euro, bund, gilt, jgb and canada. "
-        + "Other countries' government bond yields are on the world tab: gloom fn GC --tab world.");
+    expect(parseCurveArgument("mbono 2026-10-09", now)).toEqual({ curve: "mx", date: "2026-10-09" });
+    for (const words of ["world", "South Africa"]) {
+      expect(() => parseCurveArgument(words, now)).toThrow("the curves are ust, tips, breakeven, euro, bund, gilt, jgb, canada, mexico and brazil. "
+        + "The world tab sets their 2- and 10-year yields side by side: gloom fn GC --tab world.");
     }
+    // Two markets are the world tab's, not a curve and a stray word.
+    expect(() => parseCurveArgument("ust brazil", now)).toThrow("GC shows one curve: ust or brazil.");
     // A word beside digits is still read as a date, and says how to write one.
     expect(() => parseCurveArgument("14 Octobre 2026", now)).toThrow("Use an as-of date");
   });

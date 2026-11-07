@@ -111,7 +111,8 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
     const receiptPeriods = table?.statements.filter(({ shareBasis }) => shareBasis === "depositary_receipt").map(({ date }) => date) ?? [];
     const allReceipts = receiptPeriods.length > 0 && receiptPeriods.length === table?.statements.length;
     const shareBases = new Set(table?.statements.map(({ shareBasis }) => shareBasis ?? null));
-    const ratio = adrRatioText(financials.fundamentals?.adrRatio ?? financials.quote?.adrRatio);
+    const ratio = adrRatioText(financials.fundamentals?.adrRatio ?? financials.quote?.adrRatio,
+      (financials.fundamentals?.depositaryPair ?? financials.quote?.depositaryPair)?.ordinary[0]);
     const shareBasisNotice = receiptPeriods.length === 0 || !table?.rows.some(isPerShareFinancialRow) ? null
       : allReceipts
         ? `Share counts are in ADRs and EPS is per ADR${ratio ? `; ${ratio}` : ""}.`

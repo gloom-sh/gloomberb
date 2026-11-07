@@ -672,7 +672,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `ETFF` | Daily net flows of the US spot bitcoin and ether ETFs, fund by fund in US$ millions, with the last 5 and 20 days and the running total since launch |
 | `ECO` | Economic events and releases, grouped by day and timed in UTC. Opens on high-impact releases until you pick another impact; the footer counts the lower-impact releases left out (most PMIs among them), and `Shift+F` or `fn ECO --impact all` lists them |
 | `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates |
-| `GC [curve] [date]` | Government yield curves (UST, TIPS real, breakeven, euro AAA, Bund, Gilt, JGB, Canada) with spreads and percentiles, a compare date, the one-year-forward curve, a World tab and USD SOFR Swaps. CLI: `--curve`, `--date`, `--compare 1D` (or 1W, 1M, 3M, 1Y, or a date), `--tab world`, or `--tab swaps --tenor 10Y` |
+| `GC [curve] [date]` | Government yield curves (UST, TIPS real, breakeven, euro AAA, Bund, Gilt, JGB, Canada; Mexico and Brazil at 2Y and 10Y) with spreads and percentiles, a compare date, the one-year-forward curve, a World tab and USD SOFR Swaps. CLI: `--curve`, `--date`, `--compare 1D` (or 1W, 1M, 3M, 1Y, or a date), `--tab world`, or `--tab swaps --tenor 10Y` |
 | `WIRP` / `FFIP` | Fed funds futures implied FOMC path, conditional target probabilities, SOFR contracts and Fed projections |
 | `BTMM` | Money markets: funding rates, Treasury bill curves and Federal Reserve liquidity |
 | `YAS` | Fixed-coupon bond calculator: price/yield, accrued interest, duration, convexity, DV01 and Treasury spread |
@@ -1345,7 +1345,7 @@ An intervention sums days in one pair and direction a weekend or holiday apart, 
 **Forwards.** `gloom fx USD/MXN --forward 30d` gives the forward implied by covered interest parity, labelled `implied by rates, not a dealer quote`: spot × (1 + quote rate × days/basis) / (1 + base rate × days/basis).
 
 - The answer shows the forward points (pips of 0.0001, 0.01 against JPY), the premium or discount over spot for the period and a year, and both rates with their day and publisher.
-- The rates are SOFR (USD), €STR (EUR), SONIA (GBP), Banxico's TIIE 28d (MXN) and MAS's SORA (SGD, ACT/365), so any pair of those works (`fx EUR/USD --forward 3m`, `fx USD/SGD --forward 3m`). A missing rate says which one. SORA comes under MAS's Singapore Open Data Licence, so a forward through SGD, `fred SORA` and the series catalog carry the attribution it asks for.
+- The rates are SOFR (USD), €STR (EUR), SONIA (GBP), Banxico's TIIE 28d (MXN), BCB's CDI (BRL) and MAS's SORA (SGD, ACT/365), so any pair of those works (`fx EUR/USD --forward 3m`, `fx USD/BRL --forward 3m`). The CDI compounds over 252 business days a year, so its leg is (1 + CDI)^(days/365), business days taken as 252/365 of the calendar days. A missing rate says which one. SORA comes under MAS's Singapore Open Data Licence, so a forward through SGD, `fred SORA` and the series catalog carry the attribution it asks for.
 - Tenors count calendar days from today (`30d`, `2w`, `3m`, `1y`, up to a year). `--forward` with `--date` fails and names the command for that day's close.
 - `--json` carries `forward`, `points`, `premiumPercent`, `annualizedPercent`, `baseRate` and `quoteRate`. `catalog forward` points here.
 
@@ -1980,7 +1980,7 @@ A book that holds a short is weighed against its gross exposure, not its total: 
 A portfolio's header totals and its COST, MKT VAL, DAY, P&L and MCAP columns are in the portfolio's currency, as are `PORT` and `portfolio show`. LAST, AVG COST and TARGET stay in the listing's currency, and a row priced in another currency than the totals gets a CCY column after LAST.
 
 - A broker portfolio uses its account currency.
-- A manual portfolio uses your base currency (`config set baseCurrency CAD`, an ISO 4217 code in any case). With the default USD base it takes the currency of its first position instead: a portfolio of ASX shares bought in AUD totals in AUD, and later holdings in other currencies convert into it.
+- A manual portfolio uses your base currency (`config set baseCurrency CAD`, an ISO 4217 code in any case). With the default USD base it takes the currency of its first position instead: a portfolio of ASX shares bought in AUD totals in AUD, and later holdings in other currencies convert into it. `position set` says so in a line; it warns when the portfolio already holds cash or targets, which were set beside its old totals.
 - `portfolio create Baht --currency THB` makes a manual portfolio that totals in THB whatever the base currency, and its first position does not change that. An ISO code in capitals ending the name is read the same way: `portfolio create Baht THB` creates "Baht" in THB and says so. Quote the name as one argument (`portfolio create "Baht THB"`) to keep the code in it.
 - Totals lead with the currency symbol (A$108.6k) unless both they and the base currency are USD.
 

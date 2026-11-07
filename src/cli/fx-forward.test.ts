@@ -33,6 +33,15 @@ describe("covered interest parity", () => {
     expect(forward.premiumPercent).toBeLessThan(0);
   });
 
+  test("BRL's CDI compounds over business days, 252 a year taken as 252/365 of the calendar days", () => {
+    // USD/BRL 5.50625 on Fri 6 Nov 2026, SOFR 3.92% and CDI 13.65%, 92 days.
+    const cdi = { value: 13.65, dayCountBasis: 365 as const, compounding: "business-252" as const, currency: "BRL" };
+    const forward = impliedForward(5.50625, 92, { value: 3.92, dayCountBasis: 360 }, cdi);
+    expect(forward.forward).toBeCloseTo(5.50625 * 1.1365 ** (92 / 365) / (1 + 0.0392 * 92 / 360), 12);
+    // Simple interest on the same rate would overstate the carry.
+    expect(forward.forward).toBeLessThan(5.50625 * (1 + 0.1365 * 92 / 365) / (1 + 0.0392 * 92 / 360));
+  });
+
   test("equal rates leave spot unchanged, and yen pairs count points of 0.01", () => {
     const flat = impliedForward(150, 30, { value: 4, dayCountBasis: 360 }, { value: 4, dayCountBasis: 360, currency: "JPY" });
     expect(flat.forward).toBe(150);

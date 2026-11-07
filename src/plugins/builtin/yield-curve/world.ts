@@ -25,7 +25,9 @@ export interface WorldRow {
   points: CloudCurvePoint[];
 }
 
-const MARKETS: Record<string, string> = { us: "US", de: "Germany", gb: "UK", jp: "Japan", ca: "Canada", "eu-aaa": "Euro AAA" };
+const MARKETS: Record<string, string> = {
+  us: "US", de: "Germany", gb: "UK", jp: "Japan", ca: "Canada", "eu-aaa": "Euro AAA", mx: "Mexico", br: "Brazil",
+};
 
 const valueAt = (points: readonly CloudCurvePoint[] | undefined, tenor: string) => {
   const value = points?.find((point) => point.tenor === tenor)?.yield;

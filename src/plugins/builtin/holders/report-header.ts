@@ -139,10 +139,10 @@ export function holderShareBasisMarker(row: { shareBasis?: unknown }): string {
  * line are positions in the receipts, or that a receipt line's rows all are.
  */
 export function holderShareBasisNote(
-  data: Pick<HolderData, "shareBasis" | "adrRatio">,
+  data: Pick<HolderData, "shareBasis" | "adrRatio" | "depositaryPair">,
   rows: ReadonlyArray<{ shareBasis?: unknown }>,
 ): string | null {
-  const ratio = adrRatioText(data.adrRatio);
+  const ratio = adrRatioText(data.adrRatio, data.depositaryPair?.ordinary[0]);
   const each = ratio ? ` (${ratio})` : "";
   if (rows.some((row) => holderShareBasisMarker(row))) return `ADR: shares held as depositary receipts${each}.`;
   if (rows.length > 0 && data.shareBasis === "depositary_receipt") return `Shares are depositary receipts${each}.`;

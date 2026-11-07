@@ -719,6 +719,8 @@ describe("watchlist and portfolio LAST, CHG and CHG% around the close", () => {
     expect(value(atClose, "day_pnl")).toBeCloseTo(-70.3, 8);
     expect(text(atClose, "as_of")).toBe("Thu 20:00");
     expect(value(atClose, "as_of")).toBe(Date.parse("2026-10-08T20:00:00Z"));
+    // A print of today names its day too: a bare 00:47 beside Fri 21:00 read as the same evening.
+    expect(text({ ...latest, now: Date.parse("2026-10-08T23:00:00Z") }, "as_of")).toBe("Thu 22:22");
     const totals = calculatePortfolioSummaryTotals([ticker], new Map([["AAPL", posted]]), "USD", new Map([["USD", 1]]), true, "main", "regular-close");
     expect(totals.totalMktValue).toBe(10 * 160.57);
     expect(totals.dailyPnl).toBeCloseTo(-70.3, 8);

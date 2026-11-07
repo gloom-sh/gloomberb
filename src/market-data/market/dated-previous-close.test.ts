@@ -3,6 +3,7 @@ import { createTestQuote } from "../../test-support/data-provider";
 import type { Quote } from "../../types/financials";
 import { changeBasisLabel, quoteChangeBasis } from "./change-basis";
 import { PreviousCloseDates, type DatedCloseListing } from "./dated-previous-close";
+import { getRegularSessionDisplay } from "./status";
 
 // Sat 24 Oct 2026.
 const NOW = Date.parse("2026-10-24T10:00:00Z");
@@ -62,6 +63,51 @@ test("a London or Helsinki move is dated by the listing's daily close that its p
   expect(dates.known(monday, listing(monday)).previousCloseDate).toBeUndefined();
   expect((await date(monday)).previousCloseDate).toBe("2026-10-23");
   expect(asked).toEqual(["SHEL.L", "NESTE.HE", "SHEL.L"]);
+});
+
+test("a BMV move is dated by the session right before its official close, and a closed B3 quote headlines its official close", async () => {
+  // WALMEX.MX and PETR4.SA as `quote` served them on Sat 7 Nov 2026.
+  const fri = { changeSessionDate: "2026-11-06", marketState: "CLOSED" as const };
+  const walmex = createTestQuote({ symbol: "WALMEX.MX", currency: "MXN", listingExchangeName: "BMV", exchangeName: "BMV",
+    price: 54.14, change: 0.57, changePercent: 1.06, previousClose: 53.57, lastUpdated: Date.parse("2026-11-06T20:59:55Z"), ...fri });
+  const petr4 = createTestQuote({ symbol: "PETR4.SA", currency: "BRL", listingExchangeName: "B3", exchangeName: "B3",
+    price: 45.36, change: -0.59, changePercent: -1.28, previousClose: 45.95, lastUpdated: Date.parse("2026-11-06T21:00:13Z"), ...fri });
+  const { label, date } = dailyCloses({
+    // The BMV's closing auction gave 53.57 for Thu 5 Nov; its bar closes on the last trade, 53.68.
+    "WALMEX.MX": { "2026-11-04": 52.22, "2026-11-05": 53.68, "2026-11-06": 54.14 },
+    "PETR4.SA": { "2026-11-05": 45.95, "2026-11-06": 45.3 },
+  });
+  expect(label(await date(walmex))).toBe("vs Thu 5 Nov close");
+  // A bar more than 1% off, or one sessions back, is another close: no day.
+  expect(label(await date({ ...walmex, previousClose: 52.9 }))).toBe("vs prev close");
+  const b3 = await date(petr4);
+  expect(label(b3)).toBe("vs Thu 5 Nov close");
+  expect(b3).toMatchObject({ regularClose: 45.3, regularCloseSessionDate: "2026-11-06" });
+  expect(getRegularSessionDisplay(b3)?.price).toBe(45.3);
+  // While B3 trades, the price is the session's.
+  expect((await date({ ...petr4, marketState: "REGULAR" })).regularClose).toBeUndefined();
+});
+
+test("a closed B3 quote read before its session's official close is in the history is read again until it lands", async () => {
+  // PETR4.SA read on the evening of Fri 6 Nov 2026, before the day's bar: the previous close is dated, the close is not.
+  const petr4 = createTestQuote({ symbol: "PETR4.SA", currency: "BRL", listingExchangeName: "B3", exchangeName: "B3",
+    price: 45.36, change: -0.59, changePercent: -1.28, previousClose: 45.95, lastUpdated: Date.parse("2026-11-06T21:00:13Z"),
+    changeSessionDate: "2026-11-06", marketState: "CLOSED" });
+  const closes: Record<string, Record<string, number>> = { "PETR4.SA": { "2026-11-05": 45.95 } };
+  const { asked, label, date, advance } = dailyCloses(closes);
+  const early = await date(petr4);
+  expect(label(early)).toBe("vs Thu 5 Nov close");
+  expect(early.regularClose).toBeUndefined();
+  // Not again within the retry window, then again once it is old: the bar has landed.
+  expect((await date(petr4)).regularClose).toBeUndefined();
+  closes["PETR4.SA"]!["2026-11-06"] = 45.3;
+  advance(11 * 60_000);
+  expect(await date(petr4)).toMatchObject({ regularClose: 45.3, regularCloseSessionDate: "2026-11-06", previousCloseDate: "2026-11-05" });
+  expect(asked).toEqual(["PETR4.SA", "PETR4.SA"]);
+  // Once it has, the reading stands.
+  advance(11 * 60_000);
+  await date(petr4);
+  expect(asked).toHaveLength(2);
 });
 
 test("a history whose latest close is not the previous close names no day, until it is read again later", async () => {

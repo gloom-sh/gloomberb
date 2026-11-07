@@ -60,7 +60,7 @@ import {
 } from "./price-comparison";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { coinLegsAtSessionClose } from "./coin-session-close";
-import { chartSeriesSourceKey } from "../capabilities/chart-series";
+import { chartSeriesSourceKey, uncoveredCapabilityMessage } from "../capabilities/chart-series";
 import { rememberSeedListingFacts } from "./parsed-history-cache";
 import {
   canonicalExchange,
@@ -822,7 +822,7 @@ async function resolveChartSpecPass(
     try {
       if (seriesSpec.source.kind === "capability") {
         if (!sources.resolveCapabilitySeries) {
-          throw new Error(`Chart series capability "${seriesSpec.source.capabilityId}" is unavailable. Enable its plugin or provider.`);
+          throw new Error(uncoveredCapabilityMessage(seriesSpec.source.capabilityId, seriesSpec.source.seriesId));
         }
         const capabilityBounds = capabilityRequestBounds(requestVisibleBounds, initialVisibleBounds, movedWindow);
         const capabilityViewport: ChartSpec["viewport"] = {

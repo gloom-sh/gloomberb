@@ -1,6 +1,7 @@
 import { apiClient } from "../../api-client";
 import type { NewsArticle } from "../../news/types";
-import { mapCloudNewsArticle } from "../../sources/gloomberb-cloud/news";
+import { ENERGY_NEWS_TOPIC, mapCloudNewsArticle, METALS_NEWS_TOPIC } from "../../sources/gloomberb-cloud/news";
+import { centralBankNewsQueries, centralBankNewsTopic, storyNamesCentralBank, type CentralBank } from "../../utils/central-banks";
 import { cliStyles } from "../../utils/cli-output";
 import { logFailure } from "../../utils/log-failure";
 import { commodityNamedIn, commoditySearchName, isCommodityName } from "../../market-data/commodity-names";
@@ -126,14 +127,26 @@ export function closestStoriesReason(text: string): string {
 
 /** A metal's market news, for what `news` was given: its name, its future, or its board code. */
 export interface MetalNewsRoute {
-  /** The metal the stories are searched for, in METALS: "gold". */
+  /** The metal the stories are searched for, in METALS: "gold"; for oil, in ENERGY. */
   metal: string;
   contract: FuturesContract;
   /** Why what was typed reads as the metal, under the heading; null for the metal's own name. */
   reason: string | null;
   /** The name as typed, which in capitals may be a ticker too ("gold", GOLD for Gold.com Inc.). */
   word: string | null;
+  /** The market's stories the search is kept to: METALS, or ENERGY for oil. */
+  topic: string;
+  /** What the heading calls those stories: "Metals", "Energy". */
+  label: string;
 }
+
+/**
+ * The words that are the oil market, searched in its energy stories as a
+ * metal's name is in METALS: "oil" otherwise found Oil India's stories under
+ * the iPath ETN that trades as OIL, and stories that name oil are mostly
+ * companies'. Brent, gas and the rest keep their futures route.
+ */
+const ENERGY_MARKET_WORDS: ReadonlySet<string> = new Set(["oil", "crude"]);
 
 /**
  * A metal's market news for a metal's future (GC=F, SI=F, HG=F, PL=F, PA=F,
@@ -148,30 +161,69 @@ export function metalNewsRoute(typed: string): MetalNewsRoute | null {
   if (/=F$/i.test(text)) {
     const contract = futuresBoardContract(text);
     const metal = contract?.sector === "metals" ? commoditySearchName(contract) : null;
-    return contract && metal ? { metal, contract, reason: `the commodity ${contract.symbol} trades`, word: null } : null;
+    return contract && metal ? { metal, contract, reason: `the commodity ${contract.symbol} trades`, word: null, ...METALS_MARKET } : null;
   }
   if (!/^\p{L}{3,}$/u.test(text) || !/\p{Ll}/u.test(text)) return null;
   // One word of letters: the metal's names are one word each (gold, aluminium).
   const contract = commodityNamedIn(text);
-  return contract?.sector === "metals" ? { metal: text.toLowerCase(), contract, reason: null, word: text } : null;
+  if (contract?.sector === "metals") return { metal: text.toLowerCase(), contract, reason: null, word: text, ...METALS_MARKET };
+  return contract?.sector === "energy" && ENERGY_MARKET_WORDS.has(text.toLowerCase())
+    ? { metal: text.toLowerCase(), contract, reason: null, word: text, ...ENERGY_MARKET } : null;
 }
+
+const METALS_MARKET = { topic: METALS_NEWS_TOPIC, label: "Metals" } as const;
+const ENERGY_MARKET = { topic: ENERGY_NEWS_TOPIC, label: "Energy" } as const;
 
 /** A metal's market news for its board code typed bare (GC, SI, HG) where no listing answers to it. */
 export function metalCodeNewsRoute(typed: string): MetalNewsRoute | null {
   const code = typed.trim().toUpperCase();
   const contract = /^[A-Z]{2,3}$/.test(code) ? futuresBoardContract(code) : null;
   const metal = contract?.sector === "metals" ? commoditySearchName(contract) : null;
-  return contract && metal ? { metal, contract, reason: `${code} is the futures board's code for ${contract.name}`, word: null } : null;
+  return contract && metal ? { metal, contract, reason: `${code} is the futures board's code for ${contract.name}`, word: null, ...METALS_MARKET } : null;
 }
 
 /** The line above a metal's market news: "Metals news matching "gold"", with why what was typed reads as the metal. */
 export function metalNewsHeading(route: MetalNewsRoute): string {
-  return `${cliStyles.bold(`Metals news matching "${route.metal}"`)}${route.reason ? cliStyles.muted(`  ·  ${route.reason}`) : ""}`;
+  return `${cliStyles.bold(`${route.label} news matching "${route.metal}"`)}${route.reason ? cliStyles.muted(`  ·  ${route.reason}`) : ""}`;
 }
 
 /** What a metal's market news says when no story is tagged METALS: every story that names it is one search away. */
 export function noMetalStoriesMessage(route: MetalNewsRoute): string {
-  return `No metals stories match "${route.metal}". For every story that mentions it, try: ${quotedSearchCommand(route.metal)}`;
+  return `No ${route.label.toLowerCase()} stories match "${route.metal}". For every story that mentions it, try: ${quotedSearchCommand(route.metal)}`;
+}
+
+/**
+ * A central bank's latest decision stories, for its name or the committee and
+ * rate its decisions go by (`centralBankInNews`): the text as typed and every
+ * name it is reported under (`centralBankNewsQueries`), each with what else
+ * the text asks (`centralBankNewsTopic`: "rate cut" of "fed rate cut"),
+ * searched at once, newest first, and only the stories that name the bank.
+ * "banxico" alone found May's cut, not November's, reported as the Bank of
+ * Mexico's. Fails only when every search failed.
+ */
+export async function searchCentralBankStories(bank: CentralBank, limit: number, typed = ""): Promise<NewsArticle[]> {
+  const topic = centralBankNewsTopic(bank, typed);
+  const queries = new Map<string, string>();
+  for (const query of [typed.trim(), ...centralBankNewsQueries(bank).map((name) => topic ? `${name} ${topic}` : name)]) {
+    if (query && !queries.has(query.toLowerCase())) queries.set(query.toLowerCase(), query);
+  }
+  const answers = await Promise.allSettled([...queries.values()].map((query) => searchNewsStories(query, limit)));
+  const found = answers.flatMap((answer) => answer.status === "fulfilled" ? answer.value : []);
+  const failed = answers.find((answer): answer is PromiseRejectedResult => answer.status === "rejected");
+  if (failed && answers.every((answer) => answer.status === "rejected")) throw failed.reason;
+  const seen = new Set<string>();
+  const unique = found.filter((article) => {
+    const key = article.id || article.url;
+    if (seen.has(key) || !storyNamesCentralBank(bank, `${article.title} ${article.summary ?? ""}`)) return false;
+    seen.add(key);
+    return true;
+  });
+  return newestFirst(unique).slice(0, limit);
+}
+
+/** What the heading says of a central bank's stories: "the Bank of Mexico's stories, under each name it is reported by". */
+export function centralBankNewsReason(bank: CentralBank): string {
+  return `the ${bank.name}'s stories, under each name it is reported by`;
 }
 
 /** The futures news route a search offers when no story matches it: `gloom news KC=F` for "arabica". */

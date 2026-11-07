@@ -99,6 +99,6 @@ test("a home line's quote says nothing of an ADR unless its receipt is quoted be
   const home = { ...base, instrumentType: "EQUITY", currency: "GBP", symbol: "BA.L", price: 18.46, change: -0.34, changePercent: -1.83, depositaryPair: pair } as Quote;
   const receipt = { ...base, instrumentType: "EQUITY", symbol: "BAESY", price: 98.5, change: -1.2, changePercent: -1.2, depositaryPair: pair, isDepositaryReceipt: true } as Quote;
   expect((await quote([home])).result.warnings ?? []).toEqual([]);
-  expect((await quote([home, receipt])).result.warnings).toEqual(["BA.L: 1 BAESY ADR = 4 of these shares.", "BAESY: 1 ADR = 4 ordinary shares of BA.L."]);
-  expect((await quote([receipt])).result.warnings).toEqual(["BAESY: 1 ADR = 4 ordinary shares of BA.L."]);
+  expect((await quote([home, receipt])).result.warnings).toEqual(["BA.L: 1 BAESY ADR = 4 of these shares.", "BAESY: 1 ADR = 4 shares of BA.L."]);
+  expect((await quote([receipt])).result.warnings).toEqual(["BAESY: 1 ADR = 4 shares of BA.L."]);
 });

@@ -3,7 +3,7 @@ import { apiClient } from "../api-client";
 import { getLoadablePlugins } from "../plugins/catalog";
 import { createDefaultConfig } from "../types/config";
 import { paneSchemas } from "../plugins/builtin/chart-composer/headless-schema";
-import { commandPointer, commandPointerLeads, exportCommandPointer, knownGapForTicker, knownGapMessage, MUNI_LINE, subMinuteDataMessage, topicPointer } from "./known-gaps";
+import { commandPointer, commandPointerLeads, exportCommandPointer, knownGapForTicker, knownGapMessage, MUNI_LINE, subMinuteDataMessage, topicPointer, unquotedGapMessage } from "./known-gaps";
 import type { MarketContext } from "./types";
 import { buildSearchReport, searchFunctionsForCli } from "./commands/search";
 import { buildPaneCatalogEntries, buildPaneFunctionLookup, filterPaneCatalogEntries, renderPaneCatalogReport, selectPaneCatalogMatches } from "./pane-functions/catalog";
@@ -59,6 +59,16 @@ test("data a name search cannot find is pointed to, with its proxies, by search 
   expect(catalog).toContain(gap);
   expect(catalog).toContain("EU Allowance");
   expect(catalog).not.toContain("No functions match");
+});
+
+test("iron ore typed for a quote has no live price and points to the IMF's monthly series, never Kumba's stock", () => {
+  const gap = unquotedGapMessage("iron ore")!;
+  expect(gap).toStartWith("Iron ore: no live price");
+  expect(gap).toContain("gloom fred PIORECRUSDM");
+  for (const query of ["Iron Ore", "iron ore price", "iron ore 62% Fe", "SGX iron ore", "iron ore futures today"]) expect(unquotedGapMessage(query), query).toBe(gap);
+  expect(knownGapMessage("iron ore")).toBe(gap);
+  // Kumba is still its name, and a company that holds the words is not the subject.
+  for (const query of ["kumba", "Kumba Iron Ore", "iron mountain", "iron ore miners"]) expect(unquotedGapMessage(query), query).toBeNull();
 });
 
 test("LME and Shanghai metals are said to be uncovered, pointing at COMEX curves and the monthly world prices, not FUT", () => {

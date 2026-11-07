@@ -8,6 +8,7 @@ import { splitSymbolWords } from "./symbol-args";
 import { isNumberCell } from "./symbol-cells";
 import { isProviderBusy, type ProviderBusyError } from "../sources/provider-errors";
 import { unknownBloombergMarket } from "../tickers/terminal-codes";
+import { renamedListingFor } from "../tickers/renamed-listings";
 
 /**
  * The entries of a list (`splitSymbolArgs`, or a file's lines) as the symbols
@@ -110,7 +111,8 @@ export type PhraseReading =
 
 /**
  * One quoted argument with spaces: a company's name when search finds the
- * company (`"Whirlpool Corporation"`), else a pasted line of symbols when no
+ * company (`"Whirlpool Corporation"`) or it is a renamed company's former
+ * name (renamed-listings.ts), else a pasted line of symbols when no
  * word is one the source says is not a ticker (`"AAPL MSFT"`), else a phrase
  * (`"10 year yield"`), which is never split into symbols such as YEAR and
  * YIELD. The words are asked in one batch beside the name search, not a
@@ -125,6 +127,8 @@ export async function readPhraseArgument(
   dataProvider: Pick<DataProvider, "search" | "getQuotesBatch">,
 ): Promise<PhraseReading> {
   if (unknownBloombergMarket(phrase) || await readTerminalCodeArg(dataProvider, phrase)) return { kind: "symbols", symbols: [phrase] };
+  // A renamed company's former name ("Centrais Elétricas Brasileiras") is the listing it trades as now.
+  if (renamedListingFor(phrase)) return { kind: "name", name: phrase };
   const words = splitSymbolWords([phrase]);
   const numbered = words.some(isNumberCell);
   const asked = words.filter((word) => !word.includes(":") && !isNumberCell(word)).map((word) => word.replace(/^\$/, "").toUpperCase());
