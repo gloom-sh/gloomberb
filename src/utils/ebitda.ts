@@ -20,7 +20,7 @@ function depreciation(row: FinancialStatement): { value: number; field: Deprecia
  * income with D&A added back. Null when the row lacks either; a source's own
  * EBITDA line can carry non-operating income and is never used in its place.
  */
-export function statementEbitda(row: FinancialStatement): number | null {
+function statementEbitda(row: FinancialStatement): number | null {
   const amortization = depreciation(row);
   return finite(row.operatingIncome) && amortization ? row.operatingIncome + amortization.value : null;
 }
