@@ -295,6 +295,41 @@ test("a bare code several companies list asks which, whichever way the router wo
   expect(saved.details).toBe("Other listings: 2222:JPX Kotobuki Spirits Co., Ltd. (try: gloom history 2222:JPX)");
 });
 
+test("a venue naming its line by the code alone is no other company: bare ITBEES goes to NSE's fund, never asks", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const row = { providerId: "test", symbol: "ITBEES", currency: "INR" };
+  const dataProvider = createTestDataProvider({
+    search: async () => [{ ...row, name: "Nippon India ETF Nifty IT", exchange: "NSE", type: "ETF" }, { ...row, name: "ITBEES", exchange: "BSE", type: "Common Stock" }],
+  });
+  const deps = { store, dataProvider };
+  const ctx = { fail: (message: string, details?: string): never => { throw new ListingArgError(message, details); } };
+  const failure = await loadForListing(await resolveCliListing("ITBEES", undefined, deps), deps, ctx,
+    async () => { throw new Error("No history provider available for ITBEES"); }, undefined, { command: "history", noun: "history" }).catch((error) => error);
+  expect(failure.message).toBe("ITBEES resolved to Nippon India ETF Nifty IT (NSE), which has no history.");
+  expect(failure.details).toBe("Other listings: ITBEES:BSE ITBEES (try: gloom history ITBEES:BSE)");
+});
+
+test("a bare Indian code goes to the venue with a real name, NSE before BSE, whichever search lists first", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const ctx = { fail: (message: string, details?: string): never => { throw new ListingArgError(message, details); } };
+  const resolved = async (symbol: string, rows: { name: string; exchange: string }[]) => {
+    const deps = { store, dataProvider: createTestDataProvider({ search: async () => rows.map((row) => ({ providerId: "test", symbol, currency: "INR", ...row })) }) };
+    const failure = await loadForListing(await resolveCliListing(symbol, undefined, deps), deps, ctx,
+      async () => { throw new Error(`No history provider available for ${symbol}`); }, undefined, { command: "history", noun: "history" }).catch((error) => error);
+    return failure.message;
+  };
+  // Search lists BSE's code-only line first: the NSE fund is the one meant.
+  expect(await resolved("ITBEES", [{ name: "ITBEES", exchange: "BSE" }, { name: "Nippon India ETF Nifty IT", exchange: "NSE" }]))
+    .toBe("ITBEES resolved to Nippon India ETF Nifty IT (NSE), which has no history.");
+  // Both named, BSE first: NSE still comes first.
+  expect(await resolved("INFY", [{ name: "Infosys Limited", exchange: "BSE" }, { name: "Infosys Limited", exchange: "NSE" }]))
+    .toBe("INFY resolved to Infosys Limited (NSE), which has no history.");
+});
+
 test("listings of one company, however each venue spells its name, still go to the first venue with the others as retries", async () => {
   const persistence = new AppPersistence(":memory:");
   persistences.push(persistence);

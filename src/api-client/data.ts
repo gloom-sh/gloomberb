@@ -489,6 +489,11 @@ export class CloudDataApi {
     return this.request<import("./members").FundMembersPayload>(`/cloud/members/${encodeURIComponent(fund)}`);
   }
 
+  /** The covered funds whose holdings hold a US stock. */
+  getStockFunds(symbol: string) {
+    return this.request<import("./members").StockFundsPayload>(`/cloud/members/holding/${encodeURIComponent(symbol)}`);
+  }
+
   /** A company's recent announcements on its exchange (ASX only); another exchange answers 404. */
   getCloudExchangeAnnouncements(params: { symbol: string; exchange: string; limit?: number }) {
     return this.request<import("./exchange-announcements").ExchangeAnnouncementsPayload>(

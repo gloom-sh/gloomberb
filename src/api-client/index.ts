@@ -987,6 +987,7 @@ class GloomApiClient {
   equityScreener = this.data.equityScreener.bind(this.data);
   getMemberFunds = this.data.getMemberFunds.bind(this.data);
   getFundMembers = this.data.getFundMembers.bind(this.data);
+  getStockFunds = this.data.getStockFunds.bind(this.data);
   getFundBreadth = this.data.getFundBreadth.bind(this.data);
   getFundChanges = this.data.getFundChanges.bind(this.data);
   getFundFacts = this.data.getFundFacts.bind(this.data);

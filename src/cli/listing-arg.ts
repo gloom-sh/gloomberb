@@ -400,9 +400,29 @@ interface BareListingVenues {
   choose: boolean;
 }
 
-/** Whether the venues' companies differ by name. A venue with no name is no other company. */
-function listsSeveralCompanies(venues: readonly ListingVenue[]): boolean {
-  return groupByCompany(venues, (venue) => venue.name).length > 1;
+/** A venue that names its line by the code alone (BSE's "ITBEES" beside NSE's "Nippon India ETF Nifty IT"). */
+function namedByCode(symbol: string, venue: ListingVenue): boolean {
+  return venue.name.trim().toUpperCase() === (venue.symbol ?? symbol).toUpperCase();
+}
+
+/**
+ * Whether the venues' companies differ by name. A venue with no name is no other company, nor is one
+ * that names its line by the code alone.
+ */
+function listsSeveralCompanies(symbol: string, venues: readonly ListingVenue[]): boolean {
+  return groupByCompany(venues, (venue) => namedByCode(symbol, venue) ? "" : venue.name).length > 1;
+}
+
+/**
+ * The venue a bare code goes to: the first search lists with a real name, never one that names its
+ * line by the code alone when another names it, and NSE, India's main venue, before BSE whichever
+ * search listed first.
+ */
+function homeVenue(symbol: string, venues: readonly ListingVenue[]): ListingVenue | null {
+  const named = venues.filter((venue) => !namedByCode(symbol, venue));
+  const candidates = named.length ? named : venues;
+  const first = candidates[0] ?? null;
+  return first?.exchange === "BSE" ? candidates.find((venue) => venue.exchange === "NSE") ?? first : first;
 }
 
 /**
@@ -630,8 +650,8 @@ async function bareListingVenues(listing: BareListing, deps: ListingDeps): Promi
   if (listing.exchange) return null;
   const venues = await listingVenues(listing.symbol, deps).catch(logFailure("cli.listing-arg", "Read listing venues failed", []));
   const savedExchange = canonicalExchange(listing.saved?.metadata.exchange);
-  if (!savedExchange && listsSeveralCompanies(venues)) return { exchange: "", resolved: null, others: venues, choose: true };
-  const resolved = venues.find((venue) => venue.exchange === savedExchange) ?? (savedExchange ? null : venues[0] ?? null);
+  if (!savedExchange && listsSeveralCompanies(listing.symbol, venues)) return { exchange: "", resolved: null, others: venues, choose: true };
+  const resolved = venues.find((venue) => venue.exchange === savedExchange) ?? (savedExchange ? null : homeVenue(listing.symbol, venues));
   const exchange = resolved?.exchange ?? savedExchange;
   if (!exchange) return null;
   return { exchange, resolved, others: venues.filter((venue) => venue !== resolved && venue.exchange !== savedExchange), choose: false };

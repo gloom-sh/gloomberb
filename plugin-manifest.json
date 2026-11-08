@@ -897,7 +897,7 @@
           {
             "code": "MEMB",
             "name": "Index and ETF members",
-            "description": "ETF holdings, member returns, daily contributions, breadth and index changes."
+            "description": "ETF holdings, member returns, daily contributions, breadth and index changes, and the ETFs holding a stock."
           }
         ]
       },
