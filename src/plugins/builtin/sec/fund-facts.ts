@@ -162,6 +162,12 @@ function leverageObjectiveText(leverage: Pick<FundLeverage, "value" | "reset">):
   return `${leverageFactorLabel(leverage.value)} ${leverage.reset}, ${leverage.value < 0 ? "inverse" : "long"}`;
 }
 
+/** A premium's price when not the counter's own trade, after its date in a pane: ` · 3042:HKEX` (its traded counter's close), ` · nominal`. */
+function premiumPriceNote(premium: NonNullable<FundFactsPayload["premiumDiscount"]>): string {
+  const price = premium.price;
+  return price?.kind === "counter" ? ` · ${price.ticker}` : price?.kind === "nominal" ? ` · ${t("nominal")}` : "";
+}
+
 /**
  * How each dated figure reads beside the NAV, the date the sheet is about.
  * Every figure says its own date. One that is older than it looks is marked:
@@ -172,12 +178,6 @@ function leverageObjectiveText(leverage: Pick<FundLeverage, "value" | "reset">):
  * prospectus it was read from, says so when it is the prospectus's, and is
  * marked only when stale.
  */
-/** A premium's price when not the counter's own trade, after its date in a pane: ` · 3042:HKEX` (its traded counter's close), ` · nominal`. */
-function premiumPriceNote(premium: NonNullable<FundFactsPayload["premiumDiscount"]>): string {
-  const price = premium.price;
-  return price?.kind === "counter" ? ` · ${price.ticker}` : price?.kind === "nominal" ? ` · ${t("nominal")}` : "";
-}
-
 interface DatedFigure {
   /** The date, with what it is when that is not plain: `2026-10-16 close`, `2026-09-30 month-end`. */
   detail?: string;
@@ -356,7 +356,7 @@ export function fundFactOverviewFields(facts: FundFactsPayload): FundFactOvervie
 /**
  * What a computed premium is measured from, for text reports: the closing
  * price, another counter's traded close at the NAVs' rate when this
- * counter's was nominal (`3042:HKEX close HK$9.1800 at the NAVs' rate vs
+ * counter's was nominal (`3042:HKEX close HK$9.18 at the NAVs' rate vs
  * NAV`), or the nominal close when no counter traded.
  */
 function premiumBasis(premium: NonNullable<FundFactsPayload["premiumDiscount"]>): string | null {
