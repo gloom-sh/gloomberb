@@ -5661,15 +5661,20 @@
    "blocks": [
     {
      "type": "paragraph",
-     "text": "`gloom` alone, or `gloom launch-ui` from a script, opens the terminal UI. Every other command runs headless and prints a result."
+     "text": "`gloom` opens the terminal UI (`gloom launch-ui` from a script). Every other command runs headless and prints text, or `--json`, `--csv` or `--ndjson`."
+    },
+    {
+     "type": "code",
+     "code": "gloom quote AAPL MSFT\ngloom fn GP NVDA\ngloom financials MSFT --csv --output msft.csv\ngloom shot QQ AAPL,MSFT,NVDA --output quotes.png"
     },
     {
      "type": "paragraph",
-     "text": "`gloom help <command>` shows usage and examples. Plugins add commands of their own, such as `ai ask` from BYOK AI."
+     "text": "`gloom help <command>` shows usage and examples. Plugins add commands, such as `ai ask` from BYOK AI."
     },
     {
-     "type": "paragraph",
-     "text": "Output is readable text by default. Global flags:"
+     "type": "heading",
+     "level": 2,
+     "text": "Global flags"
     },
     {
      "type": "table",
@@ -5680,11 +5685,11 @@
      "rows": [
       [
        "`--json`, `--csv`, `--ndjson`",
-       "Machine-readable output. `--json` is the richest."
+       "Machine-readable output; `--json` is the richest"
       ],
       [
        "`--output file`, `--out file`",
-       "Write the `--csv`, `--json` or `--ndjson` export to a file, in UTF-8 without a byte-order mark, and print `Saved` with its full path, or `Replaced` over a file already there: `gloom financials MSFT --csv --output msft.csv`. Without one of those formats it is refused. On Windows use it rather than a `>` redirect, which Windows PowerShell 5.1 writes as UTF-16 and a spreadsheet misreads. A command with an `--output` of its own keeps it: `fn` writes its report in the format asked for, text included, `shot` writes a PNG, and a plugin command that lists `--output` in `gloom help <command>` writes what it says there"
+       "Write that output to a file ([more](#files-and-windows))"
       ],
       [
        "`--limit n`",
@@ -5696,7 +5701,7 @@
       ],
       [
        "`--dry-run`",
-       "Preview a change without saving. Applies to `config`, `cache`, `notes`, `alerts`, `plugin enable` and `disable`, and `remote`."
+       "Preview a change without saving: `config`, `cache`, `notes`, `alerts`, `plugin enable` and `disable`, `remote`"
       ],
       [
        "`-q`, `--quiet`, `--no-color`",
@@ -5704,7 +5709,7 @@
       ],
       [
        "`--plain`, `--no-plain`",
-       "Text for a screen reader or very large text: no rule lines, arrows as words, and every table column kept, with a dash in an empty cell; a narrow table moves columns under each row instead of dropping them"
+       "Text for a screen reader or very large text ([more](#plain-output))"
       ],
       [
        "`--width n`",
@@ -5714,16 +5719,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Plain output is on without the flag when the output is piped or redirected, or when `NO_COLOR` is set to a non-empty value, which also turns colour off; `--no-plain` turns it off. Without `--width`, a terminal's own width applies and piped output fits `COLUMNS` when it is set."
-    },
-    {
-     "type": "heading",
-     "level": 3,
-     "text": "Windows consoles"
-    },
-    {
-     "type": "paragraph",
-     "text": "Output uses UTF-8 characters such as long dashes, `€` and `·`. Windows Terminal and PowerShell show them; in an older cmd.exe console, run `chcp 65001` first. In cmd.exe, write an index symbol in double quotes (`gloom quote \"^SPX\"`): cmd drops a bare `^`."
+     "text": "Exit codes: 0 when it worked, 1 when it failed (bad input, no data found, a failed check). `gloom help` ends with the list."
     },
     {
      "type": "heading",
@@ -5759,11 +5755,11 @@
       ],
       [
        "`fn CMP <symbols> [--from <date>] [--to <date>] [--total-return] [--currency <code>]`",
-       "Returns side by side, each in its listing's currency: price returns, or with `--total-return` each distribution reinvested at its ex-date close. `--currency USD` converts every close at that day's FX close, so a lira stock's return carries the lira's move"
+       "Returns side by side"
       ],
       [
        "`fn DVD <symbols>`",
-       "Dividend yield and history; several symbols rank in one table by yield, with payout, growth, last ex-date and pay date"
+       "Dividend yield and history; several rank by yield, with payout, growth, last ex-date and pay date"
       ],
       [
        "`holders`, `insider`, `13f`, `filings` `<symbol>`",
@@ -5777,6 +5773,13 @@
        "`correlation <a> <b>`",
        "Daily-return correlation over the past year"
       ]
+     ]
+    },
+    {
+     "type": "list",
+     "items": [
+      "`fn CMP` gives price returns in each listing's currency. `--total-return` reinvests each distribution at its ex-date close.",
+      "`--currency USD` converts every close at that day's FX close, so a lira stock's return carries the lira's move."
      ]
     },
     {
@@ -5801,19 +5804,19 @@
       ],
       [
        "`fx <currency>`, `fx <base>/<quote>`, `fx <amount> <from>/<to>`",
-       "A currency into your base currency, a pair as markets quote it (`fx USD/MXN`) with its move on the day, or an amount converted (`fx 5000000 USD/EUR`). Gold, silver, platinum and palladium have no spot quote, so `fx XAU/TRY` is derived from the front-month future (GC=F) and the dollar pair, and says so"
+       "A currency into your base currency, a pair as markets quote it with its move on the day (`fx USD/MXN`), or an amount converted (`fx 5000000 USD/EUR`)"
       ],
       [
        "`fx <pair> --date <day>`",
-       "The rate at that day's daily FX close (`fx USD/MXN --date 2026-11-06`); a weekend or holiday reads the trading day before it and says so"
+       "The rate at that day's daily FX close (`fx USD/MXN --date 2026-11-06`)"
       ],
       [
        "`fx [amount] <pair> --forward <tenor>`",
-       "The forward implied by both currencies' short rates (covered interest parity), with forward points, not a dealer quote. With an amount, the carry on it over the tenor in your base currency and which side earns it: `fx 5000000 USD/MXN --forward 30d`. Short rates for USD, EUR, GBP, MXN, BRL, SGD and ZAR, and for TRY the CBRT policy rate, named so"
+       "The forward implied by both currencies' short rates, with forward points (`fx 5000000 USD/MXN --forward 30d`)"
       ],
       [
        "`econ [--country all|US|G7|EU|<codes>] [--impact high|medium|low|all] [--search <words>] [--from <date>] [--tz <zone>]`",
-       "Economic calendar; `--country` also takes countries by their two-letter codes, comma separated (`TR`, `MX,BR,ZA`), and `--from` an earlier day lists past events with their actuals"
+       "Economic calendar"
       ],
       [
        "`fred <series>`, `yield-curve`",
@@ -5823,6 +5826,16 @@
        "`provider-search <query>`",
        "Search instruments at your connected data providers"
       ]
+     ]
+    },
+    {
+     "type": "list",
+     "items": [
+      "Gold, silver, platinum and palladium have no spot quote: `fx XAU/TRY` uses the front-month future (GC=F) and the dollar pair, and says so.",
+      "A weekend or holiday `--date` reads the trading day before, and says so.",
+      "`--forward` is covered interest parity, not a dealer quote. With an amount it adds the carry in your base currency, and which side earns it.",
+      "Short rates cover USD, EUR, GBP, MXN, BRL, SGD and ZAR, and for TRY the CBRT policy rate, named so.",
+      "`econ --country` takes two-letter codes, comma separated (`TR`, `MX,BR,ZA`). An earlier `--from` lists past events with their actuals."
      ]
     },
     {
@@ -5839,35 +5852,39 @@
      "rows": [
       [
        "`portfolio list|show|create|delete <name>`",
-       "Manual portfolios; `show` lists value, weight, a year of dividend income and its yield, target, drift and the trade to rebalance; `show --explain` adds what those terms mean, `show --drip [--years 1-5] [--withholding <pct>]` projects reinvested dividends, and `show --from <date> [--to <date>]` gives the P&L between two closes with the FX move; `--real` adds the return after the portfolio currency's consumer prices (USD and TRY) and names the CPI months it used"
+       "Manual portfolios"
       ],
       [
        "`portfolio create <name> --currency <code>`",
-       "A portfolio that totals in another currency than your base currency (`--currency TRY`); a name's last word in capitals (`Baht THB`) is read as one too"
+       "A portfolio that totals in another currency (`--currency TRY`)"
       ],
       [
        "`portfolio add|remove <portfolio> <symbols...> [--file <csv|txt>]`",
-       "Add or remove tickers: several at once (commas, spaces or lines), a CSV or text file, or piped input (`-`); one line per symbol and a summary of what was not found"
+       "Several tickers at once, from a file, or piped (`-`)"
       ],
       [
        "`portfolio position set <portfolio> <symbol> <shares> <avg-cost> [currency] [--date <purchase date> | --cost-fx <rate>]`",
-       "Set a position. The cost is in the currency named after it, else the listing's. A holding in another currency than the portfolio's can be entered at its cost in the portfolio's currency, or in its own with `--date` (that day's FX close) or `--cost-fx` (the rate paid, portfolio currency per unit of the holding's), so P&L carries the currency's move"
+       "Set a position"
       ],
       [
        "`portfolio import <file> [--name <portfolio>] [--merge|--replace] [--dry-run]`",
-       "Fill a portfolio from a broker's positions CSV (`-` reads standard input): Fidelity, Schwab, Vanguard, E*TRADE, Merrill, or any table with a symbol and a quantity column. It reads shares, cost, purchase date and currency; the portfolio is named after the broker unless `--name` says otherwise. `--dry-run` previews and saves nothing. A portfolio that holds tickers needs `--merge` (update) or `--replace` (also remove what the file lacks; refused while a stock row failed to import). Cash, options, bonds and pending rows are skipped with the reason, a trade history is refused"
+       "From a broker's positions CSV (`-` reads standard input)"
       ],
       [
        "`portfolio cash set <portfolio> <amount> [currency]`, `portfolio cash clear <portfolio>`",
-       "Record or clear the cash line; it counts in the total and the weights"
+       "The cash line, counted in the total and the weights"
       ],
       [
-       "`portfolio target set <portfolio> <symbol|CASH> <weight%>`, `portfolio target clear <portfolio> [symbol|CASH]`, `portfolio target show <portfolio>`",
-       "Target weights; drift and the trade to reach them then show in `portfolio show` and `PF`"
+       "`portfolio target set <portfolio> <symbol|CASH> <weight%>`",
+       "A target weight; `portfolio show` and `PF` then add drift and the trade to reach it"
+      ],
+      [
+       "`portfolio target clear <portfolio> [symbol|CASH]`, `portfolio target show <portfolio>`",
+       "Clear or list targets"
       ],
       [
        "`watchlist list|show|create|delete|add|remove`",
-       "The same verbs for watchlists, with the same multi-symbol and `--file` add; `watchlist show <name> --csv` or `--json` prints one row per ticker, market cap included"
+       "The same for watchlists, with the same multi-symbol and `--file` add"
       ],
       [
        "`broker list [--type ibkr]`",
@@ -5879,29 +5896,72 @@
       ],
       [
        "`alerts list`, `alerts add ...`, `alerts delete|rearm <id>`",
-       "Price, valuation, daily technical and event alerts, every kind the `ALRT` pane offers; the forms are below"
+       "Price, valuation, daily technical and event alerts ([forms](#alerts))"
       ]
      ]
     },
     {
      "type": "paragraph",
-     "text": "[Portfolios and rebalancing](/docs/portfolio) walks through importing a broker CSV, targets and the drift table. `CASH` in `portfolio target` is the cash line; `portfolio add` and `position set` refuse a bare `CASH` (the stock is `CASH:NASDAQ`). `portfolio` and `watchlist` write immediately; `--dry-run` previews `add` and `portfolio import <file>`, and every other change refuses it. Sign-in, account management and chat are app-only."
+     "text": "[Portfolios and rebalancing](/docs/portfolio) covers what `portfolio show` lists and its options, other currencies, cost, broker CSV imports and targets."
+    },
+    {
+     "type": "list",
+     "items": [
+      "`portfolio show --from <date> --to <date>` gives the P&L between two closes, with the FX move.",
+      "`portfolio add` takes symbols split by commas, spaces or lines, and prints one line per symbol and what was not found.",
+      "`watchlist show <name> --csv` or `--json` prints one row per ticker, market cap included.",
+      "`CASH` in `portfolio target` is the cash line. `portfolio add` and `position set` refuse a bare `CASH` (the stock is `CASH:NASDAQ`).",
+      "`portfolio` and `watchlist` write immediately. `--dry-run` previews `add` and `portfolio import <file>`; other changes refuse it.",
+      "Sign-in, account management and chat are app-only."
+     ]
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Functions: `catalog`, `fn`, `shot`"
     },
     {
      "type": "paragraph",
-     "text": "The alerts commands, as `gloom help alerts` lists them:"
+     "text": "Every [function](/docs/functions) can run headless. `gloom catalog <function>` lists a function's options, and `shot` draws them as the pane does."
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Command",
+      "Use"
+     ],
+     "rows": [
+      [
+       "`catalog [query] [--all] [--bot-safe]`",
+       "Find functions and their options"
+      ],
+      [
+       "`catalog glossary [term]`, `catalog explain <term>`",
+       "What a term means, such as `stop-out`, `B/C`, `drift`, `NAV`, `beta`, `R²` or `VaR`"
+      ],
+      [
+       "`fn <function> [argument] [--option value] [--explain]`",
+       "Print a function's report; `--explain` adds the meaning of its terms"
+      ],
+      [
+       "`shot <function> [argument] [--output file] [--width px] [--height px] [--theme id] [--tab id] [--no-status] [--strict]`",
+       "Save a PNG of the function as it looks on the desktop"
+      ]
+     ]
     },
     {
      "type": "code",
-     "code": "gloom alerts list\ngloom alerts add <symbol> <above|below|crosses> <price>\ngloom alerts add <symbol> <pe|ps|rsi(14)> <above|below> <level>\ngloom alerts add <symbol> ma(50) crosses <above|below> ma(200)\ngloom alerts add <symbol> closes <above|below> ma(200)\ngloom alerts add <symbol>/<benchmark> <above|below|crosses> <ratio>\ngloom alerts add <symbol> rrg <leading|weakening|lagging|improving> [--benchmark <symbol>]\ngloom alerts add <symbol> earnings [--days <n> | results]\ngloom alerts add <calendar event> [--country <code>] [--days <n>]\ngloom alerts add [symbol] news <keyword>\ngloom alerts add [symbol] flow [premium] [calls|puts] [sweeps|blocks]\ngloom alerts add <symbol> <iv|rr> <above|below> <level>\ngloom alerts add <OCC contract> iv spike <points>\ngloom alerts add <symbol> 52-week <high|low>\ngloom alerts add <symbol> unusual volume [<multiple>x]\ngloom alerts add <symbol> filing [8-K|10-K|10-Q|S-1|13D|13D/A|13G|13G/A|6-K|20-F]\ngloom alerts add <symbol> insider [buy|sell]\ngloom alerts add <symbol> short interest [increase|decrease] [<percent>%]\ngloom alerts add <symbol> analyst [upgrade|downgrade]\ngloom alerts add <symbol> hiring [accelerating|slowing]\ngloom alerts add perps <market> <funding|oi|premium|closed-premium> <above|below> <percent>\ngloom alerts add catalyst [type <type> | agency <agency> | country <code>]\ngloom alerts add <symbol> catalyst\ngloom alerts add congress [member name]\ngloom alerts add 13f <fund CIK>\ngloom alerts delete <id>\ngloom alerts rearm <id>"
+     "code": "gloom catalog chart\ngloom fn GP NVDA\ngloom fn 13F AAPL --view=ticker-holdings --json\ngloom shot QQ AAPL,MSFT,NVDA --output quotes.png\ngloom shot FA ASML --statement income --width 1400 --height 900\ngloom shot 13F 0001067983 --compare SPY   # overlap with SPY"
     },
     {
-     "type": "paragraph",
-     "text": "Words none of these forms read are refused with the list of kinds. Adding a rule that already exists names the existing alert's ID and adds nothing, and `rearm` on an alert that has not gone off says it is already active. An RSI or moving-average alert is always saved: it reads the same daily closes `history` shows as final and says when it is first checked."
-    },
-    {
-     "type": "paragraph",
-     "text": "`alerts list` shows each alert's listing with its currency, its last reading with when it is from (or `not checked yet`) and when it was created, in ISO 8601 UTC. `alerts list --csv` keeps its columns in order (`id,kind,target,trigger,eventDate,status,lastCheckedPrice,triggeredAt`) and adds `createdAt,listing,currency,lastReading,lastReadingAt` after them. Creating, re-arming and deleting an alert go in the app's alert log beside the alerts that fired (`gloom fn ALRT --tab history`)."
+     "type": "list",
+     "items": [
+      "An option only the text report reads, such as `--limit`, fails `shot` with exit 1 and names the `fn` command that reads it.",
+      "`shot` saves its PNG, prints a Reason line and exits 0 when the pane drew an error, was empty, still loading or behind an access gate.",
+      "`shot --strict` exits 2 in those cases instead, still saving the PNG and printing the Reason.",
+      "A name nothing opens (`fn volsurf SPY`) lists up to five functions closest by name, keyword and description, and how to search the catalog.",
+      "`shot` lays out 720 to 2400 wide and 360 to 1800 tall, drawing the PNG at twice that. Other sizes are clamped, with a warning."
+     ]
     },
     {
      "type": "heading",
@@ -5944,73 +6004,101 @@
     {
      "type": "heading",
      "level": 2,
-     "text": "Functions: `catalog`, `fn`, `shot`"
-    },
-    {
-     "type": "paragraph",
-     "text": "Every [function](/docs/functions) can run headless."
-    },
-    {
-     "type": "table",
-     "headers": [
-      "Command",
-      "Use"
-     ],
-     "rows": [
-      [
-       "`catalog [query] [--all] [--bot-safe]`",
-       "Find functions and their options"
-      ],
-      [
-       "`catalog glossary [term]`, `catalog explain <term>`",
-       "What a term means, such as `stop-out`, `B/C`, `drift`, `NAV`, `beta`, `R²` or `VaR`"
-      ],
-      [
-       "`fn <function> [argument] [--option value] [--explain]`",
-       "Print a function's report; `--explain` adds the meaning of the terms it shows"
-      ],
-      [
-       "`shot <function> [argument] [--output file] [--width px] [--height px] [--theme id] [--no-status] [--strict]`",
-       "Save a PNG of the function as it looks on the desktop; `--strict` exits 2 when the pane has no usable data"
-      ]
-     ]
-    },
-    {
-     "type": "code",
-     "code": "gloom catalog chart\ngloom fn GP NVDA\ngloom fn 13F AAPL --view=ticker-holdings --json\ngloom shot QQ AAPL,MSFT,NVDA --output quotes.png\ngloom shot FA ASML --statement income --width 1400 --height 900"
-    },
-    {
-     "type": "paragraph",
-     "text": "`gloom catalog <function>` lists a function's options. `shot` also takes `--tab <id>`. `shot` draws a function's options as its pane does: `gloom shot 13F 0001067983 --compare SPY` opens the fund's overlap with SPY. An option only the text report reads, such as `--limit`, fails `shot` with exit 1 and names the `fn` command that reads it, instead of saving the pane without it."
-    },
-    {
-     "type": "paragraph",
-     "text": "A command exits 0 when it worked and 1 when it failed (bad input, no data found, a failed check); `gloom help` ends with the list. `shot` saves its PNG, prints the Reason line and still exits 0 when the pane drew an error, was empty, was still loading or was behind an access gate, so a script cannot tell that from a good capture. `shot --strict` exits 2 in those cases instead, with the PNG still saved and the Reason still printed."
-    },
-    {
-     "type": "paragraph",
-     "text": "A function name nothing opens (`fn volsurf SPY`) fails with the functions closest to it by name, keyword and description, at most five, and `Search the catalog: gloom catalog volsurf`."
-    },
-    {
-     "type": "paragraph",
-     "text": "`shot` sizes the layout from 720 to 2400 wide and 360 to 1800 tall, and the PNG is drawn at twice that. A size outside the limits is clamped, and a warning says what was used."
-    },
-    {
-     "type": "paragraph",
-     "text": "Reports end with their source and a dated status line, such as `Source: Gloom Cloud · US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed until Mon`: when the data is from (UTC, or the close of a market's trading day, always with the year), how far it is held back, and when its market reopens. Screenshots draw the same line, without the source, in the pane footer, inside the requested size; `--no-status` leaves it out."
-    },
-    {
-     "type": "paragraph",
-     "text": "Times print in UTC. To see your own clock beside them, run `gloom config set timezone Asia/Tokyo` (any `Region/City` name; `none` turns it off): `Sat 10 Oct 2026 16:56 UTC (Sun 11 Oct 01:56 Asia/Tokyo)`. A trading day keeps its market's date in every zone, and `--json` and `--csv` keep the raw values."
-    },
-    {
-     "type": "heading",
-     "level": 2,
      "text": "Plugin capabilities"
     },
     {
      "type": "code",
      "code": "gloom api list --json\ngloom api get <capability-id>\ngloom api invoke asset-data.gloomberb-cloud.getQuote '{\"ticker\":\"AAPL\",\"exchange\":\"NASDAQ\"}' --json\ngloom api subscribe <capability.operation> [json] --limit 10"
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Alerts"
+    },
+    {
+     "type": "paragraph",
+     "text": "Every kind the `ALRT` pane offers, as `gloom help alerts` lists them:"
+    },
+    {
+     "type": "code",
+     "code": "gloom alerts list\ngloom alerts add <symbol> <above|below|crosses> <price>\ngloom alerts add <symbol> <pe|ps|rsi(14)> <above|below> <level>\ngloom alerts add <symbol> ma(50) crosses <above|below> ma(200)\ngloom alerts add <symbol> closes <above|below> ma(200)\ngloom alerts add <symbol>/<benchmark> <above|below|crosses> <ratio>\ngloom alerts add <symbol> rrg <leading|weakening|lagging|improving> [--benchmark <symbol>]\ngloom alerts add <symbol> earnings [--days <n> | results]\ngloom alerts add <calendar event> [--country <code>] [--days <n>]\ngloom alerts add [symbol] news <keyword>\ngloom alerts add [symbol] flow [premium] [calls|puts] [sweeps|blocks]\ngloom alerts add <symbol> <iv|rr> <above|below> <level>\ngloom alerts add <OCC contract> iv spike <points>\ngloom alerts add <symbol> 52-week <high|low>\ngloom alerts add <symbol> unusual volume [<multiple>x]\ngloom alerts add <symbol> filing [8-K|10-K|10-Q|S-1|13D|13D/A|13G|13G/A|6-K|20-F]\ngloom alerts add <symbol> insider [buy|sell]\ngloom alerts add <symbol> short interest [increase|decrease] [<percent>%]\ngloom alerts add <symbol> analyst [upgrade|downgrade]\ngloom alerts add <symbol> hiring [accelerating|slowing]\ngloom alerts add perps <market> <funding|oi|premium|closed-premium> <above|below> <percent>\ngloom alerts add catalyst [type <type> | agency <agency> | country <code>]\ngloom alerts add <symbol> catalyst\ngloom alerts add congress [member name]\ngloom alerts add 13f <fund CIK>\ngloom alerts delete <id>\ngloom alerts rearm <id>"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Words none of these forms read are refused with the list of kinds.",
+      "Adding a rule that exists names its ID and adds nothing. `rearm` on an alert that has not gone off says it is already active.",
+      "RSI and moving-average alerts are always saved. They read the daily closes `history` shows as final, and say when they are first checked.",
+      "`alerts list` shows each alert's listing and currency, its last reading and when (or `not checked yet`), and when it was created, in ISO 8601 UTC.",
+      "Creating, re-arming and deleting an alert go in the app's alert log beside fired alerts (`gloom fn ALRT --tab history`)."
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "`alerts list --csv` keeps its first eight columns in their original order, and adds five after them:"
+    },
+    {
+     "type": "code",
+     "code": "id,kind,target,trigger,eventDate,status,lastCheckedPrice,triggeredAt,createdAt,listing,currency,lastReading,lastReadingAt"
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Status line and times"
+    },
+    {
+     "type": "paragraph",
+     "text": "Reports end with their source and a dated status line:"
+    },
+    {
+     "type": "code",
+     "code": "Source: Gloom Cloud · US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed until Mon"
+    },
+    {
+     "type": "list",
+     "items": [
+      "It says when the data is from (UTC, or a market's trading-day close, always with the year), how far it is held back, and when its market reopens.",
+      "Screenshots draw the same line, without the source, in the pane footer inside the requested size. `--no-status` leaves it out.",
+      "Times print in UTC. `gloom config set timezone Asia/Tokyo` (any `Region/City`; `none` turns it off) adds your clock beside them:"
+     ]
+    },
+    {
+     "type": "code",
+     "code": "Sat 10 Oct 2026 16:56 UTC (Sun 11 Oct 01:56 Asia/Tokyo)"
+    },
+    {
+     "type": "paragraph",
+     "text": "A trading day keeps its market's date in every zone, and `--json` and `--csv` keep the raw values."
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Files and Windows"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`--output` writes the export in UTF-8 without a byte-order mark, and prints `Saved` or `Replaced` with its full path.",
+      "Without `--csv`, `--json` or `--ndjson` it is refused, except on a command with an `--output` of its own.",
+      "Those keep theirs: `fn` writes its report in the format asked for, text included; `shot` writes a PNG; a plugin command what its help says.",
+      "On Windows, use `--output` rather than a `>` redirect: Windows PowerShell 5.1 writes UTF-16, which a spreadsheet misreads.",
+      "Output uses UTF-8 (long dashes, `€`, `·`). Windows Terminal and PowerShell show it; in an older cmd.exe console, run `chcp 65001` first.",
+      "cmd.exe drops a bare `^`, so quote an index symbol: `gloom quote \"^SPX\"`."
+     ]
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Plain output"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`--plain` drops rule lines, writes arrows as words and keeps every table column, with a dash in an empty cell.",
+      "A narrow table moves columns under each row instead of dropping them.",
+      "It is on without the flag when output is piped or redirected, or `NO_COLOR` is non-empty, which also turns colour off. `--no-plain` turns it off.",
+      "Without `--width`, the terminal's width applies; piped output fits `COLUMNS` when set."
+     ]
     }
    ]
   },
@@ -6023,22 +6111,22 @@
     "agents",
     "remote",
     "cli",
-    "automation"
+    "automation",
+    "setup"
    ],
-   "updatedAt": "2026-10-09",
+   "updatedAt": "2026-11-08",
    "blocks": [
     {
-     "type": "heading",
-     "level": 2,
-     "text": "What this is"
+     "type": "paragraph",
+     "text": "`gloom remote` drives a Gloom app running on this machine, terminal (TUI) or desktop. Scripts and local agents read the screen, open panes, pick tickers and arrange layouts by name."
+    },
+    {
+     "type": "code",
+     "code": "gloom                                   # one terminal: the app\ngloom remote help                       # another: the agent guide\ngloom remote get app://snapshot --json  # what is on screen"
     },
     {
      "type": "paragraph",
-     "text": "The remote API drives a running Gloom app. Agents and scripts read semantic state, open panes, navigate tickers, arrange layouts, and call plugin capabilities, with no screen coordinates."
-    },
-    {
-     "type": "paragraph",
-     "text": "Use it to operate the live desktop or TUI, and to capture a pane of the desktop app as it looks right now (`pane.screenshot`). Use the [CLI](/docs/cli-functions) for headless data, reports, and screenshots of a function with no app open."
+     "text": "Leave `--app` out when one app runs. Pass `--app tui` or `--app desktop` when both do."
     },
     {
      "type": "table",
@@ -6049,60 +6137,26 @@
      "rows": [
       [
        "A script or local agent on the same machine as the app",
-       "This remote API: no account, no network, nothing asks"
+       "`gloom remote`: no account, no network"
       ],
       [
        "Claude Code, Codex or another assistant connected to Gloom Cloud",
        "The [MCP server](/docs/mcp) with [Terminal control](/docs/mcp#terminal-control): the same operations, one MCP for data and the terminal, and the app asks you before an assistant takes over and before anything leaves the app"
       ],
       [
-       "Anything that needs Cloud data with no terminal open",
+       "Anything that needs Cloud data with no app open",
        "The [MCP server](/docs/mcp) without Terminal control"
       ]
      ]
     },
     {
      "type": "paragraph",
-     "text": "Launch the app first. Pass `--app desktop` or `--app tui` when both may be running. No endpoint found? Check the session is still open and rerun `remote help`."
+     "text": "For headless data, reports and a screenshot of a function with no app open, use the [CLI](/docs/cli-functions)."
     },
     {
      "type": "heading",
      "level": 2,
-     "text": "Core concepts"
-    },
-    {
-     "type": "table",
-     "headers": [
-      "Concept",
-      "Meaning"
-     ],
-     "rows": [
-      [
-       "App kind",
-       "`desktop` and `tui` are separate surfaces. `--app` picks one."
-      ],
-      [
-       "Resources",
-       "Read-only state: `app://snapshot`, `app://panes`, `app://pane-templates`, `app://commands`, `app://capabilities`, `ui://tree`."
-      ],
-      [
-       "Operations",
-       "Mutations: `app.search`, `commandBar.activateResult`, `pane.createFromTemplate`, `pane.focus`, `ticker.navigate`, `layout.setGrid`, `ui.invokeMatching`."
-      ],
-      [
-       "Capabilities",
-       "Plugin service operations. Use app operations for UI, capabilities for plugin-owned data and side effects."
-      ]
-     ]
-    },
-    {
-     "type": "paragraph",
-     "text": "Every operation changes only the local app, except `capability.invoke`, which runs a plugin capability and can reach external services. Nothing asks for confirmation."
-    },
-    {
-     "type": "heading",
-     "level": 2,
-     "text": "CLI quick reference"
+     "text": "Commands"
     },
     {
      "type": "table",
@@ -6113,58 +6167,212 @@
      "rows": [
       [
        "`gloom remote help`",
-       "Agent-focused usage from the running app."
+       "Agent-focused usage from the running app"
       ],
       [
        "`gloom remote schema`",
-       "Resource URIs, operations, request and response shapes."
+       "Resource URIs, operations, request and response shapes"
       ],
       [
        "`gloom remote get <resource>`",
-       "Read one resource."
+       "Read one resource"
       ],
       [
        "`gloom remote call <operation> [json] [--dry-run]`",
-       "Invoke one operation."
+       "Invoke one operation"
       ],
       [
        "`gloom remote patch <resource> <json-patch> [--expect-rev rev] [--dry-run]`",
-       "JSON Patch a mutable resource."
+       "JSON Patch a mutable resource"
       ],
       [
        "`gloom remote batch <json> [--dry-run]`",
-       "Run a multi-step workflow."
+       "Run a multi-step workflow"
       ],
       [
        "`gloom remote watch <resource> [--interval ms] [--limit n]`",
-       "Poll for changes."
+       "Poll for changes"
       ]
      ]
     },
     {
      "type": "paragraph",
-     "text": "All take `--app desktop|tui` and `--json`. `--dry-run` on `call` only echoes the payload, with no check of the operation or its fields; on `patch` it returns the patched result without saving."
+     "text": "All take `--app tui|desktop` and `--json`. `--dry-run` on `call` only echoes the payload, with no check of the operation or its fields; on `patch` it returns the patched result without saving."
     },
     {
      "type": "heading",
      "level": 2,
-     "text": "Read before acting"
+     "text": "When no app answers"
     },
     {
      "type": "paragraph",
-     "text": "The snapshot has the config and layout, focused pane, panes, command-bar state, UI tree, and schema. Plugin capabilities are in `app://capabilities`."
+     "text": "With `--json` the reason is in `error.code`, with `message` and `details` (what to do), and the command exits 1:"
     },
     {
-     "type": "code",
-     "code": "gloom remote get app://snapshot --app desktop --json\ngloom remote get app://pane-templates --app desktop --json\ngloom remote get ui://tree --app desktop --json"
+     "type": "table",
+     "headers": [
+      "`error.code`",
+      "Means, and what to do"
+     ],
+     "rows": [
+      [
+       "`app_not_running`",
+       "No app of this profile runs. Start `gloom` in another terminal, or open the desktop app"
+      ],
+      [
+       "`app_ambiguous`",
+       "The terminal and desktop apps both run, and neither is the one started last. Pass `--app tui` or `--app desktop`"
+      ],
+      [
+       "`app_unreachable`",
+       "The app's port does not answer from here, but nothing proves it gone: usually a sandbox that blocks localhost. Run the command where it can reach 127.0.0.1, or start Gloom again"
+      ]
+     ]
     },
     {
      "type": "paragraph",
-     "text": "To see a pane as drawn, `pane.screenshot` returns it as a PNG (base64 in `image.data`, with its pixel size), the focused pane when `paneId` is left out. Desktop only; the TUI has no pixels."
+     "text": "An endpoint file left by an app that exited without quitting is removed once its process is gone and its port refuses. An unreachable app's file is kept."
+    },
+    {
+     "type": "paragraph",
+     "text": "Asked for the desktop app while only the terminal app runs:"
     },
     {
      "type": "code",
-     "code": "gloom remote call pane.screenshot '{ \"paneId\": \"chart:main\" }' --app desktop --json"
+     "code": "{ \"ok\": false, \"error\": { \"code\": \"app_not_running\", \"message\": \"The Gloom desktop app is not running.\", \"details\": \"The terminal app is: pass --app tui, or leave --app out.\" } }"
+    },
+    {
+     "type": "paragraph",
+     "text": "Anything else that fails, such as an operation the app refuses, is `cli_error`."
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Read the screen"
+    },
+    {
+     "type": "paragraph",
+     "text": "`app://snapshot` is what is on screen in one read:"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Key",
+      "Holds"
+     ],
+     "rows": [
+      [
+       "`app`",
+       "Focus and command bar. Read `app.focusedPaneId`; `app.activePanel` is deprecated and always `left`"
+      ],
+      [
+       "`config`",
+       "Settings and the layouts"
+      ],
+      [
+       "`panes`",
+       "Each pane, where it is, and whether it has focus"
+      ],
+      [
+       "`commandBar`, `form`",
+       "The command bar, and an open form or the setup dialog"
+      ],
+      [
+       "`ui`",
+       "The labelled UI controls"
+      ],
+      [
+       "`references`",
+       "Where to read what the snapshot leaves out"
+      ]
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "It leaves out what an agent reads once or rarely:"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Left out",
+      "Read it from"
+     ],
+     "rows": [
+      [
+       "Every resource and operation with its input",
+       "`gloom remote schema`, once"
+      ],
+      [
+       "Recipes and caveats",
+       "`gloom remote help` (`app://remote/help`)"
+      ],
+      [
+       "What each pane loaded (`runtimeState`, a saved layout's `paneState`)",
+       "`app://pane-state/{paneId}`, `app://panes`, `app://config`"
+      ],
+      [
+       "Unlabelled UI nodes",
+       "`ui://tree`"
+      ]
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "`app://snapshot/full` has all of it inline, the shape the snapshot had before 0.20.5. It is often several times the size: 413 KB against 73 KB with nine panes open."
+    },
+    {
+     "type": "code",
+     "code": "gloom remote get app://pane-templates --json\ngloom remote get ui://tree --json"
+    },
+    {
+     "type": "paragraph",
+     "text": "`pane.screenshot` returns a pane as a PNG (base64 in `image.data`, with its pixel size): the focused pane, or `paneId` from `app://panes`. Desktop only: the terminal app draws text."
+    },
+    {
+     "type": "code",
+     "code": "gloom remote call pane.screenshot '{}' --app desktop --json"
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "First-run setup"
+    },
+    {
+     "type": "paragraph",
+     "text": "On a new profile the setup dialog covers the app. `app://form` (and the snapshot's `form`) reads `\"open\": true, \"kind\": \"setup\"`, with its `step`, `title`, `fields` by `id` and `buttons`:"
+    },
+    {
+     "type": "code",
+     "code": "{ \"open\": true, \"kind\": \"setup\", \"step\": \"PORTFOLIO\", \"title\": \"What do you hold?\",\n  \"fields\": [{ \"id\": \"ticker\", \"label\": \"Ticker\", \"value\": \"\" }, { \"id\": \"shares\" }, { \"id\": \"avgCost\" }, { \"id\": \"currency\" }],\n  \"buttons\": [{ \"label\": \"Skip\" }, { \"label\": \"Continue\", \"disabled\": true, \"shortcut\": \"Enter\" }] }"
+    },
+    {
+     "type": "paragraph",
+     "text": "While it is open:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`app.search` and `app.openCommandBar` refuse, and `app.closeDialog` does not close it.",
+      "A change made behind it still runs, and its answer carries `warnings` saying the setup dialog covers it.",
+      "Its own controls match first in `ui.invokeMatching`."
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "Add a ticker and continue, or skip a step:"
+    },
+    {
+     "type": "code",
+     "code": "gloom remote batch '{ \"type\": \"batch\", \"requests\": [\n  { \"type\": \"call\", \"operation\": \"ui.invokeMatching\", \"input\": { \"role\": \"form-field\", \"metadata\": { \"fieldId\": \"ticker\" }, \"action\": \"setValue\", \"input\": \"NVDA\" } },\n  { \"type\": \"call\", \"operation\": \"ui.invokeMatching\", \"input\": { \"role\": \"form-field\", \"metadata\": { \"fieldId\": \"ticker\" }, \"action\": \"submit\" } },\n  { \"type\": \"call\", \"operation\": \"ui.invokeMatching\", \"input\": { \"role\": \"form\", \"action\": \"submit\" } }\n] }' --json\ngloom remote call ui.invokeMatching '{ \"role\": \"button\", \"label\": \"Skip\", \"action\": \"press\" }' --json"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Submit on the Ticker field adds the position; `{ \"role\": \"form\", \"action\": \"submit\" }` presses the button Enter would.",
+      "Skip leaves one step unfilled. A new profile has two steps, Portfolio and Desks.",
+      "A step can change after the call answers, so read `app://form` again before the next call.",
+      "When setup is run again, `form.actions` includes `cancel`, which skips all of it."
+     ]
     },
     {
      "type": "heading",
@@ -6177,7 +6385,7 @@
     },
     {
      "type": "code",
-     "code": "gloom remote call pane.createFromTemplate '{ \"templateId\": \"market-heatmap-pane\" }' --app desktop --json\ngloom remote call ticker.pin '{ \"symbol\": \"NVDA\", \"forceNewPane\": true }' --app desktop --json"
+     "code": "gloom remote call pane.createFromTemplate '{ \"templateId\": \"market-heatmap-pane\" }' --json\ngloom remote call ticker.pin '{ \"symbol\": \"NVDA\", \"forceNewPane\": true }' --json"
     },
     {
      "type": "paragraph",
@@ -6185,7 +6393,7 @@
     },
     {
      "type": "code",
-     "code": "gloom remote batch '{\n  \"type\": \"batch\",\n  \"include\": [\"panes\", \"commandBar\"],\n  \"requests\": [\n    { \"type\": \"call\", \"operation\": \"app.search\", \"input\": { \"mode\": \"ticker\", \"query\": \"NVDA\" } },\n    { \"type\": \"call\", \"operation\": \"commandBar.activateResult\", \"input\": { \"index\": 0 } }\n  ]\n}' --app desktop --json"
+     "code": "gloom remote batch '{\n  \"type\": \"batch\",\n  \"include\": [\"panes\", \"commandBar\"],\n  \"requests\": [\n    { \"type\": \"call\", \"operation\": \"app.search\", \"input\": { \"mode\": \"ticker\", \"query\": \"NVDA\" } },\n    { \"type\": \"call\", \"operation\": \"commandBar.activateResult\", \"input\": { \"index\": 0 } }\n  ]\n}' --json"
     },
     {
      "type": "heading",
@@ -6194,19 +6402,15 @@
     },
     {
      "type": "code",
-     "code": "gloom remote call layout.setGrid '{ \"columns\": 2 }' --app desktop --json\ngloom remote call layout.focusRegion '{ \"region\": \"right\" }' --app desktop --json\ngloom remote call layout.closeFloating '{}' --app desktop --json"
+     "code": "gloom remote call layout.setGrid '{ \"columns\": 2 }' --json\ngloom remote call layout.focusRegion '{ \"region\": \"right\" }' --json\ngloom remote call layout.closeFloating '{}' --json\ngloom remote call app.switchPanel '{ \"panel\": \"right\" }' --json"
     },
     {
      "type": "paragraph",
-     "text": "Switch panels without touching layout internals:"
-    },
-    {
-     "type": "code",
-     "code": "gloom remote call app.switchPanel '{ \"panel\": \"right\" }' --app desktop --json"
+     "text": "`remote patch` works on what `remote schema` marks patchable: `app://config`, `app://layout/current`, `app://pane-state/{paneId}` and `app://pane-settings/{paneId}`."
     },
     {
      "type": "paragraph",
-     "text": "`remote patch` works on the resources `remote schema` marks patchable: `app://config`, `app://layout/current`, `app://pane-state/{paneId}`, `app://pane-settings/{paneId}`. Read the resource and its `rev` first, then pass `--expect-rev` so a stale edit fails instead of overwriting."
+     "text": "Read the resource and its `rev` first, then pass `--expect-rev`, so a stale edit fails instead of overwriting."
     },
     {
      "type": "heading",
@@ -6219,11 +6423,48 @@
     },
     {
      "type": "code",
-     "code": "gloom remote get ui://tree --app desktop --json\ngloom remote call ui.invokeMatching '{ \"role\": \"button\", \"label\": \"Done\", \"action\": \"press\" }' --app desktop --json"
+     "code": "gloom remote call ui.invokeMatching '{ \"role\": \"button\", \"label\": \"Open Help\", \"action\": \"press\" }' --json"
     },
     {
      "type": "paragraph",
      "text": "Use it sparingly; higher-level operations survive UI changes."
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Concepts"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Concept",
+      "Meaning"
+     ],
+     "rows": [
+      [
+       "App kind",
+       "`tui` and `desktop` are separate apps; `--app` picks one"
+      ],
+      [
+       "Resources",
+       "State to read: `app://snapshot`, `app://form`, `app://panes`, `app://pane-templates`, `app://commands`, `app://capabilities`, `ui://tree`"
+      ],
+      [
+       "Operations",
+       "Changes: `app.search`, `commandBar.activateResult`, `pane.createFromTemplate`, `pane.focus`, `ticker.navigate`, `layout.setGrid`, `ui.invokeMatching`"
+      ],
+      [
+       "Capabilities",
+       "Plugin service operations, for plugin-owned data and side effects. The UI goes through app operations"
+      ]
+     ]
+    },
+    {
+     "type": "list",
+     "items": [
+      "Every operation changes only the local app, except `capability.invoke`, which runs a plugin capability and can reach external services.",
+      "`watchlist.add` and `watchlist.remove` ask in the app first and answer with what happened. Nothing else asks."
+     ]
     }
    ]
   },
@@ -6241,15 +6482,15 @@
     "terminal",
     "remote control"
    ],
-   "updatedAt": "2026-11-07",
+   "updatedAt": "2026-11-08",
    "blocks": [
     {
      "type": "paragraph",
-     "text": "Gloom Cloud hosts a [Model Context Protocol](https://modelcontextprotocol.io) server at `https://api.gloom.sh/mcp`. It gives an agent the research tools Gloom's own assistant uses, and with the right access your notes, [teams](/docs/teams) and connected brokers. Part of [Gloom Pro](/cloud)."
+     "text": "Gloom Cloud's [MCP](https://modelcontextprotocol.io) server at `https://api.gloom.sh/mcp` has the research tools Gloom's own assistant uses, and with access your notes, [teams](/docs/teams) and brokers."
     },
     {
      "type": "paragraph",
-     "text": "The same keys work for the [REST API](/docs/rest-api) and [Google Sheets](/docs/google-sheets). With [Terminal control](#terminal-control) the same server also drives your open desktop or TUI; for one-off reports, use the [CLI](/docs/cli-functions)."
+     "text": "Part of [Gloom Pro](/cloud). The same keys work for the [REST API](/docs/rest-api) and [Google Sheets](/docs/google-sheets). [Terminal control](#terminal-control) also drives your open app; for one-off reports, use the [CLI](/docs/cli-functions)."
     },
     {
      "type": "heading",
@@ -6258,7 +6499,7 @@
     },
     {
      "type": "paragraph",
-     "text": "**Sign in from the client.** OAuth clients (Claude Code, claude.ai, Cursor and most recent clients) only need the endpoint. The first call opens a browser tab where you choose what the client may reach."
+     "text": "**Sign in from the client.** OAuth clients (Claude Code, claude.ai, Cursor and most recent ones) need only the endpoint. The first call opens a browser tab to choose what the client may reach."
     },
     {
      "type": "code",
@@ -6266,7 +6507,11 @@
     },
     {
      "type": "paragraph",
-     "text": "**Use a key.** For scripts and clients without a browser, create a key in [Cloud settings, Agents](/cloud/account?view=agents) and send it as a bearer token (`x-api-key` also works). Keys are shown once; you can hold up to 10."
+     "text": "**Use a key** for scripts and clients without a browser. Create one in [Cloud settings, Agents](/cloud/account?view=agents) and send it as a bearer token (`x-api-key` also works)."
+    },
+    {
+     "type": "paragraph",
+     "text": "Keys are shown once; you can hold up to 10."
     },
     {
      "type": "code",
@@ -6315,8 +6560,27 @@
      ]
     },
     {
-     "type": "paragraph",
-     "text": "A key's access, Terminal control and optional team pin are fixed at creation. Signed-in clients get the same levels through the `mcp:read`, `mcp:write` and `mcp:terminal` scopes; the consent page leaves Terminal control unticked. `tools/list` returns only what the caller may call."
+     "type": "list",
+     "items": [
+      "A key's access, Terminal control and optional team pin are fixed at creation.",
+      "Signed-in clients get the same levels through the `mcp:read`, `mcp:write` and `mcp:terminal` scopes; the consent page leaves Terminal control unticked.",
+      "`tools/list` returns only what the caller may call."
+     ]
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Plans and limits"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Creating keys needs Pro. Any valid key can `initialize` and `tools/list`, but tool calls need Pro, except `portfolio.*`.",
+      "Tool calls get real-time quotes and the live news wire.",
+      "Keys allow 120 requests a minute and 5,000 a day; over the limit returns `429` with `Retry-After`.",
+      "If Pro lapses, keys stay but tool calls are refused.",
+      "Revoking a key applies on the next request. A disconnected client's token expires within two hours; its terminal calls stop at once."
+     ]
     },
     {
      "type": "heading",
@@ -6325,7 +6589,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Read-only unless marked write. Most take `limit`; `?` marks an optional argument. `tools/list` has the full schema. Start with `market.search` when a ticker is ambiguous."
+     "text": "Read-only unless marked write. Most take `limit`; `?` marks an optional argument, and `tools/list` has the full schema. Start with `market.search` when a ticker is ambiguous."
     },
     {
      "type": "heading",
@@ -6365,9 +6629,13 @@
       ],
       [
        "`market.options_flow`",
-       "`symbol?`, `days?`, `minPremium?` (a filter searches recorded prints, not the live tape)"
+       "`symbol?`, `days?`, `minPremium?`"
       ]
      ]
+    },
+    {
+     "type": "paragraph",
+     "text": "`market.options_flow` with a filter searches recorded prints, not the live tape."
     },
     {
      "type": "heading",
@@ -6413,7 +6681,7 @@
       ],
       [
        "`sec.insider_transactions`",
-       "`ticker`, `since?`, `until?` (trade dates, `YYYY-MM-DD`: every Form 4 of the window, and which days it covers), `offset?`"
+       "`ticker`, `since?`, `until?`, `offset?`"
       ],
       [
        "`sec.thirteenf_holders`",
@@ -6428,6 +6696,10 @@
        "`year?`, `member?`, `ticker?`, `side?`, `owner?`, `assetType?`, `minAmount?`"
       ]
      ]
+    },
+    {
+     "type": "paragraph",
+     "text": "`sec.insider_transactions` takes trade dates (`YYYY-MM-DD`) for `since` and `until`, returns every Form 4 of the window, and says which days it covers."
     },
     {
      "type": "heading",
@@ -6718,52 +6990,19 @@
     {
      "type": "heading",
      "level": 2,
-     "text": "Brokers"
-    },
-    {
-     "type": "paragraph",
-     "text": "Connect a broker in Gloom and every client with read access reaches it through Gloom. The `portfolio.*` tools cover every connected broker in one call and need no Pro."
-    },
-    {
-     "type": "paragraph",
-     "text": "With no connection they return no rows and a note; a broker that fails adds an `error` row and the result is `partial`. They read brokerage accounts, not team portfolios (use `collections.get`)."
-    },
-    {
-     "type": "table",
-     "headers": [
-      "Broker",
-      "Tools",
-      "Writes (read and write access)"
-     ],
-     "rows": [
-      [
-       "Interactive Brokers",
-       "`ibkr.*`: positions, balances, trades, orders, contract search, prices, alerts, watchlists",
-       "Order instructions, alerts and watchlists, when trading instructions are enabled"
-      ],
-      [
-       "Robinhood",
-       "`robinhood.*`: accounts and equity positions",
-       "None"
-      ]
-     ]
-    },
-    {
-     "type": "paragraph",
-     "text": "An IBKR order instruction is not an order: IBKR returns a link where you review and submit it yourself."
-    },
-    {
-     "type": "paragraph",
-     "text": "IBKR allows one AI connection per user, and Gloom holds it: connecting IBKR in Gloom disconnects IBKR from other AI apps, so reach it through Gloom instead of connecting it directly. The IBKR sign-in ends seven days after you consent, however often it is used, and only signing in again brings it back. A day before, the Brokers pane shows when it ends and Gloom emails you once. Background: [IBKR in Claude or ChatGPT](/answers/ibkr-claude-chatgpt-connector)."
-    },
-    {
-     "type": "heading",
-     "level": 2,
      "text": "Terminal control"
     },
     {
      "type": "paragraph",
-     "text": "Terminal control reaches everything the [remote API](/docs/agents) does in your open, signed-in desktop or TUI: read the screen, open and arrange panes, navigate tickers, switch and edit layouts, semantic UI actions and plugin capabilities. The app asks once before an assistant takes over; plugin capabilities, button presses, commands and anything that reaches an outside service (orders, transfers, messages) ask you in the app on every call, and an unanswered one is denied after 60 seconds."
+     "text": "Terminal control reaches everything the [remote API](/docs/agents) does in your open, signed-in desktop or TUI: the screen, panes, tickers, layouts, UI actions and plugin capabilities."
+    },
+    {
+     "type": "list",
+     "items": [
+      "The app asks once before an assistant takes over.",
+      "Plugin capabilities, button presses, commands and anything that reaches an outside service (orders, transfers, messages) ask you in the app on every call.",
+      "An unanswered one is denied after 60 seconds."
+     ]
     },
     {
      "type": "code",
@@ -6790,7 +7029,7 @@
       ],
       [
        "`terminal.pane.screenshot`",
-       "One pane of the desktop app as a PNG image, as it looks on screen (`paneId?`, `width?`). A read: it runs once you approved the assistant, without asking each call. Up to 1600 px on the long side and 512 KB; the TUI answers `unsupported`"
+       "One pane of the desktop app as a PNG image, as it looks on screen (`paneId?`, `width?`)"
       ],
       [
        "`terminal.get_resource`, `terminal.patch_resource`",
@@ -6807,25 +7046,71 @@
      ]
     },
     {
-     "type": "paragraph",
-     "text": "Each tool takes `device?` (an id or name from `terminal.devices`). Descriptions carry the operation's tier and whether you confirm each call. A call that waits on you longer than 45 seconds answers `pending` with a `callId`; read the outcome with `terminal.call_result`. With no app open, tools answer `no_terminal`. Revoke an assistant in the app (Account Management, Agents), or revoke its key or disconnect it here, and its next call stops."
+     "type": "list",
+     "items": [
+      "Each tool takes `device?`, an id or name from `terminal.devices`. Its description gives the operation's tier and whether you confirm each call.",
+      "A call that waits on you over 45 seconds answers `pending` with a `callId`; `terminal.call_result` reads the outcome.",
+      "With no app open, tools answer `no_terminal`.",
+      "`terminal.pane.screenshot` is a read: once you approved the assistant it runs without asking. Up to 1600 px on the long side and 512 KB; the TUI answers `unsupported`.",
+      "Revoke an assistant in the app (Account Management, Agents), or revoke its key or disconnect it here, and its next call stops."
+     ]
     },
     {
      "type": "heading",
      "level": 2,
-     "text": "Results and limits"
+     "text": "Brokers"
     },
     {
      "type": "paragraph",
-     "text": "Each call returns text plus `structuredContent` with `status` (`ok`, `partial` when a limit removed rows, or `error`), `rowCount`, `truncated`, `asOf` and `data`. Results are capped at 256 KB. A failed source returns `status: \"error\"` with `data.error = { code, source, reason }`. `terminal.pane.screenshot` returns the same JSON as text plus an image block, and no `structuredContent`, since some clients read only that and would drop the image."
+     "text": "Connect a broker in Gloom and every client with read access reaches it through Gloom. The `portfolio.*` tools cover every connected broker in one call and need no Pro."
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Broker",
+      "Tools",
+      "Writes (read and write access)"
+     ],
+     "rows": [
+      [
+       "Interactive Brokers",
+       "`ibkr.*`: positions, balances, trades, orders, contract search, prices, alerts, watchlists",
+       "Order instructions, alerts and watchlists, when trading instructions are enabled"
+      ],
+      [
+       "Robinhood",
+       "`robinhood.*`: accounts and equity positions",
+       "None"
+      ]
+     ]
+    },
+    {
+     "type": "list",
+     "items": [
+      "With no connection, `portfolio.*` returns no rows and a note. A broker that fails adds an `error` row, and the result is `partial`.",
+      "They read brokerage accounts, not team portfolios (use `collections.get`).",
+      "An IBKR order instruction is not an order: IBKR returns a link where you review and submit it yourself.",
+      "IBKR allows one AI connection per user, and Gloom holds it: connecting IBKR in Gloom disconnects it from other AI apps, so reach it through Gloom.",
+      "The IBKR sign-in ends seven days after you consent, however often it is used; only signing in again brings it back.",
+      "A day before, the Brokers pane shows when it ends, and Gloom emails you once."
+     ]
     },
     {
      "type": "paragraph",
-     "text": "Creating keys needs Pro. Any valid key can `initialize` and `tools/list`; tool calls need Pro, except `portfolio.*`, and get real-time quotes and the live news wire."
+     "text": "Background: [IBKR in Claude or ChatGPT](/answers/ibkr-claude-chatgpt-connector)."
     },
     {
-     "type": "paragraph",
-     "text": "Keys allow 120 requests a minute and 5,000 a day; over the limit returns `429` with `Retry-After`. If Pro lapses, keys stay but tool calls are refused. Revoking a key applies on the next request; a disconnected client's token expires within two hours, and its terminal calls stop at once."
+     "type": "heading",
+     "level": 2,
+     "text": "Results"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Each call returns text plus `structuredContent` with `status`, `rowCount`, `truncated`, `asOf` and `data`. Results are capped at 256 KB.",
+      "`status` is `ok`, `partial` when a limit removed rows, or `error`. A failed source returns `status: \"error\"` with `data.error = { code, source, reason }`.",
+      "`terminal.pane.screenshot` returns the same JSON as text plus an image block, and no `structuredContent`: some clients read only that and would drop the image."
+     ]
     }
    ]
   },
