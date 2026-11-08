@@ -23,6 +23,8 @@ import { TreasuryAuctionsPane } from "./pane";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { auction, RECORDED_NOW, recordedFiscalData, recordedTreasuryDirect } from "./test-fixture";
 import type { TreasuryAuction } from "./types";
+import type { HkTendersPayload } from "../../../api-client/hk-tenders";
+import hkRecording from "./fixtures/hk-tenders-20261108.json";
 
 const AUCTIONS: TreasuryAuction[] = [
   auction({
@@ -332,5 +334,49 @@ describe("TreasuryAuctionsPane after view", () => {
     const rows = tui.frame().split("\n").filter((line) => ROW_DATE.test(line));
     expect(rows[0]).toMatch(/Nov 2\s+Bill\s+13-Week\s+3\.900%/);
     expect(rows.slice(1, 4).map((line) => line.match(ROW_DATE)?.[1])).toEqual(["Oct 28", "Sep 28", "Aug 28"]);
+  });
+});
+
+describe("TreasuryAuctionsPane Hong Kong", () => {
+  test("AUCT HK opens Hong Kong's tenders; the group and Enter work on them, and the Market choice goes back to US", async () => {
+    setSystemTime(new Date("2026-11-08T02:00:00Z"));
+    seedCache();
+    const asked: string[] = [];
+    spyOn(apiClient, "getCloudHkTenders").mockImplementation(async (from) => {
+      asked.push(from);
+      return structuredClone(hkRecording) as HkTendersPayload;
+    });
+    const settle = async (done: () => boolean) => {
+      for (let attempt = 0; attempt < 40 && !done(); attempt += 1) {
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          await tui.setup().renderOnce();
+        });
+      }
+    };
+    const row = (text: string) => tui.frame().split("\n").find((line) => line.includes(text)) ?? "";
+    await tui.render(<Harness height={24} command="HK" />, { width: 92, height: 24 });
+    await settle(() => tui.frame().includes("03GB2807001"));
+    expect(row("Oct 28")).toMatch(/Oct 28\s+EFB\s+3-Month\s+2\.827%\s+2\.46\s+≈HK\$65\.7B/);
+    expect(row("03GB2807001")).toMatch(/Oct\s+HKGB\s+3-Year\s+1\.401%\s+9\.93\s+RMB750M\s+03GB2807001/);
+    expect(tui.frame()).toMatch(/RATE\s+B\/C\s+SIZE\s+ISSUE/);
+    expect(asked).toEqual(["2026-07-11"]);
+
+    await tui.clickFrameText("Bonds");
+    await settle(() => !tui.frame().includes("Oct 28"));
+    expect(tui.frame()).not.toContain("3-Month");
+    await emitKeypress({ name: "enter", sequence: "\r" });
+    await settle(() => tui.frame().includes("Bid-to-cover"));
+    expect(tui.frame()).toContain("Government Bond (RMB) 3-Year");
+    expect(tui.frame()).toMatch(/Average yield\s+1\.401%/);
+    expect(tui.frame()).toContain("Source: HKMA");
+    await emitKeypress({ name: "escape", sequence: "\u001B" });
+    await settle(() => !tui.frame().includes("Bid-to-cover"));
+
+    await tui.clickFrameText("All");
+    await tui.clickFrameText("US");
+    await settle(() => tui.frame().includes("13-Week"));
+    expect(tui.frame()).toContain("13-Week");
+    expect(tui.frame()).not.toContain("03GB2807001");
   });
 });

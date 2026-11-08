@@ -25,6 +25,8 @@ export const WEB_LINK_ONLY_HOSTS: ReadonlySet<string> = new Set([
 
   // Venue and source pages a pane links to or credits.
   "agsi.gie.eu",
+  // HKMA's Open API dataset pages, opened from AUCT's Hong Kong tenders; the figures come through Gloom Cloud.
+  "apidocs.hkma.gov.hk",
   "app.pascal.trade",
   "crypto.com",
   "ember-energy.org",

@@ -497,6 +497,12 @@ interface HeadlessPaneResultBase {
    */
   warnings?: string[];
   metadata?: Record<string, unknown>;
+  /**
+   * Options the load settled from what it was given rather than from a flag
+   * (AUCT's market, from a search naming Hong Kong's paper): the report's
+   * `options` show these, so they name what was used, not the default.
+   */
+  appliedOptions?: HeadlessPaneOptionValues;
   /** What this load knows about its data's source and age; overrides the definition's `freshness`. */
   freshness?: HeadlessPaneFreshness;
 }

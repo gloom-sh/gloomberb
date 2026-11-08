@@ -1049,7 +1049,7 @@ export async function buildHeadlessFunctionReport(
       target: resolved.token,
       capabilityId: resolved.capability.id,
       symbols,
-      options: resolved.options,
+      options: { ...resolved.options, ...loaded.result.appliedOptions },
       rowCount,
       empty: rowCount === 0,
       complete,

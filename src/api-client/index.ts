@@ -977,6 +977,7 @@ class GloomApiClient {
   getCloudBitcoinNetwork = this.data.getCloudBitcoinNetwork.bind(this.data);
   getCloudCentralBankRates = this.data.getCloudCentralBankRates.bind(this.data);
   getCloudFxInterventions = this.data.getCloudFxInterventions.bind(this.data);
+  getCloudHkTenders = this.data.getCloudHkTenders.bind(this.data);
   getMobileAlertHistory = this.data.getMobileAlertHistory.bind(this.data);
   getScannerFlowHistory = this.data.getScannerFlowHistory.bind(this.data);
   getScannerFlowSession = this.data.getScannerFlowSession.bind(this.data);

@@ -11,6 +11,7 @@ import {
   type DataTableCell,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
+  type QueryBarSelectFilter,
 } from "../../../components";
 import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { ageFooterSegment, savedCopyFooterInfo } from "../../../components/layout/pane/footer";
@@ -73,6 +74,8 @@ import {
   TREASURY_AUCTIONS_PANE_ID,
   type TreasuryAuction,
 } from "./types";
+import { AUCTION_MARKETS, isAuctionMarket, type AuctionMarket } from "./hk";
+import { HkTendersView } from "./hk-view";
 
 function formatRate(value: number | null): string {
   return value == null ? "—" : `${value.toFixed(3)}%`;
@@ -267,16 +270,16 @@ function writeSort(sort: AuctionSortPreference): string | null {
 /** A command's value for this pane's auctions tab, from `AUCT 7Y --view after` and the like. */
 const auctionParam = (key: string) => (params: Readonly<Record<string, string>>) => params.view === "auctions" ? params[key] ?? null : null;
 
+/**
+ * AUCT: US Treasury auctions, or Hong Kong's government paper tenders, by the
+ * Market choice in the query bar (`AUCT --market hk`, `AUCT HK 10Y`). The
+ * group, search, sort and window carry across.
+ */
 export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   const historyDays = auctionHistoryWindow(usePaneInstance()?.settings);
-  const [viewChoice, setView] = useCommandValue<string>(FIXED_INCOME_PANE_ID, "view", auctionParam("auctionView"), "results");
+  const [marketChoice, setMarket] = useCommandValue<string>(FIXED_INCOME_PANE_ID, "market", auctionParam("auctionMarket"), "us");
+  const market: AuctionMarket = isAuctionMarket(marketChoice) ? marketChoice : "us";
   const [sortValue, setSortValue] = useCommandValue<string | null>(FIXED_INCOME_PANE_ID, "sortColumn", auctionParam("auctionSort"), null);
-  const sortPreference = useMemo(() => readSort(sortValue) ?? DEFAULT_AUCTION_SORT, [sortValue]);
-  const setSortPreference = useCallback((next: AuctionSortPreference | ((current: AuctionSortPreference) => AuctionSortPreference)) => {
-    setSortValue(writeSort(typeof next === "function" ? next(readSort(sortValue) ?? DEFAULT_AUCTION_SORT) : next));
-  }, [setSortValue, sortValue]);
-  // A sort by an after column shows the after view, as `fn AUCT --sort btc-pctl` does.
-  const view: AuctionView = viewChoice === "after" || isAfterColumn(sortPreference.columnId) ? "after" : "results";
   const [filter, setFilter] = useCommandValue<AuctionFilter>(FIXED_INCOME_PANE_ID, "activeTab",
     (params) => AUCTION_FILTERS.find((entry) => entry.value === auctionParam("auctionFilter")(params))?.value ?? null, "all");
   // `AUCT 10Y` opens on that search, as `fn AUCT 10Y` reads it; a later `AUCT 5Y` replaces it.
@@ -286,6 +289,23 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     (params) => params.view === "auctions" ? params.search ?? "" : null,
     "",
   );
+  const marketFilter = useMemo<QueryBarSelectFilter<string>>(() => ({
+    id: "market", label: "Market", value: market, options: AUCTION_MARKETS, onChange: setMarket, inline: true,
+  }), [market, setMarket]);
+  const shared = { focused, width, height, historyDays, filter, setFilter, searchQuery, setSearchQuery, sortValue, setSortValue, marketFilter };
+  return market === "hk" ? <HkTendersView {...shared} /> : <UsAuctionsView {...shared} />;
+}
+
+function UsAuctionsView({
+  focused, width, height, historyDays, filter, setFilter, searchQuery, setSearchQuery, sortValue, setSortValue, marketFilter,
+}: Parameters<typeof HkTendersView>[0]) {
+  const [viewChoice, setView] = useCommandValue<string>(FIXED_INCOME_PANE_ID, "view", auctionParam("auctionView"), "results");
+  const sortPreference = useMemo(() => readSort(sortValue) ?? DEFAULT_AUCTION_SORT, [sortValue]);
+  const setSortPreference = useCallback((next: AuctionSortPreference | ((current: AuctionSortPreference) => AuctionSortPreference)) => {
+    setSortValue(writeSort(typeof next === "function" ? next(readSort(sortValue) ?? DEFAULT_AUCTION_SORT) : next));
+  }, [setSortValue, sortValue]);
+  // A sort by an after column shows the after view, as `fn AUCT --sort btc-pctl` does.
+  const view: AuctionView = viewChoice === "after" || isAfterColumn(sortPreference.columnId) ? "after" : "results";
   // The after view reads more than it lists, until each listed tenor has its 24 before the oldest row
   // (widerAfterWindow); the widening holds for one list, and a new search, group or window starts over.
   const listKey = `${historyDays}|${filter}|${searchQuery}`;
@@ -356,7 +376,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   const selectFilter = useCallback((next: AuctionFilter) => {
     setFilter(next);
     setDetailOpen(false);
-  }, []);
+  }, [setFilter]);
   const cycleFilter = useCallback(() => {
     setFilter(nextFilter(filter));
     setDetailOpen(false);
@@ -461,11 +481,26 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     variant: "bare",
   });
   const tabs = tabStrip && <Box height={1} flexShrink={0} overflow="hidden">{tabStrip}</Box>;
+  const queryBar = (
+    <QueryBar
+      width={width}
+      search={{
+        value: searchQuery,
+        onChange: setSearchQuery,
+        placeholder: "type, 10Y, CUSIP, or date",
+        focused: focused && !detailOpen,
+        ...searchProps,
+      }}
+      filters={[marketFilter]}
+      view={{ value: view, options: VIEW_OPTIONS, onChange: selectView }}
+    />
+  );
 
   if (loading && auctions.length === 0) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         {tabs}
+        {queryBar}
         <PaneStatusBody loading align="center" loadingLabel="Loading Treasury auctions..." />
       </Box>
     );
@@ -475,6 +510,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         {tabs}
+        {queryBar}
         <Box padding={1}>
           <EmptyState status={error ? "error" : "empty"} title="Treasury auctions unavailable." message={error} />
         </Box>
@@ -491,19 +527,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
         onBack={() => setDetailOpen(false)}
         detailContent={selected ? <TreasuryAuctionDetail auction={selected} width={width} after={after?.get(selected.id)} /> : null}
         detailTitle={selected ? `${selected.secType} ${selected.securityTerm}` : undefined}
-        rootBefore={(
-          <QueryBar
-            width={width}
-            search={{
-              value: searchQuery,
-              onChange: setSearchQuery,
-              placeholder: "type, 10Y, CUSIP, or date",
-              focused: focused && !detailOpen,
-              ...searchProps,
-            }}
-            view={{ value: view, options: VIEW_OPTIONS, onChange: selectView }}
-          />
-        )}
+        rootBefore={queryBar}
         onRootKeyDown={handleRootKeyDown}
         onDetailKeyDown={handlePaneKey}
         selection={{

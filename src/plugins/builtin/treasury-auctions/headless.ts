@@ -11,6 +11,8 @@ import { AUCTION_HISTORY_ALL, AUCTION_HISTORY_START, fetchTreasuryAuctions, type
 import { loadTreasuryAuctions, type TreasuryAuctionsResult } from "./cache";
 import { unansweredRefreshError } from "../../../data/saved-copies";
 import type { TreasuryAuction } from "./types";
+import { AUCTION_MARKETS, auctionSearchMarket, isAuctionMarket, loadHkTenders, type HkTendersResult } from "./hk";
+import { hkTendersReport } from "./hk-headless";
 import { FIXED_INCOME_VIEW_STATE } from "../fixed-income/model";
 import {
   AUCTION_HISTORY_WINDOWS,
@@ -141,19 +143,29 @@ const AFTER_NOTE = "Percentiles rank each auction against its tenor's previous 2
 interface TreasuryAuctionsHeadlessDependencies {
   load(args: HeadlessPaneLoadArgs, window: AuctionHistoryWindow): Promise<TreasuryAuctionsResult>;
   curves(shown: readonly TreasuryAuction[], from: string | null): Promise<AuctionCurveRead>;
+  hk?(window: AuctionHistoryWindow): Promise<HkTendersResult>;
 }
 
 const defaultDependencies: TreasuryAuctionsHeadlessDependencies = {
   load: (_args, window) => loadTreasuryAuctions(false, fetchTreasuryAuctions, window),
   curves: (shown, from) => loadAuctionCurves(shown, from),
+  hk: (window) => loadHkTenders(false, window),
 };
 
 /** An empty table says what was searched, in which window, and what the search understands; another market's paper, what AUCT covers. */
 function emptyNote(query: string, filter: AuctionFilter, historyDays: AuctionHistoryWindow): string {
-  if (namesOtherMarket(query)) return `AUCT covers US Treasury auctions; "${query.trim()}" is not one. Search by ${AUCTION_SEARCH_FIELDS}.`;
+  if (namesOtherMarket(query)) {
+    return `AUCT covers US Treasury auctions and Hong Kong government paper tenders (--market hk); "${query.trim()}" is neither. Search by ${AUCTION_SEARCH_FIELDS}.`;
+  }
   const searched = query.trim() ? `match "${query.trim()}"` : "found";
   const group = filter === "all" ? "" : ` in the ${filter} group`;
   return `No auctions ${searched}${group} in ${auctionHistoryPhrase(historyDays)}. Search by ${AUCTION_SEARCH_FIELDS}.`;
+}
+
+/** The market `--market` names; without it Hong Kong's when the search names its paper (`HK 10Y`, `EFB`), else the US. */
+function marketOf(args: Pick<HeadlessPaneLoadArgs, "argument" | "options">) {
+  if (isAuctionMarket(args.options.market)) return args.options.market;
+  return auctionSearchMarket(typeof args.argument === "string" ? args.argument : "").market ?? "us";
 }
 
 export function createTreasuryAuctionsHeadless(
@@ -165,7 +177,7 @@ export function createTreasuryAuctionsHeadless(
     argument: {
       kind: "free-text",
       placeholder: "search",
-      description: "Optional search: security type, benchmark (10Y), term, CUSIP, or auction date (YYYY-MM-DD).",
+      description: "Optional search: security type, benchmark (10Y), term, CUSIP, or auction date (YYYY-MM-DD). HK, EFB or HKGB lists Hong Kong's tenders.",
       optional: true,
     },
     options: [
@@ -180,8 +192,17 @@ export function createTreasuryAuctionsHeadless(
         defaultValue: "120",
       },
       {
+        key: "market",
+        // No default: a search naming HK, EFB or RMB picks hk unless --market says otherwise.
+        description: "us (without it, unless the search names Hong Kong's paper): US Treasury auctions; hk: Hong Kong government paper tenders (EF Bills and Notes, HKSAR Government Bonds) from HKMA's Open API. A search naming HK, EFB, HKGB or RMB picks hk.",
+        type: "enum",
+        values: AUCTION_MARKETS.map((entry) => ({ value: entry.value })),
+        example: "--market hk",
+        pluginState: { pluginId: FIXED_INCOME_VIEW_STATE.treasuryAuctions, key: "market" },
+      },
+      {
         key: "filter",
-        description: "Security type group.",
+        description: "Security type group (Hong Kong: bill is EF Bills, note EF Notes, bond Government Bonds).",
         type: "enum",
         values: [{ value: "all" }, { value: "bill" }, { value: "note" }, { value: "bond" }],
         defaultValue: "all",
@@ -206,13 +227,28 @@ export function createTreasuryAuctionsHeadless(
       },
     ],
     columns: columnsFor("results", []),
+    // A search naming Hong Kong (`shot AUCT HK 10Y`) opens the pane on its market, as `fn` reads it.
+    shotState: (args) => marketOf(args) === "hk" ? { pluginState: { [FIXED_INCOME_VIEW_STATE.treasuryAuctions]: { market: "hk" } } } : {},
     describe: (args) => {
       const window = auctionHistoryWindow({ historyDays: args.options.historyDays });
-      return `Treasury Auctions | ${window === AUCTION_HISTORY_ALL ? "all" : `${window} days`} | ${String(args.options.filter)}`;
+      const hk = marketOf(args) === "hk";
+      return `${hk ? "Hong Kong Tenders" : "Treasury Auctions"} | ${window === AUCTION_HISTORY_ALL ? "all" : `${window} days`} | ${String(args.options.filter)}`;
     },
     async load(args) {
       const historyDays = auctionHistoryWindow({ historyDays: args.options.historyDays });
       const filter = args.options.filter as AuctionFilter;
+      if (marketOf(args) === "hk") {
+        return {
+          ...hkTendersReport(await (dependencies.hk ?? defaultDependencies.hk!)(historyDays), {
+            search: typeof args.argument === "string" ? args.argument : "",
+            filter,
+            window: historyDays,
+            view: args.options.view === "after" ? "after" : "results",
+            sort: typeof args.options.sort === "string" ? args.options.sort : null,
+          }),
+          appliedOptions: { market: "hk" },
+        };
+      }
       const sortColumn = typeof args.options.sort === "string" ? auctionSortColumn(args.options.sort) : null;
       // A sort by an after-view column is a request for that view.
       const view: AuctionView = args.options.view === "after" || (sortColumn && isAfterColumn(sortColumn)) ? "after" : "results";
@@ -257,9 +293,11 @@ export function createTreasuryAuctionsHeadless(
           size: auctionSize(auction),
           ...(after ? after.get(auction.id) : {}),
         })),
+        appliedOptions: { market: "us" },
         metadata: {
           fetchedAt: result.fetchedAt,
           stale: result.stale,
+          market: "us",
           historyDays,
           filter,
           view,
