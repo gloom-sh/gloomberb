@@ -107,8 +107,10 @@ test("quote of a moved symbol names its new symbol beside the old line's last pr
   // META (a new company holds it) and AAPL (no change) serve their own bars and report, with nothing extra.
   const meta = await runHistory(["META"]);
   expect(meta.error).toBeNull();
-  expect((meta.printed!.result.data as Array<{ close: number }>).map((row) => row.close)).toEqual([736.72]);
-  expect(meta.printed!.result.warnings).toEqual(["Asked 1Y, data starts 2026-10-14 (first available bar)"]);
+  // Its served bar leads; a quote that says the session trades adds the day's bar after it, as for any daily history.
+  expect((meta.printed!.result.data as Array<{ close: number }>)[0]!.close).toBe(736.72);
+  expect(meta.printed!.result.warnings).toContain("Asked 1Y, data starts 2026-10-14 (first available bar)");
+  expect(meta.printed!.result.warnings!.join(" ")).not.toMatch(/became|no longer trading/);
   expect((await runTicker("AAPL")).error).toBeNull();
   // A change lookup that fails is no note and no failure: the bars are served.
   const offline = await runHistory(["HFC"], source(async () => { throw new Error("fetch failed"); }));

@@ -98,7 +98,7 @@ const OFFICIAL_PREVIOUS_CLOSE_VENUES: ReadonlyMap<string, number> = new Map([["B
  * the daily bar is the official close, as history and the portfolio read it:
  * B3's PETR4 quoted R$45.36 on Fri 6 Nov 2026 beside a R$45.30 close.
  */
-const DAILY_BAR_CLOSE_VENUES: ReadonlySet<string> = new Set(["B3"]);
+export const DAILY_BAR_CLOSE_VENUES: ReadonlySet<string> = new Set(["B3"]);
 
 /**
  * A session volume below which a share or fund on a venue whose calendar

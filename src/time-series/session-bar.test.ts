@@ -103,6 +103,9 @@ describe("withSessionBar", () => {
     // Within half an hour of the bell a delayed quote may still be catching up: the bar stays partial.
     const justClosed = Date.parse("2026-11-06T09:30:00Z");
     expect(withSessionBar(thin, sgx, { now: justClosed, barSize: "1d" }).at(-1)!.partial).toBe(true);
+    // On B3 a closed quote can end on a print after the closing call: its official close is the source's bar, waited for.
+    const b3 = { ...sgx, symbol: "PETR4", listingExchangeName: "B3", exchangeName: "B3", currency: "BRL", instrumentType: "Common Stock" };
+    expect(withSessionBar(thin, b3, { now: Date.parse("2026-11-08T12:00:00Z"), barSize: "1d" }).at(-1)!.partial).toBe(true);
     // A quote from another session settles nothing.
     expect(withSessionBar(thin, { ...sgx, changeSessionDate: "2026-11-05", lastUpdated: Date.parse("2026-11-05T08:00:00Z") },
       { now: sunday, barSize: "1d" }).at(-1)!.partial).toBe(true);

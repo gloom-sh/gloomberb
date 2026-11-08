@@ -1,7 +1,9 @@
 import type { PricePoint, Quote } from "../types/financials";
 import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
 import { isAlwaysOpenExchange, isRegularSessionTime, latestRegularSessionClose, sessionCalendarTimeZone } from "../market-data/market/freshness";
+import { DAILY_BAR_CLOSE_VENUES } from "../market-data/market/dated-previous-close";
 import { quoteTradingDay } from "../market-data/quotes/day-range";
+import { canonicalExchange } from "../utils/exchanges";
 import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
 import { pricePointIntegrity } from "../utils/price-history-integrity";
 import { zonedDateKey } from "../utils/zoned-date-time";
@@ -162,7 +164,9 @@ export function withSessionBar(
  * the session's quote, read after the close, is that day's last price, so
  * the bar takes it (with the day's extremes and volume, which only grow) and
  * is final. A thin listing's Friday bar is no longer partial on Sunday.
- * Null when the bar is not such a bar, or the quote is not from its session.
+ * Null when the bar is not such a bar, or the quote is not from its session,
+ * and on a venue whose closed quote can end on a print after its closing call
+ * (B3): its official close is the source's bar, which is waited for.
  */
 function settledSessionBar(
   points: PricePoint[],
@@ -174,6 +178,7 @@ function settledSessionBar(
   now: number,
 ): PricePoint[] | null {
   if (size !== "1d" || !last.partial || quote.marketState === "REGULAR" || !positive(quote.price)) return null;
+  if (venue && DAILY_BAR_CLOSE_VENUES.has(canonicalExchange(venue))) return null;
   const day = calendarBarStart(lastTime, "1d", venue);
   const closed = latestRegularSessionClose(venue, now - SESSION_SETTLE_MS);
   if (!closed || closed.date < day || quoteTradingDay(quote) !== day) return null;

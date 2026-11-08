@@ -189,10 +189,10 @@ test("history shows today's session from the quote in every range, partial, whet
   }
 });
 
-test("a day the data service still marks partial after its session closed is exported partial and said to wait for its bar", async () => {
-  // GGAL on BYMA, Sat 24 Oct 2026: Friday closed at 6,260 on the quote while its daily bar was not final yet.
-  setSystemTime(new Date("2026-10-24T14:00:00Z"));
-  try {
+test("a day the data service still marks partial is exported partial until half an hour after its session closed, then final at the closing quote", async () => {
+  // GGAL on BYMA, Fri 23 Oct 2026: closed at 17:00 Buenos Aires (20:00 UTC) at 6,260 on the quote while its daily bar was not final yet.
+  const read = async (now: string) => {
+    setSystemTime(new Date(now));
     const cli = createTestCliContext({
       config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
       dataProvider: createTestDataProvider({
@@ -202,18 +202,27 @@ test("a day the data service still marks partial after its session closed is exp
           resolution: "1d",
           points: [
             { date: new Date("2026-10-22"), open: 5960, high: 5970, low: 5825, close: 5900, volume: 2_745_809 },
-            { date: new Date("2026-10-23"), open: 5965, high: 6280, low: 5910, close: 6260, volume: 2_472_150, partial: true },
+            { date: new Date("2026-10-23"), open: 5965, high: 6280, low: 5910, close: 6250, volume: 2_472_150, partial: true },
           ],
         }),
       }),
     }, { format: "csv" });
     await history.execute(["GGAL:BYMA"], cli.context);
     const [{ result, options }] = cli.printed;
-    expect(result.warnings).toContain("2026-10-23 closes on the session's last price until the day's bar is final (partial)");
     const [header, , friday] = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
-    const partial = header!.split(",").indexOf("Partial");
-    expect(partial).toBeGreaterThan(0);
-    expect(friday!.split(",")[partial]).toBe("true");
+    const column = (name: string) => friday!.split(",")[header!.split(",").indexOf(name)];
+    return { warnings: result.warnings ?? [], partial: column("Partial"), close: column("Close") };
+  };
+  try {
+    // Ten minutes after the close a delayed quote may still be catching up: the bar waits.
+    const justClosed = await read("2026-10-23T20:10:00Z");
+    expect(justClosed.warnings).toContain("2026-10-23 closes on the session's last price until the day's bar is final (partial)");
+    expect(justClosed.partial).toBe("true");
+    // On Saturday the session is long closed: its closing quote is the day's close.
+    const saturday = await read("2026-10-24T14:00:00Z");
+    expect(saturday.warnings.join(" ")).not.toContain("partial");
+    expect(saturday.partial).not.toBe("true");
+    expect(saturday.close).toBe("6260");
   } finally {
     setSystemTime();
   }
