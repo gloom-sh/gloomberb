@@ -532,7 +532,8 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
                 label="Continue"
                 variant="primary"
                 shortcut={CONTINUE_KEY}
-                disabled={positionCount === 0 || positions.submitting}
+                // A typed ticker is added on the way: Continue never does nothing beside a filled row.
+                disabled={(positionCount === 0 && !positions.hasDraft) || positions.submitting}
                 onPress={continueFromPositions}
               />
             </>

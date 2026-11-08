@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type Dispatch, type SetStateAction, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction, type RefObject } from "react";
 import { recordResearchActivity } from "../../api-client/research-activity";
 import { apiClient } from "../../api-client";
 import type { SyncBrokerInstanceResult } from "../../brokers/sync-broker-instance";
@@ -199,7 +199,14 @@ export function useOnboardingWorkspace({
     pluginRegistry.events.emit("config:changed", { config: withProgress });
   }, [dispatch, pluginRegistry.events]);
 
+  // Continue with a ticker typed but not added adds it first, then goes on once its row is listed.
+  const [continueAfterAdd, setContinueAfterAdd] = useState(false);
   const continueFromPositions = useCallback(() => {
+    if (positions.hasDraft) {
+      void positions.addPosition().then((added) => { if (added) setContinueAfterAdd(true); })
+        .catch(logFailure("onboarding.positions", "Add position on Continue failed"));
+      return;
+    }
     const largest = pickLargestPosition(positions.positions);
     if (!largest) {
       positions.focusField(0);
@@ -215,6 +222,11 @@ export function useOnboardingWorkspace({
       brokerName: undefined,
     });
   }, [positions, saveProgressInBackground]);
+  useEffect(() => {
+    if (!continueAfterAdd) return;
+    setContinueAfterAdd(false);
+    continueFromPositions();
+  }, [continueAfterAdd, continueFromPositions]);
 
   /**
    * Leaves "What do you hold?" holding nothing, as the Desks step can be left
