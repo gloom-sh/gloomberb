@@ -154,7 +154,7 @@ export const creditConditionsModule: PluginModule = {
       id: "credit-conditions-pane",
       paneId: "credit-conditions",
       label: "Credit Spreads",
-      description: "ICE BofA option-adjusted spreads from FRED: US investment grade and high yield by rating, and euro high yield.",
+      description: "ICE BofA option-adjusted spreads from FRED: US investment grade and high yield by rating, euro high yield, and emerging markets and Asia corporates.",
       keywords: ["credit", "spread", "oas", "corporate", "high yield", "investment grade", "macro", "euro", "europe", "bb", "ccc", "rating"],
       shortcut: { prefix: "CRD" },
       headless: creditConditionsHeadless,
