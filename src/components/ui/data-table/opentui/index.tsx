@@ -20,6 +20,7 @@ import {
   tableColumnStarts,
   tableContentWidthProps,
   tableFarEdgePad,
+  tableFreezesFirstColumn,
   tableScrollStep,
   useMeasuredTableContentWidth,
 } from "../../table-layout";
@@ -310,7 +311,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   horizontalPadding = 1,
   fillAvailableWidth = true,
   showHorizontalScrollbar = true,
-  freezeFirstColumn = false,
+  freezeFirstColumn: freezeFirstColumnProp,
   scrollToIndex,
   scrollToIndexAlign = "nearest",
   scrollToIndexVersion = 0,
@@ -375,6 +376,9 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   } = useMeasuredTableContentWidth(tableWidth, headerScrollRef, scrollRef);
   const horizontalScrollbarVisible = showHorizontalScrollbar
     && hasMeaningfulTableHorizontalOverflow(tableWidth, measuredViewportWidth, columnGap);
+  const freezeFirstColumn = tableFreezesFirstColumn({
+    freezeFirstColumn: freezeFirstColumnProp, columns, columnGap, horizontalPadding, viewportWidth: measuredViewportWidth,
+  });
   const contentWidth = fillAvailableWidth ? measuredContentWidth : tableWidth;
   const sectionWidth = measuredViewportWidth > 0 ? Math.min(contentWidth, measuredViewportWidth) : contentWidth;
   const displayColumns = useMemo(

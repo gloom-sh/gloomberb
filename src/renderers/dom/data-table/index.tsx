@@ -26,6 +26,7 @@ import {
   buildTableGridTemplateColumns,
   getTableWidth,
   hasMeaningfulTableHorizontalOverflow,
+  tableFreezesFirstColumn,
 } from "../../../components/ui/table-layout";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { isLiveResizing, onLiveResizeEnd } from "../../../ui/live-resize";
@@ -113,7 +114,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   horizontalPadding = 1,
   fillAvailableWidth = true,
   showHorizontalScrollbar = true,
-  freezeFirstColumn = false,
+  freezeFirstColumn: freezeFirstColumnProp,
   scrollToIndex,
   scrollToIndexAlign = "nearest",
   scrollToIndexVersion = 0,
@@ -126,6 +127,9 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   const bodyHorizontal = useScrollbarState(showHorizontalScrollbar);
   const bodyVertical = useScrollbarState(true);
   const [viewportWidth, setViewportWidth] = useState(0);
+  const freezeFirstColumn = tableFreezesFirstColumn({
+    freezeFirstColumn: freezeFirstColumnProp, columns, columnGap, horizontalPadding, viewportWidth,
+  });
   const [frozenScrollLeft, setFrozenScrollLeft] = useState(0);
   const [scrollbarActive, markScrollbarActive] = useScrollbarActivity();
   const tableWidth = useMemo(

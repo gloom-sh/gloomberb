@@ -31,7 +31,7 @@ interface Options {
   compact: boolean;
   editing: boolean;
   manyRows: boolean;
-  frozen: boolean;
+  frozen: boolean | undefined;
   tabs: boolean;
   columns: typeof WIDE_ID_COLUMNS;
 }
@@ -247,6 +247,22 @@ test("frozen identifiers survive keyboard, wheel, scrollbar and vertical resize 
   expect(table("body").scrollLeft).toBe(0);
   expect(table("header").scrollLeft).toBe(0);
   expect(tui.frame()).toContain("ALPH0");
+});
+
+test("a table that leaves freezing unset pins a narrow first column and lets a wide one scroll away", async () => {
+  await mount({ frozen: undefined, columns: NARROW_ID_COLUMNS });
+  await settle();
+  for (let i = 0; i < 2; i++) await key({ name: "right", shift: true });
+  expect(table("body").scrollLeft).toBeGreaterThan(0);
+  expect(tui.frame()).toContain("ALPH");
+  expect(tui.frame()).toContain("66.7%");
+  // Wide, it scrolls: a step is half the viewport, where a frozen one would stop at the value column's edge (17).
+  await act(async () => update({ columns: WIDE_ID_COLUMNS }));
+  await settle();
+  await key({ name: "left", shift: true });
+  await key({ name: "left", shift: true });
+  await key({ name: "right", shift: true });
+  expect(table("body").scrollLeft).toBe(20);
 });
 
 test("an ordinary table still scrolls its first column normally", async () => {

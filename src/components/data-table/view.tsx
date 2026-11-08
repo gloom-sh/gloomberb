@@ -13,7 +13,7 @@ import { useBeforeShortcut, useShortcut } from "../../react/input";
 import { isPlainKey, isPlainKeyboardEvent } from "../../utils/keyboard";
 import { DataTable, PaneStatusBody, type DataTableColumn, type DataTableProps, type PaneStatusBodyProps } from "../ui";
 import { useDataTableSortMenu } from "./sort-menu";
-import { tableScrollStep } from "../ui/table-layout";
+import { tableFreezesFirstColumn, tableScrollStep } from "../ui/table-layout";
 import {
   TableViewFrame,
   useResetTableScroll,
@@ -694,7 +694,13 @@ export function DataTableView<
       columns: tableProps.columns,
       columnGap: tableProps.columnGap,
       horizontalPadding: tableProps.horizontalPadding,
-      frozenFirstColumn: tableProps.freezeFirstColumn,
+      frozenFirstColumn: tableFreezesFirstColumn({
+        freezeFirstColumn: tableProps.freezeFirstColumn,
+        columns: tableProps.columns,
+        columnGap: tableProps.columnGap,
+        horizontalPadding: tableProps.horizontalPadding,
+        viewportWidth,
+      }),
       scrollLeft: currentLeft,
       direction,
       viewportWidth,

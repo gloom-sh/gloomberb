@@ -142,6 +142,33 @@ export function tableColumnStarts(columns: readonly TableWidthColumn[], columnGa
 }
 
 /**
+ * Whether a table pins its first column while it scrolls sideways. A table
+ * that sets `freezeFirstColumn` gets what it set; one that leaves it unset
+ * pins its first column when that column leaves the others at least half the
+ * viewport, so scrolled right each row still says what it is (a 70-column
+ * Relative Valuation read `4.50T 23.6 11.7` with no ticker). A first column
+ * wider than that would leave too little to scroll through, so it scrolls.
+ */
+export function tableFreezesFirstColumn({
+  freezeFirstColumn,
+  columns,
+  columnGap = 1,
+  horizontalPadding = 1,
+  viewportWidth,
+}: {
+  freezeFirstColumn: boolean | undefined;
+  columns: readonly TableWidthColumn[];
+  columnGap?: number;
+  horizontalPadding?: number;
+  viewportWidth: number;
+}): boolean {
+  if (freezeFirstColumn !== undefined) return freezeFirstColumn;
+  const first = columns[0];
+  if (!first || columns.length < 2 || viewportWidth <= 0) return false;
+  return (horizontalPadding + tableColumnWidth(first) + columnGap) * 2 <= viewportWidth;
+}
+
+/**
  * Where a frozen board can stop: 0, each column's edge (its start just past
  * the frozen column) and its end, the first edge that shows the last column
  * whole, or `maxLeft` when none does.
