@@ -417,15 +417,20 @@ type FinancialsCliData = TickerFinancials & {
   providerId: string | null;
 };
 
+/** The ranges as other tools spell them, which `--range` reads too: a week of sessions is 5d. */
+const HISTORY_RANGE_ALIASES = "5d, 1mo, 3mo, 6mo, 1y, 5y and max";
+
 /**
  * A range as typed, in any case and as other tools spell it: `1mo`, `1m` and
- * `1 month` are 1M, `1wk` 1W, `5yr` 5Y, `max` ALL.
+ * `1 month` are 1M, `1wk` and `5d` (a week's five sessions) 1W, `5yr` 5Y,
+ * `max` ALL.
  */
 export function readHistoryRange(value: string): HistoryRange | null {
   const typed = value.trim().toUpperCase().replace(/\s+/g, "");
   if (typed === "MAX") return "ALL";
   const spelled = /^(\d+)(D|DAYS?|W|WKS?|WEEKS?|M|MOS?|MONTHS?|Y|YRS?|YEARS?)$/.exec(typed);
   const range = (spelled ? `${spelled[1]}${spelled[2]![0]}` : typed) as HistoryRange;
+  if (range === "5D" as HistoryRange || range === "7D" as HistoryRange) return "1W";
   return VALID_RANGES.has(range) ? range : null;
 }
 
@@ -441,7 +446,7 @@ function rangeTypedAsSymbol(entry: string): HistoryRange | null {
 
 function parseRange(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): HistoryRange {
   const range = readHistoryRange(value ?? "1Y");
-  if (!range) ctx.fail(`Unknown range "${value}".`, `Use one of ${HISTORY_RANGES.join(", ")}.`);
+  if (!range) ctx.fail(`Unknown range "${value}".`, `Use one of ${HISTORY_RANGES.join(", ")}, or ${HISTORY_RANGE_ALIASES}.`);
   return range!;
 }
 
@@ -4090,7 +4095,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.research,
       usage: [HISTORY_USAGE, "history --file <path> [--range <range> | --from <year|date> [--to <year|date>]]"],
       options: [
-        { flags: "--range <range>", description: `${HISTORY_RANGES.join(", ")} (default 1Y); ${HISTORY_YTD_RANGE}; ${HISTORY_ALL_RANGE}` },
+        { flags: "--range <range>", description: `${HISTORY_RANGES.join(", ")} (default 1Y), or as other tools write them: ${HISTORY_RANGE_ALIASES}; ${HISTORY_YTD_RANGE}; ${HISTORY_ALL_RANGE}` },
         { flags: "--from <year|date>, --start <year|date>", description: `${PRICE_WINDOW_FROM_HELP}. Up to five years come in daily bars, up to twenty weekly, longer monthly` },
         { flags: "--to <year|date>, --end <year|date>", description: PRICE_WINDOW_TO_HELP },
         { flags: "--file <path>", description: "Read the symbols from a text or CSV file, one per line (- reads standard input), and write every symbol's bars in one table" },

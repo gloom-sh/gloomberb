@@ -108,6 +108,10 @@ test("words written as a code with a market code no venue answers to are one ref
 
 test.each([
   ["700.HK", "0700.HK"],
+  // HKEXnews and the Product Key Facts print five digits.
+  ["03042.HK", "3042.HK"],
+  ["00700.HK", "0700.HK"],
+  ["00700:HKEX", "0700:HKEX"],
   ["6758.JP", "6758.T"],
   ["BRK/B", "BRK-B"],
   ["MC.FP", "MC.PA"],
@@ -119,7 +123,7 @@ test.each([
 
 // A listing suffix already (Shanghai's .SS), a Canadian unit (.UN) and a code another country writes (.IT) stay as typed.
 // A slash after one letter is a ratio or an abbreviation, never a share class.
-test.each(["600519.SS", "REI.UN", "ENI.IT", "VOD.L", "0700.HK", "EUR/USD", "BTC/USD", "P/E", "N/A", "Y/Y", "q/q", "P/B"])("%s is no near miss", (typed) => {
+test.each(["600519.SS", "REI.UN", "ENI.IT", "VOD.L", "0700.HK", "83042.HK", "3042:HKEX", "0.HK", "00000.HK", "EUR/USD", "BTC/USD", "P/E", "N/A", "Y/Y", "q/q", "P/B"])("%s is no near miss", (typed) => {
   expect(readNearMissListing(typed)).toBeNull();
   expect(normalizeTickerInput(null, typed)).toBe(typed.toUpperCase());
 });

@@ -108,7 +108,8 @@ export async function answerQuote(
     const venue = choice.length > 0 ? null : bareListingNote(listing, result.quote);
     // A row saved as 247540:KRX is quoted from KOSDAQ, the board it trades on.
     const board = tradingBoardNote(listing, result.quote);
-    return { result, listing, notes: [...choice, venue ?? [], board ?? [], also(result.quote), currencyCodeNote(listing, result.quote) ?? []].flat() };
+    const hongKong = await hongKongCodeNote(listing, result.quote, market);
+    return { result, listing, notes: [...choice, venue ?? [], hongKong ?? [], board ?? [], also(result.quote), currencyCodeNote(listing, result.quote) ?? []].flat() };
   }
   // No answer from the data service: no venue lookup or other listing would get one either.
   if (isNetworkFailure(result.error)) return { result, listing, notes: [] };
@@ -125,6 +126,9 @@ export async function answerQuote(
   const index = key ? await answerNamedListing({ ...parseListingArg(key),
     readAs: `Read "${listing.typed!.trim()}" as ${key} (${marked!.name}).`, readFromName: true }, market, request, refresh, datesChangeBasis) : null;
   if (index) return index;
+  // ^GSPC typed in Windows' cmd.exe arrives as GSPC, the shell taking ^ for its escape character.
+  const caret = await caretIndexLine(listing, result, market);
+  if (caret) return { result, listing, failure: { message: caret, oneLine: caret }, notes: [] };
   // A word the service marks as a company's name is that company, before the symbol is read on its listings abroad.
   const named = !listing.exchange && listing.typed ? await serviceNamedCompany(listing.typed, market) : null;
   const meant = named ? await answerNamedListing(named, market, request, refresh, datesChangeBasis) : null;
@@ -274,6 +278,47 @@ export async function requireQuotedListing(
   const usSuggestion = venue && answer.notes.includes(venue) ? await suggestUsTicker(answer.listing.symbol, market) : null;
   const notUs = notUsTickerSentence({ target: answer.result.target, quote, listing: { name: quote.name ?? null }, usSuggestion: usSuggestion ?? undefined });
   return { listing: answer.listing, quote, notes: [...answer.notes, ...notUs ? [notUs] : []] };
+}
+
+/** A bare symbol that may be an index's without its ^: letters, then letters or digits. */
+const CARETLESS_INDEX = /^[A-Z][A-Z0-9]{1,9}$/;
+
+/**
+ * "Not a ticker: GSPC. Did you mean ^GSPC (S&P 500)? Try "^GSPC"." for a
+ * bare symbol that is not a ticker while its ^ form is an index: cmd.exe
+ * takes ^ for its escape character and passes `gloom quote ^GSPC` on as
+ * GSPC, and search would offer Goldman's preferreds for it. Null for any
+ * other symbol, a named venue, and when the ^ form quotes no index.
+ */
+async function caretIndexLine(listing: CliListing, result: QuoteBatchResult, market: MarketContext): Promise<string | null> {
+  if (listing.exchange || listing.saved || !CARETLESS_INDEX.test(listing.symbol)) return null;
+  const index = `^${listing.symbol}`;
+  const quote = await market.dataProvider.getQuote(index, "")
+    .catch(logFailure("cli.quote-answer", "Quote a symbol's index form failed", null));
+  if (!quote || quote.instrumentType?.trim().toUpperCase() !== "INDEX") return null;
+  const said = notATickerSymbol(errorMessage(result.error) ?? "") ? `Not a ticker: ${listing.symbol}.` : `${listing.symbol} has no quote.`;
+  return `${said} Did you mean ${index}${quote.name ? ` (${quote.name})` : ""}? Try "${index}".`;
+}
+
+/** Five digits with a leading zero: a TWSE fund's code (00700), and how HKEXnews prints a Hong Kong one (00700 is 0700). */
+const FIVE_DIGIT_CODE = /^0\d{4}$/;
+
+/**
+ * A bare five-digit code quoted on another venue that HKEX lists too, as its
+ * own code without the leading zeros: 00700 is Fubon's Hang Seng China
+ * Enterprises ETF on TWSE and Tencent's 0700 on HKEX. The row stays the
+ * other venue's; the note names the HKEX listing, "00700: for HKEX use 700.HK
+ * (Tencent Holdings Limited)". Null for any other symbol, a named or saved
+ * listing, and a code HKEX does not list.
+ */
+async function hongKongCodeNote(listing: CliListing, quote: Quote, market: MarketContext): Promise<string | null> {
+  if (listing.exchange || listing.saved || !FIVE_DIGIT_CODE.test(listing.symbol)) return null;
+  if (canonicalExchange(quote.listingExchangeName || quote.exchangeName) === "HKEX") return null;
+  const code = String(Number(listing.symbol));
+  const hongKong = await market.dataProvider.getQuote(code.padStart(4, "0"), "HKEX")
+    .catch(logFailure("cli.quote-answer", "Quote a code's HKEX listing failed", null));
+  if (!hongKong || canonicalExchange(hongKong.listingExchangeName || hongKong.exchangeName) !== "HKEX") return null;
+  return `${listing.symbol}: for HKEX use ${code}.HK${hongKong.name ? ` (${hongKong.name})` : ""}`;
 }
 
 /**

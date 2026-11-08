@@ -27,8 +27,8 @@ const DOM_EVERY_ROW =
 const DOM_WHOLE_PANE =
   "The pane was grown to fit the page it has open, so all of its text is returned.";
 
-/** The sign-in wall's buttons, which a rendered view reads as words: `Log in ↵ Sign up free`. */
-const SIGN_IN_WALL_BUTTONS = /\s*\b(?:Log in|Sign up free|Resend Verification Email)(?:\s*\u21B5)?(?=\s|$)/g;
+/** The sign-in wall's buttons, which a rendered view reads as words, with the key that presses one: `Log in ↩ Sign up free`. */
+const SIGN_IN_WALL_BUTTONS = /\s*\b(?:Log in|Sign up free|Resend Verification Email)(?:\s*[\u21A9\u21B5])?(?=\s|$)/g;
 
 /** Whether the wall asks for the account's email to be verified, not for a sign-in. */
 function asksToVerifyEmail(visibleText: string): boolean {
@@ -42,8 +42,8 @@ function asksToVerifyEmail(visibleText: string): boolean {
 function signInWallText(visibleText: string): string {
   const headline = visibleText.replace(SIGN_IN_WALL_BUTTONS, "").trim();
   const needs = asksToVerifyEmail(visibleText)
-    ? "Requires a verified email on your Gloom account; resend the verification email in the app."
-    : "Requires a free Gloom sign-in: log in or sign up in the app.";
+    ? "Requires a verified email on your Gloom account: open the app (gloom) and resend the verification email from the command bar (Ctrl+P, Resend Verification Email)."
+    : "Requires a free Gloom sign-in: open the app (gloom) and log in or sign up free from the command bar (Ctrl+P, Log In or Sign Up); this command then reads with that session.";
   return headline ? `${headline} ${needs}` : needs;
 }
 
