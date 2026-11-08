@@ -1,6 +1,6 @@
 import { Box, ContextMenuProvider, useNativeRenderer, useRendererHost, useUiHost } from "./ui";
 import { ToastViewport, useToastHost } from "./ui/toast";
-import { useState, useEffect, useCallback, useRef, useMemo, useSyncExternalStore, type Dispatch, type ReactNode } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import {
   AppProvider,
   getFocusedTickerSymbol,
@@ -9,7 +9,6 @@ import {
   useAppStateRef,
   type AppState,
 } from "./state/app/context";
-import type { AppAction } from "./core/state/app/state";
 import { bindAppActivity, isAppVisible, subscribeAppVisibility, useAppActive, useAppVisible } from "./state/app/activity";
 import { Header } from "./components/layout/header";
 import { StatusBar } from "./components/layout/status-bar";
@@ -57,7 +56,7 @@ import { useAppUpdateRuntime } from "./app/runtime/update";
 import { resolveUpdateChannel } from "./updater/channel";
 import { createCoreSyncContributors } from "./sync/core-contributors";
 import { useCloudSyncRuntime } from "./sync/react";
-import { changesOtherWindowTabs, withOtherWindowTabs, withoutOtherWindowTabs } from "./sync/other-window-tabs";
+import { createSyncConfigDispatch, withOtherWindowTabs } from "./sync/other-window-tabs";
 import { getDesktopWindows } from "./state/desktop-windows";
 import type { OtherWindowTab } from "./types/desktop-window";
 import { RemoteControlHost, type RemoteControlAdapter } from "./remote/app-host";
@@ -67,10 +66,11 @@ import {
   resolveCliLaunchConfig,
   resolveInitialAppConfig,
 } from "./app/app-bootstrap-state";
-import { saveConfigImmediately, scheduleConfigSave } from "./state/config-save-scheduler";
+import { scheduleConfigSave } from "./state/config-save-scheduler";
 import { LOW_PRIORITY_CONFIG_SAVE_DEBOUNCE_MS } from "./state/persist-scheduler";
 import { savedLayoutsDifferOnlyInMirror } from "./core/state/app/layout";
 import { measurePerf } from "./utils/perf-marks";
+import { t } from "./i18n";
 import { useAppLanguage } from "./i18n/react";
 import { AppLanguageConfigObserver } from "./app/language-observer";
 import { isPaneShareHandoff } from "./shares/location";
@@ -207,15 +207,12 @@ function AppInner({
   otherWindowTabsRef.current = otherWindowTabs;
   const syncState = useMemo(() => withOtherWindowTabs(state, otherWindowTabs), [state, otherWindowTabs]);
   const getSyncState = useCallback(() => withOtherWindowTabs(stateRef.current, otherWindowTabsRef.current), [stateRef]);
-  const syncDispatch = useCallback<Dispatch<AppAction>>((action) => {
-    if (action.type !== "SET_CONFIG") {
-      dispatch(action);
-      return;
-    }
-    const others = otherWindowTabsRef.current;
-    if (changesOtherWindowTabs(action.config, others)) void saveConfigImmediately(action.config);
-    dispatch({ ...action, config: withoutOtherWindowTabs(action.config, others, stateRef.current.config) });
-  }, [dispatch, stateRef]);
+  const syncDispatch = useMemo(() => createSyncConfigDispatch({
+    dispatch,
+    otherWindowTabs: () => otherWindowTabsRef.current,
+    currentConfig: () => stateRef.current.config,
+    onSaveFailure: () => pluginRegistry.notify({ type: "error", body: t("Could not save the tabs synced to your other windows.") }),
+  }), [dispatch, pluginRegistry, stateRef]);
   const appActive = useAppActive();
   const appVisible = useAppVisible();
   const appActiveRef = useRef(appActive);
@@ -296,6 +293,14 @@ function AppInner({
       if (isPaneInLayout(stateRef.current.config.layout, paneId)) pluginRegistry.focusPane(paneId);
     });
   }, [desktopWindowBridge, pluginRegistry, stateRef]);
+
+  // A window change the desktop app could not save: a window or popped-out pane closed, a pane docked or moved.
+  useEffect(() => {
+    if (desktopWindowBridge?.kind !== "main" || appWideWorkElsewhere || !desktopWindowBridge.subscribeSaveFailures) return;
+    return desktopWindowBridge.subscribeSaveFailures(() => {
+      pluginRegistry.notify({ type: "error", body: t("Could not save your window layout.") });
+    });
+  }, [appWideWorkElsewhere, desktopWindowBridge, pluginRegistry]);
 
   useEffect(() => {
     const disposers = createCoreSyncContributors().map((contributor) => (

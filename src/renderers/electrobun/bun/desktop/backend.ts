@@ -1,7 +1,6 @@
 import Electrobun, { ApplicationMenu, BrowserView, Screen, Utils, type BrowserWindow } from "electrobun/bun";
 import { homedir } from "os";
 import { createAppServices, type AppServices } from "../../../../core/app-services";
-import { syncConfigActiveLayoutState, type PaneRuntimeState } from "../../../../core/state/app/state";
 import {
   APP_SESSION_ID,
   APP_SESSION_SCHEMA_VERSION,
@@ -77,6 +76,13 @@ import { scheduleDesktopRelaunch } from "./relaunch";
 import { createDesktopRpcRegistry } from "./rpc-registry";
 import { measureRpcTraffic } from "./rpc-timing";
 import { DesktopStateBroadcaster } from "./state-broadcaster";
+import {
+  commitDesktopSnapshot,
+  commitDesktopSnapshotInBackground,
+  syncActiveLayout,
+  type DesktopSnapshotCommitHost,
+  type DesktopSnapshotCommitOptions,
+} from "./snapshot-commit";
 import { createDesktopWorkspace, type DesktopWorkspace } from "./workspace";
 import { handleDesktopWorkspaceRequest } from "./workspace/requests";
 
@@ -103,14 +109,6 @@ function isGloomberbDeepLink(rawUrl: string): boolean {
     // Intentional ignore: a URL that does not parse is no gloomberb: deep link.
     return false;
   }
-}
-
-function syncActiveLayout(
-  config: AppConfig,
-  paneState: Record<string, PaneRuntimeState> = config.layouts[config.activeLayoutIndex]?.paneState ?? {},
-  focusedPaneId: string | null = config.layouts[config.activeLayoutIndex]?.focusedPaneId ?? null,
-): AppConfig {
-  return syncConfigActiveLayoutState(config, paneState, focusedPaneId);
 }
 
 /**
@@ -391,7 +389,7 @@ export class DesktopBackend {
     if (this.quitting) return;
     const workspace = this.workspace;
     if (!workspace || !workspace.windowIds().includes(windowId)) return;
-    void this.commitDesktopSnapshot(workspace.closeWindow(windowId));
+    this.commitDesktopSnapshotInBackground(workspace.closeWindow(windowId));
   }
 
   /** What a closed full window held: its streams, its channel. */
@@ -512,22 +510,27 @@ export class DesktopBackend {
     this.services = null;
   }
 
-  async commitDesktopSnapshot(
+  private readonly snapshotCommits: DesktopSnapshotCommitHost = {
+    setConfig: (config) => this.setConfig(config),
+    replaceConfig: (config, options) => { this.requireWorkspace().replaceConfig(config, options); },
+    currentSnapshot: () => this.requireWorkspace().getSnapshot(),
+    saveConfig: (config) => saveConfig(config),
+    reconcileWindows: () => this.reconcileWindows(),
+    broadcastState: (snapshot) => this.stateBroadcaster.sendDesktopState(snapshot),
+    sendWindowList: () => this.sendWindowList(),
+    reportSaveFailure: () => { this.readyMainWindowRpc()?.send["desktop.saveFailed"]({}); },
+  };
+
+  commitDesktopSnapshot(
     snapshot: DesktopSharedStateSnapshot,
-    options: { persistConfig?: boolean; reconcileWindows?: boolean } = {},
+    options: DesktopSnapshotCommitOptions = {},
   ): Promise<DesktopSharedStateSnapshot> {
-    const nextConfig = syncActiveLayout(snapshot.config, snapshot.paneState, snapshot.focusedPaneId);
-    this.setConfig(nextConfig);
-    this.requireWorkspace().replaceConfig(nextConfig, { layoutChanged: snapshot.layoutChanged });
-    if (options.persistConfig !== false) {
-      await saveConfig(nextConfig);
-    }
-    if (options.reconcileWindows !== false) {
-      this.reconcileWindows();
-    }
-    this.stateBroadcaster.sendDesktopState(this.requireWorkspace().getSnapshot());
-    this.sendWindowList();
-    return this.requireWorkspace().getSnapshot();
+    return commitDesktopSnapshot(this.snapshotCommits, snapshot, options);
+  }
+
+  /** For a change no request waits on: a failure is logged and the main window says so. */
+  commitDesktopSnapshotInBackground(snapshot: DesktopSharedStateSnapshot, options: DesktopSnapshotCommitOptions = {}): void {
+    commitDesktopSnapshotInBackground(this.snapshotCommits, snapshot, options);
   }
 
   /** Stops what a closed window was streaming or subscribed to. */

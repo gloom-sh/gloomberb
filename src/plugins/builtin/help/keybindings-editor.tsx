@@ -53,6 +53,7 @@ import type { KeybindingsConfig } from "../../../types/config";
 import type { KeyboardShortcut } from "../../../types/plugin";
 import { useUiHost } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
+import { logFailure } from "../../../utils/log-failure";
 import { detectShortcutPlatform, getShortcutDisplayMode } from "../../../utils/shortcut-labels";
 import { getSharedRegistry } from "../../registry";
 import { usePluginAppActions } from "../../runtime";
@@ -218,8 +219,11 @@ export function KeybindingsEditor({
 
   const writeKeybindings = useCallback((next: KeybindingsConfig | undefined) => {
     dispatch({ type: "SET_KEYBINDINGS", keybindings: next });
-    void saveConfigImmediately(updateKeybindingsConfig(stateRef.current.config, next));
-  }, [dispatch, stateRef]);
+    saveConfigImmediately(updateKeybindingsConfig(stateRef.current.config, next)).catch((error: unknown) => {
+      logFailure("help.keybindings", "Saving keybindings failed")(error);
+      notify({ type: "error", body: t("Could not save your keybindings.") });
+    });
+  }, [dispatch, notify, stateRef]);
 
   const startCapture = useCallback((target: CaptureTarget) => {
     setFeedback(null);

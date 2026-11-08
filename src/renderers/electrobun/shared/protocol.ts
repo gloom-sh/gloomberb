@@ -377,6 +377,9 @@ interface DesktopWindowVisibilityMessage {
   visible: boolean;
 }
 
+/** A window change no request waited on (a window closed, a pane docked) could not be saved; to the main window. */
+type DesktopSaveFailedMessage = Record<string, never>;
+
 /** Plugin folders the Bun process updated in the background, for the main window to bring into its session. */
 interface PluginsUpdatedMessage {
   directories: string[];
@@ -423,6 +426,7 @@ export interface ElectrobunDesktopRpcSchema {
       "desktop.otherWindowTabs": DesktopOtherWindowTabsMessage;
       "desktop.focusPane": DesktopFocusPaneMessage;
       "desktop.windowVisibility": DesktopWindowVisibilityMessage;
+      "desktop.saveFailed": DesktopSaveFailedMessage;
       "plugins.updated": PluginsUpdatedMessage;
       "plugins.seedProgress": PluginSeedProgressMessage;
       "update.progress": UpdateProgressMessage;
