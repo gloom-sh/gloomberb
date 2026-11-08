@@ -15,6 +15,14 @@ import { createElectrobunDesktopUpdater, firstTarPath, isWholeTar, removeUpdateA
 
 type UpdateInfo = ReturnType<ElectrobunUpdaterApi["updateInfo"]>;
 
+let bsdtar: boolean | undefined;
+
+/** The system tar's name for `format`: bsdtar (macOS, Windows) writes GNU tar's `gnu` format as `gnutar`. */
+function tarFormat(format: string): string {
+  bsdtar ??= Bun.spawnSync(["tar", "--version"]).stdout.toString().includes("bsdtar");
+  return format === "gnu" && bsdtar ? "gnutar" : format;
+}
+
 function status(entry: Pick<UpdateStatusEntry, "status"> & Partial<UpdateStatusEntry>): UpdateStatusEntry {
   return { message: entry.status, timestamp: 0, ...entry };
 }
@@ -508,7 +516,7 @@ describe("update archives from before the rename", () => {
     const stage = mkdtempSync(join(folder, "stage-"));
     mkdirSync(join(stage, file, ".."), { recursive: true });
     writeFileSync(join(stage, file), "{}");
-    const packed = Bun.spawnSync(["tar", `--format=${format}`, "-cf", join(folder, `${name}.tar`), entry], { cwd: stage });
+    const packed = Bun.spawnSync(["tar", `--format=${tarFormat(format)}`, "-cf", join(folder, `${name}.tar`), entry], { cwd: stage });
     if (packed.exitCode !== 0) throw new Error(packed.stderr.toString());
     rmSync(stage, { recursive: true });
     return join(folder, `${name}.tar`);
@@ -719,7 +727,7 @@ describe("a damaged update archive", () => {
       writeFileSync(join(stage, "Gloom", "version.json"), "{}");
       writeFileSync(join(deep, "bun"), crypto.getRandomValues(new Uint8Array(5000)));
       const path = join(folder, "whole.tar");
-      const packed = Bun.spawnSync(["tar", `--format=${format}`, "-cf", path, "Gloom"], { cwd: stage });
+      const packed = Bun.spawnSync(["tar", `--format=${tarFormat(format)}`, "-cf", path, "Gloom"], { cwd: stage });
       if (packed.exitCode !== 0) throw new Error(packed.stderr.toString());
       expect(await isWholeTar(path)).toBe(true);
 

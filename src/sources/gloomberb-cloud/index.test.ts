@@ -785,8 +785,9 @@ describe("GloomberbCloudProvider", () => {
     await provider.getDetailedPriceHistory(
       "AAPL",
       "NASDAQ",
-      new Date(2026, 0, 1, 0, 0, 0),
-      new Date(2026, 2, 27, 0, 0, 0),
+      // Daily requests name UTC days, as their callers build them.
+      new Date(Date.UTC(2026, 0, 1)),
+      new Date(Date.UTC(2026, 2, 27)),
       "1d",
     );
 

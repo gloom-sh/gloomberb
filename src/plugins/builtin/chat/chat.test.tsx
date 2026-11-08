@@ -25,6 +25,7 @@ import {
   installServerChannels,
   lineText,
   makeMessage,
+  messageDay,
 } from "./test-harness";
 import { createTestTicker } from "../../../test-support/ticker";
 import { createTestFinancials } from "../../../test-support/data-provider";
@@ -1020,7 +1021,7 @@ describe("ChatContent", () => {
 
     const frameAfterType = tui.frame();
     expect(frameAfterType).toContain("> g");
-    expect(frameAfterType).not.toContain("user1 3/30/26");
+    expect(frameAfterType).not.toContain(`user1 ${messageDay(1)}`);
     expect(frameAfterType).not.toContain("message 1 ");
   });
 

@@ -9,13 +9,15 @@ Bug reports and pull requests are welcome. Please follow the [code of conduct](C
 Requires [Bun](https://bun.sh) 1.3.14, the version CI runs (`packageManager` in `package.json`). Install it with `curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"`, and recheck a test that fails only on another version against 1.3.14 before chasing it.
 
 ```bash
-git clone https://github.com/gloom-sh/gloomberb.git
+git clone --filter=blob:none https://github.com/gloom-sh/gloomberb.git
 cd gloomberb
 bun install
 bun run desktop:sync  # Electrobun's SDK, for the desktop app, typecheck and tests
 bun dev               # terminal app, restarted on save
 bun run desktop:dev   # desktop app
 ```
+
+`--filter=blob:none` makes the clone take seconds rather than minutes: it downloads every commit but only the files you check out, and fetches an older version of a file when a command needs it, so the first `git blame` of a file is slow.
 
 Electrobun 2 keeps its SDK out of `node_modules`: `bun run desktop:sync` downloads the pinned release's into `.hutch/devkit` and applies our patch over it (`patches/electrobun-devkit@*.patch`). The desktop app, `bun run typecheck` and `bun test` read it from there. Run it again after `bun install` brings a new Electrobun version.
 
@@ -69,22 +71,7 @@ bun run knip        # unused files, exports and dependencies
 bun test
 ```
 
-Some changes need one more check:
-
-| If you change | Run |
-|---|---|
-| A built-in plugin's id, name, description, toggle, panes or capabilities | `bun run plugins:manifest:check`; `bun run plugins:manifest` regenerates `plugin-manifest.json` |
-| A plugin compiled into the web app, or the `hosts` it declares | `bun run web:proxy-hosts:check`; `bun run web:proxy-hosts` regenerates the allowlist |
-| A runtime export of the plugin API (package.json `exports`) | `bun test src/public/public-api.test.ts` and `bun run plugins:registry:check`; see [Plugin compatibility](PLUGINS.md#plugin-compatibility) before removing or renaming one |
-| Desktop view code | `bun run desktop:view:build` |
-| Web app, share page or Worker code | `bun run web:audit` and `bun run cloudflare:dry-run` |
-| Build scripts, the terminal entry point, the modules the host serves to plugins (`src/plugins/host-modules.ts`, `host-resolver.ts`) or dependencies (`package.json`, `bun.lock`) | `bun run build`, then `bun run plugins:registry:packaged --terminal dist/gloomberb-<target>.gz --desktop-tui`: loads every plugin the registry lists in the compiled binary and in the desktop's bundled terminal (needs the network; the `registry-plugins-packaged` job runs it on every pull request) |
-| Tables, rendering, or market data stores | `bun run benchmark:tui:compare --base <main checkout>` and `bun run benchmark:tui:memory` (need tmux); the Performance workflow runs both on every PR |
-| What runs before the first frame: the terminal entry point, app startup, the desktop Bun process, or the page and launch frame of the desktop and web apps | `bun run benchmark:startup <tui\|desktop\|web> --base <main checkout>` (add `--cold` for a first launch; the desktop needs Linux with Xvfb, the terminal tmux) |
-| Pane chrome, moving panes, the DOM renderer or the desktop view | `bun run check:pane-chrome` and `bun run benchmark:pane-drag:compare --base <main checkout>`; see [Pane chrome checks](#pane-chrome-checks) |
-| Anything a pane or plugin draws on the desktop or web (components, the DOM renderer, plugin code, styles.css, the theme) | `bun run check:ui-tokens` and `bun run ui:benchmark --base origin/main`, and attach the blast-radius sheet to the PR; the UI tokens and UI benchmark workflows run both. See [Holding the line](docs/pane-conventions.md#holding-the-line) |
-| A headless pane function Ask Gloom calls, or what one reads from Gloom Cloud | `bun run askg:tool-sweep` with a throwaway `GLOOMBERB_HOME` and a Pro session (`GLOOMBERB_SESSION_TOKEN`): every tool on heavy, realistic inputs (the largest 13F filers, long histories, broad screens, many tickers, Hong Kong and mainland listings), three runs each, failing a case that errors, comes back empty or takes longer than the 20 s a call gets inside an Ask Gloom script. A new function needs a case in `scripts/askg-tool-sweep-cases.ts`; `bun test` fails without one (`bun scripts/askg-tool-sweep.ts --check` runs that check alone) |
-| Cloud sync, the portfolio analytics it values, or the desktop view's RPC path (Electrobun's patch included) | `bun scripts/pane-chrome/sync-poll.ts --check` (needs Playwright WebKit): the longest main-thread block of a sync on a large invented workspace and of a 4 MB message through Electrobun's preload codec, against a budget; the Performance workflow runs it for those paths |
+CI also runs the checks for the areas a change touches, such as the plugin manifest, the web build and the UI benchmark, and a failing job names the command to run locally. [Checks by area](docs/checks.md) lists every one, including the two you run yourself.
 
 Try UI changes in the app as well. [`.agents/skills/tui-testing/SKILL.md`](.agents/skills/tui-testing/SKILL.md) shows how to drive the terminal app from tmux; give it a throwaway `GLOOMBERB_HOME`.
 
@@ -157,7 +144,7 @@ Only independently owned, registered product areas implement `GloomPlugin`. Larg
 
 - Keep each pull request to one change, and send unrelated cleanups separately.
 - Title it with a plain sentence saying what changes, such as "Pin the FX staleness test to a weekday".
-- In the description, say why, list the changes, and say what you verified: the checks you ran and, for anything visible, a screenshot from the terminal or the desktop app.
+- In the description, say why, list the changes, and say what you verified: the checks you ran and, for anything visible, a screenshot from the terminal or the desktop app, attached to the description rather than committed.
 - Write the title, description, commit messages and branch name for an outside reader. Leave out internal tracker ids and links, private repositories and internal notes; when a change needs a server change too, say "needs the matching server change". The PR text check fails a title or description that does not, and the Tracked files check scans every file in the repository; `./scripts/check-private-references.sh` runs it locally.
 - Keep user-visible behavior the same unless changing it is the point, and update `docs/` when it changes.
 - The README is a short front door: what it is, how to install it, how to start. Do not add function lists, feature guides, privacy detail or release notes to it. A new function goes in the website's function catalog, and explanations go in `docs/`.
