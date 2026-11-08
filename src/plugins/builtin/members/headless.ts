@@ -11,7 +11,7 @@ const columns: HeadlessPaneColumn[] = [
   ...["changePercent", "return1WPercent", "return1MPercent", "returnYtdPercent"].map((key, i) => ({ key, header: ["1D", "1W", "1M", "YTD"][i]!, align: "right" as const, format: (value: unknown) => percent(value as number | null) })),
 ];
 /**
- * Linear: GLO-1881. `fn MEMB NVDA`: the covered funds whose holdings hold a stock, the funds on daily files first, then
+ * `fn MEMB NVDA`: the covered funds whose holdings hold a stock, the funds on daily files first, then
  * those read from N-PORT reports, each with its weight and what its holdings are as of.
  */
 async function stockFunds(input: string, client: Parameters<typeof fetchStockFunds>[1]): Promise<HeadlessRowsResult> {

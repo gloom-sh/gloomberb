@@ -196,7 +196,7 @@ function FundPicker({ width, height, focused, choose }: Pick<PaneProps, "width" 
 type ListProps = Pick<PaneProps, "width" | "height" | "focused">;
 const stockFundKey = (row: SectionedRow<StockFund>) => row.key;
 /**
- * Linear: GLO-1881. The covered funds holding a stock: the funds on daily holdings files first, then those read from
+ * The covered funds holding a stock: the funds on daily holdings files first, then those read from
  * SEC N-PORT reports, each with its weight and the date its holdings are as of (and a report's filing day).
  */
 function StockFunds({ symbol, width, height, focused }: ListProps & { symbol: string }) {
