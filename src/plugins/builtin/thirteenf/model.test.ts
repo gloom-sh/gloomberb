@@ -18,7 +18,8 @@ import {
   quartersBehindLatest,
   sortFilingPositionRows,
 } from "./model";
-import { nextFilingText } from "./report-notes";
+import { holdingSplitNotes, nextFilingText } from "./report-notes";
+import { holdingActionLabel } from "./format";
 import type { FundDetailData, ThirteenFFormSummary, ThirteenFHoldingRecord } from "./types";
 
 function form(overrides: Partial<ThirteenFFormSummary>): ThirteenFFormSummary {
@@ -345,6 +346,47 @@ describe("13F model", () => {
     // 70 shares held through a 1:10 reverse split are 7: unchanged, though 70 × 0.1 is 7.000000000000001.
     const held = fund([holding({ cusip: "A", value: 700, shares: 70 })], [holding({ cusip: "A", value: 700, shares: 7 })]);
     expect(buildFundHoldingRows(held, new Map([[id, 0.1]]))[0]).toMatchObject({ sharesChange: 0, sharesChangePercent: 0, action: "held", splitRatio: 0.1 });
+  });
+
+  // Anatole's Q2 13F read Brera's 1-for-10 reverse split as an exit of G13311116 beside a new G13311132.
+  test("an exit and a new line of one issuer whose share counts fit a split read as one position held across it", () => {
+    const fund = (previous: ThirteenFHoldingRecord[], current: ThirteenFHoldingRecord[]): FundDetailData => ({
+      cik: "0001693745", name: "Anatole", forms: [],
+      latestForm: form({}), previousForm: form({ periodOfReport: "2025-12-31" }),
+      latestHoldings: current, previousHoldings: previous,
+    });
+    const rows = buildFundHoldingRows(fund(
+      [
+        holding({ ticker: "", cusip: "G13311116", issuer: "Brera Holdings PLC", value: 2_952_000, shares: 4_920_000 }),
+        // Another issuer's exit beside a new line no split explains stays an exit.
+        holding({ ticker: "AXTI", cusip: "00246W103", issuer: "AXT Inc", value: 1_000, shares: 463_200 }),
+      ],
+      [
+        holding({ ticker: "", cusip: "G13311132", issuer: "Brera Holdings PLC", value: 2_490_000, shares: 492_000 }),
+        holding({ ticker: "NBIS", cusip: "N97284108", issuer: "Nebius Group N.V.", value: 302_110_000, shares: 1_090_000 }),
+      ],
+    ));
+    expect(rows.map((row) => [row.cusip, row.action])).toEqual([["G13311132", "held"], ["N97284108", "new"], ["00246W103", "exit"]]);
+    expect(rows[0]).toMatchObject({
+      previousShares: 4_920_000, shares: 492_000, sharesChange: 0, splitRatio: 0.1,
+      cusipChange: { previousCusip: "G13311116", label: "new CUSIP, 1-for-10 split" },
+    });
+    // Priced on split-adjusted shares: 0.60 a share before is 6.00 after, against 5.06 now.
+    expect(rows[0]!.estimatedPnl).toBeCloseTo(2_490_000 - 2_952_000, 0);
+    expect(holdingActionLabel(rows[0]!)).toBe("Held, new CUSIP, 1-for-10 split");
+    // The fraction of a share a reverse split pays out in cash is no trade: 4,920,248 shares at 1-for-10 are 492,025.
+    const filed = buildFundHoldingRows(fund(
+      [holding({ ticker: "", cusip: "G13311116", issuer: "Brera Holdings PLC", value: 3_857_474, shares: 4_920_248 })],
+      [holding({ ticker: "", cusip: "G13311132", issuer: "Brera Holdings PLC", value: 2_489_647, shares: 492_025 })],
+    ));
+    expect(filed[0]).toMatchObject({ action: "held", sharesChange: 0 });
+    expect(holdingSplitNotes(filed)).toEqual(["New CUSIP across a split: Brera Holdings PLC 1:10, was G13311116 (read from the two filings' share counts; Est P&L on split-adjusted shares)"]);
+    // Counts that fit no split stay an exit and a new line.
+    const traded = buildFundHoldingRows(fund(
+      [holding({ cusip: "G13311116", value: 100, shares: 4_920_000 })],
+      [holding({ cusip: "G13311132", value: 100, shares: 600_000 })],
+    ));
+    expect(traded.map((row) => row.action)).toEqual(["new", "exit"]);
   });
 
   test("does not call a first filing or a missing-quarter comparison new buying", () => {

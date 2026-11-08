@@ -5,7 +5,7 @@ import type { DataTableCell } from "../../../components";
 import { colors, priceColor } from "../../../theme/colors";
 import { formatShortDate } from "../../../utils/datetime-format";
 import {
-  actionLabel,
+  holdingActionLabel,
   formatChangeShares,
   formatMoneyCompact,
   formatPercentMaybe,
@@ -121,7 +121,7 @@ export function renderHoldingCell(
       };
     case "action":
       return {
-        text: actionLabel(row.action),
+        text: holdingActionLabel(row),
         color: actionColor(row.action),
       };
     default:

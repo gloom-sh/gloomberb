@@ -197,6 +197,11 @@ export interface FundHoldingRow {
   splitUnread?: boolean;
   /** With `splitUnread`: the lookups' time ran out before its corporate actions were read. */
   splitLate?: boolean;
+  /**
+   * A split gave the issuer's shares a new CUSIP between the filings: the prior line is `previousCusip`'s, carried
+   * across at `splitRatio`, and the row is one position held across it, labelled "new CUSIP, 1-for-10 split".
+   */
+  cusipChange?: { previousCusip: string; label: string };
   sharesChange: number | null;
   sharesChangePercent: number | null;
   action: HoldingAction;
