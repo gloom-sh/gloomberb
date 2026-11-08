@@ -21,7 +21,6 @@ import type {
   DataTableColumn,
   DataTableProps,
 } from "../../../components/ui/data-table";
-import { firstColumnDrawsText } from "../../../components/ui/data-table/render-cell";
 import { resolveDataTableScrollTop } from "../../../components/ui/data-table/visible-range";
 import { useFocusOwningPane, useVisibleRangeEmitter } from "../../../components/ui/data-table/hooks";
 import {
@@ -205,15 +204,9 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   const bodyAfterHeight = bodyAfter ? WEB_CELL_HEIGHT * 6 : 0;
   const horizontalScrollEnabled = showHorizontalScrollbar
     && hasMeaningfulTableHorizontalOverflow(tableWidth, viewportWidth, columnGap);
-  // Asked only when a table would pin its first column, and once per rows and columns, not on every resize.
-  const firstColumnIsText = useMemo(() => {
-    let text: boolean | undefined;
-    return () => text ??= firstColumnDrawsText(items, columns, renderCell, renderSectionHeader);
-  }, [columns, items, renderCell, renderSectionHeader]);
   const freezeFirstColumn = tableFreezesFirstColumn({
     freezeFirstColumn: freezeFirstColumnProp, columns, columnGap, horizontalPadding, viewportWidth,
     overflows: horizontalScrollEnabled,
-    firstColumnIsText,
   });
   // A table that pins by default pins once scrolled: unscrolled nothing is under
   // its first column, so a pane dragged or resized at rest draws no sticky cells.

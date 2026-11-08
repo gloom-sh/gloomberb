@@ -141,16 +141,20 @@ export function tableColumnStarts(columns: readonly TableWidthColumn[], columnGa
   return starts;
 }
 
+/** The narrowest first column that names its row: a short ticker. A rank (`#`) or a status dot is narrower. */
+const ROW_LABEL_MIN_WIDTH = 4;
+
 /**
  * Whether a table pins its first column while it scrolls sideways. A table
  * that sets `freezeFirstColumn` gets what it set; one that leaves it unset
  * pins its first column while it is too wide for its viewport (`overflows`)
  * and that column leaves the others at least half the viewport, so scrolled
  * right each row still says what it is (a 70-column Relative Valuation read
- * `4.50T 23.6 11.7` with no ticker). A table that fits is drawn as it always
- * was; a first column wider than that would leave too little to scroll
- * through, and one whose cells the pane lays out itself is not drawn pinned,
- * so those scroll.
+ * `4.50T 23.6 11.7` with no ticker). A first column the pane draws itself
+ * (a name beside its kind, a badge) pins as drawn. A table that fits is drawn
+ * as it always was. A first column too narrow to name its row (a rank, a
+ * status dot, a star) or wider than half would leave nothing worth pinning or
+ * too little to scroll through, so it scrolls.
  */
 export function tableFreezesFirstColumn({
   freezeFirstColumn,
@@ -159,7 +163,6 @@ export function tableFreezesFirstColumn({
   horizontalPadding = 1,
   viewportWidth,
   overflows,
-  firstColumnIsText,
 }: {
   freezeFirstColumn: boolean | undefined;
   columns: readonly TableWidthColumn[];
@@ -167,13 +170,12 @@ export function tableFreezesFirstColumn({
   horizontalPadding?: number;
   viewportWidth: number;
   overflows: boolean;
-  /** Whether the first column is drawn as text (`firstColumnDrawsText`), asked only when the rest would pin it. */
-  firstColumnIsText: () => boolean;
 }): boolean {
   if (freezeFirstColumn !== undefined) return freezeFirstColumn;
   const first = columns[0];
   if (!overflows || !first || columns.length < 2 || viewportWidth <= 0) return false;
-  return (horizontalPadding + tableColumnWidth(first) + columnGap) * 2 <= viewportWidth && firstColumnIsText();
+  const width = tableColumnWidth(first);
+  return width >= ROW_LABEL_MIN_WIDTH && (horizontalPadding + width + columnGap) * 2 <= viewportWidth;
 }
 
 /**

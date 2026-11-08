@@ -269,8 +269,18 @@ test("a table that leaves freezing unset pins a narrow first column and lets a w
   await key({ name: "left", shift: true });
   await key({ name: "right", shift: true });
   expect(table("body").scrollLeft).toBe(20);
-  // A first column the pane draws itself scrolls too: the pinned column draws text.
+  // A narrow first column the pane draws itself pins as drawn, once, beside the values (a supply-chain name).
   await act(async () => update({ columns: NARROW_ID_COLUMNS, drawnFirst: true }));
+  await settle();
+  await key({ name: "left", shift: true });
+  await key({ name: "left", shift: true });
+  for (let i = 0; i < 2; i++) await key({ name: "right", shift: true });
+  expect(table("body").scrollLeft).toBeGreaterThan(0);
+  const row = tui.frame().split("\n").find((line) => line.includes("66.7%"))!;
+  expect(row.match(/ALPH/g)).toHaveLength(1);
+  expect(row.indexOf("ALPH")).toBeLessThan(row.indexOf("66.7%"));
+  // A rank leading the row does not name it: pinned, it would hold "1" beside the values while the ticker scrolled away.
+  await act(async () => update({ columns: [{ id: "id", label: "#", width: 3 }, ...NARROW_ID_COLUMNS.slice(1)], drawnFirst: false }));
   await settle();
   await key({ name: "left", shift: true });
   await key({ name: "left", shift: true });
