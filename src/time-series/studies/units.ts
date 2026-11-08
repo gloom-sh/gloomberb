@@ -155,6 +155,20 @@ export function percentBasisPointUnit(unit: string, direction: 1 | -1): SeriesUn
   return null;
 }
 
+/**
+ * What a percent over basis points, or basis points over a percent, is
+ * multiplied by to cancel to a plain number: 100 for % over bp, 0.01 for bp
+ * over %. 4.1% over 61bp is 410bp over 61bp, 6.72. Null for any other pair.
+ */
+export function percentBasisPointRatioScale(numerator: Pick<SeriesUnit, "unit">, denominator: Pick<SeriesUnit, "unit">): number | null {
+  if (isPercentUnit(numerator.unit) && isBasisPointUnit(denominator.unit)) return BP_PER_PERCENT;
+  if (isBasisPointUnit(numerator.unit) && isPercentUnit(denominator.unit)) return 1 / BP_PER_PERCENT;
+  return null;
+}
+
+/** A plain number: a ratio whose units cancel. */
+export const PLAIN_RATIO_UNIT: SeriesUnit = { unit: "x", unitGroup: "ratio" };
+
 const UNKNOWN_UNIT: SeriesUnit = { unit: "unknown", unitGroup: "derived-unit:unknown" };
 
 export function isPriceGroup(unitGroup: string): boolean {

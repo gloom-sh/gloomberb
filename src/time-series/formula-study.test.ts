@@ -182,6 +182,22 @@ describe("formula studies", () => {
     const oas = dataset("FRED:BAMLC0A0CM", "bp", "series:bp", { 1: 93, 2: 94 });
     expect(resolveStudies([oas, cdx], [{ ...formula(["FRED:BAMLC0A0CM", "CAP:cdx:ig"], {}), id: "spread", kind: "spread" }]).series[0])
       .toMatchObject({ label: "FRED:BAMLC0A0CM - CAP:cdx:ig", unit: "bp" });
+    // A 100 times the whole formula lands on both legs: the bp leg cannot convert beside the % one, so it is refused,
+    // never 100 times its basis points charted as basis points ((FRED:DGS5 - CAP:cdx:ig)*100 read -5679 bp).
+    const whole = resolveStudies([treasury, cdx], [formula(["FRED:DGS5", "CAP:cdx:ig"], { weight1: 100, percentBp1: 1, weight2: -100, percentBp2: 1, divisor: 1 })]);
+    expect(whole.series).toEqual([]);
+    expect(whole.errors).toEqual(["Formula: FRED:DGS5 is in % and CAP:cdx:ig is in bp: write 100*FRED:DGS5 to compare in bp."]);
+    // Both legs in %: both convert.
+    const tens = dataset("FRED:DGS10", "%", "percent", { 1: 4.5, 2: 4.6 });
+    expect(resolveStudies([tens, treasury], [formula(["FRED:DGS10", "FRED:DGS5"], { weight1: 100, percentBp1: 1, weight2: -100, percentBp2: 1, divisor: 1 })])
+      .series[0]).toMatchObject({ unit: "bp", points: [expect.objectContaining({ value: 40 }), expect.objectContaining({ value: 40 })] });
+    // A percent over basis points cancels to a plain number: 4.1% over 60bp is 410bp over 60bp.
+    const ratio = resolveStudies([treasury, cdx], [{ ...formula(["FRED:DGS5", "CAP:cdx:ig"], {}), id: "ratio", kind: "ratio" }]).series[0]!;
+    expect(ratio).toMatchObject({ unit: "x", unitGroup: "ratio" });
+    expect(ratio.points.map(({ value }) => value)).toEqual([6.83333333333, 6.88524590164]);
+    const over = resolveStudies([treasury, cdx], [formula(["FRED:DGS5", "CAP:cdx:ig"], { weight1: 1, power2: -1, divisor: 1 })]).series[0]!;
+    expect(over).toMatchObject({ unit: "x", unitGroup: "ratio" });
+    expect(over.points.map(({ value }) => value)).toEqual([6.83333333333, 6.88524590164]);
     // Another multiplier keeps the percent.
     expect(resolveStudies([treasury, cdx], [formula(["FRED:DGS5", "CAP:cdx:ig"], { weight1: 10, weight2: -1, divisor: 1 })]).errors)
       .toEqual(["Formula: FRED:DGS5 is in % and CAP:cdx:ig is in bp: write 100*FRED:DGS5 to compare in bp."]);

@@ -10,7 +10,9 @@ import {
   isPriceGroup,
   knownUnitSignature,
   legName,
+  percentBasisPointRatioScale,
   percentBasisPointUnit,
+  PLAIN_RATIO_UNIT,
   unitMismatchMessage,
   type SeriesUnit,
 } from "./units";
@@ -89,6 +91,17 @@ function formulaLegUnit(leg: FormulaLeg, input: ResolvedSeries): SeriesUnit {
 /** Why a formula's legs cannot be summed, or null when every leg counts the same known unit. */
 function formulaUnitMismatch(terms: FormulaTerms, inputs: readonly ResolvedSeries[]): string | null {
   if (terms.legs.length < 2) return null;
+  // A 100 or 0.01 times the whole formula converts each leg it can: one it cannot convert beside one it does
+  // (a bp leg beside a % one, `(FRED:DGS5 - CAP:cdx:ig)*100`) would chart 100 times its basis points as basis points.
+  const scaled = terms.legs.filter((leg) => leg.percentBp !== null);
+  const converts = (leg: FormulaLeg) => percentBasisPointUnit(inputs[leg.index]!.unit, leg.percentBp!) !== null;
+  const converted = scaled.find(converts);
+  const unconverted = scaled.find((leg) => !converts(leg));
+  if (converted && unconverted) {
+    const [one, other] = [converted, unconverted].sort((left, right) => left.index - right.index);
+    return unitMismatchMessage("formula", { series: inputs[one!.index]!, unit: inputs[one!.index]!.unit },
+      { series: inputs[other!.index]!, unit: inputs[other!.index]!.unit });
+  }
   const legs = terms.legs.map((leg) => ({ series: inputs[leg.index]!, ...formulaLegUnit(leg, inputs[leg.index]!) }));
   const signatures = legs.map((leg) => knownUnitSignature(leg));
   const other = signatures.findIndex((signature, index) => index > 0 && (signature === null || signature !== signatures[0]));
@@ -160,12 +173,32 @@ export function formulaUnit(terms: FormulaTerms, inputs: readonly ResolvedSeries
   let unit: SeriesUnit = formulaLegUnit(terms.legs[0]!, first);
   for (const factor of terms.factors) {
     const series = inputs[factor.index]!;
+    // A percent over basis points, or basis points over a percent, is a plain number (formulaFactorScale).
+    if (factor.power < 0 && percentBasisPointRatioScale(unit, series) !== null) {
+      unit = PLAIN_RATIO_UNIT;
+      continue;
+    }
     const next = combinedUnit(unit, series, factor.power);
     const issue = fxConversionIssue(unit, series, factor.power, next);
     if (issue) return { error: issue };
     unit = next;
   }
   return unit;
+}
+
+/**
+ * What each series a formula divides by scales its value by besides itself:
+ * 100 over basis points when the formula is in %, 0.01 over a percent when it
+ * is in bp, so the two cancel to a plain number; 1 otherwise.
+ */
+function formulaFactorScales(terms: FormulaTerms, inputs: readonly ResolvedSeries[]): number[] {
+  let unit: SeriesUnit = formulaLegUnit(terms.legs[0]!, inputs[terms.legs[0]!.index]!);
+  return terms.factors.map((factor) => {
+    const series = inputs[factor.index]!;
+    const scale = factor.power < 0 ? percentBasisPointRatioScale(unit, series) : null;
+    unit = scale !== null ? PLAIN_RATIO_UNIT : combinedUnit(unit, series, factor.power);
+    return scale ?? 1;
+  });
 }
 
 export function resolveFormula(
@@ -177,12 +210,14 @@ export function resolveFormula(
 ): ResolvedSeries[] {
   const first = inputs[terms.legs[0]!.index]!;
   // Rounded off the float's last digits: 42 × 4.6233 - 96.12 is 98.0586, not 98.05860000000001.
+  const factorScales = formulaFactorScales(terms, inputs);
   const points = alignedSamples(inputs).map(({ point, values }) => {
     let value: number | null = terms.legs.reduce((sum, leg) => sum + values[leg.index]! * leg.weight, 0) / terms.divisor;
-    for (const factor of terms.factors) {
+    terms.factors.forEach((factor, position) => {
       const scale = values[factor.index]!;
-      value = value === null || (factor.power < 0 && scale === 0) ? null : factor.power < 0 ? value / scale : value * scale;
-    }
+      value = value === null || (factor.power < 0 && scale === 0) ? null
+        : (factor.power < 0 ? value / scale : value * scale) * factorScales[position]!;
+    });
     return derivedPoint({ point, value: 0 }, value === null ? null : Number(value.toPrecision(12)));
   });
   const frequencies = new Set(inputs.map((input) => input.nativeFrequency));

@@ -3,7 +3,7 @@ import type { ManualChartResolution } from "../resolution";
 import type { ChartStudySpec, ResolvedSeries, SeriesPeriod, TimeSeriesPoint } from "../types";
 import { isFiniteNumber } from "../../utils/guards";
 import { derivedPoint, outputSeries, studyPeriod } from "./shared";
-import { derivedValueDecimals, isPriceGroup, ratioUnit } from "./units";
+import { derivedValueDecimals, isPriceGroup, PLAIN_RATIO_UNIT, percentBasisPointRatioScale, ratioUnit } from "./units";
 
 interface PairedSample {
   point: TimeSeriesPoint;
@@ -63,15 +63,19 @@ export function resolvePairStudy(
   const paired = pairedSamples(left, right, spec.kind !== "correlation");
   if (spec.kind === "ratio" || spec.kind === "spread") {
     const multiplier = isFiniteNumber(spec.parameters.multiplier) ? spec.parameters.multiplier : 1;
+    const ratioStudy = spec.kind === "ratio";
+    // A percent over basis points cancels to a plain number, 100 times the quotient (4.1% over 61bp is 6.72),
+    // rounded off the float's last digits.
+    const percentScale = ratioStudy ? percentBasisPointRatioScale(left, right) : null;
     const points = paired.map((sample) => derivedPoint(
       { point: sample.point, value: sample.left },
-      spec.kind === "ratio"
-        ? sample.right === 0 ? null : sample.left / sample.right
+      ratioStudy
+        ? sample.right === 0 ? null : percentScale === null ? sample.left / sample.right
+          : Number((sample.left / sample.right * percentScale).toPrecision(12))
         : sample.left - sample.right * multiplier,
     ));
-    const ratioStudy = spec.kind === "ratio";
     const outputUnit = ratioStudy
-      ? ratioUnit(left, right)
+      ? percentScale === null ? ratioUnit(left, right) : PLAIN_RATIO_UNIT
       : { unit: left.unit, unitGroup: left.unitGroup };
     // A price over an FX rate is a price in the other currency (EUR / barrel),
     // stated as a future's unit is; a plain ratio keeps its own decimals.
