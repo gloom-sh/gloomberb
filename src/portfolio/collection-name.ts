@@ -1,4 +1,7 @@
 import type { ShortcutArgError } from "../types/plugin";
+import { tickerHasListingSuffix } from "../sources/listing-symbols";
+import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
+import { listingAbroadVenue } from "../utils/sec";
 
 /** Collections an unknown-name error lists, so the caller can retry with one. */
 const LISTED_COLLECTIONS = 12;
@@ -33,6 +36,22 @@ export function findNamedCollection<T extends { id: string; name: string }>(
  * first 60 are read.` Every function's list argument, in `fn` and in the
  * command bar, reads a watchlist's name here.
  */
+/**
+ * What a saved ticker is read as in a function's list: its symbol, with its
+ * venue for a listing abroad (ASML:AMS, 2330:TWSE), as the same symbols typed
+ * read. A bare `ASML` is the US line, so a watchlist read as `ASML`, `2330`
+ * compared the wrong listings and exported keys a join collided on. A symbol
+ * that already names its venue (ASML:AMS, 2330.TW) stays as saved, and so do
+ * US listings and venues with no home market (futures, currencies, coins).
+ */
+export function watchlistMemberSymbol(metadata: { ticker: string; exchange?: string | null }): string {
+  const { ticker } = metadata;
+  if (parsePublicTickerKey(ticker).exchange || tickerHasListingSuffix(ticker)) return ticker;
+  const exchange = canonicalExchange(metadata.exchange ?? undefined);
+  const key = exchange ? `${ticker}:${exchange}` : ticker;
+  return listingAbroadVenue(key) ? key : ticker;
+}
+
 export function readWatchlistArgument(
   typed: string,
   watchlist: { name: string },
