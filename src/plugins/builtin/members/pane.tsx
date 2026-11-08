@@ -191,7 +191,10 @@ type FundPaneProps = Pick<PaneProps, "width" | "height" | "focused"> & { fund: s
 function CoveredFund({ fund, requested, ...props }: FundPaneProps) {
   const resource = useAsyncResource(loadFunds, { initialData: cachedFunds });
   const funds = resource.data?.payload.funds;
-  if (funds?.length && !coveredFund(funds, fund)) return <PaneStatusBody empty emptyTitle={notCoveredMessage(requested, funds)} />;
+  if (funds?.length && !coveredFund(funds, fund)) {
+    const text = notCoveredMessage(requested, "pane");
+    return <PaneStatusBody empty emptyTitle={text.title} emptyMessage={text.message} />;
+  }
   return <FundView key={fund} fund={fund} {...props} />;
 }
 export function MembersPane(props: PaneProps) {

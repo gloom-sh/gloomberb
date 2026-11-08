@@ -18,14 +18,16 @@ export function coveredFund(funds: MemberFundsPayload["funds"], input: string) {
   const symbol = canonicalFund(input);
   return funds.find((fund) => fund.ticker === symbol || fund.aliases.some((alias) => alias.toUpperCase() === symbol));
 }
-/** Every symbol that opens this fund: the server's aliases and the app's own. */
-function fundAliases(fund: MemberFundsPayload["funds"][number]) {
-  const local = Object.entries(LOCAL_ALIASES).flatMap(([alias, ticker]) => ticker === fund.ticker ? [alias] : []);
-  return [...new Set([...fund.aliases.map((alias) => alias.toUpperCase()), ...local])].filter((alias) => alias !== fund.ticker);
-}
-export function notCoveredMessage(input: string, funds: MemberFundsPayload["funds"]) {
-  const covered = funds.map((fund) => { const aliases = fundAliases(fund); return aliases.length ? `${fund.ticker} (${aliases.join(", ")})` : fund.ticker; });
-  return `${requestedSymbol(input)} is not a covered fund. Covered: ${covered.join(", ")}.`;
+/**
+ * What a fund MEMB does not cover reads: that it is not covered, and where its fund facts and the covered list are,
+ * as a command (`gloom fn ETF SMH`) for the report and as a function for the pane. Never the whole covered list.
+ */
+export function notCoveredMessage(input: string, surface: "report" | "pane" = "report") {
+  const symbol = requestedSymbol(input);
+  const title = `${symbol} is not a covered fund.`;
+  const message = surface === "pane" ? `Its fund facts are in ETF ${symbol}. MEMB with no fund lists the funds it covers.`
+    : `Its fund facts: gloom fn ETF ${symbol}. The covered funds: gloom fn MEMB.`;
+  return { title, message };
 }
 /** "Partial 1D 334/504 · 91.5% wt": how many holdings have a fresh 1D return, and their share of the fund. */
 export function coverageText(aggregate: FundMembersPayload["aggregate"], short = false) {

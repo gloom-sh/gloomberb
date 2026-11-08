@@ -42,3 +42,14 @@ test("a Pro account's report is live only while a session trades, and as of the 
   expect(await line("realtime", "2026-10-24T14:00:00Z")).toBe("Source: Gloom Cloud · US trading day Fri 23 Oct 2026 close · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET");
   expect(await line("delayed", "2026-10-24T14:00:00Z")).toContain("15 min delayed");
 });
+
+test("an empty changes table says why: the fund's index changes are not covered, or none is stored", async () => {
+  const load = async (available: boolean) => {
+    const changes = { fund: { ticker: "XLK", name: "Technology", aliases: [], changes: available ? "announcements" : "none" }, changes: [], asOf: null, stale: false, available,
+      estimateLabel: "Estimate from XLK share counts", attribution: null };
+    const args = { symbols: ["XLK"], argument: ["XLK"], rawArgument: "XLK", options: { tab: "changes" } } as unknown as HeadlessPaneLoadArgs;
+    return (await membersHeadless.load(args, { signal: new AbortController().signal, apiClient: { getFundChanges: async () => changes }, refresh: false } as unknown as HeadlessPaneContext) as HeadlessRowsResult).empty;
+  };
+  expect(await load(false)).toBe("Index changes are not covered for XLK.");
+  expect(await load(true)).toBe("No stored index changes.");
+});

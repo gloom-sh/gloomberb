@@ -40,7 +40,7 @@ async function fetchFundPayload<T>(fund: string, fetcher: () => Promise<T>, vali
   try { return validate(await fetcher()); } catch (error) {
     if (error instanceof ApiRequestError && error.status === 404) {
       const funds = await fetchFunds(client).then((payload) => payload.funds, () => { /* Intentional ignore: an unreadable covered list leaves the server's own message. */ return []; });
-      if (funds.length && !coveredFund(funds, fund)) throw new Error(notCoveredMessage(fund, funds));
+      if (funds.length && !coveredFund(funds, fund)) { const text = notCoveredMessage(fund); throw new Error(`${text.title} ${text.message}`); }
     }
     throw unavailableOnServer(error, unavailable);
   }

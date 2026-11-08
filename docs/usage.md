@@ -445,7 +445,7 @@ gloom fn 13F 0001067983 --compare SPY                 # a fund against an ETF's 
 
 - `--compare SPY` compares the manager's latest 13F with the ETF's holdings file (the one `fn MEMB SPY` shows). It prints the overlap and the active share, the quarter compared with its filing date and the holdings file's date, and the manager's positions the ETF does not hold, largest first.
 - A word that reads as a ticker (up to five letters, with an optional class such as `BRK.B`) is an ETF when MEMB covers it, otherwise a manager only by its exact name, so `SPY` is not Spyglass Capital. A CIK or a longer name is a manager lookup, and the report says which was used.
-- MEMB covers IVV (also read for SPY and SPX), IJH, IJR, IWM and IWB. Any other ticker, such as `VTV`, fails with that list.
+- An ETF is one MEMB covers: IVV (also read for SPY and SPX), IJH, IJR, IWM, IWB, DIA, the eleven Select Sector SPDR funds and the industry funds the [MEMB section](research-data.md#index-and-etf-members) lists. Any other ticker, such as `VTV`, fails.
 - `--view=overlap` without `--compare` asks for it. `--compare` with another view fails.
 
 **Performance.** `gloom fn 13F 0001067983 --view performance` prints that fund's own row, with the `portfolio import --13f` command that copies its basket.

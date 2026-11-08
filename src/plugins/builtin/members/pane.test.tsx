@@ -59,10 +59,12 @@ test("partial holdings keep number columns aligned, open tickers and lazily load
   expect(frame).toContain("2026-10-08");
   expect(frame.split(headline)).toHaveLength(2);
 });
-test("a fund outside the server's covered list says which funds are covered", async () => {
+test("a fund outside the server's covered list says so in the pane and points to its fund facts, not the whole list", async () => {
   setCloudApiFetchTransport(async (input) => new URL(String(input)).pathname.endsWith("/members") ? Response.json(covered) : Response.json({ error: "Covered funds" }, { status: 404 }));
-  await mountMembers("IBIT");
-  const frame = await tui.waitForFrameToContain("IBIT is not a covered fund. Covered: IVV");
+  await mountMembers("SMH");
+  const frame = await tui.waitForFrameToContain("SMH is not a covered fund.");
+  expect(frame).toContain("ETF SMH");
+  expect(frame).not.toContain("Covered: IVV");
   expect(frame).not.toContain("not available on this server");
 });
 test("Movers has no members menu, and a search narrows what the menu opens", async () => {
