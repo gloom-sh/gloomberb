@@ -5,6 +5,8 @@ interface MemberFund {
    * filed up to 60 days after the date it is as of). An older server leaves it out (daily).
    */
   basis?: "daily" | "nport";
+  /** An N-PORT fund's own name: its `name` ends in "(N-PORT)" for apps that know nothing of `basis`. */
+  plainName?: string;
 }
 export interface FundMember {
   id: string; symbol: string | null; name: string; sector: string | null;
@@ -23,6 +25,8 @@ export interface FundMembersPayload {
   fund: MemberFund; asOf: string; fetchedAt: string; excludedDerivatives: number; stale: boolean;
   /** As the fund's `basis`; with an N-PORT report, the day it was filed and the report itself. */
   basis?: "daily" | "nport"; filedOn?: string | null; sourceUrl?: string;
+  /** An N-PORT report's short positions and negative weights, left out apart from its derivatives. */
+  excludedShorts?: number;
   quotesUnavailable: boolean; snapshotAsOf: string | null; fundDailyAsOf: string | null; quoteCap: number;
   members: FundMember[];
   aggregate: { sum: number | null; fundReturn: number | null; residual: number | null; tolerancePp: number;

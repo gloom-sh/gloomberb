@@ -1,7 +1,8 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import type { HeadlessRowsResult } from "../../../types/headless";
 import { fetchBreadth, fetchChanges, fetchFunds, fetchMembers, fetchStockFunds, FundNotCoveredError } from "./client";
-import { canonicalFund, changeReason, coverageText, decimal, DEFAULT_SORT, fundSource, holdingsCaveats, holdingsSourceText, memberRows, membersFeed,
+import type { FundMembersPayload } from "../../../api-client/members";
+import { canonicalFund, changeReason, coverageText, decimal, DEFAULT_SORT, fundName, fundSource, holdingsCaveats, holdingsSourceText, memberRows, membersFeed,
   noStockFundsMessage, percent, stockFundsNotices, usListingInput } from "./model";
 const columns: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker" }, { key: "name", header: "Name" },
@@ -10,6 +11,19 @@ const columns: HeadlessPaneColumn[] = [
   { key: "price", header: "Price $", align: "right", format: (value) => decimal(value as number | null) },
   ...["changePercent", "return1WPercent", "return1MPercent", "returnYtdPercent"].map((key, i) => ({ key, header: ["1D", "1W", "1M", "YTD"][i]!, align: "right" as const, format: (value: unknown) => percent(value as number | null) })),
 ];
+/** A column CSV and JSON carry on every row and the text table leaves to its notices: what the holdings are as of. */
+const exported = (key: string, header: string): HeadlessPaneColumn => ({ key, header, minTableWidth: Number.MAX_SAFE_INTEGER });
+/**
+ * What a fund's holdings are as of on each of its rows, so an exported row read alone says it: the date, and an
+ * N-PORT report's filing day and link.
+ */
+function holdingsBasis(data: Pick<FundMembersPayload, "asOf" | "basis" | "filedOn" | "sourceUrl">) {
+  const nport = data.basis === "nport";
+  return {
+    fields: { holdingsAsOf: data.asOf.slice(0, 10), ...nport ? { filedOn: data.filedOn ?? null, sourceUrl: data.sourceUrl ?? null } : {} },
+    columns: [exported("holdingsAsOf", "Holdings as of"), ...nport ? [exported("filedOn", "Filed"), exported("sourceUrl", "Source link")] : []],
+  };
+}
 /**
  * `fn MEMB NVDA`: the covered funds whose holdings hold a stock, the funds on daily files first, then
  * those read from N-PORT reports, each with its weight and what its holdings are as of.
@@ -23,10 +37,11 @@ async function stockFunds(input: string, client: Parameters<typeof fetchStockFun
   const data = await fetchStockFunds(symbol, client);
   const none = noStockFundsMessage(symbol);
   return { freshness: { status: "not-a-feed", basis: "fund holdings" },
-    rows: data.funds.map((row) => ({ ...row, weight: row.weight === null ? null : row.weight * 100, source: fundSource(row) })),
+    rows: data.funds.map((row) => ({ ...row, weight: row.weight === null ? null : row.weight * 100, source: fundSource(row),
+      filedOn: row.filedOn ?? null, sourceUrl: row.sourceUrl ?? null })),
     columns: [{ key: "ticker", header: "Fund" }, { key: "name", header: "Index or theme" },
       { key: "weight", header: "Weight %", align: "right", format: (value) => decimal(value as number | null) },
-      { key: "asOf", header: "Holdings as of" }, { key: "source", header: "Source" }],
+      { key: "asOf", header: "Holdings as of" }, { key: "source", header: "Source" }, exported("filedOn", "Filed"), exported("sourceUrl", "Source link")],
     empty: `${none.title} ${none.message}`,
     metadata: { symbol: data.symbol, coverage: data.coverage, notices: stockFundsNotices(data) } };
 }
@@ -39,8 +54,9 @@ export const membersHeadless: HeadlessPaneDefinition<"rows"> = {
   async load(args, context) {
     const input = args.symbols[0] ?? args.rawArgument ?? "";
     if (!input) return { freshness: { status: "not-a-feed", basis: "fund holdings files" },
-      rows: (await fetchFunds(context.apiClient)).funds.map((fund) => ({ ...fund, source: fundSource(fund) })),
-      columns: [{ key: "ticker", header: "Fund" }, { key: "name", header: "Index or theme" }, { key: "asOf", header: "Holdings as of" }, { key: "source", header: "Source" }] };
+      rows: (await fetchFunds(context.apiClient)).funds.map((fund) => ({ ...fund, name: fundName(fund), source: fundSource(fund), filedOn: fund.filedOn ?? null })),
+      columns: [{ key: "ticker", header: "Fund" }, { key: "name", header: "Index or theme" }, { key: "asOf", header: "Holdings as of" }, { key: "source", header: "Source" },
+        exported("filedOn", "Filed")] };
     const fund = canonicalFund(input);
     // A symbol the covered list does not hold is a stock to look the funds through for, whatever the tab.
     const covered = await fetchFunds(context.apiClient).then((payload) => payload.funds, () => {
@@ -69,7 +85,8 @@ export const membersHeadless: HeadlessPaneDefinition<"rows"> = {
     });
     if (!data) return stockFunds(input, context.apiClient);
     const movers = args.options.tab === "movers";
-    const rows = memberRows(data.members, movers ? "movers" : "members", "", DEFAULT_SORT).flatMap((row) => row.kind === "item" ? [{ ...row.item }] : []);
+    const basis = holdingsBasis(data);
+    const rows = memberRows(data.members, movers ? "movers" : "members", "", DEFAULT_SORT).flatMap((row) => row.kind === "item" ? [{ ...row.item, ...basis.fields }] : []);
     // Member prices are the pane's quotes: real-time for a Pro account, 15 minutes delayed otherwise. As in the
     // pane, the fund's snapshot says whether it is stale; the members' own flags are not what the pane reads.
     const live = data.access === "realtime";
@@ -80,7 +97,9 @@ export const membersHeadless: HeadlessPaneDefinition<"rows"> = {
     // With no member quotes the report is the holdings alone: dated by them, and no feed (an N-PORT fund's would read months old and delayed).
     const status = data.stale ? { status: "stale" as const, delayMinutes: 15 } : data.quotesUnavailable ? { status: "not-a-feed" as const, basis: "fund holdings" }
       : closed ? {} : { status: live ? "live" as const : "delayed" as const, delayMinutes: 15 };
-    return { freshness: { ...status, ignoreStaleFlags: true }, rows, columns: movers ? [...columns.slice(0, 3), { key: "contribution", header: "Contrib. pp", align: "right", format: (value) => percent(value as number | null, "", 3) }] : columns,
+    return { freshness: { ...status, ignoreStaleFlags: true }, rows,
+      columns: [...movers ? [...columns.slice(0, 3), { key: "contribution", header: "Contrib. pp", align: "right" as const, format: (value: unknown) => percent(value as number | null, "", 3) }] : columns,
+        ...basis.columns],
       complete: !data.stale && data.aggregate.fresh1D === data.aggregate.total,
       unavailableSymbols: data.members.flatMap((row) => row.symbol && row.changePercent === null ? [row.symbol] : []),
       metadata: { fund: data.fund, asOf: data.asOf, ...(closed ? { sessionExchange: "NYSE", observedAt: new Date(feed.closedAt).toISOString() } : {}), snapshotAsOf: data.snapshotAsOf, aggregate: data.aggregate, stale: data.stale, notices: [

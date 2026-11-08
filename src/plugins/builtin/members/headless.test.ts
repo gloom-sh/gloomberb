@@ -56,13 +56,14 @@ test("an empty changes table says why: the fund's index changes are not covered,
 
 test("a stock lists the covered funds holding it; an N-PORT fund's holdings say their report date and filing day, never today", async () => {
   const funds = { funds: [{ ticker: "IVV", name: "S&P 500", aliases: ["SPY"], changes: "sp500", basis: "daily", asOf: "2026-11-05", filedOn: null },
-    { ticker: "ARKK", name: "Disruptive innovation", aliases: [], changes: "none", basis: "nport", asOf: "2026-07-31", filedOn: "2026-09-22" }] };
+    { ticker: "ARKK", name: "Disruptive innovation (N-PORT)", plainName: "Disruptive innovation", aliases: [], changes: "none", basis: "nport", asOf: "2026-07-31", filedOn: "2026-09-22" }] };
+  const report = "https://www.sec.gov/Archives/edgar/data/1579982/000157998226000001/primary_doc.xml";
   const held = { symbol: "NVDA", coverage: { daily: 1, nport: 1 }, funds: [
     { ticker: "IVV", name: "S&P 500", basis: "daily", weight: 0.0712, shares: 1, marketValue: 1, holdingName: "NVIDIA CORP", asOf: "2026-11-05", filedOn: null },
-    { ticker: "ARKK", name: "Disruptive innovation", basis: "nport", weight: 0.037, shares: 1, marketValue: 1, holdingName: "NVIDIA CORP", asOf: "2026-07-31", filedOn: "2026-09-22" }] };
+    { ticker: "ARKK", name: "Disruptive innovation", basis: "nport", weight: 0.037, shares: 1, marketValue: 1, holdingName: "NVIDIA CORP", asOf: "2026-07-31", filedOn: "2026-09-22", sourceUrl: report }] };
   const asked: string[] = [];
   const apiClient = { getMemberFunds: async () => funds, getStockFunds: async (symbol: string) => { asked.push(symbol); return held; },
-    getFundMembers: async () => ({ ...board, fund: funds.funds[1], basis: "nport", asOf: "2026-07-31", filedOn: "2026-09-22" }) };
+    getFundMembers: async () => ({ ...board, fund: funds.funds[1], basis: "nport", asOf: "2026-07-31", filedOn: "2026-09-22", sourceUrl: report, excludedShorts: 2 }) };
   const load = async (input: string) => await membersHeadless.load({ symbols: [input], argument: [input], rawArgument: input, options: {} } as unknown as HeadlessPaneLoadArgs,
     { signal: new AbortController().signal, apiClient, refresh: false } as unknown as HeadlessPaneContext) as HeadlessRowsResult;
   const stock = await load("NVDA");
@@ -71,6 +72,18 @@ test("a stock lists the covered funds holding it; an N-PORT fund's holdings say 
   // A listing abroad is not looked up by its local code.
   expect((await load("INFY:NSE")).empty).toContain("US ticker");
   expect(asked).toEqual(["NVDA"]);
+  // An exported row read alone still says what the holdings are as of: the fund's report date, filing day and link.
+  expect(stock.rows[1]).toMatchObject({ filedOn: "2026-09-22", sourceUrl: report });
+  expect(stock.columns!.map((column) => column.key)).toEqual(expect.arrayContaining(["filedOn", "sourceUrl"]));
   const arkk = await load("ARKK");
-  expect((arkk.metadata as { notices: string[] }).notices[0]).toBe("Disruptive innovation, ARKK holdings as of 31 Jul 2026 (N-PORT, filed 22 Sep)");
+  const notices = (arkk.metadata as { notices: string[] }).notices;
+  expect(notices[0]).toBe("Disruptive innovation, ARKK holdings as of 31 Jul 2026 (N-PORT, filed 22 Sep)");
+  // Shorts are named apart from derivatives.
+  expect(notices).toContain("2 short positions are excluded from these share holdings.");
+  expect(arkk.rows.every((row) => row.holdingsAsOf === "2026-07-31" && row.filedOn === "2026-09-22" && row.sourceUrl === report)).toBe(true);
+  expect(arkk.columns!.slice(-3).map((column) => [column.key, column.minTableWidth])).toEqual([
+    ["holdingsAsOf", Number.MAX_SAFE_INTEGER], ["filedOn", Number.MAX_SAFE_INTEGER], ["sourceUrl", Number.MAX_SAFE_INTEGER]]);
+  // The list names the fund as it is, its basis in its own column.
+  const list = await load("");
+  expect(list.rows.find((row) => row.ticker === "ARKK")).toMatchObject({ name: "Disruptive innovation", source: "N-PORT, filed 22 Sep 2026" });
 });

@@ -67,8 +67,8 @@ export function holdingsBasisText(data: { asOf: string; basis?: "daily" | "nport
 export function holdingsSourceText(input: string, data: Pick<FundMembersPayload, "fund" | "asOf" | "basis" | "filedOn">) {
   const requested = requestedSymbol(input);
   const forRequested = requested && requested !== data.fund.ticker ? ` (for ${requested})` : "";
-  if (data.basis === "nport") return `${data.fund.name}, ${data.fund.ticker} ${holdingsBasisText(data)}${forRequested}`;
-  return `${data.fund.name}, ${data.fund.ticker} holdings as of ${data.asOf.slice(0, 10)}${forRequested}`;
+  if (data.basis === "nport") return `${fundName(data.fund)}, ${data.fund.ticker} ${holdingsBasisText(data)}${forRequested}`;
+  return `${fundName(data.fund)}, ${data.fund.ticker} holdings as of ${data.asOf.slice(0, 10)}${forRequested}`;
 }
 /**
  * What the funds holding a stock are: how many covered funds were looked through, and that the N-PORT funds'
@@ -107,7 +107,12 @@ export function holdingsCaveats(data: FundMembersPayload, movers: boolean) {
     ...(movers && data.aggregate.fundReturn === null ? ["Fund 1D is unavailable; the difference cannot be calculated."] : []),
     ...(movers && data.aggregate.withinTolerance === false ? [`The covered contribution sum differs from the fund by ${percent(data.aggregate.residual, " pp")}.`] : []),
     ...(data.excludedDerivatives ? [`${data.excludedDerivatives} derivative positions are excluded from these share holdings.`] : []),
+    ...(data.excludedShorts ? [`${data.excludedShorts} short positions are excluded from these share holdings.`] : []),
   ];
+}
+/** A fund's own name: an N-PORT fund's served `name` says "(N-PORT)" for apps that cannot show its basis. */
+export function fundName(fund: { name: string; plainName?: string }) {
+  return fund.plainName ?? fund.name;
 }
 export function membersTitle(input: string, stock = false) {
   const requested = input.split(":")[0]!.trim().toUpperCase();
