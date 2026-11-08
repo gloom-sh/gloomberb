@@ -4,7 +4,7 @@ import { join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 
 const ROOT = resolve(import.meta.dir, "..");
-const EXCLUDED = ["src/plugins/builtin/chat/"];
+export const EXCLUDED = ["src/plugins/builtin/chat/"];
 
 type SilentCatch = {
   file: string;
@@ -23,7 +23,7 @@ type MarkerProblem = Pick<SilentCatch, "file" | "line" | "column" | "kind" | "sc
 };
 type Scan = { sites: SilentCatch[]; markerProblems: MarkerProblem[] };
 
-function runtimeFiles(dir: string, result: string[] = []): string[] {
+export function runtimeFiles(dir: string, result: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) {

@@ -4,9 +4,9 @@
   "entity": {
     "type": "organisation",
     "role": "owner",
-    "name": "Cold Start Ventures Limited",
+    "name": "Gloom Pte. Ltd.",
     "email": "vince@gloom.sh",
-    "description": "Cold Start Ventures Limited is a small software company registered in Hong Kong. It is run by Vince Loewert, who started Gloomberb in March 2026 and is its lead maintainer. The company owns the Gloomberb project and would receive and account for any grant.",
+    "description": "Gloom Pte. Ltd. is a small software company registered in Singapore. It is run by Vince Loewert, who started Gloomberb in March 2026 and is its lead maintainer. The company owns the Gloomberb project and would receive and account for any grant.",
     "webpageUrl": {
       "url": "https://github.com/gloom-sh"
     }
@@ -31,7 +31,7 @@
       {
         "guid": "bank",
         "type": "bank",
-        "description": "Bank transfer to Cold Start Ventures Limited (Hong Kong). Email vince@gloom.sh for details."
+        "description": "Email vince@gloom.sh for details."
       }
     ],
     "plans": [
