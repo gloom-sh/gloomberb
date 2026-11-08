@@ -8,7 +8,8 @@ import { createTestCliContext } from "../../../test-support/cli-context";
 import { createTestTicker } from "../../../test-support/ticker";
 import { setCliColorEnabledOverride } from "../../../utils/cli-output";
 import { showCollection } from "./cli/render";
-import { parseDripYears, parseWithholding, projectDrip } from "./income";
+import { loadHoldingDividends, parseDripYears, parseWithholding, projectDrip } from "./income";
+import type { Quote } from "../../../types/financials";
 
 test("DRIP buys shares with each year's dividend net of withholding, at a flat price, and converts once into the portfolio's currency; a short owes it in full", () => {
   // 100 shares paying R2.00 a year at R50, 20% withheld, R1 = $0.05.
@@ -80,7 +81,7 @@ function market(getCorporateActions: (symbol: string) => Promise<CorporateAction
   }, format ? { format } : {});
 }
 
-async function text(run: () => Promise<void>): Promise<string> {
+async function text(run: () => Promise<unknown>): Promise<string> {
   const output: string[] = [];
   const logger = spyOn(console, "log").mockImplementation((...args) => { output.push(args.join(" ")); });
   try { await run(); } finally { logger.mockRestore(); }
@@ -110,7 +111,7 @@ test("portfolio show reads cents in rand, converts income, owes a short's divide
     expect(shown).toMatch(/SBK[^\n]*\$180\.00 +6\.00%/);
     expect(shown).toMatch(/PEP[^\n]*— +— /);
     // The book holds a short, so it is weighed on its gross exposure and TOTAL claims no 100%.
-    expect(shown).toMatch(/TOTAL +\$14,500 +— +— +— /);
+    expect(shown).toMatch(/TOTAL +0\.00% +\$14,500 +— +— +— /);
     expect(shown).toContain("Income unavailable: no GBP exchange rate for BP:NYSE; no dividend history for PEP:NASDAQ; "
       + "dividends not read within 0.05s for SLOW:NYSE. The other 3 holdings pay $360.00 a year.");
     // The short's cost repeats in the projection, nothing reinvested; unknown holdings are not projected.
@@ -238,4 +239,32 @@ test("a book that holds a short puts TOTAL's yield on its gross exposure, never 
   } finally {
     setCliColorEnabledOverride(null);
   }
+});
+
+test("dividend histories are read beside the quotes under one deadline from the start, and a listing its quote shows pays nothing is left out", async () => {
+  const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+  const asked: string[] = [];
+  let quotesIn = false;
+  // Quotes take 150ms and each history 150ms: one after the other they would miss a 250ms deadline.
+  const quotes = wait(150).then(() => {
+    quotesIn = true;
+    return new Map<string, Quote>(["KO", "SBK", "UNTYPED"].map((symbol) => [symbol,
+      { symbol, price: 100, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.now(), ...symbol === "UNTYPED" ? { instrumentType: "CRYPTOCURRENCY" } : {} } as Quote]));
+  });
+  const provider = {
+    getCorporateActions: async (symbol: string) => {
+      asked.push(`${symbol}${quotesIn ? " after" : " before"} the quotes`);
+      await wait(150);
+      return histories[symbol] ?? history(symbol, "USD", quarterly(1));
+    },
+  };
+  const held = (symbol: string) => holdings.find((ticker) => ticker.metadata.ticker === symbol)!;
+  const tickers = [held("KO"), held("SBK"), createTestTicker("UNTYPED", "Untyped", { portfolios: ["main"], positions: [position(1, 1, "USD")] })];
+  const { dividends, timedOut } = await loadHoldingDividends(tickers, quotes, provider, { deadlineMs: 250 });
+  expect(timedOut).toBe(false);
+  expect(asked).toEqual(["KO before the quotes", "SBK before the quotes", "UNTYPED before the quotes"]);
+  expect(dividends.get("KO")).toMatchObject({ perShare: 2, currency: "USD" });
+  expect(dividends.get("SBK")).toMatchObject({ perShare: 18, currency: "ZAR" });
+  // Its quote types it a coin: its history was asked for on its record's word, and is not income.
+  expect(dividends.has("UNTYPED")).toBe(false);
 });

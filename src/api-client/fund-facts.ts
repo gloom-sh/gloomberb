@@ -105,7 +105,7 @@ type FundFactsStatus = "covered" | "not-collected-yet" | "not-published" | "not-
  * rate between the two counters' NAVs, or the nominal close itself when no
  * counter traded.
  */
-export type FundPremiumPrice =
+type FundPremiumPrice =
   | { kind: "counter"; ticker: string; close: number; currency: string }
   | { kind: "nominal" };
 

@@ -126,8 +126,8 @@ export async function answerQuote(
   const index = key ? await answerNamedListing({ ...parseListingArg(key),
     readAs: `Read "${listing.typed!.trim()}" as ${key} (${marked!.name}).`, readFromName: true }, market, request, refresh, datesChangeBasis) : null;
   if (index) return index;
-  // ^GSPC typed in Windows' cmd.exe arrives as GSPC, the shell taking ^ for its escape character.
-  const caret = await caretIndexLine(listing, result, market);
+  // ^GSPC typed in Windows' cmd.exe arrives as GSPC, the shell taking ^ for its escape character. A known root (VIX) says it below.
+  const caret = root ? null : await caretIndexLine(listing, result, market);
   if (caret) return { result, listing, failure: { message: caret, oneLine: caret }, notes: [] };
   // A word the service marks as a company's name is that company, before the symbol is read on its listings abroad.
   const named = !listing.exchange && listing.typed ? await serviceNamedCompany(listing.typed, market) : null;

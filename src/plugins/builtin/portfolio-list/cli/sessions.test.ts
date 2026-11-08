@@ -130,18 +130,30 @@ describe("what a portfolio is priced at and when each row's price is from", () =
     return serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format }, cli.printed[0]!.options);
   }
 
-  test("by default the value is the latest print, said under the title, with each row's print time", async () => {
+  test("by default the value is the latest print, said under the title, with each row's print time and the value's move totalled with its base", async () => {
     const text = await showText(["show", "Main"]);
     expect(text).toContain("Priced at the latest print, extended hours included");
     expect(text).toContain("As of (UTC)");
-    expect(text).not.toContain("Day's move");
+    // XLK's after-hours 198.80 is 1.02 a share over Thursday's close, SAP 4.00 over a close nothing dates: TOTAL's Chg is the value's move.
+    expect(text).toMatch(/TOTAL +\+0\.59% /);
+    expect(text).toContain("Day's move: +$1,220.00 (+0.59%) vs mixed closes");
     expect(text.split("\n").find((line) => line.startsWith("XLK"))).toMatch(new RegExp(`\\$198,800 .*${day("23:58").source}`));
     expect(text.split("\n").find((line) => line.startsWith("SAP"))).toMatch(day("15:38"));
 
     const json = JSON.parse(await showExport(["show", "Main"], "json"));
-    expect(json.metadata.valuationBasis).toBe("latest-print");
+    expect(json.metadata).toMatchObject({ valuationBasis: "latest-print", dayChange: 1220, dayChangeBasis: "vs mixed closes" });
     expect(json.data[1]).toMatchObject({ symbol: "XLK", quotePrice: 198.78, marketValue: 198_800, priceBasis: null,
       valuationBasis: "latest-print", valuationPrice: 198.8, valuationAsOf: "2026-10-09T23:58:08.000Z", quoteAsOf: Date.parse("2026-10-09T23:58:08Z") });
+  });
+
+  test("a book across markets dates each one's session and names when each opens, not the newest market's day with another's open", async () => {
+    setSystemTime(new Date("2026-10-10T13:00:00Z"));
+    try {
+      expect(await showText(["show", "Main"])).toContain("Source: Local portfolio and Gloom Cloud · XETRA and US Fri 9 Oct 2026 close · markets closed · "
+        + "XETRA opens Mon 07:00 UTC, 09:00 CET · US Mon 13:30 UTC, 09:30 ET");
+    } finally {
+      setSystemTime();
+    }
   });
 
   test("--close values every row at Last times its shares, totals them, and says the day's move and the close time", async () => {

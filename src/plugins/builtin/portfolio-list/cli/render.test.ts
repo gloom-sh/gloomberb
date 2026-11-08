@@ -397,7 +397,7 @@ describe("a portfolio holding a hedge", () => {
     expect(text).toContain("Exposure: long $420,000, short -$4,198,000, net -$3,778,000, gross $4,618,000");
     expect(text).toContain("Weights are shares of gross exposure ($4,618,000), longs plus shorts at their absolute value, as the book holds a short; cash has no weight.");
     // The weights net to the book's net over its gross, so TOTAL claims no 100%.
-    expect(text).toMatch(/TOTAL +-\$3,778,000 +— /);
+    expect(text).toMatch(/TOTAL +-0\.28% +-\$3,778,000 +— /);
 
     // A hedge netting near zero weighs each side near half, not thousands of percent.
     const hedged = { ...gold(), metadata: { ...gold().metadata, positions: [{ ...gold().metadata.positions[0]!, shares: -1 }] } };

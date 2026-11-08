@@ -634,6 +634,20 @@ export function cliOutputWritten(): Promise<void> {
   return stdoutWritten;
 }
 
+/** How long a command whose report is out waits for reads it stopped waiting for before it exits without them. */
+const LEFT_BEHIND_EXIT_MS = 500;
+
+/**
+ * For a command whose report is out while reads it gave up on are not
+ * (dividends past their deadline): exits once the output has left the
+ * process, not when the last of them answers or times out, which held a
+ * cold `portfolio show` open for fifteen seconds after it printed. Unref'd,
+ * so a process with nothing left exits first, with its own code.
+ */
+export function exitLeavingReadsBehind(): void {
+  setTimeout(() => void cliOutputWritten().then(() => process.exit()), LEFT_BEHIND_EXIT_MS).unref();
+}
+
 export function printCliResult<T, Row extends Record<string, unknown> = Record<string, unknown>>(
   result: CliResult<T>,
   options: CliGlobalOptions,

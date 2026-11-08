@@ -219,8 +219,15 @@ export interface ShowCollectionOptions {
   cpi?: Parameters<typeof showPeriodPnl>[0]["cpi"];
 }
 
-export async function showCollection(name: string, ctx: CliCommandContext, options: ShowCollectionOptions = {}) {
-  await withMarketData(ctx, (context) => showCollectionWithMarketData(name, ctx, context, options));
+/**
+ * Prints a portfolio or watchlist. `readsLeftBehind` says reads it stopped
+ * waiting for (dividends past their deadline) are still out, which a CLI
+ * process need not wait for once the report is out.
+ */
+export async function showCollection(name: string, ctx: CliCommandContext, options: ShowCollectionOptions = {}): Promise<{ readsLeftBehind: boolean }> {
+  const outcome = { readsLeftBehind: false };
+  await withMarketData(ctx, (context) => showCollectionWithMarketData(name, ctx, context, options, outcome));
+  return outcome;
 }
 
 /** What `--explain` names a report by when it shows no terms. */
@@ -749,6 +756,8 @@ function portfolioValuationFreshness(
     source,
     observedKey: "valuationAsOf",
     citeOldest: true,
+    // A book across markets names each one's session and open: an HKEX book holding one US fund is not dated by the US day alone.
+    datesEachVenue: true,
     ...(note ? { note: `priced at ${valuationBasisLabel(valuation.basis, { futures: holdsFutures(valuation) })}` } : {}),
   }, undefined, now);
 }
@@ -792,6 +801,7 @@ async function showCollectionWithMarketData(
   ctx: CliCommandContext,
   { config, store, dataProvider, persistence }: MarketContext,
   { explain = false, basis = "latest-print", drip, dividendDeadlineMs = DIVIDEND_READ_DEADLINE_MS, futuresSources, costFxHistory = apiClient, period, real = false, cpi }: ShowCollectionOptions,
+  outcome: { readsLeftBehind: boolean } = { readsLeftBehind: false },
 ) {
   const tickers = (await store.loadAllTickers()).sort((left, right) =>
     left.metadata.ticker.localeCompare(right.metadata.ticker)
@@ -839,8 +849,15 @@ async function showCollectionWithMarketData(
 
   const futuresHeld = filtered.filter((ticker) => isFuturesTicker(ticker)
     && ticker.metadata.positions.some((position) => position.portfolio === id && position.shares !== 0));
+  // A book says what its day's move is from on either basis, so its quotes' previous closes are dated.
+  const quotesRead = loadCollectionQuotes(filtered, collection, dataProvider, { datesChangeBasis: isPortfolio });
+  // What each holding pays a year is read beside its quote, under one deadline from here.
+  const dividendsRead = matchedPortfolio && !period
+    ? loadHoldingDividends(filtered.filter((ticker) => ticker.metadata.positions.some((position) => position.portfolio === id && position.shares !== 0)),
+      quotesRead, dataProvider, { deadlineMs: dividendDeadlineMs })
+    : null;
   const [quotes, futures, purchaseDateFx] = await Promise.all([
-    loadCollectionQuotes(filtered, collection, dataProvider, { datesChangeBasis: basis === "regular-close" }),
+    quotesRead,
     isPortfolio ? loadPortfolioFuturesTerms(futuresHeld, {
       settlement: basis === "regular-close",
       sources: { history: dailyFuturesHistory(dataProvider), ...futuresSources },
@@ -890,7 +907,8 @@ async function showCollectionWithMarketData(
     // What each holding pays a year: trailing dividends per share times its shares, in the portfolio's currency.
     // By symbol: a lot whose cost converts at its purchase date's FX close is valued on a copy of its record.
     const held = filtered.filter((ticker) => valued.some((entry) => entry.ticker.metadata.ticker === ticker.metadata.ticker && entry.position));
-    const { dividends } = await loadHoldingDividends(held, quotes, dataProvider, { deadlineMs: dividendDeadlineMs });
+    const { dividends, timedOut } = await dividendsRead!;
+    outcome.readsLeftBehind = timedOut;
     // Lots without a position or shares are no lot of income; a row of their own keeps its place with none.
     const income = await portfolioIncome(valued.map((entry) => ({
       symbol: entry.position && entry.metrics ? entry.ticker.metadata.ticker : "",
@@ -951,8 +969,9 @@ async function showCollectionWithMarketData(
       };
     });
     const totalPnlValue = unavailablePnl.size > 0 ? null : totalPnl;
-    // At the close, the value is Last times the shares, so the day's move from the close before is said beside it.
-    const dayMove = basis === "regular-close" ? portfolioDayMove(valuation) : null;
+    // The value's move from the closes before, totalled under Chg and said with its base under the table: at the close
+    // that is Last times the shares; at the latest print, an after-hours print included, as Value is.
+    const dayMove = portfolioDayMove(valuation);
     const cashExport = cash && allocation.cash ? {
       ...cash,
       weight: allocation.cash.weight,
@@ -1037,7 +1056,7 @@ async function showCollectionWithMarketData(
         total: allocation.total, cash: cashExport, targetSum: allocation.targetSum,
         // Only on a book that holds a short: its weights are shares of `weightBase`, its gross exposure, not of the total.
         ...(allocation.weightBasis === "gross" ? { weightBasis: allocation.weightBasis, weightBase: allocation.weightBase } : {}),
-        ...(basis === "regular-close" ? { dayChange: dayMove?.change ?? null, dayChangePercent: dayMove?.changePercent ?? null, dayChangeBasis: dayMove?.basis ?? null } : {}),
+        dayChange: dayMove?.change ?? null, dayChangePercent: dayMove?.changePercent ?? null, dayChangeBasis: dayMove?.basis ?? null,
         unpricedCount: allocation.unpriced.length, unpricedSymbols: allocation.unpriced,
         totalUnrealizedPnl: totalPnlValue,
         annualIncome: totalIncome, knownAnnualIncome: income.knownIncome, portfolioYield,
@@ -1147,8 +1166,9 @@ async function showCollectionWithMarketData(
         ...allocationCells(cashExport, { unpriced: cashExport.value == null }), ...(showIncome ? ["", ""] : []), "", ""]);
     }
     const total = allocation.total;
+    const totalChange = dayMove?.changePercent != null ? colorBySign(formatPercentRaw(dayMove.changePercent), dayMove.change) : "—";
     rows.push([
-      cliStyles.bold("TOTAL"), "", "", ...extendedSessions.map(() => ""), "", "",
+      cliStyles.bold("TOTAL"), "", totalChange, ...extendedSessions.map(() => ""), "", "",
       cliStyles.bold(wholeMoney(total)),
       formatAllocationWeight(totalWeight(allocation)),
       ...(showTargets ? [formatAllocationWeight(allocation.targetSum), "", "", ""] : []),
@@ -1184,7 +1204,7 @@ async function showCollectionWithMarketData(
       rows,
     ));
     console.log("");
-    if (basis === "regular-close") console.log(dayMoveLine(dayMove, currency, colorBySign, cliStyles.muted));
+    if (valued.some((entry) => entry.position)) console.log(dayMoveLine(dayMove, currency, colorBySign, cliStyles.muted));
     if (valued.some((entry) => entry.position)) console.log(exposureLine(exposure, currency));
     // The rates the holdings in another currency are valued at, dated, so a stale one is seen beside the value it moves.
     const fxLine = fxRatesLine(toBase.conversions(), { warning: cliStyles.warning });
