@@ -36,7 +36,7 @@ import {
   ListingArgError, listingFateLoader, listingReadNotes, loadForListing, loadListingQuoteAnswer, quotedListingChoiceNotes, refuseMovedListing,
 } from "../listing-arg";
 import { notATickerStop } from "../company-name-hint";
-import { CLI_ERROR_CODE, failUnreachable, failWithError, isCliFailure, unreachableError } from "../errors";
+import { CLI_ERROR_CODE, failUnreachable, failWithError, isCliFailure, isSourceUnavailableAnswer, unreachableError } from "../errors";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../../utils/network-failure";
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
 import { knownGapMessage, commandPointer, commandPointerLeads, topicPointer } from "../known-gaps";
@@ -650,6 +650,8 @@ async function runPaneCliCommand(ctx: CliCommandContext, run: () => Promise<void
     // A failure with fields for --json (`ticker_moved`, its change and retry), or a code of its own (`no_data`,
     // `service_unreachable` and whether to retry), keeps them.
     if (isCliFailure(error) && (error.fields || error.code !== CLI_ERROR_CODE)) throw error;
+    // A source the data service reads was unavailable: retryable `source_unavailable`, in its own words.
+    if (isSourceUnavailableAnswer(error)) throw error;
     // A listing it cannot use says what to type instead; a name that opens nothing, what is close to it.
     if (error instanceof ListingArgError || error instanceof UnknownPaneFunctionError) ctx.fail(error.message, error.details || undefined);
     const message = error instanceof Error ? error.message : String(error);

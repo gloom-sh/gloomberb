@@ -6,6 +6,7 @@ import { setHttpFetchTransport } from "../../../utils/http-transport";
 import {
   attachThirteenFApiPersistence,
   resetThirteenFApiPersistence,
+  THIRTEENF_SOURCE_UNAVAILABLE,
   thirteenFReadError,
 } from "./api";
 import { ApiRequestError } from "../../../api-client/errors";
@@ -342,7 +343,7 @@ test("a filing comes whole in one request, and a page at a time, a few at once, 
     // A busy service is the error, not a reason to ask it 250 rows at a time.
     whole = 503;
     asked.length = 0;
-    await expect(loadFundDetail("1067983", "Fund", undefined, { filingGap: false, forceRefresh: true })).rejects.toThrow("Service unavailable");
+    await expect(loadFundDetail("1067983", "Fund", undefined, { filingGap: false, forceRefresh: true })).rejects.toThrow(THIRTEENF_SOURCE_UNAVAILABLE);
     expect(asked.some((request) => request.path === "/form")).toBe(false);
 
     whole = 404;
