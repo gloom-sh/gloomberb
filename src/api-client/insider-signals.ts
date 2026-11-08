@@ -103,6 +103,14 @@ export interface InsiderSignalRow {
   buyers: InsiderSignalBuyer[];
   /** Stored market value, USD; null when the server has none for it. */
   marketCap?: number | null;
+  /**
+   * Buy side: USD the company's insiders bought in the window under a Rule
+   * 10b5-1 plan, never in `value` or the score; left out by servers that
+   * predate it.
+   */
+  planValue?: number;
+  /** Buy side: USD the company's insiders sold in the open market in the window, under a plan or not. */
+  soldValue?: number;
 }
 
 interface InsiderSignalsFilters {

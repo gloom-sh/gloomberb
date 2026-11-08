@@ -8,7 +8,7 @@ import type {
 import { formatCompact, formatCurrency } from "../../../utils/format";
 import { INSIDER_REPORT_FILINGS, loadParsedInsiderFilings, type InsiderFilingsLoad } from "./client";
 import { insiderEmptyNotice, loadHomeInsiderReportsNote } from "./issuer";
-import { FORM4_CURRENCY, withInsiderBaseValues } from "./base-values";
+import { FORM4_CURRENCY, withDayBaseValues, withInsiderBaseValues } from "./base-values";
 import {
   buildInsiderRows,
   buildInsiderSummary,
@@ -19,7 +19,7 @@ import {
   type ParsedInsiderFiling,
 } from "./model";
 import { isAmendedInsiderFiling, relevantInsiderAmendments } from "./amendments";
-import { formatInsiderName } from "./display";
+import { formatInsiderName, isOpenMarketTrade } from "./display";
 import { SEC_FILING_ROWS } from "../shared/report-freshness";
 import { resolveHeadlessInstrument, resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import { noSecReportsNotice } from "../../../utils/sec";
@@ -83,8 +83,11 @@ const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
   {
     key: "side",
     header: "Side",
-    // A filing without transaction lines, matching the pane's "Form 4 disclosure" row.
-    format: (value, row) => typeof value === "string" ? value : row.status === "disclosure" ? "DISCLOSURE" : "-",
+    // A filing without transaction lines, matching the pane's "Form 4 disclosure" row. An open-market
+    // trade on a form with the Rule 10b5-1 box checked is marked as the pane marks it: BUY 10b5-1.
+    format: (value, row) => typeof value === "string"
+      ? `${value}${row.rule10b51 === true && isOpenMarketTrade(typeof row.transactionCode === "string" ? row.transactionCode : null) ? " 10b5-1" : ""}`
+      : row.status === "disclosure" ? "DISCLOSURE" : "-",
   },
   {
     key: "shares",
@@ -114,6 +117,16 @@ function labelDollarColumns(columns: HeadlessPaneColumn[], keys: readonly string
   return columns.map((column) => keys.includes(column.key) ? { ...column, header: `${column.header} (${FORM4_CURRENCY})` } : column);
 }
 
+/** A ranking's columns with each converted value right after its dollars, and the rate after the last. */
+function withBaseColumns(columns: HeadlessPaneColumn[], based: readonly HeadlessPaneColumn[] | null): HeadlessPaneColumn[] {
+  if (!based) return columns;
+  const rate = based.filter((column) => column.key === "fxRate");
+  const values = based.filter((column) => column.key !== "fxRate");
+  const out = columns.flatMap((column) => [column, ...values.filter((value) => value.key === `${column.key}Base`)]);
+  const last = Math.max(...values.map((value) => out.indexOf(value)));
+  return [...out.slice(0, last + 1), ...rate, ...out.slice(last + 1)];
+}
+
 /** The trades' columns with the money ones labelled by currency and the converted value and rate after them (`withInsiderBaseValues`). */
 function withMoneyColumns(money: readonly HeadlessPaneColumn[]): HeadlessPaneColumn[] {
   const byKey = new Map(money.map((column) => [column.key, column]));
@@ -123,6 +136,8 @@ function withMoneyColumns(money: readonly HeadlessPaneColumn[]): HeadlessPaneCol
 }
 
 const figureOrDash = (value: unknown) => (typeof value === "number" ? value : null);
+/** A ranking's dollars beside the side's own; none is a dash. */
+const signalAmount = (value: unknown) => (typeof value === "number" && value > 0 ? formatSignalValue(value) : "-");
 
 /**
  * The ranking without a ticker: the pane's columns in the side's words, why
@@ -155,6 +170,11 @@ function signalColumns(side: InsiderSignalSide): HeadlessPaneColumn[] {
     },
     { key: "insiders", header: words.insiders, align: "right" },
     { key: "value", header: words.traded, align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : "-" },
+    // Buying is read beside what the score leaves out: purchases under a Rule 10b5-1 plan, and the sales of the same days.
+    ...side === "buy" ? [
+      { key: "planValue", header: "Plan Buys", align: "right" as const, format: signalAmount },
+      { key: "soldValue", header: "Sold", align: "right" as const, format: signalAmount },
+    ] : [],
     { key: "lastBuy", header: words.last, format: (value) => typeof value === "string" ? formatSignalDay(value) : "-" },
     { key: "filingDate", header: "Filed", stackPriority: 1, format: (value) => typeof value === "string" ? value : "-" },
     { key: "buyers", header: "Insiders", underRow: true, format: (value) => typeof value === "string" ? value : "" },
@@ -234,6 +254,8 @@ function signalRows(payload: InsiderSignalsPayload): HeadlessPaneRow[] {
       lastBuy: row.lastBuy,
       filingDate: row.lastFiled,
       marketCap: row.marketCap ?? null,
+      ...row.planValue != null ? { planValue: row.planValue } : {},
+      ...row.soldValue != null ? { soldValue: row.soldValue } : {},
       buyers: row.buyers.map((buyer) => {
         const stake = insiderStakeFact(buyer);
         return `${formatInsiderName(buyer.name)} (${buyer.role}) ${formatSignalValue(buyer.value)}${stake.sort == null ? "" : ` ${stake.text}`}`;
@@ -474,11 +496,26 @@ export function createInsiderHeadless(
         const query = signalQuery(args.options);
         const payload = await (dependencies.loadSignals ?? defaultDependencies.loadSignals!)(query, Number(args.options.limit), ctx);
         const side = payload.side ?? "buy";
+        const words = insiderSideWords(side);
+        // A server that predates plan buys and sales beside them sends neither: no column of dashes.
+        const columns = signalColumns(side).filter((column) => (column.key !== "planValue" && column.key !== "soldValue")
+          || payload.rows.some((row) => row[column.key as "planValue" | "soldValue"] != null));
+        // A base currency other than USD gets the side's dollars in it too, as the trades' table gets each value.
+        const based = await withDayBaseValues(signalRows(payload), [{ key: "value", header: words.traded }], "lastBuy",
+          ctx.config.baseCurrency, dependencies.fxHistory ?? ctx.apiClient);
+        const labelled = withBaseColumns(labelDollarColumns(columns, ["value", "planValue", "soldValue"], ctx.config.baseCurrency), based.columns);
+        const plans = side === "buy" && payload.rows.some((row) => row.planValue != null);
+        const notes = [
+          ...based.columns ? [`${words.traded} (${ctx.config.baseCurrency.trim().toUpperCase()}) is each company's dollars at the ${String(based.rows[0]?.fxPair)} daily close of its ${words.last.toLowerCase()} day, or of the trading day before it; ${String(based.rows[0]?.fxPair)} is that rate.`] : [],
+          ...based.note ? [based.note] : [],
+          ...plans ? ["The score counts open-market buys an insider chose to make; Plan Buys are those under a Rule 10b5-1 plan, set up months before, and Sold is every open-market sale in the window, under a plan or not."] : [],
+        ];
         return {
-          columns: labelDollarColumns(signalColumns(side), ["value"], ctx.config.baseCurrency),
+          columns: labelled,
           // The exports carry each row's insiders; the text leaves them to fn INS <ticker> --view insiders.
-          textColumns: labelDollarColumns(signalColumns(side).filter((column) => column.key !== "buyers"), ["value"], ctx.config.baseCurrency),
-          rows: signalRows(payload),
+          textColumns: labelled.filter((column) => column.key !== "buyers"),
+          ...(notes.length ? { notes } : {}),
+          rows: based.rows,
           ...(payload.rows.length === 0 ? { empty: insiderSignalsEmptyTitle(payload.window, side, insiderSignalsFiltered(query)) } : {}),
           metadata: {
             side,
@@ -491,7 +528,7 @@ export function createInsiderHeadless(
             limitations: [
               side === "sell"
                 ? "Open-market sales (Form 4 code S) an officer, director or 10% owner chose to make only: sales under a Rule 10b5-1 plan, to cover tax, of shares exercised that day, in an offering, into a deal or in a private sale are left out, as are forms a company files as an owner of another issuer."
-                : "Open-market purchases (Form 4 code P) by officers, directors and 10% owners only; forms a company files as an owner of another issuer are left out.",
+                : "Open-market purchases (Form 4 code P) an officer, director or 10% owner chose to make: purchases under a Rule 10b5-1 plan are left out of the score and shown apart (planValue), beside every open-market sale in the window (soldValue); forms a company files as an owner of another issuer are left out.",
               ...(query.cap && payload.marketCaps === "unavailable" ? ["The server stores no market values, so the cap filter leaves nothing."] : []),
             ],
           },
@@ -517,7 +554,7 @@ export function createInsiderHeadless(
             coverage: { buy: activity.buy.coverage, sell: activity.sell.coverage },
             ...(notices.length ? { notices } : {}),
             limitations: [
-              "Open-market purchases (code P) and the sales an insider chose to make (code S, not under a Rule 10b5-1 plan, to cover tax, of shares exercised that day or in an offering), as the ranking counts them: an insider who bought and sold is counted on the net, on one side. Each Form 4 line as filed is the default view.",
+              "The open-market purchases (code P) and sales (code S) an insider chose to make, as the ranking counts them: not under a Rule 10b5-1 plan, and no sale to cover tax, of shares exercised that day or in an offering. An insider who bought and sold is counted on the net, on one side. Each Form 4 line as filed, plan trades marked 10b5-1, is the default view.",
             ],
           },
         };
