@@ -1202,7 +1202,7 @@
    "code": "GC",
    "name": "Yield curves",
    "description": "Government bond curves",
-   "detail": "Government yield curves: US Treasury, TIPS real yields and breakevens, euro AAA, Bund, Gilt, JGB and Canada, with spreads like 2s10s and their one-year percentiles, a two-date difference and a World tab. GC JGB opens a curve directly.",
+   "detail": "Government yield curves: US Treasury, TIPS real yields and breakevens, euro AAA, Bund, Gilt, JGB and Canada, with spreads like 2s10s and their one-year percentiles, a two-date difference and a World tab that adds Mexico's and Brazil's 2- and 10-year yields. GC JGB opens a curve directly.",
    "category": "macro",
    "shot": "https://gloom.sh/screenshots/fn/GC.png",
    "lesson": "/academy/rates-bonds-credit/rates/yield-curve"
@@ -6202,7 +6202,7 @@
     "terminal",
     "remote control"
    ],
-   "updatedAt": "2026-11-05",
+   "updatedAt": "2026-11-07",
    "blocks": [
     {
      "type": "paragraph",
@@ -6374,7 +6374,7 @@
       ],
       [
        "`sec.insider_transactions`",
-       "`ticker`"
+       "`ticker`, `since?`, `until?` (trade dates, `YYYY-MM-DD`: every Form 4 of the window, and which days it covers), `offset?`"
       ],
       [
        "`sec.thirteenf_holders`",
