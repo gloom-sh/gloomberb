@@ -1,7 +1,7 @@
 import type { PluginModule } from "../plugin-module";
 import { futuresCurveCache } from "./client";
 import { futuresCurveHeadless } from "./headless";
-import { BASIS_FORMULA, CURVE_HORIZONS, CURVE_ROOTS, curveRootForTicker, curveTitle, DEFAULT_CURVE_HORIZON, normalizeCurveRoot } from "./model";
+import { BASIS_FORMULA, CURVE_HORIZONS, CURVE_ROOTS, curveRootForTicker, curveRootNamed, curveTitle, DEFAULT_CURVE_HORIZON, normalizeCurveRoot } from "./model";
 
 export const futuresCurveModule: PluginModule = {
   panes: [{ id: "futures-curve", name: "Futures Curve", icon: "F", shareItem: { argument: true }, get component(): typeof import("./pane").FuturesCurvePane { const { FuturesCurvePane } = require("./pane"); return FuturesCurvePane; },
@@ -23,7 +23,8 @@ export const futuresCurveModule: PluginModule = {
     headless: futuresCurveHeadless,
     createInstance: (context, options) => {
       const input = options?.arg?.trim();
-      const root = input ? normalizeCurveRoot(input) : curveRootForTicker(context.activeTicker) ?? "ES";
+      // A root named in words (`CTM gold`) opens its curve, as `fn CTM gold` reads it.
+      const root = input ? normalizeCurveRoot(input) ?? curveRootNamed(input) : curveRootForTicker(context.activeTicker) ?? "ES";
       return { title: root ? curveTitle(root) : `CTM ${input}`, params: { root: root ?? input ?? "ES" }, placement: "floating" };
     },
   }],

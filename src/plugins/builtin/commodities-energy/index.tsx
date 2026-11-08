@@ -120,10 +120,11 @@ function workspaceTemplate(
  * A root the command names (`CTM VX`) is the curve's root: written over the one
  * the Markets board's search or pick left in the setting, which the body reads
  * before the command's params, so the window never draws XAZ under `CTM VX`.
- * A bare `CTM` keeps the root the window shows.
+ * Only a root the curve lists is written: a bare `CTM`, or one naming no root,
+ * keeps the root the window shows.
  */
 function commandedInstance(tab: WorkspaceTab, instance: PaneTemplateInstanceConfig): PaneTemplateInstanceConfig {
-  const root = tab === "curve" ? instance.params?.root : undefined;
+  const root = tab === "curve" ? normalizeCurveRoot(instance.params?.root) : null;
   return root ? { ...instance, settings: { ...instance.settings, root } } : instance;
 }
 

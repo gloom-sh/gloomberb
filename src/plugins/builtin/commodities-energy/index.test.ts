@@ -26,12 +26,15 @@ async function run(context: PaneTemplateContext, pane: PaneInstanceConfig, arg?:
   return { title: next.title, root: normalizeCurveRoot(paneCurveRoot(next)) };
 }
 
-test("a root the command names wins over the board's, and the title names the root the body draws", async () => {
+test("a root the command names wins over the board's, one it cannot resolve never replaces it, and the title names the root the body draws", async () => {
   const { context, pane } = workspaceOn("XAZ");
   expect(await run(context, pane, "VX")).toEqual({ title: "Curve \u00b7 VX", root: "VX" });
   expect(await run(context, pane, "vix")).toEqual({ title: "Curve \u00b7 VX", root: "VX" });
-  // A bare CTM keeps the root the window shows, and its title still names it.
+  // A root named in words opens its curve, as fn CTM reads it.
+  expect(await run(context, pane, "natural gas")).toEqual({ title: "Curve \u00b7 NG", root: "NG" });
+  // A bare CTM, or one naming no root, keeps the root the window shows, and its title still names it.
   expect(await run(context, pane)).toEqual({ title: "Curve \u00b7 XAZ", root: "XAZ" });
+  expect(await run(context, pane, "XYZQ")).toEqual({ title: "Curve \u00b7 XAZ", root: "XAZ" });
 });
 
 test("the workspace's ? explains the tab it shows: CTM on the curve, FUT on the board", () => {
