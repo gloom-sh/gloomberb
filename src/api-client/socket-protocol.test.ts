@@ -3,6 +3,7 @@ import { CloudApiSocket } from "./socket";
 import { getServerClockOffsetMs, resetServerClockForTests } from "../market-data/quotes/clock";
 import type { CloudQuotePayload, QuoteStreamTarget } from "./types";
 import { createTestSocketDeps, installTestWebSocket, type TestWebSocket } from "../test-support/cloud-api";
+import { debugLog } from "../utils/debug-log";
 
 const originalWebSocket = globalThis.WebSocket;
 /** Every socket a test opens: one left open past its test would reconnect into the next file's. */
@@ -127,4 +128,25 @@ test("the app streams one budget of perpetual listings across every pane, those 
   await Bun.sleep(50);
   expect(replay().size).toBe(60);
   expect([...streamed].sort()).toEqual(coins.slice(0, 60).sort());
+});
+
+test("the debug log names the first few symbols of a long subscription, not all of them", async () => {
+  sockets = installTestWebSocket(0);
+  const socket = track(new CloudApiSocket(createTestSocketDeps()));
+  const symbols = Array.from({ length: 300 }, (_, index) => `S${index}`);
+  const before = debugLog.getEntries({ source: "cloud-api" }).length;
+  socket.subscribeQuotes(symbols.map((symbol) => ({ symbol, exchange: "NASDAQ" })), () => {});
+  const ws = sockets.at(-1)!;
+  ws.open();
+  ws.receive({ type: "ready", user: null, serverTime: Date.now(), features: ["market.batch"] });
+  await Bun.sleep(50);
+
+  // The server still gets every symbol.
+  expect(ws.sent.filter((message) => message.type === "market.subscribe").flatMap((message) => message.symbols)).toHaveLength(300);
+  const logged = debugLog.getEntries({ source: "cloud-api" }).slice(before)
+    .filter((entry) => entry.message === "register quote listeners" || entry.message === "send websocket message");
+  expect(logged.length).toBeGreaterThanOrEqual(2);
+  for (const entry of logged) expect(JSON.stringify(entry.data).length).toBeLessThan(600);
+  expect(logged.find((entry) => entry.message === "register quote listeners")?.data)
+    .toEqual({ count: 300, symbols: { count: 300, first: ["S0:NASDAQ", "S1:NASDAQ", "S2:NASDAQ", "S3:NASDAQ", "S4:NASDAQ"] } });
 });

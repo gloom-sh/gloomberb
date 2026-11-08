@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppVisible, usePaneInView } from "../app/activity";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { Quote } from "../../types/financials";
-import { debugLog } from "../../utils/debug-log";
+import { debugLog, previewList, type ListPreview } from "../../utils/debug-log";
 import { normalizeSymbol } from "../../utils/exchanges";
 import { getSharedMarketDataCoordinator, type MarketDataCoordinator } from "../../market-data/coordinator";
 import { useQuoteEntries } from "../../market-data/hooks";
@@ -80,6 +80,8 @@ type UpdateableQuoteSubscription = (() => void) & {
 interface ActiveQuoteSubscription {
   identityKey: string;
   subscriptionKey: string;
+  /** The subscription's targets as the log names them. */
+  preview: ListPreview<string>;
   count: number;
   dispose: UpdateableQuoteSubscription;
 }
@@ -110,7 +112,7 @@ export function useQuoteStreaming(
   // Keyed on the array, not its contents: callers memoize their targets, and a
   // portfolio re-renders on every data frame, where re-keying and sorting a
   // thousand targets cost a few milliseconds each time.
-  const { coordinatorTargets, identityKey, subscriptionKey } = useMemo(() => {
+  const { coordinatorTargets, identityKey, subscriptionKey, preview } = useMemo(() => {
     const normalizedEntries = new Map<string, QuoteSubscriptionTarget>();
     for (const target of targets) {
       const resolved = normalizeQuoteStreamSubscriptionTarget(target);
@@ -127,16 +129,20 @@ export function useQuoteStreaming(
         .sort()
         .join("\u001f"),
       subscriptionKey: sortedEntries.map(([key]) => key).join("|"),
+      // The log names the first few targets, not the hundreds a long list subscribes.
+      preview: previewList(sortedEntries, ([key]) => key),
     };
   }, [paneInView, targets]);
   const latestSubscriptionRef = useRef({
     identityKey,
     subscriptionKey,
+    preview,
     targets: coordinatorTargets,
   });
   latestSubscriptionRef.current = {
     identityKey,
     subscriptionKey,
+    preview,
     targets: coordinatorTargets,
   };
   const activeSubscriptionRef = useRef<ActiveQuoteSubscription | null>(null);
@@ -147,7 +153,7 @@ export function useQuoteStreaming(
       if (latest.targets.length > 0) {
         quoteStreamLog.info("skipping subscription", {
           reason: enabled ? "inactive" : "disabled",
-          targets: latest.subscriptionKey,
+          targets: latest.preview,
         });
       }
       return;
@@ -156,11 +162,12 @@ export function useQuoteStreaming(
     quoteStreamLog.info("subscribe", {
       providerId: "market-data",
       count: latest.targets.length,
-      targets: latest.subscriptionKey,
+      targets: latest.preview,
     });
     const active: ActiveQuoteSubscription = {
       identityKey: latest.identityKey,
       subscriptionKey: latest.subscriptionKey,
+      preview: latest.preview,
       count: latest.targets.length,
       dispose: coordinator.subscribeQuotes(latest.targets) as UpdateableQuoteSubscription,
     };
@@ -172,7 +179,7 @@ export function useQuoteStreaming(
       quoteStreamLog.info("unsubscribe", {
         providerId: "market-data",
         count: active.count,
-        targets: active.subscriptionKey,
+        targets: active.preview,
       });
       active.dispose();
     };
@@ -193,7 +200,7 @@ export function useQuoteStreaming(
     quoteStreamLog.info("update subscription", {
       providerId: "market-data",
       count: latest.targets.length,
-      targets: latest.subscriptionKey,
+      targets: latest.preview,
     });
     if (typeof active.dispose.update === "function") {
       active.dispose.update(latest.targets);
@@ -203,6 +210,7 @@ export function useQuoteStreaming(
       previousDispose();
     }
     active.subscriptionKey = latest.subscriptionKey;
+    active.preview = latest.preview;
     active.count = latest.targets.length;
   }, [appActive, coordinator, enabled, identityKey, subscriptionKey]);
 }
