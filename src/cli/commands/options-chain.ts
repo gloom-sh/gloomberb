@@ -307,7 +307,8 @@ export function optionRows(chain: OptionsChain) {
       side,
       contract: contract.contractSymbol,
       strike: contract.strike,
-      last: contract.lastPrice,
+      // A contract that never traded has no last price, which the provider sends as 0: no 0 is shown or exported.
+      last: Number.isFinite(contract.lastPrice) && contract.lastPrice > 0 ? contract.lastPrice : null,
       bid: contract.bid,
       ask: contract.ask,
       volume: contract.volume,
@@ -346,6 +347,11 @@ export function formatOptionDollarCell(value: unknown): string {
 /** Gamma per 1.00 move, tiny for a coin worth 80,000 dollars: to six places, as the venue shows it to five. */
 export function formatOptionGammaCell(value: unknown): string {
   return isFiniteNumber(value) ? value.toFixed(6) : "—";
+}
+
+/** The last trade's price; a dash for a contract that never traded, as the OMON table shows it. */
+export function formatOptionLastCell(value: unknown): string {
+  return isFiniteNumber(value) && value > 0 ? String(value) : "—";
 }
 
 export function formatOptionQuoteCell(row: Record<string, unknown>, side: "bid" | "ask"): string {

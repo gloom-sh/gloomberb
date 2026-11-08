@@ -48,6 +48,7 @@ import {
   returnBaseCloseDay,
   returnTimeHeader,
   returnTimeText,
+  defaultReturnInterval,
   RETURN_RANGES,
   type ReturnRange,
   type ReturnRow,
@@ -135,7 +136,9 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
   const dataProvider = useAssetData();
   const { symbol, exchange, ticker } = useBoundTicker();
   const [range, setRange] = usePluginPaneState<ReturnRange>("range", "5D");
-  const [resolution, setResolution] = usePluginPaneState<ManualChartResolution>("interval", "1h");
+  // Unchosen, the interval grows with the range (hourly to 1W, daily to 1Y); a choice stays saved.
+  const [chosenResolution, setResolution] = usePluginPaneState<ManualChartResolution | null>("interval", null);
+  const resolution = chosenResolution ?? defaultReturnInterval(range);
   const [view, setView] = usePluginPaneState<ReturnView>("view", "table");
   const chartView = view === "chart";
   const { nativePaneChrome } = useUiCapabilities();

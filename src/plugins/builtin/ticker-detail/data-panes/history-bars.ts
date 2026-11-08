@@ -1,7 +1,7 @@
 import { BAR_INTERVAL_LABELS } from "../../../../cli/history-rows";
 import { periodToDateText } from "../../../../cli/pane-functions/freshness";
 import { barLastSession, barPeriodToDate, type BarPeriod, type BarPeriodToDate } from "../../../../market-data/market/bar-period";
-import { isIntradayDailyBar } from "../../../../market-data/market/period-return";
+import { barCloseDay, isIntradayDailyBar } from "../../../../market-data/market/period-return";
 import { barSizeFromGap, medianBarGap, requestedBarSize } from "../../../../time-series/bar-spacing";
 import type { TimeRange } from "../../../../time-series/range";
 import { CHART_RESOLUTION_STEP_MS, type ManualChartResolution } from "../../../../time-series/resolution";
@@ -96,6 +96,20 @@ export function closedHistoryBarDay(
   if (size === "1d") return date && !isIntradayDailyBar(date.slice(0, 10), venue, now) ? date.slice(0, 10) : null;
   const period = historyBarPeriod(size);
   return period && date && !barPeriodToDate(date, period, venue, now) ? barLastSession(date, period, venue, now) : null;
+}
+
+/**
+ * The day a bar's close is from, which a move between two closes (a
+ * drawdown's peak and trough) is dated by: a daily bar's own day, a week's or
+ * month's last session (barLastSession: March 2026 is Tue 31 Mar, never the
+ * 1st its bar is dated by), or how far one still forming runs; the calendar
+ * end of its period where its venue's sessions are unknown.
+ */
+export function historyBarCloseDate(size: HistoryBarSize, date: string, venue: string | undefined, now: number): string {
+  const day = date.slice(0, 10);
+  const period = historyBarPeriod(size);
+  if (!period) return day;
+  return barLastSession(day, period, venue, now) ?? barCloseDay(day, size, venue);
 }
 
 /**

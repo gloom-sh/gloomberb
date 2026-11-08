@@ -7,6 +7,7 @@ import {
   formatExpiryList,
   formatOptionDeltaCell,
   formatOptionIvCell,
+  formatOptionLastCell,
   loadOptionModelInputs,
   optionRows,
   optionsBasisFootnote,
@@ -47,6 +48,11 @@ test("delta and IV cells print a dash for what could not be valued, never a zero
   for (const missing of [null, undefined, Number.NaN, "x"]) expect(formatOptionDeltaCell(missing)).toBe("—");
   expect(formatOptionIvCell(0.3171)).toBe("31.7%");
   for (const missing of [null, 0, Number.NaN]) expect(formatOptionIvCell(missing)).toBe("—");
+  // A contract that never traded comes with a last price of 0: a dash, in the text and the export alike.
+  expect(formatOptionLastCell(1.85)).toBe("1.85");
+  for (const missing of [null, 0, Number.NaN]) expect(formatOptionLastCell(missing)).toBe("—");
+  const untraded = { ...contract("C", 150, at("2027-01-15"), 0.25), lastPrice: 0 };
+  expect(optionRows({ underlyingSymbol: "XYZ", expirationDates: [untraded.expiration], calls: [untraded], puts: [] })[0]!.last).toBeNull();
 });
 
 function contract(side: "C" | "P", strike: number, expiration: number, volatility: number): OptionContract {

@@ -4,6 +4,7 @@ import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/h
 import { createTestFinancials, createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import { HistoryRetentionError } from "../../../sources/history-retention";
 import { createTestHeadlessContext } from "../../../test-support/headless";
+import type { ManualChartResolution } from "../../../time-series/resolution";
 import type { Quote, QuoteContribution } from "../../../types/financials";
 import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
@@ -496,6 +497,37 @@ test("returns mark a monthly bar whose month runs on, as historical prices do", 
     expect(complete.freshness).toMatchObject({ asOf: "2026-09-30" });
     expect(complete.freshness).not.toHaveProperty("periodToDate");
     expect(renderHeadlessPaneText(returnsHeadless, complete, input, "RETURN CSCO")).toContain("Wed 30 Sep 2026");
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("RETURN without --interval grows its bars with the range, and dates a month's close by its last session, not the 1st", async () => {
+  // Sun 8 Nov 2026: November's bar runs on.
+  setSystemTime(new Date("2026-11-08T19:00:00Z"));
+  try {
+    const asked: string[] = [];
+    const bars = (dates: string[], closes: number[]) => dates.map((date, index) => ({ date: new Date(date), close: closes[index]! }));
+    const ctx = createTestHeadlessContext({
+      resolveInstrument: async () => ({ symbol: "VXX", exchange: "BATS" }),
+      marketData: createTestDataProvider({
+        getDetailedPriceHistoryWithMetadata: async (_symbol, _exchange, _start, _end, interval) => {
+          asked.push(interval);
+          return interval === "1mo"
+            ? { points: bars(["2026-02-01", "2026-03-01", "2026-04-01", "2026-05-01"], [30, 35.7, 28, 29]), resolution: "1mo" as const }
+            : { points: bars(["2026-11-05", "2026-11-06"], [23, 22]), resolution: interval as ManualChartResolution };
+        },
+      }),
+    });
+    for (const [range, interval] of [["1Y", "1d"], ["5Y", "1wk"], ["5D", "1h"]] as const) {
+      const input = args(["VXX"], { range });
+      expect((returnsHeadless.describe as (args: HeadlessPaneLoadArgs) => string)(input)).toBe(`Returns | VXX | ${range} | ${interval}`);
+      expect((await returnsHeadless.load(input, ctx)).metadata).toMatchObject({ interval, requestedInterval: interval });
+    }
+    expect(asked.slice(0, 3)).toEqual(["1d", "1wk", "1h"]);
+    const monthly = await returnsHeadless.load(args(["VXX"], { range: "ALL", interval: "1mo" }), ctx);
+    expect(monthly.metadata!.notices).toContain(
+      "Max drawdown -21.6% (monthly closes): peak 35.70 on 2026-03-31, trough 28.00 on 2026-04-30, not back to the peak by 2026-05-29");
   } finally {
     setSystemTime();
   }
