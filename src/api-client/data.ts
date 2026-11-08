@@ -527,13 +527,18 @@ export class CloudDataApi {
     return this.request<T>(`/cloud/options/${path}`, init);
   }
 
+  /**
+   * `interactive` is a search box's keystroke, which gives a venue's own site
+   * about a second; any other search (the CLI's) waits for it, as before.
+   */
   async searchInstruments(
     query: string,
     limit = 10,
+    options: { interactive?: boolean } = {},
   ): Promise<InstrumentSearchResult[]> {
     const response = await this.request<
       CloudMarketResponse<InstrumentSearchResult[]>
-    >(cloudMarketSearchPath(query, limit));
+    >(cloudMarketSearchPath(query, limit, !options.interactive));
     // A search the service could not run (its catalogue rate limited, say) is no answer, not an empty one.
     if (response.status === "retryable_error" || response.status === "fatal_error") {
       throw new ApiRequestError(response.reasonCode ?? "Cloud search failed", undefined, undefined, response.status);
