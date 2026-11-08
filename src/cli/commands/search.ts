@@ -510,7 +510,7 @@ const FUND_WORDS = new Set(["ETF", "ETFS", "ETN", "ETNS", "FUND", "FUNDS", "UCIT
  * first half of the others with the fund's word, as a fund can word its name
  * in another order. Null for any other query.
  */
-export function fundSearchHint(query: string): string | null {
+function fundSearchHint(query: string): string | null {
   const words = query.replace(/"/g, "").trim().split(/\s+/).filter(Boolean);
   const fund = words.filter((word) => FUND_WORDS.has(word.toUpperCase()));
   const rest = words.filter((word) => !FUND_WORDS.has(word.toUpperCase()));
