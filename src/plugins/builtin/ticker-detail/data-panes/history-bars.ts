@@ -2,7 +2,7 @@ import { BAR_INTERVAL_LABELS } from "../../../../cli/history-rows";
 import { periodToDateText } from "../../../../cli/pane-functions/freshness";
 import { barLastSession, barPeriodToDate, type BarPeriod, type BarPeriodToDate } from "../../../../market-data/market/bar-period";
 import { isIntradayDailyBar } from "../../../../market-data/market/period-return";
-import { barSizeFromGap, medianBarGap } from "../../../../time-series/bar-spacing";
+import { barSizeFromGap, medianBarGap, requestedBarSize } from "../../../../time-series/bar-spacing";
 import type { TimeRange } from "../../../../time-series/range";
 import { CHART_RESOLUTION_STEP_MS, type ManualChartResolution } from "../../../../time-series/resolution";
 
@@ -23,13 +23,16 @@ const INTRADAY_BELOW_MS = 0.8 * CHART_RESOLUTION_STEP_MS["1d"];
 /**
  * The bar size of a history, read from the usual spacing of its bars
  * (medianBarGap), as `history` reads it, so the gap a holiday leaves does not
- * make daily bars weekly. Daily when there is no gap to read.
+ * make daily bars weekly. Daily when there is no gap to read. Daily or longer
+ * bars asked for in a size (`requested`, the range's) are that size unless
+ * the bars show otherwise (requestedBarSize).
  */
-export function historyBarSize(times: readonly number[]): HistoryBarSize {
+export function historyBarSize(times: readonly number[], requested?: ManualChartResolution | null): HistoryBarSize {
   const gap = medianBarGap(times);
-  if (gap == null) return "1d";
+  if (gap == null) return requested ?? "1d";
   if (gap < INTRADAY_BELOW_MS) return INTRADAY_SIZES.find((size) => CHART_RESOLUTION_STEP_MS[size] === gap) ?? "intraday";
-  return barSizeFromGap(gap);
+  // Daily or longer bars of a range are the size it asks for: a thin listing's daily bars a week apart are not weekly.
+  return requested && isDailyOrLongerBar(requested) ? requestedBarSize(times, requested) : barSizeFromGap(gap);
 }
 
 /** Whether a bar of this size covers a day or more, so its date is a day and not a time. */

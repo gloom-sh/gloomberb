@@ -48,10 +48,10 @@ import { formatUtcTime } from "../../../utils/utc-time";
 import { closeMoves } from "../../../utils/max-drawdown";
 import { isYieldIndexSymbol } from "../../../tickers/index-roots";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
-import { isPastPriceWindow, loadPriceWindowHistory, priceWindowText, readPriceWindow, type PriceWindow } from "../../../utils/price-window";
+import { isPastPriceWindow, loadPriceWindowHistory, priceWindowInterval, priceWindowText, readPriceWindow, type PriceWindow } from "../../../utils/price-window";
 import { historyCoverageNotice } from "../../../sources/history-coverage";
 import { getChartResolutionLabel, isIntradayResolution, RANGE_HISTORY_RESOLUTION, type ManualChartResolution } from "../../../time-series/resolution";
-import { DAY_SO_FAR_TEXT, withSessionBar } from "../../../time-series/session-bar";
+import { DAY_SO_FAR_TEXT, dailyOrLongerBarSize, withSessionBar } from "../../../time-series/session-bar";
 import { buildReturnRows, closedMarketNote, isTodayReturnRow, returnBaseCloseDay, type ReturnRange } from "./data-panes/returns-model";
 import { periodBaseText } from "../../../market-data/market/period-return";
 import { loadReturnSeries } from "./data-panes/returns-history";
@@ -417,7 +417,9 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     // The venue whose sessions say whether a day, week or month is still running: the key's, or for a bare symbol its quote's.
     const venue = exchange || quote?.listingExchangeName || quote?.exchangeName || undefined;
     const now = Date.now();
-    const points = withSessionBar(loaded, quote, { now, venue });
+    // The bars the range or window asks for: a thin listing's daily bars a week or two apart are still daily.
+    const requested = window ? priceWindowInterval(window) : RANGE_HISTORY_RESOLUTION[range];
+    const points = withSessionBar(loaded, quote, { now, venue, ...dailyOrLongerBarSize(requested) });
     // Providers serve float32 prices (4013.39990234 for 4013.4): the rows hold the decimal each is, as `history` does,
     // a London line's cleaned in the pence it was priced in.
     const priceDivisor = quotedPriceDivisor(quote);
@@ -436,7 +438,7 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
       };
     }).sort((left, right) => left.date.localeCompare(right.date));
     const notice = priceHistoryIntegrityNotice(rows.filter((row) => row.integrity).length);
-    const size = historyBarSize(rows.map((row) => Date.parse(row.date)));
+    const size = historyBarSize(rows.map((row) => Date.parse(row.date)), requested);
     // A weekly or monthly bar whose period runs on is dated by how far it runs, as `history` dates it.
     const forming = formingHistoryBar(size, rows.at(-1)?.date, venue, now);
     // A complete one is dated by the day its last session closed, the day its close is from.

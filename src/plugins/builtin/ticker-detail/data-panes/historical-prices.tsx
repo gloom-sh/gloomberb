@@ -38,7 +38,8 @@ import {
 import { usePaneTicker } from "../../../../state/app/context";
 import { handleRefreshKey, useClampSelectedIndex } from "../../../../components/data-table/table-pane";
 import { useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
-import { DAY_SO_FAR_TEXT, withSessionBar } from "../../../../time-series/session-bar";
+import { DAY_SO_FAR_TEXT, dailyOrLongerBarSize, withSessionBar } from "../../../../time-series/session-bar";
+import { RANGE_HISTORY_RESOLUTION, type ManualChartResolution } from "../../../../time-series/resolution";
 import {
   formingHistoryBar,
   formingHistoryBarText,
@@ -130,7 +131,7 @@ interface HistoricalPriceTable {
   gapNotices: string[];
 }
 
-function buildHistoricalPriceRows(points: PricePoint[], venue: string | undefined, now: number): HistoricalPriceTable {
+function buildHistoricalPriceRows(points: PricePoint[], venue: string | undefined, now: number, requested: ManualChartResolution): HistoricalPriceTable {
   const sorted = points
     .flatMap((point, sourceIndex) => {
       const date = pricePointDate(point);
@@ -139,7 +140,7 @@ function buildHistoricalPriceRows(points: PricePoint[], venue: string | undefine
       }] : [];
     })
     .sort((left, right) => left.date.getTime() - right.date.getTime());
-  const size = historyBarSize(sorted.map((entry) => entry.date.getTime()));
+  const size = historyBarSize(sorted.map((entry) => entry.date.getTime()), requested);
   const newestDate = sorted.at(-1)?.date.toISOString().slice(0, 10);
   const forming = formingHistoryBar(size, newestDate, venue, now);
   const dayToDate = size === "1d" && sorted.at(-1)?.partial === true;
@@ -271,16 +272,16 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   // An index's uncounted 0 volume (^HSI's day built from its quote) is no volume, as `history` and HP's CSV leave it.
   const instrumentType = quote?.instrumentType ?? financials?.quoteMetadata?.instrumentType;
   const points = useMemo(
-    () => withSessionBar(data ?? [], quote, { now: Date.now(), venue }).map((point) => {
+    () => withSessionBar(data ?? [], quote, { now: Date.now(), venue, ...dailyOrLongerBarSize(RANGE_HISTORY_RESOLUTION[range]) }).map((point) => {
       if (point.volume == null) return point;
       const volume = indexBarVolume(point.volume, instrumentType);
       return volume === point.volume ? point : { ...point, volume: undefined };
     }),
-    [data, instrumentType, quote, venue],
+    [data, instrumentType, quote, range, venue],
   );
   const { rows, size, forming, dayToDate, newestDate, gapNotices } = useMemo(
-    () => buildHistoricalPriceRows(points, venue, Date.now()),
-    [points, venue],
+    () => buildHistoricalPriceRows(points, venue, Date.now(), RANGE_HISTORY_RESOLUTION[range]),
+    [points, range, venue],
   );
   const integrityNotice = priceHistoryIntegrityNotice(rows.filter((row) => row.point.integrity).length);
   const wickNotice = useMemo(() => priceHistoryWickNotice(points.filter((point) => pricePointWickFlags(point).length > 0).length), [points]);

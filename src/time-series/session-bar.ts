@@ -1,6 +1,6 @@
 import type { PricePoint, Quote } from "../types/financials";
 import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
-import { isAlwaysOpenExchange, isRegularSessionTime, sessionCalendarTimeZone } from "../market-data/market/freshness";
+import { isAlwaysOpenExchange, isRegularSessionTime, latestRegularSessionClose, sessionCalendarTimeZone } from "../market-data/market/freshness";
 import { quoteTradingDay } from "../market-data/quotes/day-range";
 import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
 import { pricePointIntegrity } from "../utils/price-history-integrity";
@@ -20,7 +20,24 @@ export interface SessionBarOptions {
   /** The listing's venue, when the caller knows it; otherwise the quote's. */
   venue?: string;
   assetCategory?: string;
+  /**
+   * The bar size the history was asked for or served in, when the caller
+   * knows it. Without it the size is read from the bars' spacing, which a
+   * thinly traded listing (a trade every week or two) makes look weekly.
+   */
+  barSize?: "1d" | "1wk" | "1mo";
 }
+
+/** The `barSize` option for a history asked for in `resolution` bars: daily or longer ones only. */
+export function dailyOrLongerBarSize(resolution: string | null | undefined): Pick<SessionBarOptions, "barSize"> {
+  return resolution === "1d" || resolution === "1wk" || resolution === "1mo" ? { barSize: resolution } : {};
+}
+
+/**
+ * How long after its session closes a day's bar is final: a delayed quote
+ * runs up to twenty minutes behind, and a closing auction prints at the bell.
+ */
+const SESSION_SETTLE_MS = 30 * 60_000;
 
 function barTime(point: Pick<PricePoint, "date">): number {
   const date = point.date as Date | string | number;
@@ -95,15 +112,18 @@ export function withSessionBar(
   options: SessionBarOptions,
 ): PricePoint[] {
   const last = points.at(-1);
-  if (!last || points.length < 2) return points;
+  if (!last || (points.length < 2 && !options.barSize)) return points;
   const times = points.map(barTime);
   const lastTime = times.at(-1)!;
   const gap = medianBarGap(times);
-  if (!Number.isFinite(lastTime) || gap === null || gap < DAILY_BAR_MIN_GAP_MS) return points;
-  const size = barSizeFromGap(gap);
+  if (!Number.isFinite(lastTime) || (!options.barSize && (gap === null || gap < DAILY_BAR_MIN_GAP_MS))) return points;
+  // The size asked for, not the spacing: a listing that trades once a fortnight still has daily bars.
+  const size = options.barSize ?? barSizeFromGap(gap!);
   const venue = options.venue || quote?.listingExchangeName || quote?.exchangeName || undefined;
   if (venue && isAlwaysOpenExchange(venue)) return points;
   if (quote && !tradesInSessions(quote, venue)) return points;
+  const settled = quote ? settledSessionBar(points, last, lastTime, size, quote, venue, options.now) : null;
+  if (settled) return settled;
 
   // A quote that does not say its session is read by the venue's calendar.
   const trading = quote?.marketState === "REGULAR" || (quote?.marketState == null && isRegularSessionTime(venue, options.now) === true);
@@ -135,6 +155,31 @@ export function withSessionBar(
     return points.slice(0, -1);
   }
   return points;
+}
+
+/**
+ * A day's bar the source still marks partial once its session has closed:
+ * the session's quote, read after the close, is that day's last price, so
+ * the bar takes it (with the day's extremes and volume, which only grow) and
+ * is final. A thin listing's Friday bar is no longer partial on Sunday.
+ * Null when the bar is not such a bar, or the quote is not from its session.
+ */
+function settledSessionBar(
+  points: PricePoint[],
+  last: PricePoint,
+  lastTime: number,
+  size: "1d" | "1wk" | "1mo",
+  quote: Quote,
+  venue: string | undefined,
+  now: number,
+): PricePoint[] | null {
+  if (size !== "1d" || !last.partial || quote.marketState === "REGULAR" || !positive(quote.price)) return null;
+  const day = calendarBarStart(lastTime, "1d", venue);
+  const closed = latestRegularSessionClose(venue, now - SESSION_SETTLE_MS);
+  if (!closed || closed.date < day || quoteTradingDay(quote) !== day) return null;
+  if (hasLikelyQuoteUnitMismatch({ currency: quote.currency, price: last.close }, { currency: quote.currency, price: quote.price })) return null;
+  const { partial: _partial, ...bar } = sessionBar(last, last.date, quote, quote.price);
+  return [...points.slice(0, -1), bar];
 }
 
 /**
