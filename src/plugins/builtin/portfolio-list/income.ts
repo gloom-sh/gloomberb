@@ -80,21 +80,24 @@ export interface HoldingDividends {
 /**
  * The dividends of a portfolio's shares and funds, keyed by ticker: each
  * holding's cash history through the data provider, so a history read in the
- * last hours comes from the cache, measured as DVD measures it. Every read
- * shares one deadline; a holding not read by then, or whose read failed, has
- * an unknown rate, never a zero.
+ * last hours comes from the cache, measured as DVD measures it. The histories
+ * need no quote, so they are read beside the quotes (`quotes` may still be
+ * coming), and every read shares one deadline from the call; a holding not
+ * read by then, or whose read failed, has an unknown rate, never a zero. A
+ * listing its quote shows pays nothing (a coin) is left out once it is in.
  */
 export async function loadHoldingDividends(
   tickers: readonly TickerRecord[],
-  quotes: ReadonlyMap<string, Quote>,
+  quotes: ReadonlyMap<string, Quote> | PromiseLike<ReadonlyMap<string, Quote>>,
   provider: Pick<DataProvider, "getCorporateActions">,
   { deadlineMs = DIVIDEND_READ_DEADLINE_MS }: { deadlineMs?: number } = {},
 ): Promise<HoldingDividends> {
-  const payers = tickers.filter((ticker) => paysDividends(ticker, quotes.get(ticker.metadata.ticker)));
   const dividends = new Map<string, HoldingDividend>();
   const getCorporateActions = provider.getCorporateActions?.bind(provider);
   // A source with no distribution histories at all (a custom provider) has no income to report, as a coin book has none.
-  if (payers.length === 0 || !getCorporateActions) return { dividends, timedOut: false };
+  if (tickers.length === 0 || !getCorporateActions) return { dividends, timedOut: false };
+  // Quotes that fail fail the report that asked for them, not this.
+  const quoted = Promise.resolve(quotes).then((known) => known, () => new Map<string, Quote>());
   let timedOut = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<"deadline">((resolve) => {
@@ -102,26 +105,47 @@ export async function loadHoldingDividends(
   });
   const unread = (why: "timed-out" | "sign-in" | "offline" | "failed"): HoldingDividend =>
     ({ perShare: null, currency: null, price: null, gap: { cause: "unread", why } });
+  const started = new Set<TickerRecord>();
+  const read = async (ticker: TickerRecord) => {
+    if (timedOut) return;
+    started.add(ticker);
+    const symbol = ticker.metadata.ticker;
+    const exchange = ticker.metadata.exchange ?? "";
+    const history = Promise.resolve().then(() => getCorporateActions(symbol, exchange));
+    history.catch(() => {
+      // Intentional ignore: a read left behind at the deadline has no reader; one awaited below reports its own failure.
+    });
+    const known = await Promise.race([quoted, deadline]);
+    if (known === "deadline") return;
+    const quote = known.get(symbol);
+    if (!paysDividends(ticker, quote)) return;
+    // The quote already read prices the cash; nothing asks for it again.
+    const source = {
+      getCorporateActions: () => history,
+      getQuote: async () => { if (!quote) throw new Error("No quote"); return quote; },
+    };
+    const result = await Promise.race([
+      fetchProviderDividendData(source, symbol, regularSessionValuationPrice(quote), exchange, quote?.currency)
+        .then(holdingDividend, (error: unknown) => unread(unreadWhy(error))),
+      deadline,
+    ]);
+    if (result !== "deadline") dividends.set(symbol, result);
+  };
   try {
-    await Promise.race([deadline, mapWithConcurrency(payers, DIVIDEND_CONCURRENCY, async (ticker) => {
-      const symbol = ticker.metadata.ticker;
-      if (timedOut) return;
-      const quote = quotes.get(symbol);
-      // The quote already read prices the cash; nothing asks for it again.
-      const source = {
-        getCorporateActions,
-        getQuote: async () => { if (!quote) throw new Error("No quote"); return quote; },
-      };
-      const read = fetchProviderDividendData(source, symbol, regularSessionValuationPrice(quote), ticker.metadata.exchange ?? "", quote?.currency)
-        .then(holdingDividend, (error: unknown) => unread(unreadWhy(error)));
-      const result = await Promise.race([read, deadline]);
-      if (result !== "deadline") dividends.set(symbol, result);
-    })]);
+    await Promise.race([deadline, (async () => {
+      // A listing its record types as a share or fund starts at once; one only its quote types starts once the quotes are in.
+      await mapWithConcurrency(tickers.filter((ticker) => paysDividends(ticker, undefined)), DIVIDEND_CONCURRENCY, read);
+      const known = await quoted;
+      await mapWithConcurrency(tickers.filter((ticker) => !started.has(ticker) && paysDividends(ticker, known.get(ticker.metadata.ticker))),
+        DIVIDEND_CONCURRENCY, read);
+    })()]);
   } finally {
     clearTimeout(timer);
   }
-  for (const ticker of payers) {
-    if (!dividends.has(ticker.metadata.ticker)) dividends.set(ticker.metadata.ticker, unread("timed-out"));
+  const known = await quoted;
+  for (const ticker of tickers) {
+    const symbol = ticker.metadata.ticker;
+    if (!dividends.has(symbol) && paysDividends(ticker, known.get(symbol))) dividends.set(symbol, unread("timed-out"));
   }
   return { dividends, timedOut };
 }

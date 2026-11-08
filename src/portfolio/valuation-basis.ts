@@ -64,7 +64,9 @@ export function getPortfolioValuationDisplay(
  * When the price a position is valued at on `basis` is from: the quote's time
  * for a print, the session's close for a regular close
  * (regularSessionValuationTime), and a future's settlement session at the
- * close. Null without a dated quote or settlement.
+ * close. A nominal price, nothing having traded, is dated by the session it is
+ * the venue's price for (Quote.nominalPrice), on either basis: its last trade
+ * is older and at another price. Null without a dated quote or settlement.
  */
 export function getPortfolioValuationTime(
   quote: Quote | null | undefined,
@@ -77,8 +79,28 @@ export function getPortfolioValuationTime(
     return Number.isFinite(day) ? { time: day, dateOnly: true } : null;
   }
   if (!quote) return null;
+  const nominal = nominalPriceDay(quote);
+  if (nominal) return nominal;
   if (valuesAtClose(metrics, basis)) return regularSessionValuationTime(quote);
   return Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0 ? { time: quote.lastUpdated, dateOnly: false } : null;
+}
+
+/**
+ * Whether a position is valued at its venue's nominal price on `basis`: a
+ * quote nothing traded at (Quote.nominalPrice), never a future at its
+ * settlement.
+ */
+export function valuesAtNominalPrice(
+  quote: Quote | null | undefined,
+  metrics: Pick<PortfolioPositionMetrics, "isFuture"> | null | undefined,
+  basis: PortfolioValuationBasis = "latest-print",
+): boolean {
+  return !!quote?.nominalPrice && !valuesAtSettlement(metrics ?? null, basis);
+}
+
+function nominalPriceDay(quote: Quote): ReportTime | null {
+  const day = quote.nominalPrice ? Date.parse(`${quote.nominalPrice.session}T00:00:00Z`) : Number.NaN;
+  return Number.isFinite(day) ? { time: day, dateOnly: true } : null;
 }
 
 /** A valuation time as exports write it: an ISO instant in UTC, or an ISO date. */

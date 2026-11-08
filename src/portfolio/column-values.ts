@@ -68,6 +68,7 @@ import {
 import {
   getPortfolioValuationDisplay,
   getPortfolioValuationTime,
+  valuesAtNominalPrice,
   valuesAtSettlement,
   type PortfolioValuationBasis,
 } from "./valuation-basis";
@@ -773,6 +774,8 @@ export function getColumnValue(
       // In UTC, as the header says; a close the venue's calendar gives no hour for is dated by its day.
       // An export writes the date with it, as ISO: 16:49 alone says nothing of which day.
       const iso = new Date(time.time).toISOString();
+      // A price nothing traded at says so; its export keeps the day of the session it is the venue's price for.
+      if (valuesAtNominalPrice(quote, positionMetrics, ctx.valuationBasis)) return { text: "nominal", color: colors.warning, value: iso.slice(0, 10) };
       return {
         // Every row names its day: a bare 00:47 beside Fri 21:00 reads as the same evening.
         text: time.dateOnly ? formatShortDate(time.time, MONTH_DAY) : formatFeedTime(time.time, ctx.now, "—", { utc: true, dayToday: true }),

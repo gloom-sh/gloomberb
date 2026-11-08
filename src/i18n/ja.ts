@@ -1174,6 +1174,7 @@ export const ja: Record<string, string> = {
   "Closed-end fund": "クローズドエンド型ファンド",
   "BDC": "BDC",
   "est.": "推定",
+  "nominal": "名目価格",
   "{count} shares": "{count} 口",
   "No figures for {symbol}: it files with the SEC as a closed-end fund or BDC, but neither the filings Gloom reads nor its sponsor's site state any for it yet.": "{symbol} の数値はありません。SEC にクローズドエンド型ファンドまたは BDC として届け出ていますが、Gloom が読み込む提出書類にもスポンサーのサイトにもまだ掲載がありません。",
   "No NAV for {symbol}: {publisher} publishes figures for it, but no NAV.": "{symbol} の基準価額はありません。{publisher} は数値を公表していますが、基準価額は公表していません。",

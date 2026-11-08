@@ -438,8 +438,17 @@ export function readLondonDottedSymbol(raw: string): NearMissListing | null {
 
 /** `BRK/B`: a US share class after a slash, as a broker writes it. One letter before the slash is a ratio or an abbreviation (P/E, N/A). */
 const SLASH_CLASS = /^([A-Z]{2,5})\/([A-Z])$/;
-/** `700.HK`: a Hong Kong code without its leading zeros. */
-const SHORT_HONG_KONG = /^(\d{1,3})\.HK$/;
+/**
+ * `700.HK`, `03042.HK`, `00700:HKEX`: a Hong Kong code without its leading
+ * zeros, or with the five digits HKEXnews and the Product Key Facts print.
+ */
+const HONG_KONG_CODE = /^(\d{1,5})(\.HK|:HKEX)$/;
+
+/** A Hong Kong code as the app keys it: four digits at least (0700, 3042, 83042). */
+function hongKongWorkingCode(digits: string): string | null {
+  const code = Number(digits);
+  return code > 0 ? String(code).padStart(4, "0") : null;
+}
 /** `6758.JP`, `MC.FP`: a symbol with a Bloomberg market code where a listing suffix goes. */
 const MARKET_SUFFIX = /^([A-Z0-9]{1,10})\.([A-Z]{2})$/;
 /**
@@ -454,7 +463,9 @@ const MARKET_SUFFIX_CODES: ReadonlySet<string> = new Set([
 
 /**
  * A symbol written nearly as a listing is (`700.HK`, `6758.JP`, `BRK/B`),
- * read as the working form (`0700.HK`, `6758.T`, `BRK-B`). A Bloomberg market
+ * read as the working form (`0700.HK`, `6758.T`, `BRK-B`); a Hong Kong code
+ * with HKEX's five digits (`03042.HK`, `00700:HKEX`) drops its leading zeros
+ * (`3042.HK`, `0700:HKEX`). A Bloomberg market
  * code after the dot is that market's listing suffix (`MC.FP` is `MC.PA`),
  * `MARKET_SUFFIX_CODES` only, so `600519.SS` stays Shanghai. Null for
  * anything else.
@@ -464,8 +475,9 @@ export function readNearMissListing(raw: string): NearMissListing | null {
   const upper = typed.toUpperCase();
   const slash = SLASH_CLASS.exec(upper);
   if (slash) return { typed, symbol: `${slash[1]}-${slash[2]}` };
-  const hongKong = SHORT_HONG_KONG.exec(upper);
-  if (hongKong) return { typed, symbol: `${hongKong[1]!.padStart(4, "0")}.HK` };
+  const hongKong = HONG_KONG_CODE.exec(upper);
+  const code = hongKong ? hongKongWorkingCode(hongKong[1]!) : null;
+  if (hongKong) return code && code !== hongKong[1] ? { typed, symbol: `${code}${hongKong[2]}` } : null;
   const suffixed = MARKET_SUFFIX.exec(upper);
   if (!suffixed || !MARKET_SUFFIX_CODES.has(suffixed[2]!) || tickerHasListingSuffix(upper)) return null;
   const venue = BLOOMBERG_MARKETS[suffixed[2]!]!.venues[0]!;

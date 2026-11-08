@@ -23,6 +23,7 @@ import {
   getPortfolioValuationTime,
   valuationBasisLabel,
   valuationTimeIso,
+  valuesAtNominalPrice,
   valuesAtSettlement,
   type PortfolioValuationBasis,
 } from "../../../../portfolio/valuation-basis";
@@ -55,7 +56,7 @@ import type { DataProvider } from "../../../../types/data-provider";
 import type { CliCommandContext } from "../../../../types/plugin";
 import type { MarketContext } from "../../../../cli/types";
 import type { Portfolio, TickerPosition, TickerRecord } from "../../../../types/ticker";
-import type { TickerFinancials } from "../../../../types/financials";
+import type { Quote, TickerFinancials } from "../../../../types/financials";
 import type { TickerInstrumentKind } from "../../../../types/instrument";
 import { resolveTickerInstrumentKind } from "../../../../tickers/instrument-kind";
 import { perpetualListing } from "../../../../tickers/perpetual-listing";
@@ -235,8 +236,15 @@ export interface ShowCollectionOptions {
   cpi?: Parameters<typeof showPeriodPnl>[0]["cpi"];
 }
 
-export async function showCollection(name: string, ctx: CliCommandContext, options: ShowCollectionOptions = {}) {
-  await withMarketData(ctx, (context) => showCollectionWithMarketData(name, ctx, context, options));
+/**
+ * Prints a portfolio or watchlist. `readsLeftBehind` says reads it stopped
+ * waiting for (dividends past their deadline) are still out, which a CLI
+ * process need not wait for once the report is out.
+ */
+export async function showCollection(name: string, ctx: CliCommandContext, options: ShowCollectionOptions = {}): Promise<{ readsLeftBehind: boolean }> {
+  const outcome = { readsLeftBehind: false };
+  await withMarketData(ctx, (context) => showCollectionWithMarketData(name, ctx, context, options, outcome));
+  return outcome;
 }
 
 /** What `--explain` names a report by when it shows no terms. */
@@ -364,8 +372,12 @@ interface PortfolioValuationFields {
   valuationPrice: number | null;
   /** An ISO instant in UTC, or an ISO date for a close whose hour the venue's calendar does not give. */
   valuationAsOf: string | null;
-  /** Only on a future valued at its exchange settlement, which `valuationAsOf` dates by its session. */
-  valuationPriceKind?: "settle";
+  /**
+   * Only on a future valued at its exchange settlement, which `valuationAsOf`
+   * dates by its session, and on a holding at its venue's nominal price,
+   * nothing having traded, dated by the session it is that price for.
+   */
+  valuationPriceKind?: PortfolioValuationPriceKind;
 }
 
 export interface PortfolioValuation {
@@ -499,7 +511,7 @@ export async function valuePortfolioPositions({
       values.push({ ticker, quote, activeQuote, headline, extended, position: null, metrics: null, pnl: null, dayMove: null, futures: futuresTerms,
         valuation: { valuationBasis: basis, valuationPrice: known(priced?.price),
           valuationAsOf: settledHeadline ? futuresTerms!.settlement!.date : valuationTimeIso(getPortfolioValuationTime(quote, basis)),
-          ...(settledHeadline ? { valuationPriceKind: "settle" as const } : {}) },
+          ...(settledHeadline ? { valuationPriceKind: "settle" as const } : valuesAtNominalPrice(quote, null, basis) ? { valuationPriceKind: "nominal" as const } : {}) },
         row: { symbol: ticker.metadata.ticker, ...listingColumns(ticker, quote), exchange: ticker.metadata.exchange, shares: null, avgCost: null,
           positionCurrency: null, quotePrice: known(headline?.price), ...quoteMoveColumns(headline), ...extendedQuoteFields(extended), quoteCurrency: quote?.currency ?? null,
           volume: known(quote?.volume), costBasis: null, marketValue: null, unrealizedPnl: null, baseCurrency: currency } });
@@ -546,7 +558,8 @@ export async function valuePortfolioPositions({
       holding.marketValue = holding.marketValue == null || marketValue == null ? null : holding.marketValue + marketValue;
       holding.units += metrics.totalShares;
       holding.unitPrice ??= valuationQuote ? known(await toBase(valuationQuote.price, quoteCurrency)) : null;
-      const change = valuationQuote?.change;
+      // A listing that no longer trades does not move, as the pane's Day counts it: its last session's change is not today's.
+      const change = quote?.delisting ? 0 : valuationQuote?.change;
       const dayMove = valuationQuote && change != null && Number.isFinite(change)
         ? { change: await toBase(metrics.totalPriceUnits * change, quoteCurrency),
           previousValue: await toBase(metrics.grossPriceUnits * (valuationQuote.price - change), quoteCurrency) }
@@ -555,7 +568,8 @@ export async function valuePortfolioPositions({
         dayMove: dayMove && Number.isFinite(dayMove.change) && Number.isFinite(dayMove.previousValue) ? dayMove : null,
         valuation: { valuationBasis: basis, valuationPrice: known(valuationQuote?.price),
           valuationAsOf: valuationTimeIso(getPortfolioValuationTime(quote, basis, metrics, settlement)),
-          ...(atSettlement && settlement ? { valuationPriceKind: "settle" as const } : {}) },
+          ...(atSettlement && settlement ? { valuationPriceKind: "settle" as const }
+            : valuesAtNominalPrice(quote, metrics, basis) ? { valuationPriceKind: "nominal" as const } : {}) },
         row: { symbol: ticker.metadata.ticker, ...listingColumns(ticker, quote), exchange: ticker.metadata.exchange,
           shares: metrics.totalShares, avgCost: known(position.avgCost), positionCurrency,
           priceBasis: position.priceBasis ?? null, quantityUnit: metrics.priceBasis === "percent-of-par" ? "face" : null, quotePriceBasis: quote?.priceBasis ?? null,
@@ -564,7 +578,9 @@ export async function valuePortfolioPositions({
           volume: known(quote?.volume), quoteAsOf: quote ? quoteHeadlineTime(quote) : null,
           costBasis: known(direction * costBasisBase), marketValue,
           unrealizedPnl: known(pnl), baseCurrency: currency, dateAcquired: position.dateAcquired ?? null,
-          pnlBasis: selectedPnl.basis, brokerUnrealizedPnl: known(position.unrealizedPnl), brokerPnlCurrency: positionCurrency, brokerPnlAsOf: null } });
+          pnlBasis: selectedPnl.basis, brokerUnrealizedPnl: known(position.unrealizedPnl), brokerPnlCurrency: positionCurrency, brokerPnlAsOf: null,
+          // Only at a nominal price: `quoteAsOf` is the last print, older than the session that price is for.
+          ...quotePriceKindField(quote) } });
     }
   }
 
@@ -577,22 +593,25 @@ export async function valuePortfolioPositions({
  * The holdings' move over the day of the prices they are valued at, in the
  * portfolio's currency, and that move against their value at the close
  * before, with what it is measured from as the pane's Day says it ("vs Fri 16
- * Oct close", "vs mixed closes"). Null when any priced holding's move is
- * unknown, as the pane's Day is.
+ * Oct close", "vs mixed closes"): at the latest print, the move of that print,
+ * a pre-market or after-hours one included; at the close, the regular
+ * session's. A listing that no longer trades counts as no move and names no
+ * basis. Null when any priced holding's move is unknown, as the pane's Day is.
  */
 export function portfolioDayMove(
-  valuation: Pick<PortfolioValuation, "positions">,
+  valuation: Pick<PortfolioValuation, "positions" | "basis">,
   now = Date.now(),
 ): { change: number; changePercent: number | null; basis: string | null } | null {
   let change = 0;
   let previousValue = 0;
   const bases: Array<QuoteChangeBasis | null> = [];
+  const session = valuation.basis === "regular-close" ? "regular" : "active";
   for (const entry of valuation.positions) {
     if (!entry.position) continue;
     if (!entry.dayMove) return null;
     change += entry.dayMove.change;
     previousValue += entry.dayMove.previousValue;
-    bases.push(quoteChangeBasis(entry.quote, { terms: entry.futures }));
+    if (!entry.quote?.delisting) bases.push(quoteChangeBasis(entry.quote, { session, terms: entry.futures }));
   }
   return {
     change,
@@ -765,6 +784,8 @@ function portfolioValuationFreshness(
     source,
     observedKey: "valuationAsOf",
     citeOldest: true,
+    // A book across markets names each one's session and open: an HKEX book holding one US fund is not dated by the US day alone.
+    datesEachVenue: true,
     ...(note ? { note: `priced at ${valuationBasisLabel(valuation.basis, { futures: holdsFutures(valuation) })}` } : {}),
   }, undefined, now);
 }
@@ -779,12 +800,21 @@ function valuationBasisLine(basis: PortfolioValuationBasis, futures: boolean): s
   return `Priced at ${valuationBasisLabel(basis, { futures })}`;
 }
 
+/** What a row's price is when it is not a print or a close: a future's settlement, or a venue's nominal price. */
+export type PortfolioValuationPriceKind = "settle" | "nominal";
+
+/** `quotePriceKind: "nominal"` for a quote at its venue's nominal price (Quote.nominalPrice); nothing for any other. */
+function quotePriceKindField(quote: Quote | null | undefined): { quotePriceKind?: "nominal" } {
+  return quote?.nominalPrice ? { quotePriceKind: "nominal" } : {};
+}
+
 /**
  * An As of cell: when the price a row's value uses is from (`valuationAsOf`),
- * in UTC as its header says; a close dated only by its day says so, and a
- * future's settlement names its session.
+ * in UTC as its header says; a close dated only by its day says so, a
+ * future's settlement names its session, and a nominal price the session it
+ * is the venue's price for (`Fri 6 Nov nominal`).
  */
-export function valuationTimeText(value: unknown, now = Date.now(), kind?: "settle"): string {
+export function valuationTimeText(value: unknown, now = Date.now(), kind?: PortfolioValuationPriceKind): string {
   const time = parseReportTime(value);
   if (!time) return "—";
   return time.dateOnly ? `${formatUtcDayTime(time, now)} ${kind ?? "close"}` : formatUtcDayTime(time, now);
@@ -808,6 +838,7 @@ async function showCollectionWithMarketData(
   ctx: CliCommandContext,
   { config, store, dataProvider, persistence }: MarketContext,
   { explain = false, basis = "latest-print", drip, dividendDeadlineMs = DIVIDEND_READ_DEADLINE_MS, futuresSources, costFxHistory = apiClient, period, real = false, cpi }: ShowCollectionOptions,
+  outcome: { readsLeftBehind: boolean } = { readsLeftBehind: false },
 ) {
   const tickers = (await store.loadAllTickers()).sort((left, right) =>
     left.metadata.ticker.localeCompare(right.metadata.ticker)
@@ -855,8 +886,15 @@ async function showCollectionWithMarketData(
 
   const futuresHeld = filtered.filter((ticker) => isFuturesTicker(ticker)
     && ticker.metadata.positions.some((position) => position.portfolio === id && position.shares !== 0));
+  // A book says what its day's move is from on either basis, so its quotes' previous closes are dated.
+  const quotesRead = loadCollectionQuotes(filtered, collection, dataProvider, { datesChangeBasis: isPortfolio });
+  // What each holding pays a year is read beside its quote, under one deadline from here.
+  const dividendsRead = matchedPortfolio && !period
+    ? loadHoldingDividends(filtered.filter((ticker) => ticker.metadata.positions.some((position) => position.portfolio === id && position.shares !== 0)),
+      quotesRead, dataProvider, { deadlineMs: dividendDeadlineMs })
+    : null;
   const [quotes, futures, purchaseDateFx] = await Promise.all([
-    loadCollectionQuotes(filtered, collection, dataProvider, { datesChangeBasis: basis === "regular-close" }),
+    quotesRead,
     isPortfolio ? loadPortfolioFuturesTerms(futuresHeld, {
       settlement: basis === "regular-close",
       sources: { history: dailyFuturesHistory(dataProvider), ...futuresSources },
@@ -906,7 +944,8 @@ async function showCollectionWithMarketData(
     // What each holding pays a year: trailing dividends per share times its shares, in the portfolio's currency.
     // By symbol: a lot whose cost converts at its purchase date's FX close is valued on a copy of its record.
     const held = filtered.filter((ticker) => valued.some((entry) => entry.ticker.metadata.ticker === ticker.metadata.ticker && entry.position));
-    const { dividends } = await loadHoldingDividends(held, quotes, dataProvider, { deadlineMs: dividendDeadlineMs });
+    const { dividends, timedOut } = await dividendsRead!;
+    outcome.readsLeftBehind = timedOut;
     // Lots without a position or shares are no lot of income; a row of their own keeps its place with none.
     const income = await portfolioIncome(valued.map((entry) => ({
       symbol: entry.position && entry.metrics ? entry.ticker.metadata.ticker : "",
@@ -967,8 +1006,9 @@ async function showCollectionWithMarketData(
       };
     });
     const totalPnlValue = unavailablePnl.size > 0 ? null : totalPnl;
-    // At the close, the value is Last times the shares, so the day's move from the close before is said beside it.
-    const dayMove = basis === "regular-close" ? portfolioDayMove(valuation) : null;
+    // The value's move from the closes before, totalled under Chg and said with its base under the table: at the close
+    // that is Last times the shares; at the latest print, an after-hours print included, as Value is.
+    const dayMove = portfolioDayMove(valuation);
     const cashExport = cash && allocation.cash ? {
       ...cash,
       weight: allocation.cash.weight,
@@ -1053,7 +1093,7 @@ async function showCollectionWithMarketData(
         total: allocation.total, cash: cashExport, targetSum: allocation.targetSum,
         // Only on a book that holds a short: its weights are shares of `weightBase`, its gross exposure, not of the total.
         ...(allocation.weightBasis === "gross" ? { weightBasis: allocation.weightBasis, weightBase: allocation.weightBase } : {}),
-        ...(basis === "regular-close" ? { dayChange: dayMove?.change ?? null, dayChangePercent: dayMove?.changePercent ?? null, dayChangeBasis: dayMove?.basis ?? null } : {}),
+        dayChange: dayMove?.change ?? null, dayChangePercent: dayMove?.changePercent ?? null, dayChangeBasis: dayMove?.basis ?? null,
         unpricedCount: allocation.unpriced.length, unpricedSymbols: allocation.unpriced,
         totalUnrealizedPnl: totalPnlValue,
         annualIncome: totalIncome, knownAnnualIncome: income.knownIncome, portfolioYield,
@@ -1163,8 +1203,9 @@ async function showCollectionWithMarketData(
         ...allocationCells(cashExport, { unpriced: cashExport.value == null }), ...(showIncome ? ["", ""] : []), "", ""]);
     }
     const total = allocation.total;
+    const totalChange = dayMove?.changePercent != null ? colorBySign(formatPercentRaw(dayMove.changePercent), dayMove.change) : "—";
     rows.push([
-      cliStyles.bold("TOTAL"), "", "", ...extendedSessions.map(() => ""), "", "",
+      cliStyles.bold("TOTAL"), "", totalChange, ...extendedSessions.map(() => ""), "", "",
       cliStyles.bold(wholeMoney(total)),
       formatAllocationWeight(totalWeight(allocation)),
       ...(showTargets ? [formatAllocationWeight(allocation.targetSum), "", "", ""] : []),
@@ -1200,7 +1241,7 @@ async function showCollectionWithMarketData(
       rows,
     ));
     console.log("");
-    if (basis === "regular-close") console.log(dayMoveLine(dayMove, currency, colorBySign, cliStyles.muted));
+    if (valued.some((entry) => entry.position)) console.log(dayMoveLine(dayMove, currency, colorBySign, cliStyles.muted));
     if (valued.some((entry) => entry.position)) console.log(exposureLine(exposure, currency));
     // The rates the holdings in another currency are valued at, dated, so a stale one is seen beside the value it moves.
     const fxLine = fxRatesLine(toBase.conversions(), { warning: cliStyles.warning });
@@ -1482,6 +1523,8 @@ async function valueWatchlistRows({
         // A stale quote (as the source line counts it) and the exchange-local date it last traded.
         stale,
         lastTradeDate: lastTrade,
+        // Only at a nominal price: `quoteAsOf` is the last print, older than the session that price is for.
+        ...quotePriceKindField(quote),
         // A listing that no longer trades: its status and last session.
         ...quote?.delisting ? { delisting: quote.delisting } : {},
       },

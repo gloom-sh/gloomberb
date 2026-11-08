@@ -6,6 +6,7 @@ import { logFailure } from "../../utils/log-failure";
 import { dailyBarDate } from "../../utils/price-history";
 import { classifyInstrumentType } from "../../tickers/instrument-kind";
 import { calendarVenue, changeBasisSessionDate, isChangeBasisDatedWithoutCloses, quoteChangeBasis } from "./change-basis";
+import { latestRegularSessionClose, latestRegularSessionOpen } from "./freshness";
 import { cleanFloat32Price } from "../../utils/float32-price";
 
 /** History closes come as float32 (30.93000030517578) where the quote says 30.93: one close. */
@@ -50,7 +51,7 @@ export interface DatedCloseListing {
 
 /** A listing's recent daily closes (a month is enough), with the flags that say a bar had not closed yet. */
 export type ReadDailyCloses = (listing: DatedCloseListing) => Promise<readonly DailyClose[]>;
-type DailyClose = Pick<PricePoint, "date" | "close" | "partial" | "unsettled"> & { volume?: number };
+type DailyClose = Pick<PricePoint, "date" | "close" | "partial" | "unsettled"> & Partial<Pick<PricePoint, "open" | "high" | "low">> & { volume?: number };
 
 export interface PreviousCloseDatesOptions {
   /** Called with the latest copy of a quote, dated, when a read lands that names its day. */
@@ -62,7 +63,7 @@ export interface PreviousCloseDatesOptions {
   indexWaitMs?: number;
 }
 
-type ReadingFields = Pick<Reading, "date" | "close" | "sessionClose" | "awaitsSessionClose" | "untraded">;
+type ReadingFields = Pick<Reading, "date" | "close" | "sessionClose" | "awaitsSessionClose" | "untraded" | "session">;
 
 interface Reading {
   date: string | null;
@@ -81,8 +82,26 @@ interface Reading {
    * close either (ThinPreviousTrade): no day can be named for it.
    */
   untraded?: boolean;
+  /**
+   * A quote its source left behind its listing's daily bars (laggingSession):
+   * the later session whose close is its price, that bar's range, and the
+   * day the listing last traded when nothing traded in it.
+   */
+  session?: LaggingSession;
   at: number;
 }
+
+interface LaggingSession {
+  date: string;
+  open?: number;
+  high?: number;
+  low?: number;
+  volume?: number;
+  nominal?: { lastTraded: string | null };
+}
+
+/** A daily bar that shows a trade: some volume. One with none, or none reported, proves nothing traded. */
+const tradedBar = (point: Pick<DailyClose, "volume">): boolean => typeof point.volume === "number" && point.volume > 0;
 
 /**
  * Venues whose quoted previous close is the exchange's official close, not
@@ -132,6 +151,8 @@ function sameClose(left: number, right: number): boolean {
  */
 function readingKey(quote: Quote | null | undefined, listing: DatedCloseListing, now: number): string | null {
   if (!quote || classifyInstrumentType(quote.instrumentType) === "option") return null;
+  // A stale share or fund may stand at a price its venue set in a later session than its source dated (laggingSession).
+  if (laggingQuote(quote, now)) return `${datedCloseListingKey(listing)}|${changeBasisSessionDate(quote)}|${quote.price}|${quote.previousClose}|lagging`;
   // An index's dated close is checked against its daily close of that day as well (indexCloseOn), but for a Cboe
   // index's, which Gloom Cloud checks against Cboe's own closes.
   if (datedIndexClose(quote)) return calendarVenue(quote) === "CBOE" ? null : datedReadingKey(quote, listing);
@@ -155,6 +176,40 @@ function thinListingCalendarDate(quote: Quote): string | null {
   return basis?.kind === "close" && basis.venue ? basis.date : null;
 }
 
+/**
+ * A share or fund whose source marked its quote stale: its venue may have set
+ * nominal prices in the sessions since (HKEX does for a counter nothing traded
+ * on), which its daily bars carry while the quote keeps the day of its last
+ * print. 9042.HK, the USD counter of a bitcoin fund, read on Sun 8 Nov 2026:
+ * Fri 6 Nov's nominal 1.172 against Thu 5 Nov's 1.244, dated Wed 4 Nov by its
+ * last print. While its venue's session is in progress (sessionInProgressOpen),
+ * only one with no print since it opened, whatever state the quote names: a
+ * trade today is the quote's own session. Otherwise not one its source still
+ * calls open.
+ */
+function laggingQuote(quote: Quote, now: number): boolean {
+  const kind = classifyInstrumentType(quote.instrumentType);
+  if ((kind !== "equity" && kind !== "fund") || quote.stale !== true || quote.delisting) return false;
+  if (!(quote.price > 0 && typeof quote.previousClose === "number" && quote.previousClose > 0 && changeBasisSessionDate(quote))) return false;
+  const open = sessionInProgressOpen(quote, now);
+  if (open != null) return Number.isFinite(quote.lastUpdated) && quote.lastUpdated < open;
+  return quote.marketState !== "REGULAR";
+}
+
+/**
+ * When the regular session in progress at `now` on the quote's venue opened,
+ * its midday break included: HKEX's 12:00 to 13:00 is still the day's
+ * session, whatever state the source names then. Null between sessions and on
+ * a venue whose hours are unknown.
+ */
+function sessionInProgressOpen(quote: Quote, now: number): number | null {
+  const venue = calendarVenue(quote);
+  const open = latestRegularSessionOpen(venue, now);
+  if (open == null) return null;
+  const close = latestRegularSessionClose(venue, now);
+  return !close || close.close < open ? open : null;
+}
+
 function datedReadingKey(quote: Quote, listing: DatedCloseListing): string | null {
   const previousClose = quote.previousClose;
   const sessionDate = changeBasisSessionDate(quote);
@@ -171,13 +226,54 @@ function datedReadingKey(quote: Quote, listing: DatedCloseListing): string | nul
  * future's session awaiting settlement, is no close: a copy kept from the
  * session before (a US holiday) must never stand for that session's close.
  */
-function closedBars(points: readonly DailyClose[], quote: Quote): Array<{ date: string; close: number }> {
+function closedBars(points: readonly DailyClose[], quote: Quote): Array<{ date: string; close: number; point: DailyClose }> {
   const venue = calendarVenue(quote);
   return points.flatMap((point) => {
     const time = new Date(point.date).getTime();
     if (point.partial || point.unsettled || !Number.isFinite(time) || !Number.isFinite(point.close)) return [];
-    return [{ date: dailyBarDate(time, venue), close: point.close }];
+    return [{ date: dailyBarDate(time, venue), close: point.close, point }];
   });
+}
+
+const positiveBarPrice = (value: number | undefined) => typeof value === "number" && Number.isFinite(value) && value > 0 ? cleanFloat32Price(value) : undefined;
+
+/**
+ * The session a lagging quote's price is from (laggingQuote): the listing's
+ * latest daily bar, when it is later than the session the quote is dated to,
+ * its close is the quote's price and the bar before it closed at the quote's
+ * previous close; while the venue's session is in progress, the latest bar
+ * before today's. A bar that shows no trade (no volume, or none reported) is
+ * a nominal price: the reading then names the latest day the bars show a
+ * trade. Null when the bars do not say so, and the quote stands as its
+ * source dated it.
+ */
+function laggingSession(points: readonly DailyClose[], quote: Quote, now: number): ReadingFields | null {
+  const quoted = changeBasisSessionDate(quote);
+  // While today's session is in progress, a bar of today's is not a completed session, whatever its source marks.
+  const sessionOpen = sessionInProgressOpen(quote, now);
+  const today = sessionOpen != null ? dailyBarDate(sessionOpen, calendarVenue(quote)) : null;
+  const bars = closedBars(points, quote)
+    .filter((bar) => !today || bar.date < today)
+    .sort((left, right) => left.date.localeCompare(right.date));
+  const last = bars.at(-1);
+  const before = bars.at(-2);
+  if (!quoted || !last || !before || last.date <= quoted) return null;
+  if (!sameClose(last.close, quote.price) || !sameClose(before.close, quote.previousClose!)) return null;
+  if (!tradedBar(last.point)) {
+    const lastTraded = bars.findLast((bar) => tradedBar(bar.point))?.date ?? null;
+    return { date: before.date, session: { date: last.date, ...last.point.volume === 0 ? { volume: 0 } : {}, nominal: { lastTraded } } };
+  }
+  const { open, high, low, volume } = last.point;
+  return {
+    date: before.date,
+    session: {
+      date: last.date,
+      ...positiveBarPrice(open) != null ? { open: positiveBarPrice(open) } : {},
+      ...positiveBarPrice(high) != null ? { high: positiveBarPrice(high) } : {},
+      ...positiveBarPrice(low) != null ? { low: positiveBarPrice(low) } : {},
+      ...typeof volume === "number" && Number.isFinite(volume) ? { volume } : {},
+    },
+  };
 }
 
 /**
@@ -257,7 +353,10 @@ function indexCloseOn(points: readonly DailyClose[], quote: Quote, date: string)
  * venue's calendar puts before the move's: the day of its latest daily close
  * before the move's session that traded, when that close is its previous
  * close. When it traded in the calendar's session the calendar stands
- * (date null); when its closes hold neither, the day is unknown (`untraded`).
+ * (date null), and so it does when the calendar's session closed at the
+ * previous close with nothing traded: the venue's nominal price of that day
+ * (83042.HK's 8.315 on Thu 5 Nov 2026, its last trade on Wed 4 Nov at
+ * 8.095). When its closes hold none of these, the day is unknown (`untraded`).
  */
 function thinPreviousTrade(points: readonly DailyClose[], quote: Quote, calendarDate: string): ReadingFields {
   const sessionDate = changeBasisSessionDate(quote)!;
@@ -267,12 +366,16 @@ function thinPreviousTrade(points: readonly DailyClose[], quote: Quote, calendar
     .sort((left, right) => left.date.localeCompare(right.date))
     .at(-1);
   if (!before || before.date >= calendarDate) return { date: null };
-  return sameClose(before.close, quote.previousClose!) ? { date: before.date } : { date: null, untraded: true };
+  if (sameClose(before.close, quote.previousClose!)) return { date: before.date };
+  const nominal = closedBars(points, quote).findLast((point) => point.date === calendarDate);
+  return nominal && sameClose(nominal.close, quote.previousClose!) ? { date: null } : { date: null, untraded: true };
 }
 
-function readingOf(points: readonly DailyClose[], quote: Quote): ReadingFields {
+function readingOf(points: readonly DailyClose[], quote: Quote, now: number): ReadingFields {
   const indexDate = datedIndexClose(quote);
   if (indexDate) return indexCloseOn(points, quote, indexDate);
+  const lagging = laggingQuote(quote, now) ? laggingSession(points, quote, now) : null;
+  if (lagging) return lagging;
   const calendarDate = thinListingCalendarDate(quote);
   if (calendarDate) return thinPreviousTrade(points, quote, calendarDate);
   const session = sessionCloseOf(points, quote);
@@ -288,11 +391,31 @@ function withDate<T extends Quote | null | undefined>(quote: T, date: string | n
 }
 
 /** The quote as a reading has it: dated, and for an index measured from that day's close when its own disagrees. */
-function withReading<T extends Quote | null | undefined>(quote: T, reading: Pick<Reading, "date" | "close" | "sessionClose" | "untraded"> | undefined): T {
+function withReading<T extends Quote | null | undefined>(quote: T, reading: Pick<Reading, "date" | "close" | "sessionClose" | "untraded" | "session"> | undefined): T {
   if (!quote || !reading) return quote;
   if (reading.untraded) return { ...quote, previousCloseUndated: true };
+  if (reading.session && reading.date) return withDate(withLaggingSession(quote, reading.session), reading.date);
   const closed = withSessionClose(quote, reading.sessionClose);
   return closed === quote ? withDatedReading(quote, reading) : withDatedReading(closed as T, reading);
+}
+
+/**
+ * A lagging quote as its bars date it: its move is the later session's, with
+ * that bar's range and volume. Its last print, and whether its source calls
+ * it stale, stay as they were: the bars date the price, not a trade. A
+ * nominal price has no range, nothing having traded, and says which
+ * session's it is (Quote.nominalPrice).
+ */
+function withLaggingSession<T extends Quote>(quote: T, session: LaggingSession): T {
+  return {
+    ...quote,
+    changeSessionDate: session.date,
+    open: session.open,
+    high: session.high,
+    low: session.low,
+    volume: session.volume,
+    ...session.nominal ? { nominalPrice: { session: session.date, lastTraded: session.nominal.lastTraded } } : {},
+  };
 }
 
 /** A closed quote that ended on a later print headlines its session's official close, as history and the portfolio read it. */
@@ -411,7 +534,7 @@ export class PreviousCloseDates {
 
   private read(key: string, quote: Quote, listing: DatedCloseListing): Promise<ReadingFields> {
     const read = this.inSlot(datedIndexClose(quote) ? "index" : "dating", () => withDeadline(Promise.resolve().then(() => this.readCloses(listing)), this.readDeadlineMs, "Reading daily closes timed out"))
-      .then((points) => readingOf(points, quote))
+      .then((points) => readingOf(points, quote, this.now()))
       .catch(logFailure("market-data.dated-previous-close", "Read daily closes failed", { date: null } as ReadingFields))
       .then((reading) => {
         this.pending.delete(key);
@@ -420,7 +543,7 @@ export class PreviousCloseDates {
         this.readings.set(key, { ...reading, at: this.now() });
         const latest = this.latestCopies.get(key);
         this.latestCopies.delete(key);
-        if ((reading.date || reading.sessionClose != null || reading.untraded) && latest && this.options.onDated) {
+        if ((reading.date || reading.sessionClose != null || reading.untraded || reading.session) && latest && this.options.onDated) {
           try {
             this.options.onDated(latest.listing, withReading(latest.quote, reading));
           } catch (error) {

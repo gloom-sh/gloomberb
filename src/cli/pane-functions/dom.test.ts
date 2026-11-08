@@ -318,11 +318,16 @@ test("a pane behind the sign-in wall reports what it needs instead of the wall's
     },
   } as unknown as PaneScreenshotResult)).text;
   expect(await wall("DIAG MSTR Sign in to run the Equity Diagnostic. Log in \u21B5 Sign up free")).toBe([
-    "Equity Diagnostic", "", "DIAG MSTR Sign in to run the Equity Diagnostic. Requires a free Gloom sign-in: log in or sign up in the app.",
+    "Equity Diagnostic", "", "DIAG MSTR Sign in to run the Equity Diagnostic. Requires a free Gloom sign-in: open the app (gloom) and log in or "
+      + "sign up free from the command bar (Ctrl+P, Log In or Sign Up); this command then reads with that session.",
   ].join("\n"));
+  // The key that presses the first button, as the theses wall draws it.
+  expect(await wall("THESIS Sign in to keep investment theses. Log in \u21A9 Sign up free")).toEndWith("keep investment theses. Requires a free Gloom sign-in: "
+    + "open the app (gloom) and log in or sign up free from the command bar (Ctrl+P, Log In or Sign Up); this command then reads with that session.");
   // Signed in with an unconfirmed address, the wall asks for the email instead.
   expect(await wall("DIAG MSTR Verify your email to run the Equity Diagnostic. Resend Verification Email")).toEndWith(
-    "Verify your email to run the Equity Diagnostic. Requires a verified email on your Gloom account; resend the verification email in the app.",
+    "Verify your email to run the Equity Diagnostic. Requires a verified email on your Gloom account: open the app (gloom) and resend the "
+      + "verification email from the command bar (Ctrl+P, Resend Verification Email).",
   );
 });
 

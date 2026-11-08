@@ -1174,6 +1174,7 @@ export const zhTW: Record<string, string> = {
   "Closed-end fund": "封閉式基金",
   "BDC": "BDC",
   "est.": "估計",
+  "nominal": "名義價",
   "{count} shares": "{count} 單位",
   "No figures for {symbol}: it files with the SEC as a closed-end fund or BDC, but neither the filings Gloom reads nor its sponsor's site state any for it yet.": "暫無 {symbol} 的數據：它以封閉式基金或 BDC 身分向 SEC 申報，但 Gloom 讀取的申報文件與其發起人的網站均尚未列出任何數據。",
   "No NAV for {symbol}: {publisher} publishes figures for it, but no NAV.": "暫無 {symbol} 的資產淨值：{publisher} 公布了其數據，但未公布資產淨值。",

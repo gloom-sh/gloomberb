@@ -67,6 +67,12 @@ export function marketStateLabel(state: MarketState): string {
 
 /** What a quote's session reads as once its last print is older than its venue's latest completed session. */
 const STALE_SESSION_LABEL = "STALE";
+/**
+ * What a quote's session reads as when nothing traded in the session its price
+ * is from, nor today while its venue trades: its price is the venue's nominal
+ * one (Quote.nominalPrice).
+ */
+const NO_TRADES_SESSION_LABEL = "NO TRADES";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
@@ -139,6 +145,7 @@ function quoteMarketState(quote: Quote | null | undefined, now = Date.now()): Ma
  */
 export function quoteMarketStateLabel(quote: Quote | null | undefined, now = Date.now()): string | null {
   if (quote?.delisting) return delistingLabel(quote.delisting);
+  if (quote?.nominalPrice) return NO_TRADES_SESSION_LABEL;
   if (!quote?.marketState) return null;
   if (isQuoteBeforeLatestSession(quote, now)) return STALE_SESSION_LABEL;
   const awaiting = preMarketCloseAwaitingPrint(quote);
@@ -245,6 +252,7 @@ export function quoteSessionStateLabel(quote: Quote | null | undefined, now = Da
 
 function sessionLabel(quote: Quote | null | undefined, now: number, standingClose: boolean): string | null {
   if (quote?.delisting) return standingClose ? delistingLabel(quote.delisting) : delistingStateLabel(quote.delisting);
+  if (quote?.nominalPrice) return NO_TRADES_SESSION_LABEL;
   if (!quote?.marketState) return null;
   if (isQuoteBeforeLatestSession(quote, now)) return STALE_SESSION_LABEL;
   if (overnightSessionDisplay(quote)) return "OVERNIGHT";
@@ -259,7 +267,7 @@ function sessionLabel(quote: Quote | null | undefined, now: number, standingClos
  * pre-market still stands at.
  */
 export function quoteSessionColor(quote: Quote | null | undefined, palette: ThemeColors = colors, now = Date.now()): string {
-  if (quote?.delisting) return palette.warning;
+  if (quote?.delisting || quote?.nominalPrice) return palette.warning;
   if (!quote?.marketState) return palette.textDim;
   if (isQuoteBeforeLatestSession(quote, now)) return palette.warning;
   if (overnightSessionDisplay(quote)) return marketStateColor("POST", palette);

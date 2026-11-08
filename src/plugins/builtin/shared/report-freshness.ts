@@ -82,6 +82,8 @@ const CLOUD_QUOTE_PROVIDER_ID = "gloomberb-cloud";
 interface QuoteFreshnessFields {
   dataSource?: "live" | "delayed";
   stale?: boolean;
+  /** At its venue's nominal price, nothing having traded (Quote.nominalPrice): reports count it apart from stale rows. */
+  nominal?: true;
   /** How far a delayed Gloom Cloud quote runs behind its venue's trades. */
   delayMinutes?: number;
   /** The venue whose sessions the quote follows, so the report can say whether its market is open. */
@@ -105,13 +107,15 @@ export function quoteFreshnessFields(
   // A perpetual's venue is read about once a minute, not held back by a feed lag.
   const delayed = quote.dataSource === "delayed" && quote.providerId === CLOUD_QUOTE_PROVIDER_ID && !isPerpetualExchange(exchange);
   const sessionCalendar = readIndexSession(quote.indexSession);
-  // A print older than its venue's latest session says nothing of where that market stands now (no "markets open" beside it).
-  const session = !isQuoteBeforeLatestSession(quote, now);
+  // A print older than its venue's latest session says nothing of where that market stands now (no "markets open" beside it);
+  // a nominal price is that session's, its last trade older.
+  const session = !!quote.nominalPrice || !isQuoteBeforeLatestSession(quote, now);
   return {
     // A quote served from its saved copy, its refresh having failed, marks the row drawn from it.
     ...savedCopyMark(quote),
     ...(quote.dataSource === "live" || quote.dataSource === "delayed" ? { dataSource: quote.dataSource } : {}),
     stale: isQuoteStaleForCurrentSession(quote, now),
+    ...(quote.nominalPrice ? { nominal: true as const } : {}),
     ...(delayed ? { delayMinutes: delayedFeedLagMs(exchange) / 60_000 } : {}),
     ...(exchange && session ? { sessionExchange: exchange } : {}),
     // An index's final close reads as a close, not after hours.
@@ -124,11 +128,16 @@ export function quoteFreshnessFields(
  * One quote as a report reads it among the observations behind a view: its
  * freshness fields and when the price it headlines was observed
  * (quoteHeadlineTime: in a pre-market nothing has traded in, the close it
- * stands at). A board publishes one per quote it shows, so `fn` and `shot`
- * date it as `quote` dates the same quotes.
+ * stands at). A nominal price is dated by the session it is the venue's price
+ * for (`asOfDate`), not by the older last trade. A board publishes one per
+ * quote it shows, so `fn` and `shot` date it as `quote` dates the same quotes.
  */
-export function quoteObservation(quote: Quote, now = Date.now()): QuoteFreshnessFields & { updatedAt: number } {
-  return { ...quoteFreshnessFields(quote, now), updatedAt: quoteHeadlineTime(quote) };
+export function quoteObservation(quote: Quote, now = Date.now()): QuoteFreshnessFields & { updatedAt: number; asOfDate?: string } {
+  return {
+    ...quoteFreshnessFields(quote, now),
+    updatedAt: quoteHeadlineTime(quote),
+    ...(quote.nominalPrice ? { asOfDate: quote.nominalPrice.session } : {}),
+  };
 }
 
 /**

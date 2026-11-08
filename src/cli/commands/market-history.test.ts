@@ -940,8 +940,8 @@ test("--back-adjust names a contract the source serves no bars of and leaves its
 
 test("a range is read in any case and as other tools spell it", () => {
   for (const [typed, range] of [["1mo", "1M"], ["1m", "1M"], ["1 month", "1M"], ["3MO", "3M"], ["1wk", "1W"], ["5yr", "5Y"], ["ytd", "YTD"],
-    ["max", "ALL"], ["all", "ALL"]] as const) expect(readHistoryRange(typed), typed).toBe(range);
-  for (const typed of ["2mo", "1h", "month"]) expect(readHistoryRange(typed), typed).toBeNull();
+    ["max", "ALL"], ["all", "ALL"], ["5d", "1W"], ["6mo", "6M"], ["1y", "1Y"], ["5y", "5Y"], ["1d", "1D"]] as const) expect(readHistoryRange(typed), typed).toBe(range);
+  for (const typed of ["2mo", "1h", "month", "3d"]) expect(readHistoryRange(typed), typed).toBeNull();
 });
 
 test("a range typed in a symbol's place says to give it as --range, and a bare word stays a symbol", async () => {

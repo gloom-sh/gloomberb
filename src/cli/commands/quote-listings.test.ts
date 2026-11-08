@@ -71,6 +71,7 @@ async function runQuote(args: string[], source: ReturnType<typeof venueSource>) 
     failure: failure as { message: string; details?: string } | null,
     rows: (printed?.result.data ?? []) as Array<{ target: QuoteSubscriptionTarget; quote: unknown }>,
     warnings: printed?.result.warnings ?? [],
+    footnote: printed?.options?.footnote ?? "",
   };
 }
 
@@ -284,6 +285,63 @@ test("a bare index root points at its ^ index, whether it found nothing or anoth
 
   expect(buildSearchReport({ query: "vix", candidates: [] })).toContain('gloom quote "^VIX"');
   expect(buildSearchReport({ query: "AAPL", candidates: [] })).not.toContain("^");
+});
+
+test("a bare symbol whose ^ form is an index, as cmd.exe passes ^GSPC on, says to try the ^ form; one whose ^ form is no index does not", async () => {
+  const gspc = createTestQuote({ symbol: "^GSPC", name: "S&P 500", instrumentType: "INDEX", listingExchangeName: "SNP" });
+  const asked: string[] = [];
+  const dataProvider = createTestDataProvider({
+    getQuote: async (symbol) => {
+      asked.push(symbol);
+      if (symbol === "^GSPC") return gspc;
+      throw new Error(`Not a ticker: ${symbol}.`);
+    },
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => target.symbol === "^GSPC"
+      ? { target, quote: gspc } : { target, quote: null, error: `Not a ticker: ${target.symbol}.` }),
+  });
+  const source = { dataProvider, batches: [], searches: () => 0 };
+  expect((await runQuote(["GSPC"], source)).failure?.message).toBe('Not a ticker: GSPC. Did you mean ^GSPC (S&P 500)? Try "^GSPC".');
+  // Search would have offered Goldman's preferreds for it; ^XYZW quotes nothing, so XYZW fails as before.
+  expect((await runQuote(["XYZW"], source)).failure?.message ?? "").not.toContain("^XYZW");
+  expect(asked).toContain("^XYZW");
+});
+
+test("a bare symbol listed abroad is quoted there, though its ^ form is an index too", async () => {
+  const listed = venueSource("CSPX", ["XETRA", "LSE"], { "CSPX:LSE": createTestQuote({ symbol: "CSPX", currency: "EUR" }) });
+  const index = createTestQuote({ symbol: "^CSPX", name: "Some Index", instrumentType: "INDEX", listingExchangeName: "SNP" });
+  listed.dataProvider.getQuote = async (symbol) => {
+    if (symbol === "^CSPX") return index;
+    throw new Error(`No quote provider available for ${symbol}`);
+  };
+  const quoted = await runQuote(["CSPX"], listed);
+  expect(quoted.failure).toBeNull();
+  expect(quoted.rows.map((row) => row.target.symbol)).toEqual(["CSPX:LSE"]);
+});
+
+test("a bare five-digit code quoted on TWSE names the HKEX listing of the same code without its zeros; an HKEX quote or a named venue does not", async () => {
+  const fubon = createTestQuote({ symbol: "00700", name: "Fubon Hang Seng China Enterprises ETF", currency: "TWD", listingExchangeName: "TWSE", exchangeName: "TWSE" });
+  const tencent = createTestQuote({ symbol: "0700", name: "Tencent Holdings Limited", currency: "HKD", listingExchangeName: "HKEX", exchangeName: "HKEX" });
+  const asked: string[] = [];
+  const dataProvider = createTestDataProvider({
+    getQuote: async (symbol, exchange) => {
+      asked.push(`${symbol}:${exchange ?? ""}`);
+      if (symbol === "0700" && exchange === "HKEX") return tencent;
+      throw new Error(`No quote provider available for ${symbol}`);
+    },
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) =>
+      target.symbol === "00700" || target.symbol === "00700:TWSE" ? { target, quote: fubon }
+        : target.symbol === "0700:HKEX" ? { target, quote: tencent }
+          : { target, quote: null, error: `No quote provider available for ${target.symbol}` }),
+  });
+  const source = { dataProvider, batches: [], searches: () => 0 };
+  const bare = await runQuote(["00700"], source);
+  expect(bare.rows.map((row) => row.target.symbol)).toEqual(["00700"]);
+  // Under the table: it is about another listing, not a warning on the row.
+  expect(bare.footnote).toContain("00700: for HKEX use 700.HK (Tencent Holdings Limited)");
+  expect(bare.warnings.join("\n")).not.toContain("for HKEX use");
+  expect((await runQuote(["00700:TWSE"], source)).warnings.join("\n")).not.toContain("HKEX");
+  expect((await runQuote(["0700:HKEX"], source)).warnings.join("\n")).not.toContain("for HKEX use");
+  expect(asked).toEqual(["0700:HKEX"]);
 });
 
 test("a bare index root the service marks its index with is that index at once, without a company quote or the crypto board", async () => {

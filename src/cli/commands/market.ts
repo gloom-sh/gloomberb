@@ -60,7 +60,7 @@ import {
   ratingReason,
 } from "../../plugins/builtin/research/analyst-model";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
-import { awaitingFirstDelayedPrint, isQuoteStaleForCurrentSession, noPrintsTodayText } from "../../market-data/quotes/freshness";
+import { awaitingFirstDelayedPrint, isQuoteStaleForCurrentSession, noPrintsTodayText, nominalPriceText } from "../../market-data/quotes/freshness";
 import {
   coinOptionsAlternativesText, isCoinWithoutOptions, isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle,
 } from "../../market-data/options-alternatives";
@@ -418,15 +418,20 @@ type FinancialsCliData = TickerFinancials & {
   providerId: string | null;
 };
 
+/** The ranges as other tools spell them, which `--range` reads too: a week of sessions is 5d. */
+const HISTORY_RANGE_ALIASES = "5d, 1mo, 3mo, 6mo, 1y, 5y and max";
+
 /**
  * A range as typed, in any case and as other tools spell it: `1mo`, `1m` and
- * `1 month` are 1M, `1wk` 1W, `5yr` 5Y, `max` ALL.
+ * `1 month` are 1M, `1wk` and `5d` (a week's five sessions) 1W, `5yr` 5Y,
+ * `max` ALL.
  */
 export function readHistoryRange(value: string): HistoryRange | null {
   const typed = value.trim().toUpperCase().replace(/\s+/g, "");
   if (typed === "MAX") return "ALL";
   const spelled = /^(\d+)(D|DAYS?|W|WKS?|WEEKS?|M|MOS?|MONTHS?|Y|YRS?|YEARS?)$/.exec(typed);
   const range = (spelled ? `${spelled[1]}${spelled[2]![0]}` : typed) as HistoryRange;
+  if (range === "5D" as HistoryRange || range === "7D" as HistoryRange) return "1W";
   return VALID_RANGES.has(range) ? range : null;
 }
 
@@ -442,7 +447,7 @@ function rangeTypedAsSymbol(entry: string): HistoryRange | null {
 
 function parseRange(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): HistoryRange {
   const range = readHistoryRange(value ?? "1Y");
-  if (!range) ctx.fail(`Unknown range "${value}".`, `Use one of ${HISTORY_RANGES.join(", ")}.`);
+  if (!range) ctx.fail(`Unknown range "${value}".`, `Use one of ${HISTORY_RANGES.join(", ")}, or ${HISTORY_RANGE_ALIASES}.`);
   return range!;
 }
 
@@ -693,14 +698,14 @@ function quoteColumns() {
   return [
     ...QUOTE_LEAD_COLUMNS.map((column) => EXTENDED_KEYS.has(column.key) ? { ...column, stackPriority: 1 } : column),
     { key: "currency", header: "Cur", shrink: false, stackPriority: 3, format: currencyCell },
-    // Whether the price is real-time, delayed or stale: a feed state, not where it came from. A stale
-    // row says so here, so the closing line's "N of M stale" always points at rows the table marks.
+    // Whether the price is real-time, delayed, stale or nominal: a feed state, not where it came from. A stale or
+    // nominal row says so here, so the closing line's "N of M stale" or "N of M nominal" always points at rows the table marks.
     {
       key: "feed",
       header: "Feed",
       shrink: false,
       stackPriority: 4,
-      format: (value: unknown) => value === "stale" ? cliStyles.warning(value) : String(value ?? ""),
+      format: (value: unknown) => value === "stale" || value === "nominal" ? cliStyles.warning(value) : String(value ?? ""),
     },
     { key: "updatedAt", header: "Updated", shrink: false, stackPriority: 5 },
     ...CHANGE_BASIS_EXPORT_COLUMNS,
@@ -745,9 +750,13 @@ function compareColumns() {
   ];
 }
 
-/** What the Feed cell says: stale wins over the feed's own live or delayed, as the closing line counts it. */
-function quoteFeedState(quote: QuoteCliRecord["quote"], now: number): "stale" | "live" | "delayed" | "" {
+/**
+ * What the Feed cell says: nominal for a price nothing traded at (Quote.nominalPrice), then stale, over the feed's
+ * own live or delayed, as the closing line counts them.
+ */
+function quoteFeedState(quote: QuoteCliRecord["quote"], now: number): "nominal" | "stale" | "live" | "delayed" | "" {
   if (!quote) return "";
+  if (quote.nominalPrice) return "nominal";
   if (isQuoteStaleForCurrentSession(quote, now)) return "stale";
   return quote.dataSource === "live" || quote.dataSource === "delayed" ? quote.dataSource : "";
 }
@@ -1245,7 +1254,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
         const ended = stopped && liveCompanies[index] ? `${stopped}. ${liveCompanies[index]}` : stopped;
         // Open by its venue's calendar, before the delayed feed's first print: Last is the previous close until then.
         const awaiting = ended ? null : awaitingFirstDelayedPrint(row.quote, now);
-        const quiet = ended || awaiting ? null : noPrintsTodayText(row.quote, now);
+        const quiet = ended || awaiting ? null : nominalPriceText(row.quote) ?? noPrintsTodayText(row.quote, now);
         const waiting = awaiting && row.quote
           ? `${label}: open since ${utcClock(awaiting.open)} UTC; Last is the previous close until the first delayed print, about ${utcClock(awaiting.expected)} UTC`
           : null;
@@ -1278,12 +1287,18 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const columns = [...commandName === "compare" ? compareColumns() : quoteColumns(), ...holdsYield ? [CHANGE_BP_EXPORT_COLUMN] : []];
     const basisNotes = changeBasisNotes(data, now);
     const midNotes = extendedMidNotes(data);
+    // Another listing a row's code names (00700 on TWSE is 700.HK on HKEX) is said under the table, not as a warning on the row.
+    const listingNotes = answers.flatMap((answer) => answer.footnotes ?? []);
+    const exportNotes = [...midNotes, ...listingNotes];
+    const footnotes = [...basisNotes, ...listingNotes];
+    // JSON has no table to put them under: they stay with its warnings.
+    const warnings = [...notes, ...ctx.cliOptions.format === "json" ? listingNotes : []];
     if (ctx.cliOptions.format !== "json") await primeBoardCoins(notes);
     // Only yield indices: their change is in bp, so the text header drops the percent sign (CSV keeps the percent it holds).
     const yieldsOnly = data.length > 0 && data.every((row) => isYieldIndexSymbol(row.target.symbol));
     ctx.printResult({
       data,
-      warnings: notes.length > 0 ? notes : undefined,
+      warnings: warnings.length > 0 ? warnings : undefined,
       // A Cboe yield index stops at its 15:00 ET close, before the Treasury's curve is taken: the line says so, so its
       // close does not read as a contradiction of DGS10 or GC for the same day.
       // Dated by the quotes as served, which say whether one is the saved copy.
@@ -1305,9 +1320,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       }),
       // A row with no price or move says why in its status column, as the warnings do.
       exportStatus: quoteExportStatus,
-      ...(midNotes.length > 0 ? { exportNotes: midNotes } : {}),
+      ...(exportNotes.length > 0 ? { exportNotes } : {}),
       details: quoteDetailsText,
-      ...(basisNotes.length ? { footnote: basisNotes.join("\n") } : {}),
+      ...(footnotes.length ? { footnote: footnotes.join("\n") } : {}),
       columns,
       textColumns: quoteTextColumns(yieldsOnly
         ? columns.map((column) => column.key === "changePercent" ? { ...column, header: "Chg" } : column)
@@ -4101,7 +4116,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.research,
       usage: [HISTORY_USAGE, "history --file <path> [--range <range> | --from <year|date> [--to <year|date>]]"],
       options: [
-        { flags: "--range <range>", description: `${HISTORY_RANGES.join(", ")} (default 1Y); ${HISTORY_YTD_RANGE}; ${HISTORY_ALL_RANGE}` },
+        { flags: "--range <range>", description: `${HISTORY_RANGES.join(", ")} (default 1Y), or as other tools write them: ${HISTORY_RANGE_ALIASES}; ${HISTORY_YTD_RANGE}; ${HISTORY_ALL_RANGE}` },
         { flags: "--from <year|date>, --start <year|date>", description: `${PRICE_WINDOW_FROM_HELP}. Up to five years come in daily bars, up to twenty weekly, longer monthly` },
         { flags: "--to <year|date>, --end <year|date>", description: PRICE_WINDOW_TO_HELP },
         { flags: "--file <path>", description: "Read the symbols from a text or CSV file, one per line (- reads standard input), and write every symbol's bars in one table" },

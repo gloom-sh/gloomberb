@@ -317,3 +317,23 @@ test("an ETF's shares outstanding and its month's flows follow net assets; a cov
   expect(fundFactsNavReasonText("DFAC", noNav)).toStartWith("No hay valor liquidativo para DFAC");
   expect(byId(ECC).nav!.detail).toBe("2026-09-30 fin de mes · est. $4.12 to $4.22");
 });
+
+test("an HK counter's nominal close says so, and its premium names the traded counter it is measured from, or that it is nominal", () => {
+  // 9042:HKEX, the USD counter nothing traded on since 29 Oct: HKEX set its close, and the premium is 3042:HKEX's traded close at the NAVs' rate.
+  const usdCounter: FundFactsPayload = {
+    ...IVV, ticker: "9042.HK", name: "ChinaAMC Bitcoin ETF (USD counter)", currency: "USD",
+    nav: { value: 1.1654, asOf: "2026-11-06", source: "ChinaAMC (Hong Kong)" },
+    closingPrice: { value: 1.172, asOf: "2026-11-06", source: "Gloom Cloud", nominal: true },
+    premiumDiscount: { value: 0.12, asOf: "2026-11-06", source: "Gloom Cloud", basis: "computed",
+      price: { kind: "counter", ticker: "3042:HKEX", close: 9.18, currency: "HKD" } },
+  };
+  const entries = Object.fromEntries(fundFactEntries(usdCounter).map((entry) => [entry.key, entry.formatted]));
+  expect(entries.closingPrice).toBe("$1.172 · 2026-11-06 · nominal, no trades · Gloom Cloud");
+  expect(entries.premiumDiscountPercent).toBe("+0.12% · 2026-11-06 · 3042:HKEX close HK$9.18 at the NAVs' rate vs NAV · Gloom Cloud");
+  expect(byId(usdCounter).premium).toMatchObject({ detail: "2026-11-06 close · 3042:HKEX" });
+  // No counter traded: the premium is the nominal close's, and says so.
+  const untraded = { ...usdCounter, premiumDiscount: { ...usdCounter.premiumDiscount!, price: { kind: "nominal" as const } } };
+  expect(fundFactEntries(untraded).find((entry) => entry.key === "premiumDiscountPercent")!.formatted)
+    .toBe("+0.12% · 2026-11-06 · nominal closing price vs NAV · Gloom Cloud");
+  expect(byId(untraded).premium).toMatchObject({ detail: "2026-11-06 close · nominal" });
+});

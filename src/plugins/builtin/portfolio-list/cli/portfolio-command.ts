@@ -2,6 +2,7 @@ import { saveConfig } from "../../../../data/config/store";
 import { withConfigData } from "../../../../cli/scoped-context";
 import { withCollectionConfigData, withCollectionMarketData } from "../../../../cli/suffixed-listing-rows";
 import { countCollectionTickers } from "../../../../cli/helpers";
+import { exitLeavingReadsBehind } from "../../../../cli/result";
 import { resolveCliTicker, resolveTickerForCli } from "../../../../cli/ticker-resolution";
 import { takeFlag, takeOption } from "../../../../cli/commands/command-utils";
 import { EXCHANGE_OPTION, listingKeys, loadSavedListing, parseListingArg, requireSavedListing, savedListingCandidates, savedListingName, type ListingArg } from "../../../../cli/listing-arg";
@@ -1150,7 +1151,8 @@ export const portfolioCliCommand: CliCommandDef = {
     if (action === "show") {
       const name = args.slice(1).join(" ");
       if (!name) ctx.fail("Usage: gloom portfolio show <name> [--close] [--explain] [--drip] [--from <date> [--to <date>]]");
-      await showCollection(name, ctx, { explain, basis, drip, ...(period ? { period } : {}), ...(real ? { real } : {}) });
+      const shown = await showCollection(name, ctx, { explain, basis, drip, ...(period ? { period } : {}), ...(real ? { real } : {}) });
+      if (shown.readsLeftBehind) exitLeavingReadsBehind();
       return;
     }
 
@@ -1218,6 +1220,7 @@ export const portfolioCliCommand: CliCommandDef = {
       ctx.fail(TARGET_USAGE);
     }
 
-    await showCollection(args.join(" "), ctx, { explain, basis, drip, ...(period ? { period } : {}) });
+    const shown = await showCollection(args.join(" "), ctx, { explain, basis, drip, ...(period ? { period } : {}) });
+    if (shown.readsLeftBehind) exitLeavingReadsBehind();
   },
 };
