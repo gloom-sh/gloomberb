@@ -66,8 +66,9 @@ This fetches the latest upstream version.
 CI runs these on every pull request. Run them before you push:
 
 ```bash
-bun run typecheck   # terminal, desktop Bun process, desktop view, browser, Worker, scripts, built-in plugin tests
-bun run knip        # unused files, exports and dependencies
+bun run typecheck                # terminal, desktop Bun process, desktop view, browser, Worker, scripts, built-in plugin tests
+bun run knip                     # unused files, exports and dependencies
+bun run check:floating-promises  # promises nothing awaits or handles
 bun test
 ```
 
@@ -112,7 +113,11 @@ Built-in code under `src/` imports the host by relative path (`../../../ui`, `..
 
 Core code outside `src/plugins/builtin/` should not import a specific built-in plugin. `src/architecture/core-builtin-boundary.test.ts` checks runtime sources, including type imports and dynamic imports, against `src/architecture/core-builtin-allowlist.json` and fails on new or stale file/plugin pairs. Move shared code to `src/<area>/` or `src/plugins/builtin/shared`; run `bun scripts/update-core-builtin-allowlist.ts` after removing an edge so the allowlist shrinks. If a new edge is necessary, regenerate the allowlist and explain why in the PR.
 
+### Silent catches and floating promises
+
 Core catch handlers must record real failures through `src/utils/log-failure.ts` or the caller's existing error surface; intentional ignores carry an `Intentional ignore: <specific reason>` comment of at least four words inside the handler, and logging handlers must not carry that marker. `src/architecture/silent-catches.test.ts` checks empty and constant-fallback catch/`.then` rejection handlers, including straight-line constant assignments, property deletion and collection `.delete`/`.clear` cleanup; it excludes the built-in chat plugin, and rejects invalid markers, new silent catches and stale allowlist entries. Run `bun scripts/update-silent-catch-allowlist.ts` after removing an allowed site so the generated allowlist shrinks.
+
+A promise must be handled: awaited, returned, ended with `.catch(handler)` or `.then(onFulfilled, onRejected)`, or handed to something that owns it, such as `fireAndForget(request, label)`, a `Promise.all` that is itself awaited, or a variable or field that is read later. `Promise.allSettled` never rejects, so it needs nothing. Any other promise floats: its failure is lost or ends as an unhandled rejection while the caller carries on as if it worked. `void` alone does not handle a promise (`void save()` floats, `void save().catch(logFailure(...))` does not), `.finally` passes the rejection on, and so does a `.then` without a rejection handler. An arrow that returns a promise to a caller typed to expect nothing back, such as `onPress={() => save()}` or `setTimeout(() => save())`, drops it the same way. `bun run check:floating-promises` finds these with the type checker in `src/`, tests and the built-in chat plugin excluded, and fails on a new one and on a stale entry in `src/architecture/floating-promise-allowlist.json`; run `bun scripts/update-floating-promise-allowlist.ts` after fixing an allowed site so the allowlist shrinks. It does not yet look at async functions or function references passed where the caller expects nothing back (`onPress={save}`).
 
 ### In-memory caches
 

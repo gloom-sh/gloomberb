@@ -28,6 +28,11 @@ jobs:
       - name: Typecheck production runtimes and built-in plugin tests
         run: bun run typecheck
 
+      # Fails on a promise in src/ that nothing awaits or handles, and on a
+      # stale entry in src/architecture/floating-promise-allowlist.json.
+      - name: Check for new floating promises
+        run: bun run check:floating-promises
+
       # Fails on unused files, exports and dependencies. See knip.jsonc for
       # what it deliberately skips.
       - name: Check for unused code
