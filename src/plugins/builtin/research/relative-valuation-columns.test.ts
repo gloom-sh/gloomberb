@@ -189,4 +189,8 @@ test("a listing abroad gets the same columns: gross margin over the trailing twe
   expect(targets.rows[0]).toMatchObject({ targetCurrency: "USD", targetMeanNative: 3_409.8, targetNativeCurrency: "TWD" });
   expect(targets.rows[0]!.targetMean as number).toBeCloseTo(103.97, 2);
   expect(targets.rows[1]).toEqual({ symbol: "NVDA", targetMean: 250, targetCurrency: "USD" });
+  // With no TWD rate the target stays in TWD, as served, never relabelled USD, and the currency is named for the warning.
+  const unrated = convertTargets([{ symbol: "2330:TWSE", targetMean: 3_409.8, targetCurrency: "TWD" }], "USD", new Map());
+  expect(unrated.rows).toEqual([{ symbol: "2330:TWSE", targetMean: 3_409.8, targetCurrency: "TWD" }]);
+  expect(unrated.unconverted).toEqual([{ currency: "TWD", symbols: ["2330:TWSE"] }]);
 });
