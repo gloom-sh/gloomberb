@@ -160,6 +160,29 @@ async function metalFromFuture(
   };
 }
 
+/**
+ * The rate's move on the day, as `quote` gives its pair's: the rate against
+ * the same reading at the previous daily closes (the pair's own close, or
+ * each dollar pair's for a cross), in percent. Null for a rate priced from a
+ * future, or when a close is missing.
+ */
+export function fxQuoteRateMove(rate: FxQuoteRate): { percent: number; previousRate: number } | null {
+  if (rate.derivedFrom) return null;
+  const closes = rate.quotes.map(({ quote }) => quote.previousClose);
+  if (!closes.every(isUsableRate)) return null;
+  let previousRate: number;
+  if (rate.viaUsd) {
+    // Each dollar pair as USD per unit, as the cross is read: EURUSD=X as sent, USDJPY=X inverted.
+    const [from, into] = rate.quotes.map(({ symbol }, index) => symbol.startsWith("USD") ? 1 / closes[index]! : closes[index]!) as [number, number];
+    previousRate = from / into;
+  } else {
+    // The pair's own quote, inverted when the rate is (JPY/EUR read from EURJPY=X).
+    previousRate = rate.rate === rate.quotes[0]!.figure ? closes[0]! : 1 / closes[0]!;
+  }
+  const percent = (rate.rate / previousRate - 1) * 100;
+  return Number.isFinite(percent) ? { percent, previousRate } : null;
+}
+
 /** How long past its feed's delay a weekday FX rate stays current, counted while the FX market trades. */
 const FX_STALE_AFTER_DELAY_MS = 15 * 60_000;
 

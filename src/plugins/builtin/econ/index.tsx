@@ -39,7 +39,6 @@ import {
   awaitsConsensus,
   calendarDisplayRows,
   CALENDAR_TIME_ZONE_LABEL,
-  dateKey,
   dayLabel,
   econEventName,
   filteredEmptyTitle,
@@ -54,7 +53,10 @@ import {
   matchesImpact,
   NO_CONSENSUS_NOTE,
   noScheduledReleasesMessage,
+  noTimeNote as noTimeNoteText,
   parseCountryFilter,
+  listingEnd,
+  pastReleaseListing,
   resetEconCalendarPersistence,
   shortCalendarEnd,
   shortDayLabel,
@@ -67,6 +69,7 @@ import {
   type ImpactFilter,
 } from "./calendar-model";
 import { figureWithCurrency } from "./figures";
+import { MISSING_VALUE } from "../../../utils/format";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { tableColumnWidth } from "../../../components/ui/table-layout";
@@ -80,6 +83,8 @@ const IMPACT_LABELS: Record<ImpactFilter, string> = {
 };
 
 const NO_EVENTS: EconEvent[] = [];
+/** The start (UTC) of a YYYY-MM-DD day, to label it. */
+const dayStart = (day: string) => new Date(`${day}T00:00:00Z`);
 const SPELLED_IMPACT = "IMPACT";
 const SPELLED_COUNTRY = "COUNTRY";
 /** Event names this wide still read; past it the headers spell themselves out. */
@@ -163,7 +168,11 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const todayStart = Math.floor(now / 86_400_000) * 86_400_000;
   // A calendar that stops short of a week ahead says where it stops.
   const listedEnd = shortCalendarEnd(events, todayStart);
-  const listedAfter = listedEnd ? `No events listed after ${shortDayLabel(listedEnd)}` : null;
+  const listedAfter = listedEnd ? `No events listed after ${shortDayLabel(dayStart(listedEnd))}` : null;
+  // Past the listing's end Gloom Cloud lists each central bank's next decision: where the rows shown run past it, the
+  // footer says where the releases end, as the CLI does under its table.
+  const releasesThrough = useMemo(() => listingEnd(events), [events]);
+  const showsPastListing = filtered.some(pastReleaseListing);
 
   // Map from eventIdx to flat row index (for scroll tracking)
   const eventIdxToRowIdx = new Map<number, number>();
@@ -309,7 +318,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // Countries named one by one with nothing in the calendar: a quiet window there, said plainly.
   const unscheduled = useMemo(() => countriesWithoutEvents(countryFilter, events), [countryFilter, events]);
   const filterEmptyTitle = events.length === 0 ? null
-    : unscheduled.length > 0 && unscheduled.length === countryFilter.split(",").length ? noScheduledReleasesMessage(unscheduled).replace(/\.$/, "")
+    : unscheduled.length > 0 && unscheduled.length === countryFilter.split(",").length
+      ? noScheduledReleasesMessage(unscheduled, releasesThrough ? shortDayLabel(dayStart(releasesThrough)) : null).replace(/\.$/, "")
     : filteredEmptyTitle(impactFilter, countryFilter);
   const emptyStateHint = !loading && !error
     ? [
@@ -338,6 +348,10 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // The dash under Forecast on the row in hand, while its consensus is not in yet.
   const focusedEvent = detailEvent ?? filtered[selectedIdx];
   const noConsensus = !!focusedEvent && awaitsConsensus(focusedEvent);
+  // The blank time on the row in hand, with why: a bank whose calendar gives the day and not the time.
+  const noTimeNote = focusedEvent && hasNoStatedTime(focusedEvent) ? noTimeNoteText(focusedEvent.timeNote!) : null;
+  const pastListingStatus = showsPastListing && releasesThrough && !detailEvent && !listedAfterStatus
+    ? `releases listed through ${shortDayLabel(dayStart(releasesThrough))}, then each bank's next decision` : null;
   const calendarStatus = useMemo<PaneFooterSegment[]>(() => [
     ...(hiddenStatus ? [{
       id: "hidden-impact",
@@ -348,18 +362,32 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     }] : []),
     ...(nextText && !detailEvent ? [{ id: "next", parts: [{ text: nextText, tone: "muted" as const }] }] : []),
     ...(listedAfterStatus ? [{ id: "listed-after", parts: [{ text: listedAfterStatus, tone: "warning" as const }] }] : []),
+    ...(pastListingStatus ? [{ id: "listed-through", parts: [{ text: pastListingStatus, tone: "muted" as const }],
+      variants: [[{ text: `releases through ${shortDayLabel(dayStart(releasesThrough!))}`, tone: "muted" as const }]] }] : []),
     ...(showStale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
     // Behind the warnings, so a narrow footer gives it up before them, and ahead of the update time, which goes first.
+    // The blank time first: of the row in hand's notes it is the one the row cannot say itself.
+    ...(noTimeNote ? [{ id: "no-time", parts: [{ text: noTimeNote, tone: "muted" as const }],
+      variants: [[{ text: "no time stated", tone: "muted" as const }]] }] : []),
     ...(noConsensus ? [{ id: "no-consensus", parts: [{ text: NO_CONSENSUS_NOTE, tone: "muted" as const }],
       variants: [[{ text: "no consensus yet", tone: "muted" as const }]] }] : []),
     ...(staleness ? [{ id: "updated", parts: [{ text: staleness, tone: "muted" as const }] }] : []),
-  ], [allImpactKey, detailEvent, hiddenStatus, listedAfterStatus, nextText, noConsensus, showStale, staleness]);
+  ], [allImpactKey, detailEvent, hiddenStatus, listedAfterStatus, nextText, noConsensus, noTimeNote, pastListingStatus, releasesThrough, showStale, staleness]);
   // A report of the pane (`gloom fn ECO`) says it too.
-  const listedThrough = listedEnd ? dateKey(listedEnd) : null;
+  const listedThrough = listedEnd;
   useRemoteUiNode(listedAfter && listedThrough ? {
     role: "report-notice",
     label: "Listed through",
     getMetadata: () => ({ text: listedAfter, key: "listedThrough", value: listedThrough }),
+  } : null);
+  useRemoteUiNode(pastListingStatus && releasesThrough ? {
+    role: "report-notice",
+    label: "Releases listed through",
+    getMetadata: () => ({
+      text: `No releases listed after ${releasesThrough}; the rows after it are each central bank's next decision.`,
+      key: "releasesListedThrough",
+      value: releasesThrough,
+    }),
   } : null);
   useRemoteUiNode(hiddenCount > 0 ? {
     role: "report-notice",
@@ -424,10 +452,15 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     const ev = row.event;
     switch (column.id) {
       case "time":
-        // A bank that states no time has none here, and its detail says why; an all-day event (a plenum, an election) says so.
-        return { text: hasNoStatedTime(ev) ? "" : isAllDayEvent(ev) ? "All day" : timeLabel(ev.date), color: colors.textMuted };
+        // A bank that states no time has a dash here, and the footer and its detail say why; an all-day event (a plenum,
+        // an election) says so.
+        return { text: hasNoStatedTime(ev) ? MISSING_VALUE : isAllDayEvent(ev) ? "All day" : timeLabel(ev.date), color: colors.textMuted };
       case "readerTime":
-        return { text: hasNoReleaseTime(ev) || !readerZone ? "" : zonedClock(ev.date.getTime(), readerZone).label, color: colors.textMuted };
+        // The reader's clock has no time to give a bank that states none: the same dash as its time.
+        return {
+          text: !readerZone ? "" : hasNoStatedTime(ev) ? MISSING_VALUE : hasNoReleaseTime(ev) ? "" : zonedClock(ev.date.getTime(), readerZone).label,
+          color: colors.textMuted,
+        };
       case "impact": {
         const indicator = impactIndicator(ev.impact);
         return {

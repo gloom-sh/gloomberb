@@ -123,15 +123,41 @@ export function dayLabel(d: Date, today: Date): string {
 const MIN_DAYS_LISTED_AHEAD = 7;
 
 /**
- * When the calendar stops short of a week past `windowStart`, the time of its
- * last event; null when it reaches that far or lists nothing.
+ * The last UTC day the calendar lists releases for, YYYY-MM-DD, as Gloom Cloud
+ * says it: on the calendar from a day (`served`), or on each central bank's
+ * next decision it lists past the end (`listedThrough`). From a server that
+ * says neither, which lists nothing past the end, the day of the last event.
+ * Null when it lists nothing.
  */
-export function shortCalendarEnd(events: readonly EconEvent[], windowStart: number): Date | null {
+export function listingEnd(
+  events: readonly Pick<EconEvent, "date" | "listedThrough">[],
+  served?: string | null,
+): string | null {
+  const said = served ?? events.find((event) => event.listedThrough)?.listedThrough;
+  if (said && /^\d{4}-\d{2}-\d{2}$/.test(said)) return said;
   let last: Date | null = null;
   for (const event of events) {
     if (!last || event.date.getTime() > last.getTime()) last = event.date;
   }
-  return last && last.getTime() < windowStart + MIN_DAYS_LISTED_AHEAD * 86_400_000 ? last : null;
+  return last ? dateKey(last) : null;
+}
+
+/**
+ * When the listing (`listingEnd`) stops short of a week past `windowStart`,
+ * its last day; null when it reaches that far or lists nothing.
+ */
+export function shortCalendarEnd(
+  events: readonly Pick<EconEvent, "date" | "listedThrough">[],
+  windowStart: number,
+  served?: string | null,
+): string | null {
+  const end = listingEnd(events, served);
+  return end && Date.parse(`${end}T00:00:00Z`) + 86_400_000 <= windowStart + MIN_DAYS_LISTED_AHEAD * 86_400_000 ? end : null;
+}
+
+/** Whether a row is a central bank's next decision Gloom Cloud lists past the end of the listing. */
+export function pastReleaseListing(event: Pick<EconEvent, "pastListing">): boolean {
+  return event.pastListing === true;
 }
 
 /**
@@ -416,6 +442,11 @@ export function awaitsConsensus(event: Pick<EconEvent, "actual" | "forecast" | "
 /** What a dash under Forecast means on a row still to come. */
 export const NO_CONSENSUS_NOTE = `${MISSING_VALUE} forecast = no consensus yet`;
 
+/** What the dash under Time means on a bank's decision whose calendar gives the day and not the time, from its note. */
+export function noTimeNote(timeNote: string): string {
+  return `${MISSING_VALUE} time = ${timeNote.charAt(0).toLowerCase()}${timeNote.slice(1).replace(/\.$/, "")}`;
+}
+
 /** A national euro-area release matches EU (and G7, as EU) and its own member's code. */
 export function matchesCountry(event: Pick<EconEvent, "country" | "event">, filter: CountryFilter): boolean {
   const member = euroAreaMember(event);
@@ -482,10 +513,13 @@ export function countriesWithoutEvents(filter: CountryFilter, events: ReadonlyAr
   return filterCountries(filter).filter((country) => !listed.has(country));
 }
 
-/** "No scheduled releases for MX in this window", or for MX or ZA. */
-export function noScheduledReleasesMessage(countries: readonly string[]): string {
+/**
+ * "No scheduled releases for MX in this window", or for MX or ZA; with the
+ * day the listing ends, where it does ("; releases are listed through 2026-11-20").
+ */
+export function noScheduledReleasesMessage(countries: readonly string[], listedThrough?: string | null): string {
   const named = countries.length > 1 ? `${countries.slice(0, -1).join(", ")} or ${countries.at(-1)}` : countries.join("");
-  return `No scheduled releases for ${named} in this window.`;
+  return `No scheduled releases for ${named} in this window${listedThrough ? `; releases are listed through ${listedThrough}` : ""}.`;
 }
 
 /**

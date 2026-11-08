@@ -35,6 +35,22 @@ export interface CloudEconEventPayload {
    * forecast and on one kept before the read was recorded.
    */
   consensus?: { source: string; readAt: string } | null;
+  /**
+   * A central bank's next decision listed past the end of the calendar's
+   * listing: no release is listed after `listedThrough`, the listing's last
+   * UTC day. Absent from an older server.
+   */
+  pastListing?: boolean;
+  listedThrough?: string;
+}
+
+/** The calendar from a day, as GET /cloud/econ/calendar/history serves it. */
+export interface CloudEconCalendarFromPayload {
+  events: CloudEconEventPayload[];
+  /** The first UTC day the stored calendar holds; null when it holds nothing. */
+  storedFrom: string | null;
+  /** The last UTC day the calendar lists releases for; absent from an older server. */
+  listedThrough?: string;
 }
 
 /** One currency's short-term rate, as GET /cloud/econ/short-rates serves it. */
@@ -50,9 +66,11 @@ export interface CloudShortRate {
   /**
    * "business-252": compounded over 252 business days a year (Brazil's CDI),
    * grown as (1 + r)^(days / 365), business days taken as 252/365 of the
-   * calendar days. Absent: simple interest on `dayCountBasis`.
+   * calendar days. "daily-365": compounded each calendar day on ACT/365
+   * (ZARONIA), grown as (1 + r / 365)^days. Absent: simple interest on
+   * `dayCountBasis`.
    */
-  compounding?: "business-252" | null;
+  compounding?: "business-252" | "daily-365" | null;
   publisher: string;
   sourceUrl: string;
   /** Percent a year; null when it could not be read. */

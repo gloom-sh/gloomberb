@@ -85,6 +85,7 @@ test("the desktop and web draw a flag beside each currency code in the row label
   const container = await desktop.render(<Pane />);
 
   const rows = [...container.querySelectorAll('[data-gloom-role="data-table-row"]')];
+  // After the codes: at this width the day's move gives way to the eight currencies.
   const headers = [...container.querySelectorAll('[data-gloom-role="data-table-header-cell"]')].slice(1);
   expect(rows).toHaveLength(8);
   expect(headers).toHaveLength(8);
@@ -142,7 +143,7 @@ async function tintedCrosses() {
   const codes = ["USD", "EUR", "GBP", "JPY", "CHF", "AUD", "CAD"];
   const container = await desktop.render(<Pane currencies={codes} />);
   const background = (row: string, column: string) => {
-    const index = codes.indexOf(column) + 1;
+    const index = codes.indexOf(column) + 2;
     const cell = container.querySelector(`[data-gloom-row-key="${row}"]`)!.querySelectorAll('[data-gloom-role="data-table-cell"]')[index] as HTMLElement;
     return cell.style.backgroundColor;
   };
@@ -161,7 +162,27 @@ async function tintedCrosses() {
   // Stale, previous-close-less and unfetched legs, and the diagonal, stay plain.
   expect(["JPY", "CHF", "CAD"].flatMap((leg) => [tinted(leg, "USD"), tinted("EUR", leg), tinted(leg, "EUR")])).not.toContain(true);
   expect(tinted("EUR", "EUR")).toBe(false);
+  // Each currency's move in dollars, from the same closes; none for the dollar itself, nor for a leg with no close
+  // to read against.
+  const move = (row: string) => container.querySelector(`[data-gloom-row-key="${row}"]`)!.querySelectorAll('[data-gloom-role="data-table-cell"]')[1]!.textContent;
+  expect(["USD", "EUR", "GBP", "JPY", "CHF"].map(move)).toEqual(["—", "+1.85%", "0.00%", "—", "—"]);
 }
+
+// The column is the row currency in dollars: USD/JPY up from 149 to 151 is the yen weaker, so JPY reads negative.
+test("the day's move is the currency's own against the dollar: USD/JPY up is the yen down", async () => {
+  setSystemTime(new Date("2026-10-21T14:00:00Z"));
+  try {
+    installCoordinator({ "JPY=X": { price: 151, previousClose: 149 }, "EURUSD=X": { price: 1.1, previousClose: 1.08 } });
+    const container = await desktop.render(<Pane currencies={["USD", "EUR", "JPY"]} />);
+    const header = container.querySelectorAll('[data-gloom-role="data-table-header-cell"]')[1]!;
+    expect(header.textContent).toBe("1D IN USD");
+    const move = (row: string) => container.querySelector(`[data-gloom-row-key="${row}"]`)!.querySelectorAll('[data-gloom-role="data-table-cell"]')[1]!.textContent;
+    expect(move("JPY")).toBe(`${((149 / 151 - 1) * 100).toFixed(2)}%`);
+    expect(move("EUR")).toBe("+1.85%");
+  } finally {
+    setSystemTime();
+  }
+});
 
 test("without desktop chrome the matrix keeps its plain codes and its original base column", async () => {
   installCoordinator();

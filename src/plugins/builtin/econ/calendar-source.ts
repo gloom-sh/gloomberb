@@ -22,6 +22,8 @@ export type EconCalendarFrom =
     events: EconEvent[];
     /** The first UTC day the stored calendar holds; null when it holds nothing. */
     storedFrom: string | null;
+    /** The last UTC day the calendar lists releases for; null from a server that does not say. */
+    listedThrough: string | null;
   }
   | {
     events: null;
@@ -42,7 +44,11 @@ export async function fetchEconCalendarFrom(from: string): Promise<EconCalendarF
     if (!payload || !Array.isArray(payload.events) || !(payload.storedFrom === null || /^\d{4}-\d{2}-\d{2}$/.test(String(payload.storedFrom)))) {
       return { events: null, failure: "the server returned an unreadable calendar" };
     }
-    return { events: withPercentUnits(payload.events.map(toEconEvent)), storedFrom: payload.storedFrom };
+    return {
+      events: withPercentUnits(payload.events.map(toEconEvent)),
+      storedFrom: payload.storedFrom,
+      listedThrough: typeof payload.listedThrough === "string" && /^\d{4}-\d{2}-\d{2}$/.test(payload.listedThrough) ? payload.listedThrough : null,
+    };
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 404) return { events: null, failure: null };
     if (isPermanentClientError(error)) throw error;

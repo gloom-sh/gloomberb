@@ -11,6 +11,7 @@ import {
   type PaneFooterSegment,
 } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
+import { getTableWidth } from "../../../components/ui/table-layout";
 import { createDataTableCsv } from "../../../components/data-table/export";
 import { ageFooterSegment, savedCopyFooterSegment } from "../../../components/layout/pane/footer";
 import { CountryFlag } from "../../../components/ui/country-flag";
@@ -19,7 +20,8 @@ import { useFxRatesMap } from "../../../market-data/hooks";
 import { resolveEntryData } from "../../../market-data/selectors";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { usePaneSettingValue, useUpdatePaneSettings } from "../../../state/app/context";
-import { colors } from "../../../theme/colors";
+import { colors, shownPriceColor } from "../../../theme/colors";
+import { formatPercentRaw, MISSING_VALUE } from "../../../utils/format";
 import type {
   CommandBarResultDef, CommandBarSearchProvider, GloomPluginContext, PaneProps, PaneTemplateContext, PaneTemplateCreateOptions,
   PaneTemplateInstanceConfig,
@@ -55,6 +57,10 @@ const CURRENCY_FLAGS = new Map<string, ReactNode>(
   FX_CURRENCIES.map((currency) => [currency, <CountryFlag region={CURRENCY_FLAG_REGIONS[currency]} />]),
 );
 const RATE_COLUMN_WIDTH = 10;
+/** Room for `-12.34%`; the header takes what it needs. */
+const MOVE_COLUMN_WIDTH = 9;
+/** The currencies the day's move must fit beside: the eight majors the board opens with. */
+const MOVE_FITS_BESIDE = 8;
 /** Snapshot rates reload at this pace while the feed is not carrying every leg. */
 const FX_FALLBACK_REFRESH_MS = 60_000;
 
@@ -252,17 +258,34 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     const value = convertedAmount(currency);
     return value == null ? 1 : formatAmountFigure(value, currency).length;
   })) : 0;
-  const allColumns = useMemo<DataTableColumn[]>(() => [
-    { id: "base", label: "", width: flagged ? FLAGGED_BASE_COLUMN_WIDTH : BASE_COLUMN_WIDTH, align: "left" },
-    ...amount ? [{ id: "amount", label: "Amount", width: amountWidth, align: "right" as const }] : [],
-    ...currencies.map((currency) => ({
-      id: currency,
-      label: currency,
-      width: RATE_COLUMN_WIDTH,
-      align: "right" as const,
-      headerLeading: flagged ? CURRENCY_FLAGS.get(currency) : undefined,
-    })),
-  ], [amount != null, amountWidth, currencies, flagged]);
+  // Each currency's value in dollars, its move on the day: the row currency against the dollar, so JPY -0.51% is the
+  // yen 0.51% weaker (USD/JPY up), read from its dollar pair against that pair's previous daily close (the references
+  // the cells' tints read). The dollar is the reference, so it has none.
+  const moveVsUsd = useCallback((row: string): number | null => {
+    if (row === "USD") return null;
+    const rate = rates.get(row);
+    const reference = directionReferences.get(row);
+    return rate == null || reference == null || !Number.isFinite(rate) || rate <= 0 ? null : crossMovePercent(rate, reference, 1, 1);
+  }, [directionReferences, rates]);
+  // The move is shown where it fits beside the first eight currencies; a pane with no room for both (a board saved
+  // at its old width) shows the currencies as it did, and one too narrow for them scrolls to the rest.
+  const allColumns = useMemo<DataTableColumn[]>(() => {
+    const columns: DataTableColumn[] = [
+      { id: "base", label: "", width: flagged ? FLAGGED_BASE_COLUMN_WIDTH : BASE_COLUMN_WIDTH, align: "left" },
+      ...amount ? [{ id: "amount", label: "Amount", width: amountWidth, align: "right" as const }] : [],
+      { id: "move", label: "1D in USD", width: MOVE_COLUMN_WIDTH, align: "right",
+        title: "Each currency's value in US dollars, its move since its dollar pair's previous daily close: JPY -0.51% is the yen 0.51% weaker against the dollar" },
+      ...currencies.map((currency) => ({
+        id: currency,
+        label: currency,
+        width: RATE_COLUMN_WIDTH,
+        align: "right" as const,
+        headerLeading: flagged ? CURRENCY_FLAGS.get(currency) : undefined,
+      })),
+    ];
+    const throughEighth = columns.slice(0, columns.length - Math.max(0, currencies.length - MOVE_FITS_BESIDE));
+    return getTableWidth(throughEighth) <= width - 1 ? columns : columns.filter((column) => column.id !== "move");
+  }, [amount != null, amountWidth, currencies, flagged, width]);
 
   const renderCell = useCallback((
     row: FxCurrency,
@@ -277,6 +300,12 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
         attributes: TextAttributes.BOLD,
         leading: flagged ? CURRENCY_FLAGS.get(row) : undefined,
       };
+    }
+
+    if (column.id === "move") {
+      const move = moveVsUsd(row);
+      if (move == null) return { text: row !== "USD" && status.loading > 0 ? "…" : MISSING_VALUE, color: colors.textDim };
+      return { text: formatPercentRaw(move), value: move, color: shownPriceColor(move, 2) };
     }
 
     if (column.id === "amount") {
@@ -311,7 +340,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
       ? directionTint(level, { background: colors.selected, text: colors.selectedText })
       : directionTint(level, { background: colors.bg, text: colors.text });
     return { text: formatRate(base / quote, quoteCurrency, reference), color: colors.text, backgroundColor };
-  }, [amount?.currency, convertedAmount, directionReferences, flagged, rates, referenceRates, status.loading]);
+  }, [amount?.currency, convertedAmount, directionReferences, flagged, moveVsUsd, rates, referenceRates, status.loading]);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, refresh), [refresh]);
 
@@ -469,7 +498,8 @@ export const fxMatrixModule: PluginModule = {
       component: FxMatrixPane,
       defaultPosition: "right",
       defaultMode: "floating",
-      defaultFloatingSize: { width: 105, height: 14 },
+      // Room for the eight majors after the codes and the day's move in dollars; narrower, the move gives way.
+      defaultFloatingSize: { width: 115, height: 14 },
       tableExport: true,
       settings: fxMatrixSettings,
     },
