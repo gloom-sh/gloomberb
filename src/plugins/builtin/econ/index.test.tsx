@@ -12,6 +12,8 @@ import { economicCalendarModule } from "./index";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { PaneInViewProvider } from "../../../state/app/activity";
 import { apiClient, type CloudEconEventPayload } from "../../../api-client";
+import { createRemoteUiRegistry, RemoteUiRegistryProvider, type RemoteUiRegistry } from "../../../remote/semantic-tree";
+import { renderedReportNotices } from "../../../cli/pane-functions/report-notices";
 
 const EconPane = economicCalendarModule.panes![0]!.component as (props: {
   paneId: string;
@@ -66,25 +68,28 @@ afterEach(() => {
  * `impactFilter` is the filter saved with the pane; without one it opens on its default. `params` are a command's
  * (`ECO MX,BR`), `timezone` the reader's `config set timezone`.
  */
-async function renderPane(width: number, impactFilter: string | null = "all", inView = true, params?: Record<string, string>, timezone?: string) {
+async function renderPane(width: number, impactFilter: string | null = "all", inView = true, params?: Record<string, string>, timezone?: string,
+  registry: RemoteUiRegistry = createRemoteUiRegistry()) {
   const config = params
     ? createTestPaneConfig("/tmp/gloomberb-econ-test", { instanceId: "econ-calendar", paneId: "econ-calendar", params })
     : createDefaultConfig("/tmp/gloomberb-econ-test");
   const state = createInitialState(timezone ? { ...config, timezone } : config);
   if (impactFilter) state.paneState["econ-calendar"] = { pluginState: { econ: { impactFilter } } };
   await tui.render(
-    <TestPaneProvider state={state} paneId="econ-calendar" runtime={{} as unknown as PluginRuntimeAccess} pluginId="econ">
-      <PaneFooterProvider>
-        {(footer) => (
-          <Box width={width} height={25} flexDirection="column">
-            <PaneInViewProvider value={inView}>
-              <EconPane paneId="econ-calendar" paneType="econ-calendar" focused width={width} height={24} />
-            </PaneInViewProvider>
-            <PaneFooterBar footer={footer} width={width} focused />
-          </Box>
-        )}
-      </PaneFooterProvider>
-    </TestPaneProvider>,
+    <RemoteUiRegistryProvider registry={registry}>
+      <TestPaneProvider state={state} paneId="econ-calendar" runtime={{} as unknown as PluginRuntimeAccess} pluginId="econ">
+        <PaneFooterProvider>
+          {(footer) => (
+            <Box width={width} height={25} flexDirection="column">
+              <PaneInViewProvider value={inView}>
+                <EconPane paneId="econ-calendar" paneType="econ-calendar" focused width={width} height={24} />
+              </PaneInViewProvider>
+              <PaneFooterBar footer={footer} width={width} focused />
+            </Box>
+          )}
+        </PaneFooterProvider>
+      </TestPaneProvider>
+    </RemoteUiRegistryProvider>,
     { width, height: 25 },
   );
   await act(async () => {
@@ -264,12 +269,47 @@ describe("EconCalendarPane", () => {
     expect(frame).toContain("39.50%");
     // The decision's row has no time: its line holds the flag, the country and the event, nothing in the time column.
     expect(frame.split("\n").find((line) => line.includes("CBRT Interest Rate Decision"))).not.toMatch(/\d\d:\d\d/);
+    // a dash, as the CLI prints, and on the row in hand the footer says why, as the CLI does under its table.
+    expect(frame.split("\n").find((line) => line.includes("CBRT Interest Rate Decision"))!.trimStart()).toStartWith("—");
+    const wide = await renderPane(170, "all", true, { country: "MX,TR", tabAt: "3" });
+    expect(wide).toContain("no time stated");
+    // With the reader's clock beside UTC, the decision has the same dash there: no time on any clock.
+    const zoned = await renderPane(140, "all", true, { country: "MX,TR", tabAt: "4" }, "America/New_York");
+    expect(zoned).toMatch(/12:00\s+08:00\s+HIGH\s+MX\s+Mid-Month CPI/);
+    expect(zoned).toMatch(/—\s+—\s+HIGH\s+TR\s+CBRT Interest Rate Decision/);
     expect(frame).not.toContain("Core PCE");
     expect(frame).toContain("next CBRT Interest Rate Decision Sat");
     expect(frame).not.toMatch(/CBRT Interest Rate Decision in \d/);
 
     const quiet = await renderPane(110, "all", true, { country: "ZA", tabAt: "2" });
     expect(quiet).toContain("No scheduled releases for ZA in this window");
+  });
+
+  // Past the listing Gloom Cloud lists each bank's next decision, marked so; the footer and the report say where the
+  // releases end, as the CLI does under its table.
+  test("says where the releases end when the rows shown run past it to a bank's next decision", async () => {
+    const persistence = new MemoryPluginPersistence();
+    persistence.seedResource("calendar", "global", [
+      { id: "mx", date: "2026-08-24T12:00:00.000Z", time: "12:00", country: "MX", event: "Mid-Month CPI y/y",
+        impact: "high", actual: null, forecast: null, prior: "3.42%" },
+      { id: "cb-tr", date: "2026-09-17T11:00:00.000Z", time: "11:00", country: "TR", event: "CBRT Interest Rate Decision",
+        impact: "high", actual: null, forecast: null, prior: "39.50%", kind: "central-bank-decision", localTime: "14:00",
+        timeZone: "Europe/Istanbul", pastListing: true, listedThrough: "2026-09-04" },
+    ], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+    attachEconCalendarPersistence(persistence);
+    const registry = createRemoteUiRegistry();
+    const frame = await renderPane(160, "all", true, { country: "MX,TR", tabAt: "5" }, undefined, registry);
+    expect(frame).toContain("releases listed through Fri Sep 4, then each bank's next decision");
+    expect(frame).not.toContain("No events listed after");
+    expect(renderedReportNotices(registry.snapshot())).toMatchObject({
+      notices: expect.arrayContaining(["No releases listed after 2026-09-04; the rows after it are each central bank's next decision."]),
+      facts: { releasesListedThrough: "2026-09-04" },
+    });
+    // Rows that stay within the listing say nothing about its end.
+    const within = createRemoteUiRegistry();
+    const mexico = await renderPane(160, "all", true, { country: "MX", tabAt: "6" }, undefined, within);
+    expect(mexico).not.toContain("releases listed through");
+    expect(renderedReportNotices(within.snapshot()).facts).not.toHaveProperty("releasesListedThrough");
   });
 
   test("names the Fed's rate for its upper bound, and explains a missing forecast on the row in hand", async () => {

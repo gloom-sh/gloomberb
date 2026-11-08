@@ -483,6 +483,16 @@ test("only several words, or one that kept its quotes, are text up front; a bare
 test("a word that is also its company's name hints at the text search only when its stories are mostly elsewhere", () => {
   const filed = (tickers: string[]) => ({ tickers }) as unknown as NewsArticle;
   expect(commonWordCandidate("gold", "Gold.com Inc.")).toBe(true);
+  // A name that runs two words together, split where its case changes (PesoRama: peso, rama), as a listing abroad
+  // does with its venue in the tag.
+  expect(commonWordCandidate("peso", "PesoRama Inc.")).toBe(true);
+  expect(commonWordCandidate("rama", "PesoRama Inc.")).toBe(true);
+  // A word a name only starts with stays a plain lookup: cost in Costco, pep in PepsiCo, app in Applovin (as listed).
+  expect(commonWordCandidate("cost", "Costco Wholesale Corporation")).toBe(false);
+  expect(commonWordCandidate("pep", "PepsiCo, Inc.")).toBe(false);
+  expect(commonWordCandidate("app", "Applovin Corporation")).toBe(false);
+  expect(wordMeansMore([filed([]), filed(["PESO:TSXV", "ZE6:FWB2"]), filed([]), filed([])], "PESO", "PESO:TSXV")).toBe(true);
+  expect(wordMeansMore([filed(["PESO:TSXV"]), filed(["PESO:TSXV"]), filed([])], "PESO", "PESO:TSXV")).toBe(false);
   // Typed as a ticker, or not a word of the name: no lookup of the stories at all.
   expect(commonWordCandidate("GOLD", "Gold.com Inc.")).toBe(false);
   expect(commonWordCandidate("tsla", "Tesla, Inc.")).toBe(false);

@@ -16,7 +16,10 @@ import {
   noScheduledReleasesMessage,
   parseCountryFilter,
   pendingHighImpactPrints,
+  listingEnd,
+  pastReleaseListing,
   resetEconCalendarPersistence,
+  shortCalendarEnd,
   actualColor,
   valueColumnWidth,
   matchesEventSearch,
@@ -222,6 +225,29 @@ describe("country filters", () => {
     expect(noScheduledReleasesMessage(["MX"])).toBe("No scheduled releases for MX in this window.");
     expect(noScheduledReleasesMessage(["ZA", "IN"])).toBe("No scheduled releases for ZA or IN in this window.");
     expect(noScheduledReleasesMessage(["MX", "BR", "ZA", "IN", "KR"])).toBe("No scheduled releases for MX, BR, ZA, IN or KR in this window.");
+    expect(noScheduledReleasesMessage(["TR", "MX"], "2026-11-20")).toBe("No scheduled releases for TR or MX in this window; releases are listed through 2026-11-20.");
+  });
+
+  // Past the feeds' end Gloom Cloud lists each bank's next decision, which must not move where the listing ends.
+  test("the listing ends where Gloom Cloud says, not at a bank's next decision past it", () => {
+    const at = (date: string, extra: Partial<EconEvent> = {}) => ({ ...makeEvent(date), date: new Date(date), ...extra });
+    const today = Date.parse("2026-11-07T00:00:00Z");
+    const releases = [at("2026-11-09T12:00:00Z"), at("2026-11-20T13:30:00Z"), at("2026-11-19T13:00:00Z", { kind: "central-bank-decision" })];
+    const past = { kind: "central-bank-decision" as const, pastListing: true, listedThrough: "2026-11-21" };
+    const decisions = [at("2026-12-10T11:00:00Z", past), at("2027-01-28T13:00:00Z", past)];
+    expect(listingEnd([...releases, ...decisions])).toBe("2026-11-21");
+    // The calendar from a day says it itself; a server that says nothing lists nothing past the end, so its last event is.
+    expect(listingEnd(releases, "2026-11-22")).toBe("2026-11-22");
+    expect(listingEnd(releases)).toBe("2026-11-20");
+    expect(listingEnd([])).toBeNull();
+    // A listing that ends less than a week past the start stops short, whatever decisions follow it.
+    expect(shortCalendarEnd([...releases, ...decisions], today)).toBeNull();
+    expect(shortCalendarEnd([...releases, ...decisions], Date.parse("2026-11-15T00:00:00Z"))).toBe("2026-11-21");
+    expect(shortCalendarEnd(releases, Date.parse("2026-11-14T00:00:00Z"))).toBe("2026-11-20");
+    expect(shortCalendarEnd(releases, Date.parse("2026-11-13T00:00:00Z"))).toBeNull();
+    // Only a row the server marks is past the listing; a decision inside it is not.
+    expect(decisions.every(pastReleaseListing)).toBe(true);
+    expect(releases.some(pastReleaseListing)).toBe(false);
   });
 
   test("a national euro-area release is its member's by the adjective its title starts with, and still the euro area's", () => {
