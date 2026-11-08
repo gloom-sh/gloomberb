@@ -25,7 +25,7 @@ export interface FundHoldersAnswer {
  * holds where `fn MEMB` covers it, and its fund facts (`fn ETF`). Null for a
  * listing that is not a fund, or a failure that is no answer (a timeout).
  */
-export async function fundHoldersAnswer(
+async function fundHoldersAnswer(
   symbol: string,
   error: unknown,
   quote: FundQuote | null | undefined,
