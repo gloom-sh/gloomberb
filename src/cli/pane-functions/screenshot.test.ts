@@ -1496,6 +1496,18 @@ describe("a board that grows to show every row (FUT)", () => {
     expect(shotTableRows(fut, { rows: board(symbols.slice(0, 37)) })).toBeNull();
   });
 
+  test("a pane that keeps its height says how many of its table's rows the image holds (MEMB XLK at 720 wide)", () => {
+    const memb = { pane: { id: "members" }, instance: {} } as unknown as typeof fut;
+    const drawn = Array.from({ length: 36 }, (_, index) => row(`H${index}`));
+    expect(shotTableRows(memb, { rows: drawn, tableRowTotals: [76] })).toEqual({ shown: 36, total: 76 });
+    expect(shotRowsText({ shown: 36, total: 76 })).toBe("36 of 76 rows");
+    // Every row in the image, or a table that does not say how many it holds: the plain count.
+    expect(shotTableRows(memb, { rows: drawn, tableRowTotals: [36] })).toBeNull();
+    expect(shotTableRows(memb, { rows: drawn, tableRowTotals: [null] })).toBeNull();
+    // Only the tables that say count: a second table's rows are not the first one's.
+    expect(shotTableRows(memb, { rows: [...drawn, row("other", 1)], tableRowTotals: [76, null] })).toEqual({ shown: 36, total: 76 });
+  });
+
   test("the Commodities & Energy workspace grows on its Markets tab (FUT) and keeps its height on the others", () => {
     const fits = commoditiesEnergyModule.panes![0]!.shotFitsRows;
     expect(typeof fits).toBe("function");

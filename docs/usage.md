@@ -1132,6 +1132,7 @@ Cboe's Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) print their level
 `shot` has its own `--width`, in pixels. The layout is 720 to 2400 wide and 360 to 1800 tall (`--height`), and the PNG is drawn at twice that size, so the default 1280 by 720 writes 2560 by 1440.
 
 - A fixed board such as `FUT` grows until every row shows (up to 1800) unless you give `--height`.
+- A longer list ends on its last whole row, and `Rows` says how many of the list's rows the image holds: `shot MEMB XLK --width 720` prints `Rows 35 of 76 rows`.
 - A size outside the limits is drawn at the nearest one, with a warning: `--width 80 is below the 720 minimum, so the capture used 720 and the PNG is 1440 px wide.`
 
 ### Typed symbols

@@ -165,6 +165,12 @@ export interface DesktopPaneShotRenderResult {
    * capture shows. Absent when every table is read from the viewport.
    */
   reportRows?: DesktopPaneShotRenderedRow[];
+  /**
+   * The rows each visible table holds, by `tableIndex`, drawn or not (the
+   * table's `rowCount`); null for a table that does not say. With `rows`, what
+   * a capture that cuts a list says it shows: "36 of 76 rows".
+   */
+  tableRowTotals?: Array<number | null>;
   /** `truncationReasons` without the cuts of tables whose every row is in `reportRows`. */
   reportTruncationReasons?: string[];
   /** Text of the pane footers, where a pane says whether its data is live, delayed or stale. */
@@ -596,6 +602,7 @@ async function capturePageScreenshot({
     await browser.open(url);
     await waitForShotReady(session);
     if (fitRows) await growToFitRows(session, { widthPx, heightPx, deviceScaleFactor, ...fitRows });
+    if (captureImage) await hideCutRows(session);
     const rendered = await readRenderedPaneState(session);
     if (captureImage && statusLine) {
       const line = await statusLine(rendered);
@@ -656,6 +663,52 @@ async function growToFitRows(session: CdpPage, size: {
     returnByValue: true,
   });
   await waitForShotReady(session);
+}
+
+/**
+ * An image ends on a whole row: a row its list's scroll box cuts at the
+ * bottom edge is hidden, and so is one wholly outside the box, which the
+ * box already clips but the row count would read. A row with no whole row
+ * above it stays, cut, rather than leave the list blank. The live pane keeps
+ * its partly visible last row, as every scrolling list reads.
+ */
+async function hideCutRows(session: CdpPage): Promise<void> {
+  await session.send("Runtime.evaluate", {
+    expression: `(() => {
+      const root = document.getElementById("root") || document.body;
+      const rows = [...root.querySelectorAll(
+        '[data-gloom-role="data-table-row"], [data-gloom-role="data-table-section-header"], [data-gloom-role="desktop-list-row"], [data-gloom-row="true"]',
+      )];
+      const clips = (element) => {
+        const style = getComputedStyle(element);
+        return /(auto|scroll|hidden|clip)/.test(style.overflowY) && element.clientHeight > 0;
+      };
+      const wholeAbove = new Map();
+      const cut = [];
+      for (const row of rows) {
+        let box = row.parentElement;
+        while (box && box !== root && !clips(box)) box = box.parentElement;
+        if (!box || box === root) continue;
+        const area = box.getBoundingClientRect();
+        // The box's visible height: a horizontal scrollbar takes its own rows.
+        const bottom = area.top + box.clientTop + box.clientHeight;
+        const rect = row.getBoundingClientRect();
+        if (rect.height <= 0) continue;
+        if (rect.bottom <= area.top + 1 || rect.top >= bottom - 1) {
+          cut.push(row);
+        } else if (rect.top >= area.top - 1 && rect.bottom <= bottom + 1) {
+          wholeAbove.set(box, true);
+        } else if (rect.bottom > bottom + 1) {
+          cut.push({ row, box });
+        }
+      }
+      for (const entry of cut) {
+        if (entry instanceof Element) entry.style.visibility = "hidden";
+        else if (wholeAbove.get(entry.box)) entry.row.style.visibility = "hidden";
+      }
+    })()`,
+    returnByValue: true,
+  });
 }
 
 const LOADING_STATE_PATTERNS = [
@@ -865,6 +918,10 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
         truncated: truncationReasons.size > 0,
         truncationReasons: [...truncationReasons],
         ...(reportedTables.size > 0 ? { reportRows, reportTruncationReasons: [...reportTruncationReasons] } : {}),
+        tableRowTotals: visibleTables.map((_table, tableIndex) => {
+          const metadata = semanticTables[tableIndex] && semanticTables[tableIndex].metadata;
+          return metadata && typeof metadata.rowCount === "number" ? metadata.rowCount : null;
+        }),
         semanticUi,
       };
     })()`,
@@ -886,6 +943,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
         truncationReasons?: string[];
         reportRows?: DesktopPaneShotRenderedRow[];
         reportTruncationReasons?: string[];
+        tableRowTotals?: Array<number | null>;
         semanticUi?: RemoteUiNodeSnapshot[];
       };
     };
@@ -921,6 +979,9 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
     ...(Array.isArray(value?.reportRows) ? {
       reportRows: value.reportRows,
       reportTruncationReasons: (value.reportTruncationReasons ?? []).filter((reason): reason is string => typeof reason === "string"),
+    } : {}),
+    ...(Array.isArray(value?.tableRowTotals) && value.tableRowTotals.length > 0 ? {
+      tableRowTotals: value.tableRowTotals.map((total) => typeof total === "number" && Number.isFinite(total) ? total : null),
     } : {}),
     loadingStateDetected: value?.loadingStateDetected === true || loadingStateMarkers.length > 0,
     errorStateDetected: value?.errorStateDetected === true || errorStateMarkers.length > 0,
