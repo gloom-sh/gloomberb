@@ -1,3 +1,4 @@
+import { instrumentTypeLabel } from "../instrument-kind";
 import { describe, expect, jest, test } from "bun:test";
 import type { DataProvider } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
@@ -254,6 +255,30 @@ describe("ticker-search utilities", () => {
     expect(findExactTickerSearchMatch([{ label: "EURUSD=X" }], "EUR/USD")?.label).toBe("EURUSD=X");
     expect(findExactTickerSearchMatch([{ label: "USD/JPY" }], "JPY=X")?.label).toBe("USD/JPY");
     expect(findExactTickerSearchMatch([{ label: "JPY/USD" }], "JPY=X")).toBeNull();
+  });
+
+  test("a fund's indicative value and a crypto venue's token or perpetual on a fund are other matches, never the primary listing", () => {
+    const row = (symbol: string, name: string, exchange: string, type: string) => makeSearchResult(symbol, name, { exchange, type });
+    const categories = (query: string, rows: InstrumentSearchResult[]) =>
+      buildTickerSearchCandidates({ query, tickers: new Map(), providerResults: rows, totalLimit: 30 })
+        .map((candidate) => [candidate.label, candidate.category]);
+    // As the service lists ARK Innovation: the fund's lines, then its indicative value under the fund's name.
+    expect(categories("ARK Innovation", [row("ARKK", "ARK Innovation ETF", "BATS", "ETF"), row("^ARKK-IV", "ARK Innovation ETF", "AMEX", "INDEX")]))
+      .toEqual([["ARKK", "Funds & Derivatives"], ["^ARKK-IV", "Other Matches"]]);
+    expect(categories("Global X Robotics", [
+      row("BOTZ", "Global X Robotics & Artificial Intelligence ETF", "NASDAQ", "ETF"),
+      row("BOTZ39512-USD", "Global X Robotics and Artificial Intelligence ETF (Derivatives)", "CCC", "CRYPTOCURRENCY"),
+      row("BOTZON-USD", "Global X Robotics & Artificial Intelligence Tokenized ETF (Ondo)", "CCC", "Tokenized product"),
+    ])).toEqual([["BOTZ", "Funds & Derivatives"], ["BOTZ39512-USD", "Other Matches"], ["BOTZON-USD", "Other Matches"]]);
+    // A perpetual on a commodity is what a query for it names: it stays a listing.
+    expect(categories("natgas", [row("NATGAS-USD", "Natural Gas (Derivatives) USD", "CCC", "CRYPTOCURRENCY")]))
+      .toEqual([["NATGAS-USD", "Primary Listing"]]);
+    expect(instrumentTypeLabel("INDEX", "ARK Innovation ETF", { symbol: "^ARKK-IV" })).toBe("Indicative value");
+    expect(instrumentTypeLabel("CRYPTOCURRENCY", "Global X Robotics & Artificial Intelligence Tokenized ETF (Ondo)")).toBe("Tokenized product");
+    // A fund whose own name says tokenized is a listing, not a token on one.
+    expect(categories("tokenized assets", [row("TKNZ", "Tokenized Assets ETF", "ARCA", "ETF"),
+      row("TKNZON-USD", "Tokenized Assets ETF Tokenized (Ondo)", "CCC", "CRYPTOCURRENCY")]))
+      .toEqual([["TKNZ", "Funds & Derivatives"], ["TKNZON-USD", "Other Matches"]]);
   });
 
   describe("a commodity typed by its name", () => {

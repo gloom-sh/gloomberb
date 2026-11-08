@@ -7,9 +7,9 @@ const notFound = () => Promise.reject(new ApiRequestError("NOT_FOUND", 404));
 const client = { getMemberFunds: async () => funds, getFundMembers: notFound, getFundChanges: notFound } as never;
 const NOT_YET = "Fund members are not available on this server yet.";
 
-test("a 404 for a fund outside the covered list names the covered funds, for holdings and changes alike", async () => {
-  await expect(fetchMembers("IBIT", client)).rejects.toThrow("IBIT is not a covered fund. Covered: IVV");
-  await expect(fetchChanges("zzzzz", client)).rejects.toThrow("ZZZZZ is not a covered fund. Covered: IVV");
+test("a 404 for a fund outside the covered list says so and where its fund facts are, for holdings and changes alike", async () => {
+  await expect(fetchMembers("SMH", client)).rejects.toThrow("SMH is not a covered fund. Its fund facts: gloom fn ETF SMH. The covered funds: gloom fn MEMB.");
+  await expect(fetchChanges("zzzzz", client)).rejects.toThrow("ZZZZZ is not a covered fund.");
 });
 
 test("a server without the route, or a covered fund that 404s, keeps the not-available message", async () => {

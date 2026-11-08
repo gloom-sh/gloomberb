@@ -126,6 +126,7 @@ export const ko: Record<string, string> = {
   "Portfolio": "포트폴리오",
   "Primary Listing": "주 상장",
   "Other Listings": "기타 상장",
+  "Other Matches": "기타 일치",
   "Related": "관련",
   "Saved Layouts": "저장된 레이아웃",
   "Saved": "저장됨",

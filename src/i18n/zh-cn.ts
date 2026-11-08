@@ -128,6 +128,7 @@ export const zhCN: Record<string, string> = {
   "Portfolio": "投资组合",
   "Primary Listing": "主要上市",
   "Other Listings": "其他上市",
+  "Other Matches": "其他匹配",
   "Related": "相关",
   "Saved Layouts": "已存布局",
   "Saved": "已保存",

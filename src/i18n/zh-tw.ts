@@ -128,6 +128,7 @@ export const zhTW: Record<string, string> = {
   "Portfolio": "投資組合",
   "Primary Listing": "主要掛牌",
   "Other Listings": "其他掛牌",
+  "Other Matches": "其他符合",
   "Related": "相關",
   "Saved Layouts": "已儲存的版面設定",
   "Saved": "已儲存",

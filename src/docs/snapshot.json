@@ -1855,6 +1855,7 @@
         "**Charts:** Windows Terminal has no Kitty graphics, so terminal charts draw as text. The desktop app draws them in full.",
         "**cmd.exe:** run `chcp 65001` so long dashes, `€` and `·` show, and quote an index symbol (`gloom quote \"^SPX\"`): cmd drops a bare `^`. See [CLI](/docs/cli-functions).",
         "**Data:** `%USERPROFILE%\\.gloomberb`, printed by `gloom version`. `GLOOMBERB_HOME` moves it.",
+        "**Exports:** save an export with `--output` (`gloom fn RV NVDA,AMD,ASML:AMS --csv --output rv.csv`), which writes UTF-8 without a byte-order mark; a `>` redirect in Windows PowerShell 5.1 writes UTF-16. See [CLI](/docs/cli-functions).",
         "**Git and Bun:** Bun ships with the app; Git does not. Some official plugins (TV, Substack, Interactive Brokers, IBKR Gateway, Public, Robinhood, SimpleFIN, Polls, Prediction Markets, BYOK AI) install from GitHub and need [Git for Windows](https://git-scm.com/download/win). Without it Gloom starts without them, says so, and `gloom doctor` names them.",
         "**Versions:** Windows 11 x64 is tested. ARM PCs run the x64 build through Windows' emulation: the desktop app is checked to open and stay open on Windows 11 on Arm, nothing more. Windows 10 is untested."
        ]
@@ -5680,6 +5681,10 @@
       [
        "`--json`, `--csv`, `--ndjson`",
        "Machine-readable output. `--json` is the richest."
+      ],
+      [
+       "`--output file`, `--out file`",
+       "Write the `--csv`, `--json` or `--ndjson` export to a file, in UTF-8 without a byte-order mark, and print `Saved` with its full path, or `Replaced` over a file already there: `gloom financials MSFT --csv --output msft.csv`. Without one of those formats it is refused. On Windows use it rather than a `>` redirect, which Windows PowerShell 5.1 writes as UTF-16 and a spreadsheet misreads. A command with an `--output` of its own keeps it: `fn` writes its report in the format asked for, text included, `shot` writes a PNG, and a plugin command that lists `--output` in `gloom help <command>` writes what it says there"
       ],
       [
        "`--limit n`",

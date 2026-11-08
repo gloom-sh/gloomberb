@@ -4,7 +4,7 @@ import { hasPublishedApacCalendar, isPublishedApacClosure, publishedApacEarlyClo
 import { hasPublishedCnCalendar, isPublishedCnClosure } from "../published-cn-sessions";
 import { hasPublishedFuturesCalendar, isPublishedFuturesClosure, isPublishedFuturesVenue } from "../published-futures-sessions";
 import { hasPublishedJpxCalendar, isPublishedJpxClosure } from "../published-jpx-sessions";
-import { hasPublishedNseCalendar, isPublishedNseClosure } from "../published-nse-sessions";
+import { hasPublishedNseCalendar, isPublishedNseClosure, publishedNseSpecialSession } from "../published-nse-sessions";
 import { getPublishedUsEquityCalendarDay, getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../published-us-sessions";
 import { quoteFutureToleranceMs } from "../quotes/clock";
 import { zonedDateKey, zonedDateTimeParts, zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
@@ -256,7 +256,8 @@ function formatExchangeLocalMinuteOfDay(timeZone: string, timestampMs: number): 
 
 function isBeforeKnownRegularOpen(exchange: string, timestampMs: number): boolean {
   const canonical = canonicalExchange(exchange);
-  const openMinute = REGULAR_OPEN_MINUTES[canonical];
+  const date = exchangeLocalDate(canonical, timestampMs);
+  const openMinute = (date ? publishedSpecialSession(canonical, date)?.open : undefined) ?? REGULAR_OPEN_MINUTES[canonical];
   const localMinute = exchangeLocalMinuteOfDay(canonical, timestampMs);
   return openMinute != null && localMinute != null && localMinute < openMinute;
 }
@@ -279,6 +280,11 @@ function isPublishedClosure(exchange: string, date: string): boolean {
   if (exchange === "SSE" || exchange === "SZSE") return isPublishedCnClosure(date);
   if (isPublishedApacClosure(exchange, date) || isPublishedFuturesClosure(exchange, date)) return true;
   return getPublishedUsEquityCalendarDay(exchange, date) === "closed";
+}
+
+/** A published special session on a day the venue is otherwise shut (NSE's and BSE's Sunday Muhurat session), with its local hours. */
+function publishedSpecialSession(exchange: string, date: string): { open: number; close: number } | undefined {
+  return exchange === "NSE" || exchange === "BSE" ? publishedNseSpecialSession(date) : undefined;
 }
 
 /** Whether `weekday` (0 is Sunday) is in the venue's trading week. */
@@ -316,6 +322,7 @@ export function venueSessionOnOrBefore(exchange: string | undefined, date: strin
 
 /** `weekendDays` replaces the venue's days off (historySourceWeekendDays). */
 function isLocalTradingDay(exchange: string, date: string, weekendDays?: readonly number[]): boolean {
+  if (publishedSpecialSession(exchange, date)) return true;
   const weekday = localWeekday(date);
   return weekday != null && isTradingWeekday(exchange, weekday, weekendDays) && !isPublishedClosure(exchange, date);
 }
@@ -345,6 +352,8 @@ function localWeekday(date: string): number | null {
 
 /** The local close of the venue's regular session on `date`, in minutes of the day, a published half day's included. */
 function regularCloseMinutes(exchange: string, date: string): number | undefined {
+  const special = publishedSpecialSession(exchange, date);
+  if (special) return special.close;
   const early = publishedApacEarlyClose(exchange, date);
   if (early !== undefined) return early;
   const weekday = localWeekday(date);
@@ -462,8 +471,9 @@ export function latestRegularSessionOpen(
     } else if (minutes === undefined) {
       return null;
     } else if (isLocalTradingDay(canonical, date, weekendDays)) {
+      const opens = publishedSpecialSession(canonical, date)?.open ?? minutes;
       open = zonedWallClockToUtcMs(timeZone, Number(date.slice(0, 4)), Number(date.slice(5, 7)),
-        Number(date.slice(8, 10)), Math.floor(minutes / 60), minutes % 60, 0);
+        Number(date.slice(8, 10)), Math.floor(opens / 60), opens % 60, 0);
     }
     if (open != null && open <= time) return open;
   }
@@ -496,8 +506,9 @@ export function nextRegularSessionOpen(
     } else if (minutes === undefined) {
       return null;
     } else if (isLocalTradingDay(canonical, date)) {
+      const opens = publishedSpecialSession(canonical, date)?.open ?? minutes;
       open = zonedWallClockToUtcMs(timeZone, Number(date.slice(0, 4)), Number(date.slice(5, 7)),
-        Number(date.slice(8, 10)), Math.floor(minutes / 60), minutes % 60, 0);
+        Number(date.slice(8, 10)), Math.floor(opens / 60), opens % 60, 0);
     }
     if (open != null && open > time) return { date, open, timeZone };
   }
@@ -567,9 +578,10 @@ export function previousPublishedSession(
   for (let offset = 0; offset <= SESSION_LOOKBACK_DAYS * 2; offset++) {
     const at = new Date((day - offset) * MS_PER_DAY);
     const iso = at.toISOString().slice(0, 10);
-    if (!isTradingWeekday(canonical, at.getUTCDay())) continue;
+    const special = !!publishedSpecialSession(canonical, iso);
+    if (!special && !isTradingWeekday(canonical, at.getUTCDay())) continue;
     if (!hasPublishedSessionCalendar(canonical, iso)) return null;
-    const open = !isPublishedClosure(canonical, iso);
+    const open = special || !isPublishedClosure(canonical, iso);
     // First the session the move is from's own day, then the one before it.
     if (session == null) {
       if (open) session = offset;

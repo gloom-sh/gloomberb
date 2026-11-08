@@ -11,7 +11,7 @@ import {
   quotePreviousCloseDate,
   quoteSettleText,
 } from "./change-basis";
-import { previousPublishedSession } from "./freshness";
+import { isRegularSessionTime, nextRegularSessionOpen, previousPublishedSession } from "./freshness";
 
 // Wed 21 Oct 2026, 01:30 UTC.
 const NOW = Date.parse("2026-10-21T01:30:00Z");
@@ -91,6 +91,24 @@ test("a quote dated by when it was read, on a weekend or a holiday, holds the la
   // HKEX's Monday holiday: a quote read that day holds Friday's move, from Thursday.
   expect(previousPublishedSession("HKEX", "2026-10-19")).toEqual({ date: "2026-10-15", closed: [] });
   expect(previousPublishedSession("HKEX", "2026-10-20")).toEqual({ date: "2026-10-16", closed: ["2026-10-19"] });
+});
+
+test("NSE's Sunday Muhurat session is a session: its move is from Friday's close, and it trades only its own hours", () => {
+  // Sun 8 Nov 2026: INFY:NSE traded the Diwali Muhurat session, 14:20 to 15:30 IST, -0.83% from Fri 6 Nov's 1,181.40.
+  const infy = createTestQuote({ symbol: "INFY", currency: "INR", listingExchangeName: "NSE", exchangeName: "NSE", price: 1171.6,
+    change: -9.8, changePercent: -0.83, previousClose: 1181.4, changeSessionDate: "2026-11-08", marketState: "CLOSED",
+    lastUpdated: Date.parse("2026-11-08T09:59:30Z") });
+  const evening = Date.parse("2026-11-08T14:05:00Z");
+  expect(quoteChangeBasis(infy)).toEqual({ kind: "close", date: "2026-11-06", venue: "NSE", closed: [] });
+  expect(changeBasisLabel(quoteChangeBasis(infy)!, evening)).toBe("vs Fri 6 Nov close");
+  // Monday's move is from the Muhurat session, BSE's too.
+  expect(previousPublishedSession("BSE", "2026-11-09")).toEqual({ date: "2026-11-08", closed: [] });
+  // Open from 14:20 IST (08:50 UTC) to the close with its auction, 16:00 IST; shut that morning and the Sunday after.
+  expect(isRegularSessionTime("NSE", Date.parse("2026-11-08T05:00:00Z"))).toBe(false);
+  expect(isRegularSessionTime("NSE", Date.parse("2026-11-08T09:00:00Z"))).toBe(true);
+  expect(isRegularSessionTime("NSE", Date.parse("2026-11-08T10:31:00Z"))).toBe(false);
+  expect(nextRegularSessionOpen("NSE", Date.parse("2026-11-07T10:00:00Z"))?.open).toBe(Date.parse("2026-11-08T08:50:00Z"));
+  expect(isRegularSessionTime("NSE", Date.parse("2026-11-15T09:00:00Z"))).toBe(false);
 });
 
 test("a venue without a published calendar keeps its previous close undated, never guessed", () => {

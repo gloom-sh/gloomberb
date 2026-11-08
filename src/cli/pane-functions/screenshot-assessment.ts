@@ -53,18 +53,30 @@ export function shotStatusIssues(
 /**
  * For a pane that grows to fit its rows, the rows its table reports (every
  * one, `reportEveryRow`) and how many of them the image shows, by key;
- * section headers count in neither. Null for any other pane, or a table that
- * reports only what is drawn.
+ * section headers count in neither. For any other pane whose tables hold more
+ * rows than the image draws, the rows drawn of all they hold ("36 of 76").
+ * Null when the image holds every row, or no table says how many it holds.
  */
 export function shotTableRows(
   resolved: Pick<ResolvedPaneFunction, "pane" | "instance">,
-  render: Pick<DesktopPaneShotRenderResult, "rows" | "reportRows">,
+  render: Pick<DesktopPaneShotRenderResult, "rows" | "reportRows" | "tableRowTotals">,
 ): { shown: number; total: number } | null {
-  if (!paneFitsRows(resolved) || !render.reportRows?.length) return null;
+  if (!paneFitsRows(resolved) || !render.reportRows?.length) return cutTableRows(render);
   const reported = render.reportRows.filter((row) => !row.section && row.key);
   if (reported.length === 0) return null;
   const drawn = new Set(render.rows.flatMap((row) => row.key ? [`${row.tableIndex}:${row.key}`] : []));
   return { shown: reported.filter((row) => drawn.has(`${row.tableIndex}:${row.key}`)).length, total: reported.length };
+}
+
+/** The rows drawn of all the visible tables hold, for the tables that say how many; null when nothing is left out. */
+function cutTableRows(render: Pick<DesktopPaneShotRenderResult, "rows" | "tableRowTotals">): { shown: number; total: number } | null {
+  let shown = 0, total = 0;
+  for (const [tableIndex, rows] of (render.tableRowTotals ?? []).entries()) {
+    if (rows === null) continue;
+    total += rows;
+    shown += render.rows.filter((row) => row.tableIndex === tableIndex).length;
+  }
+  return total > shown ? { shown, total } : null;
 }
 
 /** What a rendered capture shows, and whether it is fit to use. */

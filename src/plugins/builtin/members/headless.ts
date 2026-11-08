@@ -27,7 +27,9 @@ export const membersHeadless: HeadlessPaneDefinition<"rows"> = {
     }
     if (args.options.tab === "changes") {
       const data = await fetchChanges(fund, context.apiClient);
+      // An empty table says why: the fund's index changes are not followed, or none is stored, as the pane says.
       return { freshness: { status: "not-a-feed", basis: "index changes" }, rows: data.changes.map((row) => ({ ...row, reason: changeReason(row) })), columns: [{ key: "effectiveDate", header: "Effective" }, { key: "added", header: "Added" }, { key: "removed", header: "Removed" }, { key: "daysToGo", header: "In days", align: "right" }, { key: "reason", header: "Reason" }],
+        empty: data.available ? "No stored index changes." : `Index changes are not covered for ${data.fund.ticker}.`,
         complete: data.available && !data.stale, metadata: { ...data, changes: undefined } };
     }
     const data = await fetchMembers(fund, context.apiClient);

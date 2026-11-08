@@ -227,6 +227,8 @@ A symbol you hold, have open or searched before, or a major listing in the US, H
 
 Enter opens exactly the highlighted row. Before a typed symbol or ticker command's search answers, and with no row for it yet, Enter uses the standard listing resolution (`DES HFC` opens the former US listing and shows its move to DINO, as `quote HFC` does). Once the rows are up, Enter opens the highlighted one; to choose another listing, use the arrow keys or click a search row. When a later answer reorders the rows, the highlight moves with its row. A company's name lists the listing `search` calls its primary first (`lufthansa` is LHA on XETRA), as `quote lufthansa` reads it. A saved symbol keeps its saved listing.
 
+A fund's name matches with its words in any order: `Nippon India Nifty IT ETF` finds ITBEES, the Nippon India ETF Nifty IT. The fund's US listing leads its namesakes abroad (`ARK Innovation` is ARKK before the ARK Innovation UCITS lines and the Buenos Aires CEDEARs). A fund's indicative value (`^ARKK-IV`, type `Indicative value`) and a crypto venue's token or perpetual on a fund (type `Tokenized product`, or `Perpetual futures price`) are listed as other matches, never as the fund's primary listing. A fund's name that finds nothing says to try fewer words.
+
 When Gloom Cloud is too busy to search, the list says `Search is busy` rather than `No matches`, and saved tickers that match still show. `gloom search` and any command that looks a symbol up through search (`quote "Eagle Bulk"`, `watchlist add`) fails with `Search is busy, try again in a moment.` and exits 1 (`--json`: `code` `search_busy`, `retryable` `true`).
 
 ### Company Research
@@ -445,7 +447,7 @@ gloom fn 13F 0001067983 --compare SPY                 # a fund against an ETF's 
 
 - `--compare SPY` compares the manager's latest 13F with the ETF's holdings file (the one `fn MEMB SPY` shows). It prints the overlap and the active share, the quarter compared with its filing date and the holdings file's date, and the manager's positions the ETF does not hold, largest first.
 - A word that reads as a ticker (up to five letters, with an optional class such as `BRK.B`) is an ETF when MEMB covers it, otherwise a manager only by its exact name, so `SPY` is not Spyglass Capital. A CIK or a longer name is a manager lookup, and the report says which was used.
-- MEMB covers IVV (also read for SPY and SPX), IJH, IJR, IWM and IWB. Any other ticker, such as `VTV`, fails with that list.
+- An ETF is one MEMB covers: IVV (also read for SPY and SPX), IJH, IJR, IWM, IWB, DIA, the eleven Select Sector SPDR funds and the industry funds the [MEMB section](research-data.md#index-and-etf-members) lists. Any other ticker, such as `VTV`, fails.
 - `--view=overlap` without `--compare` asks for it. `--compare` with another view fails.
 
 **Performance.** `gloom fn 13F 0001067983 --view performance` prints that fund's own row, with the `portfolio import --13f` command that copies its basket.
@@ -1132,6 +1134,7 @@ Cboe's Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) print their level
 `shot` has its own `--width`, in pixels. The layout is 720 to 2400 wide and 360 to 1800 tall (`--height`), and the PNG is drawn at twice that size, so the default 1280 by 720 writes 2560 by 1440.
 
 - A fixed board such as `FUT` grows until every row shows (up to 1800) unless you give `--height`.
+- A longer list ends on its last whole row, and `Rows` says how many of the list's rows the image holds: `shot MEMB XLK --width 720` prints `Rows 35 of 76 rows`.
 - A size outside the limits is drawn at the nearest one, with a warning: `--width 80 is below the 720 minimum, so the capture used 720 and the PNG is 1440 px wide.`
 
 ### Typed symbols
