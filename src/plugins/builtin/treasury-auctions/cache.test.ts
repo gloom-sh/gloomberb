@@ -216,29 +216,6 @@ describe("loadTreasuryAuctions", () => {
     expect(queries.slice(2)).toEqual([{ from: boundary }]);
   });
 
-  test("a later command reads ALL's archive from the copy an earlier one saved, and asks the source for the recent side only", async () => {
-    const store = new AppPersistence(":memory:");
-    try {
-      const queries: AuctionQuery[] = [];
-      const loader = async (query: AuctionQuery) => {
-        queries.push(query);
-        return query.before ? [auctionFixture("1979")] : [auctionFixture("recent")];
-      };
-      // A command answers from what it fetched itself, so each run is a new command persistence on the one profile.
-      attachTreasuryAuctionsPersistence(createCommandPluginPersistence(store.resources, "plugin:treasury-auctions"));
-      await loadTreasuryAuctions(false, loader, "all");
-      expect(queries.filter((query) => query.before)).toHaveLength(1);
-      resetTreasuryAuctionsPersistence();
-      attachTreasuryAuctionsPersistence(createCommandPluginPersistence(store.resources, "plugin:treasury-auctions"));
-      const warm = await loadTreasuryAuctions(false, loader, "all");
-      expect(warm.auctions.map((entry) => entry.id)).toEqual(["recent", "1979"]);
-      expect(queries.filter((query) => query.before)).toHaveLength(1);
-      expect(queries.filter((query) => !query.before)).toHaveLength(2);
-    } finally {
-      store.close();
-    }
-  });
-
   test("works with no persistence attached at all", async () => {
     const result = await loadTreasuryAuctions(true, async () => [auctionFixture("network")]);
     expect(result.auctions[0]!.id).toBe("network");
@@ -359,6 +336,47 @@ describe("loadTreasuryAuctions with TreasuryDirect", () => {
     expect(result.auctions.some((entry) => entry.id === "1979")).toBe(true);
     expect(result.auctions.filter(isPendingAuction).every((entry) => entry.auctionDate > "2026-11-05")).toBe(true);
     expect(result.auctions).toHaveLength(new Set([...recordedFiscalData(), ...recordedTreasuryDirect()].map((entry) => entry.id)).size + 1);
+  });
+
+  test("a later command answers from the board an earlier one saved within the hour, unless an auction it lists has come due", async () => {
+    const store = new AppPersistence(":memory:");
+    try {
+      const asked: string[] = [];
+      // Announced for today (New York): its results may be out by the next run.
+      const announced = auction({ id: "today", secType: "Bill", securityTerm: "17-Week", auctionDate: "2026-11-06", cusip: "912797WC7" });
+      let today = announced;
+      const fiscal = async (query: AuctionQuery) => {
+        asked.push(query.before ? "archive" : "fiscal");
+        return query.before ? [auction({ id: "1979", secType: "Bond", securityTerm: "20-Year", auctionDate: "1979-10-31", highYield: 9.5 })] : recordedFiscalData();
+      };
+      const direct = async () => {
+        asked.push("direct");
+        return [...recordedTreasuryDirect(), today];
+      };
+      // Each run is a new command on the one profile: it reads only what it fetched, and saved copies it may answer from.
+      const command = async (at: number) => {
+        setSystemTime(new Date(Date.parse(RECORDED_NOW) + at * 60_000));
+        resetTreasuryAuctionsPersistence();
+        attachTreasuryAuctionsPersistence(createCommandPluginPersistence(store.resources, "plugin:treasury-auctions"));
+        const result = await loadTreasuryAuctions(false, fiscal, "all", direct);
+        return { result, asked: asked.splice(0).sort() };
+      };
+
+      const cold = await command(0);
+      expect(cold.asked).toEqual(["archive", "direct", "fiscal"]);
+      expect((await command(20)).asked).toEqual(["direct", "fiscal"]);
+      today = { ...announced, highInvestmentRate: 3.71, highDiscountRate: 3.62, bidToCoverRatio: 3.1 };
+      expect((await command(30)).asked).toEqual(["direct", "fiscal"]);
+      const warm = await command(40);
+      expect(warm.asked).toEqual([]);
+      expect(warm.result.auctions.find((entry) => entry.id === "today")?.bidToCoverRatio).toBe(3.1);
+      expect(warm.result.auctions).toHaveLength(cold.result.auctions.length);
+      expect(warm.result.stale).toBe(false);
+      // An hour after the last read the app refreshes the board, and a command asks again too.
+      expect((await command(91)).asked).toEqual(["direct", "fiscal"]);
+    } finally {
+      store.close();
+    }
   });
 
   test("reports both sources through Connections", async () => {

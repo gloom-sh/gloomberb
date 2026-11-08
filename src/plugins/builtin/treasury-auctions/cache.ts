@@ -6,7 +6,7 @@ import {
   AUCTION_ARCHIVE_PAGE_SIZE, AUCTION_HISTORY_ALL, AUCTION_HISTORY_DAYS, AUCTION_HISTORY_START, auctionArchiveBoundary,
   auctionWindowQuery, fetchTreasuryAuctions, type AuctionHistoryWindow, type AuctionQuery,
 } from "./client";
-import { mergeAuctionSources } from "./model";
+import { isPendingAuction, mergeAuctionSources } from "./model";
 import { DIRECT_LOOKBACK_DAYS, fetchDirectAuctions } from "./treasury-direct";
 import type { TreasuryAuction } from "./types";
 
@@ -127,9 +127,12 @@ async function loadRecentBoard(
   direct: { days: number; load: DirectLoader } | null,
   from: () => string,
 ): Promise<TreasuryAuctionsResult> {
+  const directKey = direct && `direct:${direct.days}`;
+  const unchanged = force ? null : savedRecentBoard(fiscalKey, directKey, from());
+  if (unchanged) return unchanged;
   const [primary, supplement] = await Promise.all([
     answer(cache.load(fiscalKey, walk(FISCAL_DATA, fiscal), { force })),
-    direct ? answer(directCache.load(`direct:${direct.days}`, walk(TREASURY_DIRECT, () => direct.load(direct.days)), { force })) : null,
+    direct && directKey ? answer(directCache.load(directKey, walk(TREASURY_DIRECT, () => direct.load(direct.days)), { force })) : null,
   ]);
   if ("failed" in primary && (!supplement || "failed" in supplement)) throw primary.failed;
 
@@ -145,6 +148,37 @@ async function loadRecentBoard(
     ...(saved.length ? { savedAt: Math.min(...saved.map(({ read }) => read.fetchedAt)) } : {}),
     ...(refreshError ? { refreshError } : {}),
   };
+}
+
+/** A New York day (YYYY-MM-DD): an auction closes on it and its results come out that afternoon. */
+const newYorkDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+
+/** An announced auction whose day has come in the last week: its results may be out by now. */
+function comeDue(auction: TreasuryAuction, today: string, weekAgo: string): boolean {
+  return isPendingAuction(auction) && auction.auctionDate <= today && auction.auctionDate >= weekAgo;
+}
+
+/**
+ * A command's recent board as an earlier run saved both sources' copies, while
+ * they are within the hour the app refreshes them in and no auction they list
+ * has come due since: results in do not change, so asking again could add only
+ * an auction announced within that hour, which the app waits as long for. A
+ * command otherwise asks both sources again (saved-copy-persistence.ts), a
+ * second or more each run; an auction due today is asked for until its
+ * results are in. The app's own cache already answers from a fresh copy, and
+ * keeps the failure of a refresh, so only a run that has read nothing yet
+ * (a command) looks here.
+ */
+function savedRecentBoard(fiscalKey: string, directKey: string | null, from: string, now = Date.now()): TreasuryAuctionsResult | null {
+  if (cache.get(fiscalKey)) return null;
+  const fiscal = cache.get(fiscalKey, { allowExpired: true });
+  const direct = directKey ? directCache.get(directKey, { allowExpired: true }) : null;
+  if (!fiscal || fiscal.stale || (directKey && (!direct || direct.stale))) return null;
+  const auctions = mergeAuctionSources(fiscal.data, direct?.data ?? [], from);
+  const today = newYorkDay.format(now);
+  const weekAgo = newYorkDay.format(now - 7 * 86_400_000);
+  if (auctions.some((auction) => comeDue(auction, today, weekAgo))) return null;
+  return { auctions, fetchedAt: Math.min(fiscal.fetchedAt, direct?.fetchedAt ?? Infinity), stale: false };
 }
 
 export async function loadTreasuryAuctions(
