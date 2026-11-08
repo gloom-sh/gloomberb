@@ -54,14 +54,14 @@ export function useCloudSyncRuntime({
 
   useEffect(() => {
     if (!initialized) return;
-    void cloudSyncController.requestSync({ reason: "startup" });
+    cloudSyncController.startSync({ reason: "startup" });
   }, [initialized, pluginRegistry]);
 
   useEffect(() => {
     if (!initialized || !appActive) return;
-    void cloudSyncController.requestSync({ reason: "foreground" });
+    cloudSyncController.startSync({ reason: "foreground" });
     const timer = setInterval(() => {
-      void cloudSyncController.requestSync({ reason: "poll" });
+      cloudSyncController.startSync({ reason: "poll" });
     }, CLOUD_SYNC_POLL_MS);
     return () => clearInterval(timer);
   }, [appActive, initialized]);
@@ -70,7 +70,7 @@ export function useCloudSyncRuntime({
     if (!initialized) return;
     // Email verification makes the Cloud transport available. Force the first
     // sync so a workspace completed before verification is uploaded promptly.
-    void cloudSyncController.requestSync({ reason: "session-verified", force: true });
+    cloudSyncController.startSync({ reason: "session-verified", force: true });
   }, (accountId) => cloudSyncController.resetAccount(accountId),
   () => cloudSyncController.retireSession()), [initialized]);
 

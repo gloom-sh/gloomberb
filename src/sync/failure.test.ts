@@ -3,7 +3,7 @@ import type { AppState } from "../core/state/app/state";
 import type { TickerRepository } from "../data/ticker-repository";
 import { debugLog } from "../utils/debug-log";
 import { CloudSyncController } from "./controller";
-import type { SyncContributor, SyncTransport } from "./types";
+import { SYNC_SNAPSHOT_SCHEMA_VERSION, type SyncContributor, type SyncSnapshot, type SyncTransport } from "./types";
 
 test("a contributor that cannot date an edit is logged without the error, and the others are still observed", async () => {
   const now = spyOn(Date, "now").mockReturnValue(1_900_000_000_000);
@@ -39,5 +39,44 @@ test("a contributor that cannot date an edit is logged without the error, and th
     controller.clearRuntime();
     stop();
     now.mockRestore();
+  }
+});
+
+test("a contributor that cannot collect its data leaves sync in its error state, says nothing private, and pushes nothing", async () => {
+  const remote: SyncSnapshot = {
+    schemaVersion: SYNC_SNAPSHOT_SCHEMA_VERSION,
+    appId: "gloomberb",
+    clientId: "remote-client",
+    createdAt: "2026-10-01T00:00:00.000Z",
+    contributors: {},
+  };
+  const pushed: SyncSnapshot[] = [];
+  const transport: SyncTransport = {
+    id: "cloud",
+    isAvailable: () => true,
+    pullSnapshot: async () => ({ snapshot: remote, revision: 3, updatedAt: remote.createdAt }),
+    pushSnapshot: async (snapshot) => {
+      pushed.push(snapshot);
+      return { revision: 4, updatedAt: snapshot.createdAt };
+    },
+  };
+  const broken: SyncContributor = { id: "broken", schemaVersion: 1, collect: () => { throw new Error("portfolio=private"); } };
+  const controller = new CloudSyncController();
+  controller.setRuntime({
+    getState: () => ({} as AppState),
+    dispatch: () => {},
+    tickerRepository: {} as TickerRepository,
+    getContributors: () => [{ pluginId: "test", contributor: broken }],
+    getTransport: () => ({ pluginId: "test", transport }),
+  });
+  try {
+    await controller.requestSync();
+    const status = controller.getStatus();
+    expect(status.phase).toBe("error");
+    expect(status.error).toBeString();
+    expect(status.error).not.toContain("private");
+    expect(pushed).toEqual([]);
+  } finally {
+    controller.clearRuntime();
   }
 });
