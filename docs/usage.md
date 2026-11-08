@@ -1107,7 +1107,7 @@ Running `gloom` with no arguments launches the terminal UI. Normal commands run 
 
 Human-readable output is the default: tables fit the terminal width, and a single result prints as aligned label and value lines. Piped text keeps every cell whole.
 
-- `--json`, `--csv` and `--ndjson` give structured output, which is how to export anything (`gloom history LMT --csv > lmt.csv`). JSON uses the richest model and includes display-column metadata. CSV and NDJSON use the tabular rows. All three write a figure without binary floating-point noise: a change is `-1.8`, never `-1.8000000000000114`. That is twelve significant digits, and eight decimals on figures of ten thousand or more up to fifteen digits, so sub-penny prices, FX rates, yields and coin holdings keep every digit their source gives.
+- `--json`, `--csv` and `--ndjson` give structured output, which is how to export anything; `--output <file>` writes it to a file in UTF-8 (`gloom history LMT --csv --output lmt.csv`), where `>` would write UTF-16 in Windows PowerShell 5.1. JSON uses the richest model and includes display-column metadata. CSV and NDJSON use the tabular rows. All three write a figure without binary floating-point noise: a change is `-1.8`, never `-1.8000000000000114`. That is twelve significant digits, and eight decimals on figures of ten thousand or more up to fifteen digits, so sub-penny prices, FX rates, yields and coin holdings keep every digit their source gives.
 - `--output <path>` (or `--out`) writes a `--csv`, `--json` or `--ndjson` export to a file in UTF-8 (`gloom financials MSFT --csv --output msft.csv`) and prints `Saved` with its absolute path; the source and note lines a CSV closes with still go to the terminal. Use it on Windows: Windows PowerShell 5.1 writes a `>` redirect as UTF-16, which a spreadsheet misreads. Without `--csv`, `--json` or `--ndjson` the flag is refused, and a command that printed no export writes no file.
 - `gloom fn <function> --output <path>` (or `--out`) writes the report to a file in the format asked for, text included (`fn RV NEE,FSLR --csv --output rv.csv`), as a redirect would, and prints `Saved` with the file's absolute path. The path can be relative, absolute or under `~`, and folders it names are created. The file is readable by you alone (mode 600 on macOS and Linux), and a path that names a link, a device or anything else that is not a plain file is refused. A report with no data writes nothing and fails. `fn` refuses what only `shot` draws (`--theme`, `--height`, `--scale`, `--watermark`, `--no-status`) rather than ignore it.
 - Common global flags: `--limit`, `--tail`, `--width`, `--output`, `--refresh`, `--quiet`, `--no-color`, `--plain`, `--no-plain`, `--dry-run`, `--yes`.
@@ -1317,7 +1317,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 
 ### Several symbols
 
-`gloom history AAPL MSFT 000660.KS`, or `history --file holdings.txt` with one symbol a line (`-` reads standard input), writes every symbol's bars in one long table: `history --file holdings.txt --start 2024-01-01 --end 2024-12-31 --csv > bars.csv`.
+`gloom history AAPL MSFT 000660.KS`, or `history --file holdings.txt` with one symbol a line (`-` reads standard input), writes every symbol's bars in one long table: `history --file holdings.txt --start 2024-01-01 --end 2024-12-31 --csv --output bars.csv`.
 
 - Symbols load eight at a time. A list of more than ten skips the lookups of a bare symbol's other venues, as `quote` does.
 - The `--csv` header is a single symbol's. Each row names its symbol, its unit and its own symbol's as-of in `symbol_or_series`, `currency_or_unit` and `as_of`.
@@ -2834,7 +2834,7 @@ Settings also choose the lookback (5 years, 10 years or all history) and the cos
 ```sh
 gloom fn BT AAPL --json
 gloom fn BT SPY --entry 'close > sma(200)' --exit 'close < sma(200)' --lookback max --cost 2
-gloom fn BT BTC-USD --preset trend-200 --end 2026-10-16 --csv --equity > btc-trend.csv
+gloom fn BT BTC-USD --preset trend-200 --end 2026-10-16 --csv --equity --output btc-trend.csv
 gloom shot BT NVDA --preset breakout-55-20 --output nvda-breakout.png
 ```
 

@@ -23,7 +23,8 @@ export interface CliGlobalOptions {
    * `--output <path>` (or `--out`): the file a `--csv`, `--json` or
    * `--ndjson` export is written to, in UTF-8, in place of stdout. A shell's
    * redirect is not always UTF-8: Windows PowerShell 5.1 writes `>` as
-   * UTF-16. `fn` and `shot` read the flag themselves.
+   * UTF-16. `fn`, `shot` and a plugin command that declares its own
+   * `--output` read the flag themselves.
    */
   output?: string;
 }
@@ -90,13 +91,28 @@ function commandWord(rawArgs: readonly string[]): string | undefined {
   return undefined;
 }
 
-export function parseCliGlobalArgs(rawArgs: string[]): ParsedCliArgs {
+/**
+ * Whether a command reads `--output` itself: `fn` and `shot`, and a plugin
+ * command whose options declare one. The global flag yields to it.
+ */
+export function commandOwnsOutput(command: { name: string; help?: { options?: readonly { flags: string }[] } }): boolean {
+  return OWN_OUTPUT_COMMANDS.has(command.name.toLowerCase())
+    || (command.help?.options ?? []).some((option) => /(^|[\s,])--(output|out)\b/.test(option.flags));
+}
+
+/**
+ * The global flags out of `rawArgs`. `ownsOutput` says the command reads
+ * `--output` itself (commandOwnsOutput), which a built-in's name tells
+ * before its plugin is loaded; `deferOutputCheck` leaves refusing `--output`
+ * without an export format to `checkCliOutputFormat`, once that is known.
+ */
+export function parseCliGlobalArgs(rawArgs: string[], settings: { ownsOutput?: boolean; deferOutputCheck?: boolean } = {}): ParsedCliArgs {
   const options: CliGlobalOptions = { ...DEFAULT_CLI_OPTIONS };
   const args: string[] = [];
   let help = false;
   let literalStart: number | null = null;
   const ownsWidth = PIXEL_WIDTH_COMMANDS.has(commandWord(rawArgs)?.toLowerCase() ?? "");
-  const ownsOutput = OWN_OUTPUT_COMMANDS.has(commandWord(rawArgs)?.toLowerCase() ?? "");
+  const ownsOutput = settings.ownsOutput ?? OWN_OUTPUT_COMMANDS.has(commandWord(rawArgs)?.toLowerCase() ?? "");
 
   for (let index = 0; index < rawArgs.length; index += 1) {
     const arg = rawArgs[index]!;
@@ -186,8 +202,14 @@ export function parseCliGlobalArgs(rawArgs: string[]): ParsedCliArgs {
     throw new Error("Use --limit or --tail, not both: --limit keeps the first rows, --tail the newest.");
   }
 
-  if (options.output !== undefined && options.format === "text" && !help) {
+  const parsed = { args, options, help, literalStart: literalStart ?? args.length };
+  if (!settings.deferOutputCheck) checkCliOutputFormat(parsed);
+  return parsed;
+}
+
+/** `--output` writes an export: refused without --csv, --json or --ndjson. */
+export function checkCliOutputFormat(parsed: Pick<ParsedCliArgs, "options" | "help">): void {
+  if (parsed.options.output !== undefined && parsed.options.format === "text" && !parsed.help) {
     throw new Error("--output writes an export: add --csv, --json or --ndjson, such as --csv --output report.csv.");
   }
-  return { args, options, help, literalStart: literalStart ?? args.length };
 }

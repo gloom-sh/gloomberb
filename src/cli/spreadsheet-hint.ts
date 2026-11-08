@@ -42,5 +42,6 @@ export function spreadsheetOptionHint(flag: string, command: string, args: reado
   // Named after the command, a function by its code (`fn QQ`: qq.csv).
   const named = command.trim().split(/\s+/).filter((word, index) => index > 0 || word !== "fn");
   const output = file ? file.replace(SPREADSHEET_FILE, ".csv") : `${named.join("-").toLowerCase()}.csv`;
-  return `Exports are --csv (opens in Excel and Google Sheets), --json or --ndjson: gloom ${words.map(shellWord).join(" ")} --csv > ${shellWord(output)}.`;
+  // --output writes the file in UTF-8 in every shell, where `>` is UTF-16 in Windows PowerShell 5.1.
+  return `Exports are --csv (opens in Excel and Google Sheets), --json or --ndjson: gloom ${words.map(shellWord).join(" ")} --csv --output ${shellWord(output)}.`;
 }
