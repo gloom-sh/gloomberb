@@ -5,7 +5,7 @@ import { registerShareOpener } from "../../../../shares/open";
 import { ONE_SHOT_COOLDOWN_MS } from "../../../../utils/one-shot";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
 import { displayWidth } from "../../../../utils/format";
-import { createChatTestHarness, createController, makeMessage } from "../test-harness";
+import { createChatTestHarness, createController, makeMessage, messageDay } from "../test-harness";
 import { attachChatPaneLinkPanes } from "./previews";
 
 const tui = createChatTestHarness();
@@ -127,9 +127,9 @@ test("the terminal draws a share link as a card as tall as what it says, the pan
   expect(rowsFrom(tui.frame(), "Curated top market stories", 3)).toEqual([
     "Curated top market stories ranked by importance",
     "T Top News",
-    "user5 3/30/26",
+    `user5 ${messageDay(5)}`,
   ]);
-  expect(rowsFrom(tui.frame(), "DES SAMPL Options", 2)).toEqual(["D DES SAMPL Options · Research", "user4 3/30/26"]);
+  expect(rowsFrom(tui.frame(), "DES SAMPL Options", 2)).toEqual(["D DES SAMPL Options · Research", `user4 ${messageDay(4)}`]);
   // A plain message reads as before; the Wire post keeps its text and gains its chip.
   expect(frame).toContain("message 1");
   expect(frame).toContain("Macro calendar for Thu, Oct 8");

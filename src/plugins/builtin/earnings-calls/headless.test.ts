@@ -319,21 +319,26 @@ describe("upcoming calls", () => {
   });
 
   test("fn CALLS TICKER puts the next call first, upcoming with its countdown, and on its own line in the text", async () => {
+    const amdAt = "2026-11-04T21:00:00Z";
+    // The call's day on this machine's clock: Wed Nov 4 in New York, Thu Nov 5 in Hong Kong.
+    const start = new Date(amdAt);
+    const day = `${start.toLocaleDateString("en-US", { month: "short" })} ${start.getDate()}`;
+    const weekday = start.toLocaleDateString("en-US", { weekday: "short" });
     const deps = dependencies();
     deps.now = () => now;
     deps.loadCalls = async () => ({
-      calls: [...calls, upcoming("amd-fq3-2026", "AMD", "2026-11-04T21:00:00Z"), upcoming("amd-fq4-2026", "AMD", "2027-02-03T22:00:00Z")],
+      calls: [...calls, upcoming("amd-fq3-2026", "AMD", amdAt), upcoming("amd-fq4-2026", "AMD", "2027-02-03T22:00:00Z")],
       fetchedAt: 123, stale: false,
     });
     const result = await createEarningsCallsHeadless(deps).load(transcriptArgs({}), context);
     expect(result.rows.slice(0, 2)).toEqual([
-      expect.objectContaining({ id: "amd-fq3-2026", status: "upcoming", upcoming: true, in: "Nov 4" }),
+      expect.objectContaining({ id: "amd-fq3-2026", status: "upcoming", upcoming: true, in: day }),
       expect.objectContaining({ id: "amd-fq4-2026", status: "upcoming" }),
     ]);
     expect((result as { textRows?: unknown[] }).textRows?.map((row) => (row as { id: string }).id)).not.toContain("amd-fq3-2026");
     expect(result.metadata).toMatchObject({
-      notices: [expect.stringMatching(/^Next call Wed Nov 4 .*16:00.*\.$/)],
-      nextCall: { id: "amd-fq3-2026", timeKnown: true, in: "Nov 4" },
+      notices: [expect.stringMatching(new RegExp(`^Next call ${weekday} ${day} .*16:00.*\\.$`))],
+      nextCall: { id: "amd-fq3-2026", timeKnown: true, in: day },
     });
   });
 

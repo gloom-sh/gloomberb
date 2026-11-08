@@ -9,8 +9,9 @@ name: PR text
 # set, the check passes.
 #
 # The second job reads every tracked file, not only the change, and fails on a
-# private reference (scripts/check-private-references.sh), on pull requests and
-# on pushes to main.
+# private reference (scripts/check-private-references.sh), or on a file over
+# 1 MiB or a picture outside the app's and the docs' image folders
+# (scripts/check-tracked-binaries.sh), on pull requests and on pushes to main.
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize]
@@ -75,3 +76,9 @@ jobs:
 
       - name: Look for private references in tracked files
         run: ./scripts/check-private-references.sh
+
+      # Every clone downloads every file ever merged: review screenshots go in
+      # the pull request description, not the tree.
+      - name: Look for oversized files and stray pictures
+        if: ${{ !cancelled() }}
+        run: ./scripts/check-tracked-binaries.sh

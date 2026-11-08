@@ -24,4 +24,5 @@
 ## Building Gloom
 
 - [Contributing](../CONTRIBUTING.md) and the [plugin guide](../PLUGINS.md)
+- [Checks by area](checks.md): the command for each part of the app a change touches
 - [Pane conventions](pane-conventions.md): how a pane is put together

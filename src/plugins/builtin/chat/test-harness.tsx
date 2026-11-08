@@ -10,6 +10,7 @@ import { installTestWebSocket } from "../../../test-support/cloud-api";
 import { parseHex } from "../../../theme/color-utils";
 import { createDefaultConfig } from "../../../types/config";
 import { Box } from "../../../ui";
+import { formatTimeAgo } from "../../../utils/datetime-format";
 import { apiClient, type AccountProfile, type ChatChannel, type ChatMessage } from "../../../api-client";
 import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
 import { setSharedMarketDataForTests, setSharedRegistryForTests } from "../../registry";
@@ -140,6 +141,11 @@ export function makeMessage(index: number): ChatMessage {
       displayName: `User ${index}`,
     },
   };
+}
+
+/** The day a header dates `makeMessage(index)` by in this time zone: "3/30/26", or "3/29/26" west of UTC. */
+export function messageDay(index: number): string {
+  return formatTimeAgo(makeMessage(index).createdAt);
 }
 
 export function createController(options: {
