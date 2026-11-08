@@ -173,7 +173,7 @@ test("holders on a US line lists the 13F index's filers past the source's few, a
   expect(tailed.warnings).toEqual(["--tail 3 is the last 3 of the largest 25 loaded, not the smallest of all 567 holders."]);
 });
 
-test("a fund no source has holders of says it is a fund and what reads it instead, as no data, in holders, 13f and fn HDS", async () => {
+test("a fund or a listing no source has holders of says so, and for a fund what reads it instead, as no data, in holders, 13f and fn HDS", async () => {
   // The service's covered funds for fn MEMB, trimmed: XLE is one, EWJ is not.
   setHttpFetchTransport(async (url) => new URL(url).pathname === "/cloud/members"
     ? Response.json({ funds: [{ ticker: "XLE", name: "Energy", aliases: [], changes: "none", asOf: null }] })
@@ -195,9 +195,21 @@ test("a fund no source has holders of says it is a fund and what reads it instea
   // fn MEMB is named only for a fund it covers, and none of the US commands for a fund listed abroad.
   expect((await failure("holders", "EWJ", fund("EWJ", "ARCA"))).details).toBe("13F filers that hold it: gloom fn 13F EWJ\nFund facts: gloom fn ETF EWJ");
   expect((await failure("holders", "SXR8", fund("SXR8", "XETRA"))).details).toBeUndefined();
-  // A company the source has nothing for keeps the source's answer.
+  // A company the source has nothing for says none are on record, as no data, never the source's NO_DATA;
+  // a Shanghai line says which filings were read.
   const stock = await failure("holders", "ZZZQ", { ...fund("ZZZQ", "NASDAQ"), getQuote: async () => createTestQuote({ symbol: "ZZZQ", instrumentType: "EQUITY" }) });
-  expect(isCliFailure(stock)).toBe(false);
+  expect(isCliFailure(stock) && stock.code).toBe("no_data");
+  expect(stock.message).toBe("No holders on record for ZZZQ.");
+  const moutai = { ...fund("600519", "SSE"), getQuote: async () => createTestQuote({ symbol: "600519", instrumentType: "EQUITY", listingExchangeName: "SSE", currency: "CNY" }) };
+  for (const command of ["holders", "13f"]) {
+    const none = await failure(command, "600519:SSE", moutai);
+    expect(isCliFailure(none) && none.code).toBe("no_data");
+    expect(none.message).toBe("No holders on record for 600519:SSE: no SEC 13F filing reports it, and the SSE share register is not read.");
+  }
+  // A failure that is no answer stays the failure.
+  const busy = await failure("holders", "ZZZQ", { ...fund("ZZZQ", "NASDAQ"), getHolders: async () => { throw new Error("timed out"); },
+    getQuote: async () => createTestQuote({ symbol: "ZZZQ", instrumentType: "EQUITY" }) });
+  expect(isCliFailure(busy)).toBe(false);
 
   const hds = await createHoldersHeadless({ loadSnapshot: async () => { throw createProviderMiss("NO_DATA"); } }).load({
     rawArgument: "XLE", argument: "XLE", symbols: ["XLE"], options: { sort: "value", order: "desc", limit: 25 },
@@ -206,6 +218,14 @@ test("a fund no source has holders of says it is a fund and what reads it instea
     rows: [],
     unavailableSymbols: ["XLE"],
     empty: "XLE is a fund: there is no ownership breakdown for funds.\n13F filers that hold it: gloom fn 13F XLE\nWhat it holds: gloom fn MEMB XLE\nFund facts: gloom fn ETF XLE",
+  });
+  const moutaiHds = await createHoldersHeadless({ loadSnapshot: async () => { throw createProviderMiss("NO_DATA"); } }).load({
+    rawArgument: "600519:SSE", argument: "600519:SSE", symbols: ["600519:SSE"], options: { sort: "value", order: "desc", limit: 25 },
+  }, createTestHeadlessContext({ marketData: createTestDataProvider(moutai), apiClient }));
+  expect(moutaiHds).toMatchObject({
+    rows: [],
+    unavailableSymbols: ["600519:SSE"],
+    empty: "No holders on record for 600519:SSE: no SEC 13F filing reports it, and the SSE share register is not read.",
   });
 });
 

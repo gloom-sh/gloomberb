@@ -354,7 +354,7 @@ import {
   unvaluedHoldersNote,
 } from "../../plugins/builtin/holders/report-rows";
 import { fetchBeneficialOwners } from "../../plugins/builtin/holders/beneficial-client";
-import { fundHoldersAnswer } from "../../plugins/builtin/holders/fund-holders";
+import { noHoldersAnswer } from "../../plugins/builtin/holders/fund-holders";
 import { centralBankEventsMessage } from "../central-bank-events";
 import { classSharesAsOf, classSharesToday } from "../../plugins/builtin/holders/client";
 import {
@@ -3161,9 +3161,10 @@ async function runHolders(
         (found) => found.holders.length === 0,
         { command: commandName, noun: "holder data" },
       ).catch(async (error: unknown) => {
-        // A fund has no ownership breakdown: say so, and what reads it, rather than the source's NO_DATA.
-        const fund = await fundHoldersAnswer(listing.symbol, error, await quoted, apiClient);
-        if (fund) fail(fund.message, fund.details.join("\n") || undefined, NO_DATA_CODE);
+        // A fund has no ownership breakdown, and a listing may have no holders on record: say so
+        // (and what reads a fund) rather than the source's NO_DATA.
+        const none = await noHoldersAnswer(listing.key, listing.request.exchange, error, await quoted, apiClient);
+        if (none) fail(none.message, none.details.join("\n") || undefined, NO_DATA_CODE);
         throw error;
       }),
       quoted,

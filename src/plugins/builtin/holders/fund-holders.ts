@@ -6,6 +6,7 @@ import { isNoSourceAnswer } from "../../../sources/provider-errors";
 import { logFailure } from "../../../utils/log-failure";
 import { fetchFunds } from "../members/client";
 import { coveredFund } from "../members/model";
+import { isNoHoldersAnswer, noHoldersText } from "./report-header";
 
 type FundQuote = Pick<Quote, "instrumentType" | "tradingExchangeName" | "listingExchangeName" | "exchangeName">;
 
@@ -24,7 +25,7 @@ export interface FundHoldersAnswer {
  * holds where `fn MEMB` covers it, and its fund facts (`fn ETF`). Null for a
  * listing that is not a fund, or a failure that is no answer (a timeout).
  */
-export async function fundHoldersAnswer(
+async function fundHoldersAnswer(
   symbol: string,
   error: unknown,
   quote: FundQuote | null | undefined,
@@ -48,4 +49,24 @@ export async function fundHoldersAnswer(
       `Fund facts: gloom fn ETF ${fund}`,
     ],
   };
+}
+
+/**
+ * What `holders`, `13f` and `fn HDS` say for a listing no holder source has
+ * holders of, in place of the source's bare NO_DATA: a fund's answer
+ * (`fundHoldersAnswer`), else that none are on record and, abroad, which
+ * filings were read (`noHoldersText`). Its venue is the quote's, else the one
+ * the request named. Null for a failure that is no answer (a timeout).
+ */
+export async function noHoldersAnswer(
+  symbol: string,
+  exchange: string | undefined,
+  error: unknown,
+  quote: (FundQuote & Pick<Quote, "currency">) | null | undefined,
+  client: NonNullable<Parameters<typeof fetchFunds>[0]>,
+): Promise<FundHoldersAnswer | null> {
+  const fund = await fundHoldersAnswer(symbol, error, quote, client);
+  if (fund || !isNoHoldersAnswer(error)) return fund;
+  const venue = (quote ? quoteTradingExchange(quote) : "") || exchange || symbol.split(":")[1] || "";
+  return { message: noHoldersText(symbol, venue, quote?.currency), details: [] };
 }

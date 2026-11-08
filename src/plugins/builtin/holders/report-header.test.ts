@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { holderListPeriod, holderShareBasisNote, holderValueBasis, holdersHeaderLine, moneyColumnHeader, nonUsHolderCaveat } from "./report-header";
+import { holderListPeriod, holderShareBasisNote, holderValueBasis, holdersHeaderLine, moneyColumnHeader, isNoHoldersAnswer, nonUsHolderCaveat, noHoldersText } from "./report-header";
+import { createProviderMiss } from "../../../sources/provider-errors";
 
 describe("holder report header", () => {
   test("names the listing, spells out a sub-unit currency and says the list is the source's top holders", () => {
@@ -58,4 +59,19 @@ describe("holder report header", () => {
     expect(nonUsHolderCaveat("NasdaqGS", "USD")).toBeNull();
     expect(nonUsHolderCaveat(undefined, "USD")).toBeNull();
   });
+});
+
+test("a listing with no holders on record says so; abroad, which filings were read, never a bare code", () => {
+  expect(noHoldersText("600519:SSE", "SSE", "CNY")).toBe("No holders on record for 600519:SSE: no SEC 13F filing reports it, and the SSE share register is not read.");
+  expect(noHoldersText("002594:SZSE", "SZSE")).toContain("the SZSE share register is not read");
+  expect(noHoldersText("X", "Toronto", "CAD")).toContain("the local share register is not read");
+  expect(noHoldersText("ZZZQ", "NASDAQ", "USD")).toBe("No holders on record for ZZZQ.");
+  expect(noHoldersText("ZZZQ", "", "")).toBe("No holders on record for ZZZQ.");
+});
+
+test("an answer of no holders is a miss, or the bare NO_DATA a bridge carries; a failure is neither", () => {
+  expect(isNoHoldersAnswer(createProviderMiss("NO_DATA"))).toBe(true);
+  expect(isNoHoldersAnswer(new Error("NO_DATA"))).toBe(true);
+  expect(isNoHoldersAnswer(new Error("timed out"))).toBe(false);
+  expect(isNoHoldersAnswer(new Error("Cloud holders are unavailable for 600519"))).toBe(false);
 });

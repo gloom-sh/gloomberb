@@ -211,26 +211,38 @@ export function lockedDisclosures(data: Pick<SupplyChainPayload, "says" | "names
 
 /** Countries whose companies' own filings SPLC reads (docs/supply-chain.md, Coverage and limitations). */
 const FILING_COUNTRIES = new Set(["US", "KR"]);
+/**
+ * Where SPLC reads companies' own annual reports from the exchange: Hong
+ * Kong (HKEX), mainland China (cninfo) and Singapore (SGXNet), by the
+ * company's country or its listing's exchange. A few reports are read at a
+ * time, so a company there may not have had its report read yet.
+ */
+const REPORT_COUNTRIES = new Set(["HK", "CN", "SG"]);
+const REPORT_EXCHANGES = new Set(["HKEX", "SSE", "SZSE", "SGX"]);
 
 /**
  * What a company with no disclosed relationship at all reads instead of an
  * empty table. The server gives an entity's country as an ISO code (`US`,
  * `KR`, `TW`) or none. A company in a country whose filings SPLC does not
  * read names the markets it does; one whose country is not known is never
- * said to be outside them. Both point to the side that can still name it: a
- * customer's filings name their suppliers. `command` is how the reader opens
- * another company's supply chain ("fn SPLC AAPL" in the CLI). Null when
- * there are relationships.
+ * said to be outside them. All but a US or Korean company point to the side
+ * that can still name it: a customer's filings name their suppliers.
+ * `command` is how the reader opens another company's supply chain ("fn SPLC
+ * AAPL" in the CLI). Null when there are relationships.
  */
 export function supplyEmptyText(data: Pick<SupplyChainPayload, "symbol" | "entity" | "says" | "names" | "earlier">, command = (symbol: string) => `SPLC ${symbol}`): string | null {
   if (data.says.length || data.names.length || data.earlier?.says.length || data.earlier?.names.length) return null;
   const code = data.entity?.country?.trim().toUpperCase() ?? "";
   const country = /^[A-Z]{2}$/.test(code) ? code : null;
+  const exchange = data.entity?.exchange?.trim().toUpperCase() ?? "";
   const customerSide = `A customer's filings name its suppliers: try the customer's side, such as ${command("AAPL")}.`;
   if (country && FILING_COUNTRIES.has(country)) return `No filing, announcement or call read so far names a relationship for ${data.symbol}.`;
+  if ((country && REPORT_COUNTRIES.has(country)) || REPORT_EXCHANGES.has(exchange)) {
+    return `No annual report, announcement or call read so far names a relationship for ${data.symbol}. ${customerSide}`;
+  }
   if (!country) return `No filing, announcement or call read so far names a relationship for ${data.symbol}. ${customerSide}`;
-  return `No relationship for ${data.symbol}: SPLC reads US (SEC) and Korean (DART) company filings, plus announcements and calls, `
-    + `and none read so far names one. ${customerSide}`;
+  return `No relationship for ${data.symbol}: SPLC reads company filings from the US and Korea and annual reports from Hong Kong, mainland China `
+    + `and Singapore, plus announcements and calls, and none read so far names one. ${customerSide}`;
 }
 
 /** The lock line of a free preview, in the same words in the pane and `fn SPLC`. */

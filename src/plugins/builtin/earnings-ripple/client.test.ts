@@ -233,7 +233,7 @@ test("an empty answer says what it searched and over which window, then where el
   const answer = await text(["AAPL", "NEM"], { AAPL: disclosed("AAPL", ["DELL"], ["CRUS"], true), NEM: disclosed("NEM", ["JPM"]) });
   expect(answer).toMatch(/None of the 3 disclosed customers and suppliers of AAPL, NEM in the free preview reports from (\d{4}-\d{2}-\d{2}) to \d{4}-\d{2}-\d{2} \(the next 30 days\)\.\n[\s\S]*Pro: Additional relationships need Gloom Pro/);
   expect(await text(["NVDA"], { NVDA: disclosed("NVDA", []) })).toContain("No US-listed customer or supplier with a share of revenue is disclosed for NVDA, so no report date was looked up from ");
-  // SPLC on a listing whose own filings it does not read: the markets it reads, and the customer's side.
+  // SPLC on a Hong Kong listing with nothing read yet: its annual report is read, and the customer's side can name it.
   const context = createTestHeadlessContext();
   const hk = supplyPayload({ symbol: "2382:HKEX", entity: { ...supplyPayload().entity!, id: "2382", name: "SUNNY OPTICAL", ticker: "2382", exchange: "HKEX", country: "HK" },
     status: "unavailable", says: [], names: [], totalRows: 0, counts: { says: { customer: 0, supplier: 0, partner: 0, competitor: 0, investee: 0 }, names: { customer: 0, supplier: 0, partner: 0, competitor: 0, investee: 0 } } });
@@ -241,7 +241,7 @@ test("an empty answer says what it searched and over which window, then where el
   const args = createTestHeadlessArgs({ symbols: ["2382:HKEX"] });
   const result = await supplyChainHeadless.load(args, context);
   const splc = renderHeadlessPaneText(supplyChainHeadless, result, args, "SPLC", deriveHeadlessFreshness(supplyChainHeadless, result));
-  expect(splc).toContain("SPLC reads US (SEC) and Korean (DART) company filings");
+  expect(splc).toContain("No annual report, announcement or call read so far names a relationship for 2382:HKEX.");
   expect(splc).toContain("try the customer's side, such as fn SPLC AAPL.");
   expect(splc).not.toContain("not covered");
 });
