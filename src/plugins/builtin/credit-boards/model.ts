@@ -188,7 +188,7 @@ function yearStatistics(points: readonly CreditBoardPoint[], level: number | nul
  * contract; or, for a price with no spread beside it (CMBX), the price
  * upside down, the lowest price ranking 100.
  */
-export type SpreadRankBasis = "spread" | "spread-eq" | "price-inverted";
+type SpreadRankBasis = "spread" | "spread-eq" | "price-inverted";
 
 export interface SpreadRank {
   percentile: number | null;
