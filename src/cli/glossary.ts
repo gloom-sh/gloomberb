@@ -256,7 +256,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "The date of the latest change: the decision it came from, or, where no decision is on record, the first date the new rate level appears in the data. The last decision under each row is the bank's latest meeting, a hold included.",
   },
   {
-    term: "Pctl 1Y", aliases: ["percentile", "1y percentile", "1-year percentile", "pctl"], functions: ["BTMM", "WIRP", "CBR", "CDX", "SOVR", "COT"],
+    term: "Pctl 1Y", aliases: ["percentile", "1y percentile", "1-year percentile", "pctl"], functions: ["BTMM", "WIRP", "CBR", "CDX", "SOVR", "COT", "CTM"],
     definition: "Where today's value ranks against the past year of the same series: 100 is the highest, 0 the lowest.",
   },
   {
