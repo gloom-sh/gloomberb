@@ -33,7 +33,7 @@ export const quotedSearchCommand = (word: string) => `gloom news '"${word}"'`;
  * The words of a company's name, lower-cased, each run of letters split where
  * its case changes from lower to upper: "PesoRama Inc." is peso, rama and inc.
  */
-export function companyNameWords(companyName: string): string[] {
+function companyNameWords(companyName: string): string[] {
   return companyName
     .replace(/(\p{Ll})(\p{Lu})/gu, "$1 $2")
     .toLowerCase()
