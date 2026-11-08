@@ -993,8 +993,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["WIRP", "FFIP"],
   },
   CRD: {
-    summary: "ICE BofA option-adjusted spreads: US investment grade and high yield by rating, and euro high yield, with the day's change.",
-    usage: ["CRD", "CRD --region euro"],
+    summary: "ICE BofA option-adjusted spreads: US investment grade and high yield by rating, euro high yield, and emerging markets and Asia corporates, with the day's change.",
+    usage: ["CRD", "CRD --region euro", "CRD --region asia,em"],
     keys: [OPEN],
     data: same("Daily close, published the next day"),
     bloomberg: ["CRD"],

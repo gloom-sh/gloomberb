@@ -251,6 +251,8 @@ export function mergeQuoteContribution(
       delete merged.previousCloseDate;
     }
   }
+  // So is a close its daily closes could not date: the next reading says it again.
+  if (next.previousCloseUndated === undefined) delete merged.previousCloseUndated;
 
   if (isOtherTradingDay(current, next)) {
     const record = merged as unknown as Record<string, unknown>;

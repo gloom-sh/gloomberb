@@ -2,7 +2,7 @@ import { logFailure } from "../../utils/log-failure";
 import { normalizeTickerSymbol } from "../../tickers/search/ranking";
 import type { CliCommandDef } from "../../types/plugin";
 import { TIME_RANGES, type TimeRange } from "../../time-series/range";
-import { CHART_RESOLUTION_STEP_MS } from "../../time-series/resolution";
+import { CHART_RESOLUTION_STEP_MS, RANGE_HISTORY_RESOLUTION } from "../../time-series/resolution";
 import { yearToDateStartIndex } from "../../market-data/market/year-to-date";
 import type { EarningsEvent, MarketDataRequestContext, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
 import { companyDataNotes, type CompanyFrom } from "../../types/company-from";
@@ -135,7 +135,7 @@ import {
   fxInterventionLatestNote, fxInterventionPair, fxInterventionWindowNote, loadFxInterventions, type FxInterventionPair,
 } from "../../market-data/fx-interventions";
 import { maxDrawdownText, maxRunUp, maxRunUpText } from "../../utils/max-drawdown";
-import { isPastPriceWindow, loadPriceWindowHistory, PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP, priceWindowText, readPriceWindow, type PriceWindow } from "../../utils/price-window";
+import { isPastPriceWindow, loadPriceWindowHistory, PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP, priceWindowInterval, priceWindowText, readPriceWindow, type PriceWindow } from "../../utils/price-window";
 import {
   BAR_INTERVAL_LABELS,
   closedPeriodBarDay,
@@ -215,7 +215,8 @@ import {
 } from "./news-search";
 import { displayTimeZone, formatUtcDayTime, formatUtcTime } from "../../utils/utc-time";
 import { localReportTiming } from "../../utils/report-timing";
-import { DAY_SO_FAR_TEXT, withSessionBar } from "../../time-series/session-bar";
+import { DAY_SO_FAR_TEXT, dailyOrLongerBarSize, withSessionBar } from "../../time-series/session-bar";
+import { requestedBarSize } from "../../time-series/bar-spacing";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
 import { withBankEnterpriseValue } from "../../utils/fundamentals";
@@ -1627,11 +1628,16 @@ async function loadListingHistory(
   const loaded = quote || window ? answered : await stoppedUsListingHistory(listing, market, loadRange, context, answered);
   // With no quote and no bar in over a month, when the listing last traded is said first.
   const lastTraded = quote || window ? null : noQuoteLastTraded(loaded);
-  const { resolution } = loaded;
+  // The size the bars were served in, else the one asked for, never their spacing alone: B95 on SGX trades a few
+  // times a month, and its daily bars a week or two apart are still daily (requestedBarSize).
+  const asked = window ? priceWindowInterval(window) : RANGE_HISTORY_RESOLUTION[loadRange];
+  const resolution = loaded.resolution ?? (dailyOrLongerBarSize(asked).barSize
+    ? requestedBarSize(loaded.points.map((point) => new Date(point.date).getTime()), asked as "1d" | "1wk" | "1mo") : null);
   // While the session trades the day's bar is the quote's, whatever range the history was cut for (withSessionBar).
   // A window that ended before today has no session in progress.
   const points = window && isPastPriceWindow(window) ? loaded.points
-    : withSessionBar(loaded.points, quote, { now: Date.now(), venue: quote?.listingExchangeName || exchange || undefined });
+    : withSessionBar(loaded.points, quote, { now: Date.now(), venue: quote?.listingExchangeName || exchange || undefined,
+      ...dailyOrLongerBarSize(resolution) });
   const fromQuote = points !== loaded.points;
   const identity = listingIdentity(listing, quote);
   // Without a quote currency, the listing metadata research reads (as `ticker` does) may still state it.
@@ -1685,7 +1691,8 @@ async function loadListingHistory(
     ...(volumeNote ? { note: volumeNote } : {}),
   }) : rowsFreshness(data, {
     ...source,
-    ...barHistoryFreshness(intraday ? null : barResolutionFromDates(data.map((row) => row.date))),
+    // The size the heading names (served, else asked for), not the spacing a thin listing's few trades leave.
+    ...barHistoryFreshness(intraday ? null : interval ?? barResolutionFromDates(data.map((row) => row.date))),
     observedKey: "date",
     oldest: null,
     cadenceExchange: venue,

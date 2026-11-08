@@ -9,6 +9,24 @@ import {
 } from "./client";
 import { creditRegion, creditSeriesIn, type CreditConditionRow } from "./model";
 
+const REGION_VALUES = [
+  { value: "all" },
+  { value: "us", aliases: ["usa", "united states", "america"] },
+  { value: "euro", aliases: ["eu", "eur", "europe", "eurozone", "euro area", "ea"] },
+  { value: "em", aliases: ["emerging", "emerging markets", "emerging market", "ems"] },
+  { value: "asia", aliases: ["asian", "apac", "asia pacific", "asia em"] },
+];
+
+const regionToken = (text: string) => text.toLowerCase().replace(/[^a-z]/g, "");
+
+/** A region as typed (`Asia`, `emerging markets`), as the option's value. */
+function regionValue(text: string): string {
+  const token = regionToken(text);
+  const found = REGION_VALUES.find((region) => [region.value, ...region.aliases ?? []].some((name) => regionToken(name) === token));
+  if (!found) throw new Error(`Invalid --region value "${text}". Use one or more of: ${REGION_VALUES.map(({ value }) => value).join(", ")}.`);
+  return found.value;
+}
+
 const COLUMNS = [
   { key: "label", header: "Index" },
   { key: "seriesId", header: "FRED series" },
@@ -43,14 +61,14 @@ function createCreditConditionsHeadless(
     argument: { kind: "none" },
     options: [{
       key: "region",
-      description: "Indexes to list. FRED publishes euro high yield but no euro investment grade spread.",
+      description: "Indexes to list, one region or several as a comma list. em is the emerging markets corporate indexes, Asia's among them; "
+        + "FRED publishes euro high yield but no euro investment grade spread.",
       type: "enum",
-      values: [
-        { value: "all" },
-        { value: "us", aliases: ["usa", "united states", "america"] },
-        { value: "euro", aliases: ["eu", "eur", "europe", "eurozone", "euro area", "ea"] },
-      ],
+      list: true,
+      values: REGION_VALUES,
       defaultValue: "all",
+      example: "--region asia,us",
+      normalize: (value) => value.split(",").map((part) => part.trim()).filter(Boolean).map((part) => regionValue(part)).join(","),
     }],
     columns: COLUMNS,
     describe: "Credit Spreads",

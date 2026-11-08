@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { createTestDataProvider } from "../../../test-support/data-provider";
+import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import { historyRows } from "../../../cli/history-rows";
 import { getPublishedUsEquitySession } from "../../../market-data/published-us-sessions";
 import { withSessionBar } from "../../../time-series/session-bar";
-import type { PricePoint } from "../../../types/financials";
+import type { PricePoint, Quote } from "../../../types/financials";
 import { firstDailyCheck, metricReadings } from "./metric-data";
 import { formatCurrentPrice, formatQuoteChecked } from "./format";
 import type { AlertRule } from "./types";
@@ -40,36 +40,51 @@ test("a daily rule judges the closes history shows as final, read in history's b
     date: new Date(day), open: 180, high: 190, low: 170, close: 180 + (index % 7), volume: 1, ...marks[day],
   }));
   const rsi: AlertRule = { id: "xlk", symbol: "XLK", exchange: "ARCA", metric: { kind: "rsi", period: 14 }, condition: "above", targetPrice: 70, status: "active", createdAt: 1 };
-  // What `history XLK` shows as final at `now`: its rows without `partial`, from the same bars and session rule.
-  const historyFinal = (served: PricePoint[], now: number) =>
-    historyRows(withSessionBar(served, null, { now, venue: "ARCA" }), null).filter((row) => !row.partial).at(-1)?.date;
-  const read = async (served: PricePoint[], now: number) => {
+  // What `history XLK` shows as final at `now`: its rows without `partial`, from the same bars, quote and session rule.
+  const historyFinal = (served: PricePoint[], now: number, quote: Quote | null = null) =>
+    historyRows(withSessionBar(served, quote, { now, venue: "ARCA" }), null).filter((row) => !row.partial).at(-1);
+  const read = async (served: PricePoint[], now: number, quote?: Quote) => {
     const sizes: string[] = [];
+    let quotes = 0;
     // The data service answers the bar size `history` asks for, and no bars for a size it does not know.
     const provider = createTestDataProvider({
       getDetailedPriceHistory: async (_symbol, _exchange, _start, end, size) => {
         sizes.push(size);
         return size === "1d" ? served.filter((bar) => new Date(bar.date).getTime() <= end.getTime()) : [];
       },
+      getQuote: async () => {
+        quotes += 1;
+        if (!quote) throw new Error("No quote");
+        return quote;
+      },
     });
     const reading = await metricReadings(provider, now)(rsi).then((value) => value.day, (error: Error) => error.message);
-    return { reading, sizes };
+    return { reading, sizes, quotes };
   };
 
-  // Tue 06:35 UTC: history shows Monday's close as final, and the rule reads it.
+  // Tue 06:35 UTC: history shows Monday's close as final, and the rule reads it, with no quote.
   const tuesday = Date.parse("2026-10-27T06:35:00Z");
-  expect(historyFinal(bars(), tuesday)).toBe("2026-10-26");
-  expect(await read(bars(), tuesday)).toEqual({ reading: "2026-10-26", sizes: ["1d"] });
+  expect(historyFinal(bars(), tuesday)?.date).toBe("2026-10-26");
+  expect(await read(bars(), tuesday)).toEqual({ reading: "2026-10-26", sizes: ["1d"], quotes: 0 });
   // The app's saved cache gives the same bars back with their dates as text.
   const cached = bars().map((bar) => ({ ...bar, date: bar.date.toISOString() as unknown as Date }));
   expect((await read(cached, tuesday)).reading).toBe("2026-10-26");
-  // A close the source still marks partial is partial in history too, and the rule waits for it.
+  // A close the source still marks partial once the session has settled is final at Monday's quote, in history
+  // and for the rule; with no quote from that session it is partial in both, and the rule waits for it.
   const unsettled = bars({ "2026-10-26": { partial: true } });
-  expect(historyFinal(unsettled, tuesday)).toBe("2026-10-23");
-  expect((await read(unsettled, tuesday)).reading).toBe("Waiting for the 2026-10-26 daily close.");
+  const closing = createTestQuote({
+    symbol: "XLK", price: 183.4, listingExchangeName: "ARCA", marketState: "CLOSED", changeSessionDate: "2026-10-26",
+    lastUpdated: Date.parse("2026-10-26T20:00:00Z"),
+  });
+  expect(historyFinal(unsettled, tuesday, closing)).toMatchObject({ date: "2026-10-26", close: 183.4 });
+  expect(await read(unsettled, tuesday, closing)).toMatchObject({ reading: "2026-10-26", quotes: 1 });
+  expect(historyFinal(unsettled, tuesday)?.date).toBe("2026-10-23");
+  expect(await read(unsettled, tuesday)).toMatchObject({ reading: "Waiting for the 2026-10-26 daily close.", quotes: 1 });
+  const friday = createTestQuote({ ...closing, changeSessionDate: "2026-10-23", lastUpdated: Date.parse("2026-10-23T20:00:00Z") });
+  expect((await read(unsettled, tuesday, friday)).reading).toBe("Waiting for the 2026-10-26 daily close.");
   // Mon 18:00 UTC, the session trading: the day's snapshot is no close in history, nor for the rule, which reads Friday's.
   const monday = Date.parse("2026-10-26T18:00:00Z");
-  expect(historyFinal(bars(), monday)).toBe("2026-10-23");
+  expect(historyFinal(bars(), monday)?.date).toBe("2026-10-23");
   expect((await read(bars(), monday)).reading).toBe("2026-10-23");
   // A rule set then is first judged on Monday's close, once it has settled; one set on Tuesday morning, on Tuesday's.
   expect(firstDailyCheck("ARCA", monday)).toEqual({ day: "2026-10-26", at: Date.parse("2026-10-26T20:30:00Z") });

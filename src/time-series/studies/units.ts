@@ -57,9 +57,9 @@ export function knownUnitSignature(series: Pick<ResolvedSeries, "unit" | "unitGr
   return `${basis ?? ""}|${parts.map(unitFactorIdentity).join("/")}`;
 }
 
-/** A leg as an error names it: its ticker (HO=F), else its label. */
+/** A leg as a formula and an error name it: its ticker (HO=F), else as it is written (FRED:BAMLC0A0CM), else its label. */
 export function legName(series: ResolvedSeries): string {
-  return series.listing?.symbol || series.label;
+  return series.listing?.symbol || series.expression || series.label;
 }
 
 /** What a leg's unit is, in words: "is USD / gallon", "is in %", "is in USD per an unknown quantity". */
@@ -97,6 +97,10 @@ export function unitMismatchMessage(
   if (gallons && leftCurrency === rightCurrency) {
     return `${named}: write ${GALLONS_PER_BARREL}*${gallons} to compare per barrel.`;
   }
+  // A percent beside basis points is 100 short of them, a known conversion as 42 gallons are a barrel.
+  const percent = isPercentUnit(left.unit) && isBasisPointUnit(right.unit) ? leftName
+    : isBasisPointUnit(left.unit) && isPercentUnit(right.unit) ? rightName : null;
+  if (percent) return `${named}: write ${BP_PER_PERCENT}*${percent} to compare in bp.`;
   const subject = kind === "spread" ? "a spread" : "a formula";
   if (leftCurrency && rightCurrency && leftCurrency !== rightCurrency) return `${named}: ${subject} does not convert currencies.`;
   const known = knownUnitSignature({ unit: left.unit, unitGroup: left.series.unitGroup }) !== null
@@ -121,6 +125,49 @@ export interface SeriesUnit {
   unit: string;
   unitGroup: string;
 }
+
+/**
+ * Basis points, in the group a catalog series in bp draws in (CDX IG), so a
+ * spread converted to bp shares its axis.
+ */
+export const BASIS_POINT_UNIT: SeriesUnit = { unit: "bp", unitGroup: "series:bp" };
+/** Percent, in the group FRED's percent series and a catalog series in % draw in. */
+const PERCENT_UNIT: SeriesUnit = { unit: "%", unitGroup: "percent" };
+/** Basis points in a percentage point: 0.93% is 93bp. */
+export const BP_PER_PERCENT = 100;
+
+function isPercentUnit(unit: string): boolean {
+  return unit.trim() === "%";
+}
+
+function isBasisPointUnit(unit: string): boolean {
+  return /^bps?$/i.test(unit.trim());
+}
+
+/**
+ * The unit a leg reads in once its multiplier converts it: times 100, a
+ * percent is basis points (0.93% is 93bp); times 0.01, basis points are a
+ * percent. Null when the conversion does not apply to the unit.
+ */
+export function percentBasisPointUnit(unit: string, direction: 1 | -1): SeriesUnit | null {
+  if (direction === 1 && isPercentUnit(unit)) return BASIS_POINT_UNIT;
+  if (direction === -1 && isBasisPointUnit(unit)) return PERCENT_UNIT;
+  return null;
+}
+
+/**
+ * What a percent over basis points, or basis points over a percent, is
+ * multiplied by to cancel to a plain number: 100 for % over bp, 0.01 for bp
+ * over %. 4.1% over 61bp is 410bp over 61bp, 6.72. Null for any other pair.
+ */
+export function percentBasisPointRatioScale(numerator: Pick<SeriesUnit, "unit">, denominator: Pick<SeriesUnit, "unit">): number | null {
+  if (isPercentUnit(numerator.unit) && isBasisPointUnit(denominator.unit)) return BP_PER_PERCENT;
+  if (isBasisPointUnit(numerator.unit) && isPercentUnit(denominator.unit)) return 1 / BP_PER_PERCENT;
+  return null;
+}
+
+/** A plain number: a ratio whose units cancel. */
+export const PLAIN_RATIO_UNIT: SeriesUnit = { unit: "x", unitGroup: "ratio" };
 
 const UNKNOWN_UNIT: SeriesUnit = { unit: "unknown", unitGroup: "derived-unit:unknown" };
 

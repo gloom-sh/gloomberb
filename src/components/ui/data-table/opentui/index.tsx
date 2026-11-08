@@ -390,7 +390,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   const scrollContentWidth = contentWidth + (freezeFirstColumn && horizontalScrollbarVisible
     ? tableFarEdgePad({ columns: displayColumns, columnGap, horizontalPadding, contentWidth, viewportWidth: measuredViewportWidth })
     : 0);
-  // Columns out of view past the right edge: the header row ends in "more →" there, a press on it scrolls to
+  // Columns out of view past the right edge: the header row ends in "more ⇧→" there, a press on it scrolls to
   // them, and the rows leave its cells blank, so a narrow pane says it has more than it shows. The header's
   // scroll box is as wide as the body's viewport (measuredViewportWidth), so the header row has a blank cell
   // past it, over the body's vertical scrollbar; the hint is laid over the row, not inside the scroll box,
@@ -488,7 +488,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     scrollRef: headerScrollRef,
     onHorizontalScroll: syncBodyScroll,
   });
-  // "more →" steps right as Shift+Right does: half the viewport (beside a frozen column, to a column's edge).
+  // "more ⇧→" steps right as Shift+Right does: half the viewport (beside a frozen column, to a column's edge).
   const scrollToMoreColumns = useCallback(() => {
     const body = scrollRef.current;
     const viewportWidth = body?.viewport?.width ?? 0;

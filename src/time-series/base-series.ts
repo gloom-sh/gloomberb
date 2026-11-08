@@ -7,6 +7,8 @@ import { CHART_RESOLUTION_STEP_MS, type ManualChartResolution } from "./resoluti
 import type { Quote, QuoteMetadata, TickerFinancials } from "../types/financials";
 import type { FredSeriesLoadResult } from "../sources/gloomberb-cloud/fred-series";
 import { extractFredSeries } from "./economic";
+import { isIceSpreadSeries } from "./ice-credit";
+import { BASIS_POINT_UNIT, BP_PER_PERCENT } from "./studies/units";
 import { getTimeSeriesField, isMarketFieldId } from "./field-catalog";
 import {
   unreportedStatementPeriod,
@@ -278,12 +280,18 @@ export function baseEconomicSeries(
   const catalogUnit = fredCatalogUnit(units);
   // "Percent Change from Year Ago" and "Percent per Annum" are percent too.
   const isPercent = units.toLowerCase().includes("percent");
+  // An ICE option-adjusted spread reads in bp, as CRD and `fred` print it and CDX quotes, not FRED's percentage points.
+  const basisPoints = isPercent && /^percent$/i.test(units) && isIceSpreadSeries(spec.source.seriesId);
+  const points = extractFredSeries(data.observations, { providerId: "fred", timestampMode: "period-end" });
   return {
     id: spec.id,
     label: spec.label?.trim() || data.info?.title?.trim() || spec.source.seriesId,
+    expression: `FRED:${spec.source.seriesId}`,
     color: spec.color ?? SERIES_COLORS[index % SERIES_COLORS.length]!,
-    unit: isPercent ? "%" : catalogUnit,
-    unitGroup: isPercent ? "percent" : `economic:${catalogUnit.toLowerCase()}`,
+    ...(basisPoints ? BASIS_POINT_UNIT : {
+      unit: isPercent ? "%" : catalogUnit,
+      unitGroup: isPercent ? "percent" : `economic:${catalogUnit.toLowerCase()}`,
+    }),
     nativeFrequency: "auto",
     timestampMode: "period-end",
     dataShape: "scalar",
@@ -292,7 +300,10 @@ export function baseEconomicSeries(
     axis: spec.axis === "right" ? "right" : "left",
     panelId: spec.panelId,
     interpolation: spec.interpolation,
-    points: extractFredSeries(data.observations, { providerId: "fred", timestampMode: "period-end" }),
+    // Rounded off the float's last digits: 0.93 × 100 is 93, not 93.00000000000001.
+    points: basisPoints
+      ? points.map((point) => typeof point.value === "number" ? { ...point, value: Number((point.value * BP_PER_PERCENT).toPrecision(12)) } : point)
+      : points,
     warning: "FRED vintage dates are unavailable; observations use period dates.",
   };
 }
@@ -312,6 +323,9 @@ export function baseCapabilitySeries(
     ...loaded,
     id: spec.id,
     label: spec.label?.trim() || loaded.label || (spec.source.kind === "capability" ? spec.source.seriesId : spec.id),
+    // A geographic series writes as GEO:, which only the chart composer spells; it keeps its label.
+    ...(spec.source.kind === "capability" && spec.source.capabilityId !== "geo-series"
+      ? { expression: `CAP:${spec.source.capabilityId}:${spec.source.seriesId}` } : {}),
     color: spec.color ?? loaded.color ?? SERIES_COLORS[index % SERIES_COLORS.length]!,
     style: spec.style,
     transform: spec.transform,

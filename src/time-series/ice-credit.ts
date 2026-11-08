@@ -1,10 +1,12 @@
 /**
  * The ICE BofA credit indexes FRED publishes and Gloom Cloud serves: option
- * adjusted spreads by rating and region, and effective yields (US investment
- * grade and high yield, investment grade by maturity and by rating), all in
- * percent. One list for the CRD board, the data catalog, `fred`'s basis point
- * text and FRED's coverage notice. FRED publishes no euro investment grade
- * (ICE BofA Euro Corporate) spread, so the euro row is high yield only.
+ * adjusted spreads by rating and region (US, euro, and the emerging markets
+ * corporate indexes by grade and by region), and effective yields (US
+ * investment grade and high yield, investment grade by maturity and by
+ * rating), all in percent. One list for the CRD board, the data catalog,
+ * `fred`'s basis point text and FRED's coverage notice. FRED publishes no euro
+ * investment grade (ICE BofA Euro Corporate) spread, so the euro row is high
+ * yield only.
  */
 export interface IceCreditSeries {
   seriesId: string;
@@ -13,7 +15,8 @@ export interface IceCreditSeries {
   /** The data catalog's name. */
   name: string;
   measure: "spread" | "yield";
-  region: "us" | "euro";
+  /** Asia is an emerging markets region too, listed on its own so it can be read alone. */
+  region: "us" | "euro" | "em" | "asia";
   tags: readonly string[];
 }
 
@@ -21,6 +24,7 @@ export interface IceCreditSeries {
 export const ICE_HISTORY_LIMIT_NOTICE = "History limited to 3 years by the publisher.";
 
 const HIGH_YIELD = ["high yield", "junk"];
+const EMERGING = ["EM", "emerging markets"];
 
 export const ICE_CREDIT_SERIES: readonly IceCreditSeries[] = [
   { seriesId: "BAMLC0A0CM", label: "US IG", name: "US investment grade corporate OAS", measure: "spread", region: "us", tags: ["IG", "investment grade"] },
@@ -33,6 +37,18 @@ export const ICE_CREDIT_SERIES: readonly IceCreditSeries[] = [
   { seriesId: "BAMLH0A2HYB", label: "B", name: "Single-B high yield OAS", measure: "spread", region: "us", tags: ["single B", "HY", ...HIGH_YIELD] },
   { seriesId: "BAMLH0A3HYC", label: "CCC", name: "CCC and lower high yield OAS", measure: "spread", region: "us", tags: ["CCC", "HY", "distressed", ...HIGH_YIELD] },
   { seriesId: "BAMLHE00EHYIOAS", label: "Euro HY", name: "Euro high yield OAS", measure: "spread", region: "euro", tags: ["euro", "EUR", "Europe", "HY", ...HIGH_YIELD] },
+  // ICE BofA's emerging markets Corporate Plus indexes: the whole, by grade, then by region.
+  { seriesId: "BAMLEMCBPIOAS", label: "EM Corp", name: "Emerging markets corporate OAS", measure: "spread", region: "em", tags: EMERGING },
+  { seriesId: "BAMLEMIBHGCRPIOAS", label: "EM IG", name: "Emerging markets investment grade corporate OAS", measure: "spread", region: "em",
+    tags: [...EMERGING, "IG", "investment grade", "high grade"] },
+  { seriesId: "BAMLEMHBHYCRPIOAS", label: "EM HY", name: "Emerging markets high yield corporate OAS", measure: "spread", region: "em",
+    tags: [...EMERGING, "HY", ...HIGH_YIELD] },
+  { seriesId: "BAMLEMRACRPIASIAOAS", label: "Asia EM", name: "Asia emerging markets corporate OAS", measure: "spread", region: "asia",
+    tags: [...EMERGING, "Asia", "Asian", "China", "Singapore", "SGD"] },
+  { seriesId: "BAMLEMRLCRPILAOAS", label: "LatAm EM", name: "Latin America emerging markets corporate OAS", measure: "spread", region: "em",
+    tags: [...EMERGING, "Latin America", "LatAm"] },
+  { seriesId: "BAMLEMRECRPIEMEAOAS", label: "EMEA EM", name: "EMEA emerging markets corporate OAS", measure: "spread", region: "em",
+    tags: [...EMERGING, "EMEA", "Europe, Middle East and Africa"] },
   { seriesId: "BAMLC0A0CMEY", label: "US IG yld", name: "US investment grade corporate effective yield", measure: "yield", region: "us", tags: ["IG", "investment grade"] },
   { seriesId: "BAMLH0A0HYM2EY", label: "US HY yld", name: "US high yield effective yield", measure: "yield", region: "us", tags: ["HY", ...HIGH_YIELD] },
   // Investment grade by maturity, to read a corporate against the Treasury of its tenor, then by rating.
@@ -55,3 +71,13 @@ export const ICE_CREDIT_SERIES_IDS: ReadonlySet<string> = new Set(ICE_CREDIT_SER
 
 /** The option-adjusted spreads, which FRED serves in percentage points. */
 export const ICE_SPREAD_SERIES: readonly IceCreditSeries[] = ICE_CREDIT_SERIES.filter((series) => series.measure === "spread");
+
+const ICE_SPREAD_SERIES_IDS: ReadonlySet<string> = new Set(ICE_SPREAD_SERIES.map((series) => series.seriesId));
+
+/**
+ * Whether a FRED series is an ICE option-adjusted spread, which every surface
+ * shows in basis points (FRED serves 0.93 for 93bp), as credit desks quote it.
+ */
+export function isIceSpreadSeries(seriesId: string): boolean {
+  return ICE_SPREAD_SERIES_IDS.has(seriesId.trim().toUpperCase());
+}

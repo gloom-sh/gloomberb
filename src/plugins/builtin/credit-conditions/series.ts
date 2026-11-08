@@ -6,7 +6,8 @@ import { ICE_CREDIT_SERIES, ICE_HISTORY_LIMIT_NOTICE } from "../../../time-serie
 export const CREDIT_SPREAD_SERIES: readonly SeriesDefinition[] = ICE_CREDIT_SERIES.map((series) => ({
   id: `fred:${series.seriesId}`,
   name: series.name,
-  unit: "%",
+  // Spreads in bp, as G draws them; yields in percent.
+  unit: series.measure === "spread" ? "bp" : "%",
   frequency: "daily",
   group: "Credit",
   tags: [series.measure, ...series.tags, "corporate bonds"],

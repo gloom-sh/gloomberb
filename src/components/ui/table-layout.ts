@@ -159,7 +159,7 @@ function frozenBoardStops(columns: readonly TableWidthColumn[], columnGap: numbe
 
 /**
  * Where a sideways step of a table too wide for its pane lands (Shift or
- * Ctrl+Left/Right, "more →"): half the viewport on. With a frozen first
+ * Ctrl+Left/Right, "more ⇧→"): half the viewport on. With a frozen first
  * column it stops at a column's edge, so the column beside the frozen one
  * shows whole: half a viewport cut a column under it, and a rate too wide
  * for what showed went blank. A column wider than half the viewport is

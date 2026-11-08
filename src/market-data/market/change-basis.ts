@@ -139,19 +139,23 @@ function previousIndexSession(quote: Quote, date: string): string | null {
  * calendar, with the closures in between (an index's, the venue whose days it
  * follows); otherwise for an index from its own sessions; for a currency pair
  * the weekday before; for any other listing the day its own daily closes date
- * its previous close to (`previousCloseDate`, PreviousCloseDates). Null
- * when nothing dates it.
+ * its previous close to (`previousCloseDate`, PreviousCloseDates). A thin
+ * listing's previous trade before the calendar's session is its own day, and
+ * one whose closes cannot name it is left undated. Null when nothing dates it.
  */
 function previousSession(quote: Quote, sessionDate: string): DatedChangeBasis | null {
+  if (quote.previousCloseUndated) return null;
   const venue = calendarVenue(quote);
+  const dated = quote.previousCloseDate && ISO_DATE.test(quote.previousCloseDate) && quote.previousCloseDate < sessionDate
+    ? quote.previousCloseDate : null;
   const published = previousPublishedSession(venue, sessionDate);
+  // A listing that did not trade in the calendar's session moves from its previous trade, an earlier day.
+  if (published && dated && dated < published.date) return { kind: "close", date: dated, venue };
   if (published) return { kind: "close", date: published.date, venue, closed: published.closed };
   const index = previousIndexSession(quote, sessionDate);
   if (index) return { kind: "close", date: index };
   if (isCurrencyPair(quote)) return { kind: "close", date: weekdayBefore(sessionDate) };
-  const dated = quote.previousCloseDate;
-  if (dated && ISO_DATE.test(dated) && dated < sessionDate) return { kind: "close", date: dated };
-  return null;
+  return dated ? { kind: "close", date: dated } : null;
 }
 
 /**

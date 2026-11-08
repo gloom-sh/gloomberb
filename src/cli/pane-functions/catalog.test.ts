@@ -95,6 +95,8 @@ test("a function's entry says Requires only for a sign-in or Pro, and names its 
     expect(entry("COT")).toContain("Data         Gloom Cloud CFTC history");
     // A sign-in stays a requirement, beside the data it opens.
     expect(entry("BUZZ")).toContain("Requires     Free Gloom sign-in\nData         Gloom Cloud X mention history");
+    // A number option says its range before a value is refused for it (`--days must be at least 30`).
+    expect(entry("CDX")).toMatch(/--days <integer> +Days of a named index's daily levels\. From 30 to 1,100\. Default 365\./);
   } finally {
     registry.destroy();
     channels.mockRestore();

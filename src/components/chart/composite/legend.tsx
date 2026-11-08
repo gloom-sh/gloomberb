@@ -2,7 +2,7 @@ import { memo, useEffect, useRef } from "react";
 import { Box, ScrollBox, Span, Text, useShortcutLabel, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { CANONICAL_EXCHANGE_ALIASES } from "../../../utils/exchanges";
-import { displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
+import { displayWidth, formatPercentRaw, truncateToDisplayWidth, truncateToWidth } from "../../../utils/format";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { consumeChartMouseEvent, type ChartMouseEvent } from "../core/pointer";
 import {
@@ -97,6 +97,43 @@ function withoutListingExchange(label: string): string {
   return label.replace(LISTED_TICKER_PATTERN, (match, lead: string, symbol: string, exchange: string) => (
     CANONICAL_EXCHANGE_ALIASES[exchange] ? `${lead}${symbol}` : match
   ));
+}
+
+/** Characters two labels start with alike. */
+function sharedStart(left: string, right: string): number {
+  let index = 0;
+  while (index < left.length && index < right.length && left[index] === right[index]) index += 1;
+  return index;
+}
+
+/** The last characters of `value` that fit in `width` cells. */
+function tailToWidth(value: string, width: number): string {
+  let tail = "";
+  for (const char of [...value].reverse()) {
+    if (displayWidth(char + tail) > width) break;
+    tail = char + tail;
+  }
+  return tail;
+}
+
+/**
+ * A legend name cut to `width` cells so it still tells itself from the other
+ * names in the legend: cut at its end while what shows gets past the start it
+ * shares with another; otherwise its head, `...`, then the end of what follows
+ * that shared start. `HY - IG` beside `HY` keeps `- IG`, and two formulas on
+ * one first leg keep their second (`FRED:BA...C0A0CM`, `FRED:BA...spread`).
+ */
+export function distinguishingLabelCut(label: string, width: number, others: readonly string[]): string {
+  const plain = truncateToDisplayWidth(label, width);
+  if (plain === label || width <= 6) return plain;
+  const shared = Math.max(0, ...others.filter((other) => other !== label).map((other) => sharedStart(label, other)));
+  const stem = truncateToWidth(label, width - 3);
+  const rest = label.slice(shared).trimStart();
+  if (stem.length > shared || !rest) return plain;
+  // The end of the rest gets the room a third of a head leaves, the head whatever a short rest leaves over.
+  const room = width - 3;
+  const head = truncateToWidth(label, Math.min(room - 1, Math.max(Math.max(1, Math.floor(room / 3)), room - displayWidth(rest)))).trimEnd();
+  return `${head}...${tailToWidth(rest, room - displayWidth(head))}`;
 }
 
 /**
@@ -311,7 +348,8 @@ export function CompositeLegend({
   const setEntryLabel = (target: LegendEntry, label: string, labelWidth: number) => {
     target.label = label;
     target.labelWidth = labelWidth;
-    target.text = [truncateToDisplayWidth(label, labelWidth), target.valueText].filter(Boolean).join(" ");
+    const others = entries.filter((other) => other !== target).map((other) => other.compactLabel);
+    target.text = [distinguishingLabelCut(label, labelWidth, others), target.valueText].filter(Boolean).join(" ");
     target.width = Math.max(1, displayWidth(target.text)) + target.markerWidth;
   };
   const measureSeriesWidth = () => entries.reduce(

@@ -342,7 +342,7 @@
           {
             "code": "CRD",
             "name": "Credit Spreads",
-            "description": "ICE BofA option-adjusted spreads from FRED: US investment grade and high yield by rating, and euro high yield."
+            "description": "ICE BofA option-adjusted spreads from FRED: US investment grade and high yield by rating, euro high yield, and emerging markets and Asia corporates."
           },
           {
             "code": "AUCT",

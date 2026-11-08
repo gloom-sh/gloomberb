@@ -10,6 +10,7 @@ import { historyStatistics } from "../../../components/chart/curve/model";
 import type { MarketBoardRow } from "../../../components/market-board";
 import type { PricePoint } from "../../../types/financials";
 import type { HeadlessPaneColumn } from "../../../types/plugin";
+import { formatPercentileRank } from "../../../utils/format";
 
 const YEAR_DAYS = 365;
 /** A level older than this is not the current market. */
@@ -173,12 +174,60 @@ interface YearStatistics {
   high: number | null;
 }
 
-/** Where the latest level sits in its own year: midrank, with the range. */
-function yearStatistics(points: readonly CreditBoardPoint[], level: number | null, date: string | null): YearStatistics {
+/** Where the latest level sits in its own year: midrank, with the range, and no rank from fewer than `minCount` days. */
+function yearStatistics(points: readonly CreditBoardPoint[], level: number | null, date: string | null, minCount = 2): YearStatistics {
   if (level == null || !date) return { percentile: null, low: null, high: null };
   const year = historyStatistics(points.map((point) => ({ date: point.date, value: point.level })), level,
     { asOf: date, windowDays: YEAR_DAYS });
-  return { percentile: year.count >= 2 ? year.percentile : null, low: year.min, high: year.max };
+  return { percentile: year.count >= minCount ? year.percentile : null, low: year.min, high: year.max };
+}
+
+/** The fewest days of spreads in its year a CDX rank is read from: a month of trading; fewer leave it blank. */
+const MIN_SPREAD_RANK_POINTS = 20;
+
+/**
+ * What a credit rank ranks, so it always reads high = wide: the spread a row
+ * quotes; HY and EM's spread equivalent, each day's on its on-the-run
+ * contract; or, for a price with no spread beside it (CMBX), the price
+ * upside down, the lowest price ranking 100.
+ */
+type SpreadRankBasis = "spread" | "spread-eq" | "price-inverted";
+
+export interface SpreadRank {
+  percentile: number | null;
+  basis: SpreadRankBasis;
+}
+
+/**
+ * Where an index's spread sits in its own year, 100 the widest. A price
+ * quote ranks backwards (a falling price is a widening spread), so HY and EM
+ * rank their spread equivalent instead, and a price without one is ranked
+ * from the top. A spread rank needs a month of spreads in the year
+ * (MIN_SPREAD_RANK_POINTS); with fewer it is blank, never read off a handful.
+ */
+export function spreadRank(index: Pick<CdxBoardIndex, "quote" | "points" | "level" | "date" | "spreadBp">): SpreadRank {
+  if (index.quote === "spread") {
+    return { percentile: yearStatistics(index.points, index.level, index.date, MIN_SPREAD_RANK_POINTS).percentile, basis: "spread" };
+  }
+  const spreads = index.points.flatMap((point) => typeof point.spreadBp === "number" && Number.isFinite(point.spreadBp)
+    ? [{ ...point, level: point.spreadBp }] : []);
+  if (spreads.length > 0 && typeof index.spreadBp === "number") {
+    return { percentile: yearStatistics(spreads, index.spreadBp, index.date, MIN_SPREAD_RANK_POINTS).percentile, basis: "spread-eq" };
+  }
+  const price = yearStatistics(index.points, index.level, index.date).percentile;
+  return { percentile: price == null ? null : 100 - price, basis: "price-inverted" };
+}
+
+/** A spread rank as a detail line says it: `89 pctl 1Y`, and for a price ranked upside down, says so. */
+export function formatSpreadRank(rank: SpreadRank): string {
+  const text = formatPercentileRank(rank.percentile, "1Y");
+  return rank.basis === "price-inverted" && rank.percentile != null ? `${text}, price inverted` : text;
+}
+
+/** The newest day a board's rows are dated, which its footer dates the board by; null with none. */
+export function newestRowDate(dates: ReadonlyArray<string | null | undefined>): string | null {
+  return dates.reduce<string | null>((newest, date) => date && /^\d{4}-\d{2}-\d{2}/.test(date) && (!newest || date > newest)
+    ? date.slice(0, 10) : newest, null);
 }
 
 function daysBetween(from: string, to: string): number {
@@ -219,7 +268,10 @@ export function findSovereign<T extends { id: string; name: string }>(sovereigns
 
 export interface CdxRow extends MarketBoardRow {
   index: CdxBoardIndex;
+  /** The level's own year: its range, in the quote's unit. */
   year: YearStatistics;
+  /** The rank the board shows, high = wide whatever the quote. */
+  rank: SpreadRank;
   /** The latest day's standing and the moves between complete days. */
   day: CdxDay;
   /** The 1W and 1M moves as shown. */
@@ -230,6 +282,7 @@ export interface CdxRow extends MarketBoardRow {
 export function cdxRows(indexes: readonly CdxBoardIndex[], asOf: string | null, now = Date.now()): CdxRow[] {
   return indexes.map((index) => {
     const year = yearStatistics(index.points, index.level, index.date);
+    const rank = spreadRank(index);
     const day = cdxDay(index, now);
     return {
       id: index.id,
@@ -238,13 +291,14 @@ export function cdxRows(indexes: readonly CdxBoardIndex[], asOf: string | null, 
       valueText: formatLevel(index.quote, index.level),
       change: shown(index.quote, day.change1D),
       changeText: formatMove(index.quote, day.change1D),
-      percentile: year.percentile,
+      percentile: rank.percentile,
       asOf: index.date,
       history: pointHistory(index.points),
       status: index.level == null ? "unavailable" : stale(index.date, asOf) ? "stale" : day.partial ? "partial" : "available",
       adverseMove: adverseMove(index.quote),
       index,
       year,
+      rank,
       day,
       week: shown(index.quote, day.change1W),
       month: shown(index.quote, day.change1M),

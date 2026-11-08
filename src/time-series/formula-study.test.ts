@@ -161,6 +161,48 @@ describe("formula studies", () => {
     expect(spread.series[0]).toMatchObject({ unit: "USD / barrel", statedUnit: "USD / barrel" });
   });
 
+  test("100 times a percent is basis points: a cash spread less CDX is one formula in bp, and a spread says how to write it", () => {
+    const dataset = (expression: string, unit: string, unitGroup: string, days: Record<number, number>): ResolvedSeries => ({
+      ...future(expression, unit, days), id: expression, label: `${expression} title`, unitGroup, statedUnit: undefined,
+      priceAssetCategory: undefined, listing: undefined, expression, dataShape: "scalar", observationKind: "dataset",
+    });
+    const treasury = dataset("FRED:DGS5", "%", "percent", { 1: 4.1, 2: 4.2 });
+    const cdx = dataset("CAP:cdx:ig", "bp", "series:bp", { 1: 60, 2: 61 });
+    const basis = resolveStudies([treasury, cdx], [formula(["FRED:DGS5", "CAP:cdx:ig"], { weight1: 100, percentBp1: 1, weight2: -1, divisor: 1 })]);
+    expect(basis.errors).toEqual([]);
+    expect(basis.series[0]).toMatchObject({ label: "100×FRED:DGS5 - CAP:cdx:ig", unit: "bp", unitGroup: "series:bp" });
+    expect(basis.series[0]!.points.map(({ value }) => value)).toEqual([350, 359]);
+    // 0.01 times basis points is a percent.
+    expect(resolveStudies([treasury, cdx], [formula(["FRED:DGS5", "CAP:cdx:ig"], { weight1: 1, weight2: -0.01, percentBp2: -1, divisor: 1 })])
+      .series[0]).toMatchObject({ unit: "%", unitGroup: "percent" });
+    // Unconverted, either side names the conversion, by the series as it is written.
+    expect(resolveStudies([cdx, treasury], [{ ...formula(["CAP:cdx:ig", "FRED:DGS5"], {}), id: "spread", kind: "spread" }]).errors)
+      .toEqual(["Spread: CAP:cdx:ig is in bp and FRED:DGS5 is in %: write 100*FRED:DGS5 to compare in bp."]);
+    // A spread of two published series is named as written, not by their titles, which a short legend cuts alike.
+    const oas = dataset("FRED:BAMLC0A0CM", "bp", "series:bp", { 1: 93, 2: 94 });
+    expect(resolveStudies([oas, cdx], [{ ...formula(["FRED:BAMLC0A0CM", "CAP:cdx:ig"], {}), id: "spread", kind: "spread" }]).series[0])
+      .toMatchObject({ label: "FRED:BAMLC0A0CM - CAP:cdx:ig", unit: "bp" });
+    // A 100 times the whole formula lands on both legs: the bp leg cannot convert beside the % one, so it is refused,
+    // never 100 times its basis points charted as basis points ((FRED:DGS5 - CAP:cdx:ig)*100 read -5679 bp).
+    const whole = resolveStudies([treasury, cdx], [formula(["FRED:DGS5", "CAP:cdx:ig"], { weight1: 100, percentBp1: 1, weight2: -100, percentBp2: 1, divisor: 1 })]);
+    expect(whole.series).toEqual([]);
+    expect(whole.errors).toEqual(["Formula: FRED:DGS5 is in % and CAP:cdx:ig is in bp: write 100*FRED:DGS5 to compare in bp."]);
+    // Both legs in %: both convert.
+    const tens = dataset("FRED:DGS10", "%", "percent", { 1: 4.5, 2: 4.6 });
+    expect(resolveStudies([tens, treasury], [formula(["FRED:DGS10", "FRED:DGS5"], { weight1: 100, percentBp1: 1, weight2: -100, percentBp2: 1, divisor: 1 })])
+      .series[0]).toMatchObject({ unit: "bp", points: [expect.objectContaining({ value: 40 }), expect.objectContaining({ value: 40 })] });
+    // A percent over basis points cancels to a plain number: 4.1% over 60bp is 410bp over 60bp.
+    const ratio = resolveStudies([treasury, cdx], [{ ...formula(["FRED:DGS5", "CAP:cdx:ig"], {}), id: "ratio", kind: "ratio" }]).series[0]!;
+    expect(ratio).toMatchObject({ unit: "x", unitGroup: "ratio" });
+    expect(ratio.points.map(({ value }) => value)).toEqual([6.83333333333, 6.88524590164]);
+    const over = resolveStudies([treasury, cdx], [formula(["FRED:DGS5", "CAP:cdx:ig"], { weight1: 1, power2: -1, divisor: 1 })]).series[0]!;
+    expect(over).toMatchObject({ unit: "x", unitGroup: "ratio" });
+    expect(over.points.map(({ value }) => value)).toEqual([6.83333333333, 6.88524590164]);
+    // Another multiplier keeps the percent.
+    expect(resolveStudies([treasury, cdx], [formula(["FRED:DGS5", "CAP:cdx:ig"], { weight1: 10, weight2: -1, divisor: 1 })]).errors)
+      .toEqual(["Formula: FRED:DGS5 is in % and CAP:cdx:ig is in bp: write 100*FRED:DGS5 to compare in bp."]);
+  });
+
   test("a mismatch names each leg's unit: another currency, cents, or a price with no quantity", () => {
     const ttf = future("TTF=F", "EUR / MWh", { 1: 30 }, "EUR");
     const corn = future("ZC=F", "US cents / bushel", { 1: 450 }, "USX");

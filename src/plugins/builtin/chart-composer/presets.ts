@@ -109,6 +109,7 @@ function formulaStudy(formula: ParsedFormula, inputSeriesIds: string[]): ChartSt
     parameters[`weight${index + 1}`] = leg.weight;
     if (leg.perBarrel) parameters[`perBarrel${index + 1}`] = 1;
     if (leg.perTonne) parameters[`perTonne${index + 1}`] = leg.perTonne;
+    if (leg.percentBp) parameters[`percentBp${index + 1}`] = leg.percentBp;
   });
   formula.factors.forEach((factor, index) => {
     parameters[`power${formula.legs.length + index + 1}`] = factor.power;

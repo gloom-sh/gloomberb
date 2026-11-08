@@ -18,9 +18,7 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { colors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { formatPercentileRank } from "../../../utils/format";
 import { usePluginPaneState } from "../../runtime";
-import { formatAsOf } from "../cds/model";
 import { FIXED_INCOME_PANE_ID } from "../fixed-income/model";
 import { useCommandValue } from "../shared/command-tab";
 import { getCachedCdxBoard, loadCdxBoard } from "./client";
@@ -31,6 +29,8 @@ import {
   formatContract,
   formatLevel,
   formatMove,
+  formatSpreadRank,
+  newestRowDate,
   partialDayText,
   SETTLEMENT_TEXT,
   type CdxRow,
@@ -65,14 +65,18 @@ function HistoryChart({ row, width, height, focused }: { row: CdxRow; width: num
 }
 
 function IndexDetail({ row, width, height, focused }: { row: CdxRow; width: number; height: number; focused: boolean }) {
-  const { index, year, day } = row;
+  const { index, year, day, rank } = row;
   // While today trades the moves run to the last complete day, which the 1D says.
   const through = day.partial && day.changeDate ? `to ${day.changeDate}` : undefined;
+  // The rank sits beside what it ranks: HY and EM's spread equivalent, not their price.
+  const rankOnSpreadEq = rank.basis === "spread-eq";
+  const spreadDetail = [...(rankOnSpreadEq ? [formatSpreadRank(rank)] : []),
+    ...(index.recovery != null ? [`${Math.round(index.recovery * 100)}% recovery`] : [])].join(" · ");
   const items: StatItem[] = [
     { id: "level", label: index.quote === "spread" ? "5Y spread" : "5Y price", value: formatLevel(index.quote, index.level),
-      detail: [formatPercentileRank(year.percentile, "1Y"), index.date ?? "--", ...(index.kind === "settlement" ? [SETTLEMENT_TEXT] : [])].join(" · ") },
+      detail: [...(rankOnSpreadEq ? [] : [formatSpreadRank(rank)]), index.date ?? "--", ...(index.kind === "settlement" ? [SETTLEMENT_TEXT] : [])].join(" · ") },
     ...(index.quote === "price" && index.spreadBp !== undefined ? [{ id: "spread", label: "Spread eq", value: formatLevel("spread", index.spreadBp ?? null),
-      ...(index.recovery != null ? { detail: `${Math.round(index.recovery * 100)}% recovery` } : {}) }] : []),
+      ...(spreadDetail ? { detail: spreadDetail } : {}) }] : []),
     { id: "1d", label: "1D", value: formatMove(index.quote, day.change1D), ...(through ? { detail: through } : {}) },
     { id: "1w", label: "1W", value: formatMove(index.quote, day.change1W) },
     { id: "1m", label: "1M", value: formatMove(index.quote, day.change1M) },
@@ -106,12 +110,21 @@ export function CdxPane({ focused, width, height }: PaneProps) {
   useAutoRefresh(resource.updatedAt, refresh);
   usePaneRefreshKey(reload, { focused, enabled: !loading });
 
-  const asOf = formatAsOf(payload?.asOf ?? null);
+  // Dated by the newest day the rows carry, not when the response was put together.
+  const asOf = newestRowDate(payload?.indexes.map((index) => index.date) ?? []);
+  // PCTL 1Y ranks spreads; the rows quoted in price (HY, EM) rank their spread equivalent, which a picture keeps.
+  const spreadEqRanked = useMemo(() => rows.filter((row) => row.rank.basis === "spread-eq")
+    .map((row) => row.index.name.replace(/^CDX\s+/i, "")).join(", "), [rows]);
   const info = useMemo<PaneFooterSegment[]>(() => [
     ...(asOf ? [{ id: "as-of", parts: [{ text: `as of ${asOf}`, tone: "muted" as const }] }] : []),
     ...(payload ? [DELAYED_SEGMENT] : []),
     ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
-  ], [asOf, payload, resource.data?.stale]);
+    ...(spreadEqRanked ? [{
+      id: "rank-basis", capture: true,
+      parts: [{ text: `${spreadEqRanked} pctl on spread eq`, tone: "muted" as const }],
+      variants: [[{ text: "pctl on spread eq", tone: "muted" as const }]],
+    }] : []),
+  ], [asOf, payload, resource.data?.stale, spreadEqRanked]);
   usePaneStatusFooter({
     registrationId: "cdx",
     loading,

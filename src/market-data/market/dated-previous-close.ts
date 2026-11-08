@@ -50,7 +50,7 @@ export interface DatedCloseListing {
 
 /** A listing's recent daily closes (a month is enough), with the flags that say a bar had not closed yet. */
 export type ReadDailyCloses = (listing: DatedCloseListing) => Promise<readonly DailyClose[]>;
-type DailyClose = Pick<PricePoint, "date" | "close" | "partial" | "unsettled">;
+type DailyClose = Pick<PricePoint, "date" | "close" | "partial" | "unsettled"> & { volume?: number };
 
 export interface PreviousCloseDatesOptions {
   /** Called with the latest copy of a quote, dated, when a read lands that names its day. */
@@ -62,7 +62,7 @@ export interface PreviousCloseDatesOptions {
   indexWaitMs?: number;
 }
 
-type ReadingFields = Pick<Reading, "date" | "close" | "sessionClose" | "awaitsSessionClose">;
+type ReadingFields = Pick<Reading, "date" | "close" | "sessionClose" | "awaitsSessionClose" | "untraded">;
 
 interface Reading {
   date: string | null;
@@ -75,6 +75,12 @@ interface Reading {
   sessionClose?: number;
   /** A closed quote on such a venue whose session's bar was not in the history yet: read again until it lands. */
   awaitsSessionClose?: boolean;
+  /**
+   * A thin listing that did not trade in the session its venue's calendar
+   * puts before the move's, whose earlier closes do not hold its previous
+   * close either (ThinPreviousTrade): no day can be named for it.
+   */
+  untraded?: boolean;
   at: number;
 }
 
@@ -92,7 +98,16 @@ const OFFICIAL_PREVIOUS_CLOSE_VENUES: ReadonlyMap<string, number> = new Map([["B
  * the daily bar is the official close, as history and the portfolio read it:
  * B3's PETR4 quoted R$45.36 on Fri 6 Nov 2026 beside a R$45.30 close.
  */
-const DAILY_BAR_CLOSE_VENUES: ReadonlySet<string> = new Set(["B3"]);
+export const DAILY_BAR_CLOSE_VENUES: ReadonlySet<string> = new Set(["B3"]);
+
+/**
+ * A session volume below which a share or fund on a venue whose calendar
+ * dates its moves may not have traded in the session before: its daily closes
+ * are read to find its previous trade (thinPreviousTrade). B95 on SGX traded
+ * 3,661 units on Fri 6 Nov 2026 and last before that on 22 Oct, while the
+ * calendar put its move "vs Thu 5 Nov".
+ */
+const THIN_SESSION_VOLUME = 50_000;
 
 /** A close this far from the quote's price is another unit's or another listing's, never the session's. */
 const MAX_SESSION_CLOSE_MOVE = 0.25;
@@ -120,9 +135,24 @@ function readingKey(quote: Quote | null | undefined, listing: DatedCloseListing,
   // An index's dated close is checked against its daily close of that day as well (indexCloseOn), but for a Cboe
   // index's, which Gloom Cloud checks against Cboe's own closes.
   if (datedIndexClose(quote)) return calendarVenue(quote) === "CBOE" ? null : datedReadingKey(quote, listing);
-  if (isChangeBasisDatedWithoutCloses(quote, now)) return null;
+  if (isChangeBasisDatedWithoutCloses(quote, now)) return thinListingCalendarDate(quote) ? `${datedReadingKey(quote, listing)}|thin` : null;
   if (quoteChangeBasis(quote)?.kind !== "previous close") return null;
   return datedReadingKey(quote, listing);
+}
+
+/**
+ * The session a venue's calendar puts before a thin listing's move, for a
+ * share or fund whose completed session traded under THIN_SESSION_VOLUME:
+ * such a listing may not have traded in it, which only its daily closes say.
+ * Null for any other quote, so a board of busy listings reads no history.
+ */
+function thinListingCalendarDate(quote: Quote): string | null {
+  const kind = classifyInstrumentType(quote.instrumentType);
+  if (kind !== "equity" && kind !== "fund") return null;
+  if (quote.marketState === "REGULAR" || quote.previousCloseDate) return null;
+  if (!(typeof quote.volume === "number" && quote.volume >= 0 && quote.volume < THIN_SESSION_VOLUME)) return null;
+  const basis = quoteChangeBasis(quote);
+  return basis?.kind === "close" && basis.venue ? basis.date : null;
 }
 
 function datedReadingKey(quote: Quote, listing: DatedCloseListing): string | null {
@@ -222,9 +252,29 @@ function indexCloseOn(points: readonly DailyClose[], quote: Quote, date: string)
   return Math.abs(previousClose - close) <= close * SAME_INDEX_CLOSE_RELATIVE ? { date } : { date, close };
 }
 
+/**
+ * A thin listing's previous trade, where it is earlier than the session its
+ * venue's calendar puts before the move's: the day of its latest daily close
+ * before the move's session that traded, when that close is its previous
+ * close. When it traded in the calendar's session the calendar stands
+ * (date null); when its closes hold neither, the day is unknown (`untraded`).
+ */
+function thinPreviousTrade(points: readonly DailyClose[], quote: Quote, calendarDate: string): ReadingFields {
+  const sessionDate = changeBasisSessionDate(quote)!;
+  const traded = new Set(points.filter((point) => point.volume == null || point.volume > 0).map((point) => point.date.valueOf()));
+  const before = closedBars(points.filter((point) => traded.has(point.date.valueOf())), quote)
+    .filter((point) => point.date < sessionDate)
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .at(-1);
+  if (!before || before.date >= calendarDate) return { date: null };
+  return sameClose(before.close, quote.previousClose!) ? { date: before.date } : { date: null, untraded: true };
+}
+
 function readingOf(points: readonly DailyClose[], quote: Quote): ReadingFields {
   const indexDate = datedIndexClose(quote);
   if (indexDate) return indexCloseOn(points, quote, indexDate);
+  const calendarDate = thinListingCalendarDate(quote);
+  if (calendarDate) return thinPreviousTrade(points, quote, calendarDate);
   const session = sessionCloseOf(points, quote);
   return {
     date: latestCloseBefore(points, quote),
@@ -238,8 +288,9 @@ function withDate<T extends Quote | null | undefined>(quote: T, date: string | n
 }
 
 /** The quote as a reading has it: dated, and for an index measured from that day's close when its own disagrees. */
-function withReading<T extends Quote | null | undefined>(quote: T, reading: Pick<Reading, "date" | "close" | "sessionClose"> | undefined): T {
+function withReading<T extends Quote | null | undefined>(quote: T, reading: Pick<Reading, "date" | "close" | "sessionClose" | "untraded"> | undefined): T {
   if (!quote || !reading) return quote;
+  if (reading.untraded) return { ...quote, previousCloseUndated: true };
   const closed = withSessionClose(quote, reading.sessionClose);
   return closed === quote ? withDatedReading(quote, reading) : withDatedReading(closed as T, reading);
 }
@@ -369,7 +420,7 @@ export class PreviousCloseDates {
         this.readings.set(key, { ...reading, at: this.now() });
         const latest = this.latestCopies.get(key);
         this.latestCopies.delete(key);
-        if ((reading.date || reading.sessionClose != null) && latest && this.options.onDated) {
+        if ((reading.date || reading.sessionClose != null || reading.untraded) && latest && this.options.onDated) {
           try {
             this.options.onDated(latest.listing, withReading(latest.quote, reading));
           } catch (error) {
