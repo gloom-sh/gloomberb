@@ -99,6 +99,21 @@ const PEERS: Record<string, { financials: TickerFinancials; expected: number }> 
       { marketCap: 547.25e9, unavailableFields: ["enterpriseValue", "enterpriseToRevenue"], enterpriseValueCheck: withdrawn, revenue: 39.47e9 }),
     expected: 535.04e9 / ((15_217.8e6 + 1_024.4e6) * 1.133),
   },
+  // TSM: the provider's EV failed validation with no check beside it, so Gloom Cloud serves the bridge alone, with no
+  // source figure, at the TWD balance sheet's rate. Its TWD statements convert at that rate, as ASML's EUR ones do.
+  TSM: {
+    financials: listing("TSM", "USD", 378.62, quarters("TWD", [
+      ["2025-12-31", 506.8e9, 177.1e9, 690.2e9, 1_046.1e9], ["2026-03-31", 488.4e9, 180.6e9, 676.3e9, 1_134.1e9],
+      ["2026-06-30", 551.2e9, 186.3e9, 745.8e9, 1_252.3e9], ["2026-09-30", 610.5e9, 191.2e9, 812.4e9, 1_382.6e9],
+    ]), {
+      marketCap: 1_963.70e9, revenue: 4_815.1e9, unavailableFields: ["enterpriseValue", "enterpriseToRevenue"],
+      enterpriseValueCheck: {
+        status: "withdrawn", computed: 1_868.55e9, currency: "USD", marketCap: 1_963.70e9, totalDebt: 30.85e9, cash: 126.0e9,
+        balanceSheetDate: "2026-09-30", fx: { from: "TWD", rate: 0.03136688 }, reason: "Source EV failed validation",
+      },
+    }),
+    expected: 1_868.55e9 / ((506.8e9 + 488.4e9 + 551.2e9 + 610.5e9 + 177.1e9 + 180.6e9 + 186.3e9 + 191.2e9) * 0.03136688),
+  },
   // Exxon Mobil's latest quarter files no operating income: pretax income stands in, and the source says so.
   XOM: {
     financials: listing("XOM", "USD", 165.87, [
@@ -128,8 +143,13 @@ test("RV's EV/EBITDA is GE's: the listing's EV over trailing operating income pl
   // Named for the market cap + total debt - cash where that stood in, and the rate the ADR's EUR statements took.
   expect(report.rows.find((row) => row.symbol === "ASML")).toMatchObject({
     evEbitdaSource: "Market cap + total debt - cash over trailing operating income plus D&A; statements in EUR at 1.133 USD" });
+  // A bridge served with no provider figure beside it says only what it is.
+  const tsm = report.rows.find((row) => row.symbol === "TSM")!;
+  expect(tsm).toMatchObject({ evSalesBasis: "computed", evSales: 1_868.55e9 / (4_815.1e9 * 0.03136688) });
+  expect(tsm.evSalesNote).toBe("EV 1.87T USD computed from market cap + total debt - cash (balance sheet 2026-09-30, TWD at 0.03137 USD).");
   expect(report.notes).toEqual([
     "ASML: EV/EBITDA statements in EUR at 1.133 USD.",
+    "TSM: EV/EBITDA statements in TWD at 0.03137 USD.",
     "XOM: EV/EBITDA operating income derived as pretax income for the period to 2026-09-30.",
   ]);
 });
