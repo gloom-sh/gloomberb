@@ -347,7 +347,7 @@
           {
             "code": "AUCT",
             "name": "Treasury Auctions",
-            "description": "Bill, note, bond and TIPS auction results since 1979, from Treasury Fiscal Data and TreasuryDirect: rate, stop-out versus median, bid-to-cover, bidder takedown and size; an after view ranks each auction against its tenor and shows the yield's moves after it. Search by benchmark (10Y) or CUSIP."
+            "description": "Bill, note, bond and TIPS auction results since 1979, from Treasury Fiscal Data and TreasuryDirect: rate, stop-out versus median, bid-to-cover, bidder takedown and size; an after view ranks each auction against its tenor and shows the yield's moves after it. Search by benchmark (10Y) or CUSIP. Hong Kong's EF Bills, EF Notes and Government Bond tenders too."
           },
           {
             "code": "YAS",

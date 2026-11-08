@@ -4,6 +4,7 @@ import { displayWidth } from "../../../utils/format";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { AUCTION_HISTORY_ALL, AUCTION_HISTORY_DAYS, AUCTION_HISTORY_START, type AuctionHistoryWindow } from "./client";
 import type { TreasuryAuction } from "./types";
+import { auctionSearchMarket, isAuctionMarket, type AuctionMarket } from "./hk";
 
 /**
  * History windows, shortest first: 30 days to 10 years in days, then ALL,
@@ -109,7 +110,7 @@ export const AUCTION_SORT_NAMES: ReadonlyArray<{ value: string; column: AuctionC
   { value: "direct", column: "direct" },
   { value: "dealer", column: "dealer" },
   { value: "size", column: "size" },
-  { value: "cusip", column: "cusip" },
+  { value: "cusip", column: "cusip", aliases: ["issue"] },
   { value: "btc-pctl", column: "btcPctl", aliases: ["btc-percentile", "bc-pctl"] },
   { value: "indirect-pctl", column: "indirectPctl", aliases: ["indirect-percentile"] },
   { value: "dealer-pctl", column: "dealerPctl", aliases: ["dealer-percentile"] },
@@ -522,13 +523,15 @@ export function buildAuctionColumns(options: {
 
 /**
  * What `AUCT 10Y --history-days 3650` asks of the pane, typed in the command
- * bar as it is to `fn AUCT`: the search, and the window, group, view and sort
- * given as flags (`--history-days`, `--historyDays` or `--history`;
- * `--filter`, `--view`, `--sort`), each as `--flag value` or `--flag=value`.
- * A flag whose value is not one of its own is left out.
+ * bar as it is to `fn AUCT`: the search, and the window, market, group, view
+ * and sort given as flags (`--history-days`, `--historyDays` or `--history`;
+ * `--market`, `--filter`, `--view`, `--sort`), each as `--flag value` or
+ * `--flag=value`. A flag whose value is not one of its own is left out; a
+ * search naming Hong Kong (`HK 10Y`) picks its market and keeps the rest.
  */
 function parseAuctionCommandArg(arg: string | undefined): {
   search: string;
+  market?: AuctionMarket;
   historyDays?: AuctionHistoryWindow;
   filter?: AuctionFilter;
   view?: "results" | "after";
@@ -550,6 +553,8 @@ function parseAuctionCommandArg(arg: string | undefined): {
     if (name === "historydays" || name === "history") {
       const window = auctionHistoryWindow({ historyDays: value });
       if (value === AUCTION_HISTORY_ALL || String(window) === value) parsed.historyDays = window;
+    } else if (name === "market") {
+      if (isAuctionMarket(value)) parsed.market = value;
     } else if (name === "filter") {
       const filter = AUCTION_FILTERS.find((entry) => entry.value === value)?.value;
       if (filter) parsed.filter = filter;
@@ -561,7 +566,9 @@ function parseAuctionCommandArg(arg: string | undefined): {
       if (name) parsed.sort = name;
     }
   }
-  parsed.search = words.join(" ");
+  const named = auctionSearchMarket(words.join(" "));
+  parsed.search = named.search;
+  if (named.market) parsed.market = named.market;
   return parsed;
 }
 
@@ -575,9 +582,9 @@ export function auctionCommandRequest(arg: string | undefined): {
   params: Record<string, string>;
   settings: Record<string, string> | null;
 } {
-  const { search, historyDays, filter, view, sort } = parseAuctionCommandArg(arg);
+  const { search, market, historyDays, filter, view, sort } = parseAuctionCommandArg(arg);
   return {
-    params: { search, auctionView: view ?? "results", auctionSort: sort ?? "date", auctionFilter: filter ?? "all" },
+    params: { search, auctionMarket: market ?? "us", auctionView: view ?? "results", auctionSort: sort ?? "date", auctionFilter: filter ?? "all" },
     settings: historyDays != null ? { historyDays: String(historyDays) } : null,
   };
 }

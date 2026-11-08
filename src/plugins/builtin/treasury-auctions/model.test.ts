@@ -289,11 +289,16 @@ describe("history windows", () => {
 
 describe("command bar, notes and columns", () => {
   test("the command bar reads AUCT's flags as fn AUCT does, searches the rest, and names every view key", () => {
-    const defaults = { search: "", auctionView: "results", auctionSort: "date", auctionFilter: "all" };
+    const defaults = { search: "", auctionMarket: "us", auctionView: "results", auctionSort: "date", auctionFilter: "all" };
     expect(auctionCommandRequest("10Y --history-days 3650")).toEqual({ params: { ...defaults, search: "10Y" }, settings: { historyDays: "3650" } });
     expect(auctionCommandRequest("7Y --historyDays=all --view after --sort BTC-PCTL --filter note")).toEqual({
-      params: { search: "7Y", auctionView: "after", auctionSort: "btc-pctl", auctionFilter: "note" }, settings: { historyDays: "all" },
+      params: { search: "7Y", auctionMarket: "us", auctionView: "after", auctionSort: "btc-pctl", auctionFilter: "note" }, settings: { historyDays: "all" },
     });
+    // Hong Kong: by flag, or by a search that names it; a word that only names the market leaves the search.
+    expect(auctionCommandRequest("--market hk").params).toMatchObject({ search: "", auctionMarket: "hk" });
+    expect(auctionCommandRequest("HK 10Y --sort btc").params).toMatchObject({ search: "10Y", auctionMarket: "hk", auctionSort: "btc" });
+    expect(auctionCommandRequest("Hong Kong").params).toMatchObject({ search: "", auctionMarket: "hk" });
+    expect(auctionCommandRequest("EFB 3M").params).toMatchObject({ search: "EFB 3M", auctionMarket: "hk" });
     // A value that is not one of the flag's own is dropped, not searched.
     expect(auctionCommandRequest("tips --history-days 7300 --sort nonsense")).toEqual({ params: { ...defaults, search: "tips" }, settings: null });
     expect(auctionCommandRequest(undefined)).toEqual({ params: defaults, settings: null });

@@ -11,6 +11,7 @@ import { AUCTION_HISTORY_WINDOWS, auctionCommandRequest, auctionHistoryLabel } f
 import { AUCTION_HISTORY_DAYS } from "./client";
 import { createPublicPaneShare } from "../shared/public-pane";
 import { treasuryAuctionsHeadless } from "./headless";
+import { attachHkTendersPersistence, resetHkTendersPersistence } from "./hk";
 
 
 let disposeConnections: Array<() => void> = [];
@@ -34,6 +35,7 @@ export function treasuryAuctionsSettings(): PaneSettingsDef {
 export const treasuryAuctionsModule: PluginModule = {
   setup(ctx) {
     attachTreasuryAuctionsPersistence(ctx.persistence, ctx.connectionHealth);
+    attachHkTendersPersistence(ctx.persistence);
     disposeConnections = [
       ctx.connectionHealth.registerSource({
         id: TREASURY_FISCAL_DATA_CONNECTION_ID,
@@ -58,6 +60,7 @@ export const treasuryAuctionsModule: PluginModule = {
     for (const dispose of disposeConnections) dispose();
     disposeConnections = [];
     resetTreasuryAuctionsPersistence();
+    resetHkTendersPersistence();
   },
 
   paneTemplates: [
@@ -67,7 +70,7 @@ export const treasuryAuctionsModule: PluginModule = {
         paneId: "treasury-auctions",
         label: "Treasury Auctions",
         description:
-          "Bill, note, bond and TIPS auction results since 1979, from Treasury Fiscal Data and TreasuryDirect: rate, stop-out versus median, bid-to-cover, bidder takedown and size; an after view ranks each auction against its tenor and shows the yield's moves after it. Search by benchmark (10Y) or CUSIP.",
+          "Bill, note, bond and TIPS auction results since 1979, from Treasury Fiscal Data and TreasuryDirect: rate, stop-out versus median, bid-to-cover, bidder takedown and size; an after view ranks each auction against its tenor and shows the yield's moves after it. Search by benchmark (10Y) or CUSIP. Hong Kong's EF Bills, EF Notes and Government Bond tenders too.",
         keywords: [
           "treasury",
           "auction",
@@ -95,6 +98,16 @@ export const treasuryAuctionsModule: PluginModule = {
           "cusip",
           "reopening",
           "issuance",
+          "hong kong",
+          "hk",
+          "hkma",
+          "exchange fund bills",
+          "exchange fund notes",
+          "efb",
+          "hkgb",
+          "hk government bonds",
+          "tender",
+          "tender results",
         ],
         shortcut: { prefix: "AUCT", argKind: "text", argOptional: true, argPlaceholder: "search" },
         headless: treasuryAuctionsHeadless,

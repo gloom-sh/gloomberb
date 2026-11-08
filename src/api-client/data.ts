@@ -36,6 +36,7 @@ import type { BitcoinNetworkPayload, CryptoMarketsPayload, DefiTvlPayload, Stabl
 import type { CryptoEtfFlowAsset, CryptoEtfFlowsPayload } from "./crypto-etf-flows";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { FxInterventionsPayload } from "./fx-interventions";
+import type { HkTendersPayload } from "./hk-tenders";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
 import type { MoneyMarketsPayload } from "./money-markets";
 import type { CloudCurveHistory, CloudCurveId, CloudCurveView, CloudWorldCurves } from "./yield-curves";
@@ -1196,6 +1197,12 @@ export class CloudDataApi {
   /** Japan's foreign exchange interventions as its Ministry of Finance publishes them. */
   async getCloudFxInterventions(signal?: AbortSignal): Promise<FxInterventionsPayload> {
     return this.request<FxInterventionsPayload>("/cloud/econ/fx-interventions", { signal: signalWithTimeout(signal, 20_000) });
+  }
+
+  /** Hong Kong government paper tender results as HKMA publishes them, from `from` (YYYY-MM-DD), or all of them. */
+  async getCloudHkTenders(from: string | null, signal?: AbortSignal): Promise<HkTendersPayload> {
+    const query = from ? `?${new URLSearchParams({ from })}` : "";
+    return this.request<HkTendersPayload>(`/cloud/econ/hk-tenders${query}`, { signal: signalWithTimeout(signal, 20_000) });
   }
 
   /** A live scan's matches against Gloom Cloud's newest market-wide snapshot for this account's tier. */
