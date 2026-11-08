@@ -216,6 +216,7 @@ export function buildPaneTemplateItem(options: {
     shortcutLabel || "",
     ...aliases,
     pluginName || "",
+    ...paneTemplateDiscoveryWords(options.template, options.pluginRegistry),
   ].filter(Boolean).join(" ");
 
   if (options.argError) {
@@ -266,9 +267,32 @@ export function buildPaneTemplateItem(options: {
   };
 }
 
+/**
+ * The words `gloom catalog` also finds a function by, beyond its keywords and
+ * description: its headless discovery aliases, the words it is suggested for,
+ * those that open one of its cases (CTM's "vix futures") and its intents. The
+ * bar's row carries them, so the same words find the same function.
+ */
+function paneTemplateDiscoveryWords(template: PaneTemplateDef, registry: PluginRegistry): string[] {
+  const discovery = (template.headless ?? registry.panes?.get(template.paneId)?.headless)?.discovery;
+  if (!discovery) return [];
+  return [
+    ...discovery.aliases ?? [],
+    ...discovery.suggestFor ?? [],
+    ...discovery.opens?.flatMap((opening) => opening.words) ?? [],
+    ...discovery.intents ?? [],
+  ];
+}
+
 export function buildPaneShortcutItems(options: {
   templates: readonly PaneTemplateDef[];
   filterQuery?: string;
+  /**
+   * A typed query, filtered by the caller: it also finds the functions kept
+   * out of the browse list (CTM, a tab of the futures workspace), as the
+   * catalog does. A `filterQuery` is one too.
+   */
+  searched?: boolean;
   createOptions?: PaneTemplateCreateOptions;
   createItem: (template: PaneTemplateDef, options?: {
     category?: string;
@@ -276,9 +300,10 @@ export function buildPaneShortcutItems(options: {
     showShortcut?: boolean;
   }) => ResultItem;
 }): ResultItem[] {
+  const searched = options.searched || !!options.filterQuery;
   // An unlisted template (`listed: false`) still opens when its code is typed, which is resolved apart from these rows.
   const items = options.templates
-    .filter((template) => template.shortcut && template.shortcut.showInBrowse !== false && template.listed !== false)
+    .filter((template) => template.shortcut && (searched || template.shortcut.showInBrowse !== false) && template.listed !== false)
     .map((template) => options.createItem(template, {
       category: "Panes",
       createOptions: options.createOptions,

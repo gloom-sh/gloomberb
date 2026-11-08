@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { buildPaneCatalogEntries, type PaneCatalogEntry, type PaneFunctionCatalog } from "../../../../cli/pane-functions/catalog";
+import {
+  buildPaneCatalogEntries, filterPaneCatalogEntries, selectPaneCatalogMatches, type PaneCatalogEntry, type PaneFunctionCatalog,
+} from "../../../../cli/pane-functions/catalog";
 import { createPaneCatalog } from "../../../../cli/pane-functions/discovery";
 import type { MarketContext } from "../../../../cli/types";
 import { getLoadablePlugins } from "../../../../plugins/catalog";
@@ -12,6 +14,7 @@ import { commands } from "../../commands/registry";
 import { resolveRowBadge } from "../../list/badge";
 import type { ResultItem } from "../../list/model";
 import {
+  buildPaneShortcutItems,
   buildPaneTemplateContext,
   buildPaneTemplateItem,
   getAvailablePaneShortcutTemplatesForQuery,
@@ -130,10 +133,21 @@ function readQuery(query: string) {
   };
 }
 
-function rootRows(query: string): ResultItem[] {
+/** The bar's rows for `query`; with `functions`, every function's row is offered as the bar offers them, not left out. */
+function rootRows(query: string, { functions = false }: { functions?: boolean } = {}): ResultItem[] {
   const { intent, leadingCode } = readQuery(query);
   const row = (id: string): ResultItem => ({ id, label: id, detail: "", category: "Panes", kind: "action", action: () => {} });
   const empty = () => [] as ResultItem[];
+  const createPaneTemplateItem: RootResultModelOptions["createPaneTemplateItem"] = (template, itemOptions) => buildPaneTemplateItem({
+    ...itemOptions,
+    template,
+    argError: paneTemplateArgError(template, itemOptions?.createOptions?.arg, context),
+    pluginRegistry: { getPaneTemplatePluginId: () => undefined, allPlugins: new Map(), panes: contributions.panesMap } as never,
+    runPaneTemplateShortcut: () => {},
+    shouldOpenTemplateConfig: () => false,
+    openPaneTemplateWorkflow: () => {},
+    openPaneTemplateDirect: () => {},
+  });
   const options: RootResultModelOptions = {
     activeCollectionId: null,
     activeTickerData: null,
@@ -145,16 +159,7 @@ function rootRows(query: string): ResultItem[] {
     buildPaneSettingItems: empty,
     buildWindowModeItems: empty,
     // The bar's own row for a function, as the surface builds it.
-    createPaneTemplateItem: (template, itemOptions) => buildPaneTemplateItem({
-      ...itemOptions,
-      template,
-      argError: paneTemplateArgError(template, itemOptions?.createOptions?.arg, context),
-      pluginRegistry: { getPaneTemplatePluginId: () => undefined, allPlugins: new Map() } as never,
-      runPaneTemplateShortcut: () => {},
-      shouldOpenTemplateConfig: () => false,
-      openPaneTemplateWorkflow: () => {},
-      openPaneTemplateDirect: () => {},
-    }),
+    createPaneTemplateItem,
     createPluginCommandItem: (command) => row(`plugin-command:${command.id}`),
     currentRoute: null,
     executeCollectionCommand: () => {},
@@ -164,7 +169,9 @@ function rootRows(query: string): ResultItem[] {
     localTickerSearchResultItems: empty,
     nonShortcutPaneTemplateItems: empty,
     openModeRoute: () => {},
-    paneShortcutItems: empty,
+    paneShortcutItems: functions
+      ? (itemOptions) => buildPaneShortcutItems({ ...itemOptions, templates: [...contributions.paneTemplatesMap.values()], createItem: createPaneTemplateItem })
+      : empty,
     pluginCommandItems: empty,
     pluginCommandResultItems: empty,
     rootQuery: query,
@@ -245,5 +252,15 @@ describe("the catalog's functions in the command bar", () => {
     // A question is still offered the assistant, and so is text no code leads.
     expect(rootRows("MOST traded stocks today?").map((item) => item.id)).toContain("assist:sign-up");
     expect(rootRows("show me the newest filings").map((item) => item.id)).toContain("assist:sign-up");
+  });
+
+  test("the words that find a function in the catalog find it in the bar, a workspace tab's function included", () => {
+    for (const query of ["vix futures", "hedge", "vix"]) {
+      const { shown } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, query), query, 5);
+      const offered = new Set(rootRows(query, { functions: true }).map((item) => item.shortcutQuery));
+      expect({ query, missing: shown.filter((entry) => entry.shortcut && !offered.has(entry.shortcut)).map((entry) => entry.token) })
+        .toEqual({ query, missing: [] });
+    }
+    expect(rootRows("vix futures", { functions: true }).map((item) => item.shortcutQuery)).toContain("CTM");
   });
 });

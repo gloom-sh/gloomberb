@@ -324,12 +324,14 @@ export function useCommandBarPaneTemplateActions({
 
   const paneShortcutItems = useCallback((options?: {
     filterQuery?: string;
+    searched?: boolean;
     createOptions?: PaneTemplateCreateOptions;
     includePromptableTickerTemplates?: boolean;
   }): ResultItem[] => buildPaneShortcutItems({
     createItem: createPaneTemplateItem,
     createOptions: options?.createOptions,
     filterQuery: options?.filterQuery,
+    searched: options?.searched,
     templates: getAvailablePaneTemplates(options?.createOptions, {
       includePromptableTickerTemplates: options?.includePromptableTickerTemplates,
     }),
