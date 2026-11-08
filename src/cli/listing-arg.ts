@@ -70,6 +70,7 @@ import { listingSuffixCandidate, listingSuffixVenue, tickerHasListingSuffix } fr
 import { isCurrencyPairListing } from "../utils/fx-market-hours";
 import { coinElsewhereNote, notTheCoinNote } from "./commands/crypto-hints";
 import { fredSeriesArgument, fredSeriesNotListing } from "../series/fred-argument";
+import { commandWord } from "../utils/shell-word";
 
 /** The `--exchange` option of every command that takes a ticker. */
 export const EXCHANGE_OPTION = {
@@ -654,9 +655,9 @@ interface OtherListingsMessage {
  * --range 5Y` keeps the options. Null where the request names listings alone.
  */
 function retryCommand(request: Pick<ListingDataRequest, "command" | "retry">, key: string): string | null {
-  if (request.retry !== undefined) return request.retry?.(key) ?? null;
+  if (request.retry !== undefined) return request.retry?.(commandWord(key)) ?? null;
   const [command, ...options] = request.command.split(" ");
-  return ["gloom", command, key, ...options].join(" ");
+  return ["gloom", command, commandWord(key), ...options].join(" ");
 }
 
 /**

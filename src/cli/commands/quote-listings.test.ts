@@ -273,7 +273,7 @@ test("a futures board code quotes its future where no security uses it, and name
 
 test("a bare index root points at its ^ index, whether it found nothing or another instrument", async () => {
   const none = await runQuote(["VIX"], venueSource("VIX", [], {}));
-  expect(none.failure?.details).toContain("gloom quote ^VIX");
+  expect(none.failure?.details).toContain('gloom quote "^VIX"');
 
   const corvex = createTestQuote({ symbol: "MOVE", name: "Corvex, Inc.", instrumentType: "EQUITY" });
   const other = venueSource("MOVE", ["NASDAQ"], { MOVE: corvex, "MOVE:NASDAQ": corvex, "^MOVE": { ...corvex, instrumentType: "INDEX" } });
@@ -282,7 +282,7 @@ test("a bare index root points at its ^ index, whether it found nothing or anoth
   expect((await runQuote(["MOVE:NASDAQ"], other)).warnings).toEqual([]);
   expect((await runQuote(["^MOVE"], other)).warnings).toEqual([]);
 
-  expect(buildSearchReport({ query: "vix", candidates: [] })).toContain("gloom quote ^VIX");
+  expect(buildSearchReport({ query: "vix", candidates: [] })).toContain('gloom quote "^VIX"');
   expect(buildSearchReport({ query: "AAPL", candidates: [] })).not.toContain("^");
 });
 

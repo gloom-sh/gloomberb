@@ -1,12 +1,15 @@
+import { commandWord } from "../utils/shell-word";
+
 /** Spreadsheet formats people ask for by name, which no command writes: CSV is the one a spreadsheet opens. */
 const SPREADSHEET_OPTIONS = new Set(["--xlsx", "--xls", "--excel", "--spreadsheet", "--sheet", "--sheets", "--tsv"]);
 
 /** A file named after a spreadsheet flag (`--xlsx rates.xlsx`), which becomes the CSV's name. */
 const SPREADSHEET_FILE = /\.(xlsx|xls|tsv)$/i;
 
-/** An argument as a shell reads it back: quoted when it holds a space or a character the shell acts on. */
+/** An argument as a shell reads it back: quoted when it holds a space or a character the shell acts on; `"^TNX"` for cmd.exe. */
 function shellWord(arg: string): string {
-  return /^[\w^=.,:/@%+-]+$/.test(arg) ? arg : `'${arg.replaceAll("'", "'\\''")}'`;
+  if (!/^[\w^=.,:/@%+-]+$/.test(arg)) return `'${arg.replaceAll("'", "'\\''")}'`;
+  return arg.includes("^") ? commandWord(arg) : arg;
 }
 
 /**

@@ -1,4 +1,5 @@
 import { indexRootFor, type IndexRoot } from "../tickers/index-roots";
+import { commandWord } from "../utils/shell-word";
 
 /** A broker's code for an index: VIX.X and $VIX.X as thinkorswim writes it, $VIX as Schwab does. */
 export interface BrokerIndexCode extends IndexRoot {
@@ -26,12 +27,12 @@ export function brokerIndexReadAs(code: BrokerIndexCode): string {
   return `Read ${code.typed} as ${code.symbol} (${code.name}).`;
 }
 
-/** "^VIX  Cboe Volatility Index (try: gloom quote ^VIX)", under a bare root that found nothing. */
+/** `^VIX  Cboe Volatility Index (try: gloom quote "^VIX")`, under a bare root that found nothing. */
 export function indexRootTryLine(root: IndexRoot, command = "quote"): string {
-  return `${root.symbol}  ${root.name} (try: gloom ${command} ${root.symbol})`;
+  return `${root.symbol}  ${root.name} (try: gloom ${command} ${commandWord(root.symbol)})`;
 }
 
-/** "also ^MOVE ICE BofA MOVE Index (gloom quote ^MOVE)", under a bare root that quoted another instrument. */
+/** `also ^MOVE ICE BofA MOVE Index (gloom quote "^MOVE")`, under a bare root that quoted another instrument. */
 export function indexRootAlsoLine(root: IndexRoot, command = "quote"): string {
-  return `also ${root.symbol} ${root.name} (gloom ${command} ${root.symbol})`;
+  return `also ${root.symbol} ${root.name} (gloom ${command} ${commandWord(root.symbol)})`;
 }
