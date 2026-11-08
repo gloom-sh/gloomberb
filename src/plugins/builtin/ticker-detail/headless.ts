@@ -53,11 +53,12 @@ import { historyCoverageNotice } from "../../../sources/history-coverage";
 import { getChartResolutionLabel, isIntradayResolution, RANGE_HISTORY_RESOLUTION, type ManualChartResolution } from "../../../time-series/resolution";
 import { DAY_SO_FAR_TEXT, requestedSessionBarSize, withSessionBar } from "../../../time-series/session-bar";
 import { buildReturnRows, closedMarketNote, defaultReturnInterval, isTodayReturnRow, returnBaseCloseDay, type ReturnRange } from "./data-panes/returns-model";
+import { barCloseSession } from "../../../market-data/market/bar-period";
 import { periodBaseText } from "../../../market-data/market/period-return";
 import { loadReturnSeries } from "./data-panes/returns-history";
 import { CLOSING_PRINT_PENDING_TEXT } from "../../../time-series/official-close";
 import {
-  closedHistoryBarDay, formingHistoryBar, HISTORY_DEFAULT_RANGE, historyBarCloseDate, historyBarDate, historyBarSize, historyBarSizeWord, historyDateHeader, isDailyOrLongerBar,
+  closedHistoryBarDay, formingHistoryBar, HISTORY_DEFAULT_RANGE, historyBarDate, historyBarSize, historyBarSizeWord, historyDateHeader, isDailyOrLongerBar,
   type HistoryBarSize,
 } from "./data-panes/history-bars";
 
@@ -468,7 +469,7 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     };
     // The largest fall from a close to a later one in the bars shown, said under the title; a yield's in bp, with its largest rise.
     // A week's or month's close is dated by its last session, not the 1st its bar is dated by.
-    const closes = shown.map((row) => ({ date: isDailyOrLongerBar(size) ? historyBarCloseDate(size, row.date, venue, now) : row.date, close: row.close }));
+    const closes = shown.map((row) => ({ date: isDailyOrLongerBar(size) ? barCloseSession(size, row.date, venue, now) : row.date, close: row.close }));
     const { drawdown, runUp, lines: moveLines } = closeMoves(closes, drawdownScaleOf(symbol), { basis: `${historyBarSizeWord(size)} closes`,
       price: (value) => formatBarPrice(value, decimals), date: (value) => isDailyOrLongerBar(size) ? value.slice(0, 10) : formatUtcTime(value) });
     // A wick left out of the range is said, though the bar's close still counts.
@@ -545,7 +546,7 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     const price = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(decimals) : "-";
     // The largest fall from a close to a later one in the window, said under the title; a yield's in bp, with its largest rise.
     // A week's or month's close is dated by its last session, not the 1st its bar is dated by ("peak 35.70 on 2026-03-31").
-    const closes = unmarked.map((row) => ({ date: intraday ? row.time : historyBarCloseDate(series.resolution, row.time, venue, now), close: row.close }));
+    const closes = unmarked.map((row) => ({ date: intraday ? row.time : barCloseSession(series.resolution, row.time, venue, now), close: row.close }));
     const { drawdown, runUp, lines: moveLines } = closeMoves(closes, drawdownScaleOf(symbol),
       { basis: `${BAR_INTERVAL_LABELS[series.resolution]} closes`, price, date: (value) => intraday ? formatUtcTime(value) : value.slice(0, 10) });
     const figures: HeadlessPaneColumn[] = [

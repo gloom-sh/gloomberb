@@ -6,6 +6,7 @@ import {
   nextRegularSessionOpen,
   sessionCalendarTimeZone,
 } from "./freshness";
+import { barCloseDay } from "./period-return";
 
 /** The calendar period a weekly or monthly bar covers. */
 export type BarPeriod = "week" | "month";
@@ -40,6 +41,20 @@ function periodEnd(date: string, period: BarPeriod): string | null {
   const day = new Date(start);
   if (period === "week") return utcDate(start + (7 - (day.getUTCDay() + 6) % 7) * DAY_MS);
   return utcDate(Date.UTC(day.getUTCFullYear(), day.getUTCMonth() + 1, 1));
+}
+
+/**
+ * The day a bar's close is from, which a move between two closes (a
+ * drawdown's peak and trough) is dated by: a daily bar's own day, a week's or
+ * month's last session (barLastSession), not the 1st its bar is dated by, or
+ * how far one still forming runs; the calendar end of its period where no
+ * session in it can be named.
+ */
+export function barCloseSession(interval: string | null | undefined, date: string, venue: string | undefined, now: number): string {
+  const day = date.slice(0, 10);
+  const period: BarPeriod | null = interval === "1mo" ? "month" : interval === "1wk" ? "week" : null;
+  if (!period) return day;
+  return barLastSession(day, period, venue, now) ?? barCloseDay(day, interval, venue);
 }
 
 /**
