@@ -300,8 +300,6 @@
   "src/state/hooks/session-snapshot.ts": ["void:schedulerRef.current.flush()"],
   "src/state/persist-scheduler.ts": ["void:drain()"],
   "src/state/ticker-refresh-queue.ts": ["void:measurePerfAsync().finally()"],
-  "src/sync/controller.ts": ["void:this.requestSync()"],
-  "src/sync/react.ts": ["void:cloudSyncController.requestSync()","void:cloudSyncController.requestSync()","void:cloudSyncController.requestSync()","void:cloudSyncController.requestSync()"],
   "src/team/collections-sync.ts": ["void:applyEvent()","void:pushOutbound()","void:refresh()","void:refresh()"],
   "src/team/store.ts": ["void:this.refresh()","void:this.refresh()","void:this.refresh()"],
   "src/telemetry/attention-counts.ts": ["void:this.flush()"],
