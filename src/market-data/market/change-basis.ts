@@ -1,3 +1,4 @@
+import { isYieldIndexSymbol } from "../../tickers/index-roots";
 import { classifyInstrumentType, kindFromListingSyntax } from "../../tickers/instrument-kind";
 import { isPerpetualExchange } from "../../tickers/perpetual-listing";
 import type { Quote } from "../../types/financials";
@@ -9,7 +10,7 @@ import { zonedDateKey } from "../../utils/zoned-date-time";
 import { futuresChangeBasis, futuresQuoteMonth, futuresSettleText, isFuturesInstrument } from "../futures-contract";
 import { quoteTradingDay } from "../quotes/day-range";
 import { splitRatioText } from "../quotes/session-split";
-import { hasPublishedSessionCalendar, isVenueTradingDay, previousPublishedSession, sessionCalendarTimeZone } from "./freshness";
+import { hasPublishedSessionCalendar, isVenueTradingDay, latestRegularSessionOpen, previousPublishedSession, sessionCalendarTimeZone } from "./freshness";
 import { getActiveQuoteDisplay, getRegularSessionDisplay, regularSessionDisplayDate } from "./status";
 
 const DAY_MS = 86_400_000;
@@ -119,19 +120,33 @@ function isIndexQuote(quote: Quote): boolean {
 }
 
 /**
+ * One of Cboe's Treasury yield indices (^IRX, ^FVX, ^TNX, ^TYX): computed on
+ * the bond market's days, whose holidays (Veterans Day, Columbus Day) the
+ * equity calendar Cboe's venue follows does not have.
+ */
+function isCboeYieldIndex(quote: Quote): boolean {
+  return isIndexQuote(quote) && isYieldIndexSymbol(quote.symbol);
+}
+
+/**
  * The session of the venue whose calendar an index follows (calendarVenue)
  * that its last print sits in: the print's date in that venue's zone, when
- * its published calendar has a session that day. The S&P 500's closing print
- * at 16:37 New York on Fri 6 Nov 2026 is Friday's, so its move is from
- * Thursday's close; a print on a day the calendar has no session for, or on a
- * venue with no published calendar, names none.
+ * its published calendar has a session that day and the print came after it
+ * opened. The S&P 500's closing print at 16:37 New York on Fri 6 Nov 2026 is
+ * Friday's, so its move is from Thursday's close. A print before the day's
+ * open, on a day the calendar has no session for, or on a venue with no
+ * published calendar, names none; nor does a Cboe index's, whose days are
+ * Cboe's own (a yield index skips the bond market's holidays).
  */
 function indexPrintSession(quote: Quote): string | null {
   const venue = calendarVenue(quote);
+  if (venue === "CBOE") return null;
   const zone = sessionCalendarTimeZone(venue) ?? quote.indexSession?.timeZone;
   if (!zone) return null;
   const date = zonedDateKey(quote.lastUpdated, zone);
-  return date && hasPublishedSessionCalendar(venue, date) && isVenueTradingDay(venue, date) ? date : null;
+  if (!date || !hasPublishedSessionCalendar(venue, date) || !isVenueTradingDay(venue, date)) return null;
+  const open = latestRegularSessionOpen(venue, quote.lastUpdated);
+  return open != null && zonedDateKey(open, zone) === date ? date : null;
 }
 
 /** A coin on the spot crypto venue: its day is the UTC day. */
@@ -162,13 +177,16 @@ function previousIndexSession(quote: Quote, date: string): string | null {
  * the weekday before; for any other listing the day its own daily closes date
  * its previous close to (`previousCloseDate`, PreviousCloseDates). A thin
  * listing's previous trade before the calendar's session is its own day, and
- * one whose closes cannot name it is left undated. Null when nothing dates it.
+ * one whose closes cannot name it is left undated. A Cboe yield index is
+ * dated by its own closes alone. Null when nothing dates it.
  */
 function previousSession(quote: Quote, sessionDate: string): DatedChangeBasis | null {
   if (quote.previousCloseUndated) return null;
   const venue = calendarVenue(quote);
   const dated = quote.previousCloseDate && ISO_DATE.test(quote.previousCloseDate) && quote.previousCloseDate < sessionDate
     ? quote.previousCloseDate : null;
+  // A yield index's days are the bond market's: only its own daily closes date it, never its venue's equity calendar.
+  if (isCboeYieldIndex(quote)) return dated ? { kind: "close", date: dated } : null;
   const published = previousPublishedSession(venue, sessionDate);
   // A listing that did not trade in the calendar's session moves from its previous trade, an earlier day.
   if (published && dated && dated < published.date) return { kind: "close", date: dated, venue };
@@ -183,12 +201,14 @@ function previousSession(quote: Quote, sessionDate: string): DatedChangeBasis | 
  * Whether something other than the listing's own daily closes dates every
  * move of the quote: a future's terms, a coin's UTC day, a perpetual's 24
  * hours, a currency pair's weekday, or its venue's calendar for the year of
- * `now`. A few lookups, for a caller that runs on every tick before it asks
+ * `now`; never a Cboe yield index's, which its own closes date. A few
+ * lookups, for a caller that runs on every tick before it asks
  * quoteChangeBasis.
  */
 export function isChangeBasisDatedWithoutCloses(quote: Quote, now = Date.now()): boolean {
   if (isSpotCoin(quote) || isCurrencyPair(quote) || isFuturesInstrument(quote.symbol, quote.instrumentType)) return true;
   if (isPerpetualExchange(quote.listingExchangeName || quote.exchangeName)) return true;
+  if (isCboeYieldIndex(quote)) return false;
   return hasPublishedSessionCalendar(calendarVenue(quote), new Date(now).toISOString().slice(0, 10));
 }
 

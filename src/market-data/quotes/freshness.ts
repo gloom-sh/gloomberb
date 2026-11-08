@@ -186,10 +186,11 @@ export function noPrintsTodayText(quote: Quote | null | undefined, now = Date.no
 /**
  * What a quote nothing traded on says beside its price (Quote.nominalPrice):
  * "no trades since Thu 29 Oct, nominal price", or "no recent trades, nominal
- * price" when its bars reach back to no trade. Null for any other quote.
+ * price" when its bars reach back to no trade. In the regular session too,
+ * until it trades. Null for any other quote.
  */
-export function nominalPriceText(quote: Pick<Quote, "nominalPrice" | "marketState"> | null | undefined): string | null {
-  const nominal = quote?.marketState !== "REGULAR" ? quote?.nominalPrice : undefined;
+export function nominalPriceText(quote: Pick<Quote, "nominalPrice"> | null | undefined): string | null {
+  const nominal = quote?.nominalPrice;
   if (!nominal) return null;
   const traded = nominal.lastTraded ? new Date(`${nominal.lastTraded}T00:00:00Z`) : null;
   return traded && Number.isFinite(traded.getTime())

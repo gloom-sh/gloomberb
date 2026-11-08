@@ -185,6 +185,18 @@ describe("what a portfolio is priced at and when each row's price is from", () =
     await expect(portfolioCliCommand.execute(["show", "Tech", "--close"], createTestCliContext(market).context)).rejects.toThrow("is a watchlist");
   });
 
+  test("a US pre-market print's day move is measured from the close before it, as the pane's Day is", async () => {
+    // Mon 12 Oct 08:30 ET: XLK's 199.50 is 0.72 over Friday's close.
+    setSystemTime(new Date("2026-10-12T12:30:00Z"));
+    const premarket = { config, store: { loadAllTickers: async () => [xlk] },
+      dataProvider: createTestDataProvider({ getQuote: async () => sessionQuotes().preMarket }) };
+    setCliColorEnabledOverride(false);
+    const output: string[] = [];
+    const logger = spyOn(console, "log").mockImplementation((...line) => { output.push(line.join(" ")); });
+    try { await portfolioCliCommand.execute(["show", "Main"], createTestCliContext(premarket).context); } finally { logger.mockRestore(); }
+    expect(output.join("\n")).toContain("Day's move: +$720.00 (+0.36%) vs Fri 9 Oct close");
+  });
+
   test("PF --close reports the same values, each row's close time and the basis in its closing line", async () => {
     const ctx = {
       config, signal: new AbortController().signal, marketData: market.dataProvider,
@@ -198,5 +210,56 @@ describe("what a portfolio is priced at and when each row's price is from", () =
     expect(text).toContain("Day's move: +$1,200.00 (+0.58%)");
     expect(text.split("\n").find((line) => line.startsWith("XLK"))).toMatch(day("20:00"));
     expect(text).toMatch(/priced at the regular close$/);
+  });
+});
+
+describe("a book across HKEX and the US, read on Mon 9 Nov 2026 before the US open", () => {
+  const book = (symbol: string, exchange: string, currency: string, shares: number) => createTestTicker(symbol, symbol, {
+    exchange, currency, portfolios: ["main"], positions: [{ portfolio: "main", shares, avgCost: 1, currency, broker: "manual" }],
+  });
+  const hkex = { listingExchangeName: "HKEX", exchangeName: "HKEX", instrumentType: "ETF", marketState: "CLOSED" as const };
+  const quotes: Record<string, Quote> = {
+    // Traded today on HKEX, from Friday's close.
+    "3042.HK": { ...hkex, symbol: "3042.HK", currency: "HKD", price: 9.4, change: 0.22, changePercent: 2.3965, previousClose: 9.18,
+      changeSessionDate: "2026-11-09", lastUpdated: Date.parse("2026-11-09T07:59:00Z") },
+    // Its USD counter, untraded since 29 Oct: Monday's nominal price against Friday's, its last print a week old.
+    "9042.HK": { ...hkex, symbol: "9042.HK", currency: "USD", price: 1.2, change: 0.028, changePercent: 2.389, previousClose: 1.172,
+      changeSessionDate: "2026-11-09", lastUpdated: Date.parse("2026-11-04T03:32:00Z"), stale: true, volume: 0,
+      nominalPrice: { session: "2026-11-09", lastTraded: "2026-10-29" } },
+    // Pre-market in New York, 0.62 over Friday's close.
+    IBIT: { symbol: "IBIT", currency: "USD", listingExchangeName: "NASDAQ", instrumentType: "ETF", price: 43.5, change: 0.62, changePercent: 1.4459,
+      previousClose: 42.88, preMarketPrice: 43.5, preMarketChange: 0.62, preMarketChangePercent: 1.4459,
+      regularClose: 42.88, regularCloseSessionDate: "2026-11-06", regularChange: -0.15, regularChangePercent: -0.3486,
+      changeSessionDate: "2026-11-09", marketState: "PRE", lastUpdated: Date.parse("2026-11-09T12:55:00Z") },
+    // Delisted years ago: its last session's change is not today's.
+    TWTR: { symbol: "TWTR", currency: "USD", listingExchangeName: "NYSE", price: 53.86, change: 0.16, changePercent: 0.3, previousClose: 53.7,
+      marketState: "CLOSED", lastUpdated: Date.parse("2022-10-27T20:00:00Z"),
+      delisting: { status: "delisted", lastTradeDate: "2022-10-27", historyStart: "2016-01-04" } },
+  };
+  const market = {
+    config,
+    store: { loadAllTickers: async () => [book("3042.HK", "HKEX", "HKD", 1000), book("9042.HK", "HKEX", "USD", 1000), book("IBIT", "NASDAQ", "USD", 100), book("TWTR", "NYSE", "USD", 10)] },
+    dataProvider: createTestDataProvider({ getQuote: async (symbol) => quotes[symbol]! }),
+  };
+
+  test("its day move is each print's from Friday's close, a delisted holding moving nothing, and a nominal price says so", async () => {
+    setSystemTime(new Date("2026-11-09T13:00:00Z"));
+    setCliColorEnabledOverride(false);
+    const output: string[] = [];
+    const logger = spyOn(console, "log").mockImplementation((...line) => { output.push(line.join(" ")); });
+    try { await portfolioCliCommand.execute(["show", "Main"], createTestCliContext(market).context); } finally { logger.mockRestore(); }
+    const text = output.join("\n");
+    // 1000 x 0.22 + 1000 x 0.028 + 100 x 0.62, at one HKD to the dollar here; TWTR adds its value to the base and nothing to the move.
+    expect(text).toContain("Day's move: +$310.00 (+2.04%) vs Fri 6 Nov close");
+    expect(text.split("\n").find((line) => line.startsWith("9042"))).toMatch(/Mon 9 Nov nominal$/);
+
+    const cli = createTestCliContext(market, { format: "json" });
+    await portfolioCliCommand.execute(["show", "Main"], cli.context);
+    const json = JSON.parse(serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, cli.printed[0]!.options));
+    expect(json.metadata).toMatchObject({ dayChange: 310, dayChangeBasis: "vs Fri 6 Nov close" });
+    // The counter keeps its last print as its quote time, and says its price is nominal, dated by its session.
+    expect(json.data.find((row: { symbol: string }) => row.symbol === "9042.HK")).toMatchObject({ quoteAsOf: Date.parse("2026-11-04T03:32:00Z"),
+      quotePriceKind: "nominal", valuationAsOf: "2026-11-09", valuationPriceKind: "nominal" });
+    expect(text).toContain("1 of 4 stale, 1 of 4 nominal");
   });
 });

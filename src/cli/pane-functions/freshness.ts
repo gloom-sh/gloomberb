@@ -66,6 +66,13 @@ export interface ReportFreshness {
   /** When only some rows are stale: how many, of the rows that say whether they are... */
   staleCount?: number;
   observationCount?: number;
+  /**
+   * How many of those rows are at a nominal price, nothing having traded
+   * (`nominal`): the venue's price for its latest session, counted apart
+   * from stale rows. The status line reads `1 of 3 nominal`, or `nominal`
+   * when every row is.
+   */
+  nominalCount?: number;
   /** ...and what the rest are. */
   feed?: "live" | "delayed";
   basis?: string;
@@ -195,9 +202,11 @@ interface FeedSignals {
   minDelayMinutes?: number;
   /** A record-wide stale flag (metadata), read only when no row says whether it is stale. */
   stale: boolean;
-  /** Rows and series that carry a `stale` flag, and the times of those that are stale. */
+  /** Rows and series that carry a `stale` flag, and the times of those that are stale... */
   flagged: number;
   staleTimes: Array<ReportTime | null>;
+  /** ...and how many of them are at a nominal price instead (`nominal`). */
+  nominal: number;
   /** Rows that name the venue whose sessions they follow (`sessionExchange`), with their time. */
   sessions: SessionObservation[];
 }
@@ -244,7 +253,7 @@ function newestUnitRelease(observations: Observations, asOf: ReportTime): UnitRe
 }
 
 function emptySignals(): FeedSignals {
-  return { live: false, delayed: false, stale: false, flagged: 0, staleTimes: [], sessions: [] };
+  return { live: false, delayed: false, stale: false, flagged: 0, staleTimes: [], nominal: 0, sessions: [] };
 }
 
 function readFeedSignals(record: Record<string, unknown>, signals: FeedSignals): void {
@@ -271,11 +280,17 @@ function readSession(record: Record<string, unknown>, time: ReportTime | null, s
   });
 }
 
-/** A row's or series' own stale flag; worst of across them, counted so a partly stale board says how much. */
+/**
+ * A row's or series' own stale flag; worst of across them, counted so a partly
+ * stale board says how much. A row at a nominal price (`nominal`: an untraded
+ * counter's, whose last trade is old) is its venue's latest price, counted as
+ * nominal rather than stale.
+ */
 function readUnitStale(record: Record<string, unknown>, time: ReportTime | null, signals: FeedSignals): void {
   if (typeof record.stale !== "boolean") return;
   signals.flagged += 1;
-  if (record.stale) signals.staleTimes.push(time);
+  if (record.nominal === true) signals.nominal += 1;
+  else if (record.stale) signals.staleTimes.push(time);
 }
 
 function observedTime(record: Record<string, unknown>, now: number, keys: readonly string[] = OBSERVATION_KEYS): ReportTime | null {
@@ -602,6 +617,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(minDelayMinutes != null && minDelayMinutes > 0 ? { minDelayMinutes } : {}),
     ...(status === "stale" && staleAt ? { ageMinutes: Math.max(0, Math.floor((now - staleAt.time) / 60_000)) } : {}),
     ...(partial ?? {}),
+    ...(signals.nominal > 0 ? { nominalCount: signals.nominal, observationCount: signals.flagged } : {}),
     ...(status === "not-a-feed" && declared.basis ? { basis: declared.basis } : {}),
     ...(periodicity ? { periodicity } : {}),
     ...(periodToDate && !declaredAsOf ? { periodToDate: { period: periodToDate.period, ...(periodToDate.through ? { through: isoTime(periodToDate.through) } : {}) } } : {}),
@@ -824,8 +840,25 @@ export function staleRowsText(freshness: Pick<ReportFreshness, "staleCount" | "o
   return `${short ? freshness.staleCount : `${freshness.staleCount} of ${freshness.observationCount}`} stale`;
 }
 
-/** `short` counts stale rows without their total (`2 stale`), for a narrow capture. */
+/**
+ * How many rows are at a nominal price: `nominal` when all are, `1 of 3
+ * nominal` (`1 nominal` when `short`) when some are. Null when none is.
+ */
+function nominalRowsText(freshness: Pick<ReportFreshness, "nominalCount" | "observationCount">, short = false): string | null {
+  const { nominalCount: count, observationCount: total } = freshness;
+  if (!count || total == null) return null;
+  if (count >= total) return "nominal";
+  return `${short ? count : `${count} of ${total}`} nominal`;
+}
+
+/** `short` counts stale and nominal rows without their total (`2 stale`), for a narrow capture. */
 function statusText(freshness: ReportFreshness, short = false): string {
+  const nominal = nominalRowsText(freshness, short);
+  const feed = feedStatusText(freshness, short);
+  return nominal ? [feed, nominal].filter(Boolean).join(", ") : feed;
+}
+
+function feedStatusText(freshness: ReportFreshness, short: boolean): string {
   switch (freshness.status) {
     case "live":
       return "live";

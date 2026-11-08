@@ -108,6 +108,21 @@ describe("report freshness", () => {
       .toBe("Source: Gloom Cloud · Fri 9 Oct 2026 04:59 UTC · delayed");
   });
 
+  test("a quote at its venue's nominal price is counted as nominal, not stale, and dated by the session that price is for", () => {
+    // Sun 8 Nov 2026: 9042.HK last printed on Wed 4 Nov; its 1.172 is Fri 6 Nov's nominal price.
+    const now = Date.parse("2026-11-08T09:38:00Z");
+    const hkex = { listingExchangeName: "HKEX", exchangeName: "HKEX", marketState: "CLOSED" as const, dataSource: "delayed" as const, providerId: "gloomberb-cloud" };
+    const nominal = createTestQuote({ symbol: "9042.HK", ...hkex, stale: true, lastUpdated: Date.parse("2026-11-04T03:32:00Z"),
+      changeSessionDate: "2026-11-06", nominalPrice: { session: "2026-11-06", lastTraded: "2026-10-29" } });
+    const traded = createTestQuote({ symbol: "3042.HK", ...hkex, lastUpdated: Date.parse("2026-11-06T07:59:00Z"), changeSessionDate: "2026-11-06" });
+    expect(formatStatusLine(quotesFreshness([traded, nominal], undefined, now)!))
+      .toBe("HKEX trading day Fri 6 Nov 2026 close · 15 min delayed, 1 of 2 nominal · markets closed · regular session opens Mon 01:30 UTC, 09:30 HKT");
+    expect(formatStatusLine(quotesFreshness([nominal], undefined, now)!)).toBe("Fri 6 Nov 2026 · 15 min delayed, nominal · markets closed · regular session opens Mon 01:30 UTC, 09:30 HKT");
+    // Beside a stale row, each is counted.
+    const stale = createTestQuote({ symbol: "9046.HK", ...hkex, stale: true, lastUpdated: Date.parse("2026-11-03T01:31:00Z") });
+    expect(formatStatusLine(quotesFreshness([traded, nominal, stale], undefined, now)!)).toContain("15 min delayed, 1 of 3 stale, 1 of 3 nominal");
+  });
+
   test("a narrow capture keeps the date and the delay, shortening the rest first", () => {
     const freshness = deriveHeadlessFreshness(rows(), { rows: [
       { dataSource: "delayed", delayMinutes: 15, stale: false, sessionExchange: "NASDAQ", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T23:59:00Z") },

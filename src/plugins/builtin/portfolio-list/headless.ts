@@ -115,7 +115,8 @@ const VALUATION_TIME_COLUMN: HeadlessPaneColumn = {
   key: "valuationAsOf",
   header: "As of (UTC)",
   // Exports keep the ISO time.
-  textFormat: (value, row) => valuationTimeText(value, undefined, row.valuationPriceKind === "settle" ? "settle" : undefined),
+  textFormat: (value, row) => valuationTimeText(value, undefined,
+    row.valuationPriceKind === "settle" || row.valuationPriceKind === "nominal" ? row.valuationPriceKind : undefined),
   shrink: false,
   description: "When the price the row is valued at is from: its print, or the regular close with --close (a future's settlement).",
 };

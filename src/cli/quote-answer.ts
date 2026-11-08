@@ -66,6 +66,12 @@ export interface QuoteAnswer {
   /** Why there is no quote, when there is more to say than the source's own error. */
   failure?: { message: string; details?: string; oneLine: string };
   notes: string[];
+  /**
+   * Lines about another listing than the row's, printed under the table
+   * rather than as warnings on it: the HKEX listing a bare TWSE code is the
+   * code of too ("00700: for HKEX use 700.HK").
+   */
+  footnotes?: string[];
 }
 
 /**
@@ -109,7 +115,11 @@ export async function answerQuote(
     // A row saved as 247540:KRX is quoted from KOSDAQ, the board it trades on.
     const board = tradingBoardNote(listing, result.quote);
     const hongKong = await hongKongCodeNote(listing, result.quote, market);
-    return { result, listing, notes: [...choice, venue ?? [], hongKong ?? [], board ?? [], also(result.quote), currencyCodeNote(listing, result.quote) ?? []].flat() };
+    return {
+      result, listing,
+      notes: [...choice, venue ?? [], board ?? [], also(result.quote), currencyCodeNote(listing, result.quote) ?? []].flat(),
+      ...hongKong ? { footnotes: [hongKong] } : {},
+    };
   }
   // No answer from the data service: no venue lookup or other listing would get one either.
   if (isNetworkFailure(result.error)) return { result, listing, notes: [] };
@@ -126,9 +136,6 @@ export async function answerQuote(
   const index = key ? await answerNamedListing({ ...parseListingArg(key),
     readAs: `Read "${listing.typed!.trim()}" as ${key} (${marked!.name}).`, readFromName: true }, market, request, refresh, datesChangeBasis) : null;
   if (index) return index;
-  // ^GSPC typed in Windows' cmd.exe arrives as GSPC, the shell taking ^ for its escape character. A known root (VIX) says it below.
-  const caret = root ? null : await caretIndexLine(listing, result, market);
-  if (caret) return { result, listing, failure: { message: caret, oneLine: caret }, notes: [] };
   // A word the service marks as a company's name is that company, before the symbol is read on its listings abroad.
   const named = !listing.exchange && listing.typed ? await serviceNamedCompany(listing.typed, market) : null;
   const meant = named ? await answerNamedListing(named, market, request, refresh, datesChangeBasis) : null;
@@ -151,6 +158,10 @@ export async function answerQuote(
     listing.exchange ? null : knownGapForTicker(listing.symbol),
   ].filter((line): line is string => !!line);
   if (!other && tryLines.length === 0) {
+    // ^GSPC typed in Windows' cmd.exe arrives as GSPC, the shell taking ^ for its escape character: said once no company
+    // of that name and no listing abroad answers for it, so a symbol listed abroad is still quoted. A known root (VIX) has its own line.
+    const caret = root ? null : await caretIndexLine(listing, result, market);
+    if (caret) return { result, listing, failure: { message: caret, oneLine: caret }, notes: [] };
     return await answerCompanyName(result, listing, market, request, refresh, datesChangeBasis)
       ?? { result: await withCurrencyPairHint(result, market), listing, notes: [] };
   }

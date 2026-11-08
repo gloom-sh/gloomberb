@@ -71,6 +71,7 @@ async function runQuote(args: string[], source: ReturnType<typeof venueSource>) 
     failure: failure as { message: string; details?: string } | null,
     rows: (printed?.result.data ?? []) as Array<{ target: QuoteSubscriptionTarget; quote: unknown }>,
     warnings: printed?.result.warnings ?? [],
+    footnote: printed?.options?.footnote ?? "",
   };
 }
 
@@ -305,6 +306,18 @@ test("a bare symbol whose ^ form is an index, as cmd.exe passes ^GSPC on, says t
   expect(asked).toContain("^XYZW");
 });
 
+test("a bare symbol listed abroad is quoted there, though its ^ form is an index too", async () => {
+  const listed = venueSource("CSPX", ["XETRA", "LSE"], { "CSPX:LSE": createTestQuote({ symbol: "CSPX", currency: "EUR" }) });
+  const index = createTestQuote({ symbol: "^CSPX", name: "Some Index", instrumentType: "INDEX", listingExchangeName: "SNP" });
+  listed.dataProvider.getQuote = async (symbol) => {
+    if (symbol === "^CSPX") return index;
+    throw new Error(`No quote provider available for ${symbol}`);
+  };
+  const quoted = await runQuote(["CSPX"], listed);
+  expect(quoted.failure).toBeNull();
+  expect(quoted.rows.map((row) => row.target.symbol)).toEqual(["CSPX:LSE"]);
+});
+
 test("a bare five-digit code quoted on TWSE names the HKEX listing of the same code without its zeros; an HKEX quote or a named venue does not", async () => {
   const fubon = createTestQuote({ symbol: "00700", name: "Fubon Hang Seng China Enterprises ETF", currency: "TWD", listingExchangeName: "TWSE", exchangeName: "TWSE" });
   const tencent = createTestQuote({ symbol: "0700", name: "Tencent Holdings Limited", currency: "HKD", listingExchangeName: "HKEX", exchangeName: "HKEX" });
@@ -323,7 +336,9 @@ test("a bare five-digit code quoted on TWSE names the HKEX listing of the same c
   const source = { dataProvider, batches: [], searches: () => 0 };
   const bare = await runQuote(["00700"], source);
   expect(bare.rows.map((row) => row.target.symbol)).toEqual(["00700"]);
-  expect(bare.warnings).toContain("00700: for HKEX use 700.HK (Tencent Holdings Limited)");
+  // Under the table: it is about another listing, not a warning on the row.
+  expect(bare.footnote).toContain("00700: for HKEX use 700.HK (Tencent Holdings Limited)");
+  expect(bare.warnings.join("\n")).not.toContain("for HKEX use");
   expect((await runQuote(["00700:TWSE"], source)).warnings.join("\n")).not.toContain("HKEX");
   expect((await runQuote(["0700:HKEX"], source)).warnings.join("\n")).not.toContain("for HKEX use");
   expect(asked).toEqual(["0700:HKEX"]);

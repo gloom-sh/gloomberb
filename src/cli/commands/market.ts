@@ -697,14 +697,14 @@ function quoteColumns() {
   return [
     ...QUOTE_LEAD_COLUMNS.map((column) => EXTENDED_KEYS.has(column.key) ? { ...column, stackPriority: 1 } : column),
     { key: "currency", header: "Cur", shrink: false, stackPriority: 3, format: currencyCell },
-    // Whether the price is real-time, delayed or stale: a feed state, not where it came from. A stale
-    // row says so here, so the closing line's "N of M stale" always points at rows the table marks.
+    // Whether the price is real-time, delayed, stale or nominal: a feed state, not where it came from. A stale or
+    // nominal row says so here, so the closing line's "N of M stale" or "N of M nominal" always points at rows the table marks.
     {
       key: "feed",
       header: "Feed",
       shrink: false,
       stackPriority: 4,
-      format: (value: unknown) => value === "stale" ? cliStyles.warning(value) : String(value ?? ""),
+      format: (value: unknown) => value === "stale" || value === "nominal" ? cliStyles.warning(value) : String(value ?? ""),
     },
     { key: "updatedAt", header: "Updated", shrink: false, stackPriority: 5 },
     ...CHANGE_BASIS_EXPORT_COLUMNS,
@@ -749,9 +749,13 @@ function compareColumns() {
   ];
 }
 
-/** What the Feed cell says: stale wins over the feed's own live or delayed, as the closing line counts it. */
-function quoteFeedState(quote: QuoteCliRecord["quote"], now: number): "stale" | "live" | "delayed" | "" {
+/**
+ * What the Feed cell says: nominal for a price nothing traded at (Quote.nominalPrice), then stale, over the feed's
+ * own live or delayed, as the closing line counts them.
+ */
+function quoteFeedState(quote: QuoteCliRecord["quote"], now: number): "nominal" | "stale" | "live" | "delayed" | "" {
   if (!quote) return "";
+  if (quote.nominalPrice) return "nominal";
   if (isQuoteStaleForCurrentSession(quote, now)) return "stale";
   return quote.dataSource === "live" || quote.dataSource === "delayed" ? quote.dataSource : "";
 }
@@ -1272,12 +1276,18 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const columns = [...commandName === "compare" ? compareColumns() : quoteColumns(), ...holdsYield ? [CHANGE_BP_EXPORT_COLUMN] : []];
     const basisNotes = changeBasisNotes(data, now);
     const midNotes = extendedMidNotes(data);
+    // Another listing a row's code names (00700 on TWSE is 700.HK on HKEX) is said under the table, not as a warning on the row.
+    const listingNotes = answers.flatMap((answer) => answer.footnotes ?? []);
+    const exportNotes = [...midNotes, ...listingNotes];
+    const footnotes = [...basisNotes, ...listingNotes];
+    // JSON has no table to put them under: they stay with its warnings.
+    const warnings = [...notes, ...ctx.cliOptions.format === "json" ? listingNotes : []];
     if (ctx.cliOptions.format !== "json") await primeBoardCoins(notes);
     // Only yield indices: their change is in bp, so the text header drops the percent sign (CSV keeps the percent it holds).
     const yieldsOnly = data.length > 0 && data.every((row) => isYieldIndexSymbol(row.target.symbol));
     ctx.printResult({
       data,
-      warnings: notes.length > 0 ? notes : undefined,
+      warnings: warnings.length > 0 ? warnings : undefined,
       // A Cboe yield index stops at its 15:00 ET close, before the Treasury's curve is taken: the line says so, so its
       // close does not read as a contradiction of DGS10 or GC for the same day.
       // Dated by the quotes as served, which say whether one is the saved copy.
@@ -1299,9 +1309,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       }),
       // A row with no price or move says why in its status column, as the warnings do.
       exportStatus: quoteExportStatus,
-      ...(midNotes.length > 0 ? { exportNotes: midNotes } : {}),
+      ...(exportNotes.length > 0 ? { exportNotes } : {}),
       details: quoteDetailsText,
-      ...(basisNotes.length ? { footnote: basisNotes.join("\n") } : {}),
+      ...(footnotes.length ? { footnote: footnotes.join("\n") } : {}),
       columns,
       textColumns: quoteTextColumns(yieldsOnly
         ? columns.map((column) => column.key === "changePercent" ? { ...column, header: "Chg" } : column)
