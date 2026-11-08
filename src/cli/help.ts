@@ -47,6 +47,7 @@ const GLOBAL_OPTIONS: Array<[string, string]> = [
   ["--json", "Print the full result as JSON"],
   ["--csv", "Print rows as CSV under the columns the text shows; fn reports and fundamentals put each table under # section: and end with # source lines"],
   ["--ndjson", "Print one JSON object per table row"],
+  ["--output <path>, --out <path>", "Write a --csv, --json or --ndjson export to this file in UTF-8, and print where it went (a redirect is UTF-16 in Windows PowerShell 5.1)"],
   ["--limit <n>", "Show at most n rows, the first n as printed"],
   ["--tail <n>", "Show the newest n rows of a dated series (history, fred, econ) in their printed order, or the last n of another list"],
   ["--refresh", "Fetch fresh data instead of reading the cache"],

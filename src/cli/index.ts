@@ -2,7 +2,9 @@ import { VERSION } from "../version";
 import type { CliCommandContext, CliCommandDef, CliDispatchResult, CliLaunchRequest } from "../types/plugin";
 import type { LoadedExternalPlugin } from "../plugins/loader";
 import { loadCliConfigIfAvailable } from "./context";
-import { parseCliGlobalArgs } from "./options";
+import { parseCliGlobalArgs, type CliGlobalOptions } from "./options";
+import { checkOutputPath, resolveOutputPath, writeOutputFile } from "./output-file";
+import { printCliResult, takeCliFileExport } from "./result";
 import {
   buildCliCommandRegistry,
   createCliCommandContext,
@@ -459,13 +461,19 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
     : foldCommandArgs(resolved.command, parsed.args.slice(1), parsed.literalStart - 1);
   try {
     if (!helpOnly && resolved.builtin) checkCliCommandOptions(resolved.command, commandArgs, parsed.literalStart - 1);
+    // The file --output names, checked before the command runs so a path that cannot be written fails at once.
+    const outputPath = parsed.options.output !== undefined && !helpOnly ? resolveOutputPath(parsed.options.output) : null;
+    if (outputPath) await checkOutputPath(outputPath);
+    takeCliFileExport();
     // What it answers from a saved copy, its refresh having failed, its closing line says.
     const result = await collectSavedCopies(() => Promise.resolve(target.command.execute(
       commandArgs,
       createCliCommandContext(target.ownerId, registry, parsed.options, commandArgs),
     )));
+    if (outputPath) await saveFileExport(outputPath, parsed.options, resolved.command.name);
     return normalizeCliDispatchResult(result);
   } catch (error) {
+    takeCliFileExport();
     // A coin typed without its quote currency (USDT) is named by its one symbol (USDT-USD) in the hint.
     if (parsed.options.format !== "json") await primeBoardCoins([error instanceof Error ? error.message : String(error)]);
     printCliError(error, parsed.options, { command: resolved.command.name, args: commandArgs,
@@ -473,6 +481,24 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
     process.exitCode = 1;
     return { kind: "handled" };
   }
+}
+
+/**
+ * Writes the export a command printed to the file `--output` named, in
+ * UTF-8, and says where it went: `Saved <path>`, or in JSON its envelope. A
+ * command that printed no export (its result failed, or it has no table to
+ * export) writes no file and says so.
+ */
+async function saveFileExport(path: string, options: CliGlobalOptions, command: string): Promise<void> {
+  const written = takeCliFileExport();
+  if (written === null) {
+    if (process.exitCode) return;
+    throw new Error(`${command} printed no ${options.format.toUpperCase()} export; nothing was written to ${path}.`);
+  }
+  await writeOutputFile(path, `${written}\n`);
+  printCliResult({ data: { output: path, format: options.format } },
+    { ...options, output: undefined, format: options.format === "json" ? "json" : "text" },
+    { text: () => `Saved ${path}` });
 }
 
 /** Explains why dispatch found no command in `args`, suggesting the closest one. */
