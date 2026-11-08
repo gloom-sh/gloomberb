@@ -14,7 +14,7 @@ import {
 } from "./relative-valuation-peers";
 import { extraColumns, extraColumnsBasis, loadExtraColumns, parseExtraColumns } from "./relative-valuation-columns";
 import { fundamentalsBasisParts } from "./relative-valuation-basis";
-import { conversionNote, convertMarketCaps, loadFxLegs } from "./relative-valuation-currency";
+import { conversionNote, convertMarketCaps, convertTargets, loadFxLegs, type CapConversion } from "./relative-valuation-currency";
 
 const price = (value: unknown, row: Record<string, unknown>) => (
   value == null || !row.currency ? "-" : formatCurrency(Number(value), String(row.currency))
@@ -158,21 +158,38 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
     const extraIds = parseExtraColumns(args.options.columns);
     const financials = new Map(loaded.entries.map(({ symbol, data }) => [symbol, data] as const));
     const extra = await loadExtraColumns(extraIds, capRows.map((row) => row.symbol), financials, ctx);
-    const rows = capRows.map((row) => ({ ...row, ...extra.fields.get(row.symbol) }));
+    const extraRows = capRows.map((row) => ({ ...row, ...extra.fields.get(row.symbol) }));
+    // Analyst targets go into the asked currency with the caps, at the same rates.
+    const targetCurrencies = capCurrency && fx ? extraRows.flatMap((row): string[] => {
+      const currency = (row as Record<string, unknown>).targetCurrency;
+      return typeof currency === "string" && currency ? [currency] : [];
+    }) : [];
+    const targetFx = targetCurrencies.length > 0 ? await loadFxLegs(targetCurrencies.filter((currency) => !fx!.legs.has(resolveCurrencyUnit(currency).currency)), ctx) : null;
+    const targets = capCurrency && fx && targetCurrencies.length > 0
+      ? convertTargets(extraRows, capCurrency, new Map([...fx.legs, ...targetFx?.legs ?? []])) : null;
+    const rows = targets?.rows ?? extraRows;
+    const conversions = [...converted?.conversions ?? [], ...targets?.conversions ?? []]
+      .filter((conversion, index, all): conversion is CapConversion => all.findIndex((other) => other.from === conversion.from) === index);
 
     const errors = [...loaded.errors,
       ...staleSymbols.map((symbol) => `${symbol}: ${RELATIVE_VALUATION_STALE_QUOTE_NOTICE}`),
       ...staleFundamentalsSymbols.map((symbol) => `${symbol}: ${RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE}`),
       ...extra.errors,
     ];
-    const warnings = converted?.unconverted.map(({ currency, symbols: left }) => {
-      const reason = fx?.failed.find((failure) => failure.currency === resolveCurrencyUnit(currency).currency)?.reason;
-      return `No ${currency} rate${reason ? ` (${reason})` : ""}: ${left.join(", ")} ${left.length === 1 ? "keeps its" : "keep their"} market cap in ${currency}.`;
-    }) ?? [];
+    const failedRates = [...fx?.failed ?? [], ...targetFx?.failed ?? []];
+    const unconvertedWarning = (what: string) => ({ currency, symbols: left }: { currency: string; symbols: string[] }) => {
+      const reason = failedRates.find((failure) => failure.currency === resolveCurrencyUnit(currency).currency)?.reason;
+      return `No ${currency} rate${reason ? ` (${reason})` : ""}: ${left.join(", ")} ${left.length === 1 ? "keeps its" : "keep their"} ${what} in ${currency}.`;
+    };
+    const warnings = [
+      ...converted?.unconverted.map(unconvertedWarning("market cap")) ?? [],
+      ...targets?.unconverted.map(unconvertedWarning("analyst target")) ?? [],
+    ];
     // The footer: the rates the caps were converted at, the statement period the figures run through, and the
     // basis of each column that is not trailing twelve months.
     const footnote = [
-      ...capCurrency && converted ? [conversionNote(capCurrency, converted.conversions)] : [],
+      ...capCurrency && converted ? [conversionNote(capCurrency, conversions,
+        targets?.conversions.length ? `market caps and analyst targets in ${capCurrency}` : undefined)] : [],
       ...fundamentalsBasisParts(rows, REVENUE_GROWTH_HEADER),
       ...extraColumnsBasis(extraIds, rows),
     ].filter(Boolean).join(" · ");
@@ -202,7 +219,7 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
         ...(selection ? { peerSelection: selection } : {}),
         ...(converted && capCurrency ? { marketCapConversion: { currency: capCurrency, rates: converted.conversions,
           basis: "marketCap is converted into the asked currency at each currency's US dollar rate, the rate the app's converted totals use; marketCapNative and marketCapNativeCurrency keep the cap as served." } } : {}),
-        ...(extraIds.length > 0 ? { addedColumnsBasis: "Each added column keeps its own source and as-of beside it: short interest at its FINRA settlement date, analyst targets at retrieval, the next earnings date at the calendar's retrieval, gross margin and EV/EBITDA at the screener's statement date." } : {}),
+        ...(extraIds.length > 0 ? { addedColumnsBasis: "Each added column keeps its own source and as-of beside it: short interest at its FINRA settlement date, analyst targets at retrieval (converted with the caps under --currency, targetMeanNative keeping the served one), the next earnings date at the calendar's retrieval, gross margin and EV/EBITDA at the end of the latest quarter they sum. EV/EBITDA is the listing's enterprise value over the trailing four quarters of operating income plus D&A, as GE's EV/EBITDA ends." } : {}),
         quoteBasis: "Stale quote fields are excluded from comparison; reportedQuote retains the rejected observation and quoteAsOf retains its source timestamp.",
         priceBasis: "price, change and changePercent are the regular session: after the close, its close and that close's move. A pre-market, after-hours or overnight print is in extendedPrice, extendedChange and extendedChangePercent, measured from that close (extendedMark when it is a bid and ask midpoint). marketCap, the P/E multiples, evSales (through the equity part of the enterprise value) and fcfYield are measured at that regular session price.",
         fundamentalsBasis: "Provider multiples and operating metrics retain independent fundamentalsProvenance. Retrieval time does not establish the valuation date.",

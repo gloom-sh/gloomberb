@@ -29,6 +29,7 @@ import { parseOptionTicker } from "../../utils/options";
 import { reconcileQuoteDayRange } from "../../market-data/quotes/day-range";
 import { redactUnavailableFundamentals } from "../../utils/fundamentals";
 import { readWithdrawnObservations } from "../../utils/statement-gaps";
+import { withStatementEbitda } from "../../utils/ebitda";
 import { parseListingDelisting } from "../../market-data/quotes/delisting";
 import { readIntradayBar, readStaleReason } from "../../market-data/quotes/intraday-bar";
 import { readSessionSplit } from "../../market-data/quotes/session-split";
@@ -313,11 +314,12 @@ function mapCloudNextEarnings(value: NextEarnings | undefined): NextEarnings | u
 
 /**
  * A served statement row with withdrawn values read as declared gaps, without
- * the per-issuer provenance the service can still attach.
+ * the per-issuer provenance the service can still attach, and its EBITDA
+ * operating income plus D&A whatever the service sent.
  */
 function mapCloudStatement(row: FinancialStatement): FinancialStatement {
   const { earningsResult: _earnings, operatingResult: _operating, operatingResultAggregation: _aggregation, ...statement } = row;
-  return readWithdrawnObservations(statement);
+  return withStatementEbitda(readWithdrawnObservations(statement));
 }
 
 export function mapCloudFinancials(

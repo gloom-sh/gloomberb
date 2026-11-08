@@ -1,11 +1,14 @@
-import type { ScreenDefinition, ScreenMetric, ScreenRow } from "../../../api-client/equity-screener";
 import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneRow } from "../../../types/headless";
 import type { TickerFinancials } from "../../../types/financials";
 import { isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { errorMessage } from "../../../utils/errors";
-import { formatNumber } from "../../../utils/format";
+import { formatLevelPercent, formatNumber } from "../../../utils/format";
 import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
-import { fetchScreen } from "../equity-screener/client";
+import { ebitdaLacksDepreciation } from "../../../utils/ebitda";
+import { fiscalPeriodLabel, fiscalYearEndMonth } from "../../../utils/fiscal-period";
+import { latestFinancialPeriod } from "../../../utils/latest-financial-period";
+import { listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
+import { currentTrailingValuation, latestTrailingStatement } from "../../../time-series/fundamentals";
 import { refusedLock } from "../shared/cloud-denied";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { loadShortInterest } from "../short-interest/client";
@@ -64,6 +67,8 @@ export function parseExtraColumns(value: unknown): ExtraColumnId[] {
 }
 
 const percent = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(2)}%` : "-");
+/** Why a statement column's cell is blank ("no D&A"), in its place; "-" when nothing says. */
+const gap = (row: HeadlessPaneRow, key: string) => (typeof row[key] === "string" && row[key] ? row[key] as string : "-");
 const text = (value: unknown) => (typeof value === "string" && value ? value : "-");
 
 /** Each added column, then (exports only) the source and as-of of its cells. */
@@ -111,20 +116,21 @@ const COLUMN_SPECS: Record<ExtraColumnId, ColumnSpec> = {
   },
   grossMargin: {
     label: "Gross Margin",
-    columns: [{ key: "grossMarginPercent", header: "Gross Margin", align: "right", format: percent }],
+    // Trailing twelve months, as TTM Op Margin; a fiscal year's margin, where the company reports no quarters, names its year.
+    columns: [{ key: "grossMarginPercent", header: "Gross Margin", align: "right", format: (value, row) => (typeof value !== "number" ? gap(row, "grossMarginGap")
+      : typeof row.grossMarginPeriod === "string" ? `${formatLevelPercent(value / 100)} ${row.grossMarginPeriod}` : formatLevelPercent(value / 100)) }],
     sourceKey: "grossMarginSource",
     asOfKey: "grossMarginAsOf",
-    // The screener stores the fiscal year's margin (its FY GROSS MGN%), dated by the year's end.
-    basis: (dates) => `fiscal year to ${dates}`,
+    basis: (dates) => `trailing twelve months to ${dates}`,
   },
   evEbitda: {
     label: "EV/EBITDA",
-    // N/M over an EV or EBITDA at or below zero, as EQS shows it.
+    // GE's EV/EBITDA: the listing's EV over trailing operating income plus D&A. N/M over an EV or EBITDA at or below zero.
     columns: [{ key: "evEbitda", header: "EV/EBITDA", align: "right", format: (value, row) => (typeof value === "number" ? formatNumber(value, 1)
-      : row.evEbitdaNotMeaningful ? formatPriceEarnings(NOT_MEANINGFUL) : "-") }],
+      : row.evEbitdaNotMeaningful ? formatPriceEarnings(NOT_MEANINGFUL) : gap(row, "evEbitdaGap")) }],
     sourceKey: "evEbitdaSource",
     asOfKey: "evEbitdaAsOf",
-    basis: (dates) => `statements to ${dates}`,
+    basis: (dates) => `trailing twelve months to ${dates}`,
   },
 };
 
@@ -264,57 +270,102 @@ async function loadTargetFields(symbols: readonly string[], ctx: HeadlessPaneCon
   }));
 }
 
-function metricFields(metric: ScreenMetric | undefined): { value: number | null; source: string | null; asOf: string | null } | null {
-  if (!metric || metric.value == null || !Number.isFinite(metric.value) || metric.state === "unavailable") return null;
-  return { value: metric.value, source: metric.source || null, asOf: metric.asOf ?? metric.observedAt ?? null };
+const STATEMENTS_SOURCE = "Gloom Cloud financial statements";
+
+/** Why a trailing figure is missing: fewer than four quarters, or a line the latest ones lack. */
+function trailingGap(financials: TickerFinancials, line: string): string {
+  const latest = latestTrailingStatement(financials);
+  if (!latest) return financials.quarterlyStatements.length > 0 ? "< 4 quarters" : "no quarters";
+  return `no ${line}`;
 }
 
-/** Gross margin and EV/EBITDA as the screener stores them, each with its own source and statement date. */
-async function loadScreenerFields(ids: readonly ExtraColumnId[], symbols: readonly string[], ctx: HeadlessPaneContext, out: ExtraColumnsResult) {
-  const wanted = ids.filter((id) => id === "grossMargin" || id === "evEbitda");
-  const listed = symbols.flatMap((symbol) => {
-    const bare = usListing(symbol);
-    return bare ? [{ symbol, bare }] : [];
-  });
-  if (wanted.length === 0 || listed.length === 0) return;
-  const definition: ScreenDefinition = {
-    version: 1,
-    criteria: [{ field: "symbol", op: "in", value: [...new Set(listed.map(({ bare }) => bare))] }],
-    sort: { field: "symbol", direction: "asc" },
-    currency: null,
+/**
+ * Gross margin over the trailing twelve months, from the statements GE's
+ * `ttm` series sums; the latest fiscal year's, named for it ("FY25"), only for
+ * a company that reports no quarters.
+ */
+function grossMarginFields(financials: TickerFinancials): HeadlessPaneRow {
+  const trailing = latestTrailingStatement(financials);
+  if (trailing) {
+    const { grossProfit, totalRevenue } = trailing;
+    if (typeof grossProfit === "number" && typeof totalRevenue === "number" && totalRevenue > 0) {
+      return { grossMarginPercent: 100 * grossProfit / totalRevenue, grossMarginSource: STATEMENTS_SOURCE, grossMarginAsOf: trailing.date.slice(0, 10) };
+    }
+    return { grossMarginGap: typeof totalRevenue === "number" && totalRevenue > 0 ? "no gross profit" : "no revenue" };
+  }
+  if (financials.quarterlyStatements.length > 0) return { grossMarginGap: trailingGap(financials, "gross profit") };
+  const year = latestFinancialPeriod(financials.annualStatements, (row) => row.date);
+  if (!year || typeof year.grossProfit !== "number" || typeof year.totalRevenue !== "number" || year.totalRevenue <= 0) return { grossMarginGap: "not reported" };
+  const label = fiscalPeriodLabel(year.date, "annual", fiscalYearEndMonth(financials.annualStatements));
+  return {
+    grossMarginPercent: 100 * year.grossProfit / year.totalRevenue,
+    grossMarginPeriod: /^FY\d{2}(\d{2})$/.test(label) ? `FY${label.slice(-2)}` : label,
+    grossMarginSource: STATEMENTS_SOURCE,
+    grossMarginAsOf: year.date.slice(0, 10),
   };
-  let rows: ScreenRow[];
-  try {
-    rows = (await fetchScreen(definition, null, ctx.signal, ctx.apiClient)).rows;
-  } catch (error) {
-    out.errors.push(failureMessage(wanted.map((id) => COLUMN_SPECS[id].label).join(" and "), error));
-    return;
+}
+
+/**
+ * EV/EBITDA as GE's trailing series ends on it (currentTrailingValuation):
+ * the listing's enterprise value at the regular session price over the latest
+ * four quarters of operating income plus D&A. N/M where either is at or below
+ * zero; otherwise a blank says why.
+ */
+function evEbitdaFields(financials: TickerFinancials): HeadlessPaneRow {
+  const enterpriseValue = listingEnterpriseValue(financials);
+  if (enterpriseValue.kind === "not-meaningful") return { evEbitda: null, evEbitdaNotMeaningful: enterpriseValue.reason };
+  const current = currentTrailingValuation(financials, "evEbitda");
+  const source = enterpriseValue.kind === "value" && enterpriseValue.basis === "computed"
+    ? "Market cap + total debt - cash over trailing operating income plus D&A"
+    : "Gloom Cloud enterprise value over trailing operating income plus D&A";
+  if (current) {
+    const ebitda = current.statement.ebitda;
+    const dated = { evEbitdaSource: source, evEbitdaAsOf: current.periodEnd };
+    if (typeof ebitda === "number" && ebitda <= 0) return { evEbitda: null, evEbitdaNotMeaningful: "Trailing EBITDA is not positive", ...dated };
+    if (current.value <= 0) return { evEbitda: null, evEbitdaNotMeaningful: "Enterprise value is not positive", ...dated };
+    return { evEbitda: current.value, ...dated };
   }
-  for (const { symbol, bare } of listed) {
-    const row = rows.find((candidate) => candidate.symbol.toUpperCase() === bare && isUsListingExchange(candidate.exchange));
-    if (!row) continue;
-    const fields = out.fields.get(symbol)!;
-    if (wanted.includes("grossMargin")) {
-      const gross = metricFields(row.metrics.grossMarginPercent);
-      if (gross) Object.assign(fields, { grossMarginPercent: gross.value, grossMarginSource: gross.source, grossMarginAsOf: gross.asOf });
-    }
-    if (wanted.includes("evEbitda")) {
-      const multiple = metricFields(row.metrics.evToEbitda);
-      if (multiple) Object.assign(fields, { evEbitda: multiple.value, evEbitdaSource: multiple.source, evEbitdaAsOf: multiple.asOf });
-      else if (row.metrics.evToEbitda?.notMeaningful) Object.assign(fields, { evEbitda: null, evEbitdaNotMeaningful: row.metrics.evToEbitda.reason ?? true });
-    }
+  const trailing = latestTrailingStatement(financials);
+  const statementCurrency = trailing?.currency ?? financials.financialCurrency;
+  const quoteCurrency = financials.quote?.currency;
+  if (trailing && statementCurrency && quoteCurrency && statementCurrency !== quoteCurrency) return { evEbitdaGap: `statements in ${statementCurrency}` };
+  if (trailing && typeof trailing.ebitda !== "number") {
+    const quarters = financials.quarterlyStatements;
+    return { evEbitdaGap: quarters.some(ebitdaLacksDepreciation) || ebitdaLacksDepreciation(trailing) ? "no D&A" : "no EBITDA" };
   }
+  if (!trailing) return { evEbitdaGap: trailingGap(financials, "EBITDA") };
+  return { evEbitdaGap: enterpriseValue.kind === "unavailable" ? "EV unavailable" : "not reported" };
+}
+
+/**
+ * Gross margin and EV/EBITDA from the statements GE reads (the extended
+ * history it loads), each with its source and the quarter it runs to.
+ */
+async function loadStatementFields(ids: readonly ExtraColumnId[], symbols: readonly string[], ctx: HeadlessPaneContext, out: ExtraColumnsResult) {
+  const wanted = ids.filter((id) => id === "grossMargin" || id === "evEbitda");
+  if (wanted.length === 0) return;
+  await Promise.all(symbols.map(async (symbol) => {
+    try {
+      const { symbol: ticker, exchange } = await resolveHeadlessInstrument(ctx, symbol);
+      const financials = await ctx.marketData.getTickerFinancials(ticker, exchange ?? "", { statementHistory: "extended" });
+      Object.assign(out.fields.get(symbol)!,
+        wanted.includes("grossMargin") ? grossMarginFields(financials) : {},
+        wanted.includes("evEbitda") ? evEbitdaFields(financials) : {});
+    } catch (error) {
+      out.errors.push(failureMessage(wanted.map((id) => COLUMN_SPECS[id].label).join(" and "), error, symbol));
+    }
+  }));
 }
 
 /** The US-only columns among `ids`, which a listing abroad leaves blank. */
-const US_ONLY: ReadonlySet<ExtraColumnId> = new Set(["shortInterest", "nextEarnings", "grossMargin", "evEbitda"]);
+const US_ONLY: ReadonlySet<ExtraColumnId> = new Set(["shortInterest", "nextEarnings"]);
 
 /**
  * The added fields for every symbol, each column read apart so one that
  * fails (or is locked) leaves the others: short interest from FINRA's
  * settlements, the next report date from the earnings calendar, the mean
  * target and analyst count from analyst research, gross margin and EV/EBITDA
- * from the screener's stored figures.
+ * from the statements GE reads.
  */
 export async function loadExtraColumns(
   ids: readonly ExtraColumnId[],
@@ -328,7 +379,7 @@ export async function loadExtraColumns(
     ids.includes("shortInterest") ? loadShortInterestFields(symbols, financials, ctx, out) : null,
     ids.includes("nextEarnings") ? loadNextEarningsFields(symbols, ctx, out) : null,
     ids.includes("target") ? loadTargetFields(symbols, ctx, out) : null,
-    loadScreenerFields(ids, symbols, ctx, out),
+    loadStatementFields(ids, symbols, ctx, out),
   ]);
   ctx.signal.throwIfAborted();
   const abroad = symbols.filter((symbol) => !usListing(symbol));

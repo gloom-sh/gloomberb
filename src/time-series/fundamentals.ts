@@ -17,6 +17,7 @@ import { currentValuationPrice, valuationPriceAtOrBefore, valuationQuoteIssue, t
 import type { SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
 import { isFiniteNumber } from "../utils/guards";
 import { liveForwardPE, liveTrailingPE } from "../market-data/quotes/live-valuation";
+import { listingEnterpriseValue } from "../market-data/quotes/listing-enterprise-value";
 import { comparablePriceEarnings } from "../utils/price-earnings";
 
 type NumericStatementField =
@@ -27,6 +28,7 @@ type NumericStatementField =
   | "netIncomeIncludingNoncontrollingInterests"
   | "netIncomeCommonStockholders"
   | "ebitda"
+  | "depreciationAndAmortization"
   | "operatingCashFlow"
   | "capitalExpenditure"
   | "freeCashFlow"
@@ -57,6 +59,7 @@ const QUARTERLY_FLOW_FIELDS: readonly NumericStatementField[] = [
   "netIncome",
   "netIncomeIncludingNoncontrollingInterests",
   "ebitda",
+  "depreciationAndAmortization",
   "operatingCashFlow",
   "capitalExpenditure",
   "freeCashFlow",
@@ -94,6 +97,8 @@ const FUNDAMENTAL_IDS = new Set([
   "operatingMargin",
   "netIncome",
   "netMargin",
+  "ebitda",
+  "depreciationAndAmortization",
   "operatingCashFlow",
   "freeCashFlow",
   "freeCashFlowMargin",
@@ -991,18 +996,34 @@ function servedTrailingPE(financials: TickerFinancials): number | null {
 }
 
 /**
- * The latest point of a statement-based multiple: the regular session price
- * (after the close, the close, dated by it) over the latest period known when
- * the quote was observed. The statements decide whether there is one; a
- * trailing P/E then takes the served one at that price where there is one, so
- * the chart ends on the P/E `valuation` prints.
+ * A current EV multiple over the listing's enterprise value, the one
+ * `valuation` and RV show (listingEnterpriseValue), when it is in the
+ * statement's currency: EV/EBITDA and EV/S then read one EV on every surface.
+ * Undefined to read the statement's own (shares times the price, plus debt,
+ * less cash) where the listing has none; null where it is not meaningful.
  */
-function currentDerivedValuationPoint(
+function listingEnterpriseMultiple(financials: TickerFinancials, statement: FinancialStatement, metric: string): number | null | undefined {
+  if (metric !== "evEbitda" && metric !== "evSales") return undefined;
+  const listing = listingEnterpriseValue(financials);
+  if (listing.kind === "not-meaningful") return null;
+  if (listing.kind !== "value" || listing.currency !== (statement.currency ?? financials.financialCurrency)) return undefined;
+  return ratio(listing.value, metric === "evEbitda" ? statement.ebitda : statement.totalRevenue);
+}
+
+/**
+ * The latest value of a statement-based multiple and the period it reads:
+ * the regular session price (after the close, the close, dated by it) over
+ * the latest period known when the quote was observed. The statements decide
+ * whether there is one; a trailing P/E then takes the served one at that
+ * price where there is one, so the chart ends on the P/E `valuation` prints,
+ * and an EV multiple divides the listing's EV.
+ */
+function currentDerivedValuation(
   financials: TickerFinancials,
   statements: readonly FinancialStatement[],
   metric: string,
   currencies: ValuationCurrencyContext,
-): TimeSeriesPoint | null {
+): { value: number; date: Date; statement: FinancialStatement } | null {
   const quote = financials.quote;
   if (valuationQuoteIssue(quote)) return null;
   const quoteDate = validDate(quote?.lastUpdated);
@@ -1026,19 +1047,57 @@ function currentDerivedValuationPoint(
   if (!statement) return null;
   const comparablePrice = currencies.priceInStatementUnits(statement, current.price);
   if (comparablePrice === null) return null;
-  const value = valuationAtPrice(statement, metric, comparablePrice);
+  const listing = listingEnterpriseMultiple(financials, statement, metric);
+  const value = listing === undefined ? valuationAtPrice(statement, metric, comparablePrice) : listing;
   if (value === null) return null;
+  return { value: (metric === "trailingPE" ? servedTrailingPE(financials) : null) ?? value, date: current.date, statement };
+}
+
+function currentDerivedValuationPoint(
+  financials: TickerFinancials,
+  statements: readonly FinancialStatement[],
+  metric: string,
+  currencies: ValuationCurrencyContext,
+): TimeSeriesPoint | null {
+  const current = currentDerivedValuation(financials, statements, metric, currencies);
+  if (!current) return null;
   return {
     date: current.date,
     observedAt: current.date,
     availableAt: current.date,
-    value: (metric === "trailingPE" ? servedTrailingPE(financials) : null) ?? value,
+    value: current.value,
     periodLabel: "Current",
     provenance: {
-      providerId: quote.providerId,
+      providerId: financials.quote?.providerId,
       quality: "derived",
     },
   };
+}
+
+/**
+ * The value GE's trailing-twelve-months series of a statement multiple ends
+ * on, and the quarter its period ends with: the figure RV's added EV/EBITDA
+ * column shows, so the two never disagree. Null where GE draws no current
+ * point.
+ */
+export function currentTrailingValuation(
+  financials: TickerFinancials,
+  metric: "evEbitda" | "evSales",
+): { value: number; periodEnd: string; statement: FinancialStatement } | null {
+  const selected = sourceStatements(financials, "ttm", metric);
+  const current = currentDerivedValuation(financials, currentValuationStatements(financials, selected, metric), metric,
+    createValuationCurrencyContext(financials));
+  return current ? { value: current.value, periodEnd: current.statement.date.slice(0, 10), statement: current.statement } : null;
+}
+
+/**
+ * The trailing twelve months of a statement line the way GE's `ttm` series
+ * reads it (four consecutive quarters, a fiscal fourth quarter completed from
+ * its year): the latest one, or null when the latest window is incomplete.
+ */
+export function latestTrailingStatement(financials: TickerFinancials): FinancialStatement | null {
+  const selected = sourceStatements(financials, "ttm");
+  return selected.statements.at(-1) ?? null;
 }
 
 /**

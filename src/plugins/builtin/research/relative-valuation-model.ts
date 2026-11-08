@@ -1,4 +1,4 @@
-import { formatCurrency } from "../../../utils/format";
+import { formatCompact, formatCurrency } from "../../../utils/format";
 import { comparablePriceEarnings, notMeaningfulMultiples } from "../../../utils/price-earnings";
 import { marketCapBasisNote, viewMarketCapitalization, withheldMarketCap } from "../../../utils/market-capitalization";
 import {
@@ -9,6 +9,7 @@ import { getExtendedSessionDisplay, getQuoteSessionFields } from "../../../marke
 import { atRegularSessionPrice, movePriceDerivedFigures, regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { fiscalPeriodLabel, fiscalYearEndMonth } from "../../../utils/fiscal-period";
 import { latestFinancialPeriod, latestReportedPeriod } from "../../../utils/latest-financial-period";
+import { listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 
 export function formatRelativePrice(price: number | null | undefined, currency: string | null | undefined): string {
@@ -111,12 +112,15 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     ...(forwardNotMeaningful ? { forwardPE: forwardNotMeaningful } : {}),
     ...(evSalesNotMeaningful ? { evSales: evSalesNotMeaningful } : {}),
   };
-  const evSalesWithdrawn = enterpriseValueWithdrawn(fundamentals);
-  const evSales = !compatibleCurrency || enterpriseValueGap || evSalesNotMeaningful ? null
-    : fundamentals?.enterpriseToRevenue != null && Number.isFinite(fundamentals.enterpriseToRevenue)
-      ? fundamentals.enterpriseToRevenue
-      : enterpriseValue != null && fundamentals?.revenue != null && fundamentals.revenue > 0
-        ? enterpriseValue / fundamentals.revenue : null;
+  // A provider EV Gloom Cloud withdrew falls back to the market cap + total debt - cash it was checked against.
+  const fallback = snapshot && enterpriseValueWithdrawn(fundamentals) ? computedEnterpriseValueSales(snapshot, fundamentals) : null;
+  const evSalesWithdrawn = enterpriseValueWithdrawn(fundamentals) && !fallback;
+  const evSales = fallback ? fallback.evSales
+    : !compatibleCurrency || enterpriseValueGap || evSalesNotMeaningful ? null
+      : fundamentals?.enterpriseToRevenue != null && Number.isFinite(fundamentals.enterpriseToRevenue)
+        ? fundamentals.enterpriseToRevenue
+        : enterpriseValue != null && fundamentals?.revenue != null && fundamentals.revenue > 0
+          ? enterpriseValue / fundamentals.revenue : null;
   const fcfYield = capitalization && fundamentals?.financialCurrency === capitalization.currency
     && fundamentals.freeCashFlow != null && Number.isFinite(fundamentals.freeCashFlow) && capitalization.value > 0
     ? fundamentals.freeCashFlow / capitalization.value : null;
@@ -175,9 +179,11 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     /** Why EV/S is missing when the provider's EV was withdrawn, as `valuation` says it; null otherwise. */
     evSalesUnavailable: evSalesWithdrawn
       ? enterpriseValueReconciliationNote(fundamentals) ?? "EV unavailable." : null,
-    /** Why EV/S is N/M, as `valuation` says it: "EV N/M: cash and short-term investments exceed ..."; null otherwise. */
-    evSalesNote: evSalesNotMeaningful
+    /** Why EV/S is N/M, as `valuation` says it: "EV N/M: cash and short-term investments exceed ..."; or, for EV/S over a computed EV, what it was computed from; null otherwise. */
+    evSalesNote: fallback ? fallback.note : evSalesNotMeaningful
       ? enterpriseValueReconciliationNote(fundamentals) ?? (isBankEnterpriseValue(fundamentals) ? `EV ${BANK_ENTERPRISE_VALUE}.` : null) : null,
+    /** `computed` where EV/S divides market cap + total debt - cash in place of a withdrawn provider EV; `served` otherwise. */
+    evSalesBasis: fallback ? "computed" as const : evSales != null ? "served" as const : null,
     fcfYield,
     revenueGrowth,
     operatingMargin,
@@ -186,6 +192,31 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     operatingMarginPeriodEnd: fiscalYearMargin?.periodEnd ?? null,
     /** Why each missing figure is missing, in a few words the row draws in its place. */
     gaps,
+  };
+}
+
+/**
+ * EV/S over the market cap + total debt - cash a withdrawn provider EV was
+ * checked against (listingEnterpriseValue), with the note that says so: TTM
+ * revenue in the EV's currency, or converted at the rate the check's balance
+ * sheet was ("EUR at 1.133 USD"). Null when there is no such EV or no revenue
+ * in a currency it can be divided in.
+ */
+function computedEnterpriseValueSales(snapshot: TickerFinancials, fundamentals: TickerFinancials["fundamentals"]) {
+  const listing = listingEnterpriseValue(snapshot);
+  if (listing.kind !== "value" || listing.basis !== "computed" || !listing.check) return null;
+  const revenue = fundamentals?.revenue;
+  const currency = fundamentals?.financialCurrency;
+  if (!finiteNumber(revenue) || revenue <= 0 || !currency) return null;
+  const fx = listing.check.fx;
+  const rate = currency === listing.currency ? 1 : fx && fx.from === currency && finiteNumber(fx.rate) && fx.rate > 0 ? fx.rate : null;
+  if (rate == null) return null;
+  const converted = fx && finiteNumber(fx.rate) ? `, ${fx.from} at ${fx.rate.toPrecision(4)} ${listing.currency}` : "";
+  const sheet = listing.check.balanceSheetDate ? ` (balance sheet ${listing.check.balanceSheetDate}${converted})` : "";
+  const provider = finiteNumber(listing.check.source) ? `; the provider's ${formatCompact(listing.check.source)} ${listing.currency} failed validation against it` : "";
+  return {
+    evSales: listing.value / (revenue * rate),
+    note: `EV ${formatCompact(listing.value)} ${listing.currency} computed from market cap + total debt - cash${sheet}${provider}.`,
   };
 }
 
