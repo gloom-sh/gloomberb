@@ -2,7 +2,9 @@ import { VERSION } from "../version";
 import type { CliCommandContext, CliCommandDef, CliDispatchResult, CliLaunchRequest } from "../types/plugin";
 import type { LoadedExternalPlugin } from "../plugins/loader";
 import { loadCliConfigIfAvailable } from "./context";
-import { parseCliGlobalArgs } from "./options";
+import { checkCliOutputFormat, commandOwnsOutput, parseCliGlobalArgs, type CliGlobalOptions } from "./options";
+import { checkOutputPath, resolveOutputPath, writeOutputFile } from "./output-file";
+import { printCliResult, takeCliFileExport } from "./result";
 import {
   buildCliCommandRegistry,
   createCliCommandContext,
@@ -189,7 +191,7 @@ export function createCoreCliCommands(
           "fn HP AAPL",
           "fn ANR SAN:EPA",
           "fn CBR --json",
-          "fn WEI --csv --section europe > europe.csv",
+          "fn WEI --csv --section europe --output europe.csv",
           "fn RV NEE,FSLR --csv --output rv.csv",
           "fn 13F AAPL --view=ticker-holdings",
           "fn OVME --spot 100 --strike 100 --days 30 --volatility 25",
@@ -413,7 +415,8 @@ export { buildSearchReport, searchCandidatesForCli };
 export async function dispatchCli(args: string[], options: DispatchCliOptions = {}): Promise<CliDispatchResult> {
   let parsed;
   try {
-    parsed = parseCliGlobalArgs(args);
+    // --output without a format is refused once the command is known: a plugin's own --output is not the export's.
+    parsed = parseCliGlobalArgs(args, { deferOutputCheck: true });
   } catch (error) {
     printCliError(asUsageError(error), inferCliErrorOptions(args));
     process.exitCode = 1;
@@ -438,6 +441,15 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
   if (!resolved) {
     return { kind: "unhandled" };
   }
+  try {
+    // A plugin command with its own --output keeps it: the global flag yields, as it does to `fn` and `shot`.
+    if (parsed.options.output !== undefined && commandOwnsOutput(resolved.command)) parsed = parseCliGlobalArgs(args, { ownsOutput: true });
+    checkCliOutputFormat(parsed);
+  } catch (error) {
+    printCliError(asUsageError(error), parsed.options);
+    process.exitCode = 1;
+    return { kind: "handled" };
+  }
 
   // The overview includes installed commands; one built-in command's help only
   // needs that command. An unknown help topic may belong to an installed plugin.
@@ -459,13 +471,19 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
     : foldCommandArgs(resolved.command, parsed.args.slice(1), parsed.literalStart - 1);
   try {
     if (!helpOnly && resolved.builtin) checkCliCommandOptions(resolved.command, commandArgs, parsed.literalStart - 1);
+    // The file --output names, checked before the command runs so a path that cannot be written fails at once.
+    const outputPath = parsed.options.output !== undefined && !helpOnly ? resolveOutputPath(parsed.options.output) : null;
+    const replacing = outputPath ? await checkOutputPath(outputPath) : false;
+    takeCliFileExport();
     // What it answers from a saved copy, its refresh having failed, its closing line says.
     const result = await collectSavedCopies(() => Promise.resolve(target.command.execute(
       commandArgs,
       createCliCommandContext(target.ownerId, registry, parsed.options, commandArgs),
     )));
+    if (outputPath) await saveFileExport(outputPath, parsed.options, resolved.command.name, replacing);
     return normalizeCliDispatchResult(result);
   } catch (error) {
+    takeCliFileExport();
     // A coin typed without its quote currency (USDT) is named by its one symbol (USDT-USD) in the hint.
     if (parsed.options.format !== "json") await primeBoardCoins([error instanceof Error ? error.message : String(error)]);
     printCliError(error, parsed.options, { command: resolved.command.name, args: commandArgs,
@@ -473,6 +491,25 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
     process.exitCode = 1;
     return { kind: "handled" };
   }
+}
+
+/**
+ * Writes the export a command printed to the file `--output` named, in
+ * UTF-8 without a byte order mark, and says where it went: `Saved <path>`,
+ * `Replaced <path>` over a file that was there, or in JSON its envelope. A
+ * command that printed no export (its result failed, or it has no table to
+ * export) writes no file and says so.
+ */
+async function saveFileExport(path: string, options: CliGlobalOptions, command: string, replacing: boolean): Promise<void> {
+  const written = takeCliFileExport();
+  if (written === null) {
+    if (process.exitCode) return;
+    throw new Error(`${command} printed no ${options.format.toUpperCase()} export; nothing was written to ${path}.`);
+  }
+  await writeOutputFile(path, `${written}\n`);
+  printCliResult({ data: { output: path, format: options.format, replaced: replacing } },
+    { ...options, output: undefined, format: options.format === "json" ? "json" : "text" },
+    { text: () => `${replacing ? "Replaced" : "Saved"} ${path}` });
 }
 
 /** Explains why dispatch found no command in `args`, suggesting the closest one. */

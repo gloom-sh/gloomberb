@@ -20,7 +20,7 @@ import {
   deleteWatchlist as deleteWatchlistConfig,
   removeTickerFromWatchlist as removeWatchlistMembership,
 } from "../../../../portfolio/mutations";
-import { showCollection } from "./render";
+import { collectionAddCommand, showCollection } from "./render";
 import { listingFields, misplacedSymbolList, refuseDryRun, takeCollectionName } from "./shared";
 import { addOneSymbol, addSymbols, FILE_OPTION, listAddLookups, printSymbolRows, progressNotice, removeSymbols, requireSymbolList, retryNotice, shellWord, SYMBOL_LIST_HELP } from "./bulk-symbols";
 import { readNameEntries } from "../../../../cli/name-entries";
@@ -209,6 +209,10 @@ async function listWatchlists(ctx: CliCommandContext) {
         String(watchlist.tickerCount),
       ]),
     ));
+    // Nothing in any of them: the command that fills one, as `alerts` names the one that adds an alert.
+    if (rows.every((watchlist) => watchlist.tickerCount === 0)) {
+      console.log(cliStyles.muted(`\nNo tickers yet. Add some with ${collectionAddCommand("watchlist", rows[0]!.name)}.`));
+    }
   });
 }
 

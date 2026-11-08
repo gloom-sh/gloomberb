@@ -4,7 +4,7 @@ import type { AppAction, AppState } from "../../../state/app/context";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
 import { isManualPortfolio } from "../../../portfolio/mutations";
-import { findNamedCollection, readWatchlistArgument } from "../../../portfolio/collection-name";
+import { findNamedCollection, readWatchlistArgument, watchlistMemberSymbol } from "../../../portfolio/collection-name";
 import type { DataProvider } from "../../../types/data-provider";
 import type { Portfolio, TickerRecord, Watchlist } from "../../../types/ticker";
 import { AmbiguousTickerError, resolveTickerSearch, upsertTickerFromSearchResult } from "../../../tickers/search";
@@ -278,7 +278,7 @@ export async function resolveTickerListInput(
   const state = deps.getState();
   const watchlist = /[,;\n]/.test(rawInput) ? null : findNamedCollection(state.config.watchlists, rawInput);
   const members = watchlist
-    ? [...state.tickers.values()].filter((ticker) => ticker.metadata.watchlists.includes(watchlist.id)).map((ticker) => ticker.metadata.ticker)
+    ? [...state.tickers.values()].filter((ticker) => ticker.metadata.watchlists.includes(watchlist.id)).map((ticker) => watchlistMemberSymbol(ticker.metadata))
     : [];
   if (watchlist && members.length > 0) {
     const read = readWatchlistArgument(rawInput, watchlist, members, reading?.maximum);

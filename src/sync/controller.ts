@@ -52,6 +52,7 @@ const OBSERVE_DEBOUNCE_MS = 250;
 const MAX_CONFLICT_RETRIES = 3;
 const SYNC_HISTORY_UNREADABLE = "This device's sync history could not be read, so sync is paused and local data is kept.";
 const SYNC_HISTORY_UNSAVED = "This device's sync history could not be saved, so sync is paused until it can be.";
+const SYNC_COLLECT_FAILED = "This device's changes could not be gathered, so they were not synced.";
 
 /** Merge history storage refused to write; kept here to write again, and read instead of the older stored copy. */
 interface UnsavedHistory {
@@ -244,8 +245,13 @@ export class CloudSyncController {
     if (this.pushTimer) clearTimeout(this.pushTimer);
     this.pushTimer = setTimeout(() => {
       this.pushTimer = null;
-      void this.requestSync({ reason });
+      this.startSync({ reason });
     }, PUSH_DEBOUNCE_MS);
+  }
+
+  /** A sync nobody waits on. Its failures end in the status; anything that escapes is logged. */
+  startSync(options: { reason?: string; force?: boolean } = {}): void {
+    this.requestSync(options).catch(logFailure("sync.controller", "Sync failed"));
   }
 
   async requestSync(options: { reason?: string; force?: boolean } = {}): Promise<void> {
@@ -308,7 +314,16 @@ export class CloudSyncController {
       const pulled = await this.runPull(runtime, transport, generation, sessionIdentity);
       if (!pulled || !this.isCurrent(runtime, transport, generation, sessionIdentity)) return;
 
-      const snapshot = await this.assembleSnapshot(runtime, generation, sessionIdentity);
+      let snapshot: SyncSnapshot | null;
+      try {
+        snapshot = await this.assembleSnapshot(runtime, generation, sessionIdentity);
+      } catch (error) {
+        // Nothing is pushed: the pull's "synced" no longer holds for this device's changes.
+        logFailure("sync.controller", "Collect sync contributor data failed")(error);
+        if (!this.isCurrent(runtime, transport, generation, sessionIdentity)) return;
+        this.setStatus({ phase: "error", transportId: transport.id, error: SYNC_COLLECT_FAILED });
+        return;
+      }
       if (!snapshot || !this.isCurrent(runtime, transport, generation, sessionIdentity)) return;
       const signature = snapshotContentSignature(snapshot);
       if (!options.force && signature === this.lastSignature) return;

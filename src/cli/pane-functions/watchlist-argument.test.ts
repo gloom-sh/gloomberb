@@ -36,3 +36,26 @@ test("a list function given a watchlist's name reads its symbols, at most the fu
   expect(many.arg?.split(", ").length).toBe(60);
   expect(many.listingNotes?.[0]).toBe("Read HY3 as watchlist HY3 (70 symbols); the first 60 are read.");
 });
+
+test("a watchlist's listings abroad are read with their venue, so they are not the US lines of the same symbols", async () => {
+  // `fn RV Watchlist --csv` printed ASML and 2330, where typed symbols read ASML:AMS and 2330:TWSE.
+  const saved = [
+    createTestTicker("NVDA", "NVIDIA", { watchlists: ["semis"] }),
+    // Saved by its MIC, as a broker import names it: read by the code RV and `compare` print.
+    createTestTicker("ASML:XAMS", "ASML Holding", { exchange: undefined, currency: "EUR", watchlists: ["semis"] }),
+    createTestTicker("2330", "TSMC", { exchange: "TWSE", currency: "TWD", watchlists: ["semis"] }),
+    // A vendor's suffix, read as the listing it names.
+    createTestTicker("005930.KS", "Samsung Electronics", { exchange: undefined, currency: "KRW", watchlists: ["semis"] }),
+    createTestTicker("ES=F", "E-mini S&P 500", { exchange: "CME", watchlists: ["semis"] }),
+  ];
+  const context = {
+    config: { ...createDefaultConfig("/tmp/watchlist-argument-test"), watchlists: [{ id: "semis", name: "Semis" }] },
+    store: { loadTicker: async (symbol: string) => saved.find((ticker) => ticker.metadata.ticker === symbol) ?? null, loadAllTickers: async () => saved },
+    dataProvider: createTestDataProvider({ search: async () => [], getQuote: async (symbol) => createTestQuote({ symbol }) }),
+  } as unknown as MarketContext;
+  // A list function that reads listings abroad too, as RV does.
+  const anyListing: PaneTemplateDef = { ...template, headless: { ...shortWatchHeadless, usListingsOnly: undefined } };
+  const catalog: PaneFunctionCatalog = { ...registry, paneTemplates: new Map([[anyListing.id, anyListing]]) };
+  const read = await applyListingArgument(catalog, context, parsePaneFunctionArgs(["SIW", "Semis"], {}));
+  expect(read.arg?.split(", ")).toEqual(["NVDA", "ASML:AMS", "2330:TWSE", "005930:KRX", "ES=F"]);
+});

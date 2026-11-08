@@ -1,4 +1,5 @@
 import { logFailure } from "../../utils/log-failure";
+import { ebitdaLacksDepreciation } from "../../utils/ebitda";
 import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../utils/reported-money";
 import {
@@ -226,7 +227,8 @@ function buildStatementMetrics(
     ["Net Income", netIncome],
     ["Income incl. NCI", income(statement.netIncomeIncludingNoncontrollingInterests)],
     ["Income Common", income(statement.netIncomeCommonStockholders)],
-    ["EBITDA", money(statement.ebitda)],
+    // Operating income plus D&A; without D&A there is none, and the line says why.
+    ["EBITDA", ebitdaLacksDepreciation(statement) ? "no D&A" : money(statement.ebitda)],
     ["Operating Cash Flow", money(statement.operatingCashFlow)],
     ["Free Cash Flow", money(statement.freeCashFlow)],
     ["Cash", balance("cashAndCashEquivalents")],

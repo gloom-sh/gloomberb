@@ -101,6 +101,9 @@ const rpc = Electroview.defineRPC<ElectrobunDesktopRpcSchema>({
       "desktop.windowVisibility": (message) => {
         emit("desktop.windowVisibility", { visible: message?.visible !== false });
       },
+      "desktop.saveFailed": () => {
+        emit("desktop.saveFailed", {});
+      },
       "update.progress": (message) => {
         emit("update.progress", { progress: decodeRpcValue(message.progress) });
       },

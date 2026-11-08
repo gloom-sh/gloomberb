@@ -30,6 +30,7 @@ import {
   getPaneSidebarWidth,
   IconButton,
   MessageComposer,
+  PaneStatusBody,
   Prose,
   shouldShowPaneSidebar,
   usePaneFooter,
@@ -706,6 +707,10 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   // The expanded result's rows have the keyboard: j/k walk them and Enter
   // opens one. x moves in, Esc comes back to the timeline.
   const [resultFocused, setResultFocused] = useState(false);
+  // A conversation that could not be loaded: its failure takes the body until
+  // anything else is opened or asked.
+  const [openFailure, setOpenFailure] = useState<{ conversationId: string; message: string } | null>(null);
+  const openRequestRef = useRef(0);
 
   const conversations = useSyncExternalStore(
     useCallback((listener) => askgConversationListStore.subscribe(listener), []),
@@ -798,11 +803,19 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   // With a pane attached, the question in the field is about it; the examples are not.
   const examples = attached ? NO_EXAMPLES : profileExamples;
 
+  // Anything opened or asked since takes the body back from a conversation
+  // that failed to load, and a load still out no longer shows its failure.
+  const dropOpenFailure = useCallback(() => {
+    openRequestRef.current += 1;
+    setOpenFailure(null);
+  }, []);
+
   const ask = useCallback((question: string) => {
     const trimmed = question.trim();
     if (!trimmed) return;
+    dropOpenFailure();
     void controller.ask(trimmed);
-  }, [controller]);
+  }, [controller, dropOpenFailure]);
 
   const focusInput = useCallback(() => {
     setInputFocused(true);
@@ -831,9 +844,10 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     if (focusedRef.current) focusInput();
   }, [ask, focusInput]);
   const retryAndCompose = useCallback((turnId: string) => {
+    dropOpenFailure();
     void controller.retryTurn(turnId);
     if (focusedRef.current) focusInput();
-  }, [controller, focusInput]);
+  }, [controller, dropOpenFailure, focusInput]);
 
   const resetTimeline = useCallback(() => {
     setSelectedId(null);
@@ -841,14 +855,29 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     setOpenGroups(new Set());
     setExampleIndex(null);
     setFeedbackFollowUpTurnId(null);
-  }, []);
+    dropOpenFailure();
+  }, [dropOpenFailure]);
 
-  const openConversation = useCallback(async (conversationId: string) => {
-    setSidebarFocused(false);
-    setSidebarCursorId(null);
-    if (focusedRef.current) focusInput();
-    if (conversationId === state.conversationId) return;
-    const conversation = await apiClient.askg.loadConversation(conversationId);
+  /** Loads a conversation into the body; one that cannot be loaded leaves its failure there. */
+  const showConversation = useCallback(async (conversationId: string) => {
+    if (conversationId === state.conversationId) {
+      dropOpenFailure();
+      return;
+    }
+    const request = ++openRequestRef.current;
+    let conversation: Awaited<ReturnType<typeof apiClient.askg.loadConversation>>;
+    try {
+      conversation = await apiClient.askg.loadConversation(conversationId);
+    } catch (error) {
+      logFailure("cloud.askg.pane", "Load a conversation failed")(error);
+      if (request !== openRequestRef.current) return;
+      resetTimeline();
+      setOpenFailure({
+        conversationId,
+        message: error instanceof Error && error.message ? error.message : "Could not load this conversation.",
+      });
+      return;
+    }
     // A row the sidebar still shows may be gone; the refresh drops it.
     if (!conversation) {
       void askgConversationListStore.refresh();
@@ -857,7 +886,14 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     resetTimeline();
     setAttached(null);
     controller.openConversation(conversation);
-  }, [controller, focusInput, resetTimeline, setAttached, state.conversationId]);
+  }, [controller, dropOpenFailure, resetTimeline, setAttached, state.conversationId]);
+
+  const openConversation = useCallback((conversationId: string) => {
+    setSidebarFocused(false);
+    setSidebarCursorId(null);
+    if (focusedRef.current) focusInput();
+    showConversation(conversationId).catch(logFailure("cloud.askg.pane", "Open a conversation failed"));
+  }, [focusInput, showConversation]);
 
   const newConversation = useCallback(() => {
     resetTimeline();
@@ -1499,7 +1535,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         consume();
         const target = sidebarTargetId;
         leaveSidebar();
-        if (target) void openConversation(target);
+        if (target) openConversation(target);
         else focusInput();
       } else if (isPlainKey(event, "j", "down")) {
         consume();
@@ -1896,7 +1932,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
           height={height}
           focused={focused}
           keyboardFocused={focused}
-          onSelect={(conversationId) => void openConversation(conversationId)}
+          onSelect={openConversation}
           onFocusRequest={() => {
             if (inputFocused) blurInput();
             setResultFocused(false);
@@ -1924,7 +1960,13 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         onMouseDown={() => setSidebarFocused(false)}
       >
       <ScrollBox ref={scrollRef} flexGrow={1} minHeight={0} scrollY focusable={false} paddingX={1}>
-        {state.turns.length === 0 ? (
+        {openFailure ? (
+          <PaneStatusBody
+            subject="Conversation"
+            error={openFailure.message}
+            retry={{ onRetry: () => showConversation(openFailure.conversationId) }}
+          />
+        ) : state.turns.length === 0 ? (
           <ASKGWelcome
             examples={examples}
             width={contentWidth}

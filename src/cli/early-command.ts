@@ -18,6 +18,8 @@ export async function dispatchEarlyCommand(args: string[]): Promise<boolean> {
   }
   const token = foldTypedText(parsed.args[0] ?? "").trim().toLowerCase();
   if (token !== versionCommand.name && !versionCommand.aliases?.includes(token)) return false;
+  // A file to write is the regular dispatcher's to save.
+  if (parsed.options.output !== undefined) return false;
   const options = parsed.options;
   setCliColorEnabledOverride(options.color);
   setCliWidthOverride(options.width ?? null);

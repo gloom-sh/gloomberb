@@ -105,4 +105,6 @@ export interface DesktopWindowBridge {
   subscribeState(listener: (snapshot: DesktopSharedStateSnapshot) => void): () => void;
   subscribeDockPreview?(listener: (preview: DesktopDockPreviewState) => void): () => void;
   subscribeThemePreview?(listener: (preview: DesktopThemePreviewState) => void): () => void;
+  /** A window change the desktop app could not save (a window closed, a pane docked or moved), in the main window. */
+  subscribeSaveFailures?(listener: () => void): () => void;
 }

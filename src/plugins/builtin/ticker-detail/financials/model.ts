@@ -1,4 +1,5 @@
 import type { FinancialStatement, TickerFinancials } from "../../../../types/financials";
+import { ebitdaLacksDepreciation } from "../../../../utils/ebitda";
 import { fiscalPeriodLabel, ttmPeriodLabel } from "../../../../utils/fiscal-period";
 import { formatPerShareNumber } from "../../../../utils/reported-money";
 import { hasNonIncomeStatementGap } from "../../../../utils/statement-gaps";
@@ -193,8 +194,11 @@ function formatFinancialGrowth(growth: number): string {
 
 export function formatFinancialValue(
   value: number | undefined,
-  row: Pick<FinancialTableRow, "format" | "divisor">,
+  row: Pick<FinancialTableRow, "format" | "divisor"> & { key?: string },
+  statement?: FinancialStatement,
 ): string {
+  // EBITDA is operating income plus D&A: a period that reports no D&A has none, and its cell says why.
+  if ((value == null || !Number.isFinite(value)) && row.key === "ebitda" && ebitdaLacksDepreciation(statement)) return "no D&A";
   if (value == null || !Number.isFinite(value)) return "—";
   if (row.format === "eps") return formatPerShareNumber(value);
   if (row.format === "percent") return `${formatNumber(value * 100, 1)}%`;
@@ -641,7 +645,7 @@ export function buildFinancialTableModel(
         || !canCompareFinancialRow(row, statement, previous, comparisonCurrency)
         ? undefined : computeGrowth(value, previousValue);
       return {
-        ...formatFinancialCell(formatFinancialValue(value, row), growth),
+        ...formatFinancialCell(formatFinancialValue(value, row, statement), growth),
         value,
         growth,
         semanticGrowth: semanticGrowthValue(growth, row.growthDirection),

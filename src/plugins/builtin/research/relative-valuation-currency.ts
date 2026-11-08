@@ -93,6 +93,37 @@ export function convertMarketCaps<Row extends CapRow>(
   };
 }
 
+/**
+ * Every row's mean analyst target in `target`, at the rates the caps convert
+ * at (convertMarketCaps): `targetMeanNative` and `targetNativeCurrency` keep
+ * the target as served. A currency with no usable rate keeps its targets.
+ */
+export function convertTargets<Row extends { symbol: string; targetMean?: unknown; targetCurrency?: unknown }>(
+  rows: readonly Row[],
+  target: string,
+  rates: ReadonlyMap<string, UsdRate>,
+): { rows: Row[]; conversions: CapConversion[]; unconverted: Array<{ currency: string; symbols: string[] }> } {
+  const amounts = convertMarketCaps(rows.map((row) => ({
+    symbol: row.symbol,
+    marketCap: typeof row.targetMean === "number" && Number.isFinite(row.targetMean) ? row.targetMean : null,
+    marketCapCurrency: typeof row.targetCurrency === "string" && row.targetCurrency ? row.targetCurrency : null,
+  })), target, rates);
+  return {
+    rows: rows.map((row, index) => {
+      const converted = amounts.rows[index]!;
+      return converted.marketCapNative === undefined ? row : {
+        ...row,
+        targetMean: converted.marketCap,
+        targetCurrency: converted.marketCapCurrency,
+        targetMeanNative: converted.marketCapNative,
+        targetNativeCurrency: converted.marketCapNativeCurrency,
+      };
+    }),
+    conversions: amounts.conversions,
+    unconverted: amounts.unconverted,
+  };
+}
+
 /** A rate as a dealer quotes it: `EUR/USD 1.1612`, `USD/JPY 151.20`; a cross of two other currencies as `from/to`. */
 export function conversionPairText({ from, to, rate }: Pick<CapConversion, "from" | "to" | "rate">): string {
   const figure = (value: number) => value.toPrecision(5);

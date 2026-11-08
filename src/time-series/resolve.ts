@@ -1181,8 +1181,8 @@ async function resolveChartSpecPass(
     if (entry.warning) warnings.push(`${entry.label}: ${entry.warning}`);
     if (entry.points.length === 0 && entry.unreportedPeriod) {
       warnings.push(`${entry.label}: no ${entry.unreportedPeriod} figures are reported; annual figures are available.`);
-    } else if (entry.points.length === 0 && !entry.warning?.startsWith(VALUATION_CURRENCY_WARNING_PREFIX)) {
-      // A currency mismatch already explains an empty valuation series.
+    } else if (entry.points.length === 0 && !entry.notMeaningful && !entry.warning?.startsWith(VALUATION_CURRENCY_WARNING_PREFIX)) {
+      // A currency mismatch or an N/M already explains an empty valuation series.
       warnings.push(`${entry.label}: no observations in the selected date range.`);
     }
   }

@@ -1,9 +1,11 @@
 import { useLayoutEffect, useRef, useState } from "react";
 
 /** Fit partially covered cells into their remaining area, retaining text ellipses. */
-export function useFrozenColumnInsets(enabled: boolean, scrollLeft: number, viewportWidth: number, columns: unknown, gap: number) {
+export function useFrozenColumnInsets(frozen: boolean, scrollLeft: number, viewportWidth: number, columns: unknown, gap: number) {
   const ref = useRef<HTMLDivElement>(null);
   const [insets, setInsets] = useState<number[]>([]);
+  // Unscrolled, no column is under the frozen one and every inset is 0: a resize measures nothing.
+  const enabled = frozen && scrollLeft > 0;
   useLayoutEffect(() => {
     const cells = ref.current?.children;
     if (!enabled || !cells?.length) {

@@ -1,7 +1,7 @@
 import type { ScreenDefinition, ScreenRow } from "../../../api-client/equity-screener";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import type { TickerFinancials } from "../../../types/financials";
-import { isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
+import { canonicalTickerKey, isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { errorMessage } from "../../../utils/errors";
 import { isRecord } from "../../../utils/guards";
 import { formatTickerListInput } from "../../../tickers/list";
@@ -364,7 +364,7 @@ export function peerMethodTitle(selection: PeerSelection, { automatic = false }:
 export function relativeValuationTitle(symbols: readonly string[], selection: PeerSelection | null): string {
   return selection
     ? `RV ${selection.subject} + ${peerMethodTitle(selection, { automatic: true })}`
-    : `RV ${formatTickerListInput([...symbols])}`;
+    : `RV ${formatTickerListInput(symbols.map((symbol) => canonicalTickerKey(symbol)))}`;
 }
 
 function screenSymbol(row: ScreenRow): string {

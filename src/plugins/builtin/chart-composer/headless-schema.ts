@@ -202,6 +202,8 @@ export const paneSchemas = {
           { value: "operatingMargin", aliases: ["operating margin"] },
           { value: "netIncome", aliases: ["net income", "profit", "earnings"] },
           { value: "netMargin", aliases: ["net margin", "profit margin"] },
+          { value: "ebitda", aliases: ["ebitda", "operating income plus d&a"] },
+          { value: "depreciationAndAmortization", aliases: ["d&a", "da", "depreciation", "depreciation and amortization"] },
           { value: "operatingCashFlow", aliases: ["operating cash flow", "cash flow", "ocf"] },
           { value: "freeCashFlow", aliases: ["free cash flow", "fcf"] },
           { value: "freeCashFlowMargin", aliases: ["free cash flow margin", "fcf margin"] },

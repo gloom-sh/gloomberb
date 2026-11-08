@@ -124,5 +124,8 @@ export function createDesktopWindowBridge(kind: "main" | "detached", paneId?: st
         listener(message.preview);
       });
     },
+    subscribeSaveFailures: kind === "main"
+      ? (listener: () => void) => onBackendMessage("desktop.saveFailed", () => listener())
+      : undefined,
   };
 }

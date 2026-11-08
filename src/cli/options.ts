@@ -19,6 +19,14 @@ export interface CliGlobalOptions {
   refresh: boolean;
   dryRun: boolean;
   yes: boolean;
+  /**
+   * `--output <path>` (or `--out`): the file a `--csv`, `--json` or
+   * `--ndjson` export is written to, in UTF-8, in place of stdout. A shell's
+   * redirect is not always UTF-8: Windows PowerShell 5.1 writes `>` as
+   * UTF-16. `fn`, `shot` and a plugin command that declares its own
+   * `--output` read the flag themselves.
+   */
+  output?: string;
 }
 
 export interface ParsedCliArgs {
@@ -55,6 +63,8 @@ function parseRowCount(flag: "--limit" | "--tail", value: string | undefined): n
 
 /** Commands whose own `--width` is a size in pixels, so it is not the table width. */
 const PIXEL_WIDTH_COMMANDS = new Set(["shot", "screenshot"]);
+/** Commands whose own `--output` names their file: a function's report, a capture's PNG. */
+const OWN_OUTPUT_COMMANDS = new Set(["fn", "function", "shot", "screenshot"]);
 const MIN_TABLE_WIDTH = 20;
 
 function parseColumnCount(value: string | undefined): number {
@@ -65,23 +75,44 @@ function parseColumnCount(value: string | undefined): number {
   return parsed;
 }
 
+function parseOutputFile(value: string | undefined): string {
+  if (!value?.trim() || value.startsWith("--")) throw new Error("--output needs a file to write, such as --csv --output report.csv.");
+  return value;
+}
+
 /** The first word that is not an option or the value of one: the command the arguments are for. */
 function commandWord(rawArgs: readonly string[]): string | undefined {
   for (let index = 0; index < rawArgs.length; index += 1) {
     const arg = rawArgs[index]!;
     if (arg === "--") return rawArgs[index + 1];
-    if (arg === "--limit" || arg === "--tail" || arg === "--width") index += 1;
+    if (arg === "--limit" || arg === "--tail" || arg === "--width" || arg === "--output" || arg === "--out") index += 1;
     else if (!arg.startsWith("-")) return arg;
   }
   return undefined;
 }
 
-export function parseCliGlobalArgs(rawArgs: string[]): ParsedCliArgs {
+/**
+ * Whether a command reads `--output` itself: `fn` and `shot`, and a plugin
+ * command whose options declare one. The global flag yields to it.
+ */
+export function commandOwnsOutput(command: { name: string; help?: { options?: readonly { flags: string }[] } }): boolean {
+  return OWN_OUTPUT_COMMANDS.has(command.name.toLowerCase())
+    || (command.help?.options ?? []).some((option) => /(^|[\s,])--(output|out)\b/.test(option.flags));
+}
+
+/**
+ * The global flags out of `rawArgs`. `ownsOutput` says the command reads
+ * `--output` itself (commandOwnsOutput), which a built-in's name tells
+ * before its plugin is loaded; `deferOutputCheck` leaves refusing `--output`
+ * without an export format to `checkCliOutputFormat`, once that is known.
+ */
+export function parseCliGlobalArgs(rawArgs: string[], settings: { ownsOutput?: boolean; deferOutputCheck?: boolean } = {}): ParsedCliArgs {
   const options: CliGlobalOptions = { ...DEFAULT_CLI_OPTIONS };
   const args: string[] = [];
   let help = false;
   let literalStart: number | null = null;
   const ownsWidth = PIXEL_WIDTH_COMMANDS.has(commandWord(rawArgs)?.toLowerCase() ?? "");
+  const ownsOutput = settings.ownsOutput ?? OWN_OUTPUT_COMMANDS.has(commandWord(rawArgs)?.toLowerCase() ?? "");
 
   for (let index = 0; index < rawArgs.length; index += 1) {
     const arg = rawArgs[index]!;
@@ -143,6 +174,15 @@ export function parseCliGlobalArgs(rawArgs: string[]): ParsedCliArgs {
       options.width = parseColumnCount(arg.slice("--width=".length));
       continue;
     }
+    if (!ownsOutput && (arg === "--output" || arg === "--out")) {
+      index += 1;
+      options.output = parseOutputFile(rawArgs[index]);
+      continue;
+    }
+    if (!ownsOutput && (arg.startsWith("--output=") || arg.startsWith("--out="))) {
+      options.output = parseOutputFile(arg.slice(arg.indexOf("=") + 1));
+      continue;
+    }
     if (arg === "--limit" || arg === "--tail") {
       index += 1;
       options[arg === "--limit" ? "limit" : "tail"] = parseRowCount(arg, rawArgs[index]);
@@ -162,5 +202,14 @@ export function parseCliGlobalArgs(rawArgs: string[]): ParsedCliArgs {
     throw new Error("Use --limit or --tail, not both: --limit keeps the first rows, --tail the newest.");
   }
 
-  return { args, options, help, literalStart: literalStart ?? args.length };
+  const parsed = { args, options, help, literalStart: literalStart ?? args.length };
+  if (!settings.deferOutputCheck) checkCliOutputFormat(parsed);
+  return parsed;
+}
+
+/** `--output` writes an export: refused without --csv, --json or --ndjson. */
+export function checkCliOutputFormat(parsed: Pick<ParsedCliArgs, "options" | "help">): void {
+  if (parsed.options.output !== undefined && parsed.options.format === "text" && !parsed.help) {
+    throw new Error("--output writes an export: add --csv, --json or --ndjson, such as --csv --output report.csv.");
+  }
 }

@@ -70,6 +70,7 @@ import { listingSuffixCandidate, listingSuffixVenue, tickerHasListingSuffix } fr
 import { isCurrencyPairListing } from "../utils/fx-market-hours";
 import { coinElsewhereNote, notTheCoinNote } from "./commands/crypto-hints";
 import { fredSeriesArgument, fredSeriesNotListing } from "../series/fred-argument";
+import { commandWord } from "../utils/shell-word";
 
 /** The `--exchange` option of every command that takes a ticker. */
 export const EXCHANGE_OPTION = {
@@ -654,9 +655,9 @@ interface OtherListingsMessage {
  * --range 5Y` keeps the options. Null where the request names listings alone.
  */
 function retryCommand(request: Pick<ListingDataRequest, "command" | "retry">, key: string): string | null {
-  if (request.retry !== undefined) return request.retry?.(key) ?? null;
+  if (request.retry !== undefined) return request.retry?.(commandWord(key)) ?? null;
   const [command, ...options] = request.command.split(" ");
-  return ["gloom", command, key, ...options].join(" ");
+  return ["gloom", command, commandWord(key), ...options].join(" ");
 }
 
 /**
@@ -1745,8 +1746,9 @@ export function listingFields(saved: Pick<SavedListingName, "key" | "symbol" | "
 
 /** The listing a saved ticker row is, as a collection command names it after adding or removing it. */
 export function savedListingName(ticker: TickerRecord): SavedListingName {
-  const { symbol } = parsePublicTickerKey(ticker.metadata.ticker);
-  const exchange = canonicalExchange(ticker.metadata.exchange);
+  const { symbol, exchange: stored } = parsePublicTickerKey(ticker.metadata.ticker);
+  // A row stored under its venue (ASML:XAMS) with none beside it is that venue's listing.
+  const exchange = canonicalExchange(ticker.metadata.exchange) || stored || "";
   const key = exchange ? `${symbol}:${exchange}` : symbol;
   // A row saved without a company carries its symbol as the name.
   const typed = ticker.metadata.name?.trim();

@@ -25,12 +25,15 @@ const option = watched("AAPL261218C00300000", "OPR", "OPTION");
 const brentPrice = watched("BZ-USD", "CCC", "CRYPTOCURRENCY", { name: "Brent Oil (Derivatives) USD" });
 const perpetual = watched("BZUSDT", "BINANCE", "PERP", { name: "BZ perpetual", currency: "USDT" });
 const halted = watched("SIVB", "NASDAQ", "STK");
+// Saved by its MIC, as a broker import names it.
+const abroad = watched("ASML:XAMS", "", "STK", { currency: "EUR" });
 
 const quotes: Record<string, Quote> = {
   XOM: createTestQuote({ symbol: "XOM", price: 120, change: 1.2, changePercent: 1, marketCap: 500e9 }),
   AAPL261218C00300000: createTestQuote({ symbol: "AAPL261218C00300000", price: 41.27, change: -4.9, changePercent: -10.6, name: "AAPL261218C00300000", instrumentType: "OPTION" }),
   "BZ-USD": createTestQuote({ symbol: "BZ-USD", price: 101.85, change: 0.37, changePercent: 0.36, marketCap: 0, instrumentType: "CRYPTOCURRENCY" }),
   BZUSDT: createTestQuote({ symbol: "BZUSDT", price: 101.48, currency: "USDT", change: -1, changePercent: -0.98, instrumentType: "PERP", listingExchangeName: "BINANCE" }),
+  "ASML:XAMS": createTestQuote({ symbol: "ASML", price: 1_283.6, currency: "EUR", change: 33.6, changePercent: 2.69, listingExchangeName: "AMS" }),
   // Its last trade was on the 9th; the source last refreshed the quote a day later.
   SIVB: createTestQuote({ symbol: "SIVB", price: 106.04, stale: true, listingExchangeName: "NASDAQ",
     lastTradeTime: Date.parse("2023-03-09T20:00:00Z"), lastUpdated: Date.parse("2023-03-10T14:00:00Z") }),
@@ -67,6 +70,18 @@ test("a market cap of zero prints a dash, as a missing one does, never 0 USD", a
   expect(line("BZ-USD")).not.toContain("USD  ");
   expect(line("BZ-USD")).toMatch(/ — *$/);
   expect(rows.find((row) => row.symbol === "BZ-USD")).toMatchObject({ marketCap: null });
+});
+
+// `watchlist show --csv` wrote ASML beside the US lines' bare symbols: a join on it met the US ADR.
+test("a listing abroad is exported by the code RV and compare print, whatever it was saved as", async () => {
+  const { rows } = await show([stock, abroad]);
+  expect(rows.map((row) => row.symbol).sort()).toEqual(["ASML:AMS", "XOM"]);
+  const market = { config, store: { loadAllTickers: async () => [stock, abroad] },
+    dataProvider: createTestDataProvider({ getQuote: async (symbol) => quotes[symbol]! }) };
+  const cli = createTestCliContext(market, { format: "csv" });
+  await showCollection("Mix", cli.context);
+  const csv = serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, cli.printed[0]!.options).split("\n");
+  expect(csv.find((line) => line.startsWith("ASML"))).toStartWith("ASML:AMS,ASML:AMS,");
 });
 
 test("an option contract is named by its terms where its saved name is only its code", async () => {

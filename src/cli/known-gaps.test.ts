@@ -330,7 +330,7 @@ test("DeFi words find CRYP and name its DeFi list; exchange reserves are said pl
 });
 
 test("export, csv and json name the --csv and --json flags with one example, ahead of what the words find; trade exports do not", async () => {
-  const line = "Export: add --csv or --json to any command to print its result as CSV or JSON, e.g. gloom history LMT --csv > lmt.csv";
+  const line = "Export: add --csv or --json to any command to print its result as CSV or JSON, and --output <file> to write it to a file in UTF-8, e.g. gloom history LMT --csv --output lmt.csv";
   for (const query of ["export", "csv", "JSON", "export data", "export to excel", "save as csv"]) {
     expect(commandPointer(query), query).toBe(line);
     expect(commandPointerLeads(query), query).toBe(true);
@@ -339,7 +339,9 @@ test("export, csv and json name the --csv and --json flags with one example, ahe
   expect(commandPointer("crude exports")).toBeNull();
   // `gloom export LMT` runs the example on the symbol typed; another unknown word gets no export line.
   expect(exportCommandPointer("export", ["LMT"])).toBe(line);
-  expect(exportCommandPointer("export", ["BRK.B", "--json"])).toContain("gloom history BRK.B --csv > brk-b.csv");
+  expect(exportCommandPointer("export", ["BRK.B", "--json"])).toContain("gloom history BRK.B --csv --output brk-b.csv");
+  // A ^ symbol is quoted, which cmd.exe would otherwise drop.
+  expect(exportCommandPointer("export", ["^SPX"])).toContain('gloom history "^SPX" --csv --output spx.csv');
   expect(exportCommandPointer("comps", ["LMT"])).toBeNull();
   const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
   const registry = await createPaneCatalog(context, getLoadablePlugins());

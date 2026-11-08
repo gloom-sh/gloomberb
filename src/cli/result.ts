@@ -3,6 +3,7 @@ import {
   cliPlainEnabled,
   cliStyles,
   cliTerminalWidth,
+  renderForFile,
   renderStats,
   renderTable,
   statValueWidth,
@@ -624,6 +625,19 @@ function renderTextRows<T, Row extends Record<string, unknown>>(
     : renderTextTable(rows as Row[], columns, renderOptions.rowNote);
 }
 
+/** What `printCliResult` drew for the file `--output` names, since `takeCliFileExport` last took it. */
+let fileExport: string[] = [];
+
+/**
+ * The export a command printed for its `--output` file, or null when it
+ * printed none: the text the file is written with (dispatchCli).
+ */
+export function takeCliFileExport(): string | null {
+  const taken = fileExport.filter(Boolean);
+  fileExport = [];
+  return taken.length > 0 ? taken.join("\n") : null;
+}
+
 /** Settles once the result `printCliResult` last wrote has left the process: a pipe can hold it back. */
 let stdoutWritten: Promise<void> = Promise.resolve();
 
@@ -661,13 +675,18 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
   if (options.quiet && options.format === "text") return;
   // JSON keeps the router's own words; everything else is for a person, so a "Not a ticker" gets its hint.
   const hinted = (text: string) => options.format === "json" ? text : withSearchHints(text, args, isFredSeries);
-  const serialized = hinted(serializeCliResult(result, options, renderOptions));
+  // An export `--output` names is drawn for the file (no colour), and held for the command's end to write.
+  const toFile = options.output !== undefined && options.format !== "text";
+  const serialized = hinted(toFile
+    ? renderForFile(() => serializeCliResult(result, options, renderOptions))
+    : serializeCliResult(result, options, renderOptions));
   // A CSV's closing source and note lines go to stderr with the warnings: in the file they are rows of junk to a spreadsheet.
   const { csv, footer } = options.format === "csv" ? splitCsvFooter(serialized) : { csv: serialized, footer: [] };
   const output = csv;
+  if (toFile) fileExport.push(output);
   // Bun's console writer can truncate a large pipe write after stdout has been
   // initialized. The stream queues the remaining bytes until the reader drains.
-  if (output && !process.stdout.write(`${output}\n`)) {
+  else if (output && !process.stdout.write(`${output}\n`)) {
     stdoutWritten = new Promise((resolve) => process.stdout.once("drain", () => resolve()));
   }
   // JSON carries warnings in its envelope. Text, CSV and NDJSON are only the

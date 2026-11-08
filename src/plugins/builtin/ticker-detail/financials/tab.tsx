@@ -385,7 +385,7 @@ export function ResolvedFinancialsTab({
     const growth = (row.kind === "metric" && !row.showGrowth)
       || !canCompareFinancialRow(row, column.statement, previous, comparisonCurrency)
       ? undefined : computeGrowth(value, previousValue);
-    const formattedValue = formatFinancialValue(value, row);
+    const formattedValue = formatFinancialValue(value, row, column.statement);
     const cell = formatFinancialCell(formattedValue, growth);
     const growthColorValue = semanticGrowthValue(growth, row.growthDirection);
 

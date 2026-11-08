@@ -141,6 +141,43 @@ export function tableColumnStarts(columns: readonly TableWidthColumn[], columnGa
   return starts;
 }
 
+/** The narrowest first column that names its row: a short ticker. A rank (`#`) or a status dot is narrower. */
+const ROW_LABEL_MIN_WIDTH = 4;
+
+/**
+ * Whether a table pins its first column while it scrolls sideways. A table
+ * that sets `freezeFirstColumn` gets what it set; one that leaves it unset
+ * pins its first column while it is too wide for its viewport (`overflows`)
+ * and that column leaves the others at least half the viewport, so scrolled
+ * right each row still says what it is (a 70-column Relative Valuation read
+ * `4.50T 23.6 11.7` with no ticker). A first column the pane draws itself
+ * (a name beside its kind, a badge) pins as drawn. A table that fits is drawn
+ * as it always was. A first column too narrow to name its row (a rank, a
+ * status dot, a star) or wider than half would leave nothing worth pinning or
+ * too little to scroll through, so it scrolls.
+ */
+export function tableFreezesFirstColumn({
+  freezeFirstColumn,
+  columns,
+  columnGap = 1,
+  horizontalPadding = 1,
+  viewportWidth,
+  overflows,
+}: {
+  freezeFirstColumn: boolean | undefined;
+  columns: readonly TableWidthColumn[];
+  columnGap?: number;
+  horizontalPadding?: number;
+  viewportWidth: number;
+  overflows: boolean;
+}): boolean {
+  if (freezeFirstColumn !== undefined) return freezeFirstColumn;
+  const first = columns[0];
+  if (!overflows || !first || columns.length < 2 || viewportWidth <= 0) return false;
+  const width = tableColumnWidth(first);
+  return width >= ROW_LABEL_MIN_WIDTH && (horizontalPadding + width + columnGap) * 2 <= viewportWidth;
+}
+
 /**
  * Where a frozen board can stop: 0, each column's edge (its start just past
  * the frozen column) and its end, the first edge that shows the last column

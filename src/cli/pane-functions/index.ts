@@ -287,7 +287,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       }
       // The file --output names, checked before the report loads so a path that cannot be written fails at once.
       const outputPath = parsed.outputPath === null ? null : resolveOutputPath(parsed.outputPath);
-      if (outputPath) await checkOutputPath(outputPath);
+      const replacing = outputPath ? await checkOutputPath(outputPath) : false;
       if (parsed.requireBotSafe && (
         !resolved.capability.botSafe || resolved.capability.reportReadiness !== "ready"
       )) {
@@ -382,10 +382,10 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         await writeOutputFile(outputPath, `${csv}\n`);
         if (!ctx.cliOptions.quiet) for (const line of footer) console.error(line);
         // What was written and where; warnings go to stderr as they would beside printed rows, and JSON keeps its envelope.
-        const saved = { output: outputPath, format: ctx.cliOptions.format, rows: report.data.rowCount };
+        const saved = { output: outputPath, format: ctx.cliOptions.format, rows: report.data.rowCount, replaced: replacing };
         printCliResult({ data: saved, ...(warnings.length > 0 ? { warnings } : {}) },
           { ...ctx.cliOptions, format: ctx.cliOptions.format === "json" ? "json" : "text" },
-          { text: () => `Saved ${outputPath}` });
+          { text: () => `${replacing ? "Replaced" : "Saved"} ${outputPath}` });
         return;
       }
       ctx.printResult(result, render);

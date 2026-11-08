@@ -5,7 +5,7 @@ import { createOpenTuiTestHarness, type TestKeyEvent } from "../../renderers/ope
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
 import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
-import { Input } from "../../ui";
+import { Input, Text } from "../../ui";
 import { Tabs } from "../ui/tabs";
 import { DataTableView } from "./view";
 
@@ -31,8 +31,10 @@ interface Options {
   compact: boolean;
   editing: boolean;
   manyRows: boolean;
-  frozen: boolean;
+  frozen: boolean | undefined;
   tabs: boolean;
+  /** The first column drawn by the pane (`content`), not as text. */
+  drawnFirst: boolean;
   columns: typeof WIDE_ID_COLUMNS;
 }
 const DEFAULT_OPTIONS: Options = {
@@ -44,6 +46,7 @@ const DEFAULT_OPTIONS: Options = {
   manyRows: false,
   frozen: false,
   tabs: false,
+  drawnFirst: false,
   columns: WIDE_ID_COLUMNS,
 };
 const rows = [{ id: "ALPH", value: "$100M", weight: "66.7%" }];
@@ -72,7 +75,10 @@ function Harness({ initial }: { initial: Partial<Options> }) {
         sortDirection="asc"
         onHeaderClick={() => {}}
         getItemKey={(row) => row.id}
-        renderCell={(row, column) => ({ text: row[column.id as keyof typeof row] })}
+        renderCell={(row, column) => ({
+          text: row[column.id as keyof typeof row],
+          ...(options.drawnFirst && column.id === "id" ? { content: <Text>{row.id}</Text> } : {}),
+        })}
         emptyStateTitle="No rows"
         headerScrollId="horizontal-header"
         bodyScrollId="horizontal-body"
@@ -247,6 +253,40 @@ test("frozen identifiers survive keyboard, wheel, scrollbar and vertical resize 
   expect(table("body").scrollLeft).toBe(0);
   expect(table("header").scrollLeft).toBe(0);
   expect(tui.frame()).toContain("ALPH0");
+});
+
+test("a table that leaves freezing unset pins a narrow first column and lets a wide one scroll away", async () => {
+  await mount({ frozen: undefined, columns: NARROW_ID_COLUMNS });
+  await settle();
+  for (let i = 0; i < 2; i++) await key({ name: "right", shift: true });
+  expect(table("body").scrollLeft).toBeGreaterThan(0);
+  expect(tui.frame()).toContain("ALPH");
+  expect(tui.frame()).toContain("66.7%");
+  // Wide, it scrolls: a step is half the viewport, where a frozen one would stop at the value column's edge (17).
+  await act(async () => update({ columns: WIDE_ID_COLUMNS }));
+  await settle();
+  await key({ name: "left", shift: true });
+  await key({ name: "left", shift: true });
+  await key({ name: "right", shift: true });
+  expect(table("body").scrollLeft).toBe(20);
+  // A narrow first column the pane draws itself pins as drawn, once, beside the values (a supply-chain name).
+  await act(async () => update({ columns: NARROW_ID_COLUMNS, drawnFirst: true }));
+  await settle();
+  await key({ name: "left", shift: true });
+  await key({ name: "left", shift: true });
+  for (let i = 0; i < 2; i++) await key({ name: "right", shift: true });
+  expect(table("body").scrollLeft).toBeGreaterThan(0);
+  const row = tui.frame().split("\n").find((line) => line.includes("66.7%"))!;
+  expect(row.match(/ALPH/g)).toHaveLength(1);
+  expect(row.indexOf("ALPH")).toBeLessThan(row.indexOf("66.7%"));
+  // A rank leading the row does not name it: pinned, it would hold "1" beside the values while the ticker scrolled away.
+  await act(async () => update({ columns: [{ id: "id", label: "#", width: 3 }, ...NARROW_ID_COLUMNS.slice(1)], drawnFirst: false }));
+  await settle();
+  await key({ name: "left", shift: true });
+  await key({ name: "left", shift: true });
+  await key({ name: "right", shift: true });
+  expect(table("body").scrollLeft).toBe(20);
+  expect(tui.frame()).not.toContain("ALPH");
 });
 
 test("an ordinary table still scrolls its first column normally", async () => {

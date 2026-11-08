@@ -1,9 +1,10 @@
-import { describe, expect, test } from "bun:test";
-import { createInitialState } from "../core/state/app/state";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { createInitialState, type AppAction } from "../core/state/app/state";
+import * as configStore from "../data/config/store";
 import { createDefaultConfig, type AppConfig } from "../types/config";
 import type { OtherWindowTab } from "../types/desktop-window";
 import { coreConfigSyncContributor } from "./core-contributors";
-import { changesOtherWindowTabs, withOtherWindowTabs, withoutOtherWindowTabs } from "./other-window-tabs";
+import { changesOtherWindowTabs, createSyncConfigDispatch, withOtherWindowTabs, withoutOtherWindowTabs } from "./other-window-tabs";
 
 /** Home, Monitor and Macro with ids; another window holds Monitor, the main window shows Macro. */
 function setup() {
@@ -44,4 +45,26 @@ describe("cloud sync in the main desktop window", () => {
     expect(landed.activeLayoutIndex).toBe(1);
     expect(landed.layout).toBe(all[2]!.layout);
   });
+
+  test("a pulled change to another window's tab that cannot be saved is said, and the main window still takes its part", async () => {
+    const { all, others, state } = setup();
+    const save = spyOn(configStore, "saveConfig").mockRejectedValue(new Error("disk full"));
+    const dispatched: AppAction[] = [];
+    const failed = Promise.withResolvers<void>();
+    const dispatch = createSyncConfigDispatch({
+      dispatch: (action) => dispatched.push(action),
+      otherWindowTabs: () => others,
+      currentConfig: () => state.config,
+      onSaveFailure: () => failed.resolve(),
+    });
+    const pulled: AppConfig = { ...state.config, layouts: [all[0]!, { ...all[1]!, name: "Desk" }, all[2]!] };
+    dispatch({ type: "SET_CONFIG", config: pulled });
+    await failed.promise;
+    expect(save).toHaveBeenCalledWith(pulled);
+    expect(dispatched.map((action) => action.type === "SET_CONFIG" && action.config.layouts.map((entry) => entry.name))).toEqual([["Home", "Macro"]]);
+  });
+});
+
+afterEach(() => {
+  mock.restore();
 });
