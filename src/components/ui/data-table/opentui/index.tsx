@@ -28,6 +28,7 @@ import type {
   DataTableColumn,
   DataTableProps,
 } from "../types";
+import { firstColumnDrawsText } from "../render-cell";
 import { resolveDataTableScrollTop } from "../visible-range";
 import { useFocusOwningPane, useVisibleRangeEmitter } from "../hooks";
 import { useStableColumns } from "../stable-columns";
@@ -376,8 +377,15 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   } = useMeasuredTableContentWidth(tableWidth, headerScrollRef, scrollRef);
   const horizontalScrollbarVisible = showHorizontalScrollbar
     && hasMeaningfulTableHorizontalOverflow(tableWidth, measuredViewportWidth, columnGap);
+  // Asked only when a table would pin its first column, and once per rows and columns, not on every resize.
+  const firstColumnIsText = useMemo(() => {
+    let text: boolean | undefined;
+    return () => text ??= firstColumnDrawsText(items, columns, renderCell, renderSectionHeader);
+  }, [columns, items, renderCell, renderSectionHeader]);
   const freezeFirstColumn = tableFreezesFirstColumn({
     freezeFirstColumn: freezeFirstColumnProp, columns, columnGap, horizontalPadding, viewportWidth: measuredViewportWidth,
+    overflows: horizontalScrollbarVisible,
+    firstColumnIsText,
   });
   const contentWidth = fillAvailableWidth ? measuredContentWidth : tableWidth;
   const sectionWidth = measuredViewportWidth > 0 ? Math.min(contentWidth, measuredViewportWidth) : contentWidth;

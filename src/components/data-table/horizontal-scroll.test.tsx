@@ -5,7 +5,7 @@ import { createOpenTuiTestHarness, type TestKeyEvent } from "../../renderers/ope
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
 import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
-import { Input } from "../../ui";
+import { Input, Text } from "../../ui";
 import { Tabs } from "../ui/tabs";
 import { DataTableView } from "./view";
 
@@ -33,6 +33,8 @@ interface Options {
   manyRows: boolean;
   frozen: boolean | undefined;
   tabs: boolean;
+  /** The first column drawn by the pane (`content`), not as text. */
+  drawnFirst: boolean;
   columns: typeof WIDE_ID_COLUMNS;
 }
 const DEFAULT_OPTIONS: Options = {
@@ -44,6 +46,7 @@ const DEFAULT_OPTIONS: Options = {
   manyRows: false,
   frozen: false,
   tabs: false,
+  drawnFirst: false,
   columns: WIDE_ID_COLUMNS,
 };
 const rows = [{ id: "ALPH", value: "$100M", weight: "66.7%" }];
@@ -72,7 +75,10 @@ function Harness({ initial }: { initial: Partial<Options> }) {
         sortDirection="asc"
         onHeaderClick={() => {}}
         getItemKey={(row) => row.id}
-        renderCell={(row, column) => ({ text: row[column.id as keyof typeof row] })}
+        renderCell={(row, column) => ({
+          text: row[column.id as keyof typeof row],
+          ...(options.drawnFirst && column.id === "id" ? { content: <Text>{row.id}</Text> } : {}),
+        })}
         emptyStateTitle="No rows"
         headerScrollId="horizontal-header"
         bodyScrollId="horizontal-body"
@@ -263,6 +269,14 @@ test("a table that leaves freezing unset pins a narrow first column and lets a w
   await key({ name: "left", shift: true });
   await key({ name: "right", shift: true });
   expect(table("body").scrollLeft).toBe(20);
+  // A first column the pane draws itself scrolls too: the pinned column draws text.
+  await act(async () => update({ columns: NARROW_ID_COLUMNS, drawnFirst: true }));
+  await settle();
+  await key({ name: "left", shift: true });
+  await key({ name: "left", shift: true });
+  await key({ name: "right", shift: true });
+  expect(table("body").scrollLeft).toBe(20);
+  expect(tui.frame()).not.toContain("ALPH");
 });
 
 test("an ordinary table still scrolls its first column normally", async () => {

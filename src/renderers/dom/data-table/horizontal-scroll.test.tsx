@@ -14,7 +14,7 @@ import { WebDataTable } from ".";
 
 const { window: testWindow, render } = createDomTestHarness();
 
-interface LiveOptions { focused: boolean; frozen: boolean }
+interface LiveOptions { focused: boolean; frozen: boolean | undefined }
 let setOptions: (patch: Partial<LiveOptions>) => void = () => {};
 
 /** Mount DataTableView on the web DataTable; `setOptions` flips focus or the frozen column afterwards. */
@@ -144,9 +144,35 @@ test("DOM fixed axis fits covered values with ellipses and preserves selection, 
   body.scrollLeft = 48 * WEB_CELL_WIDTH; await scroll();
   expect(bodyRef.current?.scrollLeft).toBe(48);
   expect(rows[1]!.textContent).toContain("JPY");
+  // Back at the left edge nothing is under the frozen column: no inset, and a resize there measures nothing.
   body.scrollLeft = 0; await scroll();
-  expect((rows[1]!.children[3] as HTMLElement).style.paddingLeft).toBe("0px");
+  expect((rows[1]!.children[3] as HTMLElement).style.paddingLeft).toBe("");
   await act(async () => setOptions({ frozen: false }));
   expect((rows[1]!.children[0] as HTMLElement).style.position).toBe("");
   expect((rows[1]!.children[3] as HTMLElement).style.paddingLeft).toBe("");
+});
+
+test("DOM table that pins by default pins once scrolled, and draws as before at rest", async () => {
+  // The body's width is read on mount; happy-dom has no layout engine.
+  const prototype = testWindow.HTMLElement.prototype;
+  const own = Object.getOwnPropertyDescriptor(prototype, "clientWidth");
+  Object.defineProperty(prototype, "clientWidth", { configurable: true, get: () => 40 * WEB_CELL_WIDTH });
+  try {
+    const { container, body } = await renderDataTableView({
+      items: ["NVDA"],
+      columns: [{ id: "symbol", label: "TICKER", width: 6 }, ...["PE", "EV", "PS", "PB", "GM"].map(id => ({ id, label: id, width: 10, align: "right" as const }))],
+      getItemKey: (row) => row,
+      renderCell: (row, column) => ({ text: column.id === "symbol" ? row : "12.3" }),
+    }, { frozen: undefined });
+    setScrollExtent(body, 40, 62);
+    const first = () => container.querySelector('[data-gloom-role="data-table-row"]')!.children[0] as HTMLElement;
+    // Unscrolled nothing is under it: no sticky cell for a drag or resize to carry.
+    expect(first().style.position).toBe("");
+    body.scrollLeft = 12 * WEB_CELL_WIDTH;
+    await act(async () => { body.dispatchEvent(new testWindow.Event("scroll") as unknown as Event); });
+    expect(first().style.position).toBe("sticky");
+  } finally {
+    if (own) Object.defineProperty(prototype, "clientWidth", own);
+    else delete (prototype as { clientWidth?: number }).clientWidth;
+  }
 });

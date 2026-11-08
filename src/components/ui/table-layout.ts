@@ -144,10 +144,13 @@ export function tableColumnStarts(columns: readonly TableWidthColumn[], columnGa
 /**
  * Whether a table pins its first column while it scrolls sideways. A table
  * that sets `freezeFirstColumn` gets what it set; one that leaves it unset
- * pins its first column when that column leaves the others at least half the
- * viewport, so scrolled right each row still says what it is (a 70-column
- * Relative Valuation read `4.50T 23.6 11.7` with no ticker). A first column
- * wider than that would leave too little to scroll through, so it scrolls.
+ * pins its first column while it is too wide for its viewport (`overflows`)
+ * and that column leaves the others at least half the viewport, so scrolled
+ * right each row still says what it is (a 70-column Relative Valuation read
+ * `4.50T 23.6 11.7` with no ticker). A table that fits is drawn as it always
+ * was; a first column wider than that would leave too little to scroll
+ * through, and one whose cells the pane lays out itself is not drawn pinned,
+ * so those scroll.
  */
 export function tableFreezesFirstColumn({
   freezeFirstColumn,
@@ -155,17 +158,22 @@ export function tableFreezesFirstColumn({
   columnGap = 1,
   horizontalPadding = 1,
   viewportWidth,
+  overflows,
+  firstColumnIsText,
 }: {
   freezeFirstColumn: boolean | undefined;
   columns: readonly TableWidthColumn[];
   columnGap?: number;
   horizontalPadding?: number;
   viewportWidth: number;
+  overflows: boolean;
+  /** Whether the first column is drawn as text (`firstColumnDrawsText`), asked only when the rest would pin it. */
+  firstColumnIsText: () => boolean;
 }): boolean {
   if (freezeFirstColumn !== undefined) return freezeFirstColumn;
   const first = columns[0];
-  if (!first || columns.length < 2 || viewportWidth <= 0) return false;
-  return (horizontalPadding + tableColumnWidth(first) + columnGap) * 2 <= viewportWidth;
+  if (!overflows || !first || columns.length < 2 || viewportWidth <= 0) return false;
+  return (horizontalPadding + tableColumnWidth(first) + columnGap) * 2 <= viewportWidth && firstColumnIsText();
 }
 
 /**

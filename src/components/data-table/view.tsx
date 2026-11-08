@@ -14,6 +14,7 @@ import { isPlainKey, isPlainKeyboardEvent } from "../../utils/keyboard";
 import { DataTable, PaneStatusBody, type DataTableColumn, type DataTableProps, type PaneStatusBodyProps } from "../ui";
 import { useDataTableSortMenu } from "./sort-menu";
 import { tableFreezesFirstColumn, tableScrollStep } from "../ui/table-layout";
+import { firstColumnDrawsText } from "../ui/data-table/render-cell";
 import {
   TableViewFrame,
   useResetTableScroll,
@@ -700,6 +701,8 @@ export function DataTableView<
         columnGap: tableProps.columnGap,
         horizontalPadding: tableProps.horizontalPadding,
         viewportWidth,
+        overflows: true,
+        firstColumnIsText: () => firstColumnDrawsText(tableProps.items, tableProps.columns, tableProps.renderCell, tableProps.renderSectionHeader),
       }),
       scrollLeft: currentLeft,
       direction,
