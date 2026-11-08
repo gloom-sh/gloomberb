@@ -13,6 +13,7 @@ import {
   type CliTableColumn,
 } from "../utils/cli-output";
 import { serializeCsv } from "../utils/csv";
+import { logFailure } from "../utils/log-failure";
 import { formatUtcTime, isEpochMilliseconds, isZonedIsoDateTime } from "../utils/utc-time";
 import { formatFreshnessLine, withSavedCopy, type ReportFreshness } from "./pane-functions/freshness";
 import { withSearchHints, type FredSeriesCheck } from "./not-a-ticker";
@@ -645,7 +646,9 @@ const LEFT_BEHIND_EXIT_MS = 500;
  * so a process with nothing left exits first, with its own code.
  */
 export function exitLeavingReadsBehind(): void {
-  setTimeout(() => void cliOutputWritten().then(() => process.exit()), LEFT_BEHIND_EXIT_MS).unref();
+  setTimeout(() => {
+    cliOutputWritten().then(() => process.exit()).catch(logFailure("cli.result", "Exit after the report failed"));
+  }, LEFT_BEHIND_EXIT_MS).unref();
 }
 
 export function printCliResult<T, Row extends Record<string, unknown> = Record<string, unknown>>(
