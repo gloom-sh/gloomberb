@@ -14,6 +14,9 @@
 //   https://www.ice.com/publicdocs/futures_us/exchange_notices/ICE_Futures_US_Exchange_Notice-2027_Holiday_Calendar_20260604.pdf
 //   Its canola closes on Canada's holidays and its financial contracts trade most US ones; Gloom
 //   Cloud quotes neither (RS=F and DX=F are not tickers), so NYB is its softs.
+// Cboe Futures Exchange (VIX futures), the days with no regular trading hours, whose
+// extended-hours trades are booked on the next trade date:
+//   https://www.cboe.com/about/hours/us-futures/ (2026 and 2027 Futures Holiday Schedule)
 // ICE Futures Europe has no listing Gloom Cloud quotes, so no calendar.
 const CME_GROUP_CLOSURES: Record<number, readonly string[]> = {
   2026: ["01-01", "01-19", "02-16", "04-03", "05-25", "06-19", "07-03", "09-07", "11-26", "12-25"],
@@ -25,6 +28,11 @@ const ICE_US_SOFTS_CLOSURES: Record<number, readonly string[]> = {
   2027: ["01-01", "01-18", "02-15", "03-26", "05-31", "06-18", "07-05", "09-06", "11-25", "12-24"],
 };
 
+const CBOE_FUTURES_CLOSURES: Record<number, readonly string[]> = {
+  2026: ["01-01", "01-19", "02-16", "04-03", "05-25", "06-19", "07-03", "09-07", "11-26", "12-25"],
+  2027: ["01-01", "01-18", "02-15", "03-26", "05-31", "06-18", "07-05", "09-06", "11-25", "12-24"],
+};
+
 /** Closures by canonical venue code. */
 export const PUBLISHED_FUTURES_CLOSURES: Readonly<Record<string, Record<number, readonly string[]>>> = {
   CME: CME_GROUP_CLOSURES,
@@ -32,6 +40,7 @@ export const PUBLISHED_FUTURES_CLOSURES: Readonly<Record<string, Record<number, 
   NYM: CME_GROUP_CLOSURES,
   CMX: CME_GROUP_CLOSURES,
   NYB: ICE_US_SOFTS_CLOSURES,
+  CFE: CBOE_FUTURES_CLOSURES,
 };
 
 /**

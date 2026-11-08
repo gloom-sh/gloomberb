@@ -131,6 +131,17 @@ describe("buildFuturesRows search", () => {
   });
 });
 
+test("VIX futures are the board's Volatility group, found by their code, name or group, named by the month each prices", () => {
+  const vix = ["header:volatility", "VX1", "VX2"];
+  for (const query of ["VX", "vix", "VIX futures", "volatility"]) {
+    expect({ query, rows: rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, { query })) }).toEqual({ query, rows: vix });
+  }
+  const quotes = quoteMap({ VX1: { symbol: "VX1", name: "VIX Futures 1st generic, now Nov 2026" }, VX2: { symbol: "VX2", name: "VIX Futures 2nd generic, now Dec 2026" } });
+  const [, front, next] = buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, quotes, { query: "VX" });
+  expect([front, next].map((row) => row?.type === "row" ? futuresContractName(row.contract, quotes.get(row.contract.symbol)!.quote) : null))
+    .toEqual(["VIX Futures Nov 2026", "VIX Futures Dec 2026"]);
+});
+
 describe("buildFuturesRows collapse", () => {
   test("keeps a collapsed sector's header while hiding its contracts", () => {
     const rows = buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, {

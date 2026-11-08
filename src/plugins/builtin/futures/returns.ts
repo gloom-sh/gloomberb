@@ -36,6 +36,8 @@ const MONTHLY_FRONT_OFFSETS = [1, 2, 3];
  * picks among them.
  */
 export function frontContractCandidates(contract: FuturesContract, quote: Quote | null | undefined): string[] {
+  // A VIX generic (VX1) names no listed contract the history endpoints read: its row has no returns.
+  if (contract.venue === "CFE") return [];
   const named = quotedContractMonth(contract, quote);
   if (named) return [listedContractSymbol(contract, named.year, named.month)];
   if (!contract.everyMonth || !quote || !Number.isFinite(quote.lastUpdated)) return [];

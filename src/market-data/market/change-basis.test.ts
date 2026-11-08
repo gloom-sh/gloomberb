@@ -173,6 +173,24 @@ test("a future's move the Tuesday after Memorial Day is from Friday, the trade d
   expect(quoteChangeBasis(es({ changeSessionDate: "2026-05-25" }))).toEqual({ kind: "close", date: "2026-05-22" });
 });
 
+test("VX1, quoted at Cboe's settlement, moves from the CFE session before it, as CL=F does", () => {
+  // As Gloom Cloud quoted it on Sun 8 Nov 2026: Friday's 23.6945 settlement, made at 15:00 Chicago time.
+  const vx = createTestQuote({
+    symbol: "VX1", name: "VIX Futures 1st generic, now Nov 2026", instrumentType: "FUTURE", listingExchangeName: "CFE", exchangeName: "CFE",
+    price: 23.6945, change: -0.841, changePercent: -3.43, previousClose: 24.5355, previousCloseDate: "2026-11-05",
+    changeSessionDate: "2026-11-06", lastUpdated: Date.parse("2026-11-06T21:00:00Z"), priceBasis: "points",
+  });
+  const terms = { settlement: { price: 23.6945, date: "2026-11-06" }, spec: { tick: 0.05 }, deliveryMonth: "2026-11" };
+  const basis = quoteChangeBasis(vx, { terms });
+  expect(basis).toEqual({ kind: "settle", date: "2026-11-05" });
+  expect(changeBasisLabel(basis!, NOW)).toBe("vs Thu 5 Nov settle");
+  expect(quoteSettleText(vx, terms)).toBe("23.6945 (2026-11-06)");
+  // CFE had no trade date on Thanksgiving: the Friday after moves from Wednesday.
+  const friday = { ...vx, changeSessionDate: "2026-11-27", lastUpdated: Date.parse("2026-11-27T18:15:00Z") };
+  expect(quoteChangeBasis(friday, { terms: { ...terms, settlement: { price: 23.6945, date: "2026-11-27" } } }))
+    .toEqual({ kind: "settle", date: "2026-11-25" });
+});
+
 test("ICE's softs did not trade Good Friday, so Monday's coffee move is from Thursday", () => {
   const kc = createTestQuote({
     symbol: "KC=F", name: "Coffee May 26", currency: "USX", instrumentType: "FUTURE", listingExchangeName: "ICE FUTURES", exchangeName: "ICE FUTURES",
@@ -199,13 +217,14 @@ test("ICE's softs did not trade Good Friday, so Monday's coffee move is from Thu
 });
 
 test("a future on a venue without a published calendar keeps its previous close undated", () => {
-  const vx = es({ symbol: "VX=F", listingExchangeName: "CFE", exchangeName: "CFE", price: 18.5, change: 0.5, previousClose: 18 });
+  // ICE Futures Europe has no calendar here: no listing Gloom Cloud quotes trades there.
+  const brent = es({ symbol: "B=F", listingExchangeName: "ICE FUTURES EUROPE", exchangeName: "ICE FUTURES EUROPE", price: 18.5, change: 0.5, previousClose: 18 });
   const terms = { settlement: { price: 18, date: "2026-05-22" }, spec: { tick: 0.05 } };
   // A settlement the move matches is dated by the terms, not by a calendar.
-  expect(quoteChangeBasis(vx, { terms })).toEqual({ kind: "settle", date: "2026-05-22" });
-  expect(quoteChangeBasis(vx, { terms: { ...terms, settlement: { price: 18.4, date: "2026-05-26" } } })).toEqual({ kind: "previous close" });
-  expect(quoteChangeBasis(vx)).toEqual({ kind: "previous close" });
-  expect(quotePreviousCloseDate(vx)).toBeNull();
+  expect(quoteChangeBasis(brent, { terms })).toEqual({ kind: "settle", date: "2026-05-22" });
+  expect(quoteChangeBasis(brent, { terms: { ...terms, settlement: { price: 18.4, date: "2026-05-26" } } })).toEqual({ kind: "previous close" });
+  expect(quoteChangeBasis(brent)).toEqual({ kind: "previous close" });
+  expect(quotePreviousCloseDate(brent)).toBeNull();
 });
 
 /** `quote HCI:JSE` in session on 30 Oct 2026 said "+0.59% vs prev close" where US and LSE rows named the day. */

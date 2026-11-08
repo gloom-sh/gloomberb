@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Button,
   DataTableView,
   PaneStatusBody,
   QueryBar,
@@ -37,7 +38,7 @@ import {
   type BoardQuoteMap,
 } from "../shared/use-quote-board";
 import {
-  FUTURES_CONTRACTS,
+  FUTURES_BOARD_ROWS,
   FUTURES_SECTOR_LABELS,
   futuresBoardContract,
   getContractsBySector,
@@ -72,7 +73,7 @@ import { COMMODITIES_ENERGY_PANE_ID } from "../commodities-energy/view-state";
 
 const FUTURES_PANE_ID = "futures";
 
-const FUTURES_SYMBOLS = FUTURES_CONTRACTS.map((contract) => contract.symbol);
+const FUTURES_SYMBOLS = FUTURES_BOARD_ROWS.map((contract) => contract.symbol);
 
 const alwaysNavigable = () => true;
 /** How long the cursor rests on a row before the workspace's Curve tab follows it. */
@@ -131,7 +132,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
     [listedSymbols, quotes],
   );
   const listedContracts = useMemo(
-    () => FUTURES_CONTRACTS.filter((contract) => listedSymbols.has(contract.symbol)),
+    () => FUTURES_BOARD_ROWS.filter((contract) => listedSymbols.has(contract.symbol)),
     [listedSymbols],
   );
   const visibleColumnIds = useMemo(
@@ -388,7 +389,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
       emptyStateTitle={searchQuery.trim()
         ? "No matching contracts."
         : "No market data provider connected."}
-      emptyStateHint={searchQuery.trim() ? "Clear search." : undefined}
+      emptyStateActions={searchQuery.trim() ? <Button label="Clear search" onPress={() => setSearchQuery("")} /> : undefined}
       rootBefore={(
         <QueryBar
           width={width}

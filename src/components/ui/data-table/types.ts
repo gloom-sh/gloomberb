@@ -162,6 +162,8 @@ export interface DataTableProps<
   bodyAfter?: ReactNode;
   emptyStateTitle: string;
   emptyStateHint?: string;
+  /** Buttons under the empty state's title, for what the reader can do about it (Clear search). */
+  emptyStateActions?: ReactNode;
   virtualize?: boolean;
   /**
    * Every row shows and nothing scrolls: a table set inline in a page, such as

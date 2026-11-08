@@ -159,7 +159,7 @@ function matchesFuturesSearch(contract: FuturesContract, query: string, quote?: 
 
 /**
  * Why `fn FUT urea` lists nothing, for a search no contract matches: what
- * to type instead, never the board's own buttons ("Clear search.").
+ * to type instead, never the board's own Clear search button.
  */
 export function futuresNoMatchFailure(query: string): { message: string; details: string } {
   return {
