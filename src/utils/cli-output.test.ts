@@ -206,6 +206,21 @@ test("plain output: no rule under the header, sort marks and arrows in words, a 
       .toEqual(["Rate              Range", "Fed funds target  3.75 to 4.00", "range"]);
     // A marker the CLI writes beside other text (`gold → gold's market news`) is worded where it is written.
     expect(cliArrow("→")).toBe("to");
+    // Every column kept at any width: an optional one moves under its row rather than leaving the table, and a
+    // moved empty cell keeps its dash, so each row reads the same columns (compare at 70 dropped Day Range and Cur).
+    const narrow = renderTable([
+      { header: "Symbol", shrink: false }, { header: "Last", align: "right" }, { header: "Overnight", align: "right" },
+      { header: "Day Range", align: "right", optional: true, dropPriority: 1 }, { header: "Cur", shrink: false, optional: true, dropPriority: 2 },
+    ], [["NVDA", "$186.64", "", "$185.22-$194.90", "USD"], ["ASML:AMS", "€1,283.60", "", "€1,233.00-€1,307.40", ""]], { maxWidth: 30 }).split("\n");
+    expect(narrow).toEqual([
+      "Symbol         Last  Overnight",
+      "NVDA        $186.64          —",
+      "  Day Range $185.22-$194.90",
+      "  Cur USD",
+      "ASML:AMS  €1,283.60          —",
+      "  Day Range €1,233.00-€1,307.40",
+      "  Cur —",
+    ]);
   } finally {
     setCliPlainOverride(null);
   }

@@ -729,15 +729,15 @@ function compareColumns() {
       value: (row: QuoteRow) => exportFigure(row.rawPreviousClose),
       format: (_value: unknown, row: QuoteRow) => yieldLevelCell(row.previousClose, row),
     },
-    // A narrow terminal drops these before it cuts the names short.
+    // A narrow terminal moves these under their row, as the quote table does, before it cuts the names short.
     // An export writes the range as plain numbers (12.5-13.1), and each end as a number in Day Low and Day High.
     {
-      key: "dayRange", header: "Day Range", align: "right" as const, optional: true, dropPriority: 1,
+      key: "dayRange", header: "Day Range", align: "right" as const, stackPriority: 1,
       value: (row: QuoteRow) => row.rawDayLow != null && row.rawDayHigh != null ? `${exportFigure(row.rawDayLow)}-${exportFigure(row.rawDayHigh)}` : "",
       format: (_value: unknown, row: QuoteRow) => row.dayRange,
     },
-    { key: "volume", header: "Volume", align: "right" as const, format: formatCountCell, optional: true, dropPriority: 2 },
-    { key: "currency", header: "Cur", shrink: false, optional: true, dropPriority: 3, format: currencyCell },
+    { key: "volume", header: "Volume", align: "right" as const, format: formatCountCell, stackPriority: 2 },
+    { key: "currency", header: "Cur", shrink: false, stackPriority: 3, format: currencyCell },
     ...CHANGE_BASIS_EXPORT_COLUMNS,
     ...EXTENDED_CHANGE_EXPORT_COLUMNS,
     ...DAY_RANGE_EXPORT_COLUMNS,
