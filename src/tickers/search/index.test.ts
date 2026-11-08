@@ -275,6 +275,10 @@ describe("ticker-search utilities", () => {
       .toEqual([["NATGAS-USD", "Primary Listing"]]);
     expect(instrumentTypeLabel("INDEX", "ARK Innovation ETF", { symbol: "^ARKK-IV" })).toBe("Indicative value");
     expect(instrumentTypeLabel("CRYPTOCURRENCY", "Global X Robotics & Artificial Intelligence Tokenized ETF (Ondo)")).toBe("Tokenized product");
+    // A fund whose own name says tokenized is a listing, not a token on one.
+    expect(categories("tokenized assets", [row("TKNZ", "Tokenized Assets ETF", "ARCA", "ETF"),
+      row("TKNZON-USD", "Tokenized Assets ETF Tokenized (Ondo)", "CCC", "CRYPTOCURRENCY")]))
+      .toEqual([["TKNZ", "Funds & Derivatives"], ["TKNZON-USD", "Other Matches"]]);
   });
 
   describe("a commodity typed by its name", () => {

@@ -155,11 +155,13 @@ export function isIndicativeValueListing(symbol: string | null | undefined, type
 
 /**
  * A crypto venue's copy of a fund's or a company's price: a token on its
- * shares ("... Tokenized ETF (Ondo)") or a perpetual on it ("... ETF
- * (Derivatives)"). Neither is a listing of the fund or the company.
+ * shares ("... Tokenized ETF (Ondo)", typed as a coin) or a perpetual on it
+ * ("... ETF (Derivatives)"). Neither is a listing of the fund or the company.
+ * A fund or share whose own name says tokenized is a listing.
  */
 export function isCryptoVenueCopy(type: string | null | undefined, name: string | null | undefined): boolean {
-  return normalizeInstrumentType(type) === "TOKENIZEDPRODUCT" || /\btokeni[sz]ed\b/i.test(name ?? "")
+  return normalizeInstrumentType(type) === "TOKENIZEDPRODUCT"
+    || (classifyInstrumentType(type) === "crypto" && /\btokeni[sz]ed\b/i.test(name ?? ""))
     || (isCryptoVenuePerpetual(type, name) && /\b(?:ETFS?|ETNS?|FUNDS?|TRUST|SHARES?|STOCK)\b/i.test(name ?? ""));
 }
 
