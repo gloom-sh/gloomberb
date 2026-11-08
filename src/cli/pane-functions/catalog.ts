@@ -665,8 +665,23 @@ function optionDescription(option: PaneFunctionOptionDef): string {
   const parts = [option.description.replace(/\.$/, "")];
   // An enum that also reads other values (a bar size of any length) lists its values as examples.
   if (choices.join("|").length > MAX_INLINE_CHOICES) parts.push(`${option.list ? "Each one of" : option.normalize ? "Such as" : "One of"} ${choices.join(", ")}`);
+  const bounds = optionBounds(option);
+  if (bounds) parts.push(bounds);
   if (option.defaultValue !== undefined && option.defaultValue !== "") parts.push(`Default ${String(option.defaultValue)}`);
   return `${parts.join(". ")}.`;
+}
+
+/**
+ * The range a number option takes (`From 30 to 1,100`), so its limits are read
+ * before a value is refused, unless its description already names them.
+ */
+function optionBounds(option: PaneFunctionOptionDef): string | null {
+  if (option.type !== "integer") return null;
+  const named = (value: number) => [String(value), value.toLocaleString("en-US")].some((text) => new RegExp(`(^|[^\\d,.])${text.replace(/[.,]/g, "\\$&")}(?!\\d|[,.]\\d)`).test(option.description));
+  const min = option.minimum != null && !named(option.minimum) ? option.minimum.toLocaleString("en-US") : null;
+  const max = option.maximum != null && !named(option.maximum) ? option.maximum.toLocaleString("en-US") : null;
+  if (min && max) return `From ${min} to ${max}`;
+  return min ? `At least ${min}` : max ? `At most ${max}` : null;
 }
 
 /** A limitation as a sentence, so one does not run into the next: with a full stop unless it ends in one. */
