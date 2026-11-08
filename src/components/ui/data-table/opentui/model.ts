@@ -90,11 +90,13 @@ export function reuseDataTableColumnClips(
 /**
  * What a table's header says at its right edge while columns are out of view
  * past it, longest first: the longest that fits beside the last column shown
- * whole is drawn. With that column against the edge, the arrow takes the
- * blank its label ends in. The hint never hides a column: with no blank to
- * take, the horizontal scrollbar is the only sign.
+ * whole is drawn. It names the key that scrolls there, Shift+Right in compact
+ * notation (`⇧→`): a plain Right switches a pane's tabs. With that column
+ * against the edge, the arrow takes the blank its label ends in. The hint
+ * never hides a column: with no blank to take, the horizontal scrollbar is
+ * the only sign.
  */
-const MORE_COLUMNS_LABELS = ["more →", "more", "→"] as const;
+const MORE_COLUMNS_LABELS = ["more ⇧→", "⇧→", "→"] as const;
 
 export interface MoreColumnsHint {
   /** The cells the hint draws: its label, after a blank unless it takes the last column's own. */
@@ -128,7 +130,7 @@ function hasColumnsPastRightEdge(columns: readonly HintColumn[], starts: readonl
 }
 
 /**
- * The "more →" hint at the header's right edge while columns are out of view
+ * The "more ⇧→" hint at the header's right edge while columns are out of view
  * past it, or null. The header's scroll box is as wide as the viewport, and
  * `besideHeader` blank cells follow it on the header row (the cell over the
  * body's vertical scrollbar); the hint, laid over the row, can reach them.
@@ -193,7 +195,7 @@ export function resolveMoreColumnsHint({
  * Each column's clip at the current scroll, null for a column shown whole.
  * A frozen first column stays, and what slides under it counts as cut on the
  * left. `rightReserve` cells at the right edge show no column (under the
- * "more →" hint, `resolveMoreColumnsHint`). Null for the whole table when every column is whole or nothing is
+ * "more ⇧→" hint, `resolveMoreColumnsHint`). Null for the whole table when every column is whole or nothing is
  * measured yet.
  */
 export function resolveDataTableColumnClips({

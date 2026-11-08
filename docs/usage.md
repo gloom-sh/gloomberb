@@ -152,7 +152,7 @@ gloom fn DOCS        # the index, cut at the first screen (it says so)
 
 A name with no entry fails with `No docs entry for zzzz.` and points at `gloom fn DOCS`.
 
-Wide tables keep their columns in narrow panes. Use the horizontal scrollbar or wheel, or `Ctrl+Left` / `Ctrl+Right`. In the terminal, a header that ends in `more →` has columns past its right edge, and a click on it moves right. With no room for the words it reads `more` or `→`; it never hides a column.
+Wide tables keep their columns in narrow panes. Use the horizontal scrollbar or wheel, or `Ctrl+Left` / `Ctrl+Right`. In the terminal, a header that ends in `more ⇧→` has columns past its right edge: Shift+Right (or a click on it) moves right, while a plain Right switches a pane's tabs. With no room for the words it reads `⇧→` or `→`; it never hides a column.
 
 ### Custom keybindings
 

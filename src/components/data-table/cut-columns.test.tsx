@@ -8,7 +8,7 @@ import { createDefaultConfig } from "../../types/config";
 import { DataTableView } from "./view";
 
 // 47 cells wide with its one-cell inset and gaps: NAME at 1-10, LAST at 12-23, CHG at 25-44. While CHG is past
-// the right edge, the header ends in "more →" and the rows leave its cells blank.
+// the right edge, the header ends in "more ⇧→" and the rows leave its cells blank.
 const COLUMNS = [
   { id: "name", label: "NAME", width: 10 },
   { id: "last", label: "LAST", width: 12, align: "right" as const },
@@ -76,9 +76,9 @@ function bgAt(line: number, x: number): number[] {
 
 test("a number cut on either side stays blank, one whose digits all show stays, and so does its label", async () => {
   await mount();
-  // CHG is cut on the right after five cells: neither +12.40 nor its label shows a part, and the header says
-  // there is more after LAST's own trailing blank.
-  expect(lines()[0]).toMatch(/LAST more →$/);
+  // CHG is cut on the right after five cells: neither +12.40 nor its label shows a part, and the header names
+  // the key that scrolls to it, Shift+Right, in the room left ("more ⇧→" where it fits).
+  expect(lines()[0]).toMatch(/LAST {5}⇧→$/);
   expect(lines()[1]).toContain("1,098.53");
   expect(lines()[1]).not.toMatch(/\+1|12\.4/);
 
@@ -99,9 +99,9 @@ test("a number cut on either side stays blank, one whose digits all show stays, 
   expect(lines()[2]).toMatch(/62\.10\s+-0\.85/);
 });
 
-test("a press on \"more →\" scrolls to the columns past the edge, as Shift+Right does", async () => {
+test("a press on the \"⇧→\" hint scrolls to the columns past the edge, as Shift+Right does", async () => {
   await mount();
-  await act(async () => { await tui.clickFrameText("more →"); });
+  await act(async () => { await tui.clickFrameText("⇧→"); });
   await settle();
   const body = tui.setup().renderer.root.findDescendantById("cut-body") as ScrollBoxRenderable;
   expect(body.scrollLeft).toBe(15);
