@@ -2,7 +2,7 @@
 
 [Back to CONTRIBUTING](../CONTRIBUTING.md#checks)
 
-`bun run typecheck`, `bun run knip` and `bun test` cover every change. CI runs the checks below on pull requests too, some only when a change touches their area, all but the two marked local only. A failing job names the command that failed: run it locally to reproduce and fix the failure. When you know a change touches one of these areas, run its check before you push.
+`bun run typecheck`, `bun run knip`, `bun run check:floating-promises` and `bun test` cover every change. CI runs the checks below on pull requests too, some only when a change touches their area, all but the two marked local only. A failing job names the command that failed: run it locally to reproduce and fix the failure. When you know a change touches one of these areas, run its check before you push.
 
 ## Every pull request
 
