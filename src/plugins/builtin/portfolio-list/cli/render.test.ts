@@ -461,3 +461,18 @@ describe("a portfolio holding a hedge", () => {
     expect(text).toMatch(/ZC=F:CBT .* 2 × 5,000 bushels .* \$47,325 /);
   });
 });
+
+test("empty collections name the command that fills one, with a name a Windows shell reads as typed", async () => {
+  // `portfolio` and `watchlist` printed a table of 0 tickers and stopped; `alerts` names how to add one.
+  const config = createDefaultConfig("/unused-empty-collections");
+  const output: string[] = [];
+  const logger = spyOn(console, "log").mockImplementation((...args) => { output.push(args.join(" ")); });
+  try {
+    const { context } = createTestCliContext({ config, store: { loadAllTickers: async () => [] }, dataProvider: createTestDataProvider() });
+    await portfolioCliCommand.execute([], context);
+    await showCollection(config.portfolios[0]!.id, context);
+  } finally { logger.mockRestore(); }
+  // Double quotes, not 'Main Portfolio': cmd.exe reads single quotes as part of the name.
+  expect(output.join("\n")).toContain(`No tickers yet. Add some with gloom portfolio add "${config.portfolios[0]!.name}" AAPL MSFT or gloom watchlist add`);
+  expect(output.join("\n")).toContain(`No tickers in this portfolio. Add some with gloom portfolio add "${config.portfolios[0]!.name}" AAPL MSFT.`);
+});
