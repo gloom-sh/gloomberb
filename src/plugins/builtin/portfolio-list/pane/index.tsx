@@ -358,16 +358,17 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const sortNow = activeSort.columnId === "latency" ? now : Math.floor(now / DAY_MS) * DAY_MS;
   const sortContext: ColumnContext = useMemo(() => sharePositionMetrics({ ...baseColumnContext, now: sortNow }, baseColumnContext), [baseColumnContext, sortNow]);
 
-  const candidateSortedTickers = useMemo(
+  const candidateSort = useMemo(
     () => sortTickers(tickers, financialsMap, activeSort, sortContext, columns),
     [tickers, financialsMap, activeSort, sortContext, columns],
   );
   const candidateSymbols = useMemo(
-    () => candidateSortedTickers.map((ticker) => ticker.metadata.ticker),
-    [candidateSortedTickers],
+    () => candidateSort.tickers.map((ticker) => ticker.metadata.ticker),
+    [candidateSort],
   );
   const orderResetKey = `${activeCollectionId}|${activeSort.columnId ?? ""}|${activeSort.direction}`;
-  const orderedSymbols = useThrottledTickerOrder(candidateSymbols, orderResetKey);
+  // Rows getting their first figure (the quotes landing after the rows) take their place at once.
+  const orderedSymbols = useThrottledTickerOrder(candidateSymbols, orderResetKey, { valuedSymbols: candidateSort.valued });
   // Keyed on the records, not the re-sorted candidates, so the rows keep their
   // identity across ticks until the throttled order actually moves.
   const tickerBySymbol = useMemo(

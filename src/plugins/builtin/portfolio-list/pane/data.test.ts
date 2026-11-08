@@ -9,6 +9,7 @@ import {
   selectQuoteWarmupTickers,
   selectStreamTickers,
   selectVisibleSnapshotBatch,
+  sortTickers,
   VISIBLE_QUOTE_STREAM_MAX_AGE_MS,
 } from "./data";
 import { createTestFinancials } from "../../../../test-support/data-provider";
@@ -203,4 +204,26 @@ test("CCY shows after LAST once a row is priced in another currency than the tot
   expect(ids(resolveVisibleColumns(["ticker", "price", "change_pct"], true))).toEqual(["ticker", "price", "change_pct"]);
   // A pane that already places CCY keeps it where it is.
   expect(ids(resolveVisibleColumns(["currency", "ticker", "price"], false, { otherCurrencies: true }))).toEqual(["currency", "ticker", "price"]);
+});
+
+describe("sortTickers", () => {
+  const columns = resolveVisibleColumns(["ticker", "price"], false);
+  const context = { activeTab: "watchlist", baseCurrency: "USD", exchangeRates: new Map([["USD", 1]]), now: Date.now() };
+
+  test("says which rows have a figure in the sort column, and lists the rest last in their order", () => {
+    const rows = ["AMD", "NVDA", "MSFT", "AAPL"].map(ticker);
+    const financialsMap = new Map([
+      ["AAPL", financials(quote({ price: 200 }))],
+      ["NVDA", financials(quote({ price: 900 }))],
+      // A price that is not a number is no figure.
+      ["MSFT", financials(quote({ price: Number.NaN }))],
+    ]);
+
+    const sorted = sortTickers(rows, financialsMap, { columnId: "price", direction: "desc" }, context, columns);
+    expect(sorted.tickers.map((row) => row.metadata.ticker)).toEqual(["NVDA", "AAPL", "AMD", "MSFT"]);
+    expect([...sorted.valued].sort()).toEqual(["AAPL", "NVDA"]);
+
+    // Without a sort there is nothing to wait for.
+    expect(sortTickers(rows, financialsMap, { columnId: null, direction: "asc" }, context, columns).valued.size).toBe(0);
+  });
 });
