@@ -109,10 +109,10 @@ const CDX_COLUMNS: HeadlessPaneColumn[] = [
   moveColumn("change1W", "1W", "changeUnit"),
   moveColumn("change1M", "1M", "changeUnit"),
   spreadColumn,
-  { key: "percentile", header: "Spread pctl 1Y", align: "right", format: percentile,
+  { key: "percentile", header: "Pctl 1Y", align: "right", format: percentile,
     description: "Where the spread sits in its last year, 100 the widest. IG and iTraxx rank their spread; HY and EM rank the spread "
       + "equivalent of each day's on-the-run contract, not their price; CMBX, quoted in price alone, ranks its price upside down, "
-      + "so its lowest price is 100." },
+      + "so its lowest price is 100. Blank with fewer than 20 days of spreads in the year." },
   { key: "prints", header: "Prints", align: "right" },
   { key: "contract", header: "Contract" },
   { key: "date", header: "As of" },

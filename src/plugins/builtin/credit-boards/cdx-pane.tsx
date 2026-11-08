@@ -112,11 +112,19 @@ export function CdxPane({ focused, width, height }: PaneProps) {
 
   // Dated by the newest day the rows carry, not when the response was put together.
   const asOf = newestRowDate(payload?.indexes.map((index) => index.date) ?? []);
+  // PCTL 1Y ranks spreads; the rows quoted in price (HY, EM) rank their spread equivalent, which a picture keeps.
+  const spreadEqRanked = useMemo(() => rows.filter((row) => row.rank.basis === "spread-eq")
+    .map((row) => row.index.name.replace(/^CDX\s+/i, "")).join(", "), [rows]);
   const info = useMemo<PaneFooterSegment[]>(() => [
     ...(asOf ? [{ id: "as-of", parts: [{ text: `as of ${asOf}`, tone: "muted" as const }] }] : []),
     ...(payload ? [DELAYED_SEGMENT] : []),
     ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
-  ], [asOf, payload, resource.data?.stale]);
+    ...(spreadEqRanked ? [{
+      id: "rank-basis", capture: true,
+      parts: [{ text: `${spreadEqRanked} pctl on spread eq`, tone: "muted" as const }],
+      variants: [[{ text: "pctl on spread eq", tone: "muted" as const }]],
+    }] : []),
+  ], [asOf, payload, resource.data?.stale, spreadEqRanked]);
   usePaneStatusFooter({
     registrationId: "cdx",
     loading,
@@ -178,7 +186,7 @@ export function CdxPane({ focused, width, height }: PaneProps) {
       rootBefore={({ columns }) => <ChartTableHeader width={width} height={height} tableRows={rows.length}
         tableColumns={columns} chart={selected ? historyChart(selected) : null} />}
       selectedId={selected?.id ?? null} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
-      labelHeader="INDEX" labelWidth={16} valueLabel="5Y" valueWidth={9} percentileLabel="SPRD PCTL" signedChange extraColumns={extraColumns}
+      labelHeader="INDEX" labelWidth={16} valueLabel="5Y" valueWidth={9} signedChange extraColumns={extraColumns}
       renderDetail={(row) => <IndexDetail row={row} width={width} height={Math.max(5, height - 2)} focused={focused} />} />
   );
 }

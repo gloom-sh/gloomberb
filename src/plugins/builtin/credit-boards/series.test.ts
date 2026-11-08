@@ -3,12 +3,13 @@ import { setCloudApiFetchTransport } from "../../../api-client";
 import type { CdxBoardIndex, CdxBoardPayload } from "../../../api-client/credit-boards";
 import type { SeriesLoadResult } from "../../../series/types";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import { cdxBoardCache } from "./client";
+import { cdxBoardCache, fullCdxHistory } from "./client";
 import { CREDIT_BOARD_SERIES } from "./series";
 
 afterEach(() => {
   setCloudApiFetchTransport(null);
   cdxBoardCache.reset();
+  fullCdxHistory.clear();
 });
 
 /** HY's daily price and spread equivalent from `from` for `days` days, on one contract. */
@@ -46,4 +47,20 @@ test("HY's spread equivalent charts in bp from its daily history, reaching past 
   expect(all.points[0]).toEqual({ date: "2024-09-30", value: 340 });
   expect(all.points).toHaveLength(700);
   expect(asked).toEqual(["365", "1100"]);
+});
+
+test("a chart that reaches past the board's year, when the full history read fails, draws the board's year and says so", async () => {
+  cdxBoardCache.attach(new MemoryPluginPersistence());
+  setCloudApiFetchTransport(async (url) => Number(new URL(String(url)).searchParams.get("days")) > 365
+    ? new Response("unavailable", { status: 503 })
+    : Response.json({ source: "DTCC PPD", asOf: null, tenor: "5Y", indexes: [hy("2025-09-01", 365)] } satisfies CdxBoardPayload));
+  for (const id of ["cdx:hy-spread", "cdx:hy"]) {
+    const all = await CREDIT_BOARD_SERIES.find((entry) => entry.id === id)!.load!({}) as SeriesLoadResult;
+    expect(all.points[0]!.date).toBe("2025-09-01");
+    expect(all.points).toHaveLength(365);
+    expect(all.warning).toBe("The full history did not load; showing the last year.");
+  }
+  // A chart within the board's year asked for nothing more, and says nothing.
+  const year = await CREDIT_BOARD_SERIES.find((entry) => entry.id === "cdx:hy-spread")!.load!({ start: new Date("2025-09-05T00:00:00Z") }) as SeriesLoadResult;
+  expect(year.warning).toBeUndefined();
 });

@@ -174,13 +174,16 @@ interface YearStatistics {
   high: number | null;
 }
 
-/** Where the latest level sits in its own year: midrank, with the range. */
-function yearStatistics(points: readonly CreditBoardPoint[], level: number | null, date: string | null): YearStatistics {
+/** Where the latest level sits in its own year: midrank, with the range, and no rank from fewer than `minCount` days. */
+function yearStatistics(points: readonly CreditBoardPoint[], level: number | null, date: string | null, minCount = 2): YearStatistics {
   if (level == null || !date) return { percentile: null, low: null, high: null };
   const year = historyStatistics(points.map((point) => ({ date: point.date, value: point.level })), level,
     { asOf: date, windowDays: YEAR_DAYS });
-  return { percentile: year.count >= 2 ? year.percentile : null, low: year.min, high: year.max };
+  return { percentile: year.count >= minCount ? year.percentile : null, low: year.min, high: year.max };
 }
+
+/** The fewest days of spreads in its year a CDX rank is read from: a month of trading; fewer leave it blank. */
+const MIN_SPREAD_RANK_POINTS = 20;
 
 /**
  * What a credit rank ranks, so it always reads high = wide: the spread a row
@@ -199,14 +202,17 @@ export interface SpreadRank {
  * Where an index's spread sits in its own year, 100 the widest. A price
  * quote ranks backwards (a falling price is a widening spread), so HY and EM
  * rank their spread equivalent instead, and a price without one is ranked
- * from the top.
+ * from the top. A spread rank needs a month of spreads in the year
+ * (MIN_SPREAD_RANK_POINTS); with fewer it is blank, never read off a handful.
  */
 export function spreadRank(index: Pick<CdxBoardIndex, "quote" | "points" | "level" | "date" | "spreadBp">): SpreadRank {
-  if (index.quote === "spread") return { percentile: yearStatistics(index.points, index.level, index.date).percentile, basis: "spread" };
+  if (index.quote === "spread") {
+    return { percentile: yearStatistics(index.points, index.level, index.date, MIN_SPREAD_RANK_POINTS).percentile, basis: "spread" };
+  }
   const spreads = index.points.flatMap((point) => typeof point.spreadBp === "number" && Number.isFinite(point.spreadBp)
     ? [{ ...point, level: point.spreadBp }] : []);
   if (spreads.length > 0 && typeof index.spreadBp === "number") {
-    return { percentile: yearStatistics(spreads, index.spreadBp, index.date).percentile, basis: "spread-eq" };
+    return { percentile: yearStatistics(spreads, index.spreadBp, index.date, MIN_SPREAD_RANK_POINTS).percentile, basis: "spread-eq" };
   }
   const price = yearStatistics(index.points, index.level, index.date).percentile;
   return { percentile: price == null ? null : 100 - price, basis: "price-inverted" };

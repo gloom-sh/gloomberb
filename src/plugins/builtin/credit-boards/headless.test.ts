@@ -68,7 +68,7 @@ test("every exported board row carries its own observation date, series and unit
   const csv = renderReportCsv(headlessReportTables(cdxHeadless, result, args, "CDX", freshness, { complete: true, unavailableSymbols: [] }), freshness).split("\n");
   const header = cells(csv[0]!);
   const row = (line: string) => Object.fromEntries(cells(line).map((cell, column) => [header[column], cell]));
-  expect(row(csv[1]!)["Spread pctl 1Y"]).toMatch(/^\d{1,3}$/);
+  expect(row(csv[1]!)["Pctl 1Y"]).toMatch(/^\d{1,3}$/);
   expect(row(csv[1]!)).toMatchObject({ Index: "CDX HY", "5Y": "106.005", "Spread eq (bp)": "357.5", "As of": "2026-10-16", Day: "",
     symbol_or_series: "cdx:hy", currency_or_unit: "price", interval: "daily", as_of: "2026-10-16" });
   // Main is so far: flagged with its prints and last print, its 1D Friday against Thursday, dated by its own day.
@@ -103,6 +103,11 @@ test("every credit rank reads high = wide: HY ranks its spread equivalent, not i
   expect(spreadRank(cmbx)).toEqual({ percentile: expect.closeTo(99.8, 1), basis: "price-inverted" });
   const ig = { quote: "spread" as const, points: days.map((point) => ({ ...point, level: point.spreadBp })), level: 420, date: today.date };
   expect(spreadRank(ig).percentile).toBeGreaterThan(99);
+  // Fewer than 20 days of spreads in the year rank nothing: a new server's few spread equivalents, or a spread's first weeks.
+  const fresh = { ...hy, points: days.map((point, day) => day < 221 ? { ...point, spreadBp: undefined } : point) };
+  expect(spreadRank(fresh)).toEqual({ percentile: null, basis: "spread-eq" });
+  expect(spreadRank({ ...fresh, points: days.slice(-20) })).toEqual({ percentile: expect.closeTo(97.5, 1), basis: "spread-eq" });
+  expect(spreadRank({ ...ig, points: ig.points.slice(-19) }).percentile).toBeNull();
 });
 
 test("a server that does not flag the day: today's New York trade date is partial and its moves are measured between complete days", () => {

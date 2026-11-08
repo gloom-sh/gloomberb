@@ -74,7 +74,7 @@ export async function fetchSovrBoard(client: BoardClient = apiClient): Promise<S
 }
 
 /** Daily levels: the full history a chart reaches back for stays good for an hour. */
-const fullCdxHistory = createTtlCache<CdxBoardPayload>({ ttlMs: 60 * 60_000 });
+export const fullCdxHistory = createTtlCache<CdxBoardPayload>({ ttlMs: 60 * 60_000 });
 
 /** Every day of index history the server keeps, for a chart that reaches back past the board's year. */
 export function loadFullCdxHistory(client: BoardClient = apiClient): Promise<CdxBoardPayload> {

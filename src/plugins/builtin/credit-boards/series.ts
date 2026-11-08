@@ -41,18 +41,31 @@ function boardPoints(
 /** A chart that starts within this of the board's first day is drawn from the board. */
 const BOARD_SLACK_MS = 7 * 86_400_000;
 
+type CdxSeriesResource = { stale?: boolean; refreshError?: string | null; savedAt?: number };
+
+/** What a chart that asked for more than the board's year says when the rest did not load. */
+const BOARD_YEAR_ONLY = "The full history did not load; showing the last year.";
+
 /**
  * The indexes as a chart asks for them: the board, which holds a year, or
  * every day the server keeps when the chart starts before it (ALL, 5Y).
+ * When that read fails the board's year stands in, said with `warning`.
  */
-async function cdxIndexes(request: SeriesLoadRequest): Promise<{ indexes: readonly CdxBoardIndex[]; resource: { stale?: boolean; refreshError?: string | null; savedAt?: number } }> {
+async function cdxIndexes(request: SeriesLoadRequest): Promise<{ indexes: readonly CdxBoardIndex[]; resource: CdxSeriesResource; warning?: string }> {
   const resource = await loadCdxBoard();
   const first = Math.min(...resource.payload.indexes.flatMap((index) => index.points.slice(0, 1).map((point) => Date.parse(`${point.date}T00:00:00Z`))));
   if (!request.start || request.start.getTime() < first - BOARD_SLACK_MS) {
     const full = await loadFullCdxHistory().catch(logFailure("credit-boards", "Read the full index CDS history failed", null));
     if (full) return { indexes: full.indexes, resource: {} };
+    return { indexes: resource.payload.indexes, resource, warning: BOARD_YEAR_ONLY };
   }
   return { indexes: resource.payload.indexes, resource };
+}
+
+/** A CDX series' note: the board's own, or, when it stood in for the full history, that. */
+function cdxSeriesNote({ resource, warning }: { resource: CdxSeriesResource; warning?: string }): Pick<SeriesLoadResult, "warning" | "savedAt"> {
+  const note = cachedSeriesNote(resource);
+  return warning ? { ...note, warning: note.warning ? `${warning} ${note.warning}` : warning } : note;
 }
 
 /**
@@ -77,8 +90,8 @@ export const CREDIT_BOARD_SERIES: readonly SeriesDefinition[] = [
     group: "Credit",
     tags: ["CDS", "index CDS", index.quote, "credit default swap"],
     load: async (request) => {
-      const { indexes, resource } = await cdxIndexes(request);
-      return boardPoints(indexes, index.code, index.name, resource);
+      const read = await cdxIndexes(request);
+      return { ...boardPoints(read.indexes, index.code, index.name, read.resource), ...cdxSeriesNote(read) };
     },
   })),
   ...INDEXES.filter((index) => index.quote === "price").map((index): SeriesDefinition => ({
@@ -88,10 +101,10 @@ export const CREDIT_BOARD_SERIES: readonly SeriesDefinition[] = [
     frequency: "daily",
     group: "Credit",
     tags: ["CDS", "index CDS", "spread", "spread equivalent", index.code, "credit default swap"],
-    description: `${index.name}'s daily price as a conventional spread: the ISDA standard model at the index's coupon and standard recovery, on each day's on-the-run contract.`,
+    description: `${index.name}'s daily price as a conventional spread: a model figure from the ISDA standard model at the index's coupon and standard recovery, on each day's on-the-run contract, not a traded spread.`,
     load: async (request) => {
-      const { indexes, resource } = await cdxIndexes(request);
-      return { points: spreadEquivalentPoints(indexes, index.code, `${index.name} spread eq`), ...cachedSeriesNote(resource) };
+      const read = await cdxIndexes(request);
+      return { points: spreadEquivalentPoints(read.indexes, index.code, `${index.name} spread eq`), ...cdxSeriesNote(read) };
     },
   })),
   ...SOVEREIGNS.map(([code, name]): SeriesDefinition => ({
