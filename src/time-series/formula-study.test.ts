@@ -178,6 +178,10 @@ describe("formula studies", () => {
     // Unconverted, either side names the conversion, by the series as it is written.
     expect(resolveStudies([cdx, treasury], [{ ...formula(["CAP:cdx:ig", "FRED:DGS5"], {}), id: "spread", kind: "spread" }]).errors)
       .toEqual(["Spread: CAP:cdx:ig is in bp and FRED:DGS5 is in %: write 100*FRED:DGS5 to compare in bp."]);
+    // A spread of two published series is named as written, not by their titles, which a short legend cuts alike.
+    const oas = dataset("FRED:BAMLC0A0CM", "bp", "series:bp", { 1: 93, 2: 94 });
+    expect(resolveStudies([oas, cdx], [{ ...formula(["FRED:BAMLC0A0CM", "CAP:cdx:ig"], {}), id: "spread", kind: "spread" }]).series[0])
+      .toMatchObject({ label: "FRED:BAMLC0A0CM - CAP:cdx:ig", unit: "bp" });
     // Another multiplier keeps the percent.
     expect(resolveStudies([treasury, cdx], [formula(["FRED:DGS5", "CAP:cdx:ig"], { weight1: 10, weight2: -1, divisor: 1 })]).errors)
       .toEqual(["Formula: FRED:DGS5 is in % and CAP:cdx:ig is in bp: write 100*FRED:DGS5 to compare in bp."]);

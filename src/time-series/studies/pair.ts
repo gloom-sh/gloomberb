@@ -49,6 +49,11 @@ function pairedHistoryResolution(left: ResolvedSeries, right: ResolvedSeries): M
   return left.historyResolution === right.historyResolution ? left.historyResolution : null;
 }
 
+/** A pair's leg as its formula names it: a published series as written, anything else by its label. */
+function pairLegName(series: ResolvedSeries): string {
+  return series.expression ?? series.label;
+}
+
 export function resolvePairStudy(
   spec: ChartStudySpec,
   left: ResolvedSeries,
@@ -75,9 +80,11 @@ export function resolvePairStudy(
     return [outputSeries(spec, left, {
       ...(convertedPrice ? { statedUnit: outputUnit.unit, priceAssetCategory: null } : {}),
       ...(valueDecimals !== undefined ? { valueDecimals } : {}),
+      // A published series reads as it is written (FRED:BAMLC0A0CM - CAP:cdx:ig): its long title would
+      // read like the leg's own line in a legend that has to shorten.
       label: ratioStudy
-        ? `${left.label} / ${right.label}`
-        : `${left.label} - ${multiplier === 1 ? "" : `${multiplier}×`}${right.label}`,
+        ? `${pairLegName(left)} / ${pairLegName(right)}`
+        : `${pairLegName(left)} - ${multiplier === 1 ? "" : `${multiplier}×`}${pairLegName(right)}`,
       points,
       color,
       unit: outputUnit.unit,
