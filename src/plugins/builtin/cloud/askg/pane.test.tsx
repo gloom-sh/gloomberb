@@ -33,6 +33,8 @@ let configPortfolios: Array<{ id: string; name: string; currency: string; broker
 let sessionStatus = 200;
 let storedConversations: Array<Record<string, unknown>> = [];
 let storedTranscripts: Record<string, Record<string, unknown>> = {};
+/** Set by a test whose conversations fail to load: every transcript request answers with it. */
+let transcriptStatus = 200;
 
 /** Set by a test that reads the remote UI tree: the pane renders under it, with the real footer bar. */
 let remoteRegistry: RemoteUiRegistry | null = null;
@@ -106,6 +108,7 @@ beforeEach(() => {
   sessionStatus = 200;
   storedConversations = [];
   storedTranscripts = {};
+  transcriptStatus = 200;
   askgConversationListStore.reset();
   remoteRegistry = null;
   // A transport that buffers whole responses, which is what the desktop had
@@ -177,6 +180,12 @@ async function cloudFetch(url: string, init?: RequestInit): Promise<Response> {
     ? storedTranscripts[decodeURIComponent(parsed.pathname.split("/").at(-1) ?? "")]
     : undefined;
   if (parsed.pathname.startsWith("/askg/conversations/")) {
+    if (transcriptStatus !== 200) {
+      return new Response(JSON.stringify({ message: "Conversations are down for maintenance." }), {
+        status: transcriptStatus,
+        headers: { "content-type": "application/json" },
+      });
+    }
     if (!stored) return new Response("{}", { status: 404 });
     return new Response(JSON.stringify(stored), {
       status: 200,
@@ -672,6 +681,30 @@ describe("ASKGPane conversations", () => {
       .map((line) => line.trim());
     expect(marked).toHaveLength(1);
     expect(marked[0]).toContain("Nvidia margins");
+  });
+
+  test("a conversation that fails to load says so in the pane, and Retry opens it once it loads", async () => {
+    storedConversations = [conversation("conv-1", "Bond returns")];
+    storedTranscripts = {
+      "conv-1": transcript("conv-1", "what does a 5y bond return", "About 4.2%."),
+    };
+    transcriptStatus = 503;
+    await renderPane(WIDE_PANE_WIDTH);
+    await tui.emitKeypress({ name: "left" });
+    await tui.emitKeypress({ name: "return" });
+    await flush();
+
+    expect(requests).toContain("GET /askg/conversations/conv-1");
+    const failed = tui.frame();
+    expect(failed).toContain("Conversation unavailable.");
+    expect(failed).toContain("Conversations are down for maintenance.");
+    expect(failed).not.toContain("Ask about your portfolio");
+
+    transcriptStatus = 200;
+    await tui.clickFrameText("Retry");
+    await flush();
+    expect(tui.frame()).toContain("About 4.2%");
+    expect(tui.frame()).not.toContain("Conversation unavailable.");
   });
 
   test("nothing on screen is lost by accident: a new conversation and a closed pane both lead back", async () => {
