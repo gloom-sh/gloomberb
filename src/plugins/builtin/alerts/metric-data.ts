@@ -106,7 +106,10 @@ export function metricReadings(provider: AssetDataProvider, now = Date.now()) {
         const served = await request;
         let quote: Promise<Quote | null> | null = null;
         if (served.at(-1)?.partial) {
-          quote = quotes.get(listing) ?? provider.getQuote(symbol, venue).catch(() => null);
+          quote = quotes.get(listing) ?? provider.getQuote(symbol, venue).catch(() => {
+            // Intentional ignore: the bar stays partial and the rule keeps waiting; the next pass reads the quote again.
+            return null;
+          });
           quotes.set(listing, quote);
         }
         return finalDailyBars(served, { now, venue }, await quote)
