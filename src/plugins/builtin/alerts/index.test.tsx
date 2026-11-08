@@ -431,6 +431,8 @@ describe("alertsPlugin command", () => {
         status: "active",
       });
       expect(notifications[0]?.body).toContain("AAPL");
+      // 201.5 is already above 200, so the toast says it goes off at the next check.
+      expect(notifications[0]?.body).toContain("(current 201.50, already above, so it goes off at the next check)");
       // A target ten times the price is refused, as `alerts add` refuses it, and nothing is stored.
       await expect(command.execute({ shortcut: "AAPL above 2500" })).rejects.toThrow("A target of 2,500 is more than 10 times AAPL's last price of 201.5.");
       expect(deserializeAlerts(String(store.get("alerts")))).toHaveLength(1);
@@ -443,6 +445,8 @@ describe("alertsPlugin command", () => {
       // An alert link's 7203:TSE is Tokyo, where 7203 trades, as `alerts add` reads it.
       await command.execute({ symbol: "7203:TSE", condition: "above", price: "210" });
       expect(deserializeAlerts(String(store.get("alerts")))[1]).toMatchObject({ symbol: "7203:JPX", targetPrice: 210 });
+      // A level the price has not reached says nothing more.
+      expect(notifications.at(-1)?.body).not.toContain("already");
     } finally {
       alertsPlugin.dispose?.();
     }
