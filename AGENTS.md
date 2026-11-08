@@ -6,6 +6,8 @@ Tests ([full policy](CONTRIBUTING.md#what-to-test)): be selective. Add or keep a
 
 Public text ([full rule](CONTRIBUTING.md#pull-requests)): pull request titles, descriptions, comments, commit messages and branch names are public. No internal tracker ids or links, no private repository names or links, no internal notes (deals, pricing plans, people, infrastructure); a change that needs a server change says "needs the matching server change".
 
+Review screenshots and evidence images for a PR go through `scripts/pr-assets.sh <slug> <file>...`, which pushes them to `refs/pr-assets/<slug>` and prints the markdown links for the description: never a branch, and never committed to the tree.
+
 Use tmux to test terminal TUI changes (see the `tui-testing` skill). Always kill the tmux session when done.
 
 Shared machine: several agents often work on one host at the same time.
