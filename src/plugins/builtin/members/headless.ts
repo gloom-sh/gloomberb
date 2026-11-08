@@ -43,7 +43,10 @@ export const membersHeadless: HeadlessPaneDefinition<"rows"> = {
       columns: [{ key: "ticker", header: "Fund" }, { key: "name", header: "Index or theme" }, { key: "asOf", header: "Holdings as of" }, { key: "source", header: "Source" }] };
     const fund = canonicalFund(input);
     // A symbol the covered list does not hold is a stock to look the funds through for, whatever the tab.
-    const covered = await fetchFunds(context.apiClient).then((payload) => payload.funds, () => null);
+    const covered = await fetchFunds(context.apiClient).then((payload) => payload.funds, () => {
+      // Intentional ignore: the fund read below reports the same failure, so the input stays a fund.
+      return null;
+    });
     if (covered && !covered.some((row) => row.ticker === fund || row.aliases.some((alias) => alias.toUpperCase() === fund))) return stockFunds(input, context.apiClient);
     if (args.options.tab === "breadth") {
       const data = await fetchBreadth(fund, context.apiClient);

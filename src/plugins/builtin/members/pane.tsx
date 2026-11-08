@@ -11,6 +11,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
+import { logFailure } from "../../../utils/log-failure";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { useMembersMenu, type MemberList } from "../shared/members-menu";
 import { cachedChanges, cachedFunds, cachedMembers, cachedStockFunds, loadChanges, loadFunds, loadMembers, loadStockFunds } from "./client";
@@ -206,7 +207,7 @@ function StockFunds({ symbol, width, height, focused }: ListProps & { symbol: st
   const data = resource.data?.payload;
   const [selected, setSelected] = usePluginPaneState<string | null>(`holding:${symbol}`, null);
   const rows = useMemo(() => stockFundRows(data?.funds ?? []), [data]);
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  usePaneRefreshKey(() => void resource.reload().catch(logFailure("members.stock-funds", "Reload funds holding a stock failed")), { focused });
   usePaneStatusFooter({ registrationId: "members:stock-funds", loading: !!data && resource.loading, stale: !!data && (resource.data!.stale || !!resource.error) });
   usePaneNoticeFooter({ registrationId: "members:stock-funds-notices", focused, notices: resource.error && data ? [resource.error] : [] });
   const renderCell = useCallback((item: SectionedRow<StockFund>, column: DataTableColumn): DataTableCell => {
