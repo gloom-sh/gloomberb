@@ -298,3 +298,47 @@ test("a thin listing that did not trade in the calendar's session before moves f
   await busy.date(sgx({ marketState: "REGULAR" }));
   expect(busy.asked).toEqual([]);
 });
+
+test("a stale counter whose bars carry later nominal prices is dated by them, as of their session's close, and says nothing traded", async () => {
+  // 9042.HK on Sun 8 Nov 2026: Fri 6 Nov's nominal 1.172 against Thu 5 Nov's 1.244, stamped by its last print on Wed 4 Nov.
+  const now = Date.parse("2026-11-08T09:38:00Z");
+  const usd = createTestQuote({ symbol: "9042.HK", currency: "USD", listingExchangeName: "HKEX", exchangeName: "HKEX", instrumentType: "ETF",
+    price: 1.172, change: -0.072, changePercent: -5.79, previousClose: 1.244, open: 1.19, high: 1.254, low: 1.168, volume: 123_100,
+    changeSessionDate: "2026-11-04", marketState: "CLOSED", lastUpdated: Date.parse("2026-11-04T03:32:00Z"), stale: true });
+  const bar = (date: string, close: number, volume: number) => ({ date: new Date(`${date}T00:00:00+08:00`), close, open: close, high: close, low: close, volume });
+  const read = (points: ReturnType<typeof bar>[]) => {
+    const dates = new PreviousCloseDates(async () => points, { now: () => now });
+    return async (quote: Quote) => {
+      await dates.settle([entry(quote)], { waitMs: 5_000 });
+      return dates.known(quote, listing(quote));
+    };
+  };
+  expect(changeBasisLabel(quoteChangeBasis(usd)!, now)).toBe("vs Tue 3 Nov close");
+  const nominal = await read([bar("2026-10-29", 1.238, 95_200), bar("2026-10-30", 1.208, 0), bar("2026-11-03", 1.192, 0),
+    bar("2026-11-04", 1.21, 0), bar("2026-11-05", 1.244, 0), bar("2026-11-06", 1.1720000505447388, 0)])(usd);
+  expect(changeBasisLabel(quoteChangeBasis(nominal)!, now)).toBe("vs Thu 5 Nov close");
+  // As of Friday's 16:10 HKT close, with no range or volume of its own: nothing traded since 29 Oct.
+  expect(nominal).toMatchObject({ changeSessionDate: "2026-11-06", previousCloseDate: "2026-11-05", stale: false,
+    lastUpdated: Date.parse("2026-11-06T08:10:00Z"), volume: 0, nominalPrice: { lastTraded: "2026-10-29" } });
+  expect([nominal.open, nominal.high, nominal.low]).toEqual([undefined, undefined, undefined]);
+  // Bars that traded date it the same way, with the session's own range; bars that end at the quote's own session leave it be.
+  const traded = await read([bar("2026-11-05", 1.244, 4_000), bar("2026-11-06", 1.172, 9_100)])(usd);
+  expect(traded).toMatchObject({ changeSessionDate: "2026-11-06", volume: 9_100, open: 1.172 });
+  expect(traded.nominalPrice).toBeUndefined();
+  const own = await read([bar("2026-11-03", 1.244, 0), bar("2026-11-04", 1.172, 0)])(usd);
+  expect(own).toMatchObject({ changeSessionDate: "2026-11-04", stale: true, volume: 123_100 });
+  expect(changeBasisLabel(quoteChangeBasis(own)!, now)).toBe("vs Tue 3 Nov close");
+});
+
+test("a thin counter whose previous close is its venue's nominal price of the calendar's session keeps the calendar's date", async () => {
+  // 83042.HK on Sun 8 Nov 2026: 8.315, Thu 5 Nov's nominal price; it last traded on Wed 4 Nov at 8.095.
+  const now = Date.parse("2026-11-08T09:38:00Z");
+  const rmb = createTestQuote({ symbol: "83042.HK", currency: "CNY", listingExchangeName: "HKEX", exchangeName: "HKEX", instrumentType: "ETF",
+    price: 7.815, change: -0.5, changePercent: -6.01, previousClose: 8.315, volume: 26_900,
+    changeSessionDate: "2026-11-06", marketState: "CLOSED", lastUpdated: Date.parse("2026-11-06T01:30:00Z") });
+  const points = [["2026-11-03", 7.94, 0], ["2026-11-04", 8.095, 205_300], ["2026-11-05", 8.315, 0], ["2026-11-06", 7.815, 0]] as const;
+  const dates = new PreviousCloseDates(async () => points.map(([date, close, volume]) => ({ date: new Date(`${date}T00:00:00+08:00`), close, volume })),
+    { now: () => now });
+  await dates.settle([entry(rmb)], { waitMs: 5_000 });
+  expect(changeBasisLabel(quoteChangeBasis(dates.known(rmb, listing(rmb)))!, now)).toBe("vs Thu 5 Nov close");
+});

@@ -183,6 +183,20 @@ export function noPrintsTodayText(quote: Quote | null | undefined, now = Date.no
   return `no prints today since ${time} (${quoteAgeText(since, now)})`;
 }
 
+/**
+ * What a quote nothing traded on says beside its price (Quote.nominalPrice):
+ * "no trades since Thu 29 Oct, nominal price", or "no recent trades, nominal
+ * price" when its bars reach back to no trade. Null for any other quote.
+ */
+export function nominalPriceText(quote: Pick<Quote, "nominalPrice" | "marketState"> | null | undefined): string | null {
+  const nominal = quote?.marketState !== "REGULAR" ? quote?.nominalPrice : undefined;
+  if (!nominal) return null;
+  const traded = nominal.lastTraded ? new Date(`${nominal.lastTraded}T00:00:00Z`) : null;
+  return traded && Number.isFinite(traded.getTime())
+    ? `no trades since ${PRINT_WEEKDAYS[traded.getUTCDay()]} ${traded.getUTCDate()} ${PRINT_MONTHS[traded.getUTCMonth()]}, nominal price`
+    : "no recent trades, nominal price";
+}
+
 export function hasFreshQuoteForCurrentSession(
   quotes: Iterable<Quote | null | undefined>,
   now = Date.now(),

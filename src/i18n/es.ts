@@ -1159,6 +1159,7 @@ export const es: Record<string, string> = {
   "Closed-end fund": "Fondo cerrado",
   "BDC": "BDC",
   "est.": "est.",
+  "nominal": "nominal",
   "{count} shares": "{count} acciones",
   "No figures for {symbol}: it files with the SEC as a closed-end fund or BDC, but neither the filings Gloom reads nor its sponsor's site state any for it yet.": "No hay cifras para {symbol}: está registrado ante la SEC como fondo cerrado o BDC, pero ni las presentaciones que lee Gloom ni el sitio de su patrocinador indican ninguna todavía.",
   "No NAV for {symbol}: {publisher} publishes figures for it, but no NAV.": "No hay valor liquidativo para {symbol}: {publisher} publica cifras del fondo, pero no su valor liquidativo.",

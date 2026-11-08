@@ -173,6 +173,14 @@ export interface Quote extends DepositaryReceiptFacts {
    * previousClose is from (PreviousCloseDates): its move names no day.
    */
   previousCloseUndated?: boolean;
+  /**
+   * A listing that did not trade in the session its price is from: the price
+   * and previous close are the venue's nominal prices (an HKEX counter's
+   * USD line, untraded for days), dated by its daily bars
+   * (PreviousCloseDates). `lastTraded` is the latest day its bars show a
+   * trade, null when they reach back to none.
+   */
+  nominalPrice?: { lastTraded: string | null };
   /** Official close of a completed regular session, in this quote's currency. */
   regularClose?: number;
   /** Exchange-local date of regularClose; separate from the daily previous-close reference. */

@@ -9,7 +9,7 @@ import { zonedDateKey } from "../../utils/zoned-date-time";
 import { futuresChangeBasis, futuresQuoteMonth, futuresSettleText, isFuturesInstrument } from "../futures-contract";
 import { quoteTradingDay } from "../quotes/day-range";
 import { splitRatioText } from "../quotes/session-split";
-import { hasPublishedSessionCalendar, previousPublishedSession } from "./freshness";
+import { hasPublishedSessionCalendar, isVenueTradingDay, previousPublishedSession, sessionCalendarTimeZone } from "./freshness";
 import { getActiveQuoteDisplay, getRegularSessionDisplay, regularSessionDisplayDate } from "./status";
 
 const DAY_MS = 86_400_000;
@@ -92,8 +92,7 @@ const INDEX_CALENDAR_VENUES: Readonly<Record<string, string>> = {
 /** The venue whose published calendar dates the quote's sessions, and whose zone dates its daily bars. */
 export function calendarVenue(quote: Quote): string {
   const venue = quoteVenue(quote);
-  const index = classifyInstrumentType(quote.instrumentType) === "index" || kindFromListingSyntax(quote.symbol) === "index";
-  return (index && INDEX_CALENDAR_VENUES[venue]) || venue;
+  return (isIndexQuote(quote) && INDEX_CALENDAR_VENUES[venue]) || venue;
 }
 
 function isCurrencyPair(quote: Quote): boolean {
@@ -105,12 +104,34 @@ function isCurrencyPair(quote: Quote): boolean {
  * The trading day a quote describes (quoteTradingDay); for a currency pair,
  * whose venue has no clock, the FX trading day of its print, which turns at
  * 17:00 New York, so every pair on a board is dated alike. Null for a pair's
- * print made while FX is shut, which belongs to no trading day.
+ * print made while FX is shut, which belongs to no trading day. An index
+ * whose quote names no session is dated by its home venue (indexPrintSession).
  */
 function tradingDayOf(quote: Quote): string | null {
   const day = quoteTradingDay(quote);
-  if (day || !isCurrencyPair(quote) || !Number.isFinite(quote.lastUpdated) || quote.lastUpdated <= 0) return day;
-  return fxPrintTradingDay(quote.lastUpdated);
+  if (day || !Number.isFinite(quote.lastUpdated) || quote.lastUpdated <= 0) return day;
+  if (isIndexQuote(quote)) return indexPrintSession(quote);
+  return isCurrencyPair(quote) ? fxPrintTradingDay(quote.lastUpdated) : null;
+}
+
+function isIndexQuote(quote: Quote): boolean {
+  return classifyInstrumentType(quote.instrumentType) === "index" || kindFromListingSyntax(quote.symbol) === "index";
+}
+
+/**
+ * The session of the venue whose calendar an index follows (calendarVenue)
+ * that its last print sits in: the print's date in that venue's zone, when
+ * its published calendar has a session that day. The S&P 500's closing print
+ * at 16:37 New York on Fri 6 Nov 2026 is Friday's, so its move is from
+ * Thursday's close; a print on a day the calendar has no session for, or on a
+ * venue with no published calendar, names none.
+ */
+function indexPrintSession(quote: Quote): string | null {
+  const venue = calendarVenue(quote);
+  const zone = sessionCalendarTimeZone(venue) ?? quote.indexSession?.timeZone;
+  if (!zone) return null;
+  const date = zonedDateKey(quote.lastUpdated, zone);
+  return date && hasPublishedSessionCalendar(venue, date) && isVenueTradingDay(venue, date) ? date : null;
 }
 
 /** A coin on the spot crypto venue: its day is the UTC day. */

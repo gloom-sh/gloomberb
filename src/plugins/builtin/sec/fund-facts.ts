@@ -172,6 +172,12 @@ function leverageObjectiveText(leverage: Pick<FundLeverage, "value" | "reset">):
  * prospectus it was read from, says so when it is the prospectus's, and is
  * marked only when stale.
  */
+/** A premium's price when not the counter's own trade, after its date in a pane: ` · 3042:HKEX` (its traded counter's close), ` · nominal`. */
+function premiumPriceNote(premium: NonNullable<FundFactsPayload["premiumDiscount"]>): string {
+  const price = premium.price;
+  return price?.kind === "counter" ? ` · ${price.ticker}` : price?.kind === "nominal" ? ` · ${t("nominal")}` : "";
+}
+
 interface DatedFigure {
   /** The date, with what it is when that is not plain: `2026-10-16 close`, `2026-09-30 month-end`. */
   detail?: string;
@@ -199,7 +205,7 @@ function datedFigures(facts: FundFactsPayload): Record<"nav" | "premium" | "fee"
       // A computed premium is dated by its close's session (a weekend month end's Friday), and says when it is an estimate's.
       detail: premium?.asOf
         ? premium.basis === "computed"
-          ? `${tf("{date} close", { date: closeSession(facts) ?? premium.asOf })}${premium.estimate ? ` · ${t("est.")}` : ""}`
+          ? `${tf("{date} close", { date: closeSession(facts) ?? premium.asOf })}${premium.estimate ? ` · ${t("est.")}` : ""}${premiumPriceNote(premium)}`
           : premium.asOf
         : undefined,
       marked: facts.stale || (!!premium?.asOf && !!nav && premium.asOf !== nav),
@@ -347,6 +353,20 @@ export function fundFactOverviewFields(facts: FundFactsPayload): FundFactOvervie
   return fields;
 }
 
+/**
+ * What a computed premium is measured from, for text reports: the closing
+ * price, another counter's traded close at the NAVs' rate when this
+ * counter's was nominal (`3042:HKEX close HK$9.1800 at the NAVs' rate vs
+ * NAV`), or the nominal close when no counter traded.
+ */
+function premiumBasis(premium: NonNullable<FundFactsPayload["premiumDiscount"]>): string | null {
+  if (premium.basis !== "computed") return null;
+  if (premium.estimate) return "closing price vs NAV estimate midpoint";
+  const price = premium.price;
+  if (price?.kind === "counter") return `${price.ticker} close ${formatCurrency(price.close, price.currency, 4)} at the NAVs' rate vs NAV`;
+  return price?.kind === "nominal" ? "nominal closing price vs NAV" : "closing price vs NAV";
+}
+
 /** Where a figure came from and when, for text reports: `2026-10-16 · iShares`. */
 function provenance(...parts: (string | null | undefined)[]): string {
   return parts.filter(Boolean).join(" · ");
@@ -375,12 +395,12 @@ export function fundFactEntries(facts: FundFactsPayload): HeadlessPaneEntry[] {
     add("nav", "NAV", facts.nav.value, provenance(fundPrice(facts, facts.nav.value), date, estimate, facts.nav.source), facts.currency ?? "USD");
   }
   if (facts.closingPrice) add("closingPrice", "Closing price", facts.closingPrice.value,
-    provenance(fundPrice(facts, facts.closingPrice.value), facts.closingPrice.asOf, facts.closingPrice.source), facts.currency ?? "USD");
+    provenance(fundPrice(facts, facts.closingPrice.value), facts.closingPrice.asOf, facts.closingPrice.nominal ? "nominal, no trades" : null,
+      facts.closingPrice.source), facts.currency ?? "USD");
   if (facts.premiumDiscount) {
-    const basis = facts.premiumDiscount.basis !== "computed" ? null
-      : facts.premiumDiscount.estimate ? "closing price vs NAV estimate midpoint" : "closing price vs NAV";
     add("premiumDiscountPercent", "Premium/discount", facts.premiumDiscount.value,
-      provenance(formatPremiumPercent(facts.premiumDiscount.value), facts.premiumDiscount.asOf, basis, facts.premiumDiscount.source), "%");
+      provenance(formatPremiumPercent(facts.premiumDiscount.value), facts.premiumDiscount.asOf, premiumBasis(facts.premiumDiscount),
+        facts.premiumDiscount.source), "%");
   }
   if (facts.netAssets) {
     const scope = wholeFund(facts) ? "all share classes" : null;

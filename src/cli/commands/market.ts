@@ -60,7 +60,7 @@ import {
   ratingReason,
 } from "../../plugins/builtin/research/analyst-model";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
-import { awaitingFirstDelayedPrint, isQuoteStaleForCurrentSession, noPrintsTodayText } from "../../market-data/quotes/freshness";
+import { awaitingFirstDelayedPrint, isQuoteStaleForCurrentSession, noPrintsTodayText, nominalPriceText } from "../../market-data/quotes/freshness";
 import {
   coinOptionsAlternativesText, isCoinWithoutOptions, isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle,
 } from "../../market-data/options-alternatives";
@@ -1234,7 +1234,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
         const ended = stopped && liveCompanies[index] ? `${stopped}. ${liveCompanies[index]}` : stopped;
         // Open by its venue's calendar, before the delayed feed's first print: Last is the previous close until then.
         const awaiting = ended ? null : awaitingFirstDelayedPrint(row.quote, now);
-        const quiet = ended || awaiting ? null : noPrintsTodayText(row.quote, now);
+        const quiet = ended || awaiting ? null : nominalPriceText(row.quote) ?? noPrintsTodayText(row.quote, now);
         const waiting = awaiting && row.quote
           ? `${label}: open since ${utcClock(awaiting.open)} UTC; Last is the previous close until the first delayed print, about ${utcClock(awaiting.expected)} UTC`
           : null;

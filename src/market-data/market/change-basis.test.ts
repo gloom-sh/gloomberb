@@ -220,6 +220,22 @@ test("an index quoted under its publisher names the venue whose days it trades i
   expect(changeBasisNote(quoteChangeBasis(spx), NOW)).toBe("NYSE closed Thu 26 Nov, holiday");
 });
 
+test("an index quote naming no session is dated by the session of its home venue its last print sits in", () => {
+  // Sun 8 Nov 2026: the S&P 500's closing print at 16:37 New York and the Nikkei's at 15:45 Tokyo, both on Fri 6 Nov.
+  const now = Date.parse("2026-11-08T09:38:00Z");
+  const index = (symbol: string, venue: string, at: string) => createTestQuote({
+    symbol, instrumentType: "INDEX", listingExchangeName: venue, exchangeName: venue, price: 100, change: 1, changePercent: 1,
+    previousClose: 99, marketState: "CLOSED", lastUpdated: Date.parse(at),
+  });
+  const label = (quote: Quote) => changeBasisLabel(quoteChangeBasis(quote)!, now);
+  expect(label(index("^GSPC", "SNP", "2026-11-06T21:37:09Z"))).toBe("vs Thu 5 Nov close");
+  expect(label(index("^IXIC", "NASDAQ GIDS", "2026-11-06T22:15:59Z"))).toBe("vs Thu 5 Nov close");
+  expect(label(index("^N225", "OSAKA", "2026-11-06T06:45:02Z"))).toBe("vs Thu 5 Nov close");
+  // A print on a day the venue has no session, or from a venue with no published calendar, names none.
+  expect(label(index("^GSPC", "SNP", "2026-11-07T15:00:00Z"))).toBe("vs prev close");
+  expect(label(index("^FTSE", "FTSE", "2026-11-06T16:35:00Z"))).toBe("vs prev close");
+});
+
 test("a total over moves from different closes says so instead of naming one", () => {
   const us = { kind: "close" as const, date: "2026-10-19", venue: "NASDAQ", closed: [] };
   const hkex = { kind: "close" as const, date: "2026-10-16", venue: "HKEX", closed: ["2026-10-19"] };

@@ -99,6 +99,16 @@ export interface FundFlows {
  */
 type FundFactsStatus = "covered" | "not-collected-yet" | "not-published" | "not-a-fund";
 
+/**
+ * What a counter's computed premium is from when its own close is nominal:
+ * another counter's traded close (`3042:HKEX` at HK$9.18) converted at the
+ * rate between the two counters' NAVs, or the nominal close itself when no
+ * counter traded.
+ */
+export type FundPremiumPrice =
+  | { kind: "counter"; ticker: string; close: number; currency: string }
+  | { kind: "nominal" };
+
 /** GET /cloud/fund-facts/:ticker. Percent fields are in percent (0.03 is 0.03%). */
 export interface FundFactsPayload {
   ticker: string;
@@ -120,14 +130,20 @@ export interface FundFactsPayload {
   nav: (FundFact<number> & { period?: "day" | "month-end"; estimate?: { low: number; high: number } }) | null;
   /** Why a covered fund has no NAV, in one line. Absent when it has one, and from servers before it. */
   navReason?: string;
-  /** Dated by its own session: a month end on a weekend is priced at the Friday before it. */
-  closingPrice: FundFact<number> | null;
+  /**
+   * Dated by its own session: a month end on a weekend is priced at the Friday
+   * before it. `nominal`: nothing traded in that session (a Hong Kong fund's
+   * USD or RMB counter on a quiet day), so the close is the exchange's
+   * nominal price; absent from servers before it.
+   */
+  closingPrice: (FundFact<number> & { nominal?: true }) | null;
   /**
    * `published` by the sponsor, or `computed` from the closing price against
    * the NAV, dated by the NAV. `estimate`: computed against the midpoint of a
-   * NAV estimate, so an estimate too; absent from servers before it.
+   * NAV estimate, so an estimate too; absent from servers before it. `price`:
+   * what a computed premium is from when not the closing price as traded.
    */
-  premiumDiscount: (FundFact<number> & { basis: "published" | "computed"; estimate?: true }) | null;
+  premiumDiscount: (FundFact<number> & { basis: "published" | "computed"; estimate?: true; price?: FundPremiumPrice }) | null;
   /**
    * `period`: a `day`'s figure, or the last `month-end`'s (Vanguard and ARK
    * ETFs, N-PORT), which is not today's. `document`: the fund's N-PORT report
