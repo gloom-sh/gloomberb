@@ -868,6 +868,13 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   },
   // The VIX curve and the volatility board (VIX, VOLS): spot indices, not futures.
   {
+    term: "Variance swap", aliases: ["variance swaps", "var swap", "variance strike", "variance swap strike", "variance-swap strike"],
+    functions: ["VIX", "CTM"],
+    definition: "A swap that pays the difference between the variance an index realizes over its term and a strike fixed at the start. VIX is the square root "
+      + "of the 30-day S&P 500 variance-swap strike that SPX options imply, in volatility points: a VIX of 25 is a 30-day variance strike of 25² = 625, "
+      + "25% a year. Variance swaps trade between dealers and their strikes are not published; CTM VX shows where VIX futures price that 30-day figure at each expiry.",
+  },
+  {
     term: "Term structure", aliases: ["volatility term structure", "VIX term structure", "VIX curve", "tenor curve", "tenors"],
     functions: ["VIX", "VOLS"], shown: ["Tenor", "tenor curve"],
     definition: "Implied volatility by time horizon. VIX 9D, VIX (30 days), VIX 3M, 6M and 1Y each measure the S&P 500 volatility its options price over that "
