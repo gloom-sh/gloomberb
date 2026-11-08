@@ -1,5 +1,5 @@
 import { apiClient } from "../../../api-client";
-import type { FundCoinHoldings, FundFactsPayload, FundLeverage, FundMetalHoldings, FundStructure } from "../../../api-client/fund-facts";
+import type { FundCoinHoldings, FundFactsPayload, FundLeverage, FundMetalHoldings, FundNoteFacts, FundStructure } from "../../../api-client/fund-facts";
 import type { StatItem } from "../../../components/ui/stat-grid";
 import { leverageFactorLabel } from "../../../time-series/leverage";
 import { t, tf } from "../../../i18n";
@@ -456,6 +456,45 @@ export function fundFactEntries(facts: FundFactsPayload): HeadlessPaneEntry[] {
   return entries;
 }
 
+/** What an exchange-traded note is, in one line: whose debt, and that it is no fund. */
+function noteStructureText(note: Pick<FundNoteFacts, "issuer">): string {
+  return `Exchange-traded note: an unsecured note of ${note.issuer}, not a fund`;
+}
+
+/** The supplement a note's terms come from: `2026-02-13 pricing supplement (424B2)`. */
+const noteSupplement = (note: FundNoteFacts) => `${note.filing.filedAt} pricing supplement (${note.filing.form})`;
+
+/**
+ * An exchange-traded note's terms as report entries: its issuer, yearly fee
+ * and index, each beside the pricing supplement it was read from, and the
+ * supplement itself on EDGAR.
+ */
+export function fundNoteEntries(note: FundNoteFacts): HeadlessPaneEntry[] {
+  const entries: HeadlessPaneEntry[] = [];
+  const add = (key: string, label: string, value: unknown, formatted: string, unit?: string) =>
+    entries.push({ key, label, value, formatted, ...(unit ? { unit } : {}) });
+  if (note.name) add("name", "Name", note.name, note.name);
+  add("structure", "Structure", "etn", noteStructureText(note));
+  add("issuer", "Issuer", note.issuer, note.issuer);
+  if (note.yearlyFee != null) {
+    add("yearlyFeePercent", "Yearly fee", note.yearlyFee, provenance(formatFeePercent(note.yearlyFee), noteSupplement(note), "SEC EDGAR"), "%");
+  }
+  if (note.index) add("index", "Index", note.index, provenance(note.index, noteSupplement(note)));
+  add("url", "SEC filing", note.filing.url, note.filing.url);
+  return entries;
+}
+
+/** The same terms as the pane's summary sheet, the fee dated by its supplement. */
+export function fundNoteItems(note: FundNoteFacts): StatItem[] {
+  return [
+    { id: "structure", label: "Structure", value: tf("Exchange-traded note: an unsecured note of {issuer}, not a fund", { issuer: note.issuer }), wide: true },
+    ...note.yearlyFee != null
+      ? [{ id: "fee", label: "Yearly fee", value: formatFeePercent(note.yearlyFee), detail: tf("{date} pricing supplement", { date: note.filing.filedAt }) }]
+      : [],
+    ...note.index ? [{ id: "index", label: "Index", value: note.index, wide: true }] : [],
+  ];
+}
+
 /** Names as a sentence lists them: `A`, `A and B`, `A, B and C`. */
 export function listNames(names: readonly string[]): string {
   return names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
@@ -531,6 +570,7 @@ export function fundFactsEmptyText(symbol: string, facts: FundFactsPayload | nul
     return tf("No figures for {symbol}: it lists as a fund, but the SEC's lists do not name it yet and its sponsor's site is not one Gloom reads.", { symbol });
   }
   if (facts.status === "not-a-fund") return tf("No fund facts for {symbol}: it is not on the SEC's lists of US-listed funds.", { symbol });
+  if (facts.status === "etn") return tf("{symbol} is an exchange-traded note, not a fund.", { symbol });
   // A server before statuses: what the SEC's lists make of it.
   if (facts.structure === "trust") {
     return tf("{symbol} files with the SEC as a trust or pool, not as an open-end fund; its sponsor's daily figures are not collected yet.", { symbol });

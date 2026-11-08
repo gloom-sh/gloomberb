@@ -35,12 +35,18 @@ const coinHoldingsShape = (value: FundFactsPayload["coinHoldings"]) => value == 
   || ((value.asset === "BTC" || value.asset === "ETH") && finite(value.coins) && finite(value.unitsPerCoin) && value.unitsPerCoin > 0
     && typeof value.asOf === "string" && typeof value.source === "string");
 
+/** Absent for anything but a note; otherwise its issuer and the supplement it was read from, the terms each a figure or null. */
+const noteShape = (value: FundFactsPayload["note"]) => value == null
+  || (typeof value.issuer === "string" && (value.name === null || typeof value.name === "string")
+    && (value.yearlyFee === null || finite(value.yearlyFee)) && (value.index === null || typeof value.index === "string")
+    && typeof value.filing?.url === "string" && typeof value.filing.filedAt === "string" && typeof value.filing.form === "string");
+
 export function validateFundFacts(data: FundFactsPayload): FundFactsPayload {
   if (!data || typeof data.ticker !== "string" || typeof data.covered !== "boolean"
     || ![data.expenseRatio, data.nav, data.premiumDiscount, data.netAssets, data.sponsor, data.inception, data.index].every(fact)
     || !estimateShape(data.nav) || !sharesShape(data.sharesOutstanding) || !flowsShape(data.flows)
     || !isBondFactsShape(data.bond) || !leverageShape(data.leverage) || !isMetalHoldingsShape(data.metalHoldings)
-    || !coinHoldingsShape(data.coinHoldings) || (data.currency !== undefined && typeof data.currency !== "string")) {
+    || !coinHoldingsShape(data.coinHoldings) || !noteShape(data.note) || (data.currency !== undefined && typeof data.currency !== "string")) {
     throw new Error("Unreadable fund facts response");
   }
   return data;

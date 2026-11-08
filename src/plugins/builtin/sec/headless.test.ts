@@ -320,6 +320,33 @@ test("a grantor trust without facts says why once, and its filings line says whe
   expect(emptyOf(filed)).toBe("No SEC filings found for USO.");
 });
 
+test("fn ETF VXX: an exchange-traded note reads as its issuer's note, with the fee and index its pricing supplement states", async () => {
+  const url = "https://www.sec.gov/Archives/edgar/data/312070/000191870426004069/form424b2.htm";
+  const vxx: FundFactsPayload = {
+    ...uncovered("VXX", "VXX is an exchange-traded note: an unsecured note of Barclays Bank PLC, not a fund.", null),
+    status: "etn", name: "iPath Series B S&P 500 VIX Short-Term Futures ETN",
+    note: { issuer: "Barclays Bank PLC", name: "iPath Series B S&P 500 VIX Short-Term Futures ETN", yearlyFee: 0.89,
+      index: "S&P 500 VIX Short-Term Futures Index TR", filing: { form: "424B2", filedAt: "2026-02-13", url } },
+  };
+  // The bank's filings hold no fund forms.
+  const bank = { ...filings[1]!, form: "424B2" };
+  const result = await createFundHeadless({ loadFacts: async () => fetchFundFacts("VXX", { getFundFacts: async () => vxx } as never), loadFilings: async () => [bank] })
+    .load(fundArgs("VXX"), createTestHeadlessContext());
+  const [terms, filed] = result.sections;
+  expect(terms!.title).toBe("Note terms");
+  expect(Object.fromEntries(terms!.entries!.map((entry) => [entry.key, entry.formatted]))).toEqual({
+    name: "iPath Series B S&P 500 VIX Short-Term Futures ETN",
+    structure: "Exchange-traded note: an unsecured note of Barclays Bank PLC, not a fund",
+    issuer: "Barclays Bank PLC",
+    yearlyFeePercent: "0.89% · 2026-02-13 pricing supplement (424B2) · SEC EDGAR",
+    index: "S&P 500 VIX Short-Term Futures Index TR · 2026-02-13 pricing supplement (424B2)",
+    url,
+  });
+  expect(emptyOf(filed)).toBe("VXX is a note of Barclays Bank PLC, which files no fund forms for it. Its issuer's filings: fn SEC VXX.");
+  expect(result.freshness).toMatchObject({ source: "SEC EDGAR", basis: "filed data", asOf: "2026-02-13" });
+  expect(result.complete).toBe(true);
+});
+
 test("either half can fail without taking the other with it", async () => {
   const signedOut = createFundHeadless({ loadFacts: async () => SPY_FACTS, loadFilings: async () => { throw new Error("Sign in to Gloom Cloud to load SEC filings."); } });
   const result = await signedOut.load(fundArgs("SPY"), createTestHeadlessContext());
