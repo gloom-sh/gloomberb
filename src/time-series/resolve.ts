@@ -107,6 +107,7 @@ import {
   followLatestMarketObservation,
   capabilityRequestBounds,
   endAtNewestObservation,
+  startAtOldestObservation,
   latestSessionView,
 } from "./chart-bounds";
 import {
@@ -1067,11 +1068,14 @@ async function resolveChartSpecPass(
       : latestDaily - 7 * CHART_RESOLUTION_STEP_MS["1d"],
     end: latestDaily,
   };
+  // A chart of published series alone (FRED, Gloom Cloud datasets) opens where they start, not on blank years.
+  const publishedOnly = spec.series.length > 0 && spec.series.every(({ source }) => source.kind !== "security");
+  const presetBounds = isDatasetChart(spec)
+    ? endAtNewestObservation(initialVisibleBounds, rawSeries)
+    : followLatestMarketObservation(initialVisibleBounds, rawSeries);
   const bounds = hasExplicitWindow
     ? requestVisibleBounds
-    : dailyBounds ?? sessionView?.bounds ?? (isDatasetChart(spec)
-      ? endAtNewestObservation(initialVisibleBounds, rawSeries)
-      : followLatestMarketObservation(initialVisibleBounds, rawSeries));
+    : dailyBounds ?? sessionView?.bounds ?? (publishedOnly ? startAtOldestObservation(presetBounds, rawSeries) : presetBounds);
   if (sessionView?.priorClose != null && primaryRaw?.transform === "raw"
     && primaryRaw.unitGroup.startsWith("price") && primaryRaw.unitGroup !== "price:unknown") {
     const index = rawSeries.indexOf(primaryRaw);
