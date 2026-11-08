@@ -1,8 +1,9 @@
-import type { FundChange, FundMember, FundMembersPayload, MemberFundsPayload } from "../../../api-client/members";
+import type { FundChange, FundMember, FundMembersPayload, MemberFundsPayload, StockFund, StockFundsPayload } from "../../../api-client/members";
 import type { DataTableColumn } from "../../../components";
 import { buildSectionedRows, type SectionedRow } from "../../../components/data-table/sections";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { isRegularSessionTime, latestRegularSessionClose } from "../../../market-data/market/freshness";
+import { isUsListingExchange } from "../../../utils/exchanges";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
 import { closeLabel } from "../themes/model";
 export type MembersTab = "members" | "movers" | "changes" | "breadth";
@@ -45,10 +46,59 @@ export function membersFeed(access: FundMembersPayload["access"], readAt: number
   const close = isRegularSessionTime("NYSE", readAt) === false ? latestRegularSessionClose("NYSE", readAt) : null;
   return close ? { kind: "close", date: close.date, closedAt: close.close, label: closeLabel(close.date) } : { kind: "live" };
 }
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** "31 Jul 2026", or "22 Sep": spelled out here, as a renderer's locale data writes September "Sept". */
+const dayMonth = (date: string, year: boolean) => {
+  const [y, m, d] = date.slice(0, 10).split("-");
+  return `${Number(d)} ${MONTHS[Number(m) - 1]}${year ? ` ${y}` : ""}`;
+};
+/**
+ * What a fund's holdings are as of: an issuer file's date ("holdings 2026-10-08"), or for an N-PORT report its
+ * period end and filing day ("holdings as of 31 Jul 2026 (N-PORT, filed 22 Sep)"), so a quarter-old report never
+ * reads as today's holdings. The filing day names its year when it is not the report's.
+ */
+export function holdingsBasisText(data: { asOf: string; basis?: "daily" | "nport"; filedOn?: string | null }, short = false) {
+  if (data.basis !== "nport") return `holdings ${data.asOf.slice(0, 10)}`;
+  const filed = data.filedOn ? `, filed ${dayMonth(data.filedOn, data.filedOn.slice(0, 4) !== data.asOf.slice(0, 4))}` : "";
+  // A narrow footer: "N-PORT 31 Jul 2026, filed 22 Sep".
+  return short ? `N-PORT ${dayMonth(data.asOf, true)}${filed}` : `holdings as of ${dayMonth(data.asOf, true)} (N-PORT${filed})`;
+}
 /** "S&P 500, IVV holdings as of 2026-10-08 (for SPY)": the holdings file the members come from. */
-export function holdingsSourceText(input: string, data: Pick<FundMembersPayload, "fund" | "asOf">) {
+export function holdingsSourceText(input: string, data: Pick<FundMembersPayload, "fund" | "asOf" | "basis" | "filedOn">) {
   const requested = requestedSymbol(input);
-  return `${data.fund.name}, ${data.fund.ticker} holdings as of ${data.asOf.slice(0, 10)}${requested && requested !== data.fund.ticker ? ` (for ${requested})` : ""}`;
+  const forRequested = requested && requested !== data.fund.ticker ? ` (for ${requested})` : "";
+  if (data.basis === "nport") return `${data.fund.name}, ${data.fund.ticker} ${holdingsBasisText(data)}${forRequested}`;
+  return `${data.fund.name}, ${data.fund.ticker} holdings as of ${data.asOf.slice(0, 10)}${forRequested}`;
+}
+/**
+ * What the funds holding a stock are: how many covered funds were looked through, and that the N-PORT funds'
+ * holdings are a quarter's report, filed up to 60 days after the date it is as of.
+ */
+export function stockFundsNotices(data: StockFundsPayload) {
+  return [
+    `Looked through ${data.coverage.daily + data.coverage.nport} covered funds: ${data.coverage.daily} from daily holdings files, ${data.coverage.nport} from SEC N-PORT reports.`,
+    ...(data.funds.some((row) => row.basis === "nport") ? ["N-PORT holdings are a quarter's report, filed up to 60 days after the date they are as of."] : []),
+  ];
+}
+/** Where a covered fund's holdings come from, for the fund list: its issuer's daily file, or its N-PORT report and the day it was filed. */
+export function fundSource(fund: { basis?: "daily" | "nport"; filedOn?: string | null; asOf: string | null }) {
+  if (fund.basis !== "nport") return "Daily file";
+  return fund.filedOn ? `N-PORT, filed ${dayMonth(fund.filedOn, true)}` : "N-PORT";
+}
+/**
+ * The US ticker a look-through asks for (NVDA, BRK.B), from a bare symbol or a US listing; null for a listing abroad
+ * (INFY:NSE), whose code is not the ticker the funds' holdings carry.
+ */
+export function usListingInput(input: string): string | null {
+  const [symbol, exchange] = input.trim().toUpperCase().split(":");
+  return symbol && (!exchange || isUsListingExchange(exchange)) ? symbol : null;
+}
+/** Nothing covered holds the symbol: it may be a fund MEMB does not cover, so the fund facts are named too. */
+export function noStockFundsMessage(input: string, surface: "report" | "pane" = "report") {
+  const symbol = requestedSymbol(input);
+  return { title: `No covered fund holds ${symbol}.`,
+    message: surface === "pane" ? `If ${symbol} is a fund, MEMB does not cover it: its fund facts are in ETF ${symbol}. MEMB with no fund lists the funds it covers.`
+      : `If ${symbol} is a fund, MEMB does not cover it: gloom fn ETF ${symbol}. The covered funds: gloom fn MEMB.` };
 }
 /** Caveats about a fund's holdings and returns, shared by the pane's notices and the text report. */
 export function holdingsCaveats(data: FundMembersPayload, movers: boolean) {
@@ -59,12 +109,12 @@ export function holdingsCaveats(data: FundMembersPayload, movers: boolean) {
     ...(data.excludedDerivatives ? [`${data.excludedDerivatives} derivative positions are excluded from these share holdings.`] : []),
   ];
 }
-export function membersTitle(input: string) {
+export function membersTitle(input: string, stock = false) {
   const requested = input.split(":")[0]!.trim().toUpperCase();
   const fund = canonicalFund(requested);
   const definition = COVERED.find((item) => item.ticker === fund);
   return definition ? `${definition.name}, ${fund} holdings${requested !== fund ? ` (${requested})` : ""}`
-    : requested ? `MEMB ${requested}` : "Index and ETF members";
+    : stock ? `Funds holding ${requested}` : requested ? `MEMB ${requested}` : "Index and ETF members";
 }
 export const DEFAULT_SORT: SortPreference<string> = { columnId: "weight", direction: "desc" };
 /** A signed figure; one that rounds to zero is unsigned (0.00, never +0.00 or -0.00). */
@@ -104,6 +154,18 @@ export function memberColumns(width: number, movers = false): DataTableColumn[] 
     ...(!movers ? [column("shares", "Shares", 14), column("price", "Price $", 11)] : []),
     column("changePercent", "1D", compact ? 8 : 9), ...(!movers ? [column("return1WPercent", "1W", 9), column("return1MPercent", "1M", 9), column("returnYtdPercent", "YTD", 9), column("sector", "Sector", 22, "left")] : [])], width,
     ["sector", "shares", "returnYtdPercent", "return1MPercent", "return1WPercent", "price", "name"]);
+}
+/** The funds holding a stock, in two sections: those on daily holdings files, then those read from N-PORT reports, each by weight as the server orders them. */
+export function stockFundRows(rows: readonly StockFund[]): SectionedRow<StockFund>[] {
+  return buildSectionedRows([
+    { label: "Daily holdings files", items: rows.filter((row) => row.basis === "daily") },
+    { label: "SEC N-PORT reports", items: rows.filter((row) => row.basis === "nport") },
+  ], (row) => row.ticker);
+}
+export function stockFundColumns(width: number) {
+  const compact = width < 50;
+  return fit([column("ticker", "Fund", 8, "left"), column("name", "Theme", 24, "left"), column("weight", compact ? "Wt. %" : "Weight %", compact ? 7 : 10),
+    column("asOf", "As of", 12, "left"), column("filedOn", "Filed", 12, "left")], width, ["filedOn", "name"]);
 }
 export function changeColumns(width: number) {
   const compact = width < 50;

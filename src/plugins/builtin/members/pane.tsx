@@ -1,6 +1,6 @@
 import { Breadth } from "./breadth-pane";
 import { useCallback, useMemo, useRef, useState } from "react";
-import type { FundChange, FundMember } from "../../../api-client/members";
+import type { FundChange, FundMember, MemberFundsPayload, StockFund } from "../../../api-client/members";
 import { delayedFooterSegment, DataTableStackView, DataTableView, DetailScrollBody, EmptyState, KeyValueRow, PaneFooterScope, PaneStatusBody, Prose, QueryBar, StatGrid,
   isSectionedItemRow, renderSectionedRowHeader, useExternalLinkFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch,
   type DataTableCell, type DataTableColumn, type PaneFooterSegment, type SectionedRow } from "../../../components";
@@ -13,8 +13,9 @@ import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { useMembersMenu, type MemberList } from "../shared/members-menu";
-import { cachedChanges, cachedFunds, cachedMembers, loadChanges, loadFunds, loadMembers } from "./client";
-import { canonicalFund, changeColumns, changeLabel, changeReason, coverageText, coveredFund, decimal, DEFAULT_SORT, holdingsCaveats, isTab, memberColumns, memberRows, membersFeed, membersTitle, notCoveredMessage, percent, TABS, type MembersTab } from "./model";
+import { cachedChanges, cachedFunds, cachedMembers, cachedStockFunds, loadChanges, loadFunds, loadMembers, loadStockFunds } from "./client";
+import { canonicalFund, changeColumns, changeLabel, changeReason, coverageText, coveredFund, decimal, DEFAULT_SORT, holdingsBasisText, holdingsCaveats, isTab, memberColumns, memberRows,
+  membersFeed, membersTitle, noStockFundsMessage, percent, stockFundColumns, stockFundRows, TABS, usListingInput, type MembersTab } from "./model";
 
 type ViewProps = Pick<PaneProps, "width" | "height" | "focused"> & { fund: string; active: boolean };
 const rowKey = (row: SectionedRow<FundMember>) => row.key;
@@ -56,19 +57,25 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
     // The close names its own date, so a quote date that is the same day is not said twice.
     const dateSaid = feed.kind === "close" && dates.length === 1 && dates[0] === feed.date;
     const partial = data.aggregate.fresh1D < data.aggregate.total;
+    // An N-PORT fund's holdings are a quarter's report: always said, with its date and filing day, never as today's.
+    const holdingsText = holdingsBasisText(data);
+    const nport = data.basis === "nport";
     return [
       { id: "coverage", parts: [{ text: coverageText(data.aggregate, width < 60), tone: partial ? "warning" : "muted" }] },
       // A capture's status line says the quotes' date and delay too; it does not say returns are unavailable.
       ...(data.quotesUnavailable
-        ? [{ id: "quote-date", title: `${date ?? "Quote date unavailable"} · ${feedText} · holdings ${data.asOf}`, parts: [{ text: "returns unavailable", tone: "muted" as const }] }]
+        ? [{ id: "quote-date", title: `${date ?? "Quote date unavailable"} · ${feedText} · ${holdingsText}`, parts: [{ text: "returns unavailable", tone: "muted" as const }] }]
         : [
           feed.kind === "live" ? { id: "quote-live", quoteStatus: true, parts: [{ text: "live", tone: "positive" as const }] }
-            : feed.kind === "close" ? { id: "quote-close", title: `${feed.label} · holdings ${data.asOf}`, quoteStatus: true, parts: [{ text: feed.label, tone: "muted" as const }] }
+            : feed.kind === "close" ? { id: "quote-close", title: `${feed.label} · ${holdingsText}`, quoteStatus: true, parts: [{ text: feed.label, tone: "muted" as const }] }
             : delayedFooterSegment({ id: "quote-delay", detail: "15m delayed", delay: "15m", quoteStatus: true }),
-          ...(date && !dateSaid ? [{ id: "quote-date", title: `${date} · ${feedText} · holdings ${data.asOf}`, quoteStatus: true,
+          ...(date && !dateSaid ? [{ id: "quote-date", title: `${date} · ${feedText} · ${holdingsText}`, quoteStatus: true,
             parts: [{ text: width < 60 && dates.length === 1 ? date.slice(5) : date, tone: "muted" as const }] }] : []),
         ]),
-      ...(width >= 60 ? [{ id: "holdings-date", asOf: true, parts: [{ text: `holdings ${data.asOf}`, tone: "muted" as const }] }] : []),
+      // A shot keeps an N-PORT fund's (capture): a picture of its rows cannot say they are a quarter's report.
+      ...(nport ? [{ id: "holdings-date", capture: true, title: holdingsText,
+        parts: [{ text: holdingsBasisText(data, width < 100), tone: "warning" as const }] }]
+        : width >= 60 ? [{ id: "holdings-date", asOf: true, parts: [{ text: holdingsText, tone: "muted" as const }] }] : []),
     ];
   }, [data, resource.updatedAt, width]);
   usePaneStatusFooter({ registrationId: "members:status", loading: !!data && resource.loading,
@@ -186,14 +193,53 @@ function FundPicker({ width, height, focused, choose }: Pick<PaneProps, "width" 
       onActivate={(row) => choose(row.ticker)} sortColumnId={null} sortDirection="asc" renderCell={(row, col) => ({ text: String(row[col.id as "ticker"] ?? "--") })} />}
   </PaneStatusBody>;
 }
-type FundPaneProps = Pick<PaneProps, "width" | "height" | "focused"> & { fund: string; requested: string };
-/** The covered list is the server's, so a fund it adds opens without an app update. A list that cannot be read leaves the fund's own load to report the failure. */
-function CoveredFund({ fund, requested, ...props }: FundPaneProps) {
-  const resource = useAsyncResource(loadFunds, { initialData: cachedFunds });
-  const funds = resource.data?.payload.funds;
+type ListProps = Pick<PaneProps, "width" | "height" | "focused">;
+const stockFundKey = (row: SectionedRow<StockFund>) => row.key;
+/**
+ * Linear: GLO-1881. The covered funds holding a stock: the funds on daily holdings files first, then those read from
+ * SEC N-PORT reports, each with its weight and the date its holdings are as of (and a report's filing day).
+ */
+function StockFunds({ symbol, width, height, focused }: ListProps & { symbol: string }) {
+  const colors = useThemeColors();
+  const { pinTicker } = usePluginTickerActions();
+  const resource = useAsyncResource(useCallback((force: boolean) => loadStockFunds(symbol, force), [symbol]), { initialData: useCallback(() => cachedStockFunds(symbol), [symbol]) });
+  const data = resource.data?.payload;
+  const [selected, setSelected] = usePluginPaneState<string | null>(`holding:${symbol}`, null);
+  const rows = useMemo(() => stockFundRows(data?.funds ?? []), [data]);
+  usePaneRefreshKey(() => void resource.reload(), { focused });
+  usePaneStatusFooter({ registrationId: "members:stock-funds", loading: !!data && resource.loading, stale: !!data && (resource.data!.stale || !!resource.error) });
+  usePaneNoticeFooter({ registrationId: "members:stock-funds-notices", focused, notices: resource.error && data ? [resource.error] : [] });
+  const renderCell = useCallback((item: SectionedRow<StockFund>, column: DataTableColumn): DataTableCell => {
+    if (!isSectionedItemRow(item)) return { text: "" };
+    const row = item.item;
+    if (column.id === "ticker") return { text: row.ticker, color: colors.textBright };
+    if (column.id === "name") return { text: row.name, color: colors.text };
+    if (column.id === "weight") return { text: row.weight == null ? "--" : decimal(row.weight * 100), value: row.weight == null ? null : row.weight * 100 };
+    if (column.id === "asOf") return { text: row.asOf.slice(0, 10), color: colors.textMuted };
+    return { text: row.filedOn ?? "--", color: colors.textMuted };
+  }, [colors]);
+  const none = noStockFundsMessage(symbol, "pane");
+  return <PaneStatusBody subject="funds holding the stock" loading={!data && resource.loading} error={!data ? resource.error : null}
+    empty={!!data && !data.funds.length} emptyTitle={none.title} emptyMessage={none.message}>
+    {data && !!data.funds.length && <DataTableView<SectionedRow<StockFund>> items={rows} columns={stockFundColumns(width)} rootWidth={width} rootHeight={height} focused={focused}
+      selection={{ kind: "id", selectedId: selected, getId: stockFundKey, onChange: (id) => setSelected(String(id)) }} getItemKey={stockFundKey}
+      isNavigable={isSectionedItemRow} renderSectionHeader={renderSectionedRowHeader} sortColumnId={null} sortDirection="desc"
+      onActivate={(row) => { if (isSectionedItemRow(row)) pinTicker(row.item.ticker, { floating: true, instrument: null }); }}
+      renderCell={renderCell} selectedTextOverridesCellColor emptyStateTitle={none.title} />}
+  </PaneStatusBody>;
+}
+type FundPaneProps = ListProps & { fund: string; requested: string; funds: MemberFundsPayload["funds"] | undefined };
+/**
+ * The covered list is the server's, so a fund it adds opens without an app update. A symbol it does not hold is a
+ * stock, and the pane lists the covered funds holding it. A list that cannot be read leaves the fund's own load to
+ * report the failure.
+ */
+function CoveredFund({ fund, requested, funds, ...props }: FundPaneProps) {
   if (funds?.length && !coveredFund(funds, fund)) {
-    const text = notCoveredMessage(requested, "pane");
-    return <PaneStatusBody empty emptyTitle={text.title} emptyMessage={text.message} />;
+    const symbol = usListingInput(requested);
+    if (!symbol) return <PaneStatusBody empty emptyTitle={`${requested.toUpperCase()} is not a US listing.`}
+      emptyMessage="Funds are looked through by US ticker: name the US listing, such as an ADR (INFY, TSM)." />;
+    return <StockFunds key={symbol} symbol={symbol} {...props} />;
   }
   return <FundView key={fund} fund={fund} {...props} />;
 }
@@ -202,7 +248,9 @@ export function MembersPane(props: PaneProps) {
   const [chosen, choose] = usePluginPaneState("fund", "");
   const requested = symbol ?? chosen;
   const fund = canonicalFund(requested);
-  usePaneTitle(membersTitle(requested));
+  const resource = useAsyncResource(loadFunds, { initialData: cachedFunds });
+  const funds = resource.data?.payload.funds;
+  usePaneTitle(membersTitle(requested, !!fund && !!funds?.length && !coveredFund(funds, fund)));
   if (!fund) return <FundPicker {...props} choose={choose} />;
-  return <CoveredFund fund={fund} requested={requested} {...props} />;
+  return <CoveredFund fund={fund} requested={requested} funds={funds} {...props} />;
 }

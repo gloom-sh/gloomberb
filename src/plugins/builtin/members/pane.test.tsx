@@ -11,14 +11,14 @@ import type { PluginRuntimeAccess } from "../../../plugins/runtime";
 import type { ContextMenuActionItem, ContextMenuItem } from "../../../types/context-menu";
 import { setSharedRegistryForTests, type PluginRegistry } from "../../registry";
 import { MEMBER_DESTINATIONS } from "../shared/members-menu";
-import { fundBreadthCache, fundChangesCache, fundListCache, fundMembersCache } from "./client";
+import { fundBreadthCache, fundChangesCache, fundListCache, fundMembersCache, stockFundsCache } from "./client";
 import { MembersPane } from "./pane";
 import { board, changes, member } from "./test-fixture";
 const tui = createOpenTuiTestHarness();
-afterEach(() => { setSystemTime(); setCloudApiFetchTransport(null); setSharedRegistryForTests(undefined); fundBreadthCache.reset(); fundMembersCache.reset(); fundChangesCache.reset(); fundListCache.reset(); });
+afterEach(() => { setSystemTime(); setCloudApiFetchTransport(null); setSharedRegistryForTests(undefined); fundBreadthCache.reset(); fundMembersCache.reset(); fundChangesCache.reset(); fundListCache.reset(); stockFundsCache.reset(); });
 const covered = { funds: ["IVV", "IJH", "IJR", "IWM", "IWB"].map((ticker) => ({ ticker, name: ticker, aliases: ticker === "IVV" ? ["SPY", "SPX"] : [], changes: "none" as const, asOf: "2026-10-05" })) };
 async function mountMembers(symbol: string, { pins = [], runtime = {}, onMenu, onFooter }: { pins?: string[]; runtime?: Partial<PluginRuntimeAccess>; onMenu?: (menu: ContextMenuItem[]) => void; onFooter?: (info: PaneFooterSegment[]) => void } = {}) {
-  for (const cache of [fundBreadthCache, fundMembersCache, fundChangesCache, fundListCache]) cache.attach(new MemoryPluginPersistence());
+  for (const cache of [fundBreadthCache, fundMembersCache, fundChangesCache, fundListCache, stockFundsCache]) cache.attach(new MemoryPluginPersistence());
   const initial = createInitialState(createTestPaneConfig(":memory:", { instanceId: "members", paneId: "members", binding: { kind: "fixed", symbol }, settings: {} }));
   const pluginRuntime = createTestPluginRuntime({ getMarketData: () => null, pinTicker: (symbol) => { pins.push(symbol); }, ...runtime });
   function Harness() {
@@ -59,13 +59,28 @@ test("partial holdings keep number columns aligned, open tickers and lazily load
   expect(frame).toContain("2026-10-08");
   expect(frame.split(headline)).toHaveLength(2);
 });
-test("a fund outside the server's covered list says so in the pane and points to its fund facts, not the whole list", async () => {
-  setCloudApiFetchTransport(async (input) => new URL(String(input)).pathname.endsWith("/members") ? Response.json(covered) : Response.json({ error: "Covered funds" }, { status: 404 }));
-  await mountMembers("SMH");
-  const frame = await tui.waitForFrameToContain("SMH is not a covered fund.");
-  expect(frame).toContain("ETF SMH");
-  expect(frame).not.toContain("Covered: IVV");
-  expect(frame).not.toContain("not available on this server");
+test("a stock lists the covered funds holding it, daily files before N-PORT reports, and nothing held points to the fund facts", async () => {
+  const held = { symbol: "NVDA", coverage: { daily: 5, nport: 2 }, funds: [
+    { ticker: "IVV", name: "S&P 500", basis: "daily", weight: 0.0712, shares: 1, marketValue: 1, holdingName: "NVIDIA CORP", asOf: "2026-11-05", filedOn: null },
+    { ticker: "SMH", name: "Semiconductors", basis: "nport", weight: 0.2, shares: 1, marketValue: 1, holdingName: "NVIDIA Corp", asOf: "2026-06-30", filedOn: "2026-08-26" },
+  ] };
+  setCloudApiFetchTransport(async (input) => {
+    const path = new URL(String(input)).pathname;
+    return path.endsWith("/members") ? Response.json(covered) : path.endsWith("/holding/NVDA") ? Response.json(held)
+      : path.endsWith("/holding/QQQ") ? Response.json({ symbol: "QQQ", funds: [], coverage: held.coverage }) : Response.json({ error: "Not found" }, { status: 404 });
+  });
+  await mountMembers("NVDA");
+  const frame = await tui.waitForFrameToContain("SEC N-PORT reports");
+  const lines = frame.split("\n");
+  const at = (text: string) => lines.findIndex((line) => line.includes(text));
+  expect(at("Daily holdings files")).toBeLessThan(at("S&P 500"));
+  expect(at("S&P 500")).toBeLessThan(at("SEC N-PORT reports"));
+  expect(lines[at("Semiconductors")]).toContain("20.00");
+  expect(lines[at("Semiconductors")]).toContain("2026-08-26");
+  await mountMembers("QQQ");
+  const none = await tui.waitForFrameToContain("No covered fund holds QQQ.");
+  expect(none).toContain("ETF QQQ");
+  expect(none).not.toContain("not available on this server");
 });
 test("Movers has no members menu, and a search narrows what the menu opens", async () => {
   setCloudApiFetchTransport(async (input) => Response.json(new URL(String(input)).pathname.endsWith("/members") ? covered : board));

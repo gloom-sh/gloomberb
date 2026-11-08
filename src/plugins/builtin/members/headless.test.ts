@@ -53,3 +53,24 @@ test("an empty changes table says why: the fund's index changes are not covered,
   expect(await load(false)).toBe("Index changes are not covered for XLK.");
   expect(await load(true)).toBe("No stored index changes.");
 });
+
+test("a stock lists the covered funds holding it; an N-PORT fund's holdings say their report date and filing day, never today", async () => {
+  const funds = { funds: [{ ticker: "IVV", name: "S&P 500", aliases: ["SPY"], changes: "sp500", basis: "daily", asOf: "2026-11-05", filedOn: null },
+    { ticker: "ARKK", name: "Disruptive innovation", aliases: [], changes: "none", basis: "nport", asOf: "2026-07-31", filedOn: "2026-09-22" }] };
+  const held = { symbol: "NVDA", coverage: { daily: 1, nport: 1 }, funds: [
+    { ticker: "IVV", name: "S&P 500", basis: "daily", weight: 0.0712, shares: 1, marketValue: 1, holdingName: "NVIDIA CORP", asOf: "2026-11-05", filedOn: null },
+    { ticker: "ARKK", name: "Disruptive innovation", basis: "nport", weight: 0.037, shares: 1, marketValue: 1, holdingName: "NVIDIA CORP", asOf: "2026-07-31", filedOn: "2026-09-22" }] };
+  const asked: string[] = [];
+  const apiClient = { getMemberFunds: async () => funds, getStockFunds: async (symbol: string) => { asked.push(symbol); return held; },
+    getFundMembers: async () => ({ ...board, fund: funds.funds[1], basis: "nport", asOf: "2026-07-31", filedOn: "2026-09-22" }) };
+  const load = async (input: string) => await membersHeadless.load({ symbols: [input], argument: [input], rawArgument: input, options: {} } as unknown as HeadlessPaneLoadArgs,
+    { signal: new AbortController().signal, apiClient, refresh: false } as unknown as HeadlessPaneContext) as HeadlessRowsResult;
+  const stock = await load("NVDA");
+  expect(stock.rows.map((row) => [row.ticker, Number((row.weight as number).toFixed(2)), row.asOf, row.source])).toEqual([
+    ["IVV", 7.12, "2026-11-05", "Daily file"], ["ARKK", 3.7, "2026-07-31", "N-PORT, filed 22 Sep 2026"]]);
+  // A listing abroad is not looked up by its local code.
+  expect((await load("INFY:NSE")).empty).toContain("US ticker");
+  expect(asked).toEqual(["NVDA"]);
+  const arkk = await load("ARKK");
+  expect((arkk.metadata as { notices: string[] }).notices[0]).toBe("Disruptive innovation, ARKK holdings as of 31 Jul 2026 (N-PORT, filed 22 Sep)");
+});

@@ -1,6 +1,6 @@
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
-import type { FundMembersPayload, FundChangesPayload, MemberFundsPayload, FundBreadthPayload } from "../../../api-client/members";
+import type { FundMembersPayload, FundChangesPayload, MemberFundsPayload, FundBreadthPayload, StockFundsPayload } from "../../../api-client/members";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { companyNameCase } from "../../../tickers/company-name";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
@@ -10,7 +10,16 @@ export const fundListCache = createPluginCache<MemberFundsPayload>({ kind: "memb
 export const fundMembersCache = createPluginCache<FundMembersPayload>({ kind: "fund-members", source: "gloom-cloud", schemaVersion: 1, policy });
 export const fundChangesCache = createPluginCache<FundChangesPayload>({ kind: "fund-changes", source: "gloom-cloud", schemaVersion: 1, policy });
 export const fundBreadthCache = createPluginCache<FundBreadthPayload>({ kind: "fund-breadth", source: "gloom-cloud", schemaVersion: 1, policy });
+export const stockFundsCache = createPluginCache<StockFundsPayload>({ kind: "stock-funds", source: "gloom-cloud", schemaVersion: 1, policy });
 type Client = Pick<typeof apiClient, "getMemberFunds" | "getFundMembers" | "getFundChanges">;
+/** A symbol the covered list does not hold: a stock to look through the funds for, or a fund MEMB does not cover. */
+export class FundNotCoveredError extends Error {
+  constructor(readonly symbol: string) {
+    const text = notCoveredMessage(symbol);
+    super(`${text.title} ${text.message}`);
+    this.name = "FundNotCoveredError";
+  }
+}
 const number = (value: unknown) => value === null || typeof value === "number" && Number.isFinite(value);
 function validateMembers(data: FundMembersPayload) {
   if (!data?.fund?.ticker || !Number.isFinite(Date.parse(data.asOf)) || !Array.isArray(data.members)
@@ -40,12 +49,25 @@ async function fetchFundPayload<T>(fund: string, fetcher: () => Promise<T>, vali
   try { return validate(await fetcher()); } catch (error) {
     if (error instanceof ApiRequestError && error.status === 404) {
       const funds = await fetchFunds(client).then((payload) => payload.funds, () => { /* Intentional ignore: an unreadable covered list leaves the server's own message. */ return []; });
-      if (funds.length && !coveredFund(funds, fund)) { const text = notCoveredMessage(fund); throw new Error(`${text.title} ${text.message}`); }
+      if (funds.length && !coveredFund(funds, fund)) throw new FundNotCoveredError(fund);
     }
     throw unavailableOnServer(error, unavailable);
   }
 }
+function validateStockFunds(data: StockFundsPayload) {
+  if (!data || typeof data.symbol !== "string" || !Array.isArray(data.funds) || !data.funds.every((row) => typeof row.ticker === "string"
+    && typeof row.name === "string" && (row.basis === "daily" || row.basis === "nport") && number(row.weight) && typeof row.asOf === "string")) throw new Error("Unreadable fund holders response");
+  return data;
+}
 export const fetchFunds = (client: Client = apiClient) => fetchPayload(() => client.getMemberFunds(), validateFunds);
+/** The covered funds holding a stock; a server without the lookup says so instead of a bare 404. */
+export async function fetchStockFunds(symbol: string, client: Pick<typeof apiClient, "getStockFunds"> = apiClient) {
+  try { return validateStockFunds(await client.getStockFunds(symbol)); } catch (error) {
+    throw unavailableOnServer(error, "Funds holding a stock are not available on this server yet.");
+  }
+}
+export const cachedStockFunds = (symbol: string) => cachedCloudResource(stockFundsCache, symbol, validateStockFunds);
+export const loadStockFunds = (symbol: string, force = false) => loadCloudResource(stockFundsCache, symbol, () => fetchStockFunds(symbol), { force, validate: validateStockFunds });
 export const fetchMembers = (fund: string, client: Client = apiClient) => fetchFundPayload(fund, () => client.getFundMembers(fund), validateMembers, client);
 export const fetchChanges = (fund: string, client: Client = apiClient) => fetchFundPayload(fund, () => client.getFundChanges(fund), validateChanges, client);
 export const cachedFunds = () => cachedCloudResource(fundListCache, "list", validateFunds);

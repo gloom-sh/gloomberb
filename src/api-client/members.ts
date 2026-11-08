@@ -1,4 +1,11 @@
-interface MemberFund { ticker: string; name: string; aliases: string[]; changes: "sp500" | "announcements" | "none" }
+interface MemberFund {
+  ticker: string; name: string; aliases: string[]; changes: "sp500" | "announcements" | "none";
+  /**
+   * Where the fund's holdings come from: its issuer's daily file, or its latest SEC N-PORT report (quarterly,
+   * filed up to 60 days after the date it is as of). An older server leaves it out (daily).
+   */
+  basis?: "daily" | "nport";
+}
 export interface FundMember {
   id: string; symbol: string | null; name: string; sector: string | null;
   weight: number | null; shares: number; holdingPrice: number | null; marketValue: number | null;
@@ -14,6 +21,8 @@ export interface FundMembersPayload {
    */
   access?: "realtime" | "delayed";
   fund: MemberFund; asOf: string; fetchedAt: string; excludedDerivatives: number; stale: boolean;
+  /** As the fund's `basis`; with an N-PORT report, the day it was filed and the report itself. */
+  basis?: "daily" | "nport"; filedOn?: string | null; sourceUrl?: string;
   quotesUnavailable: boolean; snapshotAsOf: string | null; fundDailyAsOf: string | null; quoteCap: number;
   members: FundMember[];
   aggregate: { sum: number | null; fundReturn: number | null; residual: number | null; tolerancePp: number;
@@ -29,7 +38,16 @@ export interface FundChangesPayload {
   fund: MemberFund; changes: FundChange[]; asOf: string | null; stale: boolean; available: boolean;
   estimateLabel: string; attribution: { text: string; url: string } | null;
 }
-export interface MemberFundsPayload { funds: (MemberFund & { asOf: string | null })[] }
+export interface MemberFundsPayload { funds: (MemberFund & { asOf: string | null; filedOn?: string | null })[] }
+/** A covered fund holding a stock: its weight in the fund's latest holdings, and what those holdings are as of. */
+export interface StockFund {
+  ticker: string; name: string; basis: "daily" | "nport"; weight: number | null; shares: number; marketValue: number | null;
+  /** The stock as the fund's holdings name it. */
+  holdingName: string;
+  asOf: string; filedOn: string | null; sourceUrl?: string;
+}
+/** The covered funds holding a stock: the daily ones first, then those read from N-PORT reports, each by weight. */
+export interface StockFundsPayload { symbol: string; funds: StockFund[]; coverage: { daily: number; nport: number } }
 
 interface BreadthCount { above: number; eligible: number; percent: number | null }
 export interface BreadthDay {
