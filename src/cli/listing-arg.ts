@@ -400,9 +400,13 @@ interface BareListingVenues {
   choose: boolean;
 }
 
-/** Whether the venues' companies differ by name. A venue with no name is no other company. */
-function listsSeveralCompanies(venues: readonly ListingVenue[]): boolean {
-  return groupByCompany(venues, (venue) => venue.name).length > 1;
+/**
+ * Whether the venues' companies differ by name. A venue with no name is no other company, nor is one
+ * that names its line by the code alone (BSE's "ITBEES" beside NSE's "Nippon India ETF Nifty IT").
+ */
+function listsSeveralCompanies(symbol: string, venues: readonly ListingVenue[]): boolean {
+  return groupByCompany(venues, (venue) =>
+    venue.name.trim().toUpperCase() === (venue.symbol ?? symbol).toUpperCase() ? "" : venue.name).length > 1;
 }
 
 /**
@@ -630,7 +634,7 @@ async function bareListingVenues(listing: BareListing, deps: ListingDeps): Promi
   if (listing.exchange) return null;
   const venues = await listingVenues(listing.symbol, deps).catch(logFailure("cli.listing-arg", "Read listing venues failed", []));
   const savedExchange = canonicalExchange(listing.saved?.metadata.exchange);
-  if (!savedExchange && listsSeveralCompanies(venues)) return { exchange: "", resolved: null, others: venues, choose: true };
+  if (!savedExchange && listsSeveralCompanies(listing.symbol, venues)) return { exchange: "", resolved: null, others: venues, choose: true };
   const resolved = venues.find((venue) => venue.exchange === savedExchange) ?? (savedExchange ? null : venues[0] ?? null);
   const exchange = resolved?.exchange ?? savedExchange;
   if (!exchange) return null;
