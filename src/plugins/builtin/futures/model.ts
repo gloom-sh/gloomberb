@@ -2,7 +2,7 @@ import type { FuturesContractTermsPayload } from "../../../api-client/futures-cu
 import type { Quote } from "../../../types/financials";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
-import { FUTURES_SECTOR_ORDER, futuresGroupFilter, futuresNameKey, type FuturesContract, type FuturesSector } from "../../../market-data/futures-board";
+import { FUTURES_SECTOR_ORDER, futuresBoardCode, futuresGroupFilter, futuresNameKey, type FuturesContract, type FuturesSector } from "../../../market-data/futures-board";
 import { CONTRACT_MONTH_NAME, futuresPriceUnit } from "../../../market-data/futures-contract";
 import { contractMonthLabel } from "../../../utils/contract-month";
 import { quoteDotMarketState } from "../../../market-data/market/status";
@@ -62,8 +62,13 @@ export function futuresRowId(row: FuturesTableRow): string {
  */
 export function futuresContractName(contract: FuturesContract, quote?: Quote | null): string {
   const month = quotedContractMonth(contract, quote);
-  if (!month) return contract.name;
+  if (!month) return unplacedName(contract);
   return `${contract.name} ${contractMonthLabel(month.year, month.month)}`;
+}
+
+/** A row whose month is not known yet: the catalog name, a generic's with its place on the curve ("VIX Futures front month"). */
+function unplacedName(contract: FuturesContract): string {
+  return contract.generic ? `${contract.name} ${contract.generic.place}` : contract.name;
 }
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -113,7 +118,7 @@ export function futuresContractHeadline(
   const agree = quoted == null || termsMonth == null || (quoted.year === termsMonth.year && quoted.month === termsMonth.month);
   // A quote whose name carries no month (or a cut one) is placed by its terms.
   const month = agree ? quoted ?? termsMonth : quoted;
-  if (!month) return contract.name;
+  if (!month) return unplacedName(contract);
   const priced = `${month.year}-${String(month.month + 1).padStart(2, "0")}`;
   const plain = `${contract.name} ${contractMonthLabel(month.year, month.month)}`;
   if (!agree) return plain;
@@ -259,7 +264,7 @@ function getSortValue(
     case "status":
       return quoteDotMarketState(futuresSessionQuote(contract, quote)) === "REGULAR" ? 0 : 1;
     case "code":
-      return contract.code;
+      return futuresBoardCode(contract);
     case "name":
       return futuresContractName(contract, quote);
     case "price":

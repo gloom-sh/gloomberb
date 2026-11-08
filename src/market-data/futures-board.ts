@@ -48,6 +48,13 @@ export interface FuturesContract {
   bareCode?: true;
   /** Everyday names the board's own does not hold: oil is WTI crude, not heating or soybean oil. */
   aliases?: readonly string[];
+  /**
+   * A generic's row (VX1, VX2): it shows its symbol where the others show
+   * their code, two rows of one root told apart, and its place on the curve
+   * names it ("VIX Futures front month") until its quote or terms name the
+   * month it prices.
+   */
+  generic?: { place: string };
 }
 
 /** 0.005 -> 3, 0.25 -> 2, 1 -> 0. Written for ticks, not general numbers. */
@@ -162,9 +169,14 @@ export const FUTURES_CONTRACTS: FuturesContract[] = [
  * trades in 0.05.
  */
 const VOLATILITY_FUTURES: readonly FuturesContract[] = [
-  { symbol: "VX1", code: "VX", name: "VIX Futures", sector: "volatility", venue: "CFE", tick: 0.0001 },
-  { symbol: "VX2", code: "VX", name: "VIX Futures", sector: "volatility", venue: "CFE", tick: 0.0001 },
+  { symbol: "VX1", code: "VX", name: "VIX Futures", sector: "volatility", venue: "CFE", tick: 0.0001, generic: { place: "front month" } },
+  { symbol: "VX2", code: "VX", name: "VIX Futures", sector: "volatility", venue: "CFE", tick: 0.0001, generic: { place: "2nd month" } },
 ];
+
+/** What a board row is called in its symbol column: its code (ES), or a generic's own symbol (VX1). */
+export function futuresBoardCode(contract: FuturesContract): string {
+  return contract.generic ? contract.symbol : contract.code;
+}
 
 /** Every row the FUT board lists: each root's front contract, and the VIX futures' first two months. */
 export const FUTURES_BOARD_ROWS: readonly FuturesContract[] = [...FUTURES_CONTRACTS, ...VOLATILITY_FUTURES];
