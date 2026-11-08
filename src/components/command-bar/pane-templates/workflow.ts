@@ -324,18 +324,19 @@ export function useCommandBarPaneTemplateActions({
 
   const paneShortcutItems = useCallback((options?: {
     filterQuery?: string;
-    searched?: boolean;
+    searchedQuery?: string;
     createOptions?: PaneTemplateCreateOptions;
     includePromptableTickerTemplates?: boolean;
   }): ResultItem[] => buildPaneShortcutItems({
     createItem: createPaneTemplateItem,
     createOptions: options?.createOptions,
     filterQuery: options?.filterQuery,
-    searched: options?.searched,
+    searchedQuery: options?.searchedQuery,
+    registry: pluginRegistry,
     templates: getAvailablePaneTemplates(options?.createOptions, {
       includePromptableTickerTemplates: options?.includePromptableTickerTemplates,
     }),
-  }), [createPaneTemplateItem, getAvailablePaneTemplates]);
+  }), [createPaneTemplateItem, getAvailablePaneTemplates, pluginRegistry]);
 
   const nonShortcutPaneTemplateItems = useCallback((filterQuery?: string): ResultItem[] => {
     return buildNonShortcutPaneTemplateItems({

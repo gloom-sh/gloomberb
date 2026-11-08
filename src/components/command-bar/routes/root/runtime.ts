@@ -77,7 +77,7 @@ interface UseCommandBarRootRuntimeOptions {
   openModeRoute(screen: "ticker-search" | "layout", initialQuery?: string): void;
   paneShortcutItems(options?: {
     filterQuery?: string;
-    searched?: boolean;
+    searchedQuery?: string;
     createOptions?: PaneTemplateCreateOptions;
     includePromptableTickerTemplates?: boolean;
   }): ResultItem[];

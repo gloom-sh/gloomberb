@@ -6,6 +6,7 @@ import type {
   ShortcutArgError,
 } from "../../../types/plugin";
 import { fuzzyFilter } from "../../../utils/fuzzy-search";
+import { discoveryOpening } from "../../../utils/lookup-token";
 import { summarizeError } from "../helpers";
 import type { ResultItem } from "../list/model";
 import { tickerFirstQuery } from "../routes/root/ticker-first";
@@ -273,8 +274,8 @@ export function buildPaneTemplateItem(options: {
  * those that open one of its cases (CTM's "vix futures") and its intents. The
  * bar's row carries them, so the same words find the same function.
  */
-function paneTemplateDiscoveryWords(template: PaneTemplateDef, registry: PluginRegistry): string[] {
-  const discovery = (template.headless ?? registry.panes?.get(template.paneId)?.headless)?.discovery;
+function paneTemplateDiscoveryWords(template: PaneTemplateDef, registry: Pick<PluginRegistry, "panes">): string[] {
+  const discovery = paneTemplateDiscovery(template, registry);
   if (!discovery) return [];
   return [
     ...discovery.aliases ?? [],
@@ -282,6 +283,10 @@ function paneTemplateDiscoveryWords(template: PaneTemplateDef, registry: PluginR
     ...discovery.opens?.flatMap((opening) => opening.words) ?? [],
     ...discovery.intents ?? [],
   ];
+}
+
+function paneTemplateDiscovery(template: PaneTemplateDef, registry: Pick<PluginRegistry, "panes">) {
+  return (template.headless ?? registry.panes?.get(template.paneId)?.headless)?.discovery;
 }
 
 export function buildPaneShortcutItems(options: {
@@ -292,7 +297,9 @@ export function buildPaneShortcutItems(options: {
    * out of the browse list (CTM, a tab of the futures workspace), as the
    * catalog does. A `filterQuery` is one too.
    */
-  searched?: boolean;
+  searchedQuery?: string;
+  /** Where a template's headless discovery is found, for a query that names one of its cases. */
+  registry?: Pick<PluginRegistry, "panes">;
   createOptions?: PaneTemplateCreateOptions;
   createItem: (template: PaneTemplateDef, options?: {
     category?: string;
@@ -300,15 +307,20 @@ export function buildPaneShortcutItems(options: {
     showShortcut?: boolean;
   }) => ResultItem;
 }): ResultItem[] {
-  const searched = options.searched || !!options.filterQuery;
+  const query = options.searchedQuery?.trim() || options.filterQuery?.trim() || "";
   // An unlisted template (`listed: false`) still opens when its code is typed, which is resolved apart from these rows.
   const items = options.templates
-    .filter((template) => template.shortcut && (searched || template.shortcut.showInBrowse !== false) && template.listed !== false)
-    .map((template) => options.createItem(template, {
-      category: "Panes",
-      createOptions: options.createOptions,
-      showShortcut: true,
-    }));
+    .filter((template) => template.shortcut && (query || template.shortcut.showInBrowse !== false) && template.listed !== false)
+    .map((template) => {
+      // A query naming one of the function's cases opens it on that case, as `fn` runs it: `vix futures` is CTM VIX.
+      const opening = query && options.registry ? discoveryOpening(paneTemplateDiscovery(template, options.registry), query) : null;
+      const item = options.createItem(template, {
+        category: "Panes",
+        createOptions: opening ? { ...options.createOptions, arg: opening.argument } : options.createOptions,
+        showShortcut: true,
+      });
+      return opening && !item.disabled ? { ...item, name: opening.argument } : item;
+    });
 
   return options.filterQuery
     ? fuzzyFilter(items, options.filterQuery, (item) => `${item.label} ${item.searchText || ""} ${item.detail} ${item.right || ""}`)

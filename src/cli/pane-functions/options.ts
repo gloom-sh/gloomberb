@@ -74,9 +74,7 @@ function normalizeOptionKey(value: string): string {
   return value.trim().replace(/^-+/, "").replace(/[\s_-]+(.)/g, (_, char: string) => char.toUpperCase());
 }
 
-export function normalizeLookupToken(value: string): string {
-  return value.trim().replace(/^\$/, "").toLowerCase().replace(/[\s_-]+/g, "");
-}
+export { normalizeLookupToken } from "../../utils/lookup-token";
 
 export function cleanTickerInput(value: string): string {
   return value.trim().replace(/^\$/, "").toUpperCase();

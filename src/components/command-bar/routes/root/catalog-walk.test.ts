@@ -133,8 +133,12 @@ function readQuery(query: string) {
   };
 }
 
-/** The bar's rows for `query`; with `functions`, every function's row is offered as the bar offers them, not left out. */
-function rootRows(query: string, { functions = false }: { functions?: boolean } = {}): ResultItem[] {
+/**
+ * The bar's rows for `query`; with `functions`, every function's row is
+ * offered as the bar offers them, not left out, and `opened` records what a
+ * row opens.
+ */
+function rootRows(query: string, { functions = false, opened = [] }: { functions?: boolean; opened?: Array<{ code?: string; arg?: string }> } = {}): ResultItem[] {
   const { intent, leadingCode } = readQuery(query);
   const row = (id: string): ResultItem => ({ id, label: id, detail: "", category: "Panes", kind: "action", action: () => {} });
   const empty = () => [] as ResultItem[];
@@ -146,7 +150,7 @@ function rootRows(query: string, { functions = false }: { functions?: boolean } 
     runPaneTemplateShortcut: () => {},
     shouldOpenTemplateConfig: () => false,
     openPaneTemplateWorkflow: () => {},
-    openPaneTemplateDirect: () => {},
+    openPaneTemplateDirect: (opening, createOptions) => { opened.push({ code: opening.shortcut?.prefix, arg: createOptions?.arg }); },
   });
   const options: RootResultModelOptions = {
     activeCollectionId: null,
@@ -170,7 +174,8 @@ function rootRows(query: string, { functions = false }: { functions?: boolean } 
     nonShortcutPaneTemplateItems: empty,
     openModeRoute: () => {},
     paneShortcutItems: functions
-      ? (itemOptions) => buildPaneShortcutItems({ ...itemOptions, templates: [...contributions.paneTemplatesMap.values()], createItem: createPaneTemplateItem })
+      ? (itemOptions) => buildPaneShortcutItems({ ...itemOptions, templates: [...contributions.paneTemplatesMap.values()],
+        createItem: createPaneTemplateItem, registry: { panes: contributions.panesMap } as never })
       : empty,
     pluginCommandItems: empty,
     pluginCommandResultItems: empty,
@@ -254,13 +259,20 @@ describe("the catalog's functions in the command bar", () => {
     expect(rootRows("show me the newest filings").map((item) => item.id)).toContain("assist:sign-up");
   });
 
-  test("the words that find a function in the catalog find it in the bar, a workspace tab's function included", () => {
+  test("the words that find a function in the catalog find it in the bar, a workspace tab's function included, and open the case they name", () => {
     for (const query of ["vix futures", "hedge", "vix"]) {
       const { shown } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, query), query, 5);
       const offered = new Set(rootRows(query, { functions: true }).map((item) => item.shortcutQuery));
       expect({ query, missing: shown.filter((entry) => entry.shortcut && !offered.has(entry.shortcut)).map((entry) => entry.token) })
         .toEqual({ query, missing: [] });
     }
-    expect(rootRows("vix futures", { functions: true }).map((item) => item.shortcutQuery)).toContain("CTM");
+    // The words that name one of its cases open that case, as `fn` runs it: `vix futures` is CTM VIX.
+    const opened: Array<{ code?: string; arg?: string }> = [];
+    const ctm = rootRows("vix futures", { functions: true, opened }).find((item) => item.shortcutQuery === "CTM");
+    expect(ctm?.name).toBe("VIX");
+    void ctm?.action();
+    expect(opened).toEqual([{ code: "CTM", arg: "VIX" }]);
+    // Other words that find it open it as it is.
+    expect(rootRows("contango", { functions: true }).find((item) => item.shortcutQuery === "CTM")?.name).toBeUndefined();
   });
 });

@@ -46,6 +46,7 @@ import {
   type ParsedPaneFunctionArgs,
 } from "./options";
 import { argumentSymbols, validateSymbolCount } from "./headless";
+import { discoveryOpening } from "../../utils/lookup-token";
 import {
   capabilityHasOption,
   capabilityPaneSettings,
@@ -165,11 +166,9 @@ export function parsePaneFunctionArgsFor(
 function withOpeningWord(registry: PaneFunctionCatalog, parsed: ParsedPaneFunctionArgs): ParsedPaneFunctionArgs {
   const found = parsed.target ? findPaneFunction(registry, parsed.target) : null;
   if (!parsed.target || (found?.pane && namesFunction(found.template, found.pane, parsed.target))) return parsed;
-  const wanted = normalizeLookupToken(parsed.target);
   for (const template of registry.paneTemplates.values()) {
     const pane = registry.panes.get(template.paneId);
-    const opens = pane ? getHeadlessPaneDefinition(template, pane)?.discovery?.opens : undefined;
-    const opening = opens?.find((entry) => entry.words.some((word) => normalizeLookupToken(word) === wanted));
+    const opening = pane ? discoveryOpening(getHeadlessPaneDefinition(template, pane)?.discovery, parsed.target) : null;
     if (!pane || !opening) continue;
     const code = paneFunctionCode(template, pane);
     const arg = parsed.arg.trim() || opening.argument;
