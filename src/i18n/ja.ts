@@ -128,6 +128,7 @@ export const ja: Record<string, string> = {
   "Portfolio": "ポートフォリオ",
   "Primary Listing": "主要上場先",
   "Other Listings": "その他の上場先",
+  "Other Matches": "その他の一致",
   "Related": "関連",
   "Saved Layouts": "保存済みレイアウト",
   "Saved": "保存済み",

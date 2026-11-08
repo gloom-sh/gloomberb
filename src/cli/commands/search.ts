@@ -424,7 +424,7 @@ function resolveSearchName(candidate: TickerSearchCandidate): string {
 function searchType(candidate: TickerSearchCandidate): string | undefined {
   return instrumentTypeLabel(candidate.result?.type
     || candidate.result?.brokerContract?.secType
-    || candidate.ticker?.metadata.assetCategory, resolveSearchName(candidate));
+    || candidate.ticker?.metadata.assetCategory, resolveSearchName(candidate), { symbol: candidate.symbol });
 }
 
 /** What `--json` lists for a symbol search no longer lists: its category says so, and it keeps its last date and price. */
@@ -502,9 +502,25 @@ function catalogHint(query: string): string {
 /** What a search for a name in another script (任天堂) that found nothing says: listings are named in Latin letters. */
 const OTHER_SCRIPT_NO_MATCH = "No matches. Try the ticker or the English name.";
 
+/** Words that say a query names a fund, which a fund's own name can hold anywhere ("Nippon India ETF Nifty IT"). */
+const FUND_WORDS = new Set(["ETF", "ETFS", "ETN", "ETNS", "FUND", "FUNDS", "UCITS", "TRUST", "INDEX"]);
+
+/**
+ * For a fund's name of three words or more that found nothing: try fewer, the
+ * first half of the others with the fund's word, as a fund can word its name
+ * in another order. Null for any other query.
+ */
+export function fundSearchHint(query: string): string | null {
+  const words = query.replace(/"/g, "").trim().split(/\s+/).filter(Boolean);
+  const fund = words.filter((word) => FUND_WORDS.has(word.toUpperCase()));
+  const rest = words.filter((word) => !FUND_WORDS.has(word.toUpperCase()));
+  if (words.length < 3 || fund.length === 0 || rest.length < 2) return null;
+  return `A fund's name can put its words in another order. Try fewer words: gloom search "${[...rest.slice(0, Math.ceil(rest.length / 2)), ...fund].join(" ")}"`;
+}
+
 /** The line an empty search ends with: where else to look, or for a name in another script, what to type instead. */
 function emptySearchHint(query: string): string {
-  return hasNonLatinLetters(query) ? OTHER_SCRIPT_NO_MATCH : catalogHint(query);
+  return hasNonLatinLetters(query) ? OTHER_SCRIPT_NO_MATCH : fundSearchHint(query) ?? catalogHint(query);
 }
 
 /**
@@ -589,7 +605,7 @@ export function buildSearchReport({
     if (functions.length > 0) lines.push("", renderFunctionMatches(functions));
     else if (!gap && !bank && !setting && !charted) {
       return [...lines, ...hasNonLatinLetters(query) ? [cliStyles.muted(OTHER_SCRIPT_NO_MATCH)]
-        : [cliStyles.muted("No matches found."), cliStyles.muted(wrapToTerminal(catalogHint(query)))]].join("\n");
+        : [cliStyles.muted("No matches found."), cliStyles.muted(wrapToTerminal(emptySearchHint(query)))]].join("\n");
     }
     if (pointToCatalog) lines.push("", cliStyles.muted(wrapToTerminal(catalogHint(query))));
     return lines.join("\n");

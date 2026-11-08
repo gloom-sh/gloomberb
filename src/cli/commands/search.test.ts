@@ -96,6 +96,21 @@ test("a name typed in kana or kanji is searched as typed, matches no saved ticke
   expect((await run("gamestop", async () => { throw new ProviderBusyError(); })).failure).toMatchObject({ code: "search_busy" });
 });
 
+test("a fund's name that finds nothing says to try fewer words, as a fund can order them otherwise", async () => {
+  const dataProvider = createTestDataProvider({ search: async () => [] });
+  const initMarketData = async () => ({ store: { loadAllTickers: async () => [] }, dataProvider, persistence: { close() {} } }) as never;
+  const warnings = async (query: string) => {
+    const printed: PrintedCliResult["result"][] = [];
+    await search(query, { initMarketData, printResult: (result) => { printed.push(result); } });
+    return printed[0]!.warnings;
+  };
+  expect(await warnings("Nippon India Nifty IT ETF")).toEqual([
+    'A fund\'s name can put its words in another order. Try fewer words: gloom search "Nippon India ETF"',
+  ]);
+  // Any other name keeps the catalog hint.
+  expect(await warnings("Nippon India Nifty")).toEqual(['Search finds tickers and company names. Try: gloom catalog "Nippon India Nifty"']);
+});
+
 /**
  * `search cassava` against production, 2026-10-25: the service answered with Filana Therapeutics' FLNA first,
  * carrying the name it had, but the list put it last under Other Listings, behind the German lines that still

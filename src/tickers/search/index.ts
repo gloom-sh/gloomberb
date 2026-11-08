@@ -35,6 +35,7 @@ import {
 } from "./result";
 
 import { typedPerpetualListing } from "../perpetual-listing";
+import { isCryptoVenueCopy, isIndicativeValueListing } from "../instrument-kind";
 import { renamedListingFor, renamedListingFormerLine, type RenamedListing } from "../renamed-listings";
 import { endsInLegalForm, readNearMissListing, readVenueFirstListing, readTerminalListingCode } from "../terminal-codes";
 import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
@@ -975,6 +976,10 @@ function assignTickerSearchCategories<T extends TickerSearchCandidate>(items: T[
     }
     if (item.instrumentClass === "fund" || item.instrumentClass === "derivative") {
       return { ...item, category: "Funds & Derivatives" };
+    }
+    // A fund's indicative value (^ARKK-IV) or a crypto venue's token or perpetual on a fund names no listing of its own.
+    if (item.kind === "search" && (isIndicativeValueListing(item.symbol, item.result?.type) || isCryptoVenueCopy(item.result?.type, item.result?.name))) {
+      return { ...item, category: "Other Matches" };
     }
     if (!assignedPrimaryListing) {
       assignedPrimaryListing = true;
