@@ -152,7 +152,7 @@ gloom fn DOCS        # the index, cut at the first screen (it says so)
 
 A name with no entry fails with `No docs entry for zzzz.` and points at `gloom fn DOCS`.
 
-Wide tables keep their columns in narrow panes. Use the horizontal scrollbar or wheel, or `Ctrl+Left` / `Ctrl+Right`. In the terminal, a header that ends in `more ⇧→` has columns past its right edge: Shift+Right (or a click on it) moves right, while a plain Right switches a pane's tabs. With no room for the words it reads `⇧→` or `→`; it never hides a column.
+Wide tables keep their columns in narrow panes. Use the horizontal scrollbar or wheel, or `Ctrl+Left` / `Ctrl+Right`. A table whose first column says what each row is (a ticker, a name) keeps that column in place as the rest scroll, when it leaves them at least half the pane. In the terminal, a header that ends in `more ⇧→` has columns past its right edge: Shift+Right (or a click on it) moves right, while a plain Right switches a pane's tabs. With no room for the words it reads `⇧→` or `→`; it never hides a column.
 
 ### Custom keybindings
 
@@ -1107,9 +1107,10 @@ Running `gloom` with no arguments launches the terminal UI. Normal commands run 
 
 Human-readable output is the default: tables fit the terminal width, and a single result prints as aligned label and value lines. Piped text keeps every cell whole.
 
-- `--json`, `--csv` and `--ndjson` give structured output, which is how to export anything (`gloom history LMT --csv > lmt.csv`). JSON uses the richest model and includes display-column metadata. CSV and NDJSON use the tabular rows. All three write a figure without binary floating-point noise: a change is `-1.8`, never `-1.8000000000000114`. That is twelve significant digits, and eight decimals on figures of ten thousand or more up to fifteen digits, so sub-penny prices, FX rates, yields and coin holdings keep every digit their source gives.
-- `gloom fn <function> --output <path>` (or `--out`) writes the report to a file in the format asked for (`fn RV NEE,FSLR --csv --output rv.csv`), as a redirect would, and prints `Saved` with the file's absolute path. The path can be relative, absolute or under `~`, and folders it names are created. The file is readable by you alone (mode 600 on macOS and Linux), and a path that names a link, a device or anything else that is not a plain file is refused. A report with no data writes nothing and fails. `fn` refuses what only `shot` draws (`--theme`, `--height`, `--scale`, `--watermark`, `--no-status`) rather than ignore it.
-- Common global flags: `--limit`, `--tail`, `--width`, `--refresh`, `--quiet`, `--no-color`, `--plain`, `--no-plain`, `--dry-run`, `--yes`.
+- `--json`, `--csv` and `--ndjson` give structured output, which is how to export anything; `--output <file>` writes it to a file in UTF-8 (`gloom history LMT --csv --output lmt.csv`), where `>` would write UTF-16 in Windows PowerShell 5.1. JSON uses the richest model and includes display-column metadata. CSV and NDJSON use the tabular rows. All three write a figure without binary floating-point noise: a change is `-1.8`, never `-1.8000000000000114`. That is twelve significant digits, and eight decimals on figures of ten thousand or more up to fifteen digits, so sub-penny prices, FX rates, yields and coin holdings keep every digit their source gives.
+- `--output <path>` (or `--out`) writes a `--csv`, `--json` or `--ndjson` export to a file in UTF-8 (`gloom financials MSFT --csv --output msft.csv`) and prints `Saved` with its absolute path; the source and note lines a CSV closes with still go to the terminal. Use it on Windows: Windows PowerShell 5.1 writes a `>` redirect as UTF-16, which a spreadsheet misreads. Without `--csv`, `--json` or `--ndjson` the flag is refused, and a command that printed no export writes no file.
+- `gloom fn <function> --output <path>` (or `--out`) writes the report to a file in the format asked for, text included (`fn RV NEE,FSLR --csv --output rv.csv`), as a redirect would, and prints `Saved` with the file's absolute path. The path can be relative, absolute or under `~`, and folders it names are created. The file is readable by you alone (mode 600 on macOS and Linux), and a path that names a link, a device or anything else that is not a plain file is refused. A report with no data writes nothing and fails. `fn` refuses what only `shot` draws (`--theme`, `--height`, `--scale`, `--watermark`, `--no-status`) rather than ignore it.
+- Common global flags: `--limit`, `--tail`, `--width`, `--output`, `--refresh`, `--quiet`, `--no-color`, `--plain`, `--no-plain`, `--dry-run`, `--yes`.
 
 **Plain output.** `--plain` prints text for a screen reader or very large text. It is on without the flag when `NO_COLOR` is set to a non-empty value (an empty `NO_COLOR` is the same as unset) or the output is not a terminal (piped or redirected). `--no-plain` turns it off, piped or not.
 
@@ -1123,7 +1124,7 @@ Cboe's Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) print their level
 
 `--width <n>` fits text tables, help and notes to n columns, in a terminal or piped (`gloom quote AAPL TSLA NVDA MSFT --width 80`). Without it a terminal's own width applies, and piped output fits the `COLUMNS` variable when it is set (`COLUMNS=60 gloom fn CRYP --plain | less`), else is not fitted. With `--plain`, a table too narrow for every column keeps the columns that say what a row is (symbol and name) on its first line and moves its figures under it.
 
-- A table gives up its least useful columns first (`compare` drops Cur, Volume and Day Range). `quote` drops none: at 80 or 100 columns it moves Updated, Feed, Cur and Chg Basis onto a labelled line under each row (`Feed delayed  Updated 2026-10-23 15:40 UTC`). No cell is cut short: text wraps, and columns that still do not fit move onto indented lines under each row. A moved column whose value is the same on every row (one currency, one feed) is said once, on a line under the table; rows that differ keep their own.
+- A table gives up its least useful columns first, unless the output is plain, which keeps every column and moves them under each row instead. `compare` and `quote` drop none: at 80 or 100 columns `quote` moves Updated, Feed, Cur and Chg Basis onto a labelled line under each row (`Feed delayed  Updated 2026-10-23 15:40 UTC`), and `compare` moves Day Range, Volume and Cur the same way. No cell is cut short: text wraps, and columns that still do not fit move onto indented lines under each row. A moved column whose value is the same on every row (one currency, one feed) is said once, on a line under the table; rows that differ keep their own.
 - The function list of `catalog` is the one table that cuts (a description ends in `…`, and `catalog <function>` prints it whole).
 
 `shot` has its own `--width`, in pixels. The layout is 720 to 2400 wide and 360 to 1800 tall (`--height`), and the PNG is drawn at twice that size, so the default 1280 by 720 writes 2560 by 1440.
@@ -1140,7 +1141,7 @@ Cboe's Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) print their level
 
 - `fn` and `shot` of a function that takes one ticker stop on a company's name before drawing anything, with the company search finds beside it: ``Not a ticker: PALANTIR TECHNOLOGIES. Did you mean PLTR (Palantir Technologies Inc.)?`` (`fn RDCF "Palantir Technologies"`, `fn RDCF Palantir`). The same answer comes when a source could not answer for the word, a timeout or a rate limit, rather than saying it is not a ticker; `quote palantir` then reads the word as that company as it does when every source says so. A real ticker a source failed on keeps its own error.
 - A FRED series id points to the command that prints it: ``Not a ticker: DFEDTARU. Try `gloom fred DFEDTARU`.``
-- A US Treasury yield typed as a ticker (`US10Y`, `UST10Y`, `US10YR`, `US2Y`, `US30Y`, `10Y`, `TNX`) names the commands that have it: ``Not a ticker: US10Y. Try `gloom quote ^TNX`, `gloom fred DGS10` or `gloom yield-curve` for the US 10-year Treasury yield.`` `search` and `catalog` answer those spellings, or `"10 year yield"`, the same way.
+- A US Treasury yield typed as a ticker (`US10Y`, `UST10Y`, `US10YR`, `US2Y`, `US30Y`, `10Y`, `TNX`) names the commands that have it: ``Not a ticker: US10Y. Try `gloom quote "^TNX"`, `gloom fred DGS10` or `gloom yield-curve` for the US 10-year Treasury yield.`` `search` and `catalog` answer those spellings, or `"10 year yield"`, the same way.
 
 **Pairs and share classes**
 
@@ -1316,7 +1317,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 
 ### Several symbols
 
-`gloom history AAPL MSFT 000660.KS`, or `history --file holdings.txt` with one symbol a line (`-` reads standard input), writes every symbol's bars in one long table: `history --file holdings.txt --start 2024-01-01 --end 2024-12-31 --csv > bars.csv`.
+`gloom history AAPL MSFT 000660.KS`, or `history --file holdings.txt` with one symbol a line (`-` reads standard input), writes every symbol's bars in one long table: `history --file holdings.txt --start 2024-01-01 --end 2024-12-31 --csv --output bars.csv`.
 
 - Symbols load eight at a time. A list of more than ten skips the lookups of a bare symbol's other venues, as `quote` does.
 - The `--csv` header is a single symbol's. Each row names its symbol, its unit and its own symbol's as-of in `symbol_or_series`, `currency_or_unit` and `as_of`.
@@ -1466,7 +1467,7 @@ A terminal's code is the listing it names, and a line such as `Read WFC.N as WFC
 
 #### Index roots
 
-An index typed with the venue search files it under (`^VIX:CXI`) is the index itself, as the bare `^VIX` is. A bare index root such as `VIX`, `SPX` or `MOVE` points at the index: `quote VIX` fails with `^VIX  Cboe Volatility Index (try: gloom quote ^VIX)`, and `quote MOVE` (Corvex) adds `also ^MOVE ICE BofA MOVE Index`.
+An index typed with the venue search files it under (`^VIX:CXI`) is the index itself, as the bare `^VIX` is. A bare index root such as `VIX`, `SPX` or `MOVE` points at the index: `quote VIX` fails with `^VIX  Cboe Volatility Index (try: gloom quote "^VIX")`, and `quote MOVE` (Corvex) adds `also ^MOVE ICE BofA MOVE Index`. A suggested command writes a `^` symbol in double quotes, which every shell reads as typed: cmd.exe drops a bare `^` as its escape character.
 
 A broker's code for an index is the index: `VIX.X` and `$VIX.X` (thinkorswim) and `$VIX` (Schwab) are `^VIX` in `quote`, `ticker`, `fn` and `search`, which says `Read VIX.X as ^VIX (Cboe Volatility Index).` Only the index roots the app knows are read this way. A `$` is otherwise a cashtag: `$AAPL` is AAPL, and `$MOVE` is Corvex.
 
@@ -1504,6 +1505,7 @@ A list leaves such a ticker out and says so. `LITI` takes funds too, and `FA` sh
 - `fn PERP`, `fn COT` and `fn CTM` fail on a name nothing matches and suggest ones that work.
 - `fn EVTS SAN` opens with a line saying whether SAN reports on the board and when, and that `gloom fn ERN SAN` has SAN's own dates (`data.metadata.highlight` in `--json`).
 - A function with no data report, such as `fn CAT santander`, fails pointing to `gloom shot CAT santander`.
+- A function that takes a list reads a watchlist's name as its tickers (`fn RV Semis`), the command bar too: a listing abroad keeps its venue (`ASML:AMS`, `2330:TWSE`), as the same symbols typed read, so it is never the US line of the same symbol and its rows and export keys say which listing they are.
 - A function that takes no argument and is given one fails with its options and a command to run. A word that is one of an option's values runs as that option: `fn JODI gas` answers `JODI does not accept an argument. Options: --commodity <oil|gas>. Run: gloom fn JODI --commodity gas`. That holds for every function `catalog` lists with no argument, a rendered pane such as `HALT` as much as a report such as `CBR`.
 - With `--require-bot-safe`, a report or screenshot that is incomplete because part of it needs Gloom Cloud Pro, or a sign-in, says so.
 
@@ -2832,7 +2834,7 @@ Settings also choose the lookback (5 years, 10 years or all history) and the cos
 ```sh
 gloom fn BT AAPL --json
 gloom fn BT SPY --entry 'close > sma(200)' --exit 'close < sma(200)' --lookback max --cost 2
-gloom fn BT BTC-USD --preset trend-200 --end 2026-10-16 --csv --equity > btc-trend.csv
+gloom fn BT BTC-USD --preset trend-200 --end 2026-10-16 --csv --equity --output btc-trend.csv
 gloom shot BT NVDA --preset breakout-55-20 --output nvda-breakout.png
 ```
 

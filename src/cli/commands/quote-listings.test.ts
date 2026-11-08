@@ -273,7 +273,7 @@ test("a futures board code quotes its future where no security uses it, and name
 
 test("a bare index root points at its ^ index, whether it found nothing or another instrument", async () => {
   const none = await runQuote(["VIX"], venueSource("VIX", [], {}));
-  expect(none.failure?.details).toContain("gloom quote ^VIX");
+  expect(none.failure?.details).toContain('gloom quote "^VIX"');
 
   const corvex = createTestQuote({ symbol: "MOVE", name: "Corvex, Inc.", instrumentType: "EQUITY" });
   const other = venueSource("MOVE", ["NASDAQ"], { MOVE: corvex, "MOVE:NASDAQ": corvex, "^MOVE": { ...corvex, instrumentType: "INDEX" } });
@@ -282,7 +282,7 @@ test("a bare index root points at its ^ index, whether it found nothing or anoth
   expect((await runQuote(["MOVE:NASDAQ"], other)).warnings).toEqual([]);
   expect((await runQuote(["^MOVE"], other)).warnings).toEqual([]);
 
-  expect(buildSearchReport({ query: "vix", candidates: [] })).toContain("gloom quote ^VIX");
+  expect(buildSearchReport({ query: "vix", candidates: [] })).toContain('gloom quote "^VIX"');
   expect(buildSearchReport({ query: "AAPL", candidates: [] })).not.toContain("^");
 });
 
@@ -553,6 +553,20 @@ test("a pasted list is one row per symbol, in order, however it is separated, fo
       expect(asked).toEqual([["JNK", "EMB", "BRK.B", "BF-B"]]);
     }
   }
+});
+
+// `compare NVDA 2330.TW` printed 2330.TW where RV printed 2330:TWSE: a joined export read two keys for one listing.
+test("compare names a vendor's suffixed symbol by the listing its quote confirms, the code RV prints; a class letter stays", async () => {
+  const venues: Record<string, string> = { "2330.TW": "TWSE", "BRK.B": "NYSE", NVDA: "NASDAQ" };
+  const dataProvider = createTestDataProvider({
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => ({
+      target, quote: createTestQuote({ symbol: target.symbol, listingExchangeName: venues[target.symbol] }),
+    })),
+  });
+  const cli = createTestCliContext({ dataProvider }, { format: "csv" });
+  await marketDataCliCommands.find((command) => command.name === "compare")!.execute(["NVDA", "2330.TW", "BRK.B"], cli.context);
+  const printed = cli.printed[0] as PrintedCliResult;
+  expect(printed.options!.rows!(printed.result.data).map((row: { symbol: string }) => row.symbol)).toEqual(["NVDA", "2330:TWSE", "BRK.B"]);
 });
 
 test("a company's name in a pasted list is quoted as its listing, never as its words", async () => {

@@ -2,6 +2,7 @@ import { listingSuffixExchange } from "../sources/listing-symbols";
 import { kindFromListingSyntax } from "../tickers/instrument-kind";
 import { macroReleaseTopic } from "../plugins/builtin/shared/macro-releases";
 import { parsePublicTickerKey } from "../utils/exchanges";
+import { commandWord } from "../utils/shell-word";
 import { listingAbroadVenue } from "../utils/sec";
 import { nimCommand } from "./bank-section";
 import { treasuryYieldLine, treasuryYieldTenor } from "./treasury-yields";
@@ -174,8 +175,8 @@ const BANK_FIGURES_TOPIC = {
  * command or a function. One example, writing a file.
  */
 function exportLine(symbol = "LMT"): string {
-  return `Export: add --csv or --json to any command to print its result as CSV or JSON, e.g. gloom history ${symbol} --csv > ${
-    symbol.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.csv`;
+  return `Export: add --csv or --json to any command to print its result as CSV or JSON, and --output <file> to write it to a file in UTF-8, e.g. gloom history ${
+    commandWord(symbol)} --csv --output ${symbol.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.csv`;
 }
 
 const EXPORT_POINTER = {

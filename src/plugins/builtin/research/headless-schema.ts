@@ -22,8 +22,9 @@ export const paneSchemas = {
         settingKey: "extraColumns",
         placeholder: "fields",
         description: `Report columns to add, in order: ${EXTRA_COLUMN_IDS.join(", ")}. shortInterest is FINRA short interest as a percent of float at the latest settlement, `
-          + "nextEarnings the next report date on the earnings calendar, target the mean analyst target and the analyst count, grossMargin and evEbitda the screener's stored figures. "
-          + "Short interest, earnings dates, gross margin and EV/EBITDA cover US listings. CSV and JSON give each cell's source and as-of. The pane keeps its own columns",
+          + "nextEarnings the next report date on the earnings calendar, target the mean analyst target and the analyst count, grossMargin the trailing twelve months' gross margin, "
+          + "evEbitda the enterprise value over trailing operating income plus D&A, as GE's EV/EBITDA ends. "
+          + "Short interest and earnings dates cover US listings. CSV and JSON give each cell's source and as-of. The pane keeps its own columns",
         example: "--columns shortInterest,nextEarnings,target,grossMargin,evEbitda",
         normalize: normalizeExtraColumns,
       },
@@ -32,7 +33,7 @@ export const paneSchemas = {
         type: "string",
         settingKey: "capCurrency",
         placeholder: "ISO code",
-        description: "Show every market cap in this currency, converted at the app's FX rates; the status line names each rate and its time",
+        description: "Show every market cap and analyst target in this currency, converted at the app's FX rates; the status line names each rate and its time",
         example: "--currency USD",
         normalize: normalizeCapCurrency,
       },

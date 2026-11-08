@@ -598,11 +598,12 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
     const latest = [...series.points].reverse().find((point) => (
       point.value != null || point.close != null
     ));
+    // N/M stands for the period the series would end on, not an older value before it.
     return {
       series: series.label,
       name: series.name?.trim() || null,
-      latest: latest ? seriesLatestDate(series, latest.date) : "-",
-      value: seriesValue(series, latest?.value ?? latest?.close ?? null),
+      latest: series.notMeaningful ? series.notMeaningful.asOf : latest ? seriesLatestDate(series, latest.date) : "-",
+      value: series.notMeaningful ? "N/M" : seriesValue(series, latest?.value ?? latest?.close ?? null),
       unit: series.unit?.trim() ? currencyRateUnitText(series.unit.trim()) : null,
       points: observationCount(series),
     };
@@ -617,6 +618,9 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
     { key: "points", header: "Points", align: "right" },
   ];
   const lines = [renderRows(rows, columns, undefined)];
+  const notMeaningful = result.series.flatMap((series) => series.notMeaningful
+    ? [`${series.label}: N/M, ${series.notMeaningful.reason.charAt(0).toLowerCase()}${series.notMeaningful.reason.slice(1)}.`] : []);
+  if (notMeaningful.length) lines.push("", ...notMeaningful.map((line) => wrapToTerminal(line)));
   if (result.stats) {
     lines.push("", renderSection("Statistics"), renderEntries(statisticsEntries(result.stats)));
   }
@@ -963,7 +967,8 @@ function resultRowCount(definition: HeadlessPaneDefinition, result: HeadlessPane
         count + ("rows" in section && section.rows ? section.rows.length : section.entries.length)
       ), 0);
     case "series":
-      return (result as HeadlessSeriesResult).series.reduce((count, series) => count + observationCount(series), 0);
+      // An N/M is a reading: the report has something to say for the series.
+      return (result as HeadlessSeriesResult).series.reduce((count, series) => count + Math.max(observationCount(series), series.notMeaningful ? 1 : 0), 0);
     case "snapshot":
       return (result as HeadlessSnapshotResult).items.length;
     default: {

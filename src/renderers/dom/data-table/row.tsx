@@ -297,6 +297,8 @@ function WebDataTableRowInner<
               sectionHeader.attributes ?? TextAttributes.BOLD,
             ),
             gridColumn: "1 / -1",
+            // Beside a pinned first column the heading stays in view too, not cut to its last letters.
+            ...(freezeFirstColumn ? { position: "sticky", left: inlinePaddingPx(horizontalPadding), justifySelf: "start" } : {}),
             overflow: "hidden",
             textOverflow: "ellipsis",
             display: "flex",

@@ -20,6 +20,7 @@ import {
   tableColumnStarts,
   tableContentWidthProps,
   tableFarEdgePad,
+  tableFreezesFirstColumn,
   tableScrollStep,
   useMeasuredTableContentWidth,
 } from "../../table-layout";
@@ -131,7 +132,9 @@ function OpenTuiDataTableRowInner<
         flexDirection="row"
         height={1}
         {...tableContentWidthProps(contentWidth)}
-        paddingX={horizontalPadding}
+        // Beside a pinned first column the heading stays in view too, not cut to its last letters.
+        paddingLeft={horizontalPadding + (frozenColumnOffset ?? 0)}
+        paddingRight={horizontalPadding}
         backgroundColor={selected ? colors.selected : sectionHeader.backgroundColor ?? colors.bg}
         onMouseDown={(event: any) => {
           focusPane();
@@ -310,7 +313,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   horizontalPadding = 1,
   fillAvailableWidth = true,
   showHorizontalScrollbar = true,
-  freezeFirstColumn = false,
+  freezeFirstColumn: freezeFirstColumnProp,
   scrollToIndex,
   scrollToIndexAlign = "nearest",
   scrollToIndexVersion = 0,
@@ -375,6 +378,10 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   } = useMeasuredTableContentWidth(tableWidth, headerScrollRef, scrollRef);
   const horizontalScrollbarVisible = showHorizontalScrollbar
     && hasMeaningfulTableHorizontalOverflow(tableWidth, measuredViewportWidth, columnGap);
+  const freezeFirstColumn = tableFreezesFirstColumn({
+    freezeFirstColumn: freezeFirstColumnProp, columns, columnGap, horizontalPadding, viewportWidth: measuredViewportWidth,
+    overflows: horizontalScrollbarVisible,
+  });
   const contentWidth = fillAvailableWidth ? measuredContentWidth : tableWidth;
   const sectionWidth = measuredViewportWidth > 0 ? Math.min(contentWidth, measuredViewportWidth) : contentWidth;
   const displayColumns = useMemo(

@@ -52,17 +52,19 @@ function isNotAFile(path: string): Error {
 /**
  * Fails when `path` names a folder, a link or anything else that is not a
  * plain file (a device, a pipe): checked before a report loads, so it stops
- * at once, and again as the file is opened.
+ * at once, and again as the file is opened. True when a file is there to be
+ * replaced.
  */
-export async function checkOutputPath(path: string, platform: NodeJS.Platform = process.platform): Promise<void> {
+export async function checkOutputPath(path: string, platform: NodeJS.Platform = process.platform): Promise<boolean> {
   const existing = await lstat(path).catch(() => {
     // Intentional ignore: a path that does not exist yet is the usual case, and writing reports any real failure.
     return null;
   });
-  if (!existing) return;
+  if (!existing) return false;
   if (existing.isDirectory()) throw isFolder(path, platform === "win32" ? win32 : posix);
   if (existing.isSymbolicLink()) throw isLink(path);
   if (!existing.isFile()) throw isNotAFile(path);
+  return true;
 }
 
 /**

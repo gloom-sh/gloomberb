@@ -11,6 +11,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { flushSync } from "react-dom";
 import { EmptyState } from "../../../components/ui/status";
 import { usePaneInstance } from "../../../state/app/context";
 import { useRegisterPaneScrollBox } from "../../../state/pane-scroll-registry";
@@ -26,6 +27,7 @@ import {
   buildTableGridTemplateColumns,
   getTableWidth,
   hasMeaningfulTableHorizontalOverflow,
+  tableFreezesFirstColumn,
 } from "../../../components/ui/table-layout";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { isLiveResizing, onLiveResizeEnd } from "../../../ui/live-resize";
@@ -113,7 +115,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   horizontalPadding = 1,
   fillAvailableWidth = true,
   showHorizontalScrollbar = true,
-  freezeFirstColumn = false,
+  freezeFirstColumn: freezeFirstColumnProp,
   scrollToIndex,
   scrollToIndexAlign = "nearest",
   scrollToIndexVersion = 0,
@@ -202,6 +204,17 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   const bodyAfterHeight = bodyAfter ? WEB_CELL_HEIGHT * 6 : 0;
   const horizontalScrollEnabled = showHorizontalScrollbar
     && hasMeaningfulTableHorizontalOverflow(tableWidth, viewportWidth, columnGap);
+  const freezeFirstColumn = tableFreezesFirstColumn({
+    freezeFirstColumn: freezeFirstColumnProp, columns, columnGap, horizontalPadding, viewportWidth,
+    overflows: horizontalScrollEnabled,
+  });
+  // A table that pins by default pins once scrolled: unscrolled nothing is under
+  // its first column, so a pane dragged or resized at rest draws no sticky cells.
+  const pinned = freezeFirstColumn && (freezeFirstColumnProp === true || frozenScrollLeft > 0);
+  // Pinned from a scroll that came before it, it starts where the body is.
+  useLayoutEffect(() => {
+    if (freezeFirstColumn) setFrozenScrollLeft(bodyElementRef.current?.scrollLeft ?? 0);
+  }, [freezeFirstColumn]);
   const scrollContentWidth = horizontalScrollEnabled
     || !fillAvailableWidth
     ? Math.max(1, tableWidth * WEB_CELL_WIDTH)
@@ -325,7 +338,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   const [frozenEdgePx, setFrozenEdgePx] = useState(0);
   useLayoutEffect(() => {
     const body = bodyElementRef.current;
-    const frozenCell = freezeFirstColumn && overflowEdges.start
+    const frozenCell = pinned && overflowEdges.start
       ? body?.querySelector<HTMLElement>('[data-gloom-role="data-table-header-cell"]')
       : null;
     // The gap after it is the next column's margin, as laid out.
@@ -336,7 +349,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
       : 0;
     // Set only on a change: a state update from a layout effect costs the render a second commit.
     if (next !== frozenEdgePx) setFrozenEdgePx(next);
-  }, [columnGap, columns, freezeFirstColumn, frozenEdgePx, overflowEdges.start, viewportWidth]);
+  }, [columnGap, columns, pinned, frozenEdgePx, overflowEdges.start, viewportWidth]);
 
   const rootStyle: CSSProperties = {
     position: "relative",
@@ -390,7 +403,12 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
         }}
         onScroll={(event) => {
           markScrollbarActive();
-          if (freezeFirstColumn) setFrozenScrollLeft(event.currentTarget.scrollLeft);
+          if (freezeFirstColumn) {
+            const left = event.currentTarget.scrollLeft;
+            // Pinning on the first scroll away draws before that frame shows the column leaving.
+            if (!pinned && left > 0) flushSync(() => setFrozenScrollLeft(left));
+            else setFrozenScrollLeft(left);
+          }
           const controlledOffset = controlledScrollOffsetRef.current;
           controlledScrollOffsetRef.current = null;
           if (controlledOffset
@@ -418,9 +436,9 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
         >
           <WebDataTableHeader
             columns={columns}
-            freezeFirstColumn={freezeFirstColumn}
+            freezeFirstColumn={pinned}
             scrollLeft={frozenScrollLeft}
-            viewportWidth={freezeFirstColumn ? viewportWidth : 0}
+            viewportWidth={pinned && frozenScrollLeft > 0 ? viewportWidth : 0}
             columnGap={columnGap}
             horizontalPadding={horizontalPadding}
             focusPane={focusPane}
@@ -453,11 +471,11 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
                     item={item}
                     itemKey={itemKey}
                     columns={columns}
-                    freezeFirstColumn={freezeFirstColumn}
+                    freezeFirstColumn={pinned}
                     scrollLeft={frozenScrollLeft}
-                    // Only a frozen first column places itself by it: every
+                    // Only a frozen first column scrolled past places itself by it: every
                     // other row stays memoized when the viewport changes width.
-                    viewportWidth={freezeFirstColumn ? viewportWidth : 0}
+                    viewportWidth={pinned && frozenScrollLeft > 0 ? viewportWidth : 0}
                     columnGap={columnGap}
                     horizontalPadding={horizontalPadding}
                     focusPane={focusPane}

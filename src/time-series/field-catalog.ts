@@ -156,6 +156,23 @@ const FIELDS = [
     ...FUNDAMENTAL_PRESENTATION,
     transforms: RATIO_TRANSFORMS,
   }),
+  // EBITDA is operating income plus D&A (utils/ebitda.ts); both lines chart so a trailing EBITDA can be rebuilt.
+  ...([
+    ["ebitda", "EBITDA", "EBITDA"],
+    ["depreciationAndAmortization", "Depreciation & Amortization", "D&A"],
+  ] as const).map(([id, label, shortLabel]) => field({
+    id: `fundamental.${id}`,
+    label,
+    shortLabel,
+    sourceKind: "security" as const,
+    dataShape: "scalar" as const,
+    unit: "currency",
+    unitGroup: "currency-total",
+    nativeFrequency: "quarterly" as const,
+    styles: ["step", "columns", "line", "points"] as SeriesStyle[],
+    ...FUNDAMENTAL_PRESENTATION,
+    transforms: FUNDAMENTAL_TRANSFORMS,
+  })),
   field({
     id: "fundamental.operatingCashFlow",
     label: "Operating Cash Flow",

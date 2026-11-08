@@ -304,7 +304,8 @@ import { knownGapMessage, subMinuteDataMessage } from "../known-gaps";
 import { phraseSearchReport } from "./search";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol, isRoundTheClockCoin } from "../../utils/crypto-pair";
-import { isUsListingExchange } from "../../utils/exchanges";
+import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
+import { listingSuffixVenue } from "../../sources/listing-symbols";
 import { resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
 import {
   describeFormerIssuer, describeTickerChange, movedAwayChange, startTickerChangeLookup, tickerChangeLine, type FormerIssuer, type TickerChange,
@@ -729,15 +730,15 @@ function compareColumns() {
       value: (row: QuoteRow) => exportFigure(row.rawPreviousClose),
       format: (_value: unknown, row: QuoteRow) => yieldLevelCell(row.previousClose, row),
     },
-    // A narrow terminal drops these before it cuts the names short.
+    // A narrow terminal moves these under their row, as the quote table does, before it cuts the names short.
     // An export writes the range as plain numbers (12.5-13.1), and each end as a number in Day Low and Day High.
     {
-      key: "dayRange", header: "Day Range", align: "right" as const, optional: true, dropPriority: 1,
+      key: "dayRange", header: "Day Range", align: "right" as const, stackPriority: 1,
       value: (row: QuoteRow) => row.rawDayLow != null && row.rawDayHigh != null ? `${exportFigure(row.rawDayLow)}-${exportFigure(row.rawDayHigh)}` : "",
       format: (_value: unknown, row: QuoteRow) => row.dayRange,
     },
-    { key: "volume", header: "Volume", align: "right" as const, format: formatCountCell, optional: true, dropPriority: 2 },
-    { key: "currency", header: "Cur", shrink: false, optional: true, dropPriority: 3, format: currencyCell },
+    { key: "volume", header: "Volume", align: "right" as const, format: formatCountCell, stackPriority: 2 },
+    { key: "currency", header: "Cur", shrink: false, stackPriority: 3, format: currencyCell },
     ...CHANGE_BASIS_EXPORT_COLUMNS,
     ...EXTENDED_CHANGE_EXPORT_COLUMNS,
     ...DAY_RANGE_EXPORT_COLUMNS,
@@ -785,6 +786,16 @@ function quoteSessionFields(quote: Quote | null | undefined) {
   return quote?.changeBasis === "none" ? { ...fields, change: null, changePercent: null } : fields;
 }
 
+/**
+ * The listing a row names: a vendor's suffixed symbol as the listing its
+ * quote confirms (2330.TW as 2330:TWSE), as RV, the portfolios and the panes
+ * name it; any other as asked.
+ */
+function quoteRowSymbol(result: Pick<QuoteCliRecord, "target" | "quote">): string {
+  const venue = listingSuffixVenue(result.target.symbol, canonicalExchange(result.quote?.listingExchangeName || result.quote?.exchangeName) || undefined);
+  return venue ? `${venue.symbol}:${venue.exchange}` : result.target.symbol;
+}
+
 function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
   return results.map((result) => {
     const quote = result.quote;
@@ -820,7 +831,7 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
     const previousClose = display.price != null && display.change != null ? display.price - display.change : quote?.previousClose;
     const last = price(display.price);
     return {
-      symbol: result.target.symbol,
+      symbol: quoteRowSymbol(result),
       name: quote?.name || result.listing?.name || "",
       price: `${last}${per}`,
       pence: penceFigure(display.price, quote, /\.(\d+)/.exec(last)?.[1]?.length ?? 0),
@@ -4067,7 +4078,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       options: [EXCHANGE_OPTION, LIST_FILE_OPTION],
       sections: [QUOTE_CSV_SECTION],
       examples: ["quote AAPL MSFT NVDA", "quote SAN:EPA BHP:ASX", "quote BTC-USD EURUSD=X", "quote binance:BZUSDT", "quote AAPL --json", "quote --file holdings.csv",
-        "quote --file holdings.csv --csv > quotes.csv"],
+        "quote --file holdings.csv --csv --output quotes.csv"],
     },
     execute: (args, ctx) => runQuote(args, ctx, "quote"),
   },
@@ -4128,8 +4139,8 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       }],
       examples: [
         "history AAPL", "history BHP:ASX --range 5Y", "history JPM --from 2007 --to 2009", "history ZAR=X --range ALL", "history ZAR=X --tail 5",
-        "history AAPL --range 5Y --csv > aapl.csv", "history AAPL MSFT 000660.KS --range 1M --csv",
-        "history --file holdings.txt --start 2024-01-01 --end 2024-12-31 --csv > bars.csv",
+        "history AAPL --range 5Y --csv --output aapl.csv", "history AAPL MSFT 000660.KS --range 1M --csv",
+        "history --file holdings.txt --start 2024-01-01 --end 2024-12-31 --csv --output bars.csv",
       ],
     },
     unknownOptionHint: historyOptionHint,
@@ -4231,7 +4242,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["financials <symbol>"],
       options: [EXCHANGE_OPTION, TABLE_SECTION_OPTION],
-      examples: ["financials MSFT", "financials SAN:EPA", "financials MSFT --json", "financials MSFT --csv > msft.csv"],
+      examples: ["financials MSFT", "financials SAN:EPA", "financials MSFT --json", "financials MSFT --csv --output msft.csv"],
     },
     unknownOptionHint: financialsOptionHint,
     execute: (args, ctx) => runFinancials(args, ctx, "statements"),

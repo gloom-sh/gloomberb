@@ -135,6 +135,32 @@ test("euro and dollar caps under MCAP USD name the rate in the footer, beside th
   expect(tui.frame()).toContain("MCAP USD at EUR/USD 1.1612 · fundamentals through 2026-06-30 ");
 });
 
+test("a 70-column pane names a listing as the CLI does and keeps each row's ticker scrolled right", async () => {
+  // At 70x22, Shift+Right twice left rows reading `4.50T 23.6 11.7` with no ticker, and the line was ASML:XAMS.
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    getExchangeRateSnapshot: async (currency) => ({ fromCurrency: currency, toCurrency: "USD", rate: 1.114, source: "test",
+      asOf: new Date().toISOString(), fetchedAt: new Date().toISOString(), stale: false }),
+    getTickerFinancials: async (symbol) => {
+      const euro = symbol === "ASML:XAMS";
+      return { annualStatements: [{ date: "2025-12-31" }], quarterlyStatements: [{ date: "2026-06-30" }], priceHistory: [],
+        quote: { symbol, price: euro ? 1283.6 : 186.64, change: 0, changePercent: 2.7, currency: euro ? "EUR" : "USD", lastUpdated: Date.now() - 60_000,
+          exchangeName: euro ? "AMS" : "NASDAQ", dataSource: "delayed" as const, providerId: "gloomberb-cloud", marketCap: euro ? 4.93e11 : 4.5e12 },
+        fundamentals: { financialCurrency: euro ? "EUR" : "USD", trailingPE: euro ? 36.7 : 23.6, forwardPE: 22.7, revenueGrowth: 0.079, operatingMargin: 0.3 } };
+    },
+  })));
+  await act(async () => { await tui.render(<Harness width={70} symbols={["NVDA", "ASML:XAMS"]} />, { width: 70, height: 16 }); });
+  await settle();
+  expect(tui.frame()).toContain("ASML:AMS");
+  expect(tui.frame()).not.toContain("XAMS");
+  for (let i = 0; i < 2; i++) {
+    await act(async () => { await tui.emitKeypress({ name: "right", shift: true }); });
+    await settle();
+  }
+  const rows = tui.frame().split("\n");
+  expect(rows.find((line) => line.includes("36.7"))).toContain("ASML:AMS");
+  expect(rows.find((line) => line.includes("23.6"))).toContain("NVDA");
+});
+
 test("a peer whose trailing quarters are not in yet shows its latest fiscal year's margin, named, and the column widens to fit", async () => {
   setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getTickerFinancials: async (symbol) => ({
     annualStatements: symbol === "CCL" ? [{ date: "2025-11-30", totalRevenue: 26.62e9, operatingIncome: 4.48e9 }] : [], quarterlyStatements: [], priceHistory: [],

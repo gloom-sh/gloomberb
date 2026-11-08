@@ -24,7 +24,7 @@ import { unknownBloombergMarket } from "../../tickers/terminal-codes";
 import { notATickerWords } from "../company-name-hint";
 import type { MarketContext } from "../types";
 import { findWatchlist } from "../helpers";
-import { readWatchlistArgument } from "../../portfolio/collection-name";
+import { readWatchlistArgument, watchlistMemberSymbol } from "../../portfolio/collection-name";
 import {
   buildPaneFunctionLookup,
   buildTemplateContext,
@@ -340,7 +340,7 @@ async function watchlistArgument(
   if (!watchlist) return null;
   const symbols = (await context.store.loadAllTickers())
     .filter((ticker) => ticker.metadata.watchlists.includes(watchlist.id))
-    .map((ticker) => ticker.metadata.ticker);
+    .map((ticker) => watchlistMemberSymbol(ticker.metadata));
   if (symbols.length === 0) return null;
   const read = readWatchlistArgument(arg, watchlist, symbols, maximum);
   return { symbols: read.symbols, notes: [read.note] };

@@ -81,7 +81,7 @@ test("an unknown word is a subcommand only after it is no export, bank figure or
     unknownCommandReply(token, commands, { fn: null, nearFn: null, hits: [], args }, null);
   expect(reply("export", ["LMT"])).toEqual({
     message: 'Unknown command "export".',
-    details: expect.stringContaining("add --csv or --json to any command to print its result as CSV or JSON, e.g. gloom history LMT --csv"),
+    details: expect.stringContaining("e.g. gloom history LMT --csv --output lmt.csv"),
   });
   expect(reply("CASH", [])).toEqual({
     message: 'Unknown command "CASH".',

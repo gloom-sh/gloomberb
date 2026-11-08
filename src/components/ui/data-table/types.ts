@@ -175,7 +175,12 @@ export interface DataTableProps<
   horizontalPadding?: number;
   fillAvailableWidth?: boolean;
   showHorizontalScrollbar?: boolean;
-  /** Keep the row identifier visible during horizontal scrolling. */
+  /**
+   * Keep the row identifier visible during horizontal scrolling. Unset, the
+   * first column is pinned while the table is too wide for its viewport and
+   * that column leaves the rest at least half of it (`tableFreezesFirstColumn`);
+   * `false` lets it scroll away.
+   */
   freezeFirstColumn?: boolean;
   /** Append export-only source records after the displayed table. */
   getExportMetadata?: () => readonly (readonly unknown[])[];

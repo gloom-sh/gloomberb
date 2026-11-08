@@ -18,7 +18,7 @@ import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useSampledValue } from "../../../state/hooks/live-ticker-financials";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { TickerFinancials } from "../../../types/financials";
-import { normalizeSymbol } from "../../../utils/exchanges";
+import { canonicalTickerKey, normalizeSymbol } from "../../../utils/exchanges";
 import { colors, priceColor, shownPriceColor } from "../../../theme/colors";
 import { extendedSessionStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
@@ -330,7 +330,8 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((row: RelativeRow, column: RelativeColumn): DataTableCell => {
     switch (column.id) {
       case "symbol":
-        return { text: row.symbol, color: row.error || row.quoteStale || row.fundamentalsProvenance?.stale ? colors.warning : colors.textBright, attributes: TextAttributes.BOLD };
+        // The listing as the CLI names it (ASML:AMS), not the key it is stored under (ASML:XAMS).
+        return { text: canonicalTickerKey(row.symbol), color: row.error || row.quoteStale || row.fundamentalsProvenance?.stale ? colors.warning : colors.textBright, attributes: TextAttributes.BOLD };
       case "price":
         return { text: formatRelativePrice(row.price, row.currency), color: colors.text };
       case "changePercent":

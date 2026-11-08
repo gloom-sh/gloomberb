@@ -9,7 +9,7 @@ export interface CliTableColumn {
   maxWidth?: number;
   /** The narrowest a text column wraps to (MIN_WRAPPED_COLUMN_WIDTH unless set), or a `shrink: true` column is cut to; a narrower table moves columns under their rows. */
   minWidth?: number;
-  /** Dropped, rightmost first, before any column is cut or moved to fit a terminal. */
+  /** Dropped, rightmost first, before any column is cut or moved to fit a terminal. Plain output keeps it, moved under its row. */
   optional?: boolean;
   /** Among optional columns, a higher priority is dropped sooner; equal ones go rightmost first. */
   dropPriority?: number;
@@ -711,12 +711,14 @@ function renderTableLayout(
   }) : [];
   const ownStacked = stacked.filter((entry) => !shared.includes(entry));
   // Columns moved under the rows print there as `Header value`, as many to a line as fit.
+  // Plain output keeps a moved column's empty cell as its dash, so every row reads the same columns.
+  const keepsEmpty = cliPlainEnabled();
   const renderStacked = (entries: readonly TableEntry[], cells: string[], rowIndex: number, lineIndent: string, width: number): string[] => {
     const lines: string[] = [];
     let line = "";
     for (const { column, index } of entries) {
       const value = cells[index] ?? "";
-      if (rowIndex >= (column.stackRows ?? Infinity) || EMPTY_CELL.test(stripAnsi(value).trim())) continue;
+      if (rowIndex >= (column.stackRows ?? Infinity) || (!keepsEmpty && EMPTY_CELL.test(stripAnsi(value).trim()))) continue;
       const piece = `${cliStyles.muted(column.header)} ${value}`;
       if (line && visibleLength(line) + COLUMN_GAP + visibleLength(piece) <= width) {
         line += `${" ".repeat(COLUMN_GAP)}${piece}`;
@@ -774,7 +776,8 @@ export function renderTable(columns: CliTableColumn[], rows: string[][], options
   if (available == null || tableWidth(shown.map((entry) => entry.width)) <= available) {
     return renderTableLayout(columns, rows, options, shown, [], available, false);
   }
-  while (tableWidth(shown.map((entry) => entry.width)) > available) {
+  // Plain output keeps every column (`--plain` promises it): an optional one moves under its row instead.
+  while (!cliPlainEnabled() && tableWidth(shown.map((entry) => entry.width)) > available) {
     const dropped = shown.reduce<(typeof shown)[number] | undefined>((pick, entry) => (
       entry.column.optional && (!pick || (entry.column.dropPriority ?? 0) >= (pick.column.dropPriority ?? 0)) ? entry : pick
     ), undefined);

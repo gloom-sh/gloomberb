@@ -1,6 +1,7 @@
 import { logFailure } from "../../../../utils/log-failure";
 import { createBaseConverter, type BaseConversion } from "../../../../cli/base-converter";
 import { quotedFxPair } from "../../../../utils/currency-pair";
+import { commandWord } from "../../../../utils/shell-word";
 import { formatFxRate } from "../../../../cli/fx-pair";
 import { savedListingName } from "../../../../cli/listing-arg";
 import { currentListingName } from "../../../../tickers/listing-name";
@@ -87,7 +88,7 @@ import {
 } from "../../../../portfolio/allocation";
 import { findCachedPortfolioAccount } from "../cached-account";
 import { importedFromText } from "../imported-from";
-import { findNamedCollection } from "../../../../portfolio/collection-name";
+import { findNamedCollection, watchlistMemberSymbol } from "../../../../portfolio/collection-name";
 import { isoDateToday } from "../../../../utils/calendar-date";
 import { lastTradeDate } from "../../../../tickers/listing-fate";
 import type { PriceWindow } from "../../../../utils/price-window";
@@ -194,8 +195,23 @@ export function renderCollectionOverview(config: AppConfig, tickers: TickerRecor
       ]),
     ));
   }
+  // Nothing in any of them: the commands that fill one, as `alerts` names the one that adds an alert.
+  const empty = [
+    ...config.portfolios.map((portfolio) => countCollectionTickers(tickers, "portfolios", portfolio.id)),
+    ...config.watchlists.map((watchlist) => countCollectionTickers(tickers, "watchlists", watchlist.id)),
+  ].every((count) => count === 0);
+  const adds = [
+    config.portfolios[0] ? collectionAddCommand("portfolio", config.portfolios[0].name) : null,
+    config.watchlists[0] ? collectionAddCommand("watchlist", config.watchlists[0].name) : null,
+  ].filter((command): command is string => command != null);
+  if (empty && adds.length > 0) blocks.push("", cliStyles.muted(`No tickers yet. Add some with ${adds.join(" or ")}.`));
 
   return blocks.join("\n");
+}
+
+/** `gloom watchlist add Watchlist AAPL MSFT`: the command that adds tickers to a collection, its name quoted for any shell. */
+export function collectionAddCommand(kind: "portfolio" | "watchlist", name: string): string {
+  return `gloom ${kind} add ${commandWord(name)} AAPL MSFT`;
 }
 
 export interface ShowCollectionOptions {
@@ -830,7 +846,7 @@ async function showCollectionWithMarketData(
 
   if (filtered.length === 0 && !structured && !hasCash) {
     console.log(cliStyles.bold(displayName));
-    console.log(cliStyles.muted("No tickers in this collection."));
+    console.log(cliStyles.muted(`No tickers in this ${isPortfolio ? "portfolio" : "watchlist"}. Add some with ${collectionAddCommand(isPortfolio ? "portfolio" : "watchlist", displayName)}.`));
     if (explain) console.log(`\n${renderReportGlossary(EXPLAINED_REPORT, [])}`);
     return;
   }
@@ -1447,7 +1463,8 @@ async function valueWatchlistRows({
     values.push({
       ticker, quote, headline, extended, kind, venue, marketCap, funding, stale, lastTrade,
       row: {
-        symbol,
+        // A listing abroad by its venue (ASML:AMS, 2330:TWSE), so a join on the export never meets the US line.
+        symbol: watchlistMemberSymbol(ticker.metadata),
         ...listingColumns(ticker, quote),
         exchange: venue,
         kind,
