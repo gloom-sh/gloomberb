@@ -18,6 +18,7 @@ import type { SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./type
 import { isFiniteNumber } from "../utils/guards";
 import { liveForwardPE, liveTrailingPE } from "../market-data/quotes/live-valuation";
 import { listingEnterpriseValue } from "../market-data/quotes/listing-enterprise-value";
+import { BANK_OR_INSURER_EBITDA, isBankOrInsurerIndustry } from "../utils/ebitda";
 import { comparablePriceEarnings } from "../utils/price-earnings";
 
 type NumericStatementField =
@@ -885,7 +886,8 @@ function valuationAtPrice(
   // The probe at price=1 checks input coverage, not the historical EV sign.
   if (!checkingInputs && enterpriseValue !== null && enterpriseValue < 0 && (metric === "evSales" || metric === "evEbitda")) return null;
   if (metric === "evSales") return ratio(enterpriseValue, statement.totalRevenue);
-  if (metric === "evEbitda") return ratio(enterpriseValue, statement.ebitda);
+  // Over EBITDA at or below zero the multiple means nothing (N/M), as a P/E over a loss.
+  if (metric === "evEbitda") return isFiniteNumber(statement.ebitda) && statement.ebitda > 0 ? ratio(enterpriseValue, statement.ebitda) : null;
   if (metric === "priceFcf") return ratio(marketCap, freeCashFlow(statement).value);
   return null;
 }
@@ -997,17 +999,43 @@ function servedTrailingPE(financials: TickerFinancials): number | null {
 
 /**
  * A current EV multiple over the listing's enterprise value, the one
- * `valuation` and RV show (listingEnterpriseValue), when it is in the
- * statement's currency: EV/EBITDA and EV/S then read one EV on every surface.
- * Undefined to read the statement's own (shares times the price, plus debt,
- * less cash) where the listing has none; null where it is not meaningful.
+ * `valuation` and RV show (listingEnterpriseValue): EV/EBITDA and EV/S then
+ * read one EV on every surface. A statement in another currency than the EV
+ * (an ADR's EUR or TWD statements) is converted at the rate the EV's balance
+ * sheet check was, as RV's EV/S converts revenue. Undefined to read the
+ * statement's own (shares times the price, plus debt, less cash) where the
+ * listing has none or no rate; null where it is not meaningful.
  */
 function listingEnterpriseMultiple(financials: TickerFinancials, statement: FinancialStatement, metric: string): number | null | undefined {
   if (metric !== "evEbitda" && metric !== "evSales") return undefined;
+  if (metric === "evEbitda" && isBankOrInsurerIndustry(financials.profile?.industry)) return null;
   const listing = listingEnterpriseValue(financials);
   if (listing.kind === "not-meaningful") return null;
-  if (listing.kind !== "value" || listing.currency !== (statement.currency ?? financials.financialCurrency)) return undefined;
-  return ratio(listing.value, metric === "evEbitda" ? statement.ebitda : statement.totalRevenue);
+  if (listing.kind !== "value") return undefined;
+  const rate = listingStatementRate(listing, statement.currency ?? financials.financialCurrency);
+  if (rate === null) return undefined;
+  const denominator = metric === "evEbitda" ? statement.ebitda : statement.totalRevenue;
+  if (metric === "evEbitda" && !(isFiniteNumber(denominator) && denominator > 0)) return null;
+  return ratio(listing.value, isFiniteNumber(denominator) ? denominator * rate : denominator);
+}
+
+/** Units of the listing EV's currency per unit of the statement's: 1 in its own, the check's rate from another, null without one. */
+function listingStatementRate(listing: Extract<ReturnType<typeof listingEnterpriseValue>, { kind: "value" }>, currency: string | undefined): number | null {
+  if (!currency || currency === listing.currency) return 1;
+  return listing.fx && listing.fx.from === currency && isFiniteNumber(listing.fx.rate) && listing.fx.rate > 0 ? listing.fx.rate : null;
+}
+
+/**
+ * The rate a current EV multiple converted the statement at
+ * (listingEnterpriseMultiple): `{ from: "EUR", rate: 1.133 }` for an ADR's
+ * EUR statements under its USD EV; null in the EV's own currency.
+ */
+export function listingStatementConversion(financials: TickerFinancials, statement: FinancialStatement): { from: string; rate: number; to: string } | null {
+  const listing = listingEnterpriseValue(financials);
+  const currency = statement.currency ?? financials.financialCurrency;
+  if (listing.kind !== "value" || !currency || currency === listing.currency) return null;
+  const rate = listingStatementRate(listing, currency);
+  return rate === null ? null : { from: currency, rate, to: listing.currency };
 }
 
 /**
@@ -1016,14 +1044,16 @@ function listingEnterpriseMultiple(financials: TickerFinancials, statement: Fina
  * the latest period known when the quote was observed. The statements decide
  * whether there is one; a trailing P/E then takes the served one at that
  * price where there is one, so the chart ends on the P/E `valuation` prints,
- * and an EV multiple divides the listing's EV.
+ * and an EV multiple divides the listing's EV. `value` null where that period
+ * gives none (a loss, EBITDA at or below zero, a missing line); null where
+ * there is no period or price to read.
  */
 function currentDerivedValuation(
   financials: TickerFinancials,
   statements: readonly FinancialStatement[],
   metric: string,
   currencies: ValuationCurrencyContext,
-): { value: number; date: Date; statement: FinancialStatement } | null {
+): { value: number | null; date: Date; statement: FinancialStatement } | null {
   const quote = financials.quote;
   if (valuationQuoteIssue(quote)) return null;
   const quoteDate = validDate(quote?.lastUpdated);
@@ -1045,12 +1075,23 @@ function currentDerivedValuation(
     ))
     .at(-1)?.candidate;
   if (!statement) return null;
+  // The listing's EV needs no price in the statement's currency: an ADR's converts the statement instead.
+  const listing = listingEnterpriseMultiple(financials, statement, metric);
+  if (listing !== undefined) return { value: listing, date: current.date, statement };
   const comparablePrice = currencies.priceInStatementUnits(statement, current.price);
   if (comparablePrice === null) return null;
-  const listing = listingEnterpriseMultiple(financials, statement, metric);
-  const value = listing === undefined ? valuationAtPrice(statement, metric, comparablePrice) : listing;
-  if (value === null) return null;
+  const value = valuationAtPrice(statement, metric, comparablePrice);
+  if (value === null) return { value: null, date: current.date, statement };
   return { value: (metric === "trailingPE" ? servedTrailingPE(financials) : null) ?? value, date: current.date, statement };
+}
+
+/**
+ * Why a current EV/EBITDA is N/M where the statement it reads has an EBITDA:
+ * a bank's or an insurer's, or EBITDA at or below zero. Undefined otherwise.
+ */
+function ebitdaNotMeaningful(financials: TickerFinancials, statement: FinancialStatement): string | undefined {
+  if (isBankOrInsurerIndustry(financials.profile?.industry)) return BANK_OR_INSURER_EBITDA;
+  return isFiniteNumber(statement.ebitda) && statement.ebitda <= 0 ? "Trailing EBITDA is not positive" : undefined;
 }
 
 function currentDerivedValuationPoint(
@@ -1060,7 +1101,7 @@ function currentDerivedValuationPoint(
   currencies: ValuationCurrencyContext,
 ): TimeSeriesPoint | null {
   const current = currentDerivedValuation(financials, statements, metric, currencies);
-  if (!current) return null;
+  if (!current || current.value === null) return null;
   return {
     date: current.date,
     observedAt: current.date,
@@ -1077,17 +1118,47 @@ function currentDerivedValuationPoint(
 /**
  * The value GE's trailing-twelve-months series of a statement multiple ends
  * on, and the quarter its period ends with: the figure RV's added EV/EBITDA
- * column shows, so the two never disagree. Null where GE draws no current
- * point.
+ * column shows, so the two never disagree. `value` null with the reason where
+ * it is not meaningful (`notMeaningful`, GE's N/M); null where GE draws no
+ * current point and has no reason for it.
  */
 export function currentTrailingValuation(
   financials: TickerFinancials,
   metric: "evEbitda" | "evSales",
-): { value: number; periodEnd: string; statement: FinancialStatement } | null {
-  const selected = sourceStatements(financials, "ttm", metric);
-  const current = currentDerivedValuation(financials, currentValuationStatements(financials, selected, metric), metric,
+): { value: number | null; notMeaningful?: string; periodEnd: string; statement: FinancialStatement } | null {
+  const current = currentValuation(financials, "ttm", metric);
+  if (!current) return null;
+  const dated = { periodEnd: current.statement.date.slice(0, 10), statement: current.statement };
+  if (current.value !== null) return { value: current.value, ...dated };
+  const notMeaningful = metric === "evEbitda" ? ebitdaNotMeaningful(financials, current.statement) : undefined;
+  return notMeaningful ? { value: null, notMeaningful, ...dated } : null;
+}
+
+function currentValuation(financials: TickerFinancials, period: SeriesPeriod | undefined, metric: string) {
+  const selected = sourceStatements(financials, period, metric);
+  return currentDerivedValuation(financials, currentValuationStatements(financials, selected, metric), metric,
     createValuationCurrencyContext(financials));
-  return current ? { value: current.value, periodEnd: current.statement.date.slice(0, 10), statement: current.statement } : null;
+}
+
+/**
+ * Why a valuation series ends on no value: EV/EBITDA is N/M for a bank or an
+ * insurer, and over EBITDA at or below zero, as RV reads it. The period the
+ * series would end on dates it. Undefined for any other series, or where its
+ * current value is there.
+ */
+export function valuationNotMeaningful(financials: TickerFinancials, source: SecuritySeriesSource): { reason: string; asOf: string } | undefined {
+  const [namespace, metric = ""] = canonicalTimeSeriesFieldId(source.fieldId).split(".");
+  if (namespace !== "valuation" || metric !== "evEbitda") return undefined;
+  // A daily series ends on the trailing twelve months, as its current point does.
+  const period = source.period === "daily" || source.period === "auto" || !source.period ? "ttm" : source.period;
+  const current = currentValuation(financials, period, metric);
+  if (current) {
+    const reason = current.value === null ? ebitdaNotMeaningful(financials, current.statement) : undefined;
+    return reason ? { reason, asOf: current.statement.date.slice(0, 10) } : undefined;
+  }
+  if (!isBankOrInsurerIndustry(financials.profile?.industry)) return undefined;
+  const latest = sourceStatements(financials, period).statements.at(-1);
+  return latest ? { reason: BANK_OR_INSURER_EBITDA, asOf: latest.date.slice(0, 10) } : undefined;
 }
 
 /**
@@ -1221,6 +1292,8 @@ export function extractFundamentalSeries(
   }
 
   if (namespace !== "valuation" || !VALUATION_IDS.has(metric)) return [];
+  // A bank's or an insurer's EBITDA measures nothing: its EV/EBITDA is N/M throughout (valuationNotMeaningful).
+  if (metric === "evEbitda" && isBankOrInsurerIndustry(financials.profile?.industry)) return [];
   const fallback = dailyValuationFallbackPeriod(financials, source);
   if (fallback) return extractFundamentalSeries(financials, { ...source, period: fallback });
   if (source.period === "daily" && metric !== "realizedNtmPE") {

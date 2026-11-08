@@ -238,6 +238,12 @@ export interface ResolvedSeries {
    * figures of the period asked for, while its annual ones exist.
    */
   unreportedPeriod?: "quarterly";
+  /**
+   * Set where the series' current value is not meaningful (N/M): EV/EBITDA
+   * over EBITDA at or below zero, or a bank's or an insurer's, with why and
+   * the period it would end on (`valuationNotMeaningful`).
+   */
+  notMeaningful?: { reason: string; asOf: string };
   /** Acquired market-history cadence; null is explicitly unknown, undefined is legacy or nonmarket. */
   historyResolution?: ManualChartResolution | null;
   /**

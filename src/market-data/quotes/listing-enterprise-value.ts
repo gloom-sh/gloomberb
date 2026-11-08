@@ -13,6 +13,11 @@ export type ListingEnterpriseValue =
     basis: "served" | "computed";
     /** The withdrawn check a computed EV comes from, which names its balance sheet and rate. */
     check?: EnterpriseValueCheck;
+    /**
+     * The rate the EV's balance sheet check converted the statements' currency
+     * at (an ADR's EUR or TWD into its USD EV), from any check that names one.
+     */
+    fx?: { from: string; rate: number };
   }
   | { kind: "not-meaningful"; reason: string }
   | { kind: "unavailable" };
@@ -34,10 +39,11 @@ export function listingEnterpriseValue(financials: Pick<TickerFinancials, "quote
   const check = enterpriseValueCheck(fundamentals);
   const served = reportedEnterpriseValue(fundamentals);
   const currency = check?.currency ?? fundamentals?.marketCapCurrency ?? priced.quote?.currency;
-  if (served != null) return currency ? { kind: "value", value: served, currency, basis: "served" } : { kind: "unavailable" };
+  const fx = check?.fx && check.fx.from && finite(check.fx.rate) && check.fx.rate > 0 ? { fx: check.fx } : {};
+  if (served != null) return currency ? { kind: "value", value: served, currency, basis: "served", ...fx } : { kind: "unavailable" };
   if (enterpriseValueWithdrawn(fundamentals) && check?.status === "withdrawn" && finite(check.computed) && check.currency) {
     return check.computed > 0
-      ? { kind: "value", value: check.computed, currency: check.currency, basis: "computed", check }
+      ? { kind: "value", value: check.computed, currency: check.currency, basis: "computed", check, ...fx }
       : { kind: "not-meaningful", reason: "Cash and short-term investments exceed market cap + total debt" };
   }
   return { kind: "unavailable" };

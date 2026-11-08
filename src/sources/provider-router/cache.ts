@@ -14,7 +14,8 @@ const HOT_READ_TOUCH_MS = 10 * 60_000;
 // A record written under another version is a miss: bump these instead of
 // repairing older records on read.
 // 14: EBITDA is operating income plus D&A (utils/ebitda.ts), whatever an older record holds.
-export const FINANCIALS_SCHEMA_VERSION = 14;
+// 15: a row without operating income derives it for EBITDA (utils/ebitda.ts), a bank's or an insurer's excepted.
+export const FINANCIALS_SCHEMA_VERSION = 15;
 export const QUOTE_SCHEMA_VERSION = 3;
 export const MARKET_METADATA_SCHEMA_VERSION = 2;
 // Refresh persisted provider metadata through the managed backend on upgrade.

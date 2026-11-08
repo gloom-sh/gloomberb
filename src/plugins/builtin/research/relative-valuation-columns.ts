@@ -1,14 +1,14 @@
 import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneRow } from "../../../types/headless";
-import type { TickerFinancials } from "../../../types/financials";
+import type { FinancialStatement, TickerFinancials } from "../../../types/financials";
 import { isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { errorMessage } from "../../../utils/errors";
 import { formatLevelPercent, formatNumber } from "../../../utils/format";
 import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
-import { ebitdaLacksDepreciation } from "../../../utils/ebitda";
+import { BANK_OR_INSURER_EBITDA, ebitdaLacksDepreciation, ebitdaOperatingIncomeBasis, isBankOrInsurerIndustry } from "../../../utils/ebitda";
 import { fiscalPeriodLabel, fiscalYearEndMonth } from "../../../utils/fiscal-period";
 import { latestFinancialPeriod } from "../../../utils/latest-financial-period";
 import { listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
-import { currentTrailingValuation, latestTrailingStatement } from "../../../time-series/fundamentals";
+import { currentTrailingValuation, latestTrailingStatement, listingStatementConversion } from "../../../time-series/fundamentals";
 import { refusedLock } from "../shared/cloud-denied";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { loadShortInterest } from "../short-interest/client";
@@ -305,25 +305,69 @@ function grossMarginFields(financials: TickerFinancials): HeadlessPaneRow {
   };
 }
 
+const DAY_MS = 86_400_000;
+
+/**
+ * Where the trailing EBITDA's operating income was derived, not reported
+ * (utils/ebitda): `operating income derived as pretax income for the quarter
+ * to 2026-09-30`, one clause a basis. Null where every period reported it.
+ */
+function derivedOperatingIncomeNote(financials: TickerFinancials, statement: FinancialStatement): string | null {
+  const end = Date.parse(statement.date);
+  // The quarters the trailing twelve months sum, and the fiscal year a fourth quarter is completed from.
+  const window = [...financials.quarterlyStatements, ...financials.annualStatements].filter((row) => {
+    const time = Date.parse(row.date);
+    return Number.isFinite(time) && time <= end && time > end - 350 * DAY_MS;
+  });
+  const bases = new Map<string, string[]>();
+  for (const row of window.sort((left, right) => Date.parse(left.date) - Date.parse(right.date))) {
+    const basis = ebitdaOperatingIncomeBasis(row);
+    if (!basis) continue;
+    const date = row.date.slice(0, 10);
+    if (!bases.get(basis)?.includes(date)) bases.set(basis, [...bases.get(basis) ?? [], date]);
+  }
+  if (bases.size === 0) return null;
+  return [...bases].map(([basis, dates]) => `operating income derived as ${basis} for the ${dates.length === 1 ? "period" : "periods"} to ${dates.join(" and ")}`).join("; ");
+}
+
+/**
+ * What a computed EV/EBITDA divided: the EV over the trailing EBITDA, and,
+ * for the note under the table, the rate an ADR's statements took and any
+ * derived operating income (`detail`).
+ */
+function evEbitdaSource(financials: TickerFinancials, enterpriseValue: ReturnType<typeof listingEnterpriseValue>, statement: FinancialStatement): { source: string; detail: string | null } {
+  const ev = enterpriseValue.kind === "value" && enterpriseValue.basis === "computed" ? "Market cap + total debt - cash" : "Gloom Cloud enterprise value";
+  const conversion = listingStatementConversion(financials, statement);
+  const detail = [
+    ...conversion ? [`statements in ${conversion.from} at ${conversion.rate.toPrecision(4)} ${conversion.to}`] : [],
+    ...[derivedOperatingIncomeNote(financials, statement) ?? []].flat(),
+  ].join("; ") || null;
+  return { source: `${ev} over trailing operating income plus D&A${detail ? `; ${detail}` : ""}`, detail };
+}
+
 /**
  * EV/EBITDA as GE's trailing series ends on it (currentTrailingValuation):
  * the listing's enterprise value at the regular session price over the latest
- * four quarters of operating income plus D&A. N/M where either is at or below
- * zero; otherwise a blank says why.
+ * four quarters of operating income plus D&A, an ADR's converted at its EV
+ * check's rate. N/M where either is at or below zero, and for a bank or an
+ * insurer; otherwise a blank says why.
  */
-function evEbitdaFields(financials: TickerFinancials): HeadlessPaneRow {
+function evEbitdaFields(financials: TickerFinancials): HeadlessPaneRow & { evEbitdaNote?: string } {
+  if (isBankOrInsurerIndustry(financials.profile?.industry)) {
+    return { evEbitda: null, evEbitdaNotMeaningful: BANK_OR_INSURER_EBITDA, evEbitdaNote: `N/M, ${BANK_OR_INSURER_EBITDA}` };
+  }
   const enterpriseValue = listingEnterpriseValue(financials);
+  // EV/S's note already says why the EV is not meaningful.
   if (enterpriseValue.kind === "not-meaningful") return { evEbitda: null, evEbitdaNotMeaningful: enterpriseValue.reason };
   const current = currentTrailingValuation(financials, "evEbitda");
-  const source = enterpriseValue.kind === "value" && enterpriseValue.basis === "computed"
-    ? "Market cap + total debt - cash over trailing operating income plus D&A"
-    : "Gloom Cloud enterprise value over trailing operating income plus D&A";
   if (current) {
-    const ebitda = current.statement.ebitda;
+    const { source, detail } = evEbitdaSource(financials, enterpriseValue, current.statement);
     const dated = { evEbitdaSource: source, evEbitdaAsOf: current.periodEnd };
-    if (typeof ebitda === "number" && ebitda <= 0) return { evEbitda: null, evEbitdaNotMeaningful: "Trailing EBITDA is not positive", ...dated };
+    if (current.value === null) {
+      return { evEbitda: null, evEbitdaNotMeaningful: current.notMeaningful, evEbitdaNote: `N/M, ${current.notMeaningful!.charAt(0).toLowerCase()}${current.notMeaningful!.slice(1)}`, ...dated };
+    }
     if (current.value <= 0) return { evEbitda: null, evEbitdaNotMeaningful: "Enterprise value is not positive", ...dated };
-    return { evEbitda: current.value, ...dated };
+    return { evEbitda: current.value, ...detail ? { evEbitdaNote: detail } : {}, ...dated };
   }
   const trailing = latestTrailingStatement(financials);
   const statementCurrency = trailing?.currency ?? financials.financialCurrency;
@@ -344,17 +388,20 @@ function evEbitdaFields(financials: TickerFinancials): HeadlessPaneRow {
 async function loadStatementFields(ids: readonly ExtraColumnId[], symbols: readonly string[], ctx: HeadlessPaneContext, out: ExtraColumnsResult) {
   const wanted = ids.filter((id) => id === "grossMargin" || id === "evEbitda");
   if (wanted.length === 0) return;
+  const notes = new Map<string, string>();
   await Promise.all(symbols.map(async (symbol) => {
     try {
       const { symbol: ticker, exchange } = await resolveHeadlessInstrument(ctx, symbol);
       const financials = await ctx.marketData.getTickerFinancials(ticker, exchange ?? "", { statementHistory: "extended" });
-      Object.assign(out.fields.get(symbol)!,
-        wanted.includes("grossMargin") ? grossMarginFields(financials) : {},
-        wanted.includes("evEbitda") ? evEbitdaFields(financials) : {});
+      const { evEbitdaNote, ...evEbitda } = wanted.includes("evEbitda") ? evEbitdaFields(financials) : {};
+      Object.assign(out.fields.get(symbol)!, wanted.includes("grossMargin") ? grossMarginFields(financials) : {}, evEbitda);
+      // Said under the table: why a cell is N/M, an ADR's rate, operating income derived from other lines.
+      if (evEbitdaNote) notes.set(symbol, `${symbol}: EV/EBITDA ${evEbitdaNote}.`);
     } catch (error) {
       out.errors.push(failureMessage(wanted.map((id) => COLUMN_SPECS[id].label).join(" and "), error, symbol));
     }
   }));
+  out.notes.push(...symbols.flatMap((symbol) => notes.get(symbol) ?? []));
 }
 
 /** The US-only columns among `ids`, which a listing abroad leaves blank. */

@@ -698,6 +698,8 @@ export interface HeadlessSeries {
   textCompact?: boolean;
   /** Each point's `value` is its bar's close: `--csv` and `--ndjson` write Close alone, JSON keeps both. */
   valueIsClose?: boolean;
+  /** The series' current value is not meaningful: the report prints N/M dated by the period, and why. */
+  notMeaningful?: { reason: string; asOf: string };
   points: HeadlessSeriesPoint[];
 }
 

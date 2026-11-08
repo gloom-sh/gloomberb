@@ -12,6 +12,7 @@ import { BASIS_POINT_UNIT, BP_PER_PERCENT } from "./studies/units";
 import { getTimeSeriesField, isMarketFieldId } from "./field-catalog";
 import {
   unreportedStatementPeriod,
+  valuationNotMeaningful,
   dailyValuationFallbackPeriod,
   valuationCurrencyWarning,
   valuationPriceIssues,
@@ -124,6 +125,7 @@ export function baseSecuritySeries(
   const points = extractSecuritySeries(financials, spec.source);
   const valuationFallback = dailyValuationFallbackPeriod(financials, spec.source);
   const unreportedPeriod = points.length === 0 ? unreportedStatementPeriod(financials, spec.source) : null;
+  const notMeaningful = valuationNotMeaningful(financials, spec.source);
   const symbol = instrumentLabel(spec.source);
   const statementCurrency = field.id.startsWith("fundamental.") && field.unit.startsWith("currency")
     ? reportingCurrencySeries(points, financials.financialCurrency) : null;
@@ -222,11 +224,13 @@ export function baseSecuritySeries(
     ...(volumeBasis ? { volumeBasis } : {}),
     ...(priceIssues.length ? { valuationPriceIssues: priceIssues } : {}),
     warning: [valuationFallback ? "Release dates unavailable; showing reported periods." : undefined,
+      notMeaningful ? `N/M: ${notMeaningful.reason} (period to ${notMeaningful.asOf}).` : undefined,
       field.id === "market.volume" && !volumeUnit && !volumeBasis && points.some((point) => Number.isFinite(point.value) && point.value !== 0)
         ? "Volume unit unknown." : statementCurrency?.warning ?? valuationCurrencyWarning(financials, spec.source)].filter(Boolean).join(" ") || undefined,
     nativeFrequency: marketField ? marketSeriesFrequency(spec.source, marketResolution)
       : valuationFallback ?? (spec.source.period && spec.source.period !== "auto" ? spec.source.period : field.nativeFrequency),
     ...(unreportedPeriod ? { unreportedPeriod } : {}),
+    ...(notMeaningful ? { notMeaningful } : {}),
     ...(marketField ? { historyResolution: marketResolution } : {}),
     timestampMode: spec.source.timestampMode,
     dataShape: field.dataShape,
