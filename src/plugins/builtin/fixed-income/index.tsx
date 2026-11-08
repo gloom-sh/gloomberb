@@ -25,6 +25,8 @@ export const fixedIncomeModule: PluginModule = {
             { value: "all", label: "All" },
             { value: "us", label: "US" },
             { value: "euro", label: "Euro" },
+            { value: "em", label: "Emerging markets" },
+            { value: "asia", label: "Asia" },
           ],
         },
         ...treasuryAuctionsSettings().fields,
