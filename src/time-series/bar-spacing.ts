@@ -26,17 +26,27 @@ function startPeriods(times: readonly number[], size: "1wk" | "1mo"): boolean {
   return size === "1wk" ? new Set(dates.map((date) => date.getUTCDay())).size === 1 : dates.every((date) => date.getUTCDate() <= 7);
 }
 
+/** Fewer bars than this cannot say they are coarser than asked: three Mondays of a thin listing are no weekly bars. */
+const MIN_COARSER_BARS = 4;
+
+type DailyOrLonger = "1d" | "1wk" | "1mo";
+
 /**
- * The size of bars asked for as `requested`: the request, not the spacing.
- * A thinly traded listing's daily bars sit a week or two apart (B95 on SGX
- * traded on 13 Oct, 22 Oct and 6 Nov), which the spacing reads as weekly.
- * Bars the source served finer than asked show it in their spacing; coarser
- * ones only when each starts its period, as weekly and monthly bars do.
+ * The size of bars asked for as `requested`: the request, not the spacing,
+ * unless the source stated the size it served (`stated`). A thinly traded
+ * listing's daily bars sit a week or two apart (B95 on SGX traded on 13 Oct,
+ * 22 Oct and 6 Nov), which the spacing reads as weekly. Bars the source
+ * served finer than asked show it in their spacing; coarser ones only when
+ * there are at least four and each starts its period, as weekly and monthly
+ * bars do.
  */
-export function requestedBarSize(times: readonly number[], requested: "1d" | "1wk" | "1mo"): "1d" | "1wk" | "1mo" {
+export function requestedBarSize(times: readonly number[], requested: DailyOrLonger, stated?: string | null): DailyOrLonger {
+  if (stated === "1d" || stated === "1wk" || stated === "1mo") return stated;
   const gap = medianBarGap(times);
   if (gap == null) return requested;
   const read = barSizeFromGap(gap);
   if (BAR_SIZE_ORDER[read] < BAR_SIZE_ORDER[requested]) return read;
-  return BAR_SIZE_ORDER[read] > BAR_SIZE_ORDER[requested] && startPeriods(times, read as "1wk" | "1mo") ? read : requested;
+  const bars = new Set(times.filter(Number.isFinite)).size;
+  return BAR_SIZE_ORDER[read] > BAR_SIZE_ORDER[requested] && bars >= MIN_COARSER_BARS && startPeriods(times, read as "1wk" | "1mo")
+    ? read : requested;
 }

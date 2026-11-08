@@ -418,6 +418,36 @@ test("historical prices take today's bar from the quote while the session trades
   }
 });
 
+test("historical prices on 5Y take the session into the bars as served: a week still forming, or a day of its own after daily bars", async () => {
+  // Fri 16 Oct 2026, 15:14 in New York, the session trading. 5Y asks for weekly bars.
+  setSystemTime(new Date("2026-10-16T19:14:30Z"));
+  try {
+    const quote = {
+      symbol: "AAPL", price: 340.91, change: -1.09, changePercent: -0.32, currency: "USD", previousClose: 342, open: 346.085, high: 347.82,
+      low: 340.46, volume: 39_269_651, listingExchangeName: "NASDAQ", instrumentType: "Common Stock", marketState: "REGULAR" as const,
+      changeSessionDate: "2026-10-16", lastUpdated: Date.now() - 15 * 60_000,
+    };
+    const load = (history: Array<{ date: Date; open: number; high: number; low: number; close: number; volume: number }>) =>
+      historicalPricesHeadless.load(args(["AAPL"], { range: "5Y" }), createTestHeadlessContext({
+        resolveInstrument: async () => ({ symbol: "AAPL", exchange: "" }),
+        marketData: createTestDataProvider({ getPriceHistory: async () => history, getQuote: async () => quote }),
+      }));
+    const bar = (date: string, close: number) => ({ date: new Date(date), open: close, high: close + 2, low: close - 2, close, volume: 40_000_000 });
+    // Weekly bars: this week's takes the quote's price.
+    const weekly = await load([bar("2026-09-21", 330), bar("2026-09-28", 334), bar("2026-10-05", 337), bar("2026-10-12", 341.3)]);
+    expect(weekly.rows.map((row) => [String(row.date).slice(0, 10), row.close])).toEqual([
+      ["2026-09-21", 330], ["2026-09-28", 334], ["2026-10-05", 337], ["2026-10-12", 340.91],
+    ]);
+    // Daily bars served for the same range: Thursday's close stands and Friday is a day of its own, not Thursday overwritten.
+    const daily = await load([bar("2026-10-13", 341.27), bar("2026-10-14", 342.96), bar("2026-10-15", 342)]);
+    expect(daily.rows.map((row) => [String(row.date).slice(0, 10), row.close, row.partial === true])).toEqual([
+      ["2026-10-13", 341.27, false], ["2026-10-14", 342.96, false], ["2026-10-15", 342, false], ["2026-10-16", 340.91, true],
+    ]);
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("historical prices read daily bars across a holiday as daily, not as a week still forming", async () => {
   // Golden Week closed Shanghai from 1 to 7 Oct 2026. On Thu 8 Oct, while it trades, the last two daily bars are 8 days apart.
   setSystemTime(new Date("2026-10-08T03:00:00Z"));

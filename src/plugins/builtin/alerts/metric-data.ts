@@ -1,5 +1,5 @@
 import type { AssetDataProvider } from "../../../types/data-provider";
-import type { TickerFinancials } from "../../../types/financials";
+import type { Quote, TickerFinancials } from "../../../types/financials";
 import { liveMarketCapitalization, liveTrailingPE } from "../../../market-data/quotes/live-valuation";
 import { comparablePriceEarnings } from "../../../utils/price-earnings";
 import { canonicalExchange } from "../../../utils/exchanges";
@@ -68,6 +68,7 @@ export function metricReadings(provider: AssetDataProvider, now = Date.now()) {
   dailyCaches.set(provider, daily);
   const financials = new Map<string, Promise<TickerFinancials>>();
   const history = new Map<string, Promise<Awaited<ReturnType<AssetDataProvider["getPriceHistory"]>> >>();
+  const quotes = new Map<string, Promise<Quote | null>>();
   return async (rule: AlertRule): Promise<MetricReading> => {
     const m = rule.metric!;
     const key = `${rule.symbol}|${rule.exchange ?? ""}`;
@@ -99,8 +100,17 @@ export function metricReadings(provider: AssetDataProvider, now = Date.now()) {
         const request = history.get(listing) ?? load(symbol, venue);
         history.set(listing, request);
         // Final as `history` shows it: a close it prints without `partial` is one the rule may judge.
+        // A bar the source still marks partial once its session has settled is final at the session's quote,
+        // as `history` makes it; the quote is read only then, and one that fails leaves the rule waiting.
         // Bars read back from the saved cache carry their dates as text.
-        return finalDailyBars(await request, { now, venue }).map(point => ({ date: barSessionDay(getPricePointTimestamp(point), venue), close: point.close }));
+        const served = await request;
+        let quote: Promise<Quote | null> | null = null;
+        if (served.at(-1)?.partial) {
+          quote = quotes.get(listing) ?? provider.getQuote(symbol, venue).catch(() => null);
+          quotes.set(listing, quote);
+        }
+        return finalDailyBars(served, { now, venue }, await quote)
+          .map(point => ({ date: barSessionDay(getPricePointTimestamp(point), venue), close: point.close }));
       };
       const bars = await completed(rule.symbol, exchange);
       // RS ratios and RRG quadrants read the benchmark's own completed bars, never a quote.

@@ -114,9 +114,13 @@ describe("withSessionBar", () => {
   test("the size asked for, not the spacing, says what the bars are; spacing only shows bars coarser when each starts its period", () => {
     const days = (...dates: string[]) => dates.map((date) => Date.parse(`${date}T00:00:00Z`));
     expect(requestedBarSize(days("2026-10-13", "2026-10-22", "2026-11-06"), "1d")).toBe("1d");
-    // Mondays a week apart are weekly bars, the first of each month monthly ones, whatever was asked.
-    expect(requestedBarSize(days("2026-10-05", "2026-10-12", "2026-10-19"), "1d")).toBe("1wk");
-    expect(requestedBarSize(days("2026-08-01", "2026-09-01", "2026-10-01"), "1d")).toBe("1mo");
+    // Four Mondays a week apart are weekly bars, the first of four months monthly ones, whatever was asked.
+    expect(requestedBarSize(days("2026-09-28", "2026-10-05", "2026-10-12", "2026-10-19"), "1d")).toBe("1wk");
+    expect(requestedBarSize(days("2026-07-01", "2026-08-01", "2026-09-01", "2026-10-01"), "1d")).toBe("1mo");
+    // Three are too few to say so: a thin listing can trade on three Mondays.
+    expect(requestedBarSize(days("2026-10-05", "2026-10-12", "2026-10-19"), "1d")).toBe("1d");
+    // The size the source says it served stands.
+    expect(requestedBarSize(days("2026-10-05", "2026-10-12", "2026-10-19"), "1d", "1wk")).toBe("1wk");
     // Bars finer than asked are as served.
     expect(requestedBarSize(days("2026-10-13", "2026-10-14", "2026-10-15"), "1wk")).toBe("1d");
   });

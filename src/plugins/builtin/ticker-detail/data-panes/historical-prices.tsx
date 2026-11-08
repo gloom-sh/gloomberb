@@ -38,7 +38,7 @@ import {
 import { usePaneTicker } from "../../../../state/app/context";
 import { handleRefreshKey, useClampSelectedIndex } from "../../../../components/data-table/table-pane";
 import { useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
-import { DAY_SO_FAR_TEXT, dailyOrLongerBarSize, withSessionBar } from "../../../../time-series/session-bar";
+import { DAY_SO_FAR_TEXT, requestedSessionBarSize, withSessionBar } from "../../../../time-series/session-bar";
 import { RANGE_HISTORY_RESOLUTION, type ManualChartResolution } from "../../../../time-series/resolution";
 import {
   formingHistoryBar,
@@ -272,7 +272,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   // An index's uncounted 0 volume (^HSI's day built from its quote) is no volume, as `history` and HP's CSV leave it.
   const instrumentType = quote?.instrumentType ?? financials?.quoteMetadata?.instrumentType;
   const points = useMemo(
-    () => withSessionBar(data ?? [], quote, { now: Date.now(), venue, ...dailyOrLongerBarSize(RANGE_HISTORY_RESOLUTION[range]) }).map((point) => {
+    () => withSessionBar(data ?? [], quote, { now: Date.now(), venue, ...requestedSessionBarSize(data ?? [], RANGE_HISTORY_RESOLUTION[range]) }).map((point) => {
       if (point.volume == null) return point;
       const volume = indexBarVolume(point.volume, instrumentType);
       return volume === point.volume ? point : { ...point, volume: undefined };

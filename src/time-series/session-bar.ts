@@ -7,7 +7,7 @@ import { canonicalExchange } from "../utils/exchanges";
 import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
 import { pricePointIntegrity } from "../utils/price-history-integrity";
 import { zonedDateKey } from "../utils/zoned-date-time";
-import { barSizeFromGap, medianBarGap } from "./bar-spacing";
+import { barSizeFromGap, medianBarGap, requestedBarSize } from "./bar-spacing";
 import { calendarBarStart, liveQuoteObservation } from "./chart-data";
 
 const DAY_MS = 24 * 60 * 60_000;
@@ -33,6 +33,22 @@ export interface SessionBarOptions {
 /** The `barSize` option for a history asked for in `resolution` bars: daily or longer ones only. */
 export function dailyOrLongerBarSize(resolution: string | null | undefined): Pick<SessionBarOptions, "barSize"> {
   return resolution === "1d" || resolution === "1wk" || resolution === "1mo" ? { barSize: resolution } : {};
+}
+
+/**
+ * The bar size withSessionBar is told for bars asked as `requested`: the
+ * request, unless the source stated another (`stated`) or the bars' spacing
+ * shows them finer, or coarser and starting their periods (requestedBarSize).
+ * A 5Y range asks for weekly bars; served daily, Thursday's bar is a day, and
+ * Friday's live price is a bar of its own, not Thursday's close.
+ */
+export function requestedSessionBarSize(
+  points: readonly Pick<PricePoint, "date">[],
+  requested: string | null | undefined,
+  stated?: string | null,
+): Pick<SessionBarOptions, "barSize"> {
+  const asked = dailyOrLongerBarSize(requested).barSize;
+  return asked ? { barSize: requestedBarSize(points.map((point) => new Date(point.date).getTime()), asked, stated) } : {};
 }
 
 /**
@@ -191,9 +207,12 @@ function settledSessionBar(
  * The daily bars `history` shows as final, which alerts on a daily close read
  * too: the bars as served, less the bar of a session still trading
  * (withSessionBar, which `history` rebuilds from the quote and marks partial)
- * and any bar the source marks partial. A close `history` prints without
- * `partial` is final here, and one it prints with it is not.
+ * and any bar still partial. A bar the source marks partial after its session
+ * has settled takes that session's `quote` and is final, as `history` makes
+ * it (settledSessionBar); with no quote from its session it stays partial.
+ * A close `history` prints without `partial` is final here, and one it prints
+ * with it is not.
  */
-export function finalDailyBars(points: PricePoint[], options: SessionBarOptions): PricePoint[] {
-  return withSessionBar(points, null, options).filter((point) => !point.partial);
+export function finalDailyBars(points: PricePoint[], options: SessionBarOptions, quote?: Quote | null): PricePoint[] {
+  return withSessionBar(points, quote ?? null, options).filter((point) => !point.partial);
 }

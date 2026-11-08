@@ -51,7 +51,7 @@ import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { isPastPriceWindow, loadPriceWindowHistory, priceWindowInterval, priceWindowText, readPriceWindow, type PriceWindow } from "../../../utils/price-window";
 import { historyCoverageNotice } from "../../../sources/history-coverage";
 import { getChartResolutionLabel, isIntradayResolution, RANGE_HISTORY_RESOLUTION, type ManualChartResolution } from "../../../time-series/resolution";
-import { DAY_SO_FAR_TEXT, dailyOrLongerBarSize, withSessionBar } from "../../../time-series/session-bar";
+import { DAY_SO_FAR_TEXT, requestedSessionBarSize, withSessionBar } from "../../../time-series/session-bar";
 import { buildReturnRows, closedMarketNote, isTodayReturnRow, returnBaseCloseDay, type ReturnRange } from "./data-panes/returns-model";
 import { periodBaseText } from "../../../market-data/market/period-return";
 import { loadReturnSeries } from "./data-panes/returns-history";
@@ -419,7 +419,7 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     const now = Date.now();
     // The bars the range or window asks for: a thin listing's daily bars a week or two apart are still daily.
     const requested = window ? priceWindowInterval(window) : RANGE_HISTORY_RESOLUTION[range];
-    const points = withSessionBar(loaded, quote, { now, venue, ...dailyOrLongerBarSize(requested) });
+    const points = withSessionBar(loaded, quote, { now, venue, ...requestedSessionBarSize(loaded, requested) });
     // Providers serve float32 prices (4013.39990234 for 4013.4): the rows hold the decimal each is, as `history` does,
     // a London line's cleaned in the pence it was priced in.
     const priceDivisor = quotedPriceDivisor(quote);
