@@ -9,6 +9,7 @@ import { commands as builtInCommands, getCommandPrefixes, type Command } from ".
 import { FUNCTION_HELP, type FunctionHelp } from "../../../cli/pane-functions/function-help";
 import { usageFunctionForPane } from "../../../telemetry/usage-counts";
 import type { CommandDef, PaneTemplateDef } from "../../../types/plugin";
+import type { PaneInstanceConfig } from "../../../types/config";
 import type { PluginRegistry } from "../../registry";
 
 export interface HelpFunction {
@@ -179,16 +180,21 @@ export function parseHelpArgument(arg: string, index: HelpFunctionIndex): HelpRe
 }
 
 /**
- * The function a pane instance stands for. A pane several functions open
- * (charts, TAS and QR) is told apart by its title, which starts with the
- * mnemonic that opened it ("GP AAPL", "QR MSFT"); otherwise it is the pane's
- * first function, as usage counts see it.
+ * The function a pane instance stands for: the one its pane names for it
+ * (a workspace's active tab, `helpFunction`), else, for a pane several
+ * functions open (charts, TAS and QR), the mnemonic its title starts with
+ * ("GP AAPL", "QR MSFT"); otherwise the pane's first function, as usage
+ * counts see it.
  */
 export function helpFunctionForPane(
   index: HelpFunctionIndex,
-  registry: Parameters<typeof usageFunctionForPane>[0],
-  instance: { paneId: string; title?: string },
+  registry: Parameters<typeof usageFunctionForPane>[0] & Partial<Pick<PluginRegistry, "panes">>,
+  instance: { paneId: string; title?: string } & Partial<PaneInstanceConfig>,
 ): HelpFunction | null {
+  // A workspace names the function of the tab it shows (CTM on Commodities & Energy's Curve tab).
+  const own = registry.panes?.get(instance.paneId)?.helpFunction?.(instance as PaneInstanceConfig);
+  const byTab = own ? index.get(normalizeToken(own)) : undefined;
+  if (byTab?.paneId === instance.paneId) return byTab;
   const titleToken = normalizeToken(instance.title?.trim().split(/\s+/)[0] ?? "");
   const byTitle = titleToken ? index.get(titleToken) : undefined;
   if (byTitle?.paneId === instance.paneId) return byTitle;

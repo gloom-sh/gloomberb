@@ -37,6 +37,11 @@ interface PaneTemplateItemOptions {
 
 interface PaneShortcutItemsOptions {
   filterQuery?: string;
+  /**
+   * The query the rows are for: the functions kept out of browse are offered
+   * too, as the catalog lists them, and one whose case it names opens on it.
+   */
+  searchedQuery?: string;
   createOptions?: PaneTemplateCreateOptions;
   includePromptableTickerTemplates?: boolean;
 }
@@ -417,7 +422,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
       ...buildLayoutItems("", { confirmDangerousActions: true })
         .filter((item) => !commandRows.has(`${item.label}\u0000${item.right ?? ""}`)),
       ...buildPaneSettingItems(state.focusedPaneId, rootQuery),
-      ...paneShortcutItems({ includePromptableTickerTemplates: true }),
+      ...paneShortcutItems({ includePromptableTickerTemplates: true, searchedQuery: rootQuery }),
       ...nonShortcutPaneTemplateItems(),
       ...tickerActionItems(),
       ...pluginItems,

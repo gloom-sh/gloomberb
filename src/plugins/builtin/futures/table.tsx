@@ -5,7 +5,7 @@ import { TextAttributes } from "../../../ui";
 import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { minorUnitSign } from "../../../utils/currency-units";
 import { boardHeadlineQuote, isBoardRowLoading, renderQuoteBoardCell, type BoardQuoteMap } from "../shared/use-quote-board";
-import { tickDecimals, type FuturesContract } from "../../../market-data/futures-board";
+import { futuresBoardCode, tickDecimals, type FuturesContract } from "../../../market-data/futures-board";
 import { FUTURES_RETURN_BASE_COLUMNS, FUTURES_RETURN_COLUMNS, futuresContractHeadline, futuresSessionQuote, futuresUnitLabel, type FuturesColumnId, type FuturesTableRow } from "./model";
 import type { FuturesTermsMap } from "./use-board-terms";
 import type { FrontReturnsMap } from "./use-front-returns";
@@ -252,7 +252,7 @@ export function renderFuturesCell(
   switch (column.id) {
     case "code":
       return {
-        text: contract.code,
+        text: futuresBoardCode(contract),
         color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };

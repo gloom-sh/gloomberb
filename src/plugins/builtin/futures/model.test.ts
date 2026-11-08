@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Quote } from "../../../types/financials";
 import { cycleSortPreference } from "../../../utils/sort-values";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
-import { getContractsBySector, type FuturesSector } from "../../../market-data/futures-board";
+import { futuresBoardCode, getContractsBySector, type FuturesSector } from "../../../market-data/futures-board";
 import { findCatalogSeries } from "../../../cli/series-search";
 import { cotContractCode } from "../cot/model";
 import { FUTURES_SERIES } from "./series";
@@ -129,6 +129,25 @@ describe("buildFuturesRows search", () => {
   test("a query matching nothing yields no rows at all, not bare headers", () => {
     expect(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, { query: "zzz" })).toEqual([]);
   });
+});
+
+test("VIX futures are the board's Volatility group, VX1 and VX2 by symbol, named by the month each prices or else their place", () => {
+  const vix = ["header:volatility", "VX1", "VX2"];
+  for (const query of ["VX", "vix", "VIX futures", "volatility"]) {
+    expect({ query, rows: rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, { query })) }).toEqual({ query, rows: vix });
+  }
+  expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, { query: "VX2" }))).toEqual(["header:volatility", "VX2"]);
+  const contracts = buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, { query: "VX" })
+    .flatMap((row) => row.type === "row" ? [row.contract] : []);
+  // Two rows of one root, told apart by their own symbols, and by their place on the curve until a month is known.
+  expect(contracts.map(futuresBoardCode)).toEqual(["VX1", "VX2"]);
+  expect(contracts.map((contract) => futuresContractHeadline(contract))).toEqual(["VIX Futures front month", "VIX Futures 2nd month"]);
+  const quotes = quoteMap({ VX1: { symbol: "VX1", name: "VIX Futures 1st generic, now Nov 2026" }, VX2: { symbol: "VX2", name: "VIX Futures 2nd generic, now Dec 2026" } });
+  expect(contracts.map((contract) => futuresContractName(contract, quotes.get(contract.symbol)!.quote)))
+    .toEqual(["VIX Futures Nov 2026", "VIX Futures Dec 2026"]);
+  // A quote whose name carries no month is placed by the contract terms.
+  expect(futuresContractHeadline(contracts[1]!, { ...quotes.get("VX2")!.quote!, name: "VIX Futures 2nd generic" }, { deliveryMonth: "2026-12" }))
+    .toBe("VIX Futures Dec 2026");
 });
 
 describe("buildFuturesRows collapse", () => {

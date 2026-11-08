@@ -256,7 +256,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "The date of the latest change: the decision it came from, or, where no decision is on record, the first date the new rate level appears in the data. The last decision under each row is the bank's latest meeting, a hold included.",
   },
   {
-    term: "Pctl 1Y", aliases: ["percentile", "1y percentile", "1-year percentile", "pctl"], functions: ["BTMM", "WIRP", "CBR", "CDX", "SOVR", "COT"],
+    term: "Pctl 1Y", aliases: ["percentile", "1y percentile", "1-year percentile", "pctl"], functions: ["BTMM", "WIRP", "CBR", "CDX", "SOVR", "COT", "CTM"],
     definition: "Where today's value ranks against the past year of the same series: 100 is the highest, 0 the lowest.",
   },
   {
@@ -867,6 +867,13 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
       + "less 1, scaled to a year: (front / next - 1) × 365 / days between the two. It is positive in backwardation and negative in contango.",
   },
   // The VIX curve and the volatility board (VIX, VOLS): spot indices, not futures.
+  {
+    term: "Variance swap", aliases: ["variance swaps", "var swap", "variance strike", "variance swap strike", "variance-swap strike"],
+    functions: ["VIX", "CTM"],
+    definition: "A swap that pays the difference between the variance an index realizes over its term and a strike fixed at the start. VIX is the square root "
+      + "of the 30-day S&P 500 variance-swap strike that SPX options imply, in volatility points: a VIX of 25 is a 30-day variance strike of 25² = 625, "
+      + "25% a year. Variance swaps trade between dealers and their strikes are not published; CTM VX shows where VIX futures price that 30-day figure at each expiry.",
+  },
   {
     term: "Term structure", aliases: ["volatility term structure", "VIX term structure", "VIX curve", "tenor curve", "tenors"],
     functions: ["VIX", "VOLS"], shown: ["Tenor", "tenor curve"],

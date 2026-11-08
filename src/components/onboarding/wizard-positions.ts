@@ -422,6 +422,8 @@ export function useOnboardingPositions({
      * listed, Enter there goes on to the next step instead of asking for one.
      */
     onEmptyTicker: fieldIdx === 0 && !normalizePositionQuery(draft.ticker),
+    /** A ticker is typed but not added yet: Add, Enter on the last field, or Continue adds it. */
+    hasDraft: !!normalizePositionQuery(draft.ticker),
     preview,
     /** What the size field counts: Contracts for a future, else Shares. */
     quantityLabel,

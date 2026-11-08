@@ -13,7 +13,7 @@ export const volatilityModule: PluginModule = {
   paneTemplates: [{
     id: "volatility-term-structure-pane", paneId: "volatility-term-structure",
     label: "VIX Curve", description: "Dated VIX tenor closes, the 3M/30D ratio history and the cross-asset volatility board.",
-    keywords: ["vix", "volatility", "vol", "curve", "contango", "backwardation", "vvix", "skew", "move"],
+    keywords: ["vix", "volatility", "vol", "curve", "contango", "backwardation", "vvix", "skew", "move", "variance swap", "variance"],
     shortcut: { prefix: "VIX" }, headless: volatilityHeadless,
     createInstance: () => ({ instanceId: "volatility:curve", title: "VIX", placement: "floating", settings: { initialTab: "curve" } }),
   }, {

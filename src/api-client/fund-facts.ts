@@ -94,10 +94,26 @@ export interface FundFlows {
 
 /**
  * `not-collected-yet`: a source Gloom reads covers the fund, but it has no
- * figures yet. `not-published`: no source Gloom reads covers it. Servers
- * before statuses leave it out.
+ * figures yet. `not-published`: no source Gloom reads covers it. `etn`: an
+ * exchange-traded note, no fund, with its terms in `note`. Servers before
+ * statuses leave it out.
  */
-type FundFactsStatus = "covered" | "not-collected-yet" | "not-published" | "not-a-fund";
+type FundFactsStatus = "covered" | "not-collected-yet" | "not-published" | "not-a-fund" | "etn";
+
+/**
+ * An exchange-traded note (VXX) as its SEC pricing supplement states it: the
+ * bank whose unsecured debt it is, the yearly fee taken from its value
+ * (percent) and the index its return is linked to, each null when the
+ * supplement does not state it in a form the server reads. `filing`: the
+ * supplement's form, filing date and EDGAR document.
+ */
+export interface FundNoteFacts {
+  issuer: string;
+  name: string | null;
+  yearlyFee: number | null;
+  index: string | null;
+  filing: { form: string; filedAt: string; url: string };
+}
 
 /**
  * What a counter's computed premium is from when its own close is nominal:
@@ -175,6 +191,8 @@ export interface FundFactsPayload {
    * Absent for any other fund and from servers before it.
    */
   coinHoldings?: FundCoinHoldings | null;
+  /** An exchange-traded note's terms (status `etn`); absent for anything else and from servers before it. */
+  note?: FundNoteFacts | null;
   /** The newest NAV is older than a few US trading days: every figure is older than it looks. */
   stale: boolean;
   fetchedAt: string | null;

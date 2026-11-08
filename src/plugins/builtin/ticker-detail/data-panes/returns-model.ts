@@ -5,10 +5,12 @@ import {
   DEFAULT_CHART_RESOLUTION_SUPPORT,
   getSupportedChartResolutionsForViewport,
   isIntradayResolution,
+  RANGE_HISTORY_RESOLUTION,
   type ChartResolutionSupport,
   type ManualChartResolution,
 } from "../../../../time-series/resolution";
 import type { PricePoint } from "../../../../types/financials";
+import { priceWindowInterval, type PriceWindow } from "../../../../utils/price-window";
 import { isAlwaysOpenExchange, isRegularSessionTime, latestRegularSessionClose, sessionCalendarTimeZone } from "../../../../market-data/market/freshness";
 import { barLastSession } from "../../../../market-data/market/bar-period";
 import {
@@ -37,6 +39,18 @@ export const RETURN_INTERVAL_VALUES: Array<{ value: ManualChartResolution; alias
   { value: "1wk", aliases: ["1w", "week", "weekly"] },
   { value: "1mo", aliases: ["month", "monthly"] },
 ];
+
+/**
+ * The bar size RETURN takes when none is chosen, growing with the range so a
+ * year reads a row a day rather than 1,700 hourly ones: hourly to a week,
+ * then the bars a price history of the range uses (daily to 1Y, weekly for
+ * 5Y, monthly for ALL), and a window's (priceWindowInterval) for `--from`.
+ */
+export function defaultReturnInterval(range: ReturnRange, window?: PriceWindow | null): ManualChartResolution {
+  if (window) return priceWindowInterval(window);
+  if (range === "6H" || range === "1D" || range === "5D" || range === "1W") return "1h";
+  return RANGE_HISTORY_RESOLUTION[range];
+}
 
 const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;

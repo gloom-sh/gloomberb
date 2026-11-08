@@ -4,6 +4,7 @@ import type { CliCommandDef } from "../../types/plugin";
 import { TIME_RANGES, type TimeRange } from "../../time-series/range";
 import { CHART_RESOLUTION_STEP_MS, RANGE_HISTORY_RESOLUTION } from "../../time-series/resolution";
 import { yearToDateStartIndex } from "../../market-data/market/year-to-date";
+import { barCloseSession } from "../../market-data/market/bar-period";
 import type { EarningsEvent, MarketDataRequestContext, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
 import { companyDataNotes, type CompanyFrom } from "../../types/company-from";
 import type { NewsArticle, NewsFeed, NewsQuery } from "../../news/types";
@@ -90,6 +91,7 @@ import {
   formatOptionDollarCell,
   formatOptionGammaCell,
   formatOptionIvCell,
+  formatOptionLastCell,
   formatOptionQuoteCell,
   isMarkedChain,
   MARKED_OPTION_FIELDS,
@@ -1929,9 +1931,13 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // of a continuous future, never from one month's close to another's across a roll.
     // A yield (^TNX) falls and rises by its level, in bp, and its largest rise is said too.
     const yieldUnits = isYieldIndexSymbol(history.listing.symbol);
-    const contractDrawdown = historyContractDrawdown(data, yieldUnits ? "yield" : "return");
+    // A week's or month's close is dated by its last session (March 2026 is Tue 31 Mar), not the 1st its bar is dated by.
+    const closes = interval === "1wk" || interval === "1mo"
+      ? data.map((row) => ({ ...row, date: barCloseSession(interval, row.date, identity.exchange || undefined, Date.now()) }))
+      : data;
+    const contractDrawdown = historyContractDrawdown(closes, yieldUnits ? "yield" : "return");
     const drawdown = contractDrawdown?.drawdown ?? null;
-    const runUp = yieldUnits ? maxRunUp(data) : null;
+    const runUp = yieldUnits ? maxRunUp(closes) : null;
     const moveText = interval ? { basis: `${BAR_INTERVAL_LABELS[interval]} closes${contractDrawdown?.contract ? `, ${contractDrawdown.contract}` : ""}`, price,
       date: (text: string) => intraday ? formatUtcTime(text) : text.slice(0, 10) } : null;
     ctx.printResult({
@@ -3600,7 +3606,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         // The contract symbol already carries the date, so this goes first when the table is narrow.
         { key: "expiration", header: "Expiry", optional: true, dropPriority: 2 },
         { key: "strike", header: "Strike", align: "right" },
-        { key: "last", header: "Last", align: "right" },
+        { key: "last", header: "Last", align: "right", format: formatOptionLastCell },
         { key: "bid", header: "Bid", align: "right", format: (_value, row) => formatOptionQuoteCell(row, "bid") },
         { key: "ask", header: "Ask", align: "right", format: (_value, row) => formatOptionQuoteCell(row, "ask") },
         { key: "iv", header: "IV", align: "right", format: (value, row) => formatOptionIvCell(value, row) },

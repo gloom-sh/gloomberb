@@ -1,5 +1,6 @@
 export type FuturesSector =
   | "equity-index"
+  | "volatility"
   | "equity-sectors"
   | "rates"
   | "energy"
@@ -23,7 +24,7 @@ export interface FuturesContract {
    */
   tick?: number;
   /** Exchange suffix of the root's listed contracts: CLZ26.NYM. */
-  venue: "CME" | "CBT" | "NYM" | "CMX" | "NYB";
+  venue: "CME" | "CBT" | "NYM" | "CMX" | "NYB" | "CFE";
   /** Lists a contract for every calendar month. */
   everyMonth?: true;
   /**
@@ -47,6 +48,13 @@ export interface FuturesContract {
   bareCode?: true;
   /** Everyday names the board's own does not hold: oil is WTI crude, not heating or soybean oil. */
   aliases?: readonly string[];
+  /**
+   * A generic's row (VX1, VX2): it shows its symbol where the others show
+   * their code, two rows of one root told apart, and its place on the curve
+   * names it ("VIX Futures front month") until its quote or terms name the
+   * month it prices.
+   */
+  generic?: { place: string };
 }
 
 /** 0.005 -> 3, 0.25 -> 2, 1 -> 0. Written for ticks, not general numbers. */
@@ -151,8 +159,31 @@ export const FUTURES_CONTRACTS: FuturesContract[] = [
   { symbol: "6S=F", code: "6S", name: "Swiss Franc", sector: "currencies", venue: "CME", tick: 0.00005, unit: "USD / CHF", bareCode: true },
 ];
 
+/**
+ * The board's Volatility group: Cboe's VIX futures, the first two months, as
+ * their generics VX1 and VX2, which Gloom Cloud quotes at Cboe's daily
+ * settlement, the prices `CTM VX` draws. Kept out of FUTURES_CONTRACTS: VX has
+ * no continuous `=F` symbol and lists its contracts as VX/X6, which the
+ * catalogue's code and listed-contract lookups do not read. A settlement
+ * carries four decimals (23.6945), so the display tick does too; the contract
+ * trades in 0.05.
+ */
+const VOLATILITY_FUTURES: readonly FuturesContract[] = [
+  { symbol: "VX1", code: "VX", name: "VIX Futures", sector: "volatility", venue: "CFE", tick: 0.0001, generic: { place: "front month" } },
+  { symbol: "VX2", code: "VX", name: "VIX Futures", sector: "volatility", venue: "CFE", tick: 0.0001, generic: { place: "2nd month" } },
+];
+
+/** What a board row is called in its symbol column: its code (ES), or a generic's own symbol (VX1). */
+export function futuresBoardCode(contract: FuturesContract): string {
+  return contract.generic ? contract.symbol : contract.code;
+}
+
+/** Every row the FUT board lists: each root's front contract, and the VIX futures' first two months. */
+export const FUTURES_BOARD_ROWS: readonly FuturesContract[] = [...FUTURES_CONTRACTS, ...VOLATILITY_FUTURES];
+
 export const FUTURES_SECTOR_LABELS: Record<FuturesSector, string> = {
   "equity-index": "Equity Index",
+  volatility: "Volatility",
   "equity-sectors": "Equity Sectors",
   rates: "Rates",
   energy: "Energy",
@@ -164,6 +195,7 @@ export const FUTURES_SECTOR_LABELS: Record<FuturesSector, string> = {
 
 export const FUTURES_SECTOR_ORDER: FuturesSector[] = [
   "equity-index",
+  "volatility",
   "equity-sectors",
   "rates",
   "energy",
@@ -191,6 +223,7 @@ const FUTURES_GROUP_WORDS: ReadonlyArray<{ words: readonly string[]; label: stri
   { words: ["equity index", "equity indices", "indices", "stock index", "stock indices"], label: "equity index",
     matches: (contract) => contract.sector === "equity-index" },
   { words: ["equity sectors", "sector futures"], label: "equity sectors", matches: (contract) => contract.sector === "equity-sectors" },
+  { words: ["volatility", "vol", "vix futures"], label: "volatility", matches: (contract) => contract.sector === "volatility" },
 ];
 
 /**
@@ -211,7 +244,7 @@ export function futuresGroupTags(contract: FuturesContract): string[] {
 export function getContractsBySector(): Map<FuturesSector, FuturesContract[]> {
   const map = new Map<FuturesSector, FuturesContract[]>();
   for (const sector of FUTURES_SECTOR_ORDER) {
-    map.set(sector, FUTURES_CONTRACTS.filter((contract) => contract.sector === sector));
+    map.set(sector, FUTURES_BOARD_ROWS.filter((contract) => contract.sector === sector));
   }
   return map;
 }

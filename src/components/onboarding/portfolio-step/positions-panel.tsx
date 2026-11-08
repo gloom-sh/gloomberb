@@ -11,6 +11,7 @@ import { DelayedMark } from "../../ui/delayed-mark";
 import { useFreeQuoteDelay } from "../../../api-client/plan-access";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { remoteStringValue } from "../../../remote/semantic-helpers";
+import { logFailure } from "../../../utils/log-failure";
 import { ONBOARDING_DESKTOP } from "../onboarding-frame";
 import {
   POSITION_FIELDS,
@@ -281,6 +282,18 @@ function TuiFieldRow({
       {field === "ticker" ? (
         <Box flexGrow={1} minWidth={0} overflow="hidden" paddingLeft={1}>
           <PreviewLine preview={state.preview} error={null} />
+        </Box>
+      ) : null}
+      {/* The form's last field ends in Add, as the desktop's row does, so a mouse adds the row without Enter. */}
+      {index === POSITION_FIELDS.length - 1 ? (
+        <Box flexShrink={0} paddingLeft={1}>
+          <Button
+            label={state.submitting ? "Adding..." : "Add"}
+            variant="secondary"
+            compact
+            disabled={state.submitting}
+            onPress={() => { void state.addPosition().catch(logFailure("onboarding.positions", "Add position failed")); }}
+          />
         </Box>
       ) : null}
     </Box>

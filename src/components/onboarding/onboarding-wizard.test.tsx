@@ -653,6 +653,39 @@ describe("OnboardingWizard", () => {
     expect(completedEvent()?.desks).toEqual(["options", "active"]);
   });
 
+  test("a mouse adds a typed row with Add, and Continue adds a filled row before it goes on", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-mouse-"));
+    const tickerRepository = new JsonTickerRepository();
+    const pluginRegistry = createPluginRegistry({ tickerRepository });
+    await tui.render(
+      <WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={pluginRegistry} />,
+      { width: 100, height: 32 },
+    );
+    await tui.setup().renderOnce();
+
+    // Typed, never Entered: Add saves it.
+    await typeText("MSFT");
+    await pressEnter();
+    await typeText("4");
+    await pressEnter();
+    await typeText("400");
+    await tui.clickFrameText(" Add ");
+    expect(await waitForFrame("Positions (1)")).toContain("4 @ 400");
+
+    // A second row filled in and left: Continue adds it, then goes on.
+    await typeText("AAPL");
+    await pressEnter();
+    await typeText("10");
+    await pressEnter();
+    await typeText("180");
+    await tui.clickFrameText("Continue");
+    await waitForFrame("What do you trade most?");
+    expect(capturedConfig?.onboardingProgress).toMatchObject({ stage: "desks", tickerSymbol: "AAPL", positionsImported: 2 });
+    expect((await tickerRepository.loadTicker("AAPL"))?.metadata.positions).toEqual([
+      { portfolio: "main", shares: 10, avgCost: 180, currency: "USD", broker: "manual" },
+    ]);
+  });
+
   test("cannot be skipped or continued before the first position", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-required-portfolio-"));
     const pluginRegistry = createPluginRegistry();

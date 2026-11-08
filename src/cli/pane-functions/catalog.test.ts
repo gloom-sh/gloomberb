@@ -135,6 +135,8 @@ test("sizing a curve trade finds the bond calculator, a bond fund's DV01 and the
     const entries = await buildPaneCatalogEntries(registry, context);
     const codes = (query: string) => filterPaneCatalogEntries(entries, query).map((entry) => entry.token);
     for (const query of ["dv01", "hedge ratio", "steepener"]) expect(codes(query), query).toEqual(expect.arrayContaining(["YAS", "ETF", "CTM"]));
+    // A variance swap's strike is what VIX squares: VIX and the VIX futures curve, not CDS's or GC's swaps.
+    expect(codes("variance swap").slice(0, 2)).toEqual(["VIX", "CTM"]);
     expect(codes("duration")).toEqual(expect.arrayContaining(["YAS", "ETF"]));
     expect(codes("steepener")).toContain("GC");
   } finally {

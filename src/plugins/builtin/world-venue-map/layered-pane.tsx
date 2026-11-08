@@ -9,6 +9,7 @@ import type {
 } from "../../../api-client/geo";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import {
+  Button,
   DataTableStackView,
   EmptyState,
   getPaneSidebarWidth,
@@ -490,7 +491,10 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
   const emptyHint = tableLocked ? undefined
     : !tableReadable || pageStatus === "unavailable" ? unavailableNote
       : pages.error && !rows.length ? pages.error.message
-        : coverage ?? (query.trim() ? "Clear search." : undefined);
+        : coverage ?? undefined;
+  // A search that leaves nothing is cleared from the empty table itself.
+  const clearSearch = !tableLocked && tableReadable && pageStatus !== "unavailable" && !(pages.error && !rows.length) && query.trim()
+    ? <Button label="Clear search" onPress={() => setQuery("")} /> : undefined;
 
   const table = (
     <DataTableStackView<GeoEntityRow, EntityColumn>
@@ -556,6 +560,7 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
       ) : null}
       emptyStateTitle={pages.loading && !rows.length && tableReadable ? "Loading..." : emptyTitle}
       emptyStateHint={pages.loading && !rows.length ? undefined : emptyHint}
+      emptyStateActions={pages.loading && !rows.length ? undefined : clearSearch}
     />
   );
 

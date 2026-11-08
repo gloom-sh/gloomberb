@@ -52,7 +52,8 @@ import { isPastPriceWindow, loadPriceWindowHistory, priceWindowInterval, priceWi
 import { historyCoverageNotice } from "../../../sources/history-coverage";
 import { getChartResolutionLabel, isIntradayResolution, RANGE_HISTORY_RESOLUTION, type ManualChartResolution } from "../../../time-series/resolution";
 import { DAY_SO_FAR_TEXT, requestedSessionBarSize, withSessionBar } from "../../../time-series/session-bar";
-import { buildReturnRows, closedMarketNote, isTodayReturnRow, returnBaseCloseDay, type ReturnRange } from "./data-panes/returns-model";
+import { buildReturnRows, closedMarketNote, defaultReturnInterval, isTodayReturnRow, returnBaseCloseDay, type ReturnRange } from "./data-panes/returns-model";
+import { barCloseSession } from "../../../market-data/market/bar-period";
 import { periodBaseText } from "../../../market-data/market/period-return";
 import { loadReturnSeries } from "./data-panes/returns-history";
 import { CLOSING_PRINT_PENDING_TEXT } from "../../../time-series/official-close";
@@ -467,7 +468,9 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
       ...(dayToDate ? { basis: "daily bars", note: `the newest bar is ${DAY_SO_FAR_TEXT}`, ...(quote ? { asOf: new Date(quote.lastUpdated).toISOString() } : {}) } : {}),
     };
     // The largest fall from a close to a later one in the bars shown, said under the title; a yield's in bp, with its largest rise.
-    const { drawdown, runUp, lines: moveLines } = closeMoves(shown, drawdownScaleOf(symbol), { basis: `${historyBarSizeWord(size)} closes`,
+    // A week's or month's close is dated by its last session, not the 1st its bar is dated by.
+    const closes = shown.map((row) => ({ date: isDailyOrLongerBar(size) ? barCloseSession(size, row.date, venue, now) : row.date, close: row.close }));
+    const { drawdown, runUp, lines: moveLines } = closeMoves(closes, drawdownScaleOf(symbol), { basis: `${historyBarSizeWord(size)} closes`,
       price: (value) => formatBarPrice(value, decimals), date: (value) => isDailyOrLongerBar(size) ? value.slice(0, 10) : formatUtcTime(value) });
     // A wick left out of the range is said, though the bar's close still counts.
     const wickNotice = priceHistoryWickNotice(points.filter((point) => pricePointWickFlags(point).length > 0).length);
@@ -498,14 +501,16 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["returns-pane"],
   shape: "rows",
   description: "Interval and cumulative price returns of one ticker's bars over a range: each bar's close, its move from the bar before, and its move from the bar before the window.",
-  describe: ({ symbols, options }) => `Returns | ${symbols[0]} | ${reportWindowText(options) ?? options.range ?? "5D"} | ${options.interval ?? "1h"}`,
+  describe: ({ symbols, options }) => `Returns | ${symbols[0]} | ${reportWindowText(options) ?? options.range ?? "5D"} | ${
+    options.interval ?? defaultReturnInterval((options.range ?? "5D") as ReturnRange, readReportWindow(options))}`,
   async load({ symbols, options }, ctx) {
     const key = symbols[0]!;
     const { symbol, exchange } = await resolveHeadlessInstrument(ctx, key);
     const range = (options.range ?? "5D") as ReturnRange;
-    const requested = (options.interval ?? "1h") as ManualChartResolution;
     // --from 2007 --to 2009 measures those dates' returns in place of the range.
     const window = readReportWindow(options);
+    // No --interval: the bars grow with the range, daily to 1Y.
+    const requested = (options.interval ?? defaultReturnInterval(range, window)) as ManualChartResolution;
     const pastWindow = !!window && isPastPriceWindow(window);
     const support = await Promise.resolve(ctx.marketData.getChartResolutionSupport?.(symbol, exchange ?? "") ?? []).catch(logFailure("ticker-detail.headless", "Read return interval support failed", []));
     const now = Date.now();
@@ -540,7 +545,9 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     const rows = forming || dayToDate ? [...unmarked.slice(0, -1), { ...unmarked.at(-1)!, partial: true }] : unmarked;
     const price = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(decimals) : "-";
     // The largest fall from a close to a later one in the window, said under the title; a yield's in bp, with its largest rise.
-    const { drawdown, runUp, lines: moveLines } = closeMoves(unmarked.map((row) => ({ date: row.time, close: row.close })), drawdownScaleOf(symbol),
+    // A week's or month's close is dated by its last session, not the 1st its bar is dated by ("peak 35.70 on 2026-03-31").
+    const closes = unmarked.map((row) => ({ date: intraday ? row.time : barCloseSession(series.resolution, row.time, venue, now), close: row.close }));
+    const { drawdown, runUp, lines: moveLines } = closeMoves(closes, drawdownScaleOf(symbol),
       { basis: `${BAR_INTERVAL_LABELS[series.resolution]} closes`, price, date: (value) => intraday ? formatUtcTime(value) : value.slice(0, 10) });
     const figures: HeadlessPaneColumn[] = [
       { key: "close", header: "Price", align: "right", format: price },

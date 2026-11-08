@@ -108,6 +108,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   bodyAfter,
   emptyStateTitle,
   emptyStateHint,
+  emptyStateActions,
   virtualize = true,
   fitRows = false,
   overscan = 3,
@@ -451,7 +452,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
           {items.length === 0 ? (
             emptyContent ?? (
               <EmptyBody body={bodyElementRef}>
-                <EmptyState title={emptyStateTitle} hint={emptyStateHint} />
+                <EmptyState title={emptyStateTitle} hint={emptyStateHint} actions={emptyStateActions} />
               </EmptyBody>
             )
           ) : measurePerf(

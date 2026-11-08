@@ -305,7 +305,8 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     : null;
   const fundFacts = useFundFacts(factsKey);
   const facts = fundFacts.data?.payload ?? null;
-  const factsUrl = facts?.covered ? facts.nav?.url ?? facts.expenseRatio?.url ?? facts.netAssets?.url ?? null : null;
+  // A note's terms link the pricing supplement they were read from.
+  const factsUrl = facts?.covered ? facts.nav?.url ?? facts.expenseRatio?.url ?? facts.netAssets?.url ?? null : facts?.note?.filing.url ?? null;
   const instrument = instrumentFromTicker(ticker, ticker?.metadata.ticker ?? null);
   const filingsEntry = useSecFilingsQuery(
     instrument && eligibleTicker
@@ -477,7 +478,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     focused,
     // A current report links its press release, where its figures are, when its index names one.
     url: openFiling ? openFiling.pressReleaseUrl ?? openFiling.filingUrl : factsUrl ?? abroadPage ?? announcements?.url,
-    source: openFiling ? openFiling.form : facts?.covered ? listNames(fundFactPublishers(facts)) : announcements?.name ?? null,
+    source: openFiling ? openFiling.form : facts?.covered ? listNames(fundFactPublishers(facts)) : facts?.note ? facts.note.filing.form : announcements?.name ?? null,
     label: openFiling ? openFiling.pressReleaseUrl ? "press release" : "filing"
       : factsUrl ? "source" : abroadPage ? "issuer page" : announcements ? "announcements" : "filing",
     // Rows read in the background for their insiders do not hold up the pane.
@@ -583,8 +584,9 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   const fundEmptyTitle = error ? t("SEC filings unavailable.") : tf("No fund filings for {symbol}.", { symbol });
   // A trust (IBIT, GLD) files 10-Ks and 10-Qs, not fund forms.
   const fundEmptyHint = error ?? (issuerFilings.length > 0 ? tf("Its other filings: SEC {symbol}.", { symbol }) : undefined);
-  if (forms && facts?.covered && formFilings.length === 0 && !error) {
-    // A trust with facts (IBIT, GLD) files 10-Ks, not fund forms: the facts are the view, and one line says where its filings are.
+  if (forms && (facts?.covered || facts?.note) && formFilings.length === 0 && !error) {
+    // A trust with facts (IBIT, GLD) files 10-Ks, not fund forms, and a note's issuer (VXX's bank) none:
+    // the facts are the view, and one line says where its filings are.
     return (
       <Box flexDirection="column" width={width} overflow="hidden" {...fillRest}>
         {queryBar}

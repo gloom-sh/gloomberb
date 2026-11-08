@@ -93,11 +93,10 @@ export const paneSchemas = {
       },
       {
         key: "interval",
-        description: "Bar size of each return; a range it does not reach uses the nearest longer bar the source keeps.",
+        description: "Bar size of each return; a range it does not reach uses the nearest longer bar the source keeps. Default: hourly to 1W, daily to 1Y, weekly for 5Y, monthly for ALL.",
         type: "enum",
         aliases: ["bar", "granularity", "resolution"],
         values: RETURN_INTERVAL_VALUES,
-        defaultValue: "1h",
         pluginState: { pluginId: "ticker-research" },
       },
       {

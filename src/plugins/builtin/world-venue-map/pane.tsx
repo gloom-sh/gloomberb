@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CloudWorldVenuePayload } from "../../../api-client";
 import {
+  Button,
   DataTableView,
   EmptyState,
   getPaneSidebarWidth,
@@ -204,7 +205,7 @@ function VenueMapView({ focused, width, height }: PaneProps) {
       renderCell={renderCell}
       selectedTextOverridesCellColor
       emptyStateTitle={query.trim() ? "No matching venues." : "No venue data."}
-      emptyStateHint={query.trim() ? "Clear search." : undefined}
+      emptyStateActions={query.trim() ? <Button label="Clear search" onPress={() => setQuery("")} /> : undefined}
     />
   );
 

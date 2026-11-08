@@ -17,7 +17,7 @@ import { ETF_FILING_FORMS, filterFilingsByForms, fundSeriesFilings, loadShownSec
 import { hiddenFilingsMetadata, hiddenFilingsNote } from "../../../utils/sec-filings";
 import { buildSecFilingRows, secFilingIssuers, SEC_ACCEPTANCE_NOTE } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
-import { fetchFundFacts, fundFactEntries, fundFactPublishers, fundFactsEmpty, fundFactsErrorText, fundFactsStaleNote, listNames } from "./fund-facts";
+import { fetchFundFacts, fundFactEntries, fundFactPublishers, fundFactsEmpty, fundFactsErrorText, fundFactsStaleNote, fundNoteEntries, listNames } from "./fund-facts";
 import { REPORT_ROWS } from "../shared/headless-options";
 import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
 import { listingAnnouncementsPage } from "../../../utils/exchange-announcements";
@@ -301,13 +301,17 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
       // A trust's list holds every fund it runs; the fund's own series is the view.
       const filings = filterFilingsByForms(fundSeriesFilings(issuerFilings), ETF_FILING_FORMS).slice(0, limit);
       const searchedAll = issuerFilings.length < SEC_FILING_FETCH_LIMIT;
+      // An exchange-traded note (VXX) is no fund: its terms from its pricing supplement, and no fund forms to look for.
+      const etn = facts?.note ?? null;
       const filingsEmpty = filingsResult.status === "rejected"
         ? `Fund filings unavailable: ${errorMessage(filingsResult.reason)}`
+        : etn ? `${symbol} is a note of ${etn.issuer}, which files no fund forms for it. Its issuer's filings: fn SEC ${symbol}.`
         : fundFilingsEmpty(symbol, { count: issuerFilings.length, complete: searchedAll });
       // The filings line already sends a fund without fund forms to SEC; the facts line does not say it twice.
       const filingsPointToSec = filingsResult.status === "fulfilled" && filings.length === 0 && issuerFilings.length > 0;
       const factsSection = facts?.covered
         ? { title: "Fund facts", entries: fundFactEntries(facts) }
+        : etn ? { title: "Note terms", entries: fundNoteEntries(etn) }
         : { title: "Fund facts", rows: [], empty: factsResult.status === "rejected"
           ? fundFactsErrorText(factsResult.reason)
           : fundFactsEmpty(symbol, facts, !filingsPointToSec) };
@@ -325,7 +329,7 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
           symbol: symbol.toUpperCase(), bond, rates, distribution, treasury: await treasury,
           ...factsResult.status === "rejected" ? { checkError: `no tax-equivalent yield: ${fundFactsErrorText(factsResult.reason)}` } : {},
           // A stock (fn ETF KO) is not on the SEC's lists of funds, and says so rather than that no bond figures are loaded.
-          noBondFigures: facts?.status === "not-a-fund" ? "not-a-fund" : null,
+          noBondFigures: facts?.status === "not-a-fund" || facts?.status === "etn" ? "not-a-fund" : null,
         });
       }
       return {
@@ -334,7 +338,7 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
           ...tax ? [taxEquivalentSection(tax)] : [],
           { title: "Fund filings", columns: SEC_COLUMNS, textColumns: fundFilingTextColumns(filingRows), rows: filingRows, ...(filings.length === 0 ? { empty: filingsEmpty } : {}) },
         ],
-        complete: !!facts?.covered && filingsResult.status === "fulfilled" && searchedAll,
+        complete: (!!facts?.covered && searchedAll || !!etn) && filingsResult.status === "fulfilled",
         errors: [
           ...(factsResult.status === "rejected" ? [fundFactsErrorText(factsResult.reason)] : []),
           ...(filingsResult.status === "rejected" ? [`Fund filings: ${errorMessage(filingsResult.reason)}`] : []),
@@ -347,7 +351,7 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
           ...(publishers.length ? { publisher: listNames(publishers) } : {}),
           status: "not-a-feed",
           basis: publishers.length ? "published fund data" : "filed data",
-          ...(facts?.nav?.asOf ? { asOf: facts.nav.asOf } : {}),
+          ...(facts?.nav?.asOf ? { asOf: facts.nav.asOf } : etn ? { asOf: etn.filing.filedAt } : {}),
         },
         metadata: {
           symbol,

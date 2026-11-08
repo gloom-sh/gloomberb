@@ -88,6 +88,13 @@ export interface PaneDef {
    * title here, so two of its windows are told apart before either is opened.
    */
   instanceTitle?(pane: PaneInstanceConfig): string | null;
+  /**
+   * The function a saved window stands for as it is now, for its `?` and F1:
+   * a workspace whose tabs are functions of their own (Commodities & Energy:
+   * FUT, CTM, COT) names its active tab's. Null or absent: the function its
+   * title starts with, else the pane's first.
+   */
+  helpFunction?(pane: PaneInstanceConfig): string | null;
   /** Renderer-neutral data model used by CLI functions, automation, and hosted tools. */
   headless?: HeadlessPaneDefinition;
   /**

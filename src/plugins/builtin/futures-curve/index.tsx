@@ -1,7 +1,7 @@
 import type { PluginModule } from "../plugin-module";
 import { futuresCurveCache } from "./client";
 import { futuresCurveHeadless } from "./headless";
-import { BASIS_FORMULA, CURVE_HORIZONS, CURVE_ROOTS, curveRootForTicker, curveTitle, DEFAULT_CURVE_HORIZON, normalizeCurveRoot } from "./model";
+import { BASIS_FORMULA, CURVE_HORIZONS, CURVE_ROOTS, curveRootForTicker, curveRootNamed, curveTitle, DEFAULT_CURVE_HORIZON, normalizeCurveRoot } from "./model";
 
 export const futuresCurveModule: PluginModule = {
   panes: [{ id: "futures-curve", name: "Futures Curve", icon: "F", shareItem: { argument: true }, get component(): typeof import("./pane").FuturesCurvePane { const { FuturesCurvePane } = require("./pane"); return FuturesCurvePane; },
@@ -17,13 +17,14 @@ export const futuresCurveModule: PluginModule = {
   }],
   paneTemplates: [{ id: "futures-curve-pane", paneId: "futures-curve", label: "Futures Curve",
     description: `Listed futures contracts, historical curves, roll yield and open interest including VIX and CME crypto futures, which add basis against spot: Ann Basis = ${BASIS_FORMULA}, simple actual/365.`,
-    keywords: ["ctm", "futures", "curve", "term structure", "contango", "backwardation", "roll", "basis", "basis trade", "carry", "annualised basis", "vix", "crude oil", "natural gas", "treasury futures", "dv01", "hedge ratio", "steepener", "flattener"],
+    keywords: ["ctm", "futures", "curve", "term structure", "contango", "backwardation", "roll", "basis", "basis trade", "carry", "annualised basis", "vix", "vix futures", "variance swap", "crude oil", "natural gas", "treasury futures", "dv01", "hedge ratio", "steepener", "flattener"],
     shortcut: { prefix: "CTM", aliases: ["CT"], argKind: "text", argPlaceholder: "root", argOptional: true,
       argOptions: () => CURVE_ROOTS },
     headless: futuresCurveHeadless,
     createInstance: (context, options) => {
       const input = options?.arg?.trim();
-      const root = input ? normalizeCurveRoot(input) : curveRootForTicker(context.activeTicker) ?? "ES";
+      // A root named in words (`CTM gold`) opens its curve, as `fn CTM gold` reads it.
+      const root = input ? normalizeCurveRoot(input) ?? curveRootNamed(input) : curveRootForTicker(context.activeTicker) ?? "ES";
       return { title: root ? curveTitle(root) : `CTM ${input}`, params: { root: root ?? input ?? "ES" }, placement: "floating" };
     },
   }],
