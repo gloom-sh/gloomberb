@@ -555,6 +555,20 @@ test("a pasted list is one row per symbol, in order, however it is separated, fo
   }
 });
 
+// `compare NVDA 2330.TW` printed 2330.TW where RV printed 2330:TWSE: a joined export read two keys for one listing.
+test("compare names a vendor's suffixed symbol by the listing its quote confirms, the code RV prints; a class letter stays", async () => {
+  const venues: Record<string, string> = { "2330.TW": "TWSE", "BRK.B": "NYSE", NVDA: "NASDAQ" };
+  const dataProvider = createTestDataProvider({
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => ({
+      target, quote: createTestQuote({ symbol: target.symbol, listingExchangeName: venues[target.symbol] }),
+    })),
+  });
+  const cli = createTestCliContext({ dataProvider }, { format: "csv" });
+  await marketDataCliCommands.find((command) => command.name === "compare")!.execute(["NVDA", "2330.TW", "BRK.B"], cli.context);
+  const printed = cli.printed[0] as PrintedCliResult;
+  expect(printed.options!.rows!(printed.result.data).map((row: { symbol: string }) => row.symbol)).toEqual(["NVDA", "2330:TWSE", "BRK.B"]);
+});
+
 test("a company's name in a pasted list is quoted as its listing, never as its words", async () => {
   const asked: string[][] = [];
   const dataProvider = createTestDataProvider({

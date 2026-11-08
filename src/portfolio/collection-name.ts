@@ -1,6 +1,6 @@
 import type { ShortcutArgError } from "../types/plugin";
-import { tickerHasListingSuffix } from "../sources/listing-symbols";
-import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
+import { listingSuffixVenue } from "../sources/listing-symbols";
+import { canonicalExchange, canonicalTickerKey, parsePublicTickerKey } from "../utils/exchanges";
 import { listingAbroadVenue } from "../utils/sec";
 
 /** Collections an unknown-name error lists, so the caller can retry with one. */
@@ -41,12 +41,15 @@ export function findNamedCollection<T extends { id: string; name: string }>(
  * venue for a listing abroad (ASML:AMS, 2330:TWSE), as the same symbols typed
  * read. A bare `ASML` is the US line, so a watchlist read as `ASML`, `2330`
  * compared the wrong listings and exported keys a join collided on. A symbol
- * that already names its venue (ASML:AMS, 2330.TW) stays as saved, and so do
- * US listings and venues with no home market (futures, currencies, coins).
+ * that names its venue reads by the one code RV and `compare` print: ASML:XAMS
+ * as ASML:AMS, a vendor's 2330.TW as 2330:TWSE. US listings and venues with
+ * no home market (futures, currencies, coins) stay bare.
  */
 export function watchlistMemberSymbol(metadata: { ticker: string; exchange?: string | null }): string {
   const { ticker } = metadata;
-  if (parsePublicTickerKey(ticker).exchange || tickerHasListingSuffix(ticker)) return ticker;
+  if (parsePublicTickerKey(ticker).exchange) return canonicalTickerKey(ticker);
+  const suffixed = listingSuffixVenue(ticker, metadata.exchange ?? undefined);
+  if (suffixed) return `${suffixed.symbol}:${suffixed.exchange}`;
   const exchange = canonicalExchange(metadata.exchange ?? undefined);
   const key = exchange ? `${ticker}:${exchange}` : ticker;
   return listingAbroadVenue(key) ? key : ticker;

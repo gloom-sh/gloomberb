@@ -304,7 +304,8 @@ import { knownGapMessage, subMinuteDataMessage } from "../known-gaps";
 import { phraseSearchReport } from "./search";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol, isRoundTheClockCoin } from "../../utils/crypto-pair";
-import { isUsListingExchange } from "../../utils/exchanges";
+import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
+import { listingSuffixVenue } from "../../sources/listing-symbols";
 import { resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
 import {
   describeFormerIssuer, describeTickerChange, movedAwayChange, startTickerChangeLookup, tickerChangeLine, type FormerIssuer, type TickerChange,
@@ -785,6 +786,16 @@ function quoteSessionFields(quote: Quote | null | undefined) {
   return quote?.changeBasis === "none" ? { ...fields, change: null, changePercent: null } : fields;
 }
 
+/**
+ * The listing a row names: a vendor's suffixed symbol as the listing its
+ * quote confirms (2330.TW as 2330:TWSE), as RV, the portfolios and the panes
+ * name it; any other as asked.
+ */
+function quoteRowSymbol(result: Pick<QuoteCliRecord, "target" | "quote">): string {
+  const venue = listingSuffixVenue(result.target.symbol, canonicalExchange(result.quote?.listingExchangeName || result.quote?.exchangeName) || undefined);
+  return venue ? `${venue.symbol}:${venue.exchange}` : result.target.symbol;
+}
+
 function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
   return results.map((result) => {
     const quote = result.quote;
@@ -820,7 +831,7 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
     const previousClose = display.price != null && display.change != null ? display.price - display.change : quote?.previousClose;
     const last = price(display.price);
     return {
-      symbol: result.target.symbol,
+      symbol: quoteRowSymbol(result),
       name: quote?.name || result.listing?.name || "",
       price: `${last}${per}`,
       pence: penceFigure(display.price, quote, /\.(\d+)/.exec(last)?.[1]?.length ?? 0),

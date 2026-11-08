@@ -88,7 +88,7 @@ import {
 } from "../../../../portfolio/allocation";
 import { findCachedPortfolioAccount } from "../cached-account";
 import { importedFromText } from "../imported-from";
-import { findNamedCollection } from "../../../../portfolio/collection-name";
+import { findNamedCollection, watchlistMemberSymbol } from "../../../../portfolio/collection-name";
 import { isoDateToday } from "../../../../utils/calendar-date";
 import { lastTradeDate } from "../../../../tickers/listing-fate";
 import type { PriceWindow } from "../../../../utils/price-window";
@@ -1463,7 +1463,8 @@ async function valueWatchlistRows({
     values.push({
       ticker, quote, headline, extended, kind, venue, marketCap, funding, stale, lastTrade,
       row: {
-        symbol,
+        // A listing abroad by its venue (ASML:AMS, 2330:TWSE), so a join on the export never meets the US line.
+        symbol: watchlistMemberSymbol(ticker.metadata),
         ...listingColumns(ticker, quote),
         exchange: venue,
         kind,

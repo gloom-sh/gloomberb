@@ -1746,8 +1746,9 @@ export function listingFields(saved: Pick<SavedListingName, "key" | "symbol" | "
 
 /** The listing a saved ticker row is, as a collection command names it after adding or removing it. */
 export function savedListingName(ticker: TickerRecord): SavedListingName {
-  const { symbol } = parsePublicTickerKey(ticker.metadata.ticker);
-  const exchange = canonicalExchange(ticker.metadata.exchange);
+  const { symbol, exchange: stored } = parsePublicTickerKey(ticker.metadata.ticker);
+  // A row stored under its venue (ASML:XAMS) with none beside it is that venue's listing.
+  const exchange = canonicalExchange(ticker.metadata.exchange) || stored || "";
   const key = exchange ? `${symbol}:${exchange}` : symbol;
   // A row saved without a company carries its symbol as the name.
   const typed = ticker.metadata.name?.trim();

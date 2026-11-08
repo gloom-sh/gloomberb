@@ -94,7 +94,7 @@ test("quote marks each stale row in its Feed cell, as many as the closing line c
   const [{ result, options }] = cli.printed as [PrintedCliResult];
   const text = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "text" }, options);
   const lines = text.split("\n");
-  expect(lines.find((line) => line.startsWith("7203.T"))).toMatch(/\bstale\b/);
+  expect(lines.find((line) => line.startsWith("7203:JPX"))).toMatch(/\bstale\b/);
   // Whatever the clock makes of the other row, the cells and the count agree.
   const marked = lines.filter((line) => /^\S+ .*\bstale\b/.test(line) && !line.startsWith("Source:")).length;
   const counted = Number(/(\d+) of 2 stale/.exec(text)?.[1] ?? (/\bstale\b/.test(lines.at(-1) ?? "") ? 2 : 0));
@@ -246,7 +246,7 @@ test("quote's change basis follows Chg% in the table, with the holiday under it,
     const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
     expect(csv[0]).toContain(",Chg%,Pre-Market,");
     expect(csv[0]).toContain(",Updated,Chg Basis,Chg Basis Note,Pre-Market Chg%,After Hours Chg%,Overnight Chg%,status,symbol_or_series,");
-    expect(csv[1]).toContain(",vs Fri 16 Oct close,\"HKEX closed Mon 19 Oct, holiday\",,,,,3042.HK,");
+    expect(csv[1]).toContain(",vs Fri 16 Oct close,\"HKEX closed Mon 19 Oct, holiday\",,,,,3042:HKEX,");
     const row = JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "ndjson" }, options).split("\n")[0]!);
     const keys = Object.keys(row);
     expect(keys.slice(keys.indexOf("error"), keys.indexOf("error") + 3)).toEqual(["error", "changeBasis", "changeBasisNote"]);
@@ -320,8 +320,9 @@ test("quote --csv writes plain numbers, an extended print and its move apart, an
     expect(columns.slice(-9)).toEqual(["Pre-Market Chg%", "After Hours Chg%", "Overnight Chg%", "status",
       "symbol_or_series", "currency_or_unit", "interval", "source", "as_of"]);
     expect([cell("AAPL", "Last"), cell("AAPL", "After Hours"), cell("AAPL", "After Hours Chg%"), cell("AAPL", "status")]).toEqual(["336.64", "336.08", "-0.17", ""]);
-    expect([cell("7203.T", "Last"), cell("7203.T", "Cur"), cell("7203.T", "currency_or_unit")]).toEqual(["2910.5", "JPY", "JPY"]);
-    expect([cell("0QQQ.L", "Last"), cell("0QQQ.L", "Chg%"), cell("0QQQ.L", "status")]).toEqual(["12.5", "", "Chg%: no previous close"]);
+    // A vendor's suffixed symbol is the listing its quote confirms, as RV names it.
+    expect([cell("7203:JPX", "Last"), cell("7203:JPX", "Cur"), cell("7203:JPX", "currency_or_unit")]).toEqual(["2910.5", "JPY", "JPY"]);
+    expect([cell("0QQQ:LSE", "Last"), cell("0QQQ:LSE", "Chg%"), cell("0QQQ:LSE", "status")]).toEqual(["12.5", "", "Chg%: no previous close"]);
     expect([cell("ZZZZQQ", "Last"), cell("ZZZZQQ", "status")]).toEqual(["", "Not a ticker: ZZZZQQ."]);
     // The failure is on stderr too, where a script that pipes the rows to a file still sees it.
     expect(result.warnings).toContain("Not a ticker: ZZZZQQ.");
@@ -351,7 +352,7 @@ test("a price in pence exports as the plain number in its own unit, in quote and
   setSystemTime(new Date("2026-10-10T12:00:00Z"));
   try {
     const [quoted] = await exported("quote", [vodafone]);
-    expect(quoted).toMatchObject({ Symbol: "VOD.L", Last: "1234.5", "Chg%": "1.19", Cur: "GBp", currency_or_unit: "GBp", status: "" });
+    expect(quoted).toMatchObject({ Symbol: "VOD:LSE", Last: "1234.5", "Chg%": "1.19", Cur: "GBp", currency_or_unit: "GBp", status: "" });
     // The table keeps its own words for the price; the export has no sign, separator or suffix in the cell.
     expect(quoted!.Last).toMatch(/^[\d.]+$/);
     const [compared] = await exported("compare", [vodafone]);
@@ -368,7 +369,7 @@ test("compare writes a day's range as two numbers that are empty, with the range
   try {
     const rows = await exported("compare", [{ ...closed, low: 2880, high: 2925 }, { ...afterHours, low: undefined, high: undefined }]);
     expect(rows.map((row) => [row.Symbol, row["Day Range"], row["Day Low"], row["Day High"]])).toEqual([
-      ["7203.T", "2880-2925", "2880", "2925"],
+      ["7203:JPX", "2880-2925", "2880", "2925"],
       ["AAPL", "", "", ""],
     ]);
     // The day's low and high follow the columns compare's export already had, the extended moves before them.
