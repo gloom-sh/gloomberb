@@ -1,6 +1,9 @@
-import type { AppState } from "../core/state/app/state";
+import type { Dispatch } from "react";
+import type { AppAction, AppState } from "../core/state/app/state";
+import { saveConfigImmediately } from "../state/config-save-scheduler";
 import type { AppConfig } from "../types/config";
 import type { OtherWindowTab } from "../types/desktop-window";
+import { logFailure } from "../utils/log-failure";
 
 /**
  * Cloud sync runs in the desktop app's main window, whose state holds only
@@ -59,4 +62,32 @@ export function withoutOtherWindowTabs(config: AppConfig, others: readonly Other
   // The live layout is the shown tab's: one of another window's tabs would draw here.
   const layout = byActive >= 0 ? config.layout : shown.layout;
   return { ...config, layouts, activeLayoutIndex, layout };
+}
+
+/**
+ * The dispatch a config sync applies through in the main window. A config that
+ * changes another window's tab is saved whole at once, and nothing else would
+ * write that change: a failed save is logged and `onSaveFailure` tells the
+ * person.
+ */
+export function createSyncConfigDispatch({ dispatch, otherWindowTabs, currentConfig, onSaveFailure }: {
+  dispatch: Dispatch<AppAction>;
+  otherWindowTabs: () => readonly OtherWindowTab[];
+  currentConfig: () => AppConfig;
+  onSaveFailure: () => void;
+}): Dispatch<AppAction> {
+  return (action) => {
+    if (action.type !== "SET_CONFIG") {
+      dispatch(action);
+      return;
+    }
+    const others = otherWindowTabs();
+    if (changesOtherWindowTabs(action.config, others)) {
+      saveConfigImmediately(action.config).catch((error: unknown) => {
+        logFailure("sync.other-window-tabs", "Saving tabs synced to other windows failed")(error);
+        onSaveFailure();
+      });
+    }
+    dispatch({ ...action, config: withoutOtherWindowTabs(action.config, others, currentConfig()) });
+  };
 }

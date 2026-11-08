@@ -80,7 +80,7 @@ export class DesktopDetachedWindowManager {
     const workspace = this.backend.workspace;
     const config = this.backend.config;
     if (!workspace || !config || !isPaneDetached(config.layout, instanceId)) return;
-    void this.backend.commitDesktopSnapshot(workspace.closeDetachedPane(instanceId));
+    this.backend.commitDesktopSnapshotInBackground(workspace.closeDetachedPane(instanceId));
   }
 
   /**
@@ -264,7 +264,7 @@ export class DesktopDetachedWindowManager {
       const nextConfig = this.backend.config;
       const nextWorkspace = this.backend.workspace;
       if (!nextConfig || !nextWorkspace || !isPaneDetached(nextConfig.layout, instanceId)) return;
-      void this.backend.commitDesktopSnapshot(
+      this.backend.commitDesktopSnapshotInBackground(
         this.backend.requireWorkspace().updateDetachedFrame(instanceId, frame),
         { reconcileWindows: false },
       );
@@ -302,7 +302,7 @@ export class DesktopDetachedWindowManager {
         || this.backend.stateBroadcaster.currentDockPreview.edge !== edge
       ) return;
       this.backend.stateBroadcaster.clearDockPreview(instanceId);
-      void this.backend.commitDesktopSnapshot(this.backend.requireWorkspace().dockDetachedPane(instanceId, edge));
+      this.backend.commitDesktopSnapshotInBackground(this.backend.requireWorkspace().dockDetachedPane(instanceId, edge));
     }, 120));
   }
 
