@@ -35,7 +35,7 @@ import {
   holderValueCurrency,
   resolveHolderOwnershipPercent,
 } from "./format";
-import { holderPeriodsDiffer, holderShareBasisMarker, nonUsHolderCaveat } from "./report-header";
+import { holderPeriodsDiffer, holderShareBasisMarker, isNoHoldersAnswer, nonUsHolderCaveat, noHoldersText } from "./report-header";
 import {
   buildColumns,
   hasHolderChanges,
@@ -80,11 +80,15 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const tableScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   const exchange = ticker?.metadata.exchange ?? "";
+  const savedCurrency = ticker?.metadata.currency ?? "";
   const issuerListing = useIssuerListing(ticker);
   const loadHolders = useMemo(() => symbol ? async (forceRefresh: boolean) => {
     if (!dataProvider) throw new Error("Holder data unavailable");
-    return loadHolderData(dataProvider, symbol, exchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
-  } : null, [dataProvider, exchange, symbol]);
+    return loadHolderData(dataProvider, symbol, exchange, forceRefresh ? { cacheMode: "refresh" } : undefined).catch((error: unknown) => {
+      // The source has none: the pane says so, and abroad which filings were read, not the source's NO_DATA.
+      throw isNoHoldersAnswer(error) ? new Error(noHoldersText(symbol, exchange, savedCurrency)) : error;
+    });
+  } : null, [dataProvider, exchange, savedCurrency, symbol]);
   // Another ticker's holders stay up until its own answer, and a failed
   // refresh keeps the last holders; the failure goes to the footer.
   const { data, loading, error, reload } = useAsyncResource<HolderData>(loadHolders, {

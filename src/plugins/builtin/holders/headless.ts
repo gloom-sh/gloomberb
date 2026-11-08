@@ -33,7 +33,7 @@ import {
   holderReportUnits,
 } from "./report-rows";
 import { REPORT_ROWS } from "../shared/headless-options";
-import { fundHoldersAnswer } from "./fund-holders";
+import { noHoldersAnswer } from "./fund-holders";
 import { companyDataNotes } from "../../../types/company-from";
 import {
   HOLDER_ROWS_MAX,
@@ -230,15 +230,16 @@ export function createHoldersHeadless(
         dependencies.loadSnapshot(symbol, args, ctx).catch(async (error: unknown) => {
           const quote = await ctx.marketData.getQuote(symbol)
             .catch(logFailure("holders.headless", "Read the quote of a listing with no holders failed", null));
-          const fund = await fundHoldersAnswer(symbol, error, quote, ctx.apiClient);
-          if (fund) return fund;
+          const none = await noHoldersAnswer(symbol, exchange, error, quote, ctx.apiClient);
+          if (none) return none;
           throw error;
         }),
         indexTicker
           ? dependencies.loadIndexedHolders(indexTicker, limit, ctx).catch(logFailure("holders.headless", "Load 13F holder index failed", null))
           : null,
       ]);
-      // A fund has no ownership breakdown: the report says so in place of rows, with what reads it, and fails as no data.
+      // A fund has no ownership breakdown, and a listing may have no holders on record: the report says so
+      // in place of rows (with what reads a fund), and fails as no data.
       if ("message" in snapshot) {
         return {
           columns: HOLDER_REPORT_COLUMNS,

@@ -218,13 +218,25 @@ test("role colours read on every theme's page and stay apart in a colour-blind p
 
 test("an empty supply chain says SPLC does not read a company's filings only when its country is known to be outside them", () => {
   const empty = (country: string | null) => supplyEmptyText(supplyPayload({ symbol: "X", entity: { ...supplyPayload().entity!, country }, says: [], names: [] }))!;
-  expect(empty("TW")).toContain("SPLC reads US (SEC) and Korean (DART) company filings");
+  expect(empty("TW")).toContain("SPLC reads company filings from the US and Korea and annual reports from Hong Kong, mainland China and Singapore");
   // The server sends ISO codes or none: a missing or unreadable country is never read as an uncovered market.
   for (const unknown of [null, "", "Taiwan"]) {
     expect(empty(unknown)).not.toContain("SPLC reads");
     expect(empty(unknown)).toContain("try the customer's side, such as SPLC AAPL.");
   }
   expect(empty("us")).toBe("No filing, announcement or call read so far names a relationship for X.");
+});
+
+test("a Hong Kong, mainland or Singapore company with no relationship is in the markets whose annual reports SPLC reads", () => {
+  const empty = (country: string | null, exchange: string | null) =>
+    supplyEmptyText(supplyPayload({ symbol: "1299:HKEX", entity: { ...supplyPayload().entity!, country, exchange }, says: [], names: [] }))!;
+  // By its country, or by its listing when the company is incorporated elsewhere (Bermuda, the Cayman Islands).
+  for (const [country, exchange] of [["HK", "HKEX"], ["CN", "SSE"], ["SG", "SGX"], ["BM", "HKEX"], ["KY", "SZSE"], [null, "SGX"]] as const) {
+    const text = empty(country, exchange);
+    expect(text).toStartWith("No annual report, announcement or call read so far names a relationship for 1299:HKEX.");
+    expect(text).toContain("try the customer's side, such as SPLC AAPL.");
+  }
+  expect(empty("JP", "JPX")).toStartWith("No relationship for 1299:HKEX: SPLC reads");
 });
 
 test("NVDA geographic XBRL facts do not invent a denominator or quarterly duration", () => {
