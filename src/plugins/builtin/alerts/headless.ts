@@ -141,7 +141,7 @@ function pricesResult(alerts: readonly AlertRule[], error: string | null, events
     columns: PRICE_COLUMNS,
     textColumns: PRICE_TEXT_COLUMNS,
     rows: [...active, ...triggered].map(priceRow),
-    empty: "No level alerts. Add one with gloom alerts add AAPL above 250.",
+    empty: "No level alerts. Add one with gloom alerts add AAPL above 400.",
     ...(error ? { errors: [error], complete: false } : {}),
     ...(notes.length ? { notes } : {}),
   };

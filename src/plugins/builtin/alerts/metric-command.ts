@@ -7,7 +7,7 @@ import { parsePublicTickerKey } from "../../../utils/exchanges";
 
 export interface MetricAlertInput { symbol: string; condition: AlertCondition; price: number; metric: AlertMetric }
 const direction = (s: string) => /^(above|over|>)$/i.test(s) ? "above" as const : /^(below|under|<)$/i.test(s) ? "below" as const : null;
-const USAGE = "Use AAPL pe below 25, AAPL ps above 8, NVDA rsi(14) under 30, SPY ma(50) crosses above ma(200), or TSLA closes below ma(200).";
+const USAGE = "Use AAPL pe below 25, AAPL ps above 12, NVDA rsi(14) under 30, SPY ma(50) crosses above ma(200), or TSLA closes above ma(200).";
 function checked(input: MetricAlertInput): MetricAlertInput {
   if (!validMetricRule({ ...input, targetPrice: input.price })) throw new Error("Use a positive multiple, RSI from 0 to 100, and whole MA/RSI periods from 2 to 200 (fast MA shorter than slow MA).");
   return input;

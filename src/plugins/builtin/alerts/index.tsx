@@ -31,6 +31,7 @@ import {
   createAlert,
   evaluateAlert,
   formatAlertDescription,
+  levelAlreadyMet,
   sameLevelRule,
 } from "./alert-engine";
 import {
@@ -327,8 +328,11 @@ export const alertsPlugin: GloomPlugin = {
         recordFired(alertChangeEntry("created", alertLogRule(alert)));
         alertStream?.sync();
 
+        // A level the price is already past goes off at the next check, as `alerts add` says.
+        const met = !input.metric && levelAlreadyMet(alert.condition, quote.price, alert.targetPrice)
+          ? `, already ${alert.condition}, so it goes off at the next check` : "";
         ctx.notify({
-          body: `Alert set: ${formatAlertDescription(alert)}${input.metric ? firstCheck ? `, ${firstCheck}` : "" : ` (current ${alertPriceText(alert, quote.price)})`}`,
+          body: `Alert set: ${formatAlertDescription(alert)}${input.metric ? firstCheck ? `, ${firstCheck}` : "" : ` (current ${alertPriceText(alert, quote.price)}${met})`}`,
           type: "success",
         });
       },
