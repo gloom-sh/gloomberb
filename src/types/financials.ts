@@ -167,6 +167,12 @@ export interface Quote extends DepositaryReceiptFacts {
    * date the close (PreviousCloseDates); a source may set it too.
    */
   previousCloseDate?: string;
+  /**
+   * A thin listing that did not trade in the session its venue's calendar
+   * puts before the move's, and whose daily closes do not say which day its
+   * previousClose is from (PreviousCloseDates): its move names no day.
+   */
+  previousCloseUndated?: boolean;
   /** Official close of a completed regular session, in this quote's currency. */
   regularClose?: number;
   /** Exchange-local date of regularClose; separate from the daily previous-close reference. */

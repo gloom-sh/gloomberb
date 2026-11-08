@@ -269,3 +269,32 @@ test("a board of indices checks them side by side and waits briefly; a Cboe inde
   expect(asked).not.toContain("^VIX");
   expect(dates.known(board[0]!, listing(board[0]!))).toMatchObject({ previousClose: 100, change: 1 });
 });
+
+test("a thin listing that did not trade in the calendar's session before moves from its previous trade, named only when its closes hold it", async () => {
+  // B95 on SGX, Sun 8 Nov 2026: Friday's 3,661 units against a 1.009 previous close; the calendar puts Thu 5 Nov before it.
+  const sgx = (overrides: Partial<Quote> = {}) => createTestQuote({ symbol: "B95", currency: "SGD", listingExchangeName: "SGX", exchangeName: "SGX",
+    instrumentType: "ETF", price: 1.012, change: 0.003, changePercent: 0.297, previousClose: 1.009, volume: 3661,
+    changeSessionDate: "2026-11-06", marketState: "CLOSED", lastUpdated: Date.parse("2026-11-06T01:01:00Z"), ...overrides });
+  const bars = (closes: Array<[string, number, number]>) => closes.map(([date, close, volume]) => ({ date: new Date(`${date}T00:00:00Z`), close, volume }));
+  const read = (points: ReturnType<typeof bars>) => {
+    const asked: string[] = [];
+    const dates = new PreviousCloseDates(async ({ symbol }) => { asked.push(symbol); return points; }, { now: () => Date.parse("2026-11-08T01:00:00Z") });
+    return { asked, date: async (quote: Quote) => {
+      await dates.settle([entry(quote)], { waitMs: 5_000 });
+      return changeBasisLabel(quoteChangeBasis(dates.known(quote, listing(quote)))!, Date.parse("2026-11-08T01:00:00Z"));
+    } };
+  };
+  expect(changeBasisLabel(quoteChangeBasis(sgx())!, Date.parse("2026-11-08T01:00:00Z"))).toBe("vs Thu 5 Nov close");
+  // Its last trade, 22 Oct, closed at the previous close: the move is from that day. A day with no volume is no trade.
+  const named = read(bars([["2026-10-12", 0.998, 30], ["2026-10-22", 1.009, 50], ["2026-10-30", 1.009, 0], ["2026-11-06", 1.012, 3661]]));
+  expect(await named.date(sgx())).toBe("vs Thu 22 Oct close");
+  // Its closes end at 1.003 on 22 Oct: the 1.009 is from a day they do not hold, so none is named.
+  expect(await read(bars([["2026-10-22", 1.003, 50], ["2026-11-06", 1.012, 3661]])).date(sgx())).toBe("vs prev close");
+  // It traded in the calendar's session: the calendar stands.
+  expect(await read(bars([["2026-11-05", 1.009, 900], ["2026-11-06", 1.012, 3661]])).date(sgx())).toBe("vs Thu 5 Nov close");
+  // A busy listing, or one still trading, reads no history.
+  const busy = read(bars([]));
+  await busy.date(sgx({ volume: 2_000_000 }));
+  await busy.date(sgx({ marketState: "REGULAR" }));
+  expect(busy.asked).toEqual([]);
+});
