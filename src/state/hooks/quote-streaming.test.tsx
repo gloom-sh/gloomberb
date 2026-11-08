@@ -8,6 +8,7 @@ import { createDefaultConfig } from "../../types/config";
 import { useLiveStreamingSetting } from "./live-streaming";
 import { useLiveQuoteEntries, useQuoteStreaming, useQuoteUpdates } from "./quote-streaming";
 import { PaneInViewProvider, setAppActive, setAppVisible } from "../app/activity";
+import { debugLog } from "../../utils/debug-log";
 
 const tui = createOpenTuiTestHarness();
 let bumpHarness: (() => void) | null = null;
@@ -27,6 +28,20 @@ function QuoteStreamingHarness() {
   }]);
 
   return <text>{String(tick)}</text>;
+}
+
+let setLongListWeight: ((weight: number) => void) | null = null;
+
+function LongListStreamingHarness() {
+  const [weight, setWeight] = useState(10);
+  setLongListWeight = setWeight;
+  useQuoteStreaming(Array.from({ length: 300 }, (_, index) => ({
+    symbol: `S${index}`,
+    exchange: "NASDAQ",
+    visible: true,
+    weight,
+  })));
+  return <text>{weight}</text>;
 }
 
 function QuoteStreamingPriorityHarness() {
@@ -126,6 +141,7 @@ afterEach(() => {
   togglePollingPriority = null;
   updateLiveTargets = null;
   updateFreshnessScope = null;
+  setLongListWeight = null;
   observedSubscriptionStartedAt = 0;
   setSharedMarketDataCoordinator(null);
   setAppActive(true);
@@ -167,6 +183,28 @@ describe("useQuoteStreaming", () => {
       await tui.setup().renderOnce();
     });
     expect(subscribeCalls).toBe(2);
+  });
+
+  test("logs the first few targets of a long subscription, not all of them", async () => {
+    setSharedMarketDataCoordinator({
+      subscribeQuotes: () => Object.assign(() => {}, { update: () => {} }),
+    } as unknown as MarketDataCoordinator);
+    const before = debugLog.getEntries({ source: "quote-stream" }).length;
+    await tui.render(<LongListStreamingHarness />, { width: 20, height: 1 });
+    await act(async () => tui.setup().renderOnce());
+    // A sort or scroll re-weights the rows: another subscription update for the same 300.
+    await act(async () => {
+      setLongListWeight?.(100);
+      await Promise.resolve();
+    });
+    await act(async () => tui.setup().renderOnce());
+
+    const logged = debugLog.getEntries({ source: "quote-stream" }).slice(before);
+    expect(logged.map((entry) => entry.message)).toEqual(["subscribe", "update subscription"]);
+    for (const entry of logged) {
+      expect(JSON.stringify(entry.data).length).toBeLessThan(1_000);
+      expect(entry.data).toMatchObject({ count: 300, targets: { count: 300 } });
+    }
   });
 
   test("does not resubscribe when the component rerenders with the same targets", async () => {

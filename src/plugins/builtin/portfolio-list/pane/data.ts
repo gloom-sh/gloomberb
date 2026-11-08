@@ -276,17 +276,24 @@ export function getCollectionTickersFromConfig(
     .sort((left, right) => left.metadata.ticker.localeCompare(right.metadata.ticker));
 }
 
+export interface SortedTickers {
+  tickers: TickerRecord[];
+  /** The rows that have a figure in the sort column; the rest sit last, in their listed order. */
+  valued: Set<string>;
+}
+
 export function sortTickers(
   tickers: TickerRecord[],
   financialsMap: Map<string, TickerFinancials>,
   sortPreference: CollectionSortPreference,
   columnContext: ColumnContext,
   columns: ColumnConfig[],
-) {
-  if (!sortPreference.columnId) return tickers;
+): SortedTickers {
+  const valued = new Set<string>();
+  if (!sortPreference.columnId) return { tickers, valued };
 
   const sortColumn = columns.find((column) => column.id === sortPreference.columnId);
-  if (!sortColumn) return tickers;
+  if (!sortColumn) return { tickers, valued };
   const sortContextVersion = `${sortColumn.id}|${columnContextVersion(sortColumn.id, columnContext)}`;
   const sortValues = new Map<string, ReturnType<typeof getSortValue>>();
   for (const ticker of tickers) {
@@ -294,17 +301,20 @@ export function sortTickers(
     // Ticker records and financials are replaced, never mutated, so their
     // identities version a row without walking its positions on every tick.
     const version = `${sortContextVersion}|${objectVersion(ticker)}|${objectVersion(financials)}`;
-    sortValues.set(ticker.metadata.ticker, sortValueCache.get(
+    const value = sortValueCache.get(
       `${ticker.metadata.ticker}:${sortColumn.id}`,
       version,
       () => getSortValue(sortColumn, ticker, financials, columnContext),
-    ));
+    );
+    sortValues.set(ticker.metadata.ticker, value);
+    if (value != null && !(typeof value === "number" && !Number.isFinite(value))) valued.add(ticker.metadata.ticker);
   }
 
-  return [...tickers].sort((leftTicker, rightTicker) => {
+  const sorted = [...tickers].sort((leftTicker, rightTicker) => {
     const leftValue = sortValues.get(leftTicker.metadata.ticker) ?? null;
     const rightValue = sortValues.get(rightTicker.metadata.ticker) ?? null;
 
     return compareSortValues(leftValue, rightValue, sortPreference.direction);
   });
+  return { tickers: sorted, valued };
 }

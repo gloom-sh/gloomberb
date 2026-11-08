@@ -19,7 +19,7 @@ import {
   normalizeChatReactions,
   normalizeTeamNotification,
 } from "./normalizers";
-import { debugLog } from "../utils/debug-log";
+import { debugLog, previewList, previewLongLists } from "../utils/debug-log";
 import { canonicalExchange, normalizeSymbol } from "../utils/exchanges";
 import { mergeQuoteSubscriptionTargets } from "../market-data/quote-subscription-target";
 import { recordServerClockSample } from "../market-data/quotes/clock";
@@ -520,7 +520,7 @@ export class CloudApiSocket {
     if (subscriptionsToSend.length > 0) {
       cloudApiLog.info("register quote listeners", {
         count: subscriptionsToSend.length,
-        symbols: subscriptionsToSend.map((target) =>
+        symbols: previewList(subscriptionsToSend, (target) =>
           marketKey(target.symbol, target.exchange),
         ),
       });
@@ -562,7 +562,7 @@ export class CloudApiSocket {
       if (removedTargets.length > 0) {
         cloudApiLog.info("remove quote listeners", {
           count: removedTargets.length,
-          symbols: removedTargets.map((target) =>
+          symbols: previewList(removedTargets, (target) =>
             marketKey(target.symbol, target.exchange),
           ),
         });
@@ -1062,7 +1062,7 @@ export class CloudApiSocket {
         type === "scanner.subscribe" ||
         type === "scanner.unsubscribe"
       ) {
-        cloudApiLog.info("send websocket message", payload);
+        cloudApiLog.info("send websocket message", previewLongLists(payload as Record<string, unknown>));
       }
     }
     this.ws.send(JSON.stringify(payload));

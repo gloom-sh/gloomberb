@@ -10,6 +10,35 @@ export interface LogEntry {
   data?: unknown;
 }
 
+/** How many items of a long list a log entry keeps; the rest is only counted. */
+const LOG_LIST_PREVIEW_LENGTH = 5;
+
+export interface ListPreview<T> {
+  count: number;
+  first: T[];
+}
+
+/**
+ * A long list as its length and first few items. The log keeps each entry's
+ * data for its 5,000 entries, so one that names every row of a 300-row list
+ * holds those names for as long as the entry lives.
+ */
+export function previewList<T, R = T>(
+  items: readonly T[],
+  map: (item: T) => R = (item) => item as unknown as R,
+): ListPreview<R> {
+  return { count: items.length, first: items.slice(0, LOG_LIST_PREVIEW_LENGTH).map(map) };
+}
+
+/** `data` with each list longer than the preview replaced by its length and first items. */
+export function previewLongLists(data: Record<string, unknown>): Record<string, unknown> {
+  const preview: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    preview[key] = Array.isArray(value) && value.length > LOG_LIST_PREVIEW_LENGTH ? previewList(value) : value;
+  }
+  return preview;
+}
+
 type LogListener = (entry: LogEntry) => void;
 type ConsoleMethod = (...args: unknown[]) => void;
 
