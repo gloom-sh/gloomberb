@@ -1,7 +1,7 @@
 {
  "format": 1,
  "site": "https://gloom.sh",
- "updatedAt": "2026-11-07",
+ "updatedAt": "2026-11-08",
  "categories": [
   {
    "id": "research",
@@ -1776,7 +1776,7 @@
     "desktop",
     "tui"
    ],
-   "updatedAt": "2026-11-06",
+   "updatedAt": "2026-11-08",
    "blocks": [
     {
      "type": "heading",
@@ -1853,6 +1853,7 @@
         "**Terminal:** the installer adds `gloom` to your PATH, so open a new terminal window. PowerShell works.",
         "**PowerShell line:** installs `gloom.exe` from the latest release into `%USERPROFILE%\\.local\\bin`, checks its SHA-256 and adds the folder to your PATH, with no admin rights. Under Git Bash the bash line points here. With [Bun](https://bun.sh), `bun install -g @gloom-sh/terminal` works too.",
         "**Charts:** Windows Terminal has no Kitty graphics, so terminal charts draw as text. The desktop app draws them in full.",
+        "**cmd.exe:** run `chcp 65001` so long dashes, `€` and `·` show, and quote an index symbol (`gloom quote \"^SPX\"`): cmd drops a bare `^`. See [CLI](/docs/cli-functions).",
         "**Data:** `%USERPROFILE%\\.gloomberb`, printed by `gloom version`. `GLOOMBERB_HOME` moves it.",
         "**Git and Bun:** Bun ships with the app; Git does not. Some official plugins (TV, Substack, Interactive Brokers, IBKR Gateway, Public, Robinhood, SimpleFIN, Polls, Prediction Markets, BYOK AI) install from GitHub and need [Git for Windows](https://git-scm.com/download/win). Without it Gloom starts without them, says so, and `gloom doctor` names them.",
         "**Versions:** Windows 11 x64 is tested. ARM PCs run the x64 build through Windows' emulation: the desktop app is checked to open and stay open on Windows 11 on Arm, nothing more. Windows 10 is untested."
@@ -5655,7 +5656,7 @@
     "functions",
     "screenshots"
    ],
-   "updatedAt": "2026-11-07",
+   "updatedAt": "2026-11-08",
    "blocks": [
     {
      "type": "paragraph",
@@ -5695,8 +5696,29 @@
       [
        "`-q`, `--quiet`, `--no-color`",
        "Less output, no colour"
+      ],
+      [
+       "`--plain`, `--no-plain`",
+       "Text for a screen reader or very large text: no rule lines, arrows as words, and every table column kept, with a dash in an empty cell; a narrow table moves columns under each row instead of dropping them"
+      ],
+      [
+       "`--width n`",
+       "Fit tables, help and notes to n columns, in a terminal or piped"
       ]
      ]
+    },
+    {
+     "type": "paragraph",
+     "text": "Plain output is on without the flag when the output is piped or redirected, or when `NO_COLOR` is set to a non-empty value, which also turns colour off; `--no-plain` turns it off. Without `--width`, a terminal's own width applies and piped output fits `COLUMNS` when it is set."
+    },
+    {
+     "type": "heading",
+     "level": 3,
+     "text": "Windows consoles"
+    },
+    {
+     "type": "paragraph",
+     "text": "Output uses UTF-8 characters such as long dashes, `€` and `·`. Windows Terminal and PowerShell show them; in an older cmd.exe console, run `chcp 65001` first. In cmd.exe, write an index symbol in double quotes (`gloom quote \"^SPX\"`): cmd drops a bare `^`."
     },
     {
      "type": "heading",
@@ -5769,8 +5791,20 @@
        "Market overview"
       ],
       [
-       "`earnings <symbols>`, `fx <currency>`",
-       "Earnings dates; a currency into your base currency. Gold, silver, platinum and palladium have no spot quote, so `fx XAU/TRY` is derived from the front-month future (GC=F) and the dollar pair, and says so"
+       "`earnings <symbols>`",
+       "Earnings dates"
+      ],
+      [
+       "`fx <currency>`, `fx <base>/<quote>`, `fx <amount> <from>/<to>`",
+       "A currency into your base currency, a pair as markets quote it (`fx USD/MXN`) with its move on the day, or an amount converted (`fx 5000000 USD/EUR`). Gold, silver, platinum and palladium have no spot quote, so `fx XAU/TRY` is derived from the front-month future (GC=F) and the dollar pair, and says so"
+      ],
+      [
+       "`fx <pair> --date <day>`",
+       "The rate at that day's daily FX close (`fx USD/MXN --date 2026-11-06`); a weekend or holiday reads the trading day before it and says so"
+      ],
+      [
+       "`fx [amount] <pair> --forward <tenor>`",
+       "The forward implied by both currencies' short rates (covered interest parity), with forward points, not a dealer quote. With an amount, the carry on it over the tenor in your base currency and which side earns it: `fx 5000000 USD/MXN --forward 30d`. Short rates for USD, EUR, GBP, MXN, BRL, SGD and ZAR, and for TRY the CBRT policy rate, named so"
       ],
       [
        "`econ [--country all|US|G7|EU|<codes>] [--impact high|medium|low|all] [--search <words>] [--from <date>] [--tz <zone>]`",
@@ -7443,7 +7477,7 @@
    "title": "What a stock is",
    "summary": "A share is a small slice of a company, so owning one means owning a tiny piece of everything the company has and earns.",
    "chapter": "Markets from zero",
-   "minutes": 6
+   "minutes": 5
   },
   {
    "url": "/academy/markets-from-zero/stocks-funds-and-quotes/funds-etfs-and-indices",
@@ -7555,7 +7589,7 @@
    "title": "Panes, focus and linking (WIN, GL, PS, LMA)",
    "summary": "Every function opens in a pane, one pane at a time has the focus and receives your keys, and panes can be moved, stacked as tabs, tidied, given a new ticker and linked so they follow a list.",
    "chapter": "The terminal and your workspace",
-   "minutes": 6
+   "minutes": 5
   },
   {
    "url": "/academy/terminal-and-workspace/how-the-terminal-works/layouts-and-desks",
@@ -7576,7 +7610,7 @@
    "title": "Free, Pro and how fresh your data is (UPGRADE, CONN)",
    "summary": "Every number has an age (real-time, 15 minutes behind, daily or on release), and the help card's Data line and the clock mark on a quote tell you which.",
    "chapter": "The terminal and your workspace",
-   "minutes": 6
+   "minutes": 5
   },
   {
    "url": "/academy/terminal-and-workspace/how-the-terminal-works/the-cli",
@@ -7616,9 +7650,9 @@
   {
    "url": "/academy/terminal-and-workspace/your-workspace/alerts",
    "title": "Alerts (ALRT, SA)",
-   "summary": "An alert watches the market for you, firing on a price level, a valuation or technical level, or an event such as an earnings date, a filing or an insider trade, and ALRT lists them all.",
+   "summary": "An alert watches the market for you, firing on a price level, a day's move, a valuation or technical level, or an event such as an earnings date, a filing or an insider trade, and ALRT lists them all.",
    "chapter": "The terminal and your workspace",
-   "minutes": 6
+   "minutes": 5
   },
   {
    "url": "/academy/terminal-and-workspace/your-workspace/notes-and-theses",
@@ -7828,7 +7862,7 @@
    "title": "Dividends and corporate actions (DVD, EVT)",
    "summary": "DVD shows a stock's dividend history, yield, payout ratio and growth, and EVT puts dividends, splits, earnings dates and estimates on one timeline.",
    "chapter": "Fundamentals and earnings",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/fundamentals-and-earnings/events-and-deals/catalysts",
@@ -7959,9 +7993,9 @@
   {
    "url": "/academy/compare-screen-follow-money/filings-and-attention/attention",
    "title": "Social buzz (BUZZ)",
-   "summary": "BUZZ counts the day's posts on X naming a ticker against its usual level, with the top posts and their stance.",
+   "summary": "BUZZ counts the day's posts on X naming a ticker against its usual level, with the top posts and their stance, and alone ranks the tickers whose posts jump most above their own usual level.",
    "chapter": "Compare, screen and follow the money",
-   "minutes": 3
+   "minutes": 4
   },
   {
    "url": "/academy/options-and-volatility/options-from-zero/what-is-an-option",
@@ -8150,7 +8184,7 @@
    "title": "Treasury auctions (AUCT)",
    "summary": "AUCT lists upcoming and recent US Treasury auctions with the rate each cleared at, how well it was covered and who bought.",
    "chapter": "Rates, bonds and credit",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/rates-bonds-credit/rates/bond-calculator",
@@ -8178,7 +8212,7 @@
    "title": "Debt maturities and covenants (DDIS, CRDOC, COVN)",
    "summary": "DDIS shows how much of a company's debt comes due each year, and CRDOC and COVN read its loan and bond documents into a capital structure and covenant headroom.",
    "chapter": "Rates, bonds and credit",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/macro-markets-and-news/the-economy/economic-calendar",
@@ -8206,7 +8240,7 @@
    "title": "Currencies and cross rates (FXC)",
    "summary": "FXC is a matrix of exchange rates between the major currencies, each cell saying how many units of the column currency one unit of the row currency buys.",
    "chapter": "The big picture: macro, markets and news",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/macro-markets-and-news/markets/world-indices-and-venues",
