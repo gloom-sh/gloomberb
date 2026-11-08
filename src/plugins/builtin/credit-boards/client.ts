@@ -73,6 +73,14 @@ export async function fetchSovrBoard(client: BoardClient = apiClient): Promise<S
   catch (error) { throw unavailableOnServer(error, "Sovereign CDS levels are not available yet."); }
 }
 
+/** Daily levels: the full history a chart reaches back for stays good for an hour. */
+const fullCdxHistory = createTtlCache<CdxBoardPayload>({ ttlMs: 60 * 60_000 });
+
+/** Every day of index history the server keeps, for a chart that reaches back past the board's year. */
+export function loadFullCdxHistory(client: BoardClient = apiClient): Promise<CdxBoardPayload> {
+  return fullCdxHistory.load("all", () => fetchCdxBoard(client, CDX_MAX_DAYS));
+}
+
 export const getCachedCdxBoard = () => cachedCloudResource(cdxBoardCache, "5y", validateCdxBoard);
 export const loadCdxBoard = (force = false) =>
   loadCloudResource(cdxBoardCache, "5y", () => fetchCdxBoard(), { force, validate: validateCdxBoard });

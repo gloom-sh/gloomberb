@@ -55,3 +55,13 @@ export const ICE_CREDIT_SERIES_IDS: ReadonlySet<string> = new Set(ICE_CREDIT_SER
 
 /** The option-adjusted spreads, which FRED serves in percentage points. */
 export const ICE_SPREAD_SERIES: readonly IceCreditSeries[] = ICE_CREDIT_SERIES.filter((series) => series.measure === "spread");
+
+const ICE_SPREAD_SERIES_IDS: ReadonlySet<string> = new Set(ICE_SPREAD_SERIES.map((series) => series.seriesId));
+
+/**
+ * Whether a FRED series is an ICE option-adjusted spread, which every surface
+ * shows in basis points (FRED serves 0.93 for 93bp), as credit desks quote it.
+ */
+export function isIceSpreadSeries(seriesId: string): boolean {
+  return ICE_SPREAD_SERIES_IDS.has(seriesId.trim().toUpperCase());
+}

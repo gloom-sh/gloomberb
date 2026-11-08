@@ -33,6 +33,14 @@ describe("series formulas", () => {
     expect(legs("2*BRK-B:NYSE - SPY")?.map(({ text }) => text)).toEqual(["BRK-B:NYSE", "SPY"]);
   });
 
+  test("a literal 100 takes a percent to basis points and 0.01 back, on a leg or the whole formula", () => {
+    const conversions = (expression: string) => parseFormulaExpression(expression)?.legs.map(({ text, percentBp }) => [text, percentBp]);
+    expect(conversions("100*FRED:DGS5 - CAP:cdx:ig")).toEqual([["FRED:DGS5", 1], ["CAP:cdx:ig", null]]);
+    expect(conversions("(FRED:DGS10 - FRED:DGS2)*100")).toEqual([["FRED:DGS10", 1], ["FRED:DGS2", 1]]);
+    expect(conversions("FRED:DGS5 - 0.01*CAP:cdx:ig")).toEqual([["FRED:DGS5", null], ["CAP:cdx:ig", -1]]);
+    expect(conversions("200*FRED:DGS5 - CAP:cdx:ig")).toEqual([["FRED:DGS5", null], ["CAP:cdx:ig", null]]);
+  });
+
   test("a tight minus subtracts after a listing's exchange or field, unless it spells the field", () => {
     expect(legs("42*HO=F:NYM-CL=F:NYM")).toEqual([
       { text: "HO=F:NYM", weight: 42, perBarrel: true },

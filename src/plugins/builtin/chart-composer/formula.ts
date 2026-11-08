@@ -1,6 +1,7 @@
 import { currencyPairSpelling } from "../../../utils/currency-pair";
 import { dashedCoinPair } from "../../../utils/crypto-pair";
 import { GALLONS_PER_BARREL, isBarrelsPerTonne } from "../../../time-series/price-units";
+import { BP_PER_PERCENT } from "../../../time-series/studies/units";
 import { MAX_CHART_COMPOSER_SERIES } from "./chart-spec";
 import { parseSeriesExpression, resolveChartFieldAlias, type ParsedSeriesExpression } from "./series-expression";
 import { getTimeSeriesField } from "../../../time-series/field-catalog";
@@ -17,8 +18,10 @@ import { getTimeSeriesField } from "../../../time-series/field-catalog";
  *
  * A literal 42 on a series is the 42 gallons of a barrel: it makes a price per
  * gallon a price per barrel. A literal 7.45 or 8.45 is the barrels in a tonne
- * of gasoil or gasoline: it makes a price per barrel a price per tonne. Any
- * other number is a count and keeps the unit. A series the whole formula is
+ * of gasoil or gasoline: it makes a price per barrel a price per tonne. A
+ * literal 100 makes a percent basis points (0.93% is 93bp), and 0.01 basis
+ * points a percent. Any other number is a count and keeps the unit. A series
+ * the whole formula is
  * divided or multiplied by changes its unit as the arithmetic does: over
  * EURUSD=X (USD per EUR), dollars are euros.
  *
@@ -37,6 +40,8 @@ interface FormulaLeg {
   perBarrel: boolean;
   /** The barrels in a tonne the leg was multiplied by (7.45 or 8.45), or null. */
   perTonne: number | null;
+  /** The leg was multiplied by a literal 100 (1: a percent in bp) or 0.01 (-1: bp in percent), or neither. */
+  percentBp: 1 | -1 | null;
   /** The leg as written: `HO=F`. */
   text: string;
 }
@@ -136,6 +141,11 @@ function tokenize(expression: string): Token[] {
   return tokens;
 }
 
+/** A literal 100 makes a percent basis points (1), 0.01 basis points a percent (-1); any other number neither. */
+function percentBasisPointFactor(value: number): 1 | -1 | null {
+  return value === BP_PER_PERCENT ? 1 : value === 1 / BP_PER_PERCENT ? -1 : null;
+}
+
 function fail(message: string): never {
   throw new Error(message);
 }
@@ -192,6 +202,7 @@ export function parseFormulaExpression(expression: string): ParsedFormula | null
     let weight = sign;
     let perBarrel = false;
     let perTonne: number | null = null;
+    let percentBp: 1 | -1 | null = null;
     const factors: Token[] = [];
     for (;;) {
       const factor = take();
@@ -206,6 +217,7 @@ export function parseFormulaExpression(expression: string): ParsedFormula | null
         if (factor.value === 0) fail("A multiplier of 0 removes its series; leave the term out instead.");
         if (factor.value === GALLONS_PER_BARREL && !perBarrel) perBarrel = true;
         else if (isBarrelsPerTonne(factor.value) && perTonne === null) perTonne = factor.value;
+        else if (percentBp === null) percentBp = percentBasisPointFactor(factor.value);
         weight *= factor.value;
       }
       if (peek()?.kind !== "*") break;
@@ -224,7 +236,7 @@ export function parseFormulaExpression(expression: string): ParsedFormula | null
     if (legs.some((leg) => leg.text.toUpperCase() === text.toUpperCase())) {
       fail(`${text} appears twice. Write it once with its combined multiplier, such as 2*${text}.`);
     }
-    legs.push({ series: parsed, weight, perBarrel, perTonne, text });
+    legs.push({ series: parsed, weight, perBarrel, perTonne, percentBp, text });
     expectTerm = false;
 
     const next = peek();
@@ -261,6 +273,7 @@ export function parseFormulaExpression(expression: string): ParsedFormula | null
           for (const leg of legs) {
             if (value.value === GALLONS_PER_BARREL && !leg.perBarrel) leg.perBarrel = true;
             else if (isBarrelsPerTonne(value.value) && leg.perTonne === null) leg.perTonne = value.value;
+            else if (leg.percentBp === null) leg.percentBp = percentBasisPointFactor(value.value);
             leg.weight *= value.value;
           }
         }

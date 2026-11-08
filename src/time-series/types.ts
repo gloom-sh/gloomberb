@@ -265,6 +265,12 @@ export interface ResolvedSeries {
    * VWAP follow. Set even where no exchange time zone is known (futures).
    */
   listing?: { symbol: string; exchange: string };
+  /**
+   * A dataset series as a formula writes it (`FRED:BAMLC0A0CM`,
+   * `CAP:cdx:ig`): what a formula's label and its unit errors name it by,
+   * so they read as written rather than as the source's long title.
+   */
+  expression?: string;
   /** Price/volume observations and their derived studies, including 24/7
    * markets. Independent of whether the chart compresses exchange sessions.
    * `dataset`: a capability's published observations (vessel transits),

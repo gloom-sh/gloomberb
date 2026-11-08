@@ -10,6 +10,7 @@ import {
   isPriceGroup,
   knownUnitSignature,
   legName,
+  percentBasisPointUnit,
   unitMismatchMessage,
   type SeriesUnit,
 } from "./units";
@@ -23,6 +24,8 @@ interface FormulaLeg {
   perBarrel: boolean;
   /** The barrels in a tonne the multiplier carries (7.45 for gasoil), making a per-barrel price per tonne. */
   perTonne: number | null;
+  /** The multiplier carries 100 (1), making a percent basis points, or 0.01 (-1), making basis points a percent. */
+  percentBp: 1 | -1 | null;
 }
 
 export interface FormulaTerms {
@@ -34,7 +37,7 @@ export interface FormulaTerms {
 }
 
 /**
- * A formula study's terms: `weight1`, `perBarrel1`, `perTonne1` ... per
+ * A formula study's terms: `weight1`, `perBarrel1`, `perTonne1`, `percentBp1` ... per
  * input it adds up, `power1` ... (1 or -1) per input it multiplies or divides
  * the sum by, and an optional `divisor`. A saved or hand-edited spec can carry
  * a multiplier or divisor no formula was written with (a value that is not a
@@ -55,11 +58,13 @@ export function formulaTerms(spec: ChartStudySpec, inputs: readonly ResolvedSeri
     if (!isFiniteNumber(weight)) return { error: `The multiplier of ${legName(input)} is missing or not a number; write the formula again.` };
     if (weight === 0) return { error: `${legName(input)} has a multiplier of 0, which removes it; leave it out of the formula instead.` };
     const perTonne = spec.parameters[`perTonne${index + 1}`];
+    const percentBp = spec.parameters[`percentBp${index + 1}`];
     legs.push({
       index,
       weight,
       perBarrel: spec.parameters[`perBarrel${index + 1}`] === 1,
       perTonne: isFiniteNumber(perTonne) && isBarrelsPerTonne(perTonne) ? perTonne : null,
+      percentBp: percentBp === 1 || percentBp === -1 ? percentBp : null,
     });
   }
   if (legs.length === 0) return { error: "The formula has no series to add up, only series it divides by; write the formula again." };
@@ -71,18 +76,21 @@ export function formulaTerms(spec: ChartStudySpec, inputs: readonly ResolvedSeri
 
 /**
  * A leg's unit once its multiplier is applied: 42 gallons of a per-gallon
- * price are a barrel's worth, and 7.45 barrels of gasoil a tonne's.
+ * price are a barrel's worth, 7.45 barrels of gasoil a tonne's, and 100 times
+ * a percent is basis points.
  */
-function formulaLegUnit(leg: FormulaLeg, input: ResolvedSeries): string {
+function formulaLegUnit(leg: FormulaLeg, input: ResolvedSeries): SeriesUnit {
+  const converted = leg.percentBp ? percentBasisPointUnit(input.unit, leg.percentBp) : null;
+  if (converted) return converted;
   const unit = leg.perBarrel ? perBarrelUnit(input.unit) : input.unit;
-  return leg.perTonne ? perTonneUnit(unit) : unit;
+  return { unit: leg.perTonne ? perTonneUnit(unit) : unit, unitGroup: input.unitGroup };
 }
 
 /** Why a formula's legs cannot be summed, or null when every leg counts the same known unit. */
 function formulaUnitMismatch(terms: FormulaTerms, inputs: readonly ResolvedSeries[]): string | null {
   if (terms.legs.length < 2) return null;
-  const legs = terms.legs.map((leg) => ({ series: inputs[leg.index]!, unit: formulaLegUnit(leg, inputs[leg.index]!) }));
-  const signatures = legs.map(({ series, unit }) => knownUnitSignature({ unit, unitGroup: series.unitGroup }));
+  const legs = terms.legs.map((leg) => ({ series: inputs[leg.index]!, ...formulaLegUnit(leg, inputs[leg.index]!) }));
+  const signatures = legs.map((leg) => knownUnitSignature(leg));
   const other = signatures.findIndex((signature, index) => index > 0 && (signature === null || signature !== signatures[0]));
   if (signatures[0] !== null && other < 0) return null;
   return unitMismatchMessage("formula", legs[0]!, legs[Math.max(1, other)]!);
@@ -149,7 +157,7 @@ export function formulaUnit(terms: FormulaTerms, inputs: readonly ResolvedSeries
   const mismatch = formulaUnitMismatch(terms, inputs);
   if (mismatch) return { error: mismatch };
   const first = inputs[terms.legs[0]!.index]!;
-  let unit: SeriesUnit = { unit: formulaLegUnit(terms.legs[0]!, first), unitGroup: first.unitGroup };
+  let unit: SeriesUnit = formulaLegUnit(terms.legs[0]!, first);
   for (const factor of terms.factors) {
     const series = inputs[factor.index]!;
     const next = combinedUnit(unit, series, factor.power);

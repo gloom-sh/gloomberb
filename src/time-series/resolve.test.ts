@@ -37,7 +37,7 @@ const fredLoad = (
 });
 
 describe("resolveChartSpecData", () => {
-  test("credit stress windows disclose source coverage without clipping buffers or scaling effective yields", async () => {
+  test("credit stress windows disclose source coverage without clipping buffers, the spread in bp and the effective yield in percent", async () => {
     const spec = buildCustomChartPreset("FRED:BAMLC0A0CM,FRED:BAMLC0A0CMEY");
     const requests: string[] = [];
     const sources = {
@@ -60,8 +60,9 @@ describe("resolveChartSpecData", () => {
     const fiveYear = await resolveChartSpecData(spec, sources);
     expect(fiveYear.warnings.filter((warning) => warning.includes("FRED coverage"))).toHaveLength(2);
     expect(fiveYear.warnings.some((warning) => warning.includes("vintage dates"))).toBe(true);
-    expect(fiveYear.series.map((series) => series.points.at(-1)?.value)).toEqual([0.8, 5.68]);
-    expect(fiveYear.series.map((series) => series.unit)).toEqual(["%", "%"]);
+    // FRED serves the OAS in percentage points; it reads in bp, on CDX IG's axis, and the yield stays in percent.
+    expect(fiveYear.series.map((series) => series.points.at(-1)?.value)).toEqual([80, 5.68]);
+    expect(fiveYear.series.map((series) => [series.unit, series.unitGroup])).toEqual([["bp", "series:bp"], ["%", "percent"]]);
     const recent = await resolveChartSpecData({ ...spec, viewport: { ...spec.viewport, range: "1Y" } }, sources);
     expect(requests.at(-1)! < "2023-09-12").toBe(true); // Calculation buffer predates the visible window.
     expect(recent.warnings.some((warning) => warning.includes("FRED coverage"))).toBe(false);
@@ -83,7 +84,7 @@ describe("resolveChartSpecData", () => {
     };
     const sources = { loadFredSeries: async () => fredLoad(data) };
     const before = await resolveChartSpecData(spec, sources);
-    expect(before.series[0]?.points.at(-1)?.value).toBe(0.8);
+    expect(before.series[0]?.points.at(-1)?.value).toBe(80);
     expect(before.series[0]?.points.at(-1)?.date.toISOString()).toBe("2026-09-14T00:00:00.000Z");
     expect(before.warnings.some((warning) => warning.includes("exact coverage dates are unavailable"))).toBe(true);
     expect(before.warnings.some((warning) => warning.includes("2026-09-10"))).toBe(false);
