@@ -39,7 +39,8 @@ import {
   screenDefinitionSyntax,
   screenCurrencyEmpty,
   screenLabel,
-  screenSymbols,
+  screenListings,
+  listingReadNotes,
   screenYtdBase,
   withheldMetricNote,
 } from "./model";
@@ -51,8 +52,10 @@ const spacedJson = (definition: ScreenDefinition) =>
 
 /**
  * A symbol criterion whose one value names a watchlist (`"value": ["HY3"]`)
- * reads as the watchlist's symbols, at most a screen's 500, with the note
- * that says so; any other criterion is left as it is.
+ * reads as the watchlist's listings with their venues, at most a screen's
+ * 500, with the note that says so; any other criterion is left as it is. The
+ * screener matches each by company (BN:TSX is Brookfield, never Danone's BN
+ * in Paris).
  */
 async function withWatchlistSymbols(
   definition: ScreenDefinition,
@@ -64,7 +67,7 @@ async function withWatchlistSymbols(
     const typed = criterion.value[0]!;
     const watchlist = findNamedCollection(ctx.config.watchlists, typed);
     if (!watchlist || !ctx.resolveWatchlist) return criterion;
-    const members = screenSymbols(((await ctx.resolveWatchlist(typed)) ?? []).map((ticker) => ticker.metadata.ticker));
+    const members = screenListings(((await ctx.resolveWatchlist(typed)) ?? []).map((ticker) => ticker.metadata));
     if (members.length === 0) return criterion;
     const read = readWatchlistArgument(typed, watchlist, members, MAX_SYMBOL_VALUES);
     notes.push(read.note);
@@ -371,7 +374,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     const extra = extraScreenColumns(metrics, data.definition.sort.field);
     const states = new Set(rows.map((row) => row.metrics[metric].state));
     const legend = STATE_LEGEND.filter(({ state }) => states.has(state)).map(({ text }) => text);
-    const notes = [...watchlistRead.notes, ...kpiGaps, ...legend];
+    const notes = [...watchlistRead.notes, ...listingReadNotes(data.listings), ...kpiGaps, ...legend];
     // Payload status also counts ordinary per-field sparsity; only generation
     // warnings are failures, and more pages are not an error.
     return {

@@ -92,7 +92,8 @@ import {
   screenLabel,
   screenRowId,
   screenSignValue,
-  screenSymbols,
+  screenListings,
+  listingReadNotes,
   screenYtdBase,
   splitGradeReason,
 } from "./model";
@@ -404,9 +405,9 @@ function EquityScreenView({
   const readWatchlist = useCallback((typed: string) => {
     const watchlist = findNamedCollection(watchlists, typed);
     if (!watchlist) return null;
-    const members = screenSymbols([...tickers.values()]
+    const members = screenListings([...tickers.values()]
       .filter((ticker) => ticker.metadata.watchlists.includes(watchlist.id))
-      .map((ticker) => ticker.metadata.ticker));
+      .map((ticker) => ticker.metadata));
     return members.length ? readWatchlistArgument(typed, watchlist, members, MAX_SYMBOL_VALUES) : null;
   }, [tickers, watchlists]);
   // How a saved criterion read a watchlist's name stays on its row until the criterion changes.
@@ -937,7 +938,12 @@ function EquityScreenView({
                   }}
                   onActivate={(row) => setEditing(Number(row.id))}
                   renderCell={(row) => {
-                    const note = criterionNotes.noteFor(row);
+                    // A symbol criterion also says which listed members the screener matched as another line, or not at all.
+                    const listed = row.criterion.field === "symbol" && data
+                      && screenDefinitionKey(data.definition) === screenDefinitionKey(definition)
+                      ? listingReadNotes(data.listings?.filter((read) => "value" in row.criterion && (row.criterion.value as readonly unknown[]).includes(read.value)))
+                      : [];
+                    const note = [criterionNotes.noteFor(row), ...listed].filter(Boolean).join(" ");
                     return { text: criterionText(row.criterion), ...(note ? { note } : {}) };
                   }}
                   sortColumnId={null}
