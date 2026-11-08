@@ -93,6 +93,21 @@ export function evaluateAlert(alert: AlertRule, currentPrice: number): boolean {
   }
 }
 
+/**
+ * Whether an above or below rule already holds at a reading. Such a rule is a
+ * state, not a crossing (`evaluateAlert`, `metricTrigger`), so one that holds
+ * when it is added goes off at its first check. `crosses`, a moving-average
+ * cross and an RRG quadrant wait for the next move through their level.
+ */
+export function levelAlreadyMet(
+  condition: AlertCondition,
+  value: number | null | undefined,
+  level: number | null | undefined,
+): boolean {
+  if (value == null || level == null || !Number.isFinite(value) || !Number.isFinite(level)) return false;
+  return condition === "above" ? value > level : condition === "below" ? value < level : false;
+}
+
 export function formatAlertDescription(alert: AlertRule): string {
   if (alert.metric) return metricDescription(alert);
   if (alert.move) return `${alertListing({ symbol: alert.symbol, exchange: alert.exchange })} ${moveRuleWords(alert)} from the previous close`;

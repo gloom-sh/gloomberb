@@ -45,7 +45,7 @@ import {
   type CalendarEventChoice,
   type ReleaseRename,
 } from "./calendar-events";
-import { createAlert, formatAlertDescription, rearmAlert, sameLevelRule } from "./alert-engine";
+import { createAlert, formatAlertDescription, levelAlreadyMet, rearmAlert, sameLevelRule } from "./alert-engine";
 import { alertPriceText } from "./price-text";
 import { ALERTS_PLUGIN_ID } from "./constants";
 import { MAX_EVENT_ALERTS, eventAlertTarget, toggleEventAlert, writeEventAlertStores, type EventAlertRule } from "./events";
@@ -205,7 +205,7 @@ function releaseRequest(args: readonly string[], country: CountryFilter | null, 
 }
 
 /**
- * Reads `alerts add` arguments: `<symbol> above 250`, `<symbol> earnings`,
+ * Reads `alerts add` arguments: `<symbol> above 400`, `<symbol> earnings`,
  * `<symbol> earnings results`, or a release in the economic calendar by name
  * (`CPI`, `FOMC`, `NBS PMI`, `CN PMI`), with `--days` (already taken out of
  * `args`, `null` when the flag came without a value) and `--country` for the
@@ -773,16 +773,16 @@ export const alertsCliCommand: CliCommandDef = {
     ],
     examples: [
       "alerts",
-      "alerts add AAPL above 250",
+      "alerts add AAPL above 400",
       "alerts add GBPUSD=X moves 0.5%",
       "alerts add HSBA.L BARC.L down 3%",
       "alerts add --watchlist Book up 3%",
       "alerts add VOD.L below 70p",
       "alerts add AAPL pe below 25",
-      "alerts add AAPL ps above 8",
+      "alerts add AAPL ps above 12",
       'alerts add NVDA "rsi(14)" under 30',
       'alerts add SPY "ma(50)" crosses above "ma(200)"',
-      'alerts add TSLA closes below "ma(200)"',
+      'alerts add TSLA closes above "ma(200)"',
       "alerts add XLK/SPY above 0.25",
       "alerts add XLE rrg leading",
       "alerts add SMH rrg weakening --benchmark QQQ",
@@ -1110,7 +1110,7 @@ export const alertsCliCommand: CliCommandDef = {
           { key: "createdAt", header: "Created", format: (value) => String(value ?? "") },
           { key: "triggeredAt", header: "Triggered", optional: true },
         ],
-        empty: "No alerts. Add one with gloom alerts add AAPL above 250, alerts add CRWV earnings --days 3, alerts add CPI --days 1, or alerts add CN PMI.",
+        empty: "No alerts. Add one with gloom alerts add AAPL above 400, alerts add CRWV earnings --days 3, alerts add CPI --days 1, or alerts add CN PMI.",
       });
       return;
     }
@@ -1230,12 +1230,25 @@ export const alertsCliCommand: CliCommandDef = {
         // A daily rule is first judged on the first close after it was set, once that close has settled.
         // An RRG quadrant, on the last session of that week.
         const weekly = alert.metric?.kind === "rrg";
-        const firstCheck = alert.metric && isDailyMetric(alert.metric) ? firstDailyCheck(alert.exchange, now, weekly) : null;
+        const daily = !!alert.metric && isDailyMetric(alert.metric);
+        const firstCheck = daily ? firstDailyCheck(alert.exchange, now, weekly) : null;
+        // The price a price alert is checked on, as the far-target check measures against.
+        const checkedPrice = !alert.metric && priced && Number.isFinite(priced.quote.price) && priced.quote.price !== 0 ? priced.quote.price : null;
+        // An above or below rule that already holds goes off at its first check, not on the next cross: said with the reading.
+        const alreadyMet = alert.metric
+          ? levelAlreadyMet(alert.condition, alert.lastCheckedPrice, alert.lastCheckedTarget)
+          : levelAlreadyMet(alert.condition, checkedPrice, alert.targetPrice);
+        const level = alert.metric?.kind === "close_ma" ? "it" : alert.metric ? String(alert.targetPrice) : alertPriceText(alert, alert.targetPrice);
+        const met = alreadyMet ? `, already ${alert.condition} ${level}${daily ? "" : ", so it goes off at the next check"}` : "";
+        const goesOffThen = daily && alreadyMet ? ` It goes off then if it is still ${alert.condition}.` : "";
         const notes = [
-          alert.metric ? unread ? `Not read yet: ${unread.replace(/\.$/, "")}.` : `${metricReadingNote(alert)}.` : null,
-          firstCheck ? `First checked on the ${firstCheck.day} ${weekly ? "weekly close" : "close"}, from ${isoUtc(firstCheck.at).slice(11, 16)} UTC.` : null,
+          alert.metric ? unread ? `Not read yet: ${unread.replace(/\.$/, "")}.` : `${metricReadingNote(alert)}${met}.`
+            : checkedPrice != null ? `Last price ${alertPriceText(alert, checkedPrice)}${met}.` : null,
+          firstCheck ? `First checked on the ${firstCheck.day} ${weekly ? "weekly close" : "close"}, from ${isoUtc(firstCheck.at).slice(11, 16)} UTC.${goesOffThen}`
+            : goesOffThen ? `It goes off on the first close it is checked on if it is still ${alert.condition}.` : null,
         ].filter(Boolean).join(" ");
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert,
+          ...alreadyMet ? { alreadyMet } : {},
           ...firstCheck ? { firstCheck: { close: firstCheck.day, at: isoUtc(firstCheck.at) } } : {},
           ...unread ? { unread } : {} }, ...(read.length > 0 ? { warnings: read } : {}) }, {
           // The delivery, as docs/usage.md states it, before any full stop, which after the price would read as part of it (below 81.).
