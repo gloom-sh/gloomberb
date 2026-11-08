@@ -36,18 +36,23 @@ import {
   formatHkRate,
   HK_SEARCH_FIELDS,
   HK_SORT_COLUMN_IDS,
-  hkAverage,
-  hkHighest,
+  hkDatasetPage,
+  hkDateText,
+  hkRate,
+  hkSize,
+  hkSizeWorkedOut,
   hkSortColumn,
   hkSortName,
   hkTenderId,
   hkTenderName,
   hkTenderType,
+  isSpread,
   loadHkTenders,
   visibleHkTenders,
   hkWindowStart,
   type HkColumn,
   type HkSortPreference,
+  type HkTendersBoard,
 } from "./hk";
 import {
   AUCTION_FILTERS,
@@ -80,66 +85,71 @@ function renderTenderCell(tender: HkTender, column: HkColumn, rowState: { select
   const selected = rowState.selected ? colors.selectedText : undefined;
   switch (column.id) {
     case "date":
-      return {
-        text: showYear ? tender.tenderDate : formatShortDate(tender.tenderDate, { year: false, utc: true, fallback: "\u2014" }),
-        color: selected ?? colors.textDim,
-      };
+      return { text: hkTableDate(tender.date, showYear), color: selected ?? colors.textDim };
     case "type":
       return { text: hkTenderType(tender), color: typeColor(tender, rowState.selected), attributes: TextAttributes.BOLD };
     case "term":
       return { text: tender.term, color: selected ?? colors.text };
     case "rate":
-      return { text: formatHkRate(tender, hkHighest(tender), "—"), color: selected ?? colors.textBright };
-    case "average":
-      return { text: formatHkRate(tender, hkAverage(tender), "—"), color: selected ?? colors.text };
+      return { text: formatHkRate(tender, hkRate(tender), "—"), color: selected ?? colors.textBright };
     case "btc":
-      return { text: tender.bidToCover == null ? "—" : tender.bidToCover.toFixed(2), color: selected ?? colors.text };
+      return { text: tender.bidToCover.toFixed(2), color: selected ?? colors.text };
     case "size":
-      return { text: formatHkAmount(tender, tender.allotted), color: selected ?? colors.textDim };
+      return { text: formatHkAmount(tender, hkSize(tender), "—", hkSizeWorkedOut(tender)), color: selected ?? colors.textDim };
     case "cusip":
-      return { text: tender.issue, color: selected ?? colors.textDim };
+      return { text: tender.issue ?? "", color: selected ?? colors.textDim };
   }
 }
 
+/** A column of days, short ("Oct 28") or with the year; a bond's issue month as "May" or "2026-05". */
+function hkTableDate(date: string, showYear: boolean): string {
+  if (showYear) return date;
+  if (date.length === 7) return hkDateText(date).replace(/ \d{4}$/, "");
+  return formatShortDate(date, { year: false, utc: true, fallback: "\u2014" });
+}
+
 const percent = (value: number | null) => value == null ? "—" : `${value.toFixed(3)}%`;
-const price = (value: number | null) => value == null ? "—" : value.toFixed(2);
+const times = (value: number | null) => value == null ? "—" : value.toFixed(2);
 
 function HkTenderDetail({ tender, width }: { tender: HkTender; width: number }) {
   const row = (label: string, value: string) => (
     <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label={label} value={value} />
   );
-  const spread = tender.highestYield == null && tender.highestSpread != null;
   return (
     <ScrollBox flexGrow={1} scrollY>
       <Box flexDirection="column" paddingX={1} width={width}>
         <Box flexDirection="row" height={1} gap={2}>
-          <Text fg={colors.textDim}>{formatShortDate(tender.tenderDate, { utc: true, fallback: "\u2014" })}</Text>
-          <Text fg={colors.textDim}>{tender.issue}</Text>
-          {tender.stockCode && <Text fg={colors.textDim}>{`stock code ${tender.stockCode}`}</Text>}
+          <Text fg={colors.textDim}>{`issued ${hkDateText(tender.date)}`}</Text>
+          {tender.issue && <Text fg={colors.textDim}>{tender.issue}</Text>}
           {tender.reopening && <Text fg={colors.textDim}>re-opening</Text>}
         </Box>
         <Box height={1} />
-        {spread ? <>
-          {row("Highest spread", formatHkRate(tender, hkHighest(tender), "—"))}
-          {row("Average spread", formatHkRate(tender, hkAverage(tender), "—"))}
-        </> : <>
-          {row("Highest yield", percent(tender.highestYield))}
-          {row("Average yield", percent(tender.averageYield))}
-          {tender.lowestPrice != null && row("Lowest price", price(tender.lowestPrice))}
-          {tender.averagePrice != null && row("Average price", price(tender.averagePrice))}
-          {tender.averageTenderYield != null && row("Average tender yield", percent(tender.averageTenderYield))}
-        </>}
-        {row("Bid-to-cover", tender.bidToCover == null ? "—" : tender.bidToCover.toFixed(2))}
-        {tender.proRata != null && row("Pro rata at highest", `${tender.proRata}%`)}
+        {isSpread(tender)
+          ? row("Spread over HONIA", formatHkRate(tender, hkRate(tender), "—"))
+          : row("Average yield", percent(tender.averageYield))}
+        {/* An RMB bond's average yield is annualised; HKMA gives it semi-annualised too. */}
+        {tender.averageYieldSemiAnnual != null && row("Semi-annual basis", percent(tender.averageYieldSemiAnnual))}
+        {row("Bid-to-cover", times(tender.bidToCover))}
+        {tender.overSubscription != null && row("Over-subscription", times(tender.overSubscription))}
         <Box height={1} />
         {row("Applied", formatHkAmount(tender, tender.applied))}
-        {row("Allotted", formatHkAmount(tender, tender.allotted))}
+        {tender.allotted != null && row("Allotted", formatHkAmount(tender, tender.allotted))}
+        {tender.offered != null && row("Offered (worked out)", formatHkAmount(tender, tender.offered, "—", true))}
         {tender.coupon != null && row("Coupon", percent(tender.coupon))}
-        {row("Issue date", tender.issueDate ?? "—")}
-        {row("Maturity", tender.maturityDate ?? "—")}
+        {tender.maturity && row("Maturity", hkDateText(tender.maturity))}
+        <Box height={1} />
+        <Text fg={colors.textDim}>Source: HKMA</Text>
       </Box>
     </ScrollBox>
   );
+}
+
+/** How far HKMA's figures run for the paper a group lists: they come a month at a time, after the tenders. */
+function runsToFor(runsTo: HkTendersBoard["runsTo"] | undefined, filter: AuctionFilter): string | null {
+  if (!runsTo) return null;
+  const date = filter === "bill" ? runsTo.efb : filter === "note" ? runsTo.efn : filter === "bond" ? runsTo.hkgb
+    : [runsTo.efb, runsTo.efn].filter((value): value is string => !!value).sort().at(-1) ?? runsTo.hkgb;
+  return date ? hkDateText(date) : null;
 }
 
 interface HkTendersViewProps {
@@ -156,7 +166,7 @@ interface HkTendersViewProps {
   marketFilter: QueryBarSelectFilter<string>;
 }
 
-/** AUCT's Hong Kong market: HKMA's tender results for EF Bills and Notes and Government Bonds. */
+/** AUCT's Hong Kong market: HKMA's tender figures for EF Bills and Notes and Government Bonds, from its Open API. */
 export function HkTendersView({
   focused, width, height, historyDays, filter, setFilter, searchQuery, setSearchQuery, sortValue, setSortValue, marketFilter,
 }: HkTendersViewProps) {
@@ -229,19 +239,25 @@ export function HkTendersView({
     renderTenderCell(tender, column, rowState, showYear)
   ), [showYear]);
 
+  const runsTo = runsToFor(resource.data?.runsTo, filter);
   const info = useMemo(() => {
     const segments = loadingErrorFooterInfo(loading, error);
+    // HKMA's terms ask for the credit; its figures lag the tenders, so the footer says how far they run.
+    if (tenders.length) segments.push({ id: "source", parts: [{ text: "Source: HKMA" }] });
+    if (runsTo) segments.push({ id: "runs-to", parts: [{ text: `figures to ${runsTo}` }], asOf: true });
     if (savedAt != null) segments.push(...savedCopyFooterInfo([savedAt]));
     else if (stale) segments.push(STALE_SEGMENT);
     if (fetchedAt && savedAt == null) segments.push(ageFooterSegment(formatRelativeAge(fetchedAt)));
     return segments;
-  }, [error, fetchedAt, loading, savedAt, stale]);
+  }, [error, fetchedAt, loading, runsTo, savedAt, stale, tenders.length]);
   const hints = useMemo(() => detailOpen || tenders.length === 0 ? [] : [
     { id: "search", key: "/", label: "search", onPress: focusSearch },
     { id: "filter", key: "f", label: "ilter", onPress: cycleFilter },
   ], [cycleFilter, detailOpen, focusSearch, tenders.length]);
-  // `o` opens the selected tender's release on HKMA's site.
-  useExternalLinkFooter({ registrationId: TREASURY_AUCTIONS_PANE_ID, focused: focused && !searchFocused, url: selected?.url, info, hints });
+  // `o` opens HKMA's page for the dataset the selected tender came from.
+  useExternalLinkFooter({
+    registrationId: TREASURY_AUCTIONS_PANE_ID, focused: focused && !searchFocused, url: selected ? hkDatasetPage(selected) : undefined, info, hints,
+  });
 
   usePaneMenuItems("treasury-auctions:sort-keys", () => detailOpen || tenders.length === 0 ? null : [
     { id: "sort-next", label: "Next Sort Column", accelerator: "]", onSelect: () => cycleSort(1) },

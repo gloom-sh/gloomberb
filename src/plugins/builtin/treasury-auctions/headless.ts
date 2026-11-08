@@ -162,10 +162,10 @@ function emptyNote(query: string, filter: AuctionFilter, historyDays: AuctionHis
   return `No auctions ${searched}${group} in ${auctionHistoryPhrase(historyDays)}. Search by ${AUCTION_SEARCH_FIELDS}.`;
 }
 
-/** Hong Kong's tenders when `--market hk` asks for them or the search names their paper (`HK 10Y`, `EFB`). */
+/** The market `--market` names; without it Hong Kong's when the search names its paper (`HK 10Y`, `EFB`), else the US. */
 function marketOf(args: Pick<HeadlessPaneLoadArgs, "argument" | "options">) {
-  const named = auctionSearchMarket(typeof args.argument === "string" ? args.argument : "").market;
-  return named ?? (isAuctionMarket(args.options.market) ? args.options.market : "us");
+  if (isAuctionMarket(args.options.market)) return args.options.market;
+  return auctionSearchMarket(typeof args.argument === "string" ? args.argument : "").market ?? "us";
 }
 
 export function createTreasuryAuctionsHeadless(
@@ -193,10 +193,10 @@ export function createTreasuryAuctionsHeadless(
       },
       {
         key: "market",
-        description: "us: US Treasury auctions; hk: Hong Kong government paper tenders (EF Bills and Notes, HKSAR Government Bonds) as the Hong Kong Monetary Authority publishes their results. A search naming HK, EFB or HKGB picks hk.",
+        // No default: a search naming HK, EFB or RMB picks hk unless --market says otherwise.
+        description: "us (without it, unless the search names Hong Kong's paper): US Treasury auctions; hk: Hong Kong government paper tenders (EF Bills and Notes, HKSAR Government Bonds) from HKMA's Open API. A search naming HK, EFB, HKGB or RMB picks hk.",
         type: "enum",
         values: AUCTION_MARKETS.map((entry) => ({ value: entry.value })),
-        defaultValue: "us",
         example: "--market hk",
         pluginState: { pluginId: FIXED_INCOME_VIEW_STATE.treasuryAuctions, key: "market" },
       },
@@ -238,13 +238,16 @@ export function createTreasuryAuctionsHeadless(
       const historyDays = auctionHistoryWindow({ historyDays: args.options.historyDays });
       const filter = args.options.filter as AuctionFilter;
       if (marketOf(args) === "hk") {
-        return hkTendersReport(await (dependencies.hk ?? defaultDependencies.hk!)(historyDays), {
-          search: typeof args.argument === "string" ? args.argument : "",
-          filter,
-          window: historyDays,
-          view: args.options.view === "after" ? "after" : "results",
-          sort: typeof args.options.sort === "string" ? args.options.sort : null,
-        });
+        return {
+          ...hkTendersReport(await (dependencies.hk ?? defaultDependencies.hk!)(historyDays), {
+            search: typeof args.argument === "string" ? args.argument : "",
+            filter,
+            window: historyDays,
+            view: args.options.view === "after" ? "after" : "results",
+            sort: typeof args.options.sort === "string" ? args.options.sort : null,
+          }),
+          appliedOptions: { market: "hk" },
+        };
       }
       const sortColumn = typeof args.options.sort === "string" ? auctionSortColumn(args.options.sort) : null;
       // A sort by an after-view column is a request for that view.
@@ -290,9 +293,11 @@ export function createTreasuryAuctionsHeadless(
           size: auctionSize(auction),
           ...(after ? after.get(auction.id) : {}),
         })),
+        appliedOptions: { market: "us" },
         metadata: {
           fetchedAt: result.fetchedAt,
           stale: result.stale,
+          market: "us",
           historyDays,
           filter,
           view,

@@ -1199,10 +1199,10 @@ export class CloudDataApi {
     return this.request<FxInterventionsPayload>("/cloud/econ/fx-interventions", { signal: signalWithTimeout(signal, 20_000) });
   }
 
-  /** Hong Kong government paper tender results as HKMA publishes them, from `from` (YYYY-MM-DD), or all of them. */
-  async getCloudHkTenders(from: string | null, signal?: AbortSignal): Promise<HkTendersPayload> {
-    const query = from ? `?${new URLSearchParams({ from })}` : "";
-    return this.request<HkTendersPayload>(`/cloud/econ/hk-tenders${query}`, { signal: signalWithTimeout(signal, 20_000) });
+  /** Hong Kong government paper tender results from HKMA's Open API, issued on or after `from` (YYYY-MM-DD), at most `limit`. */
+  async getCloudHkTenders(from: string, limit: number, signal?: AbortSignal): Promise<HkTendersPayload> {
+    const query = new URLSearchParams({ from, limit: String(limit) });
+    return this.request<HkTendersPayload>(`/cloud/econ/hk-tenders?${query}`, { signal: signalWithTimeout(signal, 20_000) });
   }
 
   /** A live scan's matches against Gloom Cloud's newest market-wide snapshot for this account's tier. */

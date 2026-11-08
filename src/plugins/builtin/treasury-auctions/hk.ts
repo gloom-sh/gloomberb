@@ -1,10 +1,12 @@
 import { apiClient } from "../../../api-client";
+import { ApiRequestError } from "../../../api-client/errors";
 import type { HkTender, HkTendersPayload } from "../../../api-client/hk-tenders";
 import type { DataTableColumn } from "../../../components";
 import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import { createPluginCache, savedCopyForTransientFailure } from "../../../data/plugin-cache";
 import { servedFromSavedCopy } from "../../../data/saved-copies";
 import type { PluginPersistence } from "../../../types/plugin";
+import { formatShortDate } from "../../../utils/datetime-format";
 import { displayWidth, formatCompact } from "../../../utils/format";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { AUCTION_HISTORY_ALL, type AuctionHistoryWindow } from "./client";
@@ -12,9 +14,9 @@ import type { AuctionFilter } from "./model";
 
 /**
  * Hong Kong government paper tenders in AUCT: Exchange Fund Bills and Notes
- * and HKSAR Institutional Government Bonds, as the Hong Kong Monetary
- * Authority publishes each tender's result, served by Gloom Cloud
- * (`/cloud/econ/hk-tenders`).
+ * and HKSAR institutional Government Bonds, from the Hong Kong Monetary
+ * Authority's Open API (its Monthly Statistical Bulletin's tender figures),
+ * served by Gloom Cloud (`/cloud/econ/hk-tenders`) and credited "Source: HKMA".
  */
 
 export type AuctionMarket = "us" | "hk";
@@ -29,7 +31,7 @@ export const isAuctionMarket = (value: unknown): value is AuctionMarket => value
 /** Words that only pick the market: `AUCT HK 10Y` searches Hong Kong's paper for 10Y. */
 const HK_MARKET_WORDS = /\b(hong\s*kong|hk|hkma|hksar)\b/gi;
 /** Paper only Hong Kong issues: it picks the market and stays the search. */
-const HK_PAPER_WORDS = /\b(efbs?|efns?|exchange\s+fund|hkgbs?|hkd|honia)\b/i;
+const HK_PAPER_WORDS = /\b(efbs?|efns?|exchange\s+fund|hkgbs?|hkd|honia|rmb|cnh)\b/i;
 
 /**
  * The market a search names, and the search left once the words that only
@@ -53,11 +55,30 @@ const PAPER_TYPES: Record<HkTender["paper"], { type: string; name: string; filte
 
 export const hkTenderType = (tender: HkTender) => PAPER_TYPES[tender.paper]?.type ?? tender.paper.toUpperCase();
 export const hkTenderName = (tender: HkTender) => `${PAPER_TYPES[tender.paper]?.name ?? tender.paper}${tender.currency === "CNH" ? " (RMB)" : ""}`;
-/** A tender's row id: one issue is sold once a day. */
-export const hkTenderId = (tender: HkTender) => `${tender.tenderDate}|${tender.issue}`;
+/** A tender's row id: its issue day, paper, currency and issue (an EF tender's tenor, HKMA naming no EF issue). */
+export const hkTenderId = (tender: HkTender) => `${tender.date}|${tender.paper}|${tender.currency}|${tender.issue ?? tender.term}`;
+
+/** HKMA's page documenting the dataset a tender came from, which `o` opens. */
+const DATASET_PAGES: ReadonlyArray<[RegExp, string]> = [
+  [/^efb-/, "efbn/efbn-tender-results-efb"],
+  [/^efn-/, "efbn/efbn-tender-results-efn"],
+  [/^ibip-/, "gov-bond/tender-results-gov-bonds-ibip"],
+  [/^hkgb-hkd$/, "ibpgsbp/tender-results-gov-bonds-ibpgsbp-hkd"],
+  [/^hkgb-rmb$/, "ibpgsbp/tender-results-gov-bonds-ibpgsbp-rmb"],
+];
+export function hkDatasetPage(tender: HkTender): string | undefined {
+  const path = DATASET_PAGES.find(([pattern]) => pattern.test(tender.dataset))?.[1];
+  return path ? `https://apidocs.hkma.gov.hk/documentation/market-data-and-statistics/monthly-statistical-bulletin/${path}/` : undefined;
+}
+
+const monthName = new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+/** "Oct 28, 2026", or "May 2026" for a bond's issue month. */
+export const hkDateText = (date: string) => date.length === 7
+  ? Number.isFinite(Date.parse(`${date}-01T00:00:00Z`)) ? monthName.format(new Date(`${date}-01T00:00:00Z`)) : date
+  : formatShortDate(date, { utc: true, fallback: date });
 
 /** What the search box understands in Hong Kong's tenders. */
-export const HK_SEARCH_FIELDS = "paper (EFB, HKGB), tenor (3M, 10Y), issue, stock code, RMB, or date (YYYY-MM-DD)";
+export const HK_SEARCH_FIELDS = "paper (EFB, HKGB), tenor (3M, 10Y), issue, HKD or RMB, or date (YYYY-MM-DD)";
 
 const paperWords = (words: readonly string[], papers: readonly HkTender["paper"][]) =>
   words.map((word): [string, ReadonlySet<HkTender["paper"]>] => [word, new Set(papers)]);
@@ -70,14 +91,18 @@ const PAPER_WORDS: ReadonlyMap<string, ReadonlySet<HkTender["paper"]>> = new Map
 const CURRENCY_WORDS: ReadonlyMap<string, HkTender["currency"]> = new Map([["hkd", "HKD"], ["rmb", "CNH"], ["cnh", "CNH"], ["cny", "CNH"]]);
 const TENOR = /^(\d{1,2}) ?-? ?(y|yr|yrs|years?|m|mo|mos|months?)$/;
 
+/** A term's length in months: 3-Month is 3, 10-Year 120. */
+const termMonths = (term: string) => {
+  const own = /^(\d+)-(Month|Year)$/.exec(term);
+  return own ? Number(own[1]) * (own[2] === "Year" ? 12 : 1) : null;
+};
+
 /** "3M" is the 3-Month bill; "1Y" the 12-Month bill as well as a 1-Year note. */
 function matchesTenor(tender: HkTender, word: string): boolean | null {
   const tenor = TENOR.exec(word);
   if (!tenor) return null;
   const count = Number(tenor[1]);
-  const months = tenor[2]![0] === "y" ? count * 12 : count;
-  const own = /^(\d+)-(Month|Year)$/.exec(tender.term);
-  return !!own && (own[2] === "Year" ? Number(own[1]) * 12 : Number(own[1])) === months;
+  return termMonths(tender.term) === (tenor[2]![0] === "y" ? count * 12 : count);
 }
 
 function matchesWord(tender: HkTender, word: string): boolean {
@@ -88,11 +113,10 @@ function matchesWord(tender: HkTender, word: string): boolean {
   if (currency) return tender.currency === currency;
   const tenor = matchesTenor(tender, word);
   if (tenor != null) return tenor;
-  return tender.tenderDate.startsWith(word) || tender.issue.toLowerCase().includes(word)
-    || !!tender.stockCode?.includes(word) || tender.term.toLowerCase().includes(word);
+  return tender.date.startsWith(word) || !!tender.issue?.toLowerCase().includes(word) || tender.term.toLowerCase().includes(word);
 }
 
-/** Every word of the search names the tender (`10Y RMB`, `EFB 2026-11`); words that only pick the market are left out. */
+/** Every word of the search names the tender (`10Y RMB`, `EFB 2026-10`); words that only pick the market are left out. */
 function matchesHkSearch(tender: HkTender, query: string): boolean {
   const words = auctionSearchMarket(query).search.toLowerCase().split(/\s+/).filter(Boolean);
   return words.every((word) => matchesWord(tender, word));
@@ -101,25 +125,28 @@ function matchesHkSearch(tender: HkTender, query: string): boolean {
 /** A floating rate note's spread over HONIA, in bp, stands where another's yield does. */
 const spreadBp = (value: number | null) => value == null ? null : Math.round(value * 1000) / 10;
 
-/** The highest accepted yield, or a floating rate note's highest spread in bp. */
-export const hkHighest = (tender: HkTender) => tender.highestYield ?? spreadBp(tender.highestSpread);
-export const hkAverage = (tender: HkTender) => tender.averageYield ?? spreadBp(tender.averageSpread);
-export const isSpread = (tender: HkTender) => tender.highestYield == null && tender.averageYield == null
-  && (tender.highestSpread != null || tender.averageSpread != null);
+/** The average accepted yield, or a floating rate note's spread in bp. */
+export const hkRate = (tender: HkTender) => tender.averageYield ?? spreadBp(tender.spread);
+export const isSpread = (tender: HkTender) => tender.averageYield == null && tender.spread != null;
 
-/** `2.840%`, or `26.0bp` for a floating rate note's spread, as a US FRN's reads. */
+/** `2.827%`, or `20.0bp` for a floating rate note's spread, as a US FRN's reads. */
 export function formatHkRate(tender: HkTender, value: number | null, empty: string): string {
   if (value == null) return empty;
   return isSpread(tender) ? `${value.toFixed(1)}bp` : `${value.toFixed(3)}%`;
 }
 
-/** The amount in its currency: HK$66.3B, RMB750M. */
-export function formatHkAmount(tender: HkTender, value: number | null, empty = "—"): string {
+/** The size: a bond's amount allotted, EF paper's amount offered as worked out from its applications. */
+export const hkSize = (tender: HkTender) => tender.allotted ?? tender.offered;
+/** EF paper's size is worked out, so the table marks it about (≈). */
+export const hkSizeWorkedOut = (tender: HkTender) => tender.allotted == null && tender.offered != null;
+
+/** The amount in its currency: HK$66.3B, RMB750M; `≈HK$65.7B` for EF paper's worked-out size. */
+export function formatHkAmount(tender: HkTender, value: number | null, empty = "—", about = false): string {
   if (value == null) return empty;
-  return `${tender.currency === "CNH" ? "RMB" : "HK$"}${formatCompact(value)}`;
+  return `${about ? "≈" : ""}${tender.currency === "CNH" ? "RMB" : "HK$"}${formatCompact(value)}`;
 }
 
-export type HkColumnId = "date" | "type" | "term" | "rate" | "average" | "btc" | "size" | "cusip";
+export type HkColumnId = "date" | "type" | "term" | "rate" | "btc" | "size" | "cusip";
 
 export interface HkColumn extends DataTableColumn {
   id: HkColumnId;
@@ -133,15 +160,14 @@ export interface HkSortPreference {
 export const DEFAULT_HK_SORT: HkSortPreference = { columnId: "date", direction: "desc" };
 
 /** The order [ and ] step through the columns. */
-export const HK_SORT_COLUMN_IDS: readonly HkColumnId[] = ["date", "type", "term", "rate", "average", "btc", "size", "cusip"];
+export const HK_SORT_COLUMN_IDS: readonly HkColumnId[] = ["date", "type", "term", "rate", "btc", "size", "cusip"];
 
-/** `--sort` and the pane's kept sort, by name: the US names that mean the same here, and `average`. */
+/** `--sort` and the pane's kept sort, by name: the US names that mean the same here. */
 const HK_SORT_NAMES: ReadonlyArray<{ names: readonly string[]; column: HkColumnId }> = [
   { names: ["date"], column: "date" },
   { names: ["type"], column: "type" },
   { names: ["term"], column: "term" },
-  { names: ["rate", "yield", "high", "highest"], column: "rate" },
-  { names: ["average", "avg"], column: "average" },
+  { names: ["rate", "yield", "average", "avg"], column: "rate" },
   { names: ["btc", "b/c", "bid-to-cover", "bc"], column: "btc" },
   { names: ["size"], column: "size" },
   { names: ["cusip", "issue"], column: "cusip" },
@@ -159,29 +185,56 @@ export const hkSortName = (column: HkColumnId) => HK_SORT_NAMES.find((entry) => 
 export const firstHkSortDirection = (column: HkColumnId): SortDirection =>
   column === "type" || column === "term" || column === "cusip" ? "asc" : "desc";
 
+/** A month (a Government Bond's issue) sorts after the days of that month. */
+const sortDay = (date: string) => date.length === 7 ? `${date}-00` : date;
+
 function hkSortValue(tender: HkTender, column: HkColumnId): number | string | null {
   switch (column) {
-    case "date": return tender.tenderDate;
+    case "date": return sortDay(tender.date);
     case "type": return hkTenderType(tender);
-    case "term": return tender.days;
-    case "rate": return hkHighest(tender);
-    case "average": return hkAverage(tender);
+    case "term": return termMonths(tender.term);
+    case "rate": return hkRate(tender);
     case "btc": return tender.bidToCover;
-    case "size": return tender.allotted;
+    case "size": return hkSize(tender);
     case "cusip": return tender.issue;
   }
 }
+
+/**
+ * Figures that do not compare are ranked apart, in either direction: yields
+ * before floating rate notes' spreads, HK$ sizes before RMB ones.
+ */
+function hkSortGroup(tender: HkTender, column: HkColumnId): number {
+  if (column === "rate") return isSpread(tender) ? 1 : 0;
+  if (column === "size") return tender.currency === "CNH" ? 1 : 0;
+  return 0;
+}
+
+/** Hong Kong's day, which a window counts back from: its tenders are dated in Hong Kong. */
+const hongKongDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Hong_Kong", year: "numeric", month: "2-digit", day: "2-digit" });
+
+/** The first day a window lists, counted back from today in Hong Kong: null for ALL. */
+export function hkWindowStart(window: AuctionHistoryWindow, now = Date.now()): string | null {
+  if (window === AUCTION_HISTORY_ALL) return null;
+  const today = Date.parse(`${hongKongDay.format(now)}T00:00:00Z`);
+  return new Date(today - window * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** A month row (a Government Bond's issue) is in a window that starts within or before its month. */
+export const hkOnOrAfter = (date: string, from: string) => date.length === 7 ? date >= from.slice(0, 7) : date >= from;
 
 /** The tenders a group, a search and a window keep, in the sort's order; ties keep the newest first. */
 export function visibleHkTenders(
   tenders: readonly HkTender[],
   options: { filter: AuctionFilter; query: string; sort: HkSortPreference; from?: string | null },
 ): HkTender[] {
+  const { columnId, direction } = options.sort;
   return tenders
     .filter((tender) => (options.filter === "all" || PAPER_TYPES[tender.paper]?.filter === options.filter)
-      && (!options.from || tender.tenderDate >= options.from) && matchesHkSearch(tender, options.query))
-    .sort((left, right) => compareSortValues(hkSortValue(left, options.sort.columnId), hkSortValue(right, options.sort.columnId), options.sort.direction)
-      || right.tenderDate.localeCompare(left.tenderDate) || left.issue.localeCompare(right.issue));
+      && (!options.from || hkOnOrAfter(tender.date, options.from)) && matchesHkSearch(tender, options.query))
+    .sort((left, right) => hkSortGroup(left, columnId) - hkSortGroup(right, columnId)
+      || compareSortValues(hkSortValue(left, columnId), hkSortValue(right, columnId), direction)
+      || sortDay(right.date).localeCompare(sortDay(left.date)) || hkTenderId(left).localeCompare(hkTenderId(right)));
 }
 
 /** The pane's columns, as wide as what they list; the issue closes the row where the pane has room for it. */
@@ -189,64 +242,85 @@ export function buildHkColumns(options: { showYear?: boolean; rows?: readonly Hk
   const { showYear = false, rows = [], width } = options;
   const widest = (least: number, text: (tender: HkTender) => string) => Math.max(least, ...rows.map((tender) => displayWidth(text(tender))));
   const columns: HkColumn[] = [
-    { id: "date", label: "DATE", width: showYear ? 10 : 6, align: "left" },
-    { id: "type", label: "TYPE", width: 4, align: "left" },
+    { id: "date", label: "DATE", width: showYear ? 10 : 6, align: "left", title: "Issue day (a Government Bond's issue month): the business day after the tender" },
+    { id: "type", label: "TYPE", width: 6, align: "left" },
     { id: "term", label: "TERM", width: widest(7, (tender) => tender.term), align: "left" },
-    { id: "rate", label: "HIGH", width: widest(6, (tender) => formatHkRate(tender, hkHighest(tender), "—")), align: "right",
-      title: "Highest accepted yield; a floating rate note's highest spread over HONIA, bp" },
-    { id: "average", label: "AVG", width: widest(6, (tender) => formatHkRate(tender, hkAverage(tender), "—")), align: "right",
-      title: "Average accepted yield; a floating rate note's average spread over HONIA, bp" },
+    { id: "rate", label: "RATE", width: widest(6, (tender) => formatHkRate(tender, hkRate(tender), "—")), align: "right",
+      title: "Average accepted yield; a floating rate note's spread over HONIA, bp" },
     { id: "btc", label: "B/C", width: 5, align: "right" },
-    { id: "size", label: "SIZE", width: widest(7, (tender) => formatHkAmount(tender, tender.allotted)), align: "right", title: "Amount allotted" },
-    { id: "cusip", label: "ISSUE", width: widest(5, (tender) => tender.issue), align: "left", flexGrow: 1 },
+    { id: "size", label: "SIZE", width: widest(7, (tender) => formatHkAmount(tender, hkSize(tender), "—", hkSizeWorkedOut(tender))), align: "right",
+      title: "A bond's amount allotted; EF paper's amount offered, worked out from its applications (≈)" },
+    { id: "cusip", label: "ISSUE", width: widest(5, (tender) => tender.issue ?? ""), align: "left", flexGrow: 1 },
   ];
   if (width == null) return columns;
   const shown = dropColumnsToFit(columns, width, ["cusip"]);
   return shown.length === columns.length ? shown : shown.map((column) => ({ ...column, flexGrow: undefined }));
 }
 
-/** The first day a window lists: null for ALL. */
-export function hkWindowStart(window: AuctionHistoryWindow, now = Date.now()): string | null {
-  return window === AUCTION_HISTORY_ALL ? null : new Date(now - window * 86_400_000).toISOString().slice(0, 10);
-}
+const DATE = /^\d{4}-\d{2}(-\d{2})?$/;
+const isNumber = (value: unknown) => typeof value === "number" && Number.isFinite(value);
+const isNumberOrNull = (value: unknown) => value === null || isNumber(value);
 
-const isDay = (value: unknown) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
-const isNumberOrNull = (value: unknown) => value === null || typeof value === "number" && Number.isFinite(value);
-
-/** A tender as this app reads it: one without its day, issue, paper or figures as numbers is no tender. */
+/** A tender as this app reads it: one without its date, paper, term or figures as numbers is no tender. */
 function readsAsTender(tender: HkTender): boolean {
-  return !!tender && isDay(tender.tenderDate) && typeof tender.issue === "string" && !!tender.issue && tender.paper in PAPER_TYPES
-    && (tender.currency === "HKD" || tender.currency === "CNH") && typeof tender.term === "string"
-    && [tender.allotted, tender.applied, tender.bidToCover, tender.averageYield, tender.highestYield, tender.averageSpread, tender.highestSpread]
-      .every(isNumberOrNull);
+  return !!tender && typeof tender.date === "string" && DATE.test(tender.date) && tender.paper in PAPER_TYPES
+    && (tender.issue === null || typeof tender.issue === "string") && (tender.currency === "HKD" || tender.currency === "CNH")
+    && typeof tender.term === "string" && typeof tender.dataset === "string" && isNumber(tender.applied) && isNumber(tender.bidToCover)
+    && [tender.allotted, tender.offered, tender.averageYield, tender.spread, tender.coupon].every(isNumberOrNull);
 }
 
-/** The reply's tenders, or an error: a reply that is not the record is no board, never an empty one. */
-function readHkTenders(payload: HkTendersPayload): HkTender[] {
-  if (!payload || payload.status !== "available" || !Array.isArray(payload.tenders)) {
-    throw new Error("Hong Kong tender results are not available yet");
-  }
-  return payload.tenders.filter(readsAsTender);
-}
-
-export interface HkTendersResult {
+/** What the HK market lists, and how far HKMA's figures run. */
+export interface HkTendersBoard {
   tenders: HkTender[];
+  /** The first issue Gloom Cloud's record holds: a wider window adds rows only past it. */
+  firstTender: string | null;
+  runsTo: HkTendersPayload["runsTo"];
+  /** The server held more tenders in the window than it sent. */
+  truncated: boolean;
+}
+
+/** HKMA's tender figures not served yet: no route (404), an empty record (503), or an answer that says nothing. */
+const HK_NOT_AVAILABLE = "Hong Kong tender results are not available yet";
+
+/** The reply's board, or an error: a reply that is not the record is no board, never an empty one. */
+function readHkBoard(payload: HkTendersPayload): HkTendersBoard {
+  if (!payload || payload.status !== "available" || !Array.isArray(payload.tenders)) throw new Error(HK_NOT_AVAILABLE);
+  return {
+    tenders: payload.tenders.filter(readsAsTender),
+    firstTender: typeof payload.firstTender === "string" ? payload.firstTender : null,
+    runsTo: {
+      efb: payload.runsTo?.efb ?? null,
+      efn: payload.runsTo?.efn ?? null,
+      hkgb: payload.runsTo?.hkgb ?? null,
+    },
+    truncated: payload.truncated === true,
+  };
+}
+
+/** A failure that only says the figures are not there yet reads as that. */
+function notAvailableYet(error: unknown): unknown {
+  const status = error instanceof ApiRequestError ? error.status : undefined;
+  const message = error instanceof Error ? error.message.trim() : "";
+  return status === 404 || status === 503 || !message ? new Error(HK_NOT_AVAILABLE) : error;
+}
+
+export interface HkTendersResult extends HkTendersBoard {
   fetchedAt: number;
   stale: boolean;
   savedAt?: number;
   refreshError?: string;
 }
 
-/** Tender results come out on tender afternoons; the server reads them every two hours. */
+/** HKMA adds its tender figures a month at a time; the server reads each dataset about twice a day. */
 const HK_CACHE_POLICY = { staleMs: 60 * 60 * 1000, expireMs: 7 * 24 * 60 * 60 * 1000 } as const;
-const hkCache = createPluginCache<HkTender[]>({
+const hkCache = createPluginCache<HkTendersBoard>({
   kind: "treasury-auctions",
   source: "hk-tenders",
-  schemaVersion: 1,
+  schemaVersion: 2,
   policy: HK_CACHE_POLICY,
-  decode: (tenders) => {
-    if (!Array.isArray(tenders)) throw new Error("Invalid cached tenders");
-    return tenders;
+  decode: (board) => {
+    if (!board || !Array.isArray(board.tenders)) throw new Error("Invalid cached tenders");
+    return board;
   },
 });
 
@@ -258,18 +332,29 @@ export function resetHkTendersPersistence(): void {
   hkCache.reset();
 }
 
-type HkTendersLoader = (from: string | null) => Promise<HkTendersPayload>;
+/** Every tender on record: HKMA's figures start in the 1990s. */
+const HK_RECORD_START = "1990-01-01";
+/** As many as the server sends: a window never comes back cut. */
+const HK_LIMIT = 10_000;
+
+type HkTendersLoader = (from: string, limit: number) => Promise<HkTendersPayload>;
 
 /** A window's tenders from Gloom Cloud, cached an hour; a saved copy answers a failure asking again may get past. */
 export async function loadHkTenders(
   force = false,
   window: AuctionHistoryWindow,
-  loader: HkTendersLoader = (from) => apiClient.getCloudHkTenders(from),
+  loader: HkTendersLoader = (from, limit) => apiClient.getCloudHkTenders(from, limit),
 ): Promise<HkTendersResult> {
-  const from = hkWindowStart(window);
-  const read = savedCopyForTransientFailure(await hkCache.load(`hk:${window}`, async () => readHkTenders(await loader(from)), { force }));
+  const from = hkWindowStart(window) ?? HK_RECORD_START;
+  const read = savedCopyForTransientFailure(await hkCache.load(`hk:${window}`, async () => {
+    try {
+      return readHkBoard(await loader(from, HK_LIMIT));
+    } catch (error) {
+      throw notAvailableYet(error);
+    }
+  }, { force }));
   const result: HkTendersResult = {
-    tenders: read.data,
+    ...read.data,
     fetchedAt: read.fetchedAt,
     stale: read.stale,
     ...(read.refreshError ? { refreshError: read.refreshError } : {}),

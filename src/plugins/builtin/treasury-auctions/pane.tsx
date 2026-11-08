@@ -75,7 +75,7 @@ import {
   type TreasuryAuction,
 } from "./types";
 import { AUCTION_MARKETS, isAuctionMarket, type AuctionMarket } from "./hk";
-import { HkTendersView } from "./hk-pane";
+import { HkTendersView } from "./hk-view";
 
 function formatRate(value: number | null): string {
   return value == null ? "—" : `${value.toFixed(3)}%`;

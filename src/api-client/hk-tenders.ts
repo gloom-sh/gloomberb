@@ -1,57 +1,59 @@
-/** EF Bills, EF Notes, an HKSAR Institutional Government Bond, or its HONIA-indexed floating rate note. */
+/** EF Bills, EF Notes, an HKSAR institutional Government Bond, or its HONIA-indexed floating rate note. */
 type HkTenderPaper = "efb" | "efn" | "hkgb" | "hkgb-frn";
 
-/** One tender's competitive result, as the Hong Kong Monetary Authority's press release states it. */
+/** One tender's result, as the Hong Kong Monetary Authority's Open API states it. */
 export interface HkTender {
-  /** The day of the tender, in Hong Kong. */
-  tenderDate: string;
+  /** The issue day (YYYY-MM-DD), the business day after the tender; Government Bonds give only the month (YYYY-MM). */
+  date: string;
   paper: HkTenderPaper;
-  /** The issue number as HKMA prints it: Q2644 (a three-month bill), 02Y2808, 10GB3507001. */
-  issue: string;
-  /** A re-opening of an issue already outstanding. */
-  reopening: boolean;
-  /** The exchange's stock code of a Government Bond or note, null for EF paper. */
-  stockCode: string | null;
+  /** A Government Bond's issue number (10GB3507001); HKMA's EF figures name none. */
+  issue: string | null;
+  /** A re-opening of an issue already outstanding; null for EF paper. */
+  reopening: boolean | null;
   /** HKD, or CNH for an RMB Government Bond. */
   currency: "HKD" | "CNH";
-  issueDate: string | null;
-  maturityDate: string | null;
-  /** "3-Month" for a bill, "10-Year" for a note or bond. */
+  /** A Government Bond's expected maturity (YYYY-MM). */
+  maturity: string | null;
+  /** "3-Month" for a bill, "2-Year" for a note, a bond's original tenor by its issue number. */
   term: string;
-  /** Calendar days from issue to maturity. */
-  days: number | null;
   /** Annual coupon in percent; null for a bill or a floating rate note. */
   coupon: number | null;
-  /** Competitive applications and the amount allotted, in units of `currency`. */
-  applied: number | null;
-  allotted: number | null;
-  /** Applications over the amount allotted. */
-  bidToCover: number | null;
-  /** The average and highest accepted yields, in percent. */
+  /** The average accepted yield in percent (an RMB bond's annualised one); null for a floating rate note. */
   averageYield: number | null;
-  highestYield: number | null;
-  averagePrice: number | null;
-  lowestPrice: number | null;
-  /** The average yield of every bid, accepted or not. */
-  averageTenderYield: number | null;
-  /** A floating rate note's average and highest accepted spreads over HONIA, in percent. */
-  averageSpread: number | null;
-  highestSpread: number | null;
-  /** The share, in percent, of each bid at the highest accepted yield that was allotted. */
-  proRata: number | null;
-  /** The press release, and the day HKMA published it. */
-  url: string;
-  publishedOn: string;
+  /** An RMB bond's average accepted yield, semi-annualised. */
+  averageYieldSemiAnnual: number | null;
+  /** A floating rate note's spread over HONIA, in percent. */
+  spread: number | null;
+  /** Applications, in units of `currency`. */
+  applied: number;
+  /** The amount allotted: stated for Government Bonds only. */
+  allotted: number | null;
+  /** EF paper: applications over the amount offered, less one. */
+  overSubscription: number | null;
+  /** Applications over the amount allotted (bonds) or offered (EF paper). */
+  bidToCover: number;
+  /** EF paper's amount offered, worked out from the amount applied and the over-subscription, to three figures. */
+  offered: number | null;
+  /** The HKMA dataset it came from: `efb-91day`, `hkgb-rmb`. */
+  dataset: string;
 }
 
-/** `GET /cloud/econ/hk-tenders`: Hong Kong government paper tender results as HKMA publishes them. */
+/** `GET /cloud/econ/hk-tenders`: Hong Kong government paper tender results from HKMA's Open API. */
 export interface HkTendersPayload {
   authority: string;
+  /** The attribution HKMA's terms ask for: "Source: HKMA". */
+  credit: string;
   status: "available" | "unavailable";
-  /** Newest first, from `from` when the request named one. */
+  /** Newest first, issued on or after `from`, at most `limit`. */
   tenders: HkTender[];
+  from: string;
+  limit: number;
+  truncated: boolean;
+  /** The first and last issue the record holds. */
   firstTender: string | null;
   latestTender: string | null;
+  /** The newest issue HKMA's figures hold, per paper: HKMA publishes them monthly. */
+  runsTo: { efb: string | null; efn: string | null; hkgb: string | null };
   fetchedAt: string | null;
   stale: boolean;
 }

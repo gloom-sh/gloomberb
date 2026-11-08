@@ -1000,7 +1000,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CRD"],
   },
   AUCT: {
-    summary: "Bill, note, bond and TIPS auction results: high rate (a bill's investment rate, with its discount rate), the stop-out's spread against the published average (the median from Nov 1998), bid-to-cover, indirect, direct and dealer takedown and size, with the auctions announced next. The after view ranks each auction's B/C, indirect and dealer share against its tenor's last 24 and gives the Treasury yield's move 1, 5 and 20 sessions later. Searchable by benchmark (10Y) or CUSIP; history reaches back to 1979 (--history-days all). --market hk lists Hong Kong's EF Bills, EF Notes and Government Bond tenders: tenor, size, B/C, average and highest accepted yield.",
+    summary: "Bill, note, bond and TIPS auction results: high rate (a bill's investment rate, with its discount rate), the stop-out's spread against the published average (the median from Nov 1998), bid-to-cover, indirect, direct and dealer takedown and size, with the auctions announced next. The after view ranks each auction's B/C, indirect and dealer share against its tenor's last 24 and gives the Treasury yield's move 1, 5 and 20 sessions later. Searchable by benchmark (10Y) or CUSIP; history reaches back to 1979 (--history-days all). --market hk lists Hong Kong's EF Bills, EF Notes and Government Bond tenders from HKMA's Open API (Source: HKMA; published monthly): issue date, tenor, average accepted yield, B/C and size.",
     usage: ["AUCT", "AUCT 10Y", "AUCT 91282CRF0", "AUCT 7Y --history-days 3650 --view after --sort btc-pctl", "AUCT --market hk", "AUCT HKGB 10Y"],
     keys: [SEARCH, key("f", "ilter"), OPEN],
     data: same("Daily, after each auction"),

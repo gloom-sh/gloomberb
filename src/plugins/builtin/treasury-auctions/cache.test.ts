@@ -379,6 +379,33 @@ describe("loadTreasuryAuctions with TreasuryDirect", () => {
     }
   });
 
+  test("a warm 120-day command answers from the saved board; an auction tomorrow in New York is not due though UTC has reached its day", async () => {
+    const store = new AppPersistence(":memory:");
+    try {
+      const asked: string[] = [];
+      // 02:00 UTC on 7 Nov is still the evening of 6 Nov in New York: a bill auctioned on the 7th has not come due.
+      const evening = Date.parse("2026-11-07T02:00:00Z");
+      const tomorrow = auction({ id: "tomorrow", secType: "Bill", securityTerm: "26-Week", auctionDate: "2026-11-07", cusip: "912797WD5" });
+      const command = async (at: number) => {
+        setSystemTime(new Date(evening + at * 60_000));
+        resetTreasuryAuctionsPersistence();
+        attachTreasuryAuctionsPersistence(createCommandPluginPersistence(store.resources, "plugin:treasury-auctions"));
+        await loadTreasuryAuctions(false, async () => {
+          asked.push("fiscal");
+          return recordedFiscalData();
+        }, 120, async () => {
+          asked.push("direct");
+          return [...recordedTreasuryDirect(), tomorrow];
+        });
+        return asked.splice(0).sort();
+      };
+      expect(await command(0)).toEqual(["direct", "fiscal"]);
+      expect(await command(15)).toEqual([]);
+    } finally {
+      store.close();
+    }
+  });
+
   test("reports both sources through Connections", async () => {
     const health = new ConnectionHealthRegistry();
     health.registerSource({ id: TREASURY_FISCAL_DATA_CONNECTION_ID, name: "Treasury Fiscal Data", kind: "api" });

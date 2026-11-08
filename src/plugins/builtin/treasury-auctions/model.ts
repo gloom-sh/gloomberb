@@ -566,9 +566,10 @@ function parseAuctionCommandArg(arg: string | undefined): {
       if (name) parsed.sort = name;
     }
   }
+  // A search naming Hong Kong's paper picks its market unless --market names one.
   const named = auctionSearchMarket(words.join(" "));
-  parsed.search = named.search;
-  if (named.market) parsed.market = named.market;
+  parsed.market ??= named.market ?? undefined;
+  parsed.search = parsed.market === "hk" ? named.search : words.join(" ").trim();
   return parsed;
 }
 
