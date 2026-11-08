@@ -141,6 +141,38 @@ export function thirteenFReadError(error: unknown): unknown {
   );
 }
 
+/** What a 13F read says when Gloom Cloud was reached and its 13F source failed. */
+export const THIRTEENF_SOURCE_UNAVAILABLE = "The 13F source is unavailable right now";
+
+/**
+ * A 13F read the service answered with a failure of its own (a 5xx: the 13F
+ * source down and nothing stored to answer for it, or the service busy), in
+ * the app's words. It answered, so the connection is not what to check. A
+ * failure the service named otherwise (EDGAR's) and any other answer (a rate
+ * limit, a refused parameter) are as they came.
+ */
+function thirteenFSourceError(error: unknown): unknown {
+  if (!(error instanceof ApiRequestError) || error.status === undefined || error.status < 500) return error;
+  if (error.code && error.code !== "source_unavailable") return error;
+  return new ApiRequestError(THIRTEENF_SOURCE_UNAVAILABLE, error.status, error.retryAfterMs, "source_unavailable", error.details);
+}
+
+/**
+ * When the copy Gloom Cloud answered from was read from the 13F source (ms),
+ * or null for a fresh answer. While the source is unavailable the service
+ * answers from a copy it stored, each row saying when it was read
+ * (`stored_as_of`); the oldest is the answer's.
+ */
+function storedCopyTime(value: unknown): number | null {
+  const rows = Array.isArray(value) ? value : [value];
+  let oldest = Number.POSITIVE_INFINITY;
+  for (const row of rows) {
+    const at = Date.parse(stringOrEmpty(asRecord(row).stored_as_of));
+    if (Number.isFinite(at)) oldest = Math.min(oldest, at);
+  }
+  return Number.isFinite(oldest) ? oldest : null;
+}
+
 async function fetchForms13F<T>(
   path: string,
   params: Record<string, string | number | undefined>,
@@ -184,22 +216,33 @@ async function fetchForms13F<T>(
       } catch (cloudError) {
         options.signal?.throwIfAborted();
         const error = thirteenFReadError(cloudError);
-        if (options.cloudOnly) throw error;
+        if (options.cloudOnly) throw thirteenFSourceError(error);
         const url = `${FORMS_13F_BASE_URL}${path}?${searchParams.toString()}`;
-        // The service's own limit says when to ask again; a direct read that fails as well says less.
+        // A service that answered says what failed (its limit and when to ask again, its source being
+        // down); a direct read that cannot connect as well says less: the source is down, not this
+        // computer's connection.
+        const answered = !isNetworkFailure(error);
         const response = await httpFetch(url, {
           headers: { Accept: "application/json" },
           signal: options.signal,
         }).catch((fallbackError: unknown) => {
-          throw isRateLimited(error) ? error : fallbackError;
+          throw answered ? thirteenFSourceError(error) : fallbackError;
         });
         if (!response.ok) {
           if (isRateLimited(error)) throw error;
-          throw new ApiRequestError(`Forms13F ${response.status} for ${path}`, response.status);
+          throw thirteenFSourceError(new ApiRequestError(`Forms13F ${response.status} for ${path}`, response.status));
         }
         value = await response.json() as T;
       }
       options.signal?.throwIfAborted();
+      // The service's stored copy, while its 13F source is unavailable: said like a saved copy, and
+      // not kept as a fresh one, so the next read asks again.
+      const storedAt = storedCopyTime(value);
+      if (storedAt != null) {
+        if (current()) failedRefreshes.add(key);
+        options.onSavedCopy?.(storedAt);
+        return value;
+      }
       if (current()) {
         failedRefreshes.delete(key);
         if (value != null && options.cache !== false) {

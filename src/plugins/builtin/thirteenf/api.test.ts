@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
+import { isNetworkFailure } from "../../../utils/network-failure";
 import {
   attachThirteenFApiPersistence,
+  listThirteenFForms,
   lookupThirteenFTickers,
   mapForm,
   resetThirteenFApiPersistence,
   searchThirteenFFunds,
+  THIRTEENF_SOURCE_UNAVAILABLE,
 } from "./api";
 import { buildPeriodReports } from "./model";
 
@@ -75,7 +78,7 @@ test("a failed forced refresh retains the saved copy only for consumers that say
   const original = store.getResource("forms13f-api", key, { sourceKey: "forms13f" })!;
   expect(original).not.toBeNull();
   unavailable = true;
-  await expect(searchThirteenFFunds("Berkshire", 1, undefined, { forceRefresh: true })).rejects.toThrow("503");
+  await expect(searchThirteenFFunds("Berkshire", 1, undefined, { forceRefresh: true })).rejects.toThrow(THIRTEENF_SOURCE_UNAVAILABLE);
   const saved: number[] = [];
   expect(await searchThirteenFFunds("Berkshire", 1, undefined, {
     forceRefresh: true, onSavedCopy: savedAt => saved.push(savedAt),
@@ -95,6 +98,32 @@ test("a failed forced refresh retains the saved copy only for consumers that say
   for (let i = 0; i < 40; i++) await Promise.resolve();
   await searchThirteenFFunds("Berkshire", 1);
   expect(calls).toBe(callsBeforeRecovery + 1);
+});
+
+test("a source outage is said as one when Gloom Cloud answered, and its stored copy as a saved copy, not kept as fresh", async () => {
+  const store = new MemoryPluginPersistence();
+  attachThirteenFApiPersistence(store);
+  const form = { cik: "0001067983", accession_number: "0001193125-26-352200", period_of_report: "2026-06-30" };
+  let cloud: () => Response = () => Response.json({ message: "Internal server error" }, { status: 500 });
+  setHttpFetchTransport(async (url) => {
+    // The public source refuses every connection, as it did for hours on end.
+    if (String(url).includes("forms13f.com")) throw Object.assign(new Error("Unable to connect"), { code: "ECONNREFUSED" });
+    return cloud();
+  });
+  const read = (onSavedCopy?: (savedAt: number) => void) =>
+    listThirteenFForms("1067983", "2022-11-08", "2026-11-08", 100, undefined, { onSavedCopy });
+  const failure = await read().catch((error: unknown) => error);
+  expect(failure).toMatchObject({ message: THIRTEENF_SOURCE_UNAVAILABLE, code: "source_unavailable" });
+  expect(isNetworkFailure(failure)).toBe(false);
+  const storedAsOf = "2026-11-07T08:39:40.935Z";
+  cloud = () => Response.json([{ ...form, stored_as_of: storedAsOf }]);
+  const saved: number[] = [];
+  expect((await read(savedAt => saved.push(savedAt))).map(row => row.accessionNumber)).toEqual([form.accession_number]);
+  expect(saved).toEqual([Date.parse(storedAsOf)]);
+  // Only a fresh answer is kept: the next read asks again.
+  expect(store.getResource("forms13f-api", "/forms?cik=0001067983&from=2022-11-08&to=2026-11-08&limit=100&offset=0", {
+    sourceKey: "forms13f", allowExpired: true,
+  })).toBeNull();
 });
 
 test("a second caller for a missing response awaits the download already in flight", async () => {

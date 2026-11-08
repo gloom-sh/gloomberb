@@ -26,6 +26,15 @@ function unreachableHint(): string {
     : "Check the internet connection, then try again.";
 }
 
+/**
+ * An answer of the data service that a source it reads failed and nothing it
+ * kept could stand in (the 13F source down): the service was reached, and
+ * asked again later it may answer.
+ */
+export function isSourceUnavailableAnswer(error: unknown): error is ApiRequestError {
+  return error instanceof ApiRequestError && error.code === SOURCE_UNAVAILABLE_CODE;
+}
+
 export interface CliErrorContext {
   /** The command that failed, used to point at its help. */
   command?: string;
@@ -124,7 +133,7 @@ function cliErrorObject(error: unknown): CliErrorObject {
     return unreachableError();
   }
   // A source failed (a timeout, a rate limit) where none had the data to answer: asked again it may.
-  if (isSourceFailure(error)) {
+  if (isSourceFailure(error) || isSourceUnavailableAnswer(error)) {
     return { code: SOURCE_UNAVAILABLE_CODE, message: error instanceof Error ? error.message : String(error), retryable: true };
   }
   // A listing read the data service failed to answer twice: said in Gloom's words. Any other 5xx keeps the server's.
