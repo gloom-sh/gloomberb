@@ -146,6 +146,23 @@ describe("GloomberbCloudProvider", () => {
     }
   });
 
+  test("a search box's keystroke asks plainly, and any other search (the CLI's) waits for a venue's own site", async () => {
+    const provider = new GloomberbCloudProvider();
+    const asked: string[] = [];
+    setCloudApiFetchTransport(async (url) => {
+      const { pathname, search } = new URL(url);
+      if (pathname === "/market/search") asked.push(search);
+      return Response.json({ status: "empty", data: null });
+    });
+    try {
+      await provider.search("siemens health", { interactive: true, limit: 30 });
+      await provider.search("siemens health");
+      expect(asked).toEqual(["?q=siemens+health&limit=30", "?q=siemens+health&limit=10&deep=1"]);
+    } finally {
+      setCloudApiFetchTransport(null);
+    }
+  });
+
   test("an empty answer carries the service's reason into the provider miss, cleaned, or none when it gave none", async () => {
     const provider = new GloomberbCloudProvider();
     const sentence = "Spot gold is not quoted; GC=F is the front-month future.";

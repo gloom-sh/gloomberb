@@ -143,12 +143,17 @@ function appendQuery(path: string, search: URLSearchParams): string {
   return `${path}${query ? `?${query}` : ""}`;
 }
 
-export function cloudMarketSearchPath(query: string, limit: number): string {
+/**
+ * `deep`: the search waits for a venue's own site (the CLI's), which a search
+ * box's keystroke gives about a second.
+ */
+export function cloudMarketSearchPath(query: string, limit: number, deep = false): string {
   return appendQuery(
     "/market/search",
     new URLSearchParams({
       q: query,
       limit: String(limit),
+      ...(deep ? { deep: "1" } : {}),
     }),
   );
 }

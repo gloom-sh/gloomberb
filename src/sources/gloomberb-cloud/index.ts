@@ -690,7 +690,8 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     const pending = searchPerpetualMarkets(query).catch(logFailure("sources.gloomberb-cloud.index", "Searching perpetual markets failed", [] as InstrumentSearchResult[]));
     // A crypto exchange's line of a coin pair, which no source quotes, is offered as the crypto venue's listing.
     const listings = await withCloudFallback(
-      async () => withExchangeLinesAsCoinListings(withCleanNames(await apiClient.searchInstruments(query, context?.limit ?? 10))),
+      async () => withExchangeLinesAsCoinListings(withCleanNames(
+        await apiClient.searchInstruments(query, context?.limit ?? 10, { interactive: context?.interactive }))),
       "Cloud search is unavailable",
     ).catch((error: unknown) => {
       // Rate limited or overloaded: the search was not run, which is not a search that found nothing.
