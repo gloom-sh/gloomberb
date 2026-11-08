@@ -293,7 +293,7 @@ const CARETLESS_INDEX = /^[A-Z][A-Z0-9]{1,9}$/;
 async function caretIndexLine(listing: CliListing, result: QuoteBatchResult, market: MarketContext): Promise<string | null> {
   if (listing.exchange || listing.saved || !CARETLESS_INDEX.test(listing.symbol)) return null;
   const index = `^${listing.symbol}`;
-  const quote = await market.dataProvider.getQuote(index, "")
+  const quote = await Promise.resolve().then(() => market.dataProvider.getQuote(index, ""))
     .catch(logFailure("cli.quote-answer", "Quote a symbol's index form failed", null));
   if (!quote || quote.instrumentType?.trim().toUpperCase() !== "INDEX") return null;
   const said = notATickerSymbol(errorMessage(result.error) ?? "") ? `Not a ticker: ${listing.symbol}.` : `${listing.symbol} has no quote.`;
@@ -315,7 +315,7 @@ async function hongKongCodeNote(listing: CliListing, quote: Quote, market: Marke
   if (listing.exchange || listing.saved || !FIVE_DIGIT_CODE.test(listing.symbol)) return null;
   if (canonicalExchange(quote.listingExchangeName || quote.exchangeName) === "HKEX") return null;
   const code = String(Number(listing.symbol));
-  const hongKong = await market.dataProvider.getQuote(code.padStart(4, "0"), "HKEX")
+  const hongKong = await Promise.resolve().then(() => market.dataProvider.getQuote(code.padStart(4, "0"), "HKEX"))
     .catch(logFailure("cli.quote-answer", "Quote a code's HKEX listing failed", null));
   if (!hongKong || canonicalExchange(hongKong.listingExchangeName || hongKong.exchangeName) !== "HKEX") return null;
   return `${listing.symbol}: for HKEX use ${code}.HK${hongKong.name ? ` (${hongKong.name})` : ""}`;

@@ -112,8 +112,9 @@ export async function loadHoldingDividends(
     const symbol = ticker.metadata.ticker;
     const exchange = ticker.metadata.exchange ?? "";
     const history = Promise.resolve().then(() => getCorporateActions(symbol, exchange));
-    // Left behind at the deadline, a failure has no one to answer.
-    history.catch(() => {});
+    history.catch(() => {
+      // Intentional ignore: a read left behind at the deadline has no reader; one awaited below reports its own failure.
+    });
     const known = await Promise.race([quoted, deadline]);
     if (known === "deadline") return;
     const quote = known.get(symbol);
