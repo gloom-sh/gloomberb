@@ -21,7 +21,6 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { formatPercentileRank } from "../../../utils/format";
 import { useAssetData, usePluginPaneState } from "../../runtime";
-import { formatAsOf } from "../cds/model";
 import { FIXED_INCOME_PANE_ID } from "../fixed-income/model";
 import { useCommandValue } from "../shared/command-tab";
 import { getCachedSovrBoard, loadCurrencyMoves, loadSovrBoard } from "./client";
@@ -32,6 +31,7 @@ import {
   formatCurrencyMove,
   formatLevel,
   formatMove,
+  newestRowDate,
   SETTLEMENT_TEXT,
   sovrRows,
   type SovrRow,
@@ -115,7 +115,8 @@ export function SovrPane({ focused, width, height }: PaneProps) {
     moves.reload();
   }, { focused, enabled: !loading });
 
-  const asOf = formatAsOf(payload?.asOf ?? null);
+  // Dated by the newest day the rows carry, not when the response was put together.
+  const asOf = newestRowDate(payload?.sovereigns.map((sovereign) => sovereign.date) ?? []);
   const info = useMemo<PaneFooterSegment[]>(() => [
     ...(asOf ? [{ id: "as-of", parts: [{ text: `as of ${asOf}`, tone: "muted" as const }] }] : []),
     ...(payload ? [DELAYED_SEGMENT] : []),

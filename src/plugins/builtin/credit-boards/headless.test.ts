@@ -5,7 +5,7 @@ import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { renderReportCsv } from "../../../cli/report-tables";
 import { cdxHeadless, sovrHeadless } from "./headless";
-import { cdxDay, findIndex, findSovereign } from "./model";
+import { cdxDay, findIndex, findSovereign, spreadRank } from "./model";
 
 const args: HeadlessPaneLoadArgs = { rawArgument: "", argument: null, symbols: [], options: {} };
 
@@ -68,7 +68,7 @@ test("every exported board row carries its own observation date, series and unit
   const csv = renderReportCsv(headlessReportTables(cdxHeadless, result, args, "CDX", freshness, { complete: true, unavailableSymbols: [] }), freshness).split("\n");
   const header = cells(csv[0]!);
   const row = (line: string) => Object.fromEntries(cells(line).map((cell, column) => [header[column], cell]));
-  expect(row(csv[1]!)["Pctl 1Y"]).toMatch(/^\d{1,3}$/);
+  expect(row(csv[1]!)["Spread pctl 1Y"]).toMatch(/^\d{1,3}$/);
   expect(row(csv[1]!)).toMatchObject({ Index: "CDX HY", "5Y": "106.005", "Spread eq (bp)": "357.5", "As of": "2026-10-16", Day: "",
     symbol_or_series: "cdx:hy", currency_or_unit: "price", interval: "daily", as_of: "2026-10-16" });
   // Main is so far: flagged with its prints and last print, its 1D Friday against Thursday, dated by its own day.
@@ -89,6 +89,20 @@ test("every exported board row carries its own observation date, series and unit
     "2026-10-19,64.7,38,2031-12-20,\"so far, 38 prints, last 08:09 UTC\",,cdx:main,bp,daily,DTCC,2026-10-19",
     "2026-10-16,63.28,261,2031-12-20,,,cdx:main,bp,daily,DTCC,2026-10-16",
   ]);
+});
+
+test("every credit rank reads high = wide: HY ranks its spread equivalent, not its price, and a price without one ranks upside down", () => {
+  // A year of HY sliding from 110 to 104 while its spread equivalent widens from 300bp to 420bp: today is near the widest.
+  const days = Array.from({ length: 240 }, (_, day) => ({ date: new Date(Date.UTC(2025, 11, 1) + day * 86_400_000).toISOString().slice(0, 10),
+    maturity: day < 120 ? "2030-12-20" : "2031-12-20", prints: 300, level: 110 - day / 40, spreadBp: 300 + day / 2 }));
+  const today = days.at(-1)!;
+  const hy = { quote: "price" as const, points: days, level: today.level, date: today.date, spreadBp: today.spreadBp };
+  expect(spreadRank(hy)).toEqual({ percentile: expect.closeTo(99.8, 1), basis: "spread-eq" });
+  // CMBX quotes a price and nothing else: its lowest price is its widest.
+  const cmbx = { ...hy, points: days.map(({ spreadBp: _, ...point }) => point), spreadBp: undefined };
+  expect(spreadRank(cmbx)).toEqual({ percentile: expect.closeTo(99.8, 1), basis: "price-inverted" });
+  const ig = { quote: "spread" as const, points: days.map((point) => ({ ...point, level: point.spreadBp })), level: 420, date: today.date };
+  expect(spreadRank(ig).percentile).toBeGreaterThan(99);
 });
 
 test("a server that does not flag the day: today's New York trade date is partial and its moves are measured between complete days", () => {

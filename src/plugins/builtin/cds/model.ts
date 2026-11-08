@@ -643,12 +643,6 @@ export function formatEventTime(eventAt: number): string {
   return new Date(eventAt).toISOString().slice(0, 16).replace("T", " ");
 }
 
-export function formatAsOf(asOf: string | null): string | null {
-  if (!asOf) return null;
-  const parsed = Date.parse(asOf);
-  return Number.isFinite(parsed) ? `${formatEventTime(parsed)} UTC` : asOf;
-}
-
 export function formatMaturity(maturity: string | null): string {
   return maturity ?? "--";
 }

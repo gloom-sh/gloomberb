@@ -164,7 +164,8 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     { id: "change", label: changeLabel, width: 10, align: "right" },
     ...(rows.some((row) => row.changeAsOf !== undefined) ? [{ id: "changeAsOf", label: "LAST CHANGE", width: 11, align: "left" as const }] : []),
     ...(extraColumns?.map((item) => item.column) ?? []),
-    { id: "percentile", label: percentileLabel, width: 8, align: "right" },
+    // A label that says what it ranks (SPRD PCTL) keeps its column wide enough to read whole.
+    { id: "percentile", label: percentileLabel, width: Math.max(8, percentileLabel.length), align: "right" },
     { id: "history", label: "1Y", width: 14, align: "left" },
     { id: "asOf", label: "AS OF", width: asOfWidth + wordWidth, align: "left" },
   ], width, wordWidth);
