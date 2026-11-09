@@ -4,7 +4,7 @@ import { createDefaultConfig } from "../types/config";
 import { nearFunctionCodes } from "./pane-functions/catalog";
 import { createPaneCatalog } from "./pane-functions/discovery";
 import type { MarketContext } from "./types";
-import { catalogPointer, subcommandPointer, tickerPointer, unknownCommandReply, type CatalogCommandHit } from "./unknown-command";
+import { catalogPointer, currencyWordPair, subcommandPointer, tickerPointer, unknownCommandReply, type CatalogCommandHit } from "./unknown-command";
 
 const RV: CatalogCommandHit = { code: "RV", label: "Relative Valuation", argKind: "tickers", argPlaceholder: null, peers: true };
 const EQS: CatalogCommandHit = { code: "EQS", label: "Equity Screener", argKind: "none", argPlaceholder: null, peers: false };
@@ -28,6 +28,28 @@ test("several functions are listed with the catalog search, and none says nothin
     "Search the catalog: gloom catalog screener",
   ].join("\n"));
   expect(catalogPointer("zzqx", [], ["AAPL"])).toBeNull();
+});
+
+test("a currency or a pair typed as a command points at quote and fx, and one typed after a function word runs", () => {
+  const none = { fn: null, nearFn: null, hits: [], args: [] };
+  // `eurusd` alone was a bare "Unknown command".
+  expect(unknownCommandReply("eurusd", [], none, null)).toEqual({ message: 'Unknown command "eurusd": it reads as EUR/USD.',
+    details: "To quote it: gloom quote EURUSD=X\nRate, conversion and forwards: gloom fx EUR/USD\nRun gloom help to see every command." });
+  // Any spelling, a code as its dollar pair the way markets quote it, a name only one currency has; the dollar alone is no pair.
+  expect(["EUR/USD", "eurusd=x", "eur", "JPY", "yen"].map((word) => currencyWordPair(word)?.listing))
+    .toEqual(["EURUSD=X", "EURUSD=X", "EURUSD=X", "USDJPY=X", "USDJPY=X"]);
+  for (const word of ["usd", "comps", "people", "try", "PLTR"]) expect(currencyWordPair(word), word).toBeNull();
+  // `skew eur` offered `gloom fn OVDV eur`, which fails: the currency is its pair, and a function that refuses the pair
+  // (FX volatility) takes the fund whose options stand in.
+  const OVDV: CatalogCommandHit = { code: "OVDV", label: "Volatility Surface", argKind: "ticker", argPlaceholder: null, peers: false,
+    refusesSymbol: (key) => key === "EURUSD=X" };
+  expect(catalogPointer("skew", [OVDV, HP], ["eur"])).toBe([
+    "Closest functions:",
+    "  gloom fn OVDV FXE     Volatility Surface",
+    "  gloom fn HP EURUSD=X  Historical Prices",
+    "FXE's options stand in for EUR/USD: OTC FX volatility is not covered.",
+    "Search the catalog: gloom catalog skew",
+  ].join("\n"));
 });
 
 test("a ticker typed as a command is pointed at quote and search, and taken for no function code", async () => {

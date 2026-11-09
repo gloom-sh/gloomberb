@@ -1,3 +1,6 @@
+import { fxVolatilityProxyFund } from "../market-data/options-alternatives";
+import { currencyPairSpelling, dollarPairListing } from "../utils/currency-pair";
+import { currenciesNamed, currencyCodeTyped } from "../utils/currency-names";
 import { bankFigurePointer, exportCommandPointer } from "./known-gaps";
 
 /** A function the catalog finds for a word typed as a command (`comps`, `peers`). */
@@ -9,6 +12,44 @@ export interface CatalogCommandHit {
   argPlaceholder: string | null;
   /** It has a `--peers` switch that adds a symbol's competitors (RV). */
   peers: boolean;
+  /** It answers this listing with a refusal before any request (OVDV for EURUSD=X): a command with it would fail. */
+  refusesSymbol?: (key: string) => boolean;
+}
+
+/** An FX pair as a word reads: its listing for `quote` (EURUSD=X), as `fx` takes it (EUR/USD), and its code (EURUSD). */
+export interface CurrencyWordPair {
+  listing: string;
+  pair: string;
+  code: string;
+}
+
+/**
+ * The pair a word typed in place of a command or a ticker reads as: a pair
+ * in any spelling and case (`eurusd`, `EUR/USD`, `eurusd=x`), or one
+ * currency, by its code (`eur`, `JPY`) or a name only it has (`euro`, `yen`),
+ * as its pair against the dollar the way markets quote it (EUR/USD, USD/JPY).
+ * Null for anything else, and for the dollar on its own, which has no pair
+ * of its own.
+ */
+export function currencyWordPair(word: string): CurrencyWordPair | null {
+  const typed = word.trim();
+  if (!typed || /\s/.test(typed)) return null;
+  const spelled = currencyPairSpelling(typed.toUpperCase());
+  const named = currenciesNamed(typed);
+  const code = spelled ? null : currencyCodeTyped(typed) ?? (named.length === 1 ? named[0]!.code : null);
+  const listing = spelled?.symbol ?? (code && code !== "USD" ? dollarPairListing(code) : null);
+  const halves = listing ? /^([A-Z]{3})([A-Z]{3})=X$/.exec(listing) : null;
+  return halves ? { listing: listing!, pair: `${halves[1]}/${halves[2]}`, code: `${halves[1]}${halves[2]}` } : null;
+}
+
+/**
+ * What a currency typed as a command (`eurusd`, `eur`) is answered with: the
+ * command that quotes its pair and the one that converts it and prices its
+ * forwards. Null for a word that reads as no pair.
+ */
+function currencyPointer(token: string): { pair: string; lines: string[] } | null {
+  const fx = currencyWordPair(token);
+  return fx ? { pair: fx.pair, lines: [`To quote it: gloom quote ${fx.listing}`, `Rate, conversion and forwards: gloom fx ${fx.pair}`] } : null;
 }
 
 const TICKER_ARGUMENTS = new Set(["ticker", "tickers", "symbol-list", "ticker-list"]);
@@ -28,22 +69,33 @@ function shellWord(arg: string): string {
  * one symbol meets a function that picks its peers), or the function's
  * placeholder and a search when they typed a company's name.
  */
-function catalogHitCommand(hit: CatalogCommandHit, args: readonly string[]): { command: string; search: string | null } {
+function catalogHitCommand(hit: CatalogCommandHit, args: readonly string[]): { command: string; search: string | null; standIn: string | null } {
   const typed = args.filter((arg) => arg.trim() && !arg.startsWith("-"));
   const base = `gloom fn ${hit.code}`;
-  if (hit.argKind === "none") return { command: base, search: null };
+  if (hit.argKind === "none") return { command: base, search: null, standIn: null };
   const placeholder = hit.argPlaceholder ?? hit.argKind;
   if (!hit.argKind || !TICKER_ARGUMENTS.has(hit.argKind)) {
     const argument = typed.length > 0 ? typed.map(shellWord).join(" ") : placeholder ? `<${placeholder}>` : "";
-    return { command: [base, argument].filter(Boolean).join(" "), search: null };
+    return { command: [base, argument].filter(Boolean).join(" "), search: null, standIn: null };
   }
-  const names = typed.filter(nameLike);
-  const single = typed.length === 1;
+  // A currency where a ticker goes (`skew eur`) is its pair's listing (EURUSD=X); a function that refuses an FX
+  // pair (OVDV) takes the currency fund whose options stand in for it (FXE), so the command shown runs.
+  let standIn: string | null = null;
+  const tickers = typed.map((arg) => {
+    const fx = currencyWordPair(arg);
+    if (!fx) return arg;
+    if (!hit.refusesSymbol?.(fx.listing)) return fx.listing;
+    const fund = fxVolatilityProxyFund(fx.code);
+    if (fund) standIn = `${fund}'s options stand in for ${fx.pair}: OTC FX volatility is not covered.`;
+    return fund ?? arg;
+  });
+  const names = tickers.filter((arg) => nameLike(arg) && !currencyWordPair(arg));
+  const single = tickers.length === 1;
   const peers = hit.peers && single ? " --peers" : "";
   if (names.length > 0) {
-    return { command: `${base} <${single ? "ticker" : placeholder ?? "tickers"}>${peers}`, search: `gloom search ${names.map(shellWord).join(" ")}` };
+    return { command: `${base} <${single ? "ticker" : placeholder ?? "tickers"}>${peers}`, search: `gloom search ${names.map(shellWord).join(" ")}`, standIn };
   }
-  return { command: `${base} ${typed.length > 0 ? typed.map(shellWord).join(" ") : `<${placeholder ?? "ticker"}>`}${peers}`, search: null };
+  return { command: `${base} ${tickers.length > 0 ? tickers.map(shellWord).join(" ") : `<${placeholder ?? "ticker"}>`}${peers}`, search: null, standIn };
 }
 
 /**
@@ -75,15 +127,17 @@ export function catalogPointer(token: string, hits: readonly CatalogCommandHit[]
   const word = /^[\w.:-]+$/.test(token) ? token : JSON.stringify(token);
   const more = `gloom catalog ${word}`;
   if (hits.length === 1) {
-    const { command, search } = catalogHitCommand(hits[0]!, args);
-    return `Try \`${command}\` (${hits[0]!.label})${search ? `; \`${search}\` finds the ticker` : ""}. \`${more}\` lists more.`;
+    const { command, search, standIn } = catalogHitCommand(hits[0]!, args);
+    return `Try \`${command}\` (${hits[0]!.label})${search ? `; \`${search}\` finds the ticker` : ""}.${standIn ? ` ${standIn}` : ""} \`${more}\` lists more.`;
   }
   const commands = hits.map((hit) => catalogHitCommand(hit, args));
   const width = Math.max(...commands.map(({ command }) => command.length));
   const searches = [...new Set(commands.flatMap(({ search }) => search ?? []))];
+  const standIns = [...new Set(commands.flatMap(({ standIn }) => standIn ?? []))];
   return [
     "Closest functions:",
     ...commands.map(({ command }, index) => `  ${command.padEnd(width)}  ${hits[index]!.label}`),
+    ...standIns,
     ...searches.map((search) => `Find the ticker: ${search}`),
     `Search the catalog: ${more}`,
   ].join("\n");
@@ -132,7 +186,8 @@ export interface UnknownCommandPointers {
 /**
  * What an unknown command word is answered with, the first that fits: a
  * function's code is pointed at `fn`; a bank figure's name (`nim JPM`) at the
- * Bank section; a subcommand typed without its command (`position set`) at
+ * Bank section; a currency or a pair typed alone (`eurusd`, `eur`) at
+ * `quote` and `fx`; a subcommand typed without its command (`position set`) at
  * the command it belongs to, unless the word is `export` (a flag, `--csv` or
  * `--json`) or written as a ticker (`CASH`), which keep their own answers; a
  * slip from a function's code (`RCDF`) at that function; a typo of a command
@@ -150,6 +205,12 @@ export function unknownCommandReply(
   // A bank figure's name (`nim JPM`, `deposits WFC`) is where it is: the Bank section of fundamentals, NIM in EQS.
   const bank = bankFigurePointer(token, pointers.args[0] ?? "");
   if (bank) return { message: `Unknown command "${token}": a bank's figures are in the Bank section of fundamentals.`, details: bank.details };
+  // A currency or a pair typed alone (`eurusd`, `eur`) is a quote and a rate, whatever command it is a slip from.
+  const currency = pointers.args.length === 0 ? currencyPointer(token) : null;
+  if (currency) {
+    return { message: `Unknown command "${token}": it reads as ${currency.pair}.`,
+      details: [...currency.lines, "Run gloom help to see every command."].join("\n") };
+  }
   const ticker = tickerPointer(token);
   // Exporting is a flag, not a command: `export LMT` says how, rather than listing functions that mention exports.
   const exported = exportCommandPointer(token, pointers.args);
