@@ -107,6 +107,14 @@ const POSITION_COLUMNS: HeadlessPaneColumn[] = [
   { key: "weight", header: "Weight", align: "right", format: weight, description: "Percent of the total value, cash included; unpriced holdings are left out." },
 ];
 
+/** Columns whose amounts are in the portfolio's currency, whatever the listing's. */
+const BOOK_CURRENCY_KEYS: ReadonlySet<string> = new Set(["marketValue", "unrealizedPnl", "tradeValue", "pnl"]);
+
+/** `columns` with the portfolio's currency in the header of each column in it: Mkt Val (CAD) beside a USD Last. */
+function withBookCurrency(columns: HeadlessPaneColumn[], currency: string): HeadlessPaneColumn[] {
+  return columns.map((column) => BOOK_CURRENCY_KEYS.has(column.key) ? { ...column, header: `${column.header} (${currency})` } : column);
+}
+
 /** The weight of a book that holds a short: a share of its gross exposure. */
 const GROSS_WEIGHT_DESCRIPTION = "Percent of gross exposure, longs plus shorts at their absolute value, as the book holds a short; negative for a short, cash and unpriced holdings left out.";
 
@@ -408,7 +416,7 @@ async function portfolioHoldings(
   const notices = [
     ...(imported ? [imported] : []),
     // At the close, Mkt Val is Last times the shares; the day's move from the close before gets its own line.
-    ...(basis === "regular-close" ? [dayMoveLine(dayMove, currency)] : []),
+    ...(basis === "regular-close" ? [dayMoveLine(dayMove, currency, undefined, undefined, { cashExcluded: !!allocation.cash })] : []),
     ...(held.length > 0 ? [exposureLine(valuation.exposure, currency)] : []),
     ...[weightBasisLine(allocation, currency)].filter((line): line is string => !!line),
     ...(rows.length > limit
@@ -423,7 +431,7 @@ async function portfolioHoldings(
     ? POSITION_COLUMNS.map((column) => column.key === "weight" ? { ...column, description: GROSS_WEIGHT_DESCRIPTION } : column)
     : POSITION_COLUMNS;
   const columns = withListingLabels(
-    withExtendedColumns([...positionColumns, ...(showTargets ? TARGET_COLUMNS : []), VALUATION_TIME_COLUMN], extendedSessions),
+    withExtendedColumns(withBookCurrency([...positionColumns, ...(showTargets ? TARGET_COLUMNS : []), VALUATION_TIME_COLUMN], currency), extendedSessions),
     tickers,
   );
   const lotted = withPositionLines(shown, columns, allocationBySymbol);
@@ -549,7 +557,7 @@ async function portfolioPeriodHoldings(
       status: "not-a-feed",
       basis: `daily closes, ${window.from} to ${window.to}`,
     },
-    columns: withListingLabels(PERIOD_COLUMNS, tickers),
+    columns: withListingLabels(withBookCurrency(PERIOD_COLUMNS, currency), tickers),
     rows,
     complete: errors.length === 0,
     ...(errors.length ? { errors } : {}),

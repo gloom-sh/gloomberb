@@ -79,6 +79,9 @@ test("a broker portfolio's positions come largest first with weights and totals 
   expect(result.rows[0]!.weight).toBeCloseTo((12_000 / 29_000) * 100, 8);
   expect(result.rows[2]!.weight).toBeCloseTo((-5_000 / 29_000) * 100, 8);
   expect(result.columns?.find((column) => column.key === "weight")?.description).toContain("Percent of gross exposure");
+  // Market value and P&L are in the book's currency beside a quote's own, and their headers say which.
+  expect(result.columns?.filter((column) => ["marketValue", "unrealizedPnl", "price"].includes(column.key)).map((column) => column.header))
+    .toEqual(["Last", "Mkt Val (USD)", "P&L (USD)"]);
   expect(result.metadata).toMatchObject({
     collection: { kind: "portfolio", id: BROKER.id, broker: true },
     currency: "USD",
@@ -290,6 +293,7 @@ test("fn PF --from lists the period's P&L largest first within --limit, with the
   const fx = 63_150 * (1 / 7.75 - 1 / 7.8);
   expect(result.rows.at(-1)!.pnl as number).toBeCloseTo(150 / 7.75 + 50 * (344.63 - 347.73) + -20 * (380 - 400) + fx, 6);
   expect(result.metadata?.notices).toContain("1 more position not shown; the FX line and the total include every position.");
+  expect(result.columns?.find((column) => column.key === "pnl")?.header).toBe("P&L (USD)");
   setCliColorEnabledOverride(false);
   try {
     expect(renderHeadlessPaneText(collectionHoldingsHeadless, result, period({ limit: 2 }), "PF"))
