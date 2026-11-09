@@ -442,17 +442,22 @@ export function awaitsConsensus(event: Pick<EconEvent, "actual" | "forecast" | "
 /** How long past its time a release with no figure reads as awaiting one: a day, after which the calendar shows the gap as it is. */
 const AWAITING_FIGURE_MS = 24 * 60 * 60_000;
 
+/** Release times fall on the five-minute grid; a feed lists a release whose time is not yet set off it (China's New Loans at 09:03 UTC). */
+const RELEASE_GRID_MS = 5 * 60_000;
+
 /**
  * Whether a release is past its time with no actual while a figure is due
  * (it has a forecast or a prior): out at its publisher, not in yet here. A
- * speech or a meeting has no figure to wait for, and a bank that states no
- * time has no time to be past.
+ * speech or a meeting has no figure to wait for, a bank that states no time
+ * has no time to be past, and a tentative time (off the five-minute grid) is
+ * no time the figure was due at.
  */
 export function awaitsFigure(
   event: Pick<EconEvent, "actual" | "forecast" | "prior" | "date" | "time" | "timeNote">,
   now: number,
 ): boolean {
   if (event.actual?.trim() || (!event.forecast?.trim() && !event.prior?.trim()) || hasNoReleaseTime(event)) return false;
+  if (event.date.getTime() % RELEASE_GRID_MS !== 0) return false;
   const late = now - event.date.getTime();
   return late >= 0 && late < AWAITING_FIGURE_MS;
 }

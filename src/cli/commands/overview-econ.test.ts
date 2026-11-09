@@ -531,24 +531,27 @@ test("a release past its time with no figure says when it was due and that the f
     { ...event("2026-11-09T01:30:00.000Z", "CN", "low", "PPI y/y"), actual: "5.7%", forecast: "5.3%", prior: "5.0%" },
     { ...event("2026-11-09T09:03:00.000Z", "CN", "low", "M2 Money Supply y/y"), forecast: "7.3%", prior: "7.2%" },
     event("2026-11-09T08:00:00.000Z", "EU", "low", "German Buba President Nagel Speaks"),
+    // A time off the five-minute grid is the feed's tentative one (China's New Loans at 09:03): nothing was due at it.
+    { ...event("2026-11-09T02:03:00.000Z", "CN", "low", "New Loans"), forecast: "500B", prior: "1290B" },
   ];
   const text = await econText(calendar, ["--from", "2026-11-08"]);
   const line = (name: string) => text.split("\n").find((row) => row.includes(name))!;
   expect(line("CPI y/y")).toContain("due 01:30 UTC, awaiting figure");
   expect(line("German Trade Balance")).toContain("due 07:00 UTC, awaiting figure");
-  for (const name of ["Foreign Exchange Reserves", "PPI y/y", "M2 Money Supply y/y", "Nagel Speaks"]) expect(line(name)).not.toContain("awaiting");
+  for (const name of ["Foreign Exchange Reserves", "PPI y/y", "M2 Money Supply y/y", "Nagel Speaks", "New Loans"]) expect(line(name)).not.toContain("awaiting");
   const { result, options } = await econPrinted(calendar, ["--from", "2026-11-08"]);
   const json = result.data as Array<Record<string, unknown>>;
   expect(json.map((row) => [row.event, row.actual, row.actualStatus])).toEqual([
     ["Foreign Exchange Reserves", null, null],
     ["CPI y/y", null, "due 01:30 UTC, awaiting figure"],
     ["PPI y/y", 5.7, null],
+    ["New Loans", null, null],
     ["German Trade Balance", null, "due 07:00 UTC, awaiting figure"],
     ["German Buba President Nagel Speaks", null, null],
     ["M2 Money Supply y/y", null, null],
   ]);
   const csv = readCsv(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options));
-  expect(csv.rows.map((row) => row[csv.header.indexOf("actual_status")])).toEqual(["", "due 01:30 UTC, awaiting figure", "", "due 07:00 UTC, awaiting figure", "", ""]);
+  expect(csv.rows.map((row) => row[csv.header.indexOf("actual_status")])).toEqual(["", "due 01:30 UTC, awaiting figure", "", "", "due 07:00 UTC, awaiting figure", "", ""]);
 });
 
 test("--search finds an event however its name is spaced or hyphenated, and the Fed's rate reads as its upper bound", async () => {
