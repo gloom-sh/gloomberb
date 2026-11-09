@@ -290,7 +290,8 @@ test("fx --date gives the rate at that day's daily closes, dated by the source l
   await fx.execute(["USD/CAD", "--date", "2026-09-02"], run.context);
   expect(run.rows()[0]).toEqual([{ currency: "USD", baseCurrency: "CAD", rate: 1.3845, asOf: "2026-09-02", stale: false, pair: "USD/CAD",
     inverse: 1 / 1.3845, date: "2026-09-02" }]);
-  expect(run.output("text")[0]).toBe("1 USD = 1.38450 CAD  (CAD/USD 0.722282)\n\nSource: Gloom Cloud · Wed 2 Sep 2026 · not a live feed (daily FX close)");
+  // An older day is the source's own day bar, whose cutoff it does not publish: said so, never a guessed time.
+  expect(run.output("text")[0]).toBe("1 USD = 1.38450 CAD  (CAD/USD 0.722282)\n\nSource: Gloom Cloud · Wed 2 Sep 2026 · not a live feed (daily FX close: the source's day bar, no cutoff time published)");
   expect(run.printed[0]!.result.warnings).toBeUndefined();
 
   // The service says when its closes were taken, 17:00 New York, and the source line names it: Bank of Canada's
