@@ -117,11 +117,13 @@ function joinNameWords(args: readonly string[]): readonly string[] {
  * `1.234,5` and `1,234.5` are 1234.5. A lone comma or dot before exactly three
  * digits (`1,234`, `1.234`) is refused naming both readings, as `alerts add`
  * refuses `1,234`.
- * An amount and one currency converts to USD (`toUsdByDefault`). The error
- * sentence otherwise.
+ * An amount and one currency converts to USD (`toUsdByDefault`). An amount
+ * may carry a K, M or B suffix (`959.81M USD/EUR`). The error sentence
+ * otherwise.
  */
 export function parseFxArgs(words: readonly string[], baseCurrency: string): FxArgs | { error: string } {
-  const args = joinNameWords(words);
+  const scaled = words.length > 1 ? amountScale(words[0]) : null;
+  const args = joinNameWords(scaled ? [scaled.number, ...words.slice(1)] : words);
   if (args.length === 1) {
     const request = parseFxRequest(args[0]!, baseCurrency);
     if (!("error" in request)) return { request };
@@ -154,7 +156,21 @@ export function parseFxArgs(words: readonly string[], baseCurrency: string): FxA
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
   }
+  if (scaled) amount = Number((amount * scaled.factor).toPrecision(15));
   return { request, amount, ...(toUsdByDefault ? { toUsdByDefault } : {}) };
+}
+
+const AMOUNT_SCALES: Record<string, number> = { k: 1e3, m: 1e6, b: 1e9 };
+
+/**
+ * An amount written with a thousands, millions or billions suffix, as reports
+ * print them (`959.81M`, `25k`, `1.2B`): the number before it and what it
+ * multiplies by. Null for any other word.
+ */
+function amountScale(word: string | undefined): { number: string; factor: number } | null {
+  const match = /^(.*\d)\s?([kKmMbB])$/.exec(word?.trim() ?? "");
+  if (!match || parseTypedNumber(match[1]).kind === "invalid") return null;
+  return { number: match[1]!, factor: AMOUNT_SCALES[match[2]!.toLowerCase()]! };
 }
 
 /**

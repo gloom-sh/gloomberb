@@ -33,6 +33,11 @@ test("an amount in front converts from the first currency to the second, read wi
     error: "The amount 1,234 could be 1234 (thousands) or 1.234 (decimal comma); type 1234 or 1.2340.",
   });
   expect(parseFxArgs(["81000", "EUR/USD"], "USD")).toEqual({ request: eurUsd, amount: 81000 });
+  // An amount as reports print it: thousands, millions, billions.
+  const usdEur = { currency: "USD", baseCurrency: "EUR" };
+  expect(parseFxArgs(["959.81M", "USD/EUR"], "USD")).toEqual({ request: usdEur, amount: 959_810_000 });
+  expect(parseFxArgs(["25k", "USD", "EUR"], "USD")).toEqual({ request: usdEur, amount: 25_000 });
+  expect(parseFxArgs(["1,2B", "USD/EUR"], "USD")).toEqual({ request: usdEur, amount: 1_200_000_000 });
   expect(parseFxArgs(["EUR/USD", "100"], "USD")).toEqual({ error: "Put the amount first: fx 100 EUR/USD." });
   // Two codes are never two answers; the error writes them as one pair, with the amount form beside it.
   expect(parseFxArgs(["NGN", "ZAR"], "USD")).toEqual({
