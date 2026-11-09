@@ -41,6 +41,11 @@ export interface TextFieldProps {
   /** Accessible name when the visible label is rendered separately. */
   accessibleLabel?: string;
   /**
+   * Leaves the field out of remote control's UI tree, for an owner that
+   * registers it itself under its own name (a form's field row).
+   */
+  remoteHidden?: boolean;
+  /**
    * The form's current field, in a form that walks its fields with the
    * keyboard. The terminal marks its label with "> " and indents the other
    * labels to match; the desktop field's focus ring already shows it.
@@ -138,6 +143,7 @@ function InlineTextField({ label = "", labelWidth = 0, active, width, hint, onMo
 function TextFieldControl({
   label,
   accessibleLabel,
+  remoteHidden = false,
   active,
   value,
   placeholder,
@@ -166,10 +172,16 @@ function TextFieldControl({
   // The label takes a caller's placeholder colour, dim otherwise; the placeholder is the role.
   const labelColor = placeholderColor ?? colors.textDim;
   const placeholderFg = placeholderColor ?? placeholderText(colors);
-  useRemoteUiNode({
+  const localInputRef = useRef<InputRenderable>(null);
+  const resolvedInputRef = inputRef ?? localInputRef;
+  // The field's one node: the input under it is hidden, so a value typed
+  // here is listed once, with the field's name and type beside it.
+  useRemoteUiNode(remoteHidden ? null : {
     role: "text-field",
     label: accessibleLabel ?? label ?? placeholder,
+    disabled,
     actions: {
+      focus: () => { if (!disabled) resolvedInputRef.current?.focus?.(); },
       setValue: (input) => {
         const nextValue = remoteStringValue(input);
         if (!disabled) onChange?.(nextValue);
@@ -194,7 +206,7 @@ function TextFieldControl({
         focused={focused && !disabled}
         disabled={disabled}
         width={width}
-        inputRef={inputRef}
+        inputRef={resolvedInputRef}
         onChange={onChange}
         onSubmit={onSubmit}
         onBlur={onBlur}
@@ -212,8 +224,6 @@ function TextFieldControl({
     );
   }
 
-  const localInputRef = useRef<InputRenderable>(null);
-  const resolvedInputRef = inputRef ?? localInputRef;
   const currentValueRef = useRef(value ?? "");
   const [cursorOffset, setCursorOffset] = useState((value ?? "").length);
   const isPassword = type === "password";
@@ -252,6 +262,8 @@ function TextFieldControl({
       }}>
         <Input
           ref={resolvedInputRef}
+          data-gloom-remote-hidden
+          type={type}
           width={width}
           value={value}
           selectable={!isPassword}

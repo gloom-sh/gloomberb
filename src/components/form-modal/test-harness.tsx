@@ -3,7 +3,7 @@ import type { Window } from "happy-dom";
 import { act, type ReactNode } from "react";
 import { AppDialogBridge } from "../../app/dialog-bridge";
 import type { PluginRegistry } from "../../plugins/registry";
-import type { createRemoteUiRegistry } from "../../remote/semantic-tree";
+import { RemoteUiRegistryProvider, type RemoteUiRegistry, type createRemoteUiRegistry } from "../../remote/semantic-tree";
 import { WebDialogHostProvider } from "../../renderers/dom/dialog-host";
 import { WebInputHostProvider } from "../../renderers/dom/input-host";
 import { createOpenTuiTestHarness, type OpenTuiTestSetup } from "../../renderers/opentui/test-utils";
@@ -55,9 +55,10 @@ export function createSaveNoteRegistry(execute: (values?: Record<string, string>
 export async function renderDesktopFormHost(
   render: (node: ReactNode) => Promise<unknown>,
   pluginRegistry: PluginRegistry,
+  remoteRegistry?: RemoteUiRegistry,
 ): Promise<void> {
   const store = createStaticAppStore(createInitialState(createDefaultConfig("/tmp/gloomberb-form-desktop")));
-  await render(
+  const host = (
     <WebInputHostProvider>
       <WebDialogHostProvider>
         <AppContext value={store}>
@@ -69,8 +70,9 @@ export async function renderDesktopFormHost(
           />
         </AppContext>
       </WebDialogHostProvider>
-    </WebInputHostProvider>,
+    </WebInputHostProvider>
   );
+  await render(remoteRegistry ? <RemoteUiRegistryProvider registry={remoteRegistry}>{host}</RemoteUiRegistryProvider> : host);
 }
 
 /**

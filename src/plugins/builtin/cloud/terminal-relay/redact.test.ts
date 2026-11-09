@@ -54,6 +54,38 @@ describe("fields named for a credential", () => {
     }
   });
 
+  test("a bare input or textarea is a field too, named by its label or placeholder", () => {
+    const tree = redactRelayResult([
+      { id: "ui:1", role: "input", label: "API key", actions: ["setValue"], metadata: { value: "sk-live-1234", placeholder: "API key" } },
+      { id: "ui:2", role: "textarea", label: "Notes", actions: ["setValue"], metadata: { value: "call back", placeholder: "Seed phrase" } },
+      { id: "ui:3", role: "input", label: "Search", actions: ["setValue"], metadata: { value: "NVDA", placeholder: "Search" } },
+    ]) as Array<{ metadata: Record<string, unknown> }>;
+    expect(tree.map((node) => node.metadata.value)).toEqual([REDACTED, REDACTED, "NVDA"]);
+  });
+
+  test("what was typed into one is withheld from every other node of the same answer", () => {
+    const read = redactRelayResult({
+      tree: [
+        field("ui:1", "Key", "apiKey", "sk-live-4f9Qx2"),
+        field("ui:2", "Code", "otp", "5512"),
+        // Controls under the fields that list the text again without their names.
+        { id: "ui:3", role: "input", label: "Paste it here", actions: ["setValue"], metadata: { value: "sk-live-4f9Qx2" } },
+        textField("ui:4", "Code", "5512"),
+        { id: "ui:5", role: "text", label: "Copied sk-live-4f9Qx2 to the field" },
+        // Short text is withheld only as a field's whole value, not inside other text.
+        { id: "ui:6", role: "text", label: "Quantity 5512" },
+      ],
+    });
+    expect(read.tree.map((node: { label: string; metadata?: Record<string, unknown> }) => node.metadata?.value ?? node.label)).toEqual([
+      REDACTED,
+      REDACTED,
+      REDACTED,
+      REDACTED,
+      `Copied ${REDACTED} to the field`,
+      "Quantity 5512",
+    ]);
+  });
+
   test("a list of fields that is not a form keeps its values", () => {
     const columns = { fields: [{ id: "token", label: "Token", value: "ETH" }] };
     expect(redactRelayResult(columns)).toEqual(columns);

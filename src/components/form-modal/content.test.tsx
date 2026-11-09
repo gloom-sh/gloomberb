@@ -7,6 +7,7 @@ import { createTestDataProvider, createTestQuote } from "../../test-support/data
 import { AmbiguousTickerError } from "../../tickers/search";
 import type { PaneTemplateCreateOptions } from "../../types/plugin";
 import { dismissTopmostDialog, isDialogOpen } from "../../ui/dialog-stack";
+import { readFormRemotely } from "./remote-reads.test-helpers";
 import { CTRL_S, ENTER, ESC, createFormModalTestSession, registerCommand } from "./test-harness";
 
 const session = createFormModalTestSession();
@@ -405,6 +406,36 @@ describe("form modal", () => {
     "BP:XLON": "BP plc",
   });
 
+
+  // A key named only by its field id, typed as text, and a password: neither
+  // reaches remote control or Ask Gloom, through the form's own nodes or the
+  // controls drawn under them.
+  test("remote control never reads what was typed into a field named for a credential, or a password", async () => {
+    const remoteRegistry = createRemoteUiRegistry();
+    await renderForm((registry) => registerCommand(registry, {
+      id: "connect",
+      label: "Connect Account",
+      wizard: [
+        { key: "apiKey", label: "Key", type: "text", placeholder: "Paste it here" },
+        { key: "login", label: "Sign-in", type: "password" },
+        { key: "account", label: "Account", type: "text" },
+      ],
+    }), { kind: "plugin-command", commandId: "connect" }, { remoteRegistry });
+    await waitForForm("Sign-in");
+
+    await type("sk-live-4f9Qx2");
+    await press(ENTER);
+    await type("hunter2-correct");
+    await press(ENTER);
+    await type("DU1234");
+    await settle();
+
+    const { read, relayed } = readFormRemotely(remoteRegistry);
+    for (const typed of ["sk-live-4f9Qx2", "hunter2-correct", "DU1234"]) expect(read).toContain(typed);
+    expect(relayed).not.toContain("sk-live-4f9Qx2");
+    expect(relayed).not.toContain("hunter2-correct");
+    expect(relayed).toContain("DU1234");
+  });
 
   // The terminal textarea keeps its own buffer, which a value set from outside
   // has to replace, so the field's node is the only way in.

@@ -12,8 +12,12 @@ import { namesSecret } from "../../../../remote/secrets";
 
 /** Fields of a form field or input that hold what was typed. */
 const TYPED_VALUE_KEYS = ["value", "summary", "defaultValue", "initialValue"];
-/** Roles of the UI tree's nodes that hold typed text. */
-const FIELD_ROLES = new Set(["form-field", "text-field"]);
+/**
+ * Roles of the UI tree's nodes that hold typed text: a form's field, a text
+ * field, and the bare input or textarea a control draws, which an owner that
+ * lists the field itself hides but another may not.
+ */
+const FIELD_ROLES = new Set(["form-field", "text-field", "input", "textarea"]);
 export const REDACTED = "[redacted]";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -61,8 +65,14 @@ function isForm(record: Record<string, unknown>): boolean {
   return Array.isArray(record.fields) && "submitLabel" in record;
 }
 
-/** `withheld` hears each value replaced, so the credentials themselves can be listed. */
-function redactSecrets(value: unknown, depth = 0, withheld?: (secret: unknown) => void, context?: FieldContext): unknown {
+/**
+ * `withheld` hears each value replaced, so the credentials themselves can be
+ * listed, and whether it was what someone typed into a field (`typed`) rather
+ * than a value kept under a credential's name.
+ */
+type Withheld = (secret: unknown, typed: boolean) => void;
+
+function redactSecrets(value: unknown, depth = 0, withheld?: Withheld, context?: FieldContext): unknown {
   if (depth > 32 || value === null || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map((entry) => redactSecrets(entry, depth + 1, withheld, context));
   const record = value as Record<string, unknown>;
@@ -72,8 +82,9 @@ function redactSecrets(value: unknown, depth = 0, withheld?: (secret: unknown) =
   const result: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(record)) {
     const filled = entry !== null && entry !== undefined && entry !== "" && typeof entry !== "boolean";
-    if (filled && (namesSecret(key) || (secret && TYPED_VALUE_KEYS.includes(key)))) {
-      withheld?.(entry);
+    const typed = secret && TYPED_VALUE_KEYS.includes(key);
+    if (filled && (namesSecret(key) || typed)) {
+      withheld?.(entry, typed);
       result[key] = REDACTED;
     } else {
       const child: FieldContext = key === "metadata" && fieldNode && secret ? "secret" : key === "fields" && form ? "field" : undefined;
@@ -118,16 +129,47 @@ export function redactResource(resource: string, value: unknown): unknown {
   return value;
 }
 
-/** The last step before any answer leaves the app: every free-form map, at any depth. */
-export function redactRelayResult<T>(result: T): T {
-  return redactSecrets(result) as T;
-}
-
 /**
  * Shorter values are left to the key-based pass: as plain text they would
  * match ordinary words and numbers in a result.
  */
 const MIN_CREDENTIAL_LENGTH = 8;
+
+/**
+ * What was typed into a field named for a credential, wherever else the same
+ * result holds it: an input or text field under the field that lists the
+ * text again without the field's name. As the whole value of such a node,
+ * whatever its length; within any other text, only as long as a stored
+ * credential, as shorter ones would match ordinary words and numbers.
+ */
+function withoutTypedSecrets(value: unknown, secrets: ReadonlySet<string>): unknown {
+  const long = [...secrets].filter((secret) => secret.length >= MIN_CREDENTIAL_LENGTH).sort((left, right) => right.length - left.length);
+  const strip = (entry: unknown, fieldValue: boolean, depth: number): unknown => {
+    if (typeof entry === "string") {
+      if (fieldValue && secrets.has(entry.trim())) return REDACTED;
+      return long.reduce((text, secret) => (text.includes(secret) ? text.split(secret).join(REDACTED) : text), entry);
+    }
+    if (depth > 32 || entry === null || typeof entry !== "object") return entry;
+    if (Array.isArray(entry)) return entry.map((item) => strip(item, false, depth + 1));
+    const record = entry as Record<string, unknown>;
+    const field = isFieldNode(record);
+    const values = (map: Record<string, unknown>, level: number) => Object.fromEntries(
+      Object.entries(map).map(([key, item]) => [key, strip(item, field && TYPED_VALUE_KEYS.includes(key), level)]),
+    );
+    if (!field || !isRecord(record.metadata)) return values(record, depth + 1);
+    return { ...values(record, depth + 1), metadata: values(record.metadata, depth + 2) };
+  };
+  return strip(value, false, 0);
+}
+
+/** The last step before any answer leaves the app: every free-form map, at any depth. */
+export function redactRelayResult<T>(result: T): T {
+  const typed = new Set<string>();
+  const redacted = redactSecrets(result, 0, (secret, fromField) => {
+    if (fromField && typeof secret === "string" && secret.trim()) typed.add(secret.trim());
+  });
+  return (typed.size === 0 ? redacted : withoutTypedSecrets(redacted, typed)) as T;
+}
 
 /**
  * The credentials this configuration stores, as text, longest first: every

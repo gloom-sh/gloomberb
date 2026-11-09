@@ -1,9 +1,11 @@
 /** @jsxImportSource react */
 import { expect, test } from "bun:test";
 import { act } from "react";
+import { createRemoteUiRegistry } from "../../remote/semantic-tree";
 import { createDomTestHarness } from "../../renderers/dom/test-utils";
 import type { CommandBarWorkflowRoute } from "../command-bar/workflow/types";
 import { openFormModal } from "./request";
+import { readFormRemotely } from "./remote-reads.test-helpers";
 import { createDesktopFormControls, createSaveNoteRegistry, renderDesktopFormHost } from "./test-harness";
 
 const { window: testWindow, render } = createDomTestHarness();
@@ -83,4 +85,45 @@ test("on the desktop the active field takes the focus back after a click on the 
     await new Promise((resolve) => setTimeout(resolve, 30));
   });
   expect(activeInputValue()).toBe("");
+});
+
+// The desktop draws its own input under each field: what is typed into a key
+// named only by its field id, or into a password, stays out of remote reads.
+test("on the desktop remote control never reads what was typed into a field named for a credential, or a password", async () => {
+  const remoteRegistry = createRemoteUiRegistry();
+  await renderDesktopFormHost(render, createSaveNoteRegistry(() => {}), remoteRegistry);
+  await act(async () => {
+    openFormModal({
+      kind: "route",
+      route: {
+        ...route,
+        fields: [
+          { id: "apiKey", label: "Key", type: "text", placeholder: "Paste it here" },
+          { id: "login", label: "Sign-in", type: "password" },
+          { id: "account", label: "Account", type: "text" },
+        ],
+        values: { apiKey: "", login: "", account: "" },
+        activeFieldId: "apiKey",
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  });
+
+  const inputs = [...testWindow.document.querySelectorAll(".gloom-dialog input")] as unknown as HTMLInputElement[];
+  expect(inputs.map((input) => input.type)).toEqual(["text", "password", "text"]);
+  const typed = ["sk-live-4f9Qx2", "hunter2-correct", "DU1234"];
+  for (const [index, input] of inputs.entries()) {
+    await act(async () => {
+      input.focus();
+      input.value = typed[index]!;
+      input.dispatchEvent(new testWindow.Event("input", { bubbles: true }) as unknown as Event);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+  }
+
+  const { read, relayed } = readFormRemotely(remoteRegistry);
+  for (const text of typed) expect(read).toContain(text);
+  expect(relayed).not.toContain("sk-live-4f9Qx2");
+  expect(relayed).not.toContain("hunter2-correct");
+  expect(relayed).toContain("DU1234");
 });

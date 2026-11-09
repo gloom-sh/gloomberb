@@ -202,6 +202,7 @@ export function FormFieldRow({
       case "number":
         return (
           <NumberField
+            remoteHidden
             value={coerceFieldString(value)}
             placeholder={placeholder}
             focused={inputFocused}
@@ -215,6 +216,7 @@ export function FormFieldRow({
       case "password":
         return (
           <TextField
+            remoteHidden
             type={field.type === "password" ? "password" : "text"}
             value={coerceFieldString(value)}
             placeholder={placeholder}
