@@ -498,6 +498,8 @@ export interface InsiderActivityLine {
   stake: InsiderSignalFact;
   /** Dollars bought, net; null for a seller. */
   bought: number | null;
+  /** Of `bought`, the dollars under a Rule 10b5-1 plan; null when none. */
+  plan: number | null;
   /** Dollars sold, net; null for a buyer. */
   sold: number | null;
   /** The last trade day, as the INS table writes it. */
@@ -515,6 +517,7 @@ export function insiderActivityLines(activity: Record<InsiderSignalSide, Pick<In
     usual: insiderUsualFact(buyer, row),
     stake: insiderStakeFact(buyer),
     bought: side === "buy" ? buyer.value : null,
+    plan: side === "buy" && typeof buyer.planValue === "number" && buyer.planValue > 0 ? buyer.planValue : null,
     sold: side === "sell" ? buyer.value : null,
     last: formatSignalDay(buyer.lastBuy),
   })));
@@ -530,7 +533,7 @@ export function insiderActivityEmptyTitle(window: number): string {
   return `No open-market insider buying or selling in the last ${window} days.`;
 }
 
-export type InsiderActivityColumnId = "name" | "role" | "nth" | "usual" | "stake" | "bought" | "sold" | "last";
+export type InsiderActivityColumnId = "name" | "role" | "nth" | "usual" | "stake" | "bought" | "plan" | "sold" | "last";
 export type InsiderActivityColumn = DataTableColumn & { id: InsiderActivityColumnId };
 
 /** The columns a narrow Insiders view gives up, first to last: the ranking's, then the role, so a phone keeps the dollars whole. */
@@ -538,10 +541,11 @@ const ACTIVITY_DROPS = ["usual", "nth", "last", "role"] as const;
 
 /**
  * A company's insider columns, the ranking's in its order: name, role, nth
- * trade, size against usual, stake, dollars bought and sold, and the last
- * trade day. The name takes the room left; below 12 cells the size against
- * usual goes, then the nth trade and the last day, as the ranking drops
- * them, then the role.
+ * trade, size against usual, stake, dollars bought (and of them, when any
+ * insider bought under a Rule 10b5-1 plan, those: Plan Buys) and sold, and the
+ * last trade day. The name takes the room left; below 12 cells the size
+ * against usual goes, then the nth trade and the last day, as the ranking
+ * drops them, then the role.
  */
 export function buildInsiderActivityColumns(width: number, lines: readonly InsiderActivityLine[]): InsiderActivityColumn[] {
   const dollars = (pick: (line: InsiderActivityLine) => number | null) =>
@@ -552,6 +556,7 @@ export function buildInsiderActivityColumns(width: number, lines: readonly Insid
     usual: fitWidth(lines.map((line) => line.usual.text), "Vs Usual", 6),
     stake: fitWidth(lines.map((line) => line.stake.text), "Stake", 10),
     bought: fitWidth(dollars((line) => line.bought), "Bought", 8),
+    plan: lines.some((line) => line.plan != null) ? fitWidth(dollars((line) => line.plan), "Plan Buys", 11) : 0,
     sold: fitWidth(dollars((line) => line.sold), "Sold", 8),
     last: fitWidth(lines.map((line) => line.last), "Last", 10),
   };
@@ -563,6 +568,7 @@ export function buildInsiderActivityColumns(width: number, lines: readonly Insid
     show.usual ? widths.usual : 0,
     widths.stake,
     widths.bought,
+    widths.plan,
     widths.sold,
     show.last ? widths.last : 0,
   ].reduce((sum, columnWidth) => sum + (columnWidth > 0 ? columnWidth + COLUMN_GAP : 0), 0);
@@ -577,6 +583,7 @@ export function buildInsiderActivityColumns(width: number, lines: readonly Insid
     ...(show.usual ? [{ id: "usual" as const, label: "Vs Usual", width: widths.usual, align: "right" as const }] : []),
     { id: "stake", label: "Stake", width: widths.stake, align: "right" },
     { id: "bought", label: "Bought", width: widths.bought, align: "right" },
+    ...(widths.plan > 0 ? [{ id: "plan" as const, label: "Plan Buys", width: widths.plan, align: "right" as const }] : []),
     { id: "sold", label: "Sold", width: widths.sold, align: "right" },
     ...(show.last ? [{ id: "last" as const, label: "Last", width: widths.last, align: "right" as const }] : []),
   ];
@@ -591,6 +598,7 @@ export function insiderActivitySortValue(line: InsiderActivityLine, columnId: In
     case "usual": return line.usual.sort;
     case "stake": return line.stake.sort;
     case "bought": return line.bought;
+    case "plan": return line.plan;
     case "sold": return line.sold;
     case "last": return line.buyer.lastBuy;
   }

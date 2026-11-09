@@ -57,6 +57,12 @@ export interface InsiderSignalBuyer {
   usualRatio?: number | null;
   /** Bought and sold in the window: the row counts the net, on the side it falls. */
   twoWay?: boolean;
+  /**
+   * Dollars of the insider's buying under a Rule 10b5-1 plan, at most `value`;
+   * absent when none. Only a company asked for by its ticker counts plan
+   * purchases: the ranking leaves them out.
+   */
+  planValue?: number;
 }
 
 /** One fact behind a row, structured, strongest first. */

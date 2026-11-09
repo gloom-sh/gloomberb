@@ -201,9 +201,37 @@ const INSIDERS_COLUMNS: HeadlessPaneColumn[] = [
     ),
   },
   { key: "bought", header: "Bought", align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : "--" },
+  // Of Bought, the dollars under a Rule 10b5-1 plan: a company asked for by its ticker counts them, the ranking does not.
+  { key: "planBought", header: "Plan Buys", align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : "--" },
   { key: "sold", header: "Sold", align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : "--" },
   { key: "last", header: "Last", stackPriority: 1, format: (value) => typeof value === "string" ? formatSignalDay(value) : "--" },
 ];
+
+/**
+ * The insiders' table: Plan Buys only when an insider bought under a plan,
+ * each dollar column headed with its currency, and with a base currency
+ * other than USD each insider's dollars in it too, at the daily close of
+ * their last trade day, as the ranking converts a company's.
+ */
+async function insidersTable(
+  rows: readonly HeadlessPaneRow[],
+  ctx: HeadlessPaneContext,
+  dependencies: InsiderHeadlessDependencies,
+): Promise<{ columns: HeadlessPaneColumn[]; rows: HeadlessPaneRow[]; notes: string[] }> {
+  const columns = INSIDERS_COLUMNS.filter((column) => column.key !== "planBought" || rows.some((row) => typeof row.planBought === "number"));
+  const based = await withDayBaseValues(rows, [{ key: "bought", header: "Bought" }, { key: "sold", header: "Sold" }], "last",
+    ctx.config.baseCurrency, dependencies.fxHistory ?? ctx.apiClient);
+  const base = ctx.config.baseCurrency.trim().toUpperCase();
+  const pair = String(based.rows[0]?.fxPair ?? "");
+  return {
+    columns: withBaseColumns(labelDollarColumns(columns, ["bought", "planBought", "sold"], ctx.config.baseCurrency), based.columns),
+    rows: based.rows,
+    notes: [
+      ...based.columns ? [`Bought (${base}) and Sold (${base}) are each insider's dollars at the ${pair} daily close of their last trade day, or of the trading day before it; ${pair} is that rate.`] : [],
+      ...based.note ? [based.note] : [],
+    ],
+  };
+}
 
 /** The insiders as the pane lists them first: the side's dollars largest first, then the largest either way. */
 function insidersRows(activity: InsiderCompanyActivity, side: InsiderSignalSide): HeadlessPaneRow[] {
@@ -221,6 +249,7 @@ function insidersRows(activity: InsiderCompanyActivity, side: InsiderSignalSide)
       stake: insiderStakeValue(line.buyer),
       stakeBothWays: line.buyer.twoWay === true,
       bought: line.bought,
+      planBought: line.plan,
       sold: line.sold,
       currency: FORM4_CURRENCY,
       shares: line.buyer.shares ?? null,
@@ -355,7 +384,7 @@ const MAX_INSIDER_TICKERS = 10;
 const INSIDER_TICKER_CONCURRENCY = 3;
 
 const TRADES_LIMITATION = "Loaded Form 4 and Form 4/A rows are as filed, not reconciled transactions; affected aggregates are withheld.";
-const INSIDERS_LIMITATION = "The open-market purchases (code P) and sales (code S) an insider chose to make, as the ranking counts them: not under a Rule 10b5-1 plan, and no sale to cover tax, of shares exercised that day or in an offering. An insider who bought and sold is counted on the net, on one side. Each Form 4 line as filed, plan trades marked 10b5-1, is the default view.";
+const INSIDERS_LIMITATION = "Every insider's open-market purchases (code P) and sales (code S): purchases under a Rule 10b5-1 plan count, their dollars under Plan Buys (the ranking leaves them out); sales under a plan, to cover tax, of shares exercised that day or in an offering do not. An insider who bought and sold is counted on the net, on one side. Each Form 4 line as filed, plan trades marked 10b5-1, is the default view.";
 
 /** Several tickers' rows in one table: which company each row is. */
 const TICKER_COLUMN: HeadlessPaneColumn = { key: "ticker", header: "Ticker" };
@@ -470,9 +499,11 @@ async function tickerInsiders(
   dependencies: InsiderHeadlessDependencies,
 ): Promise<HeadlessRowsResult> {
   const read = await readTickerInsiders(symbol, args, ctx, dependencies);
+  const table = await insidersTable(read.rows, ctx, dependencies);
   return {
-    columns: labelDollarColumns(INSIDERS_COLUMNS, ["bought", "sold"], ctx.config.baseCurrency),
-    rows: read.rows,
+    columns: table.columns,
+    rows: table.rows,
+    ...(table.notes.length ? { notes: table.notes } : {}),
     ...(read.empty ? { empty: read.empty } : {}),
     metadata: {
       ...read.metadata,
@@ -532,11 +563,13 @@ async function severalTickers(
   };
   const lead = [...(watchlistNote ? [watchlistNote] : []), ...failures];
   if (insiders) {
+    const table = await insidersTable(rows, ctx, dependencies);
+    const notes = [...lead, ...(rows.length ? empties : []), ...table.notes];
     return {
-      columns: [TICKER_COLUMN, ...labelDollarColumns(INSIDERS_COLUMNS, ["bought", "sold"], ctx.config.baseCurrency)],
-      rows,
+      columns: [TICKER_COLUMN, ...table.columns],
+      rows: table.rows,
       ...(rows.length === 0 ? { empty: empties.join("\n") } : {}),
-      ...(lead.length || (rows.length && empties.length) ? { notes: [...lead, ...(rows.length ? empties : [])] } : {}),
+      ...(notes.length ? { notes } : {}),
       metadata: { ...shared, limitations: [INSIDERS_LIMITATION] },
     };
   }
@@ -729,7 +762,7 @@ export function createInsiderHeadless(
         const notes = [
           ...based.columns ? [`${words.traded} (${ctx.config.baseCurrency.trim().toUpperCase()}) is each company's dollars at the ${String(based.rows[0]?.fxPair)} daily close of its ${words.last.toLowerCase()} day, or of the trading day before it; ${String(based.rows[0]?.fxPair)} is that rate.`] : [],
           ...based.note ? [based.note] : [],
-          ...plans ? ["The score counts open-market buys an insider chose to make; Plan Buys are those under a Rule 10b5-1 plan, set up months before, and Sold is every open-market sale in the window, under a plan or not."] : [],
+          ...plans ? ["Plan Buys, under a Rule 10b5-1 plan, are left out of the score; Sold counts plan sales, not those to cover tax, of exercised shares or in an offering."] : [],
         ];
         return {
           columns: labelled,
