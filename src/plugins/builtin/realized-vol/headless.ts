@@ -36,7 +36,7 @@ function fxProxySection(proxy: FxVolProxy, reading: FxProxyReading): HeadlessBun
 
 export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPaneDefinition<"bundle"> {
   return {
-    shape: "bundle", argument: { kind: "ticker", description: "Underlying ticker" },
+    shape: "bundle", argument: { kind: "ticker", description: "Underlying ticker" }, currencyPairs: true,
     freshness: { ...DAILY_CLOSES, observedKey: "date", oldest: null },
     describe: (args) => `${initialView === "graph" ? "HVG" : "HVT"} ${args.symbols[0] ?? ""}`,
     discovery: { screenshotReadiness: "live-dom", limitations: ["IV is a dated current observation; HIVG has the stored IV history."] },

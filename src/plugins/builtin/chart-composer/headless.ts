@@ -738,10 +738,14 @@ function onExchange(spec: ChartSpec, exchange: string): ChartSpec {
     : { ...series, source: { ...series.source, instrument: { ...series.source.instrument, exchange: canonicalExchange(code) } } }) };
 }
 
+/** The price charts, which draw a currency pair as any listing; the fundamentals and estimates graphs take companies. */
+const PRICE_CHARTS: ReadonlySet<string> = new Set(["graph-price-pane", "graph-intraday-price-pane", "comparison-chart-pane"]);
+
 export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneDefinition<"series"> {
   return {
     ...paneSchemas[template],
     shape: "series",
+    ...(PRICE_CHARTS.has(template) ? { currencyPairs: true } : {}),
     async load(args, context) {
       const intradayHistories: ChartPaneModel["snapshot"]["intradayHistories"] = [];
       const closingPrintsPending: string[] = [];

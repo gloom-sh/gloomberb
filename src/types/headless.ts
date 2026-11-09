@@ -776,6 +776,13 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
    */
   fredSeriesArgument?: boolean;
   /**
+   * The ticker argument takes a currency pair as its listing (EURUSD=X): a
+   * currency typed after a word the catalog matches to this function
+   * (`hp eur`) is suggested as its pair. Functions without it keep the word
+   * as typed.
+   */
+  currencyPairs?: boolean;
+  /**
    * A typed symbol the function reads as another before it is resolved, with
    * the note that says so: OPX and OVDV read a bare BTC or ETH as the coin
    * (BTC-USD), whose options are the ones asked about, not the US fund that

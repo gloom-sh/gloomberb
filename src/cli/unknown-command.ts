@@ -14,6 +14,8 @@ export interface CatalogCommandHit {
   peers: boolean;
   /** It answers this listing with a refusal before any request (OVDV for EURUSD=X): a command with it would fail. */
   refusesSymbol?: (key: string) => boolean;
+  /** Its ticker argument takes a currency pair (HP, HVT, GP): a currency typed after it is written as its pair. */
+  takesFx?: boolean;
 }
 
 /** An FX pair as a word reads: its listing for `quote` (EURUSD=X), as `fx` takes it (EUR/USD), and its code (EURUSD). */
@@ -42,14 +44,24 @@ export function currencyWordPair(word: string): CurrencyWordPair | null {
   return halves ? { listing: listing!, pair: `${halves[1]}/${halves[2]}`, code: `${halves[1]}${halves[2]}` } : null;
 }
 
+/** A three-letter code typed in capitals (COP, NOK, PEN, SAR): a ticker as much as a currency. */
+function capitalCode(word: string): boolean {
+  return /^[A-Z]{3}$/.test(word.trim());
+}
+
 /**
- * What a currency typed as a command (`eurusd`, `eur`) is answered with: the
- * command that quotes its pair and the one that converts it and prices its
- * forwards. Null for a word that reads as no pair.
+ * The pair a word reads as where it is rewritten as one: a pair in any
+ * spelling, a currency's name, or a code in lowercase (`eur`). A code in
+ * capitals is left as typed, since it may be the ticker (COP is
+ * ConocoPhillips, NOK Nokia).
  */
-function currencyPointer(token: string): { pair: string; lines: string[] } | null {
-  const fx = currencyWordPair(token);
-  return fx ? { pair: fx.pair, lines: [`To quote it: gloom quote ${fx.listing}`, `Rate, conversion and forwards: gloom fx ${fx.pair}`] } : null;
+function currencyWordRewrite(word: string): CurrencyWordPair | null {
+  return capitalCode(word) ? null : currencyWordPair(word);
+}
+
+/** The commands that quote a pair and that convert it and price its forwards. */
+function currencyLines(fx: CurrencyWordPair): string[] {
+  return [`To quote it: gloom quote ${fx.listing}`, `Rate, conversion and forwards: gloom fx ${fx.pair}`];
 }
 
 const TICKER_ARGUMENTS = new Set(["ticker", "tickers", "symbol-list", "ticker-list"]);
@@ -78,16 +90,19 @@ function catalogHitCommand(hit: CatalogCommandHit, args: readonly string[]): { c
     const argument = typed.length > 0 ? typed.map(shellWord).join(" ") : placeholder ? `<${placeholder}>` : "";
     return { command: [base, argument].filter(Boolean).join(" "), search: null, standIn: null };
   }
-  // A currency where a ticker goes (`skew eur`) is its pair's listing (EURUSD=X); a function that refuses an FX
-  // pair (OVDV) takes the currency fund whose options stand in for it (FXE), so the command shown runs.
+  // A currency where a ticker goes (`skew eur`) is its pair's listing (EURUSD=X) for a function that takes FX; a
+  // function that refuses an FX pair (OVDV) takes the currency fund whose options stand in for it (FXE), so the
+  // command shown runs. Any other function, and a code in capitals (COP, NOK), keep the word as typed.
   let standIn: string | null = null;
   const tickers = typed.map((arg) => {
-    const fx = currencyWordPair(arg);
+    const fx = currencyWordRewrite(arg);
     if (!fx) return arg;
-    if (!hit.refusesSymbol?.(fx.listing)) return fx.listing;
-    const fund = fxVolatilityProxyFund(fx.code);
-    if (fund) standIn = `${fund}'s options stand in for ${fx.pair}: OTC FX volatility is not covered.`;
-    return fund ?? arg;
+    if (hit.refusesSymbol?.(fx.listing)) {
+      const fund = fxVolatilityProxyFund(fx.code);
+      if (fund) standIn = `${fund}'s options stand in for ${fx.pair}: OTC FX volatility is not covered.`;
+      return fund ?? arg;
+    }
+    return hit.takesFx ? fx.listing : arg;
   });
   const names = tickers.filter((arg) => nameLike(arg) && !currencyWordPair(arg));
   const single = tickers.length === 1;
@@ -205,13 +220,17 @@ export function unknownCommandReply(
   // A bank figure's name (`nim JPM`, `deposits WFC`) is where it is: the Bank section of fundamentals, NIM in EQS.
   const bank = bankFigurePointer(token, pointers.args[0] ?? "");
   if (bank) return { message: `Unknown command "${token}": a bank's figures are in the Bank section of fundamentals.`, details: bank.details };
-  // A currency or a pair typed alone (`eurusd`, `eur`) is a quote and a rate, whatever command it is a slip from.
-  const currency = pointers.args.length === 0 ? currencyPointer(token) : null;
-  if (currency) {
+  // A currency or a pair typed alone (`eurusd`, `eur`) is a quote and a rate, whatever command it is a slip from. A
+  // code in capitals (COP, NOK) is a ticker too: its ticker answer stands, with the pair's lines after it.
+  const currency = pointers.args.length === 0 ? currencyWordPair(token) : null;
+  if (currency && !capitalCode(token)) {
     return { message: `Unknown command "${token}": it reads as ${currency.pair}.`,
-      details: [...currency.lines, "Run gloom help to see every command."].join("\n") };
+      details: [...currencyLines(currency), "Run gloom help to see every command."].join("\n") };
   }
-  const ticker = tickerPointer(token);
+  const tickerLines = tickerPointer(token);
+  const ticker = tickerLines && currency
+    ? [tickerLines, `As a currency it reads as ${currency.pair}: gloom quote ${currency.listing}`, `Rate, conversion and forwards: gloom fx ${currency.pair}`].join("\n")
+    : tickerLines;
   // Exporting is a flag, not a command: `export LMT` says how, rather than listing functions that mention exports.
   const exported = exportCommandPointer(token, pointers.args);
   const subcommand = exported || ticker ? null : subcommandPointer(token, pointers.args, commands);
