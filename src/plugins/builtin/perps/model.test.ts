@@ -167,4 +167,8 @@ test("one asset's carry across venues: the APR range, weighted by open interest,
     .toStartWith("5 contracts on 4 venues: ");
   expect(venueAprSummary([rows[1]!])).toBeNull();
   expect(venueAprSummary([rows[0]!])!.text).toBe("Hyperliquid sits at the 0.01%/8h baseline");
+  // A venue not read recently is out of the range and the weighting, and the line counts it.
+  const stale = venueAprSummary(rows.map((row) => row.venue === "okx" ? { ...row, stale: true } : row))!;
+  expect(stale.text).toBe("3 venues: -0.0% to +11.0%, OI-weighted +6.1%; Hyperliquid sits at the 0.01%/8h baseline; 1 stale contract left out");
+  expect([stale.low, stale.stale]).toEqual([-0.0004, 1]);
 });

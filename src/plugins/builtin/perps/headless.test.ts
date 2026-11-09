@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { deriveHeadlessFreshness, formatFreshnessLine, paneStatusLine } from "../../../cli/pane-functions/freshness";
 import { headlessReportTables, renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { renderReportNdjson } from "../../../cli/report-tables";
+import { setCliWidthOverride } from "../../../utils/cli-output";
 import type { PerpMarketPayload } from "../../../api-client/perps";
 import { normalizeCapabilityOptions, type PaneFunctionCapability } from "../../../cli/pane-functions/capabilities";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
@@ -33,6 +34,30 @@ async function report(tab: string, rows = [market]) {
   return { result, text: renderHeadlessPaneText(perpsHeadless, result, createTestHeadlessArgs(), "PERP") };
 }
 const longest = (text: string) => Math.max(...text.split("\n").map((line) => line.length));
+
+test("at 80 columns one market's row keeps its APR, and the raw rates it annualises move under the row", async () => {
+  const binance = venueRow("binance", { markPrice: 74_875.62, fundingRate: 0.0001, fundingRate8h: 0.0001, fundingApr: 0.1095, openInterestUsd: 7.2e9,
+    observedAt: "2026-11-09T04:47:00.000Z", longShortRatio: longShort() });
+  setCliWidthOverride(80);
+  try {
+    const apiClient = { getCloudPerpsBoard: async () => perpBoard({ rows: [binance] }), getCloudPerpsCompare: async () => perpBoard({ rows: [binance] }),
+      getCloudPerpsMarket: async () => ({ ...perpBoard({ rows: [binance] }), evidence: [], methodologyUrl: "" }),
+      getCloudPerpsHistory: async () => perpHistory({ marketId: binance.marketId }) } as never;
+    const args = createTestHeadlessArgs({ argument: "BTC", rawArgument: "BTC", options: { tab: "history", days: "7", metric: "funding" } });
+    const result = await perpsHeadless.load(args, createTestHeadlessContext({ apiClient }));
+    const text = renderHeadlessPaneText(perpsHeadless, result, args, "PERP");
+    const lines = text.split("\n");
+    const header = lines.findIndex((line) => line.startsWith("Market ") && line.includes("Venue"));
+    expect(lines[header]).toContain("APR %");
+    expect(lines[header]).not.toContain("Funding %/int");
+    const row = lines.findIndex((line, index) => index > header && line.startsWith("BTC "));
+    expect(lines[row]).toContain("+10.95%");
+    expect(lines[row + 1]).toMatch(/^\s+Funding %\/int \+0\.01000% \/8h\s+Observed /);
+    expect(longest(text)).toBeLessThanOrEqual(80);
+  } finally {
+    setCliWidthOverride(null);
+  }
+});
 
 test("history report reads as units and the rows keep every raw field", async () => {
   const { result, text } = await report("history");

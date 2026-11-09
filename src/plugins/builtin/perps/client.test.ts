@@ -84,6 +84,9 @@ test("a bare coin opens its largest contract across venues, Hyperliquid's main d
   expect(ids).toEqual(["binance:BNBUSDT"]);
   // A venue asked for still opens its own contract.
   expect((await fetchPerpSelection("BNB", client, "hyperliquid")).rows[0]!.venue).toBe("hyperliquid");
+  // A venue not read recently is passed over while another is current.
+  const staleLead = { ...client, getCloudPerpsCompare: async () => perpBoard({ rows: [{ ...contracts[0]!, stale: true }, ...contracts.slice(1)], access: "preview", locked: 3 }) };
+  expect((await fetchPerpSelection("BNB", staleLead)).rows[0]!.marketId).toBe("bybit:BNBUSDT");
   // Where Hyperliquid leads, its main dex opens before a larger builder-dex contract of the same coin.
   const builder = perpRow({ marketId: "hyperliquid:abc:BTC", dex: "abc", symbol: "abc:BTC", openInterestUsd: 9e9 });
   const hyperliquid = { ...client, getCloudPerpsBoard: async () => perpBoard({ rows: [builder, perpRow({ openInterestUsd: 5e9 }), venueRow("binance", { openInterestUsd: 7e9 })] }),
