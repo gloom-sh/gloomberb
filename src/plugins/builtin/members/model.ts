@@ -71,12 +71,26 @@ export function holdingsSourceText(input: string, data: Pick<FundMembersPayload,
   return `${fundName(data.fund)}, ${data.fund.ticker} holdings as of ${data.asOf.slice(0, 10)}${forRequested}`;
 }
 /**
- * What the funds holding a stock are: how many covered funds were looked through, and that the N-PORT funds'
- * holdings are a quarter's report, filed up to 60 days after the date it is as of.
+ * What a fund holding a stock holds it as of, on its row: an N-PORT report's period end and filing day ("as of
+ * 30 Jun 2026 (N-PORT, filed 26 Aug)"), or a daily file's date ("as of 5 Nov 2026 (daily file)"). A narrow
+ * table drops the words its section header says ("30 Jun 2026, filed 26 Aug").
+ */
+export function stockFundAsOf(row: Pick<StockFund, "asOf" | "basis" | "filedOn">, short = false) {
+  const asOf = dayMonth(row.asOf, true);
+  const filed = row.basis === "nport" && row.filedOn ? `filed ${dayMonth(row.filedOn, row.filedOn.slice(0, 4) !== row.asOf.slice(0, 4))}` : "";
+  if (short) return filed ? `${asOf}, ${filed}` : asOf;
+  return row.basis === "nport" ? `as of ${asOf} (N-PORT${filed ? `, ${filed}` : ""})` : `as of ${asOf} (daily file)`;
+}
+const count = (value: number, noun = "") => `${value.toLocaleString("en-US")}${noun ? ` ${noun}${value === 1 ? "" : "s"}` : ""}`;
+/**
+ * What the funds holding a stock are: how many ETFs were looked through (the covered funds on their daily files,
+ * every other US ETF from its latest N-PORT report), and that a report's holdings are a quarter's, filed up to
+ * 60 days after the date they are as of.
  */
 export function stockFundsNotices(data: StockFundsPayload) {
+  const total = data.coverage.daily + data.coverage.nport;
   return [
-    `Looked through ${data.coverage.daily + data.coverage.nport} covered funds: ${data.coverage.daily} from daily holdings files, ${data.coverage.nport} from SEC N-PORT reports.`,
+    `${count(data.funds.length)} of ${count(total)} ETFs looked through hold ${data.symbol}: ${count(data.coverage.daily, "covered fund")} from daily holdings files, ${count(data.coverage.nport)} from their latest SEC N-PORT reports.`,
     ...(data.funds.some((row) => row.basis === "nport") ? ["N-PORT holdings are a quarter's report, filed up to 60 days after the date they are as of."] : []),
   ];
 }
@@ -93,10 +107,10 @@ export function usListingInput(input: string): string | null {
   const [symbol, exchange] = input.trim().toUpperCase().split(":");
   return symbol && (!exchange || isUsListingExchange(exchange)) ? symbol : null;
 }
-/** Nothing covered holds the symbol: it may be a fund MEMB does not cover, so the fund facts are named too. */
+/** No ETF looked through holds the symbol: it may be a fund MEMB does not cover, so the fund facts are named too. */
 export function noStockFundsMessage(input: string, surface: "report" | "pane" = "report") {
   const symbol = requestedSymbol(input);
-  return { title: `No covered fund holds ${symbol}.`,
+  return { title: `No ETF looked through holds ${symbol}.`,
     message: surface === "pane" ? `If ${symbol} is a fund, MEMB does not cover it: its fund facts are in ETF ${symbol}. MEMB with no fund lists the funds it covers.`
       : `If ${symbol} is a fund, MEMB does not cover it: gloom fn ETF ${symbol}. The covered funds: gloom fn MEMB.` };
 }
@@ -160,17 +174,20 @@ export function memberColumns(width: number, movers = false): DataTableColumn[] 
     column("changePercent", "1D", compact ? 8 : 9), ...(!movers ? [column("return1WPercent", "1W", 9), column("return1MPercent", "1M", 9), column("returnYtdPercent", "YTD", 9), column("sector", "Sector", 22, "left")] : [])], width,
     ["sector", "shares", "returnYtdPercent", "return1MPercent", "return1WPercent", "price", "name"]);
 }
-/** The funds holding a stock, in two sections: those on daily holdings files, then those read from N-PORT reports, each by weight as the server orders them. */
+/** The ETFs holding a stock, in two sections: the covered funds on daily holdings files, then those read from N-PORT reports, each by weight as the server orders them. */
 export function stockFundRows(rows: readonly StockFund[]): SectionedRow<StockFund>[] {
   return buildSectionedRows([
     { label: "Daily holdings files", items: rows.filter((row) => row.basis === "daily") },
     { label: "SEC N-PORT reports", items: rows.filter((row) => row.basis === "nport") },
   ], (row) => row.ticker);
 }
+/** Whether a stock's fund table has room for each row's whole "as of 30 Jun 2026 (N-PORT, filed 26 Aug)". */
+export const stockFundAsOfFits = (width: number) => width >= 96;
 export function stockFundColumns(width: number) {
   const compact = width < 50;
-  return fit([column("ticker", "Fund", 8, "left"), column("name", "Theme", 24, "left"), column("weight", compact ? "Wt. %" : "Weight %", compact ? 7 : 10),
-    column("asOf", "As of", 12, "left"), column("filedOn", "Filed", 12, "left")], width, ["filedOn", "name"]);
+  const whole = stockFundAsOfFits(width);
+  return fit([column("ticker", "Fund", 8, "left"), column("name", "Name", whole ? 24 : 14, "left"), column("weight", compact ? "Wt. %" : "Weight %", compact ? 7 : 10),
+    column("asOf", whole ? "Holdings" : "As of", whole ? 46 : compact ? 26 : 30, "left")], width, ["name"]);
 }
 export function changeColumns(width: number) {
   const compact = width < 50;

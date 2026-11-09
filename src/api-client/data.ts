@@ -489,7 +489,7 @@ export class CloudDataApi {
     return this.request<import("./members").FundMembersPayload>(`/cloud/members/${encodeURIComponent(fund)}`);
   }
 
-  /** The covered funds whose holdings hold a US stock. */
+  /** The ETFs whose latest holdings hold a US stock. */
   getStockFunds(symbol: string) {
     return this.request<import("./members").StockFundsPayload>(`/cloud/members/holding/${encodeURIComponent(symbol)}`);
   }

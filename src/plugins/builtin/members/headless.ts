@@ -3,7 +3,7 @@ import type { HeadlessRowsResult } from "../../../types/headless";
 import { fetchBreadth, fetchChanges, fetchFunds, fetchMembers, fetchStockFunds, FundNotCoveredError } from "./client";
 import type { FundMembersPayload } from "../../../api-client/members";
 import { canonicalFund, changeReason, coverageText, decimal, DEFAULT_SORT, fundName, fundSource, holdingsCaveats, holdingsSourceText, memberRows, membersFeed,
-  noStockFundsMessage, percent, stockFundsNotices, usListingInput } from "./model";
+  noStockFundsMessage, percent, stockFundAsOf, stockFundsNotices, usListingInput } from "./model";
 const columns: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker" }, { key: "name", header: "Name" },
   { key: "weight", header: "Weight %", align: "right", format: (value) => value == null ? "--" : decimal(Number(value) * 100) },
@@ -25,8 +25,9 @@ function holdingsBasis(data: Pick<FundMembersPayload, "asOf" | "basis" | "filedO
   };
 }
 /**
- * `fn MEMB NVDA`: the covered funds whose holdings hold a stock, the funds on daily files first, then
- * those read from N-PORT reports, each with its weight and what its holdings are as of.
+ * `fn MEMB NVDA`: the ETFs whose latest holdings hold a stock, the covered funds on daily files first, then
+ * every other US ETF whose latest N-PORT report holds it, each with its weight and what its holdings are as
+ * of ("as of 30 Jun 2026 (N-PORT, filed 26 Aug)"). CSV and JSON rows carry the dates and link apart too.
  */
 async function stockFunds(input: string, client: Parameters<typeof fetchStockFunds>[1]): Promise<HeadlessRowsResult> {
   const symbol = usListingInput(input);
@@ -37,11 +38,11 @@ async function stockFunds(input: string, client: Parameters<typeof fetchStockFun
   const data = await fetchStockFunds(symbol, client);
   const none = noStockFundsMessage(symbol);
   return { freshness: { status: "not-a-feed", basis: "fund holdings" },
-    rows: data.funds.map((row) => ({ ...row, weight: row.weight === null ? null : row.weight * 100, source: fundSource(row),
+    rows: data.funds.map((row) => ({ ...row, weight: row.weight === null ? null : row.weight * 100, holdings: stockFundAsOf(row),
       filedOn: row.filedOn ?? null, sourceUrl: row.sourceUrl ?? null })),
-    columns: [{ key: "ticker", header: "Fund" }, { key: "name", header: "Index or theme" },
+    columns: [{ key: "ticker", header: "Fund" }, { key: "name", header: "Name" },
       { key: "weight", header: "Weight %", align: "right", format: (value) => decimal(value as number | null) },
-      { key: "asOf", header: "Holdings as of" }, { key: "source", header: "Source" }, exported("filedOn", "Filed"), exported("sourceUrl", "Source link")],
+      { key: "holdings", header: "Holdings" }, exported("asOf", "Holdings as of"), exported("filedOn", "Filed"), exported("sourceUrl", "Source link")],
     empty: `${none.title} ${none.message}`,
     metadata: { symbol: data.symbol, coverage: data.coverage, notices: stockFundsNotices(data) } };
 }
@@ -49,7 +50,7 @@ async function stockFunds(input: string, client: Parameters<typeof fetchStockFun
 export const membersHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows", argument: { kind: "free-text", optional: true, placeholder: "fund or stock", description: "Covered fund or index alias for its holdings, a US stock for the funds holding it; omit for the fund list." },
   options: [{ key: "tab", type: "enum", values: [{ value: "members" }, { value: "movers" }, { value: "changes" }, { value: "breadth" }], defaultValue: "members", description: "Members, movers, changes or daily breadth." }],
-  discovery: { aliases: ["MEMB", "MRR", "IMOV"], limitations: ["ETF holdings, with file dates.", "Thematic funds from SEC N-PORT reports, two to four months old.", "Member prices are real-time with Pro and fifteen minutes delayed otherwise; partial 1D coverage.", "Nasdaq-100 is not covered.", "Breadth history uses current members (survivorship bias)."] },
+  discovery: { aliases: ["MEMB", "MRR", "IMOV"], limitations: ["ETF holdings, with file dates.", "Thematic funds from SEC N-PORT reports, two to four months old.", "A stock's ETFs: the covered funds, then every other US ETF from its latest SEC N-PORT report, up to nine months old.", "Member prices are real-time with Pro and fifteen minutes delayed otherwise; partial 1D coverage.", "Nasdaq-100 is not covered.", "Breadth history uses current members (survivorship bias)."] },
   describe: (args) => args.rawArgument ? `MEMB ${args.rawArgument}` : "Index and ETF members",
   async load(args, context) {
     const input = args.symbols[0] ?? args.rawArgument ?? "";
