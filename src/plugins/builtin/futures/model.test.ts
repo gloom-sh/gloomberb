@@ -5,7 +5,8 @@ import type { BoardQuoteMap } from "../shared/use-quote-board";
 import { futuresBoardCode, getContractsBySector, type FuturesSector } from "../../../market-data/futures-board";
 import { findCatalogSeries } from "../../../cli/series-search";
 import { cotContractCode } from "../cot/model";
-import { FUTURES_SERIES } from "./series";
+import { crudeFrontMonth, FUTURES_SERIES } from "./series";
+import { futuresContractCode } from "../../../utils/futures-generic";
 import {
   buildFuturesRows,
   DEFAULT_FUTURES_SORT,
@@ -119,6 +120,16 @@ describe("buildFuturesRows search", () => {
     expect(cotContractCode("Cotton No. 2")).toBe(cotContractCode("CT"));
     expect(findCatalogSeries([{ series: FUTURES_SERIES }], "softs").map((match) => match.id))
       .toEqual(["fut:KC", "fut:SB", "fut:CC", "fut:CT", "fut:OJ"]);
+  });
+
+  test("a crack's example of listed contracts is in the month its crude leg trades today", () => {
+    const code = (month: number) => futuresContractCode("CL", month).slice(2);
+    // WTI held December until 16 Oct and January from the middle of November; Brent is two months out.
+    expect([crudeFrontMonth("CL", new Date("2026-11-09T12:00:00Z")), crudeFrontMonth("CL", new Date("2026-11-18T12:00:00Z")),
+      crudeFrontMonth("BZ", new Date("2026-11-09T12:00:00Z"))].map(code)).toEqual(["Z26", "F27", "F27"]);
+    const month = code(crudeFrontMonth("CL", new Date()));
+    expect(FUTURES_SERIES.find((series) => series.id === "fut:crack-321")?.description)
+      .toEndWith(`One month by hand: (2*42*RB${month} + 42*HO${month} - 3*CL${month})/3.`);
   });
 
   test("drops a sector header when every contract in it is filtered out", () => {

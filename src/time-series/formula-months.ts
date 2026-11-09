@@ -43,8 +43,13 @@ export function withFormulaNextMonths(spec: ChartSpec): ChartSpec {
   return added.length ? { ...spec, series: [...spec.series, ...added], studies } : spec;
 }
 
+/** A series `withFormulaNextMonths` added: a formula's hidden input, which no message, coverage or integrity notice names. */
+export function isFormulaNextMonth(seriesId: string): boolean {
+  return seriesId.includes(NEXT_MONTH_ID);
+}
+
 /** A resolved chart without the next months `withFormulaNextMonths` added: they are a formula's inputs, not the chart's series. */
 export function withoutFormulaNextMonths(result: ChartResolutionResult): ChartResolutionResult {
-  if (!result.legendSeries?.some((entry) => entry.id.includes(NEXT_MONTH_ID))) return result;
-  return { ...result, legendSeries: result.legendSeries.filter((entry) => !entry.id.includes(NEXT_MONTH_ID)) };
+  if (!result.legendSeries?.some((entry) => isFormulaNextMonth(entry.id))) return result;
+  return { ...result, legendSeries: result.legendSeries.filter((entry) => !isFormulaNextMonth(entry.id)) };
 }

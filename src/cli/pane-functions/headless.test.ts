@@ -546,6 +546,25 @@ test("a series that asks for decimals prints them in text, while JSON and CSV ke
   expect(renderReportCsv(headlessReportTables(definition, result, args, "Relationship", freshness, { complete: true, unavailableSymbols: [] }), freshness)).toContain("2026-10-21,0.418953387895,");
 });
 
+test("a continuous future's and a formula's contracts close each row, a roll marked on the window's first row as on any other", () => {
+  const definition: HeadlessPaneDefinition<"series"> = { shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }) };
+  const result: HeadlessSeriesResult = { series: [
+    // CL=F rolled on the 16th, the first day in view: the bar before the window is the November contract.
+    { id: "cl", label: "CL=F", unit: "USD / barrel", points: [
+      { date: "2026-10-16", value: 87.1, contract: "CLZ26", roll: true }, { date: "2026-10-19", value: 87.4, contract: "CLZ26" }] },
+    { id: "crack", label: "3-2-1 crack spread", unit: "USD / barrel", formulaLegs: ["RB=F", "HO=F", "CL=F"], points: [
+      { date: "2026-10-16", value: 55.1452, roll: true, legs: [{ contract: "RBZ26", price: 2.4 }, { contract: "HOZ26", price: 3.1 }, { contract: "CLZ26", price: 87.1 }] }] },
+  ] };
+  const freshness = deriveHeadlessFreshness(definition, result);
+  const csv = renderReportCsv(headlessReportTables(definition, result, args, "Custom Chart", freshness, { complete: true, unavailableSymbols: [] }), freshness).split("\n");
+  const rowOf = (date: string, section: string) => csv.slice(csv.indexOf(`# section: ${section}`)).find((line) => line.startsWith(date))!;
+  expect(csv[csv.indexOf("# section: CL=F") + 1]).toEndWith(",retrieved_at,Contract,Roll,Partial");
+  expect(rowOf("2026-10-16", "CL=F")).toEndWith(",CLZ26,true,false");
+  expect(rowOf("2026-10-19", "CL=F")).toEndWith(",CLZ26,false,false");
+  expect(csv[csv.indexOf("# section: 3-2-1 crack spread") + 1]).toEndWith(",retrieved_at,RB=F Contract,HO=F Contract,CL=F Contract,Roll,Partial");
+  expect(rowOf("2026-10-16", "3-2-1 crack spread")).toEndWith(",RBZ26,HOZ26,CLZ26,true,false");
+});
+
 test("a series of a reported total prints compact in text, while JSON and CSV keep every digit and do not carry the flag", () => {
   const definition: HeadlessPaneDefinition<"series"> = { shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }) };
   const result: HeadlessSeriesResult = { series: [

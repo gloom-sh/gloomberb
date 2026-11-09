@@ -1,7 +1,7 @@
 import { alignTimeSeries } from "../alignment";
 import type { ChartStudySpec, ResolvedSeries, TimeSeriesPoint } from "../types";
 import { isFiniteNumber } from "../../utils/guards";
-import { continuousFuturesRoot, futuresContractCode, futuresContractMonth } from "../../utils/futures-generic";
+import { continuousFuturesRoot, futuresContractCode, futuresContractMonth, futuresGenericListing } from "../../utils/futures-generic";
 import { GALLONS_PER_BARREL, isBarrelsPerTonne, perBarrelUnit, perTonneUnit } from "../price-units";
 import { derivedPoint, outputSeries } from "./shared";
 import {
@@ -247,9 +247,26 @@ function formulaFactorScales(terms: FormulaTerms, inputs: readonly (ResolvedSeri
   });
 }
 
+/** A leg that follows the front month (`CL=F`, `CL1`), whose contract changes as it rolls; a listed contract or a stock does not. */
+function isContinuousLeg(symbol: string): boolean {
+  return continuousFuturesRoot(symbol) != null || futuresGenericListing(symbol) != null;
+}
+
+/**
+ * A continuous leg's live bar: the quote's, after the last bar the source
+ * served, which names no contract. It is the contract of the bar before
+ * until the source serves the session.
+ */
+function liveBarContract(input: ResolvedSeries): { time: number; contract: string } | null {
+  const [before, last] = input.points.slice(-2);
+  if (!last || last.contract || !before?.contract || !isContinuousLeg(input.listing?.symbol ?? "")) return null;
+  return { time: last.date.getTime(), contract: before.contract };
+}
+
 /** A leg's contract on a date: its bar's (a continuous future's), or the listed contract it is (RBZ26). */
-function legContract(input: ResolvedSeries, point: TimeSeriesPoint | undefined): string | null {
+function legContract(input: ResolvedSeries, point: TimeSeriesPoint | undefined, live?: { time: number; contract: string } | null): string | null {
   if (point?.contract) return point.contract;
+  if (point && live && point.date.getTime() === live.time) return live.contract;
   const symbol = input.listing?.symbol ?? "";
   return futuresContractMonth(symbol) ? symbol.replace(/\.[A-Za-z]+$/, "").toUpperCase() : null;
 }
@@ -258,9 +275,23 @@ const DAY_MS = 86_400_000;
 /** Rolls a note names, the latest first; earlier ones are counted. */
 const LISTED_ROLLS = 3;
 
-/** A study's points by the UTC day they are dated in: a leg's next month is read on the leg's own day. */
-function pointsByDay(series: ResolvedSeries | undefined): Map<number, TimeSeriesPoint> {
-  return new Map((series?.points ?? []).map((point) => [Math.floor(point.date.getTime() / DAY_MS), point]));
+/**
+ * The chart period a bar is in. A continuous future dates its week or month
+ * at the start (Monday, the 1st) and a generic at its last session (Friday,
+ * the 30th), so a leg's next month is read in the leg's own period, not on
+ * its day: the ISO week, the calendar month, else the UTC day.
+ */
+function periodKey(date: Date, resolution: string | null | undefined): number {
+  const day = Math.floor(date.getTime() / DAY_MS);
+  // Day 0, 1 January 1970, was a Thursday: three days on, each week starts on a Monday.
+  if (resolution === "1wk") return Math.floor((day + 3) / 7);
+  if (resolution === "1mo") return date.getUTCFullYear() * 12 + date.getUTCMonth();
+  return day;
+}
+
+/** A series' points by the period they are in, the latest a period holds. */
+function pointsByPeriod(series: ResolvedSeries | undefined, resolution: string | null | undefined): Map<number, TimeSeriesPoint> {
+  return new Map((series?.points ?? []).map((point) => [periodKey(point.date, resolution), point]));
 }
 
 /**
@@ -271,57 +302,63 @@ function pointsByDay(series: ResolvedSeries | undefined): Map<number, TimeSeries
  * price, the leg stays in its own and the date counts as mixed.
  */
 function formulaLegPricer(terms: FormulaTerms, inputs: readonly (ResolvedSeries | undefined)[]) {
-  const nextByLeg = new Map([...terms.nextMonths].map(([leg, input]) => [leg, pointsByDay(inputs[input])] as const));
+  const first = inputs[terms.legs[0]!.index]!;
+  const resolution = first.barSize ?? first.historyResolution ?? null;
+  const nextByLeg = new Map([...terms.nextMonths].map(([leg, input]) => [leg, pointsByPeriod(inputs[input], resolution)] as const));
+  const live = new Map(terms.legs.map((leg) => [leg.index, liveBarContract(inputs[leg.index]!)] as const));
   const leaderPosition = terms.leader == null ? -1 : terms.legs.findIndex((leg) => leg.index === terms.leader);
   return (date: Date, values: readonly number[], points: readonly TimeSeriesPoint[]) => {
     let partial = false;
     const legs = terms.legs.map((leg) => {
       const point = points[leg.index];
       if (point?.partial) partial = true;
-      return { contract: legContract(inputs[leg.index]!, point), price: values[leg.index]! };
+      return { contract: legContract(inputs[leg.index]!, point, live.get(leg.index)), price: values[leg.index]! };
     });
     const lead = leaderPosition < 0 ? null : futuresContractMonth(legs[leaderPosition]!.contract ?? "");
     if (lead) {
-      const day = Math.floor(date.getTime() / DAY_MS);
+      const period = periodKey(date, resolution);
       terms.legs.forEach((leg, position) => {
         const own = futuresContractMonth(legs[position]!.contract ?? "");
         if (position === leaderPosition || !own || own.month + 1 !== lead.month) return;
-        const next = nextByLeg.get(leg.index)?.get(day);
+        const next = nextByLeg.get(leg.index)?.get(period);
         const price = next?.value ?? next?.close;
         if (!isFiniteNumber(price)) return;
         legs[position] = { contract: futuresContractCode(own.root, lead.month), price };
         if (next?.partial) partial = true;
       });
     }
-    return { legs, partial, known: legs.every((leg) => futuresContractMonth(leg.contract ?? "") != null) };
+    return { legs, partial };
   };
-}
-
-/** A point's legs' delivery months, or null where a leg's contract is not named. */
-function legMonths(point: TimeSeriesPoint): number[] | null {
-  const months = (point.legs ?? []).map((leg) => futuresContractMonth(leg.contract ?? "")?.month ?? null);
-  return months.length && months.every((month) => month != null) ? months as number[] : null;
 }
 
 /**
  * What a futures formula's points say about their months, as a caveat of the
- * data: the days its legs are in different months (a free formula of front
- * months, `legs in different months on 9 days, the latest 2026-10-28`, or one
- * priced in one month where a leg's next month has no price), and from when
- * its legs' contracts are named, before which a formula priced in one month
- * is each leg's front month. Null when every point's legs share a month.
+ * data: the bars its continuous legs are in different months (a free formula
+ * of front months, `legs in different months on 9 days, the latest
+ * 2026-10-28`, or one priced in one month where a leg's next month has no
+ * price), and from when their contracts are named, before which a formula
+ * priced in one month is each leg's front month. Only the legs that follow
+ * the front month count: a calendar spread (`CLZ26 - CLF27`) is in two months
+ * by design, and `CL=F - 10*USO` has one month to be in. Null when every
+ * point's continuous legs share a month.
  */
-export function formulaContractNote(series: Pick<ResolvedSeries, "points" | "formulaLeader">): string | null {
+export function formulaContractNote(
+  series: Pick<ResolvedSeries, "points" | "formulaLeader" | "formulaLegs" | "historyResolution" | "barSize">,
+): string | null {
+  const continuous = (series.formulaLegs ?? []).flatMap((leg, position) => isContinuousLeg(leg) ? [position] : []);
+  if (continuous.length < 2) return null;
   const points = series.points.filter((point) => point.legs?.length && point.value != null);
-  const mixed = points.filter((point) => {
-    const months = legMonths(point);
-    return months != null && new Set(months).size > 1;
-  });
-  const known = points.findIndex((point) => legMonths(point) != null);
+  // The month of each continuous leg whose bar names its contract.
+  const monthsOf = (point: TimeSeriesPoint) => continuous.map((position) => futuresContractMonth(point.legs![position]?.contract ?? "")?.month ?? null);
+  const mixed = points.filter((point) => new Set(monthsOf(point).filter((month) => month != null)).size > 1);
+  const known = points.findIndex((point) => monthsOf(point).every((month) => month != null));
+  const named = points.some((point) => monthsOf(point).some((month) => month != null));
   const parts: string[] = [];
-  if (mixed.length) parts.push(`legs in different months on ${mixed.length} ${mixed.length === 1 ? "day" : "days"}, the latest ${utcDay(mixed.at(-1)!.date)}`);
+  // A daily chart counts days; a weekly or monthly one, or one of built bars, its bars.
+  const unit = !series.barSize && (series.historyResolution ?? "1d") === "1d" ? "day" : "bar";
+  if (mixed.length) parts.push(`legs in different months on ${mixed.length} ${unit}${mixed.length === 1 ? "" : "s"}, the latest ${utcDay(mixed.at(-1)!.date)}`);
   // Bars that name no contract (intraday ones) cannot be read in one month.
-  if (known < 0 && points.length) {
+  if (!named && points.length) {
     parts.push(series.formulaLeader ? "each leg's front month: these bars do not name their contracts" : "these bars do not name the legs' contracts");
   } else if (known > 0) {
     const from = utcDay(points[known]!.date);
@@ -388,8 +425,10 @@ export function resolveFormula(
     if (!futures) return derived;
     const contracts = priced.legs.map((leg) => leg.contract);
     // A roll moves a leg from one known contract to another; a leg whose contract comes to be known has not rolled.
-    const roll = previous != null && priced.known && previous.every((contract) => contract != null)
-      && contracts.some((contract, position) => contract !== previous![position]);
+    // One priced in its leader's month rolls only as a whole, once every leg's contract is known.
+    const whole = (named: ReadonlyArray<string | null>) => terms.leader == null || named.every((contract) => contract != null);
+    const roll = previous != null && whole(previous) && whole(contracts)
+      && contracts.some((contract, position) => contract != null && previous![position] != null && contract !== previous![position]);
     previous = contracts;
     return { ...derived, legs: priced.legs, ...(roll ? { roll: true } : {}), ...(priced.partial ? { partial: true } : {}) };
   });

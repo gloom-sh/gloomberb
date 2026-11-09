@@ -170,7 +170,7 @@ export interface TimeSeriesPoint {
    * each was priced in (null where its bars name none) and that price.
    */
   legs?: ReadonlyArray<{ contract: string | null; price: number }>;
-  /** A formula's legs are priced in other contracts than on the date before: a roll. */
+  /** A continuous future's contract, or a formula's legs', differ from the date before's: a roll. */
   roll?: boolean;
   provenance?: {
     priceHistoryIntegrity?: import("../utils/price-history-integrity").PriceHistoryIntegrity;

@@ -676,9 +676,10 @@ function seriesTable(series: HeadlessSeries): CliReportTable {
 /**
  * The contract columns of a futures series, after its figures, as `history`
  * writes them: a continuous future's `Contract`, or a formula's contract of
- * each leg (`RB=F Contract`), then `Roll` and `Partial`. A continuous
- * future's roll is its contract changing from the point before; a
- * formula's, its legs' rolling together. None for a series of no contracts.
+ * each leg (`RB=F Contract`), then `Roll` and `Partial`. A roll is the
+ * contract (a formula's legs') changing from the point before, the bar
+ * before the window included, so a window's first row can be one. None for a
+ * series of no contracts.
  */
 function seriesContractColumns(series: HeadlessSeries): { columns: string[]; cells: (point: HeadlessSeriesPoint, index: number) => string[] } {
   const legNames = series.formulaLegs ?? [];
@@ -694,7 +695,7 @@ function seriesContractColumns(series: HeadlessSeries): { columns: string[]; cel
         return [...legNames.map((_, position) => point.legs?.[position]?.contract ?? ""), flag(point.roll), flag(point.partial)];
       }
       const previous = index > 0 ? series.points[index - 1]?.contract : null;
-      const roll = !!point.contract && !!previous && point.contract !== previous;
+      const roll = point.roll || (!!point.contract && !!previous && point.contract !== previous);
       return [point.contract ?? "", flag(roll), flag(point.partial)];
     },
   };

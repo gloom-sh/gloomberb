@@ -28,6 +28,7 @@ import { CHART_RESOLUTION_STEP_MS, getNextBufferRange, isIntradayResolution, typ
 import { normalizeHistoryResult } from "../sources/history-result";
 import { publicListingTarget } from "../sources/listing-target";
 import { isPriceHistoryStaleForCurrentWindow, normalizePriceHistory } from "../utils/price-history";
+import { withFormulaNextMonths } from "./formula-months";
 import {
   parsedPriceHistoryKey,
   readParsedHistoryResult,
@@ -219,7 +220,9 @@ export function useChartResolution(
   const specKey = JSON.stringify(spec);
   const seedResult = () => {
     const now = sources.now ?? new Date();
-    return seedChartResolutionResult(spec, collectSeedHistory(spec, now, options), now, options);
+    // The first paint prices a formula's legs in one month as the settled chart does, from the next months it read.
+    const seedSpec = withFormulaNextMonths(spec);
+    return seedChartResolutionResult(seedSpec, collectSeedHistory(seedSpec, now, options), now, options);
   };
   const [state, setState] = useState(() => ({
     key: specKey,

@@ -681,7 +681,7 @@ export interface HeadlessSeriesPoint extends HeadlessPaneRow {
   volume?: number | null;
   /** A continuous future's bar (CL=F): the contract it is of (CLZ26). */
   contract?: string | null;
-  /** The contract differs from the point before's: the series rolled on this point. */
+  /** The contract differs from the point before's, the one before the window included: the series rolled on this point. */
   roll?: boolean;
   /** The point is a session still forming, not a close. */
   partial?: boolean;
