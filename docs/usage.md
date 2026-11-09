@@ -1129,7 +1129,7 @@ Cboe's Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) print their level
 
 `--width <n>` fits text tables, help and notes to n columns, in a terminal or piped (`gloom quote AAPL TSLA NVDA MSFT --width 80`). Without it a terminal's own width applies, and piped output fits the `COLUMNS` variable when it is set (`COLUMNS=60 gloom fn CRYP --plain | less`), else is not fitted. With `--plain`, a table too narrow for every column keeps the columns that say what a row is (symbol and name) on its first line and moves its figures under it.
 
-- A table gives up its least useful columns first, unless the output is plain, which keeps every column and moves them under each row instead. `compare` and `quote` drop none: at 80 or 100 columns `quote` moves Updated, Feed, Cur and Chg Basis onto a labelled line under each row (`Feed delayed  Updated 2026-10-23 15:40 UTC`), and `compare` moves Day Range, Volume and Cur the same way. No cell is cut short: text wraps, and columns that still do not fit move onto indented lines under each row. A moved column whose value is the same on every row (one currency, one feed) is said once, on a line under the table; rows that differ keep their own.
+- A table gives up its least useful columns first, unless the output is plain, which keeps every column and moves them under each row instead. `compare` and `quote` drop none: at 80 or 100 columns `quote` moves Updated, Feed, Cur and Chg Basis onto a labelled line under each row (`Feed delayed  Updated 2026-10-23 15:40 UTC`), and `compare` moves Chg Basis, Day Range, Volume, Cur and Updated the same way. No cell is cut short: text wraps, and columns that still do not fit move onto indented lines under each row. A moved column whose value is the same on every row (one currency, one feed) is said once, on a line under the table; rows that differ keep their own.
 - The function list of `catalog` is the one table that cuts (a description ends in `…`, and `catalog <function>` prints it whole).
 
 `shot` has its own `--width`, in pixels. The layout is 720 to 2400 wide and 360 to 1800 tall (`--height`), and the PNG is drawn at twice that size, so the default 1280 by 720 writes 2560 by 1440.
@@ -1208,6 +1208,7 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 - `--search <words>` keeps the events whose name has every word typed, case, spaces and hyphens aside: `econ --search nonfarm` lists `Non Farm Payrolls` and `Nonfarm Payrolls Private`, `econ --search "fed funds"` the Fed's rate. `--json` has `metadata.search`.
 - The Fed's rate decision reads `Federal Funds Rate (upper bound)`: its figures are the top of the target range (4.00% for 3.75-4.00%), the range `WIRP` shows. Alerts take the name either way.
 - A release still to come with a prior and no forecast has no consensus yet: text ends with a note that the dash under Forecast means just that, and the ECO pane says it in its footer on that row.
+- A release past its time whose figure is not in yet reads `due 07:00 UTC, awaiting figure` under Actual for a day after its time, not a dash: `--json` and the exports carry it as `actualStatus` (`actual_status`), with `actual` still null, and the ECO pane shows `awaiting` in the warning color, with the time it was due in the row's detail and its footer. A row with no release time, or with no forecast or prior to come out against (a speech), is not awaited.
 
 **Dates**
 
@@ -1524,6 +1525,8 @@ A list leaves such a ticker out and says so. `LITI` takes funds too, and `FA` sh
 - A code one slip from a function's code names it and the command that runs it: `fn RCDF PLTR` says `Unknown function or pane "RCDF". Did you mean RDCF (Reverse DCF)?` and `Run: gloom fn RDCF PLTR`. A name near no code says `No function code is close to ZZQX. List every function: gloom catalog`.
 - A function code typed as a command (`gloom OVDV KO`, `gloom help OVDV`) answers `OVDV is a function: gloom fn OVDV KO`. Any other unknown command says `Unknown command` and the closest command.
 - A word written as a ticker (`gloom PLTR`, `gloom BRK.B`) adds `To quote it: gloom quote PLTR` and `Find the ticker: gloom search PLTR`.
+- A currency pair or a currency typed alone, in any spelling or case (`gloom eurusd`, `gloom EUR/USD`, `gloom eur`, `gloom yen`), reads as the pair, a currency as its pair against the dollar the way markets quote it: `Unknown command "eurusd": it reads as EUR/USD.`, then `To quote it: gloom quote EURUSD=X` and `Rate, conversion and forwards: gloom fx EUR/USD`.
+- A function the catalog suggests for an unknown word runs with what was typed after it, a currency as its pair (`skew eur` suggests `gloom fn HP EURUSD=X` for a price function). A volatility function, which OTC FX volatility does not reach, takes the currency fund whose options stand in, and says so: `gloom fn OVDV FXE` and `FXE's options stand in for EUR/USD: OTC FX volatility is not covered.`
 
 ### Exit codes
 
