@@ -104,6 +104,25 @@ test("a function's entry says Requires only for a sign-in or Pro, and names its 
   }
 });
 
+// `catalog managers` printed the ECO card as if ECO were the function for it, found through "purchasing managers' index".
+test("a lone match found only through a word of its description is labelled the closest match; one named for the query is not", async () => {
+  const channels = spyOn(apiClient, "getChannels").mockResolvedValue([]);
+  const geo = spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+  const context = { config: createDefaultConfig("/synthetic/catalog-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    const searched = (query: string) => renderPaneCatalogReport(filterPaneCatalogEntries(entries, query), parsePaneCatalogArgs([query]))
+      .replace(/\x1b\[[0-9;]*m/g, "");
+    expect(searched("managers")).toStartWith('Closest match for "managers": no function is named for it.\n\nECO  Economic Calendar');
+    expect(searched("vix")).toStartWith("VIX  VIX Curve");
+  } finally {
+    registry.destroy();
+    channels.mockRestore();
+    geo.mockRestore();
+  }
+});
+
 test("a perp venue's name finds PERP first, and a function only Pro opens is marked Pro where the catalog says its report is ready", async () => {
   const channels = spyOn(apiClient, "getChannels").mockResolvedValue([]);
   const geo = spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
