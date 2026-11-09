@@ -195,6 +195,17 @@ export function formatDetailDate(value: DisplayDateValue, fallback = "-", timeZo
   return `${datePart} at ${formatDetailTime(date, fallback, timeZone)}`;
 }
 
+/**
+ * The host's zone as a time beside it names it ("GMT+8", "EDT", "UTC"), for a
+ * column header over times in that zone ("TIME GMT+8"), as `formatDetailTime`
+ * names it after one time.
+ */
+export function localTimeZoneShortName(now: DisplayDateValue = Date.now(), timeZone?: string): string {
+  const date = parseDisplayDate(now) ?? new Date();
+  return new Intl.DateTimeFormat("en-US", { timeZoneName: "short", timeZone }).formatToParts(date)
+    .find((part) => part.type === "timeZoneName")?.value ?? "UTC";
+}
+
 /** The time of `formatDetailDate` alone, its zone named: "11:38 PM GMT+2", for a day stated beside it. */
 export function formatDetailTime(value: DisplayDateValue, fallback = "-", timeZone?: string): string {
   const date = parseDisplayDate(value);

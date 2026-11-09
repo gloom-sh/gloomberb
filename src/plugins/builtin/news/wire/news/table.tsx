@@ -16,6 +16,7 @@ import { collectNewsDisplayTickers } from "../../../../../news/ticker-symbols";
 import { useLoadNewsStory } from "../../../../../news/hooks";
 import { logFailure } from "../../../../../utils/log-failure";
 import { nextHeaderSort } from "../../../../../utils/sort-values";
+import { localTimeZoneShortName } from "../../../../../utils/datetime-format";
 import { formatNewsCategoryForColumn } from "../categories";
 import { useOpenTickerChoice } from "../../../shared/ticker-choice";
 import { usePinnedMoment } from "../../../../../components/use-pinned-moment";
@@ -123,9 +124,8 @@ const FIXED_COLUMN_WIDTHS: Record<Exclude<NewsColumnId, "title">, number> = {
   importance: 7,
 };
 
-const COLUMN_LABELS: Record<NewsColumnId, string> = {
+const COLUMN_LABELS: Record<Exclude<NewsColumnId, "time">, string> = {
   rank: "#",
-  time: "TIME",
   source: "SOURCE",
   title: "HEADLINE",
   tickers: "TICKERS",
@@ -138,6 +138,15 @@ const COLUMN_LABELS: Record<NewsColumnId, string> = {
 const COLUMN_TITLES: Partial<Record<NewsColumnId, string>> = {
   sentiment: "Sentiment",
 };
+/**
+ * A column's header. The times are the host's, so TIME names its zone
+ * ("TIME GMT+8"), as the story's own header names it after its time: a Hong
+ * Kong reader's "Wed 11:26" said nothing of which 11:26 (9 Nov 2026).
+ */
+function columnLabel(id: NewsColumnId, timeZone?: string): string {
+  return id === "time" ? `TIME ${localTimeZoneShortName(Date.now(), timeZone)}` : COLUMN_LABELS[id];
+}
+
 const SPELLED_SENTIMENT = "SENTIMENT";
 /** A headline at least this wide still reads with SENTIMENT spelled out beside it. */
 const SPELLED_SENTIMENT_MIN_HEADLINE_WIDTH = 60;
@@ -160,7 +169,8 @@ const NARROW_STEPS: { id: Exclude<NewsColumnId, "title">; width?: number }[] = [
   { id: "importance" },
 ];
 
-export function buildColumns(width: number, requestedIds: NewsColumnId[]): NewsTableColumn[] {
+/** `timeZone` is the host's unless named, as the times are. */
+export function buildColumns(width: number, requestedIds: NewsColumnId[], timeZone?: string): NewsTableColumn[] {
   const widths = { ...FIXED_COLUMN_WIDTHS };
   let columnIds = requestedIds;
 
@@ -171,7 +181,7 @@ export function buildColumns(width: number, requestedIds: NewsColumnId[]): NewsT
   const headlineWidth = () => width + 1 - getTableWidth(columnIds.map((id) => (
     id === "title"
       ? { width: 1, align: columnAlign(id) }
-      : { width: widths[id], label: COLUMN_LABELS[id], align: columnAlign(id) }
+      : { width: widths[id], label: columnLabel(id, timeZone), align: columnAlign(id) }
   )));
 
   if (columnIds.includes("title")) {
@@ -200,7 +210,7 @@ export function buildColumns(width: number, requestedIds: NewsColumnId[]): NewsT
 
   return columnIds.map((id) => ({
     id,
-    label: id === "sentiment" && sentimentSpelled ? SPELLED_SENTIMENT : COLUMN_LABELS[id],
+    label: id === "sentiment" && sentimentSpelled ? SPELLED_SENTIMENT : columnLabel(id, timeZone),
     ...(COLUMN_TITLES[id] && !(id === "sentiment" && sentimentSpelled) ? { title: COLUMN_TITLES[id] } : {}),
     width: id === "title" ? titleWidth : widths[id],
     align: columnAlign(id),
