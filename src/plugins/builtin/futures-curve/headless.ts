@@ -209,7 +209,7 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
     const terms = specEntries(data);
     const source = spot ? curveSpotSource(spot) : null;
     // A past date with no settle of its own (a weekend, today before the archive has it) says which session is shown.
-    const session = date ? curveSessionNote(date, data.asOf) : null;
+    const session = date ? curveSessionNote(date, data.asOf, data.root) : null;
     const notices = [...args.argument ? [] : [`Showing ${DEFAULT_ROOT}. Try fn CTM ${EXAMPLE_ROOT}.`], ...standIn ? [standIn.note] : [],
       ...session ? [session] : [],
       ...spot ? [`Basis against ${spot.symbol} spot in each last trade's own minute${source ? ` (${source})` : ""}; not the CME reference rate.`] : []];

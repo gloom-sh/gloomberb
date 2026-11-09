@@ -11,7 +11,8 @@ import { formatThirtySeconds } from "../../../market-data/market/format";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
 import { formatUtcDayTime, newestReportTime, oldestReportTime, parseReportTime } from "../../../utils/utc-time";
 import type { HeadlessPaneFreshness } from "../../../types/plugin";
-import { zonedDateKey, zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
+import { zonedDateKey, zonedDateTimeParts, zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
+import { isPublishedFuturesClosure } from "../../../market-data/published-futures-sessions";
 import { dateOptionError, dateOptionFormatsOr, readCalendarDate } from "../../../utils/calendar-date";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 
@@ -791,24 +792,41 @@ export function curveAsOfDate(value: unknown, now = new Date(), option = ""): st
   if (!text || text.toLowerCase() === "latest") return "";
   const date = readCalendarDate(text);
   if (!date) throw new Error(dateOptionError(text, option, { now, subject: "an as-of date", formats: dateOptionFormatsOr("latest") }));
-  if (date > now.toISOString().slice(0, 10)) throw new Error("A futures curve cannot use a future date.");
+  // The archive's days are New York's: at 21:00 there, UTC is already on tomorrow, which has no settle yet.
+  if (date > zonedDateKey(now.getTime(), ARCHIVE_ZONE)) throw new Error("A futures curve cannot use a future date.");
   return date;
 }
 
+/** The zone the settlement archive keeps its days in, and the minute of the day (17:30) it takes each day's settlements. */
+const ARCHIVE_ZONE = "America/New_York";
+const ARCHIVED_MINUTES = 17 * 60 + 30;
+
 /**
  * The line a past curve opens with when the session it shows is not the day
- * asked for: `No settle for Sun 8 Nov; showing Fri 6 Nov.`, or for a weekday
- * today before its settlements are archived (17:30 New York, whatever time
- * the exchange settles at), `Today's settle comes after 17:30 ET; showing Fri
- * 6 Nov.` Null when the curve is that day's, or has no session.
+ * asked for: `No settle for Sun 8 Nov; showing Fri 6 Nov.`, a holiday of the
+ * root's exchange `No settle for Thu 26 Nov, a holiday; showing Wed 25 Nov.`,
+ * and on a trading day before that day's settlements are archived (17:30
+ * New York, whatever time the exchange settles at) `Today's settle reaches
+ * the archive after 17:30 ET; showing Fri 6 Nov.` Null when the curve is that
+ * day's, or has no session.
  */
-export function curveSessionNote(requested: string | null | undefined, served: string | null | undefined, now = new Date()): string | null {
+export function curveSessionNote(
+  requested: string | null | undefined,
+  served: string | null | undefined,
+  root?: string | null,
+  now = new Date(),
+): string | null {
   if (!requested || !served || served >= requested) return null;
   const day = (date: string) => formatUtcDayTime({ time: Date.parse(`${date}T00:00:00Z`), dateOnly: true }, now.getTime());
   const showing = `showing ${day(served)}.`;
   const weekday = new Date(`${requested}T00:00:00Z`).getUTCDay();
   if (weekday === 0 || weekday === 6) return `No settle for ${day(requested)}; ${showing}`;
-  if (requested === zonedDateKey(now.getTime(), "America/New_York")) return `Today's settle comes after 17:30 ET; ${showing}`;
+  const venue = root ? futuresContractByCode(root)?.venue : null;
+  if (venue && isPublishedFuturesClosure(venue, requested)) return `No settle for ${day(requested)}, a holiday; ${showing}`;
+  const clock = zonedDateTimeParts(now.getTime(), ARCHIVE_ZONE);
+  if (requested === zonedDateKey(now.getTime(), ARCHIVE_ZONE) && clock.hour * 60 + clock.minute < ARCHIVED_MINUTES) {
+    return `Today's settle reaches the archive after 17:30 ET; ${showing}`;
+  }
   return `No settle for ${day(requested)} in the archive; ${showing}`;
 }
 
@@ -978,16 +996,19 @@ export function archivedFuturesCurve(root: string, curve: FuturesCurveAsOfPayloa
   const thin = [front, next].find((row) => row?.volume != null && row.volume < THIN_SPREAD_LOTS)?.symbol ?? null;
   const days = front && next ? (Date.parse(next.expiration) - Date.parse(front.expiration)) / DAY_MS : 0;
   const roll = front && next && front.price! > 0 && next.price! > 0 && days > 0 ? (front.price! / next.price! - 1) * 365 / days * 100 : null;
+  // The server says its caveats in `gaps` too, for a client that reads no `notes`: they are notes, not what the curve lacks.
+  const notes = curve.notes ?? [];
+  const gaps = curve.gaps.filter((gap) => !notes.includes(gap));
   return {
     root, name: curve.name, source: root === "VX" ? "cboe" : "gloom", currency: curve.currency, quoteUnit: curve.quoteUnit,
-    asOf: curve.asOf, fetchedAt, status: !contracts.length ? "unavailable" : curve.gaps.length ? "partial" : "available", stale: false,
-    ...curve.notes?.length ? { notes: curve.notes } : {},
+    asOf: curve.asOf, fetchedAt, status: !contracts.length ? "unavailable" : gaps.length ? "partial" : "available", stale: false,
+    ...notes.length ? { notes } : {},
     catalogue: { method: "provider", complete: true, horizonEnd: null }, contracts, ghosts,
     slope: { frontSymbol: front?.symbol ?? null, nextSymbol: next?.symbol ?? null, value, annualizedRollYield: roll, percentile: null,
       rollPercentile: null, samples: 0, historyStart: null, historyEnd: null, asOf: front && next ? curve.asOf : null,
       basis: front && next ? settled.length >= 2 ? "settle" : "last" : null, thinSymbol: value == null ? null : thin,
       state: value == null ? "unavailable" : thin ? "thin" : Math.abs(value) < 1e-10 ? "flat" : value > 0 ? "contango" : "backwardation" },
-    gaps: curve.gaps, spec: curve.spec ?? null, settlementDate: settled.length ? curve.asOf : null,
+    gaps, spec: curve.spec ?? null, settlementDate: settled.length ? curve.asOf : null,
   };
 }
 

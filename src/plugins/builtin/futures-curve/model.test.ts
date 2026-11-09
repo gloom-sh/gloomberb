@@ -438,10 +438,26 @@ describe("past curves", () => {
 
   test("a weekend's or today's curve is dated by the session it shows, and says which day it shows instead", () => {
     const monday = new Date("2026-11-09T18:00:00Z");
-    expect(curveSessionNote("2026-11-08", "2026-11-06", monday)).toBe("No settle for Sun 8 Nov; showing Fri 6 Nov.");
-    expect(curveSessionNote("2026-11-09", "2026-11-06", monday)).toBe("Today's settle comes after 17:30 ET; showing Fri 6 Nov.");
-    expect(curveSessionNote("2026-11-03", "2026-11-02", monday)).toBe("No settle for Tue 3 Nov in the archive; showing Mon 2 Nov.");
-    expect([curveSessionNote("2026-11-06", "2026-11-06", monday), curveSessionNote("2026-11-08", null, monday)]).toEqual([null, null]);
+    expect(curveSessionNote("2026-11-08", "2026-11-06", "CL", monday)).toBe("No settle for Sun 8 Nov; showing Fri 6 Nov.");
+    expect(curveSessionNote("2026-11-09", "2026-11-06", "CL", monday)).toBe("Today's settle reaches the archive after 17:30 ET; showing Fri 6 Nov.");
+    // Once 17:30 has passed in New York the day's settle is due: a curve still without it is the archive's gap.
+    expect(curveSessionNote("2026-11-09", "2026-11-06", "CL", new Date("2026-11-09T23:00:00Z")))
+      .toBe("No settle for Mon 9 Nov in the archive; showing Fri 6 Nov.");
+    expect(curveSessionNote("2026-11-03", "2026-11-02", "CL", monday)).toBe("No settle for Tue 3 Nov in the archive; showing Mon 2 Nov.");
+    // Thanksgiving, today or not, is the exchange's holiday.
+    expect(curveSessionNote("2026-11-26", "2026-11-25", "CL", new Date("2026-11-26T15:00:00Z"))).toBe("No settle for Thu 26 Nov, a holiday; showing Wed 25 Nov.");
+    expect([curveSessionNote("2026-11-06", "2026-11-06", "CL", monday), curveSessionNote("2026-11-08", null, "CL", monday)]).toEqual([null, null]);
+    // At 21:00 in New York, UTC is on Tuesday already, which has no settle to ask for.
+    const evening = new Date("2026-11-10T02:00:00Z");
+    expect(curveAsOfDate("2026-11-09", evening)).toBe("2026-11-09");
+    expect(() => curveAsOfDate("2026-11-10", evening)).toThrow("A futures curve cannot use a future date.");
+    // The server says its caveats in gaps too, for an older client; this one reads them as notes and the curve as complete.
+    const caveat = "Some contracts show an earlier price because they did not trade on 2026-11-06.";
+    const cl = archivedFuturesCurve("CL", { ...payload("2026-11-08", [row("CLZ26.NYM", "2026-11-20", 90.83, { tradeDate: "2026-11-06" })]),
+      asOf: "2026-11-06", gaps: [caveat, "No expired contracts."], notes: [caveat] }, { "1W": null, "1M": null }, "2026-11-09T18:00:00.000Z");
+    expect([cl.gaps, cl.notes, cl.status]).toEqual([["No expired contracts."], [caveat], "partial"]);
+    expect(archivedFuturesCurve("CL", { ...payload("2026-11-08", [row("CLZ26.NYM", "2026-11-20", 90.83)]), gaps: [caveat], notes: [caveat] },
+      { "1W": null, "1M": null }, "2026-11-09T18:00:00.000Z").status).toBe("available");
     // Its observation date and as_of are the session served, Friday's, never the Sunday asked for.
     expect(curveReportFreshness({ source: "gloom", contracts: [], asOf: "2026-11-06" } as never, "2026-11-08"))
       .toEqual({ status: "not-a-feed", basis: "settlement archive", asOf: "2026-11-06" });

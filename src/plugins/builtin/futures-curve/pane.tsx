@@ -255,7 +255,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote
   // A past date with no archived curve says why in the body, not behind the warning.
   const emptyPast = !!requestedDate && !!data && !data.contracts.length;
   // A past date with no settle of its own (a weekend, today before the archive has it) says which session is shown.
-  const sessionNote = requestedDate && data ? curveSessionNote(requestedDate, data.asOf) : null;
+  const sessionNote = requestedDate && data ? curveSessionNote(requestedDate, data.asOf, data.root) : null;
   // The basis notes the report prints under its table: the convention, why a cell is blank, and which rates spot noise swamps.
   const basisNotes = basisActive && bars ? [BASIS_CONVENTION, blankBasisNote(tableRows, basis, data ? curveCache(data, clock) : null), shortDatedBasisNote(tableRows, basis)]
     .filter((note): note is string => !!note) : [];

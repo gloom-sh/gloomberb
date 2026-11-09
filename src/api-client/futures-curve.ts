@@ -208,7 +208,7 @@ export interface FuturesCurveAsOfPayload {
   }>
   /** What the curve lacks: no archive yet, no prices near the date, expired months missing. */
   gaps: string[]
-  /** Caveats about the prices shown, as `FuturesCurvePayload.notes`. Absent from an older server, which says them in `gaps`. */
+  /** Caveats about the prices shown, as `FuturesCurvePayload.notes`; `gaps` carries them too, for a client that reads no notes. */
   notes?: string[]
   spec?: FuturesContractSpec | null
 }
