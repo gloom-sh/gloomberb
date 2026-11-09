@@ -24,7 +24,7 @@ const UPSTREAM = "https://api.gloom.sh";
 const READ_POSTS = /^\/api\/market\/(?:[a-z-]+\/batch|scanner\/live)$/;
 const REFUSED = /telemetry|crash|usage|analytics|research-activity|\/events|collect|beacon|track|posthog|sentry/i;
 
-export interface CatalogEntry { token: string; paneId: string; argKind?: string | null; defaultSettings?: Record<string, unknown> }
+export interface CatalogEntry { token: string; paneId: string; argKind?: string | null; argPlaceholder?: string | null; defaultSettings?: Record<string, unknown> }
 interface Answer { status: number; type: string; bytes: Uint8Array<ArrayBuffer> }
 
 function keyOf(text: string): string {
@@ -363,7 +363,8 @@ export async function runCommand(cdp: Cdp, query: string, { submit = true } = {}
 }
 
 function argument(entry: CatalogEntry): string {
-  if (entry.argKind === "ticker") return "AAPL";
+  // A function on one company that also takes several (INS: its placeholder is a ticker) is pictured on one.
+  if (entry.argKind === "ticker" || entry.argPlaceholder === "ticker") return "AAPL";
   if (entry.argKind === "tickers" || entry.argKind === "symbol-list") return "AAPL,MSFT";
   return "";
 }

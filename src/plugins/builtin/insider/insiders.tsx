@@ -59,6 +59,27 @@ export interface InsiderViewControl {
   side: InsiderSignalSide;
 }
 
+/** One insider line's cell, as the Insiders view draws it: each fact in its insider's side's tone. */
+export function insiderActivityCell(
+  line: InsiderActivityLine,
+  column: InsiderActivityColumn,
+  colors: ReturnType<typeof useThemeColors>,
+  selected: boolean,
+  nativePaneChrome: boolean,
+): DataTableCell {
+  switch (column.id) {
+    case "name": return { text: line.name, color: colors.text };
+    case "role": return { text: line.role, color: colors.textMuted };
+    case "nth": return factCell(line.nth, line.side, colors, selected);
+    case "usual": return factCell(line.usual, line.side, colors, selected);
+    case "stake": return factCell(line.stake, line.side, colors, selected, nativePaneChrome ? undefined : column.width);
+    case "bought": return line.bought == null ? missingCell(colors) : { text: formatSignalValue(line.bought), value: line.bought, color: colors.positive };
+    case "plan": return line.plan == null ? missingCell(colors) : { text: formatSignalValue(line.plan), value: line.plan, color: colors.textMuted };
+    case "sold": return line.sold == null ? missingCell(colors) : { text: formatSignalValue(line.sold), value: line.sold, color: colors.negative };
+    case "last": return { text: line.last, value: line.buyer.lastBuy, color: colors.textDim };
+  }
+}
+
 /** The insiders' answer with the query it answers, so another window's rows are told from this one's. */
 interface InsiderCompanyAnswer {
   query: InsiderCompanyQuery;
@@ -144,19 +165,8 @@ export function InsiderActivityView({ symbol, control, viewBar, width, height, f
   }, [activity, shown?.refreshError]);
   usePaneNoticeFooter({ registrationId: "insider:insiders:notices", focused, notices });
 
-  const renderCell = (line: InsiderActivityLine, column: InsiderActivityColumn, _index: number, state: { selected: boolean }): DataTableCell => {
-    switch (column.id) {
-      case "name": return { text: line.name, color: colors.text };
-      case "role": return { text: line.role, color: colors.textMuted };
-      // Each fact in its insider's own side's tone, as the ranking draws it.
-      case "nth": return factCell(line.nth, line.side, colors, state.selected);
-      case "usual": return factCell(line.usual, line.side, colors, state.selected);
-      case "stake": return factCell(line.stake, line.side, colors, state.selected, nativePaneChrome ? undefined : column.width);
-      case "bought": return line.bought == null ? missingCell(colors) : { text: formatSignalValue(line.bought), value: line.bought, color: colors.positive };
-      case "sold": return line.sold == null ? missingCell(colors) : { text: formatSignalValue(line.sold), value: line.sold, color: colors.negative };
-      case "last": return { text: line.last, value: line.buyer.lastBuy, color: colors.textDim };
-    }
-  };
+  const renderCell = (line: InsiderActivityLine, column: InsiderActivityColumn, _index: number, state: { selected: boolean }): DataTableCell =>
+    insiderActivityCell(line, column, colors, state.selected, !!nativePaneChrome);
 
   if (!activity && isCloudSessionRequired(resource.error)) {
     return <SignInWall placement="insider-insiders-signin" width={width} height={height} action="view insiders" needsVerification={session.needsVerification} />;

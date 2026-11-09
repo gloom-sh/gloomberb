@@ -156,7 +156,7 @@ test("a portfolio in another currency converts income into it, a lot valued at i
 
     // No dollar rate into euros: the columns stay, with no figure, and one line says why.
     const missing = await text(() => showCollection("main", euroBook(() => { throw new Error("No rate"); }).context, { costFxHistory }));
-    expect(missing).toMatch(/Income +Yield/);
+    expect(missing).toMatch(/Value \(EUR\).*Income \(EUR\) +Yield +P&L \(EUR\)/);
     expect(missing).toMatch(/KO:NYSE[^\n]*— +— /);
     expect(missing).toContain("Income unavailable: no USD exchange rate for KO:NYSE.");
   } finally {

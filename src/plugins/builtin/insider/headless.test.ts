@@ -260,6 +260,67 @@ test("every value carries its currency, and a CAD base adds each value in CAD at
   expect(usd.rows.map((row) => [row.currency, row.valueBase])).toEqual([["USD", undefined], ["USD", undefined]]);
 });
 
+// `fn INS NBIS` printed a director's plan buys as plain BUY, while the pane marks them BUY 10b5-1.
+test("an open-market trade under a Rule 10b5-1 plan is marked in the text and the CSV as the pane marks it", async () => {
+  const plan: ParsedInsiderFiling[] = [{ ...parsed[0]!, transaction: { ...parsed[0]!.transaction!, rule10b51: true } }, parsed[1]!];
+  const headless = createInsiderHeadless({ loadParsed: async () => ({ parsed: plan, foreignPrivateIssuer: false, noFilings: false }) });
+  const result = await headless.load(args("", 2), createTestHeadlessContext());
+  setCliWidthOverride(200);
+  try {
+    const text = renderHeadlessPaneText(headless, result, args("", 2), "INS").replace(/\x1b\[[0-9;]*m/g, "").split("\n");
+    expect(text.find((line) => line.includes("Lisa T. Su") || line.includes("SU LISA T"))).toContain("BUY 10b5-1");
+    expect(text.find((line) => /\bSELL\b/.test(line))).not.toContain("10b5-1");
+  } finally {
+    setCliWidthOverride(null);
+  }
+  const side = headless.columns!.find((column) => column.key === "side")!;
+  expect(side.format!(result.rows[0]!.side, result.rows[0]!)).toBe("BUY 10b5-1");
+});
+
+// `fn INS MO,PM,LMT` answered "Unknown ticker", and `fn INS R` read Ryder where a restricted watchlist R was meant.
+test("several tickers, typed or a watchlist's, read as one table with a Ticker column; one with nothing or that fails is named", async () => {
+  const requested: string[] = [];
+  const headless = createInsiderHeadless({
+    loadParsed: async (symbol) => {
+      requested.push(symbol);
+      if (symbol === "LMT") throw new Error("Unknown ticker LMT.");
+      return { parsed: symbol === "MO" ? parsed : [parsed[1]!], foreignPrivateIssuer: false, noFilings: false };
+    },
+  });
+  const several = (symbols: string[], options: Record<string, unknown> = {}): HeadlessPaneLoadArgs => ({
+    rawArgument: symbols.join(","), argument: symbols.length ? symbols : null, symbols, options: { name: "", limit: 20, ...options },
+  });
+  const result = await headless.load(several(["MO", "PM", "LMT"]), createTestHeadlessContext());
+  expect(result.columns?.[0]).toMatchObject({ key: "ticker", header: "Ticker" });
+  expect(result.rows.map((row) => [row.ticker, row.insider])).toEqual([["MO", "SU LISA T"], ["MO", "OTHER OFFICER"], ["PM", "OTHER OFFICER"]]);
+  expect(result.notes).toEqual(["LMT: Unknown ticker LMT."]);
+  expect(Object.keys(result.metadata?.tickers as object)).toEqual(["MO", "PM"]);
+  setCliWidthOverride(200);
+  try {
+    const text = renderHeadlessPaneText(headless, result, several(["MO", "PM", "LMT"]), "INS").replace(/\x1b\[[0-9;]*m/g, "").split("\n");
+    expect(text.find((line) => line.startsWith("Ticker"))).toMatch(/^Ticker\s+Form\s+Filed/);
+    expect(text.filter((line) => line.startsWith("PM "))).toHaveLength(1);
+  } finally {
+    setCliWidthOverride(null);
+  }
+
+  // --watchlist reads its members as saved, never a ticker of the same name.
+  const config = createDefaultConfig("/tmp/gloomberb-headless-test");
+  config.watchlists = [...config.watchlists, { id: "restricted", name: "R" }];
+  const members = ["MO", "PM"].map((ticker) => ({ metadata: { ticker, exchange: "NYSE", watchlists: ["restricted"] } }));
+  const ctx = createTestHeadlessContext({
+    config,
+    resolveWatchlist: async (id) => (id === "restricted" ? members : null) as never,
+  });
+  requested.length = 0;
+  const listed = await headless.load(several([], { watchlist: "r" }), ctx);
+  expect(requested).toEqual(["MO", "PM"]);
+  expect(listed.rows.map((row) => row.ticker)).toEqual(["MO", "MO", "PM"]);
+  expect(listed.notes).toEqual(["Read r as watchlist R (2 symbols)."]);
+  await expect(Promise.resolve(headless.load(several(["R"], { watchlist: "R" }), ctx))).rejects.toThrow("not both");
+  await expect(Promise.resolve(headless.load(several([], { watchlist: "Nope" }), ctx))).rejects.toThrow('No watchlist named "Nope". Watchlists:');
+});
+
 describe("insider report without a ticker", () => {
   // Invented company and people.
   const signals = (window: number, rows: InsiderSignalsPayload["rows"]): InsiderSignalsPayload => ({
@@ -303,6 +364,39 @@ describe("insider report without a ticker", () => {
       expect((await load(7)).empty).toBe("No open-market insider buying in the last 7 days.");
       expect(asked).toEqual([{ window: 30, limit: 20 }, { window: 7, limit: 20 }]);
     } finally {
+      insiderSignalsCache.reset();
+    }
+  });
+
+  // Market-wide fn INS ranked a director's daily plan buys as conviction, beside far larger sales, with no CAD column.
+  test("buying is read beside its plan buys and the window's sales, and a CAD base adds the dollars in CAD at the last buy day's close", async () => {
+    const apiClient = {
+      getCloudSecInsiderSignals: async () => signals(90, [{ ...row, planValue: 330_400, soldValue: 157_270_000 }]),
+      getCloudHistory: async (symbol: string) => ({
+        status: "success",
+        data: symbol === "CAD=X" ? [{ date: "2026-10-13T00:00:00.000Z", close: 1.39 }, { date: "2026-10-14T00:00:00.000Z", close: 1.4 }] : [],
+      }),
+    } as never;
+    const cad = createDefaultConfig("/tmp/gloomberb-headless-test");
+    cad.baseCurrency = "CAD";
+    setSystemTime(new Date("2026-10-15T12:00:00Z"));
+    try {
+      const report = await createInsiderHeadless().load(
+        { rawArgument: "", argument: "", symbols: [], options: { name: "", limit: 20, window: 90 } },
+        createTestHeadlessContext({ apiClient, config: cad }),
+      );
+      expect(report.columns?.map((column) => column.header)).toEqual([
+        "Ticker", "Company", "Score", "Role", "Nth", "Vs Usual", "Stake", "Buyers",
+        "Bought (USD)", "Bought (CAD)", "USD/CAD", "Plan Buys (USD)", "Sold (USD)", "Last Buy", "Filed", "Insiders",
+      ]);
+      expect(report.rows[0]).toMatchObject({ planValue: 330_400, soldValue: 157_270_000, fxRate: 1.4, fxDate: "2026-10-14" });
+      expect(report.rows[0]!.valueBase).toBeCloseTo(1_152_500 * 1.4, 4);
+      expect(report.notes).toEqual([
+        "Bought (CAD) is each company's dollars at the USD/CAD daily close of its last buy day, or of the trading day before it; USD/CAD is that rate.",
+        "Plan Buys, under a Rule 10b5-1 plan, are left out of the score; Sold counts plan sales, not those to cover tax, of exercised shares or in an offering.",
+      ]);
+    } finally {
+      setSystemTime();
       insiderSignalsCache.reset();
     }
   });
@@ -429,7 +523,8 @@ test("fn INS <ticker> --view insiders lists each insider as the ranking counts t
       ...(echo ? { ticker: params.ticker } : {}), side, window: params.window ?? 30, through: "2026-10-15", asOf: "2026-10-14",
       coverage: { from: "2026-08-31", through: "2026-10-14" },
       rows: side === "buy"
-        ? [company([{ name: "Rivera Ana", role: "CEO", value: 12_000, buys: 1, lastBuy: "2026-10-14", shares: 1_000, stakeChangePct: 3.2, newPosition: false, exited: false, repeatBuys: 4, usualRatio: 2.8 }])]
+        // A CEO who bought only under a Rule 10b5-1 plan: listed, the plan dollars marked, though the ranking leaves them out.
+        ? [company([{ name: "Rivera Ana", role: "CEO", value: 12_000, buys: 1, lastBuy: "2026-10-14", shares: 1_000, stakeChangePct: 3.2, newPosition: false, exited: false, repeatBuys: 4, usualRatio: 2.8, planValue: 12_000 }])]
         : [company([{ name: "Okafor Ben", role: "Director", value: 1_300_000, buys: 2, lastBuy: "2026-10-09", shares: 40_000, stakeChangePct: -100, newPosition: false, exited: true, repeatBuys: 2, usualRatio: null }])],
     };
   } } as never;
@@ -442,10 +537,27 @@ test("fn INS <ticker> --view insiders lists each insider as the ranking counts t
     expect(typeof headless.describe === "function" ? headless.describe(args({}), result) : null).toBe("Insiders | NWBI");
     setCliWidthOverride(120);
     const text = renderHeadlessPaneText(headless, result, args({}), "INS").replace(/\x1b\[[0-9;]*m/g, "").split("\n");
-    expect(text).toContain("Insider     Role      Nth  Vs Usual   Stake  Bought   Sold  Last");
-    expect(text).toContain("Ana Rivera  CEO       4th      2.8x     +3%    $12k     --  2026-10-14");
-    expect(text).toContain("Ben Okafor  Director  2nd        --  EXITED      --  $1.3M  2026-10-09");
-    expect(result.rows.map((row) => [row.insider, row.side, row.bought, row.sold])).toEqual([["Ana Rivera", "buy", 12_000, null], ["Ben Okafor", "sell", null, 1_300_000]]);
+    expect(text).toContain("Insider     Role      Nth  Vs Usual   Stake  Bought  Plan Buys   Sold  Last");
+    expect(text).toContain("Ana Rivera  CEO       4th      2.8x     +3%    $12k       $12k     --  2026-10-14");
+    expect(text).toContain("Ben Okafor  Director  2nd        --  EXITED      --         --  $1.3M  2026-10-09");
+    expect(result.rows.map((row) => [row.insider, row.side, row.bought, row.planBought, row.sold]))
+      .toEqual([["Ana Rivera", "buy", 12_000, 12_000, null], ["Ben Okafor", "sell", null, null, 1_300_000]]);
+    // A CAD base gets each insider's dollars in CAD at their last trade day's close, as the trades and the ranking do.
+    const cad = createDefaultConfig("/tmp/gloomberb-headless-test");
+    cad.baseCurrency = "CAD";
+    const fxHistory = { getCloudHistory: async (symbol: string) => ({
+      status: "success",
+      data: symbol === "CAD=X" ? [{ date: "2026-10-09T00:00:00.000Z", close: 1.38 }, { date: "2026-10-14T00:00:00.000Z", close: 1.4 }] : [],
+    }) } as never;
+    setSystemTime(new Date("2026-10-15T12:00:00Z"));
+    const inCad = await createInsiderHeadless({ fxHistory, loadParsed: async () => { throw new Error("trades read"); } })
+      .load(args({}), createTestHeadlessContext({ apiClient, config: cad }));
+    setSystemTime();
+    expect(inCad.columns?.map((column) => column.header)).toEqual([
+      "Insider", "Role", "Nth", "Vs Usual", "Stake", "Bought (USD)", "Bought (CAD)", "Plan Buys (USD)", "Sold (USD)", "Sold (CAD)", "USD/CAD", "Last",
+    ]);
+    expect(inCad.rows.map((row) => [row.insider, row.fxDate])).toEqual([["Ana Rivera", "2026-10-14"], ["Ben Okafor", "2026-10-09"]]);
+    expect(inCad.rows[1]!.soldBase).toBeCloseTo(1_300_000 * 1.38, 4);
     // --side sell: the sellers' dollars first.
     const selling = await headless.load(args({ side: "sell" }), createTestHeadlessContext({ apiClient }));
     expect(selling.rows.map((row) => row.insider)).toEqual(["Ben Okafor", "Ana Rivera"]);

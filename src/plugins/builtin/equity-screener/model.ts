@@ -22,11 +22,12 @@ import {
   type ScreenDefinition,
   type ScreenFieldDefinition,
   type ScreenOperator,
+  type ScreenListingRead,
   type ScreenPayload,
   type ScreenRow,
 } from "../../../api-client/equity-screener";
 import { yearToDateBaseLabel } from "../../../market-data/market/year-to-date";
-import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchanges";
+import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { LATEST_DISTRIBUTION, TRAILING_DIVIDEND_BASIS } from "../../../utils/forward-dividend";
 import { formatCompact, formatNumber } from "../../../utils/format";
 import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
@@ -535,9 +536,60 @@ const MAX_CATEGORY_VALUES = 25;
 export const MAX_SYMBOL_VALUES = 500;
 const maxCategoryValues = (field: string) => (field === "symbol" ? MAX_SYMBOL_VALUES : MAX_CATEGORY_VALUES);
 
-/** A watchlist's tickers as a screen's symbols: each without its venue (`SAP:XETRA` is SAP), once. */
-export function screenSymbols(tickers: readonly string[]): string[] {
-  return [...new Set(tickers.map((ticker) => parsePublicTickerKey(ticker).symbol).filter(Boolean))];
+/**
+ * A watchlist's tickers as a screen's symbols: each with its venue (`BN:TSX`,
+ * `PM:NYSE`), once. The screener matches such a value by company: the listing
+ * and the company's other screened listings, never another company's line with
+ * the same code (BN in Paris is Danone). A ticker with no known venue stays bare.
+ */
+export function screenListings(tickers: ReadonlyArray<{ ticker: string; exchange?: string }>): string[] {
+  return [...new Set(tickers.flatMap(({ ticker, exchange }) => {
+    const parsed = parsePublicTickerKey(ticker);
+    if (!parsed.symbol) return [];
+    const venue = canonicalExchange(parsed.exchange ?? exchange);
+    return [venue ? `${parsed.symbol}:${venue}` : parsed.symbol];
+  }))];
+}
+
+/** A listing value as a list names it: bare on a US venue (PM), SYMBOL:EXCHANGE elsewhere (RCI.B:TSX). */
+function listingName(value: string): string {
+  const parsed = parsePublicTickerKey(value);
+  return parsed.exchange && !isUsListingExchange(parsed.exchange) ? `${parsed.symbol}:${parsed.exchange}` : parsed.symbol;
+}
+
+/** The most members the screen's notes name one by one as matched through another listing. */
+const LISTING_NOTES = 10;
+
+/**
+ * What a screen says of the symbol values it did not read as themselves: each
+ * member matched through another listing of its company (`RCI.B:TSX: not in
+ * the screener; matched its NYSE listing RCI.`, the first ten), every member
+ * nothing in the screener carries, bare or with its venue, and every member
+ * whose matched listings the screen's `currency` leaves out.
+ */
+export function listingReadNotes(reads: readonly ScreenListingRead[] | undefined, currency?: string | null): string[] {
+  const list: readonly ScreenListingRead[] = (Array.isArray(reads) ? reads : [])
+    .filter((read) => typeof read?.value === "string" && typeof read.covered === "boolean" && Array.isArray(read.others));
+  const leftOut = list.filter((read) => Array.isArray(read.outsideCurrency) && read.outsideCurrency.length > 0);
+  const kept = list.filter((read) => !leftOut.includes(read));
+  const matchedElsewhere = kept.filter((read) => !read.covered && read.others.length > 0);
+  const absent = kept.filter((read) => !read.covered && read.others.length === 0);
+  const notes = matchedElsewhere.slice(0, LISTING_NOTES).map(({ value, others }) =>
+    `${listingName(value)}: not in the screener; matched its ${others.map((other) => `${other.exchange} listing ${other.symbol}`).join(" and ")}.`);
+  const more = matchedElsewhere.length - notes.length;
+  if (more > 0) notes.push(`${more} more member${more === 1 ? " is" : "s are"} matched through another listing of the company.`);
+  if (absent.length > 0) notes.push(`Not in the screener under any listing: ${absent.map((read) => listingName(read.value)).join(", ")}.`);
+  if (leftOut.length > 0) {
+    const named = leftOut.map((read) => {
+      const own = listingName(read.value);
+      const code = parsePublicTickerKey(read.value).symbol;
+      return read.outsideCurrency!.map((listing) => listing.symbol === code
+        ? `${own} in ${listing.currency}`
+        : `${own} as its ${listing.exchange} listing ${listing.symbol} in ${listing.currency}`).join(", ");
+    });
+    notes.push(`${currency ? `Quoted outside ${currency}, so this screen leaves them out` : "Quoted in another currency than the screen's, so left out"}: ${named.join("; ")}.`);
+  }
+  return notes;
 }
 
 /** The one name typed for a symbol list, which may name a watchlist (`HY3`), or null. */
@@ -959,5 +1011,6 @@ export function appendScreenPage(
     throw new Error("Screen snapshot changed. Refresh to start again.");
   const rows = new Map(current.rows.map((row) => [screenRowId(row), row]));
   for (const row of next.rows) rows.set(screenRowId(row), row);
-  return { ...next, rows: [...rows.values()] };
+  // How a watchlist's listings read comes with the first page.
+  return { ...next, rows: [...rows.values()], ...(current.listings ? { listings: current.listings } : {}) };
 }

@@ -630,9 +630,11 @@ export function dayMoveLine(
   currency: string,
   color: (text: string, value: number) => string = (text) => text,
   muted: (text: string) => string = (text) => text,
+  // A book with cash: the percent is the holdings' move, which the cash does not dilute, and says so.
+  { cashExcluded = false }: { cashExcluded?: boolean } = {},
 ): string {
   if (!move) return "Day's move: unavailable";
-  const percent = move.changePercent != null ? ` (${formatPercentRaw(move.changePercent)})` : "";
+  const percent = move.changePercent != null ? ` (${formatPercentRaw(move.changePercent)}${cashExcluded ? " of the holdings, cash excluded" : ""})` : "";
   const basis = move.basis ? ` ${muted(move.basis)}` : "";
   return `Day's move: ${color(`${formatAllocationMoney(move.change, currency, { signed: true })}${percent}`, move.change)}${basis}`;
 }
@@ -1227,21 +1229,22 @@ async function showCollectionWithMarketData(
         ...extendedSessions.map((session) => ({ header: EXTENDED_SESSION_LABELS[session], align: "right" as const, optional: true, dropPriority: 3 })),
         { header: quantityHeader, align: "right" },
         { header: "Avg Cost", align: "right", optional: true, dropPriority: 3 },
-        { header: "Value", align: "right" },
-        ...allocationHeaders.map((header) => ({ header, align: "right" as const })),
+        // Value, trade value, income and P&L are in the portfolio's currency, and their headers name it.
+        { header: `Value (${currency})`, align: "right" },
+        ...allocationHeaders.map((header) => ({ header: header === "Trade Value" ? `${header} (${currency})` : header, align: "right" as const })),
         // A year of trailing dividends on the shares held, dropped after the quote and before P&L.
         ...(showIncome ? [
-          { header: "Income", align: "right" as const, optional: true, dropPriority: 0.5 },
+          { header: `Income (${currency})`, align: "right" as const, optional: true, dropPriority: 0.5 },
           { header: "Yield", align: "right" as const, optional: true, dropPriority: 0.5 },
         ] : []),
-        { header: "P&L", align: "right", optional: true },
+        { header: `P&L (${currency})`, align: "right", optional: true },
         // When each row's price is from, so a Friday close never hides behind a newer row.
         { header: "As of (UTC)" },
       ],
       rows,
     ));
     console.log("");
-    if (valued.some((entry) => entry.position)) console.log(dayMoveLine(dayMove, currency, colorBySign, cliStyles.muted));
+    if (valued.some((entry) => entry.position)) console.log(dayMoveLine(dayMove, currency, colorBySign, cliStyles.muted, { cashExcluded: !!cashExport }));
     if (valued.some((entry) => entry.position)) console.log(exposureLine(exposure, currency));
     // The rates the holdings in another currency are valued at, dated, so a stale one is seen beside the value it moves.
     const fxLine = fxRatesLine(toBase.conversions(), { warning: cliStyles.warning });

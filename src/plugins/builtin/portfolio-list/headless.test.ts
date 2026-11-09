@@ -79,6 +79,9 @@ test("a broker portfolio's positions come largest first with weights and totals 
   expect(result.rows[0]!.weight).toBeCloseTo((12_000 / 29_000) * 100, 8);
   expect(result.rows[2]!.weight).toBeCloseTo((-5_000 / 29_000) * 100, 8);
   expect(result.columns?.find((column) => column.key === "weight")?.description).toContain("Percent of gross exposure");
+  // Market value and P&L are in the book's currency beside a quote's own, and their headers say which.
+  expect(result.columns?.filter((column) => ["marketValue", "unrealizedPnl", "price"].includes(column.key)).map((column) => column.header))
+    .toEqual(["Last", "Mkt Val (USD)", "P&L (USD)"]);
   expect(result.metadata).toMatchObject({
     collection: { kind: "portfolio", id: BROKER.id, broker: true },
     currency: "USD",
@@ -117,6 +120,11 @@ test("a watchlist reads by name, and an unknown id lists the ones that exist", a
 
   await expect(collectionHoldingsHeadless.load(args("default"), context()))
     .rejects.toThrow(`Unknown portfolio or watchlist "default". Portfolios and watchlists: Main (main), U1234567 (${BROKER.id}), Tech (tech).`);
+  // `fn PF` alone read an empty first portfolio as "No data."; it says which it read and how to name another.
+  const bare = await collectionHoldingsHeadless.load(args(""), context());
+  expect(bare.rows).toEqual([]);
+  expect(bare.empty).toBe(`The first portfolio, Main, holds nothing. Name one: gloom fn PF <portfolio or watchlist>, such as U1234567 (${BROKER.id}), Tech (tech).`);
+  expect((await collectionHoldingsHeadless.load(args(""), context([holding("AAPL", 10, 150, MANUAL.id)]))).empty).toBeUndefined();
 });
 
 test("a watchlist and a portfolio date a pre-market quote nothing has traded in by the close they show, as quote does", async () => {
@@ -290,6 +298,7 @@ test("fn PF --from lists the period's P&L largest first within --limit, with the
   const fx = 63_150 * (1 / 7.75 - 1 / 7.8);
   expect(result.rows.at(-1)!.pnl as number).toBeCloseTo(150 / 7.75 + 50 * (344.63 - 347.73) + -20 * (380 - 400) + fx, 6);
   expect(result.metadata?.notices).toContain("1 more position not shown; the FX line and the total include every position.");
+  expect(result.columns?.find((column) => column.key === "pnl")?.header).toBe("P&L (USD)");
   setCliColorEnabledOverride(false);
   try {
     expect(renderHeadlessPaneText(collectionHoldingsHeadless, result, period({ limit: 2 }), "PF"))

@@ -24,19 +24,19 @@ import { sinceLastSeenTint, type SinceLastSeenRecap } from "./since-last-seen";
 import { portfolioPnlLabel } from "../../../portfolio/position-metrics";
 import { PORTFOLIO_ROW_MENU_KEYS } from "./row-actions";
 import { isFuturesTicker } from "../../../portfolio/futures-positions";
-import { resolveCurrencyUnit } from "../../../utils/currency-units";
 
 export type { QuoteFlashDirection };
 
+/** Columns whose amounts read in the book's currency, whatever the listing's: market cap, cost, value, trade value, day and P&L. */
+const BOOK_CURRENCY_COLUMN_IDS: ReadonlySet<string> = new Set(["market_cap", "cost_basis", "mkt_value", "trade_value", "day_pnl", "pnl"]);
+
 /**
- * The market cap column, whose caps read in the book's currency, under a
- * header that names it when a row's price is in another (`Mkt Cap TRY` beside
- * BRK.B's dollars), wide enough for it; as it was when every price is in that
- * currency, pence in pounds included.
+ * A column whose amounts read in the book's currency, under a header that
+ * names it as the CLI's do (`MKT VAL (CAD)`, `P&L (CAD)`, `MCAP (TRY)`),
+ * whatever currency the rows' prices are in, wide enough for it.
  */
-export function marketCapColumn(column: ColumnConfig, currency: string, listed: ReadonlyArray<string | null | undefined>): ColumnConfig {
-  if (!listed.some((code) => !!code && resolveCurrencyUnit(code).currency !== currency)) return column;
-  const label = `${column.label} ${currency}`;
+export function bookCurrencyColumn(column: ColumnConfig, currency: string): ColumnConfig {
+  const label = `${column.label} (${currency})`;
   return { ...column, label, width: Math.max(column.width, displayWidth(label)) };
 }
 
@@ -286,24 +286,19 @@ export function PortfolioTickerTable({
   )), [columnContext.homeMarket, sortedTickers]);
   // A book that holds a short weighs its positions against gross exposure, and the header says so.
   const grossWeights = columnContext.portfolioWeightBasis === "gross";
-  // Market caps read in the book's currency: beside a price in another, the header names it (Mkt Cap TRY by a USD price).
+  // Market caps, values and P&L read in the book's currency, which their headers name (MKT VAL (CAD)), as the CLI's do.
   const capCurrency = columnContext.baseCurrency;
-  // One code, the first other currency or none, so a quote's tick does not rebuild the columns.
-  const otherListedCurrency = useMemo(() => columns.some((column) => column.id === "market_cap")
-    ? sortedTickers.map((ticker) => tableFinancialsMap.get(ticker.metadata.ticker)?.quote?.currency ?? ticker.metadata.currency)
-      .find((code) => !!code && resolveCurrencyUnit(code).currency !== capCurrency) ?? null
-    : null, [capCurrency, columns, sortedTickers, tableFinancialsMap]);
   const sizedColumns = useMemo(() => columns.map((column) => column.id === "shares" && hasNonShareQuantity
     ? { ...column, label: "QTY", ...(sharesWidth > column.width ? { width: sharesWidth } : {}) }
-    : column.id === "market_cap" ? marketCapColumn(column, capCurrency, [otherListedCurrency])
     : column.id === "weight" && grossWeights ? { ...column, label: GROSS_WEIGHT_LABEL }
     : column.id === "ticker" && tickerWidth > column.width ? { ...column, width: tickerWidth }
     : column.id === "pnl_pct" && period ? { ...column, label: CONTRIBUTION_LABEL }
     : pnlLabel !== "P&L" && (column.id === "pnl" || column.id === "pnl_pct") ? {
     ...column,
     label: column.id === "pnl_pct" ? pnlLabel.replace("P&L", "%") : pnlLabel,
-  } : column).map((column) => hasFrontReference && column.id === noteColumnId ? { ...column, flexGrow: 1 } : column),
-  [capCurrency, columns, grossWeights, hasFrontReference, hasNonShareQuantity, noteColumnId, otherListedCurrency, period, pnlLabel, sharesWidth, tickerWidth]);
+  } : column).map((column) => BOOK_CURRENCY_COLUMN_IDS.has(column.id) ? bookCurrencyColumn(column, capCurrency) : column)
+    .map((column) => hasFrontReference && column.id === noteColumnId ? { ...column, flexGrow: 1 } : column),
+  [capCurrency, columns, grossWeights, hasFrontReference, hasNonShareQuantity, noteColumnId, period, pnlLabel, sharesWidth, tickerWidth]);
   // Read again as the rows' data moves, from the cells the rows show; the columns change only when what is hidden does.
   // The company columns hidden last time, per list, stay hidden while a row added since settles.
   const hiddenCompanyRef = useRef<{ list: string | undefined; ids: ReadonlySet<string> }>({ list: undefined, ids: new Set() });

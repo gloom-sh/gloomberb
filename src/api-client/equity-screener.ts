@@ -208,6 +208,21 @@ export interface ScreenSnapshot {
   sourceOldestAt: string | null;
   sourceNewestAt: string | null;
 }
+/**
+ * How a symbol criterion read one of its values. One named with its venue (a
+ * watchlist member, BN:TSX) matches the company, so the listing and the
+ * company's other screened listings; a bare one (PM) matches the code.
+ */
+export interface ScreenListingRead {
+  /** The value as the criterion gives it: RCI.B:TSX, PM. */
+  value: string;
+  /** Whether the listing itself (a bare value: its code) is in the screened universe. */
+  covered: boolean;
+  /** The same company's other screened listings, which the value also matches: RCI on the NYSE. */
+  others: Array<{ symbol: string; exchange: string }>;
+  /** When the screen has a currency and every listing the value matched is quoted in another: those listings, which it leaves out. */
+  outsideCurrency?: Array<{ symbol: string; exchange: string; currency: string }>;
+}
 export interface ScreenPayload {
   version: 1;
   status: "available" | "partial" | "unavailable";
@@ -217,6 +232,8 @@ export interface ScreenPayload {
   rows: ScreenRow[];
   nextCursor: string | null;
   warnings: string[];
+  /** On the first page of a screen with a symbol criterion: what each of its values read. */
+  listings?: ScreenListingRead[];
 }
 interface ScreenCriterionCheck {
   criterion: ScreenCriterion;

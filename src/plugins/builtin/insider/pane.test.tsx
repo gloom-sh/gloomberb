@@ -12,6 +12,7 @@ import { createTestDataProvider } from "../../../test-support/data-provider";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import type { TickerRecord } from "../../../types/ticker";
 import { insiderModule } from "./index";
+import { setSharedMarketDataForTests } from "../../registry";
 
 const InsiderView = insiderModule.panes![0]!.component;
 const tui = createOpenTuiTestHarness();
@@ -59,6 +60,7 @@ async function mountWindow(inWindow: number) {
 afterEach(() => {
   mock.restore();
   setSharedMarketDataCoordinator(null);
+  setSharedMarketDataForTests(undefined);
   insiderSignalsCache.reset();
 });
 
@@ -249,6 +251,44 @@ test("Trades and Insiders are a choice in INS's query bar; Insiders lists each i
   expect(frame).toMatch(/Insider\s+Anna B\. Smith/);
   expect(frame).toMatch(/Trades\s+Insiders/);
   expect(frame).not.toContain("Bob Jones");
+});
+
+// `INS MO,PM,LMT` in the bar opened their insiders; `fn INS MO,PM,LMT` lists their trades, as one ticker's pane does.
+test("INS on several tickers opens on their trades in one table with a Ticker column, Insiders one click away", async () => {
+  const filings = (symbol: string) => [{ accessionNumber: `${symbol}-1`, form: "4", filingDate: new Date("2026-08-20T00:00:00Z"), cik: "999", filingUrl: `https://www.sec.gov/${symbol}` }];
+  setSharedMarketDataForTests(createTestDataProvider({
+    getSecFilings: async (symbol) => (symbol === "NONE" ? [] : filings(symbol)),
+    getSecFilingContent: async (filing) => xml(false, filing.accessionNumber.startsWith("AAA") ? "SMITH ANNA B" : "JONES BOB", "111"),
+  }));
+  const asked = answerCompany({ buy: [], sell: [] });
+  const paneId = "insider:tickers:test";
+  function TickersHarness() {
+    const config = createTestPaneConfig("/tmp/unused-insider-pane-test", { instanceId: paneId, paneId: "insider", binding: { kind: "none" }, settings: { symbols: ["AAA", "BBB", "NONE"] } });
+    const [state, dispatch] = useReducer(appReducer, config, (initialConfig) => ({ ...createInitialState(initialConfig), focusedPaneId: paneId }));
+    const runtime = useMemo(() => createStatefulTestPluginRuntime(), []);
+    return <TestPaneFrame state={state} dispatch={dispatch} paneId={paneId} pluginId="ticker-research" runtime={runtime} width={120} height={30} footerKeys>
+      {(body) => <InsiderView paneId={paneId} paneType="insider" focused {...body} />}
+    </TestPaneFrame>;
+  }
+  await act(async () => { await tui.render(<TickersHarness />, { width: 120, height: 30 }); });
+  for (let i = 0; i < 20 && !tui.frame().includes("Bob Jones"); i++) await settle();
+  let frame = tui.frame();
+  expect(frame).toMatch(/Type\s+All \(2\)\s+Buys and sells \(2\)\s+Other \(0\).*Trades\s+Insiders/);
+  expect(frame).toMatch(/TICKER\s+DATE\s+INSIDER/);
+  expect(frame).toMatch(/AAA\s+\S+\s+Anna B\. Smith\s+.*BUY/);
+  expect(frame).toMatch(/BBB\s+\S+\s+Bob Jones\s+.*BUY/);
+  // Each company's lines together in the order given; one with no Form 4 is named, not left out.
+  expect(frame.indexOf("Anna B. Smith")).toBeLessThan(frame.indexOf("Bob Jones"));
+  expect(asked).toEqual([]);
+  await act(async () => tui.setup().mockInput.pressKey("!"));
+  await settle();
+  expect(tui.frame()).toContain("NONE: No Form 4 insider filings.");
+  await act(async () => { await tui.clickFrameText("Close"); });
+  await settle();
+  await act(async () => { await tui.clickFrameText("Insiders"); });
+  await settle();
+  expect(tui.frame()).toMatch(/Window\s+7D\s+30D\s+90D/);
+  expect(asked).toContainEqual({ window: 30, ticker: "AAA" });
 });
 
 test("a company whose insiders did not trade in the open market in the window says so in Insiders", async () => {

@@ -75,7 +75,7 @@ import {
   type SplitFactors,
 } from "./model";
 import {
-  actionLabel,
+  holdingActionLabel,
   formatChangeShares,
   formatMoneyCompact,
   formatPercentMaybe,
@@ -821,7 +821,7 @@ export function createThirteenFHeadless(
           .map((row) => ({
             ...row,
             type: positionType(row),
-            actionLabel: actionLabel(row.action),
+            actionLabel: holdingActionLabel(row),
           }));
         return {
           columns: HOLDING_COLUMNS,

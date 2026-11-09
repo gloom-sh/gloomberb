@@ -1156,7 +1156,7 @@
           {
             "code": "INS",
             "name": "Insider",
-            "description": "Insider transactions for a ticker; alone, the companies whose insiders are buying or selling."
+            "description": "Insider transactions for a ticker; for several, their insiders; alone, the companies whose insiders are buying or selling."
           },
           {
             "code": "SI",
