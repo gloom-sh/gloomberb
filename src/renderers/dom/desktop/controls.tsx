@@ -339,6 +339,8 @@ export function WebTextField({
       >
         <Input
           aria-label={accessibleLabel ?? label}
+          // The shared TextField that renders this registers the field's node.
+          data-gloom-remote-hidden
           disabled={disabled}
           ref={resolvedInputRef as RefObject<InputRenderable | null>}
           width="100%"

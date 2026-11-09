@@ -185,13 +185,18 @@ export const ScrollBox = forwardRef<any, ComponentProps<UiHost["ScrollBox"]>>((p
 });
 ScrollBox.displayName = "ScrollBox";
 
-export const Input = forwardRef<any, ComponentProps<UiHost["Input"]>>((props, ref) => {
+export const Input = forwardRef<any, ComponentProps<UiHost["Input"]>>(({
+  "data-gloom-remote-hidden": remoteHidden,
+  ...props
+}: ComponentProps<UiHost["Input"]> & { "data-gloom-remote-hidden"?: boolean }, ref) => {
   const { Input: HostInput } = useUiHost();
   const rawProps = props as Record<string, unknown>;
   const onInput = rawProps.onInput as ((value: string) => unknown) | undefined;
   const onChange = rawProps.onChange as ((value: string) => unknown) | undefined;
   const onSubmit = rawProps.onSubmit as ((value?: string) => unknown) | undefined;
-  const remoteNodeId = useRemoteUiNode({
+  // An owner that registers the field itself (a text field) hides this node,
+  // so what was typed is listed once, under the field's own name and type.
+  const remoteNodeId = useRemoteUiNode(remoteHidden ? null : {
     role: remotePropRole(rawProps, "input"),
     label: remotePropLabel(rawProps),
     disabled: rawProps.disabled === true,

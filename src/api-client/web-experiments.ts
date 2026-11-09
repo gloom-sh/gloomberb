@@ -1,12 +1,11 @@
 /**
  * A/B experiments on the hosted web terminal (term.gloom.sh).
  *
- * The registry, the bucketing and the bot rules live with the API
- * (gloomberb-platform `shared/experiments.ts`). The terminal asks for its arm
- * at the moment an experiment's change would show, in every arm, and that
- * request is the exposure: the API answers with the variant and counts the
- * visitor in it. Turning an experiment off there takes effect here without a
- * release.
+ * The registry, the bucketing and the bot rules live with the Gloom Cloud
+ * API. The terminal asks for its arm at the moment an experiment's change
+ * would show, in every arm, and that request is the exposure: the API answers
+ * with the variant and counts the visitor in it. Turning an experiment off
+ * there takes effect here without a release.
  *
  * The first variant this browser is given is kept and sent back, so a visitor
  * whose anonymous id changes later stays in the same arm, and it rides on every
