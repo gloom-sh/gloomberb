@@ -1,20 +1,27 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
-import { fetchMoneyMarkets } from "./client";
-import { moneyMarketChange, moneyMarketNotices, moneyMarketRows, moneyMarketValue } from "./model";
+import type { MoneyMarketRow } from "../../../api-client/money-markets";
+import { fetchHongKongMoneyMarkets, fetchMoneyMarkets } from "./client";
+import { isHongKongTab, MONEY_MARKET_TABS, moneyMarketChange, moneyMarketNotices, moneyMarketRowNotices, moneyMarketRows, moneyMarketValue } from "./model";
+
+const FRED_FRESHNESS = { source: "FRED", status: "not-a-feed", basis: "published daily and weekly data" } as const;
 
 export const moneyMarketsHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["BTMM"], dataRequirements: ["Gloom Cloud money-markets endpoint"],
-    limitations: ["Published daily and weekly observations.", "Treasury bill discount yields.", "Net liquidity is a same-date proxy."] },
+    limitations: ["Published daily and weekly observations.", "Treasury bill discount yields.", "Net liquidity is a same-date proxy.",
+      "HIBOR: HKMA carries the 1-month fixing the same evening and the other tenors a week or two later; each row is dated by its own fixing."] },
   shape: "bundle", argument: { kind: "none" },
-  freshness: { source: "FRED", status: "not-a-feed", basis: "published daily and weekly data" },
-  options: [{ key: "tab", type: "enum", description: "Money-market view.", values: [{ value: "rates" }, { value: "bills" }, { value: "liquidity" }], defaultValue: "rates" }],
-  describe: "US money markets",
+  freshness: FRED_FRESHNESS,
+  options: [{ key: "tab", type: "enum", description: "Money-market view: US rates, bills or liquidity, or Hong Kong's HIBOR fixings.",
+    values: MONEY_MARKET_TABS.map(({ value }) => ({ value })), defaultValue: "rates" }],
+  describe: (args) => isHongKongTab(args.options.tab) ? "Hong Kong money markets" : "US money markets",
   async load(args, ctx) {
-    const data = await fetchMoneyMarkets(ctx.apiClient);
-    const rows = moneyMarketRows(data, String(args.options.tab));
-    const errors = moneyMarketNotices(data);
+    const hongKong = isHongKongTab(args.options.tab);
+    const data = hongKong ? await fetchHongKongMoneyMarkets(ctx.apiClient) : await fetchMoneyMarkets(ctx.apiClient);
+    const rows: MoneyMarketRow[] = "billsCurve" in data ? moneyMarketRows(data, String(args.options.tab)) : data.rows;
+    const errors = "billsCurve" in data ? moneyMarketNotices(data) : moneyMarketRowNotices(data.rows);
     const complete = data.status === "available" && errors.length === 0;
-    return { complete, sections: [{ title: "Observations", columns: [
+    return { complete, ...hongKong ? { freshness: { ...FRED_FRESHNESS, source: "HKMA", basis: "published HIBOR fixings" } } : {},
+      sections: [{ title: hongKong ? "HIBOR fixings" : "Observations", columns: [
       { key: "label", header: "Instrument" },
       { key: "value", header: "Level", align: "right", format: (value, row) => moneyMarketValue(value as number | null, row.unit as "percent" | "usd-billions") },
       { key: "change", header: "Change", align: "right", format: (value, row) => moneyMarketChange(value as number | null, row.changeUnit as "basis-points" | "usd-billions") },
@@ -23,7 +30,7 @@ export const moneyMarketsHeadless: HeadlessPaneDefinition<"bundle"> = {
       { key: "percentileValue", header: "Pctl 1Y", align: "right", stackPriority: 2, format: (value) => value == null ? "--" : Number(value).toFixed(0) },
       { key: "asOf", header: "As of", shrink: false }, { key: "status", header: "Status", stackPriority: 3 },
     ], rows: rows.map(({ history: _history, ...row }) => ({ ...row, percentileValue: row.percentile.value })) }],
-      errors, unavailableSymbols: rows.filter((row) => row.status === "unavailable").flatMap((row) => row.sourceSeriesIds),
+      errors, unavailableSymbols: rows.filter((row) => row.status === "unavailable").flatMap((row) => row.sourceSeriesIds.length ? row.sourceSeriesIds : [row.label]),
       metadata: { ...data, complete, selectedTab: args.options.tab } };
   },
 };

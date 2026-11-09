@@ -38,7 +38,7 @@ import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { FxInterventionsPayload } from "./fx-interventions";
 import type { HkTendersPayload } from "./hk-tenders";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
-import type { MoneyMarketsPayload } from "./money-markets";
+import type { HongKongMoneyMarketsPayload, MoneyMarketsPayload } from "./money-markets";
 import type { CloudCurveHistory, CloudCurveId, CloudCurveView, CloudWorldCurves } from "./yield-curves";
 import type { SwapCurvePayload, SwapTenor } from "./swap-curve";
 import type { CdxBoardPayload, CloudCreditBoardParams, SovrBoardPayload } from "./credit-boards";
@@ -1243,6 +1243,10 @@ export class CloudDataApi {
 
   async getCloudMoneyMarkets(): Promise<MoneyMarketsPayload> {
     return this.request<MoneyMarketsPayload>("/cloud/econ/money-markets", { signal: AbortSignal.timeout(45_000) });
+  }
+
+  async getCloudHongKongMoneyMarkets(): Promise<HongKongMoneyMarketsPayload> {
+    return this.request<HongKongMoneyMarketsPayload>("/cloud/econ/money-markets/hk", { signal: AbortSignal.timeout(45_000) });
   }
 
   async getCloudDebtMaturities(symbol: string, listing?: IssuerListingParams): Promise<DebtMaturitiesPayload> {

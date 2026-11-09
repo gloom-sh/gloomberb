@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import type { MoneyMarketRow, MoneyMarketsPayload } from "../../../api-client/money-markets";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { fetchMoneyMarkets, validateMoneyMarkets } from "./client";
+import { fetchMoneyMarkets, validateHongKongMoneyMarkets, validateMoneyMarkets } from "./client";
+import { moneyMarketsHeadless } from "./headless";
+import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
+import type { HongKongMoneyMarketsPayload } from "../../../api-client/money-markets";
 import { moneyMarketAxis, moneyMarketCurves, moneyMarketHistory, moneyMarketNotices, moneyMarketObservations, moneyMarketRateChange, moneyMarketRows } from "./model";
 
 function row(id = "sofr", overrides: Partial<MoneyMarketRow> = {}): MoneyMarketRow {
@@ -68,5 +71,37 @@ describe("money-market boundary", () => {
     await expect(fetchMoneyMarkets({ getCloudMoneyMarkets: async () => { throw new ApiRequestError("not found", 404); } })).rejects.toThrow("not available yet");
     const denied = new ApiRequestError("sign in", 401);
     await expect(fetchMoneyMarkets({ getCloudMoneyMarkets: async () => { throw denied; } })).rejects.toBe(denied);
+  });
+});
+
+describe("Hong Kong's HIBOR board", () => {
+  const hibor = (tenor: string, value: number, asOf: string) => row(`hibor-${tenor}`, { label: `HIBOR ${tenor}`, group: "hibor", seriesId: null,
+    sourceSeriesIds: [], value, asOf, previousAsOf: "2026-10-29", history: [{ date: "2026-10-29", value: value - 0.1 }, { date: asOf, value }] });
+  const hongKong = (): HongKongMoneyMarketsPayload => ({ generatedAt: "2026-11-09T12:00:00Z", status: "available", currency: "HKD",
+    source: { name: "Hong Kong Monetary Authority", url: "https://api.hkma.gov.hk" },
+    rows: [hibor("O/N", 2.77464, "2026-10-30"), hibor("1M", 2.56113, "2026-11-06"), hibor("3M", 3.21256, "2026-10-30")] });
+
+  test("fn BTMM --tab hk reads Hong Kong's own payload, each fixing dated by its day, and says HKMA is its source", async () => {
+    let asked = 0;
+    const args = createTestHeadlessArgs({ options: { tab: "hk" } });
+    const result = await moneyMarketsHeadless.load(args, createTestHeadlessContext({ apiClient: {
+      getCloudHongKongMoneyMarkets: async () => hongKong(),
+      getCloudMoneyMarkets: async () => { asked++; return payload(); } } as never }));
+    expect(asked).toBe(0);
+    expect(typeof moneyMarketsHeadless.describe === "function" && moneyMarketsHeadless.describe(args)).toBe("Hong Kong money markets");
+    expect(result.freshness).toMatchObject({ source: "HKMA", status: "not-a-feed" });
+    const section = (result as { sections: Array<{ title: string; rows: Array<Record<string, unknown>> }> }).sections[0]!;
+    expect(section.title).toBe("HIBOR fixings");
+    expect(section.rows.map((entry) => [entry.label, entry.value, entry.asOf])).toEqual([
+      ["HIBOR O/N", 2.77464, "2026-10-30"], ["HIBOR 1M", 2.56113, "2026-11-06"], ["HIBOR 3M", 3.21256, "2026-10-30"]]);
+  });
+
+  test("a row that is not a HIBOR fixing, or a US row among them, refuses the payload; an older server says it is not available yet", async () => {
+    expect(validateHongKongMoneyMarkets(hongKong()).rows).toHaveLength(3);
+    expect(() => validateHongKongMoneyMarkets({ ...hongKong(), rows: [row()] })).toThrow("invalid money-market observations");
+    expect(() => validateMoneyMarkets({ ...payload(), rows: [hibor("1M", 2.5, "2026-11-06")] })).toThrow("invalid money-market observations");
+    const { fetchHongKongMoneyMarkets } = await import("./client");
+    await expect(fetchHongKongMoneyMarkets({ getCloudHongKongMoneyMarkets: async () => { throw new ApiRequestError("not found", 404); } }))
+      .rejects.toThrow("Hong Kong money markets are not available yet.");
   });
 });
