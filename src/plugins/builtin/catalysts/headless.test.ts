@@ -7,7 +7,7 @@ import type { HeadlessPaneContext } from "../../../types/headless";
 import { catalystsHeadless, litigationHeadless } from "./headless";
 import { catalystFixture, catalystPayload } from "./test-fixture";
 
-async function report(definition: typeof catalystsHeadless, access: { pro: boolean; lockedRows: number }) {
+async function report(definition: typeof catalystsHeadless, access: { pro: boolean; lockedRows: number; lockedUpcoming?: number }) {
   const ctx = createTestHeadlessContext({
     apiClient: { getCloudCatalysts: async () => ({ ...catalystPayload(), total: 1 + access.lockedRows, access: { ...access, previewLimit: 3 } }) } as unknown as HeadlessPaneContext["apiClient"],
   });
@@ -24,6 +24,8 @@ test("a free preview says how many events it holds back, so it never reads as co
   expect((await report(litigationHeadless, { pro: false, lockedRows: 4 })).result.errors).toEqual(["4 more cases need Gloom Pro"]);
   expect((await report(litigationHeadless, { pro: false, lockedRows: 1 })).result.errors).toEqual(["1 more case needs Gloom Pro"]);
   expect((await report(catalystsHeadless, { pro: false, lockedRows: 1204 })).result.errors).toEqual(["1,204 more events need Gloom Pro"]);
+  // The service counts the held-back events still to come, and the line says so.
+  expect((await report(catalystsHeadless, { pro: false, lockedRows: 2, lockedUpcoming: 1 })).text).toContain("Pro: 2 more events (1 upcoming) need Gloom Pro");
 });
 
 test("a Pro report holds nothing back", async () => {

@@ -90,6 +90,11 @@ export interface CatalystEvent extends Omit<CatalystInput, "parties" | "sourceTe
   lastSeenAt: string
   /** A company's own date still scheduled whose day has ended, with no outcome read since. */
   datePassed?: boolean
+  /** How many other filings of the company stated the same disclosure; this event is the latest of them. */
+  restatedTimes?: number
+  /** The drug and what it is for, when the source passage states them. */
+  drug?: string
+  indication?: string
 }
 export interface CatalystFilters {
   symbol?: string
@@ -152,7 +157,10 @@ export interface CatalystResponse {
   filters: CatalystFilters
   coverage: CatalystCoverage
   facets: { types: string[]; agencies: string[]; countries: string[]; sectors: string[]; statuses: string[] }
-  access?: { pro: boolean; lockedRows: number; previewLimit: number }
+  /** A free preview's held-back rows, and how many of them are still to come (on a calendar read by date). */
+  access?: { pro: boolean; lockedRows: number; previewLimit: number; lockedUpcoming?: number }
+  /** Of `total`, the events still to come; null for the change feed. */
+  upcoming?: number | null
 }
 export interface CatalystDetail { event: CatalystEvent; history: CatalystEvent[]; historyTotal?: number; historyTruncated?: boolean; historyOffset?: number; historyLimit?: number; historyHasMore?: boolean; asOf: string; access?: { pro: boolean; lockedRows: number; previewLimit: number } }
 export interface CatalystStatus {
