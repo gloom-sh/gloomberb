@@ -354,10 +354,12 @@ export function buildPortfolioSummarySegments({
       { text: `(${formatPercentRaw(period.contribution ?? Number.NaN)})`, tone: "muted", color: period.contribution == null ? undefined : shownPriceColor(period.contribution, 2) },
     ]));
   }
+  // Beside cash entered by hand, which the Total counts, each percent says what it is of: the holdings, and their cost.
+  const holdingsOnly = !!manualCash && !broker;
   candidates.push(createSummarySegment("day", [
     { text: "Day", tone: "label" },
     { text: money(accountMetrics.dailyPnl, true), tone: "value", color: priceColor(accountMetrics.dailyPnl), bold: true },
-    { text: `(${formatPercentRaw(accountMetrics.dailyPnlPct)})`, tone: "muted", color: shownPriceColor(accountMetrics.dailyPnlPct, 2) },
+    { text: `(${formatPercentRaw(accountMetrics.dailyPnlPct)}${holdingsOnly ? " ex cash" : ""})`, tone: "muted", color: shownPriceColor(accountMetrics.dailyPnlPct, 2) },
     // The broker's own day is from its account's close, not the quotes': it names none.
     ...(accountMetrics.brokerDay || !Number.isFinite(accountMetrics.dailyPnl) ? [] : dayBasisPart(totals)),
   ]));
@@ -367,7 +369,7 @@ export function buildPortfolioSummarySegments({
       : !Number.isFinite(account?.unrealizedPnl)
         && totals.unrealizedPnlBasis === "mixed" ? "Mixed P&L" : "P&L", tone: "label" },
     { text: money(accountMetrics.unrealizedPnl, true), tone: "value", color: priceColor(accountMetrics.unrealizedPnl), bold: true },
-    { text: `(${formatPercentRaw(accountMetrics.unrealizedPnlPct)})`, tone: "muted", color: shownPriceColor(accountMetrics.unrealizedPnlPct, 2) },
+    { text: `(${formatPercentRaw(accountMetrics.unrealizedPnlPct)}${holdingsOnly ? " on cost" : ""})`, tone: "muted", color: shownPriceColor(accountMetrics.unrealizedPnlPct, 2) },
   ]));
 
   // A book with shorts splits its gross into the two sides, after the headline numbers.

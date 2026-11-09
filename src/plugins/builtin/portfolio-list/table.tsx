@@ -33,13 +33,13 @@ const BOOK_CURRENCY_COLUMN_IDS: ReadonlySet<string> = new Set(["market_cap", "co
 
 /**
  * A column whose amounts read in the book's currency, under a header that
- * names it when a row's price is in another (`MKT CAP TRY` beside BRK.B's
- * dollars, `MKT VAL CAD` beside NBIS's), wide enough for it; as it was when
+ * names it as the CLI does when a row's price is in another (`MKT CAP (TRY)`
+ * beside BRK.B's dollars, `MKT VAL (CAD)` beside NBIS's), wide enough for it; as it was when
  * every price is in that currency, pence in pounds included.
  */
 export function bookCurrencyColumn(column: ColumnConfig, currency: string, listed: ReadonlyArray<string | null | undefined>): ColumnConfig {
   if (!listed.some((code) => !!code && resolveCurrencyUnit(code).currency !== currency)) return column;
-  const label = `${column.label} ${currency}`;
+  const label = `${column.label} (${currency})`;
   return { ...column, label, width: Math.max(column.width, displayWidth(label)) };
 }
 
@@ -289,7 +289,7 @@ export function PortfolioTickerTable({
   )), [columnContext.homeMarket, sortedTickers]);
   // A book that holds a short weighs its positions against gross exposure, and the header says so.
   const grossWeights = columnContext.portfolioWeightBasis === "gross";
-  // Market caps, values and P&L read in the book's currency: beside a price in another, the header names it (MKT VAL CAD by a USD price).
+  // Market caps, values and P&L read in the book's currency: beside a price in another, the header names it (MKT VAL (CAD) by a USD price).
   const capCurrency = columnContext.baseCurrency;
   // One code, the first other currency or none, so a quote's tick does not rebuild the columns.
   const otherListedCurrency = useMemo(() => columns.some((column) => BOOK_CURRENCY_COLUMN_IDS.has(column.id))

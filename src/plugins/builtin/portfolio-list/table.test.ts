@@ -49,9 +49,9 @@ test("a company column hides only once every row's company data has answered, an
 test("a column in the book's currency names it when a row's price is in another", () => {
   const cap = book.find((column) => column.id === "market_cap")!;
   // A lira book holding BRK.B: its cap reads 58.22T beside a dollar price, so the header says TRY.
-  expect(bookCurrencyColumn(cap, "TRY", ["TRY", "USD"])).toMatchObject({ label: `${cap.label} TRY`, width: Math.max(cap.width, `${cap.label} TRY`.length) });
+  expect(bookCurrencyColumn(cap, "TRY", ["TRY", "USD"])).toMatchObject({ label: `${cap.label} (TRY)`, width: Math.max(cap.width, `${cap.label} (TRY)`.length) });
   // A Canadian book holding NBIS: its value is in dollars converted to CAD, beside a USD price.
-  expect(bookCurrencyColumn({ id: "mkt_value", label: "MKT VAL", width: 10, align: "right" }, "CAD", ["USD"])).toMatchObject({ label: "MKT VAL CAD", width: 11 });
+  expect(bookCurrencyColumn({ id: "mkt_value", label: "MKT VAL", width: 10, align: "right" }, "CAD", ["USD"])).toMatchObject({ label: "MKT VAL (CAD)", width: 13 });
   // Every price in the book's currency, pence in pounds included, leaves the header as it was.
   expect(bookCurrencyColumn(cap, "TRY", ["TRY", undefined])).toBe(cap);
   expect(bookCurrencyColumn(cap, "GBP", ["GBp", "GBP"])).toBe(cap);
