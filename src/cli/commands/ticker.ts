@@ -84,7 +84,7 @@ import { fundFactsAbroadKey, hasFundFactsAbroad, isKnownNonUsListing, secFilingI
 import { currentReportItemsLabel, hiddenFilingsNote, loadLatestFilings, type HiddenFilings } from "../../utils/sec-filings";
 import { canonicalExchange, exchangeLabel, isKnownExchangeCode, isUsListingExchange } from "../../utils/exchanges";
 import {
-  coinListingNotes, failIfNotTraded, failMovedSymbol, ListingArgError, listingChoiceNotes, listingFateLoader, listingIdentity, loadBareVenues,
+  coinListingNotes, failIfNotTraded, failMovedSymbol, failUnchosenListing, ListingArgError, listingChoiceNotes, listingFateLoader, listingIdentity, loadBareVenues,
   resolveCliListing, type CliListing, type ListingDataRequest,
 } from "../listing-arg";
 import { isUsSymbolVenue, movedAwayChange } from "../../tickers/ticker-changes";
@@ -1710,6 +1710,8 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
       // A known exchange the symbol is not listed on: say where it is.
       await failIfNotTraded(listing, { store, dataProvider }, { fail: failCommand });
       await failIfMovedAway();
+      // A bare code several companies list (3988 is Bank of China in Hong Kong and Sys Holdings in Tokyo) asks which, as `quote` does.
+      await failUnchosenListing(listing, { store, dataProvider }, { fail: failCommand }, request, error);
       const reason = error instanceof Error ? error.message : String(error);
       // A symbol no listing carries is not a failed fetch, and the message already names it.
       if (isNotATickerMessage(reason)) failCommand(reason);

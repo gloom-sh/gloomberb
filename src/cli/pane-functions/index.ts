@@ -35,7 +35,7 @@ import {
 import { incompleteReportGateMessage } from "./access-gate";
 import { withPersistedCloudSession } from "./cloud-session";
 import {
-  ListingArgError, listingFateLoader, listingReadNotes, loadForListing, loadListingQuoteAnswer, quotedListingChoiceNotes, refuseMovedListing,
+  failUnchosenListing, ListingArgError, listingFateLoader, listingReadNotes, loadForListing, loadListingQuoteAnswer, quotedListingChoiceNotes, refuseMovedListing,
 } from "../listing-arg";
 import { notATickerStop } from "../company-name-hint";
 import { CLI_ERROR_CODE, failUnreachable, failWithError, isCliFailure, isSourceUnavailableAnswer, unreachableError } from "../errors";
@@ -340,12 +340,18 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
           outputPath ? () => buildForFile(buildReport) : buildReport,
           (built) => built.data.empty || !built.data.complete,
         ),
-      )).finally(progress.stop);
+      )).catch(async (error: unknown) => {
+        // A bare code several companies list (3988 in Hong Kong and Tokyo) asks which, as `quote` does, rather than "Not a ticker".
+        if (listing) await failUnchosenListing(listing, context, ctx, { ...moved, noun: "data" }, error);
+        throw error;
+      }).finally(progress.stop);
       // A company's name typed where its ticker goes (`fn RDCF Palantir`) found nothing: the answer is `quote`'s,
       // "Not a ticker: PALANTIR. Did you mean PLTR (Palantir Technologies Inc.)?", not an empty report. A source that
       // could not answer for the word (a timeout) says nothing of it, but when search finds the company it is that.
       if (quoteAnswer && listing && (report.data.empty || report.data.unavailableSymbols.length > 0)) {
         const { quote, error } = await quoteAnswer();
+        // So does one whose report came back empty.
+        if (!quote) await failUnchosenListing(listing, context, ctx, { ...moved, noun: "data" }, error);
         const stop = quote ? null : await notATickerStop(error, listing, context);
         if (stop) ctx.fail(stop);
       }
@@ -510,6 +516,11 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
       }).finally(progress.stop).catch(async (error: unknown) => {
         // A company's name typed where its ticker goes fails as `fn` words it, with the company search finds.
         const { quote, error: quoteError } = parsed.listing ? await loadListingQuoteAnswer(context.dataProvider, parsed.listing) : { quote: null, error: undefined };
+        // A bare code several companies list asks which, as `fn` does.
+        if (parsed.listing && !quote) {
+          await failUnchosenListing(parsed.listing, context, ctx,
+            { command: "shot", noun: "data", retry: (key) => `gloom shot ${resolved.token} ${key}` }, quoteError);
+        }
         const stop = parsed.listing && !quote ? await notATickerStop(quoteError, parsed.listing, context) : null;
         throw stop ? new Error(stop) : error;
       });
