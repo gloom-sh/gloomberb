@@ -48,6 +48,12 @@ export interface ThirteenFHoldingRecord {
   votingAuthorityShared: number | null;
   votingAuthorityNone: number | null;
   putCall: string;
+  /**
+   * How the SEC's newest 13(f) securities list marks the CUSIP: added or
+   * deleted since the list before. An issuer's old CUSIP deleted and a new
+   * one added confirms its shares moved to the new one. Absent otherwise.
+   */
+  secListStatus?: "added" | "deleted";
 }
 
 export interface ThirteenFTickerInfo {
@@ -201,7 +207,8 @@ export interface FundHoldingRow {
    * A split gave the issuer's shares a new CUSIP between the filings: the prior line is `previousCusip`'s, carried
    * across at `splitRatio`, and the row is one position held across it, labelled "new CUSIP, 1-for-10 split".
    */
-  cusipChange?: { previousCusip: string; label: string };
+  /** The line an exited one became across a split, and what confirms it: the SEC's 13(f) list, or the company's split record. */
+  cusipChange?: { previousCusip: string; label: string; confirmedBy: "sec-list" | "split" };
   sharesChange: number | null;
   sharesChangePercent: number | null;
   action: HoldingAction;

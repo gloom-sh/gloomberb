@@ -349,44 +349,57 @@ describe("13F model", () => {
   });
 
   // Anatole's Q2 13F read Brera's 1-for-10 reverse split as an exit of G13311116 beside a new G13311132.
-  test("an exit and a new line of one issuer whose share counts fit a split read as one position held across it", () => {
+  test("an exit and a new share line of one issuer read as one position only when the SEC list or a split confirms it", () => {
     const fund = (previous: ThirteenFHoldingRecord[], current: ThirteenFHoldingRecord[]): FundDetailData => ({
       cik: "0001693745", name: "Anatole", forms: [],
       latestForm: form({}), previousForm: form({ periodOfReport: "2025-12-31" }),
       latestHoldings: current, previousHoldings: previous,
     });
-    const rows = buildFundHoldingRows(fund(
-      [
-        holding({ ticker: "", cusip: "G13311116", issuer: "Brera Holdings PLC", value: 2_952_000, shares: 4_920_000 }),
-        // Another issuer's exit beside a new line no split explains stays an exit.
-        holding({ ticker: "AXTI", cusip: "00246W103", issuer: "AXT Inc", value: 1_000, shares: 463_200 }),
-      ],
-      [
-        holding({ ticker: "", cusip: "G13311132", issuer: "Brera Holdings PLC", value: 2_490_000, shares: 492_000 }),
-        holding({ ticker: "NBIS", cusip: "N97284108", issuer: "Nebius Group N.V.", value: 302_110_000, shares: 1_090_000 }),
-      ],
-    ));
+    const before = holding({ ticker: "", cusip: "G13311116", issuer: "Brera Holdings PLC", value: 2_952_000, shares: 4_920_000 });
+    const after = holding({ ticker: "", cusip: "G13311132", issuer: "Brera Holdings PLC", value: 2_490_000, shares: 492_000 });
+    // Counts that fit a split with nothing to confirm it stay as filed: an exit and a new line.
+    const unconfirmed = fund([before], [after]);
+    expect(buildFundHoldingRows(unconfirmed).map((row) => [row.cusip, row.action])).toEqual([["G13311132", "new"], ["G13311116", "exit"]]);
+    // So the new line's split record is read.
+    expect(filingSplitCandidates(unconfirmed)).toEqual([{ id: "G13311132||SH", ticker: "", issuer: "Brera Holdings PLC" }]);
+    // The SEC's list deleting the old CUSIP and adding the new confirms it.
+    const listed = fund(
+      [{ ...before, secListStatus: "deleted" }, holding({ ticker: "AXTI", cusip: "00246W103", issuer: "AXT Inc", value: 1_000, shares: 463_200 })],
+      [{ ...after, secListStatus: "added" }, holding({ ticker: "NBIS", cusip: "N97284108", issuer: "Nebius Group N.V.", value: 302_110_000, shares: 1_090_000 })],
+    );
+    const rows = buildFundHoldingRows(listed);
     expect(rows.map((row) => [row.cusip, row.action])).toEqual([["G13311132", "held"], ["N97284108", "new"], ["00246W103", "exit"]]);
     expect(rows[0]).toMatchObject({
       previousShares: 4_920_000, shares: 492_000, sharesChange: 0, splitRatio: 0.1,
-      cusipChange: { previousCusip: "G13311116", label: "new CUSIP, 1-for-10 split" },
+      cusipChange: { previousCusip: "G13311116", label: "new CUSIP, 1-for-10 split", confirmedBy: "sec-list" },
     });
+    expect(filingSplitCandidates(listed)).toEqual([]);
     // Priced on split-adjusted shares: 0.60 a share before is 6.00 after, against 5.06 now.
     expect(rows[0]!.estimatedPnl).toBeCloseTo(2_490_000 - 2_952_000, 0);
     expect(holdingActionLabel(rows[0]!)).toBe("Held, new CUSIP, 1-for-10 split");
-    // The fraction of a share a reverse split pays out in cash is no trade: 4,920,248 shares at 1-for-10 are 492,025.
-    const filed = buildFundHoldingRows(fund(
-      [holding({ ticker: "", cusip: "G13311116", issuer: "Brera Holdings PLC", value: 3_857_474, shares: 4_920_248 })],
-      [holding({ ticker: "", cusip: "G13311132", issuer: "Brera Holdings PLC", value: 2_489_647, shares: 492_025 })],
+    // A split record of the new line's ticker confirms it too; the fraction of a share paid in cash is no trade.
+    const split = buildFundHoldingRows(fund(
+      [holding({ ticker: "BREA", cusip: "G13311116", issuer: "Brera Holdings PLC", value: 3_857_474, shares: 4_920_248 })],
+      [holding({ ticker: "BREA", cusip: "G13311132", issuer: "Brera Holdings PLC", value: 2_489_647, shares: 492_025 })],
+    ), new Map([["G13311132||SH", 0.1]]));
+    expect(split[0]).toMatchObject({ action: "held", sharesChange: 0 });
+    expect(holdingSplitNotes(split)).toEqual(["New CUSIP across a split: BREA 1:10, was G13311116 (per the split record); Est P&L on split-adjusted shares"]);
+    // A split record that does not carry the old count onto the new one confirms nothing.
+    expect(buildFundHoldingRows(unconfirmed, new Map([["G13311132||SH", 0.5]])).map((row) => row.action)).toEqual(["new", "exit"]);
+    // 10,000,000 to 150,000 is no 1-for-67 split (carried across one it is 149,254), even marked on the list.
+    const sold = buildFundHoldingRows(fund(
+      [holding({ cusip: "G13311116", value: 100, shares: 10_000_000, secListStatus: "deleted" })],
+      [holding({ cusip: "G13311132", value: 100, shares: 150_000, secListStatus: "added" })],
     ));
-    expect(filed[0]).toMatchObject({ action: "held", sharesChange: 0 });
-    expect(holdingSplitNotes(filed)).toEqual(["New CUSIP across a split: Brera Holdings PLC 1:10, was G13311116 (read from the two filings' share counts; Est P&L on split-adjusted shares)"]);
-    // Counts that fit no split stay an exit and a new line.
-    const traded = buildFundHoldingRows(fund(
-      [holding({ cusip: "G13311116", value: 100, shares: 4_920_000 })],
-      [holding({ cusip: "G13311132", value: 100, shares: 600_000 })],
-    ));
-    expect(traded.map((row) => row.action)).toEqual(["new", "exit"]);
+    expect(sold.map((row) => row.action)).toEqual(["new", "exit"]);
+    // Only share lines pair: a note or a warrant beside the shares stays as filed.
+    for (const line of [{ shareType: "PRN" }, { titleOfClass: "WTS EXP 2031" }, { titleOfClass: "UNIT 99/99/9999" }]) {
+      const paired = buildFundHoldingRows(fund(
+        [{ ...before, secListStatus: "deleted" }],
+        [{ ...after, ...line, secListStatus: "added" }],
+      ));
+      expect(paired.map((row) => row.action)).toEqual(["new", "exit"]);
+    }
   });
 
   test("does not call a first filing or a missing-quarter comparison new buying", () => {

@@ -329,6 +329,7 @@ function mapHolding(raw: any): ThirteenFHoldingRecord | null {
     votingAuthorityShared: finiteOrNull(raw.voting_authority_shared),
     votingAuthorityNone: finiteOrNull(raw.voting_authority_none),
     putCall: stringOrEmpty(raw.put_call).toUpperCase(),
+    ...(raw.sec_list_status === "added" || raw.sec_list_status === "deleted" ? { secListStatus: raw.sec_list_status } : {}),
   };
 }
 
