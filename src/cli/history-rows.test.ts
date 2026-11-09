@@ -4,7 +4,9 @@ import {
   historyGapNote, historyJumpNote, historyMissingVolumeNote, historyNotes, historyPriceDecimals,
   historyRows, historyUnbrokenFrom, historyUnit, historyVenueVolumeNote, historyWickNote,
   historyContractDrawdown, historyRollNote, historyThinNote, historyVolumeBasis, historyVolumeNote, withDailyRebuiltBars, dailyRebuildSpans,
+  historyRescaleNote,
 } from "./history-rows";
+import { historyExportStatus } from "./history-export";
 import { extractPriceSeries } from "../time-series/market";
 import { mapPricePoint } from "../sources/gloomberb-cloud/normalizers";
 import { latestTradeIndex, missingVolumeCount, pricePointValues, pricePointWickFlags } from "../utils/price-history-integrity";
@@ -120,6 +122,23 @@ describe("history rows", () => {
     expect(rows[2]).toMatchObject({ close: 254.02, currency: "ZAR", interval: "1d" });
     expect(historyFlagNote(rows)).toBe("2 of 3 bars have high below open or close, or low above open or close in the source data; their prices are left blank");
     expect(historyFlagNote([rows[2]!])).toBeNull();
+  });
+
+  test("bars the server scaled back from the wrong unit keep their prices, flagged and said, and export no status", () => {
+    // 1306 on JPX, 30-31 Mar 2026: served at a tenth of the price on ten times the volume, scaled back by the server.
+    const served = [
+      { date: "2026-03-27T00:00:00.000Z", open: 379.9, high: 384.8, low: 377.7, close: 382.7, volume: 20_778_200 },
+      { date: "2026-03-30T00:00:00.000Z", open: 370, high: 376.4, low: 367.4, close: 376.4, volume: 7_975_490, rescaled: 10 },
+      { date: "2026-03-31T00:00:00.000Z", open: 371.3, high: 379.3, low: 369.1, close: 371.4, volume: 25_178_030, rescaled: 10 },
+      { date: "2026-04-01T00:00:00.000Z", open: 383.5, high: 389.2, low: 381.3, close: 389.2, volume: 19_862_090 },
+    ];
+    const rows = historyRows(served.map((point) => mapPricePoint(point, 1, "JPX")), "1d", "JPY");
+    expect(rows.map((row) => [row.date, row.close, row.flag])).toEqual([
+      ["2026-03-27", 382.7, null], ["2026-03-30", 376.4, "rescaled*10"], ["2026-03-31", 371.4, "rescaled*10"], ["2026-04-01", 389.2, null],
+    ]);
+    expect(historyFlagNote(rows)).toBeNull();
+    expect(rows.map((row) => historyExportStatus(row as unknown as Record<string, unknown>))).toEqual(["", "", "", ""]);
+    expect(historyRescaleNote(rows)).toBe("2026-03-30 and 2026-03-31 came from the source at 1/10 of their price and 10x their volume; shown scaled back (flag rescaled)");
   });
 
   test("a low under half the body or a high over twice it is flagged and left out of ranges, the close kept", () => {
