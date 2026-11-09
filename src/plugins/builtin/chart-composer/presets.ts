@@ -108,7 +108,7 @@ function withFactorPanels(panels: ChartSpec["panels"], factors: readonly ChartSe
  * A catalog formula's name, and the leg every other leg takes its delivery
  * month from (`CL=F` in the 3-2-1 crack), as its catalog entry gives them.
  */
-export interface CatalogFormula {
+interface CatalogFormula {
   name: string;
   rollsWith?: string;
 }
