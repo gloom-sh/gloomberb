@@ -214,6 +214,8 @@ export const layoutManagerModule: PluginModule = {
       description: "Remove a pane from the layout",
       keywords: ["remove", "pane", "close", "hide", "panel"],
       category: "config",
+      // No confirm, as Close Pane and Ctrl+W: Undo Layout Change brings the pane back.
+      confirm: () => null,
       execute: async () => {
         if (!getStateRef) return;
         const { layout, focusedPaneId } = getStateRef();

@@ -14,7 +14,7 @@ function twoPaneState(): AppState {
   };
 }
 
-function itemsFor(state: AppState, calls: string[]) {
+function itemsFor(state: AppState, calls: string[], layouts: LayoutConfig[] = []) {
   const context: LayoutItemsContext = {
     closeAll: () => {},
     currentLayout: state.config.layout,
@@ -23,8 +23,8 @@ function itemsFor(state: AppState, calls: string[]) {
     focusedPaneId: state.focusedPaneId,
     getState: () => state,
     openBuiltInWorkflow: () => {},
-    openInlineConfirm: () => {},
-    persistLayoutChange: () => {},
+    openInlineConfirm: () => { calls.push("confirm"); },
+    persistLayoutChange: (layout) => { layouts.push(layout); },
     pluginRegistry: {
       panes: new Map([[TICKER_RESEARCH_PANE_ID, { id: TICKER_RESEARCH_PANE_ID, name: "Ticker Research", component: () => null }]]),
       movePaneToNewLayout: (paneId: string) => { calls.push(`new:${paneId}`); return true; },
@@ -58,5 +58,16 @@ describe("focused pane layout items", () => {
     expect(back?.label).toBe("Move Back to Home");
     back!.action();
     expect(calls).toEqual(["new:ticker-detail:main", "back:ticker-detail:main"]);
+  });
+
+  // behind a confirm, an Enter typed after "Close Pane" went to the pane, which stayed open; Ctrl+W closed it.
+  test("Close Pane closes the focused pane as Ctrl+W does, with no confirm", () => {
+    const calls: string[] = [];
+    const layouts: LayoutConfig[] = [];
+    const state = twoPaneState();
+    itemsFor(state, calls, layouts).find((item) => item.id === "layout-close-pane")!.action();
+    expect(calls).not.toContain("confirm");
+    expect(layouts).toHaveLength(1);
+    expect(layouts[0]!.instances.map((instance) => instance.instanceId)).not.toContain("ticker-detail:main");
   });
 });
