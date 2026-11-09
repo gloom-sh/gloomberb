@@ -632,6 +632,24 @@ describe("CompositeChart", () => {
     expect(narrow).not.toContain("...");
   });
 
+  // five trading houses cut alike read "8058 Close · M..." and "8031 Close · M...".
+  test("a legend short of room keeps each company's name and gives up its field first", async () => {
+    const house = (id: string, name: string, value: number) => ({
+      ...series(id, "main", "left", "%", [value]), label: `${id}:JPX Close · ${name}`, compactLabel: `${id}:JPX ${name}`,
+    });
+    await tui.render(
+      <CompositeChart width={116} height={10} panels={[{ id: "main" }]} series={[
+        house("8058", "Mitsubishi", 44.17), house("8031", "Mitsui", 2.95), house("8001", "Itochu", 18.99),
+        house("8053", "Sumitomo", 21.1), house("8002", "Marubeni", 12.11),
+      ]} />,
+      { width: 118, height: 12 },
+    );
+    await act(async () => { await tui.setup().renderOnce(); await tui.setup().renderOnce(); });
+    const legend = tui.frame().split("\n")[0]!;
+    for (const name of ["8058 Mitsubishi", "8031 Mitsui", "8001 Itochu", "8053 Sumitomo", "8002 Marubeni"]) expect(legend).toContain(name);
+    expect(legend).not.toContain("...");
+  });
+
   test("keeps non-plotted legend series available for restoring", async () => {
     const price = series("price", "main", "left", "USD", [100, 103, 101]);
     const hiddenRevenue = series("revenue", "main", "right", "%", [4, 6, 8]);

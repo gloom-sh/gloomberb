@@ -1,5 +1,6 @@
 import { CHART_COMPOSER_PANE_ID } from "../../types/config";
 import { isRecord } from "../../utils/guards";
+import { parsePublicTickerKey } from "../../utils/exchanges";
 import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
 import type { ResolvedPaneFunction } from "./resolver";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
@@ -20,6 +21,21 @@ import {
   shotExpectedText,
 } from "./screenshot-data-evidence";
 import { shotExpectedChart, chartEvidenceMismatchesFor, intradayChartEvidenceMismatchesFor } from "./screenshot-chart-evidence";
+
+/**
+ * Whether a capture's text shows `value`: a listing as written, or by its bare
+ * code where a chart legend names it so ("8053 Close · Sumitomo" for
+ * 8053:JPX). Five names in a CMP title fold to "+2", and the legend was the
+ * only place the other two showed, so a good picture read "not usable".
+ */
+export function shotShowsText(visibleText: string, value: string): boolean {
+  const visible = visibleText.toLowerCase();
+  if (visible.includes(value.toLowerCase())) return true;
+  const { symbol, exchange } = parsePublicTickerKey(value);
+  if (!exchange || !symbol || !value.includes(":")) return false;
+  const code = symbol.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^\\p{L}\\p{N}:.])${code}(?![\\p{L}\\p{N}:])`, "u").test(visible);
+}
 
 export function isPaneScreenshotUsable(signals: PaneScreenshotReadinessSignals): boolean {
   return (signals.interactive || (signals.rowCount > 0 && !signals.emptyStateDetected))
@@ -103,7 +119,7 @@ export function assessPaneScreenshot(
   const complete = unavailableSymbols.length === 0;
   const expectedText = shotExpectedText(resolved, symbols, payload);
   const normalizedVisibleText = render.visibleText.toLowerCase();
-  const missingExpectedText = expectedText.filter((value) => !normalizedVisibleText.includes(value.toLowerCase()));
+  const missingExpectedText = expectedText.filter((value) => !shotShowsText(normalizedVisibleText, value));
   const expectedSelections = shotExpectedSelections(resolved);
   const missingExpectedSelections = missingActiveTabSelections(
     render.semanticUi,

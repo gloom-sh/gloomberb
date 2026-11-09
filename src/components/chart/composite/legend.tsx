@@ -320,7 +320,7 @@ export function CompositeLegend({
       ? `Value ${cursorValue.value} ${entry.unit}` : "";
     const tooltip = [fullText, exactTotal, details].filter(Boolean).join(" · ");
     const label = entry.label;
-    const compactLabel = withoutListingExchange(label);
+    const compactLabel = withoutListingExchange(entry.compactLabel ?? label);
     const labelWidth = displayWidth(label);
     const text = [label, valueText].filter(Boolean).join(" ");
     return {
@@ -370,7 +370,8 @@ export function CompositeLegend({
   // The cursor date lives on the time axis, where the crosshair points at it.
   const widthBeforeAccessory = Math.max(0, innerWidth - resolvedAccessoryWidth - reservedAccessoryGap - foldedWidth);
   // Names get the room the row has. When it overflows, the widest name
-  // shortens first: its listing exchange goes before any of the name is cut.
+  // shortens first: its listing exchange (and a company's field, compactLabel)
+  // goes before any of the name is cut.
   // The value (including its sign/unit) always stays intact. If the row cannot
   // fit even with every name at a readable fragment, it keeps the old 30-cell
   // entries and scrolls.
