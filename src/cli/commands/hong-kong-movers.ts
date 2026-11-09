@@ -21,7 +21,7 @@ export function hongKongMoverUniverse(listings: readonly KeptListing[]): Array<{
 }
 
 /** The smallest company the list ranks: a large cap, as the Hang Seng's members are. */
-export const HONG_KONG_MIN_MARKET_CAP = 10_000_000_000;
+const HONG_KONG_MIN_MARKET_CAP = 10_000_000_000;
 
 /** What the list ranks, said under its title. */
 export function hongKongUniverseNote(count: number): string {
