@@ -31,7 +31,7 @@ import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolio
 import { listingDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../../../market-data/quotes/live-valuation";
 import { atRegularSessionPrice } from "../../../../market-data/quotes/regular-session-valuation";
 import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../../../utils/reported-money";
-import { enterpriseValueCheck, enterpriseValueGapIsLarge, enterpriseValueNotMeaningful, fundamentalsCurrency, isBankEnterpriseValue, fundamentalsEpsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
+import { enterpriseValueCheck, enterpriseValueComputed, enterpriseValueNotMeaningful, fundamentalsCurrency, isBankEnterpriseValue, fundamentalsEpsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
 import { formatShortDate } from "../../../../utils/datetime-format";
 import { safeExternalUrl } from "../../../../utils/external-url";
 import type { FundBondFacts } from "../../../../api-client/fund-facts";
@@ -334,16 +334,14 @@ export function buildOverviewStats({
   } else if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
     stats.push({ label: "EV", value: "—" });
   } else if (enterpriseValue != null) {
-    // More than 10% from market cap + debt - cash: the provider's, with the computed figure where it fits.
-    // Closer than that it is the valuation panes' detail (enterpriseValueGapIsLarge).
+    // Market cap + debt - cash where the provider's is more than 5% from it, as every view shows it; the notice
+    // under the pane gives its inputs where the provider's is far off (enterpriseValueGapIsLarge).
     const check = enterpriseValueCheck(priced);
-    const computed = check?.status === "differs" && check.computed != null && enterpriseValueGapIsLarge(priced)
-      ? formatCompact(check.computed) : undefined;
     stats.push({
       label: "EV",
       value: formatCompactCurrency(enterpriseValue, quoteCurrency),
       // An insurer's: its investment book is not netted as cash.
-      detail: computed ? [`provider vs ${computed}`, "provider"] : check?.investmentsKept ? ["investments in", "inv. in"] : undefined,
+      detail: enterpriseValueComputed(priced) ? ["cap + debt - cash", "computed"] : check?.investmentsKept ? ["investments in", "inv. in"] : undefined,
     });
   }
   if (finite(fundamentals?.beta)) {

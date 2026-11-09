@@ -3,7 +3,7 @@ import { comparablePriceEarnings, notMeaningfulMultiples } from "../../../utils/
 import { marketCapBasisNote, viewMarketCapitalization, withheldMarketCap } from "../../../utils/market-capitalization";
 import {
   BANK_ENTERPRISE_VALUE, enterpriseValueNotMeaningful, enterpriseValueReconciliationNote, enterpriseValueWithdrawn, isBankEnterpriseValue,
-  reportedEnterpriseValue, withBankEnterpriseValue,
+  reportedEnterpriseToRevenue, reportedEnterpriseValue, withBankEnterpriseValue,
 } from "../../../utils/fundamentals";
 import { getExtendedSessionDisplay, getQuoteSessionFields } from "../../../market-data/market/status";
 import { atRegularSessionPrice, movePriceDerivedFigures, regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
@@ -117,8 +117,8 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
   const evSalesWithdrawn = enterpriseValueWithdrawn(fundamentals) && !fallback;
   const evSales = fallback ? fallback.evSales
     : !compatibleCurrency || enterpriseValueGap || evSalesNotMeaningful ? null
-      : fundamentals?.enterpriseToRevenue != null && Number.isFinite(fundamentals.enterpriseToRevenue)
-        ? fundamentals.enterpriseToRevenue
+      : reportedEnterpriseToRevenue(fundamentals) != null
+        ? reportedEnterpriseToRevenue(fundamentals)!
         : enterpriseValue != null && fundamentals?.revenue != null && fundamentals.revenue > 0
           ? enterpriseValue / fundamentals.revenue : null;
   const fcfYield = capitalization && fundamentals?.financialCurrency === capitalization.currency

@@ -3,7 +3,7 @@ import { ebitdaLacksDepreciation } from "../../utils/ebitda";
 import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../utils/reported-money";
 import {
-  appTtmRate, BANK_ENTERPRISE_VALUE, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueCheck, enterpriseValueLabel,
+  appTtmRate, BANK_ENTERPRISE_VALUE, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueLabel,
   enterpriseValueReconciliationNote,
   epsConversionNote, fundamentalsCurrency, isBankEnterpriseValue, reportedEnterpriseValue, trailingEpsSourceNote, ttmAtAppRate, ttmConversionNote,
   withBankEnterpriseValue,
@@ -605,8 +605,9 @@ function unsourcedCurrencyNote(metrics: readonly FundamentalsMetric[]): string |
 }
 
 /**
- * The EV line: labelled "(provider)" when it is more than 5% from market cap + debt - cash, "unavailable" when
- * withdrawn, N/M at or below zero as a P/E over a loss is.
+ * The EV line: the one every view shows (reportedEnterpriseValue, market cap + debt - cash where the provider's is
+ * more than 5% from it, with its inputs in a note), "unavailable" when withdrawn, N/M at or below zero as a P/E over
+ * a loss is.
  */
 function enterpriseValueFigure(figure: MetricFigure, fundamentals: TickerFinancials["fundamentals"]): MetricFigure {
   // A bank's: its deposits are funding, not debt.
@@ -614,22 +615,7 @@ function enterpriseValueFigure(figure: MetricFigure, fundamentals: TickerFinanci
   const label = enterpriseValueLabel(fundamentals);
   if (label === "not-meaningful") return { ...multipleFigure(NOT_MEANINGFUL), unit: figure.unit };
   if (label === "unavailable") return { text: "unavailable", value: null, unit: figure.unit };
-  return label === "provider" && figure.text !== "—" ? { ...figure, text: `${figure.text} (provider)` } : figure;
-}
-
-/**
- * The fundamentals `ticker` reads its one EV from: where the provider's is more than 5% from market cap + debt - cash,
- * the computed figure in its place, so the overview gives one number and no reconciliation line (`fundamentals` and
- * `valuation` keep both, and JSON keeps the provider's beside its check).
- */
-function withComputedEnterpriseValue(
-  fundamentals: TickerFinancials["fundamentals"],
-  currency: string | undefined,
-): TickerFinancials["fundamentals"] {
-  const check = enterpriseValueLabel(fundamentals) === "provider" ? enterpriseValueCheck(fundamentals) : undefined;
-  if (!fundamentals || !check || !(typeof check.computed === "number" && check.computed > 0)
-    || (currency && check.currency && check.currency !== currency)) return fundamentals;
-  return { ...fundamentals, enterpriseValue: check.computed, enterpriseValueCheck: undefined };
+  return figure;
 }
 
 function percentFigure(fraction: number | null | undefined, format: (value: number) => string): MetricFigure {
@@ -1371,7 +1357,7 @@ export async function buildTickerReport({
     : "—";
   // Shown in the same currency as the market cap, so the two can be compared.
   const evCurrency = enterpriseValueCurrency(quote, fundamentals);
-  const shownFundamentals = withComputedEnterpriseValue(priced.fundamentals, evCurrency);
+  const shownFundamentals = priced.fundamentals;
   const enterpriseValue = reportedEnterpriseValue(shownFundamentals);
   const enterpriseValueText = `${formatReportedMoney(enterpriseValue, evCurrency)}${enterpriseValue != null && evCurrency
     ? await inBase(enterpriseValue, evCurrency) : ""}`;

@@ -3,7 +3,7 @@ import { atRegularSessionPrice } from "../../../market-data/quotes/regular-sessi
 import type { Fundamentals, TickerFinancials } from "../../../types/financials";
 import { fiscalPeriodLabel, fiscalYearEndMonth } from "../../../utils/fiscal-period";
 import { formatCompactCurrency } from "../../../utils/format";
-import { BANK_ENTERPRISE_VALUE, enterpriseValueCheck, enterpriseValueLabel, enterpriseValueNotMeaningful, enterpriseValueReconciliationNote,
+import { BANK_ENTERPRISE_VALUE, enterpriseValueComputed, enterpriseValueNotMeaningful, enterpriseValueReconciliationNote,
   enterpriseValueWithdrawn, reportedEnterpriseValue, withBankEnterpriseValue } from "../../../utils/fundamentals";
 
 /** Years of explicit growth before the terminal value. */
@@ -37,11 +37,9 @@ export interface ReverseDcfModel {
   currency: string | null;
   discountRate: number;
   terminalGrowth: number;
-  /** The enterprise value `valuation` shows: at the regular session price, the provider's even where it is labelled. */
+  /** The enterprise value `valuation` shows, at the regular session price (reportedEnterpriseValue). */
   enterpriseValue: number | null;
-  /** More than 5% from market cap + total debt - cash: the computed figure beside the provider's. */
-  computedEnterpriseValue: number | null;
-  /** The line `valuation` prints under a labelled EV. */
+  /** The line `valuation` prints under a computed EV: its inputs. */
   enterpriseValueNote: string | null;
   /** Free cash flow over the last twelve months. */
   freeCashFlow: number | null;
@@ -193,14 +191,15 @@ export function projectReverseDcf(
     : undefined;
   const currency = fundamentals?.financialCurrency ?? financials?.financialCurrency ?? null;
   const enterpriseValue = reportedEnterpriseValue(fundamentals) ?? null;
-  const check = enterpriseValueLabel(fundamentals) === "provider" ? enterpriseValueCheck(fundamentals) : undefined;
+  // Market cap + debt - cash in place of a provider EV more than 5% from it, with its inputs in a note, as every view reads it.
+  const computed = enterpriseValueComputed(fundamentals);
   const freeCashFlow = fundamentals?.freeCashFlow ?? null;
   const company = trailingFcfMargin(fundamentals);
   const fcfMargin = options.fcfMargin ?? company.margin ?? DEFAULT_FCF_MARGIN;
   const fcfMarginBasis: FcfMarginBasis = { company: company.margin, gap: company.gap,
     source: options.fcfMargin != null ? "chosen" : company.margin != null ? "company" : "default" };
   const empty: ReverseDcfModel = { symbol: options.symbol, currency, discountRate: options.discountRate, terminalGrowth: TERMINAL_GROWTH,
-    enterpriseValue, computedEnterpriseValue: check?.computed ?? null, enterpriseValueNote: check ? enterpriseValueReconciliationNote(fundamentals) ?? null : null,
+    enterpriseValue, enterpriseValueNote: computed ? enterpriseValueReconciliationNote(fundamentals) ?? null : null,
     freeCashFlow, fcfYield: null, implied: null, fcfMargin, fcfMarginBasis, impliedRevenue: null,
     pastGrowth: financials ? pastFcfGrowth(financials) : null, fiscalYearFcf: financials ? latestFiscalYearFcf(financials) : null,
     sensitivity: [], error: null };

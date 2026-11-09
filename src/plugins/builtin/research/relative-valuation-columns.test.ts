@@ -85,7 +85,8 @@ const PEERS: Record<string, { financials: TickerFinancials; expected: number }> 
       marketCap: 299.13e9, enterpriseValue: 319.55e9, revenue: 55.7e9,
       enterpriseValueCheck: { status: "differs", source: 319.55e9, computed: 295.26e9, currency: "USD", marketCap: 299.13e9, balanceSheetDate: "2026-09-26" },
     }),
-    expected: 319.55e9 / 14_381e6,
+    // The provider's 319.55B is more than 5% off market cap + debt - cash: the 295.26B computed stands in, as every view shows it.
+    expected: 295.26e9 / 14_381e6,
   },
   // A listing abroad reads its own statements, in its own currency.
   "ASML:AMS": {

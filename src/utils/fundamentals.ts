@@ -46,7 +46,7 @@ export function withBankEnterpriseValue<F extends Fundamentals | undefined>(
 ): F {
   if (!fundamentals || !isBankIndustry(profile?.industry)) return fundamentals;
   const { enterpriseValue: _value, enterpriseToRevenue: _ratio, ...rest } = fundamentals;
-  const source = reportedEnterpriseValue(fundamentals) ?? fundamentals.enterpriseValueCheck?.source;
+  const source = servedEnterpriseValue(fundamentals) ?? fundamentals.enterpriseValueCheck?.source;
   // Only where an EV would be shown: a bank the source gave none for shows no line, as before.
   if (!finiteNumber(source)) return fundamentals;
   const withdrawn = new Set([...fundamentals.unavailableFields ?? [], "enterpriseValue" as const, "enterpriseToRevenue" as const]);
@@ -62,10 +62,35 @@ export function isBankEnterpriseValue(fundamentals: Parameters<typeof enterprise
   return enterpriseValueNotMeaningful(fundamentals) === BANK_ENTERPRISE_VALUE;
 }
 
-/** A source's enterprise value, or undefined when it has none: banks and insurers come back as 0, which is a gap, not a value. */
-export function reportedEnterpriseValue(fundamentals: Pick<Fundamentals, "enterpriseValue"> | undefined): number | undefined {
+/** The enterprise value as served, or undefined when it has none: banks and insurers come back as 0, which is a gap, not a value. */
+function servedEnterpriseValue(fundamentals: Pick<Fundamentals, "enterpriseValue"> | undefined): number | undefined {
   const value = fundamentals?.enterpriseValue;
   return typeof value === "number" && Number.isFinite(value) && value !== 0 ? value : undefined;
+}
+
+/**
+ * The enterprise value every surface shows and divides: market cap + total debt - cash and short-term investments
+ * where the provider's figure is more than 5% from it (a `differs` check), so `ticker`, the overview, `valuation`,
+ * RV and the reverse DCF read one number; the served figure otherwise. Undefined when there is none.
+ */
+export function reportedEnterpriseValue(
+  fundamentals: Pick<Fundamentals, "enterpriseValue" | "enterpriseValueCheck" | "unavailableFields"> | undefined,
+): number | undefined {
+  const served = servedEnterpriseValue(fundamentals);
+  if (served === undefined) return undefined;
+  const check = enterpriseValueCheck(fundamentals);
+  return check?.status === "differs" && finiteNumber(check.computed) && check.computed > 0 ? check.computed : served;
+}
+
+/** EV over revenue on the enterprise value shown (reportedEnterpriseValue): the served multiple, moved with the EV. */
+export function reportedEnterpriseToRevenue(
+  fundamentals: Pick<Fundamentals, "enterpriseValue" | "enterpriseValueCheck" | "unavailableFields" | "enterpriseToRevenue"> | undefined,
+): number | undefined {
+  const ratio = fundamentals?.enterpriseToRevenue;
+  if (!finiteNumber(ratio)) return undefined;
+  const served = servedEnterpriseValue(fundamentals);
+  const shown = reportedEnterpriseValue(fundamentals);
+  return served !== undefined && shown !== undefined && served > 0 && shown !== served ? ratio * (shown / served) : ratio;
 }
 
 const finiteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
@@ -119,11 +144,17 @@ export function enterpriseValueWithdrawn(fundamentals: Parameters<typeof enterpr
     && enterpriseValueNotMeaningful(fundamentals) === undefined;
 }
 
-/** "(provider)" beside an EV more than 5% from market cap + debt - cash, "unavailable" for a withdrawn one, N/M for one at or below zero. */
-export function enterpriseValueLabel(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): "provider" | "unavailable" | "not-meaningful" | undefined {
+/** "unavailable" for a withdrawn EV, N/M for one at or below zero; none for one that is shown, served or computed. */
+export function enterpriseValueLabel(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): "unavailable" | "not-meaningful" | undefined {
   if (enterpriseValueNotMeaningful(fundamentals)) return "not-meaningful";
   const status = enterpriseValueCheck(fundamentals)?.status;
-  return status === "differs" ? "provider" : status === "withdrawn" || enterpriseValueWithdrawn(fundamentals) ? "unavailable" : undefined;
+  return status === "withdrawn" || enterpriseValueWithdrawn(fundamentals) ? "unavailable" : undefined;
+}
+
+/** Whether the EV shown is market cap + debt - cash in place of the provider's (reportedEnterpriseValue). */
+export function enterpriseValueComputed(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): boolean {
+  const check = enterpriseValueCheck(fundamentals);
+  return check?.status === "differs" && finiteNumber(check.computed) && check.computed > 0;
 }
 
 /**
@@ -141,8 +172,8 @@ export function enterpriseValueGapIsLarge(fundamentals: Parameters<typeof enterp
 const OVERVIEW_ENTERPRISE_VALUE_GAP = 0.1;
 
 /**
- * The reconciliation line under a labelled, withdrawn or not meaningful EV: "EV 61.75B USD (provider) vs 63.75B
- * computed from market cap + total debt - cash (balance sheet 2026-06-30).", "EV N/M: cash and short-term investments
+ * The line under a computed, withdrawn or not meaningful EV: "EV 63.75B USD is market cap 60B + total debt 5B - cash
+ * and short-term investments 1.25B (balance sheet 2026-06-30), in place of the provider's 61.75B.", "EV N/M: cash and short-term investments
  * exceed market cap + total debt (balance sheet 2026-06-30)." A balance sheet in another currency names the rate it
  * was converted at ("balance sheet 2026-06-30, EUR at 0.8614 GBP"). A withdrawn EV no balance sheet checked gives
  * Gloom Cloud's reason; one withdrawn without a check, that the source failed validation. Undefined when the EV matches, is unchecked or computed, or has no check. Read it from the
@@ -168,10 +199,22 @@ export function enterpriseValueReconciliationNote(fundamentals: Parameters<typeo
   const fx = check.fx && finiteNumber(check.fx.rate) ? `, ${check.fx.from} at ${check.fx.rate.toPrecision(4)} ${check.currency}` : "";
   const sheet = check.balanceSheetDate ? ` (balance sheet ${check.balanceSheetDate}${fx})` : "";
   const basis = `market cap + total debt${leases} - cash${sheet}`;
-  if (check.status === "differs") return `EV ${source} (provider) vs ${computed} computed from ${basis}.`;
+  // The EV shown is the computed one: its inputs, and the provider's figure it stands in for.
+  if (check.status === "differs") return `${computedEnterpriseValueInputs(check, sheet)}, in place of the provider's ${formatCompact(check.source)}.`;
   const ratio = check.computed > 0 ? ` is ${(check.source / check.computed).toFixed(1)}x` : " is far from";
   const twice = check.convertedTwice && check.convertedFrom ? `; it converts ${check.convertedFrom} to ${check.currency} twice` : "";
   return `EV unavailable: the provider's ${source}${ratio} the ${computed} computed from ${basis}${twice}.`;
+}
+
+/**
+ * "EV 7.48B USD is market cap 8.22B + total debt 864.07M - cash and short-term investments 1.6B (balance sheet
+ * 2026-06-30)": a computed EV with its inputs, each where the check carries it.
+ */
+function computedEnterpriseValueInputs(check: EnterpriseValueCheck, sheet: string): string {
+  const part = (label: string, value: number | undefined) => finiteNumber(value) ? `${label} ${formatCompact(value)}` : label;
+  const leases = finiteNumber(check.leases) && check.leases > 0 ? ` + ${part("leases", check.leases)}` : "";
+  return `EV ${formatCompact(check.computed!)} ${check.currency} is ${part("market cap", check.marketCap)} + ${part("total debt", check.totalDebt)}${leases}`
+    + ` - ${part("cash and short-term investments", check.cash)}${sheet}`;
 }
 
 /**
