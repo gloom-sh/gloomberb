@@ -236,10 +236,8 @@ async function runHongKongMovers(args: string[], ctx: Parameters<CliCommandDef["
   const universe = hongKongMoverUniverse(MAJOR_LISTINGS);
   const names = new Map(universe.map((listing) => [listing.code, listing.name]));
   await withCliServices(ctx, async (services) => {
-    const quoted = await services.dataProvider.getQuotesBatch(
-      universe.map((listing) => ({ symbol: listing.code, exchange: "HKEX" })),
-      { forceRefresh: ctx.cliOptions.refresh },
-    );
+    // Never forced past the cache: a refresh of the whole universe would spend the provider's allowance for one list.
+    const quoted = await services.dataProvider.getQuotesBatch(universe.map((listing) => ({ symbol: listing.code, exchange: "HKEX" })));
     const results = quoted.filter((result) => inHongKongUniverse(result.quote, isQuoteStaleForCurrentSession(result.quote)));
     // A numeric code names listings on several venues, so each row carries HKEX, the form `quote` takes.
     const rows = rankHongKongMovers(quoteRows(results), list, ctx.cliOptions.limit ?? 25)
@@ -247,11 +245,11 @@ async function runHongKongMovers(args: string[], ctx: Parameters<CliCommandDef["
     ctx.printResult({
       data: rows,
       metadata: { market: HONG_KONG_MOVERS_MARKET, category: list === "gainers" ? "day_gainers" : "day_losers", rankedBy: "regular",
-        universe: { description: "HKEX stocks of HK$10B or more the app lists, the Hang Seng's members among them", count: results.length,
-          listed: universe.length } },
+        universe: { description: "HKEX common stocks in the app's built-in list of large listings, worth HK$10B or more, quoted in the current or last session",
+          count: results.length, listed: universe.length } },
       freshness: quotesFreshness(results.map((result) => result.quote)),
     }, {
-      heading: `Hong Kong ${list}\n${hongKongUniverseNote(results.length)}`,
+      heading: `Hong Kong ${list}\n${hongKongUniverseNote(results.length, universe.length)}`,
       columns: [
         { key: "symbol", header: "Symbol" },
         { key: "name", header: "Name" },

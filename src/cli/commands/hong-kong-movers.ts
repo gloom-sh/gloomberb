@@ -3,9 +3,9 @@ import type { KeptListing } from "../../tickers/search/listing-index";
 /**
  * `movers hk`: Hong Kong's gainers or losers, ranked by the regular session's
  * move. The upstream movers lists rank US listings only, so the universe is
- * the large HKEX stocks the app ships for search (the Hang Seng's members and
- * the other large caps of `bun run listings:snapshot`), quoted through the
- * same batched quote path as `quote`, and the report says so.
+ * the HKEX common stocks of the large listings the app ships for search
+ * (`bun run listings:snapshot`), quoted through the same batched quote path
+ * as `quote`, and the report says exactly that.
  */
 export const HONG_KONG_MOVERS_MARKET = "hk";
 export type HongKongMoversList = "gainers" | "losers";
@@ -23,9 +23,10 @@ export function hongKongMoverUniverse(listings: readonly KeptListing[]): Array<{
 /** The smallest company the list ranks: a large cap, as the Hang Seng's members are. */
 const HONG_KONG_MIN_MARKET_CAP = 10_000_000_000;
 
-/** What the list ranks, said under its title. */
-export function hongKongUniverseNote(count: number): string {
-  return `Ranks ${count} HKEX stocks of HK$10B or more (the Hang Seng's members and the other large caps the app lists) by the regular session's move.`;
+/** What the list ranks, said under its title: how many of the listed stocks, which ones, and that no other stock is. */
+export function hongKongUniverseNote(count: number, listed: number): string {
+  return `Ranks ${count} of the ${listed} HKEX common stocks in the app's built-in list of large listings: those worth HK$10B or more`
+    + " with a quote from the current or last session, by the regular session's move. Other HKEX stocks are not ranked.";
 }
 
 /**
