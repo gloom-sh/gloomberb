@@ -557,23 +557,39 @@ function listingName(value: string): string {
   return parsed.exchange && !isUsListingExchange(parsed.exchange) ? `${parsed.symbol}:${parsed.exchange}` : parsed.symbol;
 }
 
-/** The most listings the screen's notes name one by one. */
+/** The most members the screen's notes name one by one as matched through another listing. */
 const LISTING_NOTES = 10;
 
 /**
- * What a screen says of each watchlist member the screener does not cover as
- * itself: the same company's listing it matched instead, or that none is
- * covered. `RCI.B:TSX: not in the screener; matched its NYSE listing RCI.`
+ * What a screen says of the symbol values it did not read as themselves: each
+ * member matched through another listing of its company (`RCI.B:TSX: not in
+ * the screener; matched its NYSE listing RCI.`, the first ten), every member
+ * nothing in the screener carries, bare or with its venue, and every member
+ * whose matched listings the screen's `currency` leaves out.
  */
-export function listingReadNotes(reads: readonly ScreenListingRead[] | undefined): string[] {
-  const list: readonly ScreenListingRead[] = Array.isArray(reads) ? reads : [];
-  const missing = list.filter((read) =>
-    typeof read?.value === "string" && read.covered === false && Array.isArray(read.others));
-  const notes = missing.slice(0, LISTING_NOTES).map(({ value, others }) => others.length
-    ? `${listingName(value)}: not in the screener; matched its ${others.map((other) => `${other.exchange} listing ${other.symbol}`).join(" and ")}.`
-    : `${listingName(value)}: not in the screener, nor any other listing of the company.`);
-  const more = missing.length - notes.length;
-  return more > 0 ? [...notes, `${more} more member${more === 1 ? " is" : "s are"} not in the screener as listed.`] : notes;
+export function listingReadNotes(reads: readonly ScreenListingRead[] | undefined, currency?: string | null): string[] {
+  const list: readonly ScreenListingRead[] = (Array.isArray(reads) ? reads : [])
+    .filter((read) => typeof read?.value === "string" && typeof read.covered === "boolean" && Array.isArray(read.others));
+  const leftOut = list.filter((read) => Array.isArray(read.outsideCurrency) && read.outsideCurrency.length > 0);
+  const kept = list.filter((read) => !leftOut.includes(read));
+  const matchedElsewhere = kept.filter((read) => !read.covered && read.others.length > 0);
+  const absent = kept.filter((read) => !read.covered && read.others.length === 0);
+  const notes = matchedElsewhere.slice(0, LISTING_NOTES).map(({ value, others }) =>
+    `${listingName(value)}: not in the screener; matched its ${others.map((other) => `${other.exchange} listing ${other.symbol}`).join(" and ")}.`);
+  const more = matchedElsewhere.length - notes.length;
+  if (more > 0) notes.push(`${more} more member${more === 1 ? " is" : "s are"} matched through another listing of the company.`);
+  if (absent.length > 0) notes.push(`Not in the screener under any listing: ${absent.map((read) => listingName(read.value)).join(", ")}.`);
+  if (leftOut.length > 0) {
+    const named = leftOut.map((read) => {
+      const own = listingName(read.value);
+      const code = parsePublicTickerKey(read.value).symbol;
+      return read.outsideCurrency!.map((listing) => listing.symbol === code
+        ? `${own} in ${listing.currency}`
+        : `${own} as its ${listing.exchange} listing ${listing.symbol} in ${listing.currency}`).join(", ");
+    });
+    notes.push(`${currency ? `Quoted outside ${currency}, so this screen leaves them out` : "Quoted in another currency than the screen's, so left out"}: ${named.join("; ")}.`);
+  }
+  return notes;
 }
 
 /** The one name typed for a symbol list, which may name a watchlist (`HY3`), or null. */

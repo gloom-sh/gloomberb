@@ -387,7 +387,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     const extra = extraScreenColumns(metrics, data.definition.sort.field);
     const states = new Set(rows.map((row) => row.metrics[metric].state));
     const legend = STATE_LEGEND.filter(({ state }) => states.has(state)).map(({ text }) => text);
-    const notes = [...watchlistRead.notes, ...listingReadNotes(data.listings), ...kpiGaps, ...legend];
+    const notes = [...watchlistRead.notes, ...listingReadNotes(data.listings, data.definition.currency), ...kpiGaps, ...legend];
     // Payload status also counts ordinary per-field sparsity; only generation
     // warnings are failures, and more pages are not an error.
     return {

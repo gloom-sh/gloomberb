@@ -68,7 +68,9 @@ test("a watchlist screens its members by company, never another issuer's code, a
         { value: "BN:TSX", covered: false, others: [{ symbol: "BN", exchange: "NYSE" }] },
         { value: "RCI.B:TSX", covered: false, others: [{ symbol: "RCI", exchange: "NYSE" }] },
         { value: "XYZ:TSX", covered: false, others: [] },
-        { value: "PM:NYSE", covered: true, others: [] },
+        // A bare member nothing carries, and one the screen's currency leaves out.
+        { value: "QQQQ", covered: false, others: [] },
+        { value: "PM:NYSE", covered: true, others: [], outsideCurrency: [{ symbol: "PM", exchange: "NYSE", currency: "USD" }] },
       ],
     };
   } };
@@ -76,6 +78,7 @@ test("a watchlist screens its members by company, never another issuer's code, a
     { ticker: "BN:TSX", exchange: "TSX" },
     { ticker: "RCI.B:TSX", exchange: "TSX" },
     { ticker: "XYZ:TSX", exchange: "TSX" },
+    { ticker: "QQQQ" },
     { ticker: "PM", exchange: "NYSE" },
   ].map((metadata) => ({ metadata }));
   const ctx = {
@@ -86,12 +89,14 @@ test("a watchlist screens its members by company, never another issuer's code, a
   const definition = JSON.stringify({ version: 1, currency: "EUR", criteria: [{ field: "symbol", op: "in", value: ["r"] }], sort: { field: "marketCap", direction: "desc" } });
   const result = await equityScreenerHeadless.load({ argument: undefined, options: { definition } } as never, ctx as never);
   // Each member keeps its venue, so the screener matches Brookfield and never Danone's BN on Euronext Paris.
-  expect(sent[0]).toMatchObject({ criteria: [{ field: "symbol", op: "in", value: ["BN:TSX", "RCI.B:TSX", "XYZ:TSX", "PM:NYSE"] }] });
-  expect(result.notes?.slice(0, 4)).toEqual([
-    "Read r as watchlist R (4 symbols).",
+  expect(sent[0]).toMatchObject({ criteria: [{ field: "symbol", op: "in", value: ["BN:TSX", "RCI.B:TSX", "XYZ:TSX", "QQQQ", "PM:NYSE"] }] });
+  expect(result.notes?.slice(0, 5)).toEqual([
+    "Read r as watchlist R (5 symbols).",
     "BN:TSX: not in the screener; matched its NYSE listing BN.",
     "RCI.B:TSX: not in the screener; matched its NYSE listing RCI.",
-    "XYZ:TSX: not in the screener, nor any other listing of the company.",
+    // Every member nothing carries, bare ones too, and every one the currency leaves out.
+    "Not in the screener under any listing: XYZ:TSX, QQQQ.",
+    "Quoted outside EUR, so this screen leaves them out: PM in USD.",
   ]);
   // --check sends the same listings, so the server checks a ticker by the same company rule.
   const checked: unknown[] = [];
@@ -101,7 +106,7 @@ test("a watchlist screens its members by company, never another issuer's code, a
   } };
   await Promise.resolve(equityScreenerHeadless.load({ argument: undefined, options: { definition, check: "BN" } } as never,
     { ...ctx, apiClient: checkClient } as never)).catch(() => null);
-  expect(checked[0]).toMatchObject(["check", { symbol: "BN", criteria: [{ field: "symbol", op: "in", value: ["BN:TSX", "RCI.B:TSX", "XYZ:TSX", "PM:NYSE"] }] }]);
+  expect(checked[0]).toMatchObject(["check", { symbol: "BN", criteria: [{ field: "symbol", op: "in", value: ["BN:TSX", "RCI.B:TSX", "XYZ:TSX", "QQQQ", "PM:NYSE"] }] }]);
 });
 
 test("a KPI the server holds back from Free says why once, in KPIS's words; a Pro KPI with gaps says what a gap is", async () => {

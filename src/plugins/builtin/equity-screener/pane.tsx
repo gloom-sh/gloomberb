@@ -941,7 +941,7 @@ function EquityScreenView({
                     // A symbol criterion also says which listed members the screener matched as another line, or not at all.
                     const listed = row.criterion.field === "symbol" && data
                       && screenDefinitionKey(data.definition) === screenDefinitionKey(definition)
-                      ? listingReadNotes(data.listings?.filter((read) => "value" in row.criterion && (row.criterion.value as readonly unknown[]).includes(read.value)))
+                      ? listingReadNotes(data.listings?.filter((read) => "value" in row.criterion && (row.criterion.value as readonly unknown[]).includes(read.value)), data.definition.currency)
                       : [];
                     const note = [criterionNotes.noteFor(row), ...listed].filter(Boolean).join(" ");
                     return { text: criterionText(row.criterion), ...(note ? { note } : {}) };
