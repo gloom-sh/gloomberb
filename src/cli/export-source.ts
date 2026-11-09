@@ -2,10 +2,10 @@
  * Where exported data comes from, said the same way by every command that
  * writes CSV or JSON, so an export can go in an audit file as it is: CSV ends
  * with `#` lines and JSON carries a `source` object with the same fields.
- * CSV and NDJSON rows also end with five fixed columns naming what each row
- * is (`EXPORT_IDENTITY_COLUMNS`), less any the table already has by name,
- * then `retrieved_at`; a dated export adds `period`, `released` and
- * `retrieved` after the five instead.
+ * CSV and NDJSON rows also end with five columns naming what each row is
+ * (`EXPORT_IDENTITY_COLUMNS`), less any the table already has by name, then
+ * `retrieved_at`; a dated export adds `period`, `released` and `retrieved`
+ * after the five instead. Columns a report adds later follow them all.
  */
 import { formatFreshnessLine, type ReportFreshness } from "./pane-functions/freshness";
 import { parseReportTime } from "../utils/utc-time";

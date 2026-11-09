@@ -140,7 +140,7 @@ export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknow
   /**
    * The rows are statistics dated by a period and a release (`econ`, `fred`):
    * CSV and NDJSON rows also end with `period`, `released` and `retrieved`
-   * (`EXPORT_DATING_COLUMNS`) after the five fixed columns, from the `period`
+   * (`EXPORT_DATING_COLUMNS`) after the identity columns, from the `period`
    * and `released` of each row's `exportIdentity`, and `as_of` is the release.
    * A column the rows already have by name keeps its own values. Needs a
    * cited source, as the fixed columns do.
