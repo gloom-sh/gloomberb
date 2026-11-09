@@ -1,4 +1,6 @@
-import { expect, setSystemTime, test } from "bun:test";
+import { expect, mock, setSystemTime, spyOn, test } from "bun:test";
+import { apiClient } from "../../api-client";
+import type { FuturesContractTermsPayload } from "../../market-data/futures-contract";
 import { createDefaultConfig } from "../../types/config";
 import type { Quote, TickerFinancials } from "../../types/financials";
 import type { HeadlessPaneContext } from "../../types/headless";
@@ -396,9 +398,44 @@ test("compare writes a day's range as two numbers that are empty, with the range
     const [first] = rows;
     const columns = Object.keys(first!);
     expect(columns.slice(columns.indexOf("Chg Basis Note"), columns.indexOf("status"))).toEqual([
-      "Chg Basis Note", "Pre-Market Chg%", "After Hours Chg%", "Overnight Chg%", "Day Low", "Day High",
+      "Chg Basis Note", "Pre-Market Chg%", "After Hours Chg%", "Overnight Chg%", "Day Low", "Day High", "Feed", "Updated",
     ]);
   } finally {
     setSystemTime();
+  }
+});
+
+test("compare marks which row is stale in Feed and Updated, and prices a future to its tick against its settle, as quote does", async () => {
+  // Euro FX on Mon 9 Nov 2026 against Friday's settlement, beside a VIX last printed Friday evening.
+  const euroTerms: FuturesContractTermsPayload = {
+    symbol: "6E=F", root: "6E", name: "Euro FX", contract: "6EZ26", contractSymbol: "6EZ26.CME", deliveryMonth: "2026-12",
+    spec: { unit: "USD / EUR", size: "125,000 EUR", pointValue: 125_000, tick: 0.00005, tickValue: 6.25, settlement: "physical" },
+    lastTrade: "2026-12-14", firstNotice: null, inDelivery: false, settlement: { price: 1.11565, date: "2026-11-06" },
+  };
+  spyOn(apiClient, "getCloudFuturesContract").mockImplementation(async () => euroTerms);
+  setSystemTime(new Date("2026-11-09T08:10:00Z"));
+  try {
+    const euro: Quote = {
+      symbol: "6E=F", name: "Euro FX Dec 2026", currency: "USD", price: 1.1187, change: 0.00305, changePercent: 0.2734, previousClose: 1.11565,
+      instrumentType: "FUTURE", marketState: "REGULAR", listingExchangeName: "CME", exchangeName: "CME", dataSource: "delayed",
+      changeSessionDate: "2026-11-09", lastUpdated: Date.parse("2026-11-09T07:55:00Z"),
+    };
+    const vix: Quote = {
+      symbol: "^VIX", name: "CBOE Volatility Index", price: 25.64, change: 0.4, changePercent: 1.58, previousClose: 25.24, instrumentType: "INDEX",
+      dataSource: "delayed", stale: true, lastUpdated: Date.parse("2026-11-06T21:15:00Z"),
+    };
+    const { rows, text } = await compare([euro, vix]);
+    expect(rows.map((row) => [row.symbol, row.price, row.previousClose, row.changeBasis, row.feed, row.updatedAt])).toEqual([
+      ["6E=F", "$1.11870", "$1.11565", "vs Fri 6 Nov settle", "delayed", "2026-11-09T07:55:00.000Z"],
+      ["^VIX", "25.64", "25.24", expect.any(String), "stale", "2026-11-06T21:15:00.000Z"],
+    ]);
+    const header = text.split("\n")[0]!;
+    expect(header).toMatch(/Cur\s+Feed\s+Updated$/);
+    expect(text.split("\n").find((line) => line.startsWith("^VIX"))).toMatch(/stale\s+2026-11-06 21:15 UTC$/);
+    // The table alone: the contract block is `quote`'s.
+    expect(text).not.toContain("Contract");
+  } finally {
+    setSystemTime();
+    mock.restore();
   }
 });

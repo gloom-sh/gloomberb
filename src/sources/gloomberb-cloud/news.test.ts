@@ -69,6 +69,22 @@ test("a future with no story filed under it reads the stories that mention its c
   }
 });
 
+test("a currency pair with no story filed under it reads the stories that write the pair, as coins and futures do", async () => {
+  // `news EURUSD=X` read "No news" while EUR/USD stories were filed under no ticker.
+  for (const [ticker, exchange] of [["EURUSD=X", "CCY"], ["JPY=X", undefined], ["EURUSD", "CCY"]] as const) {
+    const { client, searches } = cloud();
+    const read = await readCloudNews(client as never, { feed: "ticker", ticker, exchange, limit: 20 });
+    expect(searches, ticker).toEqual([[ticker === "JPY=X" ? "USD/JPY" : "EUR/USD", 20]]);
+    expect(read.searchedFor).toBe(ticker === "JPY=X" ? "USD/JPY" : "EUR/USD");
+  }
+  // Spot gold is no currency pair, and six letters off the currency venue are a ticker.
+  for (const query of [{ ticker: "XAUUSD=X", exchange: "CCY" }, { ticker: "EURUSD", exchange: "NASDAQ" }]) {
+    const { client, searches } = cloud();
+    expect((await readCloudNews(client as never, { feed: "ticker", limit: 20, ...query })).searchedFor).toBeUndefined();
+    expect(searches).toEqual([]);
+  }
+});
+
 test("only an empty first page of a coin pair's feed falls back, and a failed search keeps the empty answer", async () => {
   const cases: Array<[string, NewsQuery, Parameters<typeof cloud>[0]]> = [
     ["a company", { feed: "ticker", ticker: "AAPL", exchange: "NASDAQ", limit: 20 }, {}],

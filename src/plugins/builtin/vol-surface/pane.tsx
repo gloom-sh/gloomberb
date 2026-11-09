@@ -22,7 +22,7 @@ import { formatModelSpotPrice } from "../options/model-spot";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-access";
-import { useLiveSessionRefresh } from "../shared/volatility/live-session";
+import { optionsClosedNotice, useLiveSessionRefresh, useOptionsSessionOpen, usOptionsReopen } from "../shared/volatility/live-session";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { hasFreshReadyEntry } from "../../../market-data/coordinator/entries";
 import { createSurfaceDependencies, loadVolatilitySurface, withReusedYieldCurve, type SurfaceLoadRequest } from "./client";
@@ -209,8 +209,13 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   // Judged on the last complete load, so a refresh in progress does not flip the view.
   const liveQuotes = liveQuoteCoverage(settledSnapshot);
   const liveEmpty = liveQuotes.empty && liveQuoteCoverage(liveSnapshot).points === 0;
+  // Outside the US options session a chain with no expiry fitted is the hour, not the symbol (FXE before the open):
+  // it waits for the open, beside IV30 at the last close. A coin's options trade around the clock.
+  const optionsOpen = useOptionsSessionOpen(!!symbol && !historyDate && !coin);
+  const closedUnfitted = !coin && !optionsOpen && liveQuotes.settled && liveQuotes.expiries > 0 && !liveQuotes.fitted;
+  const noLiveSurface = liveEmpty || closedUnfitted;
   // With no clean live quote, the latest stored close stands in until the chain reopens.
-  const fallbackDate = !historyDate && liveEmpty ? dates.data?.[0] ?? null : null;
+  const fallbackDate = !historyDate && noLiveSurface ? dates.data?.[0] ?? null : null;
   // The underlying streams even when no other pane watches it, so each
   // reload is fitted at the current price. The spot is only sampled at each
   // reload, so the slow off-screen cadence is enough and spares re-renders.
@@ -394,7 +399,10 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
       ? "All expiries" : expirations.map(expiryLabel).join(", ")}: ${warning}`),
     ...(!spotAvailable && symbol && !historyDate ? ["Underlying price unavailable or stale"] : []),
     ...(historyDate && !stored.loading && !stored.data && !stored.error ? [`No stored ${underlying} surface for ${historyDate}`] : []),
-    ...(fallbackDate ? [`Live chain has no two-sided quotes; showing the ${fallbackDate} close`] : []),
+    // Outside the session the stored close stands in for the hour, and the live surface fills at the open.
+    ...(fallbackDate ? [closedUnfitted
+      ? `${optionsClosedNotice(usOptionsReopen(Date.now()) ?? { at: null }).title} Showing the ${fallbackDate} close; the live surface fills at the open.`
+      : `Live chain has no two-sided quotes; showing the ${fallbackDate} close`] : []),
     ...(pinned != null && snapshot && !resource.loading && !snapshot.catalogue.includes(pinned)
       && !snapshot.failures.some((failure) => failure.expiration === pinned)
       ? [`${expiryLabel(pinned)}: ${unlistedExpiryText(pinned, snapshot.catalogue)}`] : []),
@@ -476,7 +484,9 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
         backgroundColor: chosen ? colors.selected : cell.volatility == null ? colors.bg : blendHex(colors.bg, cell.volatility > 0.5 ? colors.warning : colors.positive, Math.min(0.48, 0.08 + cell.volatility * 0.5)),
         onMouseDown: () => { onSelectRow(row); setCoordinate(cell.coordinate); } };
     }} emptyStateTitle="No volatility observations." />;
-  const content = !shownDate && liveEmpty ? <EmptyState title="No two-sided option quotes"
+  const reopen = !shownDate && closedUnfitted ? usOptionsReopen(Date.now()) : null;
+  const content = reopen ? <EmptyState {...optionsClosedNotice(reopen)} />
+    : !shownDate && liveEmpty ? <EmptyState title="No two-sided option quotes"
     message={liveQuotes.zeroBid === liveQuotes.contracts
       ? `All ${liveQuotes.contracts.toLocaleString()} contracts across ${liveQuotes.expiries} expiries have a zero bid. ${ZERO_BID_HOURS}`
       : `None of the ${liveQuotes.contracts.toLocaleString()} contracts across ${liveQuotes.expiries} expiries passes the quote filters${
@@ -498,7 +508,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
       : ["skew", "forwards"].includes(activeTab) && snapshot ? <ExpiryTable snapshot={snapshot} selected={selectedExpiry}
         onSelect={(entry) => setExpiration(entry.expiration)} forwards={activeTab === "forwards"} width={width} height={tableHeight}
         focused={focused} onKey={handleKey} metadata={exportMetadata} /> : table;
-  const tableShown = activeTab === "table" && !!symbol && !!snapshot && !(!shownDate && liveEmpty);
+  const tableShown = activeTab === "table" && !!symbol && !!snapshot && !(!shownDate && noLiveSurface);
   useEffect(() => setTableOnScreen(tableShown), [tableShown]);
   return <Box flexDirection="column" width={width} overflow="hidden" {...(nativePaneChrome ? FILL_REST : { height })}>
     {tabStrip}
@@ -539,7 +549,8 @@ function liveQuoteCoverage(snapshot: SurfaceSnapshot | null | undefined) {
   const zeroBid = counts["zero-bid"];
   const settled = !!snapshot && snapshot.loaded >= snapshot.requested;
   return { empty: settled && expiries.length > 0 && points === 0 && contracts > 0, points, expiries: expiries.length, contracts, zeroBid,
-    removed: surfaceFilterSummary(counts), zeroBidMost: Object.values(counts).every((count) => count <= zeroBid) };
+    removed: surfaceFilterSummary(counts), zeroBidMost: Object.values(counts).every((count) => count <= zeroBid),
+    settled, fitted: expiries.some((entry) => entry.fit) };
 }
 const ZERO_BID_HOURS = "The delayed feed publishes zero bids outside regular hours (09:30 to 16:00 New York); the surface fills in when quotes return.";
 

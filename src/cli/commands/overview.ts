@@ -38,7 +38,9 @@ import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, type ExtendedSession } 
 import {
   COUNTRY_CYCLE,
   COUNTRY_FILTER_HINT,
+  awaitingFigureText,
   awaitsConsensus,
+  awaitsFigure,
   countriesWithoutEvents,
   econEventName,
   FILTER_CYCLE,
@@ -418,7 +420,9 @@ function econFigureColumns(text: boolean): CliResultColumn[] {
   const shown = (key: string) => (row: Record<string, unknown>) =>
     figureWithCurrency(row[key] as string | null, typeof row.currency === "string" ? row.currency : null);
   return text
-    ? [{ key: "actualText", header: "Actual", value: shown("actualText") }, { key: "forecastText", header: "Forecast", value: shown("forecastText") },
+    // A release past its time with no figure says when it was due (`due 07:00 UTC, awaiting figure`), not a bare dash.
+    ? [{ key: "actualText", header: "Actual", value: (row) => shown("actualText")(row) ?? (typeof row.actualStatus === "string" ? row.actualStatus : null) },
+      { key: "forecastText", header: "Forecast", value: shown("forecastText") },
       { key: "priorText", header: "Prior", value: shown("priorText") }]
     : [{ key: "actual", header: "Actual" }, { key: "forecast", header: "Forecast" }, { key: "prior", header: "Prior" }];
 }
@@ -440,6 +444,8 @@ const econExportColumns: CliResultColumn[] = [
   // Which feed the forecast was read from and when, so a consensus can be told from another read of it.
   { key: "consensusFeed", header: "consensus_feed" },
   { key: "consensusReadAt", header: "consensus_read_at" },
+  // A release past its time whose figure is not in yet, said as the text says it.
+  { key: "actualStatus", header: "actual_status" },
 ];
 
 /**
@@ -516,7 +522,8 @@ function blankTimeNotes(rows: ReadonlyArray<{ event: string; country: string; ti
 /**
  * Whether a row has come out: it has an actual, or it has no figure at all (a
  * speech, a meeting, a holiday) and its time has passed. A row with a forecast
- * or a prior and no actual is still to come, whatever its time.
+ * or a prior and no actual has not, whatever its time: past it, its
+ * `actualStatus` says the figure is awaited.
  */
 function cameOut(event: Pick<EconEvent, "actual" | "forecast" | "prior" | "date">, now: number): boolean {
   if (event.actual?.trim()) return true;
@@ -612,6 +619,8 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
           actualText: event.actual ?? null,
           forecastText: event.forecast ?? null,
           priorText: event.prior ?? null,
+          // A release past its time with no figure yet: "due 07:00 UTC, awaiting figure"; null otherwise.
+          actualStatus: awaitsFigure(event, now) ? awaitingFigureText(event) : null,
           // The publisher's own clock, for rows Gloom Cloud adds from a bank's or a statistics office's calendar.
           localTime: event.localTime ?? null,
           timeZone: event.timeZone ?? null,

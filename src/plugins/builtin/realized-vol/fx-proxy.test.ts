@@ -3,7 +3,7 @@ import type { QueryEntry } from "../../../market-data/result-types";
 import type { OptionsChain, PricePoint } from "../../../types/financials";
 import type { ImpliedVolatilityApi } from "../iv-history/client";
 import { realizedVolSemanticEvidence, realizedVolScreenshotEvidence, type RealizedVolEvidenceStatus } from "./evidence";
-import { fxProxyIvLessRv, loadFxVolProxy } from "./fx-proxy";
+import { fxProxyChain, fxProxyChainText, fxProxyIvLessRv, loadFxVolProxy } from "./fx-proxy";
 import { realizedChartSeries } from "./chart-model";
 
 const now = Date.UTC(2026, 10, 7, 2);
@@ -36,6 +36,21 @@ test("an FX pair's IV is its currency fund's IV30 on the ranked close, with how 
   expect(await loadFxVolProxy({ symbol: "AAPL" }, { iv, surface })).toBeNull();
   expect(await loadFxVolProxy({ symbol: "EURJPY=X" }, { iv, surface })).toBeNull();
   expect(asked).toHaveLength(2);
+});
+
+test("the fund's chain with nothing priced outside the options session says when the surface fills, never 0 of 4 beside the close's IV30", () => {
+  const none = { expiries: { usable: 0, read: 4 } };
+  // Mon 9 Nov 2026 08:10 UTC: FX trades, US options open at 14:30 UTC.
+  const monday = Date.parse("2026-11-09T08:10:00Z");
+  expect(fxProxyChain(none, monday)).toEqual({ count: "0 of 4", reopen: { at: "14:30 UTC, 09:30 ET", short: "14:30 UTC" } });
+  expect(fxProxyChainText(none, monday)).toBe("Options closed until 14:30 UTC, 09:30 ET. The surface fills at the open.");
+  // Saturday names the day it opens.
+  expect(fxProxyChainText(none, Date.parse("2026-11-07T12:00:00Z"))).toBe("Options closed until Mon 14:30 UTC, 09:30 ET. The surface fills at the open.");
+  // In the session the count is the reading, none included; out of it, a priced expiry is still one.
+  const session = Date.parse("2026-11-09T16:00:00Z");
+  expect(fxProxyChainText(none, session)).toBe("0 of 4 expiries with ATM IV");
+  expect(fxProxyChainText({ expiries: { usable: 2, read: 4 } }, monday)).toBe("2 of 4 expiries with ATM IV");
+  expect(fxProxyChain({ expiries: null }, monday)).toBeNull();
 });
 
 test("IV30 less the pair's HV20 is read on the IV30's close, not on the pair's newer bars", () => {

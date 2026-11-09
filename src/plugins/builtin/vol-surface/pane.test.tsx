@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act, Profiler, useReducer } from "react";
 import { apiClient } from "../../../api-client";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
@@ -242,10 +242,31 @@ test("partial expiry progress settles without reloading or rendering indefinitel
 });
 
 test("a chain with no two-sided quote explains itself instead of drawing an empty surface", async () => {
-  await mount({ zeroBids: true });
-  const frame = tui.frame();
-  expect(frame).toContain("No two-sided option quotes");
-  expect(frame).toContain("have a zero bid");
+  // In the session (Tue 10 Nov 2026 16:00 UTC): the quotes, not the hour, are why.
+  setSystemTime(new Date("2026-11-10T16:00:00Z"));
+  try {
+    await mount({ zeroBids: true });
+    const frame = tui.frame();
+    expect(frame).toContain("No two-sided option quotes");
+    expect(frame).toContain("have a zero bid");
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("outside the options session a chain with nothing fitted waits for the open, not reads as a symbol without options", async () => {
+  // Mon 9 Nov 2026 08:10 UTC: the delayed chain carries Friday's zeroed quotes; options open at 14:30 UTC.
+  setSystemTime(new Date("2026-11-09T08:10:00Z"));
+  try {
+    await mount({ zeroBids: true });
+    const frame = tui.frame();
+    expect(frame).toContain("Options closed until 14:30 UTC, 09:30 ET.");
+    expect(frame).toContain("The surface fills at the open.");
+    expect(frame).not.toContain("No two-sided option quotes");
+    expect(frame).not.toContain("No volatility to draw");
+  } finally {
+    setSystemTime();
+  }
 });
 
 test("with no live quote the latest stored close stands in, labelled as such", async () => {

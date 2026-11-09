@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { venueMarketLine } from "../../../../cli/pane-functions/freshness";
 import { getPublishedUsEquitySession } from "../../../../market-data/published-us-sessions";
 import { usePaneVisible } from "../../../../state/app/activity";
 import { zonedWallClockToUtcMs } from "../../../../utils/zoned-date-time";
@@ -50,6 +51,28 @@ export function usOptionsSession(now: number): OptionsSessionState {
     if (next && next.open > now) return { open: false, nextChangeAt: next.open };
   }
   return { open: false, nextChangeAt: null };
+}
+
+/**
+ * Outside the US options session, when it opens next on the status line's
+ * clocks: `Mon 14:30 UTC, 09:30 ET` for a sentence, `Mon 14:30 UTC` for a
+ * cell, both null when no calendar places the open. Null while options trade.
+ */
+export function usOptionsReopen(now: number): { at: string | null; short: string | null } | null {
+  if (usOptionsSession(now).open) return null;
+  const line = venueMarketLine("NYSE", now);
+  return { at: line?.reopens ?? null, short: line?.reopensShort ?? null };
+}
+
+/**
+ * What a volatility view with nothing fitted says outside the options
+ * session: `Options closed until Mon 14:30 UTC, 09:30 ET.`, then `The surface
+ * fills at the open.` A chain read then carries the last session's quotes,
+ * which the delayed feed zeroes, so an empty surface is the hour, not the
+ * symbol.
+ */
+export function optionsClosedNotice(reopen: { at: string | null }): { title: string; message: string } {
+  return { title: `Options closed${reopen.at ? ` until ${reopen.at}` : ""}.`, message: "The surface fills at the open." };
 }
 
 /**

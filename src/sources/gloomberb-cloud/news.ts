@@ -12,6 +12,7 @@ import type {
 import type { CloudNewsParams } from "../../api-client/paths";
 import { parsePublicTickerKey, publicExchange } from "../../utils/exchanges";
 import { coinSearchName } from "../../utils/crypto-pair";
+import { currencyPairCode, isCurrencyCode } from "../../utils/currency-pair";
 import { commoditySearchName } from "../../market-data/commodity-names";
 import { futuresBoardContractForTicker } from "../../market-data/futures-board";
 import { logFailure } from "../../utils/log-failure";
@@ -204,15 +205,19 @@ export const ENERGY_NEWS_TOPIC = "energy";
 
 /**
  * What a ticker no story is filed under is searched by: a coin pair's coin
- * ("bitcoin" for BTC-USD), or a futures board symbol's commodity ("cocoa" for
- * CC=F), as `news` searches them. A metal's future (GC=F, SI=F, HG=F, PL=F,
- * PA=F, ALI=F) searches the metals stories only, as `news GC=F` does: the
- * stories that merely name gold are mostly miners' releases. Null for
- * anything else, and for a future with no commodity name (ES=F, ZN=F).
+ * ("bitcoin" for BTC-USD), a currency pair as markets write it ("EUR/USD" for
+ * EURUSD=X), or a futures board symbol's commodity ("cocoa" for CC=F), as
+ * `news` searches them. A metal's future (GC=F, SI=F, HG=F, PL=F, PA=F,
+ * ALI=F) searches the metals stories only, as `news GC=F` does: the stories
+ * that merely name gold are mostly miners' releases. Null for anything else,
+ * and for a future with no commodity name (ES=F, ZN=F).
  */
 function newsFallbackSearch(query: Pick<NewsQuery, "ticker" | "exchange" | "listingName">): { text: string; topics?: string[] } | null {
   const coin = coinSearchName(query.ticker, query.exchange, query.listingName);
   if (coin) return { text: coin };
+  // FX stories write the pair with its slash ("EUR/USD rebounds"); spot gold (XAUUSD=X) is no currency pair.
+  const pair = query.ticker ? currencyPairCode(query.ticker, query.exchange) : null;
+  if (pair && isCurrencyCode(pair.slice(0, 3)) && isCurrencyCode(pair.slice(3))) return { text: `${pair.slice(0, 3)}/${pair.slice(3)}` };
   const future = query.ticker ? futuresBoardContractForTicker(parsePublicTickerKey(query.ticker).symbol) : null;
   const text = future ? commoditySearchName(future) : null;
   if (!future || !text) return null;
@@ -221,9 +226,10 @@ function newsFallbackSearch(query: Pick<NewsQuery, "ticker" | "exchange" | "list
 
 /**
  * A news query's first page from Gloom Cloud. Stories are filed under company
- * tickers, and a coin pair (BTC-USD) or a future (CC=F) rarely has any filed
- * under it, so its empty feed falls back to the stories that mention the coin
- * or the commodity ("bitcoin", "cocoa"), marked with what was searched. A
+ * tickers, and a coin pair (BTC-USD), a currency pair (EURUSD=X) or a future
+ * (CC=F) rarely has any filed under it, so its empty feed falls back to the
+ * stories that mention the coin, the pair or the commodity ("bitcoin",
+ * "EUR/USD", "cocoa"), marked with what was searched. A
  * later page, a failed search or a ticker with no name to search keeps the
  * empty answer.
  */
@@ -236,7 +242,7 @@ export async function readCloudNews(client: CloudNewsClient, query: NewsQuery): 
   const search = newsFallbackSearch(query);
   if (!search) return read;
   const found = await client.searchCloudNews(search.text, query.limit, search.topics)
-    .catch(logFailure("sources.gloomberb-cloud.news", "Search the stories that mention a ticker's coin or commodity failed", null));
+    .catch(logFailure("sources.gloomberb-cloud.news", "Search the stories that mention a ticker's coin, pair or commodity failed", null));
   return found && found.items.length > 0
     ? { items: found.items, nextCursor: null, searchedFor: search.text, access: cloudNewsAccess(found, sentSession) }
     : read;

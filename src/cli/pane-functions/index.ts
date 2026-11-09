@@ -16,6 +16,7 @@ import {
   type PaneFunctionCatalog,
 } from "./catalog";
 import { createPaneCatalog } from "./discovery";
+import { getHeadlessPaneDefinition } from "./capabilities";
 import { catalogFredSeriesIds, findCatalogSeries } from "../series-search";
 import {
   parsePaneCatalogArgs,
@@ -183,13 +184,21 @@ export async function catalogCommandHits(ctx: CliCommandContext, token: string):
     return await withMarketData(ctx, async (market) => {
       const registry = await createPaneCatalog(market, ctx.plugins);
       try {
-        return (await suggestPaneFunctions(registry, market, word)).slice(0, COMMAND_HIT_LIMIT).map((entry) => ({
-          code: entry.token,
-          label: entry.label,
-          argKind: entry.argKind ?? null,
-          argPlaceholder: entry.argPlaceholder ?? null,
-          peers: entry.capability.options.some((option) => option.key === "peers" && option.type === "boolean"),
-        }));
+        return (await suggestPaneFunctions(registry, market, word)).slice(0, COMMAND_HIT_LIMIT).map((entry) => {
+          const pane = registry.panes.get(entry.paneId);
+          const template = entry.templateId ? registry.paneTemplates.get(entry.templateId) : undefined;
+          const headless = pane ? getHeadlessPaneDefinition(template, pane) : undefined;
+          const refuse = headless?.refuseSymbol;
+          return {
+            code: entry.token,
+            label: entry.label,
+            argKind: entry.argKind ?? null,
+            argPlaceholder: entry.argPlaceholder ?? null,
+            peers: entry.capability.options.some((option) => option.key === "peers" && option.type === "boolean"),
+            ...(refuse ? { refusesSymbol: (key: string) => refuse(key) != null } : {}),
+            ...(headless?.currencyPairs ? { takesFx: true } : {}),
+          };
+        });
       } finally {
         registry.destroy();
       }

@@ -39,7 +39,7 @@ test("a spot pair in any spelling and a currency future in any contract are one 
   expect(["6E=F", "6EZ26", "6E1", "6J=F", "6A=F", "6AH27"].map(pair)).toEqual(["EURUSD", "EURUSD", "EURUSD", "USDJPY", "AUDUSD", "AUDUSD"]);
   expect(["AAPL", "FXE", "BTC-USD", "XAUUSD=X", "GC=F", "ES=F", "6X=F"].map(pair)).toEqual([null, null, null, null, null, null, null]);
   // The pane's line gives the fund and names HVT, and is no command.
-  expect(fxVolatilityNote("EURUSD=X")).toBe("OTC FX volatility is not covered for EURUSD=X. Currency-ETF options are the listed proxy: FXE. HVT shows the pair's realized volatility.");
+  expect(fxVolatilityNote("EURUSD=X")).toBe("OTC FX volatility is not covered for EURUSD=X. Currency-ETF options are the listed proxy and give an ATM IV30 only, no 25-delta risk reversal or butterfly: FXE. HVT shows the pair's realized volatility.");
   expect(fxVolatilityNote("SPY")).toBeNull();
   // The sterling future has its fund for `options`, as the euro and yen ones do.
   expect(listedOptionsAlternative("6B=F")?.symbol).toBe("FXB");

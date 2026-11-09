@@ -398,6 +398,7 @@ function historyColumns(
 export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["historical-prices-pane"],
   shape: "rows",
+  currencyPairs: true,
   description: "OHLCV bars (date, open, high, low, close, volume) for one ticker over a range: daily to start, weekly for 5Y and monthly for ALL. The newest bar is marked partial while its day, week or month runs on; a day's bar then comes from the live quote.",
   describe: ({ symbols, options }) => `Historical Prices | ${symbols[0]} | ${reportWindowText(options) ?? options.range ?? HISTORY_DEFAULT_RANGE}`,
   columns: historyColumns("1d", false, false),

@@ -6,7 +6,7 @@ import { fetchEconCalendar } from "./calendar-source";
 import { figureWithCurrency, parseEconFigure } from "./figures";
 import { resolveFredMapping } from "./fred-series-map";
 import { STATS } from "../econ-statistics/stats";
-import { isAllDayEvent, type EconEvent, type EconImpact } from "./types";
+import { hasNoReleaseTime, isAllDayEvent, type EconEvent, type EconImpact } from "./types";
 
 const CACHE_KIND = "calendar";
 const CACHE_KEY = "global";
@@ -438,6 +438,37 @@ export function matchesEventSearch(event: Pick<EconEvent, "country" | "event" | 
 export function awaitsConsensus(event: Pick<EconEvent, "actual" | "forecast" | "prior">): boolean {
   return !event.actual?.trim() && !event.forecast?.trim() && !!event.prior?.trim();
 }
+
+/** How long past its time a release with no figure reads as awaiting one: a day, after which the calendar shows the gap as it is. */
+const AWAITING_FIGURE_MS = 24 * 60 * 60_000;
+
+/** Release times fall on the five-minute grid; a feed lists a release whose time is not yet set off it (China's New Loans at 09:03 UTC). */
+const RELEASE_GRID_MS = 5 * 60_000;
+
+/**
+ * Whether a release is past its time with no actual while a figure is due
+ * (it has a forecast or a prior): out at its publisher, not in yet here. A
+ * speech or a meeting has no figure to wait for, a bank that states no time
+ * has no time to be past, and a tentative time (off the five-minute grid) is
+ * no time the figure was due at.
+ */
+export function awaitsFigure(
+  event: Pick<EconEvent, "actual" | "forecast" | "prior" | "date" | "time" | "timeNote">,
+  now: number,
+): boolean {
+  if (event.actual?.trim() || (!event.forecast?.trim() && !event.prior?.trim()) || hasNoReleaseTime(event)) return false;
+  if (event.date.getTime() % RELEASE_GRID_MS !== 0) return false;
+  const late = now - event.date.getTime();
+  return late >= 0 && late < AWAITING_FIGURE_MS;
+}
+
+/** What a release awaiting its figure says in place of it: "due 07:00 UTC, awaiting figure". */
+export function awaitingFigureText(event: Pick<EconEvent, "date">): string {
+  return `due ${timeLabel(event.date)} ${CALENDAR_TIME_ZONE_LABEL}, awaiting figure`;
+}
+
+/** The ACTUAL cell of a release awaiting its figure, where the whole text has no room; the row's time is beside it. */
+export const AWAITING_FIGURE_CELL = "awaiting";
 
 /** What a dash under Forecast means on a row still to come. */
 export const NO_CONSENSUS_NOTE = `${MISSING_VALUE} forecast = no consensus yet`;

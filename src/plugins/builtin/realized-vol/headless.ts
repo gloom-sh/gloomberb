@@ -8,15 +8,18 @@ import { ESTIMATOR_OPTIONS, selectedWindows } from "./settings";
 import { DAILY_CLOSES } from "../shared/report-freshness";
 import { listingAbroadVenue } from "../../../utils/sec";
 import { fxVolatilityPair } from "../../../market-data/options-alternatives";
-import { fxProxyIvLessRv, fxProxyLabel, fxProxyNote, loadFxVolProxy, type FxProxyReading, type FxVolProxy } from "./fx-proxy";
+import {
+  fxProxyChainLabel, fxProxyChainText, fxProxyIvLessRv, fxProxyLabel, fxProxyNote, loadFxVolProxy, type FxProxyReading, type FxVolProxy,
+} from "./fx-proxy";
 import type { HeadlessBundleSection } from "../../../types/headless";
 
 const percent = (value: number | null | undefined) => value == null ? "--" : `${(value * 100).toFixed(2)}%`;
 
 /**
  * An FX pair's IV section: the fund whose options stand in, its IV30 and the
- * close it is from, how many of its expiries price, and IV30 less the pair's
- * HV20 on that close. There is no ATM IV of the pair's own to show.
+ * close it is from, how many of its expiries price (or, outside the options
+ * session with none, when its surface fills), and IV30 less the pair's HV20
+ * on that close. There is no ATM IV of the pair's own to show.
  */
 function fxProxySection(proxy: FxVolProxy, reading: FxProxyReading): HeadlessBundleSection {
   const { hv20, spread, stale } = reading;
@@ -25,8 +28,7 @@ function fxProxySection(proxy: FxVolProxy, reading: FxProxyReading): HeadlessBun
     { label: fxProxyLabel(proxy), value: proxy.iv30?.value ?? null, formatted: percent(proxy.iv30?.value) },
     { label: "Close", value: proxy.iv30?.date ?? null,
       formatted: proxy.iv30 ? `${proxy.iv30.date}${proxy.iv30.method === "quote-mid" ? " (quote mid)" : ""}${stale ? ", stale" : ""}` : "--" },
-    { label: "Expiries with ATM IV", value: proxy.expiries?.usable ?? null,
-      formatted: proxy.expiries ? `${proxy.expiries.usable} of ${proxy.expiries.read}` : "--" },
+    { label: fxProxyChainLabel(proxy), value: proxy.expiries?.usable ?? null, formatted: fxProxyChainText(proxy, Date.now()) },
     { label: "Pair HV20", value: hv20, formatted: percent(hv20) },
     { label: "IV30 - HV20", value: spread, formatted: spread == null ? "--" : `${spread >= 0 ? "+" : ""}${(spread * 100).toFixed(2)} pts` },
   ] };
@@ -34,7 +36,7 @@ function fxProxySection(proxy: FxVolProxy, reading: FxProxyReading): HeadlessBun
 
 export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPaneDefinition<"bundle"> {
   return {
-    shape: "bundle", argument: { kind: "ticker", description: "Underlying ticker" },
+    shape: "bundle", argument: { kind: "ticker", description: "Underlying ticker" }, currencyPairs: true,
     freshness: { ...DAILY_CLOSES, observedKey: "date", oldest: null },
     describe: (args) => `${initialView === "graph" ? "HVG" : "HVT"} ${args.symbols[0] ?? ""}`,
     discovery: { screenshotReadiness: "live-dom", limitations: ["IV is a dated current observation; HIVG has the stored IV history."] },

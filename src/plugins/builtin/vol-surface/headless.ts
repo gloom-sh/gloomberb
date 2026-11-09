@@ -15,6 +15,9 @@ import { listingFateEmpty, loadListingFate } from "../../../tickers/listing-fate
 import { coinOptionsAlias, coinWithoutOptionsRefusal, fxVolatilityRefusal } from "../../../market-data/options-alternatives";
 import { formatUtcTime } from "../../../utils/utc-time";
 import { dvolCurrency, dvolGap, dvolSeriesId, loadDvol, type DvolPayload } from "../volatility/dvol";
+import { optionsClosedNotice, usOptionsReopen } from "../shared/volatility/live-session";
+import { loadIvHistory, loadSurfaceDates } from "../iv-history/client";
+import { logFailure } from "../../../utils/log-failure";
 import {
   expiryFeedFields, expiryLabel, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow, surfaceSkewRow,
   surfaceSettlementTime, surfaceSmileRows, surfaceSpotBasisLabel, surfaceTermRows, surfaceThirtyDayAtm, TERM_SLOPE_MIN_DAYS,
@@ -257,6 +260,19 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
       : surfaceSections(snapshot, axis, args.options.tenors as "listed" | "fixed");
     const dvol = dvolLoad ? await dvolLoad : null;
     const settles = surfaceSettlementTime(snapshot);
+    // Outside the US options session a live chain with no expiry fitted is the hour, not the symbol (FXE before the
+    // open): it says when the surface fills, and IV30 at the last close, as the pane shows it above the surface. A
+    // coin's options trade around the clock.
+    const reopen = !date && !coin && !available && snapshot.catalogue.length > 0 ? usOptionsReopen(Date.now()) : null;
+    // The pane shows the latest stored close surface then; the report names the command that prints it.
+    const [lastIv30, storedClose] = reopen ? await Promise.all([
+      loadIvHistory(instrument.symbol, { signal: ctx.signal, days: 30 }, ctx.apiClient).then((payload) => payload.stats?.iv30 ?? null,
+        logFailure("vol-surface.headless", "Read the last close's IV30 for a closed session failed", null)),
+      loadSurfaceDates(instrument.symbol, { signal: ctx.signal }, ctx.apiClient).then((payload) => payload.dates?.[0] ?? null,
+        logFailure("vol-surface.headless", "Read the stored close dates for a closed session failed", null)),
+    ]) : [null, null];
+    ctx.signal.throwIfAborted();
+    const closedNotice = reopen ? optionsClosedNotice(reopen) : null;
     return {
       sections: [
         ...(dvol && !(dvol instanceof Error) ? [dvolSection(dvol, available ? snapshot : null)] : []),
@@ -269,7 +285,10 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
       unavailableSymbols: available ? [] : [symbol],
       errors: [...fate?.errors ?? loadErrors, ...smile?.errors ?? [], ...dvol instanceof Error ? [`DVOL: ${dvol.message}`] : []],
       ...(fate?.empty ? { empty: fate.empty } : {}),
-      ...(stored || spotBasis || tab === "skew" || settles || dvol ? { notes: [
+      ...(stored || spotBasis || tab === "skew" || settles || dvol || closedNotice ? { notes: [
+        ...closedNotice ? [`${closedNotice.title} ${closedNotice.message}${lastIv30
+          ? ` IV30 at the ${lastIv30.date} close: ${formatIv(lastIv30.value)}.` : ""}${storedClose
+          ? ` The ${storedClose} close surface: gloom fn OVDV ${symbol} --date ${storedClose}.` : ""}`] : [],
         ...stored ? storedNotes(snapshot, args.options) : spotBasis ? [`Spot ${formatModelSpotPrice(snapshot.spot)}, ${spotBasis}.`] : [],
         ...settles ? [`Expiries settle at ${settles}; days and IV run to that time.`] : [],
         ...dvol && !(dvol instanceof Error) ? [`DVOL is ${dvol.venue}'s 30-day implied volatility index for ${dvol.currency}, in vol points; `

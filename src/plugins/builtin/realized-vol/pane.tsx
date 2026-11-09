@@ -25,7 +25,7 @@ import type { RealizedVolEvidenceStatus } from "./evidence";
 import { DEFAULT_WINDOWS, ESTIMATOR_OPTIONS, selectedWindows } from "./settings";
 import { priceSeriesUnit } from "../../../market-data/market/index-level";
 import { fxVolatilityPair } from "../../../market-data/options-alternatives";
-import { fxProxyIvLessRv, fxProxyLabel, fxProxyNote, loadFxVolProxy } from "./fx-proxy";
+import { fxProxyChain, fxProxyChainLabel, fxProxyIvLessRv, fxProxyLabel, fxProxyNote, loadFxVolProxy } from "./fx-proxy";
 
 /** In session, while visible, the current ATM IV reference re-reads its expiry this often. */
 const ATM_IV_REFRESH_MS = 60_000;
@@ -197,16 +197,22 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   };
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: view, onSelect: setView, focused, dense: true });
   const reference = showIv ? iv.data?.reference ?? null : null;
+  // Outside the options session with none of the fund's expiries priced, its chain says when the surface fills.
+  const proxyChain = proxyData ? fxProxyChain(proxyData, Date.now()) : null;
   // The cone has no IV line of its own, so the dated ATM IV it is read against sits above it; for an FX pair,
-  // the proxy fund's IV30 with its close, how many of the fund's expiries price at the money, and IV30 less the pair's HV20.
+  // the proxy fund's IV30 at its close (as OVDV dates it), how many of the fund's expiries price at the money,
+  // and IV30 less the pair's HV20.
   const coneStats: StatItem[] = view !== "cone" || !model ? []
     : reference ? [{ id: "atm-iv", label: "ATM IV", value: percent(reference.value), detail: `${Math.round(reference.daysToExpiry)}d` }]
       : proxyData ? [
         // A stale IV30 is marked here and said in the footer ("FXB has no IV30 since 2026-05-18").
-        { id: "proxy-iv", label: fxProxyLabel(proxyData), value: percent(proxyData.iv30?.value), detail: proxyData.iv30?.date,
-          tone: proxySpread.stale ? "warning" : undefined },
+        { id: "proxy-iv", label: fxProxyLabel(proxyData), value: percent(proxyData.iv30?.value),
+          detail: proxyData.iv30 ? `${proxyData.iv30.date.slice(5)} close` : undefined, tone: proxySpread.stale ? "warning" : undefined },
         { id: "proxy-spread", label: "IV30 - HV20", value: proxySpread.spread == null ? "--" : points(proxySpread.spread), detail: "pts" },
-        { id: "proxy-expiries", label: "Expiries with ATM IV", value: proxyData.expiries ? `${proxyData.expiries.usable} of ${proxyData.expiries.read}` : "--" },
+        { id: "proxy-chain", label: fxProxyChainLabel(proxyData), ...(!proxyChain ? { value: "--" }
+          : proxyChain.reopen ? { value: "closed", detail: proxyChain.reopen.short ? `fills at the open, ${proxyChain.reopen.short}` : "fills at the open",
+            detailVariants: ["fills at the open"] }
+            : { value: proxyChain.count, detail: "expiries with ATM IV", detailVariants: ["with ATM IV"] }) },
       ] : [];
   const contentHeight = Math.max(4, height - 1 - tabRows - statGridRows(coneStats, width));
   // The table's selected window is the chart's cursor, so its legend reads that row's figures.

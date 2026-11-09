@@ -701,22 +701,29 @@ function quoteColumns() {
   return [
     ...QUOTE_LEAD_COLUMNS.map((column) => EXTENDED_KEYS.has(column.key) ? { ...column, stackPriority: 1 } : column),
     { key: "currency", header: "Cur", shrink: false, stackPriority: 3, format: currencyCell },
-    // Whether the price is real-time, delayed, stale or nominal: a feed state, not where it came from. A stale or
-    // nominal row says so here, so the closing line's "N of M stale" or "N of M nominal" always points at rows the table marks.
-    {
-      key: "feed",
-      header: "Feed",
-      shrink: false,
-      stackPriority: 4,
-      format: (value: unknown) => value === "stale" || value === "nominal" ? cliStyles.warning(value) : String(value ?? ""),
-    },
-    // A nominal price names the session it is from ("6 Nov close"), not the last print; JSON keeps both.
-    { key: "updatedAt", header: "Updated", shrink: false, stackPriority: 5,
-      format: (value: unknown, row: QuoteRow) => row.nominalLabel || (typeof value === "string" ? formatUtcTime(value) : "") },
+    ...FEED_COLUMNS,
     ...CHANGE_BASIS_EXPORT_COLUMNS,
     ...EXTENDED_CHANGE_EXPORT_COLUMNS,
   ];
 }
+
+/**
+ * Whether the price is real-time, delayed, stale or nominal: a feed state, not where it came from. A stale or
+ * nominal row says so here, so the closing line's "N of M stale" or "N of M nominal" always points at rows the
+ * table marks, in `quote` and in `compare`.
+ */
+const FEED_COLUMNS = [
+  {
+    key: "feed",
+    header: "Feed",
+    shrink: false,
+    stackPriority: 4,
+    format: (value: unknown) => value === "stale" || value === "nominal" ? cliStyles.warning(value) : String(value ?? ""),
+  },
+  // A nominal price names the session it is from ("6 Nov close"), not the last print; JSON keeps both.
+  { key: "updatedAt", header: "Updated", shrink: false, stackPriority: 5,
+    format: (value: unknown, row: QuoteRow) => row.nominalLabel || (typeof value === "string" ? formatUtcTime(value) : "") },
+];
 
 /**
  * A yield index's move in basis points, the move the table shows (`+2.2bp`), which an export of a table holding a
@@ -752,6 +759,8 @@ function compareColumns() {
     ...CHANGE_BASIS_EXPORT_COLUMNS,
     ...EXTENDED_CHANGE_EXPORT_COLUMNS,
     ...DAY_RANGE_EXPORT_COLUMNS,
+    // After the columns an export already had, so one read by position stays where it was; the table shows them after Cur.
+    ...FEED_COLUMNS,
   ];
 }
 
@@ -1194,8 +1203,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     if (symbols.length === 1 && failed) {
       ctx.fail(failed.message, [quoteChangeLine(tickerChanges[0], formerIssuers[0]), failed.details].filter(Boolean).join("\n") || undefined);
     }
-    // A futures quote adds its dated settlement and contract terms, as `ticker` prints them; `compare` stays a table.
-    const contracts = await Promise.all(answers.map(({ result }) => commandName === "quote" && result.quote
+    // A futures quote adds its dated settlement and contract terms, as `ticker` prints them; `compare` stays a table, whose
+    // future still prints to its tick and measures its move from the settle, as `quote` does.
+    const contracts = await Promise.all(answers.map(({ result }) => result.quote
       ? cliFuturesContract(result.quote.symbol || result.target.symbol, result.quote.instrumentType)
       : null));
     // A future's move the source measured from something other than the session before's settlement of the same contract is measured from it, in the row and in every line.
@@ -1207,10 +1217,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       return { change: sent.change, changePercent: sent.changePercent, previousClose: sent.previousClose };
     });
     // A contract that is not its root's front (NGF27, NG2) prints the front's own price beside it, read in one batch.
-    const fronts = await loadFuturesFrontQuotes(contracts, market.dataProvider);
+    // Both go in the contract block, which `compare` does not print.
+    const fronts = commandName === "quote" ? await loadFuturesFrontQuotes(contracts, market.dataProvider) : contracts.map(() => null);
     // A per-MWh gas price (TTF) adds its dollars per MMBtu at the day's rate, to read beside Henry Hub.
-    const gasInUsd = await Promise.all(answers.map(({ result }, index) => loadUsdPerMmbtu(
-      getRegularSessionDisplay(result.quote)?.price, contracts[index], result.quote?.currency, (currency) => market.dataProvider.getExchangeRate(currency))));
+    const gasInUsd = await Promise.all(answers.map(({ result }, index) => commandName === "quote" ? loadUsdPerMmbtu(
+      getRegularSessionDisplay(result.quote)?.price, contracts[index], result.quote?.currency, (currency) => market.dataProvider.getExchangeRate(currency)) : null));
     // A perpetual adds its funding per eight hours and open interest, the figures PERP lists beside its mark.
     const perpetualContracts = await Promise.all(answers.map(({ result }) => commandName === "quote" && result.quote
       ? cliPerpetualContract(result.quote)
@@ -1328,7 +1339,8 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       // A row with no price or move says why in its status column, as the warnings do.
       exportStatus: quoteExportStatus,
       ...(exportNotes.length > 0 ? { exportNotes } : {}),
-      details: quoteDetailsText,
+      // `compare` is the table alone: no contract block under it.
+      details: commandName === "quote" ? quoteDetailsText : compareDetailsText,
       ...(footnotes.length ? { footnote: footnotes.join("\n") } : {}),
       columns,
       textColumns: quoteTextColumns(yieldsOnly
@@ -1385,7 +1397,11 @@ async function answerPhrase(phrase: string, market: MarketContext, ctx: Paramete
  * line for a symbol that is not a US ticker though it is one slip from one.
  */
 function quoteDetailsText(data: QuoteCliRecord[]): string {
-  return [quoteFuturesContractText(data), ...data.flatMap((row) => notUsTickerLine(row) ?? [])].filter(Boolean).join("\n\n");
+  return [quoteFuturesContractText(data), compareDetailsText(data)].filter(Boolean).join("\n\n");
+}
+
+function compareDetailsText(data: QuoteCliRecord[]): string {
+  return data.flatMap((row) => notUsTickerLine(row) ?? []).join("\n\n");
 }
 
 /**
