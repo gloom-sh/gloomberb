@@ -64,27 +64,29 @@ describe("buildFuturesRows search", () => {
     const december = { symbol: "CL=F", name: "WTI Crude Oil Dec 26" } as Quote;
     const nearest = { contract: "CLX26", contractSymbol: "CLX26.NYM", deliveryMonth: "2026-11", lastTrade: "2026-10-20" };
     const terms = { deliveryMonth: "2026-12", nearest };
-    expect(futuresContractHeadline(crude, december, terms)).toBe("WTI Crude Oil Dec 2026, rolled (Nov expires 20 Oct)");
+    expect(futuresContractHeadline(crude, december, terms).text).toBe("WTI Crude Oil Dec 2026, rolled (Nov expires 20 Oct)");
     // The month leads, so a column clipping the tail keeps it; one too narrow for "rolled" shows the plain name.
-    expect(futuresContractHeadline(crude, december, terms, 30)).toBe("WTI Crude Oil Dec 2026, rolled (Nov expires 20 Oct)");
-    expect(futuresContractHeadline(crude, december, terms, 29)).toBe("WTI Crude Oil Dec 2026");
+    expect(futuresContractHeadline(crude, december, terms, 30).text).toBe("WTI Crude Oil Dec 2026, rolled (Nov expires 20 Oct)");
+    expect(futuresContractHeadline(crude, december, terms, 29).text).toBe("WTI Crude Oil Dec 2026");
     // A quote whose name carries no month is placed by its terms.
-    expect(futuresContractHeadline(crude, { symbol: "CL=F" } as Quote, terms)).toBe("WTI Crude Oil Dec 2026, rolled (Nov expires 20 Oct)");
+    expect(futuresContractHeadline(crude, { symbol: "CL=F" } as Quote, terms).text).toBe("WTI Crude Oil Dec 2026, rolled (Nov expires 20 Oct)");
     // Once the alias quotes the nearest month itself, or before the terms load, it is the plain name.
-    expect(futuresContractHeadline(crude, december, { deliveryMonth: "2026-12", nearest: null })).toBe("WTI Crude Oil Dec 2026");
-    expect(futuresContractHeadline(crude, december, null)).toBe("WTI Crude Oil Dec 2026");
+    expect(futuresContractHeadline(crude, december, { deliveryMonth: "2026-12", nearest: null }).text).toBe("WTI Crude Oil Dec 2026");
+    // The plain name is cut before its month in a narrow column; the rolled one leads with the month already.
+    expect(futuresContractHeadline(crude, december, null)).toEqual({ text: "WTI Crude Oil Dec 2026", keepEnd: " Dec 2026" });
+    expect(futuresContractHeadline(crude, december, terms).keepEnd).toBeUndefined();
     // Terms read before a roll the quote already took never mix months.
-    expect(futuresContractHeadline(crude, { ...december, name: "WTI Crude Oil Jan 27" }, terms)).toBe("WTI Crude Oil Jan 2027");
-    expect(futuresContractHeadline(crude, december, { deliveryMonth: "2026-12", nearest: { ...nearest, lastTrade: null } }))
+    expect(futuresContractHeadline(crude, { ...december, name: "WTI Crude Oil Jan 27" }, terms).text).toBe("WTI Crude Oil Jan 2027");
+    expect(futuresContractHeadline(crude, december, { deliveryMonth: "2026-12", nearest: { ...nearest, lastTrade: null } }).text)
       .toBe("WTI Crude Oil Dec 2026, rolled (Nov still trading)");
 
     // The label names only the month whose price the row shows: "Cocoa Dec 2026, Mar 2027 most active" read as March's
     // price. The day's most active month stays in `quote`'s contract lines.
     const mostActive = { contract: "CLH27", contractSymbol: "CLH27.NYM", deliveryMonth: "2027-03", volume: 304_249, date: "2026-10-16" };
     const withActive = { ...terms, mostActive };
-    expect(futuresContractHeadline(crude, december, withActive)).toBe("WTI Crude Oil Dec 2026, rolled (Nov expires 20 Oct)");
+    expect(futuresContractHeadline(crude, december, withActive).text).toBe("WTI Crude Oil Dec 2026, rolled (Nov expires 20 Oct)");
     const frontActive = { deliveryMonth: "2026-12", nearest: null, mostActive };
-    expect(futuresContractHeadline(crude, december, frontActive)).toBe("WTI Crude Oil Dec 2026");
+    expect(futuresContractHeadline(crude, december, frontActive).text).toBe("WTI Crude Oil Dec 2026");
   });
 
   test("a row's unit is the exchange's from its terms, else the catalog's", () => {
@@ -152,12 +154,12 @@ test("VIX futures are the board's Volatility group, VX1 and VX2 by symbol, named
     .flatMap((row) => row.type === "row" ? [row.contract] : []);
   // Two rows of one root, told apart by their own symbols, and by their place on the curve until a month is known.
   expect(contracts.map(futuresBoardCode)).toEqual(["VX1", "VX2"]);
-  expect(contracts.map((contract) => futuresContractHeadline(contract))).toEqual(["VIX Futures front month", "VIX Futures 2nd month"]);
+  expect(contracts.map((contract) => futuresContractHeadline(contract).text)).toEqual(["VIX Futures front month", "VIX Futures 2nd month"]);
   const quotes = quoteMap({ VX1: { symbol: "VX1", name: "VIX Futures 1st generic, now Nov 2026" }, VX2: { symbol: "VX2", name: "VIX Futures 2nd generic, now Dec 2026" } });
   expect(contracts.map((contract) => futuresContractName(contract, quotes.get(contract.symbol)!.quote)))
     .toEqual(["VIX Futures Nov 2026", "VIX Futures Dec 2026"]);
   // A quote whose name carries no month is placed by the contract terms.
-  expect(futuresContractHeadline(contracts[1]!, { ...quotes.get("VX2")!.quote!, name: "VIX Futures 2nd generic" }, { deliveryMonth: "2026-12" }))
+  expect(futuresContractHeadline(contracts[1]!, { ...quotes.get("VX2")!.quote!, name: "VIX Futures 2nd generic" }, { deliveryMonth: "2026-12" }).text)
     .toBe("VIX Futures Dec 2026");
 });
 

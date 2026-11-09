@@ -257,7 +257,7 @@ export function renderFuturesCell(
         attributes: TextAttributes.BOLD,
       };
     case "name":
-      return { text: futuresContractHeadline(contract, quote, options?.terms?.get(contract.symbol)?.terms, column.width) };
+      return futuresContractHeadline(contract, quote, options?.terms?.get(contract.symbol)?.terms, column.width);
     case "unit": {
       const terms = options?.terms?.get(contract.symbol);
       const unit = futuresUnitLabel(contract, terms?.terms);

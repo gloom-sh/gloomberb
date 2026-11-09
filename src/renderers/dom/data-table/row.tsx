@@ -477,7 +477,7 @@ function CellText({ cell, column, color }: { cell: DataTableCell; column: DataTa
           overflow: "hidden",
         }}
       >
-        <span title={cell.text} style={{ ...style, width: "auto", flex: "0 1 auto", minWidth: 0 }}>{cell.text}</span>
+        <CellLabel cell={cell} column={column} style={{ ...style, width: "auto", flex: "0 1 auto", minWidth: 0 }} />
         <span data-gloom-role="data-table-cell-note" style={{ ...cellTextStyle(CSS_TEXT_DIM, TextAttributes.NONE), flex: "none" }}>{cell.note}</span>
       </div>
     );
@@ -488,7 +488,7 @@ function CellText({ cell, column, color }: { cell: DataTableCell; column: DataTa
       </div>
     );
   }
-  if (cell.leading === undefined) return <span title={cell.text} style={style}>{cell.text}</span>;
+  if (cell.leading === undefined) return <CellLabel cell={cell} column={column} style={style} />;
   return (
     <div
       style={{
@@ -503,8 +503,44 @@ function CellText({ cell, column, color }: { cell: DataTableCell; column: DataTa
       }}
     >
       <Leading>{cell.leading}</Leading>
-      <span title={cell.text} style={{ ...style, width: "auto", flex: "0 1 auto" }}>{cell.text}</span>
+      <CellLabel cell={cell} column={column} style={{ ...style, width: "auto", flex: "0 1 auto" }} />
     </div>
+  );
+}
+
+/**
+ * The cell's text, ending in an ellipsis where the column cuts it. A cell with
+ * `keepEnd` is cut before that end, which always shows: "Brent Crude Oil Last
+ * Day… Jan 2027". The two parts read as the whole text. The label is a whole
+ * number of characters wide, and the end overlaps the part before it by less
+ * than a pixel (its first character is the space), so that part's ellipsis
+ * stays right before the end instead of a character early: a box rounded to
+ * layout units can fall short of the characters by a fraction of a pixel.
+ */
+const KEPT_END_OVERLAP = "-0.25px";
+
+function CellLabel({ cell, column, style }: { cell: DataTableCell; column: DataTableColumn; style: CSSProperties }) {
+  const keepEnd = cell.keepEnd;
+  if (!keepEnd || !cell.text.endsWith(keepEnd) || cell.text.length === keepEnd.length) {
+    return <span title={cell.text} style={style}>{cell.text}</span>;
+  }
+  return (
+    <span
+      title={cell.text}
+      style={{
+        ...style,
+        display: "flex",
+        justifyContent: contentJustifyForAlign(column.align),
+        minWidth: 0,
+        maxWidth: "round(down, 100%, 1ch)",
+        textOverflow: "clip",
+      }}
+    >
+      <span style={{ flex: "0 1 auto", minWidth: 0, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+        {cell.text.slice(0, -keepEnd.length)}
+      </span>
+      <span style={{ flex: "none", whiteSpace: "pre", marginLeft: KEPT_END_OVERLAP }}>{keepEnd}</span>
+    </span>
   );
 }
 

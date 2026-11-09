@@ -67,9 +67,22 @@ function padToWidth(text: string, width: number, align: string | undefined): str
  * Fit cell text to a fixed column width. Overlong text always keeps an ellipsis
  * marker, so a clipped number or date can never be misread as a shorter valid
  * value.
+ *
+ * `keepEnd`, the end of `text` the cut keeps whole (a cell's `keepEnd`), moves
+ * the ellipsis before it while the width holds it and a character of what
+ * comes first: "Brent Crude Oil Last Day… Jan 2027".
  */
-export function fitTableCellText(text: string, width: number, align?: string): string {
-  return padToWidth(clipToDisplayWidth(text, width), width, align);
+export function fitTableCellText(text: string, width: number, align?: string, keepEnd?: string): string {
+  return padToWidth(clipKeepingEnd(text, width, keepEnd), width, align);
+}
+
+function clipKeepingEnd(text: string, width: number, keepEnd: string | undefined): string {
+  if (!keepEnd || displayWidth(text) <= width || !text.endsWith(keepEnd)) return clipToDisplayWidth(text, width);
+  const lead = text.slice(0, -keepEnd.length);
+  const room = width - displayWidth(keepEnd);
+  // One character and the ellipsis, or the end is all there is to read.
+  if (lead.trim() === "" || room < 2) return clipToDisplayWidth(text, width);
+  return `${clipToDisplayWidth(lead, room)}${keepEnd}`;
 }
 
 /**

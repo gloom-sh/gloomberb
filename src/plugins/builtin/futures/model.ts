@@ -103,14 +103,15 @@ function dayMonth(date: string): string {
  * `quote`'s contract lines. The terms only add the note when they name the
  * month the quote prices, so a roll between the two loads never mixes
  * months, and place the month when the quote's name carries none. A name
- * column too narrow for the note drops it.
+ * column too narrow for the note drops it, and one too narrow for the name
+ * cuts it before the month (`keepEnd`), so the month always shows.
  */
 export function futuresContractHeadline(
   contract: FuturesContract,
   quote?: Quote | null,
   terms?: Pick<FuturesContractTermsPayload, "deliveryMonth" | "nearest"> | null,
   width = Number.POSITIVE_INFINITY,
-): string {
+): { text: string; keepEnd?: string } {
   const quoted = quotedContractMonth(contract, quote);
   const termsMonth = terms?.deliveryMonth && /^\d{4}-\d{2}$/.test(terms.deliveryMonth)
     ? { year: Number(terms.deliveryMonth.slice(0, 4)), month: Number(terms.deliveryMonth.slice(5, 7)) - 1 }
@@ -118,9 +119,11 @@ export function futuresContractHeadline(
   const agree = quoted == null || termsMonth == null || (quoted.year === termsMonth.year && quoted.month === termsMonth.month);
   // A quote whose name carries no month (or a cut one) is placed by its terms.
   const month = agree ? quoted ?? termsMonth : quoted;
-  if (!month) return unplacedName(contract);
+  if (!month) return { text: unplacedName(contract) };
   const priced = `${month.year}-${String(month.month + 1).padStart(2, "0")}`;
-  const plain = `${contract.name} ${contractMonthLabel(month.year, month.month)}`;
+  const monthLabel = ` ${contractMonthLabel(month.year, month.month)}`;
+  // A column too narrow for the name cuts it before the month: "Brent Crude Oil Last Day… Jan 2027".
+  const plain = { text: `${contract.name}${monthLabel}`, keepEnd: monthLabel };
   if (!agree) return plain;
   const nearest = terms?.nearest;
   if (!nearest || nearest.deliveryMonth >= priced) return plain;
@@ -128,7 +131,7 @@ export function futuresContractHeadline(
   const expiry = nearest.lastTrade ? `expires ${dayMonth(nearest.lastTrade)}` : "still trading";
   // The month the quote prices leads, so a column that clips the tail still shows it; the note keeps its place
   // while the column fits at least its start.
-  return width < plain.length + ", rolled".length ? plain : `${plain}, rolled (${nearer} ${expiry})`;
+  return width < plain.text.length + ", rolled".length ? plain : { text: `${plain.text}, rolled (${nearer} ${expiry})` };
 }
 
 /**
