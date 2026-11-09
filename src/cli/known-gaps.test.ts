@@ -71,6 +71,17 @@ test("iron ore typed for a quote has no live price and points to the IMF's month
   for (const query of ["kumba", "Kumba Iron Ore", "iron mountain", "iron ore miners"]) expect(unquotedGapMessage(query), query).toBeNull();
 });
 
+// TOPIX read as the data service failing to answer, after five seconds.
+test("an index no source carries says so and names the funds that track it, under each spelling people type", () => {
+  const topix = "TOPIX is not carried: JPX licenses it. Funds that track it: 1306:JPX (NEXT FUNDS TOPIX ETF), 1475:JPX (iShares Core TOPIX ETF).";
+  for (const query of ["TOPIX", "topix", "^TPX", "TPX Index", "998405:JPX", "998405.T", "Tokyo Stock Price Index"]) {
+    expect(unquotedGapMessage(query), query).toBe(topix);
+  }
+  expect(knownGapMessage("topix")).toBe(topix);
+  // A bare TPX is a US ticker, and a TOPIX fund is a listing.
+  for (const query of ["TPX", "topix etf", "1306:JPX"]) expect(unquotedGapMessage(query), query).toBeNull();
+});
+
 test("LME and Shanghai metals are said to be uncovered, pointing at COMEX curves and the monthly world prices, not FUT", () => {
   const gap = knownGapMessage("LME copper")!;
   expect(gap).toStartWith("LME and Shanghai (SHFE) metals futures: not covered");

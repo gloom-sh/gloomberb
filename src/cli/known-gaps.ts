@@ -9,6 +9,7 @@ import { treasuryYieldLine, treasuryYieldTenor } from "./treasury-yields";
 import { namedCurrencyPair } from "./currency-name-hint";
 import { dollarPairListing } from "../utils/currency-pair";
 import { currencyCodeTyped } from "../utils/currency-names";
+import { uncarriedIndexFor, uncarriedIndexLine } from "../tickers/index-roots";
 
 /**
  * What a listing is to a sub-minute ask: a US listing, which has a tape; one
@@ -530,9 +531,12 @@ function namesKnownGap(gap: (typeof KNOWN_GAPS)[number], query: string): boolean
 
 /**
  * The line for a price the terminal has none of, typed where a ticker goes ("iron ore"), so it is never read as the
- * company whose name holds its words (Kumba Iron Ore); null for anything else.
+ * company whose name holds its words (Kumba Iron Ore), and for an index no source carries (TOPIX), which names the
+ * funds that track it rather than reading as an outage; null for anything else.
  */
 export function unquotedGapMessage(query: string): string | null {
+  const index = uncarriedIndexFor(query);
+  if (index) return uncarriedIndexLine(index);
   return KNOWN_GAPS.find((gap) => gap.unquoted && namesKnownGap(gap, query))?.message ?? null;
 }
 
@@ -545,6 +549,8 @@ export function knownGapMessage(query: string): string | null {
   const key = lookupKey(query);
   if (!key) return null;
   const tenor = treasuryYieldTenor(query);
+  const index = uncarriedIndexFor(query);
+  if (index) return uncarriedIndexLine(index);
   return KNOWN_GAPS.find((gap) => namesKnownGap(gap, query))?.message
     ?? (tenor ? treasuryYieldLine(tenor) : null)
     ?? topicPointer(query)?.message

@@ -19,6 +19,7 @@ import { listingAbroadVenue } from "../../utils/sec";
 import { splitSymbolArgs, stripStrayEdges } from "../symbol-args";
 import { readNameEntries } from "../name-entries";
 import { bankFigurePointer, bankWordPointer } from "../known-gaps";
+import { findCatalogSeries, type SeriesSource } from "../series-search";
 import { readTerminalCodeArg } from "../../tickers/company-name-listing";
 import { unknownBloombergMarket } from "../../tickers/terminal-codes";
 import { notATickerWords } from "../company-name-hint";
@@ -364,6 +365,9 @@ function takeTableSection(
   return { options: rest, tableSection: section };
 }
 
+/** Series a name that opens no function lists, as `search` lists them before pointing at the catalog. */
+const UNKNOWN_NAME_SERIES_LIMIT = 3;
+
 /** A name that opens no function: `details` list the closest ones and where to search for more. */
 export class UnknownPaneFunctionError extends Error {
   constructor(name: string, readonly details: string, suggestion: string | null = null, message?: string) {
@@ -390,6 +394,7 @@ async function unknownPaneFunctionError(
   name: string,
   arg: string,
   command: "fn" | "shot",
+  seriesSources: readonly SeriesSource[] = [],
 ): Promise<UnknownPaneFunctionError> {
   // NIM is one slip from NI, but a bank figure is in `fundamentals`, not in a function's statement lines.
   const bank = bankFigurePointer(name, arg);
@@ -405,12 +410,18 @@ async function unknownPaneFunctionError(
   const argument = arg.trim() ? ` ${/^[\w.:,=%+@/$^-]+$/.test(arg.trim()) ? arg.trim() : JSON.stringify(arg.trim())}` : "";
   // One code is run on the argument; the functions a word asks for are each.
   const runs = suggested.length > 0 ? suggested : near.length === 1 ? near : [];
+  // A word no function is near that names data ("nikkei") points at the series `catalog` finds for it.
+  const series = closest.length === 0 && near.length === 0 ? findCatalogSeries(seriesSources, name).slice(0, UNKNOWN_NAME_SERIES_LIMIT) : [];
+  const seriesWidth = Math.max(0, ...series.map((match) => match.expression.length));
   return new UnknownPaneFunctionError(name, [
     // A function a word asks for, typed with no argument, shows the one it takes (`<ticker>`).
     ...runs.map(({ code }, index) => [index === 0 ? "Run:" : "    ", "gloom", command, code,
       argument.trim() || (suggested.length > 0 ? findFunctionCode(registry, code)?.argument : "")].filter(Boolean).join(" ")),
     ...closest.length > 0
       ? ["Closest matches:", ...closest.map((entry) => `  ${entry.token.padEnd(tokenWidth)}  ${entry.label}`), `Search the catalog: gloom catalog ${word}`]
+      : series.length > 0
+      ? ["Series the catalog finds:", ...series.map((match) => `  ${match.expression.padEnd(seriesWidth)}  ${match.name}`),
+        `Chart one: gloom ${command} G ${series[0]!.expression}`, `Search the catalog: gloom catalog ${word}`]
       : near.length > 0 ? [] : [`No function code is close to ${word}. List every function: gloom catalog`],
   ].join("\n"), near.length > 0 ? nearCodesText(near) : null);
 }
@@ -419,7 +430,13 @@ export async function resolvePaneFunction(
   registry: PaneFunctionCatalog,
   context: MarketContext,
   parsedArgs: ParsedPaneFunctionArgs,
-  resolutionSettings: { strictHeadlessOptions?: boolean; tableSection?: boolean; command?: "fn" | "shot" } = {},
+  resolutionSettings: {
+    strictHeadlessOptions?: boolean;
+    tableSection?: boolean;
+    command?: "fn" | "shot";
+    /** The plugins whose catalog series a name that opens nothing is pointed at. */
+    seriesSources?: readonly SeriesSource[];
+  } = {},
 ): Promise<ResolvedPaneFunction> {
   let args = parsedArgs;
   if (!args.target) {
@@ -427,7 +444,9 @@ export async function resolvePaneFunction(
   }
 
   const found = findPaneFunction(registry, args.target);
-  if (!found) throw await unknownPaneFunctionError(registry, context, args.target, args.arg, resolutionSettings.command ?? "fn");
+  if (!found) {
+    throw await unknownPaneFunctionError(registry, context, args.target, args.arg, resolutionSettings.command ?? "fn", resolutionSettings.seriesSources);
+  }
 
   const { template, pane } = found;
   if (!pane) {

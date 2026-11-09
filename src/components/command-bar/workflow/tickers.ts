@@ -1,4 +1,4 @@
-import { indexRootSuggestion } from "../../../tickers/index-roots";
+import { indexRootSuggestion, uncarriedIndexFor, uncarriedIndexLine } from "../../../tickers/index-roots";
 import type { Dispatch } from "react";
 import type { AppAction, AppState } from "../../../state/app/context";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
@@ -153,6 +153,8 @@ export async function resolveTickerInput(
   let resolvedTicker;
   try {
     let query = rawInput?.trim() || activeTicker || "";
+    // An index no source carries (TOPIX) is no fund that tracks it: interactive callers open ticker search, which lists them.
+    if (uncarriedIndexFor(query)) return null;
     if (options.preserveListingKey) {
       // 7203:TSE is the venue its symbol trades on among those TSE names, kept as 7203:JPX would be.
       query = await settleTypedListingKey(query, {
@@ -206,7 +208,9 @@ export async function resolveTickerInputOrThrow(
   const resolved = await resolveTickerInput(rawInput, activeTicker, collectionId, deps, { ...options, throwUnresolved: true });
   if (!resolved) {
     const typed = rawInput ?? activeTicker ?? "";
-    // A bare index root (VIX) is quoted as ^VIX, which the message offers.
+    // An index no source carries (TOPIX) says so and names its funds; a bare index root (VIX) is quoted as ^VIX.
+    const index = uncarriedIndexFor(typed);
+    if (index) throw new Error(uncarriedIndexLine(index));
     const suggestion = indexRootSuggestion(typed.trim());
     throw new Error(`No ticker match found for "${typed}".${suggestion ? ` ${suggestion}` : ""}`);
   }
