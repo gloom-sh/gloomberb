@@ -32,6 +32,54 @@ export async function tickerCompanyName(dataProvider: Pick<DataProvider, "getQuo
   return name && kind !== "fund" && kind !== "derivative" ? shortCompanyName(name) : null;
 }
 
+export interface TickerCompany {
+  /** The company's name; null when no company trades under the term; undefined until looked up. */
+  company: string | null | undefined;
+  /** The company is being looked up: the pane shows it loading. */
+  resolving: boolean;
+  /** The lookup failed, for the pane's unavailable state; null otherwise. */
+  error: string | null;
+  /** Looks again after a failure: the pane's refresh calls it. */
+  retry: () => void;
+}
+
+/**
+ * The company a term written as a ticker is (`TRIAL CRMD` is CorMedix), once
+ * `eligible`, looked up once per `key` (the term as the pane compares it) and
+ * kept: the answer stands while the pane shows that term, whatever made it
+ * eligible. A lookup that failed is no answer: it reports `error` until
+ * `retry`, or until the term changes and comes back.
+ */
+export function useTickerCompany(
+  dataProvider: Pick<DataProvider, "getQuote"> | null,
+  term: string,
+  { eligible, key }: { eligible: boolean; key: string },
+): TickerCompany {
+  const [answers, setAnswers] = useState<ReadonlyMap<string, string | null>>(() => new Map());
+  const [failed, setFailed] = useState<string | null>(null);
+  // A failure belongs to its term: another search clears it, so coming back looks again.
+  if (failed !== null && failed !== key) setFailed(null);
+  const known = answers.has(key);
+  const resolving = eligible && !known && failed !== key;
+  useEffect(() => {
+    if (!resolving) return;
+    let live = true;
+    tickerCompanyName(dataProvider, term).then((name) => {
+      if (live) setAnswers((current) => new Map(current).set(key, name));
+    }, () => {
+      if (live) setFailed(key);
+    });
+    return () => { live = false; };
+  }, [dataProvider, key, resolving, term]);
+  const retry = useCallback(() => setFailed(null), []);
+  return {
+    company: known ? answers.get(key) ?? null : undefined,
+    resolving,
+    error: eligible && failed === key ? `Couldn't look up ${term}'s company.` : null,
+    retry,
+  };
+}
+
 export interface TickerCompanySearch {
   /** The company is being looked up: the pane shows it loading. */
   resolving: boolean;

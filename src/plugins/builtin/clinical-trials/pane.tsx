@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableStackView,
   PaneLinkMenu,
@@ -25,6 +25,7 @@ import {
   usePaneSettingValue,
   usePluginPaneState,
 } from "../../../public/react";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { ThemeColors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -58,7 +59,8 @@ import {
 } from "./model";
 import { sponsorTickerStore, useSponsorTickers, type SponsorTicker } from "./sponsor-tickers";
 import { COMPANIES_FIRST, createTrialPageLoader } from "./trial-pages";
-import { looksLikeTicker, useTickerCompanySearch } from "../shared/ticker-company";
+import { looksLikeTicker, useTickerCompany } from "../shared/ticker-company";
+import { trialSearch, trialSearchScope, writtenAsTicker, type TrialSearch } from "./search";
 import { CLINICAL_TRIALS_PANE_ID } from "./types";
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -171,17 +173,45 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
+  // `TRIAL CRMD`: a term written as a ticker is its company's trials, the
+  // studies it leads as sponsor (CorMedix), looked up before anything is
+  // searched; a symbol searched as text matches whatever abbreviates to it.
+  // A ticker typed in lower case is a word first, and its company only when
+  // the word finds nothing. A company that leads no study is searched as
+  // text after all, and the header says so. Each term is looked up once.
+  const term = query.trim();
+  const termKey = term.toUpperCase();
+  const narrowed = trialFiltersNarrow(filters);
+  const [leadsNone, setLeadsNone] = useState<ReadonlySet<string>>(() => new Set());
+  const [textFoundNone, setTextFoundNone] = useState<string | null>(null);
+  const tickerCompany = useTickerCompany(dataProvider, term, {
+    eligible: writtenAsTicker(term) || (looksLikeTicker(term) && textFoundNone === termKey),
+    key: termKey,
+  });
+  const search = useMemo<TrialSearch>(
+    () => trialSearch(term, tickerCompany.company, leadsNone.has(termKey)),
+    [leadsNone, term, termKey, tickerCompany.company],
+  );
+  const searchKey = JSON.stringify(search);
+
   // The registry pages by an opaque token, which the next page's offset keys.
   // A new search or filter makes a new loader and so starts over with no tokens.
   // With no sponsor class chosen, the companies' studies page first and the rest
   // after them, so the list opens on the companies instead of on whatever was
-  // updated last; the pane orders what has loaded (`orderTrials`).
-  const term = query.trim();
+  // updated last; the pane orders what has loaded (`orderTrials`). A company's
+  // own studies are one sponsor's, so they page as one list.
   const filtersKey = `${filters.status}|${filters.phase}|${filters.sponsorClass}`;
   const loadPage = useMemo(() => createTrialPageLoader({
-    list: (studiesQuery, signal) => client.listTrials(studiesQuery, signal),
-    query: { term: term || undefined, ...trialFiltersQuery(filters), pageSize: DEFAULT_PAGE_SIZE },
-    stages: filters.sponsorClass === ALL ? COMPANIES_FIRST : [{}],
+    list: (studiesQuery, signal) => search.kind === "pending"
+      ? Promise.resolve({ trials: [], nextPageToken: null })
+      : client.listTrials(studiesQuery, signal),
+    query: {
+      ...(search.kind === "company" ? { leadSponsor: search.sponsor }
+        : search.kind === "text" || search.kind === "mentions" ? { term: search.term } : {}),
+      ...trialFiltersQuery(filters),
+      pageSize: DEFAULT_PAGE_SIZE,
+    },
+    stages: filters.sponsorClass === ALL && search.kind !== "company" ? COMPANIES_FIRST : [{}],
     // A page's sponsors are asked for before it shows, so it lands in order; a slow lookup fills in after.
     onPage: (pageTrials, signal) => sponsorTickerStore.loadWithin(
       pageTrials.map((trial) => trial.sponsor),
@@ -189,9 +219,9 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
       signal,
       { companies: pageTrials.filter((trial) => trial.sponsorClass === "INDUSTRY").map((trial) => trial.sponsor) },
     ),
-    // `filtersKey` stands for `filters`, which is rebuilt each render.
+    // `filtersKey` stands for `filters` and `searchKey` for `search`, which are rebuilt each render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [client, filtersKey, term]);
+  }), [client, filtersKey, searchKey]);
   const studies = usePagedRows(loadPage, { getId: (trial) => trial.nctId, keepPreviousRows: true });
   const loadedTrials = studies.rows;
   const loadMore = useTableLoadMore(scrollRef, studies.hasMore && !openItemId, studies.loadMore);
@@ -243,23 +273,31 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
     setOpenItemId(null);
   }, [filters, setOpenItemId, setSavedFilters, setSelectedId]);
 
-  // `TRIAL VKTX`: no study names a symbol, so one that finds nothing is
-  // searched as its company's name, quoted so the registry matches the whole
-  // name as a sponsor files it, and the search box then shows it. Each term
-  // is looked up once.
-  const companySearch = useTickerCompanySearch(dataProvider, term, {
-    eligible: studies.status === "loaded" && trials.length === 0 && !studies.error && looksLikeTicker(term),
-    key: term.toUpperCase(),
-    onCompany: (name) => updateQuery(`"${name}"`),
-  });
-  const retryCompanySearch = companySearch.retry;
-  const error = studies.error?.message ?? companySearch.error;
+  // What an empty answer says: a ticker typed as a word that found nothing is
+  // looked up as a company, and a company that leads no study is searched as
+  // text. Only an answer no filter narrowed says the company has none.
+  const settledEmpty = studies.status === "loaded" && trials.length === 0 && !studies.error && !studies.hasMore;
+  useEffect(() => {
+    if (!settledEmpty) return;
+    if (search.kind === "text" && looksLikeTicker(term)) setTextFoundNone(termKey);
+    if (search.kind === "company" && !narrowed) setLeadsNone((current) => new Set(current).add(termKey));
+  }, [narrowed, search.kind, settledEmpty, term, termKey]);
+
+  const retryCompany = tickerCompany.retry;
+  const error = studies.error?.message ?? tickerCompany.error;
   const reload = useCallback(() => {
-    retryCompanySearch();
+    retryCompany();
     studies.reload();
     sponsorTickers.retry();
-  }, [retryCompanySearch, sponsorTickers, studies]);
-  const loading = (studies.loading && trials.length === 0) || companySearch.resolving;
+  }, [retryCompany, sponsorTickers, studies]);
+  // A company found leading none is about to be searched as text, and a ticker typed as a word
+  // that found nothing is about to be looked up: neither is an empty list yet.
+  const loading = (studies.loading && trials.length === 0) || tickerCompany.resolving
+    || (search.kind === "pending" && !tickerCompany.error) || (search.kind === "company" && settledEmpty && !narrowed)
+    || (search.kind === "text" && settledEmpty && looksLikeTicker(term) && textFoundNone !== termKey && tickerCompany.company === undefined);
+  // The header names the company a ticker searched, or that it leads none; a report of the pane says it under its title.
+  const scope = trialSearchScope(search);
+  useRemoteUiNode(scope ? { role: "report-notice", label: "Search", getMetadata: () => ({ text: scope, key: "search", value: search }) } : null);
   usePaneRefreshKey(reload, { focused, enabled: !searchFocused && !openItemId });
 
   const detailTicker = detailTrial ? tickerOf(detailTrial) : undefined;
@@ -375,6 +413,7 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
         ...searchProps,
       }}
       filters={queryFilters}
+      meta={scope ?? undefined}
     />
   );
 
@@ -399,7 +438,6 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
     </PaneLinkMenu>
   ) : null;
 
-  const narrowed = trialFiltersNarrow(filters);
   return (
     <DataTableStackView<ClinicalTrial, TrialColumn>
       focused={focused && !searchFocused}
@@ -433,8 +471,9 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
       resetScrollKey={`${term}|${filtersKey}`}
       showHorizontalScrollbar={false}
       selectedTextOverridesCellColor
-      emptyStateTitle={term
-        ? `No trials match ${term}${narrowed ? " with these filters" : ""}.`
+      emptyStateTitle={search.kind === "company"
+        ? `No trials led by ${search.company} match these filters.`
+        : term ? `No trials match ${term}${narrowed ? " with these filters" : ""}.`
         : narrowed ? "No trials match these filters." : "No trials loaded."}
       emptyStateHint={narrowed ? "Clear a filter to see more…" : term ? "Try the company or drug name…" : "Press / to search…"}
     />
