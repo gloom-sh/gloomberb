@@ -185,7 +185,7 @@ function CurveTab({ curve, onCurveChange, focused, width, height }: {
   // A pending curve or date change must never relabel the previous curve as the new one.
   const current = data?.curve === curve && data.requestedDate === requestedDate ? data : null;
   const points = current?.points ?? EMPTY_POINTS;
-  const refreshLatest = useCallback(() => { if (!requestedDate) void load(); }, [requestedDate, load]);
+  const refreshLatest = useCallback(() => { if (!requestedDate) load(); }, [requestedDate, load]);
   useAutoRefresh(lastUpdated, refreshLatest);
   const session = curveSession(points);
 
@@ -224,7 +224,7 @@ function CurveTab({ curve, onCurveChange, focused, width, height }: {
       dateField.setDraft(nextDate);
       setFieldError(null);
       dateField.leave();
-      if (nextDate === requestedDate) void load();
+      if (nextDate === requestedDate) load();
     } catch (failure) {
       setFieldError(failure instanceof Error ? failure.message : String(failure));
     }
@@ -236,7 +236,7 @@ function CurveTab({ curve, onCurveChange, focused, width, height }: {
       compareField.setDraft(next);
       setFieldError(null);
       compareField.leave();
-      if (next && next === compareInput) void compareResource.load();
+      if (next && next === compareInput) compareResource.load();
     } catch (failure) {
       setFieldError(failure instanceof Error ? failure.message : String(failure));
     }
@@ -244,10 +244,10 @@ function CurveTab({ curve, onCurveChange, focused, width, height }: {
 
   // The [d]ate, [v]s and [c]urrent hints bind their own keys; Esc in a field is the query bar's.
   usePaneRefreshKey(() => {
-    void load();
-    if (compareKey) void compareResource.load();
+    load();
+    if (compareKey) compareResource.load();
     // A manual refresh also retries look-backs that failed; good ones are kept.
-    if (fredSession && (lookbackResource.error || fredLookbacks?.some((lookback) => !lookback.points))) void lookbackResource.load();
+    if (fredSession && (lookbackResource.error || fredLookbacks?.some((lookback) => !lookback.points))) lookbackResource.load();
   }, { focused, enabled: !editing });
 
   const asOf = curveAsOf(points);
@@ -433,7 +433,7 @@ function WorldTab({ onOpen, focused, width, height }: {
   });
   const data = answer?.data ?? null;
   useAutoRefresh(updatedAt, load);
-  usePaneRefreshKey(() => void load(), { focused });
+  usePaneRefreshKey(() => load(), { focused });
   usePaneStatusFooter({ registrationId: "yield-curve:world", loading, error: error || null, info: useSavedCopyInfo(answer?.savedAt) });
   const rows = data ?? [];
   const selectedId = rows.some((row) => row.id === selected) ? selected! : rows[0]?.id ?? null;

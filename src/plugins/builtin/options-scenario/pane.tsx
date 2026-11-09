@@ -333,7 +333,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       return;
     }
     if (detail && detail !== "chain" || event.targetEditable) return;
-    if (isPlainKey(event, "r")) void resource.reload();
+    if (isPlainKey(event, "r")) resource.reload();
   }, { enabled: focused && !dialogOpen, phase: "before", scope: "osa-actions", allowEditable: true });
   // A detail covers the tabs, so they stop answering h/l until it closes.
   const tabsFocused = focused && !volActive && !detail;

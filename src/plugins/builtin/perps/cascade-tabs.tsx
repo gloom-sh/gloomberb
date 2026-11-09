@@ -55,7 +55,7 @@ export function Liquidations({ asset, onAssetChange, accessKey, width, height, f
   const resource = useAsyncResource(loader, { initialData: () => cachedPerpsLiquidations(base, accessKey), clearOnError: isAccessDenied, keepPreviousData: true });
   const data = resource.data?.payload;
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
-  usePaneRefreshKey(() => { void resource.reload(); }, { focused: focused && !querySearch.active });
+  usePaneRefreshKey(() => { resource.reload(); }, { focused: focused && !querySearch.active });
   const declare = useCallback(() => data ? liquidationFreshness(data) : null, [data]);
   const line = useFreshnessStatusLine(declare, resource.updatedAt);
   usePaneStatusFooter({ registrationId: "perps:liquidations", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, info: line });
@@ -126,7 +126,7 @@ export function Depth({ asset, onAssetChange, accessKey, width, height, focused,
   const resource = useAsyncResource(loader, { initialData: () => cachedPerpsDepth(base, accessKey), clearOnError: isAccessDenied, keepPreviousData: true });
   const data = resource.data?.payload;
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 300_000 });
-  usePaneRefreshKey(() => { void resource.reload(); }, { focused: focused && !querySearch.active });
+  usePaneRefreshKey(() => { resource.reload(); }, { focused: focused && !querySearch.active });
   const declare = useCallback(() => data?.rows.length ? depthFreshness(data) : null, [data]);
   const line = useFreshnessStatusLine(declare, resource.updatedAt);
   usePaneStatusFooter({ registrationId: "perps:depth", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, info: line });

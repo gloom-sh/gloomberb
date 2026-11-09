@@ -448,7 +448,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   useShortcut((event) => {
     if (!isPlainKey(event, "r")) return;
     refresh();
-    if (forms && eligibleTicker) void reloadFacts();
+    if (forms && eligibleTicker) reloadFacts();
   }, { enabled: focused, scope: "sec" });
   // Signing in must retry the request the wall was shown for.
   const sessionKeyRef = useRef(cloudSession.requestKey);

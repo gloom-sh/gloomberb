@@ -116,7 +116,7 @@ export function GasStorageView({ width, height, focused, snapshot }: {
   const seasonalLoading = !frozen && loaded.loading;
   useGasStorageEvidence(board, useMemo(() => rows.map((row) => row.id), [rows]), (!frozen && resource.loading) || seasonalLoading);
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => { void resource.reload(); void loaded.reload(); }, { focused });
+  usePaneRefreshKey(() => { resource.reload(); loaded.reload(); }, { focused });
   const open = rows.find((row) => row.id === openId);
   const series = useMemo(() => seasonal && seasonal.code === code ? gasSeasonalSeries(seasonal, colors, blendHex) : [], [seasonal, code, colors]);
   const year = seasonal?.code === code ? seasonal?.year : null;

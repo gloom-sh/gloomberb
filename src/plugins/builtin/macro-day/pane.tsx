@@ -116,7 +116,7 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
   const history = useAsyncResource(instrument ? loader : null);
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(history.updatedAt, history.load);
-  usePaneRefreshKey(() => { void history.reload(); }, { focused });
+  usePaneRefreshKey(() => { history.reload(); }, { focused });
 
   const model = useMemo(() => history.data ? projectMacroDays(history.data.history, { symbol: symbol ?? "", lookbackYears: Number(lookback) || 5,
     releases: history.data.releases.releases, coveredThrough: history.data.releases.coveredThrough, earnings: history.data.earnings.reports }) : null,

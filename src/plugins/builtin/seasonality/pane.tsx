@@ -161,7 +161,7 @@ export function SeasonalityPane({ width, height, focused }: PaneProps) {
   });
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(history.updatedAt, history.load);
-  usePaneRefreshKey(() => { void history.reload(); }, { focused });
+  usePaneRefreshKey(() => { history.reload(); }, { focused });
 
   const lookbackYears = Number(lookback) || 10;
   const model = useMemo(() => history.data && cadence === "monthly"

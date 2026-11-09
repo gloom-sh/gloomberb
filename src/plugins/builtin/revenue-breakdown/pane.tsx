@@ -99,7 +99,7 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
     clearOnError: (error) => error instanceof Error && error.message === NO_BREAKDOWN,
   });
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  usePaneRefreshKey(() => resource.reload(), { focused });
 
   const payload = useMemo(
     () => (resource.data ? reportedSpan(resource.data.payload) : null),

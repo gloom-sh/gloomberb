@@ -230,7 +230,7 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
   ], itemId), [rows, earlier, locked]);
   const { strip, rows: tabRows } = usePaneTabs(symbol ? { tabs: [{ value: "table", label: "Table" }, { value: "flow", label: "Flow", disabled: tooSmall }, { value: "graph", label: "Graph" }, { value: "path", label: "Path" }], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused: focused && !graphTab });
+  usePaneRefreshKey(() => resource.reload(), { focused: focused && !graphTab });
   const navigate = (row: SupplyRow, template = "supply-chain-pane") => {
     if (row.counterparty.ticker) createPaneFromTemplate(template, { symbol: publicTickerKey(row.counterparty.ticker, row.counterparty.exchange ?? undefined) });
     else setOpen(row.id);

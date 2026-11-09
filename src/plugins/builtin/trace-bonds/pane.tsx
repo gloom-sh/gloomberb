@@ -136,7 +136,7 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
   const historyRefusal = !pro ? PRO_HISTORY_TEXT
     : history.data?.refusal ?? (history.error && !history.data ? unavailableText("Kept price history") : null);
   usePaneRefreshKey(() => {
-    void reload();
+    reload();
     if (detailCusip && pro) history.load();
   }, { focused, enabled: !searchActive });
 

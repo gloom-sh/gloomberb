@@ -170,7 +170,7 @@ function PowerPriceBoard({ width, height, focused }: { width: number; height: nu
   usePowerPricesEvidence(board, carbon, useMemo(() => rows.map((row) => row.id), [rows]), resource.loading || history.loading || carbonResource.loading, snapshot?.carbonError);
   useAutoRefresh(resource.updatedAt, resource.load);
   useAutoRefresh(carbonResource.updatedAt, carbonResource.load);
-  usePaneRefreshKey(() => { void resource.reload(); void history.reload(); void carbonResource.reload(); }, { focused });
+  usePaneRefreshKey(() => { resource.reload(); history.reload(); carbonResource.reload(); }, { focused });
   const notAvailable = !board && resource.error === POWER_PRICES_NOT_AVAILABLE;
   const open = rows.find((row) => row.id === openId);
   const charted = carbonCharted ? carbon!.row : selected?.price;

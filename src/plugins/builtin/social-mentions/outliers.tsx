@@ -115,14 +115,14 @@ export function SocialOutliersView({ width, height, focused, renderTicker }: {
   useAutoRefresh(resource.updatedAt, resource.load);
   const detailOpen = !!openSymbol;
   // An opened ticker refreshes itself.
-  usePaneRefreshKey(() => void resource.reload(), { focused, enabled: !detailOpen });
+  usePaneRefreshKey(() => resource.reload(), { focused, enabled: !detailOpen });
   // Signing in or out reads the ranking again for the new session.
   const sessionKeyRef = useRef(session.requestKey);
   const reload = resource.reload;
   useEffect(() => {
     if (sessionKeyRef.current === session.requestKey) return;
     sessionKeyRef.current = session.requestKey;
-    void reload();
+    reload();
   }, [reload, session.requestKey]);
 
   const data = shown?.payload ?? null;
@@ -232,7 +232,7 @@ export function SocialOutliersView({ width, height, focused, renderTicker }: {
         <PaneStatusBody
           loading={resource.loading}
           error={resource.error}
-          retry={{ onRetry: () => void resource.reload(), pending: resource.loading }}
+          retry={{ onRetry: () => resource.reload(), pending: resource.loading }}
           subject="social outliers"
         />
       </Box>

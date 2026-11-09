@@ -124,7 +124,7 @@ function History({ market, live = false, venues, venueApr, accessKey, width, hei
   const series = useMemo(() => historySeries(data, metric, seriesName, colors.warning), [data, metric, seriesName, colors.warning]);
   const upgrade = useCloudUpgradeAction("perp");
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
-  usePaneRefreshKey(() => { refreshMarket(); void resource.reload(); }, { focused });
+  usePaneRefreshKey(() => { refreshMarket(); resource.reload(); }, { focused });
   const lastTime = rows.at(-1)?.time;
   // The market row dates the figures beside the series. Its funding is the current estimate, unless the series is paid funding.
   const marketRows = useMemo(() => [market], [market]);
@@ -241,7 +241,7 @@ function Board({ accessKey, width, height, focused, onPick, onOpen }: ListTabPro
   const columns = useMemo(() => boardColumns(width), [width]);
   const locked = typeof data?.locked === "number" ? data.locked : 0;
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
-  usePaneRefreshKey(() => { void resource.reload(); }, { focused: focused && !querySearch.active });
+  usePaneRefreshKey(() => { resource.reload(); }, { focused: focused && !querySearch.active });
   const line = usePerpStatusLine(stream.shown, stream.shown, resource.updatedAt, stream.live);
   usePaneStatusFooter({ registrationId: "perps:board", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, info: line });
   usePaneNoticeFooter({ registrationId: "perps:board-notice", focused, notices: resource.data?.refreshError ? [resource.data.refreshError] : [] });
@@ -293,7 +293,7 @@ function Rankings({ accessKey, width, height, focused, onPick, onOpen }: ListTab
   useEffect(() => { onPick(selected?.row ?? null); }, [selected, onPick]);
   const columns = useMemo(() => rankingColumns(width), [width]);
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
-  usePaneRefreshKey(() => { void resource.reload(); }, { focused });
+  usePaneRefreshKey(() => { resource.reload(); }, { focused });
   // The ranked rows on screen are dated; only the funding lists show funding.
   const shownRanked = useMemo(() => stream.shown.flatMap((entry) => entry.kind === "item" ? [entry.item] : []), [stream.shown]);
   const rankedRows = useMemo(() => shownRanked.map((item) => item.row), [shownRanked]);
@@ -345,7 +345,7 @@ function Compare({ asset, onAssetChange, accessKey, width, height, focused, onPi
   const spread = useMemo(() => fundingSpread(rows), [rows]);
   const locked = typeof data?.locked === "number" ? data.locked : 0;
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
-  usePaneRefreshKey(() => { void resource.reload(); }, { focused: focused && !querySearch.active });
+  usePaneRefreshKey(() => { resource.reload(); }, { focused: focused && !querySearch.active });
   usePaneStatusFooter({ registrationId: "perps:compare", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, info: line });
   usePaneNoticeFooter({ registrationId: "perps:compare-notice", focused, notices: resource.data?.refreshError ? [resource.data.refreshError] : [] });
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="perps-signin" action="compare perpetual venues" needsVerification={session.needsVerification} />;
@@ -433,7 +433,7 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
   // Kept between board updates, so the tab strip skips the renders they give the pane.
   const tabItems = useMemo(() => PERP_TABS.map((value) => ({ value, label: label(value) })), []);
   const { strip, rows: tabRows } = usePaneTabs({ tabs: tabItems, activeValue: tab, onSelect: selectTab, focused, dense: true });
-  const refreshMarket = useCallback(() => { void resource.reload(); }, [resource.reload]);
+  const refreshMarket = useCallback(() => { resource.reload(); }, [resource.reload]);
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
   usePaneRefreshKey(refreshMarket, { focused: focused && marketTab && !querySearch.active && (tab !== "history" || !active) });
   // The listed stock or fund a market tracks opens the way a ticker link does, on the DES already open for that

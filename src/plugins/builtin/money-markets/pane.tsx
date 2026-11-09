@@ -131,7 +131,7 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true });
   const bodyHeight = Math.max(3, height - tabRows);
   useAutoRefresh(active.updatedAt, active.load);
-  usePaneRefreshKey(() => void active.reload(), { focused });
+  usePaneRefreshKey(() => active.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "money-markets:notices", focused,
     notices: [...(hongKong ? hongKongData ? moneyMarketRowNotices(hongKongData.rows) : [] : data ? moneyMarketNotices(data) : []),
       ...(active.data?.refreshError ? [active.data.refreshError] : [])] });

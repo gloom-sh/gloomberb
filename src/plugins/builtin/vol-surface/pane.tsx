@@ -359,7 +359,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     const key = event.name;
     // History steps with < and > (footer hints); "." stays the pane menu.
     if (surface3d && event.shift && (key === "left" || key === "right")) stepSurfacePoint(key === "left" ? -1 : 1);
-    else if (key === "r") { void active.reload(); void dates.reload(); }
+    else if (key === "r") { active.reload(); dates.reload(); }
     else if (key === "v") cycleTab();
     else if (key === "t") toggleHistory();
     else if (key === "p") openPricer();

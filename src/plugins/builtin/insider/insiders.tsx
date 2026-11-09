@@ -125,13 +125,13 @@ export function InsiderActivityView({ symbol, control, viewBar, width, height, f
   const answered = resource.data?.query === query ? resource.data.resource : null;
   const shown = answered ?? (resource.loading ? resource.data?.resource ?? null : null);
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  usePaneRefreshKey(() => resource.reload(), { focused });
   const sessionKeyRef = useRef(session.requestKey);
   const reload = resource.reload;
   useEffect(() => {
     if (sessionKeyRef.current === session.requestKey) return;
     sessionKeyRef.current = session.requestKey;
-    void reload();
+    reload();
   }, [reload, session.requestKey]);
 
   const activity = shown?.payload ?? null;
@@ -196,7 +196,7 @@ export function InsiderActivityView({ symbol, control, viewBar, width, height, f
         <PaneStatusBody
           loading={resource.loading}
           error={resource.error}
-          retry={{ onRetry: () => void resource.reload(), pending: resource.loading }}
+          retry={{ onRetry: () => resource.reload(), pending: resource.loading }}
           subject="Insiders"
         />
       </Box>

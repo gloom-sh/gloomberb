@@ -184,7 +184,7 @@ export function HkTendersView({
   const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
 
   useAutoRefresh(stale ? null : fetchedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused, enabled: !searchFocused });
+  usePaneRefreshKey(() => resource.reload(), { focused, enabled: !searchFocused });
 
   const rows = useMemo(
     () => visibleHkTenders(tenders, { filter, query: searchQuery, sort, from: hkWindowStart(historyDays) }),

@@ -276,7 +276,7 @@ function RotationView({
   const selectedRowId = rows.find((row) => row.id === selectedId)?.id ?? rows[0]?.id ?? null;
   usePaneTitle(`RRG vs ${benchmark.symbol}`);
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({
     registrationId: "relative-rotation:notices",
     focused,

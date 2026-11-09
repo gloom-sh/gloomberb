@@ -222,7 +222,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
 
   const reloadIndex = index.reload;
   const refresh = useCallback(() => {
-    void reload();
+    reload();
     reloadIndex();
   }, [reload, reloadIndex]);
   const loadMoreFromScroll = useTableLoadMore(tableScrollRef, indexed && index.hasMore, index.loadMore);

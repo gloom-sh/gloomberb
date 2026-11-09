@@ -98,7 +98,7 @@ export function PeBandPane({ width, height, focused }: PaneProps) {
   const inputs = useAsyncResource(instrument && marketData ? loader : null);
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(inputs.updatedAt, inputs.load);
-  usePaneRefreshKey(() => { void inputs.reload(); }, { focused });
+  usePaneRefreshKey(() => { inputs.reload(); }, { focused });
 
   const lookbackYears = Number(lookback);
   const model = useMemo(() => inputs.data

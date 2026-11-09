@@ -299,8 +299,8 @@ function ExecutiveResearch({ ticker, listing, tier, focused, width, nested, guar
   const listError = list.data?.data ? list.error ?? (list.data.savedAt == null ? list.data.refreshError : null) ?? null : null;
   const statementError = detail.data?.data ? detail.error ?? (detail.data.savedAt == null ? detail.data.refreshError : null) ?? null : null;
   const refresh = useCallback(() => {
-    void list.reload();
-    if (year !== null) void detail.reload();
+    list.reload();
+    if (year !== null) detail.reload();
   }, [list.reload, detail.reload, year]);
 
   const openFiling = useCallback(() => {

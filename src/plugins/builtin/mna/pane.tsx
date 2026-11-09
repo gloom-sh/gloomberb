@@ -249,7 +249,7 @@ function MnaDealsView({ focused, width, height, symbol }: {
   const onScroll = useTableLoadMore(scrollRef, !!data?.hasMore && !loadingMore && !openId, loadMore);
 
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused, enabled: !openId });
+  usePaneRefreshKey(() => resource.reload(), { focused, enabled: !openId });
 
   const deals = data?.deals ?? NO_DEALS;
   const quoteSymbols = useMemo(() => {

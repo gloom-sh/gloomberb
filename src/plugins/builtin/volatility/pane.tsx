@@ -150,7 +150,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   // One binding for every tab and for the loading and failed bodies, where no
   // table is mounted; the footer binds the `v` hint.
   usePaneRefreshKey(() => {
-    if (!resource.loading) void resource.reload();
+    if (!resource.loading) resource.reload();
   }, { focused });
   const asOf = tab === "history" ? data?.term.termDate : tab === "board" ? selected?.date : data?.curve.date;
   // A day's level is its close once Cboe settles it (16:15 New York); before
