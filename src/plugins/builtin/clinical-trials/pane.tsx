@@ -60,7 +60,7 @@ import {
 import { sponsorTickerStore, useSponsorTickers, type SponsorTicker } from "./sponsor-tickers";
 import { COMPANIES_FIRST, createTrialPageLoader } from "./trial-pages";
 import { looksLikeTicker, useTickerCompany } from "../shared/ticker-company";
-import { trialSearch, trialSearchScope, writtenAsTicker, type TrialSearch } from "./search";
+import { trialSearch, trialSearchFallback, trialSearchScope, writtenAsTicker, type TrialSearch } from "./search";
 import { CLINICAL_TRIALS_PANE_ID } from "./types";
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -173,23 +173,26 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
-  // `TRIAL CRMD`: a term written as a ticker is its company's trials, the
-  // studies it leads as sponsor (CorMedix), looked up before anything is
-  // searched; a symbol searched as text matches whatever abbreviates to it.
-  // A ticker typed in lower case is a word first, and its company only when
-  // the word finds nothing. A company that leads no study is searched as
-  // text after all, and the header says so. Each term is looked up once.
+  // `TRIAL CRMD`: a term written as a ticker is its healthcare company's
+  // trials, the studies it leads as sponsor (CorMedix), looked up before
+  // anything is searched; a symbol searched as text matches whatever
+  // abbreviates to it. A ticker typed in lower case is a word first, and its
+  // company only when the word finds nothing; any other company's ticker is a
+  // word (`TRIAL AMD`). A company that leads no study under any of its names
+  // is searched as text after all, and the footer says so. Each term is looked
+  // up once.
   const term = query.trim();
   const termKey = term.toUpperCase();
   const narrowed = trialFiltersNarrow(filters);
-  const [leadsNone, setLeadsNone] = useState<ReadonlySet<string>>(() => new Set());
+  // Per term, the lead sponsor names that found none.
+  const [leadsNone, setLeadsNone] = useState<ReadonlyMap<string, ReadonlySet<string>>>(() => new Map());
   const [textFoundNone, setTextFoundNone] = useState<string | null>(null);
   const tickerCompany = useTickerCompany(dataProvider, term, {
     eligible: writtenAsTicker(term) || (looksLikeTicker(term) && textFoundNone === termKey),
     key: termKey,
   });
   const search = useMemo<TrialSearch>(
-    () => trialSearch(term, tickerCompany.company, leadsNone.has(termKey)),
+    () => trialSearch(term, tickerCompany.company, leadsNone.get(termKey)?.size ?? 0),
     [leadsNone, term, termKey, tickerCompany.company],
   );
   const searchKey = JSON.stringify(search);
@@ -274,14 +277,18 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
   }, [filters, setOpenItemId, setSavedFilters, setSelectedId]);
 
   // What an empty answer says: a ticker typed as a word that found nothing is
-  // looked up as a company, and a company that leads no study is searched as
-  // text. Only an answer no filter narrowed says the company has none.
+  // looked up as a company, and a company that leads no study under one name
+  // is searched under the next, then as text. Only an answer no filter
+  // narrowed says the company has none.
   const settledEmpty = studies.status === "loaded" && trials.length === 0 && !studies.error && !studies.hasMore;
+  const emptySponsor = search.kind === "company" ? search.sponsor : null;
   useEffect(() => {
     if (!settledEmpty) return;
     if (search.kind === "text" && looksLikeTicker(term)) setTextFoundNone(termKey);
-    if (search.kind === "company" && !narrowed) setLeadsNone((current) => new Set(current).add(termKey));
-  }, [narrowed, search.kind, settledEmpty, term, termKey]);
+    if (emptySponsor !== null && !narrowed) {
+      setLeadsNone((current) => new Map(current).set(termKey, new Set([...current.get(termKey) ?? [], emptySponsor])));
+    }
+  }, [emptySponsor, narrowed, search.kind, settledEmpty, term, termKey]);
 
   const retryCompany = tickerCompany.retry;
   const error = studies.error?.message ?? tickerCompany.error;
@@ -295,9 +302,12 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
   const loading = (studies.loading && trials.length === 0) || tickerCompany.resolving
     || (search.kind === "pending" && !tickerCompany.error) || (search.kind === "company" && settledEmpty && !narrowed)
     || (search.kind === "text" && settledEmpty && looksLikeTicker(term) && textFoundNone !== termKey && tickerCompany.company === undefined);
-  // The header names the company a ticker searched, or that it leads none; a report of the pane says it under its title.
+  // The search bar's meta names the company a ticker searched; the footer warns that one leading none is text matches.
+  // A report of the pane says either under its title.
   const scope = trialSearchScope(search);
-  useRemoteUiNode(scope ? { role: "report-notice", label: "Search", getMetadata: () => ({ text: scope, key: "search", value: search }) } : null);
+  const fallback = trialSearchFallback(search);
+  const notice = scope ?? fallback;
+  useRemoteUiNode(notice ? { role: "report-notice", label: "Search", getMetadata: () => ({ text: notice, key: "search", value: search }) } : null);
   usePaneRefreshKey(reload, { focused, enabled: !searchFocused && !openItemId });
 
   const detailTicker = detailTrial ? tickerOf(detailTrial) : undefined;
@@ -308,12 +318,13 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
 
   const detailUrl = detailTrial?.url || null;
   const info = useMemo<PaneFooterSegment[]>(() => [
+    ...(fallback ? [{ id: "search", parts: [{ text: fallback, tone: "warning" as const }] }] : []),
     ...(studies.loadingMore ? [{ id: "loading-more", parts: [{ text: "loading more", tone: "muted" as const }] }] : []),
     ...(studies.moreError ? [{ id: "more-error", parts: [{ text: studies.moreError.message, tone: "warning" as const }] }] : []),
     ...(sponsorTickers.failure && trials.length > 0
       ? [{ id: "tickers", parts: [{ text: "tickers not looked up", tone: "muted" as const }] }]
       : []),
-  ], [sponsorTickers.failure, studies.loadingMore, studies.moreError, trials.length]);
+  ], [fallback, sponsorTickers.failure, studies.loadingMore, studies.moreError, trials.length]);
   const hints = useMemo<PaneHint[]>(() => [
     ...(openItemId ? [] : [{ id: "search", key: "/", label: "search", onPress: focusSearch }]),
     ...(listedTicker ? [{ id: "description", key: "d", label: "es", title: "Description (DES)", onPress: openTicker }] : []),

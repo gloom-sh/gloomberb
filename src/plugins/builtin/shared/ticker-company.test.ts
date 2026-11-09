@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { createProviderMiss, ProviderBusyError } from "../../../sources/provider-errors";
 import type { Quote } from "../../../types/financials";
 import { DataServiceUnreachableError } from "../../../utils/network-failure";
-import { looksLikeTicker, tickerCompanyName } from "./ticker-company";
+import { isHealthcareCompany, looksLikeTicker, tickerCompanyName } from "./ticker-company";
 
 const quotes: Record<string, Partial<Quote>> = {
   VKTX: { name: "Viking Therapeutics, Inc.", instrumentType: "EQUITY" },
@@ -33,4 +33,15 @@ test("a quote that could not be read rejects rather than naming no company", asy
     const failing = { getQuote: async () => { throw failure; } };
     await expect(tickerCompanyName(failing, "VKTX")).rejects.toBe(failure);
   }
+});
+
+// GLO-1904 review: `TRIAL AMD` searched Advanced Micro Devices as a sponsor instead of macular degeneration.
+test("a healthcare company is told by its sector, industry or SEC code, and by its name only with no profile", () => {
+  expect(isHealthcareCompany({ sector: "Healthcare", industry: "Biotechnology" }, "CorMedix Inc.")).toBe(true);
+  expect(isHealthcareCompany({ sector: "Health Care" }, "Merck & Co., Inc.")).toBe(true);
+  expect(isHealthcareCompany({ sic: "2834" }, "Pharming Group N.V.")).toBe(true);
+  expect(isHealthcareCompany({ sector: "Technology", industry: "Semiconductors" }, "Advanced Micro Devices, Inc.")).toBe(false);
+  expect(isHealthcareCompany({ sector: "Financial Services" }, "Morgan Stanley")).toBe(false);
+  expect(isHealthcareCompany(null, "Viking Therapeutics, Inc.")).toBe(true);
+  expect(isHealthcareCompany(null, "PagerDuty, Inc.")).toBe(false);
 });
