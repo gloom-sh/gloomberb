@@ -91,6 +91,14 @@ function movedEnterpriseValueCheck(
     return { ...check, marketCap: movedCap, computed: enterpriseValue,
       ...(check.source != null ? { source: check.source + shift } : {}) };
   }
+  // The bridge Gloom Cloud serves in place of a provider EV more than 5% off it: the moved EV is the moved bridge.
+  const minority = check.minorityAndPreferred != null && Number.isFinite(check.minorityAndPreferred) && check.minorityAndPreferred > 0
+    ? check.minorityAndPreferred : 0;
+  if (check.status === "differs" && finiteComputed && served === check.computed! + minority && served !== check.source
+    && enterpriseValue != null) {
+    return { ...check, marketCap: movedCap, computed: enterpriseValue - minority,
+      ...(check.source != null ? { source: check.source + shift } : {}) };
+  }
   const describesServed = check.status !== "withdrawn" && check.status !== "not-meaningful" && served === check.source;
   const source = check.source == null ? undefined
     : describesServed && enterpriseValue != null ? enterpriseValue : check.source + shift;

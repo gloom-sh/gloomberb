@@ -334,14 +334,15 @@ export function buildOverviewStats({
   } else if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
     stats.push({ label: "EV", value: "—" });
   } else if (enterpriseValue != null) {
-    // Market cap + debt - cash where the provider's is more than 5% from it, as every view shows it; the notice
-    // under the pane gives its inputs where the provider's is far off (enterpriseValueGapIsLarge).
+    // Market cap + debt - cash (+ minority interest) where the provider's is more than 5% from it, as every view
+    // shows it; the notice under the pane gives its inputs where the provider's is far off (enterpriseValueGapIsLarge).
     const check = enterpriseValueCheck(priced);
+    const minority = (check?.minorityAndPreferred ?? 0) > 0 ? " + minority" : "";
     stats.push({
       label: "EV",
       value: formatCompactCurrency(enterpriseValue, quoteCurrency),
       // An insurer's: its investment book is not netted as cash.
-      detail: enterpriseValueComputed(priced) ? ["cap + debt - cash", "computed"] : check?.investmentsKept ? ["investments in", "inv. in"] : undefined,
+      detail: enterpriseValueComputed(priced) ? [`cap + debt - cash${minority}`, "computed"] : check?.investmentsKept ? ["investments in", "inv. in"] : undefined,
     });
   }
   if (finite(fundamentals?.beta)) {

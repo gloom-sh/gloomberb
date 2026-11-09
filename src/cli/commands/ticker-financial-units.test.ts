@@ -187,6 +187,31 @@ test("an EV off market cap + debt - cash is the computed one everywhere, with it
   }
 });
 
+// One EV on every view: market cap + debt - cash + minority interest and preferred equity, the provider's within 5% of it.
+test("an EV whose gap is minority interest is the provider's, a bridge served in its place shows its inputs, and no check crosses currencies", async () => {
+  const pagp = { currency: "USD", marketCap: 6.2e9, totalDebt: 8.44e9, cash: 1.06e9, balanceSheetDate: "2026-06-30", computed: 13.58e9,
+    minorityAndPreferred: 13.73e9 };
+  const withCheck = (fundamentals: TickerFinancials["fundamentals"]): TickerFinancials => ({
+    quote, annualStatements: [], quarterlyStatements: [], priceHistory: [],
+    fundamentals: { marketCap: 6.2e9, marketCapCurrency: "USD", ...fundamentals },
+  });
+  const valuation = (financials: TickerFinancials) => renderFundamentalsReport({ ...financials, symbol: "UNITTEST" }, "valuation")
+    .replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
+  // PAGP as a check that did not count minority interest labels it: its 26.57B is 0.97x of 27.31B, so it stays.
+  const labelled = withCheck({ enterpriseValue: 26.57e9, enterpriseValueCheck: { ...pagp, status: "differs", source: 26.57e9 } });
+  expect(valuation(labelled)).toMatch(/^Enterprise Value 26\.57B USD$/m);
+  expect(valuation(labelled)).not.toContain("in place of");
+  expect(await report(labelled)).toMatch(/^Enterprise Value 26\.57B USD$/m);
+  // A provider's figure more than 5% off it, with the bridge Gloom Cloud serves in its place: the bridge, and its inputs.
+  const bridged = withCheck({ enterpriseValue: 27.31e9, enterpriseValueCheck: { ...pagp, status: "differs", source: 31e9 } });
+  expect(valuation(bridged)).toMatch(/^Enterprise Value 27\.31B USD$/m);
+  expect(valuation(bridged)).toContain("EV 27.31B USD is market cap 6.2B + total debt 8.44B - cash and short-term investments 1.06B"
+    + " + minority interest and preferred equity 13.73B (balance sheet 2026-06-30), in place of the provider's 31B.");
+  // A check in another currency than the EV is shown in describes another figure: the served one stays.
+  const crossed = withCheck({ enterpriseValue: 31e9, enterpriseValueCheck: { ...pagp, currency: "EUR", status: "differs", source: 31e9 } });
+  expect(await report(crossed)).toMatch(/^Enterprise Value 31B USD$/m);
+});
+
 test("after the close the EV row and its note read one close, the cap rests on the shares shown, and a withdrawn EV says why", () => {
   // CHGG on 2026-10-13: the after-hours 0.74 quote beside the 0.7133 close. The row moved the provider's
   // 63.02M EV to the close (60.06M) while its note still read 63.02M against 43.61M computed at 0.74.
