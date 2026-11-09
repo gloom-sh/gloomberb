@@ -24,6 +24,8 @@ export interface CloudPricePointPayload {
   unsettled?: boolean;
   /** A continuous future's calendar bar: the contract it closes on (NGZ26), where the server knows it. */
   contract?: string;
+  /** A currency pair's daily bar: when its close was taken (17:00 New York), as an ISO time, where the server knows it. */
+  closedAt?: string;
 }
 
 type CloudMarketStatus =

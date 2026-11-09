@@ -116,6 +116,7 @@ import { CLOUD_QUOTE_DELAY_MINUTES } from "../../api-client/plan-rules";
 import type { ExchangeAnnouncementsPayload } from "../../api-client/exchange-announcements";
 import { exchangeAnnouncementsPage, listsExchangeAnnouncements, type ExchangeAnnouncementsPage } from "../../utils/exchange-announcements";
 import { dailyFxLeg, fxCloseOnDate, type FxCloseReading } from "../../market-data/fx-closes";
+import { zonedDateTimeParts } from "../../utils/zoned-date-time";
 import { declaredDividends } from "../../utils/declared-dividends";
 import {
   DEFAULT_LEAPS_CRITERIA, LEAPS_EXTRA_COLUMNS, LEAPS_USAGE, parseLeapsCriteria, runLeapsScreen, takeLeapsOptions,
@@ -3650,6 +3651,23 @@ function readFxDate(value: string, ctx: Parameters<CliCommandDef["execute"]>[1])
 }
 
 /**
+ * When a day's FX closes were taken, on the UTC clock and New York's
+ * (`21:00 UTC, 17:00 ET`), when every close used says and they agree; null
+ * otherwise, as for an older day the service keeps its source's bar for.
+ */
+function fxCloseCutoffText(closedAt: ReadonlyArray<string | undefined>): string | null {
+  if (closedAt.length === 0 || closedAt.some((at) => !at)) return null;
+  const clock = (at: string) => {
+    const time = Date.parse(at);
+    const newYork = zonedDateTimeParts(time, "America/New_York");
+    const pad = (value: number) => String(value).padStart(2, "0");
+    return `${new Date(time).toISOString().slice(11, 16)} UTC, ${pad(newYork.hour)}:${pad(newYork.minute)} ET`;
+  };
+  const times = new Set(closedAt.map((at) => clock(at!)));
+  return times.size === 1 ? [...times][0]! : null;
+}
+
+/**
  * `fx <pair> --date <day>`: the rate at that day's daily FX closes, read as
  * a position's purchase-date cost reads them (`fxCloseOnDate`): each
  * currency's USD pair at its close of the day, or of the last trading day
@@ -3698,6 +3716,8 @@ async function runFxOnDate(
     : describeFxRate(request, rate, closes[0]);
   // A cross is as old as its older close; a weekend or holiday reads the trading day before it.
   const closeDate = [...legs.values()].map((leg) => leg.date).sort()[0]!;
+  // When the closes were taken, where the service says (17:00 New York): a central bank's fixing is another time.
+  const cutoff = fxCloseCutoffText(codes.map((code) => legs.get(code)?.closedAt));
   const converted = amount == null ? null : amount * rate;
   const row = {
     currency, baseCurrency, rate, asOf: closeDate, stale: false, pair, inverse: 1 / rate, date,
@@ -3713,7 +3733,7 @@ async function runFxOnDate(
   ctx.printResult({
     data: [row],
     // A past close is what was asked for, never stale.
-    freshness: rowsFreshness([], { status: "not-a-feed", basis: "daily FX close", asOf: closeDate }),
+    freshness: rowsFreshness([], { status: "not-a-feed", basis: cutoff ? `daily FX close at ${cutoff}` : "daily FX close", asOf: closeDate }),
     warnings: warnings.length > 0 ? warnings : undefined,
   }, {
     text: () => amount == null ? rateLine : `${describeFxConversion(request, amount, rate)}\n${rateLine}`,
