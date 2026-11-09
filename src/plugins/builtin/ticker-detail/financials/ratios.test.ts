@@ -280,7 +280,7 @@ describe("financial ratios", () => {
     expect(annual.cells.get("runway-ttm")!.map((cell) => cell.value)).toEqual([months(runway.trailing), 700 / (300 / 12)]);
   });
 
-  test("the cash and quick ratios read cash + ST investments as the runway does, and no receivables line is none", () => {
+  test("the cash and quick ratios read cash + ST investments as the runway does, and receivables as short-term investments", () => {
     // Viking's June 2025 quarter carries only its cash (33.88M); its ST investments (773.84M) are reported in other quarters.
     const missing = period({ date: "2025-06-30", cashAndCashEquivalents: 33.88, currentLiabilities: 26 }, undefined, { shortTermTotalOnFile: true });
     expect(evaluateRatio(ratio("cash-ratio"), missing)).toEqual({ value: "not-reported", inputs: ["not-reported", 26] });
@@ -291,6 +291,8 @@ describe("financial ratios", () => {
     expect(evaluateRatio(ratio("quick-ratio"), noReceivables)).toEqual({ value: 714.6 / 26.07, inputs: [714.6, "not-reported", 26.07] });
     expect(evaluateRatio(ratio("quick-ratio"), { ...noReceivables, statement: { ...noReceivables.statement, accountsReceivable: 10 } }).value)
       .toBe(724.6 / 26.07);
+    // A filer that reports receivables in other periods is missing them in this one: not reported, not cash alone.
+    expect(evaluateRatio(ratio("quick-ratio"), { ...noReceivables, receivablesOnFile: true }).value).toBe("not-reported");
   });
 
   describe("quarterly valuation reads the trailing year", () => {

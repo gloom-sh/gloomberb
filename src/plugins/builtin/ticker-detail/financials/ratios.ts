@@ -59,6 +59,8 @@ export interface RatioPeriod {
   price: RatioAmount;
   /** The filer reports cash and short-term investments as a total in some period on file (utils/cash-runway). */
   shortTermTotalOnFile?: boolean;
+  /** The filer reports receivables in some period on file, so a period without them is a missing line. */
+  receivablesOnFile?: boolean;
   /** How net debt treats the lease liabilities the listing's balance sheets report; absent when none do. */
   leaseBasis?: LeaseBasis;
 }
@@ -482,12 +484,15 @@ export const RATIO_TABS: RatioTabDef[] = [
           {
             label: "Cash + ST Inv + Rec",
             format: "money",
-            // Cash and short-term investments as the runway reads them; a balance sheet with no
-            // receivables line is its cash and investments alone, which the row under it says.
+            // Cash and short-term investments as the runway reads them; a filer that reports no
+            // receivables is its cash and investments alone, which the row under it says. One that
+            // reports them in other periods is missing them in this one, as short-term investments are.
             value: (period) => {
               const cash = runwayCash(period);
               const owed = receivables(period.statement);
-              return isGap(cash) || owed === undefined ? cash : cash + owed;
+              if (isGap(cash)) return cash;
+              if (owed === undefined) return period.receivablesOnFile ? "not-reported" : cash;
+              return cash + owed;
             },
           },
           { label: "Receivables", format: "money", memo: true, value: ({ statement }) => reported(receivables(statement)) },
@@ -741,6 +746,7 @@ export function ratioPeriods(
   onFile: { annual: readonly FinancialStatement[]; quarterly: readonly FinancialStatement[] } = { annual: [], quarterly: [] },
 ): RatioPeriod[] {
   const shortTermTotalOnFile = reportsShortTermTotal([...onFile.annual, ...onFile.quarterly, ...statements]);
+  const receivablesOnFile = [...onFile.annual, ...onFile.quarterly, ...statements].some((row) => receivables(row) !== undefined);
   const leases = leaseBasis([...onFile.annual, ...onFile.quarterly, ...statements]);
   return statements.map((statement) => {
     const quarterly = period === "quarterly" && statement.date !== "TTM";
@@ -751,6 +757,7 @@ export function ratioPeriods(
       ...(quarterly ? { trailing: trailingYear(statement, onFile.annual, onFile.quarterly) } : {}),
       price: price(statement),
       shortTermTotalOnFile,
+      receivablesOnFile,
       ...(leases ? { leaseBasis: leases } : {}),
     };
   });
