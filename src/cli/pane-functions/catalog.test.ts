@@ -121,6 +121,9 @@ test("a perp venue's name finds PERP first, and a function only Pro opens is mar
     expect(correctCatalogQuery(entries, "fudning")).toBe("funding");
     expect(correctCatalogQuery(entries, "funding")).toBeNull();
     expect(correctCatalogQuery(entries, "xqzvw")).toBeNull();
+    // A short word, or one a first letter apart, is another word rather than a typo.
+    expect(correctCatalogQuery(entries, "moat")).toBeNull();
+    expect(correctCatalogQuery(entries, "libor")).not.toBe("hibor");
     const plain = (args: string[]) => renderPaneCatalogReport(entries, parsePaneCatalogArgs(args)).replace(/\x1b\[[0-9;]*m/g, "");
     expect(plain(["CALLS"])).toContain("Report       ready · Pro\n");
     expect(plain(["earnings"])).toMatch(/\nCALLS +Earnings Calls +<ticker> +ready · Pro +Pro earnings/);

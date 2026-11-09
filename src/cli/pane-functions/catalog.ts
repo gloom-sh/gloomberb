@@ -595,11 +595,13 @@ function oneLetterApart(a: string, b: string): boolean {
 }
 
 /** The shortest query word a typo is read for: shorter words are too often other words. */
-const TYPO_MIN_LENGTH = 4;
+/** A shorter word is too often another word, not a typo ("moat" is not MOST). */
+const TYPO_MIN_LENGTH = 5;
 
 /**
  * The query with each word no function carries read as the catalog word one letter from it ("fundng" is funding),
- * the one the most functions carry; null when no word needs or has one.
+ * the one the most functions carry; null when no word needs or has one. Only a word of five letters or more is
+ * read again, and never with another first letter: a first letter is rarely the typo, and "libor" is not HIBOR.
  */
 export function correctCatalogQuery(entries: readonly PaneCatalogEntry[], query: string): string | null {
   const counts = new Map<string, number>();
@@ -611,7 +613,7 @@ export function correctCatalogQuery(entries: readonly PaneCatalogEntry[], query:
   let changed = false;
   const words = query.trim().toLowerCase().split(/\s+/).map((word) => {
     if (word.length < TYPO_MIN_LENGTH || !/^[a-z]+$/.test(word) || counts.has(word)) return word;
-    const near = [...counts].filter(([known]) => oneLetterApart(word, known)).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+    const near = [...counts].filter(([known]) => known[0] === word[0] && oneLetterApart(word, known)).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
     if (!near) return word;
     changed = true;
     return near[0];
