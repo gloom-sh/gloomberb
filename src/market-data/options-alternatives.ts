@@ -193,22 +193,33 @@ export function fxVolatilityProxyFund(pair: string): string | null {
 }
 
 /**
+ * What a currency fund's options give, said before the funds are named: an
+ * at-the-money IV30 and no more. Their chains are too thin for 25-delta
+ * wings, so the risk reversal and butterfly an FX desk reads are not there.
+ */
+const FX_PROXY_GIVES = "Currency-ETF options are the listed proxy and give an ATM IV30 only, no 25-delta risk reversal or butterfly";
+
+/**
  * What exists instead for the volatility of an FX pair or currency future,
  * worded as one line for the CLI: OTC FX volatility is not served, the
  * currency funds' options are the nearest listed thing (the one that holds
- * the pair's euro, yen or pound, else any of them), and HVT reads the pair's
- * realized volatility. Null for anything that is no FX pair. `code` is the
- * function asked (OVDV), `symbol` as typed.
+ * the pair's euro, yen or pound, else any of them) and what they give, HIVG
+ * for that fund's IV history, and HVT for the pair's realized volatility.
+ * Null for anything that is no FX pair. `code` is the function asked (OVDV),
+ * `symbol` as typed.
  */
 function fxVolatilityAnswer(code: string, symbol: string): string | null {
   const pair = fxVolatilityPair(symbol);
   if (!pair) return null;
   const typed = symbol.trim().toUpperCase();
   const funds = fxVolatilityFunds(pair);
-  // VCA screens every fund; the others read the pair's own, or the dollar's when it has none.
-  const read = code === "VCA" ? funds.join(",") : funds === FX_VOL_FUND_LIST ? DOLLAR_FUND : funds[0]!;
-  return `${fxVolatilityLead(typed)} Currency-ETF options are the listed proxy: `
-    + `${funds.join(", ")} (gloom fn ${code} ${read}). Realized volatility: gloom fn HVT ${typed}.`;
+  // The pair's own fund, or the dollar's when it has none.
+  const fund = funds === FX_VOL_FUND_LIST ? DOLLAR_FUND : funds[0]!;
+  // VCA screens every fund; the others read the one.
+  const read = code === "VCA" ? funds.join(",") : fund;
+  const history = code === "HIVG" ? "" : `, history gloom fn HIVG ${fund}`;
+  return `${fxVolatilityLead(typed)} ${FX_PROXY_GIVES}: `
+    + `${funds.join(", ")} (gloom fn ${code} ${read}${history}). Realized volatility: gloom fn HVT ${typed}.`;
 }
 
 /** What is not served: options on a CME currency future, which CME lists, or OTC volatility for a spot pair. */
@@ -219,12 +230,13 @@ function fxVolatilityLead(typed: string): string {
 
 /**
  * The same for a pane, which has no commands to give: what is not covered,
- * the funds whose options stand in, and HVT for realized volatility.
+ * the funds whose options stand in and what they give, and HVT for realized
+ * volatility.
  */
 export function fxVolatilityNote(symbol: string, exchange?: string): string | null {
   const pair = fxVolatilityPair(symbol, exchange);
   if (!pair) return null;
-  return `${fxVolatilityLead(symbol.trim().toUpperCase())} Currency-ETF options are the listed proxy: `
+  return `${fxVolatilityLead(symbol.trim().toUpperCase())} ${FX_PROXY_GIVES}: `
     + `${fxVolatilityFunds(pair).join(", ")}. HVT shows the pair's realized volatility.`;
 }
 

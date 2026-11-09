@@ -7,6 +7,7 @@ import { errorMessage } from "../../../utils/errors";
 import { loadIvHistory, type ImpliedVolatilityApi, type IvHistoryPayload, type IvMethod } from "../iv-history/client";
 import { staleness } from "../iv-history/model";
 import { realizedVolatilityResult } from "../shared/volatility";
+import { optionsClosedNotice, usOptionsReopen } from "../shared/volatility/live-session";
 import { createSurfaceDependencies, loadVolatilitySurface, type SurfaceLoaderDependencies } from "../vol-surface/client";
 import type { SurfaceSnapshot } from "../vol-surface/model";
 
@@ -128,6 +129,32 @@ export function fxProxyIvLessRv(proxy: FxVolProxy | null, history: readonly Pric
   const hv20 = upTo.length ? realizedVolatilityResult(upTo, 20, "close-to-close", instrument).value : null;
   return { hv20, spread: hv20 == null ? null : proxy.iv30.value - hv20, stale: false, note: null };
 }
+
+/**
+ * The fund's chain as its cell says it: how many of its expiries price an ATM
+ * IV now (`2 of 4`), or outside the options session with none priced, that it
+ * is closed and when its surface fills (`reopen`). A count of none beside the
+ * last close's IV30 reads as a proxy that is broken, not one that waits for
+ * the open. Null when its chains could not be read.
+ */
+export function fxProxyChain(proxy: Pick<FxVolProxy, "expiries">, now: number):
+  { count: string; reopen: { at: string | null; short: string | null } | null } | null {
+  if (!proxy.expiries) return null;
+  const count = `${proxy.expiries.usable} of ${proxy.expiries.read}`;
+  return { count, reopen: proxy.expiries.usable === 0 ? usOptionsReopen(now) : null };
+}
+
+/** The report's line for the chain: `2 of 4 expiries with ATM IV`, or `Options closed until …. The surface fills at the open.` */
+export function fxProxyChainText(proxy: Pick<FxVolProxy, "expiries">, now: number): string {
+  const chain = fxProxyChain(proxy, now);
+  if (!chain) return "--";
+  if (!chain.reopen) return `${chain.count} expiries with ATM IV`;
+  const { title, message } = optionsClosedNotice(chain.reopen);
+  return `${title} ${message}`;
+}
+
+/** "FXY chain", the label the fund's chain reads under. */
+export const fxProxyChainLabel = (proxy: Pick<FxVolProxy, "fund">) => `${proxy.fund} chain`;
 
 /** "FXY IV30", the label the proxy reads under in the pane, the chart legend and the report. */
 export const fxProxyLabel = (proxy: Pick<FxVolProxy, "fund">) => `${proxy.fund} IV30`;

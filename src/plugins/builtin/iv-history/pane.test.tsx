@@ -23,6 +23,7 @@ test("an FX pair says OTC FX volatility is not covered and which fund stands in,
   }
   await act(async () => { await tui.render(<Harness />, { width: 160, height: 20 }); });
   const frame = await tui.waitForFrameToContain("OTC FX volatility is not covered for EURUSD=X.");
-  expect(frame).toContain("Currency-ETF options are the listed proxy: FXE. HVT shows the pair's realized volatility.");
+  // The sentence wraps at the pane's width.
+  expect(frame.replace(/\s+/g, " ")).toContain("Currency-ETF options are the listed proxy and give an ATM IV30 only, no 25-delta risk reversal or butterfly: FXE. HVT shows the pair's realized volatility.");
   expect(requests).toEqual([]);
 });

@@ -1058,11 +1058,15 @@ function marketText(market: ReportMarket, now: number, short: boolean, local: bo
 /**
  * Where one venue's market stands now and the status line's words for it (`markets closed · regular session opens
  * Mon 13:30 UTC, 09:30 ET`), for a pane with no dated rows to read that from, such as a scanner, with the open alone
- * (`Mon 13:30 UTC, 09:30 ET`) for a sentence of its own. Null when no calendar places the venue.
+ * (`Mon 13:30 UTC, 09:30 ET`) for a sentence of its own, and on the UTC clock alone (`Mon 13:30 UTC`) for a cell.
+ * Null when no calendar places the venue.
  */
-export function venueMarketLine(exchange: string, now: number): { state: ReportMarket["state"]; text: string; reopens: string | null } | null {
+export function venueMarketLine(exchange: string, now: number): {
+  state: ReportMarket["state"]; text: string; reopens: string | null; reopensShort: string | null;
+} | null {
   const { market } = reportMarketSession([{ exchange, time: null }], now);
-  return market ? { state: market.state, text: marketText(market, now, false, false), reopens: reopenText(market, now, false, false) } : null;
+  return market ? { state: market.state, text: marketText(market, now, false, false), reopens: reopenText(market, now, false, false),
+    reopensShort: reopenText(market, now, false, true) } : null;
 }
 
 /** Whether every market of a mixed report reads the same (`markets closed · regular session opens …`): one line then says it for all. */
