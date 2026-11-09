@@ -191,7 +191,7 @@ export function buildPaneTemplateItem(options: {
   shortcutExecution?: boolean;
   /** Why `createOptions.arg` opens nothing; the row then says so instead of opening the pane. */
   argError?: ShortcutArgError | null;
-  runPaneTemplateShortcut: (template: PaneTemplateDef, rawArg?: string) => void;
+  runPaneTemplateShortcut: (template: PaneTemplateDef, rawArg?: string, preset?: PaneTemplateCreateOptions["preset"]) => void;
   shouldOpenTemplateConfig: (template: PaneTemplateDef, arg?: string) => boolean;
   openPaneTemplateWorkflow: (template: PaneTemplateDef, options?: { arg?: string }) => void;
   openPaneTemplateDirect: (
@@ -245,7 +245,7 @@ export function buildPaneTemplateItem(options: {
       options.template.shortcut
       && (options.shortcutExecution || getPaneTemplateArgKind(options.template) === "ticker")
     ) {
-      options.runPaneTemplateShortcut(options.template, arg);
+      options.runPaneTemplateShortcut(options.template, arg, options.createOptions?.preset);
       return;
     }
     if (options.shouldOpenTemplateConfig(options.template, arg)) {
@@ -316,7 +316,10 @@ export function buildPaneShortcutItems(options: {
       const opening = query && options.registry ? discoveryOpening(paneTemplateDiscovery(template, options.registry), query) : null;
       const item = options.createItem(template, {
         category: "Panes",
-        createOptions: opening ? { ...options.createOptions, arg: opening.argument } : options.createOptions,
+        // Its preset options too, as `fn` applies them: `PDUFA` is CATL on PDUFA dates, not every catalyst.
+        createOptions: opening
+          ? { ...options.createOptions, arg: opening.argument, ...(opening.options ? { preset: opening.options } : {}) }
+          : options.createOptions,
         showShortcut: true,
       });
       return opening && opening.argument && !item.disabled ? { ...item, name: opening.argument } : item;
