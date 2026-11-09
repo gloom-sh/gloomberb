@@ -723,7 +723,9 @@ function insiderPaneSymbols(settings: Record<string, unknown> | undefined): stri
 function InsiderPane({ width, height, focused }: PaneProps) {
   const { symbol: paneSymbol } = usePaneTickerIdentity();
   const instance = usePaneInstance();
-  const symbols = insiderPaneSymbols(instance?.settings);
+  // One list per set of tickers, so the views' loads do not start again on every render.
+  const symbolsKey = insiderPaneSymbols(instance?.settings).join(",");
+  const symbols = useMemo(() => (symbolsKey ? symbolsKey.split(",") : []), [symbolsKey]);
 
   // Several tickers (`INS MO,PM,LMT`, a watchlist's name): their insiders in one table.
   if (symbols.length > 1) {
