@@ -522,7 +522,8 @@ function blankTimeNotes(rows: ReadonlyArray<{ event: string; country: string; ti
 /**
  * Whether a row has come out: it has an actual, or it has no figure at all (a
  * speech, a meeting, a holiday) and its time has passed. A row with a forecast
- * or a prior and no actual is still to come, whatever its time.
+ * or a prior and no actual has not, whatever its time: past it, its
+ * `actualStatus` says the figure is awaited.
  */
 function cameOut(event: Pick<EconEvent, "actual" | "forecast" | "prior" | "date">, now: number): boolean {
   if (event.actual?.trim()) return true;
