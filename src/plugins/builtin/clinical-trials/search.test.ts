@@ -18,7 +18,7 @@ describe("trialSearch", () => {
 
   // AMD, MS, HD, CF and PD are diseases first; their companies sponsor no trials.
   test("any other company's ticker searches as text", () => {
-    for (const [ticker, name] of [["AMD", "Advanced Micro Devices"], ["MS", "Morgan Stanley"], ["HD", "Home Depot"], ["CF", "CF Industries"], ["PD", "PagerDuty"]])
+    for (const [ticker, name] of [["AMD", "Advanced Micro Devices"], ["MS", "Morgan Stanley"], ["HD", "Home Depot"], ["CF", "CF Industries"], ["PD", "PagerDuty"]] as const)
       expect(trialSearch(ticker, company(name, name, false), 0)).toEqual({ kind: "text", term: ticker });
   });
 
