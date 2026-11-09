@@ -33,7 +33,7 @@ import { Box, Text } from "../../../ui";
 import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { useOpenTickerChoice } from "../shared/ticker-choice";
 import { resolveFredMapping, projectFredHistory, fredHistoryUnits } from "./fred-series-map";
-import { actualColor, CALENDAR_TIME_ZONE_LABEL, econEventName, timeLabel } from "./calendar-model";
+import { actualColor, awaitingFigureText, awaitsFigure, CALENDAR_TIME_ZONE_LABEL, econEventName, timeLabel } from "./calendar-model";
 import { figureWithCurrency } from "./figures";
 import { hasNoStatedTime, isAllDayEvent, type EconEvent } from "./types";
 
@@ -230,7 +230,9 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
   // the outcome first so a short detail keeps it.
   const releaseItems: StatItem[] = [
     // An amount with its currency beside it (-556.5B JPY), where the server says it.
-    ...(event.actual ? [{ id: "actual", label: "Actual", value: figureWithCurrency(event.actual, event.currency)!, color: actualColor(event.actual, event.forecast) }] : []),
+    ...(event.actual ? [{ id: "actual", label: "Actual", value: figureWithCurrency(event.actual, event.currency)!, color: actualColor(event.actual, event.forecast) }]
+      // Past its time with no figure in yet: when it was due.
+      : awaitsFigure(event, Date.now()) ? [{ id: "actual", label: "Actual", value: awaitingFigureText(event), color: colors.warning }] : []),
     ...(event.forecast ? [{ id: "forecast", label: "Forecast", value: figureWithCurrency(event.forecast, event.currency)! }] : []),
     ...(event.prior ? [{ id: "prior", label: "Prior", value: figureWithCurrency(event.prior, event.currency)! }] : []),
     // The date the prior rate was observed, labelled as Central Bank Rates labels it.
