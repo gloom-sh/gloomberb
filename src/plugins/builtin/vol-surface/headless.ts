@@ -17,6 +17,7 @@ import { formatUtcTime } from "../../../utils/utc-time";
 import { dvolCurrency, dvolGap, dvolSeriesId, loadDvol, type DvolPayload } from "../volatility/dvol";
 import { optionsClosedNotice, usOptionsReopen } from "../shared/volatility/live-session";
 import { loadIvHistory, loadSurfaceDates } from "../iv-history/client";
+import { logFailure } from "../../../utils/log-failure";
 import {
   expiryFeedFields, expiryLabel, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow, surfaceSkewRow,
   surfaceSettlementTime, surfaceSmileRows, surfaceSpotBasisLabel, surfaceTermRows, surfaceThirtyDayAtm, TERM_SLOPE_MIN_DAYS,
@@ -265,8 +266,10 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     const reopen = !date && !coin && !available && snapshot.catalogue.length > 0 ? usOptionsReopen(Date.now()) : null;
     // The pane shows the latest stored close surface then; the report names the command that prints it.
     const [lastIv30, storedClose] = reopen ? await Promise.all([
-      loadIvHistory(instrument.symbol, { signal: ctx.signal, days: 30 }, ctx.apiClient).then((payload) => payload.stats?.iv30 ?? null, () => null),
-      loadSurfaceDates(instrument.symbol, { signal: ctx.signal }, ctx.apiClient).then((payload) => payload.dates?.[0] ?? null, () => null),
+      loadIvHistory(instrument.symbol, { signal: ctx.signal, days: 30 }, ctx.apiClient).then((payload) => payload.stats?.iv30 ?? null,
+        logFailure("vol-surface.headless", "Read the last close's IV30 for a closed session failed", null)),
+      loadSurfaceDates(instrument.symbol, { signal: ctx.signal }, ctx.apiClient).then((payload) => payload.dates?.[0] ?? null,
+        logFailure("vol-surface.headless", "Read the stored close dates for a closed session failed", null)),
     ]) : [null, null];
     ctx.signal.throwIfAborted();
     const closedNotice = reopen ? optionsClosedNotice(reopen) : null;
