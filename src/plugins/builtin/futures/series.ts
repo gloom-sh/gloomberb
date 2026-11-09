@@ -50,30 +50,38 @@ const FRONT_MONTH_SERIES: readonly SeriesDefinition[] = FUTURES_CONTRACTS.map((c
 }));
 
 /**
- * Refining margins of the front months, per barrel: heating oil and gasoline
- * quote per gallon, so each takes 42 gallons to the barrel against crude.
+ * Refining margins per barrel: heating oil and gasoline quote per gallon, so
+ * each takes 42 gallons to the barrel against crude. Every leg is priced in
+ * one delivery month, the one the crude leg holds, and all roll together on
+ * crude's roll day (`rollsWith`): from crude's roll until the products' own,
+ * their front month is still the month before. Each names a formula of listed
+ * contracts that prices one month by hand.
  */
 const CRACK_SPREAD_SERIES: readonly SeriesDefinition[] = [
   {
     id: "fut:crack-ho-wti",
     name: "Heating oil crack vs WTI",
     expression: "42*HO=F - CL=F",
-    description: "Heating oil less WTI crude, per barrel.",
+    rollsWith: "CL=F",
+    description: "Heating oil less WTI crude, per barrel, both in WTI's delivery month. One month by hand: 42*HOZ26 - CLZ26.",
     tags: ["HO", "CL", "heating oil", "diesel", "WTI"],
   },
   {
     id: "fut:crack-ho-brent",
     name: "Heating oil crack vs Brent",
     expression: "42*HO=F - BZ=F",
-    description: "Heating oil less Brent crude, per barrel.",
+    rollsWith: "BZ=F",
+    description: "Heating oil less Brent crude, per barrel, both in Brent's delivery month. One month by hand: 42*HOF27 - BZF27.",
     tags: ["HO", "BZ", "heating oil", "diesel", "Brent"],
   },
   {
     id: "fut:crack-321",
-    name: "3:2:1 crack spread",
+    name: "3-2-1 crack spread",
     expression: "(2*42*RB=F + 42*HO=F - 3*CL=F)/3",
-    description: "Two barrels of gasoline and one of heating oil less three of WTI crude, per barrel of crude.",
-    tags: ["RB", "HO", "CL", "gasoline", "heating oil", "WTI"],
+    rollsWith: "CL=F",
+    description: "Two barrels of gasoline and one of heating oil less three of WTI crude, per barrel of crude, all in WTI's delivery month. "
+      + "One month by hand: (2*42*RBZ26 + 42*HOZ26 - 3*CLZ26)/3.",
+    tags: ["RB", "HO", "CL", "gasoline", "heating oil", "WTI", "3-2-1", "321", "3:2:1"],
   },
 ].map((series) => ({
   ...series,

@@ -46,6 +46,8 @@ import { valuationPriceWarning } from "./valuation-price";
 import { VALUATION_CURRENCY_WARNING_PREFIX } from "./valuation-currency";
 import { chartPriceHistoryIntegrityNotices } from "./market";
 import { maxStudyWarmupPoints, resolveStudies } from "./studies/resolve";
+import { withFormulaNextMonths, withoutFormulaNextMonths } from "./formula-months";
+import { formulaContractNote } from "./studies/formula";
 import { clipSeriesToWindow } from "./alignment";
 import { totalReturnSeries } from "./total-return";
 import { currencySeries } from "./currency-conversion";
@@ -235,6 +237,16 @@ export async function resolveChartSpecData(
   sources: ChartResolveSources,
   cache = new ChartResolveCache(),
   options: ChartResolveOptions = {},
+): Promise<ChartResolutionResult> {
+  // A formula priced in one delivery month reads its legs' next months too, as hidden inputs of its own.
+  return withoutFormulaNextMonths(await resolveChartSpecWindow(withFormulaNextMonths(spec), sources, cache, options));
+}
+
+async function resolveChartSpecWindow(
+  spec: ChartSpec,
+  sources: ChartResolveSources,
+  cache: ChartResolveCache,
+  options: ChartResolveOptions,
 ): Promise<ChartResolutionResult> {
   if (!canFitShortHistory(spec, options)) return resolveChartSpecPass(spec, sources, cache, options);
   // Captured inputs belong to the chart that is returned.
@@ -1154,6 +1166,11 @@ async function resolveChartSpecPass(
     const issues = [...new Map([...requestedIssues, ...visibleIssues].map((issue) => [JSON.stringify(issue), issue])).values()];
     return { ...entry, valuationPriceIssues: issues.length ? issues : undefined,
       warning: [entry.warning, valuationPriceWarning(issues)].filter(Boolean).join(" ") || undefined };
+  });
+  // A futures formula's caveat is about the dates in view: their legs' months.
+  resolved = resolved.map((entry) => {
+    const note = entry.formulaLegs ? formulaContractNote(entry) : null;
+    return note ? { ...entry, warning: [entry.warning, note].filter(Boolean).join(" ") } : entry;
   });
   const priceHistoryIntegrity = resolvePriceHistoryIntegrity(
     spec, rawSeries, resolved,

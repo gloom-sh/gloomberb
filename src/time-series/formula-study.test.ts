@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { validateChartSpec } from "./spec";
 import { resolveStudies } from "./studies/resolve";
+import { formulaContractNote, formulaRollNote } from "./studies/formula";
 import { applyResolvedSeriesTransform } from "./transforms";
 import { contractPriceUnit, perBarrelUnit, perTonneUnit } from "./price-units";
 import { CHART_SPEC_VERSION, type ChartStudySpec, type ResolvedSeries, type TimeSeriesPoint } from "./types";
@@ -37,7 +38,33 @@ describe("formula studies", () => {
     expect(crack.points.map(({ value }) => value)).toEqual([42 * 2.5 - 70, 42 * 2.6 - 70, 42 * 2.4 - 72].map((value) => expect.closeTo(value, 9)));
   });
 
-  test("the 3:2:1 crack divides the weighted sum by three barrels of crude", () => {
+  test("a crack priced in crude's month takes the products' next month between the rolls, and rolls once", () => {
+    /** A continuous future whose bars name their contract: `days` maps a January day to [contract, settle]. */
+    const contracts = (symbol: string, unit: string, days: Record<number, [string, number]>): ResolvedSeries => {
+      const base = future(symbol, unit, Object.fromEntries(Object.entries(days).map(([day, [, value]]) => [day, value])));
+      return { ...base, points: base.points.map((point, index) => ({ ...point, contract: Object.values(days)[index]![0] })) };
+    };
+    // Crude rolls to its Dec contract on the 2nd; gasoline's front month is still Nov until the 3rd.
+    const cl = contracts("CL=F", "USD / barrel", { 1: ["CLX26", 70], 2: ["CLZ26", 71], 3: ["CLZ26", 72] });
+    const rb = contracts("RB=F", "USD / gallon", { 1: ["RBX26", 2], 2: ["RBX26", 2.1], 3: ["RBZ26", 2.25] });
+    const rb2 = { ...contracts("RB2", "USD / gallon", { 1: ["RBZ26", 2.05], 2: ["RBZ26", 2.15], 3: ["RBF27", 2.3] }), id: "RB2" };
+    const terms = { weight1: 42, perBarrel1: 1, weight2: -1, divisor: 1 };
+    const [crack] = resolveStudies([rb, cl, rb2], [formula(["RB=F", "CL=F", "RB2"], { ...terms, rollsWith: 2, nextMonthOf3: 1 })]).series;
+    expect(crack!.points.map(({ value, legs, roll }) => ({ value, contracts: legs?.map((leg) => leg.contract), roll: !!roll }))).toEqual([
+      { value: expect.closeTo(42 * 2 - 70, 9), contracts: ["RBX26", "CLX26"], roll: false },
+      // Dec gasoline (RB2 on the 2nd) against Dec crude, not Nov against Dec.
+      { value: expect.closeTo(42 * 2.15 - 71, 9), contracts: ["RBZ26", "CLZ26"], roll: true },
+      { value: expect.closeTo(42 * 2.25 - 72, 9), contracts: ["RBZ26", "CLZ26"], roll: false },
+    ]);
+    expect(formulaRollNote(crack!)).toBe("legs in CL=F's delivery month, rolling with it: to RBZ26, CLZ26 on 2026-01-02 (marked roll)");
+    expect(formulaContractNote(crack!)).toBeNull();
+    // The same legs as served mix Nov gasoline with Dec crude on the 2nd, and say so.
+    const [free] = resolveStudies([rb, cl], [formula(["RB=F", "CL=F"], terms)]).series;
+    expect(free!.points[1]!.legs?.map((leg) => leg.contract)).toEqual(["RBX26", "CLZ26"]);
+    expect(formulaContractNote(free!)).toBe("legs in different months on 1 day, the latest 2026-01-02.");
+  });
+
+  test("the 3-2-1 crack divides the weighted sum by three barrels of crude", () => {
     const result = resolveStudies([RB, HO, CL], [formula(["RB=F", "HO=F", "CL=F"], {
       weight1: 84, perBarrel1: 1, weight2: 42, perBarrel2: 1, weight3: -3, divisor: 3,
     })]);

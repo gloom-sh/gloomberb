@@ -165,7 +165,8 @@ export function parseSeriesExpression(value: string): ParsedSeriesExpression | n
   return { kind: "security", ...instrument, fieldId };
 }
 
-const SERIES_FORMS = "Use SYMBOL, SYMBOL:field, FUT:code, UST:maturity, FRED:series, GEO:series, or CAP:capability-id:series-id.";
+const SERIES_FORMS = "Use SYMBOL, SYMBOL:field, FUT:code, UST:maturity, FRED:series, GEO:series, CAP:capability-id:series-id, "
+  + "a catalog series' id or name (gloom catalog lists them), or a formula of series such as \"42*HO=F - CL=F\".";
 
 /** A word that reads as a series, not an operator or a number of a formula. */
 const LIST_WORD = /^[A-Za-z^][\w.^=:/~-]*$/;

@@ -175,6 +175,11 @@ export function validateSeriesDefinition(definition: SeriesDefinition, context: 
         ? `an expression with an input must contain ${TICKER_PLACEHOLDER}.`
         : `${TICKER_PLACEHOLDER} needs an input.`);
     }
+    const { rollsWith } = definition;
+    if (rollsWith !== undefined && (typeof rollsWith !== "string" || !/^[A-Za-z0-9]{1,4}=F(?::[A-Za-z]+)?$/.test(rollsWith)
+      || !expression.toUpperCase().includes(rollsWith.toUpperCase()))) {
+      fail(id, "rollsWith must be a continuous futures leg of the expression, such as CL=F.");
+    }
     return;
   }
   const loaded = definition as Extract<SeriesDefinition, { load: unknown }>;

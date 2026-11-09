@@ -27,6 +27,8 @@ import type { CompositeChartLevels, CompositeLevelEdit } from "../../../componen
 import type { FxInterventionsPayload } from "../../../api-client/fx-interventions";
 import { loadFxInterventions } from "../../../market-data/fx-interventions";
 import { chartInterventionPair, chartInterventions, rawPriceEntry } from "./intervention-events";
+import { formulaRollEvents, isRollEvent } from "./roll-events";
+import type { CompositeChartEvent } from "../../../components/chart/composite/types";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import type { ChartResolution, TimeRange } from "../../../components/chart/core/types";
 import type { ChartSpec, ResolvedSeries } from "../../../time-series/types";
@@ -621,6 +623,14 @@ function ChartComposerSurface({
     () => wantsInterventions ? chartInterventions(spec, chartSeries, interventions) : null,
     [chartSeries, interventions, spec, wantsInterventions],
   );
+  // A futures formula marks the days its legs roll, as `history` marks a front month's.
+  const chartEvents = useMemo(() => {
+    const rolls = formulaRollEvents(chartSeries);
+    if (rolls.length === 0) return interventionMarks;
+    const merge = (events: readonly CompositeChartEvent[]) => events.every(isRollEvent) ? ["Rolls"]
+      : events.some(isRollEvent) ? [] : interventionMarks?.merge(events) ?? [];
+    return { events: [...interventionMarks?.events ?? [], ...rolls], merge };
+  }, [chartSeries, interventionMarks]);
   const [interactionCaptured, setInteractionCapturedState] = useState(false);
   // Typing in quick-add must not freeze the plot: it only takes the keyboard.
   const [modalCaptured, setModalCaptured] = useState(false);
@@ -1354,8 +1364,8 @@ function ChartComposerSurface({
           timePick={timePick}
           pricePick={pricePick}
           levels={chartLevels}
-          events={interventionMarks?.events}
-          mergeEventCaptions={interventionMarks?.merge}
+          events={chartEvents?.events}
+          mergeEventCaptions={chartEvents?.merge}
           rangeStatisticsSeriesId={rangeStatisticsSeriesId}
           emptyMessage={emptyMessage}
           emptyDetail={emptyDetail}

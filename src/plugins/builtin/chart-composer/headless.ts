@@ -32,6 +32,7 @@ import { chartQuoteOverrideKeyForTarget, getLiveChartQuoteTargets } from "../../
 import { createChartSeriesResolver } from "../../../capabilities";
 import { uncoveredCapabilityMessage } from "../../../capabilities/chart-series";
 import { loadFuturesContractTerms, loadFuturesPriceUnit } from "../../../market-data/futures-contract";
+import { formulaContractNote, formulaRollNote } from "../../../time-series/studies/formula";
 import { loadDailyFxCloses } from "../../../time-series/currency-conversion";
 import { canonicalExchange, isKnownExchangeCode, isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { zonedDateKey, zonedDateTimeParts } from "../../../utils/zoned-date-time";
@@ -266,7 +267,14 @@ export async function loadChartPaneModel(
       ...(valuationPriceIssues.length ? { valuationPriceIssues } : {}),
       ...(periodCoverage.length ? { periodCoverage } : {}),
       notices: [...chart.coverageNotices ?? [], ...chart.returnBasisNotice ? [chart.returnBasisNotice] : [], ...chart.warnings.filter((warning) => warning === FINANCIAL_VINTAGE_NOTICE || warning === SEC_EPS_BASIS_NOTICE || warning === chart.priceComparison?.notice
-        || chart.delistings?.some((delisting) => delisting.notice === warning)), ...integrityNotices],
+        || chart.delistings?.some((delisting) => delisting.notice === warning)), ...integrityNotices,
+        // A futures formula says which months its legs are in and when they rolled, as `history` says a front month's rolls.
+        ...chart.series.flatMap((series) => {
+          if (!series.formulaLegs) return [];
+          const roll = formulaRollNote(series);
+          const months = formulaContractNote(series);
+          return roll || months ? [`${series.label}: ${[roll, months].filter(Boolean).join("; ")}${months ? "" : "."}`] : [];
+        })],
       priceComparison: chart.priceComparison ?? null,
       summaries: chart.series.filter((series) => !series.profile).map((series) => ({ id: series.id, ...summarizeResolvedSeries(series) })),
     },

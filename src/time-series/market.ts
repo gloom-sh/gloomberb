@@ -125,6 +125,9 @@ export function extractPriceSeries(
       availableAt: new Date(point.date),
       value,
       ...values,
+      // A continuous future's bar names its contract, and the source marks a bar still forming.
+      ...(point.contract ? { contract: point.contract } : {}),
+      ...(point.partial ? { partial: true } : {}),
       provenance: { quality: "reported" as const, ...(integrity ? { priceHistoryIntegrity: integrity } : {}) },
     };
   });

@@ -182,6 +182,7 @@ export interface LoadedSeriesDefinition extends SeriesDefinitionBase {
    */
   lines?: readonly SeriesLine[];
   expression?: never;
+  rollsWith?: never;
 }
 
 /**
@@ -191,6 +192,13 @@ export interface LoadedSeriesDefinition extends SeriesDefinitionBase {
  */
 export interface ExpressionSeriesDefinition extends SeriesDefinitionBase {
   expression: string;
+  /**
+   * For a formula of continuous futures (`(2*42*RB=F + 42*HO=F - 3*CL=F)/3`):
+   * the leg, as the formula writes it (`CL=F`), whose delivery month every
+   * other leg is priced in, all rolling together on its roll day. Without it
+   * each leg is its own front month.
+   */
+  rollsWith?: string;
   load?: never;
   refreshMs?: never;
   style?: never;
@@ -228,5 +236,7 @@ export interface SeriesCatalogEntry {
   lines?: Array<{ id: string; name: string; style?: SeriesDrawStyle | "band"; expression: string }>;
   /** The chart expression; `{ticker}` stands for the input. */
   expression: string;
+  /** A futures formula's leg the others take their delivery month from (`CL=F`). */
+  rollsWith?: string;
   pluginId: string;
 }

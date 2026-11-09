@@ -175,7 +175,7 @@ describe("chart series inline quick add", () => {
       await tui.setup().mockInput.typeText("refining margin");
       await tui.setup().renderOnce();
     });
-    await waitForFrameToContain("3:2:1 crack spread");
+    await waitForFrameToContain("3-2-1 crack spread");
     await emitKey("return", "\r");
     expect(updatedSpec?.series.map(({ source }) => source.kind === "security" ? source.instrument.symbol : "")).toEqual(["AAPL", "RB=F", "HO=F", "CL=F"]);
     expect(updatedSpec?.studies.find(({ kind }) => kind === "formula")).toMatchObject({

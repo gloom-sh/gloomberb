@@ -43,6 +43,8 @@ export type SeriesCatalogSuggestion = SeriesCatalogSuggestionText & (
 ) & {
   /** A registered series' own name, and where it asks to be drawn for the ticker it was filled in for. */
   seriesName?: string;
+  /** A catalog formula's leg the others take their delivery month from (`CL=F`), as its entry gives it. */
+  rollsWith?: string;
   placement?: SeriesPlacement;
   symbol?: string;
 };
@@ -358,7 +360,8 @@ function registeredSeriesSuggestions(
     if (formula !== undefined) {
       // A formula runs long: its name leads, and the formula is in the description.
       const formulaDescription = [formula, unit, entry.frequency].filter(Boolean).join(" · ");
-      return { id: `formula:${formula}`, label: entry.name, description: formulaDescription, detail, formula };
+      return { id: `formula:${formula}`, label: entry.name, description: formulaDescription, detail, formula,
+        seriesName: entry.name, ...(entry.rollsWith ? { rollsWith: entry.rollsWith } : {}) };
     }
     const placed = {
       seriesName: entry.name,

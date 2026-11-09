@@ -271,6 +271,8 @@ function normalizeStudy(
   for (const [key, parameter] of Object.entries(rawParameters ?? {})) {
     if (typeof parameter === "number" && Number.isFinite(parameter)) parameters[key] = parameter;
     else if (study.kind === "realized-vol" && key === "estimator" && typeof parameter === "string") parameters[key] = parameter;
+    // A catalog formula keeps its name (`3-2-1 crack spread`).
+    else if (study.kind === "formula" && key === "name" && typeof parameter === "string" && parameter.trim()) parameters[key] = parameter.trim().slice(0, 120);
   }
   return {
     id: uniqueId(study.id, "study", index, seen),
@@ -531,6 +533,10 @@ export function validateChartSpec(spec: ChartSpec): ChartSpecValidationResult {
     for (const [name, value] of Object.entries(study.parameters)) {
       if (study.kind === "realized-vol" && name === "estimator") {
         if (!isRealizedVolatilityEstimator(value)) errors.push(issue(`${path}.parameters.${name}`, "invalid-estimator", "Choose a supported realized volatility estimator."));
+        continue;
+      }
+      if (study.kind === "formula" && name === "name") {
+        if (typeof value !== "string" || !value.trim()) errors.push(issue(`${path}.parameters.${name}`, "invalid-parameter", "A formula's name is text."));
         continue;
       }
       if (typeof value !== "number" || !Number.isFinite(value)) errors.push(issue(`${path}.parameters.${name}`, "invalid-parameter", "Numeric study parameters must be finite."));

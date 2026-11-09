@@ -28,7 +28,7 @@ import {
   type SeriesUnit,
 } from "./units";
 import { resolvePairStudy } from "./pair";
-import { formulaTerms, formulaUnit, resolveFormula, type FormulaTerms } from "./formula";
+import { formulaNextMonthInputs, formulaTerms, formulaUnit, resolveFormula, type FormulaTerms } from "./formula";
 import { dailyBarsIssue, resolveLeverageDecay, resolveLeverageLine } from "./leverage";
 
 export interface StudyResolutionResult {
@@ -197,8 +197,13 @@ function resolveStudySpecs(
   studySpecs.forEach((spec, index) => {
     if (spec.visible === false) return;
     const required = spec.kind === "formula" ? Math.max(1, spec.inputSeriesIds.length) : requiredInputs(spec.kind);
-    const inputs = spec.inputSeriesIds.map((id) => spec.kind === "realized-vol"
+    const read = spec.inputSeriesIds.map((id) => spec.kind === "realized-vol"
       ? historicalPriceSeries?.get(id) ?? byId.get(id) : byId.get(id));
+    // A leg's next month a formula reads may be missing: the leg stays in its own month, as with no prices for it.
+    const optional = spec.kind === "formula" ? formulaNextMonthInputs(spec) : new Set<number>();
+    const loaded = read.find(Boolean);
+    const inputs = read.map((entry, position) => entry ?? (loaded && optional.has(position)
+      ? { ...loaded, id: spec.inputSeriesIds[position]!, points: [] } : undefined));
     if (inputs.length !== required || inputs.some((input) => !input)) {
       errors.push(`${studyMessageName(spec)}: ${spec.kind} requires ${required} valid input series.`);
       return;

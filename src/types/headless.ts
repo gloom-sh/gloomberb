@@ -679,6 +679,14 @@ export interface HeadlessSeriesPoint extends HeadlessPaneRow {
   low?: number | null;
   close?: number | null;
   volume?: number | null;
+  /** A continuous future's bar (CL=F): the contract it is of (CLZ26). */
+  contract?: string | null;
+  /** The contract differs from the point before's: the series rolled on this point. */
+  roll?: boolean;
+  /** The point is a session still forming, not a close. */
+  partial?: boolean;
+  /** A formula of futures: each leg's contract and price on this point, in `formulaLegs` order. */
+  legs?: ReadonlyArray<{ contract: string | null; price: number }>;
 }
 
 export interface HeadlessSeries {
@@ -700,6 +708,8 @@ export interface HeadlessSeries {
   valueIsClose?: boolean;
   /** The series' current value is not meaningful: the report prints N/M dated by the period, and why. */
   notMeaningful?: { reason: string; asOf: string };
+  /** A formula of futures: its legs as charted (`RB=F`), which name the exported contract columns of its points' `legs`. */
+  formulaLegs?: readonly string[];
   points: HeadlessSeriesPoint[];
 }
 

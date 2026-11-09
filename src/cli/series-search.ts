@@ -57,7 +57,8 @@ export function findCatalogSeries(
   const ranked: Array<{ match: SeriesMatch; score: number; order: number }> = [];
   for (const definition of plugins.flatMap((plugin) => plugin.series ?? [])) {
     if (definition.input) continue;
-    const expression = seriesExpression(definition);
+    // A formula priced in one delivery month (a crack) charts by its id: its expression alone would mix months.
+    const expression = "rollsWith" in definition && definition.rollsWith ? definition.id : seriesExpression(definition);
     const byId = words.length === 1
       && [definition.id, expression, fredSeriesIdOf(expression) ?? ""].some((id) => id.toLowerCase() === phrase);
     const name = definition.name.toLowerCase();
