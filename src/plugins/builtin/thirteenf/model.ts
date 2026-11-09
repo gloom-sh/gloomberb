@@ -422,7 +422,7 @@ const CUSIP_SPLIT_FIT = 0.01;
  * new shares for one (10 for 10-for-1) or one for a whole number (0.1 for
  * 1-for-10), within 1%; null for counts no split explains.
  */
-export function splitRatioBetween(previous: number | null, current: number | null): number | null {
+function splitRatioBetween(previous: number | null, current: number | null): number | null {
   if (!previous || !current || previous <= 0 || current <= 0) return null;
   const up = current / previous;
   const whole = Math.round(up >= 1 ? up : 1 / up);
@@ -431,7 +431,7 @@ export function splitRatioBetween(previous: number | null, current: number | nul
 }
 
 /** "new CUSIP, 1-for-10 split", "new CUSIP, 2-for-1 split". */
-export function cusipSplitLabel(ratio: number): string {
+function cusipSplitLabel(ratio: number): string {
   return ratio >= 1 ? `new CUSIP, ${Math.round(ratio)}-for-1 split` : `new CUSIP, 1-for-${Math.round(1 / ratio)} split`;
 }
 

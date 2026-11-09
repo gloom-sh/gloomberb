@@ -543,7 +543,7 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
  * a word the function answers to (`suggestFor`). `catalog managers` finding
  * ECO through "purchasing managers' index" is one.
  */
-export function isClosestCatalogMatch(entry: PaneCatalogEntry, query: string): boolean {
+function isClosestCatalogMatch(entry: PaneCatalogEntry, query: string): boolean {
   const pointed = [...entry.capability.suggestFor ?? [], ...entry.capability.opens?.flatMap((opening) => opening.words) ?? []]
     .map((value) => normalizeLookupToken(value));
   if (pointed.includes(normalizeLookupToken(query))) return false;

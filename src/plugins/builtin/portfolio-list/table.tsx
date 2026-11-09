@@ -29,7 +29,7 @@ import { resolveCurrencyUnit } from "../../../utils/currency-units";
 export type { QuoteFlashDirection };
 
 /** Columns whose amounts read in the book's currency, whatever the listing's: market cap, cost, value, trade value, day and P&L. */
-export const BOOK_CURRENCY_COLUMN_IDS: ReadonlySet<string> = new Set(["market_cap", "cost_basis", "mkt_value", "trade_value", "day_pnl", "pnl"]);
+const BOOK_CURRENCY_COLUMN_IDS: ReadonlySet<string> = new Set(["market_cap", "cost_basis", "mkt_value", "trade_value", "day_pnl", "pnl"]);
 
 /**
  * A column whose amounts read in the book's currency, under a header that
