@@ -99,6 +99,10 @@ describe("catalyst provenance and dates", () => {
     expect(catalystDate(trial, catalystQuery({}))).toBe("2027-01-29");
     // A month-precision deadline covers its month.
     expect(catalystDate(event, catalystQuery({ from: "2027-04-15", to: "2027-04-20" }))).toBe("2027-04");
+    // An FDA advisory notice's comment deadline admits it to no window on the server: the notice it matched on is its date.
+    const notice = { ...event, source: "fda_advisory", announcedDate: "2026-10-05", deadlineDate: "2026-10-20",
+      datePrecision: { announced: "day" as const, deadline: "day" as const }, metadata: { deadlineDateMeaning: "Comment deadline" } };
+    expect([catalystDate(notice, window), catalystDateBasis(notice, window)]).toEqual(["2026-10-05", "Announced"]);
   });
   // The server sends upcoming dates first, then past ones; grouping by month kept a past day ahead of later months.
   test("sections keep the server's order, heading a month today splits twice", () => {

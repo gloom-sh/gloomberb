@@ -38,7 +38,9 @@ function dateSpan(value: string, precision: string | undefined): [string, string
  * The date field a row is shown under. Any date in a window lists a row by the
  * first of its deadline, effective date and announcement that falls in the
  * window, as the service orders it: a trial updated in October whose primary
- * completion is next January shows October's update, not January.
+ * completion is next January shows October's update, not January. An FDA
+ * advisory notice's deadline is its comment deadline, which no window reads,
+ * there as here.
  */
 function catalystListedField(event: CatalystEvent, read: CatalystDateRead): DateField {
   if (!read || typeof read === "string") return read;
@@ -46,8 +48,10 @@ function catalystListedField(event: CatalystEvent, read: CatalystDateRead): Date
   if (field !== "any" || read.upcoming || (!read.from && !read.to) || catalystDateWithheld(event)) return field;
   const from = read.from ? dateSpan(read.from, read.from.length === 4 ? "year" : read.from.length === 7 ? "month" : "day")[0] : "0000-01-01";
   const to = read.to ? dateSpan(read.to, read.to.length === 4 ? "year" : read.to.length === 7 ? "month" : "day")[1] : "9999-12-31";
+  const comments = event.source === "fda_advisory";
   const shown = event.deadlineDate ? "deadline" : event.effectiveDate ? "effective" : "announced";
   for (const key of WINDOW_FIELDS) {
+    if (key === "deadline" && comments) continue;
     const value = event[`${key}Date`];
     if (!value) continue;
     const [start, end] = dateSpan(value, event.datePrecision[key]);
