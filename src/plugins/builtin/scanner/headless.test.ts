@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setSystemTime, test } from "bun:test";
 import type { ScannerFlowEvent, ScannerFlowPayload, ScannerHiloPayload } from "../../../api-client";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { createFlowHeadless, createHiloHeadless, FLOW_SIDE_RULE, loadHiloSnapshot } from "./headless";
@@ -77,6 +77,25 @@ describe("highs and lows headless model", () => {
     const result = await headless.load(args("1", "recent"), ctx);
 
     expect(result.errors).toEqual(["Scanner feed degraded"]);
+  });
+
+  // The first `fn HILO` on a Sunday said "still starting … stale (0 min old)"; the second, that the market is closed.
+  test("a scanner still starting while the US market is shut answers that the market is closed; in a session it says it is starting", async () => {
+    const headless = createHiloHeadless({ load: async () => ({ ...payload, status: "starting", highs: [], lows: [] }) });
+    const at = async (iso: string) => {
+      setSystemTime(new Date(iso));
+      try {
+        return await headless.load(args("1", "recent"), ctx);
+      } finally {
+        setSystemTime();
+      }
+    };
+    const sunday = await at("2026-11-08T23:10:00Z");
+    expect(sunday.empty).toBe("The US market is closed. New highs and lows list again from the next session's open.");
+    expect(sunday.freshness).toEqual({ status: "not-a-feed", basis: "closed session" });
+    const session = await at("2026-11-09T15:00:00Z");
+    expect(session.empty).toBe("The scanner is still starting and has nothing to list yet. Ask again in a few seconds.");
+    expect(session.freshness).toEqual({ status: "stale" });
   });
 
   test("applies the pane price and sort options to a stream snapshot", async () => {

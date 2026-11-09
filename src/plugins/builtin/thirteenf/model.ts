@@ -361,6 +361,7 @@ interface HoldingAggregate {
   value: number | null;
   shares: number | null;
   accessionNumber: string;
+  secListStatus?: "added" | "deleted";
 }
 
 function holdingKey(holding: ThirteenFHoldingRecord): string {
@@ -382,6 +383,7 @@ function aggregateHoldings(holdings: ThirteenFHoldingRecord[]): Map<string, Hold
       current.value = addKnown(current.value, value);
       current.shares = addKnown(current.shares, shares);
       if (!current.ticker && holding.ticker) current.ticker = holding.ticker;
+      if (!current.secListStatus && holding.secListStatus) current.secListStatus = holding.secListStatus;
       continue;
     }
     aggregates.set(id, {
@@ -395,6 +397,7 @@ function aggregateHoldings(holdings: ThirteenFHoldingRecord[]): Map<string, Hold
       value,
       shares,
       accessionNumber: holding.accessionNumber,
+      ...(holding.secListStatus ? { secListStatus: holding.secListStatus } : {}),
     });
   }
   return aggregates;
@@ -407,7 +410,110 @@ function aggregateHoldings(holdings: ThirteenFHoldingRecord[]): Map<string, Hold
  */
 function sharesDelta(shares: number, previous: number, ratio: number): number {
   const delta = shares - previous * ratio;
-  return ratio === 1 ? delta : Math.round(delta * 1e3) / 1e3 || 0;
+  if (ratio === 1) return delta;
+  // A split pays a fraction of a share out in cash: 4,920,248 shares at 1-for-10 are 492,025, unchanged.
+  return Math.abs(delta) < 1 ? 0 : Math.round(delta * 1e3) / 1e3 || 0;
+}
+
+/** The most new shares per old, or old per new, read as a split: 1-for-1,000. */
+const MAX_CUSIP_SPLIT = 1000;
+/** How far the prior shares carried across a split may land from the new count and still fit it: a few shares, */
+const CUSIP_SPLIT_FEW_SHARES = 5;
+/** or 0.1% of the carried count. */
+const CUSIP_SPLIT_FIT = 0.001;
+
+/** Whether `previous` shares carried across `ratio` new shares per old land on `current`: within a few shares or 0.1%. */
+function splitFits(previous: number, current: number, ratio: number): boolean {
+  const rebuilt = previous * ratio;
+  return Math.abs(rebuilt - current) <= Math.max(CUSIP_SPLIT_FEW_SHARES, rebuilt * CUSIP_SPLIT_FIT);
+}
+
+/**
+ * The new shares per old of a split two share counts fit: a whole number of
+ * new shares for one (10 for 10-for-1) or one for a whole number (0.1 for
+ * 1-for-10), the prior count carried across it within a few shares or 0.1%
+ * of the new; null for counts no split explains. 10,000,000 to 150,000 is no
+ * 1-for-67 split: carried across one it is 149,254.
+ */
+function splitRatioBetween(previous: number | null, current: number | null): number | null {
+  if (!previous || !current || previous <= 0 || current <= 0) return null;
+  const up = current / previous;
+  const whole = Math.round(up >= 1 ? up : 1 / up);
+  if (whole < 2 || whole > MAX_CUSIP_SPLIT) return null;
+  const ratio = up >= 1 ? whole : 1 / whole;
+  return splitFits(previous, current, ratio) ? ratio : null;
+}
+
+/** "new CUSIP, 1-for-10 split", "new CUSIP, 2-for-1 split". */
+function cusipSplitLabel(ratio: number): string {
+  return ratio >= 1 ? `new CUSIP, ${Math.round(ratio)}-for-1 split` : `new CUSIP, 1-for-${Math.round(1 / ratio)} split`;
+}
+
+/** A title of class that is no common share: warrants, units, rights, notes and bonds, or a coupon. */
+const NOT_SHARES = /\b(?:WTS?|WARRANTS?|UNITS?|UTS?|RIGHTS?|RTS?|NOTES?|NTS?|DEBT|DEB|BONDS?)\b|\*W\b|%/i;
+
+/** An exited share line and a new one of the same issuer whose counts fit a split, and whether the SEC's list confirms it. */
+interface CusipSplitPair {
+  addedId: string;
+  exitedId: string;
+  added: HoldingAggregate;
+  exited: HoldingAggregate;
+  ratio: number;
+  /** The SEC's 13(f) list marks the old CUSIP deleted and the new one added. */
+  listed: boolean;
+}
+
+/**
+ * The exit and new line pairs a split may have moved to a new CUSIP: share
+ * lines (no option, type SH or none, no warrant, unit, right or note) of one
+ * issuer (the CUSIP's first six characters), the only exit and the only new
+ * line of it, whose share counts fit a split (splitRatioBetween).
+ */
+function cusipSplitPairs(current: Map<string, HoldingAggregate>, previous: Map<string, HoldingAggregate>): CusipSplitPair[] {
+  const issuer = (holding: HoldingAggregate) => holding.cusip.trim().toUpperCase().slice(0, 6);
+  const shareLine = (holding: HoldingAggregate) => !holding.putCall.trim() && issuer(holding).length === 6
+    && ["", "SH"].includes(holding.shareType.trim().toUpperCase()) && !NOT_SHARES.test(holding.titleOfClass);
+  const byIssuer = new Map<string, { added: string[]; exited: string[] }>();
+  const note = (id: string, holding: HoldingAggregate, side: "added" | "exited") => {
+    const entry = byIssuer.get(issuer(holding)) ?? { added: [], exited: [] };
+    entry[side].push(id);
+    byIssuer.set(issuer(holding), entry);
+  };
+  for (const [id, holding] of current) if (!previous.has(id) && shareLine(holding)) note(id, holding, "added");
+  for (const [id, holding] of previous) if (!current.has(id) && shareLine(holding)) note(id, holding, "exited");
+  return [...byIssuer.values()].flatMap(({ added, exited }) => {
+    if (added.length !== 1 || exited.length !== 1) return [];
+    const now = current.get(added[0]!)!;
+    const before = previous.get(exited[0]!)!;
+    const ratio = splitRatioBetween(before.shares, now.shares);
+    if (ratio === null) return [];
+    const listed = before.secListStatus === "deleted" && now.secListStatus === "added";
+    return [{ addedId: added[0]!, exitedId: exited[0]!, added: now, exited: before, ratio, listed }];
+  });
+}
+
+/**
+ * The share lines a split moved to a new CUSIP, by the new line's id: a pair
+ * of cusipSplitPairs that a split or a CUSIP change confirms, the SEC's list
+ * marking the old CUSIP deleted and the new added, or the new line's split
+ * factor between the filings (`splits`) carrying the prior shares onto the
+ * new. Brera's G13311116 exited at 4.92M and G13311132 new at 492k read as
+ * one position only so confirmed; otherwise both stay as filed.
+ */
+function cusipSplits(
+  current: Map<string, HoldingAggregate>,
+  previous: Map<string, HoldingAggregate>,
+  splits?: SplitFactors,
+): Map<string, { previous: HoldingAggregate; previousId: string; ratio: number; confirmedBy: "sec-list" | "split" }> {
+  const moved = new Map<string, { previous: HoldingAggregate; previousId: string; ratio: number; confirmedBy: "sec-list" | "split" }>();
+  for (const pair of cusipSplitPairs(current, previous)) {
+    const factor = splits?.get(pair.addedId);
+    const split = factor != null && factor > 0 && factor !== 1 && splitFits(pair.exited.shares!, pair.added.shares!, factor);
+    if (pair.listed || split) {
+      moved.set(pair.addedId, { previous: pair.exited, previousId: pair.exitedId, ratio: pair.ratio, confirmedBy: pair.listed ? "sec-list" : "split" });
+    }
+  }
+  return moved;
 }
 
 function resolveAction(current: HoldingAggregate | undefined, previous: HoldingAggregate | undefined, ratio = 1): HoldingAction {
@@ -537,11 +643,18 @@ export function formatSplitRatio(ratio: number): string {
  * no factor is known.
  */
 export function filingSplitCandidates(data: FundDetailData): Array<FilingLine & { id: string }> {
-  return buildFundHoldingRows(data)
+  const held = buildFundHoldingRows(data)
     .filter((row) => row.splitUnread)
     // Largest at the start of the quarter first: the lines that weigh most on an estimate are read first.
     .sort((a, b) => (b.previousValue ?? 0) - (a.previousValue ?? 0))
     .map((row) => ({ id: row.id, ticker: row.ticker, issuer: row.issuer }));
+  // A new line that may be an exited one across a split, which the SEC's list does not confirm: its split factor does or not.
+  const pairs = data.latestForm && hasComparable13FQuarter(data)
+    ? cusipSplitPairs(aggregateHoldings(data.latestHoldings), aggregateHoldings(data.previousHoldings))
+      .filter((pair) => !pair.listed)
+      .map((pair) => ({ id: pair.addedId, ticker: pair.added.ticker || pair.exited.ticker, issuer: pair.added.issuer }))
+    : [];
+  return [...held, ...pairs];
 }
 
 /**
@@ -647,6 +760,9 @@ export function buildFundHoldingRows(data: FundDetailData | null, splits?: Split
   const current = aggregateHoldings(data.latestHoldings);
   const comparable = hasComparable13FQuarter(data);
   const previous = aggregateHoldings(comparable ? data.previousHoldings : []);
+  // A split that moved an issuer's shares to a new CUSIP: one position, the prior line under its old CUSIP.
+  const moved = cusipSplits(current, previous, splits);
+  for (const { previousId } of moved.values()) previous.delete(previousId);
   const allKeys = new Set([...current.keys(), ...previous.keys()]);
   const totalValue = data.latestReport
     ? data.latestReport.complete ? data.latestReport.tableValueTotal : null
@@ -654,7 +770,8 @@ export function buildFundHoldingRows(data: FundDetailData | null, splits?: Split
 
   return [...allKeys].map((id) => {
     const currentHolding = current.get(id);
-    const previousHolding = previous.get(id);
+    const carried = moved.get(id);
+    const previousHolding = carried?.previous ?? previous.get(id);
     const display = currentHolding ?? previousHolding!;
     const value = currentHolding?.value ?? null;
     const shares = currentHolding?.shares ?? null;
@@ -664,8 +781,13 @@ export function buildFundHoldingRows(data: FundDetailData | null, splits?: Split
       ? (value ?? 0) - (previousValue ?? 0)
       : null;
     // The split ratio estimateHolding confirmed carries the prior shares to today's basis for the change and the action too: one rule.
-    const estimate = estimateHolding({ id, putCall: display.putCall, value, shares, previousValue, previousShares }, splits);
-    const ratio = estimate.kind === "priced" ? estimate.ratio : 1;
+    // A new CUSIP's split is the one the SEC's list or the split record confirms.
+    const line = { id, putCall: display.putCall, value, shares, previousValue, previousShares };
+    const priced = carried ? priceHolding(line, carried.ratio) : null;
+    const estimate: HoldingEstimate = carried
+      ? priced ? { kind: "priced", ...priced, ratio: carried.ratio } : { kind: "none" }
+      : estimateHolding(line, splits);
+    const ratio = carried ? carried.ratio : estimate.kind === "priced" ? estimate.ratio : 1;
     const sharesChange = comparable && (!currentHolding || shares != null) && (!previousHolding || previousShares != null)
       ? sharesDelta(shares ?? 0, previousShares ?? 0, ratio)
       : null;
@@ -689,6 +811,7 @@ export function buildFundHoldingRows(data: FundDetailData | null, splits?: Split
       estimatedPnl: estimate.kind === "priced" ? estimate.pnl : null,
       ...(ratio !== 1 ? { splitRatio: ratio } : {}),
       ...(estimate.kind === "unread" ? { splitUnread: true, ...(splits?.late?.has(id) ? { splitLate: true } : {}) } : {}),
+      ...(carried ? { cusipChange: { previousCusip: carried.previous.cusip, label: cusipSplitLabel(carried.ratio), confirmedBy: carried.confirmedBy } } : {}),
       sharesChange,
       sharesChangePercent,
       action: comparable ? resolveAction(currentHolding, previousHolding, ratio) : "unknown",

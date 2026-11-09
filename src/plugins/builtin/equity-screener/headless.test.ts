@@ -55,24 +55,58 @@ test("the catalog's example definition passes the real validator, and a bad one 
   expect(parseScreenDefinition(JSON.parse(watchlistJson)).criteria).toEqual([{ field: "symbol", op: "in", value: ["Watchlist"] }]);
 });
 
-test("a symbol criterion naming a watchlist screens its bare symbols and says so", async () => {
+test("a watchlist screens its members by company, never another issuer's code, and names each member the screener lacks", async () => {
+  // BN:TSX read as bare BN listed Danone in a EUR screen, and RCI.B:TSX dropped out with no word.
   const sent: unknown[] = [];
-  // The server answers with the definition it ran, as it does.
+  // The server answers with the definition it ran, and how each listing named with its venue read.
   const apiClient = { equityScreener: async (_path: string, init: { body: string }) => {
     const { limit: _limit, cursor: _cursor, ...definition } = JSON.parse(init.body);
     sent.push(definition);
-    return { ...screenFixture(), definition };
+    return {
+      ...screenFixture(), definition,
+      listings: [
+        { value: "BN:TSX", covered: false, others: [{ symbol: "BN", exchange: "NYSE" }] },
+        { value: "RCI.B:TSX", covered: false, others: [{ symbol: "RCI", exchange: "NYSE" }] },
+        { value: "XYZ:TSX", covered: false, others: [] },
+        // A bare member nothing carries, and one the screen's currency leaves out.
+        { value: "QQQQ", covered: false, others: [] },
+        { value: "PM:NYSE", covered: true, others: [], outsideCurrency: [{ symbol: "PM", exchange: "NYSE", currency: "USD" }] },
+      ],
+    };
   } };
-  const members = ["NFE", "SAP:XETRA", "CZR"].map((ticker) => ({ metadata: { ticker } }));
+  const members = [
+    { ticker: "BN:TSX", exchange: "TSX" },
+    { ticker: "RCI.B:TSX", exchange: "TSX" },
+    { ticker: "XYZ:TSX", exchange: "TSX" },
+    { ticker: "QQQQ" },
+    { ticker: "PM", exchange: "NYSE" },
+  ].map((metadata) => ({ metadata }));
   const ctx = {
     apiClient,
-    config: { watchlists: [{ id: "wl-hy3", name: "HY3" }] },
-    resolveWatchlist: async (name: string) => (name.toLowerCase() === "hy3" ? members : null),
+    config: { watchlists: [{ id: "wl-r", name: "R" }] },
+    resolveWatchlist: async (name: string) => (name.toLowerCase() === "r" ? members : null),
   };
-  const definition = JSON.stringify({ version: 1, currency: "USD", criteria: [{ field: "symbol", op: "in", value: ["hy3"] }], sort: { field: "marketCap", direction: "desc" } });
+  const definition = JSON.stringify({ version: 1, currency: "EUR", criteria: [{ field: "symbol", op: "in", value: ["r"] }], sort: { field: "marketCap", direction: "desc" } });
   const result = await equityScreenerHeadless.load({ argument: undefined, options: { definition } } as never, ctx as never);
-  expect(sent[0]).toMatchObject({ criteria: [{ field: "symbol", op: "in", value: ["NFE", "SAP", "CZR"] }] });
-  expect(result.notes?.[0]).toBe("Read hy3 as watchlist HY3 (3 symbols).");
+  // Each member keeps its venue, so the screener matches Brookfield and never Danone's BN on Euronext Paris.
+  expect(sent[0]).toMatchObject({ criteria: [{ field: "symbol", op: "in", value: ["BN:TSX", "RCI.B:TSX", "XYZ:TSX", "QQQQ", "PM:NYSE"] }] });
+  expect(result.notes?.slice(0, 5)).toEqual([
+    "Read r as watchlist R (5 symbols).",
+    "BN:TSX: not in the screener; matched its NYSE listing BN.",
+    "RCI.B:TSX: not in the screener; matched its NYSE listing RCI.",
+    // Every member nothing carries, bare ones too, and every one the currency leaves out.
+    "Not in the screener under any listing: XYZ:TSX, QQQQ.",
+    "Quoted outside EUR, so this screen leaves them out: PM in USD.",
+  ]);
+  // --check sends the same listings, so the server checks a ticker by the same company rule.
+  const checked: unknown[] = [];
+  const checkClient = { equityScreener: async (path: string, init: { body: string }) => {
+    checked.push([path, JSON.parse(init.body)]);
+    throw new Error("stop");
+  } };
+  await Promise.resolve(equityScreenerHeadless.load({ argument: undefined, options: { definition, check: "BN" } } as never,
+    { ...ctx, apiClient: checkClient } as never)).catch(() => null);
+  expect(checked[0]).toMatchObject(["check", { symbol: "BN", criteria: [{ field: "symbol", op: "in", value: ["BN:TSX", "RCI.B:TSX", "XYZ:TSX", "QQQQ", "PM:NYSE"] }] }]);
 });
 
 test("a KPI the server holds back from Free says why once, in KPIS's words; a Pro KPI with gaps says what a gap is", async () => {
@@ -98,15 +132,18 @@ test("a screen its currency emptied says the currency keeps only listings quoted
   const tobacco = { ...screenFixture(), rows: [] };
   tobacco.definition = { ...tobacco.definition, currency: "CAD", criteria: [{ field: "industry", op: "in", value: ["Tobacco"] }] };
   tobacco.universe = { ...tobacco.universe, covered: 4287, matched: 0, currencies: ["USD", "CAD"] };
-  const load = async (data: typeof tobacco) => {
+  const load = async (data: typeof tobacco, baseCurrency = "USD") => {
     const result = await equityScreenerHeadless.load({ argument: undefined, options: { definition: JSON.stringify(data.definition) } } as never,
-      { apiClient: { equityScreener: async () => structuredClone(data) } } as never);
+      { apiClient: { equityScreener: async () => structuredClone(data) }, config: { baseCurrency } } as never);
     return (result.sections![0] as { empty?: string }).empty;
   };
   const empty = (await load(tobacco))!.split("\n");
   expect(empty[0]).toBe("No listing quoted in CAD matches. Currency CAD keeps only the listings quoted in CAD and converts nothing.");
   const base = JSON.parse(/--definition '(.+)'$/.exec(empty[1]!)![1]!);
-  expect(empty[1]).toStartWith("In the base currency, USD: gloom fn EQS --definition '");
+  expect(empty[1]).toStartWith("In USD, your base currency: gloom fn EQS --definition '");
+  // A CAD base read "In the base currency, USD": the screen offered is in USD, and the line says why.
+  expect((await load(tobacco, "CAD"))!.split("\n")[1]).toStartWith(
+    "In USD: the screener converts no figure into CAD, your base currency, so a screen in CAD reads only the listings quoted in it: gloom fn EQS --definition '");
   expect(base).toEqual({ ...tobacco.definition, currency: "USD" });
   // A currency no covered listing is quoted in says so; an empty screen in USD keeps the plain empty line.
   const usdOnly = { ...tobacco, universe: { ...tobacco.universe, currencies: ["USD"] } };

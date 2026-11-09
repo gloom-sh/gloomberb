@@ -60,6 +60,8 @@ export interface InsiderOpenedCompany {
   title: string;
   /** Opens on Insiders, over the ranking's window, its dollars sorted by the ranking's side. */
   control: InsiderViewControl;
+  /** Opened from an insider's row: the Trades view starts narrowed to them, by the name their forms report. */
+  insider?: string;
   width: number;
   height: number;
   focused: boolean;

@@ -259,7 +259,7 @@ test("a currency typed as its name is asked for by its code and says so; a name 
 });
 
 /** `fx --date` against daily closes by pair symbol; every history request is kept. */
-function datedHarness(baseCurrency: string, closes: Record<string, Record<string, number>>) {
+function datedHarness(baseCurrency: string, closes: Record<string, Record<string, number>>, closedAt?: (day: string) => string) {
   const config = createDefaultConfig("/tmp/gloom-fx-command-fixture");
   config.baseCurrency = baseCurrency;
   const asked: string[] = [];
@@ -271,7 +271,7 @@ function datedHarness(baseCurrency: string, closes: Record<string, Record<string
         asked.push(symbol);
         const data = Object.entries(closes[symbol] ?? {})
           .filter(([day]) => (!params.startDate || day >= params.startDate) && (!params.endDate || day <= params.endDate))
-          .map(([day, close]) => ({ date: `${day}T00:00:00.000Z`, close }));
+          .map(([day, close]) => ({ date: `${day}T00:00:00.000Z`, close, ...(closedAt ? { closedAt: closedAt(day) } : {}) }));
         return { status: "success", data };
       },
     },
@@ -290,8 +290,15 @@ test("fx --date gives the rate at that day's daily closes, dated by the source l
   await fx.execute(["USD/CAD", "--date", "2026-09-02"], run.context);
   expect(run.rows()[0]).toEqual([{ currency: "USD", baseCurrency: "CAD", rate: 1.3845, asOf: "2026-09-02", stale: false, pair: "USD/CAD",
     inverse: 1 / 1.3845, date: "2026-09-02" }]);
-  expect(run.output("text")[0]).toBe("1 USD = 1.38450 CAD  (CAD/USD 0.722282)\n\nSource: Gloom Cloud · Wed 2 Sep 2026 · not a live feed (daily FX close)");
+  // An older day is the source's own day bar, whose cutoff it does not publish: said so, never a guessed time.
+  expect(run.output("text")[0]).toBe("1 USD = 1.38450 CAD  (CAD/USD 0.722282)\n\nSource: Gloom Cloud · Wed 2 Sep 2026 · not a live feed (daily FX close: the source's day bar, no cutoff time published)");
   expect(run.printed[0]!.result.warnings).toBeUndefined();
+
+  // The service says when its closes were taken, 17:00 New York, and the source line names it: Bank of Canada's
+  // 1.3863 for the day is a 16:30 Toronto average, so the two differ.
+  const timed = datedHarness("CAD", CAD_CLOSES, (day) => `${day}T21:00:00.000Z`);
+  await fx.execute(["USD/CAD", "--date", "2026-09-02"], timed.context);
+  expect(timed.output("text")[0]).toEndWith("not a live feed (daily FX close at 21:00 UTC, 17:00 ET)");
 
   // A Saturday has no close: Friday's, said so. A cross reads both pairs' closes of the day.
   await fx.execute(["USD/CAD", "--date", "2026-09-05"], run.context);

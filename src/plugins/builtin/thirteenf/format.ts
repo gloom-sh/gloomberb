@@ -49,6 +49,11 @@ export function actionLabel(action: HoldingAction): string {
   }
 }
 
+/** A holding's action, and when a split moved it to a new CUSIP, that: "Held, new CUSIP, 1-for-10 split". */
+export function holdingActionLabel(row: { action: HoldingAction; cusipChange?: { label: string } }): string {
+  return row.cusipChange ? `${actionLabel(row.action)}, ${row.cusipChange.label}` : actionLabel(row.action);
+}
+
 export function formatChangeShares(value: number | null | undefined): string {
   if (value == null) return "--";
   if (value === 0) return "0";

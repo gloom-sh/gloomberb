@@ -225,6 +225,18 @@ describe("buildPortfolioSummarySegments", () => {
     buyingPower: 24000,
   };
 
+  // A CAD book of NBIS and cash read TOTAL +4.49% with nothing to say it was on the holdings' cost, cash left out.
+  test("beside cash entered by hand, the day and P&L percents say what they are of", () => {
+    const segments = buildPortfolioSummarySegments({
+      totals, accountState: null, currency: "CAD", baseCurrency: "CAD",
+      manualCash: { value: 50_000, weight: 28.6, targetWeight: null, drift: null, tradeValue: null, tradeUnits: null, total: 175_000 },
+    });
+    const percent = (id: string) => segments.find((segment) => segment.id === id)?.parts[2]?.text;
+    expect([percent("day"), percent("pnl")]).toEqual(["(+4.17% ex cash)", "(+25.00% on cost)"]);
+    // Without cash the holdings are the book: as it was.
+    expect(buildPortfolioSummarySegments({ totals, accountState: null }).find((segment) => segment.id === "pnl")?.parts[2]?.text).toBe("(+25.00%)");
+  });
+
   test("prioritizes net liquidation at narrow widths for broker portfolios", () => {
     const segments = fitSummarySegments(buildPortfolioSummarySegments({
       totals,

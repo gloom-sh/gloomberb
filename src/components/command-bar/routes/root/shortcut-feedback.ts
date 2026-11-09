@@ -58,7 +58,10 @@ export function buildRootShortcutFeedback({
       if (inferred) {
         return `Shortcut: ${rootShortcutIntent.label} for ${inferred} · Tab to accept`;
       }
-      return `Shortcut: ${rootShortcutIntent.label} · Enter tickers`;
+      // INS alone opens its own view (the market's insider buying), not a prompt for tickers.
+      return rootShortcutIntent.template.shortcut?.openWithoutArg
+        ? `Shortcut: ${rootShortcutIntent.label}`
+        : `Shortcut: ${rootShortcutIntent.label} · Enter tickers`;
     }
     return `Shortcut: ${rootShortcutIntent.label}`;
   }

@@ -173,9 +173,16 @@ export function holdingUnreadNotes(rows: readonly UnreadRow[]): string[] {
 }
 
 /** What a Holdings report says of its lines that moved as across a split: the ones priced split-adjusted (method, so a report's note only), and the ones left without a figure. */
-export function holdingSplitNotes(rows: readonly (UnreadRow & { splitRatio?: number })[]): string[] {
-  const adjusted = rows.flatMap((row) => row.splitRatio ? [{ ...row, ratio: row.splitRatio }] : []);
-  return [...(adjusted.length ? [splitAdjustedText(adjusted, "Est P&L split-adjusted")] : []), ...holdingUnreadNotes(rows)];
+export function holdingSplitNotes(rows: readonly (UnreadRow & { splitRatio?: number; cusipChange?: { previousCusip: string; confirmedBy: "sec-list" | "split" } })[]): string[] {
+  const adjusted = rows.flatMap((row) => row.splitRatio && !row.cusipChange ? [{ ...row, ratio: row.splitRatio }] : []);
+  // A split that moved the shares to a new CUSIP: the share counts fit it, and the SEC's list or the split record confirms it.
+  const moved = rows.flatMap((row) => row.splitRatio && row.cusipChange ? [{ ...row, ratio: row.splitRatio, ...row.cusipChange }] : []);
+  const confirmed = (line: (typeof moved)[number]) => line.confirmedBy === "sec-list" ? "per the SEC's 13(f) list" : "per the split record";
+  return [
+    ...(adjusted.length ? [splitAdjustedText(adjusted, "Est P&L split-adjusted")] : []),
+    ...(moved.length ? [`New CUSIP across a split: ${listedLines(moved, (line) => `${lineName(line)} ${formatSplitRatio(line.ratio)}, was ${line.previousCusip} (${confirmed(line)})`)}; Est P&L on split-adjusted shares`] : []),
+    ...holdingUnreadNotes(rows),
+  ];
 }
 
 /** "Q2 2026" for the quarter ending 30 Jun 2026. */

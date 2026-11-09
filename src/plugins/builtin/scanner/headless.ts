@@ -39,6 +39,7 @@ import { explainRefusal, refusedLock } from "../shared/cloud-denied";
 import { captureScannerEvent, SCANNER_SNAPSHOT_TIMEOUT_MS } from "../shared/scanner-capture";
 import { flowLockNote } from "./lock-note";
 import { buildHiloBarRows, filterHiloRows, formatHiloPrice, type HiloMinPrice, type HiloSort } from "./hilo-model";
+import { venueSessionNow } from "../../../market-data/market/venue-session";
 
 /**
  * How long a report waits for a scanner that is starting: an idle one can take
@@ -102,11 +103,24 @@ function scannerFreshness(payload: Pick<ScannerHiloPayload, "access" | "delayMin
   return payload.access === "realtime" ? { status: "live" } : { status: "delayed", delayMinutes: payload.delayMinutes };
 }
 
+/**
+ * A scanner still starting while the US market is shut (a weekend, a holiday,
+ * the night) has nothing to list because the market is closed, and says that
+ * first: what it would list once started is the closed session's nothing.
+ */
+function startingWhileClosed<T extends Pick<ScannerHiloPayload, "status">>(payload: T, now: number): T {
+  if (payload.status !== "starting") return payload;
+  const phase = venueSessionNow("NYSE", now)?.phase;
+  return phase === "closed" || phase === "holiday" ? { ...payload, status: "closed" } : payload;
+}
+
 function projectHiloSnapshot(
-  payload: ScannerHiloPayload,
+  read: ScannerHiloPayload,
   minPrice: HiloMinPrice,
   sort: HiloSort,
+  now = Date.now(),
 ): HeadlessSnapshotResult {
+  const payload = read.highs.length || read.lows.length ? read : startingWhileClosed(read, now);
   const lows = filterHiloRows(payload.lows, minPrice, sort).map((row) => ({ side: "low", ...row }));
   const highs = filterHiloRows(payload.highs, minPrice, sort).map((row) => ({ side: "high", ...row }));
   return {

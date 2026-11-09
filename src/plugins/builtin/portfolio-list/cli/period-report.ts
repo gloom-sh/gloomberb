@@ -156,7 +156,7 @@ export async function showPeriodPnl({ ctx, portfolio, name, tickers, currency, w
     ...dated ? [{ header: "To", optional: true, dropPriority: 1 }] : [],
     { header: "End", align: "right", optional: true, dropPriority: 2 },
     { header: "Chg", align: "right", optional: true, dropPriority: 3 },
-    { header: "P&L", align: "right" },
+    { header: `P&L (${currency})`, align: "right" },
     { header: "Contribution", align: "right" },
   ], rows));
   console.log("");

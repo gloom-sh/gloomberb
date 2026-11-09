@@ -537,6 +537,19 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
   };
 }
 
+/**
+ * Whether a function matches a query only loosely: none of its words is in
+ * what the function is called (its code, name or aliases), nor is the query
+ * a word the function answers to (`suggestFor`). `catalog managers` finding
+ * ECO through "purchasing managers' index" is one.
+ */
+function isClosestCatalogMatch(entry: PaneCatalogEntry, query: string): boolean {
+  const pointed = [...entry.capability.suggestFor ?? [], ...entry.capability.opens?.flatMap((opening) => opening.words) ?? []]
+    .map((value) => normalizeLookupToken(value));
+  if (pointed.includes(normalizeLookupToken(query))) return false;
+  return scorePaneCatalogEntry(entry, query).called === 0;
+}
+
 function rankPaneCatalogEntries(entries: PaneCatalogEntry[], query: string): PaneCatalogEntry[] {
   return entries
     .map((entry) => ({ entry, score: scorePaneCatalogEntry(entry, query).score }))
@@ -902,7 +915,12 @@ export function renderPaneCatalogReport(
   const charted = renderSeriesMatches(args.query.trim(), series, Number.isFinite(args.limit) ? CATALOG_SERIES_LIMIT : series.length, width);
   const withGap = (text: string) => withSetting([gap ? wrapText(gap, width).join("\n") : "", text].filter(Boolean).join("\n\n"));
   const withTerms = (text: string) => withGap([text, charted, terms].filter(Boolean).join("\n\n"));
-  if (args.query && entries.length === 1) return withTerms(renderCatalogEntry(entries[0]!));
+  if (args.query && entries.length === 1) {
+    // A function found only through a word of its description or keywords is the closest there is, and says so.
+    const closest = isClosestCatalogMatch(entries[0]!, args.query)
+      ? `${cliStyles.muted(`Closest match for "${args.query.trim()}": no function is named for it.`)}\n\n` : "";
+    return withTerms(`${closest}${renderCatalogEntry(entries[0]!)}`);
+  }
 
   const note = (text: string) => wrapText(text, width).map((line) => cliStyles.muted(line)).join("\n");
   if (entries.length === 0) {

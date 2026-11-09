@@ -15,6 +15,8 @@
 <a href="https://gloom.sh/discord">Discord</a>
 &nbsp;&middot;&nbsp;
 <a href="README.md">English</a>
+&nbsp;&middot;&nbsp;
+<a href="README.ja.md">日本語</a>
 
 <br />
 <br />

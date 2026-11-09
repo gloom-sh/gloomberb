@@ -43,8 +43,8 @@ describe("as-filed insider amendments", () => {
     expect(buildInsiderAmendmentScopes(all)).toEqual([{ accessionNumber: "amendment", originalFilingDate: "2026-08-20", originalFilingDateUsable: true, ownerCiks: ["111"], ownerIdentityComplete: true, candidateOriginalAccessions: ["original"] }]);
     const rows = buildInsiderRows(all);
     expect(rows.map((row) => [row.id, row.shares, row.amendmentStatus])).toEqual([["amendment:0", shares, "unreconciled"], ["original:0", 100, "potentially-amended"], ["independent:0", 500, null]]);
-    expect(buildInsiderSummary(all, now)).toBe("Loaded filings, last 90 days: Class A: Buy total unavailable (unreconciled amendment) | Class B: Bought 500 shares ($5,000.00)");
-    expect(buildInsiderSummary(independent, now, all)).toBe("Loaded filings, last 90 days: Class B: Bought 500 shares ($5,000.00)");
+    expect(buildInsiderSummary(all, now)).toBe("Loaded filings, last 90 days: Class A: Buy total unavailable (unreconciled amendment) | Class B: Bought 500 shares (5,000.00 USD)");
+    expect(buildInsiderSummary(independent, now, all)).toBe("Loaded filings, last 90 days: Class B: Bought 500 shares (5,000.00 USD)");
   });
 
   test("declared original date preserves independent filing dates and unknown date broadens only the possible owner history", () => {

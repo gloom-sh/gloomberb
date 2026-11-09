@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { DEFAULT_PORTFOLIO_COLUMN_IDS, type ColumnConfig } from "../../../types/config";
 import { resolveVisibleColumns } from "./settings";
 import { createTestFinancials, createTestQuote } from "../../../test-support/data-provider";
-import { companyDataSettled, fitPortfolioColumns, marketCapColumn } from "./table";
+import { bookCurrencyColumn, companyDataSettled, fitPortfolioColumns } from "./table";
 
 const book = resolveVisibleColumns([...DEFAULT_PORTFOLIO_COLUMN_IDS], true, { otherCurrencies: true });
 const ids = (columns: readonly ColumnConfig[]) => columns.map((column) => column.id);
@@ -46,11 +46,9 @@ test("a company column hides only once every row's company data has answered, an
   expect(ids(fitPortfolioColumns(book, [row(true), row(false, false)], undefined, hidden))).toContain("market_cap");
 });
 
-test("the market cap column names the book's currency its caps read in when a row's price is in another", () => {
+test("a column in the book's currency names it as the CLI does, whatever the rows' prices are in", () => {
   const cap = book.find((column) => column.id === "market_cap")!;
-  // A lira book holding BRK.B: its cap reads 58.22T beside a dollar price, so the header says TRY.
-  expect(marketCapColumn(cap, "TRY", ["TRY", "USD"])).toMatchObject({ label: `${cap.label} TRY`, width: Math.max(cap.width, `${cap.label} TRY`.length) });
-  // Every price in the book's currency, pence in pounds included, leaves the header as it was.
-  expect(marketCapColumn(cap, "TRY", ["TRY", undefined])).toBe(cap);
-  expect(marketCapColumn(cap, "GBP", ["GBp", "GBP"])).toBe(cap);
+  expect(bookCurrencyColumn(cap, "TRY")).toMatchObject({ label: `${cap.label} (TRY)`, width: Math.max(cap.width, `${cap.label} (TRY)`.length) });
+  // A Canadian book: its value is in CAD whether the holding is quoted in USD or in CAD, and the header is wide enough to say so.
+  expect(bookCurrencyColumn({ id: "mkt_value", label: "MKT VAL", width: 10, align: "right" }, "CAD")).toMatchObject({ label: "MKT VAL (CAD)", width: 13 });
 });

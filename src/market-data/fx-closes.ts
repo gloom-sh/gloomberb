@@ -86,6 +86,8 @@ export interface FxCloseReading {
   close?: number;
   /** The UTC day of the close: the day asked for, or the last trading day before it. */
   date: string;
+  /** When the close was taken, as an ISO time (17:00 New York), when the service says. */
+  closedAt?: string;
 }
 
 /**
@@ -138,7 +140,8 @@ export async function readFxCloseOnDate(
     const rowDay = isoDay(at);
     if (rowDay > date || rowDay >= today || Date.parse(`${rowDay}T00:00:00Z`) < day - FX_MAX_AGE_DAYS * DAY_MS) continue;
     const close = fxFigureAsSent(row.close);
-    if (!best || rowDay > best.date) best = { rate: leg.invert ? 1 / close : close, close, date: rowDay };
+    const closedAt = typeof row.closedAt === "string" && Number.isFinite(Date.parse(row.closedAt)) ? row.closedAt : undefined;
+    if (!best || rowDay > best.date) best = { rate: leg.invert ? 1 / close : close, close, date: rowDay, ...(closedAt ? { closedAt } : {}) };
   }
   return { reading: best, served };
 }

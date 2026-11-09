@@ -1,5 +1,5 @@
 import type { SecFilingItem } from "../../../types/data-provider";
-import { formatCompact, formatCurrency } from "../../../utils/format";
+import { formatCompact, formatCurrencyCode } from "../../../utils/format";
 import { parseForm4Xml, parseForm4Disclosure, transactionTypeLabel, type InsiderTransaction, type InsiderFilingDisclosure, type InsiderReportingOwner } from "./insider-data";
 import { affectingInsiderAmendments, buildInsiderAmendmentScopes, isAmendedInsiderFiling } from "./amendments";
 import { formatInsiderName, isOpenMarketTrade, shortInsiderRole } from "./display";
@@ -189,7 +189,7 @@ export function buildInsiderSummary(parsed: ParsedInsiderFiling[], now = Date.no
   if (figures.totals.length === 0) return `${prefix}no parsed non-derivative buys/sales.${coverage}`;
   return prefix + figures.totals.map((total) => total.unreconciled
     ? `${total.security}: ${total.side === "P" ? "Buy" : "Sale"} total unavailable (unreconciled amendment)`
-    : `${total.security}: ${total.side === "P" ? "Bought" : "Sold"} ${formatCompact(total.shares)} shares (${total.knownValue ? formatCurrency(total.value) : "value unavailable"})`).join(" | ") + coverage;
+    : `${total.security}: ${total.side === "P" ? "Bought" : "Sold"} ${formatCompact(total.shares)} shares (${total.knownValue ? formatCurrencyCode(total.value, "USD") : "value unavailable"})`).join(" | ") + coverage;
 }
 
 export function buildInsiderRows(parsed: readonly ParsedInsiderFiling[], context: readonly ParsedInsiderFiling[] = parsed) {

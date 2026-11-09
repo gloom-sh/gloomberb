@@ -15,7 +15,7 @@ import {
   metricDate,
   parseCriterion,
   parseThreshold,
-  screenSymbols,
+  screenListings,
   resultFields,
   parseScreenDefinition,
   screenColumnLabel,
@@ -361,7 +361,8 @@ test("a symbol list takes a watchlist's name or up to 500 symbols; other categor
   expect(parseCriterion(sector, "in", "HY3", readWatchlist)).toMatchObject({ value: ["HY3"] });
   expect(parseScreenDefinition({ ...DEFAULT_SCREEN, criteria: [{ field: "symbol", op: "in", value: names(500) }] }).criteria).toHaveLength(1);
   expect(() => parseScreenDefinition({ ...DEFAULT_SCREEN, criteria: [{ field: "sector", op: "in", value: names(26) }] })).toThrow();
-  // The server matches bare symbols: a watchlist's venues come off, once each.
-  expect(screenSymbols(["SAP:XETRA", "SAP", "NFE", "7203:TSE"])).toEqual(["SAP", "NFE", "7203"]);
+  // A watchlist's members keep their venues, once each, so the server matches each by company.
+  expect(screenListings([{ ticker: "SAP:XETRA" }, { ticker: "SAP:XETRA", exchange: "XETRA" }, { ticker: "BN", exchange: "NYSE" }, { ticker: "NFE" }]))
+    .toEqual(["SAP:XETRA", "BN:NYSE", "NFE"]);
   expect(criterionText({ field: "symbol", op: "in", value: names(300) })).toBe("Symbol in S0, S1, S2, S3, S4, S5, S6, S7 and 292 more");
 });
