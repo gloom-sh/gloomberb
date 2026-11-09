@@ -70,7 +70,7 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
   const inputs = useAsyncResource(instrument ? loader : null);
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(inputs.updatedAt, inputs.load);
-  usePaneRefreshKey(() => { void inputs.reload(); }, { focused });
+  usePaneRefreshKey(() => { inputs.reload(); }, { focused });
 
   const discountRate = (Number(discount) || 9) / 100;
   const chosenMargin = Number(margin) > 0 ? Number(margin) / 100 : undefined;

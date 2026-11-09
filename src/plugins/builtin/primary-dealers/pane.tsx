@@ -132,8 +132,8 @@ export function PrimaryDealersPane({ focused, width, height }: PaneProps) {
 
   const { reload: reloadHistory } = historyResource;
   const refresh = useCallback(() => {
-    void load();
-    void reloadHistory();
+    load();
+    reloadHistory();
   }, [load, reloadHistory]);
   const selectTab = useCallback((value: string) => setTab(value === "fails" ? "fails" : "positions"), [setTab]);
   const selectRange = useCallback((value: DealerRange) => setStoredRange(value), [setStoredRange]);

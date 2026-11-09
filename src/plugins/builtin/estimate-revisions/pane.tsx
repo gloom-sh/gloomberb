@@ -345,7 +345,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
     pinnedTarget.notice,
   ]);
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({
     registrationId: "estimates:notices",
     focused,

@@ -115,14 +115,14 @@ function SocialMentionsTickerView({ width, height, focused, listingKey, onDetail
   const pending = !!data?.pending.length;
   useEffect(() => {
     if (!pending) return;
-    const timer = setTimeout(() => void resource.reload(), PENDING_RETRY_MS);
+    const timer = setTimeout(() => resource.reload(), PENDING_RETRY_MS);
     return () => clearTimeout(timer);
   }, [pending, resource.updatedAt, resource.reload]);
   useAutoRefresh(resource.updatedAt, resource.load);
   const dayOpen = !!openRow;
   useEffect(() => onDetailChange?.(dayOpen), [dayOpen, onDetailChange]);
   useEffect(() => () => onDetailChange?.(false), [onDetailChange]);
-  useShortcut((event) => { if (focused && isPlainKey(event, "r")) { event.preventDefault(); void resource.reload(); } });
+  useShortcut((event) => { if (focused && isPlainKey(event, "r")) { event.preventDefault(); resource.reload(); } });
   usePaneNoticeFooter({ registrationId: "social-mentions:notices", focused,
     notices: [...(data?.warnings ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   // The wall says it; a missing sign-in is not a failure for the footer to repeat.

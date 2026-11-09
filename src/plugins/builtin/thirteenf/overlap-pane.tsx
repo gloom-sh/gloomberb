@@ -102,7 +102,7 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
   const refreshData = useCallback(() => {
     setRefresh(value => value + 1);
     paged.reload();
-    if (etf) void etfFile.reload();
+    if (etf) etfFile.reload();
   }, [paged.reload, etf, etfFile.reload]);
   const closeDetail = useCallback(() => { setTarget(null); setEtf(null); }, [setTarget, setEtf]);
   useShortcut(event => {

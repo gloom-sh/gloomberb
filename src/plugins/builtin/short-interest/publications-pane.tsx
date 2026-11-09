@@ -43,7 +43,7 @@ export function ShortSidePublicationPane({ kind, width, height, focused }: Pick<
   const selected = openRow ?? rows[selectedIndex];
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: `${kind}:notices`, focused,
     notices: [...(data?.warnings ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: kind, focused, loading: resource.loading, error: resource.error,

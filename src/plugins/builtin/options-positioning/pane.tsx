@@ -255,8 +255,8 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   useAutoRefresh(openInterest.updatedAt, openInterest.load, { intervalMs: OPEN_INTEREST_REFRESH_MS });
   useAutoRefresh(gamma.updatedAt, gamma.load, { intervalMs: gammaReady ? GAMMA_REFRESH_MS : null });
   usePaneRefreshKey(() => {
-    void openInterest.reload();
-    if (gammaReady) void gamma.reload();
+    openInterest.reload();
+    if (gammaReady) gamma.reload();
   }, { focused });
 
   // Expiry steps: [ and ] move through the expiries on Strikes and GEX.

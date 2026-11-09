@@ -394,7 +394,7 @@ function UsAuctionsView({
     if (!columns.includes(sortPreference.columnId)) setSortValue(null);
   }, [setSortValue, setView, sortPreference.columnId]);
 
-  usePaneRefreshKey(() => void resource.reload(), { focused, enabled: !searchFocused });
+  usePaneRefreshKey(() => resource.reload(), { focused, enabled: !searchFocused });
 
   const handlePaneKey = useCallback((event: DataTableKeyEvent): boolean => {
     if (isPlainKey(event, "f")) {

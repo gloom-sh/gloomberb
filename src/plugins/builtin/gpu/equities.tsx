@@ -57,7 +57,7 @@ export function GpuEquities({ board, models, locked, model, setModel, reloadBoar
   }, [provider]);
   const history = useAsyncResource(loader);
   useAutoRefresh(history.updatedAt, history.load);
-  usePaneRefreshKey(() => { reloadBoard(); refresh(); void history.reload(); }, { focused });
+  usePaneRefreshKey(() => { reloadBoard(); refresh(); history.reload(); }, { focused });
   const rows = useMemo(() => gpuEquityRows(board, model || "H100", locked), [board, model, locked]);
   const items = useMemo(() => buildSectionedRows(GPU_EQUITY_GROUPS.map((group) => ({ label: group.label,
     items: rows.filter((row) => (group.roles as readonly string[]).includes(row.role)) })), (row) => row.symbol), [rows]);

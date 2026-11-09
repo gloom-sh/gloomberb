@@ -217,7 +217,7 @@ function FilingEventsReader({
 
   useShortcut(
     (event) => {
-      if (handleRefreshKey(event, () => void reload())) return;
+      if (handleRefreshKey(event, () => reload())) return;
       if (isPlainKey(event, "o", "enter", "return")) {
         event.preventDefault();
         openFiling();

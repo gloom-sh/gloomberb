@@ -161,7 +161,7 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
     ...(data?.access === "preview" ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", onPress: openUpgrade }] : []),
   ];
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused: focused && !inputsOpen && !targetActive });
+  usePaneRefreshKey(() => resource.reload(), { focused: focused && !inputsOpen && !targetActive });
   usePaneStatusFooter({ registrationId: "supply-graph", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, hints,
     info: data?.asOf ? [{ id: "as-of", parts: [{ text: `as of ${data.asOf}`, tone: "muted" }] }] : [] });
   usePaneNoticeFooter({ registrationId: "supply-graph:notices", focused, notices: [...(resource.data?.refreshError ? [resource.data.refreshError] : []),

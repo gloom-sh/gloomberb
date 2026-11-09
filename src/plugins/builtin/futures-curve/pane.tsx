@@ -232,7 +232,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
   });
   useShortcut((event) => {
     if (focused && !dateActive && !event.targetEditable && !event.ctrl && !event.meta && event.name === "r") {
-      event.preventDefault(); void resource.reload();
+      event.preventDefault(); resource.reload();
     }
   });
   const selectDate = (value: string) => {
@@ -245,7 +245,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
       if (dateInput.current?.setCursorOffset) dateInput.current.setCursorOffset(0);
       else if (dateInput.current) dateInput.current.cursorOffset = 0;
       dateInput.current?.blur?.();
-      if (nextDate === requestedDate) void resource.reload();
+      if (nextDate === requestedDate) resource.reload();
     } catch (error) {
       setDateError(error instanceof Error ? error.message : String(error));
     }

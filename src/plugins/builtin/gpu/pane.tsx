@@ -51,7 +51,7 @@ function GpuView({ width, height, focused }: PaneProps) {
     : preview.error ? `No ${activeModel} rental prices to show.` : `No ${activeModel} rental prices have been observed yet.`;
   useAutoRefresh(resource.updatedAt, resource.load);
   useAutoRefresh(preview.updatedAt, preview.load);
-  usePaneRefreshKey(() => { void resource.reload(); void preview.reload(); }, { focused: focused && (tab === "board" || !data) });
+  usePaneRefreshKey(() => { resource.reload(); preview.reload(); }, { focused: focused && (tab === "board" || !data) });
   const signIn = !data && (session.needsVerification || isCloudSessionRequired(resource.error));
   const notAvailable = !data && resource.error === GPU_NOT_AVAILABLE;
   usePaneStatusFooter({ registrationId: "gpu", loading: resource.loading || preview.loading, error: notAvailable || signIn ? null : resource.error ?? preview.error,
@@ -65,7 +65,7 @@ function GpuView({ width, height, focused }: PaneProps) {
   // Another GPU's free preview waits in the table under the GPU filter, so picking a model never takes the filter away.
   const pending = !!previewKey && preview.loading && !preview.data;
   const body = { width, height: Math.max(3, height - tabRows), focused, pending };
-  const reloadBoard = useCallback(() => { void resource.reload(); void preview.reload(); }, [resource.reload, preview.reload]);
+  const reloadBoard = useCallback(() => { resource.reload(); preview.reload(); }, [resource.reload, preview.reload]);
   if (signIn) return <SignInWall placement="gpu" width={width} height={height} action="browse GPU rental prices" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
     {strip}

@@ -163,7 +163,7 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
   // Delayed contract quotes move all session; the curve follows them once a
   // minute while Globex trades and on the research cadence otherwise.
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: futuresSessionRefreshInterval() });
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "rate-path:notices", focused, notices: [
     ...(data?.gaps ?? []), ...(selectedMeeting?.reason ? [selectedMeeting.reason] : []),
   ] });

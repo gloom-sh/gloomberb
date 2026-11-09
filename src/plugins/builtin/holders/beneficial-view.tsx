@@ -141,7 +141,7 @@ export function BeneficialOwnersView({
   }, [rendererHost, selectedRow]);
 
   const refresh = useCallback(() => {
-    void resource.reload();
+    resource.reload();
     onRefreshHolders();
   }, [onRefreshHolders, resource]);
 

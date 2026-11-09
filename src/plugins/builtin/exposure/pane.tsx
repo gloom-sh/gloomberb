@@ -149,7 +149,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   const resource = useAsyncResource(!inputError && (inputs.input || inputs.source !== "typed" || snapshot) ? loader : null, { clearOnError: isAccessDenied });
   const data = resource.data;
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused: focused && !editing && !inputError });
+  usePaneRefreshKey(() => resource.reload(), { focused: focused && !editing && !inputError });
   const rawRows = useMemo(() => !data ? [] : tab === "drivers" ? driverRows(data) : tab === "paths" ? pathRows(data) : tab === "portfolio" ? portfolioRows(data, view) : tableRows(data), [data, tab, view]);
   const rows = useMemo(() => [...rawRows].sort((a, b) => {
     const get = (r: ExposureRow) => sort.column === "value" ? r.driver?.value ?? r.driver?.range?.high ?? -Infinity : sort.column === "units" ? r.driver ? driverUnits(r.driver) : "" : sort.column === "scope" ? r.driver ? driverScope(r.driver) : "" : sort.column === "classification" ? r.classification : sort.column === "label" ? r.label : sort.column === "period" ? r.period ?? "" : sort.column === "exposure" ? r.exposure?.high ?? -Infinity : sort.column === "impact" ? r.impact?.low ?? -Infinity : sort.column === "weight" ? r.weight ?? -Infinity : sort.column === "basis" ? r.basis ?? "" : r.symbol;

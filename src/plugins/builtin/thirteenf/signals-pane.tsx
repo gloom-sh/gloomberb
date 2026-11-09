@@ -118,7 +118,7 @@ export function ThirteenFCrowdingPane({ focused, width, height }: Pick<PaneProps
   // Header clicks used to store any column id; only the four views rank.
   const ranking = crowdingRank(storedRanking);
   const { pinTicker } = usePluginTickerActions();
-  usePaneRefreshKey(() => void reload(), { focused });
+  usePaneRefreshKey(() => reload(), { focused });
   useShortcut(event => { if (!focused) return; if (isPlainKey(event, "m")) { event.preventDefault?.(); setMineOnly(value => !value); } if (isPlainKey(event, "c")) { event.preventDefault?.(); setRanking(value => CROWDING_RANKS[(CROWDING_RANKS.indexOf(crowdingRank(value)) + 1) % CROWDING_RANKS.length]!); } });
   // Mine and the ranking sit in the query bar; m and c stay as their keys.
   usePaneStatusFooter({ registrationId: "13f-crowding", loading, error });

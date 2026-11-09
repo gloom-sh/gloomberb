@@ -81,7 +81,7 @@ function VenueMapView({ focused, width, height }: PaneProps) {
   useEffect(() => {
     if (!data) return;
     const delay = Math.max(30_000, Math.min(15 * 60_000, data.refreshAt - Date.now()));
-    const timer = setTimeout(() => void load(), delay);
+    const timer = setTimeout(() => load(), delay);
     return () => clearTimeout(timer);
   }, [data, load]);
 
@@ -100,7 +100,7 @@ function VenueMapView({ focused, width, height }: PaneProps) {
     () => venues.find((venue) => venue.mic === selectedMic) ?? null,
     [selectedMic, venues],
   );
-  const refresh = useCallback(() => void load(), [load]);
+  const refresh = useCallback(() => load(), [load]);
   // The search field only exists once venues have loaded; before that `/` has
   // nothing to focus and must not leave the pane waiting on a missing field.
   const searchable = !!data;

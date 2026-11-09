@@ -272,7 +272,7 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
     scope: "options-calculator:fields",
   });
 
-  usePaneRefreshKey(() => { void surfaceResource.reload(); }, { focused: focused && !commandBarOpen && surfaceSource && activeFieldId === null });
+  usePaneRefreshKey(() => { surfaceResource.reload(); }, { focused: focused && !commandBarOpen && surfaceSource && activeFieldId === null });
   usePaneFooter(OPTIONS_CALCULATOR_PANE_ID, () => ({
     info: [
       ...(problem ? [{ id: "input", parts: [{ text: problem, tone: "warning" as const }] }] : []),

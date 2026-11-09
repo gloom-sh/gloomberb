@@ -66,7 +66,7 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
   // A queued symbol backfills within minutes; check back while it does.
   useEffect(() => {
     if (!model || model.status === "ready" || model.status === "unavailable") return;
-    const timer = setTimeout(() => { void resource.reload(); }, 60_000);
+    const timer = setTimeout(() => { resource.reload(); }, 60_000);
     return () => clearTimeout(timer);
   }, [model?.status, resource.updatedAt]);
   const notices = [identityError, resource.error, resource.data?.prices.error, ...(model?.warnings ?? []), model?.staleNote]
@@ -77,7 +77,7 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
   const openSurface = () => { if (symbol) createPaneFromTemplate("vol-surface-pane", { symbol, ticker, instrument: instrument?.instrument }); };
   // These answer in every state, including while the history backfills and
   // no table is on screen; the footer hints bind their own keys.
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  usePaneRefreshKey(() => resource.reload(), { focused });
   useShortcut((event) => {
     if (event.defaultPrevented) return;
     if (isPlainKey(event, "y")) cycleLookback();

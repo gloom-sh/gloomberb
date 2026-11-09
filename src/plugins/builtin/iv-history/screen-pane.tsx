@@ -114,7 +114,7 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
   ] }), [resource.loading, datesText]);
   const handleKey = (event: DataTableKeyEvent): boolean => {
     if (event.ctrl || event.alt || event.meta || event.name !== "r") return false;
-    void resource.reload();
+    resource.reload();
     event.preventDefault?.(); event.stopPropagation?.(); return true;
   };
   const cell = (row: RichCheapRow, id: string): { text: string; color?: string } => {

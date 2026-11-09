@@ -127,8 +127,8 @@ function RiskFactorsReader({
   const listError = list.error ?? (list.data?.savedAt == null ? list.data?.refreshError : null) ?? null;
   const reportError = detail.error ?? (report?.savedAt == null ? report?.refreshError : null) ?? null;
   const refresh = useCallback(() => {
-    void list.reload();
-    if (year !== null) void detail.reload();
+    list.reload();
+    if (year !== null) detail.reload();
   }, [list.reload, detail.reload, year]);
   const openFiling = useCallback(() => {
     if (report?.docUrl) void rendererHost.openExternal(report.docUrl);

@@ -80,7 +80,7 @@ export function TreasuryDailyPane({ width, height, focused }: PaneProps) {
     dense: true,
   });
   useAutoRefresh(resource.updatedAt, resource.load);
-  const refresh = useCallback(() => void resource.reload(), [resource.reload]);
+  const refresh = useCallback(() => resource.reload(), [resource.reload]);
   usePaneRefreshKey(refresh, { focused });
   usePaneStatusFooter({
     registrationId: TREASURY_DAILY_PANE_ID,

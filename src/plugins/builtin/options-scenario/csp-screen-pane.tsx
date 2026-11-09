@@ -215,7 +215,7 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
   };
   const handleKey = (event: DataTableKeyEvent): boolean => {
     if (event.ctrl || event.alt || event.meta || event.name !== "r") return false;
-    void resource.reload();
+    resource.reload();
     event.preventDefault?.(); event.stopPropagation?.(); return true;
   };
   const putCell = (row: ScreenRow, id: string): { text: string; color?: string } => {

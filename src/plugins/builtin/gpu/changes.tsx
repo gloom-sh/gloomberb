@@ -38,7 +38,7 @@ export function GpuChanges({ models, model, setModel, reloadBoard, width, height
   const resource = useAsyncResource(loader);
   const [selected, setSelected] = usePluginPaneState<string | null>("eventSelected", null);
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => { reloadBoard(); void resource.reload(); }, { focused });
+  usePaneRefreshKey(() => { reloadBoard(); resource.reload(); }, { focused });
   usePaneStatusFooter({ registrationId: "gpu:changes", loading: resource.loading, error: resource.error, stale: resource.data?.stale });
   usePaneNoticeFooter({ registrationId: "gpu:change-notices", focused, notices: resource.data?.refreshError ? [resource.data.refreshError] : [] });
   const events = resource.data?.payload.events;
