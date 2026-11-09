@@ -226,7 +226,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   // Refreshing asks for the peers again when picking them failed.
   const reload = useCallback(() => {
     if (peerError) setPeerAttempt((attempt) => attempt + 1);
-    return reloadSnapshot();
+    reloadSnapshot();
   }, [peerError, reloadSnapshot]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [sortPreference, setSortPreference] = useState<RelativeSortPreference>(DEFAULT_RELATIVE_SORT);
@@ -364,7 +364,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   }, []);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
-    return handleRefreshKey(event, () => void reload(), { stopPropagation: true });
+    return handleRefreshKey(event, reload, { stopPropagation: true });
   }, [reload]);
 
   const handleHeaderClick = useCallback((columnId: string) => {

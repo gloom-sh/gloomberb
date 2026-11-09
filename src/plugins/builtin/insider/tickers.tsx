@@ -18,7 +18,6 @@ import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { useAppSelector } from "../../../state/app/context";
 import { getSharedMarketData } from "../../registry";
 import { mapWithConcurrency } from "../../../utils/concurrency";
-import { logFailure } from "../../../utils/log-failure";
 import { displayWidth } from "../../../utils/format";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
@@ -160,8 +159,6 @@ function TickersTradesView({ symbols, width, height, focused, viewBar }: Tickers
   const resource = useAsyncResource(loader, { keepPreviousData: true });
   const answer = resource.data?.key === key ? resource.data : null;
   useAutoRefresh(resource.updatedAt, resource.load);
-  const resourceReload = resource.reload;
-  const reload = useCallback(() => resourceReload().catch(logFailure("insider.tickers", "Insider filings reload failed")), [resourceReload]);
 
   const [storedType, setTypeFilter] = usePluginPaneState<InsiderTypeFilter>("insider:typeFilter", DEFAULT_INSIDER_TYPE_FILTER);
   const typeFilter = isInsiderTypeFilter(storedType) ? storedType : DEFAULT_INSIDER_TYPE_FILTER;
@@ -169,7 +166,7 @@ function TickersTradesView({ symbols, width, height, focused, viewBar }: Tickers
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
-  usePaneRefreshKey(reload, { focused, enabled: !openId });
+  usePaneRefreshKey(resource.reload, { focused, enabled: !openId });
 
   const typeCounts = useMemo(() => {
     const counts: Record<InsiderTypeFilter, number> = { all: 0, trades: 0, other: 0 };
@@ -246,7 +243,7 @@ function TickersTradesView({ symbols, width, height, focused, viewBar }: Tickers
         <PaneStatusBody
           loading={resource.loading}
           error={resource.error}
-          retry={{ onRetry: reload, pending: resource.loading }}
+          retry={{ onRetry: resource.reloadAndWait, pending: resource.loading }}
           subject="Insider filings"
         />
       </Box>
@@ -344,9 +341,7 @@ function TickersInsidersView({ symbols, width, height, focused, renderCompany, v
   const [openView, setOpenView] = useState<InsiderViewMode>("trades");
   const [transactionOpen, setTransactionOpen] = useState(false);
   const detailOpen = !!openTicker;
-  const resourceReload = resource.reload;
-  const reload = useCallback(() => resourceReload().catch(logFailure("insider.tickers", "Insiders reload failed")), [resourceReload]);
-  usePaneRefreshKey(reload, { focused, enabled: !detailOpen });
+  usePaneRefreshKey(resource.reload, { focused, enabled: !detailOpen });
 
   const [sort, setSort] = useState<{ columnId: TickerColumnId; direction: SortDirection }>({ columnId: "bought", direction: "desc" });
   const lines = useMemo(() => answer?.lines ?? [], [answer]);
@@ -423,7 +418,7 @@ function TickersInsidersView({ symbols, width, height, focused, renderCompany, v
         <PaneStatusBody
           loading={resource.loading}
           error={resource.error}
-          retry={{ onRetry: reload, pending: resource.loading }}
+          retry={{ onRetry: resource.reloadAndWait, pending: resource.loading }}
           subject="Insiders"
         />
       </Box>

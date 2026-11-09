@@ -77,6 +77,6 @@ export function useSignInEnds(
     }
     return byInstance;
   }, [data, profiles]);
-  const refresh = useCallback(() => { void reload(); }, [reload]);
+  const refresh = useCallback(() => { reload(); }, [reload]);
   return { ends, reload: refresh };
 }

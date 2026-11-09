@@ -45,7 +45,7 @@ export function TrendingPane({ width, height, focused }: PaneProps) {
   const { createPaneFromTemplate } = usePluginAppActions();
   const [selectedIndex, setSelectedIndex] = usePluginPaneState("trending:selected", 0);
   const open = () => createPaneFromTemplate("attention-pane", { values: { window: "today" } });
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneStatusFooter({ registrationId: "attention:trending", loading: resource.loading, error: data ? resource.error : null, stale: data?.stale || resource.data?.stale,
     info: data?.asOf ? [{ id: "asof", parts: [{ text: `published ${date(data.asOf)}`, tone: "muted" }] }] : [],
     hints: [{ id: "attention", key: "a", label: "ttention", onPress: open }] });

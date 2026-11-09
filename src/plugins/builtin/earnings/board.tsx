@@ -329,8 +329,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   }), [alerts, createPaneFromTemplate, navigateTicker, notify, symbol]);
 
   // t, e, c, a and n are footer hints, which bind their own keys.
-  const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, () => void resource.reload()), [resource.reload]);
-  usePaneRefreshKey(() => void resource.reload(), { focused, enabled: calendar && !open });
+  const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, () => resource.reload()), [resource.reload]);
+  usePaneRefreshKey(() => resource.reload(), { focused, enabled: calendar && !open });
 
   const sortColumn = (Object.entries(SORTABLE).find(([, value]) => value === sort.column)?.[0]) ?? null;
   const namesFilter: QueryBarFilter[] = scoped ? [] : [{

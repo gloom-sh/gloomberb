@@ -23,7 +23,7 @@ test("late pagination and refreshes cannot repopulate a changed query or account
   const first = screenFixture(); first.nextCursor = "page-two";
   await settle(() => requests[0]!.resolve(first));
   expect(latest.data?.rows[0]?.symbol).toBe("AAPL");
-  await settle(() => { void latest.loadMore(); });
+  await settle(() => latest.loadMore());
   const oldPage = requests[1]!;
   await settle(() => changeDefinition({ ...DEFAULT_SCREEN, criteria: [] }));
   expect(oldPage.signal?.aborted).toBe(true);
@@ -34,7 +34,7 @@ test("late pagination and refreshes cannot repopulate a changed query or account
   const current = screenFixture(); current.definition = requests[2]!.definition; current.rows[0]!.symbol = "NVDA";
   await settle(() => requests[2]!.resolve(current));
   expect(latest.data?.rows[0]?.symbol).toBe("NVDA");
-  await settle(() => { void latest.load(); });
+  await settle(() => latest.load());
   const oldRefresh = requests[3]!;
   await settle(() => changeSession("account-two"));
   await settle(() => oldRefresh.resolve(current));

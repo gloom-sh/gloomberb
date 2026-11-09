@@ -93,7 +93,7 @@ export function SwapsTab({ focused, width, height }: { focused: boolean; width: 
       onActivate={(row) => { setSelected(row.tenor); setView("history"); }} sortColumnId={null} sortDirection="asc"
       emptyStateTitle="No swap rates yet."
       status={{ loading: resource.loading && !payload, error: !payload ? error : null,
-        loadingLabel: "Loading swap rates...", subject: "swap rates", retry: { onRetry: resource.reload, pending: resource.loading } }}
+        loadingLabel: "Loading swap rates...", subject: "swap rates", retry: { onRetry: resource.reloadAndWait, pending: resource.loading } }}
       rootBefore={payload && !payload.asOf ? null : <ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={COLUMNS}
         query={<QueryBar width={width}
           view={{ value: view, options: [{ value: "curve", label: "Curve" }, { value: "history", label: "History" }], onChange: setView }}

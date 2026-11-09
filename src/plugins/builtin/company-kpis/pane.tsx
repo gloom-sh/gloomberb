@@ -178,7 +178,7 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
     ...(mode === "guidance" ? [{ value: "history", label: "History" }] : []), { value: "evidence", label: "Evidence" }], activeValue: tab,
     onSelect: (value) => { setTab(value); setOpen(null); }, focused, dense: true } : null);
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  usePaneRefreshKey(() => resource.reload(), { focused });
   useCompanyEvidence(data ?? null, mode, tab, rows.map((row) => row.id));
   const hints: PaneHint[] = [
     ...(activeRow ? [{ id: "evidence", key: "e", label: "vidence", onPress: () => setOpen(activeRow.id) },

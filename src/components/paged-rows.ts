@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { logFailure } from "../utils/log-failure";
 
 /** One page of an offset-paged source. Extra fields (an as-of date, warnings) stay on `pages`. */
 export interface RowPage<T> {
@@ -110,7 +111,7 @@ export function usePagedRows<P extends RowPage<unknown>>(
   const getIdRef = useRef(options.getId);
   getIdRef.current = options.getId;
 
-  const load = useCallback(async (force: boolean) => {
+  const fetchFirst = useCallback(async (force: boolean) => {
     firstRequest.current?.abort();
     moreRequest.current?.abort();
     moreRequest.current = null;
@@ -150,9 +151,14 @@ export function usePagedRows<P extends RowPage<unknown>>(
       }));
     }
   }, [keepPreviousRows, loadPage]);
+  // A load nobody waits on: its failures end in `error`, and anything else
+  // that escapes is logged.
+  const load = useCallback((force: boolean) => {
+    fetchFirst(force).catch(logFailure("components.paged-rows", "First page load failed"));
+  }, [fetchFirst]);
 
   useEffect(() => {
-    void load(false);
+    load(false);
     return () => {
       firstRequest.current?.abort();
       firstRequest.current = null;
@@ -170,7 +176,7 @@ export function usePagedRows<P extends RowPage<unknown>>(
     moreRequest.current = controller;
     const offset = state.nextOffset;
     setState((current) => ({ ...current, loadingMore: true, moreError: null }));
-    void (async () => {
+    (async () => {
       try {
         const page = await loadPage({ offset, signal: controller.signal, force: false });
         if (moreRequest.current !== controller) return;
@@ -188,10 +194,10 @@ export function usePagedRows<P extends RowPage<unknown>>(
         moreRequest.current = null;
         setState((current) => ({ ...current, loadingMore: false, moreError: toError(cause) }));
       }
-    })();
+    })().catch(logFailure("components.paged-rows", "Next page load failed"));
   }, [loadPage, owned, state.hasMore, state.nextOffset]);
 
-  const reload = useCallback(() => { void load(true); }, [load]);
+  const reload = useCallback(() => load(true), [load]);
 
   // Before a new loader's effect runs, and while its first page loads, the
   // previous list is either hidden or (with keepPreviousRows) shown but inert.

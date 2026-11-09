@@ -722,9 +722,9 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
         event.stopPropagation();
         hint.onPress();
       } else if (event.name === "r" && !frozen) {
-        void resource.reload();
+        resource.reload();
         // The episodes too: a read that failed is asked again.
-        if (view === "stress") void episodeResource.reload();
+        if (view === "stress") episodeResource.reload();
       }
     },
     { enabled: focused, scope: "portfolio-risk", phase: "before" },

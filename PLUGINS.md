@@ -1438,14 +1438,14 @@ Every menu, dropdown and pop-up list uses `MenuPopover` (or `Menu` inside a `Pop
 ```tsx
 <PaneStatusBody loading={loading && !data} error={!data ? error : null}
   empty={!loading && !error && !data} subject="research" align="center"
-  retry={{ onRetry: reload }}>
+  retry={{ onRetry: reloadAndWait }}>
   <Section title="Valuation">
     <KeyValueRow label="P/E" value={formattedPE} />
   </Section>
 </PaneStatusBody>
 ```
 
-`retry` draws the Retry button first in the state, so it answers Enter. While the check runs (the promise `onRetry` returns, or `pending`, such as the resource's `loading`) the button says "Retrying..." and ignores presses; when the same empty or failed state comes back, a line under it says "Checked just now." or "Tried again just now.", so a press that changes nothing still shows it ran. Pass `pending` when the old answer stays on screen while asking again, and `label`, `pendingLabel` and `unchanged` when the check has a better verb: `{ onRetry: reload, pending: loading, label: "Look again", pendingLabel: "Looking again...", unchanged: "Still no careers system." }`.
+`retry` draws the Retry button first in the state, so it answers Enter. While the check runs (the promise `onRetry` returns, or `pending`, such as the resource's `loading`) the button says "Retrying..." and ignores presses; when the same empty or failed state comes back, a line under it says "Checked just now." or "Tried again just now.", so a press that changes nothing still shows it ran. Pass `pending` when the old answer stays on screen while asking again, and `label`, `pendingLabel` and `unchanged` when the check has a better verb: `{ onRetry: reloadAndWait, pending: loading, label: "Look again", pendingLabel: "Looking again...", unchanged: "Still no careers system." }`.
 
 A built-in pane whose body cannot render until the account is right renders `SignInWall` from `src/plugins/builtin/cloud/auth-actions.tsx` rather than its own prompt. The pane passes only the phrase that finishes the headline (`action="browse earnings call transcripts"`) plus `needsVerification` when the session exists but the address is unconfirmed; the component owns the copy, the actions, and the verification branch.
 
@@ -1466,7 +1466,7 @@ const updatedAgo = useUpdatedAgo(updatedAt);
 usePaneStatusFooter({ registrationId: "my-pane", loading, error });
 ```
 
-The loader receives `force` so a manual reload can bypass the plugin's own cache; `initialData` seeds the pane from that cache before the first fetch resolves. A new loader (another ticker, a new window) starts from no data; `keepPreviousData: true` leaves the last answer up until the new one arrives. Pass `stale` to `usePaneStatusFooter` while the pane shows cached data a refresh could not replace, and the footer carries the shared `stale` warning.
+The loader receives `force` so a manual reload can bypass the plugin's own cache; `initialData` seeds the pane from that cache before the first fetch resolves. `load(force?)` and `reload()` (a forced load) start a load and return nothing: a failure lands in `error`. `reloadAndWait()` is the same reload for a caller that waits on it, such as a Retry button that stays busy until the answer is in; it never rejects. A new loader (another ticker, a new window) starts from no data; `keepPreviousData: true` leaves the last answer up until the new one arrives. Pass `stale` to `usePaneStatusFooter` while the pane shows cached data a refresh could not replace, and the footer carries the shared `stale` warning.
 
 `useAutoRefresh` refreshes one configured interval after the data landed, rests while the pane cannot be seen, and refreshes at once when stale data comes back into view. Data that moves faster than research data passes its own cadence: `useAutoRefresh(updatedAt, load, { intervalMs: 60_000 })`.
 

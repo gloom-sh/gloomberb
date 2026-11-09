@@ -154,7 +154,7 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
   const chooseStrategy = () => strategyControl.current?.open();
   // The footer hints bind e, v and s in both views and every load state; only
   // the reload is the pane's own key.
-  usePaneRefreshKey(() => void history.reload(), { focused });
+  usePaneRefreshKey(() => history.reload(), { focused });
 
   const notices = [identityError, history.error, rules.error, run.error, ...(result?.warnings ?? []), ...(result && continuation ? [continuation] : [])]
     .filter((value): value is string => !!value);

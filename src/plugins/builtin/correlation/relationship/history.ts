@@ -42,5 +42,5 @@ export function useRelationshipHistories(pair: [string, string] | null, range: R
   const error = leftSymbol && rightSymbol && !dataProvider
     ? "Market data unavailable"
     : resource.error;
-  return { data: resource.data, loading: resource.loading, error, reload: resource.reload, updatedAt: resource.updatedAt };
+  return { data: resource.data, loading: resource.loading, error, reload: resource.reload, reloadAndWait: resource.reloadAndWait, updatedAt: resource.updatedAt };
 }

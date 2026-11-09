@@ -161,7 +161,7 @@ export function EarningsRipplePane({ width, height, focused }: PaneProps) {
   [holdingsKey, accessKey, graphHop]);
   const ripple = useAsyncResource(holdings.length ? loader : null);
   useAutoRefresh(ripple.updatedAt, ripple.load);
-  usePaneRefreshKey(() => { void ripple.reload(); }, { focused });
+  usePaneRefreshKey(() => { ripple.reload(); }, { focused });
   const { strip, rows: tabRows } = usePaneTabs(holdings.length ? { tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true } : null);
 
   const rows = ripple.data?.rows ?? [];

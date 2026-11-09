@@ -97,7 +97,7 @@ export function HiringSignalsView({ group, symbol, width, height, focused, acces
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const scrollMore = useTableLoadMore(scrollRef, paged.hasMore && !detailOpen, paged.loadMore);
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => { void resource.reload(); paged.reload(); }, { focused: focused && !detailOpen });
+  usePaneRefreshKey(() => { resource.reload(); paged.reload(); }, { focused: focused && !detailOpen });
 
   const subject = selected?.symbol ?? symbol;
   // A signal opens its first posting; a posting row its own.

@@ -41,9 +41,9 @@ export function Breadth({ fund, width, height, focused, active }: Pick<PaneProps
   })], [history, metric, colors.warning]);
   const link = useChartTableSelection({ rows, getId: keyOf, getDate: dateOf, selectedId: selected ?? latest?.date ?? null, onSelect: setSelected, focused });
   // The resource keeps a failed load as its error (stale, and a warning below), so this refresh never rejects.
-  const sessionOpen = useLiveSessionRefresh(() => resource.load(true), data?.access === "realtime" ? 15_000 : 60_000, active && visible, resource.updatedAt).live;
-  useAutoRefresh(resource.updatedAt, () => { if (active && visible && !sessionOpen) void resource.load(data?.basis === "intraday"); });
-  usePaneRefreshKey(() => void resource.reload(), { focused, enabled: active });
+  const sessionOpen = useLiveSessionRefresh(() => resource.reloadAndWait(), data?.access === "realtime" ? 15_000 : 60_000, active && visible, resource.updatedAt).live;
+  useAutoRefresh(resource.updatedAt, () => { if (active && visible && !sessionOpen) resource.load(data?.basis === "intraday"); });
+  usePaneRefreshKey(() => resource.reload(), { focused, enabled: active });
   usePaneStatusFooter({ registrationId: "members:breadth", loading: !!data && resource.loading,
     stale: !!data && (data.stale || resource.data!.stale || !!resource.error), info: latest ? [
       { id: "as-of", asOf: true, parts: [{ text: `${data?.basis === "intraday" ? data.access === "realtime" ? "live" : "15m delayed" : "close"} ${latest.date}`, tone: "muted" }] },

@@ -71,7 +71,7 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
   }, [result, draft.quote, update]);
   const selectTab = useCallback((value: string) => { setActiveField(null); setTab(value); }, [setTab]);
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: selectTab, focused: focused && !activeField, dense: true });
-  usePaneRefreshKey(() => { void load(); }, { focused });
+  usePaneRefreshKey(() => { load(); }, { focused });
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped || event.ctrl || event.alt || event.meta || event.super) return;
     const consume = () => { event.preventDefault(); event.stopPropagation(); };

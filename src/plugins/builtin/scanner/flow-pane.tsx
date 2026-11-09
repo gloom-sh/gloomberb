@@ -315,7 +315,7 @@ function FlowPane({ focused, width, height }: PaneProps) {
   const session = useAsyncResource<ScannerFlowSession>(
     sessionLoader && feed.payload && !feed.denied ? sessionLoader : null,
   );
-  useAutoRefresh(session.updatedAt, () => void session.load(), {
+  useAutoRefresh(session.updatedAt, () => session.load(), {
     intervalMs: sessionShown && feed.payload?.status === "live" ? FLOW_SESSION_LIVE_REFRESH_MS : null,
   });
 
@@ -359,7 +359,7 @@ function FlowPane({ focused, width, height }: PaneProps) {
     history.retry();
     return true;
   }, [history.error, history.retry]);
-  usePaneRefreshKey(() => void session.reload(), { focused, enabled: tab !== "prints" && !feed.denied });
+  usePaneRefreshKey(() => session.reload(), { focused, enabled: tab !== "prints" && !feed.denied });
 
   const handleSelect = useCallback((event: ScannerFlowEvent) => {
     setSelectedId(event.id);
@@ -397,7 +397,7 @@ function FlowPane({ focused, width, height }: PaneProps) {
       <FlowTideView
         focused={focused} width={width} height={bodyHeight} query={queryBar}
         session={session.data} loading={session.loading} error={session.error}
-        onRetry={session.reload}
+        onRetry={session.reloadAndWait}
       />
     );
   } else if (tab === "strikes" && symbol) {
@@ -405,7 +405,7 @@ function FlowPane({ focused, width, height }: PaneProps) {
       <FlowStrikesView
         focused={focused} width={width} height={bodyHeight} query={queryBar} symbol={symbol}
         session={session.data} loading={session.loading} error={session.error}
-        onRetry={session.reload}
+        onRetry={session.reloadAndWait}
         onOpenChain={(row) => createPaneFromTemplate("options-pane", { symbol, values: { expiration: row.expiry } })}
       />
     );

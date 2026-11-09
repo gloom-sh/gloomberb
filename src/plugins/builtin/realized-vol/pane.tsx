@@ -152,8 +152,8 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   // The footer hints bind v, i and s in every view and state; only the reload
   // is the pane's own key.
   usePaneRefreshKey(() => {
-    void history.reload();
-    if (showIv) void (fxPair ? proxy.reload() : iv.reload());
+    history.reload();
+    if (showIv) (fxPair ? proxy : iv).reload();
   }, { focused });
   usePaneFooter("realized-vol", () => ({ info: [
     ...(history.loading ? [{ id: "loading", parts: [{ text: "loading history", tone: "muted" as const }] }] : []),

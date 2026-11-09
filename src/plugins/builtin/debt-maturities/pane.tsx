@@ -617,7 +617,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
     ];
   }, [data, updatedAgo]);
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({
     registrationId: "debt-maturities:notices",
     focused,

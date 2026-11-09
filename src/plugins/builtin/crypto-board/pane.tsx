@@ -262,7 +262,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const boardRefreshMs = allStreamedLive ? CRYPTO_BOARD_STREAMING_REFRESH_MS : CRYPTO_BOARD_REFRESH_MS;
   useEffect(() => {
     if (!paneVisible || defi) return;
-    const timer = setInterval(() => void reloadBoard(false), boardRefreshMs);
+    const timer = setInterval(() => reloadBoard(false), boardRefreshMs);
     return () => clearInterval(timer);
   }, [boardRefreshMs, defi, paneVisible, reloadBoard]);
   useEffect(() => {
@@ -354,8 +354,8 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const renderCell = useCallback((row: CryptoRow, column: CryptoColumn) => renderCryptoCell(row, column, logos), [logos]);
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => (
     handleRefreshKey(event, () => {
-      void resource.reload();
-      if (stablecoins) void reloadSupply();
+      resource.reload();
+      if (stablecoins) reloadSupply();
     }, { stopPropagation: true })
   ), [reloadSupply, resource.reload, stablecoins]);
 

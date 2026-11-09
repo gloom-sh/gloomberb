@@ -161,7 +161,7 @@ function RoadmapView({ focused, width, height }: PaneProps) {
     }
   }, [canVote, client, setNote]);
 
-  usePaneRefreshKey(() => void reload(), { focused });
+  usePaneRefreshKey(() => reload(), { focused });
 
   const target = open ?? selected;
   const hints = useMemo<PaneHint[]>(() => (
@@ -222,7 +222,7 @@ function RoadmapView({ focused, width, height }: PaneProps) {
         loading: resource.loading,
         error: resource.error,
         subject: "Roadmap",
-        retry: { onRetry: reload, pending: resource.loading },
+        retry: { onRetry: resource.reloadAndWait, pending: resource.loading },
       }}
       emptyStateTitle="Nothing on the roadmap yet."
       columns={columns}

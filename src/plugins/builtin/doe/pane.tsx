@@ -137,7 +137,7 @@ export function DoePane({ width, height, focused }: PaneProps) {
   const notAvailable = !data && resource.error === DOE_NOT_AVAILABLE;
   const { strip, rows: tabRows } = usePaneTabs({ tabs: [...DOE_TABS], activeValue: tab, onSelect: setTab, focused, dense: true });
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  usePaneRefreshKey(() => resource.reload(), { focused });
   // A refresh that failed shows the board an earlier read saved, and says when that copy is from.
   const savedAt = resource.data?.savedAt ?? null;
   usePaneNoticeFooter({ registrationId: "doe:notices", focused,

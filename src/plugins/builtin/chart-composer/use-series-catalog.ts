@@ -110,9 +110,9 @@ export function useRegisteredSeries() {
     if (registry && series && !registry.usesRemoteCapabilities) void series.refresh();
   }, [registry, series]);
   const retry = useCallback(async () => {
-    if (remoteLoader) await remote.reload();
+    if (remoteLoader) await remote.reloadAndWait();
     else await series?.refresh();
-  }, [remoteLoader, remote.reload, series]);
+  }, [remoteLoader, remote.reloadAndWait, series]);
 
   const entries = useMemo(() => {
     const local = series?.catalog() ?? EMPTY_ENTRIES;

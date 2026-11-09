@@ -96,7 +96,7 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   const boardShown = !open;
   useShortcut((event) => {
     if (!focused || open || event.targetEditable || event.ctrl || event.meta || event.alt || event.super) return;
-    if (event.name === "r") { event.preventDefault(); void resource.reload(); }
+    if (event.name === "r") { event.preventDefault(); resource.reload(); }
     if (!boardShown) return;
     if (event.name === "c") { event.preventDefault(); control.current?.open(); }
     if (event.name === "s") { event.preventDefault(); scopeControl.current?.open(); }
@@ -189,7 +189,7 @@ function CotDetail({ width, height, focused, code, family, positions, traderClas
   useAutoRefresh(resource.updatedAt, resource.load);
   useShortcut((event) => {
     if (focused && !event.targetEditable && !event.ctrl && !event.meta && !event.alt && !event.super && event.name === "r") {
-      event.preventDefault(); void resource.reload();
+      event.preventDefault(); resource.reload();
     }
   });
   usePaneNoticeFooter({ registrationId: "cot:detail-notices", focused, notices: [...(payload?.gaps ?? []), ...(data?.priceWarning ? [data.priceWarning] : []), ...partialRanks] });

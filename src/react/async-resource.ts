@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID } from "../core/connection-health";
+import { logFailure } from "../utils/log-failure";
 
 interface ResourceState<T> {
   data: T | null;
@@ -8,7 +9,15 @@ interface ResourceState<T> {
   updatedAt: number | null;
 }
 
-/** A stable loader owns a resource; null disables it and discards pending results. */
+/**
+ * A stable loader owns a resource; null disables it and discards pending results.
+ *
+ * `load(force?)` and `reload()` (`load(true)`) start a load and return
+ * nothing: a failure lands in `error`. `reloadAndWait()` is the same reload
+ * for a caller that waits on it, such as a Retry button that stays busy until
+ * the answer is in. It settles once the answer or the failure is in state, and
+ * never rejects.
+ */
 export function useAsyncResource<T>(
   loader: ((force: boolean) => Promise<T>) | null,
   options: {
@@ -34,7 +43,7 @@ export function useAsyncResource<T>(
   const clearOnErrorRef = useRef(options.clearOnError ?? false);
   clearOnErrorRef.current = options.clearOnError ?? false;
   const keepPreviousData = options.keepPreviousData === true;
-  const load = useCallback(async (force = false) => {
+  const settle = useCallback(async (force: boolean) => {
     const currentGeneration = ++generation.current;
     if (!loader) {
       setState({ owner: loader, data: null, loading: false, error: null, updatedAt: null });
@@ -63,13 +72,19 @@ export function useAsyncResource<T>(
       }
     }
   }, [keepPreviousData, loader]);
+  // A load nobody waits on: its failures end in `error`, and anything else
+  // that escapes is logged.
+  const load = useCallback((force = false) => {
+    settle(force).catch(logFailure("react.async-resource", "Resource load failed"));
+  }, [settle]);
 
   useEffect(() => {
-    void load();
+    load();
     return () => { generation.current += 1; };
   }, [load]);
 
   const reload = useCallback(() => load(true), [load]);
+  const reloadAndWait = useCallback(() => settle(true), [settle]);
   // Hide a previous resource during the render before the new loader's effect
   // runs, as well as throughout a failed request for the new security.
   const { data, loading, error, updatedAt } = state.owner === loader ? state
@@ -83,9 +98,9 @@ export function useAsyncResource<T>(
   useEffect(() => {
     if (!loader) return;
     return connectionHealth.subscribeRecovery((sourceId) => {
-      if (sourceId === GLOOM_CLOUD_HTTP_CONNECTION_ID && failedRef.current) void load();
+      if (sourceId === GLOOM_CLOUD_HTTP_CONNECTION_ID && failedRef.current) load();
     });
   }, [load, loader]);
   const status = error !== null ? "error" : data !== null ? "loaded" : loading ? "loading" : "idle";
-  return { data, loading, error, updatedAt, status, load, reload };
+  return { data, loading, error, updatedAt, status, load, reload, reloadAndWait };
 }
