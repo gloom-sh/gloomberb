@@ -74,14 +74,14 @@ describe("money-market boundary", () => {
   });
 });
 
-describe("Hong Kong's HIBOR board", () => {
-  const hibor = (tenor: string, value: number, asOf: string) => row(`hibor-${tenor}`, { label: `HIBOR ${tenor}`, group: "hibor", seriesId: null,
+describe("Hong Kong's bill-yield board", () => {
+  const bill = (tenor: string, value: number, asOf: string) => row(`efb-${tenor}`, { label: `EF Bill ${tenor}`, group: "efb", seriesId: null,
     sourceSeriesIds: [], value, asOf, previousAsOf: "2026-10-29", history: [{ date: "2026-10-29", value: value - 0.1 }, { date: asOf, value }] });
   const hongKong = (): HongKongMoneyMarketsPayload => ({ generatedAt: "2026-11-09T12:00:00Z", status: "available", currency: "HKD",
-    source: { name: "Hong Kong Monetary Authority", url: "https://api.hkma.gov.hk" },
-    rows: [hibor("O/N", 2.77464, "2026-10-30"), hibor("1M", 2.56113, "2026-11-06"), hibor("3M", 3.21256, "2026-10-30")] });
+    source: { name: "Hong Kong Monetary Authority", url: "https://www.hkma.gov.hk" },
+    rows: [bill("7D", 2.57, "2026-10-30"), bill("91D", 2.77, "2026-10-30"), bill("364D", 3.25, "2026-10-30")] });
 
-  test("fn BTMM --tab hk reads Hong Kong's own payload, each fixing dated by its day, and says HKMA is its source", async () => {
+  test("fn BTMM --tab hk reads Hong Kong's own payload, each yield dated by its day, and says HKMA is its source", async () => {
     let asked = 0;
     const args = createTestHeadlessArgs({ options: { tab: "hk" } });
     const result = await moneyMarketsHeadless.load(args, createTestHeadlessContext({ apiClient: {
@@ -91,15 +91,15 @@ describe("Hong Kong's HIBOR board", () => {
     expect(typeof moneyMarketsHeadless.describe === "function" && moneyMarketsHeadless.describe(args)).toBe("Hong Kong money markets");
     expect(result.freshness).toMatchObject({ source: "HKMA", status: "not-a-feed" });
     const section = (result as { sections: Array<{ title: string; rows: Array<Record<string, unknown>> }> }).sections[0]!;
-    expect(section.title).toBe("HIBOR fixings");
+    expect(section.title).toBe("Exchange Fund Bill yields");
     expect(section.rows.map((entry) => [entry.label, entry.value, entry.asOf])).toEqual([
-      ["HIBOR O/N", 2.77464, "2026-10-30"], ["HIBOR 1M", 2.56113, "2026-11-06"], ["HIBOR 3M", 3.21256, "2026-10-30"]]);
+      ["EF Bill 7D", 2.57, "2026-10-30"], ["EF Bill 91D", 2.77, "2026-10-30"], ["EF Bill 364D", 3.25, "2026-10-30"]]);
   });
 
-  test("a row that is not a HIBOR fixing, or a US row among them, refuses the payload; an older server says it is not available yet", async () => {
+  test("a row that is not a bill yield, or a US row among them, refuses the payload; an older server says it is not available yet", async () => {
     expect(validateHongKongMoneyMarkets(hongKong()).rows).toHaveLength(3);
     expect(() => validateHongKongMoneyMarkets({ ...hongKong(), rows: [row()] })).toThrow("invalid money-market observations");
-    expect(() => validateMoneyMarkets({ ...payload(), rows: [hibor("1M", 2.5, "2026-11-06")] })).toThrow("invalid money-market observations");
+    expect(() => validateMoneyMarkets({ ...payload(), rows: [bill("91D", 2.5, "2026-10-30")] })).toThrow("invalid money-market observations");
     const { fetchHongKongMoneyMarkets } = await import("./client");
     await expect(fetchHongKongMoneyMarkets({ getCloudHongKongMoneyMarkets: async () => { throw new ApiRequestError("not found", 404); } }))
       .rejects.toThrow("Hong Kong money markets are not available yet.");

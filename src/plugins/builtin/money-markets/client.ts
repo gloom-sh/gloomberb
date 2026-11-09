@@ -65,11 +65,11 @@ export async function fetchMoneyMarkets(client: Pick<typeof apiClient, "getCloud
 export const getCachedMoneyMarkets = () => cachedCloudResource(moneyMarketsCache, "usd");
 export const loadMoneyMarkets = (force = false) => loadCloudResource(moneyMarketsCache, "usd", () => fetchMoneyMarkets(), { force });
 
-/** Hong Kong's HIBOR board, refused whole when a row is not a dated HIBOR fixing. */
+/** Hong Kong's bill-yield board, refused whole when a row is not a dated Exchange Fund Bill yield. */
 export function validateHongKongMoneyMarkets(payload: HongKongMoneyMarketsPayload): HongKongMoneyMarketsPayload {
   if (!payload || !Number.isFinite(Date.parse(payload.generatedAt)) || !["available", "partial", "unavailable"].includes(payload.status)
     || !Array.isArray(payload.rows) || typeof payload.source?.name !== "string") return invalid();
-  validateRows(payload.rows, ["hibor"]);
+  validateRows(payload.rows, ["efb"]);
   return payload;
 }
 

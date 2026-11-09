@@ -52,8 +52,8 @@ function ObservationDetail({ row, width, height, focused = false }: { row: Money
       detail: `${formatPercentileRank(p.value, "1Y")} · ${row.asOf ?? "--"}` },
     { id: "change", label: "Change", value: moneyMarketChange(row.change, row.changeUnit), detail: `since ${row.previousAsOf ?? "--"}` },
     { id: "range", label: "1Y range", value: `${moneyMarketValue(p.min, row.unit)} to ${moneyMarketValue(p.max, row.unit)}` },
-    // A HIBOR fixing is HKMA's; the US rows name their FRED series.
-    row.group === "hibor" ? { id: "series", label: "Source", value: "HKMA", detail: "HKAB fixing, 11:15 HKT" }
+    // A bill yield is HKMA's; the US rows name their FRED series.
+    row.group === "efb" ? { id: "series", label: "Source", value: "HKMA", detail: "closing yield, 16:00 HKT" }
       : { id: "series", label: "FRED", value: row.sourceSeriesIds.join(", "), detail: row.frequency },
   ];
   return <StatChartDetail items={items} width={width} height={height} empty={row.history.every((point) => point.value == null)}
@@ -64,11 +64,11 @@ function ObservationDetail({ row, width, height, focused = false }: { row: Money
 export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
   const session = useResearchCloudSession();
-  const loader = useCallback((force: boolean) => loadMoneyMarkets(force), [session.requestKey]);
-  const resource = useAsyncResource(loader, { initialData: getCachedMoneyMarkets, clearOnError: isAccessDenied });
   const [tab, setTab] = usePaneSettingValue("tab", "rates");
-  // Hong Kong's fixings are their own payload, read only on their tab.
+  // Hong Kong's bill yields are their own payload: each payload is read only on its own tabs.
   const hongKong = isHongKongTab(tab);
+  const loader = useCallback((force: boolean) => loadMoneyMarkets(force), [session.requestKey]);
+  const resource = useAsyncResource(hongKong ? null : loader, { initialData: getCachedMoneyMarkets, clearOnError: isAccessDenied });
   const hongKongLoader = useCallback((force: boolean) => loadHongKongMoneyMarkets(force), [session.requestKey]);
   const hongKongResource = useAsyncResource(hongKong ? hongKongLoader : null, { initialData: getCachedHongKongMoneyMarkets, clearOnError: isAccessDenied });
   const active = hongKong ? hongKongResource : resource;

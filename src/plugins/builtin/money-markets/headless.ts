@@ -8,10 +8,10 @@ const FRED_FRESHNESS = { source: "FRED", status: "not-a-feed", basis: "published
 export const moneyMarketsHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["BTMM"], dataRequirements: ["Gloom Cloud money-markets endpoint"],
     limitations: ["Published daily and weekly observations.", "Treasury bill discount yields.", "Net liquidity is a same-date proxy.",
-      "HIBOR: HKMA carries the 1-month fixing the same evening and the other tenors a week or two later; each row is dated by its own fixing."] },
+      "Hong Kong: HKMA's Exchange Fund Bill closing yields, a week or two after the day; each row is dated by its own day. HIBOR is not licensed for redistribution."] },
   shape: "bundle", argument: { kind: "none" },
   freshness: FRED_FRESHNESS,
-  options: [{ key: "tab", type: "enum", description: "Money-market view: US rates, bills or liquidity, or Hong Kong's HIBOR fixings.",
+  options: [{ key: "tab", type: "enum", description: "Money-market view: US rates, bills or liquidity, or Hong Kong's Exchange Fund Bill yields.",
     values: MONEY_MARKET_TABS.map(({ value }) => ({ value })), defaultValue: "rates" }],
   describe: (args) => isHongKongTab(args.options.tab) ? "Hong Kong money markets" : "US money markets",
   async load(args, ctx) {
@@ -20,8 +20,8 @@ export const moneyMarketsHeadless: HeadlessPaneDefinition<"bundle"> = {
     const rows: MoneyMarketRow[] = "billsCurve" in data ? moneyMarketRows(data, String(args.options.tab)) : data.rows;
     const errors = "billsCurve" in data ? moneyMarketNotices(data) : moneyMarketRowNotices(data.rows);
     const complete = data.status === "available" && errors.length === 0;
-    return { complete, ...hongKong ? { freshness: { ...FRED_FRESHNESS, source: "HKMA", basis: "published HIBOR fixings" } } : {},
-      sections: [{ title: hongKong ? "HIBOR fixings" : "Observations", columns: [
+    return { complete, ...hongKong ? { freshness: { ...FRED_FRESHNESS, source: "HKMA", basis: "published Exchange Fund Bill closing yields" } } : {},
+      sections: [{ title: hongKong ? "Exchange Fund Bill yields" : "Observations", columns: [
       { key: "label", header: "Instrument" },
       { key: "value", header: "Level", align: "right", format: (value, row) => moneyMarketValue(value as number | null, row.unit as "percent" | "usd-billions") },
       { key: "change", header: "Change", align: "right", format: (value, row) => moneyMarketChange(value as number | null, row.changeUnit as "basis-points" | "usd-billions") },

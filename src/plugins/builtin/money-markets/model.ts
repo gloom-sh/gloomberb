@@ -17,7 +17,7 @@ export function moneyMarketAxis(unit: MoneyMarketRow["unit"]): (value: number, d
 /** A move in a bill's discount yield, in basis points like the board's change column. */
 export const moneyMarketRateChange = (value: number) => moneyMarketChange(value * 100, "basis-points");
 
-/** The board's tabs: the US funding rates, bills and Fed liquidity, and Hong Kong's HIBOR fixings. */
+/** The board's tabs: the US funding rates, bills and Fed liquidity, and Hong Kong's Exchange Fund Bill yields. */
 export const MONEY_MARKET_TABS = [{ value: "rates", label: "Rates" }, { value: "bills", label: "Bills" }, { value: "liquidity", label: "Liquidity" },
   { value: "hk", label: "Hong Kong" }] as const;
 export const isHongKongTab = (tab: unknown) => tab === "hk";

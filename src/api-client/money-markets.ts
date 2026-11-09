@@ -21,8 +21,8 @@ export interface MoneyMarketRow {
   seriesId: string | null;
   sourceSeriesIds: string[];
   sourceUrl: string | null;
-  /** `hibor`: Hong Kong's fixings, served apart (HongKongMoneyMarketsPayload). */
-  group: "rates" | "bills" | "liquidity" | "hibor";
+  /** `efb`: Hong Kong's Exchange Fund Bill yields, served apart (HongKongMoneyMarketsPayload). */
+  group: "rates" | "bills" | "liquidity" | "efb";
   unit: "percent" | "usd-billions";
   frequency: "daily" | "weekly";
   value: number | null;
@@ -57,7 +57,7 @@ export interface MoneyMarketsPayload {
   netLiquidity: MoneyMarketRow;
 }
 
-/** Hong Kong's money market: HIBOR fixings from overnight to 12 months, each dated by its own fixing day, from HKMA. */
+/** Hong Kong's money market: HKMA's Exchange Fund Bill closing yields from 7 to 364 days, each dated by its own day. */
 export interface HongKongMoneyMarketsPayload {
   generatedAt: string;
   status: "available" | "partial" | "unavailable";
