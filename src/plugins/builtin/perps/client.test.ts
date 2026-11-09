@@ -2,7 +2,7 @@ import { expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { PerpMarketPayload } from "../../../api-client/perps";
-import { cachedPerpSelection, fetchPerpsBoard, fetchPerpsCompare, fetchPerpSelection, loadPerpSelection, loadPerpsBoard, loadPerpsEquities, loadPerpsEquity, loadPerpsHistoryForRange,
+import { cachedPerpSelection, fetchPerpsBoard, fetchPerpsCompare, fetchPerpsRankings, fetchPerpSelection, loadPerpSelection, loadPerpsBoard, loadPerpsEquities, loadPerpsEquity, loadPerpsHistoryForRange,
   perpsCache, perpsListCache, perpsMarketCache, perpsHistoryCache, validatePerpsBoard, validatePerpsEquities, validatePerpsHistory, validatePerpsRankings } from "./client";
 import { equitiesPayload, equityBoard, longShort, longShortPoint, okxLongShort, perpBoard, perpHistory, perpRankings, perpRow, venueRow } from "./test-fixture";
 const market = (patch: Partial<PerpMarketPayload> = {}): PerpMarketPayload => ({ ...perpBoard({ rows: [perpRow()] }), evidence: [], methodologyUrl: "https://gloom.sh/docs/perpetuals", ...patch });
@@ -241,6 +241,18 @@ test("rankings may repeat a market across lists but not within one, and a compar
   expect(() => validatePerpsRankings({ ...perpRankings(), closedMarketDislocations: undefined } as never)).toThrow("unreadable");
   const client = { getCloudPerpsCompare: async () => perpBoard({ rows: [venueRow("bybit"), kaia] }) };
   await expect(fetchPerpsCompare("btc", client)).rejects.toThrow("another asset");
+});
+
+test("rankings of one asset class ask the server for that class, and an older server's lists are cut to it", async () => {
+  // 9 Nov 2026: NATGAS led `--asset-class crypto` from a server that ranks every class.
+  const gas = venueRow("binance", { marketId: "binance:NATGASUSDT", baseAsset: "NATGAS", assetClass: "energy" });
+  const asked: unknown[] = [];
+  const client = { getCloudPerpsRankings: async (assetClass?: string) => { asked.push(assetClass); return perpRankings({ fundingPositive: [gas, perpRow()] }); } };
+  const crypto = await fetchPerpsRankings(client, "crypto");
+  expect(crypto.fundingPositive.map((row) => row.marketId)).toEqual([perpRow().marketId]);
+  expect(crypto.assetClass).toBe("crypto");
+  expect((await fetchPerpsRankings(client, "all")).fundingPositive).toHaveLength(2);
+  expect(asked).toEqual(["crypto", undefined]);
 });
 
 test("board caches keep each query and each plan apart", async () => {

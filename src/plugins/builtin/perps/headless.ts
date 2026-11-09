@@ -191,7 +191,7 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
     description: "A base asset, underlying, canonical market identity or Market column label, such as BTC, hyperliquid:xyz:TSLA or xyz:TSLA. Opens its history; with --tab board it searches the board, with --tab compare, liquidations or depth it is the base asset. Without one, the board." },
   options: [
     { key: "tab", type: "enum", settingKey: "tab", values: PERP_TABS.map((value) => ({ value })), description: "Board, rankings, compare, liquidations, depth, history or evidence. Board without a market, history with one." },
-    { key: "asset-class", type: "enum", settingKey: "assetClass", values: ASSET_FILTERS.map((value) => ({ value })), defaultValue: "all", description: "Board asset class." },
+    { key: "asset-class", type: "enum", settingKey: "assetClass", values: ASSET_FILTERS.map((value) => ({ value })), defaultValue: "all", description: "Board and rankings asset class." },
     { key: "venue", type: "enum", settingKey: "venue", values: ["all", ...VENUES].map((value) => ({ value })), defaultValue: "all", invalidValueHint: uncoveredVenueNote,
       description: "Board venue; with a market, opens that venue's contract when the board lists it." },
     { key: "sort", type: "enum", settingKey: "sort", values: BOARD_SORTS.map((value) => ({ value })), defaultValue: "oi", description: "Board order: open interest, funding, open-interest change, premium or long share of accounts." },
@@ -203,7 +203,11 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
     "Long/short account shares: venue definitions differ; history begins at first collection.",
     "Liquidations come from each venue's public stream and begin at first collection: Binance and OKX send at most one a second per contract, Hyperliquid only its vault's backstop liquidations. Free shows totals and the three largest; Pro the hourly series and twenty.",
     "Order book depth is read hourly for each venue's 50 largest markets; a band wider than the book a venue returns is a floor (≥). Free shows the latest; Pro the week's history."] },
-  describe: (args) => TITLES[tabOf(args)],
+  describe: (args) => {
+    const tab = tabOf(args), assetClass = String(args.options["asset-class"] ?? "all");
+    // Rankings of one asset class say which in the title, as the board's filter does in its query.
+    return tab === "rankings" && assetClass !== "all" ? `${label(assetClass)} perpetual rankings` : TITLES[tab];
+  },
   async load(args, ctx) {
     const result = await loadPerpTab(args, ctx);
     // `--limit` lists the first rows of each table, in its own order.
@@ -242,7 +246,8 @@ async function loadPerpTab(args: HeadlessPaneLoadArgs, ctx: HeadlessPaneContext)
       metadata: { ...listMetadata(board), total: board.total, assetClass, venue, sort, ...(requested ? { search: requested } : {}) } };
   }
   if (tab === "rankings") {
-    const rankings = await fetchPerpsRankings(ctx.apiClient);
+    const assetClass = String(args.options["asset-class"] ?? "all");
+    const rankings = await fetchPerpsRankings(ctx.apiClient, assetClass);
     // A ranking the free view leaves empty is locked, left out and said on the Pro line; one that has none to rank says so.
     const sections: HeadlessBundleSection[] = RANKINGS.map((ranking) => {
       const rows = rankingRows(rankings, ranking.key);
@@ -255,7 +260,7 @@ async function loadPerpTab(args: HeadlessPaneLoadArgs, ctx: HeadlessPaneContext)
     const ranked = RANKINGS.flatMap((ranking) => rankingRows(rankings, ranking.key));
     return { sections, complete: !rankings.locked && rankings.status === "ok", errors: rankings.locked ? ["Full rankings need Gloom Pro"] : [],
       ...aprNote(ranked, { apr: false, longShare: false }),
-      freshness: perpFreshness(RANKINGS.flatMap((ranking) => rankingRows(rankings, ranking.key)), { funding }), metadata: { ...(notices.length ? { notices } : {}), ...listMetadata(rankings) } };
+      freshness: perpFreshness(RANKINGS.flatMap((ranking) => rankingRows(rankings, ranking.key)), { funding }), metadata: { ...(notices.length ? { notices } : {}), ...listMetadata(rankings), assetClass } };
   }
   if (tab === "compare") {
     // A canonical identity names one contract; its base asset is what the venues share.

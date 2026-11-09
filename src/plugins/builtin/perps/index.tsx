@@ -26,7 +26,8 @@ export const perpsModule: PluginModule = {
     defaultFloatingSize: { width: 138, height: 34 }, tableExport: true, headless: perpsHeadless }],
   paneTemplates: [{ id: "perps-pane", paneId: "perps", label: "Perpetuals", description: "Perpetual funding, open interest and premiums by market and venue, with rankings, a venue comparison, liquidations, order book depth and Pro history.",
     // The venues it collects, so a venue's name (and "binance futures") finds PERP.
-    keywords: ["perp", "perpetual", "perpetuals", "perpetual futures", "funding", "funding rate", "open interest", "hip-3", "stock perps", "basis", "basis trade", "carry", "venue", ...VENUES, "funding spread", "long short ratio", "long/short", "positioning", "liquidations", "liquidation", "order book depth", "market depth", "liquidity"],
+    // Crypto and bitcoin carry are what most readers come for, so those words find PERP beside CRYP and CTM.
+    keywords: ["perp", "perpetual", "perpetuals", "perpetual futures", "crypto", "bitcoin", "btc", "funding", "funding rate", "open interest", "hip-3", "stock perps", "basis", "basis trade", "carry", "venue", ...VENUES, "funding spread", "long short ratio", "long/short", "positioning", "liquidations", "liquidation", "order book depth", "market depth", "liquidity"],
     shortcut: { prefix: "PERP", argKind: "text", argOptional: true, argPlaceholder: "market" }, headless: perpsHeadless,
     createInstance: (_ctx, options) => perpsInstance(options?.arg) }],
   setup(ctx) {

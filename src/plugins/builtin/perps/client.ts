@@ -64,7 +64,17 @@ export async function fetchPerpsBoard(query: PerpBoardQuery, client: Pick<typeof
   const data = validatePerpsBoard(await client.getCloudPerpsBoard({ ...query, sort: "oi" }));
   return { ...data, rows: byLongShare(data.rows) };
 }
-export const fetchPerpsRankings = async (client: Pick<typeof apiClient, "getCloudPerpsRankings"> = apiClient) => validatePerpsRankings(await client.getCloudPerpsRankings());
+/**
+ * The ranked lists, of one asset class when `assetClass` names one (not "all"). An older server ranks every class: its
+ * lists are cut to the class here, so a report never ranks gas contracts under crypto.
+ */
+export async function fetchPerpsRankings(client: Pick<typeof apiClient, "getCloudPerpsRankings"> = apiClient, assetClass?: string): Promise<PerpRankingsPayload> {
+  const only = assetClass && assetClass !== "all" ? assetClass : undefined;
+  const data = validatePerpsRankings(await client.getCloudPerpsRankings(only));
+  if (!only) return data;
+  const keep = (rows: PerpBoardRow[]) => rows.filter((row) => row.assetClass === only);
+  return { ...data, assetClass: only, ...Object.fromEntries(RANKING_KEYS.map((key) => [key, keep(data[key])])) };
+}
 /** The base assets a comparison asked for `baseAsset` may hold: itself, or what a pair or plain name (BTC-USD, bitcoin) stands for. */
 const comparedBases = (baseAsset: string) => new Set([baseAsset, ...perpBaseCandidates(baseAsset).map(baseOfLabel)].map((base) => base.toUpperCase()));
 function validatePerpsCompare(data: PerpBoardPayload, baseAsset: string): PerpBoardPayload {
@@ -92,8 +102,10 @@ export const perpsRankingsCache = createPluginCache<PerpRankingsPayload>({ kind:
 const boardKey = (query: PerpBoardQuery, access: string) => `board:v1:${query.assetClass ?? "all"}:${query.sort ?? "oi"}:${query.search?.trim().toUpperCase() ?? ""}:${access}`;
 export const cachedPerpsBoard = (query: PerpBoardQuery, access: string) => cachedCloudResource(perpsCache, boardKey(query, access), validatePerpsBoard);
 export const loadPerpsBoard = (query: PerpBoardQuery, access: string, force = false) => loadCloudResource(perpsCache, boardKey(query, access), () => fetchPerpsBoard(query), { force, validate: validatePerpsBoard });
-export const cachedPerpsRankings = (access: string) => cachedCloudResource(perpsRankingsCache, `rankings:v1:${access}`, validatePerpsRankings);
-export const loadPerpsRankings = (access: string, force = false) => loadCloudResource(perpsRankingsCache, `rankings:v1:${access}`, () => fetchPerpsRankings(), { force, validate: validatePerpsRankings });
+const rankingsKey = (access: string, assetClass = "all") => `rankings:v1:${access}${assetClass === "all" ? "" : `:${assetClass}`}`;
+export const cachedPerpsRankings = (access: string, assetClass?: string) => cachedCloudResource(perpsRankingsCache, rankingsKey(access, assetClass), validatePerpsRankings);
+export const loadPerpsRankings = (access: string, force = false, assetClass?: string) => loadCloudResource(perpsRankingsCache, rankingsKey(access, assetClass),
+  () => fetchPerpsRankings(apiClient, assetClass), { force, validate: validatePerpsRankings });
 const compareKey = (baseAsset: string, access: string) => `compare:v1:${baseAsset.toUpperCase()}:${access}`;
 export const cachedPerpsCompare = (baseAsset: string, access: string) => cachedCloudResource(perpsCache, compareKey(baseAsset, access), (data) => validatePerpsCompare(data, baseAsset));
 export const loadPerpsCompare = (baseAsset: string, access: string, force = false) => loadCloudResource(perpsCache, compareKey(baseAsset, access), () => fetchPerpsCompare(baseAsset), { force, validate: (data) => validatePerpsCompare(data, baseAsset) });

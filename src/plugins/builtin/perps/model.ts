@@ -329,7 +329,7 @@ export function perpCell(row: PerpBoardRow, id: PerpColumnId, colors: Pick<Theme
 }
 
 /** The five ranked lists, each with the figure it ranks by. */
-export type RankingKey = Exclude<keyof PerpRankingsPayload, "status" | "asOf" | "access" | "locked">;
+export type RankingKey = Exclude<keyof PerpRankingsPayload, "status" | "asOf" | "access" | "locked" | "assetClass">;
 export const RANKINGS: Array<{ key: RankingKey; label: string; header: string; field: "fundingRate8h" | "oiChange24h" | "premium" | "closedMarketPremium"; digits: number }> = [
   { key: "fundingPositive", label: "Highest Funding 8h", header: "Funding 8h %", field: "fundingRate8h", digits: 4 },
   { key: "fundingNegative", label: "Lowest Funding 8h", header: "Funding 8h %", field: "fundingRate8h", digits: 4 },

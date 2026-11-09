@@ -269,8 +269,11 @@ function Rankings({ accessKey, width, height, focused, onPick, onOpen }: ListTab
   const upgrade = useCloudUpgradeAction("perp");
   const session = useResearchCloudSession();
   const [selectedId, setSelected] = usePluginPaneState<string | null>("perps:rank-selected", null);
-  const loader = useCallback((force: boolean) => loadPerpsRankings(accessKey, force), [accessKey]);
-  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsRankings(accessKey), clearOnError: isAccessDenied });
+  // The board's asset class: a class picked on either tab ranks and lists the same markets.
+  const [openingAsset] = usePaneSettingValue("assetClass", "all");
+  const [asset, setAsset] = usePluginPaneState<string>("perps:asset", openingAsset);
+  const loader = useCallback((force: boolean) => loadPerpsRankings(accessKey, force, asset), [accessKey, asset]);
+  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsRankings(accessKey, asset), clearOnError: isAccessDenied, keepPreviousData: true });
   const data = resource.data?.payload;
   const fetchedItems = useMemo(() => buildSectionedRows(RANKINGS.map((ranking) => ({ label: ranking.label, emptyLabel: "None",
     items: rankingRows(data, ranking.key).map((row): Ranked => ({ list: ranking.key, row })) })), rankedKey), [data]);
@@ -300,8 +303,10 @@ function Rankings({ accessKey, width, height, focused, onPick, onOpen }: ListTab
     const value = row[ranking.field];
     return { text: percent(value, ranking.digits), value: value == null ? null : value * 100, color: value == null || value === 0 ? colors.textMuted : value > 0 ? colors.positive : colors.negative };
   };
+  const queryBar = <QueryBar width={width} filters={[{ id: "asset", label: "Asset", value: asset, defaultValue: "all", options: ASSET_FILTERS.map((value) => ({ value, label: label(value) })),
+    onChange: (value: string) => { setAsset(value); setSelected(null); } }]} />;
   return <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject="perpetual rankings">
-    <DataTableView<SectionedRow<Ranked>> columns={columns} items={items} focused={focused} rootWidth={width} rootHeight={height}
+    <DataTableView<SectionedRow<Ranked>> columns={columns} items={items} focused={focused} rootWidth={width} rootHeight={height} rootBefore={queryBar}
       getItemKey={(entry) => entry.key} sortColumnId={null} sortDirection="desc" isNavigable={(entry) => entry.kind === "item"} onVisibleRangeChange={stream.onVisibleRangeChange}
       renderSectionHeader={(entry) => entry.kind === "section" ? { text: entry.label } : null}
       selection={{ kind: "id", selectedId: selected ? rankedKey(selected) : null, getId: (entry) => entry.key, onChange: (id) => { if (ranked.some((item) => rankedKey(item) === id)) setSelected(id); } }}

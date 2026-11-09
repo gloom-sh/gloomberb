@@ -166,6 +166,8 @@ export interface PerpRankingsPayload {
   status: string; asOf: string | null; access: "pro" | "preview"; locked: boolean;
   fundingPositive: PerpBoardRow[]; fundingNegative: PerpBoardRow[]; oiSurges: PerpBoardRow[];
   premiumDislocations: PerpBoardRow[]; closedMarketDislocations: PerpBoardRow[];
+  /** The asset class the lists rank, when one was asked for; an older server ranks every class and leaves it out. */
+  assetClass?: string;
 }
 /** `venue` narrows the board to one venue's markets, its own free preview included; the pane filters venues itself, to list them all. */
 export type PerpBoardQuery = { assetClass?: string; venue?: string; search?: string; sort?: string; includeDelisted?: boolean };
