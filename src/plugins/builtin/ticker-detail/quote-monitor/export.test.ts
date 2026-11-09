@@ -22,10 +22,10 @@ test("the board's Export CSV is fn QQ's file: each card's listing, its move as s
     ], Date.now(), (providerId) => providerId === "ibkr" ? "Interactive Brokers" : null);
     expect(csv.startsWith(EXCEL_CSV_BOM)).toBe(true);
     expect(csv.slice(EXCEL_CSV_BOM.length).split("\n")).toEqual([
-      "Ticker,Name,Last,Change,Change %,Chg Basis,Session,Feed,Chg bp,status,symbol_or_series,currency_or_unit,interval,source,as_of",
-      "^HSI,HANG SENG INDEX,24481.86,-315.12,-1.27,vs prev close,CLOSED,delayed,,,^HSI,index points,,Gloom Cloud,2026-11-06T08:09:00.000Z",
-      "0005:HKEX,HSBC Holdings plc,137.5,-3.6,-2.55,vs prev close,CLOSED,delayed,,,0005:HKEX,HKD,,Gloom Cloud,2026-11-06T08:08:00.000Z",
-      "^TNX,CBOE Interest Rate 10 Year T Note,4.859,0.022,0.45,vs prev close,CLOSED,live,2.2,,^TNX,pct,,Interactive Brokers,2026-11-06T19:59:00.000Z",
+      "Ticker,Name,Last,Change,Change %,Chg Basis,Session,Feed,Chg bp,status,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at",
+      "^HSI,HANG SENG INDEX,24481.86,-315.12,-1.27,vs prev close,CLOSED,delayed,,,^HSI,index points,,Gloom Cloud,2026-11-06T08:09:00.000Z,2026-11-06T21:35:00.000Z",
+      "0005:HKEX,HSBC Holdings plc,137.5,-3.6,-2.55,vs prev close,CLOSED,delayed,,,0005:HKEX,HKD,,Gloom Cloud,2026-11-06T08:08:00.000Z,2026-11-06T21:35:00.000Z",
+      "^TNX,CBOE Interest Rate 10 Year T Note,4.859,0.022,0.45,vs prev close,CLOSED,live,2.2,,^TNX,pct,,Interactive Brokers,2026-11-06T19:59:00.000Z,2026-11-06T21:35:00.000Z",
     ]);
   } finally {
     setSystemTime();

@@ -10,6 +10,7 @@ import type { PluginCapability } from "../capabilities";
 import type { AppConfig } from "../types/config";
 import type { GloomPlugin } from "../types/plugin";
 import { standaloneSeriesCatalog, standaloneSeriesInvoker, standaloneSeriesNamed } from "../series/standalone";
+import { setStandaloneSeriesCatalog } from "../series/standalone-catalog";
 import type { PluginRegistry } from "../plugins/registry";
 import type { LoadedExternalPlugin } from "../plugins/loader";
 import { apiClient } from "../api-client";
@@ -127,6 +128,8 @@ export async function initMarketData(options: CliContextOptions = {}): Promise<M
   const seriesCapabilities = standaloneSeriesInvoker(plugins, context.dataDir, context.config.disabledPlugins);
   const findCatalogSeries = standaloneSeriesCatalog(plugins, context.config.disabledPlugins);
   const findCatalogSeriesNamed = standaloneSeriesNamed(plugins, context.config.disabledPlugins);
+  // A chart typed as a catalog series' id or name (`fn G fut:crack-321`) reads it from the plugins' declared series.
+  setStandaloneSeriesCatalog(plugins, context.config.disabledPlugins);
   return { ...context, dataProvider, seriesCapabilities, findCatalogSeries, findCatalogSeriesNamed, statementSources: cloudStatementReportSources };
 }
 

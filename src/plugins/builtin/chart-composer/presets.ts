@@ -20,9 +20,11 @@ import {
 } from "./series-expression";
 import { setBuiltinStudies, setPairStudies, type PairStudySelection } from "./studies";
 import { looksLikeFormula, parseFormulaExpression, type ParsedFormula } from "./formula";
+import { FORMULA_NAME, FORMULA_ROLLS_WITH } from "../../../time-series/studies/formula";
 import type { SeriesCatalogSuggestion } from "./series-catalog";
 import { getSharedRegistry } from "../../registry";
 import { seriesCatalogEntry } from "../../../series/registry";
+import { standaloneSeriesCatalogEntries } from "../../../series/standalone-catalog";
 
 function chartSpec(
   series: ChartSeriesSpec[],
@@ -102,9 +104,23 @@ function withFactorPanels(panels: ChartSpec["panels"], factors: readonly ChartSe
   ];
 }
 
+/**
+ * A catalog formula's name, and the leg every other leg takes its delivery
+ * month from (`CL=F` in the 3-2-1 crack), as its catalog entry gives them.
+ */
+interface CatalogFormula {
+  name: string;
+  rollsWith?: string;
+}
+
 /** The study that weighs a formula's legs and scales the sum, charted as the given series, in the Formula panel. */
-function formulaStudy(formula: ParsedFormula, inputSeriesIds: string[]): ChartStudySpec {
+function formulaStudy(formula: ParsedFormula, inputSeriesIds: string[], catalog?: CatalogFormula): ChartStudySpec {
   const parameters: ChartStudySpec["parameters"] = { divisor: formula.divisor };
+  if (catalog) {
+    parameters[FORMULA_NAME] = catalog.name;
+    const leader = catalog.rollsWith ? formula.legs.findIndex((leg) => leg.text.toUpperCase() === catalog.rollsWith!.toUpperCase()) : -1;
+    if (leader >= 0) parameters[FORMULA_ROLLS_WITH] = leader + 1;
+  }
   formula.legs.forEach((leg, index) => {
     parameters[`weight${index + 1}`] = leg.weight;
     if (leg.perBarrel) parameters[`perBarrel${index + 1}`] = 1;
@@ -118,7 +134,7 @@ function formulaStudy(formula: ParsedFormula, inputSeriesIds: string[]): ChartSt
 }
 
 /** A formula's legs and factors as series, with the study that sums them in the Formula panel. */
-function formulaChartPreset(formula: ParsedFormula): ChartSpec {
+function formulaChartPreset(formula: ParsedFormula, catalog?: CatalogFormula): ChartSpec {
   const legs = buildCustomSeries([...formula.legs, ...formula.factors].map((entry) => entry.series));
   const series: ChartSeriesSpec[] = [];
   legs.forEach((entry, index) => {
@@ -126,7 +142,7 @@ function formulaChartPreset(formula: ParsedFormula): ChartSpec {
       ? placeFormulaLeg(formula, index, entry)
       : placeFormulaFactor({ panels: [], series, studies: [] }, entry));
   });
-  const spec = chartSpec(series, { studies: [formulaStudy(formula, series.map((entry) => entry.id))] });
+  const spec = chartSpec(series, { studies: [formulaStudy(formula, series.map((entry) => entry.id), catalog)] });
   return { ...spec, panels: withFactorPanels(spec.panels, series.slice(formula.legs.length)) };
 }
 
@@ -134,7 +150,7 @@ function formulaChartPreset(formula: ParsedFormula): ChartSpec {
  * The chart with a formula added: a leg already charted is reused, the rest
  * join the series, and the formula replaces the one the chart had.
  */
-function appendChartFormula(spec: ChartSpec, expression: string): { spec: ChartSpec; series: ChartSeriesSpec } {
+function appendChartFormula(spec: ChartSpec, expression: string, catalog?: CatalogFormula): { spec: ChartSpec; series: ChartSeriesSpec } {
   const formula = parseFormulaExpression(expression);
   if (!formula) throw new Error(`"${expression}" is not a formula.`);
   const key = (series: ChartSeriesSpec) => formatSeriesExpression(series).toLowerCase();
@@ -157,7 +173,7 @@ function appendChartFormula(spec: ChartSpec, expression: string): { spec: ChartS
     next = { ...appended.spec, series: appended.spec.series.map((series) => series.id === placed.id ? placed : series) };
     return placed;
   });
-  const studies = [...next.studies, formulaStudy(formula, inputs.map((series) => series.id))];
+  const studies = [...next.studies, formulaStudy(formula, inputs.map((series) => series.id), catalog)];
   const known = new Set(next.panels.map((panel) => panel.id));
   return {
     spec: {
@@ -180,7 +196,10 @@ export function appendCatalogSuggestion(
   spec: ChartSpec,
   suggestion: SeriesCatalogSuggestion,
 ): { spec: ChartSpec; series: ChartSeriesSpec } {
-  if (suggestion.formula !== undefined) return appendChartFormula(spec, suggestion.formula);
+  if (suggestion.formula !== undefined) {
+    return appendChartFormula(spec, suggestion.formula, suggestion.seriesName
+      ? { name: suggestion.seriesName, ...(suggestion.rollsWith ? { rollsWith: suggestion.rollsWith } : {}) } : undefined);
+  }
   if (suggestion.lines || suggestion.placement) {
     return appendPlacedSeries(spec, suggestion.lines ?? [suggestion.expression!], {
       name: suggestion.seriesName ?? suggestion.label,
@@ -227,12 +246,18 @@ export function buildRegisteredSeriesChart(
  * or a formula (`42*HO=F - CL=F`).
  */
 export function buildCustomChartPreset(expression: string, fallbackSymbol?: string | null): ChartSpec {
+  // A catalog series by its name (`3-2-1 crack spread`), which would read as a list of tickers.
+  const named = /\s/.test(expression.trim()) && !looksLikeFormula(expression) ? catalogSeriesChart(expression) : null;
+  if (named) return named;
   const derived = derivedPair(expression);
   if (derived) return setPairStudies(chartSpec(buildCustomSeries(derived.series)), [derived.formula]);
   let parsed: ParsedSeriesExpression[];
   try {
     parsed = parseChartExpression(expression);
   } catch (error) {
+    // A catalog series by its id (`fut:crack-321`) or name, which no series reads as.
+    const catalog = catalogSeriesChart(expression);
+    if (catalog) return catalog;
     // Text a list cannot read, written as a formula, gets the formula's own error.
     if (!looksLikeFormula(expression)) throw error;
     const formula = parseFormulaExpression(expression);
@@ -243,6 +268,38 @@ export function buildCustomChartPreset(expression: string, fallbackSymbol?: stri
   const registered = parsed.length === 1 ? placedRegisteredSeries(parsed[0]!) : null;
   if (registered) return buildRegisteredSeriesChart(registered.series, registered.ticker);
   return chartSpec(buildCustomSeries(parsed));
+}
+
+/** A name as typed, without case or punctuation: `3:2:1 Crack Spread` is `321crackspread`. */
+function compactName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+/**
+ * The chart of a catalog series typed by its id (`fut:crack-321`) or its name
+ * (`3-2-1 crack spread`, in any case or punctuation): a formula with its legs,
+ * named as the catalog names it and priced in one delivery month when the
+ * entry rolls its legs together; any other series under its name. Null when
+ * no series has the id or name, or the series needs a ticker to chart.
+ */
+function catalogSeriesChart(text: string): ChartSpec | null {
+  const wanted = text.trim();
+  if (!wanted) return null;
+  const compact = compactName(wanted);
+  const entries = (getSharedRegistry()?.series?.catalog() ?? standaloneSeriesCatalogEntries()).filter((entry) => !entry.input);
+  const entry = entries.find((candidate) => candidate.id.toLowerCase() === wanted.toLowerCase())
+    ?? (compact ? entries.find((candidate) => compactName(candidate.name) === compact) : undefined);
+  if (!entry) return null;
+  let formula: ParsedFormula | null = null;
+  try {
+    formula = parseFormulaExpression(entry.expression);
+  } catch {
+    // Intentional ignore: an entry whose expression is no formula charts as the series it names.
+  }
+  if (formula) return formulaChartPreset(formula, { name: entry.name, ...(entry.rollsWith ? { rollsWith: entry.rollsWith } : {}) });
+  if (entry.lines?.length || entry.placement) return buildRegisteredSeriesChart({ name: entry.name, template: entry.expression, placement: entry.placement, lines: entry.lines });
+  const parsed = parseSeriesExpression(entry.expression);
+  return parsed ? chartSpec(buildCustomSeries([{ ...parsed, label: entry.name }])) : null;
 }
 
 /**

@@ -451,10 +451,15 @@ describe("pane catalog search", () => {
         const ranked = filterPaneCatalogEntries(entries, query);
         expect(selectPaneCatalogMatches(ranked, query, 10).shown.map(({ token }) => token), query).toEqual(["G"]);
         expect(findCatalogSeries(plugins, query).map(({ unit, expression }) => `${unit} ${expression}`).sort(), query).toEqual([
-          "USD/barrel (2*42*RB=F + 42*HO=F - 3*CL=F)/3",
-          "USD/barrel 42*HO=F - BZ=F",
-          "USD/barrel 42*HO=F - CL=F",
+          // Priced in one delivery month, each charts by its id: the bare formula would mix months.
+          "USD/barrel fut:crack-321",
+          "USD/barrel fut:crack-ho-brent",
+          "USD/barrel fut:crack-ho-wti",
         ]);
+      }
+      // The 3-2-1 crack is found however its ratio is written, by search as by catalog.
+      for (const query of ["3-2-1 crack", "321 crack", "3:2:1"]) {
+        expect(findCatalogSeries(plugins, query, "names").map(({ id }) => id), query).toEqual(["fut:crack-321"]);
       }
     } finally {
       registry.destroy();

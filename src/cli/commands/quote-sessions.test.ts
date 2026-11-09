@@ -339,8 +339,8 @@ test("quote --csv writes plain numbers, an extended print and its move apart, an
     const columns = header!.split(",");
     const rows = lines.map((line) => line.match(/("[^"]*"|[^,]*)(,|$)/g)!.map((cell) => cell.replace(/,$/, "").replace(/^"|"$/g, "")));
     const cell = (symbol: string, column: string) => rows.find((row) => row[0] === symbol)![columns.indexOf(column)];
-    expect(columns.slice(-9)).toEqual(["Pre-Market Chg%", "After Hours Chg%", "Overnight Chg%", "status",
-      "symbol_or_series", "currency_or_unit", "interval", "source", "as_of"]);
+    expect(columns.slice(-9)).toEqual(["After Hours Chg%", "Overnight Chg%", "status",
+      "symbol_or_series", "currency_or_unit", "interval", "source", "as_of", "retrieved_at"]);
     expect([cell("AAPL", "Last"), cell("AAPL", "After Hours"), cell("AAPL", "After Hours Chg%"), cell("AAPL", "status")]).toEqual(["336.64", "336.08", "-0.17", ""]);
     // A vendor's suffixed symbol is the listing its quote confirms, as RV names it.
     expect([cell("7203:JPX", "Last"), cell("7203:JPX", "Cur"), cell("7203:JPX", "currency_or_unit")]).toEqual(["2910.5", "JPY", "JPY"]);

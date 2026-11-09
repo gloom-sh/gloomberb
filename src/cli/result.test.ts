@@ -182,20 +182,21 @@ describe("serializeCliResult", () => {
     expect(json.source).toEqual(source);
     // Every row ends with what it is: the symbol it carries, and the source and as-of the footer cites.
     expect(serializeCliResult(result, { ...baseOptions, format: "csv" }).split("\n")).toEqual([
-      "symbol,symbol_or_series,currency_or_unit,interval,source,as_of",
-      "AAPL,AAPL,,,Gloom Cloud,2026-10-09T13:22:00.000Z",
+      "symbol,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at",
+      "AAPL,AAPL,,,Gloom Cloud,2026-10-09T13:22:00.000Z,2026-10-09T13:30:00.000Z",
       "", `# ${line}`, "# Publisher: not published", "# Observation date: 2026-10-09T13:22:00.000Z",
       "# Publication time: not published", "# Retrieval time: 2026-10-09T13:30:00.000Z",
     ]);
     expect(JSON.parse(serializeCliResult(result, { ...baseOptions, format: "ndjson" }))).toEqual({
       symbol: "AAPL", symbol_or_series: "AAPL", currency_or_unit: null, interval: null, source: "Gloom Cloud", as_of: "2026-10-09T13:22:00.000Z",
+      retrieved_at: "2026-10-09T13:30:00.000Z",
     });
     // A command's own identity wins over the row's fields, and its notes close the CSV.
     const declared = serializeCliResult(result, { ...baseOptions, format: "csv" }, {
       exportIdentity: { symbolOrSeries: "DEXSFUS", currencyOrUnit: "bp", interval: "daily" },
       exportNotes: ["Series begins 1980-01-02."],
     }).split("\n");
-    expect(declared[1]).toBe("AAPL,DEXSFUS,bp,daily,Gloom Cloud,2026-10-09T13:22:00.000Z");
+    expect(declared[1]).toBe("AAPL,DEXSFUS,bp,daily,Gloom Cloud,2026-10-09T13:22:00.000Z,2026-10-09T13:30:00.000Z");
     expect(declared.at(-1)).toBe("# note: Series begins 1980-01-02.");
     // Data that states its own freshness (an `fn` report) is cited in JSON without a second copy in metadata or text.
     const cited = { data: { rows: [] }, exportFreshness: freshness };

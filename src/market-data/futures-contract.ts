@@ -70,7 +70,9 @@ export function futuresSpecLines(spec: FuturesContractSpec): FuturesContractLine
     { key: "size", label: "Size", value: spec.size },
     { key: "tick", label: "Tick", value: futuresTickText(spec) },
     { key: "pointValue", label: "Point Value", value: `$${spec.pointValue.toLocaleString("en-US")}` },
-    { key: "settlement", label: "Settlement", value: SETTLEMENT_TYPE[spec.settlement] },
+    // A contract settled to another's says which: BZ is cash-settled to the ICE Brent futures settlement.
+    { key: "settlement", label: "Settlement", value: spec.settlement === "cash" && spec.settlesTo?.trim()
+      ? `${SETTLEMENT_TYPE.cash} to ${spec.settlesTo.trim()}` : SETTLEMENT_TYPE[spec.settlement] },
   ];
 }
 
@@ -421,7 +423,8 @@ export function isFuturesContractSpec(spec: unknown): spec is FuturesContractSpe
   const row = spec as Record<string, unknown>;
   return typeof row.unit === "string" && typeof row.size === "string"
     && positive(row.tick) && positive(row.tickValue) && positive(row.pointValue)
-    && (row.settlement === "physical" || row.settlement === "cash");
+    && (row.settlement === "physical" || row.settlement === "cash")
+    && (row.settlesTo === undefined || row.settlesTo === null || typeof row.settlesTo === "string");
 }
 
 function isNearestContract(value: unknown): boolean {

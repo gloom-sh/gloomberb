@@ -21,6 +21,7 @@ import type {
   ResolvedSeries,
 } from "./types";
 import { type DateBounds, filterPoints } from "./chart-bounds";
+import { isFormulaNextMonth } from "./formula-months";
 
 export function resolvePriceHistoryIntegrity(
   spec: ChartSpec,
@@ -33,6 +34,8 @@ export function resolvePriceHistoryIntegrity(
   const filters = new Map(requestedSeries.map((entry) => [entry.id, priceObservationWindowFilter(entry, bounds, resolution, dateWindow)]));
   const requestedIds = activeStudyInputSeriesIds(spec.studies);
   spec.series.filter((entry) => entry.visible !== false).forEach((entry) => requestedIds.add(entry.id));
+  // A formula's hidden next month is no series the chart was asked for.
+  for (const id of requestedIds) if (isFormulaNextMonth(id)) requestedIds.delete(id);
   const selected = requestedSeries.filter((entry) => requestedIds.has(entry.id)).map((entry) => limitSeriesObservations(spec, {
     ...entry, points: entry.points.filter((point) => filters.get(entry.id)!(point.date.getTime())),
   }));

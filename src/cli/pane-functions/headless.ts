@@ -21,6 +21,7 @@ import type {
   HeadlessPaneRow,
   HeadlessRowsResult,
   HeadlessSeries,
+  HeadlessSeriesPoint,
   HeadlessSeriesResult,
   HeadlessSnapshotResult,
 } from "../../types/plugin";
@@ -649,6 +650,7 @@ function seriesTable(series: HeadlessSeries): CliReportTable {
   const days = observesDays(series);
   const dates = series.points.map((point) => seriesPointExportDate(series, point.date, days));
   const header = (field: (typeof SERIES_FIELDS)[number]) => `${field[0]!.toUpperCase()}${field.slice(1)}`;
+  const contracts = seriesContractColumns(series);
   return {
     title: series.label,
     identity: {
@@ -657,14 +659,45 @@ function seriesTable(series: HeadlessSeries): CliReportTable {
       ...(series.unit?.trim() ? { currencyOrUnit: currencyRateUnitText(series.unit.trim()) } : {}),
       ...(series.interval?.trim() ? { interval: series.interval.trim() } : {}),
     },
-    columns: [dates.every((date) => date.length <= 10) ? "Date" : "Time", ...fields.map(header)],
+    columns: [dates.every((date) => date.length <= 10) ? "Date" : "Time", ...fields.map(header), ...contracts.columns],
+    // The contract columns came after the fixed ones: they close the row, so no earlier column moves.
+    ...contracts.columns.length ? { appendedColumns: contracts.columns.length } : {},
     rows: series.points.map((point, index) => [
       dates[index]!,
       ...fields.map((field) => {
         const value = point[field];
         return typeof value === "number" && Number.isFinite(value) ? exportNumber(value) : "";
       }),
+      ...contracts.cells(point, index),
     ]),
+  };
+}
+
+/**
+ * The contract columns of a futures series, after its figures, as `history`
+ * writes them: a continuous future's `Contract`, or a formula's contract of
+ * each leg (`RB=F Contract`), then `Roll` and `Partial`. A roll is the
+ * contract (a formula's legs') changing from the point before, the bar
+ * before the window included, so a window's first row can be one. None for a
+ * series of no contracts.
+ */
+function seriesContractColumns(series: HeadlessSeries): { columns: string[]; cells: (point: HeadlessSeriesPoint, index: number) => string[] } {
+  const legNames = series.formulaLegs ?? [];
+  const formula = legNames.length > 0
+    && series.points.some((point) => point.legs?.length === legNames.length && point.legs.some((leg) => leg.contract));
+  const continuous = !formula && series.points.some((point) => point.contract);
+  if (!formula && !continuous) return { columns: [], cells: () => [] };
+  const flag = (value: boolean | undefined) => value ? "true" : "false";
+  return {
+    columns: [...formula ? legNames.map((leg) => `${leg} Contract`) : ["Contract"], "Roll", "Partial"],
+    cells: (point, index) => {
+      if (formula) {
+        return [...legNames.map((_, position) => point.legs?.[position]?.contract ?? ""), flag(point.roll), flag(point.partial)];
+      }
+      const previous = index > 0 ? series.points[index - 1]?.contract : null;
+      const roll = point.roll || (!!point.contract && !!previous && point.contract !== previous);
+      return [point.contract ?? "", flag(roll), flag(point.partial)];
+    },
   };
 }
 

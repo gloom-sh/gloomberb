@@ -218,6 +218,32 @@ export function futuresGenericCaption(generic: FuturesGeneric): string {
   return `${generic.ticker} ${futuresGenericOrdinal(generic.position)} generic · ${futuresGenericRollLabel(generic)} · ${futuresGenericAdjustLabel(generic.adjust)}`;
 }
 
+const MONTH_CODES = "FGHJKMNQUVXZ";
+
+/**
+ * A listed contract's root and delivery month, counted in months from year 0
+ * (CLZ26 is CL, 2026 × 12 + 11), from its code with or without its venue
+ * (CLZ26.NYM). Null for anything else: a continuous symbol, a generic.
+ */
+export function futuresContractMonth(code: string): { root: string; month: number } | null {
+  const match = /^([A-Z0-9]{1,4}?)([FGHJKMNQUVXZ])(\d{2})(?:\.[A-Z]+)?$/.exec(code.trim().toUpperCase());
+  if (!match) return null;
+  return { root: match[1]!, month: (2000 + Number(match[3])) * 12 + MONTH_CODES.indexOf(match[2]!) };
+}
+
+/** A root's contract for a delivery month as `futuresContractMonth` counts it: CL and 2026 × 12 + 11 are CLZ26. */
+export function futuresContractCode(root: string, month: number): string {
+  return `${root}${MONTH_CODES[month % 12]}${String(Math.floor(month / 12) % 100).padStart(2, "0")}`;
+}
+
+/** The root of a continuous symbol (`RB=F`, `RB=F:NYM`), as its generics are written; null for any other symbol. */
+export function continuousFuturesRoot(symbol: string): string | null {
+  const match = /^([A-Z0-9]{1,4})=F$/.exec(parsePublicTickerKey(symbol).symbol.trim().toUpperCase());
+  if (!match) return null;
+  const root = ALIASES[match[1]!] ?? match[1]!;
+  return ROOT_VENUES[root] ? root : null;
+}
+
 /** Choice values for the chart's roll control: the standard roll and the three rules at their usual settings. */
 export function futuresGenericRollValue(roll: FuturesGenericRoll): string {
   if (roll.rule === "first-notice" && roll.standard) return "standard";

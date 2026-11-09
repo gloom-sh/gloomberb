@@ -69,7 +69,8 @@ const STATUS = { complete: true, unavailableSymbols: [] };
 /** A CSV line's cells, quotes taken off. */
 const csvCells = (line: string) => line.match(/("[^"]*"|[^,]*)(,|$)/g)!.map((cell) => cell.replace(/,$/, "").replace(/^"|"$/g, "")).slice(0, -1);
 /** The five fixed columns every export row ends with: symbol, unit, interval, source, as of. */
-const exportIdentity = (line: string) => csvCells(line).slice(-5);
+/** What an exported row is and is dated by: the five fixed columns before its retrieval time. */
+const exportIdentity = (line: string) => csvCells(line).slice(-6, -1);
 
 async function report(
   argument: string | null,
@@ -301,7 +302,7 @@ describe("CDS report", () => {
     // last trade), or by its last trade without one: never the day of the newest row.
     const lines = renderReportCsv(headlessReportTables(cdsHeadless, result, args(null), "CDS", freshness, STATUS), freshness).split("\n");
     const cells = (line: string) => line.match(/("[^"]*"|[^,]*)(,|$)/g)!.map((cell) => cell.replace(/,$/, "").replace(/^"|"$/g, "")).slice(0, -1);
-    const identity = (issuer: string) => cells(lines.find((row) => cells(row)[0] === issuer)!).slice(-5);
+    const identity = (issuer: string) => cells(lines.find((row) => cells(row)[0] === issuer)!).slice(-6, -1);
     expect(identity("Issuer 7 Holdings")).toEqual(["Issuer 7 Holdings", "bp", "", "DTCC", "2026-10-07"]);
     expect(identity("Amazon.com, Inc.")).toEqual(["Amazon.com, Inc.", "bp", "", "DTCC", "2026-10-09"]);
     expect(identity("Ford Motor Company")).toEqual(["Ford Motor Company", "bp", "", "DTCC", "2026-10-09T13:21:00.000Z"]);

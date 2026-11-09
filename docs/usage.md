@@ -1286,7 +1286,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 - The line under the heading names the currency the prices are in (an FX pair reads `ZAR per USD`, an index `Index points`, a sub-unit `ILA (agorot, 1/100 ILS)`, `Currency unknown` when no source states one), the bar size served, the first and last bar and the bar count.
 - `--json` carries the same in `metadata` (`currency`, `unit`, `interval`, `firstDate`, `lastDate`, `bars`, `requestedRange`, `asOf`). Every row has `currency`, `unit` (what one price is: `USD`, `index points`, `ZAR per USD`), `interval` and `flag`.
 - A continuous future (`NG=F`) is the front month: the heading reads `Natural Gas front month`, each row has the `contract` it closes on, the row it rolled at says `roll to NGZ26`, and a note names each roll. The max drawdown is read within one contract, never from one month's close to the next one's across a roll, and names that contract. A bar that traded under 5% of the volume of the contract's bars around it says `thin`; a stock's or a coin's quiet day, and a bar with no trade at all, is never marked. Without contracts on the bars (an older server), the history reads as before.
-- Every `--csv` has one header, whatever the symbol, range or market state: `Date,Open,High,Low,Close,Volume,Flag,Partial,Filled,Unsettled,Volume unit,Volume note,Venue volume,Volume venue,Volume basis,status`, then the [five fixed columns](#what-every-exported-row-says) every export ends with. Prices are plain numbers, `Partial`, `Filled` and `Unsettled` are `true` or `false` on every bar, and `status` says why a row has no prices (`prices left blank: high<open`). A continuous future whose bars name their contracts (`NG=F`) adds `Contract,Roll,Thin` before `status`: the contract the bar closes on (`NGZ26`), and `true` or `false` for the bar it rolled at and a bar that traded under 5% of the volume around it. Files of different symbols, or taken before and after the open, line up when joined.
+- Every `--csv` has one header, whatever the symbol, range or market state: `Date,Open,High,Low,Close,Volume,Flag,Partial,Filled,Unsettled,Volume unit,Volume note,Venue volume,Volume venue,Volume basis,status`, then the [fixed columns](#what-every-exported-row-says) every export ends with, `retrieved_at` last. Prices are plain numbers, `Partial`, `Filled` and `Unsettled` are `true` or `false` on every bar, and `status` says why a row has no prices (`prices left blank: high<open`). A continuous future whose bars name their contracts (`NG=F`) adds `Contract,Roll,Thin` before `status`: the contract the bar closes on (`NGZ26`), and `true` or `false` for the bar it rolled at and a bar that traded under 5% of the volume around it. Files of different symbols, or taken before and after the open, line up when joined.
 - **Warnings** (stderr for text and CSV, `warnings` in JSON) say when the bars are coarser than the range is served in or start well after the start asked for (`Asked 5Y, data starts 2023-09-11 (first available bar)`), and for a coin name days with no daily bar. A bar whose prices contradict each other (high below the open or close, low above them) is left blank, with a code such as `high<open` in `flag`. A low under half the bar's open and close, or a high over twice them, is too far to have traded (IAG on LSE, 2021-11-29: a low of 0.0155 against a 1.316 close): that low or high alone is left blank and out of ranges, weekly bars and range volatility, flagged `low<close/2` or `high>2*open`, while the bar's open and close stand.
 
 **Breaks.** A break in the series flags the bar after it, which keeps its prices:
@@ -1353,7 +1353,7 @@ An intervention sums days in one pair and direction a weekend or holiday apart, 
 
 **The peso.** `gloom fx USD/ARS` (or `ARS/USD`) labels its rate the official wholesale one, then lists the market dollar rates Buenos Aires prices imply, pesos per dollar, each with its formula and the time of every price in it: CCL via the GGAL ADR (GGAL.BA × 10 / GGAL), CCL via the BYMA C line (GGAL.BA / GGALC.BA) and MEP via the D line (GGAL.BA / GGALD.BA). A price that did not come back leaves its rate out and says so. `--json` adds `spotKind` and `impliedRates` (`kind`, `rate`, `formula` and each input's `price`, `currency`, `observedAt` and `sessionOpen`). `gloom fn ADR <ticker>` compares any other receipt with its home listing the same way.
 
-**Exports.** `--json`, `--csv` and `--ndjson` carry `currency`, `baseCurrency`, `rate` (base currency per one currency), `asOf`, `stale`, `pair` and `inverse`. `--csv` and `--ndjson` end with the five fixed columns: the pair (`ZAR/USD`), the base currency (`USD`), `spot`, the source and the rate's time. `--json` adds `metadata.freshness`.
+**Exports.** `--json`, `--csv` and `--ndjson` carry `currency`, `baseCurrency`, `rate` (base currency per one currency), `asOf`, `stale`, `pair` and `inverse`. `--csv` and `--ndjson` end with the fixed columns: the pair (`ZAR/USD`), the base currency (`USD`), `spot`, the source, the rate's time and when the export read it. `--json` adds `metadata.freshness`.
 
 **A past day.** `--date 2026-09-02` gives the rate at that day's daily FX close, the one a position's purchase-date cost is converted at. The source line dates it: `Source: Gloom Cloud · Wed 2 Sep 2026 · not a live feed (daily FX close)`. A weekend or holiday reads the trading day before and warns, and today has no close yet.
 
@@ -1607,7 +1607,7 @@ The chain is the standard contracts. Contracts a corporate action adjusted (list
 
 The line under the table names the spot and time they are valued at and the open interest's date: `Greeks at spot 89.79 (close Mon 12 Oct), dividend yield 2.34%, rate 4% · OI as of Fri 9 Oct` (`OI date not published` when it cannot be established; [method](research-data.md#greeks-spot-and-time)).
 
-- `--csv` writes IV and delta as decimals under `IV (annualized decimal)` and `Delta (decimal)`. Every row carries `Spot`, `Spot basis` (`close`, `last`, `pre-market`, `after hours`), `Spot as of`, `OI as of` and the five fixed columns, with `interval` reading `snapshot`.
+- `--csv` writes IV and delta as decimals under `IV (annualized decimal)` and `Delta (decimal)`. Every row carries `Spot`, `Spot basis` (`close`, `last`, `pre-market`, `after hours`), `Spot as of`, `OI as of` and the fixed columns, with `interval` reading `snapshot`.
 - `--json` and `--ndjson` carry `iv` (a fraction) and `delta` on each contract. `metadata.model` has `spot`, `spotBasis`, `spotAsOf`, `valuationTime`, dividend yield and rate, with `metadata.openInterest.asOf`, `metadata.currency`, `metadata.interval` and `metadata.units`.
   - `metadata.fields` says `iv` is the one solved from the quote midpoint (which delta and GEX use) and `impliedVolatility` the provider's own figure.
 
@@ -1811,7 +1811,7 @@ A FRED series ID given where a ticker goes says to chart it as `fn G fred:DEXSFU
 
 #### What every exported row says
 
-Exports end each row with five fixed columns, so a row still says what it is after `head`, a filter or joining files. They are on every `--csv` export that ends with the source lines and every `--ndjson` row of the same commands (`history`, `fred`, `fx`, `yield-curve`, `quote`, `fn` reports and the rest listed under [How current a report is](#how-current-a-report-is)).
+Exports end each row with six fixed columns, so a row still says what it is, and when it was read, after `head`, a filter or joining files. They are on every `--csv` export that ends with the source lines and every `--ndjson` row of the same commands (`history`, `fred`, `fx`, `yield-curve`, `quote`, `fn` reports and the rest listed under [How current a report is](#how-current-a-report-is)).
 
 | Column | What it holds |
 | --- | --- |
@@ -1820,8 +1820,11 @@ Exports end each row with five fixed columns, so a row still says what it is aft
 | `interval` | The bar interval or observation frequency actually returned: `1d`, `1mo`, `daily`, `monthly`, `spot` for an FX rate, `snapshot` for an options chain |
 | `source` | The source the `Source:` line names: `Gloom Cloud`, `FRED` |
 | `as_of` | The `Observation date:` of the export in ISO 8601, the same on every row; blank when it reads `not published`. Rows dated apart carry their own (a `fn DVD` ranking dates each ticker's row by the price its yields are over). In a statistic's export (below) it is the day or time the figure was released |
+| `retrieved_at` | When the export read the data, an ISO time in UTC, the same on every row: `as_of` is when the data is from, `retrieved_at` when it was fetched. A statistic's export (below) has `retrieved` in its place |
 
-`econ`, `fred` and `fn ECST` also end each row with three more columns, after the five: `period` (the period the figure covers), `released` (when it came out, empty where the data does not say) and `retrieved` (when the export read it, an ISO time in UTC). Their `as_of` is the release, never the retrieval time or the first day of the period. In `fn ECST` the table's own `period` and `released` columns stand in for them, and `Previous period` says which period `Previous` is. `history` and the other market data keep `as_of` as the time of their last bar or quote.
+Columns a report adds to its rows come after `retrieved_at`, so no fixed column moves and a file from before lines up with one from after: a futures formula's contract of each leg with `Roll` and `Partial` (`fn G fut:crack-321 --csv`), and `Group`, the section heading a captured report's row sits under (`fn FUT`'s Equity Index or Energy), which the text prints as a row of its own.
+
+`econ`, `fred` and `fn ECST` end each row with three more columns after `as_of`, in place of `retrieved_at`: `period` (the period the figure covers), `released` (when it came out, empty where the data does not say) and `retrieved` (when the export read it, an ISO time in UTC). Their `as_of` is the release, never the retrieval time or the first day of the period. In `fn ECST` the table's own `period` and `released` columns stand in for them, and `Previous period` says which period `Previous` is. `history` and the other market data keep `as_of` as the time of their last bar or quote.
 
 A row's own `symbol` and `currency` fill the first two when a command does not state them. A `fn` report whose rows are of different symbols says which fields name them, as `fn RV NESN:SWX AAPL` does for each peer's ticker and currency. `--ndjson` writes one JSON object per table row, keyed by the same column names, with a `section` field when the report has several tables. `--json` is the full report with every field, plus the export `source` object.
 
@@ -1845,7 +1848,7 @@ A top-level `source` object has `name`, `publisher`, `observationDate`, `publica
 
 **In `--csv`,** the line goes to stderr after the rows, followed by `Publisher:`, `Observation date:` (with `Oldest observation:` for a portfolio whose rows are dated apart, see [What a portfolio is priced at](#what-a-portfolio-is-priced-at)), `Publication time:` and `Retrieval time:` (UTC); the file keeps the rows alone.
 
-`--ndjson` stays rows only, each ending with the [five fixed fields](#what-every-exported-row-says). A field the data does not state reads `not published` in CSV and `null` in JSON, never a guess.
+`--ndjson` stays rows only, each ending with the [fixed fields](#what-every-exported-row-says). A field the data does not state reads `not published` in CSV and `null` in JSON, never a guess.
 
 The line has up to three parts after the source:
 
@@ -1954,7 +1957,7 @@ A future has no regular close. At the close it is priced at its exchange settlem
 
 ### In exports
 
-The `--json` and `--csv` rows of `portfolio show` and `fn PF` end with `valuationBasis` (`latest-print` or `regular-close`), `valuationPrice` (the price Value uses, in the quote's currency) and `valuationAsOf` (an ISO time in UTC, or a date for a close whose hour the venue's calendar does not give), followed in `--csv` by the [five fixed columns](#what-every-exported-row-says). `quoteAsOf` keeps the quote's own time.
+The `--json` and `--csv` rows of `portfolio show` and `fn PF` end with `valuationBasis` (`latest-print` or `regular-close`), `valuationPrice` (the price Value uses, in the quote's currency) and `valuationAsOf` (an ISO time in UTC, or a date for a close whose hour the venue's calendar does not give), followed in `--csv` by the [fixed columns](#what-every-exported-row-says). `quoteAsOf` keeps the quote's own time.
 
 - `portfolio show --json` adds `metadata.valuationBasis`, and with `--close` `dayChange` and `dayChangePercent` (in `metadata.totals` for `fn PF`). A future valued at its settlement adds `valuationPriceKind: "settle"`.
 - `Observation date:` is the newest of those prices and `Oldest observation:` the oldest when the rows differ (`source.oldestObservationDate` in JSON).

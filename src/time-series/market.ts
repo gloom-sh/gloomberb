@@ -108,7 +108,9 @@ export function extractPriceSeries(
   const fieldId = canonicalTimeSeriesFieldId(source.fieldId);
   if (!isMarketFieldId(fieldId)) return [];
   const aggregated = aggregatePriceHistory(priceHistory, source.period ?? "auto");
-  return aggregated.map((point) => {
+  return aggregated.map((point, index) => {
+    // A roll is the contract changing from the bar before, which a window's first bar knows from the bars before it.
+    const before = index > 0 ? aggregated[index - 1]!.contract : undefined;
     const { integrity, ...values } = pricePointValues(point, point.integrity);
     const value = fieldId === "market.open"
       ? values.open
@@ -125,6 +127,10 @@ export function extractPriceSeries(
       availableAt: new Date(point.date),
       value,
       ...values,
+      // A continuous future's bar names its contract, and the source marks a bar still forming.
+      ...(point.contract ? { contract: point.contract } : {}),
+      ...(point.contract && before && point.contract !== before ? { roll: true } : {}),
+      ...(point.partial ? { partial: true } : {}),
       provenance: { quality: "reported" as const, ...(integrity ? { priceHistoryIntegrity: integrity } : {}) },
     };
   });

@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import { SHOT_REQUEST_REFUSED } from "../api-client/errors";
-import { answerShotApiCall, serveShotPage, type DesktopPaneShotBridge } from "./desktop-pane-shot";
+import { answerShotApiCall, replyOverShotSocket, serveShotPage, type DesktopPaneShotBridge } from "./desktop-pane-shot";
 import {
   SHOT_API_PROXY_PREFIX,
   SHOT_API_SOCKET_PATH,
@@ -69,6 +69,33 @@ test("a read sent over the page's socket reaches the API with the session, and i
     expect(JSON.parse(await answerShotApiCall(JSON.stringify({ id: 10, path, headers: [] }), apiProxy))).toMatchObject({ id: 10, status: 403 });
   }
   expect(asked.length).toBe(count);
+});
+
+// A page's fetches share six connections to its origin: a board's quotes asked one at a time go over the socket instead.
+test("an asset-data operation sent over the page's socket is answered as the market bridge answers it", async () => {
+  const bridge: DesktopPaneShotBridge = {
+    async marketData(operation, args) {
+      if (operation === "getQuote") return { symbol: args[0], price: 87.71 };
+      throw new Error(`No ${operation}`);
+    },
+    async httpFetch() {
+      throw new Error("unused");
+    },
+  };
+  const answer = async (id: number, market: unknown, bridged: DesktopPaneShotBridge | null = bridge) => {
+    const reply = JSON.parse(await answerShotApiCall(JSON.stringify({ id, market }), apiProxy, bridged));
+    return { id: reply.id, status: reply.status, body: JSON.parse(Buffer.from(reply.body, "base64").toString("utf8")) };
+  };
+  const count = asked.length;
+  expect(await answer(11, { operation: "getQuote", args: ["CL=F"] })).toEqual({ id: 11, status: 200, body: { ok: true, data: { symbol: "CL=F", price: 87.71 } } });
+  expect(await answer(12, { operation: "getNothing", args: [] })).toEqual({ id: 12, status: 200, body: { ok: false, error: "No getNothing" } });
+  expect(await answer(13, { operation: "getQuote", args: ["CL=F"] }, null)).toEqual({ id: 13, status: 404, body: { ok: false, error: "No market bridge" } });
+  // An operation never reaches the API proxy.
+  expect(asked.length).toBe(count);
+  // A reply the socket drops (Bun's send gives 0) closes it, so the page makes its reads over HTTP; a queued one (-1) is on its way.
+  const closed: number[] = [];
+  for (const sent of [0, -1, 120]) replyOverShotSocket({ send: () => sent, close: () => closed.push(sent) }, "{}");
+  expect(closed).toEqual([0]);
 });
 
 /** A socket to the shot server from `origin`: open, or null when the server refused it. */

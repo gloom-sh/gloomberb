@@ -2,7 +2,7 @@
  * `history --csv` as one fixed table, whatever the symbol, its market's state
  * or how many symbols were asked for: the prices, the bar's flag and marks,
  * a coin's or one venue's volume, then the `status` column saying why a row
- * has no figures and the five fixed columns naming what each row is. A list
+ * has no figures and the fixed columns naming what each row is. A list
  * of symbols (`history --file`) writes every symbol's bars in one long table,
  * its rows told apart by `symbol_or_series`, and a symbol that served no bars
  * as one row with only its status.

@@ -161,6 +161,17 @@ export interface TimeSeriesPoint {
    * The legend prints it beside the value.
    */
   fiscalPeriod?: string;
+  /** A continuous future's bar (CL=F): the contract it closes on (CLZ26), as its history names it. */
+  contract?: string;
+  /** The bar's period had not ended when it was served: its close is the latest price. */
+  partial?: boolean;
+  /**
+   * A formula's legs on this date, in the order it sums them: the contract
+   * each was priced in (null where its bars name none) and that price.
+   */
+  legs?: ReadonlyArray<{ contract: string | null; price: number }>;
+  /** A continuous future's contract, or a formula's legs', differ from the date before's: a roll. */
+  roll?: boolean;
   provenance?: {
     priceHistoryIntegrity?: import("../utils/price-history-integrity").PriceHistoryIntegrity;
     valuationPriceIssues?: import("./valuation-price").ValuationPriceIssue[];
@@ -277,6 +288,13 @@ export interface ResolvedSeries {
    * so they read as written rather than as the source's long title.
    */
   expression?: string;
+  /**
+   * A formula of futures: the legs it sums as written (`RB=F`), in the order
+   * each point's `legs` names their contracts and prices.
+   */
+  formulaLegs?: readonly string[];
+  /** A futures formula priced in one delivery month: the leg (`CL=F`) whose month the others take, rolling with it. */
+  formulaLeader?: string;
   /** Price/volume observations and their derived studies, including 24/7
    * markets. Independent of whether the chart compresses exchange sessions.
    * `dataset`: a capability's published observations (vessel transits),

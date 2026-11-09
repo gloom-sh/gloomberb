@@ -4,6 +4,7 @@ import type { QuoteSubscriptionTarget } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { ChartSeriesSpec, ChartSpec, SecuritySeriesSource } from "./types";
 import { activeStudyInputSeriesIds } from "./studies/resolve";
+import { withFormulaNextMonths } from "./formula-months";
 import { valuationSeriesUsesLiveQuote } from "./fundamentals";
 import { hasValidQuoteObservationTime } from "../market-data/quotes/freshness";
 import type { InstrumentRef } from "../market-data/request-types";
@@ -41,12 +42,15 @@ function supportsLiveQuote(
 /**
  * Displayed or study-required quote-sensitive instruments, deduplicated by
  * routing identity. `visible: false` marks a chart that is not on screen, so
- * its quotes arrive at the off-screen cadence.
+ * its quotes arrive at the off-screen cadence. A formula priced in one
+ * delivery month follows its legs' next months too (RB2 beside RB=F), so its
+ * latest value is in one month between the rolls, as its settled ones are.
  */
 export function getLiveChartQuoteTargets(
-  spec: ChartSpec,
+  chart: ChartSpec,
   priority: { selected?: boolean; visible?: boolean } = {},
 ): QuoteSubscriptionTarget[] {
+  const spec = withFormulaNextMonths(chart);
   const targets = new Map<string, QuoteSubscriptionTarget>();
   const activeStudyInputs = activeStudyInputSeriesIds(spec.studies);
   for (const series of spec.series) {

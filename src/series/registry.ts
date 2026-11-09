@@ -94,6 +94,7 @@ export function seriesCatalogEntry(series: RegisteredSeries): SeriesCatalogEntry
       })),
     } : {}),
     expression: seriesExpression(definition),
+    ...(definition.rollsWith ? { rollsWith: definition.rollsWith } : {}),
     pluginId,
   };
 }

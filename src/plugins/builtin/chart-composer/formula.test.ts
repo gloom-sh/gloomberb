@@ -128,7 +128,7 @@ describe("series formulas", () => {
     const registered = FUTURES_SERIES.map((definition) => seriesCatalogEntry({ definition, pluginId: "builtin" }));
     const search = (query: string) => buildSeriesCatalogSuggestions(query, { symbol: "AAPL" }, [], 8, registered);
     expect(search("crack").map(({ label }) => label)).toEqual([
-      "3:2:1 crack spread", "Heating oil crack vs WTI", "Heating oil crack vs Brent",
+      "3-2-1 crack spread", "Heating oil crack vs WTI", "Heating oil crack vs Brent",
     ]);
     const crack321 = search("refining margin")[0]!;
     expect(crack321).toMatchObject({
@@ -137,17 +137,21 @@ describe("series formulas", () => {
       detail: "Futures",
     });
 
-    // On an empty chart it is the chart G opens for the formula.
+    // On an empty chart it is the chart G opens for the formula, named, and priced in the month of crude, its third leg.
     const preset = buildCustomChartPreset(crack321.formula!);
     const added = appendCatalogSuggestion(buildEmptyChartPreset(), crack321).spec;
-    expect([added.series, added.studies]).toEqual([preset.series, preset.studies]);
+    expect(added.series).toEqual(preset.series);
+    expect(added.studies).toEqual(preset.studies.map((study) => study.kind === "formula"
+      ? { ...study, parameters: { ...study.parameters, name: "3-2-1 crack spread", rollsWith: 3 } } : study));
 
     // Beside AAPL, a charted CL=F is reused and the chart's formula is replaced.
     const wti = search("crack")[1]!;
     const chart = appendCatalogSuggestion(appendCatalogSuggestion(buildPriceChartPreset("AAPL"), crack321).spec, wti);
     expect(chart.spec.series.map(({ source }) => source.kind === "security" ? source.instrument.symbol : "")).toEqual(["AAPL", "RB=F", "HO=F", "CL=F"]);
     const formulas = chart.spec.studies.filter(({ kind }) => kind === "formula");
-    expect(formulas).toEqual([expect.objectContaining({ parameters: { divisor: 1, weight1: 42, perBarrel1: 1, weight2: -1 } })]);
+    expect(formulas).toEqual([expect.objectContaining({
+      parameters: { divisor: 1, weight1: 42, perBarrel1: 1, weight2: -1, name: "Heating oil crack vs WTI", rollsWith: 2 },
+    })]);
     expect(formulas[0]!.inputSeriesIds).toEqual([chart.spec.series[2]!.id, chart.spec.series[3]!.id]);
     expect(chart.series).toBe(chart.spec.series[3]!);
     expect(chart.spec.studies.some(({ kind }) => kind === "volume")).toBe(true);

@@ -198,9 +198,9 @@ test("several symbols are one table ranked by trailing yield; a read without its
   const freshness = deriveHeadlessFreshness(definition, result);
   const csv = renderReportCsv(headlessReportTables(definition, result, request, "DVD", freshness, { complete: false, unavailableSymbols: [] }), freshness)
     .split("\n");
-  expect(csv.find((entry) => entry.startsWith("KO,"))).toMatch(/^KO,2\.2354,0\.52,.*,KO,pct,,Gloom Cloud,2026-01-16T21:00:00\.000Z$/);
-  expect(csv.find((entry) => entry.startsWith("SBK.JO,"))).toMatch(/,SBK\.JO,pct,,Gloom Cloud,2026-01-16T15:00:00\.000Z$/);
-  expect(csv.find((entry) => entry.startsWith("GONE,"))).toMatch(/,GONE,pct,,Gloom Cloud,$/);
+  expect(csv.find((entry) => entry.startsWith("KO,"))).toMatch(/^KO,2\.2354,0\.52,.*,KO,pct,,Gloom Cloud,2026-01-16T21:00:00\.000Z,[^,]+$/);
+  expect(csv.find((entry) => entry.startsWith("SBK.JO,"))).toMatch(/,SBK\.JO,pct,,Gloom Cloud,2026-01-16T15:00:00\.000Z,[^,]+$/);
+  expect(csv.find((entry) => entry.startsWith("GONE,"))).toMatch(/,GONE,pct,,Gloom Cloud,,[^,]+$/);
   expect(csv).toContain("# Observation date: 2026-01-16T21:00:00.000Z");
 
   // Options that pick one ticker's history rows are refused for a ranking, before anything is read.
@@ -309,13 +309,13 @@ describe("a bond fund's yields", () => {
     const freshness = deriveHeadlessFreshness(definition, result);
     const csv = renderReportCsv(headlessReportTables(definition, result, request, "DVD", freshness, { complete: true, unavailableSymbols: [] }), freshness).split("\n");
     // The text report keeps its notes; the export keeps the figure, its unit and the day of the observation it is from.
-    expect(csv).toContain("30-day SEC yield (%),4.0418,MUB,pct,,Gloom Cloud,2026-10-15");
-    expect(csv).toContain("Effective duration (years),7.12591,MUB,years,,Gloom Cloud,2026-10-15");
-    expect(csv).toContain("Trailing distribution yield (not SEC yield) (%),3.34,MUB,pct,,Gloom Cloud,2026-10-16T20:00:00.000Z");
-    expect(csv).toContain("Forward rate (USD),1.04,MUB,USD,,Gloom Cloud,2026-10-01");
-    expect(csv).toContain("Tax-equivalent yield (%),6.8274,MUB,pct,,Gloom Cloud,2026-10-15");
+    expect(csv).toContain(`30-day SEC yield (%),4.0418,MUB,pct,,Gloom Cloud,2026-10-15,${freshness.retrievedAt}`);
+    expect(csv).toContain(`Effective duration (years),7.12591,MUB,years,,Gloom Cloud,2026-10-15,${freshness.retrievedAt}`);
+    expect(csv).toContain(`Trailing distribution yield (not SEC yield) (%),3.34,MUB,pct,,Gloom Cloud,2026-10-16T20:00:00.000Z,${freshness.retrievedAt}`);
+    expect(csv).toContain(`Forward rate (USD),1.04,MUB,USD,,Gloom Cloud,2026-10-01,${freshness.retrievedAt}`);
+    expect(csv).toContain(`Tax-equivalent yield (%),6.8274,MUB,pct,,Gloom Cloud,2026-10-15,${freshness.retrievedAt}`);
     // The ratio is as old as the older of the two yields it divides.
-    expect(csv).toContain("Muni/Treasury ratio (%),81.16,MUB,pct,,Gloom Cloud,2026-10-15");
+    expect(csv).toContain(`Muni/Treasury ratio (%),81.16,MUB,pct,,Gloom Cloud,2026-10-15,${freshness.retrievedAt}`);
     expect(csv.join("\n")).not.toContain("(as of 2026-10-15)");
     // A figure missing with its reason names no unit.
     const metrics = result.sections[0]!;
@@ -357,8 +357,8 @@ describe("a bond fund's yields", () => {
     expect(text).toMatch(/\nKO +2\.91% +2\.94% +— +— /);
     // Each row still names its ticker, the percent unit and its price's time; the SEC yield has its own date.
     expect(csv[0]).toStartWith("Ticker,Yield TTM (%),Fwd yield (%),SEC yield (%),SEC as of,Payout (%),");
-    expect(csv.find((line) => line.startsWith("MUB,"))).toMatch(/^MUB,3\.3356,3\.2711,4\.0418,2026-10-15,.*,MUB,pct,,Gloom Cloud,2026-10-16T20:00:00\.000Z$/);
-    expect(csv.find((line) => line.startsWith("KO,"))).toMatch(/^KO,2\.91,2\.94,,,.*,KO,pct,,Gloom Cloud,2026-10-16T20:00:00\.000Z$/);
+    expect(csv.find((line) => line.startsWith("MUB,"))).toMatch(/^MUB,3\.3356,3\.2711,4\.0418,2026-10-15,.*,MUB,pct,,Gloom Cloud,2026-10-16T20:00:00\.000Z,[^,]+$/);
+    expect(csv.find((line) => line.startsWith("KO,"))).toMatch(/^KO,2\.91,2\.94,,,.*,KO,pct,,Gloom Cloud,2026-10-16T20:00:00\.000Z,[^,]+$/);
     expect(result.metadata).toMatchObject({ secYieldMethod: expect.stringContaining("distribution yields, not SEC yield") });
 
     // No bond fund ranked, or its facts not read: the ranking as before, with no SEC columns or fields.

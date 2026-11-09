@@ -37,6 +37,11 @@ test("the Contract block names the month an alias prices and leaves out lines wi
     spec: { ...gold.spec!, unit: "USD / kg", size: "1,000 kg", pointValue: 1000, tick: 0.01, settlement: "cash" as const } };
   expect(text(futuresContractLines(lithium, "LTH=F"))).toEqual(["Unit: USD / kg", "Size: 1,000 kg", "Tick: 0.01 = $10.00",
     "Point Value: $1,000", "Settlement: Cash settled"]);
+  // A contract cash settled to another exchange's says to which: CME's Brent (BZ) to ICE Brent's settlement.
+  const brent = { ...lithium, spec: { ...lithium.spec, settlesTo: "the ICE Brent futures settlement" } };
+  expect(text(futuresContractLines(brent, "BZ=F")).at(-1)).toBe("Settlement: Cash settled to the ICE Brent futures settlement");
+  expect(validateFuturesContractTerms(brent)).toBe(brent);
+  expect(() => validateFuturesContractTerms({ ...brent, spec: { ...brent.spec, settlesTo: 1 as never } })).toThrow("invalid futures contract terms");
   // Past first notice a long can be assigned delivery.
   expect(futuresContractLines({ ...gold, inDelivery: true }, "GC=F").find((line) => line.key === "firstNotice"))
     .toEqual({ key: "firstNotice", label: "First Notice", value: "2026-11-30 (passed)", warning: true });

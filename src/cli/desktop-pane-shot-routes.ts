@@ -8,9 +8,10 @@ export const SHOT_API_PROXY_PREFIX = "/__gloom_cli_api__";
 export const SHOT_MARKET_BRIDGE_PATH = "/__gloom_cli_market__";
 export const SHOT_HTTP_BRIDGE_PATH = "/__gloom_cli_http__";
 /**
- * The page's Cloud API reads, over one socket: a page's fetches share six
- * connections to its origin, so a board's seventy contract histories and terms
- * queued behind each other for seconds.
+ * The page's Cloud API reads and asset-data operations, over one socket: a
+ * page's fetches share six connections to its origin, so a board's seventy
+ * contract histories and terms queued behind each other for seconds, and the
+ * quotes it then asks for one at a time took four connections at once.
  */
 export const SHOT_API_SOCKET_PATH = "/__gloom_cli_api_socket__";
 
@@ -20,11 +21,19 @@ export function shotRouteUrl(route: string, pageUrl: string): URL {
 }
 
 /** A read the page sends over the socket: an API path with its query, and the request's headers. */
-export interface ShotApiSocketCall {
+export interface ShotApiSocketRead {
   id: number;
   path: string;
   headers: Array<[string, string]>;
 }
+
+/** An asset-data operation the page sends over the socket, answered as `SHOT_MARKET_BRIDGE_PATH` answers its body. */
+export interface ShotMarketSocketCall {
+  id: number;
+  market: { operation: string; args: unknown[] };
+}
+
+export type ShotApiSocketCall = ShotApiSocketRead | ShotMarketSocketCall;
 
 /** The server's answer to a call: the response with its body in base64, or why it could not be made. */
 export type ShotApiSocketReply =

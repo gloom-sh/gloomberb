@@ -104,6 +104,7 @@ export async function loadFuturesCurveAsOf(root: string, date: string,
       client.getCloudFuturesCurveAsOf(normalized, curveLookbackDate(date, 30)).catch(logFailure("futures-curve.client", "Load month comparison curve failed", null)),
     ]);
     if (!curve || curve.root !== normalized || !Array.isArray(curve.contracts) || !Array.isArray(curve.gaps)
+      || curve.notes !== undefined && (!Array.isArray(curve.notes) || curve.notes.some((note) => typeof note !== "string"))
       || curve.contracts.some((row) => !row || typeof row.symbol !== "string" || !Number.isFinite(row.price)
         || row.settled !== undefined && typeof row.settled !== "boolean" || !optionalDate(row.firstNotice) || !optionalDate(row.lastTrade))
       || !validSpec(curve.spec)) {

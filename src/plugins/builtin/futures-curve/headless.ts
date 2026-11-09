@@ -4,7 +4,7 @@ import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneEntry, Hea
 import { formatPercentRaw } from "../../../utils/format";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { fetchFuturesCurve, loadCurveSpot, loadCurveSpotBars, loadCurveSpotCloses, loadFuturesCurveAsOf } from "./client";
-import { curveReportFreshness, basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveCache, curveSpotBars, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveSettleShown, curveUnitLabel, curveRootNamed, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, skippedSpreadNotice, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
+import { curveReportFreshness, basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveCache, curveSpotBars, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveSessionNote, curveSettleShown, curveStandIn, curveUnitLabel, curveRootNamed, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, skippedSpreadNotice, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 import { knownGapMessage } from "../../../cli/known-gaps";
 
@@ -177,10 +177,12 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
     values: [{ value: "curve" }, { value: "contracts", aliases: ["contract", "table"] }], defaultValue: "curve",
     pluginState: { pluginId: COMMODITIES_VIEW_STATE.curve, key: "tab" } },
   { key: "date", type: "string", settingKey: "asOfDate", placeholder: "date", description: `Past date, as ${DATE_OPTION_EXAMPLES}: the curve as the daily settlement archive held it, with the curves a week and a month before.` }],
-  describe: (args) => `Futures curve ${args.argument || DEFAULT_ROOT}`,
+  describe: (args) => `Futures curve ${curveStandIn(args.argument)?.root ?? (args.argument || DEFAULT_ROOT)}`,
   async load(args, ctx) {
     const input = args.argument || DEFAULT_ROOT;
-    const root = normalizeCurveRoot(input) ?? curveRootNamed(input);
+    // ICE's Brent (B) opens CME's BZ, saying so.
+    const standIn = normalizeCurveRoot(input) ? null : curveStandIn(input);
+    const root = normalizeCurveRoot(input) ?? curveRootNamed(input) ?? standIn?.root;
     if (!root) {
       // A subject no source carries (`fn CTM BDI`, the Baltic Dry Index) is said with its proxies, as search says it.
       const gap = typeof input === "string" ? knownGapMessage(input) : null;
@@ -206,7 +208,10 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
     const unit = curveUnitLabel(data);
     const terms = specEntries(data);
     const source = spot ? curveSpotSource(spot) : null;
-    const notices = [...args.argument ? [] : [`Showing ${DEFAULT_ROOT}. Try fn CTM ${EXAMPLE_ROOT}.`],
+    // A past date with no settle of its own (a weekend, today before the archive has it) says which session is shown.
+    const session = date ? curveSessionNote(date, data.asOf, data.root) : null;
+    const notices = [...args.argument ? [] : [`Showing ${DEFAULT_ROOT}. Try fn CTM ${EXAMPLE_ROOT}.`], ...standIn ? [standIn.note] : [],
+      ...session ? [session] : [],
       ...spot ? [`Basis against ${spot.symbol} spot in each last trade's own minute${source ? ` (${source})` : ""}; not the CME reference rate.`] : []];
     // The footnotes under the table: the convention, why a cell is blank, and where a short-dated rate is not to be trusted.
     const basisNotes = bases ? [BASIS_CONVENTION, blankBasisNote(data.contracts, bases, curveCache(data, now)), shortDatedBasisNote(data.contracts, bases)]
@@ -215,7 +220,8 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
     const changeNote = date ? null : noTradeChangeNote(data.contracts, data);
     const thinSpread = thinSpreadNotice(data);
     const skipped = skippedSpreadNotice(data);
-    const notes = [...thinSpread ? [`${thinSpread}.`] : [], ...skipped ? [`${skipped}.`] : [], ...changeNote ? [changeNote] : [], ...basisNotes,
+    // A past curve's caveats about its prices (earlier prices, unsettled last trades) are notes; what it lacks stays an error.
+    const notes = [...data.notes ?? [], ...thinSpread ? [`${thinSpread}.`] : [], ...skipped ? [`${skipped}.`] : [], ...changeNote ? [changeNote] : [], ...basisNotes,
       ...spotPremium?.reason ? [`Front premium blank: ${spotPremium.reason}.`] : []];
     const columnOptions = { basis: !!bases, last: data.source !== "cboe", notice: data.contracts.some((row) => row.firstNotice) };
     // Dated by the contracts' own quotes; the same-contract history rows are a year of context, not observations.
@@ -240,8 +246,9 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
           rows: [spreadRow] },
         ...spotPremium ? [{ title: "Front vs spot", entries: spotPremiumEntries(spotPremium, root) }] : [],
         ...terms.length ? [{ title: "Contract terms", entries: terms }] : [],
+        // A week- or month-back price is dated by its own session in an export's as_of, not the curve's.
         ...data.ghosts.map((ghost) => ({ title: `${ghost.label} same-contract history`, columns: fieldColumns(GHOST_FIELDS, ghost.points[0] ?? {}, thirtySecondsFormat(root, "price")),
-          ...unit ? { unit } : {}, rows: ghost.points.map((point) => ({ ...point })) })),
+          ...unit ? { unit } : {}, rowAsOfKey: "asOf", rows: ghost.points.map((point) => ({ ...point })) })),
       ],
       errors: data.gaps,
       ...(notes.length ? { notes } : {}),

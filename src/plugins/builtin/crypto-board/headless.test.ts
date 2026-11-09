@@ -31,7 +31,7 @@ test("the stablecoin list states the total, adds each coin's supply, and exports
   expect(text).toMatch(/Chg % UTC\s+7D %/);
   expect(csv.split("\n").find((line) => line.startsWith('"#"'))).toContain(",Chg %,7D %,");
   const series = csv.slice(csv.indexOf("# section: Stablecoin supply")).split("\n");
-  expect(series[1]).toBe("Date,Total,USDT,USDC,Other,symbol_or_series,currency_or_unit,interval,source,as_of");
+  expect(series[1]).toBe("Date,Total,USDT,USDC,Other,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at");
   expect(series[2]).toStartWith("2026-09-19,296000000000,178000000000,,118000000000,,USD,1d,");
   expect(series[4]).toStartWith("2026-09-21,,,71000000000,,,USD,1d,");
 });

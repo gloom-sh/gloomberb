@@ -10,7 +10,7 @@ import { aggregatePriceBars, futuresOpenMinuteOf, withBuiltBarSize } from "./bar
 import type { TickerFinancials } from "../types/financials";
 import { isMarketFieldId } from "./field-catalog";
 import { chartPriceHistoryIntegrityNotices } from "./market";
-import { resolveStudies } from "./studies/resolve";
+import { activeStudyInputSeriesIds, resolveStudies } from "./studies/resolve";
 import { clipSeriesToWindow } from "./alignment";
 import { bufferPriceComparison, clipPriceComparison, priceComparisonBoundsForSeries, resolvePriceComparison } from "./price-comparison";
 import { readSeedListingFacts } from "./parsed-history-cache";
@@ -73,8 +73,12 @@ export function seedChartResolutionResult(
   // the swap changes no label and moves no plot.
   const support: ChartResolutionSupport[][] = [];
   const series: ResolvedSeries[] = [];
+  // A hidden series a study reads (a formula's next month) is the study's input alone, never drawn.
+  const studyInputs = activeStudyInputSeriesIds(spec.studies);
+  const hiddenInputs: ResolvedSeries[] = [];
   spec.series.forEach((seriesSpec, index) => {
-    if (seriesSpec.visible === false || seriesSpec.source.kind !== "security") return;
+    const hidden = seriesSpec.visible === false;
+    if ((hidden && !studyInputs.has(seriesSpec.id)) || seriesSpec.source.kind !== "security") return;
     if (!isMarketFieldId(seriesSpec.source.fieldId)) return;
     const history = historyByInstrument.get(instrumentKey(seriesSpec.source));
     if (!history?.length) return;
@@ -84,6 +88,10 @@ export function seedChartResolutionResult(
     const base = baseSecuritySeries(seriesSpec, emptyFinancials(bars), index, resolution, facts?.quoteMetadata, facts?.contractUnit);
     const resolved = base && builtBarSize ? withBuiltBarSize(base, builtBarSize) : base;
     if (!resolved?.points.length) return;
+    if (hidden) {
+      hiddenInputs.push(resolved);
+      return;
+    }
     series.push(resolved);
     if (facts?.resolutionSupport?.length) support.push(facts.resolutionSupport);
   });
@@ -109,7 +117,7 @@ export function seedChartResolutionResult(
   const baseSeries = series.map((entry) => prepareBaseSeriesForStudies(entry, priceComparisonBoundsForSeries(entry, priceComparison) ?? comparisonBounds));
   // Calculate studies from raw buffered inputs, then use the same presentation
   // and visible-window rules as the network result.
-  const studies = resolveStudies(series, spec.studies, resolution, undefined, studyAnchors(series, priceComparison, comparisonBounds));
+  const studies = resolveStudies([...series, ...hiddenInputs], spec.studies, resolution, undefined, studyAnchors(series, priceComparison, comparisonBounds));
   const axisWarnings: string[] = [];
   const bufferedSeries = assignAxes([
     ...baseSeries,

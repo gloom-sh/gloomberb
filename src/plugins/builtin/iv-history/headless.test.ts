@@ -318,8 +318,8 @@ describe("HIVG exports for scripts", () => {
     const uncovered = await load("SCHD", []);
     expect(headers(uncovered.lines)).toEqual(headers(covered.lines));
     expect(headers(covered.lines)).toEqual([
-      "Measure,Current,As of,Method,52w low,52w high,Rank,Pctl,Sessions,Basis,Stale,status,symbol_or_series,currency_or_unit,interval,source,as_of",
-      "Session,IV30 (%),IV90 (%),IV1Y (%),HV (%),IV-HV,skew25d put-call (pts),rr25d call-put (pts),status,symbol_or_series,currency_or_unit,interval,source,as_of",
+      "Measure,Current,As of,Method,52w low,52w high,Rank,Pctl,Sessions,Basis,Stale,status,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at",
+      "Session,IV30 (%),IV90 (%),IV1Y (%),HV (%),IV-HV,skew25d put-call (pts),rr25d call-put (pts),status,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at",
     ]);
     // Each measure's unit stays in its label, figures or none.
     const measures = (lines: string[]) => lines.filter((line) => /^(IV|HV) /.test(line)).map((line) => line.split(",")[0]);
@@ -351,7 +351,7 @@ describe("HIVG exports for scripts", () => {
     setSystemTime(new Date("2026-10-01T14:00:00Z"));
     const { lines, result } = await load("SPY", september, { event: "fomc", offset: -6 });
     expect(lines[0]).toBe("Release,Release date,Offset (sessions),Session,IV30 (%),IV90 (%),IV1Y (%),HV (%),IV-HV,"
-      + "skew25d put-call (pts),rr25d call-put (pts),status,symbol_or_series,currency_or_unit,interval,source,as_of");
+      + "skew25d put-call (pts),rr25d call-put (pts),status,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at");
     // 16 Sep's FOMC, six sessions back over Labor Day.
     expect(releaseRows(lines)).toEqual(["FOMC,2026-09-16,-6,2026-09-08,12.4"]);
     // Every release before the history (July's, and those since 2021) is counted under the rows, with where the history starts.
