@@ -446,6 +446,27 @@ export function epsConversionNote(fundamentals: Pick<Fundamentals, "financialCur
   return eps && amounts && eps !== amounts ? `EPS (TTM) in ${eps}, converted from ${amounts} at report-date rates.` : undefined;
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+/**
+ * "FY Mar-2026": the fiscal year a served trailing EPS is, when it is the latest annual statement's EPS (within
+ * half a percent) and no four filed quarters newer than it stood in for it (filed-trailing-eps). Mitsubishi
+ * Corporation's 209.78 on 9 Nov 2026 was its year to March 2026, a quarter and a half old. The EPS and P/E lines
+ * name that year in place of "TTM". Undefined for any other figure.
+ */
+export function servedTrailingEpsYear(
+  financials: Pick<TickerFinancials, "fundamentals" | "annualStatements">,
+): string | undefined {
+  const fundamentals = financials.fundamentals;
+  const eps = fundamentals?.eps;
+  if (fundamentals?.trailingEpsSource !== "served" || typeof eps !== "number" || !Number.isFinite(eps) || eps === 0) return undefined;
+  const annual = [...financials.annualStatements ?? []]
+    .filter((row) => typeof row.eps === "number" && Number.isFinite(row.eps) && /^\d{4}-\d{2}/.test(row.date))
+    .sort((left, right) => left.date.localeCompare(right.date)).at(-1);
+  if (!annual || Math.abs(annual.eps! - eps) > Math.abs(annual.eps!) * 0.005) return undefined;
+  return `FY ${MONTHS[Number(annual.date.slice(5, 7)) - 1]}-${annual.date.slice(0, 4)}`;
+}
+
 /** What a trailing EPS that is not the filed quarters' is called where it is shown (EE's TTM row). */
 export const SERVED_TRAILING_EPS = "Gloom Cloud's TTM";
 
