@@ -120,6 +120,11 @@ test("a watchlist reads by name, and an unknown id lists the ones that exist", a
 
   await expect(collectionHoldingsHeadless.load(args("default"), context()))
     .rejects.toThrow(`Unknown portfolio or watchlist "default". Portfolios and watchlists: Main (main), U1234567 (${BROKER.id}), Tech (tech).`);
+  // `fn PF` alone read an empty first portfolio as "No data."; it says which it read and how to name another.
+  const bare = await collectionHoldingsHeadless.load(args(""), context());
+  expect(bare.rows).toEqual([]);
+  expect(bare.empty).toBe(`The first portfolio, Main, holds nothing. Name one: gloom fn PF <portfolio or watchlist>, such as U1234567 (${BROKER.id}), Tech (tech).`);
+  expect((await collectionHoldingsHeadless.load(args(""), context([holding("AAPL", 10, 150, MANUAL.id)]))).empty).toBeUndefined();
 });
 
 test("a watchlist and a portfolio date a pre-market quote nothing has traded in by the close they show, as quote does", async () => {

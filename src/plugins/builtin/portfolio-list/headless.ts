@@ -691,8 +691,17 @@ export const collectionHoldingsHeadless: HeadlessPaneDefinition<"rows"> = {
       if (args.options.close === true) throw new Error("--from values each position at its closes already; leave out --close.");
       return portfolioPeriodHoldings(target, limit, ctx, window);
     }
-    return target.kind === "portfolio"
+    const result = await (target.kind === "portfolio"
       ? portfolioHoldings(target, limit, ctx, args.options.close === true ? "regular-close" : "latest-print")
-      : watchlistHoldings(target, limit, ctx);
+      : watchlistHoldings(target, limit, ctx));
+    if (args.rawArgument.trim() || result.rows.length > 0) return result;
+    // Left out, PF reads the first collection; an empty one says which it was and how to name another.
+    return { ...result, empty: emptyDefaultText(target, ctx) };
   },
 };
+
+/** `The first portfolio, Main, holds nothing. Name one: gloom fn PF <portfolio or watchlist>, such as Plan (plan).` */
+function emptyDefaultText(target: CollectionMatch, ctx: HeadlessPaneContext): string {
+  const others = [...ctx.config.portfolios, ...ctx.config.watchlists].filter((collection) => collection.id !== target.id);
+  return `The first ${target.kind}, ${target.name}, holds nothing. Name one: gloom fn PF <portfolio or watchlist>${others.length ? `, such as ${describeCollections(others)}` : ""}.`;
+}
