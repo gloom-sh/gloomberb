@@ -11,6 +11,8 @@ export interface FuturesContractSpec {
   /** US dollars one tick makes on one contract. */
   tickValue: number
   settlement: "physical" | "cash"
+  /** What a cash-settled contract settles to where it is another contract's settlement: "the ICE Brent futures settlement". */
+  settlesTo?: string
 }
 
 /** What a futures symbol trades: the contract behind it, its terms and its latest confirmed settlement. */
@@ -156,6 +158,12 @@ export interface FuturesCurvePayload {
     state: "contango" | "backwardation" | "flat" | "thin" | "unavailable"
   }
   gaps: string[]
+  /**
+   * A past curve's caveats about the prices it shows, never what it lacks:
+   * earlier prices of contracts that did not trade, last trades whose
+   * settlement is not archived yet. Absent from a live curve.
+   */
+  notes?: string[]
   /** The session the contracts' settlements are for; null when none is confirmed. */
   settlementDate?: string | null
   /** The root's contract terms; null where they are not listed. */
@@ -198,6 +206,9 @@ export interface FuturesCurveAsOfPayload {
     firstNotice?: string | null
     inDelivery?: boolean
   }>
+  /** What the curve lacks: no archive yet, no prices near the date, expired months missing. */
   gaps: string[]
+  /** Caveats about the prices shown, as `FuturesCurvePayload.notes`. Absent from an older server, which says them in `gaps`. */
+  notes?: string[]
   spec?: FuturesContractSpec | null
 }

@@ -18,7 +18,7 @@ import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { useQuoteBoard } from "../shared/use-quote-board";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { getCachedFuturesCurve, loadCurveSpotBars, loadCurveSpotCloses, loadFuturesCurve, loadFuturesCurveAsOf } from "./client";
-import { curveFreshnessObservations, curveReportFreshness, BASIS_CONVENTION, basisSpotSymbol, blankBasisNote, curveAsOfDate, curveAxisGrid, curveAxisPrice, curveBasisPercent, curveBasisRows, curveCache, curveChangeText, curveContractChanges, curveContractCode, curvePrice, curveRank, curveSettleShown, curveSpot, curveSpotBars, curveSpotLabel, curveSpotPremium, curveSpotSource, curveSpreadBasis, curveSpreadLabel, curveTimestamp, curveTitle, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, noTradeChangeNote, normalizeCurveRoot, paneCurveRoot, shortDatedBasis, shortDatedBasisNote, skippedSpreadNotice, sortCurveContracts, spotIndexSymbol, thinSpreadNotice, unsupportedCurveRootMessage, type CurveContractChanges, type CurveSpot } from "./model";
+import { curveFreshnessObservations, curveReportFreshness, BASIS_CONVENTION, basisSpotSymbol, blankBasisNote, curveAsOfDate, curveAxisGrid, curveAxisPrice, curveBasisPercent, curveBasisRows, curveCache, curveChangeText, curveContractChanges, curveContractCode, curvePrice, curveRank, curveSessionNote, curveSettleShown, curveSpot, curveSpotBars, curveSpotLabel, curveSpotPremium, curveSpotSource, curveSpreadBasis, curveSpreadLabel, curveTimestamp, curveStandIn, curveTitle, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, noTradeChangeNote, normalizeCurveRoot, paneCurveRoot, shortDatedBasis, shortDatedBasisNote, skippedSpreadNotice, sortCurveContracts, spotIndexSymbol, thinSpreadNotice, unsupportedCurveRootMessage, type CurveContractChanges, type CurveSpot } from "./model";
 
 const TABS = [{ value: "curve", label: "Curve" }, { value: "contracts", label: "Contracts" }];
 // One column order for every root. SETTLE is the exchange settlement for the
@@ -88,14 +88,16 @@ function spotSegment(spot: CurveSpot, root: string, clock: number): PaneFooterSe
 export function FuturesCurvePane(props: PaneProps) {
   const pane = usePaneInstance();
   const requested = paneCurveRoot(pane);
-  const root = normalizeCurveRoot(requested);
+  // ICE's Brent (B) opens CME's BZ, saying so.
+  const standIn = normalizeCurveRoot(requested) ? null : curveStandIn(requested);
+  const root = normalizeCurveRoot(requested) ?? standIn?.root ?? null;
   // Inside the Commodities & Energy workspace the workspace titles the window, by the tab it shows.
   const ownsTitle = pane?.paneId === "futures-curve";
-  return root ? <FuturesCurveView key={root} {...props} root={root} ownsTitle={ownsTitle} />
+  return root ? <FuturesCurveView key={root} {...props} root={root} ownsTitle={ownsTitle} standInNote={standIn?.note ?? null} />
     : <PaneStatusBody error={unsupportedCurveRootMessage(requested)} subject="futures curve" />;
 }
 
-function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps & { root: string; ownsTitle: boolean }) {
+function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote }: PaneProps & { root: string; ownsTitle: boolean; standInNote: string | null }) {
   const colors = useThemeColors();
   const session = useResearchCloudSession();
   // A past date shows the curve as the settlement archive held it that day.
@@ -252,6 +254,8 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
   };
   // A past date with no archived curve says why in the body, not behind the warning.
   const emptyPast = !!requestedDate && !!data && !data.contracts.length;
+  // A past date with no settle of its own (a weekend, today before the archive has it) says which session is shown.
+  const sessionNote = requestedDate && data ? curveSessionNote(requestedDate, data.asOf) : null;
   // The basis notes the report prints under its table: the convention, why a cell is blank, and which rates spot noise swamps.
   const basisNotes = basisActive && bars ? [BASIS_CONVENTION, blankBasisNote(tableRows, basis, data ? curveCache(data, clock) : null), shortDatedBasisNote(tableRows, basis)]
     .filter((note): note is string => !!note) : [];
@@ -261,7 +265,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
   const untraded = data && !requestedDate && columns.some((entry) => entry.id === "change")
     ? noTradeChangeNote(tableRows, data, { count: true }) : null;
   usePaneNoticeFooter({ registrationId: "futures-curve:notices", focused,
-    notices: emptyPast ? [] : [...data?.gaps ?? [], ...thinSpread ? [thinSpread] : [], ...skippedSpread ? [skippedSpread] : [], ...basisNotes, ...untraded ? [untraded] : [],
+    notices: emptyPast ? [] : [...standInNote ? [standInNote] : [], ...sessionNote ? [sessionNote] : [], ...data?.gaps ?? [], ...data?.notes ?? [], ...thinSpread ? [thinSpread] : [], ...skippedSpread ? [skippedSpread] : [], ...basisNotes, ...untraded ? [untraded] : [],
       ...delivering.length ? [`${delivering.join(", ")} ${delivering.length === 1 ? "is" : "are"} past first notice.`] : []] });
   const delay = Math.max(0, ...(data?.contracts.map((row) => row.delayMinutes ?? 0) ?? []));
   // A capture dates the curve as `fn CTM` does, from the contracts' quotes and the delay their source states, not the spot beside them.

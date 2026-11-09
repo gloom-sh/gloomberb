@@ -9,7 +9,7 @@ import { contractMonthLabel } from "../../../utils/contract-month";
 import { formatPercentileRank } from "../../../utils/format";
 import { formatThirtySeconds } from "../../../market-data/market/format";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
-import { newestReportTime, oldestReportTime, parseReportTime } from "../../../utils/utc-time";
+import { formatUtcDayTime, newestReportTime, oldestReportTime, parseReportTime } from "../../../utils/utc-time";
 import type { HeadlessPaneFreshness } from "../../../types/plugin";
 import { zonedDateKey, zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
 import { dateOptionError, dateOptionFormatsOr, readCalendarDate } from "../../../utils/calendar-date";
@@ -34,7 +34,33 @@ export function normalizeCurveRoot(value: unknown): string | null {
 }
 
 /** What a commodity is called rather than coded: the WTI and Brent crude curves by the words they are asked for in. */
-const CURVE_ROOT_WORDS: Readonly<Record<string, string>> = { "CRUDE": "CL", "CRUDE OIL": "CL", "OIL": "CL", "WTI": "CL", "BRENT": "BZ" };
+const CURVE_ROOT_WORDS: Readonly<Record<string, string>> = {
+  "CRUDE": "CL", "CRUDE OIL": "CL", "OIL": "CL", "WTI": "CL", "BRENT": "BZ", "BRENT CRUDE": "BZ", "BRENT CRUDE OIL": "BZ",
+};
+
+/** The words a root is asked for in, as `curveRootNamed` and `curveStandIn` read them. */
+function curveRootWords(value: string): string {
+  return value.trim().toUpperCase().replace(/=F$/, "").replace(/\s+/g, " ").replace(/( (FUTURES?|CURVE))+$/, "");
+}
+
+const ICE_BRENT = {
+  root: "BZ",
+  note: "ICE Brent (B) is not carried; showing CME's Brent Crude Oil Last Day Financial (BZ), cash-settled to the ICE Brent futures settlement.",
+};
+
+/** Contracts no source here carries, each with the carried root that stands in for it: ICE's Brent is CME's BZ. */
+const CURVE_STAND_INS: Readonly<Record<string, { root: string; note: string }>> = {
+  "B": ICE_BRENT, "ICE BRENT": ICE_BRENT, "ICE BRENT CRUDE": ICE_BRENT, "ICE BRENT CRUDE OIL": ICE_BRENT,
+};
+
+/**
+ * A root CTM does not carry that a carried one stands in for (`B`, `ICE
+ * Brent`): that root, and the line saying which contract is shown instead.
+ * Null for any other value.
+ */
+export function curveStandIn(value: unknown): { root: string; note: string } | null {
+  return typeof value === "string" ? CURVE_STAND_INS[curveRootWords(value)] ?? null : null;
+}
 
 /**
  * A root named in words, as a typed argument or a question asks for it
@@ -44,7 +70,7 @@ const CURVE_ROOT_WORDS: Readonly<Record<string, string>> = { "CRUDE": "CL", "CRU
  */
 export function curveRootNamed(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  const words = value.trim().toUpperCase().replace(/\s+/g, " ").replace(/( (FUTURES?|CURVE))+$/, "");
+  const words = curveRootWords(value);
   if (!words) return null;
   return CURVE_ROOT_WORDS[words]
     ?? CURVE_ROOTS.find((row) => row.label.toUpperCase() === `${row.value} ${words}`)?.value
@@ -769,6 +795,23 @@ export function curveAsOfDate(value: unknown, now = new Date(), option = ""): st
   return date;
 }
 
+/**
+ * The line a past curve opens with when the session it shows is not the day
+ * asked for: `No settle for Sun 8 Nov; showing Fri 6 Nov.`, or for a weekday
+ * today before its settlements are archived (17:30 New York, whatever time
+ * the exchange settles at), `Today's settle comes after 17:30 ET; showing Fri
+ * 6 Nov.` Null when the curve is that day's, or has no session.
+ */
+export function curveSessionNote(requested: string | null | undefined, served: string | null | undefined, now = new Date()): string | null {
+  if (!requested || !served || served >= requested) return null;
+  const day = (date: string) => formatUtcDayTime({ time: Date.parse(`${date}T00:00:00Z`), dateOnly: true }, now.getTime());
+  const showing = `showing ${day(served)}.`;
+  const weekday = new Date(`${requested}T00:00:00Z`).getUTCDay();
+  if (weekday === 0 || weekday === 6) return `No settle for ${day(requested)}; ${showing}`;
+  if (requested === zonedDateKey(now.getTime(), "America/New_York")) return `Today's settle comes after 17:30 ET; ${showing}`;
+  return `No settle for ${day(requested)} in the archive; ${showing}`;
+}
+
 export function curveLookbackDate(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) - days * DAY_MS).toISOString().slice(0, 10);
 }
@@ -938,6 +981,7 @@ export function archivedFuturesCurve(root: string, curve: FuturesCurveAsOfPayloa
   return {
     root, name: curve.name, source: root === "VX" ? "cboe" : "gloom", currency: curve.currency, quoteUnit: curve.quoteUnit,
     asOf: curve.asOf, fetchedAt, status: !contracts.length ? "unavailable" : curve.gaps.length ? "partial" : "available", stale: false,
+    ...curve.notes?.length ? { notes: curve.notes } : {},
     catalogue: { method: "provider", complete: true, horizonEnd: null }, contracts, ghosts,
     slope: { frontSymbol: front?.symbol ?? null, nextSymbol: next?.symbol ?? null, value, annualizedRollYield: roll, percentile: null,
       rollPercentile: null, samples: 0, historyStart: null, historyEnd: null, asOf: front && next ? curve.asOf : null,
@@ -953,8 +997,9 @@ export function archivedFuturesCurve(root: string, curve: FuturesCurveAsOfPayloa
  * and a live curve is dated by its contracts' own quotes, each delayed by
  * what its source states (CME's 10 minutes), never a venue's usual lag.
  */
-export function curveReportFreshness(data: Pick<FuturesCurvePayload, "source" | "contracts">, date?: string | null): HeadlessPaneFreshness {
-  if (date) return { status: "not-a-feed", basis: "settlement archive", asOf: date };
+export function curveReportFreshness(data: Pick<FuturesCurvePayload, "source" | "contracts" | "asOf">, date?: string | null): HeadlessPaneFreshness {
+  // A past curve is dated by the session it shows, Friday's for a Sunday asked for (curveSessionNote says so).
+  if (date) return { status: "not-a-feed", basis: "settlement archive", asOf: data.asOf ?? date };
   const quoted = data.contracts.map((row) => row.asOf);
   return { ...(data.source === "cboe" ? { source: "Cboe", status: "not-a-feed", basis: "daily settlement", cadence: "daily" } as const : {}),
     asOf: newestReportTime(quoted), oldest: oldestReportTime(quoted) };

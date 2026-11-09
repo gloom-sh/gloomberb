@@ -111,7 +111,8 @@ export const FUTURES_CONTRACTS: FuturesContract[] = [
   { symbol: "UB=F", code: "UB", name: "Ultra T-Bond", sector: "rates", venue: "CBT", bareCode: true },
 
   { symbol: "CL=F", code: "CL", name: "WTI Crude Oil", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.01, aliases: ["oil"] },
-  { symbol: "BZ=F", code: "BZ", name: "Brent Crude Oil", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.01 },
+  // NYMEX's Brent, cash-settled to the ICE Brent futures settlement; ICE's own contract (B) is not carried.
+  { symbol: "BZ=F", code: "BZ", name: "Brent Crude Oil Last Day Financial", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.01 },
   { symbol: "NG=F", code: "NG", name: "Natural Gas", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.001, aliases: ["natgas", "nat gas"] },
   // Quoted in euros per MWh.
   { symbol: "TTF=F", code: "TTF", name: "Dutch TTF Gas", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.001, unit: "EUR / MWh", bareCode: true },
@@ -385,7 +386,7 @@ const COMMODITY_WORDS: Readonly<Record<string, string>> = {
 
 /**
  * The board row a commodity's word names when typed as a symbol (BRENT is
- * Brent Crude Oil, BZ=F; WTI, OIL and CRUDE are WTI Crude Oil, CL=F; GOLD is
+ * Brent Crude Oil Last Day Financial, BZ=F; WTI, OIL and CRUDE are WTI Crude Oil, CL=F; GOLD is
  * GC=F), from COMMODITY_WORDS alone. Null for any other word.
  */
 export function futuresContractByWord(symbol: unknown): FuturesContract | null {

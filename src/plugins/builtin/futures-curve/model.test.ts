@@ -5,7 +5,7 @@ import { fetchFuturesCurve, validateFuturesCurve } from "./client";
 import { FUTURES_CONTRACTS } from "../../../market-data/futures-board";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import { compositeAxisMaxTicks, compositeAxisTicks } from "../../../components/chart/composite/format";
-import { annualisedBasisPct, archivedFuturesCurve, basisSpotSymbol, blankBasisNote, contractBasis, CURVE_ROOTS, curveAsOfDate, curveAxisGrid, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRoundedPrice, curveRootForTicker, curveSpot, curveSpotLabel, curveSpotSource, curveSpreadBasis, curveSpreadLabel, curveUnitLabel, daysToExpiry, futuresCurveSeries, newestQuote, curveRootNamed, normalizeCurveRoot, shortDatedBasis, shortDatedBasisNote, sortCurveContracts, spotBarsFromHistory, thinSpreadNotice, unpairedContractCount, vsSpotPct } from "./model";
+import { annualisedBasisPct, archivedFuturesCurve, basisSpotSymbol, blankBasisNote, contractBasis, CURVE_ROOTS, curveAsOfDate, curveAxisGrid, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRoundedPrice, curveRootForTicker, curveSpot, curveSpotLabel, curveSpotSource, curveSpreadBasis, curveSpreadLabel, curveUnitLabel, daysToExpiry, curveReportFreshness, curveSessionNote, curveStandIn, futuresCurveSeries, newestQuote, curveRootNamed, normalizeCurveRoot, shortDatedBasis, shortDatedBasisNote, sortCurveContracts, spotBarsFromHistory, thinSpreadNotice, unpairedContractCount, vsSpotPct } from "./model";
 import { futuresCurveModule } from "./index";
 
 const first: FuturesContract = { symbol: "CLX26.NYM", label: "Nov 2026", expiration: "2026-10-20",
@@ -60,6 +60,11 @@ test("normalizes FUT aliases before cloud request and handles missing endpoints 
   // A root asked for by name, as a question says it; GOLD stays no root, since under the cursor it is a security.
   expect(["gold", "Natural Gas futures", "crude oil", "Brent", "10-year t-note futures curve", "copper"].map(curveRootNamed)).toEqual(["GC", "NG", "CL", "BZ", "ZN", "HG"]);
   expect([normalizeCurveRoot("gold"), curveRootNamed("goldman"), curveRootNamed("")]).toEqual([null, null, null]);
+  // ICE's Brent is not carried: B and "ICE Brent" open CME's BZ, saying which contract it is; BZ itself needs no line.
+  expect(["B", "ice brent", "ICE Brent crude oil futures"].map((value) => curveStandIn(value)?.root)).toEqual(["BZ", "BZ", "BZ"]);
+  expect(curveStandIn("b")?.note).toBe("ICE Brent (B) is not carried; showing CME's Brent Crude Oil Last Day Financial (BZ), "
+    + "cash-settled to the ICE Brent futures settlement.");
+  expect([curveStandIn("BZ"), curveStandIn("Brent"), curveRootNamed("Brent crude")]).toEqual([null, null, "BZ"]);
   await expect(fetchFuturesCurve("CL", { getCloudFuturesCurve: async () => { throw new ApiRequestError("Not found", 404); } })).rejects.toThrow("not available yet");
   const denied = new ApiRequestError("Forbidden", 403);
   await expect(fetchFuturesCurve("CL", { getCloudFuturesCurve: async () => { throw denied; } })).rejects.toBe(denied);
@@ -429,6 +434,17 @@ describe("past curves", () => {
       ["VX/H0", "2020-03-13", false], ["VX/J0", "2020-03-13", false], ["VX/K0", "2020-03-11", true], ["VX/M0", "2020-03-11", true],
     ]);
     expect(curve.slope).toMatchObject({ frontSymbol: "VX/H0", nextSymbol: "VX/J0", state: "backwardation" });
+  });
+
+  test("a weekend's or today's curve is dated by the session it shows, and says which day it shows instead", () => {
+    const monday = new Date("2026-11-09T18:00:00Z");
+    expect(curveSessionNote("2026-11-08", "2026-11-06", monday)).toBe("No settle for Sun 8 Nov; showing Fri 6 Nov.");
+    expect(curveSessionNote("2026-11-09", "2026-11-06", monday)).toBe("Today's settle comes after 17:30 ET; showing Fri 6 Nov.");
+    expect(curveSessionNote("2026-11-03", "2026-11-02", monday)).toBe("No settle for Tue 3 Nov in the archive; showing Mon 2 Nov.");
+    expect([curveSessionNote("2026-11-06", "2026-11-06", monday), curveSessionNote("2026-11-08", null, monday)]).toEqual([null, null]);
+    // Its observation date and as_of are the session served, Friday's, never the Sunday asked for.
+    expect(curveReportFreshness({ source: "gloom", contracts: [], asOf: "2026-11-06" } as never, "2026-11-08"))
+      .toEqual({ status: "not-a-feed", basis: "settlement archive", asOf: "2026-11-06" });
   });
 
   test("a past curve's settlements are only the rows the archive confirms, and its spread pairs settlements with settlements", () => {

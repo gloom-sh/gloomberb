@@ -46,7 +46,7 @@ describe("buildFuturesRows search", () => {
     quotes.get("CL=F")!.quote!.name = "Crude Oil Nov 26";
     expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, quotes, { query: "oct 2026" }))).toEqual([]);
     expect(futuresContractName(contract("CL=F"), quotes.get("CL=F")!.quote)).toBe("WTI Crude Oil Nov 2026");
-    expect(futuresContractName(contract("BZ=F"), quotes.get("BZ=F")!.quote)).toBe("Brent Crude Oil");
+    expect(futuresContractName(contract("BZ=F"), quotes.get("BZ=F")!.quote)).toBe("Brent Crude Oil Last Day Financial");
     expect(name("ZC=F", "Corn Futures,Dec-2026")).toBe("Corn Dec 2026");
     expect(name("ZB=F", "30-Year T-Bond Dec 26")).toBe("30-Year T-Bond Dec 2026");
     // Cut off inside the year: the month alone could be a year out.
