@@ -35,7 +35,7 @@ import { isTitleCaseWord, readBrokerIndexCode } from "../listing-arg";
 import { knownGapMessage, commandPointer } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isKnownExchangeCode, isUsListingExchange } from "../../utils/exchanges";
-import { companyLines, companyNameExtraWords, groupByCompany, namedByService, sameCompany } from "../../tickers/company-name";
+import { addedCompanyWords, companyLines, companyNameExtraWords, groupByCompany, namedByService, sameCompany } from "../../tickers/company-name";
 import { isLowQualityTickerName } from "../../tickers/search/result";
 import { findCatalogSeries, renderSeriesMatches, type SeriesMatch } from "../series-search";
 import { centralBankAskedAbout, centralBankCiting, type CentralBank } from "../../utils/central-banks";
@@ -399,9 +399,25 @@ function withOtherCompaniesApart(candidates: TickerSearchCandidate[], namedWord:
   // A primary line search names no company for gives nothing to tell its company's lines by.
   if (!primary || nameless(primary)) return candidates;
   const names = [resolveSearchName(primary), primary.result?.formerName, ...primary.nameAliases ?? []];
+  // A name with more words that another business goes by is not the primary's (`companyLines`): Mitsubishi UFJ
+  // Financial Group, which lists in Tokyo beside Mitsubishi Corporation, is not one of its lines.
+  const lines = new Set(companyLines(primary, candidates.filter((candidate) => candidate === primary || (candidate.kind === "search"
+    && candidate.category !== "Funds & Derivatives" && (candidate.instrumentClass === "equity" || candidate.instrumentClass === "other"))),
+  (candidate) => ({
+    name: resolveSearchName(candidate), exchange: candidateExchange(candidate),
+    receipt: listingDistance(candidate) === 2, home: candidate.result?.homeListing === true,
+  })));
+  const primaryName = resolveSearchName(primary);
+  const elsewhere = candidates.filter((candidate) => candidate !== primary && !lines.has(candidate)
+    && candidate.kind === "search" && sameCompany(resolveSearchName(candidate), primaryName));
+  // Its other lines however a venue spells them: "MITSUBISHI HEAVY IND." goes with Mitsubishi Heavy Industries Ltd.
+  const otherLeads = new Set(elsewhere.map((candidate) => addedCompanyWords(resolveSearchName(candidate), primaryName)[0]).filter(Boolean));
+  const anotherBusiness = (candidate: TickerSearchCandidate) => elsewhere.includes(candidate)
+    || otherLeads.has(addedCompanyWords(resolveSearchName(candidate), primaryName)[0] ?? "");
   const ownLine = (candidate: TickerSearchCandidate) => nameless(candidate)
     ? baseSymbol(candidate.symbol) === baseSymbol(primary.symbol)
     : names.some((company) => sameCompany(resolveSearchName(candidate), company))
+      && !anotherBusiness(candidate)
       && (!namedWord || companyNameExtraWords(namedWord, resolveSearchName(candidate)) === 0);
   const others = candidates.filter((candidate) => candidate.category === "Other Listings" && !ownLine(candidate));
   if (others.length === 0) return candidates;

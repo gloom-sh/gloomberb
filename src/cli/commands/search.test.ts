@@ -162,6 +162,30 @@ test("Other Listings keep the primary listing's company's lines, its nameless on
   ]);
 });
 
+/**
+ * `search mitsubishi` once Mitsubishi Corporation's Tokyo line is named in English, 9 Nov 2026: Mitsubishi UFJ and
+ * Mitsubishi Heavy Industries, whose names hold every word of "Mitsubishi Corporation", were listed as its lines.
+ */
+test("Other Listings leave out the lines of another business whose name only adds words to the primary's", async () => {
+  const row = (symbol: string, name: string, exchange: string, extra: Record<string, unknown> = {}) =>
+    ({ providerId: "gloomberb-cloud", symbol, name, exchange, type: "Common Stock", primaryExchange: exchange, ...extra });
+  const answer = [
+    row("8058", "Mitsubishi Corporation", "JPX", { homeListing: true }),
+    row("8306", "Mitsubishi UFJ Financial Group, Inc.", "JPX", { homeListing: true }),
+    row("MUFG", "Mitsubishi UFJ Financial Group, Inc.", "NYSE", { type: "American Depositary Receipt" }),
+    row("7011", "Mitsubishi Heavy Industries Ltd.", "JPX", { homeListing: true }),
+    row("MITT", "Mitsubishi Corporation", "VIE"),
+    row("MIH", "MITSUBISHI HEAVY IND. LTD.", "HANOVER"),
+  ];
+  const dataProvider = createTestDataProvider({ search: async () => answer as never, getQuote: async () => { throw new Error("no quote"); } });
+  const initMarketData = async () => ({ store: { loadAllTickers: async () => [] }, dataProvider, persistence: { close() {} } }) as never;
+  const printed: PrintedCliResult["result"][] = [];
+  await search("mitsubishi", { initMarketData, printResult: (result) => { printed.push(result); } });
+  const rows = printed[0]!.data as Array<{ category: string; symbol: string; exchange: string }>;
+  expect(rows.filter((item) => item.category !== "Other Matches").map((item) => `${item.symbol} ${item.category}`))
+    .toEqual(["8058:JPX Primary Listing", "MITT Other Listings"]);
+});
+
 test("a code of digits is listed with its venue, the form quote takes, and any other symbol as listed", () => {
   // 9 Nov 2026: search listed `9042 … HKEX`, and `quote 9042` asked to choose between JPX and HKEX.
   const line = (label: string, exchange: string) => quotableSearchSymbol({ label, result: { exchange } } as never);

@@ -50,6 +50,15 @@ function companyKey(name: string): string {
   return words.join(" ");
 }
 
+/**
+ * The words `name` adds to `base`, in order, as `companyLines` compares them:
+ * ["heavy", "ind"] for "MITSUBISHI HEAVY IND. LTD." on "Mitsubishi Corporation".
+ */
+export function addedCompanyWords(name: string | null | undefined, base: string | null | undefined): string[] {
+  const own = companyWords(base);
+  return companyKey(name ?? "").split(" ").filter((word) => word && !SHARE_NOISE.has(word) && !own.has(word));
+}
+
 function companyWords(name: string | null | undefined): Set<string> {
   return new Set(companyKey(name ?? "").split(" ").filter((word) => word && !SHARE_NOISE.has(word)));
 }
