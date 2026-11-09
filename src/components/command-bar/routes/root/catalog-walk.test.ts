@@ -138,7 +138,8 @@ function readQuery(query: string) {
  * offered as the bar offers them, not left out, and `opened` records what a
  * row opens.
  */
-function rootRows(query: string, { functions = false, opened = [] }: { functions?: boolean; opened?: Array<{ code?: string; arg?: string }> } = {}): ResultItem[] {
+type Opened = { code?: string; arg?: string; preset?: Readonly<Record<string, string>> };
+function rootRows(query: string, { functions = false, opened = [] }: { functions?: boolean; opened?: Opened[] } = {}): ResultItem[] {
   const { intent, leadingCode } = readQuery(query);
   const row = (id: string): ResultItem => ({ id, label: id, detail: "", category: "Panes", kind: "action", action: () => {} });
   const empty = () => [] as ResultItem[];
@@ -147,7 +148,7 @@ function rootRows(query: string, { functions = false, opened = [] }: { functions
     template,
     argError: paneTemplateArgError(template, itemOptions?.createOptions?.arg, context),
     pluginRegistry: { getPaneTemplatePluginId: () => undefined, allPlugins: new Map(), panes: contributions.panesMap } as never,
-    runPaneTemplateShortcut: () => {},
+    runPaneTemplateShortcut: (opening, arg, preset) => { opened.push({ code: opening.shortcut?.prefix, arg, ...(preset ? { preset } : {}) }); },
     shouldOpenTemplateConfig: () => false,
     openPaneTemplateWorkflow: () => {},
     openPaneTemplateDirect: (opening, createOptions) => { opened.push({ code: opening.shortcut?.prefix, arg: createOptions?.arg }); },
@@ -267,11 +268,16 @@ describe("the catalog's functions in the command bar", () => {
         .toEqual({ query, missing: [] });
     }
     // The words that name one of its cases open that case, as `fn` runs it: `vix futures` is CTM VIX.
-    const opened: Array<{ code?: string; arg?: string }> = [];
+    const opened: Opened[] = [];
     const ctm = rootRows("vix futures", { functions: true, opened }).find((item) => item.shortcutQuery === "CTM");
     expect(ctm?.name).toBe("VIX");
     void ctm?.action();
     expect(opened).toEqual([{ code: "CTM", arg: "VIX" }]);
+    // With the options the case presets: `PDUFA` is CATL on PDUFA dates, `runway` FA on liquidity.
+    opened.length = 0;
+    void rootRows("PDUFA", { functions: true, opened }).find((item) => item.shortcutQuery === "CATL")?.action();
+    void rootRows("runway", { functions: true, opened }).find((item) => item.shortcutQuery === "FA")?.action();
+    expect(opened).toEqual([{ code: "CATL", arg: "", preset: { type: "pdufa" } }, { code: "FA", arg: "", preset: { statement: "liquidity" } }]);
     // Other words that find it open it as it is.
     expect(rootRows("contango", { functions: true }).find((item) => item.shortcutQuery === "CTM")?.name).toBeUndefined();
   });

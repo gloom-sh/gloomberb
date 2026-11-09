@@ -43,6 +43,8 @@ export const paneSchemas = {
     discovery: {
       id: "financial-statements",
       aliases: ["financials", "financial statement", "income statement", "balance sheet", "cash flow statement", "financial ratios"],
+      // `fn runway VKTX` is the liquidity view, where cash + ST investments, burn and runway are.
+      opens: [{ words: ["runway", "cash runway", "burn", "cash burn", "months of cash"], argument: "", options: { statement: "liquidity" } }],
       limitations: [
         "One company per invocation; use GF for cross-company metric comparisons.",
         "Excludes bank regulatory capital (CET1, risk-weighted assets) and REIT FFO/AFFO.",

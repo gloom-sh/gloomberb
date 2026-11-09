@@ -3,7 +3,7 @@ import { normalizeTrialFilters, TRIAL_REPORT_OPTIONS, ALL } from "./model";
 import { CLINICAL_TRIALS_PANE_ID, CLINICAL_TRIALS_PLUGIN_ID } from "./types";
 
 function createTrialsPaneInstance(options?: PaneTemplateCreateOptions) {
-  // A search, never a ticker: a symbol is not a sponsor name and would match unrelated text.
+  // The search as typed: the pane reads one written as a ticker (`TRIAL CRMD`) as its company's trials.
   const query = (options?.arg ?? options?.values?.query ?? "").trim();
   const encoded = encodeURIComponent(query).replace(/%/g, "~");
   // Filters a caller names (a share, the Remote API) open with the pane; they

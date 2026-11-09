@@ -81,6 +81,12 @@ export interface PaneTemplateCreateOptions {
   listing?: TickerListingRef;
   /** Template-owned, validated data restored from a public pane share. */
   shareData?: unknown;
+  /**
+   * The options a word that names one view of a function presets (`PDUFA`
+   * opens CATL with `--type pdufa`, `runway` FA with `--statement liquidity`),
+   * applied as `fn` applies them: as settings and as the view state they name.
+   */
+  preset?: Readonly<Record<string, string>>;
 }
 
 export interface PaneTemplateInstanceConfig {

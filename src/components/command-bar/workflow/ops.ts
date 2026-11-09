@@ -27,6 +27,7 @@ import { attentionActionForPane, captureAttentionAction } from "../../../telemet
 import { publicTickerKey } from "../../../utils/exchanges";
 import { keysClearedByChange } from "./fields";
 import { findReusablePaneInstance, retargetPaneInstance, withFreeTickerInstanceId } from "./pane-reuse";
+import { optionPaneState, optionSettings } from "../../../cli/pane-functions/options";
 import {
   resolveTickerInputOrThrow,
   resolveTickerListInput,
@@ -254,6 +255,17 @@ export async function createPaneTemplateOrThrow(
     return;
   }
   let spec = createInstanceResult ?? {};
+  // A word's preset options over what the template opens with, as `fn` applies them:
+  // `PDUFA` sets CATL's type, `runway` the FA statement its view state names. An
+  // option that names view state sets only that, so the open FA window on the ticker is the one used.
+  const preset = resolvedOptions?.preset ?? {};
+  const presetState = optionPaneState(preset);
+  const presetSettings = optionSettings(Object.fromEntries(Object.entries(preset)
+    .filter(([key, value]) => Object.keys(optionPaneState({ [key]: value })).length === 0)));
+  if (Object.keys(presetSettings).length > 0) spec = { ...spec, settings: { ...spec.settings, ...presetSettings } };
+  const applyPresetState = (instanceId: string) => {
+    if (Object.keys(presetState).length > 0) deps.dispatch({ type: "UPDATE_PANE_STATE", paneId: instanceId, patch: presetState });
+  };
   if (spec.binding?.kind === "fixed" && spec.binding.symbol === context.activeTicker && context.activeInstrument !== undefined) {
     const instrument = spec.binding.instrument !== undefined ? spec.binding.instrument : context.activeInstrument;
     const listing = spec.binding.listing ?? context.activeListing;
@@ -300,6 +312,7 @@ export async function createPaneTemplateOrThrow(
         () => retargeted,
       ) : undefined;
     if (nextLayout) deps.pluginRegistry.updateLayout(nextLayout);
+    applyPresetState(existing.instanceId);
     // React can batch the layout update and focus. Bringing a floating pane to
     // the front must use its retargeted settings, not the preceding render.
     deps.pluginRegistry.focusPane(existing.instanceId, nextLayout);
@@ -320,6 +333,7 @@ export async function createPaneTemplateOrThrow(
     throw new Error("Open a matching ticker or collection context first.");
   }
 
+  applyPresetState(instance.instanceId);
   deps.placePaneInstance(instance, paneDef, spec);
   if (openedByUser) countTemplateOpen(template, pluginId, deps);
   countAttention();

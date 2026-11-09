@@ -21,7 +21,47 @@ export const catalystTickers = (event: CatalystEvent) => [...new Set(event.parti
 export const catalystDateWithheld = (event: Pick<CatalystEvent, "metadata">, field: CatalystFilters["dateField"] = "any") =>
   event.metadata?.dateWithheld === true && field !== "announced" && field !== "observed";
 export const CATALYST_DATE_WITHHELD = "Date not disclosed";
-export const catalystDate = (event: CatalystEvent, field: CatalystFilters["dateField"] = "any"): string => {
+
+type DateField = CatalystFilters["dateField"];
+/** How a list reads its rows' dates: a date field, or the query, whose window picks each row's date. */
+export type CatalystDateRead = DateField | Pick<CatalystFilters, "dateField" | "from" | "to" | "upcoming">;
+const WINDOW_FIELDS = ["deadline", "effective", "announced"] as const;
+
+/** The days a date stands for at its precision: a month-precision completion runs the whole month. */
+function dateSpan(value: string, precision: string | undefined): [string, string] {
+  if (precision === "year") return [`${value.slice(0, 4)}-01-01`, `${value.slice(0, 4)}-12-31`];
+  if (precision === "month") return [`${value.slice(0, 7)}-01`, `${value.slice(0, 7)}-31`];
+  return [value.slice(0, 10), value.slice(0, 10)];
+}
+
+/**
+ * The date field a row is shown under. Any date in a window lists a row by the
+ * first of its deadline, effective date and announcement that falls in the
+ * window, as the service orders it: a trial updated in October whose primary
+ * completion is next January shows October's update, not January. An FDA
+ * advisory notice's deadline is its comment deadline, which no window reads,
+ * there as here.
+ */
+function catalystListedField(event: CatalystEvent, read: CatalystDateRead): DateField {
+  if (!read || typeof read === "string") return read;
+  const field = read.dateField ?? "any";
+  if (field !== "any" || read.upcoming || (!read.from && !read.to) || catalystDateWithheld(event)) return field;
+  const from = read.from ? dateSpan(read.from, read.from.length === 4 ? "year" : read.from.length === 7 ? "month" : "day")[0] : "0000-01-01";
+  const to = read.to ? dateSpan(read.to, read.to.length === 4 ? "year" : read.to.length === 7 ? "month" : "day")[1] : "9999-12-31";
+  const comments = event.source === "fda_advisory";
+  const shown = event.deadlineDate ? "deadline" : event.effectiveDate ? "effective" : "announced";
+  for (const key of WINDOW_FIELDS) {
+    if (key === "deadline" && comments) continue;
+    const value = event[`${key}Date`];
+    if (!value) continue;
+    const [start, end] = dateSpan(value, event.datePrecision[key]);
+    if (start <= to && end >= from) return key === shown ? "any" : key;
+  }
+  return "any";
+}
+
+export const catalystDate = (event: CatalystEvent, read: CatalystDateRead = "any"): string => {
+  const field = catalystListedField(event, read);
   if (field === "observed") return event.observedAt.slice(0, 16).replace("T", " ");
   if (catalystDateWithheld(event, field)) return "--";
   const key = field === "announced" || field === "effective" || field === "deadline" ? field
@@ -53,8 +93,8 @@ function fitColumns(columns: FitColumn[], width: number): DataTableColumn[] {
 }
 
 /** The date basis column as wide as its longest label on screen ("Primary completion (actual)"), never narrower than its heading. */
-export const catalystBasisWidth = (events: readonly CatalystEvent[], field: CatalystFilters["dateField"]) =>
-  Math.min(27, events.reduce((widest, event) => Math.max(widest, catalystDateBasis(event, field).length), 10));
+export const catalystBasisWidth = (events: readonly CatalystEvent[], read: CatalystDateRead) =>
+  Math.min(27, events.reduce((widest, event) => Math.max(widest, catalystDateBasis(event, read).length), 10));
 
 export function catalystColumns(width: number, changes: boolean, litigation: boolean, basisWidth = 10): DataTableColumn[] {
   return fitColumns([
@@ -179,11 +219,11 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
  * changes, so a month today falls in heads its upcoming days and again its
  * past days, after the later months, never pulling a past day ahead of them.
  */
-export function catalystSections(rows: readonly CatalystEvent[], field: CatalystFilters["dateField"], changes: boolean): TableSection<CatalystEvent>[] {
+export function catalystSections(rows: readonly CatalystEvent[], read: CatalystDateRead, changes: boolean): TableSection<CatalystEvent>[] {
   const sections: TableSection<CatalystEvent>[] = [];
   const seen = new Map<string, number>();
   for (const event of rows) {
-    const label = catalystSection(event, field, changes);
+    const label = catalystSection(event, read, changes);
     const last = sections.at(-1);
     if (last?.label === label) { last.items.push(event); continue; }
     const repeat = seen.get(label) ?? 0;
@@ -194,8 +234,9 @@ export function catalystSections(rows: readonly CatalystEvent[], field: Catalyst
 }
 
 /** The calendar groups by the month of the date it shows; the change feed by the day a change was observed. */
-export function catalystSection(event: CatalystEvent, field: CatalystFilters["dateField"], changes: boolean): string {
+export function catalystSection(event: CatalystEvent, read: CatalystDateRead, changes: boolean): string {
   if (changes) return event.observedAt.slice(0, 10);
+  const field = catalystListedField(event, read);
   if (catalystDateWithheld(event, field)) return CATALYST_DATE_WITHHELD;
   const date = catalystDate(event, field);
   if (date === "--") return "Undated";
@@ -207,10 +248,10 @@ function changeSummary(event: CatalystEvent): string {
   if (!first) return "First observed";
   return `${catalystChangeText(first)}${rest.length ? ` +${rest.length}` : ""}`;
 }
-export const catalystCell = (event: CatalystEvent, column: string, field: CatalystFilters["dateField"], changes: boolean): string => {
+export const catalystCell = (event: CatalystEvent, column: string, read: CatalystDateRead, changes: boolean): string => {
   switch (column) {
-    case "date": return catalystDate(event, changes ? "observed" : field);
-    case "basis": return catalystDateBasis(event, field);
+    case "date": return catalystDate(event, changes ? "observed" : read);
+    case "basis": return catalystDateBasis(event, read);
     case "ticker": return catalystTickers(event) || "Unlinked";
     case "parties": return catalystParties(event);
     // A filer read from the title is in the Parties column; the event is the rest.
@@ -256,11 +297,14 @@ function primaryCompletionLabel(event: Pick<CatalystEvent, "metadata">): string 
   return type === "ESTIMATED" ? "Primary completion (est.)" : type === "ACTUAL" ? "Primary completion (actual)" : "Primary completion";
 }
 
-export function catalystDateBasis(event: CatalystEvent, field: CatalystFilters["dateField"] = "any"): string {
+export function catalystDateBasis(event: CatalystEvent, read: CatalystDateRead = "any"): string {
+  const field = catalystListedField(event, read);
   if (catalystDateWithheld(event, field)) return CATALYST_DATE_WITHHELD;
   const basis = field === "any" || !field ? event.deadlineDate ? "deadline" : event.effectiveDate ? "effective" : event.announcedDate ? "announced" : "undated" : field;
   const meaning = String(event.metadata?.[`${basis}Meaning`] ?? event.metadata?.[`${basis}DateMeaning`] ?? "");
   if (/primary completion/i.test(meaning)) return primaryCompletionLabel(event);
+  // A registry record's announcement is the day the registry last updated it.
+  if (basis === "announced" && event.type === "clinical" && event.metadata?.sourceUpdateDate === event.announcedDate) return "Registry update";
   if (/comment/i.test(meaning)) return "Comments";
   if (/meeting/i.test(meaning)) return "Meeting";
   return catalystLabel(basis);
@@ -281,5 +325,23 @@ export function catalystFacts(event: CatalystEvent): Array<{ label: string; valu
     if (Array.isArray(metadata.countries)) add("Study countries", metadata.countries.filter((value) => typeof value === "string").join(", "));
   }
   for (const [key, label] of [["court", "Court"], ["caseNumber", "Case number"], ["caseCaption", "Case caption"], ["administrativeFileNumber", "Admin file"], ["litigationReleaseNumber", "Release number"]]) add(label!, metadata[key!]);
+  add("Drug", event.drug);
+  add("Indication", event.indication);
+  // A company says the same date again in later filings; the row is its latest.
+  if (event.restatedTimes && event.restatedTimes > 0) add("Restated", `${event.restatedTimes} ${event.restatedTimes === 1 ? "time" : "times"} in other filings; this is the latest`);
+  // A later filing moved the date: the event stays, out of the calendar, and says where to.
+  if (event.supersededBy) add("Moved to", `${event.supersededBy.date} by a filing of ${event.supersededBy.announcedDate}`);
   return facts;
+}
+
+/**
+ * What a free preview holds back, as its Pro line says it: "16 more events
+ * (2 upcoming)". The upcoming count is there when the service gives it, on a
+ * calendar read by date.
+ */
+export function catalystLockedText(access: CatalystResponse["access"], noun: "event" | "case"): string | null {
+  const locked = access?.pro === false ? access.lockedRows : 0;
+  if (locked <= 0) return null;
+  const upcoming = access?.lockedUpcoming;
+  return `${locked.toLocaleString("en-US")} more ${noun}${locked === 1 ? "" : "s"}${upcoming == null ? "" : ` (${upcoming.toLocaleString("en-US")} upcoming)`}`;
 }

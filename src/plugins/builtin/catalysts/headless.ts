@@ -2,7 +2,7 @@ import { CATALYST_TYPES, type CatalystEvent } from "../../../api-client/catalyst
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import { fetchCatalystDetail, fetchCatalysts } from "./client";
-import { catalystCell, catalystChangeText, catalystDate, catalystDateBasis, catalystEmptyTitle, catalystParties, catalystQuery, catalystTickers } from "./model";
+import { catalystCell, catalystChangeText, catalystDate, catalystDateBasis, catalystEmptyTitle, catalystLockedText, catalystParties, catalystQuery, catalystTickers } from "./model";
 import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
 
 function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
@@ -24,7 +24,10 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
       { key: "detailTab", type: "enum", values: [{ value: "evidence" }, { value: "history" }], defaultValue: "evidence", description: "Detail section for screenshots." },
       { key: "event", type: "string", settingKey: "open", description: "Event ID for evidence and revision history." },
     ],
-    discovery: { aliases: [litigation ? "LITI" : "CATL"], dataRequirements: ["Gloom Cloud catalyst records"], limitations: ["Pro; free preview includes three events.", "Only published dates and confidently resolved corporate parties are linked.", "Coverage varies by jurisdiction and source; absence is not proof of no event."] },
+    discovery: { aliases: [litigation ? "LITI" : "CATL"],
+      // `fn PDUFA` is the PDUFA calendar, not every catalyst.
+      ...(!litigation ? { opens: [{ words: ["PDUFA", "PDUFA dates", "PDUFA calendar"], argument: "", options: { type: "pdufa" } }] } : {}),
+      dataRequirements: ["Gloom Cloud catalyst records"], limitations: ["Pro; free preview includes three events.", "Only published dates and confidently resolved corporate parties are linked.", "Coverage varies by jurisdiction and source; absence is not proof of no event."] },
     describe: litigation ? "Company litigation, enforcement and antitrust dockets with evidence" : "Regulatory, clinical, legal and trade-policy catalyst calendar with provenance",
     async load(args, ctx) {
       if (typeof args.options.event === "string" && args.options.event) {
@@ -38,17 +41,17 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
       const query = catalystQuery(args.options, symbol ?? undefined, litigation);
       const data = await fetchCatalysts({ ...query, limit: Math.max(1, Math.min(500, Number(args.options.limit) || 100)), offset: Math.max(0, Number(args.options.offset) || 0) }, ctx.apiClient);
       // The free preview's held-back rows are a Pro line, so a report never reads as everything there is.
-      const lockedRows = data.access?.pro === false ? data.access.lockedRows : 0;
+      const locked = catalystLockedText(data.access, litigation ? "case" : "event");
       const changes = args.options.tab === "changes";
       // The text reads like the pane's cells; exports keep the service's codes (`clinical`, `ACTIVE_NOT_RECRUITING`).
-      const cell = (column: string) => (_value: unknown, row: Record<string, unknown>) => catalystCell(row as unknown as CatalystEvent, column, query.dateField, changes);
-      return { ...(lockedRows > 0 ? { complete: false, errors: [`${lockedRows.toLocaleString("en-US")} more ${litigation ? "case" : "event"}${lockedRows === 1 ? " needs" : "s need"} Gloom Pro`] } : {}), sections: [{ title: litigation ? "Company dockets" : "Catalyst events", columns: [
+      const cell = (column: string) => (_value: unknown, row: Record<string, unknown>) => catalystCell(row as unknown as CatalystEvent, column, query, changes);
+      return { ...(locked ? { complete: false, errors: [`${locked} ${data.access?.lockedRows === 1 ? "needs" : "need"} Gloom Pro`] } : {}), sections: [{ title: litigation ? "Company dockets" : "Catalyst events", columns: [
         { key: "date", header: changes ? "Observed (UTC)" : "Date" }, ...(!changes ? [{ key: "basis", header: "Date basis" }] : []),
         { key: "tickers", header: "Tickers" }, { key: "parties", header: "Parties", format: (_value, row) => catalystParties(row as unknown as CatalystEvent) }, { key: "title", header: litigation ? "Case / docket" : "Event", textFormat: cell("title") },
         { key: "type", header: "Type", textFormat: cell("type") },
         ...(changes ? [{ key: "changeSummary", header: "Changes" }] : [{ key: "status", header: "Status", textFormat: cell("status") }]),
         { key: "agency", header: "Agency", textFormat: cell("agency") }, { key: "country", header: "Country", textFormat: cell("country") }, { key: "sourceUrl", header: "Primary source" },
-      ], rows: data.events.map((event) => ({ ...event, date: catalystDate(event, query.dateField), ...(!changes ? { basis: catalystDateBasis(event, query.dateField) } : {}),
+      ], rows: data.events.map((event) => ({ ...event, date: catalystDate(event, query), ...(!changes ? { basis: catalystDateBasis(event, query) } : {}),
         tickers: catalystTickers(event), ...(changes ? { changeSummary: catalystCell(event, "status", query.dateField, true) } : {}) })),
         ...(data.events.length ? {} : { empty: catalystEmptyTitle(data, query, changes) }) }],
       metadata: { asOf: data.asOf, total: data.total, offset: data.offset, limit: data.limit, access: data.access, coverage: data.coverage, complete: data.access?.pro !== false && data.offset + data.events.length >= data.total } };

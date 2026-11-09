@@ -46,7 +46,7 @@ export function withBankEnterpriseValue<F extends Fundamentals | undefined>(
 ): F {
   if (!fundamentals || !isBankIndustry(profile?.industry)) return fundamentals;
   const { enterpriseValue: _value, enterpriseToRevenue: _ratio, ...rest } = fundamentals;
-  const source = reportedEnterpriseValue(fundamentals) ?? fundamentals.enterpriseValueCheck?.source;
+  const source = servedEnterpriseValue(fundamentals) ?? fundamentals.enterpriseValueCheck?.source;
   // Only where an EV would be shown: a bank the source gave none for shows no line, as before.
   if (!finiteNumber(source)) return fundamentals;
   const withdrawn = new Set([...fundamentals.unavailableFields ?? [], "enterpriseValue" as const, "enterpriseToRevenue" as const]);
@@ -62,13 +62,82 @@ export function isBankEnterpriseValue(fundamentals: Parameters<typeof enterprise
   return enterpriseValueNotMeaningful(fundamentals) === BANK_ENTERPRISE_VALUE;
 }
 
-/** A source's enterprise value, or undefined when it has none: banks and insurers come back as 0, which is a gap, not a value. */
-export function reportedEnterpriseValue(fundamentals: Pick<Fundamentals, "enterpriseValue"> | undefined): number | undefined {
+/** The enterprise value as served, or undefined when it has none: banks and insurers come back as 0, which is a gap, not a value. */
+function servedEnterpriseValue(fundamentals: Pick<Fundamentals, "enterpriseValue"> | undefined): number | undefined {
   const value = fundamentals?.enterpriseValue;
   return typeof value === "number" && Number.isFinite(value) && value !== 0 ? value : undefined;
 }
 
 const finiteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+
+/** Minority interest and preferred equity a check's balance sheet shows, else none. */
+function minorityAndPreferred(check: Pick<EnterpriseValueCheck, "minorityAndPreferred">): number {
+  return finiteNumber(check.minorityAndPreferred) && check.minorityAndPreferred > 0 ? check.minorityAndPreferred : 0;
+}
+
+/**
+ * Market cap + total debt (+ leases) - cash and short-term investments + minority interest and preferred equity: the
+ * EV the provider's is checked against, and the one shown in its place. PAGP on 2026-06-30: 13.58B computed and
+ * 13.73B of minority interest, 27.31B.
+ */
+function bridgeEnterpriseValue(check: Pick<EnterpriseValueCheck, "computed" | "minorityAndPreferred">): number | undefined {
+  return finiteNumber(check.computed) ? check.computed + minorityAndPreferred(check) : undefined;
+}
+
+/** Beyond this relative gap from the bridge the provider's EV is not shown; within it, it is. */
+const ENTERPRISE_VALUE_TOLERANCE = 0.05;
+/** On the other side of the market cap from the balance sheet's net debt, a smaller gap is enough. */
+const ENTERPRISE_VALUE_SIDE_TOLERANCE = 0.02;
+
+/**
+ * Whether the bridge stands in for the provider's EV, as Gloom Cloud's check rules it: more than 5% from it, or more
+ * than 2% on the other side of the market cap from net debt (WPM's 61.75B beside a 61.88B cap and net debt). Read
+ * here on the bridge with minority interest and preferred equity in, so a check served before the check counted them
+ * (PAGP's `differs`, its 26.57B 0.97x of 27.31B) keeps the provider's figure. Not across currencies: a check in another
+ * currency than the EV is shown in describes another figure.
+ */
+function bridgeStandsIn(check: EnterpriseValueCheck, currency: string | undefined): boolean {
+  if (check.status !== "differs" && check.status !== "matches") return false;
+  if (currency && check.currency && check.currency !== currency) return false;
+  const bridge = bridgeEnterpriseValue(check);
+  if (bridge === undefined || !(bridge > 0) || !finiteNumber(check.source)) return false;
+  const gap = Math.abs(check.source - bridge);
+  if (gap > ENTERPRISE_VALUE_TOLERANCE * bridge) return true;
+  if (!finiteNumber(check.marketCap) || !finiteNumber(check.totalDebt) || !finiteNumber(check.cash)) return false;
+  const netDebt = check.totalDebt + (finiteNumber(check.leases) ? check.leases : 0) - check.cash + minorityAndPreferred(check);
+  return Math.sign(check.source - check.marketCap) * Math.sign(netDebt) < 0 && gap > ENTERPRISE_VALUE_SIDE_TOLERANCE * bridge;
+}
+
+/**
+ * The enterprise value every surface shows and divides, so `ticker`, the overview, `valuation`, RV and the reverse
+ * DCF read one number: market cap + total debt - cash and short-term investments + minority interest and preferred
+ * equity (bridgeEnterpriseValue) where the provider's figure is more than 5% from it, the provider's within it, and
+ * the served figure with no check. `currency` is the one the EV is shown in, the market cap's by default. Undefined
+ * when there is none.
+ */
+export function reportedEnterpriseValue(
+  fundamentals: Pick<Fundamentals, "enterpriseValue" | "enterpriseValueCheck" | "unavailableFields" | "marketCapCurrency"> | undefined,
+  currency: string | undefined = fundamentals?.marketCapCurrency,
+): number | undefined {
+  const served = servedEnterpriseValue(fundamentals);
+  if (served === undefined) return undefined;
+  const check = enterpriseValueCheck(fundamentals);
+  if (!check || (check.status !== "differs" && check.status !== "matches")) return served;
+  if (bridgeStandsIn(check, currency)) return bridgeEnterpriseValue(check)!;
+  // Gloom Cloud serves the bridge for a `differs` check; the provider's figure is shown where it is within 5% of it.
+  return (currency && check.currency && check.currency !== currency) || !finiteNumber(check.source) ? served : check.source;
+}
+
+/** EV over revenue on the enterprise value shown (reportedEnterpriseValue): the served multiple, moved with the EV. */
+export function reportedEnterpriseToRevenue(
+  fundamentals: Pick<Fundamentals, "enterpriseValue" | "enterpriseValueCheck" | "unavailableFields" | "enterpriseToRevenue" | "marketCapCurrency"> | undefined,
+): number | undefined {
+  const ratio = fundamentals?.enterpriseToRevenue;
+  if (!finiteNumber(ratio)) return undefined;
+  const served = servedEnterpriseValue(fundamentals);
+  const shown = reportedEnterpriseValue(fundamentals);
+  return served !== undefined && shown !== undefined && served > 0 && shown !== served ? ratio * (shown / served) : ratio;
+}
 
 /**
  * The served check of the enterprise value beside it, when it describes that value: a provider EV the check labels or
@@ -91,6 +160,9 @@ export function enterpriseValueCheck(
   if (check.status === "computed") {
     return finiteNumber(check.computed) && fundamentals?.enterpriseValue === check.computed ? check : undefined;
   }
+  // A `differs` check comes beside the bridge Gloom Cloud serves in the provider's place, or the provider's figure.
+  if (check.status === "differs" && fundamentals?.enterpriseValue !== undefined
+    && fundamentals.enterpriseValue === bridgeEnterpriseValue(check)) return check;
   return finiteNumber(check.source) && fundamentals?.enterpriseValue === check.source ? check : undefined;
 }
 
@@ -119,11 +191,20 @@ export function enterpriseValueWithdrawn(fundamentals: Parameters<typeof enterpr
     && enterpriseValueNotMeaningful(fundamentals) === undefined;
 }
 
-/** "(provider)" beside an EV more than 5% from market cap + debt - cash, "unavailable" for a withdrawn one, N/M for one at or below zero. */
-export function enterpriseValueLabel(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): "provider" | "unavailable" | "not-meaningful" | undefined {
+/** "unavailable" for a withdrawn EV, N/M for one at or below zero; none for one that is shown, served or computed. */
+export function enterpriseValueLabel(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): "unavailable" | "not-meaningful" | undefined {
   if (enterpriseValueNotMeaningful(fundamentals)) return "not-meaningful";
   const status = enterpriseValueCheck(fundamentals)?.status;
-  return status === "differs" ? "provider" : status === "withdrawn" || enterpriseValueWithdrawn(fundamentals) ? "unavailable" : undefined;
+  return status === "withdrawn" || enterpriseValueWithdrawn(fundamentals) ? "unavailable" : undefined;
+}
+
+/** Whether the EV shown is the bridge in place of the provider's (reportedEnterpriseValue). */
+export function enterpriseValueComputed(
+  fundamentals: Parameters<typeof reportedEnterpriseValue>[0],
+  currency: string | undefined = fundamentals?.marketCapCurrency,
+): boolean {
+  const check = enterpriseValueCheck(fundamentals);
+  return !!check && servedEnterpriseValue(fundamentals) !== undefined && bridgeStandsIn(check, currency);
 }
 
 /**
@@ -134,22 +215,26 @@ export function enterpriseValueLabel(fundamentals: Parameters<typeof enterpriseV
  */
 export function enterpriseValueGapIsLarge(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): boolean {
   const check = enterpriseValueCheck(fundamentals);
-  if (check?.status !== "differs" || !finiteNumber(check.source) || !finiteNumber(check.computed) || check.computed <= 0) return true;
-  return Math.abs(check.source / check.computed - 1) > OVERVIEW_ENTERPRISE_VALUE_GAP;
+  const bridge = check ? bridgeEnterpriseValue(check) : undefined;
+  if (check?.status !== "differs" || !finiteNumber(check.source) || bridge === undefined || bridge <= 0) return true;
+  return Math.abs(check.source / bridge - 1) > OVERVIEW_ENTERPRISE_VALUE_GAP;
 }
 
 const OVERVIEW_ENTERPRISE_VALUE_GAP = 0.1;
 
 /**
- * The reconciliation line under a labelled, withdrawn or not meaningful EV: "EV 61.75B USD (provider) vs 63.75B
- * computed from market cap + total debt - cash (balance sheet 2026-06-30).", "EV N/M: cash and short-term investments
+ * The line under a computed, withdrawn or not meaningful EV: "EV 63.75B USD is market cap 60B + total debt 5B - cash
+ * and short-term investments 1.25B (balance sheet 2026-06-30), in place of the provider's 61.75B.", "EV N/M: cash and short-term investments
  * exceed market cap + total debt (balance sheet 2026-06-30)." A balance sheet in another currency names the rate it
  * was converted at ("balance sheet 2026-06-30, EUR at 0.8614 GBP"). A withdrawn EV no balance sheet checked gives
  * Gloom Cloud's reason; one withdrawn without a check, that the source failed validation. Undefined when the EV matches, is unchecked or computed, or has no check. Read it from the
  * fundamentals the rows show (atRegularSessionPrice moves the check with the EV and the market cap), so its figures
  * are theirs.
  */
-export function enterpriseValueReconciliationNote(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): string | undefined {
+export function enterpriseValueReconciliationNote(
+  fundamentals: Parameters<typeof reportedEnterpriseValue>[0],
+  currency: string | undefined = fundamentals?.marketCapCurrency,
+): string | undefined {
   const notMeaningful = enterpriseValueNotMeaningful(fundamentals);
   // A bank's EV line says it all: "n/m for banks".
   if (notMeaningful === BANK_ENTERPRISE_VALUE) return undefined;
@@ -168,10 +253,27 @@ export function enterpriseValueReconciliationNote(fundamentals: Parameters<typeo
   const fx = check.fx && finiteNumber(check.fx.rate) ? `, ${check.fx.from} at ${check.fx.rate.toPrecision(4)} ${check.currency}` : "";
   const sheet = check.balanceSheetDate ? ` (balance sheet ${check.balanceSheetDate}${fx})` : "";
   const basis = `market cap + total debt${leases} - cash${sheet}`;
-  if (check.status === "differs") return `EV ${source} (provider) vs ${computed} computed from ${basis}.`;
+  // The EV shown is the bridge: its inputs, and the provider's figure it stands in for. The provider's shown needs none.
+  if (check.status === "differs") {
+    return bridgeStandsIn(check, currency) ? `${computedEnterpriseValueInputs(check, sheet)}, in place of the provider's ${formatCompact(check.source)}.` : undefined;
+  }
   const ratio = check.computed > 0 ? ` is ${(check.source / check.computed).toFixed(1)}x` : " is far from";
   const twice = check.convertedTwice && check.convertedFrom ? `; it converts ${check.convertedFrom} to ${check.currency} twice` : "";
   return `EV unavailable: the provider's ${source}${ratio} the ${computed} computed from ${basis}${twice}.`;
+}
+
+/**
+ * "EV 7.48B USD is market cap 8.22B + total debt 864.07M - cash and short-term investments 1.6B (balance sheet
+ * 2026-06-30)": the bridge with its inputs, each where the check carries it, minority interest and preferred equity
+ * among them where the balance sheet shows any.
+ */
+function computedEnterpriseValueInputs(check: EnterpriseValueCheck, sheet: string): string {
+  const part = (label: string, value: number | undefined) => finiteNumber(value) ? `${label} ${formatCompact(value)}` : label;
+  const leases = finiteNumber(check.leases) && check.leases > 0 ? ` + ${part("leases", check.leases)}` : "";
+  const minority = minorityAndPreferred(check);
+  const equity = minority > 0 ? ` + ${part("minority interest and preferred equity", minority)}` : "";
+  return `EV ${formatCompact(bridgeEnterpriseValue(check)!)} ${check.currency} is ${part("market cap", check.marketCap)} + ${part("total debt", check.totalDebt)}${leases}`
+    + ` - ${part("cash and short-term investments", check.cash)}${equity}${sheet}`;
 }
 
 /**

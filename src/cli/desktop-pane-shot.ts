@@ -186,6 +186,13 @@ export interface DesktopPaneShotRenderResult {
   errorStateMarkers: string[];
   emptyStateDetected: boolean;
   emptyStateMarkers: string[];
+  /**
+   * The words of the one empty or failed state a pane body shows with
+   * nothing else but its chrome (query bar, tabs, a table's header): its
+   * title, message and hint, a line each, without its buttons. Absent when
+   * the body shows anything more.
+   */
+  emptyStateText?: string[];
   /** A wall that needs an account, or a Pro lock on part of the pane. */
   accessGate?: PaneAccessGate | null;
   semanticUi: RemoteUiNodeSnapshot[];
@@ -911,6 +918,24 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
         // An empty sub-section off screen, such as a ticker's news list below
         // the fold, does not make the captured view empty.
         emptyStateDetected: [...root.querySelectorAll('[data-gloom-status="empty"]')].some(isVisible),
+        // A body that shows one empty or failed state and only its chrome
+        // beside it reads as the state's words, not as its filters' labels.
+        emptyStateText: (() => {
+          const body = root.querySelector('[data-gloom-role="pane-body"]') || root;
+          const states = [...body.querySelectorAll('[data-gloom-ui="empty-state"]')].filter(isVisible);
+          if (states.length !== 1) return [];
+          const chrome = '[data-gloom-role="query-bar"], [data-gloom-role="data-table-header-row"], [data-gloom-role="tab-list"], [data-gloom-role="page-stack-header"], [data-gloom-role="pane-footer"], [data-gloom-ui="empty-state"]';
+          const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            const parent = node.parentElement;
+            if (!normalize(node.textContent) || !parent || parent.closest(chrome) || !isVisible(parent)) continue;
+            return [];
+          }
+          return [...states[0].children]
+            .filter((child) => isVisible(child) && !child.querySelector('button, [role="button"]'))
+            .map((child) => normalize(child.innerText || child.textContent))
+            .filter(Boolean);
+        })(),
         // The shared sign-in wall and the Pro lock prompt every gated pane draws.
         accessGate: [...root.querySelectorAll('[data-gloom-ui="sign-in-wall"]')].some(isVisible) ? "sign-in"
           : [...root.querySelectorAll('[data-gloom-ui="pro-lock"]')].some(isVisible) ? "pro" : "",
@@ -937,6 +962,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
         loadingStateDetected?: boolean;
         errorStateDetected?: boolean;
         emptyStateDetected?: boolean;
+        emptyStateText?: string[];
         accessGate?: string;
         rows?: DesktopPaneShotRenderedRow[];
         truncated?: boolean;
@@ -988,6 +1014,8 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
     errorStateMarkers,
     emptyStateDetected: value?.emptyStateDetected === true || emptyStateMarkers.length > 0,
     emptyStateMarkers,
+    ...(Array.isArray(value?.emptyStateText) && value.emptyStateText.length > 0
+      ? { emptyStateText: value.emptyStateText.filter((line): line is string => typeof line === "string" && line.length > 0) } : {}),
     accessGate,
     semanticUi: Array.isArray(value?.semanticUi) ? value.semanticUi : [],
   };

@@ -231,6 +231,12 @@ export interface StudiesQuery {
   term?: string;
   /** Sponsor/company filter (`query.spons`). */
   sponsor?: string;
+  /**
+   * The lead sponsor's name as one phrase (`AREA[LeadSponsorName]"CorMedix"`):
+   * studies the company runs, not those it only collaborates on or that
+   * merely mention it.
+   */
+  leadSponsor?: string;
   /** Overall statuses, any of (`filter.overallStatus`), e.g. `RECRUITING`. */
   statuses?: readonly string[];
   /** Phases, any of, e.g. `PHASE3` or `NA`. */
@@ -255,6 +261,12 @@ function codes(values: readonly string[] | undefined): string[] {
 function areaClause(area: string, values: string[]): string | null {
   if (values.length === 0) return null;
   return values.length === 1 ? `AREA[${area}]${values[0]}` : `AREA[${area}](${values.join(" OR ")})`;
+}
+
+/** `AREA[LeadSponsorName]"Viking Therapeutics"`; quotes, brackets and parentheses would break the expression and are dropped. */
+function leadSponsorClause(name: string | undefined): string | null {
+  const phrase = (name ?? "").replace(/["[\]()]/g, " ").replace(/\s+/g, " ").trim();
+  return phrase ? `AREA[LeadSponsorName]"${phrase}"` : null;
 }
 
 /** `NOT AREA[LeadSponsorClass]INDUSTRY`, or `NOT AREA[LeadSponsorClass](NIH OR FED)` for several. */
@@ -282,6 +294,7 @@ export function buildStudiesUrl(query: StudiesQuery = {}): string {
   const statuses = codes(query.statuses);
   if (statuses.length > 0) params.set("filter.overallStatus", statuses.join(","));
   const advanced = [
+    leadSponsorClause(query.leadSponsor),
     areaClause("Phase", codes(query.phases)),
     areaClause("LeadSponsorClass", codes(query.sponsorClasses)),
     excludeClause("LeadSponsorClass", codes(query.excludedSponsorClasses)),

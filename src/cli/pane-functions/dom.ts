@@ -260,6 +260,9 @@ export async function buildDomPaneReportFromRender(
     textLines.push(...renderDomTables(rows));
   } else if (lockNote) {
     textLines.push(...lockNoteLines(lockNote));
+  } else if (gate !== "sign-in" && result.render.emptyStateText?.length) {
+    // A pane with nothing but its empty state says that, not its filters' labels (`No trials match ZZQX.`).
+    textLines.push(...result.render.emptyStateText.flatMap((line) => wrapText(line, Math.min(cliTerminalWidth() ?? 100, 100))));
   } else if (result.render.visibleText) {
     textLines.push(...(gate === "sign-in" ? [signInWallText(result.render.visibleText)] : proseLines(result.render, resolved.label)));
   } else {

@@ -8,7 +8,7 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
-import { formatCompact, formatCompactCurrency } from "../../../utils/format";
+import { formatCompactCurrency } from "../../../utils/format";
 import { loadReverseDcfInputs } from "./client";
 import { describeFcfMargin, DISCOUNT_RATES, FORECAST_YEARS, formatFcfMargin, pastGrowthBasis, projectReverseDcf, TERMINAL_GROWTH, TERMINAL_GROWTHS,
   ttmBaseGap, type ImpliedGrowth, type ReverseDcfModel } from "./model";
@@ -103,9 +103,9 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
       // A trailing figure far above the fiscal year the past growth ends at says so beside itself.
       { id: "fcf", label: "FCF", value: formatCompactCurrency(model.freeCashFlow ?? undefined, currency),
         detail: gap ? `TTM base, ${gap.multiple} ${gap.year}'s ${gap.fcf}` : undefined },
+      // Market cap + debt - cash where the provider's is more than 5% from it; its inputs are in the notice.
       { id: "ev", label: "EV", value: formatCompactCurrency(model.enterpriseValue ?? undefined, currency),
-        // More than 5% from market cap + debt - cash: the provider's, with the computed figure where it fits.
-        detail: model.computedEnterpriseValue != null ? `provider vs ${formatCompact(model.computedEnterpriseValue)}` : undefined },
+        detail: model.enterpriseValueNote ? "computed" : undefined },
     ];
   }, [model]);
 

@@ -325,6 +325,12 @@ export interface EnterpriseValueCheck {
   balanceSheetDate?: string;
   /** marketCap + totalDebt + leases - cash. */
   computed?: number;
+  /**
+   * Minority interest and preferred equity on the same balance sheet (total equity including minority interest less
+   * common equity), where both lines are there and the difference is positive. `computed` plus this is the EV the
+   * provider's is checked against and that stands in for it (bridgeEnterpriseValue).
+   */
+  minorityAndPreferred?: number;
   /** `cash` is cash and equivalents alone: an insurer's or a holding company's investments stay in its EV. */
   investmentsKept?: true;
   /** Why the EV is not meaningful (`not-meaningful`), or why a withdrawn EV no balance sheet checked is withdrawn. */

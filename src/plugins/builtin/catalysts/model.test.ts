@@ -87,6 +87,23 @@ describe("catalyst provenance and dates", () => {
     expect(catalystDate(withheld, "announced")).toBe("2026-10-19");
     expect(catalystDateBasis(withheld, "announced")).toBe("Announced");
   });
+  // A clinical window of October showed a trial under its January completion: it matched on its October update.
+  test("in a date window a row shows the date that matched it, and says which", () => {
+    const trial = { ...event, announcedDate: "2026-10-20", deadlineDate: "2027-01-29", datePrecision: { announced: "day" as const, deadline: "day" as const },
+      metadata: { sourceUpdateDate: "2026-10-20", deadlineMeaning: "Primary completion date, actual or estimated as reported by sponsor", primaryCompletion: { date: "2027-01-29", type: "ESTIMATED" } } };
+    const window = catalystQuery({ from: "2026-10-01", to: "2026-11-09" });
+    expect([catalystDate(trial, window), catalystDateBasis(trial, window), catalystSection(trial, window, false)]).toEqual(["2026-10-20", "Registry update", "October 2026"]);
+    // Its completion in the window, or no window, keeps the completion.
+    const later = catalystQuery({ from: "2027-01-01", to: "2027-01-31" });
+    expect([catalystDate(trial, later), catalystDateBasis(trial, later)]).toEqual(["2027-01-29", "Primary completion (est.)"]);
+    expect(catalystDate(trial, catalystQuery({}))).toBe("2027-01-29");
+    // A month-precision deadline covers its month.
+    expect(catalystDate(event, catalystQuery({ from: "2027-04-15", to: "2027-04-20" }))).toBe("2027-04");
+    // An FDA advisory notice's comment deadline admits it to no window on the server: the notice it matched on is its date.
+    const notice = { ...event, source: "fda_advisory", announcedDate: "2026-10-05", deadlineDate: "2026-10-20",
+      datePrecision: { announced: "day" as const, deadline: "day" as const }, metadata: { deadlineDateMeaning: "Comment deadline" } };
+    expect([catalystDate(notice, window), catalystDateBasis(notice, window)]).toEqual(["2026-10-05", "Announced"]);
+  });
   // The server sends upcoming dates first, then past ones; grouping by month kept a past day ahead of later months.
   test("sections keep the server's order, heading a month today splits twice", () => {
     const on = (id: string, deadlineDate: string) => ({ ...event, id, deadlineDate });

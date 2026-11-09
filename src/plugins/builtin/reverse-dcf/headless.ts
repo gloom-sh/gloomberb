@@ -46,7 +46,7 @@ export const reverseDcfHeadless: HeadlessPaneDefinition<"bundle"> = {
             : `${formatCompactCurrency(model.impliedRevenue, currency)} at ${describeFcfMargin(fcfMargin, fcfMarginBasis)}` },
           { label: "Past FCF growth", value: model.pastGrowth ? `${percent(model.pastGrowth.rate)} ${pastGrowthBasis(model.pastGrowth)}` : "--" },
           { label: "FCF yield", value: percent(model.fcfYield) },
-          { label: "Enterprise value", value: `${formatCompactCurrency(model.enterpriseValue ?? undefined, currency)}${model.enterpriseValueNote ? " (provider)" : ""}` },
+          { label: "Enterprise value", value: `${formatCompactCurrency(model.enterpriseValue ?? undefined, currency)}${model.enterpriseValueNote ? " (computed)" : ""}` },
           { label: "Free cash flow, TTM", value: formatCompactCurrency(model.freeCashFlow ?? undefined, currency) },
         ] },
         { title: "Implied growth by discount rate and terminal growth", columns: [{ key: "discountRate", header: "Discount", format: percent },
