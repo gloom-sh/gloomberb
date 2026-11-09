@@ -16,7 +16,18 @@ import type { PriceHistoryResult } from "../../types/price-history";
 
 const history = marketDataCliCommands.find((command) => command.name === "history")!;
 
-afterEach(() => { process.exitCode = 0; });
+/**
+ * A Saturday noon, after every bar the fixtures serve: no exchange is in session. A history adds today's bar from the
+ * quote while its venue is in session (venueTradingDay), so a test that does not pin the clock reads the real one and
+ * changes with the hour it runs at. Pin it with `pinClosedSession()`; a test that needs a session open pins its own.
+ */
+const CLOSED_SESSION_NOW = new Date("2026-11-07T12:00:00Z");
+const pinClosedSession = () => setSystemTime(CLOSED_SESSION_NOW);
+
+afterEach(() => {
+  process.exitCode = 0;
+  setSystemTime();
+});
 
 /** Every history export's own columns, whatever the symbol or the market's state. */
 const HISTORY_CSV_HEADER = "Date,Open,High,Low,Close,Volume,Flag,Partial,Filled,Unsettled,Volume unit,Volume note,Venue volume,Volume venue,Volume basis,status";
@@ -229,6 +240,7 @@ test("a day the data service still marks partial is exported partial until half 
 });
 
 test("a stock's history keeps its export columns, with no volume unit it cannot vouch for", async () => {
+  pinClosedSession();
   const cli = createTestCliContext({
     config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
     dataProvider: createTestDataProvider({
@@ -247,6 +259,7 @@ test("a stock's history keeps its export columns, with no volume unit it cannot 
 });
 
 test("history of a listing that stopped trading says so instead of not a ticker, and a symbol whose company left says so beside its bars", async () => {
+  pinClosedSession();
   const lastTrade = Date.parse("2022-10-27T23:59:59.953Z");
   const hop = { from: "FB", to: "META", date: "2022-06-09" };
   const dataProvider = createTestDataProvider({
@@ -379,6 +392,7 @@ test("a past window reads its own dates' bars, in the size its span takes, with 
 });
 
 test("history reads a Bloomberg code as its listing: VOD LN Equity is Vodafone in London", async () => {
+  pinClosedSession();
   const asked: string[] = [];
   const cli = createTestCliContext({
     config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
@@ -535,6 +549,7 @@ test("history --wide merges 30m bars beside 1h ones into the hour they start in,
 });
 
 test("a currency's name is its pair: history swiss franc and history yen name fx and the pair, and one word is a ticker first", async () => {
+  pinClosedSession();
   const asked: string[] = [];
   const dataProvider = createTestDataProvider({
     getQuote: async (symbol) => {
@@ -690,6 +705,7 @@ async function runBareSymbol(args: string[], companies: Record<string, string>) 
 const FP_COMPANIES = { TSXV: "FP Newspapers Inc.", BVB: "S.C. Fondul Proprietatea S.A." };
 
 test("a bare symbol several companies list is never served from the listing the source picked: a date window asks for an exchange as a range does", async () => {
+  pinClosedSession();
   const window = ["--start", "2024", "--end", "2025"];
   for (const [args, retry] of [
     [["FP", ...window], "--from 2024-01-01 --to 2025-12-31"],
