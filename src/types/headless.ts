@@ -739,9 +739,10 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
      * Words that name one case of the function, each with the argument it
      * takes for it: CTM opens the VIX futures curve for `VX` and `vix
      * futures`. `fn VX` runs `CTM VIX` and says so, and `catalog vx` lists
-     * the function first.
+     * the function first. A case can also preset options (`fn PDUFA` is
+     * `fn CATL --type pdufa`); an option typed after the word wins over it.
      */
-    opens?: ReadonlyArray<{ words: readonly string[]; argument: string }>;
+    opens?: ReadonlyArray<{ words: readonly string[]; argument: string; options?: Readonly<Record<string, string>> }>;
     intents?: string[];
     dataRequirements?: string[];
     limitations?: string[];

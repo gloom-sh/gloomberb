@@ -22,8 +22,8 @@ export interface PaneFunctionCapability {
   aliases: string[];
   /** Words that are no code but ask for this function's data: `fn` and `catalog` answer them with it. */
   suggestFor?: string[];
-  /** Words that open the function on one argument (`VX`: CTM VIX). */
-  opens?: ReadonlyArray<{ words: readonly string[]; argument: string }>;
+  /** Words that open the function on one argument (`VX`: CTM VIX), or with options set (`PDUFA`: CATL --type pdufa). */
+  opens?: ReadonlyArray<{ words: readonly string[]; argument: string; options?: Readonly<Record<string, string>> }>;
   intents: string[];
   outputKind: string;
   reportReadiness: PaneFunctionReadiness;

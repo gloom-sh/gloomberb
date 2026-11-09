@@ -24,6 +24,7 @@ import { buildCreateOptions, parsePaneFunctionArgs } from "./options";
 import { applyListingArgument, findPaneFunction, parsePaneFunctionArgsFor, resolvePaneFunction, UnknownPaneFunctionError, withTickerList } from "./resolver";
 import { getHeadlessPaneDefinition } from "./capabilities";
 import { tickerDetailModule } from "../../plugins/builtin/ticker-detail";
+import { catalystsModule } from "../../plugins/builtin/catalysts";
 import { earningsModule } from "../../plugins/builtin/earnings";
 import { dividendYieldModule } from "../../plugins/builtin/dividend-yield";
 import { portfolioRiskHeadless } from "../../plugins/builtin/analytics/risk-headless";
@@ -277,6 +278,21 @@ test("TVL and stablecoins open CRYP on those lists though both are also its keyw
   // CRYP itself, and a keyword that names no list, open the board as typed.
   expect(parsePaneFunctionArgsFor(crypto, ["CRYP", "tvl"])).toMatchObject({ target: "CRYP", arg: "tvl" });
   expect(parsePaneFunctionArgsFor(crypto, ["bitcoin"])).toMatchObject({ target: "bitcoin", listingNotes: ["bitcoin opened CRYP, Crypto."] });
+});
+
+// `fn PDUFA` opened every catalyst and `fn runway VKTX` the T pane, though each word names one view of another function.
+test("PDUFA opens CATL on PDUFA dates and runway opens FA's liquidity, an option typed after the word keeping its own value", () => {
+  const modules = [catalystsModule, tickerDetailModule];
+  const registry: PaneFunctionCatalog = {
+    panes: new Map(modules.flatMap((module) => module.panes ?? []).map((entry) => [entry.id, entry])),
+    paneTemplates: new Map(modules.flatMap((module) => module.paneTemplates ?? []).map((entry) => [entry.id, entry])),
+    destroy: () => {},
+  };
+  expect(parsePaneFunctionArgsFor(registry, ["PDUFA"])).toMatchObject({ target: "CATL", arg: "", options: { type: "pdufa" },
+    listingNotes: ["PDUFA opened CATL --type pdufa, Catalysts."] });
+  expect(parsePaneFunctionArgsFor(registry, ["runway", "VKTX"])).toMatchObject({ target: "FA", arg: "VKTX", options: { statement: "liquidity" },
+    listingNotes: ["runway opened FA VKTX --statement liquidity, Financial Analysis."] });
+  expect(parsePaneFunctionArgsFor(registry, ["runway", "VKTX", "--statement", "cashflow"])).toMatchObject({ target: "FA", options: { statement: "cashflow" } });
 });
 
 test("a central bank's name or short form typed as a function points to CBR, and a function that owns the word keeps it", async () => {

@@ -319,7 +319,7 @@ export function buildPaneShortcutItems(options: {
         createOptions: opening ? { ...options.createOptions, arg: opening.argument } : options.createOptions,
         showShortcut: true,
       });
-      return opening && !item.disabled ? { ...item, name: opening.argument } : item;
+      return opening && opening.argument && !item.disabled ? { ...item, name: opening.argument } : item;
     });
 
   return options.filterQuery

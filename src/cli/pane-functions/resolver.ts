@@ -159,9 +159,10 @@ export function parsePaneFunctionArgsFor(
 /**
  * A word that opens no function by its code or name but names one case of a
  * function (`discovery.opens`: `VX`, `vix futures`) runs that function on the
- * case's argument, and says so: `fn VX` is `fn CTM VIX`, and `fn TVL` is
- * `fn CRYP defi` though TVL is also one of CRYP's keywords. A word typed with
- * an argument of its own keeps it.
+ * case's argument and options, and says so: `fn VX` is `fn CTM VIX`, `fn TVL`
+ * is `fn CRYP defi` though TVL is also one of CRYP's keywords, and `fn PDUFA`
+ * is `fn CATL --type pdufa`. A word typed with an argument or an option of
+ * its own keeps it.
  */
 function withOpeningWord(registry: PaneFunctionCatalog, parsed: ParsedPaneFunctionArgs): ParsedPaneFunctionArgs {
   const found = parsed.target ? findPaneFunction(registry, parsed.target) : null;
@@ -172,7 +173,10 @@ function withOpeningWord(registry: PaneFunctionCatalog, parsed: ParsedPaneFuncti
     if (!pane || !opening) continue;
     const code = paneFunctionCode(template, pane);
     const arg = parsed.arg.trim() || opening.argument;
-    return { ...parsed, target: code, arg, listingNotes: [...parsed.listingNotes ?? [], `${parsed.target} opened ${code} ${arg}, ${template.label}.`] };
+    const preset = Object.entries(opening.options ?? {}).filter(([key]) => !(key in parsed.options));
+    const command = [code, arg, ...preset.map(([key, value]) => `--${key} ${value}`)].filter(Boolean).join(" ");
+    return { ...parsed, target: code, arg, options: { ...Object.fromEntries(preset), ...parsed.options },
+      listingNotes: [...parsed.listingNotes ?? [], `${parsed.target} opened ${command}, ${template.label}.`] };
   }
   return parsed;
 }
