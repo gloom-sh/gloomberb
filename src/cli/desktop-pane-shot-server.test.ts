@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import { SHOT_REQUEST_REFUSED } from "../api-client/errors";
-import { answerShotApiCall, serveShotPage, type DesktopPaneShotBridge } from "./desktop-pane-shot";
+import { answerShotApiCall, replyOverShotSocket, serveShotPage, type DesktopPaneShotBridge } from "./desktop-pane-shot";
 import {
   SHOT_API_PROXY_PREFIX,
   SHOT_API_SOCKET_PATH,
@@ -92,6 +92,10 @@ test("an asset-data operation sent over the page's socket is answered as the mar
   expect(await answer(13, { operation: "getQuote", args: ["CL=F"] }, null)).toEqual({ id: 13, status: 404, body: { ok: false, error: "No market bridge" } });
   // An operation never reaches the API proxy.
   expect(asked.length).toBe(count);
+  // A reply the socket drops (Bun's send gives 0) closes it, so the page makes its reads over HTTP; a queued one (-1) is on its way.
+  const closed: number[] = [];
+  for (const sent of [0, -1, 120]) replyOverShotSocket({ send: () => sent, close: () => closed.push(sent) }, "{}");
+  expect(closed).toEqual([0]);
 });
 
 /** A socket to the shot server from `origin`: open, or null when the server refused it. */

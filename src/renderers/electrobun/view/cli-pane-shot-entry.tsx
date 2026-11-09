@@ -21,11 +21,8 @@ import {
   SHOT_HTTP_BRIDGE_PATH,
   SHOT_MARKET_BRIDGE_PATH,
   shotRouteUrl,
-  type ShotApiSocketCall,
-  type ShotApiSocketRead,
-  type ShotApiSocketReply,
-  type ShotMarketSocketCall,
 } from "../../../cli/desktop-pane-shot-routes";
+import { openShotApiSocket, type ShotApiSocketSend } from "./cli-pane-shot-socket";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import type { RendererHost } from "../../../ui/host";
 import { DomHostProviders } from "../../dom/dom-host-providers";
@@ -156,75 +153,15 @@ function installShotFetchTracker(): void {
   )) as typeof fetch;
 }
 
-/** Sends a read over the socket; null once the socket has closed. */
-type ShotApiSocketSend = (
-  call: Omit<ShotApiSocketRead, "id"> | Omit<ShotMarketSocketCall, "id">,
-  signal: AbortSignal | null | undefined,
-) => Promise<Response> | null;
-
-/**
- * Cloud API reads over one socket to the Bun server, answered as each lands.
- * A page's fetches share six connections to its origin, so a board's seventy
- * contract histories and terms waited on each other for seconds. Null when
- * the socket does not open; the page's fetch carries the reads then, and
- * once the socket closes.
- */
-function openShotApiSocket(): Promise<ShotApiSocketSend | null> {
-  return new Promise((resolve) => {
-    const pending = new Map<number, (reply: ShotApiSocketReply | null) => void>();
-    let nextId = 1;
-    let open = false;
-    const url = shotRouteUrl(SHOT_API_SOCKET_PATH, SHOT_PAGE_URL);
-    url.protocol = "ws:";
-    const socket = new WebSocket(url);
-    socket.addEventListener("message", (event) => {
-      let reply: ShotApiSocketReply;
-      try {
-        reply = JSON.parse(String(event.data)) as ShotApiSocketReply;
-      } catch {
-        // Intentional ignore: every reply the server sends is JSON; anything else answers no call.
-        return;
-      }
-      pending.get(reply.id)?.(reply);
-      pending.delete(reply.id);
-    });
-    socket.addEventListener("close", () => {
-      open = false;
-      for (const settle of pending.values()) settle(null);
-      pending.clear();
-      resolve(null);
-    });
-    socket.addEventListener("open", () => {
-      open = true;
-      resolve((call, signal) => !open ? null : new Promise<Response>((answer, fail) => {
-        const aborted = () => fail(signal?.reason ?? new DOMException("The operation was aborted.", "AbortError"));
-        if (signal?.aborted) return aborted();
-        const id = nextId++;
-        const onAbort = () => {
-          pending.delete(id);
-          aborted();
-        };
-        signal?.addEventListener("abort", onAbort, { once: true });
-        pending.set(id, (reply) => {
-          signal?.removeEventListener("abort", onAbort);
-          // A socket that closed mid-read is a request that never got an answer, as a dropped connection is to fetch.
-          if (!reply) return fail(new TypeError("Failed to fetch"));
-          if ("error" in reply) return fail(new TypeError(reply.error));
-          const bytes = Uint8Array.from(atob(reply.body), (char) => char.charCodeAt(0));
-          const empty = bytes.length === 0 || reply.status === 204 || reply.status === 304;
-          answer(new Response(empty ? null : bytes, { status: reply.status, statusText: reply.statusText, headers: reply.headers }));
-        });
-        socket.send(JSON.stringify({ id, ...call } satisfies ShotApiSocketCall));
-      }));
-    }, { once: true });
-  });
-}
-
 let shotApiSocket: Promise<ShotApiSocketSend | null> | null = null;
 
 /** The page's one socket to the Bun server, opened at its first call; null when it does not open. */
 function shotSocket(): Promise<ShotApiSocketSend | null> {
-  shotApiSocket ??= openShotApiSocket();
+  shotApiSocket ??= openShotApiSocket(() => {
+    const url = shotRouteUrl(SHOT_API_SOCKET_PATH, SHOT_PAGE_URL);
+    url.protocol = "ws:";
+    return new WebSocket(url);
+  });
   return shotApiSocket;
 }
 

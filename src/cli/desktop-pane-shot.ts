@@ -382,7 +382,7 @@ export function serveShotPage(
     },
     websocket: {
       message(socket, message) {
-        void answerShotApiCall(String(message), apiProxy, bridge).then((reply) => socket.send(reply));
+        void answerShotApiCall(String(message), apiProxy, bridge).then((reply) => replyOverShotSocket(socket, reply));
       },
     },
   });
@@ -390,6 +390,16 @@ export function serveShotPage(
     url: `http://127.0.0.1:${server.port}/${secret}/`,
     stop: () => server.stop(true),
   };
+}
+
+/**
+ * Sends a call's reply to the page. A socket that drops it (Bun's send gives
+ * 0: the socket closed, or its buffer is past the limit) is closed, so the
+ * read waiting for it, and every read after it, is made over HTTP instead of
+ * holding the capture until it times out.
+ */
+export function replyOverShotSocket(socket: { send(data: string): number; close(): void }, reply: string): void {
+  if (socket.send(reply) === 0) socket.close();
 }
 
 /**
