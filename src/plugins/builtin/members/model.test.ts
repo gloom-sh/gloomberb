@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { fitTableCellText, getTableWidth, tableColumnWidth } from "../../../components/ui/table-layout";
-import { changeColumns, changeReason, holdingsBasisText, memberColumns, memberRows, membersFeed, percent, sortMembers } from "./model";
+import { changeColumns, changeReason, holdingsBasisText, memberColumns, memberRows, membersFeed, percent, sortMembers, stockFundAsOf, stockFundColumns } from "./model";
 import { changes, member } from "./test-fixture";
 test("sorting keeps gaps last in either direction and movers separate positive and negative contributions", () => {
   const rows = [member("A", null), member("B", -4), member("C", 2), member("D", 0)];
@@ -67,4 +67,15 @@ test("an N-PORT report's holdings name its period end and filing day, with the f
   expect(holdingsBasisText({ asOf: "2026-12-31", basis: "nport", filedOn: "2027-02-26" })).toBe("holdings as of 31 Dec 2026 (N-PORT, filed 26 Feb 2027)");
   expect(holdingsBasisText({ asOf: "2026-11-05", basis: "daily", filedOn: null })).toBe("holdings 2026-11-05");
   expect(holdingsBasisText({ asOf: "2026-07-31", basis: "nport", filedOn: "2026-09-22" }, true)).toBe("N-PORT 31 Jul 2026, filed 22 Sep");
+});
+
+test("a fund holding a stock says on its row what its holdings are as of, whole where the table has room", () => {
+  expect(stockFundAsOf({ asOf: "2026-06-30", basis: "nport", filedOn: "2026-08-26" })).toBe("as of 30 Jun 2026 (N-PORT, filed 26 Aug)");
+  expect(stockFundAsOf({ asOf: "2026-12-31", basis: "nport", filedOn: "2027-02-26" })).toBe("as of 31 Dec 2026 (N-PORT, filed 26 Feb 2027)");
+  expect(stockFundAsOf({ asOf: "2026-11-05", basis: "daily", filedOn: null })).toBe("as of 5 Nov 2026 (daily file)");
+  expect(stockFundAsOf({ asOf: "2026-06-30", basis: "nport", filedOn: "2026-08-26" }, true)).toBe("30 Jun 2026, filed 26 Aug");
+  expect(stockFundAsOf({ asOf: "2026-11-05", basis: "daily", filedOn: null }, true)).toBe("5 Nov 2026");
+  expect(stockFundColumns(120).map((column) => [column.id, column.label])).toEqual([["ticker", "Fund"], ["name", "Name"], ["weight", "Weight %"], ["asOf", "Holdings"]]);
+  expect(stockFundColumns(70).map((column) => column.id)).toEqual(["ticker", "name", "weight", "asOf"]);
+  expect(stockFundColumns(45).map((column) => column.id)).toEqual(["ticker", "weight", "asOf"]);
 });

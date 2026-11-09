@@ -54,7 +54,7 @@ test("an empty changes table says why: the fund's index changes are not covered,
   expect(await load(true)).toBe("No stored index changes.");
 });
 
-test("a stock lists the covered funds holding it; an N-PORT fund's holdings say their report date and filing day, never today", async () => {
+test("a stock lists the ETFs holding it; an N-PORT fund's holdings say their report date and filing day, never today", async () => {
   const funds = { funds: [{ ticker: "IVV", name: "S&P 500", aliases: ["SPY"], changes: "sp500", basis: "daily", asOf: "2026-11-05", filedOn: null },
     { ticker: "ARKK", name: "Disruptive innovation (N-PORT)", plainName: "Disruptive innovation", aliases: [], changes: "none", basis: "nport", asOf: "2026-07-31", filedOn: "2026-09-22" }] };
   const report = "https://www.sec.gov/Archives/edgar/data/1579982/000157998226000001/primary_doc.xml";
@@ -67,14 +67,15 @@ test("a stock lists the covered funds holding it; an N-PORT fund's holdings say 
   const load = async (input: string) => await membersHeadless.load({ symbols: [input], argument: [input], rawArgument: input, options: {} } as unknown as HeadlessPaneLoadArgs,
     { signal: new AbortController().signal, apiClient, refresh: false } as unknown as HeadlessPaneContext) as HeadlessRowsResult;
   const stock = await load("NVDA");
-  expect(stock.rows.map((row) => [row.ticker, Number((row.weight as number).toFixed(2)), row.asOf, row.source])).toEqual([
-    ["IVV", 7.12, "2026-11-05", "Daily file"], ["ARKK", 3.7, "2026-07-31", "N-PORT, filed 22 Sep 2026"]]);
+  expect(stock.rows.map((row) => [row.ticker, Number((row.weight as number).toFixed(2)), row.asOf, row.holdings])).toEqual([
+    ["IVV", 7.12, "2026-11-05", "as of 5 Nov 2026 (daily file)"], ["ARKK", 3.7, "2026-07-31", "as of 31 Jul 2026 (N-PORT, filed 22 Sep)"]]);
+  expect((stock.metadata as { notices: string[] }).notices[0]).toBe("2 of 2 ETFs looked through hold NVDA: 1 covered fund from daily holdings files, 1 from their latest SEC N-PORT reports.")
   // A listing abroad is not looked up by its local code.
   expect((await load("INFY:NSE")).empty).toContain("US ticker");
   expect(asked).toEqual(["NVDA"]);
   // An exported row read alone still says what the holdings are as of: the fund's report date, filing day and link.
   expect(stock.rows[1]).toMatchObject({ filedOn: "2026-09-22", sourceUrl: report });
-  expect(stock.columns!.map((column) => column.key)).toEqual(expect.arrayContaining(["filedOn", "sourceUrl"]));
+  expect(stock.columns!.map((column) => column.key)).toEqual(expect.arrayContaining(["asOf", "filedOn", "sourceUrl"]));
   const arkk = await load("ARKK");
   const notices = (arkk.metadata as { notices: string[] }).notices;
   expect(notices[0]).toBe("Disruptive innovation, ARKK holdings as of 31 Jul 2026 (N-PORT, filed 22 Sep)");

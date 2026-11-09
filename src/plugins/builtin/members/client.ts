@@ -60,7 +60,7 @@ function validateStockFunds(data: StockFundsPayload) {
   return data;
 }
 export const fetchFunds = (client: Client = apiClient) => fetchPayload(() => client.getMemberFunds(), validateFunds);
-/** The covered funds holding a stock; a server without the lookup says so instead of a bare 404. */
+/** The ETFs holding a stock; a server without the lookup says so instead of a bare 404. */
 export async function fetchStockFunds(symbol: string, client: Pick<typeof apiClient, "getStockFunds"> = apiClient) {
   try { return validateStockFunds(await client.getStockFunds(symbol)); } catch (error) {
     throw unavailableOnServer(error, "Funds holding a stock are not available on this server yet.");

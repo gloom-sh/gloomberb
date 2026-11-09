@@ -43,14 +43,20 @@ export interface FundChangesPayload {
   estimateLabel: string; attribution: { text: string; url: string } | null;
 }
 export interface MemberFundsPayload { funds: (MemberFund & { asOf: string | null; filedOn?: string | null })[] }
-/** A covered fund holding a stock: its weight in the fund's latest holdings, and what those holdings are as of. */
+/**
+ * An ETF holding a stock: its weight in the fund's latest holdings, and what those holdings are as of. A covered
+ * fund's `name` is the one MEMB lists it under; any other fund's is its N-PORT report's.
+ */
 export interface StockFund {
   ticker: string; name: string; basis: "daily" | "nport"; weight: number | null; shares: number; marketValue: number | null;
   /** The stock as the fund's holdings name it. */
   holdingName: string;
   asOf: string; filedOn: string | null; sourceUrl?: string;
 }
-/** The covered funds holding a stock: the daily ones first, then those read from N-PORT reports, each by weight. */
+/**
+ * The ETFs holding a stock: the covered funds on daily files first, then every other US ETF whose latest N-PORT
+ * report holds it, each by weight. `coverage` counts the funds looked through of each kind.
+ */
 export interface StockFundsPayload { symbol: string; funds: StockFund[]; coverage: { daily: number; nport: number } }
 
 interface BreadthCount { above: number; eligible: number; percent: number | null }

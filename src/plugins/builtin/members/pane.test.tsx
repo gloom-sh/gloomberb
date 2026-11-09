@@ -59,10 +59,14 @@ test("partial holdings keep number columns aligned, open tickers and lazily load
   expect(frame).toContain("2026-10-08");
   expect(frame.split(headline)).toHaveLength(2);
 });
-test("a stock lists the covered funds holding it, daily files before N-PORT reports, and nothing held points to the fund facts", async () => {
-  const held = { symbol: "NVDA", coverage: { daily: 5, nport: 2 }, funds: [
+test("a stock lists the ETFs holding it, daily files before N-PORT reports, each row saying what it is as of, and nothing held points to the fund facts", async () => {
+  // Hundreds of ETFs hold a large stock: the covered funds' daily files, then every other ETF's latest report.
+  const reports = Array.from({ length: 300 }, (_, index) => ({ ticker: `E${String(index).padStart(3, "0")}`, name: `Fund ${index} ETF`, basis: "nport",
+    weight: 0.01 - index / 100_000, shares: 1, marketValue: 1, holdingName: "NVIDIA CORP", asOf: "2026-06-30", filedOn: "2026-08-26" }));
+  const held = { symbol: "NVDA", coverage: { daily: 5, nport: 4_320 }, funds: [
     { ticker: "IVV", name: "S&P 500", basis: "daily", weight: 0.0712, shares: 1, marketValue: 1, holdingName: "NVIDIA CORP", asOf: "2026-11-05", filedOn: null },
     { ticker: "SMH", name: "Semiconductors", basis: "nport", weight: 0.2, shares: 1, marketValue: 1, holdingName: "NVIDIA Corp", asOf: "2026-06-30", filedOn: "2026-08-26" },
+    ...reports,
   ] };
   setCloudApiFetchTransport(async (input) => {
     const path = new URL(String(input)).pathname;
@@ -76,9 +80,11 @@ test("a stock lists the covered funds holding it, daily files before N-PORT repo
   expect(at("Daily holdings files")).toBeLessThan(at("S&P 500"));
   expect(at("S&P 500")).toBeLessThan(at("SEC N-PORT reports"));
   expect(lines[at("Semiconductors")]).toContain("20.00");
-  expect(lines[at("Semiconductors")]).toContain("2026-08-26");
+  expect(lines[at("Semiconductors")]).toContain("as of 30 Jun 2026 (N-PORT, filed 26 Aug)");
+  expect(lines[at("S&P 500")]).toContain("as of 5 Nov 2026 (daily file)");
+  expect(lines[at("Fund 0 ETF")]).toContain("1.00");
   await mountMembers("QQQ");
-  const none = await tui.waitForFrameToContain("No covered fund holds QQQ.");
+  const none = await tui.waitForFrameToContain("No ETF looked through holds QQQ.");
   expect(none).toContain("ETF QQQ");
   expect(none).not.toContain("not available on this server");
 });

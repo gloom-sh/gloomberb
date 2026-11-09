@@ -15,7 +15,8 @@ import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search
 import { useMembersMenu, type MemberList } from "../shared/members-menu";
 import { cachedChanges, cachedFunds, cachedMembers, cachedStockFunds, loadChanges, loadFunds, loadMembers, loadStockFunds } from "./client";
 import { canonicalFund, changeColumns, changeLabel, changeReason, coverageText, coveredFund, decimal, DEFAULT_SORT, holdingsBasisText, holdingsCaveats, isTab, memberColumns, memberRows,
-  membersFeed, membersTitle, noStockFundsMessage, percent, stockFundColumns, stockFundRows, TABS, usListingInput, type MembersTab } from "./model";
+  membersFeed, membersTitle, noStockFundsMessage, percent, stockFundAsOf, stockFundAsOfFits, stockFundColumns, stockFundRows, TABS, usListingInput,
+  type MembersTab } from "./model";
 
 type ViewProps = Pick<PaneProps, "width" | "height" | "focused"> & { fund: string; active: boolean };
 const rowKey = (row: SectionedRow<FundMember>) => row.key;
@@ -196,8 +197,9 @@ function FundPicker({ width, height, focused, choose }: Pick<PaneProps, "width" 
 type ListProps = Pick<PaneProps, "width" | "height" | "focused">;
 const stockFundKey = (row: SectionedRow<StockFund>) => row.key;
 /**
- * The covered funds holding a stock: the funds on daily holdings files first, then those read from
- * SEC N-PORT reports, each with its weight and the date its holdings are as of (and a report's filing day).
+ * The ETFs holding a stock: the covered funds on daily holdings files first, then every other US ETF whose
+ * latest SEC N-PORT report holds it, each with its weight and what its holdings are as of (and a report's
+ * filing day).
  */
 function StockFunds({ symbol, width, height, focused }: ListProps & { symbol: string }) {
   const colors = useThemeColors();
@@ -215,9 +217,8 @@ function StockFunds({ symbol, width, height, focused }: ListProps & { symbol: st
     if (column.id === "ticker") return { text: row.ticker, color: colors.textBright };
     if (column.id === "name") return { text: row.name, color: colors.text };
     if (column.id === "weight") return { text: row.weight == null ? "--" : decimal(row.weight * 100), value: row.weight == null ? null : row.weight * 100 };
-    if (column.id === "asOf") return { text: row.asOf.slice(0, 10), color: colors.textMuted };
-    return { text: row.filedOn ?? "--", color: colors.textMuted };
-  }, [colors]);
+    return { text: stockFundAsOf(row, !stockFundAsOfFits(width)), color: colors.textMuted };
+  }, [colors, width]);
   const none = noStockFundsMessage(symbol, "pane");
   return <PaneStatusBody subject="funds holding the stock" loading={!data && resource.loading} error={!data ? resource.error : null}
     empty={!!data && !data.funds.length} emptyTitle={none.title} emptyMessage={none.message}>
