@@ -185,8 +185,14 @@ function returnOnEquity(income: number, [opening, closing]: [number, number]): R
   return Math.abs(value) > MAX_MEANINGFUL_ROE ? "not-meaningful" : value;
 }
 
-const cashAndShortTerm = line("cashCashEquivalentsAndShortTermInvestments", "cashAndCashEquivalents");
 const receivables = line("accountsReceivable", "receivables");
+/**
+ * Cash and short-term investments as the runway reads them (utils/cash-runway): cash alone for a filer that
+ * reports no total with short-term investments, never for one missing it in a period, which is not reported.
+ */
+const runwayCash = ({ statement, shortTermTotalOnFile }: RatioPeriod): RatioAmount => (
+  cashAndShortTermInvestments(statement, shortTermTotalOnFile)?.amount ?? "not-reported"
+);
 /** Total debt plus equity, the definition of reported invested capital. */
 const debtPlusEquity: BalanceLine = (statement) => {
   const debt = finite(statement.totalDebt);
@@ -257,10 +263,12 @@ function marketCap(period: RatioPeriod): RatioAmount {
 
 /**
  * Total debt less cash and short-term investments, with the balance sheet's lease liabilities where the listing's
- * are included (utils/lease-liabilities). A balance sheet without its lease line then has no net debt.
+ * are included (utils/lease-liabilities). A balance sheet without its lease line then has no net debt, nor one
+ * without the short-term investments its filer reports in other periods (runwayCash).
  */
-function netDebt({ statement, leaseBasis: basis }: RatioPeriod): RatioAmount {
-  const cash = cashAndShortTerm(statement);
+function netDebt(period: RatioPeriod): RatioAmount {
+  const { statement, leaseBasis: basis } = period;
+  const cash = finite(runwayCash(period));
   if (basis === "included") {
     const lines = debtAndLeases(statement);
     return lines === undefined || cash === undefined ? "not-reported" : lines.totalDebt + lines.leases - cash;
@@ -328,10 +336,6 @@ const monthlyBurn = (months: number) => ({ statement }: RatioPeriod): RatioAmoun
   monthlyOperatingBurn(finite(statement.operatingCashFlow), months) ?? "not-reported"
 );
 
-/** Cash alone for a filer that reports no total with short-term investments, never for one missing it in a period. */
-const runwayCash = ({ statement, shortTermTotalOnFile }: RatioPeriod): RatioAmount => (
-  cashAndShortTermInvestments(statement, shortTermTotalOnFile)?.amount ?? "not-reported"
-);
 
 /** Months of cash and short-term investments at a monthly operating burn (utils/cash-runway, as `ticker` reads it). */
 const runway = (id: string, label: string, burn: RatioInputDef, quarterlyOnly = false): RatioDef => ({
@@ -478,12 +482,15 @@ export const RATIO_TABS: RatioTabDef[] = [
           {
             label: "Cash + ST Inv + Rec",
             format: "money",
-            value: ({ statement }) => {
-              const cash = cashAndShortTerm(statement);
-              const owed = receivables(statement);
-              return cash === undefined || owed === undefined ? "not-reported" : cash + owed;
+            // Cash and short-term investments as the runway reads them; a balance sheet with no
+            // receivables line is its cash and investments alone, which the row under it says.
+            value: (period) => {
+              const cash = runwayCash(period);
+              const owed = receivables(period.statement);
+              return isGap(cash) || owed === undefined ? cash : cash + owed;
             },
           },
+          { label: "Receivables", format: "money", memo: true, value: ({ statement }) => reported(receivables(statement)) },
           { label: "Current Liab", operator: "÷", format: "money", value: closing(line("currentLiabilities")) },
         ],
         compute: ([assets, liabilities]) => over(assets!, liabilities!),
@@ -493,7 +500,7 @@ export const RATIO_TABS: RatioTabDef[] = [
         label: "Cash Ratio",
         format: "multiple",
         inputs: [
-          { label: "Cash + ST Inv", format: "money", value: closing(cashAndShortTerm) },
+          { label: "Cash + ST Inv", format: "money", value: runwayCash },
           { label: "Current Liab", operator: "÷", format: "money", value: closing(line("currentLiabilities")) },
         ],
         compute: ([cash, liabilities]) => over(cash!, liabilities!),

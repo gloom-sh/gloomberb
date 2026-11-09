@@ -280,6 +280,19 @@ describe("financial ratios", () => {
     expect(annual.cells.get("runway-ttm")!.map((cell) => cell.value)).toEqual([months(runway.trailing), 700 / (300 / 12)]);
   });
 
+  test("the cash and quick ratios read cash + ST investments as the runway does, and no receivables line is none", () => {
+    // Viking's June 2025 quarter carries only its cash (33.88M); its ST investments (773.84M) are reported in other quarters.
+    const missing = period({ date: "2025-06-30", cashAndCashEquivalents: 33.88, currentLiabilities: 26 }, undefined, { shortTermTotalOnFile: true });
+    expect(evaluateRatio(ratio("cash-ratio"), missing)).toEqual({ value: "not-reported", inputs: ["not-reported", 26] });
+    expect(evaluateRatio(ratio("quick-ratio"), missing).value).toBe("not-reported");
+    expect(evaluateRatio(ratio("net-debt-ebitda"), { ...missing, statement: { ...missing.statement, totalDebt: 10, ebitda: 5 } }).value).toBe("not-reported");
+    // A balance sheet with no receivables line: the quick ratio is cash and investments over current liabilities.
+    const noReceivables = period({ date: "2025-09-30", cashCashEquivalentsAndShortTermInvestments: 714.6, currentLiabilities: 26.07 }, undefined, { shortTermTotalOnFile: true });
+    expect(evaluateRatio(ratio("quick-ratio"), noReceivables)).toEqual({ value: 714.6 / 26.07, inputs: [714.6, "not-reported", 26.07] });
+    expect(evaluateRatio(ratio("quick-ratio"), { ...noReceivables, statement: { ...noReceivables.statement, accountsReceivable: 10 } }).value)
+      .toBe(724.6 / 26.07);
+  });
+
   describe("quarterly valuation reads the trailing year", () => {
     // Six quarters to June 2026 and the calendar FY2025, whose reported figures differ slightly from its quarters' sum.
     const quarter = (date: string, eps: number, ebitda: number, totalRevenue: number, freeCashFlow: number): FinancialStatement => ({
