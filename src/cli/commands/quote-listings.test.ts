@@ -14,6 +14,9 @@ import { resetBoardCoins } from "../board-coins";
 import { withSearchHints } from "../not-a-ticker";
 import { buildSearchReport, search, searchCandidatesForCli } from "./search";
 import { marketDataCliCommands } from "./market";
+import { ticker } from "./ticker";
+import { createDefaultConfig } from "../../types/config";
+import type { MarketContext } from "../types";
 
 const quoteCommand = marketDataCliCommands.find((command) => command.name === "quote")!;
 
@@ -166,6 +169,27 @@ test("a code several companies list is never quoted on one of them: it asks for 
 
   // A named listing is its own answer.
   expect((await runQuote(["2222:TADAWUL"], source)).rows.map((row) => [row.target.symbol, row.quote == null])).toEqual([["2222:TADAWUL", false]]);
+});
+
+test("ticker asks for an exchange for a code several companies list, as quote does, rather than calling it no ticker", async () => {
+  // 3988 is Bank of China in Hong Kong and Sys Holdings in Tokyo; the data service serves neither under the bare code.
+  const source = venueSource("3988", ["HKEX", "JPX"], {}, { HKEX: "Bank of China Ltd.", JPX: "Sys Holdings Co., Ltd." });
+  const config = createDefaultConfig("/tmp/gloom-ticker-choice-unused");
+  let failure: { message: string; details?: string } | null = null;
+  await ticker("3988", {
+    initMarketData: async () => ({
+      config, dataDir: "/tmp/gloom-ticker-choice-unused",
+      store: { loadTicker: async () => null, loadAllTickers: async () => [] }, persistence: { close: () => {} },
+      dataProvider: {
+        ...source.dataProvider,
+        getTickerFinancials: async () => { throw new Error("Not a ticker: 3988."); },
+      },
+    }) as unknown as MarketContext,
+    fail: (message, details) => { failure = { message, details }; throw new Error(message); },
+  }).catch(() => {});
+  expect(failure!.message).toBe("Choose an exchange for 3988.");
+  expect(failure!.details).toContain("3988:HKEX Bank of China Ltd. (try: gloom ticker 3988:HKEX)");
+  expect(failure!.details).toContain("3988:JPX Sys Holdings Co., Ltd. (try: gloom ticker 3988:JPX)");
 });
 
 test("a top coin's code several companies list asks for an exchange and names the coin's pair: HYPE is not hyperliquid", async () => {
