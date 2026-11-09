@@ -27,8 +27,9 @@ import {
   SHOT_API_SOCKET_PATH,
   SHOT_HTTP_BRIDGE_PATH,
   SHOT_MARKET_BRIDGE_PATH,
-  type ShotApiSocketCall,
+  type ShotApiSocketRead,
   type ShotApiSocketReply,
+  type ShotMarketSocketCall,
 } from "./desktop-pane-shot-routes";
 import { SHOT_REQUEST_REFUSED } from "../api-client/errors";
 import { SESSION_COOKIE_NAMES } from "../api-client/session-cookie";
@@ -381,7 +382,7 @@ export function serveShotPage(
     },
     websocket: {
       message(socket, message) {
-        void answerShotApiCall(String(message), apiProxy).then((reply) => socket.send(reply));
+        void answerShotApiCall(String(message), apiProxy, bridge).then((reply) => socket.send(reply));
       },
     },
   });
@@ -392,19 +393,29 @@ export function serveShotPage(
 }
 
 /**
- * One read the page sent over its API socket (`SHOT_API_SOCKET_PATH`), made
- * as the proxy makes it, with the session the page never holds: the reply's
- * JSON, its body in base64. A call that is not an API path answers why.
+ * One call the page sent over its API socket (`SHOT_API_SOCKET_PATH`): a read
+ * made as the proxy makes it, with the session the page never holds, or an
+ * asset-data operation answered as the market bridge answers it. The reply's
+ * JSON, its body in base64. A call that is neither answers why.
  */
-export async function answerShotApiCall(message: string, apiProxy: DesktopPaneShotApiProxy): Promise<string> {
+export async function answerShotApiCall(
+  message: string,
+  apiProxy: DesktopPaneShotApiProxy,
+  bridge: DesktopPaneShotBridge | null = null,
+): Promise<string> {
   let id = 0;
   try {
-    const call = JSON.parse(message) as Partial<ShotApiSocketCall>;
+    const call = JSON.parse(message) as Partial<ShotApiSocketRead & ShotMarketSocketCall>;
     id = typeof call.id === "number" ? call.id : 0;
-    if (typeof call.path !== "string" || !call.path.startsWith("/") || call.path.startsWith("//")) throw new Error("Not an API path.");
-    const url = new URL(`${SHOT_API_PROXY_PREFIX}${call.path}`, "http://127.0.0.1");
-    const sent = new Headers(Array.isArray(call.headers) ? call.headers : []);
-    const response = await proxyShotApiRequest(new Request(url, { headers: sent }), url, apiProxy);
+    let response: Response;
+    if (call.market && typeof call.market === "object") {
+      response = await answerShotMarketCall(call.market, bridge);
+    } else {
+      if (typeof call.path !== "string" || !call.path.startsWith("/") || call.path.startsWith("//")) throw new Error("Not an API path.");
+      const url = new URL(`${SHOT_API_PROXY_PREFIX}${call.path}`, "http://127.0.0.1");
+      const sent = new Headers(Array.isArray(call.headers) ? call.headers : []);
+      response = await proxyShotApiRequest(new Request(url, { headers: sent }), url, apiProxy);
+    }
     const body = Buffer.from(await response.arrayBuffer()).toString("base64");
     const headers: Array<[string, string]> = [];
     response.headers.forEach((value, name) => headers.push([name, value]));
@@ -421,8 +432,22 @@ async function runShotMarketBridge(
   bridge: DesktopPaneShotBridge | null,
 ): Promise<Response> {
   if (!bridge) return Response.json({ ok: false, error: "No market bridge" }, { status: 404 });
+  let payload: { operation?: unknown; args?: unknown };
   try {
-    const payload = await request.json() as { operation?: unknown; args?: unknown };
+    payload = await request.json() as typeof payload;
+  } catch (error) {
+    return Response.json({ ok: false, error: errorMessage(error) });
+  }
+  return answerShotMarketCall(payload, bridge);
+}
+
+/** One asset-data operation run through the bridge, posted (`SHOT_MARKET_BRIDGE_PATH`) or sent over the socket. */
+async function answerShotMarketCall(
+  payload: { operation?: unknown; args?: unknown },
+  bridge: DesktopPaneShotBridge | null,
+): Promise<Response> {
+  if (!bridge) return Response.json({ ok: false, error: "No market bridge" }, { status: 404 });
+  try {
     const operation = typeof payload.operation === "string" ? payload.operation : "";
     const args = Array.isArray(payload.args) ? payload.args : [];
     const data = await bridge.marketData(operation, args);

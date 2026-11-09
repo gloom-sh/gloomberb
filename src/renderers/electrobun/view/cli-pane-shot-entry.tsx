@@ -22,7 +22,9 @@ import {
   SHOT_MARKET_BRIDGE_PATH,
   shotRouteUrl,
   type ShotApiSocketCall,
+  type ShotApiSocketRead,
   type ShotApiSocketReply,
+  type ShotMarketSocketCall,
 } from "../../../cli/desktop-pane-shot-routes";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import type { RendererHost } from "../../../ui/host";
@@ -155,7 +157,10 @@ function installShotFetchTracker(): void {
 }
 
 /** Sends a read over the socket; null once the socket has closed. */
-type ShotApiSocketSend = (call: Omit<ShotApiSocketCall, "id">, signal: AbortSignal | null | undefined) => Promise<Response> | null;
+type ShotApiSocketSend = (
+  call: Omit<ShotApiSocketRead, "id"> | Omit<ShotMarketSocketCall, "id">,
+  signal: AbortSignal | null | undefined,
+) => Promise<Response> | null;
 
 /**
  * Cloud API reads over one socket to the Bun server, answered as each lands.
@@ -215,9 +220,16 @@ function openShotApiSocket(): Promise<ShotApiSocketSend | null> {
   });
 }
 
+let shotApiSocket: Promise<ShotApiSocketSend | null> | null = null;
+
+/** The page's one socket to the Bun server, opened at its first call; null when it does not open. */
+function shotSocket(): Promise<ShotApiSocketSend | null> {
+  shotApiSocket ??= openShotApiSocket();
+  return shotApiSocket;
+}
+
 function installShotCloudApiTransport(): void {
   apiClient.setCookieSessionMode(true);
-  let socket: Promise<ShotApiSocketSend | null> | null = null;
   setCloudApiFetchTransport((url, init = {}) => {
     const upstream = new URL(url);
     const proxyUrl = shotRouteUrl(`${SHOT_API_PROXY_PREFIX}${upstream.pathname}`, SHOT_PAGE_URL);
@@ -234,8 +246,7 @@ function installShotCloudApiTransport(): void {
     });
     if ((init.method ?? "GET").toUpperCase() !== "GET" || init.body != null) return viaFetch();
     return trackShotWork((async () => {
-      socket ??= openShotApiSocket();
-      const send = await socket;
+      const send = await shotSocket();
       return await send?.({ path: `${upstream.pathname}${upstream.search}`, headers: [...headers] }, init.signal) ?? await viaFetch();
     })());
   });
@@ -270,13 +281,18 @@ async function restoreShotCloudSession(): Promise<void> {
  * of the corporate action history come from providers the router merges in.
  */
 async function requestShotMarketData<T>(operation: string, args: unknown[], signal?: AbortSignal): Promise<T> {
-  const response = await window.fetch(shotRouteUrl(SHOT_MARKET_BRIDGE_PATH, SHOT_PAGE_URL), {
+  const viaFetch = () => window.fetch(shotRouteUrl(SHOT_MARKET_BRIDGE_PATH, SHOT_PAGE_URL), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ operation, args }),
     // A board that stops waiting for a slow batch drops it, so the capture is not held for it.
     ...(signal ? { signal } : {}),
   });
+  // Over the socket, the quotes a board asks for one at a time do not wait for the page's six connections.
+  const response = await trackShotWork((async () => {
+    const send = await shotSocket();
+    return await send?.({ market: { operation, args } }, signal) ?? await viaFetch();
+  })());
   const result = await response.json() as { ok: boolean; data?: T; error?: string };
   if (!result.ok) throw new Error(result.error ?? `Screenshot data request failed: ${operation}`);
   return result.data as T;
