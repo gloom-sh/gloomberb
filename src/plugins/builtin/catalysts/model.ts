@@ -329,6 +329,8 @@ export function catalystFacts(event: CatalystEvent): Array<{ label: string; valu
   add("Indication", event.indication);
   // A company says the same date again in later filings; the row is its latest.
   if (event.restatedTimes && event.restatedTimes > 0) add("Restated", `${event.restatedTimes} ${event.restatedTimes === 1 ? "time" : "times"} in other filings; this is the latest`);
+  // A later filing moved the date: the event stays, out of the calendar, and says where to.
+  if (event.supersededBy) add("Moved to", `${event.supersededBy.date} by a filing of ${event.supersededBy.announcedDate}`);
   return facts;
 }
 

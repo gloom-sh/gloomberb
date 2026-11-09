@@ -92,6 +92,8 @@ export interface CatalystEvent extends Omit<CatalystInput, "parties" | "sourceTe
   datePassed?: boolean
   /** How many other filings of the company stated the same disclosure; this event is the latest of them. */
   restatedTimes?: number
+  /** A date a later filing of the company moved: where to, and when that filing came. The event is then `superseded`. */
+  supersededBy?: { date: string; announcedDate: string }
   /** The drug and what it is for, when the source passage states them. */
   drug?: string
   indication?: string
