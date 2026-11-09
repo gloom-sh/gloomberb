@@ -35,7 +35,7 @@ test("a quote that could not be read rejects rather than naming no company", asy
   }
 });
 
-// GLO-1904 review: `TRIAL AMD` searched Advanced Micro Devices as a sponsor instead of macular degeneration.
+// `TRIAL AMD` searched Advanced Micro Devices as a sponsor instead of macular degeneration.
 test("a healthcare company is told by its sector, industry or SEC code, and by its name only with no profile", () => {
   expect(isHealthcareCompany({ sector: "Healthcare", industry: "Biotechnology" }, "CorMedix Inc.")).toBe(true);
   expect(isHealthcareCompany({ sector: "Health Care" }, "Merck & Co., Inc.")).toBe(true);

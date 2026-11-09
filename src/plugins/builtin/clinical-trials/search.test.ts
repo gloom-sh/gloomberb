@@ -16,7 +16,7 @@ describe("trialSearch", () => {
     expect(trialSearch("PHAR", company("Pharming Group"), 0)).toMatchObject({ kind: "company", sponsor: "Pharming" });
   });
 
-  // GLO-1904 review: AMD, MS, HD, CF and PD are diseases first; their companies sponsor no trials.
+  // AMD, MS, HD, CF and PD are diseases first; their companies sponsor no trials.
   test("any other company's ticker searches as text", () => {
     for (const [ticker, name] of [["AMD", "Advanced Micro Devices"], ["MS", "Morgan Stanley"], ["HD", "Home Depot"], ["CF", "CF Industries"], ["PD", "PagerDuty"]])
       expect(trialSearch(ticker, company(name, name, false), 0)).toEqual({ kind: "text", term: ticker });
@@ -43,7 +43,7 @@ describe("trialSearch", () => {
   });
 });
 
-// GLO-1904 review: `TRIAL MRNA` found nothing (ModernaTX), and both Mercks read as "Merck".
+// `TRIAL MRNA` found nothing (ModernaTX), and both Mercks read as "Merck".
 test("large sponsors are searched under the registry's name for them, each Merck under its own", () => {
   expect(leadSponsorNames(company("Moderna", "Moderna, Inc."))).toEqual(["ModernaTX"]);
   expect(leadSponsorNames(company("GSK", "GSK plc"))).toEqual(["GlaxoSmithKline"]);
