@@ -220,7 +220,7 @@ jobs:
             echo "PLATFORM_DISPATCH_TOKEN is not configured; skipping screenshot refresh."
             exit 0
           fi
-          gh api repos/vincelwt/gloomberb-platform/dispatches \
+          gh api repos/gloom-sh/gloomberb-platform/dispatches \
             -f event_type=gloomberb-release \
             -f "client_payload[ref]=${GITHUB_REF_NAME}"
 

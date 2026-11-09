@@ -1,7 +1,6 @@
-// Generated from gloomberb-platform server/src/lib/exchange-notation/table.ts,
-// the one table of how venues are written. Do not edit: change the table and
-// run server/scripts/exchange-notation.ts write there. A parity test fails
-// when this copy is edited by hand.
+// Generated from Gloom Cloud's exchange-notation table, the one table of how
+// venues are written. Do not edit: change the table and regenerate this copy.
+// A parity test fails when it is edited by hand.
 
 export interface ExchangeNotation {
   /** Every spelling read as a venue, by the venue's code. */
