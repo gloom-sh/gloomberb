@@ -124,6 +124,10 @@ const KNOWN_GAPS: ReadonlyArray<{
     message: "HIBOR is not licensed for redistribution. For HKD short rates, BTMM's Hong Kong tab shows HKMA's Exchange Fund Bill yields: fn BTMM --tab hk.",
   },
   {
+    terms: ["LIBOR", "USD LIBOR", "LIBOR rate", "LIBOR rates", "London Interbank Offered Rate"],
+    message: "LIBOR is no longer published: USD LIBOR ended in June 2023 and SOFR replaced it. SOFR is in BTMM: fn BTMM.",
+  },
+  {
     terms: ["tick", "ticks", "tick data", "tick bars", "tick by tick", "second", "seconds", "second bars", "1s", "1 second",
       "1 second bars", "sub-minute", "sub minute bars", "subsecond"],
     message: subMinuteDataMessage(),

@@ -617,16 +617,17 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
         // A topic no function covers is answered by its pointer, not by the loose matches its words find.
         const pointer = topicPointer(parsed.query);
         const typed = pointer ? [] : filterPaneCatalogEntries(botSafeEntries, parsed.query);
-        // A word one letter off every function's ("fundng") is read as the one it is near, and the report says so.
-        const corrected = pointer || typed.length ? null : correctCatalogQuery(botSafeEntries, parsed.query);
+        // Data no source carries yet is said once: in the text, else as the envelope's warning.
+        const gap = knownGapMessage(parsed.query);
+        // A word one letter off every function's ("fundng") is read as the one it is near, and the report says so; a
+        // word the catalog has its own answer for ("libor") is not a typo.
+        const corrected = pointer || gap || typed.length ? null : correctCatalogQuery(botSafeEntries, parsed.query);
         const correctedMatches = corrected ? filterPaneCatalogEntries(botSafeEntries, corrected) : [];
         const readAs = corrected && correctedMatches.length ? corrected : null;
         const filtered = readAs ? correctedMatches : typed;
         const query = readAs ?? parsed.query;
         // A search also finds the terms it names; text only, the JSON stays a list of functions.
         const glossary = lookupGlossary(parsed.query);
-        // Data no source carries yet is said once: in the text, else as the envelope's warning.
-        const gap = knownGapMessage(parsed.query);
         // A setting or a report can be a command, not a function: "light theme" names `config themes` beside THEM,
         // "drip" names `portfolio show --drip` beside DVD.
         const setting = commandPointer(parsed.query);
