@@ -4,6 +4,7 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
   HeadlessPaneRow,
+  HeadlessRowsResult,
 } from "../../../types/plugin";
 import { formatCompact, formatCurrency } from "../../../utils/format";
 import { INSIDER_REPORT_FILINGS, loadParsedInsiderFilings, type InsiderFilingsLoad } from "./client";
@@ -59,6 +60,8 @@ import {
   insiderUsualRatio,
 } from "./signals-model";
 import { REPORT_ROWS } from "../shared/headless-options";
+import { mapWithConcurrency } from "../../../utils/concurrency";
+import { describeCollections, findNamedCollection, readWatchlistArgument, watchlistMemberSymbol } from "../../../portfolio/collection-name";
 import type { FxHistoryClient } from "../../../market-data/fx-closes";
 
 const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
@@ -346,6 +349,209 @@ async function insiderEmpty(ctx: HeadlessPaneContext, key: string, foreignPrivat
   return noReports ? [noReports, home].filter(Boolean).join(" ") : insiderEmptyNotice(foreignPrivateIssuer, home);
 }
 
+/** At most this many tickers in one INS table: each reads its own Form 4s. */
+const MAX_INSIDER_TICKERS = 10;
+/** Tickers whose Form 4s are read at once. */
+const INSIDER_TICKER_CONCURRENCY = 3;
+
+const TRADES_LIMITATION = "Loaded Form 4 and Form 4/A rows are as filed, not reconciled transactions; affected aggregates are withheld.";
+const INSIDERS_LIMITATION = "The open-market purchases (code P) and sales (code S) an insider chose to make, as the ranking counts them: not under a Rule 10b5-1 plan, and no sale to cover tax, of shares exercised that day or in an offering. An insider who bought and sold is counted on the net, on one side. Each Form 4 line as filed, plan trades marked 10b5-1, is the default view.";
+
+/** Several tickers' rows in one table: which company each row is. */
+const TICKER_COLUMN: HeadlessPaneColumn = { key: "ticker", header: "Ticker" };
+
+/** One company's Form 4 lines as filed, before any base-currency value, with what the report says of them. */
+interface TickerTrades {
+  rows: HeadlessPaneRow[];
+  empty: string | null;
+  errors: string[];
+  metadata: Record<string, unknown>;
+}
+
+async function readTickerTrades(
+  symbol: string,
+  args: HeadlessPaneLoadArgs,
+  ctx: HeadlessPaneContext,
+  dependencies: InsiderHeadlessDependencies,
+): Promise<TickerTrades> {
+  const limit = Number(args.options.limit);
+  const { parsed, foreignPrivateIssuer, noFilings } = await dependencies.loadParsed(symbol, limit, args, ctx);
+  const empty = parsed.length > 0 ? null : await insiderEmpty(ctx, symbol, foreignPrivateIssuer, noFilings);
+  const name = String(args.options.name ?? "").trim().toLocaleLowerCase();
+  const type = isInsiderTypeFilter(args.options.type) ? args.options.type : "all";
+  const owned = name
+    ? parsed.filter((entry) => matchesInsiderOwner(entry, name))
+    : parsed;
+  const filtered = owned.filter((entry) => matchesInsiderTypeFilter(entry, type));
+  const amendments = relevantInsiderAmendments(filtered, parsed);
+  const incomplete = [...new Set(buildInsiderRows(parsed)
+    .filter((row) => row.status !== "parsed" && row.status !== "disclosure")
+    .map((row) => row.accessionNumber))];
+  // A filing's lines sit together, so its note goes once, under the last of them.
+  const rows: HeadlessPaneRow[] = buildInsiderRows(filtered, parsed).map((row, index) => {
+    const entry = filtered[index]!;
+    const last = filtered[index + 1]?.filing.accessionNumber !== entry.filing.accessionNumber;
+    return isAmendedInsiderFiling(entry) && last ? { ...row, note: amendmentNote(entry) || null } : row;
+  });
+  return {
+    rows,
+    empty,
+    errors: [
+      ...incomplete.map((accessionNumber) => `${accessionNumber}: Form 4 transactions are unavailable or incomplete.`),
+      ...amendments.map((scope) => `${scope.accessionNumber}: Form 4/A is unreconciled; affected transaction totals are unavailable.`),
+    ],
+    metadata: {
+      symbol,
+      summary: buildInsiderSummary(owned, Date.now(), parsed),
+      amendments,
+      foreignPrivateIssuer,
+      parsed: new Set(parsed.filter(({ transaction }) => transaction != null).map(({ filing }) => filing.accessionNumber)).size,
+      transactions: filtered.filter(({ transaction }) => transaction != null).length,
+      requested: limit,
+      name: name || null,
+      type,
+    },
+  };
+}
+
+async function tickerTrades(
+  symbol: string,
+  args: HeadlessPaneLoadArgs,
+  ctx: HeadlessPaneContext,
+  dependencies: InsiderHeadlessDependencies,
+): Promise<HeadlessRowsResult> {
+  const read = await readTickerTrades(symbol, args, ctx, dependencies);
+  // Every value says its currency; a base currency other than USD gets each value converted beside it.
+  const based = await withInsiderBaseValues(read.rows, ctx.config.baseCurrency, dependencies.fxHistory ?? ctx.apiClient);
+  return {
+    ...(based.columns ? { columns: withMoneyColumns(based.columns) } : {}),
+    ...(based.note ? { notes: [based.note] } : {}),
+    rows: based.rows,
+    // Nothing at all: the company has no Form 4 of its own, which is the whole answer.
+    ...(read.empty ? { empty: read.empty, unavailableSymbols: [] } : {}),
+    errors: read.errors,
+    metadata: { ...read.metadata, limitations: [TRADES_LIMITATION] },
+  };
+}
+
+/** One company's insiders over the window, as the ranking counts them, with the coverage notices of its lists. */
+async function readTickerInsiders(
+  symbol: string,
+  args: HeadlessPaneLoadArgs,
+  ctx: HeadlessPaneContext,
+  dependencies: InsiderHeadlessDependencies,
+): Promise<TickerTrades & { notices: string[] }> {
+  const { window, side } = signalQuery(args.options);
+  const ticker = parsePublicTickerKey(symbol).symbol;
+  const activity = await (dependencies.loadCompany ?? defaultDependencies.loadCompany!)({ ticker, window }, ctx);
+  const notices = [...new Set([activity.buy, activity.sell]
+    .map((payload) => insiderSignalsCoverageNotice(payload, { subject: "this list" }))
+    .filter((notice): notice is string => !!notice))];
+  const rows = insidersRows(activity, side);
+  return {
+    rows,
+    empty: rows.length === 0 ? insiderActivityEmptyTitle(window) : null,
+    errors: [],
+    notices,
+    metadata: {
+      symbol,
+      window,
+      through: activity.buy.through,
+      asOf: activity.buy.asOf,
+      coverage: { buy: activity.buy.coverage, sell: activity.sell.coverage },
+    },
+  };
+}
+
+async function tickerInsiders(
+  symbol: string,
+  args: HeadlessPaneLoadArgs,
+  ctx: HeadlessPaneContext,
+  dependencies: InsiderHeadlessDependencies,
+): Promise<HeadlessRowsResult> {
+  const read = await readTickerInsiders(symbol, args, ctx, dependencies);
+  return {
+    columns: labelDollarColumns(INSIDERS_COLUMNS, ["bought", "sold"], ctx.config.baseCurrency),
+    rows: read.rows,
+    ...(read.empty ? { empty: read.empty } : {}),
+    metadata: {
+      ...read.metadata,
+      ...(read.notices.length ? { notices: read.notices } : {}),
+      limitations: [INSIDERS_LIMITATION],
+    },
+  };
+}
+
+/** `--watchlist <name>`: its tickers as saved, the first MAX_INSIDER_TICKERS, and the line that says so. */
+async function watchlistTickers(name: string, ctx: HeadlessPaneContext): Promise<{ symbols: string[]; note: string }> {
+  const watchlist = findNamedCollection(ctx.config.watchlists, name);
+  if (!watchlist) {
+    throw new Error(ctx.config.watchlists.length
+      ? `No watchlist named "${name}". Watchlists: ${describeCollections(ctx.config.watchlists)}.`
+      : `No watchlist named "${name}". No watchlists are set up.`);
+  }
+  const members = (await ctx.resolveWatchlist?.(watchlist.id)) ?? [];
+  if (members.length === 0) throw new Error(`Watchlist ${watchlist.name} holds no tickers.`);
+  return readWatchlistArgument(name, watchlist, members.map((member) => watchlistMemberSymbol(member.metadata)), MAX_INSIDER_TICKERS);
+}
+
+/**
+ * INS on several tickers, typed or a watchlist's: one table, the Ticker
+ * column first and each company's rows together in the order given, as INS
+ * on each would list them. A company with nothing, or whose filings cannot
+ * be read, is named in a note; when none has anything, that is the answer.
+ */
+async function severalTickers(
+  symbols: readonly string[],
+  watchlistNote: string | null,
+  args: HeadlessPaneLoadArgs,
+  ctx: HeadlessPaneContext,
+  dependencies: InsiderHeadlessDependencies,
+): Promise<HeadlessRowsResult> {
+  const insiders = args.options.view === "insiders";
+  const reads = await mapWithConcurrency(symbols, INSIDER_TICKER_CONCURRENCY, async (symbol) => {
+    try {
+      return { symbol, read: insiders ? await readTickerInsiders(symbol, args, ctx, dependencies) : await readTickerTrades(symbol, args, ctx, dependencies) };
+    } catch (error) {
+      ctx.signal.throwIfAborted();
+      return { symbol, failure: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  const read = reads.flatMap((entry) => "read" in entry && entry.read ? [{ symbol: entry.symbol, ...entry.read }] : []);
+  const failures = reads.flatMap((entry) => "failure" in entry && entry.failure ? [`${entry.symbol}: ${entry.failure}`] : []);
+  if (read.length === 0) throw new Error(failures.join("\n"));
+  const rows = read.flatMap((entry) => entry.rows.map((row) => ({ ticker: entry.symbol, ...row })));
+  const empties = read.flatMap((entry) => entry.empty ? [`${entry.symbol}: ${entry.empty}`] : []);
+  const notices = [...new Set(read.flatMap((entry) => "notices" in entry ? entry.notices as string[] : []))];
+  const tickers = Object.fromEntries(read.map((entry) => [entry.symbol, entry.metadata]));
+  const shared = {
+    symbols: [...symbols],
+    ...(watchlistNote ? { watchlist: String(args.options.watchlist).trim() } : {}),
+    tickers,
+    ...(notices.length ? { notices } : {}),
+  };
+  const lead = [...(watchlistNote ? [watchlistNote] : []), ...failures];
+  if (insiders) {
+    return {
+      columns: [TICKER_COLUMN, ...labelDollarColumns(INSIDERS_COLUMNS, ["bought", "sold"], ctx.config.baseCurrency)],
+      rows,
+      ...(rows.length === 0 ? { empty: empties.join("\n") } : {}),
+      ...(lead.length || (rows.length && empties.length) ? { notes: [...lead, ...(rows.length ? empties : [])] } : {}),
+      metadata: { ...shared, limitations: [INSIDERS_LIMITATION] },
+    };
+  }
+  const based = await withInsiderBaseValues(rows, ctx.config.baseCurrency, dependencies.fxHistory ?? ctx.apiClient);
+  const notes = [...lead, ...(rows.length ? empties : []), ...(based.note ? [based.note] : [])];
+  return {
+    columns: [TICKER_COLUMN, ...(based.columns ? withMoneyColumns(based.columns) : INSIDER_COLUMNS)],
+    rows: based.rows,
+    ...(rows.length === 0 ? { empty: empties.join("\n"), unavailableSymbols: [] } : {}),
+    ...(notes.length ? { notes } : {}),
+    errors: read.flatMap((entry) => entry.errors.map((error) => `${entry.symbol} ${error}`)),
+    metadata: { ...shared, limitations: [TRADES_LIMITATION] },
+  };
+}
+
 export function createInsiderHeadless(
   dependencies: InsiderHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
@@ -353,12 +559,21 @@ export function createInsiderHeadless(
     shape: "rows",
     freshness: { ...SEC_FILING_ROWS, basis: "Form 4 filings" },
     argument: {
-      kind: "ticker",
+      kind: "tickers",
       optional: true,
+      maximum: MAX_INSIDER_TICKERS,
       placeholder: "ticker",
-      description: "US equity ticker; omit for the companies whose insiders are buying, or selling, in the open market.",
+      description: "US equity ticker, or several in one table with a Ticker column; omit for the companies whose insiders are buying, or selling, in the open market.",
     },
     options: [
+      {
+        key: "watchlist",
+        description: `A watchlist's tickers, the first ${MAX_INSIDER_TICKERS}, in one table with a Ticker column, as typing them would.`,
+        type: "string",
+        defaultValue: "",
+        placeholder: "name",
+        shot: { reportOnly: "reads a watchlist's tickers into one table" },
+      },
       {
         key: "name",
         description: "Exact reporting owner name.",
@@ -486,12 +701,18 @@ export function createInsiderHeadless(
       return { pluginState: { "ticker-research": { [`insider:nameFilter:${parsePublicTickerKey(symbol).symbol}`]: name } } };
     },
     describe: (args) => {
-      const symbol = args.symbols[0];
-      if (symbol) return args.options.view === "insiders" ? `Insiders | ${symbol}` : `Insider Transactions | ${symbol}`;
+      const watchlist = String(args.options.watchlist ?? "").trim();
+      const subject = watchlist ? `watchlist ${watchlist}` : args.symbols.join(", ");
+      if (subject) return args.options.view === "insiders" ? `Insiders | ${subject}` : `Insider Transactions | ${subject}`;
       return `${INSIDER_SIGNALS_TITLE} | ${args.options.side === "sell" ? "Selling" : "Buying"}`;
     },
     async load(args, ctx) {
-      const symbol = args.symbols[0];
+      const watchlist = String(args.options.watchlist ?? "").trim();
+      if (watchlist && args.symbols.length > 0) throw new Error("Give tickers or --watchlist, not both.");
+      const read = watchlist ? await watchlistTickers(watchlist, ctx) : null;
+      const symbols = read?.symbols ?? args.symbols;
+      if (symbols.length > 1 || read) return severalTickers(symbols, read?.note ?? null, args, ctx, dependencies);
+      const symbol = symbols[0];
       if (!symbol) {
         const query = signalQuery(args.options);
         const payload = await (dependencies.loadSignals ?? defaultDependencies.loadSignals!)(query, Number(args.options.limit), ctx);
@@ -534,76 +755,9 @@ export function createInsiderHeadless(
           },
         };
       }
-      if (args.options.view === "insiders") {
-        const { window, side } = signalQuery(args.options);
-        const ticker = parsePublicTickerKey(symbol).symbol;
-        const activity = await (dependencies.loadCompany ?? defaultDependencies.loadCompany!)({ ticker, window }, ctx);
-        const notices = [...new Set([activity.buy, activity.sell]
-          .map((payload) => insiderSignalsCoverageNotice(payload, { subject: "this list" }))
-          .filter((notice): notice is string => !!notice))];
-        const rows = insidersRows(activity, side);
-        return {
-          columns: labelDollarColumns(INSIDERS_COLUMNS, ["bought", "sold"], ctx.config.baseCurrency),
-          rows,
-          ...(rows.length === 0 ? { empty: insiderActivityEmptyTitle(window) } : {}),
-          metadata: {
-            symbol,
-            window,
-            through: activity.buy.through,
-            asOf: activity.buy.asOf,
-            coverage: { buy: activity.buy.coverage, sell: activity.sell.coverage },
-            ...(notices.length ? { notices } : {}),
-            limitations: [
-              "The open-market purchases (code P) and sales (code S) an insider chose to make, as the ranking counts them: not under a Rule 10b5-1 plan, and no sale to cover tax, of shares exercised that day or in an offering. An insider who bought and sold is counted on the net, on one side. Each Form 4 line as filed, plan trades marked 10b5-1, is the default view.",
-            ],
-          },
-        };
-      }
-      const limit = Number(args.options.limit);
-      const { parsed, foreignPrivateIssuer, noFilings } = await dependencies.loadParsed(symbol, limit, args, ctx);
-      const empty = parsed.length > 0 ? null : await insiderEmpty(ctx, symbol, foreignPrivateIssuer, noFilings);
-      const name = String(args.options.name ?? "").trim().toLocaleLowerCase();
-      const type = isInsiderTypeFilter(args.options.type) ? args.options.type : "all";
-      const owned = name
-        ? parsed.filter((entry) => matchesInsiderOwner(entry, name))
-        : parsed;
-      const filtered = owned.filter((entry) => matchesInsiderTypeFilter(entry, type));
-      const amendments = relevantInsiderAmendments(filtered, parsed);
-      const incomplete = [...new Set(buildInsiderRows(parsed)
-        .filter((row) => row.status !== "parsed" && row.status !== "disclosure")
-        .map((row) => row.accessionNumber))];
-      // A filing's lines sit together, so its note goes once, under the last of them.
-      const filed: HeadlessPaneRow[] = buildInsiderRows(filtered, parsed).map((row, index) => {
-        const entry = filtered[index]!;
-        const last = filtered[index + 1]?.filing.accessionNumber !== entry.filing.accessionNumber;
-        return isAmendedInsiderFiling(entry) && last ? { ...row, note: amendmentNote(entry) || null } : row;
-      });
-      // Every value says its currency; a base currency other than USD gets each value converted beside it.
-      const based = await withInsiderBaseValues(filed, ctx.config.baseCurrency, dependencies.fxHistory ?? ctx.apiClient);
-      const rows = based.rows;
-      return {
-        ...(based.columns ? { columns: withMoneyColumns(based.columns) } : {}),
-        ...(based.note ? { notes: [based.note] } : {}),
-        rows,
-        // Nothing at all: the company has no Form 4 of its own, which is the whole answer.
-        ...(empty ? { empty, unavailableSymbols: [] } : {}),
-        errors: [
-          ...incomplete.map((accessionNumber) => `${accessionNumber}: Form 4 transactions are unavailable or incomplete.`),
-          ...amendments.map((scope) => `${scope.accessionNumber}: Form 4/A is unreconciled; affected transaction totals are unavailable.`),
-        ],
-        metadata: {
-          symbol,
-          summary: buildInsiderSummary(owned, Date.now(), parsed),
-          amendments,
-          foreignPrivateIssuer,
-          parsed: new Set(parsed.filter(({ transaction }) => transaction != null).map(({ filing }) => filing.accessionNumber)).size,
-          transactions: filtered.filter(({ transaction }) => transaction != null).length,
-          requested: limit,
-          name: name || null,
-          type,
-          limitations: ["Loaded Form 4 and Form 4/A rows are as filed, not reconciled transactions; affected aggregates are withheld."],
-        },
-      };
+      return args.options.view === "insiders"
+        ? tickerInsiders(symbol, args, ctx, dependencies)
+        : tickerTrades(symbol, args, ctx, dependencies);
     },
   };
 }

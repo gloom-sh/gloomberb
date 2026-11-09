@@ -277,6 +277,50 @@ test("an open-market trade under a Rule 10b5-1 plan is marked in the text and th
   expect(side.format!(result.rows[0]!.side, result.rows[0]!)).toBe("BUY 10b5-1");
 });
 
+// `fn INS MO,PM,LMT` answered "Unknown ticker", and `fn INS R` read Ryder where a restricted watchlist R was meant.
+test("several tickers, typed or a watchlist's, read as one table with a Ticker column; one with nothing or that fails is named", async () => {
+  const requested: string[] = [];
+  const headless = createInsiderHeadless({
+    loadParsed: async (symbol) => {
+      requested.push(symbol);
+      if (symbol === "LMT") throw new Error("Unknown ticker LMT.");
+      return { parsed: symbol === "MO" ? parsed : [parsed[1]!], foreignPrivateIssuer: false, noFilings: false };
+    },
+  });
+  const several = (symbols: string[], options: Record<string, unknown> = {}): HeadlessPaneLoadArgs => ({
+    rawArgument: symbols.join(","), argument: symbols.length ? symbols : null, symbols, options: { name: "", limit: 20, ...options },
+  });
+  const result = await headless.load(several(["MO", "PM", "LMT"]), createTestHeadlessContext());
+  expect(result.columns?.[0]).toMatchObject({ key: "ticker", header: "Ticker" });
+  expect(result.rows.map((row) => [row.ticker, row.insider])).toEqual([["MO", "SU LISA T"], ["MO", "OTHER OFFICER"], ["PM", "OTHER OFFICER"]]);
+  expect(result.notes).toEqual(["LMT: Unknown ticker LMT."]);
+  expect(Object.keys(result.metadata?.tickers as object)).toEqual(["MO", "PM"]);
+  setCliWidthOverride(200);
+  try {
+    const text = renderHeadlessPaneText(headless, result, several(["MO", "PM", "LMT"]), "INS").replace(/\x1b\[[0-9;]*m/g, "").split("\n");
+    expect(text.find((line) => line.startsWith("Ticker"))).toMatch(/^Ticker\s+Form\s+Filed/);
+    expect(text.filter((line) => line.startsWith("PM "))).toHaveLength(1);
+  } finally {
+    setCliWidthOverride(null);
+  }
+
+  // --watchlist reads its members as saved, never a ticker of the same name.
+  const config = createDefaultConfig("/tmp/gloomberb-headless-test");
+  config.watchlists = [...config.watchlists, { id: "restricted", name: "R" }];
+  const members = ["MO", "PM"].map((ticker) => ({ metadata: { ticker, exchange: "NYSE", watchlists: ["restricted"] } }));
+  const ctx = createTestHeadlessContext({
+    config,
+    resolveWatchlist: async (id) => (id === "restricted" ? members : null) as never,
+  });
+  requested.length = 0;
+  const listed = await headless.load(several([], { watchlist: "r" }), ctx);
+  expect(requested).toEqual(["MO", "PM"]);
+  expect(listed.rows.map((row) => row.ticker)).toEqual(["MO", "MO", "PM"]);
+  expect(listed.notes).toEqual(["Read r as watchlist R (2 symbols)."]);
+  await expect(Promise.resolve(headless.load(several(["R"], { watchlist: "R" }), ctx))).rejects.toThrow("not both");
+  await expect(Promise.resolve(headless.load(several([], { watchlist: "Nope" }), ctx))).rejects.toThrow('No watchlist named "Nope". Watchlists:');
+});
+
 describe("insider report without a ticker", () => {
   // Invented company and people.
   const signals = (window: number, rows: InsiderSignalsPayload["rows"]): InsiderSignalsPayload => ({
