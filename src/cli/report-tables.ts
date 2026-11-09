@@ -21,8 +21,10 @@ import type { ReportFreshness } from "./pane-functions/freshness";
 import {
   EXPORT_DATING_COLUMNS,
   EXPORT_IDENTITY_COLUMNS,
+  EXPORT_RETRIEVAL_COLUMN,
   exportDatingCells,
   exportIdentityCells,
+  exportRetrievalCell,
   exportSourceLines,
   type ExportIdentity,
 } from "./export-source";
@@ -41,6 +43,12 @@ export interface CliReportTable {
   identity?: ExportIdentity;
   /** What each row is of where it differs from the table's: a table of metrics whose rows have different units. */
   rowIdentities?: readonly (ExportIdentity | undefined)[];
+  /**
+   * How many of the last `columns` the export gained after its fixed columns
+   * were set (a chart leg's contract, FUT's group): they follow the fixed
+   * columns and `retrieved_at`, so no column an earlier export had moves.
+   */
+  appendedColumns?: number;
 }
 
 export interface CliReportTables {
@@ -115,6 +123,8 @@ const CHANGE_NOTE = /^\(?[+\-\u2212]?[\d.,]+%?\)?$/;
  * fraction, or in thousands, millions or billions named by the header.
  */
 const DISPLAY_SCALES = [1, 100, 0.01, 1e-3, 1e-6, 1e-9, 1e-12, 1e3, 1e6, 1e4];
+/** A figure drawn in thousands, millions, billions or trillions: `1.18M`, `-2.3B`, `$45K`. */
+const COMPACT_FIGURE = /^[+\-\u2212]?[$€£¥]?\d[\d,]*(?:\.\d+)?\s?[KMBT]$/i;
 // "3M" is as often a tenor as three million.
 const BARE_SCALED = /^[+-]?\d+[kKMBT]$/;
 // Beside "1Y" or "6W", "3M" is three months.
@@ -550,14 +560,16 @@ export function exportEntriesTable(title: string, entries: readonly CliReportEnt
 export function exportTextTable(
   title: string,
   headers: readonly string[],
-  rows: ReadonlyArray<ReadonlyArray<{ text: string; instant?: string } | undefined>>,
+  rows: ReadonlyArray<ReadonlyArray<{ text: string; instant?: string; value?: number } | undefined>>,
 ): CliReportTable {
   return assembleTable(title, headers.map((header, index) => resolveColumn(
     header,
     rows.map((row) => {
       const cell = row[index];
       if (!cell) return BLANK;
-      return cell.instant ? exportCell(cell.instant, null) : exportCell(null, cell.text);
+      // The number behind a figure drawn short (a volume of 1.18M) exports as the source gave it.
+      if (cell.instant) return exportCell(cell.instant, null);
+      return exportCell(cell.value != null && COMPACT_FIGURE.test(cell.text.trim()) ? cell.value : null, cell.text);
     }),
     true,
   )), rows.length);
@@ -654,15 +666,22 @@ function identifiedTable(table: CliReportTable, report: CliReportTables, freshne
   const added = EXPORT_IDENTITY_COLUMNS.flatMap((column, index) => table.columns.includes(column) ? [] : [index]);
   const dating = report.dated
     ? EXPORT_DATING_COLUMNS.flatMap((column, index) => table.columns.includes(column) ? [] : [index]) : [];
-  if (added.length === 0 && dating.length === 0) return table;
+  // An undated row says when it was retrieved last; a dated one says it in `retrieved`.
+  const retrieval = !report.dated && !table.columns.includes(EXPORT_RETRIEVAL_COLUMN);
+  if (added.length === 0 && dating.length === 0 && !retrieval) return table;
+  const retrieved = exportRetrievalCell(freshness);
+  // Columns the export gained later close the row, after the fixed ones, so none of those moves.
+  const own = table.columns.length - Math.min(table.columns.length, Math.max(0, table.appendedColumns ?? 0));
   return {
     ...table,
-    columns: [...table.columns, ...added.map((index) => EXPORT_IDENTITY_COLUMNS[index]!), ...dating.map((index) => EXPORT_DATING_COLUMNS[index]!)],
+    columns: [...table.columns.slice(0, own), ...added.map((index) => EXPORT_IDENTITY_COLUMNS[index]!),
+      ...dating.map((index) => EXPORT_DATING_COLUMNS[index]!), ...retrieval ? [EXPORT_RETRIEVAL_COLUMN] : [], ...table.columns.slice(own)],
     rows: table.rows.map((row, index) => {
       const rowIdentity = identityFor(index);
       const identityCells = exportIdentityCells(freshness, rowIdentity);
       const datingCells = exportDatingCells(freshness, rowIdentity);
-      return [...row, ...added.map((column) => identityCells[column]!), ...dating.map((column) => datingCells[column]!)];
+      return [...row.slice(0, own), ...added.map((column) => identityCells[column]!), ...dating.map((column) => datingCells[column]!),
+        ...retrieval ? [retrieved] : [], ...row.slice(own)];
     }),
   };
 }
@@ -671,7 +690,8 @@ function identifiedTable(table: CliReportTable, report: CliReportTables, freshne
  * One table writes as a plain CSV; several write as blocks, each under a
  * `# section: <title>` line, with a blank line between. The footer follows
  * the data as `#` lines after a blank line. With the `freshness` the footer
- * cites, every row ends with the fixed columns of `EXPORT_IDENTITY_COLUMNS`.
+ * cites, every row ends with the fixed columns of `EXPORT_IDENTITY_COLUMNS`
+ * and the retrieval time (`retrieved_at`).
  */
 export function renderReportCsv(report: CliReportTables, freshness?: ReportFreshness): string {
   const marked = report.tables.length > 1;

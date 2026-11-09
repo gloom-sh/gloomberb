@@ -78,7 +78,7 @@ test("the CSV writes each cash-secured put figure as a number, with its unit in 
     .split("\n").map((line) => line.split(","));
   // Metric, value and unit.
   const row = (metric: string) => { const cells = csv.find((line) => line[0] === metric); return cells && [cells[0], cells[1], cells[3]]; };
-  expect(csv[0]).toEqual(["Metric", "Value", "symbol_or_series", "currency_or_unit", "interval", "source", "as_of"]);
+  expect(csv[0]).toEqual(["Metric", "Value", "symbol_or_series", "currency_or_unit", "interval", "source", "as_of", "retrieved_at"]);
   expect(row("Cash secured (USD)")).toEqual(["Cash secured (USD)", "8500", "USD"]);
   expect(row("Annualised yield at the bid (%)")).toEqual(["Annualised yield at the bid (%)", "7.57120743034", "%"]);
   expect(row("Spread (% of mid)")?.[2]).toBe("% of mid");

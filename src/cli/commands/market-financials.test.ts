@@ -32,11 +32,15 @@ async function run(command: string, args: string[], format: CliOutputFormat, fin
   const cli = createTestCliContext({ dataProvider: { getTickerFinancials: async () => financials } }, { format });
   await marketDataCliCommands.find((entry) => entry.name === command)!.execute([financials.quote?.symbol ?? "SBK.JO", ...args], cli.context);
   const [printed] = cli.printed;
-  return serializeCliResult(printed!.result, { ...DEFAULT_CLI_OPTIONS, format }, printed!.options).split("\n");
+  const lines = serializeCliResult(printed!.result, { ...DEFAULT_CLI_OPTIONS, format }, printed!.options).split("\n");
+  // Each row ends with the retrieval time the closing lines give, written here as RETRIEVED.
+  const retrieved = lines.find((line) => line.startsWith(RETRIEVAL_LINE))?.slice(RETRIEVAL_LINE.length);
+  return retrieved ? lines.map((line) => line.startsWith("#") ? line : line.replaceAll(retrieved, "RETRIEVED")) : lines;
 }
 
+const RETRIEVAL_LINE = "# Retrieval time: ";
 /** What every exported row of SBK.JO's fundamentals ends with: the listing, and the source (they carry no observation date). */
-const IDENTITY = "symbol_or_series,currency_or_unit,interval,source,as_of";
+const IDENTITY = "symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at";
 const FUNDAMENTALS_ROW = ",SBK.JO,,,Gloom Cloud,";
 
 test("fundamentals --csv writes Metric,Value tables with each unit in its label, and the profile", async () => {
@@ -52,7 +56,7 @@ test("fundamentals --csv writes Metric,Value tables with each unit in its label,
       "Revenue (TTM) (ZAR),202080000000",
       "Profit Margin (%),28.868",
       "Shares Outstanding,1619308095",
-    ].map((row) => `${row}${FUNDAMENTALS_ROW}`),
+    ].map((row) => `${row}${FUNDAMENTALS_ROW},RETRIEVED`),
     "",
     "# section: Profile",
   ]);
@@ -61,10 +65,11 @@ test("fundamentals --csv writes Metric,Value tables with each unit in its label,
   expect(lines.at(-5)).toStartWith("# Source: ");
   expect(lines.at(-1)).toStartWith("# Retrieval time: ");
   expect(await run("fundamentals", ["--section", "profile"], "csv"))
-    .toEqual(expect.arrayContaining([`Metric,Value,${IDENTITY}`, `Symbol,SBK.JO${FUNDAMENTALS_ROW}`, `Sector,Financial Services${FUNDAMENTALS_ROW}`]));
+    .toEqual(expect.arrayContaining([`Metric,Value,${IDENTITY}`, `Symbol,SBK.JO${FUNDAMENTALS_ROW},RETRIEVED`,
+      `Sector,Financial Services${FUNDAMENTALS_ROW},RETRIEVED`]));
   expect(JSON.parse((await run("fundamentals", [], "ndjson"))[0]!)).toEqual({
     section: "Fundamentals", Metric: "Market Cap (ZAR)", Value: 472999894550,
-    symbol_or_series: "SBK.JO", currency_or_unit: null, interval: null, source: "Gloom Cloud", as_of: null,
+    symbol_or_series: "SBK.JO", currency_or_unit: null, interval: null, source: "Gloom Cloud", as_of: null, retrieved_at: expect.any(String),
   });
 });
 
@@ -81,14 +86,14 @@ test("valuation --csv is one clean table; financials --csv writes raw amounts un
       "P/E (TTM),9.322304",
       "EPS (TTM) (ZAR),31.43",
       "Dividend Yield (forward) (%),6.14587987599",
-    ].map((row) => `${row}${FUNDAMENTALS_ROW}2026-10-09T13:57:00.000Z`),
+    ].map((row) => `${row}${FUNDAMENTALS_ROW}2026-10-09T13:57:00.000Z,RETRIEVED`),
     "",
   ]);
   const statements = await run("financials", [], "csv");
   expect([...statements.slice(0, 8), ...statements.slice(-1)]).toEqual([
     `Date,Revenue,Gross,Op Inc,Net Inc,EPS,Cur,${IDENTITY}`,
-    "2024-12-31,189471000000,,,45818000000,26.179,ZAR,SBK.JO,ZAR,annual,Gloom Cloud,2025-12-31",
-    "2025-12-31,202080000000,,,51215000000,29.876,ZAR,SBK.JO,ZAR,annual,Gloom Cloud,2025-12-31",
+    "2024-12-31,189471000000,,,45818000000,26.179,ZAR,SBK.JO,ZAR,annual,Gloom Cloud,2025-12-31,RETRIEVED",
+    "2025-12-31,202080000000,,,51215000000,29.876,ZAR,SBK.JO,ZAR,annual,Gloom Cloud,2025-12-31,RETRIEVED",
     "",
     "# Source: Gloom Cloud · Wed 31 Dec 2025 · not a live feed (financial statements)",
     "# Publisher: not published",
@@ -100,9 +105,10 @@ test("valuation --csv is one clean table; financials --csv writes raw amounts un
   ]);
   expect(statements.at(-2)).toStartWith("# Retrieval time: ");
   // NDJSON writes the statement rows flat, each ending with the same five fields.
-  expect((await run("financials", [], "ndjson"))[0]).toBe(
+  expect((await run("financials", [], "ndjson"))[0]!.replace(/"retrieved_at":"[^"]+"/, "\"retrieved_at\":\"RETRIEVED\"")).toBe(
     "{\"date\":\"2024-12-31\",\"revenue\":189471000000,\"grossProfit\":null,\"operatingIncome\":null,\"netIncome\":45818000000,\"eps\":26.179,\"currency\":\"ZAR\","
-      + "\"symbol_or_series\":\"SBK.JO\",\"currency_or_unit\":\"ZAR\",\"interval\":\"annual\",\"source\":\"Gloom Cloud\",\"as_of\":\"2025-12-31\"}",
+      + "\"symbol_or_series\":\"SBK.JO\",\"currency_or_unit\":\"ZAR\",\"interval\":\"annual\",\"source\":\"Gloom Cloud\",\"as_of\":\"2025-12-31\","
+      + "\"retrieved_at\":\"RETRIEVED\"}",
   );
 });
 

@@ -144,9 +144,9 @@ test("an FX export names the pair and the currency the rate is in, which is the 
   const run = harness("USD", { "USDZAR=X": { price: 16.514, lastUpdated: Date.parse("2026-10-13T06:18:00Z") } });
   await fx.execute(["ZAR"], run.context);
   expect(run.output("csv")[0]!.split("\n").slice(0, 2)).toEqual([
-    "Currency,Base,Rate,As Of,Stale,Pair,Inverse,symbol_or_series,currency_or_unit,interval,source,as_of",
+    "Currency,Base,Rate,As Of,Stale,Pair,Inverse,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at",
     // The inverse of 16.514, to the twelve significant digits every export writes a figure to.
-    `ZAR,USD,0.0605546808768,2026-10-13T06:18:00.000Z,false,ZAR/USD,16.514,ZAR/USD,USD per ZAR,spot,Gloom Cloud,2026-10-13T06:18:00.000Z`,
+    `ZAR,USD,0.0605546808768,2026-10-13T06:18:00.000Z,false,ZAR/USD,16.514,ZAR/USD,USD per ZAR,spot,Gloom Cloud,2026-10-13T06:18:00.000Z,2026-10-13T06:20:00.000Z`,
   ]);
 });
 

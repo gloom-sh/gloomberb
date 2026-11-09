@@ -164,6 +164,24 @@ function renderDomTables(rows: DesktopPaneShotRenderedRow[]): string[] {
   ]);
 }
 
+const GROUP_KEY = "__group";
+
+/**
+ * A table's rows for an export: a section header (FUT's sector) is no row of
+ * its own but the `Group` of each row under it, the table's last column.
+ */
+function groupedRows(rows: readonly DesktopPaneShotRenderedRow[]): DesktopPaneShotRenderedRow[] {
+  const groups = new Map<number, string>();
+  return rows.flatMap((row) => {
+    if (row.section) {
+      groups.set(row.tableIndex, row.cells[0]?.text ?? "");
+      return [];
+    }
+    const group = groups.get(row.tableIndex);
+    return group ? [{ ...row, cells: [...row.cells, { columnId: GROUP_KEY, columnLabel: "Group", text: group }] }] : [row];
+  });
+}
+
 /** The rendered tables as `--csv` writes them, with the instant behind a shortened time. */
 function domReportTables(
   rows: DesktopPaneShotRenderedRow[],
@@ -172,13 +190,20 @@ function domReportTables(
   incomplete: boolean | string,
   notices: readonly string[],
 ): CliReportTables {
-  const tables = domTables(rows);
+  // The group closes each row, whichever cells a row left blank before it.
+  const tables = domTables(groupedRows(rows)).map((table) => ({
+    ...table, columns: [...table.columns.filter((column) => column.key !== GROUP_KEY), ...table.columns.filter((column) => column.key === GROUP_KEY)],
+  }));
   return {
-    tables: tables.map((table) => exportTextTable(
-      tables.length > 1 ? domTableTitle(table) : title,
-      table.columns.map((column) => column.header),
-      table.rows.map((cells) => table.columns.map((column) => cells.get(column.key))),
-    )),
+    tables: tables.map((table) => {
+      const exported = exportTextTable(
+        tables.length > 1 ? domTableTitle(table) : title,
+        table.columns.map((column) => column.header),
+        table.rows.map((cells) => table.columns.map((column) => cells.get(column.key))),
+      );
+      // The group column came after the fixed ones: it closes the row, so no earlier column moves.
+      return table.columns.at(-1)?.key === GROUP_KEY ? { ...exported, appendedColumns: 1 } : exported;
+    }),
     footer: reportFooterLines({ ...(freshness ? { freshness } : {}), incomplete, notes: notices }),
   };
 }

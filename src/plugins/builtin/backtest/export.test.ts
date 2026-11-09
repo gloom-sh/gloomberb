@@ -44,14 +44,14 @@ test("the pane's CSV is what fn BT --csv --equity prints: the daily curve at ful
   const lines = pane.split("\n");
   expect(lines[0]).toBe("Date,Close (USD),\"Position (1 long, 0 flat)\",\"Strategy (growth of 1, price return, distributions not included)\","
     + "\"Buy & hold (growth of 1, price return, distributions not included)\",Drawdown (%),status,"
-    + "symbol_or_series,currency_or_unit,interval,source,as_of");
+    + "symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at");
   const last = equity.metadata!.result as { equity: Array<{ date: string; strategy: number; drawdownPct: number }> };
   const row = last.equity.at(-1)!;
   expect(row.date).toBe(day(318));
   // Every digit the export keeps, not the four the text view rounds to.
   expect(lines.find((line) => line.startsWith(`${row.date},`))).toContain(`,${exportNumber(row.strategy)},`);
   expect(String(exportNumber(row.strategy)).split(".")[1]!.length).toBeGreaterThan(4);
-  expect(lines.find((line) => line.startsWith(`${row.date},`))).toEndWith(`,CL=F,USD,1d,Gloom Cloud,${day(318)}`);
+  expect(lines.find((line) => line.startsWith(`${row.date},`))).toEndWith(`,CL=F,USD,1d,Gloom Cloud,${day(318)},${cliCsv(equity, { equity: true }).freshness.retrievedAt}`);
   // The close as `history` exports it, without the feed's float32 noise.
   expect(lines.find((line) => line.startsWith(`${day(200)},`))).toStartWith(`${day(200)},671.3,`);
   // What stderr warns stays with the saved file, beside the notes.
@@ -69,8 +69,8 @@ test("summary exports read every metric back at full precision, each row in its 
   const total = (summary.metadata!.result as { strategy: { totalReturnPct: number } }).strategy.totalReturnPct;
   expect(tables.tables[0]!.rows[0]).toEqual(["Price return (distributions not included) (%)", exportNumber(total), expect.any(Number), ""]);
   const lines = csv.split("\n");
-  const unitOf = (label: string) => lines.find((line) => line.startsWith(`${label},`))!.split(",").at(-4);
+  const unitOf = (label: string) => lines.find((line) => line.startsWith(`${label},`))!.split(",").at(-5);
   expect(["Price return (distributions not included) (%)", "Sharpe (0% cash)", "Profit factor", "Closed trades", "Average hold (sessions)"].map(unitOf))
     .toEqual(["%", "ratio", "ratio", "trades", "sessions"]);
-  expect(lines).toContain("Entry,Entry price (USD),Exit,Exit price (USD),Return %,Sessions,status,symbol_or_series,currency_or_unit,interval,source,as_of");
+  expect(lines).toContain("Entry,Entry price (USD),Exit,Exit price (USD),Return %,Sessions,status,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at");
 });

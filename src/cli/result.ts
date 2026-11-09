@@ -30,10 +30,12 @@ import {
 import {
   EXPORT_DATING_COLUMNS,
   EXPORT_IDENTITY_COLUMNS,
+  EXPORT_RETRIEVAL_COLUMN,
   exportDatingCells,
   exportDatingFields,
   exportIdentityCells,
   exportIdentityFields,
+  exportRetrievalCell,
   exportSource,
   exportSourceLines,
   type ExportIdentity,
@@ -373,6 +375,8 @@ function renderCsv<Row extends Record<string, unknown>>(
   identity?: (row: Row) => string[],
   status?: (row: Row) => string | null | undefined,
   dating?: (row: Row) => string[],
+  /** When the data was retrieved, which an undated export's rows end with (`retrieved_at`). */
+  retrieved?: string,
 ): string {
   const resolvedColumns = columns && columns.length > 0
     ? columns
@@ -381,12 +385,14 @@ function renderCsv<Row extends Record<string, unknown>>(
   // A dated export's own `released` column keeps its values; the others close the row.
   const datingAdded = dating
     ? EXPORT_DATING_COLUMNS.flatMap((column, index) => headers.includes(column) ? [] : [index]) : [];
+  const retrieval = retrieved !== undefined && !dating && !headers.includes(EXPORT_RETRIEVAL_COLUMN);
   return serializeCsv([
     [
       ...headers,
       ...status ? [statusHeader(headers)] : [],
       ...identity ? EXPORT_IDENTITY_COLUMNS : [],
       ...datingAdded.map((index) => EXPORT_DATING_COLUMNS[index]!),
+      ...retrieval ? [EXPORT_RETRIEVAL_COLUMN] : [],
     ],
     ...rows.map((row) => {
       const values = resolvedColumns.map((column) => (column.value ? column.value(row) : row[column.key]));
@@ -397,6 +403,7 @@ function renderCsv<Row extends Record<string, unknown>>(
         ...status ? [exportStatusText(status(row), blanked)] : [],
         ...identity?.(row) ?? [],
         ...datingAdded.map((index) => datingCells[index] ?? ""),
+        ...retrieval ? [retrieved] : [],
       ];
     }),
   ]);
@@ -576,7 +583,10 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
       // A dated export's own fields (a row's `released`) keep their values.
       const dating = renderOptions.exportDated
         ? Object.fromEntries(Object.entries(exportDatingFields(cited, identity)).filter(([key]) => !(key in fields))) : {};
-      return JSON.stringify({ ...fields, ...exportIdentityFields(cited, identity), ...dating }, exportJsonValue);
+      // An undated row says when it was retrieved last, as CSV's `retrieved_at` does.
+      const retrieval = !renderOptions.exportDated && !(EXPORT_RETRIEVAL_COLUMN in fields)
+        ? { [EXPORT_RETRIEVAL_COLUMN]: exportRetrievalCell(cited) } : {};
+      return JSON.stringify({ ...fields, ...exportIdentityFields(cited, identity), ...dating, ...retrieval }, exportJsonValue);
     }).join("\n");
   }
   if (options.format === "csv") {
@@ -589,6 +599,7 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
       (row) => exportIdentityCells(cited, rowIdentity(row, renderOptions.exportIdentity)),
       status,
       renderOptions.exportDated ? (row) => exportDatingCells(cited, rowIdentity(row, renderOptions.exportIdentity)) : undefined,
+      exportRetrievalCell(cited),
     );
     return withCsvFooter(csv, [...exportSourceLines(cited), ...cutNote, ...(renderOptions.exportNotes ?? []).map((note) => `note: ${note}`)]);
   }

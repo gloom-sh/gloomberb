@@ -155,11 +155,11 @@ test("an options export says on every row what it is, the spot and time behind I
     const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, render).split("\n");
     const [header, ...rows] = csv.filter((line) => line && !line.startsWith("#"));
     expect(header).toBe(["Side,Contract,Expiry,Strike,Last,Bid,Ask,IV (annualized decimal),IV source,Delta (decimal),Vol,OI,Quote stale",
-      "Spot,Spot basis,Spot as of,OI as of", ...EXPORT_IDENTITY_COLUMNS].join(","));
+      "Spot,Spot basis,Spot as of,OI as of", ...EXPORT_IDENTITY_COLUMNS, "retrieved_at"].join(","));
     expect(rows).toHaveLength(4);
     for (const row of rows) {
-      expect(row.split(",").slice(-9)).toEqual(["352.72", "close", "2026-10-12T20:00:00.000Z", "2026-10-09",
-        "GOOGL", "USD", "snapshot", "Gloom Cloud", "2026-10-12T19:59:59.000Z"]);
+      expect(row.split(",").slice(-10)).toEqual(["352.72", "close", "2026-10-12T20:00:00.000Z", "2026-10-09",
+        "GOOGL", "USD", "snapshot", "Gloom Cloud", "2026-10-12T19:59:59.000Z", "2026-10-13T12:41:00.000Z"]);
     }
     // JSON carries the same.
     const json = JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, render));

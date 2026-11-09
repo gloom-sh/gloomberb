@@ -85,9 +85,9 @@ test("every exported board row carries its own observation date, series and unit
   const history = renderReportCsv(headlessReportTables(cdxHeadless, named, args, "CDX", freshness, { complete: true, unavailableSymbols: [] }), freshness)
     .split("# section: ")[2]!.split("\n");
   expect(history.slice(1, 4)).toEqual([
-    "Date,Spread (bp),Prints,Contract,Day,status,symbol_or_series,currency_or_unit,interval,source,as_of",
-    "2026-10-19,64.7,38,2031-12-20,\"so far, 38 prints, last 08:09 UTC\",,cdx:main,bp,daily,DTCC,2026-10-19",
-    "2026-10-16,63.28,261,2031-12-20,,,cdx:main,bp,daily,DTCC,2026-10-16",
+    "Date,Spread (bp),Prints,Contract,Day,status,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at",
+    `2026-10-19,64.7,38,2031-12-20,"so far, 38 prints, last 08:09 UTC",,cdx:main,bp,daily,DTCC,2026-10-19,${freshness.retrievedAt}`,
+    `2026-10-16,63.28,261,2031-12-20,,,cdx:main,bp,daily,DTCC,2026-10-16,${freshness.retrievedAt}`,
   ]);
 });
 
@@ -190,8 +190,8 @@ test("every SOVR export row names its series, unit and own date", async () => {
   const result = await sovrHeadless.load(args, context);
   const freshness = deriveHeadlessFreshness(sovrHeadless, result);
   const csv = renderReportCsv(headlessReportTables(sovrHeadless, result, args, "SOVR", freshness, { complete: true, unavailableSymbols: [] }), freshness).split("\n");
-  expect(csv[1]!.split(",").slice(-5)).toEqual(["sovereign-cds:br", "bp", "daily", "DTCC", "2026-10-09"]);
-  expect(csv[2]!.split(",").slice(-5)).toEqual(["sovereign-cds:eg", "bp", "daily", "DTCC", "2026-10-02"]);
+  expect(csv[1]!.split(",").slice(-6)).toEqual(["sovereign-cds:br", "bp", "daily", "DTCC", "2026-10-09", freshness.retrievedAt]);
+  expect(csv[2]!.split(",").slice(-6)).toEqual(["sovereign-cds:eg", "bp", "daily", "DTCC", "2026-10-02", freshness.retrievedAt]);
 });
 
 test("a level that is the day's settlement price is marked in its own column, which a report without one leaves out", async () => {

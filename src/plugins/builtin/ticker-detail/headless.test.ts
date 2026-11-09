@@ -255,9 +255,9 @@ test("quote monitor exports date each row by its own price, with its session, fe
     const csv = renderReportCsv(headlessReportTables(quoteComparisonHeadless, result, input, "QQ", freshness, { complete: true, unavailableSymbols: [] }), freshness)
       .split("\n");
     expect(csv.slice(0, 3)).toEqual([
-      "Ticker,Name,Last,Change,Change %,Chg Basis,Session,Feed,Chg bp,status,symbol_or_series,currency_or_unit,interval,source,as_of",
-      "^HSI,HANG SENG INDEX,24481.86,-315.12,-1.27,vs Thu 5 Nov close,CLOSED,delayed,,,^HSI,index points,,Gloom Cloud,2026-11-06T08:09:00.000Z",
-      "^TNX,CBOE Interest Rate 10 Year T Note,4.859,0.022,0.45,vs prev close,CLOSED,delayed,2.2,,^TNX,pct,,Gloom Cloud,2026-11-06T19:59:00.000Z",
+      "Ticker,Name,Last,Change,Change %,Chg Basis,Session,Feed,Chg bp,status,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at",
+      "^HSI,HANG SENG INDEX,24481.86,-315.12,-1.27,vs Thu 5 Nov close,CLOSED,delayed,,,^HSI,index points,,Gloom Cloud,2026-11-06T08:09:00.000Z,2026-11-06T21:35:00.000Z",
+      "^TNX,CBOE Interest Rate 10 Year T Note,4.859,0.022,0.45,vs prev close,CLOSED,delayed,2.2,,^TNX,pct,,Gloom Cloud,2026-11-06T19:59:00.000Z,2026-11-06T21:35:00.000Z",
     ]);
     expect(result.rows.map((row) => new Date(row.updatedAt as number).toISOString())).toEqual(["2026-11-06T08:09:00.000Z", "2026-11-06T19:59:00.000Z"]);
     const text = renderHeadlessPaneText(quoteComparisonHeadless, result, input, "Quote Monitor");

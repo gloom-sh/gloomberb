@@ -132,6 +132,11 @@ describe("report tables", () => {
     ]);
     expect(table.columns).toEqual(["Symbol", "Last", "Last unit", "Time"]);
     expect(table.rows).toEqual([["ES", 7864.25, "", "2026-10-07T15:27:00.000Z"], ["ZC", 480.5, "c", ""]]);
+    // A volume drawn short exports as the source counted it; a price is never swapped for a value behind it.
+    const volumes = exportTextTable("Futures", ["Symbol", "Last", "VOL"], [
+      [{ text: "ES" }, { text: "7,864.25", value: 7864.2512 }, { text: "1.19M", value: 1_193_314 }],
+    ]);
+    expect(volumes.rows).toEqual([["ES", 7864.25, 1_193_314]]);
   });
 
   test("a reason drawn for a missing figure goes to status, and the columns are the same with or without one", () => {
@@ -235,20 +240,30 @@ describe("report CSV and NDJSON", () => {
       ],
       footer: [],
     };
+    const retrieved = "2026-10-09T18:30:00.000Z";
     expect(renderReportCsv(tables, freshness).split("\n")).toEqual([
       "# section: Rates",
-      "Jurisdiction,source,as_of,symbol_or_series,currency_or_unit,interval",
-      "Japan,BIS,2026-10-13,,,",
-      "United States,FRED,2026-10-20,,,",
+      "Jurisdiction,source,as_of,symbol_or_series,currency_or_unit,interval,retrieved_at",
+      `Japan,BIS,2026-10-13,,,,${retrieved}`,
+      `United States,FRED,2026-10-20,,,,${retrieved}`,
       "",
       "# section: Indices",
-      "Index,Last,symbol_or_series,currency_or_unit,interval,source,as_of",
-      "DAX,25087.27,,,,Gloom Cloud,2026-10-09T18:28:00.000Z",
+      "Index,Last,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at",
+      `DAX,25087.27,,,,Gloom Cloud,2026-10-09T18:28:00.000Z,${retrieved}`,
     ]);
     expect(renderReportNdjson(tables, freshness).split("\n").map((line) => JSON.parse(line))).toEqual([
-      { section: "Rates", Jurisdiction: "Japan", source: "BIS", as_of: "2026-10-13", symbol_or_series: null, currency_or_unit: null, interval: null },
-      { section: "Rates", Jurisdiction: "United States", source: "FRED", as_of: "2026-10-20", symbol_or_series: null, currency_or_unit: null, interval: null },
-      { section: "Indices", Index: "DAX", Last: 25087.27, symbol_or_series: null, currency_or_unit: null, interval: null, source: "Gloom Cloud", as_of: "2026-10-09T18:28:00.000Z" },
+      { section: "Rates", Jurisdiction: "Japan", source: "BIS", as_of: "2026-10-13", symbol_or_series: null, currency_or_unit: null, interval: null, retrieved_at: retrieved },
+      { section: "Rates", Jurisdiction: "United States", source: "FRED", as_of: "2026-10-20", symbol_or_series: null, currency_or_unit: null, interval: null, retrieved_at: retrieved },
+      { section: "Indices", Index: "DAX", Last: 25087.27, symbol_or_series: null, currency_or_unit: null, interval: null, source: "Gloom Cloud", as_of: "2026-10-09T18:28:00.000Z", retrieved_at: retrieved },
+    ]);
+    // Columns a table gained after its fixed ones (FUT's group) close the row, so no column an earlier export had moves.
+    const grouped: CliReportTables = {
+      tables: [{ title: "Futures", columns: ["SYM", "LAST", "Group"], rows: [["ES", 7570.75, "Equity Index"]], appendedColumns: 1 }],
+      footer: [],
+    };
+    expect(renderReportCsv(grouped, freshness).split("\n")).toEqual([
+      "SYM,LAST,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at,Group",
+      `ES,7570.75,,,,Gloom Cloud,2026-10-09T18:28:00.000Z,${retrieved},Equity Index`,
     ]);
   });
 

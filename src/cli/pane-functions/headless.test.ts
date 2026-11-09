@@ -496,10 +496,11 @@ test("series text distinguishes explicit percent, basis-point, multiple and inde
   // The unit is each row's currency_or_unit, beside a bare Value.
   const freshness = deriveHeadlessFreshness(definition, result);
   const csv = renderReportCsv(headlessReportTables(definition, result, args, "Research", freshness, { complete: true, unavailableSymbols: [] }), freshness);
-  const identity = "symbol_or_series,currency_or_unit,interval,source,as_of";
-  expect(csv).toContain(`# section: Credit percent\nDate,Value,${identity}\n2026-09-10,2.7,,%,,Gloom Cloud,2026-09-10\n`);
-  expect(csv).toContain(`# section: Credit basis points\nDate,Value,${identity}\n2026-09-10,270,,bp,,Gloom Cloud,2026-09-10\n`);
-  expect(csv).toContain(`# section: Trailing P/E\nDate,Value,${identity}\n2026-09-10,38.3292383292,,x,,Gloom Cloud,2026-09-10\n`);
+  const identity = "symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at";
+  const retrieved = freshness.retrievedAt;
+  expect(csv).toContain(`# section: Credit percent\nDate,Value,${identity}\n2026-09-10,2.7,,%,,Gloom Cloud,2026-09-10,${retrieved}\n`);
+  expect(csv).toContain(`# section: Credit basis points\nDate,Value,${identity}\n2026-09-10,270,,bp,,Gloom Cloud,2026-09-10,${retrieved}\n`);
+  expect(csv).toContain(`# section: Trailing P/E\nDate,Value,${identity}\n2026-09-10,38.3292383292,,x,,Gloom Cloud,2026-09-10,${retrieved}\n`);
   expect(renderHeadlessPaneText(definition, { series: [result.series.find(({ id }) => id === "missing")!] }, args, "Unknown")).not.toContain("Unit");
 });
 
@@ -510,24 +511,26 @@ test("a rows report of several symbols names each row's symbol and unit only whe
   ];
   const rows = [{ symbol: "NESN:SWX", currency: "CHF", price: 83.24 }, { symbol: "AAPL", currency: "USD", price: 348.27 }];
   const twoSymbols: HeadlessPaneLoadArgs = { rawArgument: "NESN:SWX AAPL", argument: "NESN:SWX AAPL", symbols: ["NESN:SWX", "AAPL"], options: {} };
+  let retrieved = "";
   const csvOf = (result: HeadlessRowsResult) => {
     const definition: HeadlessPaneDefinition<"rows"> = { shape: "rows", argument: { kind: "none" }, options: [], load: () => result };
     const freshness = deriveHeadlessFreshness(definition, result);
+    retrieved = freshness.retrievedAt;
     return renderReportCsv(headlessReportTables(definition, result, twoSymbols, "Peers", freshness, { complete: true, unavailableSymbols: [] }), freshness).split("\n");
   };
   // Reports that name their row fields (fn RV) write each row's own ticker and currency, the price bare under its header.
   const named = csvOf({ symbols: ["NESN:SWX", "AAPL"], columns, rows, rowSymbolKey: "symbol", rowUnitKey: "currency" });
   expect(named.slice(0, 3)).toEqual([
-    "Symbol,Last,status,symbol_or_series,currency_or_unit,interval,source,as_of",
-    "NESN:SWX,83.24,,NESN:SWX,CHF,,Gloom Cloud,",
-    "AAPL,348.27,,AAPL,USD,,Gloom Cloud,",
+    "Symbol,Last,status,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at",
+    `NESN:SWX,83.24,,NESN:SWX,CHF,,Gloom Cloud,,${retrieved}`,
+    `AAPL,348.27,,AAPL,USD,,Gloom Cloud,,${retrieved}`,
   ]);
   // One that does not keeps the rows as it wrote them: a field called `currency` is not claimed to be the unit of every figure.
   const unnamed = csvOf({ symbols: ["NESN:SWX", "AAPL"], columns: [columns[0]!, { key: "price", header: "Last" }], rows });
   expect(unnamed.slice(0, 3)).toEqual([
-    "Symbol,Last,symbol_or_series,currency_or_unit,interval,source,as_of",
-    "NESN:SWX,83.24,,,,Gloom Cloud,",
-    "AAPL,348.27,,,,Gloom Cloud,",
+    "Symbol,Last,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at",
+    `NESN:SWX,83.24,,,,Gloom Cloud,,${retrieved}`,
+    `AAPL,348.27,,,,Gloom Cloud,,${retrieved}`,
   ]);
 });
 
@@ -695,8 +698,8 @@ describe("fn --csv", () => {
     const csv = serializeCliResult({ data: report.data, exportFreshness: report.data.freshness }, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, {
       text: () => report.text, tables: report.tables,
     }).split("\n");
-    const identity = "symbol_or_series,currency_or_unit,interval,source,as_of";
-    const asOf = "SEC EDGAR,2026-10-08T14:30:00.000Z";
+    const identity = "symbol_or_series,currency_or_unit,interval,source,as_of,retrieved_at";
+    const asOf = `SEC EDGAR,2026-10-08T14:30:00.000Z,${report.data.freshness.retrievedAt}`;
     expect(csv.slice(0, 13)).toEqual([
       "# section: AAPL",
       `Date,Open,High,Low,Close,Volume,${identity}`,

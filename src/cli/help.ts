@@ -45,7 +45,7 @@ const START_HERE: Array<[string, string]> = [
 
 const GLOBAL_OPTIONS: Array<[string, string]> = [
   ["--json", "Print the full result as JSON"],
-  ["--csv", "Print rows as CSV under the columns the text shows; fn reports and fundamentals put each table under # section: and end with # source lines"],
+  ["--csv", "Print rows as CSV under the columns the text shows; each row ends with what it is, its source, as_of and when it was retrieved, and fn reports and fundamentals put each table under # section:. The closing source and note lines go to stderr, not into the rows or an --output file"],
   ["--ndjson", "Print one JSON object per table row"],
   ["--output <path>, --out <path>", "Write a --csv, --json or --ndjson export to this file in UTF-8, and print where it went (a redirect is UTF-16 in Windows PowerShell 5.1)"],
   ["--limit <n>", "Show at most n rows, the first n as printed"],
