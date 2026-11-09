@@ -20,13 +20,29 @@ import { getQuoteMonitorPaneSettings } from "../settings";
 import { useShortcut, type KeyEventLike } from "../../../../react/input";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { QuoteMonitorCard } from "./card";
+import { parsePublicTickerKey, publicTickerKey } from "../../../../utils/exchanges";
+import { listingAbroadVenue } from "../../../../utils/sec";
 import { useLiveStreamingSetting } from "../../../../state/hooks/live-streaming";
 import { registerPaneTableExporter } from "../../../../state/pane-table-export-registry";
 import { quoteMonitorCsv } from "./export";
 import { getSharedRegistry } from "../../../registry";
 
+/**
+ * One label form across a board: a listing abroad with its venue (8058:JPX),
+ * whether it was typed so or added from a row saved under its bare code, and a
+ * US listing, an index or a pair as its symbol. A board of Tokyo names read
+ * "8058" on one card and "8031:JPX" on the rest (9 Nov 2026).
+ */
+export function quoteMonitorLabel(symbol: string, ticker: TickerRecord | null): string {
+  if (parsePublicTickerKey(symbol).exchange || /^\^|=|-USD$/i.test(symbol)) return symbol;
+  const exchange = ticker?.metadata.exchange;
+  return exchange && listingAbroadVenue(publicTickerKey(symbol, exchange)) ? publicTickerKey(symbol, exchange) : symbol;
+}
+
 interface BoardEntry {
   symbol: string;
+  /** What the card is headed with (quoteMonitorLabel). */
+  label: string;
   ticker: TickerRecord | null;
   instrument: InstrumentRef | null;
   chartRequest: ChartRequest | null;
@@ -142,6 +158,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
       : null;
     return {
       symbol,
+      label: quoteMonitorLabel(symbol, ticker),
       ticker,
       instrument,
       chartRequest,
@@ -281,6 +298,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
           <QuoteMonitorCard
             key={entry.symbol}
             symbol={entry.symbol}
+            label={entry.label}
             ticker={entry.ticker}
             cachedFinancials={financialsBySymbol.get(entry.symbol) ?? null}
             quoteEntry={entry.quoteKey ? quoteEntries.get(entry.quoteKey) ?? null : null}
@@ -316,6 +334,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
             <QuoteMonitorCard
               key={entry.symbol}
               symbol={entry.symbol}
+              label={entry.label}
               ticker={entry.ticker}
               cachedFinancials={financialsBySymbol.get(entry.symbol) ?? null}
               quoteEntry={entry.quoteKey ? quoteEntries.get(entry.quoteKey) ?? null : null}

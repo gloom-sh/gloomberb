@@ -44,7 +44,10 @@ const DESKTOP_DETAIL_CHAR_PX = 12 * 0.6;
 /**
  * The extended print's line, "After-Hours $336.08 -0.17%": the full label
  * where the room allows, else "AH", "PM" or "ON" as the heat map marks them,
- * and at the narrowest the mark and the move without the price.
+ * and no line where even that does not fit. Its move is never set without its
+ * price: "AH +2.77%" beside the day's +2.33% read as a second day's move
+ * (^N225 on a 70-column board, 9 Nov 2026), which a wide card's
+ * "After-Hours 60,404.00 +2.77%" did not.
  */
 function extendedLineParts(
   extended: ExtendedSessionDisplay,
@@ -56,7 +59,6 @@ function extendedLineParts(
   const candidates = [
     { label: extendedSessionLineLabel(extended, t), figures: `${priceText} ${percent}` },
     { label: mark, figures: `${priceText} ${percent}` },
-    { label: mark, figures: percent },
   ];
   return candidates.find(({ label, figures }) => fits(`${label} ${figures}`)) ?? null;
 }
@@ -139,9 +141,12 @@ export function QuoteMonitorCard({
   onSelect,
   onOpen,
   perpetuals,
+  label = symbol,
 }: {
   perpetuals?: ReactNode;
   symbol: string;
+  /** What the card is headed with, when not the symbol as saved: one form across the board (8058:JPX). */
+  label?: string;
   ticker: TickerRecord | null;
   cachedFinancials: TickerFinancials | null;
   quoteEntry: QueryEntry<Quote> | null;
@@ -208,7 +213,7 @@ export function QuoteMonitorCard({
   // stacked card); the desktop gives it a row of its own under the name.
   const extendedRoom = nativePaneChrome
     ? (width * cellWidthPx - 24) / DESKTOP_DETAIL_CHAR_PX
-    : stacked ? width - 3 - displayWidth(symbol) : width - 3 - priceColumnWidth;
+    : stacked ? width - 3 - displayWidth(label) : width - 3 - priceColumnWidth;
   const extendedParts = display && extended
     ? extendedLineParts(extended, formatMarketPriceWithCurrency(extended.price, currency, priceOptions), (text) => displayWidth(text) <= extendedRoom)
     : null;
@@ -283,7 +288,7 @@ export function QuoteMonitorCard({
       {!display ? (
         <Box flexDirection="column" flexGrow={1} justifyContent="center">
           <Text attributes={TextAttributes.BOLD} fg={symbolFg} bg={symbolBg} style={desktopSymbolStyle}>
-            {symbol}
+            {label}
           </Text>
           <Text fg={quoteStatus.ended ? colors.warning : quoteStatus.failed ? colors.negative : colors.textDim}>{quoteStatus.text}</Text>
         </Box>
@@ -314,7 +319,7 @@ export function QuoteMonitorCard({
             }}
           >
             <Text attributes={TextAttributes.BOLD} fg={symbolFg} bg={symbolBg} style={desktopSymbolStyle}>
-              {symbol}
+              {label}
             </Text>
             {quoteFailed && !endedRow && (
               <Text fg={quoteStatus.ended ? colors.warning : colors.negative} style={{ fontSize: "var(--gloom-type-ui)", lineHeight: "14px" }}>
@@ -427,7 +432,7 @@ export function QuoteMonitorCard({
             <Box flexDirection="column">
               <Box flexDirection="row" gap={1} height={1} overflow="hidden">
                 <Text attributes={TextAttributes.BOLD} fg={symbolFg} bg={symbolBg} style={desktopSymbolStyle}>
-                  {symbol}
+                  {label}
                 </Text>
                 {compactNavAsOf && <Text fg={colors.textDim}>{navAsOf}</Text>}
                 {extendedParts && <ExtendedSessionLine parts={extendedParts} color={extendedColor} dim={extendedDim} />}
@@ -451,7 +456,7 @@ export function QuoteMonitorCard({
             >
               <Box flexDirection="column" flexGrow={1} minWidth={0}>
                 <Text attributes={TextAttributes.BOLD} fg={symbolFg} bg={symbolBg} style={desktopSymbolStyle}>
-                  {symbol}
+                  {label}
                 </Text>
                 {extendedParts && <ExtendedSessionLine parts={extendedParts} color={extendedColor} dim={extendedDim} />}
                 {nativePaneChrome && ticker?.metadata.name && width >= 36 && (

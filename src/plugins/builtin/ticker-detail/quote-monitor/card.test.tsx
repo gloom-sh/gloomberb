@@ -120,3 +120,24 @@ test("each card says what its own price is as of: Hong Kong's close beside a del
     clock.mockRestore();
   }
 });
+
+// at 70-90 columns ^N225 read "AH +2.77%" beside its day's "+2.33% +1,340.73", as if two moves of the day.
+test("a narrow card sets an extended print's move only beside its price, as a wide card does", async () => {
+  const clock = spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-09T21:40:00Z"));
+  const nikkei: Quote = {
+    symbol: "^N225", currency: "JPY", instrumentType: "INDEX", exchangeName: "OSAKA", price: 58775.5, change: 1340.73, changePercent: 2.33,
+    previousClose: 57434.77, marketState: "POST", postMarketPrice: 60404, postMarketChange: 1628.5, postMarketChangePercent: 2.77,
+    dataSource: "delayed", providerId: "gloomberb-cloud", lastUpdated: Date.parse("2026-11-09T06:45:00Z"),
+  };
+  try {
+    const entry = { ...createIdleEntry<Quote>(), phase: "ready" as const, data: nikkei };
+    expect(await renderCard(entry, 60, 4)).toContain("After-Hours 60,404.00 +2.77%");
+    for (const width of [20, 26, 34]) {
+      const card = await renderCard(entry, width, 4);
+      expect(card, String(width)).toContain("+2.33% +1,340.73");
+      expect(card, String(width)).not.toMatch(/AH \+2\.77%/);
+    }
+  } finally {
+    clock.mockRestore();
+  }
+});
