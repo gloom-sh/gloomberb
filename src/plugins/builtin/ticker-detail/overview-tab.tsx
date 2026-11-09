@@ -38,7 +38,9 @@ import type { TickerRecord } from "../../../types/ticker";
 import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
-import { appTtmRate, enterpriseValueGapIsLarge, enterpriseValueReconciliationNote, ttmAtAppRate, ttmConversionNote, withBankEnterpriseValue } from "../../../utils/fundamentals";
+import {
+  appTtmRate, enterpriseValueGapIsLarge, enterpriseValueReconciliationNote, trailingEpsFiscalYearEnd, ttmAtAppRate, ttmConversionNote, withBankEnterpriseValue,
+} from "../../../utils/fundamentals";
 import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { sharesOutstandingInReceipts } from "../../../utils/depositary-receipt";
@@ -415,6 +417,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     dividend,
     bond: fundFacts?.bond ?? null,
     runway,
+    trailingEpsYearEnd: financials ? trailingEpsFiscalYearEnd(financials) : undefined,
   });
   const profileFields = buildProfileFields({
     // The contract section names an option's type.

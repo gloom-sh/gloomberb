@@ -5,7 +5,7 @@ import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../utils
 import {
   appTtmRate, BANK_ENTERPRISE_VALUE, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueLabel,
   enterpriseValueReconciliationNote,
-  epsConversionNote, fundamentalsCurrency, isBankEnterpriseValue, reportedEnterpriseValue, servedTrailingEpsYear, trailingEpsSourceNote, ttmAtAppRate, ttmConversionNote,
+  epsConversionNote, fundamentalsCurrency, isBankEnterpriseValue, reportedEnterpriseValue, trailingEpsFiscalYear, trailingEpsSourceNote, ttmAtAppRate, ttmConversionNote,
   withBankEnterpriseValue,
 } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
@@ -817,7 +817,7 @@ function fundamentalsMetrics(
   distributions: DividendDistributions | null = null,
   bond: FundBondFacts | null = null,
   codes = false,
-  /** The fiscal year a served EPS is (servedTrailingEpsYear), named on the EPS and P/E lines in place of TTM. */
+  /** The fiscal year the trailing EPS is (trailingEpsFiscalYear), named on the EPS and P/E lines in place of TTM. */
   epsYear?: string,
 ): FundamentalsMetric[] {
   const signed = (value: number) => colorBySign(formatPercent(value), value);
@@ -1072,7 +1072,7 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
     : { text: "—" };
   const metrics = withoutStockRows(fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials),
     fundamentalsCurrency(financials), undefined, snapshot.distributions ?? null, snapshot.bondFund ?? null, snapshot.currencyCodes === true,
-    servedTrailingEpsYear(financials)),
+    trailingEpsFiscalYear(financials)),
   resolveTickerInstrumentKind(null, financials) === "fund");
   if (view === "fundamentals") {
     return [...metrics, ...floatAndShortInterestMetrics(quote, fundamentals, financials.profile)]
@@ -1426,7 +1426,7 @@ export async function buildTickerReport({
   // A listing of the last year may have no statements yet: its IPO says how recent it is.
   const listing = { listedSince: ipo ? ipo.deal.listingDate ?? ipo.deal.firstDay?.session ?? null : null };
   const metrics = withoutStockRows(fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns,
-    fundamentalsCurrency(financials, listing), { text: enterpriseValueText }, distributions, bondFund, codes, servedTrailingEpsYear(financials)), isFund);
+    fundamentalsCurrency(financials, listing), { text: enterpriseValueText }, distributions, bondFund, codes, trailingEpsFiscalYear(financials)), isFund);
   const reportedCurrency = financials.financialCurrency?.trim();
   const statements = [...financials.annualStatements, ...financials.quarterlyStatements];
   const fallbackCurrency = reportedCurrency && statements.every((row) => !row.currency?.trim() || row.currency.trim() === reportedCurrency)

@@ -89,6 +89,30 @@ test("a margin the source did not serve for the trailing year falls back to the 
   expect(gap).toMatchObject({ operatingMargin: null, operatingMarginPeriod: null, gaps: { operatingMargin: "not reported" } });
 });
 
+// fn RV of Tokyo's trading houses on 9 Nov 2026 read EV/S "revenue ccy unstated" and "no TTM FCF" for
+// Mitsubishi Corporation, whose statements are in yen with four quarters of free cash flow, and P/E 24.6 on its
+// year to March 2026 as if trailing.
+test("RV reads the statements' currency, the filed quarters' free cash flow, and names a P/E's fiscal year", () => {
+  const quarter = (date: string, freeCashFlow?: number) => ({ date, currency: "JPY", totalRevenue: 5e12, ...(freeCashFlow !== undefined ? { freeCashFlow } : {}) });
+  const mitsubishi: TickerFinancials = {
+    annualStatements: [{ date: "2025-03-31", currency: "JPY", eps: 235.8 }, { date: "2026-03-31", currency: "JPY", eps: 209.78 }],
+    quarterlyStatements: [quarter("2025-09-30", 235.935e9), quarter("2025-12-31", 6.692e9), quarter("2026-03-31", 864.825e9),
+      quarter("2026-06-30", 338.676e9), quarter("2026-09-30")],
+    priceHistory: [],
+    financialCurrency: "JPY",
+    quote: { symbol: "8058", price: 5170, change: 212, changePercent: 4.28, currency: "JPY", lastUpdated: Date.parse("2026-11-09T06:30:00Z"), marketCap: 18.93e12 },
+    fundamentals: { marketCap: 18.93e12, enterpriseValue: 23.82e12, revenue: 20.69e12, eps: 209.78, trailingPE: 24.64, trailingEpsSource: "served" },
+  };
+  const values = relativeValuationValues(mitsubishi);
+  expect(values.evSales).toBeCloseTo(23.82 / 20.69);
+  // The four quarters to June that carry it; September's came with its income ahead of its cash flow.
+  expect(values.fcfYield).toBeCloseTo(1.446128e12 / 18.93e12);
+  expect(values).toMatchObject({ fcfYieldThrough: "2026-06-30", trailingPEPeriod: "FY26", gaps: {} });
+  // A quote in another currency than the statements' leaves both blank, saying why.
+  const dollars = relativeValuationValues({ ...mitsubishi, quote: { ...mitsubishi.quote!, currency: "USD" }, fundamentals: { ...mitsubishi.fundamentals, marketCapCurrency: "USD" } });
+  expect(dollars).toMatchObject({ evSales: null, fcfYield: null, gaps: { evSales: "revenue ccy unstated", fcfYield: "FCF in JPY" } });
+});
+
 // fn RV SMSN:LSE,SSNLF showed 27.34T USD for the GDR: its price x Samsung's ordinaries, from a stale quote's fallback.
 test("a receipt cap Gloom Cloud withheld is no cap, from the quote or the fundamentals, and says why", () => {
   const receipt: TickerFinancials = {

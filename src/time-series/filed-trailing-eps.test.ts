@@ -56,4 +56,10 @@ test("a served EPS that is the latest year's names that year, until four newer f
   const after = report([row("2025-12-31", 66.87), row("2026-03-31", 52.18), row("2026-06-30", 81.53), row("2026-09-30", 87.68)]);
   expect(after).toContain("P/E (TTM) 17.94");
   expect(after).toContain("EPS (TTM) ¥288.26");
+  // Itochu (8001): its quarters ended at March, so the filed figure was the year's, 128 beside a served 139.67.
+  const itochu = withFiledTrailingEps({ quote: { ...yen, symbol: "8001", price: 2350 }, fundamentals: { eps: 139.67, trailingPE: 16.83 },
+    financialCurrency: "JPY", quarterlyStatements: [row("2025-06-30", 40.1), row("2025-09-30"), row("2025-12-31"), row("2026-03-31")],
+    annualStatements: [year("2025-03-31", 123.13), year("2026-03-31", 128)], priceHistory: [] }, NOW);
+  const read = renderFundamentalsReport({ ...itochu, symbol: "8001" }, "valuation").replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
+  expect(read).toContain("EPS FY Mar-2026 ¥128.00");
 });

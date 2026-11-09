@@ -242,7 +242,8 @@ test("a stale quote may use an independent fundamental cap with its own source a
 
 test("every blank RV cell says why in the export's status, and the cap is the one valuation shows", async () => {
   // EVN:ASX on 2026-10-22: the quote's 24.4B cap rests on another count than the 1.99B shares served beside it,
-  // and the TTM block names no currency and has no free cash flow. RMS:ASX has no quarter's revenue growth either.
+  // and the TTM block names no currency (the statements' AUD is the price's, so EV/S reads) and has no free cash
+  // flow, nor do the quarters. RMS:ASX has no quarter's revenue growth either.
   const evn = {
     annualStatements: [], quarterlyStatements: [], priceHistory: [], financialCurrency: "AUD",
     quote: { symbol: "EVN", price: 11.93, change: -0.2, changePercent: -1.65, currency: "AUD", lastUpdated: 1, marketCap: 24.4e9 },
@@ -258,8 +259,8 @@ test("every blank RV cell says why in the export's status, and the cap is the on
   const table = exportRowsTable("RV", relativeValuationHeadless.columns!, result.rows, { status: true });
   const status = table.columns.indexOf("status");
   expect(table.rows.map((row) => row[status])).toEqual([
-    "EV/S: revenue ccy unstated; FCF Yield: no TTM FCF",
-    "Mkt Cap, Quarter Revenue YoY: not reported; EV/S: revenue ccy unstated; FCF Yield: no TTM FCF",
+    "FCF Yield: no TTM FCF",
+    "Mkt Cap, Quarter Revenue YoY: not reported; FCF Yield: no TTM FCF",
   ]);
   // No blank figure without its reason; a session with no print is no missing figure.
   table.rows.forEach((row) => row.forEach((cell, index) => {

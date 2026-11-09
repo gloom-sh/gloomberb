@@ -96,7 +96,12 @@ function extendedMove(row: RelativeRow, columnId: ExtendedColumnId): number | nu
  * AFTER-HRS or OVERNIGHT column, named as BI and MOST name it, follows CHG%
  * for each session in `extendedSessions`.
  */
-function buildRelativeColumns(baseCurrency: string, extendedSessions: readonly ExtendedSession[], marginNamesYear: boolean): RelativeColumn[] {
+function buildRelativeColumns(
+  baseCurrency: string,
+  extendedSessions: readonly ExtendedSession[],
+  marginNamesYear: boolean,
+  peNamesYear = false,
+): RelativeColumn[] {
   const symbolWidth = 8;
   const priceWidth = 10;
   const pctWidth = 8;
@@ -110,7 +115,8 @@ function buildRelativeColumns(baseCurrency: string, extendedSessions: readonly E
       id: EXTENDED_COLUMN_IDS[session], label: extendedSessionStateLabel(session), width: 9, align: "right",
     })),
     { id: "marketCap", label: `MCAP ${baseCurrency}`, width: capWidth, align: "right" },
-    { id: "trailingPE", label: "P/E", width: metricWidth, align: "right" },
+    // Wider while a peer's P/E is on its latest fiscal year's EPS and names it ("24.6 FY26").
+    { id: "trailingPE", label: "P/E", width: peNamesYear ? 10 : metricWidth, align: "right" },
     { id: "forwardPE", label: "FWD", width: metricWidth, align: "right" },
     { id: "evSales", label: "EV/S", width: metricWidth, align: "right" },
     { id: "fcfYield", label: "FCF%", width: metricWidth, align: "right" },
@@ -256,9 +262,10 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   // A pre-market or after-hours print gets its own column when a peer has one.
   const extendedSessionsKey = extendedSessionsOf(rows).join(",");
   const marginNamesYear = rows.some((row) => row.operatingMarginPeriod != null);
+  const peNamesYear = rows.some((row) => row.trailingPEPeriod != null);
   const columns = useMemo(
-    () => buildRelativeColumns(baseCurrency, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : [], marginNamesYear),
-    [baseCurrency, extendedSessionsKey, marginNamesYear],
+    () => buildRelativeColumns(baseCurrency, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : [], marginNamesYear, peNamesYear),
+    [baseCurrency, extendedSessionsKey, marginNamesYear, peNamesYear],
   );
 
   const comparableRows = useMemo(() => rows.map((row) => ({
@@ -345,7 +352,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       case "marketCap":
         return { text: formatCompact(row.marketCap ?? undefined, { fixedDecimals: true }), color: colors.textDim };
       case "trailingPE":
-        return { text: formatPriceEarnings(row.notMeaningful.trailingPE ? NOT_MEANINGFUL : row.reportedMultiples.trailingPE), color: colors.text };
+        return { text: `${formatPriceEarnings(row.notMeaningful.trailingPE ? NOT_MEANINGFUL : row.reportedMultiples.trailingPE)}${row.trailingPEPeriod ? ` ${row.trailingPEPeriod}` : ""}`, color: colors.text };
       case "forwardPE":
         return { text: formatPriceEarnings(row.notMeaningful.forwardPE ? NOT_MEANINGFUL : row.reportedMultiples.forwardPE), color: colors.text };
       case "evSales":
