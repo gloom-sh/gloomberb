@@ -127,7 +127,7 @@ export function AttentionPane({ width, height, focused }: PaneProps) {
   const signInWall = !data && isCloudSessionRequired(resource.error);
   const { strip, rows: tabRows } = usePaneTabs(!signInWall ? { tabs: [...ATTENTION_TABS], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => { void resource.reload(); if (detailMode) void detail.reload(); }, { focused });
+  usePaneRefreshKey(() => { resource.reload(); if (detailMode) detail.reload(); }, { focused });
   const hints: PaneHint[] = [
     ...(selected && !groupMode ? [
       { id: "description", key: "d", label: "es", onPress: () => openDescription(selected.symbol) },

@@ -100,7 +100,7 @@ export function HiringMovesView({ symbol, width, height, focused, accessKey, com
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const scrollMore = useTableLoadMore(scrollRef, paged.hasMore && !detailOpen, paged.loadMore);
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => { void resource.reload(); paged.reload(); }, { focused: focused && !detailOpen });
+  usePaneRefreshKey(() => { resource.reload(); paged.reload(); }, { focused: focused && !detailOpen });
 
   const subject = selected?.symbol ?? symbol;
   const source = opened?.jobPosting?.url ?? (opened ? null : selected?.jobPosting?.url);

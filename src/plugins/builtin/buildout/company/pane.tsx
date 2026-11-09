@@ -211,7 +211,7 @@ export function BuildoutCompanyPane({ focused, width, height }: PaneProps) {
   }
   if (!company) {
     if (missing) return frame(<EmptyState title={`${symbol} is not in TheBuildout.`} />);
-    if (profile.error) return frame(<PaneStatusBody error={String(profile.error)} subject="TheBuildout" retry={String(profile.error) === NOT_IN_SCREENSHOTS ? undefined : { onRetry: () => void profile.load(true) }} />);
+    if (profile.error) return frame(<PaneStatusBody error={String(profile.error)} subject="TheBuildout" retry={String(profile.error) === NOT_IN_SCREENSHOTS ? undefined : { onRetry: () => profile.load(true) }} />);
     return frame(<PaneStatusBody loading subject="TheBuildout" />);
   }
 

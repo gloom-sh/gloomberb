@@ -200,7 +200,7 @@ export function UpcomingCallsView({ focused, width, height, view, renderCompany 
 
   const openCall = openTicker ? calls.find((call) => call.ticker === openTicker) ?? null : null;
   const detailOpen = !!openTicker && entitled;
-  const reload = useCallback(() => void resource.reload(), [resource.reload]);
+  const reload = useCallback(() => resource.reload(), [resource.reload]);
 
   const refused = refusal.current;
   const signInRequired = !access.signedIn || (!data && refused === 401);

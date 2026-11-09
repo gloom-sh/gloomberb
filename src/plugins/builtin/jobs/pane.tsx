@@ -536,7 +536,7 @@ function CompanyPanel({
     [symbol, companyName],
   );
   const resource = useAsyncResource<JobsCompanyState>(request);
-  const { data, status, error, loading, reload } = resource;
+  const { data, status, error, loading, reload, reloadAndWait } = resource;
 
   // `r` asks again in every state, including a failed or uncovered company.
   usePaneRefreshKey(reload, { focused });
@@ -558,7 +558,7 @@ function CompanyPanel({
   // A failed look at an uncovered company says so: the old answer left up
   // would read as the new one.
   if (status === "error" && (!data || data.kind === "uncovered")) {
-    return <PaneStatusBody error={error ?? "Could not load hiring data."} errorTitle="Could not load hiring data." retry={{ onRetry: reload }} />;
+    return <PaneStatusBody error={error ?? "Could not load hiring data."} errorTitle="Could not load hiring data." retry={{ onRetry: reloadAndWait }} />;
   }
   if (!data) return null;
   if (data.kind === "pending") {
@@ -577,7 +577,7 @@ function CompanyPanel({
         empty
         emptyTitle={`No careers system found for ${symbol}.`}
         emptyMessage="Gloom reads companies' own careers systems. This one either has none we can read or lists roles only on third-party job boards."
-        retry={{ onRetry: reload, pending: loading, label: "Look again", pendingLabel: "Looking again...", unchanged: "Still no careers system." }}
+        retry={{ onRetry: reloadAndWait, pending: loading, label: "Look again", pendingLabel: "Looking again...", unchanged: "Still no careers system." }}
       />
     );
   }
@@ -606,7 +606,7 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
   const { navigateTicker } = usePluginTickerActions();
   const request = useCallback(() => fetchJobsMovers(undefined, MOVERS_PAGE), []);
   const resource = useAsyncResource(request);
-  const { data, status, error, reload } = resource;
+  const { data, status, error, reload, reloadAndWait } = resource;
   const [sort, setSort] = usePluginPaneState<MoverSort>("jobs:movers-sort", DEFAULT_MOVER_SORT);
   // Keyed by company, not by position, so a reload or a shared layout keeps the row.
   const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("moversSelectedKey", null);
@@ -689,7 +689,7 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
   }, [nativePaneChrome]);
 
   if (status === "loading" && !data) return <PaneStatusBody loading align="center" loadingLabel="Loading hiring data..." />;
-  if (status === "error" && !data) return <PaneStatusBody error={error ?? "Could not load hiring data."} errorTitle="Could not load hiring data." retry={{ onRetry: reload }} />;
+  if (status === "error" && !data) return <PaneStatusBody error={error ?? "Could not load hiring data."} errorTitle="Could not load hiring data." retry={{ onRetry: reloadAndWait }} />;
 
   const tableHeight = Math.max(3, height - (nativePaneChrome ? 1 : 0));
   return (

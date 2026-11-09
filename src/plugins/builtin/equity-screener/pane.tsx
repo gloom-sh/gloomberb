@@ -430,7 +430,7 @@ function EquityScreenView({
       !results.loading &&
       !results.loadingMore
     )
-      void results.loadMore();
+      results.loadMore();
   }, [
     openId,
     data,
@@ -532,7 +532,7 @@ function EquityScreenView({
       setSavedSelectedId(entry.id);
       setSaveForm(false);
       setMode("saved");
-      await saved.reload();
+      await saved.reloadAndWait();
       notify({ body: `Saved ${entry.name}`, type: "success" });
     } catch (error) {
       setActionError(errorText(error));
@@ -553,7 +553,7 @@ function EquityScreenView({
     setSaving(true);
     try {
       await screenerApi.remove(entry.id, entry.revision);
-      await saved.reload();
+      await saved.reloadAndWait();
       if (currentSavedId === entry.id) setCurrentSavedId(null);
       notify({ body: "Screen deleted", type: "success" });
     } catch (error) {
@@ -774,8 +774,8 @@ function EquityScreenView({
     }
     if (event.name === "r") {
       event.preventDefault();
-      void results.load();
-      if (mode === "saved") void saved.reload();
+      results.load();
+      if (mode === "saved") saved.reload();
       return;
     }
     // Hint keys are single unmodified letters.

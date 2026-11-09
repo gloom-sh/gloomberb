@@ -203,7 +203,7 @@ export function BrokerOrdersView({
   useEffect(() => {
     if (feed.fills === fillsSeen.current) return;
     fillsSeen.current = feed.fills;
-    if (canRead) void reload();
+    if (canRead) reload();
   }, [feed.fills, canRead, reload]);
   // A cancel this view sent follows the order feed, and is asked for every 15 seconds without pushed changes or while
   // its outcome is unknown, which only the broker's answer settles. The fills and the end toast from the feed.
@@ -217,7 +217,7 @@ export function BrokerOrdersView({
   const refresh = useCallback(() => {
     void controller.refreshResult().catch(logFailure("broker-trading.orders", "Refresh broker order result failed"));
     brokerOrderFeed.refresh(instance.id);
-    void reload();
+    reload();
   }, [controller, reload, instance.id]);
   usePaneRefreshKey(refresh, { focused, enabled: active && !!account });
 

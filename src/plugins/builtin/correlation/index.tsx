@@ -188,7 +188,7 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   const refresh = useCallback(() => {
     const coordinator = getSharedMarketDataCoordinator();
     for (const request of chartRequests) void coordinator?.loadChart(request, { forceRefresh: true });
-    if (geoKey) void geoHistory.reload();
+    if (geoKey) geoHistory.reload();
   }, [chartRequests, geoKey, geoHistory.reload]);
 
   useShortcut((event) => {

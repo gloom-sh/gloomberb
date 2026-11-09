@@ -4,6 +4,7 @@ import type {
   ScreenDefinition,
   ScreenPayload,
 } from "../../../api-client/equity-screener";
+import { logFailure } from "../../../utils/log-failure";
 import { fetchScreen } from "./client";
 import { appendScreenPage } from "./model";
 
@@ -35,7 +36,7 @@ export function useScreenResults(
   const moreController = useRef<AbortController | null>(null);
   const activeIdentity = useRef(identity);
   activeIdentity.current = identity;
-  const load = useCallback(async () => {
+  const fetchFirst = useCallback(async () => {
     controller.current?.abort();
     moreController.current?.abort();
     moreController.current = null;
@@ -72,14 +73,19 @@ export function useScreenResults(
       }));
     }
   }, [identity, fetcher]);
+  // Loads nobody waits on: their failures end in `error`, and anything else
+  // that escapes is logged.
+  const load = useCallback(() => {
+    fetchFirst().catch(logFailure("equity-screener.results", "Screen load failed"));
+  }, [fetchFirst]);
   useEffect(() => {
-    void load();
+    load();
     return () => {
       controller.current?.abort();
       moreController.current?.abort();
     };
   }, [load]);
-  const loadMore = useCallback(async () => {
+  const fetchMore = useCallback(async () => {
     const current = stateRef.current;
     if (
       current.identity !== identity ||
@@ -119,6 +125,9 @@ export function useScreenResults(
       if (moreController.current === request) moreController.current = null;
     }
   }, [identity, fetcher]);
+  const loadMore = useCallback(() => {
+    fetchMore().catch(logFailure("equity-screener.results", "Screen next page failed"));
+  }, [fetchMore]);
   return {
     ...(state.identity === identity
       ? state

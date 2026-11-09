@@ -260,7 +260,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   }, [forcedResult, returnToPresent, setSelectedKey]);
 
   const handleRootKeyDown = useCallback((event: DataTableKeyEvent) => (
-    handleRefreshKey(event, () => void calendar.reload(), { stopPropagation: true })
+    handleRefreshKey(event, () => calendar.reload(), { stopPropagation: true })
   ), [calendar.reload]);
 
   // The desktop and the web lead each country's code with its flag.

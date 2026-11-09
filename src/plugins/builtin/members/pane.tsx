@@ -11,7 +11,6 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
-import { logFailure } from "../../../utils/log-failure";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { useMembersMenu, type MemberList } from "../shared/members-menu";
 import { cachedChanges, cachedFunds, cachedMembers, cachedStockFunds, loadChanges, loadFunds, loadMembers, loadStockFunds } from "./client";
@@ -46,8 +45,8 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
   useMembersMenu("members:members-menu", memberList);
   // A Pro account's members are priced from the server's live read, renewed every 15 seconds.
   const live = data?.access === "realtime";
-  useAutoRefresh(resource.updatedAt, () => { if (active) void resource.load(live); }, { intervalMs: live ? LIVE_MEMBERS_REFRESH_MS : null });
-  usePaneRefreshKey(() => void resource.reload(), { focused, enabled: active && !search.active });
+  useAutoRefresh(resource.updatedAt, () => { if (active) resource.load(live); }, { intervalMs: live ? LIVE_MEMBERS_REFRESH_MS : null });
+  usePaneRefreshKey(() => resource.reload(), { focused, enabled: active && !search.active });
   const info = useMemo<PaneFooterSegment[]>(() => {
     if (!data) return [];
     // Outside the regular session a Pro account's members are the session's close, so the footer names it, not "live".
@@ -126,8 +125,8 @@ function Changes({ fund, width, height, focused, active }: ViewProps) {
   const detail = data?.changes.find((row) => row.id === opened);
   const selectedRow = detail ?? data?.changes.find((row) => row.id === selected) ?? data?.changes[0];
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
-  useAutoRefresh(resource.updatedAt, () => { if (active) void resource.load(); });
-  usePaneRefreshKey(() => void resource.reload(), { focused, enabled: active });
+  useAutoRefresh(resource.updatedAt, () => { if (active) resource.load(); });
+  usePaneRefreshKey(() => resource.reload(), { focused, enabled: active });
   useExternalLinkFooter({ registrationId: "members:source", focused, url: selectedRow?.url });
   usePaneStatusFooter({ registrationId: "members:changes", loading: !!data && resource.loading, stale: !!data && (data.stale || resource.data!.stale || !!resource.error),
     info: data?.asOf ? [{ id: "updated", parts: [{ text: `as of ${data.asOf.slice(0, 10)}`, tone: "muted" }] }] : [] });
@@ -185,7 +184,7 @@ function FundView({ fund, ...props }: Pick<PaneProps, "width" | "height" | "focu
 function FundPicker({ width, height, focused, choose }: Pick<PaneProps, "width" | "height" | "focused"> & { choose: (fund: string) => void }) {
   const resource = useAsyncResource(loadFunds, { initialData: cachedFunds });
   const [selected, setSelected] = useState<string | null>(null);
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneStatusFooter({ registrationId: "members:picker", loading: resource.loading && !!resource.data, stale: resource.data?.stale });
   return <PaneStatusBody subject="covered funds" loading={!resource.data && resource.loading} error={!resource.data ? resource.error : null}>
     {resource.data && <DataTableView items={resource.data.payload.funds} emptyStateTitle="No covered funds." rootWidth={width} rootHeight={height} focused={focused}
@@ -207,7 +206,7 @@ function StockFunds({ symbol, width, height, focused }: ListProps & { symbol: st
   const data = resource.data?.payload;
   const [selected, setSelected] = usePluginPaneState<string | null>(`holding:${symbol}`, null);
   const rows = useMemo(() => stockFundRows(data?.funds ?? []), [data]);
-  usePaneRefreshKey(() => void resource.reload().catch(logFailure("members.stock-funds", "Reload funds holding a stock failed")), { focused });
+  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneStatusFooter({ registrationId: "members:stock-funds", loading: !!data && resource.loading, stale: !!data && (resource.data!.stale || !!resource.error) });
   usePaneNoticeFooter({ registrationId: "members:stock-funds-notices", focused, notices: resource.error && data ? [resource.error] : [] });
   const renderCell = useCallback((item: SectionedRow<StockFund>, column: DataTableColumn): DataTableCell => {

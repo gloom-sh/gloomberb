@@ -45,7 +45,7 @@ test("relationship refresh retains a coherent dated pair on outages, discards de
   expect(first).toHaveLength(2);
   expect(calls.map(call => call.slice(2, 4))).toEqual([["1Y", "1d"], ["1Y", "1d"]]);
   failure = new Error("Provider timed out");
-  await act(async () => { await resource.reload(); });
+  await act(async () => { await resource.reloadAndWait(); });
   expect(resource).toMatchObject({ data: first, updatedAt: retrieved, error: "BTC-USD: Provider timed out", loading: false });
   expect(calls.at(-1)?.[4]).toEqual({ cacheMode: "refresh" });
   failure = null;
@@ -56,6 +56,6 @@ test("relationship refresh retains a coherent dated pair on outages, discards de
   expect(resource.data?.[0]?.points).toHaveLength(6);
   failure = new Error("Provider timed out");
   peerFailure = new ApiRequestError("Listing removed", 404);
-  await act(async () => { await resource.reload(); });
+  await act(async () => { await resource.reloadAndWait(); });
   expect(resource).toMatchObject({ data: null, updatedAt: null, error: "SPY:ARCX: Listing removed" });
 });

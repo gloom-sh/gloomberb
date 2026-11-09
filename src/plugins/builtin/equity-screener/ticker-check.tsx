@@ -58,10 +58,10 @@ export function ScreenTickerCheck({
     const next = value.trim();
     if (!next) return;
     search.blur();
-    if (next === ticker) void resource.reload();
+    if (next === ticker) resource.reload();
     else setTicker(next);
   };
-  usePaneRefreshKey(() => { void resource.reload(); }, { focused, enabled: !!ticker && !search.active });
+  usePaneRefreshKey(() => { resource.reload(); }, { focused, enabled: !!ticker && !search.active });
   usePaneFooter("equity-screener:check", () => ({
     info: [
       ...(loading ? [{ id: "loading", parts: [{ text: "checking ticker", tone: "muted" as const }] }] : []),

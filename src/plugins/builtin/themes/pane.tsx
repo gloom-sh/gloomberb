@@ -23,10 +23,10 @@ type SnapshotPayload = { asOf: string; stale: boolean; access?: "realtime" | "de
  * Refreshes a board on the user's interval, or every 15 seconds while it is
  * live: a Pro account's prices are renewed that often on the server.
  */
-function useBoardRefresh(resource: { updatedAt: number | null; load: (force?: boolean) => Promise<unknown>; data: { payload: SnapshotPayload } | null }) {
+function useBoardRefresh(resource: { updatedAt: number | null; load: (force?: boolean) => void; data: { payload: SnapshotPayload } | null }) {
   const live = isLiveBoard(resource.data?.payload);
   const { load } = resource;
-  useAutoRefresh(resource.updatedAt, live ? () => void load(true) : () => void load(), { intervalMs: live ? LIVE_BOARD_REFRESH_MS : null });
+  useAutoRefresh(resource.updatedAt, live ? () => load(true) : () => load(), { intervalMs: live ? LIVE_BOARD_REFRESH_MS : null });
 }
 
 function useSnapshotFooter(id: string, resource: { loading: boolean; error: string | null; data: { payload: SnapshotPayload; stale: boolean; refreshError: string | null } | null }, focused: boolean, enabled = true) {
@@ -69,7 +69,7 @@ function Members({ id, width, height, focused }: { id: string; width: number; he
   const columns = useMemo(() => memberColumns(width, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : [], ytdBase),
     [extendedSessionsKey, width, ytdBase]);
   useBoardRefresh(resource);
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  usePaneRefreshKey(() => resource.reload(), { focused });
   useSnapshotFooter("themes:members", resource, focused);
   const memberList = useMemo(() => data ? { title: data.theme.name, watchlistName: data.theme.name, members: rows } : null, [data, rows]);
   useMembersMenu("themes:members-menu", memberList);
@@ -127,7 +127,7 @@ export function ThemesBoard({ width, height, focused, tabStrip, tabRows = 0 }: T
   const columns = useMemo(() => themeColumns(width, data?.themes ?? [], data ? boardYtdBase(data) : null), [width, data]);
   const theme = opened && data ? matchTheme(data.themes, opened) : null;
   useBoardRefresh(resource);
-  usePaneRefreshKey(() => void resource.reload(), { focused, enabled: !opened });
+  usePaneRefreshKey(() => resource.reload(), { focused, enabled: !opened });
   useSnapshotFooter("themes:list", resource, focused, !opened || !data);
   const renderCell = useCallback((row: ThemeSummary, column: DataTableColumn): DataTableCell => {
     if (column.id === "name") return { text: row.name, color: colors.textBright };

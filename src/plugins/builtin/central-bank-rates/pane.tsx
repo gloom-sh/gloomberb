@@ -58,7 +58,7 @@ export function CentralBankRatesPane({ width, height, focused }: PaneProps) {
   const selected = rows.find((row) => row.id === openId) ?? rows.find((row) => row.id === selectedId);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "central-bank-rates:notices", focused,
     notices: [...(data ? policyNotices(data) : []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: "central-bank-rates", focused, loading: resource.loading, error: resource.error,

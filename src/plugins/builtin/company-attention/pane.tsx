@@ -167,7 +167,7 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
   const series = useMemo(() => model ? attentionSeries(model, colors.textBright) : [], [model, colors.textBright]);
   const chartSelection = useChartTableSelection({ rows, getId: rowId, getDate: rowDate, selectedId: selected?.id ?? null, onSelect: setSelected, focused: focused && !detailOpen, enabled: tab === "chart" });
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => { void resource.reload(); paged.reload(); }, { focused: focused && !detailOpen && !moves });
+  usePaneRefreshKey(() => { resource.reload(); paged.reload(); }, { focused: focused && !detailOpen && !moves });
   const selectedSymbol = selected?.symbol ?? symbol;
   const source = (evidence ? posting?.url ?? evidence.url : null) ?? selected?.url;
   const hints: PaneHint[] = [

@@ -105,7 +105,7 @@ export function CryptoEtfFlowsPane({ focused, width, height }: PaneProps) {
     ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : []),
   ] : [], [data, updatedAgo]);
   useAutoRefresh(resource.updatedAt, resource.load);
-  const refresh = useCallback(() => void resource.reload(), [resource.reload]);
+  const refresh = useCallback(() => resource.reload(), [resource.reload]);
   usePaneRefreshKey(refresh, { focused });
   usePaneStatusLinkFooter({
     registrationId: CRYPTO_ETF_FLOWS_PANE_ID, focused, loading: resource.loading, error: data ? null : resource.error,

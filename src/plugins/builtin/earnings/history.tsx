@@ -116,7 +116,7 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
   const historyError = noEarnings.loading || noEarnings.data ? null : resource.error;
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => { void resource.reload(); void upcoming.reload(); }, { focused });
+  usePaneRefreshKey(() => { resource.reload(); upcoming.reload(); }, { focused });
   usePaneStatusFooter({
     registrationId,
     loading: resource.loading,

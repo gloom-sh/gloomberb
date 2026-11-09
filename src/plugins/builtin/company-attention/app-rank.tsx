@@ -50,7 +50,7 @@ export function AppRankView({ focus, accessKey, width, height, focused }: { focu
   const selection = useChartTableSelection({ rows: points, getId: id, getDate: date, selectedId: selected ? id(selected) : null, onSelect: setSelected, focused });
   const series = useMemo(() => attentionSeries({ chart: { label: `${focus.name} rank`, unit: "rank", points: points.map((point) => ({ date: point.date, value: point.rank })) } }, colors.textBright), [points, focus.name, colors.textBright]);
   const { strip, rows: tabRows } = usePaneTabs({ tabs: [{ value: "chart", label: "Chart" }, { value: "evidence", label: "Evidence" }], activeValue: tab, onSelect: setTab, focused, dense: true, queryBarWidth: width });
-  usePaneRefreshKey(() => { void resource.reload(); pages.reload(); }, { focused });
+  usePaneRefreshKey(() => { resource.reload(); pages.reload(); }, { focused });
   usePaneStatusFooter({ registrationId: `apps-rank:${key}`, loading: resource.loading || pages.loadingMore, error: resource.error ?? resource.data?.refreshError ?? pages.moreError?.message ?? pages.error?.message, stale: resource.data?.stale,
     info: [...(points[0] ? [{ id: "observed", asOf: true, parts: [{ text: `as of ${points[0].observedAt.slice(0, 10)}`, tone: "muted" as const }] }] : []), ...(data?.access === "preview" ? [{ id: "preview", parts: [{ text: "Pro preview", tone: "warning" as const }] }] : [])],
     hints: [...(selected ? [{ id: "source", key: "o", label: "pen source", onPress: () => void host.openExternal(selected.sourceUrl) }] : []), ...(data?.access === "preview" ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: upgrade }] : [])] });

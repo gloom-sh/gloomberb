@@ -144,7 +144,7 @@ export function CpiPane({ width, height, focused }: PaneProps) {
   // The server not serving the board yet is a state of the data, not a failure.
   const notAvailable = !data && resource.error === CPI_NOT_AVAILABLE;
   useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "cpi:notices", focused,
     notices: [...(data?.gaps ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusFooter({ registrationId: "cpi", loading: resource.loading, error: notAvailable ? null : resource.error,

@@ -33,11 +33,41 @@ test("only the newest request may publish data or an error", async () => {
     return force ? second.promise : first.promise;
   });
   let refresh: Promise<void>;
-  await act(async () => { refresh = resource.reload(); });
+  await act(async () => { refresh = resource.reloadAndWait(); });
   await act(async () => { second.resolve("new"); await refresh; });
   await act(async () => { first.reject(new Error("old failure")); });
   expect(forces).toEqual([false, true]);
   expect(resource).toMatchObject({ data: "new", loading: false, error: null });
+});
+
+test("reload starts a forced load and returns nothing; reloadAndWait settles once the answer or failure is in", async () => {
+  const forces: boolean[] = [];
+  let answer = Promise.withResolvers<string>();
+  await mount((force) => {
+    forces.push(force);
+    return answer.promise;
+  });
+  await act(async () => { answer.resolve("first"); });
+  answer = Promise.withResolvers<string>();
+  let started: unknown = null;
+  await act(async () => { started = resource.reload(); });
+  expect(started).toBeUndefined();
+  expect(resource.loading).toBe(true);
+  await act(async () => { answer.resolve("second"); });
+  expect(resource).toMatchObject({ data: "second", loading: false });
+
+  answer = Promise.withResolvers<string>();
+  let settled = false;
+  let waiting!: Promise<void>;
+  await act(async () => { waiting = resource.reloadAndWait().then(() => { settled = true; }); });
+  expect(settled).toBe(false);
+  await act(async () => {
+    answer.reject(new Error("offline"));
+    await waiting;
+  });
+  expect(settled).toBe(true);
+  expect(resource).toMatchObject({ data: "second", loading: false, error: "offline" });
+  expect(forces).toEqual([false, true, true]);
 });
 
 test("changing, disabling, and unmounting a resource invalidate pending work", async () => {
@@ -65,7 +95,7 @@ test.each([false, true])("refresh failure clears data only when configured: %s",
     return "cached";
   }, clearOnError);
   await act(async () => {
-    await resource.reload();
+    await resource.reloadAndWait();
   });
   expect(resource).toMatchObject({
     data: clearOnError ? null : "cached",
@@ -111,11 +141,11 @@ test("error policy retains the original retrieval time through an outage and cle
   expect(retrievedAt).not.toBeNull();
   const outage = new Error("Provider timed out");
   failure = outage;
-  await act(async () => { await resource.reload(); });
+  await act(async () => { await resource.reloadAndWait(); });
   expect(resource).toMatchObject({ data: "known research", updatedAt: retrievedAt, error: outage.message });
   const denial = new Error("Access denied");
   failure = denial;
-  await act(async () => { await resource.reload(); });
+  await act(async () => { await resource.reloadAndWait(); });
   expect(resource).toMatchObject({ data: null, updatedAt: null, error: denial.message });
   expect(seen).toEqual([outage, denial]);
 });

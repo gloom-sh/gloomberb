@@ -105,7 +105,7 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
   const link = useChartTableSelection({ rows: rows.filter((row) => row.year !== undefined), getId: rowId, getDate: (row) => new Date(Date.UTC(row.year!, 0, 1)), selectedId: selected?.id ?? null, onSelect: setSelected, focused: focused && !openInstrument, enabled: tab === "maturities" });
   useAutoRefresh(resource.updatedAt, resource.load);
   useAutoRefresh(screen.updatedAt, screen.load);
-  usePaneRefreshKey(() => { void resource.reload(); if (tab === "screen") void screen.reload(); }, { focused });
+  usePaneRefreshKey(() => { resource.reload(); if (tab === "screen") screen.reload(); }, { focused });
   const currentError = tab === "screen" ? screen.error : resource.error;
   const available = tab === "screen" ? !!screenData : !!data;
   const loading = tab === "screen" ? screen.loading : resource.loading;

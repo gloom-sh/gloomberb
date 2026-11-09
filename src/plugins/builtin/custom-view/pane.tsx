@@ -114,7 +114,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
     const controller = new AbortController();
     return loadViewSource(spec, config, controller.signal);
   }, [config, spec, specError]);
-  const { data, loading, error, reload, updatedAt } = useAsyncResource(spec ? loader : null);
+  const { data, loading, error, reload, reloadAndWait, updatedAt } = useAsyncResource(spec ? loader : null);
   useAutoRefresh(updatedAt, reload);
 
   useEffect(() => {
@@ -253,7 +253,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
           });
           teamViewsStore.upsert(published);
           notify({ body: `Published ${published.name} r${published.revision}.`, type: "success" });
-          void reload();
+          reload();
         } catch (error) {
           if (!(error instanceof TeamRevisionConflictError)) throw error;
           const choice = await dialog.prompt<string>({
@@ -278,7 +278,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
             teamViewsStore.upsert(published);
             notify({ body: `Published ${published.name} r${published.revision}.`, type: "success" });
           }
-          void reload();
+          reload();
         }
         return;
       }
@@ -341,7 +341,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
     if (!focused) return;
     if (event.name === "r" && !event.ctrl && !event.meta) {
       event.preventDefault?.();
-      void reload();
+      reload();
     } else if (isPlainKey(event, "t") && spec) {
       event.preventDefault?.();
       void publishToTeam();
@@ -371,7 +371,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
       <PaneStatusBody
         error={error}
         errorTitle="This view could not load."
-        retry={{ onRetry: reload }}
+        retry={{ onRetry: reloadAndWait }}
       />
     );
   }

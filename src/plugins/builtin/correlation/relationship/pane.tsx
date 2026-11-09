@@ -212,7 +212,7 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
     return true;
   }, [alignedDates]);
 
-  usePaneRefreshKey(() => { void reload(); }, { focused });
+  usePaneRefreshKey(() => { reload(); }, { focused });
   useShortcut((event) => {
     if (!focused) return;
     if (isPlainKey(event, "home", "end") && jumpCursor(event.name)) {
