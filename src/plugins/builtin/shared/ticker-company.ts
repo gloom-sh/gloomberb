@@ -4,6 +4,7 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { CompanyProfile } from "../../../types/financials";
 import { shortCompanyName } from "../../../tickers/company-name";
 import { classifyInstrumentKind } from "../../../tickers/search/ranking";
+import { logFailure } from "../../../utils/log-failure";
 
 /**
  * A search typed as a ticker (`TRIAL VKTX`, `FDA AZN`): one to five letters,
@@ -86,7 +87,7 @@ async function tickerListedCompany(
       throw error;
     }),
     // What it does is a detail: a profile that could not be read leaves the name to tell.
-    Promise.resolve().then(() => dataProvider.getTickerFinancials(symbol, "")).catch(() => null),
+    Promise.resolve().then(() => dataProvider.getTickerFinancials(symbol, "")).catch(logFailure("ticker-company", `Read ${symbol}'s profile failed`, null)),
   ]);
   const legalName = quote?.name?.trim();
   const kind = classifyInstrumentKind(quote?.instrumentType);
