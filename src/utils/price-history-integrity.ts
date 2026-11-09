@@ -83,6 +83,17 @@ export function pricePointWicks(point: PricePoint): { high: number | undefined; 
   };
 }
 
+/**
+ * "2 bars came from the source at a tenth or a hundredth of their price; shown scaled back to the bars around them.",
+ * or undefined for none: the bars served in the wrong unit (`PricePoint.rescaled`), as `history` flags them rescaled.
+ */
+export function priceHistoryRescaleNotice(points: readonly Pick<PricePoint, "rescaled">[]): string | undefined {
+  const count = points.filter(({ rescaled }) => rescaled != null && Number.isFinite(rescaled) && rescaled > 0 && rescaled !== 1).length;
+  return count > 0
+    ? `${count === 1 ? "1 bar" : `${count} bars`} came from the source in the wrong unit; shown scaled back to the bars around ${count === 1 ? "it" : "them"}.`
+    : undefined;
+}
+
 /** "1 bar has a low or high too far from its open and close to have traded; left out of ranges.", or undefined for none. */
 export function priceHistoryWickNotice(count: number): string | undefined {
   return count > 0

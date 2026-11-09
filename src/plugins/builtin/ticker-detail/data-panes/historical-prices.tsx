@@ -28,7 +28,7 @@ import {
 } from "../../../../cli/history-rows";
 import {
   MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, pricePointWickFlags, priceHistoryIntegrityNotice,
-  priceHistoryWickNotice,
+  priceHistoryRescaleNotice, priceHistoryWickNotice,
 } from "../../../../utils/price-history-integrity";
 import {
   useAssetData,
@@ -285,6 +285,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   );
   const integrityNotice = priceHistoryIntegrityNotice(rows.filter((row) => row.point.integrity).length);
   const wickNotice = useMemo(() => priceHistoryWickNotice(points.filter((point) => pricePointWickFlags(point).length > 0).length), [points]);
+  const rescaleNotice = useMemo(() => priceHistoryRescaleNotice(points), [points]);
   const volumeMissing = useMemo(() => missingVolumeCount(rows.map((row) => ({
     ...row.point, date: row.time, partial: row.partial, filled: row.filled,
   }))), [rows]);
@@ -390,7 +391,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
 
   usePaneNoticeFooter({
     registrationId: "historical-prices:integrity",
-    notices: [integrityNotice, wickNotice, volumeNotice, ...gapNotices].filter((notice): notice is string => !!notice),
+    notices: [integrityNotice, wickNotice, rescaleNotice, volumeNotice, ...gapNotices].filter((notice): notice is string => !!notice),
     focused,
     title: "Price history data",
   });
@@ -441,6 +442,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
         ...(allStart ? [["Source starts", allStart]] : []),
         ...(integrityNotice ? [["Warning", integrityNotice]] : []),
         ...(wickNotice ? [["Warning", wickNotice]] : []),
+        ...(rescaleNotice ? [["Warning", rescaleNotice]] : []),
         ...gapNotices.map((notice) => ["Gap note", notice]),
         ...(volumeNotice ? [["Volume note", volumeNotice]] : []),
         ...(error ? [["Error", error]] : []),
