@@ -441,8 +441,9 @@ const SLASH_CLASS = /^([A-Z]{2,5})\/([A-Z])$/;
 /**
  * `700.HK`, `03042.HK`, `00700:HKEX`: a Hong Kong code without its leading
  * zeros, or with the five digits HKEXnews and the Product Key Facts print.
+ * `3042.HKG` is the suffix some data vendors write for HKEX.
  */
-const HONG_KONG_CODE = /^(\d{1,5})(\.HK|:HKEX)$/;
+const HONG_KONG_CODE = /^(\d{1,5})(\.HKG?|:HKEX)$/;
 
 /** A Hong Kong code as the app keys it: four digits at least (0700, 3042, 83042). */
 function hongKongWorkingCode(digits: string): string | null {
@@ -477,7 +478,8 @@ export function readNearMissListing(raw: string): NearMissListing | null {
   if (slash) return { typed, symbol: `${slash[1]}-${slash[2]}` };
   const hongKong = HONG_KONG_CODE.exec(upper);
   const code = hongKong ? hongKongWorkingCode(hongKong[1]!) : null;
-  if (hongKong) return code && code !== hongKong[1] ? { typed, symbol: `${code}${hongKong[2]}` } : null;
+  const suffix = hongKong?.[2] === ".HKG" ? ".HK" : hongKong?.[2];
+  if (hongKong) return code && (code !== hongKong[1] || suffix !== hongKong[2]) ? { typed, symbol: `${code}${suffix}` } : null;
   const suffixed = MARKET_SUFFIX.exec(upper);
   if (!suffixed || !MARKET_SUFFIX_CODES.has(suffixed[2]!) || tickerHasListingSuffix(upper)) return null;
   const venue = BLOOMBERG_MARKETS[suffixed[2]!]!.venues[0]!;

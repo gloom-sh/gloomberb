@@ -255,6 +255,26 @@ test("quote's change basis follows Chg% in the table, with the holiday under it,
   }
 });
 
+test("a nominal price's Updated names the session it is the close of, not the last print, and the note keeps the last trade", async () => {
+  // 9042:HKEX on Mon 9 Nov 2026: Friday's nominal close, its last print Wednesday's, its last trade 29 Oct.
+  const usd: Quote = { symbol: "9042.HK", name: "ChinaAMC Bitcoin ETF (USD counter)", currency: "USD", price: 1.172, change: -0.072, changePercent: -5.7878,
+    previousClose: 1.244, previousCloseDate: "2026-11-05", changeSessionDate: "2026-11-06", marketState: "REGULAR", listingExchangeName: "HKEX", exchangeName: "HKEX",
+    lastUpdated: Date.parse("2026-11-04T03:32:16Z"), stale: true, volume: 0, nominalPrice: { session: "2026-11-06", lastTraded: "2026-10-29" } };
+  setSystemTime(new Date("2026-11-09T03:40:00Z"));
+  try {
+    const cli = createTestCliContext({ config, dataProvider: { getQuotesBatch: async () => [{ target: { symbol: usd.symbol, exchange: "" }, quote: usd }] } });
+    await marketDataCliCommands.find((command) => command.name === "quote")!.execute([usd.symbol], cli.context);
+    const [{ result, options }] = cli.printed as [PrintedCliResult];
+    const text = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "text" }, options);
+    expect(text).toMatch(/nominal +6 Nov close\n/);
+    expect(text).not.toContain("2026-11-04 03:32");
+    expect(result.warnings?.join("\n") ?? text).toContain("no trades since Thu 29 Oct, nominal price");
+    expect(JSON.stringify(result.data)).toContain('"lastTraded":"2026-10-29"');
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("a pre-market nothing has traded in reads as the close it stands at in quote, QQ, the boards and the watchlist, and exports keep the state", async () => {
   // PLTR on Fri 16 Oct 2026 at 08:14 UTC: no pre-market trade; the price is Thursday's last after-hours print at 23:59 UTC.
   const waiting: Quote = {

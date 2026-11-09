@@ -61,7 +61,7 @@ import {
   ratingReason,
 } from "../../plugins/builtin/research/analyst-model";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
-import { awaitingFirstDelayedPrint, isQuoteStaleForCurrentSession, noPrintsTodayText, nominalPriceText } from "../../market-data/quotes/freshness";
+import { awaitingFirstDelayedPrint, isQuoteStaleForCurrentSession, noPrintsTodayText, nominalPriceText, nominalSessionLabel } from "../../market-data/quotes/freshness";
 import {
   coinOptionsAlternativesText, isCoinWithoutOptions, isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle,
 } from "../../market-data/options-alternatives";
@@ -709,7 +709,9 @@ function quoteColumns() {
       stackPriority: 4,
       format: (value: unknown) => value === "stale" || value === "nominal" ? cliStyles.warning(value) : String(value ?? ""),
     },
-    { key: "updatedAt", header: "Updated", shrink: false, stackPriority: 5 },
+    // A nominal price names the session it is from ("6 Nov close"), not the last print; JSON keeps both.
+    { key: "updatedAt", header: "Updated", shrink: false, stackPriority: 5,
+      format: (value: unknown, row: QuoteRow) => row.nominalLabel || (typeof value === "string" ? formatUtcTime(value) : "") },
     ...CHANGE_BASIS_EXPORT_COLUMNS,
     ...EXTENDED_CHANGE_EXPORT_COLUMNS,
   ];
@@ -885,6 +887,8 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       // Last, so a row read by position keeps every field where it was.
       changeBasis: predates ? "" : basisLabel(result, now),
       changeBasisNote: changeBasisNote(rowChangeBasis(result), now) ?? "",
+      // A price nothing traded at names the venue session it is the nominal close of; the quote keeps its last trade.
+      ...quote?.nominalPrice ? { nominalLabel: nominalSessionLabel(quote) ?? undefined } : {},
     };
   });
 }
