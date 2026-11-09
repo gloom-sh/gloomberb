@@ -375,6 +375,16 @@ const COMMAND_POINTERS: ReadonlyArray<{
     line: "FX forwards implied by both currencies' short rates (covered interest parity), with forward points, the hedge cost and, for an amount, the carry and who earns it: gloom fx 5000000 USD/MXN --forward 30d",
   },
   {
+    // A fund that hedges its currency beside one that does not is the hedged view; FXC's crosses are not one, and a
+    // single stock has no hedged series. Each fund named is one `quote` answers (2026-11-09).
+    names: ["hedged", "unhedged"],
+    words: ["yen", "jpy", "currency", "fx", "japan", "japanese", "nikkei", "topix", "etf", "etfs", "fund", "funds", "return", "returns",
+      "vs", "versus", "and", "or", "against", "view", "equity", "equities", "stocks", "performance", "compare", "comparison", "chart"],
+    line: "Hedged against unhedged: gloom fn CMP DXJ HEWJ EWJ --total-return true (DXJ and HEWJ hedge the yen, EWJ does not); "
+      + "add --currency HKD for each fund's unhedged return in your currency.",
+    leads: true,
+  },
+  {
     names: ["defi", "tvl", "tvls", "total value locked", "on-chain", "onchain", "aave", "lido", "eigenlayer", "morpho"],
     words: ["protocol", "protocols", "chain", "chains", "crypto", "data", "top", "by", "history",
       "change", "ranking", "rankings", "dashboard", "lending", "staking"],

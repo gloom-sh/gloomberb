@@ -221,6 +221,23 @@ test("NIM, deposits, CRE and bank are pointed at the Bank section of fundamental
   }
 });
 
+// "yen hedged" opened FX Cross Rates, which has no hedged view.
+test("a hedged query leads with CMP on hedged and unhedged Japan funds, which the catalog finds by the same words", async () => {
+  const line = "Hedged against unhedged: gloom fn CMP DXJ HEWJ EWJ --total-return true (DXJ and HEWJ hedge the yen, EWJ does not); "
+    + "add --currency HKD for each fund's unhedged return in your currency.";
+  for (const query of ["yen hedged", "hedged", "currency hedged etf", "hedged vs unhedged japan"]) expect(commandPointer(query), query).toBe(line);
+  expect(commandPointerLeads("yen hedged")).toBe(true);
+  for (const query of ["hedge fund", "hedged bond yield"]) expect(commandPointer(query), query).not.toBe(line);
+  const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const shown = selectPaneCatalogMatches(filterPaneCatalogEntries(await buildPaneCatalogEntries(registry, context), "yen hedged"), "yen hedged", 5).shown;
+    expect(shown[0]?.token).toBe("CMP");
+  } finally {
+    registry.destroy();
+  }
+});
+
 test("an income or reinvestment query names portfolio show --drip; a statement or margin query does not", () => {
   const line = "Portfolio income, yield and DRIP projection: gloom portfolio show <name> --drip";
   for (const query of ["drip", "DRIP projection", "reinvest", "dividend reinvestment", "dividend income", "my portfolio income"]) {

@@ -166,7 +166,8 @@ export const paneSchemas = {
         key: "currency",
         type: "string",
         placeholder: "code",
-        description: "Convert every ticker into this currency at each day's FX close, so the returns carry its move against theirs",
+        description: "Convert every ticker into this currency at each day's FX close, so the returns carry its move against theirs: "
+          + "each one's unhedged return in that currency",
         example: "--currency USD",
         normalize: normalizeCurrencyCode,
       },
@@ -182,7 +183,8 @@ export const paneSchemas = {
     ],
     discovery: {
       id: "price-comparison",
-      aliases: ["stock comparison", "price performance comparison", "returns comparison", "compare stock prices"],
+      aliases: ["stock comparison", "price performance comparison", "returns comparison", "compare stock prices", "hedged vs unhedged",
+        "currency hedged"],
       limitations: ["Compares closing-price changes over shared observation dates, in each listing's currency unless currency is set, which converts each close at that day's FX close. Cash distributions are excluded unless totalReturn is set, which reinvests each distribution at its ex-date close."],
       screenshotReadiness: "ready",
     },
