@@ -128,10 +128,13 @@ async function resolvePaneTemplateOptions(
   // nothing is named and no ticker is active; with one active it opens on it.
   const tickerNamed = !!(resolvedOptions?.symbol?.trim() || resolvedOptions?.arg?.trim() || resolvedOptions?.ticker);
   const opensWithoutTicker = !!template.shortcut?.argOptional || (!!template.shortcut?.openWithoutArg && !baseContext.activeTicker);
-  const resolvesTicker = template.shortcut?.argPlaceholder === "ticker" && (tickerNamed || !opensWithoutTicker);
+  // A ticker function that also takes several (INS MO,PM,LMT) opens on the list as given; one of them is its ticker.
+  const listed = resolvedOptions?.symbols?.length ?? 0;
+  const resolvesTicker = template.shortcut?.argPlaceholder === "ticker" && listed <= 1 && (tickerNamed || !opensWithoutTicker);
+  const named = resolvedOptions?.symbol ?? (listed === 1 ? resolvedOptions?.symbols?.[0] : undefined) ?? resolvedOptions?.arg;
   if (resolvesTicker) {
     if (resolvedOptions?.instrument === null && !resolvedOptions.ticker) {
-      const publicQuery = resolvedOptions.symbol ?? resolvedOptions.arg ?? baseContext.activeTicker ?? "";
+      const publicQuery = named ?? baseContext.activeTicker ?? "";
       const publicTarget = await resolveTickerOpenTarget({ query: publicQuery,
         tickers: state.tickers, tickerRepository: deps.tickerRepository, dataProvider: deps.dataProvider, publicOnly: true });
       if (!publicTarget) throw new Error(tickerOpenFailureMessage(publicQuery.trim().toUpperCase()));
@@ -139,14 +142,14 @@ async function resolvePaneTemplateOptions(
       if (publicTarget.created) deps.pluginRegistry.events.emit("ticker:added", { symbol: publicTarget.symbol, ticker: publicTarget.ticker });
       resolvedOptions = { ...resolvedOptions, symbol: publicTarget.symbol, ticker: publicTarget.ticker, listing: resolvedOptions.listing ?? publicTarget.listing };
     }
-    const requested = resolvedOptions?.symbol ?? resolvedOptions?.arg;
+    const requested = named;
     const activeTicker = baseContext.activeTicker && baseContext.activeInstrument !== undefined
       && (!requested || requested === baseContext.activeTicker) ? state.tickers.get(baseContext.activeTicker) : undefined;
     const resolvedTicker: Pick<ResolvedTickerInput, "symbol" | "ticker" | "instrument" | "listing"> = resolvedOptions?.ticker && resolvedOptions.ticker.metadata.ticker === resolvedOptions.symbol
       ? { symbol: resolvedOptions.symbol, ticker: resolvedOptions.ticker }
       : activeTicker ? { symbol: activeTicker.metadata.ticker, ticker: activeTicker }
       : await resolveTickerInputOrThrow(
-      resolvedOptions?.symbol ?? resolvedOptions?.arg,
+      named,
       baseContext.activeTicker,
       baseContext.activeCollectionId,
       deps,

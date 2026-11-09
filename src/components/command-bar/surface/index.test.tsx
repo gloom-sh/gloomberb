@@ -832,7 +832,34 @@ describe("CommandBar", () => {
       await tui.setup().renderOnce();
     });
 
-    expect(created.map(({ templateId, options }) => [templateId, options?.symbol])).toEqual([["insider-pane", symbol]]);
+    // The bar reads INS's argument as a list, as `fn INS` does: the active ticker is its one symbol.
+    expect(created.map(({ templateId, options }) => [templateId, options?.symbols?.[0]])).toEqual([["insider-pane", symbol]]);
+  });
+
+  // `fn INS MO,PM,LMT` reads three companies; the bar took one ticker only.
+  test("INS takes several tickers: one window over the list", async () => {
+    const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
+    await tui.render(<CommandBarHarness
+      query="INS AAPL,MSFT"
+      configurePluginRegistry={(pluginRegistry) => {
+        mutablePaneRegistryMap(pluginRegistry.paneTemplates).set("insider-pane", insiderModule.paneTemplates![0]!);
+        pluginRegistry.createPaneFromTemplateAsync = async (templateId, options) => {
+          created.push({ templateId, options });
+        };
+      }}
+    />, { width: 100, height: 20 });
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain("Shortcut: Insider · AAPL,MSFT");
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await Bun.sleep(0);
+      await tui.setup().renderOnce();
+    });
+    expect(created.map(({ templateId, options }) => [templateId, options?.symbols])).toEqual([["insider-pane", ["AAPL", "MSFT"]]]);
+    const template = insiderModule.paneTemplates![0]!;
+    expect(template.createInstance!({} as never, created[0]!.options)).toMatchObject({
+      title: "INS AAPL, MSFT", binding: { kind: "none" }, settings: { symbols: ["AAPL", "MSFT"] },
+    });
   });
 
   test("consumes enter before focused pane shortcuts when executing a pane shortcut", async () => {

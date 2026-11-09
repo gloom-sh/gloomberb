@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type SetStateAction } from "react";
 import type { PluginModule } from "../plugin-module";
-import type { PaneProps } from "../../../types/plugin";
+import type { PaneProps, PaneTemplateDef } from "../../../types/plugin";
 import type { TickerRecord } from "../../../types/ticker";
 import type { InsiderSignalSide } from "../../../api-client/insider-signals";
 import { useAppDispatch, useAppSelector, useAppStateRef, usePaneInstance } from "../../../state/app/context";
@@ -73,6 +73,8 @@ import { renderInsiderCell } from "./table";
 import { InsiderDetail, insiderDetailTitle } from "./detail";
 import { InsiderActivityView, type InsiderViewControl } from "./insiders";
 import { InsiderSignalsView, type InsiderOpenedCompany } from "./signals";
+import { InsiderTickersView } from "./tickers";
+import { formatTickerListInput } from "../../../tickers/list";
 import { DEFAULT_INSIDER_SIGNAL_WINDOW, insiderSignalsCache } from "./signals-client";
 import { INSIDER_SIGNALS_TITLE, INSIDER_VIEW_OPTIONS, insiderSignalsQueryFrom, insiderViewMode, type InsiderViewMode } from "./signals-model";
 
@@ -168,8 +170,8 @@ interface StackedTradesState {
   openItemId: string | null;
 }
 
-const freshTradesState = (tickerKey: string): StackedTradesState => ({
-  tickerKey, selectedId: null, nameFilter: null, typeFilter: DEFAULT_INSIDER_TYPE_FILTER, openItemId: null,
+const freshTradesState = (tickerKey: string, insider: string | null = null): StackedTradesState => ({
+  tickerKey, selectedId: null, nameFilter: insider, typeFilter: insider ? "trades" : DEFAULT_INSIDER_TYPE_FILTER, openItemId: null,
 });
 
 /**
@@ -179,7 +181,7 @@ const freshTradesState = (tickerKey: string): StackedTradesState => ({
  * open, so opening it again, or another company, starts clean: no trade
  * still open, no filter left on the last insider.
  */
-function useInsiderTradesState(tickerKey: string, stacked: boolean): InsiderTradesState {
+function useInsiderTradesState(tickerKey: string, stacked: boolean, insider: string | null = null): InsiderTradesState {
   const [paneSelectedId, setPaneSelectedId] = usePluginPaneState<string | null>(`insider:selectedId:${tickerKey}`, null);
   const [paneNameFilter, setPaneNameFilter] = usePluginPaneState<string | null>(`insider:nameFilter:${tickerKey}`, null);
   const [paneTypeFilter, setPaneTypeFilter] = usePluginPaneState<InsiderTypeFilter>("insider:typeFilter", DEFAULT_INSIDER_TYPE_FILTER);
@@ -188,11 +190,11 @@ function useInsiderTradesState(tickerKey: string, stacked: boolean): InsiderTrad
     (itemId: string | null) => setPaneOpenItemIdState(itemId, { immediate: true }),
     [setPaneOpenItemIdState],
   );
-  const [stackedState, setStackedState] = useState<StackedTradesState>(() => freshTradesState(tickerKey));
+  const [stackedState, setStackedState] = useState<StackedTradesState>(() => freshTradesState(tickerKey, insider));
   const stackedSetters = useMemo(() => {
     const setter = <K extends "selectedId" | "nameFilter" | "typeFilter" | "openItemId">(field: K) =>
       (value: SetStateAction<StackedTradesState[K]>) => setStackedState((current) => {
-        const base = current.tickerKey === tickerKey ? current : freshTradesState(tickerKey);
+        const base = current.tickerKey === tickerKey ? current : freshTradesState(tickerKey, insider);
         const next = typeof value === "function" ? (value as (previous: StackedTradesState[K]) => StackedTradesState[K])(base[field]) : value;
         return { ...base, [field]: next };
       });
@@ -202,10 +204,10 @@ function useInsiderTradesState(tickerKey: string, stacked: boolean): InsiderTrad
       setTypeFilter: setter("typeFilter"),
       setOpenItemId: setter("openItemId") as (itemId: string | null) => void,
     };
-  }, [tickerKey]);
+  }, [insider, tickerKey]);
 
   if (stacked) {
-    const current = stackedState.tickerKey === tickerKey ? stackedState : freshTradesState(tickerKey);
+    const current = stackedState.tickerKey === tickerKey ? stackedState : freshTradesState(tickerKey, insider);
     return { ...current, ...stackedSetters };
   }
   return {
@@ -591,12 +593,14 @@ function usePaneInsiderViewControl(): InsiderViewControl {
  * A company opened from the ranking passes its ticker, which the pane does
  * not have, and the ranking's choices.
  */
-function InsiderView({ width, height, focused, ticker: openedTicker, control: openedControl, stackTitle, onDetailChange }: {
+function InsiderView({ width, height, focused, ticker: openedTicker, control: openedControl, insider, stackTitle, onDetailChange }: {
   width: number;
   height: number;
   focused: boolean;
   ticker?: TickerRecord | null;
   control?: InsiderViewControl;
+  /** Opened from an insider's row: their reported name, which the Trades view starts narrowed to. */
+  insider?: string;
   /** Opened from the ranking: the stack's title, under its Back. */
   stackTitle?: string;
   onDetailChange?: (open: boolean) => void;
@@ -606,7 +610,7 @@ function InsiderView({ width, height, focused, ticker: openedTicker, control: op
   const paneControl = usePaneInsiderViewControl();
   const control = openedControl ?? paneControl;
   const tickerKey = ticker?.metadata.ticker ?? "none";
-  const trades = useInsiderTradesState(tickerKey, stackTitle != null);
+  const trades = useInsiderTradesState(tickerKey, stackTitle != null, insider ?? null);
   const { setNameFilter, setSelectedId, setTypeFilter } = trades;
   const { setView } = control;
   const viewBar = useMemo<QueryBarView<InsiderViewMode>>(() => ({ value: control.view, options: INSIDER_VIEW_OPTIONS, onChange: setView }), [control.view, setView]);
@@ -646,7 +650,7 @@ function InsiderView({ width, height, focused, ticker: openedTicker, control: op
  * lookup answers leaves nothing behind: no ticker saved or added, no search
  * offered.
  */
-function RankedCompany({ symbol, title, control, width, height, focused, onDetailChange }: InsiderOpenedCompany) {
+function RankedCompany({ symbol, title, control, insider, width, height, focused, onDetailChange }: InsiderOpenedCompany) {
   const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
   const [resolved, setResolved] = useState<{ symbol: string; key: string | null; error: string | null } | null>(null);
@@ -697,10 +701,18 @@ function RankedCompany({ symbol, title, control, width, height, focused, onDetai
     const error = resolved?.symbol === symbol ? resolved.error : null;
     return error ? <EmptyState title={`Could not open ${symbol}.`} message={error} /> : <Spinner label={`Opening ${symbol}...`} />;
   }
-  return <InsiderView ticker={ticker} control={control} width={width} height={height} focused={focused} stackTitle={title} onDetailChange={onDetailChange} />;
+  return <InsiderView ticker={ticker} control={control} {...(insider ? { insider } : {})} width={width} height={height} focused={focused} stackTitle={title} onDetailChange={onDetailChange} />;
 }
 
 const renderRankedCompany = (company: InsiderOpenedCompany) => <RankedCompany {...company} />;
+
+/** The tickers a pane opened on several holds (`settings.symbols`), upper case; none for any other INS pane. */
+function insiderPaneSymbols(settings: Record<string, unknown> | undefined): string[] {
+  const symbols = settings?.symbols;
+  return Array.isArray(symbols)
+    ? symbols.filter((symbol): symbol is string => typeof symbol === "string" && !!symbol.trim()).map((symbol) => symbol.trim().toUpperCase())
+    : [];
+}
 
 /**
  * INS on a ticker is that company's insider transactions, or its insiders;
@@ -711,6 +723,12 @@ const renderRankedCompany = (company: InsiderOpenedCompany) => <RankedCompany {.
 function InsiderPane({ width, height, focused }: PaneProps) {
   const { symbol: paneSymbol } = usePaneTickerIdentity();
   const instance = usePaneInstance();
+  const symbols = insiderPaneSymbols(instance?.settings);
+
+  // Several tickers (`INS MO,PM,LMT`, a watchlist's name): their insiders in one table.
+  if (symbols.length > 1) {
+    return <InsiderTickersView symbols={symbols} width={width} height={height} focused={focused} renderCompany={renderRankedCompany} />;
+  }
 
   // No ticker at all is the ranking; a pane linked to a list keeps its own
   // empty state while the list has nothing selected.
@@ -719,6 +737,38 @@ function InsiderPane({ width, height, focused }: PaneProps) {
   }
   return <InsiderView width={width} height={height} focused={focused} />;
 }
+
+const tickerTemplate = createTickerSurfacePaneTemplate({
+  id: "insider-pane",
+  paneId: "insider",
+  label: "Insider",
+  description: "Insider transactions for a ticker; for several, their insiders; alone, the companies whose insiders are buying or selling.",
+  keywords: ["insider", "form 4", "ownership", "transactions", "ins", "insider buying", "insider selling", "insider activity", "cluster buying"],
+  shortcut: "INS",
+  canCreate: (_context, options) => !options?.ticker || mayBeSecEquityListing(options.ticker),
+  // Typed alone with no active ticker it ranks the market's insider buying or selling.
+  withoutTickerTitle: INSIDER_SIGNALS_TITLE,
+});
+
+/**
+ * INS takes tickers in the command bar as `fn INS` does: one opens that
+ * company, several (`INS MO,PM,LMT`, or a watchlist's name) their insiders
+ * in one table, and none the ranking.
+ */
+const insiderPaneTemplate: PaneTemplateDef = {
+  ...tickerTemplate,
+  // The bar reads a list (or a watchlist's name); the open resolves one of them as the ticker it opens on.
+  shortcut: { ...tickerTemplate.shortcut!, argKind: "ticker-list" },
+  canCreate: (context, options) => (options?.symbols?.length ?? 0) > 1
+    || tickerTemplate.canCreate!(context, options?.symbols?.length === 1 ? { ...options, symbol: options.symbols[0] } : options),
+  createInstance: (context, options) => {
+    const symbols = options?.symbols ?? [];
+    if (symbols.length > 1) {
+      return { title: `INS ${formatTickerListInput(symbols)}`, binding: { kind: "none" }, placement: "floating", settings: { symbols } };
+    }
+    return tickerTemplate.createInstance!(context, symbols.length === 1 ? { ...options, symbol: symbols[0] } : options);
+  },
+};
 
 export const insiderModule: PluginModule = {
   panes: [
@@ -739,17 +789,7 @@ export const insiderModule: PluginModule = {
 
   paneTemplates: [
     {
-      ...createTickerSurfacePaneTemplate({
-        id: "insider-pane",
-        paneId: "insider",
-        label: "Insider",
-        description: "Insider transactions for a ticker; alone, the companies whose insiders are buying or selling.",
-        keywords: ["insider", "form 4", "ownership", "transactions", "ins", "insider buying", "insider selling", "insider activity", "cluster buying"],
-        shortcut: "INS",
-        canCreate: (_context, options) => !options?.ticker || mayBeSecEquityListing(options.ticker),
-        // Typed alone with no active ticker it ranks the market's insider buying or selling.
-        withoutTickerTitle: INSIDER_SIGNALS_TITLE,
-      }),
+      ...insiderPaneTemplate,
       headless: insiderHeadless,
     },
   ],
