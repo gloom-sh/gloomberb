@@ -209,6 +209,43 @@ export function positioningFields(row: Pick<PerpBoardRow, "longShortRatio" | "lo
 // One text per figure, shared by the pane cells and the text report so the two always agree.
 const markText = (row: Pick<PerpBoardRow, "markPrice" | "quoteCurrency">) => row.markPrice == null ? "--" : `${price(row.markPrice)} ${row.quoteCurrency}`;
 const fundingPerInterval = (row: Pick<PerpBoardRow, "fundingRate" | "fundingIntervalHours" | "fundingKind">) => row.fundingRate == null ? "--" : `${percent(row.fundingRate, 5)} /${fundingInterval(row)}`;
+/**
+ * The contract a bare name opens: the one with the largest open interest across venues, as Compare lists it first.
+ * Hyperliquid lists some names on its main dex and on builder dexes; when Hyperliquid leads, its main dex is
+ * preferred, then xyz. The preference never puts a smaller Hyperliquid contract before another venue's.
+ */
+export function largestPerpMarket<Row extends Pick<PerpBoardRow, "venue" | "dex" | "openInterestUsd">>(rows: readonly Row[]): Row | undefined {
+  const ranked = [...rows].sort((a, b) => (b.openInterestUsd ?? -Infinity) - (a.openInterestUsd ?? -Infinity));
+  const top = ranked[0];
+  if (top?.venue !== "hyperliquid") return top;
+  const own = ranked.filter((row) => row.venue === "hyperliquid");
+  return own.find((row) => row.dex === "default") ?? own.find((row) => row.dex === "xyz") ?? top;
+}
+/** The rate a venue charges when its premium sits inside the clamp: its interest component, 0.01% per 8 hours. */
+const BASELINE_RATE_8H = 0.0001;
+const atBaseline = (row: Pick<PerpBoardRow, "fundingRate8h">) => row.fundingRate8h != null && Math.abs(row.fundingRate8h - BASELINE_RATE_8H) < 1e-9;
+const listed = (names: readonly string[]) => names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0] ?? "";
+/**
+ * One asset's funding across the venues that list it, for a single market's view: the APR range, the APR weighted by
+ * open interest, and the venues whose rate is only the 0.01%/8h baseline. Null with fewer than two rated contracts
+ * and none at the baseline.
+ */
+export function venueAprSummary(rows: readonly PerpBoardRow[]) {
+  const rated = rows.filter((row) => row.fundingApr != null && !row.delisted);
+  const baseline = [...new Set(rated.filter(atBaseline).map(venueLabel))];
+  if (rated.length < 2 && !baseline.length) return null;
+  const aprs = rated.map((row) => row.fundingApr!);
+  const weighted = rated.filter((row) => row.openInterestUsd != null && row.openInterestUsd > 0);
+  const oi = weighted.reduce((sum, row) => sum + row.openInterestUsd!, 0);
+  const oiWeighted = oi > 0 ? weighted.reduce((sum, row) => sum + row.fundingApr! * row.openInterestUsd!, 0) / oi : null;
+  const venues = new Set(rated.map((row) => row.venue)).size;
+  const low = Math.min(...aprs), high = Math.max(...aprs);
+  const count = rated.length === venues ? `${venues} venues` : `${rated.length} contracts on ${venues} venues`;
+  const range = rated.length >= 2 ? `${count}: ${percent(low, 1)} to ${percent(high, 1)}${oiWeighted == null ? "" : `, OI-weighted ${percent(oiWeighted, 1)}`}` : null;
+  const rest = baseline.length ? `${listed(baseline)} ${baseline.length === 1 ? "sits" : "sit"} at the 0.01%/8h baseline` : null;
+  return { text: [range, rest].filter(Boolean).join("; "), contracts: rated.length, venues, low: rated.length >= 2 ? low : null, high: rated.length >= 2 ? high : null,
+    oiWeighted: rated.length >= 2 ? oiWeighted : null, baseline };
+}
 /** Percentage points between two fractions: 0.00003 reads 0.0030pp. */
 const points = (n: number | null | undefined, digits = 4) => n == null ? "--" : `${(n * 100).toFixed(digits)}pp`;
 

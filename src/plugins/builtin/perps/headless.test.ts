@@ -204,6 +204,7 @@ test("a pair or plain name opens the market it stands for, and a name nothing ma
   expect(brent.metadata).toMatchObject({ marketId: bz.marketId, notices: ['Showing BZ for "brent". Also on the board: xyz:BRENTOIL.'] });
   expect(brent.text).toContain('Showing BZ for "brent". Also on the board: xyz:BRENTOIL.');
   // The same names compare their base asset across venues, and the comparison says which it read.
+  requests.length = 0;
   const compared = await load("Bitcoin", "compare");
   expect(compared.metadata).toMatchObject({ baseAsset: "BTC", notices: ['Showing BTC for "Bitcoin".'] });
   expect(requests).toEqual(["BITCOIN", "BTC"]);

@@ -3,7 +3,7 @@ import type { PerpBoardPayload, PerpBoardQuery, PerpBoardRow, PerpDepthPayload, 
   PerpLiquidationsPayload, PerpLongShortPoint, PerpLongShortRatio, PerpMarketPayload, PerpRankingsPayload } from "../../../api-client/perps";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource } from "../shared/cloud-resource";
-import { baseOfLabel, marketLabel, perpBaseCandidates, separatedPairBase } from "./model";
+import { baseOfLabel, largestPerpMarket, marketLabel, perpBaseCandidates, separatedPairBase } from "./model";
 
 export const perpsCache = createPluginCache<PerpBoardPayload>({ kind: "perps-board", source: "gloom-cloud", schemaVersion: 1,
   policy: { staleMs: 60_000, expireMs: 86_400_000 } });
@@ -238,9 +238,12 @@ type PerpSelection = PerpMarketPayload & {
   resolved?: { input: string; others: string[] };
   /** Board names near an input that matched nothing, as the Market column writes them. */
   suggestions?: string[];
+  /** The market's base asset on every venue, as Compare lists it (each venue's leading contract on a free account). */
+  venues?: PerpBoardRow[];
 };
 
-type PerpMarketClient = Pick<typeof apiClient, "getCloudPerpsBoard" | "getCloudPerpsMarket">;
+/** A client without Compare (an older caller) opens a bare name from the board alone and lists no other venues. */
+type PerpMarketClient = Pick<typeof apiClient, "getCloudPerpsBoard" | "getCloudPerpsMarket"> & Partial<Pick<typeof apiClient, "getCloudPerpsCompare">>;
 const SUGGESTED_MARKETS = 4;
 /** Words of an input that say which currency a pair is quoted in, not which market it is. */
 const QUOTE_WORDS = new Set(["USD", "USDT", "USDC", "PERP", "SWAP"]);
@@ -278,19 +281,36 @@ export async function nearestPerpMarkets(input: string, client: Pick<typeof apiC
  * A `venue` opens that venue's contract, from the board's matches or by its own identity; when the venue has none
  * the usual market comes back and the caller sees its venue differ.
  */
-export async function fetchPerpSelection(input: string, client: PerpMarketClient = apiClient, venue?: string): Promise<PerpSelection> {
+export async function fetchPerpSelection(input: string, client: PerpMarketClient = apiClient, venue?: string, acrossVenues = false): Promise<PerpSelection> {
   const typed = await selectPerpMarket(input, client, venue);
-  if (typed.rows.length) return typed;
+  if (typed.rows.length) return acrossVenues ? withVenues(typed, client) : typed;
   const candidates = perpBaseCandidates(marketQuery(input));
   for (const [index, name] of candidates.entries()) {
     const found = await selectPerpMarket(name, client, venue);
-    if (found.rows.length) return { ...found, resolved: { input, others: candidates.filter((_, other) => other !== index) } };
+    const resolved = { ...found, resolved: { input, others: candidates.filter((_, other) => other !== index) } };
+    if (found.rows.length) return acrossVenues ? withVenues(resolved, client) : resolved;
   }
   const suggestions = await nearestPerpMarkets(input, client);
   return suggestions.length ? { ...typed, suggestions } : typed;
 }
 
-async function selectPerpMarket(input: string, client: PerpMarketClient, venue?: string): Promise<PerpMarketPayload> {
+/** A plain name's contracts on every venue, or none when the client cannot compare or the comparison fails. */
+async function compareRows(base: string, client: PerpMarketClient): Promise<PerpBoardRow[] | null> {
+  if (!client.getCloudPerpsCompare || !/^[A-Za-z0-9]+$/.test(base)) return null;
+  try {
+    return validatePerpsCompare(await client.getCloudPerpsCompare(base.toUpperCase()), base).rows;
+  } catch { /* Intentional ignore: the market still opens; only the line across venues is missing. */ return null; }
+}
+
+/** The selected market with its base asset on every venue, read once when choosing the market did not already read them. */
+async function withVenues(selection: PerpSelection, client: PerpMarketClient): Promise<PerpSelection> {
+  const selected = selection.rows[0];
+  if (!selected || selection.venues) return selection;
+  const venues = await compareRows(selected.baseAsset, client);
+  return venues ? { ...selection, venues } : selection;
+}
+
+async function selectPerpMarket(input: string, client: PerpMarketClient, venue?: string): Promise<PerpSelection> {
   const query = marketQuery(input) || "BTC";
   if (/^(hyperliquid|binance|bybit|okx|deribit|coinbase|kraken|dydx):/.test(query)) {
     const result = await fetchPerpsMarket(query, client);
@@ -298,17 +318,21 @@ async function selectPerpMarket(input: string, client: PerpMarketClient, venue?:
     const kCoin = /^hyperliquid:default:K([A-Z0-9]+)$/.exec(query);
     return result.rows.length || !kCoin ? result : fetchPerpsMarket(`hyperliquid:default:k${kCoin[1]}`, client);
   }
-  const board = validatePerpsBoard(await client.getCloudPerpsBoard({ search: query }));
-  const matches = board.rows.filter((row) => !row.delisted && [row.baseAsset, row.symbol, row.underlyingSymbol].some((value) => value?.toUpperCase() === query.toUpperCase()));
+  // A bare name opens its largest contract across venues: the free board preview may hold none of them, Compare
+  // holds each venue's leading one, and Pro's board every one.
+  const [board, venues] = await Promise.all([client.getCloudPerpsBoard({ search: query }).then(validatePerpsBoard), venue ? null : compareRows(query, client)]);
+  const fits = (row: PerpBoardRow) => !row.delisted && [row.baseAsset, row.symbol, row.underlyingSymbol].some((value) => value?.toUpperCase() === query.toUpperCase());
+  const matches = [...new Map([...venues ?? [], ...board.rows].filter(fits).map((row) => [row.marketId, row])).values()];
   const exact = venue && matches.some((row) => row.venue === venue) ? matches.filter((row) => row.venue === venue) : matches;
-  const market = exact.find((row) => row.dex === "default") ?? exact.find((row) => row.dex === "xyz") ?? exact[0];
+  const market = largestPerpMarket(exact);
+  const across = venues?.length ? { venues } : {};
   if (venue && market?.venue !== venue && /^[A-Za-z0-9]+$/.test(query)) {
     for (const id of VENUE_CONTRACTS[venue]?.(matches[0]?.baseAsset ?? query.toUpperCase()) ?? []) {
       const result = await fetchPerpsMarket(id, client);
       if (result.rows.length) return result;
     }
   }
-  if (market) return fetchPerpsMarket(market.marketId, client);
+  if (market) return { ...await fetchPerpsMarket(market.marketId, client), ...across };
   // Individual latest-value previews are intentionally broader than the fixed board preview. A builder dex's own
   // identity (`xyz:SP500`) names its Hyperliquid market; a bare symbol is tried on the default dex, then xyz.
   const builder = /^([a-z0-9]+):(.+)$/i.exec(query);
@@ -321,7 +345,10 @@ async function selectPerpMarket(input: string, client: PerpMarketClient, venue?:
 }
 export const perpsMarketCache = createPluginCache<PerpSelection>({ kind: "perps-market", source: "gloom-cloud", schemaVersion: 1,
   policy: { staleMs: 60_000, expireMs: 86_400_000 } });
-export const cachedPerpSelection = (market: string, access: string) => cachedCloudResource(perpsMarketCache, `${market}:${access}`, validatePerpsMarket);
-export const loadPerpSelection = (market: string, access: string, force = false) => loadCloudResource(perpsMarketCache, `${market}:${access}`, () => fetchPerpSelection(market), { force, validate: validatePerpsMarket });
+/** `acrossVenues` adds the market's base asset on every venue (PERP's own market view); a list row reads its contract alone. */
+const selectionKey = (market: string, access: string, acrossVenues: boolean) => `${market}:${access}${acrossVenues ? ":venues" : ""}`;
+export const cachedPerpSelection = (market: string, access: string, acrossVenues = false) => cachedCloudResource(perpsMarketCache, selectionKey(market, access, acrossVenues), validatePerpsMarket);
+export const loadPerpSelection = (market: string, access: string, force = false, acrossVenues = false) => loadCloudResource(perpsMarketCache, selectionKey(market, access, acrossVenues),
+  () => fetchPerpSelection(market, apiClient, undefined, acrossVenues), { force, validate: validatePerpsMarket });
 export const loadPerpsHistoryForRange = (marketId: string, days: number, access: string, force = false) => loadCloudResource(perpsHistoryCache, `${marketId}:${days}:${access}`, () => fetchPerpsHistory({ marketId,
   from: new Date(Date.now() - days * 86_400_000).toISOString(), resolution: "auto", limit: 5000 }), { force, validate: (data) => validatePerpsHistory(data, marketId) });

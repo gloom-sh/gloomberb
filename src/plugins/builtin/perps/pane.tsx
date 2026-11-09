@@ -27,7 +27,7 @@ import { useFreshnessStatusLine } from "./status-line";
 import { useLivePerpRows, useLivePerpTableRows } from "./live-rows";
 import { aprFormula, ASSET_FILTERS, BOARD_SORTS, boardColumns, collectedVenueCount, compact, compareColumns, dayChange, fundingInterval, fundingSpread, historyCaption, historyCell, historyChange, historyColumns,
   HISTORY_METRICS, historyRows, historySeries, historyValue, inPoints, isAssetTab, isMarketTab, label, longShortReason, marketLabel, metricLabel, openingTab, perpCell, perpHistoryProText, PERP_TABS, percent,
-  positioningFields, price, rankingColumns, rankingRows, RANKINGS, ratioText, share, sortLabel, time, underlyingTicker, venueLabel, venueName, venuesOf, type HistoryMetric,
+  positioningFields, price, rankingColumns, rankingRows, RANKINGS, ratioText, share, sortLabel, time, underlyingTicker, venueAprSummary, venueLabel, venueName, venuesOf, type HistoryMetric,
   type PerpColumnId, type PerpTab, type RankingKey } from "./model";
 
 const NO_ROWS: readonly PerpBoardRow[] = [];
@@ -50,11 +50,13 @@ function usePerpStatusLine(rows: readonly PerpBoardRow[], funding: readonly Perp
 
 type EvidenceField = [label: string, value: string, detail?: string, link?: KeyValueRowProps["link"]];
 
-function MarketEvidence({ row, data, width, height }: { row: PerpBoardRow; data: PerpMarketPayload; width: number; height: number }) {
+function MarketEvidence({ row, data, width, height }: { row: PerpBoardRow; data: PerpMarketPayload & { venues?: PerpBoardRow[] }; width: number; height: number }) {
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const upgrade = useCloudUpgradeAction("perp");
   const openDescription = useOpenDescription();
   const positioning = positioningFields(row);
+  // The asset's funding on every venue, beside this contract's own.
+  const acrossVenues = venueAprSummary(data.venues ?? []);
   // The security the premium is measured against opens its DES, as the `d` key does.
   const security = underlyingTicker(row);
   const listed: EvidenceField[] = security && row.underlying ? [["Ticker", row.underlying.symbol, row.underlying.listingExchange,
@@ -68,7 +70,8 @@ function MarketEvidence({ row, data, width, height }: { row: PerpBoardRow; data:
     ["Funding", [["Funding", `${percent(row.fundingRate, 5)} / ${fundingInterval(row)}`, row.fundingKind === "last-paid" ? "Last paid" : row.fundingKind === "continuous" ? "Continuous rate" : "Current rate"],
       ["Funding 8h / APR", `${percent(row.fundingRate8h, 4)} / ${percent(row.fundingApr, 2)}`, row.fundingIntervalHours ? `APR = current ${aprFormula(row.fundingIntervalHours)}` : undefined],
       ...(row.predictedFundingRate != null ? [["Predicted funding", `${percent(row.predictedFundingRate)} / ${row.predictedFundingIntervalHours ?? "--"}h`] as [string, string]] : []),
-      ...(row.nextFundingAt ? [["Next funding", time(row.nextFundingAt)] as [string, string]] : [])]],
+      ...(row.nextFundingAt ? [["Next funding", time(row.nextFundingAt)] as [string, string]] : []),
+      ...(acrossVenues ? [["APR across venues", acrossVenues.text] as [string, string]] : [])]],
     ["Open Interest", [["Open interest", `${compact(row.openInterestBase)} ${row.baseAsset} · ${compact(row.openInterestUsd)} USD`],
       ["OI change 1h / 24h", row.oiChange1h == null && row.oiChange24h == null ? "Collecting" : `${percent(row.oiChange1h, 2)} / ${percent(row.oiChange24h, 2)}`, "own snapshots"]]],
     ...(positioning ? [["Positioning", positioning.map((field) => [field.label, field.text, field.detail])] as [string, EvidenceField[]]] : []),
@@ -389,8 +392,8 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
   const [metricValue, setMetric] = usePluginPaneState<string>("perps:metric", openingMetric);
   const metric: HistoryMetric = HISTORY_METRICS.includes(metricValue as HistoryMetric) ? metricValue as HistoryMetric : "funding";
   // One market's selection only loads for its own tabs; the lists bring their own rows.
-  const loader = useCallback((force: boolean) => loadPerpSelection(search, accessKey, force), [search, accessKey]);
-  const resource = useAsyncResource(marketTab ? loader : null, { initialData: () => cachedPerpSelection(search, accessKey), clearOnError: isAccessDenied });
+  const loader = useCallback((force: boolean) => loadPerpSelection(search, accessKey, force, true), [search, accessKey]);
+  const resource = useAsyncResource(marketTab ? loader : null, { initialData: () => cachedPerpSelection(search, accessKey, true), clearOnError: isAccessDenied });
   const data = marketTab ? resource.data?.payload : undefined;
   const fetchedActive = data?.rows[0] ?? null;
   // The market on screen moves with the quote stream, as its listing's quote does everywhere else.

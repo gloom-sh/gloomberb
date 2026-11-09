@@ -68,6 +68,36 @@ test("symbol resolution prefers default crypto and xyz stocks, including individ
   expect(calls[0]).toBe(perpRow().marketId);
 });
 
+test("a bare coin opens its largest contract across venues, Hyperliquid's main dex only among Hyperliquid's own, and the market brings the asset on every venue", async () => {
+  // BNB on 9 Nov 2026: the free board preview holds none of them, Compare each venue's leader by open interest.
+  const contracts = [venueRow("binance", { baseAsset: "BNB", symbol: "BNBUSDT", openInterestUsd: 364e6 }), venueRow("bybit", { baseAsset: "BNB", symbol: "BNBUSDT", openInterestUsd: 91e6 }),
+    perpRow({ marketId: "hyperliquid:default:BNB", baseAsset: "BNB", symbol: "BNB", openInterestUsd: 39e6 })];
+  const ids: string[] = [];
+  const client = {
+    getCloudPerpsBoard: async () => perpBoard({ rows: [], access: "preview", locked: 7 }),
+    getCloudPerpsCompare: async () => perpBoard({ rows: contracts, access: "preview", locked: 3 }),
+    getCloudPerpsMarket: async (id: string) => { ids.push(id); return market({ access: "preview", rows: contracts.filter((row) => row.marketId === id) }); },
+  };
+  const bnb = await fetchPerpSelection("BNB", client);
+  expect(bnb.rows[0]!.marketId).toBe("binance:BNBUSDT");
+  expect(bnb.venues?.map((row) => row.venue)).toEqual(["binance", "bybit", "hyperliquid"]);
+  expect(ids).toEqual(["binance:BNBUSDT"]);
+  // A venue asked for still opens its own contract.
+  expect((await fetchPerpSelection("BNB", client, "hyperliquid")).rows[0]!.venue).toBe("hyperliquid");
+  // Where Hyperliquid leads, its main dex opens before a larger builder-dex contract of the same coin.
+  const builder = perpRow({ marketId: "hyperliquid:abc:BTC", dex: "abc", symbol: "abc:BTC", openInterestUsd: 9e9 });
+  const hyperliquid = { ...client, getCloudPerpsBoard: async () => perpBoard({ rows: [builder, perpRow({ openInterestUsd: 5e9 }), venueRow("binance", { openInterestUsd: 7e9 })] }),
+    getCloudPerpsCompare: async () => perpBoard({ rows: [] }),
+    getCloudPerpsMarket: async (id: string) => market({ rows: [perpRow({ marketId: id })] }) };
+  expect((await fetchPerpSelection("BTC", hyperliquid)).rows[0]!.marketId).toBe("hyperliquid:default:BTC");
+  // An identity opens as typed; only the market's own view reads the other venues, a list row never does.
+  const compared: string[] = [];
+  const identity = { ...client, getCloudPerpsCompare: async (base: string) => { compared.push(base); return perpBoard({ rows: contracts }); } };
+  expect((await fetchPerpSelection("hyperliquid:default:BNB", identity)).venues).toBeUndefined();
+  expect((await fetchPerpSelection("hyperliquid:default:BNB", identity, undefined, true)).venues).toHaveLength(3);
+  expect(compared).toEqual(["BNB"]);
+});
+
 test("a Market column label resolves to the market it names and no free text reaches a market id", async () => {
   const sp500 = perpRow({ marketId: "hyperliquid:xyz:SP500", dex: "xyz", baseAsset: "SP500", symbol: "xyz:SP500" });
   const searches: unknown[] = [];
