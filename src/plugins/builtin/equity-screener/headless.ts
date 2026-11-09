@@ -199,6 +199,19 @@ function readDefinition(text: string): ScreenDefinition {
   }
 }
 
+/**
+ * What the screen an empty currency falls back to is in: the base currency
+ * set, when the screener runs in it (`In USD, your base currency`), else the
+ * screener's own and why (`In USD: the screener converts no figure into CAD,
+ * your base currency, …`).
+ */
+function currencyFallbackLead(screenCurrency: string, baseCurrency: string | undefined): string {
+  const base = baseCurrency?.trim().toUpperCase() || screenCurrency;
+  return base === screenCurrency
+    ? `In ${screenCurrency}, your base currency`
+    : `In ${screenCurrency}: the screener converts no figure into ${base}, your base currency, so a screen in ${base} reads only the listings quoted in it`;
+}
+
 export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
   freshness: { status: "not-a-feed", basis: "screener snapshot" },
@@ -366,7 +379,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
       : currencyEmpty
       ? [
         `${currencyEmpty.title} ${currencyEmpty.detail}`,
-        `In the base currency, ${currencyEmpty.base.currency}: gloom fn EQS --definition '${spacedJson(currencyEmpty.base)}'${metric === "marketCap" ? "" : ` --metric ${metric}`}`,
+        `${currencyFallbackLead(currencyEmpty.base.currency!, ctx?.config?.baseCurrency)}: gloom fn EQS --definition '${spacedJson(currencyEmpty.base)}'${metric === "marketCap" ? "" : ` --metric ${metric}`}`,
       ].join("\n")
       : null;
     const ytdBase = screenYtdBase(data.rows, data.snapshot?.assembledAt);

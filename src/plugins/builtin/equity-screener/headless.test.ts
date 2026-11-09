@@ -127,15 +127,18 @@ test("a screen its currency emptied says the currency keeps only listings quoted
   const tobacco = { ...screenFixture(), rows: [] };
   tobacco.definition = { ...tobacco.definition, currency: "CAD", criteria: [{ field: "industry", op: "in", value: ["Tobacco"] }] };
   tobacco.universe = { ...tobacco.universe, covered: 4287, matched: 0, currencies: ["USD", "CAD"] };
-  const load = async (data: typeof tobacco) => {
+  const load = async (data: typeof tobacco, baseCurrency = "USD") => {
     const result = await equityScreenerHeadless.load({ argument: undefined, options: { definition: JSON.stringify(data.definition) } } as never,
-      { apiClient: { equityScreener: async () => structuredClone(data) } } as never);
+      { apiClient: { equityScreener: async () => structuredClone(data) }, config: { baseCurrency } } as never);
     return (result.sections![0] as { empty?: string }).empty;
   };
   const empty = (await load(tobacco))!.split("\n");
   expect(empty[0]).toBe("No listing quoted in CAD matches. Currency CAD keeps only the listings quoted in CAD and converts nothing.");
   const base = JSON.parse(/--definition '(.+)'$/.exec(empty[1]!)![1]!);
-  expect(empty[1]).toStartWith("In the base currency, USD: gloom fn EQS --definition '");
+  expect(empty[1]).toStartWith("In USD, your base currency: gloom fn EQS --definition '");
+  // A CAD base read "In the base currency, USD": the screen offered is in USD, and the line says why.
+  expect((await load(tobacco, "CAD"))!.split("\n")[1]).toStartWith(
+    "In USD: the screener converts no figure into CAD, your base currency, so a screen in CAD reads only the listings quoted in it: gloom fn EQS --definition '");
   expect(base).toEqual({ ...tobacco.definition, currency: "USD" });
   // A currency no covered listing is quoted in says so; an empty screen in USD keeps the plain empty line.
   const usdOnly = { ...tobacco, universe: { ...tobacco.universe, currencies: ["USD"] } };
