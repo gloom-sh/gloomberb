@@ -80,7 +80,7 @@ function minorityAndPreferred(check: Pick<EnterpriseValueCheck, "minorityAndPref
  * EV the provider's is checked against, and the one shown in its place. PAGP on 2026-06-30: 13.58B computed and
  * 13.73B of minority interest, 27.31B.
  */
-export function bridgeEnterpriseValue(check: Pick<EnterpriseValueCheck, "computed" | "minorityAndPreferred">): number | undefined {
+function bridgeEnterpriseValue(check: Pick<EnterpriseValueCheck, "computed" | "minorityAndPreferred">): number | undefined {
   return finiteNumber(check.computed) ? check.computed + minorityAndPreferred(check) : undefined;
 }
 

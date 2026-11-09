@@ -74,7 +74,7 @@ export function isHealthcareCompany(profile: Pick<CompanyProfile, "sector" | "in
  * that could not be read leaves the name to tell. Null when no company trades
  * under it; a quote that could not be read rejects.
  */
-export async function tickerListedCompany(
+async function tickerListedCompany(
   dataProvider: Pick<DataProvider, "getQuote" | "getTickerFinancials"> | null,
   ticker: string,
 ): Promise<ListedCompany | null> {
