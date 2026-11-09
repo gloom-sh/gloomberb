@@ -210,17 +210,23 @@ jobs:
           echo "::notice title=npm::Published as gloomberb only. Set the repository variable PUBLISH_GLOOM_TERMINAL to true to publish releases as @gloom-sh/terminal too."
 
       # The website re-captures its function screenshots against this release
-      # and opens a PR there when a pane's layout changed.
+      # and opens a PR there when a pane's layout changed. The repository
+      # variable PLATFORM_DISPATCH_REPO names its repository (owner/name).
       - name: Ask the website to refresh screenshots
         if: ${{ always() }}
         env:
           GH_TOKEN: ${{ secrets.PLATFORM_DISPATCH_TOKEN }}
+          DISPATCH_REPO: ${{ vars.PLATFORM_DISPATCH_REPO }}
         run: |
+          if [ -z "${DISPATCH_REPO:-}" ]; then
+            echo "::notice title=Screenshots::PLATFORM_DISPATCH_REPO is not set; skipping screenshot refresh."
+            exit 0
+          fi
           if [ -z "${GH_TOKEN:-}" ]; then
             echo "PLATFORM_DISPATCH_TOKEN is not configured; skipping screenshot refresh."
             exit 0
           fi
-          gh api repos/gloom-sh/gloomberb-platform/dispatches \
+          gh api "repos/${DISPATCH_REPO}/dispatches" \
             -f event_type=gloomberb-release \
             -f "client_payload[ref]=${GITHUB_REF_NAME}"
 
