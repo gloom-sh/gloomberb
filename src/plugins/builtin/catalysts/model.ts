@@ -40,7 +40,7 @@ function dateSpan(value: string, precision: string | undefined): [string, string
  * window, as the service orders it: a trial updated in October whose primary
  * completion is next January shows October's update, not January.
  */
-export function catalystListedField(event: CatalystEvent, read: CatalystDateRead): DateField {
+function catalystListedField(event: CatalystEvent, read: CatalystDateRead): DateField {
   if (!read || typeof read === "string") return read;
   const field = read.dateField ?? "any";
   if (field !== "any" || read.upcoming || (!read.from && !read.to) || catalystDateWithheld(event)) return field;
