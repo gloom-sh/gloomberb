@@ -4,7 +4,7 @@ import { chatController } from "../../plugins/builtin/chat/controller";
 import { getLoadablePlugins } from "../../plugins/catalog";
 import { createDefaultConfig } from "../../types/config";
 import type { MarketContext } from "../types";
-import { buildPaneCatalogEntries, buildTemplateContext, filterPaneCatalogEntries, findFunctionCode, limitationSentence, renderPaneCatalogReport } from "./catalog";
+import { buildPaneCatalogEntries, buildTemplateContext, correctCatalogQuery, filterPaneCatalogEntries, findFunctionCode, limitationSentence, renderPaneCatalogReport } from "./catalog";
 import { createPaneCatalog } from "./discovery";
 import { parsePaneCatalogArgs } from "./options";
 
@@ -133,6 +133,16 @@ test("a perp venue's name finds PERP first, and a function only Pro opens is mar
     for (const query of ["binance", "OKX", "bybit", "hyperliquid", "binance futures"]) {
       expect(filterPaneCatalogEntries(entries, query)[0]?.token, query).toBe("PERP");
     }
+    // A crypto carry trade starts from these words.
+    for (const query of ["crypto", "bitcoin", "btc", "carry", "basis trade"]) expect(filterPaneCatalogEntries(entries, query).map((entry) => entry.token), query).toContain("PERP");
+    // One letter off is read as the word it is near; a word no function is near, or one already found, is kept.
+    expect(correctCatalogQuery(entries, "fundng")).toBe("funding");
+    expect(correctCatalogQuery(entries, "fudning")).toBe("funding");
+    expect(correctCatalogQuery(entries, "funding")).toBeNull();
+    expect(correctCatalogQuery(entries, "xqzvw")).toBeNull();
+    // A short word, or one a first letter apart, is another word rather than a typo.
+    expect(correctCatalogQuery(entries, "moat")).toBeNull();
+    expect(correctCatalogQuery(entries, "libor")).not.toBe("hibor");
     const plain = (args: string[]) => renderPaneCatalogReport(entries, parsePaneCatalogArgs(args)).replace(/\x1b\[[0-9;]*m/g, "");
     expect(plain(["CALLS"])).toContain("Report       ready · Pro\n");
     expect(plain(["earnings"])).toMatch(/\nCALLS +Earnings Calls +<ticker> +ready · Pro +Pro earnings/);

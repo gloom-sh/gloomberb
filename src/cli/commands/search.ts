@@ -34,7 +34,7 @@ import { indexRootFor } from "../../tickers/index-roots";
 import { isTitleCaseWord, readBrokerIndexCode } from "../listing-arg";
 import { knownGapMessage, commandPointer } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
-import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
+import { canonicalExchange, isKnownExchangeCode, isUsListingExchange } from "../../utils/exchanges";
 import { companyLines, companyNameExtraWords, groupByCompany, namedByService, sameCompany } from "../../tickers/company-name";
 import { isLowQualityTickerName } from "../../tickers/search/result";
 import { findCatalogSeries, renderSeriesMatches, type SeriesMatch } from "../series-search";
@@ -445,10 +445,19 @@ function renderStoppedListing(stopped: StoppedListing): string {
   )].join("\n");
 }
 
+/**
+ * A line as `quote` takes it. A code of digits names listings on several Asian venues (9042 is a JPX stock and an
+ * HKEX fund, and `quote 9042` asks which), so it carries its venue: 9042:HKEX. Any other symbol is printed as listed.
+ */
+export function quotableSearchSymbol(candidate: Pick<TickerSearchCandidate, "label" | "result" | "ticker" | "right">): string {
+  const exchange = candidateExchange(candidate as TickerSearchCandidate);
+  return /^\d+$/.test(candidate.label) && isKnownExchangeCode(exchange) && !isUsListingExchange(exchange) ? `${candidate.label}:${exchange}` : candidate.label;
+}
+
 function searchCandidateRows(candidates: TickerSearchCandidate[]) {
   return candidates.map((candidate) => ({
     category: candidate.category,
-    symbol: candidate.label,
+    symbol: quotableSearchSymbol(candidate),
     name: resolveSearchName(candidate),
     exchange: candidate.result?.exchange
       || candidate.result?.primaryExchange
@@ -627,7 +636,7 @@ export function buildSearchReport({
         ...(showSource ? [{ header: "Source" }] : []),
       ],
       categoryRows.map((candidate) => [
-        candidate.label,
+        quotableSearchSymbol(candidate),
         resolveSearchName(candidate),
         candidate.result?.exchange
           || candidate.result?.primaryExchange

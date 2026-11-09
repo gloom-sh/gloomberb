@@ -596,6 +596,44 @@ export function filterPaneCatalogEntries(entries: PaneCatalogEntry[], query: str
   return ranked.length > 0 ? ranked : fusedQueryMatches(entries, query);
 }
 
+/** Whether two words differ by one letter: one added, dropped, changed, or two neighbours swapped. */
+function oneLetterApart(a: string, b: string): boolean {
+  if (a === b || Math.abs(a.length - b.length) > 1) return false;
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start += 1;
+  const [restA, restB] = [a.slice(start), b.slice(start)];
+  if (restA.length === restB.length) return restA.slice(1) === restB.slice(1)
+    || restA.length >= 2 && restA[0] === restB[1] && restA[1] === restB[0] && restA.slice(2) === restB.slice(2);
+  return restA.length > restB.length ? restA.slice(1) === restB : restB.slice(1) === restA;
+}
+
+/** The shortest query word a typo is read for: shorter words are too often other words. */
+/** A shorter word is too often another word, not a typo ("moat" is not MOST). */
+const TYPO_MIN_LENGTH = 5;
+
+/**
+ * The query with each word no function carries read as the catalog word one letter from it ("fundng" is funding),
+ * the one the most functions carry; null when no word needs or has one. Only a word of five letters or more is
+ * read again, and never with another first letter: a first letter is rarely the typo, and "libor" is not HIBOR.
+ */
+export function correctCatalogQuery(entries: readonly PaneCatalogEntry[], query: string): string | null {
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    for (const word of new Set(nameAndDescriptionFields(entry).join(" ").split(/[^a-z0-9]+/))) {
+      if (word.length >= TYPO_MIN_LENGTH - 1 && /^[a-z]+$/.test(word)) counts.set(word, (counts.get(word) ?? 0) + 1);
+    }
+  }
+  let changed = false;
+  const words = query.trim().toLowerCase().split(/\s+/).map((word) => {
+    if (word.length < TYPO_MIN_LENGTH || !/^[a-z]+$/.test(word) || counts.has(word)) return word;
+    const near = [...counts].filter(([known]) => known[0] === word[0] && oneLetterApart(word, known)).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+    if (!near) return word;
+    changed = true;
+    return near[0];
+  });
+  return changed ? words.join(" ") : null;
+}
+
 interface PaneCatalogSelection {
   shown: PaneCatalogEntry[];
   /** Matches left out: the weaker ones, or those past the limit. */

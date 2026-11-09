@@ -198,6 +198,16 @@ export function nominalPriceText(quote: Pick<Quote, "nominalPrice"> | null | und
     : "no recent trades, nominal price";
 }
 
+/**
+ * When a nominal price is from, as an Updated cell names it: "6 Nov close", the venue session whose nominal close it
+ * is (Quote.nominalPrice), not the last print, which can be days older. Null for any other quote.
+ */
+export function nominalSessionLabel(quote: Pick<Quote, "nominalPrice"> | null | undefined): string | null {
+  const session = quote?.nominalPrice?.session;
+  const day = session ? new Date(`${session}T00:00:00Z`) : null;
+  return day && Number.isFinite(day.getTime()) ? `${day.getUTCDate()} ${PRINT_MONTHS[day.getUTCMonth()]} close` : null;
+}
+
 export function hasFreshQuoteForCurrentSession(
   quotes: Iterable<Quote | null | undefined>,
   now = Date.now(),

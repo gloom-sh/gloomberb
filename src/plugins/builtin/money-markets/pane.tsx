@@ -14,10 +14,10 @@ import type { PaneProps } from "../../../types/plugin";
 import { formatPercentileRank } from "../../../utils/format";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
-import { getCachedMoneyMarkets, loadMoneyMarkets } from "./client";
-import { moneyMarketAxis, moneyMarketChange, moneyMarketCurves, moneyMarketNotices, moneyMarketObservations, moneyMarketRateChange, moneyMarketRows, moneyMarketValue } from "./model";
+import { getCachedHongKongMoneyMarkets, getCachedMoneyMarkets, loadHongKongMoneyMarkets, loadMoneyMarkets } from "./client";
+import { isHongKongTab, MONEY_MARKET_TABS, moneyMarketAxis, moneyMarketChange, moneyMarketCurves, moneyMarketNotices, moneyMarketObservations, moneyMarketRateChange, moneyMarketRowNotices, moneyMarketRows, moneyMarketValue } from "./model";
 
-const TABS = [{ value: "rates", label: "Rates" }, { value: "bills", label: "Bills" }, { value: "liquidity", label: "Liquidity" }];
+const TABS = MONEY_MARKET_TABS.map(({ value, label }) => ({ value, label }));
 const PANELS = [{ id: "main" }];
 const BILLS_CAPTION = "Discount yield % by bill tenor";
 const formatRate = (value: number) => moneyMarketValue(value, "percent");
@@ -52,7 +52,9 @@ function ObservationDetail({ row, width, height, focused = false }: { row: Money
       detail: `${formatPercentileRank(p.value, "1Y")} · ${row.asOf ?? "--"}` },
     { id: "change", label: "Change", value: moneyMarketChange(row.change, row.changeUnit), detail: `since ${row.previousAsOf ?? "--"}` },
     { id: "range", label: "1Y range", value: `${moneyMarketValue(p.min, row.unit)} to ${moneyMarketValue(p.max, row.unit)}` },
-    { id: "series", label: "FRED", value: row.sourceSeriesIds.join(", "), detail: row.frequency },
+    // A bill yield is HKMA's; the US rows name their FRED series.
+    row.group === "efb" ? { id: "series", label: "Source", value: "HKMA", detail: "closing yield, 16:00 HKT" }
+      : { id: "series", label: "FRED", value: row.sourceSeriesIds.join(", "), detail: row.frequency },
   ];
   return <StatChartDetail items={items} width={width} height={height} empty={row.history.every((point) => point.value == null)}
     emptySubject="history" emptyTitle="No history available."
@@ -62,13 +64,21 @@ function ObservationDetail({ row, width, height, focused = false }: { row: Money
 export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
   const session = useResearchCloudSession();
-  const loader = useCallback((force: boolean) => loadMoneyMarkets(force), [session.requestKey]);
-  const resource = useAsyncResource(loader, { initialData: getCachedMoneyMarkets, clearOnError: isAccessDenied });
   const [tab, setTab] = usePaneSettingValue("tab", "rates");
+  // Hong Kong's bill yields are their own payload: each payload is read only on its own tabs.
+  const hongKong = isHongKongTab(tab);
+  const loader = useCallback((force: boolean) => loadMoneyMarkets(force), [session.requestKey]);
+  const resource = useAsyncResource(hongKong ? null : loader, { initialData: getCachedMoneyMarkets, clearOnError: isAccessDenied });
+  const hongKongLoader = useCallback((force: boolean) => loadHongKongMoneyMarkets(force), [session.requestKey]);
+  const hongKongResource = useAsyncResource(hongKong ? hongKongLoader : null, { initialData: getCachedHongKongMoneyMarkets, clearOnError: isAccessDenied });
+  const active = hongKong ? hongKongResource : resource;
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
   const [openId, setOpenId] = usePluginPaneState<string | null>("open", null);
   const data = resource.data?.payload;
-  const rows = useMemo(() => data ? moneyMarketRows(data, tab).map(boardRow) : [], [data, tab]);
+  const hongKongData = hongKongResource.data?.payload;
+  const shown = hongKong ? hongKongData : data;
+  const rows = useMemo(() => hongKong ? hongKongData?.rows.map(boardRow) ?? []
+    : data ? moneyMarketRows(data, tab).map(boardRow) : [], [data, hongKong, hongKongData, tab]);
   const curves = useMemo(() => data ? moneyMarketCurves(data, { current: colors.positive, ghosts: curveGhostColors(colors) }) : [], [data, colors]);
   const openRow = rows.find((row) => row.id === openId);
   const selectedRow = rows.find((row) => row.id === selectedId) ?? rows[0];
@@ -117,23 +127,24 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
     empty: `No history for ${selectedRow.label}`,
   } : null;
   const figures = billsTab ? billsItems : [];
-  const updatedAgo = useUpdatedAgo(resource.updatedAt);
+  const updatedAgo = useUpdatedAgo(active.updatedAt);
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true });
   const bodyHeight = Math.max(3, height - tabRows);
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => void resource.reload(), { focused });
+  useAutoRefresh(active.updatedAt, active.load);
+  usePaneRefreshKey(() => void active.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "money-markets:notices", focused,
-    notices: [...(data ? moneyMarketNotices(data) : []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
-  usePaneStatusLinkFooter({ registrationId: "money-markets", focused, loading: resource.loading, error: resource.error,
+    notices: [...(hongKong ? hongKongData ? moneyMarketRowNotices(hongKongData.rows) : [] : data ? moneyMarketNotices(data) : []),
+      ...(active.data?.refreshError ? [active.data.refreshError] : [])] });
+  usePaneStatusLinkFooter({ registrationId: "money-markets", focused, loading: active.loading, error: active.error,
     url: selected?.observation.sourceUrl ?? null, showOpenHint: true,
-    info: data && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
-    stale: !!data && resource.data?.stale,
+    info: shown && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
+    stale: !!shown && active.data?.stale,
   });
   return <Box width={width} height={height} flexDirection="column">
     {tabStrip}
-    <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null}
-      empty={!resource.loading && !resource.error && !data} subject="money markets">
-      {data ? <MarketBoardStack rows={rows} width={width} height={bodyHeight} focused={focused}
+    <PaneStatusBody loading={active.loading && !shown} error={!shown ? active.error : null}
+      empty={!active.loading && !active.error && !shown} subject={hongKong ? "Hong Kong money markets" : "money markets"}>
+      {shown ? <MarketBoardStack rows={rows} width={width} height={bodyHeight} focused={focused}
         selectedId={selectedRow?.id ?? null} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
         changeLabel="Δ OBS" renderDetail={(row) => <ObservationDetail row={row.observation} width={width} height={Math.max(5, bodyHeight - 2)} focused={focused} />}
         rootBefore={({ columns }) => <ChartTableHeader width={width} height={bodyHeight} figures={figures} chart={chart}

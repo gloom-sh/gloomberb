@@ -1375,7 +1375,7 @@
           {
             "code": "BTMM",
             "name": "Money Markets",
-            "description": "Funding rates, Treasury bills and Federal Reserve liquidity with historical context."
+            "description": "Funding rates, Treasury bills and Federal Reserve liquidity, and Hong Kong's Exchange Fund Bill yields, with historical context."
           },
           {
             "code": "CBR",

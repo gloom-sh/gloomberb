@@ -17,10 +17,20 @@ export function moneyMarketAxis(unit: MoneyMarketRow["unit"]): (value: number, d
 /** A move in a bill's discount yield, in basis points like the board's change column. */
 export const moneyMarketRateChange = (value: number) => moneyMarketChange(value * 100, "basis-points");
 
-export function moneyMarketNotices(data: MoneyMarketsPayload): string[] {
-  const notices = [...data.rows, data.netLiquidity].flatMap((row) => row.status === "unavailable"
+/** The board's tabs: the US funding rates, bills and Fed liquidity, and Hong Kong's Exchange Fund Bill yields. */
+export const MONEY_MARKET_TABS = [{ value: "rates", label: "Rates" }, { value: "bills", label: "Bills" }, { value: "liquidity", label: "Liquidity" },
+  { value: "hk", label: "Hong Kong" }] as const;
+export const isHongKongTab = (tab: unknown) => tab === "hk";
+
+/** Why a row has no figure, or an old one. */
+export function moneyMarketRowNotices(rows: readonly MoneyMarketRow[]): string[] {
+  return rows.flatMap((row) => row.status === "unavailable"
     ? [`${row.label}: ${(row.unavailableReason ?? "unavailable").replaceAll("-", " ")}.`]
     : row.status === "stale" ? [`${row.label}: stale, last observation ${row.asOf ?? "unknown"}.`] : []);
+}
+
+export function moneyMarketNotices(data: MoneyMarketsPayload): string[] {
+  const notices = moneyMarketRowNotices([...data.rows, data.netLiquidity]);
   if (data.billsCurve.status === "unavailable") notices.push("Bills curve: no common observation date across all four tenors.");
   else if (data.billsCurve.status === "stale") notices.push(`Bills curve: stale, last common observation ${data.billsCurve.asOf}.`);
   for (const ghost of data.billsCurve.comparisons) if (!ghost.points.length) notices.push(`Bills ${ghost.period}: no common observation within seven days before ${ghost.targetDate ?? "the comparison date"}.`);

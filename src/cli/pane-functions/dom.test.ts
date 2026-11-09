@@ -427,6 +427,8 @@ test("a pane the sign-in wall covers whole reports the wall at once without a se
     expect(report.data).toMatchObject({ locked: "sign-in", empty: true, complete: false });
     expect(report.data.freshness).toBeUndefined();
     expect(report.text).toStartWith("Ask Gloom\n\nAsk Gloom (ASKG in the app) needs only a free, verified Gloom account: log in or sign up free");
+    // The plugin that runs AI on the reader's own key, and the command that adds it.
+    expect(report.text.replace(/\s+/g, " ")).toContain("`gloom install gloom-sh/gloom-byok-ai` adds the BYOK AI plugin");
     expect(appendDomReportFooter(report.text, domReportView(report.data), report.data.freshness))
       .toEndWith("Rendered view: the pane is locked, so no values were read.");
     expect(reportFailure(report.data, "fn ASKG")?.code).toBe("no_data");

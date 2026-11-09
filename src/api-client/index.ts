@@ -984,6 +984,7 @@ class GloomApiClient {
   getLiveScan = this.data.getLiveScan.bind(this.data);
   getCloudEstimateRevisions = this.data.getCloudEstimateRevisions.bind(this.data);
   getCloudMoneyMarkets = this.data.getCloudMoneyMarkets.bind(this.data);
+  getCloudHongKongMoneyMarkets = this.data.getCloudHongKongMoneyMarkets.bind(this.data);
   equityScreener = this.data.equityScreener.bind(this.data);
   getMemberFunds = this.data.getMemberFunds.bind(this.data);
   getFundMembers = this.data.getFundMembers.bind(this.data);

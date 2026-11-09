@@ -9,7 +9,8 @@ import { contractMonthLabel } from "../../../utils/contract-month";
 import { formatPercentileRank } from "../../../utils/format";
 import { formatThirtySeconds } from "../../../market-data/market/format";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
-import { parseReportTime } from "../../../utils/utc-time";
+import { newestReportTime, oldestReportTime, parseReportTime } from "../../../utils/utc-time";
+import type { HeadlessPaneFreshness } from "../../../types/plugin";
 import { zonedDateKey, zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
 import { dateOptionError, dateOptionFormatsOr, readCalendarDate } from "../../../utils/calendar-date";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
@@ -944,4 +945,23 @@ export function archivedFuturesCurve(root: string, curve: FuturesCurveAsOfPayloa
       state: value == null ? "unavailable" : thin ? "thin" : Math.abs(value) < 1e-10 ? "flat" : value > 0 ? "contango" : "backwardation" },
     gaps: curve.gaps, spec: curve.spec ?? null, settlementDate: settled.length ? curve.asOf : null,
   };
+}
+
+/**
+ * How current a curve is, one answer for `fn CTM`, its pane and a capture of
+ * it: a past curve is the settlement archive's, Cboe's its daily settlement,
+ * and a live curve is dated by its contracts' own quotes, each delayed by
+ * what its source states (CME's 10 minutes), never a venue's usual lag.
+ */
+export function curveReportFreshness(data: Pick<FuturesCurvePayload, "source" | "contracts">, date?: string | null): HeadlessPaneFreshness {
+  if (date) return { status: "not-a-feed", basis: "settlement archive", asOf: date };
+  const quoted = data.contracts.map((row) => row.asOf);
+  return { ...(data.source === "cboe" ? { source: "Cboe", status: "not-a-feed", basis: "daily settlement", cadence: "daily" } as const : {}),
+    asOf: newestReportTime(quoted), oldest: oldestReportTime(quoted) };
+}
+
+/** Each contract's quote as a capture dates the curve from it: its time, the delay its source states, and whether it is stale. */
+export function curveFreshnessObservations(contracts: readonly FuturesContract[]): Array<Record<string, unknown>> {
+  return contracts.flatMap((row) => row.asOf ? [{ symbol: row.symbol, asOf: row.asOf,
+    ...(row.delayMinutes != null ? { delayMinutes: row.delayMinutes } : {}), stale: row.stale }] : []);
 }

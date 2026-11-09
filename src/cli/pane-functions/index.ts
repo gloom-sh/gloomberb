@@ -5,6 +5,7 @@ import type { MarketContext } from "../types";
 import { withMarketData } from "../context";
 import { buildForFile, cliStyles, renderForFile, renderStats, type CliStatEntry } from "../../utils/cli-output";
 import {
+  correctCatalogQuery,
   filterPaneCatalogEntries,
   findFunctionCode,
   nearFunctionCodes,
@@ -615,11 +616,18 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
           : entries;
         // A topic no function covers is answered by its pointer, not by the loose matches its words find.
         const pointer = topicPointer(parsed.query);
-        const filtered = pointer ? [] : filterPaneCatalogEntries(botSafeEntries, parsed.query);
-        // A search also finds the terms it names; text only, the JSON stays a list of functions.
-        const glossary = lookupGlossary(parsed.query);
+        const typed = pointer ? [] : filterPaneCatalogEntries(botSafeEntries, parsed.query);
         // Data no source carries yet is said once: in the text, else as the envelope's warning.
         const gap = knownGapMessage(parsed.query);
+        // A word one letter off every function's ("fundng") is read as the one it is near, and the report says so; a
+        // word the catalog has its own answer for ("libor") is not a typo.
+        const corrected = pointer || gap || typed.length ? null : correctCatalogQuery(botSafeEntries, parsed.query);
+        const correctedMatches = corrected ? filterPaneCatalogEntries(botSafeEntries, corrected) : [];
+        const readAs = corrected && correctedMatches.length ? corrected : null;
+        const filtered = readAs ? correctedMatches : typed;
+        const query = readAs ?? parsed.query;
+        // A search also finds the terms it names; text only, the JSON stays a list of functions.
+        const glossary = lookupGlossary(parsed.query);
         // A setting or a report can be a command, not a function: "light theme" names `config themes` beside THEM,
         // "drip" names `portfolio show --drip` beside DVD.
         const setting = commandPointer(parsed.query);
@@ -628,13 +636,15 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
         const series = findCatalogSeries(ctx.plugins, parsed.query);
         const listed = pointer
           ? pointer.codes.flatMap((code) => entries.filter((entry) => entry.token === code))
-          : selectPaneCatalogMatches(filtered, parsed.query, effectiveParsed.limit).shown;
+          : selectPaneCatalogMatches(filtered, query, effectiveParsed.limit).shown;
+        const readNote = readAs ? `No functions match "${parsed.query}"; showing "${readAs}".` : null;
         ctx.printResult({
           data: listed,
-          ...series.length ? { metadata: { series } } : {},
+          ...series.length || readAs ? { metadata: { ...series.length ? { series } : {}, ...readAs ? { query: readAs } : {} } } : {},
           ...(gap || setting) && ctx.cliOptions.format !== "text" ? { warnings: [gap, setting].filter((note): note is string => !!note) } : {},
         }, {
-          text: () => renderPaneCatalogReport(filtered, effectiveParsed, glossary, gap, series, setting, settingLeads),
+          text: () => [readNote ? cliStyles.muted(readNote) : "", renderPaneCatalogReport(filtered, { ...effectiveParsed, query }, glossary, gap, series, setting, settingLeads)]
+            .filter(Boolean).join("\n\n"),
         });
       } finally {
         registry.destroy();

@@ -368,6 +368,7 @@ In exports, `--csv` and `--ndjson` rows add `Chg Basis` and `Chg Basis Note` (`c
 After the close and through a weekend, the boards' Last and change agree with `gloom ticker`.
 
 - `sectors`, `indices` and `movers` (every list), and `fn BI`, `fn WEI` and `fn MOST`, give an extended print an After Hours or Pre-Market column when a row has one, and the four `extended` fields in `--json`. `WEI`, `FUT` and the `GPU` equities board show the regular session and no extended column.
+- `gloom movers hk` (or `movers hk losers`) ranks Hong Kong's gainers or losers by the regular session's move, through the same quotes as `quote`. The line under the title says exactly what it ranks: of the HKEX common stocks in the app's built-in list of large listings (the one the command bar names as you type), those worth HK$10B or more with a quote from the current or last session; no other HKEX stock is ranked. A stale or suspended quote is left out. The quotes come through the cache like any other, so `--refresh` does not force the whole list past it. Each symbol carries its venue (`0700:HKEX`), the form `quote` takes.
 - After the close, Gainers and Losers rank by the regular session's move. `gloom movers gainers --session extended` (or `losers`) ranks by the pre-market or after-hours move from that close instead. The line above the table names the ranking (`Ranked by the regular-session move`, `Ranked by the after-hours move`, `Ranked by volume`), as `metadata.rankedBy` does in `--json`.
 - In the `MOST` pane, click the `AFTER-HRS` or `PRE-MKT` header to sort by the extended move. A narrow `BI` pane gives up the move bar and then the extended column before cutting a sector's name, and a narrow `MOST` gives up MCAP and then 52W%.
 - The header's market is the regular close once its exchange is closed, and while a US pre-market or after-hours session is open it is that session's price and move (see [Header market](#header-market)).
@@ -683,7 +684,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates |
 | `GC [curve] [date]` | Government yield curves (UST, TIPS real, breakeven, euro AAA, Bund, Gilt, JGB, Canada; Mexico and Brazil at 2Y and 10Y) with spreads and percentiles, a compare date, the one-year-forward curve, a World tab and USD SOFR Swaps. CLI: `--curve`, `--date`, `--compare 1D` (or 1W, 1M, 3M, 1Y, or a date), `--tab world`, or `--tab swaps --tenor 10Y` |
 | `WIRP` / `FFIP` | Fed funds futures implied FOMC path, conditional target probabilities, SOFR contracts and Fed projections |
-| `BTMM` | Money markets: funding rates, Treasury bill curves and Federal Reserve liquidity |
+| `BTMM` | Money markets: funding rates, Treasury bill curves, Federal Reserve liquidity and Hong Kong's Exchange Fund Bill yields |
 | `YAS` | Fixed-coupon bond calculator: price/yield, accrued interest, duration, convexity, DV01 and Treasury spread |
 | `TRACE [issuer, symbol or CUSIP]` | FINRA corporate and agency bond last sales. Alone, the latest prints market-wide |
 | `CBR` / `ECFC` / `CBRT` | Policy rates of the G20, SNB, Norges Bank, Riksbank and RBNZ, last observed moves and one-year history |
@@ -798,7 +799,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 - A contract listed after the baseline date shows no return for it (Treasury futures list three quarters ahead, so their YTD is blank in the second half of the year).
 - Dutch TTF gas names no month, so its front contract is the one, among the next three months, whose last close is nearest the quoted price.
 
-**`BTMM`** opens Rates, Bills and Liquidity views. Select a row (Enter or click) for its dated history, one-year range and source. `h` and `l` switch views, `o` opens the selected FRED series, `r` refreshes. Reports take `gloom fn BTMM --tab rates|bills|liquidity` and `--json`.
+**`BTMM`** opens Rates, Bills, Liquidity and Hong Kong views. Hong Kong lists the Hong Kong Monetary Authority's Exchange Fund Bill closing yields from 7 days to 364 days, each dated by its own day and credited to HKMA; its statistical bulletin carries a day a week or two after it. HIBOR is not shown: the Hong Kong Association of Banks licenses its fixings for non-commercial use only, and `gloom catalog hibor` says so beside BTMM. Select a row (Enter or click) for its dated history, one-year range and source. `h` and `l` switch views, `o` opens the selected FRED series or HKMA's bulletin tables, `r` refreshes. Each view loads only its own data. Reports take `gloom fn BTMM --tab rates|bills|liquidity|hk` and `--json`. `gloom econ` lists each bill yield HKMA has published for the 7-, 91- and 364-day bills at 16:00 Hong Kong time on its day, with the day before as the prior.
 
 **`CBR`, `ECFC` and `CBRT`** open the Central Bank Rates board: each row's policy rate or target range, last observed move and date, one-year percentile and history.
 

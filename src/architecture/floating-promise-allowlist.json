@@ -202,7 +202,7 @@
   "src/plugins/builtin/members/pane.tsx": ["void:resource.load()","void:resource.load()","void:resource.reload()","void:resource.reload()","void:resource.reload()"],
   "src/plugins/builtin/mna/detail.tsx": ["void:rendererHost.openExternal()"],
   "src/plugins/builtin/mna/pane.tsx": ["void:resource.reload()"],
-  "src/plugins/builtin/money-markets/pane.tsx": ["void:resource.reload()"],
+  "src/plugins/builtin/money-markets/pane.tsx": ["void:active.reload()"],
   "src/plugins/builtin/news/wire/breaking/notifications.ts": ["void:refreshWatchedSymbols()","void:refreshWatchedSymbols()","void:refreshWatchedSymbols()","void:refreshWatchedSymbols()"],
   "src/plugins/builtin/news/wire/letters/pane.tsx": ["void:rendererHost.openExternal()"],
   "src/plugins/builtin/news/wire/news/detail-view.tsx": ["void:rendererHost.openExternal()"],

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { aprFootnote, baseOfLabel, BOARD_COLUMNS, collectedVenueCount, boardColumns, compareColumns, dayChange, fundingSpread, historyCaption, historyCell, historyChange, historyColumns, historyRows, percent, perpBaseCandidates, perpCellText, perpDescription, readingTime,
-  separatedPairBase, underlyingTicker } from "./model";
+  separatedPairBase, underlyingTicker, venueAprSummary } from "./model";
 import { fundingNote } from "./freshness";
 import { equityBoard, longShort, longShortPoint, perpHistory, perpRow, venueRow } from "./test-fixture";
 
@@ -151,4 +151,24 @@ test("the APR note names each funding interval's own annualisation, and venues a
   expect(collectedVenueCount([{ source: "binance", lastOkAt: "2026-10-18T10:00:00Z" }, { source: "bybit", lastOkAt: null }])).toBe(1);
   expect(collectedVenueCount([{ source: "underlying" }])).toBeNull();
   expect(collectedVenueCount(undefined)).toBeNull();
+});
+
+test("one asset's carry across venues: the APR range, weighted by open interest, and the venues paying only the 0.01%/8h baseline", () => {
+  // ZEC on 9 Nov 2026: Hyperliquid's 0.00125%/1h is its baseline, OKX pays the other way.
+  const rows = [perpRow({ baseAsset: "ZEC", fundingRate8h: 0.0001, fundingApr: 0.0000125 * 24 * 365, openInterestUsd: 558.76e6 }),
+    venueRow("binance", { fundingRate8h: -0.0000004, fundingApr: -0.0004, openInterestUsd: 520.23e6 }),
+    venueRow("bybit", { fundingRate8h: 0.0000757, fundingApr: 0.0829, openInterestUsd: 196.3e6 }),
+    venueRow("okx", { marketId: "okx:ZEC-USDT-SWAP", fundingRate8h: -0.0001409, fundingApr: -0.1543, openInterestUsd: 161.64e6 })];
+  const summary = venueAprSummary(rows)!;
+  expect(summary.text).toBe("4 venues: -15.4% to +11.0%, OI-weighted +3.6%; Hyperliquid sits at the 0.01%/8h baseline");
+  expect(summary.oiWeighted).toBeCloseTo(0.0364, 4);
+  // Several contracts on a venue are counted as contracts; a single contract off its baseline says nothing.
+  expect(venueAprSummary([...rows, venueRow("binance", { marketId: "binance:ZECUSDC", fundingRate8h: 0.00002, fundingApr: 0.0219, openInterestUsd: 1e6 })])!.text)
+    .toStartWith("5 contracts on 4 venues: ");
+  expect(venueAprSummary([rows[1]!])).toBeNull();
+  expect(venueAprSummary([rows[0]!])!.text).toBe("Hyperliquid sits at the 0.01%/8h baseline");
+  // A venue not read recently is out of the range and the weighting, and the line counts it.
+  const stale = venueAprSummary(rows.map((row) => row.venue === "okx" ? { ...row, stale: true } : row))!;
+  expect(stale.text).toBe("3 venues: -0.0% to +11.0%, OI-weighted +6.1%; Hyperliquid sits at the 0.01%/8h baseline; 1 stale contract left out");
+  expect([stale.low, stale.stale]).toEqual([-0.0004, 1]);
 });

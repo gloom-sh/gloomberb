@@ -112,6 +112,9 @@ test.each([
   ["03042.HK", "3042.HK"],
   ["00700.HK", "0700.HK"],
   ["00700:HKEX", "0700:HKEX"],
+  // Some data vendors write HKEX's suffix as .HKG.
+  ["3042.HKG", "3042.HK"],
+  ["700.HKG", "0700.HK"],
   ["6758.JP", "6758.T"],
   ["BRK/B", "BRK-B"],
   ["MC.FP", "MC.PA"],

@@ -5,7 +5,7 @@ import { createTestTicker } from "../../test-support/ticker";
 import { ProviderBusyError } from "../../sources/provider-errors";
 import { DataServiceUnreachableError } from "../../utils/network-failure";
 import type { TickerRecord } from "../../types/ticker";
-import { search } from "./search";
+import { quotableSearchSymbol, search } from "./search";
 
 /**
  * A rate-limited catalogue printed "No matches found." and exited 0, which
@@ -132,7 +132,7 @@ test("a company found by the name it had before it was renamed leads, and says w
   const rows = printed[0]!.data as Array<{ category: string; symbol: string; formerName?: string }>;
   // Other Listings are Filana's own lines, under the name it had; another company's 0841 is an Other Match.
   expect(rows.map((item) => `${item.symbol}:${item.category}`)).toEqual([
-    "FLNA:Primary Listing", "PX91.MU:Other Listings", "PX91.DU:Other Listings", "0841:Other Matches",
+    "FLNA:Primary Listing", "PX91.MU:Other Listings", "PX91.DU:Other Listings", "0841:HKEX:Other Matches",
   ]);
   expect(rows[0]!.formerName).toBe("Cassava Sciences Inc");
   expect("formerName" in rows[1]!).toBe(false);
@@ -160,4 +160,13 @@ test("Other Listings keep the primary listing's company's lines, its nameless on
     "DK:NYSE:Primary Listing", "DK:IEX:Other Listings", "DK:BYMA:Other Listings",
     "DKC1O:BYMA:Other Matches", "DKIMA:SFB:Other Matches", "DKCLF:OTC:Other Matches", "DKL:NYSE:Other Matches",
   ]);
+});
+
+test("a code of digits is listed with its venue, the form quote takes, and any other symbol as listed", () => {
+  // 9 Nov 2026: search listed `9042 … HKEX`, and `quote 9042` asked to choose between JPX and HKEX.
+  const line = (label: string, exchange: string) => quotableSearchSymbol({ label, result: { exchange } } as never);
+  expect(line("9042", "HKEX")).toBe("9042:HKEX");
+  expect(line("7203", "JPX")).toBe("7203:JPX");
+  expect(line("SAN", "EPA")).toBe("SAN");
+  expect(line("9042", "")).toBe("9042");
 });

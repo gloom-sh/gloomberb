@@ -23,6 +23,8 @@ import {
   type MoverRankBasis,
 } from "../../plugins/builtin/market-movers/model";
 import { MOVER_CANDIDATES } from "../../plugins/builtin/market-movers/client";
+import { HONG_KONG_MOVERS_MARKET, hongKongMoverUniverse, hongKongUniverseNote, inHongKongUniverse, rankHongKongMovers, type HongKongMoversList } from "./hong-kong-movers";
+import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import { hasPartialFloat, meetsMinFloat, minFloatShares, normalizeMinFloat, PARTIAL_FLOAT_NOTE } from "../../plugins/builtin/market-movers/min-float";
 import { fetchEconCalendarFrom } from "../../plugins/builtin/econ/calendar-source";
 import {
@@ -156,6 +158,7 @@ const MOVER_LISTS: Record<string, ScreenerCategory | "trending"> = {
   trending: "trending",
 };
 const MOVERS_USAGE = "movers [gainers|losers|active|trending] [--session regular|extended] [--min-float <shares>]";
+const HONG_KONG_MOVERS_USAGE = "movers hk [gainers|losers]";
 /** The most rows the movers list serves in one request. */
 const MOVER_REQUEST_CAP = 100;
 /** A one-shot list waits this long for its rows' average volumes and sizes, as `fn MOST` does. */
@@ -182,7 +185,7 @@ function screenerCategory(args: readonly string[], ctx: Parameters<CliCommandDef
   rejectExtraArgs(args, 1, { usage: MOVERS_USAGE, takes: "one list" }, ctx);
   const list = args[0]?.toLowerCase() ?? "gainers";
   const category = MOVER_LISTS[list];
-  if (!category) ctx.fail(`Unknown list "${args[0]}".`, "Use gainers, losers, active or trending.");
+  if (!category) ctx.fail(`Unknown list "${args[0]}".`, "Use gainers, losers, active or trending, or movers hk for Hong Kong.");
   return category;
 }
 
@@ -219,8 +222,48 @@ function quoteRows(results: Awaited<ReturnType<NonNullable<import("../../types/d
   });
 }
 
+/**
+ * `movers hk [gainers|losers]`: the large HKEX stocks ranked by the regular
+ * session's move, quoted as `quote` quotes them (hong-kong-movers.ts), with
+ * the universe named under the title and the quotes' session and delay on
+ * the status line.
+ */
+async function runHongKongMovers(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
+  rejectExtraArgs(args, 1, { usage: HONG_KONG_MOVERS_USAGE, takes: "one list" }, ctx);
+  const list = (args[0]?.toLowerCase() ?? "gainers") as HongKongMoversList;
+  if (list !== "gainers" && list !== "losers") ctx.fail(`Unknown Hong Kong list "${args[0]}".`, "Use movers hk gainers or movers hk losers.");
+  const { MAJOR_LISTINGS } = await import("../../tickers/search/major-listings.chunk");
+  const universe = hongKongMoverUniverse(MAJOR_LISTINGS);
+  const names = new Map(universe.map((listing) => [listing.code, listing.name]));
+  await withCliServices(ctx, async (services) => {
+    // Never forced past the cache: a refresh of the whole universe would spend the provider's allowance for one list.
+    const quoted = await services.dataProvider.getQuotesBatch(universe.map((listing) => ({ symbol: listing.code, exchange: "HKEX" })));
+    const results = quoted.filter((result) => inHongKongUniverse(result.quote, isQuoteStaleForCurrentSession(result.quote)));
+    // A numeric code names listings on several venues, so each row carries HKEX, the form `quote` takes.
+    const rows = rankHongKongMovers(quoteRows(results), list, ctx.cliOptions.limit ?? 25)
+      .map((row) => ({ ...row, symbol: `${row.symbol}:HKEX`, name: row.name || names.get(row.symbol) || "" }));
+    ctx.printResult({
+      data: rows,
+      metadata: { market: HONG_KONG_MOVERS_MARKET, category: list === "gainers" ? "day_gainers" : "day_losers", rankedBy: "regular",
+        universe: { description: "HKEX common stocks in the app's built-in list of large listings, worth HK$10B or more, quoted in the current or last session",
+          count: results.length, listed: universe.length } },
+      freshness: quotesFreshness(results.map((result) => result.quote)),
+    }, {
+      heading: `Hong Kong ${list}\n${hongKongUniverseNote(results.length, universe.length)}`,
+      columns: [
+        { key: "symbol", header: "Symbol" },
+        { key: "name", header: "Name" },
+        PRICE_COLUMN,
+        { key: "changePercent", header: "Chg%", align: "right", format: formatChangePercentCell },
+        { ...MARKET_CAP_CELL, value: (row) => row.marketCap == null ? "" : formatCompact(Number(row.marketCap)) },
+      ],
+    });
+  });
+}
+
 async function runMoverCommand(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
+  if (args[0]?.toLowerCase() === HONG_KONG_MOVERS_MARKET) return runHongKongMovers(args.slice(1), ctx);
   const sessionOption = takeOption(args, "--session");
   const basis = moverRankBasis(sessionOption, ctx);
   const minFloat = moverMinFloat(takeOption(args, "--min-float"), ctx);
@@ -973,7 +1016,7 @@ export const overviewCliCommands: CliCommandDef[] = [
     description: "Show gainers, losers, most active, or trending stocks",
     help: {
       group: CLI_COMMAND_GROUPS.markets,
-      usage: [MOVERS_USAGE],
+      usage: [MOVERS_USAGE, HONG_KONG_MOVERS_USAGE],
       options: [{
         flags: "--session <basis>",
         description: "Rank gainers and losers by the regular-session move (regular, the default) or by the pre-market or after-hours move from the close (extended)",
@@ -981,7 +1024,8 @@ export const overviewCliCommands: CliCommandDef[] = [
         flags: "--min-float <shares>",
         description: "Keep the gainers, losers or most active whose float (the one EQS serves) is at least this many shares, such as 10M or 500k; a row with no float is left out",
       }],
-      examples: ["movers", "movers losers --limit 10", "movers gainers --session extended", "movers gainers --min-float 10M", "movers trending"],
+      examples: ["movers", "movers losers --limit 10", "movers gainers --session extended", "movers gainers --min-float 10M", "movers trending",
+        "movers hk", "movers hk losers --limit 10"],
     },
     execute: runMoverCommand,
   },

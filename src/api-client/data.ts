@@ -38,7 +38,7 @@ import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { FxInterventionsPayload } from "./fx-interventions";
 import type { HkTendersPayload } from "./hk-tenders";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
-import type { MoneyMarketsPayload } from "./money-markets";
+import type { HongKongMoneyMarketsPayload, MoneyMarketsPayload } from "./money-markets";
 import type { CloudCurveHistory, CloudCurveId, CloudCurveView, CloudWorldCurves } from "./yield-curves";
 import type { SwapCurvePayload, SwapTenor } from "./swap-curve";
 import type { CdxBoardPayload, CloudCreditBoardParams, SovrBoardPayload } from "./credit-boards";
@@ -973,7 +973,9 @@ export class CloudDataApi {
   async getCloudPerpsHistory(query: PerpHistoryQuery): Promise<PerpHistoryPayload> {
     return this.request(`/cloud/perps/history?${new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))}`);
   }
-  async getCloudPerpsRankings(): Promise<PerpRankingsPayload> { return this.request("/cloud/perps/rankings"); }
+  async getCloudPerpsRankings(assetClass?: string): Promise<PerpRankingsPayload> {
+    return this.request(`/cloud/perps/rankings${assetClass ? `?${new URLSearchParams({ assetClass })}` : ""}`);
+  }
   async getCloudPerpsCompare(baseAsset: string): Promise<PerpBoardPayload> { return this.request(`/cloud/perps/compare?${new URLSearchParams({ baseAsset })}`); }
   async getCloudPerpsLiquidations(baseAsset: string): Promise<PerpLiquidationsPayload> { return this.request(`/cloud/perps/liquidations?${new URLSearchParams({ baseAsset })}`); }
   async getCloudPerpsDepth(baseAsset: string): Promise<PerpDepthPayload> { return this.request(`/cloud/perps/depth?${new URLSearchParams({ baseAsset })}`); }
@@ -1241,6 +1243,10 @@ export class CloudDataApi {
 
   async getCloudMoneyMarkets(): Promise<MoneyMarketsPayload> {
     return this.request<MoneyMarketsPayload>("/cloud/econ/money-markets", { signal: AbortSignal.timeout(45_000) });
+  }
+
+  async getCloudHongKongMoneyMarkets(): Promise<HongKongMoneyMarketsPayload> {
+    return this.request<HongKongMoneyMarketsPayload>("/cloud/econ/money-markets/hk", { signal: AbortSignal.timeout(45_000) });
   }
 
   async getCloudDebtMaturities(symbol: string, listing?: IssuerListingParams): Promise<DebtMaturitiesPayload> {

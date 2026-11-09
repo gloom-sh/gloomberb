@@ -118,6 +118,16 @@ const KNOWN_GAPS: ReadonlyArray<{
     message: "European gas storage: EPWR GAS, or EPWR GAS DE for one country; chart CAP:gas-storage:eu. US storage is NGS.",
   },
   {
+    // The Hong Kong Association of Banks licenses its HIBOR fixings for non-commercial use only; HKMA's own bill yields stand in.
+    terms: ["HIBOR", "HKD HIBOR", "HIBOR fixing", "HIBOR fixings", "HIBOR rate", "HIBOR rates", "Hong Kong Interbank Offered Rate",
+      "Hong Kong interbank rate", "Hong Kong interbank rates"],
+    message: "HIBOR is not licensed for redistribution. For HKD short rates, BTMM's Hong Kong tab shows HKMA's Exchange Fund Bill yields: fn BTMM --tab hk.",
+  },
+  {
+    terms: ["LIBOR", "USD LIBOR", "LIBOR rate", "LIBOR rates", "London Interbank Offered Rate"],
+    message: "LIBOR is no longer published: USD LIBOR ended in June 2023 and SOFR replaced it. SOFR is in BTMM: fn BTMM.",
+  },
+  {
     terms: ["tick", "ticks", "tick data", "tick bars", "tick by tick", "second", "seconds", "second bars", "1s", "1 second",
       "1 second bars", "sub-minute", "sub minute bars", "subsecond"],
     message: subMinuteDataMessage(),

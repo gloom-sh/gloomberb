@@ -27,7 +27,7 @@ import { useFreshnessStatusLine } from "./status-line";
 import { useLivePerpRows, useLivePerpTableRows } from "./live-rows";
 import { aprFormula, ASSET_FILTERS, BOARD_SORTS, boardColumns, collectedVenueCount, compact, compareColumns, dayChange, fundingInterval, fundingSpread, historyCaption, historyCell, historyChange, historyColumns,
   HISTORY_METRICS, historyRows, historySeries, historyValue, inPoints, isAssetTab, isMarketTab, label, longShortReason, marketLabel, metricLabel, openingTab, perpCell, perpHistoryProText, PERP_TABS, percent,
-  positioningFields, price, rankingColumns, rankingRows, RANKINGS, ratioText, share, sortLabel, time, underlyingTicker, venueLabel, venueName, venuesOf, type HistoryMetric,
+  positioningFields, price, rankingColumns, rankingRows, RANKINGS, ratioText, share, sortLabel, time, underlyingTicker, venueAprSummary, venueLabel, venueName, venuesOf, type HistoryMetric,
   type PerpColumnId, type PerpTab, type RankingKey } from "./model";
 
 const NO_ROWS: readonly PerpBoardRow[] = [];
@@ -50,11 +50,13 @@ function usePerpStatusLine(rows: readonly PerpBoardRow[], funding: readonly Perp
 
 type EvidenceField = [label: string, value: string, detail?: string, link?: KeyValueRowProps["link"]];
 
-function MarketEvidence({ row, data, width, height }: { row: PerpBoardRow; data: PerpMarketPayload; width: number; height: number }) {
+function MarketEvidence({ row, data, width, height }: { row: PerpBoardRow; data: PerpMarketPayload & { venues?: PerpBoardRow[] }; width: number; height: number }) {
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const upgrade = useCloudUpgradeAction("perp");
   const openDescription = useOpenDescription();
   const positioning = positioningFields(row);
+  // The asset's funding on every venue, beside this contract's own.
+  const acrossVenues = venueAprSummary(data.venues ?? []);
   // The security the premium is measured against opens its DES, as the `d` key does.
   const security = underlyingTicker(row);
   const listed: EvidenceField[] = security && row.underlying ? [["Ticker", row.underlying.symbol, row.underlying.listingExchange,
@@ -68,7 +70,8 @@ function MarketEvidence({ row, data, width, height }: { row: PerpBoardRow; data:
     ["Funding", [["Funding", `${percent(row.fundingRate, 5)} / ${fundingInterval(row)}`, row.fundingKind === "last-paid" ? "Last paid" : row.fundingKind === "continuous" ? "Continuous rate" : "Current rate"],
       ["Funding 8h / APR", `${percent(row.fundingRate8h, 4)} / ${percent(row.fundingApr, 2)}`, row.fundingIntervalHours ? `APR = current ${aprFormula(row.fundingIntervalHours)}` : undefined],
       ...(row.predictedFundingRate != null ? [["Predicted funding", `${percent(row.predictedFundingRate)} / ${row.predictedFundingIntervalHours ?? "--"}h`] as [string, string]] : []),
-      ...(row.nextFundingAt ? [["Next funding", time(row.nextFundingAt)] as [string, string]] : [])]],
+      ...(row.nextFundingAt ? [["Next funding", time(row.nextFundingAt)] as [string, string]] : []),
+      ...(acrossVenues ? [["APR across venues", acrossVenues.text] as [string, string]] : [])]],
     ["Open Interest", [["Open interest", `${compact(row.openInterestBase)} ${row.baseAsset} · ${compact(row.openInterestUsd)} USD`],
       ["OI change 1h / 24h", row.oiChange1h == null && row.oiChange24h == null ? "Collecting" : `${percent(row.oiChange1h, 2)} / ${percent(row.oiChange24h, 2)}`, "own snapshots"]]],
     ...(positioning ? [["Positioning", positioning.map((field) => [field.label, field.text, field.detail])] as [string, EvidenceField[]]] : []),
@@ -103,8 +106,9 @@ function MarketEvidence({ row, data, width, height }: { row: PerpBoardRow; data:
   </ScrollBox>;
 }
 
-function History({ market, live = false, venues, accessKey, width, height, focused, range, metric, refreshMarket }: {
-  market: PerpBoardRow; live?: boolean; venues: number | null; accessKey: string; width: number; height: number; focused: boolean; range: string; metric: HistoryMetric; refreshMarket: () => void;
+function History({ market, live = false, venues, venueApr, accessKey, width, height, focused, range, metric, refreshMarket }: {
+  market: PerpBoardRow; live?: boolean; venues: number | null; venueApr: ReturnType<typeof venueAprSummary>; accessKey: string; width: number; height: number; focused: boolean;
+  range: string; metric: HistoryMetric; refreshMarket: () => void;
 }) {
   const colors = useThemeColors();
   const loader = useCallback((force: boolean) => loadPerpsHistoryForRange(market.marketId, Number(range), accessKey, force), [market.marketId, range, accessKey]);
@@ -134,7 +138,13 @@ function History({ market, live = false, venues, accessKey, width, height, focus
   // Long/short: the latest reading stays free on the row; history adds its ratio and the day's move once it reaches back a day.
   const reading = market.longShortRatio ?? null;
   const day = metric === "long-short" ? dayChange(rows) : null;
-  // The same four figures on every series: the series itself, its move over the range, and the market around it.
+  // The asset's funding on every venue, as Evidence lists it: the range, with the OI-weighted APR and any stale venue left out.
+  const acrossVenues: StatItem | null = venueApr?.low != null && venueApr.high != null ? { id: "venues", label: `APR across ${venueApr.venues} venues`,
+    value: `${percent(venueApr.low, 1)} to ${percent(venueApr.high, 1)}`,
+    detail: [venueApr.oiWeighted != null ? `OI-weighted ${percent(venueApr.oiWeighted, 1)}` : null, venueApr.stale ? `${venueApr.stale} stale left out` : null]
+      .filter(Boolean).join(" · ") || undefined } : null;
+  // The same four figures on every series: the series itself, its move over the range, and the market around it (its funding
+  // across venues before its mark).
   const figures: StatItem[] = [
     { id: "latest", label: metric === "funding" ? "Funding / 8h" : metric === "oi" ? "Open interest USD" : metric === "premium" ? "Oracle premium" : metric === "long-short" ? "Long accounts" : `Price ${market.quoteCurrency}`,
       value: rows.length ? historyValue(rows.at(-1)?.value, metric) : metric === "funding" ? percent(market.fundingRate8h, 4) : metric === "oi" ? compact(market.openInterestUsd)
@@ -145,7 +155,8 @@ function History({ market, live = false, venues, accessKey, width, height, focus
     ...(day !== null ? [{ id: "day", label: "24h change", value: historyChange(day, metric), color: tone(day) }] : []),
     // On a one-day range the day's move already says it.
     ...(periodChange !== null && !(day !== null && range === "1") ? [{ id: "change", label: `${range}D change`, value: historyChange(periodChange, metric), color: tone(periodChange) }] : []),
-    ...(metric !== "price" ? [{ id: "mark", label: `Mark ${market.quoteCurrency}`, value: price(market.markPrice) }] : []),
+    ...(acrossVenues ? [acrossVenues] : []),
+    ...(metric === "oi" || metric !== "price" && !acrossVenues ? [{ id: "mark", label: `Mark ${market.quoteCurrency}`, value: price(market.markPrice) }] : []),
     ...(metric !== "oi" ? [{ id: "oi", label: "Open interest USD", value: compact(market.openInterestUsd) }] : []),
   ].slice(0, 4);
   // A series with one basis says it in the legend; the column only appears when the basis changes along the range.
@@ -266,8 +277,11 @@ function Rankings({ accessKey, width, height, focused, onPick, onOpen }: ListTab
   const upgrade = useCloudUpgradeAction("perp");
   const session = useResearchCloudSession();
   const [selectedId, setSelected] = usePluginPaneState<string | null>("perps:rank-selected", null);
-  const loader = useCallback((force: boolean) => loadPerpsRankings(accessKey, force), [accessKey]);
-  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsRankings(accessKey), clearOnError: isAccessDenied });
+  // The board's asset class: a class picked on either tab ranks and lists the same markets.
+  const [openingAsset] = usePaneSettingValue("assetClass", "all");
+  const [asset, setAsset] = usePluginPaneState<string>("perps:asset", openingAsset);
+  const loader = useCallback((force: boolean) => loadPerpsRankings(accessKey, force, asset), [accessKey, asset]);
+  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsRankings(accessKey, asset), clearOnError: isAccessDenied, keepPreviousData: true });
   const data = resource.data?.payload;
   const fetchedItems = useMemo(() => buildSectionedRows(RANKINGS.map((ranking) => ({ label: ranking.label, emptyLabel: "None",
     items: rankingRows(data, ranking.key).map((row): Ranked => ({ list: ranking.key, row })) })), rankedKey), [data]);
@@ -297,8 +311,10 @@ function Rankings({ accessKey, width, height, focused, onPick, onOpen }: ListTab
     const value = row[ranking.field];
     return { text: percent(value, ranking.digits), value: value == null ? null : value * 100, color: value == null || value === 0 ? colors.textMuted : value > 0 ? colors.positive : colors.negative };
   };
+  const queryBar = <QueryBar width={width} filters={[{ id: "asset", label: "Asset", value: asset, defaultValue: "all", options: ASSET_FILTERS.map((value) => ({ value, label: label(value) })),
+    onChange: (value: string) => { setAsset(value); setSelected(null); } }]} />;
   return <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject="perpetual rankings">
-    <DataTableView<SectionedRow<Ranked>> columns={columns} items={items} focused={focused} rootWidth={width} rootHeight={height}
+    <DataTableView<SectionedRow<Ranked>> columns={columns} items={items} focused={focused} rootWidth={width} rootHeight={height} rootBefore={queryBar}
       getItemKey={(entry) => entry.key} sortColumnId={null} sortDirection="desc" isNavigable={(entry) => entry.kind === "item"} onVisibleRangeChange={stream.onVisibleRangeChange}
       renderSectionHeader={(entry) => entry.kind === "section" ? { text: entry.label } : null}
       selection={{ kind: "id", selectedId: selected ? rankedKey(selected) : null, getId: (entry) => entry.key, onChange: (id) => { if (ranked.some((item) => rankedKey(item) === id)) setSelected(id); } }}
@@ -389,9 +405,10 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
   const [metricValue, setMetric] = usePluginPaneState<string>("perps:metric", openingMetric);
   const metric: HistoryMetric = HISTORY_METRICS.includes(metricValue as HistoryMetric) ? metricValue as HistoryMetric : "funding";
   // One market's selection only loads for its own tabs; the lists bring their own rows.
-  const loader = useCallback((force: boolean) => loadPerpSelection(search, accessKey, force), [search, accessKey]);
-  const resource = useAsyncResource(marketTab ? loader : null, { initialData: () => cachedPerpSelection(search, accessKey), clearOnError: isAccessDenied });
+  const loader = useCallback((force: boolean) => loadPerpSelection(search, accessKey, force, true), [search, accessKey]);
+  const resource = useAsyncResource(marketTab ? loader : null, { initialData: () => cachedPerpSelection(search, accessKey, true), clearOnError: isAccessDenied });
   const data = marketTab ? resource.data?.payload : undefined;
+  const venueApr = useMemo(() => venueAprSummary(data?.venues ?? []), [data?.venues]);
   const fetchedActive = data?.rows[0] ?? null;
   // The market on screen moves with the quote stream, as its listing's quote does everywhere else.
   const activeRows = useMemo(() => fetchedActive ? [fetchedActive] : NO_ROWS, [fetchedActive]);
@@ -458,7 +475,7 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
             { id: "range", label: "Range", value: range, options: ["1", "7", "30", "90", "365"].map((value) => ({ value, label: `${value}D` })), onChange: setRange },
           ] : []} />
         <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject="perpetual market">
-          {active ? tab === "history" ? <History key={active.marketId} market={active} live={activeStream.live} venues={collectedVenueCount(data?.sources)} accessKey={accessKey} width={width} height={listHeight - 1} focused={focused && !querySearch.active} range={range} metric={metric} refreshMarket={refreshMarket} />
+          {active ? tab === "history" ? <History key={active.marketId} market={active} live={activeStream.live} venues={collectedVenueCount(data?.sources)} venueApr={venueApr} accessKey={accessKey} width={width} height={listHeight - 1} focused={focused && !querySearch.active} range={range} metric={metric} refreshMarket={refreshMarket} />
             : <MarketEvidence row={active} data={data!} width={width} height={listHeight - 1} />
             : <EmptyState title="No market matches." message={data?.suggestions?.length ? `Try ${data.suggestions.join(", ")}.` : undefined} />}
         </PaneStatusBody>

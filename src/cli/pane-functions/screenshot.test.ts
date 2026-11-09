@@ -45,7 +45,10 @@ import { debtMaturitiesModule } from "../../plugins/builtin/debt-maturities";
 import { debtMaturitiesHeadless } from "../../plugins/builtin/debt-maturities/headless";
 import { traceBondsModule } from "../../plugins/builtin/trace-bonds";
 import { traceBondsHeadless } from "../../plugins/builtin/trace-bonds/headless";
-import { deriveCaptureReport } from "./freshness";
+import { deriveCaptureReport, formatFreshnessLine } from "./freshness";
+import { futuresCurveHeadless } from "../../plugins/builtin/futures-curve/headless";
+import { curveFreshnessObservations, curveReportFreshness } from "../../plugins/builtin/futures-curve/model";
+import type { FuturesContract } from "../../api-client/futures-curve";
 import { MARGIN_PORTFOLIO, MARGIN_TICKERS, marginQuotes } from "../../test-support/margin-account";
 import { noProviderError } from "../../sources/provider-errors";
 import { ApiRequestError } from "../../api-client/errors";
@@ -1405,6 +1408,23 @@ test("an Issuer Debt or TRACE capture is dated by its own data, never by the iss
   }, NOW);
   const trace = shotFreshness({ pane, template: traceBondsModule.paneTemplates![0]! }, { ...payload, instrumentFinancials: [] }, render, [], sales, NOW);
   expect(trace.variants[0]).toBe("Source: FINRA · Mon 27 Jul 2026 · not a live feed (last sales)");
+});
+
+test("a CTM capture states the delay its contracts' source does, as fn CTM does, not the spot quote's on the page", () => {
+  // CTM BTC at 03:40 UTC on Mon 9 Nov 2026: CME states 10 minutes for its futures; the BTC quote beside them reads 15.
+  const NOW = Date.parse("2026-11-09T03:41:00Z");
+  const contract = (symbol: string, asOf: string) => ({ symbol, asOf, delayMinutes: 10, stale: false }) as FuturesContract;
+  const curve = { source: "gloom" as const, contracts: [contract("BTCX26.CME", "2026-11-09T03:40:00.000Z"), contract("BTCZ26.CME", "2026-11-06T20:59:00.000Z")] };
+  const spot = createTestQuote({ symbol: "BTC=F", dataSource: "delayed", delayMinutes: 15, lastUpdated: NOW - 5 * 60_000, sessionExchange: "CME" } as never);
+  const payload = { financials: [], instrumentFinancials: [] } as unknown as Pick<DesktopPaneShotPayload, "financials" | "instrumentFinancials">;
+  const published = [{ role: "report-freshness", metadata: { ...curveReportFreshness(curve), observations: curveFreshnessObservations(curve.contracts) } } as unknown as RemoteUiNodeSnapshot];
+  const pane = { reportFreshness: undefined } as ResolvedPaneFunction["pane"];
+  const shot = shotFreshness({ pane }, payload, { semanticUi: published, footerText: "", rows: [] }, [spot], undefined, NOW);
+  const report = deriveCaptureReport(futuresCurveHeadless, { sections: [{ title: "Contracts", columns: [], rows: curveFreshnessObservations(curve.contracts) }],
+    freshness: curveReportFreshness(curve) }, NOW);
+  expect(shot.variants[0]).toContain("10 min delayed");
+  expect(shot.variants[0]).not.toContain("15 min");
+  expect(formatFreshnessLine(report.freshness)).toContain("10 min delayed");
 });
 
 test("a pane with no market data is not dated by the quotes the page loaded for something else (CHG, BR, ACM, CAT)", () => {

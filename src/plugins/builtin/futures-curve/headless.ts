@@ -3,9 +3,8 @@ import { futuresSpecLines } from "../../../market-data/futures-contract";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneEntry, HeadlessPaneFreshness } from "../../../types/plugin";
 import { formatPercentRaw } from "../../../utils/format";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
-import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 import { fetchFuturesCurve, loadCurveSpot, loadCurveSpotBars, loadCurveSpotCloses, loadFuturesCurveAsOf } from "./client";
-import { basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveCache, curveSpotBars, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveSettleShown, curveUnitLabel, curveRootNamed, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, skippedSpreadNotice, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
+import { curveReportFreshness, basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveCache, curveSpotBars, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveSettleShown, curveUnitLabel, curveRootNamed, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, skippedSpreadNotice, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 import { knownGapMessage } from "../../../cli/known-gaps";
 
@@ -220,11 +219,7 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
       ...spotPremium?.reason ? [`Front premium blank: ${spotPremium.reason}.`] : []];
     const columnOptions = { basis: !!bases, last: data.source !== "cboe", notice: data.contracts.some((row) => row.firstNotice) };
     // Dated by the contracts' own quotes; the same-contract history rows are a year of context, not observations.
-    const quoted = data.contracts.map((row) => row.asOf);
-    const freshness: HeadlessPaneFreshness = date
-      ? { status: "not-a-feed", basis: "settlement archive", asOf: date }
-      : { ...(data.source === "cboe" ? { source: "Cboe", status: "not-a-feed", basis: "daily settlement", cadence: "daily" } as const : {}),
-        asOf: newestReportTime(quoted), oldest: oldestReportTime(quoted) };
+    const freshness: HeadlessPaneFreshness = curveReportFreshness(data, date);
     // No contract to list is no curve: the report says why once and fails, as `help fn` says an empty one does.
     if (!data.contracts.length) {
       return { freshness, sections: [], empty: `No ${root} contracts from the source.`, errors: data.gaps,
