@@ -24,8 +24,15 @@ test("CHOKE's averages: the 7 and 28 days to the latest, against the same 28 day
     yearAgoAvg28: 62,
     changeVsYearAgoPct: (3.5 / 62 - 1) * 100,
   });
-  // Without a year-ago window that reaches its first day, there is no change rather than one over a part of it.
-  expect(trailingAverages(recent, yearAgo.slice(3))).toMatchObject({ avg28: 3.5, yearAgoAvg28: null, changeVsYearAgoPct: null });
+  // A window short of its days, now or a year before, has no average and gives no change: 24 of 28 days and 6 of 7 stand.
+  expect(trailingAverages(recent, yearAgo.slice(4))).toMatchObject({ yearAgoAvg28: 62 });
+  expect(trailingAverages(recent, yearAgo.slice(5))).toMatchObject({ avg28: 3.5, yearAgoAvg28: null, changeVsYearAgoPct: null });
+  expect(trailingAverages(recent, yearAgo.filter((_, index) => index % 7 !== 3))).toMatchObject({ yearAgoAvg28: 62 });
+  expect(trailingAverages(recent.filter((_, index) => index < 26 && index !== 22 && index !== 23), yearAgo)).toEqual({
+    avg7: null, avg28: expect.any(Number), yearAgoAvg28: 62, changeVsYearAgoPct: expect.any(Number),
+  });
+  // A chart read over a week (`--range 1w`) has a 7-day average and no 28-day one.
+  expect(trailingAverages(recent.slice(-7), yearAgo)).toEqual({ avg7: 2, avg28: null, yearAgoAvg28: 62, changeVsYearAgoPct: null });
   // A series that reaches back a year and more reads its own year-ago days.
   const long = [...daily("2025-10-05", Array(28).fill(10)), ...recent];
   expect(trailingAverages(long)).toMatchObject({ yearAgoAvg28: 10, changeVsYearAgoPct: -65 });
