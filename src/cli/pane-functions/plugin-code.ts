@@ -4,6 +4,7 @@ import { findOfferedShortcut, isRegistryPluginInstalled } from "../../plugins/ma
 import type { RegistryPlugin } from "../../plugins/marketplace/model";
 import { pluginDirectoryNames } from "../../plugins/plugin-names";
 import type { PluginTarget } from "../../types/plugin";
+import { plainUntrustedLine } from "../../utils/untrusted-text";
 import type { IdleCliPlugin } from "../registry";
 
 /**
@@ -25,6 +26,19 @@ export interface PluginCodeSources {
   loadRegistry: () => Promise<readonly RegistryPlugin[]>;
 }
 
+/** The commands an answer names: the one typed, to run again once fixed, and `shot` of it. */
+export interface PluginCodeCommands {
+  rerun: string;
+  /** `gloom shot` of the code and argument, which draws a pane of a plugin only the desktop app runs. */
+  capture: string;
+}
+
+/**
+ * A name a plugin or the registry feed gave, as one line that prints as it
+ * reads: no escape sequence, control character or line break of its own.
+ */
+const printable = (value: string | undefined, fallback: string): string => plainUntrustedLine(value ?? "") || fallback;
+
 /** "the desktop app", "the terminal app": where a plugin that does not run on the command line does. */
 function whereItRuns(targets: readonly PluginTarget[] | undefined): string {
   const places = [
@@ -41,21 +55,35 @@ function opensText(code: string, label: string, pluginName: string): string {
   return label === pluginName ? `${code} opens the ${pluginName} plugin` : `${code} opens ${label}, from the ${pluginName} plugin`;
 }
 
-function idleStop(code: string, idle: readonly IdleCliPlugin[]): PluginCodeStop | null {
+/**
+ * Where to see a plugin that does not run on the command line: `shot` draws a
+ * pane as the desktop app does, so one the desktop app runs is captured;
+ * otherwise in the app's command bar.
+ */
+function elsewhereLines(code: string, targets: readonly PluginTarget[] | undefined, commands: PluginCodeCommands): string[] {
+  const where = whereItRuns(targets);
+  const desktop = !targets || targets.length === 0 || targets.includes("desktop");
+  return desktop
+    ? [`See it as the desktop app draws it: ${commands.capture}`, `Or type ${code} in ${where}'s command bar.`]
+    : [`Type ${code} in ${where}'s command bar.`];
+}
+
+function idleStop(code: string, idle: readonly IdleCliPlugin[], commands: PluginCodeCommands): PluginCodeStop | null {
   for (const { plugin, reason } of idle) {
     if (reason === "failed") continue;
     const template = (plugin.paneTemplates ?? []).find((candidate) => (
       [candidate.shortcut?.prefix, ...candidate.shortcut?.aliases ?? []].some((prefix) => prefix?.trim().toUpperCase() === code)
     ));
     if (!template) continue;
-    const opens = opensText(code, template.label, plugin.name);
+    const name = printable(plugin.name, printable(plugin.id, code));
+    const opens = opensText(code, printable(template.label, name), name);
     if (reason === "off") {
-      return { message: `${opens}, which is switched off.`, details: `Turn it on: gloom plugin enable ${plugin.id}` };
+      return { message: `${opens}, which is switched off.`, details: `Turn it on: gloom plugin enable ${printable(plugin.id, name)}` };
     }
-    const where = whereItRuns(plugin.targets);
+    // `shot` opens an installed plugin the desktop app runs, so only `fn` gets here for one.
     return {
-      message: `${opens}, which runs in ${where} only, not on the command line.`,
-      details: `Type ${code} in ${where}'s command bar.`,
+      message: `${opens}, which runs in ${whereItRuns(plugin.targets)} only, not on the command line.`,
+      details: elsewhereLines(code, plugin.targets, commands).join("\n"),
     };
   }
   return null;
@@ -75,10 +103,12 @@ function registryOwner(registry: readonly RegistryPlugin[], code: string): CodeO
   const found = findOfferedShortcut(registry, code);
   if (!found?.plugin.repo) return null;
   const { plugin, shortcut } = found;
+  const name = printable(plugin.name, plugin.id);
   return {
     id: plugin.id,
-    name: plugin.name,
-    label: shortcut.name,
+    name,
+    label: printable(shortcut.name, name),
+    // `gloom-sh/<name>` and nothing else (install-offer.ts), so it prints as one word.
     repo: plugin.repo!,
     ...Array.isArray(plugin.targets) ? { targets: plugin.targets } : {},
     installed: (entry) => isRegistryPluginInstalled(plugin, [entry]),
@@ -101,7 +131,7 @@ function extractedOwner(code: string): CodeOwner | null {
 async function missingStop(
   code: string,
   sources: PluginCodeSources,
-  rerun: string,
+  commands: PluginCodeCommands,
 ): Promise<PluginCodeStop | null> {
   // Offline, the codes Gloom moved out of the app still answer from the list it ships.
   const registry = await sources.loadRegistry().catch(logFailure("cli.plugin-code", "Read the plugin registry for a plugin code failed", []));
@@ -114,24 +144,26 @@ async function missingStop(
   if (failed) {
     return {
       message: `${opens}, which is installed but did not load.`,
-      details: `Check it: gloom plugin doctor ${failed.directory ?? owner.id}`,
+      details: `Check it: gloom plugin doctor ${printable(failed.directory, owner.id)}`,
     };
   }
+  const install = `Install it: gloom install ${owner.repo}`;
   if (owner.targets && !owner.targets.includes("cli")) {
-    return { message: `${opens}, which runs in ${whereItRuns(owner.targets)} only, not on the command line.`, details: "" };
+    const [first, ...rest] = elsewhereLines(code, owner.targets, commands);
+    return {
+      message: `${opens}, which is not installed, and runs in ${whereItRuns(owner.targets)} only, not on the command line.`,
+      details: [install, `Then ${first!.charAt(0).toLowerCase()}${first!.slice(1)}`, ...rest].join("\n"),
+    };
   }
   return {
     message: `${opens}, which is not installed.`,
-    details: [`Install it: gloom install ${owner.repo}`, `Then run: ${rerun}`].join("\n"),
+    details: [install, `Then run: ${commands.rerun}`].join("\n"),
   };
 }
 
-/**
- * The answer for a code that opens nothing because a plugin owns it, or null
- * when no plugin does. `rerun` is the command to run once it is installed.
- */
-export async function pluginCodeStop(name: string, sources: PluginCodeSources, rerun: string): Promise<PluginCodeStop | null> {
+/** The answer for a code that opens nothing because a plugin owns it, or null when no plugin does. */
+export async function pluginCodeStop(name: string, sources: PluginCodeSources, commands: PluginCodeCommands): Promise<PluginCodeStop | null> {
   const code = name.trim().toUpperCase();
   if (!/^[A-Z0-9]{1,12}$/.test(code)) return null;
-  return idleStop(code, sources.idle) ?? await missingStop(code, sources, rerun);
+  return idleStop(code, sources.idle, commands) ?? await missingStop(code, sources, commands);
 }

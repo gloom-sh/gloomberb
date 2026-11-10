@@ -210,7 +210,7 @@ function functionsByCode(catalog: PaneFunctionCatalog): Map<string, CatalogFunct
 /** Arguments a client tool takes as its function's argument; every other one is an option. */
 const ARGUMENT_KEYS = new Set(["symbol", "symbols", "text"]);
 
-function clientToolCommand(found: CatalogFunction, args: Record<string, JsonValue>): ASKGSourceCommand | null {
+function clientToolCommand(catalog: PaneFunctionCatalog, found: CatalogFunction, args: Record<string, JsonValue>): ASKGSourceCommand | null {
   const { template, pane } = found;
   const headless = getHeadlessPaneDefinition(template, pane);
   if (!headless) return null;
@@ -232,7 +232,7 @@ function clientToolCommand(found: CatalogFunction, args: Record<string, JsonValu
     const typed = text(value);
     if (typed) options[key] = typed;
   }
-  return { code: paneFunctionCode(template, pane), arg, options };
+  return { code: paneFunctionCode(template, pane, catalog), arg, options };
 }
 
 /**
@@ -295,7 +295,7 @@ export function createSourceResolver(catalog: PaneFunctionCatalog | null): ASKGS
     // An app action or app state (`app.get_resource`) is no function.
     if (resolveRemoteToolBinding(row.name)) return none;
     const found = byToolName.get(row.name);
-    const source = found ? clientToolCommand(found, args) : null;
+    const source = found ? clientToolCommand(catalog, found, args) : null;
     if (!found || !source || !checkCommand(found, source)) return none;
     return paneTarget(found, source);
   };

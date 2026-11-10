@@ -98,11 +98,17 @@ function templateNameToken(template: PaneTemplateDef): string {
 
 /**
  * What a user types for a function, as the catalog lists it and every error names it: a template's
- * shortcut or, with none, its name (`story`, never its id `news-story-pane`), a pane opened by a
- * built-in command (LAY) by that command's mnemonic, else the pane's id.
+ * shortcut or, with none, its name (`story`, not its id `news-story-pane`) unless that name opens
+ * another function first, a pane opened by a built-in command (LAY) by that command's mnemonic,
+ * else the pane's id.
  */
-export function paneFunctionCode(template: PaneTemplateDef | undefined, pane: PaneDef): string {
-  if (template) return template.shortcut?.prefix ?? templateNameToken(template);
+export function paneFunctionCode(template: PaneTemplateDef | undefined, pane: PaneDef, registry: PaneFunctionCatalog): string {
+  if (template) {
+    if (template.shortcut?.prefix) return template.shortcut.prefix;
+    // A name another function answers to first opens that one: the template's id, which only it answers to, is its code then.
+    const name = templateNameToken(template);
+    return buildPaneFunctionLookup(registry).get(normalizeLookupToken(name)) === template ? name : template.id;
+  }
   return builtInPanePrefixes(pane.id)[0] ?? pane.id;
 }
 
@@ -355,7 +361,6 @@ export async function buildPaneCatalogEntries(
   const codedPaneIds = new Set([...registry.paneTemplates.values()]
     .filter((template) => template.shortcut?.prefix && template.listed !== false)
     .map((template) => template.paneId));
-  let lookup: ReturnType<typeof buildPaneFunctionLookup> | null = null;
 
   for (const template of registry.paneTemplates.values()) {
     const pane = registry.panes.get(template.paneId);
@@ -364,12 +369,8 @@ export async function buildPaneCatalogEntries(
     if (template.listed === false && !unlisted) continue;
     const forUsers = !!template.shortcut?.prefix || listsUncodedTemplate(template, codedPaneIds);
     if (!forUsers && !unlisted && !appPanes) continue;
-    // A name another function answers to first is listed by the template's id, which only it answers to, as is a
-    // pane only the UI audits list, so they keep picturing it under the name they always had.
-    const code = paneFunctionCode(template, pane);
-    const byName = !!template.shortcut?.prefix || ((forUsers || unlisted)
-      && (lookup ??= buildPaneFunctionLookup(registry)).get(normalizeLookupToken(code)) === template);
-    const token = byName ? code : template.id;
+    // A template only the UI audits list keeps the id an older catalog listed it by, so a base and a head picture it under one name.
+    const token = forUsers || unlisted ? paneFunctionCode(template, pane, registry) : template.id;
     entries.push(await buildTemplateCatalogEntry(template, pane, context, token));
   }
 
@@ -378,7 +379,7 @@ export async function buildPaneCatalogEntries(
     const [shortcut, ...aliases] = builtInPanePrefixes(pane.id);
     const argument = paneFunctionArgument(undefined, pane);
     entries.push({
-      token: paneFunctionCode(undefined, pane),
+      token: paneFunctionCode(undefined, pane, registry),
       label: pane.name,
       description: `Open the ${pane.name} pane.`,
       paneId: pane.id,

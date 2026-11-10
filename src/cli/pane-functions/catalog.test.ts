@@ -4,7 +4,11 @@ import { chatController } from "../../plugins/builtin/chat/controller";
 import { getLoadablePlugins } from "../../plugins/catalog";
 import { createDefaultConfig } from "../../types/config";
 import type { MarketContext } from "../types";
-import { buildPaneCatalogEntries, buildTemplateContext, correctCatalogQuery, filterPaneCatalogEntries, findFunctionCode, limitationSentence, renderPaneCatalogReport } from "./catalog";
+import type { PaneTemplateDef } from "../../types/plugin";
+import {
+  buildPaneCatalogEntries, buildTemplateContext, correctCatalogQuery, filterPaneCatalogEntries, findFunctionCode, limitationSentence,
+  paneFunctionCode, renderPaneCatalogReport, type PaneFunctionCatalog,
+} from "./catalog";
 import { createPaneCatalog } from "./discovery";
 import { parsePaneCatalogArgs } from "./options";
 import { findPaneFunction } from "./resolver";
@@ -120,9 +124,16 @@ test("a function with no code is listed by its name when the command line runs i
     for (const { token, templateId } of uncoded) expect(findPaneFunction(registry, token)?.template?.id).toBe(templateId);
     // The id a script saved still opens it.
     expect(findPaneFunction(registry, "twitter-feed-pane")?.template?.id).toBe("twitter-feed-pane");
-    // The UI audits still picture the panes left out, under the names their earlier pictures have.
+    // The UI audits still picture the panes left out for a user, under the template ids an older catalog listed them by.
     const audited = (await buildPaneCatalogEntries(registry, context, { appPanes: true })).map((entry) => entry.token);
     expect(audited).toEqual(expect.arrayContaining(["team-pane", "unread-inbox-pane", "new-portfolio-pane", "x-feed"]));
+    // A name another function answers to first opens that one, so it is no code for this one: the id is, in errors and the catalog alike.
+    const twin = { id: "story-twin", paneId: "news-story", label: "Story", description: "Another story pane" } as PaneTemplateDef;
+    const withTwin: PaneFunctionCatalog = { ...registry, paneTemplates: new Map([...registry.paneTemplates, [twin.id, twin]]), destroy: () => {} };
+    expect(paneFunctionCode(twin, registry.panes.get("news-story")!, withTwin)).toBe("story-twin");
+    expect(paneFunctionCode(registry.paneTemplates.get("news-story-pane"), registry.panes.get("news-story")!, withTwin)).toBe("story");
+    const listed = await buildPaneCatalogEntries(withTwin, context);
+    expect(listed.filter((entry) => entry.paneId === "news-story").map((entry) => entry.token)).toEqual(["story", "story-twin"]);
   } finally {
     registry.destroy();
     channels.mockRestore();

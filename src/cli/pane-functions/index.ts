@@ -28,8 +28,9 @@ import {
   type PluginCodeStopFinder, type ResolvedPaneFunction,
 } from "./resolver";
 import { idleCliPlugins } from "../registry";
-import { withDeadline } from "../../utils/async-deadline";
 import { pluginSupportsTarget } from "../../plugins/plugin-export";
+import type { RegistryPlugin } from "../../plugins/marketplace/model";
+import type { AppResourceStorePort } from "../../core/app-service-ports";
 import { buildFunctionReport, resolvePaneFunctionReportSource } from "./report";
 import { expandResolvedArgument } from "./headless";
 import { defaultScreenshotPath, shotSizeWarnings } from "./screenshot-payload";
@@ -78,10 +79,12 @@ async function withPaneRuntime<T>(
 ): Promise<T> {
   return withMarketData(ctx, async (market) => {
     const context: MarketContext = ctx.cliOptions.refresh ? { ...market, refresh: true } : market;
-    const registry = await createPaneCatalog(context, ctx.plugins);
+    // `shot` draws a pane as the desktop app does, so it also opens the panes of plugins only the desktop app runs (Gloom Social).
+    const plugins = settings.command === "shot" ? [...ctx.plugins, ...desktopOnlyPlugins(ctx)] : ctx.plugins;
+    const registry = await createPaneCatalog(context, plugins);
     try {
       let parsed = await applyListingArgument(registry, context, parsePaneFunctionArgsFor(registry, args, ctx.cliOptions), settings.command);
-      const resolution = { ...settings, seriesSources: ctx.plugins, pluginStop: pluginStopFor(ctx) };
+      const resolution = { ...settings, seriesSources: ctx.plugins, pluginStop: pluginStopFor(ctx, context) };
       let resolved = await resolvePaneFunction(registry, context, parsed, resolution);
       // A function that widens its argument (RV's --peers) runs, reports and captures the widened one.
       const expansion = await withPersistedCloudSession(context, () => expandResolvedArgument(resolved, context, parsed.arg));
@@ -96,6 +99,13 @@ async function withPaneRuntime<T>(
   });
 }
 
+/** Installed plugins the command line does not run but the desktop app does, which `shot` draws as it does. */
+function desktopOnlyPlugins(ctx: CliCommandContext): GloomPlugin[] {
+  return idleCliPlugins(ctx)
+    .filter(({ plugin, reason }) => reason === "target" && pluginSupportsTarget(plugin, "desktop"))
+    .map(({ plugin }) => plugin);
+}
+
 /** The plugin of a function that does not run in the desktop app (IBKR Gateway is the terminal's), or null. */
 function terminalOnlyPlugin(resolved: ResolvedPaneFunction, ctx: CliCommandContext): GloomPlugin | null {
   const owner = ctx.plugins.find((plugin) => (
@@ -105,21 +115,44 @@ function terminalOnlyPlugin(resolved: ResolvedPaneFunction, ctx: CliCommandConte
   return owner && !pluginSupportsTarget(owner, "desktop") ? owner : null;
 }
 
-/** How long a code no function answers to waits for the plugin registry, to say which plugin it is. */
-const PLUGIN_REGISTRY_WAIT_MS = 3_000;
+/**
+ * How long a code no function answers to (most often a mistyped ticker) waits
+ * for the plugin registry, to say which plugin it is: one request, cut off then.
+ */
+const PLUGIN_REGISTRY_WAIT_MS = 2_500;
+/** The registry the command line read, kept in the profile's cache: a day before it is asked again, a week to fall back on. */
+const PLUGIN_REGISTRY_CACHE = { namespace: "plugin-registry", kind: "feed", entityKey: "plugins.gloom.sh" };
+const PLUGIN_REGISTRY_CACHE_POLICY = { staleMs: 24 * 60 * 60_000, expireMs: 7 * 24 * 60 * 60_000 };
+
+/**
+ * The registry for a code no function answers to: the profile's copy from the
+ * last day, else one short request that nothing waits on once it is cut off,
+ * else the copy from the last week.
+ */
+async function readCodeRegistry(resources: AppResourceStorePort | undefined): Promise<readonly RegistryPlugin[]> {
+  const cached = resources?.get<RegistryPlugin[]>(PLUGIN_REGISTRY_CACHE);
+  const kept = Array.isArray(cached?.value) ? cached.value : null;
+  if (kept && !cached!.stale) return kept;
+  try {
+    const { readRegistryOnce } = await import("../../plugins/marketplace/feed");
+    const plugins = await readRegistryOnce(PLUGIN_REGISTRY_WAIT_MS);
+    resources?.set(PLUGIN_REGISTRY_CACHE, plugins, { cachePolicy: PLUGIN_REGISTRY_CACHE_POLICY });
+    return plugins;
+  } catch (error) {
+    if (kept) return kept;
+    throw error;
+  }
+}
 
 /** Why a code is a plugin's that does not run here (`pluginCodeStop`), read from the profile and the registry. */
-function pluginStopFor(ctx: CliCommandContext): PluginCodeStopFinder {
-  return async (name, rerun) => {
+function pluginStopFor(ctx: CliCommandContext, context: MarketContext): PluginCodeStopFinder {
+  return async (name, commands) => {
     const { pluginCodeStop } = await import("./plugin-code");
     return pluginCodeStop(name, {
       idle: idleCliPlugins(ctx),
       running: ctx.plugins.map((plugin) => plugin.id),
-      loadRegistry: async () => {
-        const { loadRegistry } = await import("../../plugins/marketplace/feed");
-        return (await withDeadline(loadRegistry(), PLUGIN_REGISTRY_WAIT_MS, "The plugin registry did not answer.")).plugins;
-      },
-    }, rerun);
+      loadRegistry: () => readCodeRegistry(context.persistence?.resources),
+    }, commands);
   };
 }
 

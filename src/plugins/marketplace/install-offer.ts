@@ -1,5 +1,4 @@
 import { findAbsorbedPlugin } from "../absorbed";
-import { isOfficialPluginRepo } from "../auto-update";
 import type { RegistryPlugin, RegistryPluginShortcut } from "./model";
 
 /**
@@ -7,6 +6,13 @@ import type { RegistryPlugin, RegistryPluginShortcut } from "./model";
  * command bar's install row and by the command line's answer to a code it
  * does not know.
  */
+
+/**
+ * A repository Gloom publishes, as `owner/name` and nothing else: the command
+ * line prints `gloom install <repo>` for it, so a feed entry cannot make that
+ * line say more than one plain word.
+ */
+const OFFERED_REPO = /^gloom-sh\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 /**
  * Only plugins Gloom publishes. A typed word must never lead to installing
@@ -17,7 +23,7 @@ import type { RegistryPlugin, RegistryPluginShortcut } from "./model";
 function isOfferablePlugin(plugin: RegistryPlugin): boolean {
   return plugin.tier === "official"
     && plugin.bundled !== true
-    && isOfficialPluginRepo(plugin.repo)
+    && typeof plugin.repo === "string" && OFFERED_REPO.test(plugin.repo)
     && !findAbsorbedPlugin({ id: plugin.id });
 }
 

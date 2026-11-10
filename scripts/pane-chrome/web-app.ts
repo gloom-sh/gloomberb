@@ -404,8 +404,10 @@ export async function shot(cdp: Cdp, scope: string | null, file: string, format:
 }
 
 /**
- * Every function in the catalog, from the CLI of the checkout at `root`, with the panes it leaves out for a
- * user (a team's page, the unread inbox): an older checkout ignores the variable and lists them anyway.
+ * Every function in the catalog, from the CLI of the checkout at `root`. The variable adds the panes `catalog`
+ * leaves out for a user (a team's page, the unread inbox) under their template ids, as an older checkout lists
+ * them, so the audits keep picturing them and a base and a head compare them under one name; an older checkout
+ * ignores it. A function `catalog` lists by a new name (`x-feed` for `twitter-feed-pane`) is pictured under it.
  */
 export function readCatalog(root: string, home: string): CatalogEntry[] {
   const env = { ...process.env, GLOOMBERB_HOME: home, GLOOMBERB_CATALOG_APP_PANES: "1" };

