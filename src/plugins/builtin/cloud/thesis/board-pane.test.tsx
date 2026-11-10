@@ -111,11 +111,12 @@ async function flush(untilRequest: string | null = "GET /theses") {
   for (let i = 0; i < 4; i += 1) await tick();
 }
 
-function Harness({ focused = true }: { focused?: boolean }) {
+function Harness({ focused = true, params }: { focused?: boolean; params?: Record<string, string> }) {
   const [state, dispatch] = useReducer(appReducer, undefined, () => {
     const initial = createInitialState(createTestPaneConfig("/tmp/gloomberb-thesis-board", {
       instanceId: PANE_ID,
       paneId: "thesis-board",
+      ...(params ? { params } : {}),
     }));
     initial.focusedPaneId = PANE_ID;
     initial.tickers = new Map([
@@ -184,6 +185,24 @@ describe("ThesisBoardPane", () => {
     expect(rows.every((index) => index >= 0)).toBe(true);
     expect(rows).toEqual([...rows].sort((a, b) => a - b));
     expect(frame).toContain("1 to rule on");
+  });
+
+  // `shot "THESIS NVDA"` drew the same board as `shot THESIS`: a capture never gets the command's request, only the pane's params.
+  test("a board whose params name a ticker opens the thesis covering it, else is filtered to it, and starts none", async () => {
+    thesisStore.start();
+    await act(async () => {
+      await tui.render(<Harness params={{ symbol: "NVDA" }} />, { width: 110, height: 30 });
+    });
+    await flush("GET /theses/t-nvda");
+    expect(tui.frame()).toContain("AI capex keeps compounding");
+    await act(async () => {
+      await tui.render(<Harness params={{ symbol: "AAPL" }} />, { width: 110, height: 30 });
+    });
+    await flush();
+    const frame = tui.frame();
+    expect(frame).toContain("AAPL");
+    expect(frame).not.toContain("ASML");
+    expect(requests.filter((request) => !request.startsWith("GET "))).toEqual([]);
   });
 
   test("the on-device copy is only called offline once the refresh fails", async () => {

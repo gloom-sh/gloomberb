@@ -13,7 +13,7 @@ import {
   type PaneHint,
 } from "../../../../components";
 import { useShortcut } from "../../../../react/input";
-import { useAppSelector, usePaneStateValue } from "../../../../state/app/context";
+import { useAppSelector, usePaneInstance, usePaneStateValue } from "../../../../state/app/context";
 import { colors } from "../../../../theme/colors";
 import type { PaneProps } from "../../../../types/plugin";
 import { Box, TextAttributes } from "../../../../ui";
@@ -238,6 +238,21 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
     }
   }, [setOpenId, startFor]);
   useEffect(() => subscribeRequestedThesis(applyRequest), [applyRequest]);
+
+  // `THESIS NVDA` names its ticker in the instance params too, which is all a capture of the board has to
+  // go on (`gloom shot THESIS NVDA`): once per ticker named, the board opens the thesis covering it, else
+  // it is filtered to it. Starting one is the command's request alone, so a capture never writes.
+  const askedSymbol = usePaneInstance()?.params?.symbol;
+  const asked = typeof askedSymbol === "string" ? askedSymbol.trim() : "";
+  const [shownAsked, setShownAsked] = usePaneStateValue<string | null>("askedSymbol", null);
+  useEffect(() => {
+    if (!asked || asked === shownAsked || !snapshot.loaded) return;
+    setShownAsked(asked);
+    const symbols = parseSymbolList(asked);
+    const covering = symbols.length === 1 ? thesesCovering(snapshot.theses, symbols[0]!) : [];
+    if (covering[0]) setOpenId(covering[0].id);
+    else if (symbols.length === 1) setSearchQuery(symbols[0]!);
+  }, [asked, setOpenId, setShownAsked, shownAsked, snapshot.loaded, snapshot.theses]);
 
   const cycleScope = useCallback((delta: number) => {
     const index = exposure.scopes.findIndex((entry) => entry.collectionId === exposure.scope.collectionId);
