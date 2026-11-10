@@ -36,6 +36,11 @@ interface RegistryContributionsOptions {
  * startup and load all of them. The wrapped component is kept, so a pane keeps
  * one component identity across renders. A plugin that passes a plain
  * `component` takes the same path.
+ *
+ * A module that fails to load used to fail the registration. The read now
+ * happens while a pane is drawn, outside its error card, so the failure is
+ * handed back as a component that throws: the card shows it, and Reload tries
+ * the load again.
  */
 function withLazyComponent<T extends { component: (props: never) => ReactNode }>(
   definition: T,
@@ -48,7 +53,16 @@ function withLazyComponent<T extends { component: (props: never) => ReactNode }>
     component: {
       enumerable: true,
       configurable: true,
-      get: () => wrapped ??= wrap(definition.component),
+      get: () => {
+        if (wrapped) return wrapped;
+        let component: T["component"];
+        try {
+          component = definition.component;
+        } catch (error) {
+          return (() => { throw error; }) as T["component"];
+        }
+        return wrapped = wrap(component);
+      },
     },
   }) as T;
 }

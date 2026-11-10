@@ -86,16 +86,22 @@ describe("registered panes and research tabs", () => {
     expect(loads).toBe(1);
   });
 
-  test("a component that fails to load fails where it is read, and is tried again", () => {
-    const { contributions } = countingContributions();
+  test("a component that fails to load fails when the pane renders, and is tried again", () => {
+    const { contributions, wrapped } = countingContributions();
     let attempts = 0;
+    const loaded = () => null;
     contributions.registerPane("owner", lazyPane("flaky", () => {
       if (++attempts === 1) throw new Error("module failed to load");
-      return () => null;
+      return loaded;
     }));
 
-    expect(() => contributions.panesMap.get("flaky")!.component).toThrow("module failed to load");
-    expect(typeof contributions.panesMap.get("flaky")!.component).toBe("function");
+    // Reading it, as the layout does outside the pane's error card, does not throw.
+    const failing = contributions.panesMap.get("flaky")!.component as () => unknown;
+    expect(() => failing()).toThrow("module failed to load");
+    expect(wrapped).toHaveLength(0);
+    const retried = contributions.panesMap.get("flaky")!.component;
+    expect(wrapped.map((entry) => entry.component)).toEqual([loaded]);
+    expect(contributions.panesMap.get("flaky")!.component).toBe(retried);
   });
 
   // Startup registers every built-in pane, about 70 of which load their module on first use.
@@ -115,5 +121,9 @@ describe("registered panes and research tabs", () => {
       expect(typeof contributions.panesMap.get(pane.id)!.component, pane.id).toBe("function");
     }
     expect(wrapped).toHaveLength(declared.length);
+    // What was wrapped is the component each pane declares: a module that fails to load throws here.
+    for (const { pluginId, pane } of declared) {
+      expect(wrapped.find((entry) => entry.component === pane.component)?.pluginId, pane.id).toBe(pluginId);
+    }
   });
 });
