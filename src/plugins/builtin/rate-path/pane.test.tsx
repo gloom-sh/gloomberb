@@ -92,6 +92,19 @@ test("the path names what it plots: one target range, the SEP dots, meetings by 
   expect(lines[header]).not.toContain("AS OF");
 });
 
+test("a slope with no figure is left out of the header rather than shown as dashes", async () => {
+  setSystemTime(new Date("2026-09-22T15:00:00Z"));
+  spy = spyOn(apiClient, "getCloudRatePath").mockResolvedValue(payload());
+  const shown = (await render(140, 45)).join("\n");
+  expect(shown).toContain("Oct '26 to Sep '27");
+  spy.mockRestore();
+  ratePathCache.reset();
+  spy = spyOn(apiClient, "getCloudRatePath").mockResolvedValue({ ...payload(), slope: { valueBps: null, percentile: null, samples: 0, asOf: null } });
+  const frame = (await render(140, 45)).join("\n");
+  expect(frame).not.toContain("Oct '26 to Sep '27");
+  expect(frame).not.toContain("pctl --");
+});
+
 test("the selected meeting is the path's point", async () => {
   spy = spyOn(apiClient, "getCloudRatePath").mockResolvedValue(payload());
   await render(86, 30);
