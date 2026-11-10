@@ -1,5 +1,7 @@
 /** @jsxImportSource react */
 import { expect, test } from "bun:test";
+import { readFileSync } from "fs";
+import { join } from "path";
 import { act, createRef, useState } from "react";
 import { DataTableView, type DataTableViewProps } from "../../../components/data-table/view";
 import { AppContext, createInitialState } from "../../../state/app/context";
@@ -150,6 +152,36 @@ test("DOM fixed axis fits covered values with ellipses and preserves selection, 
   await act(async () => setOptions({ frozen: false }));
   expect((rows[1]!.children[0] as HTMLElement).style.position).toBe("");
   expect((rows[1]!.children[3] as HTMLElement).style.paddingLeft).toBe("");
+});
+
+test("a table wider than its pane keeps its scrollbar drawn at rest, and one that fits keeps it clear", async () => {
+  // macOS WebKit reads scrollbar-color since Safari 26.2: a clear thumb at rest
+  // left an empty strip where the bar was, and no sign of the columns past it.
+  const style = testWindow.document.createElement("style");
+  style.textContent = readFileSync(join(import.meta.dir, "..", "styles.css"), "utf8");
+  testWindow.document.head.appendChild(style);
+  const prototype = testWindow.HTMLElement.prototype;
+  const own = Object.getOwnPropertyDescriptor(prototype, "clientWidth");
+  Object.defineProperty(prototype, "clientWidth", { configurable: true, get: () => 40 * WEB_CELL_WIDTH });
+  const thumb = (body: HTMLElement) => testWindow.getComputedStyle(body as never).getPropertyValue("scrollbar-color").trim().replace(/\s+\S+$/, "");
+  const table = (widths: number[]) => renderDataTableView({
+    items: ["NVDA"],
+    columns: widths.map((width, index) => ({ id: `c${index}`, label: `C${index}`, width })),
+    getItemKey: (row) => row,
+    renderCell: (row) => ({ text: row }),
+  });
+  try {
+    const wide = await table([6, 10, 10, 10, 10, 10]);
+    expect(wide.body.getAttribute("data-gloom-scrollbar-x")).toBe("visible");
+    expect(thumb(wide.body)).not.toBe("transparent");
+    const fits = await table([6, 10, 10]);
+    expect(fits.body.getAttribute("data-gloom-scrollbar-x")).toBe("hidden");
+    expect(thumb(fits.body)).toBe("transparent");
+  } finally {
+    style.remove();
+    if (own) Object.defineProperty(prototype, "clientWidth", own);
+    else delete (prototype as { clientWidth?: number }).clientWidth;
+  }
 });
 
 test("DOM table that pins by default pins once scrolled, and draws as before at rest", async () => {
