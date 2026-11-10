@@ -15,7 +15,7 @@ import type { DataProvider } from "../../../../types/data-provider";
 import type { PricePoint } from "../../../../types/financials";
 import { isRoundTheClockCoin } from "../../../../utils/crypto-pair";
 import { isCurrencyPairListing } from "../../../../utils/fx-market-hours";
-import { latestRegularSessionClose } from "../../../../market-data/market/freshness";
+import { isAlwaysOpenExchange, latestRegularSessionClose } from "../../../../market-data/market/freshness";
 import { futuresSessionOpenMinute } from "../../../../market-data/market/trading-sessions";
 import { calendarBarStart } from "../../../../time-series/chart-data";
 import { newestClosedSession, newestSessionClose, withOfficialCloses } from "../../../../time-series/official-close";
@@ -73,10 +73,13 @@ function historyErrorMessage(error: unknown, resolution: ManualChartResolution):
  * The venue whose sessions set where the window ends: the one the ticker
  * names, else the listing its quote names, so a bare VTI ends at the NYSE
  * Arca close on a weekend, with the listing's currency when that was read.
- * Coins and currency pairs need none.
+ * A coin trades every day on its own calendar (CCC): its week ends on the
+ * Sunday and its month on the 31st, as `history` dates them, never on a
+ * weekday. A currency pair needs none.
  */
 async function sessionVenue(provider: DataProvider, symbol: string, exchange: string): Promise<{ venue: string; currency?: string }> {
-  if (exchange || isRoundTheClockCoin(symbol) || isCurrencyPairListing(symbol, exchange)) return { venue: exchange };
+  if (isRoundTheClockCoin(symbol, exchange)) return { venue: exchange && isAlwaysOpenExchange(exchange) ? exchange : "CCC" };
+  if (exchange || isCurrencyPairListing(symbol, exchange)) return { venue: exchange };
   try {
     const metadata = provider.getQuoteMetadata
       ? await provider.getQuoteMetadata(symbol, exchange)

@@ -46,7 +46,7 @@ test("a phrase spelling out a longer code is searched, not read as a ticker argu
   const ticker = (id: string, prefix: string) => ({ id, paneId: id, label: prefix, shortcut: { prefix, argKind: "ticker" } }) as PaneTemplateDef;
   const etf = ticker("sec-etf-pane", "ETF");
   const jobs = ticker("jobs-pane", "JOBS");
-  const flows = { id: "crypto-etf-flows-pane", paneId: "crypto-etf-flows", label: "Crypto ETF Flows", keywords: ["etf flows"], shortcut: { prefix: "ETFF" } } as PaneTemplateDef;
+  const flows = { id: "crypto-etf-flows-pane", paneId: "crypto-etf-flows", label: "Crypto ETF Flows", keywords: ["etf flows", "bitcoin etf flows", "ibit"], shortcut: { prefix: "ETFF" } } as PaneTemplateDef;
   const macroDay = { id: "macro-day-pane", paneId: "macro-day", label: "Macro-Day", keywords: ["jobs day"], shortcut: { prefix: "MDAY" } } as PaneTemplateDef;
   const registry = {
     paneTemplates: new Map([etf, jobs, flows, macroDay].map((entry) => [entry.id, entry])),
@@ -56,7 +56,12 @@ test("a phrase spelling out a longer code is searched, not read as a ticker argu
   const matching = (query: string) => getAvailablePaneShortcutTemplatesForQuery({ pluginRegistry: registry, disabledPlugins: [], context, query })
     .map((entry) => entry.id);
   expect(matching("ETF flows")).toEqual([]);
+  // The words of one keyword in any order, the ticker-first order too: no fund is called FLOWS or BITCOIN.
+  expect(matching("etf flows bitcoin")).toEqual([]);
+  expect(matching("bitcoin etf")).toEqual([]);
+  // No keyword holds both words, so these stay Fund Facts for IBIT.
   expect(matching("ETF IBIT")).toEqual(["sec-etf-pane"]);
+  expect(matching("IBIT ETF")).toEqual(["sec-etf-pane"]);
   // MDAY does not extend JOBS, so this stays Jobs for Dayforce.
   expect(matching("JOBS DAY")).toEqual(["jobs-pane"]);
 });

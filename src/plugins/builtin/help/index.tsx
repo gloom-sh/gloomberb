@@ -423,7 +423,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
 
             <Text fg={colors.textDim} wrapText>
               {commandBarBadges[0]
-                ? tf("Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"top news\". The Functions tab lists everything.", { key: commandBarBadges[0] })
+                ? tf("Not sure of a code? Press {key}, or click the search bar at the top, and type what you want in plain words, like \"top news\". The Functions tab lists everything.", { key: commandBarBadges[0] })
                 : t("Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"top news\". The Functions tab lists everything.")}
             </Text>
 

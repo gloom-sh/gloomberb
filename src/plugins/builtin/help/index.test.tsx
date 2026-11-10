@@ -64,6 +64,8 @@ test("Basics keeps Try These, one line about the search bar and Start Here; the 
   // The search-bar line comes between the two tables.
   expect(basics.indexOf("Try These")).toBeLessThan(basics.indexOf("Not sure of a code?"));
   expect(basics.indexOf("Not sure of a code?")).toBeLessThan(basics.indexOf("Start Here"));
+  // The pane is used from the keyboard: the line names the key before the click.
+  expect(basics.replace(/\s+/g, " ")).toMatch(/Not sure of a code\? Press \S+, or click the search bar/);
 
   const reference = await open("Reference");
   expect(reference).toContain("Command Bar (");

@@ -39,7 +39,7 @@ import {
 import { withMarketData } from "./scoped-context";
 import { failWithFields } from "./errors";
 import { stripStrayEdges } from "./symbol-args";
-import { isNoProviderMessage, isNoSourceAnswer, isProviderBusy } from "../sources/provider-errors";
+import { isNoProviderMessage, isNoSourceAnswer, isProviderBusy, notATickerSymbol } from "../sources/provider-errors";
 import { dashedCoinPair, exchangeLineCoinListing, isSpotCommodityOrCurrencyPair, MAJOR_COIN_NAMES, TOP_COIN_NAMES } from "../utils/crypto-pair";
 import { boardCoinFor, primeBoardCoins } from "./board-coins";
 import { knownGapMessage, unquotedGapMessage } from "./known-gaps";
@@ -48,7 +48,9 @@ import { currencyPairSpelling } from "../utils/currency-pair";
 import { bareFuturesCode, futuresContractByCode, futuresContractByWord, listedFuturesSymbol } from "../market-data/futures-board";
 import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
 import type { InstrumentOfKind } from "../tickers/instrument-coverage";
-import { brokerIndexCode, brokerIndexReadAs } from "./index-roots";
+import { brokerIndexCode, brokerIndexReadAs, indexRootAlsoLine } from "./index-roots";
+import { indexRootFor } from "../tickers/index-roots";
+import { isFuturesInstrument } from "../market-data/futures-contract";
 import { continuousAliasGeneric } from "../utils/futures-generic";
 import {
   bloombergCodeOf,
@@ -563,10 +565,13 @@ export async function listingChoiceNotes(
 export async function quotedListingChoiceNotes(
   listing: Pick<CliListing, "symbol" | "exchange" | "saved" | "request" | "readAs" | "readFromName">,
   deps: ListingDeps,
+  /** A command that draws the listing's prices (`fn HP`) names the index or future a code it reads is typed for (`ownedCodeNotes`). */
+  { pricesFor }: { pricesFor?: string } = {},
 ): Promise<string[]> {
   const venues = loadBareVenues(listing, deps);
   if (!venues) return listingReadNotes(listing);
-  return listingChoiceNotes(listing, deps, await loadListingQuote(deps.dataProvider, listing), venues);
+  const quote = await loadListingQuote(deps.dataProvider, listing);
+  return [...await listingChoiceNotes(listing, deps, quote, venues), ...pricesFor ? ownedCodeNotes(listing, quote, pricesFor) : []];
 }
 
 /**
@@ -879,6 +884,44 @@ export interface ReadListing {
    * 2025, now Cmb.Tech: CMBT"), when asked for (`successor`); null otherwise.
    */
   successorNote?: string | null;
+  /** What `quote` says of a code a security owns that is typed for something else (`ownedCodeNotes`). */
+  ownedNotes?: string[];
+  /** What the symbol was read as, when the resolver read it as another listing (NDX as the Nasdaq-100). */
+  readAs?: string;
+}
+
+/**
+ * "GOLD is Gold.com, Inc.; for Gold, quote the future GC=F.": a commodity's
+ * word a security trades as (WTI is W&T Offshore, GOLD is Gold.com), with
+ * the future it may have meant. `quote` and `compare` say to quote it;
+ * another command names itself run on the future. Null for any other symbol.
+ */
+export function futureByWordLine(symbol: string, name: string | null | undefined, command: string): string | null {
+  const contract = futuresContractByWord(symbol);
+  if (!contract) return null;
+  const owner = `${symbol} is ${name?.trim() || "a security"}`;
+  return command === "quote" || command === "compare"
+    ? `${owner}; for ${contract.name}, quote the future ${contract.symbol}.`
+    : `${owner}; for ${contract.name}, the future is ${contract.symbol} (gloom ${command} ${commandWord(contract.symbol)}).`;
+}
+
+/**
+ * What `quote` says beside a bare code a security owns that people type for
+ * something else, worded for `command`: the index rooted at it (MOVE is
+ * Corvex: "also ^MOVE ICE BofA MOVE Index (gloom history "^MOVE")") and the
+ * future a commodity's word names (`futureByWordLine`). None for a named
+ * listing, no quote, or an index or a future quoted as itself.
+ */
+export function ownedCodeNotes(
+  listing: Pick<ListingArg, "symbol" | "exchange">,
+  quote: Pick<Quote, "name" | "instrumentType"> | null | undefined,
+  command: string,
+): string[] {
+  if (listing.exchange || !quote) return [];
+  const root = indexRootFor(listing.symbol);
+  const index = root && quote.instrumentType?.trim().toUpperCase() !== "INDEX" ? indexRootAlsoLine(root, command) : null;
+  const future = isFuturesInstrument(listing.symbol, quote.instrumentType) ? null : futureByWordLine(listing.symbol, quote.name, command);
+  return [index, future].filter((line): line is string => !!line);
 }
 
 /**
@@ -887,8 +930,11 @@ export interface ReadListing {
  * symbol no source quotes is read on the first of its listings that has one
  * (`quoteBareListing`), and a code several companies list (BDI is Black
  * Diamond Group in Toronto and B. D. Industries in Pune) fails asking which,
- * with `quote`'s message and each listing's retry. Null when nothing better
- * than the symbol itself is known, so the command's own request speaks.
+ * with `quote`'s message and each listing's retry. A symbol whose quote says
+ * it is not a ticker and that no listing carries is `NotATicker`, with the
+ * error the quote failed with, so the command can say so without asking for
+ * its data. Null when nothing better than the symbol itself is known, so the
+ * command's own request speaks.
  */
 export async function readBareListing(
   symbol: string,
@@ -896,25 +942,38 @@ export async function readBareListing(
   request: ListingDataRequest,
   /** `successor`: also say what became of the company that had the symbol, looked up beside its quote. */
   { refresh = false, successor = false }: { refresh?: boolean; successor?: boolean } = {},
-): Promise<ReadListing | null> {
+): Promise<ReadListing | NotATicker | null> {
   const listing = await resolveCliListing(symbol, null, deps);
-  if (listing.exchange) return null;
+  // A code the resolver read as another listing (NDX as ^NDX:NIM, the Nasdaq-100) is that listing, saying so.
+  if (listing.exchange) {
+    return listing.readAs ? { symbol: listing.symbol, exchange: listing.exchange, name: null, coinNote: null, readAs: listing.readAs } : null;
+  }
   const changes = successor ? startTickerChangeLookup(deps.dataProvider, listing.symbol, listing.exchange) : null;
   const answer = await loadListingQuoteAnswer(deps.dataProvider, listing);
   if (answer.quote) {
     const successorNote = changes
       ? listingChangeLine(await loadListingFate(listing, deps.dataProvider, { quote: answer.quote, changes, graceMs: SUCCESSOR_CHANGE_WAIT_MS }))
       : null;
+    const ownedNotes = ownedCodeNotes(listing, answer.quote, request.command);
     return { symbol: listing.symbol, exchange: listing.request.exchange, name: answer.quote.name?.trim() || null, coinNote: coinListingNotes(listing, answer.quote)[0] ?? null,
-      ...successorNote ? { successorNote } : {} };
+      ...successorNote ? { successorNote } : {}, ...ownedNotes.length ? { ownedNotes } : {}, ...listing.readAs ? { readAs: listing.readAs } : {} };
   }
   if (!isNoProviderError(answer.error)) return null;
   const other = await quoteBareListing(listing, deps, request, { refresh });
   if (other?.kind === "quoted") {
-    return { symbol: listing.symbol, exchange: other.listing.exchange, name: other.quote.name?.trim() || null, coinNote: coinListingNotes(listing, other.quote)[0] ?? null };
+    const ownedNotes = ownedCodeNotes(listing, other.quote, request.command);
+    return { symbol: listing.symbol, exchange: other.listing.exchange, name: other.quote.name?.trim() || null, coinNote: coinListingNotes(listing, other.quote)[0] ?? null,
+      ...ownedNotes.length ? { ownedNotes } : {} };
   }
   if (other?.choose) throw new ListingArgError(other.message, other.details, other.choices);
-  return null;
+  // No venue lists it and its own quote says it is no ticker, as `quote UNISWAP` says.
+  const message = answer.error instanceof Error ? answer.error.message : "";
+  return !other && notATickerSymbol(message) ? { notATicker: answer.error as Error } : null;
+}
+
+/** A bare symbol no listing carries (`readBareListing`): the error its quote failed with, "Not a ticker: UNISWAP.". */
+export interface NotATicker {
+  notATicker: Error;
 }
 
 /**
@@ -1333,6 +1392,9 @@ export async function resolveCliListing(
   // $VIX is Schwab's code for ^VIX, unless a security trades as VIX: $AAPL is a cashtag.
   const index = named || parsed.exchange ? null : await readDollarIndexCode(raw, deps);
   if (index) parsed = index;
+  // NDX, which no security trades as, is the Nasdaq-100 for every command, as `quote` reads it; MOVE stays Corvex.
+  const rooted = named || index || terminal || parsed.exchange ? null : await readBareIndexRoot(parsed, typed, deps);
+  if (rooted) parsed = rooted;
   // USD-NGN and USDNGN are the pair USDNGN=X unless a security is listed under those letters.
   const pair = parsed.exchange ? null : await readAmbiguousCurrencyPair(parsed.symbol, deps);
   if (pair) parsed = { symbol: pair, exchange: "", key: pair };
@@ -1450,6 +1512,27 @@ async function nothingTradesAs(symbol: string, deps: Pick<ListingDeps, "dataProv
     logFailure("cli.listing-arg", "Quote broker index root failed")(error);
     return false;
   }
+}
+
+/**
+ * A bare index root (NDX, VIX) no security trades as, read as its index: the
+ * listing the service marks for the word (^NDX:NIM), else the ^ symbol, with
+ * the line that says so ("Read "NDX" as ^NDX:NIM (NASDAQ-100)."). A source
+ * can still serve old bars for the bare code (a stopped Frankfurt line's),
+ * which no command means. A code a security trades as (MOVE, Corvex) or a
+ * row saved under it stays as typed, as does one whose quote failed another
+ * way (the network). Null for any other symbol.
+ */
+async function readBareIndexRoot(parsed: ListingArg, typed: string, deps: ListingDeps): Promise<ListingArg | null> {
+  const root = indexRootFor(parsed.symbol);
+  const word = typed.trim();
+  if (!root || word.toUpperCase() !== parsed.symbol) return null;
+  if (await deps.store.loadTicker(parsed.symbol).catch(logFailure("cli.listing-arg", "Read a saved index root failed", null))) return null;
+  if (!await nothingTradesAs(parsed.symbol, deps)) return null;
+  const marked = await serviceMarkedListing(deps.dataProvider, word, root.symbol)
+    .catch(logFailure("cli.listing-arg", "Read the listing an index root names failed", null));
+  const key = marked?.exchange ? `${marked.symbol}:${marked.exchange}` : marked?.symbol ?? root.symbol;
+  return { ...parseListingArg(key), readAs: `Read "${word}" as ${key} (${marked?.name || root.name}).`, readFromName: true };
 }
 
 /** `readBrokerIndexCode` for a `$ROOT` code only: the `ROOT.X` codes are read where the listing is parsed. */
@@ -1689,7 +1772,7 @@ export interface ListingIdentity {
 
 export function listingIdentity(
   listing: Pick<CliListing, "symbol" | "exchange" | "saved">,
-  quote?: Pick<Quote, "name" | "listingExchangeName" | "exchangeName"> | null,
+  quote?: Pick<Quote, "name" | "listingExchangeName" | "exchangeName"> & Partial<Pick<Quote, "symbol">> | null,
 ): ListingIdentity {
   const quoteExchange = canonicalExchange(quote?.listingExchangeName || quote?.exchangeName);
   const exchange = listing.exchange || quoteExchange || canonicalExchange(listing.saved?.metadata.exchange);

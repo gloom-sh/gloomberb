@@ -12,8 +12,11 @@ import { useAssetData } from "../../runtime";
 /** What one security series' listing came to. */
 type SeriesListing =
   | { status: "pending" }
-  /** Its company, and for a bare symbol the venue `quote` reads it on (empty when its own quote answered). */
-  | { status: "read"; exchange: string; name: string | null }
+  /**
+   * Its company, and for a bare symbol the listing `quote` reads it as: the symbol (NDX is read as the
+   * index ^NDX) and the venue (NIM; empty when its own quote answered).
+   */
+  | { status: "read"; symbol: string; exchange: string; name: string | null }
   /** A bare code several companies list (BDI): `quote`'s question, and the listings it names. */
   | { status: "choose"; message: string; listings: string | null; choices: string | null };
 
@@ -103,13 +106,16 @@ export function useSeriesListings(spec: ChartSpec): SeriesListings {
       if (exchange) {
         // A named venue is charted as named; its quote names the company.
         void dataProvider.getQuote(symbol, exchange)
-          .then((quote) => settle(key, { status: "read", exchange, name: quote?.name?.trim() || null }))
-          .catch(() => settle(key, { status: "read", exchange, name: null }));
+          .then((quote) => settle(key, { status: "read", symbol, exchange, name: quote?.name?.trim() || null }))
+          .catch(() => settle(key, { status: "read", symbol, exchange, name: null }));
         continue;
       }
       settle(key, { status: "pending" });
       void readBareListing(symbol, deps, { command: "G", noun: "a quote", retry: null })
-        .then((listing) => settle(key, { status: "read", exchange: listing?.exchange ?? "", name: listing?.name ?? null }))
+        // A symbol no listing carries is left to the chart's own request, which says so.
+        .then((listing) => settle(key, listing && !("notATicker" in listing)
+          ? { status: "read", symbol: listing.symbol, exchange: listing.exchange, name: listing.name }
+          : { status: "read", symbol, exchange: "", name: null }))
         .catch((error: unknown) => {
           if (error instanceof ListingArgError) {
             settle(key, {
@@ -122,7 +128,7 @@ export function useSeriesListings(spec: ChartSpec): SeriesListings {
           }
           logFailure("chart-composer.series-listings", "Read a bare series listing failed")(error);
           // The chart's own request speaks for a symbol nothing better is known of.
-          settle(key, { status: "read", exchange: "", name: null });
+          settle(key, { status: "read", symbol, exchange: "", name: null });
         });
     }
   }, [dataProvider, targets]);
@@ -158,7 +164,8 @@ export function useSeriesListings(spec: ChartSpec): SeriesListings {
       if (listing.name && !entry.label?.trim()) names.set(entry.id, listing.name);
       if (exchange.trim() || !listing.exchange) return [entry];
       changed = true;
-      return [{ ...entry, source: { ...entry.source, instrument: { ...entry.source.instrument, exchange: listing.exchange } } }];
+      // The listing read, symbol and venue both: NDX charts the Nasdaq-100 as ^NDX:NIM, not a line NDX:NIM no venue has.
+      return [{ ...entry, source: { ...entry.source, instrument: { ...entry.source.instrument, symbol: listing.symbol, exchange: listing.exchange } } }];
     });
     // A study drawn on a series left out has nothing to draw yet.
     const studies = hydrated.studies.filter((study) => {

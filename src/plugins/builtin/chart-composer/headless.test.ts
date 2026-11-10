@@ -239,6 +239,32 @@ test("a chart of weekly bars dates its latest close and the report by the week's
   }
 });
 
+test("a month still forming is dated by its value's own day, the quote it ends on, not the 1st its bar starts", async () => {
+  const { applyChartComposerCapabilityOptions } = await import("./cli-options");
+  const { renderHeadlessPaneText } = await import("../../../cli/pane-functions/headless");
+  const { createTestQuote } = await import("../../../test-support/data-provider");
+  const monthly = ["2026-09-01", "2026-10-01", "2026-11-01"].map((date, index) => ({ date: new Date(`${date}T00:00:00Z`), close: 26_000 + index * 900 }));
+  // ^NDX's November bar runs to Monday's close; the index's own venue has no session calendar here.
+  const quote = createTestQuote({ symbol: "^NDX", price: 27_907.63, instrumentType: "INDEX", listingExchangeName: "NIM", lastUpdated: Date.parse("2026-11-09T22:15:00Z") });
+  const provider = createTestDataProvider({
+    getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [], quote }),
+    getQuote: async () => quote,
+    getChartResolutionSupport: () => [{ resolution: "1mo", maxRange: "ALL" }],
+    getPriceHistoryForResolution: async () => monthly,
+  });
+  const spec = applyChartComposerCapabilityOptions(buildCustomChartPreset("^NDX"), "chart-composer", { rangePreset: "ALL", chartResolution: "1mo" });
+  const definition = chartHeadless("chart-composer-pane");
+  const args = { argument: "^NDX", rawArgument: "^NDX", symbols: [], options: {} };
+  try {
+    // Tue 10 Nov 2026 02:10 UTC: `fn G BTC-USD ^NDX GC=F` listed ^NDX "Latest 2026-11-01" beside BTC's 2026-11-10.
+    setSystemTime(new Date("2026-11-10T02:10:00Z"));
+    const result = await definition.load(args, { ...fixture().context, marketData: provider, settings: { chartSpec: spec } });
+    expect(renderHeadlessPaneText(definition, result, args, "Custom Chart")).toMatch(/\^NDX\S* Price\s+(\S.*\s+)?2026-11-09\s/);
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("a chart of daily bars is as of its newest point: the closed session's day, or the time a session still trading was quoted", async () => {
   const { applyChartComposerCapabilityOptions } = await import("./cli-options");
   const { renderHeadlessPaneText } = await import("../../../cli/pane-functions/headless");

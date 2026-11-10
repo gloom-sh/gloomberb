@@ -239,12 +239,15 @@ export function createHeadlessPaneContext(
         command, noun: "a quote", retry: (key) => `gloom ${command} ${argumentWith(key)}`,
       }, { refresh: !!context.refresh, successor: true });
       if (!read) return null;
+      if ("notATicker" in read) return { symbol, notATicker: read.notATicker };
       return {
         symbol: read.symbol,
         ...read.exchange ? { exchange: read.exchange } : {},
         ...read.name ? { name: read.name } : {},
         ...read.coinNote ? { coinNote: read.coinNote } : {},
         ...read.successorNote ? { successorNote: read.successorNote } : {},
+        ...read.readAs ? { readAs: read.readAs } : {},
+        ...read.ownedNotes?.length ? { ownedNotes: read.ownedNotes } : {},
       };
     },
   };
@@ -489,7 +492,8 @@ function seriesLatestDate(series: HeadlessSeries, date: SeriesPointDate): string
   const time = seriesPointTime(date);
   if (!calendar || !period || !Number.isFinite(time)) return seriesPointDate(series, date);
   const venue = calendar.timeBasis?.exchange || calendar.listing?.exchange || undefined;
-  return barLastSession(observationDate(time, calendar), period, venue, Date.now()) ?? seriesPointDate(series, date);
+  // A period still forming on a venue whose sessions are not known here (an index publisher, a futures board) is its value's own day.
+  return barLastSession(observationDate(time, calendar), period, venue, Date.now()) ?? series.latestDate ?? seriesPointDate(series, date);
 }
 
 /** The same date for a spreadsheet: the trading date, the calendar date, or the ISO instant. */

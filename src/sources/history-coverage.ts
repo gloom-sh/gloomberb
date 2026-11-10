@@ -54,3 +54,16 @@ export class HistoryCoverageError extends ProviderMissError {
     this.name = "HistoryCoverageError";
   }
 }
+
+/**
+ * A window that ends before the listing's first bar (`BTC-USD --from 2003
+ * --to 2006`, whose bars start on 2014-09-17): the source can answer it as a
+ * failure, but asked again it has no bar of it either. "No bars before
+ * 2014-09-17 for BTC-USD."
+ */
+export class WindowBeforeFirstBarError extends ProviderMissError {
+  constructor(readonly firstBar: string, readonly symbol: string) {
+    super(`No bars before ${firstBar} for ${symbol}.`);
+    this.name = "WindowBeforeFirstBarError";
+  }
+}

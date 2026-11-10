@@ -17,11 +17,14 @@ const QUOTES: Record<string, ReturnType<typeof createTestQuote>> = {
   "2222:JPX": createTestQuote({ symbol: "2222", name: "Kotobuki Spirits Co., Ltd.", currency: "JPY", listingExchangeName: "JPX" }),
   "2222:TADAWUL": createTestQuote({ symbol: "2222", name: "Saudi Arabian Oil Co.", currency: "SAR", listingExchangeName: "TADAWUL" }),
   AAPL: createTestQuote({ symbol: "AAPL", name: "Apple Inc.", currency: "USD", listingExchangeName: "NASDAQ" }),
+  // Nothing quotes the bare root NDX; the service marks ^NDX:NIM for it.
+  "^NDX:NIM": createTestQuote({ symbol: "^NDX:NIM", name: "NASDAQ-100", currency: "USD", instrumentType: "INDEX", listingExchangeName: "NASDAQ GIDS" }),
 };
 const VENUES: Record<string, Array<[string, string]>> = {
   "2222": [["JPX", "Kotobuki Spirits Co., Ltd."], ["TADAWUL", "Saudi Arabian Oil Co."]],
   AAPL: [["NASDAQ", "Apple Inc."]],
 };
+const INDEXES: Record<string, Array<[string, string]>> = { NDX: [["^NDX", "NASDAQ-100"]] };
 const BARS = Array.from({ length: 5 }, (_, day) => ({
   date: new Date(Date.UTC(2026, 9, 5 + day)), open: 30, high: 30, low: 30, close: 30, volume: 1_000,
 }));
@@ -30,15 +33,22 @@ function quoteOf(symbol: string, exchange = "") {
   const key = parsePublicTickerKey(symbol);
   const venue = key.exchange || exchange;
   const quote = QUOTES[venue && key.symbol !== "AAPL" ? `${key.symbol}:${venue}` : key.symbol];
+  if (!quote && key.symbol === "NDX") throw new Error("Not a ticker: NDX.");
   if (!quote) throw new Error(`No quote provider available for ${symbol}`);
   return quote;
 }
 
-function provider(charted: string[]) {
+/** `charted` takes the listings whose financials the chart asks for, `bars` those whose bars it asks for. */
+function provider(charted: string[], bars: string[] = []) {
   return createTestDataProvider({
-    search: async (query) => (VENUES[query.trim().toUpperCase()] ?? []).map(([exchange, name]) => ({
-      providerId: "test", symbol: query.trim().toUpperCase(), name, exchange, type: "Common Stock", currency: "USD",
-    })),
+    search: async (query) => [
+      ...(VENUES[query.trim().toUpperCase()] ?? []).map(([exchange, name]) => ({
+        providerId: "test", symbol: query.trim().toUpperCase(), name, exchange, type: "Common Stock", currency: "USD",
+      })),
+      ...(INDEXES[query.trim().replace(/^\^/, "").toUpperCase()] ?? []).map(([symbol, name]) => ({
+        providerId: "test", symbol, name, exchange: "NIM", type: "INDEX", searchAliases: [symbol.slice(1)],
+      })),
+    ],
     getQuote: async (symbol, exchange) => quoteOf(symbol, exchange),
     getQuotesBatch: async (targets: QuoteSubscriptionTarget[]) => targets.map((target) => {
       try {
@@ -54,14 +64,23 @@ function provider(charted: string[]) {
       try { quote = quoteOf(symbol, exchange); } catch { /* history without a quote */ }
       return createTestFinancials({ quote: quote ?? undefined, priceHistory: BARS });
     },
-    getPriceHistory: async () => BARS,
-    getPriceHistoryWithMetadata: async () => ({ resolution: "1d", points: BARS }),
-    getPriceHistoryForResolution: async () => BARS,
+    getPriceHistory: async (symbol, exchange) => {
+      bars.push(exchange ? `${symbol}:${exchange}` : symbol);
+      return BARS;
+    },
+    getPriceHistoryWithMetadata: async (symbol, exchange) => {
+      bars.push(exchange ? `${symbol}:${exchange}` : symbol);
+      return { resolution: "1d", points: BARS };
+    },
+    getPriceHistoryForResolution: async (symbol, exchange) => {
+      bars.push(exchange ? `${symbol}:${exchange}` : symbol);
+      return BARS;
+    },
   });
 }
 
-async function renderChart(symbol: string, charted: string[]) {
-  const dataProvider = provider(charted);
+async function renderChart(symbol: string, charted: string[], bars: string[] = []) {
+  const dataProvider = provider(charted, bars);
   const paneId = `bare-listing-${symbol}`;
   const state = createInitialState(createTestPaneConfig("/tmp/gloom-chart-bare-listing-unused", {
     instanceId: paneId, paneId: "chart-composer", settings: { chartSpec: buildPriceChartPreset(symbol) },
@@ -98,4 +117,13 @@ test("the chart pane names the company of a bare symbol it charts", async () => 
   await renderChart("AAPL", charted);
   await frameWith("Price · Apple");
   expect(charted.every((key) => key === "AAPL")).toBe(true);
+});
+
+test("the chart pane charts a bare index root as the index quote reads it as, symbol and venue both", async () => {
+  const bars: string[] = [];
+  await renderChart("NDX", [], bars);
+  const frame = await frameWith("^NDX:NIM Price");
+  // NDX is read as ^NDX on NIM: never a line NDX:NIM no venue has, nor the bare code a source may still serve.
+  expect(bars.length, frame).toBeGreaterThan(0);
+  expect(bars.every((key) => key === "^NDX:NIM")).toBe(true);
 });

@@ -109,18 +109,24 @@ export function getAvailablePaneTemplatesForState(options: {
 }
 
 /**
- * "ETF flows" spells out ETFF (Crypto ETF Flows), not ETF for a ticker called
- * FLOWS: a query that is word for word a keyword of a template whose own code
- * extends the typed one is no ticker argument, and is left to the search,
- * which ranks that template first. "JOBS DAY" stays Jobs for Dayforce, since
- * the template that lists "jobs day" (MDAY) does not extend JOBS.
+ * "ETF flows", "etf flows bitcoin" and "bitcoin etf" spell out ETFF (Crypto
+ * ETF Flows), not ETF for a ticker called FLOWS or BITCOIN: a query whose
+ * words are all words of one keyword, in any order, of a template whose own
+ * code extends the typed one is no ticker argument, and is left to the
+ * search, which ranks that template first. "ETF IBIT" stays Fund Facts for
+ * IBIT, since no keyword of ETFF holds both words, and "JOBS DAY" stays Jobs
+ * for Dayforce, since the template that lists "jobs day" (MDAY) does not
+ * extend JOBS.
  */
 function spellsOutLongerCode(query: string, code: string, templates: readonly PaneTemplateDef[]): boolean {
-  const phrase = query.toLowerCase().replace(/\s+/g, " ");
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   return templates.some((template) => {
     const longer = template.shortcut?.prefix?.trim().toUpperCase() ?? "";
     return longer.length > code.length && longer.startsWith(code)
-      && !!template.keywords?.some((keyword) => keyword.toLowerCase() === phrase);
+      && !!template.keywords?.some((keyword) => {
+        const keywordWords = new Set(keyword.toLowerCase().split(/\s+/));
+        return words.every((word) => keywordWords.has(word));
+      });
   });
 }
 

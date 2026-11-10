@@ -24,11 +24,12 @@ import { indexBarVolume } from "../../../../market-data/market/index-level";
 import { quoteExportUnit } from "../../../../market-data/quotes/export-identity";
 import { isPenceQuotedLine, penceFigure, quoteFormatOptions } from "../../../../market-data/market/format";
 import {
-  barPriceDecimals, formatBarPrice, historyAllStart, historyBarsAfterHole, historyChangeBaseNote, historyMissingPeriodsNote, quotedPriceDivisor,
+  barPriceDecimals, formatBarPrice, historyAllStart, historyBarFlags, historyBarsAfterHole, historyBarValues, historyChangeBaseNote,
+  historyMissingPeriodsNote, priceTableIntegrityNotice, quotedPriceDivisor,
 } from "../../../../cli/history-rows";
 import {
-  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, pricePointWickFlags, priceHistoryIntegrityNotice,
-  priceHistoryRescaleNotice, priceHistoryWickNotice,
+  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, pricePointWickFlags, priceHistoryRescaleNotice,
+  priceHistoryWickNotice,
 } from "../../../../utils/price-history-integrity";
 import {
   useAssetData,
@@ -70,6 +71,8 @@ export type HistoricalPriceRow = {
   partial: boolean;
   /** A coin's day Gloom Cloud rebuilt from hourly bars, which has no volume of its own. */
   filled: boolean;
+  /** How the bar's prices contradict each other or a wick is withheld (`high<close`), as `history` flags it; null when they agree. */
+  flag: string | null;
   change: number | null;
   changePercent: number | null;
   /** Periods without a bar lie between this bar and the one before, so its change spans them (marked `*`). */
@@ -132,15 +135,19 @@ interface HistoricalPriceTable {
 }
 
 function buildHistoricalPriceRows(points: PricePoint[], venue: string | undefined, now: number, requested: ManualChartResolution): HistoricalPriceTable {
-  const sorted = points
-    .flatMap((point, sourceIndex) => {
-      const date = pricePointDate(point);
-      return date ? [{
-        point: pricePointValues(point), date, sourceIndex, partial: point.partial === true, filled: point.filled === true, contract: point.contract,
-      }] : [];
-    })
+  const dated = points.flatMap((point, sourceIndex) => {
+    const date = pricePointDate(point);
+    return date ? [{ source: point, date, sourceIndex }] : [];
+  });
+  const size = historyBarSize(dated.map((entry) => entry.date.getTime()), requested);
+  // A monthly bar whose prices contradict each other keeps its close, as `history` keeps it.
+  const sorted = dated
+    .map(({ source, date, sourceIndex }) => ({
+      point: historyBarValues(source, size === "1mo"), date, sourceIndex,
+      partial: source.partial === true, filled: source.filled === true, contract: source.contract,
+      flag: historyBarFlags(source).join(",") || null,
+    }))
     .sort((left, right) => left.date.getTime() - right.date.getTime());
-  const size = historyBarSize(sorted.map((entry) => entry.date.getTime()), requested);
   const newestDate = sorted.at(-1)?.date.toISOString().slice(0, 10);
   const forming = formingHistoryBar(size, newestDate, venue, now);
   const dayToDate = size === "1d" && sorted.at(-1)?.partial === true;
@@ -163,7 +170,7 @@ function buildHistoricalPriceRows(points: PricePoint[], venue: string | undefine
   ].filter((notice): notice is string => notice != null);
   const rows = sorted.map((entry, index) => {
     const previous = rolled[index] ? undefined : sorted[index - 1]?.point;
-    const { point, date, sourceIndex, filled } = entry;
+    const { point, date, sourceIndex, filled, flag } = entry;
     const newest = index === sorted.length - 1;
     const partial = newest && (!!forming || dayToDate);
     const change = previous?.close != null && point.close != null ? point.close - previous.close : null;
@@ -178,6 +185,7 @@ function buildHistoricalPriceRows(points: PricePoint[], venue: string | undefine
       time: date.getTime(),
       partial,
       filled,
+      flag,
       change,
       changePercent: previous?.close && change !== null ? change / previous.close : null,
       changeSpansGap: afterGap[index] === true,
@@ -283,7 +291,8 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
     () => buildHistoricalPriceRows(points, venue, Date.now(), RANGE_HISTORY_RESOLUTION[range]),
     [points, range, venue],
   );
-  const integrityNotice = priceHistoryIntegrityNotice(rows.filter((row) => row.point.integrity).length);
+  // A month that keeps its close is said as `history` says it.
+  const integrityNotice = priceTableIntegrityNotice(rows.map((row) => ({ flag: row.flag, close: row.point.close, integrity: row.point.integrity })));
   const wickNotice = useMemo(() => priceHistoryWickNotice(points.filter((point) => pricePointWickFlags(point).length > 0).length), [points]);
   const rescaleNotice = useMemo(() => priceHistoryRescaleNotice(points), [points]);
   const volumeMissing = useMemo(() => missingVolumeCount(rows.map((row) => ({

@@ -36,6 +36,10 @@ export function catalogFredSeriesIds(plugins: readonly SeriesSource[]): Set<stri
 
 /** Each word must start a word of the text, so "eu" finds "Europe" but not "neutral". */
 const startsWord = (text: string, word: string) => new RegExp(`(^|[^a-z0-9])${escape(word)}`).test(text);
+/** A word of the text whole: "defi" is "DeFi", not the start of "deficit". */
+const isWord = (text: string, word: string) => new RegExp(`(^|[^a-z0-9])${escape(word)}($|[^a-z0-9])`).test(text);
+/** A series whose name, tags and group have every word whole outranks any that has one only as the start of a longer word. */
+const WHOLE_WORDS_SCORE = 10;
 
 /**
  * The plugins' catalog series whose words cover every word of the query: in
@@ -43,8 +47,11 @@ const startsWord = (text: string, word: string) => new RegExp(`(^|[^a-z0-9])${es
  * `catalog`. Series that ask for a ticker are left out; a search names data,
  * not a field of every stock. A query that is a series' id (`policy-rate:ch`),
  * what `fn G` charts (`CAP:policy-rate:ch`, `FRED:DFEDTARU`) or a FRED series
- * id (`DFEDTARU`) ranks it first, then one that is its name or tag, then
- * matches in the name, then the order the series were registered in.
+ * id (`DFEDTARU`) ranks it first, then one whose name, tags and group have
+ * each word whole (`defi` is Total DeFi TVL's tag, before the "deficit" of the
+ * federal outlays; a description or publisher does not count), then one
+ * that is its name or tag, then matches in the name, then the order the
+ * series were registered in.
  */
 export function findCatalogSeries(
   plugins: readonly SeriesSource[],
@@ -62,14 +69,16 @@ export function findCatalogSeries(
     const byId = words.length === 1
       && [definition.id, expression, fredSeriesIdOf(expression) ?? ""].some((id) => id.toLowerCase() === phrase);
     const name = definition.name.toLowerCase();
-    const text = [name, ...(definition.tags ?? []), definition.group ?? "",
-      ...(scope === "all" ? [definition.description ?? "", definition.publisher ?? ""] : [])].join(" ").toLowerCase();
+    // What names the series: a word whole only in its description ("decentralized finance (DeFi)") does not rank it.
+    const naming = [name, ...(definition.tags ?? []), definition.group ?? ""].join(" ").toLowerCase();
+    const text = [naming, ...(scope === "all" ? [definition.description ?? "", definition.publisher ?? ""] : [])].join(" ").toLowerCase();
     if (!byId && !words.every((word) => startsWord(text, word))) continue;
     const exact = byId || name === phrase || (definition.tags ?? []).some((tag) => tag.toLowerCase() === phrase);
     ranked.push({
       match: { id: definition.id, name: definition.name, unit: definition.unit, frequency: definition.frequency,
         publisher: definition.publisher ?? null, expression, exact },
-      score: (byId ? 100 : 0) + (exact ? words.length + 1 : 0) + words.filter((word) => startsWord(name, word)).length,
+      score: (byId ? 100 : 0) + (words.every((word) => isWord(naming, word)) ? WHOLE_WORDS_SCORE : 0)
+        + (exact ? words.length + 1 : 0) + words.filter((word) => startsWord(name, word)).length,
       order: ranked.length,
     });
   }

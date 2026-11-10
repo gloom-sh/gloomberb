@@ -536,7 +536,7 @@ export const ja: Record<string, string> = {
   "Pin Ticker": "銘柄を固定",
 
   // ── Help pane ────────────────────────────────────────────────
-  "Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "コードが分からない場合は、上部の検索バーをクリックするか {key} を押し、\"top news\" のように普段の言葉で入力してください。「関数」タブに全機能があります。",
+  "Not sure of a code? Press {key}, or click the search bar at the top, and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "コードが分からない場合は、{key} を押すか上部の検索バーをクリックし、\"top news\" のように普段の言葉で入力してください。「関数」タブに全機能があります。",
   "Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "コードが分からない場合は、上部の検索バーをクリックし、\"top news\" のように普段の言葉で入力してください。「関数」タブに全機能があります。",
   "Open Help": "ヘルプを開く",
   "Command Prefixes": "コマンド接頭辞",
