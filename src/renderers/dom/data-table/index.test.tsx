@@ -223,6 +223,45 @@ test("artwork before a label is hidden decoration: the text keeps its selection 
   expect(selected).toEqual(["b"]);
 });
 
+test("a cell's kept end never shrinks: the ellipsis cuts what comes before it, and the cell reads whole", async () => {
+  const state = createInitialState(createDefaultConfig("/tmp/gloom-table-test"));
+  const text = "Brent Crude Oil Last Day Financial Jan 2027";
+  function Harness() {
+    const headerScrollRef = useRef<ScrollBoxRenderable | null>(null);
+    const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+    return (
+      <AppContext value={createStaticAppStore(state)}>
+        <WebDataTable
+          items={["BZ"]}
+          columns={[{ id: "name", label: "Contract", width: 20 }]}
+          sortColumnId={null}
+          sortDirection="asc"
+          headerScrollRef={headerScrollRef}
+          scrollRef={scrollRef}
+          syncHeaderScroll={() => {}}
+          onBodyScrollActivity={() => {}}
+          getItemKey={String}
+          isSelected={() => false}
+          onSelect={() => {}}
+          renderCell={() => ({ text, keepEnd: " Jan 2027" })}
+          emptyStateTitle="No rows"
+          virtualize={false}
+        />
+      </AppContext>
+    );
+  }
+
+  const container = await render(<Harness />);
+  const cell = container.querySelector('[data-gloom-role="data-table-cell"]')!;
+  expect(cell.textContent).toBe(text);
+  const [lead, end] = [...cell.querySelectorAll("span[title] > span")] as HTMLElement[];
+  expect(lead!.textContent).toBe("Brent Crude Oil Last Day Financial");
+  expect(lead!.style.textOverflow).toBe("ellipsis");
+  expect(end!.textContent).toBe(" Jan 2027");
+  expect(end!.style.flexShrink).toBe("0");
+  expect(end!.style.whiteSpace).toBe("pre");
+});
+
 test("the pane scroll keys scroll a table body, as they do in the terminal", async () => {
   const state = createInitialState(createDefaultConfig("/tmp/gloom-table-test"));
   function Harness() {

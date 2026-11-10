@@ -131,6 +131,22 @@ describe("OpenTUI data table model", () => {
     expect(fitColumnCellText("天然", 21, "left", null, note).note).toBeUndefined();
   });
 
+  test("a cut label keeps its end whole, cutting before it, until the column holds only the end", () => {
+    const brent = "Brent Crude Oil Last Day Financial Jan 2027";
+    const month = " Jan 2027";
+    // The FUT board's contract column at 80 terminal columns: the month shows, the name gives way.
+    expect(fitColumnCellText(brent, 35, "left", null, undefined, month)).toEqual({ text: "Brent Crude Oil Last Day… Jan 2027 " });
+    expect(fitColumnCellText(brent, 35, "left", null)).toEqual({ text: "Brent Crude Oil Last Day Financial…" });
+    // Whole when it fits; cut at the visible edge of a scrolled column the same way.
+    expect(fitColumnCellText(brent, 43, "left", null, undefined, month).text).toBe(brent);
+    expect(fitColumnCellText(brent, 43, "left", { inset: 4, width: 20 }, undefined, month).text).toBe("Brent Crud… Jan 2027");
+    // One character of the name and the ellipsis, else the plain cut: an end alone would not say what it is the end of.
+    expect(fitColumnCellText(brent, 11, "left", null, undefined, month).text).toBe("B… Jan 2027");
+    expect(fitColumnCellText(brent, 10, "left", null, undefined, month).text).toBe("Brent Cru…");
+    // An end the text does not end in changes nothing.
+    expect(fitColumnCellText(brent, 35, "left", null, undefined, " Feb 2027")).toEqual(fitColumnCellText(brent, 35, "left", null));
+  });
+
   test("a note is hidden when the viewport cuts any of it, including an aligned cell's placement", () => {
     const note = "front NGX26 3.116";
     expect(fitColumnCellText("NGF27", 30, "left", { inset: 0, width: 23 }, note).note).toBe(note);

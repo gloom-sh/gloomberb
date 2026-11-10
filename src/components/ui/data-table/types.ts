@@ -27,6 +27,13 @@ export interface DataTableCell {
   /** Muted context after `text`, shown whole only when both fit on one line. Does not change the exported value. */
   note?: string;
   /**
+   * The end of `text` a column too narrow for it keeps whole, with the space
+   * before it: the cut shortens what comes first, so a contract's month
+   * always shows ("Brent Crude Oil Last Day… Jan 2027"). Exports and reports
+   * read `text` whole.
+   */
+  keepEnd?: string;
+  /**
    * What CSV export writes instead of `text`: the full-precision number behind
    * it (3.45 for +3.45%, 1234567890 for 1.23B), or a date as an ISO string or
    * Date. `null` exports an empty cell. Without it, a right-aligned column of

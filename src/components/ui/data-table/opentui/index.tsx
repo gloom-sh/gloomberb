@@ -218,7 +218,7 @@ function OpenTuiDataTableRowInner<
         const shownWidth = clip ? clip.width : column.width - inset;
         // Cut text is fitted to what shows; a number the edge cuts stays blank in its own place,
         // and its cell keeps its background and its press.
-        const fitted = fitColumnCellText(cell.text, clip ? column.width : shownWidth, column.align, clip, cell.note);
+        const fitted = fitColumnCellText(cell.text, clip ? column.width : shownWidth, column.align, clip, cell.note, cell.keepEnd);
         const contentCut = clip !== null && column.align === "right" && fitted.text.trim() === "";
         return (
           <Box

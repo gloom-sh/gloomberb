@@ -46,17 +46,21 @@ export function cutColumnText(
   return `${" ".repeat(start - clip.inset)}${body}${" ".repeat(shownEnd - end)}`;
 }
 
-/** A note uses only spare room: neither the label nor part of the note is cut to fit it. */
+/**
+ * A note uses only spare room: neither the label nor part of the note is cut to fit it.
+ * A cut label keeps `keepEnd` whole (a contract's month), cutting what comes first.
+ */
 export function fitColumnCellText(
   text: string,
   width: number,
   align: string | undefined,
   clip: DataTableColumnClip | null,
   note?: string,
+  keepEnd?: string,
 ): { text: string; note?: string; padding?: string } {
   const fit = (value: string) => clip
-    ? cutColumnText(value, align, width, clip, (body, shown) => fitTableCellText(body, shown, align))
-    : width > 0 ? fitTableCellText(value, width, align) : "";
+    ? cutColumnText(value, align, width, clip, (body, shown) => fitTableCellText(body, shown, align, keepEnd))
+    : width > 0 ? fitTableCellText(value, width, align, keepEnd) : "";
   const combined = note ? `${text} ${note}` : "";
   if (combined && displayWidth(combined) <= (clip?.width ?? width)) {
     const fitted = fit(combined);
