@@ -226,6 +226,27 @@ test("a ticker's bonds are those linked to its company, by CUSIP, whatever name 
   expect(parseBondQuery("601318")).toMatchObject({ ticker: "601318" });
 });
 
+test.each([[401, "signed out"], [403, "no Pro"]])("refused its company's linked bonds (%i, %s), a ticker is asked by its company's name as before, said nowhere", async (status) => {
+  const cumulus = bond("23110AAB2", "CUMU5000001", "CUMULUS MEDIA NEW HLDGS INC", "2026-07-27", { couponRate: 8, maturityDate: "2029-07-01" });
+  const posted = fakeTape((request) => filterOn(request, "issuerName")?.fieldValue === "CUMULUS MEDIA" && !perpetual(request) ? [cumulus] : []);
+  const asked: string[] = [];
+  const refused = async (listing: string) => {
+    asked.push(listing);
+    throw new ApiRequestError("Bond trades require Pro", status, undefined, "pro_required");
+  };
+  const quoted = createTestDataProvider({ getQuote: async (symbol) => createTestQuote({ symbol, name: "Cumulus Media Inc." }) });
+  const { result, text } = await report("CMLSQ", quoted, { getCloudIssuerBondIssues: refused, getCloudStoredIssuerBonds: refused });
+  expect(asked).toContain("CMLSQ");
+  expect(posted.some((request) => request.domain)).toBe(false);
+  // Today's answer: the company's name, said to be a guess, and nothing about the refusal.
+  expect(result.warnings).toEqual(["Showing bonds for CUMULUS MEDIA (Cumulus Media Inc.): none trade under CMLSQ."]);
+  expect(result.complete).toBe(true);
+  expect(result.errors).toBeUndefined();
+  expect(result.notes).toBeUndefined();
+  expect(text).toContain("23110AAB2");
+  expect(text).not.toContain("Pro");
+});
+
 test("a failed issuer-name lookup leaves an empty report incomplete and names the failed check", async () => {
   fakeTape((request) => request.limit === 1
     ? [bond("65334HAE2", "NXY3816446", "NEXEN INC", "2026-10-16")]

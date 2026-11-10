@@ -1273,7 +1273,7 @@ export class CloudDataApi {
     });
   }
 
-  /** A company's live bonds by CUSIP, as its listing (`2318:HKEX`) is linked to them; open to anyone. */
+  /** A company's live bonds by CUSIP, as its listing (`2318:HKEX`) is linked to them; Gloom Pro. */
   async getCloudIssuerBondIssues(listing: string, options: { signal?: AbortSignal } = {}): Promise<IssuerBondIssuesPayload> {
     const query = new URLSearchParams({ symbol: listing });
     return this.request<IssuerBondIssuesPayload>(`/cloud/bond-trades/issues?${query}`, {

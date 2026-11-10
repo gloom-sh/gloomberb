@@ -1,4 +1,5 @@
 import { bondIssuerListing } from "../../../api-client/bond-trades";
+import { ApiRequestError } from "../../../api-client/errors";
 import { shortCompanyName } from "../../../tickers/company-name";
 import type { DataProvider } from "../../../types/data-provider";
 import { signalWithTimeout } from "../../../utils/async-deadline";
@@ -488,6 +489,11 @@ export async function quotedIssuerListing(
   return bondIssuerListing(quote.symbol || listing.symbol, quote.listingExchangeName || quote.exchangeName || listing.exchange);
 }
 
+/** Gloom Cloud declining a read for the account, not failing it: signed out (401) or without Pro (403). */
+function isAccessRefusal(error: unknown): boolean {
+  return error instanceof ApiRequestError && (error.status === 401 || error.status === 403);
+}
+
 /** A company's bonds as Gloom Cloud links them to it, by CUSIP. */
 interface LinkedBonds {
   /** The company, as Gloom Cloud names it: `PING AN INSURANCE`. */
@@ -528,7 +534,11 @@ export interface BondTapeOptions {
   today?: string;
   /** The company a stock ticker's quote names (`quotedCompanyName`), asked once when the ticker finds nothing. */
   companyName?: (ticker: string) => Promise<string | null>;
-  /** The bonds linked to a stock ticker's company, asked before its name when the ticker finds nothing. */
+  /**
+   * The bonds linked to a stock ticker's company, asked before its name when
+   * the ticker finds nothing. The links are Gloom Pro: refused (no account, or
+   * no Pro), the name is asked as it always was, and the refusal said nowhere.
+   */
   linkedBonds?: (ticker: string) => Promise<LinkedBonds | null>;
 }
 
@@ -551,7 +561,7 @@ export async function fetchBondTape(input: string, options: BondTapeOptions = {}
     const linked = await options.linkedBonds(query.ticker).catch((error: unknown) => {
       options.signal?.throwIfAborted();
       if (error instanceof Error && error.name === "AbortError") throw error;
-      logFailure("trace-bonds.client", "Read linked bonds failed")(error);
+      if (!isAccessRefusal(error)) logFailure("trace-bonds.client", "Read linked bonds failed")(error);
       return null;
     });
     options.signal?.throwIfAborted();

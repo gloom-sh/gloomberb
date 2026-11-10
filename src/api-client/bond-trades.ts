@@ -58,7 +58,7 @@ export interface StoredIssuerBondsPayload {
   backfillPending: boolean;
 }
 
-/** A company's live bonds by CUSIP, as Gloom Cloud links them to it: open to anyone, unlike the kept prints. */
+/** A company's live bonds by CUSIP, as Gloom Cloud links them to it: Gloom Pro, as the kept prints are. */
 export interface IssuerBondIssuesPayload {
   /** The company's primary listing. */
   symbol: string;
