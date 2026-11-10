@@ -62,8 +62,11 @@ import {
   type CryptoRow,
   type CryptoSortPreference,
   type CryptoTab,
+  utcCloseAsOfText,
 } from "./model";
-import { stackedSupply, SUPPLY_RANGES, supplyByCode, supplyFailure, supplyHistoryStart, type SupplyRangeId } from "./supply";
+import {
+  STABLECOIN_SUPPLY_PUBLISHER, stackedSupply, SUPPLY_RANGES, supplyByCode, supplyFailure, supplyHistoryStart, type SupplyRangeId,
+} from "./supply";
 
 /**
  * The board is the price for every row without a live stream: coins the live
@@ -301,11 +304,11 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
     if (!stablecoins || !total) return [];
     const since = supplyHistoryStart(supply);
     return [
-      { id: "total", label: "Total supply", value: formatSupply(total.supply), ...(supply.asOf ? { detail: `as of ${supply.asOf}` } : {}) },
+      { id: "total", label: "Total supply", value: formatSupply(total.supply), ...(supply.asOf ? { detail: utcCloseAsOfText(supply.asOf) } : {}) },
       supplyChangeFigure("change-7d", "7D change", total.change7d, total.change7dPercent),
       supplyChangeFigure("change-30d", "30D change", total.change30d, total.change30dPercent),
-      // Where the count starts, as the DeFi tab's source says it: ALL draws from that day's few coins.
-      ...(since ? [{ id: "source", label: "Source", value: supply.source.name, detail: `daily since ${since}` }] : []),
+      // Its publisher and where the count starts, as the DeFi tab's source says them: ALL draws from that day's few coins.
+      { id: "source", label: "Source", value: STABLECOIN_SUPPLY_PUBLISHER, ...(since ? { detail: `daily since ${since}` } : {}) },
     ];
   }, [stablecoins, supply]);
   const supplyError = !supply && supplyResource.error ? supplyResource.error : null;

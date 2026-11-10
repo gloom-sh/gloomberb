@@ -177,7 +177,9 @@ test("the stablecoin tab charts supply above its rows, the legend and the table 
   expect(frame).toMatch(/Total supply\s+300\.00B/);
   expect(frame).toMatch(/30D change\s+\+1\.80B/);
   // ALL starts on the count's first day, which the header says as the DeFi tab says its own.
-  expect(frame).toMatch(/Source\s+Gloom Cloud\s+daily since 2026-09-19/);
+  // Its publisher and day as the DeFi tab says its own, not the service that serves it.
+  expect(frame).toMatch(/Source\s+DefiLlama\s+daily since 2026-09-19/);
+  expect(frame).toContain("as of 2026-09-23 UTC close");
   // The legend reads each coin's own supply, not the stack's height at it.
   expect(frame).toMatch(/USDT 180\.00B \+ USDC 72\.00B × Other 48\.00B/);
   expect(frame).toMatch(/MCAP\s+SUPPLY\s+SUP 7D%\s+SUP 7D\s+SUP 30D%\s+SUP 30D\s+SHARE/);

@@ -3,7 +3,7 @@ import type { TickerRecord } from "../types/ticker";
 import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
 import { optionContractName } from "../utils/options";
 
-type NamingQuote = Pick<Quote, "name" | "listingExchangeName" | "exchangeName"> & Partial<Pick<Quote, "symbol">>;
+type NamingQuote = Pick<Quote, "name" | "listingExchangeName" | "exchangeName"> & Partial<Pick<Quote, "symbol" | "instrumentType">>;
 
 /**
  * The company a listing's own quote names: the one name `quote`, `history`,
@@ -15,7 +15,10 @@ type NamingQuote = Pick<Quote, "name" | "listingExchangeName" | "exchangeName"> 
 export function quotedListingName(exchange: string, quote: NamingQuote | null | undefined): string | null {
   const quoteExchange = canonicalExchange(quote?.listingExchangeName || quote?.exchangeName);
   // ^NDX:NIM's quote names its venue by its publisher (NASDAQ GIDS) and its key by the service's code: it is still that listing's.
-  const ownKey = !!quote?.symbol && !!exchange && canonicalExchange(parsePublicTickerKey(quote.symbol).exchange) === canonicalExchange(exchange);
+  // Only an index's: a security's quote that names another venue is another listing's, whatever its key.
+  const index = quote?.instrumentType?.trim().toUpperCase() === "INDEX";
+  const ownKey = index && !!quote?.symbol && !!exchange
+    && canonicalExchange(parsePublicTickerKey(quote.symbol).exchange) === canonicalExchange(exchange);
   if (quoteExchange && exchange && !ownKey && quoteExchange !== canonicalExchange(exchange)) return null;
   return quote?.name?.trim() || null;
 }

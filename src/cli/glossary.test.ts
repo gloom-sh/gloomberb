@@ -281,7 +281,7 @@ test("TVL is a term of its own, found by its abbreviation and explained from wha
   expect(terms(lookupGlossary("TVL").exact)).toEqual(["Total value locked"]);
   expect(terms(lookupGlossary("total value locked").exact)).toEqual(["Total value locked"]);
   // What is counted and what is not: deposits counted once, bridged and liquid-staked assets left out.
-  expect(lookupGlossary("TVL").exact[0]!.definition).toMatch(/counts each deposit once.*bridges and liquid staking/);
+  expect(lookupGlossary("TVL").exact[0]!.definition).toMatch(/Each deposit counts once:.*liquid staking, bridges and borrowed amounts are left out/);
   const defi = [
     "Total DeFi TVL 78.92B · 7D -2.99B (-3.65%) · 30D -11.00B (-12.24%) · as of 2026-11-09 UTC close · DefiLlama, daily since 2018-02-11",
     "#  Protocol   Category        TVL USD    1D %        7D    7D %     30D    30D %  Chains",

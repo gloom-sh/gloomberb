@@ -2,6 +2,7 @@ import type { SeriesDefinition, SeriesPoint } from "../../../series/types";
 import { cachedSeriesNote } from "../shared/series-warning";
 import { loadDefiTvl, loadStablecoinSupply, loadStablecoinSupplyHistory } from "./client";
 import { DEFI_DAY_CONVENTION } from "./defi";
+import { STABLECOIN_SUPPLY_PUBLISHER } from "./supply";
 import { BITCOIN_NETWORK_SERIES } from "./bitcoin-network";
 
 const DAY_MS = 86_400_000;
@@ -17,6 +18,11 @@ function stablecoinSymbol(ticker: string): string {
   return ticker.trim().toUpperCase().split(/[-/]/)[0] ?? ticker;
 }
 
+/** What a chart of a supply cites: its publisher, each day dated as the DeFi total's, by the UTC day it closes. */
+const STABLECOIN_SUPPLY_ATTRIBUTION = {
+  source: `${STABLECOIN_SUPPLY_PUBLISHER} stablecoin supply, ${DEFI_DAY_CONVENTION}`, publisher: STABLECOIN_SUPPLY_PUBLISHER,
+} as const;
+
 /** Total stablecoin supply and any listed coin's, as CRYP's stablecoin list shows them. */
 const STABLECOIN_SUPPLY_SERIES: readonly SeriesDefinition[] = [
   {
@@ -27,11 +33,12 @@ const STABLECOIN_SUPPLY_SERIES: readonly SeriesDefinition[] = [
     group: "Crypto",
     tags: ["stablecoin", "stablecoins", "supply", "USDT", "USDC", "liquidity"],
     description: "Total supply of all stablecoins, valued in USD, daily since 2017, as CRYP's stablecoin list totals it.",
+    publisher: STABLECOIN_SUPPLY_PUBLISHER,
     load: async () => {
       const resource = await loadStablecoinSupply();
       const history = resource.payload.history;
       if (!history) throw new Error("Stablecoin supply is not available yet.");
-      return { points: dailyPoints(history.start, history.total), ...cachedSeriesNote(resource) };
+      return { points: dailyPoints(history.start, history.total), attribution: STABLECOIN_SUPPLY_ATTRIBUTION, ...cachedSeriesNote(resource) };
     },
   },
   {
@@ -43,11 +50,12 @@ const STABLECOIN_SUPPLY_SERIES: readonly SeriesDefinition[] = [
     tags: ["stablecoin", "stablecoins", "supply", "circulating"],
     description: "One stablecoin's supply across chains, valued in USD, daily, for a coin on CRYP's stablecoin list (USDT-USD).",
     input: "crypto",
+    publisher: STABLECOIN_SUPPLY_PUBLISHER,
     load: async ({ ticker }) => {
       const resource = await loadStablecoinSupplyHistory(stablecoinSymbol(ticker!));
       const history = resource.payload.history;
       if (!history) throw new Error(`${resource.payload.symbol} supply history is not available yet.`);
-      return { points: dailyPoints(history.start, history.values), ...cachedSeriesNote(resource) };
+      return { points: dailyPoints(history.start, history.values), attribution: STABLECOIN_SUPPLY_ATTRIBUTION, ...cachedSeriesNote(resource) };
     },
   },
 ];

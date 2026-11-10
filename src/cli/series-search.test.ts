@@ -47,13 +47,16 @@ test("a query finds series by the words that start theirs, names first, and neve
   expect(findCatalogSeries(plugins, "de")).toEqual([]);
 });
 
-test("a series with each word whole ranks before one with a word only as the start of a longer word", () => {
-  const deficit = { id: "fred:MTSO133FMS", name: "Federal outlays (Monthly Treasury Statement)", unit: "million USD", frequency: "monthly",
-    group: "Fiscal", description: "Monthly federal outlays, which with receipts make the deficit.", publisher: "FRED", expression: "FRED:MTSO133FMS" };
-  const tvl = { id: "crypto:defi-tvl", name: "Total value locked", unit: "USD", frequency: "daily", group: "Crypto",
+test("a series named or tagged with each word whole ranks before one with a word only as the start of a longer word", () => {
+  const deficit = { id: "fred:FYFSD", name: "Federal deficit", unit: "million USD", frequency: "annual",
+    group: "Fiscal", description: "The federal surplus or deficit.", publisher: "FRED", expression: "FRED:FYFSD" };
+  const lending = { id: "crypto:lending", name: "Lending rates", unit: "%", frequency: "daily", group: "Crypto",
+    description: "Rates paid on DeFi lending protocols.", load };
+  const tvl = { id: "crypto:defi-tvl", name: "Total DeFi TVL", unit: "USD", frequency: "daily", group: "Crypto", tags: ["defi", "tvl"],
     description: "Total value locked in DeFi protocols.", load };
-  // `catalog defi` listed the outlays first when they were registered first: neither is named or tagged "defi".
-  expect(findCatalogSeries([{ series: [deficit, tvl] }], "defi").map((match) => match.id)).toEqual(["crypto:defi-tvl", "fred:MTSO133FMS"]);
+  // `catalog defi` listed the deficit first when it was registered first; a word whole in a description alone ranks nothing.
+  expect(findCatalogSeries([{ series: [deficit, lending, tvl] }], "defi").map((match) => match.id))
+    .toEqual(["crypto:defi-tvl", "fred:FYFSD", "crypto:lending"]);
 });
 
 test("the built-in catalog finds Mexico's and Brazil's government yields and iron ore by the words people use", () => {

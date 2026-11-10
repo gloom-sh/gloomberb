@@ -47,9 +47,14 @@ test("a coin's supply reads the coin a pair names, and an unlisted coin says it 
   expect(asked).toEqual(["USDT", "NOPE"]);
 });
 
-test("total DeFi TVL names its publisher and how its days are dated, as CRYP's DeFi list does", async () => {
+test("total DeFi TVL and stablecoin supply name their publisher and how their days are dated, as CRYP's lists do", async () => {
   spies.push(spyOn(apiClient, "getCloudDefiTvl").mockImplementation(async () => defiTvlFixture()));
+  spies.push(spyOn(apiClient, "getCloudStablecoinSupply").mockImplementation(async () => stablecoinSupplyFixture()));
   // `fn G CAP:crypto:defi-tvl` said "Publisher: not published" while CRYP named DefiLlama.
   expect(series("crypto:defi-tvl").publisher).toBe("DefiLlama");
   expect((await load("crypto:defi-tvl")).attribution).toEqual({ source: "DefiLlama total DeFi TVL, UTC daily closes", publisher: "DefiLlama" });
+  // The supply is DefiLlama's stablecoin charts, dated as the TVL is, though the service that serves it names itself.
+  expect(series("crypto:stablecoin-supply").publisher).toBe("DefiLlama");
+  expect((await load("crypto:stablecoin-supply")).attribution)
+    .toEqual({ source: "DefiLlama stablecoin supply, UTC daily closes", publisher: "DefiLlama" });
 });

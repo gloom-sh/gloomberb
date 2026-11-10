@@ -110,6 +110,23 @@ export function mergeHistory(
   return { ...base, quote, priceHistory };
 }
 
+/**
+ * The listing a security series' label names: an index charted on the venue
+ * its own quote gave it, which is the name of its publisher (^NDX on NASDAQ
+ * GIDS, ^VIX on CBOE INDICES), is its symbol alone, as `quote ^NDX` names it.
+ */
+function quotedInstrumentLabel(
+  source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
+  quote: Pick<Quote, "instrumentType" | "listingExchangeName" | "exchangeName"> | undefined,
+  quoteMetadata: Pick<QuoteMetadata, "instrumentType" | "listingExchangeName"> | null | undefined,
+): string {
+  const exchange = source.instrument.exchange?.trim().toUpperCase();
+  const index = isIndexLevel(quote?.instrumentType || quoteMetadata?.instrumentType);
+  const quoted = [quote?.listingExchangeName, quote?.exchangeName, quoteMetadata?.listingExchangeName]
+    .some((venue) => !!exchange && venue?.trim().toUpperCase() === exchange);
+  return index && quoted && !source.instrument.instrument ? source.instrument.symbol.trim() : instrumentLabel(source);
+}
+
 export function baseSecuritySeries(
   spec: ChartSeriesSpec,
   financials: TickerFinancials,
@@ -126,7 +143,7 @@ export function baseSecuritySeries(
   const valuationFallback = dailyValuationFallbackPeriod(financials, spec.source);
   const unreportedPeriod = points.length === 0 ? unreportedStatementPeriod(financials, spec.source) : null;
   const notMeaningful = valuationNotMeaningful(financials, spec.source);
-  const symbol = instrumentLabel(spec.source);
+  const symbol = quotedInstrumentLabel(spec.source, financials.quote, quoteMetadata);
   const statementCurrency = field.id.startsWith("fundamental.") && field.unit.startsWith("currency")
     ? reportingCurrencySeries(points, financials.financialCurrency) : null;
   // A broker contract names its currency even before (or without) a quote.

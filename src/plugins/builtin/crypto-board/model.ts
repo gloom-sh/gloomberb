@@ -377,6 +377,14 @@ export function formatCryptoPercent(value: number | null): string {
   return `${value > 0 ? "+" : ""}${text}%`;
 }
 
+/**
+ * "as of 2026-10-21 UTC close": a daily total's newest day, which is that UTC
+ * day's close. The DeFi and stablecoin tabs date theirs the same way.
+ */
+export function utcCloseAsOfText(asOf: string): string {
+  return `as of ${asOf} UTC close`;
+}
+
 // Sorting ---------------------------------------------------------------------
 
 type CryptoColumnId =

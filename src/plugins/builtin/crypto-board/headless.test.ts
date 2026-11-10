@@ -25,7 +25,7 @@ test("the stablecoin list states the total, adds each coin's supply, and exports
   const freshness = deriveHeadlessFreshness(cryptoBoardHeadless, result, CRYPTO_FIXTURE_NOW);
   const text = renderHeadlessPaneText(cryptoBoardHeadless, result, ARGS, "CRYP", freshness);
   // The day the count starts, which ALL draws from, is said beside the as-of day.
-  expect(text).toContain("Total supply 300.00B · 7D -1.50B (-0.50%) · 30D +1.80B (+0.60%) · as of 2026-09-23 · daily since 2026-09-19");
+  expect(text).toContain("Total supply 300.00B · 7D -1.50B (-0.50%) · 30D +1.80B (+0.60%) · as of 2026-09-23 UTC close · DefiLlama, daily since 2026-09-19");
   expect(text).toMatch(/Supply\s+Supply 7D %\s+Supply 7D\s+Supply 30D %\s+Supply 30D\s+Share/);
   expect(text).toMatch(/USDT .* 180\.00B\s+-0\.33%\s+-600\.00M\s+\+0\.11%\s+\+200\.00M\s+60\.00%/);
 

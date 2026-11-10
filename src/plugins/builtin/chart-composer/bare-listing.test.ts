@@ -161,6 +161,31 @@ test("a symbol quote reads as no ticker fails its series at once, without asking
   expect((printed!.result.data as { series: Array<{ name?: string }> }).series.map((series) => series.name)).toContain("Apple Inc.");
 });
 
+test("an index is labelled as quote names it, and charts by its key on its publisher's venue code", async () => {
+  // ^NDX's quote names its venue by its publisher (NASDAQ GIDS), and the service's key for it is ^NDX:NIM.
+  const index = createTestQuote({ symbol: "^NDX", name: "NASDAQ-100", currency: "USD", instrumentType: "INDEX", listingExchangeName: "NASDAQ GIDS" });
+  const market = {
+    dataProvider: createTestDataProvider({
+      search: async (query) => query.trim().toUpperCase().startsWith("^NDX")
+        ? [{ providerId: "test", symbol: "^NDX", name: "NASDAQ-100", exchange: "NIM", type: "INDEX" }] : [],
+      getQuote: async () => index,
+      getTickerFinancials: async () => createTestFinancials({ quote: index, priceHistory: BARS }),
+      getPriceHistory: async () => BARS,
+      getPriceHistoryWithMetadata: async () => ({ resolution: "1d", points: BARS }),
+    }),
+  };
+  const labels = async (argument: string) => {
+    const { failure, printed } = await run(["G", argument], "fn", market);
+    expect(failure.message).toBeUndefined();
+    return (printed!.result.data as { series: Array<{ label: string; name?: string }> }).series.map((series) => [series.label, series.name]);
+  };
+  // Not "^NDX:NASDAQ GIDS Price".
+  expect(await labels("^NDX")).toEqual([["^NDX Price", "NASDAQ-100"]]);
+  // "Invalid chart series" before; a venue the index is not on still says where it is, as quote does.
+  expect(await labels("^NDX:NIM")).toEqual([["^NDX:NIM Price", "NASDAQ-100"]]);
+  expect((await run(["G", "^NDX:XYZ"], "fn", market)).failure.message).toStartWith("Unknown exchange XYZ for ^NDX.");
+});
+
 test("a charted listing names its company and its currency", async () => {
   for (const [argument, name, unit] of [["2222:TADAWUL", "Saudi Arabian Oil Co.", "SAR/share"], ["AAPL", "Apple Inc.", "USD/share"]] as const) {
     const { failure, printed } = await run(["G", argument], "fn");

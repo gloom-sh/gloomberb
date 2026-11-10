@@ -4,7 +4,7 @@ import { getTableWidth } from "../../../components/ui/table-layout";
 import { formatCompact, formatCompactAmount } from "../../../utils/format";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { formatUtcTime } from "../../../utils/utc-time";
-import { formatCryptoPercent } from "./model";
+import { formatCryptoPercent, utcCloseAsOfText } from "./model";
 import { SUPPLY_RANGES, type SupplyRangeId } from "./supply";
 
 const DAY_MS = 86_400_000;
@@ -147,11 +147,6 @@ const change = (amount: number | null, percent: number | null) =>
  */
 export const DEFI_DAY_CONVENTION = "UTC daily closes";
 
-/** "as of 2026-10-21 UTC close": the total's newest day, and that it is the day's close in UTC. */
-export function defiAsOfText(asOf: string): string {
-  return `as of ${asOf} UTC close`;
-}
-
 /**
  * `Total DeFi TVL 92.39B · 7D +2.01B (+2.23%) · 30D -1.06B (-1.14%) · as of
  * 2026-10-21 UTC close · DefiLlama, daily since 2018-02-12`, as the CLI states it.
@@ -164,7 +159,7 @@ export function defiSummaryLine(payload: DefiTvlPayload): string | null {
     `Total DeFi TVL ${formatCompact(total.tvl, { fixedDecimals: true })}`,
     `7D ${change(total.change7d, total.change7dPercent)}`,
     `30D ${change(total.change30d, total.change30dPercent)}`,
-    ...(payload.asOf ? [defiAsOfText(payload.asOf)] : []),
+    ...(payload.asOf ? [utcCloseAsOfText(payload.asOf)] : []),
     `${payload.source.name}${since ? `, daily since ${since}` : ""}`,
   ].join(" · ");
 }

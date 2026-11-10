@@ -838,8 +838,15 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
       let spec = context.resolveInstrument || context.resolveListing ? {
         ...parsed,
         series: await Promise.all(parsed.series.map(async (series) => {
-          if (series.source.kind !== "security" || series.source.instrument.exchange) return series;
-          const { symbol } = series.source.instrument;
+          if (series.source.kind !== "security") return series;
+          const { symbol, exchange } = series.source.instrument;
+          if (exchange) {
+            // An index's key typed on its publisher's venue code (^NDX:NIM), which the parser takes for any index, is checked as
+            // `quote` checks it: ^NDX:XYZ says where ^NDX is. A broker's contract or a venue the app lists is charted as named.
+            const typedIndexKey = symbol.startsWith("^") && !series.source.instrument.instrument && !isKnownExchangeCode(exchange);
+            if (typedIndexKey) await readListing(publicTickerKey(symbol, exchange));
+            return series;
+          }
           // A FRED id (DFII10) or a series alias (hashrate) no ticker answers to is that series; an intraday chart has none.
           const catalog = template === "graph-intraday-price-pane" ? null : await bareCatalogSeries(series, () => readListing(symbol), context);
           if (catalog) return catalog;

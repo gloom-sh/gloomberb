@@ -1,6 +1,14 @@
 import type { StablecoinSupplyCoin, StablecoinSupplyPayload } from "../../../api-client/crypto-markets";
 import { formatCompact, formatCompactAmount } from "../../../utils/format";
-import { formatCryptoPercent, type CryptoRowSupply } from "./model";
+import { formatCryptoPercent, utcCloseAsOfText, type CryptoRowSupply } from "./model";
+
+/**
+ * Who publishes the supply the service reads: DefiLlama's stablecoin charts,
+ * each day that UTC day's close, dated as the DeFi total is. The payload names
+ * the service that serves it, so the board names the publisher, as the DeFi
+ * tab names its own.
+ */
+export const STABLECOIN_SUPPLY_PUBLISHER = "DefiLlama";
 
 const DAY_MS = 86_400_000;
 
@@ -113,8 +121,8 @@ export function supplyHistoryStart(payload: StablecoinSupplyPayload | null | und
 }
 
 /**
- * `Total supply 306.33B · 7D -1.45B (-0.47%) · 30D +1.75B (+0.57%) · as of 2026-10-18 · daily since 2017-11-28`,
- * as the CLI states it: the start says where the count, and a chart of ALL, begins.
+ * `Total supply 306.33B · 7D -1.45B (-0.47%) · 30D +1.75B (+0.57%) · as of 2026-10-18 UTC close · DefiLlama, daily since 2017-11-28`,
+ * as the CLI states it and as it states the DeFi total: the start says where the count, and a chart of ALL, begins.
  */
 export function supplySummaryLine(payload: StablecoinSupplyPayload): string | null {
   const total = payload.total;
@@ -127,8 +135,8 @@ export function supplySummaryLine(payload: StablecoinSupplyPayload): string | nu
     `Total supply ${formatCompact(total.supply, { fixedDecimals: true })}`,
     `7D ${change(total.change7d, total.change7dPercent)}`,
     `30D ${change(total.change30d, total.change30dPercent)}`,
-    ...(payload.asOf ? [`as of ${payload.asOf}`] : []),
-    ...(since ? [`daily since ${since}`] : []),
+    ...(payload.asOf ? [utcCloseAsOfText(payload.asOf)] : []),
+    `${STABLECOIN_SUPPLY_PUBLISHER}${since ? `, daily since ${since}` : ""}`,
   ].join(" · ");
 }
 
