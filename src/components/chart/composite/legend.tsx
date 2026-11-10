@@ -394,7 +394,8 @@ export function CompositeLegend({
   if (entries.some(({ fiscalPeriod }) => fiscalPeriod) && minimumWidthOf(entries) > widthBeforeAccessory) {
     entries = buildEntries(false);
   }
-  // Which axis a series reads against is context too: past what fits, it stays in the tooltip.
+  // Which axis a series reads against is what tells two scales apart: names lose words before it goes, and past what
+  // fits with every name at its first word it stays in the tooltip.
   if (entries.some(({ axisNote }) => axisNote) && minimumWidthOf(entries) > widthBeforeAccessory) {
     entries = buildEntries(entries.some(({ fiscalPeriod }) => fiscalPeriod), false);
   }
