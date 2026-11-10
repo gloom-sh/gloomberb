@@ -115,8 +115,8 @@ function buildRelativeColumns(
       id: EXTENDED_COLUMN_IDS[session], label: extendedSessionStateLabel(session), width: 9, align: "right",
     })),
     { id: "marketCap", label: `MCAP ${baseCurrency}`, width: capWidth, align: "right" },
-    // Wider while a peer's P/E is on its latest fiscal year's EPS and names it ("24.6 FY26").
-    { id: "trailingPE", label: "P/E", width: peNamesYear ? 10 : metricWidth, align: "right" },
+    // Wider while a peer's P/E is on its latest fiscal year's EPS and names it ("24.6 FY Mar-26").
+    { id: "trailingPE", label: "P/E", width: peNamesYear ? 14 : metricWidth, align: "right" },
     { id: "forwardPE", label: "FWD", width: metricWidth, align: "right" },
     { id: "evSales", label: "EV/S", width: metricWidth, align: "right" },
     { id: "fcfYield", label: "FCF%", width: metricWidth, align: "right" },
@@ -281,7 +281,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
     const converted = rows.filter((row, index) => row.marketCapCurrency !== baseCurrency && comparableRows[index]?.marketCap != null);
     return convertMarketCaps(converted, baseCurrency, legs).conversions;
   }, [baseCurrency, comparableRows, fxRates, rows]);
-  const basis = useMemo(() => fundamentalsBasisParts(rows, REVENUE_GROWTH_LABEL), [rows]);
+  const basis = useMemo(() => fundamentalsBasisParts(rows, REVENUE_GROWTH_LABEL, "FCF%"), [rows]);
   const through = useMemo(() => fundamentalsThroughText(rows), [rows]);
   const basisSegment = useMemo(() => basisFooterSegment(conversions, baseCurrency, basis, through), [baseCurrency, basis, conversions, through]);
   const footerInfo = useMemo(() => (basisSegment ? [basisSegment] : []), [basisSegment]);

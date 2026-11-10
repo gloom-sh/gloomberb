@@ -904,8 +904,8 @@ function forwardLabel(fundamentals: TickerFinancials["fundamentals"]): string {
 }
 
 /** A line's name without the fiscal year a forward figure names: `Forward P/E FY27` is Forward P/E. */
-/** A metric's name whatever period its label names: `Forward P/E FY28` is Forward P/E, `EPS FY Mar-2026` is EPS (TTM). */
-const metricName = (label: string) => label.replace(/ FY\d{2}$/, "").replace(/^(EPS|P\/E) FY [A-Z][a-z]{2}-\d{4}$/, "$1 (TTM)");
+/** A metric's name whatever period its label names: `Forward P/E FY28` is Forward P/E, `EPS FY Mar-26` is EPS (TTM). */
+const metricName = (label: string) => label.replace(/ FY\d{2}$/, "").replace(/^(EPS|P\/E) FY [A-Z][a-z]{2}-\d{2}$/, "$1 (TTM)");
 
 function withoutStockRows<T extends { label: string }>(metrics: T[], fund: boolean): T[] {
   return fund ? metrics.filter((metric) => !STOCK_ONLY_METRICS.has(metricName(metric.label))) : metrics;
@@ -936,7 +936,6 @@ function fundamentalsNotes(
     : undefined;
   const conversion = [...TRAILING_MONEY_METRICS].some(shown) ? ttmConversionNote(fundamentals) : undefined;
   const eps = metrics.some((metric) => metricName(metric.label) === "EPS (TTM)" && metric.text !== "—") ? epsConversionNote(fundamentals) : undefined;
-  // A served EPS whose line names its fiscal year says what it is already.
   const epsSource = trailingEpsSourceNote(fundamentals, { eps: shown("EPS (TTM)"), pe: shown("P/E (TTM)") });
   const priceEarnings = metrics.some((metric) => metricName(metric.label) === "P/E (TTM)" && typeof metric.value === "number")
     ? convertedPriceEarningsNote(fundamentals, quoteCurrency)

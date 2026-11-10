@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Quote, TickerFinancials } from "../../../types/financials";
+import { fundamentalsBasisParts } from "./relative-valuation-basis";
 import { formatRelativePrice, relativeValuationValues, withLiveQuote } from "./relative-valuation-model";
 
 const snapshot: TickerFinancials = {
@@ -101,13 +102,23 @@ test("RV reads the statements' currency, the filed quarters' free cash flow, and
     priceHistory: [],
     financialCurrency: "JPY",
     quote: { symbol: "8058", price: 5170, change: 212, changePercent: 4.28, currency: "JPY", lastUpdated: Date.parse("2026-11-09T06:30:00Z"), marketCap: 18.93e12 },
-    fundamentals: { marketCap: 18.93e12, enterpriseValue: 23.82e12, revenue: 20.69e12, eps: 209.78, trailingPE: 24.64, trailingEpsSource: "served" },
+    // The filed EPS of the year to March 2026, no quarter after it filed with one.
+    fundamentals: { marketCap: 18.93e12, enterpriseValue: 23.82e12, revenue: 20.69e12, eps: 209.78, trailingPE: 24.64,
+      trailingEpsSource: "filed-quarters", trailingEpsPeriodEnd: "2026-03-31" },
   };
   const values = relativeValuationValues(mitsubishi);
   expect(values.evSales).toBeCloseTo(23.82 / 20.69);
   // The four quarters to June that carry it; September's came with its income ahead of its cash flow.
   expect(values.fcfYield).toBeCloseTo(1.446128e12 / 18.93e12);
-  expect(values).toMatchObject({ fcfYieldThrough: "2026-06-30", trailingPEPeriod: "FY26", gaps: {} });
+  // The P/E names its year in the one form valuation and the overview use; the footer says whose FCF is the filed quarters'.
+  expect(values).toMatchObject({ fcfYieldThrough: "2026-06-30", trailingPEPeriod: "FY Mar-26", gaps: {} });
+  const served = { ...values, symbol: "8031:JPX", fcfYieldThrough: null };
+  expect(fundamentalsBasisParts([{ ...values, symbol: "8058:JPX" }], "Q REV%", "FCF%")).toContain("FCF%: filed quarters to 2026-06-30");
+  expect(fundamentalsBasisParts([{ ...values, symbol: "8058:JPX" }, served], "Q REV%", "FCF%"))
+    .toContain("FCF% of 8058:JPX: filed quarters to 2026-06-30");
+  // Gloom Cloud's figure states no period: the same 209.78 served is not named a fiscal year by its value.
+  const unstated = relativeValuationValues({ ...mitsubishi, fundamentals: { ...mitsubishi.fundamentals, trailingEpsSource: "served", trailingEpsPeriodEnd: undefined } });
+  expect(unstated.trailingPEPeriod).toBeNull();
   // A quote in another currency than the statements' leaves both blank, saying why.
   const dollars = relativeValuationValues({ ...mitsubishi, quote: { ...mitsubishi.quote!, currency: "USD" }, fundamentals: { ...mitsubishi.fundamentals, marketCapCurrency: "USD" } });
   expect(dollars).toMatchObject({ evSales: null, fcfYield: null, gaps: { evSales: "revenue ccy unstated", fcfYield: "FCF in JPY" } });

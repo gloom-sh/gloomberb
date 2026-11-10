@@ -10,7 +10,7 @@ import { getExtendedSessionDisplay, getQuoteSessionFields } from "../../../marke
 import { atRegularSessionPrice, movePriceDerivedFigures, regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { fiscalPeriodLabel, fiscalYearEndMonth } from "../../../utils/fiscal-period";
 import { latestFinancialPeriod, latestReportedPeriod } from "../../../utils/latest-financial-period";
-import { trailingEpsFiscalYearEnd } from "../../../utils/fundamentals";
+import { trailingEpsFiscalYear } from "../../../utils/fundamentals";
 import { listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 
@@ -86,28 +86,15 @@ export const RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE = "Fundamentals stale:
 function fiscalYearOperatingMargin(annualStatements: TickerFinancials["annualStatements"] | undefined) {
   const latest = latestFinancialPeriod(annualStatements, (row) => row.date);
   if (!latest || !finiteNumber(latest.operatingIncome) || !finiteNumber(latest.totalRevenue) || latest.totalRevenue <= 0) return null;
+  const year = /^FY\d{2}(\d{2})$/.exec(fiscalPeriodLabel(latest.date, "annual", fiscalYearEndMonth(annualStatements ?? [])))?.[1];
   return {
     value: latest.operatingIncome / latest.totalRevenue,
-    label: fiscalYearLabel(annualStatements, latest.date),
+    // The fiscal year's own name; the calendar year of its end where the year cannot be named.
+    label: `FY${year ?? latest.date.slice(2, 4)}`,
     periodEnd: latest.date.slice(0, 10),
   };
 }
 
-/** A fiscal year as a cell names it ("FY25"): its own name, else the calendar year of its end where it cannot be named. */
-function fiscalYearLabel(annualStatements: TickerFinancials["annualStatements"] | undefined, date: string): string {
-  const year = /^FY\d{2}(\d{2})$/.exec(fiscalPeriodLabel(date, "annual", fiscalYearEndMonth(annualStatements ?? [])))?.[1];
-  return `FY${year ?? date.slice(2, 4)}`;
-}
-
-/**
- * The fiscal year a row's P/E is priced on ("FY26"), when its trailing EPS is
- * that year's and a quarter after it is due (`trailingEpsFiscalYear`), as
- * `valuation` names it; null otherwise.
- */
-function trailingPEFiscalYear(financials: TickerFinancials | null | undefined): string | null {
-  const end = financials ? trailingEpsFiscalYearEnd(financials) : undefined;
-  return end && financials ? fiscalYearLabel(financials.annualStatements, end) : null;
-}
 
 /**
  * A peer's row. Last, its change and the extended print are the quote's
@@ -167,7 +154,9 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
   const fiscalYearMargin = trailingOperatingMargin == null ? fiscalYearOperatingMargin(financials?.annualStatements) : null;
   const operatingMargin = trailingOperatingMargin ?? fiscalYearMargin?.value ?? null;
   const trailingPE = trailingNotMeaningful ? null : comparablePriceEarnings(reportedMultiples.trailingPE);
-  const trailingPEPeriod = reportedMultiples.trailingPE != null && !trailingNotMeaningful ? trailingPEFiscalYear(financials) : null;
+  // A P/E on a fiscal year's EPS names the year as valuation and the overview do ("FY Mar-26").
+  const trailingPEPeriod = reportedMultiples.trailingPE != null && !trailingNotMeaningful && financials
+    ? trailingEpsFiscalYear(financials) ?? null : null;
   const forwardPE = forwardNotMeaningful ? null : comparablePriceEarnings(reportedMultiples.forwardPE);
   // Every figure a row lacks says why, so an export's blank cell is never silent: N/M multiples say so themselves.
   const gaps: Partial<Record<RelativeValuationGapKey, string>> = {};
@@ -209,7 +198,7 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     /** Why Gloom Cloud withheld the cap (a receipt priced as ordinary shares), as `valuation` and EQS say it; null otherwise. */
     marketCapWithheld: withheld?.note ?? null,
     trailingPE,
-    /** The fiscal year the P/E's EPS is ("FY26") when it is a year's served figure, not the trailing four quarters'; null otherwise. */
+    /** The fiscal year the P/E's EPS is ("FY Mar-26") when it is a year's filed figure, not the trailing four quarters'; null otherwise. */
     trailingPEPeriod,
     forwardPE,
     reportedMultiples,

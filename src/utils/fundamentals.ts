@@ -455,36 +455,37 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const FISCAL_YEAR_EPS_CURRENT_DAYS = 135;
 
 /**
- * "FY Mar-2026": the fiscal year the headline trailing EPS is, when it is a fiscal year's and a quarter after that
- * year has ended and been due for long enough that the figure is not today's trailing twelve months: Gloom Cloud's
- * figure equal (within half a percent) to the latest annual EPS, or the filed one read from that year when no quarter
- * after it was filed (filed-trailing-eps). Mitsubishi Corporation's 209.78 and Itochu's 128 on 9 Nov 2026 were their
- * years to March 2026. The EPS and P/E lines name that year in place of "TTM". Undefined for any other figure.
+ * "FY Mar-26": the fiscal year the headline trailing EPS is, when its stated
+ * period is a fiscal year's and that year ended long enough ago that a quarter
+ * after it is due, so the figure is not today's trailing twelve months: the
+ * filed EPS read through a fiscal year's end (filed-trailing-eps), with no
+ * quarter after it filed. Mitsubishi Corporation's 209.78 and Itochu's 128 on
+ * 9 Nov 2026 were their years to March 2026. Every place that shows the EPS
+ * or the P/E on it (valuation, the overview, RV) names that year in place of
+ * "TTM", in this one form. Undefined for any other figure, and for Gloom
+ * Cloud's served trailing EPS, which states no period.
  */
 export function trailingEpsFiscalYear(
   financials: Pick<TickerFinancials, "fundamentals" | "annualStatements">,
   now = Date.now(),
 ): string | undefined {
   const end = trailingEpsFiscalYearEnd(financials, now);
-  return end ? `FY ${MONTHS[Number(end.slice(5, 7)) - 1]}-${end.slice(0, 4)}` : undefined;
+  return end ? `FY ${MONTHS[Number(end.slice(5, 7)) - 1]}-${end.slice(2, 4)}` : undefined;
 }
 
-/** The end of the fiscal year `trailingEpsFiscalYear` names, YYYY-MM-DD, for a cell that names it shorter ("FY26"). */
+/** The end of the fiscal year `trailingEpsFiscalYear` names, YYYY-MM-DD. */
 export function trailingEpsFiscalYearEnd(
   financials: Pick<TickerFinancials, "fundamentals" | "annualStatements">,
   now = Date.now(),
 ): string | undefined {
   const fundamentals = financials.fundamentals;
   const eps = fundamentals?.eps;
-  if (typeof eps !== "number" || !Number.isFinite(eps) || eps === 0) return undefined;
-  const annual = [...financials.annualStatements ?? []]
-    .filter((row) => typeof row.eps === "number" && Number.isFinite(row.eps) && /^\d{4}-\d{2}-\d{2}/.test(row.date))
-    .sort((left, right) => left.date.localeCompare(right.date)).at(-1);
-  if (!annual || now - Date.parse(`${annual.date.slice(0, 10)}T00:00:00Z`) <= FISCAL_YEAR_EPS_CURRENT_DAYS * 86_400_000) return undefined;
-  const year = fundamentals?.trailingEpsSource === "served"
-    ? Math.abs(annual.eps! - eps) <= Math.abs(annual.eps!) * 0.005
-    : fundamentals?.trailingEpsSource === "filed-quarters" && fundamentals.trailingEpsPeriodEnd?.slice(0, 10) === annual.date.slice(0, 10);
-  return year ? annual.date.slice(0, 10) : undefined;
+  const period = fundamentals?.trailingEpsSource === "filed-quarters" ? fundamentals.trailingEpsPeriodEnd?.slice(0, 10) : undefined;
+  if (!period || typeof eps !== "number" || !Number.isFinite(eps) || eps === 0) return undefined;
+  if (now - Date.parse(`${period}T00:00:00Z`) <= FISCAL_YEAR_EPS_CURRENT_DAYS * 86_400_000) return undefined;
+  // The period stated is a fiscal year's end, one the annual statements report.
+  const yearEnd = (financials.annualStatements ?? []).some((row) => row.date.slice(0, 10) === period);
+  return yearEnd ? period : undefined;
 }
 
 /** What a trailing EPS that is not the filed quarters' is called where it is shown (EE's TTM row). */

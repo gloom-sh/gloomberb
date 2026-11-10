@@ -39,7 +39,7 @@ test("a P/E served with no EPS, a fund's, is labelled Gloom Cloud's where it sho
 
 // 8058 on JPX, 9 Nov 2026: Gloom Cloud's trailing EPS was the year to March 2026 (209.78), and its quarters carried
 // EPS only on the first of the year until the server filled the reported ones.
-test("a served EPS that is the latest year's names that year, until four newer filed quarters stand in for it", () => {
+test("an EPS filed for the latest year a quarter ago names that year, until four newer filed quarters stand in for it", () => {
   const yen = { ...quote, symbol: "8058", price: 5170, currency: "JPY" };
   const year = (date: string, eps: number): FinancialStatement => ({ date, currency: "JPY", eps });
   const row = (date: string, eps?: number): FinancialStatement => ({ date, currency: "JPY", ...(eps !== undefined ? { eps } : {}) });
@@ -49,10 +49,11 @@ test("a served EPS that is the latest year's names that year, until four newer f
       annualStatements: [year("2025-03-31", 235.8), year("2026-03-31", 209.78)], priceHistory: [] }, NOW);
     return renderFundamentalsReport({ ...priced, symbol: "8058" }, "valuation").replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
   };
+  // Without the quarters, the served figure states no period: it is not named a year by matching the year's value.
   const before = report([row("2025-09-30"), row("2025-12-31"), row("2026-03-31"), row("2026-06-30", 81.53)]);
-  expect(before).toContain("P/E FY Mar-2026 24.64");
-  expect(before).toContain("EPS FY Mar-2026 ¥209.78");
-  expect(before).not.toContain("not the last four filed quarters'");
+  expect(before).toContain("P/E (TTM) 24.64");
+  expect(before).toContain("EPS (TTM) and P/E (TTM) are Gloom Cloud's trailing figures, not the last four filed quarters'.");
+  expect(before).not.toContain("FY Mar-26");
   const after = report([row("2025-12-31", 66.87), row("2026-03-31", 52.18), row("2026-06-30", 81.53), row("2026-09-30", 87.68)]);
   expect(after).toContain("P/E (TTM) 17.94");
   expect(after).toContain("EPS (TTM) ¥288.26");
@@ -61,5 +62,5 @@ test("a served EPS that is the latest year's names that year, until four newer f
     financialCurrency: "JPY", quarterlyStatements: [row("2025-06-30", 40.1), row("2025-09-30"), row("2025-12-31"), row("2026-03-31")],
     annualStatements: [year("2025-03-31", 123.13), year("2026-03-31", 128)], priceHistory: [] }, NOW);
   const read = renderFundamentalsReport({ ...itochu, symbol: "8001" }, "valuation").replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
-  expect(read).toContain("EPS FY Mar-2026 ¥128.00");
+  expect(read).toContain("EPS FY Mar-26 ¥128.00");
 });
