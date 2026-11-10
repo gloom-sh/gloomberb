@@ -2,7 +2,7 @@ import { logFailure } from "../../utils/log-failure";
 import { normalizeTickerSymbol } from "../../tickers/search/ranking";
 import type { CliCommandDef } from "../../types/plugin";
 import { TIME_RANGES, type TimeRange } from "../../time-series/range";
-import { CHART_RESOLUTION_STEP_MS, RANGE_HISTORY_RESOLUTION } from "../../time-series/resolution";
+import { CHART_RESOLUTION_STEP_MS, isIntradayResolution, RANGE_HISTORY_RESOLUTION } from "../../time-series/resolution";
 import { yearToDateStartIndex } from "../../market-data/market/year-to-date";
 import { barCloseSession } from "../../market-data/market/bar-period";
 import type { EarningsEvent, MarketDataRequestContext, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
@@ -295,7 +295,7 @@ import {
 import { CBOE_YIELD_INDEX_CLOSE } from "../../plugins/builtin/shared/treasury-cutoffs";
 import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote, undatedListingsNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
-import { notATickerSymbol, providerMissReason } from "../../sources/provider-errors";
+import { isUnservedWithoutReason, notATickerSymbol, providerMissReason } from "../../sources/provider-errors";
 import { isNetworkFailure } from "../../utils/network-failure";
 import { withSavedCopy, type ReportFreshness } from "../pane-functions/freshness";
 import { isNotATickerMessage } from "../not-a-ticker";
@@ -1479,9 +1479,20 @@ function yieldIndexFields(result: QuoteBatchResult): { unit?: "percent"; changeB
  * formats keep the error as thrown, and so does no connection at all, which
  * the board cannot get past either.
  */
-function failHistory(error: unknown, symbol: string, ctx: Parameters<CliCommandDef["execute"]>[1]): never {
+function failHistory(error: unknown, symbol: string, ctx: Parameters<CliCommandDef["execute"]>[1], range?: TimeRange): never {
   // A window before the listing's first bar has none to give, asked now or later: "No bars before 2014-09-17 for BTC-USD."
   if (error instanceof WindowBeforeFirstBarError) failWithError({ code: NO_DATA_CODE, message: error.message, retryable: false });
+  // A range of intraday bars no source has current bars for (a venue with daily bars only, or bars behind its last
+  // session) says so and offers the daily view, never that no provider is available.
+  const resolution = range ? RANGE_HISTORY_RESOLUTION[range] : null;
+  if (range && resolution && isIntradayResolution(resolution) && isUnservedWithoutReason(error)) {
+    failWithError({
+      code: NO_DATA_CODE,
+      message: `No current ${BAR_INTERVAL_LABELS[resolution]} bars for ${symbol}.`,
+      details: `For daily bars: gloom history ${symbol} --range 1M`,
+      retryable: true,
+    });
+  }
   if (ctx.cliOptions.format !== "text" || !isCryptoPairSymbol(symbol) || isNetworkFailure(error)) throw error;
   return ctx.fail(errorMessage(error) ?? `No history available for ${symbol}`, CRYPTO_BOARD_HINT);
 }
@@ -1704,7 +1715,7 @@ async function loadListingHistory(
   const request = { command: historyCommand(ask), noun: "history", ...(fate ? { fate } : {}) };
   const [answered, quote] = await Promise.all([
     loadForListing(listing, market, ctx, load, (loaded) => loaded.points.length === 0, request)
-      .catch((error) => failHistory(error, listing.key, ctx)),
+      .catch((error) => failHistory(error, listing.key, ctx, window ? undefined : loadRange)),
     quoted,
   ]);
   // A bare symbol several companies list is never served from the one the data service picked, in a range or a window:

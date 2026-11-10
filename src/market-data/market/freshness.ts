@@ -79,6 +79,8 @@ const REGULAR_OPEN_MINUTES: Record<string, number> = {
   MSX: 10 * 60,
   KUWAIT: 9 * 60,
   EGX: 10 * 60,
+  // Borsa Istanbul's continuous trading opens at 10:00, after the opening auction.
+  BIST: 10 * 60,
 };
 // Local regular close with the closing auction, rounded up. A close taken too
 // early would let a copy fetched during the auction pass as final.
@@ -123,6 +125,8 @@ const REGULAR_CLOSE_MINUTES: Record<string, number> = {
   // The Egyptian Exchange: continuous trading to 14:15, the closing auction
   // to 14:25 and trading at the close to 14:30.
   EGX: 14 * 60 + 25,
+  // Borsa Istanbul's continuous trading ends at 18:00; the closing auction prints the close minutes after.
+  BIST: 18 * 60,
 };
 // Venues whose week is not Monday to Friday, as their days off (0 is Sunday).
 // Tadawul, Qatar, Boursa Kuwait and the Egyptian Exchange trade Sunday to

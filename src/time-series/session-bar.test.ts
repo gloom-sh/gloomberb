@@ -111,6 +111,18 @@ describe("withSessionBar", () => {
       { now: sunday, barSize: "1d" }).at(-1)!.partial).toBe(true);
   });
 
+  test("a BIST share's day is final after Istanbul's close, read that night with New York still open", () => {
+    // GUBRF on Tue 10 Nov 2026: the source still flagged the day partial at 20:29Z, five hours after the 18:00 close.
+    const bars = daily(["2026-11-09", { close: 307 }],
+      ["2026-11-10", { open: 308, high: 308, low: 287.5, close: 288, volume: 4_442_906, partial: true }]);
+    const gubrf = quote({ symbol: "GUBRF", price: 288, previousClose: 307, open: 308, high: 308, low: 287.5, volume: 4_442_906,
+      currency: "TRY", lastUpdated: Date.parse("2026-11-10T15:10:00Z"), marketState: "CLOSED", changeSessionDate: "2026-11-10",
+      listingExchangeName: "BIST" });
+    expect(withSessionBar(bars, gubrf, { now: Date.parse("2026-11-10T20:29:00Z"), barSize: "1d" }).at(-1)!.partial).toBeUndefined();
+    // Before the closing session's half hour has passed it stays partial.
+    expect(withSessionBar(bars, gubrf, { now: Date.parse("2026-11-10T15:20:00Z"), barSize: "1d" }).at(-1)!.partial).toBe(true);
+  });
+
   test("the size asked for, not the spacing, says what the bars are; spacing only shows bars coarser when each starts its period", () => {
     const days = (...dates: string[]) => dates.map((date) => Date.parse(`${date}T00:00:00Z`));
     expect(requestedBarSize(days("2026-10-13", "2026-10-22", "2026-11-06"), "1d")).toBe("1d");

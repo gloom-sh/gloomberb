@@ -39,6 +39,8 @@ const PAGES: Readonly<Record<string, (code: string) => ExchangeAnnouncementsPage
   BSE: () => ({ name: "BSE corporate announcements", url: "https://www.bseindia.com/corporates/ann.html" }),
   SGX: () => ({ name: "SGX company announcements", url: "https://www.sgx.com/securities/company-announcements" }),
   SET: () => ({ name: "SET company news", url: "https://www.set.or.th/en/market/news-and-alert/news" }),
+  // The Public Disclosure Platform, where every Borsa Istanbul company files its disclosures.
+  BIST: () => ({ name: "KAP disclosures", url: "https://www.kap.org.tr/en/bildirim-sorgu" }),
 };
 
 /**
