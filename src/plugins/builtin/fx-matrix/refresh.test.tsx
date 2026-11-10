@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
 import { act } from "react";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
@@ -61,6 +61,51 @@ test("the FX matrix refresh key updates cached cross rates without refetching on
     await settle();
     expect(requests.length).toBe(4);
   } finally {
+    await tui.destroy();
+    coordinator.destroy();
+    setSharedMarketDataCoordinator(null);
+  }
+});
+
+// `shot FXC --currencies TRY,USD,EUR,GBP` drew every 1D in USD cell as a dash: the pair quotes the move reads came
+// only from a stream, and none was sending them. The pane reads them once, as `fn FXC` does.
+test("the day's move in dollars is read from the pair quotes when no stream sends them", async () => {
+  const now = Date.parse("2026-11-10T20:14:00Z");
+  const source = createTestDataProvider({
+    id: "controlled-fx",
+    getExchangeRateSnapshot: async currency => ({
+      fromCurrency: currency, toCurrency: "USD", rate: currency === "EUR" ? 1.1 : 1 / 150, source: "controlled-fx",
+      asOf: new Date(now - 60_000).toISOString(), fetchedAt: new Date(now - 60_000).toISOString(), stale: false,
+    }),
+    getQuote: async (symbol) => ({
+      symbol, currency: "USD", price: symbol === "EURUSD=X" ? 1.1 : 150, previousClose: symbol === "EURUSD=X" ? 1.1055 : 149,
+      change: 0, changePercent: 0, lastUpdated: now, instrumentType: "CURRENCY",
+    }),
+  });
+  const provider = new AssetDataRouter(source);
+  const coordinator = new MarketDataCoordinator(provider);
+  setSharedMarketDataCoordinator(coordinator);
+  const config = createTestPaneConfig("/tmp/fx-matrix-move-unused", {
+    paneId: "fx-matrix", instanceId: "fx-matrix", settings: { currencies: ["USD", "EUR", "JPY"] },
+  });
+  config.refreshIntervalMinutes = 0;
+  const runtime = createTestPluginRuntime({ getMarketData: () => provider });
+  const Pane = fxMatrixModule.panes![0]!.component;
+  setSystemTime(new Date(now));
+  try {
+    await act(async () => {
+      await tui.render(
+        <TestPaneProvider state={createInitialState(config)} paneId="fx-matrix" runtime={runtime} pluginId="market-overview">
+          <Pane paneId="fx-matrix" paneType="fx-matrix" focused width={100} height={14} />
+        </TestPaneProvider>,
+        { width: 100, height: 14 },
+      );
+    });
+    // EUR 1.1000 from 1.1055, the yen at 150 from 149: each weaker against the dollar.
+    const frame = await tui.waitForFrameToContain("-0.67%");
+    expect(frame).toContain("-0.50%");
+  } finally {
+    setSystemTime();
     await tui.destroy();
     coordinator.destroy();
     setSharedMarketDataCoordinator(null);
