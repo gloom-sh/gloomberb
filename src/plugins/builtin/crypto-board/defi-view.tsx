@@ -33,7 +33,7 @@ import {
   type DefiRow,
   type DefiSortPreference,
 } from "./defi";
-import { formatCryptoPercent } from "./model";
+import { formatCryptoPercent, utcCloseAsOfText } from "./model";
 import { SUPPLY_RANGES, type SupplyRangeId } from "./supply";
 
 const RANGE_OPTIONS = SUPPLY_RANGES.map(({ value, label }) => ({ value, label }));
@@ -143,7 +143,7 @@ export function DefiTvlView({
     if (!payload || !total) return [];
     const since = defiHistoryStart(payload);
     return [
-      { id: "total", label: "Total DeFi TVL", value: formatTvl(total.tvl), ...(payload.asOf ? { detail: `as of ${payload.asOf}` } : {}) },
+      { id: "total", label: "Total DeFi TVL", value: formatTvl(total.tvl), ...(payload.asOf ? { detail: utcCloseAsOfText(payload.asOf) } : {}) },
       changeFigure("change-7d", "7D change", total.change7d, total.change7dPercent),
       changeFigure("change-30d", "30D change", total.change30d, total.change30dPercent),
       { id: "source", label: "Source", value: payload.source.name, ...(since ? { detail: `daily since ${since}` } : {}) },

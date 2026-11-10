@@ -50,8 +50,9 @@ function summaryLine(payload: CryptoEtfFlowsPayload): string {
     `Net flows of the US spot ${cryptoEtfFlowAssetLabel(payload.asset).toLowerCase()} ETFs in US$ millions.`,
     `${summary.latest?.date ?? payload.asOf}: ${formatFlowAmount(summary.latest?.total)}${pending ? ` (${pending})` : ""};`,
     [
-      summary.week != null ? `5 days ${formatFlowAmount(summary.week)}` : null,
-      summary.month != null ? `20 days ${formatFlowAmount(summary.month)}` : null,
+      // A day still pending is left out of the rolling sums, which say the day they end on.
+      summary.week != null ? `5 days${summary.through ? ` through ${summary.through}` : ""} ${formatFlowAmount(summary.week)}` : null,
+      summary.month != null ? `20 days${summary.through ? ` through ${summary.through}` : ""} ${formatFlowAmount(summary.month)}` : null,
       summary.firstDate ? `since ${summary.firstDate} ${formatFlowAmount(summary.sinceLaunch)}` : null,
     ].filter(Boolean).join(", ") + ".",
   ].join(" ");

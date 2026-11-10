@@ -155,7 +155,16 @@ export interface HeadlessPaneContext {
    */
   resolveListing?: (symbol: string, argumentWith: (key: string) => string) => Promise<{ symbol: string; exchange?: string; name?: string; coinNote?: string;
     /** What became of the company that had the symbol, as `quote` says it ("GOGL was Golden Ocean Group until 2025, now Cmb.Tech: CMBT"). */
-    successorNote?: string } | null>;
+    successorNote?: string;
+    /** What the symbol was read as, as `quote` says it ("Read "NDX" as ^NDX:NIM (NASDAQ-100)."). */
+    readAs?: string;
+    /** The index or future a code a security owns is typed for, as `quote` names it ("also ^MOVE ICE BofA MOVE Index ..."). */
+    ownedNotes?: string[];
+    /**
+     * The symbol is no ticker, as `quote` reads it: the error its quote failed with ("Not a ticker: UNISWAP."), which
+     * its series fail with, without asking for their data. The rest of the result is the symbol as typed.
+     */
+    notATicker?: Error } | null>;
   /**
    * What a plugin keeps on this device only (its `ctx.resume` state, never
    * synced), such as ALRT's log of the alerts the app fired; null when none.
@@ -708,6 +717,12 @@ export interface HeadlessSeries {
   valueIsClose?: boolean;
   /** The series' current value is not meaningful: the report prints N/M dated by the period, and why. */
   notMeaningful?: { reason: string; asOf: string };
+  /**
+   * The day the latest value is from, `YYYY-MM-DD`, when its point's own date
+   * does not say: a month still forming is dated by its 1st, its value by the
+   * quote it ends on (^NDX's November bar by Mon 9 Nov's close).
+   */
+  latestDate?: string;
   /** A formula of futures: its legs as charted (`RB=F`), which name the exported contract columns of its points' `legs`. */
   formulaLegs?: readonly string[];
   points: HeadlessSeriesPoint[];

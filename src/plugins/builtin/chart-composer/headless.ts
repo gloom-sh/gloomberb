@@ -25,6 +25,7 @@ import type { ChartResolution } from "../../../time-series/range";
 import { intradaySessionDates, intradaySessionTimeZone, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "./session-history";
 import { sessionRangeReport, usBarCoverageNotice } from "./session-range";
 import { createSnapshotDataProvider, snapshotInstrumentKey, type SnapshotMarketData } from "../../../market-data/snapshot-provider";
+import type { DataProvider } from "../../../types/data-provider";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { HistorySession } from "../../../types/price-history";
 import type { TickerFinancials, PricePoint, Quote } from "../../../types/financials";
@@ -47,6 +48,7 @@ import { paneSchemas } from "./headless-schema";
 import { barHistoryFreshness, DAILY_CLOSES, quoteObservation, REPORTED_DATA } from "../shared/report-freshness";
 import type { BarPeriodToDate } from "../../../market-data/market/bar-period";
 import { closedHistoryBarDay, formingHistoryBar } from "../ticker-detail/data-panes/history-bars";
+import { quoteTradingDay } from "../../../market-data/quotes/day-range";
 import { inferSeriesFrequency } from "../../../series/csv";
 import { isDatasetChart } from "../../../time-series/spec";
 import { loadFundFacts } from "../sec/fund-facts";
@@ -497,6 +499,20 @@ function newestBar(entry: HeadlessSeries & Partial<Pick<ResolvedSeries, "history
 }
 
 /**
+ * A series whose newest weekly or monthly bar is still forming, with the day
+ * its latest value is from (`latestDate`): the trading day of the quote the
+ * bar ends on. As it was for any other series, or with no such quote.
+ */
+function withLatestQuoteDay(series: HeadlessSeries, quote: Quote | undefined): HeadlessSeries {
+  const entry = series as HeadlessSeries & Partial<Pick<ResolvedSeries, "historyResolution" | "timeBasis" | "listing">>;
+  const bar = newestBar(entry);
+  if (!quote || !bar || (entry.historyResolution !== "1wk" && entry.historyResolution !== "1mo")) return series;
+  if (!formingHistoryBar(entry.historyResolution, bar.day, bar.venue, Date.now())) return series;
+  const day = quoteTradingDay(quote) ?? (Number.isFinite(quote.lastUpdated) ? new Date(quote.lastUpdated).toISOString().slice(0, 10) : null);
+  return day && day >= bar.day ? { ...series, latestDate: day } : series;
+}
+
+/**
  * The day the newest complete daily, weekly or monthly bar of the chart closed
  * on, the latest across its series: a week of bars dated Mon 12 Oct 2026 is
  * dated Fri 16 Oct, the day their closes are from. Null for intraday bars.
@@ -714,6 +730,35 @@ export async function bareCatalogSeries(
   return { ...spec, id: series.id, transform: series.transform, axis: series.axis, panelId: series.panelId };
 }
 
+/** The reads of a listing's quote, profile and bars, each taking the symbol first and its venue second. */
+const LISTING_READS = new Set<string>([
+  "getQuote", "getQuoteMetadata", "getTickerFinancials", "getCorporateActions", "getPriceHistory", "getPriceHistoryWithMetadata",
+  "getPriceHistoryForResolution", "getPriceHistoryForResolutionWithMetadata", "getDetailedPriceHistory", "getDetailedPriceHistoryWithMetadata",
+]);
+
+/**
+ * The data source with each bare symbol `quote` read as no ticker answered at
+ * once with the error its quote failed with: `fn G uniswap` says "Not a
+ * ticker" without asking again for its quote, profile and bars, each a miss.
+ * A symbol on a named venue is asked as usual.
+ */
+function withoutNonTickers(provider: DataProvider, notTickers: ReadonlyMap<string, Error>): DataProvider {
+  return new Proxy(provider, {
+    get(target, property) {
+      // Every method runs on the provider itself, as the snapshot provider runs its fallback's.
+      const value = Reflect.get(target, property, target) as unknown;
+      if (typeof value !== "function") return value;
+      const method = (value as (...input: unknown[]) => unknown).bind(target);
+      if (typeof property !== "string" || !LISTING_READS.has(property)) return method;
+      return (...args: unknown[]) => {
+        const [symbol, exchange] = args;
+        const error = typeof symbol === "string" && !exchange ? notTickers.get(symbol.trim().toUpperCase()) : undefined;
+        return error ? Promise.reject(error) : method(...args);
+      };
+    },
+  });
+}
+
 /**
  * The compared tickers whose fund facts could state a daily objective: each
  * but those a quote already cached says are not funds (a stock, an index).
@@ -772,8 +817,17 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
       // as `quote BDI` does, instead of charting whichever line a source picked.
       const reads = new Map<string, ReturnType<typeof readSeriesListing>>();
       const listings = new Map<string, Promise<Awaited<ReturnType<NonNullable<typeof context.resolveListing>>> | null>>();
+      // A symbol `quote` reads as no ticker, with the error its quote failed with: its series fail with it at once.
+      const notTickers = new Map<string, Error>();
       const readListing = (symbol: string) => {
-        if (!listings.has(symbol)) listings.set(symbol, context.resolveListing?.(symbol, (key) => argumentWithListing(args.rawArgument, symbol, key)) ?? Promise.resolve(null));
+        if (!listings.has(symbol)) {
+          listings.set(symbol, (context.resolveListing?.(symbol, (key) => argumentWithListing(args.rawArgument, symbol, key)) ?? Promise.resolve(null))
+            .then((read) => {
+              if (!read?.notATicker) return read;
+              notTickers.set(symbol.trim().toUpperCase(), read.notATicker);
+              return null;
+            }));
+        }
         return listings.get(symbol)!;
       };
       const readSeriesListing = async (symbol: string): Promise<{ symbol: string; exchange?: string } | null> => {
@@ -784,8 +838,15 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
       let spec = context.resolveInstrument || context.resolveListing ? {
         ...parsed,
         series: await Promise.all(parsed.series.map(async (series) => {
-          if (series.source.kind !== "security" || series.source.instrument.exchange) return series;
-          const { symbol } = series.source.instrument;
+          if (series.source.kind !== "security") return series;
+          const { symbol, exchange } = series.source.instrument;
+          if (exchange) {
+            // An index's key typed on its publisher's venue code (^NDX:NIM), which the parser takes for any index, is checked as
+            // `quote` checks it: ^NDX:XYZ says where ^NDX is. A broker's contract or a venue the app lists is charted as named.
+            const typedIndexKey = symbol.startsWith("^") && !series.source.instrument.instrument && !isKnownExchangeCode(exchange);
+            if (typedIndexKey) await readListing(publicTickerKey(symbol, exchange));
+            return series;
+          }
           // A FRED id (DFII10) or a series alias (hashrate) no ticker answers to is that series; an intraday chart has none.
           const catalog = template === "graph-intraday-price-pane" ? null : await bareCatalogSeries(series, () => readListing(symbol), context);
           if (catalog) return catalog;
@@ -866,11 +927,13 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
           intradayHistories: histories,
         }, context.marketData) };
       }
-      const model = await loadChartPaneModel(spec, context);
+      const model = await loadChartPaneModel(spec, notTickers.size ? { ...context, marketData: withoutNonTickers(context.marketData, notTickers) } : context);
       // What became of the company that had a bare symbol (GOGL), and a bare coin ticker charted as another listing
       // (ETH, the Grayscale fund), are said as `quote` says them.
       const readListings = await Promise.all(listings.values());
-      const listingNotes = [...readListings.flatMap((read) => read?.successorNote ?? []), ...readListings.flatMap((read) => read?.coinNote ?? [])];
+      // So are a code read as another listing (NDX, the Nasdaq-100) and the index or future a code a security owns is typed for (GOLD).
+      const listingNotes = [...readListings.flatMap((read) => read?.readAs ?? []), ...readListings.flatMap((read) => read?.successorNote ?? []),
+        ...readListings.flatMap((read) => read?.coinNote ?? []), ...readListings.flatMap((read) => read?.ownedNotes ?? [])];
       if (listingNotes.length) model.warnings = [...model.warnings ?? [], ...listingNotes];
       if (template === "graph-intraday-price-pane" && !intradayHistories.length && model.chart.viewport) {
         const { start, end } = model.chart.viewport;
@@ -940,6 +1003,9 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
           if (quote && Number.isFinite(quote.lastUpdated)) quotes.set(entry.id, quote);
         }
       }
+      // A week or month still forming is dated by its value's own day, its quote's: ^NDX's November bar by Mon 9 Nov's close,
+      // not the 1st the bar starts on, beside a coin's that runs to today.
+      model.series = model.series.map((series) => withLatestQuoteDay(series, quotes.get(series.id)));
       model.freshness = chartFreshness(model.series, model.spec, model.chart.priceComparison, quotes);
       if (closingPrintsPending.length) {
         model.freshness = { ...model.freshness, note: [model.freshness.note, CLOSING_PRINT_PENDING_TEXT].filter(Boolean).join(", ") };

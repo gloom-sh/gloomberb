@@ -535,7 +535,7 @@ export const es: Record<string, string> = {
   "Pin Ticker": "Fijar ticker",
 
   // ── Help pane ────────────────────────────────────────────────
-  "Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "¿No sabes el código? Haz clic en la barra de búsqueda de arriba, o pulsa {key}, y escribe lo que quieres con tus palabras, como \"top news\". La pestaña Funciones las lista todas.",
+  "Not sure of a code? Press {key}, or click the search bar at the top, and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "¿No sabes el código? Pulsa {key}, o haz clic en la barra de búsqueda de arriba, y escribe lo que quieres con tus palabras, como \"top news\". La pestaña Funciones las lista todas.",
   "Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "¿No sabes el código? Haz clic en la barra de búsqueda de arriba y escribe lo que quieres con tus palabras, como \"top news\". La pestaña Funciones las lista todas.",
   "Open Help": "Abrir la ayuda",
   "Command Prefixes": "Prefijos de comandos",

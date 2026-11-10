@@ -47,6 +47,18 @@ test("a query finds series by the words that start theirs, names first, and neve
   expect(findCatalogSeries(plugins, "de")).toEqual([]);
 });
 
+test("a series named or tagged with each word whole ranks before one with a word only as the start of a longer word", () => {
+  const deficit = { id: "fred:FYFSD", name: "Federal deficit", unit: "million USD", frequency: "annual",
+    group: "Fiscal", description: "The federal surplus or deficit.", publisher: "FRED", expression: "FRED:FYFSD" };
+  const lending = { id: "crypto:lending", name: "Lending rates", unit: "%", frequency: "daily", group: "Crypto",
+    description: "Rates paid on DeFi lending protocols.", load };
+  const tvl = { id: "crypto:defi-tvl", name: "Total DeFi TVL", unit: "USD", frequency: "daily", group: "Crypto", tags: ["defi", "tvl"],
+    description: "Total value locked in DeFi protocols.", load };
+  // `catalog defi` listed the deficit first when it was registered first; a word whole in a description alone ranks nothing.
+  expect(findCatalogSeries([{ series: [deficit, lending, tvl] }], "defi").map((match) => match.id))
+    .toEqual(["crypto:defi-tvl", "fred:FYFSD", "crypto:lending"]);
+});
+
 test("the built-in catalog finds Mexico's and Brazil's government yields and iron ore by the words people use", () => {
   const found = (query: string) => findCatalogSeries(getLoadablePlugins(), query).map((match) => [match.expression, match.name, match.unit]);
   // `CAP:mexico-10y` named no series; `gloom catalog "10Y government bond"` is where its error points.

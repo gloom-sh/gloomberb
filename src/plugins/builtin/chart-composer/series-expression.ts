@@ -150,8 +150,9 @@ export function parseSeriesExpression(value: string): ParsedSeriesExpression | n
       instrument = normalizeInstrument(parts[0]!);
       fieldId = candidateFieldId;
     } else {
-      // A known public exchange suffix is unambiguously a qualified ticker.
-      instrument = normalizeInstrument(trimmed);
+      // A known public exchange suffix is unambiguously a qualified ticker; so is any after an index's ^ (^NDX:NIM),
+      // whose key names the venue code its publisher has, which is no exchange the app lists.
+      instrument = normalizeInstrument(trimmed, trimmed.startsWith("^"));
     }
   } else if (parts.length === 3) {
     const candidateFieldId = resolveChartFieldAlias(parts[2]);

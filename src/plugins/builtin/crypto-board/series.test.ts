@@ -2,9 +2,9 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { SeriesLoadResult } from "../../../series/types";
-import { STABLECOIN_SUPPLY_CACHES } from "./client";
+import { DEFI_TVL_CACHES, STABLECOIN_SUPPLY_CACHES } from "./client";
 import { CRYPTO_SERIES } from "./series";
-import { stablecoinSupplyFixture } from "./test-fixture";
+import { defiTvlFixture, stablecoinSupplyFixture } from "./test-fixture";
 
 const series = (id: string) => CRYPTO_SERIES.find((entry) => entry.id === id)!;
 const load = (id: string, ticker?: string) => series(id).load!({ ticker }) as Promise<SeriesLoadResult>;
@@ -12,7 +12,7 @@ const day = (date: string) => Date.parse(`${date}T00:00:00Z`);
 const spies: Array<{ mockRestore(): void }> = [];
 afterEach(() => {
   for (const spy of spies.splice(0)) spy.mockRestore();
-  for (const cache of STABLECOIN_SUPPLY_CACHES) cache.reset();
+  for (const cache of [...STABLECOIN_SUPPLY_CACHES, ...DEFI_TVL_CACHES]) cache.reset();
 });
 
 test("total supply charts the board's daily totals, a missing day left a gap", async () => {
@@ -45,4 +45,16 @@ test("a coin's supply reads the coin a pair names, and an unlisted coin says it 
   await expect(load("crypto:stablecoin-coin-supply", "NOPE-USD"))
     .rejects.toThrow("No stablecoin supply series for NOPE: it is not among the stablecoins CRYP lists.");
   expect(asked).toEqual(["USDT", "NOPE"]);
+});
+
+test("total DeFi TVL and stablecoin supply name their publisher and how their days are dated, as CRYP's lists do", async () => {
+  spies.push(spyOn(apiClient, "getCloudDefiTvl").mockImplementation(async () => defiTvlFixture()));
+  spies.push(spyOn(apiClient, "getCloudStablecoinSupply").mockImplementation(async () => stablecoinSupplyFixture()));
+  // `fn G CAP:crypto:defi-tvl` said "Publisher: not published" while CRYP named DefiLlama.
+  expect(series("crypto:defi-tvl").publisher).toBe("DefiLlama");
+  expect((await load("crypto:defi-tvl")).attribution).toEqual({ source: "DefiLlama total DeFi TVL, UTC daily closes", publisher: "DefiLlama" });
+  // The supply is DefiLlama's stablecoin charts, dated as the TVL is, though the service that serves it names itself.
+  expect(series("crypto:stablecoin-supply").publisher).toBe("DefiLlama");
+  expect((await load("crypto:stablecoin-supply")).attribution)
+    .toEqual({ source: "DefiLlama stablecoin supply, UTC daily closes", publisher: "DefiLlama" });
 });

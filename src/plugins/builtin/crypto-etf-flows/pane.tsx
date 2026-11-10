@@ -95,8 +95,11 @@ export function CryptoEtfFlowsPane({ focused, width, height }: PaneProps) {
   const figures: StatItem[] = summary ? [
     { id: "latest", label: "Latest day", value: formatFlowAmount(latest?.total), color: flowColor(latest?.total, colors),
       detail: [latest?.date, pending].filter(Boolean).join(" · ") || undefined },
-    { id: "week", label: "5 days", value: formatFlowAmount(summary.week), color: flowColor(summary.week, colors) },
-    { id: "month", label: "20 days", value: formatFlowAmount(summary.month), color: flowColor(summary.month, colors) },
+    // The rolling sums leave out a day still pending, and say the day they end on.
+    { id: "week", label: "5 days", value: formatFlowAmount(summary.week), color: flowColor(summary.week, colors),
+      ...summary.through ? { detail: `through ${summary.through}` } : {} },
+    { id: "month", label: "20 days", value: formatFlowAmount(summary.month), color: flowColor(summary.month, colors),
+      ...summary.through ? { detail: `through ${summary.through}` } : {} },
   ] : [];
 
   const updatedAgo = useUpdatedAgo(resource.updatedAt);

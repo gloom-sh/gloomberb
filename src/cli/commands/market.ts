@@ -130,14 +130,14 @@ import {
   selectReportTables,
   type CliReportTables,
 } from "../report-tables";
-import { historyCoverageNotice } from "../../sources/history-coverage";
+import { historyCoverageNotice, WindowBeforeFirstBarError } from "../../sources/history-coverage";
 import { fetchHistoryResult } from "../../sources/history-result";
 import { settleWithin } from "../../utils/async-deadline";
 import type { FxInterventionsPayload } from "../../api-client/fx-interventions";
 import {
   fxInterventionLatestNote, fxInterventionPair, fxInterventionWindowNote, loadFxInterventions, type FxInterventionPair,
 } from "../../market-data/fx-interventions";
-import { maxDrawdownText, maxRunUp, maxRunUpText } from "../../utils/max-drawdown";
+import { maxDrawdownText, maxRunUp, maxRunUpText, measuredUntil } from "../../utils/max-drawdown";
 import { isPastPriceWindow, loadPriceWindowHistory, PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP, priceWindowInterval, priceWindowText, readPriceWindow, type PriceWindow } from "../../utils/price-window";
 import {
   BAR_INTERVAL_LABELS,
@@ -187,11 +187,11 @@ import {
   symbolListNotes,
   type HistoryListRow,
 } from "../history-export";
-import { fail, isCliFailure, NO_DATA_CODE } from "../errors";
+import { fail, failWithError, isCliFailure, NO_DATA_CODE } from "../errors";
 import { createConcurrencyLimiter, mapWithConcurrency } from "../../utils/concurrency";
 import { MISSING_VOLUME_TEXT } from "../../utils/price-history-integrity";
 import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
-import { bareFuturesCode, futuresBoardContract, futuresContractByWord } from "../../market-data/futures-board";
+import { bareFuturesCode, futuresBoardContract } from "../../market-data/futures-board";
 import { commodityNamedIn, commoditySearchName } from "../../market-data/commodity-names";
 import { newsEmptyMessage } from "./news-hints";
 import { centralBankInNews, centralBankShortNamed } from "../../utils/central-banks";
@@ -267,8 +267,10 @@ import {
   listingChoiceNotes,
   listingReadNotes,
   failUnchosenListing,
+  futureByWordLine,
   loadBareVenues,
   loadForListing,
+  ownedCodeNotes,
   loadListingQuote,
   loadListingQuoteAnswer,
   listingFateLoader,
@@ -1295,9 +1297,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       // A commodity's word read as a security's ticker (WTI is W&T Offshore, GOLD is Gold.com) names the future it may have meant.
       ...data.flatMap((row, index) => {
         const listing = asked[index]!;
-        const contract = listing.exchange || !row.quote || isFuturesInstrument(row.target.symbol, row.quote.instrumentType)
-          ? null : futuresContractByWord(row.target.symbol);
-        return contract ? [`${row.target.symbol} is ${row.listing.name || "a security"}; for ${contract.name}, quote the future ${contract.symbol}.`] : [];
+        const line = listing.exchange || !row.quote || isFuturesInstrument(row.target.symbol, row.quote.instrumentType)
+          ? null : futureByWordLine(row.target.symbol, row.listing.name, commandName);
+        return line ? [line] : [];
       }),
       // A cell shows only "unavailable", and an exported row only its status, so stderr names each failure; the JSON rows carry each reason.
       ...ctx.cliOptions.format !== "json" ? quoteNotes(data.filter((_row, index) => !endedNotes[index])) : [],
@@ -1477,6 +1479,8 @@ function yieldIndexFields(result: QuoteBatchResult): { unit?: "percent"; changeB
  * the board cannot get past either.
  */
 function failHistory(error: unknown, symbol: string, ctx: Parameters<CliCommandDef["execute"]>[1]): never {
+  // A window before the listing's first bar has none to give, asked now or later: "No bars before 2014-09-17 for BTC-USD."
+  if (error instanceof WindowBeforeFirstBarError) failWithError({ code: NO_DATA_CODE, message: error.message, retryable: false });
   if (ctx.cliOptions.format !== "text" || !isCryptoPairSymbol(symbol) || isNetworkFailure(error)) throw error;
   return ctx.fail(errorMessage(error) ?? `No history available for ${symbol}`, CRYPTO_BOARD_HINT);
 }
@@ -1764,6 +1768,8 @@ async function loadListingHistory(
     // FB's bars are the fund listed there now; META's from 2021 are from when it was FB.
     ...fate ? listingFateNotes(await fate(), { served: data.length > 0, firstDate: data[0]?.date }) : [],
     ...lookups ? await listingChoiceNotes(listing, market, quote, venues) : [],
+    // MOVE's bars are Corvex's, GOLD's Gold.com's: the index or future the code is typed for is named, as `quote` names it.
+    ...ownedCodeNotes(listing, quote, "history"),
     // ALL says where the source's bars start (BTC-USD's in 2014-09), unless the coverage line does.
     ...window ? [...windowHistoryNotes(window, data), coverage ?? []]
       : range === "YTD" ? ytdHistoryNotes(data) : [...historyNotes(range, interval, data[0]?.date, Date.now(), coverage != null), coverage ?? []],
@@ -1959,8 +1965,11 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       ? data.map((row) => ({ ...row, date: barCloseSession(interval, row.date, identity.exchange || undefined, Date.now()) }))
       : data;
     const contractDrawdown = historyContractDrawdown(closes, yieldUnits ? "yield" : "return");
-    const drawdown = contractDrawdown?.drawdown ?? null;
-    const runUp = yieldUnits ? maxRunUp(closes) : null;
+    // A window's last week can close after the dates asked for (--to 2003, a week ending Fri 2 Jan 2004): measured to its end.
+    const until = ask.window?.to;
+    const drawdown = contractDrawdown ? measuredUntil(contractDrawdown.drawdown, until) : null;
+    const rose = yieldUnits ? maxRunUp(closes) : null;
+    const runUp = rose && measuredUntil(rose, until);
     const moveText = interval ? { basis: `${BAR_INTERVAL_LABELS[interval]} closes${contractDrawdown?.contract ? `, ${contractDrawdown.contract}` : ""}`, price,
       date: (text: string) => intraday ? formatUtcTime(text) : text.slice(0, 10) } : null;
     ctx.printResult({

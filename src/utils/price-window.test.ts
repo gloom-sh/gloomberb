@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
-import { priceWindowBarStart, priceWindowInterval, priceWindowText, readPriceWindow } from "./price-window";
+import { WindowBeforeFirstBarError } from "../sources/history-coverage";
+import { createTestDataProvider } from "../test-support/data-provider";
+import { loadPriceWindowHistory, priceWindowBarStart, priceWindowInterval, priceWindowText, readPriceWindow } from "./price-window";
 
 const now = new Date("2026-10-22T12:00:00Z");
 
@@ -43,4 +45,22 @@ test("bars get coarser as the window grows: daily to five years, weekly to twent
   expect(priceWindowInterval({ from: "2007-01-01", to: "2009-12-31" })).toBe("1d");
   expect(priceWindowInterval({ from: "2000-01-01", to: "2009-12-31" })).toBe("1wk");
   expect(priceWindowInterval({ from: "1980-01-01", to: "2009-12-31" })).toBe("1mo");
+});
+
+test("a window wholly before the first bar says the day the bars start, and any other failure stays what it was", async () => {
+  const day = (date: string, close: number) => ({ date: new Date(`${date}T00:00:00Z`), close });
+  // The service answers BTC-USD from 2003 to 2006 as an upstream failure, which read as an outage to retry.
+  const provider = createTestDataProvider({
+    getDetailedPriceHistoryWithMetadata: async (_symbol, _exchange, start, end, interval) => {
+      if (start < new Date("2014-09-01T00:00:00Z")) throw new Error("Gloom's data service did not answer");
+      return { points: [day("2014-09-17", 457.33), day("2014-09-18", 424.44)], resolution: interval };
+    },
+    getPriceHistoryWithMetadata: async () => ({ points: [day("2014-09-01", 386.94), day("2014-10-01", 338.32)], resolution: "1mo" }),
+  });
+  const read = (from: string, to: string) => loadPriceWindowHistory(provider, "BTC-USD", "", { from, to });
+  const before = await read("2003-01-01", "2006-12-31").catch((error: unknown) => error);
+  expect(before).toBeInstanceOf(WindowBeforeFirstBarError);
+  expect((before as Error).message).toBe("No bars before 2014-09-17 for BTC-USD.");
+  // A window that reaches the first bar failed for another reason: that failure is the answer.
+  expect(await read("2013-01-01", "2015-12-31").catch((error: unknown) => (error as Error).message)).toBe("Gloom's data service did not answer");
 });

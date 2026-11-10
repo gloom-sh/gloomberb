@@ -36,6 +36,8 @@ const QUOTES: Record<string, ReturnType<typeof createTestQuote>> = {
   "BDI:NEO": createTestQuote({ symbol: "BDI", name: "Black Diamond Group Ltd.", currency: "CAD", instrumentType: "EQUITY", listingExchangeName: "NEO" }),
   // The bare coin ticker is a fund, as the data service answers it.
   ETH: createTestQuote({ symbol: "ETH", name: "Grayscale Ethereum Mini Trust ETF", currency: "USD", instrumentType: "ETF", listingExchangeName: "ARCA" }),
+  // A commodity's word a company trades as.
+  GOLD: createTestQuote({ symbol: "GOLD", name: "Gold.com, Inc.", currency: "USD", instrumentType: "EQUITY", listingExchangeName: "NYSE" }),
 };
 const VENUES: Record<string, Array<[string, string]>> = {
   "2222": [["JPX", "Kotobuki Spirits Co., Ltd."], ["TADAWUL", "Saudi Arabian Oil Co."]],
@@ -125,6 +127,63 @@ test("a chart of a bare coin ticker read as a fund says where the coin is, as qu
   const { printed } = await run(["G", "ETH, AAPL"], "fn");
   expect(printed!.result.warnings).toEqual(["ETH is Grayscale Ethereum Mini Trust ETF, not ethereum. For ethereum use ETH-USD."]);
   expect((await run(["G", "AAPL"], "fn")).printed!.result.warnings ?? []).toEqual([]);
+});
+
+test("a chart of a commodity's word a company trades as names the future, as quote does", async () => {
+  // `fn G gold` drew Gold.com with nothing pointing at GC=F, where `quote gold` said to quote the future.
+  const { printed } = await run(["G", "gold"], "fn");
+  expect(printed!.result.warnings).toEqual(["GOLD is Gold.com, Inc.; for Gold, the future is GC=F (gloom fn G GC=F)."]);
+});
+
+test("a symbol quote reads as no ticker fails its series at once, without asking for its bars", async () => {
+  const asked: string[] = [];
+  const market = {
+    dataProvider: createTestDataProvider({
+      search: async () => [],
+      getQuote: async (symbol) => {
+        asked.push(`quote ${symbol}`);
+        if (symbol.toUpperCase() === "AAPL") return QUOTES.AAPL!;
+        throw new Error(`Not a ticker: ${symbol}.`);
+      },
+      getTickerFinancials: async (symbol) => {
+        asked.push(`financials ${symbol}`);
+        if (symbol.toUpperCase() === "AAPL") return createTestFinancials({ quote: QUOTES.AAPL!, priceHistory: BARS });
+        throw new Error(`Not a ticker: ${symbol}.`);
+      },
+      getPriceHistory: async (symbol) => { asked.push(`history ${symbol}`); return BARS; },
+      getPriceHistoryWithMetadata: async (symbol) => { asked.push(`history ${symbol}`); return { resolution: "1d", points: BARS }; },
+    }),
+  };
+  // `fn G lido` asked for its quote again, its profile twice and its bars twice before saying "Not a ticker": 5 s.
+  const { printed } = await run(["G", "UNISWAP, AAPL"], "fn", market);
+  expect((printed!.result.data as { errors?: string[] }).errors).toEqual(["UNISWAP: Not a ticker: UNISWAP."]);
+  expect(asked.filter((request) => request.endsWith(" UNISWAP"))).toEqual(["quote UNISWAP"]);
+  expect((printed!.result.data as { series: Array<{ name?: string }> }).series.map((series) => series.name)).toContain("Apple Inc.");
+});
+
+test("an index is labelled as quote names it, and charts by its key on its publisher's venue code", async () => {
+  // ^NDX's quote names its venue by its publisher (NASDAQ GIDS), and the service's key for it is ^NDX:NIM.
+  const index = createTestQuote({ symbol: "^NDX", name: "NASDAQ-100", currency: "USD", instrumentType: "INDEX", listingExchangeName: "NASDAQ GIDS" });
+  const market = {
+    dataProvider: createTestDataProvider({
+      search: async (query) => query.trim().toUpperCase().startsWith("^NDX")
+        ? [{ providerId: "test", symbol: "^NDX", name: "NASDAQ-100", exchange: "NIM", type: "INDEX" }] : [],
+      getQuote: async () => index,
+      getTickerFinancials: async () => createTestFinancials({ quote: index, priceHistory: BARS }),
+      getPriceHistory: async () => BARS,
+      getPriceHistoryWithMetadata: async () => ({ resolution: "1d", points: BARS }),
+    }),
+  };
+  const labels = async (argument: string) => {
+    const { failure, printed } = await run(["G", argument], "fn", market);
+    expect(failure.message).toBeUndefined();
+    return (printed!.result.data as { series: Array<{ label: string; name?: string }> }).series.map((series) => [series.label, series.name]);
+  };
+  // Not "^NDX:NASDAQ GIDS Price".
+  expect(await labels("^NDX")).toEqual([["^NDX Price", "NASDAQ-100"]]);
+  // "Invalid chart series" before; a venue the index is not on still says where it is, as quote does.
+  expect(await labels("^NDX:NIM")).toEqual([["^NDX:NIM Price", "NASDAQ-100"]]);
+  expect((await run(["G", "^NDX:XYZ"], "fn", market)).failure.message).toStartWith("Unknown exchange XYZ for ^NDX.");
 });
 
 test("a charted listing names its company and its currency", async () => {

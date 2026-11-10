@@ -536,7 +536,7 @@ export const zhTW: Record<string, string> = {
   "Pin Ticker": "固定股票",
 
   // ── Help pane ────────────────────────────────────────────────
-  "Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "不知道代碼？點擊頂部的搜尋列，或按 {key}，用日常用語輸入你想要的，例如 \"top news\"。「功能」標籤列出了全部功能。",
+  "Not sure of a code? Press {key}, or click the search bar at the top, and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "不知道代碼？按 {key}，或點擊頂部的搜尋列，用日常用語輸入你想要的，例如 \"top news\"。「功能」標籤列出了全部功能。",
   "Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "不知道代碼？點擊頂部的搜尋列，用日常用語輸入你想要的，例如 \"top news\"。「功能」標籤列出了全部功能。",
   "Open Help": "開啟說明",
   "Command Prefixes": "命令字首",

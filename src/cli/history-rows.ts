@@ -16,7 +16,7 @@ import { currencyPairCode } from "../utils/currency-pair";
 import { currencyUnitLabel, resolveCurrencyUnit } from "../utils/currency-units";
 import { dailyBarDate, getPricePointTimestamp } from "../utils/price-history";
 import {
-  isWickFlag, latestTradeIndex, missingVolumeNotice, pricePointIntegrityFlags, pricePointValues, pricePointWickFlags,
+  isWickFlag, latestTradeIndex, missingVolumeNotice, priceHistoryIntegrityNotice, pricePointIntegrityFlags, pricePointValues, pricePointWickFlags,
 } from "../utils/price-history-integrity";
 import { formatUtcTime } from "../utils/utc-time";
 import { maxDrawdown, type DrawdownScale, type MaxDrawdown } from "../utils/max-drawdown";
@@ -265,6 +265,36 @@ function keptMonthlyClose(point: PricePoint): boolean {
   return typeof point.close === "number" && Number.isFinite(point.close) && point.close > 0;
 }
 
+/**
+ * A bar's prices as `history` and HP show them (pricePointValues). A monthly
+ * bar whose prices contradict each other keeps its close and volume: a
+ * continuous future's month (ZC=F's September 2000) can join one contract's
+ * open to another's range. Every other contradictory bar is blanked whole.
+ */
+export function historyBarValues(point: PricePoint, monthly: boolean): ReturnType<typeof pricePointValues> {
+  const values = pricePointValues(point);
+  return monthly && values.integrity && keptMonthlyClose(point)
+    ? { ...values, close: point.close!, volume: finiteOrNull(point.volume) } : values;
+}
+
+/**
+ * What HP says of its bars whose prices contradict each other: one left
+ * blank whole as every price view says it ("1 inconsistent OHLC bar is
+ * unavailable"), a month that keeps its close as `history` says it
+ * (historyFlagNote, with no daily bars read). Undefined when none.
+ */
+export function priceTableIntegrityNotice(rows: readonly { flag?: string | null; close: number | null; integrity?: unknown }[]): string | undefined {
+  const blanked = rows.filter((row) => row.integrity && row.close == null).length;
+  const kept = historyFlagNote(rows.map((row) => ({ flag: row.integrity && row.close != null ? row.flag ?? null : null, close: row.close })),
+    { dailyRebuild: false });
+  return [priceHistoryIntegrityNotice(blanked), kept].filter(Boolean).join(" ") || undefined;
+}
+
+/** What a bar is flagged with, as `history` and HP flag it: each way its prices contradict each other, and a withheld wick. */
+export function historyBarFlags(point: PricePoint): string[] {
+  return [...pricePointIntegrityFlags(point), ...pricePointWickFlags(point), ...rescaleFlags(point)];
+}
+
 /** Days a month's daily bars may leave out at either end or between two of them and still say its range: a week. */
 const REBUILD_MAX_HOLE_DAYS = 7;
 
@@ -374,11 +404,8 @@ export function historyRows(
   const rows = points.map((point, index) => {
     const time = times[index]!;
     const iso = Number.isFinite(time) ? new Date(time).toISOString() : "";
-    const flags = [...pricePointIntegrityFlags(point), ...pricePointWickFlags(point), ...rescaleFlags(point)];
-    // A monthly bar whose prices contradict each other keeps its close and volume: a continuous future's month
-    // (ZC=F's September 2000) can join one contract's open to another's range. Every other bar is blanked whole.
-    const kept = interval === "1mo" && pricePointIntegrityFlags(point).length > 0 && keptMonthlyClose(point);
-    const values = kept ? { ...pricePointValues(point), close: point.close!, volume: finiteOrNull(point.volume) } : pricePointValues(point);
+    const flags = historyBarFlags(point);
+    const values = historyBarValues(point, interval === "1mo");
     const price = (value: number | null) => value == null ? null : cleanBarPrice(value, priceDivisor);
     return {
       date: intraday ? iso.replace(".000Z", "Z") : iso.slice(0, 10),
@@ -1101,9 +1128,14 @@ export function historyGapNote(
 /**
  * "37 of 251 bars have high below open or close in the source data; ...", or
  * null when every bar agrees. Bars flagged only for a gap or jump before them
- * keep their prices and are not counted.
+ * keep their prices and are not counted. Without `dailyRebuild` (HP, which
+ * reads no daily bars for them) a kept close's open, high and low are just
+ * blank.
  */
-export function historyFlagNote(rows: readonly Pick<HistoryRow, "flag" | "close" | "rebuilt">[]): string | null {
+export function historyFlagNote(
+  rows: readonly Pick<HistoryRow, "flag" | "close" | "rebuilt">[],
+  { dailyRebuild = true }: { dailyRebuild?: boolean } = {},
+): string | null {
   const flagged = rows.filter((row) => blankingCodes(row).length > 0);
   if (flagged.length === 0) return null;
   const codes = new Set(flagged.flatMap(blankingCodes));
@@ -1120,7 +1152,8 @@ export function historyFlagNote(rows: readonly Pick<HistoryRow, "flag" | "close"
   const rebuilt = kept.filter((row) => row.rebuilt).length;
   const blank = flagged.length - kept.length;
   const keep = blank > 0 ? `${kept.length} keep their close` : flagged.length === 1 ? "it keeps its close" : "they keep their close";
-  const ohl = rebuilt === kept.length ? ", with open, high and low from the month's daily bars"
+  const ohl = !dailyRebuild ? "; open, high and low are blank"
+    : rebuilt === kept.length ? ", with open, high and low from the month's daily bars"
     : rebuilt > 0 ? `; open, high and low come from the month's daily bars for ${rebuilt} and are blank for ${kept.length - rebuilt}, whose daily bars do not cover the month without contradiction`
       : `; open, high and low are blank, the month's daily bars not covering ${kept.length === 1 ? "it" : "them"} without contradiction`;
   return `${said}; ${keep}${ohl}${blank > 0 ? `; ${blank} ${blank === 1 ? "is" : "are"} left blank` : ""}`;

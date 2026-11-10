@@ -534,7 +534,7 @@ export const ko: Record<string, string> = {
   "Pin Ticker": "종목 고정",
 
   // ── Help pane ────────────────────────────────────────────────
-  "Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "코드를 모르겠다면 위쪽 검색창을 클릭하거나 {key}을 누르고 \"top news\"처럼 원하는 것을 평범한 말로 입력하세요. 기능 탭에 전체 목록이 있습니다.",
+  "Not sure of a code? Press {key}, or click the search bar at the top, and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "코드를 모르겠다면 {key}을 누르거나 위쪽 검색창을 클릭하고 \"top news\"처럼 원하는 것을 평범한 말로 입력하세요. 기능 탭에 전체 목록이 있습니다.",
   "Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "코드를 모르겠다면 위쪽 검색창을 클릭하고 \"top news\"처럼 원하는 것을 평범한 말로 입력하세요. 기능 탭에 전체 목록이 있습니다.",
   "Open Help": "도움말 열기",
   "Command Prefixes": "명령 접두사",

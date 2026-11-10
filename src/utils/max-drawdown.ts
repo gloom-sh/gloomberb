@@ -133,13 +133,34 @@ export function maxRunUpText(value: MaxRunUp, { basis, price, date = (text) => t
   return `${head}: low ${price(value.low.close)} on ${date(value.low.date)}, high ${price(value.high.close)} on ${date(value.high.date)}, ${back}`;
 }
 
-/** A series' largest fall, and a yield's largest rise as well, with the lines a report says them in. */
-export function closeMoves(points: readonly ClosePoint[], scale: DrawdownScale, text: MoveTextOptions): {
+/**
+ * A move measured to no later than `until` (`YYYY-MM-DD`, the last day asked
+ * for): a window's last weekly bar can close after it (`--to 2003` ends on
+ * Wed 31 Dec, that bar's week on Fri 2 Jan), and a week still forming runs to
+ * today, so "not back to the peak by" names the end asked for, never a later
+ * day. Never earlier than a date the move names. The move as it is without
+ * `until`, or when it ends in time.
+ */
+export function measuredUntil<Move extends MaxDrawdown | MaxRunUp>(move: Move, until: string | null | undefined): Move {
+  const through = move.through.slice(0, 10);
+  if (!until || through <= until) return move;
+  const named = "peak" in move ? [move.peak.date, move.trough.date] : [move.low.date, move.high.date];
+  const end = named.map((date) => date.slice(0, 10)).reduce((last, date) => date > last ? date : last, until);
+  return end >= through ? move : { ...move, through: end };
+}
+
+/**
+ * A series' largest fall, and a yield's largest rise as well, with the lines a
+ * report says them in, each measured to no later than `until` (`measuredUntil`).
+ */
+export function closeMoves(points: readonly ClosePoint[], scale: DrawdownScale, text: MoveTextOptions, until?: string | null): {
   drawdown: MaxDrawdown | null;
   runUp: MaxRunUp | null;
   lines: string[];
 } {
-  const drawdown = maxDrawdown(points, scale);
-  const runUp = scale === "yield" ? maxRunUp(points) : null;
+  const fell = maxDrawdown(points, scale);
+  const rose = scale === "yield" ? maxRunUp(points) : null;
+  const drawdown = fell && measuredUntil(fell, until);
+  const runUp = rose && measuredUntil(rose, until);
   return { drawdown, runUp, lines: [...drawdown ? [maxDrawdownText(drawdown, text)] : [], ...runUp ? [maxRunUpText(runUp, text)] : []] };
 }

@@ -49,3 +49,13 @@ test("a yield falls and rises by its level, in bp: the deepest fall in points, n
     "Max run-up 0bp (daily closes): no close rose above an earlier one",
   ]);
 });
+
+test("\"not back to the peak by\" is never later than the end asked for, nor earlier than a date the move names", () => {
+  // `history ^NDX --from 1998 --to 2003`: the last weekly close is dated by its week's Friday, 2 Jan 2004.
+  const series = [bar("2000-03-10", 4704.73), bar("2002-10-04", 804.64), bar("2004-01-02", 1467.92)];
+  const text = { basis: "weekly closes", price: (value: number) => value.toFixed(2) };
+  expect(closeMoves(series, "price", text).lines[0]).toEndWith("not back to the peak by 2004-01-02");
+  expect(closeMoves(series, "price", text, "2003-12-31").lines[0]).toEndWith("not back to the peak by 2003-12-31");
+  // An end before the trough is no end the move can be measured to.
+  expect(closeMoves(series, "price", text, "2001-01-01").drawdown!.through).toBe("2002-10-04");
+});
