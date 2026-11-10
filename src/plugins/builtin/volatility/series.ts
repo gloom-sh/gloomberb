@@ -16,6 +16,7 @@ const BOARD_NAMES: Readonly<Record<string, string>> = {
   gvz: "Gold volatility index",
   vxeem: "Emerging markets volatility index",
   vxewz: "Brazil volatility index",
+  vhsi: "HSI Volatility Index (VHSI)",
   vxapl: "Apple volatility index",
   vxazn: "Amazon volatility index",
   vxgog: "Alphabet volatility index",
@@ -74,7 +75,7 @@ function dvolSeries(currency: DvolCurrency): SeriesDefinition {
 export const VOLATILITY_SERIES: readonly SeriesDefinition[] = [
   ...VOLATILITY_INDICES.filter((index) => !FRED_LISTED.has(index.id)).map((index): SeriesDefinition => {
     const name = BOARD_NAMES[index.id] ?? index.label;
-    const tags = ["volatility", index.symbol.replace("^", "")];
+    const tags = ["volatility", index.symbol.replace("^", ""), ...index.id === "vhsi" ? ["VHSI", "Hong Kong"] : []];
     const code = CORRELATION[index.id];
     return code
       ? {

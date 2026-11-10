@@ -931,6 +931,13 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
       + "as far from the forward (downside protection is bid), positive that upside calls are. OVDV, VCA and HIVG's rr25d all sign it call minus put.",
   },
   {
+    term: "25-delta implied volatility", aliases: ["25d put iv", "25d call iv", "25-delta put iv", "25 delta put iv", "25d put", "25d call", "25 delta iv"],
+    functions: ["OVDV"], shown: ["25D put IV", "25D call IV"],
+    definition: "The implied volatility of the put whose Black-Scholes spot delta is -0.25 (the call's +0.25) for one expiry, with the carry the "
+      + "expiry's parity forward implies and no premium adjustment. The strike is found on the fitted smile, at the volatility the smile gives "
+      + "there, only between the lowest and highest quoted strikes: an expiry whose quotes stop short of it shows none rather than an extrapolation.",
+  },
+  {
     term: "Butterfly", short: "BF", aliases: ["25d butterfly", "25-delta butterfly", "25 delta butterfly", "bf25", "smile curvature", "fly"],
     functions: ["OVDV"], shown: ["BF"],
     definition: "The average of the 25-delta call and put implied volatilities minus the implied volatility at the forward, in vol points, for one expiry: "

@@ -174,3 +174,18 @@ test("sizing a curve trade finds the bond calculator, a bond fund's DV01 and the
     geo.mockRestore();
   }
 });
+
+test("reading put skew finds the surface's skew tab first, ahead of the screen that ranks it", async () => {
+  const channels = spyOn(apiClient, "getChannels").mockResolvedValue([]);
+  const geo = spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+  const context = { config: createDefaultConfig("/synthetic/catalog-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    for (const query of ["put skew", "25d put", "risk reversal"]) expect(filterPaneCatalogEntries(entries, query)[0]?.token, query).toBe("OVDV");
+  } finally {
+    registry.destroy();
+    channels.mockRestore();
+    geo.mockRestore();
+  }
+});
