@@ -18,7 +18,7 @@ export function fireAndForget(request: Promise<unknown> | undefined, label: stri
   request?.catch((error: unknown) => {
     onFailure?.();
     if (!(error instanceof RpcTimeoutError)) throw error;
-    log.warn(`${label} did not complete: ${error.message}`);
+    log.warn(`${label} did not complete: ${error.report}`);
     reportCrash(error, { kind: "unhandled-rejection" });
   });
 }

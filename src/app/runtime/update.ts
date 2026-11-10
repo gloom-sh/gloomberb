@@ -23,6 +23,7 @@ import { VERSION } from "../../version";
 import { debugLog } from "../../utils/debug-log";
 import { isPrereleaseVersion } from "../../utils/semver";
 import { reportCrash } from "../../telemetry/crash-reports";
+import { RpcTimeoutError } from "../../utils/rpc-timeout-error";
 import { runAutomated } from "../../telemetry/usage-counts";
 
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60_000; // hourly
@@ -127,7 +128,7 @@ export function useAppUpdateRuntime({
     const channel = resolveUpdateChannel(stateRef.current.config);
     const result = await checkForUpdateDetailed(VERSION, channel).catch((error: unknown): UpdateCheckResult => {
       const message = error instanceof Error ? error.message : "";
-      if (message.startsWith("RPC request timed out")) {
+      if (error instanceof RpcTimeoutError) {
         reportCrash(error, { kind: "unhandled-rejection" });
       }
       return { kind: "error", error: message || "Update check failed" };

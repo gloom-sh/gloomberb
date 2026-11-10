@@ -10,6 +10,8 @@ import {
 } from "../market-data/coordinator";
 import { createIdleEntry } from "../market-data/result-types";
 import { IDLE_COORDINATOR_QUOTES } from "../test-support/quote-store";
+import { connectionHealth, DESKTOP_BRIDGE_CONNECTION_ID } from "../core/connection-health";
+import { CONNECTION_LOST_MESSAGE, RpcTimeoutError } from "../utils/rpc-timeout-error";
 import type { ChartResolveSources } from "./resolve-context";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
 import {
@@ -410,6 +412,36 @@ describe("useChartResolution", () => {
     expect(latestResult?.series).toBe(lastGoodSeries);
     expect(latestResult?.bufferedSeries).toBe(lastGoodBufferedSeries);
     expect(latestResult?.errors).toEqual([]);
+  });
+
+  // A desktop chart whose request found the app's bridge down kept the failure until it was reopened.
+  test("a failed chart loads again once the desktop bridge answers after an outage", async () => {
+    let answering = false;
+    let asked = 0;
+    const history = async () => {
+      asked += 1;
+      if (answering) return INITIAL_HISTORY;
+      throw new RpcTimeoutError(CONNECTION_LOST_MESSAGE, { elapsedMs: 5_000, limitMs: 5_000, report: "no way through" });
+    };
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => EMPTY_FINANCIALS,
+      getPriceHistoryForResolution: history,
+      getPriceHistory: history,
+    });
+    await tui.render(<ResolutionHarness sources={sourcesFor(provider)} />, { width: 24, height: 1 });
+    await waitFor(() => latestResult?.loading === false && asked > 0);
+    expect(latestResult?.errors.join(" ")).toContain(CONNECTION_LOST_MESSAGE);
+
+    answering = true;
+    await act(async () => { connectionHealth.reportRecovery(DESKTOP_BRIDGE_CONNECTION_ID); });
+    await waitFor(() => latestResult?.loading === false && latestResult.series[0]?.points.length === 2);
+    expect(latestResult?.errors).toEqual([]);
+
+    // A chart that loaded is left alone by the next recovery.
+    const settledAsks = asked;
+    await act(async () => { connectionHealth.reportRecovery(DESKTOP_BRIDGE_CONNECTION_ID); });
+    await flushEffects(2);
+    expect(asked).toBe(settledAsks);
   });
 
   test("keeps initial and explicit reloads blocking", async () => {

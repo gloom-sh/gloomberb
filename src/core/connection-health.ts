@@ -64,6 +64,23 @@ interface ConnectionHealthOptions {
 export const GLOOM_CLOUD_HTTP_CONNECTION_ID = "gloom-cloud-http";
 export const GLOOM_CLOUD_SOCKET_CONNECTION_ID = "gloom-cloud-socket";
 export const GLOOM_CLOUD_FRED_CONNECTION_ID = "gloom-cloud-fred";
+/**
+ * A desktop window's link to the app's Bun process, which every request from
+ * a desktop pane crosses on its way to the data service. It is no source of
+ * its own (nothing to list in Connections); it only recovers
+ * (`reportRecovery`), when it answers again after a request across it went
+ * unanswered.
+ */
+export const DESKTOP_BRIDGE_CONNECTION_ID = "desktop-bridge";
+
+/**
+ * Whether a recovery means a load that failed for want of an answer can be
+ * asked again: the data service answers again, or the desktop window's link to
+ * the process that asks it does.
+ */
+export function recoversDataRequests(sourceId: string): boolean {
+  return sourceId === GLOOM_CLOUD_HTTP_CONNECTION_ID || sourceId === DESKTOP_BRIDGE_CONNECTION_ID;
+}
 
 const MAX_RECENT_REQUESTS = 20;
 const DEFAULT_REQUEST_STATUS_TTL_MS = 60_000;
@@ -215,6 +232,15 @@ export class ConnectionHealthRegistry {
       if (source) return source;
     }
     return this.sources.get(sourceId) ?? null;
+  }
+
+  /**
+   * Tells recovery listeners that a link with no source of its own answers
+   * again after a request across it went unanswered
+   * (`DESKTOP_BRIDGE_CONNECTION_ID`).
+   */
+  reportRecovery(linkId: string): void {
+    this.emitRecovery(linkId);
   }
 
   /** Called with the source's id each time its service answers again after it went unanswered. */

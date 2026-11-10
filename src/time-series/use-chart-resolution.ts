@@ -20,6 +20,7 @@ import type { PricePoint, Quote } from "../types/financials";
 import type { PriceHistoryResult } from "../types/price-history";
 import type { InstrumentRef } from "../market-data/request-types";
 import { getSharedMarketDataCoordinator } from "../market-data/coordinator";
+import { connectionHealth, recoversDataRequests } from "../core/connection-health";
 import { resolveEntryData } from "../market-data/selectors";
 import { usePaneVisible } from "../state/app/activity";
 import { DEFAULT_QUOTE_POLL_INTERVAL_MS, useQuoteUpdates } from "../state/hooks/quote-streaming";
@@ -304,6 +305,19 @@ export function useChartResolution(
   const latestRequestRef = useRef({ spec, sources, options: resolveOptions });
   latestRequestRef.current = { spec, sources, options: resolveOptions };
   const reload = useCallback(() => setRevision((current) => current + 1), []);
+
+  // A chart that failed is loaded again once the data service, or the desktop
+  // bridge to it, answers after an outage, so the pane recovers by itself
+  // instead of keeping the failure.
+  const live = !snapshot;
+  const failedRef = useRef(false);
+  failedRef.current = live && displayed.errors.length > 0 && !displayed.loading;
+  useEffect(() => {
+    if (!live) return;
+    return connectionHealth.subscribeRecovery((sourceId) => {
+      if (recoversDataRequests(sourceId) && failedRef.current) reload();
+    });
+  }, [live, reload]);
 
   // A covered chart keeps its quotes arriving at the off-screen cadence but
   // builds no live bars; coming back into view catches up from the store.
