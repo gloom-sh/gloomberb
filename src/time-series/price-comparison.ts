@@ -4,6 +4,7 @@ import type { ChartSpec, ResolvedSeries, TimeSeriesPoint } from "./types";
 import { CHART_RESOLUTION_STEP_MS, chartBarSizeSource, getChartResolutionLabel, isIntradayResolution, type ManualChartResolution } from "./resolution";
 import type { TimeRange } from "./range";
 import { zonedDateTimeParts } from "../utils/zoned-date-time";
+import { isCurrencyCode } from "../utils/currency-pair";
 import { priceComparisonCloseTimes } from "./coin-session-close";
 import { barLastSession } from "../market-data/market/bar-period";
 import {
@@ -163,6 +164,28 @@ export function priceComparisonSeriesIds(spec: ChartSpec): string[] | null {
       && (entry.source.period ?? "auto") === (visible[0]!.source.period ?? "auto");
   })) return null;
   return visible.map((entry) => entry.id);
+}
+
+/**
+ * The currency each compared leg's return is in, by series id, where the
+ * chart would not say it otherwise (GLO-1950): every leg's own currency when
+ * they are in more than one (GUBRF.IS in TRY beside NTR in USD), or the
+ * chart's `viewport.currency` for every leg it converts. Empty for legs all in
+ * one currency, the chart's own, or a currency their unit does not name.
+ */
+export function comparisonLegCurrencies(
+  series: readonly Pick<ResolvedSeries, "id" | "unit" | "rawUnit" | "convertedFrom">[],
+  seriesIds: readonly string[] | null | undefined,
+  target?: string,
+): Map<string, string> {
+  const compared = new Set(seriesIds ?? []);
+  const legs = series.flatMap((entry) => {
+    // The currency the price unit leads with: `TRY`, `TRY/share`, `USD / gallon`.
+    const unit = /^([A-Za-z]{3})(?![A-Za-z])/.exec((entry.rawUnit ?? entry.unit).trim())?.[1]?.toUpperCase();
+    return compared.has(entry.id) && unit && isCurrencyCode(unit) ? [{ id: entry.id, currency: unit, converted: !!entry.convertedFrom }] : [];
+  });
+  if (target ? !legs.some((leg) => leg.converted) : new Set(legs.map((leg) => leg.currency)).size < 2) return new Map();
+  return new Map(legs.map((leg) => [leg.id, leg.currency] as const));
 }
 
 /**
