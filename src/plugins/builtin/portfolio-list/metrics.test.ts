@@ -848,3 +848,24 @@ describe("a hedge in the PF pane: long shares and short gold futures", () => {
     expect(totals.unavailableConversions).toBeUndefined();
   });
 });
+
+// GLO-1950's lira book: the live Day's move left out USD/TRY's move on a book 75% in USD names.
+test("a lira book's day move holds the dollar's move on the day for a dollar holding, as `portfolio show` counts it", () => {
+  const ticker = createTestTicker("NTR", "Nutrien", {
+    portfolios: ["tarim"], positions: [{ portfolio: "tarim", shares: 100, avgCost: 60, currency: "USD", broker: "manual" }],
+  });
+  // Flat in dollars, and the dollar up 0.1% against the lira: 50 lira per dollar now, 50/1.001 at the close before.
+  const financials = new Map([["NTR", createFinancials({ quote: { symbol: "NTR", currency: "USD", price: 72, change: 0, changePercent: 0, previousClose: 72 } })]]);
+  const rates = new Map([["USD", 1], ["TRY", 1 / 50]]);
+  const totals = (moves?: ReadonlyMap<string, number>) => calculatePortfolioSummaryTotals([ticker], financials, "TRY", rates, true, "tarim", "latest-print", undefined, moves);
+  expect(totals().dailyPnl).toBeCloseTo(0, 8);
+  const moved = totals(new Map([["USD", 1.001]]));
+  expect(moved.totalMktValue).toBeCloseTo(7200 * 50, 6);
+  expect(moved.dailyPnl).toBeCloseTo(7200 * 50 - 7200 * 50 / 1.001, 6);
+  expect(moved.dailyPnlPct).toBeCloseTo(0.1, 8);
+  // Another currency's move leaves a dollar holding's day alone.
+  expect(totals(new Map([["EUR", 1.5]])).dailyPnl).toBeCloseTo(0, 8);
+  // DAY on the row is the summary's.
+  const context: ColumnContext = { ...defaultColumnContext, activeTab: "tarim", baseCurrency: "TRY", exchangeRates: rates, fxDayMoves: new Map([["USD", 1.001]]) };
+  expect(getSortValue({ id: "day_pnl", label: "DAY", width: 10, align: "right" }, ticker, financials.get("NTR"), context)).toBeCloseTo(moved.dailyPnl, 6);
+});

@@ -109,6 +109,14 @@ export function calculatePortfolioSummaryTotals(
   valuationBasis: PortfolioValuationBasis = "latest-print",
   /** Each future's contract size and settlement by symbol, as the rows read them. */
   futuresTerms?: ReadonlyMap<string, PortfolioFuturesTerms>,
+  /**
+   * Each held currency's move on the day against `totalsCurrency`, as a
+   * factor (1.001 for +0.1%), from its pair's previous daily close as `fx`
+   * reads it: a holding in another currency was worth its value before at
+   * that close's rate, so the day's move holds the currency's own, as
+   * `portfolio show` counts it. A currency not here moves with its price alone.
+   */
+  fxDayMoves?: ReadonlyMap<string, number>,
 ): PortfolioSummaryTotals {
   let totalMktValue = 0;
   let netMktValue = 0;
@@ -137,6 +145,13 @@ export function calculatePortfolioSummaryTotals(
     if (Number.isFinite(value) && !Number.isFinite(converted)) unavailableConversions.add(`${currency}/${totalsCurrency}`);
     return converted;
   };
+  // The currency's move on the day, where it is known and the holding is in another currency.
+  const fxMove = (currency: string) => {
+    const factor = currency === totalsCurrency ? undefined : fxDayMoves?.get(currency);
+    return factor != null && Number.isFinite(factor) && factor > 0 ? factor : null;
+  };
+  // A value at the previous close, at that close's rate where the move on the day is known.
+  const toBaseBefore = (value: number, currency: string) => toBase(value, currency) / (fxMove(currency) ?? 1);
 
   for (const ticker of tickers) {
     const financials = financialsMap.get(ticker.metadata.ticker);
@@ -222,8 +237,10 @@ export function calculatePortfolioSummaryTotals(
         // A listing that no longer trades does not move: its last session's change is not today's.
         const previousClose = quote?.delisting ? activeQuote.price
           : activeQuote.change != null ? activeQuote.price - activeQuote.change : Number.NaN;
-        totalPrevValue += toBaseQuote(grossPriceUnits * previousClose);
-        signedDailyPnl += toBaseQuote(totalPriceUnits * (activeQuote.price - previousClose));
+        totalPrevValue += toBaseBefore(grossPriceUnits * previousClose, quoteCurrency);
+        signedDailyPnl += fxMove(quoteCurrency) != null
+          ? toBaseQuote(totalPriceUnits * activeQuote.price) - toBaseBefore(totalPriceUnits * previousClose, quoteCurrency)
+          : toBaseQuote(totalPriceUnits * (activeQuote.price - previousClose));
         // The move valued: the latest print's from the daily reference, the regular close's from the session before it.
         if (!quote?.delisting) {
           dayBases.push(quoteChangeBasis(quote, {

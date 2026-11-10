@@ -75,6 +75,7 @@ import { useThrottledCursorSymbol } from "../use-throttled-cursor-symbol";
 import { useCursorNeighborPrefetch } from "../use-cursor-neighbor-prefetch";
 import { getSharedRegistry } from "../../../registry";
 import { usePluginAppActions, usePluginBrokerActions } from "../../../runtime";
+import { useFxDayMoves } from "./fx-day-moves";
 import { isManualPortfolio } from "../../../../portfolio/mutations";
 import {
   cursorAfterRemoval,
@@ -262,6 +263,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     [accountState, cashLine, financialsMap, tickers, totalsCurrency],
   );
   const exchangeRates = useFxRatesMap(trackedCurrencies);
+  // The day's move of a holding in another currency holds that currency's move, as `portfolio show` counts it.
+  const fxDayMoves = useFxDayMoves(isPortfolioTab ? trackedCurrencies : [], totalsCurrency);
   const conversionCurrencies = trackedCurrencies.some((currency) => currency !== totalsCurrency) ? trackedCurrencies : [];
   const fxStatus = summarizeFxRates(conversionCurrencies, exchangeRates, (currency) => getSharedMarketDataCoordinator()?.getFxEntry(currency));
   const fxStatusText = fxStatusLabel(fxStatus);
@@ -309,9 +312,10 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       activeCollectionId,
       valuationBasis,
       futuresTerms.terms,
+      fxDayMoves,
     ),
     [financialsMap],
-    [activeCollectionId, exchangeRates, futuresTerms.terms, isPortfolioTab, tickers, totalsCurrency, valuationBasis],
+    [activeCollectionId, exchangeRates, futuresTerms.terms, fxDayMoves, isPortfolioTab, tickers, totalsCurrency, valuationBasis],
     FOOTER_TOTALS_THROTTLE_MS,
   );
 
@@ -323,6 +327,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     homeMarket,
     baseCurrency: totalsCurrency,
     exchangeRates,
+    fxDayMoves,
     valuationBasis,
     portfolioWeightBase,
     portfolioWeightBasis,
@@ -339,6 +344,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   }), [
     activeCollectionId,
     exchangeRates,
+    fxDayMoves,
     futuresTerms,
     homeMarket,
     isPortfolioTab,
