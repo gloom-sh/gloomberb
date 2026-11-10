@@ -200,6 +200,32 @@ test("a broker's index code is the index, and a cashtag stays the stock it names
   expect(parseListingArg("VIX.X", "NYSE").key).toBe("VIX.X:NYSE");
 });
 
+test("a bare index root no security trades as is its index for every command, saying so; one a security trades as stays it", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  // `history NDX` was a stopped Frankfurt line's bars: nothing quotes NDX, and the service marks ^NDX:NIM for the word.
+  const dataProvider = createTestDataProvider({
+    getQuote: async (symbol) => {
+      if (symbol === "NDX" || symbol === "VIX") throw new Error(`Not a ticker: ${symbol}.`);
+      return createTestQuote({ symbol, name: symbol === "MOVE" ? "Corvex, Inc." : symbol, instrumentType: "EQUITY" });
+    },
+    search: async (query) => query.replace(/^\^/, "") === "NDX"
+      ? [{ providerId: "test", symbol: "^NDX", name: "NASDAQ-100", exchange: "NIM", type: "INDEX", searchAliases: ["NDX"] }]
+      : [],
+  });
+  const deps = { store, dataProvider };
+  expect(await resolveCliListing("NDX", undefined, deps))
+    .toMatchObject({ key: "^NDX:NIM", request: { symbol: "^NDX:NIM", exchange: "NIM" }, readAs: 'Read "NDX" as ^NDX:NIM (NASDAQ-100).' });
+  // No listing marked for the word: the ^ symbol, named by the index it roots.
+  expect(await resolveCliListing("vix", undefined, deps)).toMatchObject({ key: "^VIX", readAs: 'Read "vix" as ^VIX (Cboe Volatility Index).' });
+  // MOVE is Corvex, which `quote MOVE` gives too; a row saved under NDX is that row's.
+  const move = await resolveCliListing("MOVE", undefined, deps);
+  expect([move.key, move.readAs]).toEqual(["MOVE", undefined]);
+  await store.createTicker({ ticker: "NDX", exchange: "", currency: "EUR", name: "Nordex SE", portfolios: [], watchlists: [], positions: [], custom: {}, tags: [] });
+  expect((await resolveCliListing("NDX", undefined, deps)).key).not.toBe("^NDX:NIM");
+});
+
 test("a perpetual is a listing on its venue, typed by PERP's market id or Hyperliquid's dex name", async () => {
   expect(parseListingArg("binance:BZUSDT")).toEqual({ symbol: "BZUSDT", exchange: "BINANCE", key: "BZUSDT:BINANCE" });
   expect(parseListingArg("hyperliquid:xyz:BRENTOIL").key).toBe("XYZ-BRENTOIL:HYPERLIQUID");

@@ -314,6 +314,26 @@ test("historical prices print the prices the source meant, at one decimal count,
   expect(silverText).not.toContain("56.33499908");
 });
 
+test("a monthly bar whose prices contradict each other keeps its close in HP, flagged, as history keeps it", async () => {
+  // ZC=F's September 2000 joins one contract's open to another's range: HP blanked the month whole, history kept its close.
+  const bars = [
+    { date: new Date("2000-08-01T00:00:00Z"), open: 180.25, high: 185, low: 174, close: 182, volume: 386_687 },
+    { date: new Date("2000-09-01T00:00:00Z"), open: 190, high: 185, low: 176, close: 192, volume: 145 },
+    { date: new Date("2000-10-01T00:00:00Z"), open: 190, high: 203.25, low: 190, close: 196 },
+  ];
+  const ctx = createTestHeadlessContext({ marketData: createTestDataProvider({ getPriceHistory: async () => bars }) });
+  const input = args(["ZC=F:CBOT"], { range: "ALL" });
+  const result = await historicalPricesHeadless.load(input, ctx);
+  expect(result.rows[1]).toMatchObject({ open: null, high: null, low: null, close: 192, volume: 145, flag: "high<open,high<close" });
+  const text = renderHeadlessPaneText(historicalPricesHeadless, result, input, "HP ZC=F");
+  expect(text).toMatch(/2000-09\s+[-—]\s+[-—]\s+[-—]\s+192\.00\s+145\s+high<open,high<close/);
+  expect(text).toContain("1 of 3 bars has high below open or close in the source data; it keeps its close; open, high and low are blank");
+  // A daily bar's prices that contradict each other are still left blank whole.
+  const daily = createTestHeadlessContext({ marketData: createTestDataProvider({ getPriceHistory: async () => bars.map((bar, index) => ({
+    ...bar, date: new Date(Date.UTC(2026, 9, 5 + index)) })) }) });
+  expect((await historicalPricesHeadless.load(args(["ZC=F:CBOT"], { range: "1M" }), daily)).rows[1]).toMatchObject({ close: null });
+});
+
 test("historical prices mark a monthly bar whose month runs on and date it by the last session it covers", async () => {
   // Fri 16 Oct 2026 08:14 UTC: New York has not opened; Thursday's session is the latest close.
   setSystemTime(new Date("2026-10-16T08:14:00Z"));
@@ -497,6 +517,31 @@ test("returns mark a monthly bar whose month runs on, as historical prices do", 
     expect(complete.freshness).toMatchObject({ asOf: "2026-09-30" });
     expect(complete.freshness).not.toHaveProperty("periodToDate");
     expect(renderHeadlessPaneText(returnsHeadless, complete, input, "RETURN CSCO")).toContain("Wed 30 Sep 2026");
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("a coin's weekly returns are dated on its own calendar: Sunday closes, and no day after the window", async () => {
+  // Tue 10 Nov 2026 02:00 UTC. The peak and trough read "on 2026-10-02" and "on 2026-11-06", Fridays, with
+  // "not back to the peak by 2026-11-13" and "Totals from Fri 25 Sep close": the values were Sunday closes.
+  setSystemTime(new Date("2026-11-10T02:00:00Z"));
+  try {
+    const weeks = ["2026-09-21", "2026-09-28", "2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26", "2026-11-02", "2026-11-09"];
+    const closes = [84_458.09, 90_000, 88_000, 86_000, 84_000, 80_000, 75_000, 76_000];
+    const ctx = createTestHeadlessContext({
+      resolveInstrument: async () => ({ symbol: "BTC-USD", exchange: "" }),
+      marketData: createTestDataProvider({
+        getDetailedPriceHistoryWithMetadata: async () => ({
+          points: weeks.map((date, index) => ({ date: new Date(`${date}T00:00:00Z`), close: closes[index]! })), resolution: "1wk" as const,
+        }),
+      }),
+    });
+    const input = args(["BTC-USD"], { from: "2026-09-28", to: "2026-11-09", interval: "1wk" });
+    const text = renderHeadlessPaneText(returnsHeadless, await returnsHeadless.load(input, ctx), input, "RETURN BTC-USD");
+    expect(text).toMatch(/peak [\d,.]+ on 2026-10-04, trough [\d,.]+ on 2026-11-08, not back to the peak by 2026-11-09/);
+    expect(text).toContain("Sun 27 Sep");
+    expect(text).not.toMatch(/Fri \d+ (Sep|Oct|Nov)/);
   } finally {
     setSystemTime();
   }

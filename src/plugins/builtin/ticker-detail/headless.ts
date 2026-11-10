@@ -9,7 +9,7 @@ import type { TimeRange } from "../../../time-series/range";
 import { formatNumber } from "../../../utils/format";
 import { formatPriceObservation, penceFigure, quoteFormatOptions } from "../../../market-data/market/format";
 import {
-  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, pricePointWickFlags, priceHistoryIntegrityNotice,
+  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointWickFlags, priceHistoryIntegrityNotice,
   priceHistoryWickNotice,
 } from "../../../utils/price-history-integrity";
 import { indexBarVolume } from "../../../market-data/market/index-level";
@@ -41,8 +41,8 @@ import {
 } from "../shared/headless-market-data";
 import { barHistoryFreshness, REPORTED_DATA } from "../shared/report-freshness";
 import {
-  BAR_INTERVAL_LABELS, barPriceDecimals, cleanBarPrice, cleanFloat32Price, formatBarPrice, historyAllStart, historyAllStartNote, historyMissingPeriodsNote, historyPriceDecimals,
-  quotedPriceDivisor,
+  BAR_INTERVAL_LABELS, barPriceDecimals, cleanBarPrice, cleanFloat32Price, formatBarPrice, historyAllStart, historyAllStartNote, historyBarFlags,
+  historyBarValues, historyMissingPeriodsNote, historyPriceDecimals, priceTableIntegrityNotice, quotedPriceDivisor,
 } from "../../../cli/history-rows";
 import { formatUtcTime } from "../../../utils/utc-time";
 import { closeMoves } from "../../../utils/max-drawdown";
@@ -380,6 +380,8 @@ function historyColumns(
   volumeMissing = false,
   decimals?: number,
   pence?: (close: number) => string | null,
+  /** A bar is flagged (`high<close`, `low<close/2`): the Flag column says how, as `history`'s does. */
+  flagged = false,
 ): HeadlessPaneColumn[] {
   const daily = isDailyOrLongerBar(size);
   const date: HeadlessPaneColumn = {
@@ -392,7 +394,8 @@ function historyColumns(
   const marked: HeadlessPaneColumn[] = partial && !text
     ? [{ key: "partial", header: "Partial", format: (value) => value === true ? "true" : "" }]
     : [];
-  return [date, ...historyPriceColumns(volumeMissing, decimals, text ? pence : undefined), ...marked];
+  const flag: HeadlessPaneColumn[] = flagged ? [{ key: "flag", header: "Flag", format: (value) => typeof value === "string" ? value : "" }] : [];
+  return [date, ...historyPriceColumns(volumeMissing, decimals, text ? pence : undefined), ...flag, ...marked];
 }
 
 export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
@@ -426,20 +429,24 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     // a London line's cleaned in the pence it was priced in.
     const priceDivisor = quotedPriceDivisor(quote);
     const clean = (value: number | null) => value == null ? null : cleanBarPrice(value, priceDivisor);
+    // A monthly bar whose prices contradict each other keeps its close, flagged, as `history` keeps it.
+    const monthly = historyBarSize(points.map((point) => new Date(point.date).getTime()), requested) === "1mo";
     const rows = points.map((point) => {
       const date = new Date(point.date);
-      const values = pricePointValues(point);
+      const values = historyBarValues(point, monthly);
+      const flags = historyBarFlags(point);
       return {
         date: Number.isFinite(date.getTime()) ? date.toISOString() : String(point.date),
         open: clean(values.open), high: clean(values.high), low: clean(values.low), close: clean(values.close),
         volume: indexBarVolume(values.volume, quote?.instrumentType),
+        ...(flags.length ? { flag: flags.join(",") } : {}),
         ...(values.integrity ? { integrity: values.integrity } : {}),
         ...(point.partial ? { partial: true } : {}),
         // A coin's day Gloom Cloud rebuilt from hourly bars has no volume of its own, as `history` marks it.
         ...(point.filled ? { filled: true } : {}),
       };
     }).sort((left, right) => left.date.localeCompare(right.date));
-    const notice = priceHistoryIntegrityNotice(rows.filter((row) => row.integrity).length);
+    const notice = priceTableIntegrityNotice(rows);
     const size = historyBarSize(rows.map((row) => Date.parse(row.date)), requested);
     // A weekly or monthly bar whose period runs on is dated by how far it runs, as `history` dates it.
     const forming = formingHistoryBar(size, rows.at(-1)?.date, venue, now);
@@ -471,16 +478,18 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     // The largest fall from a close to a later one in the bars shown, said under the title; a yield's in bp, with its largest rise.
     // A week's or month's close is dated by its last session, not the 1st its bar is dated by.
     const closes = shown.map((row) => ({ date: isDailyOrLongerBar(size) ? barCloseSession(size, row.date, venue, now) : row.date, close: row.close }));
+    // A window's last week can close after the dates asked for: the fall is measured to its end.
     const { drawdown, runUp, lines: moveLines } = closeMoves(closes, drawdownScaleOf(symbol), { basis: `${historyBarSizeWord(size)} closes`,
-      price: (value) => formatBarPrice(value, decimals), date: (value) => isDailyOrLongerBar(size) ? value.slice(0, 10) : formatUtcTime(value) });
+      price: (value) => formatBarPrice(value, decimals), date: (value) => isDailyOrLongerBar(size) ? value.slice(0, 10) : formatUtcTime(value) }, window?.to);
     // A wick left out of the range is said, though the bar's close still counts.
     const wickNotice = priceHistoryWickNotice(points.filter((point) => pricePointWickFlags(point).length > 0).length);
     const reportNotices = [...moveLines, notice, wickNotice].filter((line): line is string => line != null);
+    const flagged = rows.some((row) => row.flag);
     return {
       rows: shown,
-      columns: historyColumns(size, marked, false, false, decimals),
+      columns: historyColumns(size, marked, false, false, decimals, undefined, flagged),
       textColumns: historyColumns(size, marked, true, volumeMissing > 0, decimals,
-        (close) => penceFigure(Number(close.toFixed(Math.min(20, decimals))), quote, decimals)),
+        (close) => penceFigure(Number(close.toFixed(Math.min(20, decimals))), quote, decimals), flagged),
       freshness,
       ...(notes.length > 0 ? { notes } : {}),
       ...(notice ? { complete: false } : {}),
@@ -548,8 +557,9 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     // The largest fall from a close to a later one in the window, said under the title; a yield's in bp, with its largest rise.
     // A week's or month's close is dated by its last session, not the 1st its bar is dated by ("peak 35.70 on 2026-03-31").
     const closes = unmarked.map((row) => ({ date: intraday ? row.time : barCloseSession(series.resolution, row.time, venue, now), close: row.close }));
+    // A week still forming runs to today, and a window's last week can close after the dates asked for: the fall is measured to their end.
     const { drawdown, runUp, lines: moveLines } = closeMoves(closes, drawdownScaleOf(symbol),
-      { basis: `${BAR_INTERVAL_LABELS[series.resolution]} closes`, price, date: (value) => intraday ? formatUtcTime(value) : value.slice(0, 10) });
+      { basis: `${BAR_INTERVAL_LABELS[series.resolution]} closes`, price, date: (value) => intraday ? formatUtcTime(value) : value.slice(0, 10) }, window?.to);
     const figures: HeadlessPaneColumn[] = [
       { key: "close", header: "Price", align: "right", format: price },
       { key: "intervalChange", header: "Int $", align: "right", format: price },

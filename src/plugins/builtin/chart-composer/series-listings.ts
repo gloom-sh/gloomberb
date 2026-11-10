@@ -109,7 +109,10 @@ export function useSeriesListings(spec: ChartSpec): SeriesListings {
       }
       settle(key, { status: "pending" });
       void readBareListing(symbol, deps, { command: "G", noun: "a quote", retry: null })
-        .then((listing) => settle(key, { status: "read", exchange: listing?.exchange ?? "", name: listing?.name ?? null }))
+        // A symbol no listing carries is left to the chart's own request, which says so.
+        .then((listing) => settle(key, listing && !("notATicker" in listing)
+          ? { status: "read", exchange: listing.exchange, name: listing.name }
+          : { status: "read", exchange: "", name: null }))
         .catch((error: unknown) => {
           if (error instanceof ListingArgError) {
             settle(key, {

@@ -4,8 +4,10 @@ import { headlessReportTables, type LoadedHeadlessPaneModel, renderHeadlessPaneT
 import { deriveHeadlessFreshness, paneStatusLine } from "../../../cli/pane-functions/freshness";
 import { renderReportCsv } from "../../../cli/report-tables";
 import type { HeadlessPaneContext } from "../../../types/headless";
+import { defiHistoryRows } from "./defi";
 import { cryptoBoardHeadless } from "./headless";
 import { buildCryptoRows, CRYPTO_BOARD_FRESHNESS, cryptoRowObservations } from "./model";
+import { supplyHistoryRows } from "./supply";
 import { CRYPTO_FIXTURE_NOW, cryptoFixture, defiTvlFixture, stablecoinSupplyFixture } from "./test-fixture";
 
 const ARGS = { rawArgument: "", argument: null, symbols: [], options: { list: "stablecoin" } };
@@ -22,7 +24,8 @@ test("the stablecoin list states the total, adds each coin's supply, and exports
   const result = await load(async () => stablecoinSupplyFixture());
   const freshness = deriveHeadlessFreshness(cryptoBoardHeadless, result, CRYPTO_FIXTURE_NOW);
   const text = renderHeadlessPaneText(cryptoBoardHeadless, result, ARGS, "CRYP", freshness);
-  expect(text).toContain("Total supply 300.00B · 7D -1.50B (-0.50%) · 30D +1.80B (+0.60%) · as of 2026-09-23");
+  // The day the count starts, which ALL draws from, is said beside the as-of day.
+  expect(text).toContain("Total supply 300.00B · 7D -1.50B (-0.50%) · 30D +1.80B (+0.60%) · as of 2026-09-23 · daily since 2026-09-19");
   expect(text).toMatch(/Supply\s+Supply 7D %\s+Supply 7D\s+Supply 30D %\s+Supply 30D\s+Share/);
   expect(text).toMatch(/USDT .* 180\.00B\s+-0\.33%\s+-600\.00M\s+\+0\.11%\s+\+200\.00M\s+60\.00%/);
 
@@ -62,7 +65,7 @@ test("the DeFi list states the total and its source, ranks protocols or chains, 
   };
 
   const protocols = await defi("protocol");
-  expect(protocols.text).toContain("Total DeFi TVL 92.40B · 7D +2.01B (+2.22%) · 30D -1.06B (-1.13%) · as of 2026-09-23 · DefiLlama, daily since 2026-09-19");
+  expect(protocols.text).toContain("Total DeFi TVL 92.40B · 7D +2.01B (+2.22%) · 30D -1.06B (-1.13%) · as of 2026-09-23 UTC close · DefiLlama, daily since 2026-09-19");
   expect(protocols.text).toMatch(/1\s+Aave\s+Lending\s+17\.88B\s+-0\.40%\s+-580\.00M\s+-3\.14%\s+—\s+—\s+18/);
   expect(protocols.result.notes).toEqual(["Protocols as of 2026-09-22 16:17 UTC, the source's latest; their versions are counted together."]);
   // A server before fees and revenue has no columns for them.
@@ -174,6 +177,12 @@ test("a word after CRYP opens that list as --list does, an unknown one names the
   const limited = await run(null, { limit: 2 });
   expect(limited.rows.map((row) => row.code)).toEqual(coins.rows.slice(0, 2).map((row) => row.code));
   expect((await run("defi", { limit: 1 })).rows).toHaveLength(1);
+  // It caps each table --csv adds too: the other list's first rows, a history's newest days. Before, every day since 2018.
+  const tables = (await run("defi", { limit: 1 })).exportTables!;
+  expect(tables.map((table) => table.rows.length)).toEqual([1, 1]);
+  expect(tables[1]!.rows[0]).toMatchObject({ date: defiHistoryRows(defiTvlFixture()).at(-1)!.date });
+  const supply = (await run("stablecoin", { limit: 2 })).exportTables!;
+  expect(supply[0]!.rows.map((row) => row.date)).toEqual(supplyHistoryRows(stablecoinSupplyFixture()).slice(-2).map((row) => row.date));
 });
 
 test("a supply a day older than the prices beside it is headed with its day", async () => {

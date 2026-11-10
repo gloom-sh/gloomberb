@@ -1,5 +1,8 @@
 import { dateOptionError, isoDateToday, readCalendarDate } from "./calendar-date";
 import { fetchHistoryResult } from "../sources/history-result";
+import { WindowBeforeFirstBarError } from "../sources/history-coverage";
+import { logFailure } from "./log-failure";
+import { isNetworkFailure } from "./network-failure";
 import type { DataProvider, MarketDataRequestContext } from "../types/data-provider";
 import type { PriceHistoryResult } from "../types/price-history";
 import { getPricePointTimestamp } from "./price-history";
@@ -117,7 +120,13 @@ export async function loadPriceWindowHistory(
   const interval = priceWindowInterval(window);
   const start = new Date(priceWindowBarStart(window.from, interval));
   const end = new Date(`${window.to}T23:59:59Z`);
-  const result = await fetchHistoryResult(provider, symbol, exchange, { kind: "detail", start, end, interval }, context)
+  const result = await fetchHistoryResult(provider, symbol, exchange, { kind: "detail", start, end, interval }, context).catch(async (error: unknown) => {
+    // A window wholly before the listing's first bar can come back as a failure: it says no bars come before that day,
+    // which asking again would not change. A request that never reached the service is still that.
+    const first = isNetworkFailure(error) ? null : await firstBarDay(provider, symbol, exchange, context);
+    if (first && first > window.to) throw new WindowBeforeFirstBarError(first, symbol);
+    throw error;
+  })
     ?? await fetchHistoryResult(provider, symbol, exchange, { kind: "resolution", range: "ALL", resolution: interval }, context)
     ?? await fetchHistoryResult(provider, symbol, exchange, { kind: "range", range: "ALL" }, context);
   const points = (result?.points ?? []).filter((point) => {
@@ -125,6 +134,26 @@ export async function loadPriceWindowHistory(
     return Number.isFinite(time) && time >= start.getTime() && time <= end.getTime();
   });
   return { ...(result ?? { resolution: null }), points };
+}
+
+/**
+ * The day a listing's bars start, `YYYY-MM-DD`: its first monthly bar of the
+ * whole history, then the first daily bar of that month (BTC-USD's first
+ * month is September 2014, its first day the 17th). Null when its history
+ * cannot be read.
+ */
+async function firstBarDay(provider: DataProvider, symbol: string, exchange: string, context?: MarketDataRequestContext): Promise<string | null> {
+  const all = await fetchHistoryResult(provider, symbol, exchange, { kind: "range", range: "ALL" }, context)
+    .catch(logFailure("utils.price-window", "Read a listing's first bar failed", null));
+  const first = all?.points.map(getPricePointTimestamp).filter(Number.isFinite).sort((left, right) => left - right)[0];
+  if (first == null) return null;
+  const month = new Date(first);
+  const monthStart = Date.UTC(month.getUTCFullYear(), month.getUTCMonth(), 1);
+  const monthEnd = Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 1) - 1;
+  const days = await fetchHistoryResult(provider, symbol, exchange, { kind: "detail", start: new Date(monthStart), end: new Date(monthEnd), interval: "1d" }, context)
+    .catch(logFailure("utils.price-window", "Read a listing's first daily bar failed", null));
+  const day = days?.points.map(getPricePointTimestamp).filter((time) => Number.isFinite(time) && time >= monthStart).sort((left, right) => left - right)[0];
+  return new Date(day ?? first).toISOString().slice(0, 10);
 }
 
 /** Shared help text for `--from` and `--to`. */

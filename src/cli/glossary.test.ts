@@ -276,6 +276,19 @@ test("CRYP's stablecoin words are found by plain names and explained from what i
   expect(reportGlossary("CRYP", " #  Coin  Name     Price USD  Chg % UTC  7D %  Market cap USD")).toEqual([]);
 });
 
+// `catalog glossary TVL` found only Share, and `fn CRYP tvl --explain` said CRYP shows no glossary terms.
+test("TVL is a term of its own, found by its abbreviation and explained from what CRYP's DeFi list prints", () => {
+  expect(terms(lookupGlossary("TVL").exact)).toEqual(["Total value locked"]);
+  expect(terms(lookupGlossary("total value locked").exact)).toEqual(["Total value locked"]);
+  // What is counted and what is not: deposits counted once, bridged and liquid-staked assets left out.
+  expect(lookupGlossary("TVL").exact[0]!.definition).toMatch(/counts each deposit once.*bridges and liquid staking/);
+  const defi = [
+    "Total DeFi TVL 78.92B · 7D -2.99B (-3.65%) · 30D -11.00B (-12.24%) · as of 2026-11-09 UTC close · DefiLlama, daily since 2018-02-11",
+    "#  Protocol   Category        TVL USD    1D %        7D    7D %     30D    30D %  Chains",
+  ].join("\n");
+  expect(terms(reportGlossary("CRYP", defi))).toEqual(["Total value locked"]);
+});
+
 // `catalog glossary AMC` found nothing, and `fn 13F --explain` said 13F shows no glossary terms.
 test("ERN's timing labels and the 13F report's words are found by the labels they print, and 13F explains its own", () => {
   const exact = (query: string) => terms(lookupGlossary(query).exact);

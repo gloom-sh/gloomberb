@@ -102,18 +102,33 @@ export function supplyHistoryRows(payload: StablecoinSupplyPayload): Array<Recor
   }));
 }
 
-/** `Total supply 306.33B · 7D -1.45B (-0.47%) · 30D +1.75B (+0.57%) · as of 2026-10-18`, as the CLI states it. */
+/**
+ * The first day of the total's history, `YYYY-MM-DD`: where the count starts
+ * (2017-11-28, with a few coins' $110K), which ALL draws from. Null with none.
+ */
+export function supplyHistoryStart(payload: StablecoinSupplyPayload | null | undefined): string | null {
+  const history = payload?.history;
+  const first = history ? history.total.findIndex((value) => value != null) : -1;
+  return first < 0 ? null : new Date(Date.parse(`${history!.start}T00:00:00Z`) + first * DAY_MS).toISOString().slice(0, 10);
+}
+
+/**
+ * `Total supply 306.33B · 7D -1.45B (-0.47%) · 30D +1.75B (+0.57%) · as of 2026-10-18 · daily since 2017-11-28`,
+ * as the CLI states it: the start says where the count, and a chart of ALL, begins.
+ */
 export function supplySummaryLine(payload: StablecoinSupplyPayload): string | null {
   const total = payload.total;
   if (!total) return null;
   const change = (amount: number | null, percent: number | null) => (
     amount == null ? "—" : `${formatCompactAmount(amount, { signed: true })} (${formatCryptoPercent(percent)})`
   );
+  const since = supplyHistoryStart(payload);
   return [
     `Total supply ${formatCompact(total.supply, { fixedDecimals: true })}`,
     `7D ${change(total.change7d, total.change7dPercent)}`,
     `30D ${change(total.change30d, total.change30dPercent)}`,
     ...(payload.asOf ? [`as of ${payload.asOf}`] : []),
+    ...(since ? [`daily since ${since}`] : []),
   ].join(" · ");
 }
 

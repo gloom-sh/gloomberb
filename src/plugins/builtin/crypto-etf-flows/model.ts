@@ -63,9 +63,11 @@ export const flowColor = (value: number | null | undefined, colors: { positive: 
 
 export interface CryptoEtfFlowSummary {
   latest: CryptoEtfFlowDay | null;
-  /** Sums of the published daily totals over the newest days listed. */
+  /** Sums of the published daily totals over the newest complete days: a day still waiting on a fund is not one. */
   week: number | null;
   month: number | null;
+  /** The day those sums end on when a newer day is still pending, which they leave out; null when they end on the newest. */
+  through: string | null;
   /** Every listed day's total: the net flow since the first fund launched. */
   sinceLaunch: number | null;
   firstDate: string | null;
@@ -78,10 +80,13 @@ const sumTotals = (days: readonly CryptoEtfFlowDay[]) => days.some((day) => day.
 /** The figures over the table: the newest day, the last 5 and 20 trading days, and since launch. */
 export function cryptoEtfFlowSummary(payload: CryptoEtfFlowsPayload): CryptoEtfFlowSummary {
   const days = payload.days;
+  // A day a fund has not reported yet is not a complete day's flow: the rolling sums count the complete ones.
+  const complete = days.filter((day) => day.pending.length === 0);
   return {
     latest: days[0] ?? null,
-    week: days.length >= 5 ? sumTotals(days.slice(0, 5)) : null,
-    month: days.length >= 20 ? sumTotals(days.slice(0, 20)) : null,
+    week: complete.length >= 5 ? sumTotals(complete.slice(0, 5)) : null,
+    month: complete.length >= 20 ? sumTotals(complete.slice(0, 20)) : null,
+    through: complete[0] && complete[0] !== days[0] ? complete[0].date : null,
     sinceLaunch: sumTotals(days),
     firstDate: days.at(-1)?.date ?? null,
   };

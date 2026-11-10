@@ -67,6 +67,16 @@ describe("crypto ETF flows figures", () => {
     expect(daysInRange(year, "1M").map((entry) => entry.date)).toEqual(["2026-10-20", "2026-09-21"]);
     expect(daysInRange(year, "ALL")).toHaveLength(3);
   });
+
+  test("the 5 and 20 days are complete days: a day a fund has not reported is left out, and they say the day they end on", () => {
+    // Monday's row waited on IBIT; the header's 5 days counted it.
+    const week = [
+      day("2026-11-09", {}, 12.2, ["IBIT"]), day("2026-11-06", {}, -411.9), day("2026-11-05", {}, -430.2),
+      day("2026-11-04", {}, -100), day("2026-11-03", {}, -200), day("2026-11-02", {}, -150),
+    ];
+    expect(cryptoEtfFlowSummary(payload(week))).toMatchObject({ week: -1292.1, through: "2026-11-06" });
+    expect(cryptoEtfFlowSummary(payload(week.slice(1)))).toMatchObject({ week: -1292.1, through: null });
+  });
 });
 
 test("the report marks a fund the newest day still waits on as pending", async () => {

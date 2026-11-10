@@ -313,7 +313,9 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       if (resolved.tableSection === true) throw new Error("--section needs a section title or number.");
       // A report's title names the function and the symbol, never the listing a bare one was read on,
       // so it gets `quote`'s line for that. Looked up beside the report, so it costs no wait.
-      const choice = parsed.listing ? quotedListingChoiceNotes(parsed.listing, context) : null;
+      // A price function (HP) names the index or future a code a security owns is typed for, as `quote` does (GOLD, MOVE).
+      const choice = parsed.listing ? quotedListingChoiceNotes(parsed.listing, context,
+        resolved.headless?.currencyPairs ? { pricesFor: `fn ${resolved.token}` } : {}) : null;
       // A symbol whose company moved (HFC became DINO) has no data of its own: a report of a pane that shows
       // one ticker, as the app gates those panes, serves none and names the new symbol with the same
       // function, as `history` does. Looked up beside the report. A loader that finds it itself (VCA of

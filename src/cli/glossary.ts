@@ -403,6 +403,15 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
       + "the line above the table gives its as-of date. Supply 7D and Supply 30D are its change over those days, in dollars and in percent; "
       + "supply grows as coins are issued and shrinks as they are redeemed.",
   },
+  // DeFi (CRYP --list defi, fn G CAP:crypto:defi-tvl).
+  {
+    term: "Total value locked", short: "TVL", aliases: ["defi tvl", "value locked", "locked value", "total defi tvl"], functions: ["CRYP"],
+    shown: ["TVL", "TVL USD", "Total DeFi TVL"],
+    definition: "The dollar value of what users have deposited in DeFi protocols' contracts (lending, exchange and yield pools), at the day's prices, "
+      + "as DefiLlama counts it. The total counts each deposit once: a token deposited again in another protocol (a receipt or LP token), "
+      + "assets held by bridges and liquid staking (Lido's staked ether) are left out, so it is less than the protocols listed added up. "
+      + "It moves with deposits and with the prices of the assets deposited. Each day is that UTC day's close, which DefiLlama stamps 00:00 UTC the day after.",
+  },
   {
     term: "Share", aliases: ["supply share", "share of supply", "tvl share"], functions: ["CRYP"],
     definition: "A stablecoin's part of all stablecoin supply, in percent, on the same previous-day series as Supply. "

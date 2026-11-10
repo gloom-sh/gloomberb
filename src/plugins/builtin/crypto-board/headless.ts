@@ -78,10 +78,10 @@ const STABLECOIN_SUPPLY_COLUMNS: HeadlessPaneColumn[] = [
   { key: "supplyShare", header: "Share", align: "right", format: share, stackPriority: 0.4, stackRows: 0 },
 ];
 
-/** Daily supply in USD, oldest first: the total, the charted coins and the rest, for `--csv`. */
-function supplyHistoryTable(payload: StablecoinSupplyPayload): HeadlessExportTable | null {
+/** Daily supply in USD, oldest first: the total, the charted coins and the rest, for `--csv`; the newest `limit` days with one. */
+function supplyHistoryTable(payload: StablecoinSupplyPayload, limit: number | null): HeadlessExportTable | null {
   const layers = stackedSupply(payload, "ALL")?.layers;
-  const rows = supplyHistoryRows(payload);
+  const rows = newestRows(supplyHistoryRows(payload), limit);
   if (!layers || !rows.length) return null;
   return {
     title: "Stablecoin supply",
@@ -183,12 +183,16 @@ function protocolsNote(payload: DefiTvlPayload): string {
   return `Protocols as of ${isoMinute(payload.protocolsAsOf)}, the source's latest; their versions are counted together.`;
 }
 
-/** The other list and the total's daily history, for `--csv`: one file carries the whole tab. */
-function defiExportTables(payload: DefiTvlPayload, list: DefiList): HeadlessExportTable[] {
+/**
+ * The other list and the total's daily history, for `--csv`: one file carries
+ * the whole tab, each table capped by `--limit` as the list is (the history's
+ * newest days).
+ */
+function defiExportTables(payload: DefiTvlPayload, list: DefiList, limit: number | null): HeadlessExportTable[] {
   const other: DefiList = list === "chain" ? "protocol" : "chain";
   const income = defiHasIncome(payload);
-  const otherRows = buildDefiRows(payload, other).map((row) => defiRecord(row, other, income));
-  const history = defiHistoryRows(payload);
+  const otherRows = limitRows(buildDefiRows(payload, other).map((row) => defiRecord(row, other, income)), limit);
+  const history = newestRows(defiHistoryRows(payload), limit);
   return [
     ...(otherRows.length ? [{ title: other === "chain" ? "DeFi TVL by chain" : "DeFi TVL by protocol", unit: "USD", columns: defiColumns(other, income), rows: otherRows }] : []),
     ...(history.length ? [{
@@ -214,7 +218,7 @@ async function loadDefi(list: DefiList, limit: number | null, ctx: Parameters<He
   const income = defiHasIncome(payload);
   const rows = limitRows(buildDefiRows(payload, list).map((row) => defiRecord(row, list, income)), limit);
   const summary = defiSummaryLine(payload);
-  const exportTables = defiExportTables(payload, list);
+  const exportTables = defiExportTables(payload, list, limit);
   return {
     rows,
     columns: defiColumns(list, income),
@@ -264,6 +268,11 @@ function datedSupplyColumns(supplyAsOf: string | null | undefined, pricesAsOf: s
 /** The first `limit` rows, in the list's order; every row without one. */
 function limitRows<T>(rows: T[], limit: number | null): T[] {
   return limit == null ? rows : rows.slice(0, limit);
+}
+
+/** A history's newest `limit` rows, still oldest first; every row without one. */
+function newestRows<T>(rows: T[], limit: number | null): T[] {
+  return limit == null ? rows : rows.slice(-limit);
 }
 
 /** The board's lists, as `--list` and the word after CRYP name them. */
@@ -327,7 +336,7 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
   }, {
     key: "limit",
     shot: REPORT_ROWS,
-    description: "Rows to list, in the list's order: every row unless given.",
+    description: "Rows to list, in the list's order, and of each table --csv adds (a history's newest days): every row unless given.",
     type: "integer",
     minimum: 1,
     maximum: 1000,
@@ -419,7 +428,7 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
     const capNote = data.marketCapBasis === "circulating" ? ["Market cap is price times circulating supply."] : [];
     if (kind !== "stablecoin") return { rows, errors: data.warnings, ...(capNote.length ? { notes: capNote } : {}), metadata };
     const summary = supply ? supplySummaryLine(supply) : null;
-    const history = supply ? supplyHistoryTable(supply) : null;
+    const history = supply ? supplyHistoryTable(supply, limit) : null;
     // A supply outage is a caveat, not a failure: the prices are the report, and they are complete.
     const notes = [
       // A coin with a supply is valued on it, so its row counts one supply.

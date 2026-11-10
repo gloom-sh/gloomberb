@@ -1,6 +1,7 @@
 import type { SeriesDefinition, SeriesPoint } from "../../../series/types";
 import { cachedSeriesNote } from "../shared/series-warning";
 import { loadDefiTvl, loadStablecoinSupply, loadStablecoinSupplyHistory } from "./client";
+import { DEFI_DAY_CONVENTION } from "./defi";
 import { BITCOIN_NETWORK_SERIES } from "./bitcoin-network";
 
 const DAY_MS = 86_400_000;
@@ -51,6 +52,9 @@ const STABLECOIN_SUPPLY_SERIES: readonly SeriesDefinition[] = [
   },
 ];
 
+/** What a chart of the total cites: DefiLlama's measure, each day dated by the UTC day it closes. */
+const DEFI_TVL_ATTRIBUTION = { source: `DefiLlama total DeFi TVL, ${DEFI_DAY_CONVENTION}`, publisher: "DefiLlama" } as const;
+
 /** Total value locked in DeFi, as CRYP's DeFi tab charts it. */
 const DEFI_TVL_SERIES: SeriesDefinition = {
   id: "crypto:defi-tvl",
@@ -60,11 +64,14 @@ const DEFI_TVL_SERIES: SeriesDefinition = {
   group: "Crypto",
   tags: ["defi", "tvl", "total value locked", "on-chain", "protocols", "chains"],
   description: "Total value locked in DeFi protocols across every chain, valued in USD, daily since 2018, as DefiLlama measures it and CRYP's DeFi tab charts it.",
+  publisher: "DefiLlama",
+  url: "https://defillama.com",
   load: async () => {
     const resource = await loadDefiTvl();
     const history = resource.payload.history;
     if (!history) throw new Error("DeFi TVL is not available yet.");
-    return { points: dailyPoints(history.start, history.total), ...cachedSeriesNote(resource) };
+    // Each day is that UTC day's close, which DefiLlama stamps 00:00 UTC the day after: the source line says which.
+    return { points: dailyPoints(history.start, history.total), attribution: DEFI_TVL_ATTRIBUTION, ...cachedSeriesNote(resource) };
   },
 };
 

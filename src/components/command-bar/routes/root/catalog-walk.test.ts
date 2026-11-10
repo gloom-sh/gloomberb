@@ -281,4 +281,15 @@ describe("the catalog's functions in the command bar", () => {
     // Other words that find it open it as it is.
     expect(rootRows("contango", { functions: true }).find((item) => item.shortcutQuery === "CTM")?.name).toBeUndefined();
   });
+
+  test("a phrase that leads or ends with a function's code is the function the catalog ranks first, not that code with the rest as a ticker", () => {
+    // `bitcoin etf` was Fund Facts for BITCOIN and `etf flows bitcoin` for FLOWS BITCOIN; the catalog ranks ETFF.
+    for (const query of ["bitcoin etf", "etf flows bitcoin"]) {
+      const { shown } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, query), query, 5);
+      const first = rootRows(query, { functions: true }).find((item) => item.defaultSelectable !== false);
+      expect({ query, catalog: shown[0]?.shortcut, bar: first?.shortcutQuery }).toEqual({ query, catalog: "ETFF", bar: "ETFF" });
+    }
+    // A ticker is still a ticker, in either order.
+    expect(readQuery("IBIT ETF").intent).toMatchObject({ prefix: "ETF", argText: "IBIT" });
+  });
 });
