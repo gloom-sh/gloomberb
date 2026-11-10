@@ -20,9 +20,11 @@ import { DESKS, type DeskKey } from "../../layout/desks";
 
 /**
  * Card keys, shown on the buttons they press. Letters only act while no field
- * is being typed in (Esc leaves the field first); F10, the old skip key, still
- * works everywhere, and is the key a Skip button shows while a field has the
- * keyboard.
+ * is being typed in (Esc leaves the field first), and Tab from a field reaches
+ * the buttons too. F10, the old skip key, leaves setup wherever it can be left
+ * (a run from Settings, the later steps). On the first run's portfolio step,
+ * holding nothing, it presses Skip instead, the key that button shows while a
+ * field has the keyboard.
  */
 export const SKIP_SETUP_KEY = "s";
 export const KEEP_FREE_KEY = "f";
@@ -30,8 +32,10 @@ export const CONNECT_BROKER_KEY = "b";
 export const BROWSER_SIGN_IN_KEY = "b";
 export const SKIP_DESKS_KEY = "s";
 export const SKIP_PORTFOLIO_KEY = "s";
-/** What presses Skip while a field is being typed in, where its letter is typed. */
+/** What presses the first run's portfolio Skip while a field is being typed in, where its letter is typed. */
 export const SKIP_IN_FIELD_KEY = "F10";
+/** The portfolio step's buttons Tab reaches from its fields, in the order they are drawn. */
+export type PositionsButton = "broker" | "skip" | "continue";
 /** Each step's primary button (Continue, Start exploring) and its Back. */
 export const CONTINUE_KEY = "Enter";
 export const BACK_KEY = "Esc";
@@ -67,7 +71,7 @@ export function useOnboardingKeyboard({
   brokerFieldIdx, setBrokerSelectIdx, brokerChoices, openBrokerGuide, chosenDesks, finishDesks,
   setDeskCursor, deskCursor, setChosenDesks, continueAccount, skipSetup, primaryUpgradeAction,
   setBillingInterval, keybindings, dialogOpen, commandBarOpen, saveProgressInBackground, goBack, coachAside = false,
-  inputCaptured = false,
+  inputCaptured = false, positionsButtons = [], positionsButton = null, setPositionsButton = () => {},
 }: {
   stage: OnboardingStage;
   progress: OnboardingProgress;
@@ -118,6 +122,11 @@ export function useOnboardingKeyboard({
   coachAside?: boolean;
   /** A pane holds the keyboard (SET_INPUT_CAPTURED): the research coach takes none of its keys. */
   inputCaptured?: boolean;
+  /** The portfolio step's buttons that can be pressed now, as drawn: Tab moves from its fields to them and back. */
+  positionsButtons?: readonly PositionsButton[];
+  /** The one Tab put the keyboard on, which Enter presses. */
+  positionsButton?: PositionsButton | null;
+  setPositionsButton?: (button: PositionsButton | null) => void;
 }) {
   const activeSection: OnboardingSectionId = stage === "portfolio" || stage === "desks"
     ? "portfolio"
@@ -144,8 +153,8 @@ export function useOnboardingKeyboard({
 
     const handled = ((): boolean => {
       if (isPlainKey(event, "f10")) {
-        // Holding nothing, F10 presses the portfolio step's Skip: the key it shows while the Ticker field has the keyboard.
-        if (stage === "portfolio" && portfolioSub === "positions" && positionCount === 0 && !isBrokerCommitting) {
+        // The first run, holding nothing: F10 presses the portfolio step's Skip, the key it shows while the Ticker field has the keyboard.
+        if (stage === "portfolio" && portfolioSub === "positions" && positionCount === 0 && !isBrokerCommitting && !progress.rerun) {
           skipPositions();
           return true;
         }
@@ -162,21 +171,46 @@ export function useOnboardingKeyboard({
       }
 
       if (stage === "portfolio" && portfolioSub === "positions") {
+        const lastField = POSITION_FIELDS.length - 1;
         if (editingField) {
           if (enter) {
             // A holding is listed and nothing more is typed: Enter is the Continue button.
             if (positionCount > 0 && positions.onEmptyTicker) continueFromPositions();
             else positions.submitField();
           } else if (tab) {
-            positions.setFieldIdx((index) => (
-              event.shift ? Math.max(0, index - 1) : Math.min(POSITION_FIELDS.length - 1, index + 1)
-            ));
+            // Past the last field Tab reaches the buttons (Skip, Continue), and Shift+Tab before the first: a way
+            // out of the Ticker field in a terminal that sends no F10.
+            const leaving = event.shift ? positions.fieldIdx <= 0 : positions.fieldIdx >= lastField;
+            if (leaving && positionsButtons.length > 0) {
+              setEditingField(false);
+              setPositionsButton(event.shift ? positionsButtons[positionsButtons.length - 1]! : positionsButtons[0]!);
+            } else {
+              positions.setFieldIdx((index) => (event.shift ? Math.max(0, index - 1) : Math.min(lastField, index + 1)));
+            }
           } else if (!chord && name === "escape") {
             setEditingField(false);
           } else {
             return false;
           }
           return true;
+        }
+        // A button Tab reached: Enter presses it, Tab and Shift+Tab move on, and past either end go back into the fields.
+        const button = positionsButton && positionsButtons.includes(positionsButton) ? positionsButton : null;
+        if (button) {
+          setPositionsButton(null);
+          if (enter) {
+            if (button === "skip") skipPositions();
+            else if (button === "broker") openBrokerConnect();
+            else continueFromPositions();
+            return true;
+          }
+          if (tab) {
+            const next = positionsButtons.indexOf(button) + (event.shift ? -1 : 1);
+            if (next >= 0 && next < positionsButtons.length) setPositionsButton(positionsButtons[next]!);
+            else positions.focusField(event.shift ? lastField : 0);
+            return true;
+          }
+          if (!chord && name === "escape") return true;
         }
         if (enter) {
           if (positionCount > 0) continueFromPositions();

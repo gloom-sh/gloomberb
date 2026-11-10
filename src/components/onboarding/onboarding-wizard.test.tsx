@@ -714,6 +714,50 @@ describe("OnboardingWizard", () => {
     expect(completionCount).toBe(0);
   });
 
+  // F10 is a media key on most Mac keyboards: the Ticker field needs a way out that every terminal sends.
+  test("Tab and Shift+Tab from the Ticker field reach Skip, and Enter presses it", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-tab-buttons-"));
+    await tui.render(<WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={createPluginRegistry()} />, { width: 80, height: 30 });
+    await tui.setup().renderOnce();
+    const tab = (shift = false) => emitKeypress({ name: "tab", shift, sequence: shift ? "\u001b[Z" : "\t" });
+
+    // Holding nothing: past the last field Tab reaches Skip, and Continue, which needs a ticker, is passed over.
+    for (let field = 0; field < 4; field += 1) await tab();
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(tui.frame()).toMatch(/Skip\s+s/);
+    await tab();
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(tui.frame()).toMatch(/Skip\s+F10/);
+    // Back in the Ticker field, Shift+Tab reaches Skip at once.
+    await tab(true);
+    await pressEnter();
+    await waitForFrame("What do you trade most?");
+    expect(capturedConfig?.onboardingProgress).toMatchObject({ stage: "desks", positionsImported: 0 });
+  });
+
+  test("holding one, Shift+Tab from the Ticker field reaches Continue", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-tab-continue-"));
+    await tui.render(<WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={createPluginRegistry()} />, { width: 80, height: 30 });
+    await tui.setup().renderOnce();
+    await addManualPosition("AAPL");
+    await emitKeypress({ name: "tab", shift: true, sequence: "\u001b[Z" });
+    // Out of the field, on Continue: Enter is not the field's.
+    expect(await waitForFrame("Enter continues")).not.toMatch(/Skip/);
+    await pressEnter();
+    await waitForFrame("What do you trade most?");
+    expect(capturedConfig?.onboardingProgress).toMatchObject({ stage: "desks", tickerSymbol: "AAPL" });
+  });
+
+  test("from Settings, F10 in the Ticker field leaves setup as before, and Skip shows no key there", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-rerun-f10-"));
+    let completionCount = 0;
+    const config = { ...createDefaultConfig(tempDataDir), onboardingProgress: { version: 1 as const, stage: "portfolio" as const, rerun: true } };
+    await tui.render(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} onComplete={() => { completionCount += 1; }} />, { width: 80, height: 30 });
+    expect(await waitForFrame("What do you hold?")).toMatch(/Skip\s+Continue/);
+    await emitKeypress({ name: "f10" });
+    await waitUntil(() => completionCount === 1, "F10 to leave setup");
+  });
+
   test("remote control reads the terminal card as the setup form, adds and removes a position through it, and sends the step", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-remote-"));
     const registry = createRemoteUiRegistry();
