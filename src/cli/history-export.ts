@@ -21,7 +21,7 @@ export interface HistoryListRow extends HistoryRow {
 type ExportedRow = Record<string, unknown>;
 
 /** A bar's mark as an export writes it: true or false on a bar, nothing on a symbol's row with no bar. */
-function barMark(key: "partial" | "filled" | "unsettled" | "roll" | "thin") {
+function barMark(key: "partial" | "filled" | "unsettled" | "roll" | "thin" | "settleOnly") {
   return (row: ExportedRow) => row.date ? row[key] === true : "";
 }
 
@@ -50,17 +50,22 @@ const HISTORY_EXPORT_COLUMNS: CliResultColumn<ExportedRow>[] = [
   { key: "volumeBasis", header: "Volume basis" },
 ];
 
-/** A continuous future's contract per bar, the bar it rolled at, and a bar that traded far below those around it. */
+/**
+ * A continuous future's contract per bar, the bar it rolled at, a bar that
+ * traded far below those around it, and one that is its contract's
+ * settlement alone (no open, high or low).
+ */
 const CONTRACT_EXPORT_COLUMNS: CliResultColumn<ExportedRow>[] = [
   { key: "contract", header: "Contract" },
   { key: "roll", header: "Roll", value: barMark("roll") },
   { key: "thin", header: "Thin", value: barMark("thin") },
+  { key: "settleOnly", header: "Settle only", value: barMark("settleOnly") },
 ];
 
 /**
  * The columns of an export of these rows: HISTORY_EXPORT_COLUMNS, and when a
- * bar names its contract (a continuous future such as NG=F) Contract, Roll and
- * Thin after them, for every row of the export. A stock's or a coin's file is
+ * bar names its contract (a continuous future such as NG=F) Contract, Roll,
+ * Thin and Settle only after them, for every row of the export. A stock's or a coin's file is
  * as it always was.
  */
 export function historyExportColumns(rows: readonly Pick<HistoryRow, "contract">[]): CliResultColumn<ExportedRow>[] {

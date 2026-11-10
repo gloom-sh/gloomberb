@@ -3,7 +3,13 @@ import { appReducer, createInitialState, resolveCollectionForPane, resolveTicker
 import { cloneLayout, createBlankLayout, createDefaultConfig, createPaneInstance, findPaneInstance } from "../../../types/config";
 import { RECENT_COMMANDS_LIMIT } from "./layout";
 import type { AppSessionSnapshot } from "../session-persistence";
-import { removePane } from "../../../layout/pane-manager";
+import { addPaneFloating, layoutWindowCounts, removePane } from "../../../layout/pane-manager";
+import { normalizeConfigForSave, normalizeLoadedConfig } from "../../../data/config/store/normalize";
+import { describeArrangement } from "../../../layout-marketplace/model";
+import type { AppConfig } from "../../../types/config";
+
+/** A config as the app reads it back from disk: written as JSON, then parsed and normalized. */
+const loadedConfig = (config: AppConfig): AppConfig => normalizeLoadedConfig(JSON.parse(JSON.stringify(config)), config.dataDir).config;
 import { buildBrokerPortfolioId } from "../../../utils/broker-instances";
 import { createTestFinancials } from "../../../test-support/data-provider";
 
@@ -716,6 +722,32 @@ describe("layout history", () => {
 });
 
 describe("saved layouts", () => {
+  test("the Layouts window is never saved into a layout, and LAY and `gloom layout` count the same windows", () => {
+    // LAY, New, "Metals Macro", quit, relaunch, Alt+1: Default reopened with the Layouts window on top,
+    // and `gloom layout` said 7 panes, 3 floating where LAY listed "4 docked · 2 floating".
+    const initial = createInitialState(createDefaultConfig("/tmp/gloomberb-transient-layout-test"));
+    const lay = createPaneInstance("layout-marketplace");
+    const withLay = addPaneFloating(initial.config.layout, lay, 160, 48);
+    let state = appReducer(initial, { type: "UPDATE_LAYOUT", layout: withLay });
+    state = appReducer(state, { type: "FOCUS_PANE", paneId: lay.instanceId });
+    // Open, it is on screen and saved nowhere.
+    expect(state.config.layout.floating.some((entry) => entry.instanceId === lay.instanceId)).toBe(true);
+    expect(state.config.layouts[0]!.layout.instances.some((instance) => instance.paneId === "layout-marketplace")).toBe(false);
+    expect(state.config.layouts[0]!.focusedPaneId).toBeNull();
+    state = appReducer(state, { type: "NEW_LAYOUT", name: "Metals Macro" });
+    // The config written at quit, read back at relaunch: Default reopens as it was before LAY.
+    const relaunched = createInitialState(loadedConfig(normalizeConfigForSave(state.config)));
+    const back = appReducer(relaunched, { type: "SWITCH_LAYOUT", index: 0 });
+    expect(back.config.layout.instances.map((instance) => instance.paneId)).toEqual(initial.config.layout.instances.map((instance) => instance.paneId));
+    // A layout saved with it before this fix is read without it.
+    const stale = { ...state.config, layouts: state.config.layouts.map((entry, index) => index === 0 ? { ...entry, layout: withLay } : entry) };
+    expect(loadedConfig(normalizeConfigForSave(stale)).layouts[0]!.layout.instances.some((instance) => instance.paneId === "layout-marketplace")).toBe(false);
+    // One count for both: the Layouts window is not one of a layout's windows.
+    const counts = layoutWindowCounts(withLay);
+    expect(describeArrangement(withLay)).toBe(`${counts.docked} docked${counts.floating ? ` · ${counts.floating} floating` : ""}`);
+    expect(counts).toEqual(layoutWindowCounts(initial.config.layout));
+  });
+
   test("reorders saved layouts without changing the active workspace", () => {
     const config = createDefaultConfig("/tmp/gloomberb-layout-reorder-test");
     const baseLayout = cloneLayout(config.layout);

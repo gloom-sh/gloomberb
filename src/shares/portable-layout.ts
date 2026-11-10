@@ -5,7 +5,6 @@ import { publicTickerBindingSymbol } from "../tickers/selection";
 import { pinFollowingPane } from "../layout/pane-follow";
 import {
   CURRENT_CONFIG_VERSION,
-  removePaneInstances,
   type DockLayoutNode,
   type LayoutConfig,
   type PaneBinding,
@@ -18,6 +17,7 @@ import type { TickerRecord } from "../types/ticker";
 import { isRecord } from "../utils/guards";
 import { buildDockStack, isDockStack } from "../layout/pane-manager/dock-stack";
 import { getDockedInstanceIds } from "../layout/pane-manager/dock-tree";
+import { withoutTransientPanes } from "../layout/pane-manager/transient";
 
 const MAX_LAYOUT_BYTES = 128 * 1024;
 // Pane runtime state doubles as a cache (news panes keep six figures of bytes of
@@ -696,12 +696,7 @@ export function publishableMarketplaceLayout(
   panes: ReadonlyMap<string, PaneDef>,
   context: PublishableLayoutContext = {},
 ): LayoutMarketplacePayload {
-  return publishableLayout(removePaneInstances(
-    layout,
-    layout.instances
-      .filter((instance) => instance.paneId === "layout-marketplace")
-      .map((instance) => instance.instanceId),
-  ), paneState, panes, context);
+  return publishableLayout(withoutTransientPanes(layout), paneState, panes, context);
 }
 
 export function publishableMarketplacePane(

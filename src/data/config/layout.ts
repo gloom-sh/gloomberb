@@ -20,6 +20,7 @@ import {
   removeUnreachablePaneInstances,
 } from "../../types/config";
 import { compactFloatingZ } from "../../layout/pane-manager/floating";
+import { withoutTransientPanes } from "../../layout/pane-manager/transient";
 import { alignFloatingStacks } from "../../layout/pane-manager/floating-stack";
 import {
   migrateChartPaneSettings,
@@ -319,5 +320,6 @@ export function sanitizeLayout(
     resolveOrphanSymbol: () => null,
     externalSourceIds,
   });
-  return removeUnreachablePaneInstances(normalized);
+  // A layout saved with the Layouts window open over it, before such windows were left out, reopens without it.
+  return withoutTransientPanes(removeUnreachablePaneInstances(normalized));
 }

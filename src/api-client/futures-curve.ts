@@ -43,8 +43,10 @@ export interface FuturesContractTermsPayload {
    * For a continuous symbol or a generic: how it rolls ("1 day before last
    * trade") and the first session it is on the next contract; the date is
    * null under the open interest switch. Absent from older servers.
+   * `mostTraded`: a continuous symbol that follows the most traded month
+   * (GC=F), whatever month it holds today.
    */
-  roll?: { label: string; date: string | null } | null
+  roll?: { label: string; date: string | null; mostTraded?: true } | null
   /**
    * The root's front contract (what its continuous symbol and first generic
    * price) when the symbol prices another one (NGF27, NG2); null on the front.

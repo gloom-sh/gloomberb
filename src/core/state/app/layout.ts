@@ -1,4 +1,4 @@
-import { compactFloatingZ, getDockLeafLayouts, getDockedPaneIds, removePane, showDockTab } from "../../../layout/pane-manager";
+import { compactFloatingZ, getDockLeafLayouts, getDockedPaneIds, removePane, showDockTab, withoutTransientPanes } from "../../../layout/pane-manager";
 import { pinFollowingPane } from "../../../layout/pane-follow";
 import {
   cloneLayout,
@@ -346,17 +346,25 @@ export function cloneSavedLayout(entry: SavedLayout): SavedLayout {
   return clone;
 }
 
+/**
+ * The active layout as its tab saves it, without the transient windows open
+ * over it (the Layouts browser, withoutTransientPanes): creating a layout
+ * from LAY saved the LAY window into the one it left, which then reopened
+ * with it on top.
+ */
 function buildSavedLayoutSnapshot(
   entry: SavedLayout | undefined,
   layout: LayoutConfig,
   paneState: Record<string, PaneRuntimeState>,
   focusedPaneId: string | null,
 ): SavedLayout {
+  const saved = withoutTransientPanes(layout);
+  const kept = saved === layout ? null : new Set(saved.instances.map((instance) => instance.instanceId));
   return {
     ...(entry ?? { name: "Default" }),
-    layout: cloneLayoutOnce(layout),
-    paneState: clonePaneStateMap(paneState),
-    focusedPaneId,
+    layout: cloneLayoutOnce(saved),
+    paneState: clonePaneStateMap(kept ? Object.fromEntries(Object.entries(paneState).filter(([id]) => kept.has(id))) : paneState),
+    focusedPaneId: kept && focusedPaneId && !kept.has(focusedPaneId) ? null : focusedPaneId,
   };
 }
 

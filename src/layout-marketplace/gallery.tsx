@@ -18,6 +18,7 @@ import { getMarketplaceHost } from "../plugins/marketplace/store";
 import { rememberLayoutRequirements } from "../components/layout/missing-pane";
 import type { PluginRegistry } from "../plugins/registry";
 import type { LayoutConfig } from "../types/config";
+import { withoutTransientPanes } from "../layout/pane-manager/transient";
 import { LayoutGalleryDesktop } from "./gallery-desktop";
 import { LayoutGalleryTerminal } from "./gallery-terminal";
 import {
@@ -278,7 +279,7 @@ export function LayoutMarketplaceGallery({
 
   const contentFor = useCallback((entry: GalleryEntry) => {
     // The active tab's live state is the freshest copy of it.
-    if (entry.index === activeIndex) return { layout: currentLayout, paneState: currentPaneState };
+    if (entry.index === activeIndex) return { layout: withoutTransientPanes(currentLayout), paneState: currentPaneState };
     const saved = savedFor(entry);
     return saved
       ? { layout: saved.layout, paneState: (saved.paneState ?? {}) as typeof currentPaneState }

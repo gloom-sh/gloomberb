@@ -77,7 +77,8 @@ import type { FuturesContractTermsPayload } from "../../api-client/futures-curve
 import { currencyCodeLabel } from "../../utils/currency-units";
 import { fxRateDigits, quotedFxPair } from "../../utils/currency-pair";
 import {
-  futuresContractLines, futuresPricePer, futuresRollLines, futuresTickOption, isFuturesInstrument, loadFuturesPriceUnit, loadUsdPerMmbtu, usdPerMmbtuText, type UsdPerMmbtu,
+  futuresContractLines, futuresPricePer, futuresPriceUnit, futuresRollLines, futuresTickOption, isFuturesInstrument, loadFuturesContractTerms, loadUsdPerMmbtu,
+  usdPerMmbtuText, type UsdPerMmbtu,
 } from "../../market-data/futures-contract";
 import {
   chainHasExpiry,
@@ -294,7 +295,7 @@ import {
 import { CBOE_YIELD_INDEX_CLOSE } from "../../plugins/builtin/shared/treasury-cutoffs";
 import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote, undatedListingsNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
-import { providerMissReason } from "../../sources/provider-errors";
+import { notATickerSymbol, providerMissReason } from "../../sources/provider-errors";
 import { isNetworkFailure } from "../../utils/network-failure";
 import { withSavedCopy, type ReportFreshness } from "../pane-functions/freshness";
 import { isNotATickerMessage } from "../not-a-ticker";
@@ -306,7 +307,7 @@ import { readNameEntries, readPhraseArgument } from "../name-entries";
 import { readSymbolList, SymbolListError } from "../symbol-list";
 import { notASymbolError } from "../symbol-cells";
 import { cliPerpetualContract, perpetualContractStats, type PerpetualContractPayload } from "../perpetual-contract";
-import { knownGapMessage, subMinuteDataMessage } from "../known-gaps";
+import { isSubMinuteInterval, knownGapMessage, subMinuteDataMessage } from "../known-gaps";
 import { phraseSearchReport } from "./search";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol, isRoundTheClockCoin } from "../../utils/crypto-pair";
@@ -1527,8 +1528,33 @@ function historyOptionHint(flag: string, args: readonly string[]): string | null
   if (DATE_WINDOW_OPTIONS.has(flag)) {
     return `history takes dates as --from and --to (or --start and --end), each a year or a date (--from 2007 --to 2009), or a --range: ${HISTORY_RANGES.join(", ")}.`;
   }
-  if (BAR_SIZE_OPTIONS.has(flag)) return `history serves each --range in one bar size. ${subMinuteDataMessage(historySymbolArg(args))}`;
+  if (BAR_SIZE_OPTIONS.has(flag)) return historyBarSizeHint(historySymbolArg(args));
   return null;
+}
+
+/** What `history` says to a bar size asked for, as an option or in a symbol's place: it picks one per range, and where finer bars are. */
+function historyBarSizeHint(symbol: string | undefined): string {
+  return `history serves each --range in one bar size. ${subMinuteDataMessage(symbol)}`;
+}
+
+/**
+ * A bar size typed in a symbol's place (`history GC=F 1s`, `30s`, `1m`,
+ * `4h`, `tick`), which no listing is: `history GC=F 1s` printed a year of
+ * daily bars and a row for a ticker 1S. False for any other word.
+ */
+function barSizeTypedAsSymbol(entry: string): boolean {
+  return isSubMinuteInterval(entry) || /^\s*\d+\s*(m|mins?|minutes?|h|hrs?|hours?)\s*$/i.test(entry);
+}
+
+/**
+ * Fails `history` on a bar size typed in a symbol's place, with where finer
+ * bars are; `1m`, which also reads as a month, names that range too.
+ */
+function failHistoryBarSize(entry: string, args: readonly string[], ctx: Parameters<CliCommandDef["execute"]>[1]): never {
+  const symbol = args.find((arg) => arg !== entry && !barSizeTypedAsSymbol(arg) && !rangeTypedAsSymbol(arg));
+  const range = rangeTypedAsSymbol(entry);
+  const what = range ? `reads as a bar size or a range, not a symbol (a range is --range ${range})` : "is a bar size, not a symbol";
+  return ctx.fail(`"${entry}" ${what}.`, historyBarSizeHint(symbol));
 }
 
 /** "Asked from 1990-01-01, data starts 1995-01-03 (first available bar)" when the bars start over a week into the window. */
@@ -1566,6 +1592,8 @@ interface ListingHistory {
   volume: HistoryVolume | null;
   freshness: ReportFreshness | undefined;
   notes: string[];
+  /** A continuous future that follows the most traded month (GC=F), as its contract terms say: its bars are that month's. */
+  mostTraded: boolean;
 }
 
 /** The command a listing that cannot be served is pointed back at: `history`, `history --range 5Y`. */
@@ -1574,7 +1602,7 @@ function historyCommand({ range, window }: HistoryAsk): string {
   return window ? `history --from ${window.from}${isPastPriceWindow(window) ? ` --to ${window.to}` : ""}` : range === "1Y" ? "history" : `history --range ${range}`;
 }
 
-/** How long `history` waits for a future's contract terms to name its unit before using the catalog's. */
+/** How long `history` waits for a future's contract terms (its unit, how it rolls) before using the catalog's unit alone. */
 const HISTORY_PRICE_UNIT_WAIT_MS = 1_500;
 /** How long a yen pair's answer waits for Japan's intervention record, read beside it; the note is left out after. */
 const INTERVENTION_NOTE_WAIT_MS = 3_000;
@@ -1663,8 +1691,11 @@ async function loadListingHistory(
       ? market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, loadRange, context)
       : market.dataProvider.getPriceHistory(symbol, exchange, loadRange, context).then((points): PriceHistoryResult => ({ points, resolution: null }));
   const quoteAnswer = loadListingQuoteAnswer(market.dataProvider, listing);
-  // A future's prices are in its contract's unit (US cents / bushel), as FUT and G spell it; asked beside the bars.
-  const priceUnit = isFuturesInstrument(symbol, null) ? settleWithin(loadFuturesPriceUnit(symbol), HISTORY_PRICE_UNIT_WAIT_MS) : Promise.resolve(null);
+  // A future's contract terms, asked beside the bars: its prices are in its contract's unit (US cents / bushel), as FUT
+  // and G spell it, and a continuous symbol on the most traded month (GC=F) says so, as `quote` does.
+  const futures = isFuturesInstrument(symbol, null);
+  const futuresTerms = futures ? settleWithin(loadFuturesContractTerms(symbol), HISTORY_PRICE_UNIT_WAIT_MS) : Promise.resolve(null);
+  const priceUnit = futures ? futuresTerms.then((terms) => futuresPriceUnit(futuresBoardContract(symbol), terms)) : Promise.resolve(null);
   const quoted = quoteAnswer.then((answer) => answer.quote);
   // USDJPY=X's bars name Japan's interventions they span.
   const interventionPair = fxInterventionPair(symbol, exchange);
@@ -1697,6 +1728,7 @@ async function loadListingHistory(
   // Without a quote currency, the listing metadata research reads (as `ticker` does) may still state it.
   const listed = quote?.currency ? quote : await market.dataProvider.getQuoteMetadata?.(symbol, exchange).catch(logFailure("cli.commands-market", "Read quote metadata for history failed", null));
   const unit = historyUnit(listing.key, listed ?? quote, await priceUnit);
+  const mostTraded = /=F$/i.test(listing.symbol) && (await futuresTerms)?.roll?.mostTraded === true;
   const traded = {
     listing: listing.key, exchange: quote?.listingExchangeName || exchange || undefined, instrumentType: quote?.instrumentType,
   };
@@ -1778,12 +1810,12 @@ async function loadListingHistory(
     historyMissingVolumeNote(data) ?? [],
     historyVenueVolumeNote(data) ?? [],
     // NG=F's rows are November's to the 23rd and December's from the 26th: each roll named, and thin bars said.
-    historyRollNote(listing.symbol, data) ?? [], historyThinNote(data) ?? [],
+    historyRollNote(listing.symbol, data, { mostTraded }) ?? [], historyThinNote(data) ?? [],
     historyBarStatusNote(forming ? served : data, { tradingDay: venueTradingDay(venue, Date.now()) }) ?? [],
     await interventionWindowNote(interventions, interventionPair, data) ?? [],
   ].flat();
   return {
-    listing, identity, unit, data, resolution, interval, intraday, volume, freshness, notes,
+    listing, identity, unit, data, resolution, interval, intraday, volume, freshness, notes, mostTraded,
     decimals: historyPriceDecimals(data, listing.saved?.metadata.assetCategory, priceDivisor),
   };
 }
@@ -1815,13 +1847,14 @@ async function stoppedUsListingHistory(
  * A continuous future's history is the front month's, not the contract its
  * quote names now: NG=F's rows from before the roll are November's under a
  * quote of "Natural Gas Dec 2026". The heading says "Natural Gas front month"
- * once the bars name their contracts.
+ * once the bars name their contracts, and "Gold most traded month" for a
+ * symbol that follows the most traded month (GC=F).
  */
-function frontMonthIdentity(identity: ListingIdentity, symbol: string, rows: readonly HistoryRow[]): ListingIdentity {
+function frontMonthIdentity(identity: ListingIdentity, symbol: string, rows: readonly HistoryRow[], mostTraded: boolean): ListingIdentity {
   if (!/=F$/i.test(symbol) || !rows.some((row) => row.contract)) return identity;
   const board = futuresBoardContract(symbol);
   const name = board?.name ?? identity.name?.replace(/\s+[A-Z][a-z]{2}\s+\d{4}$/, "");
-  return name ? { ...identity, name: `${name} front month` } : identity;
+  return name ? { ...identity, name: `${name} ${mostTraded ? "most traded month" : "front month"}` } : identity;
 }
 
 /** What a listing with no bar for what was asked says, in a warning and in a list's status column. */
@@ -1871,6 +1904,7 @@ const HISTORY_FLAG_TEXT_COLUMN: CliResultColumn = {
     row.unsettled ? cliStyles.muted("unsettled") : "",
     row.roll && typeof row.contract === "string" ? cliStyles.muted(`roll to ${row.contract}`) : "",
     row.thin ? cliStyles.muted("thin") : "",
+    row.settleOnly ? cliStyles.muted("settle only") : "",
     typeof row.status === "string" ? cliStyles.warning(row.status) : "",
   ].filter(Boolean).join(" "),
 };
@@ -1920,6 +1954,11 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   // `history swiss franc` is the franc's pair, not SWISS (a Copenhagen listing) and FRANC.
   const currency = file != null || requestedExchange ? null : currencyNameStop(args, "history");
   if (currency) ctx.fail(currency.message, currency.details);
+  // `history GC=F 1s` asks for bars of a second, which no listing named 1S has: it says where the finest bars are.
+  // Whole arguments only: a quoted name ("3M Company") is one argument, and a name, never a bar size.
+  const words = args.filter((arg, index) => !arg.startsWith("-") && !(index > 0 && args[index - 1]!.startsWith("--") && !args[index - 1]!.includes("=")));
+  const barSize = file == null ? words.find((arg) => !/\s/.test(arg.trim()) && barSizeTypedAsSymbol(arg)) : undefined;
+  if (barSize) failHistoryBarSize(barSize, words, ctx);
   if (wide || file != null || args.includes("-") || uniqueEntries(args).length > 1 || args.some((arg) => /[,;]/.test(arg))) {
     // `history CC=F 1mo` asks for a month of cocoa, not for cocoa and 1MO: it says which option reads it.
     const typedRange = rangeOption == null && !window ? args.find((arg) => rangeTypedAsSymbol(arg)) : undefined;
@@ -1997,7 +2036,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       ...(notes.length > 0 ? { warnings: notes } : {}),
       freshness,
     }, {
-      heading: [listingHeading(frontMonthIdentity(identity, history.listing.symbol, data)), cliStyles.muted(historyFacts(unit, data).join("  ·  ")),
+      heading: [listingHeading(frontMonthIdentity(identity, history.listing.symbol, data, history.mostTraded)), cliStyles.muted(historyFacts(unit, data).join("  ·  ")),
         ...drawdown && moveText ? [cliStyles.muted(maxDrawdownText(drawdown, moveText))] : [],
         ...runUp && moveText ? [cliStyles.muted(maxRunUpText(runUp, moveText))] : []].join("\n"),
       dateKey: "date",
@@ -2251,6 +2290,12 @@ async function runHistoryList(
         return { symbol, error: isCliFailure(error) ? oneLineFailure(message, error.details) : message };
       }
     });
+    // A word typed on the command line that is no ticker (`history GC=F banana`) is a mistake, refused as an unknown option is;
+    // a list read from a file or standard input keeps a row for it, so one bad line does not lose the rest.
+    if (file === undefined && !args.includes("-")) {
+      const typo = refused[0]?.message ?? listed.flatMap((entry) => "error" in entry && notATickerSymbol(entry.error) ? [entry.error] : [])[0];
+      if (typo) ctx.fail(typo, usage);
+    }
     const served = listed.flatMap((entry) => "history" in entry && entry.history.data.length > 0 ? [entry.history] : []);
     // A symbol with no bars, whether its request failed or came back empty, is one row with the reason.
     const rows: HistoryListRow[] = listed.flatMap((entry) => "history" in entry
@@ -4203,7 +4248,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         title: "Several symbols",
         lines: [
           `history AAPL MSFT 000660.KS, or --file with one symbol a line (- reads standard input), writes every symbol's bars in one long table, ${HISTORY_LIST_CONCURRENCY} symbols loading at once. Each row names its symbol, its unit and the as-of of that symbol's bars in symbol_or_series, currency_or_unit and as_of.`,
-          "A symbol with no history is one row with its reason in status, and a warning names it; the command fails only when no symbol has any. --tail 5 keeps each symbol's newest five bars.",
+          "A symbol with no history is one row with its reason in status, and a warning names it; the command fails only when no symbol has any. A word typed on the command line that is no ticker fails the command, and a bar size typed in a symbol's place (1s, 30s, 1m) says where the finest bars are; a list from --file keeps a row for a line that is no ticker. --tail 5 keeps each symbol's newest five bars.",
           "--wide sets the symbols side by side instead: one row per date, one close column per symbol headed with its unit (USDJPY=X close (JPY per USD)), a blank where a symbol has no bar that day. history USDJPY=X USDCHF=X EURCHF=X --csv --wide is a spreadsheet of the three closes; --tail 5 keeps the newest five dates.",
         ],
       }, {

@@ -11,6 +11,7 @@ import { fail, isCliFailure, printCliError } from "../errors";
 import { AssetDataRouter } from "../../sources/provider-router";
 import { captureConsole } from "../../test-support/console";
 import { serializeCliResult } from "../result";
+import { subMinuteDataMessage } from "../known-gaps";
 import { marketDataCliCommands, readHistoryRange } from "./market";
 import type { PriceHistoryResult } from "../../types/price-history";
 
@@ -442,23 +443,22 @@ test("history of several symbols is one long table with the single-symbol header
         },
       }),
     }, { format: "csv" });
-    await history.execute(["AAPL", "000660.KS", "ZZZZQQ", "ENDED", "--start", "2026-10-21", "--end", "2026-10-23"], cli.context);
+    await history.execute(["AAPL", "000660.KS", "ENDED", "--start", "2026-10-21", "--end", "2026-10-23"], cli.context);
     const [{ result, options }] = cli.printed;
     expect(windows).toEqual([["2026-10-21", "2026-10-23"], ["2026-10-21", "2026-10-23"]]);
     const lines = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
-    expect(lines.slice(0, 9)).toEqual([
+    expect(lines.slice(0, 8)).toEqual([
       `${HISTORY_CSV_HEADER},${IDENTITY}`,
       "2026-10-21,344.5,344.5,344.5,344.5,1000,,false,false,false,,,,,,,AAPL,USD,1d,Gloom Cloud,2026-10-23T14:45:00.000Z,2026-10-23T15:00:00.000Z",
       "2026-10-22,348.22,348.22,348.22,348.22,1000,,false,false,false,,,,,,,AAPL,USD,1d,Gloom Cloud,2026-10-23T14:45:00.000Z,2026-10-23T15:00:00.000Z",
       "2026-10-23,349.12,351.73,347.26,347.79,9050207,,true,false,false,,,,,,,AAPL,USD,1d,Gloom Cloud,2026-10-23T14:45:00.000Z,2026-10-23T15:00:00.000Z",
       "2026-10-22,1223000,1223000,1223000,1223000,1000,,false,false,false,,,,,,,000660.KS,KRW,1d,Gloom Cloud,2026-10-23,2026-10-23T15:00:00.000Z",
       "2026-10-23,1277000,1277000,1277000,1277000,1000,,false,false,false,,,,,,,000660.KS,KRW,1d,Gloom Cloud,2026-10-23,2026-10-23T15:00:00.000Z",
-      ",,,,,,,,,,,,,,,Not a ticker: ZZZZQQ.,ZZZZQQ,,,Gloom Cloud,,2026-10-23T15:00:00.000Z",
-      // A window the source has no bar in is a row with its reason too, never left out.
+      // A window the source has no bar in is a row with its reason, never left out.
       ",,,,,,,,,,,,,,,No bars for ENDED from 2026-10-21 to today.,ENDED,,,Gloom Cloud,,2026-10-23T15:00:00.000Z",
       "",
     ]);
-    expect(result.warnings).toEqual(expect.arrayContaining(["Not a ticker: ZZZZQQ.", "No bars for ENDED from 2026-10-21 to today."]));
+    expect(result.warnings).toEqual(expect.arrayContaining(["No bars for ENDED from 2026-10-21 to today."]));
     expect(result.failure).toBeUndefined();
     // One symbol alone writes the same header in the same market state.
     const single = createTestCliContext({
@@ -584,7 +584,9 @@ test("a currency's name is its pair: history swiss franc and history yen name fx
 });
 
 test("history of a list exits 1 only when no symbol is served, with every symbol's reason as a row", async () => {
-  const { result, csv, retrieved } = await runList(["ZZZZQQ", "QQQQZZ"], notATicker);
+  // A list read from standard input keeps a row for a line that is no ticker, so one bad line does not lose the rest.
+  const stdin = spyOn(Bun.stdin, "text").mockResolvedValue("ZZZZQQ\nQQQQZZ\n");
+  const { result, csv, retrieved } = await runList(["-"], notATicker).finally(() => stdin.mockRestore());
   expect(process.exitCode).toBe(1);
   expect(result.failure).toMatchObject({ message: "No history for ZZZZQQ, QQQQZZ." });
   expect(csv).toEqual([
@@ -594,10 +596,31 @@ test("history of a list exits 1 only when no symbol is served, with every symbol
   ]);
   // One served symbol is a result, whatever the others did.
   process.exitCode = 0;
-  const mixed = await runList(["AAPL", "ZZZZQQ"], (symbol) => symbol === "AAPL" ? Promise.resolve(dailyBar(348.22)) : notATicker(symbol));
+  const served = (symbol: string) => symbol === "AAPL" ? Promise.resolve(dailyBar(348.22)) : notATicker(symbol);
+  const mixed = await runList(["AAPL", "ENDED"], (symbol) => symbol === "ENDED" ? Promise.resolve([]) : served(symbol));
   expect(process.exitCode).toBe(0);
   expect(mixed.result.failure).toBeUndefined();
-  expect(mixed.symbols).toEqual(["AAPL", "ZZZZQQ"]);
+  expect(mixed.symbols).toEqual(["AAPL", "ENDED"]);
+});
+
+test("history refuses a word typed beside a symbol that is no ticker, and a bar size in a symbol's place says where the finest bars are", async () => {
+  // `history GC=F banana --range 5D` printed GC=F's hourly bars and a row for BANANA; `history GC=F 1s` a year of daily bars.
+  const bars = (symbol: string) => symbol === "AAPL" ? Promise.resolve(dailyBar(348.22)) : notATicker(symbol);
+  await expect(runList(["AAPL", "BANANA", "--range", "5D"], bars)).rejects.toThrow("Not a ticker: BANANA.");
+  for (const size of ["1s", "30s", "5m", "tick"]) {
+    await expect(runList(["GC=F", size], bars)).rejects.toThrow(`"${size}" is a bar size, not a symbol.`);
+  }
+  // 1m is a month too, and either way no symbol.
+  await expect(runList(["GC=F", "1m"], bars)).rejects.toThrow(`"1m" reads as a bar size or a range, not a symbol (a range is --range 1M).`);
+  // A quoted name is one argument: "3M Company" is the company, not a bar of three minutes.
+  const named = await runList(["3M Company"], () => Promise.resolve(dailyBar(188.99)));
+  expect(named.csv[1]).toStartWith("2026-10-16,188.99,");
+  // The pointer names the symbol: G's 1-minute bars of its session, history's 5-minute bars of 1D.
+  const failed = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-command-fixture"), dataProvider: createTestDataProvider({}) });
+  const details: string[] = [];
+  const context = { ...failed.context, fail: (message: string, detail?: string): never => { details.push(detail ?? ""); throw new Error(message); } };
+  await expect(history.execute(["GC=F", "1s"], context)).rejects.toThrow();
+  expect(details).toEqual([`history serves each --range in one bar size. ${subMinuteDataMessage("GC=F")}`]);
 });
 
 test("history reads a list from --file (a text file, or a CSV's first column) and from standard input with -", async () => {
@@ -884,11 +907,11 @@ test("a continuous future's history is headed as the front month, flags the roll
       "2026-10-28 traded thin: under 5% of the volume of the bars around it",
     ]));
     const [header, ...rows] = csv.split("\n");
-    expect(header).toBe(`${HISTORY_CSV_HEADER.replace(",status", ",Contract,Roll,Thin,status")},${IDENTITY}`);
-    const cells = (date: string) => rows.find((row) => row.startsWith(date))!.split(",").slice(15, 18);
-    expect(cells("2026-10-23")).toEqual(["NGX26", "false", "false"]);
-    expect(cells("2026-10-26")).toEqual(["NGZ26", "true", "false"]);
-    expect(cells("2026-10-28")).toEqual(["NGZ26", "false", "true"]);
+    expect(header).toBe(`${HISTORY_CSV_HEADER.replace(",status", ",Contract,Roll,Thin,Settle only,status")},${IDENTITY}`);
+    const cells = (date: string) => rows.find((row) => row.startsWith(date))!.split(",").slice(15, 19);
+    expect(cells("2026-10-23")).toEqual(["NGX26", "false", "false", "false"]);
+    expect(cells("2026-10-26")).toEqual(["NGZ26", "true", "false", "false"]);
+    expect(cells("2026-10-28")).toEqual(["NGZ26", "false", "true", "false"]);
   } finally {
     setSystemTime();
   }

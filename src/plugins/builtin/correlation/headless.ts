@@ -29,9 +29,9 @@ async function loadListedHistory(ctx: HeadlessPaneContext, key: string, range: T
   const { symbol, exchange } = await resolveHeadlessInstrument(ctx, key);
   const [points, quote] = await Promise.all([
     loadHistory(ctx, key, range),
-    exchange ? null : (async () => ctx.marketData.getQuote(symbol, "", ctx.refresh ? { cacheMode: "refresh" } : undefined))().catch(logFailure("correlation", "Listing exchange quote failed", null)),
+    (async () => ctx.marketData.getQuote(symbol, exchange ?? "", ctx.refresh ? { cacheMode: "refresh" } : undefined))().catch(logFailure("correlation", "Listing quote failed", null)),
   ]);
-  return { exchange: exchange || quote?.listingExchangeName || quote?.exchangeName || "", points };
+  return { exchange: exchange || quote?.listingExchangeName || quote?.exchangeName || "", points, quotedAt: quote?.lastUpdated ?? null };
 }
 
 /** A ticker's daily closes, or a map series' daily values read straight from the Cloud client. */
@@ -123,12 +123,14 @@ export const relationshipHeadless: HeadlessPaneDefinition<"series"> = {
     if (!unavailableSymbols.length && !analysis.returns.length) unavailableSymbols.push(...symbols);
     const correlations = new Map(analysis.correlationPoints.map(({ date, close }) => [date.getTime(), close]));
     const regression = `${symbols[0]} on ${symbols[1]}`;
+    // Every exported row names the pair it is of and its daily bars.
+    const pair = { symbol: `${symbols[0]}/${symbols[1]}`, interval: "1d" };
     return {
       symbols,
       series: [
         // The latest ratio reads as Statistics reads it, to four significant digits (1.123, 0.8904), not every float digit.
-        { id: "ratio", label: `${symbols[0]}/${symbols[1]}`, ...analysis.latestRatio != null ? { textDecimals: significantDecimals(analysis.latestRatio) } : {}, points: analysis.ratioPoints.map(({ date, close }) => ({ date: date.toISOString(), value: close })) },
-        { id: "correlation", label: `Rolling correlation (${correlationWindow})`, textDecimals: 3, points: analysis.returns.slice(correlationWindow - 1).map(({ date }) => ({ date: date.toISOString(), value: correlations.get(date.getTime()) ?? null })) },
+        { id: "ratio", label: `${symbols[0]}/${symbols[1]}`, ...pair, unit: "ratio", ...analysis.latestRatio != null ? { textDecimals: significantDecimals(analysis.latestRatio) } : {}, points: analysis.ratioPoints.map(({ date, close }) => ({ date: date.toISOString(), value: close })) },
+        { id: "correlation", label: `Rolling correlation (${correlationWindow})`, ...pair, unit: "correlation", textDecimals: 3, points: analysis.returns.slice(correlationWindow - 1).map(({ date }) => ({ date: date.toISOString(), value: correlations.get(date.getTime()) ?? null })) },
       ],
       stats: [
         { key: "latestRatio", label: "Latest ratio", value: analysis.latestRatio, formatted: formatSignificant(analysis.latestRatio ?? undefined) },
@@ -142,7 +144,7 @@ export const relationshipHeadless: HeadlessPaneDefinition<"series"> = {
         })),
         { key: "returnCount", label: "Shared returns", value: analysis.stats?.sampleSize ?? analysis.returns.length },
       ],
-      freshness: unfinishedBarFreshness([...histories.values()], analysis.aligned.at(-1)?.dateKey) ?? {},
+      freshness: unfinishedBarFreshness([...histories.values()], analysis.aligned.at(-1)?.dateKey, [...listings.values()].map(({ quotedAt }) => quotedAt)) ?? {},
       unavailableSymbols: [...new Set(unavailableSymbols)],
       errors: [...loaded.errors, ...(analysis.correlationUnavailableReason ? [analysis.correlationUnavailableReason] : [])],
       metadata: {

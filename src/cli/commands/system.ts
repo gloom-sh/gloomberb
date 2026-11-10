@@ -2,6 +2,7 @@ import { join } from "path";
 import { logFailure } from "../../utils/log-failure";
 import { versionCommand } from "./version";
 import { saveConfig } from "../../data/config/store";
+import { layoutWindowCounts } from "../../layout/pane-manager/transient";
 import { builtinPluginGroupMembers } from "../../plugins/ownership";
 import type { AppConfig, TelemetryConfig } from "../../types/config";
 import { canonicalTimeZone } from "../../utils/utc-time";
@@ -649,14 +650,18 @@ export function createSystemCliCommands(): CliCommandDef[] {
     help: { group: CLI_COMMAND_GROUPS.app, usage: ["layout"] },
     execute: async (_args, ctx) => {
       await withConfigData(ctx, async (config) => {
-        const rows = config.config.layouts.map((layout, index) => ({
-          index,
-          active: index === config.config.activeLayoutIndex,
-          name: layout.name,
-          panes: layout.layout.instances.length,
-          floating: layout.layout.floating.length,
-          detached: layout.layout.detached.length,
-        }));
+        const rows = config.config.layouts.map((layout, index) => {
+          // The windows the Layouts browser counts (layoutWindowCounts), so the two agree.
+          const { docked, floating, detached } = layoutWindowCounts(layout.layout);
+          return {
+            index,
+            active: index === config.config.activeLayoutIndex,
+            name: layout.name,
+            panes: docked + floating + detached,
+            floating,
+            detached,
+          };
+        });
         ctx.printResult({ data: rows });
       });
     },

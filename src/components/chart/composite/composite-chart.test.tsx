@@ -608,10 +608,30 @@ describe("CompositeChart", () => {
     await act(async () => { await tui.setup().renderOnce(); await tui.setup().renderOnce(); });
     const legend = tui.frame().split("\n")[0]!;
     expect(legend).toContain("MSFT:XNAS Revenue $90.01B");
-    // Cut at whole words, the value whole after it.
-    expect(legend).toContain("Very long issuer...Margin -49.6%");
+    // Cut at whole words, the value whole after it, and the right axis it reads against.
+    expect(legend).toContain("Very long issuer... -49.6% (right axis)");
     expect(legend).toContain("腾讯控股腾讯控股");
     expect(legend.match(/\$90\.01B/g)).toHaveLength(2);
+  });
+
+  test("a series on the right axis beside left-axis ones says so, and gives the note up to its tooltip only where names cannot shrink", async () => {
+    const legendAt = async (width: number) => {
+      await tui.render(
+        <CompositeChart width={width} height={8} panels={[{ id: "main" }]} series={[
+          { ...series("price", "main", "left", "USD", [4050]), label: "GC=F Gold Dec 2026" },
+          { ...series("silver", "main", "right", "USD", [51.8]), label: "SI=F Silver Dec 2026", unitGroup: "currency" },
+        ]} />,
+        { width: width + 2, height: 10 },
+      );
+      await act(async () => { await tui.setup().renderOnce(); await tui.setup().renderOnce(); });
+      return tui.frame().split("\n")[0]!;
+    };
+    expect(await legendAt(100)).toContain("SI=F Silver Dec 2026 $51.8 (right axis)");
+    // Names lose their last words first; the note goes only where every name is down to its first word.
+    expect(await legendAt(64)).toContain("SI=F...Dec 2026 $51.8 (right axis)");
+    const narrow = await legendAt(40);
+    expect(narrow).not.toContain("(right axis)");
+    expect(narrow).toContain("$51.8");
   });
 
   test("gives legend names the row's room and drops the listing exchange before cutting a name", async () => {
