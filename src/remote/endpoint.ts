@@ -1,4 +1,4 @@
-import { readFileSync, readlinkSync } from "fs";
+import { readFileSync, readlinkSync, rmSync } from "fs";
 import { readFile, rename, rm } from "fs/promises";
 import { dirname, join } from "path";
 import { makePrivateDir, writePrivateFile } from "../utils/private-files";
@@ -67,12 +67,33 @@ async function writeRemoteEndpoint(filePath: string, endpoint: RemoteEndpoint): 
   }
 }
 
+function describesEndpoint(existing: RemoteEndpoint, endpoint: RemoteEndpoint): boolean {
+  return existing.pid === endpoint.pid && existing.token === endpoint.token && existing.port === endpoint.port;
+}
+
 async function removeRemoteEndpointIfOwned(filePath: string, endpoint: RemoteEndpoint): Promise<void> {
   try {
     const existing = JSON.parse(await readFile(filePath, "utf-8")) as RemoteEndpoint;
-    if (existing.pid !== endpoint.pid || existing.token !== endpoint.token || existing.port !== endpoint.port) return;
+    if (!describesEndpoint(existing, endpoint)) return;
     await rm(filePath, { force: true });
   } catch {
     await rm(filePath, { force: true });
+  }
+}
+
+/**
+ * The same removal for a process that is leaving: an "exit" listener cannot
+ * wait for anything, and a quit that ends in `process.exit` never closes the
+ * server. A file another app wrote over this one is left alone.
+ */
+export function removeRemoteEndpointFilesSync(dataDir: string, endpoint: RemoteEndpoint): void {
+  for (const filePath of [remoteEndpointPath(dataDir, endpoint.appKind), remoteEndpointPath(dataDir)]) {
+    try {
+      const existing = JSON.parse(readFileSync(filePath, "utf-8")) as RemoteEndpoint;
+      if (!describesEndpoint(existing, endpoint)) continue;
+    } catch {
+      // Intentional ignore: a file that is gone or unreadable is removed below, as the asynchronous removal does.
+    }
+    rmSync(filePath, { force: true });
   }
 }
