@@ -7,6 +7,7 @@ import {
   noPrintsText,
   parseBondQuery,
   quotedCompanyName,
+  quotedIssuerListing,
   type CorporateBond,
 } from "./client";
 import { bondStackPriority, formatBondChange, formatBondDecimal, sharesOneIssuer, type BondColumnId } from "./model";
@@ -19,7 +20,7 @@ import {
   type HistoryRange,
 } from "./history";
 import { logFailure } from "../../../utils/log-failure";
-import type { StoredBondPayload } from "../../../api-client/bond-trades";
+import { bondIssuerListing, type StoredBondPayload } from "../../../api-client/bond-trades";
 
 const decimal = (digits: number) => (value: unknown) => (
   typeof value === "number" ? formatBondDecimal(value, digits) : "—"
@@ -115,7 +116,7 @@ export const traceBondsHeadless: HeadlessPaneDefinition<"bundle"> = {
     dataRequirements: ["Corporate and agency bond last sales", "Kept bond prints (Gloom Pro)"],
     limitations: [
       "One page of 100 bonds, most recent last sale first",
-      "An issuer name matches the start of the issuer's name; a symbol matches the tape's own symbol root, which can differ from the stock ticker. A ticker with no bonds under either is asked once more by the name its quote gives the company",
+      "An issuer name matches the start of the issuer's name; a symbol matches the tape's own symbol root, which can differ from the stock ticker. A ticker with no bonds under either is asked for the bonds linked to its company, then by the name its quote gives the company",
       "An issuer's bonds that have matured are left out; a CUSIP shows its bond either way",
       "A CUSIP or a ticker looked up here is kept from then on, with the prints the source still publishes for it (about three years); a CUSIP's daily closes start where its prints are kept, and nothing before that is shown",
     ],
@@ -138,9 +139,20 @@ export const traceBondsHeadless: HeadlessPaneDefinition<"bundle"> = {
         const { symbol, exchange } = await resolveHeadlessInstrument(ctx, ticker);
         return quotedCompanyName(ctx.marketData, symbol, exchange);
       },
+      // Its company's bonds as Gloom Cloud links them, before its name is tried.
+      linkedBonds: async (ticker) => {
+        const { symbol, exchange } = await resolveHeadlessInstrument(ctx, ticker);
+        // A bare code (2318) is the listing its quote is of (2318:HKEX).
+        const listing = exchange ? bondIssuerListing(symbol, exchange) : await quotedIssuerListing(ctx.marketData, symbol);
+        if (!listing) return null;
+        const linked = await ctx.apiClient.getCloudIssuerBondIssues(listing, { signal: ctx.signal });
+        return { company: linked.name, cusips: linked.cusips };
+      },
     });
     const { query, bonds, tradeDate, truncated, issuer, failures } = tape;
     const shown = issuer && bonds.length > 0;
+    // Bonds its links name are the ticker's own; bonds found by its company's name are said to be a guess.
+    const issuerText = shown ? issuerFallbackText(query!, issuer) : null;
     const range = (HISTORY_RANGES.some((entry) => entry.value === args.options.range) ? args.options.range : "3M") as HistoryRange;
     const { history, note: historyNote } = await stored;
     ctx.signal.throwIfAborted();
@@ -155,10 +167,13 @@ export const traceBondsHeadless: HeadlessPaneDefinition<"bundle"> = {
       }, ...(history ? [historySection(history, range)] : [])],
       complete: failures.length === 0,
       ...(failures.length > 0 ? { errors: failures } : {}),
-      ...(truncated || kept || historyNote ? {
-        notes: [...(truncated ? [TRUNCATED_TEXT] : []), ...(kept ? [kept] : []), ...(historyNote ? [historyNote] : [])],
+      ...(truncated || kept || historyNote || issuer?.linked ? {
+        notes: [
+          ...(issuerText && issuer?.linked ? [issuerText] : []),
+          ...(truncated ? [TRUNCATED_TEXT] : []), ...(kept ? [kept] : []), ...(historyNote ? [historyNote] : []),
+        ],
       } : {}),
-      ...(shown ? { warnings: [issuerFallbackText(query!, issuer)] } : {}),
+      ...(issuerText && !issuer?.linked ? { warnings: [issuerText] } : {}),
       metadata: {
         tradeDate,
         matched: bonds.length,

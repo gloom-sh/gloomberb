@@ -17,7 +17,7 @@ import type { EarningsEvent } from "../types/data-provider";
 import type { MarketDividendsPayload, MarketHeatmapResult, MarketHeatmapUniverseId, MarketMoversPayload } from "./market-discovery";
 import type { BankFiguresPayload } from "./bank-figures";
 import type { DebtMaturitiesPayload } from "./debt-maturities";
-import type { StoredBondPayload, StoredIssuerBondsPayload } from "./bond-trades";
+import type { IssuerBondIssuesPayload, StoredBondPayload, StoredIssuerBondsPayload } from "./bond-trades";
 import type { RevenueBreakdownPayload, RevenueBreakdownView } from "./revenue-breakdown";
 import type { MnaDealPayload, MnaDealsParams, MnaDealsPayload } from "./mna";
 import {
@@ -1270,6 +1270,14 @@ export class CloudDataApi {
     const query = new URLSearchParams({ symbol, limit: "1", bondsLimit: "1" });
     return this.request<StoredIssuerBondsPayload>(`/cloud/bond-trades/issuer?${query}`, {
       signal: options.signal ?? AbortSignal.timeout(20_000),
+    });
+  }
+
+  /** A company's live bonds by CUSIP, as its listing (`2318:HKEX`) is linked to them; open to anyone. */
+  async getCloudIssuerBondIssues(listing: string, options: { signal?: AbortSignal } = {}): Promise<IssuerBondIssuesPayload> {
+    const query = new URLSearchParams({ symbol: listing });
+    return this.request<IssuerBondIssuesPayload>(`/cloud/bond-trades/issues?${query}`, {
+      signal: options.signal ?? AbortSignal.timeout(10_000),
     });
   }
 

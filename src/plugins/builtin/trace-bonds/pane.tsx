@@ -31,6 +31,7 @@ import {
   noPrintsText,
   parseBondQuery,
   quotedCompanyName,
+  quotedIssuerListing,
   type CorporateBond,
 } from "./client";
 import { BondHistoryDetail } from "./detail";
@@ -72,8 +73,15 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
   const marketData = useAssetData();
   // A stock ticker with no bonds of its own is asked again by its company, as its quote names it.
   const companyName = useCallback((ticker: string) => quotedCompanyName(marketData, ticker), [marketData]);
+  // Before its name, its company's bonds as Gloom Cloud links them.
+  const linkedBonds = useCallback(async (ticker: string) => {
+    const listing = await quotedIssuerListing(marketData, ticker);
+    if (!listing) return null;
+    const linked = await apiClient.getCloudIssuerBondIssues(listing);
+    return { company: linked.name, cusips: linked.cusips };
+  }, [marketData]);
   // An issuer, symbol or CUSIP is asked of the tape itself, not looked for in the latest page.
-  const request = useCallback(() => fetchBondTape(needle, { companyName }), [companyName, needle]);
+  const request = useCallback(() => fetchBondTape(needle, { companyName, linkedBonds }), [companyName, linkedBonds, needle]);
   const { data, loading, error, updatedAt, load, reload } = useAsyncResource(request, { keepPreviousData: true });
   // The last answer stays loaded while the next query runs, and through its failure; its rows never stand in for it.
   const answered = data != null && (data.query?.text ?? "") === (parseBondQuery(needle)?.text ?? "");

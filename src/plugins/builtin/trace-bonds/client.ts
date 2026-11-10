@@ -1,3 +1,4 @@
+import { bondIssuerListing } from "../../../api-client/bond-trades";
 import { shortCompanyName } from "../../../tickers/company-name";
 import type { DataProvider } from "../../../types/data-provider";
 import { signalWithTimeout } from "../../../utils/async-deadline";
@@ -63,7 +64,11 @@ export type BondQuery =
     name: string;
     /** The tape's own symbol root, matched exactly: `WHR` is `WHR4800338` and `WHR.GM`, never `WHRL…`. */
     root: string | null;
-    /** A stock ticker the text can be, whose company is asked for when nothing else matches. */
+    /**
+     * A stock ticker the text can be, whose company is asked for when nothing
+     * else matches: `CMLSQ`, `BRK.B`, a code (`2318`, `601318`) or a listing
+     * (`2318.HK`, `2318:HKEX`).
+     */
     ticker: string | null;
   };
 
@@ -97,9 +102,12 @@ export function parseBondQuery(input: string): BondQuery | null {
     text,
     name: upper,
     root: /^[A-Z]{1,6}$/.test(upper) ? upper : null,
-    ticker: /^[A-Z]{1,6}(?:[.-][A-Z]{1,2})?$/.test(upper) ? upper : null,
+    ticker: STOCK_TICKER.test(upper) ? upper : null,
   };
 }
+
+/** A share class (`BRK.B`), a market's numeric code (`2318`, `601318`), with its suffix (`2318.HK`) or venue (`2318:HKEX`). */
+const STOCK_TICKER = /^(?:[A-Z]{1,6}(?:[.-][A-Z]{1,2})?|\d{1,6}(?:\.[A-Z]{1,2})?|[A-Z0-9]{1,6}(?:[.-][A-Z]{1,2})?:[A-Z]{2,8})$/;
 
 interface CompareFilter {
   fieldName: string;
@@ -108,9 +116,17 @@ interface CompareFilter {
   fieldValue: string | null;
 }
 
+/** A field that must be one of `values`. */
+interface DomainFilter {
+  fieldName: string;
+  values: string[];
+}
+
 /** One request to the tape, and what its rows must be: checked again before they merge, so no filter is taken on trust. */
 export interface BondRequest {
   filters: CompareFilter[];
+  /** The issues asked for by CUSIP, when a company's links name them. */
+  domain?: DomainFilter[];
   accepts: (bond: CorporateBond) => boolean;
 }
 
@@ -175,10 +191,25 @@ export function bondTapeRequests(query: BondQuery | null, today: string): BondRe
   ]);
 }
 
-function bondTapeRequestBody(filters: readonly CompareFilter[], limit = PAGE_SIZE) {
+/**
+ * A company's issues by the CUSIPs its links name, the live ones that
+ * traded: what its ticker asks for, whatever names the tape publishes them
+ * under (PING AN INSURANCE CO LTD for 2318).
+ */
+export function linkedBondsRequest(cusips: readonly string[], today: string): BondRequest {
+  const linked = new Set(cusips.map((cusip) => cusip.toUpperCase()));
+  return {
+    filters: [TRADED],
+    domain: [{ fieldName: "cusip", values: [...linked] }],
+    accepts: (bond) => unmatured(bond, today) && !!bond.cusip && linked.has(bond.cusip.toUpperCase()),
+  };
+}
+
+function bondTapeRequestBody(filters: readonly CompareFilter[], limit = PAGE_SIZE, domain: readonly DomainFilter[] = []) {
   return {
     fields: BOND_FIELDS,
     compareFilters: filters,
+    ...(domain.length > 0 ? { domainFilters: domain } : {}),
     sortFields: ["-lastTradeDate"],
     limit,
     offset: 0,
@@ -356,7 +387,13 @@ async function openSession(signal: AbortSignal): Promise<string> {
  * The dataset ignores `compareFields`; `compareFilters` is what it filters
  * by, on its side, before the limit is applied.
  */
-async function postBondPage(token: string, filters: readonly CompareFilter[], limit: number, signal: AbortSignal): Promise<unknown> {
+async function postBondPage(
+  token: string,
+  filters: readonly CompareFilter[],
+  limit: number,
+  signal: AbortSignal,
+  domain?: readonly DomainFilter[],
+): Promise<unknown> {
   const response = await httpFetch(ENDPOINT, {
     method: "POST",
     headers: {
@@ -365,7 +402,7 @@ async function postBondPage(token: string, filters: readonly CompareFilter[], li
       "X-XSRF-TOKEN": token,
       Cookie: `XSRF-TOKEN=${token}`,
     },
-    body: JSON.stringify(bondTapeRequestBody(filters, limit)),
+    body: JSON.stringify(bondTapeRequestBody(filters, limit, domain)),
     signal,
   });
   const payload = await readPayload(response);
@@ -396,7 +433,7 @@ function errorText(error: unknown): string {
  * does the load fail.
  */
 async function askTape(token: string, requests: readonly BondRequest[], signal: AbortSignal) {
-  const settled = await Promise.allSettled(requests.map((request) => postBondPage(token, request.filters, PAGE_SIZE, signal)));
+  const settled = await Promise.allSettled(requests.map((request) => postBondPage(token, request.filters, PAGE_SIZE, signal, request.domain)));
   const answers: BondAnswer[] = [];
   const failures: string[] = [];
   for (const [index, result] of settled.entries()) {
@@ -436,12 +473,36 @@ export async function quotedCompanyName(
   return name && name.toUpperCase() !== listing.symbol.toUpperCase() ? name : null;
 }
 
+/**
+ * The listing a stock ticker's quote is of (`2318:HKEX`), as Gloom Cloud
+ * writes its companies' listings: what its company's linked bonds are asked
+ * by. Null without a market data source.
+ */
+export async function quotedIssuerListing(
+  marketData: Pick<DataProvider, "getQuote"> | null | undefined,
+  ticker: string,
+): Promise<string | null> {
+  if (!marketData) return null;
+  const listing = parsePublicTickerKey(ticker);
+  const quote = await marketData.getQuote(listing.symbol, listing.exchange ?? "");
+  return bondIssuerListing(quote.symbol || listing.symbol, quote.listingExchangeName || quote.exchangeName || listing.exchange);
+}
+
+/** A company's bonds as Gloom Cloud links them to it, by CUSIP. */
+export interface LinkedBonds {
+  /** The company, as Gloom Cloud names it: `PING AN INSURANCE`. */
+  company: string;
+  cusips: string[];
+}
+
 /** The issuer a stock ticker was read as when no bonds trade under the ticker itself. */
 export interface BondIssuer {
   /** What the ticker's quote calls the company: `Cumulus Media Inc.` */
   company: string;
-  /** The start of the issuer name the tape was asked for: `CUMULUS MEDIA`. */
+  /** The start of the issuer name the tape was asked for: `CUMULUS MEDIA`; the company's name when its links were. */
   name: string;
+  /** Its bonds were asked by the CUSIPs linked to the company, not by name. */
+  linked?: true;
 }
 
 export interface BondTape {
@@ -467,6 +528,8 @@ export interface BondTapeOptions {
   today?: string;
   /** The company a stock ticker's quote names (`quotedCompanyName`), asked once when the ticker finds nothing. */
   companyName?: (ticker: string) => Promise<string | null>;
+  /** The bonds linked to a stock ticker's company, asked before its name when the ticker finds nothing. */
+  linkedBonds?: (ticker: string) => Promise<LinkedBonds | null>;
 }
 
 /**
@@ -483,7 +546,25 @@ export async function fetchBondTape(input: string, options: BondTapeOptions = {}
   const first = await askTape(token, bondTapeRequests(query, today), deadline);
   let answer = first;
   let issuer: BondIssuer | null = null;
-  if (first.bonds.length === 0 && query?.kind === "issuer" && query.ticker && options.companyName) {
+  // A ticker with no bonds under it: its company's, by the CUSIPs linked to it, whatever names the tape gives them.
+  if (first.bonds.length === 0 && query?.kind === "issuer" && query.ticker && options.linkedBonds) {
+    const linked = await options.linkedBonds(query.ticker).catch((error: unknown) => {
+      options.signal?.throwIfAborted();
+      if (error instanceof Error && error.name === "AbortError") throw error;
+      logFailure("trace-bonds.client", "Read linked bonds failed")(error);
+      return null;
+    });
+    options.signal?.throwIfAborted();
+    if (linked && linked.cusips.length > 0) {
+      const found = await askTape(token, [linkedBondsRequest(linked.cusips, today)], deadline)
+        .catch((error: unknown) => ({ bonds: [], truncated: false, failures: [errorText(error)] }));
+      if (found.bonds.length > 0) {
+        issuer = { company: linked.company, name: linked.company, linked: true };
+        answer = { ...found, failures: [...new Set([...first.failures, ...found.failures])] };
+      }
+    }
+  }
+  if (!issuer && first.bonds.length === 0 && query?.kind === "issuer" && query.ticker && options.companyName) {
     const company = await options.companyName(query.ticker).catch((error: unknown) => {
       options.signal?.throwIfAborted();
       if (error instanceof Error && error.name === "AbortError") throw error;
@@ -519,9 +600,15 @@ export function noPrintsText(query: BondQuery, tradeDate: string | null, issuer:
   return tradeDate ? `No prints for ${asked} on ${tradeDate}.` : `No prints for ${asked}.`;
 }
 
-/** What a ticker read as its company says: `Showing bonds for CUMULUS MEDIA (Cumulus Media Inc.): none trade under CMLSQ.` */
+/**
+ * What a ticker read as its company says: `Showing bonds for CUMULUS MEDIA
+ * (Cumulus Media Inc.): none trade under CMLSQ.`, and `Showing the bonds
+ * linked to PING AN INSURANCE.` when its links named them.
+ */
 export function issuerFallbackText(query: BondQuery, issuer: BondIssuer): string {
-  return `Showing bonds for ${issuer.name} (${issuer.company}): none trade under ${query.text}.`;
+  return issuer.linked
+    ? `Showing the bonds linked to ${issuer.company}.`
+    : `Showing bonds for ${issuer.name} (${issuer.company}): none trade under ${query.text}.`;
 }
 
 /** A query that matched more issues than one page holds. */
