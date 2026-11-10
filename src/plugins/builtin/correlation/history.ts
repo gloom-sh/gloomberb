@@ -24,19 +24,30 @@ export async function loadCorrelationHistory(
  * has not finished: a coin's UTC day or a future's session under way
  * (`partial`), or a future's last trade before its settlement (`unsettled`).
  * That day is no close, so the line calls the bars daily bars and says so, as
- * `history` does, instead of dating a close by it. Nothing when `day` (the
- * newest date the analysis uses) is a finished bar in every history.
+ * `history` does, instead of dating a close by it, and dates it by the newest
+ * of `quotedAt` (its listings' quote times) on that day. Nothing when `day`
+ * (the newest date the analysis uses) is a finished bar in every history.
  */
 export function unfinishedBarFreshness(
   histories: ReadonlyArray<ReadonlyArray<Pick<PricePoint, "date" | "partial" | "unsettled">> | undefined>,
   day: string | null | undefined,
-): Pick<HeadlessPaneFreshness, "basis" | "note"> | null {
+  quotedAt: ReadonlyArray<number | null | undefined> = [],
+  now = Date.now(),
+): Pick<HeadlessPaneFreshness, "basis" | "note" | "asOf"> | null {
   if (!day) return null;
   const bars = histories.flatMap((history) => history?.filter((point) => new Date(point.date).toISOString().slice(0, 10) === day) ?? []);
-  if (bars.some((bar) => bar.partial)) return { basis: "daily bars", note: `the newest bar is ${DAY_SO_FAR_TEXT}` };
-  if (bars.some((bar) => bar.unsettled)) return { basis: "daily bars", note: "the newest bar is not yet settled" };
-  return null;
+  const note = bars.some((bar) => bar.partial) ? `the newest bar is ${DAY_SO_FAR_TEXT}`
+    : bars.some((bar) => bar.unsettled) ? "the newest bar is not yet settled" : null;
+  if (!note) return null;
+  // The bar is as of its last update, the newest quote of its day, as G dates one (not its midnight).
+  const dayStart = Date.parse(`${day}T00:00:00Z`);
+  const updates = quotedAt.filter((time): time is number => typeof time === "number" && Number.isFinite(time)
+    && time >= dayStart && time <= now + QUOTE_CLOCK_SKEW_MS);
+  return { basis: "daily bars", note, ...(updates.length ? { asOf: new Date(Math.max(...updates)).toISOString() } : {}) };
 }
+
+/** How far ahead of this clock a quote's time may read and still be taken as now. */
+const QUOTE_CLOCK_SKEW_MS = 10 * 60_000;
 
 /** Below this many shared daily returns a correlation says why it has so few. */
 const CORRELATION_EXPLAINED_RETURNS = 20;

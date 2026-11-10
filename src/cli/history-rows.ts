@@ -102,6 +102,12 @@ export interface HistoryRow {
   /** The bar traded far below the bars around it (THIN_VOLUME_SHARE of their median): a price on few trades. */
   thin?: true;
   /**
+   * A continuous future's bar that is its contract's settlement alone, with no
+   * open, high or low: the source no longer charts the contract (PL=F's
+   * September 2026 bars, October platinum, after it expired).
+   */
+  settleOnly?: true;
+  /**
    * A monthly bar whose prices contradict each other (`flag`) keeps its close;
    * its open, high and low were rebuilt from the month's daily bars
    * (withDailyRebuiltBars), else they are blank.
@@ -444,11 +450,15 @@ export function historyRows(
     // A roll is a change between two known contracts; a bar naming none (before the source knew) is no roll.
     const rolled = !!own && contract != null && own !== contract;
     if (own) contract = own;
+    // A contract's bar with a close and nothing else is its settlement; one still closing on its last trade says unsettled.
+    const settleOnly = !!own && row.close != null && row.open == null && row.high == null && row.low == null
+      && blankingCodes({ flag: flags.join(",") || null }).length === 0 && !row.unsettled && !row.partial;
     const marked = {
       ...row,
       ...(own ? { contract: own } : {}),
       ...(rolled ? { roll: true as const } : {}),
       ...(thin[index] ? { thin: true as const } : {}),
+      ...(settleOnly ? { settleOnly: true as const } : {}),
     };
     return flags.length > 0 ? { ...marked, flag: flags.join(",") } : marked;
   });
@@ -543,15 +553,20 @@ export function historyContractDrawdown(
 /**
  * "NG=F is the front month: rolled from NGX26 to NGZ26 on 2026-10-26 (marked
  * roll)": the rolls a continuous future's bars make, the latest few by date,
- * the rest counted. Null without one.
+ * the rest counted. A symbol that follows the most traded month (`mostTraded`,
+ * GC=F) is "the most traded month", as its quote's roll says. Null without one.
  */
-export function historyRollNote(symbol: string, rows: readonly Pick<HistoryRow, "date" | "contract" | "roll">[]): string | null {
+export function historyRollNote(
+  symbol: string,
+  rows: readonly Pick<HistoryRow, "date" | "contract" | "roll">[],
+  { mostTraded = false }: { mostTraded?: boolean } = {},
+): string | null {
   const rolls = historyRolls(rows);
   if (rolls.length === 0) return null;
   const shown = rolls.slice(-LISTED_GAPS);
   const earlier = rolls.length - shown.length;
   const listed = shown.map((roll) => `from ${roll.from} to ${roll.to} on ${historyDate(roll.date)}`);
-  return `${symbol} is the front month: ${earlier > 0 ? `${earlier} earlier ${earlier === 1 ? "roll" : "rolls"}, then ` : ""}`
+  return `${symbol} is the ${mostTraded ? "most traded" : "front"} month: ${earlier > 0 ? `${earlier} earlier ${earlier === 1 ? "roll" : "rolls"}, then ` : ""}`
     + `rolled ${listItems(listed)} (marked roll); drawdowns are read within one contract`;
 }
 

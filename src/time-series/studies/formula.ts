@@ -296,15 +296,21 @@ function pointsByPeriod(series: ResolvedSeries | undefined, resolution: string |
 
 /**
  * Each leg's price and contract on a date. A formula with a leader prices
- * every other leg in the leader's delivery month: a leg still in the month
- * before (RBX26 beside CLZ26, between crude's roll and the products') takes
- * its next listed month (RB2, which is RBZ26 then). Where that month has no
- * price, the leg stays in its own and the date counts as mixed.
+ * every other leg in the leader's delivery month: a leg in another month
+ * (RBX26 beside CLZ26, between crude's roll and the products') takes its
+ * next listed month (RB2, which is RBZ26 then) when that is the leader's
+ * month: the month its bar names, else the month after the leg's own. HO2
+ * is the month after HO1, which is not the month after HO=F where the two
+ * roll on different days. Where the leader's month has no price, the leg
+ * stays in its own and the date counts as mixed.
  */
 function formulaLegPricer(terms: FormulaTerms, inputs: readonly (ResolvedSeries | undefined)[]) {
   const first = inputs[terms.legs[0]!.index]!;
   const resolution = first.barSize ?? first.historyResolution ?? null;
-  const nextByLeg = new Map([...terms.nextMonths].map(([leg, input]) => [leg, pointsByPeriod(inputs[input], resolution)] as const));
+  const nextByLeg = new Map([...terms.nextMonths].flatMap(([leg, index]) => {
+    const input = inputs[index];
+    return input ? [[leg, { input, points: pointsByPeriod(input, resolution), live: liveBarContract(input) }] as const] : [];
+  }));
   const live = new Map(terms.legs.map((leg) => [leg.index, liveBarContract(inputs[leg.index]!)] as const));
   const leaderPosition = terms.leader == null ? -1 : terms.legs.findIndex((leg) => leg.index === terms.leader);
   return (date: Date, values: readonly number[], points: readonly TimeSeriesPoint[]) => {
@@ -319,10 +325,12 @@ function formulaLegPricer(terms: FormulaTerms, inputs: readonly (ResolvedSeries 
       const period = periodKey(date, resolution);
       terms.legs.forEach((leg, position) => {
         const own = futuresContractMonth(legs[position]!.contract ?? "");
-        if (position === leaderPosition || !own || own.month + 1 !== lead.month) return;
-        const next = nextByLeg.get(leg.index)?.get(period);
+        const nextMonth = nextByLeg.get(leg.index);
+        if (position === leaderPosition || !own || own.month === lead.month || !nextMonth) return;
+        const next = nextMonth.points.get(period);
         const price = next?.value ?? next?.close;
-        if (!isFiniteNumber(price)) return;
+        const named = futuresContractMonth(legContract(nextMonth.input, next, nextMonth.live) ?? "");
+        if (!isFiniteNumber(price) || (named?.month ?? own.month + 1) !== lead.month) return;
         legs[position] = { contract: futuresContractCode(own.root, lead.month), price };
         if (next?.partial) partial = true;
       });

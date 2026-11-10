@@ -658,6 +658,10 @@ test("fn G DFII10 charts the FRED series once no listing answers to it, and a ti
   expect(result.errors).toEqual([]);
   expect(result.series[0]).toMatchObject({ label: "10Y TIPS real yield" });
   expect(result.series[0]!.points.map(({ value }) => value)).toEqual([2.8, 2.79, 2.78]);
+  // Typed as FRED:DFII10 (`fn G "GC=F, SI=F , FRED:DFII10"`) it is labelled by the same short name, not FRED's long title.
+  const typed = await chartHeadless("chart-composer-pane").load(
+    { argument: "FRED:DFII10", rawArgument: "FRED:DFII10", symbols: [], options: {} }, context(notATicker, buildCustomChartPreset("FRED:DFII10"))) as ChartPaneModel;
+  expect(typed.series[0]).toMatchObject({ label: "10Y TIPS real yield" });
 
   const dfii10 = buildCustomChartPreset("DFII10").series[0]!;
   const ir = buildCustomChartPreset("IR").series[0]!;

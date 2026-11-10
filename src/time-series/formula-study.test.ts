@@ -64,6 +64,46 @@ describe("formula studies", () => {
     expect(formulaContractNote(free!)).toBe("legs in different months on 1 day, the latest 2026-01-02.");
   });
 
+  test("a leg takes its next month only where that is the leader's month, across Brent's roll and crude's (BZ/HO, CL/RB/HO)", () => {
+    const contracts = (symbol: string, unit: string, days: Record<number, [string | null, number]>): ResolvedSeries => {
+      const base = future(symbol, unit, Object.fromEntries(Object.entries(days).map(([day, [, value]]) => [day, value])));
+      return { ...base, points: base.points.map((point, index) => {
+        const contract = Object.values(days)[index]![0];
+        return contract ? { ...point, contract } : point;
+      }) };
+    };
+    const months = (series: ResolvedSeries | undefined) => series!.points.map((point) => point.legs?.map((leg) => leg.contract));
+    // Heating oil less Brent, in Brent's month: Brent rolls to January on the 2nd, heating oil to December on the 3rd.
+    const bz = contracts("BZ=F", "USD / barrel", { 1: ["BZZ26", 75], 2: ["BZF27", 76], 3: ["BZF27", 77] });
+    const ho = contracts("HO=F", "USD / gallon", { 1: ["HOX26", 2.4], 2: ["HOX26", 2.5], 3: ["HOZ26", 2.6] });
+    const terms = { weight1: 42, perBarrel1: 1, weight2: -1, divisor: 1, rollsWith: 2, nextMonthOf3: 1 };
+    // HO2 holds December until the 3rd, the month Brent left on the 2nd: on the 2nd no heating oil leg is in Brent's January.
+    const ho2 = { ...contracts("HO2", "USD / gallon", { 1: ["HOZ26", 2.45], 2: ["HOZ26", 2.55], 3: ["HOF27", 2.65] }), id: "HO2" };
+    const [brent] = resolveStudies([ho, bz, ho2], [formula(["HO=F", "BZ=F", "HO2"], terms)]).series;
+    expect(months(brent)).toEqual([["HOZ26", "BZZ26"], ["HOX26", "BZF27"], ["HOF27", "BZF27"]]);
+    expect(brent!.points.map(({ value }) => value)).toEqual([42 * 2.45 - 75, 42 * 2.5 - 76, 42 * 2.65 - 77].map((value) => expect.closeTo(value, 9)));
+    expect(formulaContractNote(brent!)).toBe("legs in different months on 1 day, the latest 2026-01-02.");
+    // Heating oil's alias already on December beside Brent's January, while HO2 is December too: HO2 is no January, so the leg
+    // stays in its month and the day says so, where pricing it as the month after HO=F named December's price HOF27.
+    const early = contracts("HO=F", "USD / gallon", { 1: ["HOX26", 2.4], 2: ["HOZ26", 2.55], 3: ["HOZ26", 2.6] });
+    const [ahead] = resolveStudies([early, bz, ho2], [formula(["HO=F", "BZ=F", "HO2"], terms)]).series;
+    expect(months(ahead)[1]).toEqual(["HOZ26", "BZF27"]);
+    expect(ahead!.points[1]!.value).toBeCloseTo(42 * 2.55 - 76, 9);
+
+    // The 3-2-1 crack, in crude's month: crude rolls to December on the 2nd, the products on the 3rd. HO2's bars name no
+    // contract: its month is the month after heating oil's own.
+    const cl = contracts("CL=F", "USD / barrel", { 1: ["CLX26", 70], 2: ["CLZ26", 71], 3: ["CLZ26", 72] });
+    const rb = contracts("RB=F", "USD / gallon", { 1: ["RBX26", 2], 2: ["RBX26", 2.1], 3: ["RBZ26", 2.25] });
+    const rb2 = { ...contracts("RB2", "USD / gallon", { 1: ["RBZ26", 2.05], 2: ["RBZ26", 2.15], 3: ["RBF27", 2.3] }), id: "RB2" };
+    const unnamed = { ...contracts("HO2", "USD / gallon", { 1: [null, 2.45], 2: [null, 2.55], 3: [null, 2.65] }), id: "HO2" };
+    const [crack] = resolveStudies([rb, ho, cl, rb2, unnamed], [formula(["RB=F", "HO=F", "CL=F", "RB2", "HO2"],
+      { weight1: 84, perBarrel1: 1, weight2: 42, perBarrel2: 1, weight3: -3, divisor: 3, rollsWith: 3, nextMonthOf4: 1, nextMonthOf5: 2 })]).series;
+    expect(months(crack)).toEqual([["RBX26", "HOX26", "CLX26"], ["RBZ26", "HOZ26", "CLZ26"], ["RBZ26", "HOZ26", "CLZ26"]]);
+    expect(crack!.points[1]!.value).toBeCloseTo((84 * 2.15 + 42 * 2.55 - 3 * 71) / 3, 9);
+    expect(formulaRollNote(crack!)).toBe("legs in CL=F's delivery month, rolling with it: to RBZ26, HOZ26, CLZ26 on 2026-01-02 (marked roll)");
+    expect(formulaContractNote(crack!)).toBeNull();
+  });
+
   test("only legs that follow the front month are counted in months, a live bar is its bar before's contract, and a week is matched by week", () => {
     const contracts = (symbol: string, unit: string, days: Record<number, [string | null, number]>): ResolvedSeries => {
       const base = future(symbol, unit, Object.fromEntries(Object.entries(days).map(([day, [, value]]) => [day, value])));

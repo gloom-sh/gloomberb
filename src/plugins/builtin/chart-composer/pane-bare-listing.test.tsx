@@ -7,8 +7,11 @@ import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pa
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { setSharedRegistryForTests } from "../../registry";
+import type { ChartSpec } from "../../../time-series/types";
 import { ChartComposerPane } from "./pane";
-import { buildPriceChartPreset } from "./presets";
+import { buildCustomChartPreset, buildPriceChartPreset } from "./presets";
+import { useSeriesListings } from "./series-listings";
 
 const tui = createOpenTuiTestHarness();
 
@@ -33,7 +36,7 @@ function quoteOf(symbol: string, exchange = "") {
   const key = parsePublicTickerKey(symbol);
   const venue = key.exchange || exchange;
   const quote = QUOTES[venue && key.symbol !== "AAPL" ? `${key.symbol}:${venue}` : key.symbol];
-  if (!quote && key.symbol === "NDX") throw new Error("Not a ticker: NDX.");
+  if (!quote && (key.symbol === "NDX" || key.symbol === "DFII10")) throw new Error(`Not a ticker: ${key.symbol}.`);
   if (!quote) throw new Error(`No quote provider available for ${symbol}`);
   return quote;
 }
@@ -126,4 +129,30 @@ test("the chart pane charts a bare index root as the index quote reads it as, sy
   // NDX is read as ^NDX on NIM: never a line NDX:NIM no venue has, nor the bare code a source may still serve.
   expect(bars.length, frame).toBeGreaterThan(0);
   expect(bars.every((key) => key === "^NDX:NIM")).toBe(true);
+});
+
+/** What the pane loads for a spec: each series' source and label, once no bare one is still being read. */
+function ListingsProbe({ spec }: { spec: ChartSpec }) {
+  const listings = useSeriesListings(spec);
+  return <text>{listings.pending ? "reading" : listings.spec.series.map((entry) => `[${entry.source.kind} ${entry.label ?? "-"}]`).join(" ")}</text>;
+}
+
+test("the chart pane reads a bare FRED id no ticker answers to as that series, and labels FRED series by the catalog's short name, as fn G does", async () => {
+  // `G DFII10` failed "Not a ticker: DFII10." in the pane while `fn G DFII10` charted the TIPS yield; AAPL stays the ticker.
+  const spec = buildCustomChartPreset("DFII10, AAPL, FRED:DFII10");
+  const names: Record<string, string> = { "FRED:DFII10": "10Y TIPS real yield" };
+  setSharedRegistryForTests({ series: { findByExpression: (expression: string) => names[expression] ? { definition: { name: names[expression] } } : undefined, list: () => [] } } as never);
+  try {
+    const dataProvider = provider([]);
+    const state = createInitialState(createTestPaneConfig("/tmp/gloom-chart-bare-listing-unused", { instanceId: "probe", paneId: "chart-composer" }));
+    await tui.render(
+      <TestPaneProvider state={state} paneId="probe" pluginId="charts" runtime={createTestPluginRuntime({ getMarketData: () => dataProvider })}>
+        <ListingsProbe spec={spec} />
+      </TestPaneProvider>,
+      { width: 160, height: 4 },
+    );
+    expect(await frameWith("[economic 10Y TIPS real yield] [security -] [economic 10Y TIPS real yield]")).toBeTruthy();
+  } finally {
+    setSharedRegistryForTests(undefined);
+  }
 });

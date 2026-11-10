@@ -20,6 +20,8 @@ const LEGEND_WHEEL_DELTA_PER_CELL = 8;
 const NO_LINE_CUES: ReadonlyMap<string, SeriesLineCue> = new Map();
 /** The dot every legend entry had before lines carried cues, and still has where they do not. */
 const DOT_MARKER = "● ";
+/** What a series read against the right axis says after its value, where others in its panel read against the left. */
+const RIGHT_AXIS_NOTE = " (right axis)";
 /** Cells the desktop and web marker takes: an 8px dot, or a 16px line sample, plus its margin. */
 const DOM_DOT_CELLS = 2;
 const DOM_LINE_CELLS = 3;
@@ -281,7 +283,9 @@ export function CompositeLegend({
     scene?.cursorValues.map((entry) => [entry.seriesId, entry] as const) ?? [],
   );
   const valueDates = legendValueDates(series, scene, cursorValueById);
-  const buildEntries = (withFiscalPeriods: boolean) => series.map((entry) => {
+  // A series read against the right axis while others in its panel read against the left says which is its scale.
+  const leftPanels = new Set(allSeries.filter((entry) => entry.axis === "left" && !entry.hidden).map((entry) => entry.panelId));
+  const buildEntries = (withFiscalPeriods: boolean, withAxisNotes = true) => series.map((entry) => {
     const cue = lineCues.get(entry.id) ?? null;
     const downColor = !cue && directionDownColor && seriesColorsDirection(entry) ? directionDownColor : null;
     const marker = cue ? `${cellPlot ? cue.glyph : cue.sample} ` : downColor ? DIRECTION_MARKER.text : DOT_MARKER;
@@ -304,6 +308,8 @@ export function CompositeLegend({
     // A statement value names the fiscal period it reports, as FA's columns do.
     const fiscalPeriod = withFiscalPeriods && cursorValue?.value != null ? cursorValue.point?.fiscalPeriod : undefined;
     const valueTail = `${ownDate ? ` ${ownDate}` : ""}${fiscalPeriod ? ` ${fiscalPeriod}` : ""}${changeText}`;
+    const readsRight = entry.points.length > 0 && entry.axis === "right" && leftPanels.has(entry.panelId);
+    const axisNote = readsRight && withAxisNotes ? RIGHT_AXIS_NOTE : "";
     const valueText = entry.points.length === 0
       ? entry.hidden ? "" : "no data"
       : `${formatLegendSeriesValue(
@@ -311,8 +317,8 @@ export function CompositeLegend({
         legendValue,
         formatValue,
         scene,
-      )}${statedUnit}${valueTail}`;
-    const fullText = [entry.label, valueText].filter(Boolean).join(" ");
+      )}${statedUnit}${valueTail}${axisNote}`;
+    const fullText = [entry.label, valueText].filter(Boolean).join(" ") + (readsRight && !axisNote ? RIGHT_AXIS_NOTE : "");
     const details = formatCompositePointDetails(cursorValue?.point);
     const exactTotal = entry.unitGroup.split(":")[0] === "currency-total"
       && cursorValue?.value != null && Number.isFinite(cursorValue.value)
@@ -336,6 +342,7 @@ export function CompositeLegend({
       valueText,
       statedUnit,
       valueTail,
+      axisNote,
       fiscalPeriod,
       toggleable,
       tooltip,
@@ -386,6 +393,11 @@ export function CompositeLegend({
   // them (the tooltip keeps the period's dates) and does not scroll a value away.
   if (entries.some(({ fiscalPeriod }) => fiscalPeriod) && minimumWidthOf(entries) > widthBeforeAccessory) {
     entries = buildEntries(false);
+  }
+  // Which axis a series reads against is what tells two scales apart: names lose words before it goes, and past what
+  // fits with every name at its first word it stays in the tooltip.
+  if (entries.some(({ axisNote }) => axisNote) && minimumWidthOf(entries) > widthBeforeAccessory) {
+    entries = buildEntries(entries.some(({ fiscalPeriod }) => fiscalPeriod), false);
   }
   const minimumSeriesWidth = minimumWidthOf(entries);
   const fitsOneLine = minimumSeriesWidth <= widthBeforeAccessory;
@@ -497,11 +509,13 @@ export function CompositeLegend({
     scrollBox.scrollTo({ x: nextLeft, y: scrollBox.scrollTop });
   };
   const renderEntry = (
-    { entry, cue, downColor, marker, text, statedUnit, valueTail, toggleable, tooltip, carried, width: entryWidth }: LegendEntry,
+    { entry, cue, downColor, marker, text, statedUnit, valueTail, axisNote, toggleable, tooltip, carried, width: entryWidth }: LegendEntry,
     index: number,
   ) => {
     const entryVisible = visibleSeriesIds.has(entry.id);
-    const unitAt = statedUnit ? text.length - statedUnit.length - valueTail.length : -1;
+    // The axis note ends the text whenever it is there, after the value's own tail: both dim, as the unit is.
+    const noteAt = axisNote && text.endsWith(axisNote) ? text.length - axisNote.length : text.length;
+    const unitAt = statedUnit ? noteAt - statedUnit.length - valueTail.length : -1;
     return (
       <Box
         key={entry.id}
@@ -547,6 +561,12 @@ export function CompositeLegend({
               {text.slice(0, unitAt)}
               <Span fg={themeColors.textDim}>{statedUnit}</Span>
               {valueTail}
+              {noteAt < text.length ? <Span fg={themeColors.textDim}>{text.slice(noteAt)}</Span> : null}
+            </>
+          ) : noteAt < text.length ? (
+            <>
+              {text.slice(0, noteAt)}
+              <Span fg={themeColors.textDim}>{text.slice(noteAt)}</Span>
             </>
           ) : text}
         </Text>
