@@ -54,6 +54,8 @@ export const WEB_LINK_ONLY_HOSTS: ReadonlySet<string> = new Set([
   "www.nasdaq.com",
   "www.sec.gov",
   "www.ssga.com",
+  // TSA's checkpoint travel numbers page, the catalog's link for the TSA series; the figures come through Gloom Cloud.
+  "www.tsa.gov",
 
   // Exchanges' announcement and filing pages, and published session calendars.
   "dart.fss.or.kr",
