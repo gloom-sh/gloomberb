@@ -34,9 +34,12 @@ function focusedPaneWindowMoves(paneId: string, closeAll: CloseAll): ResultItem[
 
 export function buildFocusedPaneLayoutItems({
   closeAll,
+  confirmDangerousActions,
   currentLayout,
   duplicatePane,
   focusedPaneId,
+  getState,
+  openInlineConfirm,
   persistLayoutChange,
   pluginRegistry,
   pushRoute,
@@ -188,13 +191,24 @@ export function buildFocusedPaneLayoutItems({
       detail: "Remove the focused pane from the layout",
       category: "Focused Pane",
       kind: "action",
-      // Closes as Ctrl+W and the pane menu's Close Pane do, with no confirm:
-      // one pane comes back with Undo Layout Change. Behind a confirm, an
-      // Enter typed after it went to the pane, which stayed open (9 Nov 2026).
-      action: () => {
-        persistLayoutChange(removePane(currentLayout, focusedPane.instanceId));
-        closeAll({ revertThemePreview: false });
-      },
+      action: confirmDangerousActions
+        ? () => {
+          openInlineConfirm({
+            confirmId: "layout-close-pane",
+            title: "Close Pane",
+            body: [`Close "${focusedPane.title || focusedPaneDef.name || focusedPane.instanceId}"?`],
+            confirmLabel: "Close Pane",
+            cancelLabel: "Back",
+            tone: "danger",
+            onConfirm: () => {
+              persistLayoutChange(removePane(getState().config.layout, focusedPane.instanceId));
+            },
+          });
+        }
+        : () => {
+          persistLayoutChange(removePane(currentLayout, focusedPane.instanceId));
+          closeAll({ revertThemePreview: false });
+        },
     },
   ];
 }
