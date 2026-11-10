@@ -41,6 +41,17 @@ describe("map series in G", () => {
     expect(series.attribution).toEqual({ source: "TSA", publisher: "TSA" });
   });
 
+  test("a day missing from a daily series reads as missing, not as the day before", async () => {
+    const load = { id: "eia930.us48.demand", name: "US Lower 48 electricity demand", unit: "GWh/day", frequency: "daily" };
+    // 1 Nov, the day the clocks went back, is not served; its week's average still is.
+    const request = (async (path: string) => path.startsWith("series?")
+      ? { series: [{ ...load, alias: "US48.LOAD", layer: "power-demand" }] }
+      : { ...load, points: [["2026-10-31", 9_810.5], ["2026-11-02", 10_842.785]], asOf: "2026-11-02", publisher: "EIA" }) as GeoRequest;
+    const series = await resolveGeoChartSeries(request, "US48.LOAD", { range: "1M", resolution: "auto" });
+    expect(series.points.map((point) => [point.date.toISOString().slice(0, 10), point.value]))
+      .toEqual([["2026-10-31", 9_810.5], ["2026-11-01", null], ["2026-11-02", 10_842.785]]);
+  });
+
   test("a date window wins over the range, and ALL asks for everything", () => {
     expect(geoSeriesRange({ range: "1Y", resolution: "auto", dateWindow: { start: "2026-01-02T00:00:00Z", end: "2026-03-04T00:00:00Z" } }))
       .toEqual({ from: "2026-01-02", to: "2026-03-04" });

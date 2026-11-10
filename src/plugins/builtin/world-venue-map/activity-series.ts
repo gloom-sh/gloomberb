@@ -33,7 +33,12 @@ function withDerived(
   return [
     entry(alias, { ...base, name, unit, description }),
     ...(derived.average
-      ? [entry(`${alias}.7D`, { ...base, name: `${name}, 7-day average`, unit, description: `${description} Averaged over the seven days to each day.` })]
+      ? [entry(`${alias}.7D`, {
+          ...base,
+          name: `${name}, 7-day average`,
+          unit,
+          description: `${description} Averaged over the seven days to each day, from at least six of them.`,
+        })]
       : []),
     entry(`${alias}.YOY`, {
       ...base,
@@ -70,7 +75,9 @@ const GRID_SERIES = GRID_AREAS.flatMap(({ alias, label, area }) => withDerived(
   `${label} electricity demand`,
   "GWh/day",
   { group: "Energy", publisher: "EIA", url: EIA_GRID_MONITOR, tags: [...GRID_TAGS, label] },
-  `Electricity demand in ${area} each Eastern-time day, from EIA-930 hourly demand, not adjusted for weather.`,
+  alias === "US48"
+    ? "Electricity demand in the Lower 48 states each Eastern-time day, EIA's own Lower 48 figure from EIA-930, given for the days every balancing authority reported in full, not adjusted for weather."
+    : `Electricity demand in ${area} each Eastern-time day, from EIA-930 hourly demand, not adjusted for weather.`,
   // The Lower 48's average is the headline; a balancing authority's stays a `GEO:` expression away.
   { average: alias === "US48" },
 ));

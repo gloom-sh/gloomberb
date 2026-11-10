@@ -50,6 +50,29 @@ export function geoSeriesRange(viewport: ChartViewportSpec, now = new Date()): {
   return { from: isoDate(subtractTimeRange(now, viewport.range)) };
 }
 
+const DAY_MS = 86_400_000;
+
+/**
+ * A daily series' points with each day it skips between two it has as an
+ * explicit gap (no value), so the chart breaks its line there and its
+ * legend reads that day as missing instead of carrying the day before:
+ * a day the publisher has not completed, such as the day the clocks go back.
+ */
+export function withMissingDays(points: readonly TimeSeriesPoint[]): TimeSeriesPoint[] {
+  const out: TimeSeriesPoint[] = [];
+  for (const point of points) {
+    const previous = out.at(-1);
+    if (previous) {
+      for (let time = previous.date.getTime() + DAY_MS; time < point.date.getTime(); time += DAY_MS) {
+        const date = new Date(time);
+        out.push({ date, observedAt: date, value: null });
+      }
+    }
+    out.push(point);
+  }
+  return out;
+}
+
 /** The day of a publication time (ISO), or null when there is none. */
 function publishedDay(value: string | undefined): string | null {
   const time = value ? Date.parse(value) : Number.NaN;
@@ -77,10 +100,11 @@ export async function resolveGeoChartSeries(
     }
     throw new Error("Map series unavailable.", { cause: error });
   });
-  const points: TimeSeriesPoint[] = (payload.points ?? []).flatMap(([day, value]) => {
+  const observed: TimeSeriesPoint[] = (payload.points ?? []).flatMap(([day, value]) => {
     const date = new Date(`${day}T00:00:00Z`);
     return Number.isFinite(date.getTime()) && Number.isFinite(value) ? [{ date, observedAt: date, value }] : [];
   });
+  const points = payload.frequency === "daily" ? withMissingDays(observed) : observed;
   // The newest day's publication, when the server knows it: the chart reads `Mon 9 Nov 2026, released Tue 10 Nov`.
   const releasedOn = publishedDay(payload.publishedAt);
   const newest = points.at(-1);
