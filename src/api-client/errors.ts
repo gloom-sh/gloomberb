@@ -24,6 +24,8 @@ export class ApiRequestError extends Error {
 
 /** What a pane screenshot's local proxy answers (403) to a request the capture does not send. */
 export const SHOT_REQUEST_REFUSED = "The pane screenshot does not send this request.";
+/** What a pane draws in place of what that refusal kept from it (TheBuildout's plan). */
+export const SHOT_UNAVAILABLE = "Not available in screenshots.";
 
 /** Whether `error` is the capture's own refusal of a request, not an answer of the service. */
 export function isShotRequestRefused(error: unknown): boolean {

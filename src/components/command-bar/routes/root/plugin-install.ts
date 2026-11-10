@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { PluginRegistry } from "../../../../plugins/registry";
-import { findAbsorbedPlugin } from "../../../../plugins/absorbed";
-import { isOfficialPluginRepo } from "../../../../plugins/auto-update";
 import { getCurrentPluginTarget, runsExternalPlugins } from "../../../../plugins/current-target";
 import { activateInstall } from "../../../../plugins/marketplace/activation";
 import { loadRegistry, registryPluginUrl } from "../../../../plugins/marketplace/feed";
+import { findOfferedShortcut, isRegistryPluginInstalled } from "../../../../plugins/marketplace/install-offer";
 import {
   installConsent,
   registryPin,
@@ -34,27 +33,7 @@ export interface PluginInstallOffer {
   argText: string;
 }
 
-/**
- * Only plugins Gloom publishes. A typed word must never lead to installing
- * someone else's code, so the repository owner decides, not the feed's tier.
- * A plugin that is built in now (absorbed.ts) is never offered, whatever the
- * feed says: its code opens the built-in, and the installer refuses it.
- */
-function isOfferable(plugin: RegistryPlugin): boolean {
-  return plugin.tier === "official"
-    && plugin.bundled !== true
-    && isOfficialPluginRepo(plugin.repo)
-    && !findAbsorbedPlugin({ id: plugin.id });
-}
-
-/** The feed is read defensively: an entry can come from any registry version. */
-function declaredShortcuts(plugin: RegistryPlugin): RegistryPluginShortcut[] {
-  const shortcuts = plugin.contributes?.shortcuts;
-  if (!Array.isArray(shortcuts)) return [];
-  return shortcuts.filter((shortcut): shortcut is RegistryPluginShortcut => (
-    !!shortcut && typeof shortcut.code === "string" && typeof shortcut.name === "string"
-  ));
-}
+export { isRegistryPluginInstalled };
 
 /**
  * Matches the code alone or as the first word, with a ticker or query after
@@ -76,17 +55,11 @@ export function matchPluginInstallOffer({
   const trimmed = query.trim();
   const firstWord = trimmed.split(/\s+/, 1)[0] ?? "";
   const code = firstWord.toUpperCase();
-  if (!code) return null;
-
-  for (const plugin of registry) {
-    if (!isOfferable(plugin)) continue;
-    const shortcut = declaredShortcuts(plugin).find((entry) => entry.code.trim().toUpperCase() === code);
-    if (!shortcut) continue;
-    // Asked only once a code matched: both walk everything the app has loaded.
-    if (isClaimed(code) || isInstalled(plugin)) return null;
-    return { plugin, shortcut, argText: trimmed.slice(firstWord.length).trim() };
-  }
-  return null;
+  const found = findOfferedShortcut(registry, code);
+  if (!found) return null;
+  // Asked only once a code matched: both walk everything the app has loaded.
+  if (isClaimed(code) || isInstalled(found.plugin)) return null;
+  return { ...found, argText: trimmed.slice(firstWord.length).trim() };
 }
 
 /**
@@ -109,18 +82,6 @@ export function collectClaimedShortcutCodes(
     if (shortcut) codes.add(shortcut);
   }
   return codes;
-}
-
-/** Installed means loaded, listed under its id, or checked out under its repository's folder. */
-export function isRegistryPluginInstalled(
-  plugin: RegistryPlugin,
-  installed: ReadonlyArray<{ id: string; directory?: string }>,
-): boolean {
-  const directory = plugin.repo?.split("/")[1]?.replace(/\.git$/, "").toLowerCase();
-  return installed.some((entry) => (
-    entry.id === plugin.id
-    || (!!directory && entry.directory?.toLowerCase() === directory)
-  ));
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { recordResearchActivity, type ResearchActivity } from "../../api-client/research-activity";
 import type { AppBrokerImportRuntime } from "../../app/runtime/broker-import";
 import { type AppConfig, findPaneInstance, type OnboardingStage } from "../../types/config";
@@ -50,8 +50,10 @@ import {
   BROWSER_SIGN_IN_KEY,
   SKIP_DESKS_KEY,
   SKIP_PORTFOLIO_KEY,
+  SKIP_IN_FIELD_KEY,
   CONTINUE_KEY,
   BACK_KEY,
+  type PositionsButton,
 } from "./onboarding-keyboard";
 import { useOnboardingBrokerFields, useOnboardingBrokerForm } from "./use-onboarding-broker-form";
 import { useOnboardingProgress, useOnboardingWorkspace, useOnboardingCompletion } from "./use-onboarding-progress";
@@ -207,6 +209,21 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     brokerSyncError, rendererHost,
   });
 
+  /** The portfolio step's button Tab put the keyboard on, from its fields; none once a field is typed in again. */
+  const [positionsButton, setPositionsButton] = useState<PositionsButton | null>(null);
+  useEffect(() => {
+    if (editingField || stage !== "portfolio" || portfolioSub !== "positions") setPositionsButton(null);
+  }, [editingField, portfolioSub, stage]);
+  /** Its buttons that can be pressed now, as they are drawn. */
+  const positionsButtons = useMemo((): PositionsButton[] => {
+    if (positions.submitting) return [];
+    return [
+      ...(brokerOptions.length > 0 && positionCount > 0 ? ["broker" as const] : []),
+      ...(positionCount === 0 ? ["skip" as const] : []),
+      ...(positionCount > 0 || positions.hasDraft ? ["continue" as const] : []),
+    ];
+  }, [brokerOptions.length, positionCount, positions.hasDraft, positions.submitting]);
+
   useEffect(() => {
     if (!editingField) return;
     const timer = setTimeout(() => inputRef.current?.focus?.(), 10);
@@ -321,7 +338,7 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     brokerFieldIdx, setBrokerSelectIdx, brokerChoices, openBrokerGuide, chosenDesks, finishDesks,
     setDeskCursor, deskCursor, setChosenDesks, continueAccount, skipSetup, primaryUpgradeAction,
     setBillingInterval, keybindings, dialogOpen, commandBarOpen, saveProgressInBackground, goBack, coachAside,
-    inputCaptured,
+    inputCaptured, positionsButtons, positionsButton, setPositionsButton,
   });
 
   return {
@@ -336,7 +353,7 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     openBrokerConnect, continueFromPositions, skipPositions, backPortfolio, continuePortfolio, chosenDesks, deskCursor,
     setDeskCursor, setChosenDesks, buildingDesks, finishDesks, account, viewportWidth, viewportHeight, continueAccount,
     offer, planAccess, pricing, billingInterval, setBillingInterval, continueFree, primaryUpgradeAction,
-    goBack, rerun,
+    goBack, rerun, positionsButton: editingField ? null : positionsButton,
   };
 }
 
@@ -389,7 +406,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
     openBrokerConnect, continueFromPositions, skipPositions, backPortfolio, continuePortfolio, chosenDesks, deskCursor,
     setDeskCursor, setChosenDesks, buildingDesks, finishDesks, account, viewportWidth, viewportHeight, continueAccount,
     offer, planAccess, pricing, billingInterval, setBillingInterval, continueFree, primaryUpgradeAction,
-    goBack, rerun,
+    goBack, rerun, positionsButton,
   } = useOnboardingWizard(props);
 
   if (helpFocused || coachAside) {
@@ -518,14 +535,23 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
           {portfolioSub === "positions" ? (
             <>
               {brokerOptions.length > 0 && positionCount > 0 ? (
-                <OnboardingButton label="Connect a broker" variant="ghost" shortcut={cardKey(CONNECT_BROKER_KEY, editingField)} onPress={openBrokerConnect} />
+                <OnboardingButton
+                  label="Connect a broker"
+                  variant="ghost"
+                  shortcut={cardKey(CONNECT_BROKER_KEY, editingField)}
+                  active={positionsButton === "broker"}
+                  onPress={openBrokerConnect}
+                />
               ) : null}
               {/* Holding nothing yet, the step can be left as the Desks step can. */}
               {positionCount === 0 ? (
                 <OnboardingButton
                   label="Skip"
                   variant="ghost"
-                  shortcut={cardKey(SKIP_PORTFOLIO_KEY, editingField)}
+                  // In the Ticker field s is typed: on the first run F10 presses Skip there, and from Settings F10
+                  // leaves setup, so Skip shows no key (Tab reaches it).
+                  shortcut={editingField ? (rerun ? undefined : SKIP_IN_FIELD_KEY) : SKIP_PORTFOLIO_KEY}
+                  active={positionsButton === "skip"}
                   disabled={positions.submitting}
                   onPress={skipPositions}
                 />
@@ -534,6 +560,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
                 label="Continue"
                 variant="primary"
                 shortcut={CONTINUE_KEY}
+                active={positionsButton === "continue"}
                 // A typed ticker is added on the way: Continue never does nothing beside a filled row.
                 disabled={(positionCount === 0 && !positions.hasDraft) || positions.submitting}
                 onPress={continueFromPositions}

@@ -1,6 +1,6 @@
 import { logFailure } from "../../utils/log-failure";
 import { extname, isAbsolute, relative, resolve } from "path";
-import type { CliCommandContext, HeadlessArgumentExpansion } from "../../types/plugin";
+import type { CliCommandContext, GloomPlugin, HeadlessArgumentExpansion } from "../../types/plugin";
 import type { MarketContext } from "../types";
 import { withMarketData } from "../context";
 import { buildForFile, cliStyles, renderForFile, renderStats, type CliStatEntry } from "../../utils/cli-output";
@@ -23,8 +23,15 @@ import {
   parsePaneFunctionArgs,
   type ParsedPaneFunctionArgs,
 } from "./options";
-import { applyListingArgument, findPaneFunction, parsePaneFunctionArgsFor, resolvePaneFunction, UnknownPaneFunctionError, type ResolvedPaneFunction } from "./resolver";
-import { buildFunctionReport } from "./report";
+import {
+  applyListingArgument, findPaneFunction, parsePaneFunctionArgsFor, resolvePaneFunction, UnknownPaneFunctionError,
+  type PluginCodeStopFinder, type ResolvedPaneFunction,
+} from "./resolver";
+import { idleCliPlugins } from "../registry";
+import { pluginSupportsTarget } from "../../plugins/plugin-export";
+import type { RegistryPlugin } from "../../plugins/marketplace/model";
+import type { AppResourceStorePort } from "../../core/app-service-ports";
+import { buildFunctionReport, resolvePaneFunctionReportSource } from "./report";
 import { expandResolvedArgument } from "./headless";
 import { defaultScreenshotPath, shotSizeWarnings } from "./screenshot-payload";
 import { renderDesktopShot } from "./screenshot-render";
@@ -72,10 +79,12 @@ async function withPaneRuntime<T>(
 ): Promise<T> {
   return withMarketData(ctx, async (market) => {
     const context: MarketContext = ctx.cliOptions.refresh ? { ...market, refresh: true } : market;
-    const registry = await createPaneCatalog(context, ctx.plugins);
+    // `shot` draws a pane as the desktop app does, so it also opens the panes of plugins only the desktop app runs (Gloom Social).
+    const plugins = settings.command === "shot" ? [...ctx.plugins, ...desktopOnlyPlugins(ctx)] : ctx.plugins;
+    const registry = await createPaneCatalog(context, plugins);
     try {
       let parsed = await applyListingArgument(registry, context, parsePaneFunctionArgsFor(registry, args, ctx.cliOptions), settings.command);
-      const resolution = { ...settings, seriesSources: ctx.plugins };
+      const resolution = { ...settings, seriesSources: ctx.plugins, pluginStop: pluginStopFor(ctx, context) };
       let resolved = await resolvePaneFunction(registry, context, parsed, resolution);
       // A function that widens its argument (RV's --peers) runs, reports and captures the widened one.
       const expansion = await withPersistedCloudSession(context, () => expandResolvedArgument(resolved, context, parsed.arg));
@@ -88,6 +97,63 @@ async function withPaneRuntime<T>(
       registry.destroy();
     }
   });
+}
+
+/** Installed plugins the command line does not run but the desktop app does, which `shot` draws as it does. */
+function desktopOnlyPlugins(ctx: CliCommandContext): GloomPlugin[] {
+  return idleCliPlugins(ctx)
+    .filter(({ plugin, reason }) => reason === "target" && pluginSupportsTarget(plugin, "desktop"))
+    .map(({ plugin }) => plugin);
+}
+
+/** The plugin of a function that does not run in the desktop app (IBKR Gateway is the terminal's), or null. */
+function terminalOnlyPlugin(resolved: ResolvedPaneFunction, ctx: CliCommandContext): GloomPlugin | null {
+  const owner = ctx.plugins.find((plugin) => (
+    plugin.panes?.some((pane) => pane.id === resolved.pane.id)
+    || (!!resolved.template && plugin.paneTemplates?.some((template) => template.id === resolved.template!.id))
+  ));
+  return owner && !pluginSupportsTarget(owner, "desktop") ? owner : null;
+}
+
+/**
+ * How long a code no function answers to (most often a mistyped ticker) waits
+ * for the plugin registry, to say which plugin it is: one request, cut off then.
+ */
+const PLUGIN_REGISTRY_WAIT_MS = 2_500;
+/** The registry the command line read, kept in the profile's cache: a day before it is asked again, a week to fall back on. */
+const PLUGIN_REGISTRY_CACHE = { namespace: "plugin-registry", kind: "feed", entityKey: "plugins.gloom.sh" };
+const PLUGIN_REGISTRY_CACHE_POLICY = { staleMs: 24 * 60 * 60_000, expireMs: 7 * 24 * 60 * 60_000 };
+
+/**
+ * The registry for a code no function answers to: the profile's copy from the
+ * last day, else one short request that nothing waits on once it is cut off,
+ * else the copy from the last week.
+ */
+async function readCodeRegistry(resources: AppResourceStorePort | undefined): Promise<readonly RegistryPlugin[]> {
+  const cached = resources?.get<RegistryPlugin[]>(PLUGIN_REGISTRY_CACHE);
+  const kept = Array.isArray(cached?.value) ? cached.value : null;
+  if (kept && !cached!.stale) return kept;
+  try {
+    const { readRegistryOnce } = await import("../../plugins/marketplace/feed");
+    const plugins = await readRegistryOnce(PLUGIN_REGISTRY_WAIT_MS);
+    resources?.set(PLUGIN_REGISTRY_CACHE, plugins, { cachePolicy: PLUGIN_REGISTRY_CACHE_POLICY });
+    return plugins;
+  } catch (error) {
+    if (kept) return kept;
+    throw error;
+  }
+}
+
+/** Why a code is a plugin's that does not run here (`pluginCodeStop`), read from the profile and the registry. */
+function pluginStopFor(ctx: CliCommandContext, context: MarketContext): PluginCodeStopFinder {
+  return async (name, commands) => {
+    const { pluginCodeStop } = await import("./plugin-code");
+    return pluginCodeStop(name, {
+      idle: idleCliPlugins(ctx),
+      running: ctx.plugins.map((plugin) => plugin.id),
+      loadRegistry: () => readCodeRegistry(context.persistence?.resources),
+    }, commands);
+  };
 }
 
 /** The resolved function with what its expansion adds to the pane: settings, and a title that says how. */
@@ -312,6 +378,15 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         throw new Error("--section picks one table of --csv or --ndjson output.");
       }
       if (resolved.tableSection === true) throw new Error("--section needs a section title or number.");
+      // A report read from the pane, and `shot` for a pane with none, draw it as the desktop app does: not one whose plugin does not run there.
+      const source = resolvePaneFunctionReportSource(resolved);
+      const terminalOnly = source === "headless" ? null : terminalOnlyPlugin(resolved, ctx);
+      if (terminalOnly) {
+        throw new Error((source
+          ? `${resolved.token}'s report is read from its pane as the desktop app draws it, and the ${terminalOnly.name} plugin does not run in the desktop app.`
+          : `${resolved.token} is an interactive pane with no data report, and the ${terminalOnly.name} plugin does not run in the desktop app, which shot draws panes with.`)
+          + ` Open ${resolved.token} in the terminal app.`);
+      }
       // A report's title names the function and the symbol, never the listing a bare one was read on,
       // so it gets `quote`'s line for that. Looked up beside the report, so it costs no wait.
       // A price function (HP) names the index or future a code a security owns is typed for, as `quote` does (GOLD, MOVE).
@@ -497,6 +572,12 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
       // An option the pane cannot draw fails here, before a capture of its default is saved as if it were the view asked for.
       const refusal = shotOptionRefusal(resolved, parsed.arg, parsed.options, { explain: parsed.explain === true });
       if (refusal) throw new Error(refusal);
+      // A capture draws the pane as the desktop app does: a plugin that does not run there has nothing to draw it with.
+      const terminalOnly = terminalOnlyPlugin(resolved, ctx);
+      if (terminalOnly) {
+        throw new Error(`${resolved.token} cannot be captured: the ${terminalOnly.name} plugin does not run in the desktop app, which shot draws panes with. `
+          + `Open ${resolved.token} in the terminal app.`);
+      }
       const outputPath = parsed.outputPath
         ? resolve(process.cwd(), ensurePngExtension(parsed.outputPath))
         : defaultScreenshotPath(resolved, parsed.arg);
@@ -618,6 +699,9 @@ export async function runPaneFunctionHelp(command: string, args: string[], ctx: 
   }
 }
 
+/** Set to 1 by the UI audits (scripts/pane-chrome/web-app.ts), so `catalog` lists the panes it leaves out for a user. */
+const CATALOG_APP_PANES_ENV = "GLOOMBERB_CATALOG_APP_PANES";
+
 export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
   await runPaneCliCommand(ctx, async () => {
     const parsed = parsePaneCatalogArgs(args);
@@ -633,7 +717,8 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
     await withMarketData(ctx, async (context) => {
       const registry = await createPaneCatalog(context, ctx.plugins);
       try {
-        const entries = await buildPaneCatalogEntries(registry, context);
+        // The UI audits picture every pane the app opens, those the command line has nothing to show for too.
+        const entries = await buildPaneCatalogEntries(registry, context, { appPanes: process.env[CATALOG_APP_PANES_ENV] === "1" });
         const botSafeEntries = effectiveParsed.botSafeOnly
           ? entries.filter((entry) => entry.capability.botSafe)
           : entries;

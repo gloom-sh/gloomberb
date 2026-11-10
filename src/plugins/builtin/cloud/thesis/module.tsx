@@ -32,10 +32,11 @@ export const thesisModule: PluginModule = {
     keywords: ["thesis", "theses", "conviction", "invalidation", "kill", "pillars", "journal"],
     shortcut: { prefix: "THESIS", argPlaceholder: "tickers (optional)", argKind: "text" },
     createInstance: (_context, options) => {
-      // `THESIS NVDA` opens that thesis or starts one; `THESIS NVDA AMD` starts a pair.
+      // `THESIS NVDA` opens that thesis or starts one; `THESIS NVDA AMD` starts a pair. The params name the
+      // ticker to a board that is drawn without the request (a capture), which shows it without starting one.
       const symbol = options?.arg?.trim() || null;
       if (symbol) requestThesisPane({ symbol, start: true });
-      return { placement: "floating", instanceId: "thesis-board" };
+      return { placement: "floating", instanceId: "thesis-board", ...(symbol ? { params: { symbol } } : {}) };
     },
   }],
   setup(ctx) {

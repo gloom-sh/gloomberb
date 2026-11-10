@@ -1,3 +1,4 @@
+import { basename } from "path";
 import type { AppConfig } from "../types/config";
 import type {
   CliCommandContext,
@@ -32,11 +33,26 @@ interface RegisteredCliCommand {
   builtin: boolean;
 }
 
+/**
+ * An installed plugin the command line does not run: switched off, built for
+ * other renderers (a desktop-only plugin), or failed to load (its `plugin` is
+ * then a stand-in named after its folder). Read to say why a code it owns
+ * opens nothing, never to run it.
+ */
+export interface IdleCliPlugin {
+  plugin: GloomPlugin;
+  reason: "off" | "target" | "failed";
+  /** Its folder under the plugins directory, for an external plugin. */
+  directory?: string;
+}
+
 export interface CliCommandRegistry {
   commands: RegisteredCliCommand[];
   lookup: ReadonlyMap<string, RegisteredCliCommand>;
   config: AppConfig | null;
+  /** The plugins that run here: loaded, switched on, and declaring the command line among their targets. */
   plugins: GloomPlugin[];
+  readonly idlePlugins: IdleCliPlugin[];
   externalPlugins: LoadedExternalPlugin[];
   /** Loads installed contributions when dispatch or application services need them. */
   ensureExternalPlugins?: () => Promise<void>;
@@ -149,9 +165,19 @@ export function buildCliCommandRegistry({
     config,
     get plugins() {
       const { getPluginCatalog } = require("../plugins/catalog") as typeof import("../plugins/catalog");
+      // A plugin built for other renderers (Gloom Social is the desktop app's) is not listed, run or captured here.
       return plugins ??= getPluginCatalog(registry.externalPlugins)
-        .filter((entry) => !entry.error && !disabledPlugins.has(entry.plugin.id))
+        .filter((entry) => !entry.error && !entry.unsupportedTarget && !disabledPlugins.has(entry.plugin.id))
         .map((entry) => entry.plugin);
+    },
+    get idlePlugins() {
+      const { getPluginCatalog } = require("../plugins/catalog") as typeof import("../plugins/catalog");
+      return getPluginCatalog(registry.externalPlugins).flatMap((entry): IdleCliPlugin[] => {
+        const at = entry.path ? { directory: basename(entry.path) } : {};
+        if (entry.error) return [{ plugin: entry.plugin, reason: "failed", ...at }];
+        if (disabledPlugins.has(entry.plugin.id)) return [{ plugin: entry.plugin, reason: "off", ...at }];
+        return entry.unsupportedTarget ? [{ plugin: entry.plugin, reason: "target", ...at }] : [];
+      });
     },
     externalPlugins,
     ...(loadExternalPlugins ? { ensureExternalPlugins: () => loading ??= (async () => {
@@ -168,16 +194,26 @@ export function buildCliCommandRegistry({
   return registry;
 }
 
+/** The idle plugins of each command's context, kept off the plugin API's context type. */
+const idlePluginsByContext = new WeakMap<CliCommandContext, () => IdleCliPlugin[]>();
+
+/** The installed plugins a command's context does not run (`IdleCliPlugin`); none for a context built without a registry. */
+export function idleCliPlugins(ctx: CliCommandContext): IdleCliPlugin[] {
+  return idlePluginsByContext.get(ctx)?.() ?? [];
+}
+
+type ContextRegistry = Pick<CliCommandRegistry, "plugins" | "externalPlugins" | "ensureExternalPlugins"> & Partial<Pick<CliCommandRegistry, "idlePlugins">>;
+
 export function createCliCommandContext(
   ownerId: string,
-  registryOrPlugins: Pick<CliCommandRegistry, "plugins" | "externalPlugins" | "ensureExternalPlugins"> | GloomPlugin[],
+  registryOrPlugins: ContextRegistry | GloomPlugin[],
   cliOptions: CliGlobalOptions = DEFAULT_CLI_OPTIONS,
   args: readonly string[] = [],
 ): CliCommandContext {
-  const registry: Pick<CliCommandRegistry, "plugins" | "externalPlugins" | "ensureExternalPlugins"> = Array.isArray(registryOrPlugins)
+  const registry: ContextRegistry = Array.isArray(registryOrPlugins)
     ? { plugins: registryOrPlugins, externalPlugins: [] }
     : registryOrPlugins;
-  return {
+  const ctx: CliCommandContext = {
     initConfigData,
     initMarketData: async () => {
       await registry.ensureExternalPlugins?.();
@@ -203,4 +239,6 @@ export function createCliCommandContext(
       (id) => catalogFredSeriesIds(registry.plugins).has(id)),
     log: debugLog.createLogger(ownerId === "core" ? "cli" : ownerId),
   };
+  idlePluginsByContext.set(ctx, () => registry.idlePlugins ?? []);
+  return ctx;
 }
