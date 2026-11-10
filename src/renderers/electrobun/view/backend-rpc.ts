@@ -14,7 +14,8 @@ import {
 } from "../shared/protocol";
 import { decodeRpcResponse, decodeRpcValue, encodeRpcValue } from "../shared/rpc-codec";
 import { subscribeCapability, type CapabilitySubscriptionOptions } from "./capability-subscription";
-import { RpcTimeoutError } from "../../../utils/rpc-timeout-error";
+import { connectionHealth, DESKTOP_BRIDGE_CONNECTION_ID } from "../../../core/connection-health";
+import { createBridgeHealth, createHostRoute } from "./host-route";
 import { nameRpcTimeout, RPC_MAX_REQUEST_TIME_MS } from "./rpc-timeout";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
 import type { StallEvent } from "../../../utils/main-thread-stall";
@@ -134,21 +135,14 @@ const rpc = Electroview.defineRPC<ElectrobunDesktopRpcSchema>({
 
 const electroview = new Electroview({ rpc });
 
-const BRIDGE_READY_LIMIT_MS = 5_000;
-
-async function waitForBridgeReady(): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < BRIDGE_READY_LIMIT_MS) {
-    if (electroview.hostSocket?.readyState === WebSocket.OPEN) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new RpcTimeoutError("Electrobun RPC socket did not open in time.", {
-    elapsedMs: Date.now() - start,
-    limitMs: BRIDGE_READY_LIMIT_MS,
-  });
-}
+// The socket is the fast way to the Bun process, not the only one: a request
+// goes whenever Electroview can deliver it (see `createHostRoute`).
+const hostRoute = createHostRoute({
+  socket: () => electroview.hostSocket,
+  nativeBridge: () => !!window.__electrobunHostBridge,
+});
+// What failed for want of an answer is asked again once the bridge answers.
+const bridgeHealth = createBridgeHealth(() => connectionHealth.reportRecovery(DESKTOP_BRIDGE_CONNECTION_ID));
 
 export function backendRequest<T = unknown>(
   method: "capability.invoke",
@@ -162,11 +156,11 @@ export async function backendRequest(
   method: DesktopBackendRequestMethod,
   payload: unknown = null,
 ): Promise<unknown> {
-  await waitForBridgeReady();
-  const result = await nameRpcTimeout(method, payload, () => rpc.request["backend.request"]({
-    method,
-    payload: encodeRpcValue(payload),
-  }));
+  const encoded = encodeRpcValue(payload);
+  const result = await bridgeHealth.track(async () => {
+    await hostRoute.ready(method);
+    return nameRpcTimeout(method, payload, () => rpc.request["backend.request"]({ method, payload: encoded }));
+  });
   return decodeRpcResponse(result);
 }
 

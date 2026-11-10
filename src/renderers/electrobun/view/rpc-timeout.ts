@@ -1,5 +1,5 @@
 import { getCloudApiBaseUrl } from "../../../api-client/request";
-import { RpcTimeoutError } from "../../../utils/rpc-timeout-error";
+import { REQUEST_TIMED_OUT_MESSAGE, RpcTimeoutError } from "../../../utils/rpc-timeout-error";
 import type { DesktopBackendRequestMethod } from "../shared/protocol";
 
 /** How long the view waits for the Bun process to answer one request. */
@@ -10,8 +10,8 @@ const ELECTROBUN_REQUEST_TIMEOUT_MESSAGE = "RPC request timed out.";
 
 /**
  * Runs one `backend.request` and, when Electrobun's request timer gives up on
- * it, rethrows the timeout with the request named. Every other failure passes
- * through untouched.
+ * it, rethrows the timeout with the request named in its `report`. Every other
+ * failure passes through untouched. A pane shows only the plain message.
  *
  * The library's error is the same for every method, so crash reports could not
  * tell a stalled update check from a stalled fetch. The name is the method,
@@ -20,7 +20,7 @@ const ELECTROBUN_REQUEST_TIMEOUT_MESSAGE = "RPC request timed out.";
  * from the user's config (a broker gateway, a feed, a plugin endpoint) and is
  * only called external. Never the payload, rest of the path, query or headers.
  * Elapsed time is rounded to 10 s because crash reports are deduplicated per
- * session on the message. The error keeps its message and `Error` type, and
+ * session on the reported message. The error keeps its `Error` type, and
  * carries the elapsed time so a timer that fired long after its limit (the
  * machine slept) can be told from a request that really stalled.
  */
@@ -36,9 +36,10 @@ export async function nameRpcTimeout<T>(
     if (!(error instanceof Error) || error.message !== ELECTROBUN_REQUEST_TIMEOUT_MESSAGE) throw error;
     const elapsedMs = performance.now() - startedAt;
     const seconds = Math.round(elapsedMs / 10_000) * 10;
-    throw new RpcTimeoutError(`RPC request timed out: ${describeRequest(method, payload)} after ~${seconds}s`, {
+    throw new RpcTimeoutError(REQUEST_TIMED_OUT_MESSAGE, {
       elapsedMs,
       limitMs: RPC_MAX_REQUEST_TIME_MS,
+      report: `RPC request timed out: ${describeRequest(method, payload)} after ~${seconds}s`,
       cause: error,
     });
   }

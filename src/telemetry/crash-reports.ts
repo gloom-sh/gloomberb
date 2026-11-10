@@ -8,7 +8,7 @@ import {
   type UpdateFailureReport,
 } from "../api-client";
 import type { TelemetryConfig } from "../types/config";
-import { isSleepRpcTimeout } from "../utils/rpc-timeout-error";
+import { isSleepRpcTimeout, RpcTimeoutError } from "../utils/rpc-timeout-error";
 import { VERSION } from "../version";
 
 /**
@@ -142,6 +142,8 @@ function readString(value: unknown): string | undefined {
 }
 
 function describeError(error: unknown): { type: string; message: string; stack?: string } {
+  // A pane says only "Request timed out"; the report names the request.
+  if (error instanceof RpcTimeoutError) return { type: error.name, message: error.report, stack: readString(error.stack) };
   if (error && typeof error === "object") {
     const record = error as { name?: unknown; message?: unknown; stack?: unknown; constructor?: { name?: unknown } };
     const type = readString(record.name) ?? readString(record.constructor?.name) ?? "Error";

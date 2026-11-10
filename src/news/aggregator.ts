@@ -1,7 +1,7 @@
 import type { CompanyFrom } from "../types/company-from";
 import { logFailure } from "../utils/log-failure";
 import type { NewsCapability } from "../capabilities";
-import { GLOOM_CLOUD_HTTP_CONNECTION_ID, type ConnectionHealthRegistry } from "../core/connection-health";
+import { recoversDataRequests, type ConnectionHealthRegistry } from "../core/connection-health";
 import type { NewsAccess, NewsArticle, NewsQuery, NewsQueryState } from "./types";
 import { isAppVisible, subscribeAppVisibility } from "../state/app/activity";
 import {
@@ -165,9 +165,9 @@ export class NewsService {
       this.sessionKey = this.session.key();
       this.unsubscribeSession = this.session.subscribe(() => this.handleSessionChange());
     }
-    // A list that failed while the data service was unreachable is read again once it answers, not at the next poll.
+    // A list that failed while the data service (or the desktop bridge) gave no answer is read again once it answers, not at the next poll.
     this.unsubscribeRecovery = this.connectionHealth?.subscribeRecovery((sourceId) => {
-      if (sourceId !== GLOOM_CLOUD_HTTP_CONNECTION_ID || !this.polling) return;
+      if (!recoversDataRequests(sourceId) || !this.polling) return;
       for (const entry of this.queries.values()) {
         // A list missing some of its sources is read again too, keeping what it shows meanwhile.
         if (entry.refs > 0 && entry.state.error != null) void this.refreshQuery(entry.query, entry.state.phase === "error");
