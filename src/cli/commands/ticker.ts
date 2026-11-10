@@ -21,7 +21,7 @@ import {
   formatPercentRaw,
   MISSING_VALUE,
 } from "../../utils/format";
-import { formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, nearParCoinPriceDigits, quoteFormatOptions, withCurrencyMinorDigits, type MarketFormatOptions } from "../../market-data/market/format";
+import { formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, nearParCoinPriceDigits, quoteFormatOptions, withCurrencyMinorDigits, withStablePriceDigits, type MarketFormatOptions } from "../../market-data/market/format";
 import {
   cliStyles,
   cliTerminalWidth,
@@ -1399,8 +1399,11 @@ export async function buildTickerReport({
       [quote.delisting ? "Last Session" : "Day Range", quote.low != null || quote.high != null
         ? `${formatPriceRange(quote.low, quote.high, quote.currency, quoteOptions)}${consolidatedRangeBasis(quote) ? ` (${consolidatedRangeBasis(quote)})` : ""}`
         : "—"],
+      // The year's high and low come from bars (a continuous future's are float32, 54.97999954): they print at
+      // the instrument's own decimals, as the Overview's ranges do, never at every digit the bars carry.
       ["52W Range", quote.low52w != null || quote.high52w != null
-        ? formatPriceRange(quote.low52w, quote.high52w, quote.currency, quoteOptions)
+        ? formatPriceRange(quote.low52w, quote.high52w, quote.currency,
+          quoteOptions.fixedFractionDigits === undefined ? withStablePriceDigits(quoteOptions, quote.currency, quote) : quoteOptions)
         : "—"],
       ["Bid / Ask", bidAskText(quote, quoteOptions)],
       // An index's and a perpetual's 0 means none is counted, not no trades: no Volume row.
