@@ -1,13 +1,14 @@
 import type { MarketState, Quote } from "../../types/financials";
 import { blendHex, colors, priceColor, type ThemeColors } from "../../theme/colors";
 import { isFiniteNumber } from "../../utils/guards";
-import { canonicalExchange, isKnownExchangeCode } from "../../utils/exchanges";
+import { canonicalExchange, isKnownExchangeCode, isUsListingExchange, resolveExchangeTimeZone } from "../../utils/exchanges";
 import { quoteTradingDay } from "../quotes/day-range";
 import { awaitingFirstDelayedPrint, isQuoteBeforeLatestSession } from "../quotes/freshness";
 import { delistingLabel, delistingStateLabel } from "../quotes/delisting";
 import { preMarketOpenOn, regularSessionCloseOn, venueSessionOnOrBefore } from "./freshness";
 import { futuresWeekendClosure } from "./futures-week";
 import { indexLevelMarketState } from "./index-level";
+import { indexSessionVenue } from "./index-session-venues";
 
 const CLOSED_CHANGE_MUTING_RATIO = 0.55;
 const US_SESSION_TIME = new Intl.DateTimeFormat("en-US", {
@@ -522,14 +523,33 @@ export function getRegularSessionBarClose(quote: Quote | null | undefined): { pr
   return { price: quote.price, sessionDate: null };
 }
 
+/** Sessions of their own, which a stock venue's hours do not describe. */
+const OWN_SESSION_INSTRUMENT_TYPES = new Set(["FUTURE", "CRYPTOCURRENCY", "CURRENCY", "OPTION"]);
+
+/**
+ * Whether a quote's venue holds a pre-market or after-hours session. A US
+ * listing does. A stock, fund or index on a venue abroad (JPX, HKEX, LSE) has
+ * none: a price there that is not the close is no extended print, and 8058:JPX
+ * read "After-Hours +4.17%" beside its +4.28% close. Futures, coins and
+ * currency pairs, and a venue whose hours are not known, keep what the source
+ * says.
+ */
+function venueHoldsExtendedSession(quote: Quote): boolean {
+  if (OWN_SESSION_INSTRUMENT_TYPES.has(quote.instrumentType?.toUpperCase() ?? "")) return true;
+  const venue = indexSessionVenue(quote.symbol) ?? canonicalExchange(quote.listingExchangeName || quote.exchangeName);
+  if (!venue || isUsListingExchange(venue)) return true;
+  return !(isKnownExchangeCode(venue) && resolveExchangeTimeZone(venue));
+}
+
 /**
  * The pre-market or after-hours print, measured from the regular close before
  * it, while the quote has one: the pre-market until the open, the after-hours
  * session from the close, and its last print until the next pre-market. Null
- * when there is no extended print to show.
+ * when there is no extended print to show, and always for a venue without
+ * those sessions (venueHoldsExtendedSession).
  */
 export function getExtendedSessionDisplay(quote: Quote | null | undefined): ExtendedSessionDisplay | null {
-  if (!quote || quote.delisting) return null;
+  if (!quote || quote.delisting || !venueHoldsExtendedSession(quote)) return null;
   const overnight = overnightSessionDisplay(quote);
   if (overnight) return overnight;
   const state = quote.marketState;
