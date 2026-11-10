@@ -7,6 +7,7 @@ import type { MarketContext } from "../types";
 import { buildPaneCatalogEntries, buildTemplateContext, correctCatalogQuery, filterPaneCatalogEntries, findFunctionCode, limitationSentence, renderPaneCatalogReport } from "./catalog";
 import { createPaneCatalog } from "./discovery";
 import { parsePaneCatalogArgs } from "./options";
+import { findPaneFunction } from "./resolver";
 
 test("limitations read as sentences, so one does not run into the next", () => {
   const limitations = ["Daily medians of public DTCC prints on the on-the-run 5Y contract", "HY and EM quote in price"];
@@ -97,6 +98,28 @@ test("a function's entry says Requires only for a sign-in or Pro, and names its 
     expect(entry("BUZZ")).toContain("Requires     Free Gloom sign-in\nData         Gloom Cloud X mention history");
     // A number option says its range before a value is refused for it (`--days must be at least 30`).
     expect(entry("CDX")).toMatch(/--days <integer> +Days of a named index's daily levels\. From 30 to 1,100\. Default 365\./);
+  } finally {
+    registry.destroy();
+    channels.mockRestore();
+    geo.mockRestore();
+  }
+});
+
+// `catalog --all` listed functions with no code by their internal ids (twitter-feed-pane, team-pane).
+test("a function with no code is listed by its name when the command line runs it, and left out when it has nothing to run", async () => {
+  const channels = spyOn(apiClient, "getChannels").mockResolvedValue([]);
+  const geo = spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+  const context = { config: createDefaultConfig("/synthetic/catalog-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const uncoded = (await buildPaneCatalogEntries(registry, context)).filter((entry) => entry.templateId && !entry.shortcut);
+    // Left out: New Portfolio Pane and New Watchlist Pane create what PF lists, Debug Log, Team and Unread are the app's.
+    expect(uncoded.map((entry) => [entry.token, entry.templateId])).toEqual([
+      ["gloom-trending", "attention-trending-pane"], ["story", "news-story-pane"], ["x-feed", "twitter-feed-pane"],
+    ]);
+    for (const { token, templateId } of uncoded) expect(findPaneFunction(registry, token)?.template?.id).toBe(templateId);
+    // The id a script saved still opens it.
+    expect(findPaneFunction(registry, "twitter-feed-pane")?.template?.id).toBe("twitter-feed-pane");
   } finally {
     registry.destroy();
     channels.mockRestore();
