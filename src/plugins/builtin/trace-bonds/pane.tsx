@@ -31,6 +31,7 @@ import {
   noPrintsText,
   parseBondQuery,
   quotedCompanyName,
+  quotedIssuerListing,
   type CorporateBond,
 } from "./client";
 import { BondHistoryDetail } from "./detail";
@@ -72,8 +73,20 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
   const marketData = useAssetData();
   // A stock ticker with no bonds of its own is asked again by its company, as its quote names it.
   const companyName = useCallback((ticker: string) => quotedCompanyName(marketData, ticker), [marketData]);
+  const access = usePlanAccess();
+  const pro = access.hasProAccess;
+  // Before its name, its company's bonds as Gloom Cloud links them: Gloom Pro, and without it the name alone, as before.
+  const linkedBonds = useCallback(async (ticker: string) => {
+    const listing = await quotedIssuerListing(marketData, ticker);
+    if (!listing) return null;
+    const linked = await apiClient.getCloudIssuerBondIssues(listing);
+    return { company: linked.name, cusips: linked.cusips };
+  }, [marketData]);
   // An issuer, symbol or CUSIP is asked of the tape itself, not looked for in the latest page.
-  const request = useCallback(() => fetchBondTape(needle, { companyName }), [companyName, needle]);
+  const request = useCallback(
+    () => fetchBondTape(needle, { companyName, ...(pro ? { linkedBonds } : {}) }),
+    [companyName, linkedBonds, needle, pro],
+  );
   const { data, loading, error, updatedAt, load, reload } = useAsyncResource(request, { keepPreviousData: true });
   // The last answer stays loaded while the next query runs, and through its failure; its rows never stand in for it.
   const answered = data != null && (data.query?.text ?? "") === (parseBondQuery(needle)?.text ?? "");
@@ -111,8 +124,6 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
   // A bond opens on its kept prints: Enter on a row, and with Gloom Pro a CUSIP looked up opens on its own once.
   const [detailOpen, setDetailOpen] = usePluginPaneState("detailOpen", false);
   const selectedBond = rows.find((row) => row.id === selectedId) ?? null;
-  const access = usePlanAccess();
-  const pro = access.hasProAccess;
   const openedFor = useRef<string | null>(null);
   const asked = answered ? data.query : null;
   useEffect(() => {

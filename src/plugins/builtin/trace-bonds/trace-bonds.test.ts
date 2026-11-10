@@ -11,7 +11,7 @@ import { DEFAULT_BOND_SORT, buildBondColumns, sharesOneIssuer, shownBondSort } f
 
 type Row = Record<string, unknown>;
 type Filter = { fieldName: string; compareType: string; fieldValue: string | null };
-interface Posted { filters: Filter[]; limit: number; token: string | null }
+interface Posted { filters: Filter[]; limit: number; token: string | null; domain?: { fieldName: string; values: string[] }[] }
 
 const TODAY = "2026-10-16";
 
@@ -25,8 +25,11 @@ function fakeTape(answer: (posted: Posted) => Row[] | Response): Posted[] {
   const posted: Posted[] = [];
   setHttpFetchTransport(async (_url, init) => {
     if (!init?.method) return new Response("", { headers: { "set-cookie": "XSRF-TOKEN=token-1; Path=/; Secure" } });
-    const body = JSON.parse(String(init.body)) as { compareFilters: Filter[]; limit: number };
-    const entry = { filters: body.compareFilters, limit: body.limit, token: new Headers(init.headers).get("X-XSRF-TOKEN") };
+    const body = JSON.parse(String(init.body)) as { compareFilters: Filter[]; limit: number; domainFilters?: Posted["domain"] };
+    const entry = {
+      filters: body.compareFilters, limit: body.limit, token: new Headers(init.headers).get("X-XSRF-TOKEN"),
+      ...(body.domainFilters ? { domain: body.domainFilters } : {}),
+    };
     posted.push(entry);
     const rows = answer(entry);
     if (rows instanceof Response) return rows;
@@ -191,6 +194,57 @@ test("a ticker with no bonds of its own is asked once by its company's name, and
   const tape = await fetchBondTape("ZZZQ", { today: TODAY, companyName: async () => "Nobody Holdings Inc." });
   expect(noPrintsText(tape.query!, tape.tradeDate, tape.issuer)).toBe("No prints for ZZZQ or NOBODY on 2026-10-16.");
   expect(noPrintsText(tape.query!, null)).toBe("No prints for ZZZQ.");
+});
+
+test("a ticker's bonds are those linked to its company, by CUSIP, whatever name the tape gives them", async () => {
+  // Ping An's 2318: no issue on the tape starts with the code, and none with the name its quote gives.
+  const pingAn = bond("Y69790AA4", "PIAIF5851797", "Ping An Insurance Co Ltd", "2026-09-21", { couponRate: 0.875, maturityDate: "2029-07-22" });
+  const posted = fakeTape((request) => request.domain ? [pingAn, bond("Y15009AR7", "PIAIF6194715", "CHINA PING AN INS OVERSEAS HLDGS LTD", "2026-11-09")] : []);
+  const asked: string[] = [];
+  const apiClient = {
+    async getCloudIssuerBondIssues(listing: string) {
+      asked.push(listing);
+      return { symbol: "601318:SSE", name: "PING AN INSURANCE", cusips: ["Y69790AA4"] };
+    },
+  };
+  const args = createTestHeadlessArgs({ argument: "2318", rawArgument: "2318" });
+  const result = await traceBondsHeadless.load(args, createTestHeadlessContext({
+    marketData: createTestDataProvider({ getQuote: async (symbol) => createTestQuote({ symbol, name: "Ping An Insurance (Group) Company of China, Ltd." }) }),
+    apiClient: apiClient as never,
+    resolveInstrument: async (symbol) => ({ symbol, exchange: "HKEX" }),
+  }));
+  const text = renderHeadlessPaneText(traceBondsHeadless, result, args, "TRACE");
+  expect(asked).toEqual(["2318:HKEX"]);
+  expect(posted.at(-1)!.domain).toEqual([{ fieldName: "cusip", values: ["Y69790AA4"] }]);
+  // Only the linked issue, and no warning that the company was guessed by name.
+  expect(result.metadata).toMatchObject({ matched: 1, company: "PING AN INSURANCE" });
+  expect(result.warnings).toBeUndefined();
+  expect(result.notes).toContain("Showing the bonds linked to PING AN INSURANCE.");
+  expect(text).toContain("Y69790AA4");
+  expect(text).not.toContain("Y15009AR7");
+  expect(parseBondQuery("2318:hkex")).toMatchObject({ ticker: "2318:HKEX", root: null });
+  expect(parseBondQuery("601318")).toMatchObject({ ticker: "601318" });
+});
+
+test.each([[401, "signed out"], [403, "no Pro"]])("refused its company's linked bonds (%i, %s), a ticker is asked by its company's name as before, said nowhere", async (status) => {
+  const cumulus = bond("23110AAB2", "CUMU5000001", "CUMULUS MEDIA NEW HLDGS INC", "2026-07-27", { couponRate: 8, maturityDate: "2029-07-01" });
+  const posted = fakeTape((request) => filterOn(request, "issuerName")?.fieldValue === "CUMULUS MEDIA" && !perpetual(request) ? [cumulus] : []);
+  const asked: string[] = [];
+  const refused = async (listing: string) => {
+    asked.push(listing);
+    throw new ApiRequestError("Bond trades require Pro", status, undefined, "pro_required");
+  };
+  const quoted = createTestDataProvider({ getQuote: async (symbol) => createTestQuote({ symbol, name: "Cumulus Media Inc." }) });
+  const { result, text } = await report("CMLSQ", quoted, { getCloudIssuerBondIssues: refused, getCloudStoredIssuerBonds: refused });
+  expect(asked).toContain("CMLSQ");
+  expect(posted.some((request) => request.domain)).toBe(false);
+  // Today's answer: the company's name, said to be a guess, and nothing about the refusal.
+  expect(result.warnings).toEqual(["Showing bonds for CUMULUS MEDIA (Cumulus Media Inc.): none trade under CMLSQ."]);
+  expect(result.complete).toBe(true);
+  expect(result.errors).toBeUndefined();
+  expect(result.notes).toBeUndefined();
+  expect(text).toContain("23110AAB2");
+  expect(text).not.toContain("Pro");
 });
 
 test("a failed issuer-name lookup leaves an empty report incomplete and names the failed check", async () => {

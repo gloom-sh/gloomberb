@@ -1,3 +1,5 @@
+import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../utils/exchanges";
+
 /**
  * `/cloud/bond-trades`: US corporate bond prints Gloom Cloud keeps, read by
  * CUSIP or by company. A bond read here that its store did not keep yet is
@@ -54,6 +56,26 @@ export interface StoredIssuerBondsPayload {
   name: string;
   keptSince: string | null;
   backfillPending: boolean;
+}
+
+/** A company's live bonds by CUSIP, as Gloom Cloud links them to it: Gloom Pro, as the kept prints are. */
+export interface IssuerBondIssuesPayload {
+  /** The company's primary listing. */
+  symbol: string;
+  name: string;
+  cusips: string[];
+}
+
+/**
+ * The listing a company's bonds are asked by, as Gloom Cloud writes its
+ * companies' listings: the bare ticker on a US venue or none, SYMBOL:EXCHANGE
+ * elsewhere (`2318:HKEX`).
+ */
+export function bondIssuerListing(symbol: string, exchange?: string): string {
+  const parsed = parsePublicTickerKey(symbol);
+  const venue = parsed.exchange ?? canonicalExchange(exchange);
+  const code = parsed.symbol.toUpperCase();
+  return venue && !isUsListingExchange(venue) ? `${code}:${venue}` : code;
 }
 
 export const BOND_HISTORY_MAX_DAYS = 1100;

@@ -84,6 +84,12 @@ export interface InstrumentSearchResult {
   formerName?: string;
   /** A US listing that no longer trades, found by its exact symbol (TWTR). Untrusted until parsed. */
   delisting?: ListingDelisting;
+  /**
+   * A listing its exchange withdrew and gave to no one since (0011 on HKEX,
+   * Hang Seng Bank), sent by newer cloud servers on the row a search for its
+   * code added: `{ on, reason }`. Untrusted until parsed (parseListingWithdrawal).
+   */
+  withdrawal?: unknown;
   /** The company's home line, its common stock on its home exchange (7203 on JPX for Toyota), sent by newer
    * cloud servers. Search lists it before the company's depositary receipts and other lines. Only `true` counts. */
   homeListing?: boolean;

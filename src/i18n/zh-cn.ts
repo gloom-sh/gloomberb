@@ -1737,6 +1737,7 @@ export const zhCN: Record<string, string> = {
   "Academy: {title}": "学院：{title}",
   "{minutes} min": "{minutes} 分钟",
   "Delisted {date}": "已退市 {date}",
+  "Delisted": "已退市",
   "Last traded {date}": "最后交易 {date}",
   "Account data": "账户数据",
   "Sync with Gloom Cloud": "与 Gloom Cloud 同步",

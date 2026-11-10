@@ -506,3 +506,25 @@ test("a listing that moved to a new symbol, typed by its old symbol or its old n
   // Named on a venue, the old symbol is what was asked for.
   expect((await resolveCliListing("ELET3", "B3", deps)).request.symbol).not.toBe("AXIA3.SA");
 });
+
+test("a code its exchange withdrew is that company, gone on its day for its reason, never the line another market trades under the digits", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  // 0011 as search answers it once HKEX withdrew Hang Seng Bank: Bursa's Brite-Tech still trades under the digits.
+  const dataProvider = createTestDataProvider({
+    search: async () => [
+      { providerId: "test", symbol: "0011", name: "Brite-Tech Berhad", exchange: "BURSAMY", currency: "MYR", type: "Common Stock" },
+      { providerId: "test", symbol: "0011", name: "Hang Seng Bank Limited", exchange: "HKEX", currency: "HKD", type: "Common Stock",
+        withdrawal: { on: "2026-01-27", reason: "Privatised by The Hongkong and Shanghai Banking Corporation Limited" } },
+    ],
+    getQuote: async (symbol) => { throw new Error(`No quote for ${symbol}`); },
+  });
+  const deps = { store, dataProvider };
+  expect(await notTradedMessage(await resolveCliListing("0011", "HKEX", deps), deps))
+    .toBe("0011:HKEX (Hang Seng Bank Limited): Delisted Jan 27, 2026 (Privatised by The Hongkong and Shanghai Banking Corporation Limited).");
+  // Named among the code's listings with the day it went; Brite-Tech's line trades.
+  expect((await listingVenues("0011", deps)).map((venue) => venue.name))
+    .toEqual(["Brite-Tech Berhad", "Hang Seng Bank Limited · Delisted Jan 27, 2026"]);
+  expect(await notTradedMessage(await resolveCliListing("0011", "BURSAMY", deps), deps)).toBeNull();
+});

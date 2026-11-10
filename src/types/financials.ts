@@ -50,6 +50,18 @@ export interface ListingDelisting {
   historyStart: string;
 }
 
+/**
+ * A listing its exchange withdrew, as its company announced it: Hang Seng
+ * Bank's 0011 left HKEX on 2026-01-27, privatised by HSBC. No source prices
+ * it any more, so only this is known.
+ */
+export interface ListingWithdrawal {
+  /** The day the listing went (YYYY-MM-DD); null when the notice does not say. */
+  on: string | null;
+  /** Why, in words: "Privatised by The Hongkong and Shanghai Banking Corporation Limited". */
+  reason: string | null;
+}
+
 /** Static listing facts from a quote observation, without an investable price. */
 export interface QuoteMetadataSource {
   providerId?: string;

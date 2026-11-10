@@ -1735,6 +1735,7 @@ export const ko: Record<string, string> = {
   "Academy: {title}": "아카데미: {title}",
   "{minutes} min": "{minutes}분",
   "Delisted {date}": "상장폐지 {date}",
+  "Delisted": "상장폐지",
   "Last traded {date}": "최종 거래 {date}",
   "Account data": "계좌 데이터",
   "Sync with Gloom Cloud": "Gloom Cloud와 동기화",

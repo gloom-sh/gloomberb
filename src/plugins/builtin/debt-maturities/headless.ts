@@ -121,6 +121,8 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
       return {
         complete: data.status === "available",
         errors: debtNotices(data),
+        // What the schedule covers and how it was read, beside it: never a failure.
+        ...(data.notes?.length ? { notes: data.notes } : {}),
         sections: bandSections(data, latest),
         metadata: { ...data },
         // Dated by the report's balance sheet: an SEC filing named by its form, a report outside SEC cited
@@ -208,7 +210,7 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
           rows: debtHistoryRows(data.history).map((row) => ({ ...row })),
         },
       ],
-      ...(costNote ? { notes: [costNote] } : {}),
+      ...(costNote || data.notes?.length ? { notes: [...(data.notes ?? []), ...(costNote ? [costNote] : [])] } : {}),
       metadata: { ...data },
       // The latest filing dates the report (a newer 10-Q's balance date), named by its form so the date is
       // not read as the schedule's; the history rows are past years, not stale data.

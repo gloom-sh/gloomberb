@@ -13,6 +13,8 @@ import {
 } from "../utils/exchanges";
 import { currencyPairSpelling } from "../utils/currency-pair";
 import { savedAbroadForBareSymbol } from "./search/bare-symbol";
+import { parseListingWithdrawal, withdrawalLabel } from "../market-data/quotes/delisting";
+import type { ListingWithdrawal } from "../types/financials";
 
 export interface ListingStore {
   loadTicker(symbol: string): Promise<TickerRecord | null>;
@@ -33,6 +35,16 @@ export interface ListingVenue {
    * spelling than the one asked for: BP for `BP.` (London's code for it).
    */
   symbol?: string;
+  /** The exchange withdrew the listing (Hang Seng Bank's 0011 on HKEX): it is on record, and nothing trades there. */
+  withdrawal?: ListingWithdrawal;
+}
+
+/** A search row's name, and its withdrawal with the day it went beside the name, as a choice between listings names it. */
+function withdrawnOf(name: string, value: unknown): Pick<ListingVenue, "name" | "withdrawal"> {
+  const withdrawal = parseListingWithdrawal(value);
+  return withdrawal
+    ? { name: [name, withdrawalLabel({ ...withdrawal, reason: null })].filter(Boolean).join(" · "), withdrawal }
+    : { name };
 }
 
 /** The venue's own symbol, when it is not `asked` (ignoring case). */
@@ -60,7 +72,7 @@ export async function listingVenues(symbol: string, { store, dataProvider }: Lis
       : resolved.kind === "local" ? { exchange: resolved.ticker.metadata.exchange, name: resolved.ticker.metadata.name }
       : {
         exchange: resolved.result.exchange === "SMART" ? resolved.result.primaryExchange ?? "" : resolved.result.exchange || resolved.result.primaryExchange || "",
-        name: resolved.result.name,
+        ...withdrawnOf(resolved.result.name, resolved.result.withdrawal),
         ...ownSymbol(parsePublicTickerKey(resolved.result.symbol).symbol, symbol),
       };
     venues = only?.exchange ? [{ ...only, exchange: canonicalExchange(only.exchange) }] : [];
@@ -69,7 +81,10 @@ export async function listingVenues(symbol: string, { store, dataProvider }: Lis
     if (!(error instanceof AmbiguousTickerError) || error instanceof AmbiguousContractError) return [];
     venues = error.listings.flatMap((listing) => {
       const key = parsePublicTickerKey(listing);
-      return key.exchange ? [{ exchange: key.exchange, name: error.listingNames[listing] ?? "", ...ownSymbol(key.symbol, symbol) }] : [];
+      return key.exchange ? [{
+        exchange: key.exchange, name: error.listingNames[listing] ?? "", ...ownSymbol(key.symbol, symbol),
+        ...(error.listingWithdrawals[listing] ? { withdrawal: error.listingWithdrawals[listing] } : {}),
+      }] : [];
     });
   }
   return venues.filter((venue, index) => venues.findIndex((other) => other.exchange === venue.exchange) === index);
