@@ -54,7 +54,7 @@ import {
   noScheduledReleasesMessage,
   parseCountryFilter,
   listingEnd,
-  pastReleaseListing,
+  pastListingRows,
   shortCalendarEnd,
   type CountryFilter,
   type ImpactFilter,
@@ -578,7 +578,8 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     // alone keeps the newest events of the whole calendar, the past week's too.
     const from = fromOption ?? (ctx.cliOptions.tail != null ? null : new Date(todayStart).toISOString().slice(0, 10));
     const fromTime = from == null ? Number.NEGATIVE_INFINITY : Date.parse(`${from}T00:00:00Z`);
-    // The last day the listing reaches, as Gloom Cloud says it: past it, it lists each central bank's next decision.
+    // The last day the listing reaches, as Gloom Cloud says it: past it, it lists each central bank's next decision
+    // and each country's next CPI release.
     const listedThrough = listingEnd(events, past?.listedThrough);
     // A calendar that stops short of a week ahead says so under the table.
     const listedAfter = shortCalendarEnd(events, Math.max(todayStart, fromTime), past?.listedThrough) ? `No events listed after ${listedThrough}` : null;
@@ -645,9 +646,10 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     // A filter of countries only, none of which has anything in the window, says so as its empty list, with where
     // the listing ends.
     const allUnscheduled = unscheduled.length > 0 && unscheduled.length === country.split(",").length;
-    // Rows after the listing's end are each bank's next decision, and say so where the end is said.
-    const listedPast = listed.some(pastReleaseListing)
-      ? `No releases listed after ${listedThrough}; the rows after it are each central bank's next decision` : null;
+    // Rows after the listing's end are each bank's next decision and each country's next CPI release, and say so
+    // where the end is said.
+    const pastRows = pastListingRows(listed);
+    const listedPast = pastRows ? `No releases listed after ${listedThrough}; the rows after it are ${pastRows}` : null;
     const notes = [listedBefore, listedPast ?? listedAfter, ...(rows.length > 0 ? blankTimeNotes(rows) : []),
       rows.length > 0 && unscheduled.length > 0 ? noScheduledReleasesMessage(unscheduled) : null,
       // A dash under Forecast on a release still to come is a consensus not in yet, not a missing figure.

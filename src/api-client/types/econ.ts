@@ -36,7 +36,8 @@ export interface CloudEconEventPayload {
    */
   consensus?: { source: string; readAt: string } | null;
   /**
-   * A central bank's next decision listed past the end of the calendar's
+   * A central bank's next decision, or a country's next CPI release from its
+   * statistics office's calendar, listed past the end of the calendar's
    * listing: no release is listed after `listedThrough`, the listing's last
    * UTC day. Absent from an older server.
    */
