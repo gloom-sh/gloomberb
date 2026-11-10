@@ -148,14 +148,17 @@ function domTableTitle(table: DomTable): string {
 }
 
 function renderDomTables(rows: DesktopPaneShotRenderedRow[]): string[] {
-  // A column only the JSON and CSV carry is no part of the text.
-  const tables = domTables(rows.map((row) => row.cells.some((cell) => cell.reportOnly)
+  // A column only the JSON and CSV carry is no part of the text. A section header (FUT's sector) is the Group of the
+  // rows under it, as the CSV writes it, never a row of dashes of its own.
+  const tables = groupedDomTables(rows.map((row) => row.cells.some((cell) => cell.reportOnly)
     ? { ...row, cells: row.cells.filter((cell) => !cell.reportOnly) } : row));
   return tables.flatMap((table, index) => [
     ...(index > 0 ? [""] : []),
     ...(tables.length > 1 ? [renderSection(domTableTitle(table))] : []),
     renderTable(
-      table.columns,
+      // Headed as the table's own columns are, in capitals where they are.
+      table.columns.map((column) => column.key === GROUP_KEY && table.columns.every((other) => other.key === GROUP_KEY
+        || other.header === other.header.toUpperCase()) ? { ...column, header: column.header.toUpperCase() } : column),
       table.rows.map((cells) => table.columns.map((column) => {
         const cell = cells.get(column.key);
         return cell ? cellText(cell) : "";
@@ -182,6 +185,13 @@ function groupedRows(rows: readonly DesktopPaneShotRenderedRow[]): DesktopPaneSh
   });
 }
 
+/** The rendered tables with each section's rows grouped under it (`groupedRows`): the group closes each row, whichever cells a row left blank before it. */
+function groupedDomTables(rows: readonly DesktopPaneShotRenderedRow[]): DomTable[] {
+  return domTables(groupedRows(rows)).map((table) => ({
+    ...table, columns: [...table.columns.filter((column) => column.key !== GROUP_KEY), ...table.columns.filter((column) => column.key === GROUP_KEY)],
+  }));
+}
+
 /** The rendered tables as `--csv` writes them, with the instant behind a shortened time. */
 function domReportTables(
   rows: DesktopPaneShotRenderedRow[],
@@ -190,10 +200,7 @@ function domReportTables(
   incomplete: boolean | string,
   notices: readonly string[],
 ): CliReportTables {
-  // The group closes each row, whichever cells a row left blank before it.
-  const tables = domTables(groupedRows(rows)).map((table) => ({
-    ...table, columns: [...table.columns.filter((column) => column.key !== GROUP_KEY), ...table.columns.filter((column) => column.key === GROUP_KEY)],
-  }));
+  const tables = groupedDomTables(rows);
   return {
     tables: tables.map((table) => {
       const exported = exportTextTable(
