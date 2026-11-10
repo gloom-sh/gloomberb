@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, setSystemTime, test } from "bun:test";
-import { resetGeoCatalogCache } from "../../../api-client/geo";
+import { resetGeoCatalogCache, type GeoRequest } from "../../../api-client/geo";
 import { createGeoFixtureRequest } from "../../../test-support/test-fixture-geo";
 import { chokepointSeriesFor, chokepointSeriesIds, geoSeriesRange, resolveGeoChartSeries } from "./geo-series";
 
@@ -22,6 +22,34 @@ describe("map series in G", () => {
 
     await expect(resolveGeoChartSeries(request, "ATLANTIS", { range: "1Y", resolution: "auto" }))
       .rejects.toThrow("No map series named ATLANTIS.");
+  });
+
+  test("a series dated by its publication says when its newest day came out, and who published it", async () => {
+    const tsa = { id: "tsa.us.travelers", name: "US airport checkpoint travelers", unit: "people", frequency: "daily" };
+    const request = (async (path: string) => path.startsWith("series?")
+      ? { series: [{ ...tsa, alias: "TSA", layer: "air-travel" }] }
+      : {
+          ...tsa,
+          points: [["2026-11-08", 2_749_897], ["2026-11-09", 2_535_058]],
+          asOf: "2026-11-09",
+          publisher: "TSA",
+          publishedAt: "2026-11-10T13:58:21.000Z",
+        }) as GeoRequest;
+    const series = await resolveGeoChartSeries(request, "TSA", { range: "1M", resolution: "auto" });
+    expect(series.points.map((point) => [point.date.toISOString().slice(0, 10), point.value, point.releasedOn]))
+      .toEqual([["2026-11-08", 2_749_897, undefined], ["2026-11-09", 2_535_058, "2026-11-10"]]);
+    expect(series.attribution).toEqual({ source: "TSA", publisher: "TSA" });
+  });
+
+  test("a day missing from a daily series reads as missing, not as the day before", async () => {
+    const load = { id: "eia930.us48.demand", name: "US Lower 48 electricity demand", unit: "GWh/day", frequency: "daily" };
+    // 1 Nov, the day the clocks went back, is not served; its week's average still is.
+    const request = (async (path: string) => path.startsWith("series?")
+      ? { series: [{ ...load, alias: "US48.LOAD", layer: "power-demand" }] }
+      : { ...load, points: [["2026-10-31", 9_810.5], ["2026-11-02", 10_842.785]], asOf: "2026-11-02", publisher: "EIA" }) as GeoRequest;
+    const series = await resolveGeoChartSeries(request, "US48.LOAD", { range: "1M", resolution: "auto" });
+    expect(series.points.map((point) => [point.date.toISOString().slice(0, 10), point.value]))
+      .toEqual([["2026-10-31", 9_810.5], ["2026-11-01", null], ["2026-11-02", 10_842.785]]);
   });
 
   test("a date window wins over the range, and ALL asks for everything", () => {
