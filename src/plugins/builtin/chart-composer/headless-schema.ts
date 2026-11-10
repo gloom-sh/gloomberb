@@ -166,8 +166,7 @@ export const paneSchemas = {
         key: "currency",
         type: "string",
         placeholder: "code",
-        description: "Convert every ticker into this currency at each day's FX close, so the returns carry its move against theirs: "
-          + "each one's unhedged return in that currency",
+        description: "Convert every ticker into this currency at each day's FX close, so the returns carry its move against theirs",
         example: "--currency USD",
         normalize: normalizeCurrencyCode,
       },

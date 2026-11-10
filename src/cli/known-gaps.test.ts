@@ -224,7 +224,7 @@ test("NIM, deposits, CRE and bank are pointed at the Bank section of fundamental
 // "yen hedged" opened FX Cross Rates, which has no hedged view.
 test("a hedged query leads with CMP on hedged and unhedged Japan funds, which the catalog finds by the same words", async () => {
   const line = "Hedged against unhedged: gloom fn CMP DXJ HEWJ EWJ --total-return true (DXJ and HEWJ hedge the yen, EWJ does not); "
-    + "add --currency HKD for each fund's unhedged return in your currency.";
+    + "add --currency <your currency> for each fund's return in it, EWJ then carrying the yen's move and DXJ and HEWJ only the dollar's.";
   for (const query of ["yen hedged", "hedged", "currency hedged etf", "hedged vs unhedged japan"]) expect(commandPointer(query), query).toBe(line);
   expect(commandPointerLeads("yen hedged")).toBe(true);
   for (const query of ["hedge fund", "hedged bond yield"]) expect(commandPointer(query), query).not.toBe(line);

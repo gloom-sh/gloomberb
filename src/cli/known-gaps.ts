@@ -381,7 +381,7 @@ const COMMAND_POINTERS: ReadonlyArray<{
     words: ["yen", "jpy", "currency", "fx", "japan", "japanese", "nikkei", "topix", "etf", "etfs", "fund", "funds", "return", "returns",
       "vs", "versus", "and", "or", "against", "view", "equity", "equities", "stocks", "performance", "compare", "comparison", "chart"],
     line: "Hedged against unhedged: gloom fn CMP DXJ HEWJ EWJ --total-return true (DXJ and HEWJ hedge the yen, EWJ does not); "
-      + "add --currency HKD for each fund's unhedged return in your currency.",
+      + "add --currency <your currency> for each fund's return in it, EWJ then carrying the yen's move and DXJ and HEWJ only the dollar's.",
     leads: true,
   },
   {
