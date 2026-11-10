@@ -250,6 +250,39 @@ describe("pane-manager split-tree drops", () => {
     expect(getDockLeafLayouts(gridlockAllPanes(layout, wide), wide).every((leaf) => !leaf.stack && leaf.rect.width >= 30)).toBe(true);
   });
 
+  // Five panes in a row at 120 columns, six at 160, eight at 200 and a 14% sidebar were tidied into two stacks.
+  test("Tidy tiles an even grid where the panes' own arrangement leaves one under 30 columns", () => {
+    const tiled = (rects: Array<{ x: number; y: number; width: number; height: number }>, width: number) => {
+      const ids = rects.map((_, index) => `chat:${index}`);
+      const layout: LayoutConfig = {
+        dockRoot: null,
+        instances: ids.map((instanceId) => createPaneInstance("chat", { instanceId })),
+        floating: rects.map((rect, index) => ({ instanceId: ids[index]!, ...rect })),
+        detached: [],
+      };
+      const terminal = { x: 0, y: 0, width, height: 40 };
+      const leaves = getDockLeafLayouts(gridlockAllPanes(layout, terminal), terminal);
+      return { tiles: leaves.length, stacked: leaves.some((leaf) => leaf.stack), narrowest: Math.min(...leaves.map((leaf) => leaf.rect.width)) };
+    };
+    const row = (count: number, width: number) => Array.from({ length: count }, (_, index) => (
+      { x: Math.floor(index * width / count), y: 0, width: Math.floor(width / count), height: 40 }
+    ));
+    for (const [count, width] of [[5, 120], [6, 160], [8, 200], [7, 160]] as const) {
+      const result = tiled(row(count, width), width);
+      expect(result, `${count} at ${width}`).toMatchObject({ tiles: count, stacked: false });
+      expect(result.narrowest, `${count} at ${width}`).toBeGreaterThanOrEqual(30);
+    }
+    // A 28-column sidebar beside six panes at 200 columns.
+    const sidebar = [{ x: 0, y: 0, width: 28, height: 40 }, ...Array.from({ length: 6 }, (_, index) => (
+      { x: 28 + (index % 3) * 57, y: Math.floor(index / 3) * 20, width: 57, height: 20 }
+    ))];
+    const tidied = tiled(sidebar, 200);
+    expect(tidied).toMatchObject({ tiles: 7, stacked: false });
+    expect(tidied.narrowest).toBeGreaterThanOrEqual(30);
+    // Eight panes at 100 columns fit no grid (25-column tiles either way): one column of stacks.
+    expect(tiled(row(8, 100), 100).stacked).toBe(true);
+  });
+
   test("gridlock infers a matching tiled layout from arranged windows", () => {
     const config = createDefaultConfig("/tmp/gloomberb-test");
     let layout: LayoutConfig = {
