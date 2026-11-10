@@ -163,7 +163,8 @@ jobs:
 
   chat-webkit:
     name: Chat painting in WebKit
-    runs-on: ubuntu-latest
+    # Playwright 1.60's WebKit does not install on Ubuntu 26.04; lift when Playwright supports it
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
