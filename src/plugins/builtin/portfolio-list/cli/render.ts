@@ -841,7 +841,7 @@ export function holdsFutures(valuation: Pick<PortfolioValuation, "positions">): 
 /**
  * `Priced at the latest print, extended hours included`: the line under a
  * portfolio's title. At the close, a book with markets still trading names
- * them, and the markets at their close (GLO-1950): `Priced at the regular
+ * them, and the markets at their close: `Priced at the regular
  * close: BIST at its close; US still trading, at the latest print`.
  */
 function valuationBasisLine(

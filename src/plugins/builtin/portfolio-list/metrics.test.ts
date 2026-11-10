@@ -849,7 +849,7 @@ describe("a hedge in the PF pane: long shares and short gold futures", () => {
   });
 });
 
-// GLO-1950's lira book: the live Day's move left out USD/TRY's move on a book 75% in USD names.
+// A lira book mostly in dollar names: the live day's move left out the dollar's own move against the lira.
 test("a lira book's day move holds the dollar's move on the day for a dollar holding, as `portfolio show` counts it", () => {
   const ticker = createTestTicker("NTR", "Nutrien", {
     portfolios: ["tarim"], positions: [{ portfolio: "tarim", shares: 100, avgCost: 60, currency: "USD", broker: "manual" }],

@@ -168,7 +168,7 @@ export function priceComparisonSeriesIds(spec: ChartSpec): string[] | null {
 
 /**
  * The currency each compared leg's return is in, by series id, where the
- * chart would not say it otherwise (GLO-1950): every leg's own currency when
+ * chart would not say it otherwise: every leg's own currency when
  * they are in more than one (GUBRF.IS in TRY beside NTR in USD), or the
  * chart's `viewport.currency` for every leg it converts. Empty for legs all in
  * one currency, the chart's own, or a currency their unit does not name.
