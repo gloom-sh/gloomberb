@@ -1,7 +1,7 @@
 import type { CotClass, CotClassSummary, CotContractPayload, CotFamily, CotHistoryPoint } from "../../../api-client/cot";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchCotBoard, fetchCotContract } from "./client";
-import { COT_CLASSES, COT_FAMILIES, COT_MAJOR_CODES, COT_POSITIONS, COT_SCOPES, cotClass, cotContractCode, cotContractUnitText, cotFamily, cotInteger, cotMarketName, cotPositions, cotPositionsText, cotProxyFor, cotProxyNote, cotReleaseTime, cotScope, cotUnknownMarketMessage } from "./model";
+import { COT_CLASSES, COT_FAMILIES, COT_MAJOR_CODES, COT_POSITIONS, COT_SCOPES, cotClass, cotContractCode, cotContractUnitText, cotFamily, cotInteger, cotMarketName, cotPositions, cotPositionsText, cotProxyFor, cotProxyNote, cotReleaseTime, cotRoot, cotScope, cotUnknownMarketMessage } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 import { REPORT_ROWS } from "../shared/headless-options";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
@@ -43,6 +43,9 @@ function cotContractTitle(data: CotContractPayload, code: string): string {
   return [data.contract ? cotMarketName(data.contract.marketName) : code, data.asOf ? `report date ${data.asOf}` : null, units,
     data.scope === "combined" ? cotPositionsText(data.scope) : null].filter(Boolean).join("  ·  ");
 }
+/** What every position counts, and how often the CFTC reports them: an export's `currency_or_unit` and `interval`. */
+const COT_UNIT = "contracts";
+const COT_INTERVAL = "weekly";
 /** Every trader class of every report, each once, in the reports' order. */
 const TRADER_CLASSES = [...new Set(Object.values(COT_CLASSES).flat().map(({ value }) => value))];
 
@@ -140,11 +143,14 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
       const weeklyColumns: HeadlessPaneColumn[] = [{ key: "reportDate", header: "Report date" }, { key: "released", header: "Released" },
         { key: "openInterest", header: "Open interest", align: "right", format: count },
         ...classes.map((id) => ({ key: `${camelClass(id)}Net`, header: `${data.positions.find((row) => row.id === id)?.label ?? id} net`, align: "right" as const, format: signed }))];
-      return { sections: [{ title: cotContractTitle(data, code),
+      // Every exported row names the market by the root a reader knows it by (GC), counts in contracts, and is a weekly report.
+      const identity = { symbol: cotRoot(data.contract?.contractCode ?? code) ?? code, unit: COT_UNIT, interval: COT_INTERVAL };
+      return { sections: [{ title: cotContractTitle(data, code), ...identity,
         columns: [{ key: "class", header: "Class" }, { key: "long", header: "Long", align: "right", format: count },
           { key: "short", header: "Short", align: "right", format: count }, ...POSITION_COLUMNS],
         rows: data.positions.map((row) => ({ class: row.label, ...cotPositionRow(row) })) },
       { title: weeks.length < data.history.length ? `Weekly positions  ·  newest ${weeks.length} of ${data.history.length}` : "Weekly positions",
+        ...identity, rowAsOfKey: "reportDate",
         columns: weeklyColumns,
         // Each report's scheduled release, for an export read as of a past week; the text keeps to the positions.
         textColumns: weeklyColumns.filter((column) => column.key !== "released"),
@@ -161,10 +167,11 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
     const rows = data.rows.filter((row) => scope === "all" || COT_MAJOR_CODES.has(row.contractCode));
     const publishedAt = cotPublishedAt(data);
     return { sections: [{ title: positions === "combined" ? `Positioning extremes  ·  ${cotPositionsText(positions)}` : "Positioning extremes",
+      unit: COT_UNIT, interval: COT_INTERVAL, rowSymbolKey: "root", rowAsOfKey: "reportDate",
       columns: [{ key: "marketName", header: "Market" }, { key: "contractCode", header: "Code" },
         ...POSITION_COLUMNS.map((column) => column.key === "net" ? { ...column, textHeader: cotBoardNetHeader(family, traderClass) } : column),
         { key: "openInterest", header: "Open interest", align: "right", format: count }, { key: "reportDate", header: "As of" }],
-      rows: rows.map((row) => ({ contractCode: row.contractCode, marketName: cotMarketName(row.marketName), reportDate: row.reportDate, openInterest: row.openInterest, ...cotPositionRow(row.position) })) }],
+      rows: rows.map((row) => ({ contractCode: row.contractCode, root: cotRoot(row.contractCode) ?? row.contractCode, marketName: cotMarketName(row.marketName), reportDate: row.reportDate, openInterest: row.openInterest, ...cotPositionRow(row.position) })) }],
     errors: data.gaps, metadata: { ...data, scope, publishedAt, complete: data.status === "available" }, ...cotReleased(publishedAt) };
   },
 };

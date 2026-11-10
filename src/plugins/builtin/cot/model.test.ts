@@ -10,6 +10,9 @@ import {
 import { FUTURES_CONTRACTS } from "../../../market-data/futures-board";
 import { cotModule } from "./index";
 import { cotHeadless } from "./headless";
+import { headlessReportTables } from "../../../cli/pane-functions/headless";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { renderReportCsv } from "../../../cli/report-tables";
 import { getPaneFunctionCapability, normalizeCapabilityOptions } from "../../../cli/pane-functions/capabilities";
 import { parsePaneFunctionArgs } from "../../../cli/pane-functions/options";
 import { parseCliGlobalArgs } from "../../../cli/options";
@@ -239,6 +242,23 @@ test("a market's report lists its weeks newest first, the newest n with --limit 
     expect(weeks!.title, flags.join(" ")).toBe("Weekly positions  ·  newest 2 of 3");
     expect(weeks!.rows.map((row) => row.reportDate), flags.join(" ")).toEqual(["2026-09-15", "2026-09-08"]);
   }
+});
+
+test("fn COT gold --csv names each row's market by its root, in contracts, weekly, and each week by its own report date", async () => {
+  const gold: CotContractPayload = { ...payload(), status: "available", gaps: [], asOf: "2026-09-15",
+    contract: { contractCode: "088691", marketName: "GOLD - COMMODITY EXCHANGE INC.", exchangeCode: "CMX", commodityCode: "088", contractUnits: "CONTRACTS OF 100 TROY OUNCES" },
+    history: ["2026-09-08", "2026-09-15"].map((reportDate) => ({ reportDate, openInterest: 180,
+      positions: [{ id: "noncommercial" as const, long: 30, short: 10, spreading: 0, net: 20, netPercentOfOpenInterest: 10 }] })) };
+  const args = { argument: "gold", symbols: [], options: {} } as never;
+  const result = await cotHeadless.load(args, { apiClient: { getCloudCotContract: async () => gold } } as never);
+  const freshness = deriveHeadlessFreshness(cotHeadless, result);
+  const csv = renderReportCsv(headlessReportTables(cotHeadless, result, args, "COT", freshness, { complete: true, unavailableSymbols: [] }), freshness).split("\n");
+  // symbol_or_series, currency_or_unit, interval, source, as_of: blank before for every row.
+  const identity = (line: string) => line.split(",").slice(-6, -1);
+  expect(identity(csv.find((line) => line.startsWith("Noncommercial,"))!)).toEqual(["GC", "contracts", "weekly", "CFTC", "2026-09-15"]);
+  expect(csv.filter((line) => /^2026-09-\d\d,/.test(line)).map(identity)).toEqual([
+    ["GC", "contracts", "weekly", "CFTC", "2026-09-15"], ["GC", "contracts", "weekly", "CFTC", "2026-09-08"],
+  ]);
 });
 
 test("a report's publication time is the CFTC's release, 3:30 p.m. Eastern on its Friday or the day a holiday moved it to", async () => {

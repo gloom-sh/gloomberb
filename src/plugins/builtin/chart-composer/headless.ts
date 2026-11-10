@@ -6,9 +6,8 @@ import { priceHistoryIntegrityNotices, chartPriceHistoryIntegrityNotices } from 
 import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessSeries, HeadlessSeriesResult } from "../../../types/headless";
 import type { CapabilitySeriesSource, ChartResolutionResult, ChartSeriesSource, ChartSeriesSpec, ChartSpec, ChartViewportSpec, ResolvedSeries } from "../../../time-series/types";
 import { resolveGeoChartSeries } from "../world-venue-map/geo-series";
-import { CHART_FIELD_IDS, GEO_SERIES_CAPABILITY_ID, parseSeriesExpression } from "./series-expression";
-import { buildSeriesSpec } from "./chart-spec-edit";
-import { getSharedRegistry } from "../../registry";
+import { GEO_SERIES_CAPABILITY_ID, parseSeriesExpression } from "./series-expression";
+import { bareCatalogCandidate, registryCatalogLookups, withCatalogLabel, type CatalogSeriesLookups } from "./catalog-series";
 import { notATickerSymbol } from "../../../sources/provider-errors";
 import { resolveChartSpecData } from "../../../time-series/resolve";
 import { mergePriceHistoryWindows, priceHistoryAcquisitionIdentity, priceHistoryTailAcquisition } from "../../../time-series/history-acquisition";
@@ -712,22 +711,21 @@ export async function bareCatalogSeries(
   readListing: () => Promise<unknown>,
   context: Pick<HeadlessPaneContext, "marketData" | "catalogSeriesName" | "catalogSeriesNamed">,
 ): Promise<ChartSeriesSpec | null> {
-  const { source } = series;
-  if (source.kind !== "security" || source.instrument.exchange || source.instrument.instrument || source.fieldId !== CHART_FIELD_IDS.price) return null;
-  const id = source.instrument.symbol.trim().toUpperCase();
-  const expression = `FRED:${id}`;
-  const fredLabel = /^[A-Z0-9]+$/.test(id)
-    ? context.catalogSeriesName?.(expression) ?? getSharedRegistry()?.series?.findByExpression(expression)?.definition.name
-    : undefined;
-  const named = fredLabel ? undefined : context.catalogSeriesNamed?.(id);
-  const parsed = named ? parseSeriesExpression(named.expression) : null;
-  const label = fredLabel ?? (parsed ? named?.name : undefined);
-  if (!label || await readListing()) return null;
+  const catalog = bareCatalogCandidate(series, headlessCatalogLookups(context));
+  if (!catalog || series.source.kind !== "security" || await readListing()) return null;
+  const id = series.source.instrument.symbol.trim().toUpperCase();
   const failure = await Promise.resolve().then(() => context.marketData.getQuote(id, ""))
     .then((quote) => quote ? null : `Not a ticker: ${id}.`, (error: unknown) => error instanceof Error ? error.message : String(error));
-  if (!failure || !notATickerSymbol(failure)) return null;
-  const spec = parsed ? buildSeriesSpec({ ...parsed, label }, 0) : buildSeriesSpec({ kind: "economic", provider: "fred", seriesId: id, label }, 0);
-  return { ...spec, id: series.id, transform: series.transform, axis: series.axis, panelId: series.panelId };
+  return failure && notATickerSymbol(failure) ? catalog : null;
+}
+
+/** The catalog `fn` reads, the app's registry before it where one is loaded, as the pane reads it (registryCatalogLookups). */
+function headlessCatalogLookups(context: Pick<HeadlessPaneContext, "catalogSeriesName" | "catalogSeriesNamed">): CatalogSeriesLookups {
+  const registry = registryCatalogLookups();
+  return {
+    catalogSeriesName: (expression) => context.catalogSeriesName?.(expression) ?? registry.catalogSeriesName?.(expression),
+    catalogSeriesNamed: (word) => context.catalogSeriesNamed?.(word) ?? registry.catalogSeriesNamed?.(word),
+  };
 }
 
 /** The reads of a listing's quote, profile and bars, each taking the symbol first and its venue second. */
@@ -855,6 +853,11 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
           return instrument ? { ...series, source: { ...series.source, instrument: { ...series.source.instrument, ...instrument } } } : series;
         })),
       } : parsed;
+      // A FRED series reads by the catalog's short name however it was typed (FRED:DFII10 beside GC=F), as it does alone.
+      const catalogLookups = headlessCatalogLookups(context);
+      if (spec.series.some((series) => withCatalogLabel(series, catalogLookups) !== series)) {
+        spec = { ...spec, series: spec.series.map((series) => withCatalogLabel(series, catalogLookups)) };
+      }
       if (template === "graph-intraday-price-pane" && !spec.viewport.dateWindow) {
         const instruments = new Map(spec.series.flatMap(({ source }) => source.kind === "security"
           ? [[snapshotInstrumentKey(source.instrument), source.instrument] as const] : []));

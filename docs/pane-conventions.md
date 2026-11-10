@@ -597,7 +597,12 @@ its value, the latest one until the cursor moves. Units live in the axis
 labels. No loose title line above a chart, no `yAxisLabel` row, no unnamed
 single line. A chart that follows the selected row names that row. When the
 legend runs short of width, a curve's caption gives way before any series
-name does.
+name does. A series read against the right axis of a panel whose other
+series read against the left says so after its value, dim: `51.57 USD / troy
+oz -2.13% (right axis)`; the note gives way, to the tooltip, before a name is
+cut. In G, prices in one unit an order of magnitude apart (silver beside
+gold) take an axis each: the smaller goes right, with what is drawn in its
+price.
 
 **The chart earns its rows.** It shows what the table cannot: a trend, a
 curve's shape, how a level moved (look-back curves, trails). The table adds

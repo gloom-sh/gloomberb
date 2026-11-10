@@ -102,6 +102,12 @@ export interface HistoryRow {
   /** The bar traded far below the bars around it (THIN_VOLUME_SHARE of their median): a price on few trades. */
   thin?: true;
   /**
+   * A continuous future's bar that is its contract's settlement alone, with no
+   * open, high or low: the source no longer charts the contract (PL=F's
+   * September 2026 bars, October platinum, after it expired).
+   */
+  settleOnly?: true;
+  /**
    * A monthly bar whose prices contradict each other (`flag`) keeps its close;
    * its open, high and low were rebuilt from the month's daily bars
    * (withDailyRebuiltBars), else they are blank.
@@ -444,11 +450,15 @@ export function historyRows(
     // A roll is a change between two known contracts; a bar naming none (before the source knew) is no roll.
     const rolled = !!own && contract != null && own !== contract;
     if (own) contract = own;
+    // A contract's bar with a close and nothing else is its settlement; one still closing on its last trade says unsettled.
+    const settleOnly = !!own && row.close != null && row.open == null && row.high == null && row.low == null
+      && blankingCodes({ flag: flags.join(",") || null }).length === 0 && !row.unsettled && !row.partial;
     const marked = {
       ...row,
       ...(own ? { contract: own } : {}),
       ...(rolled ? { roll: true as const } : {}),
       ...(thin[index] ? { thin: true as const } : {}),
+      ...(settleOnly ? { settleOnly: true as const } : {}),
     };
     return flags.length > 0 ? { ...marked, flag: flags.join(",") } : marked;
   });

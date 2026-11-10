@@ -294,7 +294,7 @@ import {
 import { CBOE_YIELD_INDEX_CLOSE } from "../../plugins/builtin/shared/treasury-cutoffs";
 import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote, undatedListingsNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
-import { providerMissReason } from "../../sources/provider-errors";
+import { notATickerSymbol, providerMissReason } from "../../sources/provider-errors";
 import { isNetworkFailure } from "../../utils/network-failure";
 import { withSavedCopy, type ReportFreshness } from "../pane-functions/freshness";
 import { isNotATickerMessage } from "../not-a-ticker";
@@ -306,7 +306,7 @@ import { readNameEntries, readPhraseArgument } from "../name-entries";
 import { readSymbolList, SymbolListError } from "../symbol-list";
 import { notASymbolError } from "../symbol-cells";
 import { cliPerpetualContract, perpetualContractStats, type PerpetualContractPayload } from "../perpetual-contract";
-import { knownGapMessage, subMinuteDataMessage } from "../known-gaps";
+import { isSubMinuteInterval, knownGapMessage, subMinuteDataMessage } from "../known-gaps";
 import { phraseSearchReport } from "./search";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol, isRoundTheClockCoin } from "../../utils/crypto-pair";
@@ -1527,8 +1527,33 @@ function historyOptionHint(flag: string, args: readonly string[]): string | null
   if (DATE_WINDOW_OPTIONS.has(flag)) {
     return `history takes dates as --from and --to (or --start and --end), each a year or a date (--from 2007 --to 2009), or a --range: ${HISTORY_RANGES.join(", ")}.`;
   }
-  if (BAR_SIZE_OPTIONS.has(flag)) return `history serves each --range in one bar size. ${subMinuteDataMessage(historySymbolArg(args))}`;
+  if (BAR_SIZE_OPTIONS.has(flag)) return historyBarSizeHint(historySymbolArg(args));
   return null;
+}
+
+/** What `history` says to a bar size asked for, as an option or in a symbol's place: it picks one per range, and where finer bars are. */
+function historyBarSizeHint(symbol: string | undefined): string {
+  return `history serves each --range in one bar size. ${subMinuteDataMessage(symbol)}`;
+}
+
+/**
+ * A bar size typed in a symbol's place (`history GC=F 1s`, `30s`, `1m`,
+ * `4h`, `tick`), which no listing is: `history GC=F 1s` printed a year of
+ * daily bars and a row for a ticker 1S. False for any other word.
+ */
+function barSizeTypedAsSymbol(entry: string): boolean {
+  return isSubMinuteInterval(entry) || /^\s*\d+\s*(m|mins?|minutes?|h|hrs?|hours?)\s*$/i.test(entry);
+}
+
+/**
+ * Fails `history` on a bar size typed in a symbol's place, with where finer
+ * bars are; `1m`, which also reads as a month, names that range too.
+ */
+function failHistoryBarSize(entry: string, args: readonly string[], ctx: Parameters<CliCommandDef["execute"]>[1]): never {
+  const symbol = args.find((arg) => arg !== entry && !barSizeTypedAsSymbol(arg) && !rangeTypedAsSymbol(arg));
+  const range = rangeTypedAsSymbol(entry);
+  const what = range ? `reads as a bar size or a range, not a symbol (a range is --range ${range})` : "is a bar size, not a symbol";
+  return ctx.fail(`"${entry}" ${what}.`, historyBarSizeHint(symbol));
 }
 
 /** "Asked from 1990-01-01, data starts 1995-01-03 (first available bar)" when the bars start over a week into the window. */
@@ -1871,6 +1896,7 @@ const HISTORY_FLAG_TEXT_COLUMN: CliResultColumn = {
     row.unsettled ? cliStyles.muted("unsettled") : "",
     row.roll && typeof row.contract === "string" ? cliStyles.muted(`roll to ${row.contract}`) : "",
     row.thin ? cliStyles.muted("thin") : "",
+    row.settleOnly ? cliStyles.muted("settle only") : "",
     typeof row.status === "string" ? cliStyles.warning(row.status) : "",
   ].filter(Boolean).join(" "),
 };
@@ -1920,6 +1946,10 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   // `history swiss franc` is the franc's pair, not SWISS (a Copenhagen listing) and FRANC.
   const currency = file != null || requestedExchange ? null : currencyNameStop(args, "history");
   if (currency) ctx.fail(currency.message, currency.details);
+  // `history GC=F 1s` asks for bars of a second, which no listing named 1S has: it says where the finest bars are.
+  const words = splitSymbolArgs(args.filter((arg, index) => !arg.startsWith("-") && !(index > 0 && args[index - 1]!.startsWith("--") && !args[index - 1]!.includes("="))));
+  const barSize = file == null ? words.find(barSizeTypedAsSymbol) : undefined;
+  if (barSize) failHistoryBarSize(barSize, words, ctx);
   if (wide || file != null || args.includes("-") || uniqueEntries(args).length > 1 || args.some((arg) => /[,;]/.test(arg))) {
     // `history CC=F 1mo` asks for a month of cocoa, not for cocoa and 1MO: it says which option reads it.
     const typedRange = rangeOption == null && !window ? args.find((arg) => rangeTypedAsSymbol(arg)) : undefined;
@@ -2251,6 +2281,12 @@ async function runHistoryList(
         return { symbol, error: isCliFailure(error) ? oneLineFailure(message, error.details) : message };
       }
     });
+    // A word typed on the command line that is no ticker (`history GC=F banana`) is a mistake, refused as an unknown option is;
+    // a list read from a file or standard input keeps a row for it, so one bad line does not lose the rest.
+    if (file === undefined && !args.includes("-")) {
+      const typo = refused[0]?.message ?? listed.flatMap((entry) => "error" in entry && notATickerSymbol(entry.error) ? [entry.error] : [])[0];
+      if (typo) ctx.fail(typo, usage);
+    }
     const served = listed.flatMap((entry) => "history" in entry && entry.history.data.length > 0 ? [entry.history] : []);
     // A symbol with no bars, whether its request failed or came back empty, is one row with the reason.
     const rows: HistoryListRow[] = listed.flatMap((entry) => "history" in entry
@@ -4203,7 +4239,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         title: "Several symbols",
         lines: [
           `history AAPL MSFT 000660.KS, or --file with one symbol a line (- reads standard input), writes every symbol's bars in one long table, ${HISTORY_LIST_CONCURRENCY} symbols loading at once. Each row names its symbol, its unit and the as-of of that symbol's bars in symbol_or_series, currency_or_unit and as_of.`,
-          "A symbol with no history is one row with its reason in status, and a warning names it; the command fails only when no symbol has any. --tail 5 keeps each symbol's newest five bars.",
+          "A symbol with no history is one row with its reason in status, and a warning names it; the command fails only when no symbol has any. A word typed on the command line that is no ticker fails the command, and a bar size typed in a symbol's place (1s, 30s, 1m) says where the finest bars are; a list from --file keeps a row for a line that is no ticker. --tail 5 keeps each symbol's newest five bars.",
           "--wide sets the symbols side by side instead: one row per date, one close column per symbol headed with its unit (USDJPY=X close (JPY per USD)), a blank where a symbol has no bar that day. history USDJPY=X USDCHF=X EURCHF=X --csv --wide is a spreadsheet of the three closes; --tail 5 keeps the newest five dates.",
         ],
       }, {

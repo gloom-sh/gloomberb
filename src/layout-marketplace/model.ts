@@ -1,11 +1,10 @@
 import {
   findPaneInstance,
-  removePaneInstances,
   type LayoutConfig,
   type LayoutOrigin,
   type PaneInstanceConfig,
 } from "../types/config";
-import { getDockedPaneIds } from "../layout/pane-manager";
+import { getDockedPaneIds, layoutWindowCounts, withoutTransientPanes } from "../layout/pane-manager";
 import type { PaneDef } from "../types/plugin";
 import type { PaneRuntimeState } from "../core/state/app/types";
 import { fuzzyFilter } from "../utils/fuzzy-search";
@@ -136,8 +135,8 @@ export function missingPaneIds(
 }
 
 export function describeArrangement(layout: LayoutConfig): string {
-  const counts = { docked: 0, floating: 0, detached: 0 };
-  for (const { placement } of placedInstances(layout)) counts[placement] += 1;
+  // Counted as `gloom layout` counts them, the Layouts window itself left out.
+  const counts = layoutWindowCounts(layout);
   const parts = [`${counts.docked} docked`];
   if (counts.floating > 0) parts.push(`${counts.floating} floating`);
   if (counts.detached > 0) parts.push(`${counts.detached} detached`);
@@ -197,12 +196,7 @@ export function buildOwnedEntries(
       marketplaceId: saved.origin?.layoutId ?? null,
       kind: "owned" as const,
       name: saved.name,
-      layout: removePaneInstances(
-        saved.layout,
-        saved.layout.instances
-          .filter((instance) => instance.paneId === "layout-marketplace")
-          .map((instance) => instance.instanceId),
-      ),
+      layout: withoutTransientPanes(saved.layout),
       paneState: saved.paneState ?? {},
       index,
       active: index === activeIndex,

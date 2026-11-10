@@ -66,6 +66,7 @@ export {
 } from "./floating-stack";
 
 export { restoreHiddenPanes } from "./hidden-panes";
+export { layoutWindowCounts, TRANSIENT_PANE_IDS, withoutTransientPanes, type LayoutWindowCounts } from "./transient";
 export {
   removeFloatingPanes,
   removePane,

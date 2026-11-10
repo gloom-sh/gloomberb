@@ -99,6 +99,23 @@ test("a newest day the source has not finished is no close: the line says daily 
   expect((await correlationHeadless.load(args(["ABC", "SPY"]), ctx({}))).freshness).toEqual({ asOf: "2026-01-07" });
 });
 
+test("fn GR names the pair, its unit and daily bars on each series, and a forming bar is as of its legs' newest quote, not its midnight", async () => {
+  // `fn GR GC=F SI=F --csv` left symbol_or_series, currency_or_unit and interval blank, and dated today's bar 00:00 UTC.
+  const quotedAt: Record<string, number> = { "GC=F": Date.parse("2026-01-07T16:06:00Z"), "SI=F": Date.parse("2026-01-07T16:05:00Z") };
+  const ctx = { ...context(), marketData: createTestDataProvider({
+    getPriceHistory: async (symbol) => [100, 110, 105, 115, 111, 118, 130].map((close, index) => ({
+      date: new Date(Date.UTC(2026, 0, index + 1)), close: close * (symbol === "SI=F" ? 0.02 : 1), ...index === 6 ? { partial: true } : {},
+    })),
+    getQuote: async (symbol) => ({ symbol, price: 1, currency: "USD", change: 0, changePercent: 0, lastUpdated: quotedAt[symbol]! }) as never,
+  }) } as HeadlessPaneContext;
+  const result = await relationshipHeadless.load(args(["GC=F", "SI=F"]), ctx);
+  expect(result.series.map(({ symbol, unit, interval }) => [symbol, unit, interval])).toEqual([["GC=F/SI=F", "ratio", "1d"], ["GC=F/SI=F", "correlation", "1d"]]);
+  expect(result.freshness).toEqual({ basis: "daily bars", note: "the newest bar is today so far", asOf: "2026-01-07T16:06:00.000Z" });
+  // A quote from before the bar's day says nothing of when it was last updated.
+  quotedAt["GC=F"] = quotedAt["SI=F"] = Date.parse("2026-01-06T21:00:00Z");
+  expect((await relationshipHeadless.load(args(["GC=F", "SI=F"]), ctx)).freshness).not.toHaveProperty("asOf");
+});
+
 test("one usable pair cannot make a matrix with disjoint histories look complete", async () => {
   const result = await correlationHeadless.load(args(["ABC", "DEF", "SPY"]), context("", true));
   expect(result.rows[0]!.correlation).toBeCloseTo(1);

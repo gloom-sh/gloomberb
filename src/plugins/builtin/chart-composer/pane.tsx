@@ -407,8 +407,10 @@ function ChartComposerSurface({
   });
   currentResolutionRef.current = resolution.resolution ?? currentResolutionRef.current;
   // Intervals only resample market series. Quarterly revenue or a P/E line
-  // looks the same at every interval, so such a chart offers AUTO alone.
-  const hasMarketSeries = spec.series.some((entry) => (
+  // looks the same at every interval, so such a chart offers AUTO alone. A bare
+  // symbol read as a FRED series (DFII10) counts as that series once it is read.
+  const chartedSeries = listings.pending ? spec.series : listings.spec.series;
+  const hasMarketSeries = chartedSeries.some((entry) => (
     entry.source.kind === "security" && isMarketFieldId(entry.source.fieldId)
   ));
   // Bars built from a future's clock-aligned bars must not straddle its session's open.

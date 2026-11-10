@@ -72,6 +72,19 @@ describe("history rows", () => {
     expect(historyContractDrawdown(plain)!.contract).toBeNull();
   });
 
+  test("a contract's bar with only its settlement is flagged settle only, in the table's rows and the export", () => {
+    // PL=F in September 2026: October platinum's settlements alone (the source no longer charts the expired month),
+    // then January's own bars from the roll. A stock's close-only bar, a forming one and an unsettled one are not.
+    const rows = historyRows([
+      { date: new Date("2026-09-25T00:00:00Z"), close: 1777.6, volume: 16_740, contract: "PLV26" },
+      { date: new Date("2026-09-28T00:00:00Z"), close: 1724.1, volume: 6_877, contract: "PLV26", unsettled: true },
+      { date: new Date("2026-09-29T00:00:00Z"), open: 1736.6, high: 1741.2, low: 1695.3, close: 1701, volume: 21_847, contract: "PLF27" },
+      { date: new Date("2026-09-30T00:00:00Z"), close: 1718.9, volume: 15_966, contract: "PLF27", partial: true },
+    ], "1d");
+    expect(rows.map((row) => row.settleOnly === true)).toEqual([true, false, false, false]);
+    expect(historyRows([{ date: new Date("2026-09-25T00:00:00Z"), close: 101 }], "1d")[0]!.settleOnly).toBeUndefined();
+  });
+
   test("a served bar keeps its contract only as a listed contract code: root, month letter and two-digit year", () => {
     const contract = (value: unknown) => mapPricePoint({ date: "2026-10-26T00:00:00.000Z", close: 3.05, contract: value } as never).contract;
     for (const code of ["NGZ26", "ZQF27", "6EZ26", "MNQH27", "CLX26"]) expect(contract(code)).toBe(code);
