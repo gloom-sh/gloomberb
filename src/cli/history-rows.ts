@@ -553,15 +553,20 @@ export function historyContractDrawdown(
 /**
  * "NG=F is the front month: rolled from NGX26 to NGZ26 on 2026-10-26 (marked
  * roll)": the rolls a continuous future's bars make, the latest few by date,
- * the rest counted. Null without one.
+ * the rest counted. A symbol that follows the most traded month (`mostTraded`,
+ * GC=F) is "the most traded month", as its quote's roll says. Null without one.
  */
-export function historyRollNote(symbol: string, rows: readonly Pick<HistoryRow, "date" | "contract" | "roll">[]): string | null {
+export function historyRollNote(
+  symbol: string,
+  rows: readonly Pick<HistoryRow, "date" | "contract" | "roll">[],
+  { mostTraded = false }: { mostTraded?: boolean } = {},
+): string | null {
   const rolls = historyRolls(rows);
   if (rolls.length === 0) return null;
   const shown = rolls.slice(-LISTED_GAPS);
   const earlier = rolls.length - shown.length;
   const listed = shown.map((roll) => `from ${roll.from} to ${roll.to} on ${historyDate(roll.date)}`);
-  return `${symbol} is the front month: ${earlier > 0 ? `${earlier} earlier ${earlier === 1 ? "roll" : "rolls"}, then ` : ""}`
+  return `${symbol} is the ${mostTraded ? "most traded" : "front"} month: ${earlier > 0 ? `${earlier} earlier ${earlier === 1 ? "roll" : "rolls"}, then ` : ""}`
     + `rolled ${listItems(listed)} (marked roll); drawdowns are read within one contract`;
 }
 

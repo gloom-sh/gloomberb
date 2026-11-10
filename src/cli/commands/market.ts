@@ -77,7 +77,8 @@ import type { FuturesContractTermsPayload } from "../../api-client/futures-curve
 import { currencyCodeLabel } from "../../utils/currency-units";
 import { fxRateDigits, quotedFxPair } from "../../utils/currency-pair";
 import {
-  futuresContractLines, futuresPricePer, futuresRollLines, futuresTickOption, isFuturesInstrument, loadFuturesPriceUnit, loadUsdPerMmbtu, usdPerMmbtuText, type UsdPerMmbtu,
+  futuresContractLines, futuresPricePer, futuresPriceUnit, futuresRollLines, futuresTickOption, isFuturesInstrument, loadFuturesContractTerms, loadUsdPerMmbtu,
+  usdPerMmbtuText, type UsdPerMmbtu,
 } from "../../market-data/futures-contract";
 import {
   chainHasExpiry,
@@ -1591,6 +1592,8 @@ interface ListingHistory {
   volume: HistoryVolume | null;
   freshness: ReportFreshness | undefined;
   notes: string[];
+  /** A continuous future that follows the most traded month (GC=F), as its contract terms say: its bars are that month's. */
+  mostTraded: boolean;
 }
 
 /** The command a listing that cannot be served is pointed back at: `history`, `history --range 5Y`. */
@@ -1599,7 +1602,7 @@ function historyCommand({ range, window }: HistoryAsk): string {
   return window ? `history --from ${window.from}${isPastPriceWindow(window) ? ` --to ${window.to}` : ""}` : range === "1Y" ? "history" : `history --range ${range}`;
 }
 
-/** How long `history` waits for a future's contract terms to name its unit before using the catalog's. */
+/** How long `history` waits for a future's contract terms (its unit, how it rolls) before using the catalog's unit alone. */
 const HISTORY_PRICE_UNIT_WAIT_MS = 1_500;
 /** How long a yen pair's answer waits for Japan's intervention record, read beside it; the note is left out after. */
 const INTERVENTION_NOTE_WAIT_MS = 3_000;
@@ -1688,8 +1691,11 @@ async function loadListingHistory(
       ? market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, loadRange, context)
       : market.dataProvider.getPriceHistory(symbol, exchange, loadRange, context).then((points): PriceHistoryResult => ({ points, resolution: null }));
   const quoteAnswer = loadListingQuoteAnswer(market.dataProvider, listing);
-  // A future's prices are in its contract's unit (US cents / bushel), as FUT and G spell it; asked beside the bars.
-  const priceUnit = isFuturesInstrument(symbol, null) ? settleWithin(loadFuturesPriceUnit(symbol), HISTORY_PRICE_UNIT_WAIT_MS) : Promise.resolve(null);
+  // A future's contract terms, asked beside the bars: its prices are in its contract's unit (US cents / bushel), as FUT
+  // and G spell it, and a continuous symbol on the most traded month (GC=F) says so, as `quote` does.
+  const futures = isFuturesInstrument(symbol, null);
+  const futuresTerms = futures ? settleWithin(loadFuturesContractTerms(symbol), HISTORY_PRICE_UNIT_WAIT_MS) : Promise.resolve(null);
+  const priceUnit = futures ? futuresTerms.then((terms) => futuresPriceUnit(futuresBoardContract(symbol), terms)) : Promise.resolve(null);
   const quoted = quoteAnswer.then((answer) => answer.quote);
   // USDJPY=X's bars name Japan's interventions they span.
   const interventionPair = fxInterventionPair(symbol, exchange);
@@ -1722,6 +1728,7 @@ async function loadListingHistory(
   // Without a quote currency, the listing metadata research reads (as `ticker` does) may still state it.
   const listed = quote?.currency ? quote : await market.dataProvider.getQuoteMetadata?.(symbol, exchange).catch(logFailure("cli.commands-market", "Read quote metadata for history failed", null));
   const unit = historyUnit(listing.key, listed ?? quote, await priceUnit);
+  const mostTraded = /=F$/i.test(listing.symbol) && (await futuresTerms)?.roll?.mostTraded === true;
   const traded = {
     listing: listing.key, exchange: quote?.listingExchangeName || exchange || undefined, instrumentType: quote?.instrumentType,
   };
@@ -1803,12 +1810,12 @@ async function loadListingHistory(
     historyMissingVolumeNote(data) ?? [],
     historyVenueVolumeNote(data) ?? [],
     // NG=F's rows are November's to the 23rd and December's from the 26th: each roll named, and thin bars said.
-    historyRollNote(listing.symbol, data) ?? [], historyThinNote(data) ?? [],
+    historyRollNote(listing.symbol, data, { mostTraded }) ?? [], historyThinNote(data) ?? [],
     historyBarStatusNote(forming ? served : data, { tradingDay: venueTradingDay(venue, Date.now()) }) ?? [],
     await interventionWindowNote(interventions, interventionPair, data) ?? [],
   ].flat();
   return {
-    listing, identity, unit, data, resolution, interval, intraday, volume, freshness, notes,
+    listing, identity, unit, data, resolution, interval, intraday, volume, freshness, notes, mostTraded,
     decimals: historyPriceDecimals(data, listing.saved?.metadata.assetCategory, priceDivisor),
   };
 }
@@ -1840,13 +1847,14 @@ async function stoppedUsListingHistory(
  * A continuous future's history is the front month's, not the contract its
  * quote names now: NG=F's rows from before the roll are November's under a
  * quote of "Natural Gas Dec 2026". The heading says "Natural Gas front month"
- * once the bars name their contracts.
+ * once the bars name their contracts, and "Gold most traded month" for a
+ * symbol that follows the most traded month (GC=F).
  */
-function frontMonthIdentity(identity: ListingIdentity, symbol: string, rows: readonly HistoryRow[]): ListingIdentity {
+function frontMonthIdentity(identity: ListingIdentity, symbol: string, rows: readonly HistoryRow[], mostTraded: boolean): ListingIdentity {
   if (!/=F$/i.test(symbol) || !rows.some((row) => row.contract)) return identity;
   const board = futuresBoardContract(symbol);
   const name = board?.name ?? identity.name?.replace(/\s+[A-Z][a-z]{2}\s+\d{4}$/, "");
-  return name ? { ...identity, name: `${name} front month` } : identity;
+  return name ? { ...identity, name: `${name} ${mostTraded ? "most traded month" : "front month"}` } : identity;
 }
 
 /** What a listing with no bar for what was asked says, in a warning and in a list's status column. */
@@ -2028,7 +2036,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       ...(notes.length > 0 ? { warnings: notes } : {}),
       freshness,
     }, {
-      heading: [listingHeading(frontMonthIdentity(identity, history.listing.symbol, data)), cliStyles.muted(historyFacts(unit, data).join("  ·  ")),
+      heading: [listingHeading(frontMonthIdentity(identity, history.listing.symbol, data, history.mostTraded)), cliStyles.muted(historyFacts(unit, data).join("  ·  ")),
         ...drawdown && moveText ? [cliStyles.muted(maxDrawdownText(drawdown, moveText))] : [],
         ...runUp && moveText ? [cliStyles.muted(maxRunUpText(runUp, moveText))] : []].join("\n"),
       dateKey: "date",

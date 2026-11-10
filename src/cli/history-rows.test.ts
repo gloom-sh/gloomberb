@@ -53,6 +53,11 @@ describe("history rows", () => {
     const rows = historyRows(bars.map(([date, close, volume, contract]) => ({ date: new Date(`${date}T00:00:00Z`), close, volume, contract })), "1d");
     expect(rows.filter((row) => row.roll).map((row) => [row.date, row.contract])).toEqual([["2026-10-26", "NGZ26"]]);
     expect(historyRollNote("NG=F", rows)).toBe("NG=F is the front month: rolled from NGX26 to NGZ26 on 2026-10-26 (marked roll); drawdowns are read within one contract");
+    // A symbol that follows the most traded month says so, as its quote's roll does: CT=F left a thin October for December early.
+    const cotton = historyRows([["2026-09-17", "CTV26"], ["2026-09-18", "CTV26"], ["2026-09-21", "CTZ26"]]
+      .map(([date, contract], index) => ({ date: new Date(`${date}T00:00:00Z`), close: 79 + index, volume: 30_000, contract })), "1d");
+    expect(historyRollNote("CT=F", cotton, { mostTraded: true }))
+      .toBe("CT=F is the most traded month: rolled from CTV26 to CTZ26 on 2026-09-21 (marked roll); drawdowns are read within one contract");
     // Across the join the low of 2.64 would sit under December's 3.05 peak; within November it falls from 3.15.
     const deepest = historyContractDrawdown(rows)!;
     expect(deepest.contract).toBe("NGX26");
