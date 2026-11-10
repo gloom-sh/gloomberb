@@ -52,6 +52,12 @@ export function resolvePaneFunctionReportSource(
   return resolved.capability.reportReadiness === "live-dom" ? "dom" : null;
 }
 
+/** `gloom catalog tsa`, the query quoted when it has spaces. */
+function catalogCommand(rawArg: string): string {
+  const arg = rawArg.trim();
+  return ["gloom catalog", arg && /\s/.test(arg) ? JSON.stringify(arg) : arg].filter(Boolean).join(" ");
+}
+
 /** `gloom shot CAT santander`, the argument quoted when it has spaces. */
 function shotCommand(token: string, rawArg: string): string {
   const arg = rawArg.trim();
@@ -69,6 +75,10 @@ export async function buildFunctionReport(
     // HELP is what a newcomer tries first: send them to the command guide and the function list.
     if (resolved.pane.id === "help") {
       throw new Error("HELP is an in-app pane, so it has no report. For the commands run `gloom help`; for the functions run `gloom catalog`.");
+    }
+    // The data catalog's search is `gloom catalog`'s, which lists the functions and series a word finds and what it cannot.
+    if (resolved.pane.id === "data-catalog") {
+      throw new Error(`${resolved.token} is the in-app data catalog, so it has no report. Search it from the terminal with \`${catalogCommand(rawArg)}\`.`);
     }
     // A pane `shot` can draw is still one command away.
     const screenshot = resolved.capability.screenshotReadiness;

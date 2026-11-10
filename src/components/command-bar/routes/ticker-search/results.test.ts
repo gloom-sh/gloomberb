@@ -2,7 +2,9 @@ import { expect, test } from "bun:test";
 import type { ResultItem } from "../../list/model";
 import { buildTickerSearchCandidates } from "../../../../tickers/search";
 import type { InstrumentSearchResult } from "../../../../types/instrument";
-import { DID_YOU_MEAN_CATEGORY, formatInstrumentBadge, mergePlainRootTickerResults, mergeTickerSearchResultItems, readRootTickerQuery, venueDropdownResults, withMajorCoinCandidate } from "./results";
+import { orderListResults } from "../../list/model";
+import { exactMatchAfterCommands } from "../../view-model";
+import { DID_YOU_MEAN_CATEGORY, formatInstrumentBadge, mergePlainRootTickerResults, mergeTickerSearchResultItems, readRootTickerQuery, venueDropdownResults, withMajorCoinCandidate, wordNamesCommand } from "./results";
 
 function resultItem(id: string, label: string, right: string, kind: ResultItem["kind"] = "ticker"): ResultItem {
   return {
@@ -65,6 +67,60 @@ test("crypto punctuation aliases never outrank the verified exact symbol in comm
   expect(rows[0]?.category).not.toBe("Exact Match");
   expect(rows[1]?.category).toBe("Exact Match");
   expect(mergePlainRootTickerResults("SHIB-USD", rows, [resultItem("pane", "Research", "", "action")])[0]?.id).toBe("exact");
+});
+
+test("\"full\" runs Fullscreen Pane: a line that stopped trading goes last, and a word naming a command puts the command first", () => {
+  const fullscreen = { ...resultItem("fullscreen", "Fullscreen Pane", "", "action"), category: "Focused Pane", searchText: "maximize maximise zoom", commandWords: ["fullscreen", "full", "maximize"] };
+  const delisted = { ...resultItem("eq-full", "FULL", "NASDAQ", "search"), category: "Other Listings", stoppedTrading: true };
+  const other = { ...resultItem("fuller", "FUL", "NYSE", "search"), category: "Other Listings" };
+  // Research Search answers "full" by its "full text" keyword, ranked above the command by the bar's own matching.
+  const research = { ...resultItem("research", "Research Search", "", "action"), category: "Panes", shortcutQuery: "SRCH", searchText: "full text" };
+  const merged = mergePlainRootTickerResults("full", [delisted, other], [research, fullscreen]);
+  // EQ FULL, last traded in 2016, is no exact match: it follows the other listings.
+  expect(merged.map((item) => [item.id, item.category])).toEqual([
+    ["fullscreen", "Focused Pane"], ["research", "Panes"], ["fuller", "Instruments"], ["eq-full", "Instruments"],
+  ]);
+  // A listing that trades keeps its exact match, under the command the word names when typed in small letters.
+  const trading = { ...delisted, stoppedTrading: undefined };
+  const rows = mergePlainRootTickerResults("full", [trading], [fullscreen]);
+  expect(wordNamesCommand("full", [fullscreen])).toBe(true);
+  expect(wordNamesCommand("maxim", [fullscreen])).toBe(true);
+  expect(orderListResults(rows, { sectionOrder: "app-first", categoryPriorities: exactMatchAfterCommands() }).map((item) => item.id))
+    .toEqual(["fullscreen", "eq-full"]);
+  // Capitals are a ticker, and three letters are too few to name a command.
+  expect(wordNamesCommand("FULL", [fullscreen])).toBe(false);
+  expect(wordNamesCommand("ful", [fullscreen])).toBe(false);
+  // A function's examples name no command: "nvda" is not EXPO's `NVDA=40%`.
+  expect(wordNamesCommand("nvda", [{ ...resultItem("expo", "Exposure", "", "action"), shortcutQuery: "EXPO", searchText: "AAPL=60% NVDA=40%" }])).toBe(false);
+  expect(orderListResults(rows, { sectionOrder: "app-first" }).map((item) => item.id)).toEqual(["eq-full", "fullscreen"]);
+});
+
+// The AI's rows repeat the word ("nvda · Ask Gloom", "NVDA · Open security details"), and any word of a function's name counted.
+test("a lowercase ticker keeps its exact match beside the AI's rows, functions that merely contain it and actions that describe it", () => {
+  for (const word of ["nvda", "tsla", "cash", "open", "team", "docu"]) {
+    const bar = [
+      { ...resultItem("ask", `${word} · Ask Gloom`, "", "action"), category: "Ask AI", searchChoice: { kind: "ask-gloom" as const } },
+      { ...resultItem("assist", `${word.toUpperCase()} · Open security details`, "", "action"), category: "Ask AI", searchChoice: { kind: "assist" as const, input: `DES ${word}` } },
+      { ...resultItem("pane-template:jobs:", `Jobs ${word} postings`, "", "action"), category: "Panes", searchText: `${word} hiring` },
+      { ...resultItem("flow", "Fund Flows", "", "action"), category: "Panes", shortcutQuery: "FLOW", searchText: `${word} cash open` },
+      // An action's label and search text describe it: "Hide Cash Positions" and "Open Brokers" name no ticker away.
+      { ...resultItem("pane-setting:hideCash", "Hide Cash Positions", "", "action"), category: "Portfolio Pane Settings", searchText: `Portfolio Hide Cash Positions ${word}` },
+      { ...resultItem("open-brokers", `${word[0]!.toUpperCase()}${word.slice(1)} Brokers`, "", "command"), category: "Broker", searchText: `Open Brokers ${word}` },
+    ];
+    expect(wordNamesCommand(word, bar), word).toBe(false);
+    const listing = { ...resultItem("listing", word.toUpperCase(), "NASDAQ", "search"), category: "Other Listings" };
+    expect(mergePlainRootTickerResults(word, [listing], bar)[0]?.category, word).toBe("Exact Match");
+  }
+});
+
+test("an exact symbol that stopped trading stays first unless a live listing or a command answers the word", () => {
+  const sivb = { ...resultItem("sivb", "SIVB", "NASDAQ", "search"), category: "Other Listings", stoppedTrading: true };
+  const other = { ...resultItem("sivbq", "SIVBQ", "OTC", "search"), category: "Other Listings" };
+  expect(mergePlainRootTickerResults("SIVB", [other, sivb], []).map((item) => [item.id, item.category]))
+    .toEqual([["sivb", "Exact Match"], ["sivbq", "Instruments"]]);
+  const live = { ...resultItem("sivb-live", "SIVB", "LSE", "search"), category: "Other Listings" };
+  expect(mergePlainRootTickerResults("SIVB", [sivb, live], []).map((item) => [item.id, item.category]))
+    .toEqual([["sivb-live", "Exact Match"], ["sivb", "Instruments"]]);
 });
 
 // Search sends no coin for BTC (or sends it last): the bar showed Grayscale's trust and four companies, never bitcoin.

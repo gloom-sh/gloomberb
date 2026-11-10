@@ -353,7 +353,7 @@ export function displayWidth(value: string): number {
   return segmentGraphemes(value).reduce((total, segment) => total + graphemeWidth(segment), 0);
 }
 
-export function truncateToWidth(value: string, width: number): string {
+function truncateToWidth(value: string, width: number): string {
   if (width <= 0) return "";
   if (SINGLE_WIDTH_ASCII_RE.test(value)) return value.slice(0, width);
   let output = "";
