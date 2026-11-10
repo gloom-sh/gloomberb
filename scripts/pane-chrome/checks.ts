@@ -970,7 +970,8 @@ const steps: Step[] = [
       const [news] = await waitFor<Attachment[] | null>(cdp, `window.__paneChrome.attachments.length ? window.__paneChrome.attachments : null`) ?? [];
       if (news?.paneId !== "news:float") fail("the key did not hand over the focused table", news);
       const lines = news.visibleText?.split("\n") ?? [];
-      if (!/TIME\s+HEADLINE/.test(lines[0] ?? "") || !lines.some((line) => /^1\s/.test(line))) fail("the table's own text did not go", lines.slice(0, 4));
+      // The time column names its zone ("TIME UTC").
+      if (!/TIME(?: \S+)?\s+HEADLINE/.test(lines[0] ?? "") || !lines.some((line) => /^1\s/.test(line))) fail("the table's own text did not go", lines.slice(0, 4));
       if (lines.some((line) => /^(100|159)\s/.test(line))) fail("a row scrolled out of view went with it", lines.length);
     },
   },
