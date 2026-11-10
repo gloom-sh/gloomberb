@@ -162,6 +162,8 @@ export const SWEEP_CASES: SweepCase[] = [
   { tool: "most", args: {} },
   { tool: "n", args: { limit: 200 } },
   { tool: "ngs", args: {} },
+  // The seeded profile has no quick notes.
+  { tool: "note", args: {}, expect: "empty" },
   { tool: "opx", args: { symbol: "SPY" } },
   { tool: "ord", args: {}, expect: "error" },
   { tool: "osa", args: { symbol: "AAPL", strategy: "straddle" } },

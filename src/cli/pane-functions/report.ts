@@ -6,7 +6,6 @@ import { appendDomReportFooter, buildDomFunctionReport, domReportNote, domReport
 import type { ReportFreshness } from "./freshness";
 import type { CliReportTables } from "../report-tables";
 import { knownGapMessage } from "../known-gaps";
-import { DATA_CATALOG_PANE_ID } from "../../plugins/builtin/chart-composer/catalog-inventory";
 
 export type PaneFunctionReportSource = "headless" | "dom";
 
@@ -78,7 +77,7 @@ export async function buildFunctionReport(
       throw new Error("HELP is an in-app pane, so it has no report. For the commands run `gloom help`; for the functions run `gloom catalog`.");
     }
     // The data catalog's search is `gloom catalog`'s, which lists the functions and series a word finds and what it cannot.
-    if (resolved.pane.id === DATA_CATALOG_PANE_ID) {
+    if (resolved.pane.id === "data-catalog") {
       throw new Error(`${resolved.token} is the in-app data catalog, so it has no report. Search it from the terminal with \`${catalogCommand(rawArg)}\`.`);
     }
     // A pane `shot` can draw is still one command away.

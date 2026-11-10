@@ -68,7 +68,7 @@ export function trailingAverages(
 }
 
 /** The map series a chart series is of (`CAP:geo-series:HORMUZ` is HORMUZ), or null for any other source. */
-export function geoSeriesToken(series: Pick<HeadlessSeries, "symbol">): string | null {
+function geoSeriesToken(series: Pick<HeadlessSeries, "symbol">): string | null {
   const prefix = `CAP:${GEO_SERIES_CAPABILITY_ID}:`;
   return series.symbol?.startsWith(prefix) ? series.symbol.slice(prefix.length) || null : null;
 }
