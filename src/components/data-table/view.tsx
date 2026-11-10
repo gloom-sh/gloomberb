@@ -722,12 +722,15 @@ export function DataTableView<
     scope: horizontalScrollScope,
   });
 
-  // The column asked for, in the middle of the scrolled columns once the body has its width.
+  // The column asked for, in the middle of the scrolled columns once the body has its width. Keyed on the
+  // column and the pane's width only: a refresh that resizes a column to its new figures, or a scroll the
+  // reader made with Shift+arrows, stays where it is. An empty table waits for its rows.
   const revealColumnIndex = revealColumnId == null ? -1 : tableProps.columns.findIndex((column) => column.id === revealColumnId);
-  const revealKey = revealColumnIndex < 0 ? null
-    : `${revealColumnIndex}:${tableProps.columns.map((column) => column.width).join(",")}:${rootWidth ?? ""}:${tableProps.items.length > 0}`;
+  const revealKey = revealColumnIndex < 0 ? null : `${revealColumnIndex}:${rootWidth ?? ""}`;
+  const revealedKeyRef = useRef<string | null>(null);
+  const hasRows = tableProps.items.length > 0;
   useEffect(() => {
-    if (revealKey == null) return;
+    if (revealKey == null || !hasRows || revealedKeyRef.current === revealKey) return;
     /** True once the body is measured and placed, or there is nothing to scroll. */
     const reveal = () => {
       const body = effectiveScrollRef.current;
@@ -735,7 +738,10 @@ export function DataTableView<
       if (!body || viewportWidth <= 0) return false;
       const scrollWidth = body.scrollWidth ?? 0;
       const maxLeft = Math.max(0, scrollWidth - viewportWidth);
-      if (maxLeft <= 0) return scrollWidth > 0;
+      if (maxLeft <= 0) {
+        if (scrollWidth > 0) revealedKeyRef.current = revealKey;
+        return scrollWidth > 0;
+      }
       const shared = { columns: tableProps.columns, columnGap: tableProps.columnGap, horizontalPadding: tableProps.horizontalPadding };
       const nextLeft = tableRevealLeft({ ...shared, columnIndex: revealColumnIndex, viewportWidth, maxLeft,
         frozenFirstColumn: tableFreezesFirstColumn({ ...shared, freezeFirstColumn: tableProps.freezeFirstColumn, viewportWidth, overflows: true }) });
@@ -743,6 +749,7 @@ export function DataTableView<
         body.scrollLeft = nextLeft;
         effectiveSyncHeaderScroll();
       }
+      revealedKeyRef.current = revealKey;
       return true;
     };
     // The body measures its width a frame or more after it mounts; a few tries, then it stays where it is.
@@ -751,7 +758,7 @@ export function DataTableView<
       if (reveal()) timers.forEach(clearTimeout);
     }, delay));
     return () => timers.forEach(clearTimeout);
-  }, [revealKey]);
+  }, [revealKey, hasRows]);
 
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped) return;
