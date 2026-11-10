@@ -9,7 +9,9 @@ import { IMPLIED_VOL_WORDS, skewHeader } from "../iv-history/format";
 import { formatStrikeLabel } from "../../../utils/options";
 import { formatModelSpotPrice } from "../options/model-spot";
 import { createSurfaceDependencies, loadVolatilitySurface } from "./client";
-import { buildSurfaceGrid, type SurfaceGridOptions, type SurfaceSettings, type SurfaceSnapshot } from "./model";
+import { loadSurfaceEvents, surfaceEventLabel, surfaceEventReadings, type SurfaceEventReading, type SurfaceEvents } from "./events";
+import { MACRO_EVENT_LABELS } from "../macro-day/releases";
+import { buildSurfaceGrid, TERM_SLOPE_MIN_GAP_DAYS, type SurfaceGridOptions, type SurfaceSettings, type SurfaceSnapshot } from "./model";
 import { atCapturePrecision, formatCaptureTime, loadDatedSurface, storedSurfaceDate, type DatedSurfaceSnapshot } from "./stored";
 import { listingFateEmpty, loadListingFate } from "../../../tickers/listing-fate";
 import { coinOptionsAlias, coinWithoutOptionsRefusal, fxVolatilityRefusal } from "../../../market-data/options-alternatives";
@@ -37,7 +39,7 @@ export function surfaceCoordinateLabel(axis: SurfaceAxis, coordinate: number, in
 /** The Skew view's sign conventions and units, one line each. */
 const SKEW_NOTES = [
   "RR is 25D call IV minus 25D put IV, BF the average 25D wing IV minus the IV at the forward, 90/110 the IV at 90% of the forward minus the IV at 110%; all in vol points.",
-  `Slope is the change per year in the IV at the forward to the next listed expiry, in vol points; left out under ${TERM_SLOPE_MIN_DAYS} days to expiry, where it annualises a few hours of noise.`,
+  `Slope is the change per year in the IV at the forward to the first listed expiry at least ${TERM_SLOPE_MIN_GAP_DAYS} days later, in vol points; left out under ${TERM_SLOPE_MIN_DAYS} days to expiry, where it annualises a few hours of noise.`,
 ];
 
 /**
@@ -107,14 +109,42 @@ function smileSections(snapshot: SurfaceSnapshot, requested: number | null): {
   ] };
 }
 
-function termSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
+function termSection(snapshot: SurfaceSnapshot, readings: readonly SurfaceEventReading[]): HeadlessBundleSection {
+  // The first expiry past a scheduled release names it: the step in its IV is the release's.
+  const marks = new Map<number, string[]>();
+  for (const reading of readings) if (reading.after != null) marks.set(reading.after, [...marks.get(reading.after) ?? [], surfaceEventLabel(reading.event)]);
   return { title: "Term structure", columns: [
     { key: "expiry", header: "Expiry" }, { key: "days", header: "Days", format: days },
     { key: "atm", header: "ATM IV", format: iv }, { key: "put25", header: "25D put IV", format: iv }, { key: "call25", header: "25D call IV", format: iv },
     { key: "straddle", header: "Straddle", format: price }, { key: "sigma", header: "1-sigma", format: price },
     { key: "sigmaPercent", header: "1-sigma %", format: (value) => typeof value === "number" ? `${value.toFixed(2)}%` : "--" },
-  ], rows: surfaceTermRows(snapshot).map((row) => ({ ...row, expiry: expiryLabel(row.expiration) })) };
+    ...(marks.size ? [{ key: "event", header: "Event" }] : []),
+  ], rows: surfaceTermRows(snapshot).map((row) => ({ ...row, expiry: expiryLabel(row.expiration),
+    ...(marks.size ? { event: marks.get(row.expiration)?.join(", ") ?? "" } : {}) })) };
 }
+
+/**
+ * The next FOMC and CPI read off the expiries either side of each: the
+ * forward vol between them and the event day's implied absolute move, beside
+ * MDAY's average absolute move of the underlying on that release's days.
+ */
+function eventsSection(readings: readonly SurfaceEventReading[]): HeadlessBundleSection {
+  const percentMove = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--";
+  return { title: "Scheduled releases", columns: [
+    { key: "event", header: "Event" }, { key: "date", header: "Date" }, { key: "between", header: "Between expiries" },
+    { key: "forwardVol", header: "Forward vol", format: iv }, { key: "impliedMove", header: "Implied |move|", format: percentMove },
+    { key: "mdayMove", header: "MDAY avg |move|", format: percentMove }, { key: "mdayDays", header: "MDAY days" },
+  ], rows: readings.map((reading) => ({ event: MACRO_EVENT_LABELS[reading.event.kind], date: reading.event.date,
+    between: reading.after == null ? "none listed after it" : `${reading.before == null ? "now" : expiryLabel(reading.before)} to ${expiryLabel(reading.after)}`,
+    forwardVol: reading.forwardVol, impliedMove: reading.impliedMove,
+    mdayMove: reading.event.history?.meanAbs ?? null, mdayDays: reading.event.history?.count ?? 0 })) };
+}
+
+/** What the releases section reads, one line each. */
+const EVENT_NOTES = [
+  "Forward vol is the ATM IV between the expiries either side of a release (from now when none settles before it), from their total variances. Implied |move| is the release day's: that variance less an ordinary day's on the stretch's other calendar days, as a mean absolute move (sqrt(2/pi) sigma). An ordinary day's vol is the earlier expiry's ATM IV, or with none, the forward vol past the later one.",
+  "MDAY avg |move| is the underlying's average absolute close-to-close move on that release's days over five years (fn MDAY).",
+];
 
 function skewSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
   const gap = (value: unknown, row: HeadlessPaneRow) => typeof value === "number" ? points(value) : (row as unknown as SurfaceSkewRow).gap ?? "--";
@@ -201,6 +231,9 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     let snapshot: DatedSurfaceSnapshot;
     let quote: Quote | null = null;
     let instrument: { symbol: string; exchange?: string } = { symbol };
+    const tab = (SURFACE_TABS as readonly string[]).includes(String(args.options.tab)) ? args.options.tab as SurfaceTab : "surface";
+    // The term structure is read around the next FOMC and CPI: their dates decide which expiries load.
+    let events: SurfaceEvents | null = null;
     if (date) {
       // A stored close needs no current price: it carries the spot it was fitted at.
       snapshot = await loadDatedSurface(symbol, date, { signal: ctx.signal, api: ctx.apiClient });
@@ -211,7 +244,11 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     } else {
       const resolved = await ctx.resolveInstrument?.(symbol) ?? { symbol };
       instrument = resolved;
+      const eventsLoad = tab === "term" && !coin ? loadSurfaceEvents({ symbol: resolved.symbol, exchange: resolved.exchange ?? "" },
+        { apiClient: ctx.apiClient, marketData: ctx.marketData, signal: ctx.signal })
+        .catch(logFailure("vol-surface.headless", "Load the scheduled releases for the term structure failed", null)) : null;
       quote = await ctx.marketData.getQuote(symbol, resolved.exchange);
+      events = await eventsLoad;
       if (!(quote.price > 0) || !Number.isFinite(quote.price) || quote.stale) {
         // A listing that stopped trading has no current price: what became of it is why (TWTR).
         const fate = await loadListingFate(resolved, ctx.marketData, { quote });
@@ -223,7 +260,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
       snapshot = atCapturePrecision(await loadVolatilitySurface({ instrument, spot: quote.price, spotAsOf: quote.lastUpdated, quote,
         settings: { ivSource: args.options.ivSource as SurfaceSettings["ivSource"], priceSide: args.options.priceSide as SurfaceSettings["priceSide"] },
         limit: Number(args.options.limit), signal: ctx.signal,
-        requiredExpiries: requested == null ? [] : [requested],
+        requiredExpiries: requested == null ? [] : [requested], eventDates: events?.events.map((event) => event.date) ?? [],
       }, createSurfaceDependencies(ctx.marketData, ctx.apiClient)));
       // An expired --expiration names the flag that asks for the nearest live one.
       const now = Date.now();
@@ -246,7 +283,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     const spotBasis = available ? surfaceSpotBasisLabel(snapshot) : null;
     const stored = snapshot.stored ?? null;
     const axis = args.options.axis as SurfaceAxis;
-    const tab = (SURFACE_TABS as readonly string[]).includes(String(args.options.tab)) ? args.options.tab as SurfaceTab : "surface";
+    const readings = events ? surfaceEventReadings(snapshot.expiries, snapshot.catalogue, events.events) : [];
     const expiryWarnings = snapshot.expiries.flatMap((expiry) => expiry.warnings.map((warning) =>
       ({ expiry: expiryLabel(expiry.expiration), warning })));
     const perExpiry = new Set(expiryWarnings.map((row) => row.warning));
@@ -255,7 +292,8 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
       .map((warning) => ({ expiry: "All", warning }))];
     const smile = tab === "smile" ? smileSections(snapshot, requested) : null;
     // The report prints the view it was asked for, as the pane opens on it.
-    const view: HeadlessBundleSection[] = tab === "smile" ? smile!.sections : tab === "term" ? [termSection(snapshot)]
+    const view: HeadlessBundleSection[] = tab === "smile" ? smile!.sections
+      : tab === "term" ? [termSection(snapshot, readings), ...readings.length ? [eventsSection(readings)] : []]
       : tab === "skew" ? [skewSection(snapshot)] : tab === "forwards" ? [forwardsSection(snapshot)]
       : surfaceSections(snapshot, axis, args.options.tenors as "listed" | "fixed");
     const dvol = dvolLoad ? await dvolLoad : null;
@@ -285,7 +323,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
       unavailableSymbols: available ? [] : [symbol],
       errors: [...fate?.errors ?? loadErrors, ...smile?.errors ?? [], ...dvol instanceof Error ? [`DVOL: ${dvol.message}`] : []],
       ...(fate?.empty ? { empty: fate.empty } : {}),
-      ...(stored || spotBasis || tab === "skew" || settles || dvol || closedNotice ? { notes: [
+      ...(stored || spotBasis || tab === "skew" || settles || dvol || closedNotice || events ? { notes: [
         ...closedNotice ? [`${closedNotice.title} ${closedNotice.message}${lastIv30
           ? ` IV30 at the ${lastIv30.date} close: ${formatIv(lastIv30.value)}.` : ""}${storedClose
           ? ` The ${storedClose} close surface: gloom fn OVDV ${symbol} --date ${storedClose}.` : ""}`] : [],
@@ -293,7 +331,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
         ...settles ? [`Expiries settle at ${settles}; days and IV run to that time.`] : [],
         ...dvol && !(dvol instanceof Error) ? [`DVOL is ${dvol.venue}'s 30-day implied volatility index for ${dvol.currency}, in vol points; `
           + "it weights every strike, so it sits above the IV at the forward when the wings are bid."] : [],
-        ...tab === "skew" ? SKEW_NOTES : []] } : {}),
+        ...tab === "skew" ? SKEW_NOTES : [], ...readings.length ? EVENT_NOTES : [], ...events?.notes ?? []] } : {}),
       // A stored close is dated by its session, whichever view prints it.
       ...(stored ? { freshness: { status: "not-a-feed" as const, basis: "stored close capture", asOf: stored.sessionDate } }
         : smile?.freshness ? { freshness: smile.freshness } : {}),

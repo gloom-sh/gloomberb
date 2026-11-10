@@ -4,7 +4,7 @@ export { PriceSelectorDialog } from "./price-selector-dialog";
 export { StaticChartSurface } from "./chart/static";
 export { CurveSurface, curveGhostColors, curveSlope, curveStrip, curveSurfaceMinRows, historyStatistics } from "./chart/curve";
 export type { CurveSurfaceProps, CurveSlopeReadout, CurvePoint, CurveSeries, CurveSeriesRole, CurveXScale, HistoryObservation, HistoryStatistics } from "./chart/curve";
-export type { StaticChartOverlay } from "./chart/static/chart-surface";
+export type { StaticChartOverlay, StaticChartXMarker } from "./chart/static/chart-surface";
 // The time-series chart: one or more panels of resolved series with axes,
 // a cursor, and range selection. Ticker overview, polls, econ statistics,
 // and prediction markets all draw with it.

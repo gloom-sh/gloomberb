@@ -13,7 +13,7 @@ import { useBeforeShortcut, useShortcut } from "../../react/input";
 import { isPlainKey, isPlainKeyboardEvent } from "../../utils/keyboard";
 import { DataTable, PaneStatusBody, type DataTableColumn, type DataTableProps, type PaneStatusBodyProps } from "../ui";
 import { useDataTableSortMenu } from "./sort-menu";
-import { tableFreezesFirstColumn, tableScrollStep } from "../ui/table-layout";
+import { tableFreezesFirstColumn, tableRevealLeft, tableScrollStep } from "../ui/table-layout";
 import {
   TableViewFrame,
   useResetTableScroll,
@@ -170,6 +170,12 @@ export interface DataTableViewProps<
     context: DataTableRootKeyContext,
   ) => boolean | void;
   resetScrollKey?: unknown;
+  /**
+   * A column to bring to the middle of a table too wide for its pane: on
+   * first draw and whenever it changes. A grid whose reading is in its middle
+   * (OVDV's ATM column) opens on it rather than on its left edge.
+   */
+  revealColumnId?: string | null;
 }
 
 function ignoreHeaderClick(): void {}
@@ -199,6 +205,7 @@ export function DataTableView<
   onSortChange,
   onRootKeyDown,
   resetScrollKey,
+  revealColumnId,
   scrollToIndex,
   scrollToIndexVersion = 0,
   ...tableProps
@@ -714,6 +721,37 @@ export function DataTableView<
     enabled: focused && keyboardNavigation && tableProps.showHorizontalScrollbar !== false,
     scope: horizontalScrollScope,
   });
+
+  // The column asked for, in the middle of the scrolled columns once the body has its width.
+  const revealColumnIndex = revealColumnId == null ? -1 : tableProps.columns.findIndex((column) => column.id === revealColumnId);
+  const revealKey = revealColumnIndex < 0 ? null
+    : `${revealColumnIndex}:${tableProps.columns.map((column) => column.width).join(",")}:${rootWidth ?? ""}:${tableProps.items.length > 0}`;
+  useEffect(() => {
+    if (revealKey == null) return;
+    /** True once the body is measured and placed, or there is nothing to scroll. */
+    const reveal = () => {
+      const body = effectiveScrollRef.current;
+      const viewportWidth = body?.viewport?.width ?? 0;
+      if (!body || viewportWidth <= 0) return false;
+      const scrollWidth = body.scrollWidth ?? 0;
+      const maxLeft = Math.max(0, scrollWidth - viewportWidth);
+      if (maxLeft <= 0) return scrollWidth > 0;
+      const shared = { columns: tableProps.columns, columnGap: tableProps.columnGap, horizontalPadding: tableProps.horizontalPadding };
+      const nextLeft = tableRevealLeft({ ...shared, columnIndex: revealColumnIndex, viewportWidth, maxLeft,
+        frozenFirstColumn: tableFreezesFirstColumn({ ...shared, freezeFirstColumn: tableProps.freezeFirstColumn, viewportWidth, overflows: true }) });
+      if (nextLeft !== body.scrollLeft) {
+        body.scrollLeft = nextLeft;
+        effectiveSyncHeaderScroll();
+      }
+      return true;
+    };
+    // The body measures its width a frame or more after it mounts; a few tries, then it stays where it is.
+    if (reveal()) return;
+    const timers = [0, 50, 150, 400].map((delay) => setTimeout(() => {
+      if (reveal()) timers.forEach(clearTimeout);
+    }, delay));
+    return () => timers.forEach(clearTimeout);
+  }, [revealKey]);
 
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped) return;

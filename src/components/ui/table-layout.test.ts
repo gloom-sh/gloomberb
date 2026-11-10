@@ -8,6 +8,7 @@ import {
   hasMeaningfulTableHorizontalOverflow,
   tableColumnStarts,
   tableColumnWidth,
+  tableRevealLeft,
 } from "./table-layout";
 
 describe("table layout", () => {
@@ -74,6 +75,17 @@ describe("table layout", () => {
     expect(ids(fits(4), [["a", "b"], "c"])).toBe("cde");
     // Columns not in the order stay, so the table can still overflow.
     expect(ids(fits(1), ["a"])).toBe("bcde");
+  });
+
+  test("scrolls a wide table to centre one column, stopping at a column edge past a frozen first column", () => {
+    // A tenor column and nine moneyness columns, ATM the sixth, in a 40-cell pane.
+    const columns = [{ id: "tenor", width: 10 }, ...Array.from({ length: 9 }, (_, index) => ({ id: String(index), width: 7 }))];
+    const shared = { columns, columnIndex: 5, viewportWidth: 40, maxLeft: 44 };
+    expect(tableRevealLeft({ ...shared, frozenFirstColumn: true })).toBe(24);
+    expect(tableRevealLeft(shared)).toBe(28);
+    // Past the right end it stops at the last scroll position; a table that fits does not move.
+    expect(tableRevealLeft({ ...shared, columnIndex: 9 })).toBe(44);
+    expect(tableRevealLeft({ ...shared, maxLeft: 0 })).toBe(0);
   });
 
   test("marks clipped cells so a cut number cannot read as a smaller value", () => {

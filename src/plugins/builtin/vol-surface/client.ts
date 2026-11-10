@@ -7,6 +7,7 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { OptionsChain, Quote } from "../../../types/financials";
 import { daysToExpiryFrom } from "../shared/volatility";
 import type { YieldPoint } from "../yield-curve/treasury-data";
+import { eventExpiries } from "./events";
 import {
   buildSurfaceExpiry, normalizeSurfaceSettings, pendingSurfaceExpiry, surfaceCalendarWarnings, withSurfaceTermSlopes,
   type SurfaceExpiry, type SurfaceFailure, type SurfaceSettings, type SurfaceSnapshot,
@@ -105,6 +106,12 @@ export interface SurfaceLoadRequest {
   limit?: number;
   /** Listed expiries required by a selection, added to the representative sample. */
   requiredExpiries?: readonly number[];
+  /**
+   * Scheduled release days (New York dates): the listed expiries either side
+   * of each are added to the sample, so the term structure has both sides of
+   * the next FOMC and CPI whatever the limit thins.
+   */
+  eventDates?: readonly string[];
   /**
    * Load exactly these listed expiries instead of a representative sample.
    * The catalogue is then read from cache and only these slices refresh.
@@ -230,6 +237,7 @@ export async function loadVolatilitySurface(
       .map((expiration) => findListedExpiry(expiration, catalogue) ?? expiration))];
     const listed = new Set(catalogue);
     selected = [...new Set([...request.expiries ? [] : selectSurfaceExpiries(catalogue, limit, now),
+      ...request.expiries ? [] : eventExpiries(catalogue, (request.eventDates ?? []).map((date) => ({ date }))),
       ...required.filter((expiration) => listed.has(expiration))])].sort((a, b) => a - b);
     // An expiry whose last session has closed is named as expired, with the nearest live one to pick.
     requiredFailures = required.filter((expiration) => !listed.has(expiration)).map((expiration) => ({

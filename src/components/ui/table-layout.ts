@@ -248,6 +248,47 @@ export function tableScrollStep({
 }
 
 /**
+ * Where a table too wide for its pane scrolls to put one column in the middle
+ * of what shows past a frozen first column (OVDV's grid opens on its ATM
+ * column, not on the 80% one at its left edge). With a frozen first column it
+ * stops at a column's edge, as a step does, so the column beside the frozen
+ * one shows whole; within `maxLeft` either way.
+ */
+export function tableRevealLeft({
+  columns,
+  columnGap = 1,
+  horizontalPadding = 1,
+  frozenFirstColumn = false,
+  columnIndex,
+  viewportWidth,
+  maxLeft,
+}: {
+  columns: readonly TableWidthColumn[];
+  columnGap?: number;
+  horizontalPadding?: number;
+  frozenFirstColumn?: boolean;
+  columnIndex: number;
+  viewportWidth: number;
+  maxLeft: number;
+}): number {
+  const normalized = normalizeTableColumns(columns);
+  const starts = tableColumnStarts(normalized, columnGap);
+  const column = normalized[columnIndex];
+  if (!column || viewportWidth <= 0 || maxLeft <= 0) return 0;
+  const frozenEnd = frozenFirstColumn && columnIndex > 0 ? horizontalPadding + (normalized[0]?.width ?? 0) + columnGap : 0;
+  const start = horizontalPadding + starts[columnIndex]!;
+  const centred = start + column.width / 2 - (frozenEnd + (viewportWidth - frozenEnd) / 2);
+  const clamp = (left: number) => Math.max(0, Math.min(maxLeft, left));
+  if (!frozenFirstColumn) return clamp(Math.round(centred));
+  // A column edge just past the frozen column, the nearest to centring it that still shows it whole.
+  const shows = (left: number) => start - left >= frozenEnd && start + column.width - left <= viewportWidth;
+  const edges = [0, ...starts.slice(1).map((edge) => edge - (normalized[0]?.width ?? 0) - columnGap), maxLeft]
+    .map(clamp).filter(shows);
+  return edges.length ? edges.reduce((best, edge) => Math.abs(edge - centred) < Math.abs(best - centred) ? edge : best)
+    : clamp(Math.round(centred));
+}
+
+/**
  * Blank cells a table with a frozen first column takes past its last column,
  * so scrolled to its far end it starts a column whole beside the frozen one,
  * as each step does (`tableScrollStep`), rather than cutting one under it.

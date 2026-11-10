@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { EmptyState, KeyValueRow, StaticChartSurface, type StaticChartOverlay } from "../../../components";
+import { EmptyState, KeyValueRow, StaticChartSurface, type StaticChartOverlay, type StaticChartXMarker } from "../../../components";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -8,6 +8,10 @@ import { formatStrikeLabel } from "../../../utils/options";
 import { evaluateSmile, optionDelta } from "../shared/volatility";
 import { buildSurfaceGrid, deltaBasis, evaluateSurfaceSmile, type SurfaceExpiry, type SurfaceSnapshot } from "./model";
 import { expiryLabel, formatPrice } from "./tables";
+import { surfaceEventLabel, surfaceEventSummary, type SurfaceEventReading } from "./events";
+import { MACRO_EVENT_LABELS } from "../macro-day/releases";
+
+const calendarDaysBetween = (from: string, to: string) => (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000;
 
 // A strike tick reads as OMON writes strikes; the moneyness and delta axes stay whole numbers.
 const tickLabel = (value: number, axis: string) => axis === "strike" ? formatStrikeLabel(Number(value.toFixed(2)))
@@ -81,7 +85,14 @@ export function SmileChart({ snapshot, expiry, overlay, axis, width, height, foc
   </Box>;
 }
 
-export function TermChart({ snapshot, width, height, focused = false }: { snapshot: SurfaceSnapshot; width: number; height: number; focused?: boolean }) {
+/** The legend's series and the axes' units on one row, with its padding and gaps. */
+const TERM_LEGEND_UNITS_WIDTH = 2 + "ATM spot".length + "25d put".length + "25d call".length + "IV % · calendar days (log)".length + 3 * 3;
+
+export function TermChart({ snapshot, width, height, focused = false, events = [] }: {
+  snapshot: SurfaceSnapshot; width: number; height: number; focused?: boolean;
+  /** The next scheduled FOMC and CPI read off the expiries either side of each. */
+  events?: readonly SurfaceEventReading[];
+}) {
   const colors = useThemeColors();
   const rows = snapshot.expiries.filter((expiry) => expiry.atmIV != null).sort((a, b) => a.years - b.years);
   if (!rows.length) return <EmptyState title="Term structure unavailable." hint="No clean ATM observations." />;
@@ -97,18 +108,30 @@ export function TermChart({ snapshot, width, height, focused = false }: { snapsh
     { id: "25d put", color: colors.warning, points: rows.flatMap((expiry, index) => expiry.skew.put25 == null ? [] : [{ index, value: expiry.skew.put25 * 100 }]) },
     { id: "25d call", color: colors.negative, points: rows.flatMap((expiry, index) => expiry.skew.call25 == null ? [] : [{ index, value: expiry.skew.call25 * 100 }]) },
   ];
-  const moveHeight = Math.min(7, Math.max(2, Math.floor(height / 4)));
+  // Each release sits on the calendar day it falls, counted back from the first expiry after it.
+  const byExpiration = new Map(rows.map((expiry) => [expiry.expiration, expiry]));
+  const xMarkers: StaticChartXMarker[] = events.flatMap((reading) => {
+    const after = reading.after == null ? null : byExpiration.get(reading.after);
+    if (!after || last <= first) return [];
+    const days = after.years * 365 - calendarDaysBetween(reading.event.date, expiryLabel(after.expiration));
+    const ratio = (scale(days) - first) / (last - first);
+    return ratio >= 0 && ratio <= 1 ? [{ id: reading.event.kind, xRatio: ratio, label: MACRO_EVENT_LABELS[reading.event.kind], color: colors.warning }] : [];
+  });
+  const moveHeight = Math.min(7 + events.length, Math.max(2 + events.length, Math.floor(height / 4)));
   return <Box flexDirection="column" width={width} height={height}>
     <Box height={1} flexDirection="row" gap={3} paddingX={1}>
       <Text fg={colors.positive}>ATM spot</Text><Text fg={colors.warning}>25d put</Text><Text fg={colors.negative}>25d call</Text>
-      <Text fg={colors.textDim}>IV % · calendar days (log)</Text>
+      {/* The axes' units give way first on a narrow pane: the y labels carry % and the x labels days. */}
+      {width >= TERM_LEGEND_UNITS_WIDTH ? <Text fg={colors.textDim}>IV % · calendar days (log)</Text> : null}
     </Box>
     <StaticChartSurface points={points} overlays={overlays} calendarSpaced width={width} height={Math.max(3, height - moveHeight - 1)}
       colors={resolveChartPalette(colors)} formatYAxisValue={(value) => `${value.toFixed(1)}%`}
       xAxisTicks={Array.from({ length: 5 }, (_, i) => ({ ratio: i / 4, label: dayLabel(i / 4) }))}
-      formatXAxisCursorValue={(ratio) => `${dayLabel(ratio)} to expiry`} focused={focused} />
+      formatXAxisCursorValue={(ratio) => `${dayLabel(ratio)} to expiry`} xMarkers={xMarkers} focused={focused} />
     {/* Takes what the chart's whole rows leave, so the list ends at the pane's edge on the desktop. */}
     <ScrollBox flexDirection="column" paddingX={1} height={moveHeight} flexGrow={1} scrollY focusable={false}>
+      {events.map((reading) => <KeyValueRow key={reading.event.kind} label={surfaceEventLabel(reading.event)} labelWidth={12}
+        width={Math.max(1, width - 2)} color={colors.warning} value={surfaceEventSummary(reading)} />)}
       {rows.map((expiry) => <KeyValueRow key={expiry.expiration}
         label={expiryLabel(expiry.expiration)} labelWidth={12} width={Math.max(1, width - 2)}
         value={`${formatPrice(expiry.expectedMove.straddle)} straddle / ${formatPrice(expiry.expectedMove.sigma)} 1-sigma (${formatPrice(expiry.expectedMove.sigmaPercent)}%)`} />)}
