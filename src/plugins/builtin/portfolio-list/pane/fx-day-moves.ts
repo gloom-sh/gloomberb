@@ -38,8 +38,11 @@ export function useFxDayMoves(currencies: readonly string[], totalsCurrency: str
       }));
       if (!cancelled) setMoves(new Map(read.flat()));
     };
-    void read();
-    const timer = setInterval(() => { void read(); }, FX_DAY_MOVE_REFRESH_MS);
+    const refresh = () => {
+      read().catch(logFailure("portfolio-list.fx-day-moves", "Could not read the FX moves on the day"));
+    };
+    refresh();
+    const timer = setInterval(refresh, FX_DAY_MOVE_REFRESH_MS);
     return () => {
       cancelled = true;
       clearInterval(timer);
