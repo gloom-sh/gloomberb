@@ -121,6 +121,11 @@ test("HELP has no report and sends a newcomer to the command guide and the funct
     .catch((error: Error) => error.message);
   expect(await shot("CAT")).toContain("`gloom shot CAT santander`");
   expect(await message("chat")).not.toContain("gloom shot");
+  // The data catalog points to `gloom catalog`, which searches the same series, never to a picture of its search.
+  const catalog = await buildFunctionReport({ ...resolved("data-catalog"), token: "CAT", capability: { id: "data-catalog", screenshotReadiness: "live-dom" } } as unknown as ResolvedPaneFunction, context, "tsa")
+    .catch((error: Error) => error.message);
+  expect(catalog).toContain("`gloom catalog tsa`");
+  expect(catalog).not.toContain("gloom shot");
 });
 
 test("a series export with no rows says what was asked, and a FRED id given as a ticker gets the fred: prefix", () => {

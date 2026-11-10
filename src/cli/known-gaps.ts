@@ -347,6 +347,16 @@ const COMMAND_POINTERS: ReadonlyArray<{
   SHEETS_POINTER,
   EXPORT_POINTER,
   {
+    // A port's ships, not PORT's portfolio: "port" names both, and "port throughput" found Portfolio alone.
+    names: ["port", "ports", "seaport", "seaports", "harbor", "harbors", "harbour", "harbours", "throughput", "shipping"],
+    words: ["call", "calls", "volume", "volumes", "traffic", "activity", "congestion", "cargo", "container", "containers",
+      "tanker", "tankers", "vessel", "vessels", "ship", "ships", "arrivals", "imports", "exports", "tonnes", "tons",
+      "weekly", "data", "by", "country", "freight", "trade", "busiest", "world"],
+    line: "Port calls, tanker and container calls and cargo tonnes by port, with the change on the week before: gloom fn MAP ports "
+      + "(one country's: --query China); chokepoint transits: gloom fn CHOKE",
+    leads: true,
+  },
+  {
     names: ["theme", "themes", "light", "dark", "colorblind", "colourblind", "blind"],
     words: ["mode", "color", "colour", "colors", "colours", "high", "contrast", "change", "switch", "set", "setting", "settings"],
     line: "Themes: gloom config themes",

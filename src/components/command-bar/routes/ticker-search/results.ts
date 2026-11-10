@@ -12,6 +12,7 @@ import {
   parseAssetClassQuery,
 } from "../../../../tickers/search/asset-classes";
 import type { ResultItem } from "../../list/model";
+import { ASSIST_CATEGORY } from "../../assist/model";
 import { currencyPairCode } from "../../../../utils/currency-pair";
 import { canonicalExchange, exchangeCodeVenues, isUsListingExchange, parsePublicTickerKey, publicExchange } from "../../../../utils/exchanges";
 import { endsInLegalForm, readNearMissListing, readTerminalListingCode, unknownBloombergMarket } from "../../../../tickers/terminal-codes";
@@ -249,20 +250,67 @@ export function mergePlainRootTickerResults(
     candidates.push(item);
   }
   const instruments = pickRootInstruments(candidates, isExact, new Set(shown));
+  const commandNamed = wordNamesCommand(query, rootItems);
+  rootItems = leadWithNamedCommands(query, rootItems);
   if (instruments.length === 0) {
     const busy = searchBusyRows(providerItems);
     return busy.length > 0 ? [...rootItems, ...busy] : rootItems;
   }
 
-  const exact = instruments.filter(isExact);
+  // A listing that stopped trading is still the one its symbol names (SIVB, TWTR), unless a live listing
+  // answers it too or the word names one of the bar's commands ("full", not EQ FULL of 2016): then it goes last.
+  const live = instruments.filter((item) => isExact(item) && !item.stoppedTrading);
+  const exact = live.length > 0 || commandNamed ? live : instruments.filter(isExact);
   // `AAPL GY` names a listing search does not have, `700.HK` nearly names one: the row it was read from is offered.
-  const meant = reading && exact.length === 0 ? instruments.find(reading.meant) : undefined;
+  const meant = reading && exact.length === 0 ? instruments.find((item) => reading.meant(item) && !item.stoppedTrading) : undefined;
+  const rest = instruments.filter((item) => !exact.includes(item) && item !== meant);
   return [
     ...exact.map((item) => ({ ...item, category: "Exact Match" })),
     ...meant ? [{ ...meant, category: DID_YOU_MEAN_CATEGORY }] : [],
     ...rootItems,
-    ...instruments.filter((item) => !isExact(item) && item !== meant).map((item) => ({ ...item, category: ROOT_INSTRUMENTS_CATEGORY })),
+    ...[...rest.filter((item) => !item.stoppedTrading), ...rest.filter((item) => item.stoppedTrading)]
+      .map((item) => ({ ...item, category: ROOT_INSTRUMENTS_CATEGORY })),
   ];
+}
+
+const nameWords = (text: string) => text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+
+/**
+ * The words that name one of the bar's own rows. A function (a code, or a
+ * pane it opens) is named by its name's first word, never each word of "Open
+ * job postings" nor the examples it takes (EXPO's `NVDA=40%`). An action is
+ * named by its `commandWords` alone (Fullscreen Pane's `full`, `maximize`):
+ * its label and search text describe it ("Hide Cash Positions", "Open
+ * Brokers") and name no ticker away. The AI's rows repeat what was typed
+ * ("nvda · Ask Gloom") and name nothing.
+ */
+function commandWords(item: ResultItem): readonly string[] {
+  if (item.category === ASSIST_CATEGORY || item.searchChoice) return [];
+  if (item.shortcutQuery || item.id.startsWith("pane-template:")) return nameWords(item.label).slice(0, 1);
+  return item.commandWords ?? [];
+}
+
+/**
+ * Whether a word typed in small letters begins a word that names one of the
+ * bar's own commands or actions (`commandWords`): "full" and "maxim" name
+ * Fullscreen Pane. Such a word is the command, and a listing the same
+ * letters make (EQ FULL) follows it. Capitals keep the symbol first, as a
+ * ticker is written, and so does a word under four letters.
+ */
+export function wordNamesCommand(query: string, items: readonly ResultItem[]): boolean {
+  return items.some((item) => commandNamedBy(query, item));
+}
+
+function commandNamedBy(query: string, item: ResultItem): boolean {
+  const word = query.trim();
+  return /^[a-z]{4,}$/.test(word) && (item.kind === "command" || item.kind === "action") && !item.disabled
+    && commandWords(item).some((part) => part.startsWith(word));
+}
+
+/** The bar's own rows with the commands the word names first ("full": Fullscreen Pane before Research Search's "full text"). */
+function leadWithNamedCommands(query: string, items: ResultItem[]): ResultItem[] {
+  const named = items.filter((item) => commandNamedBy(query, item));
+  return named.length ? [...named, ...items.filter((item) => !named.includes(item))] : items;
 }
 
 /** The section of the row a near-miss or a terminal's code was read as, when it names no listing outright. */

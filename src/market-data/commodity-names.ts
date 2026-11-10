@@ -69,6 +69,30 @@ export function commodityNamedIn(text: string): FuturesContract | null {
   return null;
 }
 
+/** The other benchmark of a commodity two futures price: Brent beside WTI crude, and WTI beside Brent. */
+const OTHER_BENCHMARK: Readonly<Record<string, { code: string; name: string }>> = {
+  CL: { code: "BZ", name: "Brent" },
+  BZ: { code: "CL", name: "WTI" },
+};
+
+/**
+ * The benchmark future a name of several words stands for when it is only a
+ * commodity's name ("crude oil" is CL=F, "natural gas" NG=F), as search
+ * ranks the futures first, with the other benchmark where two price it
+ * (BZ=F beside CL=F). One word is left to the ticker it may be (OIL, CORN),
+ * and an oil no future trades ("palm oil") is null.
+ */
+export function commodityNameFuture(text: string): { contract: FuturesContract; other: { contract: FuturesContract; name: string } | null } | null {
+  const typed = words(text);
+  if (typed.length < 2) return null;
+  const code = COMMODITY_NAMES.find(([name]) => sameWords(typed, name.split(" ")))?.[1];
+  const contract = code ? futuresContractByCode(code) : null;
+  if (!contract) return null;
+  const other = OTHER_BENCHMARK[contract.code];
+  const otherContract = other ? futuresContractByCode(other.code) : null;
+  return { contract, other: other && otherContract ? { contract: otherContract, name: other.name } : null };
+}
+
 /** Whether the text is only a commodity's name, in any of its forms: "soybeans" searches what "soybean" does. */
 export function isCommodityName(text: string, name: string): boolean {
   return sameWords(words(text), words(name));

@@ -4,9 +4,10 @@ import type { PaneTemplateDef } from "../../../types/plugin";
 import { chartHeadless } from "../chart-composer/headless";
 import type { PluginModule } from "../plugin-module";
 import { createChokepointInstance } from "./chokepoint-chart";
+import { withTransitAverages } from "./chokepoint-report";
 import { cloudGeoRequest } from "./client";
 import { CHOKEPOINT_SERIES, createGeoChartSeriesCapability } from "./geo-series";
-import { mapHeadless } from "./headless";
+import { contextGeoRequest, mapHeadless } from "./headless";
 import { buildMapSettingsDef, groupTitle, MAP_PRESET_OPTIONS, parseMapPreset } from "./layers";
 import { WORLD_VENUE_MAP_PANE_ID, WorldVenueMapPane } from "./pane";
 import { mapFollowsTicker } from "./scope";
@@ -18,7 +19,8 @@ const chokepointTemplate: PaneTemplateDef = {
   paneId: CHART_COMPOSER_PANE_ID,
   headless: {
     ...chartComposerHeadless,
-    description: "Daily vessel transits through the main shipping chokepoints, or one chokepoint by name.",
+    description: "Daily vessel transits through the main shipping chokepoints, or one chokepoint by name, with 7- and 28-day averages and the change on the same 28 days a year before.",
+    load: async (args, context) => withTransitAverages(await chartComposerHeadless.load(args, context), contextGeoRequest(context), context),
     // Keeps the chart composer's id, which its screenshot is read by, and says what it charts: vessel transits, not FRED series.
     discovery: {
       ...chartComposerHeadless.discovery,

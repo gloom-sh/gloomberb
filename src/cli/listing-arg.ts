@@ -47,6 +47,7 @@ import { knownGapMessage, unquotedGapMessage } from "./known-gaps";
 import { renamedListingFor, renamedListingReadAs, renamedListingSymbol } from "../tickers/renamed-listings";
 import { currencyPairSpelling } from "../utils/currency-pair";
 import { bareFuturesCode, futuresContractByCode, futuresContractByWord, listedFuturesSymbol } from "../market-data/futures-board";
+import { commodityNameFuture } from "../market-data/commodity-names";
 import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
 import type { InstrumentOfKind } from "../tickers/instrument-coverage";
 import { brokerIndexCode, brokerIndexReadAs, indexRootAlsoLine } from "./index-roots";
@@ -1394,6 +1395,12 @@ export async function resolveCliListing(
     const now = await resolveCliListing(renamedListingSymbol(renamed), null, deps, options);
     return { ...now, readAs: [renamedListingReadAs(typed, renamed), now.readAs].filter(Boolean).join(" "), readFromName: true };
   }
+  // "crude oil" is the benchmark future search ranks first (CL=F, Brent beside it), never a fund named for it.
+  const commodity = exchangeOption?.trim() ? null : commodityNameFuture(typed);
+  if (commodity) {
+    const future = await resolveCliListing(commodity.contract.symbol, null, deps, options);
+    return { ...future, readAs: [commodityFutureReadAs(typed, commodity), future.readAs].filter(Boolean).join(" "), readFromName: true };
+  }
   const read = await readTerminalCodeArg(deps.dataProvider, typed);
   // A company's name, an entry of a comma list (`WHR, Whirlpool Corporation`), is the listing search names for it.
   // A name before a legal form ("SAP SE", "SIEMENS AG") is looked up first: SE is also SIX Swiss's market code.
@@ -1565,6 +1572,12 @@ function readDollarIndexCode(raw: string, deps: Pick<ListingDeps, "dataProvider"
 async function companyNameListingArg(raw: string, deps: ListingDeps): Promise<ListingArg | null> {
   const typed = stripStrayEdges(raw).text || raw;
   return isCompanyNameInput(typed) ? readCompanyName(typed, deps) : null;
+}
+
+/** `Read "crude oil" as CL=F (WTI Crude Oil), the benchmark future; Brent is BZ=F.` */
+function commodityFutureReadAs(typed: string, { contract, other }: NonNullable<ReturnType<typeof commodityNameFuture>>): string {
+  const alternative = other ? `; ${other.name} is ${other.contract.symbol}` : "";
+  return `Read "${typed.trim()}" as ${contract.symbol} (${contract.name}), the benchmark future${alternative}.`;
 }
 
 /** One word that can be a company's name: letters first, no venue, pair or index mark (`Apple`, `Petrobras`, `Coca-Cola`). */
