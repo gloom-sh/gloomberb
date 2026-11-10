@@ -1740,6 +1740,7 @@ export const es: Record<string, string> = {
   "Academy: {title}": "Academia: {title}",
   "{minutes} min": "{minutes} min",
   "Delisted {date}": "Excluida de bolsa el {date}",
+  "Delisted": "Excluida de bolsa",
   "Last traded {date}": "Última negociación el {date}",
   "Account data": "Datos de la cuenta",
   "Sync with Gloom Cloud": "Sincronizar con Gloom Cloud",

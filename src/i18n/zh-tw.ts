@@ -1737,6 +1737,7 @@ export const zhTW: Record<string, string> = {
   "Academy: {title}": "學院：{title}",
   "{minutes} min": "{minutes} 分鐘",
   "Delisted {date}": "已下市 {date}",
+  "Delisted": "已下市",
   "Last traded {date}": "最後交易 {date}",
   "Account data": "帳戶資料",
   "Sync with Gloom Cloud": "與 Gloom Cloud 同步",

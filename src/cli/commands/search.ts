@@ -10,6 +10,7 @@ import {
 } from "../../utils/cli-output";
 import type { DataProvider } from "../../types/data-provider";
 import type { Quote } from "../../types/financials";
+import { parseListingWithdrawal, withdrawalLabel } from "../../market-data/quotes/delisting";
 import { quotedListingName } from "../../tickers/listing-name";
 import type { TickerRecord } from "../../types/ticker";
 import {
@@ -236,9 +237,18 @@ function formerNameNote(candidate: TickerSearchCandidate): string | null {
   return `${candidate.label} is ${resolveSearchName(candidate)}, formerly ${formerName.trim()}`;
 }
 
-/** The merged companies' and renamed companies' lines, once each, unless the symbol's own line already says it. */
+/**
+ * A row its exchange withdrew: "0011:HKEX (Hang Seng Bank Limited): Delisted
+ * Jan 27, 2026 (Privatised by …)", as `quote 0011:HKEX` says it.
+ */
+function withdrawnNote(candidate: TickerSearchCandidate): string | null {
+  const withdrawal = parseListingWithdrawal(candidate.result?.withdrawal);
+  return withdrawal ? `${quotableSearchSymbol(candidate)} (${resolveSearchName(candidate)}): ${withdrawalLabel(withdrawal)}` : null;
+}
+
+/** The merged, renamed and withdrawn companies' lines, once each, unless the symbol's own line already says it. */
 function formerIssuerNotes(candidates: readonly TickerSearchCandidate[], fate: SearchFate): string[] {
-  const notes = new Set(candidates.flatMap((candidate) => formerIssuerNote(candidate) ?? formerNameNote(candidate) ?? []));
+  const notes = new Set(candidates.flatMap((candidate) => formerIssuerNote(candidate) ?? formerNameNote(candidate) ?? withdrawnNote(candidate) ?? []));
   return [...notes].filter((note) => !fate.notes.some((line) => line.split(" ")[0] === note.split(" ")[0]));
 }
 

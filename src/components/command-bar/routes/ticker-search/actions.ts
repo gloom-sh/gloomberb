@@ -17,7 +17,7 @@ import {
   type TickerSearchInstrumentClass,
 } from "../../../../tickers/search";
 import type { ResultItem, TickerPick } from "../../list/model";
-import { delistingLabel, parseListingDelisting } from "../../../../market-data/quotes/delisting";
+import { delistingLabel, parseListingDelisting, parseListingWithdrawal, withdrawalLabel } from "../../../../market-data/quotes/delisting";
 import {
   buildTickerSearchCacheKey,
   createQuickLookTickerCandidates,
@@ -83,9 +83,11 @@ export function useCommandBarTickerSearchActions({
     // The candidate's detail leads with the name; the rest repeats the badge or venue.
     const leadingName = candidate.detail.split(" | ")[0]?.trim();
     const name = leadingName && leadingName.toUpperCase() !== candidate.label.toUpperCase() ? leadingName : undefined;
-    // A listing that no longer trades says so under its row, with its last session.
+    // A listing that no longer trades says so under its row, with its last session, or when and why its exchange withdrew it.
     const delisting = parseListingDelisting(candidate.result?.delisting);
-    const lines = delisting ? [{ segments: [{ text: delistingLabel(delisting), emphasis: "muted" as const }] }] : undefined;
+    const withdrawal = delisting ? undefined : parseListingWithdrawal(candidate.result?.withdrawal);
+    const ended = delisting ? delistingLabel(delisting) : withdrawal ? withdrawalLabel(withdrawal) : null;
+    const lines = ended ? [{ segments: [{ text: ended, emphasis: "muted" as const }] }] : undefined;
 
     if (candidate.kind === "ticker" && candidate.ticker) {
       const pick = (how: TickerPick) => pickTicker(candidate.ticker!.metadata.ticker, tickerSelectionFromSearchResult(candidate.result), how);

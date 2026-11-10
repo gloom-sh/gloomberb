@@ -21,6 +21,7 @@ import {
 import { movedAwayChange, startTickerChangeLookup, type MovedTickerChange } from "../tickers/ticker-changes";
 import { lineMayHaveMoved, listingChangeLine, loadListingFate, MovedSymbolError, SUCCESSOR_CHANGE_WAIT_MS, type ListingFate } from "../tickers/listing-fate";
 import { quotedListingName } from "../tickers/listing-name";
+import { withdrawalLabel } from "../market-data/quotes/delisting";
 import { cliStyles } from "../utils/cli-output";
 import { companyNameExtraWords, groupByCompany, namesDepositaryReceipt, sameCompany, sameListedName, shortCompanyName } from "../tickers/company-name";
 import {
@@ -330,9 +331,24 @@ export async function notTradedMessage(
 ): Promise<string | null> {
   if (!listing.exchange) return null;
   const venues = await listingVenues(listing.symbol, deps).catch(logFailure("cli.listing-arg", "Read listing venues failed", []));
+  // A line its exchange withdrew is on record, and says when it went and why.
+  const withdrawn = venues.find((venue) => venue.exchange === listing.exchange && venue.withdrawal);
+  if (withdrawn) return withdrawnListingMessage(listing, withdrawn);
   if (venues.length === 0 || venues.some((venue) => venue.exchange === listing.exchange)) return null;
   if (await quotedOnVenue(listing, deps)) return null;
   return `${listing.symbol} does not trade on ${listing.exchange}.${tradesOn(listing.symbol, venues)}`;
+}
+
+/**
+ * "0011:HKEX (Hang Seng Bank Limited): Delisted Jan 27, 2026 (Privatised by
+ * The Hongkong and Shanghai Banking Corporation Limited)." for a line its
+ * exchange withdrew: no source prices it any more.
+ */
+function withdrawnListingMessage(listing: Pick<ListingArg, "symbol" | "exchange">, venue: ListingVenue): string {
+  // The venue's name carries the day it went for a choice between listings; here the label says it.
+  const name = venue.name.split(" · ")[0]?.trim();
+  const key = `${listing.symbol}:${listing.exchange}`;
+  return `${key}${name && name.toUpperCase() !== listing.symbol.toUpperCase() ? ` (${name})` : ""}: ${withdrawalLabel(venue.withdrawal!)}.`;
 }
 
 /** Fails the command with `notTradedMessage`; returns when the symbol does trade there. */

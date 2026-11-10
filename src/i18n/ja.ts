@@ -1737,6 +1737,7 @@ export const ja: Record<string, string> = {
   "Academy: {title}": "アカデミー: {title}",
   "{minutes} min": "{minutes} 分",
   "Delisted {date}": "上場廃止 {date}",
+  "Delisted": "上場廃止",
   "Last traded {date}": "最終取引 {date}",
   "Account data": "口座データ",
   "Sync with Gloom Cloud": "Gloom Cloud と同期",

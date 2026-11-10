@@ -44,7 +44,8 @@ import { companyNameExtraWords } from "../company-name";
 import { withHomeListingLead } from "./home-listing";
 import { answeredInFull, rememberSearchAnswer, withKnownListings } from "./listing-index";
 import { savedAbroadForBareSymbol, savedUsListingOf } from "./bare-symbol";
-import { delistingLabel } from "../../market-data/quotes/delisting";
+import { delistingLabel, parseListingWithdrawal, withdrawalLabel } from "../../market-data/quotes/delisting";
+import type { ListingWithdrawal } from "../../types/financials";
 import { hasNonLatinLetters } from "../../utils/typed-text";
 import { isNetworkFailure } from "../../utils/network-failure";
 export type {
@@ -74,13 +75,22 @@ export const LISTING_SEARCH_LIMIT = 30;
  * 2023"), and drops a name that only repeats its symbol.
  */
 function listingChoiceName(result: InstrumentSearchResult): string {
-  if (!result.delisting) return result.name;
+  const withdrawal = parseListingWithdrawal(result.withdrawal);
+  if (!result.delisting && !withdrawal) return result.name;
   const name = result.name && normalizeTickerSymbol(result.name) !== normalizeTickerSymbol(result.symbol) ? result.name : "";
-  return [name, delistingLabel(result.delisting)].filter(Boolean).join(" · ");
+  // A line its exchange withdrew says when it went (Hang Seng Bank · Delisted Jan 27, 2026), not why: the reason is its own message.
+  const ended = result.delisting ? delistingLabel(result.delisting) : withdrawalLabel({ ...withdrawal!, reason: null });
+  return [name, ended].filter(Boolean).join(" · ");
 }
 
 export class AmbiguousTickerError extends Error {
-  constructor(readonly query: string, readonly listings: readonly string[], readonly listingNames: Readonly<Record<string, string>> = {}) {
+  constructor(
+    readonly query: string,
+    readonly listings: readonly string[],
+    readonly listingNames: Readonly<Record<string, string>> = {},
+    /** The listings among them their exchange withdrew, by key (`0011:HKEX`). */
+    readonly listingWithdrawals: Readonly<Record<string, ListingWithdrawal>> = {},
+  ) {
     // Every listing is a choice: a list cut short could leave out the one meant.
     const more = listings.length - MAX_NAMED_LISTINGS;
     const named = `${listings.slice(0, MAX_NAMED_LISTINGS).join(", ")}${more > 0 ? ` or one of ${more} more in search` : ""}`;
@@ -582,7 +592,10 @@ async function resolveTickerSymbol(
   const choices = new Set(homeFirst.map((item) => publicTickerKey(item.symbol, listingExchange(item.result!))));
   const ambiguity = (query: string) => new AmbiguousTickerError(query, [...choices], Object.fromEntries(matches.map((item) => [
     publicTickerKey(item.symbol, listingExchange(item.result!)), listingChoiceName(item.result!),
-  ])));
+  ])), Object.fromEntries(matches.flatMap((item) => {
+    const withdrawal = parseListingWithdrawal(item.result!.withdrawal);
+    return withdrawal ? [[publicTickerKey(item.symbol, listingExchange(item.result!)), withdrawal]] : [];
+  })));
   if (pickerQuery && listings.size > 1) throw ambiguity(pickerQuery);
   // A code that names several venues (TSE) the symbol trades on more than one of is a choice.
   if (!saved && isSharedExchangeCode(typedExchangeCode(symbol))
