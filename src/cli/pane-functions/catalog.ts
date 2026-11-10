@@ -91,12 +91,42 @@ function builtInPanePrefixes(paneId: string): string[] {
   return command ? getCommandPrefixes(command) : [];
 }
 
+/** A template with no code, by its name as one word (`x-feed` for X Feed), which `fn` reads as its name. */
+function templateNameToken(template: PaneTemplateDef): string {
+  return template.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || template.id;
+}
+
 /**
  * What a user types for a function, as the catalog lists it and every error names it: a template's
- * shortcut or id, a pane opened by a built-in command (LAY) by that command's mnemonic, else the pane's id.
+ * shortcut or, with none, its name (`story`, not its id `news-story-pane`) unless that name opens
+ * another function first, a pane opened by a built-in command (LAY) by that command's mnemonic,
+ * else the pane's id.
  */
-export function paneFunctionCode(template: PaneTemplateDef | undefined, pane: PaneDef): string {
-  return template?.shortcut?.prefix ?? template?.id ?? builtInPanePrefixes(pane.id)[0] ?? pane.id;
+export function paneFunctionCode(template: PaneTemplateDef | undefined, pane: PaneDef, registry: PaneFunctionCatalog): string {
+  if (template) {
+    if (template.shortcut?.prefix) return template.shortcut.prefix;
+    // A name another function answers to first opens that one: the template's id, which only it answers to, is its code then.
+    const name = templateNameToken(template);
+    return buildPaneFunctionLookup(registry).get(normalizeLookupToken(name)) === template ? name : template.id;
+  }
+  return builtInPanePrefixes(pane.id)[0] ?? pane.id;
+}
+
+/**
+ * Panes that a template with no code opens in the app and the command line has
+ * nothing to show for: the app's own debug log, and a team's page and its
+ * unread chat, which a capture does not read. `catalog` leaves them out; `fn`
+ * and `shot` still open them by name and say why they are empty.
+ */
+const APP_ONLY_PANE_IDS = new Set(["debug", "team", "unread-inbox"]);
+
+/**
+ * Whether `catalog` lists a template with no code: not when its pane is one
+ * the command line has nothing to show for, nor when another template lists
+ * the pane under a code (New Portfolio Pane creates a list PF shows).
+ */
+function listsUncodedTemplate(template: PaneTemplateDef, codedPaneIds: ReadonlySet<string>): boolean {
+  return !APP_ONLY_PANE_IDS.has(template.paneId) && !codedPaneIds.has(template.paneId);
 }
 
 function registerResolverToken(
@@ -261,6 +291,7 @@ async function buildTemplateCatalogEntry(
   template: PaneTemplateDef,
   pane: PaneDef,
   context: MarketContext,
+  token: string,
 ): Promise<PaneCatalogEntry> {
   const sampleArg = sampleArgForTemplate(template);
   const createOptions: PaneTemplateCreateOptions | undefined = buildCreateOptions(template, sampleArg);
@@ -280,7 +311,7 @@ async function buildTemplateCatalogEntry(
   const headless = getHeadlessPaneDefinition(template, pane);
   const argument = paneFunctionArgument(template, pane);
   return {
-    token: template.shortcut?.prefix ?? template.id,
+    token,
     label: template.label,
     description: template.description,
     paneId: pane.id,
@@ -316,22 +347,31 @@ function argExamples(headless: HeadlessPaneDefinition | undefined, context: Mark
 /**
  * The functions `gloom catalog` and search list. An unlisted one (`listed:
  * false`) is left out, and its pane is not listed in its place; `unlisted`
- * keeps it, for its own help (`fn ATTN --help`).
+ * keeps it, for its own help (`fn ATTN --help`). `appPanes` keeps the
+ * templates with no code `listsUncodedTemplate` leaves out, for the UI audits
+ * that picture every pane the app opens.
  */
 export async function buildPaneCatalogEntries(
   registry: PaneFunctionCatalog,
   context: MarketContext,
-  { unlisted = false }: { unlisted?: boolean } = {},
+  { unlisted = false, appPanes = false }: { unlisted?: boolean; appPanes?: boolean } = {},
 ): Promise<PaneCatalogEntry[]> {
   const entries: PaneCatalogEntry[] = [];
   const templatedPaneIds = new Set<string>();
+  const codedPaneIds = new Set([...registry.paneTemplates.values()]
+    .filter((template) => template.shortcut?.prefix && template.listed !== false)
+    .map((template) => template.paneId));
 
   for (const template of registry.paneTemplates.values()) {
     const pane = registry.panes.get(template.paneId);
     if (!pane) continue;
     templatedPaneIds.add(pane.id);
     if (template.listed === false && !unlisted) continue;
-    entries.push(await buildTemplateCatalogEntry(template, pane, context));
+    const forUsers = !!template.shortcut?.prefix || listsUncodedTemplate(template, codedPaneIds);
+    if (!forUsers && !unlisted && !appPanes) continue;
+    // A template only the UI audits list keeps the id an older catalog listed it by, so a base and a head picture it under one name.
+    const token = forUsers || unlisted ? paneFunctionCode(template, pane, registry) : template.id;
+    entries.push(await buildTemplateCatalogEntry(template, pane, context, token));
   }
 
   for (const pane of registry.panes.values()) {
@@ -339,7 +379,7 @@ export async function buildPaneCatalogEntries(
     const [shortcut, ...aliases] = builtInPanePrefixes(pane.id);
     const argument = paneFunctionArgument(undefined, pane);
     entries.push({
-      token: paneFunctionCode(undefined, pane),
+      token: paneFunctionCode(undefined, pane, registry),
       label: pane.name,
       description: `Open the ${pane.name} pane.`,
       paneId: pane.id,

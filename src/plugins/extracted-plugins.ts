@@ -17,23 +17,27 @@ const log = debugLog.createLogger("plugin-seed");
  * Extracting one must not take a working feature away from someone who upgrades.
  * On first launch after the move, each of these is installed once, then recorded
  * so it is never reinstalled — including when the user removes it deliberately.
+ *
+ * `codes` are the function codes it answered to while it shipped here, for a
+ * profile that does not have it: `gloom fn TV` there names the install rather
+ * than an unknown code, where the registry feed does not list the code.
  */
 export const EXTRACTED_PLUGINS = [
   // TV was a module inside Macro, so a user who turned Macro off was turning
   // it off with it. `previousOwnerIds` keeps that choice: the seeder does not
   // restore what someone disabled.
-  { id: "tv", name: "TV", repo: "gloom-sh/gloom-tv", directory: "gloom-tv", previousOwnerIds: ["macro", "macro-tv"] },
-  { id: "substack", name: "Substack", repo: "gloom-sh/gloom-substack", directory: "gloom-substack" },
-  { id: "ibkr", name: "Interactive Brokers", repo: "gloom-sh/gloom-ibkr", directory: "gloom-ibkr" },
-  { id: "ibkr-gateway", name: "IBKR Gateway", repo: "gloom-sh/gloom-ibkr-gateway", directory: "gloom-ibkr-gateway" },
-  { id: "public", name: "Public", repo: "gloom-sh/gloom-public", directory: "gloom-public" },
-  { id: "robinhood", name: "Robinhood", repo: "gloom-sh/gloom-robinhood", directory: "gloom-robinhood" },
-  { id: "simplefin", name: "SimpleFIN", repo: "gloom-sh/gloom-simplefin", directory: "gloom-simplefin" },
-  { id: "polls", name: "Polls", repo: "gloom-sh/gloom-polls", directory: "gloom-polls" },
-  { id: "prediction-markets", name: "Prediction Markets", repo: "gloom-sh/gloom-prediction-markets", directory: "gloom-prediction-markets" },
+  { id: "tv", name: "TV", repo: "gloom-sh/gloom-tv", directory: "gloom-tv", codes: ["TV"], previousOwnerIds: ["macro", "macro-tv"] },
+  { id: "substack", name: "Substack", repo: "gloom-sh/gloom-substack", directory: "gloom-substack", codes: ["SUB"] },
+  { id: "ibkr", name: "Interactive Brokers", repo: "gloom-sh/gloom-ibkr", directory: "gloom-ibkr", codes: [] },
+  { id: "ibkr-gateway", name: "IBKR Gateway", repo: "gloom-sh/gloom-ibkr-gateway", directory: "gloom-ibkr-gateway", codes: ["IBKR"] },
+  { id: "public", name: "Public", repo: "gloom-sh/gloom-public", directory: "gloom-public", codes: [] },
+  { id: "robinhood", name: "Robinhood", repo: "gloom-sh/gloom-robinhood", directory: "gloom-robinhood", codes: [] },
+  { id: "simplefin", name: "SimpleFIN", repo: "gloom-sh/gloom-simplefin", directory: "gloom-simplefin", codes: [] },
+  { id: "polls", name: "Polls", repo: "gloom-sh/gloom-polls", directory: "gloom-polls", codes: ["POLL"] },
+  { id: "prediction-markets", name: "Prediction Markets", repo: "gloom-sh/gloom-prediction-markets", directory: "gloom-prediction-markets", codes: ["PM"] },
   // Bring-your-own-key AI left under a new id, so the choice to switch the old
   // one off is recorded against `ai` rather than against this entry.
-  { id: "byok-ai", name: "BYOK AI", repo: "gloom-sh/gloom-byok-ai", directory: "gloom-byok-ai", previousOwnerIds: ["ai"] },
+  { id: "byok-ai", name: "BYOK AI", repo: "gloom-sh/gloom-byok-ai", directory: "gloom-byok-ai", codes: ["AGENT", "AI"], previousOwnerIds: ["ai"] },
 ] as const;
 
 type ExtractedPlugin = (typeof EXTRACTED_PLUGINS)[number];

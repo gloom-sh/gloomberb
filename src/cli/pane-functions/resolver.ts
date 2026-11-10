@@ -20,6 +20,7 @@ import { splitSymbolArgs, stripStrayEdges } from "../symbol-args";
 import { readNameEntries } from "../name-entries";
 import { bankFigurePointer, bankWordPointer } from "../known-gaps";
 import { findCatalogSeries, type SeriesSource } from "../series-search";
+import type { PluginCodeCommands, PluginCodeStop } from "./plugin-code";
 import { readTerminalCodeArg } from "../../tickers/company-name-listing";
 import { unknownBloombergMarket } from "../../tickers/terminal-codes";
 import { notATickerWords } from "../company-name-hint";
@@ -172,7 +173,7 @@ function withOpeningWord(registry: PaneFunctionCatalog, parsed: ParsedPaneFuncti
     const pane = registry.panes.get(template.paneId);
     const opening = pane ? discoveryOpening(getHeadlessPaneDefinition(template, pane)?.discovery, parsed.target) : null;
     if (!pane || !opening) continue;
-    const code = paneFunctionCode(template, pane);
+    const code = paneFunctionCode(template, pane, registry);
     const arg = parsed.arg.trim() || opening.argument;
     const preset = Object.entries(opening.options ?? {}).filter(([key]) => !(key in parsed.options));
     const command = [code, arg, ...preset.map(([key, value]) => `--${key} ${value}`)].filter(Boolean).join(" ");
@@ -192,7 +193,7 @@ function withKeywordNote(registry: PaneFunctionCatalog, parsed: ParsedPaneFuncti
   if (!found?.pane || !found.template) return parsed;
   const { template, pane } = found;
   if (namesFunction(template, pane, parsed.target)) return parsed;
-  const code = paneFunctionCode(template, pane);
+  const code = paneFunctionCode(template, pane, registry);
   return { ...parsed, listingNotes: [...parsed.listingNotes ?? [], `${parsed.target} opened ${code}, ${template.label}.`] };
 }
 
@@ -365,6 +366,9 @@ function takeTableSection(
   return { options: rest, tableSection: section };
 }
 
+/** The plugin answer for a name that opens nothing, given the commands it names (`pluginCodeStop`). */
+export type PluginCodeStopFinder = (name: string, commands: PluginCodeCommands) => Promise<PluginCodeStop | null>;
+
 /** Series a name that opens no function lists, as `search` lists them before pointing at the catalog. */
 const UNKNOWN_NAME_SERIES_LIMIT = 3;
 
@@ -395,10 +399,21 @@ async function unknownPaneFunctionError(
   arg: string,
   command: "fn" | "shot",
   seriesSources: readonly SeriesSource[] = [],
+  pluginStop?: PluginCodeStopFinder,
 ): Promise<UnknownPaneFunctionError> {
   // NIM is one slip from NI, but a bank figure is in `fundamentals`, not in a function's statement lines.
   const bank = bankFigurePointer(name, arg);
   if (bank) return new UnknownPaneFunctionError(name, bank.details, null, bank.message);
+  const word = /^[\w.:-]+$/.test(name) ? name : JSON.stringify(name);
+  const argument = arg.trim() ? ` ${/^[\w.:,=%+@/$^-]+$/.test(arg.trim()) ? arg.trim() : JSON.stringify(arg.trim())}` : "";
+  // A plugin's code (HN, SOC) says which plugin and what to do: install it, turn it on, or open it where it runs.
+  const code = name.trim().toUpperCase();
+  const plugin = await pluginStop?.(name, {
+    rerun: `gloom ${command} ${code}${argument}`,
+    capture: `gloom shot ${code}${argument}`,
+  })
+    .catch(logFailure("cli.pane-functions-resolver", "Find the plugin of a code failed", null));
+  if (plugin) return new UnknownPaneFunctionError(name, plugin.details, null, plugin.message);
   // A word that asks for a function's data (IVOL for HIVG and OVDV) names them as a slip from a code names it.
   const suggested = suggestedFunctionCodes(registry, name);
   const near = [...suggested, ...nearFunctionCodes(registry, name).filter(({ code }) => !suggested.some((entry) => entry.code === code))];
@@ -406,8 +421,6 @@ async function unknownPaneFunctionError(
   const closest = (await suggestPaneFunctions(registry, context, name).catch(logFailure("cli.pane-functions-resolver", "Find pane function suggestions failed", [])))
     .filter((entry) => !near.some(({ code }) => code === entry.token));
   const tokenWidth = Math.max(0, ...closest.map((entry) => entry.token.length));
-  const word = /^[\w.:-]+$/.test(name) ? name : JSON.stringify(name);
-  const argument = arg.trim() ? ` ${/^[\w.:,=%+@/$^-]+$/.test(arg.trim()) ? arg.trim() : JSON.stringify(arg.trim())}` : "";
   // One code is run on the argument; the functions a word asks for are each.
   const runs = suggested.length > 0 ? suggested : near.length === 1 ? near : [];
   // A word no function is near that names data ("nikkei") points at the series `catalog` finds for it.
@@ -436,6 +449,8 @@ export async function resolvePaneFunction(
     command?: "fn" | "shot";
     /** The plugins whose catalog series a name that opens nothing is pointed at. */
     seriesSources?: readonly SeriesSource[];
+    /** Why a name that opens nothing is a plugin's code (`pluginCodeStop`). */
+    pluginStop?: PluginCodeStopFinder;
   } = {},
 ): Promise<ResolvedPaneFunction> {
   let args = parsedArgs;
@@ -445,7 +460,8 @@ export async function resolvePaneFunction(
 
   const found = findPaneFunction(registry, args.target);
   if (!found) {
-    throw await unknownPaneFunctionError(registry, context, args.target, args.arg, resolutionSettings.command ?? "fn", resolutionSettings.seriesSources);
+    throw await unknownPaneFunctionError(registry, context, args.target, args.arg, resolutionSettings.command ?? "fn",
+      resolutionSettings.seriesSources, resolutionSettings.pluginStop);
   }
 
   const { template, pane } = found;
@@ -453,7 +469,7 @@ export async function resolvePaneFunction(
     throw new Error(`Template "${template?.id}" points at missing pane "${template?.paneId}".`);
   }
   const headless = getHeadlessPaneDefinition(template, pane);
-  const createOptions = withTickerList(template, buildCreateOptions(template, args.arg), headless, args.arg, paneFunctionCode(template, pane));
+  const createOptions = withTickerList(template, buildCreateOptions(template, args.arg), headless, args.arg, paneFunctionCode(template, pane, registry));
   const capability = getPaneFunctionCapability(template, pane);
   let tableSection: string | true | undefined;
   if (resolutionSettings.tableSection) {
@@ -462,7 +478,7 @@ export async function resolvePaneFunction(
     tableSection = taken.tableSection;
   }
   // What the user types for the function, which every error about it names.
-  const token = paneFunctionCode(template, pane);
+  const token = paneFunctionCode(template, pane, registry);
   // A word after a function that takes none is most often one of its option values (`fn JODI gas`).
   // Every function the catalog lists with no argument refuses one, a rendered view (HALT) as a report (CBR).
   // The catalog lists templates and the panes no template opens (HELP); a pane opened by its id stands for its templates.

@@ -20,6 +20,7 @@ import type { DatedObservation } from "../plugins/builtin/market-valuation/serie
 import type { DesktopExternalPluginBundle } from "../renderers/electrobun/shared/protocol";
 import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../utils/http-proxy-response";
 import type { PaneAccessGate } from "./pane-functions/access-gate";
+import { countContentFigures } from "./content-figures";
 import { readVisibleKeyValues } from "./visible-key-values";
 import { scrollTruncationReasons } from "./scroll-truncation";
 import {
@@ -196,6 +197,13 @@ export interface DesktopPaneShotRenderResult {
   emptyStateText?: string[];
   /** A wall that needs an account, or a Pro lock on part of the pane. */
   accessGate?: PaneAccessGate | null;
+  /**
+   * The blocks of text with a figure in them that the pane's body shows
+   * outside its controls, chrome, notices, charts and labels
+   * (`countContentFigures`): what a pane that marks no rows (DIAG's prose,
+   * CORR's matrix) is read by. Absent in a capture that did not count them.
+   */
+  contentFigures?: number;
   semanticUi: RemoteUiNodeSnapshot[];
   /** The status line drawn in the capture's footer, as it fit the width. */
   statusLine?: string | null;
@@ -971,6 +979,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
             .map((child) => normalize(child.innerText || child.textContent))
             .filter(Boolean);
         })(),
+        contentFigures: (${countContentFigures.toString()})(root, isVisible),
         // The shared sign-in wall and the Pro lock prompt every gated pane draws.
         accessGate: [...root.querySelectorAll('[data-gloom-ui="sign-in-wall"]')].some(isVisible) ? "sign-in"
           : [...root.querySelectorAll('[data-gloom-ui="pro-lock"]')].some(isVisible) ? "pro" : "",
@@ -998,6 +1007,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
         errorStateDetected?: boolean;
         emptyStateDetected?: boolean;
         emptyStateText?: string[];
+        contentFigures?: number;
         accessGate?: string;
         rows?: DesktopPaneShotRenderedRow[];
         truncated?: boolean;
@@ -1052,6 +1062,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
     ...(Array.isArray(value?.emptyStateText) && value.emptyStateText.length > 0
       ? { emptyStateText: value.emptyStateText.filter((line): line is string => typeof line === "string" && line.length > 0) } : {}),
     accessGate,
+    ...(typeof value?.contentFigures === "number" ? { contentFigures: value.contentFigures } : {}),
     semanticUi: Array.isArray(value?.semanticUi) ? value.semanticUi : [],
   };
 }

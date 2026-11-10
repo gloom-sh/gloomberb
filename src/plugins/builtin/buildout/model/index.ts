@@ -1,5 +1,5 @@
 import { apiClient } from "../../../../api-client";
-import { isShotRequestRefused } from "../../../../api-client/errors";
+import { isShotRequestRefused, SHOT_UNAVAILABLE } from "../../../../api-client/errors";
 import { createTtlCache } from "../../../../data/ttl-cache";
 import { httpFetch } from "../../../../utils/http-transport";
 import { logFailure } from "../../../../utils/log-failure";
@@ -140,7 +140,7 @@ export interface BuildoutReader {
 }
 
 /** What a pane shows in a screenshot of an account with the plan, whose token the capture never holds. */
-export const NOT_IN_SCREENSHOTS = "Not available in screenshots.";
+export const NOT_IN_SCREENSHOTS = SHOT_UNAVAILABLE;
 
 const NO_GRANT: BuildoutGrant = { token: null, expiresAtMs: null };
 /** A token is asked for again this long before it lapses. */
