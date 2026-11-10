@@ -65,7 +65,6 @@ const DEFI_TVL_SERIES: SeriesDefinition = {
   tags: ["defi", "tvl", "total value locked", "on-chain", "protocols", "chains"],
   description: "Total value locked in DeFi protocols across every chain, valued in USD, daily since 2018, as DefiLlama measures it and CRYP's DeFi tab charts it.",
   publisher: "DefiLlama",
-  url: "https://defillama.com",
   load: async () => {
     const resource = await loadDefiTvl();
     const history = resource.payload.history;

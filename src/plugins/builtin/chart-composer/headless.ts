@@ -742,7 +742,7 @@ const LISTING_READS = new Set<string>([
  * ticker" without asking again for its quote, profile and bars, each a miss.
  * A symbol on a named venue is asked as usual.
  */
-export function withoutNonTickers(provider: DataProvider, notTickers: ReadonlyMap<string, Error>): DataProvider {
+function withoutNonTickers(provider: DataProvider, notTickers: ReadonlyMap<string, Error>): DataProvider {
   return new Proxy(provider, {
     get(target, property) {
       // Every method runs on the provider itself, as the snapshot provider runs its fallback's.
