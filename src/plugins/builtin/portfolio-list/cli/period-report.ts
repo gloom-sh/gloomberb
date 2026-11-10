@@ -95,7 +95,9 @@ export async function showPeriodPnl({ ctx, portfolio, name, tickers, currency, w
         currency: row.currency, startDay: row.start?.day ?? null, startPrice: row.start?.price ?? null,
         endDay: row.end?.day ?? null, endPrice: row.end?.price ?? null, endPartial: row.partialEnd,
         changePercent: row.changePercent, startValue: row.startValue, pnl: row.pnl, fx: row.fx,
-        fxCurrency: row.rates?.currency ?? null, fxStart: row.rates?.start ?? null, fxEnd: row.rates?.end ?? null, contribution: row.contribution, baseCurrency: currency,
+        fxCurrency: row.rates?.currency ?? null, fxStart: row.rates?.start ?? null, fxEnd: row.rates?.end ?? null,
+        ...(row.rates && row.end && result.latestFx.includes(`${row.rates.currency}|${row.end.day}`) ? { fxEndLatest: true } : {}),
+        contribution: row.contribution, baseCurrency: currency,
       };
     });
     const extraRows: Record<string, unknown>[] = [
@@ -165,7 +167,9 @@ export async function showPeriodPnl({ ctx, portfolio, name, tickers, currency, w
   const rateText = (row: PeriodPnlRow) => {
     const start = quotedFxPair(row.rates!.currency, currency, row.rates!.start);
     const end = quotedFxPair(row.rates!.currency, currency, row.rates!.end);
-    return `${start.pair} ${formatFxRate(start.rate)} on ${dayText(row.start!.day, year)}, ${formatFxRate(end.rate)} on ${dayText(row.end!.day, year)}`;
+    // The FX trading day in progress has no close yet: its end is the latest rate, as the live book converts.
+    const latest = result.latestFx.includes(`${row.rates!.currency}|${row.end!.day}`);
+    return `${start.pair} ${formatFxRate(start.rate)} on ${dayText(row.start!.day, year)}, ${formatFxRate(end.rate)} ${latest ? "latest" : `on ${dayText(row.end!.day, year)}`}`;
   };
   if (fxRows.length) notes.push(`FX: ${[...new Set(fxRows.map(rateText))].join("; ")}. P&L converts at the end's rate; the FX line is the currency's move on the start value.`);
   if (contributionNote) notes.push(contributionNote);

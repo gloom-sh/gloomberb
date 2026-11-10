@@ -328,6 +328,7 @@ async function portfolioHoldings(
     basis,
     futures,
     purchaseDateFx,
+    previousRate: toBase.previousRate,
   });
   const { allocation, cash } = await valuePortfolioAllocation({ valuation, portfolio: resolved.portfolio, account: resolved.account, toBase });
   ctx.signal.throwIfAborted();
@@ -466,7 +467,8 @@ async function portfolioHoldings(
         cash: allocation.cash ? finite(allocation.cash.value) : null,
         total: allocation.total,
         // At the regular close, the holdings' move from the close before.
-        ...(basis === "regular-close" ? { dayChange: dayMove?.change ?? null, dayChangePercent: dayMove?.changePercent ?? null, dayChangeBasis: dayMove?.basis ?? null } : {}),
+        ...(basis === "regular-close" ? { dayChange: dayMove?.change ?? null, dayChangePercent: dayMove?.changePercent ?? null, dayChangeBasis: dayMove?.basis ?? null,
+          dayChangeFx: dayMove?.fx ?? null } : {}),
       },
       // Only on a book that holds a short: its weights are shares of `weightBase`, its gross exposure, not of the total.
       ...(allocation.weightBasis === "gross" ? { weightBasis: allocation.weightBasis, weightBase: allocation.weightBase } : {}),

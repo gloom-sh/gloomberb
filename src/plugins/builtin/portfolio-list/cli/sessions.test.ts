@@ -263,3 +263,36 @@ describe("a book across HKEX and the US, read on Mon 9 Nov 2026 before the US op
     expect(text).toContain("1 of 4 stale, 1 of 4 nominal");
   });
 });
+
+// A lira book on Tue 10 Nov 2026 with New York open: its Day's move held the dollar names' price moves alone, at
+// today's rate, about TRY1.9k of the lira's own move missing from a book three quarters in dollars.
+test("a book's day move holds the currency move of a holding in another currency, as `fx` reads the pair", async () => {
+  setSystemTime(new Date("2026-11-10T20:29:00Z"));
+  setCliColorEnabledOverride(false);
+  const lira = { ...config, portfolios: [{ id: "tarim", name: "Tarim", currency: "TRY" }] };
+  const ntr = createTestTicker("NTR", "Nutrien", { exchange: "NYSE", currency: "USD", portfolios: ["tarim"],
+    positions: [{ portfolio: "tarim", shares: 100, avgCost: 60, currency: "USD", broker: "manual" }] });
+  const quotes: Record<string, Quote> = {
+    NTR: { symbol: "NTR", currency: "USD", listingExchangeName: "NYSE", price: 72.57, change: 0.28, changePercent: 0.3873, previousClose: 72.29,
+      changeSessionDate: "2026-11-10", marketState: "REGULAR", lastUpdated: Date.parse("2026-11-10T20:14:00Z") },
+    "USDTRY=X": { symbol: "USDTRY=X", currency: "TRY", price: 50.2294, change: 0.0518, changePercent: 0.1032, previousClose: 50.1776,
+      instrumentType: "CURRENCY", lastUpdated: Date.parse("2026-11-10T20:28:00Z") },
+  };
+  const market = {
+    config: lira,
+    store: { loadAllTickers: async () => [ntr] },
+    dataProvider: createTestDataProvider({
+      getQuote: async (symbol) => quotes[symbol]!,
+      getQuotesBatch: async (targets) => targets.map((target) => ({ target, quote: quotes[target.symbol] ?? null })),
+      getExchangeRate: async (currency) => currency === "TRY" ? 1 / 50.2294 : 1,
+    }),
+  };
+  const cli = createTestCliContext(market, { format: "json" });
+  await portfolioCliCommand.execute(["show", "Tarim"], cli.context);
+  const json = JSON.parse(serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, cli.printed[0]!.options));
+  // 100 x 72.29 dollars at the close before were worth 50.1776 lira each, and 100 x 72.57 are worth 50.2294 now.
+  const fx = 100 * 72.29 * (50.2294 - 50.1776);
+  expect(json.metadata.dayChange).toBeCloseTo(100 * 72.57 * 50.2294 - 100 * 72.29 * 50.1776, 6);
+  expect(json.metadata.dayChangeFx).toBeCloseTo(fx, 6);
+  expect(json.metadata.dayChangePercent).toBeCloseTo((72.57 * 50.2294 / (72.29 * 50.1776) - 1) * 100, 6);
+});
