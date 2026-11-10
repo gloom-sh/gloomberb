@@ -11,7 +11,7 @@ import { startRemoteControlServer, type RemoteControlServer } from "./server";
  * A process that starts a server and leaves with `process.exit` once told to,
  * never closing it: how the terminal app quits. Resolves with the endpoint it wrote.
  */
-async function startAppThatQuitsWithoutClosing(dataDir: string, beforeExit?: () => Promise<void>) {
+async function startAppThatQuitsWithoutClosing(dataDir: string, beforeExit?: () => void | Promise<void>) {
   const script = `
     import { startRemoteControlServer } from ${JSON.stringify(join(import.meta.dir, "server.ts"))};
     const server = await startRemoteControlServer({ dataDir: ${JSON.stringify(dataDir)}, appKind: "tui", handle: async () => ({ ok: true, data: null }) });

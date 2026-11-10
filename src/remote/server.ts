@@ -56,7 +56,7 @@ export async function startRemoteControlServer(options: RemoteControlServerOptio
   };
   process.once("exit", removeAtExit);
   try {
-    await writeRemoteEndpointFiles(options.dataDir, endpoint);
+    writeRemoteEndpointFiles(options.dataDir, endpoint);
   } catch (error) {
     process.off("exit", removeAtExit);
     await closeHttpServer(httpServer);

@@ -1,7 +1,7 @@
-import { readFileSync, readlinkSync, rmSync } from "fs";
-import { readFile, rename, rm } from "fs/promises";
+import { readFileSync, readlinkSync, renameSync, rmSync } from "fs";
+import { readFile, rm } from "fs/promises";
 import { dirname, join } from "path";
-import { makePrivateDir, writePrivateFile } from "../utils/private-files";
+import { makePrivateDirSync, writePrivateFileSync } from "../utils/private-files";
 import type { RemoteAppKind, RemoteEndpoint } from "./types";
 
 const DEFAULT_ENDPOINT_FILE = "remote-control.json";
@@ -38,9 +38,14 @@ export async function readRemoteEndpoint(dataDir: string, appKind?: RemoteAppKin
   return JSON.parse(raw) as RemoteEndpoint;
 }
 
-export async function writeRemoteEndpointFiles(dataDir: string, endpoint: RemoteEndpoint): Promise<void> {
-  await writeRemoteEndpoint(remoteEndpointPath(dataDir, endpoint.appKind), endpoint);
-  await writeRemoteEndpoint(remoteEndpointPath(dataDir), endpoint);
+/**
+ * Written in one go, with no wait in between: the server's exit listener is
+ * already in place, so a quit that lands now finds both files to remove, and
+ * no write is still on its way when the process leaves.
+ */
+export function writeRemoteEndpointFiles(dataDir: string, endpoint: RemoteEndpoint): void {
+  writeRemoteEndpoint(remoteEndpointPath(dataDir, endpoint.appKind), endpoint);
+  writeRemoteEndpoint(remoteEndpointPath(dataDir), endpoint);
 }
 
 export async function removeRemoteEndpointFiles(dataDir: string, endpoint: RemoteEndpoint): Promise<void> {
@@ -55,14 +60,14 @@ export async function removeRemoteEndpointFiles(dataDir: string, endpoint: Remot
  * controls the app. Written beside it and moved into place, so a client that
  * finds the file never reads it half written.
  */
-async function writeRemoteEndpoint(filePath: string, endpoint: RemoteEndpoint): Promise<void> {
-  await makePrivateDir(dirname(filePath));
+function writeRemoteEndpoint(filePath: string, endpoint: RemoteEndpoint): void {
+  makePrivateDirSync(dirname(filePath));
   const temporary = `${filePath}.${process.pid}.tmp`;
   try {
-    await writePrivateFile(temporary, JSON.stringify(endpoint, null, 2));
-    await rename(temporary, filePath);
+    writePrivateFileSync(temporary, JSON.stringify(endpoint, null, 2));
+    renameSync(temporary, filePath);
   } catch (error) {
-    await rm(temporary, { force: true });
+    rmSync(temporary, { force: true });
     throw error;
   }
 }
