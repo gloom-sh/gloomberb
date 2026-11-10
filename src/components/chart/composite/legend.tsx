@@ -369,9 +369,9 @@ export function CompositeLegend({
   const foldedWidth = foldedText ? displayWidth(foldedText) + 1 : 0;
   // The cursor date lives on the time axis, where the crosshair points at it.
   const widthBeforeAccessory = Math.max(0, innerWidth - resolvedAccessoryWidth - reservedAccessoryGap - foldedWidth);
-  // Names get the room the row has. When it overflows, the widest name
-  // shortens first: its listing exchange (and a company's field, compactLabel)
-  // goes before any of the name is cut.
+  // Names get the room the row has. When it overflows, every name drops its
+  // listing exchange (and a company's field, compactLabel) together, so the
+  // row reads in one form; then the widest name is cut first.
   // The value (including its sign/unit) always stays intact. If the row cannot
   // fit even with every name at a readable fragment, it keeps the old 30-cell
   // entries and scrolls.
@@ -418,7 +418,12 @@ export function CompositeLegend({
         .sort((left, right) => right.labelWidth - left.labelWidth)[0];
       if (!shrinkable) break;
       if (shrinkable.label !== shrinkable.compactLabel) {
-        setEntryLabel(shrinkable, shrinkable.compactLabel, Math.min(shrinkable.labelWidth, displayWidth(shrinkable.compactLabel)));
+        // One form across the row: every name takes its compact form together, never one beside the others' full ones.
+        for (const entry of entries) {
+          if (entry.label !== entry.compactLabel) {
+            setEntryLabel(entry, entry.compactLabel, Math.min(entry.labelWidth, displayWidth(entry.compactLabel)));
+          }
+        }
       } else {
         setEntryLabel(shrinkable, shrinkable.label, shrinkable.labelWidth - 1);
       }
