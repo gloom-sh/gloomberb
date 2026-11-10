@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createTestResolvedSeries, createTestSeriesPoint } from "../test-support/time-series";
-import { assignAxes } from "./series-presentation";
+import { assignAxes, resetDistantPriceSplitsForTests } from "./series-presentation";
 
 /** Each series' axis, and the warnings, for prices given as [symbol, unit, unitGroup]. */
 function axes(prices: Array<[string, string, string]>) {
@@ -52,4 +52,21 @@ test("a price under a tenth of another's in the same unit goes on the right axis
     .toEqual(["GC=F left", "SI=F left"]);
   const rate = createTestResolvedSeries({ id: "EURUSD=X", unit: "USD / EUR", unitGroup: "price:USD", points: [createTestSeriesPoint("2026-11-10", 1.1)] });
   expect(place([price("GC=F", 4050), rate as ReturnType<typeof price>, price("SI=F", 51.8)])).toEqual(["GC=F left", "EURUSD=X right", "SI=F left"]);
+});
+
+test("the split reads each price at the median of its loaded bars and is kept for the set, so a new high or a pan never flips it", () => {
+  resetDistantPriceSplitsForTests();
+  const bars = (id: string, closes: number[]) => createTestResolvedSeries({ id, unit: "USD / troy oz", unitGroup: "price:USD",
+    listing: { symbol: id, exchange: "" }, points: closes.map((close, index) => createTestSeriesPoint(`2026-11-${10 + index}`, close)) });
+  const place = (series: ReturnType<typeof bars>[]) => assignAxes(series, series.map(({ id }) => ({ id, axis: "auto" as const })), [])
+    .map(({ id, axis }) => `${id} ${axis}`);
+  // One wild print does not set silver's level: its median is $52, under a tenth of gold's.
+  expect(place([bars("GC=F", [4050, 4060, 4070]), bars("SI=F", [51, 52, 900])])).toEqual(["GC=F left", "SI=F right"]);
+  // Kept for the set: bars panned to, or a run to a new high, past a tenth of gold's leave the axes as they were.
+  expect(place([bars("GC=F", [4050, 4060]), bars("SI=F", [450, 460])])).toEqual(["GC=F left", "SI=F right"]);
+  // Until every price has bars the split is read from those that do, and not kept.
+  resetDistantPriceSplitsForTests();
+  expect(place([bars("GC=F", [4050]), bars("SI=F", [])])).toEqual(["GC=F left", "SI=F left"]);
+  expect(place([bars("GC=F", [4050]), bars("SI=F", [52])])).toEqual(["GC=F left", "SI=F right"]);
+  resetDistantPriceSplitsForTests();
 });

@@ -61,14 +61,18 @@ function scaleQuantity(unit: string): string | null {
 /** A price under this share of another's in the same unit is drawn against an axis of its own. */
 const SHARED_AXIS_LEVEL_SHARE = 0.1;
 
-/** The largest size a series' values reach, or null without one. */
+/** The size a series' values sit at: the median of its loaded bars, so a new high or a pan does not move it. Null without one. */
 function seriesLevel(entry: ResolvedSeries): number | null {
-  let level: number | null = null;
+  const values: number[] = [];
   for (const point of entry.points) {
     const value = typeof point.value === "number" ? point.value : typeof point.close === "number" ? point.close : null;
-    if (value !== null && Number.isFinite(value)) level = Math.max(level ?? 0, Math.abs(value));
+    if (value !== null && Number.isFinite(value)) values.push(Math.abs(value));
   }
-  return level !== null && level > 0 ? level : null;
+  if (values.length === 0) return null;
+  values.sort((a, b) => a - b);
+  const middle = values.length >> 1;
+  const median = values.length % 2 ? values[middle]! : (values[middle - 1]! + values[middle]!) / 2;
+  return median > 0 ? median : null;
 }
 
 /** A security's own price as charted, not a study of it or a transform: what can take an axis of its own. */
@@ -85,6 +89,19 @@ function drawnInPriceOf(entry: ResolvedSeries, price: ResolvedSeries): boolean {
 }
 
 /**
+ * Which prices of a set split onto an axis of their own, by the set they are
+ * in: decided once every price in it has bars, then kept, so the axes of a
+ * chart never trade places as its bars load, make a new high or pan.
+ */
+const distantPriceSplits = new Map<string, ReadonlySet<string>>();
+const DISTANT_PRICE_SPLITS_KEPT = 256;
+
+/** Forgets every kept split, for tests that chart one set of prices at different levels. */
+export function resetDistantPriceSplitsForTests(): void {
+  distantPriceSplits.clear();
+}
+
+/**
  * Prices in one unit whose sizes are an order apart, sharing the left axis of
  * a panel with nothing on its right: those under SHARED_AXIS_LEVEL_SHARE of
  * the largest move to the right axis, with what is drawn in their price, so
@@ -97,17 +114,29 @@ function splitDistantPrices(series: ResolvedSeries[], requested: ReadonlyMap<str
   for (const panelId of new Set(series.map((entry) => entry.panelId))) {
     const panel = series.filter((entry) => entry.panelId === panelId);
     if (panel.some((entry) => entry.axis === "right")) continue;
-    const prices = panel.filter((entry) => entry.axis === "left" && !placed(entry) && isOwnPrice(entry));
-    const unitGroup = prices[0]?.unitGroup;
-    const levels = new Map(prices.filter((entry) => entry.unitGroup === unitGroup).flatMap((entry) => {
-      const level = seriesLevel(entry);
-      return level === null ? [] : [[entry, level] as const];
-    }));
-    const largest = Math.max(0, ...levels.values());
-    const small = [...levels].filter(([, level]) => level < largest * SHARED_AXIS_LEVEL_SHARE).map(([entry]) => entry);
-    if (small.length === 0 || small.length === levels.size) continue;
+    const candidates = panel.filter((entry) => entry.axis === "left" && !placed(entry) && isOwnPrice(entry));
+    const unitGroup = candidates[0]?.unitGroup;
+    const prices = candidates.filter((entry) => entry.unitGroup === unitGroup);
+    if (prices.length < 2) continue;
+    const key = [panelId, ...prices.map((entry) => `${entry.id}\u001f${publicTickerKey(entry.listing!.symbol, entry.listing!.exchange)}`).sort()]
+      .join("\u001e");
+    let small = distantPriceSplits.get(key);
+    if (!small) {
+      const levels = prices.map((entry) => [entry, seriesLevel(entry)] as const);
+      // Until every price has bars the split is read from those that do, and not kept.
+      const known = levels.filter((entry): entry is readonly [ResolvedSeries, number] => entry[1] !== null);
+      const largest = Math.max(0, ...known.map(([, level]) => level));
+      const below = known.filter(([, level]) => level < largest * SHARED_AXIS_LEVEL_SHARE).map(([entry]) => entry.id);
+      small = new Set(below.length === known.length ? [] : below);
+      if (known.length === prices.length) {
+        if (distantPriceSplits.size >= DISTANT_PRICE_SPLITS_KEPT) distantPriceSplits.delete(distantPriceSplits.keys().next().value!);
+        distantPriceSplits.set(key, small);
+      }
+    }
+    if (small.size === 0) continue;
+    const smallPrices = prices.filter((entry) => small!.has(entry.id));
     for (const entry of panel) {
-      if (small.includes(entry) || (!placed(entry) && small.some((price) => drawnInPriceOf(entry, price)))) moved.add(entry.id);
+      if (small.has(entry.id) || (!placed(entry) && smallPrices.some((price) => drawnInPriceOf(entry, price)))) moved.add(entry.id);
     }
   }
   return moved.size === 0 ? series : series.map((entry) => moved.has(entry.id) ? { ...entry, axis: "right" } : entry);

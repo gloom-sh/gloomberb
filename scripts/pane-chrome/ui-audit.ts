@@ -5,6 +5,7 @@ import { takeOption } from "../tui-benchmark-harness";
 import { cacheDir, click, evaluate, launchBrowser, sleep, waitFor, type Browser, type Cdp } from "./browser";
 import { checkoutPlugin, pluginLock } from "./plugin-lock";
 import { pathName, visitAlternatives } from "./tab-visits";
+import { isTransientPane } from "../../src/layout/pane-manager/transient";
 import { UI_AUDIT_MEASURE, type AuditMeasure } from "./ui-audit-measure";
 import { writeAuditReport } from "./ui-audit-report";
 import {
@@ -424,15 +425,26 @@ async function main(): Promise<void> {
   async function auditPane(entry: AuditEntry): Promise<AuditView[]> {
     const cdp = browser.cdp;
     await viewport(widths[widths.length - 1]!);
-    const instance = await discover(cdp, app.url, replay, entry) ?? fallbackInstance(entry);
-    const id = instance.instanceId as string;
-    const scope = `[data-gloom-pane-id="${id}"]`;
+    // A window no layout keeps (the Layouts browser, LAY) is opened through its command each time, as a user opens it:
+    // a layout that docks it loads without it. Its instance is named afresh by each opening, so it is found by its pane.
+    const transient = isTransientPane(entry.paneId);
+    const instance = transient ? fallbackInstance(entry) : await discover(cdp, app.url, replay, entry) ?? fallbackInstance(entry);
+    let id = instance.instanceId as string;
+    const scope = transient ? `[data-gloom-pane-id^="${entry.paneId}:"]` : `[data-gloom-pane-id="${id}"]`;
     const base = { kind: "pane" as const, token: entry.token, paneId: entry.paneId, ...(entry.plugin ? { plugin: entry.plugin } : {}), instance };
     const views = new Map<string, AuditView>();
     const paneText = () => evaluate<string>(cdp, `document.querySelector(${JSON.stringify(scope)})?.innerText ?? ""`);
     const open = async (theme: string) => {
       debug(`open ${theme}`);
-      await loadLayout(cdp, app.url, replay, dock(instance), id, { theme });
+      if (transient) {
+        await loadLayout(cdp, app.url, replay, EMPTY_LAYOUT, undefined, { theme });
+        await sleep(800);
+        await runCommand(cdp, entry.token);
+        await settle(cdp, scope);
+        id = await evaluate<string>(cdp, `document.querySelector(${JSON.stringify(scope)})?.getAttribute("data-gloom-pane-id") ?? ""`) || id;
+      } else {
+        await loadLayout(cdp, app.url, replay, dock(instance), id, { theme });
+      }
       await settle(cdp, scope);
       debug("settled");
     };

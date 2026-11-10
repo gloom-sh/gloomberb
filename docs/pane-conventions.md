@@ -602,7 +602,9 @@ series read against the left says so after its value, dim: `51.57 USD / troy
 oz -2.13% (right axis)`; the note gives way, to the tooltip, before a name is
 cut. In G, prices in one unit an order of magnitude apart (silver beside
 gold) take an axis each: the smaller goes right, with what is drawn in its
-price.
+price. Each is read at the median of its loaded bars, and the split is kept
+for that set of prices, so the axes never trade places on a new high or a
+pan.
 
 **The chart earns its rows.** It shows what the table cannot: a trend, a
 curve's shape, how a level moved (look-back curves, trails). The table adds

@@ -612,6 +612,9 @@ test("history refuses a word typed beside a symbol that is no ticker, and a bar 
   }
   // 1m is a month too, and either way no symbol.
   await expect(runList(["GC=F", "1m"], bars)).rejects.toThrow(`"1m" reads as a bar size or a range, not a symbol (a range is --range 1M).`);
+  // A quoted name is one argument: "3M Company" is the company, not a bar of three minutes.
+  const named = await runList(["3M Company"], () => Promise.resolve(dailyBar(188.99)));
+  expect(named.csv[1]).toStartWith("2026-10-16,188.99,");
   // The pointer names the symbol: G's 1-minute bars of its session, history's 5-minute bars of 1D.
   const failed = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-command-fixture"), dataProvider: createTestDataProvider({}) });
   const details: string[] = [];

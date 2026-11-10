@@ -10,11 +10,13 @@ const NEXT_MONTH_ID = ":next-month:";
 /**
  * A chart whose formulas price their legs in one delivery month (`rollsWith`,
  * the 3-2-1 crack), with each continuous leg besides the one it rolls with
- * read in its next listed month too: RB2 beside RB=F. Between crude's roll and
- * the products' (CLZ26 beside RBX26), the products' next month is the month
- * crude holds. Hidden inputs of the formula alone, never saved or drawn. A
- * root that does not list every month has no next month to take; its leg
- * stays as served.
+ * read in its second generic too: RB2 beside RB=F. Between crude's roll and
+ * the products' (CLZ26 beside RBX26), the products' second month is the
+ * month crude holds. RB2 is the month after RB1, which can be another than
+ * the month after RB=F, so the formula takes it only where it is the
+ * leader's month (formulaLegPricer). Hidden inputs of the formula alone,
+ * never saved or drawn. A root that does not list every month has no next
+ * month to take; its leg stays as served.
  */
 export function withFormulaNextMonths(spec: ChartSpec): ChartSpec {
   const added: ChartSeriesSpec[] = [];

@@ -9,6 +9,11 @@ import { removePane } from "./layout-state";
  */
 const TRANSIENT_PANE_IDS: ReadonlySet<string> = new Set(["layout-marketplace"]);
 
+/** Whether a pane is a window no layout keeps (TRANSIENT_PANE_IDS): opened over a layout, never saved with one. */
+export function isTransientPane(paneId: string): boolean {
+  return TRANSIENT_PANE_IDS.has(paneId);
+}
+
 const withoutTransient = new WeakMap<LayoutConfig, LayoutConfig>();
 
 /**
@@ -17,11 +22,11 @@ const withoutTransient = new WeakMap<LayoutConfig, LayoutConfig>();
  * a layout saved on every change stays one value while it does not change.
  */
 export function withoutTransientPanes(layout: LayoutConfig): LayoutConfig {
-  if (!layout.instances.some((instance) => TRANSIENT_PANE_IDS.has(instance.paneId))) return layout;
+  if (!layout.instances.some((instance) => isTransientPane(instance.paneId))) return layout;
   const cached = withoutTransient.get(layout);
   if (cached) return cached;
   const result = layout.instances
-    .filter((instance) => TRANSIENT_PANE_IDS.has(instance.paneId))
+    .filter((instance) => isTransientPane(instance.paneId))
     .reduce((current, instance) => removePane(current, instance.instanceId), layout);
   withoutTransient.set(layout, result);
   return result;

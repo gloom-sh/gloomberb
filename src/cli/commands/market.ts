@@ -1947,8 +1947,9 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const currency = file != null || requestedExchange ? null : currencyNameStop(args, "history");
   if (currency) ctx.fail(currency.message, currency.details);
   // `history GC=F 1s` asks for bars of a second, which no listing named 1S has: it says where the finest bars are.
-  const words = splitSymbolArgs(args.filter((arg, index) => !arg.startsWith("-") && !(index > 0 && args[index - 1]!.startsWith("--") && !args[index - 1]!.includes("="))));
-  const barSize = file == null ? words.find(barSizeTypedAsSymbol) : undefined;
+  // Whole arguments only: a quoted name ("3M Company") is one argument, and a name, never a bar size.
+  const words = args.filter((arg, index) => !arg.startsWith("-") && !(index > 0 && args[index - 1]!.startsWith("--") && !args[index - 1]!.includes("=")));
+  const barSize = file == null ? words.find((arg) => !/\s/.test(arg.trim()) && barSizeTypedAsSymbol(arg)) : undefined;
   if (barSize) failHistoryBarSize(barSize, words, ctx);
   if (wide || file != null || args.includes("-") || uniqueEntries(args).length > 1 || args.some((arg) => /[,;]/.test(arg))) {
     // `history CC=F 1mo` asks for a month of cocoa, not for cocoa and 1MO: it says which option reads it.
