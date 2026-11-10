@@ -52,7 +52,7 @@ import { isPermanentClientError } from "../../../api-client/errors";
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
 import { callPeriod, callTitle, eventLabelOf, formatCallDate, formatDuration, formatSentiment } from "./format";
-import { findCallForQuarter, findInLines, MIN_FIND_LENGTH, turnParagraphs } from "./model";
+import { findCallForQuarter, findInLines, MIN_FIND_LENGTH, translatedFrom, turnParagraphs } from "./model";
 import { READER_TABS, TranscriptView, type ReaderTab, type TranscriptPlayback } from "./transcript-view";
 import { PLAYBACK_RATES, SEEK_STEP_SECONDS, useCallPlayback } from "./use-call-playback";
 import { callAway, callCountdown, callStartText, isUpcomingCall, nextCall } from "./upcoming";
@@ -596,6 +596,9 @@ function CallsListView({
     if (detailOpen && !selected && listStatus === "loaded") setDetailOpen(false);
   }, [detailOpen, listStatus, openQuarter, selected, setDetailOpen]);
   const selectedTranscript = transcript?.id === selectedCallId ? transcript : null;
+  // A section kept from another call shows that call's summary when this one has no original.
+  const hasOriginal = !!selectedTranscript?.originalText?.trim();
+  const shownTab: ReaderTab = readerTab === "original" && selectedTranscript && !hasOriginal ? "summary" : readerTab;
 
   // The desktop and the web play the call beside its transcript, and their
   // find marks every match and steps through them where the terminal's
@@ -617,11 +620,11 @@ function CallsListView({
   );
 
   const findLines = useMemo(() => {
-    if (!stepFind || !selectedTranscript || readerTab === "summary") return [];
+    if (!stepFind || !selectedTranscript || shownTab === "summary" || shownTab === "original") return [];
     return (selectedTranscript.turns ?? []).flatMap((turn, index) => (
-      readerTab === "qa" && !turn.isQa ? [] : turnParagraphs(turn).map((text, paragraph) => ({ turn: index, paragraph, text }))
+      shownTab === "qa" && !turn.isQa ? [] : turnParagraphs(turn).map((text, paragraph) => ({ turn: index, paragraph, text }))
     ));
-  }, [stepFind, selectedTranscript, readerTab]);
+  }, [stepFind, selectedTranscript, shownTab]);
   const findMatches = useMemo(() => findInLines(findLines, searchQuery), [findLines, searchQuery]);
   const [matchIndex, setMatchIndex] = useState(0);
   useEffect(() => setMatchIndex(0), [findMatches]);
@@ -809,6 +812,11 @@ function CallsListView({
         setReaderTab("transcript");
         return true;
       }
+      if (hasOriginal && isPlainKey(event, "g")) {
+        stopSearchFocusNavigation(event);
+        setReaderTab("original");
+        return true;
+      }
       if (isPlainKey(event, "o")) {
         stopSearchFocusNavigation(event);
         openSource();
@@ -831,7 +839,7 @@ function CallsListView({
       }
       return false;
     },
-    [focusSearch, scrollTranscriptBy, openSource, playerShown, playback.toggle, playback.seekBy],
+    [focusSearch, scrollTranscriptBy, openSource, playerShown, playback.toggle, playback.seekBy, hasOriginal],
   );
 
   // A receipt's or foreign line's calls are its company's, read from the home line.
@@ -856,7 +864,20 @@ function CallsListView({
       if (readerOpen && playback.error) {
         info.push({ id: "audio-error", parts: [{ text: "audio unavailable", tone: "warning" }], title: playback.error });
       }
-      if (readerOpen && stepFind && searchQuery.trim().length >= MIN_FIND_LENGTH && readerTab !== "summary") {
+      // A call held in another language is read in English translation.
+      const translatedFromLanguage = readerOpen && selectedTranscript ? translatedFrom(selectedTranscript) : null;
+      if (translatedFromLanguage !== null) {
+        info.push({
+          id: "translated",
+          parts: [{
+            text: shownTab === "original"
+              ? (translatedFromLanguage ? `in ${translatedFromLanguage}` : "original language")
+              : `translated${translatedFromLanguage ? ` from ${translatedFromLanguage}` : ""}`,
+            tone: "muted",
+          }],
+        });
+      }
+      if (readerOpen && stepFind && searchQuery.trim().length >= MIN_FIND_LENGTH && shownTab !== "summary" && shownTab !== "original") {
         info.push(activeMatch
           ? { id: "find", parts: [{ text: `match ${Math.min(matchIndex, findMatches.length - 1) + 1} of ${findMatches.length}`, tone: "muted" }] }
           : { id: "find", parts: [{ text: "no matches", tone: "warning" }] });
@@ -944,7 +965,7 @@ function CallsListView({
       playback.toggle,
       stepFind,
       searchQuery,
-      readerTab,
+      shownTab,
       activeMatch,
       matchIndex,
       findMatches.length,
@@ -1027,7 +1048,7 @@ function CallsListView({
         transcript={selectedTranscript}
         loading={transcriptLoading}
         error={transcriptError?.message ?? null}
-        tab={readerTab}
+        tab={shownTab}
         onTabChange={setReaderTab}
         tabsFocused={focused && readerOpen && !searchFocused}
         query={stepFind ? undefined : searchQuery}

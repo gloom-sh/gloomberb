@@ -22,7 +22,8 @@ type EarningsCallsApiClient = Pick<
 const LIST_KIND = "calls";
 const TRANSCRIPT_KIND = "transcript";
 const CACHE_SOURCE = "earnings-calls";
-const CACHE_SCHEMA_VERSION = 1;
+// Version 2: a translated call carries its language and original text.
+const CACHE_SCHEMA_VERSION = 2;
 // Version 3: a listing abroad is keyed by its venue and company, not its symbol alone.
 const LIST_CACHE_SCHEMA_VERSION = 3;
 

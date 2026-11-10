@@ -320,6 +320,40 @@ for (const width of [48, 80, 120]) {
 }
 
 
+test("a call held in Chinese says it is translated, and g shows it as it was said; an English call has no original", async () => {
+  signIn();
+  const said = "各位投资者大家好 欢迎参加中期业绩发布会 首先由财务总监介绍上半年的经营业绩";
+  setCloudApiFetchTransport(async (url) => new URL(String(url)).pathname.includes("FIRST-call")
+    ? Response.json({ ...transcript("FIRST"), language: "chinese", isTranslated: true, originalText: said })
+    : Response.json({ calls: [call("FIRST")] }));
+  await mount(120);
+  await press("return");
+  await framesUntil(() => tui.frame().includes("FIRST CONTROLLED SUMMARY"));
+  expect(tui.frame()).toContain("translated from Chinese");
+  expect(tui.frame()).toContain("Original");
+  await press("g");
+  await framesUntil(() => tui.frame().includes("各位投资者大家好"));
+  const original = tui.frame();
+  expect(original).toContain("中期业绩发布会");
+  expect(original).toContain("in Chinese");
+  expect(original).not.toContain("FIRST CONTROLLED SUMMARY");
+});
+
+test("a call that is not translated has no original section", async () => {
+  signIn();
+  setCloudApiFetchTransport(async (url) => new URL(String(url)).pathname.includes("FIRST-call")
+    ? Response.json(transcript("FIRST"))
+    : Response.json({ calls: [call("FIRST")] }));
+  await mount(120);
+  await press("return");
+  await framesUntil(() => tui.frame().includes("FIRST CONTROLLED SUMMARY"));
+  await press("g");
+  const frame = tui.frame();
+  expect(frame).toContain("FIRST CONTROLLED SUMMARY");
+  expect(frame).not.toContain("Original");
+  expect(frame).not.toContain("translated");
+});
+
 test("opening another quarter never displays the previous quarter's transcript", async () => {
   signIn();
   const q2 = call("FIRST");

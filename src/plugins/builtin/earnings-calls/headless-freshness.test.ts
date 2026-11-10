@@ -17,7 +17,7 @@ for (const stale of [false, true]) {
       attachEarningsCallsPersistence(store);
       if (stale) store.seedResource("calls", JSON.stringify(["FIRST", 200]), { calls: [call] },
         { sourceKey: "earnings-calls", schemaVersion: 3, stale: true, expired: true });
-      store.seedResource("transcript", call.id, transcript, { sourceKey: "earnings-calls", schemaVersion: 1 });
+      store.seedResource("transcript", call.id, transcript, { sourceKey: "earnings-calls", schemaVersion: 2 });
       apiClient.setSessionToken("controlled-test-session");
       setCloudApiFetchTransport(async () => stale
         ? Response.json({ error: "Controlled call discovery outage" }, { status: 503 })

@@ -43,6 +43,7 @@ import {
   buildTranscriptSegments,
   findCallForQuarter,
   sortCallsNewest,
+  translatedFrom,
   type TranscriptSection,
 } from "./model";
 import { REPORT_FILTER, REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
@@ -214,6 +215,11 @@ function transcriptResult(
   const segments = buildTranscriptSegments(transcript, section, { speaker, search });
   const rows = segments.slice(offset, offset + limit).map((segment) => ({ ...segment }));
   const hasMore = offset + rows.length < segments.length;
+  const language = translatedFrom(transcript);
+  const translation = language === null ? null
+    : section === "original"
+      ? `The call as said${language ? ` in ${language}` : ""}, before translation.`
+      : `Translated into English${language ? ` from ${language}` : ""}; --section original reads the call as said.`;
 
   return {
     columns: TRANSCRIPT_COLUMNS,
@@ -223,6 +229,7 @@ function transcriptResult(
     ...(calls.companyFrom ? { notes: companyDataNotes(calls.companyFrom) } : {}),
     metadata: {
       ...savedCopyMark(calls),
+      ...(translation ? { notices: [translation] } : {}),
       stale: calls.stale,
       callListFetchedAt: calls.fetchedAt,
       callListPending: calls.pending ?? false,
@@ -232,6 +239,8 @@ function transcriptResult(
       fiscalYear: transcript.fiscalYear,
       fiscalQuarter: transcript.fiscalQuarter,
       event: eventLabelOf(transcript),
+      // A call held in another language: the text is an English translation, its original under --section original.
+      translatedFrom: language,
       callAt: transcript.callAt,
       durationSeconds: transcript.durationSeconds,
       wordCount: transcript.wordCount,
@@ -384,6 +393,7 @@ export function createEarningsCallsHeadless(
           { value: "notable" },
           { value: "analyst-focus", aliases: ["analyst"] },
           { value: "participants", aliases: ["speakers"] },
+          { value: "original" },
         ],
         defaultValue: "",
       },

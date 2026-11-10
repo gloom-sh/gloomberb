@@ -15,7 +15,8 @@ export type TranscriptSection =
   | "risks"
   | "notable"
   | "analyst-focus"
-  | "participants";
+  | "participants"
+  | "original";
 
 export interface TranscriptFilter {
   section: "transcript" | "qa";
@@ -35,6 +36,11 @@ export interface TranscriptSegment {
 }
 
 const MAX_SEGMENT_CHARS = 1_600;
+/**
+ * A paragraph of a call's original text. A recording transcribed in Chinese
+ * comes as one unpunctuated block, so it is cut about this often.
+ */
+const ORIGINAL_PARAGRAPH_CHARS = 360;
 
 function roleAcronym(value: string): string {
   return value
@@ -71,22 +77,52 @@ export function filterTranscriptTurns(
   });
 }
 
-function chunks(text: string): string[] {
+/** Where a cut may fall: at a space or a line break, or after a full stop of Chinese or Japanese text. */
+function lastBreak(text: string, max: number): number {
+  const space = Math.max(text.lastIndexOf(" ", max), text.lastIndexOf("\n", max));
+  const stop = Math.max(...["。", "！", "？", "；"].map((mark) => text.lastIndexOf(mark, max - 1)));
+  return Math.max(space, stop >= 0 ? stop + 1 : -1);
+}
+
+function chunks(text: string, max = MAX_SEGMENT_CHARS): string[] {
   const normalized = text.trim();
   if (!normalized) return [];
   const result: string[] = [];
   let remaining = normalized;
-  while (remaining.length > MAX_SEGMENT_CHARS) {
-    const breakAt = Math.max(
-      remaining.lastIndexOf(" ", MAX_SEGMENT_CHARS),
-      remaining.lastIndexOf("\n", MAX_SEGMENT_CHARS),
-    );
-    const cut = breakAt > MAX_SEGMENT_CHARS / 2 ? breakAt : MAX_SEGMENT_CHARS;
+  while (remaining.length > max) {
+    const breakAt = lastBreak(remaining, max);
+    const cut = breakAt > max / 2 ? breakAt : max;
     result.push(remaining.slice(0, cut).trim());
     remaining = remaining.slice(cut).trim();
   }
   if (remaining) result.push(remaining);
   return result;
+}
+
+/** A translated call's original text as paragraphs: its own breaks, and long blocks cut at a pause. */
+export function originalParagraphs(text: string | null | undefined): string[] {
+  return (text ?? "").split(/\n\s*\n/).flatMap((block) => chunks(block, ORIGINAL_PARAGRAPH_CHARS));
+}
+
+const LANGUAGE_NAMES = new Intl.DisplayNames(["en"], { type: "language" });
+
+/**
+ * The language a translated call was held in, by name ("Chinese"), from the
+ * stored code or name; null for a call that is not translated. "" when the
+ * call is translated and its language is not known.
+ */
+export function translatedFrom(transcript: Pick<CloudEarningsTranscriptPayload, "isTranslated" | "language">): string | null {
+  if (!transcript.isTranslated) return null;
+  const language = transcript.language?.trim() ?? "";
+  if (/^[a-z]{2,3}(?:[-_][a-z0-9]+)*$/i.test(language)) {
+    try {
+      const name = LANGUAGE_NAMES.of(language.replace(/_/g, "-").split("-")[0]!.toLowerCase());
+      if (name && name.toLowerCase() !== language.toLowerCase()) return name;
+    } catch {
+      // Intentional ignore: a word Intl does not take as a language code is read as a name below.
+    }
+  }
+  return language ? language[0]!.toUpperCase() + language.slice(1).toLowerCase() : "";
 }
 
 function summaryFields(
@@ -149,6 +185,20 @@ export function buildTranscriptSegments(
           }
         }
       }
+    }
+  } else if (section === "original") {
+    const search = options.search?.trim().toLowerCase() ?? "";
+    for (const text of originalParagraphs(transcript.originalText)) {
+      if (search && !text.toLowerCase().includes(search)) continue;
+      withoutIndexes.push({
+        section,
+        startSeconds: null,
+        speaker: null,
+        role: null,
+        company: null,
+        isQa: false,
+        text,
+      });
     }
   } else if (section === "participants") {
     const speaker = options.speaker?.trim().toLowerCase() ?? "";
