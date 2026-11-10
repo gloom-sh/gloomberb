@@ -61,3 +61,24 @@ export function resolveOccludedPaneIds(
   }
   return occluded;
 }
+
+/**
+ * Where focus belongs when the focused pane is hidden under floating panes,
+ * as a docked pane is under a window that fills a narrow terminal: the
+ * topmost pane that shows, so the keys go to what the reader sees. Null while
+ * the focused pane shows, or nothing does.
+ */
+export function visibleFocusTarget(
+  focusedPaneId: string | null,
+  panes: readonly OcclusionPane[],
+  occluded: ReadonlySet<string>,
+): string | null {
+  if (!focusedPaneId || !occluded.has(focusedPaneId)) return null;
+  const shown = panes.filter((pane) => !occluded.has(pane.paneId));
+  const top = shown.toSorted((left, right) => {
+    const leftZ = left.zIndex ?? Number.NEGATIVE_INFINITY;
+    const rightZ = right.zIndex ?? Number.NEGATIVE_INFINITY;
+    return leftZ !== rightZ ? rightZ - leftZ : right.order - left.order;
+  })[0];
+  return top?.paneId ?? null;
+}

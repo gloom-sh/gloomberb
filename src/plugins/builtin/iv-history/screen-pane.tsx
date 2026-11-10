@@ -15,7 +15,7 @@ import { vcaUniverse } from "./universe";
 import { MovedTickerState } from "../../../components/layout/pane/ticker-fate-gate";
 import type { MovedTickerChange } from "../../../tickers/ticker-changes";
 
-type SortId = Exclude<keyof RichCheapRow, "stale">;
+type SortId = Exclude<keyof RichCheapRow, "stale" | "riskReversalFullYear">;
 const HV_WINDOW = 20;
 /** Pane borders and the footer's own padding. */
 const FOOTER_MARGIN = 6;
@@ -31,6 +31,7 @@ const COLUMNS: DataTableColumn[] = [
   { id: "iv1yPercentile", label: "IVP1Y", width: 6, align: "right" },
   { id: "termSlope", label: "30-90", width: 7, align: "right" },
   { id: "riskReversal", label: "25D RR", width: 9, align: "right" },
+  { id: "riskReversalPercentile", label: "RR pctl", width: 8, align: "right" },
   { id: "skewDate", label: "RR as of", width: 11, align: "right" },
   { id: "hv", label: `HV${HV_WINDOW}`, width: 7, align: "right" },
   { id: "hvDate", label: "HV as of", width: 9, align: "right" },
@@ -92,6 +93,7 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
       case "iv1y": return rows.some((row) => row.iv1y != null);
       case "iv1yPercentile": return rows.some((row) => row.iv1yPercentile != null);
       case "riskReversal": return hasSkew;
+      case "riskReversalPercentile": return rows.some((row) => row.riskReversalPercentile != null);
       case "skewDate": return dates.skewApart;
       case "hvDate": return dates.hvApart;
       default: return true;
@@ -131,7 +133,8 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
       case "iv1yPercentile": return { text: formatRank(row.iv1yPercentile) };
       case "termSlope": return { text: formatPoints(row.termSlope), color: row.termSlope != null && row.termSlope > 0 ? colors.negative : colors.text };
       case "riskReversal": return { text: formatPoints(row.riskReversal) };
-      case "skewDate": return { text: row.skewDate ? readingLabel(row.skewDate, "quote-mid", true) : "--", color: colors.textDim };
+      case "riskReversalPercentile": return { text: formatRank(row.riskReversalPercentile) };
+      case "skewDate": return { text: row.skewDate ? readingLabel(row.skewDate, row.skewMethod, true) : "--", color: colors.textDim };
       case "hv": return { text: hv.has(row.symbol) ? formatVol(row.hv) : "...", color: colors.positive };
       case "hvDate": return { text: row.hvDate ? shortDate(row.hvDate) : "--", color: colors.textDim };
       case "ivHv": return { text: row.ivHv == null ? "--" : row.ivHv.toFixed(2) };

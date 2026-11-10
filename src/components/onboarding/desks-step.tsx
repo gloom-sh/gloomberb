@@ -4,6 +4,8 @@ import { DESKS, deskFunctions, type DeskKey } from "../../layout/desks";
 import { MAX_DESK_PICKS } from "../../layout/desk-keys";
 import { ToggleList } from "../toggle-list";
 
+const TERMINAL_PADDING_X = 2;
+
 /**
  * Ticks or unticks a desk; the ticked ones keep the order they were ticked
  * in. A fourth tick is ignored: untick one first.
@@ -19,16 +21,19 @@ export function DesksStep({
   cursor,
   onCursor,
   onToggle,
+  width,
 }: {
   chosen: readonly DeskKey[];
   cursor: number;
   onCursor: (index: number) => void;
   onToggle: (key: DeskKey) => void;
+  /** The terminal card's content width in cells, so a narrow window cuts each row instead of running label into detail. */
+  width?: number;
 }) {
   const desktop = useUiCapabilities().nativePaneChrome === true;
   const full = chosen.length >= MAX_DESK_PICKS;
   return (
-    <Box flexDirection="column" flexShrink={0} paddingX={desktop ? 0 : 2} style={desktop ? { marginTop: 14 } : undefined}>
+    <Box flexDirection="column" flexShrink={0} paddingX={desktop ? 0 : TERMINAL_PADDING_X} style={desktop ? { marginTop: 14 } : undefined}>
       <ToggleList
         items={DESKS.map((desk) => ({
           id: desk.key,
@@ -44,6 +49,7 @@ export function DesksStep({
         showSelectedDescription={false}
         surface={desktop ? "framed" : undefined}
         remoteLabel="Desks"
+        width={desktop || width == null ? undefined : width - 2 * TERMINAL_PADDING_X}
       />
       {desktop ? null : <Box height={1} />}
     </Box>

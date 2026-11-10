@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveOccludedPaneIds, type OcclusionPane } from "./pane-occlusion";
+import { resolveOccludedPaneIds, visibleFocusTarget, type OcclusionPane } from "./pane-occlusion";
 
 const bounds = { width: 40, height: 20 };
 
@@ -49,4 +49,19 @@ describe("resolveOccludedPaneIds", () => {
     ], bounds);
     expect(occluded.size).toBe(0);
   });
+});
+
+// A window filling a 55-column terminal hid the docked pane that a restored session focused: keys went to it unseen.
+test("focus moves from a pane hidden under windows to the topmost one that shows", () => {
+  const panes = [
+    pane("dock", [0, 0, 40, 20], null, 0),
+    pane("small", [2, 2, 10, 5], 50, 1),
+    pane("full", [0, 0, 40, 20], 51, 2),
+  ];
+  const occluded = resolveOccludedPaneIds(panes, bounds);
+  expect(visibleFocusTarget("dock", panes, occluded)).toBe("full");
+  expect(visibleFocusTarget("full", panes, occluded)).toBeNull();
+  // A window that leaves part of the dock showing leaves its focus alone.
+  const partial = [pane("dock", [0, 0, 40, 20], null, 0), pane("window", [0, 0, 30, 20], 51, 1)];
+  expect(visibleFocusTarget("dock", partial, resolveOccludedPaneIds(partial, bounds))).toBeNull();
 });

@@ -387,9 +387,11 @@ function econHeadColumns(viewerZone: string | null): CliResultColumn[] {
     { key: "time", header: "Time", format: (value, row) => value === "All Day" ? "All day" : value === ""
       ? "" : utcDateTimePart(row.date, "time", !viewerZone) },
     ...viewerZone ? [ECON_DAY_COLUMN] : [],
-    // Only --tz fills it: the viewer's clock, its weekday in Day before it.
+    // Only --tz fills it: the viewer's clock, its weekday in Day before it, and its own date where that is not the
+    // Date column's (19:00 UTC on 9 Dec is 03:00 on 10 Dec in Hong Kong: "12-10 03:00").
     { key: "viewerTime", header: viewerZone ? timeZoneCity(viewerZone) : "Viewer", shrink: false,
-      format: (value) => typeof value === "string" && viewerZone ? value : "" },
+      format: (value, row) => typeof value !== "string" || !viewerZone ? ""
+        : typeof row.viewerDate === "string" && row.viewerDate !== utcDateTimePart(row.date, "date") ? `${row.viewerDate.slice(5)} ${value}` : value },
     // Only rows a publisher times itself fill it, so the feeds' calendar prints as before.
     { key: "localTime", header: "Local", optional: true, dropPriority: 1, format: (value, row) => publisherClock(value, row.timeZone) },
     { key: "country", header: "Country" },

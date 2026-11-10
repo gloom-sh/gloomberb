@@ -24,7 +24,9 @@ describe("volatility headless model", () => {
       return { info: null, observations: [{ date: "2026-09-18", value: id === "VIXCLS" ? 18 : 21 }] };
     } } as HeadlessPaneContext["apiClient"];
     const result = await createVolatilityHeadless().load(args, { marketData, apiClient, signal } as HeadlessPaneContext);
-    expect(chartCalls).toHaveLength(21);
+    expect(chartCalls).toHaveLength(22);
+    // Hong Kong's VHSI rides on the board as its listing, ^HSIL.
+    expect(chartCalls.map((call) => call[0])).toContain("^HSIL");
     expect(chartCalls.every((call) => call[1] === "" && call[2] === "1Y" && call[3] === "1d")).toBe(true);
     expect(fredCalls).toEqual(["VIXCLS", "VXVCLS"]);
     expect(result.complete).toBe(false);

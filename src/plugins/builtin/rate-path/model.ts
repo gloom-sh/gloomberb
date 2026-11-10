@@ -10,6 +10,15 @@ export function percentileText(value: number | null): string {
 }
 
 /**
+ * Whether the path's slope has a figure to show. A slope the server could not
+ * price (no settlement both legs share) is left out of the header, not shown
+ * as "--  pctl --".
+ */
+export function slopeShown(slope: RatePathPayload["slope"] | null | undefined): slope is RatePathPayload["slope"] & { valueBps: number } {
+  return slope?.valueBps != null && Number.isFinite(slope.valueBps);
+}
+
+/**
  * Ghosts drawn on the path chart. A path priced a year ago sits in a different
  * regime and drags the axis away from the current curve, the target band and
  * the near ghosts; its context survives in the 1Y percentiles and the slope

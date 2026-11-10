@@ -34,13 +34,13 @@ function chain(expiration: number): OptionsChain {
 
 const curve = [{ maturity: "1M", maturityYears: 1 / 12, yield: 4, asOf: "2026-09-21" }, { maturity: "1Y", maturityYears: 1, yield: 4, asOf: "2026-09-21" }];
 
-async function load(options: Record<string, string | number>) {
+async function load(options: Record<string, string | number>, apiClient: Partial<HeadlessPaneApiClient> = {}) {
   const args = createTestHeadlessArgs({ rawArgument: "AAPL", argument: "AAPL", symbols: ["AAPL"],
     options: { tab: "surface", ivSource: "recomputed", priceSide: "mid", axis: "spot", tenors: "listed", limit: 18, ...options } });
   const result = await volSurfaceHeadless.load(args, createTestHeadlessContext({
     marketData: createTestDataProvider({ id: "ovdv-test", getQuote: async () => createTestQuote({ price: 100, lastUpdated: now }),
       getOptionsChain: async (_symbol, _exchange, expiration) => chain(expiration ?? listed[0]!) }),
-    apiClient: { getCloudYieldCurve: async () => curve } as unknown as HeadlessPaneApiClient,
+    apiClient: { getCloudYieldCurve: async () => curve, ...apiClient } as unknown as HeadlessPaneApiClient,
   })) as HeadlessBundleResult;
   const titles = result.sections.map((section) => section.title).filter((title) => title !== "Warnings");
   const table = (title: string) => result.sections.find((section) => section.title === title) as Extract<HeadlessBundleResult["sections"][number], { rows: unknown[] }>;
@@ -92,6 +92,32 @@ describe("OVDV report", () => {
     const missing = await load({ tab: "smile", expiration: parseOptionExpiration("2026-10-03")! });
     expect(missing.result.errors).toEqual(["2026-10-03: not listed; nearest: 2026-09-25, 2026-10-02, 2026-11-01, 2026-12-21"]);
   });
+});
+
+test("the term tab reads the next FOMC off the expiries either side of it, with MDAY's move beside it", async () => {
+  // An FOMC decision tomorrow, before the first expiry (in three days): read from now, against the forward vol past it.
+  const ratePath = {
+    meetings: [{ date: "2026-09-23", impliedRate: null, targetMidpoint: null, changeBps: null, percentile: null, samples: 0, asOf: null,
+      probabilities: [], method: null, reason: null }],
+    fedFunds: [], sofr: [], ghosts: [], gaps: [], current: { effr: {}, targetLower: {}, targetUpper: {} }, dotPlot: { points: [] }, schedule: {},
+    asOf: null, fetchedAt: "2026-09-22T00:00:00Z", stale: false, status: "available",
+  };
+  const { titles, table, cell, result, text } = await load({ tab: "term" }, {
+    getCloudRatePath: async () => ratePath as never,
+    getCloudCpiBoard: async () => { throw new Error("offline"); },
+  } as Partial<HeadlessPaneApiClient>);
+  expect(titles).toEqual(["Term structure", "Scheduled releases"]);
+  const first = new Date(listed[0]! * 1000).toISOString().slice(0, 10);
+  // The first expiry past the decision names it.
+  expect(table("Term structure").rows[0]).toMatchObject({ expiry: first, event: "FOMC 09-23" });
+  expect(table("Scheduled releases").rows[0]).toMatchObject({ event: "FOMC 09-23", between: `now to ${first}` });
+  // 50% for three days against 14.6% the week after it: the decision prices a move of about 3.5%, read as approximate.
+  expect(cell("Scheduled releases", "impliedMove", 0)).toMatch(/^≈3\.\d\d%$/);
+  expect(cell("Scheduled releases", "forwardVol", 0)).toBe("50.00%");
+  // The CPI date could not be read: said in the notes, with what the move is.
+  expect(result.notes).toEqual(expect.arrayContaining([expect.stringContaining("The next CPI date could not be read"),
+    expect.stringContaining("Implied |move| is approximate (≈)")]));
+  expect(text).toContain("Scheduled releases");
 });
 
 describe("OVDV --date", () => {

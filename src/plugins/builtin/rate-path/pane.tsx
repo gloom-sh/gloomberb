@@ -13,7 +13,7 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedRatePath, loadRatePath } from "./client";
-import { meetingLabel, meetingMoves, meetingProbability, moveOddsText, movesPriced, movesText, percentileText, probabilityTargets, rateChangeText, ratePathCurves, rateText } from "./model";
+import { meetingLabel, meetingMoves, meetingProbability, moveOddsText, movesPriced, movesText, percentileText, probabilityTargets, rateChangeText, ratePathCurves, rateText, slopeShown } from "./model";
 
 const TABS = [{ value: "path", label: "Path" }, { value: "probabilities", label: "Probabilities" }, { value: "contracts", label: "Contracts" }, { value: "projections", label: "Projections" }];
 // What is priced by and at each meeting leads, as on a rate probability monitor; the implied level follows.
@@ -134,10 +134,11 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
       detail: [percentileText(data.current.effr.percentile), ownDate(data.current.effr.asOf)].filter(Boolean).join(" · ") },
     { id: "target", label: "Target range", value: `${rateText(data.current.targetLower.value)} to ${rateText(data.current.targetUpper.value)}`,
       detail: [percentileText(data.current.targetUpper.percentile), ownDate(data.current.targetUpper.asOf)].filter(Boolean).join(" · ") },
-    // How far the path climbs or falls from the next meeting to the last one shown.
-    ...(tab === "path" && data.slope && next && last && next !== last ? [{ id: "slope", label: `${meetingLabel(next.date)} to ${meetingLabel(last.date)}`,
+    // How far the path climbs or falls from the next meeting to the last one shown; nothing while there is no figure.
+    ...(tab === "path" && next && last && next !== last && slopeShown(data.slope) ? [{ id: "slope", label: `${meetingLabel(next.date)} to ${meetingLabel(last.date)}`,
       value: bpText(data.slope.valueBps),
-      detail: [percentileText(data.slope.percentile), ownDate(data.slope.asOf) && timestamp(data.slope.asOf)].filter(Boolean).join(" · ") }] : []),
+      detail: [data.slope.percentile == null ? null : percentileText(data.slope.percentile),
+        ownDate(data.slope.asOf) && timestamp(data.slope.asOf)].filter(Boolean).join(" · ") }] : []),
   ] : [];
   const bodyHeight = Math.max(1, height - tabRows);
   // A rank or quote time every meeting shares says nothing per row; the

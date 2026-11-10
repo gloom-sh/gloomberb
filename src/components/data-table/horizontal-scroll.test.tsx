@@ -36,6 +36,8 @@ interface Options {
   /** The first column drawn by the pane (`content`), not as text. */
   drawnFirst: boolean;
   columns: typeof WIDE_ID_COLUMNS;
+  /** The column the table opens centred on. */
+  reveal: string | undefined;
 }
 const DEFAULT_OPTIONS: Options = {
   focused: true,
@@ -48,6 +50,7 @@ const DEFAULT_OPTIONS: Options = {
   tabs: false,
   drawnFirst: false,
   columns: WIDE_ID_COLUMNS,
+  reveal: undefined,
 };
 const rows = [{ id: "ALPH", value: "$100M", weight: "66.7%" }];
 let selectedTab = "a";
@@ -63,6 +66,7 @@ function Harness({ initial }: { initial: Partial<Options> }) {
         keyboardNavigation={options.keyboardNavigation}
         showHorizontalScrollbar={options.scroll}
         freezeFirstColumn={options.frozen}
+        revealColumnId={options.reveal}
         rootBefore={options.editing
           ? <Input focused value="alpha beta gamma" />
           : options.tabs
@@ -76,7 +80,7 @@ function Harness({ initial }: { initial: Partial<Options> }) {
         onHeaderClick={() => {}}
         getItemKey={(row) => row.id}
         renderCell={(row, column) => ({
-          text: row[column.id as keyof typeof row],
+          text: row[column.id as keyof typeof row] ?? "20.0%",
           ...(options.drawnFirst && column.id === "id" ? { content: <Text>{row.id}</Text> } : {}),
         })}
         emptyStateTitle="No rows"
@@ -253,6 +257,32 @@ test("frozen identifiers survive keyboard, wheel, scrollbar and vertical resize 
   expect(table("body").scrollLeft).toBe(0);
   expect(table("header").scrollLeft).toBe(0);
   expect(tui.frame()).toContain("ALPH0");
+});
+
+/** A tenor column and nine moneyness columns from 80% to 120%, as OVDV's grid. */
+const moneynessColumns = (width: number) => [{ id: "id", label: "TENOR", width: 6 },
+  ...Array.from({ length: 9 }, (_, index) => ({ id: `m${index}`, label: `${80 + 5 * index}%`, width }))];
+
+test("a table opens centred on the column asked for, and a refresh that resizes columns keeps the reader's scroll", async () => {
+  await mount({ frozen: true, columns: moneynessColumns(7), reveal: "m4" });
+  await settle();
+  const opened = table("body").scrollLeft;
+  expect(opened).toBeGreaterThan(0);
+  expect(tui.frame()).toContain("100%");
+  expect(tui.frame()).not.toContain("80%");
+  expect(table("header").scrollLeft).toBe(opened);
+  // Shift+Right moves on from there; a refresh whose figures widen the columns leaves it where the reader put it.
+  await key({ name: "right", shift: true });
+  const scrolled = table("body").scrollLeft;
+  expect(scrolled).toBeGreaterThan(opened);
+  await act(async () => update({ columns: moneynessColumns(8) }));
+  await settle();
+  expect(table("body").scrollLeft).toBe(scrolled);
+  // Another column asked for is centred again.
+  await act(async () => update({ reveal: "m1" }));
+  await settle();
+  expect(table("body").scrollLeft).toBeLessThan(scrolled);
+  expect(tui.frame()).toContain("85%");
 });
 
 test("a table that leaves freezing unset pins a narrow first column and lets a wide one scroll away", async () => {

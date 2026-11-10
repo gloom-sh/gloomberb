@@ -1022,6 +1022,20 @@ describe("Shell", () => {
     expect(tui.setup().renderer.getCursorState().visible).toBe(false);
   });
 
+  test("terminal: focus moves off a docked pane a floating window covers whole, to the window, and stays on one only partly covered", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-covered-focus-test");
+    const covering = { ...floatingOverDockLayout(config, [{ instanceId: "ticker-detail:main", x: 0, y: 0 }]) };
+    // A restored session at phone width: the window fills the terminal, and focus was left on the pane under it.
+    const filled = { ...covering, floating: [{ instanceId: "ticker-detail:main", x: 0, y: 0, width: 60, height: 30, zIndex: 60 }] };
+    const { actions } = await renderShell(createShellStateWithLayout(config, filled, "portfolio-list:main"), { width: 55, height: 24 });
+    await tui.setup().renderOnce();
+    expect(actions.filter((action) => action.type === "FOCUS_PANE").at(-1)).toEqual({ type: "FOCUS_PANE", paneId: "ticker-detail:main" });
+
+    const partly = await renderShell(createShellStateWithLayout(config, covering, "portfolio-list:main"), { width: 80, height: 24 });
+    await tui.setup().renderOnce();
+    expect(partly.actions.filter((action) => action.type === "FOCUS_PANE")).toEqual([]);
+  });
+
   test("keeps focused pane local detail state when maximizing a floating pane", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-fullscreen-local-state-test");
     const detailPane = requireLayoutInstance(config, "ticker-detail:main");

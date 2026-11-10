@@ -1,6 +1,6 @@
-import { memo, useCallback, useMemo, useRef, type RefObject } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
 import { Box, type BoxRenderable, type LiveBoxFrame } from "../../../../ui";
-import { resolveOccludedPaneIds } from "../pane-occlusion";
+import { resolveOccludedPaneIds, visibleFocusTarget, type OcclusionPane } from "../pane-occlusion";
 import {
   floatingStacks,
   SHELL_DRAG_Z,
@@ -747,23 +747,29 @@ export function ShellPaneLayers({
   // the off-screen cadence on every renderer; a transient focus unmounts the
   // other panes, so there is nothing to cover. The floating rects here are the
   // committed ones, so a drag in progress does not churn subscriptions.
-  const coveredPaneIds = useMemo(() => {
-    if (transientFocusActive || visibleFloatingPanes.length === 0) return EMPTY_OCCLUSION;
-    return resolveOccludedPaneIds([
-      ...dockLeafLayouts.map((leaf, order) => ({ paneId: leaf.instanceId, rect: leaf.rect, zIndex: null, order })),
-      ...visibleFloatingPanes.map(({ pane, rect }, order) => ({
-        paneId: pane.instance.instanceId,
-        rect,
-        zIndex: pane.floating?.zIndex ?? 50,
-        order: dockLeafLayouts.length + order,
-      })),
-    ], { width, height: contentHeight });
-  }, [contentHeight, dockLeafLayouts, transientFocusActive, visibleFloatingPanes, width]);
+  const occlusionPanes = useMemo((): OcclusionPane[] => transientFocusActive || visibleFloatingPanes.length === 0 ? [] : [
+    ...dockLeafLayouts.map((leaf, order) => ({ paneId: leaf.instanceId, rect: leaf.rect, zIndex: null, order })),
+    ...visibleFloatingPanes.map(({ pane, rect }, order) => ({
+      paneId: pane.instance.instanceId,
+      rect,
+      zIndex: pane.floating?.zIndex ?? 50,
+      order: dockLeafLayouts.length + order,
+    })),
+  ], [dockLeafLayouts, transientFocusActive, visibleFloatingPanes]);
+  const coveredPaneIds = useMemo(() => occlusionPanes.length === 0 ? EMPTY_OCCLUSION
+    : resolveOccludedPaneIds(occlusionPanes, { width, height: contentHeight }), [contentHeight, occlusionPanes, width]);
+
   // Skipping the draw is a terminal concern: desktop pane chrome is DOM, where
   // the compositor already skips covered windows, and a drag keeps everything
   // drawn so the preview never reveals a blank spot.
   const floatingDragActive = useLiveDrag(live, nativePaneChrome ? selectNoDrag : selectFloatingDragActive);
   const occludedPaneIds = nativePaneChrome || floatingDragActive ? EMPTY_OCCLUSION : coveredPaneIds;
+  // Keys go to the focused pane, so it must be one the reader sees: a window filling a narrow terminal takes focus
+  // from the docked pane under it, which a restored session or Tab would otherwise leave holding the keys unseen.
+  const coveredFocusTarget = visibleFocusTarget(focusedPaneId, occlusionPanes, occludedPaneIds);
+  useEffect(() => {
+    if (coveredFocusTarget) focusPane(coveredFocusTarget);
+  }, [coveredFocusTarget, focusPane]);
   const fullscreenRect = useMemo(() => ({ x: 0, y: 0, width, height: contentHeight }), [contentHeight, width]);
   const tickerSearchKey = useActionShortcut("ticker-search");
   // Each stack's tabs by the pane it shows, the same array while they and their titles stay.

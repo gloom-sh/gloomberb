@@ -20,6 +20,8 @@ const VOLATILITY_BOARD_INDICES = [
   { id: "gvz", symbol: "^GVZ", label: "Gold" },
   { id: "vxeem", symbol: "^VXEEM", label: "Emerging markets" },
   { id: "vxewz", symbol: "^VXEWZ", label: "Brazil" },
+  // HSI Volatility Index (VHSI), published by Hang Seng Indexes and listed as ^HSIL; dated by Hong Kong's session.
+  { id: "vhsi", symbol: "^HSIL", label: "Hang Seng" },
   { id: "vxapl", symbol: "^VXAPL", label: "Apple" },
   { id: "vxazn", symbol: "^VXAZN", label: "Amazon" },
   { id: "vxgog", symbol: "^VXGOG", label: "Alphabet" },

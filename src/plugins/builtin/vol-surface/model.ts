@@ -446,23 +446,53 @@ export function surfaceExpirySkew(expiry: SurfaceExpiry, spot: number): SkewMetr
     moneynessSkew: low != null && high != null ? low - high : null };
 }
 
+/**
+ * Where total implied variance falls from one expiry to the next at the same
+ * moneyness of the forward, which no arbitrage-free surface does: one line
+ * per pair of expiries, naming both and every moneyness it falls at, as
+ * "Calendar arbitrage 2026-11-19 to 2026-11-20 at 95% and 100% of the forward".
+ */
 export function surfaceCalendarWarnings(expiries: readonly SurfaceExpiry[]): string[] {
-  let count = 0;
+  const pairs = new Map<string, { earlier: number; later: number; ratios: number[] }>();
   for (const ratio of SURFACE_MONEYNESS) {
     const points = expiries.flatMap((expiry) => {
       const volatility = expiry.forward == null ? null : evaluateSurfaceSmile(expiry, expiry.forward * ratio);
-      return volatility == null ? [] : [{ years: expiry.years, volatility }];
+      return volatility == null ? [] : [{ years: expiry.years, volatility, expiration: expiry.expiration }];
     });
-    count += detectCalendarArbitrage(points).length;
+    for (const warning of detectCalendarArbitrage(points)) {
+      const earlier = points.find((point) => point.years === warning.earlierYears)!.expiration;
+      const later = points.find((point) => point.years === warning.laterYears)!.expiration;
+      const key = `${earlier}:${later}`;
+      const pair = pairs.get(key) ?? { earlier, later, ratios: [] };
+      pair.ratios.push(ratio);
+      pairs.set(key, pair);
+    }
   }
-  return count > 0 ? [`${count} calendar arbitrage ${count === 1 ? "warning" : "warnings"}`] : [];
+  const day = (expiration: number) => new Date(expiration * 1000).toISOString().slice(0, 10);
+  const percent = (ratio: number) => `${Math.round(ratio * 100)}%`;
+  return [...pairs.values()].sort((a, b) => a.earlier - b.earlier || a.later - b.later).map(({ earlier, later, ratios }) => {
+    const at = ratios.map(percent);
+    return `Calendar arbitrage ${day(earlier)} to ${day(later)} at ${at.length > 1 ? `${at.slice(0, -1).join(", ")} and ${at.at(-1)}` : at[0]} of the forward`;
+  });
 }
 
-/** The ATM-forward IV change per year to the next expiry that has one: spot plays no part in it. */
+/**
+ * The shortest gap a term slope spans. Annualised across a day or two
+ * (QQQ's 19 and 20 Nov weeklies), a tenth of a point of IV reads as hundreds
+ * of points a year.
+ */
+export const TERM_SLOPE_MIN_GAP_DAYS = 14;
+
+/**
+ * The ATM-forward IV change per year to the first later expiry that has one
+ * at least `TERM_SLOPE_MIN_GAP_DAYS` out: spot plays no part in it. The last
+ * expiries, with none that far past them, have none.
+ */
 export function withSurfaceTermSlopes(expiries: readonly SurfaceExpiry[]): SurfaceExpiry[] {
   const sorted = [...expiries].sort((a, b) => a.years - b.years);
   return sorted.map((expiry, index) => {
-    const next = sorted.slice(index + 1).find((item) => item.skew.atm != null);
+    const next = sorted.slice(index + 1)
+      .find((item) => item.skew.atm != null && (item.years - expiry.years) * 365 >= TERM_SLOPE_MIN_GAP_DAYS - 1e-9);
     return { ...expiry, termSlope: expiry.skew.atm != null && next?.skew.atm != null
       ? volatilityTermSlope({ years: expiry.years, volatility: expiry.skew.atm }, { years: next.years, volatility: next.skew.atm }) : null };
   });

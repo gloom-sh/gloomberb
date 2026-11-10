@@ -4,7 +4,8 @@ import { DEFAULT_OPTION_CALC_DRAFT } from "../options-calculator/model";
 import { daysToExpiryFrom, optionDelta, valueOption, type SmileFit } from "../shared/volatility";
 import {
   buildSurfaceExpiry, buildSurfaceGrid, cleanSurfaceQuotes, DEFAULT_SURFACE_SETTINGS,
-  evaluateSurfaceSmile, pendingSurfaceExpiry, surfaceExpirySkew, surfaceSheetSnapshot, surfaceTreasuryRate, windowSurfaceGrid, withSurfaceTermSlopes,
+  evaluateSurfaceSmile, pendingSurfaceExpiry, surfaceCalendarWarnings, surfaceExpirySkew, surfaceSheetSnapshot, surfaceTreasuryRate, windowSurfaceGrid,
+  withSurfaceTermSlopes,
   type SurfaceExpiry, type SurfacePoint, type SurfaceSnapshot,
 } from "./model";
 import { skewGap, surfaceSkewRow } from "./tables";
@@ -373,4 +374,28 @@ describe("25-delta skew", () => {
     expect(slope(3)).toMatchObject({ termSlope: null, termSlopeHidden: true });
     expect(slope(7)).toMatchObject({ termSlope: 3.79, termSlopeHidden: false });
   });
+
+  test("no slope is annualised across less than two weeks: it reaches to the first expiry at least 14 days on", () => {
+    // QQQ's 19 and 20 Nov weeklies a day apart read 292 points a year.
+    const at = (days: number, atm: number): SurfaceExpiry => ({ ...pendingSurfaceExpiry(expiration + days * 86_400, now), years: days / 365,
+      skew: { ...fitted([90, 100, 110]).skew, atm } });
+    const [first, second, third, last] = withSurfaceTermSlopes([at(9, 0.3), at(10, 0.33), at(23, 0.31), at(24, 0.32)]);
+    expect(first!.termSlope).toBeCloseTo(0.01 / (14 / 365), 10);
+    // Day 23 is 13 days past day 10, so its slope reaches to day 24.
+    expect(second!.termSlope).toBeCloseTo(-0.01 / (14 / 365), 10);
+    expect([third!.termSlope, last!.termSlope]).toEqual([null, null]);
+  });
+});
+
+test("each calendar arbitrage warning names its two expiries and the moneyness where total variance falls", () => {
+  const flat = (volatility: number): SmileFit => ({ method: "svi", years: 0.1, residual: 0, points: [], droppedPoints: 0, slopes: [],
+    fallbackReason: null, parameters: { a: volatility ** 2 * 0.1, b: 0, rho: 0, m: 0, sigma: 0.1 } });
+  const expiry = (date: number, years: number, volatility: number): SurfaceExpiry => ({ ...pendingSurfaceExpiry(date / 1000, now),
+    state: "ready", years, forward: 100, rate: 0.04, dividendYield: 0.04, fit: { ...flat(volatility), years },
+    points: [50, 100, 200].map((strike) => ({ strike }) as SurfacePoint) });
+  // Total variance falls from 19 to 20 Nov at every moneyness: one line for the pair, every moneyness on it.
+  expect(surfaceCalendarWarnings([expiry(Date.UTC(2026, 10, 19), 0.1, 0.3), expiry(Date.UTC(2026, 10, 20), 0.11, 0.2),
+    expiry(Date.UTC(2026, 11, 18), 0.3, 0.3)]))
+    .toEqual(["Calendar arbitrage 2026-11-19 to 2026-11-20 at 80%, 90%, 95%, 100%, 105%, 110% and 120% of the forward"]);
+  expect(surfaceCalendarWarnings([expiry(Date.UTC(2026, 10, 19), 0.1, 0.3), expiry(Date.UTC(2026, 11, 18), 0.3, 0.3)])).toEqual([]);
 });

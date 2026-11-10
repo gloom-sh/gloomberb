@@ -67,6 +67,8 @@ interface OnboardingWizardProps {
   onComplete: (config: AppConfig) => void | Promise<void>;
 }
 
+/** The Desks card's terminal width; a narrower window clamps it, and the rows fit what is left. */
+const DESKS_CARD_WIDTH = 68;
 /** One funnel milestone per stage the user reaches; the account step reports sign-in itself. */
 const STAGE_ACTIVITY: Partial<Record<OnboardingStage, ResearchActivity>> = {
   portfolio: "onboarding_started",
@@ -585,7 +587,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
 
   if (stage === "desks") {
     return (
-      <OnboardingModal width={68} height={18 + (persistenceError ? 1 : 0)}>
+      <OnboardingModal width={DESKS_CARD_WIDTH} height={18 + (persistenceError ? 1 : 0)}>
         <OnboardingHeader
           active="portfolio"
           available={sectionAvailability}
@@ -607,6 +609,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
           cursor={deskCursor}
           onCursor={setDeskCursor}
           onToggle={(key) => setChosenDesks((current) => toggleDeskChoice(current, key))}
+          width={terminalCardSize({ width: viewportWidth, height: viewportHeight }, DESKS_CARD_WIDTH, 18).width - TERMINAL_CARD_INSET.columns}
         />
         {persistenceError ? (
           <Text fg={colors.negative} wrapText style={desktop ? { marginTop: 10 } : undefined}>

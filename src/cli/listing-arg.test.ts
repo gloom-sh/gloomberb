@@ -207,7 +207,7 @@ test("a bare index root no security trades as is its index for every command, sa
   // `history NDX` was a stopped Frankfurt line's bars: nothing quotes NDX, and the service marks ^NDX:NIM for the word.
   const dataProvider = createTestDataProvider({
     getQuote: async (symbol) => {
-      if (symbol === "NDX" || symbol === "VIX") throw new Error(`Not a ticker: ${symbol}.`);
+      if (symbol === "NDX" || symbol === "VIX" || symbol === "VHSI") throw new Error(`Not a ticker: ${symbol}.`);
       return createTestQuote({ symbol, name: symbol === "MOVE" ? "Corvex, Inc." : symbol, instrumentType: "EQUITY" });
     },
     search: async (query) => query.replace(/^\^/, "") === "NDX"
@@ -219,6 +219,8 @@ test("a bare index root no security trades as is its index for every command, sa
     .toMatchObject({ key: "^NDX:NIM", request: { symbol: "^NDX:NIM", exchange: "NIM" }, readAs: 'Read "NDX" as ^NDX:NIM (NASDAQ-100).' });
   // No listing marked for the word: the ^ symbol, named by the index it roots.
   expect(await resolveCliListing("vix", undefined, deps)).toMatchObject({ key: "^VIX", readAs: 'Read "vix" as ^VIX (Cboe Volatility Index).' });
+  // VHSI, the HSI Volatility Index, is listed as ^HSIL, not ^VHSI.
+  expect(await resolveCliListing("VHSI", undefined, deps)).toMatchObject({ key: "^HSIL", readAs: 'Read "VHSI" as ^HSIL (HSI Volatility Index).' });
   // MOVE is Corvex, which `quote MOVE` gives too; a row saved under NDX is that row's.
   const move = await resolveCliListing("MOVE", undefined, deps);
   expect([move.key, move.readAs]).toEqual(["MOVE", undefined]);

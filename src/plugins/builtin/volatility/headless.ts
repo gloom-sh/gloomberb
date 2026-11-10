@@ -62,9 +62,10 @@ export function createVolatilityHeadless(dependencies: VolatilityHeadlessDepende
       context.signal.throwIfAborted();
       // A saved copy answering a failed refresh ends the report with when it was saved.
       const savedCopy = <T>(value: T) => result.savedAt != null ? servedFromSavedCopy(value, result.savedAt) : value;
-      // Daily index closes, dated by the newest index on the board; a sparse index shows as the oldest.
+      // Daily index closes, dated by the newest index on the board (Hong Kong's closes a session ahead of New York's);
+      // a sparse index shows as the oldest. Each row carries its own date.
       const boardDates = result.data.board.filter((row) => row.value != null).map((row) => row.date);
-      const freshness = { source: "Cboe and FRED", status: "not-a-feed" as const, basis: "daily index closes", cadence: "daily" as const,
+      const freshness = { source: "Cboe, Hang Seng Indexes and FRED", status: "not-a-feed" as const, basis: "daily index closes", cadence: "daily" as const,
         asOf: newestReportTime([...boardDates, result.data.curve.date]), oldest: oldestReportTime(boardDates) };
       return { ...projectVolatilityHeadless(result.data), freshness, errors: result.errors,
         complete: result.phase === "ready" && !result.stale && result.data.warnings.length === 0,
