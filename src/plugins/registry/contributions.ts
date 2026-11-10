@@ -29,6 +29,44 @@ interface RegistryContributionsOptions {
   wrapBrokerAdapter?: (broker: BrokerAdapter, pluginId: string) => BrokerAdapter;
 }
 
+/**
+ * A copy of a pane or tab whose `component` is wrapped when first read, not
+ * when registered. Built-in panes declare `get component()` so their module
+ * loads on first use; spreading the definition here would run every getter at
+ * startup and load all of them. The wrapped component is kept, so a pane keeps
+ * one component identity across renders. A plugin that passes a plain
+ * `component` takes the same path.
+ *
+ * A module that fails to load used to fail the registration. The read now
+ * happens while a pane is drawn, outside its error card, so the failure is
+ * handed back as a component that throws: the card shows it, and Reload tries
+ * the load again.
+ */
+function withLazyComponent<T extends { component: (props: never) => ReactNode }>(
+  definition: T,
+  wrap: (component: T["component"]) => T["component"],
+): T {
+  const { component: _component, ...descriptors } = Object.getOwnPropertyDescriptors(definition);
+  let wrapped: T["component"] | undefined;
+  return Object.create(Object.getPrototypeOf(definition), {
+    ...descriptors,
+    component: {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        if (wrapped) return wrapped;
+        let component: T["component"];
+        try {
+          component = definition.component;
+        } catch (error) {
+          return (() => { throw error; }) as T["component"];
+        }
+        return wrapped = wrap(component);
+      },
+    },
+  }) as T;
+}
+
 /** Registration and ownership change together, including explicit withdrawal. */
 class OwnedContributions<T> extends Map<string, T> {
   readonly owners = new Map<string, string>();
@@ -83,10 +121,10 @@ export class RegistryContributions {
   }
 
   registerPane(pluginId: string, pane: PaneDef): void {
-    this.panesMap.register(pluginId, pane.id, {
-      ...pane,
-      component: this.options.wrapComponent(pluginId, pane.component),
-    });
+    this.panesMap.register(pluginId, pane.id, withLazyComponent(
+      pane,
+      (component) => this.options.wrapComponent(pluginId, component),
+    ));
   }
 
   registerPaneTemplate(pluginId: string, template: PaneTemplateDef, replace = false): () => void {
@@ -115,10 +153,10 @@ export class RegistryContributions {
   }
 
   registerTickerResearchTab(pluginId: string, tab: TickerResearchTabDef): void {
-    this.tickerResearchTabsMap.register(pluginId, tab.id, {
-      ...tab,
-      component: this.options.wrapComponent(pluginId, tab.component),
-    });
+    this.tickerResearchTabsMap.register(pluginId, tab.id, withLazyComponent(
+      tab,
+      (component) => this.options.wrapComponent(pluginId, component),
+    ));
   }
 
   registerShortcut(pluginId: string, shortcut: KeyboardShortcut): void {

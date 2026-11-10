@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import type { RemoteAppKind, RemoteControlRequest, RemoteControlResponse, RemoteEndpoint } from "./types";
 import { REMOTE_CONTROL_PROTOCOL_VERSION } from "./types";
-import { currentPidNamespace, removeRemoteEndpointFiles, writeRemoteEndpointFiles } from "./endpoint";
+import { currentPidNamespace, removeRemoteEndpointFiles, removeRemoteEndpointFilesSync, writeRemoteEndpointFiles } from "./endpoint";
 
 export interface RemoteControlServerOptions {
   dataDir: string;
@@ -46,9 +46,19 @@ export async function startRemoteControlServer(options: RemoteControlServerOptio
     startedAt: new Date().toISOString(),
     pidNamespace: currentPidNamespace(),
   };
+  // A quit ends in `process.exit`, and the tree whose cleanup closes this server is not always unmounted first: the files go when the process does too.
+  const removeAtExit = () => {
+    try {
+      removeRemoteEndpointFilesSync(options.dataDir, endpoint);
+    } catch {
+      // Intentional ignore: a file that cannot be removed while the process leaves has nobody left to tell.
+    }
+  };
+  process.once("exit", removeAtExit);
   try {
-    await writeRemoteEndpointFiles(options.dataDir, endpoint);
+    writeRemoteEndpointFiles(options.dataDir, endpoint);
   } catch (error) {
+    process.off("exit", removeAtExit);
     await closeHttpServer(httpServer);
     await removeRemoteEndpointFiles(options.dataDir, endpoint).catch(() => { /* Intentional ignore: Remove partial endpoint files while preserving the startup error rethrown below. */ });
     throw error;
@@ -57,8 +67,14 @@ export async function startRemoteControlServer(options: RemoteControlServerOptio
   return {
     endpoint,
     close: async () => {
-      await closeHttpServer(httpServer);
-      await removeRemoteEndpointFiles(options.dataDir, endpoint);
+      try {
+        // Before the server is closed, and without waiting: a quit that unmounts the app
+        // ends the process a moment later, and the files are how a client finds the server.
+        removeRemoteEndpointFilesSync(options.dataDir, endpoint);
+        process.off("exit", removeAtExit);
+      } finally {
+        await closeHttpServer(httpServer);
+      }
     },
   };
 }

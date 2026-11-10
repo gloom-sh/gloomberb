@@ -100,7 +100,7 @@ describe.skipIf(process.platform === "win32")("profile permissions", () => {
 
     const endpoint = { protocolVersion: 1, appKind: "tui", pid: 1, port: 2, token: "t" } as unknown as RemoteEndpoint;
     shared(join(dataDir, "remote-control.json"));
-    await writeRemoteEndpointFiles(dataDir, endpoint);
+    writeRemoteEndpointFiles(dataDir, endpoint);
     expect([modeOf(join(dataDir, "remote-control.json")), modeOf(join(dataDir, "remote-control.tui.json"))]).toEqual([0o600, 0o600]);
 
     saveDesktopViewIds(dataDir, { "gloomberb.view": "abc" });

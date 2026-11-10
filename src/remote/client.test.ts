@@ -76,7 +76,7 @@ describe("finding the running app", () => {
 
   test("an app that exited without quitting is not running, and its endpoint files are removed", async () => {
     const dir = await dataDir();
-    await writeRemoteEndpointFiles(dir, endpoint("tui", await exitedPid(), await closedPort()));
+    writeRemoteEndpointFiles(dir, endpoint("tui", await exitedPid(), await closedPort()));
 
     const error = await resolveRemoteEndpoint(dir).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(RemoteAppNotRunningError);
@@ -85,7 +85,7 @@ describe("finding the running app", () => {
     expect(await exists(remoteEndpointPath(dir, "tui"))).toBe(false);
 
     // Asked for by kind, it says which app and how to start it.
-    await writeRemoteEndpointFiles(dir, endpoint("tui", await exitedPid(), await closedPort()));
+    writeRemoteEndpointFiles(dir, endpoint("tui", await exitedPid(), await closedPort()));
     await expect(resolveRemoteEndpoint(dir, "tui")).rejects.toMatchObject({
       message: "The Gloom terminal app is not running.",
       details: expect.stringContaining("`gloom`"),
@@ -97,9 +97,9 @@ describe("finding the running app", () => {
     const app = await listeningApp(`token-desktop-${process.pid}`);
     try {
       const desktop = endpoint("desktop", process.pid, app.port);
-      await writeRemoteEndpointFiles(dir, desktop);
+      writeRemoteEndpointFiles(dir, desktop);
       // The terminal app started later, so it wrote remote-control.json, and was killed.
-      await writeRemoteEndpointFiles(dir, endpoint("tui", await exitedPid(), await closedPort()));
+      writeRemoteEndpointFiles(dir, endpoint("tui", await exitedPid(), await closedPort()));
 
       expect(await resolveRemoteEndpoint(dir)).toEqual(desktop);
       expect(await exists(remoteEndpointPath(dir))).toBe(false);
@@ -110,7 +110,7 @@ describe("finding the running app", () => {
       });
 
       // Two running apps, neither the one remote-control.json names: the caller picks.
-      await writeRemoteEndpointFiles(dir, { ...endpoint("tui", process.pid, app.port), token: "token-tui" });
+      writeRemoteEndpointFiles(dir, { ...endpoint("tui", process.pid, app.port), token: "token-tui" });
       await rm(remoteEndpointPath(dir));
       await expect(resolveRemoteEndpoint(dir)).rejects.toBeInstanceOf(RemoteAppAmbiguousError);
     } finally {
@@ -123,7 +123,7 @@ describe("finding the running app", () => {
     const seen: string[] = [];
     const app = await listeningApp(`token-tui-${process.pid}`, seen);
     try {
-      await writeRemoteEndpointFiles(dir, endpoint("tui", process.pid, app.port));
+      writeRemoteEndpointFiles(dir, endpoint("tui", process.pid, app.port));
       expect(await sendRemoteControlRequest({ type: "help" }, { dataDir: dir })).toEqual({ ok: true, data: "answered" });
       expect(seen).toEqual(["GET /health no token", `POST /rpc Bearer token-tui-${process.pid}`]);
     } finally {
@@ -134,7 +134,7 @@ describe("finding the running app", () => {
     const other: string[] = [];
     const server = await listeningApp("unused", other, false);
     try {
-      await writeRemoteEndpointFiles(dir, endpoint("tui", process.pid, server.port));
+      writeRemoteEndpointFiles(dir, endpoint("tui", process.pid, server.port));
       await expect(sendRemoteControlRequest({ type: "help" }, { dataDir: dir })).rejects.toMatchObject({
         code: "app_unreachable",
         details: expect.stringContaining("is not Gloom"),
@@ -148,7 +148,7 @@ describe("finding the running app", () => {
   test("a refused port with the app's process still there, or out of sight, keeps the file and says it could not be reached", async () => {
     const dir = await dataDir();
     // A sandbox that blocks localhost, or a process id reused after the app exited: from here they look the same.
-    await writeRemoteEndpointFiles(dir, endpoint("tui", process.pid, await closedPort()));
+    writeRemoteEndpointFiles(dir, endpoint("tui", process.pid, await closedPort()));
     const error = await sendRemoteControlRequest({ type: "help" }, { dataDir: dir }).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(RemoteAppUnreachableError);
     expect(error).toMatchObject({ code: "app_unreachable", message: "The Gloom terminal app could not be reached." });
@@ -157,7 +157,7 @@ describe("finding the running app", () => {
     expect(await exists(remoteEndpointPath(dir, "tui"))).toBe(true);
 
     // A process id from another namespace (a sandbox's own) says nothing, even when no process has it here.
-    await writeRemoteEndpointFiles(dir, endpoint("desktop", await exitedPid(), await closedPort(), "pid:[1]"));
+    writeRemoteEndpointFiles(dir, endpoint("desktop", await exitedPid(), await closedPort(), "pid:[1]"));
     await expect(resolveRemoteEndpoint(dir, "desktop")).rejects.toBeInstanceOf(RemoteAppUnreachableError);
     expect(await exists(remoteEndpointPath(dir, "desktop"))).toBe(true);
   });
