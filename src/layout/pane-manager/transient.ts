@@ -7,7 +7,7 @@ import { removePane } from "./layout-state";
  * the Layouts browser (LAY). A layout is never saved with one, so it reopens
  * without it, and its windows are counted without one.
  */
-export const TRANSIENT_PANE_IDS: ReadonlySet<string> = new Set(["layout-marketplace"]);
+const TRANSIENT_PANE_IDS: ReadonlySet<string> = new Set(["layout-marketplace"]);
 
 const withoutTransient = new WeakMap<LayoutConfig, LayoutConfig>();
 
@@ -28,7 +28,7 @@ export function withoutTransientPanes(layout: LayoutConfig): LayoutConfig {
 }
 
 /** Where a layout's windows are: docked, floating over it, or in windows of their own. */
-export interface LayoutWindowCounts {
+interface LayoutWindowCounts {
   docked: number;
   floating: number;
   detached: number;
