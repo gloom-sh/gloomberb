@@ -88,6 +88,9 @@ export function buildFocusedPaneLayoutItems({
       id: "layout-fullscreen",
       label: "Fullscreen Pane",
       detail: "Fill the window with the focused pane, or restore it",
+      // What other apps call it: maximize a window, zoom a pane.
+      searchText: "maximize maximise maximized zoom full screen expand",
+      commandWords: ["fullscreen", "full", "screen", "maximize", "maximise", "maximized", "zoom", "expand"],
       category: "Focused Pane",
       kind: "action",
       action: () => {

@@ -608,7 +608,8 @@ describe("CompositeChart", () => {
     await act(async () => { await tui.setup().renderOnce(); await tui.setup().renderOnce(); });
     const legend = tui.frame().split("\n")[0]!;
     expect(legend).toContain("MSFT:XNAS Revenue $90.01B");
-    expect(legend).toContain("... -49.6%");
+    // Cut at whole words, the value whole after it.
+    expect(legend).toContain("Very long issuer...Margin -49.6%");
     expect(legend).toContain("腾讯控股腾讯控股");
     expect(legend.match(/\$90\.01B/g)).toHaveLength(2);
   });
@@ -826,6 +827,32 @@ describe("CompositeChart", () => {
     const short = await frameLines(6);
     expect(named(short[0]).length).toBeGreaterThan(0);
     expect(named(short[1])).toEqual([]);
+  });
+
+  // CHOKE's legend cut "Malacca" to "Malacc" on one line, and wrapped or scrolling legends still cut names through a word.
+  test("a legend that wraps or scrolls cuts a name at whole words too", async () => {
+    const labels = ["Strait of Hormuz daily transits", "Bab el-Mandeb daily transits", "Cape of Good Hope transits", "Strait of Malacca daily transits"];
+    const words = new Set(labels.flatMap((label) => label.split(" ")));
+    const lines = async (height: number) => {
+      await tui.render(
+        <CompositeChart width={30} height={height} panels={[{ id: "main" }]} series={labels.map((label, index) => ({
+          ...series(`series-${index}`, "main", "left", "vessels", [40 + index, 41 + index]),
+          label,
+        }))} />,
+        { width: 32, height: height + 2 },
+      );
+      await act(async () => { await tui.setup().renderOnce(); await tui.setup().renderOnce(); });
+      return tui.frame().split("\n").filter((line) => labels.some((label) => line.includes(label.split(" ")[0]!)));
+    };
+    // Every word a legend line shows is one of a name's words, whole: "Malacca", never "Malacc" or "transi".
+    const cutWords = (shown: readonly string[]) => shown.flatMap((line) => line.split(/\s+|\.\.\./))
+      .filter((token) => /^[A-Za-z][A-Za-z-]*$/.test(token) && !words.has(token));
+    const wrapped = await lines(24);
+    expect(wrapped.length).toBeGreaterThan(1);
+    expect(cutWords(wrapped)).toEqual([]);
+    const scrolling = await lines(6);
+    expect(scrolling.length).toBeGreaterThan(0);
+    expect(cutWords(scrolling)).toEqual([]);
   });
 
   test("reaches and toggles overflowing legend series from the keyboard", async () => {

@@ -147,7 +147,8 @@ function headlessCandidates(registry: PaneFunctionCatalog): ManifestCandidate[] 
     // An unlisted function (`listed: false`) is no tool, and its pane none in its place.
     if (template.listed === false) continue;
     const definition = definitionFor(template, pane);
-    if (!definition) continue;
+    // A report of what the user wrote for themselves (NOTE) is theirs to paste, not a tool.
+    if (!definition || definition.askGloom === false) continue;
     const token = template.shortcut?.prefix ?? template.id;
     candidates.push({
       token,
@@ -161,7 +162,7 @@ function headlessCandidates(registry: PaneFunctionCatalog): ManifestCandidate[] 
   const panes = [...registry.panes.values()]
     .sort((left, right) => compareText(left.id, right.id));
   for (const pane of panes) {
-    if (templatedPaneIds.has(pane.id) || !pane.headless) continue;
+    if (templatedPaneIds.has(pane.id) || !pane.headless || pane.headless.askGloom === false) continue;
     candidates.push({
       token: pane.id,
       identity: `pane:${pane.id}`,

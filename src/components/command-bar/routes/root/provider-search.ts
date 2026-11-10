@@ -15,12 +15,13 @@ import {
   tickerSearchFailureItems,
   venueDropdownResults,
   withMajorCoinCandidate,
+  wordNamesCommand,
   type RootTickerReading,
 } from "../ticker-search/results";
 import { ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../../../sources/provider-errors";
 import { OperationTimeoutError, withDeadline } from "../../../../utils/async-deadline";
 import { orderListResults, type ResultItem } from "../../list/model";
-import { assistAfterListings, type CommandBarCategoryPriorities, type CommandBarSectionOrder } from "../../view-model";
+import { assistAfterListings, exactMatchAfterCommands, type CommandBarCategoryPriorities, type CommandBarSectionOrder } from "../../view-model";
 import type { CommandBarRoute } from "../../workflow/types";
 
 /**
@@ -394,10 +395,12 @@ export function useRootProviderSearch(options: {
   // so neither its Thinking row nor its answer moves a listing.
   const namesListing = !!rootPlainTickerSearchArg
     && rootResults.some((item) => item.category === "Exact Match" || item.category === DID_YOU_MEAN_CATEGORY);
-  const rootCategoryPriorities = useMemo(
-    () => (namesListing ? assistAfterListings(categoryPriorities) : categoryPriorities),
-    [categoryPriorities, namesListing],
-  );
+  // A word in small letters that names one of the bar's commands ("full", Fullscreen Pane) is that command first.
+  const commandNamed = !!rootPlainTickerSearchArg && wordNamesCommand(rootPlainTickerSearchArg, rootResultItems);
+  const rootCategoryPriorities = useMemo(() => {
+    const listings = namesListing ? assistAfterListings(categoryPriorities) : categoryPriorities;
+    return commandNamed ? exactMatchAfterCommands(listings) : listings;
+  }, [categoryPriorities, commandNamed, namesListing]);
   const orderedRootResults = useMemo(
     () => orderListResults(rootResults, { sectionOrder: rootSectionOrder, categoryPriorities: rootCategoryPriorities }),
     [rootCategoryPriorities, rootResults, rootSectionOrder],

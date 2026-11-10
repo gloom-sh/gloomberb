@@ -36,6 +36,8 @@ export interface ResultItem {
   /** The other spellings the row answers to (IBOV for ^BVSP), for the same checks. */
   searchAliases?: string[];
   contractKey?: string;
+  /** A listing that no longer trades (delisted, or withdrawn by its exchange): never the exact match a word leads with. */
+  stoppedTrading?: boolean;
   instrument?: BrokerContractRef | null;
   listing?: TickerListingRef;
   /** Materialize this exact listing when another command consumes the row. */
@@ -54,6 +56,13 @@ export interface ResultItem {
   prefetchInstrument?: InstrumentRef;
   shortcutQuery?: string;
   searchText?: string;
+  /**
+   * The words that name one of the bar's own actions outright, as other apps
+   * call it (Fullscreen Pane: maximize, zoom, full screen). A word typed in
+   * small letters that begins one leads with the action, ahead of a listing
+   * the same letters spell. Unlike `searchText`, never its label or description.
+   */
+  commandWords?: readonly string[];
   /**
    * Draws the shortcut in the right column instead of the badge column, for a
    * row that leads with what it does in plain words.

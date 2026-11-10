@@ -225,6 +225,18 @@ const SUGGESTED_SECTION_PRIORITY = -90;
  */
 const INSTRUMENTS_SECTION_PRIORITY = 100;
 
+/**
+ * Where the exact listing goes when the word also names one of the bar's own
+ * commands (`wordNamesCommand`): after the local matches, ahead of the other
+ * listings, so "full" runs Fullscreen Pane and EQ FULL sits under it.
+ */
+const EXACT_MATCH_AFTER_COMMANDS_PRIORITY = 50;
+
+/** `priorities` with the exact listing under the commands, for a word that names one. */
+export function exactMatchAfterCommands(priorities?: CommandBarCategoryPriorities): CommandBarCategoryPriorities {
+  return new Map([...priorities ?? [], ["Exact Match", EXACT_MATCH_AFTER_COMMANDS_PRIORITY]]);
+}
+
 /** `priorities` with the AI's section after the listings, for text that names one. */
 export function assistAfterListings(priorities?: CommandBarCategoryPriorities): CommandBarCategoryPriorities {
   return new Map([...priorities ?? [], [ASSIST_CATEGORY, ASSIST_AFTER_LISTINGS_PRIORITY]]);

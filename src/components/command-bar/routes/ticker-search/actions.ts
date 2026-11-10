@@ -101,7 +101,7 @@ export function useCommandBarTickerSearchActions({
         badge,
         name,
         right,
-        ...(lines ? { lines } : {}),
+        ...(lines ? { lines, stoppedTrading: true } : {}),
         category: candidate.category,
         kind: "ticker",
         resolveTicker: async () => candidate.ticker!,
@@ -123,7 +123,7 @@ export function useCommandBarTickerSearchActions({
       badge,
       name,
       right,
-      ...(lines ? { lines } : {}),
+      ...(lines ? { lines, stoppedTrading: true } : {}),
       category: candidate.category,
       kind: "search",
       resolveTicker: () => resolveSearchTicker(candidate.result!, publicTickerKey(

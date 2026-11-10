@@ -140,6 +140,10 @@ export interface GeoEntitiesPayload {
   columns: GeoColumn[];
   rows: GeoEntityRow[];
   total: number;
+  /** Each column's total over every row a filtered query finds (one country's ports), where the layer's figures add up. */
+  totals?: Record<string, GeoPropValue>;
+  /** The query was read as a country's name: the rows are that country's alone. */
+  matched?: "country";
   status?: GeoLayerStatus;
   statusNote?: string;
 }

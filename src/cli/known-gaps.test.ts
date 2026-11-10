@@ -221,6 +221,15 @@ test("NIM, deposits, CRE and bank are pointed at the Bank section of fundamental
   }
 });
 
+// "port throughput" found Portfolio alone: a port's calls are MAP's ports layer, which the catalog lists under PORT's own match.
+test("port words lead with MAP ports, and port compounds that are not about ships do not", () => {
+  for (const query of ["port", "ports", "port calls", "port throughput", "throughput", "shipping"]) {
+    expect(commandPointer(query), query).toContain("gloom fn MAP ports");
+    expect(commandPointerLeads(query), query).toBe(true);
+  }
+  for (const query of ["portfolio", "port returns", "airport", "shipping stocks"]) expect(commandPointer(query) ?? "", query).not.toContain("fn MAP ports");
+});
+
 // "yen hedged" opened FX Cross Rates, which has no hedged view.
 test("a hedged query leads with CMP on hedged and unhedged Japan funds, which the catalog finds by the same words", async () => {
   const line = "Hedged against unhedged: gloom fn CMP DXJ HEWJ EWJ --total-return true (DXJ and HEWJ hedge the yen, EWJ does not); "
