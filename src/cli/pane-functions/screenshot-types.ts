@@ -114,6 +114,10 @@ export interface PaneScreenshotReadinessSignals {
    */
   interactive?: boolean;
   rowCount: number;
+  /** No rows were counted, but the body shows figures enough to be data (`shotShowsContent`). */
+  contentShown?: boolean;
+  /** The pane drew the capture's refusal of a request where its content goes (`shotShowsRefusal`). */
+  refused?: boolean;
   loadingStateDetected: boolean;
   errorStateDetected: boolean;
   emptyStateDetected: boolean;
@@ -146,6 +150,8 @@ export interface PaneScreenshotResult {
   semanticMismatch: boolean;
   usable: boolean;
   unusableReason: string | null;
+  /** The pane drew the capture's refusal of the requests it reads its content with (CHAT's channels). */
+  refused?: true;
   dataEvidence: PaneScreenshotDataEvidence | null;
   /** What the pane says its view leaves out, such as OMON's "21 of 145 strikes". */
   notices?: string[];

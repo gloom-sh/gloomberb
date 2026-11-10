@@ -492,6 +492,8 @@ export async function buildDomFunctionReport(
   // No header and no partial view: the error alone, and a failed exit, as the plain command gives.
   const failure = renderedReportFailure(result.render.semanticUi ?? []);
   if (failure) throw new RenderedReportFailure(failure.message, failure.details);
+  // The capture's refusal drawn in the pane's place (chat, a team's) is not its content: say why there is none.
+  if (result.refused && result.unusableReason) throw new RenderedReportFailure(result.unusableReason);
   try {
     return await buildDomPaneReportFromRender(resolved, result, createHeadlessPaneContext(resolved, context, new AbortController().signal));
   } catch (error) {

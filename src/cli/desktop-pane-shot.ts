@@ -196,6 +196,13 @@ export interface DesktopPaneShotRenderResult {
   emptyStateText?: string[];
   /** A wall that needs an account, or a Pro lock on part of the pane. */
   accessGate?: PaneAccessGate | null;
+  /**
+   * The blocks of text with a figure in them that the pane's body shows
+   * outside its controls, chrome, notices and charts: what a pane that marks
+   * no rows (DIAG's prose, CORR's matrix) is read by. Absent in a capture
+   * that did not count them.
+   */
+  contentFigures?: number;
   semanticUi: RemoteUiNodeSnapshot[];
   /** The status line drawn in the capture's footer, as it fit the width. */
   statusLine?: string | null;
@@ -971,6 +978,22 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
             .map((child) => normalize(child.innerText || child.textContent))
             .filter(Boolean);
         })(),
+        contentFigures: (() => {
+          const body = root.querySelector('[data-gloom-role="pane-body"]') || root;
+          // Controls, chrome and states say nothing of data, and a chart counts what it plots: "1M" on a tab is not a figure.
+          const outside = 'button, [role="button"], [role="tab"], [role="tablist"], input, textarea, select, svg, canvas, '
+            + '[data-gloom-role="query-bar"], [data-gloom-role="pane-header"], [data-gloom-role="pane-footer"], [data-gloom-role="tab-list"], '
+            + '[data-gloom-role="page-stack-header"], [data-gloom-role="shot-watermark"], [data-gloom-role*="chart"], '
+            + '[data-gloom-ui="empty-state"], [data-gloom-ui="notice"], [data-gloom-ui="pane-status"], [data-gloom-ui="sign-in-wall"], [data-gloom-ui="pro-lock"]';
+          const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+          let count = 0;
+          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            const parent = node.parentElement;
+            if (!parent || !/\\d/.test(node.textContent || "") || parent.closest(outside) || !isVisible(parent)) continue;
+            count += 1;
+          }
+          return count;
+        })(),
         // The shared sign-in wall and the Pro lock prompt every gated pane draws.
         accessGate: [...root.querySelectorAll('[data-gloom-ui="sign-in-wall"]')].some(isVisible) ? "sign-in"
           : [...root.querySelectorAll('[data-gloom-ui="pro-lock"]')].some(isVisible) ? "pro" : "",
@@ -998,6 +1021,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
         errorStateDetected?: boolean;
         emptyStateDetected?: boolean;
         emptyStateText?: string[];
+        contentFigures?: number;
         accessGate?: string;
         rows?: DesktopPaneShotRenderedRow[];
         truncated?: boolean;
@@ -1052,6 +1076,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
     ...(Array.isArray(value?.emptyStateText) && value.emptyStateText.length > 0
       ? { emptyStateText: value.emptyStateText.filter((line): line is string => typeof line === "string" && line.length > 0) } : {}),
     accessGate,
+    ...(typeof value?.contentFigures === "number" ? { contentFigures: value.contentFigures } : {}),
     semanticUi: Array.isArray(value?.semanticUi) ? value.semanticUi : [],
   };
 }

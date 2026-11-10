@@ -1,3 +1,4 @@
+import { SHOT_REQUEST_REFUSED, SHOT_UNAVAILABLE } from "../../api-client/errors";
 import { CHART_COMPOSER_PANE_ID } from "../../types/config";
 import { isRecord } from "../../utils/guards";
 import { parsePublicTickerKey } from "../../utils/exchanges";
@@ -56,7 +57,8 @@ export function shotShowsText(visibleText: string, value: string): boolean {
 }
 
 export function isPaneScreenshotUsable(signals: PaneScreenshotReadinessSignals): boolean {
-  return (signals.interactive || (signals.rowCount > 0 && !signals.emptyStateDetected))
+  return !signals.refused
+    && (signals.interactive || ((signals.rowCount > 0 || signals.contentShown === true) && !signals.emptyStateDetected))
     && !signals.loadingStateDetected
     && !signals.errorStateDetected
     && signals.complete
@@ -157,13 +159,21 @@ export function assessPaneScreenshot(
     || chartEvidenceMismatches.length > 0;
   // Layouts and the other panes that are surfaces to operate have no rows to count: a capture of one is not empty for that.
   const interactive = !isDataPaneForDomFallback(resolved.pane);
+  // A pane that marks no rows, labeled values or plotted values (DIAG's prose, CORR's matrix over the
+  // symbols it chose itself) is read by the figures its body shows; one whose data is checked another way is not.
+  const contentShown = rowCount === 0 && !evidenceHook && !requiresStructuredDataEvidence(resolved) && shotShowsContent(render);
+  // The capture's refusal of a request (chat, a team's) drawn where the pane's content goes is not the pane.
+  const refused = shotShowsRefusal(render);
   const empty = render.loadingStateDetected
     || render.errorStateDetected
-    || (!interactive && (render.emptyStateDetected || rowCount === 0))
+    || refused
+    || (!interactive && (render.emptyStateDetected || (rowCount === 0 && !contentShown)))
     || semanticMismatch;
   const usable = isPaneScreenshotUsable({
     interactive,
     rowCount,
+    contentShown,
+    refused,
     loadingStateDetected: render.loadingStateDetected,
     errorStateDetected: render.errorStateDetected,
     emptyStateDetected: render.emptyStateDetected,
@@ -174,6 +184,7 @@ export function assessPaneScreenshot(
   });
   const unusableReason = usable
     ? null
+    : refused ? refusedShotReason(resolved)
     : shotUnusableReasonFor(resolved, payload, render, unavailableSymbols, semanticMismatch);
   const tableRows = shotTableRows(resolved, render);
   const notices = [
@@ -201,6 +212,7 @@ export function assessPaneScreenshot(
     semanticMismatch,
     usable,
     unusableReason,
+    ...(refused ? { refused: true as const } : {}),
     dataEvidence,
     ...(notices.length > 0 ? { notices } : {}),
     ...(tableRows ? { tableRows } : {}),
@@ -229,6 +241,34 @@ function unquotedHoldingsNotice(resolved: ResolvedPaneFunction, payload: Desktop
   ));
   if (unquoted.length === 0) return [];
   return [`No quote for ${unquoted.join(", ")}; ${unquoted.length === 1 ? "its row shows" : "their rows show"} no price.`];
+}
+
+/**
+ * Blocks with a figure a pane's body shows outside its controls, chrome and
+ * charts (`contentFigures`) that make it data: a form's hint ("Up to 4
+ * letters") or a date beside an empty message is fewer.
+ */
+const MIN_CONTENT_FIGURES = 4;
+
+/** Whether the body shows figures enough to be data, for a pane that marks no rows. */
+function shotShowsContent(render: Pick<DesktopPaneShotRenderResult, "contentFigures">): boolean {
+  return (render.contentFigures ?? 0) >= MIN_CONTENT_FIGURES;
+}
+
+/**
+ * Whether the pane drew the capture's refusal of a request it made (CHAT's
+ * channels, TheBuildout's plan): the proxy's answer, or what a pane says in
+ * its place. Every capture's shell asks for reads the proxy refuses (a team's,
+ * notes), which a pane drawing its own content never shows.
+ */
+function shotShowsRefusal(render: Pick<DesktopPaneShotRenderResult, "visibleText">): boolean {
+  return render.visibleText.includes(SHOT_REQUEST_REFUSED) || render.visibleText.includes(SHOT_UNAVAILABLE);
+}
+
+/** Why a capture that drew the refusal is not the pane, and where to see it. */
+function refusedShotReason(resolved: Pick<ResolvedPaneFunction, "token">): string {
+  return `${resolved.token} is not available in screenshots: the capture does not send the requests it reads its content with. `
+    + `Open ${resolved.token} in the app.`;
 }
 
 function requiresStructuredDataEvidence(resolved: ResolvedPaneFunction): boolean {

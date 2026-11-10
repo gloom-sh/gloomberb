@@ -65,6 +65,8 @@ export const worldMapScreenshotEvidence: PaneScreenshotEvidenceHook<WorldMapEvid
   },
   mismatches(evidence, request) {
     const asked = requestedTokens(request);
+    // A bare MAP draws the layers its settings hold, else its default (chokepoints): none were asked for to differ from.
+    if (asked.length === 0) return [];
     return asked.join(",") === evidence.tokens.join(",") ? [] : ["Map layers differ from the request"];
   },
   unavailable(evidence) {

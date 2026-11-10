@@ -654,6 +654,40 @@ describe("pane screenshot rendered readiness", () => {
   });
 });
 
+describe("a capture of a pane that marks no rows", () => {
+  const diag = {
+    token: "DIAG", label: "Diagnostic", description: "", pane: { id: "equity-diagnostic", name: "Diagnostic" },
+    instance: { instanceId: "diag", paneId: "equity-diagnostic" }, createOptions: undefined, optionSettings: {}, options: {},
+    capability: { id: "equity-diagnostic-pane", botSafe: false, outputKind: "rendered-view", reportReadiness: "live-dom", screenshotReadiness: "live-dom", options: [] },
+  } as unknown as ResolvedPaneFunction;
+  const chat = { ...diag, token: "CHAT", pane: { id: "chat", name: "Chat" }, instance: { instanceId: "chat", paneId: "chat" } } as unknown as ResolvedPaneFunction;
+  const assess = (resolved: ResolvedPaneFunction, render: Partial<DesktopPaneShotRenderResult>) => assessPaneScreenshot(
+    resolved, { financials: [] } as unknown as DesktopPaneShotPayload, {
+      visibleText: "", rows: [], truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false,
+      errorStateMarkers: [], emptyStateDetected: false, emptyStateMarkers: [], visibleKeyValues: [], semanticUi: [], ...render,
+    }, "", "/tmp/shot-test.png",
+  );
+
+  // DIAG's prose and CORR's matrix were "not verifiable" for want of table rows, however much they showed.
+  test("is read by the figures its body shows: prose passes, a form's one hint or an empty state does not", () => {
+    expect(assess(diag, { contentFigures: 24 })).toMatchObject({ usable: true, empty: false, unusableReason: null });
+    expect(assess(diag, { contentFigures: 1 })).toMatchObject({ usable: false, empty: true });
+    expect(assess(diag, { contentFigures: 24, emptyStateDetected: true })).toMatchObject({ usable: false, empty: true });
+    expect(assess(diag, { contentFigures: 24, errorStateDetected: true })).toMatchObject({ usable: false });
+  });
+
+  // CHAT drew the capture proxy's refusal as its content and reported Status complete.
+  test("a pane that drew the capture's refusal is not usable, surface or not, and says where to see it", () => {
+    for (const text of ["#everyone The pane screenshot does not send this request.", "TheBuildout Not available in screenshots."]) {
+      expect(assess(chat, { visibleText: text })).toMatchObject({
+        usable: false, refused: true, unusableReason: "CHAT is not available in screenshots: the capture does not send the requests it reads its content with. Open CHAT in the app.",
+      });
+      expect(assess(diag, { visibleText: text, contentFigures: 24 })).toMatchObject({ usable: false, refused: true });
+    }
+    expect(assess(chat, { visibleText: "#everyone hello" })).toMatchObject({ usable: true });
+  });
+});
+
 describe("pane screenshot payload credentials", () => {
   test("keeps the restored session in the proxy and strips credential fields from page data", () => {
     const sessionToken = "private-shot-session";
