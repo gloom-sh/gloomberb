@@ -99,6 +99,8 @@ export interface HiringPayload extends HiringSummary {
     classifiedShare: number | null
     remoteKnownShare: number | null
     comparability: string
+    /** When the careers board read covers part of the company (one country or unit), which part, in a sentence; absent otherwise and from older servers. */
+    boardScope?: string
   }
 }
 
