@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { commodityNamedIn, isCommodityName } from "./commodity-names";
+import { commodityNameFuture, commodityNamedIn, isCommodityName } from "./commodity-names";
 
 const named = (text: string) => commodityNamedIn(text)?.symbol ?? null;
 
@@ -22,4 +22,20 @@ test("a commodity is named in any form of its words, the longest name first, and
   expect(isCommodityName("Soybeans", "soybean")).toBe(true);
   expect(isCommodityName("lean hogs", "lean hog")).toBe(true);
   expect(isCommodityName("arabica", "coffee")).toBe(false);
+});
+
+test("a name of several words that is only a commodity's is its benchmark future, with the other benchmark where two price it", () => {
+  const read = (text: string) => {
+    const found = commodityNameFuture(text);
+    return found ? [found.contract.symbol, found.other?.contract.symbol ?? null] : null;
+  };
+  // "crude oil" was read as a covered-call ETN named for it; search ranks the futures first.
+  expect(read("crude oil")).toEqual(["CL=F", "BZ=F"]);
+  expect(read("Crude Oil")).toEqual(["CL=F", "BZ=F"]);
+  expect(read("natural gas")).toEqual(["NG=F", null]);
+  expect(read("lean hogs")).toEqual(["HE=F", null]);
+  // One word is left to the ticker it may be (OIL, CORN); an oil no future trades, and text with more than the name, are not read.
+  expect(read("oil")).toBeNull();
+  expect(read("palm oil")).toBeNull();
+  expect(read("crude oil etf")).toBeNull();
 });

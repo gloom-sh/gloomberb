@@ -36,6 +36,8 @@ export interface ResultItem {
   /** The other spellings the row answers to (IBOV for ^BVSP), for the same checks. */
   searchAliases?: string[];
   contractKey?: string;
+  /** A listing that no longer trades (delisted, or withdrawn by its exchange): never the exact match a word leads with. */
+  stoppedTrading?: boolean;
   instrument?: BrokerContractRef | null;
   listing?: TickerListingRef;
   /** Materialize this exact listing when another command consumes the row. */

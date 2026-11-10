@@ -136,6 +136,32 @@ export function distinguishingLabelCut(label: string, width: number, others: rea
   return `${head}...${tailToWidth(rest, room - displayWidth(head))}`;
 }
 
+/** The words of a legend name, split at spaces: "Bab el-Mandeb" is two. */
+function nameWords(label: string): string[] {
+  return label.split(" ").filter(Boolean);
+}
+
+/** The shortest a legend name reads on one line: its first word whole, with `...` for the rest ("Bab..."). */
+export function shortestLegendName(label: string): string {
+  const words = nameWords(label);
+  return words.length > 1 ? `${words[0]}...` : label;
+}
+
+/**
+ * A legend name cut to whole words within `width` cells, `...` standing for
+ * the words left out, never a word cut through ("Malacc"): at the least its
+ * first word, whatever `width` is. A name that fits is whole.
+ */
+export function wholeWordsCut(label: string, width: number): string {
+  if (displayWidth(label) <= width) return label;
+  const words = nameWords(label);
+  for (let count = words.length - 1; count >= 1; count -= 1) {
+    const head = `${words.slice(0, count).join(" ")}...`;
+    if (displayWidth(head) <= width) return head;
+  }
+  return shortestLegendName(label);
+}
+
 /**
  * Entries laid left to right into lines of `available` cells, one cell apart,
  * a new line when the next does not fit. With `maxLines`, what does not fit in
@@ -345,11 +371,12 @@ export function CompositeLegend({
   });
   let entries = buildEntries(true);
   type LegendEntry = (typeof entries)[number];
-  const setEntryLabel = (target: LegendEntry, label: string, labelWidth: number) => {
+  const setEntryLabel = (target: LegendEntry, label: string, labelWidth: number, wholeWords = false) => {
     target.label = label;
-    target.labelWidth = labelWidth;
     const others = entries.filter((other) => other !== target).map((other) => other.compactLabel);
-    target.text = [distinguishingLabelCut(label, labelWidth, others), target.valueText].filter(Boolean).join(" ");
+    const shown = wholeWords ? wholeWordsCut(label, labelWidth) : distinguishingLabelCut(label, labelWidth, others);
+    target.labelWidth = wholeWords ? displayWidth(shown) : labelWidth;
+    target.text = [shown, target.valueText].filter(Boolean).join(" ");
     target.width = Math.max(1, displayWidth(target.text)) + target.markerWidth;
   };
   const measureSeriesWidth = () => entries.reduce(
@@ -371,12 +398,13 @@ export function CompositeLegend({
   const widthBeforeAccessory = Math.max(0, innerWidth - resolvedAccessoryWidth - reservedAccessoryGap - foldedWidth);
   // Names get the room the row has. When it overflows, every name drops its
   // listing exchange (and a company's field, compactLabel) together, so the
-  // row reads in one form; then the widest name is cut first.
+  // row reads in one form; then the widest name loses its last words first,
+  // never a word cut through: one word stays whole, and "Bab el-Mandeb" reads "Bab...".
   // The value (including its sign/unit) always stays intact. If the row cannot
-  // fit even with every name at a readable fragment, it keeps the old 30-cell
-  // entries and scrolls.
+  // fit even with every name at its first word, it wraps where the chart gives
+  // it rows, else keeps the old 30-cell entries and scrolls.
   const minimumWidthOf = (list: LegendEntry[]) => list.reduce((total, entry, index) => {
-    const text = [truncateToDisplayWidth(entry.compactLabel, Math.min(8, displayWidth(entry.compactLabel))), entry.valueText]
+    const text = [shortestLegendName(entry.compactLabel), entry.valueText]
       .filter(Boolean).join(" ");
     return total + Math.max(1, displayWidth(text)) + entry.markerWidth + (index > 0 ? 1 : 0);
   }, 0);
@@ -414,7 +442,7 @@ export function CompositeLegend({
   if (fitsOneLine) {
     while (measureSeriesWidth() > widthBeforeAccessory) {
       const shrinkable = entries
-        .filter((entry) => entry.label !== entry.compactLabel || entry.labelWidth > 8)
+        .filter((entry) => entry.label !== entry.compactLabel || entry.labelWidth > displayWidth(shortestLegendName(entry.label)))
         .sort((left, right) => right.labelWidth - left.labelWidth)[0];
       if (!shrinkable) break;
       if (shrinkable.label !== shrinkable.compactLabel) {
@@ -425,7 +453,7 @@ export function CompositeLegend({
           }
         }
       } else {
-        setEntryLabel(shrinkable, shrinkable.label, shrinkable.labelWidth - 1);
+        setEntryLabel(shrinkable, shrinkable.label, shrinkable.labelWidth - 1, true);
       }
     }
   } else if (!lines) {

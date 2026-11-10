@@ -598,6 +598,23 @@ function observationCount(series: HeadlessSeries): number {
   return series.points.filter((point) => point.value != null || point.close != null).length;
 }
 
+const TRAILING_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "avg7", header: "7D avg", literalHeader: true, align: "right" },
+  { key: "avg28", header: "28D avg", literalHeader: true, align: "right" },
+  { key: "vsYearAgo", header: "28D vs yr ago", literalHeader: true, align: "right" },
+];
+
+function trailingCells(trailing: HeadlessSeries["trailing"]): Record<string, string> {
+  if (!trailing) return {};
+  const mean = (value: number | null) => (value == null ? "-" : value.toFixed(1));
+  const change = trailing.changeVsYearAgoPct;
+  return {
+    avg7: mean(trailing.avg7),
+    avg28: mean(trailing.avg28),
+    vsYearAgo: change == null || !Number.isFinite(change) ? "-" : `${change > 0 ? "+" : ""}${change.toFixed(1)}%`,
+  };
+}
+
 function renderSeries(result: HeadlessSeriesResult): string[] {
   const rows = result.series.map((series) => {
     const latest = [...series.points].reverse().find((point) => (
@@ -610,17 +627,21 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
       latest: series.notMeaningful ? series.notMeaningful.asOf : latest ? seriesLatestDate(series, latest.date) : "-",
       value: series.notMeaningful ? "N/M" : seriesValue(series, latest?.value ?? latest?.close ?? null),
       unit: series.unit?.trim() ? currencyRateUnitText(series.unit.trim()) : null,
+      ...trailingCells(series.trailing),
       points: observationCount(series),
     };
   });
+  const trailing = result.series.some((series) => series.trailing);
   const columns: HeadlessPaneColumn[] = [
     { key: "series", header: "Series" },
     // A security's series names its company (BDI:XTSE is Black Diamond Group); other series have none.
     ...(rows.some((row) => row.name) ? [{ key: "name", header: "Name" }] : []),
     { key: "latest", header: "Latest", shrink: false },
     { key: "value", header: "Value", align: "right" },
+    ...(trailing ? TRAILING_COLUMNS : []),
     ...(rows.some((row) => row.unit) ? [{ key: "unit", header: "Unit" }] : []),
-    { key: "points", header: "Points", align: "right" },
+    // Beside the averages, the count of points is the first thing a narrow table drops.
+    { key: "points", header: "Points", align: "right", ...(trailing ? { optional: true } : {}) },
   ];
   const lines = [renderRows(rows, columns, undefined)];
   const notMeaningful = result.series.flatMap((series) => series.notMeaningful

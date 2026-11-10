@@ -233,6 +233,23 @@ describe("pane-manager split-tree drops", () => {
     }
   });
 
+  // At 80x24 six windows side by side were tidied into 12-column panes ("Main Port›", "WTI Cr...").
+  test("Tidy stacks the panes in one column where its grid would leave a pane under 30 columns", () => {
+    const ids = Array.from({ length: 6 }, (_, index) => `chat:${index}`);
+    const floating = ids.map((instanceId, index) => ({ instanceId, x: index * 13, y: 0, width: 13, height: 24 }));
+    const layout: LayoutConfig = {
+      dockRoot: null, instances: ids.map((instanceId) => createPaneInstance("chat", { instanceId })), floating, detached: [],
+    };
+    const terminal = { x: 0, y: 0, width: 80, height: 24 };
+    expect(getDockLeafLayouts(gridlockAllPanes(layout, terminal), terminal).map((leaf) => [leaf.stack, leaf.rect.width])).toEqual([
+      [ids.slice(0, 3), 80],
+      [ids.slice(3), 80],
+    ]);
+    // Where the grid's panes are 30 columns or more, it stays.
+    const wide = { x: 0, y: 0, width: 180, height: 40 };
+    expect(getDockLeafLayouts(gridlockAllPanes(layout, wide), wide).every((leaf) => !leaf.stack && leaf.rect.width >= 30)).toBe(true);
+  });
+
   test("gridlock infers a matching tiled layout from arranged windows", () => {
     const config = createDefaultConfig("/tmp/gloomberb-test");
     let layout: LayoutConfig = {

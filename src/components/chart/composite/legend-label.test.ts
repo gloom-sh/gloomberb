@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { distinguishingLabelCut } from "./legend";
+import { distinguishingLabelCut, shortestLegendName, wholeWordsCut } from "./legend";
 
 test("a legend name cut short keeps what tells it from the names beside it", () => {
   const hy = "US high yield OAS";
@@ -15,4 +15,14 @@ test("a legend name cut short keeps what tells it from the names beside it", () 
   // Names that differ early are cut at the end, as before; one that fits is whole.
   expect(distinguishingLabelCut("AAPL Price", 8, ["MSFT Price"])).toBe("AAPL ...");
   expect(distinguishingLabelCut(hy, 20, [formula])).toBe(hy);
+});
+
+test("a legend name on one line loses whole words, never part of one", () => {
+  // CHOKE's legend at 80 columns read "Malacc".
+  expect(wholeWordsCut("Malacca", 6)).toBe("Malacca");
+  expect(shortestLegendName("Malacca")).toBe("Malacca");
+  expect(wholeWordsCut("Bab el-Mandeb", 12)).toBe("Bab...");
+  expect(wholeWordsCut("US high yield OAS", 14)).toBe("US high...");
+  expect(wholeWordsCut("US high yield OAS", 2)).toBe("US...");
+  expect(wholeWordsCut("US high yield OAS", 17)).toBe("US high yield OAS");
 });

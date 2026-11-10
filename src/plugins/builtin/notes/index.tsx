@@ -3,6 +3,7 @@ import { apiClient } from "../../../api-client";
 import type { GloomPlugin } from "../../../types/plugin";
 import { teamStore } from "../../../team/store";
 import { notesCliCommand } from "./cli";
+import { NOTES_FRESHNESS, notesHeadless } from "./headless";
 import { exportNotesToDirectory, exportNotice, exportSourceLabel } from "./export";
 import { NotesFiles } from "./files";
 import { migrateLocalNotes, notesMigratedAt } from "./migration";
@@ -76,7 +77,7 @@ export const notesPlugin: GloomPlugin = {
 
     ctx.registerPane({
       id: "quick-notes",
-      reportFreshness: { source: "Your notes", status: "not-a-feed", basis: "your notes", local: true },
+      reportFreshness: NOTES_FRESHNESS,
       name: "Notes",
       personalData: "messages",
       icon: "N",
@@ -93,6 +94,7 @@ export const notesPlugin: GloomPlugin = {
       description: "Open a general-purpose notes scratchpad",
       keywords: ["notes", "quick", "scratchpad", "memo"],
       shortcut: { prefix: "NOTE" },
+      headless: notesHeadless,
       createInstance: () => ({ placement: "floating" }),
     });
 

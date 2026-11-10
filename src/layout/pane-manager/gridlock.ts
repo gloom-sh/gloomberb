@@ -25,6 +25,12 @@ const TIDY_FLOATING_THRESHOLD = 3;
 const NARROW_TIDY_WIDTH = 80;
 /** Rows a pane needs to show its header and a screen of rows; a shorter terminal shows one stack. */
 const NARROW_TIDY_MIN_ROWS = 12;
+/**
+ * The narrowest pane Tidy tiles: a grid that would leave one narrower (six
+ * panes at 80 columns were 12-column tiles, "Main Port›") stacks them in one
+ * column instead, as a narrow terminal's Tidy does.
+ */
+const TIDY_MIN_PANE_WIDTH = 30;
 
 type Rect = Pick<FloatingPaneEntry, "x" | "y" | "width" | "height">;
 
@@ -183,11 +189,11 @@ export function gridlockAllPanes(
   const wideDockTree = () => isNarrowTidyColumn(visibleLayout)
     ? buildGridDockTree(dockedRects.flatMap((rect) => stacks.get(rect.instanceId) ?? [rect.instanceId]))
     : withStacks(inferDockTreeFromRects(allRects, boundsForRects(allRects)), stacks);
-  return finalizeLayout({
-    ...visibleLayout,
-    dockRoot: bounds.width < NARROW_TIDY_WIDTH ? narrowDockTree(allRects, stacks, bounds.height) : wideDockTree(),
-    floating: [],
-  });
+  const tidied = (dockRoot: DockLayoutNode | null) => finalizeLayout({ ...visibleLayout, dockRoot, floating: [] });
+  const narrow = () => tidied(narrowDockTree(allRects, stacks, bounds.height));
+  if (bounds.width < NARROW_TIDY_WIDTH) return narrow();
+  const grid = tidied(wideDockTree());
+  return getDockLeafLayouts(grid, bounds).some((leaf) => leaf.rect.width < TIDY_MIN_PANE_WIDTH) ? narrow() : grid;
 }
 
 /**

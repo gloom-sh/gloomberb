@@ -725,7 +725,22 @@ export interface HeadlessSeries {
   latestDate?: string;
   /** A formula of futures: its legs as charted (`RB=F`), which name the exported contract columns of its points' `legs`. */
   formulaLegs?: readonly string[];
+  /**
+   * A daily count's trailing averages to its latest day, which the text report
+   * prints beside the latest value: a single day of transits says little.
+   */
+  trailing?: HeadlessSeriesTrailing;
   points: HeadlessSeriesPoint[];
+}
+
+/** Daily means over the 7 and 28 days to a series' latest day, and the same 28 days a year before. */
+export interface HeadlessSeriesTrailing {
+  avg7: number | null;
+  avg28: number | null;
+  /** The mean over the 28 days that ended one year before the latest day. */
+  yearAgoAvg28: number | null;
+  /** `avg28` against `yearAgoAvg28`, in percent. */
+  changeVsYearAgoPct: number | null;
 }
 
 export interface HeadlessSeriesResult extends HeadlessPaneResultBase {

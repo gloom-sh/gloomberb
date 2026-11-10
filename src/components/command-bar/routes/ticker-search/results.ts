@@ -249,20 +249,57 @@ export function mergePlainRootTickerResults(
     candidates.push(item);
   }
   const instruments = pickRootInstruments(candidates, isExact, new Set(shown));
+  rootItems = leadWithNamedCommands(query, rootItems);
   if (instruments.length === 0) {
     const busy = searchBusyRows(providerItems);
     return busy.length > 0 ? [...rootItems, ...busy] : rootItems;
   }
 
-  const exact = instruments.filter(isExact);
+  // A line that stopped trading (EQ FULL, last traded 2016) answers no word ahead of the rest: it is listed last.
+  const exact = instruments.filter((item) => isExact(item) && !item.stoppedTrading);
   // `AAPL GY` names a listing search does not have, `700.HK` nearly names one: the row it was read from is offered.
-  const meant = reading && exact.length === 0 ? instruments.find(reading.meant) : undefined;
+  const meant = reading && exact.length === 0 ? instruments.find((item) => reading.meant(item) && !item.stoppedTrading) : undefined;
+  const rest = instruments.filter((item) => !exact.includes(item) && item !== meant);
   return [
     ...exact.map((item) => ({ ...item, category: "Exact Match" })),
     ...meant ? [{ ...meant, category: DID_YOU_MEAN_CATEGORY }] : [],
     ...rootItems,
-    ...instruments.filter((item) => !isExact(item) && item !== meant).map((item) => ({ ...item, category: ROOT_INSTRUMENTS_CATEGORY })),
+    ...[...rest.filter((item) => !item.stoppedTrading), ...rest.filter((item) => item.stoppedTrading)]
+      .map((item) => ({ ...item, category: ROOT_INSTRUMENTS_CATEGORY })),
   ];
+}
+
+/**
+ * Words of a row's name, lower case, with its search words for one of the
+ * app's own actions ("Fullscreen Pane" and its `maximize`). A function's row
+ * (it has a code) is named by its name alone: its search words carry the
+ * examples it takes (EXPO's `AAPL=60% NVDA=40%`), which name no command.
+ */
+function rowWords(item: ResultItem): string[] {
+  return `${item.label} ${item.shortcutQuery ? "" : item.searchText ?? ""}`.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+/**
+ * Whether a word typed in small letters begins the name of one of the bar's
+ * own commands or actions, or one of its search words: "full" and "maxim"
+ * name Fullscreen Pane. Such a word is the command, and a listing the same
+ * letters make (EQ FULL) follows it. Capitals keep the symbol first, as a
+ * ticker is written, and so does a word under four letters.
+ */
+export function wordNamesCommand(query: string, items: readonly ResultItem[]): boolean {
+  return items.some((item) => commandNamedBy(query, item));
+}
+
+function commandNamedBy(query: string, item: ResultItem): boolean {
+  const word = query.trim();
+  return /^[a-z]{4,}$/.test(word) && (item.kind === "command" || item.kind === "action") && !item.disabled
+    && rowWords(item).some((part) => part.startsWith(word));
+}
+
+/** The bar's own rows with the commands the word names first ("full": Fullscreen Pane before Research Search's "full text"). */
+function leadWithNamedCommands(query: string, items: ResultItem[]): ResultItem[] {
+  const named = items.filter((item) => commandNamedBy(query, item));
+  return named.length ? [...named, ...items.filter((item) => !named.includes(item))] : items;
 }
 
 /** The section of the row a near-miss or a terminal's code was read as, when it names no listing outright. */
