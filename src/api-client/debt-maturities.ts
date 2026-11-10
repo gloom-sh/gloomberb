@@ -149,5 +149,12 @@ export interface DebtMaturitiesPayload {
   history: DebtHistoryPoint[];
   /** The latest 10-Q when it is newer than `latest`. Older servers and cached payloads leave it out. */
   latestQuarter?: DebtQuarter | null;
+  /** What the schedule could not read: a payload with any is partial. */
   warnings: string[];
+  /**
+   * What the schedule covers and how it was read ("Issued debt only: …"),
+   * apart from what it misses. Older servers and cached payloads leave it
+   * out, and send these among `warnings`.
+   */
+  notes?: string[];
 }

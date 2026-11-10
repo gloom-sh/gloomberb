@@ -68,6 +68,9 @@ const httpsUrl = (value: unknown) =>
   typeof value === "string" && URL.canParse(value) && new URL(value).protocol === "https:";
 /** SEC's annual forms a schedule by year is read from. */
 const ANNUAL_FORM = /^(10-K|20-F|40-F)(\/A)?$/;
+/** Absent on older servers; else text alone. */
+const optionalTexts = (value: unknown) =>
+  value === undefined || (Array.isArray(value) && value.every((entry) => typeof entry === "string"));
 const near = (a: number | null, b: number | null) =>
   a === b ||
   (a !== null &&
@@ -211,6 +214,7 @@ function validateSchedule(
     typeof data.source.cadence !== "string" ||
     !Array.isArray(data.warnings) ||
     data.warnings.some((value) => typeof value !== "string") ||
+    !optionalTexts(data.notes) ||
     !Array.isArray(data.history)
   )
     return invalid();
@@ -456,6 +460,7 @@ function validateBands(data: DebtMaturitiesPayload, symbol: string): DebtMaturit
     typeof data.source.cadence !== "string" ||
     !Array.isArray(data.warnings) ||
     data.warnings.some((value) => typeof value !== "string") ||
+    !optionalTexts(data.notes) ||
     !Array.isArray(data.history) ||
     !day(latest.asOf) ||
     latest.asOf !== data.asOf ||

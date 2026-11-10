@@ -450,7 +450,7 @@ test("a share due within a horizon comes only from bands that end exactly there"
 });
 
 test("DDIS prints a ladder in its filing's own bands as reported, with its basis, standard, scale and report", async () => {
-  const bands = bandFixture();
+  const bands = { ...bandFixture(), notes: ["Issued debt only: the complete issued-debt line of the consolidated balance sheet."] };
   const args = createTestHeadlessArgs({ symbols: ["0019"], argument: "0019", rawArgument: "0019" });
   const ctx = createTestHeadlessContext({ apiClient: { getCloudDebtMaturities: async () => bands } as never });
   const result = await debtMaturitiesHeadless.load(args, ctx);
@@ -471,6 +471,10 @@ test("DDIS prints a ladder in its filing's own bands as reported, with its basis
   expect(serialized.sections[0]!.rows[1]).toMatchObject({ label: "1 to 2 years", value: 16_227e6, basis: "carrying", fromMonths: 12, toMonths: 24 });
   // Cited to the report, not to SEC.
   expect(formatFreshnessLine(freshness)).toBe("Source: HKEX annual or interim report notes · Wed 31 Dec 2025 · not a live feed (filed data)");
+  // What the ladder covers is said beside it; only what it misses is a failure.
+  expect(text).toContain("Notes: Issued debt only: the complete issued-debt line of the consolidated balance sheet.");
+  expect(text).toContain("Errors: Annual interest expense is not reported");
+  expect(text).not.toMatch(/Errors:[^\n]*Issued debt only/);
 });
 
 test("maturity sorting follows fiscal order; numeric sorts preserve missing values last", () => {
