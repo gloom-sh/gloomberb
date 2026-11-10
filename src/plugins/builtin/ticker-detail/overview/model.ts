@@ -157,6 +157,7 @@ export function buildOverviewStats({
   dividend,
   bond = null,
   runway = null,
+  trailingEpsYear,
 }: {
   quote: Quote | undefined;
   fundamentals: TickerFinancials["fundamentals"] | undefined;
@@ -184,6 +185,8 @@ export function buildOverviewStats({
   bond?: FundBondFacts | null;
   /** Months of cash at the latest balance sheet (utils/cash-runway); shown when the company burns cash. */
   runway?: CashRunway | null;
+  /** The fiscal year the trailing EPS is ("FY Mar-26"), when it is a year's a quarter or more old (trailingEpsFiscalYear). */
+  trailingEpsYear?: string;
 }): StatField[] {
   const stats: StatField[] = [];
   // Amounts no source names the currency of are bare; the first says so after it, once for all of them.
@@ -242,7 +245,7 @@ export function buildOverviewStats({
   }
   const trailingPE = liveTrailingPE(quote, fundamentals);
   if (trailingPE != null) {
-    stats.push({ label: "P/E (TTM)", value: formatPriceEarnings(trailingPE) });
+    stats.push({ label: trailingEpsYear ? `P/E ${trailingEpsYear}` : "P/E (TTM)", value: formatPriceEarnings(trailingPE) });
   }
   // Next fiscal year's consensus, and the year it is for: N/M over a loss, a dash when there is none.
   const forwardPE = liveForwardPE(quote, fundamentals);
@@ -251,7 +254,7 @@ export function buildOverviewStats({
     stats.push({ label: year ? `Fwd P/E ${year}` : "Fwd P/E", value: formatPriceEarnings(forwardPE) });
   }
   if (fundamentals?.eps != null) {
-    stats.push({ label: "EPS", ...reported(fundamentals.eps, fundamentalsEpsCurrency({ fundamentals, financialCurrency, quote }), true) });
+    stats.push({ label: trailingEpsYear ? `EPS ${trailingEpsYear}` : "EPS", ...reported(fundamentals.eps, fundamentalsEpsCurrency({ fundamentals, financialCurrency, quote }), true) });
   }
   if (fundamentals?.pegRatio != null) {
     stats.push({ label: "PEG", value: formatPriceEarnings(fundamentals.pegRatio, 2) });

@@ -479,6 +479,13 @@ function ChartComposerSurface({
   const legendSeries = useMemo(() => {
     // Each security series names its company once, beside its label: "AAPL Price · Apple".
     const named = new Set<string>();
+    // A company drawn once falls back to its ticker and name ("8058 Mitsubishi") before the legend cuts either.
+    const seriesPerSymbol = new Map<string, number>();
+    for (const series of spec.series) {
+      if (series.source.kind !== "security") continue;
+      const symbol = series.source.instrument.symbol;
+      seriesPerSymbol.set(symbol, (seriesPerSymbol.get(symbol) ?? 0) + 1);
+    }
     const resolved = (resolution.legendSeries ?? []).map((entry) => {
       const authored = spec.series.find((series) => series.id === entry.id);
       if (authored?.source.kind === "security" && authored.source.fieldId.startsWith("valuation.")) {
@@ -490,7 +497,12 @@ function ChartComposerSurface({
       const company = name ? shortCompanyName(name) : "";
       if (!company || named.has(company)) return entry;
       named.add(company);
-      return { ...entry, label: `${entry.label} · ${company}` };
+      const symbol = authored?.source.kind === "security" ? authored.source.instrument.symbol : null;
+      return {
+        ...entry,
+        label: `${entry.label} · ${company}`,
+        ...(symbol && seriesPerSymbol.get(symbol) === 1 ? { compactLabel: `${symbol} ${company}` } : {}),
+      };
     });
     const resolvedIds = new Set(resolved.map((entry) => entry.id));
     const missing = spec.series.filter((entry) => !resolvedIds.has(entry.id));

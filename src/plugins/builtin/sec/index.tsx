@@ -20,10 +20,10 @@ import type { ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { useOpenDescription } from "../shared/open-description";
 import { toneColor } from "../shared/research-cells";
-import { publicTickerKey } from "../../../utils/exchanges";
-import { fundFactsAbroadKey, hasFundFactsAbroad, mayBeFundViewTicker, mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../../utils/sec";
+import { parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
+import { fundFactsAbroadKey, hasFundFactsAbroad, mayBeFundViewTicker, mayBeSecEquityListing, mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, noSecReportsNotice, nonUsSecListingVenue, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../../utils/sec";
 import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
-import { listingAnnouncementsPage } from "../../../utils/exchange-announcements";
+import { listingAnnouncementsPage, type ExchangeAnnouncementsPage } from "../../../utils/exchange-announcements";
 import { form4TradeText, isOtherIssuerForm4, pricingSupplementTest } from "../../../utils/sec-filings";
 import { formatInsiderName } from "../insider/display";
 import { parseForm4Xml } from "../insider/insider-data";
@@ -281,8 +281,10 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   // A filing chosen in the command bar opens here once the pane is on its
   // ticker. The fund filings view (ETF) lists other forms, so it leaves it.
   useSecFilingFocusRequest(forms ? null : ticker?.metadata.ticker, setOpenItemId);
-  // A form list is the fund filings view (ETF), which US-listed funds open too.
-  const eligibleTicker = forms ? mayBeUsEquityOrFundTicker(ticker) : mayBeUsEquityTicker(ticker);
+  // A form list is the fund filings view (ETF), which US-listed funds open too. An equity listed abroad is looked up by
+  // its company, which files with the SEC (Sanofi) or files nothing, as `filings` reads it.
+  const eligibleTicker = forms ? mayBeUsEquityOrFundTicker(ticker) : mayBeSecEquityListing(ticker);
+  const equityAbroad = !forms && eligibleTicker && ticker ? nonUsSecListingVenue(ticker.metadata.ticker, ticker.metadata.exchange) : null;
   // A fund listed abroad (3042.HK) gets what `ticker` says of it and its issuer's page, as `fn ETF` does.
   // By its key or suffix (3042:HKEX, 3042.HK), else the venue its metadata names (3042 on HKEX).
   const abroadVenue = forms && !eligibleTicker && ticker
@@ -292,7 +294,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   const abroad = abroadVenue ? fundAbroadProfile(abroadFinancials) : null;
   const abroadPage = abroad?.page ?? null;
   // An equity listed abroad links the page its exchange publishes its announcements on (ASX's for NST.AX).
-  const announcements = !forms && !eligibleTicker && ticker
+  const announcements = !forms && (!eligibleTicker || equityAbroad) && ticker
     ? listingAnnouncementsPage(ticker.metadata.ticker, ticker.metadata.exchange)
     : null;
   // The fund view (ETF) leads with the fund's facts, which load apart from its filings, so a filings wall or failure leaves them on screen.
@@ -579,7 +581,14 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   if (loading && filings.length === 0) return withFacts(<Spinner label="Loading SEC filings..." />);
   // The fund view keeps its facts and query bar over an empty or failed filings list, which says why in the table.
   if (!forms && error && formFilings.length === 0) return <EmptyState title="SEC filings unavailable." message={error} />;
-  if (!forms && formFilings.length === 0) return renderFilingNotice(`No recent SEC filings for ${ticker.metadata.ticker}.`);
+  if (!forms && formFilings.length === 0) {
+    // A company from abroad that files nothing with the SEC says so and links its exchange's announcements, as `filings` does.
+    if (equityAbroad) {
+      const listing = { symbol: parsePublicTickerKey(ticker.metadata.ticker).symbol, exchange: equityAbroad, name: ticker.metadata.name ?? null };
+      return <NoSecReportsNotice notice={noSecReportsNotice(listing)} announcements={announcements} />;
+    }
+    return renderFilingNotice(`No recent SEC filings for ${ticker.metadata.ticker}.`);
+  }
   const symbol = ticker.metadata.ticker;
   const fundEmptyTitle = error ? t("SEC filings unavailable.") : tf("No fund filings for {symbol}.", { symbol });
   // A trust (IBIT, GLD) files 10-Ks and 10-Qs, not fund forms.
@@ -660,7 +669,7 @@ export const secModule: PluginModule = {
         keywords: ["sec", "filings", "10-k", "10-q", "8-k"],
         shortcut: "SEC",
         shortcutAliases: ["CF"],
-        canCreate: (_context, options) => !options?.ticker || mayBeUsEquityTicker(options.ticker),
+        canCreate: (_context, options) => !options?.ticker || mayBeSecEquityListing(options.ticker),
       }),
       headless: secHeadless,
     },
@@ -690,6 +699,7 @@ export const secModule: PluginModule = {
       order: 45,
       component: SecView,
       instruments: ["equity"],
+      // The research tab stays the US listings'; SEC on a listing abroad opens the pane (canCreate).
       isVisible: ({ ticker }) => mayBeUsEquityTicker(ticker),
     });
   },
@@ -708,6 +718,22 @@ function LabelledLink({ label, url, text }: { label: string; url: string; text: 
       <ExternalLinkText url={url} label={text} />
     </Box>
   );
+}
+
+/**
+ * SEC for a company listed abroad that files nothing with the SEC (8058:JPX):
+ * what `filings` prints, and the page its exchange publishes its announcements
+ * on as a link the pane menu lists too. The footer's `o` opens it.
+ */
+function NoSecReportsNotice({ notice, announcements }: { notice: string; announcements: ExchangeAnnouncementsPage | null }) {
+  const links = announcements
+    ? (
+      <PaneLinkMenu>
+        <LabelledLink label={announcements.name} url={announcements.url} text={new URL(announcements.url).hostname.replace(/^www\./, "")} />
+      </PaneLinkMenu>
+    )
+    : undefined;
+  return <EmptyState title={notice} actions={links} />;
 }
 
 /**

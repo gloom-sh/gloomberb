@@ -269,6 +269,8 @@ export function mapPricePoint(
     ...(point.partial === true ? { partial: true } : {}),
     ...(point.filled === true ? { filled: true } : {}),
     ...(point.unsettled === true ? { unsettled: true } : {}),
+    ...(typeof point.rescaled === "number" && Number.isFinite(point.rescaled) && point.rescaled > 0 && point.rescaled !== 1
+      ? { rescaled: point.rescaled } : {}),
     ...(typeof point.contract === "string" && FUTURES_CONTRACT_CODE.test(point.contract) ? { contract: point.contract } : {}),
   };
 }

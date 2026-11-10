@@ -155,6 +155,7 @@ import {
   historyThinNote,
   historyGapNote,
   historyJumpNote,
+  historyRescaleNote,
   historyUnbrokenFrom,
   dailyRebuildSpans,
   historyAllRangeYears,
@@ -1773,7 +1774,8 @@ async function loadListingHistory(
     ...window ? [...windowHistoryNotes(window, data), coverage ?? []]
       : range === "YTD" ? ytdHistoryNotes(data) : [...historyNotes(range, interval, data[0]?.date, Date.now(), coverage != null), coverage ?? []],
     // The status line says how far a bar still forming runs; the note is for the bars it does not name.
-    gaps ?? [], historyJumpNote(data) ?? [], historyFlagNote(data) ?? [], historyWickNote(data) ?? [], historyMissingVolumeNote(data) ?? [],
+    gaps ?? [], historyJumpNote(data) ?? [], historyRescaleNote(data) ?? [], historyFlagNote(data) ?? [], historyWickNote(data) ?? [],
+    historyMissingVolumeNote(data) ?? [],
     historyVenueVolumeNote(data) ?? [],
     // NG=F's rows are November's to the 23rd and December's from the 26th: each roll named, and thin bars said.
     historyRollNote(listing.symbol, data) ?? [], historyThinNote(data) ?? [],

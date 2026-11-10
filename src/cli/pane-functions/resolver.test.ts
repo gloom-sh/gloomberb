@@ -31,6 +31,7 @@ import { portfolioRiskHeadless } from "../../plugins/builtin/analytics/risk-head
 import { capabilityPluginState } from "./capabilities";
 import { newsWireModule } from "../../plugins/builtin/news/wire";
 import { shortStoryId, storyIdMatches } from "../../news/story-id";
+import type { SeriesSource } from "../series-search";
 
 const pane = (id: string): PaneDef => ({ id, name: id, component: () => null, defaultPosition: "right" });
 const template = (prefix: string, paneId: string, headless: HeadlessPaneDefinition): PaneTemplateDef => ({
@@ -151,6 +152,15 @@ test("a name that opens nothing lists the closest functions and where to search,
   expect(close?.details).toBe("Closest matches:\n  OVDV  Volatility Surface\nSearch the catalog: gloom catalog volsurf");
   // Near no code and found by no search: said plainly, with the whole catalog to look in.
   expect((await unknown("zzqxvb"))?.details).toBe("No function code is close to zzqxvb. List every function: gloom catalog");
+  // A word that names data no function is near points at the series the catalog finds for it.
+  const nikkei = { series: [
+    { id: "nkd", name: "Nikkei 225 (USD)", unit: "points", frequency: "daily", expression: "FUT:NKD", tags: ["nikkei"] },
+    { id: "niy", name: "Nikkei 225 (Yen)", unit: "points", frequency: "daily", expression: "FUT:NIY", tags: ["nikkei"] },
+  ] } as unknown as SeriesSource;
+  const named = await resolvePaneFunction(withSurface, context, parsePaneFunctionArgs(["nikkei"]), { seriesSources: [nikkei] })
+    .then(() => null, (error: unknown) => error as UnknownPaneFunctionError);
+  expect(named?.details).toBe("Series the catalog finds:\n  FUT:NKD  Nikkei 225 (USD)\n  FUT:NIY  Nikkei 225 (Yen)\n"
+    + "Chart one: gloom fn G FUT:NKD\nSearch the catalog: gloom catalog nikkei");
 });
 
 test("a code one slip from a function's (swapped, missing or extra letter) names it and the command that runs it", async () => {

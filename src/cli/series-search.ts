@@ -16,7 +16,7 @@ export interface SeriesMatch {
   exact: boolean;
 }
 
-interface SeriesSource {
+export interface SeriesSource {
   series?: readonly SeriesDefinition[];
 }
 

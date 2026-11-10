@@ -75,12 +75,13 @@ async function withPaneRuntime<T>(
     const registry = await createPaneCatalog(context, ctx.plugins);
     try {
       let parsed = await applyListingArgument(registry, context, parsePaneFunctionArgsFor(registry, args, ctx.cliOptions), settings.command);
-      let resolved = await resolvePaneFunction(registry, context, parsed, settings);
+      const resolution = { ...settings, seriesSources: ctx.plugins };
+      let resolved = await resolvePaneFunction(registry, context, parsed, resolution);
       // A function that widens its argument (RV's --peers) runs, reports and captures the widened one.
       const expansion = await withPersistedCloudSession(context, () => expandResolvedArgument(resolved, context, parsed.arg));
       if (expansion) {
         parsed = { ...parsed, arg: expansion.argument };
-        resolved = withExpansion(await resolvePaneFunction(registry, context, parsed, settings), expansion);
+        resolved = withExpansion(await resolvePaneFunction(registry, context, parsed, resolution), expansion);
       }
       return await run({ parsed, context, registry, resolved });
     } finally {

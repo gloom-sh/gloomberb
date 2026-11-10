@@ -5,6 +5,7 @@ import { SIGNED_IN_BROKER_TYPE } from "../../brokers/signed-in/profile";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import { t } from "../../i18n";
 import type { PluginRegistry } from "../../plugins/registry";
+import { useShortcut } from "../../react/input";
 import { RemoteUiScope } from "../../remote/semantic-tree";
 import { useAppDispatch, useAppSelector, useAppStateRef } from "../../state/app/context";
 import type { DataProvider } from "../../types/data-provider";
@@ -61,7 +62,7 @@ export function FormModalHost({ dataProvider, pluginRegistry, tickerRepository }
     tickerRepository,
   };
   // Set from the moment a form is asked for until its dialog closes.
-  const openRef = useRef<{ dismiss: (() => void) | null } | null>(null);
+  const openRef = useRef<{ dismiss: (() => void) | null; drawn: boolean } | null>(null);
   // One form asked for while another is open, such as the pane template a
   // plugin command creates from its own form's submit: it opens next.
   const queuedRef = useRef<FormModalRequest | null>(null);
@@ -76,6 +77,16 @@ export function FormModalHost({ dataProvider, pluginRegistry, tickerRepository }
     queuedRef.current = null;
     openRef.current?.dismiss?.();
   }, [commandBarOpen]);
+
+  // The dialog opens after the caller returns, and its keys are bound once it
+  // has drawn. A key sent with the one that asked for it, such as the Enter
+  // after a bar command, would reach the pane under it: it goes nowhere.
+  useShortcut((event) => {
+    const handle = openRef.current;
+    if (!handle || handle.drawn) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, { phase: "capture", allowEditable: true });
 
   useEffect(() => subscribeFormModalRequests(function open(request): boolean {
     if (openRef.current) {
@@ -109,12 +120,16 @@ export function FormModalHost({ dataProvider, pluginRegistry, tickerRepository }
       );
     }
 
-    const handle: { dismiss: (() => void) | null } = { dismiss: null };
+    const handle: { dismiss: (() => void) | null; drawn: boolean } = { dismiss: null, drawn: false };
     openRef.current = handle;
     if (stateRef.current.commandBarOpen) dispatch({ type: "SET_COMMAND_BAR", open: false });
     const runtime: FormModalRuntime = {
       getDeps: () => depsRef.current,
-      bindDismiss: (dismiss) => { handle.dismiss = dismiss; },
+      // Bound in the commit that draws the content, with its key handlers.
+      bindDismiss: (dismiss) => {
+        handle.dismiss = dismiss;
+        if (dismiss) handle.drawn = true;
+      },
     };
     // After the caller returns: a launch can come from inside a render effect,
     // and the terminal host commits a dialog synchronously.

@@ -5,7 +5,7 @@ import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../utils
 import {
   appTtmRate, BANK_ENTERPRISE_VALUE, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueLabel,
   enterpriseValueReconciliationNote,
-  epsConversionNote, fundamentalsCurrency, isBankEnterpriseValue, reportedEnterpriseValue, trailingEpsSourceNote, ttmAtAppRate, ttmConversionNote,
+  epsConversionNote, fundamentalsCurrency, isBankEnterpriseValue, reportedEnterpriseValue, trailingEpsFiscalYear, trailingEpsSourceNote, ttmAtAppRate, ttmConversionNote,
   withBankEnterpriseValue,
 } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
@@ -597,7 +597,7 @@ function consolidatedRangeBasis(quote: Quote): string | null {
 
 /** `Reporting currency not sourced for EPS (TTM) and Revenue (TTM).`: the trailing amounts shown bare. */
 function unsourcedCurrencyNote(metrics: readonly FundamentalsMetric[]): string | undefined {
-  const bare = metrics.filter((metric) => TRAILING_MONEY_METRICS.has(metric.label) && metric.text !== "—" && !metric.unit)
+  const bare = metrics.filter((metric) => TRAILING_MONEY_METRICS.has(metricName(metric.label)) && metric.text !== "—" && !metric.unit)
     .map((metric) => metric.label);
   if (bare.length === 0) return undefined;
   const list = bare.length === 1 ? bare[0]! : `${bare.slice(0, -1).join(", ")} and ${bare.at(-1)}`;
@@ -817,6 +817,8 @@ function fundamentalsMetrics(
   distributions: DividendDistributions | null = null,
   bond: FundBondFacts | null = null,
   codes = false,
+  /** The fiscal year the trailing EPS is (trailingEpsFiscalYear), named on the EPS and P/E lines in place of TTM. */
+  epsYear?: string,
 ): FundamentalsMetric[] {
   const signed = (value: number) => colorBySign(formatPercent(value), value);
   const receipt = fundamentals?.sharesOutstanding != null && sharesOutstandingInReceipts(quote, fundamentals, profile?.description);
@@ -824,7 +826,7 @@ function fundamentalsMetrics(
     { label: "Market Cap", ...marketCap },
     { label: "Enterprise Value", ...enterpriseValueFigure(enterpriseValue, withBankEnterpriseValue(fundamentals, profile)) },
     // A multiple over a loss is N/M, even beside a positive one the source served from an older period.
-    { label: "P/E (TTM)", ...multipleFigure(priceEarningsOnEarnings(fundamentals?.trailingPE, fundamentals?.eps)) },
+    { label: epsYear ? `P/E ${epsYear}` : "P/E (TTM)", ...multipleFigure(priceEarningsOnEarnings(fundamentals?.trailingPE, fundamentals?.eps)) },
     // Next fiscal year's consensus, named by its year: `Forward P/E FY27`.
     {
       label: forwardLabel(fundamentals),
@@ -833,7 +835,7 @@ function fundamentalsMetrics(
     { label: "PEG", ...multipleFigure(fundamentals?.pegRatio) },
     // EPS (TTM) is the last four filed quarters' (filed-trailing-eps), so its twelve months can end before those of
     // the flows below, Gloom Cloud's trailing block; Gloom Cloud's EPS standing in is noted (trailingEpsSourceNote).
-    { label: "EPS (TTM)", ...reportedMoney(fundamentals?.eps, fundamentals?.epsCurrency?.trim() || reportingCurrency, true, codes) },
+    { label: epsYear ? `EPS ${epsYear}` : "EPS (TTM)", ...reportedMoney(fundamentals?.eps, fundamentals?.epsCurrency?.trim() || reportingCurrency, true, codes) },
     {
       label: dividendYieldLabel(fundamentals?.dividendYieldBasis, bond),
       ...forwardYieldFigure(fundamentals, distributions, bond),
@@ -902,7 +904,8 @@ function forwardLabel(fundamentals: TickerFinancials["fundamentals"]): string {
 }
 
 /** A line's name without the fiscal year a forward figure names: `Forward P/E FY27` is Forward P/E. */
-const metricName = (label: string) => label.replace(/ FY\d{2}$/, "");
+/** A metric's name whatever period its label names: `Forward P/E FY28` is Forward P/E, `EPS FY Mar-26` is EPS (TTM). */
+const metricName = (label: string) => label.replace(/ FY\d{2}$/, "").replace(/^(EPS|P\/E) FY [A-Z][a-z]{2}-\d{2}$/, "$1 (TTM)");
 
 function withoutStockRows<T extends { label: string }>(metrics: T[], fund: boolean): T[] {
   return fund ? metrics.filter((metric) => !STOCK_ONLY_METRICS.has(metricName(metric.label))) : metrics;
@@ -932,9 +935,9 @@ function fundamentalsNotes(
     ? marketCapBasisNote(viewMarketCapitalization(priced.quote, fundamentals, regularSessionValuationPrice(priced.quote)))
     : undefined;
   const conversion = [...TRAILING_MONEY_METRICS].some(shown) ? ttmConversionNote(fundamentals) : undefined;
-  const eps = shown("EPS (TTM)") ? epsConversionNote(fundamentals) : undefined;
+  const eps = metrics.some((metric) => metricName(metric.label) === "EPS (TTM)" && metric.text !== "—") ? epsConversionNote(fundamentals) : undefined;
   const epsSource = trailingEpsSourceNote(fundamentals, { eps: shown("EPS (TTM)"), pe: shown("P/E (TTM)") });
-  const priceEarnings = metrics.some((metric) => metric.label === "P/E (TTM)" && typeof metric.value === "number")
+  const priceEarnings = metrics.some((metric) => metricName(metric.label) === "P/E (TTM)" && typeof metric.value === "number")
     ? convertedPriceEarningsNote(fundamentals, quoteCurrency)
     : undefined;
   // Why the EV is labelled, withdrawn or N/M; for an insurer's, what Gloom Cloud computed it from.
@@ -1067,7 +1070,8 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
     ? { text: `${formatCompact(capitalization.value)} ${capitalization.currency}`, value: capitalization.value, unit: capitalization.currency }
     : { text: "—" };
   const metrics = withoutStockRows(fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials),
-    fundamentalsCurrency(financials), undefined, snapshot.distributions ?? null, snapshot.bondFund ?? null, snapshot.currencyCodes === true),
+    fundamentalsCurrency(financials), undefined, snapshot.distributions ?? null, snapshot.bondFund ?? null, snapshot.currencyCodes === true,
+    trailingEpsFiscalYear(financials)),
   resolveTickerInstrumentKind(null, financials) === "fund");
   if (view === "fundamentals") {
     return [...metrics, ...floatAndShortInterestMetrics(quote, fundamentals, financials.profile)]
@@ -1421,7 +1425,7 @@ export async function buildTickerReport({
   // A listing of the last year may have no statements yet: its IPO says how recent it is.
   const listing = { listedSince: ipo ? ipo.deal.listingDate ?? ipo.deal.firstDay?.session ?? null : null };
   const metrics = withoutStockRows(fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns,
-    fundamentalsCurrency(financials, listing), { text: enterpriseValueText }, distributions, bondFund, codes), isFund);
+    fundamentalsCurrency(financials, listing), { text: enterpriseValueText }, distributions, bondFund, codes, trailingEpsFiscalYear(financials)), isFund);
   const reportedCurrency = financials.financialCurrency?.trim();
   const statements = [...financials.annualStatements, ...financials.quarterlyStatements];
   const fallbackCurrency = reportedCurrency && statements.every((row) => !row.currency?.trim() || row.currency.trim() === reportedCurrency)
@@ -1434,7 +1438,7 @@ export async function buildTickerReport({
   appendMetricSection(lines, "Fundamentals", metricLines(metrics));
   for (const note of fundamentalsNotes(priced, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
   // The trailing block beside statements in another currency, when no conversion says why.
-  const split = metrics.some((metric) => TRAILING_MONEY_METRICS.has(metric.label) && metric.text !== "—")
+  const split = metrics.some((metric) => TRAILING_MONEY_METRICS.has(metricName(metric.label)) && metric.text !== "—")
     ? ttmCurrencySplitNote(priced.fundamentals, [latestAnnual, latestQuarter].flatMap((row) => row ? [statementCurrency(row)] : []))
     : undefined;
   if (split) lines.push(cliStyles.muted(split));

@@ -203,6 +203,13 @@ export interface ResolvedSeriesMarketTimeBasis {
 export interface ResolvedSeries {
   id: string;
   label: string;
+  /**
+   * What a legend short of room shows before it cuts any of the label: a
+   * company's one series without its field ("8058 Mitsubishi" for
+   * "8058:JPX Close · Mitsubishi"), so five names cut alike do not read
+   * "8058 Close · M..." and "8031 Close · M...".
+   */
+  compactLabel?: string;
   color: string;
   unit: string;
   /** Unit of rawValue, retained when presentation transforms change unit. */
