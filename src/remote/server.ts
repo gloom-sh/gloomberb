@@ -46,7 +46,7 @@ export async function startRemoteControlServer(options: RemoteControlServerOptio
     startedAt: new Date().toISOString(),
     pidNamespace: currentPidNamespace(),
   };
-  // Quitting ends in `process.exit` without unmounting the app, so nothing else closes this server: its files go when the process does.
+  // A quit ends in `process.exit`, and the tree whose cleanup closes this server is not always unmounted first: the files go when the process does too.
   const removeAtExit = () => {
     try {
       removeRemoteEndpointFilesSync(options.dataDir, endpoint);
@@ -67,9 +67,14 @@ export async function startRemoteControlServer(options: RemoteControlServerOptio
   return {
     endpoint,
     close: async () => {
-      await closeHttpServer(httpServer);
-      await removeRemoteEndpointFiles(options.dataDir, endpoint);
-      process.off("exit", removeAtExit);
+      try {
+        // Before the server is closed, and without waiting: a quit that unmounts the app
+        // ends the process a moment later, and the files are how a client finds the server.
+        removeRemoteEndpointFilesSync(options.dataDir, endpoint);
+        process.off("exit", removeAtExit);
+      } finally {
+        await closeHttpServer(httpServer);
+      }
     },
   };
 }

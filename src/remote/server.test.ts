@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync } from "fs";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -70,7 +71,19 @@ describe("remote control server", () => {
     expect(await Bun.file(remoteEndpointPath(dataDir, "desktop")).exists()).toBe(false);
   });
 
-  // The terminal app quits through process.exit and never unmounts the tree whose cleanup closes the server.
+  // The terminal app quits through process.exit, which often comes before the tree whose cleanup closes the server is unmounted.
+  test("takes its endpoint files away before it waits for the server to close", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "gloom-remote-"));
+    tempDirs.push(dataDir);
+    const server = await startRemoteControlServer({ dataDir, appKind: "tui", handle: async () => ({ ok: true, data: null }) });
+    const closing = server.close();
+
+    // A process that exits right after asking never sees the close finish.
+    expect(existsSync(remoteEndpointPath(dataDir))).toBe(false);
+    expect(existsSync(remoteEndpointPath(dataDir, "tui"))).toBe(false);
+    await closing;
+  });
+
   test("removes its endpoint files when the process exits without closing", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "gloom-remote-"));
     tempDirs.push(dataDir);
