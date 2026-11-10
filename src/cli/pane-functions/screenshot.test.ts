@@ -1541,7 +1541,7 @@ describe("a board that grows to show every row (FUT)", () => {
 });
 
 // a five-name CMP folded its title to "+2" and its legend named 8053:JPX and 8002:JPX by their codes, so a good picture read "not usable".
-test("a shot shows a listing by its bare code where a legend names it so, and not inside another listing or number", () => {
+test("a shot shows a listing by its bare code where a legend names it so, and only as a whole token", () => {
   const visible = "CMP 8058:JPX · 8031:JPX · 8001:JPX +2\n8053 Close · Sumitomo +21.10% 8002 Marubeni +12.11% 58,775.50";
   expect(shotShowsText(visible, "8053:JPX")).toBe(true);
   expect(shotShowsText(visible, "8002:JPX")).toBe(true);
@@ -1550,5 +1550,13 @@ test("a shot shows a listing by its bare code where a legend names it so, and no
   expect(shotShowsText("8053:TWSE 18002", "8053:JPX")).toBe(false);
   expect(shotShowsText("8053:TWSE 18002", "8002:JPX")).toBe(false);
   expect(shotShowsText(visible, "Sumitomo")).toBe(true);
+  // Whole tokens only: a longer listing or a price holding the code is not it.
+  expect(shotShowsText("18058:JPX 8306 MUFG", "8058:JPX")).toBe(false);
+  expect(shotShowsText("Last 8058.50 ¥8058 8058,1", "8058:JPX")).toBe(false);
+  expect(shotShowsText("P/E 11.25", "1.2")).toBe(false);
+  expect(shotShowsText("P/E 1.2x", "1.2")).toBe(false);
+  expect(shotShowsText("FCF $1.2B (TTM)", "$1.2B")).toBe(true);
+  expect(shotShowsText("FCF $1.2B (TTM)", "(TTM)")).toBe(true);
+  expect(shotShowsText("Sumitomo Corp.", "Sumitomo Corp.")).toBe(true);
 });
 
