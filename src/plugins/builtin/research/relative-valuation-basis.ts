@@ -69,7 +69,7 @@ export function fundamentalsBasisParts(rows: readonly BasisRow[], revenueGrowthH
  * filed quarters, else `FCF Yield of 8058:JPX, 8001:JPX: filed quarters to
  * 2026-06-30` naming those that do; null when none does.
  */
-export function filedFreeCashFlowText(rows: readonly BasisRow[], header: string): string | null {
+function filedFreeCashFlowText(rows: readonly BasisRow[], header: string): string | null {
   const filed = rows.filter((row) => row.fcfYield != null && row.fcfYieldThrough);
   const dates = peerDatesText(filed.map(({ symbol, fcfYieldThrough }) => ({ symbol, date: fcfYieldThrough })));
   if (!dates) return null;

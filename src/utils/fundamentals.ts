@@ -474,7 +474,7 @@ export function trailingEpsFiscalYear(
 }
 
 /** The end of the fiscal year `trailingEpsFiscalYear` names, YYYY-MM-DD. */
-export function trailingEpsFiscalYearEnd(
+function trailingEpsFiscalYearEnd(
   financials: Pick<TickerFinancials, "fundamentals" | "annualStatements">,
   now = Date.now(),
 ): string | undefined {
