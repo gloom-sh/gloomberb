@@ -58,7 +58,7 @@ const DAY_MS = 86_400_000;
  * legend reads that day as missing instead of carrying the day before:
  * a day the publisher has not completed, such as the day the clocks go back.
  */
-export function withMissingDays(points: readonly TimeSeriesPoint[]): TimeSeriesPoint[] {
+function withMissingDays(points: readonly TimeSeriesPoint[]): TimeSeriesPoint[] {
   const out: TimeSeriesPoint[] = [];
   for (const point of points) {
     const previous = out.at(-1);
