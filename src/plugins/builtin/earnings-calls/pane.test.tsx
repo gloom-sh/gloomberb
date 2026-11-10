@@ -320,11 +320,13 @@ for (const width of [48, 80, 120]) {
 }
 
 
-test("a call held in Chinese says it is translated, and g shows it as it was said; an English call has no original", async () => {
+test("a call held in Chinese says it is translated, and g shows the machine transcript it was translated from", async () => {
   signIn();
   const said = "各位投资者大家好 欢迎参加中期业绩发布会 首先由财务总监介绍上半年的经营业绩";
+  // Transcribed from its recording: its turns carry start times.
+  const turns = [{ speaker: "Operator", text: "Welcome to the interim results.", isQa: false, startSeconds: 0 }];
   setCloudApiFetchTransport(async (url) => new URL(String(url)).pathname.includes("FIRST-call")
-    ? Response.json({ ...transcript("FIRST"), language: "chinese", isTranslated: true, originalText: said })
+    ? Response.json({ ...transcript("FIRST"), turns, language: "chinese", isTranslated: true, originalText: said })
     : Response.json({ calls: [call("FIRST")] }));
   await mount(120);
   await press("return");
@@ -335,7 +337,7 @@ test("a call held in Chinese says it is translated, and g shows it as it was sai
   await framesUntil(() => tui.frame().includes("各位投资者大家好"));
   const original = tui.frame();
   expect(original).toContain("中期业绩发布会");
-  expect(original).toContain("in Chinese");
+  expect(original).toContain("machine transcript, in Chinese");
   expect(original).not.toContain("FIRST CONTROLLED SUMMARY");
 });
 

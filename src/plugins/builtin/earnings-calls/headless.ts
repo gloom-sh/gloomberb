@@ -42,6 +42,7 @@ import { callsLockNote } from "./lock-note";
 import {
   buildTranscriptSegments,
   findCallForQuarter,
+  originalIsMachineTranscript,
   sortCallsNewest,
   translatedFrom,
   type TranscriptSection,
@@ -216,10 +217,14 @@ function transcriptResult(
   const rows = segments.slice(offset, offset + limit).map((segment) => ({ ...segment }));
   const hasMore = offset + rows.length < segments.length;
   const language = translatedFrom(transcript);
+  const machine = originalIsMachineTranscript(transcript);
+  const said = language ? ` in ${language}` : "";
   const translation = language === null ? null
     : section === "original"
-      ? `The call as said${language ? ` in ${language}` : ""}, before translation.`
-      : `Translated into English${language ? ` from ${language}` : ""}; --section original reads the call as said.`;
+      ? machine
+        ? `A machine transcript of the call's recording${said}, before translation; it can mishear names and figures.`
+        : `The call as published${said}, before translation.`
+      : `Translated into English${language ? ` from ${language}` : ""}; --section original reads ${machine ? "the machine transcript it was translated from" : "the call as published"}.`;
 
   return {
     columns: TRANSCRIPT_COLUMNS,

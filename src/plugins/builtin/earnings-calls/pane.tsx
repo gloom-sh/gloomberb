@@ -52,7 +52,7 @@ import { isPermanentClientError } from "../../../api-client/errors";
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
 import { callPeriod, callTitle, eventLabelOf, formatCallDate, formatDuration, formatSentiment } from "./format";
-import { findCallForQuarter, findInLines, MIN_FIND_LENGTH, translatedFrom, turnParagraphs } from "./model";
+import { findCallForQuarter, findInLines, MIN_FIND_LENGTH, originalIsMachineTranscript, translatedFrom, turnParagraphs } from "./model";
 import { READER_TABS, TranscriptView, type ReaderTab, type TranscriptPlayback } from "./transcript-view";
 import { PLAYBACK_RATES, SEEK_STEP_SECONDS, useCallPlayback } from "./use-call-playback";
 import { callAway, callCountdown, callStartText, isUpcomingCall, nextCall } from "./upcoming";
@@ -871,7 +871,7 @@ function CallsListView({
           id: "translated",
           parts: [{
             text: shownTab === "original"
-              ? (translatedFromLanguage ? `in ${translatedFromLanguage}` : "original language")
+              ? `${selectedTranscript && originalIsMachineTranscript(selectedTranscript) ? "machine transcript, " : ""}${translatedFromLanguage ? `in ${translatedFromLanguage}` : "original language"}`
               : `translated${translatedFromLanguage ? ` from ${translatedFromLanguage}` : ""}`,
             tone: "muted",
           }],

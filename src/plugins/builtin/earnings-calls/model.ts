@@ -107,6 +107,16 @@ export function originalParagraphs(text: string | null | undefined): string[] {
 const LANGUAGE_NAMES = new Intl.DisplayNames(["en"], { type: "language" });
 
 /**
+ * The original of a translated call is a machine transcript of its recording,
+ * names and figures misheard at times, when the transcript was made from the
+ * recording (its turns carry start times); a record the company or the
+ * exchange published as a document has none.
+ */
+export function originalIsMachineTranscript(transcript: Pick<CloudEarningsTranscriptPayload, "turns">): boolean {
+  return transcript.turns.some((turn) => turn.startSeconds != null);
+}
+
+/**
  * The language a translated call was held in, by name ("Chinese"), from the
  * stored code or name; null for a call that is not translated. "" when the
  * call is translated and its language is not known.
