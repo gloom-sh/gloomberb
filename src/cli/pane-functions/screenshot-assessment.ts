@@ -160,8 +160,10 @@ export function assessPaneScreenshot(
   // Layouts and the other panes that are surfaces to operate have no rows to count: a capture of one is not empty for that.
   const interactive = !isDataPaneForDomFallback(resolved.pane);
   // A pane that marks no rows, labeled values or plotted values (DIAG's prose, CORR's matrix over the
-  // symbols it chose itself) is read by the figures its body shows; one whose data is checked another way is not.
-  const contentShown = rowCount === 0 && !evidenceHook && !requiresStructuredDataEvidence(resolved) && shotShowsContent(render);
+  // symbols it chose itself) is read by the figures its body shows; one whose data is checked another way is not,
+  // nor one that locks or walls off any of it: what shows beside a Pro lock is not the pane asked for.
+  const contentShown = rowCount === 0 && !evidenceHook && !requiresStructuredDataEvidence(resolved) && !render.accessGate
+    && shotShowsContent(render);
   // The capture's refusal of a request (chat, a team's) drawn where the pane's content goes is not the pane.
   const refused = shotShowsRefusal(render);
   const empty = render.loadingStateDetected
@@ -244,9 +246,10 @@ function unquotedHoldingsNotice(resolved: ResolvedPaneFunction, payload: Desktop
 }
 
 /**
- * Blocks with a figure a pane's body shows outside its controls, chrome and
- * charts (`contentFigures`) that make it data: a form's hint ("Up to 4
- * letters") or a date beside an empty message is fewer.
+ * Blocks with a figure a pane's body shows outside its controls, chrome,
+ * charts and labels (`countContentFigures`) that make it data: a form's hint
+ * ("Up to 4 letters"), a page counter or a date beside an empty message is
+ * fewer.
  */
 const MIN_CONTENT_FIGURES = 4;
 

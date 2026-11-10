@@ -674,6 +674,9 @@ describe("a capture of a pane that marks no rows", () => {
     expect(assess(diag, { contentFigures: 1 })).toMatchObject({ usable: false, empty: true });
     expect(assess(diag, { contentFigures: 24, emptyStateDetected: true })).toMatchObject({ usable: false, empty: true });
     expect(assess(diag, { contentFigures: 24, errorStateDetected: true })).toMatchObject({ usable: false });
+    // Figures beside a Pro lock or a sign-in wall are not the pane asked for.
+    expect(assess(diag, { contentFigures: 24, accessGate: "pro" })).toMatchObject({ usable: false });
+    expect(assess(diag, { contentFigures: 24, accessGate: "sign-in" })).toMatchObject({ usable: false });
   });
 
   // CHAT drew the capture proxy's refusal as its content and reported Status complete.
