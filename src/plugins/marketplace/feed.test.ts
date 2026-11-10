@@ -6,7 +6,7 @@ afterEach(() => setHttpFetchTransport(null));
 
 // An unknown code (a mistyped ticker) waited on the registry's three ten-second attempts, and the
 // request outlived the error the command printed.
-test("a short registry read is one request, cut off at its deadline, and kept for the next", async () => {
+test("a short registry read is one request, cut off at its deadline", async () => {
   const signals: AbortSignal[] = [];
   setHttpFetchTransport((_url, init) => new Promise<Response>((_resolve, reject) => {
     const signal = init!.signal!;
@@ -21,7 +21,5 @@ test("a short registry read is one request, cut off at its deadline, and kept fo
 
   const plugin = { id: "hackernews", name: "Hacker News" };
   setHttpFetchTransport(async () => Response.json({ plugins: [plugin] }));
-  expect(await readRegistryOnce(50)).toEqual([plugin] as never);
-  setHttpFetchTransport(() => Promise.reject(new Error("asked again")));
   expect(await readRegistryOnce(50)).toEqual([plugin] as never);
 });

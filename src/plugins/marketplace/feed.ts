@@ -80,17 +80,14 @@ export async function loadRegistry(options: { force?: boolean } = {}): Promise<F
 /**
  * The registry for a command that answers in a moment or not at all (the
  * command line's answer to a code it does not know, most often a mistyped
- * ticker): the copy this process already read, else one request cut off
- * after `timeoutMs` and never retried, so nothing is left running once it
- * gives up.
+ * ticker): one request, cut off after `timeoutMs` and never retried, so
+ * nothing is left running once it gives up. It shares nothing with
+ * `loadRegistry`; its caller keeps what it read.
  */
 export async function readRegistryOnce(timeoutMs: number): Promise<RegistryPlugin[]> {
-  if (cache && Date.now() - cache.fetchedAt < FRESH_MS) return cache.plugins;
   const response = await httpFetch(REGISTRY_URL, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(timeoutMs) });
   if (!response.ok) throw new Error(`Registry request failed (${response.status})`);
-  const plugins = parseFeed(await response.json());
-  cache = { plugins, fetchedAt: Date.now() };
-  return plugins;
+  return parseFeed(await response.json());
 }
 
 /**
