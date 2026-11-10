@@ -4,7 +4,7 @@ import type { DesktopBackendRequestMethod } from "../shared/protocol";
 import { encodeRpcValue } from "../shared/rpc-codec";
 import { createRpcLoopback } from "../../../test-support/rpc-loopback";
 import { flushCrashReports, installCrashReporter, reportCrash, resetCrashReporterForTests } from "../../../telemetry/crash-reports";
-import { isSleepRpcTimeout } from "../../../utils/rpc-timeout-error";
+import { isSleepRpcTimeout, REQUEST_TIMED_OUT_MESSAGE, type RpcTimeoutError } from "../../../utils/rpc-timeout-error";
 import { nameRpcTimeout } from "./rpc-timeout";
 
 afterEach(() => {
@@ -12,12 +12,12 @@ afterEach(() => {
   resetCrashReporterForTests();
 });
 
-test("Electrobun's request timeout names the request without its payload", async () => {
+test("Electrobun's request timeout reports the request without its payload, and a pane says only that it timed out", async () => {
   jest.useFakeTimers();
   // The view's limit, against a Bun side that never answers.
   const send = createRpcLoopback(() => new Promise(() => {}), { maxRequestTime: 120_000 });
   const request = (method: DesktopBackendRequestMethod, payload: unknown) =>
-    nameRpcTimeout(method, payload, () => send({ method, payload: encodeRpcValue(payload) })).catch((error: unknown) => error as Error);
+    nameRpcTimeout(method, payload, () => send({ method, payload: encodeRpcValue(payload) })).catch((error: unknown) => error as RpcTimeoutError);
 
   const failures = [
     request("update.check", { currentVersion: "0.15.8" }),
@@ -28,11 +28,12 @@ test("Electrobun's request timeout names the request without its payload", async
   jest.advanceTimersByTime(120_000);
   const [update, capability, external, gloom] = await Promise.all(failures);
 
-  expect(update!.message).toBe("RPC request timed out: update.check after ~120s");
+  expect(update!.message).toBe(REQUEST_TIMED_OUT_MESSAGE);
+  expect(update!.report).toBe("RPC request timed out: update.check after ~120s");
   expect((update!.cause as Error).message).toBe("RPC request timed out.");
-  expect(capability!.message).toBe("RPC request timed out: capability.invoke asset-data.cloud.getQuote after ~120s");
-  expect(external!.message).toBe("RPC request timed out: http.fetch external after ~120s");
-  expect(gloom!.message).toBe(`RPC request timed out: http.stream.open ${new URL(getCloudApiBaseUrl()).host}/cloud after ~120s`);
+  expect(capability!.report).toBe("RPC request timed out: capability.invoke asset-data.cloud.getQuote after ~120s");
+  expect(external!.report).toBe("RPC request timed out: http.fetch external after ~120s");
+  expect(gloom!.report).toBe(`RPC request timed out: http.stream.open ${new URL(getCloudApiBaseUrl()).host}/cloud after ~120s`);
 });
 
 test("a timeout that fires minutes or hours late, after the machine slept, is not reported as a crash", async () => {
@@ -40,7 +41,7 @@ test("a timeout that fires minutes or hours late, after the machine slept, is no
   const request = (maxRequestTime: number) => {
     const send = createRpcLoopback(() => new Promise(() => {}), { maxRequestTime });
     return nameRpcTimeout("desktop.syncMainState", null, () => send({ method: "desktop.syncMainState", payload: null }))
-      .catch((error: unknown) => error as Error);
+      .catch((error: unknown) => error as RpcTimeoutError);
   };
 
   const stalled = request(120_000);
@@ -56,7 +57,7 @@ test("a timeout that fires minutes or hours late, after the machine slept, is no
   const napError = await nap;
   jest.useRealTimers();
 
-  expect(sleptError.message).toBe("RPC request timed out: desktop.syncMainState after ~14410s");
+  expect(sleptError.report).toBe("RPC request timed out: desktop.syncMainState after ~14410s");
   expect(isSleepRpcTimeout(stalledError)).toBe(false);
   expect(isSleepRpcTimeout(sleptError)).toBe(true);
   expect(isSleepRpcTimeout(napError)).toBe(true);

@@ -1,6 +1,6 @@
 import {
-  GLOOM_CLOUD_HTTP_CONNECTION_ID,
   GLOOM_CLOUD_SOCKET_CONNECTION_ID,
+  recoversDataRequests,
   type ConnectionHealthRegistry,
 } from "../core/connection-health";
 import type { MarketDataCoordinator } from "./coordinator";
@@ -14,15 +14,16 @@ export const QUOTE_STREAM_DOWN_GRACE_MS = 3_000;
 
 /**
  * Keeps the market data in step with the data service's connection: what
- * failed while the service was unreachable is asked again once it answers,
- * and streamed prices read as stale while the quote stream is down.
+ * failed while the service (or the desktop bridge to it) gave no answer is
+ * asked again once it answers, and streamed prices read as stale while the
+ * quote stream is down.
  */
 export function followDataServiceHealth(
   health: ConnectionHealthRegistry,
   coordinator: Pick<MarketDataCoordinator, "reloadAfterOutage" | "setQuoteStreamDown">,
 ): () => void {
   const stopRecovery = health.subscribeRecovery((sourceId) => {
-    if (sourceId === GLOOM_CLOUD_HTTP_CONNECTION_ID) coordinator.reloadAfterOutage();
+    if (recoversDataRequests(sourceId)) coordinator.reloadAfterOutage();
   });
 
   /** The stream has been open since it was last torn down on purpose: only then can it go down. */

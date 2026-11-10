@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID } from "../core/connection-health";
+import { connectionHealth, recoversDataRequests } from "../core/connection-health";
 import { logFailure } from "../utils/log-failure";
 
 interface ResourceState<T> {
@@ -91,14 +91,15 @@ export function useAsyncResource<T>(
     : keepPreviousData && loader ? { ...state, loading: true, error: null }
       : { data: null, loading: !!loader, error: null, updatedAt: null };
 
-  // A load that failed is asked again once the data service answers after an
-  // outage, so a pane recovers by itself instead of keeping the failure.
+  // A load that failed is asked again once the data service (or the desktop
+  // bridge) answers after an outage, so a pane recovers by itself instead of
+  // keeping the failure.
   const failedRef = useRef(false);
   failedRef.current = !!loader && error !== null && !loading;
   useEffect(() => {
     if (!loader) return;
     return connectionHealth.subscribeRecovery((sourceId) => {
-      if (sourceId === GLOOM_CLOUD_HTTP_CONNECTION_ID && failedRef.current) load();
+      if (recoversDataRequests(sourceId) && failedRef.current) load();
     });
   }, [load, loader]);
   const status = error !== null ? "error" : data !== null ? "loaded" : loading ? "loading" : "idle";
