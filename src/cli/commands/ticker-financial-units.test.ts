@@ -409,6 +409,21 @@ test("a pence-quoted range shares one decimal count, other ranges are unchanged"
   expect(abroad).not.toContain("odd lots");
 });
 
+// CL=F read "52W Range $54.97999954 - $119.48000336": the year's float32 bars, printed to every digit.
+test("a 52-week range from float32 bars prints at the instrument's decimals", async () => {
+  const f32 = Math.fround;
+  const crude = { ...quote, symbol: "CL=F", instrumentType: "FUTURE", price: 86.19, previousClose: 86.85, open: 86.43, low: 83.88, high: 86.93,
+    low52w: f32(54.98), high52w: f32(119.48), exchangeName: "NYM", listingExchangeName: "NYM" };
+  expect([crude.low52w, crude.high52w]).toEqual([54.97999954223633, 119.4800033569336]);
+  expect(await report({ quote: crude, annualStatements: [], quarterlyStatements: [], priceHistory: [] })).toContain("52W Range $54.98 - $119.48\n");
+  // A yen future keeps its sixth decimal, and a stock its cents.
+  const yen = { ...crude, symbol: "6J=F", price: 0.006545, previousClose: 0.00655, open: 0.006548, low: 0.006521, high: 0.00656,
+    low52w: f32(0.006345), high52w: f32(0.007155) };
+  expect(await report({ quote: yen, annualStatements: [], quarterlyStatements: [], priceHistory: [] })).toContain("52W Range $0.006345 - $0.007155\n");
+  const stock = { ...quote, instrumentType: "EQUITY", previousClose: 99.8, low52w: f32(71.1), high52w: f32(131.37) };
+  expect(await report({ quote: stock, annualStatements: [], quarterlyStatements: [], priceHistory: [] })).toContain("52W Range $71.10 - $131.37\n");
+});
+
 test("share counts say ADR equivalent where the service puts them on the receipts, and the profile decides only without it", async () => {
   const profile = { description: "BHP Group Ltd. Sponsored ADR is an American depositary receipt representing two ordinary shares of BHP Group Limited." };
   const statements = (shareBasis: "depositary_receipt" | "ordinary" | undefined, dilutedShares: number) => ({
