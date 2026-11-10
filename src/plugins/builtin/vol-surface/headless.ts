@@ -9,8 +9,8 @@ import { IMPLIED_VOL_WORDS, skewHeader } from "../iv-history/format";
 import { formatStrikeLabel } from "../../../utils/options";
 import { formatModelSpotPrice } from "../options/model-spot";
 import { createSurfaceDependencies, loadVolatilitySurface } from "./client";
-import { loadSurfaceEvents, surfaceEventLabel, surfaceEventReadings, type SurfaceEventReading, type SurfaceEvents } from "./events";
-import { MACRO_EVENT_LABELS } from "../macro-day/releases";
+import { approximatePercent, loadSurfaceEvents, surfaceEventHistory, surfaceEventReadings, surfaceReadingLabel, type SurfaceEventReading,
+  type SurfaceEvents } from "./events";
 import { buildSurfaceGrid, TERM_SLOPE_MIN_GAP_DAYS, type SurfaceGridOptions, type SurfaceSettings, type SurfaceSnapshot } from "./model";
 import { atCapturePrecision, formatCaptureTime, loadDatedSurface, storedSurfaceDate, type DatedSurfaceSnapshot } from "./stored";
 import { listingFateEmpty, loadListingFate } from "../../../tickers/listing-fate";
@@ -111,8 +111,7 @@ function smileSections(snapshot: SurfaceSnapshot, requested: number | null): {
 
 function termSection(snapshot: SurfaceSnapshot, readings: readonly SurfaceEventReading[]): HeadlessBundleSection {
   // The first expiry past a scheduled release names it: the step in its IV is the release's.
-  const marks = new Map<number, string[]>();
-  for (const reading of readings) if (reading.after != null) marks.set(reading.after, [...marks.get(reading.after) ?? [], surfaceEventLabel(reading.event)]);
+  const marks = new Map(readings.flatMap((reading) => reading.after == null ? [] : [[reading.after, surfaceReadingLabel(reading)] as const]));
   return { title: "Term structure", columns: [
     { key: "expiry", header: "Expiry" }, { key: "days", header: "Days", format: days },
     { key: "atm", header: "ATM IV", format: iv }, { key: "put25", header: "25D put IV", format: iv }, { key: "call25", header: "25D call IV", format: iv },
@@ -120,30 +119,33 @@ function termSection(snapshot: SurfaceSnapshot, readings: readonly SurfaceEventR
     { key: "sigmaPercent", header: "1-sigma %", format: (value) => typeof value === "number" ? `${value.toFixed(2)}%` : "--" },
     ...(marks.size ? [{ key: "event", header: "Event" }] : []),
   ], rows: surfaceTermRows(snapshot).map((row) => ({ ...row, expiry: expiryLabel(row.expiration),
-    ...(marks.size ? { event: marks.get(row.expiration)?.join(", ") ?? "" } : {}) })) };
+    ...(marks.size ? { event: marks.get(row.expiration) ?? "" } : {}) })) };
 }
 
 /**
- * The next FOMC and CPI read off the expiries either side of each: the
- * forward vol between them and the event day's implied absolute move, beside
- * MDAY's average absolute move of the underlying on that release's days.
+ * The next FOMC and CPI read off the expiries either side of them: the
+ * forward vol between those expiries and the release days' approximate
+ * implied absolute move, beside MDAY's average absolute move of the
+ * underlying on each release's days. Releases between the same two expiries
+ * are one row.
  */
-function eventsSection(readings: readonly SurfaceEventReading[]): HeadlessBundleSection {
-  const percentMove = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--";
+function scheduledReleasesSection(readings: readonly SurfaceEventReading[]): HeadlessBundleSection {
   return { title: "Scheduled releases", columns: [
-    { key: "event", header: "Event" }, { key: "date", header: "Date" }, { key: "between", header: "Between expiries" },
-    { key: "forwardVol", header: "Forward vol", format: iv }, { key: "impliedMove", header: "Implied |move|", format: percentMove },
-    { key: "mdayMove", header: "MDAY avg |move|", format: percentMove }, { key: "mdayDays", header: "MDAY days" },
-  ], rows: readings.map((reading) => ({ event: MACRO_EVENT_LABELS[reading.event.kind], date: reading.event.date,
+    { key: "event", header: "Event" }, { key: "between", header: "Between expiries" },
+    { key: "forwardVol", header: "Forward vol", format: iv },
+    { key: "impliedMove", header: "Implied |move|", format: (value) => approximatePercent(typeof value === "number" ? value : null) },
+    { key: "mdayMove", header: "MDAY avg |move|" }, { key: "mdayDays", header: "MDAY days" },
+  ], rows: readings.map((reading) => ({ event: surfaceReadingLabel(reading),
     between: reading.after == null ? "none listed after it" : `${reading.before == null ? "now" : expiryLabel(reading.before)} to ${expiryLabel(reading.after)}`,
-    forwardVol: reading.forwardVol, impliedMove: reading.impliedMove,
-    mdayMove: reading.event.history?.meanAbs ?? null, mdayDays: reading.event.history?.count ?? 0 })) };
+    forwardVol: reading.forwardVol, impliedMove: reading.impliedMove, mdayMove: surfaceEventHistory(reading.events),
+    mdayDays: reading.events.map((event) => event.history?.count ?? 0).join("/") })) };
 }
 
 /** What the releases section reads, one line each. */
 const EVENT_NOTES = [
-  "Forward vol is the ATM IV between the expiries either side of a release (from now when none settles before it), from their total variances. Implied |move| is the release day's: that variance less an ordinary day's on the stretch's other calendar days, as a mean absolute move (sqrt(2/pi) sigma). An ordinary day's vol is the earlier expiry's ATM IV, or with none, the forward vol past the later one.",
-  "MDAY avg |move| is the underlying's average absolute close-to-close move on that release's days over five years (fn MDAY).",
+  "Forward vol is the ATM IV between the expiries either side of a release (from now when none settles before it), from their total variances.",
+  "Implied |move| is approximate (≈): that variance less an ordinary day's on the stretch's other calendar days, as a mean absolute move (sqrt(2/pi) sigma). The ordinary day's vol is the earlier expiry's ATM IV; with no expiry before the release, the forward vol past the later one. Releases between the same two expiries share one row and one move.",
+  "MDAY avg |move| is the underlying's average absolute close-to-close move on each release's days over five years (fn MDAY), one figure per release.",
 ];
 
 function skewSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
@@ -293,7 +295,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     const smile = tab === "smile" ? smileSections(snapshot, requested) : null;
     // The report prints the view it was asked for, as the pane opens on it.
     const view: HeadlessBundleSection[] = tab === "smile" ? smile!.sections
-      : tab === "term" ? [termSection(snapshot, readings), ...readings.length ? [eventsSection(readings)] : []]
+      : tab === "term" ? [termSection(snapshot, readings), ...readings.length ? [scheduledReleasesSection(readings)] : []]
       : tab === "skew" ? [skewSection(snapshot)] : tab === "forwards" ? [forwardsSection(snapshot)]
       : surfaceSections(snapshot, axis, args.options.tenors as "listed" | "fixed");
     const dvol = dvolLoad ? await dvolLoad : null;

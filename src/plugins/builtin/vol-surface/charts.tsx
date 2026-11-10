@@ -8,7 +8,7 @@ import { formatStrikeLabel } from "../../../utils/options";
 import { evaluateSmile, optionDelta } from "../shared/volatility";
 import { buildSurfaceGrid, deltaBasis, evaluateSurfaceSmile, type SurfaceExpiry, type SurfaceSnapshot } from "./model";
 import { expiryLabel, formatPrice } from "./tables";
-import { surfaceEventLabel, surfaceEventSummary, type SurfaceEventReading } from "./events";
+import { expiryDay, surfaceEventSummary, surfaceReadingShortLabel, type SurfaceEventReading } from "./events";
 import { MACRO_EVENT_LABELS } from "../macro-day/releases";
 
 const calendarDaysBetween = (from: string, to: string) => (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000;
@@ -113,9 +113,11 @@ export function TermChart({ snapshot, width, height, focused = false, events = [
   const xMarkers: StaticChartXMarker[] = events.flatMap((reading) => {
     const after = reading.after == null ? null : byExpiration.get(reading.after);
     if (!after || last <= first) return [];
-    const days = after.years * 365 - calendarDaysBetween(reading.event.date, expiryLabel(after.expiration));
-    const ratio = (scale(days) - first) / (last - first);
-    return ratio >= 0 && ratio <= 1 ? [{ id: reading.event.kind, xRatio: ratio, label: MACRO_EVENT_LABELS[reading.event.kind], color: colors.warning }] : [];
+    return reading.events.flatMap((event) => {
+      const days = after.years * 365 - calendarDaysBetween(event.date, expiryDay(after.expiration));
+      const ratio = (scale(days) - first) / (last - first);
+      return ratio >= 0 && ratio <= 1 ? [{ id: event.kind, xRatio: ratio, label: MACRO_EVENT_LABELS[event.kind], color: colors.warning }] : [];
+    });
   });
   const moveHeight = Math.min(7 + events.length, Math.max(2 + events.length, Math.floor(height / 4)));
   return <Box flexDirection="column" width={width} height={height}>
@@ -130,7 +132,7 @@ export function TermChart({ snapshot, width, height, focused = false, events = [
       formatXAxisCursorValue={(ratio) => `${dayLabel(ratio)} to expiry`} xMarkers={xMarkers} focused={focused} />
     {/* Takes what the chart's whole rows leave, so the list ends at the pane's edge on the desktop. */}
     <ScrollBox flexDirection="column" paddingX={1} height={moveHeight} flexGrow={1} scrollY focusable={false}>
-      {events.map((reading) => <KeyValueRow key={reading.event.kind} label={surfaceEventLabel(reading.event)} labelWidth={12}
+      {events.map((reading) => <KeyValueRow key={reading.events.map((event) => event.kind).join("+")} label={surfaceReadingShortLabel(reading)} labelWidth={12}
         width={Math.max(1, width - 2)} color={colors.warning} value={surfaceEventSummary(reading)} />)}
       {rows.map((expiry) => <KeyValueRow key={expiry.expiration}
         label={expiryLabel(expiry.expiration)} labelWidth={12} width={Math.max(1, width - 2)}

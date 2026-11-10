@@ -1,7 +1,7 @@
 import type { apiClient as cloudApiClient } from "../../../api-client";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { DataProvider } from "../../../types/data-provider";
-import { zonedDateKey } from "../../../utils/zoned-date-time";
+import { zonedDateKey, zonedDateTimeParts } from "../../../utils/zoned-date-time";
 import { lookupScheduledDates } from "../alerts/scheduled";
 import { fetchCpiBoard } from "../cpi/client";
 import { fetchRatePath } from "../rate-path/client";
@@ -13,6 +13,9 @@ import type { SurfaceExpiry } from "./model";
 /** The scheduled releases the term structure is read around. */
 type SurfaceEventKind = "fomc" | "cpi";
 const SURFACE_EVENT_KINDS: readonly SurfaceEventKind[] = ["fomc", "cpi"];
+/** New York's time of each release, in minutes after midnight: CPI at 08:30, an FOMC decision at 14:00. */
+const RELEASE_MINUTES: Record<SurfaceEventKind, number> = { cpi: 8 * 60 + 30, fomc: 14 * 60 };
+const NEW_YORK = "America/New_York";
 
 export interface SurfaceEvent {
   kind: SurfaceEventKind;
@@ -28,8 +31,8 @@ export interface SurfaceEvents {
   notes: string[];
 }
 
-/** The expiry's New York date: a stamp at its settlement or at UTC midnight of the day both read as that day. */
-const expiryDay = (expiration: number) => new Date(expiration * 1000).toISOString().slice(0, 10);
+/** The expiry's ISO date: a stamp at its settlement or at UTC midnight of the day both read as that day. */
+export const expiryDay = (expiration: number) => new Date(expiration * 1000).toISOString().slice(0, 10);
 
 /**
  * The listed expiries either side of an event: the last one that settles
@@ -58,19 +61,22 @@ export function eventExpiries(catalogue: readonly number[], events: readonly Pic
 }
 
 export interface SurfaceEventReading {
-  event: SurfaceEvent;
-  /** The last expiry before the release; null when the first live one is already past it, read from now. */
+  /** The releases between the same two expiries, in date order: one row reads them together. */
+  events: SurfaceEvent[];
+  /** The last expiry before the releases; null when the first live one is already past them, read from now. */
   before: number | null;
+  /** The first expiry after them; null when none is listed after them. */
   after: number | null;
   /** ATM IV over the stretch between the two expiries (from now with no expiry before), from their total variances; decimal annualized. */
   forwardVol: number | null;
   /**
-   * The event day's expected absolute move, decimal: the variance between the
-   * two expiries less an ordinary day's on the stretch's other calendar days,
-   * read as a normal move's mean absolute size, sqrt(2/pi) sigma, so it
-   * compares with MDAY's average absolute move. An ordinary day's vol is the
-   * earlier expiry's ATM IV, or with none, the forward vol past the later one.
-   * Null when the stretch prices no more than its ordinary days.
+   * The release days' expected absolute move together, decimal and
+   * approximate: the variance between the two expiries less an ordinary
+   * day's on each of the stretch's other calendar days, read as a normal
+   * move's mean absolute size, sqrt(2/pi) sigma, so it compares with MDAY's
+   * average absolute move. An ordinary day's vol is the earlier expiry's ATM
+   * IV, or with no expiry before, the forward vol past the later one. Null
+   * when the stretch prices no more than its ordinary days.
    */
   impliedMove: number | null;
 }
@@ -81,15 +87,25 @@ const DAY_YEARS = 1 / 365;
 const atm = (expiry: SurfaceExpiry | undefined) => expiry?.skew.atm ?? expiry?.atmIV ?? null;
 
 /**
- * Each event read off the fitted expiries either side of it, in the calendar
- * days the surface counts.
+ * The releases read off the fitted expiries either side of them, in the
+ * calendar days the surface counts. Releases between the same two expiries
+ * (FOMC on 9 Dec and CPI on 10 Dec, both between 4 and 11 Dec) share one
+ * reading: the stretch's variance is theirs together, so read apart each
+ * would count the other's.
  */
 export function surfaceEventReadings(expiries: readonly SurfaceExpiry[], catalogue: readonly number[],
   events: readonly SurfaceEvent[]): SurfaceEventReading[] {
   const byExpiration = new Map(expiries.map((expiry) => [expiry.expiration, expiry]));
-  return events.map((event) => {
+  const groups = new Map<string, { brackets: ReturnType<typeof eventBrackets>; events: SurfaceEvent[] }>();
+  for (const event of [...events].sort((a, b) => a.date.localeCompare(b.date))) {
     const brackets = eventBrackets(catalogue, event.date);
-    const empty = { event, before: brackets.before, after: brackets.after, forwardVol: null, impliedMove: null };
+    const key = `${brackets.before}:${brackets.after}`;
+    const group = groups.get(key) ?? { brackets, events: [] };
+    group.events.push(event);
+    groups.set(key, group);
+  }
+  return [...groups.values()].map(({ brackets, events: grouped }) => {
+    const empty = { events: grouped, before: brackets.before, after: brackets.after, forwardVol: null, impliedMove: null };
     const late = brackets.after == null ? undefined : byExpiration.get(brackets.after);
     const sigma2 = atm(late);
     if (!late || sigma2 == null) return empty;
@@ -111,21 +127,48 @@ export function surfaceEventReadings(expiries: readonly SurfaceExpiry[], catalog
     const span = late.years - startYears;
     const variance = sigma2 ** 2 * late.years - startVariance;
     const forwardVol = span > 0 && variance > 0 ? Math.sqrt(variance / span) : null;
-    const eventVariance = ordinary == null ? 0 : variance - ordinary ** 2 * Math.max(0, span - DAY_YEARS);
+    // Every release day is taken out of the ordinary days, not just one.
+    const eventVariance = ordinary == null ? 0 : variance - ordinary ** 2 * Math.max(0, span - grouped.length * DAY_YEARS);
     return { ...empty, forwardVol, impliedMove: eventVariance > 0 ? Math.sqrt(eventVariance) * Math.sqrt(2 / Math.PI) : null };
   });
 }
 
 const percent = (value: number | null | undefined, digits = 2) => value == null ? "--" : `${(value * 100).toFixed(digits)}%`;
+/** The implied move is an estimate: "≈1.01%". */
+export const approximatePercent = (value: number | null | undefined) => value == null ? "--" : `≈${percent(value)}`;
 
-/** One line for a narrow pane: "fwd 17.0% · implied 1.01% · MDAY 1.01%". */
+/** MDAY's average absolute move on each release's days: "1.01%", or "1.01/0.98%" for two releases read together. */
+export function surfaceEventHistory(events: readonly SurfaceEvent[]): string {
+  const moves = events.map((event) => event.history?.meanAbs);
+  if (moves.every((move) => move == null)) return "--";
+  return moves.length === 1 ? percent(moves[0]) : `${moves.map((move) => move == null ? "--" : (move * 100).toFixed(2)).join("/")}%`;
+}
+
+/** One line for a narrow pane: "fwd 17.0% · move ≈1.01% · MDAY 1.01%". */
 export function surfaceEventSummary(reading: SurfaceEventReading): string {
   if (reading.after == null) return "no listed expiry after it";
-  return `fwd ${percent(reading.forwardVol, 1)} · implied ${percent(reading.impliedMove)} · MDAY ${percent(reading.event.history?.meanAbs)}`;
+  return `fwd ${percent(reading.forwardVol, 1)} · move ${approximatePercent(reading.impliedMove)} · MDAY ${surfaceEventHistory(reading.events)}`;
 }
 
 /** "FOMC 12-09". */
-export const surfaceEventLabel = (event: Pick<SurfaceEvent, "kind" | "date">) => `${MACRO_EVENT_LABELS[event.kind]} ${event.date.slice(5)}`;
+const surfaceEventLabel = (event: Pick<SurfaceEvent, "kind" | "date">) => `${MACRO_EVENT_LABELS[event.kind]} ${event.date.slice(5)}`;
+/** "FOMC 12-09 + CPI 12-10". */
+export const surfaceReadingLabel = (reading: Pick<SurfaceEventReading, "events">) => reading.events.map(surfaceEventLabel).join(" + ");
+/** For a narrow row: "FOMC 12-09", or "FOMC+CPI" for releases read together, which the chart dates. */
+export const surfaceReadingShortLabel = (reading: Pick<SurfaceEventReading, "events">) => reading.events.length === 1
+  ? surfaceEventLabel(reading.events[0]!) : reading.events.map((event) => MACRO_EVENT_LABELS[event.kind]).join("+");
+
+/**
+ * The first New York day whose release of `kind` is still to come at `now`:
+ * today until the release's time (CPI at 08:30, an FOMC decision at 14:00),
+ * then tomorrow, so a release that has come out drops from the list.
+ */
+export function releaseSearchDay(kind: SurfaceEventKind, now: number): string {
+  const today = zonedDateKey(now, NEW_YORK);
+  const { hour, minute } = zonedDateTimeParts(now, NEW_YORK);
+  if (hour * 60 + minute < RELEASE_MINUTES[kind]) return today;
+  return new Date(Date.parse(`${today}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+}
 
 /**
  * The next scheduled FOMC decision and CPI release, as HIVG and the scheduled
@@ -139,12 +182,15 @@ export async function loadSurfaceEvents(
     marketData?: DataProvider; signal?: AbortSignal; now?: number },
 ): Promise<SurfaceEvents> {
   const now = options.now ?? Date.now();
+  const sources = {
+    earnings: async () => [],
+    cpi: () => fetchCpiBoard(options.apiClient),
+    fomc: async () => (await fetchRatePath(options.apiClient)).meetings,
+  };
+  // Each release is looked up from the first day it is still to come.
   const [dates, releases, history] = await Promise.all([
-    lookupScheduledDates(SURFACE_EVENT_KINDS.map((event) => ({ kind: "macro" as const, event })), {
-      earnings: async () => [],
-      cpi: () => fetchCpiBoard(options.apiClient),
-      fomc: async () => (await fetchRatePath(options.apiClient)).meetings,
-    }, zonedDateKey(now, "America/New_York"), now),
+    Promise.all(SURFACE_EVENT_KINDS.map((event) => lookupScheduledDates([{ kind: "macro", event }], sources, releaseSearchDay(event, now), now)))
+      .then((found) => new Map(found.flatMap((entries) => [...entries]))),
     loadMacroReleases({}, () => options.apiClient.getCloudMacroReleaseDays()),
     loadMacroDayHistory({ instrument, signal: options.signal }, options.marketData),
   ]);

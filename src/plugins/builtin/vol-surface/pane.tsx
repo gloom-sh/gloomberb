@@ -39,7 +39,7 @@ import {
 } from "../../../components/chart/surface3d/model";
 import { VolatilitySurface } from "./surface";
 import { SmileChart, TermChart } from "./charts";
-import { loadSurfaceEvents, surfaceEventReadings } from "./events";
+import { loadSurfaceEvents, releaseSearchDay, surfaceEventReadings } from "./events";
 import { surfaceCoordinateLabel } from "./headless";
 import { expiryLabel, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow,
   surfaceSkewRow, surfaceSpotBasisLabel } from "./tables";
@@ -259,8 +259,10 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     { id: "ivp", label: "IV pctl", value: wholeNumber(ivRank.percentile) },
   ] : coin && snapshot && !snapshot.stored ? dvolStats(dvol.data, surfaceThirtyDayAtm(snapshot)) : [];
   // A stored close is read on its own day, not around the releases still to come.
+  // A release that has come out since the dates were read drops at the next surface it is read against.
   const eventReadings = useMemo(() => surfaceEvents.data && snapshot && !snapshot.stored
-    ? surfaceEventReadings(snapshot.expiries, snapshot.catalogue, surfaceEvents.data.events) : [], [surfaceEvents.data, snapshot]);
+    ? surfaceEventReadings(snapshot.expiries, snapshot.catalogue,
+      surfaceEvents.data.events.filter((event) => event.date >= releaseSearchDay(event.kind, Date.now()))) : [], [surfaceEvents.data, snapshot]);
   const tableHeight = Math.max(3, height - chromeBarRows(nativePaneChrome) - tabRows - statGridRows(ivStats, width));
   const bitmapAvailable = !!useStaticChartBitmapSize(width, tableHeight);
   // A typed date (`--expiration 2027-01-15`) is that day's UTC midnight; the
@@ -545,9 +547,13 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
         ]}
         meta={!snapshot ? undefined : snapshot.stored
           ? `Stored close · spot ${formatModelSpotPrice(snapshot.spot)} · captured ${formatCaptureTime(snapshot.stored.capturedAt)} New York`
-          : [`Spot ${formatModelSpotPrice(snapshot.spot)}${quote?.currency ? ` ${quote.currency}` : ""}`,
+          : fitMetaParts([`Spot ${formatModelSpotPrice(snapshot.spot)}${quote?.currency ? ` ${quote.currency}` : ""}`,
             // The close a closed session's chain is priced at dates the chain too.
-            spotBasis, snapshot.spotBasis?.basis === "close" ? null : selectedExpiry?.asOf?.slice(0, 10)].filter(Boolean).join(" · ")} /> : null}
+            spotBasis, snapshot.spotBasis?.basis === "close" ? null : selectedExpiry?.asOf?.slice(0, 10)],
+          // A narrow terminal row keeps the spot whole and leaves out what follows it; the desktop clips in CSS.
+          nativePaneChrome ? null : width - 2 - QUERY_BAR_GAP
+            - ("Expiry ".length + expiryLabel(pinned ?? barExpiry?.expiration ?? 0).length + QUERY_BAR_GAP)
+            - (storedDates.length ? "Date ".length + (shownDate ?? "Live").length + QUERY_BAR_GAP : 0))} /> : null}
       <PaneStatusBody loading={active.loading && !snapshot && !fateNote}
       error={!snapshot && !fateNote ? active.error : null} empty={!!fateNote || !snapshot && !active.loading}
       emptyTitle={fateNote ?? undefined} subject="volatility surface">
@@ -559,6 +565,23 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
 }
 
 function noRefresh(): void {}
+
+/** The terminal query bar's gap between its controls and before its meta. */
+const QUERY_BAR_GAP = 2;
+/**
+ * The meta's parts, most important first, joined with " · " as far as they
+ * fit in `room` cells; the first always, whole. Without a room, all of them.
+ */
+function fitMetaParts(parts: ReadonlyArray<string | null | undefined>, room: number | null): string {
+  const present = parts.filter((part): part is string => !!part);
+  let text = present[0] ?? "";
+  for (const part of present.slice(1)) {
+    const next = `${text} · ${part}`;
+    if (room != null && next.length > room) break;
+    text = next;
+  }
+  return text;
+}
 
 const wholeNumber = (value: number | null) => value == null ? "--" : String(Math.round(value));
 /** Whether a settled live chain produced any clean quote, with the filter counts that explain why not. */
