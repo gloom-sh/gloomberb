@@ -23,7 +23,8 @@ test("overview and portfolio use the cap's explicit currency when a quote has no
   const data = makeFinancials({ quote: { symbol: "F:XNYS", currency: "USD", price: 14, change: 0, changePercent: 0, lastUpdated: 1 } });
   expect(getColumnValue(column, ticker, data, context).text).toBe("60");
   expect(getSortValue(column, ticker, data, context)).toBe(60);
-  expect(overview(data).find(({ label }) => label === "Market Cap")?.value).toBe("60 GBP");
+  // In the currency it is reported in, as the EV beside it is, with the base currency's figure after it.
+  expect(overview(data).find(({ label }) => label === "Market Cap")).toMatchObject({ value: "100 EUR", detail: "60 GBP" });
   expect(data.quote?.marketCap).toBeUndefined();
   expect(data.fundamentals).toEqual(fundamentals);
 });
@@ -32,7 +33,7 @@ test("fundamental caps remain available without reviving any price quote", () =>
   const data = makeFinancials();
   expect(getColumnValue(column, ticker, data, context).text).toBe("60");
   expect(getSortValue(column, ticker, data, context)).toBe(60);
-  expect(overview(data).find(({ label }) => label === "Market Cap")?.value).toBe("60 GBP");
+  expect(overview(data).find(({ label }) => label === "Market Cap")).toMatchObject({ value: "100 EUR", detail: "60 GBP" });
   expect(data.quote).toBeUndefined();
 });
 
@@ -40,7 +41,7 @@ test("missing FX never creates a comparable 1:1 market cap; overview retains exp
   const data = makeFinancials(); const exchangeRates = new Map<string, number>();
   expect(getColumnValue(column, ticker, data, { ...context, exchangeRates }).text).toBe("—");
   expect(getSortValue(column, ticker, data, { ...context, exchangeRates })).toBeNull();
-  expect(overview(data, exchangeRates).find(({ label }) => label === "Market Cap")?.value).toBe("100 EUR");
+  expect(overview(data, exchangeRates).find(({ label }) => label === "Market Cap")).toMatchObject({ value: "100 EUR", detail: undefined });
   expect(buildTrackedCurrencies([ticker], new Map([[ticker.metadata.ticker, data]]), null, "GBP")).toContain("EUR");
 });
 
@@ -48,7 +49,7 @@ test("a valid quote cap keeps precedence and its own currency", () => {
   const data = makeFinancials({ quote: { symbol: "F:XNYS", currency: "USD", marketCap: 200, price: 14, change: 0, changePercent: 0, lastUpdated: 1 } });
   expect(getColumnValue(column, ticker, data, context).text).toBe("100");
   expect(getSortValue(column, ticker, data, context)).toBe(100);
-  expect(overview(data).find(({ label }) => label === "Market Cap")?.value).toBe("100 GBP");
+  expect(overview(data).find(({ label }) => label === "Market Cap")).toMatchObject({ value: "200 USD", detail: "100 GBP" });
 });
 
 test("ticker and statement currencies cannot fill a missing capitalization currency", () => {

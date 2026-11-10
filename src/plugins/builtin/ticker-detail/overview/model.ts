@@ -206,16 +206,19 @@ export function buildOverviewStats({
     stats.push({ label: "Volume", value: formatCompact(volume, { fixedDecimals: true }) });
   }
   // Price-derived statistics follow the quote; see live-valuation for when a stored figure is kept.
+  // Market cap and EV read in the currency they are reported in, as the revenue and income beside them do, with
+  // the base currency's figure after them where it differs and a rate is held: 19.46T JPY 123.05B USD.
+  const inBase = (value: number, currency: string) => {
+    if (currency === baseCurrency) return undefined;
+    const converted = convertMarketCapitalization(value, currency, baseCurrency, marketCapExchangeRates);
+    return converted == null ? undefined : formatCompactCurrency(converted, baseCurrency, { fixedDecimals: true });
+  };
   const capitalization = liveMarketCapitalization(quote, fundamentals);
   if (capitalization) {
-    const converted = convertMarketCapitalization(capitalization.value, capitalization.currency, baseCurrency, marketCapExchangeRates);
     stats.push({
       label: "Market Cap",
-      value: formatCompactCurrency(
-        converted ?? capitalization.value,
-        converted == null ? capitalization.currency : baseCurrency,
-        { fixedDecimals: true },
-      ),
+      value: formatCompactCurrency(capitalization.value, capitalization.currency, { fixedDecimals: true }),
+      detail: inBase(capitalization.value, capitalization.currency),
     });
   }
   // A count read off a 10-K or 10-Q cover says when it was counted; the source's own is undated.
@@ -344,8 +347,10 @@ export function buildOverviewStats({
     stats.push({
       label: "EV",
       value: formatCompactCurrency(enterpriseValue, quoteCurrency),
-      // An insurer's: its investment book is not netted as cash.
-      detail: enterpriseValueComputed(priced) ? [`cap + debt - cash${minority}`, "computed"] : check?.investmentsKept ? ["investments in", "inv. in"] : undefined,
+      // An insurer's: its investment book is not netted as cash. How it was reached comes before the base figure.
+      detail: enterpriseValueComputed(priced)
+        ? [`cap + debt - cash${minority}`, "computed"]
+        : check?.investmentsKept ? ["investments in", "inv. in"] : inBase(enterpriseValue, quoteCurrency),
     });
   }
   if (finite(fundamentals?.beta)) {

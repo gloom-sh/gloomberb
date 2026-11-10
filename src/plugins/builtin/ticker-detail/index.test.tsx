@@ -556,7 +556,7 @@ describe("TickerResearchPane", () => {
     expect(frame).toContain("height:17");
   });
 
-  test("keeps quote prices native while converting market cap and position totals to base currency", async () => {
+  test("keeps quote prices and the market cap native while converting position totals to base currency", async () => {
     setSharedRegistryForTests(makeRegistry());
     setOptionsProvider(createProvider(false));
 
@@ -609,8 +609,10 @@ describe("TickerResearchPane", () => {
     await flushFrame();
 
     // The EUR rate arrives from the market data coordinator a frame later.
-    const frame = await tui.waitForFrameToContain("2.20B USD");
+    const frame = await tui.waitForFrameToContain("$1,375.00");
     expect(frame).toContain("€125");
+    // In EUR, as the EV and the statements are; too narrow here for its USD figure after it.
+    expect(frame).toContain("Market Cap        2.00B EUR");
     expect(frame).toContain("Account");
     expect(frame).toContain("Qty");
     expect(frame).toContain("Avg");
