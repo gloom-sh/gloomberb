@@ -120,6 +120,9 @@ test("a function with no code is listed by its name when the command line runs i
     for (const { token, templateId } of uncoded) expect(findPaneFunction(registry, token)?.template?.id).toBe(templateId);
     // The id a script saved still opens it.
     expect(findPaneFunction(registry, "twitter-feed-pane")?.template?.id).toBe("twitter-feed-pane");
+    // The UI audits still picture the panes left out, under the names their earlier pictures have.
+    const audited = (await buildPaneCatalogEntries(registry, context, { appPanes: true })).map((entry) => entry.token);
+    expect(audited).toEqual(expect.arrayContaining(["team-pane", "unread-inbox-pane", "new-portfolio-pane", "x-feed"]));
   } finally {
     registry.destroy();
     channels.mockRestore();

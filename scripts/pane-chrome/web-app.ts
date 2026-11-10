@@ -403,8 +403,12 @@ export async function shot(cdp: Cdp, scope: string | null, file: string, format:
   await Bun.write(file, Buffer.from(data, "base64"));
 }
 
-/** Every function in the catalog, from the CLI of the checkout at `root`. */
+/**
+ * Every function in the catalog, from the CLI of the checkout at `root`, with the panes it leaves out for a
+ * user (a team's page, the unread inbox): an older checkout ignores the variable and lists them anyway.
+ */
 export function readCatalog(root: string, home: string): CatalogEntry[] {
-  const listed = Bun.spawnSync(["bun", "src/cli/entry.ts", "catalog", "--all", "--json"], { cwd: root, env: { ...process.env, GLOOMBERB_HOME: home } });
+  const env = { ...process.env, GLOOMBERB_HOME: home, GLOOMBERB_CATALOG_APP_PANES: "1" };
+  const listed = Bun.spawnSync(["bun", "src/cli/entry.ts", "catalog", "--all", "--json"], { cwd: root, env });
   return JSON.parse(listed.stdout.toString()).data as CatalogEntry[];
 }

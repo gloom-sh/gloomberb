@@ -666,6 +666,9 @@ export async function runPaneFunctionHelp(command: string, args: string[], ctx: 
   }
 }
 
+/** Set to 1 by the UI audits (scripts/pane-chrome/web-app.ts), so `catalog` lists the panes it leaves out for a user. */
+const CATALOG_APP_PANES_ENV = "GLOOMBERB_CATALOG_APP_PANES";
+
 export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
   await runPaneCliCommand(ctx, async () => {
     const parsed = parsePaneCatalogArgs(args);
@@ -681,7 +684,8 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
     await withMarketData(ctx, async (context) => {
       const registry = await createPaneCatalog(context, ctx.plugins);
       try {
-        const entries = await buildPaneCatalogEntries(registry, context);
+        // The UI audits picture every pane the app opens, those the command line has nothing to show for too.
+        const entries = await buildPaneCatalogEntries(registry, context, { appPanes: process.env[CATALOG_APP_PANES_ENV] === "1" });
         const botSafeEntries = effectiveParsed.botSafeOnly
           ? entries.filter((entry) => entry.capability.botSafe)
           : entries;

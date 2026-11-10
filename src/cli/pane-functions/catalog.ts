@@ -341,12 +341,14 @@ function argExamples(headless: HeadlessPaneDefinition | undefined, context: Mark
 /**
  * The functions `gloom catalog` and search list. An unlisted one (`listed:
  * false`) is left out, and its pane is not listed in its place; `unlisted`
- * keeps it, for its own help (`fn ATTN --help`).
+ * keeps it, for its own help (`fn ATTN --help`). `appPanes` keeps the
+ * templates with no code `listsUncodedTemplate` leaves out, for the UI audits
+ * that picture every pane the app opens.
  */
 export async function buildPaneCatalogEntries(
   registry: PaneFunctionCatalog,
   context: MarketContext,
-  { unlisted = false }: { unlisted?: boolean } = {},
+  { unlisted = false, appPanes = false }: { unlisted?: boolean; appPanes?: boolean } = {},
 ): Promise<PaneCatalogEntry[]> {
   const entries: PaneCatalogEntry[] = [];
   const templatedPaneIds = new Set<string>();
@@ -360,11 +362,14 @@ export async function buildPaneCatalogEntries(
     if (!pane) continue;
     templatedPaneIds.add(pane.id);
     if (template.listed === false && !unlisted) continue;
-    if (!template.shortcut?.prefix && !unlisted && !listsUncodedTemplate(template, codedPaneIds)) continue;
-    // A name another function answers to first is listed by the template's id, which only it answers to.
+    const forUsers = !!template.shortcut?.prefix || listsUncodedTemplate(template, codedPaneIds);
+    if (!forUsers && !unlisted && !appPanes) continue;
+    // A name another function answers to first is listed by the template's id, which only it answers to, as is a
+    // pane only the UI audits list, so they keep picturing it under the name they always had.
     const code = paneFunctionCode(template, pane);
-    const answers = template.shortcut?.prefix || (lookup ??= buildPaneFunctionLookup(registry)).get(normalizeLookupToken(code)) === template;
-    const token = answers ? code : template.id;
+    const byName = !!template.shortcut?.prefix || ((forUsers || unlisted)
+      && (lookup ??= buildPaneFunctionLookup(registry)).get(normalizeLookupToken(code)) === template);
+    const token = byName ? code : template.id;
     entries.push(await buildTemplateCatalogEntry(template, pane, context, token));
   }
 
