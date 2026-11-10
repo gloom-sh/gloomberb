@@ -52,6 +52,7 @@ import { accessGateStatus, errorsAccessGate, isProLock, reportGateText } from ".
 import { noArgumentMessage } from "./capabilities";
 import { lockedHeadlessReport } from "./lock-note";
 import { resumeStateKey } from "../../plugins/registry/plugin-state";
+import { logFailure } from "../../utils/log-failure";
 
 interface SerializableHeadlessColumn {
   key: string;
@@ -233,6 +234,15 @@ export function createHeadlessPaneContext(
     resolveInstrument: (key) => resolveSavedInstrument(key, (saved) => context.store.loadTicker(saved)),
     readDeviceState: <T,>(pluginId: string, key: string) =>
       context.persistence?.pluginState.get<T>(pluginId, resumeStateKey(key))?.value ?? null,
+    readSavedState: <T,>(pluginId: string, key: string, schemaVersion?: number) => {
+      try {
+        // Strict: a copy this build cannot read stays for the app, where `get` would drop it.
+        const record = context.persistence?.pluginState.getStrict<T>(pluginId, key, schemaVersion);
+        return record ? { value: record.value, savedAt: record.updatedAt } : null;
+      } catch (error) {
+        return logFailure("headless.saved-state", `Read ${pluginId}'s saved ${key} failed`, null)(error);
+      }
+    },
     async resolveListing(symbol, argumentWith) {
       const command = `fn ${resolved.token}`;
       const read = await readBareListing(symbol, context, {

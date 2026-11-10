@@ -12,7 +12,9 @@ import type { NoteFileEntry, NotesListOptions, QuickNoteEntry } from "./files";
 export { NoteConflictError };
 
 const QUICK_KEY = /^__note-(.+)__$/;
-const CACHE_SCHEMA_VERSION = 1;
+/** The schema of a Cloud store's saved copy of its notes (`cloudNotesCacheKey`). */
+export const CLOUD_NOTES_CACHE_SCHEMA_VERSION = 1;
+const CACHE_SCHEMA_VERSION = CLOUD_NOTES_CACHE_SCHEMA_VERSION;
 
 /**
  * What the notes tabs need from wherever notes live. `NotesFiles` is the disk
@@ -49,6 +51,11 @@ export type NoteOwner = { kind: "user" } | { kind: "team"; teamId: string };
 
 export function noteOwnerKey(owner: NoteOwner): string {
   return owner.kind === "user" ? "user" : `team:${owner.teamId}`;
+}
+
+/** The plugin state key under which a Cloud store keeps its copy of an owner's notes, which it reads offline. */
+export function cloudNotesCacheKey(owner: NoteOwner): string {
+  return `notes:cache:${noteOwnerKey(owner)}`;
 }
 
 function noteOwnerScope(owner: NoteOwner): CloudNoteScope {
@@ -88,7 +95,7 @@ export class CloudNotesStore implements NotesStore {
 
   constructor(
     readonly owner: NoteOwner,
-    private readonly persistence: PluginPersistence | null,
+    private readonly persistence: Pick<PluginPersistence, "getState" | "setState"> | null,
     private readonly client: Pick<typeof apiClient, "isVerified" | "listCloudNotes" | "getCloudNote" | "putCloudNote" | "deleteCloudNote"> = apiClient,
   ) {}
 
@@ -97,7 +104,7 @@ export class CloudNotesStore implements NotesStore {
   }
 
   private get cacheKey(): string {
-    return `notes:cache:${noteOwnerKey(this.owner)}`;
+    return cloudNotesCacheKey(this.owner);
   }
 
   private readCache(): Cache {

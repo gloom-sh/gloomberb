@@ -6,6 +6,9 @@ import type {
   PaneDef,
   PaneTemplateDef,
 } from "../../../../types/plugin";
+import { createPaneCatalog } from "../../../../cli/pane-functions/discovery";
+import type { MarketContext } from "../../../../cli/types";
+import { createDefaultConfig } from "../../../../types/config";
 import { getLoadablePlugins } from "../../../catalog";
 import {
   buildASKGToolManifests,
@@ -120,6 +123,21 @@ describe("ASKG client manifest", () => {
       .map(({ name }) => name);
 
     expect(openers).toEqual([]);
+  });
+
+  // A user's quick notes stay out of the assistant unless they paste them, though `fn NOTE` reads them.
+  test("NOTE's report is no Ask Gloom tool", async () => {
+    const context = { config: createDefaultConfig("/tmp/askg-manifest-test") } as MarketContext;
+    const catalog = await createPaneCatalog(context, getLoadablePlugins());
+    try {
+      const note = [...catalog.paneTemplates.values()].find((entry) => entry.shortcut?.prefix === "NOTE");
+      expect(note?.headless ?? catalog.panes.get(note?.paneId ?? "")?.headless).toBeDefined();
+      const names = headlessTools(catalog).map(({ name }) => name);
+      expect(names).toContain("alrt");
+      expect(names).not.toContain("note");
+    } finally {
+      catalog.destroy();
+    }
   });
 
   test("every built-in option default fits its own schema, which the platform requires", () => {

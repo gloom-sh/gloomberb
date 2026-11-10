@@ -170,6 +170,13 @@ export interface HeadlessPaneContext {
    * synced), such as ALRT's log of the alerts the app fired; null when none.
    */
   readDeviceState?: <T = unknown>(pluginId: string, key: string) => T | null;
+  /**
+   * A plugin's saved state as the app left it on this device (its
+   * `ctx.persistence.getState`), read only, with when it was saved: NOTE's
+   * copy of the Gloom Cloud notes it read last, for a report offline. Null
+   * when none, or when this build cannot read it.
+   */
+  readSavedState?: <T = unknown>(pluginId: string, key: string, schemaVersion?: number) => { value: T; savedAt: number } | null;
 }
 
 export type HeadlessPaneRow = Record<string, unknown>;
@@ -796,6 +803,12 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
    * says what opening the pane does and is used when this is absent.
    */
   description?: string;
+  /**
+   * False keeps the report out of Ask Gloom's tools: it reads text the user
+   * wrote for themselves (NOTE's quick notes), which reaches the assistant
+   * only when they paste it. `fn` and the exports still run it.
+   */
+  askGloom?: false;
   argument: HeadlessPaneArgumentDef;
   /**
    * The data covers US listings only, named as a sentence starts ("Time and
