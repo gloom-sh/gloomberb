@@ -196,7 +196,7 @@ export function bondTapeRequests(query: BondQuery | null, today: string): BondRe
  * traded: what its ticker asks for, whatever names the tape publishes them
  * under (PING AN INSURANCE CO LTD for 2318).
  */
-export function linkedBondsRequest(cusips: readonly string[], today: string): BondRequest {
+function linkedBondsRequest(cusips: readonly string[], today: string): BondRequest {
   const linked = new Set(cusips.map((cusip) => cusip.toUpperCase()));
   return {
     filters: [TRADED],
@@ -489,7 +489,7 @@ export async function quotedIssuerListing(
 }
 
 /** A company's bonds as Gloom Cloud links them to it, by CUSIP. */
-export interface LinkedBonds {
+interface LinkedBonds {
   /** The company, as Gloom Cloud names it: `PING AN INSURANCE`. */
   company: string;
   cusips: string[];
