@@ -50,6 +50,7 @@ import {
   BROWSER_SIGN_IN_KEY,
   SKIP_DESKS_KEY,
   SKIP_PORTFOLIO_KEY,
+  SKIP_IN_FIELD_KEY,
   CONTINUE_KEY,
   BACK_KEY,
 } from "./onboarding-keyboard";
@@ -523,7 +524,8 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
                 <OnboardingButton
                   label="Skip"
                   variant="ghost"
-                  shortcut={cardKey(SKIP_PORTFOLIO_KEY, editingField)}
+                  // In the Ticker field s is typed, and F10 presses Skip there.
+                  shortcut={editingField ? SKIP_IN_FIELD_KEY : SKIP_PORTFOLIO_KEY}
                   disabled={positions.submitting}
                   onPress={skipPositions}
                 />

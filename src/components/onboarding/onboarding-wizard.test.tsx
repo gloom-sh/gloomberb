@@ -686,7 +686,7 @@ describe("OnboardingWizard", () => {
     ]);
   });
 
-  test("cannot be skipped or continued before the first position", async () => {
+  test("cannot be continued before the first position, and F10 in the Ticker field skips the step without leaving setup", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-required-portfolio-"));
     const pluginRegistry = createPluginRegistry();
     let completionCount = 0;
@@ -701,14 +701,17 @@ describe("OnboardingWizard", () => {
     await tui.setup().renderOnce();
 
     expect(tui.frame()).not.toContain("Skip setup");
-    await emitKeypress({ name: "f10" });
-    expect(completionCount).toBe(0);
     await pressEscape();
     await pressEnter();
     await act(async () => { await Bun.sleep(20); await tui.setup().renderOnce(); });
     expect(completionCount).toBe(0);
     expect(capturedConfig?.onboardingProgress?.stage ?? "portfolio").toBe("portfolio");
     expect(tui.frame()).toContain("What do you hold?");
+    // Enter put the Ticker field back in focus, where s is typed: the Skip button shows F10, which presses it.
+    expect(tui.frame()).toMatch(/Skip\s+F10/);
+    await emitKeypress({ name: "f10" });
+    await waitForFrame("What do you trade most?");
+    expect(completionCount).toBe(0);
   });
 
   test("remote control reads the terminal card as the setup form, adds and removes a position through it, and sends the step", async () => {
@@ -761,8 +764,8 @@ describe("OnboardingWizard", () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-skip-portfolio-"));
     await tui.render(<WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={createPluginRegistry()} />, { width: 80, height: 24 });
     await tui.setup().renderOnce();
-    // The ticker field has the keyboard, so s types there: Skip shows no key until Esc lets the field go.
-    expect(tui.frame()).toMatch(/Skip\s+Continue/);
+    // The ticker field has the keyboard, so s types there: Skip shows F10 until Esc lets the field go.
+    expect(tui.frame()).toMatch(/Skip\s+F10/);
     await pressEscape();
     await act(async () => { await tui.setup().renderOnce(); });
     expect(tui.frame()).toMatch(/Skip\s+s/);

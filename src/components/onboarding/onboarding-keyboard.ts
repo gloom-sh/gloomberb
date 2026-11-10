@@ -21,7 +21,8 @@ import { DESKS, type DeskKey } from "../../layout/desks";
 /**
  * Card keys, shown on the buttons they press. Letters only act while no field
  * is being typed in (Esc leaves the field first); F10, the old skip key, still
- * works everywhere.
+ * works everywhere, and is the key a Skip button shows while a field has the
+ * keyboard.
  */
 export const SKIP_SETUP_KEY = "s";
 export const KEEP_FREE_KEY = "f";
@@ -29,6 +30,8 @@ export const CONNECT_BROKER_KEY = "b";
 export const BROWSER_SIGN_IN_KEY = "b";
 export const SKIP_DESKS_KEY = "s";
 export const SKIP_PORTFOLIO_KEY = "s";
+/** What presses Skip while a field is being typed in, where its letter is typed. */
+export const SKIP_IN_FIELD_KEY = "F10";
 /** Each step's primary button (Continue, Start exploring) and its Back. */
 export const CONTINUE_KEY = "Enter";
 export const BACK_KEY = "Esc";
@@ -141,6 +144,11 @@ export function useOnboardingKeyboard({
 
     const handled = ((): boolean => {
       if (isPlainKey(event, "f10")) {
+        // Holding nothing, F10 presses the portfolio step's Skip: the key it shows while the Ticker field has the keyboard.
+        if (stage === "portfolio" && portfolioSub === "positions" && positionCount === 0 && !isBrokerCommitting) {
+          skipPositions();
+          return true;
+        }
         // The first run needs a holding; a run from Settings can be left as it was.
         if (isBrokerCommitting || ((stage === "portfolio" || stage === "desks") && !progress.rerun)) return true;
         if (stage === "upgrade" && !planAccess.hasProAccess) continueFree();
