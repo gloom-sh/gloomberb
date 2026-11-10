@@ -37,6 +37,7 @@ import {
 import { dailyFuturesHistory, loadPortfolioFuturesTerms, type PortfolioFuturesSources } from "../../../../portfolio/futures-terms";
 import { loadPurchaseDateCostFx, withPurchaseDateCostFx, type CostFxHistoryClient, type PurchaseDateCostFx } from "../../../../portfolio/cost-fx";
 import { apiClient } from "../../../../api-client";
+import { canonicalExchange, isUsListingExchange } from "../../../../utils/exchanges";
 import { formatUtcDayTime, parseReportTime } from "../../../../utils/utc-time";
 import { quoteFreshnessFields } from "../../shared/report-freshness";
 import { resolvePortfolioTotalsCurrency } from "../summary/totals";
@@ -44,6 +45,7 @@ import {
   EXTENDED_SESSION_LABELS,
   exchangeShortName,
   getActiveQuoteDisplay,
+  getCompletedRegularSessionDisplay,
   getExtendedSessionDisplay,
   quoteHeadlineTime,
   type ActiveQuoteDisplay,
@@ -827,7 +829,7 @@ function portfolioValuationFreshness(
     citeOldest: true,
     // A book across markets names each one's session and open: an HKEX book holding one US fund is not dated by the US day alone.
     datesEachVenue: true,
-    ...(note ? { note: `priced at ${valuationBasisLabel(valuation.basis, { futures: holdsFutures(valuation) })}` } : {}),
+    ...(note ? { note: `priced at ${valuationBasisText(valuation.basis, holdsFutures(valuation), marketsStillTrading(valuation))}` } : {}),
   }, undefined, now);
 }
 
@@ -836,9 +838,56 @@ export function holdsFutures(valuation: Pick<PortfolioValuation, "positions">): 
   return valuation.positions.some((entry) => entry.position && entry.futures);
 }
 
-/** `Priced at the latest print, extended hours included`: the line under a portfolio's title. */
-function valuationBasisLine(basis: PortfolioValuationBasis, futures: boolean): string {
-  return `Priced at ${valuationBasisLabel(basis, { futures })}`;
+/**
+ * `Priced at the latest print, extended hours included`: the line under a
+ * portfolio's title. At the close, a book with markets still trading names
+ * them, and the markets at their close (GLO-1950): `Priced at the regular
+ * close: BIST at its close; US still trading, at the latest print`.
+ */
+function valuationBasisLine(
+  basis: PortfolioValuationBasis,
+  futures: boolean,
+  markets: { closed: string[]; trading: string[] } | null = null,
+): string {
+  return `Priced at ${valuationBasisText(basis, futures, markets)}`;
+}
+
+/** What a book is priced at, after "Priced at", with the markets still trading at the close (`marketsStillTrading`). */
+export function valuationBasisText(
+  basis: PortfolioValuationBasis,
+  futures: boolean,
+  markets: { closed: string[]; trading: string[] } | null = null,
+): string {
+  const label = valuationBasisLabel(basis, { futures });
+  if (basis !== "regular-close" || !markets?.trading.length) return label;
+  const closed = markets.closed.length ? `${joinWords(markets.closed)} at ${markets.closed.length === 1 ? "its" : "their"} close; ` : "";
+  return `${label}: ${closed}${joinWords(markets.trading)} still trading, at the latest print`;
+}
+
+/** `US`, `US and BIST`, `US, LSE and BIST`. */
+function joinWords(words: readonly string[]): string {
+  return words.length <= 1 ? words.join("") : `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`;
+}
+
+/**
+ * The markets of a book's holdings, US listings as one, split into those
+ * whose regular session is over, which the close values, and those still in
+ * it, whose rows are at the latest print until their close; futures, at the
+ * settle, and options, at their mark, are neither. In the order the rows
+ * first name them.
+ */
+export function marketsStillTrading(valuation: Pick<PortfolioValuation, "positions">): { closed: string[]; trading: string[] } {
+  const states = new Map<string, boolean>();
+  for (const { quote, metrics, position, futures } of valuation.positions) {
+    if (!position || !quote || futures || metrics?.valuesAtMark) continue;
+    const exchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
+    if (!exchange) continue;
+    const market = isUsListingExchange(exchange) ? "US" : exchange;
+    const trading = getCompletedRegularSessionDisplay(quote) == null && quote.marketState === "REGULAR";
+    states.set(market, (states.get(market) ?? false) || trading);
+  }
+  const markets = [...states];
+  return { closed: markets.filter(([, trading]) => !trading).map(([market]) => market), trading: markets.filter(([, trading]) => trading).map(([market]) => market) };
 }
 
 /** What a row's price is when it is not a print or a close: a future's settlement, or a venue's nominal price. */
@@ -955,18 +1004,21 @@ async function showCollectionWithMarketData(
   // A watchlist's stale rows, named under the closing line that counts them.
   let staleNote: string | null = null;
 
+  const valuation = matchedPortfolio
+    ? await valuePortfolioPositions({ tickers: filtered, quotes, portfolioId: id, currency, baseCurrency: config.baseCurrency, toBase, basis, futures, purchaseDateFx,
+      previousRate: toBase.previousRate })
+    : null;
+
   if (!structured) {
     console.log(cliStyles.bold(displayName + (isPortfolio ? ` (${currency})` : "")));
     console.log(cliStyles.muted(`${filtered.length} ticker${filtered.length === 1 ? "" : "s"}`));
     const imported = matchedPortfolio ? importedFromText(matchedPortfolio) : null;
     if (imported) console.log(cliStyles.muted(imported));
-    if (isPortfolio) console.log(cliStyles.muted(valuationBasisLine(basis, futuresHeld.length > 0)));
+    if (isPortfolio) console.log(cliStyles.muted(valuationBasisLine(basis, futuresHeld.length > 0, valuation ? marketsStillTrading(valuation) : null)));
     console.log("");
   }
 
-  if (matchedPortfolio) {
-    const valuation = await valuePortfolioPositions({ tickers: filtered, quotes, portfolioId: id, currency, baseCurrency: config.baseCurrency, toBase, basis, futures, purchaseDateFx,
-      previousRate: toBase.previousRate });
+  if (matchedPortfolio && valuation) {
     // Exports carry no header line, so their source line names the basis.
     freshness = portfolioValuationFreshness(valuation, source, { note: structured });
     const {

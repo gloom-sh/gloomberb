@@ -156,6 +156,19 @@ describe("what a portfolio is priced at and when each row's price is from", () =
     }
   });
 
+  // `portfolio show Tarim --close` with New York open said "Priced at the regular close" over NYSE rows at 19:56 prints.
+  test("--close with a market still in its session says which markets are at their close and which still trade", async () => {
+    const weekend = quotes.XLK!;
+    quotes.XLK = sessionQuotes().regular;
+    setSystemTime(new Date("2026-10-09T17:05:00Z"));
+    try {
+      expect(await showText(["show", "Main", "--close"])).toContain("Priced at the regular close: XETRA at its close; US still trading, at the latest print");
+    } finally {
+      quotes.XLK = weekend;
+      setSystemTime();
+    }
+  });
+
   test("--close values every row at Last times its shares, totals them, and says the day's move and the close time", async () => {
     const text = await showText(["show", "Main", "--close"]);
     expect(text).toContain("Priced at the regular close");

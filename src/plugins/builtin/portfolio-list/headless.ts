@@ -20,7 +20,9 @@ import {
   listingLabel,
   loadCollectionQuotes,
   holdsFutures,
+  marketsStillTrading,
   portfolioDayMove,
+  valuationBasisText,
   valuationTimeText,
   valuePortfolioAllocation,
   valuePortfolioPositions,
@@ -28,7 +30,7 @@ import {
   type CollectionMatch,
   type PortfolioValuation,
 } from "./cli/render";
-import { valuationBasisLabel, type PortfolioValuationBasis } from "../../../portfolio/valuation-basis";
+import type { PortfolioValuationBasis } from "../../../portfolio/valuation-basis";
 import { futuresQuantityText, isFuturesTicker } from "../../../portfolio/futures-positions";
 import { dailyFuturesHistory, loadPortfolioFuturesTerms } from "../../../portfolio/futures-terms";
 import { loadPurchaseDateCostFx } from "../../../portfolio/cost-fx";
@@ -443,7 +445,7 @@ async function portfolioHoldings(
       source: broker ? "Your broker account and Gloom Cloud" : "Local portfolio and Gloom Cloud",
       observedKey: "valuationAsOf",
       citeOldest: true,
-      note: `priced at ${valuationBasisLabel(basis, { futures: holdsFutures(valuation) })}`,
+      note: `priced at ${valuationBasisText(basis, holdsFutures(valuation), marketsStillTrading(valuation))}`,
     },
     columns,
     rows: shown,
