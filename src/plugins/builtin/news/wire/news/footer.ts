@@ -14,6 +14,13 @@ interface NewsFooterArticle {
   title?: string | null;
   source?: string | null;
   url?: string | null;
+  publishedAt?: Date | null;
+}
+
+/** Whether a story was out before the free tier's delay: every plan reads it the same, so no delay sits beside it. */
+function publishedBeforeNewsDelay(article: NewsFooterArticle | null | undefined, now = Date.now()): boolean {
+  const published = article?.publishedAt?.getTime();
+  return published != null && Number.isFinite(published) && now - published >= CLOUD_NEWS_DELAY_HOURS * 3_600_000;
 }
 
 interface UseNewsArticleFooterOptions {
@@ -60,6 +67,7 @@ export function useNewsArticleFooter({
     shortcutScope: `${registrationId}:news-upgrade`,
   });
   const realtime = newsFeedRealtime(feedAccess, access.hasProAccess);
+  const storyPastDelay = publishedBeforeNewsDelay(article);
 
   // A report or capture of the pane says how far its stories are held back, as the footer does, and dates the
   // list by its newest story, named so it is not read as the time now.
@@ -78,12 +86,14 @@ export function useNewsArticleFooter({
     if (realtime === true && !access.isTrialActive) {
       return [{ id: "news-access", parts: [{ text: t("real-time news"), tone: "positive" }] }];
     }
+    // A story open from before the delay was never held back; the list's delay comes back with the list.
+    if (storyPastDelay && !access.isTrialActive) return [];
     // Held back although the account has Pro (a read that went out before its session): say so, without a pitch.
     if (feedAccess === "delayed" && access.hasProAccess) {
       return [delayedFooterSegment({ id: "news-access", detail: tf("{delay} delayed", { delay: delayLabel }), delay: delayLabel })];
     }
     return segment ? [segment] : [];
-  }, [access.hasProAccess, access.isTrialActive, delayLabel, feedAccess, language, realtime, segment]);
+  }, [access.hasProAccess, access.isTrialActive, delayLabel, feedAccess, language, realtime, segment, storyPastDelay]);
   const footerInfo = useMemo(() => [...accessInfo, ...(info ?? [])], [accessInfo, info]);
 
   // The story's header names its source, so the footer keeps to the link.

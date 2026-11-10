@@ -15,6 +15,8 @@ import type { PaneFunctionCatalog } from "../../../../../cli/pane-functions/cata
 import type { MarketContext } from "../../../../../cli/types";
 import { createDefaultConfig } from "../../../../../types/config";
 import { Box } from "../../../../../ui";
+import { PaneFooterBar, PaneFooterProvider } from "../../../../../components/layout/pane/footer";
+import { createTestArticle } from "../../../../../test-support/news";
 import { newsWireModule } from "..";
 import { NewsStoryPane } from "./pop-out";
 
@@ -93,4 +95,45 @@ test("fn news-story-pane opens the story a short id names when Gloom Cloud answe
   // Another story's id is still a mismatch, never shown as this one.
   apiClient.getCloudNewsStory = async () => cloudStory("1234abcd-2e13-41c5-a7cf-5052b3cefc07");
   await expect(service.loadStory("6067684e")).rejects.toThrow("Story detail unavailable.");
+});
+
+// A 4 Nov story read on 10 Nov sat beside "12h delayed": the delay holds back the wire's latest stories, never one older.
+test("an open story from before the free tier's delay has no delay beside it; one inside it keeps it", async () => {
+  const footerOf = async (hoursOld: number) => {
+    const story = createTestArticle("story-age", {
+      title: "Mitsubishi, Mitsui boost profit estimates", url: "https://example.com/story",
+      publishedAt: new Date(Date.now() - hoursOld * 3_600_000),
+    });
+    setSharedNewsService({ loadStory: async () => story } as unknown as NewsService);
+    const config = createTestPaneConfig(`/tmp/news-story-age-${hoursOld}`, {
+      instanceId: "story", paneId: "news-story", params: { articleId: "story-age" },
+    });
+    const initial = createInitialState(config);
+    initial.focusedPaneId = "story";
+    const runtime = createStatefulTestPluginRuntime();
+    function Harness() {
+      const [state, dispatch] = useReducer(appReducer, initial);
+      return (
+        <TestPaneProvider state={state} dispatch={dispatch} paneId="story" pluginId="news" runtime={runtime}>
+          <PaneFooterProvider>
+            {(footer) => (
+              <Box flexDirection="column" width={100} height={20}>
+                <NewsStoryPane paneId="story" paneType="news-story" focused width={100} height={19} />
+                <PaneFooterBar footer={footer} focused width={100} />
+              </Box>
+            )}
+          </PaneFooterProvider>
+        </TestPaneProvider>
+      );
+    }
+    await act(async () => { await tui.render(<Harness />, { width: 100, height: 20 }); });
+    await settleFrame(tui.setup(), 12);
+    const frame = tui.frame();
+    // Its source and time head the body; the title is the pane's.
+    expect(frame).toContain("Test · ");
+    return frame.split("\n").filter((line) => line.trim()).at(-1) ?? "";
+  };
+  // An account without real-time news, so the wire is held back 12h.
+  expect(await footerOf(150)).not.toContain("12h");
+  expect(await footerOf(2)).toContain("12h");
 });
