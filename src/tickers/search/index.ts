@@ -3,7 +3,7 @@ import type { SearchRequestContext, DataProvider } from "../../types/data-provid
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerRecord } from "../../types/ticker";
 import { canonicalExchange, isSharedExchangeCode, isUsListingExchange, parsePublicTickerKey, publicTickerKey, typedExchangeCode } from "../../utils/exchanges";
-import { getListingSymbol, listingSuffixConflictsWithExchange, tickerHasListingSuffix } from "../../sources/listing-symbols";
+import { getListingSymbol, listingSuffixConflictsWithExchange, listingSuffixVenue, tickerHasListingSuffix } from "../../sources/listing-symbols";
 import { parseOptionSymbol } from "../../utils/options";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { currencyPairSpelling } from "../../utils/currency-pair";
@@ -568,6 +568,11 @@ async function resolveTickerSymbol(
   const literalMatches = providerItems.filter((item) => normalizeTickerSymbol(item.symbol) === symbol);
   let matches = literalMatches.length ? literalMatches
     : providerItems.filter((item) => findExactTickerSearchMatch([item], symbol));
+  // A code search lists only with its venue's suffix is that listing: XU100 is the BIST 100, listed as XU100.IS.
+  if (!matches.length && !parsePublicTickerKey(symbol).exchange && !tickerHasListingSuffix(symbol)) {
+    matches = providerItems.filter((item) => item.result
+      && listingSuffixVenue(item.symbol, listingExchange(item.result))?.symbol === symbol);
+  }
   if (abroad) {
     const us = matches.filter((item) => isUsListingExchange(listingExchange(item.result!)));
     // No US listing: the row abroad is the symbol's.

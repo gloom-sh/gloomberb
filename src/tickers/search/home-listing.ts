@@ -26,6 +26,8 @@ export function listingDistance(candidate: TickerSearchCandidate): 0 | 1 | 2 {
 /** `listingDistance` of a line by its type, its canonical venue and its symbol. */
 export function lineDistance(type: string, exchange: string, symbol: string): 0 | 1 | 2 {
   if (RECEIPT_TYPE.test(type)) return 2;
+  // An index's code is its own (XU100 for the BIST 100), never a secondary line of shares.
+  if (/^\s*index\s*$/i.test(type)) return 0;
   // A code mixing digits and letters is a secondary line (Milan's 4MSFT, London's 0R1I), except on SGX, whose
   // own codes mix them (D05, 5E2).
   return SECONDARY_VENUES.has(exchange) || exchange !== "SGX" && /\d/.test(symbol) && /[A-Za-z]/.test(symbol) ? 1 : 0;

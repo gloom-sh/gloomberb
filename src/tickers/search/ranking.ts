@@ -552,7 +552,25 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
   if (boardFuture && futureIndex >= 0) {
     deduped.splice(boardFuture.bareCode ? 0 : Math.min(1, futureIndex), 0, ...deduped.splice(futureIndex, 1));
   }
-  return deduped;
+  return withHeadlineIndexFirst(deduped, rawQuery);
+}
+
+/**
+ * An index named as typed leads the indices whose names only add to it:
+ * "BIST 100" is the BIST 100 (XU100.IS) before the BIST 100-30 and BIST 100
+ * (EURO), whatever order search sent them in. Any other list keeps its order.
+ */
+function withHeadlineIndexFirst<T extends Pick<TickerSearchRankableItem, "detail"> & Partial<TickerSearchRankableItem>>(items: T[], query: string): T[] {
+  const name = normalizeSearchText(query);
+  const isIndex = (item: T) => /^\s*index\s*$/i.test(item.instrumentType ?? "");
+  const indexName = (item: T) => normalizeSearchText(item.detail.split("|")[0] ?? "");
+  const headline = items.findIndex((item) => isIndex(item) && indexName(item) === name);
+  if (!name || headline < 0) return items;
+  const first = items.findIndex((item, index) => index < headline && isIndex(item) && indexName(item).startsWith(`${name} `));
+  if (first < 0) return items;
+  const ordered = [...items];
+  ordered.splice(first, 0, ...ordered.splice(headline, 1));
+  return ordered;
 }
 
 // Folding accents keeps "Nestlé" matchable as "nestle" instead of "NESTL".
