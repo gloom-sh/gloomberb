@@ -5,6 +5,7 @@ import { chartHeadless } from "../chart-composer/headless";
 import type { PluginModule } from "../plugin-module";
 import { createChokepointInstance } from "./chokepoint-chart";
 import { cloudGeoRequest } from "./client";
+import { ACTIVITY_SERIES } from "./activity-series";
 import { CHOKEPOINT_SERIES, createGeoChartSeriesCapability } from "./geo-series";
 import { mapHeadless } from "./headless";
 import { buildMapSettingsDef, groupTitle, MAP_PRESET_OPTIONS, parseMapPreset } from "./layers";
@@ -83,5 +84,5 @@ export const worldVenueMapModule: PluginModule = {
     chokepointTemplate,
   ],
   capabilities: [createGeoChartSeriesCapability()],
-  series: CHOKEPOINT_SERIES,
+  series: [...CHOKEPOINT_SERIES, ...ACTIVITY_SERIES],
 };

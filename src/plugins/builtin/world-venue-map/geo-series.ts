@@ -50,6 +50,12 @@ export function geoSeriesRange(viewport: ChartViewportSpec, now = new Date()): {
   return { from: isoDate(subtractTimeRange(now, viewport.range)) };
 }
 
+/** The day of a publication time (ISO), or null when there is none. */
+function publishedDay(value: string | undefined): string | null {
+  const time = value ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(time) ? new Date(time).toISOString().slice(0, 10) : null;
+}
+
 export async function resolveGeoChartSeries(
   request: GeoRequest,
   token: string,
@@ -75,6 +81,10 @@ export async function resolveGeoChartSeries(
     const date = new Date(`${day}T00:00:00Z`);
     return Number.isFinite(date.getTime()) && Number.isFinite(value) ? [{ date, observedAt: date, value }] : [];
   });
+  // The newest day's publication, when the server knows it: the chart reads `Mon 9 Nov 2026, released Tue 10 Nov`.
+  const releasedOn = publishedDay(payload.publishedAt);
+  const newest = points.at(-1);
+  if (releasedOn && newest && payload.asOf === newest.date.toISOString().slice(0, 10)) newest.releasedOn = releasedOn;
   return {
     id: `${GEO_SERIES_CAPABILITY_ID}:${payload.id}`,
     label: payload.name,
