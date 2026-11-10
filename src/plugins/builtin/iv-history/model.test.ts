@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
 import type { IvHistoryPayload, IvPoint, IvScreenRow, ScreenHv } from "./client";
 import { statSource } from "./format";
-import { hvOn, midrankPercentile, projectIvHistory, projectRichCheap, readingSource, richCheapDates, screenCoverage, screenPaneNotices, screenStaleNote, sessionsBehind, staleReadingsNote, verdictFor } from "./model";
+import { hvOn, midrankPercentile, projectIvHistory, projectRichCheap, readingSource, richCheapDates, riskReversalSessionsNote, screenCoverage, screenPaneNotices, screenRiskReversalNote, screenStaleNote, sessionsBehind, staleReadingsNote, verdictFor } from "./model";
 
 const DAY = 86_400_000;
 const sessions = (count: number, end = "2026-09-22") => {
@@ -162,6 +162,51 @@ test("no verdict without an IV30: a newest reading without one leaves the ranked
   // With no IV30 anywhere, a rank on its own is no verdict.
   const unranked = projectRichCheap([{ ...uup, iv30: { ...uup.iv30!, value: Number.NaN } }])[0]!;
   expect(unranked).toMatchObject({ iv30: null, date: "2026-11-06", rank: null, percentile: null, verdict: null });
+});
+
+describe("25-delta skew", () => {
+  const rr25 = { value: -0.051, put25: 0.188, call25: 0.137, date: "2026-11-09", method: "trade-close" as const, rank: 30, percentile: 12,
+    low: -0.09, high: -0.02, samples: 33, windowStart: "2026-09-23", minSamples: 20, fullYear: false };
+  test("a session the quote capture missed takes its skew from the close, and a close's wings win over the same day's capture", () => {
+    const wings = (at: IvPoint, put: number, call: number): IvPoint => ({ ...at, put25_30: put, call25_30: call });
+    const model = projectIvHistory(payload([
+      wings(point("2026-10-20", 0.2), 0.25, 0.17), wings(point("2026-10-20", 0.21, "quote-mid"), 0.26, 0.17),
+      wings(point("2026-10-21", 0.2), 0.24, 0.18), point("2026-10-21", 0.2, "quote-mid"),
+      point("2026-10-22", 0.2), wings(point("2026-10-22", 0.2, "quote-mid"), 0.23, 0.18),
+    ]), [], { lookback: "ALL", hvWindow: 20 });
+    expect(model.skew.map((entry) => [entry.date.toISOString().slice(0, 10), Number(entry.value!.toFixed(2))]))
+      .toEqual([["2026-10-20", 0.08], ["2026-10-21", 0.06], ["2026-10-22", 0.05]]);
+  });
+  test("HIVG ranks the risk reversal and says how many sessions it rests on until a year exists", () => {
+    const model = projectIvHistory(payload([point("2026-11-09", 0.16)], { stats: { iv30: null, iv90: null, rr25 } }), [], { lookback: "1Y", hvWindow: 20 });
+    expect(model.stats.find((row) => row.id === "rr25")).toMatchObject({ label: "25D RR call-put", unit: "points", value: -0.051, percentile: 12, samples: 33 });
+    expect(model.riskReversalNote).toBe("25D RR percentile rests on 33 sessions from 2026-09-23; a year is about 250.");
+    expect(riskReversalSessionsNote({ ...rr25, fullYear: true })).toBeNull();
+    expect(riskReversalSessionsNote({ ...rr25, percentile: null, rank: null, samples: 12 })).toBe("25D RR percentile needs 20 prior sessions; 12 so far.");
+  });
+  test("VCA shows the close's spot and risk reversal with its percentile, not the quote capture's", () => {
+    // SPY on 9 Nov 2026: the 15:40 capture had 754.43, the close 752.69.
+    const row: IvScreenRow = {
+      symbol: "SPY", status: "ready", iv90: null, rr25,
+      iv30: { value: 0.1574, date: "2026-11-09", method: "trade-close", basis: "mid", spot: 752.69, rank: 20, percentile: 15, low: 0.12, high: 0.3, samples: 250, windowStart: "2025-11-07" },
+      latest: { date: "2026-11-09", method: "quote-mid", capturedAt: "", spot: 754.43, iv7: null, iv30: 0.1564, iv60: null, iv90: 0.17, iv180: null, iv365: null },
+      skew: { date: "2026-11-09", put25: 0.1882, call25: 0.1376, skew: 0.0506 },
+    };
+    const [projected] = projectRichCheap([row]);
+    expect(projected).toMatchObject({ spot: 752.69, riskReversal: -0.051, skewDate: "2026-11-09", skewMethod: "trade-close", riskReversalPercentile: 12 });
+    // An older server gives no spot with the rank: the session's daily close stands in, never the quote capture's.
+    const older = { ...row, iv30: { ...row.iv30!, spot: undefined } };
+    expect(projectRichCheap([older])[0]!.spot).toBeNull();
+    const closes = new Map([["2026-11-06", 749.1], ["2026-11-09", 752.69]]);
+    expect(projectRichCheap([older], new Map([["SPY", { value: 0.12, date: "2026-11-09", series: [], closes }]]))[0]!.spot).toBe(752.69);
+    // Without a ranked risk reversal the capture's is shown, unranked.
+    const unranked = projectRichCheap([{ ...row, rr25: undefined }])[0]!;
+    expect(unranked).toMatchObject({ skewMethod: "quote-mid", riskReversalPercentile: null });
+    expect(unranked.riskReversal).toBeCloseTo(-0.0506, 10);
+    expect(screenRiskReversalNote([projected!, { ...projected!, symbol: "QQQ" }])).toBe("25D RR pctl rests on 33 sessions from 2026-09-23; a year is about 250.");
+    expect(screenRiskReversalNote([projected!, { ...projected!, symbol: "QQQ", riskReversalSamples: 12 }]))
+      .toBe("25D RR pctl rests on fewer sessions than a year (SPY 33, QQQ 12); a year is about 250.");
+  });
 });
 
 test("a queued symbol does not break a date every other row shares", () => {

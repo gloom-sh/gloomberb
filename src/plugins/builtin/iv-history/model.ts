@@ -1,7 +1,7 @@
 import { getPublishedUsEquityCalendarDay } from "../../../market-data/published-us-sessions";
 import type { PricePoint } from "../../../types/financials";
 import { rollingRealizedVolatility } from "../shared/volatility";
-import type { IvCloseBasis, IvCoverageStatus, IvHistoryPayload, IvMethod, IvPoint, IvScreenRow, IvStats, ScreenHv } from "./client";
+import type { IvCloseBasis, IvCoverageStatus, IvHistoryPayload, IvMethod, IvPoint, IvRiskReversalStats, IvScreenRow, IvStats, ScreenHv } from "./client";
 
 /**
  * A history's warnings in words for the reader. A symbol demand coverage could
@@ -166,15 +166,18 @@ export interface IvHistoryModel {
   hv: DatedValue[];
   spread: DatedValue[];
   /**
-   * Each session's 30-day 25-delta put IV minus call IV from its quote
-   * capture (put-call: positive means puts are richer). The risk reversal,
-   * call minus put, is its negative.
+   * Each session's 30-day 25-delta put IV minus call IV (put-call: positive
+   * means puts are richer), from its close where the close carries the wings,
+   * else from its quote capture. The risk reversal, call minus put, is its
+   * negative.
    */
   skew: DatedValue[];
   /** First session with a stored skew; skew is blank before it. */
   skewSince: string | null;
   /** "skew from 2026-09-23", or why there is no skew at all. */
   skewNote: string | null;
+  /** How many sessions the risk reversal's percentile rests on, until they reach back a year. */
+  riskReversalNote: string | null;
   stats: IvStatRow[];
   /** Which measures are stale and what that leaves out, when any is. */
   staleNote: string | null;
@@ -228,13 +231,20 @@ function byMethod(series: readonly IvPoint[], method: IvMethod, field: "iv30" | 
 }
 
 /**
- * 25-delta skew per session, put minus call, from the quote captures: the
- * only readings that store the wings. A server that sends no wing fields at
- * all predates them, which is not the same as a symbol with no capture yet.
+ * 25-delta skew per session, put minus call: the close's wings where the close
+ * carries them, as the session's IV30 is the close's, else the quote
+ * capture's, so a session the capture missed still has its skew. A server
+ * that sends no wing fields at all predates them, which is not the same as a
+ * symbol with no capture yet.
  */
 function skewSeries(series: readonly IvPoint[]): { points: DatedValue[]; note: string | null } {
-  const points = series.filter((point) => point.method === "quote-mid" && point.put25_30 != null && point.call25_30 != null)
-    .map((point) => ({ date: utc(point.sessionDate), value: point.put25_30! - point.call25_30! }))
+  const bySession = new Map<string, IvPoint>();
+  for (const point of series) {
+    if (point.put25_30 == null || point.call25_30 == null) continue;
+    const held = bySession.get(point.sessionDate);
+    if (!held || (held.method === "quote-mid" && point.method === "trade-close")) bySession.set(point.sessionDate, point);
+  }
+  const points = [...bySession.values()].map((point) => ({ date: utc(point.sessionDate), value: point.put25_30! - point.call25_30! }))
     .sort((a, b) => a.date.getTime() - b.date.getTime());
   if (points[0]) return { points, note: `skew from ${day(points[0].date)}` };
   if (!series.length) return { points, note: null };
@@ -291,6 +301,7 @@ export function projectIvHistory(
       ? { id: "iv365", label: "IV 1Y ATM", unit: "vol", value: latest.iv365, date: latest.date, method: latest.method, basis: latest.basis ?? null,
         low: null, high: null, rank: null, percentile: null, samples: 0, stale: false, sessionsBehind: null }
       : fromServer("iv365", "IV 1Y ATM", oneYear),
+    ...(payload.stats.rr25 ? [riskReversalRow(payload.stats.rr25)] : []),
     seriesStat("hv", `HV ${window}`, "vol", rolling, "prices"),
     seriesStat("spread", `IV 30d - HV ${window}`, "points", spreadAll, "trade-close"),
     seriesStat("term", "IV 30d / 90d", "ratio", termAll, "trade-close"));
@@ -322,14 +333,36 @@ export function projectIvHistory(
     : oneYear?.percentile == null ? `IV1Y from ${oneYearSince}, ${tradeIv365.length} session${tradeIv365.length === 1 ? "" : "s"}`
     : since && oneYearSince > since ? `IV1Y from ${oneYearSince}` : null;
 
+  const riskReversal = measured.find((row) => row.id === "rr25");
   return {
     symbol: payload.symbol, status: payload.status,
+    riskReversalNote: riskReversal && !riskReversal.stale ? riskReversalSessionsNote(payload.stats.rr25) : null,
     iv30: visible(tradeIv30), iv90: visible(byMethod(payload.series, "trade-close", "iv90")), iv365: visible(tradeIv365),
     quoteIv30: visible(byMethod(payload.series, "quote-mid", "iv30")),
     hv, spread: visible(spreadAll), skew: visible(skew.points),
     skewSince: skew.points[0] ? day(skew.points[0].date) : null, skewNote: skew.note, stats: measured, staleNote: staleText,
     since, oneYearNote, asOf: latestDate, warnings,
   };
+}
+
+/** HIVG's statistics row for the 30-day 25-delta risk reversal, ranked by the server against its own year. */
+function riskReversalRow(stats: IvRiskReversalStats): IvStatRow {
+  return { id: "rr25", label: "25D RR call-put", unit: "points", value: stats.value, date: stats.date, method: stats.method,
+    basis: stats.basis ?? null, low: stats.low, high: stats.high, rank: stats.rank, percentile: stats.percentile,
+    samples: stats.samples, stale: false, sessionsBehind: null };
+}
+
+/**
+ * "25D RR percentile rests on 33 sessions from 2026-09-23; a year is about 250."
+ * Said while the risk reversal's history is short of a year, so its percentile
+ * is read for what it is; "25D RR percentile needs 20 sessions; 12 so far" below
+ * the minimum. Null once a year is in, or with no risk reversal.
+ */
+export function riskReversalSessionsNote(stats: IvRiskReversalStats | null | undefined): string | null {
+  if (!stats || stats.fullYear) return null;
+  if (stats.percentile == null) return `25D RR percentile needs ${stats.minSamples} prior sessions; ${stats.samples} so far.`;
+  return `25D RR percentile rests on ${stats.samples} session${stats.samples === 1 ? "" : "s"}${
+    stats.windowStart ? ` from ${stats.windowStart}` : ""}; a year is about 250.`;
 }
 
 export type RichCheap = "rich" | "cheap" | "fair" | null;
@@ -372,8 +405,16 @@ export interface RichCheapRow {
   iv1yPercentile: number | null;
   /** The 25-delta risk reversal at 30 days: call IV minus put IV, so positive means calls are richer, as OVDV signs it. */
   riskReversal: number | null;
-  /** Session of the quote capture the risk reversal comes from. */
+  /** Session of the reading the risk reversal comes from. */
   skewDate: string | null;
+  /** How the risk reversal was read: the session's close, or the quote capture an older server gives alone. */
+  skewMethod: IvMethod | null;
+  /** Where the risk reversal sits in its own prior 52 weeks, 0 to 100, from the server. */
+  riskReversalPercentile: number | null;
+  /** Prior sessions that percentile rests on, and whether they reach back a year. */
+  riskReversalSamples: number;
+  riskReversalFullYear: boolean;
+  riskReversalSince: string | null;
   /**
    * Realized volatility on the reading's own date, so the row reads as IV30 over HV;
    * the newest HV for a stale reading or one with no HV on its date.
@@ -440,9 +481,13 @@ export function projectRichCheap(rows: readonly IvScreenRow[], hv: ReadonlyMap<s
         : latest?.date === date && latest.method === reading?.method ? fromLatest ?? null : null;
     // The newest session the symbol reaches: its prices, its backfill and every reading it has.
     const newest = newestSession(row.coverage?.backfilledThrough, latest?.date, row.iv30?.date, row.iv90?.date, row.iv365?.date,
-      row.skew?.date, series?.date);
+      row.skew?.date, row.rr25?.date, series?.date);
     const { stale, sessionsBehind: behind } = staleness(date, newest);
-    const skewStale = row.skew ? staleness(row.skew.date, newest).stale : false;
+    // The risk reversal of the ranked close, with its percentile, where the server gives it; else the quote capture's alone.
+    const rr = row.rr25 ?? null;
+    const skew = rr ? { date: rr.date, value: rr.value, method: rr.method }
+      : row.skew ? { date: row.skew.date, value: row.skew.call25 - row.skew.put25, method: "quote-mid" as const } : null;
+    const skewStale = skew ? staleness(skew.date, newest).stale : false;
     const rankedNow = !stale && ranked != null && iv30 != null;
     const percentile = rankedNow ? ranked.percentile ?? null : null;
     // HV on the reading's own date: today's HV beside an old IV says nothing about it.
@@ -454,13 +499,21 @@ export function projectRichCheap(rows: readonly IvScreenRow[], hv: ReadonlyMap<s
       symbol: row.symbol, status: row.coverageStatus ?? row.status, queuedAt: row.coverage?.addedAt ?? null,
       backfilledThrough: row.coverage?.backfilledThrough ?? null, warning: row.warnings?.[0] ?? null,
       iv30, date, method: reading?.method ?? null, basis: reading?.basis ?? null,
-      // The underlying's price on the row's own date: the newest capture's when it is of that session, else none.
-      stale, sessionsBehind: behind, spot: latest && date != null && latest.date === date ? latest.spot ?? null : null,
+      // The underlying's price at the reading the row shows: a close's session close, as the server gives it with
+      // the rank or, from an older server, the session's daily close; else the newest reading's when it is that
+      // very reading. Never a 15:40 capture's beside a close.
+      stale, sessionsBehind: behind,
+      spot: ranked?.spot ?? (reading?.method === "trade-close" && date ? series?.closes?.get(date) : undefined)
+        ?? (latest && date != null && latest.date === date && latest.method === reading?.method ? latest.spot ?? null : null),
       rank: rankedNow ? ranked.rank ?? null : null, percentile, rankDate: rankedNow ? ranked.date : null,
       termSlope: iv30 != null && iv90 != null ? iv30 - iv90 : null,
       iv1y,
       iv1yPercentile: rankedNow && iv1y != null && row.iv365?.date === date ? row.iv365.percentile : null,
-      riskReversal: skewStale || !row.skew ? null : row.skew.call25 - row.skew.put25, skewDate: skewStale ? null : row.skew?.date ?? null,
+      riskReversal: skewStale || !skew ? null : skew.value, skewDate: skewStale ? null : skew?.date ?? null,
+      skewMethod: skewStale ? null : skew?.method ?? null,
+      riskReversalPercentile: skewStale || !rr ? null : rr.percentile,
+      riskReversalSamples: skewStale || !rr ? 0 : rr.samples, riskReversalFullYear: !skewStale && !!rr?.fullYear,
+      riskReversalSince: skewStale ? null : rr?.windowStart ?? null,
       hv: shown?.value ?? null, hvDate: shown?.date ?? null,
       ivHv: iv30 != null && atReading != null && atReading.value > 0 ? iv30 / atReading.value : null,
       verdict: verdictFor(percentile),
@@ -521,6 +574,22 @@ export function screenStaleNote(rows: readonly RichCheapRow[]): string | null {
 }
 
 /**
+ * How many sessions the screen's risk reversal percentiles rest on while they
+ * are short of a year, said once when the rows agree: "25D RR pctl rests on 33
+ * sessions from 2026-09-23; a year is about 250." Rows that differ are listed
+ * ("SPY 33, TSLA 12"). Null once every percentile rests on a year.
+ */
+export function screenRiskReversalNote(rows: readonly RichCheapRow[]): string | null {
+  const short = rows.filter((row) => row.riskReversalPercentile != null && !row.riskReversalFullYear);
+  if (!short.length) return null;
+  const first = short[0]!;
+  const same = short.every((row) => row.riskReversalSamples === first.riskReversalSamples && row.riskReversalSince === first.riskReversalSince);
+  const counted = same ? `${first.riskReversalSamples} sessions${first.riskReversalSince ? ` from ${first.riskReversalSince}` : ""}`
+    : `fewer sessions than a year (${short.map((row) => `${row.symbol} ${row.riskReversalSamples}`).join(", ")})`;
+  return `25D RR pctl rests on ${counted}; a year is about 250.`;
+}
+
+/**
  * The VCA pane's notices: the report's wording without a time to come back
  * at, since the pane checks again by itself, and a count of ready symbols with
  * no IV30, which is how an older server reports one that found no options.
@@ -529,7 +598,7 @@ export function screenPaneNotices(rows: readonly RichCheapRow[], now = Date.now(
   const empty = rows.filter((row) => row.status === "ready" && row.iv30 == null).length;
   return [...screenCoverage(rows, { now, retry: false }).notes,
     ...(empty ? [`${empty} symbol${empty === 1 ? " has" : "s have"} no stored implied volatility yet.`] : []),
-    ...[screenStaleNote(rows)].filter((note): note is string => !!note)];
+    ...[screenStaleNote(rows), screenRiskReversalNote(rows)].filter((note): note is string => !!note)];
 }
 
 export const VCA_PRESETS = {

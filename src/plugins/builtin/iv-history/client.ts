@@ -31,8 +31,9 @@ export interface IvPoint {
   iv180: number | null;
   iv365: number | null;
   /**
-   * 30-day 25-delta put and call IV, on quote captures only. Optional: a
-   * server that leaves them out has no skew history to give.
+   * 30-day 25-delta put and call IV: on quote captures, and on trade closes
+   * from servers that read the wings from the closes too. Optional: a server
+   * that leaves them out has no skew history to give.
    */
   put25_30?: number | null;
   call25_30?: number | null;
@@ -43,6 +44,8 @@ export interface IvStats {
   value: number;
   date: string;
   method: IvMethod;
+  /** The underlying at the reading: a close's session close, a quote capture's spot. Absent from older servers. */
+  spot?: number | null;
   basis?: IvCloseBasis | null;
   rank: number | null;
   percentile: number | null;
@@ -54,6 +57,29 @@ export interface IvStats {
   minSamples?: number;
   /** Why rank or percentile is empty, when one is. */
   rankNote?: string | null;
+}
+/**
+ * The latest 30-day 25-delta risk reversal (call IV minus put IV, decimal)
+ * against its own prior 52 weeks, closes against closes (a symbol whose closes
+ * carry no wings: quote captures against quote captures). Rank and percentile
+ * come from `minSamples` prior sessions; until they reach back a year
+ * (`fullYear`) a reader says how many there are. Absent from older servers.
+ */
+export interface IvRiskReversalStats {
+  value: number;
+  put25: number;
+  call25: number;
+  date: string;
+  method: IvMethod;
+  basis?: IvCloseBasis | null;
+  rank: number | null;
+  percentile: number | null;
+  low: number | null;
+  high: number | null;
+  samples: number;
+  windowStart: string | null;
+  minSamples: number;
+  fullYear: boolean;
 }
 interface IvReading {
   date: string;
@@ -78,7 +104,7 @@ export interface IvHistoryPayload {
     /** First trade close with a one-year reading; the 1Y series starts later and is sparser. */
     iv365Since?: string | null;
   } | null;
-  stats: { iv30: IvStats | null; iv90: IvStats | null; iv365?: IvStats | null };
+  stats: { iv30: IvStats | null; iv90: IvStats | null; iv365?: IvStats | null; rr25?: IvRiskReversalStats | null };
   latest: IvReading | null;
   series: IvPoint[];
   warnings: string[];
@@ -98,7 +124,9 @@ export interface IvScreenRow {
   iv365?: IvStats | null;
   iv365Since?: string | null;
   latest: IvReading | null;
+  /** The newest quote capture's wings; `rr25` is the ranked close's, where the server gives it. */
   skew: { date: string; put25: number; call25: number; skew: number } | null;
+  rr25?: IvRiskReversalStats | null;
 }
 /** Why a name IV history covers has no rank yet, by where its history stands. */
 const IV_COVERAGE_REASONS: Partial<Record<IvCoverageStatus, string>> = {
@@ -180,6 +208,8 @@ export interface ScreenHv {
   date: string | null;
   /** HV after each session's close, oldest first; sessions without a full window are left out. */
   series: ReadonlyArray<readonly [date: string, value: number]>;
+  /** Each session's close, by date: the spot of a trade-close reading a server does not price. */
+  closes?: ReadonlyMap<string, number>;
 }
 
 const barDay = (value: Date) => new Date(value).toISOString().slice(0, 10);
@@ -196,7 +226,8 @@ export function screenHv(history: readonly PricePoint[], window: number): Screen
     const date = barDay(point.date);
     return latest == null || date > latest ? date : latest;
   }, null);
-  return { value: rolling.at(-1)?.values[window] ?? null, date: newest, series };
+  const closes = new Map(history.flatMap((point) => Number.isFinite(point.close) && point.close > 0 ? [[barDay(point.date), point.close] as const] : []));
+  return { value: rolling.at(-1)?.values[window] ?? null, date: newest, series, closes };
 }
 
 /**

@@ -3,7 +3,7 @@ import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createRealizedVolatilityDependencies, loadRealizedVolatilityHistory } from "../realized-vol/client";
 import { createHvDependencies, loadIvHistory, loadIvScreen, loadScreenVolatilities } from "./client";
 import { formatPoints, formatRank, formatSpot, formatStat, formatVol, IMPLIED_VOL_WORDS, readingLabel, sharedDates, skewHeader, statSource, vcaDefinitions, verdictLabel } from "./format";
-import { HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHistory, projectRichCheap, type RichCheapRow, richCheapDates, screenCoverage, screenStaleNote, VCA_LIMIT, VCA_PRESETS } from "./model";
+import { HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHistory, projectRichCheap, type RichCheapRow, richCheapDates, screenCoverage, screenRiskReversalNote, screenStaleNote, VCA_LIMIT, VCA_PRESETS } from "./model";
 import { vcaUniverse } from "./universe";
 import { offsetText, releaseOffsetRows } from "./events";
 import { loadMacroReleases } from "../macro-day/client";
@@ -32,7 +32,8 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["HIVG"], suggestFor: IMPLIED_VOL_WORDS, screenshotReadiness: "live-dom", dataRequirements: ["Cloud stored implied volatility", "Daily price history"],
     limitations: ["History starts February 2024 (daily option trade closes).", "Rank and percentile use trade-close readings only.",
       "IV1Y needs long-dated trades: it can start later, has gaps, and ranks from 60 prior sessions.",
-      "skew25d (put-call) and rr25d (call-put) come from the daily quote captures and are blank before the first one."] },
+      "skew25d (put-call) and rr25d (call-put) come from each session's close where it carries the 25-delta wings, else its quote capture.",
+      "The 25D RR percentile ranks closes against closes and needs 20 prior sessions; until a year exists the notes say how many it rests on."] },
   options: [
     { key: "lookback", type: "enum", values: [{ value: "1Y" }, { value: "2Y" }, { value: "ALL" }], defaultValue: "1Y", description: "Visible history" },
     { key: "hvWindow", type: "enum", values: HV_WINDOWS.map((window) => ({ value: String(window) })), defaultValue: "20", description: "Realized volatility window in sessions" },
@@ -82,7 +83,8 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
     // With nothing served, the fate is why: no "not a ticker" or missing-history errors beside it.
     const { notes: fateNotes, errors } = listingFateReport(fate, { served },
       [prices.error, ...model.warnings].filter((value): value is string => !!value));
-    const notes = [...fateNotes, ...[model.oneYearNote, model.skewNote, model.staleNote].filter((note): note is string => !!note)];
+    const notes = [...fateNotes, ...[model.oneYearNote, model.skewNote, model.riskReversalNote, model.staleNote]
+      .filter((note): note is string => !!note)];
     if (event && releases) {
       const lookback = String(args.options.lookback) as IvLookback;
       const label = MACRO_EVENT_LABELS[event];
@@ -194,6 +196,7 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
     const coverage = screenCoverage(rows, { explained: new Set([...noted].filter(([, entry]) => entry.fate.endedOn).map(([symbol]) => symbol)) });
     const dates = richCheapDates(rows);
     const hasSkew = rows.some((row) => row.riskReversal != null);
+    const hasSkewRank = rows.some((row) => row.riskReversalPercentile != null);
     const hasIv1y = rows.some((row) => row.iv1y != null), hasIv1yRank = rows.some((row) => row.iv1yPercentile != null);
     const dated = (value: unknown) => typeof value === "string" ? value : "--";
     return {
@@ -211,6 +214,8 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
         ...(hasIv1yRank ? [{ key: "iv1yPercentile", header: "IVP1Y", format: (value: unknown) => formatRank(value as number | null) }] : []),
         { key: "termSlope", header: "30-90", format: (value: unknown) => formatPoints(value as number | null) },
         ...(hasSkew ? [{ key: "riskReversal", header: skewHeader("25D RR", "call-put"), format: (value: unknown) => formatPoints(value as number | null) }] : []),
+        // Where that risk reversal sits in its own year: how many sessions it rests on is said under the table until a year is in.
+        ...(hasSkewRank ? [{ key: "riskReversalPercentile", header: "RR pctl", format: (value: unknown) => formatRank(value as number | null) }] : []),
         ...(hasSkew && dates.skewApart ? [{ key: "skewDate", header: "RR as of", format: dated }] : []),
         { key: "hv", header: "HV20", format: percent },
         // Said only where an HV is not the one of its IV's date: a stale reading's, or one a few sessions off.
@@ -221,7 +226,8 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
       // A symbol with no options history is final; only history still to come leaves the screen incomplete.
       complete: !coverage.pending.length && !universe.error, unavailableSymbols: coverage.missing,
       errors: [universe.error].filter((value): value is string => !!value),
-      notes: [...coverage.notes, ...[screenStaleNote(rows)].filter((note): note is string => !!note), ...vcaDefinitions({ skew: hasSkew })],
+      notes: [...coverage.notes, ...[screenStaleNote(rows), screenRiskReversalNote(rows)].filter((note): note is string => !!note),
+        ...vcaDefinitions({ skew: hasSkew })],
       metadata: { presets: VCA_PRESETS, methodology: METHODOLOGY },
     };
   },
