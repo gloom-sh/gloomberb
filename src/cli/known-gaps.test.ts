@@ -71,6 +71,17 @@ test("iron ore typed for a quote has no live price and points to the IMF's month
   for (const query of ["kumba", "Kumba Iron Ore", "iron mountain", "iron ore miners"]) expect(unquotedGapMessage(query), query).toBeNull();
 });
 
+// TOPIX read as the data service failing to answer, after five seconds.
+test("an index no source carries says so and names the funds that track it, under each spelling people type", () => {
+  const topix = "TOPIX is not carried: JPX licenses it. Funds that track it: 1306:JPX (NEXT FUNDS TOPIX ETF), 1475:JPX (iShares Core TOPIX ETF).";
+  for (const query of ["TOPIX", "topix", "^TPX", "TPX Index", "998405:JPX", "998405.T", "Tokyo Stock Price Index"]) {
+    expect(unquotedGapMessage(query), query).toBe(topix);
+  }
+  expect(knownGapMessage("topix")).toBe(topix);
+  // A bare TPX is a US ticker, and a TOPIX fund is a listing.
+  for (const query of ["TPX", "topix etf", "1306:JPX"]) expect(unquotedGapMessage(query), query).toBeNull();
+});
+
 test("LME and Shanghai metals are said to be uncovered, pointing at COMEX curves and the monthly world prices, not FUT", () => {
   const gap = knownGapMessage("LME copper")!;
   expect(gap).toStartWith("LME and Shanghai (SHFE) metals futures: not covered");
@@ -205,6 +216,23 @@ test("NIM, deposits, CRE and bank are pointed at the Bank section of fundamental
       .replace(/\x1b\[[0-9;]*m/g, "");
     expect(report).toMatch(/^CBR\s+Central Bank Rates/m);
     expect(report.trimEnd()).toEndWith(line);
+  } finally {
+    registry.destroy();
+  }
+});
+
+// "yen hedged" opened FX Cross Rates, which has no hedged view.
+test("a hedged query leads with CMP on hedged and unhedged Japan funds, which the catalog finds by the same words", async () => {
+  const line = "Hedged against unhedged: gloom fn CMP DXJ HEWJ EWJ --total-return true (DXJ and HEWJ hedge the yen, EWJ does not); "
+    + "add --currency <your currency> for each fund's return in it, EWJ then carrying the yen's move and DXJ and HEWJ only the dollar's.";
+  for (const query of ["yen hedged", "hedged", "currency hedged etf", "hedged vs unhedged japan"]) expect(commandPointer(query), query).toBe(line);
+  expect(commandPointerLeads("yen hedged")).toBe(true);
+  for (const query of ["hedge fund", "hedged bond yield"]) expect(commandPointer(query), query).not.toBe(line);
+  const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const shown = selectPaneCatalogMatches(filterPaneCatalogEntries(await buildPaneCatalogEntries(registry, context), "yen hedged"), "yen hedged", 5).shown;
+    expect(shown[0]?.token).toBe("CMP");
   } finally {
     registry.destroy();
   }

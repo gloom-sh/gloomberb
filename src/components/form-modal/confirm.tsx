@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { t } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
@@ -58,7 +58,8 @@ export function ConfirmModalContent({
     };
   }, []);
 
-  useEffect(() => {
+  // In the commit that draws it, with the key handlers: the host holds keys off until then.
+  useLayoutEffect(() => {
     runtime.bindDismiss(dismiss);
     return () => runtime.bindDismiss(null);
   }, [dismiss, runtime]);

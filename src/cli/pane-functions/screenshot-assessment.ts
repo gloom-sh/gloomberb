@@ -1,5 +1,6 @@
 import { CHART_COMPOSER_PANE_ID } from "../../types/config";
 import { isRecord } from "../../utils/guards";
+import { parsePublicTickerKey } from "../../utils/exchanges";
 import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
 import type { ResolvedPaneFunction } from "./resolver";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
@@ -20,6 +21,39 @@ import {
   shotExpectedText,
 } from "./screenshot-data-evidence";
 import { shotExpectedChart, chartEvidenceMismatchesFor, intradayChartEvidenceMismatchesFor } from "./screenshot-chart-evidence";
+
+/** Escapes `text` for use inside a regular expression. */
+function regexLiteral(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * `token` as a whole: not inside a longer word or number ("8058:JPX" in
+ * "18058:JPX", "1.2" in "1.25"). An edge that is itself punctuation ("$1.2B",
+ * "(TTM)") needs no boundary. `notBefore` and `notAfter` list more characters
+ * that may not touch it.
+ */
+function showsToken(visible: string, token: string, notBefore = "", notAfter = ""): boolean {
+  const before = /^[\p{L}\p{N}]/u.test(token) ? `(?<![\\p{L}\\p{N}${notBefore}]|\\p{N}[.,])` : "";
+  const after = /[\p{L}\p{N}]$/u.test(token) ? `(?![\\p{L}\\p{N}${notAfter}]|[.,]\\p{N})` : "";
+  return new RegExp(`${before}${regexLiteral(token)}${after}`, "u").test(visible);
+}
+
+/**
+ * Whether a capture's text shows `value` as a whole token: a listing as
+ * written, or by its bare code where a chart legend names it so ("8053 Close ·
+ * Sumitomo" for 8053:JPX), never as part of another listing or a price
+ * ("8053:TWSE", "¥8,053.00", "8053.5"). Five names in a CMP title fold to
+ * "+2", and the legend was the only place the other two showed, so a good
+ * picture read "not usable".
+ */
+export function shotShowsText(visibleText: string, value: string): boolean {
+  const visible = visibleText.toLowerCase();
+  if (showsToken(visible, value.toLowerCase())) return true;
+  const { symbol, exchange } = parsePublicTickerKey(value);
+  if (!exchange || !symbol || !value.includes(":")) return false;
+  return showsToken(visible, symbol.toLowerCase(), ":.$¥€£", ":");
+}
 
 export function isPaneScreenshotUsable(signals: PaneScreenshotReadinessSignals): boolean {
   return (signals.interactive || (signals.rowCount > 0 && !signals.emptyStateDetected))
@@ -103,7 +137,7 @@ export function assessPaneScreenshot(
   const complete = unavailableSymbols.length === 0;
   const expectedText = shotExpectedText(resolved, symbols, payload);
   const normalizedVisibleText = render.visibleText.toLowerCase();
-  const missingExpectedText = expectedText.filter((value) => !normalizedVisibleText.includes(value.toLowerCase()));
+  const missingExpectedText = expectedText.filter((value) => !shotShowsText(normalizedVisibleText, value));
   const expectedSelections = shotExpectedSelections(resolved);
   const missingExpectedSelections = missingActiveTabSelections(
     render.semanticUi,

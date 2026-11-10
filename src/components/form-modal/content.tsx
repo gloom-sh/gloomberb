@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useId, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { apiClient } from "../../api-client";
 import type { SignedInBroker } from "../../brokers/signed-in/client";
 import { runBrokerSignIn, type BrokerSignInOutcome } from "../../brokers/signed-in/sign-in";
@@ -207,7 +207,8 @@ export function FormModalContent({
     };
   }, []);
 
-  useEffect(() => {
+  // In the commit that draws it, with the key handlers: the host holds keys off until then.
+  useLayoutEffect(() => {
     runtime.bindDismiss(dismiss);
     return () => runtime.bindDismiss(null);
   }, [dismiss, runtime]);

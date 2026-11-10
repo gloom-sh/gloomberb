@@ -22,6 +22,8 @@ export interface CloudPricePointPayload {
   filled?: boolean;
   /** A future's closed session whose settlement is not confirmed yet: it closes on the last trade. */
   unsettled?: boolean;
+  /** A bar the source served in the wrong unit: the factor its prices were multiplied by (10, 100, 0.1); its volume was divided by it. */
+  rescaled?: number;
   /** A continuous future's calendar bar: the contract it closes on (NGZ26), where the server knows it. */
   contract?: string;
   /** A currency pair's daily bar: when its close was taken (17:00 New York), as an ISO time, where the server knows it. */

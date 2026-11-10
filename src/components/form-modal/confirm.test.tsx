@@ -85,6 +85,29 @@ describe("confirm modal", () => {
     expect(storeRef.current!.getState().config.updates).toEqual({ channel: "nightly" });
   });
 
+  // A command and the Enter after it can arrive in one read of the keyboard: the second Enter came before the
+  // confirm was drawn, and the focused pane under it took it ("Close Pane" over a SEC pane, 9 Nov 2026).
+  test("an Enter sent with the one that asked for a confirm reaches neither the pane under it nor the confirm", async () => {
+    let paneEnters = 0;
+    let confirmed = 0;
+    await render(
+      <CommandBarHarness query="" live configureState={(state) => ({ ...state, commandBarOpen: false })} onUnhandledEnter={() => { paneEnters++; }} />,
+      { width: 90, height: 30 },
+    );
+    await session.setup.renderOnce();
+    await act(async () => {
+      expect(openConfirmModal(confirmRequest({ onConfirm: () => { confirmed++; } }).confirm)).toBe(true);
+      session.setup.mockInput.pressEnter();
+    });
+    await waitForForm("Reset Current Layout");
+    expect(paneEnters).toBe(0);
+    expect(confirmed).toBe(0);
+    await press(ENTER);
+    await settle();
+    expect(confirmed).toBe(1);
+    expect(paneEnters).toBe(0);
+  });
+
   test("n cancels a confirm from a bar picker and leaves nothing open", async () => {
     await render(
       <CommandBarHarness

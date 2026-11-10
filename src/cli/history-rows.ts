@@ -331,7 +331,22 @@ export function withDailyRebuiltBars(rows: readonly HistoryRow[], daily: readonl
 
 /** The codes of a bar left blank for prices that contradict each other: not a break before it, nor a withheld wick. */
 function blankingCodes(row: Pick<HistoryRow, "flag">): string[] {
-  return flagCodes(row).filter((code) => !BREAK_FLAGS.has(code) && !isWickFlag(code));
+  return flagCodes(row).filter((code) => !BREAK_FLAGS.has(code) && !isWickFlag(code) && !isRescaleFlag(code));
+}
+
+/**
+ * A bar the source served in the wrong unit, scaled back to the bars around it: `rescaled*10` when its prices were a
+ * tenth of themselves (and its volume ten times), `rescaled/10` when ten times. It keeps the prices as scaled.
+ */
+function rescaleFlags(point: Pick<PricePoint, "rescaled">): string[] {
+  const factor = point.rescaled;
+  if (factor == null || !Number.isFinite(factor) || factor <= 0 || factor === 1) return [];
+  return [factor > 1 ? `rescaled*${Math.round(factor)}` : `rescaled/${Math.round(1 / factor)}`];
+}
+
+/** Whether a flag code marks a bar scaled back from the wrong unit (rescaleFlags), whose prices stay. */
+export function isRescaleFlag(code: string): boolean {
+  return code.startsWith("rescaled");
 }
 
 /**
@@ -359,7 +374,7 @@ export function historyRows(
   const rows = points.map((point, index) => {
     const time = times[index]!;
     const iso = Number.isFinite(time) ? new Date(time).toISOString() : "";
-    const flags = [...pricePointIntegrityFlags(point), ...pricePointWickFlags(point)];
+    const flags = [...pricePointIntegrityFlags(point), ...pricePointWickFlags(point), ...rescaleFlags(point)];
     // A monthly bar whose prices contradict each other keeps its close and volume: a continuous future's month
     // (ZC=F's September 2000) can join one contract's open to another's range. Every other bar is blanked whole.
     const kept = interval === "1mo" && pricePointIntegrityFlags(point).length > 0 && keptMonthlyClose(point);
@@ -1109,6 +1124,26 @@ export function historyFlagNote(rows: readonly Pick<HistoryRow, "flag" | "close"
     : rebuilt > 0 ? `; open, high and low come from the month's daily bars for ${rebuilt} and are blank for ${kept.length - rebuilt}, whose daily bars do not cover the month without contradiction`
       : `; open, high and low are blank, the month's daily bars not covering ${kept.length === 1 ? "it" : "them"} without contradiction`;
   return `${said}; ${keep}${ohl}${blank > 0 ? `; ${blank} ${blank === 1 ? "is" : "are"} left blank` : ""}`;
+}
+
+/**
+ * "2026-03-30 and 2026-03-31 came from the source at 1/10 of their price and 10x their volume; shown scaled back": the
+ * bars flagged `rescaled*N` or `rescaled/N` (rescaleFlags), or null when none is.
+ */
+export function historyRescaleNote(rows: readonly Pick<HistoryRow, "date" | "flag">[]): string | null {
+  const byCode = new Map<string, string[]>();
+  for (const row of rows) {
+    for (const code of flagCodes(row).filter(isRescaleFlag)) byCode.set(code, [...byCode.get(code) ?? [], row.date]);
+  }
+  if (byCode.size === 0) return null;
+  const parts = [...byCode].map(([code, dates]) => {
+    const factor = code.slice("rescaled".length + 1);
+    const up = code.startsWith("rescaled*");
+    const listed = dates.length <= LISTED_GAPS ? listItems(dates) : `${dates.length} bars`;
+    const their = dates.length === 1 ? "its" : "their";
+    return `${listed} came from the source at ${up ? `1/${factor} of` : `${factor}x`} ${their} price and ${up ? `${factor}x` : `1/${factor} of`} ${their} volume`;
+  });
+  return `${parts.join("; ")}; shown scaled back (flag rescaled)`;
 }
 
 /**

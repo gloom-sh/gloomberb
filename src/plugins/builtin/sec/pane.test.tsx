@@ -458,6 +458,21 @@ test("a fund listed abroad shows what fn ETF prints of it: its name, its issuer'
   }
 });
 
+// SEC 8058:JPX in the command bar opened nothing and said nothing.
+test("a company listed abroad is looked up by the SEC, and one that files nothing says so and links its exchange's announcements", async () => {
+  firstSymbol = "8058:JPX";
+  firstListing = { exchange: "JPX", currency: "JPY", assetCategory: "STK" };
+  expect(secModule.paneTemplates![0]!.canCreate?.({} as never, { ticker: createTestTicker("8058:JPX", "Mitsubishi Corporation", firstListing) } as never))
+    .toBe(true);
+  const filings: string[] = [];
+  await mount(createTestDataProvider({ getSecFilings: async (symbol) => { filings.push(symbol); return []; } }));
+  const shown = (await tui.waitForFrameToContain("files no SEC reports")).replace(/\s+/g, " ");
+  // The harness names the ticker by its key; `filings` prints the same line.
+  expect(shown).toContain("8058:JPX (JPX) files no SEC reports. TDnet timely disclosures: release.tdnet.info");
+  expect(filings).toEqual(["8058:JPX"]);
+  expect(footer.menu?.map((item) => ("label" in item ? item.label : null))).toEqual(["Open release.tdnet.info"]);
+});
+
 test("a Hong Kong spot coin fund shows its issuer's figures in its counter's currency, with units per coin", async () => {
   paneSettings = { forms: ETF_FORMS_SETTING };
   // A bare code on HKEX: the server is asked for 3046:XHKG, its Hong Kong listing, not a US 3046.

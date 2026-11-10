@@ -9,6 +9,7 @@ import { treasuryYieldLine, treasuryYieldTenor } from "./treasury-yields";
 import { namedCurrencyPair } from "./currency-name-hint";
 import { dollarPairListing } from "../utils/currency-pair";
 import { currencyCodeTyped } from "../utils/currency-names";
+import { uncarriedIndexFor, uncarriedIndexLine } from "../tickers/index-roots";
 
 /**
  * What a listing is to a sub-minute ask: a US listing, which has a tape; one
@@ -374,6 +375,16 @@ const COMMAND_POINTERS: ReadonlyArray<{
     line: "FX forwards implied by both currencies' short rates (covered interest parity), with forward points, the hedge cost and, for an amount, the carry and who earns it: gloom fx 5000000 USD/MXN --forward 30d",
   },
   {
+    // A fund that hedges its currency beside one that does not is the hedged view; FXC's crosses are not one, and a
+    // single stock has no hedged series. Each fund named is one `quote` answers (2026-11-09).
+    names: ["hedged", "unhedged"],
+    words: ["yen", "jpy", "currency", "fx", "japan", "japanese", "nikkei", "topix", "etf", "etfs", "fund", "funds", "return", "returns",
+      "vs", "versus", "and", "or", "against", "view", "equity", "equities", "stocks", "performance", "compare", "comparison", "chart"],
+    line: "Hedged against unhedged: gloom fn CMP DXJ HEWJ EWJ --total-return true (DXJ and HEWJ hedge the yen, EWJ does not); "
+      + "add --currency <your currency> for each fund's return in it, EWJ then carrying the yen's move and DXJ and HEWJ only the dollar's.",
+    leads: true,
+  },
+  {
     names: ["defi", "tvl", "tvls", "total value locked", "on-chain", "onchain", "aave", "lido", "eigenlayer", "morpho"],
     words: ["protocol", "protocols", "chain", "chains", "crypto", "data", "top", "by", "history",
       "change", "ranking", "rankings", "dashboard", "lending", "staking"],
@@ -530,9 +541,12 @@ function namesKnownGap(gap: (typeof KNOWN_GAPS)[number], query: string): boolean
 
 /**
  * The line for a price the terminal has none of, typed where a ticker goes ("iron ore"), so it is never read as the
- * company whose name holds its words (Kumba Iron Ore); null for anything else.
+ * company whose name holds its words (Kumba Iron Ore), and for an index no source carries (TOPIX), which names the
+ * funds that track it rather than reading as an outage; null for anything else.
  */
 export function unquotedGapMessage(query: string): string | null {
+  const index = uncarriedIndexFor(query);
+  if (index) return uncarriedIndexLine(index);
   return KNOWN_GAPS.find((gap) => gap.unquoted && namesKnownGap(gap, query))?.message ?? null;
 }
 
@@ -545,6 +559,8 @@ export function knownGapMessage(query: string): string | null {
   const key = lookupKey(query);
   if (!key) return null;
   const tenor = treasuryYieldTenor(query);
+  const index = uncarriedIndexFor(query);
+  if (index) return uncarriedIndexLine(index);
   return KNOWN_GAPS.find((gap) => namesKnownGap(gap, query))?.message
     ?? (tenor ? treasuryYieldLine(tenor) : null)
     ?? topicPointer(query)?.message

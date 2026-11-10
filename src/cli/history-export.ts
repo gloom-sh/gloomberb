@@ -8,7 +8,7 @@
  * as one row with only its status.
  */
 import type { CliResultColumn } from "./result";
-import type { HistoryRow } from "./history-rows";
+import { isRescaleFlag, type HistoryRow } from "./history-rows";
 
 /** A bar of one symbol of a list, or the one row of a symbol that served none. */
 export interface HistoryListRow extends HistoryRow {
@@ -80,7 +80,8 @@ const BREAK_FLAGS = new Set(["gap", "jump"]);
 export function historyExportStatus(row: ExportedRow): string {
   if (typeof row.status === "string" && row.status) return row.status;
   const blanked = [row.open, row.high, row.low, row.close].every((value) => value == null);
-  const codes = (typeof row.flag === "string" ? row.flag : "").split(",").filter((code) => code && !BREAK_FLAGS.has(code));
+  const codes = (typeof row.flag === "string" ? row.flag : "").split(",")
+    .filter((code) => code && !BREAK_FLAGS.has(code) && !isRescaleFlag(code));
   return row.date && blanked && codes.length > 0 ? `prices left blank: ${codes.join(",")}` : "";
 }
 

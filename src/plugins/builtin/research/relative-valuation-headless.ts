@@ -82,7 +82,9 @@ const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
     format: (value: unknown, row: Record<string, unknown>) => {
       const values = row as Partial<ReturnType<typeof relativeValuationValues>>;
       const multiple = values.notMeaningful?.[key] ? NOT_MEANINGFUL : values.reportedMultiples?.[key] ?? (typeof value === "number" ? value : null);
-      return multiple == null ? gapText(row, key) : formatPriceEarnings(multiple);
+      // A P/E on a fiscal year's EPS, where no four newer quarters were filed, says which year.
+      const year = key === "trailingPE" && multiple !== NOT_MEANINGFUL ? values.trailingPEPeriod : null;
+      return multiple == null ? gapText(row, key) : year ? `${formatPriceEarnings(multiple)} ${year}` : formatPriceEarnings(multiple);
     },
   })),
   ...([["evSales", "EV/S"]] as const).map(([key, header]) => ({

@@ -1078,6 +1078,11 @@ export interface PricePoint {
   filled?: boolean;
   /** A future's session that has closed but whose settlement is not confirmed yet: its close is the last trade. */
   unsettled?: boolean;
+  /**
+   * The source served the bar in the wrong unit (a tenth or a hundredth of its price, ten or a hundred times its
+   * volume): the factor its prices were multiplied by to match the bars around it; its volume was divided by it.
+   */
+  rescaled?: number;
   /** A continuous future's bar (NG=F): the contract it closes on (NGZ26). A change from the bar before is a roll. */
   contract?: string;
 }
