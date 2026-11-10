@@ -573,6 +573,11 @@ async function resolveTickerSymbol(
     matches = providerItems.filter((item) => item.result
       && listingSuffixVenue(item.symbol, listingExchange(item.result))?.symbol === symbol);
   }
+  // An index's name typed as one word is that index: BIST100 is the BIST 100 (XU100.IS).
+  if (!matches.length && !parsePublicTickerKey(symbol).exchange && /\d/.test(symbol)) {
+    matches = providerItems.filter((item) => /^\s*index\s*$/i.test(item.result?.type ?? "")
+      && (item.result?.name ?? "").replace(/\s+/g, "").toUpperCase() === symbol);
+  }
   if (abroad) {
     const us = matches.filter((item) => isUsListingExchange(listingExchange(item.result!)));
     // No US listing: the row abroad is the symbol's.

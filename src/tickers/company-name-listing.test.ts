@@ -301,7 +301,7 @@ test("the BIST 100 is the index named so, not a sub-index whose name adds to it,
     "ZPMDL.IS | ZIRAAT P BIST 100 MODEL HSY BYF | BIST | ETF",
   ];
   const provider = createTestDataProvider(answering({ "BIST 100": bist, XU100: ["XU100.IS | BIST 100 | BIST | INDEX",
-    "XU100_CFNPTLER.IS | BIST 100 (EURO) | BIST | INDEX"] }));
+    "XU100_CFNPTLER.IS | BIST 100 (EURO) | BIST | INDEX"], BIST100: ["XU100.IS | BIST 100 | BIST | INDEX"] }));
   // The index keeps the symbol its sources quote it by, as ^GSPC does.
   expect(await findListingOfCompanyName(provider, "BIST 100")).toMatchObject({ symbol: "XU100.IS", exchange: "BIST", name: "BIST 100" });
   const candidates = buildTickerSearchCandidates({ query: "BIST 100", tickers: new Map(), providerResults: bist.map(row), totalLimit: 10 });
@@ -309,4 +309,6 @@ test("the BIST 100 is the index named so, not a sub-index whose name adds to it,
     .toEqual([["XU100.IS", "Primary Listing"], ["XYUZO.IS", "Other Listings"], ["XYUZO_CFNPTLER.IS", "Other Listings"]]);
   const resolved = await resolveTickerSearch({ query: "XU100", activeTicker: null, tickers: new Map(), dataProvider: provider });
   expect(resolved).toMatchObject({ kind: "provider", symbol: "XU100.IS" });
+  const spelled = await resolveTickerSearch({ query: "BIST100", activeTicker: null, tickers: new Map(), dataProvider: provider });
+  expect(spelled).toMatchObject({ kind: "provider", symbol: "XU100.IS" });
 });
