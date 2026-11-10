@@ -537,11 +537,27 @@ test("USDA's and grain words find the crop balances, PSD and FUT's crops tab", a
   try {
     const entries = await buildPaneCatalogEntries(registry, context);
     // `catalog usda` and the rest answered "No functions match".
-    for (const query of ["usda", "grain", "wasde", "fertilizer", "potash"]) {
+    for (const query of ["usda", "grain", "wasde"]) {
       const found = filterPaneCatalogEntries(entries, query);
       expect(found.map((entry) => entry.token), query).toContain("PSD");
       expect(found.find((entry) => entry.token === "PSD")!.paneId, query).toBe("commodities-energy");
     }
+  } finally {
+    registry.destroy();
+  }
+});
+
+// `catalog fertiliser` read as PSD's crop balances, which hold no fertiliser, and `catalog urea` found nothing.
+test("fertiliser words say no price series is carried and name the producers, not a function that holds none", async () => {
+  for (const query of ["fertiliser", "fertilizer", "urea", "DAP", "potash", "urea prices"]) {
+    expect(knownGapMessage(query), query).toBe("Fertiliser (urea, DAP, potash): no price series yet. Producers: NTR, CF, MOS, YAR.OL (Yara); "
+      + "news: gloom news fertilizer.");
+  }
+  const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    for (const query of ["fertiliser", "potash"]) expect(filterPaneCatalogEntries(entries, query).map((entry) => entry.token), query).not.toContain("PSD");
   } finally {
     registry.destroy();
   }

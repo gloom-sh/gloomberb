@@ -26,7 +26,7 @@ export const commodityBalancesModule: PluginModule = {
       label: "Crop Balances",
       description: "World balances for wheat, corn, soybeans, cotton, coffee and sugar, with season-average price forecasts when a table is published.",
       keywords: ["wheat", "corn", "soybeans", "cotton", "coffee", "sugar", "crop", "balances", "production", "exports", "stocks", "harvest",
-        "usda", "wasde", "grain", "grains", "fertilizer", "fertiliser", "potash"],
+        "usda", "wasde", "grain", "grains"],
       shortcut: {
         prefix: "PSD",
         argKind: "text",
