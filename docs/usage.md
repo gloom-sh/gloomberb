@@ -519,6 +519,8 @@ The Decay panel measures, in percentage points over the period in view:
 - `TQQQ decay vs 3× daily QQQ`: the fund's return minus the daily line's (fees, financing cost and tracking).
 - `3× daily QQQ decay vs 3× QQQ`: the daily line's return minus three times QQQ's. This is compounding: a fund that resets daily loses it in a market that swings and gains it in one that trends.
 
+A comparison names the splits inside its range and says its returns are split-adjusted. When a leg's close moves more than 5× from one bar to the next, the note names that move instead (`SOXS falls 18.4× on Tue 26 May with no split recorded that day`), since split-adjusted closes do not move that much, and calls the returns across it unreliable.
+
 ```text
 fn CMP TQQQ,QQQ --rangePreset 1M
 ```
