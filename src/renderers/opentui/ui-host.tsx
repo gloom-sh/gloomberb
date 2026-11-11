@@ -129,8 +129,8 @@ function mapColor(color: unknown): unknown {
 
 /**
  * Every string drawn in the terminal goes through here: a chat message, a
- * name, a headline or a share reaches the screen as text, never as a command
- * to the terminal (withoutControlCharacters). Colour and weight come from
+ * name, a headline or a share reaches the screen as the text it is, without
+ * control characters (withoutControlCharacters). Colour and weight come from
  * styled chunks, so no text needs an escape sequence of its own.
  */
 function mapTextContent(content: unknown): unknown {

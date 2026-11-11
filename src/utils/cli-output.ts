@@ -240,8 +240,7 @@ function stripAnsi(text: string): string {
  * A value as the CLI prints it in a table or a stats block: the colour codes
  * `cliStyles` put on it stay, and every other control character but the line
  * break and the tab goes (withoutControlCharacters), so a name, a headline or
- * a note from a data source prints as text and never moves the cursor,
- * clears the screen or sets the clipboard of the terminal it prints to.
+ * a note from a data source prints as the text it is.
  */
 function cliText(text: string): string {
   if (!text.includes("\x1b")) return withoutControlCharacters(text);

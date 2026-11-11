@@ -17,10 +17,10 @@ const HAS_COMMAND_CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/;
 
 /**
  * Text as a terminal draws it: every C0 control but the line break and the
- * tab, DEL and every C1 control dropped, so nothing in it is taken as a
- * command (ESC opens a sequence that can set the clipboard or clear the
- * screen, BEL ends one, U+009B is a one-byte CSI). Emoji, CJK and every other
- * character that draws stay. Text without one comes back as it is.
+ * tab, DEL and every C1 control dropped, so the terminal reads none of it as
+ * a sequence of its own (ESC opens one, BEL ends one, U+009B is a one-byte
+ * CSI). Emoji, CJK and every other character that draws stay. Text without
+ * one comes back as it is.
  */
 export function withoutControlCharacters(value: string): string {
   return HAS_COMMAND_CONTROL.test(value) ? value.replace(COMMAND_CONTROL, "") : value;

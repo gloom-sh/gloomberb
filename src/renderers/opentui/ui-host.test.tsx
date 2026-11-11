@@ -144,7 +144,7 @@ test("a one-line field fuses pasted lines unless it joins them, and a list field
 });
 
 test("text another person wrote draws as text: no ESC or BEL reaches a cell, from content, children or styled chunks", async () => {
-  // An OSC 52 clipboard write and a screen clear between words.
+  // An OSC 52 sequence and a screen clear between words.
   const dirty = "before\u001b]52;c;Zm9v\u0007mid\u001b[2Jafter";
   await tui.render(
     <Box flexDirection="column" width={40} height={5}>

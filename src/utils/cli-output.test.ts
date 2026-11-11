@@ -299,7 +299,7 @@ test("plain output fitted narrow keeps what a row is (rank, coin, name) on its f
 test("a table cell, a header and a stat print a data value as text: its control characters go, the CLI's own colour stays", () => {
   setCliColorEnabledOverride(true);
   try {
-    // An OSC 52 clipboard write, a screen clear and a one-byte CSI in a value from a data source.
+    // An OSC 52 sequence, a screen clear and a one-byte CSI in a value from a data source.
     const dirty = "Acme\u001b]52;c;Zm9v\u0007 Corp\u001b[2J\u009b2J 日本";
     const text = renderTable(
       [{ header: "Name\u0007" }, { header: "Chg", align: "right" }],
