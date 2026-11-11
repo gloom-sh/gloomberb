@@ -7,7 +7,7 @@ import type {
 import { CHART_COMPOSER_PANE_ID, type PaneInstanceConfig } from "../../../types/config";
 import type { TickerRecord } from "../../../types/ticker";
 import { parseTickerListInput } from "../../../tickers/list";
-import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
+import { canonicalExchange, canonicalTickerKey, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { tickerInstrumentLabel } from "../../../tickers/instrument-label";
 import type { ChartSpec } from "../../../time-series/types";
 import { ChartComposerPane, ChartComposerResearchTab } from "./pane";
@@ -141,12 +141,15 @@ function capabilityTitlePart(
 
 function chartTitle(spec: ChartSpec, prefix = "G"): string {
   const pricedTickers = new Set(spec.series.flatMap((series) => series.source.kind === "security"
-    ? [publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange).toUpperCase(), series.source.instrument.symbol.toUpperCase()]
+    ? [publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange).toUpperCase(),
+      canonicalTickerKey(series.source.instrument.symbol, series.source.instrument.exchange).toUpperCase(),
+      series.source.instrument.symbol.toUpperCase()]
     : []));
   const groups = new Set<string>();
   const parts = spec.series.flatMap((series) => {
     if (series.source.kind === "security") {
-      return [tickerInstrumentLabel(publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange), series.source.instrument.instrument)];
+      // The venue's own code (9992:HKEX), as the series' legend names it, never the saved key (9992:XHKG).
+      return [tickerInstrumentLabel(canonicalTickerKey(series.source.instrument.symbol, series.source.instrument.exchange), series.source.instrument.instrument)];
     }
     if (series.source.kind === "economic") return [`FRED:${series.source.seriesId}`];
     const label = series.label?.trim() || registeredSeriesName(series.source) || series.source.seriesId;

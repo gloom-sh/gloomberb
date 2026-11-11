@@ -1,4 +1,4 @@
-import { publicTickerKey } from "../utils/exchanges";
+import { canonicalTickerKey } from "../utils/exchanges";
 import type { ChartSeriesSpec, ChartStudySpec } from "./types";
 
 /**
@@ -9,7 +9,7 @@ export function seriesMessageName(spec: Pick<ChartSeriesSpec, "label" | "source"
   const label = spec.label?.trim();
   if (label) return label;
   switch (spec.source.kind) {
-    case "security": return publicTickerKey(spec.source.instrument.symbol, spec.source.instrument.exchange);
+    case "security": return canonicalTickerKey(spec.source.instrument.symbol, spec.source.instrument.exchange);
     case "economic": return `FRED ${spec.source.seriesId}`;
     case "capability": return spec.source.seriesId;
   }

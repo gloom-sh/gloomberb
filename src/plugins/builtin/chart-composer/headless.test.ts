@@ -232,7 +232,7 @@ test("a chart of weekly bars dates its latest close and the report by the week's
     const result = await definition.load(args, { ...fixture().context, marketData: provider, settings: { chartSpec: spec } });
     expect(result.freshness).toMatchObject({ basis: "weekly bars", asOf: "2026-10-16" });
     const text = renderHeadlessPaneText(definition, result, args, "Custom Chart");
-    expect(text).toMatch(/SPY:XNYS Price\s+2026-10-16\s+763/);
+    expect(text).toMatch(/SPY:NYSE Price\s+2026-10-16\s+763/);
     expect(text).toContain("Fri 16 Oct 2026 · not a live feed (weekly bars)");
   } finally {
     setSystemTime();

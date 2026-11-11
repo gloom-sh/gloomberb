@@ -191,7 +191,7 @@ describe("Ticker detail chart tab switching", () => {
 
     await flushFrames();
     const chartTabFrame = tui.frame();
-    expect(chartTabFrame).toContain("AAPL:XNAS Price");
+    expect(chartTabFrame).toContain("AAPL:NASDAQ Price");
     expect(chartTabFrame).toContain("5Y");
     expect(chartTabFrame.toUpperCase()).toContain("AUTO");
     expect(chartTabFrame).not.toContain("AAPL -");

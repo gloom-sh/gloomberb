@@ -9,6 +9,7 @@ import {
 } from "../../../time-series/field-catalog";
 import {
   canonicalExchange,
+  canonicalTickerKey,
   isKnownExchangeCode,
   publicTickerKey,
 } from "../../../utils/exchanges";
@@ -268,7 +269,8 @@ export function chartSeriesLabel(series: ChartSeriesSpec): string {
   const generic = getTimeSeriesField(series.source.fieldId)?.unitGroup === "price"
     ? futuresGenericListing(series.source.instrument.symbol, series.source.instrument.exchange) : null;
   if (generic) return futuresGenericCaption(generic);
-  const instrument = publicTickerKey(
+  // The venue's own code (9992:HKEX), as the series' resolved label names it (instrumentLabel).
+  const instrument = canonicalTickerKey(
     series.source.instrument.symbol,
     series.source.instrument.exchange,
   );

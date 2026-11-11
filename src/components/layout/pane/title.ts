@@ -8,6 +8,16 @@ import {
 import type { PaneDef } from "../../../types/plugin";
 import { paneTitleMnemonic } from "../../../layout/pane-follow";
 import { canFollowTickerSource, isTickerLinkPeer } from "../../../layout/ticker-navigation";
+import { canonicalTickerKey, parsePublicTickerKey } from "../../../utils/exchanges";
+
+/**
+ * A ticker key as a title names it: the venue's own code (`9992:HKEX`,
+ * `SHOP:NASDAQ`), as the CLI and a chart's legend do, never the key a
+ * listing is saved or bound under (`9992:XHKG`). A bare key stays bare.
+ */
+function displayTicker(key: string): string {
+  return parsePublicTickerKey(key).exchange ? canonicalTickerKey(key) : key;
+}
 
 /** Single-cell link glyph: emoji link icons render double-width in terminals. */
 const LINK_GLYPH = "\u29c9";
@@ -32,7 +42,7 @@ export function getBasePaneDisplayTitle(
 
   if (instance.paneId === TICKER_RESEARCH_PANE_ID) {
     const ticker = resolveTickerForPane(state as AppState, instance.instanceId);
-    if (ticker) return ticker;
+    if (ticker) return displayTicker(ticker);
     const collectionId = resolveCollectionForPane(state as AppState, instance.instanceId);
     return state.config.portfolios.find((portfolio) => portfolio.id === collectionId)?.name
       ?? state.config.watchlists.find((watchlist) => watchlist.id === collectionId)?.name
@@ -46,7 +56,7 @@ export function getBasePaneDisplayTitle(
     : null;
   if (mnemonic) {
     const ticker = resolveTickerForPane(state as AppState, instance.instanceId);
-    return ticker ? `${mnemonic} ${ticker}` : mnemonic;
+    return ticker ? `${mnemonic} ${displayTicker(ticker)}` : mnemonic;
   }
 
   if (instance.title) return instance.title;
@@ -62,7 +72,7 @@ export function getBasePaneDisplayTitle(
   if (paneDef.tickerSource) return t(paneDef.name);
 
   const ticker = resolveTickerForPane(state as AppState, instance.instanceId);
-  return ticker ? `${t(paneDef.name)}: ${ticker}` : t(paneDef.name);
+  return ticker ? `${t(paneDef.name)}: ${displayTicker(ticker)}` : t(paneDef.name);
 }
 
 export function getPaneDisplayTitle(
