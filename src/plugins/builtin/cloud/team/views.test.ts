@@ -23,7 +23,7 @@ afterEach(() => {
   mock.restore();
 });
 
-test("a team whose view list fails keeps its views and is asked again", async () => {
+test("the same teams are not asked twice, and a team whose view list fails keeps its views and is asked again", async () => {
   teamViewsStore.attach({ registerPaneTemplate: () => () => {} });
   let teams = ["a", "b"];
   const snapshot = teamStore.getSnapshot();
@@ -40,17 +40,23 @@ test("a team whose view list fails keeps its views and is asked again", async ()
     return [view(teamId)];
   });
 
-  await teamViewsStore.refresh();
+  expect(teamViewsStore.refresh()).toBeUndefined();
+  expect(listed).toEqual(["a", "b"]);
+  await Bun.sleep(0);
   expect(teamViewsStore.list().map((entry) => entry.id)).toEqual(["view-a", "view-b"]);
+
+  // The same teams with their views on hand ask nothing.
+  await teamViewsStore.refreshAndWait();
+  expect(listed).toEqual(["a", "b"]);
 
   // Joining a third team refetches every list; team b's request fails this time.
   teams = ["a", "b", "c"];
   offline.add("b");
-  await teamViewsStore.refresh();
+  await teamViewsStore.refreshAndWait();
   expect(teamViewsStore.list().map((entry) => entry.id)).toEqual(["view-a", "view-b", "view-c"]);
 
   offline.clear();
   listed.length = 0;
-  await teamViewsStore.refresh();
+  await teamViewsStore.refreshAndWait();
   expect(listed).toContain("b");
 });
