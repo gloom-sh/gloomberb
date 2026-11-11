@@ -25,7 +25,7 @@ export function TeamsAccountTab({ focused, width }: { focused: boolean; width: n
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   useEffect(() => {
-    void teamStore.refresh();
+    teamStore.refresh();
   }, []);
 
   const items = useMemo<ListViewItem[]>(() => [

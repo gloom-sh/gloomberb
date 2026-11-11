@@ -118,7 +118,7 @@ export class TeamStore {
     this.started = true;
     const syncAuth = () => {
       if (this.client.isVerified()) {
-        void this.refresh();
+        this.refresh();
       } else if (this.snapshot.loaded || this.snapshot.teams.length > 0) {
         this.update({ ...EMPTY, focus: this.snapshot.focus, collapsedTeams: this.snapshot.collapsedTeams });
       }
@@ -142,7 +142,7 @@ export class TeamStore {
   }
 
   private receiveUpdate(event: TeamUpdatedEvent): void {
-    void this.refresh();
+    this.refresh();
     for (const listener of this.updateListeners) listener(event);
   }
 
@@ -215,7 +215,20 @@ export class TeamStore {
     this.update({ toggledGroups: next });
   }
 
-  async refresh(): Promise<void> {
+  /**
+   * Starts a refresh, or joins the one in flight, and returns nothing: a
+   * failure lands in `error`.
+   */
+  refresh(): void {
+    this.refreshAndWait().catch(logFailure("team.store", "Refreshing teams failed"));
+  }
+
+  /**
+   * The same refresh for a caller that waits on it. A second caller while one
+   * is in flight gets the same promise. It settles once the teams or the
+   * failure are in state.
+   */
+  refreshAndWait(): Promise<void> {
     if (this.refreshPromise) return this.refreshPromise;
     this.update({ loading: true, error: null });
     this.refreshPromise = (async () => {
@@ -273,7 +286,7 @@ export class TeamStore {
     this.update({ notifications: this.mergeNotifications([notification]) });
     this.persistNotifications();
     if (notification.type === "team-joined" || notification.type === "team-invite") {
-      void this.refresh();
+      this.refresh();
     }
     const { title, body } = describeTeamNotification(notification);
     const action = this.notificationAction(notification);
