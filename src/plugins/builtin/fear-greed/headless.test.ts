@@ -1,7 +1,15 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
+import { collectSavedCopies, savedCopyShownAt } from "../../../data/saved-copies";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../../utils/network-failure";
+import { loadFearGreed, resetFearGreedPersistence } from "./cache";
 import { createFearGreedHeadless } from "./headless";
-import type { FearGreedData } from "./data";
+import { fetchFearGreedData, type FearGreedData } from "./data";
+
+afterEach(() => {
+  setSystemTime();
+  resetFearGreedPersistence();
+});
 
 const args: HeadlessPaneLoadArgs = { rawArgument: "", argument: null, symbols: [], options: {} };
 
@@ -49,5 +57,32 @@ describe("fear and greed headless model", () => {
     expect(result.sections[1]?.rows?.[0]).toMatchObject({
       id: "market-volatility", latestValue: 14.25, secondaryValue: 17.5,
     });
+  });
+
+  test("offline, the index is the copy it saved, dated, with no error; any other failure stays the error beside it", async () => {
+    // No connection reads as every other pane says it, not in the fetch's own words.
+    const unreachable = await fetchFearGreedData({
+      fetcher: async () => { throw new Error("Unable to connect. Is the computer able to access the url?"); },
+    }).catch((error: unknown) => error);
+    expect((unreachable as Error).message).toBe(DATA_SERVICE_UNREACHABLE_MESSAGE);
+
+    let failure: unknown = null;
+    const headless = createFearGreedHeadless({ load: () => loadFearGreed(false, async () => {
+      if (failure) throw failure;
+      return data;
+    }) });
+    const read = () => collectSavedCopies(async () => {
+      const result = await headless.load(args, {} as HeadlessPaneContext);
+      return { savedAt: savedCopyShownAt(result), errors: result.errors ?? [] };
+    });
+    const saved = Date.parse("2026-11-11T15:33:00Z");
+    setSystemTime(new Date(saved));
+    expect(await read()).toEqual({ savedAt: null, errors: [] });
+    // Past the five minutes a reading is kept fresh, so the next read asks again.
+    setSystemTime(new Date(saved + 10 * 60_000));
+    failure = unreachable;
+    expect(await read()).toEqual({ savedAt: saved, errors: [] });
+    failure = new Error("CNN Fear & Greed answered with an unreadable page");
+    expect(await read()).toEqual({ savedAt: null, errors: ["CNN Fear & Greed answered with an unreadable page"] });
   });
 });

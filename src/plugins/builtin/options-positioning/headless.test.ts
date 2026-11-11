@@ -1,4 +1,8 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
+import { ApiRequestError } from "../../../api-client/errors";
+import { getPaneFunctionCapability, normalizeCapabilityOptions } from "../../../cli/pane-functions/capabilities";
+import { collectSavedCopies, savedCopyShownAt } from "../../../data/saved-copies";
+import { DataServiceUnreachableError } from "../../../utils/network-failure";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { renderReportCsv } from "../../../cli/report-tables";
@@ -99,4 +103,41 @@ test("an older server without per-expiry gamma leaves the Net GEX column blank, 
   // The header names its unit as it does with figures in it, so a script's columns do not move.
   expect(expiries.rows.map((row) => row[expiries.columns.indexOf("Net GEX $ (USD per 1% move)")])).toEqual(["", "", ""]);
   expect(result.errors).toEqual([]);
+});
+
+test("offline, OPX answers from the copy it saved and says when; a refusal is the error, saved copy or not", async () => {
+  const definition = optionsPositioningHeadless("expiries");
+  const args = createTestHeadlessArgs({ symbols: ["SPY"], options: { expiry: "2026-11-20" } });
+  let failure: unknown = null;
+  const ctx = createTestHeadlessContext({ apiClient: {
+    optionsPositioning: async (path: string) => {
+      if (failure) throw failure;
+      return path.startsWith("open-interest") ? { ...openInterest, expiry: "2026-11-20" } : gamma("2026-11-20", [byExpiry[2]!]);
+    },
+  } as never });
+  const saved = Date.parse("2026-11-11T15:32:00Z");
+  try {
+    setSystemTime(new Date(saved));
+    await definition.load(args, ctx);
+    setSystemTime(new Date(saved + 10 * 60_000));
+    failure = new DataServiceUnreachableError(new Error("Unable to connect. Is the computer able to access the url?"));
+    const offline = await collectSavedCopies(async () => savedCopyShownAt(await definition.load(args, ctx)));
+    expect(offline).toBe(saved);
+    // A 5xx asking again may get past is answered the same way; a 404 is not.
+    failure = new ApiRequestError("Bad gateway", 502);
+    expect(await collectSavedCopies(async () => savedCopyShownAt(await definition.load(args, ctx)))).toBe(saved);
+    failure = new ApiRequestError("Not found", 404);
+    await expect(definition.load(args, ctx)).rejects.toThrow("Not found");
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("OPX takes --expiration for its expiry, as options and OVDV spell it", () => {
+  const pane = { id: "options-positioning", name: "OPX", component: () => null, defaultPosition: "right" as const };
+  const capability = getPaneFunctionCapability({ id: "options-positioning-pane", paneId: "options-positioning", label: "OPX",
+    description: "Options positioning", headless: optionsPositioningHeadless("strikes") }, pane);
+  const strict = { strict: true, code: "OPX" };
+  expect(normalizeCapabilityOptions(capability, { expiration: "2026-11-27" }, strict)).toMatchObject({ expiry: "2026-11-27" });
+  expect(normalizeCapabilityOptions(capability, { expiry: "2026-11-27" }, strict)).toMatchObject({ expiry: "2026-11-27" });
 });

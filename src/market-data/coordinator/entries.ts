@@ -1,4 +1,5 @@
 import { hasUsablePriceHistory } from "../../utils/price-history";
+import { isTransientFailure } from "../../api-client/errors";
 import type { PricePoint, Quote, TickerFinancials } from "../../types/financials";
 import { hasFreshQuoteForCurrentSession, isQuoteStaleForCurrentSession } from "../quotes/freshness";
 import type { InstrumentRef } from "../request-types";
@@ -6,7 +7,7 @@ import type { ProviderAttempt, ProviderReasonCode, QueryEntry } from "../result-
 import { resolveEntryData } from "../selectors";
 
 const EMPTY_MESSAGE = "No data available";
-export const EXPECTED_EMPTY = /no data|not found|delisted|unavailable|unsupported/i;
+const EXPECTED_EMPTY = /no data|not found|delisted|unavailable|unsupported/i;
 export const SNAPSHOT_CACHE_TTL_MS = 5 * 60_000;
 /** How long a failed or empty snapshot answer stands before an unforced load asks again. */
 export const SNAPSHOT_FAILURE_RETRY_MS = 2 * 60_000;
@@ -24,6 +25,26 @@ export function classifyError(error: unknown): { reasonCode: ProviderReasonCode;
   if (/mapping|symbol/i.test(message)) return { reasonCode: "BAD_MAPPING", message };
   if (/not found|no data|unavailable|delisted/i.test(message)) return { reasonCode: "NOT_FOUND", message };
   return { reasonCode: "UPSTREAM_ERROR", message };
+}
+
+/**
+ * How a load that threw is recorded: `retryable_error` for a failure asking
+ * again may get past (no connection, a timeout, 429, a 5xx:
+ * `isTransientFailure`), whose kept data is then a saved copy
+ * (`savedCopyEntryAt`), and `fatal_error` for any other.
+ */
+export function errorStatus(error: unknown): "retryable_error" | "fatal_error" {
+  return isTransientFailure(error) ? "retryable_error" : "fatal_error";
+}
+
+/**
+ * As `errorStatus`, with an answer that there is nothing (no data, not found)
+ * recorded as `empty`. A transient failure stays one whatever it says: a 503
+ * "Service unavailable" is an outage, not an empty answer.
+ */
+export function failureStatus(error: unknown, classified: { message: string }): ProviderAttempt["status"] {
+  const status = errorStatus(error);
+  return status === "fatal_error" && EXPECTED_EMPTY.test(classified.message) ? "empty" : status;
 }
 
 export function hasFreshEntryData<T>(entry: QueryEntry<T>, ttlMs: number, now = Date.now()): boolean {

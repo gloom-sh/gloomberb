@@ -1,5 +1,7 @@
 import { apiClient } from "../../../api-client";
+import { createPluginCache } from "../../../data/plugin-cache";
 import { usListingSymbol } from "../../../utils/sec";
+import { loadCloudResource, type CloudResource } from "../shared/cloud-resource";
 
 export interface ExpiryOpenInterest {
   date: string;
@@ -128,22 +130,47 @@ export const positioningSymbol = (symbol: string) => usListingSymbol(symbol, "Op
 const query = (symbol: string, expiry: string | null) =>
   new URLSearchParams({ symbol: positioningSymbol(symbol), ...(expiry ? { expiry } : {}) }).toString();
 
-/** Every expiry's open interest, and one expiry's strikes (the server's pick when none is asked for). */
+/**
+ * The last answer for each symbol and expiry, kept so OPX still shows it,
+ * saying when it was saved, when the service cannot be reached. Every load
+ * asks the service first: open interest and gamma move through the session.
+ */
+const cacheOptions = { source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 0, expireMs: 2 * 86_400_000 } };
+export const openInterestCache = createPluginCache<OpenInterestPayload>({ ...cacheOptions, kind: "options-positioning-open-interest" });
+export const gammaCache = createPluginCache<GammaPayload>({ ...cacheOptions, kind: "options-positioning-gamma" });
+
+interface PositioningLoadOptions {
+  signal?: AbortSignal;
+  /** Ask the service even when another load of the same answer is under way. */
+  force?: boolean;
+}
+
+/**
+ * Every expiry's open interest, and one expiry's strikes (the server's pick
+ * when none is asked for); the saved copy, with `savedAt`, when the service
+ * cannot be reached.
+ */
 export function loadOpenInterest(
   symbol: string,
   expiry: string | null,
-  options: { signal?: AbortSignal } = {},
+  options: PositioningLoadOptions = {},
   api: OptionsPositioningApi = apiClient,
-) {
-  return api.optionsPositioning<OpenInterestPayload>(`open-interest?${query(symbol, expiry)}`, { signal: options.signal });
+): Promise<CloudResource<OpenInterestPayload>> {
+  const key = query(symbol, expiry);
+  return loadCloudResource(openInterestCache, key,
+    () => api.optionsPositioning<OpenInterestPayload>(`open-interest?${key}`, { signal: options.signal }),
+    { force: options.force, signal: options.signal });
 }
 
-/** Dealer gamma by strike across every expiry, or one. */
+/** Dealer gamma by strike across every expiry, or one; the saved copy, with `savedAt`, when the service cannot be reached. */
 export function loadGamma(
   symbol: string,
   expiry: string | null,
-  options: { signal?: AbortSignal } = {},
+  options: PositioningLoadOptions = {},
   api: OptionsPositioningApi = apiClient,
-) {
-  return api.optionsPositioning<GammaPayload>(`gamma?${query(symbol, expiry)}`, { signal: options.signal });
+): Promise<CloudResource<GammaPayload>> {
+  const key = query(symbol, expiry);
+  return loadCloudResource(gammaCache, key,
+    () => api.optionsPositioning<GammaPayload>(`gamma?${key}`, { signal: options.signal }),
+    { force: options.force, signal: options.signal });
 }

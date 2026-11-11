@@ -97,6 +97,15 @@ export interface GloomPluginContext {
   readonly configState: PluginConfigState;
   readonly paneSettings: PluginPaneSettingsState;
   readonly teamState: PluginTeamState;
+  /**
+   * Where the plugin runs: `app` in the terminal or desktop app, `command`
+   * while one CLI command (`gloom doctor`, `gloom fn`) loads the plugins and
+   * exits. A command keeps nothing running and shows no notification, so a
+   * plugin starts no pollers, streams or timers there: an alert one fired
+   * would reach no one, and the command could not save that it went off.
+   * Absent means `app`.
+   */
+  readonly runtime?: "app" | "command";
 
   createBrokerInstance(brokerType: string, label: string, values: Record<string, unknown>, options?: BrokerInstanceCreateOptions): Promise<BrokerInstanceConfig>;
   updateBrokerInstance(instanceId: string, values: Record<string, unknown>, options?: BrokerInstanceUpdateOptions): Promise<void>;

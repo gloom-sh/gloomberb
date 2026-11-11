@@ -1,6 +1,7 @@
 import type { PaneTemplateContext, PaneTemplateDef } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate, type TickerSurfacePaneTemplateOptions } from "../shared/ticker-surface";
+import { gammaCache, openInterestCache } from "./client";
 import { optionsPositioningHeadless } from "./headless";
 import { isPositioningTab, type PositioningTab } from "./model";
 
@@ -40,6 +41,15 @@ function positioningTemplate(
 }
 
 export const optionsPositioningModule: PluginModule = {
+  // The last answers are kept on the device, for when the service cannot be reached.
+  setup(ctx) {
+    openInterestCache.attach(ctx.persistence);
+    gammaCache.attach(ctx.persistence);
+  },
+  dispose() {
+    openInterestCache.reset();
+    gammaCache.reset();
+  },
   panes: [{
     id: "options-positioning",
     name: "Options Positioning",

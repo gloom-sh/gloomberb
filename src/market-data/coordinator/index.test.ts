@@ -1,7 +1,8 @@
 import { useRegularMarketSession } from "../../test-support/market-session";
 import { describe, expect, it } from "bun:test";
 import { createManualFrameDriver, DataFrameScheduler } from "../frame-scheduler";
-import { MarketDataCoordinator } from "./index";
+import { MarketDataCoordinator, savedCopyEntryAt } from "./index";
+import { ApiRequestError } from "../../api-client/errors";
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { PricePoint, Quote } from "../../types/financials";
@@ -254,6 +255,31 @@ describe("MarketDataCoordinator", () => {
     expect(optionsCalls).toBe(2);
     // Without a handle on the provider's cache, a refresh must reach the source and a stale stored chain is refetched.
     expect(modes).toEqual(["current", "refresh"]);
+  });
+
+  it("a chain kept through a timeout, no connection, 429 or 5xx is a saved copy, as on every pane; a refusal is not", async () => {
+    let failure: unknown = null;
+    const provider = createProvider({
+      getOptionsChain: async () => {
+        if (failure) throw failure;
+        return { underlyingSymbol: "SPY", expirationDates: [1_800_000_000], calls: [], puts: [] };
+      },
+    });
+    const coordinator = new MarketDataCoordinator(provider);
+    const request = { instrument: { symbol: "SPY", exchange: "NYSEARCA" }, expirationDate: 1_800_000_000 };
+    const fetchedAt = (await coordinator.loadOptions(request)).fetchedAt;
+    const savedAfter = async (error: unknown) => {
+      failure = error;
+      return savedCopyEntryAt(await coordinator.loadOptions(request, { forceRefresh: true }));
+    };
+    expect(fetchedAt).not.toBeNull();
+    // A 503 that says "unavailable" is an outage, not an answer that there is nothing.
+    for (const error of [new ApiRequestError("Too many requests", 429), new ApiRequestError("Service unavailable", 503),
+      new ApiRequestError("Upstream timed out", 504), Object.assign(new Error("The operation timed out."), { name: "TimeoutError" })]) {
+      expect(await savedAfter(error)).toBe(fetchedAt);
+    }
+    expect(await savedAfter(new ApiRequestError("Real-time options need Gloom Pro", 403))).toBeNull();
+    coordinator.destroy();
   });
 
   it("uses cached chart data while a wider range request is loading", async () => {

@@ -61,12 +61,15 @@ function dvolSeries(currency: DvolCurrency): SeriesDefinition {
     frequency: "daily",
     group: "Volatility",
     tags: ["volatility", "DVOL", "Deribit", "crypto", "implied volatility", currency, `${currency}-USD`, coin.toLowerCase()],
+    // Deribit's own names: DVOL is bitcoin's, ETHDVOL ether's. DVOL is also a US fund, which a quote answers for.
+    aliases: currency === "BTC" ? ["dvol", "btcdvol"] : ["ethdvol"],
     description: `Deribit's DVOL for ${currency}: the 30-day implied volatility its ${currency} options price, in vol points, daily since March 2021.`,
     url: `https://www.deribit.com/statistics/${currency}/volatility-index`,
     refreshMs: 5 * 60_000,
     load: async ({ signal }) => {
-      const payload = await loadDvol(currency, signal ? { signal } : {});
-      return { points: payload.observations, attribution: { source: `Deribit DVOL (${currency})`, publisher: "Deribit" } };
+      const { payload, savedAt } = await loadDvol(currency, signal ? { signal } : {});
+      return { points: payload.observations, ...(savedAt != null ? { savedAt } : {}),
+        attribution: { source: `Deribit DVOL (${currency})`, publisher: "Deribit" } };
     },
   };
 }

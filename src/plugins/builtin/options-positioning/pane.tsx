@@ -22,6 +22,8 @@ import {
   type QueryBarFilter,
   type StatItem,
 } from "../../../components";
+import { savedCopyFooterSegment } from "../../../components/layout/pane/footer";
+import type { CloudResource } from "../shared/cloud-resource";
 import { formatCompactAxis } from "../../../components/chart-table";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
@@ -217,10 +219,11 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   const [gammaSort, setGammaSort] = useState<Sort>({ columnId: "strike", direction: "asc" });
 
   const openInterestLoader = useCallback(
-    (_force: boolean) => loadOpenInterest(symbol, requestedExpiry),
+    (force: boolean) => loadOpenInterest(symbol, requestedExpiry, { force }),
     [symbol, requestedExpiry],
   );
-  const openInterest = useAsyncResource<OpenInterestPayload>(openInterestLoader, { keepPreviousData: true });
+  const openInterestLoad = useAsyncResource<CloudResource<OpenInterestPayload>>(openInterestLoader, { keepPreviousData: true });
+  const openInterest = { ...openInterestLoad, data: openInterestLoad.data?.payload ?? null };
   const data = openInterest.data;
   const spot = data?.spot ?? null;
   const venue = data?.venue;
@@ -247,11 +250,12 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   // Gamma prices every expiry's chain, so it loads only once a tab that shows it is open; a
   // single expiry waits for the listed expiries to say whether it is still there.
   const gammaLoader = useCallback(
-    (_force: boolean) => loadGamma(symbol, gammaScope === ALL_EXPIRIES ? null : gammaScope),
+    (force: boolean) => loadGamma(symbol, gammaScope === ALL_EXPIRIES ? null : gammaScope, { force }),
     [symbol, gammaScope],
   );
   const gammaReady = (tab === "gex" && (!!data || gammaExpiry === ALL_EXPIRIES)) || (tab === "expiries" && hasGamma);
-  const gamma = useAsyncResource<GammaPayload>(gammaReady ? gammaLoader : null, { keepPreviousData: true });
+  const gammaLoad = useAsyncResource<CloudResource<GammaPayload>>(gammaReady ? gammaLoader : null, { keepPreviousData: true });
+  const gamma = { ...gammaLoad, data: gammaLoad.data?.payload ?? null };
   useAutoRefresh(openInterest.updatedAt, openInterest.load, { intervalMs: OPEN_INTEREST_REFRESH_MS });
   useAutoRefresh(gamma.updatedAt, gamma.load, { intervalMs: gammaReady ? GAMMA_REFRESH_MS : null });
   usePaneRefreshKey(() => {
@@ -298,14 +302,19 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
     delayLabel: "15m", focused, segmentId: "opx-access", shortcutScope: "opx:upgrade", placement: "opx-footer",
     degraded: (tab === "gex" ? gamma.data?.delayed : data?.delayed) ?? true,
   });
+  // Shown from copies saved before the service could not be reached: the footer says when, as other panes do.
+  const savedAts = [openInterestLoad.data?.savedAt, ...(tab === "gex" || (tab === "expiries" && gammaReady) ? [gammaLoad.data?.savedAt] : [])]
+    .filter((at): at is number => at != null);
+  const savedAt = savedAts.length ? Math.min(...savedAts) : null;
   const info = useMemo<PaneFooterSegment[]>(() => [
+    ...(savedAt != null ? [savedCopyFooterSegment("saved-copy", savedAt)] : []),
     ...(accessSegment ? [accessSegment] : []),
     ...(venue ? [{ id: "venue", parts: [{ text: venue, tone: "muted" as const }] }] : []),
     // A venue that publishes open interest live (Deribit) says when it was read.
     ...(venue && data?.oiAsOf ? [{ id: "oi-date", parts: [{ text: `OI live ${data.oiAsOf.slice(11, 16)} UTC`, tone: "muted" as const }] }]
       : data?.oiDate ? [{ id: "oi-date", parts: [{ text: `OI as of ${shortDate(data.oiDate)}`, tone: "muted" as const }] }] : []),
     ...(changes && tab !== "gex" ? [{ id: "oi-change", parts: [{ text: `chg since ${shortDate(data!.previousOiDate!)}`, tone: "muted" as const }] }] : []),
-  ], [accessSegment, changes, data?.oiAsOf, data?.oiDate, data?.previousOiDate, tab, venue]);
+  ], [accessSegment, changes, data?.oiAsOf, data?.oiDate, data?.previousOiDate, savedAt, tab, venue]);
   const activeResource = tab === "gex" ? gamma : openInterest;
   // Expiries' Net GEX column loads beside the open interest it sits with.
   const columnGamma = tab === "expiries" && gammaReady ? gamma : null;

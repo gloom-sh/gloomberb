@@ -1,8 +1,12 @@
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
+import { dvolCache } from "../volatility/dvol";
 import { volSurfaceHeadless } from "./headless";
 
 export const volSurfaceModule: PluginModule = {
+  // A coin's last DVOL is kept on the device, for when the service cannot be reached.
+  setup(ctx) { dvolCache.attach(ctx.persistence); },
+  dispose() { dvolCache.reset(); },
   panes: [{
     id: "vol-surface", name: "Volatility Surface", icon: "V", get component(): typeof import("./pane").VolSurfacePane { const { VolSurfacePane } = require("./pane"); return VolSurfacePane; },
     defaultPosition: "right", shareItem: { ticker: true }, tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 126, height: 36 },

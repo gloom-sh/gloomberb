@@ -133,6 +133,16 @@ describe("AlertsPane", () => {
     expect(frame).toContain("[a]dd alert");
   });
 
+  test("Current writes a price as Target does, separators kept from 100,000 up, and a coin pair without its venue", async () => {
+    const btc = { ...makeAlert("alert-btc", "BTC-USD:CCC", "above", 105_000), lastCheckedPrice: 104_250.5, lastCheckedAt: Date.now() - 60_000, lastQuoteCurrency: "USD" };
+    await tui.render(<AlertsHarness width={90} height={8} alerts={[btc]} />, { width: 90, height: 8 });
+    await renderSettled();
+    const row = tui.frame().split("\n").find((line) => line.includes("BTC-USD")) ?? "";
+    expect(row).toContain("104,250.50");
+    expect(row).toContain("105,000.00");
+    expect(row).not.toContain("BTC-USD:");
+  });
+
   test("a quote one alert could not get is said on its row and in full in its detail, never in the footer", async () => {
     const checkedAt = Date.now() - 60_000;
     const quoted = (alert: AlertRule, price: number): AlertRule => ({ ...alert, lastCheckedPrice: price, lastCheckedAt: checkedAt });
@@ -519,6 +529,35 @@ test("disposing alerts ignores an in-flight quote and does not schedule another 
     quote.reject(new Error("quote completed after disposal"));
     await Bun.sleep(0);
     expect({ writes, notifications, schedulingReads }).toEqual({ writes: 0, notifications: 0, schedulingReads: 0 });
+  } finally {
+    alertsPlugin.dispose?.();
+  }
+});
+
+test("a CLI command's plugins check no alert, so a run like `gloom doctor` cannot fire one it would never mark as gone off", async () => {
+  // Already above its target: the app would fire it at its first check.
+  const store = new Map<string, unknown>([["alerts", serializeAlerts([makeAlert("armed", "BTC-USD:CCC", "above", 65_000)])]]);
+  const device = new Map<string, unknown>();
+  let quotes = 0;
+  let notifications = 0;
+  const ctx = {
+    runtime: "command",
+    registerCommand() {}, registerPane() {}, registerPaneTemplate() {},
+    configState: { get: (key: string) => store.get(key), set: (key: string, value: unknown) => { store.set(key, value); } },
+    resume: { getState: (key: string) => device.get(key) ?? null, setState: (key: string, value: unknown) => { device.set(key, value); }, deleteState: (key: string) => { device.delete(key); } },
+    marketData: {
+      getQuote: async (symbol: string) => { quotes += 1; return { symbol, price: 73_500, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.now(), dataSource: "live" }; },
+      subscribeQuotes: () => { quotes += 1; return () => {}; },
+    },
+    paneSettings: { get: () => "1" },
+    notify: () => { notifications += 1; },
+    log: { info() {}, warn() {}, error() {} },
+  };
+  try {
+    await alertsPlugin.setup?.(ctx as any);
+    await Bun.sleep(20);
+    expect({ quotes, notifications, fired: readFiredAlerts(device.get(FIRED_LOG_KEY)) }).toEqual({ quotes: 0, notifications: 0, fired: [] });
+    expect(deserializeAlerts(String(store.get("alerts")))[0]).toMatchObject({ status: "active" });
   } finally {
     alertsPlugin.dispose?.();
   }

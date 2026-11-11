@@ -17,8 +17,9 @@ export function alertLogRule(rule: AlertRule | EventAlertRule) {
     return {
       kind: rule.metric?.kind ?? (rule.move ? "move" : "price"), ruleId: rule.id,
       rule: rule.metric ? metricDescription(rule) : rule.move ? `${alertListing(rule)} ${moveRuleWords(rule)}`
-        // The level at its instrument's precision and in its unit: below 1.33750, below 70.00p.
-        : `${alertListing(rule)} ${rule.condition} ${alertPriceText(rule, rule.targetPrice).replaceAll(",", "")}`,
+        // The level at its instrument's precision and in its unit, as the rule lists it: below 1.33750, below 70.00p,
+        // above 65,000.00.
+        : `${alertListing(rule)} ${rule.condition} ${alertPriceText(rule, rule.targetPrice)}`,
       symbol: rule.symbol, ...rule.exchange ? { exchange: rule.exchange } : {},
     };
   }

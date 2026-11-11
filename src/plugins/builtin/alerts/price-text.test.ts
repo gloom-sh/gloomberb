@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { alertListing } from "./format";
+import { alertLogRule } from "./alert-log";
+import { alertListing, alertReadingText } from "./format";
 import { alertListingKey, alertPriceText } from "./price-text";
 import { readAlertLevel } from "./price";
 import { farTargetMessage, levelInQuoteUnit } from "./quotes";
@@ -36,4 +37,15 @@ test("one key per listing: 7203.T and 7203:JPX are one alert, shown as 7203:JPX,
   expect(alertListing(suffixed)).toBe("7203:JPX");
   expect(alertListing(rule("GBPUSD=X", "CCY"))).toBe("GBPUSD=X");
   expect(alertListing(rule("AZN.L", "LSE"))).toBe("AZN:LSE");
+  // A coin pair is written as `quote` prints it, however its venue was kept; a fund's dashed ticker keeps its venue.
+  expect([rule("BTC-USD", "CCC"), rule("BTC-USD:CCC", undefined), rule("ETH-USD", undefined, { lastQuoteExchange: "CCC" })].map(alertListing))
+    .toEqual(["BTC-USD", "BTC-USD", "ETH-USD"]);
+  expect(alertListing(rule("BRK-B", "NYSE"))).toBe("BRK-B:NYSE");
+});
+
+test("a reading and a fired rule write a price with thousands separators, as Trigger does, a London line still in pence", () => {
+  const btc = rule("BTC-USD", "CCC", { lastQuoteCurrency: "USD", targetPrice: 65_000, lastCheckedPrice: 74_481.45, lastQuoteUpdatedAt: Date.parse("2026-11-11T15:31:12Z") });
+  expect(alertReadingText(btc)).toBe("74,481.45 USD as of 2026-11-11T15:31Z");
+  expect(alertLogRule({ ...btc, condition: "above" }).rule).toBe("BTC-USD above 65,000.00");
+  expect(alertLogRule(rule("VOD:LSE", "LSE", { lastQuoteCurrency: "GBP", lastQuotePence: true, targetPrice: 0.7 })).rule).toBe("VOD:LSE below 70.00p");
 });

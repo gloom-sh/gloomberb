@@ -14,7 +14,7 @@ import { traceMarketData } from "../trace";
 import { savedCopyAt } from "../../data/saved-copies";
 import { createBaselineChartRequest } from "./chart";
 import {
-  EXPECTED_EMPTY,
+  failureStatus,
   SNAPSHOT_CACHE_TTL_MS,
   SNAPSHOT_FAILURE_RETRY_MS,
   classifyError,
@@ -138,8 +138,7 @@ function storeFinancialsFailure(
   error: unknown,
 ): QueryEntry<TickerFinancials> {
   const classified = classifyError(error);
-  const status = EXPECTED_EMPTY.test(classified.message) ? "empty" : "fatal_error";
-  const attempt = createAttempt(providerId, startedAt, status, classified.reasonCode, classified.message);
+  const attempt = createAttempt(providerId, startedAt, failureStatus(error, classified), classified.reasonCode, classified.message);
   return stores.snapshotStore.update(key, (current) => errorEntry(current, attempt));
 }
 

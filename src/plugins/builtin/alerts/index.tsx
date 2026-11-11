@@ -97,14 +97,17 @@ export const alertsPlugin: GloomPlugin = {
 
   setup(ctx) {
     const generation = ++pollGeneration;
+    // A command (`gloom doctor`) loads the plugins and exits: an alert checked there would reach no one, and the
+    // command could not save that it went off, so each run would fire it again. Only the app checks alerts.
+    const checks = ctx.runtime !== "command";
     // Every alert the app fires is kept on this device, for History and `fn ALRT --tab history`.
     const recordFired = createFiredAlertRecorder(ctx.resume, logFailure("alerts.fired-log", "Record fired alert failed"));
     catalystAlertsStop?.();
-    catalystAlertsStop = startCatalystAlerts(ctx);
+    catalystAlertsStop = checks ? startCatalystAlerts(ctx) : null;
     scheduledAlertsStop?.();
-    scheduledAlertsStop = startScheduledEventAlerts(ctx, scheduledEventSources(ctx.marketData), Date.now, recordFired);
+    scheduledAlertsStop = checks ? startScheduledEventAlerts(ctx, scheduledEventSources(ctx.marketData), Date.now, recordFired) : null;
     ivLevelAlertsStop?.();
-    ivLevelAlertsStop = startIvLevelAlerts(ctx, recordFired);
+    ivLevelAlertsStop = checks ? startIvLevelAlerts(ctx, recordFired) : null;
     const notifyTriggered = (alert: AlertRule, quote: Quote, firedAt: number) => {
       const price = quote.price;
       // The price at the instrument's precision, as the quote that fired it says it (1.33702, 69.80p).
@@ -216,7 +219,7 @@ export const alertsPlugin: GloomPlugin = {
       if (persist) alertStream?.sync();
     };
     alertStream?.dispose();
-    alertStream = createAlertQuoteStream({ readAlerts: () => loadAlerts(ctx), onQuotes: evaluateStreamed });
+    alertStream = checks ? createAlertQuoteStream({ readAlerts: () => loadAlerts(ctx), onQuotes: evaluateStreamed }) : null;
     ctx.registerCommand({
       id: "set-alert",
       label: "Add Alert",
@@ -533,7 +536,7 @@ export const alertsPlugin: GloomPlugin = {
       }, delay);
     };
 
-    void poll().catch(logFailure("alerts.poll", "Check price alerts failed")).finally(scheduleNextPoll);
+    if (checks) void poll().catch(logFailure("alerts.poll", "Check price alerts failed")).finally(scheduleNextPoll);
 
     ctx.registerPane({
       id: "alerts",

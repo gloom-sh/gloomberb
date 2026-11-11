@@ -9,7 +9,7 @@ import { buildQuoteKey, instrumentFromQuoteTarget, toMarketDataContext } from ".
 import { measurePerf } from "../../utils/perf-marks";
 import { withSavedCopyMarkOf } from "../../data/saved-copies";
 import {
-  EXPECTED_EMPTY,
+  failureStatus,
   SNAPSHOT_CACHE_TTL_MS,
   classifyError,
   createAttempt,
@@ -134,8 +134,7 @@ function storeQuoteFailure(
   error: unknown,
 ): QueryEntry<Quote> {
   const classified = classifyError(error);
-  const status = EXPECTED_EMPTY.test(classified.message) ? "empty" : "fatal_error";
-  const attempt = createAttempt(providerId, startedAt, status, classified.reasonCode, classified.message);
+  const attempt = createAttempt(providerId, startedAt, failureStatus(error, classified), classified.reasonCode, classified.message);
   return quoteStore.update(key, (current) => errorEntry(current, attempt));
 }
 

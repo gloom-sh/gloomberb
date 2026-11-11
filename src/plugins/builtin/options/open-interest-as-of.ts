@@ -2,6 +2,7 @@ import type { OptionsChain } from "../../../types/financials";
 import { formatCalendarDay } from "./model-spot";
 import { loadOpenInterest, type OpenInterestPayload, type OptionsPositioningApi } from "../options-positioning/client";
 import { logFailure } from "../../../utils/log-failure";
+import { abortable, withDeadline } from "../../../utils/async-deadline";
 
 /**
  * The session a chain's open interest is counted at
@@ -55,14 +56,22 @@ export function chainOpenInterestAsOf(
 /** How long a chain waits for OPX's listing before it leaves the open-interest date unstated. */
 const LISTED_TIMEOUT_MS = 8_000;
 
-/** OPX's listed open interest for one expiry; null when it cannot be read in time or names another expiry. */
+/**
+ * OPX's listed open interest for one expiry; null when it cannot be read in
+ * time or names another expiry. The request is the one OPX shares for the
+ * symbol and expiry, so the deadline and `signal` stop this wait only: the
+ * request runs on for OPX, which an abort of it would fail.
+ */
 export async function loadListedOpenInterest(
   symbol: string,
   expiry: string,
-  options: { signal?: AbortSignal; api?: OptionsPositioningApi } = {},
+  options: { signal?: AbortSignal; api?: OptionsPositioningApi; timeoutMs?: number } = {},
 ): Promise<OpenInterestPayload | null> {
   try {
-    const listed = await loadOpenInterest(symbol, expiry, { signal: options.signal ?? AbortSignal.timeout(LISTED_TIMEOUT_MS) }, options.api);
+    // A saved copy is dated by its own session: the counts it is matched against still say whether it is the chain's.
+    const { payload: listed } = await withDeadline(
+      abortable(loadOpenInterest(symbol, expiry, {}, options.api), options.signal, "Listed open interest no longer needed"),
+      options.timeoutMs ?? LISTED_TIMEOUT_MS, "Listed open interest did not arrive in time");
     return listed.expiry === expiry ? listed : null;
   } catch (error) {
     logFailure("options.open-interest-as-of", "Load listed open interest failed")(error);

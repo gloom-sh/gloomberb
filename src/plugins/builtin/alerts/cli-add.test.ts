@@ -22,6 +22,10 @@ import { createAlert } from "./alert-engine";
 import { ALERTS_PLUGIN_ID } from "./constants";
 import { FIRED_LOG_KEY, readFiredAlerts } from "./fired-log";
 import { createResearchAlert } from "./research-builder";
+import { IV_LEVEL_ALERTS_KEY } from "./events";
+import { checkIvLevelAlertsNow, startIvLevelAlerts } from "./iv-level";
+import { seriesNamedBy } from "../../../series/registry";
+import { VOLATILITY_SERIES } from "../volatility/series";
 
 const dataDirs: string[] = [];
 
@@ -49,6 +53,10 @@ function cloud() {
       marketState: "POST", postMarketPrice: 300 }),
     // The bare coin ticker is the Grayscale fund, as the data service answers it.
     BTC: createTestQuote({ symbol: "BTC", name: "Grayscale Bitcoin Mini Trust ETF", price: 37.35, listingExchangeName: "ARCA", exchangeName: "ARCA", instrumentType: "ETF" }),
+    // Bitcoin itself, on the coin board, named as the data service names the pair: Deribit lists its options.
+    "BTC-USD": createTestQuote({ symbol: "BTC-USD", name: "Bitcoin USD", price: 73_500, listingExchangeName: "CCC", exchangeName: "CCC", instrumentType: "CRYPTOCURRENCY" }),
+    // A US fund whose ticker is also the name of Deribit's bitcoin volatility index.
+    DVOL: createTestQuote({ symbol: "DVOL", name: "First Trust Dorsey Wright Momentum & Low Volatility ETF", price: 37.1, listingExchangeName: "NASDAQ", exchangeName: "NASDAQ", instrumentType: "ETF" }),
     // A stale company shares SOL's letters, and a live one LINK's.
     SOL: createTestQuote({ symbol: "SOL", name: "Emeren Group Ltd", price: 1.94, listingExchangeName: "NYSE", exchangeName: "NYSE", instrumentType: "Common Stock", stale: true }),
     LINK: createTestQuote({ symbol: "LINK", name: "Interlink Electronics, Inc.", price: 4.08, listingExchangeName: "NASDAQ", exchangeName: "NASDAQ", instrumentType: "EQUITY" }),
@@ -58,6 +66,7 @@ function cloud() {
       if (query.toUpperCase() === "AAPL") return [{ providerId: "test", symbol: "AAPL", name: "Apple Inc.", exchange: "NASDAQ", type: "EQUITY", currency: "USD" }];
       if (query.toUpperCase() === "BTC") return [{ providerId: "test", symbol: "BTC", name: "Grayscale Bitcoin Mini Trust ETF", exchange: "ARCA", type: "ETF", currency: "USD" }];
       if (query.toUpperCase() === "SOL") return [{ providerId: "test", symbol: "SOL", name: "Emeren Group Ltd", exchange: "NYSE", type: "Common Stock", currency: "USD" }];
+      if (query.toUpperCase() === "DVOL") return [{ providerId: "test", symbol: "DVOL", name: "First Trust Dorsey Wright Momentum & Low Volatility ETF", exchange: "NASDAQ", type: "ETF", currency: "USD" }];
       if (query.toUpperCase() === "LINK") return [{ providerId: "test", symbol: "LINK", name: "Interlink Electronics, Inc.", exchange: "NASDAQ", type: "EQUITY", currency: "USD" }];
       const found = currencyPairSpelling(query.replace("_", "/").toUpperCase(), "CCY");
       const quote = found ? quotes[found.symbol] : undefined;
@@ -74,22 +83,24 @@ function cloud() {
   });
 }
 
-async function addAlert(args: string[], pluginState?: Record<string, unknown>) {
+async function addAlert(args: string[], pluginState?: Record<string, unknown>, market: Record<string, unknown> = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-alerts-add-"));
   dataDirs.push(dataDir);
   const config = createDefaultConfig(dataDir);
   if (pluginState) config.pluginConfig = { ...config.pluginConfig, [ALERTS_PLUGIN_ID]: pluginState };
   await saveConfig(config);
-  const cli = createTestCliContext({ config, dataProvider: cloud() });
+  const cli = createTestCliContext({ config, dataProvider: cloud(), ...market });
   let error: string | null = null;
+  let details: string | null = null;
   try {
     await alertsCliCommand.execute(["add", ...args], cli.context);
   } catch (thrown) {
     error = (thrown as Error).message;
+    details = (thrown as Error & { details?: string }).details ?? null;
   }
   const saved = await loadConfig(dataDir);
   const stores = readAlertStores(saved);
-  return { stored: stores.alerts, events: stores.events.rules, pluginState: saved.pluginConfig.alerts ?? {}, error, printed: cli.printed[0] };
+  return { stored: stores.alerts, events: stores.events.rules, pluginState: saved.pluginConfig.alerts ?? {}, error, details, printed: cli.printed[0] };
 }
 
 test("a price alert is kept for the listing quote prints, so one pair is one target however it is typed", async () => {
@@ -164,6 +175,8 @@ test("a coin ticker on a stale company says so firmly, and on a live one softly"
 });
 
 test("alerts add reads the dialog's news, flow and IV forms", () => {
+  // Before the OCC contracts below expire, so the forms read the same on any day.
+  setSystemTime(new Date("2026-11-11T15:00:00Z"));
   expect(parseAlertAddArgs(["IBIT", "iv", "above", "50"], undefined)).toEqual({ kind: "iv_level", symbol: "IBIT", metric: "atm", direction: "above", level: 50 });
   expect(parseAlertAddArgs(["SPY", "RR", "below", "-6"], undefined)).toEqual({ kind: "iv_level", symbol: "SPY", metric: "rr", direction: "below", level: -6 });
   // A level takes its unit, joined or apart, and only the one its measure is in.
@@ -199,6 +212,52 @@ test("an IV level from the shell is the rule the dialog saves, on the listing qu
   expect(printed!.options!.text!(printed!.result.data)).toContain("IV level AAPL · 30d ATM IV above 35% (the app checks it every 15 minutes while it is running");
 });
 
+test("an IV level on bitcoin reads Deribit's fit and goes off, while its news points to a keyword alert", async () => {
+  const { events, error } = await addAlert(["BTC-USD", "iv", "above", "50"]);
+  expect(error).toBeNull();
+  // Stored as released versions store a US name's, so a device not yet updated reads the list and checks it too.
+  expect(JSON.parse(events[0]!.value)).toEqual({ version: 1, symbol: "BTC-USD", exchange: "US", metric: "atm", direction: "above", threshold: 50 });
+  // Its news is a keyword alert: on the words typed when they name the coin, else on its name, never the pair's.
+  const news = await addAlert(["BTC-USD", "news", "bitcoin", "ETF"]);
+  expect(news.error).toContain("News alerting covers US listings only");
+  expect(news.details).toBe(`A coin's news is followed by keyword, in every story: gloom alerts add news "bitcoin ETF"`);
+  expect(news.events).toEqual([]);
+  expect((await addAlert(["BTC-USD", "news", "halving"])).details)
+    .toBe("A coin's news is followed by keyword, in every story: gloom alerts add news bitcoin");
+
+  // The engine reads the coin pair's surface, as OVDV does, and the rule goes off past its level.
+  const store = new Map<string, unknown>([[IV_LEVEL_ALERTS_KEY, JSON.stringify(events)]]);
+  const read: string[] = [];
+  const fired: string[] = [];
+  const stop = startIvLevelAlerts({
+    configState: { get: (key: string) => store.get(key), set: async (key: string, value: unknown) => { store.set(key, value); } },
+    resume: { getState: () => null, setState() {} }, notify: (entry: { body?: string }) => { fired.push(entry.body ?? ""); },
+    showPane() {}, log: { warn() {} }, marketData: {},
+  } as any, () => {}, { load: async (config) => { read.push(`${config.symbol}:${config.exchange}`); return { atm: 0.52, rr: -0.04, quoteAt: null, source: "15 min delayed" }; } });
+  try {
+    checkIvLevelAlertsNow();
+    for (let tries = 0; tries < 50 && fired.length === 0; tries += 1) await Bun.sleep(5);
+  } finally {
+    stop();
+  }
+  expect(read).toEqual(["BTC-USD:US"]);
+  expect(fired).toEqual(["BTC-USD 30d ATM IV 52% is above 50%"]);
+});
+
+test("a ticker that is also a series' name says the listing the alert follows, the series, and the IV alert on the coin", async () => {
+  const { stored, error, printed } = await addAlert(["DVOL", "above", "60"], undefined,
+    { findCatalogSeriesNamed: (word: string) => seriesNamedBy(VOLATILITY_SERIES, word) });
+  expect(error).toBeNull();
+  // The fund is what the quote answered for, and what is checked.
+  expect(stored.map((alert) => alert.symbol)).toEqual(["DVOL"]);
+  expect(printed!.result.warnings).toContain("DVOL was read as DVOL:NASDAQ, First Trust Dorsey Wright Momentum & Low Volatility ETF, "
+    + "and the alert follows that listing. Bitcoin volatility index (DVOL) is a series: gloom fn G CAP:volatility:dvol-btc. "
+    + "For an alert on Bitcoin's 30-day implied volatility: gloom alerts add BTC-USD iv above 60.");
+  // A ticker no series is named by says nothing more.
+  const plain = await addAlert(["AAPL", "above", "260"], undefined, { findCatalogSeriesNamed: (word: string) => seriesNamedBy(VOLATILITY_SERIES, word) });
+  expect(JSON.stringify(plain.printed!.result.warnings ?? [])).not.toContain("is a series");
+});
+
 test("an IPO alert from the shell is the rule the dialog saves, in its own list, which Gloom Cloud reads", async () => {
   // A list from a newer version, synced here: a save keeps it, as released versions keep ipoAlerts.
   const future = JSON.stringify([{ id: "f1", kind: "gamma_wall", target: "rule", value: "{}", createdAt: 1, status: "active" }]);
@@ -208,7 +267,7 @@ test("an IPO alert from the shell is the rule the dialog saves, in its own list,
   expect(pluginState).toEqual({ futureAlerts: future, ipoAlerts: expect.any(String) });
   expect(events[0]).toMatchObject({ kind: "ipo", target: "rule", status: "active" });
   expect(JSON.parse(events[0]!.value)).toEqual({ version: 1, keyword: "Space Exploration" });
-  expect(printed!.options!.text!(printed!.result.data)).toContain("IPO Space Exploration (Gloom Cloud checks it for a signed-in account with Cloud sync and sends it to your phone)");
+  expect(printed!.options!.text!(printed!.result.data)).toContain("IPO Space Exploration (Gloom Cloud checks it, not the app, for a signed-in account with Cloud sync and sends it to your phone)");
   expect(createResearchAlert("ipo", { "ipo:keyword": " Space  Exploration " }).value).toBe(events[0]!.value);
 });
 

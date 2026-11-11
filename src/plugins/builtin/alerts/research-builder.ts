@@ -1,6 +1,7 @@
 import type { GloomPlugin } from "../../../types/plugin";
 import { DEFAULT_LEAD_DAYS, isResearchAlertKind, MACRO_ALERT_EVENTS, normalizeResearchRule, readResearchRule, RESEARCH_ALERT_FORMS, type IvLevelMetric, type MacroAlertEvent, type ResearchAlertKind } from "./research-rules";
 import type { EventAlertRule } from "./events";
+import { isLiveOptionExpiry, parseOptionExpiration } from "../../../utils/option-expiry";
 
 /** What a macro event is called in a rule, a list and a notification. */
 export const MACRO_EVENT_NAMES: Record<MacroAlertEvent, string> = { cpi: "CPI release", fomc: "FOMC decision" };
@@ -91,6 +92,9 @@ export function createResearchAlert(kind: string, values: Record<string,string>,
     else if (value.trim()) input[field] = field === "threshold" || field === "leadDays" ? parseAmount(value) : value;
   }
   const value = normalizeResearchRule(kind,input);
+  // A contract past its last session trades no more: it is refused as a ticker nothing quotes is, never followed.
+  const expired = kind === "iv_spike" && value ? expiredContract(readResearchRule(kind, value)!.contract!, now) : null;
+  if (expired) throw new Error(`Not a live contract: ${expired.contract} expired on ${expired.expiry}. Its underlying's live expiries: gloom options ${expired.root}.`);
   if (!value) throw new Error(kind === "options_flow"
     ? "Check the symbol and US exchange. The minimum premium is $50,000."
     : kind === "hiring_move" ? "Check the symbol. Write a non-US listing with its exchange, as ADYEN:AMS."
@@ -101,6 +105,14 @@ export function createResearchAlert(kind: string, values: Record<string,string>,
         ? `Use a valid OCC contract, such as ${occContractExample()}.`
         : "Check the symbol, US exchange and event fields.");
   return {id:crypto.randomUUID(),kind,target:"rule",value,createdAt:now,status:"active"};
+}
+/** An OCC contract whose expiry's last session has closed, with its expiry and underlying; null for a live one. */
+function expiredContract(contract: string, now: number): { contract: string; expiry: string; root: string } | null {
+  const match = /^([A-Z.]{1,6})(\d{2})(\d{2})(\d{2})[CP]\d{8}$/.exec(contract);
+  if (!match) return null;
+  const expiry = `20${match[2]}-${match[3]}-${match[4]}`;
+  const expiration = parseOptionExpiration(expiry);
+  return expiration != null && !isLiveOptionExpiry(expiration, now) ? { contract, expiry, root: match[1]! } : null;
 }
 /** "2.5", "1,000,000", "$250k" and "1.5m" all read as numbers; anything else is NaN. */
 export function parseAmount(value: string): number {

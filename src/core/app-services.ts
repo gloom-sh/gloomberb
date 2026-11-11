@@ -17,15 +17,20 @@ interface AppServicesOptions extends AppServicesFactoryOptions {
    * A command sets it to false and waits instead.
    */
   interactive?: boolean;
+  /**
+   * `command` when the services last one CLI command (`gloom doctor`): the
+   * plugins start no pollers or streams (`GloomPluginContext.runtime`).
+   */
+  runtime?: "app" | "command";
 }
 
-export function createAppServices({ config, plugins, externalPlugins, interactive = true }: AppServicesOptions) {
+export function createAppServices({ config, plugins, externalPlugins, interactive = true, runtime: pluginRuntime = "app" }: AppServicesOptions) {
   const persistence = new AppPersistence(join(config.dataDir, ".gloomberb-cache.db"), { interactive });
   const tickerRepository = new TickerRepository(persistence.tickers);
   const providerRouter = new AssetDataRouter(null, [], persistence.resources, connectionHealth);
   const runtime = createAppRuntime({
     config, plugins, externalPlugins, persistence, tickerRepository, dataProvider: providerRouter,
-    registryOptions: { connectionHealth },
+    registryOptions: { connectionHealth, runtime: pluginRuntime },
     configure({ pluginRegistry, newsService }) {
       providerRouter.attachRegistry(pluginRegistry);
       pluginRegistry.capabilities.register("core", assetDataProvider(providerRouter));

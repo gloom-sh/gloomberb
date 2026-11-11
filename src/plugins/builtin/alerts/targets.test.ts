@@ -5,8 +5,10 @@ import { alertTarget, deliveredAlertSubject, eventRuleSubject, priceRuleSubject,
 
 const des = (symbol: string, exchange?: string): AlertTarget => ({ kind: "description", symbol, ...(exchange ? { exchange } : {}) });
 const pane = (templateId: string, options?: object): AlertTarget => ({ kind: "pane", templateId, ...(options ? { options } : {}) });
+// A fixed day, before the OCC contract below expires, so an expired contract's refusal never reaches this test.
+const NOW = Date.parse("2026-11-11T15:00:00Z");
 const research = (kind: string, fields: Record<string, string>) =>
-  alertTarget(eventRuleSubject(createResearchAlert(kind, Object.fromEntries(Object.entries(fields).map(([key, value]) => [`${kind}:${key}`, value])))));
+  alertTarget(eventRuleSubject(createResearchAlert(kind, Object.fromEntries(Object.entries(fields).map(([key, value]) => [`${kind}:${key}`, value])), NOW)));
 
 test("every rule kind opens what it follows", () => {
   const event = (templateId: string, value = "") => alertTarget(eventRuleSubject(createEventAlert(templateId, value)));
@@ -29,7 +31,7 @@ test("every rule kind opens what it follows", () => {
     research("news_keyword", { symbol: "AAPL", keyword: "buyback" }), research("news_keyword", { keyword: "buyback" }),
     research("analyst_change", { symbol: "AAPL" }), research("fifty_two_week", { symbol: "AAPL" }), research("unusual_volume", { symbol: "AAPL" }),
     research("short_interest_change", { symbol: "AAPL" }), research("insider_trade", { symbol: "AAPL" }),
-    research("iv_spike", { contract: "AAPL261016C00300000" }),
+    research("iv_spike", { contract: "AAPL271217C00300000" }),
     research("options_flow", { symbol: "NVDA" }), research("options_flow", {}),
   ]).toEqual([
     pane("perps-pane", { arg: "hyperliquid:xyz:AAPL" }),

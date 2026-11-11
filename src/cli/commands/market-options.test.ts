@@ -5,6 +5,7 @@ import { createTestCliContext } from "../../test-support/cli-context";
 import { serializeCliResult } from "../result";
 import { DEFAULT_CLI_OPTIONS } from "../options";
 import { EXPORT_IDENTITY_COLUMNS } from "../export-source";
+import { DataServiceUnreachableError } from "../../utils/network-failure";
 
 const options = marketDataCliCommands.find((command) => command.name === "options")!;
 
@@ -13,12 +14,15 @@ let listedOpenInterest: Mock<typeof apiClient.optionsPositioning>;
 beforeEach(() => { listedOpenInterest = spyOn(apiClient, "optionsPositioning").mockRejectedValue(new Error("offline")); });
 afterEach(() => listedOpenInterest.mockRestore());
 
-async function warningsFor(chain: object, stored: number, refreshError: unknown): Promise<string[] | undefined> {
+const chainLoads: unknown[] = [];
+
+async function warningsFor(chain: object, stored: number, refreshError: unknown, refresh = true): Promise<string[] | undefined> {
   const cli = createTestCliContext({
-    dataProvider: { getCachedQuery: () => ({ load: async () => ({
-      value: chain, fetchedAt: stored, staleAt: stored, expiresAt: Infinity, source: "cloud", refreshError,
-    }) }) },
-  }, { refresh: true });
+    dataProvider: { getCachedQuery: () => ({ load: async (load: unknown) => {
+      chainLoads.push(load);
+      return { value: chain, fetchedAt: stored, staleAt: stored, expiresAt: Infinity, source: "cloud", refreshError };
+    } }) },
+  }, { refresh });
   await options.execute(["AAPL"], cli.context);
   return cli.printed[0]!.result.warnings;
 }
@@ -29,6 +33,11 @@ test("options reports when a failed refresh falls back to a stored chain", async
   const warnings = await warningsFor(chain, stored, new Error("429"));
   expect(warnings).toHaveLength(1);
   expect(warnings![0]).toContain("2026-09-22T19:55:00.000Z");
+  // A command asks the service even with a chain saved minutes ago; offline, that copy answers and the closing
+  // line dates it (the cache marks it), so no warning repeats it.
+  chainLoads.length = 0;
+  expect(await warningsFor(chain, stored, new DataServiceUnreachableError(new Error("Unable to connect")), false)).toBeUndefined();
+  expect(chainLoads).toEqual([{ force: true }]);
 });
 
 test("options flags a chain last observed before today's US open", async () => {

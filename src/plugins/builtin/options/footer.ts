@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { PaneFooterSegment, PaneHint } from "../../../components";
-import { delayedFooterSegment } from "../../../components/layout/pane/footer/model";
+import { delayedFooterSegment, savedCopyFooterSegment } from "../../../components/layout/pane/footer/model";
 import { t, tf } from "../../../i18n";
 import type { OptionsChain } from "../../../types/financials";
 import { formatRelativeTime } from "../../../utils/datetime-format";
@@ -91,6 +91,7 @@ export function useOptionsAccessFooter({
   loading,
   quoteCoverage,
   reference,
+  savedAt,
   spreadColumnVisible,
 }: {
   /** The chain is a broker profile's, quoted by that broker: it has no Gloom Cloud delay to report or upgrade from. */
@@ -103,6 +104,8 @@ export function useOptionsAccessFooter({
   quoteCoverage: Pick<OptionQuoteCoverage, "status">;
   /** The contract under the cursor, reported as status rather than as a header. */
   reference?: OptionMarketReference | undefined;
+  /** When the chain shown was saved, if a refresh that could not get through left it standing. */
+  savedAt?: number | null;
   /** Set while the chain prints a SPRD column, so the status bar stops repeating it. */
   spreadColumnVisible?: boolean;
 }): void {
@@ -130,7 +133,10 @@ export function useOptionsAccessFooter({
   // stream; the registration compares by value, so only a changed label
   // reaches the footer. Access leads: for a free account it is the pressable
   // upgrade segment, and the info row truncates from the right.
-  const info = [...accessInfo, ...optionContractFooterSegments(reference, spreadColumnVisible)];
+  const info = [
+    ...(savedAt != null ? [savedCopyFooterSegment("options-saved-copy", savedAt)] : []),
+    ...accessInfo, ...optionContractFooterSegments(reference, spreadColumnVisible),
+  ];
 
   usePaneStatusFooter({
     registrationId: "options",

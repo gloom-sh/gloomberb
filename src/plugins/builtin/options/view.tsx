@@ -16,6 +16,7 @@ import {
   COIN_OPTIONS_HINT, isCoinWithoutOptions, isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle,
 } from "../../../market-data/options-alternatives";
 import { useChartQueries, useOptionsQuery, useResolvedEntryValue, useTickerFinancials } from "../../../market-data/hooks";
+import { savedCopyEntryAt } from "../../../market-data/coordinator";
 import {
   Button,
   DataTableView,
@@ -380,8 +381,15 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   // The body names the dates nearest the one asked for; the footer only flags it.
   const unavailableExpiry = expirationUnavailable && selectedExpiration != null
     ? sentenceCase(missingExpiryText(selectedExpiration, availableExpirations)) : null;
+  // A chain kept because the refresh could not get through (offline, a timeout) is a saved copy the footer dates,
+  // not an error; any other failure stays the error beside the old chain.
+  const initialSavedAt = savedCopyEntryAt(initialChainEntry);
+  const expirationSavedAt = savedCopyEntryAt(expirationChainEntry);
+  const chainSavedAt = initialSavedAt == null ? expirationSavedAt
+    : expirationSavedAt == null ? initialSavedAt : Math.min(initialSavedAt, expirationSavedAt);
   const error = (expirationUnavailable ? `Expiry ${expiryIsoDate(selectedExpiration!)} unavailable` : null)
-    ?? initialChainEntry?.error?.message ?? expirationChainEntry?.error?.message
+    ?? (initialSavedAt == null ? initialChainEntry?.error?.message : null)
+    ?? (expirationSavedAt == null ? expirationChainEntry?.error?.message : null)
     ?? (initialChainEntry?.phase === "error" || expirationChainEntry?.phase === "error"
       ? "Failed to load options" : null);
 
@@ -861,6 +869,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     loading,
     quoteCoverage: optionQuoteCoverage,
     reference: selectedReference,
+    savedAt: chainSavedAt,
     spreadColumnVisible: optionFieldIds.includes("spread"),
   });
 

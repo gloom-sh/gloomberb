@@ -8,7 +8,8 @@ import {
   usePaneStatusFooter,
   type StatItem,
 } from "../../../components";
-import { ageFooterSegment } from "../../../components/layout/pane/footer";
+import { ageFooterSegment, savedCopyFooterSegment } from "../../../components/layout/pane/footer";
+import { isTransientFailure } from "../../../api-client/errors";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import type { PaneProps } from "../../../types/plugin";
@@ -46,7 +47,9 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
   const { loading, reload: refresh } = resource;
   const data = resource.data?.data ?? null;
   const stale = resource.data?.stale ?? false;
-  const error = resource.error ?? resource.data?.refreshError ?? null;
+  // A copy kept because the refresh could not get through says when it was saved, as other panes' copies do.
+  const savedAt = resource.data?.source === "stale-fallback" && isTransientFailure(resource.data.error) ? resource.data.fetchedAt : null;
+  const error = resource.error ?? (savedAt == null ? resource.data?.refreshError : null) ?? null;
   const lastRefreshed = resource.data?.fetchedAt ?? null;
 
   const updatedAgo = useUpdatedAgo(lastRefreshed);
@@ -61,9 +64,10 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
         { text: `${formatScore(data.overall.score)} ${ratingLabel(data.overall.rating)}`, color: ratingColor(data.overall.rating), bold: true },
       ],
     }] : []),
-    ...(stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
+    ...(savedAt != null ? [savedCopyFooterSegment("saved-copy", savedAt)]
+      : stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
     ...(updatedAgo ? [ageFooterSegment(updatedAgo, { id: "age", verb: "updated", tone: "value" })] : []),
-  ], [data, stale, updatedAgo]);
+  ], [data, savedAt, stale, updatedAgo]);
   usePaneStatusFooter({ registrationId: paneId, loading, error, info: footerInfo });
 
   const previousScores = useMemo(() => (data ? previousScoreItems(data) : []), [data]);

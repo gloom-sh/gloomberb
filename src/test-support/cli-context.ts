@@ -10,7 +10,7 @@ export interface PrintedCliResult {
 /**
  * A command context whose `initMarketData`, `initConfigData` and `initServices` resolve to `market` (config, store, dataProvider, ...),
  * with an empty ticker store unless `market` brings one.
- * `fail` throws, every printResult call is kept in `printed`, and `closeCount` reports how many
+ * `fail` throws, with any details as the error's `details`, every printResult call is kept in `printed`, and `closeCount` reports how many
  * times the command closed its persistence.
  */
 export function createTestCliContext(
@@ -33,7 +33,8 @@ export function createTestCliContext(
     initConfigData: init,
     initServices: async () => ({ ...await init(), destroy: () => { closed += 1; } }),
     printResult: (result: CliResult<any>, options?: CliResultRenderOptions<any, any>) => { printed.push({ result, options }); },
-    fail: (message: string): never => { throw new Error(message); },
+    // The error keeps the details a command printed under the message, for a test to read.
+    fail: (message: string, details?: string): never => { throw Object.assign(new Error(message), details ? { details } : {}); },
   } as unknown as CliCommandContext;
   return { context, printed, closeCount: () => closed };
 }
