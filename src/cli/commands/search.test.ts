@@ -194,3 +194,30 @@ test("a code of digits is listed with its venue, the form quote takes, and any o
   expect(line("SAN", "EPA")).toBe("SAN");
   expect(line("9042", "")).toBe("9042");
 });
+
+/**
+ * `search ultrapro` on 11 Nov 2026, with the default watchlist saved: MSFT, AAPL and NVDA, which the UltraPro funds
+ * hold, were listed under Saved beside TQQQ, though `--json` said `saved: false` and Source read "—".
+ */
+test("Saved lists only saved rows, each saying so; a saved company a theme's funds hold stays related", async () => {
+  const row = (symbol: string, name: string, exchange: string, type: string, extra: Record<string, unknown> = {}) =>
+    ({ providerId: "gloomberb-cloud", symbol, name, exchange, type, primaryExchange: exchange, ...extra });
+  const held = { searchKeywords: ["ultrapro"] };
+  const answer = [
+    row("TQQQ", "ProShares UltraPro QQQ", "NASDAQ", "ETF"), row("UPRO", "ProShares UltraPro S&P 500", "ARCA", "ETF"),
+    row("MSFT", "Microsoft Corporation", "NASDAQ", "EQUITY", held), row("NVDA", "NVIDIA Corporation", "NASDAQ", "EQUITY", held),
+  ];
+  const tickers = [
+    createTestTicker("TQQQ", "ProShares UltraPro QQQ", { assetCategory: "ETF" }),
+    createTestTicker("MSFT", "Microsoft Corporation"),
+    createTestTicker("NVDA", "NVIDIA Corporation"),
+  ];
+  const dataProvider = createTestDataProvider({ search: async () => answer as never });
+  const initMarketData = async () => ({ store: { loadAllTickers: async () => tickers }, dataProvider, persistence: { close() {} } }) as never;
+  const printed: PrintedCliResult["result"][] = [];
+  await search("ultrapro", { initMarketData, printResult: (result) => { printed.push(result); } });
+  const rows = printed[0]!.data as Array<{ category: string; symbol: string; saved: boolean; source: string }>;
+  expect(rows.map((item) => `${item.symbol}:${item.category}:${item.saved ? item.source : "-"}`)).toEqual([
+    "TQQQ:Saved:Saved", "UPRO:Funds & Derivatives:-", "MSFT:Related:Saved", "NVDA:Related:Saved",
+  ]);
+});
