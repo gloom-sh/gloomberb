@@ -148,7 +148,7 @@ test("actual financial table and CSV retain the derived TTM window and known fie
   expect(frame()).toContain("TTM Q4 FY24");
   expect(frame()).toContain("FY2025");
   // The as-of leads the query bar so it is never cut; the shared unit heads the line names.
-  expect(frame()).toContain("as of 2025-12-31 · YoY");
+  expect(frame()).toMatch(/as of 2025-12-31 +YoY/);
   expect(frame()).toMatch(/^ {2}USD K\s/m);
   expect(row(result, "income:revenue").TTM).toBe(400);
 });
@@ -189,7 +189,7 @@ test("explicit quarterly headless report fails honestly while interactive tabs i
   expect(result.rows).toEqual([]);
   expect(result.unavailableSymbols).toEqual([SYMBOL]);
   expect(text).toContain("No quarterly financial statement coverage");
-  expect(frame()).toContain("as of 2025-12-31 · YoY");
+  expect(frame()).toMatch(/as of 2025-12-31 +YoY/);
 
   const unavailable = await cli(financials, "quarterly");
   expect(unavailable.data).toMatchObject({ complete: false, empty: true, unavailableSymbols: [SYMBOL] });
@@ -231,7 +231,7 @@ test("mouse period changes keep active CSV and quarterly values aligned, includi
   const quarterly = await outputs(financials, "quarterly");
   expect(quarterly.csv).toContain("Growth,QoQ");
   expect(quarterly.csv).not.toContain("TTM");
-  expect(frame()).toContain("as of 2025-12-31 · QoQ");
+  expect(frame()).toMatch(/as of 2025-12-31 +QoQ/);
   expect(row(quarterly.result, "eps:1").cells[0]!.value).toBe(0);
 
   await clickPeriod();
@@ -241,7 +241,7 @@ test("mouse period changes keep active CSV and quarterly values aligned, includi
   expect(annual.csv).toContain("FY2025");
   expect(annual.csv).toContain("Currency,USD");
   expect(annual.csv).toContain("Growth,YoY");
-  expect(frame()).toContain("as of 2025-12-31 · YoY");
+  expect(frame()).toMatch(/as of 2025-12-31 +YoY/);
 });
 
 for (const reportedCurrency of [undefined, "USD"]) {

@@ -523,7 +523,8 @@ export function QueryBar({ width, search, filters = [], view, meta, asOf: given,
   ) : null;
   const viewAtEnd = !!view && !view.start;
   // Short of room, inline filters give up their segments for a menu, so the as-of and the controls after them stay.
-  const collapseInline = filters.some(collapsibleInline) && terminalRowCells(width, { search, filters, view, asOf }) > width;
+  // Only a bar with an as-of: elsewhere the row keeps its segments, as it always has.
+  const collapseInline = !!asOf && filters.some(collapsibleInline) && terminalRowCells(width, { search, filters, view, asOf }) > width;
   return (
     <Box height={1} width={width} flexDirection="row" gap={2} paddingX={1} overflow="hidden" flexShrink={0}>
       {view?.start ? viewStrip : null}

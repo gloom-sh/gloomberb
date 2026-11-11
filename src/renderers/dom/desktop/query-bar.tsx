@@ -264,7 +264,8 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, asOf, leadi
   const contentKey = items.map((item) => `${item.id}:${item.label}:${item.inline
     ? item.options.map((option) => option.label).join(",")
     : item.options.find((option) => option.selected)?.label ?? ""}`).join("|");
-  const collapsed = useCollapsedInlineFilters(scrollRef, items.some(isCollapsible), [contentKey, view?.value, meta, asOf, !!search, !!onClearAll]);
+  // Only a bar with an as-of to keep in view: elsewhere the bar scrolls, as it always has.
+  const collapsed = useCollapsedInlineFilters(scrollRef, !!asOf && items.some(isCollapsible), [contentKey, view?.value, meta, asOf, !!search, !!onClearAll]);
   const searchRef = useRef<HTMLDivElement | null>(null);
   // When an inline choice or the view changes (a shortcut, the next expiry),
   // bring the new selection into a scrolled bar. On mount only a strip that

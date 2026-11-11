@@ -63,7 +63,7 @@ type EnterpriseValueInputs = Pick<TickerFinancials, "quote" | "fundamentals" | "
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const DAY_MS = 86_400_000;
 /** A balance sheet older than this does not price today's EV, as Gloom Cloud's bridge holds. */
-export const BALANCE_SHEET_MAX_AGE_DAYS = 550;
+const BALANCE_SHEET_MAX_AGE_DAYS = 550;
 
 /** "Jun 30, 2026": a balance sheet's day as the reports write a date. */
 export const balanceSheetDay = (date: string) => formatShortDate(`${date.slice(0, 10)}T00:00:00Z`, { utc: true, fallback: date.slice(0, 10) });
