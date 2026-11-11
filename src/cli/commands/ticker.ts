@@ -102,7 +102,7 @@ import { fundamentalsFreshness, quotesFreshness } from "../freshness";
 import { distributionHistory, forwardDividendBasis, forwardDividendMayHaveLapsed, lapsedDividend, noCurrentDividend, TRAILING_DIVIDEND_BASIS, type DistributionHistory, type DividendLapse } from "../../utils/forward-dividend";
 import { declaredDividends } from "../../utils/declared-dividends";
 import { historyTrailingDividendYield, measuresTrailingYield } from "../../market-data/quotes/live-valuation";
-import { loadOfferingFilings, loadStatementFilings, resultsReleaseText, statementPeriodText, type StatementFilingsReport } from "../statement-filings";
+import { exchangeResultsNotes, loadOfferingFilings, loadStatementFilings, resultsReleaseText, statementPeriodText, type StatementFilingsReport } from "../statement-filings";
 import type { BankFiguresPayload } from "../../api-client/bank-figures";
 import { bankSection } from "../bank-section";
 import type { FundBondFacts, FundFactsPayload } from "../../api-client/fund-facts";
@@ -985,6 +985,7 @@ function statementFilingsNotes(report: StatementFilingsReport | null | undefined
   return [
     ...latest ? [`Latest ${report.latestQuarter ? "quarter" : "annual period"} ${statementPeriodText(latest.date, latest)}.`] : [],
     ...report.resultsRelease ? [resultsReleaseText(report.resultsRelease)] : [],
+    ...report.exchangeResults ? exchangeResultsNotes(report.exchangeResults) : [],
   ];
 }
 
