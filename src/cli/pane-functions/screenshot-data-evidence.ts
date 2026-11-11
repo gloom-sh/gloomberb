@@ -9,6 +9,7 @@ import {
   buildFinancialTableModel,
   financialStatementCurrency,
   formatFinancialHeader,
+  splitPeriodsNotInYet,
 } from "../../plugins/builtin/ticker-detail/financials/model";
 import type { FundamentalPeriod, GraphKind, GraphMetricKey } from "../../time-series/reporting";
 import type { TimeRange } from "../../time-series/range";
@@ -359,7 +360,8 @@ export function shotExpectedText(
         period: resolved.options.period as FundamentalPeriod,
         statement: String(resolved.options.statement),
       });
-      const latestStatement = table?.statements[0];
+      // A newest period with only some figures is left out of the pane's statement columns (splitPeriodsNotInYet).
+      const latestStatement = table && !ratioTab ? splitPeriodsNotInYet(table.statements, table.subTab).shown[0] : table?.statements[0];
       const firstMetric = table?.rows[0];
       // The pane prints the compact header: date, currency and an S/P source marker.
       if (latestStatement) {

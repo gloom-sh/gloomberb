@@ -34,11 +34,13 @@ import {
   financialSubTabFields,
   formatFinancialValue,
   latestFinancialPeriodEnd,
+  notInYetNote,
   resolveFinancialPeriod,
   resolveFinancialPeriodOption,
   semanticGrowthValue,
   selectFinancialStatements,
   shareFinancialUnit,
+  splitPeriodsNotInYet,
   statementMetricValue,
   type FinancialPeriod,
   type FinancialTableRow,
@@ -291,20 +293,35 @@ export function ResolvedFinancialsTab({
 
   const resolvedPeriod = resolveFinancialPeriod(period, hasAnnualStatements, hasQuarterlyStatements);
   const isAnnual = resolvedPeriod === "annual";
-  const { statements: displayStatements, previousStatementMap } = useMemo(
+  const selected = useMemo(
     () => selectFinancialStatements(resolvedPeriod, subTab.key, annualStatements, quarterlyStatements),
     [annualStatements, quarterlyStatements, resolvedPeriod, subTab.key],
   );
+  // A newest period with only some figures (an EPS alone) is left out of a statement table, and a line says so.
+  const { shown: displayStatements, notInYet } = useMemo(
+    () => ratioTab ? { shown: selected.statements, notInYet: [] } : splitPeriodsNotInYet(selected.statements, subTab),
+    [ratioTab, selected.statements, subTab],
+  );
+  const previousStatementMap = selected.previousStatementMap;
   // One currency for every column goes in the query bar with the growth basis;
   // a column in a different currency (or none) says so in its own header.
   const growthBasis = isAnnual ? "YoY" : "QoQ";
   const yearEndMonth = useMemo(() => fiscalYearEndMonth(annualStatements), [annualStatements]);
   const annualDates = useMemo(() => new Set(annualStatements.map(({ date }) => date)), [annualStatements]);
+  const { rows, unit } = useMemo(
+    () => shareFinancialUnit(buildFinancialRows(subTab.rows, displayStatements, collapsedGroups)),
+    [collapsedGroups, displayStatements, subTab.rows],
+  );
+  // The money unit most rows share heads the line names, so it is never cut with the query bar's text; rows in
+  // another unit say theirs ("Interest Exp (mn)"), which the header says it leaves to them.
+  const moneyUnit = [comparisonCurrency, unit].filter(Boolean).join(" ");
+  const unitMarked = !!unit && rows.some((row) => row.unitLabel !== row.label);
+  const metricHeader = moneyUnit ? `${moneyUnit}${unitMarked ? " unless marked" : ""}` : "Metric";
   const columns = useMemo<FinancialTableColumn[]>(() => [
     {
       id: "metric",
       kind: "metric",
-      label: "Metric",
+      label: metricHeader,
       width: financialLabelWidth(width),
       align: "left",
     },
@@ -323,12 +340,7 @@ export function ResolvedFinancialsTab({
       align: "right",
       headerColor: statement.date === "TTM" ? colors.textBright : colors.textDim,
     })),
-  ], [annualDates, comparisonCurrency, displayStatements, isAnnual, width, yearEndMonth]);
-  const { rows, unit } = useMemo(
-    () => shareFinancialUnit(buildFinancialRows(subTab.rows, displayStatements, collapsedGroups)),
-    [collapsedGroups, displayStatements, subTab.rows],
-  );
-  const moneyUnit = [comparisonCurrency, unit].filter(Boolean).join(" ");
+  ], [annualDates, comparisonCurrency, displayStatements, isAnnual, metricHeader, width, yearEndMonth]);
   const periodEnd = latestFinancialPeriodEnd(displayStatements);
   const renderCell = useCallback((
     row: FinancialTableRow,
@@ -454,6 +466,10 @@ export function ResolvedFinancialsTab({
     () => stalePeriodNote(financialStatementPeriods(displayStatements, subTab)),
     [displayStatements, subTab],
   );
+  const notInYetLine = useMemo(
+    () => notInYetNote(notInYet, subTab, resolvedPeriod, yearEndMonth),
+    [notInYet, resolvedPeriod, subTab, yearEndMonth],
+  );
   // Years filled from the listing's exchange, with the lines this table shows.
   const filledPeriods = useMemo(
     () => filledPeriodsNote(displayStatements, ratioTab ? undefined : financialSubTabFields(subTab)),
@@ -462,6 +478,7 @@ export function ResolvedFinancialsTab({
   usePaneNoticeFooter({
     registrationId: "financials-notices",
     notices: [
+      ...(notInYetLine ? [notInYetLine] : []),
       ...(stalePeriod ? [stalePeriod] : []),
       ...(filledPeriods ? [filledPeriods] : []),
       ...financialStatementLimitations(financials),
@@ -544,7 +561,7 @@ export function ResolvedFinancialsTab({
             ...(periodEnd ? [["As of", periodEnd]] : []),
           ]}
           resetScrollKey={`${resolvedPeriod}:${section.key}:${displayStatements.length}`}
-          rootBefore={queryBar([comparisonCurrency, asOf].filter(Boolean).join(" · "))}
+          rootBefore={queryBar([asOf, comparisonCurrency].filter(Boolean).join(" · "))}
         />
       ) : (
         <DataTableView<FinancialTableRow, FinancialTableColumn>
@@ -584,7 +601,7 @@ export function ResolvedFinancialsTab({
           ]}
           showHorizontalScrollbar
           resetScrollKey={`${resolvedPeriod}:${subTab.key}:${displayStatements.length}`}
-          rootBefore={queryBar([moneyUnit, growthBasis, asOf].filter(Boolean).join(" · "))}
+          rootBefore={queryBar([asOf, growthBasis].filter(Boolean).join(" · "))}
         />
       )}
     </Box>
