@@ -192,7 +192,7 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     revenueGrowthQuarter: revenueGrowth != null ? latestFinancialPeriod(snapshot?.quarterlyStatements, (row) => row.date)?.date ?? null : null,
     /** For a half-year reporter, the halves revenueGrowth compares, "H1 2026 vs H1 2025"; null for a quarter's growth. */
     revenueGrowthHalf: revenueGrowth != null && snapshot
-      ? halfYearGrowthPeriod(quote?.listingExchangeName || quote?.exchangeName, snapshot) : null,
+      ? halfYearGrowthPeriod(snapshot) : null,
     currency: quote?.currency ?? null,
     marketCap: capitalization?.value ?? null,
     marketCapCurrency: capitalization?.currency ?? null,

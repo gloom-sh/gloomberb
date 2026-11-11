@@ -1076,7 +1076,7 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
     : { text: "—" };
   const metrics = withoutStockRows(fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials),
     fundamentalsCurrency(financials), undefined, snapshot.distributions ?? null, snapshot.bondFund ?? null, snapshot.currencyCodes === true,
-    trailingEpsFiscalYear(financials), halfYearGrowthPeriod(snapshot.exchange ?? quote?.listingExchangeName ?? quote?.exchangeName, financials)),
+    trailingEpsFiscalYear(financials), halfYearGrowthPeriod(financials)),
   resolveTickerInstrumentKind(null, financials) === "fund");
   if (view === "fundamentals") {
     return [...metrics, ...floatAndShortInterestMetrics(quote, fundamentals, financials.profile)]
@@ -1434,7 +1434,7 @@ export async function buildTickerReport({
   const listing = { listedSince: ipo ? ipo.deal.listingDate ?? ipo.deal.firstDay?.session ?? null : null };
   const metrics = withoutStockRows(fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns,
     fundamentalsCurrency(financials, listing), { text: enterpriseValueText }, distributions, bondFund, codes, trailingEpsFiscalYear(financials),
-    halfYearGrowthPeriod(listingExchange ?? quote?.listingExchangeName ?? quote?.exchangeName, financials)), isFund);
+    halfYearGrowthPeriod(financials)), isFund);
   const reportedCurrency = financials.financialCurrency?.trim();
   const statements = [...financials.annualStatements, ...financials.quarterlyStatements];
   const fallbackCurrency = reportedCurrency && statements.every((row) => !row.currency?.trim() || row.currency.trim() === reportedCurrency)

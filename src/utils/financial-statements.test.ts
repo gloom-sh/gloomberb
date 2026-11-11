@@ -266,17 +266,22 @@ test("reportsHalfYearly: an Australian or New Zealand listing, or periods half a
   expect(reportsHalfYearly("XETRA", [{ date: "2025-06-30" }])).toBe(false);
 });
 
-test("halfYearGrowthPeriod: a half-year reporter's growth names its halves, a quarterly one's none", () => {
+test("halfYearGrowthPeriod: names halves only when the periods are halves, never from the venue", () => {
   const years = [{ date: "2024-12-31" }, { date: "2025-12-31" }] as FinancialStatement[];
   // Pop Mart on HKEX: interims a year apart, each closing the half to June of a December year.
   const popMart = { annualStatements: years, quarterlyStatements: [{ date: "2025-06-30" }, { date: "2026-06-30" }] as FinancialStatement[] };
-  expect(halfYearGrowthPeriod("HKEX", popMart)).toBe("H1 2026 vs H1 2025");
+  expect(halfYearGrowthPeriod(popMart)).toBe("H1 2026 vs H1 2025");
   // A March year's half to September is its first; a 52-week half ending early in October closes September.
   const march = { annualStatements: [{ date: "2026-03-31" }] as FinancialStatement[], quarterlyStatements: [{ date: "2025-10-04" }, { date: "2026-03-31" }] as FinancialStatement[] };
-  expect(halfYearGrowthPeriod("ASX", march)).toBe("H2 FY26 vs H2 FY25");
+  expect(halfYearGrowthPeriod(march)).toBe("H2 FY26 vs H2 FY25");
   // Quarters: the figure is a quarter's, and the label stays the quarter's.
   const quarters = { annualStatements: years, quarterlyStatements: [{ date: "2026-03-31" }, { date: "2026-06-30" }, { date: "2026-09-30" }] as FinancialStatement[] };
-  expect(halfYearGrowthPeriod("NASDAQ", quarters)).toBeNull();
+  expect(halfYearGrowthPeriod(quarters)).toBeNull();
+  // ResMed and James Hardie list on ASX and report quarters: their June year's quarters stay quarters.
+  const resMed = { annualStatements: [{ date: "2026-06-30" }] as FinancialStatement[],
+    quarterlyStatements: [{ date: "2025-12-31" }, { date: "2026-03-31" }, { date: "2026-06-30" }, { date: "2026-09-30" }] as FinancialStatement[] };
+  expect(halfYearGrowthPeriod(resMed)).toBeNull();
+  expect(reportsHalfYearly("ASX", [], [])).toBe(true);
 });
 
 describe("stalePeriodNote", () => {

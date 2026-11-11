@@ -76,16 +76,28 @@ const DAY_MS = 86_400_000;
 
 /**
  * Whether a listing's company reports half-yearly rather than quarterly: it
- * lists on a venue whose companies do (Qantas on ASX), or the periods of its
- * "quarterly" statements are half a year apart.
+ * lists on a venue whose companies do (Qantas on ASX), or its periods are
+ * halves (periodsAreHalves). The venue only explains a listing with no
+ * interim statements on file: ResMed reports quarters on ASX.
  */
 export function reportsHalfYearly(
   exchange: string | null | undefined,
   quarterly: readonly Pick<FinancialStatement, "date">[],
-  /** With the years, interims that all close the first half of a fiscal year (Pop Mart's Junes beside its Decembers) are halves too. */
   annual: readonly Pick<FinancialStatement, "date">[] = [],
 ): boolean {
   if (exchange && HALF_YEARLY_VENUES.has(exchange.toUpperCase())) return true;
+  return periodsAreHalves(quarterly, annual);
+}
+
+/**
+ * Whether a listing's interim statements are halves, read from the periods
+ * alone: they are half a year apart, or, with the years, they all close the
+ * first half of a fiscal year (Pop Mart's Junes beside its Decembers).
+ */
+function periodsAreHalves(
+  quarterly: readonly Pick<FinancialStatement, "date">[],
+  annual: readonly Pick<FinancialStatement, "date">[],
+): boolean {
   const times = quarterly.map(({ date }) => Date.parse(`${date.slice(0, 10)}T00:00:00Z`)).filter(Number.isFinite).sort((a, b) => a - b);
   const gaps = times.slice(1).map((time, index) => (time - times[index]!) / DAY_MS);
   if (gaps.length > 0 && gaps.every((days) => days > 150 && days < 215)) return true;
@@ -114,15 +126,15 @@ function halfYearLabel(date: string, yearEndMonth: number | null): string | null
 /**
  * What a latest-period growth figure compares for a company that reports
  * half-yearly: "H1 2026 vs H1 2025" (Pop Mart's revenue growth on 2026-11-11
- * is its half to June against the year before's, not a quarter's). Null for a
- * quarterly reporter, whose figure is its last quarter's, and when the latest
- * half cannot be named.
+ * is its half to June against the year before's, not a quarter's). Null when
+ * the interim periods are not halves, whose figure is the last quarter's, and
+ * when the latest half cannot be named.
  */
 export function halfYearGrowthPeriod(
-  exchange: string | null | undefined,
   financials: Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">,
 ): string | null {
-  if (!reportsHalfYearly(exchange, financials.quarterlyStatements, financials.annualStatements)) return null;
+  // From the periods, never the venue: a quarterly reporter on ASX (ResMed, James Hardie) keeps its quarter.
+  if (!periodsAreHalves(financials.quarterlyStatements, financials.annualStatements)) return null;
   const latest = financials.quarterlyStatements.map(({ date }) => date.slice(0, 10)).filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)).sort().at(-1);
   if (!latest) return null;
   const yearEnd = fiscalYearEndMonth(financials.annualStatements);
