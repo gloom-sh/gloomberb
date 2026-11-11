@@ -6,6 +6,7 @@ import { scrollBoxScrollsVertically } from "../../ui/scroll-box-axis";
 import { OpenTuiImageSurface } from "./image/surface";
 import { OpenTuiChartSurface } from "./chart-surface";
 import { joinPastedLines } from "../../utils/pasted-lines";
+import { withoutControlCharacters } from "../../utils/untrusted-text";
 
 interface OpenTuiPrimitiveProps {
   children?: ReactNode;
@@ -126,20 +127,43 @@ function mapColor(color: unknown): unknown {
   return typeof color === "string" ? RGBA.fromHex(color) : color;
 }
 
+/**
+ * Every string drawn in the terminal goes through here: a chat message, a
+ * name, a headline or a share reaches the screen as text, never as a command
+ * to the terminal (withoutControlCharacters). Colour and weight come from
+ * styled chunks, so no text needs an escape sequence of its own.
+ */
 function mapTextContent(content: unknown): unknown {
-  if (!content || typeof content === "string") return content;
+  if (!content) return content;
+  if (typeof content === "string") return withoutControlCharacters(content);
   if (
     typeof content === "object"
     && Array.isArray((content as { chunks?: unknown }).chunks)
   ) {
     return new OpenTuiStyledText((content as { chunks: Array<Record<string, unknown>> }).chunks.map((chunk) => ({
       ...chunk,
+      text: typeof chunk.text === "string" ? withoutControlCharacters(chunk.text) : chunk.text,
       fg: mapColor(chunk.fg),
       bg: mapColor(chunk.bg),
       attributes: mapTextAttributes(chunk.attributes as number | undefined),
     })) as any);
   }
   return content;
+}
+
+/** The text children of a text element, as mapTextContent draws a string. Elements in them map their own. */
+function plainTextChildren(children: ReactNode): ReactNode {
+  if (typeof children === "string") return withoutControlCharacters(children);
+  if (!Array.isArray(children)) return children;
+  let plain: ReactNode[] | null = null;
+  for (let index = 0; index < children.length; index += 1) {
+    const child = children[index] as ReactNode;
+    const mapped = plainTextChildren(child);
+    if (mapped === child) continue;
+    plain ??= [...children];
+    plain[index] = mapped;
+  }
+  return plain ?? children;
 }
 
 const OpenTuiBox = createOpenTuiPrimitive("box");
@@ -202,7 +226,7 @@ const OpenTuiText = forwardRef<unknown, TextProps>(function OpenTuiText({ childr
     ref,
     content: mapTextContent(textProps.content),
     attributes: mapTextAttributes(props.attributes as number | undefined, props),
-  }, children as ReactNode);
+  }, plainTextChildren(children as ReactNode));
 });
 
 const OpenTuiSpan = forwardRef<unknown, TextProps>(function OpenTuiSpan({ children, ...props }, ref) {
@@ -210,15 +234,15 @@ const OpenTuiSpan = forwardRef<unknown, TextProps>(function OpenTuiSpan({ childr
     ...stripTextProps(props),
     ref,
     attributes: mapTextAttributes(props.attributes as number | undefined, props),
-  }, children as ReactNode);
+  }, plainTextChildren(children as ReactNode));
 });
 
 const OpenTuiStrong = forwardRef<unknown, TextProps>(function OpenTuiStrong({ children, ...props }, ref) {
-  return createElement("strong" as any, { ...stripTextProps(props), ref }, children as ReactNode);
+  return createElement("strong" as any, { ...stripTextProps(props), ref }, plainTextChildren(children as ReactNode));
 });
 
 const OpenTuiUnderline = forwardRef<unknown, TextProps>(function OpenTuiUnderline({ children, ...props }, ref) {
-  return createElement("u" as any, { ...stripTextProps(props), ref }, children as ReactNode);
+  return createElement("u" as any, { ...stripTextProps(props), ref }, plainTextChildren(children as ReactNode));
 });
 
 export const openTuiUiHost: UiHost = {
