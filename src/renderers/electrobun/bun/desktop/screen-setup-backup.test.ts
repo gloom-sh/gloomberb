@@ -20,14 +20,12 @@ test("a window setup it can neither read nor copy is left in place, and the log 
   // A folder where the copy would go makes the copy fail.
   mkdirSync(`${path}.bak`);
   const logged = spyOn(console, "error").mockImplementation(() => {});
-  // A spy an earlier file left on console.error keeps the calls made before this test: only this test's own count.
-  const before = logged.mock.calls.length;
   try {
     const store = desktopScreenSetupStore(path);
     expect(store.load()).toEqual(emptyScreenSetup());
     store.save(emptyScreenSetup());
     expect(readFileSync(path, "utf8")).toBe(original);
-    expect(logged.mock.calls.slice(before)).toEqual([[
+    expect(logged.mock.calls).toEqual([[
       "[desktop] the window setup could not be read or copied; it is left as it is, and window changes are not saved until a later launch can keep a copy",
     ]]);
   } finally {
