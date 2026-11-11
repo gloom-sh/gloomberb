@@ -256,3 +256,15 @@ describe("tickerLinkMenuItems", () => {
     });
   });
 });
+
+// One code per listing: a template titled FA 9992:XHKG while the CLI, search and the chart named 9992:HKEX.
+test("a pane title names each ticker key its template wrote by the venue's code, and leaves any other title as written", () => {
+  const state = createInitialState(createDefaultConfig("/tmp/gloomberb-title-test"));
+  const notes = panes.get("notes")!;
+  const titled = (title: string) => getPaneDisplayTitle(state,
+    createPaneInstance("notes", { instanceId: "notes:x", title, binding: { kind: "fixed", symbol: "9992:XHKG" } }), notes, panes);
+  expect(titled("FA 9992:XHKG")).toBe("FA 9992:HKEX");
+  expect(titled("RV 9992:XHKG,PLTR")).toBe("RV 9992:HKEX,PLTR");
+  expect(titled("FA AAPL")).toBe("FA AAPL");
+  expect(titled("Pop Mart 9992:XHKG notes")).toBe("Pop Mart 9992:XHKG notes");
+});

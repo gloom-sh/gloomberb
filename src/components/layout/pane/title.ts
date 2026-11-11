@@ -6,7 +6,7 @@ import {
   type PaneInstanceConfig,
 } from "../../../types/config";
 import type { PaneDef } from "../../../types/plugin";
-import { paneTitleMnemonic } from "../../../layout/pane-follow";
+import { paneTitleMnemonic, TITLE_TICKER } from "../../../layout/pane-follow";
 import { canFollowTickerSource, isTickerLinkPeer } from "../../../layout/ticker-navigation";
 import { canonicalTickerKey, parsePublicTickerKey } from "../../../utils/exchanges";
 
@@ -17,6 +17,18 @@ import { canonicalTickerKey, parsePublicTickerKey } from "../../../utils/exchang
  */
 function displayTicker(key: string): string {
   return parsePublicTickerKey(key).exchange ? canonicalTickerKey(key) : key;
+}
+
+/**
+ * A title a template wrote, its command and the ticker keys it opened on
+ * ("FA 9992:XHKG", "RV 9992:XHKG,PLTR"), with each key by its venue's code
+ * ("FA 9992:HKEX"). Any other title is the user's or the pane's own and stays.
+ */
+function displayStoredTitle(title: string): string {
+  const mnemonic = paneTitleMnemonic(title);
+  const keys = mnemonic ? title.slice(mnemonic.length).trim().split(",").map((key) => key.trim()) : [];
+  if (!mnemonic || !keys[0] || !keys.every((key) => TITLE_TICKER.test(key))) return title;
+  return `${mnemonic} ${keys.map(displayTicker).join(",")}`;
 }
 
 /** Single-cell link glyph: emoji link icons render double-width in terminals. */
@@ -59,7 +71,7 @@ export function getBasePaneDisplayTitle(
     return ticker ? `${mnemonic} ${displayTicker(ticker)}` : mnemonic;
   }
 
-  if (instance.title) return instance.title;
+  if (instance.title) return displayStoredTitle(instance.title);
 
   if (instance.paneId === "portfolio-list") {
     const collectionId = resolveCollectionForPane(state as AppState, instance.instanceId);
