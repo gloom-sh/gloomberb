@@ -209,7 +209,11 @@ export function createAnalystResearchHeadless(
       return {
         sections,
         errors: data.stale ? ["Analyst research is stale"] : undefined,
-        ...(data.stale ? { freshness: { status: "stale" as const } } : {}),
+        // When Gloom Cloud read the targets and the mix, which carry no date of their own.
+        ...(data.stale || data.fetchedAt ? { freshness: {
+          ...(data.stale ? { status: "stale" as const } : {}),
+          ...(data.fetchedAt ? { retrievedAt: data.fetchedAt } : {}),
+        } } : {}),
         metadata: {
           symbol: data.symbol || symbol,
           name: data.name ?? null,

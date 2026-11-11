@@ -43,6 +43,7 @@ import { barLastSession } from "../../market-data/market/bar-period";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 import { isRecord } from "../../utils/guards";
+import { displayTickerKey } from "../../utils/exchanges";
 import { splitSymbolWords } from "../symbol-args";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
 import { formatCompact } from "../../utils/format";
@@ -689,7 +690,8 @@ function seriesTable(series: HeadlessSeries): CliReportTable {
   return {
     title: series.label,
     identity: {
-      ...(series.symbol?.trim() ? { symbolOrSeries: series.symbol.trim() } : {}),
+      // A listing by its venue's code (9992:HKEX), as every other export names it; JSON keeps the stored key.
+      ...(series.symbol?.trim() ? { symbolOrSeries: displayTickerKey(series.symbol.trim()) } : {}),
       // A rate reads `JPY per USD` here as in every other export.
       ...(series.unit?.trim() ? { currencyOrUnit: currencyRateUnitText(series.unit.trim()) } : {}),
       ...(series.interval?.trim() ? { interval: series.interval.trim() } : {}),

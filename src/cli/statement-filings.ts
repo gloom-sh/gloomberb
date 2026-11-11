@@ -1,7 +1,10 @@
 import { apiClient } from "../api-client";
 import type { BankFiguresPayload } from "../api-client/bank-figures";
+import type { ExchangeAnnouncementsPayload } from "../api-client/exchange-announcements";
 import type { FinancialStatement } from "../types/financials";
 import { fetchOfferingFilings, type OfferingFiling } from "../utils/cash-runway";
+import { settleWithin } from "../utils/async-deadline";
+import { EXCHANGE_RESULTS_BUDGET_MS, loadExchangeResults, RESULTS_ANNOUNCEMENT_LIMIT, type ExchangeResults } from "../utils/exchange-results";
 import { logFailure } from "../utils/log-failure";
 import { nonUsSecListingVenue } from "../utils/sec";
 
@@ -45,6 +48,8 @@ export interface StatementReportSources {
   bankFigures(symbol: string): Promise<BankFiguresPayload>;
   /** The company's latest offering prospectuses (424B5, 424B4), newest first. */
   offeringFilings?(symbol: string): Promise<OfferingFiling[]>;
+  /** An HKEX company's results announcements and business updates on HKEXnews, newest first. */
+  exchangeAnnouncements?(listing: { symbol: string; exchange: string }): Promise<ExchangeAnnouncementsPayload>;
 }
 
 export const cloudStatementReportSources: StatementReportSources = {
@@ -66,12 +71,13 @@ export const cloudStatementReportSources: StatementReportSources = {
   },
   bankFigures: (symbol) => apiClient.getCloudBankFigures(symbol),
   offeringFilings: (symbol) => fetchOfferingFilings(apiClient, symbol),
+  exchangeAnnouncements: (listing) => apiClient.getCloudExchangeAnnouncements({ ...listing, limit: RESULTS_ANNOUNCEMENT_LIMIT, kind: "results" }),
 };
 
 /**
  * A US listing's latest offering prospectuses, for the note that its cash
  * predates one; nothing (and no request) for any other listing, or when
- * `wanted` is false. A failed read leaves the note out.
+ * `wanted` is false. A failed read, or one past 4 s, leaves the note out.
  */
 export async function loadOfferingFilings(
   sources: StatementReportSources | undefined,
@@ -79,8 +85,8 @@ export async function loadOfferingFilings(
   wanted: boolean,
 ): Promise<OfferingFiling[]> {
   if (!wanted || !sources?.offeringFilings || nonUsSecListingVenue(listing.symbol, listing.exchange)) return [];
-  return sources.offeringFilings(listing.symbol)
-    .catch(logFailure("cli.statement-filings", "Reading the offering filings failed", [] as OfferingFiling[]));
+  return await settleWithin(sources.offeringFilings(listing.symbol)
+    .catch(logFailure("cli.statement-filings", "Reading the offering filings failed", [] as OfferingFiling[])), EXCHANGE_RESULTS_BUDGET_MS) ?? [];
 }
 
 /** The filing a statement row's period was read from: its form when the filing list names it, and its filed date. */
@@ -239,6 +245,8 @@ export interface StatementFilingsReport {
   latestQuarter: (StatementFiling & { date: string }) | null;
   latestAnnual: (StatementFiling & { date: string }) | null;
   resultsRelease: ResultsRelease | null;
+  /** An HKEX company's results announcements on HKEXnews; absent for any other listing. */
+  exchangeResults?: ExchangeResults | null;
   /** The company's newest annual report form: 10-K for a US filer, 20-F or 40-F for a foreign issuer; null when none was read. */
   annualReportForm: string | null;
 }
@@ -250,17 +258,22 @@ export function isForeignIssuerForm(form: string | null | undefined): boolean {
 
 /**
  * The filings behind a report's latest statements, read for a US listing
- * with statements; nothing (and no request) for any other. A failed read
- * leaves the filed dates SEC-dated statements carry and no release line.
+ * with statements, and an HKEX listing's results announcements; nothing
+ * (and no request) for any other. A failed read leaves the filed dates
+ * SEC-dated statements carry and no release or announcement line.
  */
 export async function loadStatementFilings(
   sources: StatementReportSources | undefined,
   listing: { symbol: string; exchange?: string },
   latest: { quarter: FinancialStatement | null | undefined; annual: FinancialStatement | null | undefined },
 ): Promise<StatementFilingsReport> {
-  const filings = sources && (latest.quarter || latest.annual) && !nonUsSecListingVenue(listing.symbol, listing.exchange)
-    ? await sources.statementFilings(listing.symbol)
-      .catch(logFailure("cli.statement-filings", "Reading the statement filings failed", [] as PeriodicFiling[]))
+  const venue = nonUsSecListingVenue(listing.symbol, listing.exchange);
+  const latestPeriod = [latest.quarter?.date, latest.annual?.date].filter((date): date is string => !!date).sort().at(-1);
+  const exchangeResults = venue === "HKEX" ? loadExchangeResults(sources?.exchangeAnnouncements && ((item) => sources.exchangeAnnouncements!(item)), listing, latestPeriod) : null;
+  // Within 4 s, as the announcements are: a report goes without the filing lines rather than wait on them.
+  const filings = sources && (latest.quarter || latest.annual) && !venue
+    ? await settleWithin(sources.statementFilings(listing.symbol)
+      .catch(logFailure("cli.statement-filings", "Reading the statement filings failed", [] as PeriodicFiling[])), EXCHANGE_RESULTS_BUDGET_MS) ?? []
     : [];
   const withDate = (row: FinancialStatement | null | undefined, forms: readonly PeriodicForm[]) => {
     const filing = statementFiling(row, filings, forms);
@@ -276,5 +289,6 @@ export async function loadStatementFilings(
       ? detectResultsRelease({ latestQuarter: latest.quarter?.date, latestAnnual: latest.annual?.date, filings })
       : null,
     annualReportForm: annualReport?.form ?? null,
+    ...exchangeResults ? { exchangeResults: await exchangeResults } : {},
   };
 }

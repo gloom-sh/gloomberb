@@ -135,6 +135,8 @@ interface TickerSearchCandidateOptions {
   includeOptionContracts?: boolean;
   providerRanks?: ReadonlyMap<string, number>;
   providerPopularity?: ReadonlyMap<string, number>;
+  /** Search's own row of each listing, by its key (9992:XHKG), the first it sent. */
+  providerListings?: ReadonlyMap<string, InstrumentSearchResult>;
 }
 
 /**
@@ -161,9 +163,12 @@ export function createLocalTickerSearchCandidates(
   return Array.from(tickers).flatMap((ticker) => {
     const symbol = normalizeTickerSymbol(ticker.metadata.ticker);
     const savedExchange = canonicalExchange(ticker.metadata.exchange);
+    // Search's row of the saved listing itself, under any key it was saved by (9992, 9992:XHKG).
+    const savedListing = savedExchange || parsePublicTickerKey(symbol).exchange ? publicTickerKey(symbol, ticker.metadata.exchange) : null;
+    const ownRow = savedListing ? options.providerListings?.get(savedListing) : undefined;
     // The same symbol on another venue can be another security (MSFT's BYMA
     // receipt, NVO on Warsaw); it must not type or route the saved listing.
-    const venueHint = providerHints.get(symbol);
+    const venueHint = ownRow ?? providerHints.get(symbol);
     const hint = venueHint && savedExchange && isOtherVenue(venueHint, savedExchange) ? undefined : venueHint;
     const exchangeLabel = ticker.metadata.exchange || hint?.exchange || hint?.primaryExchange;
     const hintPrimaryExchange = canonicalExchange(hint?.primaryExchange);
@@ -201,13 +206,27 @@ export function createLocalTickerSearchCandidates(
           saved: true,
           instrumentClass: classifyInstrumentKind(instrumentType),
           instrumentType,
-          searchAliases: buildSymbolAliases(symbol),
+          // A saved listing ranks as search's own row of it would: the names it answers to and its mark as its
+          // company's home, so saving the primary listing never moves it down ("popmart" is 9992 on HKEX).
+          ...!contractKey && ownRow ? listingRankSignals(symbol, ownRow) : { searchAliases: buildSymbolAliases(symbol) },
           ticker,
           result,
           ...(contractKey ? { contractKey, id: `goto:${ticker.metadata.ticker}:${contractKey}` } : {}),
         } as TickerSearchCandidate;
       });
   });
+}
+
+/** What ranks search's row of a listing (its aliases, the names it was found by, its home mark), for the saved row of it. */
+function listingRankSignals(symbol: string, row: InstrumentSearchResult): Pick<TickerSearchCandidate, "searchAliases" | "nameAliases" | "searchKeywords" | "homeListing"> {
+  const names = searchResultNames(row);
+  const keywords = searchResultKeywords(row);
+  return {
+    searchAliases: [...new Set([...buildSymbolAliases(symbol), ...buildSearchResultAliases(row)])],
+    ...names ? { nameAliases: names } : {},
+    ...keywords ? { searchKeywords: keywords } : {},
+    ...row.homeListing === true ? { homeListing: true } : {},
+  };
 }
 
 function createProviderTickerSearchCandidates(
@@ -330,6 +349,7 @@ export function buildTickerSearchCandidates({
     includeOptionContracts,
     providerRanks: providerHints.ranks,
     providerPopularity: providerHints.popularity,
+    providerListings: providerHints.listings,
   };
   const localItems = rankTickerSearchItems(
     createLocalTickerSearchCandidates(tickers.values(), providerHints.results, candidateOptions),
@@ -688,10 +708,12 @@ function buildProviderHints(
   results: Map<string, InstrumentSearchResult>;
   ranks: Map<string, number>;
   popularity: Map<string, number>;
+  listings: Map<string, InstrumentSearchResult>;
 } {
   const results = new Map<string, InstrumentSearchResult>();
   const ranks = new Map<string, number>();
   const popularity = new Map<string, number>();
+  const listings = new Map<string, InstrumentSearchResult>();
   for (const [rank, result] of searchResults.entries()) {
     const symbol = getSearchResultSymbol(result);
     if (!ranks.has(symbol)) ranks.set(symbol, rank);
@@ -699,6 +721,7 @@ function buildProviderHints(
     // that venue's place instead of the end of the issuer's listings.
     const listingKey = publicTickerKey(symbol, listingExchange(result));
     if (listingKey !== symbol && !ranks.has(listingKey)) ranks.set(listingKey, rank);
+    if (listingKey !== symbol && !listings.has(listingKey) && !searchContractKey(result)) listings.set(listingKey, result);
     const score = searchResultPopularity(result);
     if (score != null) popularity.set(symbol, Math.max(score, popularity.get(symbol) ?? score));
     const existing = results.get(symbol);
@@ -710,7 +733,7 @@ function buildProviderHints(
       results.set(symbol, result);
     }
   }
-  return { results, ranks, popularity };
+  return { results, ranks, popularity, listings };
 }
 
 /** Older servers and other providers send no popularity; ignore anything else malformed. */

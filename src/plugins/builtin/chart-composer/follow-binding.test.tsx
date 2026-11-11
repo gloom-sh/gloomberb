@@ -82,8 +82,8 @@ test("follow chart retains range while switching BTC to SHOP, including saved re
   const oldSettings = structuredClone(findPaneInstance(latest.config.layout, chartId)!.settings);
   const layout = updatePaneInstance(latest.config.layout, researchId, pane => ({ ...pane, binding: { kind: "fixed", symbol: "SHOP:XNAS" } }));
   await act(async () => dispatch({ type: "SET_CONFIG", config: { ...latest.config, layout } }));
-  await settle(() => requests.includes("SHOP:NASDAQ") && tui.frame().includes("SHOP:XNAS Price"));
-  expect(tui.frame()).toContain("Chart: SHOP:XNAS");
+  await settle(() => requests.includes("SHOP:NASDAQ") && tui.frame().includes("SHOP:NASDAQ Price"));
+  expect(tui.frame()).toContain("Chart: SHOP:NASDAQ");
   expect(tui.frame()).not.toContain("BTC-USD:CCC Price");
   const selected = findPaneInstance(latest.config.layout, chartId)!.settings!.chartSpec as any;
   expect(selected.viewport.range).toBe("1M");
@@ -165,7 +165,7 @@ test("an undo back to the fixed chart keeps its saved spec", async () => {
     title: "GP BTC-USD:CCC", binding: { kind: "fixed", symbol: "BTC-USD:CCC" }, settings: before }));
   await act(async () => dispatch({ type: "SET_CONFIG", config: { ...latest.config, layout: undone } }));
   await settle(() => tui.frame().includes("BTC-USD:CCC Price"));
-  expect(tui.frame()).not.toContain("SHOP:XNAS Price");
+  expect(tui.frame()).not.toContain("SHOP:NASDAQ Price");
   expect(findPaneInstance(latest.config.layout, chartId)!.settings).toEqual(before);
 });
 
@@ -204,7 +204,7 @@ test("follow ownership survives a comparison collision, range change and reload 
   expect(findPaneInstance(restored.layout, chartId)?.settings?.[CHART_FOLLOW_SERIES_SETTING_KEY]).toEqual([comparison.series[0]!.id]);
   await tui.destroy();
   await mount(restored, requests);
-  await settle(() => tui.frame().includes("SPY:ARCX"));
+  await settle(() => tui.frame().includes("SPY:ARCA"));
   const secondSwitch = updatePaneInstance(latest.config.layout, researchId, pane => ({ ...pane, binding: { kind: "fixed", symbol: "SHOP:XNAS" } }));
   await act(async () => dispatch({ type: "SET_CONFIG", config: { ...latest.config, layout: secondSwitch } }));
   await settle(() => requests.includes("SHOP:NASDAQ"));
@@ -259,7 +259,7 @@ test("deleting the followed primary leaves the authored comparison independent o
   const switched = updatePaneInstance(latest.config.layout, researchId, pane => ({ ...pane, binding: { kind: "fixed", symbol: "SHOP:XNAS" } }));
   requests.length = 0;
   await act(async () => dispatch({ type: "SET_CONFIG", config: { ...latest.config, layout: switched } }));
-  await settle(() => tui.frame().includes("Chart: SHOP:XNAS"));
+  await settle(() => tui.frame().includes("Chart: SHOP:NASDAQ"));
   expect(findPaneInstance(latest.config.layout, chartId)!.settings!.chartSpec).toEqual(withoutPrimary);
   expect(findPaneInstance(latest.config.layout, chartId)!.settings![CHART_FOLLOW_SERIES_SETTING_KEY]).toEqual([]);
   expect(requests).not.toContain("SHOP:NASDAQ");

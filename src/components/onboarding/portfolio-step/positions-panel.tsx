@@ -328,13 +328,14 @@ function TuiPositionsPanel({ state, inputRef, editing, selectedSymbol, shortcut 
       {POSITION_FIELDS.map((field, index) => (
         <TuiFieldRow key={field} field={field} index={index} state={state} inputRef={inputRef} editing={editing} />
       ))}
-      <Box height={1} overflow="hidden">
+      {/* Wraps in a narrow window (64 columns) rather than cutting how the step goes on. */}
+      <Box flexShrink={0}>
         {state.error ? (
-          <Text fg={colors.negative}>{state.error}</Text>
+          <Text fg={colors.negative} wrapText>{state.error}</Text>
         ) : state.submitting ? (
           <Text fg={colors.textDim}>{t("adding...")}</Text>
         ) : (
-          <Text fg={colors.textMuted}>{positionsHint(editing, state.positions.length)}</Text>
+          <Text fg={colors.textMuted} wrapText>{positionsHint(editing, state.positions.length)}</Text>
         )}
       </Box>
       <Box height={1} />

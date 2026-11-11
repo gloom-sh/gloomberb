@@ -8,7 +8,7 @@ import type { EarningsHistoryPayload } from "../api-client/earnings";
 import type { FredSeriesLoadResult, FredSeriesRequest } from "../sources/gloomberb-cloud/fred-series";
 import type { LoadFxCloses } from "./currency-conversion";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
-import { publicTickerKey } from "../utils/exchanges";
+import { canonicalTickerKey } from "../utils/exchanges";
 import type {
   ChartSeriesSpec,
   ChartSpec,
@@ -161,6 +161,11 @@ export function instrumentKey(spec: Extract<ChartSeriesSpec["source"], { kind: "
   return chartQuoteOverrideKeyForSource(spec);
 }
 
+/**
+ * A listing as a series' label and messages name it: the venue's own code
+ * (`9992:HKEX`, `AAPL:NASDAQ`), as the CLI takes it, never the key it is
+ * saved under (`9992:XHKG`).
+ */
 export function instrumentLabel(spec: Extract<ChartSeriesSpec["source"], { kind: "security" }>): string {
-  return publicTickerKey(spec.instrument.symbol, spec.instrument.exchange);
+  return canonicalTickerKey(spec.instrument.symbol, spec.instrument.exchange);
 }

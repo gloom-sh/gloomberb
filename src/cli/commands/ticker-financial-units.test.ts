@@ -154,9 +154,12 @@ test("an EV off market cap + debt - cash is the computed one everywhere, with it
     unavailableFields: ["enterpriseValue", "enterpriseToRevenue"],
     enterpriseValueCheck: { ...check, status: "withdrawn", source: 128e9 },
   });
-  expect(valuation(withdrawn)).toContain("Enterprise Value unavailable");
-  expect(valuation(withdrawn)).toContain(
-    "EV unavailable: the provider's 128B USD is 2.0x the 63.9B computed from market cap + total debt - cash (balance sheet 2026-06-30).");
+  // A withdrawn one gives way to the bridge it was checked against, as RV and the reverse DCF read it. Its balance sheet
+  // is not among the statements, so its cash is called cash and its minority interest is named as not added.
+  const notOnFile = "; that balance sheet is not among the statements here, so its minority interest is not added.";
+  expect(valuation(withdrawn)).toMatch(/^Enterprise Value 63\.9B USD$/m);
+  expect(valuation(withdrawn)).toContain("EV 63.9B USD is market cap 62B + total debt 2B - cash 100M"
+    + ` (balance sheet 2026-06-30), in place of the provider's 128B, which failed validation against it${notOnFile}`);
   // An IFRS balance sheet's leases are in the bridge, and the line says so.
   const leased = withCheck({ enterpriseValue: 70e9, enterpriseValueCheck: { ...check, leases: 1.5e9, computed: 65.4e9, status: "differs", source: 70e9 } });
   expect(valuation(leased)).toContain("EV 65.4B USD is market cap 62B + total debt 2B + leases 1.5B - cash and short-term investments 100M (balance sheet 2026-06-30), in place of the provider's 70B.");
@@ -166,8 +169,8 @@ test("an EV off market cap + debt - cash is the computed one everywhere, with it
     enterpriseValueCheck: { ...check, currency: "GBP", status: "withdrawn", source: 18.57e9, leases: 5.95e9, computed: 22.1e9,
       fx: { from: "EUR", rate: 0.86135 }, convertedFrom: "EUR", convertedTwice: true },
   });
-  expect(valuation(twice)).toContain("EV unavailable: the provider's 18.57B GBP is 0.8x the 22.1B computed from market cap + total debt"
-    + " + leases - cash (balance sheet 2026-06-30, EUR at 0.8613 GBP); it converts EUR to GBP twice.");
+  expect(valuation(twice)).toContain("EV 22.1B GBP is market cap 62B + total debt 2B + leases 5.95B - cash 100M"
+    + ` (balance sheet 2026-06-30, EUR/GBP 0.86135 at its date's close), in place of the provider's 18.57B, which converts EUR to GBP twice${notOnFile}`);
   // A converted EV no balance sheet checked gives Gloom Cloud's reason, not a generic one.
   const unchecked = withCheck({
     unavailableFields: ["enterpriseValue", "enterpriseToRevenue"],

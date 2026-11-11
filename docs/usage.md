@@ -2432,6 +2432,15 @@ A company releases a quarter's results in an 8-K (Item 2.02) weeks before the 10
 - When the 10-Q or 10-K was filed after the release but the statements do not have it yet, the line says when it was filed instead.
 - An amended 8-K, an 8-K without Item 2.02, and a release of the latest period's own results add nothing.
 
+### HKEX results announcements
+
+An HKEX company files no SEC reports. Its results are announced on HKEXnews, and both commands date the latest period by that announcement: `Latest half year 2026-06-30, interim results announced 2026-08-20 (HKEXnews).` A results announcement or business update released after it is named as well, for example `Business update announced 2026-10-27 (HKEXnews), after the latest statements: "LATEST BUSINESS UPDATE FOR THE THIRD QUARTER OF 2026".`
+
+- The latest period's announcement is the first interim, annual or quarterly results announcement within 120 days after the period ends.
+- After it, the newest results announcement is named ("their statements are not in yet"), and then a business update newer than that one.
+- Dates are Hong Kong days. `--json` carries this as `statementFilings.exchangeResults`, with `latest` and `newer` each giving the `kind`, `headline`, `announced` and `url`.
+- When HKEXnews cannot be read, the lines are left out.
+
 ### Bank figures
 
 For a US bank holding company, `fundamentals` adds a Bank section:

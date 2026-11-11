@@ -1,7 +1,6 @@
 import type { FinancialStatement, TickerFinancials } from "../../../../types/financials";
 import { ebitdaLacksDepreciation } from "../../../../utils/ebitda";
-import { fiscalPeriodLabel, longerPeriodLabel, ttmPeriodLabel } from "../../../../utils/fiscal-period";
-import { statementPeriodMonths } from "../../../../utils/financial-statements";
+import { statementPeriodLabel, ttmPeriodLabel } from "../../../../utils/fiscal-period";
 import { formatPerShareNumber } from "../../../../utils/reported-money";
 import { hasNonIncomeStatementGap } from "../../../../utils/statement-gaps";
 import {
@@ -229,12 +228,7 @@ export function financialColumnLabel(
   kind: FinancialPeriod,
   yearEndMonth: number | null,
 ): string {
-  if (statement.date !== "TTM") {
-    const months = kind === "quarterly" ? statementPeriodMonths(statement) : undefined;
-    return months && months > 3
-      ? longerPeriodLabel(statement.date, months, yearEndMonth)
-      : fiscalPeriodLabel(statement.date, kind, yearEndMonth);
-  }
+  if (statement.date !== "TTM") return statementPeriodLabel(statement, kind, yearEndMonth);
   const { periodEnd, interimMonths } = statement.aggregation ?? {};
   return ttmPeriodLabel(periodEnd, yearEndMonth, interimMonths);
 }
@@ -697,6 +691,44 @@ export function financialStatementPeriods(
 ): Array<{ date: string; lead: boolean }> {
   const lead = subTab.rows[0];
   return statements.map((statement) => ({ date: statement.date, lead: !!lead && hasFinancialRowValue(lead, [statement]) }));
+}
+
+/**
+ * The newest periods of a statement table that are not in yet: those before
+ * the newest with the statement's lead line (revenue, total assets, free
+ * cash flow), which hold only some figures (an EPS alone, as Pop Mart's
+ * FY2025 did before its statements were filled). The pane leaves them out of
+ * its columns and says so in `notInYetNote`, so the first column is never
+ * an all-dash one. A trailing-twelve-month column is kept: it is summed.
+ */
+export function splitPeriodsNotInYet<T extends FinancialTableStatement>(
+  statements: readonly T[],
+  subTab: Pick<FinancialSubTab, "rows">,
+): { shown: T[]; notInYet: T[] } {
+  const lead = subTab.rows[0];
+  const notInYet: T[] = [];
+  for (const statement of statements) {
+    if (statement.date === "TTM") continue;
+    if (!lead || hasFinancialRowValue(lead, [statement])) break;
+    notInYet.push(statement);
+  }
+  // A table where no period has the lead line keeps what it has.
+  if (notInYet.length === statements.filter((statement) => statement.date !== "TTM").length) return { shown: [...statements], notInYet: [] };
+  return { shown: statements.filter((statement) => !notInYet.includes(statement)), notInYet };
+}
+
+/** "FY2025 is not in yet: only some of its figures are on file, not its revenue." Null when every period is shown. */
+export function notInYetNote(
+  notInYet: readonly FinancialTableStatement[],
+  subTab: Pick<FinancialSubTab, "rows">,
+  kind: FinancialPeriod,
+  yearEndMonth: number | null,
+): string | null {
+  if (!notInYet.length) return null;
+  const periods = notInYet.map((statement) => financialColumnLabel(statement, kind, yearEndMonth)).reverse();
+  const names = periods.length === 1 ? periods[0]! : `${periods.slice(0, -1).join(", ")} and ${periods.at(-1)}`;
+  const lead = subTab.rows[0]?.label.toLowerCase();
+  return `${names} ${periods.length === 1 ? "is" : "are"} not in yet: only some of ${periods.length === 1 ? "its" : "their"} figures are on file${lead ? `, not ${periods.length === 1 ? "its" : "their"} ${lead}` : ""}.`;
 }
 
 /** The statement lines a table has a row for (filledPeriodsNote), group totals included. */

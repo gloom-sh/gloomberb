@@ -6,8 +6,24 @@ import {
   type PaneInstanceConfig,
 } from "../../../types/config";
 import type { PaneDef } from "../../../types/plugin";
-import { paneTitleMnemonic } from "../../../layout/pane-follow";
+import { paneTitleMnemonic, TITLE_TICKER } from "../../../layout/pane-follow";
 import { canFollowTickerSource, isTickerLinkPeer } from "../../../layout/ticker-navigation";
+import { displayTickerKey } from "../../../utils/exchanges";
+
+/**
+ * A title a template wrote, its command and the ticker keys it opened on
+ * ("FA 9992:XHKG", "RV 9992:XHKG,PLTR"), with each key by its venue's code
+ * ("FA 9992:HKEX"). Any other title is the user's or the pane's own and stays.
+ */
+function displayStoredTitle(title: string): string {
+  const mnemonic = paneTitleMnemonic(title);
+  if (!mnemonic) return title;
+  // Keys and the separators between them as written ("AAPL, MSFT" keeps its space).
+  const parts = title.slice(mnemonic.length).split(/(\s*,\s*)/);
+  const keys = parts.filter((_, index) => index % 2 === 0).map((key) => key.trim());
+  if (!keys[0] || !keys.every((key) => TITLE_TICKER.test(key))) return title;
+  return `${title.slice(0, mnemonic.length)}${parts.map((part, index) => index % 2 === 0 ? part.replace(part.trim(), displayTickerKey(part.trim())) : part).join("")}`;
+}
 
 /** Single-cell link glyph: emoji link icons render double-width in terminals. */
 const LINK_GLYPH = "\u29c9";
@@ -32,7 +48,7 @@ export function getBasePaneDisplayTitle(
 
   if (instance.paneId === TICKER_RESEARCH_PANE_ID) {
     const ticker = resolveTickerForPane(state as AppState, instance.instanceId);
-    if (ticker) return ticker;
+    if (ticker) return displayTickerKey(ticker);
     const collectionId = resolveCollectionForPane(state as AppState, instance.instanceId);
     return state.config.portfolios.find((portfolio) => portfolio.id === collectionId)?.name
       ?? state.config.watchlists.find((watchlist) => watchlist.id === collectionId)?.name
@@ -46,10 +62,10 @@ export function getBasePaneDisplayTitle(
     : null;
   if (mnemonic) {
     const ticker = resolveTickerForPane(state as AppState, instance.instanceId);
-    return ticker ? `${mnemonic} ${ticker}` : mnemonic;
+    return ticker ? `${mnemonic} ${displayTickerKey(ticker)}` : mnemonic;
   }
 
-  if (instance.title) return instance.title;
+  if (instance.title) return displayStoredTitle(instance.title);
 
   if (instance.paneId === "portfolio-list") {
     const collectionId = resolveCollectionForPane(state as AppState, instance.instanceId);
@@ -62,7 +78,7 @@ export function getBasePaneDisplayTitle(
   if (paneDef.tickerSource) return t(paneDef.name);
 
   const ticker = resolveTickerForPane(state as AppState, instance.instanceId);
-  return ticker ? `${t(paneDef.name)}: ${ticker}` : t(paneDef.name);
+  return ticker ? `${t(paneDef.name)}: ${displayTickerKey(ticker)}` : t(paneDef.name);
 }
 
 export function getPaneDisplayTitle(

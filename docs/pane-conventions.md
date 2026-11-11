@@ -732,7 +732,10 @@ header, with the detail's height.
   reset while it differs); omit it when it picks what is shown. `inline` for
   four or fewer short exclusive options, `multi`, `toggle`, `text` for a second
   field. One terminal row; on the desktop it scrolls sideways when narrow.
-  Status never goes in the bar; units and as-of context may use `meta`.
+  Status never goes in the bar. The date the data is as of goes in `asOf`,
+  its own segment that never shrinks; other context (units, a growth basis)
+  goes in `meta`, which gives way first. When the controls no longer fit,
+  inline filters become their menu chip, so the as-of keeps its place.
   The inline filter or view that picks a chart's range sets `chartRange`:
   choosing the selected range again sends the pane's charts back to it, as `0`
   does, so every chart's range strip behaves the same. Bind the range's number

@@ -246,6 +246,15 @@ export function canonicalTickerKey(symbol: string, exchange?: string): string {
   return canonical ? `${parsed.symbol}:${canonical}` : parsed.symbol;
 }
 
+/**
+ * A key as a person reads it: a listing by its venue's own code (`9992:XHKG` is `9992:HKEX`, `AAPL:XNAS` is
+ * `AAPL:NASDAQ`), as titles, legends and exports name it. Anything else (a bare symbol, `FRED:DFII10`,
+ * `CAP:bitcoin:hashrate`) stays as written. Display only: a stored key keeps its form.
+ */
+export function displayTickerKey(key: string): string {
+  return isKnownExchangeCode(parsePublicTickerKey(key).exchange) ? canonicalTickerKey(key) : key;
+}
+
 export function publicTickerKey(symbol: string, exchange?: string): string {
   const parsed = parsePublicTickerKey(symbol);
   const publicValue = publicExchange(parsed.exchange ?? exchange);

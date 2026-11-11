@@ -16,7 +16,7 @@ import {
 import { colors, priceColor } from "../../../../theme/colors";
 import { fiscalYearEndMonth } from "../../../../utils/fiscal-period";
 import { padTo } from "../../../../utils/format";
-import { filledPeriodsNote, stalePeriodNote } from "../../../../utils/financial-statements";
+import { filledPeriodPublications, filledPeriodsNote, stalePeriodNote } from "../../../../utils/financial-statements";
 import {
   FINANCIAL_COL_W,
   financialLabelWidth,
@@ -34,11 +34,13 @@ import {
   financialSubTabFields,
   formatFinancialValue,
   latestFinancialPeriodEnd,
+  notInYetNote,
   resolveFinancialPeriod,
   resolveFinancialPeriodOption,
   semanticGrowthValue,
   selectFinancialStatements,
   shareFinancialUnit,
+  splitPeriodsNotInYet,
   statementMetricValue,
   type FinancialPeriod,
   type FinancialTableRow,
@@ -58,6 +60,7 @@ import {
   type RatioAmount,
 } from "./ratios";
 import { PeriodEndHistoryLoader, RatioTable, ratioMetricColumn, type PeriodEndHistoryState, type RatioTableColumn } from "./ratio-table";
+import { useExchangeResultsNotes } from "./exchange-results";
 import { latestBalanceSheetDate, useOfferingNote } from "./offerings";
 import { useBoundTicker } from "../../shared/ticker-request";
 import { createValuationCurrencyContext } from "../../../../time-series/valuation-currency";
@@ -291,20 +294,35 @@ export function ResolvedFinancialsTab({
 
   const resolvedPeriod = resolveFinancialPeriod(period, hasAnnualStatements, hasQuarterlyStatements);
   const isAnnual = resolvedPeriod === "annual";
-  const { statements: displayStatements, previousStatementMap } = useMemo(
+  const selected = useMemo(
     () => selectFinancialStatements(resolvedPeriod, subTab.key, annualStatements, quarterlyStatements, undefined, financials?.trailingStatement),
     [annualStatements, quarterlyStatements, resolvedPeriod, subTab.key, financials?.trailingStatement],
   );
+  // A newest period with only some figures (an EPS alone) is left out of a statement table, and a line says so.
+  const { shown: displayStatements, notInYet } = useMemo(
+    () => ratioTab ? { shown: selected.statements, notInYet: [] } : splitPeriodsNotInYet(selected.statements, subTab),
+    [ratioTab, selected.statements, subTab],
+  );
+  const previousStatementMap = selected.previousStatementMap;
   // One currency for every column goes in the query bar with the growth basis;
   // a column in a different currency (or none) says so in its own header.
   const growthBasis = isAnnual ? "YoY" : "QoQ";
   const yearEndMonth = useMemo(() => fiscalYearEndMonth(annualStatements), [annualStatements]);
   const annualDates = useMemo(() => new Set(annualStatements.map(({ date }) => date)), [annualStatements]);
+  const { rows, unit } = useMemo(
+    () => shareFinancialUnit(buildFinancialRows(subTab.rows, displayStatements, collapsedGroups)),
+    [collapsedGroups, displayStatements, subTab.rows],
+  );
+  // The money unit most rows share heads the line names, so it is never cut with the query bar's text; rows in
+  // another unit say theirs ("Interest Exp (mn)"), which the header says it leaves to them.
+  const moneyUnit = [comparisonCurrency, unit].filter(Boolean).join(" ");
+  const unitMarked = !!unit && rows.some((row) => row.unitLabel !== row.label);
+  const metricHeader = moneyUnit ? `${moneyUnit}${unitMarked ? " unless marked" : ""}` : "Metric";
   const columns = useMemo<FinancialTableColumn[]>(() => [
     {
       id: "metric",
       kind: "metric",
-      label: "Metric",
+      label: metricHeader,
       width: financialLabelWidth(width),
       align: "left",
     },
@@ -323,12 +341,7 @@ export function ResolvedFinancialsTab({
       align: "right",
       headerColor: statement.date === "TTM" ? colors.textBright : colors.textDim,
     })),
-  ], [annualDates, comparisonCurrency, displayStatements, isAnnual, width, yearEndMonth]);
-  const { rows, unit } = useMemo(
-    () => shareFinancialUnit(buildFinancialRows(subTab.rows, displayStatements, collapsedGroups)),
-    [collapsedGroups, displayStatements, subTab.rows],
-  );
-  const moneyUnit = [comparisonCurrency, unit].filter(Boolean).join(" ");
+  ], [annualDates, comparisonCurrency, displayStatements, isAnnual, metricHeader, width, yearEndMonth]);
   const periodEnd = latestFinancialPeriodEnd(displayStatements);
   const renderCell = useCallback((
     row: FinancialTableRow,
@@ -446,6 +459,13 @@ export function ResolvedFinancialsTab({
 
   // The Balance Sheet and Liquidity show cash, which an offering filed since the latest balance sheet is not in yet.
   const { symbol: boundSymbol, exchange: boundExchange } = useBoundTicker();
+  // Years filled from the listing's exchange, with the lines this table shows.
+  const filledFields = useMemo(() => ratioTab ? undefined : financialSubTabFields(subTab), [ratioTab, subTab]);
+  const filledPeriods = useMemo(() => filledPeriodsNote(displayStatements, filledFields), [displayStatements, filledFields]);
+  const filledDates = useMemo(() => filledPeriodPublications(displayStatements, filledFields), [displayStatements, filledFields]);
+  // An HKEX company's latest period dated by its results announcement, unless the filled periods already date it, and
+  // what was announced after it.
+  const exchangeResults = useExchangeResultsNotes(boundSymbol, boundExchange, latestBalanceSheetDate(financials), filledDates);
   const offeringNote = useOfferingNote(boundSymbol, boundExchange, latestBalanceSheetDate(financials),
     !!financials && (section.key === "balance" || section.key === "liquidity"));
 
@@ -454,14 +474,15 @@ export function ResolvedFinancialsTab({
     () => stalePeriodNote(financialStatementPeriods(displayStatements, subTab)),
     [displayStatements, subTab],
   );
-  // Years filled from the listing's exchange, with the lines this table shows.
-  const filledPeriods = useMemo(
-    () => filledPeriodsNote(displayStatements, ratioTab ? undefined : financialSubTabFields(subTab)),
-    [displayStatements, ratioTab, subTab],
+  const notInYetLine = useMemo(
+    () => notInYetNote(notInYet, subTab, resolvedPeriod, yearEndMonth),
+    [notInYet, resolvedPeriod, subTab, yearEndMonth],
   );
   usePaneNoticeFooter({
     registrationId: "financials-notices",
     notices: [
+      ...(notInYetLine ? [notInYetLine] : []),
+      ...exchangeResults,
       ...(stalePeriod ? [stalePeriod] : []),
       ...(filledPeriods ? [filledPeriods] : []),
       ...financialStatementLimitations(financials),
@@ -485,6 +506,8 @@ export function ResolvedFinancialsTab({
     );
   }
 
+  const asOf = periodEnd ? `as of ${periodEnd}` : undefined;
+  // The as-of is the bar's own segment, which keeps its place when the pane is narrow; the context after it gives way.
   const queryBar = (meta: string) => (
     <QueryBar
       width={Math.max(1, width - 2)}
@@ -511,10 +534,10 @@ export function ResolvedFinancialsTab({
         ],
         onChange: (value: string) => setPeriod(value as FinancialPeriod),
       }}
-      meta={meta}
+      asOf={asOf}
+      meta={meta || undefined}
     />
   );
-  const asOf = periodEnd ? `as of ${periodEnd}` : "";
 
   return (
     <Box
@@ -544,7 +567,7 @@ export function ResolvedFinancialsTab({
             ...(periodEnd ? [["As of", periodEnd]] : []),
           ]}
           resetScrollKey={`${resolvedPeriod}:${section.key}:${displayStatements.length}`}
-          rootBefore={queryBar([comparisonCurrency, asOf].filter(Boolean).join(" · "))}
+          rootBefore={queryBar(comparisonCurrency ?? "")}
         />
       ) : (
         <DataTableView<FinancialTableRow, FinancialTableColumn>
@@ -584,7 +607,7 @@ export function ResolvedFinancialsTab({
           ]}
           showHorizontalScrollbar
           resetScrollKey={`${resolvedPeriod}:${subTab.key}:${displayStatements.length}`}
-          rootBefore={queryBar([moneyUnit, growthBasis, asOf].filter(Boolean).join(" · "))}
+          rootBefore={queryBar(growthBasis ?? "")}
         />
       )}
     </Box>

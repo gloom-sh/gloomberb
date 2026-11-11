@@ -8,8 +8,12 @@ import {
   financialColumnLabel,
   formatFinancialCell,
   financialStatementCurrency,
+  FINANCIAL_SUB_TABS,
+  notInYetNote,
   resolveFinancialPeriodOption,
   resolveFinancialSubTabKey,
+  selectFinancialStatements,
+  splitPeriodsNotInYet,
 } from "./model";
 import { createTestFinancials } from "../../../../test-support/data-provider";
 
@@ -270,6 +274,23 @@ test("liabilities plus equity requires its own components and cannot copy total 
   expect(total.cells.map(({ value }) => value)).toEqual([undefined, 80, undefined, 95]);
   expect(total.cells[0]!.valueText.trim()).toBe("—");
   expect(table.rows.find(({ summaryKey }) => summaryKey === "totalAssets")!.cells.map(({ value }) => value)).toEqual([130, 120, 110, 100]);
+});
+
+test("a newest year with only some figures (an EPS alone) is left out of the pane's columns and named, so its first column is never all dashes", () => {
+  // Pop Mart on 2026-11-11: FY2025 carried its EPS but none of its statement.
+  const annual = [
+    { date: "2023-12-31", totalRevenue: 6.3e9, eps: 0.81 },
+    { date: "2024-12-31", totalRevenue: 13.04e9, eps: 2.35 },
+    { date: "2025-12-31", eps: 9.58 },
+  ];
+  const income = FINANCIAL_SUB_TABS.find((tab) => tab.key === "income")!;
+  const { statements } = selectFinancialStatements("annual", "income", annual, []);
+  expect(statements.map((statement) => statement.date)).toEqual(["2025-12-31", "2024-12-31", "2023-12-31"]);
+  const { shown, notInYet } = splitPeriodsNotInYet(statements, income);
+  expect(shown.map((statement) => statement.date)).toEqual(["2024-12-31", "2023-12-31"]);
+  expect(notInYetNote(notInYet, income, "annual", 12)).toBe("FY2025 is not in yet: only some of its figures are on file, not its revenue.");
+  // A table where no year has the lead line keeps them all: there is nothing newer to lead with.
+  expect(splitPeriodsNotInYet([{ date: "2025-12-31", eps: 1 }], income).shown).toHaveLength(1);
 });
 
 test("a half-yearly reporter's TTM is Gloom Cloud's year plus the half, when it is newer than the year", () => {

@@ -130,7 +130,7 @@ describe("normalized market price comparison", () => {
     // OLDER paid 5 on a 95 close: 95 + 5 over 100 is flat, so it holds at 0%; NEWER paid nothing and is its price.
     expect(result.series.map((entry) => entry.points.at(-1)?.value)).toEqual([0, 10]);
     expect(result.series.map((entry) => [entry.returnBasis, entry.label])).toEqual([
-      ["total", "OLDER:XNAS Total return"], ["total", "NEWER:XNAS Total return"]]);
+      ["total", "OLDER:NASDAQ Total return"], ["total", "NEWER:NASDAQ Total return"]]);
     expect(result.priceComparison?.notice).toStartWith("Total returns in each listing's currency; cash distributions reinvested at the ex-date close");
     expect(result.warnings.join(" ")).not.toContain("distribution history unavailable");
 
@@ -142,7 +142,7 @@ describe("normalized market price comparison", () => {
     expect(partial.series.map((entry) => entry.returnBasis)).toEqual(["total", "price"]);
     expect(partial.series.map((entry) => entry.points.at(-1)?.value)).toEqual([0, 10]);
     expect(partial.priceComparison?.notice).toContain("Price return for NEWER: distribution history unavailable.");
-    expect(partial.warnings).toContain("NEWER:XNAS: distribution history unavailable; showing the price return.");
+    expect(partial.warnings).toContain("NEWER:NASDAQ: distribution history unavailable; showing the price return.");
 
     // On the raw price axis it is no comparison, and the levels still say they include reinvested cash.
     const rawAxis = { ...chart, series: chart.series.map((entry) => ({ ...entry, transform: "raw" as const })) };

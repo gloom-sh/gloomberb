@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
-  coalesceFinancialPeriodAliases, filledPeriodsNote, hasOlderStatements, mergeFinancialStatementRows, reportsHalfYearly, stalePeriodNote, statementHistoryNotes,
+  coalesceFinancialPeriodAliases, filledPeriodPublications, filledPeriodsNote, halfYearGrowthPeriod, hasOlderStatements, mergeFinancialStatementRows, reportsHalfYearly, stalePeriodNote, statementHistoryNotes,
 } from "./financial-statements";
 import { computeTTM } from "../plugins/builtin/ticker-detail/financials/aggregation";
+import { exchangeResultsNotes, matchExchangeResults } from "./exchange-results";
 import type { FinancialStatement } from "../types/financials";
 
 test("period evidence follows the selected fiscal date without inventing field availability", () => {
@@ -264,6 +265,26 @@ test("reportsHalfYearly: an Australian or New Zealand listing, or periods half a
   // One quarter missing between two is still a quarterly reporter.
   expect(reportsHalfYearly("LSE", [{ date: "2025-03-31" }, { date: "2025-09-30" }, { date: "2025-12-31" }])).toBe(false);
   expect(reportsHalfYearly("XETRA", [{ date: "2025-06-30" }])).toBe(false);
+  // The venue never outweighs the periods: ResMed's quarters on ASX.
+  expect(reportsHalfYearly("ASX", [{ date: "2026-03-31" }, { date: "2026-06-30" }, { date: "2026-09-30" }])).toBe(false);
+});
+
+test("halfYearGrowthPeriod: names halves only when the periods are halves, never from the venue", () => {
+  const years = [{ date: "2024-12-31" }, { date: "2025-12-31" }] as FinancialStatement[];
+  // Pop Mart on HKEX: interims a year apart, each closing the half to June of a December year.
+  const popMart = { annualStatements: years, quarterlyStatements: [{ date: "2025-06-30" }, { date: "2026-06-30" }] as FinancialStatement[] };
+  expect(halfYearGrowthPeriod(popMart)).toBe("H1 2026 vs H1 2025");
+  // A March year's half to September is its first; a 52-week half ending early in October closes September.
+  const march = { annualStatements: [{ date: "2026-03-31" }] as FinancialStatement[], quarterlyStatements: [{ date: "2025-10-04" }, { date: "2026-03-31" }] as FinancialStatement[] };
+  expect(halfYearGrowthPeriod(march)).toBe("H2 FY26 vs H2 FY25");
+  // Quarters: the figure is a quarter's, and the label stays the quarter's.
+  const quarters = { annualStatements: years, quarterlyStatements: [{ date: "2026-03-31" }, { date: "2026-06-30" }, { date: "2026-09-30" }] as FinancialStatement[] };
+  expect(halfYearGrowthPeriod(quarters)).toBeNull();
+  // ResMed and James Hardie list on ASX and report quarters: their June year's quarters stay quarters.
+  const resMed = { annualStatements: [{ date: "2026-06-30" }] as FinancialStatement[],
+    quarterlyStatements: [{ date: "2025-12-31" }, { date: "2026-03-31" }, { date: "2026-06-30" }, { date: "2026-09-30" }] as FinancialStatement[] };
+  expect(halfYearGrowthPeriod(resMed)).toBeNull();
+  expect(reportsHalfYearly("ASX", [], [])).toBe(true);
 });
 
 describe("stalePeriodNote", () => {
@@ -330,6 +351,27 @@ describe("periods read from a results announcement", () => {
       "From the company's results announcements: 6 months to 2026-06-30 operating cash flow (published 2026-08-20).",
     );
   });
+  test("a TTM to the half is dated by the half's results, each day is said once, and the results line does not repeat it", () => {
+    const annual = { ...announcement, kind: "annual_results" as const, publishedAt: "2026-03-25T04:22:00.000Z" };
+    // Pop Mart's TTM to 2026-06-30 lists the year's announcement beside the half's; its figures came out with the half.
+    const ttm = { date: "TTM", currency: "CNY", totalRevenue: 40.4e9, aggregation: { periodEnd: "2026-06-30" },
+      filledFrom: { ...half.filledFrom!, fields: ["totalRevenue" as const], documents: [annual, announcement, report], periodMonths: undefined } };
+    const year: FinancialStatement = { date: "2025-12-31", currency: "CNY", totalRevenue: 37.12e9,
+      filledFrom: { source: "results", fields: ["totalRevenue"], documents: [annual], lines: { totalRevenue: { document: 0, page: 2 } } } };
+    const sameDay: FinancialStatement = { ...year, date: "2024-12-31", filledFrom: { ...year.filledFrom!, documents: [{ ...annual }] } };
+    expect(filledPeriodsNote([ttm, year])).toBe(
+      "From the company's results announcements: TTM revenue (published 2026-08-20); 2025-12-31 revenue (published 2026-03-25).");
+    expect(filledPeriodsNote([year, sameDay])).toBe("From the company's results announcements: 2025-12-31 revenue; 2024-12-31 revenue (published 2026-03-25).");
+    const dated = filledPeriodPublications([ttm, year]);
+    expect(dated).toEqual([{ periodEnd: "2026-06-30", published: "2026-08-20" }, { periodEnd: "2025-12-31", published: "2026-03-25" }]);
+    const results = matchExchangeResults("2026-06-30", [
+      { date: "2026-08-20T08:30:00Z", headline: "INTERIM RESULTS", types: ["Interim Results"], priceSensitive: null, fileSize: null, documentKey: "1", url: "u" }])!;
+    expect(exchangeResultsNotes(results)).toEqual(["Latest half year 2026-06-30, interim results announced 2026-08-20 (HKEXnews)."]);
+    expect(exchangeResultsNotes(results, dated)).toEqual([]);
+    // A fill dated by another day leaves the line.
+    expect(exchangeResultsNotes(results, [{ periodEnd: "2026-06-30", published: "2026-09-24" }])).toHaveLength(1);
+  });
+
   test("a merged row keeps the documents' lines it still holds", () => {
     const [merged] = mergeFinancialStatementRows([{ date: "2026-06-30", currency: "CNY", totalRevenue: 17.2e9 }], [half]);
     expect(merged?.filledFrom).toMatchObject({ source: "results", fields: ["netIncome", "operatingCashFlow"], periodMonths: 6 });

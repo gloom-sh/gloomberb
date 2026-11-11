@@ -934,7 +934,7 @@ describe("resolveChartSpecData", () => {
       cache,
     );
     expect(manual.errors).toEqual([
-      "TEST:XNAS: Requested 1m price history is unavailable for TEST:XNAS.",
+      "TEST:NASDAQ: Requested 1m price history is unavailable for TEST:NASDAQ.",
     ]);
 
     const auto = await resolveChartSpecData(
@@ -2937,7 +2937,7 @@ describe("one-day charts show the latest session", () => {
     expect(served.warnings).toEqual([]);
     const unserved = await resolveExtended("AAPL", "NASDAQ", false);
     expect(unserved.viewport?.start).toEqual(new Date("2026-10-02T14:00:00Z"));
-    expect(unserved.warnings).toContain("AAPL:XNAS: pre-market and after-hours bars are unavailable; the chart shows the regular session.");
+    expect(unserved.warnings).toContain("AAPL:NASDAQ: pre-market and after-hours bars are unavailable; the chart shows the regular session.");
     await resolveExtended("7203.T", "JPX", true);
     expect(requests).toEqual(["extended", "extended", undefined]);
     // A broker's dollar contract routed through SMART asks too; its options do not.

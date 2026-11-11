@@ -20,7 +20,7 @@ import { getQuoteMonitorPaneSettings } from "../settings";
 import { useShortcut, type KeyEventLike } from "../../../../react/input";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { QuoteMonitorCard } from "./card";
-import { parsePublicTickerKey, publicTickerKey } from "../../../../utils/exchanges";
+import { displayTickerKey, parsePublicTickerKey, publicTickerKey } from "../../../../utils/exchanges";
 import { listingAbroadVenue } from "../../../../utils/sec";
 import { useLiveStreamingSetting } from "../../../../state/hooks/live-streaming";
 import { registerPaneTableExporter } from "../../../../state/pane-table-export-registry";
@@ -34,9 +34,11 @@ import { getSharedRegistry } from "../../../registry";
  * "8058" on one card and "8031:JPX" on the rest (9 Nov 2026).
  */
 export function quoteMonitorLabel(symbol: string, ticker: TickerRecord | null): string {
-  if (parsePublicTickerKey(symbol).exchange || /^\^|=|-USD$/i.test(symbol)) return symbol;
+  // By the venue's own code (9992:HKEX), as titles and the CLI name it; the card stays bound to the key as saved.
+  if (parsePublicTickerKey(symbol).exchange) return displayTickerKey(symbol);
+  if (/^\^|=|-USD$/i.test(symbol)) return symbol;
   const exchange = ticker?.metadata.exchange;
-  return exchange && listingAbroadVenue(publicTickerKey(symbol, exchange)) ? publicTickerKey(symbol, exchange) : symbol;
+  return exchange && listingAbroadVenue(publicTickerKey(symbol, exchange)) ? displayTickerKey(publicTickerKey(symbol, exchange)) : symbol;
 }
 
 interface BoardEntry {

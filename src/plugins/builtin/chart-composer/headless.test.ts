@@ -232,7 +232,7 @@ test("a chart of weekly bars dates its latest close and the report by the week's
     const result = await definition.load(args, { ...fixture().context, marketData: provider, settings: { chartSpec: spec } });
     expect(result.freshness).toMatchObject({ basis: "weekly bars", asOf: "2026-10-16" });
     const text = renderHeadlessPaneText(definition, result, args, "Custom Chart");
-    expect(text).toMatch(/SPY:XNYS Price\s+2026-10-16\s+763/);
+    expect(text).toMatch(/SPY:NYSE Price\s+2026-10-16\s+763/);
     expect(text).toContain("Fri 16 Oct 2026 · not a live feed (weekly bars)");
   } finally {
     setSystemTime();
@@ -545,6 +545,24 @@ test("a company's reported total asks the text report for its compact form, a pr
   expect(renderHeadlessPaneText(definition, revenue, args, "Fundamental Graph")).toMatch(/2026-07-25 +63\.33B +\w+ +2/);
   // The price chart's latest close is a price, printed as it is.
   expect((await fixture().load()).series.some((series) => series.textCompact)).toBe(false);
+});
+
+test("fn G --json keeps a listing's stored key in symbols, and the table it prints names the listing by its venue's code", async () => {
+  const { buildFundamentalChartPreset } = await import("./presets");
+  const { applyChartComposerCapabilityOptions } = await import("./cli-options");
+  const provider = createTestDataProvider({
+    getTickerFinancials: async () => ({ annualStatements: [{ date: "2024-12-31", totalRevenue: 13 }, { date: "2025-12-31", totalRevenue: 37 }],
+      quarterlyStatements: [], priceHistory: [] }),
+  });
+  // Pop Mart, saved under its MIC.
+  const args = { argument: ["9992:XHKG"], rawArgument: "9992:XHKG", symbols: ["9992:XHKG"], options: {} };
+  const definition = chartHeadless("fundamental-graph-pane");
+  const result = await definition.load(args, { ...fixture().context, marketData: provider, settings: {
+    chartSpec: applyChartComposerCapabilityOptions(buildFundamentalChartPreset(["9992:XHKG"]), "fundamental-series", { metric: "totalRevenue", period: "annual" }),
+  } }) as ChartPaneModel;
+  expect(result.symbols).toEqual(["9992:XHKG"]);
+  const tables = headlessReportTables(definition, result, args, "G", deriveHeadlessFreshness(definition, result), { complete: true, unavailableSymbols: [] });
+  expect(tables.tables.map((table) => table.identity?.symbolOrSeries)).toEqual(["9992:HKEX"]);
 });
 
 test("a company that reports no quarterly figures says so, where it would otherwise read as not covered", async () => {

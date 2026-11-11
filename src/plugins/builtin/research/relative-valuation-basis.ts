@@ -28,6 +28,8 @@ interface BasisRow {
   fundamentalsThrough?: string | null;
   revenueGrowth?: number | null;
   revenueGrowthQuarter?: string | null;
+  /** A half-year reporter's halves the growth compares: "H1 2026 vs H1 2025". */
+  revenueGrowthHalf?: string | null;
   fcfYield?: number | null;
   /** The quarter end the filed quarters' free cash flow runs through, where the yield is theirs and not the served TTM. */
   fcfYieldThrough?: string | null;
@@ -54,14 +56,32 @@ export function fundamentalsBasisParts(rows: readonly BasisRow[], revenueGrowthH
   const growing = rows.filter((row) => row.revenueGrowth != null);
   const quarter = peerDatesText(growing.map(({ symbol, revenueGrowthQuarter }) => ({ symbol, date: revenueGrowthQuarter })));
   const filed = filedFreeCashFlowText(rows, fcfYieldHeader);
+  // A half-year reporter's growth is its latest half's, named by its halves: "9992:HKEX H1 2026 vs H1 2025".
+  const halves = growing.filter((row) => row.revenueGrowthHalf).map((row) => `${row.symbol} ${row.revenueGrowthHalf}`);
+  const period = halves.length ? "period" : "quarter";
+  const named = halves.length ? ` (${halves.join(", ")})` : "";
   if (through && quarter && growing.every((row) => row.revenueGrowthQuarter === row.fundamentalsThrough)) {
-    return [`${through}, ${revenueGrowthHeader} for that quarter`, ...(filed ? [filed] : [])];
+    return [`${through}, ${revenueGrowthHeader} for that ${period}${named}`, ...(filed ? [filed] : [])];
   }
   return [
     ...(through ? [through] : []),
-    ...(quarter ? [`${revenueGrowthHeader}: quarter to ${quarter}`] : []),
+    ...(quarter ? [`${revenueGrowthHeader}: ${period} to ${quarter}${named}`] : []),
     ...(filed ? [filed] : []),
   ];
+}
+
+/** "H1": what a growth cell adds for a half-year reporter, whose figure is a half's, not a quarter's. */
+export function revenueGrowthHalfTag(half: string | null | undefined): string | null {
+  return half ? half.split(" ")[0] ?? null : null;
+}
+
+/**
+ * The growth column's header: the quarter's (`quarterHeader`) unless a row
+ * is a half-year reporter's, when the column holds both kinds of period and
+ * is named for neither (`periodHeader`).
+ */
+export function revenueGrowthHeader(rows: readonly BasisRow[], quarterHeader: string, periodHeader: string): string {
+  return rows.some((row) => row.revenueGrowth != null && row.revenueGrowthHalf) ? periodHeader : quarterHeader;
 }
 
 /**

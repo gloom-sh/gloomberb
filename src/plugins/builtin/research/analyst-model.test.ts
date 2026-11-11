@@ -21,7 +21,7 @@ test("consensus total requires every finite nonnegative integer bucket", () => {
     const incomplete = { ...data, recommendations: [{ ...complete, strongSell }] };
     expect(recommendationTotal(incomplete)).toBeNull();
     expect(recommendationMix(incomplete)?.strongSell).toBeNull();
-    expect(formatRecommendationMix(incomplete)).toBe("SB 2  B 3  H 4  S -");
+    expect(formatRecommendationMix(incomplete)).toBe("2 Strong Buy · 3 Buy · 4 Hold · - Sell");
   }
   expect(recommendationTotal({ ...data, recommendations: [{ ...complete, strongBuy: 0, buy: 0, hold: 0 }] })).toBe(0);
 });

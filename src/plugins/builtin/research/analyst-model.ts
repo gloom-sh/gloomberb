@@ -168,11 +168,17 @@ export function ratingSplit(data: AnalystResearchData | null) {
   return { ...split, period: rec.period && !isCurrentMonthPeriod(rec.period) ? compactPeriod(rec.period) : null };
 }
 
+/**
+ * The latest mix with each rating named, as the pane's Buy/Hold/Sell split
+ * names them: "4 Strong Buy · 9 Buy · 9 Hold · 4 Sell", strong sells in Sell.
+ * A missing count reads "-", so a partial mix never reads as a whole one.
+ */
 export function formatRecommendationMix(data: AnalystResearchData | null): string {
   const rec = recommendationMix(data);
   if (!rec) return "-";
   const sells = rec.sell != null && rec.strongSell != null ? rec.sell + rec.strongSell : null;
-  return `SB ${rec.strongBuy ?? "-"}  B ${rec.buy ?? "-"}  H ${rec.hold ?? "-"}  S ${sells ?? "-"}`;
+  return [[rec.strongBuy, "Strong Buy"], [rec.buy, "Buy"], [rec.hold, "Hold"], [sells, "Sell"]]
+    .map(([count, label]) => `${count ?? "-"} ${label}`).join(" · ");
 }
 
 export function formatRatingLabel(value: number | undefined): string {

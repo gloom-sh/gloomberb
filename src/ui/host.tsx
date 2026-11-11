@@ -576,8 +576,10 @@ export interface HostQueryBarProps {
     start?: boolean;
   };
   onClearAll?: () => void;
-  /** Muted context at the right edge, e.g. the selected row's date. */
+  /** Muted context at the right edge, e.g. the selected row's date. Gives way first. */
   meta?: string;
+  /** The date the data is as of: its own segment before `meta` that never gives way; inline filters collapse to menus first. */
+  asOf?: string;
   /** Drawn before the search and filters, e.g. the ticker the list is about. */
   leading?: ReactNode;
   /** Opens one item's menu, e.g. from a pane shortcut. The token changes per request. */

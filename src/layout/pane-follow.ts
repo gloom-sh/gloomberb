@@ -3,7 +3,7 @@ import type { BrokerContractRef } from "../types/instrument";
 
 const PANE_TITLE_MNEMONIC = /^([A-Z][A-Z0-9]{0,7})(?=\s|$)/;
 /** One ticker key as a template writes it after the command: "AAPL", "BRK.B", "BTC-USD:CCC", "^SPX". */
-const TITLE_TICKER = /^[A-Z0-9^][A-Z0-9.^_/=-]*(?::[A-Z0-9._-]+)?$/;
+export const TITLE_TICKER = /^[A-Z0-9^][A-Z0-9.^_/=-]*(?::[A-Z0-9._-]+)?$/;
 
 /** The command a ticker template titled its pane with: "OMON" in "OMON AAPL". */
 export function paneTitleMnemonic(title: string | undefined): string | null {
