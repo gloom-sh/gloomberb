@@ -125,8 +125,8 @@ const REGULAR_CLOSE_MINUTES: Record<string, number> = {
   // The Egyptian Exchange: continuous trading to 14:15, the closing auction
   // to 14:25 and trading at the close to 14:30.
   EGX: 14 * 60 + 25,
-  // Borsa Istanbul's continuous trading ends at 18:00; the closing auction prints the close minutes after.
-  BIST: 18 * 60,
+  // Borsa Istanbul: continuous trading to 18:00, then the closing auction and trading at the close to 18:10.
+  BIST: 18 * 60 + 10,
 };
 // Venues whose week is not Monday to Friday, as their days off (0 is Sunday).
 // Tadawul, Qatar, Boursa Kuwait and the Egyptian Exchange trade Sunday to

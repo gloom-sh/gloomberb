@@ -112,15 +112,17 @@ describe("withSessionBar", () => {
   });
 
   test("a BIST share's day is final after Istanbul's close, read that night with New York still open", () => {
-    // GUBRF on Tue 10 Nov 2026: the source still flagged the day partial at 20:29Z, five hours after the 18:00 close.
+    // GUBRF on Tue 10 Nov 2026: the source still flagged the day partial at 20:29Z, hours after the 18:10 close.
     const bars = daily(["2026-11-09", { close: 307 }],
       ["2026-11-10", { open: 308, high: 308, low: 287.5, close: 288, volume: 4_442_906, partial: true }]);
     const gubrf = quote({ symbol: "GUBRF", price: 288, previousClose: 307, open: 308, high: 308, low: 287.5, volume: 4_442_906,
       currency: "TRY", lastUpdated: Date.parse("2026-11-10T15:10:00Z"), marketState: "CLOSED", changeSessionDate: "2026-11-10",
       listingExchangeName: "BIST" });
     expect(withSessionBar(bars, gubrf, { now: Date.parse("2026-11-10T20:29:00Z"), barSize: "1d" }).at(-1)!.partial).toBeUndefined();
-    // Before the closing session's half hour has passed it stays partial.
-    expect(withSessionBar(bars, gubrf, { now: Date.parse("2026-11-10T15:20:00Z"), barSize: "1d" }).at(-1)!.partial).toBe(true);
+    // The closing auction and trading at the close run to 18:10 (15:10Z), and a delayed copy lags half an hour after.
+    const at = (time: string) => withSessionBar(bars, gubrf, { now: Date.parse(time), barSize: "1d" }).at(-1)!.partial;
+    expect(at("2026-11-10T15:35:00Z")).toBe(true);
+    expect(at("2026-11-10T15:41:00Z")).toBeUndefined();
   });
 
   test("the size asked for, not the spacing, says what the bars are; spacing only shows bars coarser when each starts its period", () => {
