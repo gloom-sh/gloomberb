@@ -1,18 +1,22 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
 import {
-  listCoinNotes, ListingArgError, listingChoiceNote, listingVenues, loadForListing, notTradedMessage, parseListingArg, resolveCliListing,
-  usListingsOnlyMessage,
+  joinCompanyNameWords, listCoinNotes, ListingArgError, listingChoiceNote, listingVenues, loadForListing, notTradedMessage, parseListingArg,
+  resolveCliListing, usListingsOnlyMessage,
 } from "./listing-arg";
 import { LISTING_SEARCH_LIMIT } from "../tickers/search";
 import { FUTURES_CONTRACTS } from "../market-data/futures-board";
+import { resetBoardCoins } from "./board-coins";
 
 const persistences: AppPersistence[] = [];
 
+// A word read as a company's name checks the crypto board first: an empty board read, so no test asks the service.
+beforeEach(() => resetBoardCoins([]));
 afterEach(() => {
   for (const persistence of persistences.splice(0)) persistence.close();
+  resetBoardCoins();
 });
 
 test("VX=F, written as CL=F is for a root VIX futures do not list it for, is the front generic VX1, and says so", () => {
@@ -529,4 +533,83 @@ test("a code its exchange withdrew is that company, gone on its day for its reas
   expect((await listingVenues("0011", deps)).map((venue) => venue.name))
     .toEqual(["Brite-Tech Berhad", "Hang Seng Bank Limited · Delisted Jan 27, 2026"]);
   expect(await notTradedMessage(await resolveCliListing("0011", "BURSAMY", deps), deps)).toBeNull();
+});
+
+test("a company's name typed where any command takes a symbol is read as quote reads it, and words typed apart as one name first", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  // As search and quotes answered on 11 Nov 2026: MTN is Vail Resorts in New York, MTN Group's home line is MTN on the JSE,
+  // "Group" alone reads as UnitedHealth Group, and nothing trades as NASPERS or GROUP.
+  const line = (symbol: string, name: string, exchange: string, home = false) =>
+    ({ providerId: "test", symbol, name, exchange, type: "Common Stock", currency: "USD", ...home ? { homeListing: true } : {} });
+  const answers: Record<string, ReturnType<typeof line>[]> = {
+    naspers: [line("NPN", "Naspers Limited", "JSE", true)],
+    group: [line("UNH", "UnitedHealth Group Incorporated", "NYSE", true)],
+    "mtn group": [line("MTN", "MTN Group Ltd.", "JSE", true), line("MTNOF", "MTN Group Ltd.", "OTC")],
+    "elbit systems": [line("ESLT", "Elbit Systems Ltd.", "NASDAQ", true), line("ESLT", "Elbit Systems Ltd.", "TASE")],
+  };
+  answers.elbit = answers["elbit systems"]!;
+  const quoted = new Set(["MTN", "AAPL", "MSFT", "NPN:JSE", "UNH:NYSE", "MTN:JSE", "ESLT:NASDAQ"]);
+  const searched: string[] = [];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => {
+      searched.push(query);
+      return answers[query.trim().toLowerCase()] ?? [];
+    },
+    getQuote: async (symbol, exchange) => {
+      const key = exchange ? `${symbol}:${exchange}` : symbol;
+      if (!quoted.has(key) && !quoted.has(symbol)) throw new Error(`No quote provider available for ${symbol}`);
+      return createTestQuote({ symbol, currency: "USD" });
+    },
+  });
+  const deps = { store, dataProvider };
+  // `history Naspers`, `valuation Leumi`: the word is its company's listing, saying so.
+  const naspers = await resolveCliListing("Naspers", undefined, deps);
+  expect(naspers.key).toBe("NPN:JSE");
+  expect(naspers.readAs).toBe('Read "Naspers" as NPN:JSE (Naspers Limited).');
+  // A real ticker wins over a name; `quote`, which reads names after its own request, can leave words to it.
+  expect((await resolveCliListing("MTN", undefined, deps)).key).toBe("MTN");
+  expect((await resolveCliListing("Naspers", undefined, deps, { companyWord: false })).key).toBe("NASPERS");
+
+  // "MTN Group": Group alone is read as UnitedHealth, so the words are tried together first, and are MTN Group.
+  const read = async (words: string[]) => Promise.all(words.map(async (typed) => ({ typed, listing: await resolveCliListing(typed, undefined, deps) })));
+  const joined = await joinCompanyNameWords(await read(["MTN", "Group"]), deps);
+  expect(joined).toHaveLength(1);
+  expect(joined[0]).toMatchObject({ typed: "MTN Group", joined: { key: "MTN:JSE", readAs: 'Read "MTN Group" as MTN:JSE (MTN Group Ltd.).' } });
+  // A company listed twice under one symbol names its other line.
+  const elbit = await joinCompanyNameWords(await read(["Elbit", "Systems"]), deps);
+  expect(elbit.map((entry) => "joined" in entry ? entry.joined.readAs : entry.typed))
+    .toEqual(['Read "Elbit Systems" as ESLT:NASDAQ (Elbit Systems Ltd.); also ESLT:TASE.']);
+  // Tickers typed apart are never a name, and cost no search.
+  searched.length = 0;
+  const tickers = await joinCompanyNameWords(await read(["AAPL", "MSFT"]), deps);
+  expect(tickers.map((entry) => "joined" in entry ? entry.typed : entry.listing?.key)).toEqual(["AAPL", "MSFT"]);
+  expect(searched).toEqual([]);
+  // A word read as a name with no neighbour that makes one keeps its own reading.
+  const alone = await joinCompanyNameWords(await read(["AAPL", "Naspers"]), deps);
+  expect(alone.map((entry) => "joined" in entry ? entry.typed : entry.listing?.key)).toEqual(["AAPL", "NPN:JSE"]);
+  // A word shaped as a ticker (BRK.B) is never part of a name.
+  searched.length = 0;
+  await joinCompanyNameWords(await read(["BRK.B", "Naspers"]), deps);
+  expect(searched.filter((query) => query.includes(" "))).toEqual([]);
+  // The runs around a word are searched at once, at most six: its two- and three-word runs, then one of four.
+  searched.length = 0;
+  let open = 0;
+  let most = 0;
+  const slow = { ...dataProvider, search: async (query: string) => {
+    open += 1;
+    most = Math.max(most, open);
+    await Bun.sleep(5);
+    open -= 1;
+    return dataProvider.search(query);
+  } };
+  const words = await read(["Alpha", "Beta", "Gamma", "Naspers", "Delta", "Epsilon", "Zeta"]);
+  searched.length = 0;
+  await joinCompanyNameWords(words, { dataProvider: slow });
+  expect(searched).toEqual(expect.arrayContaining([
+    "Gamma Naspers", "Naspers Delta", "Beta Gamma Naspers", "Gamma Naspers Delta", "Naspers Delta Epsilon", "Alpha Beta Gamma Naspers",
+  ]));
+  for (const run of ["Beta Gamma Naspers Delta", "Gamma Naspers Delta Epsilon", "Naspers Delta Epsilon Zeta"]) expect(searched).not.toContain(run);
+  expect(most).toBeGreaterThan(1);
 });

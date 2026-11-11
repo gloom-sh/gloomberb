@@ -39,7 +39,7 @@ import {
 } from "../utils/exchanges";
 import { withMarketData } from "./scoped-context";
 import { failWithFields } from "./errors";
-import { stripStrayEdges } from "./symbol-args";
+import { stripStrayEdges, tickerShapedWord } from "./symbol-args";
 import { isNoProviderMessage, isNoSourceAnswer, isProviderBusy, notATickerSymbol } from "../sources/provider-errors";
 import { dashedCoinPair, exchangeLineCoinListing, isSpotCommodityOrCurrencyPair, MAJOR_COIN_NAMES, TOP_COIN_NAMES } from "../utils/crypto-pair";
 import { boardCoinFor, primeBoardCoins } from "./board-coins";
@@ -127,6 +127,12 @@ export interface ListingArg {
    * became GETYQ. Other bare symbols say where the data service chose instead.
    */
   readFromName?: true;
+  /**
+   * One word typed alone, read as a company's name (`Group` as UNH:NYSE):
+   * the words typed beside it are tried with it as one name first
+   * (`joinCompanyNameWords`), so "MTN Group" is MTN Group's listing.
+   */
+  wordAsName?: true;
   /**
    * The venue is the one search lists the company's name on (`companyListingArg`), so a quote that answers
    * there is the listing's own, even on a US venue, whose quote answers as whichever one is asked.
@@ -1376,6 +1382,11 @@ export async function resolveCliListing(
     venueSuffix?: boolean;
     /** Read a venue suffix as the venue it names, with no request (`parseListingArg`). */
     listingSuffix?: boolean;
+    /**
+     * Read a word no source quotes as the company it names (`readBareCompanyName`). On by default;
+     * `quote` reads names after its own quote request, and turns it off.
+     */
+    companyWord?: boolean;
   } = {},
 ): Promise<CliListing> {
   // "JPM US Equity" is Bloomberg's code for JPM; "Putnam US Equity", whose root is no US ticker, is a name.
@@ -1424,6 +1435,10 @@ export async function resolveCliListing(
   // 700 is how Hong Kong writes Tencent's 0700, and search reads it so.
   const hongKong = pair || named || index ? null : await readHongKongShortCode(parsed, deps);
   if (hongKong) parsed = hongKong;
+  // A word no source quotes that names a company (`Naspers`) is its listing, for every command, as `quote` reads it.
+  const company = options.companyWord === false || pair || named || index || rooted || hongKong || terminal || dotted
+    ? null : await readBareCompanyName(parsed, typed, deps);
+  if (company) parsed = company;
   // A one-letter suffix (7203.T) is read as its venue only when a row saved there says so; the listing's quote may later.
   const venueRow = options.listingSuffix && !pair && !named ? await savedSuffixVenue(parsed, deps.store) : null;
   if (venueRow) parsed = venueRow;
@@ -1556,6 +1571,132 @@ async function readBareIndexRoot(parsed: ListingArg, typed: string, deps: Listin
     .catch(logFailure("cli.listing-arg", "Read the listing an index root names failed", null));
   const key = marked?.exchange ? `${marked.symbol}:${marked.exchange}` : marked?.symbol ?? root.symbol;
   return { ...parseListingArg(key), readAs: `Read "${word}" as ${key} (${marked?.name || root.name}).`, readFromName: true };
+}
+
+/**
+ * A company's name typed as one word where a symbol goes (`Naspers`,
+ * `Leumi`), written as a name is (NAME_WRITTEN_WORD), once the sources say
+ * nothing trades as it, read as `quote` reads it (`oneWordCompanyName`):
+ * "Read "Naspers" as NPN:JSE (Naspers Limited).". A real ticker always wins
+ * (MTN stays Vail Resorts), and so do a row saved under the word and a code
+ * listed abroad under it. Null for anything else, and when search names no
+ * company.
+ */
+async function readBareCompanyName(parsed: ListingArg, typed: string, deps: ListingDeps): Promise<ListingArg | null> {
+  const word = typed.trim();
+  if (parsed.exchange || !NAME_WRITTEN_WORD.test(word) || word.toUpperCase() !== parsed.symbol) return null;
+  if (await deps.store.loadTicker(parsed.symbol).catch(logFailure("cli.listing-arg", "Read a saved word failed", null))) return null;
+  if (!await nothingTradesAs(parsed.symbol, deps)) return null;
+  const named = await oneWordCompanyName(word, deps).catch(logFailure("cli.listing-arg", "Read a word as a company's name failed", null));
+  // A code listed abroad under the word (FP on TSXV and BVB) is a symbol, whose listings the command names: never a name.
+  return named && named.symbol.toUpperCase() !== parsed.symbol ? named : null;
+}
+
+/**
+ * A word written as a name is, not as a ticker: letters, at least one small
+ * (`Naspers`, `leumi`), no digit, dot or capitals alone (`UNISWAP`, `RY.TO`),
+ * which a command reads as typed, at the cost of no extra quote.
+ */
+const NAME_WRITTEN_WORD = /^(?=.*\p{Ll})\p{L}[\p{L}&'’-]*$/u;
+
+/**
+ * Symbols at most whose venues a command looks up to name the company each
+ * bare one went to, and whose words it checks as companies' names
+ * (`companyWord`, a quote each). A longer list is a batch of tickers.
+ */
+export const MAX_CHOICE_LOOKUPS = 10;
+
+/** At most this many words typed apart are tried as one company's name (`joinCompanyNameWords`). */
+const MAX_JOINED_NAME_WORDS = 4;
+
+/**
+ * At most this many runs of words around one word are searched as a name
+ * (`joinedRun`), all at once: its two-word runs, then three, then one of four.
+ */
+const MAX_JOINED_NAME_LOOKUPS = 6;
+
+/**
+ * Words typed apart that name one company: when a word of the arguments is
+ * read as a company's name (`wordAsName`: "Group" as UNH:NYSE), the run of
+ * words around it is tried as one name first, longest first, and a company
+ * whose name has every word of it is that run's listing ("Read "MTN Group"
+ * as MTN:JSE (MTN Group Ltd.)."), in place of the words. A word that names
+ * no company with its neighbours keeps its own reading. `entries` are the
+ * arguments in the order typed, each with the listing it was read as, null
+ * where none; the answer is in the same order, a joined run one entry.
+ */
+export async function joinCompanyNameWords<T extends { typed: string; listing: Pick<ListingArg, "wordAsName"> | null }>(
+  entries: readonly T[],
+  deps: Pick<ListingDeps, "dataProvider">,
+): Promise<Array<T | { typed: string; joined: ListingArg; words: T[] }>> {
+  // A word shaped as a ticker (BRK.B, 0700) is never part of a name.
+  const word = (entry: T | undefined) => !!entry && ONE_WORD_NAME.test(entry.typed.trim()) && !tickerShapedWord(entry.typed.trim());
+  const out: Array<T | { typed: string; joined: ListingArg; words: T[] }> = [];
+  const tried = new Set<string>();
+  let index = 0;
+  while (index < entries.length) {
+    const entry = entries[index]!;
+    if (!entry.listing?.wordAsName) {
+      out.push(entry);
+      index += 1;
+      continue;
+    }
+    let first = index;
+    let last = index;
+    // Words before it still stand as typed at the end of the answer; a run already joined is no word.
+    while (first > 0 && index - first + 1 < MAX_JOINED_NAME_WORDS && word(entries[first - 1])
+      && out[out.length - (index - first) - 1] === entries[first - 1]) first -= 1;
+    while (last < entries.length - 1 && last - index + 1 < MAX_JOINED_NAME_WORDS && word(entries[last + 1])) last += 1;
+    const joined = await joinedRun(entries.map((item) => item.typed.trim()), first, last, index, deps, tried);
+    if (!joined) {
+      out.push(entry);
+      index += 1;
+      continue;
+    }
+    // Words before the one read as a name that the run takes were pushed already: they are the run's now.
+    out.splice(out.length - (index - joined.start), index - joined.start);
+    const words = entries.slice(joined.start, joined.end);
+    out.push({ typed: words.map((item) => item.typed.trim()).join(" "), joined: joined.listing, words });
+    index = joined.end;
+  }
+  return out;
+}
+
+/** The listing a company's name was read as (`named`), resolved as its key is, still saying what it was read as. */
+export async function resolveNamedListing(named: ListingArg, deps: ListingDeps): Promise<CliListing> {
+  const resolved = await resolveCliListing(named.key, null, deps);
+  return {
+    ...resolved, readAs: named.readAs, ...named.meant ? { meant: named.meant } : {},
+    ...named.readFromName ? { readFromName: named.readFromName } : {}, ...named.venueFromSearch ? { venueFromSearch: named.venueFromSearch } : {},
+  };
+}
+
+/**
+ * The longest run of `words[first..last]` holding `at`, two words or more,
+ * that names one company, the leftmost of the longest. The runs are searched
+ * at once, the shortest first up to MAX_JOINED_NAME_LOOKUPS, and a run
+ * searched for an earlier word (`tried`) is not searched again.
+ */
+async function joinedRun(
+  words: readonly string[], first: number, last: number, at: number, deps: Pick<ListingDeps, "dataProvider">, tried: Set<string>,
+): Promise<{ start: number; end: number; listing: ListingArg } | null> {
+  const runs: Array<{ start: number; end: number; phrase: string }> = [];
+  for (let size = 2; size <= Math.min(last - first + 1, MAX_JOINED_NAME_WORDS); size += 1) {
+    for (let start = Math.max(first, at - size + 1); start <= Math.min(at, last - size + 1); start += 1) {
+      const phrase = words.slice(start, start + size).join(" ");
+      if (tried.has(phrase) || runs.length >= MAX_JOINED_NAME_LOOKUPS) continue;
+      tried.add(phrase);
+      runs.push({ start, end: start + size, phrase });
+    }
+  }
+  const found = await Promise.all(runs.map(async (run) => {
+    const company = await findCompanyName(run.phrase, deps).catch(busyAsMiss)
+      .catch(logFailure("cli.listing-arg", "Read words as one company's name failed", null));
+    return company && companyNameExtraWords(run.phrase, company.name) != null ? { ...run, company } : null;
+  }));
+  const best = found.filter((run) => run != null)
+    .sort((left, right) => (right.end - right.start) - (left.end - left.start) || left.start - right.start)[0];
+  return best ? { start: best.start, end: best.end, listing: companyListingArg(best.phrase, best.company) } : null;
 }
 
 /** `readBrokerIndexCode` for a `$ROOT` code only: the `ROOT.X` codes are read where the listing is parsed. */
@@ -1715,9 +1856,12 @@ function companyListingArg(typed: string, found: CompanyNameListing): ListingArg
   const question = meant ? ` ${meantQuestion({ meant })}` : "";
   // A company that moved off the line search lists says so: "GETY became GETYQ on 2026-10-22."
   const moved = found.moved ? ` ${found.moved}.` : "";
+  // The company's other own lines, where it is listed twice: "Read "Elbit Systems" as ESLT:NASDAQ (Elbit Systems Ltd.); also ESLT:TASE."
+  const also = found.otherLines?.length ? `; also ${found.otherLines.join(", ")}` : "";
   return {
-    ...parseListingArg(key), readAs: `Read "${typed.trim()}" as ${key} (${found.name}).${moved}${question}`,
+    ...parseListingArg(key), readAs: `Read "${typed.trim()}" as ${key} (${found.name})${also}.${moved}${question}`,
     ...meant ? { meant } : {}, ...found.exchange ? { venueFromSearch: true as const } : { readFromName: true as const },
+    ...!/\s/.test(typed.trim()) ? { wordAsName: true as const } : {},
   };
 }
 
@@ -1756,7 +1900,7 @@ export async function requireCliListing(
   exchangeOption: string | null | undefined,
   deps: ListingDeps,
   ctx: Pick<CliCommandContext, "fail">,
-  options: { ownExchangeWins?: boolean; venueSuffix?: boolean } = {},
+  options: { ownExchangeWins?: boolean; venueSuffix?: boolean; companyWord?: boolean } = {},
 ): Promise<CliListing> {
   try {
     return await resolveCliListing(raw, exchangeOption, deps, options);

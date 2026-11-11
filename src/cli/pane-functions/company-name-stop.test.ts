@@ -6,7 +6,7 @@ import { noProviderError } from "../../sources/provider-errors";
 import { createDefaultConfig } from "../../types/config";
 import { captureConsole } from "../../test-support/console";
 import { createTestCliContext, type PrintedCliResult } from "../../test-support/cli-context";
-import { createTestQuote } from "../../test-support/data-provider";
+import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import { createMovedSymbolsProvider, MOVED_SYMBOL_QUOTES } from "../../test-support/moved-symbols";
 import type { DataProvider, QuoteBatchResult, QuoteSubscriptionTarget } from "../../types/data-provider";
 import { resetBoardCoins } from "../board-coins";
@@ -84,17 +84,26 @@ async function stderrOf(error: unknown, command: "fn" | "shot", args: string[]) 
   return (await captureConsole(() => printCliError(error, { ...DEFAULT_CLI_OPTIONS, color: false }, { command, args }))).stderr;
 }
 
-test("fn and shot stop on a company's name with spaces before any report is built, naming the company search finds", async () => {
+test("fn reads a company's name, in words or one word, as the listing search finds, as quote does; one search finds no company for stops before any report", async () => {
   let financials = 0;
   const provider = notFoundSource({ getTickerFinancials: async () => { financials += 1; throw new Error("not read"); } });
   const render = spyOn(paneShot, "renderDesktopPaneScreenshot").mockImplementation(async () => { throw new Error("Capture renderer reached"); });
   try {
-    for (const [command, code] of [[runPaneFunction, "RDCF"], [runPaneFunction, "PEB"], [runPaneScreenshot, "RDCF"]] as const) {
-      const { error, printed } = await run([code, "Palantir Technologies"], provider, command);
-      expect(printed).toBeUndefined();
-      expect(error!.message).toBe("Not a ticker: PALANTIR TECHNOLOGIES. Did you mean PLTR (Palantir Technologies Inc.)?");
+    for (const code of ["RDCF", "PEB"]) {
+      const { error, printed } = await run([code, "Palantir Technologies"], provider);
+      expect(error).toBeNull();
+      expect(printed!.result.data).toMatchObject({ symbols: ["PLTR:NASDAQ"] });
+      expect(printed!.result.warnings).toEqual(["Read \"Palantir Technologies\" as PLTR:NASDAQ (Palantir Technologies Inc.)."]);
     }
+    // A source that timed out on the word says nothing of it, and search still names the company, as `quote` reads it.
+    const word = await run(["RDCF", "Palantir"], timedOutSource());
+    expect(word.printed!.result.data).toMatchObject({ symbols: ["PLTR:NASDAQ"] });
+    expect(word.printed!.result.warnings).toEqual(["Read \"Palantir\" as PLTR:NASDAQ (Palantir Technologies Inc.)."]);
+    // --exchange names a venue for a ticker, which a name is not.
+    const venue = await run(["RDCF", "Palantir Technologies", "--exchange", "NASDAQ"], provider);
+    expect(venue.error!.message).toBe("Not a ticker: PALANTIR TECHNOLOGIES. Did you mean PLTR (Palantir Technologies Inc.)?");
     // No company by that name: the sentence ends at the words, and the printer adds the search to try.
+    financials = 0;
     const unknown = await run(["RDCF", "Foo Bar Baz"], provider);
     expect(unknown.error!.message).toBe("Not a ticker: FOO BAR BAZ.");
     expect(await stderrOf(unknown.error, "fn", ["RDCF", "Foo Bar Baz"])).toBe("error: Not a ticker: FOO BAR BAZ. Try `gloom search \"Foo Bar Baz\"`.");
@@ -102,31 +111,13 @@ test("fn and shot stop on a company's name with spaces before any report is buil
     expect(render).not.toHaveBeenCalled();
     // A terminal's code for a listing has spaces too, and is a listing.
     expect((await run(["RDCF", "META US Equity"], provider)).printed).toBeDefined();
-  } finally {
-    render.mockRestore();
-  }
-});
-
-test("a one-word name a source could not answer for is not a ticker either when search finds the company; a real ticker keeps its own answer", async () => {
-  const provider = timedOutSource();
-  const render = spyOn(paneShot, "renderDesktopPaneScreenshot").mockImplementation(async () => { throw new Error("Capture renderer reached"); });
-  try {
-    // Every source answers "not found": the same sentence, with the company beside it.
-    const missed = await run(["RDCF", "Palantir"], notFoundSource({ getTickerFinancials: async (symbol) => { throw new Error(`Not a ticker: ${symbol}.`); } }));
-    expect(missed.error!.message).toBe("Not a ticker: PALANTIR. Did you mean PLTR (Palantir Technologies Inc.)?");
-    // One times out: the report is empty and said nothing of the word, but search says what it is.
-    for (const command of [runPaneFunction, runPaneScreenshot]) {
-      const { error, printed } = await run(["RDCF", "Palantir"], provider, command);
-      expect(printed).toBeUndefined();
-      expect(error!.message).toBe("Not a ticker: PALANTIR. Did you mean PLTR (Palantir Technologies Inc.)?");
-    }
     // META is a ticker whose source timed out: search lists it under that symbol, so it is no company's name.
-    const meta = await run(["RDCF", "META"], provider);
+    const meta = await run(["RDCF", "META"], timedOutSource());
     expect(meta.error).toBeNull();
     expect(meta.printed!.result.data).toMatchObject({ symbols: ["META"], empty: false });
-    expect(((await run(["RDCF", "META"], provider, runPaneScreenshot)).error)?.message).toBe("No quote provider available for META");
+    expect(((await run(["RDCF", "META"], timedOutSource(), runPaneScreenshot)).error)?.message).toBe("No quote provider available for META");
     // A word search finds no company for keeps the report it had.
-    expect((await run(["RDCF", "Foobarbaz"], provider)).error).toBeNull();
+    expect((await run(["RDCF", "Foobarbaz"], timedOutSource())).error).toBeNull();
   } finally {
     render.mockRestore();
   }
@@ -155,4 +146,22 @@ test("quote reads a one-word name a source timed out on as its company, or says 
   expect(real.rows[0]!.quote).toBeNull();
   expect(String(real.rows[0]!.error)).toContain("No quote provider available for META");
   expect(real.warnings.join()).not.toContain("Not a ticker");
+});
+
+// Each lowercase symbol of a list cost a quote to check whether it was a company's name, however long the list.
+test("a long list is tickers: its lowercase symbols cost no quote each to be read as names; a short one still reads them", async () => {
+  const quotes = async (arg: string) => {
+    let asked = 0;
+    const dataProvider = createTestDataProvider({
+      getQuote: async (symbol) => {
+        asked += 1;
+        return createTestQuote({ symbol, currency: "USD" });
+      },
+    });
+    expect((await run(["RV", arg], dataProvider)).error).toBeNull();
+    return asked;
+  };
+  const many = Array.from({ length: 11 }, (_, index) => `t${String.fromCharCode(97 + index)}x`);
+  expect(await quotes(many.join(","))).toBe(0);
+  expect(await quotes("aapl,msft")).toBe(2);
 });

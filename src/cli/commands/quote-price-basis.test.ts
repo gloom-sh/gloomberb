@@ -79,3 +79,23 @@ test("quote monitor headless text and raw rows agree on par, unknown and monetar
     }
   }
 });
+
+test("quote --json writes the market cap valuation and RV show, on the share count they show", async () => {
+  // NPN:JSE on 11 Nov 2026: the source's cap 568.36B ZAR beside 763.03M shares x 759.72 = 579.69B in valuation and RV.
+  const naspers = { symbol: "NPN", price: 759.72, change: -18.28, changePercent: -2.35, currency: "ZAR", marketCap: 568_363_384_832,
+    lastUpdated: 1_789_200_000_000, instrumentType: "EQUITY", marketState: "REGULAR" } satisfies Quote;
+  const run = async (format: "json" | "text", sharesOutstanding?: number) => {
+    const cli = createTestCliContext({ config, dataProvider: {
+      getQuotesBatch: async () => [{ target: { symbol: "NPN:JSE", exchange: "JSE" }, quote: naspers }],
+      getTickerFinancialsBatch: async (targets) => targets.map((target) => ({ target, financials: {
+        quote: naspers, annualStatements: [], quarterlyStatements: [], priceHistory: [],
+        ...sharesOutstanding ? { fundamentals: { sharesOutstanding } } : {},
+      } as TickerFinancials })),
+    } }, { format });
+    await marketDataCliCommands.find(command => command.name === "quote")!.execute(["NPN:JSE"], cli.context);
+    return ((cli.printed[0] as PrintedCliResult).result.data as Array<{ quote: Quote }>)[0]!.quote.marketCap;
+  };
+  expect(await run("json", 763_030_000)).toBe(Math.round(763_030_000 * 759.72));
+  // No count read: the source's cap stands.
+  expect(await run("json")).toBe(568_363_384_832);
+});

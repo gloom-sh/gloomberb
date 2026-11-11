@@ -96,6 +96,15 @@ function separatorsIn(text: string): string {
 }
 
 /**
+ * A word shaped as a ticker is (BRK.B, 7203.T, 0700): no small letter, and a
+ * dot or a digit. It is never part of a company's name typed in words
+ * (`valuation BRK.B Meta` is two symbols, not a name).
+ */
+export function tickerShapedWord(word: string): boolean {
+  return !/\p{Ll}/u.test(word) && /[.\d]/.test(word);
+}
+
+/**
  * A pasted list, or one cell of a file, without the separators and quote marks
  * stuck to its ends (`UPST;`, `"GME",`). The separators it dropped are named
  * (`Ignored the stray ";" after UPST.`) rather than swallowed, and never reach

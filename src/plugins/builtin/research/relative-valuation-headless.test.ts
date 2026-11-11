@@ -90,7 +90,11 @@ test("RV's TTM Op Margin names the fiscal year it falls back to, in the text tab
   }) } as HeadlessPaneContext;
   const result = await relativeValuationHeadless.load({ symbols: ["CCL", "RCL"], argument: ["CCL", "RCL"], rawArgument: "CCL RCL", options: {} }, ctx);
   const margin = relativeValuationHeadless.columns!.find((column) => column.key === "operatingMargin")!;
-  expect(result.rows.map((row) => margin.format!(row.operatingMargin, row))).toEqual(["16.83% FY25", "27.32%"]);
+  expect(result.rows.map((row) => margin.textFormat!(row.operatingMargin, row))).toEqual(["16.83% FY25", "27.32%"]);
+  // An export's column holds the figure alone; the year is in its own column after it.
+  expect(result.rows.map((row) => margin.format!(row.operatingMargin, row))).toEqual(["16.83%", "27.32%"]);
+  const period = relativeValuationHeadless.columns!.find((column) => column.header === "TTM Op Margin period")!;
+  expect(result.rows.map((row) => period.format!(row[period.key], row))).toEqual(["FY25", "TTM"]);
   expect(result.rows[0]).toMatchObject({ operatingMarginPeriod: "FY25", operatingMarginPeriodEnd: "2025-11-30" });
   expect(result.unavailableSymbols).toEqual([]);
 });
@@ -265,7 +269,7 @@ test("every blank RV cell says why in the export's status, and the cap is the on
   // No blank figure without its reason; a session with no print is no missing figure.
   table.rows.forEach((row) => row.forEach((cell, index) => {
     const column = table.columns[index]!;
-    if (cell === "" && index !== status && !/^(?:Pre-Market|After Hours|Overnight)/.test(column)) {
+    if (cell === "" && index !== status && !/^(?:Name|Pre-Market|After Hours|Overnight)| period$/.test(column)) {
       expect(String(row[status])).toContain(column.replace(/ \(.*\)$| unit$/, ""));
     }
   }));
@@ -388,7 +392,7 @@ test("RV's export writes each peer's Last as a number in its own currency, named
   setSystemTime(new Date("2026-10-23T21:00:00Z"));
   try {
     const both = await csvOf(["NESN:SWX", "AAPL"]);
-    expect(both.header.slice(0, 3)).toEqual(["Ticker", "Last", "Chg%"]);
+    expect(both.header.slice(0, 4)).toEqual(["Ticker", "Name", "Last", "Chg%"]);
     expect(both.row("NESN:SWX")).toMatchObject({ Last: "84.37", symbol_or_series: "NESN:SWX", currency_or_unit: "CHF", "Mkt Cap unit": "CHF" });
     expect(both.row("AAPL")).toMatchObject({ Last: "336.64", "After Hours": "337.2", symbol_or_series: "AAPL", currency_or_unit: "USD" });
     expect(Number(both.row("AAPL")["After Hours Chg%"])).toBeCloseTo(0.1663, 4);

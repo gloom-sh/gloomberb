@@ -1,5 +1,6 @@
 import type { CliCommandContext } from "../../types/plugin";
 import { currencyNameStop } from "../currency-name-hint";
+import { tickerShapedWord } from "../symbol-args";
 
 export function takeOption(args: string[], name: string): string | undefined {
   const equalsPrefix = `${name}=`;
@@ -75,8 +76,25 @@ export function requireOneArg(
   // A currency's name in words (`ticker swiss franc`) is its pair, not two symbols.
   const currency = noun === "symbol" && args.length > 1 ? currencyNameStop(args, usage.split(" ")[0]!) : null;
   if (currency) ctx.fail(currency.message, currency.details);
+  // A company's name typed in words (`valuation Bank Leumi`) is one argument, read as `quote` reads it.
+  const name = noun === "symbol" ? typedCompanyName(args) : null;
+  if (name) return name;
   rejectExtraArgs(args, 1, { usage, takes: `one ${noun}`, advice: `Run it once per ${noun}.` }, ctx);
   return value;
+}
+
+/**
+ * A company's name typed in words where one symbol goes (`valuation Bank
+ * Leumi`, `ticker MTN Group`), joined as one name for the listing to read
+ * as `quote` reads it ("Read "Bank Leumi" as LUMI:TASE ..."): two to four
+ * words of letters, one at least capitalised as a name is. Symbols typed
+ * apart (`AAPL MSFT`, `aapl msft`) are not a name, nor is a list with a word
+ * shaped as a ticker (`BRK.B Meta`, `tickerShapedWord`); null for them.
+ */
+export function typedCompanyName(args: readonly string[]): string | null {
+  if (args.length < 2 || args.length > 4) return null;
+  if (!args.every((arg) => /^\p{L}[\p{L}&'’.-]*$/u.test(arg) && !tickerShapedWord(arg))) return null;
+  return args.some((arg) => /^\p{Lu}\p{Ll}/u.test(arg)) ? args.join(" ") : null;
 }
 
 export function isoDate(value: unknown): string {

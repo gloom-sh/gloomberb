@@ -712,3 +712,11 @@ test("a stopped listing with no quote keeps its own profile, and hides one only 
   expect(stpp.data.profile ?? null).toBeNull();
   expect(stpp.data.annualStatementCount).toBe(0);
 });
+
+// NPN:JSE read "52W Range ZAR650.5600 - ZAR1,289.5200": the four decimals a price served in cents allows, not the two it has.
+test("a range of a line served in cents prints at the decimals its prices have, as Last does", async () => {
+  const rand = { ...quote, currency: "ZAR", instrumentType: "EQUITY", providerPriceDivisor: 100, price: 760.71, previousClose: 778, open: 761.5,
+    low: 760.7, high: 782.75, low52w: 650.56, high52w: 1289.52, exchangeName: "JSE", listingExchangeName: "JSE" };
+  const text = await report({ quote: rand, annualStatements: [], quarterlyStatements: [], priceHistory: [] });
+  expect(text).toMatch(/52W Range +ZAR ?650\.56 - ZAR ?1,289\.52\n/);
+});

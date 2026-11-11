@@ -16,9 +16,37 @@ export interface FxRequest {
   baseCurrency: string;
   /** Each currency typed as its name (`yen`) and the code it was read as, said beside the answer. */
   readAs?: string[];
+  /**
+   * A side typed as a minor unit (ZAc, GBp, GBX, ILA): `currency` and
+   * `baseCurrency` are then its major currency, whose rate is read, and the
+   * unit is converted at its fixed fraction of it (100 ZAc is R1.00).
+   */
+  units?: { currency?: FxSubUnit; baseCurrency?: FxSubUnit };
+}
+
+/** A minor unit typed for a side of `fx`: its code as quotes write it (ZAc, GBp, ILA), and how many make one of the major currency. */
+interface FxSubUnit {
+  code: string;
+  divisor: number;
 }
 
 const CURRENCY_CODE = /^[A-Z]{3}$/;
+
+/**
+ * The minor units quotes are priced in, by the code as typed: pence (GBp,
+ * GBX), South African cents (ZAc) and agorot (ILA). GBp is read in its own
+ * case, as GBP and gbp are pounds; the others are no ISO code, so any case is
+ * the unit, never upper-cased into a currency of their own.
+ */
+export function fxSubUnit(typed: string): (FxSubUnit & { currency: string }) | null {
+  const text = typed.trim();
+  if (text === "GBp") return { code: "GBp", currency: "GBP", divisor: 100 };
+  const upper = text.toUpperCase();
+  if (upper === "GBX") return { code: "GBX", currency: "GBP", divisor: 100 };
+  if (upper === "ZAC") return { code: "ZAc", currency: "ZAR", divisor: 100 };
+  if (upper === "ILA") return { code: "ILA", currency: "ILS", divisor: 100 };
+  return null;
+}
 
 let knownCurrencies: ReadonlySet<string> | undefined;
 
@@ -59,24 +87,44 @@ function spelledPair(text: string): FxRequest | null {
   return match ? { currency: match[1]!, baseCurrency: match[2]! } : null;
 }
 
+/**
+ * A pair with a minor unit for a side, spelled without its slash: GBp-USD,
+ * GBpUSD, ZACUSD, USD-ILA. Its two sides as typed, so the unit keeps its
+ * own case (GBp is pence, GBP pounds); null for anything else, which
+ * `spelledPair` reads.
+ */
+function unitPairSides(typed: string): [string, string] | null {
+  const match = /^([A-Za-z]{3})[-_ ]?([A-Za-z]{3})$/.exec(typed.trim());
+  return match && (fxSubUnit(match[1]!) || fxSubUnit(match[2]!)) ? [match[1]!, match[2]!] : null;
+}
+
 /** Whether `fx` reads the argument as a pair spelled without its slash (`spelledPair`). */
 function isSpelledFxPair(raw: string): boolean {
-  return spelledPair(raw.trim().toUpperCase()) != null;
+  return unitPairSides(raw) != null || spelledPair(raw.trim().toUpperCase()) != null;
 }
 
 /** The request, or the sentence saying what is wrong with the argument. */
 export function parseFxRequest(raw: string, baseCurrency: string): FxRequest | { error: string } {
-  const typed = raw.trim().split("/").map((part) => part.trim());
-  const text = raw.trim().toUpperCase();
+  // A side typed as a minor unit is read as one however the pair is spelled (GBp-USD, GBpUSD), before `spelledPair` upper-cases it.
+  const typed = unitPairSides(raw) ?? raw.trim().split("/").map((part) => part.trim());
+  const text = typed.join("/").toUpperCase();
   const parts = typed.map((part) => part.toUpperCase());
   if (parts.length > 2 || parts.some((part) => !part)) return { error: `"${raw}" is not a currency or a pair such as USD/NGN.` };
   // The pair spellings `quote` takes: EURUSD, eur-usd, EURUSD=X.
   const spelled = parts.length === 1 ? spelledPair(text) : null;
   if (spelled) return spelled;
+  // A minor unit (ZAc, GBp, ILA) is a fraction of its major currency, whose rate converts it.
+  const units: NonNullable<FxRequest["units"]> = {};
+  for (const [index, part] of typed.entries()) {
+    const unit = fxSubUnit(part);
+    if (!unit) continue;
+    units[parts.length === 2 && index === 1 ? "baseCurrency" : "currency"] = { code: unit.code, divisor: unit.divisor };
+    parts[index] = unit.currency;
+  }
   // A name (peso, yen, Swiss franc) is a currency's code. Three letters that are a code stay one: only a name that is no code reads as one.
   const readAs: string[] = [];
   for (const [index, part] of parts.entries()) {
-    if (isKnownCurrency(part)) continue;
+    if (isKnownCurrency(part) || fxSubUnit(typed[index]!)) continue;
     const named = readCurrencyName(typed[index]!, (code) => parts.map((other, at) => at === index ? code : other).join("/"));
     if (!named) continue;
     if ("error" in named) return named;
@@ -85,10 +133,24 @@ export function parseFxRequest(raw: string, baseCurrency: string): FxRequest | {
   }
   const bad = parts.filter((part) => !CURRENCY_CODE.test(part));
   if (bad.length > 0) return { error: `${bad.join(" and ")} ${bad.length > 1 ? "are not currency codes" : "is not a currency code"}; use three letters such as NGN.` };
-  const request = parts.length === 2
+  const request: FxRequest = parts.length === 2
     ? { currency: parts[0]!, baseCurrency: parts[1]! }
     : { currency: parts[0]!, baseCurrency: baseCurrency.trim().toUpperCase() };
-  return readAs.length > 0 ? { ...request, readAs } : request;
+  return { ...request, ...readAs.length > 0 ? { readAs } : {}, ...units.currency || units.baseCurrency ? { units } : {} };
+}
+
+/** The code a side of the request is written in: its minor unit's (ZAc) where one was typed, else its currency's. */
+export function fxSideCode(request: FxRequest, side: "currency" | "baseCurrency"): string {
+  return request.units?.[side]?.code ?? request[side];
+}
+
+/**
+ * The rate of one unit of the request's first side in its second, as typed:
+ * the major currencies' `rate` with each minor unit's fraction applied (1 ZAc
+ * is a hundredth of 1 ZAR's rate). The rate itself when no unit was typed.
+ */
+export function fxUnitRate(request: FxRequest, rate: number): number {
+  return rate * (request.units?.baseCurrency?.divisor ?? 1) / (request.units?.currency?.divisor ?? 1);
 }
 
 /** What `gloom fx` is asked for, with the amount to convert when one comes first. */
@@ -185,9 +247,31 @@ export function formatFxAmount(amount: number, currency: string): string {
   return `${text} ${currency}`;
 }
 
-/** `1,234.50 EUR = 1,383.47 USD`: the amount and what it converts to at the rate. */
+/**
+ * `1,234.50 EUR = 1,383.47 USD`: the amount and what it converts to at the
+ * rate, which is of the major currencies. A side typed as a minor unit names
+ * the major amount it is beside it, the conversion's step: `100.00 ZAc =
+ * R1.00 = 0.06 USD`, `1.00 USD = £0.75 = 75.09 GBp`.
+ */
 export function describeFxConversion(request: FxRequest, amount: number, rate: number): string {
-  return `${formatFxAmount(amount, request.currency)} = ${formatFxAmount(amount * rate, request.baseCurrency)}`;
+  const from = request.units?.currency, into = request.units?.baseCurrency;
+  const major = amount / (from?.divisor ?? 1);
+  return [
+    formatFxAmount(amount, fxSideCode(request, "currency")),
+    ...from ? [formatMajorAmount(major, request.currency)] : [],
+    ...into ? [formatMajorAmount(major * rate, request.baseCurrency)] : [],
+    formatFxAmount(fxUnitRate(request, rate) * amount, fxSideCode(request, "baseCurrency")),
+  ].join(" = ");
+}
+
+/** A major currency's amount written with its sign, as its minor unit's conversion step shows it: R1.00, £0.75, ₪1.00. */
+function formatMajorAmount(amount: number, currency: string): string {
+  try {
+    // R1.00, never the space Intl puts after a letter sign.
+    return new Intl.NumberFormat("en-US", { style: "currency", currency, currencyDisplay: "narrowSymbol" }).format(amount).replace(/(\p{L})\s(?=\d)/u, "$1");
+  } catch {
+    return formatFxAmount(amount, currency);
+  }
 }
 
 /**

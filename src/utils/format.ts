@@ -1,4 +1,4 @@
-import { fixedUsdRate, heldCurrencyUnit, minorUnitSign } from "./currency-units";
+import { BIDI_MARKS, fixedUsdRate, heldCurrencyUnit, isDrawableCurrencySign, minorUnitSign } from "./currency-units";
 
 /** What a cell or figure reads when the source gave no value; an export writes it as an empty cell. */
 export const MISSING_VALUE = "—";
@@ -19,13 +19,17 @@ function getCurrencyFormatter(currency: string, maximumFractionDigits: number = 
   const key = `${currency}:${maximumFractionDigits}`;
   let formatter = currencyFormatters.get(key);
   if (!formatter) {
-    formatter = new Intl.NumberFormat("en-US", {
-      style: "currency",
+    const options = {
+      style: "currency" as const,
       currency,
       // Whole units (0) drop the cents rather than throw.
       minimumFractionDigits: Math.min(currencyPriceDigits(currency), maximumFractionDigits),
       maximumFractionDigits,
-    });
+    };
+    formatter = new Intl.NumberFormat("en-US", options);
+    // A sign a terminal cannot draw (the riyal's) is written as the code: SAR 25.88.
+    const sign = formatter.formatToParts(0).find((part) => part.type === "currency")?.value ?? "";
+    if (!isDrawableCurrencySign(sign)) formatter = new Intl.NumberFormat("en-US", { ...options, currencyDisplay: "code" });
     currencyFormatters.set(key, formatter);
   }
   return formatter;
@@ -60,7 +64,7 @@ function formatMoney(value: number, currency: string, maximumFractionDigits: num
     return `${value < 0 && /[1-9]/.test(body) ? "-" : ""}${body}${minor}`;
   }
   try {
-    return getCurrencyFormatter(currency, maximumFractionDigits).format(value);
+    return getCurrencyFormatter(currency, maximumFractionDigits).format(value).replace(BIDI_MARKS, "");
   } catch {
     const body = new Intl.NumberFormat("en-US", {
       minimumFractionDigits: Math.min(currencyPriceDigits(currency), maximumFractionDigits),

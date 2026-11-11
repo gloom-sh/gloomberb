@@ -194,6 +194,8 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     revenueGrowthHalf: revenueGrowth != null && snapshot
       ? halfYearGrowthPeriod(snapshot) : null,
     currency: quote?.currency ?? null,
+    /** The company the ticker was read as, as its quote names it. */
+    name: reported?.name?.trim() || null,
     marketCap: capitalization?.value ?? null,
     marketCapCurrency: capitalization?.currency ?? null,
     marketCapProvenance: capitalization?.provenance ?? null,

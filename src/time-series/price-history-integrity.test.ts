@@ -16,12 +16,13 @@ import { pricePointsToResolvedSeries } from "../components/chart/composite/price
 import { applyCompositeChartCursor, buildCompositeChartScene } from "../components/chart/composite/scene";
 import { CHART_SPEC_VERSION, type ChartSpec, type ResolvedSeries, type SeriesPeriod, type SeriesTransform } from "./types";
 
-// Actual SPY row retained from the September 10 Gloom history cache. The open
-// exceeds the reported high; a later close does not tell us which field is wrong.
+// A SPY row from the September 10 Gloom history cache, its close moved over
+// the reported high as well as its open: a later close does not tell us which
+// field is wrong. An open alone over the high is withheld, the rest kept.
 const reported: PricePoint = {
   date: new Date("2026-09-10T13:30:00.000Z"),
   open: 764.0800170898438, high: 758.5549926757812, low: 757.5700073242188,
-  close: 758.1500244140625, volume: 3461376,
+  close: 759.1500244140625, volume: 3461376,
 };
 const history: PricePoint[] = [
   { date: new Date("2026-09-09T13:30:00Z"), close: 757 }, reported,
@@ -45,7 +46,7 @@ function resolved(points: PricePoint[] = history): ResolvedSeries {
 }
 
 test("the invariant detects contradictions without inventing missing OHLC or losing tiny and negative valid prices", () => {
-  for (const point of [reported, { ...reported, open: undefined, high: 1, low: 2 }, { ...reported, open: undefined, high: 800, low: 759 }]) {
+  for (const point of [reported, { ...reported, open: undefined, high: 1, low: 2 }, { ...reported, open: undefined, high: 800, low: 759.5 }]) {
     const checked = pricePointValues(point);
     expect(checked).toMatchObject({ open: null, high: null, low: null, close: null, volume: null });
     expect(checked.integrity?.reason).toBe("inconsistent-ohlc");
@@ -221,4 +222,16 @@ test("pair studies keep the corrupt observation as a gap and retain valid peer l
   const correlation = resolveStudies([input, constantPeer], [{ id: "corr", kind: "correlation", inputSeriesIds: [input.id, peer.id], parameters: { period: 2, returns: 0 }, panelId: "main", axis: "left" }]).series[0]!;
   expect(correlation.points.at(-1)?.value).toBeNull(); // Zero variance after enough valid observations.
   expect(correlation.points.at(-1)?.provenance?.priceHistoryIntegrity).toBeUndefined();
+});
+
+test("an open alone outside the range the rest of its bar agrees on is withheld, and the bar stands in every view", () => {
+  // MTN on the JSE, 30 Oct 2026, as served: only the open is under the low.
+  const mtn: PricePoint = { date: new Date("2026-10-30T00:00:00Z"), open: 193.05, high: 204.65, low: 194.86, close: 198.41, volume: 5_454_179 };
+  expect(pricePointIntegrity(mtn)).toBeUndefined();
+  expect(pricePointValues(mtn)).toEqual({ open: null, high: 204.65, low: 194.86, close: 198.41, volume: 5_454_179 });
+  // A chart draws the bar's close and range; a week it opens takes its close as the open, never the withheld one.
+  const days = [{ date: new Date("2026-10-29T00:00:00Z"), open: 194.1, high: 198.06, low: 193.83, close: 196.44 }, mtn];
+  expect(extractPriceSeries([mtn], source)[0]).toMatchObject({ value: 198.41, open: null, low: 194.86 });
+  expect(extractPriceSeries([mtn, { ...days[0]!, date: new Date("2026-10-27T00:00:00Z") }].reverse(), { ...source, period: "weekly" as SeriesPeriod })
+    .at(-1)).toMatchObject({ low: 193.83 });
 });

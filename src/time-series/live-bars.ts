@@ -1,7 +1,7 @@
 import type { PricePoint, Quote } from "../types/financials";
 import type { HistorySession } from "../types/price-history";
 import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
-import { pricePointIntegrity } from "../utils/price-history-integrity";
+import { pricePointIntegrity, pricePointOpenWithheld } from "../utils/price-history-integrity";
 import {
   calendarBarStart,
   isCalendarResolution,
@@ -77,7 +77,8 @@ function anchorKey(point: PricePoint, time: number): string {
 }
 
 function foldIntoBar(bar: PricePoint, observation: PricePoint): PricePoint {
-  const open = isFiniteNumber(bar.open) ? bar.open : bar.close;
+  // A withheld open (pricePointOpenWithheld) sets no range of the bar a print folds into.
+  const open = isFiniteNumber(bar.open) && !pricePointOpenWithheld(bar) ? bar.open : bar.close;
   const extremes = pricePointIntegrity(observation) ? [] : [observation.high, observation.low];
   const prices = [bar.high, bar.low, open, bar.close, observation.close, ...extremes].filter(isFiniteNumber);
   const volume = isFiniteNumber(bar.volume) || isFiniteNumber(observation.volume)
@@ -368,7 +369,10 @@ export class LiveBarAccumulator {
     const anchor = this.anchor!;
     if (anchor.point?.source === latest && anchor.point.version === this.version) return anchor.point.value;
     let value = latest;
-    if (pricePointIntegrity(latest)) {
+    // An open alone outside the bar's range is withheld (pricePointOpenWithheld): a quote that names the whole session
+    // says which field was wrong (GOGL's high, not its open), else the rest of the bar stands and the open sets no range.
+    const openWithheld = pricePointOpenWithheld(latest);
+    if (pricePointIntegrity(latest) || (openWithheld && anchor.open !== null && anchor.close !== null)) {
       // A later quote cannot establish which reported OHLC field was wrong, unless it names the bar's whole session:
       // its open, range, price and count are the bar (mergeQuoteIntoLatestBar).
       if (anchor.open !== null && anchor.close !== null) {
@@ -385,13 +389,14 @@ export class LiveBarAccumulator {
       if (anchor.close !== null) {
         const close = anchor.close;
         const open = isFiniteNumber(latest.open) ? latest.open : latest.close;
-        const high = isFiniteNumber(latest.high) ? latest.high : Math.max(open, latest.close);
-        const low = isFiniteNumber(latest.low) ? latest.low : Math.min(open, latest.close);
+        const body = openWithheld ? latest.close : open;
+        const high = isFiniteNumber(latest.high) ? latest.high : Math.max(body, latest.close);
+        const low = isFiniteNumber(latest.low) ? latest.low : Math.min(body, latest.close);
         value = {
           ...latest,
           open,
-          high: Math.max(high, open, latest.close, anchor.high ?? close, close),
-          low: Math.min(low, open, latest.close, anchor.low ?? close, close),
+          high: Math.max(high, body, latest.close, anchor.high ?? close, close),
+          low: Math.min(low, body, latest.close, anchor.low ?? close, close),
           close,
           ...(volume !== latest.volume ? { volume } : {}),
         };

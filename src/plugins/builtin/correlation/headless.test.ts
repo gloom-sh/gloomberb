@@ -155,8 +155,8 @@ test("rolling correlation waits for the entire selected observation window", asy
 test("a bar whose prices contradict each other is a gap, as history leaves it blank, and the export keeps what the source reported", async () => {
   const ctx = context();
   const cleanHistory = await ctx.marketData.getPriceHistory("SPY", "", "1Y");
-  // Captured SPY contradiction: reported open exceeds reported high.
-  const corrupt = { ...cleanHistory[3]!, open: 764.0800, high: 758.555, low: 757.570, close: 758.150, volume: 3461376 };
+  // A SPY bar whose open and close exceed its high: an open alone would only be withheld.
+  const corrupt = { ...cleanHistory[3]!, open: 764.0800, high: 758.555, low: 757.570, close: 759.900, volume: 3461376 };
   const history = cleanHistory.map((point, index) => index === 3 ? corrupt : point);
   ctx.marketData = createTestDataProvider({ getPriceHistory: async (symbol) => symbol === "SPY" ? history : cleanHistory });
   const series = buildCorrelationSeries("SPY", history);
@@ -168,7 +168,7 @@ test("a bar whose prices contradict each other is a gap, as history leaves it bl
   expect(result.rows[0]!.correlation).toBeCloseTo(1);
   expect(result.unavailableSymbols).toEqual([]);
   expect(result.metadata?.availability).toEqual(expect.arrayContaining([expect.objectContaining({
-    symbol: "SPY", status: "ready", integrity: [expect.objectContaining({ sourcePoints: [expect.objectContaining({ open: 764.0800, high: 758.555, close: 758.150 })] })],
+    symbol: "SPY", status: "ready", integrity: [expect.objectContaining({ sourcePoints: [expect.objectContaining({ open: 764.0800, high: 758.555, close: 759.900 })] })],
   })]));
   const relationship = await relationshipHeadless.load(args(["ABC", "SPY"]), ctx);
   expect(relationship.unavailableSymbols).toEqual([]);

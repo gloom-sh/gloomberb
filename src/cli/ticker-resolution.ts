@@ -232,8 +232,9 @@ export async function resolveCliTicker(
   const notSymbol = notASymbolError(symbol);
   if (notSymbol) throw notSymbol;
   const deps: ListingDeps = { store, dataProvider };
-  // A vendor's suffix is the venue it names (GARAN.IS is GARAN:BIST), so the listing is saved under one key.
-  const listing = await resolveCliListing(symbol, exchange, deps, { ownExchangeWins: options.ownExchangeWins, listingSuffix: true });
+  // A vendor's suffix is the venue it names (GARAN.IS is GARAN:BIST), so the listing is saved under one key. A word that
+  // names a company is read below, once the lookup says no listing trades as it (`oneWordCompanyName`).
+  const listing = await resolveCliListing(symbol, exchange, deps, { ownExchangeWins: options.ownExchangeWins, listingSuffix: true, companyWord: false });
   const read = listingReadNotes(listing);
   // Looked up beside the search, so saying FB is now META costs no wait.
   const changes = options.changes === false ? null : startTickerChangeLookup(dataProvider, listing.symbol, listing.exchange);

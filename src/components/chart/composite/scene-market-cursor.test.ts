@@ -134,7 +134,7 @@ test("resolved crypto weekend observations and their studies keep exact timestam
 test("a quarantined crypto observation stays selectable beside an exchange session", () => {
   const crypto = { ...asx(), id: "BTC", observationKind: "market" as const, timeBasis: undefined };
   const invalidDate = new Date("2026-01-09T00:00:00Z");
-  const integrity = pricePointIntegrity({ date: invalidDate, open: 120, high: 110, low: 90, close: 100 })!;
+  const integrity = pricePointIntegrity({ date: invalidDate, open: 100, high: 110, low: 90, close: 120 })!;
   crypto.points = [
     { date: new Date("2026-01-08"), value: 100 },
     { date: invalidDate, value: null, provenance: { priceHistoryIntegrity: integrity } },

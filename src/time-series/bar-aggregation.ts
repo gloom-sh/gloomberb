@@ -4,7 +4,7 @@ import { futuresSessionOpenMinute, latestSessionStart, listingTimeZone } from ".
 import { isRoundTheClockCoin } from "../utils/crypto-pair";
 import { canonicalExchange } from "../utils/exchanges";
 import { futuresListingVenue } from "../utils/futures-generic";
-import { mergePriceHistoryIntegrity, pricePointIntegrity, type PriceHistoryIntegrity } from "../utils/price-history-integrity";
+import { mergePriceHistoryIntegrity, pricePointIntegrity, pricePointOpenWithheld, type PriceHistoryIntegrity } from "../utils/price-history-integrity";
 import { getPricePointTimestamp } from "../utils/price-history";
 import { zonedDateTimeParts } from "../utils/zoned-date-time";
 import { isFiniteNumber } from "../utils/guards";
@@ -207,7 +207,8 @@ function buildBar(bucket: Bucket, intraday: boolean): AggregatedPricePoint {
   }
   return {
     date,
-    open: isFiniteNumber(first.open) ? first.open : first.close,
+    // An open withheld as outside its bar's range (pricePointOpenWithheld) opens no longer bar either.
+    open: isFiniteNumber(first.open) && !pricePointOpenWithheld(first) ? first.open : first.close,
     high,
     low,
     close: last.close,

@@ -65,6 +65,8 @@ const EXTENDED_EXPORT_COLUMNS = EXTENDED_SESSIONS.flatMap(extendedExportColumns)
 // Last is in each peer's own currency: an export writes the number, and the row's `currency_or_unit` names its currency.
 const QUOTE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker" },
+  // The company each ticker was read as: MTN is Vail Resorts in New York, MTN Group only as MTN:JSE.
+  { key: "name", header: "Name", format: (value) => typeof value === "string" && value ? value : "-" },
   { key: "price", header: "Last", align: "right", unitKey: "currency",
     format: (value, row) => value == null ? gapText(row, "price") : price(value, row) },
   { key: "changePercent", header: "Chg%", align: "right", format: (value, row) => value == null ? gapText(row, "changePercent") : percent(value) },
@@ -79,17 +81,26 @@ const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
   // In the currency each peer's cap is in, which exports write in the header or beside the figure.
   { key: "marketCap", header: "Mkt Cap", align: "right", unitKey: "marketCapCurrency", unitColumn: true,
     format: (value, row) => value == null ? gapText(row, "marketCap") : `${formatCompact(Number(value), { fixedDecimals: true })}${row.marketCapCurrency ? ` ${row.marketCapCurrency}` : ""}` },
-  ...([ ["trailingPE", "P/E"], ["forwardPE", "Fwd P/E"] ] as const).map(([key, header]) => ({
-    key, header, align: "right" as const,
+  ...([ ["trailingPE", "P/E"], ["forwardPE", "Fwd P/E"] ] as const).map(([key, header]) => {
     // The multiple as reported, else the comparable value itself, so an export reads the column as one of figures.
-    format: (value: unknown, row: Record<string, unknown>) => {
+    const multipleOf = (value: unknown, row: Record<string, unknown>) => {
       const values = row as Partial<ReturnType<typeof relativeValuationValues>>;
-      const multiple = values.notMeaningful?.[key] ? NOT_MEANINGFUL : values.reportedMultiples?.[key] ?? (typeof value === "number" ? value : null);
-      // A P/E on a fiscal year's EPS, where no four newer quarters were filed, says which year.
-      const year = key === "trailingPE" && multiple !== NOT_MEANINGFUL ? values.trailingPEPeriod : null;
-      return multiple == null ? gapText(row, key) : year ? `${formatPriceEarnings(multiple)} ${year}` : formatPriceEarnings(multiple);
-    },
-  })),
+      return values.notMeaningful?.[key] ? NOT_MEANINGFUL : values.reportedMultiples?.[key] ?? (typeof value === "number" ? value : null);
+    };
+    return {
+      key, header, align: "right" as const,
+      format: (value: unknown, row: Record<string, unknown>) => {
+        const multiple = multipleOf(value, row);
+        return multiple == null ? gapText(row, key) : formatPriceEarnings(multiple);
+      },
+      // A P/E on a fiscal year's EPS, where no four newer quarters were filed, says which year; an export has it in P/E period.
+      textFormat: (value: unknown, row: Record<string, unknown>) => {
+        const multiple = multipleOf(value, row);
+        const year = key === "trailingPE" && multiple !== NOT_MEANINGFUL ? (row as Partial<ReturnType<typeof relativeValuationValues>>).trailingPEPeriod : null;
+        return multiple == null ? gapText(row, key) : year ? `${formatPriceEarnings(multiple)} ${year}` : formatPriceEarnings(multiple);
+      },
+    };
+  }),
   ...([["evSales", "EV/S"]] as const).map(([key, header]) => ({
     key, header, align: "right" as const,
     // A withdrawn EV says so rather than leaving a bare dash, one at or below zero reads N/M; the note under the table says why.
@@ -99,13 +110,38 @@ const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
   })),
   ...([["fcfYield", "FCF Yield"], ["revenueGrowth", REVENUE_GROWTH_HEADER], ["operatingMargin", "TTM Op Margin"]] as const).map(([key, header]) => ({
     key, header, align: "right" as const,
+    // A figure alone, so an export's column holds only numbers; the period is in its own column (VALUATION_PERIOD_COLUMNS).
     format: (value: unknown, row: Record<string, unknown>) => value == null ? gapText(row, key)
+      : key === "revenueGrowth" ? formatPercent(Number(value)) : formatLevelPercent(Number(value)),
+    textFormat: (value: unknown, row: Record<string, unknown>) => value == null ? gapText(row, key)
       : key === "revenueGrowth" ? [formatPercent(Number(value)), revenueGrowthHalfTag(row.revenueGrowthHalf as string | null)].filter(Boolean).join(" ")
         // A margin of the latest fiscal year, where no trailing quarters were served, says which year.
         : key === "operatingMargin" && typeof row.operatingMarginPeriod === "string"
           ? `${formatLevelPercent(Number(value))} ${row.operatingMarginPeriod}` : formatLevelPercent(Number(value)),
   })),
 ];
+
+/**
+ * The period each export's figure is of, in a column after it, where the text
+ * table puts it beside the figure: a P/E on a fiscal year's EPS (`FY Mar-26`),
+ * a half's revenue growth (`H2 FY26 vs H2 FY25`) or a quarter's (`quarter to
+ * 2026-09-30`), a fiscal year's margin (`FY25`); `TTM` for a trailing figure.
+ */
+const VALUATION_PERIOD_COLUMNS: Record<string, HeadlessPaneColumn> = {
+  trailingPE: { key: "trailingPEPeriod", header: "P/E period",
+    format: (value, row) => row.trailingPE == null && !(row.reportedMultiples as Record<string, unknown> | undefined)?.trailingPE ? "" : typeof value === "string" && value ? value : "TTM" },
+  revenueGrowth: { key: "revenueGrowthHalf", header: "Revenue YoY period",
+    format: (value, row) => row.revenueGrowth == null ? "" : typeof value === "string" && value ? value
+      : typeof row.revenueGrowthQuarter === "string" ? `quarter to ${row.revenueGrowthQuarter}` : "" },
+  operatingMargin: { key: "operatingMarginPeriod", header: "TTM Op Margin period",
+    format: (value, row) => row.operatingMargin == null ? "" : typeof value === "string" && value ? value : "TTM" },
+};
+
+/** VALUATION_COLUMNS as exports write them: each figure's period in a column after it. */
+const VALUATION_EXPORT_COLUMNS: HeadlessPaneColumn[] = VALUATION_COLUMNS.flatMap((column) => {
+  const period = VALUATION_PERIOD_COLUMNS[column.key];
+  return period ? [column, period] : [column];
+});
 
 /** The peers of the one symbol `--peers` was given; several symbols are already a peer list. */
 async function choosePeers(symbols: readonly string[], ctx: HeadlessPaneContext): Promise<PeerSelection> {
@@ -127,7 +163,7 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
       ? `Relative Valuation | ${selection.subject} and ${peerMethodTitle(selection)}`
       : `Relative Valuation | ${(result?.symbols ?? symbols).join(", ")}`;
   },
-  columns: [...QUOTE_COLUMNS, ...EXTENDED_EXPORT_COLUMNS, ...VALUATION_COLUMNS],
+  columns: [...QUOTE_COLUMNS, ...EXTENDED_EXPORT_COLUMNS, ...VALUATION_EXPORT_COLUMNS],
   async expandArgument(args, ctx) {
     if (args.options.peers !== true) return null;
     const selection = await choosePeers(args.symbols, ctx);
@@ -214,7 +250,7 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
     return {
       rows, unavailableSymbols, errors, complete: unavailableSymbols.length === 0 && errors.length === 0,
       ...(selection ? { symbols } : {}),
-      columns: [...QUOTE_COLUMNS, ...EXTENDED_EXPORT_COLUMNS, ...VALUATION_COLUMNS, ...added?.export ?? []],
+      columns: [...QUOTE_COLUMNS, ...EXTENDED_EXPORT_COLUMNS, ...VALUATION_EXPORT_COLUMNS, ...added?.export ?? []],
       textColumns: [...textColumns, ...added?.text ?? []],
       // Each peer's row names its ticker and the currency its prices are in.
       rowSymbolKey: "symbol",

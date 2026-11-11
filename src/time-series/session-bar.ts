@@ -5,7 +5,7 @@ import { DAILY_BAR_CLOSE_VENUES } from "../market-data/market/dated-previous-clo
 import { quoteTradingDay } from "../market-data/quotes/day-range";
 import { canonicalExchange } from "../utils/exchanges";
 import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
-import { pricePointIntegrity } from "../utils/price-history-integrity";
+import { pricePointIntegrity, pricePointOpenWithheld } from "../utils/price-history-integrity";
 import { zonedDateKey } from "../utils/zoned-date-time";
 import { barSizeFromGap, medianBarGap, requestedBarSize } from "./bar-spacing";
 import { calendarBarStart, liveQuoteObservation } from "./chart-data";
@@ -87,14 +87,19 @@ function consistentWith(quote: Quote, price: number, extreme: number | undefined
 function sessionBar(prior: PricePoint | undefined, date: Date, quote: Quote, price: number): PricePoint {
   // A later quote cannot establish which reported OHLC field was wrong.
   const base = prior && !pricePointIntegrity(prior) ? prior : undefined;
-  const priorOpen = base?.open;
-  const open = positive(priorOpen) ? priorOpen : consistentWith(quote, price, quote.open) ?? price;
-  const highs = [base?.high, consistentWith(quote, price, quote.high), price, open].filter(positive);
-  const lows = [base?.low, consistentWith(quote, price, quote.low), price, open].filter(positive);
+  // An open outside the range it opened is none: the bar's (pricePointOpenWithheld), or the quote's, which a source
+  // can carry over from the session before (MTN on the JSE, 223.14 under a low of 228.33). It is left out, never a range.
+  const priorOpen = base && !pricePointOpenWithheld(base) ? base.open : undefined;
+  const high = consistentWith(quote, price, quote.high), low = consistentWith(quote, price, quote.low);
+  const quoteOpen = consistentWith(quote, price, quote.open);
+  const openOutside = quoteOpen != null && high != null && low != null && (quoteOpen > high || quoteOpen < low);
+  const open = positive(priorOpen) ? priorOpen : openOutside ? undefined : quoteOpen ?? price;
+  const highs = [base?.high, high, price, open].filter(positive);
+  const lows = [base?.low, low, price, open].filter(positive);
   const volumes = [base?.volume, quote.volume].filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0);
   return {
     date,
-    open,
+    ...(open != null ? { open } : {}),
     high: Math.max(...highs),
     low: Math.min(...lows),
     close: price,
@@ -159,7 +164,8 @@ export function withSessionBar(
       return points;
     }
     if (calendarBarStart(lastTime, size, venue) !== calendarBarStart(dayTime, size, venue) || pricePointIntegrity(last)) return points;
-    const open = positive(last.open) ? last.open : last.close;
+    // A withheld open (pricePointOpenWithheld) sets no range of the bar the quote extends.
+    const open = positive(last.open) && !pricePointOpenWithheld(last) ? last.open : last.close;
     const highs = [last.high, consistentWith(quote, observation.price, quote.high), open, last.close, observation.price].filter(positive);
     const lows = [last.low, consistentWith(quote, observation.price, quote.low), open, last.close, observation.price].filter(positive);
     return [...points.slice(0, -1), { ...last, open, high: Math.max(...highs), low: Math.min(...lows), close: observation.price }];

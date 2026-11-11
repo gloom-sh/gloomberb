@@ -1,5 +1,5 @@
 import type { PricePoint, Quote } from "../types/financials";
-import { pricePointIntegrity } from "../utils/price-history-integrity";
+import { pricePointIntegrity, pricePointOpenWithheld } from "../utils/price-history-integrity";
 import { isQuoteStaleForCurrentSession } from "../market-data/quotes/freshness";
 import { getRegularSessionBarClose } from "../market-data/market/status";
 import { latestRegularSessionClose, sessionCalendarTimeZone } from "../market-data/market/freshness";
@@ -103,20 +103,23 @@ function finiteOrFallback(value: number | undefined, fallback: number): number {
 }
 
 function mergeQuoteIntoLatestBar(latest: PricePoint, quotePrice: number, range?: QuoteSessionRange | null): PricePoint {
-  if (pricePointIntegrity(latest)) {
+  // An open alone outside the bar's range is withheld (pricePointOpenWithheld): it sets no range of the merged bar.
+  const openWithheld = pricePointOpenWithheld(latest);
+  if (pricePointIntegrity(latest) || (openWithheld && range?.open !== undefined)) {
     // A later quote cannot establish which reported OHLC field was wrong, unless it names the bar's whole session: its
     // open, range and price are the bar (GOGL's 2026-10-30 daily bar, served with a high under its open).
     return range?.open === undefined ? latest : { ...latest, open: range.open, high: range.high, low: range.low, close: quotePrice };
   }
   const open = finiteOrFallback(latest.open, latest.close);
-  const high = finiteOrFallback(latest.high, Math.max(open, latest.close));
-  const low = finiteOrFallback(latest.low, Math.min(open, latest.close));
+  const body = openWithheld ? latest.close : open;
+  const high = finiteOrFallback(latest.high, Math.max(body, latest.close));
+  const low = finiteOrFallback(latest.low, Math.min(body, latest.close));
   // The bar keeps its own open: a weekly or monthly bar opened on an earlier day than the quote's session.
   return {
     ...latest,
     open,
-    high: Math.max(high, open, latest.close, quotePrice, range?.high ?? quotePrice),
-    low: Math.min(low, open, latest.close, quotePrice, range?.low ?? quotePrice),
+    high: Math.max(high, body, latest.close, quotePrice, range?.high ?? quotePrice),
+    low: Math.min(low, body, latest.close, quotePrice, range?.low ?? quotePrice),
     close: quotePrice,
   };
 }

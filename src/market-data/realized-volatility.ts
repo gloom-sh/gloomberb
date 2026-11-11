@@ -3,6 +3,7 @@ import { barsPerYear, type BarsPerYearInstrument } from "./bars-per-year";
 import {
   mergePriceHistoryIntegrity,
   pricePointIntegrity,
+  pricePointOpenWithheld,
   pricePointWicks,
   type PriceHistoryIntegrity,
 } from "../utils/price-history-integrity";
@@ -117,7 +118,8 @@ function observations(points: readonly PricePoint[]): Observation[] | null {
   return [...dates.entries()].sort(([a], [b]) => a - b).map(([time, point]) => ({
     time,
     close: positiveLog(point.close),
-    open: positiveLog(point.open),
+    // An open alone outside the bar's range is withheld (pricePointOpenWithheld): missing, not a price.
+    open: pricePointOpenWithheld(point) ? null : positiveLog(point.open),
     // A wick too far from the bar's body to have traded is missing, not a range.
     high: positiveLog(pricePointWicks(point).high),
     low: positiveLog(pricePointWicks(point).low),

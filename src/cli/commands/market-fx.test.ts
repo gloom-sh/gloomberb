@@ -552,3 +552,25 @@ test("fx --forward with --date says the forward is today's only and how to get e
     spy.mockRestore();
   }
 });
+
+// `fx 100 ZAc/USD` read "100.00 ZAC = 6.04 USD": the cents were converted as rand, 100 times over.
+test("a minor unit converts at its fraction of the major currency's rate, labelled, never read as a code of its own", async () => {
+  setSystemTime(new Date("2026-11-11T09:40:00Z"));
+  const rand = harness("USD", { "USDZAR=X": 16.5695 });
+  await fx.execute(["100", "ZAc/USD"], rand.context);
+  expect(rand.batches).toEqual([["USDZAR=X"]]);
+  const [row] = rand.rows()[0] as Array<Record<string, number | string>>;
+  expect(row).toMatchObject({ currency: "ZAc", baseCurrency: "USD", pair: "ZAc/USD", majorPair: "ZAR/USD", amount: 100 });
+  expect(row!.converted as number).toBeCloseTo(1 / 16.5695, 10);
+  expect(rand.output("text")[0]).toStartWith("100.00 ZAc = R1.00 = 0.06 USD\n1 ZAR = 0.0603519 USD  (USD/ZAR 16.5695");
+  // Pence read in their own case (GBP is pounds) or as GBX, and agorot as ILA, into a unit too.
+  const pence = harness("USD", { "GBPUSD=X": 1.3318 });
+  await fx.execute(["100", "GBp/USD"], pence.context);
+  expect(pence.output("text")[0]).toStartWith("100.00 GBp = £1.00 = 1.33 USD\n");
+  const agorot = harness("USD", { "USDILS=X": 3.1763 });
+  await fx.execute(["100", "ILA", "USD"], agorot.context);
+  expect(agorot.output("text")[0]).toStartWith("100.00 ILA = ₪1.00 = 0.31 USD\n");
+  const into = harness("USD", { "GBPUSD=X": 1.3318 });
+  await fx.execute(["1", "USD/GBX"], into.context);
+  expect(into.output("text")[0]).toStartWith("1.00 USD = £0.75 = 75.09 GBX\n");
+});

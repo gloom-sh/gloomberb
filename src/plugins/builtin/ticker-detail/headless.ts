@@ -10,8 +10,8 @@ import type { TimeRange } from "../../../time-series/range";
 import { formatNumber } from "../../../utils/format";
 import { formatPriceObservation, penceFigure, quoteFormatOptions } from "../../../market-data/market/format";
 import {
-  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointWickFlags, priceHistoryIntegrityNotice,
-  priceHistoryRescaleNotice, priceHistoryWickNotice,
+  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointOpenWithheld, pricePointWickFlags, priceHistoryIntegrityNotice,
+  priceHistoryOpenNotice, priceHistoryRescaleNotice, priceHistoryWickNotice,
 } from "../../../utils/price-history-integrity";
 import { indexBarVolume } from "../../../market-data/market/index-level";
 import {
@@ -523,7 +523,8 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     // A wick left out of the range is said, though the bar's close still counts.
     const wickNotice = priceHistoryWickNotice(points.filter((point) => pricePointWickFlags(point).length > 0).length);
     // As are bars the source served in the wrong unit, shown scaled back.
-    const reportNotices = [...moveLines, notice, wickNotice, priceHistoryRescaleNotice(points)].filter((line): line is string => line != null);
+    const openNotice = priceHistoryOpenNotice(points.filter(pricePointOpenWithheld).length);
+    const reportNotices = [...moveLines, notice, openNotice, wickNotice, priceHistoryRescaleNotice(points)].filter((line): line is string => line != null);
     const flagged = rows.some((row) => row.flag);
     return {
       rows: shown,

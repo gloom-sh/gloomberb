@@ -63,15 +63,27 @@ const CONTRACT_EXPORT_COLUMNS: CliResultColumn<ExportedRow>[] = [
 ];
 
 /**
+ * A history converted into another currency (`history --currency USD`): the
+ * rate each bar's prices were converted at (units of the currency asked for
+ * per unit of the listing's), the date of the FX close it is, and the
+ * listing's own close.
+ */
+const FX_EXPORT_COLUMNS: CliResultColumn<ExportedRow>[] = [
+  { key: "fxRate", header: "FX rate" },
+  { key: "fxDate", header: "FX date" },
+  { key: "localClose", header: "Local close" },
+];
+
+/**
  * The columns of an export of these rows: HISTORY_EXPORT_COLUMNS, and when a
  * bar names its contract (a continuous future such as NG=F) Contract, Roll,
  * Thin and Settle only after them, for every row of the export. A stock's or a coin's file is
  * as it always was.
  */
-export function historyExportColumns(rows: readonly Pick<HistoryRow, "contract">[]): CliResultColumn<ExportedRow>[] {
-  return rows.some((row) => typeof row.contract === "string" && row.contract !== "")
-    ? [...HISTORY_EXPORT_COLUMNS, ...CONTRACT_EXPORT_COLUMNS]
-    : HISTORY_EXPORT_COLUMNS;
+export function historyExportColumns(rows: readonly Pick<HistoryRow, "contract" | "fxRate">[]): CliResultColumn<ExportedRow>[] {
+  const contract = rows.some((row) => typeof row.contract === "string" && row.contract !== "");
+  const converted = rows.some((row) => row.fxRate !== undefined);
+  return [...HISTORY_EXPORT_COLUMNS, ...contract ? CONTRACT_EXPORT_COLUMNS : [], ...converted ? FX_EXPORT_COLUMNS : []];
 }
 
 /** Flags of a break before a bar, whose prices stay; every other code left the prices blank. */

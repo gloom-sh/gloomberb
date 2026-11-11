@@ -73,6 +73,20 @@ export function minorUnitSign(code: string | null | undefined): string | null {
 }
 
 /**
+ * Whether a terminal can draw a currency sign: one with a character from the
+ * last few Unicode versions is left to its code, as monospace fonts lack it.
+ * The Saudi riyal's sign (U+20C1, Unicode 17) and the Kyrgyz som's (U+20C0)
+ * print as an empty box, beside the left-to-right mark Intl puts before
+ * them, so a Tadawul price read "\u200e\u20c1 25.88".
+ */
+export function isDrawableCurrencySign(sign: string): boolean {
+  return !/[\u20c0-\u20cf]/u.test(sign);
+}
+
+/** Bidirectional marks Intl puts around a currency sign (U+200E, U+200F, U+061C and the isolates), which a terminal prints as width. */
+export const BIDI_MARKS = /[\u200e\u200f\u061c\u202a-\u202e\u2066-\u2069]/gu;
+
+/**
  * A quote currency's code as a column of codes shows it: US cents, a code no
  * standard has, as US¢; every other code as it is (USD, GBp).
  */

@@ -34,7 +34,7 @@ import {
 } from "../../market-data/market/status";
 import { formatCompact, formatCurrency, formatDistributionAmount, formatNumber, formatPercent } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
-import { isoDate, parsePositiveInt, requireOneArg, takeFlag, takeOption } from "./command-utils";
+import { isoDate, parsePositiveInt, requireOneArg, takeFlag, takeOption, typedCompanyName } from "./command-utils";
 import type { BuiltinCliCommandDef } from "../command-options";
 import { CLI_COMMAND_GROUPS, TABLE_SECTION_OPTION } from "../help";
 import { CLI_EXIT_CODES } from "../exit-codes";
@@ -74,7 +74,7 @@ import { loadStatementFilings } from "../statement-filings";
 import { loadBankFigures } from "../bank-section";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
-import { currencyCodeLabel } from "../../utils/currency-units";
+import { currencyCodeLabel, currencyUnitLabel, resolveCurrencyUnit } from "../../utils/currency-units";
 import { fxRateDigits, quotedFxPair } from "../../utils/currency-pair";
 import {
   futuresContractLines, futuresPricePer, futuresPriceUnit, futuresRollLines, futuresTickOption, isFuturesInstrument, loadFuturesContractTerms, loadUsdPerMmbtu,
@@ -118,7 +118,7 @@ import type { ExchangeAnnouncementsPayload } from "../../api-client/exchange-ann
 import {
   exchangeAnnouncementsPage, exchangeAnnouncementsPublisher, isRoutineReturn, listsExchangeAnnouncements, type ExchangeAnnouncementsPage,
 } from "../../utils/exchange-announcements";
-import { dailyFxLeg, fxCloseOnDate, type FxCloseReading } from "../../market-data/fx-closes";
+import { dailyFxLeg, fxCloseOnDate, fxCloseOnOrBefore, loadDailyFxCloses, type FxCloseReading } from "../../market-data/fx-closes";
 import { zonedDateTimeParts } from "../../utils/zoned-date-time";
 import { declaredDividends } from "../../utils/declared-dividends";
 import {
@@ -152,6 +152,7 @@ import {
   historyExportUnit,
   historyFacts,
   historyFlagNote,
+  historyOpenNote,
   historyWickNote,
   historyContractDrawdown,
   historyRollNote,
@@ -285,6 +286,9 @@ import {
   isTitleCaseWord,
   requireCliListing,
   resolveCliListing,
+  joinCompanyNameWords,
+  resolveNamedListing,
+  MAX_CHOICE_LOOKUPS,
   type CliListing,
   type ListingIdentity,
 } from "../listing-arg";
@@ -323,8 +327,8 @@ import {
 import { noSecReportsNotice, nonUsSecListingVenue, secFilingItemCodes } from "../../utils/sec";
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
-import { answerQuote, errorMessage, notUsTickerSentence } from "../quote-answer";
-import { crossRate, describeFxConversion, describeFxLegs, describeFxRate, formatFxAmount, formatFxRate, FX_USAGE, parseFxArgs, type FxQuotedFigure } from "../fx-pair";
+import { answerQuote, errorMessage, notUsTickerSentence, withJoinedCompanyNames } from "../quote-answer";
+import { crossRate, describeFxConversion, describeFxLegs, describeFxRate, formatFxAmount, formatFxRate, FX_USAGE, fxSideCode, fxSubUnit, fxUnitRate, parseFxArgs, type FxQuotedFigure, type FxRequest } from "../fx-pair";
 import {
   describeCarrySides,
   describeShortRate,
@@ -800,6 +804,38 @@ function changeBasisNotes(results: QuoteCliRecord[], now = Date.now()): string[]
   return [...new Set(results.flatMap((result) => changeBasisNote(rowChangeBasis(result), now) ?? []))];
 }
 
+/** How long `quote --json` waits for the share counts its market caps are put on; a row without one keeps its source's cap. */
+const QUOTE_MARKET_CAP_WAIT_MS = 4_000;
+
+/**
+ * Each quote's market cap on the basis valuation and RV show it
+ * (viewMarketCapitalization): the share count they show times the regular
+ * session's price, the source's own figure where the count is not the cap's.
+ * NPN:JSE read 568.36B ZAR in `quote --json` beside 579.69B in `valuation`
+ * and RV on 11 Nov 2026, on the source's count. Read in one batch, waited for
+ * briefly; null where no count came in time.
+ */
+async function quoteViewMarketCaps(results: readonly QuoteBatchResult[], market: MarketContext): Promise<Array<number | null> | null> {
+  const asked = results.flatMap((result, index) => result.quote?.marketCap != null && result.quote.instrumentType !== "INDEX" ? [index] : []);
+  if (asked.length === 0 || !market.dataProvider.getTickerFinancialsBatch) return null;
+  const read = await settleWithin(market.dataProvider.getTickerFinancialsBatch(asked.map((index) => ({
+    symbol: results[index]!.target.symbol, exchange: results[index]!.target.exchange,
+  }))), QUOTE_MARKET_CAP_WAIT_MS).catch(logFailure("cli.commands-market", "Read share counts for quote market caps failed", null));
+  if (!read) return null;
+  return results.map((result, index) => {
+    const at = asked.indexOf(index);
+    const fundamentals = at < 0 ? undefined : read[at]?.financials?.fundamentals;
+    if (!result.quote || !fundamentals) return null;
+    const cap = viewMarketCapitalization(result.quote, fundamentals, regularSessionValuationPrice(result.quote));
+    return cap && cap.currency === result.quote.currency ? cap.value : null;
+  });
+}
+
+/** A quote with the market cap valuation and RV show for it, where one was read. */
+function withViewMarketCap(quote: Quote | null | undefined, marketCap: number | null | undefined): Quote | null | undefined {
+  return quote && marketCap != null && marketCap !== quote.marketCap ? { ...quote, marketCap } : quote;
+}
+
 /** The quote as `--json` gives it: `previousCloseDate`, the exchange-local date of its previous close, follows `previousClose`. */
 function withPreviousCloseDate(quote: Quote | null | undefined): (Quote & { previousCloseDate?: string | null }) | null {
   if (!quote) return null;
@@ -1103,8 +1139,6 @@ function earningsRows(events: ResolvedEarningsEvent[]) {
   }));
 }
 
-/** Symbols at most whose venues a command looks up to name the company each bare one went to. */
-const MAX_CHOICE_LOOKUPS = 10;
 
 /**
  * The line `quote` prints beside a symbol that changed, as `history` and
@@ -1148,10 +1182,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     }
     // With several symbols, --exchange is for the ones that name no exchange of their own, and one that names no
     // listing (EQT:NYSE:US) is named in a line while the others are quoted.
+    // A word that names a company is read once its quote says no listing trades as it (answerQuote).
     const resolvedListings = await Promise.all(symbols.filter((symbol) => !notASymbolError(symbol)).map(async (symbol) => {
-      if (symbols.length === 1) return { symbol, listing: await requireCliListing(symbol, exchange, market, ctx) };
+      if (symbols.length === 1) return { symbol, listing: await requireCliListing(symbol, exchange, market, ctx, { companyWord: false }) };
       try {
-        return { symbol, listing: await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true }) };
+        return { symbol, listing: await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true, companyWord: false }) };
       } catch (error) {
         if (error instanceof ListingArgError) return { symbol, error };
         throw error;
@@ -1176,12 +1211,14 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     // Each row prints what its move is from (Chg Basis).
     const results = await market.dataProvider.getQuotesBatch(targets, { forceRefresh: ctx.cliOptions.refresh, revalidate: true, datesChangeBasis: true });
     const listingOf = (result: QuoteBatchResult, index: number) => listings[targets.indexOf(result.target)] ?? listings[index]!;
-    const asked = results.map(listingOf);
     const request = { command: commandName, noun: "quote" };
-    const answers = await Promise.all(results.map((result, index) => {
-      const listing = asked[index]!;
+    const quoted = await Promise.all(results.map((result, index) => {
+      const listing = listingOf(result, index);
       return answerQuote(result, listing, market, request, ctx.cliOptions.refresh, venues.get(listing) ?? null, { datesChangeBasis: true });
     }));
+    // "MTN Group" typed apart is MTN Group, one row, where "Group" alone would read as UnitedHealth Group.
+    const { answers, asked } = listed ? { answers: quoted, asked: results.map(listingOf) }
+      : await withJoinedCompanyNames(quoted, results.map(listingOf), market, request, ctx.cliOptions.refresh, true);
     const now = Date.now();
     const symbolChanges = await Promise.all(answers.map(async ({ result }, index) => {
       const listing = asked[index]!;
@@ -1238,6 +1275,8 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       const venue = result.quote && !listing.saved ? bareListingNote(listing, result.quote) : null;
       return venue && notes.includes(venue) ? suggestUsTicker(listing.symbol, market) : null;
     }));
+    // JSON's market cap is the one valuation and RV show, on the share count they show (viewMarketCapitalization).
+    const viewCaps = ctx.cliOptions.format === "json" ? await quoteViewMarketCaps(answers.map(({ result }) => result), market) : null;
     // Each row names its listing by key (SAN:EPA) and company, so the table needs no line above it.
     const data = answers.map(({ result, listing, failure }, index) => ({
       target: result.target,
@@ -1246,7 +1285,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       ...quoteSessionFields(result.quote),
       // What `change` is measured from, with the label and holiday note the table shows.
       changeBasis: changeBasisJson(quoteChangeBasis(result.quote, { terms: contracts[index] }), now),
-      quote: withPreviousCloseDate(result.quote),
+      quote: withPreviousCloseDate(withViewMarketCap(result.quote, viewCaps?.[index])),
       ...sourceMoves[index] ? { sourceMove: sourceMoves[index] } : {},
       ...contracts[index] ? { futuresContract: contracts[index] } : {},
       ...fronts[index] ? { futuresFront: fronts[index] } : {},
@@ -1609,6 +1648,141 @@ interface ListingHistory {
   notes: string[];
   /** A continuous future that follows the most traded month (GC=F), as its contract terms say: its bars are that month's. */
   mostTraded: boolean;
+  /** `--currency`: what the prices were converted from and into, and the daily FX series read. */
+  fx?: HistoryConversion;
+}
+
+/** A history's prices converted into another currency at each bar's daily FX close (`convertListingHistory`). */
+interface HistoryConversion {
+  /** The codes as the prices are written, a minor unit as such (GBp, ZAc). */
+  from: string;
+  to: string;
+  /** The pairs whose daily closes were read, as `fx` names them (USD/ZAR), with the symbol they are read under (ZAR=X). */
+  series: Array<{ pair: string; symbol: string }>;
+  /** The first and last FX close read. */
+  firstDate: string | null;
+  lastDate: string | null;
+}
+
+/**
+ * `history --currency`'s code: three letters, the currency the prices are
+ * converted into; null without the option. A minor unit (GBp, GBX, ZAc, ILA)
+ * is that unit, as `fx` reads it, never upper-cased into a currency: GBp is
+ * pence, GBP pounds.
+ */
+function takeHistoryCurrency(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]): string | null {
+  const typed = takeOption(args, "--currency");
+  if (typed == null) return null;
+  const minor = fxSubUnit(typed);
+  const code = minor?.code ?? typed.trim().toUpperCase();
+  const major = minor?.currency ?? code;
+  if (!dailyFxLeg(major) && major !== "USD") ctx.fail(`--currency takes a currency's code, such as USD: "${typed}" is none.`);
+  return code;
+}
+
+/**
+ * `history --currency USD`: each bar's prices converted from the listing's
+ * currency at the daily FX close of its date, the close before it on a day
+ * with none (a Sunday bar on Tadawul), never a rate of another week. A price
+ * in a minor unit (pence, GBp or GBX; cents, ZAc; agorot, ILA) is read as its
+ * fraction of the major currency, whose closes are read, and a minor unit
+ * converted into is the same fraction: 115.8 GBp is £1.158, never 115.8
+ * pounds, and GBp into GBP is no FX at all. A bar
+ * still forming is converted at the latest close. Each row keeps its rate,
+ * that close's date and its own close in `fxRate`, `fxDate` and
+ * `localClose`, and a warning names the FX series read. Volume stays in
+ * shares. Daily, weekly and monthly bars of a listing priced in a currency
+ * only: index points, a pair's rate and intraday bars are refused. A history
+ * already in the currency is as served.
+ */
+async function convertListingHistory(
+  history: ListingHistory,
+  to: string,
+  market: MarketContext,
+  ctx: Parameters<CliCommandDef["execute"]>[1],
+): Promise<ListingHistory> {
+  const { unit } = history;
+  const from = unit.kind === "currency" ? unit.currency : null;
+  if (!from) {
+    ctx.fail(`--currency converts prices in a currency; ${history.listing.key} is in ${unit.unit ?? "no stated unit"}.`);
+  }
+  if (history.intraday) ctx.fail("--currency converts daily, weekly and monthly bars at each date's daily FX close: give a range of a month or longer.");
+  // Each side as its major currency and how many of its unit make one (GBp: GBP, 100).
+  const fromUnit = resolveCurrencyUnit(from), toUnit = resolveCurrencyUnit(to);
+  if ((fromUnit.currency === toUnit.currency && fromUnit.divisor === toUnit.divisor) || history.data.length === 0) return history;
+  const client = market.fxHistory ?? apiClient;
+  const since = history.data[0]!.date.slice(0, 10);
+  // Pence into pounds is no FX: the same currency's closes cancel.
+  const sameCurrency = fromUnit.currency === toUnit.currency;
+  const codes = sameCurrency ? [] : [...new Set([fromUnit.currency, toUnit.currency].filter((code) => code !== "USD"))];
+  const unread = codes.filter((code) => !dailyFxLeg(code));
+  if (unread.length > 0) ctx.fail(`No daily FX closes for ${unread.join(" or ")} to convert ${history.listing.key} into ${to}.`);
+  const legs = await Promise.all(codes.map(async (code) => {
+    try {
+      return [code, await loadDailyFxCloses(code, since, client)] as const;
+    } catch (error) {
+      return ctx.fail(`The daily ${code} FX closes could not be read to convert ${history.listing.key} into ${to}.`, errorMessage(error) ?? undefined);
+    }
+  }));
+  const closes = new Map(legs);
+  const venue = history.identity.exchange || undefined;
+  const now = Date.now();
+  const usdPer = (code: string, date: string) => code === "USD" || sameCurrency ? { date, rate: 1 } : fxCloseOnOrBefore(closes.get(code)!, date);
+  // A minor unit is its fraction of the major currency's rate: a price in pence is a hundredth of one in pounds.
+  const units = toUnit.divisor / fromUnit.divisor;
+  const used: string[] = [];
+  const data = history.data.map((row): HistoryRow => {
+    // A week's or month's close is its last session's.
+    const day = barCloseSession(row.interval, row.date, venue, now);
+    const fromRate = usdPer(fromUnit.currency, day), toRate = usdPer(toUnit.currency, day);
+    const fxDate = codes.length === 0 ? null : fromRate && toRate ? [fromRate.date, toRate.date].sort()[0]! : null;
+    const rate = fromRate && toRate ? fromRate.rate / toRate.rate * units : null;
+    if (fxDate) used.push(fxDate);
+    // To a millionth: past it a product of two prices is float noise.
+    const convert = (value: number | null) => value == null || rate == null ? null : Math.round(value * rate * 1e6) / 1e6;
+    return {
+      ...row, open: convert(row.open), high: convert(row.high), low: convert(row.low), close: convert(row.close),
+      currency: to, unit: to, fxRate: rate, fxDate, localClose: row.close,
+    };
+  });
+  const series = codes.map((code) => {
+    const leg = dailyFxLeg(code)!;
+    return { pair: leg.invert ? `USD/${code}` : `${code}/USD`, symbol: leg.instrument.symbol };
+  });
+  const sorted = [...used].sort();
+  const fx: HistoryConversion = { from: from!, to, series, firstDate: sorted[0] ?? null, lastDate: sorted.at(-1) ?? null };
+  return {
+    ...history, data, fx,
+    unit: { kind: "currency", currency: to, unit: currencyUnitLabel(to, { ofMajor: true }) },
+    // Printed as prices in the currency are: cents, and four places under one unit.
+    decimals: Math.max(...data.map((row) => row.close ?? 0)) >= 1 ? 2 : 4,
+    notes: [historyConversionNote(fx, data), ...history.notes],
+  };
+}
+
+/**
+ * The line a converted history says first: "Prices in USD, converted from ZAR
+ * at each date's daily close of USD/ZAR (ZAR=X), 2026-10-12 to 2026-11-10;
+ * the 2026-11-11 bar at the 2026-11-10 close." A bar no close was found for
+ * is said too.
+ */
+function historyConversionNote(fx: HistoryConversion, rows: readonly HistoryRow[]): string {
+  const to = currencyUnitLabel(fx.to, { ofMajor: true }), from = currencyUnitLabel(fx.from, { ofMajor: true });
+  // A minor unit of the same currency (GBp into GBP) is its fraction, read at no FX close.
+  if (fx.series.length === 0) {
+    const [fromUnit, toUnit] = [resolveCurrencyUnit(fx.from), resolveCurrencyUnit(fx.to)];
+    const [many, one] = fromUnit.divisor > toUnit.divisor ? [fx.from, fx.to] : [fx.to, fx.from];
+    return `Prices in ${to}, converted from ${from} at ${Math.max(fromUnit.divisor, toUnit.divisor) / Math.min(fromUnit.divisor, toUnit.divisor)} ${many} to 1 ${one}.`;
+  }
+  const pairs = fx.series.map(({ pair, symbol }) => `${pair} (${symbol})`).join(" and ");
+  const span = fx.firstDate && fx.lastDate ? `, ${fx.firstDate === fx.lastDate ? fx.firstDate : `${fx.firstDate} to ${fx.lastDate}`}` : "";
+  const last = rows.at(-1);
+  const lastDay = last?.date.slice(0, 10);
+  const latest = last?.interval === "1d" && last.fxDate && lastDay && last.fxDate < lastDay && last.partial
+    ? `; the ${lastDay} bar, still forming, at the ${last.fxDate} close` : "";
+  const missing = rows.filter((row) => row.fxRate == null).length;
+  const blank = missing > 0 ? `; ${missing} ${missing === 1 ? "bar" : "bars"} with no FX close in the week before left blank` : "";
+  return `Prices in ${to}, converted from ${from} at each date's daily close of ${pairs}${span}${latest}${blank}.`;
 }
 
 /** The command a listing that cannot be served is pointed back at: `history`, `history --range 5Y`. */
@@ -1821,7 +1995,7 @@ async function loadListingHistory(
     ...window ? [...windowHistoryNotes(window, data), coverage ?? []]
       : range === "YTD" ? ytdHistoryNotes(data) : [...historyNotes(range, interval, data[0]?.date, Date.now(), coverage != null), coverage ?? []],
     // The status line says how far a bar still forming runs; the note is for the bars it does not name.
-    gaps ?? [], historyJumpNote(data) ?? [], historyRescaleNote(data) ?? [], historyFlagNote(data) ?? [], historyWickNote(data) ?? [],
+    gaps ?? [], historyJumpNote(data) ?? [], historyRescaleNote(data) ?? [], historyFlagNote(data) ?? [], historyOpenNote(data) ?? [], historyWickNote(data) ?? [],
     historyMissingVolumeNote(data) ?? [],
     historyVenueVolumeNote(data) ?? [],
     // NG=F's rows are November's to the 23rd and December's from the 26th: each roll named, and thin bars said.
@@ -1957,6 +2131,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const window = historyWindowOption(args, rangeOption, ctx);
   const range = parseRange(rangeOption, ctx);
   const requestedExchange = takeOption(args, "--exchange");
+  // `--currency USD`: every bar's prices at its date's daily FX close.
+  const currencyAsked = takeHistoryCurrency(args, ctx);
   // One row a date and a close column a symbol, as a spreadsheet lays several series side by side.
   const wide = takeFlag(args, "--wide");
   // A continuous future stitched across its rolls, by difference unless `ratio` follows.
@@ -1989,17 +2165,19 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       ctx.fail(`"${typedRange}" reads as a range, not a symbol: give it as --range ${range}.`, `gloom history ${words.map(shell).join(" ")}`);
     }
     if (backAdjust) ctx.fail("--back-adjust stitches one continuous future, such as ES=F.", `Usage: gloom ${HISTORY_USAGE}`);
-    return runHistoryList(args, file, requestedExchange, ask, ctx, { wide });
+    return runHistoryList(args, file, requestedExchange, ask, ctx, { wide, currency: currencyAsked });
   }
+  if (backAdjust && currencyAsked) ctx.fail("--back-adjust stitches a future's prices in its contract's unit; --currency converts a listing's.");
   const raw = requireOneArg(args, HISTORY_USAGE, "symbol", ctx);
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, requestedExchange, market, ctx);
-    const history = await loadListingHistory(listing, market, ctx, ask, { lookups: true }).catch((error: unknown) => {
+    const loaded = await loadListingHistory(listing, market, ctx, ask, { lookups: true }).catch((error: unknown) => {
       // A word no source serves that names a currency (`history yen`) says which pair to ask for.
       const currency = !requestedExchange && isNoProviderError(error) ? currencyNameMiss(raw, "history") : null;
       if (currency) ctx.fail(currency.message, currency.details);
       throw error;
     });
+    const history = currencyAsked ? await convertListingHistory(loaded, currencyAsked, market, ctx) : loaded;
     const { identity, unit, interval, intraday, volume, freshness } = history;
     // Raw stays the default; --back-adjust stitches the contracts at the rolls the warning names, and lists them.
     const stitched = backAdjust ? await backAdjustListingHistory(history, backAdjust, market, ctx) : null;
@@ -2045,6 +2223,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         maxDrawdown: drawdown && contractDrawdown?.contract ? { ...drawdown, contract: contractDrawdown.contract } : drawdown,
         ...(runUp ? { maxRunUp: runUp } : {}),
         asOf: freshness?.asOf ?? null,
+        ...(history.fx ? { converted: history.fx } : {}),
         ...(volume ? { volumeUnit: volume.unit, volumePeriod: interval === "1d" ? "UTC day" : interval } : {}),
         ...(stitched ? { backAdjust: { method: backAdjust, rolls: stitched.rolls, ...(stitched.unstitched.length > 0 ? { unstitched: stitched.unstitched } : {}) } } : {}),
       },
@@ -2286,7 +2465,7 @@ async function runHistoryList(
   exchange: string | undefined,
   ask: HistoryAsk,
   ctx: Parameters<CliCommandDef["execute"]>[1],
-  { wide = false }: { wide?: boolean } = {},
+  { wide = false, currency = null }: { wide?: boolean; currency?: string | null } = {},
 ) {
   const usage = `Usage: gloom ${HISTORY_USAGE}`;
   await withMarketData(ctx, async (market) => {
@@ -2296,10 +2475,25 @@ async function runHistoryList(
     if (symbols.length === 0) ctx.fail(refused.length === 1 ? refused[0]!.message : `No history to read: ${refusedList(refused)} are not symbols.`, usage);
     // A long list is a batch, not a lookup: it skips the per-symbol venue and moved-company lookups, as `quote` does.
     const lookups = symbols.length <= MAX_CHOICE_LOOKUPS;
-    const listed = await mapWithConcurrency(symbols, HISTORY_LIST_CONCURRENCY, async (symbol): Promise<ListedHistory> => {
+    // Words typed apart that name one company ("Elbit Systems") are its listing, as `quote` reads them. A list read
+    // from a file or standard input, or past the lookups, is tickers: no word in it costs a quote to read as a name.
+    const typedList = file === undefined && !args.includes("-") && !exchange;
+    const read = await mapWithConcurrency(symbols, HISTORY_LIST_CONCURRENCY, async (symbol) => {
       try {
-        const listing = await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true });
-        return { symbol, history: await loadListingHistory(listing, market, ctx, ask, { lookups }) };
+        const listing = await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true, companyWord: lookups && typedList });
+        return { typed: symbol, listing };
+      } catch (error) {
+        return { typed: symbol, listing: null, error };
+      }
+    });
+    const entries = typedList ? await joinCompanyNameWords(read, market) : read;
+    const listed = await mapWithConcurrency(entries, HISTORY_LIST_CONCURRENCY, async (entry): Promise<ListedHistory> => {
+      const symbol = entry.typed;
+      try {
+        if (!("joined" in entry) && !entry.listing) throw entry.error;
+        const listing = "joined" in entry ? await resolveNamedListing(entry.joined, market) : entry.listing!;
+        const loaded = await loadListingHistory(listing, market, ctx, ask, { lookups });
+        return { symbol, history: currency ? await convertListingHistory(loaded, currency, market, ctx) : loaded };
       } catch (error) {
         const message = errorMessage(error) ?? `No history for ${symbol}`;
         return { symbol, error: isCliFailure(error) ? oneLineFailure(message, error.details) : message };
@@ -2473,7 +2667,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
   if (sectionFlag && !tabular) ctx.fail("--section picks one table of --csv or --ndjson output.");
   if (sectionFlag && !section?.trim()) ctx.fail("--section needs a section title or number.");
   // Several symbols are a comparison, which RV draws side by side.
-  const compared = view === "valuation" ? comparedSymbols(args) : null;
+  const compared = view === "valuation" && !typedCompanyName(args) ? comparedSymbols(args) : null;
   if (compared) {
     ctx.fail(`valuation takes one symbol; got ${compared.join(" ")}.`,
       `To compare their valuations side by side: gloom fn RV ${compared.join(",")}\nUsage: gloom valuation <symbol>`);
@@ -3798,7 +3992,6 @@ async function runFxOnDate(
 ) {
   const { request, amount, toUsdByDefault } = parsed;
   const { currency, baseCurrency } = request;
-  const pair = `${currency}/${baseCurrency}`;
   const history = market.fxHistory ?? apiClient;
   const codes = [...new Set([currency, baseCurrency].filter((code) => code !== "USD"))];
   const legs = new Map<string, FxCloseReading>([["USD", { rate: 1, date }]]);
@@ -3833,16 +4026,18 @@ async function runFxOnDate(
   const closeDate = [...legs.values()].map((leg) => leg.date).sort()[0]!;
   // When the closes were taken (17:00 New York), or that the source does not say: a central bank's fixing is another time.
   const basis = fxCloseBasis(codes.map((code) => legs.get(code)?.closedAt));
-  const converted = amount == null ? null : amount * rate;
+  // A minor unit (ZAc) is converted at its fraction of the major currency's close; the row is in the unit typed.
+  const unitRate = fxUnitRate(request, rate);
+  const converted = amount == null ? null : amount * unitRate;
   const row = {
-    currency, baseCurrency, rate, asOf: closeDate, stale: false, pair, inverse: 1 / rate, date,
+    ...fxRowSides(request, rate), rate: unitRate, asOf: closeDate, stale: false, inverse: 1 / unitRate, date,
     ...(amount == null ? {} : { amount, converted }),
   };
   const warnings = [
     ...request.readAs ?? [],
     ...closeDate < date ? [`No daily close on ${date}, a weekend or market holiday: this is the close of ${closeDate}, the trading day before it.`] : [],
     ...toUsdByDefault && amount != null
-      ? [`No target currency given, so ${currency} is converted to USD; for another, write fx ${args[0]!.trim()} ${currency}/<to> --date ${date}.`]
+      ? [`No target currency given, so ${fxSideCode(request, "currency")} is converted to USD; for another, write fx ${args[0]!.trim()} ${fxSideCode(request, "currency")}/<to> --date ${date}.`]
       : [],
   ];
   ctx.printResult({
@@ -3851,8 +4046,8 @@ async function runFxOnDate(
     freshness: rowsFreshness([], { status: "not-a-feed", basis, asOf: closeDate }),
     warnings: warnings.length > 0 ? warnings : undefined,
   }, {
-    text: () => amount == null ? rateLine : `${describeFxConversion(request, amount, rate)}\n${rateLine}`,
-    exportIdentity: { symbolOrSeries: pair, currencyOrUnit: `${baseCurrency} per ${currency}`, interval: "1day" },
+    text: () => amount == null && !request.units ? rateLine : `${describeFxConversion(request, amount ?? 1, rate)}\n${rateLine}`,
+    exportIdentity: { symbolOrSeries: row.pair, currencyOrUnit: `${row.baseCurrency} per ${row.currency}`, interval: "1day" },
     columns: [
       { key: "currency", header: "Currency" },
       { key: "baseCurrency", header: "Base" },
@@ -3868,6 +4063,18 @@ async function runFxOnDate(
       ]),
     ],
   });
+}
+
+/**
+ * The sides of an `fx` row as typed: a minor unit's code (ZAc/USD) where one
+ * was, with the major pair its rate is read from beside it.
+ */
+function fxRowSides(request: FxRequest, majorRate: number) {
+  const currency = fxSideCode(request, "currency"), baseCurrency = fxSideCode(request, "baseCurrency");
+  return {
+    currency, baseCurrency, pair: `${currency}/${baseCurrency}`,
+    ...request.units ? { majorPair: `${request.currency}/${request.baseCurrency}`, majorRate } : {},
+  };
 }
 
 /**
@@ -3939,6 +4146,11 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     const { request, amount, toUsdByDefault } = parsed;
     const { currency, baseCurrency } = request;
     const pair = `${currency}/${baseCurrency}`;
+    // A forward is a pair of currencies; pence or cents have none of their own.
+    if (tenor && request.units) {
+      const typed = `${fxSideCode(request, "currency")}/${fxSideCode(request, "baseCurrency")}`;
+      ctx.fail(`Forwards are on currencies, not their minor units: ${typed} is quoted as ${pair}.`, `gloom fx ${pair} --forward ${forwardOption}`);
+    }
     if (tenor && currency === baseCurrency) ctx.fail(`${pair} has no forward: both sides are ${currency}.`, `Usage: gloom ${FX_FORWARD_USAGE}`);
     // A carry is on an amount held: zero or less holds nothing, and a sign would turn who earns it around.
     if (tenor && amount != null && !(amount > 0)) {
@@ -3978,11 +4190,13 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     const asOf = observation && Number.isFinite(observation.updatedAt) ? new Date(observation.updatedAt).toISOString() : null;
     // A rate older than its feed's delay is stale, as `quote` says of the same quote.
     const stale = observation?.stale === true;
-    const converted = amount == null ? null : amount * rate;
+    // A minor unit (ZAc) is converted at its fraction of the major currency's rate; the row is in the unit typed.
+    const unitRate = fxUnitRate(request, rate);
+    const converted = amount == null ? null : amount * unitRate;
     // The day's move, as `quote` gives the pair's: against the previous daily close.
     const move = quoted ? fxQuoteRateMove(quoted) : null;
     const row = {
-      currency, baseCurrency, rate, asOf, stale, pair, inverse: 1 / rate,
+      ...fxRowSides(request, rate), rate: unitRate, asOf, stale, inverse: 1 / unitRate,
       ...(move ? { changePercent: move.percent, previousClose: move.previousRate } : {}),
       ...(quoted ? { quotes: quoted.quotes.map(({ symbol }) => symbol), ...(quoted.viaUsd ? { via: "USD" } : {}) } : {}),
       ...(quoted?.derivedFrom ? { derived: true, derivedFrom: quoted.derivedFrom } : {}),
@@ -4098,7 +4312,7 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
       // A currency typed as its name (yen) says which code it was read as.
       ...request.readAs ?? [],
       ...toUsdByDefault && amount != null
-        ? [`No target currency given, so ${currency} is converted to USD; for another, write fx ${args[0]!.trim()} ${currency}/<to>.`]
+        ? [`No target currency given, so ${fxSideCode(request, "currency")} is converted to USD; for another, write fx ${args[0]!.trim()} ${fxSideCode(request, "currency")}/<to>.`]
         : [],
       ...rateNotes,
     ];
@@ -4123,12 +4337,13 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     ctx.printResult({ data: [peso ? { ...row, ...pesoDollarRatesJson(peso) } : row], freshness, warnings: warnings.length > 0 ? warnings : undefined }, {
       // The conversion, then the rate it used; the source line under it dates that rate.
       text: () => [
-        ...amount == null ? [] : [describeFxConversion(request, amount, rate)],
+        // A minor unit says what one of it is, the conversion's step to its major currency, without an amount too.
+        ...amount == null && !request.units ? [] : [describeFxConversion(request, amount ?? 1, rate)],
         rateText,
         ...peso ? pesoDollarRateLines(peso) : [],
       ].join("\n"),
       // The rate is the base currency's price of one unit of the other, at the latest quote of each leg: USD per ZAR.
-      exportIdentity: { symbolOrSeries: pair, currencyOrUnit: `${baseCurrency} per ${currency}`, interval: quoted?.derivedFrom ? `derived from ${quoted.derivedFrom}` : "spot" },
+      exportIdentity: { symbolOrSeries: row.pair, currencyOrUnit: `${row.baseCurrency} per ${row.currency}`, interval: quoted?.derivedFrom ? `derived from ${quoted.derivedFrom}` : "spot" },
       columns: [
         { key: "currency", header: "Currency" },
         { key: "baseCurrency", header: "Base" },
@@ -4158,7 +4373,7 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
   await withCliServices(ctx, async (services) => {
     const symbols = await readSymbols(entries, services.dataProvider);
     const listings = await Promise.all(symbols.map((symbol) => requireCliListing(
-      symbol, exchangeOption, services, ctx, { ownExchangeWins: symbols.length > 1 },
+      symbol, exchangeOption, services, ctx, { ownExchangeWins: symbols.length > 1, companyWord: symbols.length <= MAX_CHOICE_LOOKUPS },
     )));
     const keys = listings.map((listing) => listing.key);
     // Each bare symbol's venues cost a search, so a long list (a portfolio check, not a lookup) names none.
@@ -4263,6 +4478,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         { flags: "--to <year|date>, --end <year|date>", description: PRICE_WINDOW_TO_HELP },
         { flags: "--file <path>", description: "Read the symbols from a text or CSV file, one per line (- reads standard input), and write every symbol's bars in one table" },
         { flags: "--wide", description: "One row per date and one close column per symbol, its unit in the header, in place of one long table" },
+        { flags: "--currency <code>", description: "Prices converted into that currency (USD) at each bar's date's daily FX close, the close before it on a day with none, the FX series named in a warning; each row keeps its rate, the close's date and its own close (fxRate, fxDate, localClose). Daily, weekly and monthly bars of a listing priced in a currency" },
         { flags: "--back-adjust [ratio]", description: "A continuous future (ES=F) stitched into one series at the rolls its bars name: every price before a roll moved by the gap between the two contracts that day (by difference, or scaled by their ratio with ratio), the rolls listed in a warning and in --json metadata.backAdjust. Daily bars, --range 5Y included; a roll whose contracts the source serves no bars of is left as traded and named. Raw front-month prices are the default" },
         EXCHANGE_OPTION,
       ],

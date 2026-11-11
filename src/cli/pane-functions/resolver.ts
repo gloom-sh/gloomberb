@@ -12,7 +12,9 @@ import { parseChartSpec } from "../../plugins/builtin/chart-composer/chart-spec"
 import { normalizeTickerInput } from "../../tickers/search";
 import { slugifyName } from "../../utils/slugify";
 import { fredSeriesArgument } from "../../series/fred-argument";
-import { listCoinNotes, ListingArgError, listingInstrument, listingReadNotes, resolveCliListing, usListingsOnlyMessage } from "../listing-arg";
+import {
+  type CliListing, listCoinNotes, ListingArgError, listingInstrument, listingReadNotes, MAX_CHOICE_LOOKUPS, resolveCliListing, usListingsOnlyMessage,
+} from "../listing-arg";
 import { uncoveredInstrumentKind, uncoveredInstrumentMessage } from "../../tickers/instrument-coverage";
 import { uncoveredInstrumentCommand } from "../uncovered-instrument";
 import { listingAbroadVenue } from "../../utils/sec";
@@ -237,15 +239,19 @@ export async function applyListingArgument(
   // A function that reads FRED series (MDAY) gets FRED:T10Y2Y as typed; any other is told it is no listing.
   const fred = takesOneTicker && headless?.fredSeriesArgument && typeof args.options.exchange !== "string" ? fredSeriesArgument(args.arg) : null;
   if (fred) return { ...args, arg: `FRED:${fred}` };
+  const exchange = typeof args.options.exchange === "string" ? args.options.exchange : undefined;
   // A ticker with spaces is no listing, unless it is a terminal's code for one ("JPM US Equity"). A company's name
-  // typed there (`fn RDCF "Palantir Technologies"`) stops before a report of dashes is drawn, as `quote` words a
-  // name that is no ticker, with the company search finds for it.
+  // typed there (`fn DES "Elbit Systems"`) is the listing search finds for it, read as `quote` reads it ("Read
+  // "Elbit Systems" as ESLT:NASDAQ (Elbit Systems Ltd.); also ESLT:TASE."); one search finds no company for stops
+  // before a report of dashes is drawn, as `quote` words a name that is no ticker.
+  let named: CliListing | null = null;
   if (takesOneTicker && /\s/.test(args.arg) && !await readTerminalCodeArg(context.dataProvider, args.arg)) {
     // A line written as a code with a market no venue answers to ("AAPL GP") is refused as the resolver words it.
     if (unknownBloombergMarket(args.arg)) await resolveCliListing(args.arg, undefined, context);
-    throw new ListingArgError(await notATickerWords(args.arg, context));
+    named = exchange ? null : await resolveCliListing(args.arg, undefined, context)
+      .catch(logFailure("cli.pane-functions-resolver", "Read a company's name typed for a function failed", null));
+    if (!named?.readAs || /\s/.test(named.symbol)) throw new ListingArgError(await notATickerWords(args.arg, context));
   }
-  const exchange = typeof args.options.exchange === "string" ? args.options.exchange : undefined;
   const { exchange: _exchange, ...options } = args.options;
   // A list entry with spaces, or an argument of words, is a company's name search finds, or the symbols it holds.
   const entered = takesOneTicker ? [args.arg] : await readNameEntries(splitSymbolArgs([args.arg], { phrases: true }), context.dataProvider);
@@ -254,7 +260,11 @@ export async function applyListingArgument(
   const aliases = exchange ? [] : entered.map((raw) => headless?.symbolAlias?.(raw) ?? null);
   const typed = entered.map((raw, index) => aliases[index]?.symbol ?? raw);
   // RY.TO is the listing its quote names, RY:TSX, as `quote` reads it: a function's data is read by venue.
-  let listings = await Promise.all(typed.map((raw) => resolveCliListing(raw, exchange, context, { ownExchangeWins: typed.length > 1, venueSuffix: true })));
+  // A long list is a batch of tickers: its words cost no quote each to be read as companies' names.
+  const companyWord = typed.length <= MAX_CHOICE_LOOKUPS;
+  let listings = named ? [named] : await Promise.all(typed.map((raw) => resolveCliListing(raw, exchange, context, {
+    ownExchangeWins: typed.length > 1, venueSuffix: true, companyWord,
+  })));
   // A separator stuck to the end of a pasted list (`UPST;`) is not part of a symbol; it is named.
   const notes: string[] = takesOneTicker ? [] : stripStrayEdges(args.arg).notes;
   notes.push(...aliases.flatMap((alias) => alias ? [alias.note] : []));

@@ -44,7 +44,8 @@ export function parseFxBoardAmount(text: string): FxBoardAmountRequest | { error
   if (amountFirst) {
     const parsed = parseFxArgs(ordered, "USD");
     if ("error" in parsed) return { error: parsed.error.replace(/\bfx (?=\d)/g, "") };
-    amount = parsed.amount ?? 1;
+    // The board lists currencies: an amount in a minor unit (100 ZAc) is its major currency's (R1.00).
+    amount = (parsed.amount ?? 1) / (parsed.request.units?.currency?.divisor ?? 1);
     from = parsed.request.currency;
     to = parsed.toUsdByDefault ? null : parsed.request.baseCurrency;
   } else {

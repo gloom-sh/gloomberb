@@ -45,7 +45,7 @@ import {
 import { relativeSymbolsFromPane } from "./relative-valuation-settings";
 
 type ExtendedColumnId = "preMarket" | "afterHours" | "overnight";
-type RelativeColumnId = "symbol" | "price" | "changePercent" | ExtendedColumnId | "marketCap" | "trailingPE" | "forwardPE" | "evSales" | "fcfYield" | "revenueGrowth" | "operatingMargin";
+type RelativeColumnId = "symbol" | "name" | "price" | "changePercent" | ExtendedColumnId | "marketCap" | "trailingPE" | "forwardPE" | "evSales" | "fcfYield" | "revenueGrowth" | "operatingMargin";
 type RelativeColumn = DataTableColumn & { id: RelativeColumnId };
 type RelativeRow = ReturnType<typeof relativeValuationValues> & {
   symbol: string;
@@ -107,12 +107,15 @@ function buildRelativeColumns(
   growthLabel = REVENUE_GROWTH_LABEL,
 ): RelativeColumn[] {
   const symbolWidth = 8;
+  const nameWidth = 16;
   const priceWidth = 10;
   const pctWidth = 8;
   const capWidth = 12;
   const metricWidth = 8;
   return [
     { id: "symbol", label: "TICKER", width: symbolWidth, align: "left" },
+    // The company each ticker was read as (MTN is Vail Resorts in New York); it takes the room the figures leave.
+    { id: "name", label: "NAME", width: nameWidth, flexGrow: 1, align: "left" },
     { id: "price", label: "LAST", width: priceWidth, align: "right" },
     { id: "changePercent", label: "CHG%", width: pctWidth, align: "right" },
     ...extendedSessions.map((session): RelativeColumn => ({
@@ -141,6 +144,7 @@ const DEFAULT_RELATIVE_SORT: RelativeSortPreference = { columnId: "marketCap", d
 
 function relativeSortValue(row: RelativeRow, columnId: RelativeColumnId): string | number | null {
   if (columnId === "symbol") return row.symbol.toLocaleLowerCase();
+  if (columnId === "name") return row.name?.toLocaleLowerCase() ?? null;
   if (columnId === "preMarket" || columnId === "afterHours" || columnId === "overnight") return extendedMove(row, columnId);
   return row[columnId];
 }
@@ -348,6 +352,8 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       case "symbol":
         // The listing as the CLI names it (ASML:AMS), not the key it is stored under (ASML:XAMS).
         return { text: canonicalTickerKey(row.symbol), color: row.error || row.quoteStale || row.fundamentalsProvenance?.stale ? colors.warning : colors.textBright, attributes: TextAttributes.BOLD };
+      case "name":
+        return { text: row.name ?? "-", color: row.name ? colors.text : colors.textDim };
       case "price":
         return { text: formatRelativePrice(row.price, row.currency), color: colors.text };
       case "changePercent":
@@ -388,7 +394,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
 
   const handleHeaderClick = useCallback((columnId: string) => {
     setSortPreference((current) => nextHeaderSort(current, columnId as RelativeColumnId, {
-      firstDirection: columnId === "symbol" ? "asc" : "desc",
+      firstDirection: columnId === "symbol" || columnId === "name" ? "asc" : "desc",
     }));
   }, []);
 

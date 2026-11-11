@@ -1,5 +1,5 @@
 import type { PricePoint, TickerFinancials } from "../types/financials";
-import { pricePointIntegrity, pricePointValues, pricePointWicks, priceHistoryIntegrityNotice, mergePriceHistoryIntegrity, type PriceHistoryIntegrity } from "../utils/price-history-integrity";
+import { pricePointIntegrity, pricePointOpenWithheld, pricePointValues, pricePointWicks, priceHistoryIntegrityNotice, mergePriceHistoryIntegrity, type PriceHistoryIntegrity } from "../utils/price-history-integrity";
 import { canonicalTimeSeriesFieldId, isFundamentalFieldId, isMarketFieldId } from "./field-catalog";
 import { extractFundamentalSeries } from "./fundamentals";
 import type { ChartSeriesPriceHistoryIntegrity, ResolvedSeries, SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
@@ -72,7 +72,8 @@ function aggregatePriceHistory(
   const buckets = new Map<string, AggregatedPricePoint>();
   for (const point of sorted) {
     const key = periodKey(point.date, period);
-    const open = isFiniteNumber(point.open) ? point.open : point.close;
+    // An open withheld as outside its bar's range (pricePointOpenWithheld) opens no week or month either.
+    const open = isFiniteNumber(point.open) && !pricePointOpenWithheld(point) ? point.open : point.close;
     // A wick too far from its bar's body to have traded does not set the week's or month's range.
     const wicks = pricePointWicks(point);
     const high = isFiniteNumber(wicks.high) ? wicks.high : isFiniteNumber(point.high) ? Math.max(open, point.close) : point.close;

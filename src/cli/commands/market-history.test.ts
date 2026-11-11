@@ -56,12 +56,13 @@ test("history CSV keeps the price columns first, every row ends with its flag, w
   const retrieved = lines.at(-1)!.replace("# Retrieval time: ", "");
   expect(lines.slice(0, 4)).toEqual([
     `${HISTORY_CSV_HEADER},${IDENTITY}`,
-    `2025-10-09,,,,,,low>open,false,false,false,,,,,,prices left blank: low>open,SBK.JO,ZAR,1d,Gloom Cloud,2025-10-10,${retrieved}`,
+    // Only the open is outside the range the rest of the bar agrees on: it alone is withheld, the bar flagged.
+    `2025-10-09,,253.3,246.23,252.46,3018311,open withheld,false,false,false,,,,,,,SBK.JO,ZAR,1d,Gloom Cloud,2025-10-10,${retrieved}`,
     `2025-10-10,249,258.15,249,256,4093192,,false,false,false,,,,,,,SBK.JO,ZAR,1d,Gloom Cloud,2025-10-10,${retrieved}`,
     "",
   ]);
   expect(lines.slice(4).map((line) => line.split(":")[0])).toEqual(["# Source", "# Publisher", "# Observation date", "# Publication time", "# Retrieval time"]);
-  expect(result.warnings).toEqual(["1 of 2 bars has low above open or close in the source data; their prices are left blank"]);
+  expect(result.warnings).toEqual(["The open of 2025-10-09 is outside its high and low in the source data; withheld, the rest of the bar kept (flag open withheld)"]);
   expect(result.metadata).toMatchObject({
     currency: "ZAR", unit: "ZAR", interval: "1d", requestedRange: "1Y", firstDate: "2025-10-09", lastDate: "2025-10-10", bars: 2,
   });
@@ -1034,4 +1035,84 @@ test("a yield's history reads its drawdown and its run-up in bp, each on its own
   } finally {
     setSystemTime();
   }
+});
+
+test("history --currency converts each bar at its date's daily FX close, the close before on a day with none, and names the series", async () => {
+  pinClosedSession();
+  // 2222 on Tadawul trades Sunday to Thursday; USD/SAR closes on weekdays only, so Sunday's bar is at Friday's close.
+  const cli = createTestCliContext({
+    config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+    dataProvider: createTestDataProvider({
+      getQuote: async () => createTestQuote({ symbol: "2222", currency: "SAR", listingExchangeName: "TADAWUL", marketState: "CLOSED" }),
+      getPriceHistoryWithMetadata: async () => ({
+        resolution: "1d",
+        points: [
+          { date: new Date("2026-11-01"), open: 26, high: 26.2, low: 25.9, close: 26.1, volume: 1000 },
+          { date: new Date("2026-11-02"), open: 26.1, high: 26.3, low: 26, close: 26.2, volume: 1000 },
+        ],
+      }),
+    }),
+    fxHistory: {
+      getCloudHistory: async (symbol: string) => ({
+        status: "success" as const,
+        data: symbol === "SAR=X" ? Object.entries({ "2026-10-30": 3.75, "2026-11-02": 3.7502, "2026-11-05": 3.7501 })
+          .map(([day, close]) => ({ date: `${day}T00:00:00.000Z`, close })) : [],
+      }),
+    },
+  }, { format: "json" });
+  await history.execute(["2222:TADAWUL", "--currency", "USD", "--range", "1M"], cli.context);
+  const [{ result }] = cli.printed;
+  const rows = result.data as Array<Record<string, unknown>>;
+  expect(rows.map((row) => [row.date, row.close, row.fxRate, row.fxDate, row.localClose, row.currency])).toEqual([
+    ["2026-11-01", Math.round(26.1 / 3.75 * 1e6) / 1e6, 1 / 3.75, "2026-10-30", 26.1, "USD"],
+    ["2026-11-02", Math.round(26.2 / 3.7502 * 1e6) / 1e6, 1 / 3.7502, "2026-11-02", 26.2, "USD"],
+  ]);
+  expect(result.metadata).toMatchObject({ currency: "USD", converted: { from: "SAR", to: "USD", series: [{ pair: "USD/SAR", symbol: "SAR=X" }] } });
+  expect(result.warnings?.[0]).toBe("Prices in USD, converted from SAR at each date's daily close of USD/SAR (SAR=X), 2026-10-30 to 2026-11-02.");
+});
+
+// A GBp listing loaded GBP/USD unscaled, 100 times over and labelled "GBp/USD"; ZAc, GBX and ILA listings were refused.
+test("history --currency reads a minor unit as its fraction of the major currency, either side, and pence into pounds at no FX", async () => {
+  pinClosedSession();
+  const fxRead: string[] = [];
+  const run = async (symbol: string, currency: string, close: number, args: string[]) => {
+    const cli = createTestCliContext({
+      config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+      dataProvider: createTestDataProvider({
+        getQuote: async () => createTestQuote({ symbol, currency, marketState: "CLOSED" }),
+        getPriceHistoryWithMetadata: async () => ({
+          resolution: "1d", points: [{ date: new Date("2026-11-02"), open: close, high: close, low: close, close, volume: 1000 }],
+        }),
+      }),
+      fxHistory: {
+        getCloudHistory: async (fx: string) => {
+          fxRead.push(fx);
+          const rate = ({ "GBPUSD=X": 1.25, "ZAR=X": 16, "ILS=X": 3.2 } as Record<string, number>)[fx];
+          return { status: "success" as const, data: rate ? ["2026-10-30", "2026-11-02"].map((day) => ({ date: `${day}T00:00:00.000Z`, close: rate })) : [] };
+        },
+      },
+    }, { format: "json" });
+    await history.execute([symbol, ...args, "--range", "1M"], cli.context);
+    const [{ result }] = cli.printed;
+    const [row] = result.data as Array<Record<string, unknown>>;
+    return { close: row!.close, currency: row!.currency, fxRate: row!.fxRate, note: result.warnings?.[0] };
+  };
+  // 115.8 pence on the LSE is £1.158, $1.4475.
+  expect(await run("VOD:LSE", "GBp", 115.8, ["--currency", "USD"])).toEqual({
+    close: 1.4475, currency: "USD", fxRate: 1.25 / 100,
+    note: "Prices in USD, converted from GBp (pence, 1/100 GBP) at each date's daily close of GBP/USD (GBPUSD=X), 2026-11-02.",
+  });
+  expect((await run("ISF:LSE", "GBX", 800, ["--currency", "USD"])).close).toBe(10);
+  // Cents on the JSE and agorot on TASE, at USD/ZAR and USD/ILS.
+  expect(await run("NPN:JSE", "ZAc", 77_800, ["--currency", "USD"])).toMatchObject({ close: 48.625, currency: "USD" });
+  expect(await run("LUMI:TASE", "ILA", 7_416, ["--currency", "USD"])).toMatchObject({ close: 23.175, currency: "USD" });
+  // Pence into pounds is the same currency: a hundredth, and no FX close is read.
+  fxRead.length = 0;
+  expect(await run("VOD:LSE", "GBp", 115.8, ["--currency", "GBP"])).toEqual({
+    close: 1.158, currency: "GBP", fxRate: 0.01, note: "Prices in GBP, converted from GBp (pence, 1/100 GBP) at 100 GBp to 1 GBP.",
+  });
+  expect(fxRead).toEqual([]);
+  // A minor unit asked for is that unit, never its major currency upper-cased: pounds into pence, dollars into pence.
+  expect(await run("VOD:LSE", "GBP", 1.158, ["--currency", "GBp"])).toMatchObject({ close: 115.8, currency: "GBp" });
+  expect(await run("AAPL", "USD", 250, ["--currency", "GBp"])).toMatchObject({ close: 20_000, currency: "GBp" });
 });
