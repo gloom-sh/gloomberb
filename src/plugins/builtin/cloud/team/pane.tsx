@@ -359,7 +359,10 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
   useEffect(() => {
     if (!team) return;
     return teamStore.onTeamUpdated((event) => {
-      if (event.teamId === team.id && event.change === "channels") void chatController.refreshChatState();
+      if (event.teamId === team.id && event.change === "channels") {
+        void chatController.refreshChatState()
+          .catch(logFailure("cloud.team.pane", "Refresh chat channels after a channel change failed"));
+      }
     });
   }, [team]);
 
@@ -487,8 +490,9 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
       accentColor: createDraft.accentColor,
     });
     teamStore.upsertTeam(created);
-    void teamStore.refresh();
-    void chatController.refreshChatState();
+    teamStore.refresh();
+    void chatController.refreshChatState()
+      .catch(logFailure("cloud.team.pane", "Refresh chat channels after creating a team failed"));
     setCreating(false);
     setTeamId(created.id);
     setSection("invites");
@@ -571,8 +575,9 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     const joined = await apiClient.acceptTeamInvitation(invitation.id);
     teamStore.removeInvitation(invitation.id);
     teamStore.upsertTeam(joined);
-    void teamStore.refresh();
-    void chatController.refreshChatState();
+    teamStore.refresh();
+    void chatController.refreshChatState()
+      .catch(logFailure("cloud.team.pane", "Refresh chat channels after joining a team failed"));
     setCreating(false);
     setTeamId(joined.id);
     setSection("members");
@@ -828,7 +833,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
                   void runRow(member.id, { row: `member:${member.id}`, verb: "Removing…", failure: "Remove failed" }, async () => {
                     const members = await apiClient.removeTeamMember(team.id, member.id);
                     setDetails((previous) => ({ ...previous, members }));
-                    void teamStore.refresh();
+                    teamStore.refresh();
                     return { tone: "info", text: `Removed ${userHandle(member.user)}.` };
                   });
                 }}
@@ -905,8 +910,9 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
                   void run("leave", async () => {
                     await apiClient.leaveTeam(team.id);
                     teamStore.removeTeam(team.id);
-                    void teamStore.refresh();
-                    void chatController.refreshChatState();
+                    teamStore.refresh();
+                    void chatController.refreshChatState()
+                      .catch(logFailure("cloud.team.pane", "Refresh chat channels after leaving a team failed"));
                     setTeamId(null);
                     if (teamStore.getSnapshot().teams.length <= 1) close?.();
                     return { tone: "info", text: `You left ${team.name}.` };
@@ -916,8 +922,9 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
                   void run("delete", async () => {
                     await apiClient.deleteTeam(team.id);
                     teamStore.removeTeam(team.id);
-                    void teamStore.refresh();
-                    void chatController.refreshChatState();
+                    teamStore.refresh();
+                    void chatController.refreshChatState()
+                      .catch(logFailure("cloud.team.pane", "Refresh chat channels after deleting a team failed"));
                     setTeamId(null);
                     if (teamStore.getSnapshot().teams.length <= 1) close?.();
                     return { tone: "info", text: `Deleted ${team.name}.` };
