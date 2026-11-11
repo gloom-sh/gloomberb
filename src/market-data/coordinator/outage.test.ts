@@ -174,4 +174,39 @@ describe("MarketDataCoordinator while the quote stream is down", () => {
     expect(coordinator.getQuoteEntry(instrument).data?.stale).toBeUndefined();
     stopStreaming();
   });
+
+  // Signed out at 07:16 UTC on a Wednesday, a dropped stream read every closed market's price as stale.
+  it("keeps a closed market's streamed price current, and reads it stale once the market could print", async () => {
+    const clock = createManualFrameDriver(0);
+    let now = Date.parse("2026-11-11T07:16:00Z");
+    Date.now = () => now;
+    let streamed: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => createTestFinancials(),
+      subscribeQuotes: (_targets, onQuote) => {
+        streamed = onQuote;
+        return () => {};
+      },
+    });
+    const coordinator = new MarketDataCoordinator(provider, { frames: new DataFrameScheduler(clock.driver) });
+    const instrument = { symbol: "NVDA", exchange: "NASDAQ" };
+    await coordinator.loadSnapshot(instrument);
+    const stopStreaming = coordinator.subscribeQuotes([{ instrument }]);
+    streamed!({ symbol: "NVDA", exchange: "NASDAQ" }, {
+      ...quote(170.48, Date.parse("2026-11-11T00:59:59Z")),
+      symbol: "NVDA", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ", marketState: "PREPRE", dataSource: "delayed",
+    });
+    clock.advance(0);
+
+    coordinator.setQuoteStreamDown(now);
+    expect(coordinator.getTickerFinancialsSync(instrument)?.quote?.stale).toBeUndefined();
+    expect(coordinator.getQuoteEntry(instrument).data?.stale).toBeUndefined();
+
+    // Still down at 04:20 New York: the delayed feed has reached the pre-market, and nothing brought its prints.
+    now = Date.parse("2026-11-11T09:20:00Z");
+    expect(coordinator.getTickerFinancialsSync(instrument)?.quote?.stale).toBe(true);
+    expect(coordinator.getQuoteEntry(instrument).data?.stale).toBe(true);
+    stopStreaming();
+    coordinator.destroy();
+  });
 });

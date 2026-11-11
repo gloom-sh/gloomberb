@@ -479,4 +479,48 @@ describe("useQuoteBoard streaming", () => {
     expect(quotes.get("^GSPC")?.quote?.price).toBe(101);
     coordinator.destroy();
   });
+
+  // A dropped stream read "17 stale" on a board of closed markets whose refresh had just come back.
+  test("a dropped stream marks only rows whose market trades, until the board's refresh answers; a failed refresh stays stale", async () => {
+    let emit: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;
+    let streamed: QuoteSubscriptionTarget[] = [];
+    const coordinator = new MarketDataCoordinator(createTestDataProvider({
+      subscribeQuotes: (targets, onQuote) => {
+        streamed = targets;
+        emit = onQuote;
+        return () => {};
+      },
+    }));
+    setSharedMarketDataCoordinator(coordinator);
+    let failing = false;
+    const states: Record<string, Quote["marketState"]> = { "^GSPC": "REGULAR", "^FTSE": "CLOSED" };
+    const { provider, calls } = batchProvider(() => failing ? new Error("Service unavailable") : SYMBOLS.map((symbol) => ({
+      target: { symbol, exchange: "" },
+      quote: { ...quote(symbol, 100), marketState: states[symbol] },
+    })));
+    await mount(provider, 60_000);
+    await settle(2);
+    // The feed's snapshot on subscribe is the same print the board loaded, a moment after it.
+    await act(async () => {
+      for (const target of streamed) emit!(target, { ...quote(target.symbol, 100), marketState: states[target.symbol], delivery: "stream" });
+    });
+    await settle(5);
+
+    await act(async () => coordinator.setQuoteStreamDown(Date.now()));
+    await settle(5);
+    // The closed market had nothing to bring; the open one has not been refreshed since the feed's last delivery.
+    expect(quotes.get("^FTSE")?.stale).toBe(false);
+    expect(quotes.get("^GSPC")?.stale).toBe(true);
+
+    await act(async () => refreshBoard());
+    await settle(5);
+    expect(quoteBoardStatus(quotes).stale).toBe(0);
+
+    failing = true;
+    await act(async () => refreshBoard());
+    await settle(5);
+    expect(calls.length).toBe(3);
+    expect(quotes.get("^GSPC")?.stale).toBe(true);
+    coordinator.destroy();
+  });
 });

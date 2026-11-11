@@ -22,6 +22,8 @@ export interface BoardQuoteState {
   error: string | null;
   /** The quote is the last good one, kept because the newest load returned nothing. */
   stale: boolean;
+  /** When the board's own load last answered this symbol with a current quote. */
+  answeredAt?: number;
 }
 
 export type BoardQuoteMap = Map<string, BoardQuoteState>;
@@ -104,6 +106,7 @@ function isFlaggedStale(quote: Quote): boolean {
  */
 function mergeQuotes(previous: BoardQuoteMap, loaded: BoardQuoteMap): BoardQuoteMap {
   const next: BoardQuoteMap = new Map(previous);
+  const now = Date.now();
   for (const [symbol, state] of loaded) {
     const current = state.quote && !isFlaggedStale(state.quote) ? state.quote : null;
     const kept = previous.get(symbol)?.quote ?? null;
@@ -113,6 +116,7 @@ function mergeQuotes(previous: BoardQuoteMap, loaded: BoardQuoteMap): BoardQuote
       loading: false,
       error: state.error,
       stale: !current && retained !== null,
+      ...(current ? { answeredAt: now } : {}),
     });
   }
   return next;
@@ -141,10 +145,20 @@ export function isStreamCarryingQuote(
   return quote.marketState !== "REGULAR" || now - receivedAt <= STREAM_SILENCE_MS;
 }
 
-/** The newer of the board's snapshot and the shared feed's quote, per symbol. */
+/**
+ * The newer of the board's snapshot and the shared feed's quote, per symbol.
+ * A feed quote flagged stale because the stream stopped is current again once
+ * the board's own refresh answers after the feed last delivered it: the row
+ * then shows the newer of the two prices, unflagged.
+ */
 function overlayStreamQuote(base: BoardQuoteState, streamed: Quote | null): BoardQuoteState {
   if (!finitePrice(streamed)) return base;
-  if (base.quote && (streamed.lastUpdated ?? 0) < (base.quote.lastUpdated ?? 0)) return base;
+  const baseTime = base.quote?.lastUpdated ?? 0;
+  if (base.quote && (streamed.lastUpdated ?? 0) < baseTime) return base;
+  if (streamed.stale === true && base.quote && !base.stale && base.answeredAt != null
+    && base.answeredAt >= (streamed.receivedAt ?? 0)) {
+    return (streamed.lastUpdated ?? 0) > baseTime ? { ...base, quote: { ...streamed, stale: false }, error: null } : base;
+  }
   if (base.quote === streamed && !base.stale && base.error === null) return base;
   return { quote: streamed, loading: base.loading, error: null, stale: streamed.stale === true };
 }
