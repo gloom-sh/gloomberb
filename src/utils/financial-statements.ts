@@ -131,6 +131,13 @@ const FILL_FIELDS: Record<StatementFillField | ResultsFillField, string> = {
   totalEquityGrossMinorityInterest: "total equity",
 };
 
+/** The day a row's lines filled from the company's results announcement were first published; null for any other row. */
+export function announcedDate(row: Pick<FinancialStatement, "filledFrom">): string | null {
+  const fill = row.filledFrom;
+  if (fill?.source !== "results" || fill.fields.length === 0) return null;
+  return fillDate(fill).date || null;
+}
+
 /** When a filled row's figures were published or read: an announcement's publication, ASX's read. */
 function fillDate(fill: StatementFill): { label: "read" | "published"; date: string } {
   if (fill.source === "asx") return { label: "read", date: fill.retrievedAt.slice(0, 10) };
@@ -148,9 +155,12 @@ function fillDate(fill: StatementFill): { label: "read" | "published"; date: str
  * keeps the lines the table has a row for. Null when no shown line was filled.
  */
 export function filledPeriodsNote(
-  statements: readonly Pick<FinancialStatement, "date" | "filledFrom">[],
+  statements: readonly (Pick<FinancialStatement, "date" | "filledFrom"> & { aggregation?: { kind: string; basis?: string } })[],
   shown?: ReadonlySet<string>,
 ): string | null {
+  // A TTM Gloom Cloud built from the year and the half since it says how.
+  const basis = statements.find(({ aggregation }) => aggregation?.kind === "annual-plus-interim")?.aggregation?.basis;
+  const trailing = basis ? `TTM is ${basis}, from the company's results announcements.` : null;
   const filled = statements.flatMap(({ date, filledFrom }) => {
     const source = filledFrom && FILL_SOURCES[filledFrom.source];
     const fields = [...new Set((filledFrom?.fields ?? [])
@@ -161,14 +171,13 @@ export function filledPeriodsNote(
     const months = filledFrom.source === "results" && filledFrom.periodMonths ? `${filledFrom.periodMonths} months to ` : "";
     return [{ end, period: `${months}${end}`, source, fields, stamp: fillDate(filledFrom) }];
   }).sort((left, right) => right.end.localeCompare(left.end));
-  if (filled.length === 0) return null;
+  if (filled.length === 0) return trailing;
   const sources = [...new Set(filled.map((period) => period.source))];
   // Each announcement dates its own period.
-  if (filled.every(({ stamp }) => stamp.label === "published")) {
-    return `From ${sources.join(" and ")}: ${filled.map(({ period, fields, stamp }) => `${period} ${fields.join(", ")} (published ${stamp.date})`).join("; ")}.`;
-  }
-  const read = filled.map(({ stamp }) => stamp.date).sort().at(-1);
-  return `From ${sources.join(" and ")} (read ${read}): ${filled.map(({ period, fields }) => `${period} ${fields.join(", ")}`).join("; ")}.`;
+  const note = filled.every(({ stamp }) => stamp.label === "published")
+    ? `From ${sources.join(" and ")}: ${filled.map(({ period, fields, stamp }) => `${period} ${fields.join(", ")} (published ${stamp.date})`).join("; ")}.`
+    : `From ${sources.join(" and ")} (read ${filled.map(({ stamp }) => stamp.date).sort().at(-1)}): ${filled.map(({ period, fields }) => `${period} ${fields.join(", ")}`).join("; ")}.`;
+  return trailing ? `${note} ${trailing}` : note;
 }
 
 /**

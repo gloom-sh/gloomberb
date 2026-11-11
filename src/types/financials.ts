@@ -808,6 +808,11 @@ export interface ResultsStatementFill {
   periodMonths?: number;
   /** A quarter derived as the difference of two year-to-date periods ("6 months to 2026-06-30 − 3 months to 2026-03-31"). */
   derived?: string;
+  /**
+   * Filled lines whose change over a year can be read against the statements source's row a year
+   * earlier: the document restates that period's figure as the source has it.
+   */
+  comparable?: ResultsFillField[];
 }
 
 export type StatementFill = ExchangeStatisticsFill | ResultsStatementFill;

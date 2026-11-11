@@ -1,7 +1,7 @@
 import type { FinancialStatement, TickerFinancials } from "../../../../types/financials";
 import { ebitdaLacksDepreciation } from "../../../../utils/ebitda";
 import { fiscalPeriodLabel, longerPeriodLabel, ttmPeriodLabel } from "../../../../utils/fiscal-period";
-import { statementPeriodMonths } from "../../../../utils/financial-statements";
+import { announcedDate, statementPeriodMonths } from "../../../../utils/financial-statements";
 import { formatPerShareNumber } from "../../../../utils/reported-money";
 import { hasNonIncomeStatementGap } from "../../../../utils/statement-gaps";
 import {
@@ -143,8 +143,9 @@ export function canCompareFinancialRow(
 ): boolean {
   if (!previous) return false;
   const key = row.kind === "group" ? row.summaryKey : row.key;
-  // A line filled from the exchange is not compared with the statements source's: the two define revenue differently.
-  if (key && filledLine(current, key) !== filledLine(previous, key)) return false;
+  // A line filled from the exchange is not compared with the statements source's: the two may define it
+  // differently. A results announcement that restates the source's figure for the year before is the same line.
+  if (key && filledLine(current, key) !== filledLine(previous, key) && !comparableLine(current, previous, key)) return false;
   const sameShareBasis = current.shareBasis === previous.shareBasis;
   if (key && SHARE_COUNT_FIELDS.has(key)) return sameShareBasis;
   if (key && PER_SHARE_EARNINGS_FIELDS.has(key) && !sameShareBasis) return false;
@@ -155,6 +156,13 @@ export function canCompareFinancialRow(
 
 function filledLine(statement: FinancialStatement, key: keyof FinancialStatement): boolean {
   return statement.filledFrom?.fields.some((field) => field === key) === true;
+}
+
+/** A line filled from the company's results announcement that Gloom Cloud found on the source's basis a year earlier. */
+function comparableLine(current: FinancialStatement, previous: FinancialStatement, key: keyof FinancialStatement): boolean {
+  const fill = current.filledFrom;
+  return fill?.source === "results" && !filledLine(previous, key)
+    && (fill.comparable ?? []).some((field) => field === key);
 }
 
 export function semanticGrowthValue(
@@ -218,6 +226,32 @@ export function formatFinancialHeader(date: string, currency?: string, dateSourc
   const label = currency ? `${period} ${currency}` : period;
   if (date === "TTM") return label;
   return `${label} ${dateSource === "sec" ? "(SEC date)" : "(provider date)"}`;
+}
+
+/**
+ * A report column's header (`gloom fn FA`): `formatFinancialHeader`, with a
+ * half in the quarterly list named as one (`H1 FY26 2026-06-30`, or
+ * `6M 2026-06-30` off the fiscal calendar), and a column Gloom Cloud filled
+ * from the company's results announcement dated by it: `(announced
+ * 2026-08-20)` for a period only the announcement gives, `(provider date;
+ * announced 2026-03-25)` for a provider's period whose lines it completes.
+ */
+export function financialReportHeader(
+  statement: FinancialTableStatement,
+  currency: string | undefined,
+  kind: FinancialPeriod,
+  yearEndMonth: number | null,
+): string {
+  const { date, dateSource } = statement;
+  if (date === "TTM") return formatFinancialHeader(date, currency, dateSource, false, statement.aggregation?.periodEnd).trim();
+  const end = date.slice(0, 10);
+  const months = kind === "quarterly" ? statementPeriodMonths(statement) : undefined;
+  const longer = months && months > 3 ? longerPeriodLabel(end, months, yearEndMonth) : null;
+  const period = !longer ? end : longer.endsWith(end) ? longer : `${longer} ${end}`;
+  const announced = announcedDate(statement);
+  const dated = dateSource === "sec" ? "SEC date" : dateSource === "provider" || !announced ? "provider date" : null;
+  const source = [dated, announced ? `announced ${announced}` : null].filter(Boolean).join("; ");
+  return `${currency ? `${period} ${currency}` : period} (${source})`;
 }
 
 /**
@@ -587,8 +621,11 @@ export function selectFinancialStatements(
     .reverse();
   const fromQuarters = period === "annual" && statement !== "balance" ? computeTTM(quarterlyStatements, annualStatements) : null;
   const served = period === "annual" && statement !== "balance" ? servedTrailingStatement(servedTrailing, annualStatements) : null;
-  // The newer of the two: four quarters, or the year plus the half since it.
-  const trailing = served && (!fromQuarters || served.aggregation!.periodEnd > (fromQuarters.aggregation?.periodEnd ?? ""))
+  // The newer of the two: four quarters, or the year plus the half since it. To the same day, the served
+  // one where a quarter lacks a headline line the four would need (Meituan's Q3 2025 revenue).
+  const quartersEnd = fromQuarters?.aggregation?.periodEnd ?? "";
+  const trailing = served && (!fromQuarters || served.aggregation!.periodEnd > quartersEnd
+    || (served.aggregation!.periodEnd === quartersEnd && lacksHeadline(fromQuarters, served)))
     ? served
     : fromQuarters;
   // Right after a fiscal year closes, the last four quarters are that year:
@@ -615,6 +652,12 @@ export function selectFinancialStatements(
     }
   }
   return { statements, previousStatementMap };
+}
+
+/** Whether four quarters summed lack a headline line the served TTM has. */
+function lacksHeadline(quarters: FinancialStatement, served: FinancialStatement): boolean {
+  return (["totalRevenue", "netIncome", "operatingCashFlow"] as const)
+    .some((key) => !Number.isFinite(quarters[key]) && Number.isFinite(served[key]));
 }
 
 export function buildFinancialTableModel(

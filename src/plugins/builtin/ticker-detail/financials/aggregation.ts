@@ -361,10 +361,14 @@ export function buildPreviousStatementMap(
     // Providers can include off-cycle 12-month observations (for example ADR
     // EPS) between fiscal years. They must not hide a comparable prior year.
     // More than one annual candidate is ambiguous; do not guess its identity.
-    const candidates = period === "annual"
+    // A half in the quarterly list compares with the same half a year earlier, never with a quarter.
+    const half = period === "quarterly" && (statementPeriodMonths(current) ?? 3) > 3;
+    const candidates = period === "annual" || half
       ? sourceStatements.filter((candidate) => {
         const days = (Date.parse(current.date) - Date.parse(candidate.date)) / 86_400_000;
-        return days >= 300 && days <= 430;
+        return half
+          ? days >= 350 && days <= 380 && statementPeriodMonths(candidate) === statementPeriodMonths(current)
+          : days >= 300 && days <= 430;
       })
       : [sourceStatements[index - 1]!];
     if (candidates.length !== 1) continue;
@@ -372,7 +376,7 @@ export function buildPreviousStatementMap(
     // A half beside a quarter is no change over a period.
     if (statementPeriodMonths(current) !== statementPeriodMonths(previous)) continue;
     const days = (Date.parse(current.date) - Date.parse(previous.date)) / 86_400_000;
-    const [minimum, maximum] = period === "annual" ? [300, 430] : [60, 120];
+    const [minimum, maximum] = period === "annual" ? [300, 430] : half ? [350, 380] : [60, 120];
     if (days < minimum! || days > maximum! || !Number.isFinite(days)) continue;
     previousMap.set(current.date, previous);
   }
