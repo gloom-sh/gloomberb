@@ -81,6 +81,8 @@ import { RegistrySlots } from "./slots";
 
 interface PluginRegistryOptions {
   enableCapabilityHandlers?: boolean;
+  /** `command` while one CLI command runs the plugins (`GloomPluginContext.runtime`); `app` by default. */
+  runtime?: "app" | "command";
   wrapBrokerAdapter?: (broker: BrokerAdapter, pluginId: string) => BrokerAdapter;
   connectionHealth?: ConnectionHealthRegistry;
   remoteCapabilityManifests?: () => CapabilityManifest[];
@@ -134,6 +136,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
   readonly tickerRepository: AppTickerRepositoryPort;
   readonly persistence: AppPersistencePort;
   private readonly enableCapabilityHandlers: boolean;
+  private readonly runtime: "app" | "command";
   private readonly wrapBrokerAdapter?: (broker: BrokerAdapter, pluginId: string) => BrokerAdapter;
   private readonly remoteCapabilityManifests?: () => CapabilityManifest[];
   private readonly remoteCapabilityInvoke?: <T>(
@@ -194,6 +197,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
     this.tickerRepository = tickerRepository;
     this.persistence = persistence;
     this.enableCapabilityHandlers = options.enableCapabilityHandlers ?? true;
+    this.runtime = options.runtime ?? "app";
     this.wrapBrokerAdapter = options.wrapBrokerAdapter;
     this.remoteCapabilityManifests = options.remoteCapabilityManifests;
     this.remoteCapabilityInvoke = options.remoteCapabilityInvoke;
@@ -633,6 +637,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
       connectionHealth: this.connectionHealth,
       tickerRepository: this.tickerRepository,
       ...this.createNamespacedContext(pluginId),
+      runtime: this.runtime,
       log: debugLog.createLogger(pluginId),
       paneSettings: createPluginPaneSettingsState({
         getLayout: () => this.getLayout(),

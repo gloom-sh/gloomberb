@@ -524,6 +524,35 @@ test("disposing alerts ignores an in-flight quote and does not schedule another 
   }
 });
 
+test("a CLI command's plugins check no alert, so a run like `gloom doctor` cannot fire one it would never mark as gone off", async () => {
+  // Already above its target: the app would fire it at its first check.
+  const store = new Map<string, unknown>([["alerts", serializeAlerts([makeAlert("armed", "BTC-USD:CCC", "above", 65_000)])]]);
+  const device = new Map<string, unknown>();
+  let quotes = 0;
+  let notifications = 0;
+  const ctx = {
+    runtime: "command",
+    registerCommand() {}, registerPane() {}, registerPaneTemplate() {},
+    configState: { get: (key: string) => store.get(key), set: (key: string, value: unknown) => { store.set(key, value); } },
+    resume: { getState: (key: string) => device.get(key) ?? null, setState: (key: string, value: unknown) => { device.set(key, value); }, deleteState: (key: string) => { device.delete(key); } },
+    marketData: {
+      getQuote: async (symbol: string) => { quotes += 1; return { symbol, price: 73_500, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.now(), dataSource: "live" }; },
+      subscribeQuotes: () => { quotes += 1; return () => {}; },
+    },
+    paneSettings: { get: () => "1" },
+    notify: () => { notifications += 1; },
+    log: { info() {}, warn() {}, error() {} },
+  };
+  try {
+    await alertsPlugin.setup?.(ctx as any);
+    await Bun.sleep(20);
+    expect({ quotes, notifications, fired: readFiredAlerts(device.get(FIRED_LOG_KEY)) }).toEqual({ quotes: 0, notifications: 0, fired: [] });
+    expect(deserializeAlerts(String(store.get("alerts")))[0]).toMatchObject({ status: "active" });
+  } finally {
+    alertsPlugin.dispose?.();
+  }
+});
+
 test("a completed daily close persists one technical trigger and in-app history, leaving price rules intact", async () => {
   const now = spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-23T20:30Z"));
   const price = serializeAlerts([makeAlert("price", "AAPL", "above", 250, "triggered")]);

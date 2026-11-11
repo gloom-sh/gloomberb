@@ -141,6 +141,8 @@ export async function initCliServices(options: CliServicesOptions = {}) {
     plugins: getLoadablePlugins(options.externalPlugins ?? []),
     externalPlugins: options.externalPlugins ?? [],
     interactive: false,
+    // The command exits once it has answered: no alert poller or stream starts for it.
+    runtime: "command",
   });
   services.providerRouter.setConfigAccessor(() => config);
   services.providerRouter.setBackgroundRevalidation(false);

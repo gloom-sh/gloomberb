@@ -111,6 +111,8 @@ function buildDiscoveryContext({
     connectionHealth,
     tickerRepository,
     persistence: fakePersistence,
+    // A command's plugins start no pollers or streams.
+    runtime: "command",
     log: {
       debug: () => {},
       info: () => {},
