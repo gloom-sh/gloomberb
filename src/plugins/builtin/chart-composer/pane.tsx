@@ -64,6 +64,7 @@ import { getTimeSeriesField, isMarketFieldId } from "../../../time-series/field-
 import { isDatasetChart, isOhlcSeriesStyle } from "../../../time-series/spec";
 import { useThemeColors } from "../../../theme/theme-context";
 import { comparisonLegCurrencies, priceComparisonSeriesIds } from "../../../time-series/price-comparison";
+import { companyLegendLabels } from "./legend-names";
 import { seriesMessageName, studyMessageName } from "../../../time-series/series-name";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
@@ -500,13 +501,7 @@ function ChartComposerSurface({
       if (!company || named.has(company)) return entry;
       named.add(company);
       const symbol = authored?.source.kind === "security" ? authored.source.instrument.symbol : null;
-      // A name that starts with the ticker (CF Industries Holdings for CF) names it once, not "CF CF Industries".
-      const tickerLed = !!symbol && company.toUpperCase().startsWith(`${symbol.toUpperCase()} `);
-      return {
-        ...entry,
-        label: tickerLed && entry.label === symbol ? company : `${entry.label} · ${company}`,
-        ...(symbol && seriesPerSymbol.get(symbol) === 1 ? { compactLabel: tickerLed ? company : `${symbol} ${company}` } : {}),
-      };
+      return { ...entry, ...companyLegendLabels(entry.label, symbol, company, !!symbol && seriesPerSymbol.get(symbol) === 1) };
     });
     // Returns compared across currencies, or converted into one, say each leg's currency beside its return.
     const legCurrencies = comparisonLegCurrencies(resolved, resolution.priceComparison?.seriesIds, spec.viewport.currency);
