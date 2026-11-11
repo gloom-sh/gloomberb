@@ -292,11 +292,14 @@ async function resolveChartSpecWindow(
 /**
  * The splits a comparison's listings took inside their windows, read from
  * each listing's corporate actions (once per chart, as total returns read
- * them). A listing whose actions cannot be read says nothing.
+ * them), and any jump of a leg's closes no split-adjusted series makes
+ * (comparisonSplitNotice). A listing whose actions cannot be read names no
+ * split; its jumps are still named.
  */
 async function comparedSplitNotice(
   spec: ChartSpec,
   comparison: PriceComparison,
+  series: readonly ResolvedSeries[],
   loadActions: (source: Extract<ChartSeriesSpec["source"], { kind: "security" }>) => Promise<CorporateActionsData | null>,
   now: number,
 ): Promise<string | null> {
@@ -307,7 +310,7 @@ async function comparedSplitNotice(
       logFailure("time-series-resolve", "Loading splits for a comparison failed")(error);
       return null;
     });
-    return actions?.splits?.length ? { id, label: source.instrument.symbol, splits: actions.splits } : null;
+    return { id, label: source.instrument.symbol, splits: actions?.splits ?? [], points: series.find((entry) => entry.id === id)?.points };
   }));
   return comparisonSplitNotice(comparison, legs.filter((leg) => leg !== null), now);
 }
@@ -1141,7 +1144,7 @@ async function resolveChartSpecPass(
     priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, requestBounds ? null : spec.viewport.dateWindow,
       { ...comparisonOptions, atSessionClose: timed.timing.atSessionClose, closedEnds: timed.timing.closedEnds });
   }
-  const splitNotice = priceComparison?.legs ? await comparedSplitNotice(spec, priceComparison, loadDistributions, comparisonOptions.now) : null;
+  const splitNotice = priceComparison?.legs ? await comparedSplitNotice(spec, priceComparison, rawSeries, loadDistributions, comparisonOptions.now) : null;
   const displayBounds = comparisonDisplayBounds(bounds, priceComparison);
   const comparisonBounds = priceComparison && priceComparison.start !== null
     ? priceComparison : bounds;
