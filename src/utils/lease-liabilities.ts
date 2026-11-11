@@ -39,15 +39,25 @@ const close = (a: number, b: number) => Math.abs(a - b) <= Math.max(1_000, Math.
 
 /**
  * A balance sheet's total debt and lease liabilities. A total that already holds the lease line (long-term and
- * current debt plus leases) is read as the borrowings beside it, so the leases count once. Undefined without both
- * lines: a missing lease line is never zero.
+ * current debt plus leases) is read as the borrowings beside it, so the leases count once. A sheet with no total
+ * but both debt-and-lease lines, which hold the leases, has borrowings of what is left of them (Pop Mart's June
+ * 2026 sheet: 3.06bn and 0.67bn of lines, all 3.73bn of it leases). Undefined without the lines: a missing lease
+ * line is never zero.
  */
 export function debtAndLeases(
-  statement: Pick<FinancialStatement, "totalDebt" | "capitalLeaseObligations" | "longTermDebt" | "currentDebt">,
+  statement: Pick<FinancialStatement, "totalDebt" | "capitalLeaseObligations" | "longTermDebt" | "currentDebt"
+    | "longTermDebtAndCapitalLeaseObligation" | "currentDebtAndCapitalLeaseObligation">,
 ): { totalDebt: number; leases: number } | undefined {
-  const total = statement.totalDebt;
   const leases = statement.capitalLeaseObligations;
-  if (!finite(total) || !finite(leases) || leases < 0) return undefined;
+  if (!finite(leases) || leases < 0) return undefined;
+  const total = statement.totalDebt;
+  if (!finite(total)) {
+    const { longTermDebtAndCapitalLeaseObligation: longLines, currentDebtAndCapitalLeaseObligation: currentLines } = statement;
+    if (!finite(longLines) || !finite(currentLines)) return undefined;
+    const lines = longLines + currentLines;
+    if (close(lines, leases)) return { totalDebt: 0, leases };
+    return lines > leases ? { totalDebt: lines - leases, leases } : undefined;
+  }
   const { longTermDebt: long, currentDebt: current } = statement;
   const holds = leases > 0 && (finite(long) || finite(current)) && close(total, (long ?? 0) + (current ?? 0) + leases);
   return { totalDebt: holds ? total - leases : total, leases };

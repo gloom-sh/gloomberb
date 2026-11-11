@@ -93,6 +93,17 @@ describe("an EV the source withdrew", () => {
       + " + minority interest and preferred equity 360 (balance sheet 2026-06-30, CNY at 1.200 HKD as of 2026-11-11), the source's EV being withdrawn.");
   });
 
+  test("reads the borrowings from the debt-and-lease lines of a sheet with no total debt: here all of them leases", () => {
+    const model = projectReverseDcf(halfYears({ longTermDebtAndCapitalLeaseObligation: 3_060, currentDebtAndCapitalLeaseObligation: 640,
+      cashCashEquivalentsAndShortTermInvestments: 14_000 }), { symbol: "9992:HKEX", discountRate: 0.09 });
+    // 195,000 + (0 + 3,700 - 14,000) x 1.2 = 182,640
+    expect(model).toMatchObject({ enterpriseValue: 182_640, enterpriseValueSheet: "Jun 30, 2026", missing: [], error: null });
+    // Lines short of the leases they hold are not read as borrowings.
+    expect(projectReverseDcf(halfYears({ longTermDebtAndCapitalLeaseObligation: 1_000, currentDebtAndCapitalLeaseObligation: 640,
+      cashCashEquivalentsAndShortTermInvestments: 14_000 }), { symbol: "9992:HKEX", discountRate: 0.09 }).missing[0]?.needs)
+      .toBe("total debt on the Jun 30, 2026 balance sheet");
+  });
+
   test("names what the statements lack and where to read them, as a limit and not an error", () => {
     const model = projectReverseDcf(halfYears({ cashCashEquivalentsAndShortTermInvestments: 14_000 }), { symbol: "9992:HKEX", discountRate: 0.09 });
     expect(model).toMatchObject({ enterpriseValue: null, implied: null, error: null,
