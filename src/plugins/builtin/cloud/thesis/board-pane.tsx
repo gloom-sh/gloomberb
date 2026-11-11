@@ -271,7 +271,7 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
     if (isPlainKey(event, "n")) void startFor();
     else if (isPlainKey(event, "w")) setMode(mode === "board" ? "weights" : "board");
     else if (isPlainKey(event, "p")) cycleScope(1);
-    else if (isPlainKey(event, "r")) void thesisStore.refresh();
+    else if (isPlainKey(event, "r")) thesisStore.refresh();
     else return;
     event.stopPropagation?.();
     event.preventDefault?.();

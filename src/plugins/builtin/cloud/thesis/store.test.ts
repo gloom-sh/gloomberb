@@ -42,6 +42,24 @@ function setup(cached: CloudThesis[] = []) {
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("ThesisStore refresh", () => {
+  test("a refresh in flight is shared, and its failure lands in state with the list kept", async () => {
+    const { store, requests } = setup([thesis("cached")]);
+    expect(store.refresh()).toBeUndefined();
+    const waiting = store.refreshAndWait();
+    store.refresh();
+    expect(store.refreshAndWait()).toBe(waiting);
+    expect(requests).toHaveLength(1);
+    expect(store.getSnapshot().loading).toBe(true);
+
+    requests[0]!.reject(new Error("offline"));
+    await waiting;
+    expect(store.getSnapshot()).toMatchObject({ loading: false, loaded: true, error: "offline", offline: true });
+    expect(store.getSnapshot().theses.map((entry) => entry.id)).toEqual(["cached"]);
+
+    store.refresh();
+    expect(requests).toHaveLength(2);
+  });
+
   test("a request from before a restart cannot fail the refresh that replaced it", async () => {
     const { store, requests } = setup([thesis("cached")]);
     store.start();
