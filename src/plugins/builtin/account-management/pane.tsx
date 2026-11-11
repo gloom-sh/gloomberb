@@ -37,6 +37,7 @@ import { apiClient, type AccountProfile, type CloudPricing } from "../../../api-
 import { chatController } from "../chat/controller";
 import { SignInWall } from "../cloud/auth-actions";
 import { loadUpgradeOffer } from "../../../account/upgrade-dialog";
+import { changeAccountPassword } from "../../../account/auth-model";
 import { openMcpConnectDialog } from "../cloud/mcp-connect/dialog";
 import { TeamsAccountTab } from "../cloud/team/acm-tab";
 import { AgentsAccountTab } from "../cloud/terminal-relay/acm-tab";
@@ -575,7 +576,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
             setBusy("password");
             setMessage({ tone: "info", text: t("Changing password...") });
             try {
-              await apiClient.changePassword(currentPassword, newPassword);
+              await changeAccountPassword(currentPassword, newPassword);
               setMessage({ tone: "success", text: t("Password changed.") });
             } catch (error) {
               setMessage({

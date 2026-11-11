@@ -1,8 +1,8 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { apiClient, type AuthUser } from "../api-client";
+import { apiClient, setCloudApiFetchTransport, type AuthUser } from "../api-client";
 import { ChatController, chatController } from "../plugins/builtin/chat/controller";
 import { MemoryPluginPersistence } from "../test-support/plugin-persistence";
-import { performEmailAuth } from "./auth-model";
+import { changeAccountPassword, performEmailAuth } from "./auth-model";
 import { DeviceSignInController } from "./device-signin";
 import { accountSession, registerAccountSession } from "./session";
 
@@ -10,6 +10,7 @@ const restore: Array<() => void> = [];
 let sessionOwner: ChatController | undefined;
 afterEach(() => {
   restore.splice(0).forEach((reset) => reset());
+  setCloudApiFetchTransport(null);
   sessionOwner?.reset(true);
   sessionOwner?.dispose();
   registerAccountSession(chatController);
@@ -75,4 +76,56 @@ test.each(["email", "device"] as const)("%s sign-in persists through the registe
   });
   expect(apiClient.getSessionToken()).toBe("account-test-token");
   expect(apiClient.getCurrentUser()?.id).toBe(user.id);
+});
+
+const passwordUser: AuthUser = {
+  id: "password-change-test", email: "password@example.invalid", username: "password",
+  name: "Password", emailVerified: true, plan: "free", image: null, createdAt: "", updatedAt: "",
+};
+const NEW_SESSION = "__Secure-gloomberb.session_token=new-session.signature%3D; Max-Age=604800; Path=/; HttpOnly; Secure; SameSite=Lax";
+
+test.each([
+  ["answers", 200, { token: null, user: passwordUser, signedOut: { sessions: 2, agents: 0 } }],
+  ["says other devices are still signed in", 500, {
+    message: "Your password changed, but other devices are still signed in: use Sign out other devices.",
+    passwordChanged: true,
+    signedOut: null,
+  }],
+] as const)("a password change that %s keeps the app signed in on its new session, after a restart too", async (_case, status, body) => {
+  apiClient.setSessionToken(null);
+  apiClient.restoreCachedUser(null);
+  const persistence = new MemoryPluginPersistence();
+  sessionOwner = new ChatController();
+  sessionOwner.attachPersistence(persistence);
+  registerAccountSession(sessionOwner);
+  sessionOwner.adoptSession("old-session.signature%3D", passwordUser);
+  const refresh = spyOn(sessionOwner, "refreshSession").mockResolvedValue(undefined);
+  restore.push(() => refresh.mockRestore());
+  const sentWith: string[] = [];
+  setCloudApiFetchTransport(async (_url, init) => {
+    sentWith.push(new Headers(init?.headers).get("cookie") ?? "");
+    return Response.json(body, { status, headers: { "set-cookie": NEW_SESSION } });
+  });
+
+  const changed = changeAccountPassword("old-password", "new-password");
+  if (status === 200) await changed;
+  else await expect(changed).rejects.toThrow(
+    "Your password changed, but other devices are still signed in: use Sign out other devices.",
+  );
+
+  expect(sentWith[0]).toContain("old-session.signature%3D");
+  expect(apiClient.getSessionToken()).toBe("new-session.signature%3D");
+  expect(persistence.getState("session", { schemaVersion: 1 })).toMatchObject({
+    sessionToken: "new-session.signature%3D", user: { id: passwordUser.id },
+  });
+  expect(refresh).toHaveBeenCalledTimes(1);
+
+  // A restart restores the new session, not the one the change ended.
+  sessionOwner.dispose();
+  apiClient.setSessionToken(null);
+  apiClient.restoreCachedUser(null);
+  sessionOwner = new ChatController();
+  sessionOwner.attachPersistence(persistence);
+  expect(apiClient.getSessionToken()).toBe("new-session.signature%3D");
+  expect(apiClient.getCurrentUser()?.id).toBe(passwordUser.id);
 });
