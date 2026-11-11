@@ -84,4 +84,13 @@ test("a minor unit reads as a fraction of its major currency, pence only in thei
   expect(parseFxRequest("USD/GBp", "USD")).toEqual({ currency: "USD", baseCurrency: "GBP", units: { baseCurrency: { code: "GBp", divisor: 100 } } });
   expect(parseFxRequest("gbp/USD", "USD")).toEqual({ currency: "GBP", baseCurrency: "USD" });
   expect(parseFxArgs(["100", "ZAc", "USD"], "GBP")).toMatchObject({ request: { currency: "ZAR", units: { currency: { code: "ZAc" } } }, amount: 100 });
+  // `fx GBp-USD` and `fx GBpUSD` quoted pounds: a pair spelled without its slash keeps its unit as typed.
+  const pence = { currency: "GBP", baseCurrency: "USD", units: { currency: { code: "GBp", divisor: 100 } } };
+  expect(parseFxRequest("GBp-USD", "EUR")).toEqual(pence);
+  expect(parseFxRequest("GBpUSD", "EUR")).toEqual(pence);
+  expect(parseFxRequest("zacusd", "EUR")).toEqual({ currency: "ZAR", baseCurrency: "USD", units: { currency: { code: "ZAc", divisor: 100 } } });
+  expect(parseFxRequest("USD-ILA", "EUR")).toEqual({ currency: "USD", baseCurrency: "ILS", units: { baseCurrency: { code: "ILA", divisor: 100 } } });
+  expect(parseFxArgs(["100", "GBpUSD"], "EUR")).toEqual({ request: pence, amount: 100 });
+  expect(parseFxRequest("GBPUSD", "EUR")).toEqual({ currency: "GBP", baseCurrency: "USD" });
+  expect(parseFxRequest("gbp-usd", "EUR")).toEqual({ currency: "GBP", baseCurrency: "USD" });
 });

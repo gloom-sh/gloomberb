@@ -38,7 +38,7 @@ const CURRENCY_CODE = /^[A-Z]{3}$/;
  * case, as GBP and gbp are pounds; the others are no ISO code, so any case is
  * the unit, never upper-cased into a currency of their own.
  */
-function fxSubUnit(typed: string): (FxSubUnit & { currency: string }) | null {
+export function fxSubUnit(typed: string): (FxSubUnit & { currency: string }) | null {
   const text = typed.trim();
   if (text === "GBp") return { code: "GBp", currency: "GBP", divisor: 100 };
   const upper = text.toUpperCase();
@@ -87,15 +87,27 @@ function spelledPair(text: string): FxRequest | null {
   return match ? { currency: match[1]!, baseCurrency: match[2]! } : null;
 }
 
+/**
+ * A pair with a minor unit for a side, spelled without its slash: GBp-USD,
+ * GBpUSD, ZACUSD, USD-ILA. Its two sides as typed, so the unit keeps its
+ * own case (GBp is pence, GBP pounds); null for anything else, which
+ * `spelledPair` reads.
+ */
+function unitPairSides(typed: string): [string, string] | null {
+  const match = /^([A-Za-z]{3})[-_ ]?([A-Za-z]{3})$/.exec(typed.trim());
+  return match && (fxSubUnit(match[1]!) || fxSubUnit(match[2]!)) ? [match[1]!, match[2]!] : null;
+}
+
 /** Whether `fx` reads the argument as a pair spelled without its slash (`spelledPair`). */
 function isSpelledFxPair(raw: string): boolean {
-  return spelledPair(raw.trim().toUpperCase()) != null;
+  return unitPairSides(raw) != null || spelledPair(raw.trim().toUpperCase()) != null;
 }
 
 /** The request, or the sentence saying what is wrong with the argument. */
 export function parseFxRequest(raw: string, baseCurrency: string): FxRequest | { error: string } {
-  const typed = raw.trim().split("/").map((part) => part.trim());
-  const text = raw.trim().toUpperCase();
+  // A side typed as a minor unit is read as one however the pair is spelled (GBp-USD, GBpUSD), before `spelledPair` upper-cases it.
+  const typed = unitPairSides(raw) ?? raw.trim().split("/").map((part) => part.trim());
+  const text = typed.join("/").toUpperCase();
   const parts = typed.map((part) => part.toUpperCase());
   if (parts.length > 2 || parts.some((part) => !part)) return { error: `"${raw}" is not a currency or a pair such as USD/NGN.` };
   // The pair spellings `quote` takes: EURUSD, eur-usd, EURUSD=X.

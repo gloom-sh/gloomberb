@@ -74,7 +74,7 @@ import { loadStatementFilings } from "../statement-filings";
 import { loadBankFigures } from "../bank-section";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
-import { currencyCodeLabel } from "../../utils/currency-units";
+import { currencyCodeLabel, currencyUnitLabel, resolveCurrencyUnit } from "../../utils/currency-units";
 import { fxRateDigits, quotedFxPair } from "../../utils/currency-pair";
 import {
   futuresContractLines, futuresPricePer, futuresPriceUnit, futuresRollLines, futuresTickOption, isFuturesInstrument, loadFuturesContractTerms, loadUsdPerMmbtu,
@@ -288,6 +288,7 @@ import {
   resolveCliListing,
   joinCompanyNameWords,
   resolveNamedListing,
+  MAX_CHOICE_LOOKUPS,
   type CliListing,
   type ListingIdentity,
 } from "../listing-arg";
@@ -327,7 +328,7 @@ import { noSecReportsNotice, nonUsSecListingVenue, secFilingItemCodes } from "..
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
 import { answerQuote, errorMessage, notUsTickerSentence, withJoinedCompanyNames } from "../quote-answer";
-import { crossRate, describeFxConversion, describeFxLegs, describeFxRate, formatFxAmount, formatFxRate, FX_USAGE, fxSideCode, fxUnitRate, parseFxArgs, type FxQuotedFigure, type FxRequest } from "../fx-pair";
+import { crossRate, describeFxConversion, describeFxLegs, describeFxRate, formatFxAmount, formatFxRate, FX_USAGE, fxSideCode, fxSubUnit, fxUnitRate, parseFxArgs, type FxQuotedFigure, type FxRequest } from "../fx-pair";
 import {
   describeCarrySides,
   describeShortRate,
@@ -1138,8 +1139,6 @@ function earningsRows(events: ResolvedEarningsEvent[]) {
   }));
 }
 
-/** Symbols at most whose venues a command looks up to name the company each bare one went to. */
-const MAX_CHOICE_LOOKUPS = 10;
 
 /**
  * The line `quote` prints beside a symbol that changed, as `history` and
@@ -1655,6 +1654,7 @@ interface ListingHistory {
 
 /** A history's prices converted into another currency at each bar's daily FX close (`convertListingHistory`). */
 interface HistoryConversion {
+  /** The codes as the prices are written, a minor unit as such (GBp, ZAc). */
   from: string;
   to: string;
   /** The pairs whose daily closes were read, as `fx` names them (USD/ZAR), with the symbol they are read under (ZAR=X). */
@@ -1664,19 +1664,30 @@ interface HistoryConversion {
   lastDate: string | null;
 }
 
-/** `history --currency`'s code: three letters, the currency the prices are converted into; null without the option. */
+/**
+ * `history --currency`'s code: three letters, the currency the prices are
+ * converted into; null without the option. A minor unit (GBp, GBX, ZAc, ILA)
+ * is that unit, as `fx` reads it, never upper-cased into a currency: GBp is
+ * pence, GBP pounds.
+ */
 function takeHistoryCurrency(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]): string | null {
   const typed = takeOption(args, "--currency");
   if (typed == null) return null;
-  const code = typed.trim().toUpperCase();
-  if (!dailyFxLeg(code) && code !== "USD") ctx.fail(`--currency takes a currency's code, such as USD: "${typed}" is none.`);
+  const minor = fxSubUnit(typed);
+  const code = minor?.code ?? typed.trim().toUpperCase();
+  const major = minor?.currency ?? code;
+  if (!dailyFxLeg(major) && major !== "USD") ctx.fail(`--currency takes a currency's code, such as USD: "${typed}" is none.`);
   return code;
 }
 
 /**
  * `history --currency USD`: each bar's prices converted from the listing's
  * currency at the daily FX close of its date, the close before it on a day
- * with none (a Sunday bar on Tadawul), never a rate of another week. A bar
+ * with none (a Sunday bar on Tadawul), never a rate of another week. A price
+ * in a minor unit (pence, GBp or GBX; cents, ZAc; agorot, ILA) is read as its
+ * fraction of the major currency, whose closes are read, and a minor unit
+ * converted into is the same fraction: 115.8 GBp is £1.158, never 115.8
+ * pounds, and GBp into GBP is no FX at all. A bar
  * still forming is converted at the latest close. Each row keeps its rate,
  * that close's date and its own close in `fxRate`, `fxDate` and
  * `localClose`, and a warning names the FX series read. Volume stays in
@@ -1696,10 +1707,16 @@ async function convertListingHistory(
     ctx.fail(`--currency converts prices in a currency; ${history.listing.key} is in ${unit.unit ?? "no stated unit"}.`);
   }
   if (history.intraday) ctx.fail("--currency converts daily, weekly and monthly bars at each date's daily FX close: give a range of a month or longer.");
-  if (from === to || history.data.length === 0) return history;
+  // Each side as its major currency and how many of its unit make one (GBp: GBP, 100).
+  const fromUnit = resolveCurrencyUnit(from), toUnit = resolveCurrencyUnit(to);
+  if ((fromUnit.currency === toUnit.currency && fromUnit.divisor === toUnit.divisor) || history.data.length === 0) return history;
   const client = market.fxHistory ?? apiClient;
   const since = history.data[0]!.date.slice(0, 10);
-  const codes = [...new Set([from, to].filter((code) => code !== "USD"))];
+  // Pence into pounds is no FX: the same currency's closes cancel.
+  const sameCurrency = fromUnit.currency === toUnit.currency;
+  const codes = sameCurrency ? [] : [...new Set([fromUnit.currency, toUnit.currency].filter((code) => code !== "USD"))];
+  const unread = codes.filter((code) => !dailyFxLeg(code));
+  if (unread.length > 0) ctx.fail(`No daily FX closes for ${unread.join(" or ")} to convert ${history.listing.key} into ${to}.`);
   const legs = await Promise.all(codes.map(async (code) => {
     try {
       return [code, await loadDailyFxCloses(code, since, client)] as const;
@@ -1710,14 +1727,16 @@ async function convertListingHistory(
   const closes = new Map(legs);
   const venue = history.identity.exchange || undefined;
   const now = Date.now();
-  const usdPer = (code: string, date: string) => code === "USD" ? { date, rate: 1 } : fxCloseOnOrBefore(closes.get(code)!, date);
+  const usdPer = (code: string, date: string) => code === "USD" || sameCurrency ? { date, rate: 1 } : fxCloseOnOrBefore(closes.get(code)!, date);
+  // A minor unit is its fraction of the major currency's rate: a price in pence is a hundredth of one in pounds.
+  const units = toUnit.divisor / fromUnit.divisor;
   const used: string[] = [];
   const data = history.data.map((row): HistoryRow => {
     // A week's or month's close is its last session's.
     const day = barCloseSession(row.interval, row.date, venue, now);
-    const fromRate = usdPer(from, day), toRate = usdPer(to, day);
-    const fxDate = fromRate && toRate ? [fromRate.date, toRate.date].sort()[0]! : null;
-    const rate = fromRate && toRate ? fromRate.rate / toRate.rate : null;
+    const fromRate = usdPer(fromUnit.currency, day), toRate = usdPer(toUnit.currency, day);
+    const fxDate = codes.length === 0 ? null : fromRate && toRate ? [fromRate.date, toRate.date].sort()[0]! : null;
+    const rate = fromRate && toRate ? fromRate.rate / toRate.rate * units : null;
     if (fxDate) used.push(fxDate);
     // To a millionth: past it a product of two prices is float noise.
     const convert = (value: number | null) => value == null || rate == null ? null : Math.round(value * rate * 1e6) / 1e6;
@@ -1734,7 +1753,7 @@ async function convertListingHistory(
   const fx: HistoryConversion = { from: from!, to, series, firstDate: sorted[0] ?? null, lastDate: sorted.at(-1) ?? null };
   return {
     ...history, data, fx,
-    unit: { kind: "currency", currency: to, unit: to },
+    unit: { kind: "currency", currency: to, unit: currencyUnitLabel(to, { ofMajor: true }) },
     // Printed as prices in the currency are: cents, and four places under one unit.
     decimals: Math.max(...data.map((row) => row.close ?? 0)) >= 1 ? 2 : 4,
     notes: [historyConversionNote(fx, data), ...history.notes],
@@ -1748,6 +1767,13 @@ async function convertListingHistory(
  * is said too.
  */
 function historyConversionNote(fx: HistoryConversion, rows: readonly HistoryRow[]): string {
+  const to = currencyUnitLabel(fx.to, { ofMajor: true }), from = currencyUnitLabel(fx.from, { ofMajor: true });
+  // A minor unit of the same currency (GBp into GBP) is its fraction, read at no FX close.
+  if (fx.series.length === 0) {
+    const [fromUnit, toUnit] = [resolveCurrencyUnit(fx.from), resolveCurrencyUnit(fx.to)];
+    const [many, one] = fromUnit.divisor > toUnit.divisor ? [fx.from, fx.to] : [fx.to, fx.from];
+    return `Prices in ${to}, converted from ${from} at ${Math.max(fromUnit.divisor, toUnit.divisor) / Math.min(fromUnit.divisor, toUnit.divisor)} ${many} to 1 ${one}.`;
+  }
   const pairs = fx.series.map(({ pair, symbol }) => `${pair} (${symbol})`).join(" and ");
   const span = fx.firstDate && fx.lastDate ? `, ${fx.firstDate === fx.lastDate ? fx.firstDate : `${fx.firstDate} to ${fx.lastDate}`}` : "";
   const last = rows.at(-1);
@@ -1756,7 +1782,7 @@ function historyConversionNote(fx: HistoryConversion, rows: readonly HistoryRow[
     ? `; the ${lastDay} bar, still forming, at the ${last.fxDate} close` : "";
   const missing = rows.filter((row) => row.fxRate == null).length;
   const blank = missing > 0 ? `; ${missing} ${missing === 1 ? "bar" : "bars"} with no FX close in the week before left blank` : "";
-  return `Prices in ${fx.to}, converted from ${fx.from} at each date's daily close of ${pairs}${span}${latest}${blank}.`;
+  return `Prices in ${to}, converted from ${from} at each date's daily close of ${pairs}${span}${latest}${blank}.`;
 }
 
 /** The command a listing that cannot be served is pointed back at: `history`, `history --range 5Y`. */
@@ -2449,15 +2475,17 @@ async function runHistoryList(
     if (symbols.length === 0) ctx.fail(refused.length === 1 ? refused[0]!.message : `No history to read: ${refusedList(refused)} are not symbols.`, usage);
     // A long list is a batch, not a lookup: it skips the per-symbol venue and moved-company lookups, as `quote` does.
     const lookups = symbols.length <= MAX_CHOICE_LOOKUPS;
+    // Words typed apart that name one company ("Elbit Systems") are its listing, as `quote` reads them. A list read
+    // from a file or standard input, or past the lookups, is tickers: no word in it costs a quote to read as a name.
+    const typedList = file === undefined && !args.includes("-") && !exchange;
     const read = await mapWithConcurrency(symbols, HISTORY_LIST_CONCURRENCY, async (symbol) => {
       try {
-        return { typed: symbol, listing: await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true }) };
+        const listing = await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true, companyWord: lookups && typedList });
+        return { typed: symbol, listing };
       } catch (error) {
         return { typed: symbol, listing: null, error };
       }
     });
-    // Words typed apart that name one company ("Elbit Systems") are its listing, as `quote` reads them.
-    const typedList = file === undefined && !args.includes("-") && !exchange;
     const entries = typedList ? await joinCompanyNameWords(read, market) : read;
     const listed = await mapWithConcurrency(entries, HISTORY_LIST_CONCURRENCY, async (entry): Promise<ListedHistory> => {
       const symbol = entry.typed;
@@ -4345,7 +4373,7 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
   await withCliServices(ctx, async (services) => {
     const symbols = await readSymbols(entries, services.dataProvider);
     const listings = await Promise.all(symbols.map((symbol) => requireCliListing(
-      symbol, exchangeOption, services, ctx, { ownExchangeWins: symbols.length > 1 },
+      symbol, exchangeOption, services, ctx, { ownExchangeWins: symbols.length > 1, companyWord: symbols.length <= MAX_CHOICE_LOOKUPS },
     )));
     const keys = listings.map((listing) => listing.key);
     // Each bare symbol's venues cost a search, so a long list (a portfolio check, not a lookup) names none.
