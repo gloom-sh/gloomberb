@@ -1,3 +1,4 @@
+import { withBalanceSheetRate } from "../../../market-data/quotes/balance-sheet-rate";
 import { formatPriceEarnings, NOT_MEANINGFUL, PRICE_EARNINGS_NOTICE } from "../../../utils/price-earnings";
 import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition } from "../../../types/headless";
 import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
@@ -144,7 +145,8 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
     const preset = args.options.peers === true ? peerSelectionOf(ctx.settings?.[PEER_SELECTION_SETTING], args.symbols) : null;
     const selection = args.options.peers === true ? preset ?? await choosePeers(args.symbols, ctx) : null;
     const symbols = selection ? [selection.subject, ...selection.peers] : args.symbols;
-    const loaded = await loadHeadlessSymbols(symbols, ctx, (symbol) => loadHeadlessFinancials(ctx, symbol));
+    // A withdrawn EV's bridge converts a balance sheet in another currency at our close on its date, as `fundamentals` does.
+    const loaded = await loadHeadlessSymbols(symbols, ctx, async (symbol) => withBalanceSheetRate(await loadHeadlessFinancials(ctx, symbol)));
     const baseRows = loaded.entries.map(({ symbol, data }) => ({ symbol, ...relativeValuationValues(data), ...quoteFreshnessFields(data?.quote) }));
     const unavailableSymbols = [...loaded.unavailableSymbols, ...baseRows.filter((row) => ![
       row.marketCap, row.trailingPE, row.forwardPE, row.evSales, row.fcfYield, row.revenueGrowth, row.operatingMargin,

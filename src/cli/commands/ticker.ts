@@ -52,6 +52,7 @@ import { currencyCodeLabel, heldCurrencyUnit } from "../../utils/currency-units"
 import { quotedFxPair } from "../../utils/currency-pair";
 import type { AppConfig } from "../../types/config";
 import type { CompanyProfile, DeclaredDividendAction, FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
+import { enterpriseValueBridgeNote, listingEnterpriseValue } from "../../market-data/quotes/listing-enterprise-value";
 import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
 import { instrumentTypeLabel, resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
@@ -84,6 +85,7 @@ import { ownerNames, rowSummary, rowSummaryTarget } from "../../plugins/builtin/
 import { fundFactsAbroadKey, hasFundFactsAbroad, isKnownNonUsListing, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../utils/sec";
 import { currentReportItemsLabel, hiddenFilingsNote, loadLatestFilings, type HiddenFilings } from "../../utils/sec-filings";
 import { canonicalExchange, exchangeLabel, isKnownExchangeCode, isUsListingExchange } from "../../utils/exchanges";
+import { exchangeResultsNotes } from "../../utils/exchange-results";
 import {
   coinListingNotes, failIfNotTraded, failMovedSymbol, failUnchosenListing, ListingArgError, listingChoiceNotes, listingFateLoader, listingIdentity, loadBareVenues,
   resolveCliListing, type CliListing, type ListingDataRequest,
@@ -102,7 +104,7 @@ import { fundamentalsFreshness, quotesFreshness } from "../freshness";
 import { distributionHistory, forwardDividendBasis, forwardDividendMayHaveLapsed, lapsedDividend, noCurrentDividend, TRAILING_DIVIDEND_BASIS, type DistributionHistory, type DividendLapse } from "../../utils/forward-dividend";
 import { declaredDividends } from "../../utils/declared-dividends";
 import { historyTrailingDividendYield, measuresTrailingYield } from "../../market-data/quotes/live-valuation";
-import { exchangeResultsNotes, loadOfferingFilings, loadStatementFilings, resultsReleaseText, statementPeriodText, type StatementFilingsReport } from "../statement-filings";
+import { loadOfferingFilings, loadStatementFilings, resultsReleaseText, statementPeriodText, type StatementFilingsReport } from "../statement-filings";
 import type { BankFiguresPayload } from "../../api-client/bank-figures";
 import { bankSection } from "../bank-section";
 import type { FundBondFacts, FundFactsPayload } from "../../api-client/fund-facts";
@@ -615,8 +617,23 @@ function enterpriseValueFigure(figure: MetricFigure, fundamentals: TickerFinanci
   if (isBankEnterpriseValue(fundamentals)) return { text: BANK_ENTERPRISE_VALUE, value: "N/M", unit: figure.unit };
   const label = enterpriseValueLabel(fundamentals);
   if (label === "not-meaningful") return { ...multipleFigure(NOT_MEANINGFUL), unit: figure.unit };
-  if (label === "unavailable") return { text: "unavailable", value: null, unit: figure.unit };
+  // A withdrawn EV the bridge stands in for shows the bridge (listingEnterpriseView).
+  if (label === "unavailable" && typeof figure.value !== "number") return { text: "unavailable", value: null, unit: figure.unit };
   return figure;
+}
+
+/**
+ * The EV `fundamentals`, `valuation`, RV and the reverse DCF read (listingEnterpriseValue), where it is not the one
+ * served: the bridge in place of a withdrawn figure, with the note that gives its inputs, or what a bridge lacks.
+ */
+function listingEnterpriseView(financials: Parameters<typeof listingEnterpriseValue>[0]): { figure?: MetricFigure; value?: number; currency?: string; note?: string } {
+  const listing = listingEnterpriseValue(financials);
+  if (listing.kind === "value" && listing.basis === "computed") {
+    return { figure: { text: formatReportedMoney(listing.value, listing.currency), value: listing.value, unit: listing.currency },
+      value: listing.value, currency: listing.currency, note: enterpriseValueBridgeNote(listing) ?? undefined };
+  }
+  return listing.kind === "unavailable" && listing.needs
+    ? { note: `Market cap + total debt - cash in place of the withdrawn EV needs ${listing.needs}.` } : {};
 }
 
 function percentFigure(fraction: number | null | undefined, format: (value: number) => string): MetricFigure {
@@ -931,6 +948,8 @@ function fundamentalsNotes(
   priced: Pick<TickerFinancials, "quote" | "fundamentals">,
   metrics: readonly FundamentalsMetric[],
   quoteCurrency: string | undefined,
+  /** The bridge's inputs, or what it lacks, where the EV is not the one served (listingEnterpriseView). */
+  listingNote?: string,
 ): string[] {
   const fundamentals = priced.fundamentals;
   const shown = (label: string) => metrics.some((metric) => metric.label === label && metric.text !== "—");
@@ -946,8 +965,11 @@ function fundamentalsNotes(
     : undefined;
   // Why the EV is labelled, withdrawn or N/M; for an insurer's, what Gloom Cloud computed it from.
   // A bank's EV line says why it is n/m.
+  const bridged = metrics.some((metric) => metric.label === "Enterprise Value" && typeof metric.value === "number")
+    && enterpriseValueLabel(fundamentals) === "unavailable";
   const enterpriseValue = shown("Enterprise Value") && !metrics.some((metric) => metric.text === BANK_ENTERPRISE_VALUE)
-    ? enterpriseValueReconciliationNote(fundamentals, enterpriseValueCurrency(priced.quote, fundamentals)) ?? computedEnterpriseValueNote(fundamentals)
+    ? bridged ? listingNote : [enterpriseValueReconciliationNote(fundamentals, enterpriseValueCurrency(priced.quote, fundamentals))
+      ?? computedEnterpriseValueNote(fundamentals), listingNote].filter(Boolean).join(" ") || undefined
     : undefined;
   // A cap Gloom Cloud withheld says why, as RV and EQS do.
   const withheld = withheldMarketCap(fundamentals)?.note;
@@ -1075,7 +1097,7 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
     ? { text: `${formatCompact(capitalization.value)} ${capitalization.currency}`, value: capitalization.value, unit: capitalization.currency }
     : { text: "—" };
   const metrics = withoutStockRows(fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials),
-    fundamentalsCurrency(financials), undefined, snapshot.distributions ?? null, snapshot.bondFund ?? null, snapshot.currencyCodes === true,
+    fundamentalsCurrency(financials), listingEnterpriseView(snapshot).figure, snapshot.distributions ?? null, snapshot.bondFund ?? null, snapshot.currencyCodes === true,
     trailingEpsFiscalYear(financials), halfYearGrowthPeriod(financials)),
   resolveTickerInstrumentKind(null, financials) === "fund");
   if (view === "fundamentals") {
@@ -1115,7 +1137,9 @@ export function renderFundamentalsReport(
   const fund = fundFactsNote(symbol, financials.exchange || quote?.exchangeName, financials, null, financials.fundFacts);
   if (lines.length === before) lines.push("", cliStyles.muted([`No ${view} reported for ${financials.symbol}.`, fund].filter(Boolean).join(" ")));
   else if (fund) lines.push(cliStyles.muted(fund));
-  for (const note of fundamentalsNotes(atRegularSessionPrice(financials), metrics, quote?.currency)) lines.push(cliStyles.muted(note));
+  for (const note of fundamentalsNotes(atRegularSessionPrice(financials), metrics, quote?.currency, listingEnterpriseView(financials).note)) {
+    lines.push(cliStyles.muted(note));
+  }
   if (view === "fundamentals") {
     if (financials.taxEquivalent) {
       appendMetricSection(lines, "Tax-Equivalent Yield", taxEquivalentLines(financials.taxEquivalent).map((line) => [line.label, line.text]));
@@ -1190,7 +1214,7 @@ export function fundamentalsReportTables(
       notes: [
         ...metrics.length === 0
           ? [`No ${view} reported for ${financials.symbol}.`]
-          : fundamentalsNotes(atRegularSessionPrice(financials), metrics, financials.quote?.currency),
+          : fundamentalsNotes(atRegularSessionPrice(financials), metrics, financials.quote?.currency, listingEnterpriseView(financials).note),
         ...fund ? [fund] : [],
         ...view === "fundamentals" ? statementFilingsNotes(financials.statementFilings) : [],
         ...bank?.notes ?? [],
@@ -1370,9 +1394,12 @@ export async function buildTickerReport({
   // Shown in the same currency as the market cap, so the two can be compared.
   const evCurrency = enterpriseValueCurrency(quote, fundamentals);
   // Not across currencies: a check in another currency than the EV shown describes another figure.
-  const enterpriseValue = reportedEnterpriseValue(priced.fundamentals, evCurrency);
-  const enterpriseValueText = `${formatReportedMoney(enterpriseValue, evCurrency)}${enterpriseValue != null && evCurrency
-    ? await inBase(enterpriseValue, evCurrency) : ""}`;
+  // A withdrawn EV gives way to the bridge `fundamentals` shows (listingEnterpriseView).
+  const listingEv = listingEnterpriseView(financials);
+  const enterpriseValue = listingEv.value ?? reportedEnterpriseValue(priced.fundamentals, evCurrency);
+  const enterpriseValueCode = listingEv.currency ?? evCurrency;
+  const enterpriseValueText = `${formatReportedMoney(enterpriseValue, enterpriseValueCode)}${enterpriseValue != null && enterpriseValueCode
+    ? await inBase(enterpriseValue, enterpriseValueCode) : ""}`;
 
   if (quote) {
     // As the Overview reads it: the regular session, then the extended-hours print against its close.
@@ -1433,7 +1460,7 @@ export async function buildTickerReport({
   // A listing of the last year may have no statements yet: its IPO says how recent it is.
   const listing = { listedSince: ipo ? ipo.deal.listingDate ?? ipo.deal.firstDay?.session ?? null : null };
   const metrics = withoutStockRows(fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns,
-    fundamentalsCurrency(financials, listing), { text: enterpriseValueText }, distributions, bondFund, codes, trailingEpsFiscalYear(financials),
+    fundamentalsCurrency(financials, listing), { text: enterpriseValueText, ...listingEv.value != null ? { value: listingEv.value } : {} }, distributions, bondFund, codes, trailingEpsFiscalYear(financials),
     halfYearGrowthPeriod(financials)), isFund);
   const reportedCurrency = financials.financialCurrency?.trim();
   const statements = [...financials.annualStatements, ...financials.quarterlyStatements];
@@ -1445,7 +1472,7 @@ export async function buildTickerReport({
 
   const beforeFundamentals = lines.length;
   appendMetricSection(lines, "Fundamentals", metricLines(metrics));
-  for (const note of fundamentalsNotes(priced, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
+  for (const note of fundamentalsNotes(priced, metrics, quote?.currency, listingEv.note)) lines.push(cliStyles.muted(note));
   // The trailing block beside statements in another currency, when no conversion says why.
   const split = metrics.some((metric) => TRAILING_MONEY_METRICS.has(metricName(metric.label)) && metric.text !== "—")
     ? ttmCurrencySplitNote(priced.fundamentals, [latestAnnual, latestQuarter].flatMap((row) => row ? [statementCurrency(row)] : []))

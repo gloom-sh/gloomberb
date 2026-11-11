@@ -1,6 +1,7 @@
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { apiClient } from "../api-client";
 import { offeringNote } from "../utils/cash-runway";
+import { exchangeResultsNotes, matchExchangeResults } from "../utils/exchange-results";
 import { createDefaultConfig } from "../types/config";
 import type { TickerFinancials } from "../types/financials";
 import { createTestDataProvider } from "../test-support/data-provider";
@@ -9,10 +10,8 @@ import { buildTickerReport, ticker } from "./commands/ticker";
 import {
   cloudStatementReportSources,
   detectResultsRelease,
-  exchangeResultsNotes,
   loadOfferingFilings,
   loadStatementFilings,
-  matchExchangeResults,
   resultsReleaseText,
   statementFiling,
   type PeriodicFiling,

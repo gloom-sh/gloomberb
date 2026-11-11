@@ -232,6 +232,7 @@ import { fxPairListing, fxQuoteRateMove, fxQuoteRateObservation, METAL_NAMES, re
 import { quoteBarNotes } from "../../market-data/quotes/intraday-bar";
 import { cedearRatioText, depositaryPairText, isReceiptSide, listingCedearRatio, listingDepositaryPair } from "../../market-data/depositary-pair";
 import { isPesoDollarPair, loadPesoDollarRates, pesoDollarRateLines, pesoDollarRatesJson } from "../peso-dollar-rates";
+import { withBalanceSheetRate } from "../../market-data/quotes/balance-sheet-rate";
 import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
 import { viewMarketCapitalization } from "../../utils/market-capitalization";
 import {
@@ -2492,8 +2493,9 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       listing.request.symbol, listing.request.exchange, { cacheMode: ctx.cliOptions.refresh ? "refresh" : "default" },
     ), undefined, { command: commandName, noun: commandName === "valuation" ? "valuation data" : commandName });
     // A converted TTM block at the rate `fx` reports, as `ticker` shows it; only the US dollar legs are read.
+    // A withdrawn EV's bridge converts a balance sheet in another currency at our close on its date (withBalanceSheetRate).
     const financials = view === "statements" ? loaded
-      : await atReportTtmRate(loaded, createBaseConverter(market.dataProvider, "USD"));
+      : await withBalanceSheetRate(await atReportTtmRate(loaded, createBaseConverter(market.dataProvider, "USD")), market.fxHistory ?? apiClient);
     // A trailing yield is measured from the cash history as DVD measures it, a forward yield dated ahead names the
     // declared distribution it annualizes (not in JSON), and one whose dividend stopped says so; read beside the listing notes.
     const distributions = view === "statements" ? null : loadDividendDistributions(

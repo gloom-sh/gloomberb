@@ -91,7 +91,8 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
 
   const discountRate = (Number(discount) || 9) / 100;
   const chosenMargin = Number(margin) > 0 ? Number(margin) / 100 : undefined;
-  const model = useMemo(() => inputs.data ? projectReverseDcf(inputs.data.financials, { symbol: symbol ?? "", discountRate, fcfMargin: chosenMargin }) : null,
+  const model = useMemo(() => inputs.data ? projectReverseDcf(inputs.data.financials, { symbol: symbol ?? "", discountRate, fcfMargin: chosenMargin,
+    exchangeResults: inputs.data.exchangeResults }) : null,
     [inputs.data, discountRate, chosenMargin, symbol]);
 
   usePaneNoticeFooter({ registrationId: "reverse-dcf-notices", focused,

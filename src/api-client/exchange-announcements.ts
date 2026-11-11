@@ -33,9 +33,13 @@ export interface ExchangeAnnouncementsPayload {
   stale?: boolean;
 }
 
-/** `/cloud/announcements?symbol=NST&exchange=ASX&limit=15`. */
-export function cloudExchangeAnnouncementsPath(params: { symbol: string; exchange: string; limit?: number }): string {
+/**
+ * `/cloud/announcements?symbol=NST&exchange=ASX&limit=15`. `kind: "results"` asks an HKEX company's results
+ * announcements and business updates alone, which a day's buyback return never pushes out of the list.
+ */
+export function cloudExchangeAnnouncementsPath(params: { symbol: string; exchange: string; limit?: number; kind?: "results" }): string {
   const search = new URLSearchParams({ symbol: params.symbol, exchange: params.exchange });
   if (params.limit != null) search.set("limit", String(params.limit));
+  if (params.kind) search.set("kind", params.kind);
   return `/cloud/announcements?${search}`;
 }

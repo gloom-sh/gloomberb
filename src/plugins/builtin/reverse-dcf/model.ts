@@ -1,13 +1,11 @@
 import { unavailableText } from "../../../components/ui/status";
+import { balanceSheetDay, enterpriseValueBridgeNote, listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
 import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
 import type { FinancialStatement, Fundamentals, TickerFinancials } from "../../../types/financials";
-import { cashAndShortTermInvestments } from "../../../utils/cash-runway";
-import { formatShortDate } from "../../../utils/datetime-format";
+import { exchangeResultsSource, type ExchangeResults } from "../../../utils/exchange-results";
 import { fiscalPeriodLabel, fiscalYearEndMonth } from "../../../utils/fiscal-period";
-import { formatCompact, formatCompactCurrency } from "../../../utils/format";
-import { BANK_ENTERPRISE_VALUE, enterpriseValueCheck, enterpriseValueComputed, enterpriseValueNotMeaningful, enterpriseValueReconciliationNote,
-  enterpriseValueWithdrawn, reportedEnterpriseValue, withBankEnterpriseValue } from "../../../utils/fundamentals";
-import { debtAndLeases, leaseBasis } from "../../../utils/lease-liabilities";
+import { formatCompactCurrency } from "../../../utils/format";
+import { BANK_ENTERPRISE_VALUE, enterpriseValueComputed, enterpriseValueReconciliationNote, withBankEnterpriseValue } from "../../../utils/fundamentals";
 
 /** Years of explicit growth before the terminal value. */
 export const FORECAST_YEARS = 10;
@@ -202,99 +200,24 @@ function impliedYearTenRevenue(fcf: number, growth: number, fcfMargin: number): 
 
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 
-/** A balance sheet's day as the reports write a date: "Jun 30, 2026". */
-const sheetDay = (date: string) => formatShortDate(`${date.slice(0, 10)}T00:00:00Z`, { utc: true, fallback: date.slice(0, 10) });
-
-/** "total debt and cash", "total debt": the lines a bridge lacks, in a sentence. */
-const listed = (items: string[]) => items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : items[0] ?? "";
-
-type BalanceSheetBridge = { value: number; sheet: string; note: string } | { missing: MissingInput };
-
-/**
- * The EV in place of a withdrawn source figure: market cap + total debt (+
- * leases, as FA's net debt counts them) - cash and short-term investments +
- * minority interest and preferred equity on the latest balance sheet. The
- * bridge Gloom Cloud computed beside the withdrawal where it served one (at
- * the balance sheet date's rate); else the latest balance sheet here, a
- * sheet in another currency than the market cap converted at the rate the
- * trailing figures state. A line the sheet does not report is named, never
- * taken as zero.
- */
-function balanceSheetBridge(financials: TickerFinancials, fundamentals: Fundamentals): BalanceSheetBridge {
-  const currency = fundamentals.marketCapCurrency;
-  const check = enterpriseValueCheck(fundamentals);
-  const minorityOf = (value: number | undefined) => finite(value) && value > 0 ? value : 0;
-  if (check?.status === "withdrawn" && finite(check.computed) && check.currency === currency && check.balanceSheetDate) {
-    const minority = minorityOf(check.minorityAndPreferred);
-    const fx = check.fx && finite(check.fx.rate) ? `, ${check.fx.from} at ${check.fx.rate.toPrecision(4)} ${check.currency}` : "";
-    const value = check.computed + minority;
-    return { value, sheet: sheetDay(check.balanceSheetDate), note: bridgeNote({ value, currency: check.currency!, marketCap: check.marketCap,
-      totalDebt: check.totalDebt, leases: check.leases, cash: check.cash, minority, date: check.balanceSheetDate, fx }) };
-  }
-  const today = new Date().toISOString().slice(0, 10);
-  const sheets = [...financials.quarterlyStatements, ...financials.annualStatements]
-    .filter((row) => /^\d{4}-\d{2}-\d{2}/.test(row.date) && row.date.slice(0, 10) <= today)
-    .sort((a, b) => b.date.localeCompare(a.date));
-  const latest = sheets.find((row) => finite(row.totalDebt) || finite(row.capitalLeaseObligations) || cashAndShortTermInvestments(row) != null);
-  if (!latest) return { missing: { input: "enterpriseValue", needs: "a balance sheet with debt and cash", statement: "balance" } };
-  const day = sheetDay(latest.date);
-  const basis = leaseBasis(sheets);
-  const debt = basis === "included" ? debtAndLeases(latest) : finite(latest.totalDebt) ? { totalDebt: latest.totalDebt, leases: 0 } : undefined;
-  const cash = cashAndShortTermInvestments(latest)?.amount;
-  const absent = [
-    ...!debt ? [finite(latest.totalDebt) ? "lease liabilities" : "total debt"] : [],
-    ...cash == null ? ["cash"] : [],
-  ];
-  if (absent.length) return { missing: { input: "enterpriseValue", needs: `${listed(absent)} on the ${day} balance sheet`, statement: "balance" } };
-  const marketCap = fundamentals.marketCap;
-  if (!finite(marketCap) || !(marketCap > 0) || !currency) {
-    return { missing: { input: "enterpriseValue", needs: "a market cap", statement: "balance" } };
-  }
-  const from = latest.currency ?? currency;
-  const conversion = fundamentals.ttmConversion;
-  const rate = from === currency ? 1 : conversion?.from === from && finite(conversion.rate) && conversion.rate > 0 ? conversion.rate : null;
-  if (rate == null) {
-    return { missing: { input: "enterpriseValue", needs: `a ${from} to ${currency} rate for the ${day} balance sheet`, statement: "balance" } };
-  }
-  const minority = minorityOf(minorityAndPreferredEquity(latest));
-  const value = marketCap + (debt!.totalDebt + debt!.leases - cash! + minority) * rate;
-  const fx = rate === 1 ? "" : `, ${from} at ${rate.toPrecision(4)} ${currency}${conversion?.asOf ? ` as of ${conversion.asOf.slice(0, 10)}` : ""}`;
-  return { value, sheet: day, note: bridgeNote({ value, currency, marketCap, totalDebt: debt!.totalDebt * rate, leases: debt!.leases * rate,
-    cash: cash! * rate, minority: minority * rate, date: latest.date.slice(0, 10), fx }) };
-}
-
-/** Total equity including minority interest less common equity: minority interest and preferred equity, where both lines are there. */
-function minorityAndPreferredEquity(row: FinancialStatement): number | undefined {
-  const gross = row.totalEquityGrossMinorityInterest;
-  const common = row.commonStockEquity;
-  return finite(gross) && finite(common) && gross - common > 0 ? gross - common : undefined;
-}
-
-/** "EV 183.5B HKD is market cap 195.3B + total debt 0 + leases 4.4B - cash and short-term investments 16.4B (balance sheet 2026-06-30, CNY at 1.174 HKD as of 2026-11-11)." */
-function bridgeNote(input: { value: number; currency: string; marketCap?: number; totalDebt?: number; leases?: number; cash?: number;
-  minority: number; date: string; fx: string }): string {
-  const part = (label: string, value: number | undefined) => finite(value) ? `${label} ${formatCompact(value)}` : label;
-  const leases = finite(input.leases) && input.leases > 0 ? ` + ${part("leases", input.leases)}` : "";
-  const minority = input.minority > 0 ? ` + ${part("minority interest and preferred equity", input.minority)}` : "";
-  return `EV ${formatCompact(input.value)} ${input.currency} is ${part("market cap", input.marketCap)} + ${part("total debt", input.totalDebt)}${leases}`
-    + ` - ${part("cash and short-term investments", input.cash)}${minority} (balance sheet ${input.date}${input.fx}), the source's EV being withdrawn.`;
-}
-
-/** "the latest cash flow statement is FY2024": where the statements' free cash flow stops, for a model without a trailing one. */
-function latestCashFlowPeriod(financials: TickerFinancials): string | null {
+/** "FY2024" and its date: where the statements' free cash flow stops, for a model without a trailing one. */
+function latestCashFlowPeriod(financials: TickerFinancials): { label: string; date: string } | null {
   const month = fiscalYearEndMonth(financials.annualStatements);
   const withFlow = (rows: readonly FinancialStatement[]) => rows.filter((row) => finite(row.freeCashFlow) || finite(row.operatingCashFlow))
     .sort((a, b) => b.date.localeCompare(a.date))[0];
   const annual = withFlow(financials.annualStatements);
   const interim = withFlow(financials.quarterlyStatements);
-  if (interim && (!annual || interim.date > annual.date)) return fiscalPeriodLabel(interim.date, "quarterly", month);
-  return annual ? fiscalPeriodLabel(annual.date, "annual", month) : null;
+  if (interim && (!annual || interim.date > annual.date)) return { label: fiscalPeriodLabel(interim.date, "quarterly", month), date: interim.date.slice(0, 10) };
+  return annual ? { label: fiscalPeriodLabel(annual.date, "annual", month), date: annual.date.slice(0, 10) } : null;
 }
 
 export function projectReverseDcf(
   financials: TickerFinancials | null,
-  /** `fcfMargin` is the margin the reader chose; without one the company's own trailing margin applies. */
-  options: { symbol: string; discountRate: number; fcfMargin?: number },
+  /**
+   * `fcfMargin` is the margin the reader chose; without one the company's own trailing margin applies. `exchangeResults`:
+   * an HKEX company's results announcements, which date the EV's balance sheet and say where a missing FCF is published.
+   */
+  options: { symbol: string; discountRate: number; fcfMargin?: number; exchangeResults?: ExchangeResults | null },
 ): ReverseDcfModel {
   // The enterprise value at the regular session price, as `valuation` measures it: after the close, the close's.
   // A bank's reads n/m: its deposits are funding, not debt, so no growth rate prices an EV of it.
@@ -302,20 +225,24 @@ export function projectReverseDcf(
     ? atRegularSessionPrice({ ...financials, fundamentals: withBankEnterpriseValue(financials.fundamentals, financials.profile) }).fundamentals
     : undefined;
   const currency = fundamentals?.financialCurrency ?? financials?.financialCurrency ?? null;
-  // Market cap + debt - cash in place of a provider EV more than 5% from it, with its inputs in a note, as every view reads it.
-  const computed = enterpriseValueComputed(fundamentals);
   const freeCashFlow = fundamentals?.freeCashFlow ?? null;
   const company = trailingFcfMargin(fundamentals);
   const fcfMargin = options.fcfMargin ?? company.margin ?? DEFAULT_FCF_MARGIN;
   const fcfMarginBasis: FcfMarginBasis = { company: company.margin, gap: company.gap,
     source: options.fcfMargin != null ? "chosen" : company.margin != null ? "company" : "default" };
-  // A withdrawn source EV gives way to market cap + debt - cash on the latest balance sheet, labelled with its date.
-  const bridge = financials && fundamentals && enterpriseValueWithdrawn(fundamentals) ? balanceSheetBridge(financials, fundamentals) : null;
-  const bridged = bridge && "value" in bridge ? bridge : null;
-  const enterpriseValue = bridged ? bridged.value : reportedEnterpriseValue(fundamentals) ?? null;
+  // The EV `fundamentals` and RV show (listingEnterpriseValue): the served one, or in place of a withdrawn one, market cap +
+  // debt - cash on the latest balance sheet, labelled with its date and its inputs in a note.
+  const listing = financials ? listingEnterpriseValue(financials) : { kind: "unavailable" as const };
+  const value = listing.kind === "value" ? listing : null;
+  const bridge = value?.basis === "computed" ? value.bridge ?? null : null;
+  // Where the balance sheet's figures were first published: "interim results announced 2026-08-20 (HKEXnews)".
+  const published = bridge ? exchangeResultsSource(options.exchangeResults, bridge.sheetDate) : null;
+  const bridgeNote = value && bridge ? enterpriseValueBridgeNote(value) : null;
+  const enterpriseValueNote = bridgeNote ? `${bridgeNote}${published ? ` Balance sheet from the ${published}.` : ""}`
+    : value && enterpriseValueComputed(fundamentals) ? enterpriseValueReconciliationNote(fundamentals) ?? null : null;
+  const enterpriseValue = value?.value ?? null;
   const empty: ReverseDcfModel = { symbol: options.symbol, currency, discountRate: options.discountRate, terminalGrowth: TERMINAL_GROWTH,
-    enterpriseValue, enterpriseValueNote: bridged ? bridged.note : computed ? enterpriseValueReconciliationNote(fundamentals) ?? null : null,
-    enterpriseValueSheet: bridged?.sheet ?? null,
+    enterpriseValue, enterpriseValueNote, enterpriseValueSheet: bridge ? balanceSheetDay(bridge.sheetDate) : null,
     freeCashFlow, fcfYield: null, implied: null, fcfMargin, fcfMarginBasis, impliedRevenue: null,
     pastGrowth: financials ? pastFcfGrowth(financials) : null, fiscalYearFcf: financials ? latestFiscalYearFcf(financials) : null,
     sensitivity: [], missing: [], error: null };
@@ -325,19 +252,17 @@ export function projectReverseDcf(
     return { ...empty, error: `Cash flows are in ${currency} and the market value in ${valueCurrency}.` };
   }
   // An EV at or below zero is N/M here as in `valuation` and RV, with the same reason: no growth rate prices it.
-  if (enterpriseValueNotMeaningful(fundamentals)) {
-    return { ...empty, enterpriseValue: null, error: enterpriseValueReconciliationNote(fundamentals) ?? `EV ${BANK_ENTERPRISE_VALUE}.` };
+  if (listing.kind === "not-meaningful") {
+    const reason = listing.reason === BANK_ENTERPRISE_VALUE ? null : `EV N/M: ${listing.reason.charAt(0).toLowerCase()}${listing.reason.slice(1)}.`;
+    return { ...empty, enterpriseValue: null, error: enterpriseValueReconciliationNote(fundamentals) ?? reason ?? `EV ${BANK_ENTERPRISE_VALUE}.` };
   }
-  if (bridged && !(bridged.value > 0)) {
-    return { ...empty, enterpriseValue: null, error: "EV N/M: cash and short-term investments exceed market cap + total debt on the latest balance sheet." };
-  }
-  // What the data does not give is named with where to look, not reported as a failure.
+  // What the data does not give is named with where to look, not reported as a failure. An EV that is there is shown beside a missing FCF.
   const missing: MissingInput[] = [
-    ...bridge && "missing" in bridge ? [bridge.missing] : [],
+    ...listing.kind === "unavailable" && listing.needs ? [{ input: "enterpriseValue" as const, needs: listing.needs, statement: "balance" as const }] : [],
     ...freeCashFlow == null && financials ? [{ input: "freeCashFlow" as const, statement: "cashflow" as const,
-      needs: (() => { const latest = latestCashFlowPeriod(financials); return latest ? `a trailing figure; the latest cash flow statement is ${latest}` : "a trailing figure"; })() }] : [],
+      needs: missingFreeCashFlow(financials, options.exchangeResults) }] : [],
   ];
-  if (missing.length) return { ...empty, enterpriseValue: bridged ? enterpriseValue : null, missing };
+  if (missing.length) return { ...empty, missing };
   if (enterpriseValue == null || !(enterpriseValue > 0)) return { ...empty, error: unavailableText("Enterprise value") };
   if (freeCashFlow == null) return { ...empty, error: unavailableText("Free cash flow") };
   if (!(freeCashFlow > 0)) return { ...empty, error: "Free cash flow over the last twelve months is negative, so no growth rate prices it." };
@@ -351,6 +276,26 @@ export function projectReverseDcf(
       implied: TERMINAL_GROWTHS.map((terminal) => solveImpliedGrowth(enterpriseValue, freeCashFlow, discountRate, terminal)) })),
   };
 }
+
+/**
+ * What a missing trailing FCF needs, and where its next figures are: "a trailing figure; the latest cash flow statement
+ * is FY2024, and the half year to 2026-06-30 is in the interim results announced 2026-08-20 (HKEXnews), its statements
+ * not in yet".
+ */
+function missingFreeCashFlow(financials: TickerFinancials, exchangeResults: ExchangeResults | null | undefined): string {
+  const latest = latestCashFlowPeriod(financials);
+  const parts = latest ? [`the latest cash flow statement is ${latest.label}`] : [];
+  const results = exchangeResults?.latest;
+  const newer = exchangeResults?.newer.find((item) => item.kind !== "business update");
+  if (results && results.kind !== "business update" && (!latest || results.date > latest.date)) {
+    parts.push(`the ${RESULTS_SPAN[results.kind]} to ${results.date} is in the ${results.kind} announced ${results.announced} (${exchangeResults!.publisher}), its statements not in yet`);
+  } else if (newer && newer.kind !== "business update") {
+    parts.push(`newer figures are in the ${newer.kind} announced ${newer.announced} (${exchangeResults!.publisher}), their statements not in yet`);
+  }
+  return parts.length ? `a trailing figure; ${parts.join(", and ")}` : "a trailing figure";
+}
+
+const RESULTS_SPAN = { "annual results": "year", "interim results": "half year", "quarterly results": "quarter" } as const;
 
 /**
  * "Inputs on file: fn FA 9992:HKEX --statement balance; fn FA 9992:HKEX

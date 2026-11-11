@@ -12,7 +12,7 @@ import { fiscalPeriodLabel, fiscalYearEndMonth } from "../../../utils/fiscal-per
 import { latestFinancialPeriod, latestReportedPeriod } from "../../../utils/latest-financial-period";
 import { halfYearGrowthPeriod } from "../../../utils/financial-statements";
 import { trailingEpsFiscalYear } from "../../../utils/fundamentals";
-import { listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
+import { enterpriseValueBridgeBasis, listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 
 export function formatRelativePrice(price: number | null | undefined, currency: string | null | undefined): string {
@@ -240,19 +240,20 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
  */
 function computedEnterpriseValueSales(snapshot: TickerFinancials, fundamentals: TickerFinancials["fundamentals"]) {
   const listing = listingEnterpriseValue(snapshot);
-  if (listing.kind !== "value" || listing.basis !== "computed" || !listing.check) return null;
+  if (listing.kind !== "value" || listing.basis !== "computed") return null;
   const revenue = fundamentals?.revenue;
   const currency = fundamentals?.financialCurrency;
   if (!finiteNumber(revenue) || revenue <= 0 || !currency) return null;
-  const fx = listing.check.fx;
+  const fx = listing.fx;
   const rate = currency === listing.currency ? 1 : fx && fx.from === currency && finiteNumber(fx.rate) && fx.rate > 0 ? fx.rate : null;
   if (rate == null) return null;
-  const converted = fx && finiteNumber(fx.rate) ? `, ${fx.from} at ${fx.rate.toPrecision(4)} ${listing.currency}` : "";
-  const sheet = listing.check.balanceSheetDate ? ` (balance sheet ${listing.check.balanceSheetDate}${converted})` : "";
-  const provider = finiteNumber(listing.check.source) ? `; the provider's ${formatCompact(listing.check.source)} ${listing.currency} failed validation against it` : "";
+  const bridge = listing.bridge;
+  const basis = bridge ? enterpriseValueBridgeBasis(bridge) : "market cap + total debt - cash";
+  const provider = bridge?.source != null ? `; the provider's ${formatCompact(bridge.source)} ${listing.currency} failed validation against it` : "";
+  const noMinority = bridge?.minority === null ? "; no minority interest is on file for that balance sheet" : "";
   return {
     evSales: listing.value / (revenue * rate),
-    note: `EV ${formatCompact(listing.value)} ${listing.currency} computed from market cap + total debt - cash${sheet}${provider}.`,
+    note: `EV ${formatCompact(listing.value)} ${listing.currency} computed from ${basis}${provider}${noMinority}.`,
   };
 }
 

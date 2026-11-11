@@ -494,8 +494,8 @@ export class CloudDataApi {
     return this.request<import("./members").StockFundsPayload>(`/cloud/members/holding/${encodeURIComponent(symbol)}`);
   }
 
-  /** A company's recent announcements on its exchange (ASX only); another exchange answers 404. */
-  getCloudExchangeAnnouncements(params: { symbol: string; exchange: string; limit?: number }) {
+  /** A company's recent announcements on its exchange (ASX and HKEX); another exchange answers 404. */
+  getCloudExchangeAnnouncements(params: { symbol: string; exchange: string; limit?: number; kind?: "results" }) {
     return this.request<import("./exchange-announcements").ExchangeAnnouncementsPayload>(
       cloudExchangeAnnouncementsPath(params),
     );

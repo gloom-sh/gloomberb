@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { sessionQuotes } from "../../../test-support/test-fixture-session-quotes";
+import { balanceSheetRateWanted, listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
 import type { FinancialStatement, TickerFinancials } from "../../../types/financials";
+import { matchExchangeResults, type ExchangeResults } from "../../../utils/exchange-results";
 import { DEFAULT_FCF_MARGIN, dcfValue, describeFcfMargin, FORECAST_YEARS, missingInputsNote, pastGrowthBasis, projectReverseDcf, solveImpliedGrowth,
   ttmBaseNote } from "./model";
 
@@ -65,14 +67,18 @@ describe("reverse DCF", () => {
 describe("an EV the source withdrew", () => {
   const withdrawn = { enterpriseValue: undefined, unavailableFields: ["enterpriseValue" as const], marketCap: 195_000, freeCashFlow: 5_000,
     financialCurrency: "HKD", marketCapCurrency: "HKD" };
-  const halfYears = (sheet: Partial<FinancialStatement>): TickerFinancials => ({
-    fundamentals: { ...withdrawn, ttmConversion: { from: "CNY", rate: 1.2, asOf: "2026-11-11" },
+  // Pop Mart: CNY statements under an HKD cap, converted at our CNY/HKD close on the balance sheet's date.
+  const rate = { from: "CNY", to: "HKD", date: "2026-06-30", rate: 1.2, closeDate: "2026-06-30" };
+  const halfYears = (sheet: Partial<FinancialStatement>, extra: Partial<TickerFinancials> = {}): TickerFinancials => ({
+    fundamentals: { ...withdrawn, ttmConversion: { from: "CNY", rate: 1.3, asOf: "2026-11-11" },
       enterpriseValueCheck: { status: "withdrawn", source: 104_900, currency: "HKD", convertedFrom: "CNY", reason: "Source EV is converted from CNY" } },
     annualStatements: [{ date: "2024-12-31", currency: "CNY", freeCashFlow: 4_400 }, { date: "2025-12-31", currency: "CNY" }] as FinancialStatement[],
     quarterlyStatements: [{ date: "2025-06-30", currency: "CNY", cashAndCashEquivalents: 11_900 },
       { date: "2026-06-30", currency: "CNY", capitalLeaseObligations: 3_700, ...sheet }] as FinancialStatement[],
-    priceHistory: [],
+    priceHistory: [], balanceSheetRate: rate, ...extra,
   });
+  const run = (data: TickerFinancials, exchangeResults?: ExchangeResults) =>
+    projectReverseDcf(data, { symbol: "9992:HKEX", discountRate: 0.09, exchangeResults });
 
   test("is market cap + debt - cash from the bridge Gloom Cloud served beside it, minority interest in", () => {
     const check = { status: "withdrawn" as const, source: 6_000, currency: "USD", marketCap: 2_000, totalDebt: 100, cash: 50, computed: 2_050,
@@ -81,35 +87,62 @@ describe("an EV the source withdrew", () => {
       marketCap: 2_000, freeCashFlow: 100, financialCurrency: "USD", marketCapCurrency: "USD" }), { symbol: "X", discountRate: 0.09 });
     expect(model).toMatchObject({ enterpriseValue: 2_080, enterpriseValueSheet: "Jun 30, 2026", missing: [], error: null,
       implied: solveImpliedGrowth(2_080, 100, 0.09, 0.025) });
-    expect(model.enterpriseValueNote).toContain("(balance sheet 2026-06-30, EUR at 1.100 USD)");
+    expect(model.enterpriseValueNote).toContain("(balance sheet 2026-06-30, EUR/USD 1.1000 at its date's close)");
   });
 
-  test("is built from the latest balance sheet at the rate the trailing figures state, leases in as FA counts them", () => {
-    const model = projectReverseDcf(halfYears({ totalDebt: 0, cashCashEquivalentsAndShortTermInvestments: 14_000,
-      totalEquityGrossMinorityInterest: 23_300, commonStockEquity: 23_000 }), { symbol: "9992:HKEX", discountRate: 0.09 });
-    // 195,000 + (0 + 3,700 - 14,000 + 300) x 1.2 = 183,000
+  test("is built from the latest balance sheet at our close on its date, leases and minority interest in, dated by its results", () => {
+    const results = matchExchangeResults("2026-06-30", [
+      { date: "2026-08-20T08:30:00Z", headline: "INTERIM RESULTS", types: ["Interim Results"], priceSensitive: null, fileSize: null, documentKey: "1", url: "u" }])!;
+    const model = run(halfYears({ totalDebt: 0, cashCashEquivalentsAndShortTermInvestments: 14_000,
+      totalEquityGrossMinorityInterest: 23_300, commonStockEquity: 23_000 }), results);
+    // 195,000 + (0 + 3,700 - 14,000 + 300) x 1.2 = 183,000, never at the trailing figures' 1.3
     expect(model).toMatchObject({ enterpriseValue: 183_000, enterpriseValueSheet: "Jun 30, 2026", missing: [], error: null });
     expect(model.enterpriseValueNote).toBe("EV 183k HKD is market cap 195k + total debt 0 + leases 4.4k - cash and short-term investments 16.8k"
-      + " + minority interest and preferred equity 360 (balance sheet 2026-06-30, CNY at 1.200 HKD as of 2026-11-11), the source's EV being withdrawn.");
+      + " + minority interest and preferred equity 360 (balance sheet 2026-06-30, CNY/HKD 1.2000 at the 2026-06-30 close),"
+      + " in place of the provider's 104.9k, which failed validation against it."
+      + " Balance sheet from the interim results announced 2026-08-20 (HKEXnews).");
   });
 
-  test("reads the borrowings from the debt-and-lease lines of a sheet with no total debt: here all of them leases", () => {
-    const model = projectReverseDcf(halfYears({ longTermDebtAndCapitalLeaseObligation: 3_060, currentDebtAndCapitalLeaseObligation: 640,
-      cashCashEquivalentsAndShortTermInvestments: 14_000 }), { symbol: "9992:HKEX", discountRate: 0.09 });
+  test("reads the borrowings from the debt-and-lease lines of a sheet with no total debt, and names cash alone and a missing minority line", () => {
+    const model = run(halfYears({ longTermDebtAndCapitalLeaseObligation: 3_060, currentDebtAndCapitalLeaseObligation: 640, cashAndCashEquivalents: 14_000 }));
     // 195,000 + (0 + 3,700 - 14,000) x 1.2 = 182,640
     expect(model).toMatchObject({ enterpriseValue: 182_640, enterpriseValueSheet: "Jun 30, 2026", missing: [], error: null });
+    expect(model.enterpriseValueNote).toContain(" - cash 16.8k (balance sheet");
+    expect(model.enterpriseValueNote).toEndWith("; the balance sheet has no minority interest line, so none is added.");
     // Lines short of the leases they hold are not read as borrowings.
-    expect(projectReverseDcf(halfYears({ longTermDebtAndCapitalLeaseObligation: 1_000, currentDebtAndCapitalLeaseObligation: 640,
-      cashCashEquivalentsAndShortTermInvestments: 14_000 }), { symbol: "9992:HKEX", discountRate: 0.09 }).missing[0]?.needs)
-      .toBe("total debt on the Jun 30, 2026 balance sheet");
+    expect(run(halfYears({ longTermDebtAndCapitalLeaseObligation: 1_000, currentDebtAndCapitalLeaseObligation: 640,
+      cashCashEquivalentsAndShortTermInvestments: 14_000 })).missing[0]?.needs).toBe("total debt on the Jun 30, 2026 balance sheet");
+  });
+
+  test("refuses a sheet without our close on its date, one that states no currency, and one older than 550 days, saying why", () => {
+    const sheet = { totalDebt: 0, cashCashEquivalentsAndShortTermInvestments: 14_000 };
+    const needs = (data: TickerFinancials) => run(data).missing.map((item) => item.needs);
+    expect(needs(halfYears(sheet, { balanceSheetRate: undefined }))).toEqual(["the CNY/HKD close on Jun 30, 2026"]);
+    expect(balanceSheetRateWanted(halfYears(sheet, { balanceSheetRate: undefined }))).toEqual({ from: "CNY", to: "HKD", date: "2026-06-30" });
+    expect(needs(halfYears({ ...sheet, currency: "" }))).toEqual(["the currency of the Jun 30, 2026 balance sheet, which states none"]);
+    const old = halfYears(sheet);
+    expect(projectReverseDcf(old, { symbol: "9992:HKEX", discountRate: 0.09 }).missing).toEqual([]);
+    const later = Date.parse("2028-01-10T00:00:00Z");
+    expect(listingEnterpriseValue(old, later)).toEqual({ kind: "unavailable",
+      needs: "a balance sheet from the last 550 days; the latest is Jun 30, 2026" });
+  });
+
+  test("shows the EV beside a missing FCF, which names its latest statement and the results announcement that has the next", () => {
+    const results = matchExchangeResults("2026-06-30", [
+      { date: "2026-08-20T08:30:00Z", headline: "INTERIM RESULTS", types: ["Interim Results"], priceSensitive: null, fileSize: null, documentKey: "1", url: "u" }])!;
+    const data = halfYears({ totalDebt: 0, cashCashEquivalentsAndShortTermInvestments: 14_000 });
+    const model = run({ ...data, fundamentals: { ...data.fundamentals!, freeCashFlow: undefined } }, results);
+    expect(model).toMatchObject({ enterpriseValue: 182_640, implied: null, error: null, missing: [{ input: "freeCashFlow", statement: "cashflow",
+      needs: "a trailing figure; the latest cash flow statement is FY2024, and the half year to 2026-06-30 is in the interim results"
+        + " announced 2026-08-20 (HKEXnews), its statements not in yet" }] });
   });
 
   test("names what the statements lack and where to read them, as a limit and not an error", () => {
-    const model = projectReverseDcf(halfYears({ cashCashEquivalentsAndShortTermInvestments: 14_000 }), { symbol: "9992:HKEX", discountRate: 0.09 });
+    const model = run(halfYears({ cashCashEquivalentsAndShortTermInvestments: 14_000 }));
     expect(model).toMatchObject({ enterpriseValue: null, implied: null, error: null,
       missing: [{ input: "enterpriseValue", needs: "total debt on the Jun 30, 2026 balance sheet", statement: "balance" }] });
-    const noFlow = projectReverseDcf({ ...halfYears({ cashCashEquivalentsAndShortTermInvestments: 14_000 }),
-      fundamentals: { ...halfYears({}).fundamentals!, freeCashFlow: undefined } }, { symbol: "9992:HKEX", discountRate: 0.09 });
+    const noFlow = run({ ...halfYears({ cashCashEquivalentsAndShortTermInvestments: 14_000 }),
+      fundamentals: { ...halfYears({}).fundamentals!, freeCashFlow: undefined } });
     expect(noFlow.missing.map((item) => item.needs)).toEqual(["total debt on the Jun 30, 2026 balance sheet",
       "a trailing figure; the latest cash flow statement is FY2024"]);
     expect(missingInputsNote(noFlow.missing, "9992:HKEX")).toBe("Inputs on file: fn FA 9992:HKEX --statement balance; fn FA 9992:HKEX --statement cashflow");

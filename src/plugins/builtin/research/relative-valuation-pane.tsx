@@ -1,3 +1,4 @@
+import { withBalanceSheetRate } from "../../../market-data/quotes/balance-sheet-rate";
 import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "../../../ui";
@@ -218,14 +219,16 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
     if (!coordinator) throw new Error("Market data unavailable");
     // One batched snapshot request instead of one request per peer.
     const entries = await coordinator.loadSnapshotsBatch(symbols.map((peer) => ({ symbol: peer })), { forceRefresh });
-    return symbols.map((peer, index) => {
+    // A withdrawn EV's bridge converts a balance sheet in another currency at our close on its date, as `fundamentals` does.
+    return Promise.all(symbols.map(async (peer, index) => {
       const entry = entries[index];
+      const financials = entry?.data ?? entry?.lastGoodData ?? null;
       return {
         symbol: peer,
-        financials: entry?.data ?? entry?.lastGoodData ?? null,
+        financials: financials ? await withBalanceSheetRate(financials) : null,
         error: entry?.error?.message,
       };
-    });
+    }));
   }, [symbols]);
   // Fundamentals come from one batched snapshot; prices stream on top of it.
   // A changed peer list keeps the last snapshot up until its own answer.

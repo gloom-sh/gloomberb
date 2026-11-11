@@ -3,8 +3,9 @@ import type { BankFiguresPayload } from "../api-client/bank-figures";
 import type { ExchangeAnnouncementsPayload } from "../api-client/exchange-announcements";
 import type { FinancialStatement } from "../types/financials";
 import { fetchOfferingFilings, type OfferingFiling } from "../utils/cash-runway";
+import { settleWithin } from "../utils/async-deadline";
+import { EXCHANGE_RESULTS_BUDGET_MS, loadExchangeResults, RESULTS_ANNOUNCEMENT_LIMIT, type ExchangeResults } from "../utils/exchange-results";
 import { logFailure } from "../utils/log-failure";
-import { parsePublicTickerKey } from "../utils/exchanges";
 import { nonUsSecListingVenue } from "../utils/sec";
 
 /**
@@ -47,12 +48,9 @@ export interface StatementReportSources {
   bankFigures(symbol: string): Promise<BankFiguresPayload>;
   /** The company's latest offering prospectuses (424B5, 424B4), newest first. */
   offeringFilings?(symbol: string): Promise<OfferingFiling[]>;
-  /** An HKEX company's HKEXnews announcements, newest first. */
+  /** An HKEX company's results announcements and business updates on HKEXnews, newest first. */
   exchangeAnnouncements?(listing: { symbol: string; exchange: string }): Promise<ExchangeAnnouncementsPayload>;
 }
-
-/** HKEXnews announcements read for a report: a company buying back shares files a return a day, so a year's results need the latest 100. */
-const RESULTS_ANNOUNCEMENT_LIMIT = 100;
 
 export const cloudStatementReportSources: StatementReportSources = {
   async statementFilings(symbol) {
@@ -73,7 +71,7 @@ export const cloudStatementReportSources: StatementReportSources = {
   },
   bankFigures: (symbol) => apiClient.getCloudBankFigures(symbol),
   offeringFilings: (symbol) => fetchOfferingFilings(apiClient, symbol),
-  exchangeAnnouncements: (listing) => apiClient.getCloudExchangeAnnouncements({ ...listing, limit: RESULTS_ANNOUNCEMENT_LIMIT }),
+  exchangeAnnouncements: (listing) => apiClient.getCloudExchangeAnnouncements({ ...listing, limit: RESULTS_ANNOUNCEMENT_LIMIT, kind: "results" }),
 };
 
 /**
@@ -242,98 +240,6 @@ export function resultsReleaseText(release: ResultsRelease): string {
   return `${quarter} results released ${release.filed} (8-K); ${after}.`;
 }
 
-/** A results announcement or business update on HKEXnews, as a statement report cites it. */
-interface ResultsAnnouncement {
-  kind: "annual results" | "interim results" | "quarterly results" | "business update";
-  headline: string;
-  /** The day it was released in Hong Kong, YYYY-MM-DD. */
-  announced: string;
-  url: string;
-}
-
-/**
- * An HKEX company's statements set against its HKEXnews announcements: the
- * announcement that released the latest period's results, which is when its
- * figures were first published, and what was released after it, whose
- * figures the statements do not have: the newest results announcement, and
- * a business update newer than that.
- */
-export interface ExchangeResults {
-  publisher: "HKEXnews";
-  latest: (ResultsAnnouncement & { date: string }) | null;
-  newer: ResultsAnnouncement[];
-}
-
-const RESULTS_TYPES: Readonly<Record<string, ResultsAnnouncement["kind"]>> = {
-  "Final Results": "annual results",
-  "Interim Results": "interim results",
-  "Quarterly Results": "quarterly results",
-};
-const BUSINESS_UPDATE_TYPE = "Other - Business Update";
-// The listing rules give three months for annual results and two for interim; a late one still counts.
-const RESULTS_WINDOW_DAYS = 120;
-const HONG_KONG_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Hong_Kong", year: "numeric", month: "2-digit", day: "2-digit" });
-
-function resultsKind(types: readonly string[]): ResultsAnnouncement["kind"] | null {
-  // An annual results announcement that also updates the business is the results.
-  for (const type of types) if (RESULTS_TYPES[type]) return RESULTS_TYPES[type]!;
-  return types.includes(BUSINESS_UPDATE_TYPE) ? "business update" : null;
-}
-
-/**
- * The results announcements behind an HKEX company's latest statement period
- * (`latestPeriod`, YYYY-MM-DD): the first results announcement within 120
- * days after the period ends; and released after that one, the newest
- * results announcement and a business update newer than it. Null without a
- * latest period.
- */
-export function matchExchangeResults(
-  latestPeriod: string | null | undefined,
-  announcements: ExchangeAnnouncementsPayload["announcements"],
-): ExchangeResults | null {
-  if (!latestPeriod || !/^\d{4}-\d{2}-\d{2}$/.test(latestPeriod)) return null;
-  const cited = announcements.flatMap((item): ResultsAnnouncement[] => {
-    const kind = resultsKind(item.types);
-    const time = Date.parse(item.date);
-    return kind && Number.isFinite(time)
-      ? [{ kind, headline: item.headline, announced: HONG_KONG_DAY.format(time), url: item.url }]
-      : [];
-  }).sort((left, right) => left.announced.localeCompare(right.announced));
-  const windowEnd = new Date(Date.parse(`${latestPeriod}T00:00:00Z`) + RESULTS_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10);
-  const own = cited.find((item) => item.kind !== "business update" && item.announced > latestPeriod && item.announced <= windowEnd);
-  const later = cited.filter((item) => item !== own && item.announced > (own?.announced ?? latestPeriod));
-  const results = later.filter((item) => item.kind !== "business update").at(-1);
-  const update = later.filter((item) => item.kind === "business update" && item.announced > (results?.announced ?? "")).at(-1);
-  return {
-    publisher: "HKEXnews",
-    latest: own ? { date: latestPeriod, ...own } : null,
-    newer: [results, update].filter((item): item is ResultsAnnouncement => !!item),
-  };
-}
-
-const RESULTS_PERIOD: Readonly<Record<ResultsAnnouncement["kind"], string>> = {
-  "annual results": "annual period",
-  "interim results": "half year",
-  "quarterly results": "quarter",
-  "business update": "period",
-};
-
-/**
- * "Latest half year 2026-06-30, interim results announced 2026-08-20
- * (HKEXnews)." and what came out after it, as US statements name their 10-Q
- * and a newer 8-K.
- */
-export function exchangeResultsNotes(results: ExchangeResults): string[] {
-  const { latest, newer, publisher } = results;
-  const kind = (text: string) => `${text[0]!.toUpperCase()}${text.slice(1)}`;
-  return [
-    ...latest ? [`Latest ${RESULTS_PERIOD[latest.kind]} ${latest.date}, ${latest.kind} announced ${latest.announced} (${publisher}).`] : [],
-    ...newer.map((item) => item.kind === "business update"
-      ? `Business update announced ${item.announced} (${publisher}), after the latest statements: "${item.headline}".`
-      : `${kind(item.kind)} announced ${item.announced} (${publisher}); their statements are not in yet.`),
-  ];
-}
-
 /** What a statement report shows about its latest periods' filings. */
 export interface StatementFilingsReport {
   latestQuarter: (StatementFiling & { date: string }) | null;
@@ -363,14 +269,11 @@ export async function loadStatementFilings(
 ): Promise<StatementFilingsReport> {
   const venue = nonUsSecListingVenue(listing.symbol, listing.exchange);
   const latestPeriod = [latest.quarter?.date, latest.annual?.date].filter((date): date is string => !!date).sort().at(-1);
-  const exchangeResults = sources?.exchangeAnnouncements && latestPeriod && venue === "HKEX"
-    ? sources.exchangeAnnouncements({ symbol: parsePublicTickerKey(listing.symbol).symbol.replace(/\.HK$/i, ""), exchange: venue })
-      .then((payload) => matchExchangeResults(latestPeriod, payload.announcements))
-      .catch(logFailure("cli.statement-filings", "Reading the HKEXnews announcements failed", null))
-    : null;
+  const exchangeResults = venue === "HKEX" ? loadExchangeResults(sources?.exchangeAnnouncements && ((item) => sources.exchangeAnnouncements!(item)), listing, latestPeriod) : null;
+  // Within 4 s, as the announcements are: a report goes without the filing lines rather than wait on them.
   const filings = sources && (latest.quarter || latest.annual) && !venue
-    ? await sources.statementFilings(listing.symbol)
-      .catch(logFailure("cli.statement-filings", "Reading the statement filings failed", [] as PeriodicFiling[]))
+    ? await settleWithin(sources.statementFilings(listing.symbol)
+      .catch(logFailure("cli.statement-filings", "Reading the statement filings failed", [] as PeriodicFiling[])), EXCHANGE_RESULTS_BUDGET_MS) ?? []
     : [];
   const withDate = (row: FinancialStatement | null | undefined, forms: readonly PeriodicForm[]) => {
     const filing = statementFiling(row, filings, forms);

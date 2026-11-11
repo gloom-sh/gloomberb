@@ -1178,6 +1178,23 @@ export interface TickerFinancials {
   priceHistorySourceKey?: string;
   /** Present on extended statement history from the cloud. */
   epsEstimates?: EpsEstimateHistory;
+  /** The close a balance sheet in another currency than the market cap converts at, where the EV is bridged here (withBalanceSheetRate). */
+  balanceSheetRate?: BalanceSheetRate;
+}
+
+/**
+ * Units of `to` per unit of `from` at our daily FX closes on the balance sheet's `date`, or the last trading day
+ * before it (`closeDate`): what the enterprise value bridge converts a balance sheet's debt and cash at, as Gloom
+ * Cloud's bridge does (CNY/HKD 1.0921 for Pop Mart's June 2026 sheet).
+ */
+export interface BalanceSheetRate {
+  from: string;
+  to: string;
+  /** YYYY-MM-DD of the balance sheet. */
+  date: string;
+  rate: number;
+  /** YYYY-MM-DD of the close read: `date`, or the trading day before it. */
+  closeDate: string;
 }
 
 export interface OptionContract {

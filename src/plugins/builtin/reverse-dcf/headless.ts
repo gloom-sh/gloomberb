@@ -34,7 +34,7 @@ export const reverseDcfHeadless: HeadlessPaneDefinition<"bundle"> = {
     const discountRate = (Number(args.options.discountRate) || 9) / 100;
     const chosenMargin = Number(args.options.margin);
     const model = projectReverseDcf(inputs.financials, { symbol: instrument.symbol, discountRate,
-      fcfMargin: chosenMargin > 0 ? chosenMargin / 100 : undefined });
+      fcfMargin: chosenMargin > 0 ? chosenMargin / 100 : undefined, exchangeResults: inputs.exchangeResults });
     const { fcfMargin, fcfMarginBasis } = model;
     const growth = implied(model.implied);
     const currency = model.currency ?? undefined;
