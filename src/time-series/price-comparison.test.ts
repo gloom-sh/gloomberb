@@ -83,6 +83,29 @@ describe("normalized market price comparison", () => {
     expect((await resolveChartSpecData(before, withSplits)).splitNotice).toBeUndefined();
   });
 
+  /** SOXS's closes fell 18.4x on Tue 26 May 2026, a day with no split, under a note that called them split-adjusted. */
+  test("a close over 5x the one before or under its fifth is named, a split's day or not, and the returns are not called split-adjusted", async () => {
+    const jumped = {
+      OLDER: rows([["2021-01-04", 100], ["2022-05-02", 1500], ["2022-05-09", 81], ["2026-09-07", 90]]),
+      NEWER: rows([["2022-05-02", 50], ["2023-06-01", 50], ["2023-06-02", 1000], ["2026-09-07", 1200]]),
+    };
+    const splits: Record<string, CorporateActionsData["splits"]> = {
+      NEWER: [{ date: "2023-06-02", ratio: 0.05, fromFactor: 20, toFactor: 1, description: "1:20" }],
+    };
+    const resolve = async (history: Record<string, PricePoint[]>) => {
+      const base = sources(history);
+      const getCorporateActions = async (symbol: string): Promise<CorporateActionsData> => ({ symbol, dividends: [], splits: splits[symbol] ?? [], earnings: [] });
+      return (await resolveChartSpecData(spec("1d"), { ...base, dataProvider: new Proxy(base.dataProvider, { get: (target, property, receiver) => (
+        property === "getCorporateActions" ? getCorporateActions : Reflect.get(target, property, receiver)
+      ) }) })).splitNotice;
+    };
+    expect(await resolve(jumped)).toBe("Splits in range: NEWER 1-for-20 reverse on Fri 2 Jun 2023. OLDER falls 18.5× on Mon 9 May 2022 with no split "
+      + "recorded that day; NEWER rises 20× on Fri 2 Jun 2023, the day of its 1-for-20 reverse split, unadjusted, so the returns across them are unreliable.");
+    // NEWER's closes adjusted for its split: OLDER's jump alone is named, though OLDER has no split at all.
+    expect(await resolve({ ...jumped, NEWER: histories.NEWER })).toBe("Splits in range: NEWER 1-for-20 reverse on Fri 2 Jun 2023. "
+      + "OLDER falls 18.5× on Mon 9 May 2022 with no split recorded that day, so the returns across it are unreliable.");
+  });
+
   test("total return reinvests each leg's cash at its ex-date close, names its basis, and leaves a leg without a history on price", async () => {
     const chart = { ...spec(), viewport: { ...spec().viewport, totalReturn: true } };
     const data = {
