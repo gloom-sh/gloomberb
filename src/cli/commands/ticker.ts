@@ -9,6 +9,7 @@ import {
   withBankEnterpriseValue,
 } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
+import { halfYearGrowthPeriod } from "../../utils/financial-statements";
 import { burnsCash, cashRunway, SHORT_RUNWAY_HISTORY, formatRunwayMonths, offeringNote, offeringsAfter, runwayMethod, type CashRunway, type OfferingFiling, type RunwayEstimate } from "../../utils/cash-runway";
 import { exportedFundamentals, formatPriceEarnings, forwardFiscalYear, NOT_MEANINGFUL, priceEarningsOnEarnings } from "../../utils/price-earnings";
 import { describeFundamentalMarketCap, marketCapBasisNote, selectMarketCapitalization, viewMarketCapitalization, withheldMarketCap } from "../../utils/market-capitalization";
@@ -819,6 +820,8 @@ function fundamentalsMetrics(
   codes = false,
   /** The fiscal year the trailing EPS is (trailingEpsFiscalYear), named on the EPS and P/E lines in place of TTM. */
   epsYear?: string,
+  /** A half-year reporter's latest period growth compares halves, not quarters: "H1 2026 vs H1 2025" (halfYearGrowthPeriod). */
+  growthPeriod?: string | null,
 ): FundamentalsMetric[] {
   const signed = (value: number) => colorBySign(formatPercent(value), value);
   const receipt = fundamentals?.sharesOutstanding != null && sharesOutstandingInReceipts(quote, fundamentals, profile?.description);
@@ -849,7 +852,7 @@ function fundamentalsMetrics(
     { label: "Operating Margin", ...percentFigure(fundamentals?.operatingMargin, formatFractionPercentCell) },
     { label: "Profit Margin", ...percentFigure(fundamentals?.profitMargin, formatFractionPercentCell) },
     { label: "Revenue Growth", ...percentFigure(fundamentals?.revenueGrowth, signed) },
-    { label: "Last Quarter Growth", ...percentFigure(fundamentals?.lastQuarterGrowth, signed) },
+    { label: growthPeriod ? `Revenue ${growthPeriod}` : "Last Quarter Growth", ...percentFigure(fundamentals?.lastQuarterGrowth, signed) },
     { label: "1Y Return", ...percentFigure(priceReturns.return1Y, signed) },
     { label: "3Y Return", ...percentFigure(priceReturns.return3Y, signed) },
     {
@@ -904,8 +907,9 @@ function forwardLabel(fundamentals: TickerFinancials["fundamentals"]): string {
 }
 
 /** A line's name without the fiscal year a forward figure names: `Forward P/E FY27` is Forward P/E. */
-/** A metric's name whatever period its label names: `Forward P/E FY28` is Forward P/E, `EPS FY Mar-26` is EPS (TTM). */
-const metricName = (label: string) => label.replace(/ FY\d{2}$/, "").replace(/^(EPS|P\/E) FY [A-Z][a-z]{2}-\d{2}$/, "$1 (TTM)");
+/** A metric's name whatever period its label names: `Forward P/E FY28` is Forward P/E, `EPS FY Mar-26` is EPS (TTM), `Revenue H1 2026 vs H1 2025` the latest period's growth. */
+const metricName = (label: string) => label.replace(/ FY\d{2}$/, "").replace(/^(EPS|P\/E) FY [A-Z][a-z]{2}-\d{2}$/, "$1 (TTM)")
+  .replace(/^Revenue H[12] .+ vs H[12] .+$/, "Last Quarter Growth");
 
 function withoutStockRows<T extends { label: string }>(metrics: T[], fund: boolean): T[] {
   return fund ? metrics.filter((metric) => !STOCK_ONLY_METRICS.has(metricName(metric.label))) : metrics;
@@ -1071,7 +1075,7 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
     : { text: "—" };
   const metrics = withoutStockRows(fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials),
     fundamentalsCurrency(financials), undefined, snapshot.distributions ?? null, snapshot.bondFund ?? null, snapshot.currencyCodes === true,
-    trailingEpsFiscalYear(financials)),
+    trailingEpsFiscalYear(financials), halfYearGrowthPeriod(snapshot.exchange ?? quote?.listingExchangeName ?? quote?.exchangeName, financials)),
   resolveTickerInstrumentKind(null, financials) === "fund");
   if (view === "fundamentals") {
     return [...metrics, ...floatAndShortInterestMetrics(quote, fundamentals, financials.profile)]
@@ -1428,7 +1432,8 @@ export async function buildTickerReport({
   // A listing of the last year may have no statements yet: its IPO says how recent it is.
   const listing = { listedSince: ipo ? ipo.deal.listingDate ?? ipo.deal.firstDay?.session ?? null : null };
   const metrics = withoutStockRows(fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns,
-    fundamentalsCurrency(financials, listing), { text: enterpriseValueText }, distributions, bondFund, codes, trailingEpsFiscalYear(financials)), isFund);
+    fundamentalsCurrency(financials, listing), { text: enterpriseValueText }, distributions, bondFund, codes, trailingEpsFiscalYear(financials),
+    halfYearGrowthPeriod(listingExchange ?? quote?.listingExchangeName ?? quote?.exchangeName, financials)), isFund);
   const reportedCurrency = financials.financialCurrency?.trim();
   const statements = [...financials.annualStatements, ...financials.quarterlyStatements];
   const fallbackCurrency = reportedCurrency && statements.every((row) => !row.currency?.trim() || row.currency.trim() === reportedCurrency)

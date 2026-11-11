@@ -218,7 +218,7 @@ async function missingPeriodsError(
   if (period === "annual" || !hasYears) return hasRequestedStatements ? null : `${symbol}: No ${period} financial statement coverage.`;
   const exchange = await resolveHeadlessInstrument(ctx, symbol).then(({ exchange }) => canonicalExchange(exchange ?? ""))
     .catch(logFailure("ticker-detail.headless", "Resolving the listing of a statements report failed", ""));
-  const halfYearly = reportsHalfYearly(exchange, financials.quarterlyStatements);
+  const halfYearly = reportsHalfYearly(exchange, financials.quarterlyStatements, financials.annualStatements);
   if (hasRequestedStatements && !halfYearly) return null;
   const tab = typeof statement === "string" && statement && statement !== "income" ? ` --statement ${statement}` : "";
   const years = `For its years: gloom fn FA ${symbol} --period annual${tab}`;

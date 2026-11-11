@@ -10,6 +10,7 @@ import { getExtendedSessionDisplay, getQuoteSessionFields } from "../../../marke
 import { atRegularSessionPrice, movePriceDerivedFigures, regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { fiscalPeriodLabel, fiscalYearEndMonth } from "../../../utils/fiscal-period";
 import { latestFinancialPeriod, latestReportedPeriod } from "../../../utils/latest-financial-period";
+import { halfYearGrowthPeriod } from "../../../utils/financial-statements";
 import { trailingEpsFiscalYear } from "../../../utils/fundamentals";
 import { listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
 import type { Quote, TickerFinancials } from "../../../types/financials";
@@ -189,6 +190,9 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     fundamentalsThrough: fundamentals && snapshot ? latestReportedPeriod(snapshot) : null,
     /** The end of the latest quarter, the one revenueGrowth compares with a year earlier. */
     revenueGrowthQuarter: revenueGrowth != null ? latestFinancialPeriod(snapshot?.quarterlyStatements, (row) => row.date)?.date ?? null : null,
+    /** For a half-year reporter, the halves revenueGrowth compares, "H1 2026 vs H1 2025"; null for a quarter's growth. */
+    revenueGrowthHalf: revenueGrowth != null && snapshot
+      ? halfYearGrowthPeriod(quote?.listingExchangeName || quote?.exchangeName, snapshot) : null,
     currency: quote?.currency ?? null,
     marketCap: capitalization?.value ?? null,
     marketCapCurrency: capitalization?.currency ?? null,

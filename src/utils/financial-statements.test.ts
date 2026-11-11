@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  coalesceFinancialPeriodAliases, filledPeriodsNote, hasOlderStatements, mergeFinancialStatementRows, reportsHalfYearly, stalePeriodNote, statementHistoryNotes,
+  coalesceFinancialPeriodAliases, filledPeriodsNote, halfYearGrowthPeriod, hasOlderStatements, mergeFinancialStatementRows, reportsHalfYearly, stalePeriodNote, statementHistoryNotes,
 } from "./financial-statements";
 import { computeTTM } from "../plugins/builtin/ticker-detail/financials/aggregation";
 import type { FinancialStatement } from "../types/financials";
@@ -264,6 +264,19 @@ test("reportsHalfYearly: an Australian or New Zealand listing, or periods half a
   // One quarter missing between two is still a quarterly reporter.
   expect(reportsHalfYearly("LSE", [{ date: "2025-03-31" }, { date: "2025-09-30" }, { date: "2025-12-31" }])).toBe(false);
   expect(reportsHalfYearly("XETRA", [{ date: "2025-06-30" }])).toBe(false);
+});
+
+test("halfYearGrowthPeriod: a half-year reporter's growth names its halves, a quarterly one's none", () => {
+  const years = [{ date: "2024-12-31" }, { date: "2025-12-31" }] as FinancialStatement[];
+  // Pop Mart on HKEX: interims a year apart, each closing the half to June of a December year.
+  const popMart = { annualStatements: years, quarterlyStatements: [{ date: "2025-06-30" }, { date: "2026-06-30" }] as FinancialStatement[] };
+  expect(halfYearGrowthPeriod("HKEX", popMart)).toBe("H1 2026 vs H1 2025");
+  // A March year's half to September is its first; a 52-week half ending early in October closes September.
+  const march = { annualStatements: [{ date: "2026-03-31" }] as FinancialStatement[], quarterlyStatements: [{ date: "2025-10-04" }, { date: "2026-03-31" }] as FinancialStatement[] };
+  expect(halfYearGrowthPeriod("ASX", march)).toBe("H2 FY26 vs H2 FY25");
+  // Quarters: the figure is a quarter's, and the label stays the quarter's.
+  const quarters = { annualStatements: years, quarterlyStatements: [{ date: "2026-03-31" }, { date: "2026-06-30" }, { date: "2026-09-30" }] as FinancialStatement[] };
+  expect(halfYearGrowthPeriod("NASDAQ", quarters)).toBeNull();
 });
 
 describe("stalePeriodNote", () => {

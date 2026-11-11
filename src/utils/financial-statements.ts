@@ -1,5 +1,6 @@
 import type { FinancialStatement, StatementFill, StatementFillField, TickerFinancials } from "../types/financials";
 import { settleWithin } from "./async-deadline";
+import { fiscalYearEndMonth } from "./fiscal-period";
 import { logFailure } from "./log-failure";
 import { copyIncomeField, incomeFieldOwner, INCOME_STATEMENT_FIELDS, isIncomeStatementField } from "./income-statement";
 import { mergeStatementGaps } from "./statement-gaps";
@@ -78,11 +79,56 @@ const DAY_MS = 86_400_000;
  * lists on a venue whose companies do (Qantas on ASX), or the periods of its
  * "quarterly" statements are half a year apart.
  */
-export function reportsHalfYearly(exchange: string | null | undefined, quarterly: readonly Pick<FinancialStatement, "date">[]): boolean {
+export function reportsHalfYearly(
+  exchange: string | null | undefined,
+  quarterly: readonly Pick<FinancialStatement, "date">[],
+  /** With the years, interims that all close the first half of a fiscal year (Pop Mart's Junes beside its Decembers) are halves too. */
+  annual: readonly Pick<FinancialStatement, "date">[] = [],
+): boolean {
   if (exchange && HALF_YEARLY_VENUES.has(exchange.toUpperCase())) return true;
   const times = quarterly.map(({ date }) => Date.parse(`${date.slice(0, 10)}T00:00:00Z`)).filter(Number.isFinite).sort((a, b) => a - b);
   const gaps = times.slice(1).map((time, index) => (time - times[index]!) / DAY_MS);
-  return gaps.length > 0 && gaps.every((days) => days > 150 && days < 215);
+  if (gaps.length > 0 && gaps.every((days) => days > 150 && days < 215)) return true;
+  const yearEnd = fiscalYearEndMonth(annual);
+  return quarterly.length > 1 && yearEnd != null && quarterly.every(({ date }) => halfYearLabel(date, yearEnd)?.startsWith("H1") === true);
+}
+
+/**
+ * A half-year period as its issuer names it: `H1 2026` for the half to June of
+ * a calendar year, `H2 FY27` for the half to March of a year ending in March.
+ * Null for a date that closes no half of the fiscal year.
+ */
+export function halfYearLabel(date: string, yearEndMonth: number | null): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
+  if (!match || yearEndMonth == null) return null;
+  let [year, month] = [Number(match[1]), Number(match[2])];
+  // A 52/53-week half that ends in a month's first week closes the month before.
+  if (Number(match[3]) <= 7) [year, month] = month === 1 ? [year - 1, 12] : [year, month - 1];
+  const offset = (month - yearEndMonth + 12) % 12;
+  if (offset !== 0 && offset !== 6) return null;
+  const fiscalYear = month <= yearEndMonth ? year : year + 1;
+  const half = offset === 6 ? "H1" : "H2";
+  return yearEndMonth === 12 ? `${half} ${fiscalYear}` : `${half} FY${String(fiscalYear).slice(-2)}`;
+}
+
+/**
+ * What a latest-period growth figure compares for a company that reports
+ * half-yearly: "H1 2026 vs H1 2025" (Pop Mart's revenue growth on 2026-11-11
+ * is its half to June against the year before's, not a quarter's). Null for a
+ * quarterly reporter, whose figure is its last quarter's, and when the latest
+ * half cannot be named.
+ */
+export function halfYearGrowthPeriod(
+  exchange: string | null | undefined,
+  financials: Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">,
+): string | null {
+  if (!reportsHalfYearly(exchange, financials.quarterlyStatements, financials.annualStatements)) return null;
+  const latest = financials.quarterlyStatements.map(({ date }) => date.slice(0, 10)).filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)).sort().at(-1);
+  if (!latest) return null;
+  const yearEnd = fiscalYearEndMonth(financials.annualStatements);
+  const label = halfYearLabel(latest, yearEnd);
+  const prior = halfYearLabel(`${Number(latest.slice(0, 4)) - 1}${latest.slice(4)}`, yearEnd);
+  return label && prior ? `${label} vs ${prior}` : null;
 }
 
 /** How old a statement's latest period may be before a report says how old it is. */
