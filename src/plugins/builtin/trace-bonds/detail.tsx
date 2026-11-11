@@ -75,7 +75,7 @@ const NO_ROWS: PrintRow[] = [];
 const printDate = (row: PrintRow) => new Date(`${row.date}T00:00:00Z`);
 const printId = (row: PrintRow) => row.id;
 /** Prices on the chart's axis: `52.5`, `101.25`. */
-const formatPriceAxis = spanAxisFormatter((value, digits) => value.toFixed(digits));
+const formatPriceAxis = spanAxisFormatter((value, digits) => value.toFixed(digits), 3);
 
 function renderPrintCell(row: PrintRow, column: PrintColumn): DataTableCell {
   switch (column.id) {

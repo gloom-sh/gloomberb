@@ -100,7 +100,7 @@ function AnalystHeader({ data, history, series, currency, width, height, tableRo
   const upside = targetUpside(target, analystReferencePrice(data, financials?.quote).price);
   const formatValue = useCallback(() => "", []);
   const formatAxisValue = useMemo(
-    () => spanAxisFormatter((value, digits) => formatPriceTarget(Number(value.toFixed(digits)), currency)),
+    () => spanAxisFormatter((value, digits) => formatPriceTarget(Number(value.toFixed(digits)), currency), 2),
     [currency],
   );
   // The terminal grid gives a label half its cell, so two columns under 44

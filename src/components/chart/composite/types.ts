@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { CompositeAxisValueFormatter } from "./format";
 import type { CompositeChartLevels } from "./levels";
 import type { SeriesLineCue } from "./series-cues";
 import type { CompositeValueScales } from "./value-scale";
@@ -328,9 +329,10 @@ export interface CompositeChartProps {
    * Overrides the unit-derived tick and cursor labels on both value axes. It
    * reads only the value and the axis: what it labels is kept per formatter
    * and axis, so one that reads anything else (a currency, a setting) is a new
-   * function whenever that changes.
+   * function whenever that changes. Its `tag`, when set, labels the values
+   * tagged on the axis (`spanAxisFormatter`).
    */
-  formatAxisValue?: (value: number, domain: CompositeAxisDomain) => string;
+  formatAxisValue?: CompositeAxisValueFormatter;
   xAxis?: CompositeChartXAxis;
   /** Dated events on a time axis; a chart with `xAxis` has no time to put them at. */
   events?: readonly CompositeChartEvent[];

@@ -242,7 +242,7 @@ export function doeSeasonalStrip(row: DoeSeriesRow, color: string): ChartStripSp
 }
 
 export const doeAxisFormatter = (unit: DoeUnit) => spanAxisFormatter((value, digits) =>
-  `${value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}${unit === "pct" ? "%" : ""}`);
+  `${value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}${unit === "pct" ? "%" : ""}`, DECIMALS[unit]);
 
 /** Week ticks a quarter apart, so the axis reads the season. */
 export function doeWeekTicks(weeks: number): Array<{ label: string; ratio: number }> {

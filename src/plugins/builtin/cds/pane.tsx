@@ -3,7 +3,7 @@ import {
   ChartTableHeader,
   DataTableStackView,
   DataTableView,
-  EmptyState, formatBpAxis, PaneStatusBody, spanAxisFormatter, staticSeries,
+  EmptyState, PaneStatusBody, spanAxisFormatter, staticSeries,
   useChartTableSelection,
   usePaneMenuItems,
   usePaneNoticeFooter,
@@ -214,7 +214,9 @@ function CdsTradeTable({
 }
 
 /** Points upfront on the chart's axis: `58pts`, `57.6pts`. */
-const formatPointsAxis = spanAxisFormatter((value, digits) => `${value.toFixed(digits)}pts`);
+const formatPointsAxis = spanAxisFormatter((value, digits) => `${value.toFixed(digits)}pts`, 1);
+/** Spreads on the chart's axis, a tag to the table's precision: whole bp from 100bp, tenths below. */
+const formatSpreadAxis = spanAxisFormatter((value, digits) => `${value.toFixed(digits)}bp`, (value) => Math.abs(value) >= 100 ? 0 : 1);
 
 const NO_TRADES: CdsTrade[] = [];
 const NO_ISSUERS: CdsIssuerSummary[] = [];
@@ -288,7 +290,7 @@ function IssuerHeader({ issuer, line, trades, width, height, focused, loading, s
       chart={points.length >= 2 || loading || why ? {
         series,
         formatValue: (value: number) => formatQuoted(unit, value),
-        formatAxisValue: unit === "pts" ? formatPointsAxis : formatBpAxis,
+        formatAxisValue: unit === "pts" ? formatPointsAxis : formatSpreadAxis,
         remoteKind: "cds-spread-history", loading, ...link,
         ...(why ? { empty: why } : {}),
       } : null} />

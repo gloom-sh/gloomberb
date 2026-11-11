@@ -102,7 +102,7 @@ const historyId = (row: EstimateObservation) => `${row.source}:${row.date}`;
 const historyDate = (row: EstimateObservation) => new Date(`${row.date}T00:00:00Z`);
 const historySource = (row: EstimateObservation) => row.source === "gloom" ? "Recorded" : "Reported lookback";
 /** EPS ticks with the decimals the plotted range needs. */
-const formatEpsAxis = spanAxisFormatter((value, digits) => value.toFixed(digits));
+const formatEpsAxis = spanAxisFormatter((value, digits) => value.toFixed(digits), 2);
 
 /**
  * One fiscal period: its consensus figures, the EPS history as recorded and

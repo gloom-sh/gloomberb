@@ -277,7 +277,7 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
   )], [chartPoints]);
   const formatCash = useCallback((value: number) => formatDistributionAmount(value, currency), [currency]);
   const formatCashAxis = useMemo(
-    () => spanAxisFormatter((value, digits) => formatCurrency(value, currency, Math.max(2, digits))),
+    () => spanAxisFormatter((value, digits) => formatCurrency(value, currency, Math.max(2, digits)), 2),
     [currency],
   );
   // Payments before the first full trailing year or after today have no point on the line.

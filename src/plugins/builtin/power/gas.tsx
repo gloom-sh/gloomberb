@@ -20,7 +20,7 @@ import {
 import { useGasStorageEvidence, type GasStorageSnapshot } from "./evidence";
 
 const PANELS = [{ id: "main" }];
-const formatAxis = spanAxisFormatter((value, digits) => `${value.toFixed(digits)}%`);
+const formatAxis = spanAxisFormatter((value, digits) => `${value.toFixed(digits)}%`, 2);
 /** One decimal in a legend, so this year, last year and the average fit a phone's width. */
 const formatLegend = (value: number) => `${value.toFixed(1)}%`;
 /** EU first, as the server lists it. */

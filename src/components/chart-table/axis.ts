@@ -1,3 +1,4 @@
+import type { CompositeAxisValueFormatter } from "../chart/composite/format";
 import type { CompositeAxisDomain } from "../chart/composite/types";
 
 /**
@@ -15,18 +16,29 @@ export function spanDigits(domain: Pick<CompositeAxisDomain, "min" | "max">): nu
 /**
  * A tick formatter whose precision follows the plotted range, so a 2bp range
  * reads 44.8bp / 45.5bp / 46.2bp instead of 45bp / 45bp / 46bp.
+ *
+ * `valueDigits` is the data's own precision, as its table reads it. The value
+ * tags on the axis (the last value, a level, the cursor) keep it, or the
+ * ticks' digits where those are finer, so a 3.75% level on an axis ticked
+ * 3.5% / 4.0% reads 3.75%. Without it the tags read as the ticks do.
  */
 export function spanAxisFormatter(
   format: (value: number, digits: number) => string,
-): (value: number, domain: CompositeAxisDomain) => string {
-  return (value, domain) => format(value, spanDigits(domain));
+  valueDigits?: number | ((value: number) => number),
+): CompositeAxisValueFormatter {
+  const tick = (value: number, domain: CompositeAxisDomain) => format(value, spanDigits(domain));
+  if (valueDigits === undefined) return tick;
+  const ownDigits = typeof valueDigits === "number" ? () => valueDigits : valueDigits;
+  return Object.assign(tick, {
+    tag: (value: number, domain: CompositeAxisDomain) => format(value, Math.max(spanDigits(domain), ownDigits(value))),
+  });
 }
 
-/** Basis points: `235bp`, `44.8bp`. */
-export const formatBpAxis = spanAxisFormatter((value, digits) => `${value.toFixed(digits)}bp`);
+/** Basis points: `235bp` on the ticks, a tag to the tenth (`44.8bp`). */
+export const formatBpAxis = spanAxisFormatter((value, digits) => `${value.toFixed(digits)}bp`, 1);
 
-/** Percent values already in percent units: `4.25%`. */
-export const formatPercentAxis = spanAxisFormatter((value, digits) => `${value.toFixed(digits)}%`);
+/** Percent values already in percent units: `4.5%` on the ticks, a tag to the bp (`4.25%`). */
+export const formatPercentAxis = spanAxisFormatter((value, digits) => `${value.toFixed(digits)}%`, 2);
 
 /**
  * Moves already in percent units, signed as a return reads: `+4%`, `0%`,

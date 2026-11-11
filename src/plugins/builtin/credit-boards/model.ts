@@ -162,7 +162,7 @@ function adverseMove(quote: CreditIndexQuote): "up" | "down" {
   return quote === "spread" ? "up" : "down";
 }
 
-const formatPriceAxis = spanAxisFormatter((value, digits) => value.toFixed(digits));
+const formatPriceAxis = spanAxisFormatter((value, digits) => value.toFixed(digits), 2);
 
 export function axisFormatter(quote: CreditIndexQuote) {
   return quote === "spread" ? formatBpAxis : formatPriceAxis;

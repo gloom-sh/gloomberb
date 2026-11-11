@@ -154,7 +154,7 @@ export function PeBandPane({ width, height, focused }: PaneProps) {
   }, [model, windowLabel, currency, conversion]);
 
   const formatPrice = useCallback((value: number) => formatCurrency(value, currency, perShareDigits(value)), [currency]);
-  const formatAxis = useMemo(() => spanAxisFormatter((value, digits) => formatCurrency(value, currency, Math.max(2, digits))), [currency]);
+  const formatAxis = useMemo(() => spanAxisFormatter((value, digits) => formatCurrency(value, currency, Math.max(2, digits)), 2), [currency]);
   const query = <QueryBar width={width} filters={[{ id: "lookback", label: "Lookback", value: String(lookback), options: LOOKBACK_OPTIONS, onChange: setLookback }]} />;
 
   if (!symbol) return <EmptyState title="Choose a ticker." />;

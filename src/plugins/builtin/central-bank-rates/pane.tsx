@@ -69,9 +69,10 @@ export function CentralBankRatesPane({ width, height, focused }: PaneProps) {
   return <Box width={width} height={height} flexDirection="column">
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null}
       empty={!resource.loading && !resource.error && !data} subject="central bank rates">
+      {/* The board heads the move's date LAST CHANGE, so the move itself is MOVE. */}
       {data ? <MarketBoardStack rows={rows} width={width} height={height} focused={focused}
         selectedId={selectedId} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
-        valueWidth={14} changeLabel="LAST CHANGE" labelHeader="JURISDICTION" labelWidth={14} labelDetailHeader="INSTRUMENT" renderDetail={(row) => <PolicyDetail row={row.observation} width={width} height={Math.max(5, height - 2)} focused={focused} />} /> : null}
+        valueWidth={14} changeLabel="MOVE" labelHeader="JURISDICTION" labelWidth={14} labelDetailHeader="INSTRUMENT" renderDetail={(row) => <PolicyDetail row={row.observation} width={width} height={Math.max(5, height - 2)} focused={focused} />} /> : null}
     </PaneStatusBody>
   </Box>;
 }

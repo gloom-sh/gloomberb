@@ -48,7 +48,7 @@ const RANGE_OPTIONS = DEALER_RANGES.map(({ value, label, hint }) => ({ value, la
 /** How long the selection rests before its history is read, so holding a key down the board reads one row, not all it passes. */
 const CHART_SETTLE_MS = 150;
 /** Ticks in the table's own figures (whole $mn), with decimals only where the plotted range is narrow. */
-const formatLevelAxis = spanAxisFormatter((value, digits) => formatNumber(value, digits));
+const formatLevelAxis = spanAxisFormatter((value, digits) => formatNumber(value, digits), 0);
 
 function changeColor(value: number | null): string {
   if (value == null || value === 0) return colors.textMuted;

@@ -2,9 +2,9 @@ import type { ChartSurfaceProps } from "../../../ui";
 import type { NativeChartBitmap } from "../native/chart-rasterizer";
 import {
   axisResultCache,
+  compositeAxisTagFormatter,
   compositeAxisTicks,
   formatCompositeAxisValue,
-  formatCompositeCursorValue,
   type CompositeAxisValueFormatter,
 } from "./format";
 import { projectCompositeValue, unprojectCompositeValue } from "./scene";
@@ -76,7 +76,7 @@ export function resolveSeriesAxisTags(
       seriesLabel: source.label,
       side: source.axis,
       value: cursor.value,
-      label: (format ?? formatCompositeCursorValue)(cursor.value, domain),
+      label: compositeAxisTagFormatter(format)(cursor.value, domain),
       // A column below zero is drawn in its negative colour, and so is its tag.
       color: cursor.value < 0 && source.negativeColor ? source.negativeColor : source.color,
       yRatio,
@@ -102,7 +102,7 @@ export function cursorAxisLabel(
   if (!domain || cursorYRatio === null) return null;
   const value = unprojectCompositeValue(cursorYRatio, domain);
   if (value === null) return null;
-  return format ? format(value, domain) : formatCompositeCursorValue(value, domain);
+  return compositeAxisTagFormatter(format)(value, domain);
 }
 
 export const MINIMUM_AXIS_LABEL_WIDTH = 3;
@@ -133,7 +133,7 @@ function axisLabelWidth(
   const ticks = compositeAxisTicks(domain, format);
   const labels = ticks.map((tick) => tick.label);
   if (includeCursor) {
-    const cursorFormat = format ?? formatCompositeCursorValue;
+    const cursorFormat = compositeAxisTagFormatter(format);
     for (const { value } of ticks) {
       labels.push(cursorFormat(value, domain));
       // Totals use two decimals at their compact scale; prices can use four

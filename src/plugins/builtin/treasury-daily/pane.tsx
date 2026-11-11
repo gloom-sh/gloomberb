@@ -45,7 +45,7 @@ const EMPTY_DEBT: DebtDay[] = [];
 const RANGE_OPTIONS = TGA_RANGES.map(({ value, label, hint }) => ({ value, label, hint }));
 const TGA_SERIES_LABEL = "TGA closing balance $bn";
 /** Ticks in billions, with thousands separators and the decimals the plotted range needs. */
-const formatBillionsAxis = spanAxisFormatter((value, digits) => formatNumber(value, digits));
+const formatBillionsAxis = spanAxisFormatter((value, digits) => formatNumber(value, digits), 2);
 const formatBillionsLevel = (value: number) => formatNumber(value, 2);
 
 function scaledCell(value: number | null, text: string, muted: string): DataTableCell {

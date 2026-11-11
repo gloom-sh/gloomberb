@@ -98,7 +98,7 @@ const getKey = (row: RiskDisplayRow) => row.id;
 /** The two return rows chart the basket against its benchmark over the window they measure. */
 const RETURN_ROW_IDS: ReadonlySet<string> = new Set(["return", "benchmark"]);
 const formatPercentValue = (value: number) => `${value.toFixed(2)}%`;
-const formatPlainAxis = spanAxisFormatter((value, digits) => value.toFixed(digits));
+const formatPlainAxis = spanAxisFormatter((value, digits) => value.toFixed(digits), 2);
 /** What the first column lists in each view. */
 const LABEL_HEADERS: Record<RiskView, string> = {
   risk: "Metric",
