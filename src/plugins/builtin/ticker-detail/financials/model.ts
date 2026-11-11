@@ -1,6 +1,7 @@
 import type { FinancialStatement, TickerFinancials } from "../../../../types/financials";
 import { ebitdaLacksDepreciation } from "../../../../utils/ebitda";
-import { fiscalPeriodLabel, ttmPeriodLabel } from "../../../../utils/fiscal-period";
+import { fiscalPeriodLabel, longerPeriodLabel, ttmPeriodLabel } from "../../../../utils/fiscal-period";
+import { statementPeriodMonths } from "../../../../utils/financial-statements";
 import { formatPerShareNumber } from "../../../../utils/reported-money";
 import { hasNonIncomeStatementGap } from "../../../../utils/statement-gaps";
 import {
@@ -219,15 +220,23 @@ export function formatFinancialHeader(date: string, currency?: string, dateSourc
   return `${label} ${dateSource === "sec" ? "(SEC date)" : "(provider date)"}`;
 }
 
-/** A table column's label: the fiscal period, and `TTM` with the quarter it runs to. */
+/**
+ * A table column's label: the fiscal period, a half in the quarterly list as
+ * a half (`H1 FY26`), and `TTM` with the quarter or half it runs to.
+ */
 export function financialColumnLabel(
   statement: FinancialTableStatement,
   kind: FinancialPeriod,
   yearEndMonth: number | null,
 ): string {
-  if (statement.date !== "TTM") return fiscalPeriodLabel(statement.date, kind, yearEndMonth);
-  const periodEnd = statement.aggregation?.periodEnd;
-  return ttmPeriodLabel(periodEnd, yearEndMonth);
+  if (statement.date !== "TTM") {
+    const months = kind === "quarterly" ? statementPeriodMonths(statement) : undefined;
+    return months && months > 3
+      ? longerPeriodLabel(statement.date, months, yearEndMonth)
+      : fiscalPeriodLabel(statement.date, kind, yearEndMonth);
+  }
+  const { periodEnd, interimMonths } = statement.aggregation ?? {};
+  return ttmPeriodLabel(periodEnd, yearEndMonth, interimMonths);
 }
 
 /** The end of the latest period on screen, which the query bar shows as of. */

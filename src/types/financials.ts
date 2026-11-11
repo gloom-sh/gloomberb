@@ -812,13 +812,6 @@ export interface ResultsStatementFill {
 
 export type StatementFill = ExchangeStatisticsFill | ResultsStatementFill;
 
-/** A statement period's announcement or report (TickerFinancials.resultsFilings; `statementFilings` in Gloom Cloud's answer). */
-export interface StatementFiling extends StatementFilingDocument {
-  periodEnd: string;
-  /** 12 a year, 6 a half, 3 or 9 a quarter's year to date. */
-  periodMonths: number;
-}
-
 /** How Gloom Cloud built a trailing twelve months the quarters do not give: the year plus the year to date since it, less a year earlier's. */
 export interface StatementTrailing {
   method: "annual-plus-interim";
@@ -1224,8 +1217,6 @@ export interface TickerFinancials {
   quarterlyStatements: FinancialStatement[];
   /** Twelve months to the latest half or quarter where the quarters do not give them (a half-yearly reporter). */
   trailingStatement?: FinancialStatement & { trailing: StatementTrailing };
-  /** Each period's results announcement and report on HKEXnews or SGXNet, with their links and publication times, newest first. */
-  resultsFilings?: StatementFiling[];
   priceHistory: PricePoint[];
   /** Acquired history cadence. Null explicitly marks an opaque provider default; absent on legacy snapshots. */
   priceHistoryResolution?: import("../time-series/resolution").ManualChartResolution | null;

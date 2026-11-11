@@ -349,7 +349,6 @@ export function mapCloudFinancials(
     ...(financials.trailingStatement
       ? { trailingStatement: { ...mapCloudStatement(financials.trailingStatement, derive), trailing: financials.trailingStatement.trailing } }
       : {}),
-    ...(financials.statementFilings ? { resultsFilings: financials.statementFilings } : {}),
     priceHistory: (financials.priceHistory ?? []).map((point) =>
       point.date instanceof Date
         ? point

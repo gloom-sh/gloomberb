@@ -4,15 +4,12 @@ import type {
   HolderData,
   HolderRecord,
   OptionsChain,
-  StatementFiling,
   TickerFinancials,
 } from "../../types/financials";
 import type { CloudQuotePayload } from "./quotes";
 
-export interface CloudFinancialsPayload extends Omit<TickerFinancials, "quote" | "resultsFilings"> {
+export interface CloudFinancialsPayload extends Omit<TickerFinancials, "quote"> {
   quote?: CloudQuotePayload;
-  /** Each period's results announcement and report (TickerFinancials.resultsFilings). */
-  statementFilings?: StatementFiling[];
 }
 
 export interface CloudOptionsChainPayload extends OptionsChain {

@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { TickerFinancials } from "../../../../types/financials";
+import type { FinancialStatement, ResultsStatementFill } from "../../../../types/financials";
 import {
   buildFinancialTableModel,
   computeGrowth,
   computeTTM,
+  financialColumnLabel,
   formatFinancialCell,
   financialStatementCurrency,
   resolveFinancialPeriodOption,
@@ -300,3 +302,83 @@ test("a half-yearly reporter's TTM is Gloom Cloud's year plus the half, when it 
   expect(buildFinancialTableModel(later, { period: "annual", statement: "income" })!.statements.map(({ date }) => date)).not.toContain("TTM");
 });
 
+/** A half Gloom Cloud filled into the quarterly list from a results announcement. */
+function half(date: string, totalRevenue: number): FinancialStatement {
+  const filledFrom: ResultsStatementFill = {
+    source: "results", fields: ["totalRevenue"], periodMonths: 6,
+    documents: [{ source: "hkex", kind: "interim_results", title: "Interim Results", url: "https://www1.hkexnews.hk/x.pdf", publishedAt: `${date.slice(0, 4)}-08-20T08:30:00Z`, fetchedAt: "2026-11-11T00:00:00Z" }],
+    lines: { totalRevenue: { document: 0, page: 3 } },
+  };
+  return { date, currency: "CNY", totalRevenue, filledFrom };
+}
+
+const HALF_TRAILING = {
+  date: "2026-06-30", currency: "CNY", totalRevenue: 40.42e9,
+  trailing: {
+    method: "annual-plus-interim" as const, annual: "2025-12-31",
+    interim: { end: "2026-06-30", months: 6 }, priorInterim: { end: "2025-06-30", months: 6 },
+    basis: "FY to 2025-12-31 + 6 months to 2026-06-30 − 6 months to 2025-06-30",
+  },
+};
+
+test("a filled half is never summed as a quarter, compared with one, or headed as one", () => {
+  const quarters = [
+    { date: "2025-03-31", currency: "CNY", totalRevenue: 10 },
+    { date: "2025-06-30", currency: "CNY", totalRevenue: 20 },
+    { date: "2025-09-30", currency: "CNY", totalRevenue: 30 },
+    { date: "2025-12-31", currency: "CNY", totalRevenue: 40 },
+  ];
+  // Four quarters to December; the half after them is not a fifth.
+  expect(computeTTM([...quarters, half("2026-06-30", 170)])).toMatchObject({ totalRevenue: 100, aggregation: { periodEnd: "2025-12-31" } });
+  // Three quarters and a half are not four quarters.
+  expect(computeTTM([...quarters.slice(1), half("2026-03-31", 170)])).toBeNull();
+  const financials = createTestFinancials({
+    annualStatements: [{ date: "2025-12-31", currency: "CNY", totalRevenue: 100 }],
+    quarterlyStatements: [...quarters, half("2026-06-30", 170)],
+  });
+  const table = buildFinancialTableModel(financials, { period: "quarterly", statement: "income" })!;
+  expect(table.statements[0]!.date).toBe("2026-06-30");
+  expect(financialColumnLabel(table.statements[0]!, "quarterly", 12)).toBe("H1 FY26");
+  expect(financialColumnLabel(table.statements[1]!, "quarterly", 12)).toBe("Q4 FY25");
+  const revenue = table.rows.find(({ key, summaryKey }) => (key ?? summaryKey) === "totalRevenue")!;
+  // No change from the December quarter to the half; the quarters keep theirs.
+  expect(revenue.cells[0]!.growth).toBeUndefined();
+  expect(revenue.cells[1]!.growth).toBeCloseTo(40 / 30 - 1, 6);
+  // Not even one a quarter after it.
+  const offCycle = buildFinancialTableModel({ ...financials, quarterlyStatements: [...quarters, half("2026-03-31", 170)] }, { period: "quarterly", statement: "income" })!;
+  expect(financialColumnLabel(offCycle.statements[0]!, "quarterly", 12)).toBe("6M 2026-03-31");
+  expect(offCycle.rows.find(({ key, summaryKey }) => (key ?? summaryKey) === "totalRevenue")!.cells[0]!.growth).toBeUndefined();
+});
+
+test("the year plus the half: headed TTM H1, its growth only against twelve months to a year before", () => {
+  const annual = [
+    { date: "2024-12-31", currency: "CNY", totalRevenue: 13.04e9 },
+    { date: "2025-12-31", currency: "CNY", totalRevenue: 37.12e9 },
+  ];
+  const halves = createTestFinancials({
+    annualStatements: annual,
+    quarterlyStatements: [half("2025-06-30", 13.88e9), half("2026-06-30", 17.17e9)],
+    trailingStatement: HALF_TRAILING,
+  });
+  const table = buildFinancialTableModel(halves, { period: "annual", statement: "income" })!;
+  expect(table.statements[0]!.aggregation).toMatchObject({ kind: "annual-plus-interim", interimMonths: 6 });
+  expect(financialColumnLabel(table.statements[0]!, "annual", 12)).toBe("TTM H1 FY26");
+  const revenue = (model: typeof table) => model.rows.find(({ key, summaryKey }) => (key ?? summaryKey) === "totalRevenue")!;
+  // No twelve months to June 2025 on file: no growth, never against FY2025.
+  expect(revenue(table).cells[0]!.growth).toBeUndefined();
+  expect(revenue(table).cells[1]!.growth).toBeCloseTo(37.12 / 13.04 - 1, 6);
+  // Four quarters to June 2025 are the same window a year earlier.
+  const quarterly = createTestFinancials({
+    annualStatements: annual,
+    quarterlyStatements: [
+      { date: "2024-09-30", currency: "CNY", totalRevenue: 3e9 },
+      { date: "2024-12-31", currency: "CNY", totalRevenue: 4e9 },
+      { date: "2025-03-31", currency: "CNY", totalRevenue: 6e9 },
+      { date: "2025-06-30", currency: "CNY", totalRevenue: 7e9 },
+    ],
+    trailingStatement: HALF_TRAILING,
+  });
+  const withPrior = buildFinancialTableModel(quarterly, { period: "annual", statement: "income" })!;
+  expect(withPrior.statements[0]!.aggregation?.kind).toBe("annual-plus-interim");
+  expect(revenue(withPrior).cells[0]!.growth).toBeCloseTo(40.42 / 20 - 1, 6);
+});

@@ -179,17 +179,26 @@ function retainedFill(merged: FinancialStatement, rows: Array<FinancialStatement
   for (const row of rows) {
     const fill = row?.filledFrom;
     if (!fill) continue;
-    const kept = <F extends StatementFillField | ResultsFillField>(fields: readonly F[]) =>
-      fields.filter((field) => typeof merged[field] === "number" && Object.is(merged[field], row![field]));
-    if (fill.source === "asx") {
-      const fields = kept(fill.fields);
-      if (fields.length > 0) return { ...fill, fields };
-    } else {
-      const fields = kept(fill.fields);
-      if (fields.length > 0) return { ...fill, fields };
-    }
+    const filled: readonly ResultsFillField[] = fill.fields;
+    const fields = filled.filter((field) => typeof merged[field] === "number" && Object.is(merged[field], row![field]));
+    // The lines kept are some of the fill's own, so the fill keeps its kind.
+    if (fields.length > 0) return { ...fill, fields } as StatementFill;
   }
   return undefined;
+}
+
+/**
+ * The months a row's flows cover where its list's usual is another: 6 for a
+ * half Gloom Cloud filled into the quarterly list from a results announcement.
+ * Undefined for a row of its list's usual length.
+ */
+export function statementPeriodMonths(row: Pick<FinancialStatement, "filledFrom">): number | undefined {
+  return row.filledFrom?.source === "results" ? row.filledFrom.periodMonths : undefined;
+}
+
+/** A quarterly list's rows that are quarters: never a filled half, which no four-quarter sum or quarter-on-quarter change may take. */
+export function quarterRows<T extends Pick<FinancialStatement, "filledFrom">>(rows: readonly T[]): T[] {
+  return rows.filter((row) => (statementPeriodMonths(row) ?? 3) <= 3);
 }
 
 export const SEC_EPS_BASIS_NOTICE = "SEC EPS uses corroborated split-adjusted share bases. Unverified bases are unavailable.";

@@ -680,11 +680,12 @@ export function ratioOpenings(
 ): Map<string, FinancialStatement> {
   const openings = buildPreviousStatementMap(period, annualStatements, quarterlyStatements, null);
   const latest = quarterlyStatements.at(-1);
-  const yearBefore = quarterlyStatements.at(-5);
-  if (period === "annual" && latest && yearBefore) {
-    const days = (Date.parse(latest.date) - Date.parse(yearBefore.date)) / 86_400_000;
-    if (days >= 350 && days <= 380) openings.set("TTM", yearBefore);
-  }
+  // By date, not four rows back: a half-yearly reporter's rows are halves.
+  const yearBefore = latest && quarterlyStatements.find((row) => {
+    const days = (Date.parse(latest.date) - Date.parse(row.date)) / 86_400_000;
+    return days >= 350 && days <= 380;
+  });
+  if (period === "annual" && yearBefore) openings.set("TTM", yearBefore);
   return openings;
 }
 
