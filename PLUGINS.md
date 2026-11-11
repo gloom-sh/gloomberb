@@ -949,7 +949,8 @@ await ctx.teamState.delete("shortlist");
 
 Values are JSON, and every member of the team can read them, so never store
 credentials there. A write without `expectRevision` overwrites whatever is
-there.
+there. Strings in a value, keys included, are stored without control
+characters other than line breaks and tabs.
 
 ### Navigation
 
