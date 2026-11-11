@@ -481,7 +481,7 @@ describe("useQuoteBoard streaming", () => {
   });
 
   // A dropped stream read "17 stale" on a board of closed markets whose refresh had just come back.
-  test("a dropped stream marks only rows whose market trades, until the board's refresh answers; a failed refresh stays stale", async () => {
+  test("a dropped stream leaves closed markets current and asks again for the open ones at once; a failed refresh stays stale", async () => {
     let emit: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;
     let streamed: QuoteSubscriptionTarget[] = [];
     const coordinator = new MarketDataCoordinator(createTestDataProvider({
@@ -493,34 +493,43 @@ describe("useQuoteBoard streaming", () => {
     }));
     setSharedMarketDataCoordinator(coordinator);
     let failing = false;
+    // ^GSPC's source says its session is open; London's calendar says ^FTSE's has not opened.
     const states: Record<string, Quote["marketState"]> = { "^GSPC": "REGULAR", "^FTSE": "CLOSED" };
     const { provider, calls } = batchProvider(() => failing ? new Error("Service unavailable") : SYMBOLS.map((symbol) => ({
       target: { symbol, exchange: "" },
       quote: { ...quote(symbol, 100), marketState: states[symbol] },
     })));
-    await mount(provider, 60_000);
-    await settle(2);
-    // The feed's snapshot on subscribe is the same print the board loaded, a moment after it.
-    await act(async () => {
-      for (const target of streamed) emit!(target, { ...quote(target.symbol, 100), marketState: states[target.symbol], delivery: "stream" });
-    });
-    await settle(5);
+    const random = Math.random;
+    Math.random = () => 0;
+    // Wed 11 Nov 2026 07:16 UTC, London not yet open; the clock keeps running.
+    const realNow = Date.now;
+    const offset = Date.parse("2026-11-11T07:16:00Z") - realNow();
+    Date.now = () => realNow() + offset;
+    try {
+      await mount(provider, 60_000);
+      await settle(2);
+      // The feed's snapshot on subscribe is the same print the board loaded, a moment after it.
+      await act(async () => {
+        for (const target of streamed) emit!(target, { ...quote(target.symbol, 100), marketState: states[target.symbol], delivery: "stream" });
+      });
+      await settle(5);
 
-    await act(async () => coordinator.setQuoteStreamDown(Date.now()));
-    await settle(5);
-    // The closed market had nothing to bring; the open one has not been refreshed since the feed's last delivery.
-    expect(quotes.get("^FTSE")?.stale).toBe(false);
-    expect(quotes.get("^GSPC")?.stale).toBe(true);
+      await act(async () => coordinator.setQuoteStreamDown(Date.now()));
+      // The store tells the board on a zero timer, and the board asks on another.
+      for (let wait = 0; wait < 40 && calls.length < 2; wait += 1) await settle(5);
+      await settle(5);
+      // Only the open market is asked for again; the closed one had nothing to bring.
+      expect(calls.slice(1).map((call) => call.symbols.join())).toEqual(["^GSPC"]);
+      expect(quoteBoardStatus(quotes).stale).toBe(0);
 
-    await act(async () => refreshBoard());
-    await settle(5);
-    expect(quoteBoardStatus(quotes).stale).toBe(0);
-
-    failing = true;
-    await act(async () => refreshBoard());
-    await settle(5);
-    expect(calls.length).toBe(3);
-    expect(quotes.get("^GSPC")?.stale).toBe(true);
+      failing = true;
+      await act(async () => refreshBoard());
+      await settle(5);
+      expect(quotes.get("^GSPC")?.stale).toBe(true);
+    } finally {
+      Math.random = random;
+      Date.now = realNow;
+    }
     coordinator.destroy();
   });
 });

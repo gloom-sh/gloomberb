@@ -72,6 +72,8 @@ const QUOTE_BOARD_FALLBACK_MS = 60_000;
 const STREAM_SILENCE_MS = 3 * 60_000;
 /** The feed answers a new subscription with a snapshot; give it this long before polling around it. */
 const STREAM_CONNECT_GRACE_MS = 10_000;
+/** A dropped stream's symbols are asked for within this long, each client at a random moment in it. */
+const STREAM_DROP_REFRESH_SPREAD_MS = 5_000;
 
 /** A cache-first refresh splits the listed symbols into at most this many batches, sent at once. */
 const QUOTE_REFRESH_BATCHES = 4;
@@ -492,6 +494,25 @@ export function useQuoteBoard(symbols: string[], options: QuoteBoardOptions = {}
       if (timer) clearTimeout(timer);
     };
   }, [dataProvider, fallbackIntervalMs, liveStreaming, load, paneVisible, selectedSymbol, symbols, visibleSymbols]);
+
+  // The symbols whose feed quote reads stale: the stream went down while
+  // their market trades. The board then runs as it does without streaming:
+  // they are all asked for now, as a first load would, and the poll keeps
+  // the ones on screen current. A row reads stale only when a refresh fails.
+  const interrupted = useMemo(() => (liveStreaming
+    ? symbols.filter((symbol) => resolveEntryData(entries.get(buildQuoteKey(boardInstrument(symbol))))?.stale === true).join("\u001f")
+    : ""), [entries, liveStreaming, symbols]);
+  useEffect(() => {
+    if (!interrupted || !paneVisible || !dataProvider) return;
+    // At a random moment within a few seconds, so clients a server restart dropped together do not ask together.
+    const timer = setTimeout(() => {
+      const now = Date.now();
+      const due = interrupted.split("\u001f").filter((symbol) =>
+        !isStreamCarryingQuote(entriesRef.current.get(buildQuoteKey(boardInstrument(symbol))), streamStartRef.current.at, now));
+      if (due.length > 0) load(true, due);
+    }, Math.random() * STREAM_DROP_REFRESH_SPREAD_MS);
+    return () => clearTimeout(timer);
+  }, [dataProvider, interrupted, load, paneVisible]);
 
   // Settings changes must affect rows and footer status in the same render,
   // including the frame before the next request effect starts. Unchanged
