@@ -818,7 +818,7 @@ export const zhCN: Record<string, string> = {
   "Account deleted.": "账户已删除。",
   "Failed to delete account.": "删除账户失败。",
   "Enter your password to delete your account.": "请输入密码以删除你的账户。",
-  "Log out and back in, then delete your account.": "请先退出并重新登录，然后再删除账户。",
+  "To delete your account, sign out of gloom.sh in your browser and back in, then log out here and back in.": "要删除账户，请先在浏览器中退出 gloom.sh 并重新登录，然后在这里退出并重新登录。",
   "Log in to manage your Gloom Cloud account.": "登录以管理你的 Gloom Cloud 账户。",
   "Configured": "已配置",
   "No public portfolio analytics": "没有公开组合分析数据",

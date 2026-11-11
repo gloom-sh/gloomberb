@@ -818,7 +818,7 @@ export const ja: Record<string, string> = {
   "Account deleted.": "アカウントが削除されました。",
   "Failed to delete account.": "アカウントの削除に失敗しました。",
   "Enter your password to delete your account.": "アカウントを削除するにはパスワードを入力してください。",
-  "Log out and back in, then delete your account.": "一度ログアウトして再度ログインしてから、アカウントを削除してください。",
+  "To delete your account, sign out of gloom.sh in your browser and back in, then log out here and back in.": "アカウントを削除するには、ブラウザで gloom.sh からログアウトして再度ログインし、その後ここでもログアウトして再度ログインしてください。",
   "Log in to manage your Gloom Cloud account.": "ログインして Gloom Cloud アカウントを管理します。",
   "Configured": "設定済み",
   "No public portfolio analytics": "公開ポートフォリオ分析なし",

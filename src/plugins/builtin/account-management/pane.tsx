@@ -69,7 +69,7 @@ import {
   formatTrialOffer,
 } from "../../../account/billing";
 import { DeleteAccountPasswordDialog, PasswordChangeDialog } from "./password-dialog";
-import { deleteAccountRefusal } from "./delete-account";
+import { deleteAccountConfirmingSession } from "./delete-account";
 import { endTrialAfterWarning } from "./trial-cancel";
 import { CalendarAccountTab } from "./calendar-tab";
 import { useAccountManagementFooter } from "./footer";
@@ -728,55 +728,24 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     });
     if (!confirmed) return;
 
-    const deleted = async () => {
-      setProfile(null);
-      setDraft(profileToDraft(null));
-      setHasSession(false);
-      await chatController.refreshSession().catch(logFailure("account-management.pane", "Refresh deleted account session failed"));
-      setMessage({ tone: "success", text: t("Account deleted.") });
-    };
-    setBusy("delete");
-    setMessage({ tone: "info", text: t("Deleting account...") });
-    let refusal: ReturnType<typeof deleteAccountRefusal> = null;
-    try {
-      await apiClient.deleteAccount();
-      await deleted();
-    } catch (error) {
-      // A session signed in more than a day ago confirms the password, or
-      // logs in again for an account without one.
-      refusal = deleteAccountRefusal(error);
-      setMessage(refusal === "password" ? null : {
-        tone: "error",
-        text: refusal === "log_in"
-          ? t("Log out and back in, then delete your account.")
-          : error instanceof Error ? error.message : t("Failed to delete account."),
-      });
-    } finally {
-      setBusy(null);
-    }
-    if (refusal !== "password") return;
-    void dialog.alert({
-      closeOnClickOutside: false,
-      content: (context: AlertContext) => (
-        <DeleteAccountPasswordDialog
-          {...context}
-          onDelete={async (password) => {
-            setBusy("delete");
-            try {
-              await apiClient.deleteAccount(password);
-              await deleted();
-            } catch (error) {
-              if (deleteAccountRefusal(error) === "log_in") {
-                setMessage({ tone: "error", text: t("Log out and back in, then delete your account.") });
-              }
-              throw error;
-            } finally {
-              setBusy(null);
-            }
-          }}
-        />
-      ),
-    }).catch(logFailure("account-management.pane", "Open delete account password dialog failed"));
+    await deleteAccountConfirmingSession({
+      remove: (password) => apiClient.deleteAccount(password),
+      askPassword: (submit) => {
+        void dialog.alert({
+          closeOnClickOutside: false,
+          content: (context: AlertContext) => <DeleteAccountPasswordDialog {...context} onDelete={submit} />,
+        }).catch(logFailure("account-management.pane", "Open delete account password dialog failed"));
+      },
+      deleted: async () => {
+        setProfile(null);
+        setDraft(profileToDraft(null));
+        setHasSession(false);
+        await chatController.refreshSession().catch(logFailure("account-management.pane", "Refresh deleted account session failed"));
+        setMessage({ tone: "success", text: t("Account deleted.") });
+      },
+      setBusy: (deleting) => setBusy(deleting ? "delete" : null),
+      setMessage,
+    });
   }, [busy, dialog]);
 
   // Only after the warning that it ends the trial and Pro now (trial-cancel.ts).

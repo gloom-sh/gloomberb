@@ -803,7 +803,7 @@ export const es: Record<string, string> = {
   "Account deleted.": "Cuenta eliminada.",
   "Failed to delete account.": "No se pudo eliminar la cuenta.",
   "Enter your password to delete your account.": "Introduce tu contraseña para eliminar tu cuenta.",
-  "Log out and back in, then delete your account.": "Cierra sesión y vuelve a iniciarla; después elimina tu cuenta.",
+  "To delete your account, sign out of gloom.sh in your browser and back in, then log out here and back in.": "Para eliminar tu cuenta, cierra sesión en gloom.sh en tu navegador y vuelve a iniciarla; después cierra sesión aquí y vuelve a iniciarla.",
   "Log in to manage your Gloom Cloud account.": "Inicia sesión para gestionar tu cuenta de Gloom Cloud.",
   "Configured": "Configurado",
   "No public portfolio analytics": "Sin análisis público de cartera",
