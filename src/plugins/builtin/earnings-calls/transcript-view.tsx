@@ -36,19 +36,22 @@ import {
 import {
   buildTranscriptSegments,
   filterTranscriptTurns,
+  originalParagraphs,
   turnParagraphs,
   type TranscriptLine,
   type TranscriptMatch,
 } from "./model";
 import { splitSentences } from "./prose";
 
-export type ReaderTab = "summary" | "transcript" | "qa";
+export type ReaderTab = "summary" | "transcript" | "qa" | "original";
 
 /** `hint` is the key that jumps to the section, shown on its chip. */
 export const READER_TABS: Array<{ label: string; value: ReaderTab; hint: string }> = [
   { label: "Summary", value: "summary", hint: "s" },
   { label: "Transcript", value: "transcript", hint: "t" },
   { label: "Q&A", value: "qa", hint: "q" },
+  // A translated call as it was said, in its own language.
+  { label: "Original", value: "original", hint: "g" },
 ];
 
 const NATIVE_STRETCH_STYLE = { minWidth: 0 };
@@ -265,7 +268,15 @@ export function TranscriptView({
       ? buildTranscriptSegments(transcript, "transcript", { search: query }) : []
   ), [transcript, tab, query]);
   const hasQa = (transcript?.turns ?? []).some((turn) => turn.isQa);
-  const readerTabs = READER_TABS.map((entry) => ({
+  const original = useMemo(() => {
+    if (tab !== "original") return [];
+    const search = query?.trim().toLowerCase() ?? "";
+    return originalParagraphs(transcript?.originalText)
+      .filter((paragraph) => !search || paragraph.toLowerCase().includes(search));
+  }, [transcript, tab, query]);
+  const hasOriginal = !!transcript?.originalText?.trim();
+  // Only a translated call has an original to show.
+  const readerTabs = READER_TABS.filter((entry) => entry.value !== "original" || hasOriginal).map((entry) => ({
     label: entry.label,
     value: entry.value,
     hint: entry.hint,
@@ -413,6 +424,25 @@ export function TranscriptView({
                 </Box>
               )}
             </>
+          ) : tab === "original" ? (
+            original.length > 0 ? original.map((paragraph, index) => (
+              <Box key={index} marginTop={1}>
+                <Prose
+                  text={paragraph}
+                  width={proseWidth}
+                  color={colors.text}
+                  marks={find?.query.trim() ? { query: find.query.trim() } : undefined}
+                />
+              </Box>
+            )) : (
+              <Box marginTop={1}>
+                <Prose
+                  text={query?.trim() ? `Nothing matching "${query.trim()}" in this call.` : "This call has no text in another language."}
+                  width={proseWidth}
+                  color={colors.textDim}
+                />
+              </Box>
+            )
           ) : (
             <>
               {turns.map(({ turn, index: turnIndex }, index) => (

@@ -251,6 +251,45 @@ describe("earnings transcript headless", () => {
     expect(second.rows).toHaveLength(1);
     expect(second.rows[0]?.index).toBe(1);
   });
+
+  test("a call held in Chinese says it is translated, and --section original reads its machine transcript, cut into paragraphs", async () => {
+    // Speech transcribed in Chinese comes as one block with spaces at the pauses and no stops.
+    const said = Array.from({ length: 60 }, (_, index) => `第${index}段上半年的经营业绩稳中有进`).join(" ");
+    const translated = { ...transcript, language: "chinese", isTranslated: true, originalText: `${said}\n\n谢谢。` };
+    const definition = createEarningsCallsHeadless({ ...dependencies(), loadTranscript: async () => translated });
+
+    const english = await definition.load(transcriptArgs({ section: "summary", quarter: "latest", offset: 0, limit: 20 }), context);
+    expect(english.metadata).toMatchObject({
+      translatedFrom: "Chinese",
+      notices: ["Translated into English from Chinese; --section original reads the machine transcript it was translated from."],
+    });
+
+    const original = await definition.load(transcriptArgs({ section: "original", quarter: "latest", offset: 0, limit: 50 }), context);
+    const paragraphs = original.rows.map((row) => String(row.text));
+    expect(paragraphs.join(" ")).toBe(`${said} 谢谢。`);
+    expect(paragraphs.length).toBeGreaterThan(2);
+    // Cut at a pause, never inside a phrase.
+    expect(paragraphs.every((text) => text.length <= 360 && /^第\d+段|^谢谢/.test(text))).toBe(true);
+    // Transcribed from its recording, the original is a machine transcript.
+    expect(original.metadata?.notices).toEqual([
+      "A machine transcript of the call's recording in Chinese, before translation; it can mishear names and figures.",
+    ]);
+    // A record published as a document has no timings: it is the call as published.
+    const published = await createEarningsCallsHeadless({
+      ...dependencies(),
+      loadTranscript: async () => ({ ...translated, turns: translated.turns.map((turn) => ({ ...turn, startSeconds: null })) }),
+    }).load(transcriptArgs({ section: "original", quarter: "latest", offset: 0, limit: 50 }), context);
+    expect(published.metadata?.notices).toEqual(["The call as published in Chinese, before translation."]);
+
+    // A language stored as its code reads the same, and an English call says nothing.
+    const coded = await createEarningsCallsHeadless({ ...dependencies(), loadTranscript: async () => ({ ...translated, language: "zh" }) })
+      .load(transcriptArgs({ section: "summary", quarter: "latest", offset: 0, limit: 20 }), context);
+    expect(coded.metadata?.translatedFrom).toBe("Chinese");
+    const plain = await createEarningsCallsHeadless(dependencies())
+      .load(transcriptArgs({ section: "summary", quarter: "latest", offset: 0, limit: 20 }), context);
+    expect(plain.metadata?.translatedFrom).toBeNull();
+    expect(plain.metadata?.notices).toBeUndefined();
+  });
 });
 
 describe("bounded call discovery", () => {

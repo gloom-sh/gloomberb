@@ -280,6 +280,12 @@ export interface CloudEarningsTranscriptPayload {
   qaStartTurn: number | null;
   wordCount: number | null;
   asrModel: string | null;
+  /** The language the call was held in, as stored ("zh", "chinese"); absent from older servers. */
+  language?: string | null;
+  /** True when the text is an English translation of a call held in another language. */
+  isTranslated?: boolean;
+  /** What a translated call said in its own language; absent when the call is not translated or from older servers. */
+  originalText?: string | null;
   updatedAt: string | null;
 }
 

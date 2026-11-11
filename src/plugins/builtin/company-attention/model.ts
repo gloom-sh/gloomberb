@@ -171,7 +171,8 @@ export function hiringModel(data: HiringBoard | HiringPayload, mix = "functions"
     preview: data.preview,
     locked: typeof data.locked === "number" ? data.locked : Object.values(data.locked).reduce((a, b) => a + b, 0),
     // How counts compare is methodology (docs/hiring-app-attention.md); the footer keeps only what is wrong with this capture.
-    notices: detail ? [...(latest?.completeness !== "complete" ? ["The latest capture has incomplete or unknown coverage."] : []), ...(detail.status === "stale" ? ["The latest hiring capture is stale."] : [])] : [],
+    // A board that covers part of the company (one country, one unit) says which, beside counts that are only that part's.
+    notices: detail ? [...(detail.coverage.boardScope ? [detail.coverage.boardScope] : []), ...(latest?.completeness !== "complete" ? ["The latest capture has incomplete or unknown coverage."] : []), ...(detail.status === "stale" ? ["The latest hiring capture is stale."] : [])] : [],
     partial: !!detail && (latest?.completeness !== "complete" || detail.status === "stale"),
     // A figure the first capture cannot give yet (a weekly change, a z-score) is left out, not shown as a dash.
     figures: latest ? [

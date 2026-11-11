@@ -407,6 +407,8 @@ From the close until the next open (overnight, weekend, pre-market), every figur
 
 Earnings-call exports and fiscal-quarter lookup inspect at most the latest 200 calls in the requested scope (the interactive list loads 50). When a response fills that limit, exports report `sourceLimitReached: true`, `complete: false` and `truncated: true`: more calls may exist, and a missing quarter is not proof the company had no such call. `totalIsExact: false` marks capped, pending or stale results. An event that is not an earnings call (a deal call, an investor day) has no fiscal period: the list and the detail title show its label, exports carry it as `event`, and `latest` reads the newest earnings call.
 
+A call held in another language than English is read in English translation. The reader's footer says so (`translated from Chinese`), and its **Original** section (`g`) shows the text it was translated from. For a call transcribed from its recording, that is a machine transcript (`machine transcript, in Chinese`), which can mishear names and figures; for a record published as a document, the record as published. Exports carry the language as `translatedFrom`, and `--section original` reads the original.
+
 #### 13F
 
 The ticker research `13F` tab shows fund positions for the ticker: reported value, shares, weight and quarter action. Open a row for its fund detail, and scroll to page more funds. `m` or the Mine filter limits positions to portfolio and watchlist tickers. The `13F` pane's Crowding tab ranks new positions, exits, and weight increases or decreases across the top 25 ranked funds.
