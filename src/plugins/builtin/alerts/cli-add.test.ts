@@ -22,6 +22,8 @@ import { createAlert } from "./alert-engine";
 import { ALERTS_PLUGIN_ID } from "./constants";
 import { FIRED_LOG_KEY, readFiredAlerts } from "./fired-log";
 import { createResearchAlert } from "./research-builder";
+import { IV_LEVEL_ALERTS_KEY } from "./events";
+import { checkIvLevelAlertsNow, startIvLevelAlerts } from "./iv-level";
 
 const dataDirs: string[] = [];
 
@@ -49,6 +51,8 @@ function cloud() {
       marketState: "POST", postMarketPrice: 300 }),
     // The bare coin ticker is the Grayscale fund, as the data service answers it.
     BTC: createTestQuote({ symbol: "BTC", name: "Grayscale Bitcoin Mini Trust ETF", price: 37.35, listingExchangeName: "ARCA", exchangeName: "ARCA", instrumentType: "ETF" }),
+    // Bitcoin itself, on the coin board: Deribit lists its options.
+    "BTC-USD": createTestQuote({ symbol: "BTC-USD", name: "Bitcoin", price: 73_500, listingExchangeName: "CCC", exchangeName: "CCC", instrumentType: "CRYPTOCURRENCY" }),
     // A stale company shares SOL's letters, and a live one LINK's.
     SOL: createTestQuote({ symbol: "SOL", name: "Emeren Group Ltd", price: 1.94, listingExchangeName: "NYSE", exchangeName: "NYSE", instrumentType: "Common Stock", stale: true }),
     LINK: createTestQuote({ symbol: "LINK", name: "Interlink Electronics, Inc.", price: 4.08, listingExchangeName: "NASDAQ", exchangeName: "NASDAQ", instrumentType: "EQUITY" }),
@@ -199,6 +203,34 @@ test("an IV level from the shell is the rule the dialog saves, on the listing qu
   expect(printed!.options!.text!(printed!.result.data)).toContain("IV level AAPL · 30d ATM IV above 35% (the app checks it every 15 minutes while it is running");
 });
 
+test("an IV level on bitcoin reads Deribit's fit and goes off, while its news points to a keyword alert", async () => {
+  const { events, error } = await addAlert(["BTC-USD", "iv", "above", "50"]);
+  expect(error).toBeNull();
+  // Stored as released versions store a US name's, so a device not yet updated reads the list and checks it too.
+  expect(JSON.parse(events[0]!.value)).toEqual({ version: 1, symbol: "BTC-USD", exchange: "US", metric: "atm", direction: "above", threshold: 50 });
+  const news = await addAlert(["BTC-USD", "news", "bitcoin", "ETF"]);
+  expect(news.error).toContain("News alerting covers US listings only");
+  expect(news.events).toEqual([]);
+
+  // The engine reads the coin pair's surface, as OVDV does, and the rule goes off past its level.
+  const store = new Map<string, unknown>([[IV_LEVEL_ALERTS_KEY, JSON.stringify(events)]]);
+  const read: string[] = [];
+  const fired: string[] = [];
+  const stop = startIvLevelAlerts({
+    configState: { get: (key: string) => store.get(key), set: async (key: string, value: unknown) => { store.set(key, value); } },
+    resume: { getState: () => null, setState() {} }, notify: (entry: { body?: string }) => { fired.push(entry.body ?? ""); },
+    showPane() {}, log: { warn() {} }, marketData: {},
+  } as any, () => {}, { load: async (config) => { read.push(`${config.symbol}:${config.exchange}`); return { atm: 0.52, rr: -0.04, quoteAt: null, source: "15 min delayed" }; } });
+  try {
+    checkIvLevelAlertsNow();
+    for (let tries = 0; tries < 50 && fired.length === 0; tries += 1) await Bun.sleep(5);
+  } finally {
+    stop();
+  }
+  expect(read).toEqual(["BTC-USD:US"]);
+  expect(fired).toEqual(["BTC-USD 30d ATM IV 52% is above 50%"]);
+});
+
 test("an IPO alert from the shell is the rule the dialog saves, in its own list, which Gloom Cloud reads", async () => {
   // A list from a newer version, synced here: a save keeps it, as released versions keep ipoAlerts.
   const future = JSON.stringify([{ id: "f1", kind: "gamma_wall", target: "rule", value: "{}", createdAt: 1, status: "active" }]);
@@ -208,7 +240,7 @@ test("an IPO alert from the shell is the rule the dialog saves, in its own list,
   expect(pluginState).toEqual({ futureAlerts: future, ipoAlerts: expect.any(String) });
   expect(events[0]).toMatchObject({ kind: "ipo", target: "rule", status: "active" });
   expect(JSON.parse(events[0]!.value)).toEqual({ version: 1, keyword: "Space Exploration" });
-  expect(printed!.options!.text!(printed!.result.data)).toContain("IPO Space Exploration (Gloom Cloud checks it for a signed-in account with Cloud sync and sends it to your phone)");
+  expect(printed!.options!.text!(printed!.result.data)).toContain("IPO Space Exploration (Gloom Cloud checks it, not the app, for a signed-in account with Cloud sync and sends it to your phone)");
   expect(createResearchAlert("ipo", { "ipo:keyword": " Space  Exploration " }).value).toBe(events[0]!.value);
 });
 

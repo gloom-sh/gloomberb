@@ -27,6 +27,10 @@ import type { Quote } from "../../../types/financials";
 import { getActiveQuoteDisplay } from "../../../market-data/market/status";
 import { cliStyles } from "../../../utils/cli-output";
 import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
+import { isRoundTheClockCoin } from "../../../utils/crypto-pair";
+import { listedCoinOptions } from "../../../market-data/options-alternatives";
+import type { SeriesDefinition } from "../../../series/types";
+import { DVOL_COINS, dvolSeriesId } from "../volatility/dvol";
 import { notATickerSymbol } from "../../../sources/provider-errors";
 import { meantThousandsDot, parsePastedNumber, thousandsDotReadings, type ThousandsDotReadings } from "../../../utils/decimal-comma";
 import { newYorkToday } from "../earnings/board-model";
@@ -396,7 +400,8 @@ function researchFormValues(request: ResearchAddRequest, exchange: string): { ki
 function researchDelivery(kind: ResearchAddRequest["kind"]): string {
   if (kind === "iv_level") return "the app checks it every 15 minutes while it is running, on the same option fits as OVDV";
   const plan = kind === "news" ? "" : " on Gloom Pro";
-  return `Gloom Cloud checks it for a signed-in account with Cloud sync${plan} and sends it to your phone`;
+  // Said apart from the app, which checks IV levels and price alerts: this one goes on with the app closed, and only signed in.
+  return `Gloom Cloud checks it, not the app, for a signed-in account with Cloud sync${plan} and sends it to your phone`;
 }
 
 /**
@@ -423,6 +428,35 @@ const isResearchRequest = (request: AlertAddRequest): request is ResearchAddRequ
 
 /** The US venue a research rule keeps: one typed and known to it, else any US venue. */
 const RESEARCH_EXCHANGES = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS", "OTC"]);
+
+/** Where a news alert on a coin (BTC-USD) points: a keyword alert on the coin's name, or on the words typed when they name it. */
+export function coinNewsHint(coin: string, keyword: string): string {
+  const words = keyword.toLowerCase().includes(coin.toLowerCase()) ? keyword : coin.toLowerCase();
+  return `A coin's news is followed by keyword, in every story: gloom alerts add news ${/\s/.test(words) ? `"${words}"` : words}`;
+}
+
+/**
+ * What a price or metric alert typed as a bare ticker that is also a catalog
+ * series' name says: the listing it was saved on, named, and where the series
+ * is. A coin's DVOL also points to the IV alert that follows the coin's own
+ * 30-day implied volatility. Null for any other ticker.
+ */
+export function sameNameSeriesNote(
+  typed: string,
+  priced: { listing: { symbol: string; exchange?: string }; quote: Pick<Quote, "name" | "listingExchangeName" | "exchangeName"> },
+  series: Pick<SeriesDefinition, "id" | "name"> | undefined,
+  request: { kind: string; price?: number; condition?: string },
+): string | null {
+  if (!series) return null;
+  const name = priced.quote.name?.trim();
+  const venue = canonicalExchange(priced.listing.exchange || priced.quote.listingExchangeName || priced.quote.exchangeName);
+  const coin = (["BTC", "ETH"] as const).find((currency) => series.id === dvolSeriesId(currency));
+  const level = request.kind === "price" && (request.condition === "above" || request.condition === "below") && request.price != null
+    ? `${request.condition} ${request.price}` : "above 60";
+  return `${typed.toUpperCase()} was read as ${priced.listing.symbol}${venue ? `:${venue}` : ""}${name ? `, ${name}` : ""}, and the alert follows that listing.`
+    + ` ${series.name} is a series: gloom fn G CAP:${series.id}.`
+    + (coin ? ` For an alert on ${DVOL_COINS[coin]}'s 30-day implied volatility: gloom alerts add ${coin}-USD iv ${level}.` : "");
+}
 
 /** `alerts add` as typed, with another price: what an error tells someone to type. */
 function retypeCommand(symbol: string, condition: AlertCondition, price: number, exchange: string | null | undefined): string {
@@ -894,12 +928,16 @@ export const alertsCliCommand: CliCommandDef = {
     const priced = pairListing ? pairListing : listedSymbol
       ? await withMarketData(ctx, async (market) => {
         const quoted = await requireQuotedListing(listedSymbol, exchangeOption, market, ctx, "alerts add");
-        if (usOnly) {
+        // BTC-USD and ETH-USD have Deribit's options, which OPX and OVDV read: an IV level or risk reversal follows that fit.
+        const coinOptions = research?.kind === "iv_level" && listedCoinOptions(quoted.listing.key) != null;
+        if (usOnly && !coinOptions) {
           const venue = quoted.listing.exchange || canonicalExchange(quoted.quote.listingExchangeName || quoted.quote.exchangeName);
           if (!isUsListingExchange(venue)) {
             const { message, details } = await usListingsOnlyMessage(usOnly, quoted.listing, market,
               (key) => `gloom alerts add ${key} ${args.slice(2).join(" ")}`);
-            ctx.fail(message, details);
+            // A coin has no company whose news to follow: a keyword alert reads every story for it.
+            ctx.fail(message, research?.kind === "news" && isRoundTheClockCoin(quoted.listing.symbol, venue)
+              ? coinNewsHint(quoted.quote.name || quoted.listing.symbol, research.keyword) : details);
           }
         }
         return quoted;
@@ -974,7 +1012,12 @@ export const alertsCliCommand: CliCommandDef = {
       if (far) ctx.fail(far);
     }
     // What a typed listing was read as (7203:TSE as 7203:JPX, MXN as MXN:FWB2), said beside what was added.
-    let read = [...priced?.notes ?? [], ...coinNote ? [coinNote] : [], ...benchmarkNotes, ...penceNote ? [penceNote] : []];
+    // A bare ticker that is also a series' name (DVOL, a fund, and Deribit's bitcoin volatility index) names what it was saved on.
+    const seriesNote = priced && (request?.kind === "price" || request?.kind === "metric") && !exchangeOption && listedSymbol
+      && !listedSymbol.includes(":") && !PAIR_SHAPE.test(listedSymbol)
+      ? await withMarketData(ctx, (market) => sameNameSeriesNote(listedSymbol, priced, market.findCatalogSeriesNamed?.(listedSymbol), request))
+      : null;
+    let read = [...priced?.notes ?? [], ...coinNote ? [coinNote] : [], ...seriesNote ? [seriesNote] : [], ...benchmarkNotes, ...penceNote ? [penceNote] : []];
     let newEventRule: EventAlertRule | null = null;
     let newResearchRule: EventAlertRule | null = null;
     if (research) {
