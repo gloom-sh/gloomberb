@@ -108,6 +108,19 @@ describe("ticker-search utilities", () => {
     }
   });
 
+  test("saving a US listing leaves search's order as it was, the saved row in the place of its own", () => {
+    const apple = makeSearchResult("AAPL", "Apple Inc.", { exchange: "NASDAQ", currency: "USD", type: "Common Stock", homeListing: true });
+    const rows = [apple, makeSearchResult("AMAT", "Applied Materials, Inc."), makeSearchResult("APLD", "Applied Digital Corporation"),
+      makeSearchResult("AAPL", "Apple Inc.", { exchange: "BMV", currency: "MXN", type: "Common Stock" })];
+    const order = (query: string, saved?: TickerRecord) => buildTickerSearchCandidates({ query, providerResults: rows, totalLimit: 12,
+      tickers: new Map(saved ? [[saved.metadata.ticker, saved]] : []) }).map((candidate) => `${candidate.label}${candidate.saved ? " (saved)" : ""}`);
+    const aapl = createTestTicker("AAPL", "Apple Inc.", { exchange: "NASDAQ", currency: "USD" });
+    for (const query of ["apple", "aapl", "appl"]) expect(order(query, aapl)).toEqual(order(query).map((label, index) => index === 0 ? `${label} (saved)` : label));
+    // A saved name further down stays where search put it.
+    expect(order("apple", createTestTicker("AMAT", "Applied Materials, Inc.", { exchange: "NASDAQ", currency: "USD" })))
+      .toEqual(["AAPL", "AAPL", "AMAT (saved)", "APLD"]);
+  });
+
   test("a trailing colon lists every venue, even under a saved symbol", async () => {
     const netcall = makeSearchResult("NET", "Netcall", { exchange: "LSE", currency: "GBP" });
     const cloudflare = makeSearchResult("NET", "Cloudflare", { exchange: "NYSE", currency: "USD" });
