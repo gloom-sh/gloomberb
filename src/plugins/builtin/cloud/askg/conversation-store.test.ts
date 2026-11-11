@@ -102,12 +102,14 @@ test("concurrent refreshes share one request", async () => {
   const stub = createStub();
   active = stub.store;
 
-  const first = stub.store.refresh();
-  const second = stub.store.refresh();
+  expect(stub.store.refresh()).toBeUndefined();
+  const waiting = stub.store.refreshAndWait();
+  stub.store.refresh();
+  expect(stub.store.refreshAndWait()).toBe(waiting);
   expect(stub.store.getSnapshot().loading).toBe(true);
 
   stub.resolveList([summary("conv-1", "Bonds")]);
-  await Promise.all([first, second]);
+  await waiting;
 
   expect(stub.calls).toEqual(["list"]);
   expect(stub.store.getSnapshot().conversations).toHaveLength(1);
@@ -127,7 +129,7 @@ test("ensureLoaded asks once, and refresh asks again", async () => {
   expect(stub.calls).toEqual(["list"]);
 
   stub.resolveList([summary("conv-1", "Bonds"), summary("conv-2", "Margins")]);
-  await stub.store.refresh();
+  await stub.store.refreshAndWait();
   expect(stub.calls).toEqual(["list", "list"]);
   expect(stub.store.getSnapshot().conversations).toHaveLength(2);
 });
@@ -137,9 +139,9 @@ test("a failed refresh keeps the rows already on screen", async () => {
   active = stub.store;
 
   stub.resolveList([summary("conv-1", "Bonds")]);
-  await stub.store.refresh();
+  await stub.store.refreshAndWait();
 
-  const failing = stub.store.refresh();
+  const failing = stub.store.refreshAndWait();
   stub.failList(new Error("Connection lost"));
   await failing;
 
@@ -153,7 +155,7 @@ test("a rename reads as applied before the server answers", async () => {
   const stub = createStub();
   active = stub.store;
   stub.resolveList([summary("conv-1", "Bonds")]);
-  await stub.store.refresh();
+  await stub.store.refreshAndWait();
 
   stub.renameResult.value = summary("conv-1", "Treasuries");
   const renaming = stub.store.rename("conv-1", "Treasuries");
@@ -167,7 +169,7 @@ test("renaming a conversation that is gone drops the row", async () => {
   const stub = createStub();
   active = stub.store;
   stub.resolveList([summary("conv-1", "Bonds")]);
-  await stub.store.refresh();
+  await stub.store.refreshAndWait();
 
   stub.renameResult.value = null;
   await stub.store.rename("conv-1", "Treasuries");
@@ -178,7 +180,7 @@ test("a delete that fails puts the row back", async () => {
   const stub = createStub();
   active = stub.store;
   stub.resolveList([summary("conv-1", "Bonds"), summary("conv-2", "Margins")]);
-  await stub.store.refresh();
+  await stub.store.refreshAndWait();
 
   stub.deleteResult.value = new Error("Connection lost");
   await stub.store.delete("conv-1");
@@ -195,7 +197,7 @@ test("a conversation the pane just opened appears without waiting for a refresh"
   const stub = createStub();
   active = stub.store;
   stub.resolveList([]);
-  await stub.store.refresh();
+  await stub.store.refreshAndWait();
 
   stub.store.note("conv-new", "what does a 5y bond return");
   expect(stub.store.getSnapshot().conversations[0]).toMatchObject({
@@ -223,7 +225,7 @@ test("a conversation with no title of its own still reads as something", () => {
 test("a store with no transport never reaches for a global", async () => {
   const store = new ASKGConversationListStore();
   active = store;
-  await store.refresh();
+  await store.refreshAndWait();
   await store.rename("conv-1", "x");
   await store.delete("conv-1");
   expect(store.getSnapshot()).toMatchObject({ conversations: [], loaded: false });

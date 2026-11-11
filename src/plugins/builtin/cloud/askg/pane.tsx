@@ -880,7 +880,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     }
     // A row the sidebar still shows may be gone; the refresh drops it.
     if (!conversation) {
-      void askgConversationListStore.refresh();
+      askgConversationListStore.refresh();
       return;
     }
     resetTimeline();
@@ -1066,7 +1066,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   useEffect(() => {
     const finished = wasRunningRef.current && !running;
     wasRunningRef.current = running;
-    if (finished) void askgConversationListStore.refresh();
+    if (finished) askgConversationListStore.refresh();
   }, [running]);
 
   // A list that shrank below the point of switching leaves nothing to focus.
