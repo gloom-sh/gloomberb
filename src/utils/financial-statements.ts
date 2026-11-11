@@ -198,26 +198,64 @@ const FILL_FIELDS: Record<StatementFillField | ResultsFillField, string> = {
   totalEquityGrossMinorityInterest: "total equity",
 };
 
-/** The day a row's lines filled from the company's results announcement were first published; null for any other row. */
-export function announcedDate(row: Pick<FinancialStatement, "date" | "filledFrom">): string | null {
-  const fill = row.filledFrom;
-  if (fill?.source !== "results" || fill.fields.length === 0) return null;
-  return fillDate(fill, row.date.slice(0, 10)).date || null;
+type FilledRow = Pick<FinancialStatement, "date" | "filledFrom"> & { aggregation?: { periodEnd?: string; kind?: string; basis?: string } };
+
+/** How a filled row is dated: ASX's read, its own results' first publication, or the later period's whose comparative it is. */
+export interface FillDate {
+  label: "read" | "published" | "comparative";
+  /** YYYY-MM-DD; null for a comparative whose later period's first announcement is not known. */
+  date: string | null;
 }
+
+/** The same day a year on. */
+const yearAfter = (day: string) => `${Number(day.slice(0, 4)) + 1}${day.slice(4, 10)}`;
 
 /**
- * When a filled row's figures were published or read: ASX's read, or the
- * first of its documents published after its period ended. A trailing twelve
- * months to a half also lists the year's documents, which came out before
- * the half did: it is dated by the half's results.
+ * When a filled row's figures were published or read: ASX's read, or for a
+ * row from the company's results announcements:
+ * - its own results: the first of its documents published after its period
+ *   ended and before the same period a year on did (a trailing twelve months
+ *   to a half also lists the year's documents, which came out before the half
+ *   did: it is dated by the half's results);
+ * - a comparative: every document came out after the same period a year on
+ *   ended, so the lines are that later period's comparative column (H1 FY25
+ *   in the 2026 interim report). It is dated by the later period's first
+ *   announcement: the row a year on in `rows` where there is one, else the
+ *   first results announcement among its documents, never a report published
+ *   after them (null when there is neither).
  */
-function fillDate(fill: StatementFill, periodEnd: string): { label: "read" | "published"; date: string } {
+export function fillDate(row: FilledRow, rows: readonly FilledRow[] = []): FillDate | null {
+  const fill = row.filledFrom;
+  if (!fill) return null;
   if (fill.source === "asx") return { label: "read", date: fill.retrievedAt.slice(0, 10) };
+  if (fill.fields.length === 0) return null;
+  const periodEnd = (row.aggregation?.periodEnd ?? row.date).slice(0, 10);
   const dates = fill.documents.map((document) => document.publishedAt.slice(0, 10)).sort();
-  return { label: "published", date: dates.find((date) => date >= periodEnd) ?? dates[0] ?? "" };
+  const later = yearAfter(periodEnd);
+  const own = dates.find((date) => date >= periodEnd && date <= later);
+  if (own || row.aggregation || dates.length === 0 || !dates.every((date) => date > later)) {
+    return { label: "published", date: own ?? dates.find((date) => date >= periodEnd) ?? dates[0] ?? null };
+  }
+  const months = statementPeriodMonths(row);
+  const next = rows.find((candidate) => candidate !== row && !candidate.aggregation
+    && candidate.filledFrom?.source === "results"
+    && areNearbyFinancialPeriodEnds(candidate.date.slice(0, 10), later)
+    && statementPeriodMonths(candidate) === months);
+  const nextDate = next ? fillDate(next) : null;
+  const announcement = fill.documents.filter((document) => document.kind.endsWith("_results"))
+    .map((document) => document.publishedAt.slice(0, 10)).sort()[0];
+  return {
+    label: "comparative",
+    date: (nextDate?.label === "published" ? nextDate.date : null) ?? announcement ?? null,
+  };
 }
 
-type FilledRow = Pick<FinancialStatement, "date" | "filledFrom"> & { aggregation?: { periodEnd?: string; kind?: string; basis?: string } };
+/** How a filled column's date reads: "announced 2026-08-20", "comparative in the 2026-08-20 announcement". */
+export function fillDateText(date: FillDate): string {
+  if (date.label === "read") return `read ${date.date}`;
+  if (date.label === "published") return `announced ${date.date}`;
+  return date.date ? `comparative in the ${date.date} announcement` : "comparative in a later announcement";
+}
 
 /** A table's filled periods with the lines it shows, newest first; a TTM row's end is that of the period it runs to. */
 function filledPeriods(statements: readonly FilledRow[], shown?: ReadonlySet<string>) {
@@ -229,8 +267,9 @@ function filledPeriods(statements: readonly FilledRow[], shown?: ReadonlySet<str
     if (!source || !filledFrom || fields.length === 0) return [];
     const end = date.slice(0, 10);
     const months = filledFrom.source === "results" && filledFrom.periodMonths ? `${filledFrom.periodMonths} months to ` : "";
-    return [{ end, period: `${months}${end}`, source, fields, stamp: fillDate(filledFrom, (aggregation?.periodEnd ?? date).slice(0, 10)),
-      periodEnd: (aggregation?.periodEnd ?? date).slice(0, 10) }];
+    const stamp = fillDate({ date, filledFrom, aggregation }, statements);
+    if (!stamp) return [];
+    return [{ end, period: `${months}${end}`, source, fields, stamp, periodEnd: (aggregation?.periodEnd ?? date).slice(0, 10) }];
   }).sort((left, right) => right.end.localeCompare(left.end));
 }
 
@@ -243,8 +282,8 @@ export function filledPeriodPublications(
   statements: readonly FilledRow[],
   shown?: ReadonlySet<string>,
 ): Array<{ periodEnd: string; published: string }> {
-  return filledPeriods(statements, shown).filter(({ stamp }) => stamp.label === "published")
-    .map(({ periodEnd, stamp }) => ({ periodEnd, published: stamp.date }));
+  return filledPeriods(statements, shown).flatMap(({ periodEnd, stamp }) => (
+    stamp.label === "published" && stamp.date ? [{ periodEnd, published: stamp.date }] : []));
 }
 
 /**
@@ -268,11 +307,13 @@ export function filledPeriodsNote(
   if (filled.length === 0) return trailing;
   const sources = [...new Set(filled.map((period) => period.source))];
   let note: string;
-  // Each announcement dates its own periods: "TTM revenue; 2025-12-31 revenue (published 2026-03-25)".
-  if (filled.every(({ stamp }) => stamp.label === "published")) {
-    const days = [...new Set(filled.map(({ stamp }) => stamp.date))];
-    const lines = (day: string) => filled.filter(({ stamp }) => stamp.date === day).map(({ period, fields }) => `${period} ${fields.join(", ")}`).join("; ");
-    note = `From ${sources.join(" and ")}: ${days.map((day) => `${lines(day)} (published ${day})`).join("; ")}.`;
+  // Each announcement dates its own periods: "TTM revenue; 2025-12-31 revenue (published 2026-03-25)", and
+  // a comparative column the later period's: "2025-06-30 revenue (comparative in the 2026-08-20 announcement)".
+  if (filled.every(({ stamp }) => stamp.label !== "read")) {
+    const stampText = ({ label, date }: FillDate) => (label === "published" ? `published ${date}` : fillDateText({ label, date }));
+    const stamps = [...new Set(filled.map(({ stamp }) => stampText(stamp)))];
+    const lines = (text: string) => filled.filter(({ stamp }) => stampText(stamp) === text).map(({ period, fields }) => `${period} ${fields.join(", ")}`).join("; ");
+    note = `From ${sources.join(" and ")}: ${stamps.map((text) => `${lines(text)} (${text})`).join("; ")}.`;
   } else {
     const read = filled.map(({ stamp }) => stamp.date).sort().at(-1);
     note = `From ${sources.join(" and ")} (read ${read}): ${filled.map(({ period, fields }) => `${period} ${fields.join(", ")}`).join("; ")}.`;

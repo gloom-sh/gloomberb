@@ -419,7 +419,7 @@ test("a filled half's growth is against the same half a year earlier, never a qu
   expect(quarter.rows.find(({ key, summaryKey }) => (key ?? summaryKey) === "totalRevenue")!.cells[0]!.growth).toBeUndefined();
 });
 
-test("a filled year's growth against the source's year before, only for lines its announcement restates as the source has them", () => {
+test("a filled year's growth against the source's year before: the lines the server finds restated alike, every line where it does not say", () => {
   // Pop Mart: FY2025 revenue and net income from the annual results, whose 2024 revenue is the source's 13,037.7m.
   const fy2025 = (comparable?: ResultsStatementFill["comparable"]): FinancialStatement => ({
     date: "2025-12-31", currency: "CNY", totalRevenue: 37.12e9, netIncome: 12.78e9,
@@ -436,7 +436,10 @@ test("a filled year's growth against the source's year before, only for lines it
   expect(growth(fy2025(["totalRevenue"]), "totalRevenue")).toBeCloseTo(37.12 / 13.04 - 1, 6);
   // Net income is not restated alike: no growth across the two sources.
   expect(growth(fy2025(["totalRevenue"]), "netIncome")).toBeUndefined();
-  expect(growth(fy2025(), "totalRevenue")).toBeUndefined();
+  expect(growth(fy2025([]), "totalRevenue")).toBeUndefined();
+  // A server that predates the check says nothing: the filled year has its year-on-year growth all the same.
+  expect(growth(fy2025(), "totalRevenue")).toBeCloseTo(37.12 / 13.04 - 1, 6);
+  expect(growth(fy2025(), "netIncome")).toBeCloseTo(12.78 / 3.13 - 1, 6);
 });
 
 test("a quarterly reporter missing a quarter's lines: the served TTM to the same day, not four quarters without them", () => {
@@ -466,4 +469,9 @@ test("a quarterly reporter missing a quarter's lines: the served TTM to the same
   const whole = buildFinancialTableModel({ ...financials, quarterlyStatements: [{ date: "2025-09-30", currency: "CNY", totalRevenue: 95.5e9, netIncome: 1e9 }, ...quarters.slice(1)] },
     { period: "annual", statement: "income" })!;
   expect(whole.statements[0]!.aggregation?.kind).toBe("trailing-four-quarters");
+  // A served TTM to a day a few days before the quarters' (2026-06-28 against 2026-06-30) is the same period:
+  // still the served one where the quarters lack revenue, not the newer-looking four.
+  const nearby = buildFinancialTableModel({ ...financials, trailingStatement: { ...trailing, date: "2026-06-28",
+    trailing: { ...trailing.trailing, interim: { end: "2026-06-28", months: 6 } } } }, { period: "annual", statement: "income" })!;
+  expect(nearby.statements[0]).toMatchObject({ date: "TTM", totalRevenue: 382.84e9, aggregation: { kind: "annual-plus-interim" } });
 });

@@ -1,7 +1,7 @@
 import type { FinancialStatement, TickerFinancials } from "../../../../types/financials";
 import { ebitdaLacksDepreciation } from "../../../../utils/ebitda";
 import { longerPeriodLabel, statementPeriodLabel, ttmPeriodLabel } from "../../../../utils/fiscal-period";
-import { announcedDate, statementPeriodMonths } from "../../../../utils/financial-statements";
+import { areNearbyFinancialPeriodEnds, fillDate, fillDateText, statementPeriodMonths } from "../../../../utils/financial-statements";
 import { formatPerShareNumber } from "../../../../utils/reported-money";
 import { hasNonIncomeStatementGap } from "../../../../utils/statement-gaps";
 import {
@@ -158,11 +158,18 @@ function filledLine(statement: FinancialStatement, key: keyof FinancialStatement
   return statement.filledFrom?.fields.some((field) => field === key) === true;
 }
 
-/** A line filled from the company's results announcement that Gloom Cloud found on the source's basis a year earlier. */
+/**
+ * A filled year's line compared with the source's a year earlier: the lines
+ * Gloom Cloud found on the source's basis (`comparable`), or, from a server
+ * that does not say, every line of a year a year apart, so a filled year
+ * always has its year-on-year change.
+ */
 function comparableLine(current: FinancialStatement, previous: FinancialStatement, key: keyof FinancialStatement): boolean {
   const fill = current.filledFrom;
-  return fill?.source === "results" && !filledLine(previous, key)
-    && (fill.comparable ?? []).some((field) => field === key);
+  if (fill?.source !== "results" || filledLine(previous, key)) return false;
+  if (fill.comparable) return fill.comparable.some((field) => field === key);
+  const days = (Date.parse(current.date) - Date.parse(previous.date)) / 86_400_000;
+  return !fill.periodMonths && days >= 300 && days <= 430;
 }
 
 export function semanticGrowthValue(
@@ -232,15 +239,17 @@ export function formatFinancialHeader(date: string, currency?: string, dateSourc
  * A report column's header (`gloom fn FA`): `formatFinancialHeader`, with a
  * half in the quarterly list named as one (`H1 FY26 2026-06-30`, or
  * `6M 2026-06-30` off the fiscal calendar), and a column Gloom Cloud filled
- * from the company's results announcement dated by it: `(announced
- * 2026-08-20)` for a period only the announcement gives, `(provider date;
- * announced 2026-03-25)` for a provider's period whose lines it completes.
+ * from the company's results announcements dated by them alone (fillDate):
+ * `(announced 2026-08-20)` for its own results, `(comparative in the
+ * 2026-08-20 announcement)` for a later period's comparative column. `rows`
+ * are the list's other rows, where the later period's announcement is read.
  */
 export function financialReportHeader(
   statement: FinancialTableStatement,
   currency: string | undefined,
   kind: FinancialPeriod,
   yearEndMonth: number | null,
+  rows: readonly FinancialStatement[] = [],
 ): string {
   const { date, dateSource } = statement;
   if (date === "TTM") return formatFinancialHeader(date, currency, dateSource, false, statement.aggregation?.periodEnd).trim();
@@ -248,9 +257,8 @@ export function financialReportHeader(
   const months = kind === "quarterly" ? statementPeriodMonths(statement) : undefined;
   const longer = months && months > 3 ? longerPeriodLabel(end, months, yearEndMonth) : null;
   const period = !longer ? end : longer.endsWith(end) ? longer : `${longer} ${end}`;
-  const announced = announcedDate(statement);
-  const dated = dateSource === "sec" ? "SEC date" : dateSource === "provider" || !announced ? "provider date" : null;
-  const source = [dated, announced ? `announced ${announced}` : null].filter(Boolean).join("; ");
+  const filled = statement.filledFrom?.source === "results" ? fillDate(statement, rows) : null;
+  const source = filled ? fillDateText(filled) : dateSource === "sec" ? "SEC date" : "provider date";
   return `${currency ? `${period} ${currency}` : period} (${source})`;
 }
 
@@ -618,9 +626,12 @@ export function selectFinancialStatements(
   const served = period === "annual" && statement !== "balance" ? servedTrailingStatement(servedTrailing, annualStatements) : null;
   // The newer of the two: four quarters, or the year plus the half since it. To the same day, the served
   // one where a quarter lacks a headline line the four would need (Meituan's Q3 2025 revenue).
-  const quartersEnd = fromQuarters?.aggregation?.periodEnd ?? "";
-  const trailing = served && (!fromQuarters || served.aggregation!.periodEnd > quartersEnd
-    || (served.aggregation!.periodEnd === quartersEnd && lacksHeadline(fromQuarters, served)))
+  const quartersEnd = (fromQuarters?.aggregation?.periodEnd ?? "").slice(0, 10);
+  const servedEnd = (served?.aggregation?.periodEnd ?? "").slice(0, 10);
+  // Two ends a few days apart are one period (a quarter dated 2025-06-28 and a half to 2025-06-30).
+  const sameEnd = !!fromQuarters && !!served && areNearbyFinancialPeriodEnds(servedEnd, quartersEnd);
+  const trailing = served && (!fromQuarters || (!sameEnd && servedEnd > quartersEnd)
+    || (sameEnd && lacksHeadline(fromQuarters, served)))
     ? served
     : fromQuarters;
   // Right after a fiscal year closes, the last four quarters are that year:

@@ -1,5 +1,5 @@
 import {
-  FINANCIAL_VINTAGE_NOTICE, announcedDate, filledPeriodPublications, filledPeriodsNote, hasOlderStatements, reportsHalfYearly, stalePeriodNote,
+  FINANCIAL_VINTAGE_NOTICE, fillDate, filledPeriodPublications, filledPeriodsNote, hasOlderStatements, reportsHalfYearly, stalePeriodNote,
   statementHistoryNotes, statementPeriodMonths,
 } from "../../../utils/financial-statements";
 import { canonicalExchange } from "../../../utils/exchanges";
@@ -125,9 +125,11 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
         ? `Share counts are in ADRs and EPS is per ADR${ratio ? `; ${ratio}` : ""}.`
         : `Share counts are in ADRs and EPS is per ADR for ${receiptPeriods.join(", ")}${ratio ? ` (${ratio})` : ""}; other periods as reported.`;
     const yearEndMonth = fiscalYearEndMonth(financials.annualStatements);
+    // The list a column comes from: a comparative column is dated by the row a year on in it.
+    const listRows = requestedPeriod === "quarterly" ? financials.quarterlyStatements : financials.annualStatements;
     const dates = table?.statements.map((statement) => {
       const { date, currency, dateSource, providerDate, dateEvidence, availableAt, fieldAvailability, fieldSources, unavailableFields, epsBasis, unavailableEarnings, aggregation, shareBasis, filledFrom } = statement;
-      const announced = date === "TTM" ? null : announcedDate(statement);
+      const filled = date === "TTM" || filledFrom?.source !== "results" ? null : fillDate(statement, listRows);
       return {
       date, currency: currency ?? statementCurrency ?? null,
       shareBasis: shareBasis ?? null,
@@ -135,8 +137,10 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
       fieldAvailability: fieldAvailability ? { ...fieldAvailability } : null,
       ...(fieldSources ? { fieldSources } : {}),
       ...(filledFrom ? { filledFrom } : {}),
-      // The day the company's results announcement published the period's filled lines.
-      ...(announced ? { announced } : {}),
+      // The day the company's results announcement published the period's filled lines, or, for a later
+      // period's comparative column, that period's first announcement.
+      ...(filled?.label === "published" && filled.date ? { announced: filled.date } : {}),
+      ...(filled?.label === "comparative" ? { comparativeIn: filled.date } : {}),
       ...(unavailableFields ? { unavailableFields } : {}),
       ...(epsBasis ? { epsBasis } : {}),
       ...(unavailableEarnings ? { unavailableEarnings } : {}),
@@ -145,7 +149,7 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
       providerDate: date === "TTM" ? null : providerDate ?? null,
       dateEvidence: date === "TTM" || dateSource !== "sec" ? null : dateEvidence ?? null,
       // Rows in the shared money unit no longer name it, so the header does.
-      label: financialReportHeader(statement, [currency ?? statementCurrency, table.unit].filter(Boolean).join(" ") || undefined, requestedPeriod, yearEndMonth),
+      label: financialReportHeader(statement, [currency ?? statementCurrency, table.unit].filter(Boolean).join(" ") || undefined, requestedPeriod, yearEndMonth, listRows),
       };
     }) ?? [];
     const rows = table?.rows.map((row) => ({
@@ -295,7 +299,8 @@ async function loadRatioReport(
     date: statement.date,
     periodEnd: ratioPeriodEnd(statement),
     currency: statement.currency ?? statementCurrency ?? null,
-    label: financialReportHeader(statement, statement.currency ?? statementCurrency, period, yearEndMonth),
+    label: financialReportHeader(statement, statement.currency ?? statementCurrency, period, yearEndMonth,
+      period === "quarterly" ? financials.quarterlyStatements : financials.annualStatements),
   })) ?? [];
   const rows = table?.rows.map((row) => {
     const cells = table.cells.get(row.def.id)!.map((cell, index) => {

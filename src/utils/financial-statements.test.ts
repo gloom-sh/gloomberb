@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  coalesceFinancialPeriodAliases, filledPeriodPublications, filledPeriodsNote, halfYearGrowthPeriod, hasOlderStatements, mergeFinancialStatementRows, reportsHalfYearly, stalePeriodNote, statementHistoryNotes,
+  coalesceFinancialPeriodAliases, fillDate, fillDateText, filledPeriodPublications, filledPeriodsNote, halfYearGrowthPeriod, hasOlderStatements, mergeFinancialStatementRows, reportsHalfYearly, stalePeriodNote, statementHistoryNotes,
 } from "./financial-statements";
 import { computeTTM } from "../plugins/builtin/ticker-detail/financials/aggregation";
 import { exchangeResultsNotes, matchExchangeResults } from "./exchange-results";
@@ -358,10 +358,12 @@ describe("periods read from a results announcement", () => {
       filledFrom: { ...half.filledFrom!, fields: ["totalRevenue" as const], documents: [annual, announcement, report], periodMonths: undefined } };
     const year: FinancialStatement = { date: "2025-12-31", currency: "CNY", totalRevenue: 37.12e9,
       filledFrom: { source: "results", fields: ["totalRevenue"], documents: [annual], lines: { totalRevenue: { document: 0, page: 2 } } } };
-    const sameDay: FinancialStatement = { ...year, date: "2024-12-31", filledFrom: { ...year.filledFrom!, documents: [{ ...annual }] } };
+    // 2024 read from the 2025 announcement's comparative column: dated by that announcement as its comparative.
+    const comparative: FinancialStatement = { ...year, date: "2024-12-31", filledFrom: { ...year.filledFrom!, documents: [{ ...annual }] } };
     expect(filledPeriodsNote([ttm, year])).toBe(
       "From the company's results announcements: TTM revenue (published 2026-08-20); 2025-12-31 revenue (published 2026-03-25).");
-    expect(filledPeriodsNote([year, sameDay])).toBe("From the company's results announcements: 2025-12-31 revenue; 2024-12-31 revenue (published 2026-03-25).");
+    expect(filledPeriodsNote([year, comparative])).toBe("From the company's results announcements: 2025-12-31 revenue (published 2026-03-25); "
+      + "2024-12-31 revenue (comparative in the 2026-03-25 announcement).");
     const dated = filledPeriodPublications([ttm, year]);
     expect(dated).toEqual([{ periodEnd: "2026-06-30", published: "2026-08-20" }, { periodEnd: "2025-12-31", published: "2026-03-25" }]);
     const results = matchExchangeResults("2026-06-30", [
@@ -370,6 +372,21 @@ describe("periods read from a results announcement", () => {
     expect(exchangeResultsNotes(results, dated)).toEqual([]);
     // A fill dated by another day leaves the line.
     expect(exchangeResultsNotes(results, [{ periodEnd: "2026-06-30", published: "2026-09-24" }])).toHaveLength(1);
+  });
+
+  test("a later period's comparative column is dated by that period's first announcement, never by a report published after it", () => {
+    // Pop Mart's H1 2025: the 2026 interim report's comparative column (published 2026-09-24).
+    const prior: FinancialStatement = { ...half, date: "2025-06-30", filledFrom: { ...half.filledFrom!, documents: [report] } };
+    expect(fillDate(half, [half, prior])).toEqual({ label: "published", date: "2026-08-20" });
+    // The row a year on was announced 2026-08-20.
+    const dated = fillDate(prior, [half, prior])!;
+    expect(fillDateText(dated)).toBe("comparative in the 2026-08-20 announcement");
+    // Without that row: the first results announcement among its own documents, else no day at all.
+    expect(fillDate({ ...prior, filledFrom: { ...prior.filledFrom!, documents: [announcement, report] } })).toEqual({ label: "comparative", date: "2026-08-20" });
+    expect(fillDateText(fillDate(prior)!)).toBe("comparative in a later announcement");
+    // A report published within the year after its period ended is its own: H1 2025's own interim report, 2025-09-20.
+    expect(fillDate({ ...prior, filledFrom: { ...prior.filledFrom!, documents: [{ ...report, publishedAt: "2025-09-20T08:00:00.000Z" }] } }))
+      .toEqual({ label: "published", date: "2025-09-20" });
   });
 
   test("a merged row keeps the documents' lines it still holds", () => {
