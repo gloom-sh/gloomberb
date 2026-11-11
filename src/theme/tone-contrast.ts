@@ -4,12 +4,11 @@ import type { ThemeColors } from "./colors";
 
 /**
  * Whether the theme reads its text at body contrast on every surface, its
- * tones and hints included: the light and colour-blind themes, which the
- * registry gives selected-row tones (Theme.selectedWarning). Dark themes
- * draw as they always have.
+ * tones and hints included: the light and colour-blind themes
+ * (Theme.readableTones). Dark themes draw as they always have.
  */
 export function readsAtBodyContrast(palette: ThemeColors = colors): boolean {
-  return palette.selectedWarning !== undefined;
+  return palette.readableTones === true;
 }
 
 /**
@@ -55,7 +54,7 @@ export function selectedRowCellColor(
 /**
  * A tone on the pane title bar, such as a quick setting that is on (the live
  * ⚡): lifted to body contrast on the bar in a theme that reads its tones so
- * (Theme.selectedWarning is set), since the bar sits darker than the page
+ * (Theme.readableTones), since the bar sits darker than the page
  * its tokens are checked on; as it is in any other theme.
  */
 export function paneTitleTone(tone: string, focused: boolean, floating = false, palette: ThemeColors = colors): string {

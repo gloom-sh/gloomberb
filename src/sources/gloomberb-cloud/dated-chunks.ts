@@ -16,8 +16,8 @@ const DAY_MS = 86_400_000;
  */
 const CHUNK_DAYS: Readonly<Record<string, number>> = { "1day": 12 * 365, "1week": 90 * 365 };
 
-/** A first bar this many days after a chunk's start is where the bars begin: no earlier chunk is read. */
-const STARTED_INSIDE_DAYS: Readonly<Record<string, number>> = { "1day": 14, "1week": 28 };
+/** The most bars the service answers one request with, the newest of a longer window. */
+const MAX_BARS_PER_REQUEST = 5_000;
 
 /** Where the newest request of a window starts: the window's own start when one request holds it. */
 export function newestDatedChunkStart(interval: string, start: Date, end: Date): Date {
@@ -42,9 +42,11 @@ function joinedPoints(older: readonly PricePoint[], newer: readonly PricePoint[]
  * for the window's newest chunk, which started at `newestStart`) back to
  * `start`, read a chunk at a time from the newest to the oldest. Reading
  * stops where the bars begin: a chunk that comes back empty or below the
- * source's coverage, or one whose first bar is well inside it. A chunk that
- * fails otherwise leaves the bars as read so far, with `truncatedBefore`
- * naming the first day they are whole from, so a cut is never silent.
+ * source's coverage. A chunk whose first bar is well inside it is read past
+ * all the same, so a suspension (a listing halted for months) never cuts the
+ * history. A chunk that fails otherwise leaves the bars as read so far, with
+ * `truncatedBefore` naming the first day they are whole from, so a cut is
+ * never silent.
  */
 export async function withOlderDatedChunks(
   newest: PriceHistoryResult,
@@ -56,13 +58,9 @@ export async function withOlderDatedChunks(
   const canonical = canonicalHistoryInterval(interval) ?? "";
   const days = CHUNK_DAYS[canonical];
   if (!days || newestStart.getTime() <= start.getTime()) return newest;
-  const insideMs = (STARTED_INSIDE_DAYS[canonical] ?? 14) * DAY_MS;
   let result = newest;
   let to = newestStart.getTime();
   while (to > start.getTime()) {
-    const first = result.points.length > 0 ? getPricePointTimestamp(result.points[0]!) : Number.NaN;
-    // The bars began after the last chunk read started: there is nothing earlier.
-    if (!Number.isFinite(first) || first - to > insideMs) break;
     const from = Math.max(start.getTime(), to - days * DAY_MS);
     let older: PriceHistoryResult | "empty";
     try {
@@ -85,4 +83,15 @@ export async function withOlderDatedChunks(
     to = from;
   }
   return result;
+}
+
+/**
+ * Where the rest of a window is read back from after one request over all of
+ * it (`whole`, a listing that stopped trading before the window's newest
+ * chunk): its first bar when the service cut the answer to its newest bars,
+ * else `start`, the answer being the whole window.
+ */
+export function wholeWindowChunkStart(whole: PriceHistoryResult, start: Date): Date {
+  const first = whole.points.length > 0 ? getPricePointTimestamp(whole.points[0]!) : Number.NaN;
+  return whole.points.length >= MAX_BARS_PER_REQUEST && Number.isFinite(first) && first > start.getTime() ? new Date(first) : start;
 }

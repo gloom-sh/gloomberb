@@ -482,14 +482,20 @@ export function awaitsFigure(
 
 /** How long a figure is awaited past its release time before the row says the source has none. */
 const FIGURE_WAIT_MS = 2 * 60 * 60_000;
+/**
+ * How long past its release time a row waits for its own figure even once
+ * another row of the release has one: a source fills a release's rows a
+ * few minutes apart.
+ */
+const SIBLING_FIGURE_WAIT_MS = 15 * 60_000;
 
 /**
  * A release's figure that is not in, of a row awaitsFigure holds: `awaiting`
  * while it may still come, `none` once the source has none to give, which is
- * two hours after its time, or as soon as another row of the same release
- * (same time and publisher) has its figure. The MBA's 5/1 ARM and 15-year
- * rates waited all day beside the 30-year rate the same release had filled.
- * Null when no figure is awaited.
+ * two hours after its time, or from 15 minutes after it when another row of
+ * the same release (same time and publisher) has its figure. The MBA's 5/1
+ * ARM and 15-year rates waited all day beside the 30-year rate the same
+ * release had filled. Null when no figure is awaited.
  */
 export function figureGap(
   event: Pick<EconEvent, "actual" | "forecast" | "prior" | "date" | "time" | "timeNote" | "country" | "source">,
@@ -497,7 +503,9 @@ export function figureGap(
   calendar: readonly Pick<EconEvent, "actual" | "date" | "country" | "source">[] = [],
 ): "awaiting" | "none" | null {
   if (!awaitsFigure(event, now)) return null;
-  if (now - event.date.getTime() >= FIGURE_WAIT_MS) return "none";
+  const since = now - event.date.getTime();
+  if (since >= FIGURE_WAIT_MS) return "none";
+  if (since < SIBLING_FIGURE_WAIT_MS) return "awaiting";
   const publisher = event.source?.name?.trim();
   const releaseIn = !!publisher && calendar.some((row) => row !== event && !!row.actual?.trim()
     && row.date.getTime() === event.date.getTime() && row.country === event.country && row.source?.name?.trim() === publisher);

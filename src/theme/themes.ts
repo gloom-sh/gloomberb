@@ -37,15 +37,21 @@ export interface Theme {
 
   /**
    * The up, down, warning and neutral colours in a selected row, read against
-   * its fill. Only a light or colour-blind theme has them, set by the registry:
-   * it reads its tones at body contrast (TONE_TEXT_MIN) everywhere, so it lifts
-   * them there (the vermillion of a loss read 3.16:1 on colorblind-light's
-   * selection). Without them a tone is drawn as it is.
+   * its fill at body contrast (TONE_TEXT_MIN), set by the registry for every
+   * theme: a loss on the selection read 3.16:1 on colorblind-light and
+   * 1.92:1 on nord. Without them a tone is drawn as it is.
    */
   selectedPositive?: string;
   selectedNegative?: string;
   selectedWarning?: string;
   selectedNeutral?: string;
+  /**
+   * The theme reads its tones and hints at body contrast on every surface:
+   * the light and colour-blind themes, set by the registry
+   * (readsAtBodyContrast). Dark themes draw their tones on the page as they
+   * always have.
+   */
+  readableTones?: boolean;
 }
 
 const BODY_TEXT_MIN = 4.5;
@@ -148,22 +154,23 @@ function normalizeTheme(theme: Theme, { readableTones }: ThemeNorms): Theme {
     highestMinimumContrast([selected], [text, theme.textBright, "#f2f2f2"]),
     BODY_TEXT_MIN,
   );
-  const tones = { positive, negative, warning, neutral };
-  if (!readableTones) return { ...theme, text, textDim, textMuted, ...tones, headerText, selected, selectedText };
   // Toward the page's far end on the page; toward the row's far end in a selected row.
   const bodyExtreme = highestMinimumContrast(bodySurfaces, ["#ffffff", "#000000"]);
   const selectedExtreme = highestMinimumContrast([selected], ["#ffffff", "#000000"]);
   const readable = (tone: string) => tintForContrast(tone, bodySurfaces, bodyExtreme, TONE_TEXT_MIN);
   const onSelected = (tone: string) => tintForContrast(tone, [selected], selectedExtreme, TONE_TEXT_MIN);
-  const page = {
-    positive: readable(positive), negative: readable(negative), warning: readable(warning), neutral: readable(neutral),
-  };
+  // A light or colour-blind theme reads its tones at body contrast on the page too; a dark one keeps its own there.
+  const page = readableTones
+    ? { positive: readable(positive), negative: readable(negative), warning: readable(warning), neutral: readable(neutral) }
+    : { positive, negative, warning, neutral };
+  // Every theme reads a tone on the selection at body contrast: the band shows the row, the tone its direction.
   return {
     ...theme, text, textDim, textMuted, ...page, headerText, selected, selectedText,
     selectedPositive: onSelected(page.positive),
     selectedNegative: onSelected(page.negative),
     selectedWarning: onSelected(page.warning),
     selectedNeutral: onSelected(page.neutral),
+    ...(readableTones ? { readableTones: true } : {}),
   };
 }
 

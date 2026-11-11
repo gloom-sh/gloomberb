@@ -562,8 +562,7 @@ test("a release past its time with no figure says when it was due and that the f
 });
 
 // 11 Nov 2026: five MBA rows read "awaiting figure" all day beside five rows of the same release with theirs.
-test("a release row with no figure while another row of the same release has its own says the source has none", async () => {
-  setSystemTime(new Date("2026-11-11T12:30:00.000Z"));
+test("a release row with no figure while another row of the same release has its own says the source has none, from 15 minutes on", async () => {
   const mba = { name: "Mortgage Bankers Association" };
   const at = "2026-11-11T12:00:00.000Z";
   const calendar = [
@@ -573,9 +572,14 @@ test("a release row with no figure while another row of the same release has its
     { ...event(at, "US", "low", "Redbook y/y"), prior: "5.1%", source: { name: "Redbook Research" } },
     { ...event(at, "US", "low", "Other Index"), prior: "1.0" },
   ];
-  const { result } = await econPrinted(calendar, ["--from", "2026-11-11"]);
-  const status = Object.fromEntries((result.data as Array<Record<string, unknown>>).map((row) => [row.event, row.actualStatus]));
-  expect(status).toEqual({
+  const statusAt = async (now: string) => {
+    setSystemTime(new Date(now));
+    const { result } = await econPrinted(calendar, ["--from", "2026-11-11"]);
+    return Object.fromEntries((result.data as Array<Record<string, unknown>>).map((row) => [row.event, row.actualStatus]));
+  };
+  // A source fills a release's rows minutes apart: one row in is no answer for the rest yet.
+  expect((await statusAt("2026-11-11T12:14:00.000Z"))["MBA 5/1 ARM Contract Rate"]).toBe("due 12:00 UTC, awaiting figure");
+  expect(await statusAt("2026-11-11T12:15:00.000Z")).toEqual({
     "MBA 30-Year Mortgage Rate": null,
     "MBA 5/1 ARM Contract Rate": "no figure from the source",
     "Redbook y/y": "due 12:00 UTC, awaiting figure",

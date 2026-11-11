@@ -14,14 +14,14 @@ const WEEKDAYS = Array.from({ length: (LAST - FIRST) / DAY_MS + 1 }, (_, day) =>
 const day = (time: number) => new Date(time).toISOString().slice(0, 10);
 
 /** The service as it answers: the window's bars, cut to the newest 5,000. */
-function serveCapped(failBefore?: string) {
+function serveCapped(failBefore?: string, sessions: readonly number[] = WEEKDAYS) {
   const asked: string[] = [];
   apiClient.getCloudHistory = async (_symbol, _exchange, params) => {
     const from = params!.startDate!.slice(0, 10);
     const to = params!.endDate!.slice(0, 10);
     asked.push(`${from}..${to}`);
     if (failBefore && to <= failBefore) throw new Error("socket hang up");
-    const bars = WEEKDAYS.filter((time) => day(time) >= from && day(time) <= to).slice(-5_000)
+    const bars = sessions.filter((time) => day(time) >= from && day(time) <= to).slice(-5_000)
       .map((time) => ({ date: day(time), open: 1, high: 1, low: 1, close: 1, volume: 1 }));
     return bars.length > 0 ? { status: "success", data: bars } : { status: "empty", data: null };
   };
@@ -38,8 +38,8 @@ test("a long window of daily bars is read in chunks back to the first bar, and a
   expect(day(whole.points.at(-1)!.date.getTime())).toBe("2026-11-10");
   expect(new Set(whole.points.map((point) => point.date.getTime())).size).toBe(WEEKDAYS.length);
   expect(whole.truncatedBefore).toBeUndefined();
-  // Newest first, each chunk ending where the next one starts, stopping at the chunk the bars begin in.
-  expect(asked.length).toBe(5);
+  // Newest first, each chunk ending where the next one starts, stopping at the first chunk with no bar.
+  expect(asked.length).toBe(6);
   expect(asked[0]!.endsWith("2026-11-11")).toBe(true);
 
   serveCapped("1995-01-01");
@@ -47,4 +47,28 @@ test("a long window of daily bars is read in chunks back to the first bar, and a
   expect(cut.truncatedBefore).toBeDefined();
   expect(day(cut.points[0]!.date.getTime()) >= cut.truncatedBefore!).toBe(true);
   expect(cut.points.length).toBeLessThan(WEEKDAYS.length);
+});
+
+// A chunk whose first bar came well after its start stopped the read: a listing suspended for months lost every bar
+// before the suspension. A listing delisted more than twelve years before the window ends had no bar in the newest
+// chunk, and the read failed.
+test("a suspension never cuts a long read, and a listing delisted long ago is read from one request back", async () => {
+  // No session from 2008-06 to 2015-06: the chunk from 2002-11 to 2014-11 starts its bars in 2002, the one from
+  // 2014-11 in 2015, months after it starts.
+  const suspended = WEEKDAYS.filter((time) => day(time) < "2008-06-01" || day(time) >= "2015-06-01");
+  serveCapped(undefined, suspended);
+  const halted = await new GloomberbCloudProvider().getDetailedPriceHistoryWithMetadata("KO", "NYSE", new Date("1960-01-01"), new Date(LAST + DAY_MS), "1d");
+  expect(halted.points.length).toBe(suspended.length);
+  expect(day(halted.points[0]!.date.getTime())).toBe("1970-01-02");
+
+  // Traded from 1970 to 1990: more bars than one answer holds.
+  const delisted = WEEKDAYS.filter((time) => day(time) <= "1990-06-29");
+  const asked = serveCapped(undefined, delisted);
+  const old = await new GloomberbCloudProvider().getDetailedPriceHistoryWithMetadata("OLD", "NYSE", new Date("1960-01-01"), new Date(LAST + DAY_MS), "1d");
+  expect(old.points.length).toBe(delisted.length);
+  expect([day(old.points[0]!.date.getTime()), day(old.points.at(-1)!.date.getTime())]).toEqual(["1970-01-02", "1990-06-29"]);
+  expect(old.truncatedBefore).toBeUndefined();
+  // The newest chunk, the whole window, then the window's start up to that answer's first bar.
+  expect(asked[1]).toBe("1960-01-01..2026-11-11");
+  expect(asked.length).toBe(3);
 });

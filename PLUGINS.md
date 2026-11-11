@@ -71,8 +71,11 @@ bars. Two files in a folder of their own, `riskwatch/`:
 
 ```typescript
 import type { GloomPlugin } from "gloomberb/types/plugin";
+import { canonicalExchange } from "gloomberb/utils";
 
 const YEARS = 30;
+// The US listing venues, where a delayed quote runs 15 minutes behind. Other venues set their own delay.
+const US_VENUES = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS"]);
 
 export default {
   id: "risk-watch",
@@ -89,13 +92,14 @@ export default {
       try {
         const quote = await dataProvider.getQuote(symbol!);
         const now = Date.now();
-        // A delayed quote's last trade is about 15 minutes old by design; more than that while the market is open is a stall.
-        const baselineMinutes = quote.dataSource === "delayed" ? 15 : 0;
+        // A delayed US quote's last trade is about 15 minutes old by design; more than that in the
+        // regular session is a stall. Elsewhere the delay is the venue's own, so no verdict is given.
+        const exchange = quote.listingExchangeName ?? "";
+        const baselineMinutes = quote.dataSource !== "delayed" ? 0 : US_VENUES.has(canonicalExchange(exchange)) ? 15 : null;
         const tradeAge = quote.lastTradeTime ? (now - quote.lastTradeTime) / 60_000 : null;
-        const stalled = quote.marketState === "REGULAR" && tradeAge != null && tradeAge > baselineMinutes + 5;
+        const stalled = baselineMinutes != null && quote.marketState === "REGULAR" && tradeAge != null && tradeAge > baselineMinutes + 5;
 
         // Daily bars by date: years of them in one call, split into reads by the host.
-        const exchange = quote.listingExchangeName ?? "";
         const from = new Date(now - YEARS * 365.25 * 86_400_000);
         const history = await dataProvider.getDetailedPriceHistoryWithMetadata!(symbol!, exchange, from, new Date(now), "1d");
         const closes = history.points.map((point) => point.close).filter((close) => close > 0);
@@ -111,7 +115,7 @@ export default {
             lastTrade: quote.lastTradeTime ? new Date(quote.lastTradeTime).toISOString() : null,
             retrieved: quote.retrievedAt ? new Date(quote.retrievedAt).toISOString() : null,
             savedCopy: quote.stale === true,
-            feed: stalled ? `stalled, last trade ${Math.round(tradeAge!)} min ago` : "ok",
+            feed: stalled ? `stalled, last trade ${Math.round(tradeAge!)} min ago` : baselineMinutes == null ? "venue delay unknown" : "ok",
             sigma: move != null && sd > 0 ? Number((move / sd).toFixed(2)) : null,
             firstBar: history.points[0] ? new Date(history.points[0].date).toISOString().slice(0, 10) : null,
             bars: history.points.length,
@@ -151,10 +155,10 @@ What a quote says about its own time:
 | Field | Meaning |
 |-------|---------|
 | `lastTradeTime` | When the last trade printed (epoch ms). `lastUpdated` is the time the price is as of, the same for a trade |
-| `retrievedAt` | When Gloom fetched the quote from its source. A quote from the saved copy keeps the time that copy was fetched, so a recent `retrievedAt` with an old `lastTradeTime` is a feed that has not printed, and an old `retrievedAt` is a copy |
+| `retrievedAt` | When the quote was fetched from its source (epoch ms). For a quote Gloom Cloud serves, that is the service's own fetch time, and a copy it kept, a `stale` one included, keeps the time that copy was fetched. So a recent `retrievedAt` with an old `lastTradeTime` is a feed that has not printed, and an old `retrievedAt` is a copy |
 | `stale` | `true` when the refresh failed and the last good copy answered instead |
-| `dataSource` | `live`, `delayed` or `snapshot`. Gloom Cloud quotes for an account without Pro are delayed 15 minutes: that is the baseline a delayed quote's `lastTradeTime` sits behind while the market is open |
-| `marketState` | The listing's session: `PRE`, `REGULAR`, `POST` or `CLOSED`. Outside `REGULAR`, an old last trade is the close, not a stall |
+| `dataSource` | `live`, `delayed` or `snapshot`. Gloom Cloud quotes for an account without Pro are delayed. For a US listing the delay is 15 minutes: that is the baseline a delayed quote's `lastTradeTime` sits behind while the market is open. A listing on another venue runs behind by that venue's own delay, which can be longer |
+| `marketState` | The listing's session: `PREPRE` (overnight, before the pre-market opens), `PRE` (pre-market), `REGULAR`, `POST` (after hours), `POSTPOST` (overnight, after the after-hours session closes) or `CLOSED`. Outside `REGULAR`, an old last trade is the last session's print, not a stall |
 
 Price history comes three ways. `getPriceHistoryWithMetadata(symbol, exchange, range)` takes a range (`1D`, `1W`, `1M`, `3M`, `6M`, `1Y`, `5Y`, `ALL`; anything else is an error) in the bar size the range comes in: `ALL` is the whole stored history in monthly bars. `getPriceHistoryForResolutionWithMetadata(symbol, exchange, range, "1d")` is the same range in the bar size asked for, so `ALL` at `1d` is every daily bar kept. `getDetailedPriceHistoryWithMetadata(symbol, exchange, from, to, "1d")` is the bars between two dates. Long daily reads are split into several requests by the host; when one of the older ones fails, the result's `truncatedBefore` is the date the bars start at instead of the whole span. `gloom history <symbol> --range ALL --interval daily` shows the same bars from a shell, and a window before a listing's first bar says where its daily bars start.
 

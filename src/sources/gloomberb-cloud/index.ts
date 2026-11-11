@@ -92,7 +92,7 @@ import { predictionMarketListing } from "../../tickers/prediction-listing";
 import { cleanListingName } from "../../tickers/company-name";
 import { settleWithin } from "../../utils/async-deadline";
 import { cloudSearchBatch, cloudTickerChangesBatch } from "./batched-lookups";
-import { newestDatedChunkStart, withOlderDatedChunks } from "./dated-chunks";
+import { newestDatedChunkStart, wholeWindowChunkStart, withOlderDatedChunks } from "./dated-chunks";
 
 const providerId = GLOOMBERB_CLOUD_PROVIDER_ID;
 /** How long a search that is not typed waits for perpetual markets. */
@@ -963,21 +963,29 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     const interval = toCloudInterval(barSize);
     const includeTime = /^\d+(min|h)$/i.test(interval);
     const historyRecovery = cloudHistoryRecovery(_context, ticker, target.symbol, exchange, interval, startDate, endDate);
-    // A window longer than one request holds (daily bars from 1990) is read from its newest chunk back (dated-chunks.ts).
-    const newestStart = historyRecovery ? startDate : newestDatedChunkStart(interval, startDate, endDate);
-    const { response, extendedHours } = await withCloudFallback(
+    const read = (from: Date) => withCloudFallback(
       () => loadCloudHistory(interval, (session) => apiClient.getCloudHistory(target.symbol, exchange, {
         interval,
-        startDate: formatCloudDateTime(newestStart, includeTime, exchange),
+        startDate: formatCloudDateTime(from, includeTime, exchange),
         endDate: formatCloudDateTime(endDate, includeTime, exchange),
         ...(historyRecovery ? { historyRecovery } : {}),
         ...(session ? { session } : {}),
       }), historyRecovery ? undefined : _context),
       `Cloud detailed chart history is unavailable for ${ticker}`,
     );
+    const readChunk = (from: Date, to: Date) => readCloudHistoryChunk(target.symbol, exchange, interval, from, to, _context, ticker);
+    // A window longer than one request holds (daily bars from 1990) is read from its newest chunk back (dated-chunks.ts).
+    const newestStart = historyRecovery ? startDate : newestDatedChunkStart(interval, startDate, endDate);
+    const { response, extendedHours } = await read(newestStart);
+    if (newestStart.getTime() > startDate.getTime() && response.status === "empty" && !parseHistoryCoverageStart(response.coverage)) {
+      // A listing that stopped trading before the newest chunk starts (delisted more than twelve years before the
+      // window ends) has no bar in it: the window is asked in one request, and read back from that answer's first bar.
+      const answered = await read(startDate);
+      const whole = mapCloudPriceHistory(answered.response, target.symbol, exchange, interval, startDate, endDate, answered.extendedHours);
+      return withOlderDatedChunks(whole, interval, startDate, wholeWindowChunkStart(whole, startDate), readChunk);
+    }
     const newest = mapCloudPriceHistory(response, target.symbol, exchange, interval, newestStart, endDate, extendedHours);
-    return withOlderDatedChunks(newest, interval, startDate, newestStart,
-      (from, to) => readCloudHistoryChunk(target.symbol, exchange, interval, from, to, _context, ticker));
+    return withOlderDatedChunks(newest, interval, startDate, newestStart, readChunk);
   }
 
   /** Trailing history and dated expiries asked with others (`batch`) go out as batch requests while the service reads them so. */

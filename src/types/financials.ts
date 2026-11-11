@@ -211,10 +211,12 @@ export interface Quote extends DepositaryReceiptFacts {
   lastUpdated: number; // timestamp ms
   receivedAt?: number; // local receipt timestamp ms for streamed/display freshness
   /**
-   * When Gloom fetched this quote from its source (epoch ms). A quote served
-   * from the saved copy keeps the time that copy was fetched, so a cached
-   * quote can be told from a feed that stopped: `lastTradeTime` behind with
-   * `retrievedAt` recent is the feed, `retrievedAt` old is the copy.
+   * When Gloom fetched this quote from its source (epoch ms): Gloom Cloud's
+   * own fetch time for a copy it kept, a stale one included, else when this
+   * app read it. A quote served from a saved copy keeps the time that copy
+   * was fetched, so a cached quote can be told from a feed that stopped:
+   * `lastTradeTime` behind with `retrievedAt` recent is the feed,
+   * `retrievedAt` old is the copy.
    */
   retrievedAt?: number;
   delivery?: QuoteDelivery;
