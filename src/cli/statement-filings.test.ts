@@ -1,6 +1,7 @@
-import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, expect, jest, mock, spyOn, test } from "bun:test";
 import { apiClient } from "../api-client";
 import { offeringNote } from "../utils/cash-runway";
+import { EXCHANGE_RESULTS_BUDGET_MS, exchangeResultsNotes, matchExchangeResults } from "../utils/exchange-results";
 import { createDefaultConfig } from "../types/config";
 import type { TickerFinancials } from "../types/financials";
 import { createTestDataProvider } from "../test-support/data-provider";
@@ -10,6 +11,7 @@ import {
   cloudStatementReportSources,
   detectResultsRelease,
   loadOfferingFilings,
+  loadStatementFilings,
   resultsReleaseText,
   statementFiling,
   type PeriodicFiling,
@@ -178,4 +180,65 @@ test("loadOfferingFilings skips non-US listings and leaves no note or error on a
   expect(read).toHaveBeenCalledTimes(1);
   expect(filings).toEqual([]);
   expect(offeringNote(filings, "2026-06-30")).toBeNull();
+});
+
+test("a report waits at most 4 s on a filing list or the HKEXnews announcements, then goes without their lines", async () => {
+  jest.useFakeTimers();
+  try {
+    const never = <T>() => new Promise<T>(() => {});
+    const sources: StatementReportSources = {
+      statementFilings: () => never(), bankFigures: () => never(), offeringFilings: () => never(), exchangeAnnouncements: () => never(),
+    };
+    const latest = { quarter: { date: "2026-06-30" } as never, annual: { date: "2025-12-31" } as never };
+    const settled = Promise.all([
+      loadStatementFilings(sources, { symbol: "AAPL", exchange: "NASDAQ" }, latest),
+      loadStatementFilings(sources, { symbol: "9992", exchange: "HKEX" }, latest),
+      loadOfferingFilings(sources, { symbol: "VKTX", exchange: "NASDAQ" }, true),
+    ]);
+    let done = false;
+    void settled.then(() => { done = true; });
+    jest.advanceTimersByTime(EXCHANGE_RESULTS_BUDGET_MS);
+    for (let tick = 0; tick < 20 && !done; tick += 1) await Promise.resolve();
+    // A read with no deadline never settles; fake timers would also hold the test's own timeout, so it is asserted here.
+    expect(done).toBe(true);
+    const [us, hk, offerings] = await settled;
+    expect(us).toMatchObject({ latestQuarter: null, latestAnnual: null, resultsRelease: null });
+    expect(hk.exchangeResults).toBeNull();
+    expect(offerings).toEqual([]);
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test("an HKEX half year is dated by its interim results announcement, and a business update after it is named", async () => {
+  const item = (date: string, types: string[], headline: string) => ({
+    date, types, headline, category: "Announcements and Notices", priceSensitive: null, fileSize: null, documentKey: date, url: `https://www1.hkexnews.hk/${date}.pdf`,
+  });
+  const announcements = [
+    item("2026-10-27T08:30:00Z", ["Other - Business Update"], "LATEST BUSINESS UPDATE FOR THE THIRD QUARTER OF 2026"),
+    item("2026-09-24T08:39:00Z", ["Interim/Half-Year Report"], "INTERIM REPORT 2026"),
+    item("2026-08-20T08:30:00Z", ["Interim Results", "Share Scheme"], "INTERIM RESULTS ANNOUNCEMENT FOR THE SIX MONTHS ENDED 30 JUNE 2026"),
+    // The year before's results, which also update the business, are older than the half year.
+    item("2026-03-25T04:22:00Z", ["Final Results", "Other - Business Update"], "ANNUAL RESULTS ANNOUNCEMENT FOR THE YEAR ENDED 31 DECEMBER 2025"),
+  ];
+  const sources: StatementReportSources = {
+    statementFilings: mock(async () => { throw new Error("an HKEX listing files no SEC reports"); }),
+    bankFigures: mock(async () => { throw new Error("unused"); }),
+    exchangeAnnouncements: mock(async () => ({ exchange: "HKEX", symbol: "9992", name: "POP MART", page: "", announcements, total: 4, retrievedAt: "2026-11-11T00:00:00Z" })),
+  };
+  const report = await loadStatementFilings(sources, { symbol: "9992", exchange: "XHKG" },
+    { quarter: { date: "2026-06-30" } as never, annual: { date: "2025-12-31" } as never });
+  expect(sources.statementFilings).not.toHaveBeenCalled();
+  expect(sources.exchangeAnnouncements).toHaveBeenCalledWith({ symbol: "9992", exchange: "HKEX" });
+  expect(exchangeResultsNotes(report.exchangeResults!)).toEqual([
+    "Latest half year 2026-06-30, interim results announced 2026-08-20 (HKEXnews).",
+    "Business update announced 2026-10-27 (HKEXnews), after the latest statements: \"LATEST BUSINESS UPDATE FOR THE THIRD QUARTER OF 2026\".",
+  ]);
+  // Statements a year behind: the newer results are named as not in yet, and a release past 120 days is not the period's own.
+  expect(exchangeResultsNotes(matchExchangeResults("2025-06-30", announcements)!)).toEqual([
+    "Interim results announced 2026-08-20 (HKEXnews); their statements are not in yet.",
+    "Business update announced 2026-10-27 (HKEXnews), after the latest statements: \"LATEST BUSINESS UPDATE FOR THE THIRD QUARTER OF 2026\".",
+  ]);
+  // A late evening release in Hong Kong is dated by its Hong Kong day.
+  expect(matchExchangeResults("2026-06-30", [item("2026-08-20T16:30:00Z", ["Interim Results"], "LATE")])?.latest?.announced).toBe("2026-08-21");
 });

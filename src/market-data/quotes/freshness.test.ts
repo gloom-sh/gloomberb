@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Quote } from "../../types/financials";
-import { awaitingFirstDelayedPrint, isQuoteStaleForCurrentSession, noPrintsTodayText } from "./freshness";
+import { awaitingFirstDelayedPrint, couldQuoteHavePrintedSince, isQuoteStaleForCurrentSession, noPrintsTodayText } from "./freshness";
 import { quoteSessionLabel } from "../market/status";
 import { createDailyNavQuote } from "../../test-support/daily-nav";
 
@@ -414,4 +414,43 @@ test("a venue open by its calendar before its delayed feed's first print reads o
   expect(awaitingFirstDelayedPrint(vod, Date.parse("2026-11-06T07:55:00Z"))).toBeNull();
   expect(awaitingFirstDelayedPrint(vod, Date.parse("2026-11-06T09:00:00Z"))).toBeNull();
   expect(awaitingFirstDelayedPrint({ ...vod, lastUpdated: Date.parse("2026-11-06T08:01:00Z") }, at)).toBeNull();
+});
+
+describe("whether a quote's market could have printed while its stream was down", () => {
+  // Wed 11 Nov 2026: the quote stream dropped at 07:15 UTC, signed out on the delayed feed.
+  const nvda = quote({ symbol: "NVDA", currency: "USD", price: 170.48, listingExchangeName: "NASDAQ", exchangeName: "NASDAQ",
+    marketState: "PREPRE", lastUpdated: Date.parse("2026-11-11T00:59:59Z") });
+  const spx = quote({ symbol: "^GSPC", currency: "USD", price: 7520.93, listingExchangeName: "SNP", exchangeName: "SNP",
+    instrumentType: "INDEX", lastUpdated: Date.parse("2026-11-10T22:00:31Z"), indexSession: {
+      timeZone: "America/New_York",
+      current: { start: Date.parse("2026-11-11T14:30:00Z"), end: Date.parse("2026-11-11T21:00:00Z") },
+      regular: [{ start: Date.parse("2026-11-10T14:30:00Z"), end: Date.parse("2026-11-10T21:00:00Z") }],
+    } });
+  const ftse = quote({ symbol: "^FTSE", currency: "GBP", listingExchangeName: "FTSE INDEX", exchangeName: "FTSE INDEX",
+    instrumentType: "INDEX", marketState: "PRE", lastUpdated: Date.parse("2026-11-10T16:35:30Z") });
+  const hsi = quote({ symbol: "^HSI", currency: "HKD", listingExchangeName: "HKSE", exchangeName: "HKSE",
+    instrumentType: "INDEX", marketState: "REGULAR", lastUpdated: Date.parse("2026-11-11T07:00:00Z") });
+  const down = Date.parse("2026-11-11T07:15:00Z");
+
+  test("US closed overnight, Europe before its open: nothing could print, so the last price is current", () => {
+    const at = Date.parse("2026-11-11T07:16:00Z");
+    expect(couldQuoteHavePrintedSince(nvda, down, at)).toBe(false);
+    expect(couldQuoteHavePrintedSince(spx, down, at)).toBe(false);
+    expect(couldQuoteHavePrintedSince(ftse, down, at)).toBe(false);
+    // Hong Kong trades until 08:10 UTC, and a coin never stops.
+    expect(couldQuoteHavePrintedSince(hsi, down, at)).toBe(true);
+    expect(couldQuoteHavePrintedSince(quote({ symbol: "BTC-USD", listingExchangeName: "CCC", exchangeName: "CCC" }), down, at)).toBe(true);
+  });
+
+  test("the US pre-market counts once the delayed feed has reached it, the regular session and a close the outage spanned too", () => {
+    // 04:05 New York: the feed, 15 minutes behind, has not reached 04:00 yet.
+    expect(couldQuoteHavePrintedSince(nvda, Date.parse("2026-11-11T09:00:00Z"), Date.parse("2026-11-11T09:05:00Z"))).toBe(false);
+    expect(couldQuoteHavePrintedSince(nvda, Date.parse("2026-11-11T09:00:00Z"), Date.parse("2026-11-11T09:20:00Z"))).toBe(true);
+    // The index has no pre-market: it trades from its own open.
+    expect(couldQuoteHavePrintedSince(spx, Date.parse("2026-11-11T09:00:00Z"), Date.parse("2026-11-11T14:40:00Z"))).toBe(false);
+    expect(couldQuoteHavePrintedSince(spx, Date.parse("2026-11-11T09:00:00Z"), Date.parse("2026-11-11T15:00:00Z"))).toBe(true);
+    // Down from 15:50 New York to after the close: the session's last minutes were missed.
+    expect(couldQuoteHavePrintedSince(spx, Date.parse("2026-11-10T20:50:00Z"), Date.parse("2026-11-10T23:00:00Z"))).toBe(true);
+    expect(couldQuoteHavePrintedSince(ftse, Date.parse("2026-11-11T08:00:00Z"), Date.parse("2026-11-11T08:20:00Z"))).toBe(true);
+  });
 });

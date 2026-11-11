@@ -1,3 +1,4 @@
+import { withBalanceSheetRate } from "../../../market-data/quotes/balance-sheet-rate";
 import { formatPriceEarnings, NOT_MEANINGFUL, PRICE_EARNINGS_NOTICE } from "../../../utils/price-earnings";
 import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition } from "../../../types/headless";
 import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
@@ -13,7 +14,7 @@ import {
   AUTO_PEERS_SETTING, findPeers, peerMethodTitle, peerSelectionOf, PEER_SELECTION_SETTING, relativeValuationTitle, type PeerSelection,
 } from "./relative-valuation-peers";
 import { extraColumns, extraColumnsBasis, loadExtraColumns, parseExtraColumns } from "./relative-valuation-columns";
-import { fundamentalsBasisParts } from "./relative-valuation-basis";
+import { fundamentalsBasisParts, revenueGrowthHalfTag, revenueGrowthHeader } from "./relative-valuation-basis";
 import { conversionNote, convertMarketCaps, convertTargets, loadFxLegs, type CapConversion } from "./relative-valuation-currency";
 
 const price = (value: unknown, row: Record<string, unknown>) => (
@@ -71,6 +72,8 @@ const QUOTE_COLUMNS: HeadlessPaneColumn[] = [
 
 /** The latest quarter's revenue against the same quarter a year earlier; the footer names the quarter. */
 const REVENUE_GROWTH_HEADER = "Quarter Revenue YoY";
+/** The column's name once a peer reports half-yearly: its figure is a half's (`H1`), named in the footer. */
+const PERIOD_REVENUE_GROWTH_HEADER = "Revenue YoY";
 
 const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
   // In the currency each peer's cap is in, which exports write in the header or beside the figure.
@@ -97,7 +100,7 @@ const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
   ...([["fcfYield", "FCF Yield"], ["revenueGrowth", REVENUE_GROWTH_HEADER], ["operatingMargin", "TTM Op Margin"]] as const).map(([key, header]) => ({
     key, header, align: "right" as const,
     format: (value: unknown, row: Record<string, unknown>) => value == null ? gapText(row, key)
-      : key === "revenueGrowth" ? formatPercent(Number(value))
+      : key === "revenueGrowth" ? [formatPercent(Number(value)), revenueGrowthHalfTag(row.revenueGrowthHalf as string | null)].filter(Boolean).join(" ")
         // A margin of the latest fiscal year, where no trailing quarters were served, says which year.
         : key === "operatingMargin" && typeof row.operatingMarginPeriod === "string"
           ? `${formatLevelPercent(Number(value))} ${row.operatingMarginPeriod}` : formatLevelPercent(Number(value)),
@@ -142,7 +145,8 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
     const preset = args.options.peers === true ? peerSelectionOf(ctx.settings?.[PEER_SELECTION_SETTING], args.symbols) : null;
     const selection = args.options.peers === true ? preset ?? await choosePeers(args.symbols, ctx) : null;
     const symbols = selection ? [selection.subject, ...selection.peers] : args.symbols;
-    const loaded = await loadHeadlessSymbols(symbols, ctx, (symbol) => loadHeadlessFinancials(ctx, symbol));
+    // A withdrawn EV's bridge converts a balance sheet in another currency at our close on its date, as `fundamentals` does.
+    const loaded = await loadHeadlessSymbols(symbols, ctx, async (symbol) => withBalanceSheetRate(await loadHeadlessFinancials(ctx, symbol)));
     const baseRows = loaded.entries.map(({ symbol, data }) => ({ symbol, ...relativeValuationValues(data), ...quoteFreshnessFields(data?.quote) }));
     const unavailableSymbols = [...loaded.unavailableSymbols, ...baseRows.filter((row) => ![
       row.marketCap, row.trailingPE, row.forwardPE, row.evSales, row.fcfYield, row.revenueGrowth, row.operatingMargin,
@@ -187,12 +191,14 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
       ...converted?.unconverted.map(unconvertedWarning("market cap")) ?? [],
       ...targets?.unconverted.map(unconvertedWarning("analyst target")) ?? [],
     ];
+    // A half-year reporter's growth is a half's: the column is named for no one period and each half says so.
+    const growthHeader = revenueGrowthHeader(rows, REVENUE_GROWTH_HEADER, PERIOD_REVENUE_GROWTH_HEADER);
     // The footer: the rates the caps were converted at, the statement period the figures run through, and the
     // basis of each column that is not trailing twelve months.
     const footnote = [
       ...capCurrency && converted ? [conversionNote(capCurrency, conversions,
         targets?.conversions.length ? `market caps and analyst targets in ${capCurrency}` : undefined)] : [],
-      ...fundamentalsBasisParts(rows, REVENUE_GROWTH_HEADER),
+      ...fundamentalsBasisParts(rows, growthHeader),
       ...extraColumnsBasis(extraIds, rows),
     ].filter(Boolean).join(" · ");
     const notes = [
@@ -202,7 +208,8 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
     // Last and Chg% are the regular session; an extended print gets a column only when a peer has one.
     // Exports keep every session's price and move, so their header is the same in every market state.
     const extendedSessions = EXTENDED_SESSIONS.filter((session) => rows.some((row) => row.extendedSession === session));
-    const textColumns = [...QUOTE_COLUMNS, ...extendedSessions.map(extendedColumn), ...VALUATION_COLUMNS];
+    const textColumns = [...QUOTE_COLUMNS, ...extendedSessions.map(extendedColumn),
+      ...VALUATION_COLUMNS.map((column) => column.key === "revenueGrowth" ? { ...column, header: growthHeader } : column)];
     const added = extraIds.length > 0 ? extraColumns(extraIds) : null;
     return {
       rows, unavailableSymbols, errors, complete: unavailableSymbols.length === 0 && errors.length === 0,

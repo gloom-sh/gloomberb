@@ -34,7 +34,7 @@ describe("chart composer series catalog", () => {
     const suggestions = buildSeriesCatalogSuggestions("revenue", AAPL);
 
     expect(suggestions[0]).toMatchObject({
-      label: "AAPL:XNAS · Revenue",
+      label: "AAPL:NASDAQ · Revenue",
       expression: {
         kind: "security",
         symbol: "AAPL",

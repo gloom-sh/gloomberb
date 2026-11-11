@@ -147,7 +147,8 @@ test("RV's EV/EBITDA is GE's: the listing's EV over trailing operating income pl
   // A bridge served with no provider figure beside it says only what it is.
   const tsm = report.rows.find((row) => row.symbol === "TSM")!;
   expect(tsm).toMatchObject({ evSalesBasis: "computed", evSales: 1_868.55e9 / (4_815.1e9 * 0.03136688) });
-  expect(tsm.evSalesNote).toBe("EV 1.87T USD computed from market cap + total debt - cash (balance sheet 2026-09-30, TWD at 0.03137 USD).");
+  expect(tsm.evSalesNote).toBe("EV 1.87T USD computed from market cap + total debt - cash (balance sheet 2026-09-30, TWD/USD 0.031367 at its date's close);"
+    + " no minority interest is on file for that balance sheet.");
   expect(report.notes).toEqual([
     "ASML: EV/EBITDA statements in EUR at 1.133 USD.",
     "TSM: EV/EBITDA statements in TWD at 0.03137 USD.",
@@ -203,7 +204,8 @@ test("a listing abroad gets the same columns: gross margin over the trailing twe
   expect(report.notes ?? []).toEqual([]);
   // EV/S over the market cap + total debt - cash the withdrawn 37.25T was checked against, EUR revenue at the check's rate, and the note says so.
   expect(row("ASML")).toMatchObject({ evSales: 535.04e9 / (39.47e9 * 1.133), evSalesBasis: "computed",
-    evSalesNote: "EV 535.04B USD computed from market cap + total debt - cash (balance sheet 2026-09-30, EUR at 1.133 USD); the provider's 37.25T USD failed validation against it." });
+    evSalesNote: "EV 535.04B USD computed from market cap + total debt - cash (balance sheet 2026-09-30, EUR/USD 1.1330 at its date's close);"
+      + " the provider's 37.25T USD failed validation against it; no minority interest is on file for that balance sheet." });
   // NT$3,409.80 at 32.797 TWD to the dollar.
   const targets = convertTargets([{ symbol: "2330:TWSE", targetMean: 3_409.8, targetCurrency: "TWD" }, { symbol: "NVDA", targetMean: 250, targetCurrency: "USD" }],
     "USD", new Map([["TWD", { rate: 1 / 32.797, asOf: "2026-11-06T21:59:00Z" }]]));

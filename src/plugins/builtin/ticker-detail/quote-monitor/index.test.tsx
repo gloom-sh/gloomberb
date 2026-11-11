@@ -234,6 +234,9 @@ describe("QuoteMonitorPane", () => {
 test("every card on a board is headed in one form: a listing abroad with its venue, a US listing or an index by its symbol", () => {
   expect(quoteMonitorLabel("8058", createTestTicker("8058", "Mitsubishi Corporation", { exchange: "JPX", currency: "JPY" }))).toBe("8058:JPX");
   expect(quoteMonitorLabel("8031:JPX", null)).toBe("8031:JPX");
+  // A key saved under the venue's MIC reads by its code, as titles name it.
+  expect(quoteMonitorLabel("9992:XHKG", null)).toBe("9992:HKEX");
+  expect(quoteMonitorLabel("9992", createTestTicker("9992", "Pop Mart", { exchange: "XHKG", currency: "HKD" }))).toBe("9992:HKEX");
   expect(quoteMonitorLabel("AAPL", createTestTicker("AAPL"))).toBe("AAPL");
   expect(quoteMonitorLabel("^N225", createTestTicker("^N225", "Nikkei 225", { exchange: "OSAKA", currency: "JPY" }))).toBe("^N225");
 });

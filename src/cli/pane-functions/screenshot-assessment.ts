@@ -44,7 +44,8 @@ function showsToken(visible: string, token: string, notBefore = "", notAfter = "
  * Whether a capture's text shows `value` as a whole token: a listing as
  * written, or by its bare code where a chart legend names it so ("8053 Close ·
  * Sumitomo" for 8053:JPX), never as part of another listing or a price
- * ("8053:TWSE", "¥8,053.00", "8053.5"). Five names in a CMP title fold to
+ * ("8053:TWSE", "¥8,053.00", "8053.5"), and a listing saved under its MIC by
+ * its venue's code (9992:XHKG as 9992:HKEX). Five names in a CMP title fold to
  * "+2", and the legend was the only place the other two showed, so a good
  * picture read "not usable".
  */
@@ -53,7 +54,8 @@ export function shotShowsText(visibleText: string, value: string): boolean {
   if (showsToken(visible, value.toLowerCase())) return true;
   const { symbol, exchange } = parsePublicTickerKey(value);
   if (!exchange || !symbol || !value.includes(":")) return false;
-  return showsToken(visible, symbol.toLowerCase(), ":.$¥€£", ":");
+  // A listing saved under its MIC (9992:XHKG) is shown by its venue's code (9992:HKEX).
+  return showsToken(visible, `${symbol}:${exchange}`.toLowerCase()) || showsToken(visible, symbol.toLowerCase(), ":.$¥€£", ":");
 }
 
 export function isPaneScreenshotUsable(signals: PaneScreenshotReadinessSignals): boolean {

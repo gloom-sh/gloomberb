@@ -1,7 +1,7 @@
 // Turns a statement into a dated series point, and keeps one point per financial period.
 import type { FinancialStatement } from "../../types/financials";
 import { areNearbyFinancialPeriodEnds } from "../../utils/financial-statements";
-import { fiscalPeriodLabel, ttmPeriodLabel } from "../../utils/fiscal-period";
+import { statementPeriodLabel, ttmPeriodLabel } from "../../utils/fiscal-period";
 import { hasStatementGap } from "../../utils/statement-gaps";
 import type { SecuritySeriesSource, TimeSeriesPoint } from "../types";
 import { validDate } from "./statement";
@@ -33,8 +33,8 @@ export function pointForStatement(
     // Providers do not supply a reliable issuer fiscal-year/quarter identity.
     // Calendar-month numbering would mislabel non-calendar fiscal years.
     periodLabel: `${period === "annual" ? "Year" : period === "ttm" ? "TTM" : "Quarter"} ended ${statement.date}`,
-    // The period as FA's columns name it (`Q3 FY26`), which the legend prints beside the value.
-    fiscalPeriod: period === "ttm" ? ttmPeriodLabel(statement.date, yearEndMonth) : fiscalPeriodLabel(statement.date, period, yearEndMonth),
+    // The period as FA's columns name it (`Q3 FY26`, a filled half `H1 FY26`), which the legend prints beside the value.
+    fiscalPeriod: period === "ttm" ? ttmPeriodLabel(statement.date, yearEndMonth) : statementPeriodLabel(statement, period, yearEndMonth),
     provenance: {
       quality: derived || (metric === "eps" && statement.epsBasis?.factor !== undefined && statement.epsBasis.factor !== 1) ? "derived" : "reported",
       ...((metric === "eps" || metric === "trailingPE") && statement.epsBasis ? { secEpsBasis: statement.epsBasis } : {}),

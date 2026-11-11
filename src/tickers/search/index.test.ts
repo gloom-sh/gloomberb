@@ -87,6 +87,40 @@ describe("ticker-search utilities", () => {
     expect(venues("NET", [cloudflare, netcall], new Map([["NET", saved]]))).toEqual(["LSE", "NYSE"]);
   });
 
+  test("a saved listing keeps the rank search gives its own row: saving the primary listing never moves it down", () => {
+    // /market/search?q=popmart and q=pop mart, captured 2026-11-11: the service names 9992 on HKEX for both.
+    const popMart = makeSearchResult("9992", "Pop Mart International Group Limited", { exchange: "HKEX", currency: "HKD", type: "Common Stock",
+      homeListing: true });
+    const set = (symbol: string) => makeSearchResult(symbol, symbol, { exchange: "SET", currency: "THB", type: "Common Stock" });
+    const receipt = makeSearchResult("POPMART80", "Pop Mart International Group Ltd. - Depositary Receipt", { exchange: "SET", type: "Depositary Receipt" });
+    const otc = makeSearchResult("POPMF", "Pop Mart International Group Limited", { exchange: "OTC", type: "Common Stock" });
+    const queries = {
+      popmart: [{ ...popMart, searchAliases: ["popmart"] }, receipt, set("POPMART11"), set("POPMART23")],
+      "pop mart": [{ ...popMart, searchAliases: ["pop mart"] }, makeSearchResult("PMRTY", "Pop Mart International Group Inc.", { exchange: "OTC" }), otc],
+    };
+    // Saved from the bar (under its listing key) or from the CLI (the bare code with its venue).
+    for (const saved of [createTestTicker("9992:XHKG", "Pop Mart International Group Limited", { exchange: "HKEX", currency: "HKD" }),
+      createTestTicker("9992", "Pop Mart International Group Limited", { exchange: "HKEX", currency: "HKD" })]) {
+      for (const [query, rows] of Object.entries(queries)) {
+        const first = buildTickerSearchCandidates({ query, tickers: new Map([[saved.metadata.ticker, saved]]), providerResults: rows, totalLimit: 12 })[0];
+        expect(first).toMatchObject({ label: saved.metadata.ticker, saved: true, kind: "ticker" });
+      }
+    }
+  });
+
+  test("saving a US listing leaves search's order as it was, the saved row in the place of its own", () => {
+    const apple = makeSearchResult("AAPL", "Apple Inc.", { exchange: "NASDAQ", currency: "USD", type: "Common Stock", homeListing: true });
+    const rows = [apple, makeSearchResult("AMAT", "Applied Materials, Inc."), makeSearchResult("APLD", "Applied Digital Corporation"),
+      makeSearchResult("AAPL", "Apple Inc.", { exchange: "BMV", currency: "MXN", type: "Common Stock" })];
+    const order = (query: string, saved?: TickerRecord) => buildTickerSearchCandidates({ query, providerResults: rows, totalLimit: 12,
+      tickers: new Map(saved ? [[saved.metadata.ticker, saved]] : []) }).map((candidate) => `${candidate.label}${candidate.saved ? " (saved)" : ""}`);
+    const aapl = createTestTicker("AAPL", "Apple Inc.", { exchange: "NASDAQ", currency: "USD" });
+    for (const query of ["apple", "aapl", "appl"]) expect(order(query, aapl)).toEqual(order(query).map((label, index) => index === 0 ? `${label} (saved)` : label));
+    // A saved name further down stays where search put it.
+    expect(order("apple", createTestTicker("AMAT", "Applied Materials, Inc.", { exchange: "NASDAQ", currency: "USD" })))
+      .toEqual(["AAPL", "AAPL", "AMAT (saved)", "APLD"]);
+  });
+
   test("a trailing colon lists every venue, even under a saved symbol", async () => {
     const netcall = makeSearchResult("NET", "Netcall", { exchange: "LSE", currency: "GBP" });
     const cloudflare = makeSearchResult("NET", "Cloudflare", { exchange: "NYSE", currency: "USD" });

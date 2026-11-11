@@ -1,3 +1,4 @@
+import { withBalanceSheetRate } from "../../../market-data/quotes/balance-sheet-rate";
 import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "../../../ui";
@@ -37,7 +38,7 @@ import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { quoteFreshnessFields } from "../shared/report-freshness";
 import { RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, formatRelativePrice, relativeValuationValues, withLiveQuote } from "./relative-valuation-model";
 import { conversionNote, conversionPairText, convertMarketCaps, usdRateFromEntry } from "./relative-valuation-currency";
-import { fundamentalsBasisParts, fundamentalsThroughText } from "./relative-valuation-basis";
+import { fundamentalsBasisParts, fundamentalsThroughText, revenueGrowthHalfTag, revenueGrowthHeader } from "./relative-valuation-basis";
 import {
   AUTO_PEERS_SETTING, findPeers, PEER_SELECTION_SETTING, PeerPickError, peerSelectionOf, relativeValuationTitle,
 } from "./relative-valuation-peers";
@@ -55,6 +56,8 @@ const EXTENDED_COLUMN_IDS: Record<ExtendedSession, ExtendedColumnId> = { PRE: "p
 
 /** The latest quarter's revenue against the same quarter a year earlier; the footer names the quarter. */
 const REVENUE_GROWTH_LABEL = "Q REV%";
+/** Once a peer reports half-yearly, the column holds a half's growth too (`H1`), named in the footer. */
+const PERIOD_REVENUE_GROWTH_LABEL = "REV%";
 
 /**
  * The footer's word on the figures, longest first: the rates MCAP was
@@ -101,6 +104,7 @@ function buildRelativeColumns(
   extendedSessions: readonly ExtendedSession[],
   marginNamesYear: boolean,
   peNamesYear = false,
+  growthLabel = REVENUE_GROWTH_LABEL,
 ): RelativeColumn[] {
   const symbolWidth = 8;
   const priceWidth = 10;
@@ -121,7 +125,8 @@ function buildRelativeColumns(
     { id: "evSales", label: "EV/S", width: metricWidth, align: "right" },
     { id: "fcfYield", label: "FCF%", width: metricWidth, align: "right" },
     // Latest quarter against the year before, and a trailing-twelve-month margin.
-    { id: "revenueGrowth", label: REVENUE_GROWTH_LABEL, width: metricWidth, align: "right" },
+    // Wider while a peer's figure is a half's and says so ("+23.80% H1").
+    { id: "revenueGrowth", label: growthLabel, width: growthLabel === REVENUE_GROWTH_LABEL ? metricWidth : 11, align: "right" },
     // Wider while a peer's margin is of its latest fiscal year and names it ("16.83% FY25").
     { id: "operatingMargin", label: "TTM OP%", width: marginNamesYear ? 12 : metricWidth, align: "right" },
   ];
@@ -214,14 +219,16 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
     if (!coordinator) throw new Error("Market data unavailable");
     // One batched snapshot request instead of one request per peer.
     const entries = await coordinator.loadSnapshotsBatch(symbols.map((peer) => ({ symbol: peer })), { forceRefresh });
-    return symbols.map((peer, index) => {
+    // A withdrawn EV's bridge converts a balance sheet in another currency at our close on its date, as `fundamentals` does.
+    return Promise.all(symbols.map(async (peer, index) => {
       const entry = entries[index];
+      const financials = entry?.data ?? entry?.lastGoodData ?? null;
       return {
         symbol: peer,
-        financials: entry?.data ?? entry?.lastGoodData ?? null,
+        financials: financials ? await withBalanceSheetRate(financials) : null,
         error: entry?.error?.message,
       };
-    });
+    }));
   }, [symbols]);
   // Fundamentals come from one batched snapshot; prices stream on top of it.
   // A changed peer list keeps the last snapshot up until its own answer.
@@ -263,9 +270,11 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const extendedSessionsKey = extendedSessionsOf(rows).join(",");
   const marginNamesYear = rows.some((row) => row.operatingMarginPeriod != null);
   const peNamesYear = rows.some((row) => row.trailingPEPeriod != null);
+  const growthLabel = revenueGrowthHeader(rows, REVENUE_GROWTH_LABEL, PERIOD_REVENUE_GROWTH_LABEL);
   const columns = useMemo(
-    () => buildRelativeColumns(baseCurrency, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : [], marginNamesYear, peNamesYear),
-    [baseCurrency, extendedSessionsKey, marginNamesYear, peNamesYear],
+    () => buildRelativeColumns(baseCurrency, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : [], marginNamesYear, peNamesYear,
+      growthLabel),
+    [baseCurrency, extendedSessionsKey, marginNamesYear, peNamesYear, growthLabel],
   );
 
   const comparableRows = useMemo(() => rows.map((row) => ({
@@ -281,7 +290,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
     const converted = rows.filter((row, index) => row.marketCapCurrency !== baseCurrency && comparableRows[index]?.marketCap != null);
     return convertMarketCaps(converted, baseCurrency, legs).conversions;
   }, [baseCurrency, comparableRows, fxRates, rows]);
-  const basis = useMemo(() => fundamentalsBasisParts(rows, REVENUE_GROWTH_LABEL, "FCF%"), [rows]);
+  const basis = useMemo(() => fundamentalsBasisParts(rows, growthLabel, "FCF%"), [growthLabel, rows]);
   const through = useMemo(() => fundamentalsThroughText(rows), [rows]);
   const basisSegment = useMemo(() => basisFooterSegment(conversions, baseCurrency, basis, through), [baseCurrency, basis, conversions, through]);
   const footerInfo = useMemo(() => (basisSegment ? [basisSegment] : []), [basisSegment]);
@@ -363,8 +372,11 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
           : { text: formatNumber(row.evSales ?? undefined, 1), color: colors.text };
       case "fcfYield":
         return { text: formatLevelPercent(row.fcfYield ?? undefined), color: priceColor(row.fcfYield ?? 0) };
-      case "revenueGrowth":
-        return { text: formatPercent(row.revenueGrowth ?? undefined), color: shownPriceColor((row.revenueGrowth ?? 0) * 100, 2) };
+      case "revenueGrowth": {
+        // A half-year reporter's growth is its half's, which the cell says beside the figure.
+        const half = row.revenueGrowth != null ? revenueGrowthHalfTag(row.revenueGrowthHalf) : null;
+        return { text: `${formatPercent(row.revenueGrowth ?? undefined)}${half ? ` ${half}` : ""}`, color: shownPriceColor((row.revenueGrowth ?? 0) * 100, 2) };
+      }
       case "operatingMargin":
         return { text: `${formatLevelPercent(row.operatingMargin ?? undefined)}${row.operatingMargin != null && row.operatingMarginPeriod ? ` ${row.operatingMarginPeriod}` : ""}`, color: colors.text };
     }

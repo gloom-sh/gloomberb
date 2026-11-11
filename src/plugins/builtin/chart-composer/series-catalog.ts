@@ -10,6 +10,7 @@ import type { TimeSeriesFieldDefinition } from "../../../time-series/types";
 import type { SeriesCatalogEntry, SeriesPlacement } from "../../../series/types";
 import {
   canonicalExchange,
+  canonicalTickerKey,
   parsePublicTickerKey,
   publicTickerKey,
 } from "../../../utils/exchanges";
@@ -269,9 +270,11 @@ function exactExpressionSuggestion(query: string): SeriesCatalogSuggestion | nul
   }
   const field = getTimeSeriesField(expression.fieldId);
   const instrument = publicTickerKey(expression.symbol, expression.exchange);
+  // Shown with the venue's code (9992:HKEX), as chart titles name it; the id keeps the stored key.
+  const shown = canonicalTickerKey(expression.symbol, expression.exchange);
   return {
     id: `${instrument}:${expression.fieldId}`,
-    label: expression.label ?? `${instrument} · ${field?.label ?? expression.fieldId}`,
+    label: expression.label ?? `${shown} · ${field?.label ?? expression.fieldId}`,
     description: field
       ? `${fieldCategory(field)} · ${fieldFrequency(field)}`
       : "Security series",
@@ -336,7 +339,7 @@ function registeredSeriesSuggestions(
       text = tickerQuery;
     }
     if (!matchesAliasQuery(text, entry.name, entry.expression, entry.id, entry.group ?? "", ...(entry.tags ?? []))) continue;
-    const prefix = symbol ? `${symbol} · ` : "";
+    const prefix = symbol ? `${canonicalTickerKey(instrument.symbol, instrument.exchange)} · ` : "";
     if (entry.lines?.length) {
       const lines = entry.lines.flatMap((line) => {
         const parsed = parseSeriesExpression(fill(line.expression));
@@ -450,7 +453,8 @@ export function buildSeriesCatalogSuggestions(
   }
   const fieldLimit = instruments.length > 1 && !analysis.metricQuery ? 1 : rankedFields.length;
   for (const instrument of instruments) {
-    const instrumentLabel = publicTickerKey(instrument.symbol, instrument.exchange);
+    const instrumentKey = publicTickerKey(instrument.symbol, instrument.exchange);
+    const instrumentLabel = canonicalTickerKey(instrument.symbol, instrument.exchange);
     for (const { field } of rankedFields.slice(0, fieldLimit)) {
       const expression: ParsedSeriesExpression = {
         kind: "security",
@@ -459,7 +463,7 @@ export function buildSeriesCatalogSuggestions(
         fieldId: field.id,
       };
       const suggestion: SeriesCatalogSuggestion = {
-        id: `${instrumentLabel}:${field.id}`,
+        id: `${instrumentKey}:${field.id}`,
         label: `${instrumentLabel} · ${field.label}`,
         description: [
           instrument.name,

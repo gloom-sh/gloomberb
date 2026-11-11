@@ -54,10 +54,31 @@ export function exchangeAnnouncementsPage(symbol: string, exchange: string | nul
   return page && code ? page(code) : null;
 }
 
-/** Whether Gloom Cloud lists the company's announcements on this venue (ASX). */
-export function listsExchangeAnnouncements(exchange: string | null | undefined): boolean {
+/**
+ * Who publishes the announcements Gloom Cloud lists for a listing on this
+ * venue, as a source line names them: "ASX" (and Cboe Australia's, which
+ * trade under ASX codes), "HKEXnews". Null for a venue it lists none for.
+ */
+export function exchangeAnnouncementsPublisher(exchange: string | null | undefined): string | null {
   const venue = canonicalExchange(exchange ?? "");
-  return venue === "ASX" || venue === "CXA";
+  return venue === "ASX" || venue === "CXA" ? "ASX" : venue === "HKEX" ? "HKEXnews" : null;
+}
+
+/** Whether Gloom Cloud lists the company's announcements on this venue (ASX, HKEX). */
+export function listsExchangeAnnouncements(exchange: string | null | undefined): boolean {
+  return exchangeAnnouncementsPublisher(exchange) != null;
+}
+
+/**
+ * HKEXnews' routine returns: a buyback's or a share issue's next day
+ * disclosure, and the monthly return of movements in securities. A company
+ * buying back shares files one each trading day, so they bury its results
+ * and business updates; `filings` leaves them out unless --all.
+ */
+const ROUTINE_RETURNS = new Set(["Next Day Disclosure Returns", "Monthly Returns"]);
+
+export function isRoutineReturn(item: { category?: string | null }): boolean {
+  return item.category != null && ROUTINE_RETURNS.has(item.category);
 }
 
 /**

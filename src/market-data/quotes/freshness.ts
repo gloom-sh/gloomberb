@@ -13,7 +13,11 @@ import {
   isUsRegularCloseQuoteInPostSession,
   latestRegularSessionClose,
   latestRegularSessionOpen,
+  nextRegularSessionOpen,
+  preMarketOpenOn,
+  readIndexSession,
 } from "../market/freshness";
+import { indexSessionVenue } from "../market/index-session-venues";
 
 // Give the next regular session's NAV time to publish after its actual close.
 const NAV_PUBLICATION_ALLOWANCE_MS = 12 * 60 * 60_000;
@@ -206,6 +210,54 @@ export function nominalSessionLabel(quote: Pick<Quote, "nominalPrice"> | null | 
   const session = quote?.nominalPrice?.session;
   const day = session ? new Date(`${session}T00:00:00Z`) : null;
   return day && Number.isFinite(day.getTime()) ? `${day.getUTCDate()} ${PRINT_MONTHS[day.getUTCMonth()]} close` : null;
+}
+
+/** A US listing's after-hours session ends four hours past its regular close (17:00 New York after an early close). */
+const US_AFTER_HOURS_MS = 4 * 60 * 60_000;
+
+/**
+ * Whether a quote's market could have printed between `since` and `now`, so
+ * a feed that stopped carrying it then has left it behind. The window is
+ * read as the quote's feed shows it: a delayed quote's moves `delayedFeedLagMs`
+ * late, so a session's last delayed prints come after its close and its first
+ * after its open. A US listing trades from its 04:00 pre-market through after
+ * hours on the published session days; an index follows its venue's
+ * calendar, or the sessions it carries (`indexSession`) when its venue has
+ * none; another venue its regular sessions. A venue without known hours goes
+ * by the session its source last reported: the regular session, or none
+ * reported, counts as trading. Round-the-clock venues always trade, and a
+ * listing that no longer trades never does. False means the last price is
+ * still the market's current one: US prices at 07:00 UTC on a weekday.
+ */
+export function couldQuoteHavePrintedSince(quote: Quote, since: number, now = Date.now()): boolean {
+  if (quote.delisting) return false;
+  if (!Number.isFinite(since) || !Number.isFinite(now)) return true;
+  const venue = indexSessionVenue(quote.symbol) ?? canonicalExchange(quote.listingExchangeName || quote.exchangeName);
+  if (isAlwaysOpenExchange(venue)) return true;
+  const lag = quote.dataSource === "delayed" ? delayedFeedLagMs(venue) : 0;
+  const from = Math.min(since, now) - lag;
+  const to = now - lag;
+
+  if (isUsListingExchange(venue)) {
+    const latest = latestRegularSessionClose(venue, to);
+    if (latest && latest.close + US_AFTER_HOURS_MS > from) return true;
+    // The next session's pre-market has opened.
+    const next = nextRegularSessionOpen(venue, latest?.close ?? to);
+    const preMarket = next ? preMarketOpenOn(venue, next.date) : null;
+    return preMarket != null && preMarket <= to;
+  }
+
+  const inSession = isRegularSessionTime(venue, to);
+  if (inSession !== null) {
+    if (inSession) return true;
+    const latest = latestRegularSessionClose(venue, to);
+    return !!latest && latest.close > from;
+  }
+
+  const index = readIndexSession(quote.indexSession);
+  if (index) return [...index.regular, index.current].some((session) => session.start <= to && session.end > from);
+
+  return quote.marketState == null || quote.marketState === "REGULAR";
 }
 
 export function hasFreshQuoteForCurrentSession(

@@ -1586,6 +1586,8 @@ test("a shot shows a listing by its bare code where a legend names it so, and on
   expect(shotShowsText(visible, "8306:JPX")).toBe(false);
   expect(shotShowsText("8053:TWSE 18002", "8053:JPX")).toBe(false);
   expect(shotShowsText("8053:TWSE 18002", "8002:JPX")).toBe(false);
+  // A listing saved under its MIC is shown by its venue's code, as every label names it.
+  expect(shotShowsText("GF 9992:HKEX\n9992:HKEX Revenue", "9992:XHKG")).toBe(true);
   expect(shotShowsText(visible, "Sumitomo")).toBe(true);
   // Whole tokens only: a longer listing or a price holding the code is not it.
   expect(shotShowsText("18058:JPX 8306 MUFG", "8058:JPX")).toBe(false);

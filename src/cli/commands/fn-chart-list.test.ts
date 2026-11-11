@@ -42,7 +42,7 @@ test("fn G AAPL MSFT charts both, as fn G AAPL,MSFT does", async () => {
     expect(error).toBeNull();
     const report = printed!.result.data as { symbols: string[]; series: Array<{ label: string; points: unknown[] }>; unavailableSymbols: string[] };
     expect(report.symbols).toEqual(["AAPL:XNAS", "MSFT:XNAS"]);
-    expect(report.series.map((series) => series.label)).toEqual(["AAPL:XNAS Price", "MSFT:XNAS Price"]);
+    expect(report.series.map((series) => series.label)).toEqual(["AAPL:NASDAQ Price", "MSFT:NASDAQ Price"]);
     expect(report.series.every((series) => series.points.length > 0)).toBe(true);
     expect(report.unavailableSymbols).toEqual([]);
   }
