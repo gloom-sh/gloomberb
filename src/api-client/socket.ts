@@ -888,6 +888,7 @@ export class CloudApiSocket {
       return;
     }
     this.ws = ws;
+    let opened = false;
     // A link that swallows the handshake never says so: the attempt is dropped and tried again.
     this.connectTimer = setTimeout(() => {
       this.connectTimer = null;
@@ -896,6 +897,7 @@ export class CloudApiSocket {
 
     ws.onopen = () => {
       if (this.ws !== ws) return;
+      opened = true;
       this.watchSilence();
       this.delegate.onServiceAnswered?.();
       cloudApiLog.info("websocket open");
@@ -957,6 +959,11 @@ export class CloudApiSocket {
 
     ws.onerror = () => {
       if (this.ws !== ws) return;
+      // A socket that was open, cut by a server restart or a proxy, fires its
+      // error just before its close: the close reports it, so the stream gets
+      // the grace a clean close does. One that never opened is a failed
+      // connect, and one open but silent is dropped by the ping check.
+      if (opened) return;
       this.health.reportSocketState(
         GLOOM_CLOUD_SOCKET_CONNECTION_ID,
         "error",

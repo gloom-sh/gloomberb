@@ -5,6 +5,7 @@ import {
   type ConnectionHealthStatus,
 } from "../core/connection-health";
 import { CloudApiSocket, SOCKET_CONNECT_TIMEOUT_MS, SOCKET_PING_ANSWER_MS, SOCKET_QUIET_PING_MS } from "./socket";
+import { followDataServiceHealth, QUOTE_STREAM_DOWN_GRACE_MS } from "../market-data/connection-follow";
 import { createTestSocketDeps, TestWebSocket } from "../test-support/cloud-api";
 
 const originalWebSocket = globalThis.WebSocket;
@@ -247,6 +248,93 @@ describe("CloudApiSocket on a link that stops answering", () => {
     } finally {
       clockAhead.mockRestore();
       socket.dispose();
+    }
+  });
+});
+
+// A backend deploy cuts every open stream (close 1001, or 1006 with the error
+// the browser fires first), and the client is back within a second or two:
+// prices must not flash stale for it. A stream that never opened, or went
+// silent, has already waited out its failure and reads stale at once.
+describe("CloudApiSocket quote stream going stale", () => {
+  function followedSocket() {
+    jest.useFakeTimers();
+    const sockets = installStrictWebSocket();
+    const health = healthWithSocketSource();
+    const calls: string[] = [];
+    const stopFollowing = followDataServiceHealth(health, {
+      reloadAfterOutage: () => {},
+      setQuoteStreamDown: (since) => calls.push(since == null ? "live" : "down"),
+    });
+    const socket = new CloudApiSocket(createTestSocketDeps(), health);
+    socket.subscribeQuotes([{ symbol: "AAPL" }], () => {});
+    const first = sockets[0]!;
+    first.open();
+    first.receive({ type: "ready", features: [] });
+    calls.length = 0;
+    return { calls, first, health, sockets, stop: () => { socket.dispose(); stopFollowing(); } };
+  }
+
+  /** What the browser does to an open socket the server or a proxy cuts. */
+  function cut(socket: TestWebSocket): void {
+    socket.onerror?.({});
+    socket.closeWith({ code: 1006, reason: "" });
+  }
+
+  test("an open socket that is cut is stale only once the grace runs out, and not when it reconnects within it", () => {
+    const { calls, first, health, sockets, stop } = followedSocket();
+    try {
+      cut(first);
+      expect(health.socketState(GLOOM_CLOUD_SOCKET_CONNECTION_ID)).toBe("closed");
+      jest.advanceTimersByTime(QUOTE_STREAM_DOWN_GRACE_MS - 1);
+      expect(calls).toEqual([]);
+      // No reconnect opened in time.
+      jest.advanceTimersByTime(1);
+      expect(calls).toEqual(["down"]);
+
+      sockets[1]!.open();
+      expect(calls).toEqual(["down", "live"]);
+
+      calls.length = 0;
+      cut(sockets[1]!);
+      // The reconnect backoff is at most 1.5 s here, well inside the grace.
+      jest.advanceTimersByTime(1_500);
+      expect(sockets).toHaveLength(3);
+      sockets[2]!.open();
+      jest.advanceTimersByTime(QUOTE_STREAM_DOWN_GRACE_MS * 2);
+      expect(calls).toEqual(["live"]);
+    } finally {
+      stop();
+    }
+  });
+
+  test("a reconnect that fails to connect is stale at once", () => {
+    const { calls, first, health, sockets, stop } = followedSocket();
+    try {
+      cut(first);
+      jest.advanceTimersByTime(1_500);
+      expect(calls).toEqual([]);
+      // The new socket never opens: the server is still down.
+      sockets[1]!.onerror?.({});
+      expect(health.socketState(GLOOM_CLOUD_SOCKET_CONNECTION_ID)).toBe("error");
+      expect(calls).toEqual(["down"]);
+    } finally {
+      stop();
+    }
+  });
+
+  test("an open socket whose ping goes unanswered is stale at once", () => {
+    const { calls, first, health, stop } = followedSocket();
+    try {
+      jest.advanceTimersByTime(SOCKET_QUIET_PING_MS);
+      expect(first.sent).toContainEqual({ type: "ping" });
+      jest.advanceTimersByTime(SOCKET_PING_ANSWER_MS - 1);
+      expect(calls).toEqual([]);
+      jest.advanceTimersByTime(1);
+      expect(health.socketState(GLOOM_CLOUD_SOCKET_CONNECTION_ID)).toBe("error");
+      expect(calls).toEqual(["down"]);
+    } finally {
+      stop();
     }
   });
 });
