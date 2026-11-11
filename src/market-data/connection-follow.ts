@@ -6,9 +6,10 @@ import {
 import type { MarketDataCoordinator } from "./coordinator";
 
 /**
- * A stream that closes and comes straight back (a server restart) is not
- * called stale for it. One that failed (no answer, a network error) is at once:
- * the socket has already waited out its silence by then.
+ * A stream that was open and closes, cleanly or cut by a server restart, and
+ * comes straight back is not called stale for it. One that failed (never
+ * opened, or open but left a ping unanswered) is at once: the socket has
+ * already waited out its silence by then.
  */
 export const QUOTE_STREAM_DOWN_GRACE_MS = 3_000;
 
