@@ -680,11 +680,12 @@ export function ratioOpenings(
 ): Map<string, FinancialStatement> {
   const openings = buildPreviousStatementMap(period, annualStatements, quarterlyStatements, null);
   const latest = quarterlyStatements.at(-1);
-  const yearBefore = quarterlyStatements.at(-5);
-  if (period === "annual" && latest && yearBefore) {
-    const days = (Date.parse(latest.date) - Date.parse(yearBefore.date)) / 86_400_000;
-    if (days >= 350 && days <= 380) openings.set("TTM", yearBefore);
-  }
+  // By date, not four rows back: a half-yearly reporter's rows are halves.
+  const yearBefore = latest && quarterlyStatements.find((row) => {
+    const days = (Date.parse(latest.date) - Date.parse(row.date)) / 86_400_000;
+    return days >= 350 && days <= 380;
+  });
+  if (period === "annual" && yearBefore) openings.set("TTM", yearBefore);
   return openings;
 }
 
@@ -845,7 +846,9 @@ const byDate = (statements: readonly FinancialStatement[]) => [...statements].so
 
 /** A ratio tab's columns: Income's periods, with TTM, newest first. */
 export function ratioStatements(financials: TickerFinancials, period: FinancialPeriod): FinancialTableStatement[] {
-  return selectFinancialStatements(period, "income", byDate(financials.annualStatements), byDate(financials.quarterlyStatements)).statements;
+  return selectFinancialStatements(
+    period, "income", byDate(financials.annualStatements), byDate(financials.quarterlyStatements), undefined, financials.trailingStatement,
+  ).statements;
 }
 
 /**
@@ -869,7 +872,7 @@ export function ratioTableForFinancials(
 ): RatioTableModel {
   const annual = byDate(financials.annualStatements);
   const quarterly = byDate(financials.quarterlyStatements);
-  const { statements } = selectFinancialStatements(period, "income", annual, quarterly);
+  const { statements } = selectFinancialStatements(period, "income", annual, quarterly, undefined, financials.trailingStatement);
   const currencies = createValuationCurrencyContext(financials);
   const price = (statement: FinancialTableStatement): RatioAmount => {
     const close = history ? periodEndClose(history, ratioPeriodEnd(statement)) : undefined;

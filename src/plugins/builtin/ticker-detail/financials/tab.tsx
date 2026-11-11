@@ -292,8 +292,8 @@ export function ResolvedFinancialsTab({
   const resolvedPeriod = resolveFinancialPeriod(period, hasAnnualStatements, hasQuarterlyStatements);
   const isAnnual = resolvedPeriod === "annual";
   const { statements: displayStatements, previousStatementMap } = useMemo(
-    () => selectFinancialStatements(resolvedPeriod, subTab.key, annualStatements, quarterlyStatements),
-    [annualStatements, quarterlyStatements, resolvedPeriod, subTab.key],
+    () => selectFinancialStatements(resolvedPeriod, subTab.key, annualStatements, quarterlyStatements, undefined, financials?.trailingStatement),
+    [annualStatements, quarterlyStatements, resolvedPeriod, subTab.key, financials?.trailingStatement],
   );
   // One currency for every column goes in the query bar with the growth basis;
   // a column in a different currency (or none) says so in its own header.

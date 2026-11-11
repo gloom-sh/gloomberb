@@ -1,4 +1,4 @@
-import type { FinancialStatement, StatementFill, StatementFillField, TickerFinancials } from "../types/financials";
+import type { FinancialStatement, ResultsFillField, StatementFill, StatementFillField, TickerFinancials } from "../types/financials";
 import { settleWithin } from "./async-deadline";
 import { logFailure } from "./log-failure";
 import { copyIncomeField, incomeFieldOwner, INCOME_STATEMENT_FIELDS, isIncomeStatementField } from "./income-statement";
@@ -122,17 +122,30 @@ export function stalePeriodNote(
   return `Latest period ${lead} is ${months} months old${newest > lead ? `; ${newest} has only some figures` : ""}.`;
 }
 
-const FILL_SOURCES: Record<StatementFill["source"], string> = { asx: "ASX key statistics" };
-const FILL_FIELDS: Record<StatementFillField, string> = {
+const FILL_SOURCES: Record<StatementFill["source"], string> = { asx: "ASX key statistics", results: "the company's results announcements" };
+const FILL_FIELDS: Record<StatementFillField | ResultsFillField, string> = {
   totalRevenue: "revenue", netIncome: "net income", totalAssets: "total assets", totalLiabilities: "total liabilities",
+  grossProfit: "gross profit", operatingIncome: "operating income", basicEps: "EPS", eps: "diluted EPS",
+  operatingCashFlow: "operating cash flow", capitalExpenditure: "capex", freeCashFlow: "free cash flow",
+  cashAndCashEquivalents: "cash", totalDebt: "total debt", totalEquity: "equity", commonStockEquity: "equity",
+  totalEquityGrossMinorityInterest: "total equity",
 };
+
+/** When a filled row's figures were published or read: an announcement's publication, ASX's read. */
+function fillDate(fill: StatementFill): { label: "read" | "published"; date: string } {
+  if (fill.source === "asx") return { label: "read", date: fill.retrievedAt.slice(0, 10) };
+  const published = fill.documents.map((document) => document.publishedAt.slice(0, 10)).sort()[0] ?? "";
+  return { label: "published", date: published };
+}
 
 /**
  * "From ASX key statistics (read 2026-10-22): 2026-06-30 revenue, net income;
  * 2025-06-30 revenue, net income.": the years a statements table shows that
  * Gloom Cloud filled from the listing's exchange because the statements source
- * does not have them yet, newest first, with the lines taken. `shown` keeps the
- * lines the table has a row for. Null when no shown line was filled.
+ * does not have them yet, newest first, with the lines taken. A period read
+ * from the company's results announcement is dated by its publication ("6
+ * months to 2026-06-30 revenue, net income (published 2026-08-20)"). `shown`
+ * keeps the lines the table has a row for. Null when no shown line was filled.
  */
 export function filledPeriodsNote(
   statements: readonly Pick<FinancialStatement, "date" | "filledFrom">[],
@@ -140,12 +153,22 @@ export function filledPeriodsNote(
 ): string | null {
   const filled = statements.flatMap(({ date, filledFrom }) => {
     const source = filledFrom && FILL_SOURCES[filledFrom.source];
-    const fields = (filledFrom?.fields ?? []).filter((field) => FILL_FIELDS[field] && (!shown || shown.has(field)));
-    return source && fields.length > 0 ? [{ date: date.slice(0, 10), source, fields, read: filledFrom.retrievedAt.slice(0, 10) }] : [];
-  }).sort((left, right) => right.date.localeCompare(left.date));
+    const fields = [...new Set((filledFrom?.fields ?? [])
+      .filter((field) => FILL_FIELDS[field] && (!shown || shown.has(field)))
+      .map((field) => FILL_FIELDS[field]))];
+    if (!source || !filledFrom || fields.length === 0) return [];
+    const end = date.slice(0, 10);
+    const months = filledFrom.source === "results" && filledFrom.periodMonths ? `${filledFrom.periodMonths} months to ` : "";
+    return [{ end, period: `${months}${end}`, source, fields, stamp: fillDate(filledFrom) }];
+  }).sort((left, right) => right.end.localeCompare(left.end));
   if (filled.length === 0) return null;
-  const read = filled.map((period) => period.read).sort().at(-1);
-  return `From ${filled[0]!.source} (read ${read}): ${filled.map(({ date, fields }) => `${date} ${fields.map((field) => FILL_FIELDS[field]).join(", ")}`).join("; ")}.`;
+  const sources = [...new Set(filled.map((period) => period.source))];
+  // Each announcement dates its own period.
+  if (filled.every(({ stamp }) => stamp.label === "published")) {
+    return `From ${sources.join(" and ")}: ${filled.map(({ period, fields, stamp }) => `${period} ${fields.join(", ")} (published ${stamp.date})`).join("; ")}.`;
+  }
+  const read = filled.map(({ stamp }) => stamp.date).sort().at(-1);
+  return `From ${sources.join(" and ")} (read ${read}): ${filled.map(({ period, fields }) => `${period} ${fields.join(", ")}`).join("; ")}.`;
 }
 
 /**
@@ -155,10 +178,27 @@ export function filledPeriodsNote(
 function retainedFill(merged: FinancialStatement, rows: Array<FinancialStatement | undefined>): StatementFill | undefined {
   for (const row of rows) {
     const fill = row?.filledFrom;
-    const fields = fill?.fields.filter((field) => typeof merged[field] === "number" && Object.is(merged[field], row![field])) ?? [];
-    if (fill && fields.length > 0) return { ...fill, fields };
+    if (!fill) continue;
+    const filled: readonly ResultsFillField[] = fill.fields;
+    const fields = filled.filter((field) => typeof merged[field] === "number" && Object.is(merged[field], row![field]));
+    // The lines kept are some of the fill's own, so the fill keeps its kind.
+    if (fields.length > 0) return { ...fill, fields } as StatementFill;
   }
   return undefined;
+}
+
+/**
+ * The months a row's flows cover where its list's usual is another: 6 for a
+ * half Gloom Cloud filled into the quarterly list from a results announcement.
+ * Undefined for a row of its list's usual length.
+ */
+export function statementPeriodMonths(row: Pick<FinancialStatement, "filledFrom">): number | undefined {
+  return row.filledFrom?.source === "results" ? row.filledFrom.periodMonths : undefined;
+}
+
+/** A quarterly list's rows that are quarters: never a filled half, which no four-quarter sum or quarter-on-quarter change may take. */
+export function quarterRows<T extends Pick<FinancialStatement, "filledFrom">>(rows: readonly T[]): T[] {
+  return rows.filter((row) => (statementPeriodMonths(row) ?? 3) <= 3);
 }
 
 export const SEC_EPS_BASIS_NOTICE = "SEC EPS uses corroborated split-adjusted share bases. Unverified bases are unavailable.";

@@ -299,3 +299,40 @@ describe("filled years", () => {
     expect(filledPeriodsNote([merged!])).toBe("From ASX key statistics (read 2026-10-22): 2025-06-30 net income.");
   });
 });
+
+describe("periods read from a results announcement", () => {
+  const announcement = {
+    source: "hkex" as const,
+    kind: "interim_results" as const,
+    title: "INTERIM RESULTS ANNOUNCEMENT FOR THE SIX MONTHS ENDED 30 JUNE 2026",
+    url: "https://www1.hkexnews.hk/listedco/listconews/sehk/2026/0820/2026082000353.pdf",
+    publishedAt: "2026-08-20T08:30:00.000Z",
+    fetchedAt: "2026-11-11T01:00:00.000Z",
+  };
+  const report = { ...announcement, kind: "interim_report" as const, title: "INTERIM REPORT 2026", publishedAt: "2026-09-24T08:39:00.000Z" };
+  const half: FinancialStatement = {
+    date: "2026-06-30", currency: "CNY", totalRevenue: 17.17e9, netIncome: 5.04e9, operatingCashFlow: 3.64e9, totalAssets: 31e9,
+    filledFrom: {
+      source: "results", fields: ["totalRevenue", "netIncome", "operatingCashFlow"], documents: [announcement, report],
+      lines: { totalRevenue: { document: 0, page: 3 }, netIncome: { document: 0, page: 3 }, operatingCashFlow: { document: 1, page: 41 } },
+      periodMonths: 6,
+    },
+  };
+  test("each period is dated by its announcement and says how many months it covers", () => {
+    const year: FinancialStatement = {
+      date: "2025-12-31", currency: "CNY", totalRevenue: 37.12e9,
+      filledFrom: { source: "results", fields: ["totalRevenue"], documents: [{ ...announcement, kind: "annual_results", publishedAt: "2026-03-25T04:22:00.000Z" }], lines: { totalRevenue: { document: 0, page: 2 } } },
+    };
+    expect(filledPeriodsNote([year, half])).toBe(
+      "From the company's results announcements: 6 months to 2026-06-30 revenue, net income, operating cash flow (published 2026-08-20); 2025-12-31 revenue (published 2026-03-25).",
+    );
+    expect(filledPeriodsNote([half], new Set(["operatingCashFlow"]))).toBe(
+      "From the company's results announcements: 6 months to 2026-06-30 operating cash flow (published 2026-08-20).",
+    );
+  });
+  test("a merged row keeps the documents' lines it still holds", () => {
+    const [merged] = mergeFinancialStatementRows([{ date: "2026-06-30", currency: "CNY", totalRevenue: 17.2e9 }], [half]);
+    expect(merged?.filledFrom).toMatchObject({ source: "results", fields: ["netIncome", "operatingCashFlow"], periodMonths: 6 });
+  });
+});
+
