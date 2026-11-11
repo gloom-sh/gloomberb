@@ -430,7 +430,7 @@ const isResearchRequest = (request: AlertAddRequest): request is ResearchAddRequ
 const RESEARCH_EXCHANGES = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS", "OTC"]);
 
 /** Where a news alert on a coin (BTC-USD) points: a keyword alert on the coin's name, or on the words typed when they name it. */
-export function coinNewsHint(coin: string, keyword: string): string {
+function coinNewsHint(coin: string, keyword: string): string {
   const words = keyword.toLowerCase().includes(coin.toLowerCase()) ? keyword : coin.toLowerCase();
   return `A coin's news is followed by keyword, in every story: gloom alerts add news ${/\s/.test(words) ? `"${words}"` : words}`;
 }
@@ -441,7 +441,7 @@ export function coinNewsHint(coin: string, keyword: string): string {
  * is. A coin's DVOL also points to the IV alert that follows the coin's own
  * 30-day implied volatility. Null for any other ticker.
  */
-export function sameNameSeriesNote(
+function sameNameSeriesNote(
   typed: string,
   priced: { listing: { symbol: string; exchange?: string }; quote: Pick<Quote, "name" | "listingExchangeName" | "exchangeName"> },
   series: Pick<SeriesDefinition, "id" | "name"> | undefined,
