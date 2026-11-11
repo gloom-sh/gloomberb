@@ -34,7 +34,7 @@ import {
 } from "../../market-data/market/status";
 import { formatCompact, formatCurrency, formatDistributionAmount, formatNumber, formatPercent } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
-import { isoDate, parsePositiveInt, requireOneArg, takeFlag, takeOption } from "./command-utils";
+import { isoDate, parsePositiveInt, requireOneArg, takeFlag, takeOption, typedCompanyName } from "./command-utils";
 import type { BuiltinCliCommandDef } from "../command-options";
 import { CLI_COMMAND_GROUPS, TABLE_SECTION_OPTION } from "../help";
 import { CLI_EXIT_CODES } from "../exit-codes";
@@ -2639,7 +2639,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
   if (sectionFlag && !tabular) ctx.fail("--section picks one table of --csv or --ndjson output.");
   if (sectionFlag && !section?.trim()) ctx.fail("--section needs a section title or number.");
   // Several symbols are a comparison, which RV draws side by side.
-  const compared = view === "valuation" ? comparedSymbols(args) : null;
+  const compared = view === "valuation" && !typedCompanyName(args) ? comparedSymbols(args) : null;
   if (compared) {
     ctx.fail(`valuation takes one symbol; got ${compared.join(" ")}.`,
       `To compare their valuations side by side: gloom fn RV ${compared.join(",")}\nUsage: gloom valuation <symbol>`);

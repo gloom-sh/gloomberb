@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
@@ -8,11 +8,15 @@ import {
 } from "./listing-arg";
 import { LISTING_SEARCH_LIMIT } from "../tickers/search";
 import { FUTURES_CONTRACTS } from "../market-data/futures-board";
+import { resetBoardCoins } from "./board-coins";
 
 const persistences: AppPersistence[] = [];
 
+// A word read as a company's name checks the crypto board first: an empty board read, so no test asks the service.
+beforeEach(() => resetBoardCoins([]));
 afterEach(() => {
   for (const persistence of persistences.splice(0)) persistence.close();
+  resetBoardCoins();
 });
 
 test("VX=F, written as CL=F is for a root VIX futures do not list it for, is the front generic VX1, and says so", () => {

@@ -9,6 +9,7 @@ import type { TickerFinancials } from "../../types/financials";
 import { DEFAULT_CLI_OPTIONS, type CliOutputFormat } from "../options";
 import { serializeCliResult } from "../result";
 import { comparedSymbols, marketDataCliCommands } from "./market";
+import { typedCompanyName } from "./command-utils";
 
 const FINANCIALS: TickerFinancials = {
   quote: {
@@ -190,4 +191,10 @@ test("valuation given several symbols points at RV, which compares them; a compa
   expect(comparedSymbols(["NEE,FSLR"])).toEqual(["NEE", "FSLR"]);
   expect(comparedSymbols(["Bank of America"])).toBeNull();
   expect(comparedSymbols(["BP:LSE"])).toBeNull();
+  // A name typed in words is one company, read as `quote` reads it; symbols typed apart, in any case, are not.
+  expect(typedCompanyName(["Bank", "Leumi"])).toBe("Bank Leumi");
+  expect(typedCompanyName(["MTN", "Group"])).toBe("MTN Group");
+  for (const args of [["NEE", "FSLR"], ["aapl", "msft"], ["BRK.B", "AAPL"], ["NEE,FSLR"], ["Bank", "of", "America", "Corp", "Inc"]]) {
+    expect(typedCompanyName(args)).toBeNull();
+  }
 });

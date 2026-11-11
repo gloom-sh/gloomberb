@@ -1575,21 +1575,29 @@ async function readBareIndexRoot(parsed: ListingArg, typed: string, deps: Listin
 
 /**
  * A company's name typed as one word where a symbol goes (`Naspers`,
- * `Leumi`), once the sources say nothing trades as it, read as `quote`
- * reads it (`oneWordCompanyName`): "Read "Naspers" as NPN:JSE (Naspers
- * Limited).". A real ticker always wins (MTN stays Vail Resorts), and so do
- * a row saved under the word and a code listed abroad under it. Null for
- * anything else, and when search names no company.
+ * `Leumi`), written as a name is (NAME_WRITTEN_WORD), once the sources say
+ * nothing trades as it, read as `quote` reads it (`oneWordCompanyName`):
+ * "Read "Naspers" as NPN:JSE (Naspers Limited).". A real ticker always wins
+ * (MTN stays Vail Resorts), and so do a row saved under the word and a code
+ * listed abroad under it. Null for anything else, and when search names no
+ * company.
  */
 async function readBareCompanyName(parsed: ListingArg, typed: string, deps: ListingDeps): Promise<ListingArg | null> {
   const word = typed.trim();
-  if (parsed.exchange || !ONE_WORD_NAME.test(word) || word.toUpperCase() !== parsed.symbol) return null;
+  if (parsed.exchange || !NAME_WRITTEN_WORD.test(word) || word.toUpperCase() !== parsed.symbol) return null;
   if (await deps.store.loadTicker(parsed.symbol).catch(logFailure("cli.listing-arg", "Read a saved word failed", null))) return null;
   if (!await nothingTradesAs(parsed.symbol, deps)) return null;
   const named = await oneWordCompanyName(word, deps).catch(logFailure("cli.listing-arg", "Read a word as a company's name failed", null));
   // A code listed abroad under the word (FP on TSXV and BVB) is a symbol, whose listings the command names: never a name.
   return named && named.symbol.toUpperCase() !== parsed.symbol ? named : null;
 }
+
+/**
+ * A word written as a name is, not as a ticker: letters, at least one small
+ * (`Naspers`, `leumi`), no digit, dot or capitals alone (`UNISWAP`, `RY.TO`),
+ * which a command reads as typed, at the cost of no extra quote.
+ */
+const NAME_WRITTEN_WORD = /^(?=.*\p{Ll})\p{L}[\p{L}&'’-]*$/u;
 
 /** At most this many words typed apart are tried as one company's name (`joinCompanyNameWords`). */
 const MAX_JOINED_NAME_WORDS = 4;
