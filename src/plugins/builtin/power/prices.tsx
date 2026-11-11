@@ -24,7 +24,7 @@ const PANELS = [{ id: "main" }];
 const DAY_MS = 86_400_000;
 /** The board's chart: the selected market's year, as the 1Y figures read. */
 const CHART_DAYS = 366;
-const formatAxis = spanAxisFormatter((value, digits) => value.toFixed(digits));
+const formatAxis = spanAxisFormatter((value, digits) => value.toFixed(digits), 2);
 
 interface PriceBoardRow extends MarketBoardRow { price: PowerPriceRow }
 

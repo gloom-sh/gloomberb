@@ -17,7 +17,7 @@ import { useStaticChartBitmapSize } from "./bitmap";
 import { useMeasuredCells } from "../../../ui/measured-cells";
 import { PriceAxisLabels, placeAxisTicks } from "./price-axis-labels";
 import { layoutLevelLabels, levelLabelStyle, levelLabelText } from "./level-labels";
-import { formatCompositeCursorValue, type CompositeAxisValueFormatter } from "./format";
+import { compositeAxisTagFormatter, formatCompositeCursorValue, type CompositeAxisValueFormatter } from "./format";
 import {
   compositeViewportPositions,
   resolveCompositeWheelPan,
@@ -503,9 +503,7 @@ export function CompositePanelSurface({
     return {
       side: marker.axis,
       yRatio: marker.yRatio,
-      label: formatAxisValue
-        ? formatAxisValue(marker.value, domain)
-        : formatCompositeCursorValue(marker.value, domain),
+      label: compositeAxisTagFormatter(formatAxisValue)(marker.value, domain),
       color: marker.color,
     };
   }, [formatAxisValue, panel]);
@@ -516,7 +514,7 @@ export function CompositePanelSurface({
     return {
       side: marker.axis,
       yRatio: marker.yRatio,
-      label: formatAxisValue ? formatAxisValue(marker.value, domain) : formatCompositeCursorValue(marker.value, domain),
+      label: compositeAxisTagFormatter(formatAxisValue)(marker.value, domain),
       color: colors.textDim,
     };
   }, [colors.textDim, formatAxisValue, panel]);
@@ -528,7 +526,7 @@ export function CompositePanelSurface({
       id: level.id,
       side: levelDomain.side,
       yRatio,
-      label: level.axisLabel ?? (formatAxisValue ? formatAxisValue(level.value, levelDomain) : formatCompositeCursorValue(level.value, levelDomain)),
+      label: level.axisLabel ?? compositeAxisTagFormatter(formatAxisValue)(level.value, levelDomain),
       color: level.color,
       prioritizeAxisLabel: level.prioritizeAxisLabel,
     })) : [], [formatAxisValue, levelDomain, projectedLevels, selectedLevelId]);

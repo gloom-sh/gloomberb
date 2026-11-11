@@ -214,7 +214,7 @@ function CdsTradeTable({
 }
 
 /** Points upfront on the chart's axis: `58pts`, `57.6pts`. */
-const formatPointsAxis = spanAxisFormatter((value, digits) => `${value.toFixed(digits)}pts`);
+const formatPointsAxis = spanAxisFormatter((value, digits) => `${value.toFixed(digits)}pts`, 1);
 
 const NO_TRADES: CdsTrade[] = [];
 const NO_ISSUERS: CdsIssuerSummary[] = [];

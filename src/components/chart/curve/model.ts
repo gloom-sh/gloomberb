@@ -1,7 +1,7 @@
 import type { ResolvedSeries } from "../../../time-series/types";
 import { displayWidth } from "../../../utils/format";
 import type { ChartStripSpec } from "../../chart-table/header";
-import { compositeAxisTicks, type CompositeAxisValueFormatter } from "../composite/format";
+import { compositeAxisTagFormatter, compositeAxisTicks, type CompositeAxisValueFormatter } from "../composite/format";
 import { buildCompositeChartScene } from "../composite/scene";
 import { staticSeries } from "../static/series";
 
@@ -287,7 +287,7 @@ export function curvePlotWidth(series: ResolvedSeries[], width: number, plotHeig
   const labels = compositeAxisTicks(domain, format).flatMap(({ label, value }) => {
     // The gutter also fits the cursor's value, probed at more digits than a round tick.
     const probe = (value < 0 ? -1 : 1) * (Math.floor(Math.abs(value)) + 0.1234);
-    return [label, format ? format(probe, domain) : label];
+    return [label, format ? compositeAxisTagFormatter(format)(probe, domain) : label];
   });
   const labelWidth = Math.max(3, ...labels.map(displayWidth));
   const minimumPlot = Math.min(total, Math.max(12, Math.floor(total / 2)));

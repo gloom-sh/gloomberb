@@ -3,13 +3,18 @@ import { formatPercentAxis, spanAxisFormatter } from "../../../components/chart-
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import type { CurvePalette, CurveSeries } from "../../../components/chart/curve/model";
 
+/** A balance in billions to the million under $10B, to the hundred million above. */
+const billionsDigits = (value: number) => Math.abs(value) < 10 ? 3 : 1;
 export const moneyMarketValue = (value: number | null, unit: MoneyMarketRow["unit"]) => value == null
-  ? "--" : unit === "percent" ? `${value.toFixed(2)}%` : `$${value.toLocaleString("en-US", { minimumFractionDigits: Math.abs(value) < 10 ? 3 : 1, maximumFractionDigits: Math.abs(value) < 10 ? 3 : 1 })}B`;
+  ? "--" : unit === "percent" ? `${value.toFixed(2)}%` : `$${value.toLocaleString("en-US", { minimumFractionDigits: billionsDigits(value), maximumFractionDigits: billionsDigits(value) })}B`;
 export const moneyMarketChange = (value: number | null, unit: MoneyMarketRow["changeUnit"]) => value == null
   ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(unit === "usd-billions" && Math.abs(value) < 1 ? 3 : 1)}${unit === "basis-points" ? "bp" : "B"}`;
-const formatBillionsAxis = spanAxisFormatter((value, digits) => `$${value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}B`);
+const formatBillionsAxis = spanAxisFormatter(
+  (value, digits) => `$${value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}B`,
+  billionsDigits,
+);
 
-/** Axis labels in the board's units, with the decimals the plotted range needs. */
+/** Axis labels in the board's units, with the decimals the plotted range needs; tags at the board's own. */
 export function moneyMarketAxis(unit: MoneyMarketRow["unit"]): (value: number, domain: CompositeAxisDomain) => string {
   return unit === "percent" ? formatPercentAxis : formatBillionsAxis;
 }

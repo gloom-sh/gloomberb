@@ -477,7 +477,21 @@ export function formatCompositeCursorValue(value: number, domain: CompositeAxisD
  * `axisResultCache`), so one that reads anything else (a currency, a setting)
  * is a new function whenever that changes.
  */
-export type CompositeAxisValueFormatter = (value: number, domain: CompositeAxisDomain) => string;
+export interface CompositeAxisValueFormatter {
+  (value: number, domain: CompositeAxisDomain): string;
+  /**
+   * A value tag on the axis (the last value, the prior close, a level, the
+   * cursor) at the value's own precision, where the ticks round to the
+   * plotted range: 3.75% beside ticks of 3.5% and 4.0%. Same rule as the
+   * ticks: the value and the axis only.
+   */
+  readonly tag?: (value: number, domain: CompositeAxisDomain) => string;
+}
+
+/** How a value tag reads on an axis labeled by `format`: its own tag precision, else its tick label, else the cursor's full price. */
+export function compositeAxisTagFormatter(format: CompositeAxisValueFormatter | undefined): CompositeAxisValueFormatter {
+  return format?.tag ?? format ?? formatCompositeCursorValue;
+}
 
 type LabeledTick = { value: number; label: string };
 
