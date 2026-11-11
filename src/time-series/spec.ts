@@ -1,4 +1,5 @@
 import { TIME_RANGES, type ChartResolution, type TimeRange } from "./range";
+import { withoutControlCharacters } from "../utils/untrusted-text";
 import { isRealizedVolatilityEstimator } from "../market-data/realized-volatility";
 import { getChartResolutionLabel, isChartResolution } from "./resolution";
 import {
@@ -113,6 +114,15 @@ function nonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
 }
 
+/**
+ * A label someone wrote (a panel's, a series', a formula's name), which a
+ * shared or saved chart brings to another terminal: drawn as text, without
+ * control characters.
+ */
+function plainLabel(value: unknown): string | null {
+  return typeof value === "string" ? nonEmptyString(withoutControlCharacters(value)) : null;
+}
+
 function uniqueId(candidate: unknown, prefix: string, index: number, seen: Set<string>): string {
   const base = nonEmptyString(candidate) ?? `${prefix}-${index + 1}`;
   let id = base;
@@ -201,7 +211,7 @@ function normalizePanel(value: unknown, index: number, seen: Set<string>): Chart
     : undefined;
   return {
     id,
-    label: nonEmptyString(panel.label) ?? undefined,
+    label: plainLabel(panel.label) ?? undefined,
     height,
     scale: SCALES.has(panel.scale as PanelScale) ? panel.scale as PanelScale : "linear",
   };
@@ -247,7 +257,7 @@ function normalizeSeries(
   return {
     id: uniqueId(entry.id, "series", index, seen),
     source: normalizedSource,
-    label: nonEmptyString(entry.label) ?? undefined,
+    label: plainLabel(entry.label) ?? undefined,
     style,
     transform,
     axis: AXES.has(entry.axis as SeriesAxis) ? entry.axis as SeriesAxis : "auto",
@@ -272,7 +282,10 @@ function normalizeStudy(
     if (typeof parameter === "number" && Number.isFinite(parameter)) parameters[key] = parameter;
     else if (study.kind === "realized-vol" && key === "estimator" && typeof parameter === "string") parameters[key] = parameter;
     // A catalog formula keeps its name (`3-2-1 crack spread`).
-    else if (study.kind === "formula" && key === "name" && typeof parameter === "string" && parameter.trim()) parameters[key] = parameter.trim().slice(0, 120);
+    else if (study.kind === "formula" && key === "name") {
+      const name = plainLabel(parameter);
+      if (name) parameters[key] = name.slice(0, 120);
+    }
   }
   return {
     id: uniqueId(study.id, "study", index, seen),

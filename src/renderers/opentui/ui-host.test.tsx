@@ -1,7 +1,7 @@
 import type { BoxRenderable } from "@opentui/core";
 import { expect, test } from "bun:test";
 import { act, useState } from "react";
-import { Box, Input, Text } from "../../ui";
+import { Box, Input, Span, StyledText, Text } from "../../ui";
 import { createOpenTuiTestHarness } from "./test-utils";
 
 const tui = createOpenTuiTestHarness();
@@ -141,4 +141,26 @@ test("a one-line field fuses pasted lines unless it joins them, and a list field
   await tui.render(<Input focused joinPastedLines="list" width={60} onInput={(value: string) => values.push(value)} />, { width: 62, height: 2 });
   await paste("Apple Inc\r\nMeta Platforms \nVOD LN\tBARC LN\n");
   expect(values.at(-1)).toBe("Apple Inc, Meta Platforms, VOD LN, BARC LN");
+});
+
+test("text another person wrote draws as text: no ESC or BEL reaches a cell, from content, children or styled chunks", async () => {
+  // An OSC 52 sequence and a screen clear between words.
+  const dirty = "before\u001b]52;c;Zm9v\u0007mid\u001b[2Jafter";
+  await tui.render(
+    <Box flexDirection="column" width={40} height={5}>
+      <Text>{dirty}</Text>
+      <Text content={dirty} />
+      <Text content={new StyledText([{ text: dirty, fg: "#ff0000" }])} />
+      <Text>{"by "}<Span>{dirty}</Span>{"\u009b2J"}</Text>
+      <Text>{"日本 🚀\ttab"}</Text>
+    </Box>,
+    { width: 42, height: 6 },
+  );
+  await act(async () => { await tui.setup().renderOnce(); });
+  const frame = tui.frame();
+  expect(frame).not.toMatch(/[\u001b\u0007\u009b]/);
+  const lines = frame.split("\n").map((line) => line.trimEnd());
+  expect(lines.slice(0, 3)).toEqual(Array(3).fill("before]52;c;Zm9vmid[2Jafter"));
+  expect(lines[3]).toBe("by before]52;c;Zm9vmid[2Jafter2J");
+  expect(lines[4]).toContain("日本 🚀");
 });

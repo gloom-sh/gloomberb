@@ -1,4 +1,5 @@
 import { asciiText, localeReadsUtf8 } from "./ascii-text";
+import { withoutControlCharacters } from "./untrusted-text";
 type CliAlign = "left" | "right" | "center";
 
 export interface CliTableColumn {
@@ -235,6 +236,20 @@ function stripAnsi(text: string): string {
   return text.replace(ANSI_PATTERN, "");
 }
 
+/**
+ * A value as the CLI prints it in a table or a stats block: the colour codes
+ * `cliStyles` put on it stay, and every other control character but the line
+ * break and the tab goes (withoutControlCharacters), so a name, a headline or
+ * a note from a data source prints as the text it is.
+ */
+function cliText(text: string): string {
+  if (!text.includes("\x1b")) return withoutControlCharacters(text);
+  return text
+    .split(ANSI_SPLIT)
+    .map((part) => (ANSI_PREFIX.test(part) ? part : withoutControlCharacters(part)))
+    .join("");
+}
+
 export function visibleLength(text: string): number {
   // Bun counts wide glyphs as two cells and skips escape codes; other hosts only need the ASCII case.
   return typeof Bun !== "undefined" ? Bun.stringWidth(text) : stripAnsi(text).length;
@@ -380,7 +395,8 @@ export function renderSection(title: string): string {
 
 /** One aligned label/value line. Prefer renderStats for a block so every value lines up. */
 export function renderStat(label: string, value: string, labelWidth = 16): string {
-  return `${cliStyles.muted(padDisplay(label, Math.max(labelWidth, visibleLength(label) + 1)))} ${value}`.trimEnd();
+  label = cliText(label);
+  return `${cliStyles.muted(padDisplay(label, Math.max(labelWidth, visibleLength(label) + 1)))} ${cliText(value)}`.trimEnd();
 }
 
 export interface CliStatsOptions {
@@ -419,6 +435,7 @@ export function statValueWidth(entries: readonly CliStatEntry[], options: CliSta
  * on its own line, its value indented under it.
  */
 export function renderStats(entries: readonly CliStatEntry[], options: CliStatsOptions = {}): string {
+  entries = entries.map(([label, value]) => [cliText(label), cliText(value)] as const);
   const indent = " ".repeat(options.indent ?? 0);
   const width = options.width === undefined ? cliTerminalWidth() : options.width;
   const labelWidth = statLabelWidth(entries, width, indent.length);
@@ -760,6 +777,9 @@ function renderTableLayout(
  * for arrows and "—" in every empty cell.
  */
 export function renderTable(columns: CliTableColumn[], rows: string[][], options: CliTableOptions = {}): string {
+  columns = columns.map((column) => ({ ...column, header: cliText(column.header) }));
+  rows = rows.map((row) => row.map((cell) => (typeof cell === "string" ? cliText(cell) : cell)));
+  if (options.below) options = { ...options, below: options.below.map((lines) => lines?.map(cliText)) };
   if (cliPlainEnabled()) {
     const ascii = cliAsciiEnabled();
     columns = columns.map((column) => ({ ...column, header: plainHeader(column.header, ascii) }));

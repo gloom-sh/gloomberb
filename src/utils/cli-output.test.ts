@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { asciiText, localeReadsUtf8 } from "./ascii-text";
 import {
   cliArrow,
+  cliStyles,
   cliTerminalWidth,
   plainWords,
   renderDefinitions,
@@ -292,6 +293,26 @@ test("plain output fitted narrow keeps what a row is (rank, coin, name) on its f
     expect(renderTable(quoteColumns, quoteRows, { maxWidth: 44 }).split("\n")).toContain("  Name iShares Bitcoin Trust ETF");
   } finally {
     setCliPlainOverride(null);
+  }
+});
+
+test("a table cell, a header and a stat print a data value as text: its control characters go, the CLI's own colour stays", () => {
+  setCliColorEnabledOverride(true);
+  try {
+    // An OSC 52 sequence, a screen clear and a one-byte CSI in a value from a data source.
+    const dirty = "Acme\u001b]52;c;Zm9v\u0007 Corp\u001b[2J\u009b2J 日本";
+    const text = renderTable(
+      [{ header: "Name\u0007" }, { header: "Chg", align: "right" }],
+      [[dirty, cliStyles.positive("+1.2%")]],
+      { maxWidth: null, below: [[`note ${dirty}`]] },
+    ) + renderStats([["Issuer\u001b[2J", dirty]], { width: null });
+    // Only SGR colour codes are left.
+    expect(text.replace(/\x1b\[[0-9;]*m/g, "")).not.toMatch(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/);
+    expect(text).toContain("Acme]52;c;Zm9v Corp[2J2J 日本");
+    expect(text).toContain("\x1b[32m+1.2%\x1b[0m");
+    expect(text).toContain("Issuer[2J");
+  } finally {
+    setCliColorEnabledOverride(null);
   }
 });
 

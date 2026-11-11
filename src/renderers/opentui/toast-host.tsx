@@ -5,6 +5,7 @@ import { colors } from "../../theme/colors";
 import { createToastStore, useToastsShown, type ToastHost, type ToastTone } from "../../ui/toast";
 import { useActionShortcut } from "../../ui";
 import { displayWidth } from "../../utils/format";
+import { withoutControlCharacters } from "../../utils/untrusted-text";
 
 const toastStore = createToastStore();
 
@@ -56,10 +57,12 @@ function ToastViewport({ position = "bottom-right" }: { position?: string }) {
             : `[${toast.options.action.label}]`
           : null;
         const secondaryLabel = toast.options?.secondaryAction ? `[${toast.options.secondaryAction.label}]` : null;
+        // A chat message or another person's name can be in it, drawn here outside the UI host's text.
+        const body = withoutControlCharacters(toast.body);
         const actionCells = [actionLabel, secondaryLabel].reduce((cells, label) => cells + (label ? displayWidth(label) + 1 : 0), 0);
         // Actions sit beside text that fits on one line with them. Beside longer text they would
         // squeeze it into a narrow column, or out of sight, so they go under it and it wraps at full width.
-        const inline = actionCells === 0 || displayWidth(toast.body) + actionCells + TOAST_CHROME_CELLS <= maxWidth;
+        const inline = actionCells === 0 || displayWidth(body) + actionCells + TOAST_CHROME_CELLS <= maxWidth;
         const actions = (
           <>
             {toast.options?.action && (
@@ -102,12 +105,12 @@ function ToastViewport({ position = "bottom-right" }: { position?: string }) {
             <text fg={toneColor(toast.tone)}>{toneIcon(toast.tone)}</text>
             {inline ? (
               <>
-                <text fg={colors.text} flexGrow={1} flexShrink={1} flexBasis={0} wrapMode="word">{toast.body}</text>
+                <text fg={colors.text} flexGrow={1} flexShrink={1} flexBasis={0} wrapMode="word">{body}</text>
                 {actions}
               </>
             ) : (
               <box flexGrow={1} flexShrink={1} flexBasis={0} flexDirection="column">
-                <text fg={colors.text} wrapMode="word">{toast.body}</text>
+                <text fg={colors.text} wrapMode="word">{body}</text>
                 <box flexDirection="row" gap={1}>{actions}</box>
               </box>
             )}
