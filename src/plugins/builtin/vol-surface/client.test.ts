@@ -199,6 +199,26 @@ describe("surface loader", () => {
     expect(curves).toBe(1);
   });
 
+  test("a coin's chain that does not state its rate is read at the venue's 0, so its fit and an IV alert on it still read", async () => {
+    const expiration = expirations[9]!;
+    const days = daysToExpiryFrom(expiration, now);
+    const contract = (strike: number, side: "call" | "put"): OptionContract => {
+      const price = valueOption({ ...DEFAULT_OPTION_CALC_DRAFT, side, spot: 100, strike, daysToExpiry: days, rate: 0, dividendYield: 0, volatility: 0.5 }).price;
+      return { contractSymbol: `${side}-${strike}`, strike, currency: "USD", expiration, bid: price * 0.99, ask: price * 1.01, lastPrice: price,
+        impliedVolatility: 0, openInterest: 10, volume: 2, lastTradeDate: now / 1000 - 60, change: 0, percentChange: 0, inTheMoney: side === "call" ? strike < 100 : strike > 100 };
+    };
+    const strikes = [70, 80, 90, 95, 100, 105, 110, 120, 130];
+    // No `rate`: a chain from before the service stated Deribit's.
+    const chain: OptionsChain = { underlyingSymbol: "BTC-USD", expirationDates: [expiration],
+      calls: strikes.map((strike) => contract(strike, "call")), puts: strikes.map((strike) => contract(strike, "put")) };
+    const result = await loadVolatilitySurface({ instrument: { symbol: "BTC-USD" }, spot: 100, limit: 1 }, {
+      now: () => now, loadYieldCurve: async () => { throw new Error("a coin reads no Treasury curve"); }, loadOptions: async () => ready(chain),
+    });
+    const [expiry] = result.expiries;
+    expect(expiry).toMatchObject({ rate: 0, rateMethod: "venue" });
+    expect(expiry!.atmIV).toBeCloseTo(0.5, 2);
+  });
+
   test("incremental loads share exact coordinator keys with an options monitor", async () => {
     const fetched: (number | undefined)[] = [];
     const provider = { id: "test", getOptionsChain: async (_symbol: string, _exchange: string, expiry?: number) => {

@@ -143,6 +143,9 @@ export async function loadVolatilitySurface(
   const settings = normalizeSurfaceSettings(request.settings);
   const limit = Number.isFinite(request.limit) ? Math.max(1, Math.floor(request.limit!)) : DEFAULT_SURFACE_EXPIRY_LIMIT;
   const symbol = request.instrument.symbol.trim().toUpperCase();
+  // A coin's options (Deribit's) are priced at the venue's own rate, 0: the Treasury curve is not read for them,
+  // and a chain that does not state the rate is read at 0, so its fit (and an IV alert on it) still reads.
+  const venueRated = listedCoinOptions(symbol) != null;
   const entries = new Map<number, QueryEntry<OptionsChain>>();
   const errors = new Map<number, string>();
   const models = new Map<number, { entry: QueryEntry<OptionsChain>; curve: readonly YieldPoint[]; value: SurfaceExpiry }>();
@@ -183,7 +186,8 @@ export async function loadVolatilitySurface(
       }
       const cached = models.get(expiration);
       if (cached?.entry === entry && cached.curve === curve) return cached.value;
-      const value = buildSurfaceExpiry({ chain, expiration, spot, curve, settings, now,
+      const rated = venueRated && !Number.isFinite(chain.rate) ? { ...chain, rate: 0 } : chain;
+      const value = buildSurfaceExpiry({ chain: rated, expiration, spot, curve, settings, now,
         source: entry.source, stale: !!entry.error || (entry.staleAt != null && entry.staleAt <= now), error });
       models.set(expiration, { entry, curve, value });
       return value;
@@ -211,8 +215,6 @@ export async function loadVolatilitySurface(
   publish();
   // Asked while the catalogue loads, so it costs the expiries no wait.
   const batched = Promise.resolve().then(() => dependencies.batchesExpiries?.()).then((answer) => answer === true, logFailure("vol-surface.client", "Read expiry batching support failed", false));
-  // A coin's options (Deribit's) are priced at the venue's own rate, so the Treasury curve is not read for them.
-  const venueRated = listedCoinOptions(symbol) != null;
   if (venueRated) curvePending = false;
   const treasury = venueRated ? Promise.resolve()
     : Promise.resolve().then(() => dependencies.loadYieldCurve()).then((value) => {
