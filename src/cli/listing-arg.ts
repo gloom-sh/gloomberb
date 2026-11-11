@@ -39,7 +39,7 @@ import {
 } from "../utils/exchanges";
 import { withMarketData } from "./scoped-context";
 import { failWithFields } from "./errors";
-import { stripStrayEdges } from "./symbol-args";
+import { stripStrayEdges, tickerShapedWord } from "./symbol-args";
 import { isNoProviderMessage, isNoSourceAnswer, isProviderBusy, notATickerSymbol } from "../sources/provider-errors";
 import { dashedCoinPair, exchangeLineCoinListing, isSpotCommodityOrCurrencyPair, MAJOR_COIN_NAMES, TOP_COIN_NAMES } from "../utils/crypto-pair";
 import { boardCoinFor, primeBoardCoins } from "./board-coins";
@@ -1599,8 +1599,21 @@ async function readBareCompanyName(parsed: ListingArg, typed: string, deps: List
  */
 const NAME_WRITTEN_WORD = /^(?=.*\p{Ll})\p{L}[\p{L}&'’-]*$/u;
 
+/**
+ * Symbols at most whose venues a command looks up to name the company each
+ * bare one went to, and whose words it checks as companies' names
+ * (`companyWord`, a quote each). A longer list is a batch of tickers.
+ */
+export const MAX_CHOICE_LOOKUPS = 10;
+
 /** At most this many words typed apart are tried as one company's name (`joinCompanyNameWords`). */
 const MAX_JOINED_NAME_WORDS = 4;
+
+/**
+ * At most this many runs of words around one word are searched as a name
+ * (`joinedRun`), all at once: its two-word runs, then three, then one of four.
+ */
+const MAX_JOINED_NAME_LOOKUPS = 6;
 
 /**
  * Words typed apart that name one company: when a word of the arguments is
@@ -1616,7 +1629,8 @@ export async function joinCompanyNameWords<T extends { typed: string; listing: P
   entries: readonly T[],
   deps: Pick<ListingDeps, "dataProvider">,
 ): Promise<Array<T | { typed: string; joined: ListingArg; words: T[] }>> {
-  const word = (entry: T | undefined) => !!entry && ONE_WORD_NAME.test(entry.typed.trim());
+  // A word shaped as a ticker (BRK.B, 0700) is never part of a name.
+  const word = (entry: T | undefined) => !!entry && ONE_WORD_NAME.test(entry.typed.trim()) && !tickerShapedWord(entry.typed.trim());
   const out: Array<T | { typed: string; joined: ListingArg; words: T[] }> = [];
   const tried = new Set<string>();
   let index = 0;
@@ -1657,21 +1671,32 @@ export async function resolveNamedListing(named: ListingArg, deps: ListingDeps):
   };
 }
 
-/** The longest run of `words[first..last]` holding `at`, two words or more, that names one company. */
+/**
+ * The longest run of `words[first..last]` holding `at`, two words or more,
+ * that names one company, the leftmost of the longest. The runs are searched
+ * at once, the shortest first up to MAX_JOINED_NAME_LOOKUPS, and a run
+ * searched for an earlier word (`tried`) is not searched again.
+ */
 async function joinedRun(
   words: readonly string[], first: number, last: number, at: number, deps: Pick<ListingDeps, "dataProvider">, tried: Set<string>,
 ): Promise<{ start: number; end: number; listing: ListingArg } | null> {
-  for (let size = Math.min(last - first + 1, MAX_JOINED_NAME_WORDS); size >= 2; size -= 1) {
+  const runs: Array<{ start: number; end: number; phrase: string }> = [];
+  for (let size = 2; size <= Math.min(last - first + 1, MAX_JOINED_NAME_WORDS); size += 1) {
     for (let start = Math.max(first, at - size + 1); start <= Math.min(at, last - size + 1); start += 1) {
       const phrase = words.slice(start, start + size).join(" ");
-      if (tried.has(phrase)) continue;
+      if (tried.has(phrase) || runs.length >= MAX_JOINED_NAME_LOOKUPS) continue;
       tried.add(phrase);
-      const found = await findCompanyName(phrase, deps).catch(busyAsMiss)
-        .catch(logFailure("cli.listing-arg", "Read words as one company's name failed", null));
-      if (found && companyNameExtraWords(phrase, found.name) != null) return { start, end: start + size, listing: companyListingArg(phrase, found) };
+      runs.push({ start, end: start + size, phrase });
     }
   }
-  return null;
+  const found = await Promise.all(runs.map(async (run) => {
+    const company = await findCompanyName(run.phrase, deps).catch(busyAsMiss)
+      .catch(logFailure("cli.listing-arg", "Read words as one company's name failed", null));
+    return company && companyNameExtraWords(run.phrase, company.name) != null ? { ...run, company } : null;
+  }));
+  const best = found.filter((run) => run != null)
+    .sort((left, right) => (right.end - right.start) - (left.end - left.start) || left.start - right.start)[0];
+  return best ? { start: best.start, end: best.end, listing: companyListingArg(best.phrase, best.company) } : null;
 }
 
 /** `readBrokerIndexCode` for a `$ROOT` code only: the `ROOT.X` codes are read where the listing is parsed. */

@@ -12,7 +12,9 @@ import { parseChartSpec } from "../../plugins/builtin/chart-composer/chart-spec"
 import { normalizeTickerInput } from "../../tickers/search";
 import { slugifyName } from "../../utils/slugify";
 import { fredSeriesArgument } from "../../series/fred-argument";
-import { type CliListing, listCoinNotes, ListingArgError, listingInstrument, listingReadNotes, resolveCliListing, usListingsOnlyMessage } from "../listing-arg";
+import {
+  type CliListing, listCoinNotes, ListingArgError, listingInstrument, listingReadNotes, MAX_CHOICE_LOOKUPS, resolveCliListing, usListingsOnlyMessage,
+} from "../listing-arg";
 import { uncoveredInstrumentKind, uncoveredInstrumentMessage } from "../../tickers/instrument-coverage";
 import { uncoveredInstrumentCommand } from "../uncovered-instrument";
 import { listingAbroadVenue } from "../../utils/sec";
@@ -258,7 +260,11 @@ export async function applyListingArgument(
   const aliases = exchange ? [] : entered.map((raw) => headless?.symbolAlias?.(raw) ?? null);
   const typed = entered.map((raw, index) => aliases[index]?.symbol ?? raw);
   // RY.TO is the listing its quote names, RY:TSX, as `quote` reads it: a function's data is read by venue.
-  let listings = named ? [named] : await Promise.all(typed.map((raw) => resolveCliListing(raw, exchange, context, { ownExchangeWins: typed.length > 1, venueSuffix: true })));
+  // A long list is a batch of tickers: its words cost no quote each to be read as companies' names.
+  const companyWord = typed.length <= MAX_CHOICE_LOOKUPS;
+  let listings = named ? [named] : await Promise.all(typed.map((raw) => resolveCliListing(raw, exchange, context, {
+    ownExchangeWins: typed.length > 1, venueSuffix: true, companyWord,
+  })));
   // A separator stuck to the end of a pasted list (`UPST;`) is not part of a symbol; it is named.
   const notes: string[] = takesOneTicker ? [] : stripStrayEdges(args.arg).notes;
   notes.push(...aliases.flatMap((alias) => alias ? [alias.note] : []));

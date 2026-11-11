@@ -6,7 +6,7 @@ import { noProviderError } from "../../sources/provider-errors";
 import { createDefaultConfig } from "../../types/config";
 import { captureConsole } from "../../test-support/console";
 import { createTestCliContext, type PrintedCliResult } from "../../test-support/cli-context";
-import { createTestQuote } from "../../test-support/data-provider";
+import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import { createMovedSymbolsProvider, MOVED_SYMBOL_QUOTES } from "../../test-support/moved-symbols";
 import type { DataProvider, QuoteBatchResult, QuoteSubscriptionTarget } from "../../types/data-provider";
 import { resetBoardCoins } from "../board-coins";
@@ -146,4 +146,22 @@ test("quote reads a one-word name a source timed out on as its company, or says 
   expect(real.rows[0]!.quote).toBeNull();
   expect(String(real.rows[0]!.error)).toContain("No quote provider available for META");
   expect(real.warnings.join()).not.toContain("Not a ticker");
+});
+
+// Each lowercase symbol of a list cost a quote to check whether it was a company's name, however long the list.
+test("a long list is tickers: its lowercase symbols cost no quote each to be read as names; a short one still reads them", async () => {
+  const quotes = async (arg: string) => {
+    let asked = 0;
+    const dataProvider = createTestDataProvider({
+      getQuote: async (symbol) => {
+        asked += 1;
+        return createTestQuote({ symbol, currency: "USD" });
+      },
+    });
+    expect((await run(["RV", arg], dataProvider)).error).toBeNull();
+    return asked;
+  };
+  const many = Array.from({ length: 11 }, (_, index) => `t${String.fromCharCode(97 + index)}x`);
+  expect(await quotes(many.join(","))).toBe(0);
+  expect(await quotes("aapl,msft")).toBe(2);
 });

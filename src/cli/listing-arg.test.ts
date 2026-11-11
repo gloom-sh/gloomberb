@@ -589,4 +589,27 @@ test("a company's name typed where any command takes a symbol is read as quote r
   // A word read as a name with no neighbour that makes one keeps its own reading.
   const alone = await joinCompanyNameWords(await read(["AAPL", "Naspers"]), deps);
   expect(alone.map((entry) => "joined" in entry ? entry.typed : entry.listing?.key)).toEqual(["AAPL", "NPN:JSE"]);
+  // A word shaped as a ticker (BRK.B) is never part of a name.
+  searched.length = 0;
+  await joinCompanyNameWords(await read(["BRK.B", "Naspers"]), deps);
+  expect(searched.filter((query) => query.includes(" "))).toEqual([]);
+  // The runs around a word are searched at once, at most six: its two- and three-word runs, then one of four.
+  searched.length = 0;
+  let open = 0;
+  let most = 0;
+  const slow = { ...dataProvider, search: async (query: string) => {
+    open += 1;
+    most = Math.max(most, open);
+    await Bun.sleep(5);
+    open -= 1;
+    return dataProvider.search(query);
+  } };
+  const words = await read(["Alpha", "Beta", "Gamma", "Naspers", "Delta", "Epsilon", "Zeta"]);
+  searched.length = 0;
+  await joinCompanyNameWords(words, { dataProvider: slow });
+  expect(searched).toEqual(expect.arrayContaining([
+    "Gamma Naspers", "Naspers Delta", "Beta Gamma Naspers", "Gamma Naspers Delta", "Naspers Delta Epsilon", "Alpha Beta Gamma Naspers",
+  ]));
+  for (const run of ["Beta Gamma Naspers Delta", "Gamma Naspers Delta Epsilon", "Naspers Delta Epsilon Zeta"]) expect(searched).not.toContain(run);
+  expect(most).toBeGreaterThan(1);
 });

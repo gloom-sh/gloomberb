@@ -194,7 +194,9 @@ test("valuation given several symbols points at RV, which compares them; a compa
   // A name typed in words is one company, read as `quote` reads it; symbols typed apart, in any case, are not.
   expect(typedCompanyName(["Bank", "Leumi"])).toBe("Bank Leumi");
   expect(typedCompanyName(["MTN", "Group"])).toBe("MTN Group");
-  for (const args of [["NEE", "FSLR"], ["aapl", "msft"], ["BRK.B", "AAPL"], ["NEE,FSLR"], ["Bank", "of", "America", "Corp", "Inc"]]) {
+  for (const args of [["NEE", "FSLR"], ["aapl", "msft"], ["BRK.B", "AAPL"], ["BRK.B", "Meta"], ["NEE,FSLR"], ["Bank", "of", "America", "Corp", "Inc"]]) {
     expect(typedCompanyName(args)).toBeNull();
   }
+  // A word shaped as a ticker is never part of a name: BRK.B and Meta are two symbols, which RV compares.
+  await expect(valuation.execute(["BRK.B", "Meta"], cli.context)).rejects.toThrow("valuation takes one symbol; got BRK.B Meta.");
 });
