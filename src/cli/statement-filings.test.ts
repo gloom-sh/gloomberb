@@ -1,7 +1,7 @@
-import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, expect, jest, mock, spyOn, test } from "bun:test";
 import { apiClient } from "../api-client";
 import { offeringNote } from "../utils/cash-runway";
-import { exchangeResultsNotes, matchExchangeResults } from "../utils/exchange-results";
+import { EXCHANGE_RESULTS_BUDGET_MS, exchangeResultsNotes, matchExchangeResults } from "../utils/exchange-results";
 import { createDefaultConfig } from "../types/config";
 import type { TickerFinancials } from "../types/financials";
 import { createTestDataProvider } from "../test-support/data-provider";
@@ -180,6 +180,34 @@ test("loadOfferingFilings skips non-US listings and leaves no note or error on a
   expect(read).toHaveBeenCalledTimes(1);
   expect(filings).toEqual([]);
   expect(offeringNote(filings, "2026-06-30")).toBeNull();
+});
+
+test("a report waits at most 4 s on a filing list or the HKEXnews announcements, then goes without their lines", async () => {
+  jest.useFakeTimers();
+  try {
+    const never = <T>() => new Promise<T>(() => {});
+    const sources: StatementReportSources = {
+      statementFilings: () => never(), bankFigures: () => never(), offeringFilings: () => never(), exchangeAnnouncements: () => never(),
+    };
+    const latest = { quarter: { date: "2026-06-30" } as never, annual: { date: "2025-12-31" } as never };
+    const settled = Promise.all([
+      loadStatementFilings(sources, { symbol: "AAPL", exchange: "NASDAQ" }, latest),
+      loadStatementFilings(sources, { symbol: "9992", exchange: "HKEX" }, latest),
+      loadOfferingFilings(sources, { symbol: "VKTX", exchange: "NASDAQ" }, true),
+    ]);
+    let done = false;
+    void settled.then(() => { done = true; });
+    jest.advanceTimersByTime(EXCHANGE_RESULTS_BUDGET_MS);
+    for (let tick = 0; tick < 20 && !done; tick += 1) await Promise.resolve();
+    // A read with no deadline never settles; fake timers would also hold the test's own timeout, so it is asserted here.
+    expect(done).toBe(true);
+    const [us, hk, offerings] = await settled;
+    expect(us).toMatchObject({ latestQuarter: null, latestAnnual: null, resultsRelease: null });
+    expect(hk.exchangeResults).toBeNull();
+    expect(offerings).toEqual([]);
+  } finally {
+    jest.useRealTimers();
+  }
 });
 
 test("an HKEX half year is dated by its interim results announcement, and a business update after it is named", async () => {

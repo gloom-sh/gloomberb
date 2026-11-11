@@ -77,7 +77,7 @@ export const cloudStatementReportSources: StatementReportSources = {
 /**
  * A US listing's latest offering prospectuses, for the note that its cash
  * predates one; nothing (and no request) for any other listing, or when
- * `wanted` is false. A failed read leaves the note out.
+ * `wanted` is false. A failed read, or one past 4 s, leaves the note out.
  */
 export async function loadOfferingFilings(
   sources: StatementReportSources | undefined,
@@ -85,8 +85,8 @@ export async function loadOfferingFilings(
   wanted: boolean,
 ): Promise<OfferingFiling[]> {
   if (!wanted || !sources?.offeringFilings || nonUsSecListingVenue(listing.symbol, listing.exchange)) return [];
-  return sources.offeringFilings(listing.symbol)
-    .catch(logFailure("cli.statement-filings", "Reading the offering filings failed", [] as OfferingFiling[]));
+  return await settleWithin(sources.offeringFilings(listing.symbol)
+    .catch(logFailure("cli.statement-filings", "Reading the offering filings failed", [] as OfferingFiling[])), EXCHANGE_RESULTS_BUDGET_MS) ?? [];
 }
 
 /** The filing a statement row's period was read from: its form when the filing list names it, and its filed date. */
