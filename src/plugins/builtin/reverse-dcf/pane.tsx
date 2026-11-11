@@ -27,14 +27,17 @@ function marginOptions(model: ReverseDcfModel | null) {
   return MARGIN_OPTIONS.map((option, index) => index === 0 ? { ...option, label: own } : option);
 }
 
+// A figure not computed reads as the other missing figures beside it do.
+const MISSING = "\u2014";
+
 function pct(value: number | null | undefined, signed = true): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING;
   const fixed = (value * 100).toFixed(1);
   return /[1-9]/.test(fixed) ? `${signed && value > 0 ? "+" : ""}${fixed}%` : "0.0%";
 }
 
 function impliedText(value: ImpliedGrowth | null): string {
-  if (!value) return "--";
+  if (!value) return MISSING;
   if (value.kind === "below") return "< -50%";
   if (value.kind === "above") return "> +100%";
   return pct(value.value);
@@ -113,7 +116,7 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
         detail: `a year for ${FORECAST_YEARS}y, then ${pct(TERMINAL_GROWTH, false)}` },
       { id: "revenue", label: `Revenue, yr ${FORECAST_YEARS}`, value: formatCompactCurrency(model.impliedRevenue ?? undefined, currency),
         detail: `at ${describeFcfMargin(model.fcfMargin, model.fcfMarginBasis)}` },
-      { id: "past", label: "Past FCF growth", value: past ? pct(past.rate) : "--", detail: past ? pastGrowthBasis(past) : undefined },
+      { id: "past", label: "Past FCF growth", value: past ? pct(past.rate) : MISSING, detail: past ? pastGrowthBasis(past) : undefined },
       { id: "yield", label: "FCF yield", value: pct(model.fcfYield, false) },
       // A trailing figure far above the fiscal year the past growth ends at says so beside itself.
       { id: "fcf", label: "FCF", value: formatCompactCurrency(model.freeCashFlow ?? undefined, currency),
