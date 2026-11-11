@@ -52,6 +52,8 @@ import { currencyCodeLabel, heldCurrencyUnit } from "../../utils/currency-units"
 import { quotedFxPair } from "../../utils/currency-pair";
 import type { AppConfig } from "../../types/config";
 import type { CompanyProfile, DeclaredDividendAction, FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
+import { apiClient } from "../../api-client";
+import { withBalanceSheetRate } from "../../market-data/quotes/balance-sheet-rate";
 import { enterpriseValueBridgeNote, listingEnterpriseValue } from "../../market-data/quotes/listing-enterprise-value";
 import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
@@ -1715,7 +1717,7 @@ async function quoteUnavailableNote(dataProvider: MarketContext["dataProvider"],
 export async function ticker(symbol: string, dependencies: TickerCommandDependencies = {}) {
   const initMarketDataFn = dependencies.initMarketData ?? initMarketData;
   const failCommand = dependencies.fail ?? fail;
-  await withMarketData(initMarketDataFn, async ({ config, store, dataProvider, dataDir, statementSources }) => {
+  await withMarketData(initMarketDataFn, async ({ config, store, dataProvider, dataDir, statementSources, fxHistory }) => {
     let listing: CliListing;
     try {
       listing = await resolveCliListing(symbol, dependencies.exchange, { store, dataProvider });
@@ -1869,8 +1871,10 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     const listingNote = choiceNotes.join("\n") || undefined;
     const memberships = await membershipsLoad;
     // A converted TTM block at the rate the rest of the report converts at, the one `fx` reports. A listing that
-    // stopped trading shows none of the profile and figures another listing under its symbol was served with.
-    const shownFinancials = await atReportTtmRate(otherProfile ? withoutResearch(resolvedFinancials) : resolvedFinancials, toBase);
+    // stopped trading shows none of the profile and figures another listing under its symbol was served with. A
+    // withdrawn EV's bridge converts a balance sheet in another currency at our close on its date, as `fundamentals` does.
+    const shownFinancials = await withBalanceSheetRate(
+      await atReportTtmRate(otherProfile ? withoutResearch(resolvedFinancials) : resolvedFinancials, toBase), fxHistory ?? apiClient);
     if (dependencies.printResult) {
       const newsNote = recentNews[0]?.searchedFor ? newsFallbackNotice(requestSymbol, recentNews[0].searchedFor) : null;
       const warnings = [...choiceNotes, quoteNote, newsNote].filter((note): note is string => !!note);

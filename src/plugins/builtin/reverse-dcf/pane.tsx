@@ -96,7 +96,7 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
     [inputs.data, discountRate, chosenMargin, symbol]);
 
   usePaneNoticeFooter({ registrationId: "reverse-dcf-notices", focused,
-    notices: [...new Set([identityError, inputs.error, inputs.data?.error, model?.enterpriseValueNote]
+    notices: [...new Set([identityError, inputs.error, inputs.data?.error, model?.enterpriseValueNote, model?.freeCashFlowBasis?.note]
       .filter((value): value is string => !!value))] });
   usePaneFooter("reverse-dcf", () => ({ info: [
     ...(inputs.loading ? [{ id: "loading", parts: [{ text: "loading fundamentals", tone: "muted" as const }] }] : []),
@@ -121,7 +121,7 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
       { id: "yield", label: "FCF yield", value: pct(model.fcfYield, false) },
       // A trailing figure far above the fiscal year the past growth ends at says so beside itself.
       { id: "fcf", label: "FCF", value: formatCompactCurrency(model.freeCashFlow ?? undefined, currency),
-        detail: gap ? `TTM base, ${gap.multiple} ${gap.year}'s ${gap.fcf}` : missing("freeCashFlow") },
+        detail: gap ? `TTM base, ${gap.multiple} ${gap.year}'s ${gap.fcf}` : model.freeCashFlowBasis?.label ?? missing("freeCashFlow") },
       // Market cap + debt - cash where the provider's is more than 5% from it, or in place of one withdrawn; its inputs are in the notice.
       { id: "ev", label: "EV", value: formatCompactCurrency(model.enterpriseValue ?? undefined, currency),
         detail: model.enterpriseValueSheet ? `${model.enterpriseValueSheet} balance sheet` : model.enterpriseValueNote ? "computed" : missing("enterpriseValue") },

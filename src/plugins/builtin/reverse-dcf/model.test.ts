@@ -88,6 +88,14 @@ describe("an EV the source withdrew", () => {
     expect(model).toMatchObject({ enterpriseValue: 2_080, enterpriseValueSheet: "Jun 30, 2026", missing: [], error: null,
       implied: solveImpliedGrowth(2_080, 100, 0.09, 0.025) });
     expect(model.enterpriseValueNote).toContain("(balance sheet 2026-06-30, EUR/USD 1.1000 at its date's close)");
+    // Its balance sheet is not among the statements here: its cash is called cash, and a minority interest it did not
+    // serve is named as not added, never counted as zero.
+    const { minorityAndPreferred: _, ...noMinority } = check;
+    const unread = projectReverseDcf(financials({ enterpriseValue: undefined, unavailableFields: ["enterpriseValue"], enterpriseValueCheck: noMinority,
+      marketCap: 2_000, freeCashFlow: 100, financialCurrency: "USD", marketCapCurrency: "USD" }), { symbol: "X", discountRate: 0.09 });
+    expect(unread.enterpriseValue).toBe(2_050);
+    expect(unread.enterpriseValueNote).toContain(" - cash 50 (balance sheet");
+    expect(unread.enterpriseValueNote).toEndWith("; that balance sheet is not among the statements here, so its minority interest is not added.");
   });
 
   test("is built from the latest balance sheet at our close on its date, leases and minority interest in, dated by its results", () => {
@@ -151,6 +159,34 @@ describe("an EV the source withdrew", () => {
     expect(model).toMatchObject({ enterpriseValue: 182_640, implied: null, error: null, missing: [{ input: "freeCashFlow", statement: "cashflow",
       needs: "a trailing figure; the latest cash flow statement is FY2024, and the half year to 2026-06-30 is in the interim results"
         + " announced 2026-08-20 (HKEXnews), its statements not in yet" }] });
+  });
+
+  test("prices a half-yearly reporter from the year-plus-half twelve months where served, else from its latest year, named", () => {
+    const filled = { source: "results" as const, fields: [], documents: [], lines: {}, periodMonths: 6 };
+    const base = halfYears({ totalDebt: 0, cashCashEquivalentsAndShortTermInvestments: 14_000, filledFrom: filled });
+    const data: TickerFinancials = { ...base, fundamentals: { ...base.fundamentals!, freeCashFlow: undefined, revenue: 52_000 },
+      annualStatements: [{ date: "2024-12-31", currency: "CNY", freeCashFlow: 4_400 }, { date: "2025-12-31", currency: "CNY", freeCashFlow: 9_700 }] as FinancialStatement[] };
+    // Pop Mart after its interim results: FY2025 + H1 2026 - H1 2025, in CNY, at the trailing block's CNY/HKD 1.3.
+    const trailingStatement = { date: "2026-06-30", currency: "CNY", freeCashFlow: 7_000, trailing: { method: "annual-plus-interim" as const,
+      annual: "2025-12-31", interim: { end: "2026-06-30", months: 6 }, priorInterim: { end: "2025-06-30", months: 6 },
+      basis: "FY to 2025-12-31 + 6 months to 2026-06-30 − 6 months to 2025-06-30" } };
+    const trailing = run({ ...data, trailingStatement });
+    expect(trailing).toMatchObject({ freeCashFlow: 9_100, missing: [], error: null, implied: solveImpliedGrowth(182_640, 9_100, 0.09, 0.025),
+      freeCashFlowBasis: { kind: "trailing", label: "TTM H1 FY26", note: "Free cash flow TTM H1 FY26 is 7k CNY, 9.1k HKD at CNY/HKD 1.3000:"
+        + " FY to 2025-12-31 + 6 months to 2026-06-30 − 6 months to 2025-06-30." },
+      fcfMarginBasis: { source: "company", company: 9_100 / 52_000 } });
+    // Without it, FY2025's figure, named as the year's; its margin is not taken for a trailing one.
+    const year = run(data);
+    expect(year).toMatchObject({ freeCashFlow: 12_610, missing: [], error: null, implied: solveImpliedGrowth(182_640, 12_610, 0.09, 0.025),
+      freeCashFlowBasis: { kind: "fiscal-year", label: "FY2025", note: "Free cash flow is FY2025's, 9.7k CNY, 12.6k HKD at CNY/HKD 1.3000:"
+        + " the company reports half-yearly and no trailing twelve months are served." },
+      fcfMarginBasis: { source: "default", gap: "no TTM FCF" } });
+    expect(ttmBaseNote(year)).toBeNull();
+    // A quarterly reporter's missing trailing figure stays missing, never a year's; a filled half is named as one.
+    const quarters = run({ ...data, annualStatements: [{ date: "2025-12-31", currency: "CNY" }] as FinancialStatement[],
+      quarterlyStatements: [{ date: "2026-03-31", currency: "CNY" }, { ...base.quarterlyStatements[1]!, freeCashFlow: 2_900 }] });
+    expect(quarters).toMatchObject({ freeCashFlow: null, freeCashFlowBasis: null,
+      missing: [{ input: "freeCashFlow", needs: "a trailing figure; the latest cash flow statement is H1 FY26" }] });
   });
 
   test("names what the statements lack and where to read them, as a limit and not an error", () => {

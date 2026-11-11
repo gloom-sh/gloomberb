@@ -1,7 +1,6 @@
 import type { FinancialStatement, TickerFinancials } from "../../../../types/financials";
 import { ebitdaLacksDepreciation } from "../../../../utils/ebitda";
-import { fiscalPeriodLabel, longerPeriodLabel, ttmPeriodLabel } from "../../../../utils/fiscal-period";
-import { statementPeriodMonths } from "../../../../utils/financial-statements";
+import { statementPeriodLabel, ttmPeriodLabel } from "../../../../utils/fiscal-period";
 import { formatPerShareNumber } from "../../../../utils/reported-money";
 import { hasNonIncomeStatementGap } from "../../../../utils/statement-gaps";
 import {
@@ -229,12 +228,7 @@ export function financialColumnLabel(
   kind: FinancialPeriod,
   yearEndMonth: number | null,
 ): string {
-  if (statement.date !== "TTM") {
-    const months = kind === "quarterly" ? statementPeriodMonths(statement) : undefined;
-    return months && months > 3
-      ? longerPeriodLabel(statement.date, months, yearEndMonth)
-      : fiscalPeriodLabel(statement.date, kind, yearEndMonth);
-  }
+  if (statement.date !== "TTM") return statementPeriodLabel(statement, kind, yearEndMonth);
   const { periodEnd, interimMonths } = statement.aggregation ?? {};
   return ttmPeriodLabel(periodEnd, yearEndMonth, interimMonths);
 }

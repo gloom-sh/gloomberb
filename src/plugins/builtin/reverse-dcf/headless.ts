@@ -43,7 +43,7 @@ export const reverseDcfHeadless: HeadlessPaneDefinition<"bundle"> = {
     // Without an EV nothing is valued at the price, so the report is dated by its price only when it shows one.
     const valuedAt = model.enterpriseValue != null ? regularSessionValuationTime(quote) : null;
     // A missing input names itself and the statement that would show it: a limit of the data, not an error.
-    const notes = [missingInputsNote(model.missing, args.symbols[0]!), model.enterpriseValueNote, ttmBaseNote(model)]
+    const notes = [missingInputsNote(model.missing, args.symbols[0]!), model.enterpriseValueNote, model.freeCashFlowBasis?.note, ttmBaseNote(model)]
       .filter((note): note is string => !!note);
     const evText = model.enterpriseValue == null ? needs(model.missing, "enterpriseValue") ?? "--"
       : `${formatCompactCurrency(model.enterpriseValue, currency)}${model.enterpriseValueSheet ? ` from the ${model.enterpriseValueSheet} balance sheet`
@@ -58,7 +58,8 @@ export const reverseDcfHeadless: HeadlessPaneDefinition<"bundle"> = {
           { label: "Past FCF growth", value: model.pastGrowth ? `${percent(model.pastGrowth.rate)} ${pastGrowthBasis(model.pastGrowth)}` : "--" },
           { label: "FCF yield", value: percent(model.fcfYield) },
           { label: "Enterprise value", value: evText },
-          { label: "Free cash flow, TTM", value: model.freeCashFlow == null ? needs(model.missing, "freeCashFlow") ?? "--"
+          // A trailing figure built from the year and the half, or a half-yearly reporter's latest year, by its period.
+          { label: `Free cash flow, ${model.freeCashFlowBasis?.label ?? "TTM"}`, value: model.freeCashFlow == null ? needs(model.missing, "freeCashFlow") ?? "--"
             : formatCompactCurrency(model.freeCashFlow, currency) },
         ] },
         // Nothing to vary without the inputs: the rows above say which are missing.

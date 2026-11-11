@@ -61,6 +61,20 @@ export function longerPeriodLabel(date: string, months: number, yearEndMonth: nu
 }
 
 /**
+ * A statement row's period as FA's columns name it: `FY2026`, `Q3 FY26`, and
+ * a half Gloom Cloud filled into the quarterly list `H1 FY26`, never a
+ * quarter's name.
+ */
+export function statementPeriodLabel(
+  statement: Pick<FinancialStatement, "date" | "filledFrom">,
+  kind: "annual" | "quarterly",
+  yearEndMonth: number | null,
+): string {
+  const months = kind === "quarterly" && statement.filledFrom?.source === "results" ? statement.filledFrom.periodMonths : undefined;
+  return months && months > 3 ? longerPeriodLabel(statement.date, months, yearEndMonth) : fiscalPeriodLabel(statement.date, kind, yearEndMonth);
+}
+
+/**
  * A trailing-twelve-month period by the quarter it runs to: `TTM Q3 FY26`; by
  * the half, `TTM H1 FY26`, when it was built from the year and a half since it.
  */

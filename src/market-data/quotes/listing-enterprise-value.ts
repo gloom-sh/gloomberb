@@ -26,6 +26,8 @@ export interface EnterpriseValueBridge {
   cashBasis: "cash and short-term investments" | "cash";
   /** Null where the balance sheet has no line to read it from: named, never counted as zero. */
   minority: number | null;
+  /** Gloom Cloud bridged from a balance sheet that is not among the statements here, so its lines cannot be read. */
+  sheetNotOnFile?: true;
   /**
    * A balance sheet in another currency, converted at the close of `from` in `to` on or before its date: `closeDate`
    * where we read it (withBalanceSheetRate); null for Gloom Cloud's bridge, which does not say.
@@ -139,15 +141,18 @@ function checkBridge(check: EnterpriseValueCheck, financials: EnterpriseValueInp
   const sheetDate = check.balanceSheetDate ?? "";
   const row = [...financials.quarterlyStatements ?? [], ...financials.annualStatements ?? []]
     .find((statement) => statement.date.slice(0, 10) === sheetDate);
-  // Gloom Cloud serves the line only where both equity lines give a positive figure; a sheet on file without them is named.
-  const minority = finite(check.minorityAndPreferred) ? check.minorityAndPreferred : row ? minorityOnSheet(row) : 0;
-  const shortTerm = !check.investmentsKept && (!row || finite(row.cashCashEquivalentsAndShortTermInvestments));
+  // Gloom Cloud serves the line only where both equity lines give a positive figure. A sheet on file without them, or
+  // one that is not on file, is named: never counted as zero.
+  const minority = finite(check.minorityAndPreferred) ? check.minorityAndPreferred : row ? minorityOnSheet(row) : null;
+  // The check says only when its cash is cash alone (investmentsKept); without the sheet, it is called cash.
+  const shortTerm = !check.investmentsKept && !!row && finite(row.cashCashEquivalentsAndShortTermInvestments);
   return {
     sheetDate, marketCap: check.marketCap ?? 0, totalDebt: check.totalDebt ?? 0, leases: check.leases ?? 0, cash: check.cash ?? 0,
     cashBasis: shortTerm ? "cash and short-term investments" : "cash", minority,
     fx: check.fx && check.currency && finite(check.fx.rate) ? { from: check.fx.from, to: check.currency, rate: check.fx.rate, closeDate: null } : null,
     source: finite(check.source) ? check.source : null,
     ...check.convertedTwice && check.convertedFrom ? { convertedTwice: check.convertedFrom } : {},
+    ...!row && sheetDate ? { sheetNotOnFile: true as const } : {},
   };
 }
 
@@ -267,7 +272,9 @@ export function enterpriseValueBridgeNote(listing: Extract<ListingEnterpriseValu
   if (listing.basis !== "computed" || !bridge) return null;
   const leases = bridge.leases > 0 ? ` + leases ${formatCompact(bridge.leases)}` : "";
   const minority = bridge.minority ? ` + minority interest and preferred equity ${formatCompact(bridge.minority)}` : "";
-  const noMinority = bridge.minority == null ? "; the balance sheet has no minority interest line, so none is added" : "";
+  const noMinority = bridge.minority != null ? ""
+    : bridge.sheetNotOnFile ? "; that balance sheet is not among the statements here, so its minority interest is not added"
+    : "; the balance sheet has no minority interest line, so none is added";
   const failed = bridge.convertedTwice ? `converts ${bridge.convertedTwice} to ${listing.currency} twice` : "failed validation against it";
   const source = bridge.source != null ? `, in place of the provider's ${formatCompact(bridge.source)}, which ${failed}` : ", the source's EV being withdrawn";
   return `EV ${formatCompact(listing.value)} ${listing.currency} is market cap ${formatCompact(bridge.marketCap)} + total debt ${formatCompact(bridge.totalDebt)}`
