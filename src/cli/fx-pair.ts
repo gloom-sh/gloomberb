@@ -25,7 +25,7 @@ export interface FxRequest {
 }
 
 /** A minor unit typed for a side of `fx`: its code as quotes write it (ZAc, GBp, ILA), and how many make one of the major currency. */
-export interface FxSubUnit {
+interface FxSubUnit {
   code: string;
   divisor: number;
 }
