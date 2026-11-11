@@ -9,13 +9,13 @@ import {
 } from "../../../components/chart/surface3d/model";
 import { colorBarLabels, placeSurface3DLabels, surface3DColorBarGeometry } from "../../../components/chart/surface3d/software";
 import { WebBox } from "./box";
+import { selectionStyle } from "./style";
 
-/** How far a label keeps from the chart's edges, in px. */
+/** How far a label keeps from the chart's edges, in px: the kit's smallest space (`--gloom-space-xs`). */
 const LABEL_INSET = 4;
 /** The colour bar's width, and the space between it and its labels, in px. */
 const COLOR_BAR_WIDTH = 8;
 const COLOR_BAR_LABEL_GAP = 3;
-import { selectionStyle } from "./style";
 
 // GLSL ES 1.00 so the same shaders run on WebGL2 and WebGL1 contexts.
 const PROJECT = `
