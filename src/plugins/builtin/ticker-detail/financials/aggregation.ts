@@ -1,4 +1,4 @@
-import type { EarningsField, FinancialStatement } from "../../../../types/financials";
+import type { EarningsField, FinancialStatement, TickerFinancials } from "../../../../types/financials";
 import { completeAvailability, statementFieldAvailability } from "../../../../utils/financial-statements";
 import { hasStatementGap } from "../../../../utils/statement-gaps";
 import { trailingEpsAcrossFiscalYearEnd } from "../../../../utils/trailing-eps";
@@ -7,8 +7,11 @@ export type FinancialPeriod = "annual" | "quarterly";
 
 export interface FinancialTableStatement extends FinancialStatement {
   aggregation?: {
-    kind: "trailing-four-quarters";
+    /** Four quarters summed, or (a half-yearly reporter) Gloom Cloud's year plus the half since it less a year earlier's. */
+    kind: "trailing-four-quarters" | "annual-plus-interim";
     periodEnd: string;
+    /** How an annual-plus-interim TTM was built: "FY to 2025-12-31 + 6 months to 2026-06-30 − 6 months to 2025-06-30". */
+    basis?: string;
     sourcePeriods: Array<Pick<FinancialStatement,
       "date" | "currency" | "dateSource" | "providerDate" | "dateEvidence" | "availableAt" | "fieldAvailability" | "fieldSources" | "unavailableFields" | "unavailableEarnings"
     >>;
@@ -268,6 +271,32 @@ export function trailingFourQuarters(
   const sorted = [...quarterlyStatements].sort((a, b) => a.date.localeCompare(b.date));
   const index = sorted.findIndex((statement) => statement.date === end);
   return index < 3 ? null : aggregateQuarterlyStatements(sorted.slice(index - 3, index + 1), "TTM", { quarterly: sorted, annual: annualStatements });
+}
+
+/**
+ * The trailing twelve months Gloom Cloud built where the quarters do not give
+ * them (a half-yearly reporter: FY2025 + H1 2026 − H1 2025), as a TTM column.
+ * Null when there is none or it ends no later than the latest year.
+ */
+export function servedTrailingStatement(
+  trailing: TickerFinancials["trailingStatement"],
+  annualStatements: readonly FinancialStatement[],
+): FinancialTableStatement | null {
+  if (!trailing) return null;
+  const periodEnd = trailing.date.slice(0, 10);
+  const latestYear = annualStatements.reduce((latest, row) => (row.date.slice(0, 10) > latest ? row.date.slice(0, 10) : latest), "");
+  if (periodEnd <= latestYear) return null;
+  const { trailing: how, date: _date, ...statement } = trailing;
+  return {
+    ...statement,
+    date: "TTM",
+    aggregation: {
+      kind: "annual-plus-interim",
+      periodEnd,
+      basis: how.basis,
+      sourcePeriods: [how.priorInterim.end, how.annual, how.interim.end].map((end) => ({ date: end, currency: statement.currency })),
+    },
+  };
 }
 
 export function computeTTM(quarterlyStatements: FinancialStatement[], annualStatements: readonly FinancialStatement[] = []) {

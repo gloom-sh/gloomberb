@@ -269,3 +269,34 @@ test("liabilities plus equity requires its own components and cannot copy total 
   expect(total.cells[0]!.valueText.trim()).toBe("—");
   expect(table.rows.find(({ summaryKey }) => summaryKey === "totalAssets")!.cells.map(({ value }) => value)).toEqual([130, 120, 110, 100]);
 });
+
+test("a half-yearly reporter's TTM is Gloom Cloud's year plus the half, when it is newer than the year", () => {
+  const trailing = {
+    date: "2026-06-30", currency: "CNY", totalRevenue: 40.42e9, netIncome: 13.24e9,
+    trailing: {
+      method: "annual-plus-interim" as const, annual: "2025-12-31",
+      interim: { end: "2026-06-30", months: 6 }, priorInterim: { end: "2025-06-30", months: 6 },
+      basis: "FY to 2025-12-31 + 6 months to 2026-06-30 − 6 months to 2025-06-30",
+    },
+  };
+  const financials = createTestFinancials({
+    annualStatements: [{ date: "2025-12-31", currency: "CNY", totalRevenue: 37.12e9, netIncome: 12.78e9 }],
+    // Halves, not quarters: no four-quarter sum.
+    quarterlyStatements: [
+      { date: "2025-06-30", currency: "CNY", totalRevenue: 13.88e9 },
+      { date: "2026-06-30", currency: "CNY", totalRevenue: 17.17e9 },
+    ],
+    trailingStatement: trailing,
+  });
+  const table = buildFinancialTableModel(financials, { period: "annual", statement: "income" })!;
+  expect(table.statements.map(({ date }) => date)).toEqual(["TTM", "2025-12-31"]);
+  expect(table.statements[0]).toMatchObject({
+    totalRevenue: 40.42e9,
+    aggregation: { kind: "annual-plus-interim", periodEnd: "2026-06-30", basis: trailing.trailing.basis },
+  });
+  // Not on the balance sheet, and not once the year it runs to is on file.
+  expect(buildFinancialTableModel(financials, { period: "annual", statement: "balance" })!.statements.map(({ date }) => date)).not.toContain("TTM");
+  const later = { ...financials, annualStatements: [...financials.annualStatements, { date: "2026-06-30", currency: "CNY", totalRevenue: 40e9 }] };
+  expect(buildFinancialTableModel(later, { period: "annual", statement: "income" })!.statements.map(({ date }) => date)).not.toContain("TTM");
+});
+

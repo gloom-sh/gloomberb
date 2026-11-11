@@ -845,7 +845,9 @@ const byDate = (statements: readonly FinancialStatement[]) => [...statements].so
 
 /** A ratio tab's columns: Income's periods, with TTM, newest first. */
 export function ratioStatements(financials: TickerFinancials, period: FinancialPeriod): FinancialTableStatement[] {
-  return selectFinancialStatements(period, "income", byDate(financials.annualStatements), byDate(financials.quarterlyStatements)).statements;
+  return selectFinancialStatements(
+    period, "income", byDate(financials.annualStatements), byDate(financials.quarterlyStatements), undefined, financials.trailingStatement,
+  ).statements;
 }
 
 /**
@@ -869,7 +871,7 @@ export function ratioTableForFinancials(
 ): RatioTableModel {
   const annual = byDate(financials.annualStatements);
   const quarterly = byDate(financials.quarterlyStatements);
-  const { statements } = selectFinancialStatements(period, "income", annual, quarterly);
+  const { statements } = selectFinancialStatements(period, "income", annual, quarterly, undefined, financials.trailingStatement);
   const currencies = createValuationCurrencyContext(financials);
   const price = (statement: FinancialTableStatement): RatioAmount => {
     const close = history ? periodEndClose(history, ratioPeriodEnd(statement)) : undefined;
