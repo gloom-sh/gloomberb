@@ -28,10 +28,13 @@ export interface ReverseDcfSources {
   exchangeAnnouncements?: ExchangeAnnouncementsReader;
 }
 
-const cloudSources: Required<ReverseDcfSources> = {
-  fxHistory: apiClient,
-  exchangeAnnouncements: (listing) => apiClient.getCloudExchangeAnnouncements({ ...listing, limit: RESULTS_ANNOUNCEMENT_LIMIT, kind: "results" }),
-};
+/** The sources read through a Gloom Cloud client: the app's, or a headless report's. */
+export function reverseDcfSources(client: FxHistoryClient & Pick<typeof apiClient, "getCloudExchangeAnnouncements">): Required<ReverseDcfSources> {
+  return {
+    fxHistory: client,
+    exchangeAnnouncements: (listing) => client.getCloudExchangeAnnouncements({ ...listing, limit: RESULTS_ANNOUNCEMENT_LIMIT, kind: "results" }),
+  };
+}
 
 /**
  * The ticker's fundamentals (TTM free cash flow, enterprise value) and statements, with the close a balance sheet in
@@ -40,7 +43,7 @@ const cloudSources: Required<ReverseDcfSources> = {
 export async function loadReverseDcfInputs(
   request: { instrument: InstrumentRef; signal?: AbortSignal; forceRefresh?: boolean },
   marketData?: DataProvider,
-  sources: ReverseDcfSources = cloudSources,
+  sources: ReverseDcfSources = reverseDcfSources(apiClient),
 ): Promise<ReverseDcfSnapshot> {
   if (request.signal?.aborted) throw abortError(CANCELLED);
   const now = Date.now();

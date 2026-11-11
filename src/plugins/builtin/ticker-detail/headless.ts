@@ -20,6 +20,7 @@ import {
 import { adrRatioText } from "../../../utils/depositary-receipt";
 import { paneSchemas } from "./headless-schema";
 import { loadPeriodEndHistory } from "./financials/period-end-history";
+import { loadExchangeResultsNotes } from "./financials/exchange-results";
 import { latestBalanceSheetDate, loadOfferingNote } from "./financials/offerings";
 import { reportsShortTermTotal, runwayMethod } from "../../../utils/cash-runway";
 import { logFailure } from "../../../utils/log-failure";
@@ -157,8 +158,9 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
     ];
     // The balance sheet's cash, when an offering since is not in it yet.
     const offering = table?.subTab.key === "balance" ? await reportOfferingNote(ctx, symbol, financials) : null;
-    // A latest period over 15 months old says how old it is.
+    // A latest period over 15 months old says how old it is; an HKEX company's, the announcement its results came in.
     const stale = table ? stalePeriodNote(financialStatementPeriods(table.statements, table.subTab)) : null;
+    const announced = table ? await reportExchangeResults(ctx, symbol, financials) : [];
     // Years filled from the listing's exchange, with the lines this table shows.
     const filled = table ? filledPeriodsNote(table.statements, financialSubTabFields(table.subTab)) : null;
     const periodDates = dates.map(({ date }) => date);
@@ -167,7 +169,7 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
       rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
       ...(missing ? { errors: [missing] } : {}),
       // The report closes with how old its latest period is, how far back its periods go, and how to read further.
-      notes: [...stale ? [stale] : [], ...filled ? [filled] : [], ...offering ? [offering] : [],
+      notes: [...announced, ...stale ? [stale] : [], ...filled ? [filled] : [], ...offering ? [offering] : [],
         ...statementHistoryNotes(requestedPeriod, periodDates, symbol, await reportOlderStatements(ctx, symbol, requestedPeriod, periodDates))],
       metadata: {
         symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null, unit: table?.unit ?? null, quoteCurrency: financials.quote?.currency ?? null,
@@ -236,6 +238,17 @@ async function reportOfferingNote(
   return resolveHeadlessInstrument(ctx, symbol)
     .then((listing) => loadOfferingNote(ctx.apiClient, listing, periodEnd, ctx.signal))
     .catch(logFailure("ticker-detail.headless", "Reading the offering filings failed", null));
+}
+
+/** An HKEX company's latest period and its results announcement (exchangeResultsNotes); a failed read leaves them out. */
+async function reportExchangeResults(
+  ctx: Parameters<typeof financialStatementsHeadless.load>[1],
+  symbol: string,
+  financials: Awaited<ReturnType<typeof loadHeadlessFinancials>>,
+): Promise<string[]> {
+  return resolveHeadlessInstrument(ctx, symbol)
+    .then((listing) => loadExchangeResultsNotes(ctx.apiClient, listing, latestBalanceSheetDate(financials)))
+    .catch(logFailure("ticker-detail.headless", "Reading the HKEXnews results announcements failed", [] as string[]));
 }
 
 /** A ratio tab as a report: each ratio, then its inputs, per period. */

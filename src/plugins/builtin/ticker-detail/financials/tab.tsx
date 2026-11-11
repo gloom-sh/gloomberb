@@ -60,6 +60,7 @@ import {
   type RatioAmount,
 } from "./ratios";
 import { PeriodEndHistoryLoader, RatioTable, ratioMetricColumn, type PeriodEndHistoryState, type RatioTableColumn } from "./ratio-table";
+import { useExchangeResultsNotes } from "./exchange-results";
 import { latestBalanceSheetDate, useOfferingNote } from "./offerings";
 import { useBoundTicker } from "../../shared/ticker-request";
 import { createValuationCurrencyContext } from "../../../../time-series/valuation-currency";
@@ -458,6 +459,8 @@ export function ResolvedFinancialsTab({
 
   // The Balance Sheet and Liquidity show cash, which an offering filed since the latest balance sheet is not in yet.
   const { symbol: boundSymbol, exchange: boundExchange } = useBoundTicker();
+  // An HKEX company's latest period dated by its results announcement, and what was announced after it.
+  const exchangeResults = useExchangeResultsNotes(boundSymbol, boundExchange, latestBalanceSheetDate(financials));
   const offeringNote = useOfferingNote(boundSymbol, boundExchange, latestBalanceSheetDate(financials),
     !!financials && (section.key === "balance" || section.key === "liquidity"));
 
@@ -479,6 +482,7 @@ export function ResolvedFinancialsTab({
     registrationId: "financials-notices",
     notices: [
       ...(notInYetLine ? [notInYetLine] : []),
+      ...exchangeResults,
       ...(stalePeriod ? [stalePeriod] : []),
       ...(filledPeriods ? [filledPeriods] : []),
       ...financialStatementLimitations(financials),

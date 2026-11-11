@@ -3,7 +3,7 @@ import { regularSessionValuationTime } from "../../../market-data/quotes/regular
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { formatCompactCurrency } from "../../../utils/format";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
-import { loadReverseDcfInputs } from "./client";
+import { loadReverseDcfInputs, reverseDcfSources } from "./client";
 import { describeFcfMargin, DISCOUNT_RATES, missingInputsNote, pastGrowthBasis, projectReverseDcf, TERMINAL_GROWTH, TERMINAL_GROWTHS, ttmBaseNote,
   type ImpliedGrowth, type MissingInput } from "./model";
 
@@ -29,7 +29,7 @@ export const reverseDcfHeadless: HeadlessPaneDefinition<"bundle"> = {
   ],
   async load(args, ctx) {
     const instrument = await resolveHeadlessInstrument(ctx, args.symbols[0]!);
-    const inputs = await loadReverseDcfInputs({ instrument, signal: ctx.signal }, ctx.marketData);
+    const inputs = await loadReverseDcfInputs({ instrument, signal: ctx.signal }, ctx.marketData, reverseDcfSources(ctx.apiClient));
     ctx.signal.throwIfAborted();
     const discountRate = (Number(args.options.discountRate) || 9) / 100;
     const chosenMargin = Number(args.options.margin);
