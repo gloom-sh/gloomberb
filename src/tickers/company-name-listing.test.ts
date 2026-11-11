@@ -193,7 +193,7 @@ test("a company's name is its own common stock on its US line, never a subsidiar
     listing("WHR", "Whirlpool Corp", "NYSE"),
   ];
   expect(await findListingOfCompanyName({ search: async () => whirlpool }, "Whirlpool Corporation"))
-    .toEqual({ symbol: "WHR", exchange: "NYSE", name: "Whirlpool Corp" });
+    .toEqual({ symbol: "WHR", exchange: "NYSE", name: "Whirlpool Corp", otherLines: ["WHR:XETRA"] });
   // The preferred and the note have the shorter symbols, which would otherwise go first.
   const acme = [
     listing("AC", "Acme Corp", "NYSE", "Preferred Stock"),
@@ -323,3 +323,22 @@ test("the BIST 100 is the index named so, not a sub-index whose name adds to it,
     .toMatchObject({ kind: "provider", symbol: "GUBRF.IS" });
 });
 
+
+test("a company listed twice under one symbol names its other line, never another venue quoting it or another company's", async () => {
+  // Elbit Systems, as search answered on 11 Nov 2026: its Nasdaq home line, its Tel Aviv line, IEX and Frankfurt quoting them.
+  const elbit = [
+    row("ESLT | Elbit Systems Ltd. | NASDAQ | Common Stock | home"),
+    row("ESLT | Elbit Systems Ltd. | TASE | Common Stock"),
+    row("ESLT | Elbit Systems Ltd. | IEX | Common Stock"),
+    row("EB2 | Elbit Systems Ltd. | FWB2 | Common Stock"),
+  ];
+  expect(await findListingOfCompanyName({ search: async () => elbit }, "Elbit Systems"))
+    .toMatchObject({ symbol: "ESLT", exchange: "NASDAQ", otherLines: ["ESLT:TASE"] });
+  // MTN Group's other lines are over the counter and in Germany: none is named.
+  const mtn = [
+    row("MTN | MTN Group Ltd. | JSE | Common Stock | home"),
+    row("MTNOF | MTN Group Ltd. | OTC | Common Stock"),
+    row("LL6 | MTN Group Ltd. | XDUS | Common Stock"),
+  ];
+  expect((await findListingOfCompanyName({ search: async () => mtn }, "MTN Group"))?.otherLines).toBeUndefined();
+});

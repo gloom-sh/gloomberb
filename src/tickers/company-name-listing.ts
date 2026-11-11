@@ -35,6 +35,14 @@ export interface CompanyNameListing {
    * change in one line, "GETY became GETYQ on 2026-10-22".
    */
   moved?: string;
+  /**
+   * The company's own lines on other venues, where it is listed more than
+   * once under one symbol and name (ESLT:TASE beside ESLT:NASDAQ), as
+   * `SYM:EXCH`: never a line quoting
+   * shares listed elsewhere (a regional German venue, OTC), a receipt, or a US
+   * line's other US venues, which quote the same shares.
+   */
+  otherLines?: string[];
 }
 
 /**
@@ -188,6 +196,9 @@ function rankCompanyLines(name: string, results: readonly InstrumentSearchResult
 
 type RankedCompanyLine = ReturnType<typeof rankCompanyLines>[number];
 
+/** At most this many of a company's other lines are named (`CompanyNameListing.otherLines`). */
+const MAX_OTHER_LINES = 2;
+
 /**
  * The listing `findListingOfCompanyName` settles on from its first pick: the
  * company's primary line, a quoted one, or the line it moved to.
@@ -244,8 +255,22 @@ async function settleCompanyListing(
       ...namedByService(name, best.result) ? { named: true as const } : {},
       ...best.home ? { home: true as const } : {},
     };
+  // The same symbol under the same name: a line under another symbol or name can be another company's (AEON on AMEX
+  // beside Aeon Co.'s 8267 on JPX), however alike the names.
+  const bestSymbol = suffixFree(best.result.symbol.toUpperCase(), best.exchange);
+  const otherLines = quoted.moved || best.stock ? [] : [...new Set(companyLines(best, listed, lineFacts).flatMap((listing) => {
+    if (listing === best || listing.stock || listing.exchange === best.exchange || otherHomes.has(plainName(listing.result.name))) return [];
+    if (plainName(listing.result.name) !== plainName(best.result.name)) return [];
+    if (suffixFree(listing.result.symbol.toUpperCase(), listing.exchange) !== bestSymbol) return [];
+    if (lineDistance(listedType(listing.result), listing.exchange, listing.result.symbol) !== 0) return [];
+    // Over the counter, a line quotes shares listed elsewhere; so does another US venue of a US line (IEX).
+    if (listing.exchange.startsWith("OTC") || listing.exchange === "PNK" || listing.exchange === "PINK") return [];
+    if (isUsVenue(best.exchange) && (isUsVenue(listing.exchange) || isUsEquityExchange(listing.exchange))) return [];
+    return [`${suffixFree(listing.result.symbol.toUpperCase(), listing.exchange)}:${listing.exchange}`];
+  }))].slice(0, MAX_OTHER_LINES);
+  const listing = otherLines.length ? { ...found, otherLines } : found;
   const meant = best.stock && options.meant ? await stockNamedRunTogether(dataProvider, name, results) : null;
-  return meant ? { ...found, meant } : found;
+  return meant ? { ...listing, meant } : listing;
 }
 
 /**

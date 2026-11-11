@@ -17,6 +17,7 @@ import {
   futuresTryLine,
   isNoProviderError,
   isUnsettledNoProvider,
+  joinCompanyNameWords,
   listingChoiceNotes,
   ListingArgError,
   loadBareVenues,
@@ -225,6 +226,32 @@ async function answerCompanyName(
 }
 
 /**
+ * `quote`'s rows with each run of words typed apart that names one company
+ * (`joinCompanyNameWords`: "MTN Group") made one row of that company, where a
+ * word of it was read as a company's name alone ("Group" as UnitedHealth
+ * Group). `asked` is each row's listing as asked for, in the same order; both
+ * come back joined alike. A run whose company has no quote keeps its words.
+ */
+export async function withJoinedCompanyNames(
+  answers: readonly QuoteAnswer[],
+  asked: readonly CliListing[],
+  market: MarketContext,
+  request: ListingDataRequest,
+  refresh: boolean,
+  datesChangeBasis: boolean,
+): Promise<{ answers: QuoteAnswer[]; asked: CliListing[] }> {
+  const entries = answers.map((answer, index) => ({ typed: asked[index]!.typed ?? asked[index]!.symbol, listing: answer.listing, answer, asked: asked[index]! }));
+  if (!entries.some((entry) => entry.listing.wordAsName)) return { answers: [...answers], asked: [...asked] };
+  const joined = await joinCompanyNameWords(entries, market);
+  const rows = await Promise.all(joined.map(async (entry) => {
+    if (!("joined" in entry)) return [{ answer: entry.answer, asked: entry.asked }];
+    const answer = await answerNamedListing(entry.joined, market, request, refresh, datesChangeBasis);
+    return answer ? [{ answer, asked: { ...answer.listing, typed: entry.typed } }] : entry.words.map((word) => ({ answer: word.answer, asked: word.asked }));
+  }));
+  return { answers: rows.flat().map((row) => row.answer), asked: rows.flat().map((row) => row.asked) };
+}
+
+/**
  * The row of the listing a company's name was read as (`named`), saying so;
  * null when the app cannot read its venue or it has no quote.
  */
@@ -240,7 +267,8 @@ async function answerNamedListing(
     if (error instanceof ListingArgError) return null;
     throw error;
   });
-  const found = resolved ? { ...resolved, readAs: named.readAs, ...named.meant ? { meant: named.meant } : {}, ...named.readFromName ? { readFromName: named.readFromName } : {} } : null;
+  const found = resolved ? { ...resolved, readAs: named.readAs, ...named.meant ? { meant: named.meant } : {}, ...named.readFromName ? { readFromName: named.readFromName } : {},
+    ...named.wordAsName ? { wordAsName: named.wordAsName } : {} } : null;
   const [quoted] = found ? await market.dataProvider.getQuotesBatch([found.request], { forceRefresh: refresh, revalidate: true, datesChangeBasis }) : [];
   return found && quoted?.quote ? answerQuote(quoted, found, market, request, refresh, null, { datesChangeBasis }) : null;
 }
@@ -270,7 +298,8 @@ export async function requireQuotedListing(
   ctx: Pick<Parameters<CliCommandDef["execute"]>[1], "fail">,
   command: string,
 ): Promise<QuotedListing> {
-  const listing = await requireCliListing(raw, exchange, market, ctx);
+  // A word that names a company is read after the quote, as `quote` reads it.
+  const listing = await requireCliListing(raw, exchange, market, ctx, { companyWord: false });
   const venues = loadBareVenues(listing, market);
   const [result] = await market.dataProvider.getQuotesBatch([listing.request], { revalidate: true });
   const answer = await answerQuote(result ?? { target: listing.request, quote: null }, listing, market, { command, noun: "quote" }, false, venues);

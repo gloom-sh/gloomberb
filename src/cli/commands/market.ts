@@ -286,6 +286,8 @@ import {
   isTitleCaseWord,
   requireCliListing,
   resolveCliListing,
+  joinCompanyNameWords,
+  resolveNamedListing,
   type CliListing,
   type ListingIdentity,
 } from "../listing-arg";
@@ -324,7 +326,7 @@ import {
 import { noSecReportsNotice, nonUsSecListingVenue, secFilingItemCodes } from "../../utils/sec";
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
-import { answerQuote, errorMessage, notUsTickerSentence } from "../quote-answer";
+import { answerQuote, errorMessage, notUsTickerSentence, withJoinedCompanyNames } from "../quote-answer";
 import { crossRate, describeFxConversion, describeFxLegs, describeFxRate, formatFxAmount, formatFxRate, FX_USAGE, fxSideCode, fxUnitRate, parseFxArgs, type FxQuotedFigure, type FxRequest } from "../fx-pair";
 import {
   describeCarrySides,
@@ -1149,10 +1151,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     }
     // With several symbols, --exchange is for the ones that name no exchange of their own, and one that names no
     // listing (EQT:NYSE:US) is named in a line while the others are quoted.
+    // A word that names a company is read once its quote says no listing trades as it (answerQuote).
     const resolvedListings = await Promise.all(symbols.filter((symbol) => !notASymbolError(symbol)).map(async (symbol) => {
-      if (symbols.length === 1) return { symbol, listing: await requireCliListing(symbol, exchange, market, ctx) };
+      if (symbols.length === 1) return { symbol, listing: await requireCliListing(symbol, exchange, market, ctx, { companyWord: false }) };
       try {
-        return { symbol, listing: await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true }) };
+        return { symbol, listing: await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true, companyWord: false }) };
       } catch (error) {
         if (error instanceof ListingArgError) return { symbol, error };
         throw error;
@@ -1177,12 +1180,14 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     // Each row prints what its move is from (Chg Basis).
     const results = await market.dataProvider.getQuotesBatch(targets, { forceRefresh: ctx.cliOptions.refresh, revalidate: true, datesChangeBasis: true });
     const listingOf = (result: QuoteBatchResult, index: number) => listings[targets.indexOf(result.target)] ?? listings[index]!;
-    const asked = results.map(listingOf);
     const request = { command: commandName, noun: "quote" };
-    const answers = await Promise.all(results.map((result, index) => {
-      const listing = asked[index]!;
+    const quoted = await Promise.all(results.map((result, index) => {
+      const listing = listingOf(result, index);
       return answerQuote(result, listing, market, request, ctx.cliOptions.refresh, venues.get(listing) ?? null, { datesChangeBasis: true });
     }));
+    // "MTN Group" typed apart is MTN Group, one row, where "Group" alone would read as UnitedHealth Group.
+    const { answers, asked } = listed ? { answers: quoted, asked: results.map(listingOf) }
+      : await withJoinedCompanyNames(quoted, results.map(listingOf), market, request, ctx.cliOptions.refresh, true);
     const now = Date.now();
     const symbolChanges = await Promise.all(answers.map(async ({ result }, index) => {
       const listing = asked[index]!;
@@ -2297,9 +2302,21 @@ async function runHistoryList(
     if (symbols.length === 0) ctx.fail(refused.length === 1 ? refused[0]!.message : `No history to read: ${refusedList(refused)} are not symbols.`, usage);
     // A long list is a batch, not a lookup: it skips the per-symbol venue and moved-company lookups, as `quote` does.
     const lookups = symbols.length <= MAX_CHOICE_LOOKUPS;
-    const listed = await mapWithConcurrency(symbols, HISTORY_LIST_CONCURRENCY, async (symbol): Promise<ListedHistory> => {
+    const read = await mapWithConcurrency(symbols, HISTORY_LIST_CONCURRENCY, async (symbol) => {
       try {
-        const listing = await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true });
+        return { typed: symbol, listing: await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true }) };
+      } catch (error) {
+        return { typed: symbol, listing: null, error };
+      }
+    });
+    // Words typed apart that name one company ("Elbit Systems") are its listing, as `quote` reads them.
+    const typedList = file === undefined && !args.includes("-") && !exchange;
+    const entries = typedList ? await joinCompanyNameWords(read, market) : read;
+    const listed = await mapWithConcurrency(entries, HISTORY_LIST_CONCURRENCY, async (entry): Promise<ListedHistory> => {
+      const symbol = entry.typed;
+      try {
+        if (!("joined" in entry) && !entry.listing) throw entry.error;
+        const listing = "joined" in entry ? await resolveNamedListing(entry.joined, market) : entry.listing!;
         return { symbol, history: await loadListingHistory(listing, market, ctx, ask, { lookups }) };
       } catch (error) {
         const message = errorMessage(error) ?? `No history for ${symbol}`;
@@ -3799,7 +3816,6 @@ async function runFxOnDate(
 ) {
   const { request, amount, toUsdByDefault } = parsed;
   const { currency, baseCurrency } = request;
-  const pair = `${currency}/${baseCurrency}`;
   const history = market.fxHistory ?? apiClient;
   const codes = [...new Set([currency, baseCurrency].filter((code) => code !== "USD"))];
   const legs = new Map<string, FxCloseReading>([["USD", { rate: 1, date }]]);

@@ -206,7 +206,7 @@ test("quote, RV and valuation read the same close after hours, with the extended
     expect(quotesFreshness([quote], undefined, saturday)).toMatchObject({ asOfClose: "2026-10-09" });
   });
   expect(renderHeadlessPaneText(relativeValuationHeadless, peers, args, "Relative Valuation"))
-    .toMatch(/NEM +\$117\.15 +-0\.59% +\$116\.96 -0\.16% +124\.43B USD/);
+    .toMatch(/NEM +- +\$117\.15 +-0\.59% +\$116\.96 -0\.16% +124\.43B USD/);
   expect(deriveHeadlessFreshness(relativeValuationHeadless, peers, saturday)).toMatchObject({ asOfClose: "2026-10-09" });
   setSystemTime();
 });
