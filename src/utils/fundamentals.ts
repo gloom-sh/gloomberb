@@ -234,6 +234,8 @@ const OVERVIEW_ENTERPRISE_VALUE_GAP = 0.1;
 export function enterpriseValueReconciliationNote(
   fundamentals: Parameters<typeof reportedEnterpriseValue>[0],
   currency: string | undefined = fundamentals?.marketCapCurrency,
+  /** The statements on file, whose balance sheet says what the check's cash holds (checkCashBasis). */
+  statements?: BalanceSheets,
 ): string | undefined {
   const notMeaningful = enterpriseValueNotMeaningful(fundamentals);
   // A bank's EV line says it all: "n/m for banks".
@@ -255,25 +257,46 @@ export function enterpriseValueReconciliationNote(
   const basis = `market cap + total debt${leases} - cash${sheet}`;
   // The EV shown is the bridge: its inputs, and the provider's figure it stands in for. The provider's shown needs none.
   if (check.status === "differs") {
-    return bridgeStandsIn(check, currency) ? `${computedEnterpriseValueInputs(check, sheet)}, in place of the provider's ${formatCompact(check.source)}.` : undefined;
+    return bridgeStandsIn(check, currency)
+      ? `${computedEnterpriseValueInputs(check, sheet, checkCashBasis(check, statements))}, in place of the provider's ${formatCompact(check.source)}.`
+      : undefined;
   }
   const ratio = check.computed > 0 ? ` is ${(check.source / check.computed).toFixed(1)}x` : " is far from";
   const twice = check.convertedTwice && check.convertedFrom ? `; it converts ${check.convertedFrom} to ${check.currency} twice` : "";
   return `EV unavailable: the provider's ${source}${ratio} the ${computed} computed from ${basis}${twice}.`;
 }
 
+/** The balance sheets a note reads to say what a check's cash holds. */
+type BalanceSheets = Partial<Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">>;
+
+/**
+ * What the cash in Gloom Cloud's bridge holds: cash and short-term investments where its balance sheet is on file and
+ * reports that total, which Gloom Cloud takes before cash alone. Cash where the check keeps investments in, and where
+ * the sheet is not on file: the check does not say, so the note claims no more than cash.
+ */
+export function checkCashBasis(
+  check: Pick<EnterpriseValueCheck, "balanceSheetDate" | "investmentsKept">,
+  statements?: BalanceSheets,
+): "cash and short-term investments" | "cash" {
+  const sheetDate = check.balanceSheetDate?.slice(0, 10);
+  if (check.investmentsKept || !sheetDate) return "cash";
+  const row = [...statements?.quarterlyStatements ?? [], ...statements?.annualStatements ?? []]
+    .find((statement) => statement.date.slice(0, 10) === sheetDate);
+  return row && finiteNumber(row.cashCashEquivalentsAndShortTermInvestments) ? "cash and short-term investments" : "cash";
+}
+
 /**
  * "EV 7.48B USD is market cap 8.22B + total debt 864.07M - cash and short-term investments 1.6B (balance sheet
  * 2026-06-30)": the bridge with its inputs, each where the check carries it, minority interest and preferred equity
- * among them where the balance sheet shows any.
+ * among them where the balance sheet shows any, and its cash as checkCashBasis reads it.
  */
-function computedEnterpriseValueInputs(check: EnterpriseValueCheck, sheet: string): string {
+function computedEnterpriseValueInputs(check: EnterpriseValueCheck, sheet: string, cashBasis: ReturnType<typeof checkCashBasis>): string {
   const part = (label: string, value: number | undefined) => finiteNumber(value) ? `${label} ${formatCompact(value)}` : label;
   const leases = finiteNumber(check.leases) && check.leases > 0 ? ` + ${part("leases", check.leases)}` : "";
   const minority = minorityAndPreferred(check);
   const equity = minority > 0 ? ` + ${part("minority interest and preferred equity", minority)}` : "";
   return `EV ${formatCompact(bridgeEnterpriseValue(check)!)} ${check.currency} is ${part("market cap", check.marketCap)} + ${part("total debt", check.totalDebt)}${leases}`
-    + ` - ${part("cash and short-term investments", check.cash)}${equity}${sheet}`;
+    + ` - ${part(cashBasis, check.cash)}${equity}${sheet}`;
 }
 
 /**

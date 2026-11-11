@@ -49,7 +49,7 @@ describe("reverse DCF", () => {
     const model = projectReverseDcf({ ...financials(fundamentals), quote }, { symbol: "X", discountRate: 0.09, fcfMargin: 0.25 });
     // Only the equity part moves: 100 off the cap, so the provider's 1,800 against 2,050 computed; the growth is solved at 2,050.
     expect(model).toMatchObject({ enterpriseValue: 2_050, error: null, implied: solveImpliedGrowth(2_050, 100, 0.09, 0.025) });
-    expect(model.enterpriseValueNote).toBe("EV 2k USD is market cap 2k + total debt 100 - cash and short-term investments 50, in place of the provider's 1.8k.");
+    expect(model.enterpriseValueNote).toBe("EV 2k USD is market cap 2k + total debt 100 - cash 50, in place of the provider's 1.8k.");
     const growth = model.implied?.kind === "rate" ? model.implied.value : NaN;
     expect(model.impliedRevenue).toBeCloseTo(100 * (1 + growth) ** FORECAST_YEARS / 0.25, 6);
 

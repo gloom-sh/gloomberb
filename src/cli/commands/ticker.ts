@@ -947,7 +947,8 @@ const TRAILING_MONEY_METRICS = new Set(["EPS (TTM)", "Revenue (TTM)", "Net Incom
  * the regular session price (atRegularSessionPrice), the figures the lines show, so each note reads those.
  */
 function fundamentalsNotes(
-  priced: Pick<TickerFinancials, "quote" | "fundamentals">,
+  /** With the statements where the report has them: the balance sheet says what a bridge's cash holds. */
+  priced: Pick<TickerFinancials, "quote" | "fundamentals"> & Partial<Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">>,
   metrics: readonly FundamentalsMetric[],
   quoteCurrency: string | undefined,
   /** The bridge's inputs, or what it lacks, where the EV is not the one served (listingEnterpriseView). */
@@ -970,7 +971,7 @@ function fundamentalsNotes(
   const bridged = metrics.some((metric) => metric.label === "Enterprise Value" && typeof metric.value === "number")
     && enterpriseValueLabel(fundamentals) === "unavailable";
   const enterpriseValue = shown("Enterprise Value") && !metrics.some((metric) => metric.text === BANK_ENTERPRISE_VALUE)
-    ? bridged ? listingNote : [enterpriseValueReconciliationNote(fundamentals, enterpriseValueCurrency(priced.quote, fundamentals))
+    ? bridged ? listingNote : [enterpriseValueReconciliationNote(fundamentals, enterpriseValueCurrency(priced.quote, fundamentals), priced)
       ?? computedEnterpriseValueNote(fundamentals), listingNote].filter(Boolean).join(" ") || undefined
     : undefined;
   // A cap Gloom Cloud withheld says why, as RV and EQS do.
