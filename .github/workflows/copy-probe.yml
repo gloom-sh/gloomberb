@@ -1,0 +1,60 @@
+name: Copy probe
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/copy-probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-26.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+      - name: Environment
+        run: |
+          uname -a
+          echo "TMPDIR=${TMPDIR:-unset}"
+          bun -e 'console.log("tmpdir", require("os").tmpdir())'
+          findmnt -T /tmp || true
+          command -v strace || (sudo apt-get update -qq && sudo apt-get install -y -qq strace)
+      - name: copyFileSync onto a folder
+        run: |
+          cat > "$RUNNER_TEMP/probe.ts" <<'EOF'
+          import fs from "fs";
+          import os from "os";
+          import path from "path";
+          const dir = fs.mkdtempSync(path.join(os.tmpdir(), "probe-"));
+          const src = path.join(dir, "desktop-windows.json");
+          fs.writeFileSync(src, "{\"version\":1");
+          fs.mkdirSync(`${src}.bak`);
+          let stage = "call";
+          try {
+            fs.copyFileSync(src, `${src}.bak`);
+            stage = "returned";
+            process.stdout.write("copyFileSync returned without throwing\n");
+            stage = "after write";
+            fs.existsSync(dir);
+            stage = "after existsSync";
+          } catch (error: any) {
+            process.stdout.write(`threw at stage ${stage}: ${error?.code} ${error?.syscall} ${error?.message}\n`);
+          }
+          const bak = fs.statSync(`${src}.bak`);
+          process.stdout.write(`bak: dir=${bak.isDirectory()} file=${bak.isFile()} size=${bak.size}\n`);
+          if (bak.isDirectory()) process.stdout.write(`bak entries: ${JSON.stringify(fs.readdirSync(`${src}.bak`))}\n`);
+          process.stdout.write(`dir entries: ${JSON.stringify(fs.readdirSync(dir))}\n`);
+          EOF
+          strace -f -o "$RUNNER_TEMP/trace.txt" bun "$RUNNER_TEMP/probe.ts"
+          grep -n -E "probe-|copy_file_range|sendfile|FICLONE|ftruncate|fchmod" "$RUNNER_TEMP/trace.txt" | grep -v -E "\.so|/proc/|/sys/" | tail -60
+      - name: The backup test under strace
+        run: |
+          strace -f -o "$RUNNER_TEMP/test-trace.txt" bun test src/renderers/electrobun/bun/desktop/screen-setup-backup.test.ts || true
+          grep -n -E "gloom-screen-setup-|copy_file_range|sendfile|FICLONE" "$RUNNER_TEMP/test-trace.txt" | tail -60
