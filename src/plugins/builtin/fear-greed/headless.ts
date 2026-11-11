@@ -3,6 +3,8 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
+import { isTransientFailure } from "../../../api-client/errors";
+import { servedFromSavedCopy } from "../../../data/saved-copies";
 import { httpFetch } from "../../../utils/http-transport";
 import { loadFearGreed, type FearGreedLoadResult } from "./cache";
 import { fetchFearGreedData, type FearGreedData } from "./data";
@@ -73,12 +75,16 @@ export function createFearGreedHeadless(
     async load(args, ctx) {
       const result = await dependencies.load(args, ctx.signal);
       const projected = projectFearGreedHeadless(result.data);
+      // A copy kept for a refresh that could not get through (offline, a timeout) ends the report with when it was
+      // saved, as other reports do; any other failure stays an error beside the old reading.
+      const savedCopy = result.source === "stale-fallback" && isTransientFailure(result.error);
+      const metadata = { fetchedAt: result.fetchedAt, stale: result.stale };
       return {
         ...projected,
-        ...(result.refreshError ? { errors: [result.refreshError] } : {}),
+        ...(result.refreshError && !savedCopy ? { errors: [result.refreshError] } : {}),
         // A cached index the refresh could not replace is stale; otherwise CNN's published reading.
         freshness: { source: "CNN", status: result.stale ? "stale" : "not-a-feed", basis: "published index" },
-        metadata: { fetchedAt: result.fetchedAt, stale: result.stale },
+        metadata: savedCopy ? servedFromSavedCopy(metadata, result.fetchedAt) : metadata,
       };
     },
   };

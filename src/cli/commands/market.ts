@@ -1,4 +1,5 @@
 import { logFailure } from "../../utils/log-failure";
+import { isTransientFailure } from "../../api-client/errors";
 import { normalizeTickerSymbol } from "../../tickers/search/ranking";
 import type { CliCommandDef } from "../../types/plugin";
 import { TIME_RANGES, type TimeRange } from "../../time-series/range";
@@ -3740,8 +3741,10 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
           cacheMode: refresh ? "refresh" : "default", adjustedOptions: true,
         }) };
       }
+      // A command answers once, so it asks the service as a quote does; the chain saved earlier stands in only when
+      // the request fails, and the closing line then says when it was saved.
       const cached = await market.dataProvider.getCachedQuery?.("getOptionsChain", [symbol, exchange, expiry, undefined])
-        .load({ force: refresh });
+        .load({ force: true });
       return {
         result: cached,
         chain: cached?.value ?? await market.dataProvider.getOptionsChain(symbol, exchange, expiry, {
@@ -3802,8 +3805,9 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const basisFields = optionsBasisFields(basis);
     const currency = [...chain.calls, ...chain.puts].find((contract) => contract.currency?.trim())?.currency.trim().toUpperCase()
       ?? quote?.currency ?? null;
-    // A failed refresh falls back to the stored chain, which can be days old.
-    const refreshWarning = result?.refreshError == null ? null
+    // A failed refresh falls back to the stored chain, which can be days old. One that could not get through
+    // (offline, a timeout) is a saved copy the closing line dates; any other failure is said here.
+    const refreshWarning = result?.refreshError == null || isTransientFailure(result.refreshError) ? null
       : `Options refresh failed; showing the chain stored ${new Date(result.fetchedAt).toISOString()}`
         + (chain.asOf ? ` (last trade ${chain.asOf})` : "");
     const sessionWarning = refreshWarning ? null : priorSessionChainWarning(chain, identity.exchange, Date.now());

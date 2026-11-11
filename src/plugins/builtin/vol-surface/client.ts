@@ -1,6 +1,6 @@
 import { apiClient } from "../../../api-client";
 import { createTtlCache } from "../../../data/ttl-cache";
-import { getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
+import { getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValue, savedCopyEntryAt } from "../../../market-data/coordinator";
 import type { InstrumentRef, OptionsRequest } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { DataProvider } from "../../../types/data-provider";
@@ -17,7 +17,6 @@ import { errorMessage } from "../../../utils/errors";
 import { expiredExpiryText, findListedExpiry, isLiveOptionExpiry, liveOptionExpiries, optionExpiryVenue, unlistedExpiryText } from "../../../utils/option-expiry";
 import { optionModelSpot } from "../options/model-spot";
 import { logFailure } from "../../../utils/log-failure";
-import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../../../utils/network-failure";
 import { listedCoinOptions } from "../../../market-data/options-alternatives";
 
 const DEFAULT_SURFACE_EXPIRY_LIMIT = 18;
@@ -126,14 +125,9 @@ export interface SurfaceLoadRequest {
 
 const CANCELLED = "Surface load was cancelled";
 
-/**
- * A chain kept from an earlier load because asking again failed for a reason
- * a retry may get past (no connection, a timeout): a saved copy, shown as
- * one, rather than an error. A refusal stays the error it is.
- */
+/** A chain kept from an earlier load because asking again could not get through: a saved copy, not an error. */
 function savedCopyEntry(entry: QueryEntry<OptionsChain> | undefined): entry is QueryEntry<OptionsChain> {
-  return !!entry?.error && entry.fetchedAt != null && !!resolveEntryValue(entry)
-    && (entry.error.reasonCode === "TIMEOUT" || entry.error.message === DATA_SERVICE_UNREACHABLE_MESSAGE || isNetworkFailure(entry.error.message));
+  return savedCopyEntryAt(entry) != null;
 }
 
 /**

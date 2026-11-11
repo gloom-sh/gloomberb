@@ -6,6 +6,7 @@ import { fetchHistoryResult, type HistoryResultRequest } from "../../sources/his
 import type { ChartRequest, InstrumentRef, OptionsRequest, SecFilingsRequest } from "../request-types";
 import { QueryStore, type QueryStoreRetention } from "../query-store";
 import type { QueryEntry } from "../result-types";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../../utils/network-failure";
 import type { CachedQueryHandle } from "../../data/cached-query";
 import {
   buildArticleSummaryKey,
@@ -1109,4 +1110,16 @@ export function resolveTickerFinancialsForInstrument(instrument: InstrumentRef |
 
 export function resolveEntryValue<T>(entry: QueryEntry<T>): T | null {
   return resolveEntryData(entry);
+}
+
+/**
+ * When `entry`'s data was saved, if it is kept from an earlier load because
+ * asking again failed for a reason a retry may get past (no connection, a
+ * timeout): a saved copy, shown as one rather than as an error. Null
+ * otherwise; a refusal stays the error it is.
+ */
+export function savedCopyEntryAt<T>(entry: QueryEntry<T> | null | undefined): number | null {
+  if (!entry?.error || entry.fetchedAt == null || !resolveEntryData(entry)) return null;
+  const { reasonCode, message } = entry.error;
+  return reasonCode === "TIMEOUT" || message === DATA_SERVICE_UNREACHABLE_MESSAGE || isNetworkFailure(message) ? entry.fetchedAt : null;
 }
