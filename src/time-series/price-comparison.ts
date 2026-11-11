@@ -1,6 +1,7 @@
 import { scalarPointValue } from "./alignment";
 import { getTimeSeriesField } from "./field-catalog";
 import type { ChartSpec, ResolvedSeries, TimeSeriesPoint } from "./types";
+import type { SplitAction } from "../types/financials";
 import { CHART_RESOLUTION_STEP_MS, chartBarSizeSource, getChartResolutionLabel, isIntradayResolution, type ManualChartResolution } from "./resolution";
 import type { TimeRange } from "./range";
 import { zonedDateTimeParts } from "../utils/zoned-date-time";
@@ -205,6 +206,42 @@ export function priceLevelsNotice(spec: ChartSpec, series: readonly ResolvedSeri
   return `Total return levels in ${target ?? "each listing's currency"}: prices include cash distributions reinvested at the ex-date close, so they are not quoted prices; ${
     conversion ?? (target ? "none needed converting" : "FX conversion excluded")}.${
     priceOnly.length ? ` Price only for ${priceOnly.join(", ")}: distribution history unavailable.` : ""}`;
+}
+
+/** `10-for-1` or `1-for-20 reverse`: a split by whole share counts, as its source states it; null for anything else (a spinoff's price adjustment). */
+function splitTerms(split: SplitAction): string | null {
+  const { fromFactor: from, toFactor: to } = split;
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from! <= 0 || to! <= 0 || from === to) return null;
+  return `${to}-for-${from}${to! < from! ? " reverse" : ""}`;
+}
+
+/**
+ * The splits a comparison's returns run across, by leg: one that took effect
+ * after a leg's base close and by its end (its `PriceComparison.legs` days).
+ * The closes compared are split-adjusted, so a fund that reverse-split twice
+ * reads its return, not its share price: "Splits in range: SOXS 1-for-20
+ * reverse on Thu 5 Mar and 1-for-10 reverse on Wed 15 Jul; returns are
+ * split-adjusted." Null when no leg has one.
+ */
+export function comparisonSplitNotice(
+  comparison: Pick<PriceComparison, "legs">,
+  legs: ReadonlyArray<{ id: string; label: string; splits: readonly SplitAction[] }>,
+  now = Date.now(),
+): string | null {
+  const currentYear = new Date(now).getUTCFullYear();
+  const named = legs.flatMap(({ id, label, splits }) => {
+    const window = comparison.legs?.[id];
+    if (!window) return [];
+    const inside = splits
+      .filter((split) => /^\d{4}-\d{2}-\d{2}/.test(split.date) && split.date.slice(0, 10) > window.baseDay && split.date.slice(0, 10) <= window.endDay)
+      .sort((left, right) => left.date.localeCompare(right.date))
+      .flatMap((split) => {
+        const terms = splitTerms(split);
+        return terms ? [`${terms} on ${periodDayText(split.date, currentYear)}`] : [];
+      });
+    return inside.length ? [`${label} ${listLabels(inside)}`] : [];
+  });
+  return named.length ? `Splits in range: ${named.join("; ")}; returns are split-adjusted.` : null;
 }
 
 /**

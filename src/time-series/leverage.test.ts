@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { currencySeries } from "./currency-conversion";
 import { resolveStudies } from "./studies/resolve";
 import type { ChartStudySpec, ResolvedSeries } from "./types";
 
@@ -62,4 +63,21 @@ test("the line starts where the comparison does, not at the first bar loaded, an
   const weekly = resolveStudies([closes("fund", "TQQQ", TQQQ), { ...closes("index", "QQQ", QQQ), historyResolution: "1wk" }], studies(3), "1wk");
   expect(weekly.series).toEqual([]);
   expect(weekly.warnings[0]).toContain("3× daily needs daily bars");
+});
+
+test("in another currency the daily line moves with the FX once, as the fund does, and the decay is the same as in dollars", async () => {
+  // USD per euro, drifting over the month: the euro gains about 5%.
+  const euro = new Map(DAYS.map((day, index) => [day, 1.10 + index * 0.0025] as const));
+  const loadCloses = async (currency: string) => ({ currency, closes: euro, first: DAYS[0]!, asOf: DAYS.at(-1)! });
+  const dayOf = (point: { date: Date }) => point.date.toISOString().slice(0, 10);
+  const inEuros = async (series: ResolvedSeries) => (await currencySeries(series, { target: "EUR", priceCurrency: "USD", loadCloses, dayOf })).series;
+  const usd = resolveStudies([closes("fund", "TQQQ", TQQQ), closes("index", "QQQ", QQQ)], studies(3), "1d");
+  const eur = resolveStudies([await inEuros(closes("fund", "TQQQ", TQQQ)), await inEuros(closes("index", "QQQ", QQQ))], studies(3), "1d");
+  expect(eur.errors).toEqual([]);
+  const fx = euro.get(DAYS[0]!)! / euro.get(DAYS.at(-1)!)!;
+  // The line: 3x QQQ's own sessions compounded, then converted like QQQ's closes (TQQQ's euro return is its dollar return times the same move).
+  expect(latest(eur.series[0])).toBeCloseTo(((1 + latest(usd.series[0])! / 100) * fx - 1) * 100, 9);
+  // Decay rows: identical in euros and dollars, not 3x EUR/USD read as decay.
+  expect(latest(eur.series[1])).toBeCloseTo(latest(usd.series[1])!, 9);
+  expect(latest(eur.series[2])).toBeCloseTo(latest(usd.series[2])!, 9);
 });

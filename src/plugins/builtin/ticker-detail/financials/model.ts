@@ -1,6 +1,7 @@
 import type { FinancialStatement, TickerFinancials } from "../../../../types/financials";
 import { ebitdaLacksDepreciation } from "../../../../utils/ebitda";
-import { fiscalPeriodLabel, ttmPeriodLabel } from "../../../../utils/fiscal-period";
+import { fiscalPeriodLabel, longerPeriodLabel, ttmPeriodLabel } from "../../../../utils/fiscal-period";
+import { statementPeriodMonths } from "../../../../utils/financial-statements";
 import { formatPerShareNumber } from "../../../../utils/reported-money";
 import { hasNonIncomeStatementGap } from "../../../../utils/statement-gaps";
 import {
@@ -13,6 +14,7 @@ import {
 import {
   buildPreviousStatementMap,
   computeTTM,
+  servedTrailingStatement,
   type FinancialPeriod,
   type FinancialTableStatement,
 } from "./aggregation";
@@ -218,15 +220,23 @@ export function formatFinancialHeader(date: string, currency?: string, dateSourc
   return `${label} ${dateSource === "sec" ? "(SEC date)" : "(provider date)"}`;
 }
 
-/** A table column's label: the fiscal period, and `TTM` with the quarter it runs to. */
+/**
+ * A table column's label: the fiscal period, a half in the quarterly list as
+ * a half (`H1 FY26`), and `TTM` with the quarter or half it runs to.
+ */
 export function financialColumnLabel(
   statement: FinancialTableStatement,
   kind: FinancialPeriod,
   yearEndMonth: number | null,
 ): string {
-  if (statement.date !== "TTM") return fiscalPeriodLabel(statement.date, kind, yearEndMonth);
-  const periodEnd = statement.aggregation?.periodEnd;
-  return ttmPeriodLabel(periodEnd, yearEndMonth);
+  if (statement.date !== "TTM") {
+    const months = kind === "quarterly" ? statementPeriodMonths(statement) : undefined;
+    return months && months > 3
+      ? longerPeriodLabel(statement.date, months, yearEndMonth)
+      : fiscalPeriodLabel(statement.date, kind, yearEndMonth);
+  }
+  const { periodEnd, interimMonths } = statement.aggregation ?? {};
+  return ttmPeriodLabel(periodEnd, yearEndMonth, interimMonths);
 }
 
 /** The end of the latest period on screen, which the query bar shows as of. */
@@ -564,6 +574,8 @@ export function selectFinancialStatements(
   servedAnnual: FinancialStatement[],
   servedQuarterly: FinancialStatement[],
   limit = period === "annual" ? 5 : 6,
+  /** Gloom Cloud's trailing twelve months where the quarters do not give them (TickerFinancials.trailingStatement). */
+  servedTrailing?: TickerFinancials["trailingStatement"],
 ) {
   const { annualStatements, quarterlyStatements } = withoutImpossibleShareCounts(servedAnnual, servedQuarterly);
   // A period with nothing on this statement (a fiscal year-end balance point on
@@ -573,7 +585,12 @@ export function selectFinancialStatements(
     .filter((candidate) => !tabRows || tabRows.some((row) => hasFinancialRowValue(row, [candidate])))
     .slice(-limit)
     .reverse();
-  const trailing = period === "annual" && statement !== "balance" ? computeTTM(quarterlyStatements, annualStatements) : null;
+  const fromQuarters = period === "annual" && statement !== "balance" ? computeTTM(quarterlyStatements, annualStatements) : null;
+  const served = period === "annual" && statement !== "balance" ? servedTrailingStatement(servedTrailing, annualStatements) : null;
+  // The newer of the two: four quarters, or the year plus the half since it.
+  const trailing = served && (!fromQuarters || served.aggregation!.periodEnd > (fromQuarters.aggregation?.periodEnd ?? ""))
+    ? served
+    : fromQuarters;
   // Right after a fiscal year closes, the last four quarters are that year:
   // the reported year is shown, not a second column of the same period.
   const ttm = trailing && !coversLatestYear(trailing, rawStatements[0]) ? trailing : null;
@@ -601,7 +618,7 @@ export function selectFinancialStatements(
 }
 
 export function buildFinancialTableModel(
-  financials: Pick<TickerFinancials, "annualStatements" | "quarterlyStatements" | "financialCurrency" | "fundamentals"> | null | undefined,
+  financials: Pick<TickerFinancials, "annualStatements" | "quarterlyStatements" | "financialCurrency" | "fundamentals" | "trailingStatement"> | null | undefined,
   options: {
     period?: FinancialPeriod;
     statement?: string;
@@ -624,6 +641,7 @@ export function buildFinancialTableModel(
   const { statements, previousStatementMap } = selectFinancialStatements(
     period, subTabKey, annualStatements, quarterlyStatements,
     period === "annual" ? options.annualLimit : options.quarterlyLimit,
+    financials?.trailingStatement,
   );
   const subTab = FINANCIAL_SUB_TABS.find((tab) => tab.key === subTabKey) ?? FINANCIAL_SUB_TABS[0]!;
   const collapsedGroups = options.expandAll

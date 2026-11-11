@@ -1,5 +1,11 @@
-import type { EarningsField, FinancialStatement } from "../../../../types/financials";
-import { completeAvailability, statementFieldAvailability } from "../../../../utils/financial-statements";
+import type { EarningsField, FinancialStatement, TickerFinancials } from "../../../../types/financials";
+import {
+  areNearbyFinancialPeriodEnds,
+  completeAvailability,
+  quarterRows,
+  statementFieldAvailability,
+  statementPeriodMonths,
+} from "../../../../utils/financial-statements";
 import { hasStatementGap } from "../../../../utils/statement-gaps";
 import { trailingEpsAcrossFiscalYearEnd } from "../../../../utils/trailing-eps";
 
@@ -7,8 +13,13 @@ export type FinancialPeriod = "annual" | "quarterly";
 
 export interface FinancialTableStatement extends FinancialStatement {
   aggregation?: {
-    kind: "trailing-four-quarters";
+    /** Four quarters summed, or (a half-yearly reporter) Gloom Cloud's year plus the half since it less a year earlier's. */
+    kind: "trailing-four-quarters" | "annual-plus-interim";
     periodEnd: string;
+    /** How an annual-plus-interim TTM was built: "FY to 2025-12-31 + 6 months to 2026-06-30 − 6 months to 2025-06-30". */
+    basis?: string;
+    /** The months of the year to date an annual-plus-interim TTM adds: 6 when it runs to a half. */
+    interimMonths?: number;
     sourcePeriods: Array<Pick<FinancialStatement,
       "date" | "currency" | "dateSource" | "providerDate" | "dateEvidence" | "availableAt" | "fieldAvailability" | "fieldSources" | "unavailableFields" | "unavailableEarnings"
     >>;
@@ -265,26 +276,82 @@ export function trailingFourQuarters(
   end: string,
   annualStatements: readonly FinancialStatement[] = [],
 ) {
-  const sorted = [...quarterlyStatements].sort((a, b) => a.date.localeCompare(b.date));
+  const sorted = sortedQuarters(quarterlyStatements);
   const index = sorted.findIndex((statement) => statement.date === end);
   return index < 3 ? null : aggregateQuarterlyStatements(sorted.slice(index - 3, index + 1), "TTM", { quarterly: sorted, annual: annualStatements });
 }
 
+/** The quarterly list's quarters, oldest first: a half filled into it is never summed as a quarter. */
+function sortedQuarters(quarterlyStatements: readonly FinancialStatement[]): FinancialStatement[] {
+  return quarterRows(quarterlyStatements).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * The trailing twelve months Gloom Cloud built where the quarters do not give
+ * them (a half-yearly reporter: FY2025 + H1 2026 − H1 2025), as a TTM column.
+ * Null when there is none or it ends no later than the latest year.
+ */
+export function servedTrailingStatement(
+  trailing: TickerFinancials["trailingStatement"],
+  annualStatements: readonly FinancialStatement[],
+): FinancialTableStatement | null {
+  if (!trailing) return null;
+  const periodEnd = trailing.date.slice(0, 10);
+  const latestYear = annualStatements.reduce((latest, row) => (row.date.slice(0, 10) > latest ? row.date.slice(0, 10) : latest), "");
+  if (periodEnd <= latestYear) return null;
+  const { trailing: how, date: _date, ...statement } = trailing;
+  return {
+    ...statement,
+    date: "TTM",
+    aggregation: {
+      kind: "annual-plus-interim",
+      periodEnd,
+      basis: how.basis,
+      interimMonths: how.interim.months,
+      sourcePeriods: [how.priorInterim.end, how.annual, how.interim.end].map((end) => ({ date: end, currency: statement.currency })),
+    },
+  };
+}
+
 export function computeTTM(quarterlyStatements: FinancialStatement[], annualStatements: readonly FinancialStatement[] = []) {
-  const sorted = [...quarterlyStatements].sort((a, b) => a.date.localeCompare(b.date));
+  const sorted = sortedQuarters(quarterlyStatements);
   return aggregateQuarterlyStatements(sorted.slice(-4), "TTM", { quarterly: sorted, annual: annualStatements });
 }
 
-function computePreviousTtm(quarterlyStatements: FinancialStatement[], annualStatements: readonly FinancialStatement[]) {
-  const sorted = [...quarterlyStatements].sort((a, b) => a.date.localeCompare(b.date));
-  return aggregateQuarterlyStatements(sorted.slice(-8, -4), "prevTTM", { quarterly: sorted, annual: annualStatements });
+/**
+ * The twelve months a TTM column's growth is measured against: the same kind
+ * of window a year earlier. For four quarters, the four before them. For a
+ * year plus the half since it, the twelve months to a year before its end, a
+ * fiscal year or four quarters ending then; none when neither is on file
+ * (never the latest year, which ends at another point of the year).
+ */
+function previousTrailing(
+  ttm: FinancialTableStatement,
+  quarterlyStatements: readonly FinancialStatement[],
+  annualStatements: readonly FinancialStatement[],
+): FinancialStatement | null {
+  const sorted = sortedQuarters(quarterlyStatements);
+  if (ttm.aggregation?.kind !== "annual-plus-interim") {
+    const previous = aggregateQuarterlyStatements(sorted.slice(-8, -4), "prevTTM", { quarterly: sorted, annual: annualStatements });
+    const latest = sorted.at(-1);
+    const prior = sorted.at(-5);
+    const days = latest && prior ? (Date.parse(latest.date) - Date.parse(prior.date)) / 86_400_000 : NaN;
+    return previous && days >= 300 && days <= 430 ? previous : null;
+  }
+  const end = ttm.aggregation.periodEnd;
+  const yearBefore = `${Number(end.slice(0, 4)) - 1}${end.slice(4, 10)}`;
+  const year = annualStatements.find((row) => row.currency === ttm.currency && areNearbyFinancialPeriodEnds(row.date.slice(0, 10), yearBefore));
+  if (year) return year;
+  const quarter = sorted.find((row) => areNearbyFinancialPeriodEnds(row.date.slice(0, 10), yearBefore));
+  const quarters = quarter ? trailingFourQuarters(sorted, quarter.date, annualStatements) : null;
+  return quarters && quarters.currency === ttm.currency ? quarters : null;
 }
 
 export function buildPreviousStatementMap(
   period: FinancialPeriod,
   annualStatements: FinancialStatement[],
   quarterlyStatements: FinancialStatement[],
-  ttm: FinancialStatement | null,
+  ttm: FinancialTableStatement | null,
 ) {
   const sourceStatements = period === "annual" ? annualStatements : quarterlyStatements;
   const previousMap = new Map<string, FinancialStatement>();
@@ -302,6 +369,8 @@ export function buildPreviousStatementMap(
       : [sourceStatements[index - 1]!];
     if (candidates.length !== 1) continue;
     const previous = candidates[0]!;
+    // A half beside a quarter is no change over a period.
+    if (statementPeriodMonths(current) !== statementPeriodMonths(previous)) continue;
     const days = (Date.parse(current.date) - Date.parse(previous.date)) / 86_400_000;
     const [minimum, maximum] = period === "annual" ? [300, 430] : [60, 120];
     if (days < minimum! || days > maximum! || !Number.isFinite(days)) continue;
@@ -309,13 +378,8 @@ export function buildPreviousStatementMap(
   }
 
   if (ttm) {
-    const previousTtm = computePreviousTtm(quarterlyStatements, annualStatements);
-    const latest = quarterlyStatements.at(-1);
-    const prior = quarterlyStatements.at(-5);
-    const days = latest && prior ? (Date.parse(latest.date) - Date.parse(prior.date)) / 86_400_000 : NaN;
-    if (previousTtm && days >= 300 && days <= 430) {
-      previousMap.set("TTM", previousTtm);
-    }
+    const previousTtm = previousTrailing(ttm, quarterlyStatements, annualStatements);
+    if (previousTtm) previousMap.set("TTM", previousTtm);
   }
 
   return previousMap;

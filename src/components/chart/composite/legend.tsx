@@ -419,6 +419,32 @@ export function CompositeLegend({
     if (rows > 1) {
       for (const entry of entries) setEntryLabel(entry, entry.compactLabel, wrappedLabelWidth(entry));
       lines = packLegendLines(wrappedWidths, widthBeforeAccessory, rows);
+      // More entries than the lines hold: they share the lines as they do with every name cut to the
+      // widest that fits them all, then each line's names lose words, widest first, until the line
+      // fits, before any value or unit leaves the view. A line that has no room even with every name
+      // at its first word keeps its names and scrolls.
+      if (wantedRows > rows) {
+        const widest = Math.max(...entries.map((entry) => entry.labelWidth));
+        for (let cap = widest - 1; cap >= 1; cap -= 1) {
+          const packed = packLegendLines(entries.map((entry) => entry.markerWidth + Math.max(1, displayWidth(
+            [wholeWordsCut(entry.compactLabel, Math.min(cap, wrappedLabelWidth(entry)), otherNames(entry)), entry.valueText].filter(Boolean).join(" "),
+          ))), widthBeforeAccessory);
+          if (packed.length <= rows) {
+            lines = packed;
+            break;
+          }
+        }
+      }
+      for (const line of lines) {
+        if (minimumWidthOf(line.map((index) => entries[index]!)) > widthBeforeAccessory) continue;
+        while (line.reduce((total, index, position) => total + entries[index]!.width + (position > 0 ? 1 : 0), 0) > widthBeforeAccessory) {
+          const shrinkable = line.map((index) => entries[index]!)
+            .filter((entry) => entry.labelWidth > displayWidth(shortestLegendName(entry.label)))
+            .sort((left, right) => right.labelWidth - left.labelWidth)[0];
+          if (!shrinkable) break;
+          setEntryLabel(shrinkable, shrinkable.label, shrinkable.labelWidth - 1);
+        }
+      }
     }
   }
   const idle = !scene?.cursorDate;

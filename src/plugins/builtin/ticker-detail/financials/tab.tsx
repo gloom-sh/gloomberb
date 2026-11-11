@@ -295,8 +295,8 @@ export function ResolvedFinancialsTab({
   const resolvedPeriod = resolveFinancialPeriod(period, hasAnnualStatements, hasQuarterlyStatements);
   const isAnnual = resolvedPeriod === "annual";
   const selected = useMemo(
-    () => selectFinancialStatements(resolvedPeriod, subTab.key, annualStatements, quarterlyStatements),
-    [annualStatements, quarterlyStatements, resolvedPeriod, subTab.key],
+    () => selectFinancialStatements(resolvedPeriod, subTab.key, annualStatements, quarterlyStatements, undefined, financials?.trailingStatement),
+    [annualStatements, quarterlyStatements, resolvedPeriod, subTab.key, financials?.trailingStatement],
   );
   // A newest period with only some figures (an EPS alone) is left out of a statement table, and a line says so.
   const { shown: displayStatements, notInYet } = useMemo(

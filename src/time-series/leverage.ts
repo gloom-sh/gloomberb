@@ -30,19 +30,27 @@ export function leverageSymbol(series: Pick<ResolvedSeries, "listing" | "label">
 interface SessionClose {
   day: string;
   point: TimeSeriesPoint;
+  /** In the listing's own currency, whatever currency the chart is in. */
   close: number;
+  /** What the chart's currency multiplied the close by that day (1 when it is the listing's own). */
+  fx: number;
 }
 
-/** A series' closes from its anchor to its end, one per session, oldest first. */
+/**
+ * A series' closes from its anchor to its end, one per session, oldest first,
+ * in its listing's own currency: a daily objective is the fund's own-currency
+ * return, so a chart in euros must not compound EUR/USD into it.
+ */
 export function sessionCloses(series: ResolvedSeries, anchor: StudyAnchor | undefined): SessionClose[] {
   const closes = new Map<string, SessionClose>();
   for (const point of series.points) {
     const time = point.date.getTime();
-    const close = scalarPointValue(point);
-    if (close === null || !Number.isFinite(close) || close <= 0) continue;
+    const value = scalarPointValue(point);
+    const fx = point.conversionFactor ?? 1;
+    if (value === null || !Number.isFinite(value) || value <= 0 || !(fx > 0)) continue;
     if (anchor?.start != null && time < anchor.start) continue;
     if (anchor?.end != null && time > anchor.end) continue;
-    closes.set(observationDate(time, series), { day: observationDate(time, series), point, close });
+    closes.set(observationDate(time, series), { day: observationDate(time, series), point, close: value / fx, fx });
   }
   return [...closes.values()].sort((left, right) => left.day.localeCompare(right.day));
 }

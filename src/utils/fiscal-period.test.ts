@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { fiscalPeriodLabel, fiscalYearEndMonth, ttmPeriodLabel } from "./fiscal-period";
+import { fiscalPeriodLabel, fiscalYearEndMonth, longerPeriodLabel, ttmPeriodLabel } from "./fiscal-period";
 
 test("names fiscal periods from the issuer's year end, including 52/53-week calendars", () => {
   // June year end (MSFT): the September quarter opens the next fiscal year.
@@ -22,4 +22,20 @@ test("names fiscal periods from the issuer's year end, including 52/53-week cale
   // A trailing twelve months names the quarter it runs to.
   expect(ttmPeriodLabel("2026-03-31", 6)).toBe("TTM Q3 FY26");
   expect(ttmPeriodLabel(undefined, 6)).toBe("TTM");
+});
+
+test("a half is named as a half, never as the quarter it ends with", () => {
+  // December year end (Pop Mart): the June half is H1, the December half H2.
+  expect(longerPeriodLabel("2026-06-30", 6, 12)).toBe("H1 FY26");
+  expect(longerPeriodLabel("2025-12-31", 6, 12)).toBe("H2 FY25");
+  // March year end (Singtel): the September half opens the year ending next March.
+  expect(longerPeriodLabel("2025-09-30", 6, 3)).toBe("H1 FY26");
+  // Off the calendar, or with none: its length and end.
+  expect(longerPeriodLabel("2026-06-30", 6, null)).toBe("6M 2026-06-30");
+  expect(longerPeriodLabel("2026-03-31", 6, 12)).toBe("6M 2026-03-31");
+  expect(longerPeriodLabel("2026-09-30", 9, 12)).toBe("9M 2026-09-30");
+  // A TTM built from the year and the half since it runs to the half.
+  expect(ttmPeriodLabel("2026-06-30", 12, 6)).toBe("TTM H1 FY26");
+  expect(ttmPeriodLabel("2026-09-30", 12, 9)).toBe("TTM Q3 FY26");
+  expect(ttmPeriodLabel("2026-06-30", null, 6)).toBe("TTM 2026-06-30");
 });

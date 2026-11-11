@@ -1,6 +1,6 @@
 // Chooses the statements a series is read from for a period and metric: annual, quarterly, trailing, or dated at release.
 import type { FinancialStatement, TickerFinancials } from "../../types/financials";
-import { areNearbyFinancialPeriodEnds, statementFieldAvailability } from "../../utils/financial-statements";
+import { areNearbyFinancialPeriodEnds, quarterRows, statementFieldAvailability } from "../../utils/financial-statements";
 import { hasStatementGap } from "../../utils/statement-gaps";
 import { statementAtRelease } from "../valuation-releases";
 import type { SeriesPeriod } from "../types";
@@ -32,9 +32,9 @@ export function knownWhenFiled(row: FinancialStatement): FinancialStatement {
   return { ...row, fieldAvailability: { ...row.fieldAvailability, eps: filed } };
 }
 
-/** The statements a multiple is priced from, each restated EPS dated by its first filing. */
+/** The statements a multiple is priced from, each restated EPS dated by its first filing. A half filled into the quarterly list is no quarter. */
 export function valuationStatements(financials: TickerFinancials): { quarterly: FinancialStatement[]; annual: FinancialStatement[] } {
-  return { quarterly: financials.quarterlyStatements.map(knownWhenFiled), annual: financials.annualStatements.map(knownWhenFiled) };
+  return { quarterly: quarterRows(financials.quarterlyStatements).map(knownWhenFiled), annual: financials.annualStatements.map(knownWhenFiled) };
 }
 
 /**
@@ -100,7 +100,8 @@ export function sourceStatements(
   const normalized = normalizeFundamentalPeriod(period);
   let known = valuationMetric
     ? valuationStatements(financials)
-    : { quarterly: financials.quarterlyStatements, annual: financials.annualStatements };
+    // A half filled into the quarterly list is no quarter: never a quarterly point, a fourth quarter's input or a TTM's.
+    : { quarterly: quarterRows(financials.quarterlyStatements), annual: financials.annualStatements };
   if (period === "daily" && valuationMetric) {
     const releases = financials.earningsReleases ?? [];
     const venue = financials.quote?.listingExchangeName || financials.quote?.exchangeName || exchange;

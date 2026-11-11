@@ -268,7 +268,7 @@ export async function loadChartPaneModel(
       ...(valuationPriceIssues.length ? { valuationPriceIssues } : {}),
       ...(periodCoverage.length ? { periodCoverage } : {}),
       notices: [...chart.coverageNotices ?? [], ...chart.returnBasisNotice ? [chart.returnBasisNotice] : [], ...chart.warnings.filter((warning) => warning === FINANCIAL_VINTAGE_NOTICE || warning === SEC_EPS_BASIS_NOTICE || warning === chart.priceComparison?.notice
-        || chart.delistings?.some((delisting) => delisting.notice === warning)), ...integrityNotices,
+        || warning === chart.splitNotice || chart.delistings?.some((delisting) => delisting.notice === warning)), ...integrityNotices,
         // A futures formula says which months its legs are in and when they rolled, as `history` says a front month's rolls.
         ...chart.series.flatMap((series) => {
           if (!series.formulaLegs) return [];

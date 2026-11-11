@@ -768,12 +768,58 @@ export type StatementGapField = IncomeStatementField | "totalRevenue" | "operati
 export type StatementFillField = "totalRevenue" | "netIncome" | "totalAssets" | "totalLiabilities";
 
 /** Where a row's filled lines came from: the exchange's figures, its page, and when they were read. */
-export interface StatementFill {
+export interface ExchangeStatisticsFill {
   source: "asx";
   page: string;
   retrievedAt: string;
   /** The lines taken from the exchange; the row's other figures are the statements source's. */
   fields: StatementFillField[];
+}
+
+/** Lines Gloom Cloud fills from a company's own results announcements and reports. */
+export type ResultsFillField =
+  | "totalRevenue" | "grossProfit" | "operatingIncome" | "netIncome" | "basicEps" | "eps"
+  | "operatingCashFlow" | "capitalExpenditure" | "freeCashFlow"
+  | "cashAndCashEquivalents" | "totalDebt" | "totalEquity" | "commonStockEquity" | "totalEquityGrossMinorityInterest"
+  | "totalAssets" | "totalLiabilities";
+
+export type StatementFilingKind = "annual_results" | "interim_results" | "quarterly_results" | "annual_report" | "interim_report";
+
+/** A results announcement or report on HKEXnews or SGXNet, with when it was published and read. */
+export interface StatementFilingDocument {
+  source: "hkex" | "sgx";
+  kind: StatementFilingKind;
+  title: string;
+  url: string;
+  publishedAt: string;
+  fetchedAt: string;
+}
+
+/** A row's lines read from the company's results announcement or report, for a period the statements source lags on. */
+export interface ResultsStatementFill {
+  source: "results";
+  /** The lines taken from the documents; the row's other figures are the statements source's. */
+  fields: ResultsFillField[];
+  /** The documents, the one each line was read from first: the row is dated by the earliest publication. */
+  documents: StatementFilingDocument[];
+  /** Per line, its document (an index into `documents`) and page. */
+  lines: Partial<Record<ResultsFillField, { document: number; page: number | null }>>;
+  /** The months the row's flows cover where the list's usual is another: 6 for a half in the quarterly list. */
+  periodMonths?: number;
+  /** A quarter derived as the difference of two year-to-date periods ("6 months to 2026-06-30 − 3 months to 2026-03-31"). */
+  derived?: string;
+}
+
+export type StatementFill = ExchangeStatisticsFill | ResultsStatementFill;
+
+/** How Gloom Cloud built a trailing twelve months the quarters do not give: the year plus the year to date since it, less a year earlier's. */
+export interface StatementTrailing {
+  method: "annual-plus-interim";
+  annual: string;
+  interim: { end: string; months: number };
+  priorInterim: { end: string; months: number };
+  /** "FY to 2025-12-31 + 6 months to 2026-06-30 − 6 months to 2025-06-30" */
+  basis: string;
 }
 
 /** Per-share earnings lines that can be declared unavailable. */
@@ -1169,6 +1215,8 @@ export interface TickerFinancials {
   nextEarnings?: NextEarnings;
   annualStatements: FinancialStatement[];
   quarterlyStatements: FinancialStatement[];
+  /** Twelve months to the latest half or quarter where the quarters do not give them (a half-yearly reporter). */
+  trailingStatement?: FinancialStatement & { trailing: StatementTrailing };
   priceHistory: PricePoint[];
   /** Acquired history cadence. Null explicitly marks an opaque provider default; absent on legacy snapshots. */
   priceHistoryResolution?: import("../time-series/resolution").ManualChartResolution | null;

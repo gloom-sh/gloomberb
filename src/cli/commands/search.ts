@@ -442,7 +442,12 @@ function withOtherCompaniesApart(candidates: TickerSearchCandidate[], namedWord:
 
 /** "Saved", or the broker a row came from; never the data service's internal id. */
 function searchSourceLabel(candidate: TickerSearchCandidate): string {
-  return candidate.kind === "ticker" ? "Saved" : candidate.result?.brokerLabel || "";
+  return isSavedCandidate(candidate) ? "Saved" : candidate.result?.brokerLabel || "";
+}
+
+/** A saved ticker's row, or search's row of a listing that is saved: what the Saved section lists. */
+function isSavedCandidate(candidate: TickerSearchCandidate): boolean {
+  return candidate.kind === "ticker" || candidate.saved;
 }
 
 function resolveSearchName(candidate: TickerSearchCandidate): string {
@@ -499,7 +504,7 @@ function searchCandidateRows(candidates: TickerSearchCandidate[]) {
       || "",
     source: searchSourceLabel(candidate),
     providerId: candidate.result?.providerId ?? "",
-    saved: candidate.kind === "ticker",
+    saved: isSavedCandidate(candidate),
     // The company that merged into this one, whose old name the query is.
     ...candidate.result?.formerIssuer ? { formerIssuer: candidate.result.formerIssuer } : {},
     // The name a renamed company had, which the query is.

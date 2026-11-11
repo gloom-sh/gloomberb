@@ -41,7 +41,31 @@ export function fiscalPeriodLabel(date: string, kind: "annual" | "quarterly", ye
   return `Q${offset === 0 ? 4 : offset / 3} FY${String(fiscalYear).slice(-2)}`;
 }
 
-/** A trailing-twelve-month period by the quarter it runs to: `TTM Q3 FY26`. */
-export function ttmPeriodLabel(periodEnd: string | undefined, yearEndMonth: number | null): string {
-  return periodEnd ? `TTM ${fiscalPeriodLabel(periodEnd, "quarterly", yearEndMonth)}` : "TTM";
+/** A fiscal half: `H1 FY26` for the six months to the year's midpoint, `H2 FY26` to its end; null off the calendar. */
+function fiscalHalfLabel(date: string, yearEndMonth: number | null): string | null {
+  const closing = closingMonth(date);
+  if (!closing || yearEndMonth == null) return null;
+  const offset = (closing.month - yearEndMonth + 12) % 12;
+  if (offset !== 0 && offset !== 6) return null;
+  const fiscalYear = closing.month <= yearEndMonth ? closing.year : closing.year + 1;
+  return `H${offset === 0 ? 2 : 1} FY${String(fiscalYear).slice(-2)}`;
+}
+
+/**
+ * A quarterly list's row that covers more than a quarter (a half Gloom Cloud
+ * filled from a results announcement): `H1 FY26`, or `6M 2026-06-30` off the
+ * fiscal calendar, never a quarter's name.
+ */
+export function longerPeriodLabel(date: string, months: number, yearEndMonth: number | null): string {
+  return (months === 6 ? fiscalHalfLabel(date, yearEndMonth) : null) ?? `${months}M ${date.slice(0, 10)}`;
+}
+
+/**
+ * A trailing-twelve-month period by the quarter it runs to: `TTM Q3 FY26`; by
+ * the half, `TTM H1 FY26`, when it was built from the year and a half since it.
+ */
+export function ttmPeriodLabel(periodEnd: string | undefined, yearEndMonth: number | null, interimMonths?: number): string {
+  if (!periodEnd) return "TTM";
+  const half = interimMonths === 6 ? fiscalHalfLabel(periodEnd, yearEndMonth) : null;
+  return `TTM ${half ?? fiscalPeriodLabel(periodEnd, "quarterly", yearEndMonth)}`;
 }
