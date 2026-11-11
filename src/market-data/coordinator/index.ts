@@ -22,6 +22,7 @@ import {
   toMarketDataContext,
 } from "../selectors";
 import { resolveTickerFinancialsQuoteState } from "../quotes/resolution";
+import { couldQuoteHavePrintedSince } from "../quotes/freshness";
 import { measurePerf } from "../../utils/perf-marks";
 import { startTickerChangeLookup, type TickerChangeLookup } from "../../tickers/ticker-changes";
 import { fateListing, loadListingFate, NO_FATE, type ListingFate } from "../../tickers/listing-fate";
@@ -300,8 +301,10 @@ export class MarketDataCoordinator {
 
   /**
    * The quote stream went down at `since`, or runs again (null). While it is
-   * down, a quote a pane streams that nothing refreshed since reads as stale,
-   * so a price that stopped moving says so instead of passing for live. The
+   * down, a quote a pane streams that nothing refreshed since reads as stale
+   * once its market could have printed since (couldQuoteHavePrintedSince), so
+   * a price that stopped moving says so instead of passing for live. A closed
+   * market's last price stays current: the stream had nothing to bring. The
    * held quote itself is kept: the next tick, or a refresh, replaces it.
    */
   setQuoteStreamDown(since: number | null): void {
@@ -311,13 +314,17 @@ export class MarketDataCoordinator {
     for (const key of this.quoteSubscriptionManager.streamingKeys()) this.events.bump(key);
   }
 
-  /** A streamed quote shown from entries none of which was written since the stream went down. */
+  /**
+   * A streamed quote shown from entries none of which was written since the
+   * stream went down, whose market could have printed since.
+   */
   private isInterruptedQuote(key: string, quoteEntry: QueryEntry<Quote>, entries: ReadonlyArray<QueryEntry<unknown>>): boolean {
     const since = this.quoteStreamDownSince;
     if (since == null) return false;
     const quote = resolveEntryData(quoteEntry);
     return !!quote && quote.stale !== true && this.quoteSubscriptionManager.isStreaming(key)
-      && entries.every((entry) => (entry.fetchedAt ?? 0) <= since);
+      && entries.every((entry) => (entry.fetchedAt ?? 0) <= since)
+      && couldQuoteHavePrintedSince(quote, since);
   }
 
   getSnapshotEntry(instrument: InstrumentRef): QueryEntry<TickerFinancials> {
@@ -363,6 +370,8 @@ export class MarketDataCoordinator {
     quoteEntry: QueryEntry<Quote>;
     chartEntry: QueryEntry<PricePoint[]>;
     streamDownSince: number | null;
+    /** Whether the quote read as interrupted: a market that opens while the stream is down turns it. */
+    interrupted: boolean;
     financials: TickerFinancials | null;
   }>();
 
@@ -374,6 +383,7 @@ export class MarketDataCoordinator {
     const quoteEntry = this.quoteStore.get(quoteKey);
     const chartEntry = this.getChartEntry(createBaselineChartRequest(instrument));
     const streamDownSince = this.quoteStreamDownSince;
+    const interrupted = this.isInterruptedQuote(quoteKey, quoteEntry, [quoteEntry, snapshotEntry]);
     const cached = this.financialsSnapshotCache.get(key);
     if (
       cached
@@ -381,15 +391,16 @@ export class MarketDataCoordinator {
       && sameQueryEntry(cached.quoteEntry, quoteEntry)
       && sameQueryEntry(cached.chartEntry, chartEntry)
       && cached.streamDownSince === streamDownSince
+      && cached.interrupted === interrupted
     ) {
       return cached.financials;
     }
     let financials = buildTickerFinancialsSnapshot(snapshotEntry, quoteEntry, chartEntry);
     // Marked after the quote is resolved: a stale streamed quote must not hand the price back to an older snapshot's.
-    if (financials?.quote && financials.quote.stale !== true && this.isInterruptedQuote(quoteKey, quoteEntry, [quoteEntry, snapshotEntry])) {
+    if (financials?.quote && financials.quote.stale !== true && interrupted) {
       financials = { ...financials, quote: { ...financials.quote, stale: true } };
     }
-    this.financialsSnapshotCache.set(key, { snapshotEntry, quoteEntry, chartEntry, streamDownSince, financials });
+    this.financialsSnapshotCache.set(key, { snapshotEntry, quoteEntry, chartEntry, streamDownSince, interrupted, financials });
     return financials;
   }
 

@@ -22,6 +22,8 @@ export interface BoardQuoteState {
   error: string | null;
   /** The quote is the last good one, kept because the newest load returned nothing. */
   stale: boolean;
+  /** When the board's own load last answered this symbol with a current quote. */
+  answeredAt?: number;
 }
 
 export type BoardQuoteMap = Map<string, BoardQuoteState>;
@@ -70,6 +72,8 @@ const QUOTE_BOARD_FALLBACK_MS = 60_000;
 const STREAM_SILENCE_MS = 3 * 60_000;
 /** The feed answers a new subscription with a snapshot; give it this long before polling around it. */
 const STREAM_CONNECT_GRACE_MS = 10_000;
+/** A dropped stream's symbols are asked for within this long, each client at a random moment in it. */
+const STREAM_DROP_REFRESH_SPREAD_MS = 5_000;
 
 /** A cache-first refresh splits the listed symbols into at most this many batches, sent at once. */
 const QUOTE_REFRESH_BATCHES = 4;
@@ -104,6 +108,7 @@ function isFlaggedStale(quote: Quote): boolean {
  */
 function mergeQuotes(previous: BoardQuoteMap, loaded: BoardQuoteMap): BoardQuoteMap {
   const next: BoardQuoteMap = new Map(previous);
+  const now = Date.now();
   for (const [symbol, state] of loaded) {
     const current = state.quote && !isFlaggedStale(state.quote) ? state.quote : null;
     const kept = previous.get(symbol)?.quote ?? null;
@@ -113,6 +118,7 @@ function mergeQuotes(previous: BoardQuoteMap, loaded: BoardQuoteMap): BoardQuote
       loading: false,
       error: state.error,
       stale: !current && retained !== null,
+      ...(current ? { answeredAt: now } : {}),
     });
   }
   return next;
@@ -141,10 +147,20 @@ export function isStreamCarryingQuote(
   return quote.marketState !== "REGULAR" || now - receivedAt <= STREAM_SILENCE_MS;
 }
 
-/** The newer of the board's snapshot and the shared feed's quote, per symbol. */
+/**
+ * The newer of the board's snapshot and the shared feed's quote, per symbol.
+ * A feed quote flagged stale because the stream stopped is current again once
+ * the board's own refresh answers after the feed last delivered it: the row
+ * then shows the newer of the two prices, unflagged.
+ */
 function overlayStreamQuote(base: BoardQuoteState, streamed: Quote | null): BoardQuoteState {
   if (!finitePrice(streamed)) return base;
-  if (base.quote && (streamed.lastUpdated ?? 0) < (base.quote.lastUpdated ?? 0)) return base;
+  const baseTime = base.quote?.lastUpdated ?? 0;
+  if (base.quote && (streamed.lastUpdated ?? 0) < baseTime) return base;
+  if (streamed.stale === true && base.quote && !base.stale && base.answeredAt != null
+    && base.answeredAt >= (streamed.receivedAt ?? 0)) {
+    return (streamed.lastUpdated ?? 0) > baseTime ? { ...base, quote: { ...streamed, stale: false }, error: null } : base;
+  }
   if (base.quote === streamed && !base.stale && base.error === null) return base;
   return { quote: streamed, loading: base.loading, error: null, stale: streamed.stale === true };
 }
@@ -478,6 +494,25 @@ export function useQuoteBoard(symbols: string[], options: QuoteBoardOptions = {}
       if (timer) clearTimeout(timer);
     };
   }, [dataProvider, fallbackIntervalMs, liveStreaming, load, paneVisible, selectedSymbol, symbols, visibleSymbols]);
+
+  // The symbols whose feed quote reads stale: the stream went down while
+  // their market trades. The board then runs as it does without streaming:
+  // they are all asked for now, as a first load would, and the poll keeps
+  // the ones on screen current. A row reads stale only when a refresh fails.
+  const interrupted = useMemo(() => (liveStreaming
+    ? symbols.filter((symbol) => resolveEntryData(entries.get(buildQuoteKey(boardInstrument(symbol))))?.stale === true).join("\u001f")
+    : ""), [entries, liveStreaming, symbols]);
+  useEffect(() => {
+    if (!interrupted || !paneVisible || !dataProvider) return;
+    // At a random moment within a few seconds, so clients a server restart dropped together do not ask together.
+    const timer = setTimeout(() => {
+      const now = Date.now();
+      const due = interrupted.split("\u001f").filter((symbol) =>
+        !isStreamCarryingQuote(entriesRef.current.get(buildQuoteKey(boardInstrument(symbol))), streamStartRef.current.at, now));
+      if (due.length > 0) load(true, due);
+    }, Math.random() * STREAM_DROP_REFRESH_SPREAD_MS);
+    return () => clearTimeout(timer);
+  }, [dataProvider, interrupted, load, paneVisible]);
 
   // Settings changes must affect rows and footer status in the same render,
   // including the frame before the next request effect starts. Unchanged
