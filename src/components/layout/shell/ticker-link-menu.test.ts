@@ -265,6 +265,7 @@ test("a pane title names each ticker key its template wrote by the venue's code,
     createPaneInstance("notes", { instanceId: "notes:x", title, binding: { kind: "fixed", symbol: "9992:XHKG" } }), notes, panes);
   expect(titled("FA 9992:XHKG")).toBe("FA 9992:HKEX");
   expect(titled("RV 9992:XHKG,PLTR")).toBe("RV 9992:HKEX,PLTR");
+  expect(titled("RIPL AAPL, 9992:XHKG")).toBe("RIPL AAPL, 9992:HKEX");
   expect(titled("FA AAPL")).toBe("FA AAPL");
   expect(titled("Pop Mart 9992:XHKG notes")).toBe("Pop Mart 9992:XHKG notes");
 });

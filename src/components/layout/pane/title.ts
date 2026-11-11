@@ -26,9 +26,12 @@ function displayTicker(key: string): string {
  */
 function displayStoredTitle(title: string): string {
   const mnemonic = paneTitleMnemonic(title);
-  const keys = mnemonic ? title.slice(mnemonic.length).trim().split(",").map((key) => key.trim()) : [];
-  if (!mnemonic || !keys[0] || !keys.every((key) => TITLE_TICKER.test(key))) return title;
-  return `${mnemonic} ${keys.map(displayTicker).join(",")}`;
+  if (!mnemonic) return title;
+  // Keys and the separators between them as written ("AAPL, MSFT" keeps its space).
+  const parts = title.slice(mnemonic.length).split(/(\s*,\s*)/);
+  const keys = parts.filter((_, index) => index % 2 === 0).map((key) => key.trim());
+  if (!keys[0] || !keys.every((key) => TITLE_TICKER.test(key))) return title;
+  return `${title.slice(0, mnemonic.length)}${parts.map((part, index) => index % 2 === 0 ? part.replace(part.trim(), displayTicker(part.trim())) : part).join("")}`;
 }
 
 /** Single-cell link glyph: emoji link icons render double-width in terminals. */
