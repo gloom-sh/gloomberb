@@ -405,7 +405,10 @@ function withOtherCompaniesApart(candidates: TickerSearchCandidate[], namedWord:
   // A line search names no company for: no name, or only its symbol (DKC1O).
   const nameless = (candidate: TickerSearchCandidate) =>
     isLowQualityTickerName(candidate.result ? candidate.result.name ?? "" : resolveSearchName(candidate), candidate.symbol);
-  const primary = candidates.find((candidate) => candidate.category === "Primary Listing");
+  // A saved listing that leads stands where the primary listing would: its company's lines are told apart by it.
+  const lead = candidates[0];
+  const primary = candidates.find((candidate) => candidate.category === "Primary Listing")
+    ?? (lead?.category === "Saved" && lead.instrumentClass === "equity" ? lead : undefined);
   // A primary line search names no company for gives nothing to tell its company's lines by.
   if (!primary || nameless(primary)) return candidates;
   const names = [resolveSearchName(primary), primary.result?.formerName, ...primary.nameAliases ?? []];
