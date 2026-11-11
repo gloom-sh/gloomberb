@@ -44,13 +44,14 @@ function createRegistry(options: {
   disabledPlugins?: string[];
   disabledSources?: string[];
   enableCapabilityHandlers?: boolean;
+  runtime?: "app" | "command";
 } = {}): PluginRegistry {
   const persistence = new AppPersistence(":memory:");
   const registry = new PluginRegistry(
     dataProvider,
     new TickerRepository(persistence.tickers),
     persistence,
-    { enableCapabilityHandlers: options.enableCapabilityHandlers },
+    { enableCapabilityHandlers: options.enableCapabilityHandlers, runtime: options.runtime },
   );
   registry.bindHost({
     getConfig: () => ({
@@ -169,6 +170,16 @@ describe("PluginRegistry lifecycle", () => {
 
     ctx.resume.setState("thread", { id: "one" });
     expect(registry.getResumeState("legacy", "thread")).toEqual({ id: "one" });
+  });
+
+  test("a plugin reads whether it runs in the app or for one command, which decides if its alerts are checked", async () => {
+    const seen: Array<string | undefined> = [];
+    const observer = plugin("runtime-observer", (ctx) => { seen.push(ctx.runtime); });
+    await createRegistry().register(observer);
+    currentRegistry?.destroy();
+    currentPersistence?.close();
+    await createRegistry({ runtime: "command" }).register(observer);
+    expect(seen).toEqual(["app", "command"]);
   });
 });
 

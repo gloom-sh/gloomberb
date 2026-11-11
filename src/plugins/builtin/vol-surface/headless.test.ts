@@ -157,6 +157,17 @@ describe("OVDV --date", () => {
     await expect(stored({ date: sessionDate }, { surface: false, dates: [sessionDate] }))
       .rejects.toThrow(`The AAPL ${sessionDate} close capture is not shown yet: without real-time data a capture shows 15 minutes after it is taken.`);
   });
+
+  test("a coin has no stored closes yet: it says so and names the live surface, asking nothing", async () => {
+    const paths: string[] = [];
+    const args = createTestHeadlessArgs({ rawArgument: "BTC-USD", argument: "BTC-USD", symbols: ["BTC-USD"],
+      options: { tab: "surface", ivSource: "recomputed", priceSide: "mid", axis: "spot", tenors: "listed", limit: 18, date: "2026-11-10" } });
+    await expect(volSurfaceHeadless.load(args, createTestHeadlessContext({
+      apiClient: { impliedVolatility: async (path: string) => { paths.push(path); throw new Error("not asked"); } } as unknown as HeadlessPaneApiClient,
+      marketData: createTestDataProvider({ id: "ovdv-test" }),
+    }))).rejects.toThrow("Stored surfaces are not kept for coins yet, so BTC-USD has none for 2026-11-10. The live surface: gloom fn OVDV BTC-USD");
+    expect(paths).toEqual([]);
+  });
 });
 
 test("outside the options session a chain with nothing fitted says when the surface fills, with IV30 at the last close", async () => {
