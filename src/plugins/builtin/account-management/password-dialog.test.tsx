@@ -1,7 +1,7 @@
 import { act } from "react";
 import { expect, test } from "bun:test";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
-import { PasswordChangeDialog } from "./password-dialog";
+import { DeleteAccountPasswordDialog, PasswordChangeDialog } from "./password-dialog";
 
 const tui = createOpenTuiTestHarness();
 
@@ -42,4 +42,44 @@ test("Enter on the confirm field changes the password once", async () => {
 test("Enter on a confirm that differs from the new password changes nothing", async () => {
   expect(await fill("other-password")).toEqual([]);
   await tui.waitForFrameToContain("New passwords do not match");
+});
+
+async function deleteWith(password: string, answer: () => Promise<void>) {
+  const calls: string[] = [];
+  let dismissed = 0;
+  await tui.render(
+    <DeleteAccountPasswordDialog
+      dismiss={() => { dismissed += 1; }}
+      onDelete={async (value) => { calls.push(value); await answer(); }}
+    />,
+    { width: 80, height: 24 },
+  );
+  await tui.renderFrames(2);
+  await tui.waitForFrameToContain("Enter your password to delete");
+  if (password) await type(password);
+  await enter();
+  await tui.renderFrames(2);
+  return { calls, dismissed: () => dismissed };
+}
+
+test("Enter on the password deletes the account once, then closes", async () => {
+  const result = await deleteWith("the-password", async () => {});
+  expect(result.calls).toEqual(["the-password"]);
+  expect(result.dismissed()).toBe(1);
+});
+
+test("a wrong password keeps the dialog open with the server's answer", async () => {
+  const result = await deleteWith("a-guess", async () => {
+    throw new Error("That password is not right.");
+  });
+  expect(result.calls).toEqual(["a-guess"]);
+  await tui.waitForFrameToContain("That password is not right.");
+  expect(result.dismissed()).toBe(0);
+});
+
+test("an empty password sends nothing", async () => {
+  const result = await deleteWith("", async () => {});
+  expect(result.calls).toEqual([]);
+  await tui.waitForFrameToContain("Enter your password.");
+  expect(result.dismissed()).toBe(0);
 });

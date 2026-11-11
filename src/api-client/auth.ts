@@ -377,10 +377,15 @@ export class CloudAuthApi {
     });
   }
 
-  async deleteAccount(): Promise<void> {
+  /**
+   * A session signed in more than a day ago sends the account's password;
+   * without it the server refuses with 403 and says in `confirm` whether to
+   * ask for the password or to log in again (see deleteAccountRefusal).
+   */
+  async deleteAccount(password?: string): Promise<void> {
     await this.options.request("/account", {
       method: "DELETE",
-      body: JSON.stringify({}),
+      body: JSON.stringify(password ? { password } : {}),
     });
     this.options.setSessionToken(null);
     this.options.setCurrentUser(null);

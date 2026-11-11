@@ -817,6 +817,8 @@ export const zhTW: Record<string, string> = {
   "Deleting account...": "正在刪除帳戶...",
   "Account deleted.": "帳戶已刪除。",
   "Failed to delete account.": "刪除帳戶失敗。",
+  "Enter your password to delete your account.": "請輸入密碼以刪除你的帳戶。",
+  "To delete your account, sign out of gloom.sh in your browser and back in, then log out here and back in.": "要刪除帳戶，請先在瀏覽器中登出 gloom.sh 並重新登入，然後在這裡登出並重新登入。",
   "Log in to manage your Gloom Cloud account.": "登入以管理你的 Gloom Cloud 帳戶。",
   "Configured": "已設定",
   "No public portfolio analytics": "沒有公開的投資組合分析資料",

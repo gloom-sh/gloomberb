@@ -4,6 +4,7 @@ import type {
 } from "../../../../api-client/askg";
 import { readStoredPaneSidebarWidth } from "../../../../components/layout/pane/sidebar-metrics";
 import type { PluginPersistence } from "../../../../types/plugin";
+import { logFailure } from "../../../../utils/log-failure";
 
 const WIDTH_STATE_KEY = "askg-sidebar-width";
 
@@ -72,11 +73,21 @@ export class ASKGConversationListStore {
   }
 
   /**
-   * Reloads the list. Concurrent callers share one request, which is what
-   * happens when two panes mount together or a turn finishes while the first
-   * refresh is still open.
+   * Reloads the list and returns nothing: a failure lands in `error`, and the
+   * rows already listed stay. Concurrent callers share one request, which is
+   * what happens when two panes mount together or a turn finishes while the
+   * first refresh is still open.
    */
-  refresh(): Promise<void> {
+  refresh(): void {
+    this.refreshAndWait().catch(logFailure("cloud.askg.conversations", "Refresh the conversation list failed"));
+  }
+
+  /**
+   * The same reload for a caller that waits on it. A second caller while one
+   * is in flight gets the same promise. It settles once the list or the
+   * failure is in state.
+   */
+  refreshAndWait(): Promise<void> {
     if (this.inFlight) return this.inFlight;
     const transport = this.transport;
     if (!transport) return Promise.resolve();
@@ -105,7 +116,7 @@ export class ASKGConversationListStore {
   /** Reloads only once, for a pane that just mounted. */
   ensureLoaded(): void {
     if (this.snapshot.loaded || this.inFlight) return;
-    void this.refresh();
+    this.refresh();
   }
 
   async rename(id: string, title: string | null): Promise<void> {
@@ -120,7 +131,7 @@ export class ASKGConversationListStore {
       else this.remove(id);
     } catch (error) {
       this.update({ error: describeError(error) });
-      void this.refresh();
+      this.refresh();
     }
   }
 

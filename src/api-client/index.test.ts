@@ -434,6 +434,39 @@ describe("apiClient auth cookies", () => {
     expect(apiClient.getCurrentUser()).toBeNull();
   });
 
+  test("deletes the account with the password when given, and keeps the session when an old one is refused", async () => {
+    apiClient.setSessionToken("persisted-token.value");
+    apiClient.restoreCachedUser(verifiedUser);
+    const sent: unknown[] = [];
+    let answer = () => Response.json(
+      { message: "Confirm your password, or log in again, to delete your account.", confirm: "password" },
+      { status: 403 },
+    );
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const request = input instanceof Request ? input : new Request(String(input), init);
+      expect(new URL(request.url).pathname).toEndWith("/account");
+      expect(request.method).toBe("DELETE");
+      sent.push(await request.json());
+      return answer();
+    });
+
+    const refused = await apiClient.deleteAccount().catch((error: unknown) => error);
+    expect(refused).toMatchObject({
+      status: 403,
+      message: "Confirm your password, or log in again, to delete your account.",
+      details: { confirm: "password" },
+    });
+    // Refused, the account and its session stay.
+    expect(apiClient.getSessionToken()).toBe("persisted-token.value");
+    expect(apiClient.getCurrentUser()).not.toBeNull();
+
+    answer = () => Response.json({ deleted: true });
+    await apiClient.deleteAccount("the-password");
+    expect(sent).toEqual([{}, { password: "the-password" }]);
+    expect(apiClient.getSessionToken()).toBeNull();
+    expect(apiClient.getCurrentUser()).toBeNull();
+  });
+
   test("clears local session on explicit sign out even if the server request fails", async () => {
     apiClient.setSessionToken("persisted-token.value");
     apiClient.setWebSocketToken("ws-token");
