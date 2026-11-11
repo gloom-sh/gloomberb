@@ -59,6 +59,30 @@ describe("normalized market price comparison", () => {
     });
   }
 
+  test("a split inside a leg's window is named, with the returns said to be split-adjusted; one on its base day, after its end or a spinoff's adjustment is not", async () => {
+    const splits: Record<string, CorporateActionsData["splits"]> = {
+      OLDER: [
+        { date: "2022-05-02", fromFactor: 1, toFactor: 2 },
+        { date: "2023-06-01", ratio: 0.05, fromFactor: 20, toFactor: 1, description: "1:20" },
+        { date: "2024-01-02", ratio: 1.0526, fromFactor: 1, toFactor: 1.0526 },
+        { date: "2026-09-08", fromFactor: 1, toFactor: 3 },
+      ],
+      NEWER: [{ date: "2024-03-01", ratio: 4, fromFactor: 1, toFactor: 4, description: "4:1" }],
+    };
+    const base = sources();
+    const getCorporateActions = async (symbol: string): Promise<CorporateActionsData> => ({ symbol, dividends: [], splits: splits[symbol] ?? [], earnings: [] });
+    const withSplits = { ...base, dataProvider: new Proxy(base.dataProvider, { get: (target, property, receiver) => (
+      property === "getCorporateActions" ? getCorporateActions : Reflect.get(target, property, receiver)
+    ) }) };
+    const result = await resolveChartSpecData(spec("1d"), withSplits);
+    const notice = "Splits in range: OLDER 1-for-20 reverse on Thu 1 Jun 2023; NEWER 4-for-1 on Fri 1 Mar 2024; returns are split-adjusted.";
+    expect(result.splitNotice).toBe(notice);
+    expect(result.warnings).toContain(notice);
+    // A window that ends before the splits names none.
+    const before = { ...spec("1d"), viewport: { ...spec("1d").viewport, dateWindow: { start: "2021-01-01", end: "2022-05-09" } } };
+    expect((await resolveChartSpecData(before, withSplits)).splitNotice).toBeUndefined();
+  });
+
   test("total return reinvests each leg's cash at its ex-date close, names its basis, and leaves a leg without a history on price", async () => {
     const chart = { ...spec(), viewport: { ...spec().viewport, totalReturn: true } };
     const data = {
@@ -105,10 +129,10 @@ describe("normalized market price comparison", () => {
     expect(levels.warnings).toContain(levels.returnBasisNotice!);
     expect(levels.series[0]!.points.at(-1)!.value).toBeCloseTo(100, 6);
 
-    // The default comparison stays a price return and asks no one for cash.
+    // The default comparison stays a price return: each listing's actions are read once, for its splits, and no cash is reinvested.
     let asked = 0;
     const price = await resolveChartSpecData(spec(), withActions(async (symbol) => { asked += 1; return actions(symbol); }));
-    expect(asked).toBe(0);
+    expect(asked).toBe(2);
     expect(price.series.every((entry) => entry.returnBasis === undefined)).toBe(true);
     expect(price.priceComparison?.notice).toStartWith("Price returns in each listing's currency");
     expect(price.returnBasisNotice).toBeUndefined();
