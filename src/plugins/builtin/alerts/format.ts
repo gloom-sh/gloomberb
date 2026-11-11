@@ -138,8 +138,9 @@ export function alertReadingText(alert: AlertRule): string {
     return at ? `${figure} as of ${isoUtc(at).replace(/:\d{2}Z$/, "Z")}` : figure;
   }
   const unit = readingUnit(alert);
-  // A price at its instrument's precision, a London line's in pence, which says its unit itself.
-  const price = !alert.metric ? alertPriceText(alert, value).replaceAll(",", "") : null;
+  // A price at its instrument's precision and with thousands separators, as the Trigger beside it (74,481.45 USD);
+  // a London line's in pence, which says its unit itself.
+  const price = !alert.metric ? alertPriceText(alert, value) : null;
   const figure = alert.metric?.kind === "rrg" ? metricReadingText(alert.metric, { value, target: alert.lastCheckedTarget ?? Number.NaN })
     : alert.metric?.kind === "rs_ratio" ? formatRatio(value)
     : price?.endsWith("p") ? price

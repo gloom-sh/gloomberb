@@ -77,10 +77,10 @@ const ALERT_COLUMNS: AlertColumn[] = [
   // Wide enough for a listing kept with its venue (7203:JPX).
   { id: "symbol", label: "Symbol", width: 9, align: "left" },
   { id: "metric", label: "Measure", width: 14, align: "left" },
-  // Wide enough to write a price as Target does (73,606.88 beside 65,000.00), and no wider: at 640 px the narrow
-  // table still shows Quote's heading clear of the edge.
-  { id: "current", label: "Current", width: 9, align: "right" },
-  { id: "target", label: "Target", width: 11, align: "right" },
+  // Current and Target are one width, so a price reads the same in both, separators kept to 100,000.00. Together
+  // they take no more than before, and at 640 px Quote's heading stays clear of the edge.
+  { id: "current", label: "Current", width: 10, align: "right" },
+  { id: "target", label: "Target", width: 10, align: "right" },
   { id: "away", label: "Away", width: 8, align: "right" },
   { id: "condition", label: "Trigger", width: 12, align: "left" },
   // Wide enough to say "not checked yet" for an alert no check has read.
@@ -95,7 +95,7 @@ const DETAIL_ROW = { labelWidth: 10, emphasis: false } as const;
 /** "AAPL above 400.00", "GBPUSD=X moves 0.50% from the previous close": the rule, which titles its detail. */
 function alertTitle(alert: AlertRule): string {
   if (alert.metric || alert.move) return formatAlertDescription(alert);
-  return `${alertListing({ symbol: alert.symbol, exchange: alert.exchange })} ${conditionLabel(alert.condition).toLowerCase()} ${formatAlertTargetPrice(alert)}`;
+  return `${alertListing({ symbol: alert.symbol, exchange: alert.exchange })} ${conditionLabel(alert.condition).toLowerCase()} ${formatAlertTargetPrice(alert, 24)}`;
 }
 
 /**

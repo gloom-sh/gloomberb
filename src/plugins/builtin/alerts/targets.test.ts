@@ -5,8 +5,10 @@ import { alertTarget, deliveredAlertSubject, eventRuleSubject, priceRuleSubject,
 
 const des = (symbol: string, exchange?: string): AlertTarget => ({ kind: "description", symbol, ...(exchange ? { exchange } : {}) });
 const pane = (templateId: string, options?: object): AlertTarget => ({ kind: "pane", templateId, ...(options ? { options } : {}) });
+// A fixed day, before the OCC contract below expires, so an expired contract's refusal never reaches this test.
+const NOW = Date.parse("2026-11-11T15:00:00Z");
 const research = (kind: string, fields: Record<string, string>) =>
-  alertTarget(eventRuleSubject(createResearchAlert(kind, Object.fromEntries(Object.entries(fields).map(([key, value]) => [`${kind}:${key}`, value])))));
+  alertTarget(eventRuleSubject(createResearchAlert(kind, Object.fromEntries(Object.entries(fields).map(([key, value]) => [`${kind}:${key}`, value])), NOW)));
 
 test("every rule kind opens what it follows", () => {
   const event = (templateId: string, value = "") => alertTarget(eventRuleSubject(createEventAlert(templateId, value)));

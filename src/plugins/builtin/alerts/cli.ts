@@ -429,10 +429,35 @@ const isResearchRequest = (request: AlertAddRequest): request is ResearchAddRequ
 /** The US venue a research rule keeps: one typed and known to it, else any US venue. */
 const RESEARCH_EXCHANGES = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS", "OTC"]);
 
-/** Where a news alert on a coin (BTC-USD) points: a keyword alert on the coin's name, or on the words typed when they name it. */
-function coinNewsHint(coin: string, keyword: string): string {
-  const words = keyword.toLowerCase().includes(coin.toLowerCase()) ? keyword : coin.toLowerCase();
-  return `A coin's news is followed by keyword, in every story: gloom alerts add news ${/\s/.test(words) ? `"${words}"` : words}`;
+/** The names stories call the coins with options by, which their pair's name ("Bitcoin USD") is not. */
+const COIN_NEWS_NAMES: Readonly<Record<string, string>> = { BTC: "bitcoin", ETH: "ethereum" };
+
+/**
+ * A coin as stories name it: bitcoin for BTC-USD, else its pair's name
+ * without the currency it is quoted in (Solana USD is solana), else its
+ * ticker. Never the pair's name.
+ */
+function coinNewsName(pair: string, pairName: string | null | undefined): string {
+  const [base = pair, quoted = ""] = pair.toUpperCase().split("-");
+  const known = COIN_NEWS_NAMES[base];
+  if (known) return known;
+  const name = (pairName ?? "").trim().toLowerCase();
+  const plain = quoted && name.endsWith(` ${quoted.toLowerCase()}`) ? name.slice(0, -(quoted.length + 1)).trim() : name;
+  return plain || base.toLowerCase();
+}
+
+/**
+ * Where a news alert on a coin (BTC-USD) points: a keyword alert on the words
+ * typed when they name the coin (its name or ticker), else on the coin's name.
+ */
+function coinNewsHint(pair: string, pairName: string | null | undefined, keyword: string): string {
+  const name = coinNewsName(pair, pairName);
+  const base = pair.toUpperCase().split("-")[0]!.toLowerCase();
+  const typed = keyword.trim().replace(/\s+/g, " ");
+  const words = ` ${typed.toLowerCase().replace(/[^a-z0-9]+/g, " ")} `;
+  const named = words.includes(` ${name} `) || words.includes(` ${base} `);
+  const phrase = named ? typed : name;
+  return `A coin's news is followed by keyword, in every story: gloom alerts add news ${/\s/.test(phrase) ? `"${phrase}"` : phrase}`;
 }
 
 /**
@@ -937,7 +962,7 @@ export const alertsCliCommand: CliCommandDef = {
               (key) => `gloom alerts add ${key} ${args.slice(2).join(" ")}`);
             // A coin has no company whose news to follow: a keyword alert reads every story for it.
             ctx.fail(message, research?.kind === "news" && isRoundTheClockCoin(quoted.listing.symbol, venue)
-              ? coinNewsHint(quoted.quote.name || quoted.listing.symbol, research.keyword) : details);
+              ? coinNewsHint(quoted.listing.symbol, quoted.quote.name, research.keyword) : details);
           }
         }
         return quoted;

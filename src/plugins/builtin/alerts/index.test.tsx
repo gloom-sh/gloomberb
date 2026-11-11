@@ -133,6 +133,16 @@ describe("AlertsPane", () => {
     expect(frame).toContain("[a]dd alert");
   });
 
+  test("Current writes a price as Target does, separators kept from 100,000 up, and a coin pair without its venue", async () => {
+    const btc = { ...makeAlert("alert-btc", "BTC-USD:CCC", "above", 105_000), lastCheckedPrice: 104_250.5, lastCheckedAt: Date.now() - 60_000, lastQuoteCurrency: "USD" };
+    await tui.render(<AlertsHarness width={90} height={8} alerts={[btc]} />, { width: 90, height: 8 });
+    await renderSettled();
+    const row = tui.frame().split("\n").find((line) => line.includes("BTC-USD")) ?? "";
+    expect(row).toContain("104,250.50");
+    expect(row).toContain("105,000.00");
+    expect(row).not.toContain("BTC-USD:");
+  });
+
   test("a quote one alert could not get is said on its row and in full in its detail, never in the footer", async () => {
     const checkedAt = Date.now() - 60_000;
     const quoted = (alert: AlertRule, price: number): AlertRule => ({ ...alert, lastCheckedPrice: price, lastCheckedAt: checkedAt });
