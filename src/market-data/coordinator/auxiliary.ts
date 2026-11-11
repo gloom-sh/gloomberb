@@ -8,7 +8,8 @@ import type { QueryEntry } from "../result-types";
 import { QueryStore } from "../query-store";
 import {
   ARTICLE_SUMMARY_CACHE_TTL_MS,
-  EXPECTED_EMPTY,
+  errorStatus,
+  failureStatus,
   FX_CACHE_TTL_MS,
   OPTIONS_CACHE_TTL_MS,
   SEC_CONTENT_CACHE_TTL_MS,
@@ -240,7 +241,7 @@ export function loadFxRateEntry(options: {
       });
     } catch (error) {
       const classified = classifyError(error);
-      const attempt = createAttempt(dataProvider.id, startedAt, "fatal_error", classified.reasonCode, classified.message);
+      const attempt = createAttempt(dataProvider.id, startedAt, errorStatus(error), classified.reasonCode, classified.message);
       return store.update(key, (current) => errorEntry(
         isUsableCachedExchangeRate(current.data ?? current.lastGoodData, normalizedCurrency, current)
           ? current : { ...current, data: null, lastGoodData: null }, attempt,
@@ -270,7 +271,7 @@ function loadAuxiliaryEntry<T>({
       return await load(startedAt);
     } catch (error) {
       const classified = classifyError(error);
-      const attempt = createAttempt(dataProvider.id, startedAt, EXPECTED_EMPTY.test(classified.message) ? "empty" : "fatal_error", classified.reasonCode, classified.message);
+      const attempt = createAttempt(dataProvider.id, startedAt, failureStatus(error, classified), classified.reasonCode, classified.message);
       return store.update(key, (current) => errorEntry(current, attempt));
     }
   });
