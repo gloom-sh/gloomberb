@@ -470,7 +470,7 @@ const RELEASE_GRID_MS = 5 * 60_000;
  * has no time to be past, and a tentative time (off the five-minute grid) is
  * no time the figure was due at.
  */
-export function awaitsFigure(
+function awaitsFigure(
   event: Pick<EconEvent, "actual" | "forecast" | "prior" | "date" | "time" | "timeNote">,
   now: number,
 ): boolean {
@@ -513,12 +513,12 @@ export function figureGap(
 }
 
 /** What a release awaiting its figure says in place of it: "due 07:00 UTC, awaiting figure". */
-export function awaitingFigureText(event: Pick<EconEvent, "date">): string {
+function awaitingFigureText(event: Pick<EconEvent, "date">): string {
   return `due ${timeLabel(event.date)} ${CALENDAR_TIME_ZONE_LABEL}, awaiting figure`;
 }
 
 /** What a release whose source has no figure says in place of it. */
-export const NO_FIGURE_TEXT = "no figure from the source";
+const NO_FIGURE_TEXT = "no figure from the source";
 
 /** What a row with a figure gap (figureGap) says in place of the figure. */
 export function figureGapText(event: Pick<EconEvent, "date">, gap: "awaiting" | "none"): string {

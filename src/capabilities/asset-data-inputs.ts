@@ -28,7 +28,7 @@ const RANGE_WORDS = TIME_RANGES.join("|");
  * mistyped field is named with the fields the operation takes, never a
  * TypeError from inside the source.
  */
-export const ASSET_DATA_OPERATION_SPECS: Readonly<Record<string, AssetDataOperationSpec>> = {
+const ASSET_DATA_OPERATION_SPECS: Readonly<Record<string, AssetDataOperationSpec>> = {
   canProvide: { summary: "Whether the source answers for a listing", fields: LISTING },
   primaryMarketSourceName: { summary: "Name of the source that serves quotes and bars", fields: [] },
   batchesReads: { summary: "Whether reads of a method go out batched", fields: [required("method", "string")] },
