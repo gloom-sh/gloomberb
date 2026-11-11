@@ -403,6 +403,8 @@ function createShotAppServices(payload: DesktopPaneShotPayload, externalPlugins:
     registryOptions: {
       enableCapabilityHandlers: false,
       connectionHealth: createCliPaneShotConnectionHealth(),
+      // A capture is a command: it draws the alerts it is given and checks none, so `gloom shot ALRT` sets nothing off.
+      runtime: "command",
     },
     configure({ pluginRegistry, marketData, newsService }) {
       pluginRegistry.bindHost({ getPaneRuntimeState: (paneId) => payload.paneState[paneId] ?? null });
