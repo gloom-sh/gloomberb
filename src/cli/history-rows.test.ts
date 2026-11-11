@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  barPriceDecimals, cleanBarPrice, cleanFloat32Price, closedPeriodBarDay, quotedPriceDivisor, formingPeriodBar, historyBarsAfterHole, historyBarStatusNote, historyChangeBaseNote, historyFlagNote,
+  barPriceDecimals, cleanBarPrice, cleanFloat32Price, closedPeriodBarDay, quotedPriceDivisor, formingPeriodBar, historyBarsAfterHole, historyBarStatusNote, historyChangeBaseNote, historyFlagNote, historyOpenNote,
   historyGapNote, historyJumpNote, historyMissingVolumeNote, historyNotes, historyPriceDecimals,
   historyRows, historyUnbrokenFrom, historyUnit, historyVenueVolumeNote, historyWickNote,
   historyContractDrawdown, historyRollNote, historyThinNote, historyVolumeBasis, historyVolumeNote, withDailyRebuiltBars, dailyRebuildSpans,
@@ -124,21 +124,24 @@ describe("history rows", () => {
       .toBe("2026-09-22T15:15:00Z");
   });
 
-  test("a bar HP blanks is blanked the same way and says which prices disagree", () => {
-    // SBK.JO 2025-10-09 as served: the low is above the open.
+  test("a bar HP blanks is blanked the same way and says which prices disagree; an open alone outside the range is withheld", () => {
+    // SBK.JO 2025-10-09 as served: the low is above the open, and only the open; MTN.JO's 30 Oct 2026 bar was the same.
     const points = [
       { date: new Date("2025-10-09"), open: 245.86, high: 253.3, low: 246.23, close: 252.46, volume: 3018311 },
       { date: new Date("2025-10-10"), open: 249, high: 248, low: 247, close: 250, volume: 1 },
       { date: new Date("2025-10-13"), open: 255, high: 255.97, low: 251.07, close: 254.02, volume: 1854180 },
     ];
     const rows = historyRows(points, "1d", "ZAR");
-    expect(rows.map((row) => row.flag)).toEqual(["low>open", "high<open,high<close", null]);
+    expect(rows.map((row) => row.flag)).toEqual(["open withheld", "high<open,high<close", null]);
+    // The open is withheld; the high, low, close and volume stand.
+    expect(rows[0]).toMatchObject({ open: null, high: 253.3, low: 246.23, close: 252.46, volume: 3018311 });
     for (const [index, row] of rows.entries()) {
       const { open, high, low, close, volume } = pricePointValues(points[index]!);
       expect([row.open, row.high, row.low, row.close, row.volume]).toEqual([open, high, low, close, volume]);
     }
     expect(rows[2]).toMatchObject({ close: 254.02, currency: "ZAR", interval: "1d" });
-    expect(historyFlagNote(rows)).toBe("2 of 3 bars have high below open or close, or low above open or close in the source data; their prices are left blank");
+    expect(historyFlagNote(rows)).toBe("1 of 3 bars has high below open or close in the source data; its prices are left blank");
+    expect(historyOpenNote(rows)).toBe("The open of 2025-10-09 is outside its high and low in the source data; withheld, the rest of the bar kept (flag open withheld)");
     expect(historyFlagNote([rows[2]!])).toBeNull();
   });
 

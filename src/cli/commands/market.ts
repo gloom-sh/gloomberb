@@ -152,6 +152,7 @@ import {
   historyExportUnit,
   historyFacts,
   historyFlagNote,
+  historyOpenNote,
   historyWickNote,
   historyContractDrawdown,
   historyRollNote,
@@ -324,7 +325,7 @@ import { noSecReportsNotice, nonUsSecListingVenue, secFilingItemCodes } from "..
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
 import { answerQuote, errorMessage, notUsTickerSentence } from "../quote-answer";
-import { crossRate, describeFxConversion, describeFxLegs, describeFxRate, formatFxAmount, formatFxRate, FX_USAGE, parseFxArgs, type FxQuotedFigure } from "../fx-pair";
+import { crossRate, describeFxConversion, describeFxLegs, describeFxRate, formatFxAmount, formatFxRate, FX_USAGE, fxSideCode, fxUnitRate, parseFxArgs, type FxQuotedFigure, type FxRequest } from "../fx-pair";
 import {
   describeCarrySides,
   describeShortRate,
@@ -1821,7 +1822,7 @@ async function loadListingHistory(
     ...window ? [...windowHistoryNotes(window, data), coverage ?? []]
       : range === "YTD" ? ytdHistoryNotes(data) : [...historyNotes(range, interval, data[0]?.date, Date.now(), coverage != null), coverage ?? []],
     // The status line says how far a bar still forming runs; the note is for the bars it does not name.
-    gaps ?? [], historyJumpNote(data) ?? [], historyRescaleNote(data) ?? [], historyFlagNote(data) ?? [], historyWickNote(data) ?? [],
+    gaps ?? [], historyJumpNote(data) ?? [], historyRescaleNote(data) ?? [], historyFlagNote(data) ?? [], historyOpenNote(data) ?? [], historyWickNote(data) ?? [],
     historyMissingVolumeNote(data) ?? [],
     historyVenueVolumeNote(data) ?? [],
     // NG=F's rows are November's to the 23rd and December's from the 26th: each roll named, and thin bars said.
@@ -3833,16 +3834,18 @@ async function runFxOnDate(
   const closeDate = [...legs.values()].map((leg) => leg.date).sort()[0]!;
   // When the closes were taken (17:00 New York), or that the source does not say: a central bank's fixing is another time.
   const basis = fxCloseBasis(codes.map((code) => legs.get(code)?.closedAt));
-  const converted = amount == null ? null : amount * rate;
+  // A minor unit (ZAc) is converted at its fraction of the major currency's close; the row is in the unit typed.
+  const unitRate = fxUnitRate(request, rate);
+  const converted = amount == null ? null : amount * unitRate;
   const row = {
-    currency, baseCurrency, rate, asOf: closeDate, stale: false, pair, inverse: 1 / rate, date,
+    ...fxRowSides(request, rate), rate: unitRate, asOf: closeDate, stale: false, inverse: 1 / unitRate, date,
     ...(amount == null ? {} : { amount, converted }),
   };
   const warnings = [
     ...request.readAs ?? [],
     ...closeDate < date ? [`No daily close on ${date}, a weekend or market holiday: this is the close of ${closeDate}, the trading day before it.`] : [],
     ...toUsdByDefault && amount != null
-      ? [`No target currency given, so ${currency} is converted to USD; for another, write fx ${args[0]!.trim()} ${currency}/<to> --date ${date}.`]
+      ? [`No target currency given, so ${fxSideCode(request, "currency")} is converted to USD; for another, write fx ${args[0]!.trim()} ${fxSideCode(request, "currency")}/<to> --date ${date}.`]
       : [],
   ];
   ctx.printResult({
@@ -3851,8 +3854,8 @@ async function runFxOnDate(
     freshness: rowsFreshness([], { status: "not-a-feed", basis, asOf: closeDate }),
     warnings: warnings.length > 0 ? warnings : undefined,
   }, {
-    text: () => amount == null ? rateLine : `${describeFxConversion(request, amount, rate)}\n${rateLine}`,
-    exportIdentity: { symbolOrSeries: pair, currencyOrUnit: `${baseCurrency} per ${currency}`, interval: "1day" },
+    text: () => amount == null && !request.units ? rateLine : `${describeFxConversion(request, amount ?? 1, rate)}\n${rateLine}`,
+    exportIdentity: { symbolOrSeries: row.pair, currencyOrUnit: `${row.baseCurrency} per ${row.currency}`, interval: "1day" },
     columns: [
       { key: "currency", header: "Currency" },
       { key: "baseCurrency", header: "Base" },
@@ -3868,6 +3871,18 @@ async function runFxOnDate(
       ]),
     ],
   });
+}
+
+/**
+ * The sides of an `fx` row as typed: a minor unit's code (ZAc/USD) where one
+ * was, with the major pair its rate is read from beside it.
+ */
+function fxRowSides(request: FxRequest, majorRate: number) {
+  const currency = fxSideCode(request, "currency"), baseCurrency = fxSideCode(request, "baseCurrency");
+  return {
+    currency, baseCurrency, pair: `${currency}/${baseCurrency}`,
+    ...request.units ? { majorPair: `${request.currency}/${request.baseCurrency}`, majorRate } : {},
+  };
 }
 
 /**
@@ -3939,6 +3954,11 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     const { request, amount, toUsdByDefault } = parsed;
     const { currency, baseCurrency } = request;
     const pair = `${currency}/${baseCurrency}`;
+    // A forward is a pair of currencies; pence or cents have none of their own.
+    if (tenor && request.units) {
+      const typed = `${fxSideCode(request, "currency")}/${fxSideCode(request, "baseCurrency")}`;
+      ctx.fail(`Forwards are on currencies, not their minor units: ${typed} is quoted as ${pair}.`, `gloom fx ${pair} --forward ${forwardOption}`);
+    }
     if (tenor && currency === baseCurrency) ctx.fail(`${pair} has no forward: both sides are ${currency}.`, `Usage: gloom ${FX_FORWARD_USAGE}`);
     // A carry is on an amount held: zero or less holds nothing, and a sign would turn who earns it around.
     if (tenor && amount != null && !(amount > 0)) {
@@ -3978,11 +3998,13 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     const asOf = observation && Number.isFinite(observation.updatedAt) ? new Date(observation.updatedAt).toISOString() : null;
     // A rate older than its feed's delay is stale, as `quote` says of the same quote.
     const stale = observation?.stale === true;
-    const converted = amount == null ? null : amount * rate;
+    // A minor unit (ZAc) is converted at its fraction of the major currency's rate; the row is in the unit typed.
+    const unitRate = fxUnitRate(request, rate);
+    const converted = amount == null ? null : amount * unitRate;
     // The day's move, as `quote` gives the pair's: against the previous daily close.
     const move = quoted ? fxQuoteRateMove(quoted) : null;
     const row = {
-      currency, baseCurrency, rate, asOf, stale, pair, inverse: 1 / rate,
+      ...fxRowSides(request, rate), rate: unitRate, asOf, stale, inverse: 1 / unitRate,
       ...(move ? { changePercent: move.percent, previousClose: move.previousRate } : {}),
       ...(quoted ? { quotes: quoted.quotes.map(({ symbol }) => symbol), ...(quoted.viaUsd ? { via: "USD" } : {}) } : {}),
       ...(quoted?.derivedFrom ? { derived: true, derivedFrom: quoted.derivedFrom } : {}),
@@ -4098,7 +4120,7 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
       // A currency typed as its name (yen) says which code it was read as.
       ...request.readAs ?? [],
       ...toUsdByDefault && amount != null
-        ? [`No target currency given, so ${currency} is converted to USD; for another, write fx ${args[0]!.trim()} ${currency}/<to>.`]
+        ? [`No target currency given, so ${fxSideCode(request, "currency")} is converted to USD; for another, write fx ${args[0]!.trim()} ${fxSideCode(request, "currency")}/<to>.`]
         : [],
       ...rateNotes,
     ];
@@ -4123,12 +4145,13 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     ctx.printResult({ data: [peso ? { ...row, ...pesoDollarRatesJson(peso) } : row], freshness, warnings: warnings.length > 0 ? warnings : undefined }, {
       // The conversion, then the rate it used; the source line under it dates that rate.
       text: () => [
-        ...amount == null ? [] : [describeFxConversion(request, amount, rate)],
+        // A minor unit says what one of it is, the conversion's step to its major currency, without an amount too.
+        ...amount == null && !request.units ? [] : [describeFxConversion(request, amount ?? 1, rate)],
         rateText,
         ...peso ? pesoDollarRateLines(peso) : [],
       ].join("\n"),
       // The rate is the base currency's price of one unit of the other, at the latest quote of each leg: USD per ZAR.
-      exportIdentity: { symbolOrSeries: pair, currencyOrUnit: `${baseCurrency} per ${currency}`, interval: quoted?.derivedFrom ? `derived from ${quoted.derivedFrom}` : "spot" },
+      exportIdentity: { symbolOrSeries: row.pair, currencyOrUnit: `${row.baseCurrency} per ${row.currency}`, interval: quoted?.derivedFrom ? `derived from ${quoted.derivedFrom}` : "spot" },
       columns: [
         { key: "currency", header: "Currency" },
         { key: "baseCurrency", header: "Base" },

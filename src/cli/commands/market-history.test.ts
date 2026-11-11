@@ -56,12 +56,13 @@ test("history CSV keeps the price columns first, every row ends with its flag, w
   const retrieved = lines.at(-1)!.replace("# Retrieval time: ", "");
   expect(lines.slice(0, 4)).toEqual([
     `${HISTORY_CSV_HEADER},${IDENTITY}`,
-    `2025-10-09,,,,,,low>open,false,false,false,,,,,,prices left blank: low>open,SBK.JO,ZAR,1d,Gloom Cloud,2025-10-10,${retrieved}`,
+    // Only the open is outside the range the rest of the bar agrees on: it alone is withheld, the bar flagged.
+    `2025-10-09,,253.3,246.23,252.46,3018311,open withheld,false,false,false,,,,,,,SBK.JO,ZAR,1d,Gloom Cloud,2025-10-10,${retrieved}`,
     `2025-10-10,249,258.15,249,256,4093192,,false,false,false,,,,,,,SBK.JO,ZAR,1d,Gloom Cloud,2025-10-10,${retrieved}`,
     "",
   ]);
   expect(lines.slice(4).map((line) => line.split(":")[0])).toEqual(["# Source", "# Publisher", "# Observation date", "# Publication time", "# Retrieval time"]);
-  expect(result.warnings).toEqual(["1 of 2 bars has low above open or close in the source data; their prices are left blank"]);
+  expect(result.warnings).toEqual(["The open of 2025-10-09 is outside its high and low in the source data; withheld, the rest of the bar kept (flag open withheld)"]);
   expect(result.metadata).toMatchObject({
     currency: "ZAR", unit: "ZAR", interval: "1d", requestedRange: "1Y", firstDate: "2025-10-09", lastDate: "2025-10-10", bars: 2,
   });

@@ -16,7 +16,8 @@ import { currencyPairCode } from "../utils/currency-pair";
 import { currencyUnitLabel, resolveCurrencyUnit } from "../utils/currency-units";
 import { dailyBarDate, getPricePointTimestamp } from "../utils/price-history";
 import {
-  isWickFlag, latestTradeIndex, missingVolumeNotice, priceHistoryIntegrityNotice, pricePointIntegrityFlags, pricePointValues, pricePointWickFlags,
+  isWickFlag, latestTradeIndex, missingVolumeNotice, OPEN_WITHHELD_FLAG, priceHistoryIntegrityNotice, pricePointIntegrityFlags,
+  pricePointOpenWithheld, pricePointValues, pricePointWickFlags,
 } from "../utils/price-history-integrity";
 import { formatUtcTime } from "../utils/utc-time";
 import { maxDrawdown, type DrawdownScale, type MaxDrawdown } from "../utils/max-drawdown";
@@ -296,9 +297,15 @@ export function priceTableIntegrityNotice(rows: readonly { flag?: string | null;
   return [priceHistoryIntegrityNotice(blanked), kept].filter(Boolean).join(" ") || undefined;
 }
 
-/** What a bar is flagged with, as `history` and HP flag it: each way its prices contradict each other, and a withheld wick. */
+/**
+ * What a bar is flagged with, as `history` and HP flag it: each way its prices contradict each other, an open withheld
+ * as outside the range the rest of the bar agrees on (`open withheld`), and a withheld wick.
+ */
 export function historyBarFlags(point: PricePoint): string[] {
-  return [...pricePointIntegrityFlags(point), ...pricePointWickFlags(point), ...rescaleFlags(point)];
+  return [
+    ...pricePointIntegrityFlags(point), ...pricePointOpenWithheld(point) ? [OPEN_WITHHELD_FLAG] : [],
+    ...pricePointWickFlags(point), ...rescaleFlags(point),
+  ];
 }
 
 /** Days a month's daily bars may leave out at either end or between two of them and still say its range: a week. */
@@ -365,9 +372,9 @@ export function withDailyRebuiltBars(rows: readonly HistoryRow[], daily: readonl
   });
 }
 
-/** The codes of a bar left blank for prices that contradict each other: not a break before it, nor a withheld wick. */
+/** The codes of a bar left blank for prices that contradict each other: not a break before it, nor a withheld wick or open. */
 function blankingCodes(row: Pick<HistoryRow, "flag">): string[] {
-  return flagCodes(row).filter((code) => !BREAK_FLAGS.has(code) && !isWickFlag(code) && !isRescaleFlag(code));
+  return flagCodes(row).filter((code) => !BREAK_FLAGS.has(code) && !isWickFlag(code) && !isRescaleFlag(code) && code !== OPEN_WITHHELD_FLAG);
 }
 
 /**
@@ -1163,7 +1170,7 @@ export function historyFlagNote(
   const said = `${count} ${flagged.length === 1 ? "has" : "have"} ${kinds.join(", or ")} in the source data`;
   // A monthly bar keeps its close; its open, high and low come from the month's daily bars where they cover it.
   const kept = flagged.filter((row) => row.close != null);
-  if (kept.length === 0) return `${said}; their prices are left blank`;
+  if (kept.length === 0) return `${said}; ${flagged.length === 1 ? "its" : "their"} prices are left blank`;
   const rebuilt = kept.filter((row) => row.rebuilt).length;
   const blank = flagged.length - kept.length;
   const keep = blank > 0 ? `${kept.length} keep their close` : flagged.length === 1 ? "it keeps its close" : "they keep their close";
@@ -1192,6 +1199,20 @@ export function historyRescaleNote(rows: readonly Pick<HistoryRow, "date" | "fla
     return `${listed} came from the source at ${up ? `1/${factor} of` : `${factor}x`} ${their} price and ${up ? `${factor}x` : `1/${factor} of`} ${their} volume`;
   });
   return `${parts.join("; ")}; shown scaled back (flag rescaled)`;
+}
+
+/**
+ * "The open of 2026-10-30 is outside its high and low in the source data;
+ * withheld, the rest of the bar kept (flag open withheld)", or null when no
+ * bar's open is (pricePointOpenWithheld). Three or more bars are counted.
+ */
+export function historyOpenNote(rows: readonly Pick<HistoryRow, "date" | "flag">[]): string | null {
+  const flagged = rows.filter((row) => flagCodes(row).includes(OPEN_WITHHELD_FLAG));
+  if (flagged.length === 0) return null;
+  const kept = `withheld, the rest of ${flagged.length === 1 ? "the bar" : "each bar"} kept (flag ${OPEN_WITHHELD_FLAG})`;
+  if (flagged.length === 1) return `The open of ${flagged[0]!.date} is outside its high and low in the source data; ${kept}`;
+  const dates = flagged.length <= LISTED_GAPS ? ` (${listItems(flagged.map((row) => row.date))})` : "";
+  return `${flagged.length} of ${rows.length} bars have an open outside their high and low in the source data${dates}; ${kept}`;
 }
 
 /**

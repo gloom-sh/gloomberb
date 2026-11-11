@@ -10,7 +10,7 @@ import { ChartResolveCache } from "./resolve-context";
 import { seedChartResolutionResult } from "./chart-seed";
 
 const row = (date: string, close = 10, bad = false): PricePoint => ({
-  date: new Date(date), close, ...(bad ? { open: 30, high: 20, low: 5 } : {}),
+  date: new Date(date), close, ...(bad ? { open: 30, high: 20, low: 25 } : {}),
 });
 function chart(start = "2026-09-08", end = "2026-09-10"): ChartSpec {
   return {

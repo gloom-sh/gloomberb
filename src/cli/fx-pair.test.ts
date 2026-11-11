@@ -77,3 +77,11 @@ test("a currency's name reads as its code, and a name several currencies share l
   expect(parseFxArgs(["hong", "kong", "dollar"], "USD")).toMatchObject({ request: { currency: "HKD" } });
   expect(parseFxArgs(["100", "swiss", "franc"], "GBP")).toMatchObject({ request: { currency: "CHF", baseCurrency: "USD" }, amount: 100, toUsdByDefault: true });
 });
+
+test("a minor unit reads as a fraction of its major currency, pence only in their own case", () => {
+  expect(parseFxRequest("ZAc/USD", "USD")).toEqual({ currency: "ZAR", baseCurrency: "USD", units: { currency: { code: "ZAc", divisor: 100 } } });
+  expect(parseFxRequest("ila", "USD")).toEqual({ currency: "ILS", baseCurrency: "USD", units: { currency: { code: "ILA", divisor: 100 } } });
+  expect(parseFxRequest("USD/GBp", "USD")).toEqual({ currency: "USD", baseCurrency: "GBP", units: { baseCurrency: { code: "GBp", divisor: 100 } } });
+  expect(parseFxRequest("gbp/USD", "USD")).toEqual({ currency: "GBP", baseCurrency: "USD" });
+  expect(parseFxArgs(["100", "ZAc", "USD"], "GBP")).toMatchObject({ request: { currency: "ZAR", units: { currency: { code: "ZAc" } } }, amount: 100 });
+});

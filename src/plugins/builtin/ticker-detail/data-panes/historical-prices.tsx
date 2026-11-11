@@ -28,8 +28,8 @@ import {
   historyMissingPeriodsNote, priceTableIntegrityNotice, quotedPriceDivisor,
 } from "../../../../cli/history-rows";
 import {
-  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, pricePointWickFlags, priceHistoryRescaleNotice,
-  priceHistoryWickNotice,
+  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointOpenWithheld, pricePointValues, pricePointWickFlags,
+  priceHistoryOpenNotice, priceHistoryRescaleNotice, priceHistoryWickNotice,
 } from "../../../../utils/price-history-integrity";
 import {
   useAssetData,
@@ -294,6 +294,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   // A month that keeps its close is said as `history` says it.
   const integrityNotice = priceTableIntegrityNotice(rows.map((row) => ({ flag: row.flag, close: row.point.close, integrity: row.point.integrity })));
   const wickNotice = useMemo(() => priceHistoryWickNotice(points.filter((point) => pricePointWickFlags(point).length > 0).length), [points]);
+  const openNotice = useMemo(() => priceHistoryOpenNotice(points.filter(pricePointOpenWithheld).length), [points]);
   const rescaleNotice = useMemo(() => priceHistoryRescaleNotice(points), [points]);
   const volumeMissing = useMemo(() => missingVolumeCount(rows.map((row) => ({
     ...row.point, date: row.time, partial: row.partial, filled: row.filled,
@@ -400,7 +401,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
 
   usePaneNoticeFooter({
     registrationId: "historical-prices:integrity",
-    notices: [integrityNotice, wickNotice, rescaleNotice, volumeNotice, ...gapNotices].filter((notice): notice is string => !!notice),
+    notices: [integrityNotice, openNotice, wickNotice, rescaleNotice, volumeNotice, ...gapNotices].filter((notice): notice is string => !!notice),
     focused,
     title: "Price history data",
   });
@@ -450,6 +451,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
           : loading ? (rows.length ? "Refreshing" : "Loading") : rows.length ? "Available" : "Empty"],
         ...(allStart ? [["Source starts", allStart]] : []),
         ...(integrityNotice ? [["Warning", integrityNotice]] : []),
+        ...(openNotice ? [["Warning", openNotice]] : []),
         ...(wickNotice ? [["Warning", wickNotice]] : []),
         ...(rescaleNotice ? [["Warning", rescaleNotice]] : []),
         ...gapNotices.map((notice) => ["Gap note", notice]),

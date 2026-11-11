@@ -55,14 +55,14 @@ test("invalid current quote price or timestamp never borrows the historical clos
 
 test("a latest contradictory historical bar leaves a diagnostic gap instead of using its close or an older bar", () => {
   const data = fixture(); data.quote!.stale = true;
-  data.priceHistory[1]!.open = 70;
+  data.priceHistory[1]!.open = 70; data.priceHistory[1]!.low = 57;
   const original = JSON.stringify(data.priceHistory);
   for (const field of fields) {
     const points = extractFundamentalSeries(data, source(field));
     expect(points).toHaveLength(1);
     expect(points[0]?.value).toBeNull();
     expect(points[0]?.observedAt.toISOString()).toBe("2025-12-31T00:00:00.000Z");
-    expect(points[0]?.provenance?.priceHistoryIntegrity?.sourcePoints[0]).toMatchObject({ open: 70, high: 56, close: 55 });
+    expect(points[0]?.provenance?.priceHistoryIntegrity?.sourcePoints[0]).toMatchObject({ open: 70, high: 56, low: 57, close: 55 });
   }
   expect(JSON.stringify(data.priceHistory)).toBe(original);
   // A valid close-only row at the same time cannot erase contradictory evidence.
@@ -159,7 +159,7 @@ test("future Current quote times retain invalid-time provenance without changing
 });
 
 test("actual resolver/export count a null corrupt valuation as unavailable and retain the original candle", async () => {
-  const data = fixture(); data.quote!.stale = true; data.priceHistory[1]!.open = 70;
+  const data = fixture(); data.quote!.stale = true; data.priceHistory[1]!.open = 70; data.priceHistory[1]!.low = 57;
   const model = await load(data);
   expect(model.complete).toBe(false);
   expect(model.unavailableSymbols).toEqual(["TEST:XNYS"]);
@@ -190,7 +190,7 @@ test("historical date windows and period limits do not inherit excluded current 
 });
 
 test("all-missing requested periods retain their price evidence and remain unavailable", async () => {
-  const data = fixture(); data.quote!.stale = true; data.priceHistory[1]!.open = 70;
+  const data = fixture(); data.quote!.stale = true; data.priceHistory[1]!.open = 70; data.priceHistory[1]!.low = 57;
   const model = await load(data, { maxPoints: 1 });
   expect(model.series[0]?.points.map((point) => point.value)).toEqual([null]);
   expect(model.complete).toBe(false);
