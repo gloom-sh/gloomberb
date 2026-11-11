@@ -1,5 +1,6 @@
 import {
-  FINANCIAL_VINTAGE_NOTICE, filledPeriodPublications, filledPeriodsNote, hasOlderStatements, reportsHalfYearly, stalePeriodNote, statementHistoryNotes,
+  FINANCIAL_VINTAGE_NOTICE, fillDate, filledPeriodPublications, filledPeriodsNote, hasOlderStatements, reportsHalfYearly, stalePeriodNote,
+  statementHistoryNotes, statementPeriodMonths,
 } from "../../../utils/financial-statements";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
@@ -15,8 +16,10 @@ import {
 import { indexBarVolume } from "../../../market-data/market/index-level";
 import {
   buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations,
-  financialStatementPeriods, financialSubTabFields, formatFinancialHeader, isPerShareFinancialRow, receiptShareCountLabel,
+  financialReportHeader, financialStatementPeriods, financialSubTabFields, isPerShareFinancialRow, receiptShareCountLabel,
 } from "./financials/model";
+import { fiscalYearEndMonth } from "../../../utils/fiscal-period";
+import type { FinancialStatement } from "../../../types/financials";
 import { adrRatioText } from "../../../utils/depositary-receipt";
 import { paneSchemas } from "./headless-schema";
 import { loadPeriodEndHistory } from "./financials/period-end-history";
@@ -121,13 +124,23 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
       : allReceipts
         ? `Share counts are in ADRs and EPS is per ADR${ratio ? `; ${ratio}` : ""}.`
         : `Share counts are in ADRs and EPS is per ADR for ${receiptPeriods.join(", ")}${ratio ? ` (${ratio})` : ""}; other periods as reported.`;
-    const dates = table?.statements.map(({ date, currency, dateSource, providerDate, dateEvidence, availableAt, fieldAvailability, fieldSources, unavailableFields, epsBasis, unavailableEarnings, aggregation, shareBasis, filledFrom }) => ({
+    const yearEndMonth = fiscalYearEndMonth(financials.annualStatements);
+    // The list a column comes from: a comparative column is dated by the row a year on in it.
+    const listRows = requestedPeriod === "quarterly" ? financials.quarterlyStatements : financials.annualStatements;
+    const dates = table?.statements.map((statement) => {
+      const { date, currency, dateSource, providerDate, dateEvidence, availableAt, fieldAvailability, fieldSources, unavailableFields, epsBasis, unavailableEarnings, aggregation, shareBasis, filledFrom } = statement;
+      const filled = date === "TTM" || filledFrom?.source !== "results" ? null : fillDate(statement, listRows);
+      return {
       date, currency: currency ?? statementCurrency ?? null,
       shareBasis: shareBasis ?? null,
       availableAt: availableAt ?? null,
       fieldAvailability: fieldAvailability ? { ...fieldAvailability } : null,
       ...(fieldSources ? { fieldSources } : {}),
       ...(filledFrom ? { filledFrom } : {}),
+      // The day the company's results announcement published the period's filled lines, or, for a later
+      // period's comparative column, that period's first announcement.
+      ...(filled?.label === "published" && filled.date ? { announced: filled.date } : {}),
+      ...(filled?.label === "comparative" ? { comparativeIn: filled.date } : {}),
       ...(unavailableFields ? { unavailableFields } : {}),
       ...(epsBasis ? { epsBasis } : {}),
       ...(unavailableEarnings ? { unavailableEarnings } : {}),
@@ -136,8 +149,9 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
       providerDate: date === "TTM" ? null : providerDate ?? null,
       dateEvidence: date === "TTM" || dateSource !== "sec" ? null : dateEvidence ?? null,
       // Rows in the shared money unit no longer name it, so the header does.
-      label: formatFinancialHeader(date, [currency ?? statementCurrency, table.unit].filter(Boolean).join(" ") || undefined, dateSource, false, aggregation?.periodEnd).trim(),
-    })) ?? [];
+      label: financialReportHeader(statement, [currency ?? statementCurrency, table.unit].filter(Boolean).join(" ") || undefined, requestedPeriod, yearEndMonth, listRows),
+      };
+    }) ?? [];
     const rows = table?.rows.map((row) => ({
       id: row.id, kind: row.kind, metric: allReceipts ? receiptShareCountLabel(row) : row.unitLabel,
       cells: row.cells.map((cell, index) => ({
@@ -180,7 +194,7 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
         shareBasis: shareBases.size === 1 ? [...shareBases][0] ?? null : null,
         ...(receiptPeriods.length > 0 ? { adrRatio: financials.fundamentals?.adrRatio ?? financials.quote?.adrRatio ?? null } : {}),
         // A quarter's change is against the quarter before it, which a reader of a table of quarters must be told.
-        notices: rows.length ? [FINANCIAL_VINTAGE_NOTICE, ...requestedPeriod === "quarterly" ? [QUARTERLY_GROWTH_NOTICE] : [],
+        notices: rows.length ? [FINANCIAL_VINTAGE_NOTICE, ...requestedPeriod === "quarterly" ? [quarterlyGrowthNotice(table?.statements ?? [])] : [],
           ...(shareBasisNotice ? [shareBasisNotice] : [])] : [],
         limitations: financialStatementLimitations(financials),
         dateProvenance: financialStatementDateNotice(table?.statements ?? []),
@@ -191,8 +205,15 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
 
 const reportAmount = (amount: RatioAmount) => (typeof amount === "number" ? amount : null);
 
-/** What a table of quarters says its growth is measured against. */
-const QUARTERLY_GROWTH_NOTICE = "Growth is vs prior quarter.";
+/**
+ * What a table of quarters says its growth is measured against; a half filled
+ * from a results announcement is measured against the same half a year earlier.
+ */
+function quarterlyGrowthNotice(statements: readonly FinancialStatement[]): string {
+  return statements.some((statement) => statement.date !== "TTM" && (statementPeriodMonths(statement) ?? 3) > 3)
+    ? "Growth is vs prior quarter; a half's is vs the same half a year earlier."
+    : "Growth is vs prior quarter.";
+}
 
 type HeadlessContext = Parameters<typeof financialStatementsHeadless.load>[1];
 
@@ -273,11 +294,13 @@ async function loadRatioReport(
   const statementCurrency = financialStatementCurrency(financials, [
     ...financials.annualStatements, ...financials.quarterlyStatements,
   ]);
+  const yearEndMonth = fiscalYearEndMonth(financials.annualStatements);
   const dates = table?.periods.map(({ statement }) => ({
     date: statement.date,
     periodEnd: ratioPeriodEnd(statement),
     currency: statement.currency ?? statementCurrency ?? null,
-    label: formatFinancialHeader(statement.date, statement.currency ?? statementCurrency, statement.dateSource, false, statement.aggregation?.periodEnd).trim(),
+    label: financialReportHeader(statement, statement.currency ?? statementCurrency, period, yearEndMonth,
+      period === "quarterly" ? financials.quarterlyStatements : financials.annualStatements),
   })) ?? [];
   const rows = table?.rows.map((row) => {
     const cells = table.cells.get(row.def.id)!.map((cell, index) => {

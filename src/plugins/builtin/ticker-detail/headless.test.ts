@@ -120,6 +120,90 @@ test("years filled from the exchange are named with their lines, and growth is n
   }
 });
 
+// Pop Mart (9992 on HKEX) after its H1 2026 results: FY2025 and both halves filled from HKEXnews.
+test("FA: a filled half is headed as one with its growth on the half before; a filled column names its announcement", async () => {
+  setSystemTime(new Date("2026-11-11T02:00:00Z"));
+  try {
+    type Kind = "annual_results" | "interim_results" | "interim_report";
+    const results = (kind: Kind | Kind[], publishedAt: string | string[], fields: Array<"totalRevenue" | "netIncome">, extra: Record<string, unknown> = {}) => ({
+      source: "results" as const, fields,
+      documents: [kind].flat().map((one, index) => ({ source: "hkex" as const, kind: one, title: one, url: `https://www1.hkexnews.hk/listedco/${index}.pdf`,
+        publishedAt: [publishedAt].flat()[index]!, fetchedAt: "2026-11-11T00:00:00.000Z" })),
+      lines: Object.fromEntries(fields.map((field) => [field, { document: 0, page: 2 }])),
+      ...extra,
+    });
+    const trailing = {
+      date: "2026-06-30", currency: "CNY", totalRevenue: 40.42e9, netIncome: 15.54e9,
+      trailing: {
+        method: "annual-plus-interim" as const, annual: "2025-12-31",
+        interim: { end: "2026-06-30", months: 6 }, priorInterim: { end: "2025-06-30", months: 6 },
+        basis: "FY to 2025-12-31 + 6 months to 2026-06-30 − 6 months to 2025-06-30",
+      },
+    };
+    const context = (comparable?: Array<"totalRevenue">) => ({
+      marketData: createTestDataProvider({
+        async getTickerFinancials() {
+          return {
+            financialCurrency: "CNY",
+            annualStatements: [
+              { date: "2024-12-31", currency: "CNY", dateSource: "provider" as const, totalRevenue: 13.04e9, netIncome: 3.13e9 },
+              { date: "2025-12-31", currency: "CNY", dateSource: "provider" as const, totalRevenue: 37.12e9, netIncome: 12.78e9,
+                filledFrom: results("annual_results", "2026-03-25T04:22:00.000Z", ["totalRevenue", "netIncome"], comparable ? { comparable } : {}) },
+            ],
+            quarterlyStatements: [
+              // Pop Mart's H1 2025 as served: the 2026 interim report's comparative column, published 2026-09-24.
+              { date: "2025-06-30", currency: "CNY", dateSource: "provider" as const, totalRevenue: 13.88e9,
+                filledFrom: results("interim_report", "2026-09-24T08:39:00.000Z", ["totalRevenue"], { periodMonths: 6 }) },
+              // The provider's row at the half, its lines from the interim results (2026-08-20) and report (2026-09-24).
+              { date: "2026-06-30", currency: "CNY", dateSource: "provider" as const, totalRevenue: 17.17e9,
+                filledFrom: results(["interim_results", "interim_report"], ["2026-08-20T08:30:00.000Z", "2026-09-24T08:39:00.000Z"], ["totalRevenue"], { periodMonths: 6 }) },
+            ],
+            trailingStatement: trailing,
+            priceHistory: [],
+          };
+        },
+      }),
+    } as HeadlessPaneContext);
+    const ctx = context(["totalRevenue"]);
+    const load = (period: "annual" | "quarterly", with_ = ctx) => financialStatementsHeadless.load(args(["9992:HKEX"], { period, statement: "income" }), with_);
+    const growth = (result: Awaited<ReturnType<typeof load>>, id: string) => Object.fromEntries((result.rows.find((row) => row.id === id)!.cells as Array<{ date: string; growth: number | null }>)
+      .map(({ date, growth }) => [date, growth]));
+    const headers = (result: Awaited<ReturnType<typeof load>>) => result.columns!.slice(1).map(({ header }) => header);
+
+    const quarterly = await load("quarterly");
+    // A filled column is dated by its announcement alone; the comparative by its later period's, never the report's.
+    expect(headers(quarterly)).toEqual([
+      "H1 FY26 2026-06-30 CNY bn (announced 2026-08-20)",
+      "H1 FY25 2025-06-30 CNY bn (comparative in the 2026-08-20 announcement)",
+    ]);
+    expect(growth(quarterly, "income:revenue")["2026-06-30"]).toBeCloseTo(17.17 / 13.88 - 1, 6);
+    expect(quarterly.metadata?.notices).toContain("Growth is vs prior quarter; a half's is vs the same half a year earlier.");
+    expect((quarterly.metadata?.columns as Array<{ date: string; announced?: string; comparativeIn?: string }>)
+      .map(({ date, announced, comparativeIn }) => [date, announced ?? null, comparativeIn ?? null]))
+      .toEqual([["2026-06-30", "2026-08-20", null], ["2025-06-30", null, "2026-08-20"]]);
+    expect(quarterly.notes).toContain("From the company's results announcements: 6 months to 2026-06-30 revenue (published 2026-08-20); "
+      + "6 months to 2025-06-30 revenue (comparative in the 2026-08-20 announcement).");
+
+    const annual = await load("annual");
+    expect(headers(annual)).toEqual([
+      "TTM 2026-06-30 CNY bn",
+      "2025-12-31 CNY bn (announced 2026-03-25)",
+      "2024-12-31 CNY bn (provider date)",
+    ]);
+    // The year's revenue, restated alike in its announcement, has its growth; its net income is not compared.
+    expect(growth(annual, "income:revenue")["2025-12-31"]).toBeCloseTo(37.12 / 13.04 - 1, 6);
+    expect(growth(annual, "income:net")["2025-12-31"] ?? null).toBeNull();
+    // A server that does not say which lines are comparable: the filled year has its growth on every line (37.12 against 13.04).
+    const unsaid = await load("annual", context());
+    expect(growth(unsaid, "income:revenue")["2025-12-31"]).toBeCloseTo(37.12 / 13.04 - 1, 6);
+    expect(growth(unsaid, "income:net")["2025-12-31"]).toBeCloseTo(12.78 / 3.13 - 1, 6);
+    expect(annual.notes).toContain("From the company's results announcements: 2025-12-31 revenue, net income (published 2026-03-25). "
+      + "TTM is FY to 2025-12-31 + 6 months to 2026-06-30 − 6 months to 2025-06-30, from the company's results announcements.");
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("financial exports distinguish provider dates from SEC period evidence and derived TTM", async () => {
   const dateEvidence = { accessionNumber: "0000909832-24-000049", filed: "2024-10-09", startDate: "2023-09-04" };
   const ctx = { marketData: createTestDataProvider({ async getTickerFinancials() {
