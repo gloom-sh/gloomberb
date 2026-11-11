@@ -6,7 +6,8 @@ import {
   enterpriseValueCheck, enterpriseValueNotMeaningful, enterpriseValueWithdrawn, reportedEnterpriseValue, withBankEnterpriseValue,
 } from "../../utils/fundamentals";
 import { debtAndLeases, leaseBasis } from "../../utils/lease-liabilities";
-import { atRegularSessionPrice } from "./regular-session-valuation";
+import { viewMarketCapitalization } from "../../utils/market-capitalization";
+import { atRegularSessionPrice, regularSessionValuationPrice } from "./regular-session-valuation";
 
 /**
  * Market cap + total debt (+ leases) - cash + minority interest and preferred
@@ -62,6 +63,17 @@ type EnterpriseValueInputs = Pick<TickerFinancials, "quote" | "fundamentals" | "
 
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const DAY_MS = 86_400_000;
+
+/**
+ * The market cap a bridge adds: the one the reports show beside it, at the
+ * quote (viewMarketCapitalization), where it is in the bridge's currency; else
+ * the stored one. A cached snapshot's cap is the price when it was read, so
+ * `fundamentals` and the reverse DCF would otherwise bridge from different caps.
+ */
+function shownMarketCap(priced: Pick<TickerFinancials, "quote" | "fundamentals">, currency: string, stored: number): number {
+  const shown = viewMarketCapitalization(priced.quote, priced.fundamentals, regularSessionValuationPrice(priced.quote));
+  return shown && !shown.otherBasis && shown.currency.toUpperCase() === currency && shown.value > 0 ? shown.value : stored;
+}
 /** A balance sheet older than this does not price today's EV, as Gloom Cloud's bridge holds. */
 const BALANCE_SHEET_MAX_AGE_DAYS = 550;
 
@@ -88,14 +100,17 @@ export function listingEnterpriseValue(financials: EnterpriseValueInputs, now = 
   if (served != null) return currency ? { kind: "value", value: served, currency, basis: "served", ...fx } : { kind: "unavailable" };
   if (!enterpriseValueWithdrawn(fundamentals)) return { kind: "unavailable" };
   if (check?.status === "withdrawn" && finite(check.computed) && check.currency) {
-    const bridge = checkBridge(check, financials);
-    const value = check.computed + (bridge.minority ?? 0);
+    const served = checkBridge(check, financials);
+    // The check's debt, cash and rate, with the market cap the report shows.
+    const marketCap = finite(check.marketCap) ? shownMarketCap(priced, check.currency.toUpperCase(), check.marketCap) : served.marketCap;
+    const bridge = { ...served, marketCap };
+    const value = check.computed - served.marketCap + marketCap + (bridge.minority ?? 0);
     return value > 0
       ? { kind: "value", value, currency: check.currency, basis: "computed", check, bridge, ...fx }
       : { kind: "not-meaningful", reason: notPositive(bridge) };
   }
   if (!financials.annualStatements || !financials.quarterlyStatements) return { kind: "unavailable" };
-  const read = statementBridge({ ...financials, fundamentals, annualStatements: financials.annualStatements,
+  const read = statementBridge({ ...financials, quote: priced.quote, fundamentals, annualStatements: financials.annualStatements,
     quarterlyStatements: financials.quarterlyStatements }, now);
   if ("needs" in read) return { kind: "unavailable", needs: read.needs };
   const { bridge } = read;
@@ -172,9 +187,10 @@ function statementBridge(
   const cash = cashAndShortTermInvestments(latest);
   const absent = [...!debt ? [finite(latest.totalDebt) ? "lease liabilities" : "total debt"] : [], ...!cash ? ["cash"] : []];
   if (absent.length) return { needs: `${listed(absent)} on the ${day} balance sheet` };
-  const marketCap = fundamentals?.marketCap;
+  const stored = fundamentals?.marketCap;
   const currency = fundamentals?.marketCapCurrency?.trim().toUpperCase();
-  if (!finite(marketCap) || !(marketCap > 0) || !currency) return { needs: "a market cap" };
+  if (!finite(stored) || !(stored > 0) || !currency) return { needs: "a market cap" };
+  const marketCap = shownMarketCap(financials, currency, stored);
   let rate = 1;
   let fx: EnterpriseValueBridge["fx"] = null;
   if (from !== currency) {

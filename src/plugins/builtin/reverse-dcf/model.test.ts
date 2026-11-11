@@ -103,6 +103,22 @@ describe("an EV the source withdrew", () => {
       + " Balance sheet from the interim results announced 2026-08-20 (HKEXnews).");
   });
 
+  test("adds the market cap the reports show at the quote, not a cached snapshot's, whichever bridge it is", () => {
+    // The snapshot was read at a 195,000 cap; the quote now prices 1,333 shares at 145: 193,285, the Market Cap `fundamentals` prints.
+    const quote = { ...sessionQuotes("9992", { currency: "HKD", instrumentType: "EQUITY" }).regular, price: 145 };
+    const sheet = { totalDebt: 0, cashCashEquivalentsAndShortTermInvestments: 14_000, totalEquityGrossMinorityInterest: 23_300, commonStockEquity: 23_000 };
+    const live = (data: TickerFinancials): TickerFinancials => ({ ...data, quote, fundamentals: { ...data.fundamentals, sharesOutstanding: 1_333 } });
+    // 193,285 + (0 + 3,700 - 14,000 + 300) x 1.2 = 181,285
+    const read = listingEnterpriseValue(live(halfYears(sheet)));
+    expect(read).toMatchObject({ kind: "value", value: 181_285, bridge: { marketCap: 193_285 } });
+    // Gloom Cloud's bridge computed at its own read of the cap keeps its debt, cash and rate, and takes the same cap.
+    const served = halfYears(sheet);
+    served.fundamentals!.enterpriseValueCheck = { ...served.fundamentals!.enterpriseValueCheck!, marketCap: 195_000, totalDebt: 0, leases: 4_440,
+      cash: 16_800, computed: 182_640, minorityAndPreferred: 360, balanceSheetDate: "2026-06-30", fx: { from: "CNY", rate: 1.2 } };
+    expect(listingEnterpriseValue(live(served))).toMatchObject({ kind: "value", value: 181_285, bridge: { marketCap: 193_285 } });
+    expect(run(live(halfYears(sheet))).enterpriseValueNote).toStartWith("EV 181.3k HKD is market cap 193.3k + ");
+  });
+
   test("reads the borrowings from the debt-and-lease lines of a sheet with no total debt, and names cash alone and a missing minority line", () => {
     const model = run(halfYears({ longTermDebtAndCapitalLeaseObligation: 3_060, currentDebtAndCapitalLeaseObligation: 640, cashAndCashEquivalents: 14_000 }));
     // 195,000 + (0 + 3,700 - 14,000) x 1.2 = 182,640
