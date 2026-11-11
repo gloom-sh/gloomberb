@@ -506,6 +506,16 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "How loosely a fund follows its index: how much the gap between the fund's return and the index's swings, usually over a year. "
       + "Fees, cash and holdings that differ from the index widen it.",
   },
+  {
+    term: "Leveraged and inverse ETFs", aliases: ["leveraged", "inverse", "decay", "daily reset", "3x", "2x", "-1x", "-3x",
+      "leveraged etf", "leveraged etfs", "inverse etf", "inverse etfs", "leveraged fund", "inverse fund", "leverage decay", "volatility decay"],
+    functions: ["ETF", "CMP"], shownBy: { ETF: ["Objective"], CMP: ["decay"] },
+    definition: "A fund that seeks a multiple of its index's return each day: 2× or 3× (TQQQ, three times the Nasdaq-100), or -1× to -3× for an inverse "
+      + "fund (SQQQ). It resets every day, so over weeks it compounds away from that multiple: in a market that swings it falls short (decay), in a "
+      + "steady trend it can beat it. ETF shows the objective. CMP draws the daily line from the index fund (3× daily QQQ beside TQQQ) and two decay "
+      + "rows in percentage points: the fund against that line (fees, financing), and the line against the multiple of the index's return over "
+      + "the period (compounding).",
+  },
   // A depositary receipt beside its home listing (ADR, DES), and the peso's market dollar rates `fx USD/ARS` lists.
   {
     term: "ADR ratio", aliases: ["adr", "adrs", "depositary receipt", "american depositary receipt", "depositary ratio", "ads ratio"],
@@ -821,7 +831,9 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
       + "It splits large traders into dealers, asset managers, leveraged funds and other reportables.",
   },
   {
-    term: "Leveraged funds", aliases: ["leveraged fund", "leveraged money", "lev funds"], functions: ["COT"], shown: ["Leveraged Funds"],
+    // Named for its report: the leveraged ETFs are "Leveraged and inverse ETFs".
+    term: "Leveraged funds (COT)", aliases: ["leveraged funds", "leveraged money", "lev funds", "tff leveraged funds"], functions: ["COT"],
+    shown: ["Leveraged Funds"],
     definition: "The TFF report's hedge funds, CTAs and other money managers trading for clients or with borrowed money: the speculators most watched in rates, currencies and indexes.",
   },
   {

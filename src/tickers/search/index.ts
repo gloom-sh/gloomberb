@@ -993,8 +993,9 @@ function assignTickerSearchCategories<T extends TickerSearchCandidate>(items: T[
   let assignedPrimaryListing = false;
 
   return items.map((item) => {
-    // A company the theme's funds hold is not another listing of the one searched for.
-    if (!item.saved && item.kind === "search" && item.instrumentClass === "equity" && answersOnlyByKeyword(item, query)) {
+    // A company the theme's funds hold is not another listing of the one searched for, nor a saved row the query
+    // names: it is related, whether its listing is saved or not.
+    if (item.instrumentClass === "equity" && answersOnlyByKeyword(item, query)) {
       return { ...item, category: "Related" };
     }
     if (item.saved || item.kind === "ticker") {

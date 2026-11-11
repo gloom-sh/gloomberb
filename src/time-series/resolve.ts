@@ -54,11 +54,13 @@ import { currencySeries } from "./currency-conversion";
 import {
   bufferPriceComparison,
   clipPriceComparison,
+  comparisonSplitNotice,
   observationDate,
   priceComparisonBoundsForSeries,
   priceComparisonSeriesIds,
   resolvePriceComparison,
   priceLevelsNotice,
+  type PriceComparison,
 } from "./price-comparison";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { coinLegsAtSessionClose } from "./coin-session-close";
@@ -285,6 +287,29 @@ async function resolveChartSpecWindow(
   }
   for (const args of captured) sources.onSecurityData?.(...args);
   return result;
+}
+
+/**
+ * The splits a comparison's listings took inside their windows, read from
+ * each listing's corporate actions (once per chart, as total returns read
+ * them). A listing whose actions cannot be read says nothing.
+ */
+async function comparedSplitNotice(
+  spec: ChartSpec,
+  comparison: PriceComparison,
+  loadActions: (source: Extract<ChartSeriesSpec["source"], { kind: "security" }>) => Promise<CorporateActionsData | null>,
+  now: number,
+): Promise<string | null> {
+  const legs = await Promise.all(Object.keys(comparison.legs ?? {}).map(async (id) => {
+    const source = spec.series.find((entry) => entry.id === id)?.source;
+    if (source?.kind !== "security") return null;
+    const actions = await loadActions(source).catch((error: unknown) => {
+      logFailure("time-series-resolve", "Loading splits for a comparison failed")(error);
+      return null;
+    });
+    return actions?.splits?.length ? { id, label: source.instrument.symbol, splits: actions.splits } : null;
+  }));
+  return comparisonSplitNotice(comparison, legs.filter((leg) => leg !== null), now);
 }
 
 /** The price fields whose returns a distribution adds to. */
@@ -1116,6 +1141,7 @@ async function resolveChartSpecPass(
     priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, requestBounds ? null : spec.viewport.dateWindow,
       { ...comparisonOptions, atSessionClose: timed.timing.atSessionClose, closedEnds: timed.timing.closedEnds });
   }
+  const splitNotice = priceComparison?.legs ? await comparedSplitNotice(spec, priceComparison, loadDistributions, comparisonOptions.now) : null;
   const displayBounds = comparisonDisplayBounds(bounds, priceComparison);
   const comparisonBounds = priceComparison && priceComparison.start !== null
     ? priceComparison : bounds;
@@ -1185,6 +1211,7 @@ async function resolveChartSpecPass(
     bounds, comparisonResolution, requestBounds ? null : spec.viewport.dateWindow ?? null,
   );
   if (priceComparison) warnings.push(priceComparison.notice);
+  if (splitNotice) warnings.push(splitNotice);
   // A raw-price chart of total returns is no comparison, and its levels say what they are instead.
   const returnBasisNotice = priceComparison ? null : priceLevelsNotice(spec, rawSeries);
   if (returnBasisNotice) warnings.push(returnBasisNotice);
@@ -1248,6 +1275,7 @@ async function resolveChartSpecPass(
     ...savedCopyOf(rawSeries.filter((entry) => visibleSeriesIds.has(entry.id))),
     ...(coverageNotices.length ? { coverageNotices: [...new Set(coverageNotices)] } : {}),
     ...(returnBasisNotice ? { returnBasisNotice } : {}),
+    ...(splitNotice ? { splitNotice } : {}),
     ...(delistings.size ? { delistings: [...delistings.values()] } : {}),
     viewport,
     resolution,

@@ -849,6 +849,29 @@ describe("CompositeChart", () => {
     expect(named(short[1])).toEqual([]);
   });
 
+  // CMP TQQQ QQQ at 80 columns: five entries wanted four lines, and the last of three ran its value and unit off the edge.
+  test("a legend with more entries than its lines cuts names, never a value or its unit", async () => {
+    const legs = [
+      ["TQQQ ProShares UltraPro QQQ", "%", -30.4], ["QQQ Invesco QQQ Trust, Series 1", "%", -10.2], ["3× daily QQQ", "%", -29.9],
+      ["TQQQ decay vs 3× daily QQQ", "pp", -0.536], ["3× daily QQQ decay vs 3× QQQ", "pp", 0.675],
+    ] as const;
+    const frameLines = async (width: number) => {
+      await tui.render(
+        <CompositeChart width={width} height={20} panels={[{ id: "main" }]} series={legs.map(([label, unit, value], index) => ({
+          ...series(`series-${index}`, "main", "left", unit, [0, value]),
+          label, unitGroup: unit === "pp" ? "pp" : "percent",
+        }))} />,
+        { width: width + 2, height: 22 },
+      );
+      await act(async () => { await tui.setup().renderOnce(); await tui.setup().renderOnce(); });
+      return tui.frame().split("\n").slice(0, 3).join("\n");
+    };
+    for (const width of [62, 40]) {
+      const legend = await frameLines(width);
+      for (const value of ["-30.4%", "-10.2%", "-29.9%", "-0.536 pp", "0.675 pp"]) expect(legend).toContain(value);
+    }
+  });
+
   // CHOKE's legend cut "Malacca" to "Malacc" on one line, and wrapped or scrolling legends still cut names through a word.
   test("a legend that wraps or scrolls cuts a name at whole words too", async () => {
     const labels = ["Strait of Hormuz daily transits", "Bab el-Mandeb daily transits", "Cape of Good Hope transits", "Strait of Malacca daily transits"];
