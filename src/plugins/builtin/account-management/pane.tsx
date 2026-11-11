@@ -68,7 +68,8 @@ import {
   formatTrialEnd,
   formatTrialOffer,
 } from "../../../account/billing";
-import { PasswordChangeDialog } from "./password-dialog";
+import { DeleteAccountPasswordDialog, PasswordChangeDialog } from "./password-dialog";
+import { deleteAccountConfirmingSession } from "./delete-account";
 import { endTrialAfterWarning } from "./trial-cancel";
 import { CalendarAccountTab } from "./calendar-tab";
 import { useAccountManagementFooter } from "./footer";
@@ -727,23 +728,24 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     });
     if (!confirmed) return;
 
-    setBusy("delete");
-    setMessage({ tone: "info", text: t("Deleting account...") });
-    try {
-      await apiClient.deleteAccount();
-      setProfile(null);
-      setDraft(profileToDraft(null));
-      setHasSession(false);
-      await chatController.refreshSession().catch(logFailure("account-management.pane", "Refresh deleted account session failed"));
-      setMessage({ tone: "success", text: t("Account deleted.") });
-    } catch (error) {
-      setMessage({
-        tone: "error",
-        text: error instanceof Error ? error.message : t("Failed to delete account."),
-      });
-    } finally {
-      setBusy(null);
-    }
+    await deleteAccountConfirmingSession({
+      remove: (password) => apiClient.deleteAccount(password),
+      askPassword: (submit) => {
+        void dialog.alert({
+          closeOnClickOutside: false,
+          content: (context: AlertContext) => <DeleteAccountPasswordDialog {...context} onDelete={submit} />,
+        }).catch(logFailure("account-management.pane", "Open delete account password dialog failed"));
+      },
+      deleted: async () => {
+        setProfile(null);
+        setDraft(profileToDraft(null));
+        setHasSession(false);
+        await chatController.refreshSession().catch(logFailure("account-management.pane", "Refresh deleted account session failed"));
+        setMessage({ tone: "success", text: t("Account deleted.") });
+      },
+      setBusy: (deleting) => setBusy(deleting ? "delete" : null),
+      setMessage,
+    });
   }, [busy, dialog]);
 
   // Only after the warning that it ends the trial and Pro now (trial-cancel.ts).
