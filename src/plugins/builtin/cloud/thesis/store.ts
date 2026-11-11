@@ -1,5 +1,6 @@
 import { apiClient, type CloudNoteScope, type CloudThesis, type ThesisPatch, type ThesisSignal } from "../../../../api-client";
 import type { AppNotificationDelivery, AppNotificationRequest, PluginPersistence } from "../../../../types/plugin";
+import { logFailure } from "../../../../utils/log-failure";
 import { computeHealth } from "./model";
 
 interface ThesisStoreSnapshot {
@@ -110,7 +111,7 @@ export class ThesisStore {
     this.started = true;
     const syncAuth = () => {
       if (this.client.isVerified()) {
-        void this.refresh();
+        this.refresh();
       } else {
         // Whatever a refresh in flight is about to say belongs to the account that left.
         this.abandonRefresh();
@@ -140,7 +141,20 @@ export class ThesisStore {
     return this.snapshot.theses.find((thesis) => thesis.id === id) ?? null;
   }
 
-  async refresh(): Promise<void> {
+  /**
+   * Starts a refresh, or joins the one in flight, and returns nothing: a
+   * failure lands in `error`, and the list shown stays.
+   */
+  refresh(): void {
+    this.refreshAndWait().catch(logFailure("cloud.thesis.store", "Refreshing theses failed"));
+  }
+
+  /**
+   * The same refresh for a caller that waits on it. A second caller while one
+   * is in flight gets the same promise. It settles once the theses or the
+   * failure are in state, or once a sign-out or stop dropped the refresh.
+   */
+  refreshAndWait(): Promise<void> {
     if (this.refreshPromise) return this.refreshPromise;
     this.update({ loading: true, error: null });
     const run: Promise<void> = this.load(this.generation).finally(() => {
@@ -257,7 +271,7 @@ export class ThesisStore {
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
     this.refreshTimer = setTimeout(() => {
       this.refreshTimer = null;
-      void this.refresh();
+      this.refresh();
     }, 400);
   }
 

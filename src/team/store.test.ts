@@ -201,17 +201,22 @@ describe("TeamStore", () => {
       }),
     });
     const store = new TeamStore(fake.client);
-    const first = store.refresh();
-    const second = store.refresh();
+    expect(store.refresh()).toBeUndefined();
+    const waiting = store.refreshAndWait();
+    store.refresh();
+    expect(store.refreshAndWait()).toBe(waiting);
     expect(calls).toBe(1);
     expect(store.getSnapshot().loading).toBe(true);
     list.resolve?.([createTestTeam()]);
-    await Promise.all([first, second]);
+    await waiting;
+    expect(store.getSnapshot()).toMatchObject({ loaded: true, loading: false });
     expect(store.getSnapshot().teams).toHaveLength(1);
     expect(calls).toBe(1);
+    store.refresh();
+    expect(calls).toBe(2);
 
     const failing = new TeamStore(fakeClient({ listTeams: async () => { throw new Error("offline"); } }).client);
-    await failing.refresh();
+    await failing.refreshAndWait();
     expect(failing.getSnapshot()).toMatchObject({ loaded: true, loading: false, error: "offline" });
   });
 });

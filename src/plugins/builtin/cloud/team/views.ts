@@ -60,7 +60,7 @@ class TeamViewsStore {
     });
     this.disposers.push(
       teamStore.subscribe(() => {
-        void this.refresh();
+        this.refresh();
       }),
       apiClient.subscribeCloudEvent("view.updated", (data) => {
         const event = data as TeamViewEvent;
@@ -71,7 +71,7 @@ class TeamViewsStore {
         if ("viewId" in event) this.remove(event.viewId);
       }),
     );
-    void this.refresh();
+    this.refresh();
   }
 
   dispose(): void {
@@ -84,7 +84,19 @@ class TeamViewsStore {
 
   private lastTeamKey = "";
 
-  async refresh(): Promise<void> {
+  /**
+   * Refetches every team's view list when the teams changed, and returns
+   * nothing: a team whose list fails keeps the views it had.
+   */
+  refresh(): void {
+    this.refreshAndWait().catch(logFailure("cloud.team.views", "Refreshing team views failed"));
+  }
+
+  /**
+   * The same refresh for a caller that waits on it: it settles once the lists
+   * are in, or at once when the teams are the same and their views on hand.
+   */
+  async refreshAndWait(): Promise<void> {
     const teams = teamStore.getSnapshot().teams;
     const teamKey = teams.map((team) => team.id).join(",");
     if (teamKey === this.lastTeamKey && this.views.size > 0) return;
