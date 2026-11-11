@@ -160,6 +160,28 @@ async function finishAccountSignIn(user: AuthUser): Promise<AuthUser> {
   return user;
 }
 
+/**
+ * Changes the account's password. The service signs every other device out
+ * and moves this one to a new session, whose cookie the API client takes
+ * from the answer. That session goes to the session owner here, as a
+ * sign-in's does, so a restart stays signed in. An answer that is an error
+ * can still carry it (the password changed, but not every other device
+ * could be signed out), and it is kept then too.
+ */
+export async function changeAccountPassword(currentPassword: string, newPassword: string): Promise<void> {
+  const before = apiClient.getSessionToken();
+  try {
+    await apiClient.changePassword(currentPassword, newPassword);
+  } finally {
+    const after = apiClient.getSessionToken();
+    const user = apiClient.getCurrentUser();
+    if (after && after !== before && user) {
+      chatController.adoptSession(after, user);
+      await chatController.refreshSession().catch(logFailure("account-auth", "Session refresh after a password change failed"));
+    }
+  }
+}
+
 export interface AccountFormState {
   mode: AccountMode;
   email: string;

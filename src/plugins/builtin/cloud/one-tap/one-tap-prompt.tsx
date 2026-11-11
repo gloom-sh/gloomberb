@@ -72,9 +72,13 @@ function WebOneTap({ expose = exposeWebExperiment, loadGoogle = loadGoogleOnce }
       const { notify: show, openCommandBar: openBar } = latest.current;
       const reason = oneTapFailureReason(error);
       if (reason === "account_not_linked") {
-        // The address has an account here that was never verified, so Google
-        // cannot join it; its owner logs in with the password.
-        show({ body: t("This email already has an account. Log in with email."), type: "info" });
+        // The address has an account here with a password, which a Google
+        // sign-in never joins; its owner logs in with that password, or
+        // resets it if they never set it.
+        show({
+          body: t("This email already has an account with a password. Log in with email. If you don't know that password, reset it."),
+          type: "info",
+        });
         if (!requestAuthDialog({ mode: "login" })) openBar("Log In");
       } else if (reason === "email_not_verified") {
         show({ body: t("Verify your email with Google first, or use email."), type: "error" });
