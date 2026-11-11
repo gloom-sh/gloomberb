@@ -65,8 +65,9 @@ function dvolSeries(currency: DvolCurrency): SeriesDefinition {
     url: `https://www.deribit.com/statistics/${currency}/volatility-index`,
     refreshMs: 5 * 60_000,
     load: async ({ signal }) => {
-      const payload = await loadDvol(currency, signal ? { signal } : {});
-      return { points: payload.observations, attribution: { source: `Deribit DVOL (${currency})`, publisher: "Deribit" } };
+      const { payload, savedAt } = await loadDvol(currency, signal ? { signal } : {});
+      return { points: payload.observations, ...(savedAt != null ? { savedAt } : {}),
+        attribution: { source: `Deribit DVOL (${currency})`, publisher: "Deribit" } };
     },
   };
 }

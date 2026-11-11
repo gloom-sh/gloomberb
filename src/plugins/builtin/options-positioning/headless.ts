@@ -2,6 +2,7 @@ import type { HeadlessPaneDefinition, HeadlessPaneEntry } from "../../../types/p
 import { formatStrikeLabel } from "../../../utils/options";
 import { expirationOptionSeconds, expiryIsoDate, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER } from "../../../utils/option-expiry";
 import { formatUtcTime } from "../../../utils/utc-time";
+import { servedFromSavedCopy } from "../../../data/saved-copies";
 import { loadGamma, loadOpenInterest, positioningSymbol, type GammaPayload, type OpenInterestPayload } from "./client";
 import { listingFateReport, loadListingFate } from "../../../tickers/listing-fate";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
@@ -141,12 +142,20 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
     const symbol = positioningSymbol(args.symbols[0] ?? "SPY");
     const expiry = typeof args.options.expiry === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.options.expiry)
       ? args.options.expiry : null;
-    const [openInterest, dealer, everyExpiry] = await Promise.all([
-      loadOpenInterest(symbol, expiry, { signal: ctx.signal }, ctx.apiClient),
-      loadGamma(symbol, expiry, { signal: ctx.signal }, ctx.apiClient).catch(failure),
+    const [openInterestLoad, dealerLoad, everyExpiryLoad] = await Promise.all([
+      loadOpenInterest(symbol, expiry, { signal: ctx.signal, force: ctx.refresh === true }, ctx.apiClient),
+      loadGamma(symbol, expiry, { signal: ctx.signal, force: ctx.refresh === true }, ctx.apiClient).catch(failure),
       // The Expiries table's Net GEX is every expiry's, whichever one the strikes and gamma are for.
-      expiry ? loadGamma(symbol, null, { signal: ctx.signal }, ctx.apiClient).catch(failure) : null,
+      expiry ? loadGamma(symbol, null, { signal: ctx.signal, force: ctx.refresh === true }, ctx.apiClient).catch(failure) : null,
     ]);
+    const openInterest = openInterestLoad.payload;
+    const dealer = dealerLoad instanceof Error ? dealerLoad : dealerLoad.payload;
+    const everyExpiry = everyExpiryLoad instanceof Error ? everyExpiryLoad : everyExpiryLoad?.payload ?? null;
+    // Copies saved before the service could not be reached end the report with when the oldest was saved.
+    const savedAt = [openInterestLoad, dealerLoad, everyExpiryLoad]
+      .map((load) => load && !(load instanceof Error) ? load.savedAt : undefined)
+      .filter((at): at is number => at != null);
+    const savedCopy = <T>(value: T) => savedAt.length ? servedFromSavedCopy(value, Math.min(...savedAt)) : value;
     const spot = openInterest.spot;
     const allExpiries = everyExpiry ?? dealer;
     // VIX has no dealer gamma, so its expiries have no column for it.
@@ -231,7 +240,7 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
       complete: !!openInterest.expiries.length && !(dealer instanceof Error) && errors.length === 0,
       unavailableSymbols: openInterest.expiries.length ? [] : [symbol],
       errors, ...(fate?.notes.length ? { notes: fate.notes } : {}),
-      metadata: {
+      metadata: savedCopy({
         underlying: openInterest.underlying,
         oiDate: openInterest.oiDate,
         previousOiDate: openInterest.previousOiDate,
@@ -249,7 +258,7 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
             gammaAsOf: dealer.gammaAsOf ?? null, quotesAsOf: dealer.quotesAsOf },
         }),
         methodology: METHODOLOGY,
-      },
+      }),
     };
   },
 });

@@ -62,7 +62,8 @@ export async function loadListedOpenInterest(
   options: { signal?: AbortSignal; api?: OptionsPositioningApi } = {},
 ): Promise<OpenInterestPayload | null> {
   try {
-    const listed = await loadOpenInterest(symbol, expiry, { signal: options.signal ?? AbortSignal.timeout(LISTED_TIMEOUT_MS) }, options.api);
+    // A saved copy is dated by its own session: the counts it is matched against still say whether it is the chain's.
+    const { payload: listed } = await loadOpenInterest(symbol, expiry, { signal: options.signal ?? AbortSignal.timeout(LISTED_TIMEOUT_MS) }, options.api);
     return listed.expiry === expiry ? listed : null;
   } catch (error) {
     logFailure("options.open-interest-as-of", "Load listed open interest failed")(error);

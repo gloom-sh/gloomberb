@@ -16,6 +16,8 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { FILL_REST } from "../../../components/ui/fill";
 import { chromeBarRows } from "../../../components/layout/pane/sizing";
+import { savedCopyFooterSegment } from "../../../components/layout/pane/footer";
+import type { CloudResource } from "../shared/cloud-resource";
 import { formatStrikeLabel, resolveOptionsTarget } from "../../../utils/options";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { buildOptionCalcParams, OPTIONS_CALCULATOR_TEMPLATE_ID } from "../options-calculator/model";
@@ -212,7 +214,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   // A coin's options (BTC-USD, ETH-USD) come with Deribit's volatility index.
   const coin = dvolCurrency(underlying);
   const dvolLoader = useCallback(async () => loadDvol(coin!), [coin]);
-  const dvol = useAsyncResource<DvolPayload>(coin ? dvolLoader : null);
+  const dvol = useAsyncResource<CloudResource<DvolPayload>>(coin ? dvolLoader : null);
   useAutoRefresh(dvol.updatedAt, dvol.load, { intervalMs: coin ? DVOL_REFRESH_MS : null });
   useEffect(() => () => controller.current?.abort(), [request]);
   const incremental = partial?.key === requestKey ? partial.snapshot : null;
@@ -257,7 +259,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     { id: "iv30", label: "IV30", value: `${(ivRank.value * 100).toFixed(1)}%`, detail: `${ivRank.date.slice(5)} close` },
     { id: "ivr", label: "IV rank", value: wholeNumber(ivRank.rank) },
     { id: "ivp", label: "IV pctl", value: wholeNumber(ivRank.percentile) },
-  ] : coin && snapshot && !snapshot.stored ? dvolStats(dvol.data, surfaceThirtyDayAtm(snapshot)) : [];
+  ] : coin && snapshot && !snapshot.stored ? dvolStats(dvol.data?.payload, surfaceThirtyDayAtm(snapshot)) : [];
   // A stored close is read on its own day, not around the releases still to come.
   // A release that has come out since the dates were read drops at the next surface it is read against.
   const eventReadings = useMemo(() => surfaceEvents.data && snapshot && !snapshot.stored
@@ -436,12 +438,17 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
         ? `${selectedRow?.label} · K ${selectedCell.strike == null ? "--" : formatStrikeLabel(selectedCell.strike)} · fitted IV ${formatIv(selectedCell.volatility)}`
         : "no clean quote at this cell";
   usePaneNoticeFooter({ registrationId: "ovdv-notices", notices: [...new Set(notices)], focused });
+  const savedAts = [snapshot && !snapshot.stored ? snapshot.savedAt : undefined, ivStats.length && coin ? dvol.data?.savedAt : undefined]
+    .filter((at): at is number => at != null);
+  const savedAt = savedAts.length ? Math.min(...savedAts) : null;
   usePaneFooter("ovdv", () => ({
     info: [
       ...(active.loading ? [{ id: "loading", parts: [{ text: snapshot && snapshot.loaded < snapshot.requested
         ? `loading ${snapshot.loaded}/${snapshot.requested} expiries` : "loading", tone: "muted" as const }] }] : []),
       ...(freshness ? splitDelayedStatus({ id: "source", parts: [{ text: freshness, tone: "muted" }] }) : []),
-      ...(snapshot?.expiries.some((entry) => entry.stale) ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
+      // Chains (and a coin's DVOL) kept from an earlier load say when they were saved; anything else old says stale.
+      ...(savedAt != null ? [savedCopyFooterSegment("saved-copy", savedAt)]
+        : snapshot?.expiries.some((entry) => entry.stale) ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
       ...(selectedExpiry?.fit && activeTab === "smile" ? [{ id: "fit", parts: [{ text: `${selectedExpiry.fit.method} · RMSE ${(selectedExpiry.fit.residual * 100).toFixed(3)} vol pts`, tone: "muted" as const }] }] : []),
       ...(selectionStatus ? [{ id: "selection", parts: [{ text: selectionStatus, tone: "muted" as const }] }] : []),
     ],
@@ -459,7 +466,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
         { id: "older", key: "<", label: "older", title: "Older Stored Date", onPress: () => stepHistory(1) },
         { id: "newer", key: ">", label: "newer", title: "Newer Stored Date", onPress: () => stepHistory(-1) }] : []),
     ],
-  }), [snapshot, freshness, active.loading, historyDate, storedDates, selectedExpiry, activeTab, selectedCell, canLoadMore, camera, bitmapAvailable, selectionStatus, openChain, deltaSurface]);
+  }), [snapshot, freshness, active.loading, historyDate, storedDates, selectedExpiry, activeTab, selectedCell, canLoadMore, camera, bitmapAvailable, selectionStatus, openChain, deltaSurface, savedAt]);
   // Keys that move the selection without a footer hint of their own, listed in
   // the pane menu with their keys.
   const menuActions = useRef({ nextExpiry, stepSurfacePoint, zoomCamera });

@@ -128,6 +128,12 @@ export interface SurfaceSnapshot {
   warnings: string[];
   rateAsOf: string | null;
   fetchedAt: number;
+  /**
+   * When the oldest chain shown was saved, when any is a copy kept from an
+   * earlier load because the service could not be reached this time; absent
+   * when every chain is the service's answer.
+   */
+  savedAt?: number;
 }
 
 const positive = (value: number | null | undefined): value is number => typeof value === "number" && Number.isFinite(value) && value > 0;

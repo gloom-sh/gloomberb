@@ -1,5 +1,6 @@
 import type { ProjectedChartPoint } from "../../../components";
 import { httpFetch, type HttpFetchTransport } from "../../../utils/http-transport";
+import { asDataServiceFailure } from "../../../utils/network-failure";
 
 const CNN_FEAR_GREED_GRAPH_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata";
 const CNN_REFERER = "https://www.cnn.com/markets/fear-and-greed";
@@ -369,7 +370,8 @@ export async function fetchFearGreedData(options: {
       : latestResult.status === "rejected"
         ? latestResult.reason
         : "CNN Fear & Greed returned no data";
-    throw reason instanceof Error ? reason : new Error(String(reason));
+    // No answer at all reads as every other pane says it, not in the fetch's own words ("Unable to connect...").
+    throw asDataServiceFailure(reason instanceof Error ? reason : new Error(String(reason)));
   }
 
   return normalizeFearGreedData(charts ?? latest!, latest ?? charts ?? undefined);

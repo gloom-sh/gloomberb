@@ -17,6 +17,8 @@ import { errorMessage } from "../../../utils/errors";
 import { expiredExpiryText, findListedExpiry, isLiveOptionExpiry, liveOptionExpiries, optionExpiryVenue, unlistedExpiryText } from "../../../utils/option-expiry";
 import { optionModelSpot } from "../options/model-spot";
 import { logFailure } from "../../../utils/log-failure";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../../../utils/network-failure";
+import { listedCoinOptions } from "../../../market-data/options-alternatives";
 
 const DEFAULT_SURFACE_EXPIRY_LIMIT = 18;
 /** Expiries read at a time from a source that takes them one by one. */
@@ -125,6 +127,16 @@ export interface SurfaceLoadRequest {
 const CANCELLED = "Surface load was cancelled";
 
 /**
+ * A chain kept from an earlier load because asking again failed for a reason
+ * a retry may get past (no connection, a timeout): a saved copy, shown as
+ * one, rather than an error. A refusal stays the error it is.
+ */
+function savedCopyEntry(entry: QueryEntry<OptionsChain> | undefined): entry is QueryEntry<OptionsChain> {
+  return !!entry?.error && entry.fetchedAt != null && !!resolveEntryValue(entry)
+    && (entry.error.reasonCode === "TIMEOUT" || entry.error.message === DATA_SERVICE_UNREACHABLE_MESSAGE || isNetworkFailure(entry.error.message));
+}
+
+/**
  * Publishes immutable partial snapshots as each expiry completes. Cancellation
  * stops queued work and emissions, but does not abort a shared OMON request.
  * Increasing limit reuses the same coordinator keys for already-loaded expiries.
@@ -150,6 +162,8 @@ export async function loadVolatilitySurface(
   let requiredFailures: SurfaceFailure[] = [];
   let catalogueExpiration: number | null = null;
   let treasuryError: string | null = null;
+  // When the catalogue chain was saved, when it is a saved copy.
+  let catalogueSavedAt: number | null = null;
   let finished = false;
   let spot = request.spot;
   let spotAsOf = request.spotAsOf ?? null;
@@ -160,9 +174,12 @@ export async function loadVolatilitySurface(
     if (catalogueError) failures.push({ expiration: null, message: catalogueError, ...catalogueReason ? { reasonCode: catalogueReason } : {} });
     failures.push(...requiredFailures);
     if (treasuryError) failures.push({ expiration: null, message: treasuryError });
+    const savedAts = catalogueSavedAt != null ? [catalogueSavedAt] : [];
     const projected = selected.map((expiration) => {
       const entry = entries.get(expiration);
-      const error = errors.get(expiration) ?? entry?.error?.message ?? null;
+      const saved = !errors.has(expiration) && savedCopyEntry(entry);
+      if (saved) savedAts.push(entry.fetchedAt!);
+      const error = errors.get(expiration) ?? (saved ? null : entry?.error?.message ?? null);
       if (error) failures.push({ expiration, message: error });
       const chain = entry ? resolveEntryValue(entry) : null;
       if (!entry || !chain) {
@@ -190,6 +207,7 @@ export async function loadVolatilitySurface(
       requested: selected.length, loaded, failed, expiries, failures,
       warnings: [...new Set([...expiries.flatMap((expiry) => expiry.warnings), ...surfaceCalendarWarnings(expiries)])],
       rateAsOf: dates.length === 1 ? dates[0]! : null, fetchedAt: now,
+      ...savedAts.length ? { savedAt: Math.min(...savedAts) } : {},
     };
   };
   const publish = () => {
@@ -199,13 +217,17 @@ export async function loadVolatilitySurface(
   publish();
   // Asked while the catalogue loads, so it costs the expiries no wait.
   const batched = Promise.resolve().then(() => dependencies.batchesExpiries?.()).then((answer) => answer === true, logFailure("vol-surface.client", "Read expiry batching support failed", false));
-  const treasury = Promise.resolve().then(() => dependencies.loadYieldCurve()).then((value) => {
-    if (request.signal?.aborted) return;
-    curve = value;
-  }).catch((error) => { treasuryError = `Treasury: ${errorMessage(error)}`; }).finally(() => {
-    curvePending = false;
-    publish();
-  });
+  // A coin's options (Deribit's) are priced at the venue's own rate, so the Treasury curve is not read for them.
+  const venueRated = listedCoinOptions(symbol) != null;
+  if (venueRated) curvePending = false;
+  const treasury = venueRated ? Promise.resolve()
+    : Promise.resolve().then(() => dependencies.loadYieldCurve()).then((value) => {
+      if (request.signal?.aborted) return;
+      curve = value;
+    }).catch((error) => { treasuryError = `Treasury: ${errorMessage(error)}`; }).finally(() => {
+      curvePending = false;
+      publish();
+    });
 
   // Expiries close on the listing's clock: a coin's options (Deribit) settle at 08:00 UTC on any day.
   const expiryVenue = optionExpiryVenue(request.instrument.symbol, request.instrument.exchange);
@@ -226,8 +248,10 @@ export async function loadVolatilitySurface(
     const representedExpiry = initialContracts[0]?.expiration;
     if (representedExpiry != null && initialContracts.every((contract) => contract.expiration === representedExpiry)
       && chain?.expirationDates.includes(representedExpiry)) catalogueExpiration = representedExpiry;
-    catalogueError = initial.error?.message ?? null;
-    catalogueReason = initial.error?.reasonCode;
+    // A saved catalogue lists the expiries it listed then; the report says when it was saved.
+    catalogueSavedAt = savedCopyEntry(initial) ? initial.fetchedAt : null;
+    catalogueError = catalogueSavedAt != null ? null : initial.error?.message ?? null;
+    catalogueReason = catalogueSavedAt != null ? undefined : initial.error?.reasonCode;
     if (!chain) catalogueError ??= "Options expiry catalogue unavailable";
     catalogue = liveOptionExpiries(chain?.expirationDates ?? [], now, expiryVenue);
     // A typed date is that day's UTC midnight; the catalogue's stamp for the

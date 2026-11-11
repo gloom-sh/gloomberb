@@ -173,6 +173,32 @@ describe("surface loader", () => {
     expect(result.spotAsOf).toBe("2026-09-22T13:59:00Z");
   });
 
+  test("offline, a coin's surface reads no Treasury curve and its kept chains are saved copies, dated, not errors", async () => {
+    const savedAt = now - 20 * 60_000;
+    // What the coordinator holds when a refresh got no answer: the last chain, its fetch time and the failure.
+    const kept = (data: OptionsChain): QueryEntry<OptionsChain> => ({ ...ready(data), fetchedAt: savedAt,
+      error: { reasonCode: "UPSTREAM_ERROR", message: "Gloom couldn't reach its data service" } });
+    const refused = (data: OptionsChain): QueryEntry<OptionsChain> => ({ ...ready(data),
+      error: { reasonCode: "UPSTREAM_ERROR", message: "Real-time options need Gloom Pro" } });
+    const dates = expirations.slice(0, 3);
+    let curves = 0;
+    const load = (symbol: string, entry: (data: OptionsChain) => QueryEntry<OptionsChain>) => loadVolatilitySurface({ instrument: { symbol }, spot: 100 }, {
+      now: () => now, loadYieldCurve: async () => { curves += 1; throw new Error("Gloom couldn't reach its data service"); },
+      loadOptions: async (request) => request.expirationDate === dates[0] ? ready(emptyChain(dates)) : entry(emptyChain(dates)),
+    });
+    const coin = await load("BTC-USD", kept);
+    expect(curves).toBe(0);
+    expect(coin.failures).toEqual([]);
+    expect(coin.savedAt).toBe(savedAt);
+    // A refusal is no saved copy: it stays the error it is.
+    const refusal = await load("BTC-USD", refused);
+    expect(refusal.savedAt).toBeUndefined();
+    expect(refusal.failures.map((failure) => failure.message)).toContain("Real-time options need Gloom Pro");
+    // A US listing still reads the curve its options are priced at.
+    await load("AAPL", kept);
+    expect(curves).toBe(1);
+  });
+
   test("incremental loads share exact coordinator keys with an options monitor", async () => {
     const fetched: (number | undefined)[] = [];
     const provider = { id: "test", getOptionsChain: async (_symbol: string, _exchange: string, expiry?: number) => {

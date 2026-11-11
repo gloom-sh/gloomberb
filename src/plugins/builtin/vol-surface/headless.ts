@@ -17,6 +17,7 @@ import { listingFateEmpty, loadListingFate } from "../../../tickers/listing-fate
 import { coinOptionsAlias, coinWithoutOptionsRefusal, fxVolatilityRefusal } from "../../../market-data/options-alternatives";
 import { formatUtcTime } from "../../../utils/utc-time";
 import { dvolCurrency, dvolGap, dvolSeriesId, loadDvol, type DvolPayload } from "../volatility/dvol";
+import { servedFromSavedCopy } from "../../../data/saved-copies";
 import { optionsClosedNotice, usOptionsReopen } from "../shared/volatility/live-session";
 import { loadIvHistory, loadSurfaceDates } from "../iv-history/client";
 import { logFailure } from "../../../utils/log-failure";
@@ -298,7 +299,12 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
       : tab === "term" ? [termSection(snapshot, readings), ...readings.length ? [scheduledReleasesSection(readings)] : []]
       : tab === "skew" ? [skewSection(snapshot)] : tab === "forwards" ? [forwardsSection(snapshot)]
       : surfaceSections(snapshot, axis, args.options.tenors as "listed" | "fixed");
-    const dvol = dvolLoad ? await dvolLoad : null;
+    const dvolRead = dvolLoad ? await dvolLoad : null;
+    const dvol = dvolRead instanceof Error ? dvolRead : dvolRead?.payload ?? null;
+    // Chains and DVOL kept from an earlier load end the report with when the oldest was saved.
+    const savedAts = [snapshot.stored ? undefined : snapshot.savedAt, dvolRead instanceof Error ? undefined : dvolRead?.savedAt]
+      .filter((at): at is number => at != null);
+    const savedCopy = <T>(value: T) => savedAts.length ? servedFromSavedCopy(value, Math.min(...savedAts)) : value;
     const settles = surfaceSettlementTime(snapshot);
     // Outside the US options session a live chain with no expiry fitted is the hour, not the symbol (FXE before the
     // open): it says when the surface fills, and IV30 at the last close, as the pane shows it above the surface. A
@@ -337,9 +343,9 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
       // A stored close is dated by its session, whichever view prints it.
       ...(stored ? { freshness: { status: "not-a-feed" as const, basis: "stored close capture", asOf: stored.sessionDate } }
         : smile?.freshness ? { freshness: smile.freshness } : {}),
-      metadata: { ...snapshot, ...quote ? { underlyingQuote: quote } : {}, unit: "decimal annualized IV", methodology: "docs/research-data.md#shared-volatility-calculations",
+      metadata: savedCopy({ ...snapshot, ...quote ? { underlyingQuote: quote } : {}, unit: "decimal annualized IV", methodology: "docs/research-data.md#shared-volatility-calculations",
         ...dvol && !(dvol instanceof Error) ? { dvol: { currency: dvol.currency, venue: dvol.venue, latest: dvol.latest, unit: "vol points",
-          series: `CAP:${dvolSeriesId(dvol.currency)}` } } : {} },
+          series: `CAP:${dvolSeriesId(dvol.currency)}` } } : {} }),
     };
   },
 };
