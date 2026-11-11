@@ -868,4 +868,14 @@ test("a lira book's day move holds the dollar's move on the day for a dollar hol
   // DAY on the row is the summary's.
   const context: ColumnContext = { ...defaultColumnContext, activeTab: "tarim", baseCurrency: "TRY", exchangeRates: rates, fxDayMoves: new Map([["USD", 1.001]]) };
   expect(getSortValue({ id: "day_pnl", label: "DAY", width: 10, align: "right" }, ticker, financials.get("NTR"), context)).toBeCloseTo(moved.dailyPnl, 6);
+
+  // One ES contract (50 x the index), up 10 points: its contract value is no money held, so the dollar's move is not on it.
+  const es = createTestTicker("ES=F", "E-mini S&P 500", { exchange: "CME", assetCategory: "FUTURE", portfolios: ["tarim"],
+    positions: [{ portfolio: "tarim", shares: 1, avgCost: 6700, currency: "USD", broker: "manual", multiplier: 50 }] });
+  financials.set("ES=F", createFinancials({ quote: { symbol: "ES=F", currency: "USD", price: 6810, change: 10, changePercent: 0.147, previousClose: 6800 } }));
+  const terms = new Map([["ES=F", { size: { multiplier: 50, size: "$50 x index" }, settlement: null }]]);
+  const book = calculatePortfolioSummaryTotals([ticker, es], financials, "TRY", rates, true, "tarim", "latest-print", terms, new Map([["USD", 1.001]]));
+  expect(book.dailyPnl).toBeCloseTo(moved.dailyPnl + 50 * 10 * 50, 6);
+  expect(getSortValue({ id: "day_pnl", label: "DAY", width: 10, align: "right" }, es, financials.get("ES=F"),
+    { ...context, futuresTerms: terms, futuresTermsVersion: 1 })).toBeCloseTo(50 * 10 * 50, 6);
 });

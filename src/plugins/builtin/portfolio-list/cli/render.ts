@@ -604,9 +604,11 @@ export async function valuePortfolioPositions({
  * move at today's rate, and for a holding in another currency the currency's
  * move on its value at the close before (that value at the previous FX close
  * against today's rate). With no previous FX close the move is the price's.
+ * A future's contract value is no money held: the currency moves only its
+ * P&L, the price's move at today's rate, never its notional.
  */
 async function positionDayMove(
-  metrics: Pick<ReturnType<typeof getPortfolioPositionMetrics>, "totalPriceUnits" | "grossPriceUnits">,
+  metrics: Pick<ReturnType<typeof getPortfolioPositionMetrics>, "totalPriceUnits" | "grossPriceUnits" | "isFuture">,
   price: number,
   change: number,
   quoteCurrency: string,
@@ -615,7 +617,7 @@ async function positionDayMove(
 ): Promise<{ change: number; previousValue: number; fx: number }> {
   const previousPrice = price - change;
   const rate = await toBase(1, quoteCurrency);
-  const before = previousRate ? await previousRate(quoteCurrency) : null;
+  const before = previousRate && !metrics.isFuture ? await previousRate(quoteCurrency) : null;
   const previous = before != null && Number.isFinite(before) && before > 0 ? before : rate;
   const fx = metrics.totalPriceUnits * previousPrice * (rate - previous);
   return {

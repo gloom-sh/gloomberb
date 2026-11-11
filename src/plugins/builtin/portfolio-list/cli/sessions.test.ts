@@ -285,15 +285,20 @@ test("a book's day move holds the currency move of a holding in another currency
   const lira = { ...config, portfolios: [{ id: "tarim", name: "Tarim", currency: "TRY" }] };
   const ntr = createTestTicker("NTR", "Nutrien", { exchange: "NYSE", currency: "USD", portfolios: ["tarim"],
     positions: [{ portfolio: "tarim", shares: 100, avgCost: 60, currency: "USD", broker: "manual" }] });
+  // One ES contract (50 x the index): its contract value is no money held, so the dollar moves only its P&L.
+  const es = createTestTicker("ES=F", "E-mini S&P 500", { exchange: "CME", currency: "USD", assetCategory: "FUTURE", portfolios: ["tarim"],
+    positions: [{ portfolio: "tarim", shares: 1, avgCost: 6700, currency: "USD", broker: "manual", multiplier: 50 }] });
   const quotes: Record<string, Quote> = {
     NTR: { symbol: "NTR", currency: "USD", listingExchangeName: "NYSE", price: 72.57, change: 0.28, changePercent: 0.3873, previousClose: 72.29,
       changeSessionDate: "2026-11-10", marketState: "REGULAR", lastUpdated: Date.parse("2026-11-10T20:14:00Z") },
+    "ES=F": { symbol: "ES=F", currency: "USD", listingExchangeName: "CME", price: 6810, change: 10, changePercent: 0.147, previousClose: 6800,
+      changeSessionDate: "2026-11-10", marketState: "REGULAR", instrumentType: "FUTURE", lastUpdated: Date.parse("2026-11-10T20:14:00Z") },
     "USDTRY=X": { symbol: "USDTRY=X", currency: "TRY", price: 50.2294, change: 0.0518, changePercent: 0.1032, previousClose: 50.1776,
       instrumentType: "CURRENCY", lastUpdated: Date.parse("2026-11-10T20:28:00Z") },
   };
   const market = {
     config: lira,
-    store: { loadAllTickers: async () => [ntr] },
+    store: { loadAllTickers: async () => [ntr, es] },
     dataProvider: createTestDataProvider({
       getQuote: async (symbol) => quotes[symbol]!,
       getQuotesBatch: async (targets) => targets.map((target) => ({ target, quote: quotes[target.symbol] ?? null })),
@@ -305,7 +310,9 @@ test("a book's day move holds the currency move of a holding in another currency
   const json = JSON.parse(serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, cli.printed[0]!.options));
   // 100 x 72.29 dollars at the close before were worth 50.1776 lira each, and 100 x 72.57 are worth 50.2294 now.
   const fx = 100 * 72.29 * (50.2294 - 50.1776);
-  expect(json.metadata.dayChange).toBeCloseTo(100 * 72.57 * 50.2294 - 100 * 72.29 * 50.1776, 6);
+  const future = 50 * 10 * 50.2294;
+  expect(json.metadata.dayChange).toBeCloseTo(100 * 72.57 * 50.2294 - 100 * 72.29 * 50.1776 + future, 6);
   expect(json.metadata.dayChangeFx).toBeCloseTo(fx, 6);
-  expect(json.metadata.dayChangePercent).toBeCloseTo((72.57 * 50.2294 / (72.29 * 50.1776) - 1) * 100, 6);
+  expect(json.metadata.dayChangePercent).toBeCloseTo(
+    (100 * 72.57 * 50.2294 - 100 * 72.29 * 50.1776 + future) / (100 * 72.29 * 50.1776 + 50 * 6800 * 50.2294) * 100, 6);
 });

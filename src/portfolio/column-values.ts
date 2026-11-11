@@ -88,16 +88,18 @@ import {
 /**
  * A position's move on the day in the book's currency: its price's move, and
  * where the currency's own move is known (`fxDayMoves`) that too, its value
- * before taken at the previous FX close.
+ * before taken at the previous FX close. A future's contract value is no
+ * money held: its move is the price's alone, at today's rate.
  */
 function positionDayPnl(
-  units: number,
+  position: { units: number; isFuture: boolean },
   quote: { price: number; change: number },
   quoteCurrency: string,
   ctx: Pick<ColumnContext, "baseCurrency" | "fxDayMoves">,
   toBaseQuote: (value: number) => number,
 ): number {
-  const factor = quoteCurrency === ctx.baseCurrency ? undefined : ctx.fxDayMoves?.get(quoteCurrency);
+  const units = position.units;
+  const factor = quoteCurrency === ctx.baseCurrency || position.isFuture ? undefined : ctx.fxDayMoves?.get(quoteCurrency);
   if (factor == null || !Number.isFinite(factor) || factor <= 0) return toBaseQuote(units * quote.change);
   return toBaseQuote(units * quote.price) - toBaseQuote(units * (quote.price - quote.change)) / factor;
 }
@@ -715,7 +717,7 @@ export function getColumnValue(
     case "day_pnl":
       if (quote?.delisting) return { text: delistingStateLabel(quote.delisting), color: colors.warning };
       if (activeQuote && isFiniteNumber(activeQuote.change) && Number.isFinite(positionMetrics.grossPriceUnits) && positionMetrics.grossPriceUnits !== 0) {
-        const dayPnl = positionDayPnl(totalPriceUnits, { price: activeQuote.price, change: activeQuote.change }, quoteCurrency, ctx, toBaseQuote);
+        const dayPnl = positionDayPnl({ units: totalPriceUnits, isFuture: positionMetrics.isFuture }, { price: activeQuote.price, change: activeQuote.change }, quoteCurrency, ctx, toBaseQuote);
         return { text: formatCompactAmount(dayPnl, { signed: true }), color: priceColor(dayPnl) };
       }
       return { text: "—" };
@@ -926,7 +928,7 @@ export function getSortValue(
     case "day_pnl":
       if (quote?.delisting) return null;
       if (activeQuote && isFiniteNumber(activeQuote.change) && Number.isFinite(positionMetrics.grossPriceUnits) && positionMetrics.grossPriceUnits !== 0) {
-        return positionDayPnl(totalPriceUnits, { price: activeQuote.price, change: activeQuote.change }, quoteCurrency, ctx, toBaseQuote);
+        return positionDayPnl({ units: totalPriceUnits, isFuture: positionMetrics.isFuture }, { price: activeQuote.price, change: activeQuote.change }, quoteCurrency, ctx, toBaseQuote);
       }
       return null;
     case "pnl":

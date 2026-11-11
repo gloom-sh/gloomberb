@@ -113,7 +113,7 @@ export async function loadPeriodPnl({
     const units = metrics.unknownContractSize ? Number.NaN : metrics.totalPriceUnits;
     if (metrics.unknownContractSize) sizeUnknown.add(symbol);
     if (closes.partialEnd && quote) latestTimes.push(quoteHeadlineTime(quote));
-    return { symbol, priceUnits: units, currency: quoteCurrency, ...closes };
+    return { symbol, priceUnits: units, currency: quoteCurrency, ...(metrics.isFuture ? { future: true } : {}), ...closes };
   });
   // Each major currency's FX close on each day a holding in it starts or ends on: GBP's for a price in pence.
   const needed = new Map<string, { from: string; day: string }>();

@@ -237,8 +237,10 @@ export function calculatePortfolioSummaryTotals(
         // A listing that no longer trades does not move: its last session's change is not today's.
         const previousClose = quote?.delisting ? activeQuote.price
           : activeQuote.change != null ? activeQuote.price - activeQuote.change : Number.NaN;
-        totalPrevValue += toBaseBefore(grossPriceUnits * previousClose, quoteCurrency);
-        signedDailyPnl += fxMove(quoteCurrency) != null
+        // A future's notional is no money held: the currency moves its P&L alone, never the contract's value.
+        const currencyMoves = !positionMetrics.isFuture && fxMove(quoteCurrency) != null;
+        totalPrevValue += currencyMoves ? toBaseBefore(grossPriceUnits * previousClose, quoteCurrency) : toBaseQuote(grossPriceUnits * previousClose);
+        signedDailyPnl += currencyMoves
           ? toBaseQuote(totalPriceUnits * activeQuote.price) - toBaseBefore(totalPriceUnits * previousClose, quoteCurrency)
           : toBaseQuote(totalPriceUnits * (activeQuote.price - previousClose));
         // The move valued: the latest print's from the daily reference, the regular close's from the session before it.
