@@ -115,7 +115,9 @@ import { DATE_OPTION_EXAMPLES, isoDateOption, isoDateToday } from "../../utils/c
 import { apiClient } from "../../api-client";
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../../api-client/plan-rules";
 import type { ExchangeAnnouncementsPayload } from "../../api-client/exchange-announcements";
-import { exchangeAnnouncementsPage, listsExchangeAnnouncements, type ExchangeAnnouncementsPage } from "../../utils/exchange-announcements";
+import {
+  exchangeAnnouncementsPage, exchangeAnnouncementsPublisher, isRoutineReturn, listsExchangeAnnouncements, type ExchangeAnnouncementsPage,
+} from "../../utils/exchange-announcements";
 import { dailyFxLeg, fxCloseOnDate, type FxCloseReading } from "../../market-data/fx-closes";
 import { zonedDateTimeParts } from "../../utils/zoned-date-time";
 import { declaredDividends } from "../../utils/declared-dividends";
@@ -2903,7 +2905,7 @@ async function registrantUsExchange(market: MarketContext, symbol: string, regis
   return (venues.find((venue) => isUsListingExchange(venue.exchange)) ?? venues[0])?.exchange ?? null;
 }
 
-/** ASX announcements as `filings` lists them for a listing that files nothing with the SEC. */
+/** ASX and HKEX announcements as `filings` lists them for a listing that files nothing with the SEC. */
 const ANNOUNCEMENT_COLUMNS = [
   { key: "date", header: "Released", format: (value: unknown) => typeof value === "string" ? `${value.slice(0, 16).replace("T", " ")} UTC` : "" },
   { key: "headline", header: "Headline", maxWidth: 60 },
@@ -2912,10 +2914,14 @@ const ANNOUNCEMENT_COLUMNS = [
   { key: "url", header: "URL", optional: true },
 ];
 
-const ASX_ANNOUNCEMENTS = { source: "ASX company announcements", status: "not-a-feed", basis: "exchange announcements", oldest: null } as const;
+/** The source line of an exchange's announcements: "ASX company announcements", "HKEXnews announcements". */
+const exchangeAnnouncementsFreshness = (publisher: string) => ({
+  source: publisher === "ASX" ? "ASX company announcements" : `${publisher} announcements`,
+  status: "not-a-feed", basis: "exchange announcements", oldest: null,
+} as const);
 
-function announcementRows(payload: ExchangeAnnouncementsPayload) {
-  return payload.announcements.map((item) => ({
+function announcementRows(payload: ExchangeAnnouncementsPayload, all: boolean) {
+  return payload.announcements.filter((item) => all || !isRoutineReturn(item)).map((item) => ({
     date: item.date,
     headline: item.headline,
     type: item.types.join("; "),
@@ -2964,7 +2970,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       const choice = await listingChoiceNotes(listing, market, quote, venues);
       // A company on ASX that files nothing with the SEC lists its ASX announcements instead.
       if (identity && filings.length === 0 && !form && listsExchangeAnnouncements(identity.exchange)) {
-        await printExchangeAnnouncements(ctx, { resolved, count, choice, page: page! });
+        await printExchangeAnnouncements(ctx, { resolved, count, choice, page: page!, all });
         return;
       }
       ctx.printResult({
@@ -3039,40 +3045,54 @@ function filingsFootnote(
  */
 async function printExchangeAnnouncements(
   ctx: Parameters<CliCommandDef["execute"]>[1],
-  input: { resolved: ListingIdentity; count: number; choice: string[]; page: ExchangeAnnouncementsPage },
+  input: { resolved: ListingIdentity; count: number; choice: string[]; page: ExchangeAnnouncementsPage; all: boolean },
 ): Promise<void> {
-  const { resolved, count, choice, page } = input;
+  const { resolved, count, choice, page, all } = input;
+  const publisher = exchangeAnnouncementsPublisher(resolved.exchange) ?? resolved.exchange;
   const notice = noSecReportsNotice(resolved);
-  const pageLine = `${page.name}: ${page.url}`;
   let payload: ExchangeAnnouncementsPayload | null = null;
   let failure: string | null = null;
   try {
-    payload = await apiClient.getCloudExchangeAnnouncements({ symbol: resolved.symbol, exchange: resolved.exchange, limit: Math.min(count, 50) });
+    // HKEX's routine returns are left out after the read, so its list is asked for whole: a buyback files one a day.
+    const limit = all || publisher === "ASX" ? Math.min(count, 50) : 100;
+    payload = await apiClient.getCloudExchangeAnnouncements({ symbol: resolved.symbol, exchange: resolved.exchange, limit });
   } catch (error) {
-    failure = `ASX announcements unavailable: ${error instanceof Error ? error.message : String(error)}`;
+    failure = `${publisher} announcements unavailable: ${error instanceof Error ? error.message : String(error)}`;
   }
-  const rows = payload ? announcementRows(payload) : [];
+  // The company's own page where Gloom Cloud has it (HKEXnews' search with the company filled in), else the venue's.
+  const pageLine = `${page.name}: ${payload?.page || page.url}`;
+  const listed = payload ? announcementRows(payload, all) : [];
+  const rows = listed.slice(0, count);
+  const routine = payload && !all ? payload.announcements.filter(isRoutineReturn).length : 0;
+  const routineNote = routine > 0
+    ? `Left out ${routine} routine ${routine === 1 ? "return" : "returns"} (next day disclosure and monthly returns) of the latest ${payload!.announcements.length}; --all lists them.`
+    : null;
   const warnings = [
     ...choice,
-    ...payload?.stale ? ["ASX could not be reached; these are the announcements Gloom Cloud read last."] : [],
+    ...payload?.stale ? [`${publisher} could not be reached; these are the announcements Gloom Cloud read last.`] : [],
     ...failure ? [failure] : [],
   ];
+  // Only ASX flags price-sensitive announcements; the column is left out where the exchange flags none.
+  const columns = rows.some((row) => typeof row.priceSensitive === "boolean")
+    ? ANNOUNCEMENT_COLUMNS : ANNOUNCEMENT_COLUMNS.filter((column) => column.key !== "priceSensitive");
+  const notes = [...routineNote ? [routineNote] : [], pageLine];
   ctx.printResult({
     data: rows,
     metadata: {
-      ...listingMetadata(resolved), secFilings: 0, announcementsPage: payload?.page ?? page.url,
+      ...listingMetadata(resolved), secFilings: 0, announcementsPage: payload?.page || page.url,
       ...(payload ? { announcementsTotal: payload.total, announcementsRetrievedAt: payload.retrievedAt } : {}),
+      ...(routine > 0 ? { routineReturnsHidden: routine } : {}),
     },
-    freshness: rowsFreshness(rows, { ...ASX_ANNOUNCEMENTS, observedKey: "date" }),
+    freshness: rowsFreshness(rows, { ...exchangeAnnouncementsFreshness(publisher), observedKey: "date" }),
     ...(warnings.length > 0 ? { warnings } : {}),
   }, {
     heading: listingHeading(resolved),
-    ...(rows.length > 0 ? { summary: () => `${notice} Its latest ASX announcements:` } : {}),
+    ...(rows.length > 0 ? { summary: () => `${notice} Its latest ${publisher} announcements:` } : {}),
     rows: () => rows,
-    columns: ANNOUNCEMENT_COLUMNS,
-    empty: `${failure ? notice : `${notice} ASX lists no announcements for it.`}\n${pageLine}`,
-    footnote: pageLine,
-    exportNotes: [notice, pageLine],
+    columns,
+    empty: `${failure ? notice : `${notice} ${publisher} lists no announcements for it.`}\n${notes.join("\n")}`,
+    footnote: notes.join("\n"),
+    exportNotes: [notice, ...notes],
     exportIdentity: { symbolOrSeries: `${resolved.symbol}:${resolved.exchange}` },
   });
 }
@@ -4486,17 +4506,17 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
   },
   {
     name: "filings",
-    description: "Fetch recent SEC filings; a listing abroad gets its exchange's announcements page, and ASX's list",
+    description: "Fetch recent SEC filings; a listing abroad gets its exchange's announcements page, and ASX's or HKEX's list",
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["filings <symbol> [--count <n>] [--form <form>] [--all]"],
       options: [
         { flags: "--count <n>", description: "Number of filings (default 15)" },
         { flags: "--form <form>", description: "Only this form and its amendments, such as 10-K or 13D" },
-        { flags: "--all", description: "Also list what fn SEC leaves out by default: the pricing supplements and term sheets (424B2, FWP) a bank files for each structured note, and a fund trust's filings for its other funds" },
+        { flags: "--all", description: "Also list what fn SEC leaves out by default: the pricing supplements and term sheets (424B2, FWP) a bank files for each structured note, and a fund trust's filings for its other funds; for an HKEX company, its next day disclosure and monthly returns" },
         EXCHANGE_OPTION,
       ],
-      examples: ["filings AAPL", "filings BHP:ASX", "filings NST.AX", "filings AAPL --count 40 --json", "filings CAR --form 13G"],
+      examples: ["filings AAPL", "filings BHP:ASX", "filings NST.AX", "filings 9992:HKEX", "filings AAPL --count 40 --json", "filings CAR --form 13G"],
     },
     execute: runFilings,
   },

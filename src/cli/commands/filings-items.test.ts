@@ -107,6 +107,7 @@ test("filings reads a venue suffix and, for a company abroad that files nothing 
     "AIR:NZX": { venue: "NZX", name: "Air New Zealand Limited" },
     "GUBRF.IS": { venue: "BIST", name: "Gübre Fabrikalari Türk Anonim Sirketi" },
     "GUBRF:BIST": { venue: "BIST", name: "Gübre Fabrikalari Türk Anonim Sirketi" },
+    "9992:HKEX": { venue: "HKEX", name: "Pop Mart International Group Limited" },
   };
   const asked: string[] = [];
   const original = apiClient.getCloudExchangeAnnouncements;
@@ -161,7 +162,7 @@ test("filings reads a venue suffix and, for a company abroad that files nothing 
     ].join("\n"));
     expect(down.warnings).toContain("ASX announcements unavailable: asx_unavailable");
 
-    // Another venue abroad links its exchange's page; Gloom Cloud lists ASX's alone.
+    // Another venue abroad links its exchange's page; Gloom Cloud lists ASX's and HKEX's alone.
     const air = await run("AIR.NZ", "text");
     expect(air.text).toContain("Air New Zealand (NZX) files no SEC reports.\nNZX announcements: https://www.nzx.com/companies/AIR/announcements");
     expect(asked).toHaveLength(3);
@@ -169,6 +170,29 @@ test("filings reads a venue suffix and, for a company abroad that files nothing 
     const gubrf = await run("GUBRF.IS", "text");
     expect(gubrf.warnings).toContain("Read GUBRF.IS as GUBRF:BIST.");
     expect(gubrf.text).toContain("(BIST) files no SEC reports.\nKAP disclosures: https://www.kap.org.tr/en/bildirim-sorgu");
+
+    // HKEX: a daily buyback return would bury the results, so routine returns stay out and are counted; HKEX flags
+    // nothing price sensitive, and the page is HKEXnews' search with the company filled in.
+    const hkexnews = "https://www1.hkexnews.hk";
+    answer = async () => ({
+      exchange: "HKEX", symbol: "9992", name: "POP MART", page: `${hkexnews}/search/titlesearch.xhtml?lang=en&stockId=1000068054`,
+      announcements: [
+        { date: "2026-11-10T09:31:00.000Z", headline: "Next Day Disclosure Returns - [Share Buyback]", types: ["Share Buyback"],
+          category: "Next Day Disclosure Returns", priceSensitive: null, fileSize: "90KB", documentKey: "1", url: `${hkexnews}/1.pdf` },
+        { date: "2026-08-20T08:30:00.000Z", headline: "INTERIM RESULTS ANNOUNCEMENT FOR THE SIX MONTHS ENDED 30 JUNE 2026", types: ["Interim Results"],
+          category: "Announcements and Notices", priceSensitive: null, fileSize: "194KB", documentKey: "2", url: `${hkexnews}/2.pdf` },
+      ],
+      total: 363, retrievedAt: "2026-11-11T00:40:00.000Z",
+    });
+    const popMart = await run("9992:HKEX", "text");
+    expect(popMart.text).toContain("Pop Mart International Group (HKEX) files no SEC reports. Its latest HKEXnews announcements:");
+    expect(popMart.text).toMatch(/2026-08-20 08:30 UTC\s+INTERIM RESULTS ANNOUNCEMENT FOR THE SIX MONTHS ENDED 30 JUNE 2026\s+Interim Results\s+https/);
+    expect(popMart.text).not.toContain("Share Buyback");
+    expect(popMart.text).not.toContain("Price sensitive");
+    expect(popMart.text).toContain("Left out 1 routine return (next day disclosure and monthly returns) of the latest 2; --all lists them.");
+    expect(popMart.text).toContain(`HKEXnews: ${hkexnews}/search/titlesearch.xhtml?lang=en&stockId=1000068054`);
+    expect(popMart.text).toContain("Source: HKEXnews announcements");
+    expect(asked.at(-1)).toBe("9992:HKEX");
   } finally {
     apiClient.getCloudExchangeAnnouncements = original;
   }
