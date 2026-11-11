@@ -75,18 +75,27 @@ const HALF_YEARLY_VENUES = new Set(["ASX", "CXA", "NZX"]);
 const DAY_MS = 86_400_000;
 
 /**
- * Whether a listing's company reports half-yearly rather than quarterly: it
- * lists on a venue whose companies do (Qantas on ASX), or its periods are
- * halves (periodsAreHalves). The venue only explains a listing with no
- * interim statements on file: ResMed reports quarters on ASX.
+ * Whether a listing's company reports half-yearly rather than quarterly: its
+ * periods are halves (periodsAreHalves), or it lists on a venue whose
+ * companies do (Qantas on ASX) and its interim statements show no quarters.
+ * The venue never outweighs the periods: ResMed reports quarters on ASX.
  */
 export function reportsHalfYearly(
   exchange: string | null | undefined,
   quarterly: readonly Pick<FinancialStatement, "date">[],
   annual: readonly Pick<FinancialStatement, "date">[] = [],
 ): boolean {
-  if (exchange && HALF_YEARLY_VENUES.has(exchange.toUpperCase())) return true;
-  return periodsAreHalves(quarterly, annual);
+  if (periodsAreHalves(quarterly, annual)) return true;
+  return !!exchange && HALF_YEARLY_VENUES.has(exchange.toUpperCase()) && !periodsAreQuarters(quarterly);
+}
+
+/** Whether consecutive interim statements are a quarter apart somewhere: a quarterly reporter, whatever its venue. */
+function periodsAreQuarters(quarterly: readonly Pick<FinancialStatement, "date">[]): boolean {
+  const times = quarterly.map(({ date }) => Date.parse(`${date.slice(0, 10)}T00:00:00Z`)).filter(Number.isFinite).sort((a, b) => a - b);
+  return times.slice(1).some((time, index) => {
+    const days = (time - times[index]!) / DAY_MS;
+    return days > 60 && days < 120;
+  });
 }
 
 /**
@@ -189,11 +198,46 @@ const FILL_FIELDS: Record<StatementFillField | ResultsFillField, string> = {
   totalEquityGrossMinorityInterest: "total equity",
 };
 
-/** When a filled row's figures were published or read: an announcement's publication, ASX's read. */
-function fillDate(fill: StatementFill): { label: "read" | "published"; date: string } {
+/**
+ * When a filled row's figures were published or read: ASX's read, or the
+ * first of its documents published after its period ended. A trailing twelve
+ * months to a half also lists the year's documents, which came out before
+ * the half did: it is dated by the half's results.
+ */
+function fillDate(fill: StatementFill, periodEnd: string): { label: "read" | "published"; date: string } {
   if (fill.source === "asx") return { label: "read", date: fill.retrievedAt.slice(0, 10) };
-  const published = fill.documents.map((document) => document.publishedAt.slice(0, 10)).sort()[0] ?? "";
-  return { label: "published", date: published };
+  const dates = fill.documents.map((document) => document.publishedAt.slice(0, 10)).sort();
+  return { label: "published", date: dates.find((date) => date >= periodEnd) ?? dates[0] ?? "" };
+}
+
+type FilledRow = Pick<FinancialStatement, "date" | "filledFrom"> & { aggregation?: { periodEnd: string } };
+
+/** A table's filled periods with the lines it shows, newest first; a TTM row's end is that of the period it runs to. */
+function filledPeriods(statements: readonly FilledRow[], shown?: ReadonlySet<string>) {
+  return statements.flatMap(({ date, filledFrom, aggregation }) => {
+    const source = filledFrom && FILL_SOURCES[filledFrom.source];
+    const fields = [...new Set((filledFrom?.fields ?? [])
+      .filter((field) => FILL_FIELDS[field] && (!shown || shown.has(field)))
+      .map((field) => FILL_FIELDS[field]))];
+    if (!source || !filledFrom || fields.length === 0) return [];
+    const end = date.slice(0, 10);
+    const months = filledFrom.source === "results" && filledFrom.periodMonths ? `${filledFrom.periodMonths} months to ` : "";
+    return [{ end, period: `${months}${end}`, source, fields, stamp: fillDate(filledFrom, (aggregation?.periodEnd ?? date).slice(0, 10)),
+      periodEnd: (aggregation?.periodEnd ?? date).slice(0, 10) }];
+  }).sort((left, right) => right.end.localeCompare(left.end));
+}
+
+/**
+ * The periods `filledPeriodsNote` dates by a results announcement and the day
+ * it gives ("2026-06-30", "2026-08-20"), so a line naming the same
+ * announcement for the same period is not said twice.
+ */
+export function filledPeriodPublications(
+  statements: readonly FilledRow[],
+  shown?: ReadonlySet<string>,
+): Array<{ periodEnd: string; published: string }> {
+  return filledPeriods(statements, shown).filter(({ stamp }) => stamp.label === "published")
+    .map(({ periodEnd, stamp }) => ({ periodEnd, published: stamp.date }));
 }
 
 /**
@@ -202,28 +246,22 @@ function fillDate(fill: StatementFill): { label: "read" | "published"; date: str
  * Gloom Cloud filled from the listing's exchange because the statements source
  * does not have them yet, newest first, with the lines taken. A period read
  * from the company's results announcement is dated by its publication ("6
- * months to 2026-06-30 revenue, net income (published 2026-08-20)"). `shown`
- * keeps the lines the table has a row for. Null when no shown line was filled.
+ * months to 2026-06-30 revenue, net income (published 2026-08-20)"), each
+ * day said once for the periods it dates. `shown` keeps the lines the table
+ * has a row for. Null when no shown line was filled.
  */
 export function filledPeriodsNote(
-  statements: readonly Pick<FinancialStatement, "date" | "filledFrom">[],
+  statements: readonly FilledRow[],
   shown?: ReadonlySet<string>,
 ): string | null {
-  const filled = statements.flatMap(({ date, filledFrom }) => {
-    const source = filledFrom && FILL_SOURCES[filledFrom.source];
-    const fields = [...new Set((filledFrom?.fields ?? [])
-      .filter((field) => FILL_FIELDS[field] && (!shown || shown.has(field)))
-      .map((field) => FILL_FIELDS[field]))];
-    if (!source || !filledFrom || fields.length === 0) return [];
-    const end = date.slice(0, 10);
-    const months = filledFrom.source === "results" && filledFrom.periodMonths ? `${filledFrom.periodMonths} months to ` : "";
-    return [{ end, period: `${months}${end}`, source, fields, stamp: fillDate(filledFrom) }];
-  }).sort((left, right) => right.end.localeCompare(left.end));
+  const filled = filledPeriods(statements, shown);
   if (filled.length === 0) return null;
   const sources = [...new Set(filled.map((period) => period.source))];
-  // Each announcement dates its own period.
+  // Each announcement dates its own periods: "TTM revenue; 2025-12-31 revenue (published 2026-03-25)".
   if (filled.every(({ stamp }) => stamp.label === "published")) {
-    return `From ${sources.join(" and ")}: ${filled.map(({ period, fields, stamp }) => `${period} ${fields.join(", ")} (published ${stamp.date})`).join("; ")}.`;
+    const days = [...new Set(filled.map(({ stamp }) => stamp.date))];
+    const lines = (day: string) => filled.filter(({ stamp }) => stamp.date === day).map(({ period, fields }) => `${period} ${fields.join(", ")}`).join("; ");
+    return `From ${sources.join(" and ")}: ${days.map((day) => `${lines(day)} (published ${day})`).join("; ")}.`;
   }
   const read = filled.map(({ stamp }) => stamp.date).sort().at(-1);
   return `From ${sources.join(" and ")} (read ${read}): ${filled.map(({ period, fields }) => `${period} ${fields.join(", ")}`).join("; ")}.`;

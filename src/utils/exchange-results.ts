@@ -93,13 +93,19 @@ const RESULTS_PERIOD: Readonly<Record<ResultsAnnouncement["kind"], string>> = {
 /**
  * "Latest half year 2026-06-30, interim results announced 2026-08-20
  * (HKEXnews)." and what came out after it, as US statements name their 10-Q
- * and a newer 8-K.
+ * and a newer 8-K. The first line is left out where a filled period's note
+ * already dates the latest period by that announcement (`dated`,
+ * filledPeriodPublications), so the day is said once.
  */
-export function exchangeResultsNotes(results: ExchangeResults): string[] {
+export function exchangeResultsNotes(
+  results: ExchangeResults,
+  dated: ReadonlyArray<{ periodEnd: string; published: string }> = [],
+): string[] {
   const { latest, newer, publisher } = results;
   const kind = (text: string) => `${text[0]!.toUpperCase()}${text.slice(1)}`;
+  const saidInFill = !!latest && dated.some(({ periodEnd, published }) => periodEnd === latest.date && published === latest.announced);
   return [
-    ...latest ? [`Latest ${RESULTS_PERIOD[latest.kind]} ${latest.date}, ${latest.kind} announced ${latest.announced} (${publisher}).`] : [],
+    ...latest && !saidInFill ? [`Latest ${RESULTS_PERIOD[latest.kind]} ${latest.date}, ${latest.kind} announced ${latest.announced} (${publisher}).`] : [],
     ...newer.map((item) => item.kind === "business update"
       ? `Business update announced ${item.announced} (${publisher}), after the latest statements: "${item.headline}".`
       : `${kind(item.kind)} announced ${item.announced} (${publisher}); their statements are not in yet.`),

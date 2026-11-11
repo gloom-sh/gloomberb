@@ -16,7 +16,7 @@ import {
 import { colors, priceColor } from "../../../../theme/colors";
 import { fiscalYearEndMonth } from "../../../../utils/fiscal-period";
 import { padTo } from "../../../../utils/format";
-import { filledPeriodsNote, stalePeriodNote } from "../../../../utils/financial-statements";
+import { filledPeriodPublications, filledPeriodsNote, stalePeriodNote } from "../../../../utils/financial-statements";
 import {
   FINANCIAL_COL_W,
   financialLabelWidth,
@@ -459,8 +459,13 @@ export function ResolvedFinancialsTab({
 
   // The Balance Sheet and Liquidity show cash, which an offering filed since the latest balance sheet is not in yet.
   const { symbol: boundSymbol, exchange: boundExchange } = useBoundTicker();
-  // An HKEX company's latest period dated by its results announcement, and what was announced after it.
-  const exchangeResults = useExchangeResultsNotes(boundSymbol, boundExchange, latestBalanceSheetDate(financials));
+  // Years filled from the listing's exchange, with the lines this table shows.
+  const filledFields = useMemo(() => ratioTab ? undefined : financialSubTabFields(subTab), [ratioTab, subTab]);
+  const filledPeriods = useMemo(() => filledPeriodsNote(displayStatements, filledFields), [displayStatements, filledFields]);
+  const filledDates = useMemo(() => filledPeriodPublications(displayStatements, filledFields), [displayStatements, filledFields]);
+  // An HKEX company's latest period dated by its results announcement, unless the filled periods already date it, and
+  // what was announced after it.
+  const exchangeResults = useExchangeResultsNotes(boundSymbol, boundExchange, latestBalanceSheetDate(financials), filledDates);
   const offeringNote = useOfferingNote(boundSymbol, boundExchange, latestBalanceSheetDate(financials),
     !!financials && (section.key === "balance" || section.key === "liquidity"));
 
@@ -472,11 +477,6 @@ export function ResolvedFinancialsTab({
   const notInYetLine = useMemo(
     () => notInYetNote(notInYet, subTab, resolvedPeriod, yearEndMonth),
     [notInYet, resolvedPeriod, subTab, yearEndMonth],
-  );
-  // Years filled from the listing's exchange, with the lines this table shows.
-  const filledPeriods = useMemo(
-    () => filledPeriodsNote(displayStatements, ratioTab ? undefined : financialSubTabFields(subTab)),
-    [displayStatements, ratioTab, subTab],
   );
   usePaneNoticeFooter({
     registrationId: "financials-notices",

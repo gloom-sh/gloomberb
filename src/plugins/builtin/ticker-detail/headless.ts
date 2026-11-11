@@ -1,5 +1,5 @@
 import {
-  FINANCIAL_VINTAGE_NOTICE, filledPeriodsNote, hasOlderStatements, reportsHalfYearly, stalePeriodNote, statementHistoryNotes,
+  FINANCIAL_VINTAGE_NOTICE, filledPeriodPublications, filledPeriodsNote, hasOlderStatements, reportsHalfYearly, stalePeriodNote, statementHistoryNotes,
 } from "../../../utils/financial-statements";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
@@ -160,9 +160,11 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
     const offering = table?.subTab.key === "balance" ? await reportOfferingNote(ctx, symbol, financials) : null;
     // A latest period over 15 months old says how old it is; an HKEX company's, the announcement its results came in.
     const stale = table ? stalePeriodNote(financialStatementPeriods(table.statements, table.subTab)) : null;
-    const announced = table ? await reportExchangeResults(ctx, symbol, financials) : [];
-    // Years filled from the listing's exchange, with the lines this table shows.
-    const filled = table ? filledPeriodsNote(table.statements, financialSubTabFields(table.subTab)) : null;
+    // Years filled from the listing's exchange, with the lines this table shows; an announcement that dates one is not
+    // said again in the results line.
+    const shownFields = table ? financialSubTabFields(table.subTab) : undefined;
+    const filled = table ? filledPeriodsNote(table.statements, shownFields) : null;
+    const announced = table ? await reportExchangeResults(ctx, symbol, financials, filledPeriodPublications(table.statements, shownFields)) : [];
     const periodDates = dates.map(({ date }) => date);
     const missing = rows.length ? null : await missingPeriodsError(ctx, symbol, financials, requestedPeriod, hasRequestedStatements, options.statement);
     return {
@@ -245,9 +247,10 @@ async function reportExchangeResults(
   ctx: Parameters<typeof financialStatementsHeadless.load>[1],
   symbol: string,
   financials: Awaited<ReturnType<typeof loadHeadlessFinancials>>,
+  dated: ReturnType<typeof filledPeriodPublications>,
 ): Promise<string[]> {
   return resolveHeadlessInstrument(ctx, symbol)
-    .then((listing) => loadExchangeResultsNotes(ctx.apiClient, listing, latestBalanceSheetDate(financials)))
+    .then((listing) => loadExchangeResultsNotes(ctx.apiClient, listing, latestBalanceSheetDate(financials), dated))
     .catch(logFailure("ticker-detail.headless", "Reading the HKEXnews results announcements failed", [] as string[]));
 }
 
