@@ -77,7 +77,8 @@ const ALERT_COLUMNS: AlertColumn[] = [
   // Wide enough for a listing kept with its venue (7203:JPX).
   { id: "symbol", label: "Symbol", width: 9, align: "left" },
   { id: "metric", label: "Measure", width: 14, align: "left" },
-  { id: "current", label: "Current", width: 8, align: "right" },
+  // As wide as Target, so the two write a price the same way (73,606.88 beside 65,000.00).
+  { id: "current", label: "Current", width: 11, align: "right" },
   { id: "target", label: "Target", width: 11, align: "right" },
   { id: "away", label: "Away", width: 8, align: "right" },
   { id: "condition", label: "Trigger", width: 12, align: "left" },

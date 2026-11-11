@@ -14,7 +14,7 @@ import { approximatePercent, loadSurfaceEvents, surfaceEventHistory, surfaceEven
 import { buildSurfaceGrid, TERM_SLOPE_MIN_GAP_DAYS, type SurfaceGridOptions, type SurfaceSettings, type SurfaceSnapshot } from "./model";
 import { atCapturePrecision, formatCaptureTime, loadDatedSurface, storedSurfaceDate, type DatedSurfaceSnapshot } from "./stored";
 import { listingFateEmpty, loadListingFate } from "../../../tickers/listing-fate";
-import { coinOptionsAlias, coinWithoutOptionsRefusal, fxVolatilityRefusal } from "../../../market-data/options-alternatives";
+import { coinOptionsAlias, coinWithoutOptionsRefusal, fxVolatilityRefusal, listedCoinOptions } from "../../../market-data/options-alternatives";
 import { formatUtcTime } from "../../../utils/utc-time";
 import { dvolCurrency, dvolGap, dvolSeriesId, loadDvol, type DvolPayload } from "../volatility/dvol";
 import { servedFromSavedCopy } from "../../../data/saved-copies";
@@ -237,6 +237,10 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     const tab = (SURFACE_TABS as readonly string[]).includes(String(args.options.tab)) ? args.options.tab as SurfaceTab : "surface";
     // The term structure is read around the next FOMC and CPI: their dates decide which expiries load.
     let events: SurfaceEvents | null = null;
+    // Close surfaces are captured for US listings only, so a coin's date has nothing to show yet.
+    if (date && listedCoinOptions(symbol)) {
+      throw new Error(`Stored surfaces are not kept for coins yet, so ${symbol} has none for ${date}. The live surface: gloom fn OVDV ${symbol}`);
+    }
     if (date) {
       // A stored close needs no current price: it carries the spot it was fitted at.
       snapshot = await loadDatedSurface(symbol, date, { signal: ctx.signal, api: ctx.apiClient });

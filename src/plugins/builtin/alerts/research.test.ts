@@ -36,8 +36,14 @@ test("invalid contracts, exchanges and thresholds are refused before sync", () =
   expect(() => createResearchAlert("iv_spike", { "iv_spike:contract": "AAPL" })).toThrow("OCC contract");
   expect(() => createResearchAlert("fifty_two_week", { "fifty_two_week:symbol": "SAP", "fifty_two_week:exchange": "XETRA" })).toThrow();
   expect(() => createResearchAlert("unusual_volume", { "unusual_volume:symbol": "AAPL", "unusual_volume:threshold": "0.5" })).toThrow();
-  const option = createResearchAlert("iv_spike", { "iv_spike:contract": "O:AAPL261016C00300000", "iv_spike:threshold": "5" });
-  expect(JSON.parse(option.value)).toMatchObject({ symbol: "AAPL", contract: "AAPL261016C00300000" });
+  const now = Date.parse("2026-11-11T15:00:00Z");
+  const option = createResearchAlert("iv_spike", { "iv_spike:contract": "O:AAPL261120C00300000", "iv_spike:threshold": "5" }, now);
+  expect(JSON.parse(option.value)).toMatchObject({ symbol: "AAPL", contract: "AAPL261120C00300000" });
+  // A contract past its last session is refused as a ticker nothing quotes is; one expiring today trades until the close.
+  expect(() => createResearchAlert("iv_spike", { "iv_spike:contract": "IBIT200101C00045000" }, now))
+    .toThrow("Not a live contract: IBIT200101C00045000 expired on 2020-01-01.");
+  expect(() => createResearchAlert("iv_spike", { "iv_spike:contract": "AAPL261110C00300000" }, now)).toThrow("Not a live contract");
+  expect(() => createResearchAlert("iv_spike", { "iv_spike:contract": "AAPL261111C00300000" }, now)).not.toThrow();
 });
 
 test("rule state text keeps value, percentile and date, and says why a reading is missing", () => {

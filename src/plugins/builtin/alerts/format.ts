@@ -4,6 +4,8 @@ import { formatMarketPrice } from "../../../market-data/market/format";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { formatQuoteAgeWithSource } from "../../../market-data/quotes/time";
 import { alertListingKey, alertPriceText } from "./price-text";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { isRoundTheClockCoin } from "../../../utils/crypto-pair";
 import type { AlertCondition, AlertRule } from "./types";
 
 /** What a list says of an alert no check has read yet. */
@@ -94,6 +96,9 @@ export function isoUtc(value: number | null | undefined): string {
 export function alertListing(alert: Pick<AlertRule, "symbol" | "exchange" | "lastQuoteExchange">): string {
   // A pair written with its `=X` suffix names itself: GBPUSD=X, never GBPUSD=X:CCY.
   if (/=X$/i.test(alert.symbol)) return alert.symbol;
+  // So does a coin pair, as `quote` prints it: BTC-USD however its venue was kept, never BTC-USD:CCC.
+  const coin = parsePublicTickerKey(alert.symbol);
+  if (/^[A-Z0-9]+-[A-Z0-9]+$/.test(coin.symbol) && isRoundTheClockCoin(coin.symbol, coin.exchange || alert.exchange || alert.lastQuoteExchange)) return coin.symbol;
   // One key however the listing was typed: 7203.T, `7203 JP` and 7203:JPX are all 7203:JPX.
   return alertListingKey(alert);
 }

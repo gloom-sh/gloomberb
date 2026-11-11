@@ -9,6 +9,12 @@ import {
 } from "../../../components/chart/surface3d/model";
 import { colorBarLabels, placeSurface3DLabels, surface3DColorBarGeometry } from "../../../components/chart/surface3d/software";
 import { WebBox } from "./box";
+
+/** How far a label keeps from the chart's edges, in px. */
+const LABEL_INSET = 4;
+/** The colour bar's width, and the space between it and its labels, in px. */
+const COLOR_BAR_WIDTH = 8;
+const COLOR_BAR_LABEL_GAP = 3;
 import { selectionStyle } from "./style";
 
 // GLSL ES 1.00 so the same shaders run on WebGL2 and WebGL1 contexts.
@@ -296,6 +302,7 @@ export function WebSurface3D(props: Surface3DHostProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const labelLayerRef = useRef<HTMLDivElement | null>(null);
+  const colorBarRef = useRef<HTMLDivElement | null>(null);
   const markerRef = useRef<HTMLDivElement | null>(null);
   const resources = useRef<Resources | null>(null);
   const [failed, setFailed] = useState(false);
@@ -444,10 +451,11 @@ export function WebSurface3D(props: Surface3DHostProps) {
     const layer = labelLayerRef.current;
     if (layer) {
       const placed = placeSurface3DLabels(p.scene, viewport, 1, p.colors);
-      if (p.reserveRight > 0) placed.push(...colorBarLabels(p.scene, viewport.width, viewport.height, p.reserveRight, 1, p.colors));
+      const barLabels = p.reserveRight > 0 ? colorBarLabels(p.scene, viewport.width, viewport.height, p.reserveRight, 1, p.colors) : [];
       const existing = new Map<string, HTMLElement>();
       for (const child of Array.from(layer.children) as HTMLElement[]) existing.set(child.dataset.key ?? "", child);
-      for (const label of placed) {
+      const elements = new Map<string, HTMLElement>();
+      for (const label of [...placed, ...barLabels]) {
         let element = existing.get(label.key);
         if (!element) {
           element = document.createElement("span");
@@ -463,10 +471,43 @@ export function WebSurface3D(props: Surface3DHostProps) {
         element.style.fontSize = "var(--gloom-type-ui)";
         element.style.fontWeight = label.role === "tick" ? "var(--gloom-weight-regular)" : "var(--gloom-weight-bold)";
         element.style.letterSpacing = label.role === "title" ? "0.08em" : "normal";
-        const shiftX = label.align === "left" ? "0%" : label.align === "right" ? "-100%" : "-50%";
-        element.style.transform = `translate(${label.anchorX}px, ${label.anchorY}px) translate(${shiftX}, -50%)`;
+        elements.set(label.key, element);
       }
       for (const stale of existing.values()) stale.remove();
+      // Each label's drawn size, read once its text and type are set (all writes first, then the reads), and kept
+      // until they change, so a camera drag moves labels without measuring them again.
+      const sizes = new Map<string, { width: number; height: number }>();
+      for (const [key, element] of elements) {
+        const measuredFor = `${element.textContent}|${element.style.fontWeight}|${element.style.letterSpacing}`;
+        // A layer not laid out yet (a hidden tab) measures nothing: it is measured again at the next draw.
+        if (element.dataset.measuredFor !== measuredFor || !element.dataset.size) {
+          element.dataset.size = `${element.offsetWidth}x${element.offsetHeight}`;
+          element.dataset.measuredFor = element.offsetWidth > 0 ? measuredFor : "";
+        }
+        const [width = 0, height = 0] = element.dataset.size.split("x").map(Number);
+        sizes.set(key, { width, height });
+      }
+      // Every label stays whole inside the chart: an axis title or tick past an edge (IMPLIED VOL at a narrow
+      // width) is moved in, never cut.
+      const place = (key: string, left: number, centreY: number) => {
+        const element = elements.get(key)!, size = sizes.get(key)!;
+        const x = Math.min(Math.max(LABEL_INSET, left), Math.max(LABEL_INSET, viewport.width - size.width - LABEL_INSET));
+        const y = Math.min(Math.max(LABEL_INSET, centreY - size.height / 2), Math.max(LABEL_INSET, viewport.height - size.height - LABEL_INSET));
+        element.style.transform = `translate(${x}px, ${y}px)`;
+      };
+      for (const label of placed) {
+        const width = sizes.get(label.key)!.width;
+        place(label.key, label.anchorX - width * (label.align === "left" ? 0 : label.align === "right" ? 1 : 0.5), label.anchorY);
+      }
+      // The colour bar moves left as far as its widest label needs to fit beside it (47.5% at 720 px).
+      const bar = colorBarRef.current;
+      if (bar && barLabels.length) {
+        const geometry = surface3DColorBarGeometry(viewport.width, viewport.height, p.reserveRight, 1);
+        const widest = Math.max(...barLabels.map((label) => sizes.get(label.key)!.width));
+        const barLeft = Math.min(geometry.x, viewport.width - LABEL_INSET - widest - COLOR_BAR_LABEL_GAP - COLOR_BAR_WIDTH);
+        bar.style.left = `${barLeft}px`;
+        for (const label of barLabels) place(label.key, barLeft + COLOR_BAR_WIDTH + COLOR_BAR_LABEL_GAP, label.anchorY);
+      }
     }
     const marker = markerRef.current;
     const selected = p.scene.input.selected ? p.scene.nodes.find((point) => point.row === p.scene.input.selected!.row && point.column === p.scene.input.selected!.column) : null;
@@ -696,7 +737,7 @@ export function WebSurface3D(props: Surface3DHostProps) {
       onDoubleClick={() => { const s = state.current; s.velocity = { azimuth: 0, elevation: 0 }; s.target = { ...DEFAULT_SURFACE3D_CAMERA }; schedule(); }}
     >
       <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }} />
-      {props.reserveRight > 0 ? <div style={{ position: "absolute", left: `${bar.x / 10}%`, top: `${bar.top / 10}%`, width: 8,
+      {props.reserveRight > 0 ? <div ref={colorBarRef} style={{ position: "absolute", left: `${bar.x / 10}%`, top: `${bar.top / 10}%`, width: COLOR_BAR_WIDTH,
         height: `${(bar.bottom - bar.top) / 10}%`, background: `linear-gradient(to bottom, ${stops})`, borderRadius: 2, pointerEvents: "none" }} /> : null}
       <div ref={labelLayerRef} style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 2 }} />
       <div ref={markerRef} style={{ position: "absolute", left: 0, top: 0, width: 12, height: 12, borderRadius: 12, display: "none",

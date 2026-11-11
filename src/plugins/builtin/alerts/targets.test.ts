@@ -29,7 +29,7 @@ test("every rule kind opens what it follows", () => {
     research("news_keyword", { symbol: "AAPL", keyword: "buyback" }), research("news_keyword", { keyword: "buyback" }),
     research("analyst_change", { symbol: "AAPL" }), research("fifty_two_week", { symbol: "AAPL" }), research("unusual_volume", { symbol: "AAPL" }),
     research("short_interest_change", { symbol: "AAPL" }), research("insider_trade", { symbol: "AAPL" }),
-    research("iv_spike", { contract: "AAPL261016C00300000" }),
+    research("iv_spike", { contract: "AAPL271217C00300000" }),
     research("options_flow", { symbol: "NVDA" }), research("options_flow", {}),
   ]).toEqual([
     pane("perps-pane", { arg: "hyperliquid:xyz:AAPL" }),
