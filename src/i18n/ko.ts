@@ -815,6 +815,8 @@ export const ko: Record<string, string> = {
   "Deleting account...": "계정 삭제 중...",
   "Account deleted.": "계정이 삭제되었습니다.",
   "Failed to delete account.": "계정을 삭제하지 못했습니다.",
+  "Enter your password to delete your account.": "계정을 삭제하려면 비밀번호를 입력하세요.",
+  "Log out and back in, then delete your account.": "로그아웃한 뒤 다시 로그인한 다음 계정을 삭제하세요.",
   "Log in to manage your Gloom Cloud account.": "Gloom Cloud 계정을 관리하려면 로그인하세요.",
   "Configured": "설정됨",
   "No public portfolio analytics": "공개 포트폴리오 분석 없음",
