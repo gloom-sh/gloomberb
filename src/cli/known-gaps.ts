@@ -158,6 +158,14 @@ const KNOWN_GAPS: ReadonlyArray<{
       + "Producers: VALE, RIO, BHP, KIO:JSE (Kumba Iron Ore).",
   },
   {
+    // Urea, DAP and potash futures (CME, MIAX) are licensed and no fertiliser price series is carried; `catalog
+    // fertiliser` read as PSD's crop balances, and `catalog urea` found nothing.
+    terms: ["fertiliser", "fertilisers", "fertilizer", "fertilizers", "urea", "DAP", "diammonium phosphate", "potash"],
+    words: ["price", "prices", "futures", "future", "spot", "index", "chart", "today", "current", "latest", "granular", "nola",
+      "the", "of"],
+    message: "Fertiliser (urea, DAP, potash): no price series yet. Producers: NTR, CF, MOS, YAR.OL (Yara); news: gloom news fertilizer.",
+  },
+  {
     // What the terminal has for munis, and what it does not: the AAA curve every muni ratio quotes is licensed.
     terms: ["muni", "munis", "municipal", "municipals", "municipal bond", "municipal bonds", "muni bond", "muni bonds", "muni fund", "muni funds",
       "muni ETF", "muni ETFs", "municipal bond fund", "municipal bond funds", "muni yield", "muni yields", "tax-exempt", "tax exempt",

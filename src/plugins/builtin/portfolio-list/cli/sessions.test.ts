@@ -156,6 +156,19 @@ describe("what a portfolio is priced at and when each row's price is from", () =
     }
   });
 
+  // `portfolio show Tarim --close` with New York open said "Priced at the regular close" over NYSE rows at 19:56 prints.
+  test("--close with a market still in its session says which markets are at their close and which still trade", async () => {
+    const weekend = quotes.XLK!;
+    quotes.XLK = sessionQuotes().regular;
+    setSystemTime(new Date("2026-10-09T17:05:00Z"));
+    try {
+      expect(await showText(["show", "Main", "--close"])).toContain("Priced at the regular close: XETRA at its close; US still trading, at the latest print");
+    } finally {
+      quotes.XLK = weekend;
+      setSystemTime();
+    }
+  });
+
   test("--close values every row at Last times its shares, totals them, and says the day's move and the close time", async () => {
     const text = await showText(["show", "Main", "--close"]);
     expect(text).toContain("Priced at the regular close");
@@ -262,4 +275,44 @@ describe("a book across HKEX and the US, read on Mon 9 Nov 2026 before the US op
       quotePriceKind: "nominal", valuationAsOf: "2026-11-09", valuationPriceKind: "nominal" });
     expect(text).toContain("1 of 4 stale, 1 of 4 nominal");
   });
+});
+
+// A lira book on Tue 10 Nov 2026 with New York open: its Day's move held the dollar names' price moves alone, at
+// today's rate, about TRY1.9k of the lira's own move missing from a book three quarters in dollars.
+test("a book's day move holds the currency move of a holding in another currency, as `fx` reads the pair", async () => {
+  setSystemTime(new Date("2026-11-10T20:29:00Z"));
+  setCliColorEnabledOverride(false);
+  const lira = { ...config, portfolios: [{ id: "tarim", name: "Tarim", currency: "TRY" }] };
+  const ntr = createTestTicker("NTR", "Nutrien", { exchange: "NYSE", currency: "USD", portfolios: ["tarim"],
+    positions: [{ portfolio: "tarim", shares: 100, avgCost: 60, currency: "USD", broker: "manual" }] });
+  // One ES contract (50 x the index): its contract value is no money held, so the dollar moves only its P&L.
+  const es = createTestTicker("ES=F", "E-mini S&P 500", { exchange: "CME", currency: "USD", assetCategory: "FUTURE", portfolios: ["tarim"],
+    positions: [{ portfolio: "tarim", shares: 1, avgCost: 6700, currency: "USD", broker: "manual", multiplier: 50 }] });
+  const quotes: Record<string, Quote> = {
+    NTR: { symbol: "NTR", currency: "USD", listingExchangeName: "NYSE", price: 72.57, change: 0.28, changePercent: 0.3873, previousClose: 72.29,
+      changeSessionDate: "2026-11-10", marketState: "REGULAR", lastUpdated: Date.parse("2026-11-10T20:14:00Z") },
+    "ES=F": { symbol: "ES=F", currency: "USD", listingExchangeName: "CME", price: 6810, change: 10, changePercent: 0.147, previousClose: 6800,
+      changeSessionDate: "2026-11-10", marketState: "REGULAR", instrumentType: "FUTURE", lastUpdated: Date.parse("2026-11-10T20:14:00Z") },
+    "USDTRY=X": { symbol: "USDTRY=X", currency: "TRY", price: 50.2294, change: 0.0518, changePercent: 0.1032, previousClose: 50.1776,
+      instrumentType: "CURRENCY", lastUpdated: Date.parse("2026-11-10T20:28:00Z") },
+  };
+  const market = {
+    config: lira,
+    store: { loadAllTickers: async () => [ntr, es] },
+    dataProvider: createTestDataProvider({
+      getQuote: async (symbol) => quotes[symbol]!,
+      getQuotesBatch: async (targets) => targets.map((target) => ({ target, quote: quotes[target.symbol] ?? null })),
+      getExchangeRate: async (currency) => currency === "TRY" ? 1 / 50.2294 : 1,
+    }),
+  };
+  const cli = createTestCliContext(market, { format: "json" });
+  await portfolioCliCommand.execute(["show", "Tarim"], cli.context);
+  const json = JSON.parse(serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, cli.printed[0]!.options));
+  // 100 x 72.29 dollars at the close before were worth 50.1776 lira each, and 100 x 72.57 are worth 50.2294 now.
+  const fx = 100 * 72.29 * (50.2294 - 50.1776);
+  const future = 50 * 10 * 50.2294;
+  expect(json.metadata.dayChange).toBeCloseTo(100 * 72.57 * 50.2294 - 100 * 72.29 * 50.1776 + future, 6);
+  expect(json.metadata.dayChangeFx).toBeCloseTo(fx, 6);
+  expect(json.metadata.dayChangePercent).toBeCloseTo(
+    (100 * 72.57 * 50.2294 - 100 * 72.29 * 50.1776 + future) / (100 * 72.29 * 50.1776 + 50 * 6800 * 50.2294) * 100, 6);
 });

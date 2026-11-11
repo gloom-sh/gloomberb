@@ -139,6 +139,16 @@ describe("normalizePriceHistory", () => {
     expect(stale("2026-11-09T04:00:00Z")).toBe(true);
   });
 
+  test("reads a symbol written with a venue's suffix against that venue's sessions", () => {
+    // GUBRF.IS's last hourly bar of Tue 10 Nov 2026 (18:00 Istanbul), read that night with New York still open.
+    const gubrf = [{ date: new Date("2026-11-10T15:00:00Z"), close: 288 }];
+    const stale = (at: string) => isPriceHistoryStaleForCurrentWindow(gubrf, Date.parse(at), { symbol: "GUBRF.IS", exchange: "", intervalMs: priceHistoryIntervalMs("1h") });
+    expect(stale("2026-11-10T20:29:00Z")).toBe(false);
+    expect(stale("2026-11-11T06:30:00Z")).toBe(false);
+    // Wednesday's session opened at 07:00Z: its bars are due.
+    expect(stale("2026-11-11T10:00:00Z")).toBe(true);
+  });
+
   test("keeps the last session current after the next open until its first delayed bar is due", () => {
     const stale = (date: string, at: string, interval: string) => isPriceHistoryStaleForCurrentWindow(
       [{ date: new Date(date), close: 100 }], Date.parse(at), { exchange: "LSE", intervalMs: priceHistoryIntervalMs(interval) });

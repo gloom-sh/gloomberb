@@ -236,8 +236,11 @@ async function settleCompanyListing(
     // The line it moved to is a US symbol, read bare as `quote` reads one (GETYQ, which trades over the counter).
     ? { symbol: quoted.moved.symbol, exchange: "", name: best.result.name, moved: quoted.moved.note }
     : {
-      // A vendor's venue suffix on the venue it names is the listing's own code: GARAN.IS on BIST is GARAN there.
-      symbol: suffixFree(best.result.symbol.toUpperCase(), best.exchange), exchange: best.exchange, name: best.result.name,
+      // A vendor's venue suffix on the venue it names is the listing's own code: GARAN.IS on BIST is GARAN there. An
+      // index keeps the symbol its sources quote it by (XU100.IS, as ^GSPC): there is no share code to read it as.
+      symbol: /^index$/i.test(listedType(best.result).trim()) ? best.result.symbol.toUpperCase()
+        : suffixFree(best.result.symbol.toUpperCase(), best.exchange),
+      exchange: best.exchange, name: best.result.name,
       ...namedByService(name, best.result) ? { named: true as const } : {},
       ...best.home ? { home: true as const } : {},
     };

@@ -126,6 +126,15 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     freshnessNow,
     subscriptionStartedAt,
   } = useLiveQuoteEntries(legTargets, { freshnessScopeKey: "fx-matrix", liveStreaming });
+  // The day's move reads each pair quote's previous close: the pane reads the quotes once, as `fn FXC` does, so the
+  // move is there before a stream sends them, and where none does (signed out, or a capture).
+  const legKey = legs.map((leg) => leg.symbol).join(",");
+  useEffect(() => {
+    const coordinator = getSharedMarketDataCoordinator();
+    if (!coordinator || legs.length === 0) return;
+    void coordinator.loadQuotesBatch(legs.map((leg) => ({ symbol: leg.symbol, exchange: "" })))
+      .catch(logFailure("fx-matrix", "Load FX pair quotes failed"));
+  }, [legKey]);
   const liveEntries = useMemo(() => {
     const coordinator = getSharedMarketDataCoordinator();
     return new Map(legs.flatMap((leg) => {

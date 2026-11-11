@@ -89,3 +89,55 @@ test("a one-day window and one over five years both run between daily closes: a 
   // Every holding was bought inside these years: named, not passed off as held throughout.
   expect(years.boughtInWindow.sort()).toEqual(["2382", "GC=F", "SI=F", "VOD"]);
 });
+
+// A lira book on Tue 10 Nov 2026 at 20:29Z, New York open: `--from 10.11.2026` showed "USD/TRY 50.1776 on Mon 9 Nov,
+// 50.1776 on Tue 10 Nov" and an FX line of TRY0.00, Monday's close standing in for a day with no FX close yet.
+test("a window ending on the FX trading day in progress converts its end at the latest rate, as the live book does", async () => {
+  const tuesday = Date.parse("2026-11-10T20:29:00Z");
+  const book = [held("NTR", "NYSE", "USD", 100), held("GUBRF", "BIST", "TRY", 1000)];
+  const closes: Record<string, PricePoint[]> = {
+    NTR: [day("2026-11-06", 71.5), day("2026-11-09", 72.29), day("2026-11-10", 72.57)],
+    GUBRF: [day("2026-11-06", 300), day("2026-11-09", 307), day("2026-11-10", 288)],
+  };
+  const fx = fxHistory({ "TRY=X": { "2026-11-06": 50.12, "2026-11-09": 50.1776 } });
+  const result = await loadPeriodPnl({
+    tickers: book, portfolioId: "book", currency: "TRY", window: { from: "2026-11-10", to: "2026-11-10" }, fxHistory: fx.client, now: tuesday,
+    provider: createTestDataProvider({
+      getDetailedPriceHistoryWithMetadata: async (symbol, _exchange, start, end) => ({
+        points: (closes[symbol] ?? []).filter((point) => point.date >= start && point.date <= end), resolution: "1d" }),
+      getExchangeRate: async (currency) => currency === "TRY" ? 1 / 50.2294 : 1,
+    }),
+  });
+  const ntr = result.rows.find((row) => row.symbol === "NTR")!;
+  expect(ntr.rates).toEqual({ currency: "USD", start: expect.closeTo(50.1776, 9), end: expect.closeTo(50.2294, 9) });
+  expect(result.latestFx).toEqual(["USD|2026-11-10"]);
+  expect(result.fx).toBeCloseTo(100 * 72.29 * (50.2294 - 50.1776), 6);
+  // A past window keeps the day's FX close.
+  const past = await loadPeriodPnl({
+    tickers: book, portfolioId: "book", currency: "TRY", window: { from: "2026-11-09", to: "2026-11-09" }, fxHistory: fx.client, now: tuesday,
+    provider: createTestDataProvider({
+      getDetailedPriceHistoryWithMetadata: async (symbol, _exchange, start, end) => ({
+        points: (closes[symbol] ?? []).filter((point) => point.date >= start && point.date <= end), resolution: "1d" }),
+      getExchangeRate: async () => { throw new Error("not asked for a past window"); },
+    }),
+  });
+  expect(past.latestFx).toEqual([]);
+  expect(past.rows.find((row) => row.symbol === "NTR")!.rates).toEqual({ currency: "USD", start: expect.closeTo(50.12, 9), end: expect.closeTo(50.1776, 9) });
+
+  // Past 17:00 New York Tuesday's FX day has closed: until the series posts its close, the latest rate stands for it.
+  const after = (series: Record<string, number>, at = Date.parse("2026-11-10T22:11:00Z")) => loadPeriodPnl({
+    tickers: book, portfolioId: "book", currency: "TRY", window: { from: "2026-11-10", to: "2026-11-10" },
+    fxHistory: fxHistory({ "TRY=X": series }).client, now: at,
+    provider: createTestDataProvider({
+      getDetailedPriceHistoryWithMetadata: async (symbol, _exchange, start, end) => ({
+        points: (closes[symbol] ?? []).filter((point) => point.date >= start && point.date <= end), resolution: "1d" }),
+      getExchangeRate: async (currency) => currency === "TRY" ? 1 / 50.2278 : 1,
+    }),
+  });
+  const unposted = await after({ "2026-11-06": 50.12, "2026-11-09": 50.1776 });
+  expect(unposted.latestFx).toEqual(["USD|2026-11-10"]);
+  expect(unposted.rows.find((row) => row.symbol === "NTR")!.rates!.end).toBeCloseTo(50.2278, 9);
+  const posted = await after({ "2026-11-06": 50.12, "2026-11-09": 50.1776, "2026-11-10": 50.2251 }, Date.parse("2026-11-11T00:30:00Z"));
+  expect(posted.latestFx).toEqual([]);
+  expect(posted.rows.find((row) => row.symbol === "NTR")!.rates!.end).toBeCloseTo(50.2251, 9);
+});

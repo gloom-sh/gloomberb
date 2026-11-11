@@ -59,7 +59,7 @@ import {
   noTimeNote as noTimeNoteText,
   parseCountryFilter,
   listingEnd,
-  pastReleaseListing,
+  pastListingRows,
   resetEconCalendarPersistence,
   shortCalendarEnd,
   shortDayLabel,
@@ -172,10 +172,13 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // A calendar that stops short of a week ahead says where it stops.
   const listedEnd = shortCalendarEnd(events, todayStart);
   const listedAfter = listedEnd ? `No events listed after ${shortDayLabel(dayStart(listedEnd))}` : null;
-  // Past the listing's end Gloom Cloud lists each central bank's next decision: where the rows shown run past it, the
-  // footer says where the releases end, as the CLI does under its table.
+  // Past the listing's end Gloom Cloud lists each central bank's next decision and each country's next CPI release:
+  // where the rows shown run past it, the footer says where the releases end and what follows, as the CLI does under
+  // its table.
   const releasesThrough = useMemo(() => listingEnd(events), [events]);
-  const showsPastListing = filtered.some(pastReleaseListing);
+  const pastRows = useMemo(() => pastListingRows(filtered, true), [filtered]);
+  const pastRowsInFull = useMemo(() => pastListingRows(filtered), [filtered]);
+  const showsPastListing = pastRows != null;
 
   // Map from eventIdx to flat row index (for scroll tracking)
   const eventIdxToRowIdx = new Map<number, number>();
@@ -356,7 +359,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // The blank time on the row in hand, with why: a bank whose calendar gives the day and not the time.
   const noTimeNote = focusedEvent && hasNoStatedTime(focusedEvent) ? noTimeNoteText(focusedEvent.timeNote!) : null;
   const pastListingStatus = showsPastListing && releasesThrough && !detailEvent && !listedAfterStatus
-    ? `releases listed through ${shortDayLabel(dayStart(releasesThrough))}, then each bank's next decision` : null;
+    ? `releases listed through ${shortDayLabel(dayStart(releasesThrough))}, then ${pastRows}` : null;
   const calendarStatus = useMemo<PaneFooterSegment[]>(() => [
     ...(hiddenStatus ? [{
       id: "hidden-impact",
@@ -391,7 +394,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     role: "report-notice",
     label: "Releases listed through",
     getMetadata: () => ({
-      text: `No releases listed after ${releasesThrough}; the rows after it are each central bank's next decision.`,
+      text: `No releases listed after ${releasesThrough}; the rows after it are ${pastRowsInFull}.`,
       key: "releasesListedThrough",
       value: releasesThrough,
     }),

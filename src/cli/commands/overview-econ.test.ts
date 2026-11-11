@@ -178,6 +178,12 @@ test("the listing's end is said as Gloom Cloud gives it, and each bank's next de
   // Rows within the listing say nothing about its end; from today, the next decision past it says it under them.
   expect(await econText(next, ["--country", "US"])).not.toContain("listed after");
   expect(await econText(next, ["--country", "MX"])).toContain("CPI y/y");
+  // Past it too, each country's next CPI as its statistics office schedules it (TurkStat's 3 Dec, 10:00 in Istanbul).
+  const cpi = { ...event("2026-12-03T07:00:00.000Z", "TR", "high", "CPI"), kind: "statistics-release", localTime: "10:00",
+    timeZone: "Europe/Istanbul", referencePeriod: "2026-11", source: { name: "TurkStat" }, pastListing: true, listedThrough: "2026-11-21" };
+  const turkey = await econText([...next, cpi], ["--from", "2026-12-01", "--country", "TR", "--tz", "Europe/Istanbul"]);
+  expect(turkey).toMatch(/2026-12-03\s+07:00 UTC\s+Thu\s+10:00\s+10:00 Istanbul\s+TR\s+high\s+CPI\s.*TurkStat/);
+  expect(turkey).toContain("the rows after it are each central bank's next decision and each country's next CPI release, as its statistics office schedules it");
   // The calendar from an earlier day says the end itself.
   const stored = await econText(listing, ["--from", "2026-11-01", "--country", "TR"], {}, "2026-10-01", "2026-11-21");
   expect(stored).toContain("No scheduled releases for TR in this window; releases are listed through 2026-11-21.");

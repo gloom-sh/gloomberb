@@ -36,6 +36,7 @@ function installCoordinator(quotes: Record<string, Partial<Quote>> = {}, snapsho
     getFxEntry: (currency: string) => readyEntry(currency === "USD" ? 1 : 1.08, snapshotAsOf[currency]),
     loadFxRate: async () => {},
     subscribeQuotes: () => () => {},
+    loadQuotesBatch: async () => [],
     getQuoteEntry: ({ symbol }: { symbol: string }) => {
       const quote = quotes[symbol];
       if (!quote) return createIdleEntry();

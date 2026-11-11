@@ -155,9 +155,27 @@ export function shortCalendarEnd(
   return end && Date.parse(`${end}T00:00:00Z`) + 86_400_000 <= windowStart + MIN_DAYS_LISTED_AHEAD * 86_400_000 ? end : null;
 }
 
-/** Whether a row is a central bank's next decision Gloom Cloud lists past the end of the listing. */
+/**
+ * Whether a row is one Gloom Cloud lists past the end of the listing: a
+ * central bank's next decision, or a country's next CPI release as its
+ * statistics office schedules it.
+ */
 export function pastReleaseListing(event: Pick<EconEvent, "pastListing">): boolean {
   return event.pastListing === true;
+}
+
+/**
+ * What the rows past the listing's end are, among `events`, for the note that
+ * says where it ends: each bank's next decision, each country's next CPI
+ * release, or both; null when none is past it. `short` for a footer.
+ */
+export function pastListingRows(events: readonly Pick<EconEvent, "pastListing" | "kind">[], short = false): string | null {
+  const past = events.filter(pastReleaseListing);
+  const decisions = past.some((event) => event.kind !== "statistics-release");
+  const releases = past.some((event) => event.kind === "statistics-release");
+  const decision = short ? "each bank's next decision" : "each central bank's next decision";
+  const release = short ? "each country's next CPI" : "each country's next CPI release, as its statistics office schedules it";
+  return decisions && releases ? `${decision} and ${release}` : decisions ? decision : releases ? release : null;
 }
 
 /**

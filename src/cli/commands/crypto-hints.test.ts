@@ -8,7 +8,7 @@ import { marketDataCliCommands } from "./market";
 import { serializeCliResult } from "../result";
 import { setCliColorEnabledOverride } from "../../utils/cli-output";
 import { resetBoardCoins } from "../board-coins";
-import { serviceDidNotAnswerMessage } from "../../sources/provider-errors";
+import { noProviderError, serviceDidNotAnswerMessage } from "../../sources/provider-errors";
 
 beforeEach(() => resetBoardCoins([]));
 // A quote that finds nothing sets the exit status; it must not become the test run's.
@@ -76,9 +76,13 @@ test("a top coin's delayed quote points at the board that streams it live; a liv
 });
 
 test("history keeps its error and adds the crypto board pointer only for crypto pairs in text mode", async () => {
-  const history = async (symbol: string, format: "text" | "json" = "text") => {
+  const history = async (symbol: string, format: "text" | "json" = "text", unserved = false) => {
     const cli = createTestCliContext({ config, store: { loadTicker: async () => null }, dataProvider: {
-      getPriceHistory: async () => { throw new Error(`No history provider available for ${symbol}`); },
+      getPriceHistory: async () => {
+        // The router's bare answer that no source served the bars, none failing or giving a reason.
+        throw unserved ? noProviderError(`No history provider available for ${symbol}`, undefined, symbol)
+          : new Error(`No history provider available for ${symbol}`);
+      },
     } }, { format });
     const context = { ...cli.context, fail: (message: string, details?: string) => {
       throw Object.assign(new Error(message), { details });
@@ -91,6 +95,10 @@ test("history keeps its error and adds the crypto board pointer only for crypto 
   expect(detailsOf(await history("BTC-USD"))).toEqual(["No history provider available for BTC-USD", HINT]);
   expect(detailsOf(await history("AAPL"))).toEqual(["No history provider available for AAPL", undefined]);
   expect(detailsOf(await history("BTC-USD", "json"))).toEqual(["No history provider available for BTC-USD", undefined]);
+  // An intraday range no source served: a listing says it has no current bars and offers the daily view; a coin keeps
+  // the crypto board's pointer, its bars trading around the clock.
+  expect(detailsOf(await history("GUBRF.IS", "text", true))).toEqual(["No current 5-minute bars for GUBRF.IS.", "For daily bars: gloom history GUBRF.IS --range 1M"]);
+  expect(detailsOf(await history("BTC-USD", "text", true))).toEqual(["No history provider available for BTC-USD", HINT]);
 });
 
 test("a bare coin ticker read as another listing says where the coin is, firmly when that listing cannot be it", async () => {

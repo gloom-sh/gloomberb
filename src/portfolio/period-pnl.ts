@@ -30,6 +30,8 @@ export interface PeriodPnlHolding {
   end: PeriodClose | null;
   /** The end is today's session still trading, not a close. */
   partialEnd?: boolean;
+  /** A future: its contract value is no money held, so the currency moves its P&L alone and it has no FX line. */
+  future?: boolean;
 }
 
 /** One unit of a major currency (GBP, never GBp) in the book's currency on a day; null when no close of the pair could be read. */
@@ -48,7 +50,7 @@ export interface PeriodPnlRow {
   startValue: number | null;
   /** The price move times the units held, in the book's currency at the end's rate. */
   pnl: number | null;
-  /** The currency's move on the start value; 0 for a holding in the book's currency. */
+  /** The currency's move on the start value; 0 for a holding in the book's currency, and for a future. */
   fx: number | null;
   /** The start and end rates of a holding in another currency, and the major currency they convert (GBP for a price in pence). */
   rates: { currency: string; start: number; end: number } | null;
@@ -100,7 +102,7 @@ export function periodPnl(holdings: readonly PeriodPnlHolding[], bookCurrency: s
       changePercent: start && end && start.price !== 0 ? (end.price / start.price - 1) * 100 : null,
       startValue,
       pnl: priced ? holding.priceUnits * (end!.price - start!.price) * scale * endRate! : null,
-      fx: priced ? holding.priceUnits * start!.price * scale * (endRate! - startRate!) : null,
+      fx: !priced ? null : holding.future ? 0 : holding.priceUnits * start!.price * scale * (endRate! - startRate!),
       rates: priced && !own ? { currency: major, start: startRate!, end: endRate! } : null,
     };
   });

@@ -24,3 +24,16 @@ test("a book's P&L between two closes signs a short, sizes a future, and keeps t
   expect(result.rows.reduce((sum, entry) => sum + (entry.contribution ?? 0), 0) + result.fxContribution!).toBeCloseTo(result.totalContribution!, 9);
   expect(result.unpriced).toEqual(["GONE"]);
 });
+
+test("a future in a lira book has no FX line on its contract value: the dollar moves its P&L alone", () => {
+  // One ES contract (50 x the index) and 100 NTR shares, Mon 9 to Tue 10 Nov 2026, USD/TRY 50.1776 to 50.2294.
+  const rate = (currency: string, day: string) => currency === "USD" ? (day === "2026-11-09" ? 50.1776 : 50.2294) : null;
+  const result = periodPnl([
+    { symbol: "ES=F", priceUnits: 50, currency: "USD", future: true, start: { day: "2026-11-09", price: 6800 }, end: { day: "2026-11-10", price: 6810 } },
+    { symbol: "NTR", priceUnits: 100, currency: "USD", start: { day: "2026-11-09", price: 72.29 }, end: { day: "2026-11-10", price: 72.57 } },
+  ], "TRY", rate);
+  const row = (symbol: string) => result.rows.find((entry) => entry.symbol === symbol)!;
+  expect(row("ES=F").pnl).toBeCloseTo(50 * 10 * 50.2294, 6);
+  expect(row("ES=F").fx).toBe(0);
+  expect(result.fx).toBeCloseTo(100 * 72.29 * (50.2294 - 50.1776), 6);
+});

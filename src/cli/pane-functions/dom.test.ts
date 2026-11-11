@@ -115,6 +115,8 @@ test("a column only the exports carry (FUT's 3M, 6M and 1Y) is in the JSON and C
   const report = await buildDomPaneReportFromRender(resolved, screenshot);
   expect(report.text).not.toContain("1Y");
   expect(report.text).not.toContain("14.10");
+  // `fn FUT ZC` printed "Agriculture — — —" as a row: the text groups the rows as the CSV does.
+  expect(report.text).toMatch(/SYM +1W +GROUP\n[─ ]+\nES +-0\.71% +Equity Index$/);
   expect((report.data.rows as typeof screenshot.render.rows).at(-1)!.cells.at(-1)).toMatchObject({ columnId: "return1y", value: 14.1 });
   // No row of its own: the sector closes each row under it, after every column an earlier export had.
   expect(renderReportCsv(report.tables).split("\n").slice(0, 2)).toEqual(["SYM,1W (%),1Y (%),Group", "ES,-0.71,14.1,Equity Index"]);

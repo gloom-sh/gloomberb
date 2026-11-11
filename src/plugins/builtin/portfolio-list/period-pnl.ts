@@ -10,6 +10,8 @@ import { cleanFloat32Price } from "../../../cli/history-rows";
 import type { DataProvider } from "../../../types/data-provider";
 import type { TickerRecord } from "../../../types/ticker";
 import { mapWithConcurrency } from "../../../utils/concurrency";
+import { heldCurrencyUnit } from "../../../utils/currency-units";
+import { fxPrintTradingDay, fxTradingDayAt } from "../../../utils/fx-market-hours";
 import { errorMessage } from "../../../utils/errors";
 import { logFailure } from "../../../utils/log-failure";
 import type { PriceWindow } from "../../../utils/price-window";
@@ -19,6 +21,7 @@ import { buildReturnRows, isTodayReturnRow, returnBaseCloseDay } from "../ticker
 
 /** Holdings whose daily closes are read at once: `portfolio show --from`, `fn PF --from` and `shot PF` alike. */
 const PERIOD_HISTORY_READS = 6;
+const DAY_MS = 86_400_000;
 
 /**
  * Daily bars over any window: a day or two would otherwise be read in hourly
@@ -37,6 +40,11 @@ export interface LoadedPeriodPnl extends PeriodPnl {
   boughtInWindow: string[];
   /** When the window ends today with a session still trading: the latest price's time, in ms. */
   latestPriceAt: number | null;
+  /**
+   * The end rates read from the latest FX print, as `${currency}|${day}`: a window
+   * ending on the FX trading day in progress, which has no FX close yet.
+   */
+  latestFx: string[];
 }
 
 /**
@@ -105,7 +113,7 @@ export async function loadPeriodPnl({
     const units = metrics.unknownContractSize ? Number.NaN : metrics.totalPriceUnits;
     if (metrics.unknownContractSize) sizeUnknown.add(symbol);
     if (closes.partialEnd && quote) latestTimes.push(quoteHeadlineTime(quote));
-    return { symbol, priceUnits: units, currency: quoteCurrency, ...closes };
+    return { symbol, priceUnits: units, currency: quoteCurrency, ...(metrics.isFuture ? { future: true } : {}), ...closes };
   });
   // Each major currency's FX close on each day a holding in it starts or ends on: GBP's for a price in pence.
   const needed = new Map<string, { from: string; day: string }>();
@@ -114,10 +122,27 @@ export async function loadPeriodPnl({
     if (own) continue;
     for (const close of [holding.start, holding.end]) if (close) needed.set(`${major}|${close.day}`, { from: major, day: close.day });
   }
-  const rates = new Map(await mapWithConcurrency([...needed], 4, async ([key, { from, day }]) =>
-    [key, await loadCostFxRate(from, currency, day, fxHistory, new Date(now))
-      .then((reading) => reading.rate)
-      .catch(logFailure("portfolio.period-pnl", "Reading a window's FX close failed", null))] as const));
+  // An end on the FX trading day in progress has no FX close for that day yet, and the day before's would leave the
+  // day's currency move out: it converts at the latest rate, the one the book is valued at live. So does an end on
+  // the FX day just closed (17:00 New York) while the daily series has yet to post its close.
+  const fxDay = fxPrintTradingDay(now);
+  const lastClosedFxDay = fxTradingDayAt(now - DAY_MS);
+  const latestFx: string[] = [];
+  const latest = async (key: string, from: string) => {
+    const rate = await latestFxRate(provider, from, currency);
+    if (rate != null) latestFx.push(key);
+    return rate;
+  };
+  const rates = new Map(await mapWithConcurrency([...needed], 4, async ([key, { from, day }]) => {
+    if (fxDay != null && day >= fxDay) {
+      const rate = await latest(key, from);
+      if (rate != null) return [key, rate] as const;
+    }
+    const reading = await loadCostFxRate(from, currency, day, fxHistory, new Date(now))
+      .catch(logFailure("portfolio.period-pnl", "Reading a window's FX close failed", null));
+    const unposted = lastClosedFxDay != null && day >= lastClosedFxDay && (!reading || reading.date < day);
+    return [key, (unposted ? await latest(key, from) : null) ?? reading?.rate ?? null] as const;
+  }));
   const rate = (from: string, day: string) => rates.get(`${from}|${day}`) ?? null;
   const result = periodPnl(holdings.map((holding) => Number.isFinite(holding.priceUnits) ? holding : { ...holding, start: null }), currency, rate);
   const failed = new Map(failures.map((failure) => [failure.symbol, failure.error]));
@@ -135,7 +160,21 @@ export async function loadPeriodPnl({
   return {
     ...result, window, failures: failures.sort((a, b) => a.symbol.localeCompare(b.symbol)), unpricedReasons, boughtInWindow,
     latestPriceAt: latestTimes.length ? Math.max(...latestTimes) : null,
+    latestFx: latestFx.sort(),
   };
+}
+
+/**
+ * One unit of `from` (a major currency) in `into` at the latest FX print, as
+ * the live book converts it: both dollar rates the data provider holds. Null
+ * when either is unusable.
+ */
+async function latestFxRate(provider: Pick<DataProvider, "getExchangeRate">, from: string, into: string): Promise<number | null> {
+  const intoUnit = heldCurrencyUnit(into);
+  const [fromUsd, intoUsd] = await Promise.all([from, intoUnit.currency].map((code) => code === "USD" ? Promise.resolve(1)
+    : provider.getExchangeRate(code).catch(logFailure("portfolio.period-pnl", "Reading the latest FX rate failed", null))));
+  const rate = fromUsd != null && intoUsd != null && intoUsd > 0 ? (fromUsd / intoUsd) * intoUnit.divisor : Number.NaN;
+  return Number.isFinite(rate) && rate > 0 ? rate : null;
 }
 
 /** The one day every priced row shares at an end of the window, or null when they differ (a holiday on one venue). */

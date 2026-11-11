@@ -9,6 +9,7 @@ import type { HistorySession } from "../types/price-history";
 import { BAR_INTERVAL_UNIT_MS, parseBarInterval } from "../time-series/resolution";
 import { parseOptionTicker } from "./options";
 import { indexSessionVenue } from "../market-data/market/index-session-venues";
+import { listingSuffixVenue } from "../sources/listing-symbols";
 
 // A venue without session hours here (OTC Markets, Cboe Canada) has no
 // session to hold: its copy is current while the latest bar is this recent.
@@ -257,9 +258,12 @@ export function isPriceHistoryStaleForCurrentWindow(
   return !sourceSessions || !holdsLatestSession(latestTime, now, sourceSessions, allowedLag, fetchedAt);
 }
 
-/** Bare symbols resolve to their US listing at the sources; a bare index symbol to the venue whose sessions it follows. */
+/**
+ * Bare symbols resolve to their US listing at the sources; a bare index symbol to the venue whose sessions it
+ * follows, and one written with a venue's suffix (GUBRF.IS) to that venue, whose hours its bars keep.
+ */
 function listingSessionExchange(exchange: string | undefined, symbol?: string): string {
-  return canonicalExchange(exchange) || indexSessionVenue(symbol) || "NYSE";
+  return canonicalExchange(exchange) || indexSessionVenue(symbol) || (symbol ? listingSuffixVenue(symbol)?.exchange : undefined) || "NYSE";
 }
 
 interface ListingSessions {

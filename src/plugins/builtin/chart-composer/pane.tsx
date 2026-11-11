@@ -63,7 +63,8 @@ import { isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../.
 import { getTimeSeriesField, isMarketFieldId } from "../../../time-series/field-catalog";
 import { isDatasetChart, isOhlcSeriesStyle } from "../../../time-series/spec";
 import { useThemeColors } from "../../../theme/theme-context";
-import { priceComparisonSeriesIds } from "../../../time-series/price-comparison";
+import { comparisonLegCurrencies, priceComparisonSeriesIds } from "../../../time-series/price-comparison";
+import { companyLegendLabels } from "./legend-names";
 import { seriesMessageName, studyMessageName } from "../../../time-series/series-name";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
@@ -500,18 +501,20 @@ function ChartComposerSurface({
       if (!company || named.has(company)) return entry;
       named.add(company);
       const symbol = authored?.source.kind === "security" ? authored.source.instrument.symbol : null;
-      return {
-        ...entry,
-        label: `${entry.label} · ${company}`,
-        ...(symbol && seriesPerSymbol.get(symbol) === 1 ? { compactLabel: `${symbol} ${company}` } : {}),
-      };
+      return { ...entry, ...companyLegendLabels(entry.label, symbol, company, !!symbol && seriesPerSymbol.get(symbol) === 1) };
     });
-    const resolvedIds = new Set(resolved.map((entry) => entry.id));
+    // Returns compared across currencies, or converted into one, say each leg's currency beside its return.
+    const legCurrencies = comparisonLegCurrencies(resolved, resolution.priceComparison?.seriesIds, spec.viewport.currency);
+    const captioned = legCurrencies.size === 0 ? resolved : resolved.map((entry) => {
+      const currency = legCurrencies.get(entry.id);
+      return currency && !entry.statedUnit ? { ...entry, statedUnit: `in ${currency}` } : entry;
+    });
+    const resolvedIds = new Set(captioned.map((entry) => entry.id));
     const missing = spec.series.filter((entry) => !resolvedIds.has(entry.id));
-    if (missing.length === 0) return candleColour(resolved);
+    if (missing.length === 0) return candleColour(captioned);
     const bySpecOrder = new Map(spec.series.map((entry, index) => [entry.id, index] as const));
     return candleColour([
-      ...resolved,
+      ...captioned,
       ...missing.map((entry): ResolvedSeries => ({
         id: entry.id,
         label: chartSeriesLabel(entry),
@@ -529,7 +532,7 @@ function ChartComposerSurface({
         points: [],
       })),
     ].sort((a, b) => (bySpecOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (bySpecOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER)));
-  }, [candleColour, listings.names, nameSeries, resolution.legendSeries, spec.series]);
+  }, [candleColour, listings.names, nameSeries, resolution.legendSeries, resolution.priceComparison?.seriesIds, spec.series, spec.viewport.currency]);
   const plottedSeries = useMemo(
     () => candleColour(projectVisibleChartSeries(
       spec,

@@ -85,6 +85,25 @@ import {
   type WeightBasis,
 } from "./allocation";
 
+/**
+ * A position's move on the day in the book's currency: its price's move, and
+ * where the currency's own move is known (`fxDayMoves`) that too, its value
+ * before taken at the previous FX close. A future's contract value is no
+ * money held: its move is the price's alone, at today's rate.
+ */
+function positionDayPnl(
+  position: { units: number; isFuture: boolean },
+  quote: { price: number; change: number },
+  quoteCurrency: string,
+  ctx: Pick<ColumnContext, "baseCurrency" | "fxDayMoves">,
+  toBaseQuote: (value: number) => number,
+): number {
+  const units = position.units;
+  const factor = quoteCurrency === ctx.baseCurrency || position.isFuture ? undefined : ctx.fxDayMoves?.get(quoteCurrency);
+  if (factor == null || !Number.isFinite(factor) || factor <= 0) return toBaseQuote(units * quote.change);
+  return toBaseQuote(units * quote.price) - toBaseQuote(units * (quote.price - quote.change)) / factor;
+}
+
 export interface ColumnContext {
   activeTab?: string;
   /** The market most of the list's listings trade in (listHomeMarket): a row outside it shows its venue (BA:LSE). */
@@ -92,6 +111,12 @@ export interface ColumnContext {
   /** Money columns convert into this: a portfolio's totals currency, else the base currency. */
   baseCurrency: string;
   exchangeRates: Map<string, number>;
+  /**
+   * Each currency's move on the day against `baseCurrency`, as a factor
+   * (1.001 for +0.1%): DAY holds a holding's currency move with its price's,
+   * as the summary's day and `portfolio show` do. Absent, DAY is the price's.
+   */
+  fxDayMoves?: ReadonlyMap<string, number>;
   /** Clock for quote age (per second while shown) and day-based columns. */
   now: number;
   /** What market values, P&L, weights and the day's move are priced at; the latest print when absent. */
@@ -692,7 +717,7 @@ export function getColumnValue(
     case "day_pnl":
       if (quote?.delisting) return { text: delistingStateLabel(quote.delisting), color: colors.warning };
       if (activeQuote && isFiniteNumber(activeQuote.change) && Number.isFinite(positionMetrics.grossPriceUnits) && positionMetrics.grossPriceUnits !== 0) {
-        const dayPnl = toBaseQuote(totalPriceUnits * activeQuote.change);
+        const dayPnl = positionDayPnl({ units: totalPriceUnits, isFuture: positionMetrics.isFuture }, { price: activeQuote.price, change: activeQuote.change }, quoteCurrency, ctx, toBaseQuote);
         return { text: formatCompactAmount(dayPnl, { signed: true }), color: priceColor(dayPnl) };
       }
       return { text: "—" };
@@ -903,7 +928,7 @@ export function getSortValue(
     case "day_pnl":
       if (quote?.delisting) return null;
       if (activeQuote && isFiniteNumber(activeQuote.change) && Number.isFinite(positionMetrics.grossPriceUnits) && positionMetrics.grossPriceUnits !== 0) {
-        return toBaseQuote(totalPriceUnits * activeQuote.change);
+        return positionDayPnl({ units: totalPriceUnits, isFuture: positionMetrics.isFuture }, { price: activeQuote.price, change: activeQuote.change }, quoteCurrency, ctx, toBaseQuote);
       }
       return null;
     case "pnl":

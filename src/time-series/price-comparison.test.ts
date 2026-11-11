@@ -2,7 +2,7 @@ import { describe, expect, setSystemTime, test } from "bun:test";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { CorporateActionsData, PricePoint, Quote } from "../types/financials";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
-import { resolvePriceComparison } from "./price-comparison";
+import { comparisonLegCurrencies, resolvePriceComparison } from "./price-comparison";
 import { resolveChartSpecData } from "./resolve";
 import { ChartResolveCache } from "./resolve-context";
 import { seedChartResolutionResult } from "./chart-seed";
@@ -473,4 +473,28 @@ describe("a fund compared with a coin", () => {
     }));
     expect(apart.priceComparison?.notice).toContain("IBIT and BTC-USD share no 1H bar times in this range; daily bars (1D) compare them.");
   });
+});
+
+// `shot CMP "GUBRF.IS,BAGFS.IS,NTR,CF"` drew TRY and USD returns on one chart with nothing saying so.
+test("legs in more than one currency each name theirs, and a chart in one currency names it on the legs it converts", async () => {
+  const currencies: Record<string, string> = { OLDER: "TRY", NEWER: "USD" };
+  const withCurrencies = () => {
+    const base = sources();
+    const getQuoteMetadata = async (symbol: string) => ({ symbol, currency: currencies[symbol], instrumentType: "EQUITY", listingExchangeName: "NASDAQ", source: {} });
+    const getQuote = async (symbol: string) => ({ symbol, currency: currencies[symbol], instrumentType: "EQUITY", price: 999, change: 0, changePercent: 0,
+      lastUpdated: Date.parse("2026-09-10T18:00:00Z") });
+    return { ...base, dataProvider: new Proxy(base.dataProvider, { get: (target, property, receiver) => (
+      property === "getQuoteMetadata" ? getQuoteMetadata : property === "getQuote" ? getQuote : Reflect.get(target, property, receiver)
+    ) }) };
+  };
+  const mixed = await resolveChartSpecData(spec(), withCurrencies());
+  expect(comparisonLegCurrencies(mixed.legendSeries!, mixed.priceComparison?.seriesIds)).toEqual(new Map([["OLDER", "TRY"], ["NEWER", "USD"]]));
+  // One currency says nothing.
+  currencies.OLDER = "USD";
+  const same = await resolveChartSpecData(spec(), withCurrencies());
+  expect(comparisonLegCurrencies(same.legendSeries!, same.priceComparison?.seriesIds).size).toBe(0);
+  // Converted into USD, each leg reads in USD once one of them was converted.
+  const converted = [{ id: "OLDER", unit: "%", rawUnit: "USD", convertedFrom: "TRY" }, { id: "NEWER", unit: "%", rawUnit: "USD" }];
+  expect(comparisonLegCurrencies(converted, ["OLDER", "NEWER"], "USD")).toEqual(new Map([["OLDER", "USD"], ["NEWER", "USD"]]));
+  expect(comparisonLegCurrencies(converted.map(({ convertedFrom: _, ...leg }) => leg), ["OLDER", "NEWER"], "USD").size).toBe(0);
 });

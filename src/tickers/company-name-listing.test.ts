@@ -3,7 +3,7 @@ import type { InstrumentSearchResult } from "../types/instrument";
 import type { Quote } from "../types/financials";
 import { ProviderBusyError } from "../sources/provider-errors";
 import { findListingOfCompanyName, serviceMarkedOtherListing } from "./company-name-listing";
-import { buildTickerSearchCandidates } from "./search";
+import { buildTickerSearchCandidates, resolveTickerSearch } from "./search";
 import { search } from "../cli/commands/search";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { PrintedCliResult } from "../test-support/cli-context";
@@ -290,3 +290,36 @@ test("a Turkish name, with its letters or without, is its company's Istanbul lin
   // One word that names a factoring company first is the bank listed broadly on the same market.
   expect(await findListingOfCompanyName(istanbul, "Garanti", { oneWord: true })).toMatchObject({ symbol: "GARAN", exchange: "BIST" });
 });
+
+// Tue 10 Nov 2026: search sent the BIST 100-30 ahead of the BIST 100, `quote "BIST 100"` read the sub-index, and
+// `quote XU100` was "not a ticker" though search lists the index as XU100.IS.
+test("the BIST 100 is the index named so, not a sub-index whose name adds to it, by name and by its code", async () => {
+  const bist = [
+    "XYUZO.IS | BIST 100-30 | BIST | INDEX",
+    "XU100.IS | BIST 100 | BIST | INDEX",
+    "XYUZO_CFNPTLER.IS | BIST 100-30 (EURO) | BIST | INDEX",
+    "ZPMDL.IS | ZIRAAT P BIST 100 MODEL HSY BYF | BIST | ETF",
+  ];
+  const provider = createTestDataProvider(answering({ "BIST 100": bist, XU100: ["XU100.IS | BIST 100 | BIST | INDEX",
+    "XU100_CFNPTLER.IS | BIST 100 (EURO) | BIST | INDEX"], BIST100: ["XU100.IS | BIST 100 | BIST | INDEX"] }));
+  // The index keeps the symbol its sources quote it by, as ^GSPC does.
+  expect(await findListingOfCompanyName(provider, "BIST 100")).toMatchObject({ symbol: "XU100.IS", exchange: "BIST", name: "BIST 100" });
+  const candidates = buildTickerSearchCandidates({ query: "BIST 100", tickers: new Map(), providerResults: bist.map(row), totalLimit: 10 });
+  expect(candidates.slice(0, 3).map((candidate) => [candidate.symbol, candidate.category]))
+    .toEqual([["XU100.IS", "Primary Listing"], ["XYUZO.IS", "Other Listings"], ["XYUZO_CFNPTLER.IS", "Other Listings"]]);
+  const resolved = await resolveTickerSearch({ query: "XU100", activeTicker: null, tickers: new Map(), dataProvider: provider });
+  expect(resolved).toMatchObject({ kind: "provider", symbol: "XU100.IS" });
+  const spelled = await resolveTickerSearch({ query: "BIST100", activeTicker: null, tickers: new Map(), dataProvider: provider });
+  expect(spelled).toMatchObject({ kind: "provider", symbol: "XU100.IS" });
+  // A share search lists only by its venues' suffixes is no answer to the bare code, as before: BMW is not BMW.DE or BMW.F.
+  const bmw = createTestDataProvider(answering({ BMW: [
+    "BMW.DE | Bayerische Motoren Werke Aktiengesellschaft | XETRA | EQUITY",
+    "BMW.F | Bayerische Motoren Werke Aktiengesellschaft | FWB | EQUITY",
+  ] }));
+  expect(await resolveTickerSearch({ query: "BMW", activeTicker: null, tickers: new Map(), dataProvider: bmw })).toBeNull();
+  // The only line search lists for the code is its listing.
+  const gubrf = createTestDataProvider(answering({ GUBRF: ["GUBRF.IS | Gübre Fabrikalari Türk Anonim Sirketi | BIST | EQUITY"] }));
+  expect(await resolveTickerSearch({ query: "GUBRF", activeTicker: null, tickers: new Map(), dataProvider: gubrf }))
+    .toMatchObject({ kind: "provider", symbol: "GUBRF.IS" });
+});
+

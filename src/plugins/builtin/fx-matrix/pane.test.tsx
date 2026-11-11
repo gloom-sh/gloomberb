@@ -63,6 +63,7 @@ function installCoordinator(): void {
     loadFxRate: async () => {},
     // The USD legs also subscribe as pair quotes; none arrive in this test.
     subscribeQuotes: () => () => {},
+    loadQuotesBatch: async () => [],
     getQuoteEntry: () => createIdleEntry(),
   } as unknown as MarketDataCoordinator);
 }
@@ -174,7 +175,7 @@ describe("FxMatrixPane", () => {
     setSharedMarketDataCoordinator({
       subscribe: () => () => {}, subscribeKeys: () => () => {}, getVersion: () => 1,
       getFxEntry: (currency: string) => entries[currency] ?? errorEntry(),
-      loadFxRate: async () => {}, subscribeQuotes: () => () => {}, getQuoteEntry: () => createIdleEntry(),
+      loadFxRate: async () => {}, subscribeQuotes: () => () => {}, loadQuotesBatch: async () => [], getQuoteEntry: () => createIdleEntry(),
     } as unknown as MarketDataCoordinator);
     const registry = createRemoteUiRegistry();
     await tui.render(<RemoteUiRegistryProvider registry={registry}><Harness /></RemoteUiRegistryProvider>, { width: 100, height: 14 });

@@ -176,6 +176,15 @@ export function isSourceFailure(error: unknown): boolean {
 }
 
 /**
+ * The router's bare "No history provider available": no source failed, none
+ * gave a reason or said the symbol is unknown, and none served bars it could
+ * use (a source's bars that stop short of the latest session are not used).
+ */
+export function isUnservedWithoutReason(error: unknown): boolean {
+  return error instanceof NoProviderError && error.failure === undefined;
+}
+
+/**
  * Whether a failed read means no source has what was asked for: a source's
  * miss, or the router's answer that none served it when none failed another
  * way. A refused session, a rate limit or a timeout is not, as asked again it may answer.

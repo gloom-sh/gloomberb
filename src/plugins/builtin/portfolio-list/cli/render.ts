@@ -37,6 +37,7 @@ import {
 import { dailyFuturesHistory, loadPortfolioFuturesTerms, type PortfolioFuturesSources } from "../../../../portfolio/futures-terms";
 import { loadPurchaseDateCostFx, withPurchaseDateCostFx, type CostFxHistoryClient, type PurchaseDateCostFx } from "../../../../portfolio/cost-fx";
 import { apiClient } from "../../../../api-client";
+import { canonicalExchange, isUsListingExchange } from "../../../../utils/exchanges";
 import { formatUtcDayTime, parseReportTime } from "../../../../utils/utc-time";
 import { quoteFreshnessFields } from "../../shared/report-freshness";
 import { resolvePortfolioTotalsCurrency } from "../summary/totals";
@@ -44,6 +45,7 @@ import {
   EXTENDED_SESSION_LABELS,
   exchangeShortName,
   getActiveQuoteDisplay,
+  getCompletedRegularSessionDisplay,
   getExtendedSessionDisplay,
   quoteHeadlineTime,
   type ActiveQuoteDisplay,
@@ -351,8 +353,10 @@ interface PortfolioPositionValue {
   /**
    * The position's move over the day of that price, in the portfolio's
    * currency, and its value at the close before; null when either is unknown.
+   * A holding in another currency is worth its value before at the previous
+   * FX close, so the move holds the currency's own (`fx`, 0 in the book's).
    */
-  dayMove: { change: number; previousValue: number } | null;
+  dayMove: { change: number; previousValue: number; fx: number } | null;
   /** The `portfolio show --json` row. */
   row: Record<string, unknown>;
   /** A future's contract size and settlement from its terms; null for any other holding. */
@@ -458,6 +462,7 @@ export async function valuePortfolioPositions({
   basis = "latest-print",
   futures,
   purchaseDateFx,
+  previousRate,
 }: {
   tickers: readonly TickerRecord[];
   quotes: ReadonlyMap<string, CollectionQuote>;
@@ -465,6 +470,12 @@ export async function valuePortfolioPositions({
   currency: string;
   baseCurrency: string;
   toBase: (value: number, fromCurrency: string) => Promise<number>;
+  /**
+   * One unit of a currency in `currency` at the previous daily FX close (BaseConverter.previousRate): the day's move
+   * of a holding in another currency then holds the currency's move too. Without it, or with no close, the day's
+   * move is the price's alone, at today's rate.
+   */
+  previousRate?: (fromCurrency: string) => Promise<number | null>;
   basis?: PortfolioValuationBasis;
   /** Each future's contract size and settlement (loadPortfolioFuturesTerms), by symbol. */
   futures?: ReadonlyMap<string, PortfolioFuturesTerms>;
@@ -561,8 +572,7 @@ export async function valuePortfolioPositions({
       // A listing that no longer trades does not move, as the pane's Day counts it: its last session's change is not today's.
       const change = quote?.delisting ? 0 : valuationQuote?.change;
       const dayMove = valuationQuote && change != null && Number.isFinite(change)
-        ? { change: await toBase(metrics.totalPriceUnits * change, quoteCurrency),
-          previousValue: await toBase(metrics.grossPriceUnits * (valuationQuote.price - change), quoteCurrency) }
+        ? await positionDayMove(metrics, valuationQuote.price, change, quoteCurrency, toBase, previousRate)
         : null;
       values.push({ ticker, quote, activeQuote, headline, extended, position, metrics, pnl, futures: futuresTerms, ...(costFx !== undefined ? { costFx } : {}),
         dayMove: dayMove && Number.isFinite(dayMove.change) && Number.isFinite(dayMove.previousValue) ? dayMove : null,
@@ -590,6 +600,34 @@ export async function valuePortfolioPositions({
 }
 
 /**
+ * A position's move over the day in the portfolio's currency: the price's
+ * move at today's rate, and for a holding in another currency the currency's
+ * move on its value at the close before (that value at the previous FX close
+ * against today's rate). With no previous FX close the move is the price's.
+ * A future's contract value is no money held: the currency moves only its
+ * P&L, the price's move at today's rate, never its notional.
+ */
+async function positionDayMove(
+  metrics: Pick<ReturnType<typeof getPortfolioPositionMetrics>, "totalPriceUnits" | "grossPriceUnits" | "isFuture">,
+  price: number,
+  change: number,
+  quoteCurrency: string,
+  toBase: (value: number, fromCurrency: string) => Promise<number>,
+  previousRate?: (fromCurrency: string) => Promise<number | null>,
+): Promise<{ change: number; previousValue: number; fx: number }> {
+  const previousPrice = price - change;
+  const rate = await toBase(1, quoteCurrency);
+  const before = previousRate && !metrics.isFuture ? await previousRate(quoteCurrency) : null;
+  const previous = before != null && Number.isFinite(before) && before > 0 ? before : rate;
+  const fx = metrics.totalPriceUnits * previousPrice * (rate - previous);
+  return {
+    change: await toBase(metrics.totalPriceUnits * change, quoteCurrency) + fx,
+    previousValue: metrics.grossPriceUnits * previousPrice * previous,
+    fx,
+  };
+}
+
+/**
  * The holdings' move over the day of the prices they are valued at, in the
  * portfolio's currency, and that move against their value at the close
  * before, with what it is measured from as the pane's Day says it ("vs Fri 16
@@ -601,9 +639,10 @@ export async function valuePortfolioPositions({
 export function portfolioDayMove(
   valuation: Pick<PortfolioValuation, "positions" | "basis">,
   now = Date.now(),
-): { change: number; changePercent: number | null; basis: string | null } | null {
+): { change: number; changePercent: number | null; basis: string | null; fx: number } | null {
   let change = 0;
   let previousValue = 0;
+  let fx = 0;
   const bases: Array<QuoteChangeBasis | null> = [];
   const session = valuation.basis === "regular-close" ? "regular" : "active";
   for (const entry of valuation.positions) {
@@ -611,12 +650,14 @@ export function portfolioDayMove(
     if (!entry.dayMove) return null;
     change += entry.dayMove.change;
     previousValue += entry.dayMove.previousValue;
+    fx += entry.dayMove.fx;
     if (!entry.quote?.delisting) bases.push(quoteChangeBasis(entry.quote, { session, terms: entry.futures }));
   }
   return {
     change,
     changePercent: previousValue !== 0 ? (change / previousValue) * 100 : null,
     basis: combinedChangeBasisLabel(bases, now),
+    fx,
   };
 }
 
@@ -636,7 +677,9 @@ export function dayMoveLine(
   if (!move) return "Day's move: unavailable";
   const percent = move.changePercent != null ? ` (${formatPercentRaw(move.changePercent)}${cashExcluded ? " of the holdings, cash excluded" : ""})` : "";
   const basis = move.basis ? ` ${muted(move.basis)}` : "";
-  return `Day's move: ${color(`${formatAllocationMoney(move.change, currency, { signed: true })}${percent}`, move.change)}${basis}`;
+  // A holding in another currency moves with it too: how much of the move that is.
+  const fx = Math.abs(move.fx) >= 0.005 ? `, FX ${color(formatAllocationMoney(move.fx, currency, { signed: true }), move.fx)} of it` : "";
+  return `Day's move: ${color(`${formatAllocationMoney(move.change, currency, { signed: true })}${percent}`, move.change)}${basis}${fx}`;
 }
 
 /**
@@ -788,7 +831,7 @@ function portfolioValuationFreshness(
     citeOldest: true,
     // A book across markets names each one's session and open: an HKEX book holding one US fund is not dated by the US day alone.
     datesEachVenue: true,
-    ...(note ? { note: `priced at ${valuationBasisLabel(valuation.basis, { futures: holdsFutures(valuation) })}` } : {}),
+    ...(note ? { note: `priced at ${valuationBasisText(valuation.basis, holdsFutures(valuation), marketsStillTrading(valuation))}` } : {}),
   }, undefined, now);
 }
 
@@ -797,9 +840,56 @@ export function holdsFutures(valuation: Pick<PortfolioValuation, "positions">): 
   return valuation.positions.some((entry) => entry.position && entry.futures);
 }
 
-/** `Priced at the latest print, extended hours included`: the line under a portfolio's title. */
-function valuationBasisLine(basis: PortfolioValuationBasis, futures: boolean): string {
-  return `Priced at ${valuationBasisLabel(basis, { futures })}`;
+/**
+ * `Priced at the latest print, extended hours included`: the line under a
+ * portfolio's title. At the close, a book with markets still trading names
+ * them, and the markets at their close: `Priced at the regular
+ * close: BIST at its close; US still trading, at the latest print`.
+ */
+function valuationBasisLine(
+  basis: PortfolioValuationBasis,
+  futures: boolean,
+  markets: { closed: string[]; trading: string[] } | null = null,
+): string {
+  return `Priced at ${valuationBasisText(basis, futures, markets)}`;
+}
+
+/** What a book is priced at, after "Priced at", with the markets still trading at the close (`marketsStillTrading`). */
+export function valuationBasisText(
+  basis: PortfolioValuationBasis,
+  futures: boolean,
+  markets: { closed: string[]; trading: string[] } | null = null,
+): string {
+  const label = valuationBasisLabel(basis, { futures });
+  if (basis !== "regular-close" || !markets?.trading.length) return label;
+  const closed = markets.closed.length ? `${joinWords(markets.closed)} at ${markets.closed.length === 1 ? "its" : "their"} close; ` : "";
+  return `${label}: ${closed}${joinWords(markets.trading)} still trading, at the latest print`;
+}
+
+/** `US`, `US and BIST`, `US, LSE and BIST`. */
+function joinWords(words: readonly string[]): string {
+  return words.length <= 1 ? words.join("") : `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`;
+}
+
+/**
+ * The markets of a book's holdings, US listings as one, split into those
+ * whose regular session is over, which the close values, and those still in
+ * it, whose rows are at the latest print until their close; futures, at the
+ * settle, and options, at their mark, are neither. In the order the rows
+ * first name them.
+ */
+export function marketsStillTrading(valuation: Pick<PortfolioValuation, "positions">): { closed: string[]; trading: string[] } {
+  const states = new Map<string, boolean>();
+  for (const { quote, metrics, position, futures } of valuation.positions) {
+    if (!position || !quote || futures || metrics?.valuesAtMark) continue;
+    const exchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
+    if (!exchange) continue;
+    const market = isUsListingExchange(exchange) ? "US" : exchange;
+    const trading = getCompletedRegularSessionDisplay(quote) == null && quote.marketState === "REGULAR";
+    states.set(market, (states.get(market) ?? false) || trading);
+  }
+  const markets = [...states];
+  return { closed: markets.filter(([, trading]) => !trading).map(([market]) => market), trading: markets.filter(([, trading]) => trading).map(([market]) => market) };
 }
 
 /** What a row's price is when it is not a print or a close: a future's settlement, or a venue's nominal price. */
@@ -916,17 +1006,21 @@ async function showCollectionWithMarketData(
   // A watchlist's stale rows, named under the closing line that counts them.
   let staleNote: string | null = null;
 
+  const valuation = matchedPortfolio
+    ? await valuePortfolioPositions({ tickers: filtered, quotes, portfolioId: id, currency, baseCurrency: config.baseCurrency, toBase, basis, futures, purchaseDateFx,
+      previousRate: toBase.previousRate })
+    : null;
+
   if (!structured) {
     console.log(cliStyles.bold(displayName + (isPortfolio ? ` (${currency})` : "")));
     console.log(cliStyles.muted(`${filtered.length} ticker${filtered.length === 1 ? "" : "s"}`));
     const imported = matchedPortfolio ? importedFromText(matchedPortfolio) : null;
     if (imported) console.log(cliStyles.muted(imported));
-    if (isPortfolio) console.log(cliStyles.muted(valuationBasisLine(basis, futuresHeld.length > 0)));
+    if (isPortfolio) console.log(cliStyles.muted(valuationBasisLine(basis, futuresHeld.length > 0, valuation ? marketsStillTrading(valuation) : null)));
     console.log("");
   }
 
-  if (matchedPortfolio) {
-    const valuation = await valuePortfolioPositions({ tickers: filtered, quotes, portfolioId: id, currency, baseCurrency: config.baseCurrency, toBase, basis, futures, purchaseDateFx });
+  if (matchedPortfolio && valuation) {
     // Exports carry no header line, so their source line names the basis.
     freshness = portfolioValuationFreshness(valuation, source, { note: structured });
     const {
@@ -1096,6 +1190,7 @@ async function showCollectionWithMarketData(
         // Only on a book that holds a short: its weights are shares of `weightBase`, its gross exposure, not of the total.
         ...(allocation.weightBasis === "gross" ? { weightBasis: allocation.weightBasis, weightBase: allocation.weightBase } : {}),
         dayChange: dayMove?.change ?? null, dayChangePercent: dayMove?.changePercent ?? null, dayChangeBasis: dayMove?.basis ?? null,
+        dayChangeFx: dayMove?.fx ?? null,
         unpricedCount: allocation.unpriced.length, unpricedSymbols: allocation.unpriced,
         totalUnrealizedPnl: totalPnlValue,
         annualIncome: totalIncome, knownAnnualIncome: income.knownIncome, portfolioYield,

@@ -142,7 +142,7 @@ const BLOOMBERG_INDICES: Readonly<Record<string, string>> = {
   SPX: "^GSPC", INDU: "^DJI", CCMP: "^IXIC", NDX: "^NDX", RTY: "^RUT", VIX: "^VIX",
   UKX: "^FTSE", DAX: "^GDAXI", CAC: "^FCHI", SX5E: "^STOXX50E", SMI: "^SSMI", AEX: "^AEX", IBEX: "^IBEX",
   NKY: "^N225", HSI: "^HSI", KOSPI: "^KS11", TWSE: "^TWII", SENSEX: "^BSESN", NIFTY: "^NSEI", FSSTI: "^STI",
-  AS51: "^AXJO", SPTSX: "^GSPTSE", MEXBOL: "^MXX", IBOV: "^BVSP", DXY: "DX-Y.NYB",
+  AS51: "^AXJO", SPTSX: "^GSPTSE", MEXBOL: "^MXX", IBOV: "^BVSP", XU100: "XU100.IS", DXY: "DX-Y.NYB",
   USGG5YR: "^FVX", USGG10YR: "^TNX", USGG30YR: "^TYX",
 };
 

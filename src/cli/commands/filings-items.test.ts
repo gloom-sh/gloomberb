@@ -105,6 +105,8 @@ test("filings reads a venue suffix and, for a company abroad that files nothing 
     "NST:ASX": { venue: "ASX", name: "Northern Star Resources Limited" },
     "AIR.NZ": { venue: "NZX", name: "Air New Zealand Limited" },
     "AIR:NZX": { venue: "NZX", name: "Air New Zealand Limited" },
+    "GUBRF.IS": { venue: "BIST", name: "Gübre Fabrikalari Türk Anonim Sirketi" },
+    "GUBRF:BIST": { venue: "BIST", name: "Gübre Fabrikalari Türk Anonim Sirketi" },
   };
   const asked: string[] = [];
   const original = apiClient.getCloudExchangeAnnouncements;
@@ -163,6 +165,10 @@ test("filings reads a venue suffix and, for a company abroad that files nothing 
     const air = await run("AIR.NZ", "text");
     expect(air.text).toContain("Air New Zealand (NZX) files no SEC reports.\nNZX announcements: https://www.nzx.com/companies/AIR/announcements");
     expect(asked).toHaveLength(3);
+    // `filings GUBRF.IS` was "Unknown ticker GUBRF.IS": .IS reads as :BIST, and its company's disclosures are on KAP.
+    const gubrf = await run("GUBRF.IS", "text");
+    expect(gubrf.warnings).toContain("Read GUBRF.IS as GUBRF:BIST.");
+    expect(gubrf.text).toContain("(BIST) files no SEC reports.\nKAP disclosures: https://www.kap.org.tr/en/bildirim-sorgu");
   } finally {
     apiClient.getCloudExchangeAnnouncements = original;
   }

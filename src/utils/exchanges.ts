@@ -64,6 +64,7 @@ export const EXCHANGE_TIME_ZONES: Record<string, string> = {
   MSX: "Asia/Muscat",
   KUWAIT: "Asia/Kuwait",
   EGX: "Africa/Cairo",
+  BIST: "Europe/Istanbul",
   CCC: "UTC",
   HYPERLIQUID: "UTC",
   BINANCE: "UTC",
