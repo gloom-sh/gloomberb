@@ -539,6 +539,9 @@ async function quotedSuffixListing(
   };
 }
 
+/** A search row for an index, as the service types one. */
+const isIndexRow = (result: InstrumentSearchResult | undefined) => /^\s*index\s*$/i.test(result?.type ?? "");
+
 async function resolveTickerSymbol(
   symbol: string,
   { tickers, dataProvider, searchContext }: ResolveTickerSearchOptions,
@@ -568,14 +571,17 @@ async function resolveTickerSymbol(
   const literalMatches = providerItems.filter((item) => normalizeTickerSymbol(item.symbol) === symbol);
   let matches = literalMatches.length ? literalMatches
     : providerItems.filter((item) => findExactTickerSearchMatch([item], symbol));
-  // A code search lists only with its venue's suffix is that listing: XU100 is the BIST 100, listed as XU100.IS.
+  // A code search lists only with its venue's suffix is that listing when it is an index (XU100 is the BIST 100,
+  // listed as XU100.IS) or the only line: BMW, listed as BMW.DE and BMW.F, stays a code no listing is written as.
   if (!matches.length && !parsePublicTickerKey(symbol).exchange && !tickerHasListingSuffix(symbol)) {
-    matches = providerItems.filter((item) => item.result
+    const suffixed = providerItems.filter((item) => item.result
       && listingSuffixVenue(item.symbol, listingExchange(item.result))?.symbol === symbol);
+    const indices = suffixed.filter((item) => isIndexRow(item.result));
+    matches = indices.length ? indices : suffixed.length === 1 ? suffixed : [];
   }
   // An index's name typed as one word is that index: BIST100 is the BIST 100 (XU100.IS).
   if (!matches.length && !parsePublicTickerKey(symbol).exchange && /\d/.test(symbol)) {
-    matches = providerItems.filter((item) => /^\s*index\s*$/i.test(item.result?.type ?? "")
+    matches = providerItems.filter((item) => isIndexRow(item.result)
       && (item.result?.name ?? "").replace(/\s+/g, "").toUpperCase() === symbol);
   }
   if (abroad) {

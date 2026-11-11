@@ -311,4 +311,15 @@ test("the BIST 100 is the index named so, not a sub-index whose name adds to it,
   expect(resolved).toMatchObject({ kind: "provider", symbol: "XU100.IS" });
   const spelled = await resolveTickerSearch({ query: "BIST100", activeTicker: null, tickers: new Map(), dataProvider: provider });
   expect(spelled).toMatchObject({ kind: "provider", symbol: "XU100.IS" });
+  // A share search lists only by its venues' suffixes is no answer to the bare code, as before: BMW is not BMW.DE or BMW.F.
+  const bmw = createTestDataProvider(answering({ BMW: [
+    "BMW.DE | Bayerische Motoren Werke Aktiengesellschaft | XETRA | EQUITY",
+    "BMW.F | Bayerische Motoren Werke Aktiengesellschaft | FWB | EQUITY",
+  ] }));
+  expect(await resolveTickerSearch({ query: "BMW", activeTicker: null, tickers: new Map(), dataProvider: bmw })).toBeNull();
+  // The only line search lists for the code is its listing.
+  const gubrf = createTestDataProvider(answering({ GUBRF: ["GUBRF.IS | Gübre Fabrikalari Türk Anonim Sirketi | BIST | EQUITY"] }));
+  expect(await resolveTickerSearch({ query: "GUBRF", activeTicker: null, tickers: new Map(), dataProvider: gubrf }))
+    .toMatchObject({ kind: "provider", symbol: "GUBRF.IS" });
 });
+
