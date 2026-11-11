@@ -49,11 +49,114 @@ gloom plugin link ./my-plugin    # symlink the checkout into the plugins folder
 gloom plugin doctor my-plugin    # check it the way the app and the desktop build will
 ```
 
-A linked plugin loads like an installed one, shows as `linked` in the Plugins pane, and is skipped by `update`. Removing it removes the link and leaves the checkout alone.
+A linked plugin loads like an installed one, shows as `linked` in the Plugins pane, and is skipped by `update`. Removing it removes the link and leaves the checkout alone. Every plugin command takes a linked plugin's id as well as its folder, with or without a `gloom.json`: a checkout in `./riskwatch` whose export is `risk-watch` answers to both.
 
 `gloomberb` and `react` are peer dependencies: Gloom serves its own copies to every plugin. List `gloomberb` as a devDependency too, with a current `@types/node`, as the reference plugin does, so `bun test` and `tsc` resolve its imports in a fresh clone; installs leave devDependencies out.
 
 `doctor` checks that the entry resolves, the Gloom it declares is not newer than this one, it imports nothing removed or deprecated, it evaluates and exports a `GloomPlugin`, its id is not reserved, its targets are real, it declares the hosts it reaches (see [Network access](#network-access)), and its browser build (which the desktop and web apps need) compiles. It exits non-zero on a failure, so it can run in CI.
+
+## Example: a custom signal
+
+A plugin that adds a CLI command reading Gloom's market data: it flags a quote
+feed that has stopped and scores today's move against thirty years of daily
+bars. Two files in a folder of their own, `riskwatch/`:
+
+`gloom.json`, the id and the oldest Gloom it runs on, which `plugin doctor` asks for:
+
+```json
+{ "id": "risk-watch", "name": "Risk Watch", "minGloom": "0.20.7" }
+```
+
+`index.ts`:
+
+```typescript
+import type { GloomPlugin } from "gloomberb/types/plugin";
+
+const YEARS = 30;
+
+export default {
+  id: "risk-watch",
+  name: "Risk Watch",
+  version: "1.0.0",
+  cliCommands: [{
+    name: "riskwatch",
+    description: "Flag a stalled quote feed and score today's move against daily history",
+    help: { usage: ["riskwatch <symbol>"], examples: ["riskwatch TTEK", "riskwatch TTEK --json"] },
+    async execute(args, ctx) {
+      const symbol = args[0]?.toUpperCase();
+      if (!symbol) ctx.fail("Usage: gloom riskwatch <symbol>");
+      const { dataProvider, destroy } = await ctx.initServices();
+      try {
+        const quote = await dataProvider.getQuote(symbol!);
+        const now = Date.now();
+        // A delayed quote's last trade is about 15 minutes old by design; more than that while the market is open is a stall.
+        const baselineMinutes = quote.dataSource === "delayed" ? 15 : 0;
+        const tradeAge = quote.lastTradeTime ? (now - quote.lastTradeTime) / 60_000 : null;
+        const stalled = quote.marketState === "REGULAR" && tradeAge != null && tradeAge > baselineMinutes + 5;
+
+        // Daily bars by date: years of them in one call, split into reads by the host.
+        const exchange = quote.listingExchangeName ?? "";
+        const from = new Date(now - YEARS * 365.25 * 86_400_000);
+        const history = await dataProvider.getDetailedPriceHistoryWithMetadata!(symbol!, exchange, from, new Date(now), "1d");
+        const closes = history.points.map((point) => point.close).filter((close) => close > 0);
+        const returns = closes.slice(1).map((close, index) => Math.log(close / closes[index]!));
+        const mean = returns.reduce((sum, value) => sum + value, 0) / returns.length;
+        const sd = Math.sqrt(returns.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (returns.length - 1));
+        const move = quote.previousClose ? Math.log(quote.price / quote.previousClose) : null;
+
+        ctx.printResult({
+          data: {
+            symbol,
+            price: quote.price,
+            lastTrade: quote.lastTradeTime ? new Date(quote.lastTradeTime).toISOString() : null,
+            retrieved: quote.retrievedAt ? new Date(quote.retrievedAt).toISOString() : null,
+            savedCopy: quote.stale === true,
+            feed: stalled ? `stalled, last trade ${Math.round(tradeAge!)} min ago` : "ok",
+            sigma: move != null && sd > 0 ? Number((move / sd).toFixed(2)) : null,
+            firstBar: history.points[0] ? new Date(history.points[0].date).toISOString().slice(0, 10) : null,
+            bars: history.points.length,
+            ...(history.truncatedBefore ? { cutBefore: history.truncatedBefore } : {}),
+          },
+        });
+      } finally {
+        destroy();
+      }
+    },
+  }],
+} satisfies GloomPlugin;
+```
+
+Link it, check it, run it:
+
+```bash
+gloom plugin link ./riskwatch
+gloom plugin doctor risk-watch
+gloom riskwatch TTEK          # --json for the record as data
+```
+
+`ctx.initServices()` loads the services a command reads from:
+
+| Field | What it is |
+|-------|------------|
+| `dataProvider` | The asset-data router: `getQuote`, `getQuotesBatch`, `getPriceHistoryWithMetadata`, `getPriceHistoryForResolutionWithMetadata`, `getDetailedPriceHistoryWithMetadata`, `getTickerFinancials`, `getCorporateActions`, `getEarningsCalendar`, `search` and the rest of the [asset-data domain](#capabilities). `gloom api get asset-data.asset-data-router` lists every operation with its input |
+| `config` | The app config, as `ctx.getConfig()` returns it in a pane |
+| `dataDir` | The profile's data folder |
+| `persistence` | The profile's database: cached resources and plugin state |
+| `store` | The saved tickers |
+| `services` | The rest of the app's services: `pluginRegistry` (with its `capabilities`), `newsService` |
+| `destroy()` | Closes them; call it in `finally` so the command exits |
+
+What a quote says about its own time:
+
+| Field | Meaning |
+|-------|---------|
+| `lastTradeTime` | When the last trade printed (epoch ms). `lastUpdated` is the time the price is as of, the same for a trade |
+| `retrievedAt` | When Gloom fetched the quote from its source. A quote from the saved copy keeps the time that copy was fetched, so a recent `retrievedAt` with an old `lastTradeTime` is a feed that has not printed, and an old `retrievedAt` is a copy |
+| `stale` | `true` when the refresh failed and the last good copy answered instead |
+| `dataSource` | `live`, `delayed` or `snapshot`. Gloom Cloud quotes for an account without Pro are delayed 15 minutes: that is the baseline a delayed quote's `lastTradeTime` sits behind while the market is open |
+| `marketState` | The listing's session: `PRE`, `REGULAR`, `POST` or `CLOSED`. Outside `REGULAR`, an old last trade is the close, not a stall |
+
+Price history comes three ways. `getPriceHistoryWithMetadata(symbol, exchange, range)` takes a range (`1D`, `1W`, `1M`, `3M`, `6M`, `1Y`, `5Y`, `ALL`; anything else is an error) in the bar size the range comes in: `ALL` is the whole stored history in monthly bars. `getPriceHistoryForResolutionWithMetadata(symbol, exchange, range, "1d")` is the same range in the bar size asked for, so `ALL` at `1d` is every daily bar kept. `getDetailedPriceHistoryWithMetadata(symbol, exchange, from, to, "1d")` is the bars between two dates. Long daily reads are split into several requests by the host; when one of the older ones fails, the result's `truncatedBefore` is the date the bars start at instead of the whole span. `gloom history <symbol> --range ALL --interval daily` shows the same bars from a shell, and a window before a listing's first bar says where its daily bars start.
 
 ## Plugin compatibility
 
@@ -191,6 +294,12 @@ export default myPlugin;
 
 External plugins export one `GloomPlugin`. The `PluginModule` objects some built-ins compose internally are not a second plugin API; see [Built-in plugins](CONTRIBUTING.md#built-in-plugins).
 
+Save it as `index.tsx` beside a `gloom.json`, which `plugin doctor` asks for:
+
+```json
+{ "id": "my-plugin", "name": "My Plugin", "minGloom": "0.15.0" }
+```
+
 An external plugin is a directory in `~/.gloomberb/plugins/`:
 
 ```
@@ -200,10 +309,6 @@ An external plugin is a directory in `~/.gloomberb/plugins/`:
   index.browser.ts  # optional, see below
   package.json      # optional, for dependencies
   icon.svg          # optional, 64x64, shown in the plugin directory
-```
-
-```json
-{ "id": "my-plugin", "name": "My Plugin", "minGloom": "0.15.0" }
 ```
 
 The icon is the plugin's logo. The desktop and the web also draw it beside
@@ -674,7 +779,7 @@ Available CLI context helpers:
 |------|---------------|
 | `ctx.initConfigData()` | Load config, persistence, and ticker storage |
 | `ctx.initMarketData()` | Load config plus the plugin-aware asset-data router |
-| `ctx.initServices()` | Load the full headless service set, including config, persistence, ticker repository, asset-data router, news service, plugin registry, and capability registry |
+| `ctx.initServices()` | Load the full headless service set: `dataProvider` (the asset-data router), `config`, `dataDir`, `persistence`, `store` (the ticker repository), `services` (plugin registry, capability registry, news) and `destroy()`. [Example: a custom signal](#example-a-custom-signal) uses it and lists each field |
 | `ctx.cliOptions` | Parsed global flags such as output format, `--limit`, `--refresh`, `--dry-run`, and `--yes` |
 | `ctx.printResult(...)` | Render text, JSON, CSV, or NDJSON through the shared CLI result contract |
 | `ctx.fail(...)` | Print an error and exit |

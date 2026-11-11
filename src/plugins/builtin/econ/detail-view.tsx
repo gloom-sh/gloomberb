@@ -33,12 +33,14 @@ import { Box, Text } from "../../../ui";
 import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { useOpenTickerChoice } from "../shared/ticker-choice";
 import { resolveFredMapping, projectFredHistory, fredHistoryUnits } from "./fred-series-map";
-import { actualColor, awaitingFigureText, awaitsFigure, CALENDAR_TIME_ZONE_LABEL, econEventName, timeLabel } from "./calendar-model";
+import { actualColor, CALENDAR_TIME_ZONE_LABEL, econEventName, figureGap, figureGapText, timeLabel } from "./calendar-model";
 import { figureWithCurrency } from "./figures";
 import { hasNoStatedTime, isAllDayEvent, type EconEvent } from "./types";
 
 interface EconDetailViewProps {
   event: EconEvent;
+  /** The calendar the event is listed in: another row of its release with its figure says the source has none for it. */
+  calendar?: readonly EconEvent[];
   width: number;
   height: number;
   focused: boolean;
@@ -122,7 +124,7 @@ function SourceLine({ source, kind, width }: { source: NonNullable<EconEvent["so
 const historyKey = (row: HistoryRow) => row.date;
 const historyDate = (row: HistoryRow) => new Date(`${row.date}T00:00:00Z`);
 
-export function EconDetailView({ event, width, height, focused }: EconDetailViewProps) {
+export function EconDetailView({ event, calendar, width, height, focused }: EconDetailViewProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [freshnessWarning, setFreshnessWarning] = useState<string | null>(null);
@@ -228,11 +230,12 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
 
   // The stack bar names the event; the detail opens on the release figures,
   // the outcome first so a short detail keeps it.
+  const gap = event.actual ? null : figureGap(event, Date.now(), calendar);
   const releaseItems: StatItem[] = [
     // An amount with its currency beside it (-556.5B JPY), where the server says it.
     ...(event.actual ? [{ id: "actual", label: "Actual", value: figureWithCurrency(event.actual, event.currency)!, color: actualColor(event.actual, event.forecast) }]
-      // Past its time with no figure in yet: when it was due.
-      : awaitsFigure(event, Date.now()) ? [{ id: "actual", label: "Actual", value: awaitingFigureText(event), color: colors.warning }] : []),
+      // Past its time with no figure in yet: when it was due, or that the source has none.
+      : gap ? [{ id: "actual", label: "Actual", value: figureGapText(event, gap), color: colors.warning }] : []),
     ...(event.forecast ? [{ id: "forecast", label: "Forecast", value: figureWithCurrency(event.forecast, event.currency)! }] : []),
     ...(event.prior ? [{ id: "prior", label: "Prior", value: figureWithCurrency(event.prior, event.currency)! }] : []),
     // The date the prior rate was observed, labelled as Central Bank Rates labels it.
@@ -326,14 +329,13 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
         </>
       ) : undefined}
       getItemKey={historyKey}
-      renderCell={(row, column, _index, state) => {
-        const selected = state.selected ? colors.selectedText : undefined;
-        return column.id === "date"
-          ? { text: row.date, color: selected ?? colors.textDim }
-          : column.id === "value"
-            ? { text: formatHistoryValue(row.value, units), color: selected ?? (row.value < 0 ? colors.negative : colors.text) }
-            : { text: formatHistoryChange(row.change, units), color: selected ?? changeColor(row.change, units) };
-      }}
+      // The table draws the selected row in the selection's text colour; a change keeps its up or down tone.
+      renderCell={(row, column) => column.id === "date"
+        ? { text: row.date, color: colors.textDim }
+        : column.id === "value"
+          ? { text: formatHistoryValue(row.value, units), color: row.value < 0 ? colors.negative : colors.text }
+          : { text: formatHistoryChange(row.change, units), color: changeColor(row.change, units) }}
+      selectedTextOverridesCellColor
       sortColumnId={null}
       sortDirection="desc"
       emptyStateTitle="No observations."

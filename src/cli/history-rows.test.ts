@@ -284,9 +284,10 @@ describe("history rows", () => {
     expect(historyNotes("5Y", "1wk", "2023-09-11", now)).toEqual(["Asked 5Y, data starts 2023-09-11 (first available bar)"]);
     expect(historyNotes("1Y", "1d", "2025-10-13", now)).toEqual([]);
     expect(historyNotes("5Y", "1wk", "2021-10-25", now)).toEqual([]);
-    // ALL reaches back to 1976-10: a history the window cuts has no start to note; one that starts years later
-    // says where its source's bars start (BTC-USD's in 2014-09), unless a coverage line already does.
-    expect(historyNotes("ALL", "1mo", "1976-12-01", now)).toEqual([]);
+    // ALL reaches back 125 years, so no stored history is cut: one that starts later says where its source's bars
+    // start (KO's monthly bars from 1976-12 read as the whole of it), unless a coverage line already does.
+    expect(historyNotes("ALL", "1mo", "1901-11-01", now)).toEqual([]);
+    expect(historyNotes("ALL", "1mo", "1976-12-01", now)).toEqual(["ALL starts 1976-12; the source has no earlier bar"]);
     expect(historyNotes("ALL", "1mo", "2014-09-01", now)).toEqual(["ALL starts 2014-09; the source has no earlier bar"]);
     expect(historyNotes("ALL", "1mo", "2014-09-01", now, true)).toEqual([]);
     expect(historyNotes("1Y", "1mo", "2025-10-01", now)).toEqual(["Asked 1Y, got monthly bars from 2025-10"]);

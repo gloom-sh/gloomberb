@@ -86,8 +86,8 @@ export const apiCliCommand: BuiltinCliCommandDef = {
             "",
             renderSection("Operations"),
             renderTable(
-              [{ header: "Operation" }, { header: "Kind" }, { header: "Summary" }],
-              data!.operations.map((operation) => [operation.id, operation.kind, operation.summary ?? ""]),
+              [{ header: "Operation" }, { header: "Kind" }, { header: "Summary" }, { header: "Input" }],
+              data!.operations.map((operation) => [operation.id, operation.kind, operation.summary ?? "", operation.inputShape ?? ""]),
             ),
           ].join("\n"),
         });

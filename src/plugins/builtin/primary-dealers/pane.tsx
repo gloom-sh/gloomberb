@@ -175,27 +175,25 @@ export function PrimaryDealersPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((
     row: DealerRow,
     column: DealerColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
+    // The table draws the selected row in the selection's text colour; a change keeps its up or down tone.
     switch (column.id) {
       case "position":
         // A breakdown reads under its total, in plain weight.
         return {
           text: dealerRowLabel(row),
           value: row.label,
-          color: selectedColor ?? (row.depth === 0 ? colors.textBright : colors.text),
+          color: row.depth === 0 ? colors.textBright : colors.text,
           attributes: row.depth === 0 ? TextAttributes.BOLD : undefined,
         };
       case "asOf":
-        return { text: row.asOf ?? "—", color: selectedColor ?? colors.textMuted };
+        return { text: row.asOf ?? "—", color: colors.textMuted };
       case "latest":
-        return { text: formatLevel(row.latest), value: row.latest, color: selectedColor ?? colors.text };
+        return { text: formatLevel(row.latest), value: row.latest, color: colors.text };
       case "previous":
-        return { text: formatLevel(row.previous), value: row.previous, color: selectedColor ?? colors.textDim };
+        return { text: formatLevel(row.previous), value: row.previous, color: colors.textDim };
       case "change":
-        return { text: formatChange(row.change), value: row.change, color: selectedColor ?? changeColor(row.change) };
+        return { text: formatChange(row.change), value: row.change, color: changeColor(row.change) };
     }
   }, []);
 
@@ -261,6 +259,7 @@ export function PrimaryDealersPane({ focused, width, height }: PaneProps) {
         sortDirection="asc"
         getItemKey={(row) => row.id}
         renderCell={renderCell}
+        selectedTextOverridesCellColor
         resetScrollKey={tab}
         emptyStateTitle={tab === "fails" ? "No fails in this release." : "No positions in this release."}
       />

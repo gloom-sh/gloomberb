@@ -594,8 +594,8 @@ export function createSystemCliCommands(): CliCommandDef[] {
         // shows it beside the id (`hackernews`).
         const pluginId = async (name: string): Promise<string> => {
           if (services.services.pluginRegistry.allPlugins.has(name) || builtinPluginGroupMembers(name)) return name;
-          const { installedPluginDirectoriesNamed, installedPluginRegistryId } = await import("../../plugins/installer");
-          const [directory, ...others] = installedPluginDirectoriesNamed(name);
+          const { installedPluginDirectoriesById, installedPluginRegistryId } = await import("../../plugins/installer");
+          const [directory, ...others] = await installedPluginDirectoriesById(name);
           if (!directory || others.length > 0) return name;
           return await installedPluginRegistryId(directory) ?? name;
         };

@@ -142,7 +142,8 @@ import {
   fxInterventionLatestNote, fxInterventionPair, fxInterventionWindowNote, loadFxInterventions, type FxInterventionPair,
 } from "../../market-data/fx-interventions";
 import { maxDrawdownText, maxRunUp, maxRunUpText, measuredUntil } from "../../utils/max-drawdown";
-import { isPastPriceWindow, loadPriceWindowHistory, PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP, priceWindowInterval, priceWindowText, readPriceWindow, type PriceWindow } from "../../utils/price-window";
+import { subtractTimeRange } from "../../time-series/date-window";
+import { historyFirstBarDay, isPastPriceWindow, loadPriceWindowHistory, PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP, priceWindowInterval, priceWindowText, readPriceWindow, type PriceWindow } from "../../utils/price-window";
 import {
   BAR_INTERVAL_LABELS,
   closedPeriodBarDay,
@@ -163,7 +164,6 @@ import {
   historyRescaleNote,
   historyUnbrokenFrom,
   dailyRebuildSpans,
-  historyAllRangeYears,
   historyIntervalsByRange,
   historyMissingVolumeNote,
   historyVenueVolumeNote,
@@ -301,7 +301,7 @@ import {
   analyzeTaxEquivalent, distributionBasis, loadTreasuryTenors, noBondFigures, parseTaxRates, TAX_RATE_HELP_OPTIONS, taxEquivalentJson, type TaxRates,
 } from "../../market-data/tax-equivalent";
 import { CBOE_YIELD_INDEX_CLOSE } from "../../plugins/builtin/shared/treasury-cutoffs";
-import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote, undatedListingsNote } from "../earnings-calendar";
+import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, lastReportedDay, noListingCalendarNote, undatedListingsNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { isUnservedWithoutReason, notATickerSymbol, providerMissReason } from "../../sources/provider-errors";
 import { isNetworkFailure } from "../../utils/network-failure";
@@ -1542,12 +1542,12 @@ function failHistory(error: unknown, symbol: string, ctx: Parameters<CliCommandD
 }
 
 const HISTORY_USAGE = "history <symbol...> [--range <range> | --from <year|date> [--to <year|date>]]";
-const HISTORY_ALL_RANGE = `ALL gives the full history the source has, up to ${historyAllRangeYears()} years`;
+const HISTORY_ALL_RANGE = "ALL gives the whole history the source keeps, from its first bar, and says where that is";
 const HISTORY_YTD_RANGE = "YTD starts at the prior year's last close, the one year-to-date returns are measured from";
 /** Options people reach for to ask for dates, which history answers with --from and --to (or --start and --end). */
 const DATE_WINDOW_OPTIONS = new Set(["--since", "--until", "--date", "--start-date", "--end-date"]);
-/** Options people reach for to pick a bar size, which history derives from the range. */
-const BAR_SIZE_OPTIONS = new Set(["--interval", "--resolution", "--bar", "--bars", "--bar-size", "--granularity", "--timeframe", "--frequency", "--freq", "--tick", "--ticks"]);
+/** Options people reach for to pick a bar size, which history takes as --interval. */
+const BAR_SIZE_OPTIONS = new Set(["--resolution", "--bar", "--bars", "--bar-size", "--granularity", "--timeframe", "--frequency", "--freq", "--tick", "--ticks"]);
 
 /** The symbol `history` was given: the first word that is not an option or the value after one. */
 function historySymbolArg(args: readonly string[]): string | undefined {
@@ -1589,7 +1589,32 @@ function historyOptionHint(flag: string, args: readonly string[]): string | null
 
 /** What `history` says to a bar size asked for, as an option or in a symbol's place: it picks one per range, and where finer bars are. */
 function historyBarSizeHint(symbol: string | undefined): string {
-  return `history serves each --range in one bar size. ${subMinuteDataMessage(symbol)}`;
+  return `history serves each --range in one bar size; --interval daily, weekly or monthly picks one. ${subMinuteDataMessage(symbol)}`;
+}
+
+/** The bar sizes `--interval` takes, by the words people write them in. */
+const HISTORY_INTERVALS: Readonly<Record<string, HistoryInterval>> = {
+  daily: "1d", day: "1d", "1d": "1d", d: "1d",
+  weekly: "1wk", week: "1wk", "1wk": "1wk", "1w": "1wk", w: "1wk",
+  monthly: "1mo", month: "1mo", "1mo": "1mo", mo: "1mo",
+};
+
+/** A bar size `--interval` picks in place of the one the range or window comes in. */
+type HistoryInterval = "1d" | "1wk" | "1mo";
+
+/** `--interval daily|weekly|monthly`, the bar size every range and window is read in; null without it. */
+function takeHistoryInterval(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]): HistoryInterval | null {
+  const typed = takeOption(args, "--interval");
+  if (typed == null) return null;
+  const interval = HISTORY_INTERVALS[typed.trim().toLowerCase()];
+  // An intraday size says where intraday bars are, as one typed in a symbol's place does.
+  if (!interval) ctx.fail(`--interval is daily, weekly or monthly, not "${typed}".`, historyBarSizeHint(historySymbolArg(args)));
+  return interval!;
+}
+
+/** The window a range reaches back over, ending today: what `--interval` reads it as. */
+function rangePriceWindow(range: TimeRange, now = new Date()): PriceWindow {
+  return { from: subtractTimeRange(now, range).toISOString().slice(0, 10), to: now.toISOString().slice(0, 10) };
 }
 
 /**
@@ -1627,10 +1652,11 @@ function ytdHistoryNotes(rows: readonly { date: string }[]): string[] {
   return first && last && first > `${Number(last.slice(0, 4)) - 1}-12-31` ? [`Asked YTD, data starts ${first} (first available bar)`] : [];
 }
 
-/** What `history` was asked for: a range, or a window of dates in its place. */
+/** What `history` was asked for: a range, or a window of dates in its place, and the bar size `--interval` picked. */
 interface HistoryAsk {
   range: HistoryRange;
   window: PriceWindow | null;
+  interval: HistoryInterval | null;
 }
 
 /** One listing's bars as `history` prints them, with what its heading, warnings and closing line say. */
@@ -1787,9 +1813,10 @@ function historyConversionNote(fx: HistoryConversion, rows: readonly HistoryRow[
 }
 
 /** The command a listing that cannot be served is pointed back at: `history`, `history --range 5Y`. */
-function historyCommand({ range, window }: HistoryAsk): string {
+function historyCommand({ range, window, interval }: HistoryAsk): string {
   // A window that runs to today retries to the day it is run on, not the one it was first run on.
-  return window ? `history --from ${window.from}${isPastPriceWindow(window) ? ` --to ${window.to}` : ""}` : range === "1Y" ? "history" : `history --range ${range}`;
+  const asked = window ? `history --from ${window.from}${isPastPriceWindow(window) ? ` --to ${window.to}` : ""}` : range === "1Y" ? "history" : `history --range ${range}`;
+  return interval ? `${asked} --interval ${BAR_INTERVAL_LABELS[interval]}` : asked;
 }
 
 /** How long `history` waits for a future's contract terms (its unit, how it rolls) before using the catalog's unit alone. */
@@ -1876,7 +1903,9 @@ async function loadListingHistory(
   const venues = lookups ? loadBareVenues(listing, market) : null;
   const { symbol, exchange } = listing.request;
   const context = { cacheMode: ctx.cliOptions.refresh ? "refresh" as const : "default" as const };
-  const load = () => window ? loadPriceWindowHistory(market.dataProvider, symbol, exchange, window, context)
+  // --interval reads a range as the dates it reaches back over, in the bar size asked: ALL in daily bars is every day kept.
+  const read = window ?? (ask.interval ? rangePriceWindow(loadRange) : null);
+  const load = () => read ? loadPriceWindowHistory(market.dataProvider, symbol, exchange, read, context, ask.interval ?? undefined)
     : market.dataProvider.getPriceHistoryWithMetadata
       ? market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, loadRange, context)
       : market.dataProvider.getPriceHistory(symbol, exchange, loadRange, context).then((points): PriceHistoryResult => ({ points, resolution: null }));
@@ -1905,7 +1934,7 @@ async function loadListingHistory(
   const lastTraded = quote || window ? null : noQuoteLastTraded(loaded);
   // The size the bars were served in, else the one asked for, never their spacing alone: B95 on SGX trades a few
   // times a month, and its daily bars a week or two apart are still daily (requestedBarSize).
-  const asked = window ? priceWindowInterval(window) : RANGE_HISTORY_RESOLUTION[loadRange];
+  const asked = ask.interval ?? (window ? priceWindowInterval(window) : RANGE_HISTORY_RESOLUTION[loadRange]);
   const resolution = loaded.resolution ?? (dailyOrLongerBarSize(asked).barSize
     ? requestedBarSize(loaded.points.map((point) => new Date(point.date).getTime()), asked as "1d" | "1wk" | "1mo") : null);
   // While the session trades the day's bar is the quote's, whatever range the history was cut for (withSessionBar).
@@ -1983,10 +2012,14 @@ async function loadListingHistory(
   const gaps = historyGapNote(data, traded);
   const coverage = window ? historyCoverageNotice(loaded.coverageStart, Date.parse(`${window.from}T00:00:00Z`), loaded.coverageNote)
     : range === "YTD" ? null : historyCoverageWarning(range, loaded);
+  // A window before the listing's bars begin says where they do.
+  const firstDay = data.length === 0 && window ? await historyFirstBarDay(market.dataProvider, symbol, exchange, context) : null;
   const notes = [
     ...lastTraded ? [`${noQuoteLastTradeNote(listing.symbol, lastTraded)}.`] : [],
     // A window the source has no bar in (a typo, a weekend, a listing that had not started) is said, not an empty table alone.
-    ...data.length === 0 ? [emptyHistoryNote(listing.key, ask)] : [],
+    ...data.length === 0 ? [emptyHistoryNote(listing.key, ask, firstDay)] : [],
+    // A read of the oldest dates failed: the bars stop short of the window, and say where.
+    ...loaded.truncatedBefore ? [`Bars before ${loaded.truncatedBefore} could not be read; the history shown starts there. Try again for the rest.`] : [],
     // FB's bars are the fund listed there now; META's from 2021 are from when it was FB.
     ...fate ? listingFateNotes(await fate(), { served: data.length > 0, firstDate: data[0]?.date }) : [],
     ...lookups ? await listingChoiceNotes(listing, market, quote, venues) : [],
@@ -2047,9 +2080,16 @@ function frontMonthIdentity(identity: ListingIdentity, symbol: string, rows: rea
   return name ? { ...identity, name: `${name} ${mostTraded ? "most traded month" : "front month"}` } : identity;
 }
 
-/** What a listing with no bar for what was asked says, in a warning and in a list's status column. */
-function emptyHistoryNote(symbol: string, { range, window }: HistoryAsk): string {
-  return window ? `No bars for ${symbol} from ${priceWindowText(window)}.` : `No bars for ${symbol} in ${range}.`;
+/**
+ * What a listing with no bar for what was asked says, in a warning and in a
+ * list's status column; a window before its first bar (`firstDay`) says
+ * where its bars start: "No bars for KO from 1950 to 1951; KO's daily bars
+ * start 1962-01-02."
+ */
+function emptyHistoryNote(symbol: string, { range, window }: HistoryAsk, firstDay: string | null = null): string {
+  if (!window) return `No bars for ${symbol} in ${range}.`;
+  const starts = firstDay && firstDay > window.to ? `; ${symbol}'s daily bars start ${firstDay}` : "";
+  return `No bars for ${symbol} from ${priceWindowText(window)}${starts}.`;
 }
 
 /** A bar's prices to the decimals its history prints them to. */
@@ -2131,6 +2171,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   // --from 2007 --to 2009: those years' bars, daily up to five years, in place of a range ending now.
   const window = historyWindowOption(args, rangeOption, ctx);
   const range = parseRange(rangeOption, ctx);
+  // --interval daily: the bar size every range and window is read in, ALL in daily bars included.
+  const interval = takeHistoryInterval(args, ctx);
   const requestedExchange = takeOption(args, "--exchange");
   // `--currency USD`: every bar's prices at its date's daily FX close.
   const currencyAsked = takeHistoryCurrency(args, ctx);
@@ -2139,7 +2181,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   // A continuous future stitched across its rolls, by difference unless `ratio` follows.
   const backAdjust = takeBackAdjust(args, ctx);
   // Stitching reads daily bars: five years, which come weekly as a range, are read as the window from five years back, which comes daily.
-  const ask: HistoryAsk = { range, window: window ?? (backAdjust && range === "5Y" ? yearsBackWindow(5) : null) };
+  const ask: HistoryAsk = { range, window: window ?? (backAdjust && range === "5Y" && !interval ? yearsBackWindow(5) : null), interval };
   // A list from a file or standard input (`-`), or several symbols typed (AAPL MSFT, AAPL,MSFT), is one long table.
   // One argument with spaces stays one, as before: it may be a company's name.
   const file = args.some((arg) => arg === "--file" || arg.startsWith("--file=")) ? takeOption(args, "--file") ?? "" : undefined;
@@ -4414,14 +4456,18 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
         return listed ? earningsChoiceNote(listing, eventOf(listing), await listed) : null;
       })),
     ]);
-    // A listing at home the calendar has no date for is named as well: a list never drops a symbol unsaid.
-    const undated = undatedListingsNote(listings.filter((listing) => !isListingAbroad(listing) && !eventOf(listing)));
+    // A listing at home the calendar has no date for is named as well, with when it last reported: a list never
+    // drops a symbol unsaid.
+    const homeUndated = listings.filter((listing) => !isListingAbroad(listing) && !eventOf(listing));
+    const lastReported = new Map(await Promise.all(homeUndated.slice(0, MAX_CHOICE_LOOKUPS)
+      .map(async (listing) => [listing.key, await lastReportedDay(services.dataProvider, listing, today)] as const)));
+    const undated = undatedListingsNote(homeUndated, lastReported);
     const noCalendar = [...abroadNotes, ...undated ? [undated] : []].join("\n");
     // Text prints the listings without a calendar under the table; other formats carry them as warnings.
     const warnings = [
       ...listings.flatMap(listingReadNotes),
       ...choiceNotes.filter((note): note is string => !!note),
-      ...ctx.cliOptions.format === "text" ? [] : [...abroadNotes, ...undated ? [undated] : []],
+      ...ctx.cliOptions.format === "text" ? [] : [...abroadNotes, ...undated ? undated.split("\n") : []],
     ];
     ctx.printResult({
       data: events,
@@ -4478,7 +4524,8 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       usage: [HISTORY_USAGE, "history --file <path> [--range <range> | --from <year|date> [--to <year|date>]]"],
       options: [
         { flags: "--range <range>", description: `${HISTORY_RANGES.join(", ")} (default 1Y), or as other tools write them: ${HISTORY_RANGE_ALIASES}; ${HISTORY_YTD_RANGE}; ${HISTORY_ALL_RANGE}` },
-        { flags: "--from <year|date>, --start <year|date>", description: `${PRICE_WINDOW_FROM_HELP}. Up to five years come in daily bars, up to twenty weekly, longer monthly` },
+        { flags: "--from <year|date>, --start <year|date>", description: `${PRICE_WINDOW_FROM_HELP}. Up to five years come in daily bars, up to twenty weekly, longer monthly, unless --interval picks the size` },
+        { flags: "--interval <size>", description: "daily, weekly or monthly: the bar size for any range or window in place of the one it comes in, in text, CSV and JSON alike. --range ALL --interval daily is every daily bar kept, read in chunks" },
         { flags: "--to <year|date>, --end <year|date>", description: PRICE_WINDOW_TO_HELP },
         { flags: "--file <path>", description: "Read the symbols from a text or CSV file, one per line (- reads standard input), and write every symbol's bars in one table" },
         { flags: "--wide", description: "One row per date and one close column per symbol, its unit in the header, in place of one long table" },
@@ -4489,7 +4536,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       sections: [{
         title: "Bars",
         lines: [
-          `Each range comes in one bar size: ${historyIntervalsByRange()}. The line under the heading, and the --json metadata, give the currency, the bar size actually served, the first and last bar and the bar count. A warning says when the bars are coarser, or start later, than the range asked for, and for a coin, which trades every day, names each day it has no bar for.`,
+          `Each range comes in one bar size, unless --interval picks one: ${historyIntervalsByRange()}. The line under the heading, and the --json metadata, give the currency, the bar size actually served, the first and last bar and the bar count. A warning says when the bars are coarser, or start later, than the range asked for, and for a coin, which trades every day, names each day it has no bar for.`,
           "A bar whose prices contradict each other (high below the open or close, or low above them) is left blank and flagged, such as high<open, with the count in a warning. A low under half the open and close, or a high over twice them, is left blank alone and flagged low<close/2 or high>2*open. --json rows carry currency, unit, interval and flag.",
           "A break in the series flags the bar after it, which keeps its prices: gap after more than three months with no bar (weeks for weekly, daily and intraday bars), jump when the close is over 100 times the one before or under a hundredth of it. A warning names each break, and the heading says the date the series runs unbroken from.",
           "The heading's last line is the max drawdown of the bars shown: the largest fall from a close to a later close, with the peak and the trough, their dates, and the date a close got back to the peak, if one did (maxDrawdown in --json). A yield (^TNX) reads it in bp, with its max run-up beside it: the largest rise from a close to a later close, found on its own (maxRunUp).",

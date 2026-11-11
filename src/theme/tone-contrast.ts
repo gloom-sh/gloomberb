@@ -27,6 +27,31 @@ export function selectedCellColor<T extends string | undefined>(color: T, palett
   return color;
 }
 
+/** Whether a colour is the theme's up or down tone, which a selected row keeps (selectedRowCellColor). */
+function isDirectionTone(color: string, palette: ThemeColors): boolean {
+  return color === palette.positive || color === palette.negative;
+}
+
+/**
+ * The colour a cell of the selected row is drawn in, null for the
+ * selection's own text colour: a cell with no colour of its own takes it,
+ * and so does every other cell of a table that sets
+ * `selectedTextOverridesCellColor`, except an up or down figure, which keeps
+ * its direction (lifted by selectedCellColor) in every table, and a cell
+ * that asks to keep its colour. The band shows the selection; the -6.31% on
+ * it stays red. Both table renderers draw through it.
+ */
+export function selectedRowCellColor(
+  color: string | undefined,
+  overrides: boolean,
+  keep: boolean | undefined,
+  palette: ThemeColors = colors,
+): string | null {
+  if (color === undefined) return null;
+  if (overrides && !keep && !isDirectionTone(color, palette)) return null;
+  return selectedCellColor(color, palette);
+}
+
 /**
  * A tone on the pane title bar, such as a quick setting that is on (the live
  * ⚡): lifted to body contrast on the bar in a theme that reads its tones so

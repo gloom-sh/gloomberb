@@ -1,6 +1,7 @@
 import { futuresListingPriceBasis } from "../../utils/futures-generic";
 import type { TimeRange } from "../../time-series/range";
 import { RANGE_HISTORY_RESOLUTION } from "../../time-series/resolution";
+import { ALL_RANGE_MONTHS } from "../../time-series/date-window";
 import type {
   FinancialStatement,
   Fundamentals,
@@ -502,7 +503,8 @@ const HISTORY_OUTPUT_SIZE: Record<TimeRange, number> = {
   "6M": 186,
   "1Y": 366,
   "5Y": 261,
-  "ALL": 600,
+  // A month a bar: every month ALL reaches back to (ALL_RANGE_MONTHS), so the whole stored history comes back.
+  "ALL": ALL_RANGE_MONTHS,
 };
 
 /** The bar size comes from the shared range table, which `gloom help history` also lists. */

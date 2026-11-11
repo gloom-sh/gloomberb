@@ -28,6 +28,7 @@ import {
 } from "./financials";
 import type { ProviderRouterCoreDeps } from "./route-types";
 import { isNetworkFailure } from "../../utils/network-failure";
+import { withRetrievedAt } from "./retrieved-at";
 
 export interface ProviderRouterBatchDeps extends ProviderRouterCoreDeps {
   readCachedMergedFinancialsSelection(
@@ -83,7 +84,7 @@ export class ProviderRouterBatchRoutes {
           misses.push({ index, target });
           return;
         }
-        results[index] = { target, quote: cached.value };
+        results[index] = { target, quote: withRetrievedAt(cached.value, cached.fetchedAt) };
         return;
       }
       // Revalidated, a fresh copy is still what the quote route answers when no source does.
@@ -106,7 +107,9 @@ export class ProviderRouterBatchRoutes {
         batchFailure = error;
         return logFailure("sources.provider-router.batches", "Loading batch quotes failed", [] as QuoteBatchResult[])(error);
       });
-      for (const item of batchResults) {
+      const answeredAt = Date.now();
+      for (const answered of batchResults) {
+        const item = { ...answered, quote: withRetrievedAt(answered.quote, answeredAt) };
         const key = this.quoteBatchKey(item.target);
         if (!isProviderQuoteUsableForCurrentSession(item.quote, item.target.exchange, item.target.symbol, { recentAnswer: true })) {
           const fallback = lastKnownProviderQuote(item.quote, item.target.exchange, item.target.symbol);
@@ -235,7 +238,8 @@ export class ProviderRouterBatchRoutes {
       ...this.deps.getBrokerCandidatesForContext(context, false).map((candidate) => this.deps.brokerSourceKey(candidate)),
       ...this.deps.getProviderSourceKeys(),
     ];
-    return selectCachedResource<Quote>(this.deps.resources, "quote", entityKey, variantKeys, sourceKeys, true)?.value ?? null;
+    const cached = selectCachedResource<Quote>(this.deps.resources, "quote", entityKey, variantKeys, sourceKeys, true);
+    return cached ? withRetrievedAt(cached.value, cached.fetchedAt) : null;
   }
 
   private quoteBatchKey(target: QuoteSubscriptionTarget): string {

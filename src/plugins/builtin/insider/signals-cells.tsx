@@ -2,6 +2,7 @@ import type { InsiderSignalSide } from "../../../api-client/insider-signals";
 import type { DataTableCell } from "../../../components";
 import type { ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
+import { selectedRowCellColor } from "../../../theme/tone-contrast";
 import { Box, Text, TextAttributes } from "../../../ui";
 import { missingCell } from "../shared/research-cells";
 import { INSIDER_BOTH_WAYS_MARK, type InsiderSignalFact } from "./signals-model";
@@ -29,7 +30,9 @@ function FactFigures({ fact, side, selected, width }: { fact: InsiderSignalFact;
   const figure = fact.bothWays ? fact.text.slice(0, -(INSIDER_BOTH_WAYS_MARK.length + 1)) : fact.text;
   return (
     <Box flexDirection="row" height={1} overflow="hidden" justifyContent="flex-end" flexGrow={1} width={width}>
-      <Text fg={selected ? colors.selectedText : factColor(fact, side, colors)} attributes={fact.weight === "strong" ? TextAttributes.BOLD : TextAttributes.NONE}>{figure}</Text>
+      {/* A buy or sell keeps its tone on the selected row, as every table's up and down figures do. */}
+      <Text fg={selected ? selectedRowCellColor(factColor(fact, side, colors), true, false, colors) ?? colors.selectedText : factColor(fact, side, colors)}
+        attributes={fact.weight === "strong" ? TextAttributes.BOLD : TextAttributes.NONE}>{figure}</Text>
       {fact.bothWays ? <Text fg={selected ? colors.selectedText : colors.textMuted}>{` ${INSIDER_BOTH_WAYS_MARK}`}</Text> : null}
     </Box>
   );

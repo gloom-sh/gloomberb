@@ -526,7 +526,7 @@ test("a row with no figures comes out at its own time once that has passed, as r
   expect(seen("Existing Home Sales")).toEqual(Array(5).fill("2026-10-19T14:00:00.000Z"));
 });
 
-test("a release past its time with no figure says when it was due and that the figure is awaited, in the text and every export, for a day", async () => {
+test("a release past its time with no figure says when it was due and that the figure is awaited, then that the source has none, for a day", async () => {
   setSystemTime(new Date("2026-11-09T08:18:00.000Z"));
   const calendar = [
     // China's CPI at 01:30 and Germany's trade at 07:00 with no actual hours later, as on 9 Nov 2026.
@@ -542,14 +542,15 @@ test("a release past its time with no figure says when it was due and that the f
   ];
   const text = await econText(calendar, ["--from", "2026-11-08"]);
   const line = (name: string) => text.split("\n").find((row) => row.includes(name))!;
-  expect(line("CPI y/y")).toContain("due 01:30 UTC, awaiting figure");
+  // Two hours past its time, the source has no figure to give.
+  expect(line("CPI y/y")).toContain("no figure from the source");
   expect(line("German Trade Balance")).toContain("due 07:00 UTC, awaiting figure");
   for (const name of ["Foreign Exchange Reserves", "PPI y/y", "M2 Money Supply y/y", "Nagel Speaks", "New Loans"]) expect(line(name)).not.toContain("awaiting");
   const { result, options } = await econPrinted(calendar, ["--from", "2026-11-08"]);
   const json = result.data as Array<Record<string, unknown>>;
   expect(json.map((row) => [row.event, row.actual, row.actualStatus])).toEqual([
     ["Foreign Exchange Reserves", null, null],
-    ["CPI y/y", null, "due 01:30 UTC, awaiting figure"],
+    ["CPI y/y", null, "no figure from the source"],
     ["PPI y/y", 5.7, null],
     ["New Loans", null, null],
     ["German Trade Balance", null, "due 07:00 UTC, awaiting figure"],
@@ -557,7 +558,29 @@ test("a release past its time with no figure says when it was due and that the f
     ["M2 Money Supply y/y", null, null],
   ]);
   const csv = readCsv(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options));
-  expect(csv.rows.map((row) => row[csv.header.indexOf("actual_status")])).toEqual(["", "due 01:30 UTC, awaiting figure", "", "", "due 07:00 UTC, awaiting figure", "", ""]);
+  expect(csv.rows.map((row) => row[csv.header.indexOf("actual_status")])).toEqual(["", "no figure from the source", "", "", "due 07:00 UTC, awaiting figure", "", ""]);
+});
+
+// 11 Nov 2026: five MBA rows read "awaiting figure" all day beside five rows of the same release with theirs.
+test("a release row with no figure while another row of the same release has its own says the source has none", async () => {
+  setSystemTime(new Date("2026-11-11T12:30:00.000Z"));
+  const mba = { name: "Mortgage Bankers Association" };
+  const at = "2026-11-11T12:00:00.000Z";
+  const calendar = [
+    { ...event(at, "US", "medium", "MBA 30-Year Mortgage Rate"), actual: "7.21%", prior: "7.3%", source: mba },
+    { ...event(at, "US", "medium", "MBA 5/1 ARM Contract Rate"), prior: "6.29%", source: mba },
+    // Another publisher's release at the same time is still awaited, as is one with no publisher named.
+    { ...event(at, "US", "low", "Redbook y/y"), prior: "5.1%", source: { name: "Redbook Research" } },
+    { ...event(at, "US", "low", "Other Index"), prior: "1.0" },
+  ];
+  const { result } = await econPrinted(calendar, ["--from", "2026-11-11"]);
+  const status = Object.fromEntries((result.data as Array<Record<string, unknown>>).map((row) => [row.event, row.actualStatus]));
+  expect(status).toEqual({
+    "MBA 30-Year Mortgage Rate": null,
+    "MBA 5/1 ARM Contract Rate": "no figure from the source",
+    "Redbook y/y": "due 12:00 UTC, awaiting figure",
+    "Other Index": "due 12:00 UTC, awaiting figure",
+  });
 });
 
 test("--search finds an event however its name is spaced or hyphenated, and the Fed's rate reads as its upper bound", async () => {

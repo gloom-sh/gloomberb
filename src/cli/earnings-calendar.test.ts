@@ -22,9 +22,15 @@ const LISTINGS: Record<string, Array<[string, string]>> = {
 };
 const QUOTES: Record<string, string> = { "SAN:MCE": "Banco Santander, S.A.", "SAN:EPA": "Sanofi", "BHP:ASX": "BHP Group Limited" };
 
-function harness(calendar: (symbols: string[]) => Promise<EarningsEvent[]>) {
+function harness(calendar: (symbols: string[]) => Promise<EarningsEvent[]>, reported: Record<string, string[]> = {}) {
   const asked: string[][] = [];
   const dataProvider = createTestDataProvider({
+    // The quarters on record: each date a reported one, plus a fiscal period end that is no report.
+    getCorporateActions: async (symbol) => ({ dividends: [], splits: [], earnings: [
+      ...(reported[symbol] ?? []).map((date) => ({ date, dateType: "announcement" as const, epsActual: 1 })),
+      { date: "2099-01-01", dateType: "announcement" as const, epsActual: 1 },
+      { date: "2026-12-31", dateType: "fiscal-period-end" as const, epsActual: 1 },
+    ] }),
     search: async (query) => (LISTINGS[query] ?? []).map(([exchange, name]) => ({
       providerId: "test", symbol: query, name, exchange, type: "Common Stock", currency: "USD",
     })),
@@ -70,15 +76,23 @@ test("a calendar the source failed to answer says what failed, never a bare reas
     .rejects.toThrow("Earnings dates for SAN:MCE did not load: the calendar source failed. Try again in a few minutes.");
 });
 
-// `earnings NTR MOS ICL ADM BG LAND FPI` printed five rows and said nothing of BG and FPI.
-test("a list names each listing the calendar came back without, at home or abroad, in text and as warnings", async () => {
+// `earnings NTR MOS ICL ADM BG LAND FPI` printed five rows and said nothing of BG and FPI; `earnings KO IBM` said
+// "no earnings date found" for a company that had reported two weeks before.
+test("a list names each listing the calendar came back without, with when it last reported, in text and as warnings", async () => {
   const calendar = async () => [event("NTR", "Nutrien Ltd.", 5, false), event("MOS", "The Mosaic Company", 9, false)];
-  const run = harness(calendar);
+  const reported = { BG: ["2026-04-30", "2026-07-30"] };
+  const run = harness(calendar, reported);
   await earnings.execute(["NTR", "BG", "MOS", "FPI", "SAN:EPA"], run.context);
   const lines = run.text(0)!.split("\n");
-  expect(lines.slice(-2)).toEqual(["SAN:EPA: no calendar for this listing", "BG, FPI: no earnings date found."]);
-  const json = harness(calendar);
+  expect(lines.slice(-3)).toEqual([
+    "SAN:EPA: no calendar for this listing",
+    "BG: no upcoming earnings date found; last reported 2026-07-30.",
+    "FPI: no earnings date found.",
+  ]);
+  const json = harness(calendar, reported);
   json.context.cliOptions.format = "json";
   await earnings.execute(["NTR", "BG", "MOS", "FPI"], json.context);
-  expect(json.printed[0]!.result.warnings).toContain("BG, FPI: no earnings date found.");
+  expect(json.printed[0]!.result.warnings).toEqual(expect.arrayContaining([
+    "BG: no upcoming earnings date found; last reported 2026-07-30.", "FPI: no earnings date found.",
+  ]));
 });
