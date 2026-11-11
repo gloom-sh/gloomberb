@@ -172,6 +172,13 @@ export interface TimeSeriesPoint {
   legs?: ReadonlyArray<{ contract: string | null; price: number }>;
   /** A continuous future's contract, or a formula's legs', differ from the date before's: a roll. */
   roll?: boolean;
+  /**
+   * A price converted into the chart's currency (`viewport.currency`): what
+   * its own-currency prices were multiplied by, that day's FX close over any
+   * sub-unit divisor. Studies that compound a listing's own returns divide it
+   * back out.
+   */
+  conversionFactor?: number;
   provenance?: {
     priceHistoryIntegrity?: import("../utils/price-history-integrity").PriceHistoryIntegrity;
     valuationPriceIssues?: import("./valuation-price").ValuationPriceIssue[];
@@ -396,6 +403,8 @@ export interface ChartResolutionResult {
   coverageNotices?: string[];
   /** What the price levels of a total-return chart without a comparison are (`warnings` also carries it). */
   returnBasisNotice?: string;
+  /** The splits a comparison's listings took inside its range, its returns being split-adjusted (`warnings` also carries it). */
+  splitNotice?: string;
   /**
    * Each charted listing that no longer trades: its symbol and label
    * ("Delisted Oct 27, 2022"), which `warnings` carries as "TWTR: Delisted Oct 27, 2022".

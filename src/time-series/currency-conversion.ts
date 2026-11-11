@@ -68,6 +68,7 @@ function convertPricePoints(
       ...point.high !== undefined ? { high: scaled(point.high, factor) } : {},
       ...point.low !== undefined ? { low: scaled(point.low, factor) } : {},
       ...point.close !== undefined ? { close: scaled(point.close, factor) } : {},
+      conversionFactor: (point.conversionFactor ?? 1) * factor,
     });
   }
   return { points: converted, missing };

@@ -21,15 +21,20 @@ export function dailyBarsIssue(spec: ChartStudySpec, input: ResolvedSeries, mark
 /**
  * The line a leveraged or inverse fund's daily objective draws from its index
  * fund, in percent from where the chart compares (3× daily QQQ beside TQQQ),
- * on the percent axis the compared legs share.
+ * on the percent axis the compared legs share. It compounds the index fund's
+ * own-currency sessions, then is converted at each day's FX close like the
+ * index fund's closes, so a chart in euros moves it with EUR/USD once, as it
+ * moves the fund, not `factor` times.
  */
 export function resolveLeverageLine(spec: ChartStudySpec, index: ResolvedSeries, color: string, anchor: StudyAnchor | undefined): ResolvedSeries[] {
   const factor = spec.parameters.factor as number;
   const closes = sessionCloses(index, anchor);
   const growth = dailyLeverageGrowth(closes.map((entry) => entry.close), factor);
+  const startFx = closes[0]?.fx ?? 1;
   return [outputSeries(spec, index, {
     label: `${leverageFactorLabel(factor)} daily ${leverageSymbol(index)}`,
-    points: closes.map((entry, position) => derivedPoint({ point: entry.point, value: entry.close }, (growth[position]! - 1) * 100)),
+    points: closes.map((entry, position) => derivedPoint({ point: entry.point, value: entry.close },
+      (growth[position]! * entry.fx / startFx - 1) * 100)),
     color,
     unit: "%",
     unitGroup: "percent",
@@ -44,7 +49,8 @@ export function resolveLeverageLine(spec: ChartStudySpec, index: ResolvedSeries,
  * from where the chart compares: the fund against the daily line (fees,
  * financing, tracking), and the daily line against the factor times the index
  * fund's return over the period (compounding, which daily resets cost in a
- * market that swings).
+ * market that swings). Both read the listings' own-currency closes, so they
+ * are the same in whatever currency the chart is.
  */
 export function resolveLeverageDecay(
   spec: ChartStudySpec,
