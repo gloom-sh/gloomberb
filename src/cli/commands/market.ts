@@ -1483,9 +1483,10 @@ function failHistory(error: unknown, symbol: string, ctx: Parameters<CliCommandD
   // A window before the listing's first bar has none to give, asked now or later: "No bars before 2014-09-17 for BTC-USD."
   if (error instanceof WindowBeforeFirstBarError) failWithError({ code: NO_DATA_CODE, message: error.message, retryable: false });
   // A range of intraday bars no source has current bars for (a venue with daily bars only, or bars behind its last
-  // session) says so and offers the daily view, never that no provider is available.
+  // session) says so and offers the daily view, never that no provider is available. A coin keeps the crypto board's
+  // pointer below: its bars trade around the clock, so a miss is the feed's, not a venue's hours.
   const resolution = range ? RANGE_HISTORY_RESOLUTION[range] : null;
-  if (range && resolution && isIntradayResolution(resolution) && isUnservedWithoutReason(error)) {
+  if (range && resolution && isIntradayResolution(resolution) && !isCryptoPairSymbol(symbol) && isUnservedWithoutReason(error)) {
     failWithError({
       code: NO_DATA_CODE,
       message: `No current ${BAR_INTERVAL_LABELS[resolution]} bars for ${symbol}.`,
