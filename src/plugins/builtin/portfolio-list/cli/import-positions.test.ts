@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -17,6 +17,8 @@ const dataDirs: string[] = [];
 
 afterEach(async () => {
   setCliColorEnabledOverride(null);
+  // A console.error spy left in place swallows later files' logs, and their own spyOn gets it back with these calls.
+  mock.restore();
   for (const persistence of persistences.splice(0)) persistence.close();
   await Promise.all(dataDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
