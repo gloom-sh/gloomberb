@@ -1,6 +1,7 @@
 import { tf } from "../../../i18n";
 import { AmbiguousTickerError } from "../../../tickers/search";
 import { formatTickerListInput, parseTickerListInput } from "../../../tickers/list";
+import { displayTickerKey } from "../../../utils/exchanges";
 import type { CommandBarWorkflowRoute } from "./types";
 
 /** Which field a listing choice writes, and the whole field value each choice gives it. */
@@ -32,7 +33,8 @@ export function buildTickerListingPicker(
     title: tf("Choose listing for {symbol}", { symbol: error.query }),
     options: error.listings.map((listing) => ({
       id: formatTickerListInput(tokens.map((token) => token === error.query ? listing : token)),
-      label: error.listingNames[listing] ? `${listing} · ${error.listingNames[listing]}` : listing,
+      // By the venue's code (9992:HKEX); the field is written with the listing's key as stored.
+      label: error.listingNames[listing] ? `${displayTickerKey(listing)} · ${error.listingNames[listing]}` : displayTickerKey(listing),
       detail: error.listingNames[listing],
     })),
   };
