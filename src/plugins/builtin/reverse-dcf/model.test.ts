@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { sessionQuotes } from "../../../test-support/test-fixture-session-quotes";
 import type { FinancialStatement, TickerFinancials } from "../../../types/financials";
-import { DEFAULT_FCF_MARGIN, dcfValue, describeFcfMargin, FORECAST_YEARS, pastGrowthBasis, projectReverseDcf, solveImpliedGrowth, ttmBaseNote } from "./model";
+import { DEFAULT_FCF_MARGIN, dcfValue, describeFcfMargin, FORECAST_YEARS, missingInputsNote, pastGrowthBasis, projectReverseDcf, solveImpliedGrowth,
+  ttmBaseNote } from "./model";
 
 const financials = (fundamentals: TickerFinancials["fundamentals"], annual: Partial<FinancialStatement>[] = []): TickerFinancials =>
   ({ fundamentals, annualStatements: annual as FinancialStatement[], quarterlyStatements: [], priceHistory: [] });
@@ -52,15 +53,55 @@ describe("reverse DCF", () => {
 
     const withdrawn = { ...fundamentals, enterpriseValue: undefined, unavailableFields: ["enterpriseValue" as const],
       enterpriseValueCheck: { ...check, status: "withdrawn" as const, source: 6_000 } };
-    const unavailable = projectReverseDcf({ ...financials(withdrawn), quote }, { symbol: "X", discountRate: 0.09 });
-    expect(unavailable).toMatchObject({ enterpriseValue: null, implied: null, impliedRevenue: null });
-    expect(unavailable.error).toStartWith("EV unavailable: the provider's");
     // At or below zero it is N/M with the reason, as valuation and RV say it.
     const reason = "Cash and short-term investments exceed market cap + total debt (balance sheet 2026-06-30)";
     const negative = projectReverseDcf({ ...financials({ ...withdrawn, enterpriseValueCheck: { ...check, status: "not-meaningful" as const,
       source: -85, computed: -99, reason } }), quote }, { symbol: "X", discountRate: 0.09 });
     expect(negative).toMatchObject({ enterpriseValue: null, implied: null,
       error: "EV N/M: cash and short-term investments exceed market cap + total debt (balance sheet 2026-06-30)." });
+  });
+});
+
+describe("an EV the source withdrew", () => {
+  const withdrawn = { enterpriseValue: undefined, unavailableFields: ["enterpriseValue" as const], marketCap: 195_000, freeCashFlow: 5_000,
+    financialCurrency: "HKD", marketCapCurrency: "HKD" };
+  const halfYears = (sheet: Partial<FinancialStatement>): TickerFinancials => ({
+    fundamentals: { ...withdrawn, ttmConversion: { from: "CNY", rate: 1.2, asOf: "2026-11-11" },
+      enterpriseValueCheck: { status: "withdrawn", source: 104_900, currency: "HKD", convertedFrom: "CNY", reason: "Source EV is converted from CNY" } },
+    annualStatements: [{ date: "2024-12-31", currency: "CNY", freeCashFlow: 4_400 }, { date: "2025-12-31", currency: "CNY" }] as FinancialStatement[],
+    quarterlyStatements: [{ date: "2025-06-30", currency: "CNY", cashAndCashEquivalents: 11_900 },
+      { date: "2026-06-30", currency: "CNY", capitalLeaseObligations: 3_700, ...sheet }] as FinancialStatement[],
+    priceHistory: [],
+  });
+
+  test("is market cap + debt - cash from the bridge Gloom Cloud served beside it, minority interest in", () => {
+    const check = { status: "withdrawn" as const, source: 6_000, currency: "USD", marketCap: 2_000, totalDebt: 100, cash: 50, computed: 2_050,
+      minorityAndPreferred: 30, balanceSheetDate: "2026-06-30", fx: { from: "EUR", rate: 1.1 } };
+    const model = projectReverseDcf(financials({ enterpriseValue: undefined, unavailableFields: ["enterpriseValue"], enterpriseValueCheck: check,
+      marketCap: 2_000, freeCashFlow: 100, financialCurrency: "USD", marketCapCurrency: "USD" }), { symbol: "X", discountRate: 0.09 });
+    expect(model).toMatchObject({ enterpriseValue: 2_080, enterpriseValueSheet: "Jun 30, 2026", missing: [], error: null,
+      implied: solveImpliedGrowth(2_080, 100, 0.09, 0.025) });
+    expect(model.enterpriseValueNote).toContain("(balance sheet 2026-06-30, EUR at 1.100 USD)");
+  });
+
+  test("is built from the latest balance sheet at the rate the trailing figures state, leases in as FA counts them", () => {
+    const model = projectReverseDcf(halfYears({ totalDebt: 0, cashCashEquivalentsAndShortTermInvestments: 14_000,
+      totalEquityGrossMinorityInterest: 23_300, commonStockEquity: 23_000 }), { symbol: "9992:HKEX", discountRate: 0.09 });
+    // 195,000 + (0 + 3,700 - 14,000 + 300) x 1.2 = 183,000
+    expect(model).toMatchObject({ enterpriseValue: 183_000, enterpriseValueSheet: "Jun 30, 2026", missing: [], error: null });
+    expect(model.enterpriseValueNote).toBe("EV 183k HKD is market cap 195k + total debt 0 + leases 4.4k - cash and short-term investments 16.8k"
+      + " + minority interest and preferred equity 360 (balance sheet 2026-06-30, CNY at 1.200 HKD as of 2026-11-11), the source's EV being withdrawn.");
+  });
+
+  test("names what the statements lack and where to read them, as a limit and not an error", () => {
+    const model = projectReverseDcf(halfYears({ cashCashEquivalentsAndShortTermInvestments: 14_000 }), { symbol: "9992:HKEX", discountRate: 0.09 });
+    expect(model).toMatchObject({ enterpriseValue: null, implied: null, error: null,
+      missing: [{ input: "enterpriseValue", needs: "total debt on the Jun 30, 2026 balance sheet", statement: "balance" }] });
+    const noFlow = projectReverseDcf({ ...halfYears({ cashCashEquivalentsAndShortTermInvestments: 14_000 }),
+      fundamentals: { ...halfYears({}).fundamentals!, freeCashFlow: undefined } }, { symbol: "9992:HKEX", discountRate: 0.09 });
+    expect(noFlow.missing.map((item) => item.needs)).toEqual(["total debt on the Jun 30, 2026 balance sheet",
+      "a trailing figure; the latest cash flow statement is FY2024"]);
+    expect(missingInputsNote(noFlow.missing, "9992:HKEX")).toBe("Inputs on file: fn FA 9992:HKEX --statement balance; fn FA 9992:HKEX --statement cashflow");
   });
 });
 

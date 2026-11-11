@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneFooter, usePaneNoticeFooter,
+import { DataTableView, EmptyState, Notice, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneFooter, usePaneNoticeFooter,
   usePaneTicker, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { instrumentFromTicker } from "../../../market-data/request-types";
@@ -11,7 +11,7 @@ import { Box } from "../../../ui";
 import { formatCompactCurrency } from "../../../utils/format";
 import { loadReverseDcfInputs } from "./client";
 import { describeFcfMargin, DISCOUNT_RATES, FORECAST_YEARS, formatFcfMargin, pastGrowthBasis, projectReverseDcf, TERMINAL_GROWTH, TERMINAL_GROWTHS,
-  ttmBaseGap, type ImpliedGrowth, type ReverseDcfModel } from "./model";
+  ttmBaseGap, type ImpliedGrowth, type MissingInput, type ReverseDcfModel } from "./model";
 
 export const DISCOUNT_OPTIONS = DISCOUNT_RATES.map((rate) => ({ value: String(Math.round(rate * 100)), label: `${Math.round(rate * 100)}%` }));
 /** The margin setting that follows the company's own trailing margin, the pane's default. */
@@ -41,6 +41,20 @@ function impliedText(value: ImpliedGrowth | null): string {
 }
 
 type Row = ReverseDcfModel["sensitivity"][number];
+
+const STATEMENT_TAB: Record<MissingInput["statement"], string> = { balance: "Balance Sheet", cashflow: "Cash Flow" };
+
+/**
+ * "Not computed: the enterprise value needs total debt on the Jun 30, 2026
+ * balance sheet, and the free cash flow a trailing figure. FA: Balance Sheet,
+ * Cash Flow.": what the data does not give, said plainly, and where to read
+ * what the statements hold.
+ */
+export function missingInputsText(missing: readonly MissingInput[]): string {
+  const parts = missing.map((item) => `${item.input === "enterpriseValue" ? "the enterprise value" : "the free cash flow"} needs ${item.needs}`);
+  const tabs = [...new Set(missing.map((item) => STATEMENT_TAB[item.statement]))].join(", ");
+  return `Not computed: ${parts.join("; ")}. FA: ${tabs}.`;
+}
 
 const COLUMNS: DataTableColumn[] = [
   { id: "discount", label: "Discount", width: 10, align: "left" },
@@ -88,6 +102,7 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
 
   const stats = useMemo((): StatItem[] => {
     if (!model || model.error) return [];
+    const missing = (input: MissingInput["input"]) => model.missing.some((item) => item.input === input) ? "missing" : undefined;
     const currency = model.currency ?? undefined;
     const implied = model.implied?.kind === "rate" ? model.implied.value : null;
     const past = model.pastGrowth;
@@ -102,10 +117,10 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
       { id: "yield", label: "FCF yield", value: pct(model.fcfYield, false) },
       // A trailing figure far above the fiscal year the past growth ends at says so beside itself.
       { id: "fcf", label: "FCF", value: formatCompactCurrency(model.freeCashFlow ?? undefined, currency),
-        detail: gap ? `TTM base, ${gap.multiple} ${gap.year}'s ${gap.fcf}` : undefined },
-      // Market cap + debt - cash where the provider's is more than 5% from it; its inputs are in the notice.
+        detail: gap ? `TTM base, ${gap.multiple} ${gap.year}'s ${gap.fcf}` : missing("freeCashFlow") },
+      // Market cap + debt - cash where the provider's is more than 5% from it, or in place of one withdrawn; its inputs are in the notice.
       { id: "ev", label: "EV", value: formatCompactCurrency(model.enterpriseValue ?? undefined, currency),
-        detail: model.enterpriseValueNote ? "computed" : undefined },
+        detail: model.enterpriseValueSheet ? `${model.enterpriseValueSheet} balance sheet` : model.enterpriseValueNote ? "computed" : missing("enterpriseValue") },
     ];
   }, [model]);
 
@@ -121,7 +136,10 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
     ]} />
     {!symbol ? <EmptyState title="Select a ticker." /> : <PaneStatusBody subject="reverse DCF" loading={inputs.loading && !model}
       error={!model ? inputs.error ?? identityError ?? null : model.error} empty={false}>
-      {model && !model.error ? <>
+      {model && !model.error && model.missing.length ? <>
+        <StatGrid items={stats} width={width} maxLines={statMaxLines} />
+        <Box paddingX={1}><Notice variant="callout" tone="muted">{missingInputsText(model.missing)}</Notice></Box>
+      </> : model && !model.error ? <>
         <StatGrid items={stats} width={width} maxLines={statMaxLines} />
         <DataTableView<Row> focused={focused} columns={COLUMNS} items={model.sensitivity} rootWidth={width} rootHeight={contentHeight}
           getItemKey={(row) => String(row.discountRate)} emptyStateTitle="No implied growth." sortColumnId={null} sortDirection="desc"
