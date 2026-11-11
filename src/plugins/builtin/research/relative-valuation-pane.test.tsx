@@ -64,7 +64,7 @@ test("stale peer remains inspectable with contextual failure, excluded quote val
   expect(frame).not.toContain("$135.75");
   await exportPaneTable(paneId, "rv-stale.csv");
   const csv = takeSavedTextFile()!.text;
-  expect(csv).toContain("PLD,,,,30.2");
+  expect(csv).toContain("PLD,,,,,30.2");
   stale = false;
   await act(async () => { tui.setup().mockInput.pressKey("r"); });
   await settle();

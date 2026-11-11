@@ -3,7 +3,7 @@ import type { Quote } from "../../types/financials";
 import { resolvePriceBasis } from "./price-basis";
 import { isIndexLevel } from "./index-level";
 import { currencyPriceDigits, formatCompact, formatCurrency, formatCurrencyCode } from "../../utils/format";
-import { minorUnitSign } from "../../utils/currency-units";
+import { BIDI_MARKS, isDrawableCurrencySign, minorUnitSign } from "../../utils/currency-units";
 import { fxRateDigits } from "../../utils/currency-pair";
 
 export type AssetDisplayKind = "cash" | "crypto" | "equity" | "contract" | "other";
@@ -155,7 +155,9 @@ export function getCurrencySymbol(currency: string): string {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     });
-    symbol = formatter.formatToParts(0).find((part) => part.type === "currency")?.value ?? normalizedCurrency;
+    const sign = formatter.formatToParts(0).find((part) => part.type === "currency")?.value.replace(BIDI_MARKS, "");
+    // A sign a terminal cannot draw (the riyal's, U+20C1) is left to the code, as an unknown one is.
+    symbol = sign && isDrawableCurrencySign(sign) ? sign : normalizedCurrency;
   } catch { /* Intentional ignore: A user-entered currency code rejected by Intl retains the code as its symbol. */ }
   currencySymbols.set(normalizedCurrency, symbol);
   return symbol;

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { convertCurrency, displayWidth, formatCompact, formatCurrency, formatNumber, formatPercent, formatPercentRaw, formatSignificant, padTo, truncateToDisplayWidth } from "./format";
 import { normalizeTimestamp } from "./timestamp";
 import { fxRateCurrencies } from "./currency-units";
+import { getCurrencySymbol } from "../market-data/market/format";
 
 test("currency conversion never presents a missing or invalid FX leg as parity", () => {
   const rates = new Map([["EUR", 1.2], ["JPY", 0.008]]);
@@ -67,6 +68,13 @@ describe("formatCurrency", () => {
     expect(formatCurrency(412.5, "GBP")).toBe("£412.50");
     expect(formatCurrency(-314.95, "USX")).toBe("-314.95¢");
     expect(formatCurrency(-0.001, "USX")).toBe("0.00¢");
+  });
+
+  test("writes a currency whose sign a terminal cannot draw as its code, with no bidirectional mark", () => {
+    // Intl's riyal is a left-to-right mark and U+20C1, which terminal fonts lack: a Tadawul price read "\u200e\u20c1 25.88".
+    expect(formatCurrency(25.88, "SAR")).toBe("SAR\u00a025.88");
+    expect(getCurrencySymbol("SAR")).toBe("SAR");
+    expect(getCurrencySymbol("ILS")).toBe("₪");
   });
 });
 

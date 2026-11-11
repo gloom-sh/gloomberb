@@ -51,6 +51,7 @@ import {
 import { currencyCodeLabel, heldCurrencyUnit } from "../../utils/currency-units";
 import { quotedFxPair } from "../../utils/currency-pair";
 import type { AppConfig } from "../../types/config";
+import { cleanFloat32Price, decimalPlaces } from "../../utils/float32-price";
 import type { CompanyProfile, DeclaredDividendAction, FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
 import { apiClient } from "../../api-client";
 import { withBalanceSheetRate } from "../../market-data/quotes/balance-sheet-rate";
@@ -182,6 +183,23 @@ function appendMetricSection(lines: string[], title: string, metrics: Array<[str
  * Last and the extended print, or a closed market's last quote with its day (ITA's $202.00 against $208.74
  * around a $206.65 close is no open book).
  */
+/**
+ * The decimals a 52-week range prints at: the ones its own prices need once
+ * read as the float32 they come from (CL=F's 54.97999954 is 54.98), padded to
+ * the currency's minor unit and never past the instrument's stable decimals.
+ * A JSE line served in cents read 650.5600 at the four decimals cents allow;
+ * it reads 650.56, as Last and the day's range do, and a pence line's
+ * 25.5377 keeps its four.
+ */
+function yearRangeOptions(quote: Quote, options: MarketFormatOptions): MarketFormatOptions {
+  if (options.fixedFractionDigits !== undefined) return options;
+  const stable = withStablePriceDigits(options, quote.currency, quote);
+  if (stable.fixedFractionDigits === undefined) return stable;
+  const written = [quote.low52w, quote.high52w].flatMap((price) => price != null && Number.isFinite(price) ? [decimalPlaces(cleanFloat32Price(price))] : []);
+  const digits = Math.max(options.minimumFractionDigits ?? 0, ...written);
+  return { ...stable, fixedFractionDigits: Math.min(stable.fixedFractionDigits, digits) };
+}
+
 function bidAskText(quote: Quote, options: MarketFormatOptions): string {
   const text = formatBidAsk(quote.bid, quote.ask, quote.bidSize, quote.askSize, quote.currency, options);
   const label = text === "—" ? null : quoteBookSessionLabel(quote);
@@ -1437,8 +1455,7 @@ export async function buildTickerReport({
       // The year's high and low come from bars (a continuous future's are float32, 54.97999954): they print at
       // the instrument's own decimals, as the Overview's ranges do, never at every digit the bars carry.
       ["52W Range", quote.low52w != null || quote.high52w != null
-        ? formatPriceRange(quote.low52w, quote.high52w, quote.currency,
-          quoteOptions.fixedFractionDigits === undefined ? withStablePriceDigits(quoteOptions, quote.currency, quote) : quoteOptions)
+        ? formatPriceRange(quote.low52w, quote.high52w, quote.currency, yearRangeOptions(quote, quoteOptions))
         : "—"],
       ["Bid / Ask", bidAskText(quote, quoteOptions)],
       // An index's and a perpetual's 0 means none is counted, not no trades: no Volume row.
