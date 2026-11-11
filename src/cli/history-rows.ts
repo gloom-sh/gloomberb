@@ -90,6 +90,16 @@ export interface HistoryRow {
   volumeNote?: string;
   /** A bar without the market's volume: the trades of one venue alone (`volumeVenue`), never its volume. */
   venueVolume?: number;
+  /**
+   * `history --currency`: the units of the currency asked for one unit of
+   * the listing's buys at the FX close of `fxDate`, which the prices were
+   * converted at; null where no close was in the week before the bar.
+   */
+  fxRate?: number | null;
+  /** The UTC day of that FX close: the bar's, or the last before it (a Sunday bar on Tadawul). */
+  fxDate?: string | null;
+  /** The bar's close in the listing's own currency, before it was converted. */
+  localClose?: number | null;
   volumeVenue?: string;
   /**
    * What the bar's volume counts, where the source says: `aggregate` across venues on a coin's daily bar,

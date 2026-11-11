@@ -1036,3 +1036,37 @@ test("a yield's history reads its drawdown and its run-up in bp, each on its own
     setSystemTime();
   }
 });
+
+test("history --currency converts each bar at its date's daily FX close, the close before on a day with none, and names the series", async () => {
+  pinClosedSession();
+  // 2222 on Tadawul trades Sunday to Thursday; USD/SAR closes on weekdays only, so Sunday's bar is at Friday's close.
+  const cli = createTestCliContext({
+    config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+    dataProvider: createTestDataProvider({
+      getQuote: async () => createTestQuote({ symbol: "2222", currency: "SAR", listingExchangeName: "TADAWUL", marketState: "CLOSED" }),
+      getPriceHistoryWithMetadata: async () => ({
+        resolution: "1d",
+        points: [
+          { date: new Date("2026-11-01"), open: 26, high: 26.2, low: 25.9, close: 26.1, volume: 1000 },
+          { date: new Date("2026-11-02"), open: 26.1, high: 26.3, low: 26, close: 26.2, volume: 1000 },
+        ],
+      }),
+    }),
+    fxHistory: {
+      getCloudHistory: async (symbol: string) => ({
+        status: "success" as const,
+        data: symbol === "SAR=X" ? Object.entries({ "2026-10-30": 3.75, "2026-11-02": 3.7502, "2026-11-05": 3.7501 })
+          .map(([day, close]) => ({ date: `${day}T00:00:00.000Z`, close })) : [],
+      }),
+    },
+  }, { format: "json" });
+  await history.execute(["2222:TADAWUL", "--currency", "USD", "--range", "1M"], cli.context);
+  const [{ result }] = cli.printed;
+  const rows = result.data as Array<Record<string, unknown>>;
+  expect(rows.map((row) => [row.date, row.close, row.fxRate, row.fxDate, row.localClose, row.currency])).toEqual([
+    ["2026-11-01", Math.round(26.1 / 3.75 * 1e6) / 1e6, 1 / 3.75, "2026-10-30", 26.1, "USD"],
+    ["2026-11-02", Math.round(26.2 / 3.7502 * 1e6) / 1e6, 1 / 3.7502, "2026-11-02", 26.2, "USD"],
+  ]);
+  expect(result.metadata).toMatchObject({ currency: "USD", converted: { from: "SAR", to: "USD", series: [{ pair: "USD/SAR", symbol: "SAR=X" }] } });
+  expect(result.warnings?.[0]).toBe("Prices in USD, converted from SAR at each date's daily close of USD/SAR (SAR=X), 2026-10-30 to 2026-11-02.");
+});
