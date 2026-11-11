@@ -202,10 +202,66 @@ describe("MarketDataCoordinator while the quote stream is down", () => {
     expect(coordinator.getTickerFinancialsSync(instrument)?.quote?.stale).toBeUndefined();
     expect(coordinator.getQuoteEntry(instrument).data?.stale).toBeUndefined();
 
-    // Still down at 04:20 New York: the delayed feed has reached the pre-market, and nothing brought its prints.
-    now = Date.parse("2026-11-11T09:20:00Z");
+    // Still down at 04:25 New York: the delayed feed has been in the pre-market for ten minutes, and nothing brought its prints.
+    now = Date.parse("2026-11-11T09:25:00Z");
     expect(coordinator.getTickerFinancialsSync(instrument)?.quote?.stale).toBe(true);
     expect(coordinator.getQuoteEntry(instrument).data?.stale).toBe(true);
+    stopStreaming();
+    coordinator.destroy();
+  });
+
+  // In the pre-market, signed out, a dropped stream read NVDA's 09:25 print as stale at 09:40: it was as current as the feed gets.
+  it.each([
+    ["pre-market", "2026-11-11T09:40:00Z", {
+      marketState: "PRE", preMarketPrice: 174.43, preMarketChange: 5.54, preMarketChangePercent: 3.28,
+    }],
+    ["after hours", "2026-11-11T22:40:00Z", {
+      marketState: "POST", postMarketPrice: 175.1, postMarketChange: 0.6, postMarketChangePercent: 0.34,
+    }],
+  ] as const)("keeps a delayed %s print current for a few minutes after the drop, then reads it frozen", async (_session, dropAt, fields) => {
+    jest.useFakeTimers();
+    let now = Date.parse(dropAt);
+    Date.now = () => now;
+    const advance = (ms: number) => {
+      now += ms;
+      jest.advanceTimersByTime(ms);
+    };
+    const clock = createManualFrameDriver(0);
+    let streamed: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => createTestFinancials(),
+      subscribeQuotes: (_targets, onQuote) => {
+        streamed = onQuote;
+        return () => {};
+      },
+    });
+    const coordinator = new MarketDataCoordinator(provider, { frames: new DataFrameScheduler(clock.driver) });
+    const instrument = { symbol: "NVDA", exchange: "NASDAQ" };
+    await coordinator.loadSnapshot(instrument);
+    const stopStreaming = coordinator.subscribeQuotes([{ instrument }]);
+    // The tick as the free feed sends it: fifteen minutes behind, with its extended-session fields.
+    streamed!({ symbol: "NVDA", exchange: "NASDAQ" }, {
+      ...quote(174.43, now - 15 * 60_000),
+      symbol: "NVDA", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ", dataSource: "delayed", extendedSessionPrint: true,
+      previousClose: 168.89, regularClose: 168.89, ...fields,
+    });
+    clock.advance(0);
+    const heard: string[] = [];
+    const stopListening = coordinator.subscribeKeys([buildQuoteKey(instrument)], () => heard.push("bump"));
+
+    coordinator.setQuoteStreamDown(Date.now());
+    const stale = () => [coordinator.getTickerFinancialsSync(instrument)?.quote?.stale, coordinator.getQuoteEntry(instrument).data?.stale];
+    expect(stale()).toEqual([undefined, undefined]);
+    advance(4 * 60_000);
+    expect(stale()).toEqual([undefined, undefined]);
+
+    // Frozen past the grace: readers are told, and the price reads stale.
+    heard.length = 0;
+    advance(2 * 60_000);
+    clock.advance(0);
+    expect(heard.length).toBeGreaterThan(0);
+    expect(stale()).toEqual([true, true]);
+    stopListening();
     stopStreaming();
     coordinator.destroy();
   });

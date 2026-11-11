@@ -134,6 +134,14 @@ const OUTAGE_RELOAD_MIN_INTERVAL_MS = 10_000;
  * not send its whole backlog in the same instant.
  */
 const OUTAGE_RELOAD_CONCURRENCY = 4;
+/**
+ * A delayed quote's last print is already its feed's lag old (15 minutes on
+ * the free feed) when it arrives, so a stream that drops leaves it current
+ * until its market could have printed for this long since: then it is frozen
+ * and reads stale. A real-time quote reads stale as soon as it could have
+ * printed.
+ */
+const DELAYED_STREAM_OUTAGE_GRACE_MS = 5 * 60_000;
 
 /** How a key a load wrote is asked again after an outage (`reloadAfterOutage`). */
 interface RememberedReload {
@@ -185,6 +193,8 @@ export class MarketDataCoordinator {
    * stale. Null while the stream runs.
    */
   private quoteStreamDownSince: number | null = null;
+  /** Tells streamed quotes' readers when a delayed quote's outage grace has run out. */
+  private quoteStreamGraceTimer: ReturnType<typeof setTimeout> | null = null;
   /** Quote entries as read while the stream is down, so each keeps one identity for its readers. */
   private interruptedQuoteEntries = new WeakMap<QueryEntry<Quote>, QueryEntry<Quote>>();
 
@@ -303,28 +313,41 @@ export class MarketDataCoordinator {
    * The quote stream went down at `since`, or runs again (null). While it is
    * down, a quote a pane streams that nothing refreshed since reads as stale
    * once its market could have printed since (couldQuoteHavePrintedSince), so
-   * a price that stopped moving says so instead of passing for live. A closed
-   * market's last price stays current: the stream had nothing to bring. The
-   * held quote itself is kept: the next tick, or a refresh, replaces it.
+   * a price that stopped moving says so instead of passing for live; a
+   * delayed quote only once it could have printed for
+   * DELAYED_STREAM_OUTAGE_GRACE_MS. A closed market's last price stays
+   * current: the stream had nothing to bring. The held quote itself is kept:
+   * the next tick, or a refresh, replaces it.
    */
   setQuoteStreamDown(since: number | null): void {
     if (this.destroyed || this.quoteStreamDownSince === since) return;
     this.quoteStreamDownSince = since;
     this.interruptedQuoteEntries = new WeakMap();
+    this.bumpStreamingQuotes();
+    if (this.quoteStreamGraceTimer) clearTimeout(this.quoteStreamGraceTimer);
+    this.quoteStreamGraceTimer = since == null ? null : setTimeout(() => {
+      this.quoteStreamGraceTimer = null;
+      if (this.quoteStreamDownSince === since) this.bumpStreamingQuotes();
+    }, Math.max(0, since + DELAYED_STREAM_OUTAGE_GRACE_MS - Date.now()) + 1_000);
+  }
+
+  private bumpStreamingQuotes(): void {
     for (const key of this.quoteSubscriptionManager.streamingKeys()) this.events.bump(key);
   }
 
   /**
    * A streamed quote shown from entries none of which was written since the
-   * stream went down, whose market could have printed since.
+   * stream went down, whose market could have printed since: for a delayed
+   * quote, for at least DELAYED_STREAM_OUTAGE_GRACE_MS of that time.
    */
   private isInterruptedQuote(key: string, quoteEntry: QueryEntry<Quote>, entries: ReadonlyArray<QueryEntry<unknown>>): boolean {
     const since = this.quoteStreamDownSince;
     if (since == null) return false;
     const quote = resolveEntryData(quoteEntry);
-    return !!quote && quote.stale !== true && this.quoteSubscriptionManager.isStreaming(key)
-      && entries.every((entry) => (entry.fetchedAt ?? 0) <= since)
-      && couldQuoteHavePrintedSince(quote, since);
+    if (!quote || quote.stale === true || !this.quoteSubscriptionManager.isStreaming(key)
+      || !entries.every((entry) => (entry.fetchedAt ?? 0) <= since)) return false;
+    const until = Date.now() - (quote.dataSource === "delayed" ? DELAYED_STREAM_OUTAGE_GRACE_MS : 0);
+    return until >= since && couldQuoteHavePrintedSince(quote, since, until);
   }
 
   getSnapshotEntry(instrument: InstrumentRef): QueryEntry<TickerFinancials> {
@@ -868,6 +891,8 @@ export class MarketDataCoordinator {
     this.reloads.clear();
     if (this.outageSweepTimer) clearTimeout(this.outageSweepTimer);
     if (this.outageRetryTimer) clearTimeout(this.outageRetryTimer);
+    if (this.quoteStreamGraceTimer) clearTimeout(this.quoteStreamGraceTimer);
+    this.quoteStreamGraceTimer = null;
     this.outageSweepTimer = null;
     this.outageRetryTimer = null;
     this.outageRetries = [];
