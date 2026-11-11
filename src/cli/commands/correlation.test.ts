@@ -60,21 +60,23 @@ test("correlation with the bare BTC says it read the Grayscale fund and names th
 });
 
 test("an HK ETF with a few contradictory bars correlates against its coin over the bars history keeps, and a side with none says so", async () => {
-  // ETH trades every day; the HK counter on weekdays, with two bars whose high sits under the open, as the source sent 3046's.
+  // ETH trades every day; the HK counter on weekdays, with a bar whose high sits under the open, as the source sent 3046's,
+  // which only withholds the open, and one whose close is above its high, which leaves the bar out.
   const eth = Array.from({ length: 60 }, (_, day) => {
     const close = 2_000 + 40 * Math.sin(day / 3) + day;
     return { date: new Date(Date.UTC(2026, 8, 1 + day)), open: close, high: close, low: close, close, volume: 1_000 };
   });
   const hk = eth.filter((bar) => bar.date.getUTCDay() % 6 !== 0).map((bar, index) => {
     const close = bar.close / 380;
-    return index === 5 || index === 20 ? { ...bar, open: close + 0.1, high: close, low: close, close } : { ...bar, open: close, high: close, low: close, close };
+    if (index === 5) return { ...bar, open: close + 0.1, high: close, low: close, close };
+    return index === 20 ? { ...bar, open: close, high: close, low: close, close: close + 0.1 } : { ...bar, open: close, high: close, low: close, close };
   });
   const result = await run(["ETH-USD", "3046:HKEX"], (symbol) => symbol.startsWith("3046") ? hk : eth);
   const row = (result.result.data as Array<{ correlation: number | null; samples: number }>)[0]!;
   expect(row.correlation).toBeCloseTo(1);
-  // 44 weekdays less the two contradictory bars leaves 42 closes and 41 returns.
-  expect(row.samples).toBe(41);
-  expect(result.result.warnings).toContain("3046:HKEX: 2 of 44 bars have contradictory prices in the source data; left out, as history leaves them blank");
+  // 44 weekdays less the contradictory bar leaves 43 closes and 42 returns.
+  expect(row.samples).toBe(42);
+  expect(result.result.warnings).toContain("3046:HKEX: 1 of 44 bars has contradictory prices in the source data; left out, as history leaves them blank");
   const empty = await run(["ETH-USD", "3046:HKEX"], (symbol) => symbol.startsWith("3046") ? [] : eth);
   expect((empty.result.data as Array<{ correlation: number | null }>)[0]!.correlation).toBeNull();
   expect(empty.result.warnings).toContain("3046:HKEX has no daily bars in the 1Y range");

@@ -28,8 +28,8 @@ function riskHistory(): PricePoint[] {
   return Array.from({ length: 21 }, (_, index) => ({ date: new Date(Date.UTC(2026, 7, 21 + index)), close: 740 + index + index % 2 }));
 }
 
-// A reported SPY bar whose open lies above its high.
-const rejectedSpy = { date: new Date("2026-09-10"), open: 764.08, high: 758.555, low: 757.57, close: 758.15, volume: 3461376 };
+// A SPY bar whose open and close lie above its high: an open alone would only be withheld.
+const rejectedSpy = { date: new Date("2026-09-10"), open: 764.08, high: 758.555, low: 757.57, close: 759.9, volume: 3461376 };
 
 test("a rejected benchmark suppresses beta while the independent basket Sharpe remains available", () => {
   const request = buildPortfolioChartTargets([riskTicker("SPY")])[0]!.request!;
@@ -37,7 +37,7 @@ test("a rejected benchmark suppresses beta while the independent basket Sharpe r
   const entries = new Map([[buildChartKey(request), { data: history }]]);
   const result = buildBenchmarkReturnSeries(request, entries);
   expect(result.returns).toEqual([]);
-  expect(result.integrity?.sourcePoints[0]).toMatchObject({ open: 764.08, high: 758.555, close: 758.15 });
+  expect(result.integrity?.sourcePoints[0]).toMatchObject({ open: 764.08, high: 758.555, close: 759.9 });
   const rows = buildAnalyticsRiskRows({ sharpe: 1.75, beta: 1.2, benchmarkIntegrity: result.integrity });
   expect(rows[0]?.value).toBe("1.75");
   expect(rows[1]).toMatchObject({ value: "—", detail: "SPY benchmark: inconsistent OHLC history" });

@@ -113,15 +113,17 @@ describe("computeBeta", () => {
 
   test("quarantines contradictory samples and permits a corrected duplicate to recover", () => {
     const start = { date: new Date("2026-09-08"), close: 100 };
-    const bad = { date: new Date("2026-09-09"), open: 105, high: 102, low: 99, close: 101 };
+    // A close above the high contradicts the bar; an open alone outside it is only withheld, and its close kept.
+    const bad = { date: new Date("2026-09-09"), open: 105, high: 102, low: 99, close: 104 };
     const end = { date: new Date("2026-09-10"), close: 110 };
     const input = [start, bad, end];
     const rejected = resolveDatedReturns(input);
     expect(rejected.returns).toEqual([]);
+    expect(resolveDatedReturns([start, { ...bad, close: 101 }, end]).integrity).toBeNull();
     expect(rejected.integrity?.sourcePoints[0]).toMatchObject({ date: "2026-09-09T00:00:00.000Z", open: 105, high: 102 });
     const recovered = resolveDatedReturns([...input, { ...bad, high: 106 }]);
     expect(recovered.integrity).toBeNull();
-    expect(recovered.returns.map((entry) => entry.value)).toEqual([0.01, 9 / 101]);
+    expect(recovered.returns.map((entry) => entry.value)).toEqual([0.04, 6 / 104]);
     expect(bad.high).toBe(102);
     expect(rejected.integrity?.sourcePoints[0]?.high).toBe(102);
   });
