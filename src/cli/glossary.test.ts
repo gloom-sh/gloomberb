@@ -79,7 +79,7 @@ test("a term's related terms hold its word whole; a word no term names still fin
   expect(terms(lookupGlossary("settle").partial)).toEqual([]);
   // A plural holds its word whole; a search that names no term keeps the word starts after the whole words.
   expect(terms(lookupGlossary("asset").partial)).toEqual(["Fed assets", "NAV", "Asset manager/institutional"]);
-  expect(terms(lookupGlossary("vol").partial)).toEqual(["Average daily volume", "VVIX", "Short volume", "Term structure", "Contango/backwardation (VIX)",
+  expect(terms(lookupGlossary("vol").partial)).toEqual(["Average daily volume", "VVIX", "Leveraged and inverse ETFs", "Short volume", "Term structure", "Contango/backwardation (VIX)",
     "25-delta implied volatility", "DVOL"]);
   expect(["short interest", "shares short", "short ratio", "dtc", "settlement date", "crowded rising", "short squeeze", "% float"].map((query) => terms(lookupGlossary(query).exact)))
     .toEqual([["Short interest"], ["Short interest"], ["Days to cover"], ["Days to cover"], ["Settlement"], ["Crowded"], ["Squeeze"], ["Float"]]);
@@ -260,7 +260,16 @@ test("COT's words are found by plain names and explained from the classes and co
     .toEqual(["Net position", "Managed money", "Producer/merchant", "Swap dealers", "Other reportables"]);
   // So are the TFF report's, and the options it can count.
   expect(terms(reportGlossary("COT", "Class  Net\nLeveraged Funds  +1\nAsset Manager/Institutional  -1\nDealer/Intermediary  +2\nFutures + options")))
-    .toEqual(["Net position", "Leveraged funds", "Asset manager/institutional", "Dealer/intermediary", "Futures and options combined"]);
+    .toEqual(["Net position", "Leveraged funds (COT)", "Asset manager/institutional", "Dealer/intermediary", "Futures and options combined"]);
+});
+
+test("a leveraged ETF's words find the ETF entry first, the COT class only beside it, and ETF and CMP explain it from their reports", () => {
+  for (const query of ["leveraged", "inverse", "decay", "daily reset", "3x", "-3x"]) expect(terms(lookupGlossary(query).exact)).toEqual(["Leveraged and inverse ETFs"]);
+  expect(terms(lookupGlossary("leveraged").partial)).toEqual(["Leveraged funds (COT)"]);
+  expect(terms(lookupGlossary("leveraged funds").exact)).toEqual(["Leveraged funds (COT)"]);
+  expect(terms(reportGlossary("ETF", "Objective  3× daily, long · 2026-11-09"))).toEqual(["Leveraged and inverse ETFs"]);
+  expect(terms(reportGlossary("CMP", "TQQQ decay vs 3× daily QQQ  -1.95  pp"))).toEqual(["Leveraged and inverse ETFs"]);
+  expect(terms(reportGlossary("CMP", "TQQQ:XNAS Close  -23.36  %"))).toEqual([]);
 });
 
 test("CRYP's stablecoin words are found by plain names and explained from what its stablecoin list prints", () => {
