@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, formatBpAxis, formatPercentAxis, Notice, PaneFooterScope,
-  PaneStatusBody, QueryBar, useChartTableSelection, usePaneNoticeFooter, usePaneTabs, type DataTableColumn, type QueryBarFilter,
+  ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, formatPercentAxis, Notice, PaneFooterScope,
+  PaneStatusBody, QueryBar, spanAxisFormatter, useChartTableSelection, usePaneNoticeFooter, usePaneTabs, type DataTableColumn, type QueryBarFilter,
   type StatItem,
 } from "../../../components";
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
@@ -80,6 +80,8 @@ const formatBp = (value: number) => {
   const bp = Math.round(value);
   return `${bp > 0 ? "+" : ""}${bp === 0 ? 0 : bp}bp`;
 };
+/** The difference chart's axis: yields are quoted to the bp, so a tag reads whole bp as the table does. */
+const formatBpDifferenceAxis = spanAxisFormatter((value, digits) => `${value.toFixed(digits)}bp`, 0);
 
 /** "1D", "1D and 1W", "1D, 1W and 1M". */
 function andList(items: readonly string[]): string {
@@ -391,7 +393,7 @@ function CurveTab({ curve, onCurveChange, focused, width, height }: {
             chart={strip ? {
               render: (size) => <CurveSurface series={series} width={size.width} height={size.height} display="chart"
                 caption={caption} xScale={differenceView ? "even" : "log"} formatValue={formatValue} formatChange={formatYieldChange}
-                formatAxisValue={differenceView ? formatBpAxis : formatPercentAxis} selectedPointId={selectedId}
+                formatAxisValue={differenceView ? formatBpDifferenceAxis : formatPercentAxis} selectedPointId={selectedId}
                 onSelectedPointChange={(id) => setSelectedTenor(id)} />,
               minRows: curveSurfaceMinRows({ series, width, caption }),
               strip,
