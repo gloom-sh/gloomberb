@@ -3,7 +3,7 @@ import { cashAndShortTermInvestments } from "../../utils/cash-runway";
 import { formatShortDate } from "../../utils/datetime-format";
 import { formatCompact } from "../../utils/format";
 import {
-  enterpriseValueCheck, enterpriseValueNotMeaningful, enterpriseValueWithdrawn, reportedEnterpriseValue, withBankEnterpriseValue,
+  checkCashBasis, enterpriseValueCheck, enterpriseValueNotMeaningful, enterpriseValueWithdrawn, reportedEnterpriseValue, withBankEnterpriseValue,
 } from "../../utils/fundamentals";
 import { debtAndLeases, leaseBasis } from "../../utils/lease-liabilities";
 import { viewMarketCapitalization } from "../../utils/market-capitalization";
@@ -144,11 +144,10 @@ function checkBridge(check: EnterpriseValueCheck, financials: EnterpriseValueInp
   // Gloom Cloud serves the line only where both equity lines give a positive figure. A sheet on file without them, or
   // one that is not on file, is named: never counted as zero.
   const minority = finite(check.minorityAndPreferred) ? check.minorityAndPreferred : row ? minorityOnSheet(row) : null;
-  // The check says only when its cash is cash alone (investmentsKept); without the sheet, it is called cash.
-  const shortTerm = !check.investmentsKept && !!row && finite(row.cashCashEquivalentsAndShortTermInvestments);
   return {
     sheetDate, marketCap: check.marketCap ?? 0, totalDebt: check.totalDebt ?? 0, leases: check.leases ?? 0, cash: check.cash ?? 0,
-    cashBasis: shortTerm ? "cash and short-term investments" : "cash", minority,
+    // As the note under a served bridge reads it: cash alone unless the sheet on file reports the total with investments.
+    cashBasis: checkCashBasis(check, financials), minority,
     fx: check.fx && check.currency && finite(check.fx.rate) ? { from: check.fx.from, to: check.currency, rate: check.fx.rate, closeDate: null } : null,
     source: finite(check.source) ? check.source : null,
     ...check.convertedTwice && check.convertedFrom ? { convertedTwice: check.convertedFrom } : {},

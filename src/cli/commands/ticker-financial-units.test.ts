@@ -144,7 +144,8 @@ test("an EV off market cap + debt - cash is the computed one everywhere, with it
     .replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
   const differs = withCheck({ enterpriseValue: 61.8e9, enterpriseValueCheck: { ...check, status: "differs", source: 61.8e9 } });
   // ARWR's 7.48B in `ticker` read 7.99B in `valuation` and the overview: every view now shows the computed one.
-  const inputs = "EV 63.9B USD is market cap 62B + total debt 2B - cash and short-term investments 100M (balance sheet 2026-06-30), in place of the provider's 61.8B.";
+  // Its balance sheet is not among the statements, so the check's cash is called cash: it does not say what it holds.
+  const inputs = "EV 63.9B USD is market cap 62B + total debt 2B - cash 100M (balance sheet 2026-06-30), in place of the provider's 61.8B.";
   expect(valuation(differs)).toMatch(/^Enterprise Value 63\.9B USD$/m);
   expect(valuation(differs)).toContain(inputs);
   const overview = await report(differs);
@@ -162,7 +163,16 @@ test("an EV off market cap + debt - cash is the computed one everywhere, with it
     + ` (balance sheet 2026-06-30), in place of the provider's 128B, which failed validation against it${notOnFile}`);
   // An IFRS balance sheet's leases are in the bridge, and the line says so.
   const leased = withCheck({ enterpriseValue: 70e9, enterpriseValueCheck: { ...check, leases: 1.5e9, computed: 65.4e9, status: "differs", source: 70e9 } });
-  expect(valuation(leased)).toContain("EV 65.4B USD is market cap 62B + total debt 2B + leases 1.5B - cash and short-term investments 100M (balance sheet 2026-06-30), in place of the provider's 70B.");
+  expect(valuation(leased)).toContain("EV 65.4B USD is market cap 62B + total debt 2B + leases 1.5B - cash 100M (balance sheet 2026-06-30), in place of the provider's 70B.");
+  // With that balance sheet on file, its lines say what the cash holds: the total with short-term investments, which
+  // Gloom Cloud takes before cash alone, or cash alone; a check that keeps investments in is cash whatever the sheet says.
+  const sheet = (row: Partial<TickerFinancials["quarterlyStatements"][number]>) => ({ ...differs,
+    quarterlyStatements: [{ date: "2026-06-30", ...row }] as TickerFinancials["quarterlyStatements"] });
+  expect(valuation(sheet({ cashCashEquivalentsAndShortTermInvestments: 0.1e9, cashAndCashEquivalents: 0.08e9 })))
+    .toContain(inputs.replace("- cash 100M", "- cash and short-term investments 100M"));
+  expect(valuation(sheet({ cashAndCashEquivalents: 0.1e9 }))).toContain(inputs);
+  expect(valuation({ ...sheet({ cashCashEquivalentsAndShortTermInvestments: 0.1e9 }), fundamentals: { ...differs.fundamentals,
+    enterpriseValueCheck: { ...differs.fundamentals!.enterpriseValueCheck!, investmentsKept: true } } })).not.toContain("short-term investments 100M");
   // IAG on the LSE: EUR statements converted at the balance sheet's rate, the GBP figure converted twice.
   const twice = withCheck({
     unavailableFields: ["enterpriseValue", "enterpriseToRevenue"],
@@ -208,7 +218,7 @@ test("an EV whose gap is minority interest is the provider's, a bridge served in
   // A provider's figure more than 5% off it, with the bridge Gloom Cloud serves in its place: the bridge, and its inputs.
   const bridged = withCheck({ enterpriseValue: 27.31e9, enterpriseValueCheck: { ...pagp, status: "differs", source: 31e9 } });
   expect(valuation(bridged)).toMatch(/^Enterprise Value 27\.31B USD$/m);
-  expect(valuation(bridged)).toContain("EV 27.31B USD is market cap 6.2B + total debt 8.44B - cash and short-term investments 1.06B"
+  expect(valuation(bridged)).toContain("EV 27.31B USD is market cap 6.2B + total debt 8.44B - cash 1.06B"
     + " + minority interest and preferred equity 13.73B (balance sheet 2026-06-30), in place of the provider's 31B.");
   // A check in another currency than the EV is shown in describes another figure: the served one stays.
   const crossed = withCheck({ enterpriseValue: 31e9, enterpriseValueCheck: { ...pagp, currency: "EUR", status: "differs", source: 31e9 } });
@@ -233,7 +243,7 @@ test("after the close the EV row and its note read one close, the cap rests on t
   });
   expect(chegg).toContain("Market Cap 79.11M USD\nShares Outstanding 110.91M\n");
   expect(chegg).toContain("Enterprise Value 40.65M USD");
-  expect(chegg).toContain("EV 40.65M USD is market cap 79.11M + total debt 33.84M - cash and short-term investments 72.31M (balance sheet 2026-06-30), in place of the provider's 60.06M.");
+  expect(chegg).toContain("EV 40.65M USD is market cap 79.11M + total debt 33.84M - cash 72.31M (balance sheet 2026-06-30), in place of the provider's 60.06M.");
   expect(chegg).not.toContain("does not rest on");
   // A cap on another count than the one shown (one class's) says so; NRDY's EV, withdrawn by Gloom Cloud's
   // validation with no check, is unavailable with the reason rather than a dropped row.

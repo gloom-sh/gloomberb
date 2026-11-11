@@ -321,7 +321,7 @@ export function projectReverseDcf(
   const published = bridge ? exchangeResultsSource(options.exchangeResults, bridge.sheetDate) : null;
   const bridgeNote = value && bridge ? enterpriseValueBridgeNote(value) : null;
   const enterpriseValueNote = bridgeNote ? `${bridgeNote}${published ? ` Balance sheet from the ${published}.` : ""}`
-    : value && enterpriseValueComputed(fundamentals) ? enterpriseValueReconciliationNote(fundamentals) ?? null : null;
+    : value && enterpriseValueComputed(fundamentals) ? enterpriseValueReconciliationNote(fundamentals, undefined, financials ?? undefined) ?? null : null;
   const enterpriseValue = value?.value ?? null;
   const empty: ReverseDcfModel = { symbol: options.symbol, currency, discountRate: options.discountRate, terminalGrowth: TERMINAL_GROWTH,
     enterpriseValue, enterpriseValueNote, enterpriseValueSheet: bridge ? balanceSheetDay(bridge.sheetDate) : null,
