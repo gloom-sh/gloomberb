@@ -3429,6 +3429,8 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       },
       freshness: rowsFreshness(analystRows(data), {
         ...REPORTED_DATA, basis: "analyst ratings", observedKey: "date", oldest: null,
+        // When Gloom Cloud read the targets and the mix, which carry no date of their own.
+        ...(data.fetchedAt ? { retrievedAt: data.fetchedAt } : {}),
       }, { stale: data.stale === true }),
       ...(choice.length > 0 ? { warnings: choice } : {}),
     }, {
