@@ -98,7 +98,7 @@ export function reportsHalfYearly(
  * a calendar year, `H2 FY27` for the half to March of a year ending in March.
  * Null for a date that closes no half of the fiscal year.
  */
-export function halfYearLabel(date: string, yearEndMonth: number | null): string | null {
+function halfYearLabel(date: string, yearEndMonth: number | null): string | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
   if (!match || yearEndMonth == null) return null;
   let [year, month] = [Number(match[1]), Number(match[2])];

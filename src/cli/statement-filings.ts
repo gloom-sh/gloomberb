@@ -243,7 +243,7 @@ export function resultsReleaseText(release: ResultsRelease): string {
 }
 
 /** A results announcement or business update on HKEXnews, as a statement report cites it. */
-export interface ResultsAnnouncement {
+interface ResultsAnnouncement {
   kind: "annual results" | "interim results" | "quarterly results" | "business update";
   headline: string;
   /** The day it was released in Hong Kong, YYYY-MM-DD. */

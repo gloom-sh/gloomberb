@@ -53,7 +53,7 @@ const STATEMENT_TAB: Record<MissingInput["statement"], string> = { balance: "Bal
  * Cash Flow.": what the data does not give, said plainly, and where to read
  * what the statements hold.
  */
-export function missingInputsText(missing: readonly MissingInput[]): string {
+function missingInputsText(missing: readonly MissingInput[]): string {
   const parts = missing.map((item) => `${item.input === "enterpriseValue" ? "the enterprise value" : "the free cash flow"} needs ${item.needs}`);
   const tabs = [...new Set(missing.map((item) => STATEMENT_TAB[item.statement]))].join(", ");
   return `Not computed: ${parts.join("; ")}. FA: ${tabs}.`;
