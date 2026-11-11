@@ -300,6 +300,29 @@ function FieldsFamily() {
             view={{ value: "1y", options: [{ value: "1m", label: "1M" }, { value: "1y", label: "1Y" }, { value: "5y", label: "5Y" }], onChange: noop }}
           />
         </Box>
+        {/* Short of room, the inline filter becomes its menu and the as-of stays whole; the context gives way. */}
+        <Row>
+          {[{ label: "inline filter, as of and context", width: 720 }, { label: "short of room", width: 480 }].map((sample) => (
+            <Sample key={sample.label} label={sample.label} width={sample.width}>
+              <Box style={{ width: "100%" }}>
+                <QueryBar
+                  width={Math.floor(sample.width / 8)}
+                  filters={[{
+                    id: "statement",
+                    label: "Statement",
+                    inline: true,
+                    value: "income",
+                    options: ["Income", "Cash Flow", "Balance Sheet", "Ratios"].map((label) => ({ value: label.toLowerCase(), label })),
+                    onChange: noop,
+                  }]}
+                  view={{ value: "annual", options: [{ value: "annual", label: "Annual" }, { value: "quarterly", label: "Quarterly" }], onChange: noop }}
+                  asOf="as of 2026-06-30"
+                  meta="YoY"
+                />
+              </Box>
+            </Sample>
+          ))}
+        </Row>
       </Group>
     </>
   );

@@ -506,6 +506,8 @@ export function ResolvedFinancialsTab({
     );
   }
 
+  const asOf = periodEnd ? `as of ${periodEnd}` : undefined;
+  // The as-of is the bar's own segment, which keeps its place when the pane is narrow; the context after it gives way.
   const queryBar = (meta: string) => (
     <QueryBar
       width={Math.max(1, width - 2)}
@@ -532,10 +534,10 @@ export function ResolvedFinancialsTab({
         ],
         onChange: (value: string) => setPeriod(value as FinancialPeriod),
       }}
-      meta={meta}
+      asOf={asOf}
+      meta={meta || undefined}
     />
   );
-  const asOf = periodEnd ? `as of ${periodEnd}` : "";
 
   return (
     <Box
@@ -565,7 +567,7 @@ export function ResolvedFinancialsTab({
             ...(periodEnd ? [["As of", periodEnd]] : []),
           ]}
           resetScrollKey={`${resolvedPeriod}:${section.key}:${displayStatements.length}`}
-          rootBefore={queryBar([asOf, comparisonCurrency].filter(Boolean).join(" · "))}
+          rootBefore={queryBar(comparisonCurrency ?? "")}
         />
       ) : (
         <DataTableView<FinancialTableRow, FinancialTableColumn>
@@ -605,7 +607,7 @@ export function ResolvedFinancialsTab({
           ]}
           showHorizontalScrollbar
           resetScrollKey={`${resolvedPeriod}:${subTab.key}:${displayStatements.length}`}
-          rootBefore={queryBar([asOf, growthBasis].filter(Boolean).join(" · "))}
+          rootBefore={queryBar(growthBasis ?? "")}
         />
       )}
     </Box>

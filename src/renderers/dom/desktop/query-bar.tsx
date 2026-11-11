@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import type { HostQueryBarItem, HostQueryBarProps } from "../../../ui/host";
 import { withChoiceGroupHeadings } from "../../../components/ui/choice-groups";
 import { WebPopover } from "./popover";
@@ -130,14 +130,25 @@ function TextField({ item }: { item: HostQueryBarItem }) {
   );
 }
 
-function FilterChip({ item, open, onOpenChange }: { item: HostQueryBarItem; open: boolean; onOpenChange: (open: boolean) => void }) {
+/** An inline filter of a few options, drawn as segments: what collapses to its menu when the bar runs short. */
+function isCollapsible(item: HostQueryBarItem): boolean {
+  return item.kind === "select" && item.inline === true && !isStrip(item);
+}
+
+function FilterChip({ item, open, onOpenChange, collapsed }: {
+  item: HostQueryBarItem;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** The bar ran short: an inline filter is its menu chip. */
+  collapsed: boolean;
+}) {
   if (item.kind === "text") return <TextField item={item} />;
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   // A shortcut can open a filter that is scrolled out of a narrow bar.
   useEffect(() => {
     if (open) triggerRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [open]);
-  if (item.kind === "select" && item.inline) return <InlineChoices item={item} />;
+  if (item.kind === "select" && item.inline && !(collapsed && isCollapsible(item))) return <InlineChoices item={item} />;
   if (item.kind === "toggle") {
     return (
       <button
@@ -194,7 +205,38 @@ function FilterChip({ item, open, onOpenChange }: { item: HostQueryBarItem; open
   );
 }
 
-export function WebQueryBar({ search, items, view, onClearAll, meta, leading, openRequest }: HostQueryBarProps) {
+/**
+ * Whether the bar's inline filters are drawn as menus: once its controls in full run past its width, until it is
+ * as wide again as they needed, so the as-of after them stays in view. The width they needed is kept, so a bar
+ * that collapsed does not open again for a pixel and close on the next.
+ */
+function useCollapsedInlineFilters(scrollRef: RefObject<HTMLDivElement | null>, collapsible: boolean, deps: readonly unknown[]): boolean {
+  const [collapsed, setCollapsed] = useState(false);
+  const needed = useRef(0);
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (!element || !collapsible) {
+      setCollapsed(false);
+      return;
+    }
+    const update = () => {
+      if (!collapsed) {
+        if (element.scrollWidth > element.clientWidth + 1) {
+          needed.current = element.scrollWidth;
+          setCollapsed(true);
+        }
+      } else if (element.clientWidth >= needed.current) setCollapsed(false);
+    };
+    update();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(element);
+    return () => observer?.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collapsible, collapsed, ...deps]);
+  return collapsed;
+}
+
+export function WebQueryBar({ search, items, view, onClearAll, meta, asOf, leading, openRequest }: HostQueryBarProps) {
   const [openId, setOpenId] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -217,7 +259,12 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, leading, op
       setStackAttached(false);
     };
   }, [stack]);
-  const overflow = useHorizontalOverflow(scrollRef, [items.length, !!search, !!view, !!onClearAll, meta]);
+  const overflow = useHorizontalOverflow(scrollRef, [items.length, !!search, !!view, !!onClearAll, meta, asOf]);
+  // What sets the controls' width, so the bar is measured again when it changes and not on every render.
+  const contentKey = items.map((item) => `${item.id}:${item.label}:${item.inline
+    ? item.options.map((option) => option.label).join(",")
+    : item.options.find((option) => option.selected)?.label ?? ""}`).join("|");
+  const collapsed = useCollapsedInlineFilters(scrollRef, items.some(isCollapsible), [contentKey, view?.value, meta, asOf, !!search, !!onClearAll]);
   const searchRef = useRef<HTMLDivElement | null>(null);
   // When an inline choice or the view changes (a shortcut, the next expiry),
   // bring the new selection into a scrolled bar. On mount only a strip that
@@ -339,7 +386,7 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, leading, op
       {items.length > 0 && (
         <div className="gloom-qb-filters" data-strip={items.some(isStrip) ? "true" : undefined}>
           {items.map((item) => (
-            <FilterChip key={item.id} item={item} open={openId === item.id} onOpenChange={(open) => setOpen(item.id, open)} />
+            <FilterChip key={item.id} item={item} open={openId === item.id} onOpenChange={(open) => setOpen(item.id, open)} collapsed={collapsed} />
           ))}
           {onClearAll && (
             <button type="button" className="gloom-qb-clear" onMouseDown={(event) => event.stopPropagation()} onClick={onClearAll}>
@@ -348,7 +395,9 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, leading, op
           )}
         </div>
       )}
-      {meta && <span className="gloom-qb-meta">{meta}</span>}
+      {/* The as-of keeps its width; the context after it gives way first. */}
+      {asOf ? <span className="gloom-qb-meta gloom-qb-asof">{asOf}</span> : null}
+      {meta ? <span className="gloom-qb-meta">{meta}</span> : null}
       {view && !view.start ? viewNode : null}
       </div>
     </div>
