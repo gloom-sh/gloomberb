@@ -45,15 +45,21 @@ export function buildBrokerColumns(width: number): BrokerColumn[] {
 
 /**
  * What a profile's STATUS says, in the table and atop its detail: the action
- * running on it, then the one that just failed on it, then a sign-in the
- * broker is about to end, then its own state ("Disabled", "Sign-in needed").
+ * running on it, then the one that just failed on it, then when the broker
+ * ends its sign-in, then its own state ("Disabled", "Sign-in needed").
  */
 export function brokerRowStatus(row: BrokerProfileRow, activity: BrokerRowActivity = {}): { text: string; color: string } {
   if (activity.busy) return { text: activity.busy, color: colors.warning };
   // A sign-in the broker wants says more than which step ran into it.
   if (activity.note?.status && row.state !== "sign-in") return { text: activity.note.status, color: colors.negative };
-  // A sign-in the broker is about to end replaces "Connected" until it is renewed.
-  if (row.signInEndsAt !== null) return { text: signInEndStatus(row.signInEndsAt), color: colors.warning };
+  // A sign-in the broker ends on its clock says when, in place of "Connected";
+  // in the profile's state colour until it is time to renew.
+  if (row.signInEnd !== null) {
+    return {
+      text: signInEndStatus(row.signInEnd.endsAt),
+      color: row.signInEnd.soon ? colors.warning : stateColor(row.state),
+    };
+  }
   return { text: row.stateLabel, color: stateColor(row.state) };
 }
 

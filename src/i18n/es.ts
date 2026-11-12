@@ -1654,6 +1654,7 @@ export const es: Record<string, string> = {
   "Sign in to Gloom": "Inicia sesión en Gloom",
   "Continue in your browser or scan the code.": "Continúa en tu navegador o escanea el código.",
   "Other AI apps linked to {broker} get disconnected. Connect them to Gloom instead.": "Otras apps de IA vinculadas a {broker} se desconectarán. Conéctalas a Gloom en su lugar.",
+  "{broker} will ask to replace your existing Gloom connection. Choose to replace it.": "{broker} te pedirá reemplazar tu conexión actual con Gloom. Elige reemplazarla.",
   "Waiting for {broker}...": "Esperando a {broker}...",
   "Contacting Gloom...": "Contactando con Gloom...",
   "Something went wrong.": "Algo salió mal.",

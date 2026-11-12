@@ -49,7 +49,7 @@ export interface SignedInBrokerConnection {
    * The three fields below are absent from a Gloom server that predates them.
    */
   expiresAt?: string | null;
-  /** Within a day of `expiresAt`, or past it: time to connect again. */
+  /** Within Gloom's warning window before `expiresAt` (two days), or past it: time to renew. */
   expiresSoon?: boolean;
   /** Why the broker ended the sign-in, in its own words. Null while connected. */
   lastError?: string | null;

@@ -4,7 +4,7 @@ import type { AppConfig, BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerAccount } from "../../../types/trading";
 import { formatCurrency } from "../../../utils/format";
 import { t } from "../../../i18n";
-import type { SignInEnds } from "./sign-in-end";
+import type { SignInEnd, SignInEnds } from "./sign-in-end";
 
 export type BrokerDisplayState =
   | "disabled"
@@ -28,8 +28,8 @@ export interface BrokerProfileRow {
   accountCount: number;
   accountSummary: string;
   accountIds: string[];
-  /** When the broker ends this profile's sign-in, once Gloom says it is time to connect again. */
-  signInEndsAt: number | null;
+  /** When the broker ends this profile's live sign-in, for a broker that ends it on a clock. */
+  signInEnd: SignInEnd | null;
   /** The broker's logo for the desktop and the web (brokers/logos.ts); null draws its initial. */
   logo: string | null;
   instance: BrokerInstanceConfig;
@@ -163,7 +163,7 @@ export function buildBrokerProfileRows(
       accountSummary: summarizeBrokerAccounts(accounts),
       accountIds: accounts.map((account) => account.accountId),
       // Say nothing next to a failure or a profile that does not connect.
-      signInEndsAt: state.state === "error" || state.state === "sign-in" || state.state === "disabled" || state.state === "unavailable"
+      signInEnd: state.state === "error" || state.state === "sign-in" || state.state === "disabled" || state.state === "unavailable"
         ? null
         : signInEnds.get(instance.id) ?? null,
       logo: brokerProfileLogo(instance, adapter, pluginLogo),

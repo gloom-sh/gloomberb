@@ -693,7 +693,7 @@ describe("BrokersPane", () => {
     expect(frame()).toContain("signed-in-new");
   }, 15_000);
 
-  test("c renews a sign-in the pane knows is connected or ending, and is a plain connect otherwise", async () => {
+  test("c renews a sign-in the pane knows is connected or has an end, and is a plain connect otherwise", async () => {
     const calls: string[] = [];
     const asked: Array<{ renew?: boolean }> = [];
     const connectedAt = new Date(Date.now() - 6.5 * 24 * 3_600_000).toISOString();
@@ -711,10 +711,13 @@ describe("BrokersPane", () => {
     const syncedAdapter = createSignedInBrokerAdapter({ findBroker: () => null });
     await syncedAdapter.listAccounts!(profile("synced"));
     const ending = { status: "connected", connectedAt, expiresAt: new Date(Date.now() + 5 * 3_600_000).toISOString(), expiresSoon: true };
+    // Days from its end: shown all the same, and renewable early.
+    const far = { status: "connected", connectedAt, expiresAt: new Date(Date.now() + 4 * 24 * 3_600_000).toISOString(), expiresSoon: false };
 
     for (const [id, answer, renews] of [
       ["synced", { status: "connected", connectedAt }, true],
       ["flagged", ending, true],
+      ["far", far, true],
       ["plain", { status: "connected", connectedAt }, false],
     ] as const) {
       asked.length = 0;
@@ -723,6 +726,8 @@ describe("BrokersPane", () => {
       await tui.render(<Harness calls={calls} instances={[profile(id)]} adapters={[testBroker, adapter]} height={30} />, { width: 92, height: 30 });
       await settle();
       await settle();
+      // The row says when the broker ends the sign-in, whenever it has an end.
+      expect(frame().includes("Ends ")).toBe("expiresAt" in answer);
       await pressKey("c");
       await settle();
       expect(asked).toEqual([{ renew: renews }]);

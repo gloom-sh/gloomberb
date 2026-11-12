@@ -45,7 +45,7 @@ describe("in the terminal", () => {
     }
   }
 
-  async function connect(code?: string) {
+  async function connect(code?: string, renew = false) {
     const bodies: unknown[] = [];
     spies.push(spyOn(apiClient, "isSignedIn").mockReturnValue(true));
     spies.push(spyOn(apiClient, "brokerRequest").mockImplementation(async (_broker: string, path: string, options?: { body?: unknown }) => {
@@ -56,7 +56,7 @@ describe("in the terminal", () => {
       return { status: "not_connected" } as never;
     }));
     await tui.render(<TestDialogProvider><BrokerSignInDialogHost /></TestDialogProvider>);
-    await act(async () => { void requestBrokerSignIn(BROKER); });
+    await act(async () => { void requestBrokerSignIn(BROKER, { renew }); });
     await tui.waitForFrameToContain("Waiting for Interactive Brokers", 40);
     await settle();
     const lines = tui.frame().split("\n");
@@ -75,6 +75,16 @@ describe("in the terminal", () => {
     const noteAt = lines.findIndex((line) => line.includes(NOTE.slice(0, 12)));
     const note = lines.slice(noteAt, noteAt + 3).map((line) => line.replace(/[│\s]+/g, " ").trim()).join(" ");
     expect(note).toContain(NOTE);
+  });
+
+  test("a renewal says what the broker will ask, every word of it inside the dialog", async () => {
+    const renewNote = brokerSignInNote(BROKER, true)!;
+    expect(renewNote).not.toBe(NOTE);
+    // Its first line runs to the last column the old inset allowed, which the dialog cut off.
+    const { lines } = await connect(undefined, true);
+    const noteAt = lines.findIndex((line) => line.includes(renewNote.slice(0, 32)));
+    const note = lines.slice(noteAt, noteAt + 3).map((line) => line.replace(/[│\s]+/g, " ").trim()).join(" ");
+    expect(note).toContain(renewNote);
   });
 
   test("a Gloom Cloud that still hands out a code gets it shown", async () => {

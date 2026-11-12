@@ -70,6 +70,8 @@ describe("signedInBrokerAdapter", () => {
     const reasons: Array<[ReturnType<typeof connection>, string]> = [
       [connection("invalid_grant: Authorization grant has expired, re-authentication required"), "Interactive Brokers needs you to sign in again: Authorization grant has expired, re-authentication required. Press Connect in Brokers."],
       [connection("The broker refused the refresh."), "Interactive Brokers needs you to sign in again: The broker refused the refresh. Press Connect in Brokers."],
+      // IBKR keeps one AI app per account; another one connected to it ended Gloom's grant.
+      [connection("invalid_grant: Invalid authorization status"), "Interactive Brokers disconnected Gloom, most often because another AI app was connected to the same account, and Interactive Brokers allows one at a time. Press Connect in Brokers."],
       [connection(null), "Press Connect in Brokers to sign in to Interactive Brokers."],
       [connection(), "Press Connect in Brokers to sign in to Interactive Brokers."],
     ];

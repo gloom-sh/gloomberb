@@ -4,13 +4,15 @@ import { signInEndNote, signInEndOf, signInEndStatus } from "./sign-in-end";
 const NOW = Date.parse("2026-10-09T17:00:00.000Z");
 
 describe("sign-in end", () => {
-  test("only a sign-in Gloom flags as ending soon has an end to show", () => {
-    const expiresAt = "2026-10-10T15:00:00.000Z";
-    expect(signInEndOf({ expiresAt, expiresSoon: true })).toBe(Date.parse(expiresAt));
-    // A server that predates the flag, a far end, no end, or one that cannot be read.
+  test("a live sign-in with an end always has one to show, flagged once Gloom says to renew", () => {
+    const expiresAt = "2026-10-15T15:00:00.000Z";
+    const endsAt = Date.parse(expiresAt);
+    expect(signInEndOf({ expiresAt, expiresSoon: true })).toEqual({ endsAt, soon: true });
+    // Days away, or from a server that sends no flag: shown, not flagged.
+    expect(signInEndOf({ expiresAt, expiresSoon: false })).toEqual({ endsAt, soon: false });
+    expect(signInEndOf({ expiresAt })).toEqual({ endsAt, soon: false });
+    // No end (a broker without a clock, or no live sign-in), or one that cannot be read.
     expect(signInEndOf({})).toBeNull();
-    expect(signInEndOf({ expiresAt })).toBeNull();
-    expect(signInEndOf({ expiresAt, expiresSoon: false })).toBeNull();
     expect(signInEndOf({ expiresAt: null, expiresSoon: true })).toBeNull();
     expect(signInEndOf({ expiresAt: "soon", expiresSoon: true })).toBeNull();
   });
