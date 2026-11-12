@@ -107,13 +107,13 @@ function statementMetricValue(
 }
 
 /** The figure a row shows for a period: a group's summary line, or the row's own. */
-export function financialCellValue(row: FinancialTableRow, statement: FinancialStatement): number | undefined {
+function financialCellValue(row: FinancialTableRow, statement: FinancialStatement): number | undefined {
   if (row.kind === "group") return row.summaryKey ? statement[row.summaryKey] as number | undefined : undefined;
   return statementMetricValue(row, statement);
 }
 
 /** Whether a worked-out figure (a margin) is not meaningful in a statement: over revenue that is zero or negative. */
-export function statementMetricNotMeaningful(
+function statementMetricNotMeaningful(
   def: Pick<MetricDef, "key" | "compute">,
   statement: FinancialStatement,
 ): boolean {
@@ -196,7 +196,7 @@ const PER_SHARE_EARNINGS_FIELDS = new Set<keyof FinancialStatement>(["eps", "bas
  * shares. Counts and EPS compare only on one share basis: receipts against
  * ordinary shares would read as a split.
  */
-export function canCompareFinancialRow(
+function canCompareFinancialRow(
   row: FinancialTableRow,
   current: FinancialStatement,
   previous: FinancialStatement | undefined,
@@ -272,7 +272,7 @@ function formatFinancialGrowth(growth: number): string {
   return exponential.length <= budget ? exponential : percent < 0 ? "<-99T%" : ">99T%";
 }
 
-export function formatFinancialValue(
+function formatFinancialValue(
   value: number | undefined,
   row: Pick<FinancialTableRow, "format" | "divisor"> & { key?: string },
   statement?: FinancialStatement,

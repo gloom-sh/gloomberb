@@ -54,7 +54,7 @@ export interface NewsArticle {
   importance: number;
 }
 
-export interface NewsRoutineNotices {
+interface NewsRoutineNotices {
   kind: string;
   notices: number;
   since: Date;
