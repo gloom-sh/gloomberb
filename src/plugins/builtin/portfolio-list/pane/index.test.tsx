@@ -781,7 +781,7 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(line("TOTAL")).toMatch(/^ TOTAL +100\.0% +100\.0% +0\.0pp +0\.00\s*$/);
     expect(line("● AAPL")).toMatch(/AAPL +26\.0% +20\.0% +\+6\.0pp +-6 +-600\.00 /);
     // The header's Cash is the row now.
-    expect(tui.frame()).not.toContain("Cash 1.0k");
+    expect(tui.frame()).not.toContain("Cash 1,000");
     const rowY = (label: string) => tui.frame().split("\n").findIndex((row) => row.trimStart().startsWith(label));
     const paneState = () => harnessState?.paneState[TEST_PANE_ID];
     // Followers see the cursor once its throttle commits it.
