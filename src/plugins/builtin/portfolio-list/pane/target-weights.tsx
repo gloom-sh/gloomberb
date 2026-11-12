@@ -14,11 +14,12 @@ import { scheduleConfigSave } from "../../../../state/config-save-scheduler";
 import type { AppConfig } from "../../../../types/config";
 import type { Portfolio } from "../../../../types/ticker";
 import { useDialog } from "../../../../ui/dialog";
+import { logFailure } from "../../../../utils/log-failure";
 import { usePluginAppActions } from "../../../runtime";
 
 /** `t` sets the cursor row's target weight, Shift+T clears it: the pane menu shows both beside them. */
-export const SET_TARGET_KEY = "t";
-export const CLEAR_TARGET_KEY = "T";
+const SET_TARGET_KEY = "t";
+const CLEAR_TARGET_KEY = "T";
 
 /** The row a target goes on: a holding by its key, or the cash line. */
 export interface TargetRow {
@@ -127,6 +128,14 @@ export function useTargetWeightActions({
     }
   }, [dialog, notify, save, stateRef]);
 
+  // A dialog or save that fails says why, in the notice and the log.
+  const promptTarget = useCallback(() => {
+    setTarget().catch((error: unknown) => {
+      notify({ type: "error", body: error instanceof Error ? error.message : String(error) });
+      logFailure("portfolio-list.targets", "Set target weight failed")(error);
+    });
+  }, [notify, setTarget]);
+
   const clearTarget = useCallback(() => {
     const { portfolio: book, row: target, listedSymbols: listed } = latest.current;
     if (!book || !target) return;
@@ -149,12 +158,12 @@ export function useTargetWeightActions({
   const offered = enabled && !!portfolio && !!row;
   usePaneFooter("portfolio-list-targets", () => offered ? {
     menu: [
-      { id: "set-target", label: "Set Target Weight…", accelerator: SET_TARGET_KEY, onSelect: () => { void setTarget(); } },
+      { id: "set-target", label: "Set Target Weight…", accelerator: SET_TARGET_KEY, onSelect: promptTarget },
       { id: "clear-target", label: "Clear Target", accelerator: `Shift+${CLEAR_TARGET_KEY}`, onSelect: clearTarget },
     ],
     keys: [
-      { id: "set-target", key: SET_TARGET_KEY, label: "", title: "Set Target Weight", onPress: () => { void setTarget(); } },
+      { id: "set-target", key: SET_TARGET_KEY, label: "", title: "Set Target Weight", onPress: promptTarget },
       { id: "clear-target", key: CLEAR_TARGET_KEY, label: "", title: "Clear Target", onPress: clearTarget },
     ],
-  } : null, [clearTarget, offered, setTarget]);
+  } : null, [clearTarget, offered, promptTarget]);
 }
