@@ -713,6 +713,16 @@ describe("a capture of a pane that marks no rows", () => {
     expect(assess(diag, { rows: [row(1, "—", "—"), row(2, "—", "—")] })).toMatchObject({ usable: true });
   });
 
+  // AUCT's after view at 720px kept +1D and lost +5D, +20D and the CUSIP past the table's edge, and `shot --strict` passed it.
+  test("a column cut at its table's edge makes it unusable, named in the Reason with the wider width that shows it", () => {
+    const row = { tableIndex: 0, rowIndex: 0, selected: false, cells: [{ columnId: "date", columnLabel: "DATE", text: "Nov 10" }] };
+    expect(assess(diag, { rows: [row, row, row], cutColumns: ["+5D BP", "+20D BP", "CUSIP"] })).toMatchObject({
+      usable: false, cutColumns: ["+5D BP", "+20D BP", "CUSIP"],
+      unusableReason: "The +5D BP, +20D BP and CUSIP columns are cut at this width: a wider --width shows them.",
+    });
+    expect(assess(diag, { rows: [row, row, row] })).toMatchObject({ usable: true, unusableReason: null });
+  });
+
   test("an error or empty state's Reason keeps its sentence and quotes what the pane said", () => {
     expect(assess(diag, { errorStateDetected: true, stateText: { error: ["Market movers temporarily unavailable. Try again in a moment."] } }).unusableReason)
       .toBe('The pane rendered an error state. It reads "Market movers temporarily unavailable. Try again in a moment."');

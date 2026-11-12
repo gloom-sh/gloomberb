@@ -46,8 +46,8 @@ import {
   auctionHistoryPhrase,
   auctionHistoryWindow,
   auctionSize,
-  auctionSortColumn,
   buildAuctionColumns,
+  compactTerm,
   dealerPct,
   directPct,
   firstAuctionSortDirection,
@@ -58,6 +58,7 @@ import {
   isPendingAuction,
   nextAuctionHistoryWindow,
   nextFilter,
+  parseAuctionSort,
   rateLabel,
   rateValue,
   middleRateLabel,
@@ -76,6 +77,7 @@ import {
 } from "./types";
 import { AUCTION_MARKETS, isAuctionMarket, type AuctionMarket } from "./hk";
 import { HkTendersView } from "./hk-view";
+import { auctionViewHints } from "./keys";
 
 function formatRate(value: number | null): string {
   return value == null ? "—" : `${value.toFixed(3)}%`;
@@ -132,6 +134,10 @@ function secTypeColor(secType: string, selected: boolean): string {
 /** An announced auction's Rate in the table, the word other panes use for a figure not out yet (KPI's Later actual). */
 const RESULTS_PENDING = "Pending";
 
+const PERCENTILE_KEYS = {
+  stopOutPctl: "stopOutPercentile", btcPctl: "btcPercentile", indirectPctl: "indirectPercentile", dealerPctl: "dealerPercentile",
+} as const;
+
 // Stable table adapter so memoized rows survive pane re-renders.
 const auctionKey = (auction: TreasuryAuction) => auction.id;
 
@@ -160,7 +166,7 @@ function renderAuctionCell(
         attributes: TextAttributes.BOLD,
       };
     case "term":
-      return { text: auction.securityTerm, color: selected ?? colors.text };
+      return { text: column.compact ? compactTerm(auction.securityTerm) : auction.securityTerm, color: selected ?? colors.text };
     case "rate":
       // An announced auction says its results are pending, as its detail does; other metric cells stay "—".
       return isPendingAuction(auction)
@@ -180,10 +186,11 @@ function renderAuctionCell(
       return { text: formatMoney(auctionSize(auction)), color: dimmed };
     case "cusip":
       return { text: auction.cusip ?? "", color: dimmed };
+    case "stopOutPctl":
     case "btcPctl":
     case "indirectPctl":
     case "dealerPctl": {
-      const key = column.id === "btcPctl" ? "btcPercentile" : column.id === "indirectPctl" ? "indirectPercentile" : "dealerPercentile";
+      const key = PERCENTILE_KEYS[column.id];
       const value = after?.[key] ?? null;
       return { text: value == null ? "" : String(value), value, color: selected ?? colors.text };
     }
@@ -238,6 +245,10 @@ function TreasuryAuctionDetail({ auction, width, after }: { auction: TreasuryAuc
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Primary dealer" value={share(auction.primaryDealerAccepted, auction.competitiveAccepted)} />
         {after && <>
           <Box height={1} />
+          {stopOutVsAvgBp(auction) != null && (
+            <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label={`${stopOutLabel(auction)} pctl`}
+              value={after.stopOutPercentile == null ? "—" : String(after.stopOutPercentile)} />
+          )}
           <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="B/C percentile" value={after.btcPercentile == null ? "—" : String(after.btcPercentile)} />
           <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Indirect percentile" value={after.indirectPercentile == null ? "—" : String(after.indirectPercentile)} />
           <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Dealer percentile" value={after.dealerPercentile == null ? "—" : String(after.dealerPercentile)} />
@@ -253,13 +264,17 @@ function TreasuryAuctionDetail({ auction, width, after }: { auction: TreasuryAuc
 
 const NO_AUCTIONS: TreasuryAuction[] = [];
 
-/** A sort as kept in pane state and typed after --sort: the column's name, and `:asc` or `:desc` once the pane flips it. */
+/**
+ * A sort as kept in pane state and typed after --sort: the column's name, `-`
+ * first for the other way round (`-indirect-pctl`, lowest first), and `:asc`
+ * or `:desc` once the pane flips it.
+ */
 function readSort(value: string | null): AuctionSortPreference | null {
   if (!value) return null;
   const [name, direction] = value.split(":");
-  const columnId = auctionSortColumn(name ?? "");
-  if (!columnId) return null;
-  return { columnId, direction: direction === "asc" || direction === "desc" ? direction : firstAuctionSortDirection(columnId) };
+  const sort = parseAuctionSort(name ?? "");
+  if (!sort) return null;
+  return direction === "asc" || direction === "desc" ? { columnId: sort.columnId, direction } : sort;
 }
 
 function writeSort(sort: AuctionSortPreference): string | null {
@@ -393,6 +408,8 @@ function UsAuctionsView({
     const columns = next === "after" ? AUCTION_AFTER_SORT_COLUMN_IDS : AUCTION_SORT_COLUMN_IDS;
     if (!columns.includes(sortPreference.columnId)) setSortValue(null);
   }, [setSortValue, setView, sortPreference.columnId]);
+  const toggleView = useCallback(() => selectView(view === "after" ? "results" : "after"), [selectView, view]);
+  const toggleMarket = useCallback(() => marketFilter.onChange("hk"), [marketFilter]);
 
   usePaneRefreshKey(() => resource.reload(), { focused, enabled: !searchFocused });
 
@@ -422,7 +439,7 @@ function UsAuctionsView({
     return handlePaneKey(event);
   }, [focusSearch, handlePaneKey]);
 
-  const showYear = auctionDatesShowYear(historyDays);
+  const showYear = useMemo(() => auctionDatesShowYear(rows.map((auction) => auction.auctionDate)), [rows]);
   // A table that scrolls down keeps a cell for its scrollbar.
   const columns = useMemo(() => buildAuctionColumns({ showYear, view, rows, width: width - 1 }), [rows, showYear, view, width]);
   const renderAuctionRow = useCallback((
@@ -447,11 +464,16 @@ function UsAuctionsView({
         : [
           { id: "search", key: "/", label: "search", onPress: focusSearch },
           { id: "filter", key: "f", label: "ilter", onPress: cycleFilter },
+          ...auctionViewHints({ view, toggleView, market: "us", toggleMarket, cycleSort }),
         ],
     };
   }, [
     auctions.length,
     cycleFilter,
+    cycleSort,
+    toggleMarket,
+    toggleView,
+    view,
     detailOpen,
     error,
     yieldsError,
@@ -462,9 +484,8 @@ function UsAuctionsView({
     stale,
   ]);
 
-  // The pane menu names the sort keys; "Sort by…" there picks a column directly.
+  // The footer's [] steps to the next sort column; the pane menu names the way back. "Sort by…" there picks a column directly.
   usePaneMenuItems("treasury-auctions:sort-keys", () => detailOpen || auctions.length === 0 ? null : [
-    { id: "sort-next", label: "Next Sort Column", accelerator: "]", onSelect: () => cycleSort(1) },
     { id: "sort-previous", label: "Previous Sort Column", accelerator: "[", onSelect: () => cycleSort(-1) },
   ], [auctions.length, cycleSort, detailOpen]);
 

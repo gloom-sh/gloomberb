@@ -97,12 +97,54 @@ const termMonths = (term: string) => {
   return own ? Number(own[1]) * (own[2] === "Year" ? 12 : 1) : null;
 };
 
-/** "3M" is the 3-Month bill; "1Y" the 12-Month bill as well as a 1-Year note. */
+/** A day as HKMA gives it, a bond's issue or maturity month (YYYY-MM) read as its middle. */
+const dayOf = (date: string) => Date.parse(`${date.length === 7 ? `${date}-15` : date}T00:00:00Z`);
+
+/**
+ * The months a re-opened Government Bond had left when it was tendered, to the
+ * nearest month: HKMA names a re-opening by its issue's tenor (10GB2601 is a
+ * 10-year bond), and the 2023-10-26 tender of it sold paper with about 2.2
+ * years left. Null for a new issue, EF paper, or a bond without its maturity.
+ */
+function remainingMonths(tender: HkTender): number | null {
+  if (!tender.reopening || !tender.maturity) return null;
+  const days = (dayOf(tender.maturity) - dayOf(tender.date)) / 86_400_000;
+  return Number.isFinite(days) && days > 0 ? Math.max(1, Math.round(days / 30.4375)) : null;
+}
+
+/** Months as a US auction writes a term: 27 is 2-Year 3-Month, 24 is 2-Year, 9 is 9-Month. */
+function monthsTerm(months: number): string {
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+  return [years ? `${years}-Year` : "", rest ? `${rest}-Month` : ""].filter(Boolean).join(" ");
+}
+
+/**
+ * The term a tender sold: a re-opening's what its issue had left (2-Year
+ * 3-Month of a 10-year bond), as a US reopening's 9-Year 10-Month reads;
+ * otherwise the tenor HKMA gives.
+ */
+export function hkTenderTerm(tender: HkTender): string {
+  const left = remainingMonths(tender);
+  return left == null ? tender.term : monthsTerm(left);
+}
+
+/** The tender's term in months, a re-opening's what it had left. */
+const tenderMonths = (tender: HkTender) => remainingMonths(tender) ?? termMonths(tender.term);
+
+/**
+ * "3M" is the 3-Month bill; "1Y" the 12-Month bill as well as a 1-Year note.
+ * A re-opening answers to its issue's tenor (10Y for 10GB2601) and to the
+ * whole years its term left rounds up to (3Y for 2-Year 3-Month), as a US
+ * 9-Year 10-Month answers to 10Y.
+ */
 function matchesTenor(tender: HkTender, word: string): boolean | null {
   const tenor = TENOR.exec(word);
   if (!tenor) return null;
   const count = Number(tenor[1]);
-  return termMonths(tender.term) === (tenor[2]![0] === "y" ? count * 12 : count);
+  const months = tenor[2]![0] === "y" ? count * 12 : count;
+  const left = remainingMonths(tender);
+  return termMonths(tender.term) === months || (left != null && tenor[2]![0] === "y" && Math.ceil(left / 12) === count);
 }
 
 function matchesWord(tender: HkTender, word: string): boolean {
@@ -113,7 +155,8 @@ function matchesWord(tender: HkTender, word: string): boolean {
   if (currency) return tender.currency === currency;
   const tenor = matchesTenor(tender, word);
   if (tenor != null) return tenor;
-  return tender.date.startsWith(word) || !!tender.issue?.toLowerCase().includes(word) || tender.term.toLowerCase().includes(word);
+  return tender.date.startsWith(word) || !!tender.issue?.toLowerCase().includes(word) || tender.term.toLowerCase().includes(word)
+    || hkTenderTerm(tender).toLowerCase().includes(word);
 }
 
 /** Every word of the search names the tender (`10Y RMB`, `EFB 2026-10`); words that only pick the market are left out. */
@@ -175,8 +218,16 @@ const HK_SORT_NAMES: ReadonlyArray<{ names: readonly string[]; column: HkColumnI
 
 /** The column a sort name means for Hong Kong's tenders; null for a US-only one (`indirect`, `btc-pctl`). */
 export function hkSortColumn(name: string): HkColumnId | null {
-  const value = name.trim().toLowerCase();
+  const value = name.trim().toLowerCase().replace(/^-/, "");
   return HK_SORT_NAMES.find((entry) => entry.names.includes(value))?.column ?? null;
+}
+
+/** A sort name as `--sort` and the pane keep it, `-` first for the other way round (`-btc`: lowest first); null for a US-only one. */
+export function parseHkSort(name: string): HkSortPreference | null {
+  const columnId = hkSortColumn(name);
+  if (!columnId) return null;
+  const first = firstHkSortDirection(columnId);
+  return { columnId, direction: name.trim().startsWith("-") ? first === "asc" ? "desc" : "asc" : first };
 }
 
 export const hkSortName = (column: HkColumnId) => HK_SORT_NAMES.find((entry) => entry.column === column)!.names[0]!;
@@ -192,7 +243,7 @@ function hkSortValue(tender: HkTender, column: HkColumnId): number | string | nu
   switch (column) {
     case "date": return sortDay(tender.date);
     case "type": return hkTenderType(tender);
-    case "term": return termMonths(tender.term);
+    case "term": return tenderMonths(tender);
     case "rate": return hkRate(tender);
     case "btc": return tender.bidToCover;
     case "size": return hkSize(tender);
@@ -244,7 +295,8 @@ export function buildHkColumns(options: { showYear?: boolean; rows?: readonly Hk
   const columns: HkColumn[] = [
     { id: "date", label: "DATE", width: showYear ? 10 : 6, align: "left", title: "Issue day (a Government Bond's issue month): the business day after the tender" },
     { id: "type", label: "TYPE", width: 6, align: "left" },
-    { id: "term", label: "TERM", width: widest(7, (tender) => tender.term), align: "left" },
+    { id: "term", label: "TERM", width: widest(7, hkTenderTerm), align: "left",
+      title: "Term sold: a re-opening's is what its issue had left" },
     { id: "rate", label: "RATE", width: widest(6, (tender) => formatHkRate(tender, hkRate(tender), "—")), align: "right",
       title: "Average accepted yield; a floating rate note's spread over HONIA, bp" },
     { id: "btc", label: "B/C", width: 5, align: "right" },

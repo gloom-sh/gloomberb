@@ -1,5 +1,5 @@
 import type { DataTableColumn } from "../../../components";
-import { dropColumnsToFit } from "../../../components/ui/table-layout";
+import { dropColumnsToFit, getTableWidth } from "../../../components/ui/table-layout";
 import { displayWidth } from "../../../utils/format";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { AUCTION_HISTORY_ALL, AUCTION_HISTORY_DAYS, AUCTION_HISTORY_START, type AuctionHistoryWindow } from "./client";
@@ -53,10 +53,11 @@ export const AUCTION_SEARCH_FIELDS = "type, benchmark (10Y), term, CUSIP, or dat
 
 export type AuctionColumnId =
   | "date" | "type" | "term" | "rate" | "stopOut" | "btc" | "indirect" | "direct" | "dealer" | "size" | "cusip"
-  | "btcPctl" | "indirectPctl" | "dealerPctl" | "after1d" | "after5d" | "after20d";
+  | "stopOutPctl" | "btcPctl" | "indirectPctl" | "dealerPctl" | "after1d" | "after5d" | "after20d";
 
 /** What the after view adds to a row: its percentiles and the yield's moves after it (after.ts). */
 export interface AuctionAfterFigures {
+  stopOutPercentile: number | null;
   btcPercentile: number | null;
   indirectPercentile: number | null;
   dealerPercentile: number | null;
@@ -67,6 +68,8 @@ export interface AuctionAfterFigures {
 
 export interface AuctionColumn extends DataTableColumn {
   id: AuctionColumnId;
+  /** TERM written short (9Y10M) where the full term would crowd out a figure. */
+  compact?: boolean;
 }
 
 export interface AuctionSortPreference {
@@ -95,7 +98,8 @@ export const AUCTION_SORT_COLUMN_IDS: readonly AuctionColumnId[] = [
 
 /** The after view's columns, in the order [ and ] step through them. */
 export const AUCTION_AFTER_SORT_COLUMN_IDS: readonly AuctionColumnId[] = [
-  "date", "type", "term", "rate", "btc", "btcPctl", "indirectPctl", "dealerPctl", "after1d", "after5d", "after20d", "cusip",
+  "date", "type", "term", "rate", "stopOut", "stopOutPctl", "btc", "btcPctl", "indirect", "indirectPctl", "dealerPctl",
+  "after1d", "after5d", "after20d", "cusip",
 ];
 
 /** `--sort` as typed, and the column it sorts. */
@@ -111,6 +115,7 @@ export const AUCTION_SORT_NAMES: ReadonlyArray<{ value: string; column: AuctionC
   { value: "dealer", column: "dealer" },
   { value: "size", column: "size" },
   { value: "cusip", column: "cusip", aliases: ["issue"] },
+  { value: "vs-median-pctl", column: "stopOutPctl", aliases: ["vs-med-pctl", "vs-avg-pctl", "stop-out-pctl", "vs-median-percentile"] },
   { value: "btc-pctl", column: "btcPctl", aliases: ["btc-percentile", "bc-pctl"] },
   { value: "indirect-pctl", column: "indirectPctl", aliases: ["indirect-percentile"] },
   { value: "dealer-pctl", column: "dealerPctl", aliases: ["dealer-percentile"] },
@@ -121,7 +126,7 @@ export const AUCTION_SORT_NAMES: ReadonlyArray<{ value: string; column: AuctionC
 
 /** The after view's columns are its own; the results view's sort by its own. */
 export const isAfterColumn = (column: AuctionColumnId) =>
-  column === "btcPctl" || column === "indirectPctl" || column === "dealerPctl" || column === "after1d" || column === "after5d" || column === "after20d";
+  column === "stopOutPctl" || column === "btcPctl" || column === "indirectPctl" || column === "dealerPctl" || column === "after1d" || column === "after5d" || column === "after20d";
 
 export type AuctionFilter = "all" | "bill" | "note" | "bond";
 
@@ -434,6 +439,7 @@ function sortValue(auction: TreasuryAuction, columnId: AuctionColumnId, after?: 
     case "dealer": return dealerPct(auction);
     case "size": return auctionSize(auction);
     case "cusip": return auction.cusip;
+    case "stopOutPctl": return after?.stopOutPercentile ?? null;
     case "btcPctl": return after?.btcPercentile ?? null;
     case "indirectPctl": return after?.indirectPercentile ?? null;
     case "dealerPctl": return after?.dealerPercentile ?? null;
@@ -470,18 +476,43 @@ export function firstAuctionSortDirection(columnId: AuctionColumnId): SortDirect
 }
 
 /**
- * "Oct 13" is ambiguous once a window spans years, so a window past a year
- * dates its rows in full (2026-10-13), the way the search takes a date.
+ * "Oct 13" is ambiguous once the rows span two calendar years ("Nov 10" of
+ * 2026 above "Nov 12" of 2025), so then every row is dated in full
+ * (2026-10-13), the way the search takes a date. A Hong Kong bond's issue
+ * month (2026-05) counts by its year.
  */
-export function auctionDatesShowYear(window: AuctionHistoryWindow): boolean {
-  return window === AUCTION_HISTORY_ALL || window > 365;
+export function auctionDatesShowYear(dates: readonly string[]): boolean {
+  const first = dates[0]?.slice(0, 4);
+  return dates.some((date) => date.slice(0, 4) !== first);
 }
+
+/** A term written short: 9-Year 10-Month is 9Y10M, 13-Week 13W; a term this does not read stays as it is. */
+export function compactTerm(term: string): string {
+  const parts = termParts(term);
+  if (!parts) return term;
+  return (["year", "month", "week", "day"] as const)
+    .filter((unit) => parts[unit])
+    .map((unit) => `${parts[unit]}${unit[0]!.toUpperCase()}`)
+    .join("");
+}
+
+/**
+ * The columns a narrow pane gives up, least needed first, after the CUSIP and
+ * after TERM is written short (9Y10M). The results view keeps its type and
+ * bidder split longest; the after view is read for its percentiles and the
+ * yield's moves after the auction, so +5D and +20D outlast the type, the
+ * dealer percentile and the raw figures beside each percentile.
+ */
+const RESULTS_DROP_ORDER: readonly AuctionColumnId[] = ["size", "type", "direct", "dealer", "indirect", "stopOut"];
+const AFTER_DROP_ORDER: readonly AuctionColumnId[] = ["type", "dealerPctl", "indirect", "btc", "stopOut", "stopOutPctl", "after1d"];
 
 /**
  * Widths are the data's own; the table widens a column to its label plus the
  * sort arrow. TERM is as wide as the longest term listed, and the CUSIP closes
- * the row where the pane has room for it, taking what width is left; a pane
- * too narrow for the rest scrolls sideways instead of clipping a figure.
+ * the row where the pane has room for it, taking what width is left. A pane
+ * too narrow for every column gives up the CUSIP, then writes TERM short,
+ * then drops whole columns in the view's order, so no column is ever cut at
+ * the pane's edge.
  */
 export function buildAuctionColumns(options: {
   showYear?: boolean;
@@ -491,23 +522,32 @@ export function buildAuctionColumns(options: {
   width?: number;
 } = {}): AuctionColumn[] {
   const { showYear = false, view = "results", rows = [], width } = options;
-  const term = Math.max(6, ...rows.map((auction) => displayWidth(auction.securityTerm)));
+  const termWidth = (text: (term: string) => string) => Math.max(6, ...rows.map((auction) => displayWidth(text(auction.securityTerm))));
   const lead: AuctionColumn[] = [
     { id: "date", label: "DATE", width: showYear ? 10 : 6, align: "left" },
     { id: "type", label: "TYPE", width: 6, align: "left" },
-    { id: "term", label: "TERM", width: term, align: "left" },
+    { id: "term", label: "TERM", width: termWidth((term) => term), align: "left" },
     { id: "rate", label: rateColumnLabel(rows, "pane"), width: 7, align: "right" },
   ];
+  const stopOut: AuctionColumn = {
+    id: "stopOut", label: stopOutColumnLabel(rows, "pane"), width: 7, align: "right", title: "Stop-out vs median yield (average before November 1998), bp",
+  };
+  const percentile = (id: AuctionColumnId, label: string, what: string): AuctionColumn => (
+    { id, label, width: 4, align: "right", title: `${what} percentile against the tenor's last 24 auctions` }
+  );
   const figures: AuctionColumn[] = view === "after" ? [
+    stopOut,
+    percentile("stopOutPctl", `${stopOutColumnLabel(rows, "pane").replace(/^VS /, "")} PCTL`, "Stop-out vs median"),
     { id: "btc", label: "B/C", width: 5, align: "right" },
-    { id: "btcPctl", label: "B/C PCTL", width: 4, align: "right", title: "Bid-to-cover percentile against the tenor's last 24 auctions" },
-    { id: "indirectPctl", label: "IND PCTL", width: 4, align: "right", title: "Indirect share percentile against the tenor's last 24 auctions" },
-    { id: "dealerPctl", label: "DLR PCTL", width: 4, align: "right", title: "Dealer share percentile against the tenor's last 24 auctions" },
+    percentile("btcPctl", "B/C PCTL", "Bid-to-cover"),
+    { id: "indirect", label: "INDIRECT", width: 8, align: "right" },
+    percentile("indirectPctl", "IND PCTL", "Indirect share"),
+    percentile("dealerPctl", "DLR PCTL", "Dealer share"),
     { id: "after1d", label: "+1D BP", width: 5, align: "right", title: "Treasury yield change one session after the auction, bp" },
     { id: "after5d", label: "+5D BP", width: 5, align: "right", title: "Treasury yield change five sessions after the auction, bp" },
     { id: "after20d", label: "+20D BP", width: 5, align: "right", title: "Treasury yield change twenty sessions after the auction, bp" },
   ] : [
-    { id: "stopOut", label: stopOutColumnLabel(rows, "pane"), width: 7, align: "right", title: "Stop-out vs median yield (average before November 1998), bp" },
+    stopOut,
     { id: "btc", label: "B/C", width: 5, align: "right" },
     { id: "indirect", label: "INDIRECT", width: 8, align: "right" },
     { id: "direct", label: "DIRECT", width: 6, align: "right" },
@@ -516,9 +556,13 @@ export function buildAuctionColumns(options: {
   ];
   const columns: AuctionColumn[] = [...lead, ...figures, { id: "cusip", label: "CUSIP", width: 9, align: "left", flexGrow: 1 }];
   if (width == null) return columns;
-  const shown = dropColumnsToFit(columns, width, ["cusip"]);
+  let shown = dropColumnsToFit(columns, width, ["cusip"]);
+  if (shown.length === columns.length) return shown;
   // Without the CUSIP nothing grows: the figures keep their places at the left.
-  return shown.length === columns.length ? shown : shown.map((column) => ({ ...column, flexGrow: undefined }));
+  shown = shown.map((column) => ({ ...column, flexGrow: undefined }));
+  if (getTableWidth(shown) <= width) return shown;
+  shown = shown.map((column) => column.id === "term" ? { ...column, width: termWidth(compactTerm), compact: true } : column);
+  return dropColumnsToFit(shown, width, view === "after" ? AFTER_DROP_ORDER : RESULTS_DROP_ORDER);
 }
 
 /**
@@ -535,7 +579,7 @@ function parseAuctionCommandArg(arg: string | undefined): {
   historyDays?: AuctionHistoryWindow;
   filter?: AuctionFilter;
   view?: "results" | "after";
-  /** The sort's name as `--sort` takes it: "btc-pctl". */
+  /** The sort's name as `--sort` takes it: "btc-pctl", "-indirect-pctl". */
   sort?: string;
 } {
   const tokens = (arg ?? "").trim().split(/\s+/).filter(Boolean);
@@ -561,8 +605,8 @@ function parseAuctionCommandArg(arg: string | undefined): {
     } else if (name === "view") {
       if (value === "results" || value === "after") parsed.view = value;
     } else if (name === "sort") {
-      const sort = auctionSortColumn(value);
-      const name = sort && AUCTION_SORT_NAMES.find((entry) => entry.column === sort)?.value;
+      const sort = parseAuctionSort(value);
+      const name = sort && auctionSortName(sort);
       if (name) parsed.sort = name;
     }
   }
@@ -594,6 +638,40 @@ export function auctionCommandRequest(arg: string | undefined): {
 export function auctionSortColumn(value: string): AuctionColumnId | null {
   const name = value.trim().toLowerCase();
   return AUCTION_SORT_NAMES.find((entry) => entry.value === name || entry.aliases?.includes(name))?.column ?? null;
+}
+
+const reverse = (direction: SortDirection): SortDirection => direction === "asc" ? "desc" : "asc";
+
+/**
+ * A sort as `--sort` takes it: a column by its name or an alias, its own way
+ * first (largest first for a figure, newest first for date, A to Z for text),
+ * or the other way round after a `-` (`-indirect-pctl`: lowest first). Null
+ * for a name no column has.
+ */
+export function parseAuctionSort(value: string): AuctionSortPreference | null {
+  const text = value.trim().toLowerCase();
+  const reversed = text.startsWith("-");
+  const columnId = auctionSortColumn(reversed ? text.slice(1) : text);
+  if (!columnId) return null;
+  const first = firstAuctionSortDirection(columnId);
+  return { columnId, direction: reversed ? reverse(first) : first };
+}
+
+/** A sort's name as `--sort` writes it: `indirect-pctl`, `-indirect-pctl` the other way round; null for a column with none. */
+export function auctionSortName(sort: AuctionSortPreference): string | null {
+  const name = AUCTION_SORT_NAMES.find((entry) => entry.column === sort.columnId)?.value;
+  if (!name) return null;
+  return sort.direction === firstAuctionSortDirection(sort.columnId) ? name : `-${name}`;
+}
+
+/** `--sort` as typed, as its canonical name (`-btc` for `-b/c`); throws naming the names it takes. */
+export function normalizeAuctionSortOption(value: string): string {
+  const sort = parseAuctionSort(value);
+  const name = sort && auctionSortName(sort);
+  if (!name) {
+    throw new Error(`Invalid --sort value "${value}". Use one of: ${AUCTION_SORT_NAMES.map((entry) => entry.value).join(", ")}; a leading - sorts the other way (-indirect-pctl: lowest first).`);
+  }
+  return name;
 }
 
 /** A query for a market AUCT does not cover: another country's government paper. */

@@ -92,7 +92,7 @@ function commandInstance(arg: string, current: PaneInstanceConfig): PaneInstance
   return retargetPaneInstance(current, spec) ?? current;
 }
 
-function Harness({ height = 20, command }: { height?: number; command?: string }) {
+function Harness({ height = 20, width = 92, command }: { height?: number; width?: number; command?: string }) {
   // The filter tab and the open auction are pane state, so the harness needs a
   // reducer; filtering dispatches both in the same batch.
   const [paneState, setPaneState] = useState<AppState["paneState"]>({});
@@ -119,7 +119,7 @@ function Harness({ height = 20, command }: { height?: number; command?: string }
         paneId="treasury-auctions"
         paneType="treasury-auctions"
         focused
-        width={92}
+        width={width}
         height={height}
       />
     </TestPaneProvider>
@@ -163,7 +163,8 @@ describe("TreasuryAuctionsPane", () => {
     persistence.seedResource("treasury-auctions", "recent:120", recordedFiscalData(), { sourceKey: "treasury-fiscal-data", schemaVersion: CACHE_SCHEMA_VERSION });
     persistence.seedResource("treasury-auctions", "direct:60", recordedTreasuryDirect(), { sourceKey: "treasury-direct", schemaVersion: DIRECT_CACHE_SCHEMA_VERSION });
     attachTreasuryAuctionsPersistence(persistence);
-    await tui.render(<Harness height={60} />, { width: 92, height: 60 });
+    // Wide enough for every column, the terms in full.
+    await tui.render(<Harness height={60} width={120} />, { width: 120, height: 60 });
     await renderSettled();
 
     const lines = tui.frame().split("\n");
@@ -255,8 +256,8 @@ describe("TreasuryAuctionsPane after view", () => {
     const record = { value: [...extra, ...SEVENS], fetchedAt: Date.now(), stale: false, staleAt: Date.now() + 60_000, expiresAt: Date.now() + 60_000 };
     attachTreasuryAuctionsPersistence({ getResource: () => record, setResource: () => record } as unknown as PluginPersistence);
   };
-  // A row's date, after the cursor bar the focused table draws beside the selected row.
-  const ROW_DATE = /^[\s▌]*([A-Z][a-z]{2} \d+)\s/;
+  // A row's date, after the cursor bar the focused table draws beside the selected row; with its year when the rows span two.
+  const ROW_DATE = /^[\s▌▀]*([A-Z][a-z]{2} \d+|\d{4}-\d{2}-\d{2})\s/;
   const rowDates = () => tui.frame().split("\n").filter((line) => line.includes("7-Year")).flatMap((line) => line.match(ROW_DATE)?.[1] ?? []);
   /** Waits, up to about two seconds, for the frame to pass `done`: the yield moves arrive after the board. */
   const until = async (done: () => boolean) => {
@@ -275,6 +276,7 @@ describe("TreasuryAuctionsPane after view", () => {
   const newestRow = () => tui.frame().split("\n").find((line) => line.includes("Oct 28")) ?? "";
 
   test("the View control shows the after columns, [ and ] sort by them, and the detail reads the percentiles and the yield's moves", async () => {
+    // Wide enough for every after column but the CUSIP.
     setSystemTime(new Date("2026-11-07T12:00:00Z"));
     seedSevens();
     const reads: string[] = [];
@@ -282,15 +284,17 @@ describe("TreasuryAuctionsPane after view", () => {
       reads.push(`${curve}:${tenor}:${from}`);
       return { curve: { id: curve }, tenor, points: sevenYearCurve(), checkedAt: null } as never;
     });
-    await tui.render(<Harness height={32} />, { width: 92, height: 32 });
+    await tui.render(<Harness height={32} width={150} />, { width: 150, height: 32 });
     await renderSettled();
     expect(tui.frame()).not.toContain("B/C PCTL");
 
     await tui.clickFrameText("After");
     await until(() => tui.frame().includes("B/C PCTL"));
     expect(rowDates()).toEqual(["Oct 28", "Sep 28", "Aug 28", "Jul 28"]);
-    // The last auction bid best of its 25 and took the most indirect and the least dealer; its yield rose 1bp the next session.
-    const percentiles = /7-Year\s+4\.290%\s+2\.90\s+100\s+100\s+0\s+\+1\s/;
+    // The last auction stopped out 1.0bp over its median like every one before it, bid best of its 25 and took the most indirect
+    // (75.0%) and the least dealer; its yield rose 1bp the next session.
+    expect(tui.frame()).toMatch(/RATE\s+VS MED\s+MED PCTL\s+B\/C\s+B\/C PCTL\s+INDIRECT\s+IND PCTL\s+DLR PCTL\s+\+1D BP\s+\+5D BP\s+\+20D BP/);
+    const percentiles = /7-Year\s+4\.290%\s+1\.0bp\s+50\s+2\.90\s+100\s+75\.0%\s+100\s+0\s+\+1\s/;
     await until(() => percentiles.test(newestRow()));
     expect(newestRow()).toMatch(percentiles);
     expect(reads).toEqual(["us:7Y:2026-07-10"]);
@@ -313,8 +317,52 @@ describe("TreasuryAuctionsPane after view", () => {
     await renderSettled();
     await tui.clickFrameText("Results");
     await until(() => !tui.frame().includes("B/C PCTL"));
-    // (The stub answers every window with the whole board, which Results lists.)
-    expect(rowDates().slice(0, 4)).toEqual(["Oct 28", "Sep 28", "Aug 28", "Jul 28"]);
+    // (The stub answers every window with the whole board, which Results lists: two years of it, so the dates carry theirs.)
+    expect(rowDates().slice(0, 4)).toEqual(["2026-10-28", "2026-09-28", "2026-08-28", "2026-07-28"]);
+  });
+
+  // The footer read "[/]search [f]ilter [{}]view": `v` did nothing and `}` left for Cash & Debt; only a click reached After.
+  test("v turns the table between Results and After and m between the US and Hong Kong, both in the footer with the sort keys", async () => {
+    setSystemTime(new Date("2026-11-07T12:00:00Z"));
+    seedSevens();
+    spyOn(apiClient, "getCloudCurveHistory").mockImplementation(async (curve, tenor) => (
+      { curve: { id: curve }, tenor, points: sevenYearCurve(), checkedAt: null } as never));
+    spyOn(apiClient, "getCloudHkTenders").mockImplementation(async () => structuredClone(hkRecording) as HkTendersPayload);
+    function Framed() {
+      const [paneState, setPaneState] = useState<AppState["paneState"]>({});
+      const state = createInitialState(createTestPaneConfig("/tmp/gloomberb-auctions-pane-test", {
+        paneId: "treasury-auctions", instanceId: PANE_INSTANCE_ID,
+      }));
+      state.paneState = paneState;
+      const dispatch = (action: AppAction) => setPaneState((current) => appReducer({ ...state, paneState: current }, action).paneState);
+      return (
+        <TestPaneFrame state={state} dispatch={dispatch} paneId={PANE_INSTANCE_ID} pluginId="macro" runtime={paneRuntime}
+          width={150} height={20} footerKeys>
+          {(body) => <TreasuryAuctionsPane paneId="treasury-auctions" paneType="treasury-auctions" focused {...body} />}
+        </TestPaneFrame>
+      );
+    }
+    const footer = () => tui.frame().replace(/\n+$/, "").split("\n").at(-1)!;
+    await tui.render(<Framed />, { width: 150, height: 20 });
+    await renderSettled();
+    await until(() => tui.frame().includes("7-Year"));
+    expect(footer()).toMatch(/\[v\] after\s+\[m\] HK\s+\[\[\]\]sort/);
+    expect(tui.frame()).not.toContain("B/C PCTL");
+
+    await emitKeypress({ name: "v", sequence: "v" });
+    await until(() => tui.frame().includes("B/C PCTL"));
+    expect(tui.frame()).toContain("MED PCTL");
+    expect(footer()).toMatch(/\[v\] results/);
+    await emitKeypress({ name: "v", sequence: "v" });
+    await until(() => !tui.frame().includes("B/C PCTL"));
+    expect(footer()).toMatch(/\[v\] after/);
+
+    await emitKeypress({ name: "m", sequence: "m" });
+    await until(() => tui.frame().includes("03GB2807001"));
+    expect(footer()).toMatch(/\[m\] US\s+\[\[\]\]sort/);
+    await emitKeypress({ name: "m", sequence: "m" });
+    await until(() => tui.frame().includes("7-Year"));
+    expect(tui.frame()).not.toContain("03GB2807001");
   });
 
   test("a second command into an open pane shows what it asks, not what the first one left", async () => {
@@ -322,7 +370,7 @@ describe("TreasuryAuctionsPane after view", () => {
     seedSevens([auction({ secType: "Bill", securityTerm: "13-Week", auctionDate: "2026-11-02", highInvestmentRate: 3.9, highDiscountRate: 3.8 })]);
     spyOn(apiClient, "getCloudCurveHistory").mockImplementation(async (curve, tenor) => (
       { curve: { id: curve }, tenor, points: sevenYearCurve(), checkedAt: null } as never));
-    await tui.render(<Harness height={24} command="7Y --view after --sort 20d --filter note" />, { width: 92, height: 24 });
+    await tui.render(<Harness height={24} width={150} command="7Y --view after --sort 20d --filter note" />, { width: 150, height: 24 });
     await renderSettled();
     await until(() => tui.frame().includes("B/C PCTL"));
     expect(await listedDates(["Sep 28", "Aug 28", "Jul 28", "Oct 28"])).toEqual(["Sep 28", "Aug 28", "Jul 28", "Oct 28"]);
@@ -332,8 +380,8 @@ describe("TreasuryAuctionsPane after view", () => {
     await renderSettled();
     await until(() => !tui.frame().includes("B/C PCTL"));
     const rows = tui.frame().split("\n").filter((line) => ROW_DATE.test(line));
-    expect(rows[0]).toMatch(/Nov 2\s+Bill\s+13-Week\s+3\.900%/);
-    expect(rows.slice(1, 4).map((line) => line.match(ROW_DATE)?.[1])).toEqual(["Oct 28", "Sep 28", "Aug 28"]);
+    expect(rows[0]).toMatch(/2026-11-02\s+Bill\s+13-Week\s+3\.900%/);
+    expect(rows.slice(1, 4).map((line) => line.match(ROW_DATE)?.[1])).toEqual(["2026-10-28", "2026-09-28", "2026-08-28"]);
   });
 });
 
@@ -358,7 +406,8 @@ describe("TreasuryAuctionsPane Hong Kong", () => {
     await tui.render(<Harness height={24} command="HK" />, { width: 92, height: 24 });
     await settle(() => tui.frame().includes("03GB2807001"));
     expect(row("Oct 28")).toMatch(/Oct 28\s+EFB\s+3-Month\s+2\.827%\s+2\.46\s+≈HK\$65\.7B/);
-    expect(row("03GB2807001")).toMatch(/Oct\s+HKGB\s+3-Year\s+1\.401%\s+9\.93\s+RMB750M\s+03GB2807001/);
+    // A re-opening of a 3-year bond maturing in July 2028: what it had left.
+    expect(row("03GB2807001")).toMatch(/Oct\s+HKGB\s+1-Year 9-Month\s+1\.401%\s+9\.93\s+RMB750M\s+03GB2807001/);
     expect(tui.frame()).toMatch(/RATE\s+B\/C\s+SIZE\s+ISSUE/);
     expect(asked).toEqual(["2026-07-11"]);
 
@@ -367,7 +416,8 @@ describe("TreasuryAuctionsPane Hong Kong", () => {
     expect(tui.frame()).not.toContain("3-Month");
     await emitKeypress({ name: "enter", sequence: "\r" });
     await settle(() => tui.frame().includes("Bid-to-cover"));
-    expect(tui.frame()).toContain("Government Bond (RMB) 3-Year");
+    expect(tui.frame()).toContain("Government Bond (RMB) 1-Year 9-Month");
+    expect(tui.frame()).toContain("re-opening of a 3-Year issue");
     expect(tui.frame()).toMatch(/Average yield\s+1\.401%/);
     expect(tui.frame()).toContain("Source: HKMA");
     await emitKeypress({ name: "escape", sequence: "\u001B" });

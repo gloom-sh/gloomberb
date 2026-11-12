@@ -61,6 +61,7 @@ export function shotShowsText(visibleText: string, value: string): boolean {
 export function isPaneScreenshotUsable(signals: PaneScreenshotReadinessSignals): boolean {
   return !signals.refused
     && !signals.blankColumns?.length
+    && !signals.cutColumns?.length
     && (signals.interactive || ((signals.rowCount > 0 || signals.contentShown === true) && !signals.emptyStateDetected))
     && !signals.loadingStateDetected
     && !signals.errorStateDetected
@@ -171,6 +172,8 @@ export function assessPaneScreenshot(
   const refused = shotShowsRefusal(render);
   // A column with no value in any row is data the pane lost, as Market Movers' VOL and V/AVG did before the open.
   const blankColumns = interactive ? [] : shotBlankColumns(render.rows);
+  // A column past the edge of its table is data the picture left out: AUCT's after view at 720px kept +1D and lost +5D, +20D and the CUSIP.
+  const cutColumns = interactive ? [] : render.cutColumns ?? [];
   const empty = render.loadingStateDetected
     || render.errorStateDetected
     || refused
@@ -189,11 +192,12 @@ export function assessPaneScreenshot(
     requiresStructuredDataEvidence: requiresStructuredDataEvidence(resolved),
     hasStructuredDataEvidence: dataEvidence !== null,
     blankColumns,
+    cutColumns,
   });
   const unusableReason = usable
     ? null
     : refused ? refusedShotReason(resolved)
-    : shotUnusableReasonFor(resolved, payload, render, unavailableSymbols, semanticMismatch, blankColumns);
+    : shotUnusableReasonFor(resolved, payload, render, unavailableSymbols, semanticMismatch, blankColumns, cutColumns);
   const tableRows = shotTableRows(resolved, render);
   const notices = [
     ...renderedReportNotices(render.semanticUi ?? []).notices,
@@ -222,6 +226,7 @@ export function assessPaneScreenshot(
     unusableReason,
     ...(refused ? { refused: true as const } : {}),
     ...(blankColumns.length > 0 ? { blankColumns } : {}),
+    ...(cutColumns.length > 0 ? { cutColumns: [...cutColumns] } : {}),
     dataEvidence,
     ...(notices.length > 0 ? { notices } : {}),
     ...(tableRows ? { tableRows } : {}),
@@ -335,11 +340,18 @@ function shotBlankColumns(rows: readonly Pick<DesktopPaneShotRenderedRow, "table
   return blank;
 }
 
+const namedColumns = (columns: readonly string[]) => columns.length === 1 ? columns[0]!
+  : `${columns.slice(0, -1).join(", ")} and ${columns[columns.length - 1]}`;
+
 /** "The VOL and V/AVG columns are blank in every row." */
 function blankColumnsSentence(columns: readonly string[]): string {
-  const named = columns.length === 1 ? columns[0]!
-    : `${columns.slice(0, -1).join(", ")} and ${columns[columns.length - 1]}`;
-  return `The ${named} column${columns.length === 1 ? " is" : "s are"} blank in every row.`;
+  return `The ${namedColumns(columns)} column${columns.length === 1 ? " is" : "s are"} blank in every row.`;
+}
+
+/** "The +5D BP, +20D BP and CUSIP columns are cut at this width: a wider --width shows them." */
+function cutColumnsSentence(columns: readonly string[]): string {
+  const one = columns.length === 1;
+  return `The ${namedColumns(columns)} column${one ? " is" : "s are"} cut at this width: a wider --width shows ${one ? "it" : "them"}.`;
 }
 
 /**
@@ -429,6 +441,7 @@ export function shotUnusableReasonFor(
   unavailableSymbols: string[],
   semanticMismatch: boolean,
   blankColumns: readonly string[] = [],
+  cutColumns: readonly string[] = [],
 ): string {
   if (resolved.capability.id === "intraday-price-chart") {
     const intraday = payload.intradayHistories[0];
@@ -451,6 +464,7 @@ export function shotUnusableReasonFor(
   if (ratioGap) return ratioGap;
   if (semanticMismatch) return "The rendered content did not match the requested capability.";
   if (blankColumns.length > 0) return blankColumnsSentence(blankColumns);
+  if (cutColumns.length > 0) return cutColumnsSentence(cutColumns);
   return "The pane did not produce verifiable screenshot evidence.";
 }
 

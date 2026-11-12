@@ -152,6 +152,23 @@ async function loadRecentBoard(
 
 /** A New York day (YYYY-MM-DD): an auction closes on it and its results come out that afternoon. */
 const newYorkDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+const newYorkHour = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hourCycle: "h23" });
+
+/**
+ * How long a command reuses the recent board an earlier run saved while an
+ * auction it lists has come due: five minutes, so a run after a run does not
+ * walk both sources again (about a second each), and one minute in the hour
+ * after 13:00 New York on an auction day, when a note or bond's results come
+ * out and a minute-old board may lack them.
+ */
+const DUE_REUSE_MS = 5 * 60_000;
+const RESULTS_HOUR_REUSE_MS = 60_000;
+
+function dueReuseMs(auctions: readonly TreasuryAuction[], now: number): number {
+  const today = newYorkDay.format(now);
+  const resultsHour = Number(newYorkHour.format(now)) === 13;
+  return resultsHour && auctions.some((auction) => auction.auctionDate === today) ? RESULTS_HOUR_REUSE_MS : DUE_REUSE_MS;
+}
 
 /** An announced auction whose day has come in the last week: its results may be out by now. */
 function comeDue(auction: TreasuryAuction, today: string, weekAgo: string): boolean {
@@ -165,9 +182,9 @@ function comeDue(auction: TreasuryAuction, today: string, weekAgo: string): bool
  * an auction announced within that hour, which the app waits as long for. A
  * command otherwise asks both sources again (saved-copy-persistence.ts), a
  * second or more each run; an auction due today is asked for until its
- * results are in. The app's own cache already answers from a fresh copy, and
- * keeps the failure of a refresh, so only a run that has read nothing yet
- * (a command) looks here.
+ * results are in, though no more often than `dueReuseMs` says. The app's own
+ * cache already answers from a fresh copy, and keeps the failure of a refresh,
+ * so only a run that has read nothing yet (a command) looks here.
  */
 function savedRecentBoard(fiscalKey: string, directKey: string | null, from: string, now = Date.now()): TreasuryAuctionsResult | null {
   if (cache.get(fiscalKey)) return null;
@@ -175,10 +192,11 @@ function savedRecentBoard(fiscalKey: string, directKey: string | null, from: str
   const direct = directKey ? directCache.get(directKey, { allowExpired: true }) : null;
   if (!fiscal || fiscal.stale || (directKey && (!direct || direct.stale))) return null;
   const auctions = mergeAuctionSources(fiscal.data, direct?.data ?? [], from);
+  const fetchedAt = Math.min(fiscal.fetchedAt, direct?.fetchedAt ?? Infinity);
   const today = newYorkDay.format(now);
   const weekAgo = newYorkDay.format(now - 7 * 86_400_000);
-  if (auctions.some((auction) => comeDue(auction, today, weekAgo))) return null;
-  return { auctions, fetchedAt: Math.min(fiscal.fetchedAt, direct?.fetchedAt ?? Infinity), stale: false };
+  if (auctions.some((auction) => comeDue(auction, today, weekAgo)) && now - fetchedAt >= dueReuseMs(auctions, now)) return null;
+  return { auctions, fetchedAt, stale: false };
 }
 
 export async function loadTreasuryAuctions(

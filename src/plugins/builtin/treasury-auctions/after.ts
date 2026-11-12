@@ -3,7 +3,9 @@ import type { CloudCurveHistory, CloudCurveId } from "../../../api-client/yield-
 import { createTtlCache } from "../../../data/ttl-cache";
 import { toBasisPoints } from "../../../utils/basis-points";
 import { AUCTION_HISTORY_ALL, type AuctionHistoryWindow } from "./client";
-import { AUCTION_HISTORY_WINDOWS, auctionBenchmark, dealerPct, indirectPct, isPendingAuction, nextAuctionHistoryWindow } from "./model";
+import {
+  AUCTION_HISTORY_WINDOWS, auctionBenchmark, dealerPct, indirectPct, isPendingAuction, nextAuctionHistoryWindow, publishesMedian, stopOutVsAvgBp,
+} from "./model";
 import type { TreasuryAuction } from "./types";
 
 /**
@@ -11,11 +13,13 @@ import type { TreasuryAuction } from "./types";
  * ranked against its tenor's own recent history, and what the matching
  * constant-maturity yield did after it.
  *
- * - B/C, indirect and dealer share are each a percentile against the tenor's
- *   previous 24 auctions with that figure: the share of them below it, half
- *   the ones equal. A tenor is the security type and the benchmark it was sold
- *   as (the 10-year note and its 9-Year 10-Month reopenings are one; a 10-year
- *   TIPS is another). Fewer than 12 earlier auctions rank nothing.
+ * - Stop-out vs median, B/C, indirect and dealer share are each a percentile
+ *   against the tenor's previous 24 auctions with that figure: the share of
+ *   them below it, half the ones equal. A tenor is the security type and the
+ *   benchmark it was sold as (the 10-year note and its 9-Year 10-Month
+ *   reopenings are one; a 10-year TIPS is another). Fewer than 12 earlier
+ *   auctions rank nothing. The stop-out ranks only against auctions on the
+ *   same footing: the median from November 1998, the average before.
  * - The yield change is the Treasury par (CMT) yield of the auction's tenor,
  *   or the TIPS real yield for a TIPS, from the auction day's close to the
  *   close 1, 5 and 20 sessions later, in basis points. An FRN floats and has
@@ -29,6 +33,7 @@ const PERCENTILE_LOOKBACK = 24;
 const PERCENTILE_MIN = 12;
 
 export interface AuctionAfter {
+  stopOutPercentile: number | null;
   btcPercentile: number | null;
   indirectPercentile: number | null;
   dealerPercentile: number | null;
@@ -98,11 +103,11 @@ export function widerAfterWindow(
 }
 
 const NO_AFTER: AuctionAfter = {
-  btcPercentile: null, indirectPercentile: null, dealerPercentile: null, after1d: null, after5d: null, after20d: null, cmt: null,
+  stopOutPercentile: null, btcPercentile: null, indirectPercentile: null, dealerPercentile: null, after1d: null, after5d: null, after20d: null, cmt: null,
 };
 
 /** The tenor an auction ranks within: its type and the benchmark it was sold as. */
-function auctionTenorKey(auction: TreasuryAuction): string | null {
+export function auctionTenorKey(auction: TreasuryAuction): string | null {
   const benchmark = auctionBenchmark(auction.securityTerm);
   return benchmark ? `${auction.secType}|${benchmark.count}${benchmark.unit}` : null;
 }
@@ -116,36 +121,41 @@ function percentileOf(value: number, history: readonly number[]): number | null 
 }
 
 type Metric = (auction: TreasuryAuction) => number | null;
-const METRICS: ReadonlyArray<[keyof Pick<AuctionAfter, "btcPercentile" | "indirectPercentile" | "dealerPercentile">, Metric]> = [
+type PercentileKey = "stopOutPercentile" | "btcPercentile" | "indirectPercentile" | "dealerPercentile";
+export type AuctionPercentiles = Pick<AuctionAfter, PercentileKey>;
+/** Each figure ranked, and whether an earlier auction's figure is on the same footing as this one's. */
+const METRICS: ReadonlyArray<[PercentileKey, Metric, ((auction: TreasuryAuction, past: TreasuryAuction) => boolean)?]> = [
+  ["stopOutPercentile", stopOutVsAvgBp, (auction, past) => publishesMedian(auction) === publishesMedian(past)],
   ["btcPercentile", (auction) => auction.bidToCoverRatio],
   ["indirectPercentile", indirectPct],
   ["dealerPercentile", dealerPct],
 ];
 
 /** Each completed auction's percentiles, by id, against the auctions of its tenor before it in `auctions`. */
-export function auctionPercentiles(auctions: readonly TreasuryAuction[]): Map<string, Pick<AuctionAfter, "btcPercentile" | "indirectPercentile" | "dealerPercentile">> {
+export function auctionPercentiles(auctions: readonly TreasuryAuction[]): Map<string, AuctionPercentiles> {
   const byTenor = new Map<string, TreasuryAuction[]>();
   for (const auction of auctions) {
     const key = auctionTenorKey(auction);
     if (!key || isPendingAuction(auction)) continue;
     byTenor.set(key, [...byTenor.get(key) ?? [], auction]);
   }
-  const ranked = new Map<string, Pick<AuctionAfter, "btcPercentile" | "indirectPercentile" | "dealerPercentile">>();
+  const ranked = new Map<string, AuctionPercentiles>();
   for (const group of byTenor.values()) {
     group.sort((left, right) => left.auctionDate.localeCompare(right.auctionDate) || left.id.localeCompare(right.id));
     group.forEach((auction, index) => {
-      const entry = { btcPercentile: null, indirectPercentile: null, dealerPercentile: null } as Record<string, number | null>;
-      for (const [key, metric] of METRICS) {
+      const entry: AuctionPercentiles = { stopOutPercentile: null, btcPercentile: null, indirectPercentile: null, dealerPercentile: null };
+      for (const [key, metric, comparable] of METRICS) {
         const value = metric(auction);
         if (value == null) continue;
         const history: number[] = [];
         for (let earlier = index - 1; earlier >= 0 && history.length < PERCENTILE_LOOKBACK; earlier--) {
+          if (comparable && !comparable(auction, group[earlier]!)) continue;
           const past = metric(group[earlier]!);
           if (past != null) history.push(past);
         }
         entry[key] = percentileOf(value, history);
       }
-      ranked.set(auction.id, entry as Pick<AuctionAfter, "btcPercentile" | "indirectPercentile" | "dealerPercentile">);
+      ranked.set(auction.id, entry);
     });
   }
   return ranked;

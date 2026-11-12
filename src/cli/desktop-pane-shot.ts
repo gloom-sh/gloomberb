@@ -203,6 +203,12 @@ export interface DesktopPaneShotRenderResult {
    * Absent when no state shows, or in a capture that did not read them.
    */
   stateText?: { error?: string[]; empty?: string[] };
+  /**
+   * The headers of the table columns the capture cut: drawn past the edge of
+   * their table's viewport (a table too wide for the pane scrolls sideways),
+   * whole or in part. Absent when none is, or in a capture that did not read them.
+   */
+  cutColumns?: string[];
   /** A wall that needs an account, or a Pro lock on part of the pane. */
   accessGate?: PaneAccessGate | null;
   /**
@@ -870,12 +876,27 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
       [...root.querySelectorAll(
         '[data-gloom-scrollbar-x="visible"], [data-gloom-scrollbar-y="visible"], [data-gloom-role="data-table-body-scroll"]',
       )].forEach(markScrollTruncation);
+      const cutColumns = [];
       visibleTables
         .forEach((table, tableIndex) => {
           const tableMetadata = semanticTables[tableIndex] && semanticTables[tableIndex].metadata || {};
           const semanticColumns = Array.isArray(tableMetadata.columns) ? tableMetadata.columns : [];
-          const headers = [...table.querySelectorAll('[data-gloom-role="data-table-header-cell"]')]
-            .map((cell) => normalize(cell.innerText || cell.textContent));
+          const headerCells = [...table.querySelectorAll('[data-gloom-role="data-table-header-cell"]')];
+          const headers = headerCells.map((cell) => normalize(cell.innerText || cell.textContent));
+          // A column drawn past the edge of the table's viewport, whole or in part, is one the picture cut.
+          const scroller = table.querySelector('[data-gloom-role="data-table-body-scroll"]');
+          if (scroller instanceof HTMLElement) {
+            const box = scroller.getBoundingClientRect();
+            const left = Math.max(0, box.left);
+            const right = Math.min(window.innerWidth, box.left + scroller.clientWidth);
+            headerCells.forEach((cell, cellIndex) => {
+              const rect = cell.getBoundingClientRect();
+              if (rect.width <= 0 || (rect.left >= left - 1 && rect.right <= right + 1)) return;
+              const label = typeof (semanticColumns[cellIndex] || {}).label === "string" && semanticColumns[cellIndex].label
+                || headers[cellIndex] || String(cellIndex + 1);
+              if (!cutColumns.includes(label)) cutColumns.push(label);
+            });
+          }
           const rowElements = [...table.querySelectorAll(
             '[data-gloom-role="data-table-row"], [data-gloom-role="data-table-section-header"]',
           )].filter(isVisible);
@@ -1008,6 +1029,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
           return { ...(error.length ? { error } : {}), ...(empty.length ? { empty } : {}) };
         })(),
         contentFigures: (${countContentFigures.toString()})(root, isVisible),
+        cutColumns,
         // The shared sign-in wall and the Pro lock prompt every gated pane draws.
         accessGate: [...root.querySelectorAll('[data-gloom-ui="sign-in-wall"]')].some(isVisible) ? "sign-in"
           : [...root.querySelectorAll('[data-gloom-ui="pro-lock"]')].some(isVisible) ? "pro" : "",
@@ -1037,6 +1059,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
         emptyStateText?: string[];
         stateText?: { error?: unknown; empty?: unknown };
         contentFigures?: number;
+        cutColumns?: unknown;
         accessGate?: string;
         rows?: DesktopPaneShotRenderedRow[];
         truncated?: boolean;
@@ -1093,6 +1116,8 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
     accessGate,
     ...shotStateText(value?.stateText),
     ...(typeof value?.contentFigures === "number" ? { contentFigures: value.contentFigures } : {}),
+    ...(Array.isArray(value?.cutColumns) && value.cutColumns.length > 0
+      ? { cutColumns: value.cutColumns.filter((label): label is string => typeof label === "string" && label.length > 0) } : {}),
     semanticUi: Array.isArray(value?.semanticUi) ? value.semanticUi : [],
   };
 }

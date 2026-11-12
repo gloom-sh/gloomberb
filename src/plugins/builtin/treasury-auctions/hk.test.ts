@@ -51,16 +51,36 @@ test("Hong Kong's tenders by --market hk or a search naming them, RMB and CNH to
   expect(all.rows.slice(0, 6)).toEqual([
     "2026-10-28 3-Month", "2026-10-21 3-Month", "2026-10-14 3-Month", "2026-10 03GB2807001", "2026-08-24 2-Year", "2026-08 05GB3105001",
   ]);
-  expect(all.result.appliedOptions).toEqual({ market: "hk" });
-  expect((await report("HK 2Y")).rows).toEqual(["2026-08-24 2-Year", "2026-05-26 2-Year", "2026-02-23 2-Year"]);
+  expect(all.result.appliedOptions).toEqual({ market: "hk", view: "results" });
+  // The RMB 3-year bond re-opened with 1-Year 9-Month left reads as a 2Y, as its US kin would.
+  expect((await report("HK 2Y")).rows).toEqual(["2026-10 03GB2807001", "2026-08-24 2-Year", "2026-05-26 2-Year", "2026-02-23 2-Year"]);
   expect((await report("RMB")).rows).toEqual(["2026-10 03GB2807001", "2026-08 05GB3105001"]);
   expect((await report("cnh 5y")).rows).toEqual(["2026-08 05GB3105001"]);
   expect((await report("2026-05", { market: "hk" })).rows).toEqual(["2026-05-26 2-Year", "2026-05 01GH2705001"]);
   // --market us over a search naming Hong Kong: the US board, and the options say so.
   const us = await report("HK 10Y", { market: "us" });
-  expect([us.usAsked, us.result.appliedOptions]).toEqual([["us"], { market: "us" }]);
+  expect([us.usAsked, us.result.appliedOptions]).toEqual([["us"], { market: "us", view: "results" }]);
   expect(auctionCommandRequest("HK 10Y --market us").params).toMatchObject({ auctionMarket: "us", search: "HK 10Y" });
   expect(auctionCommandRequest("RMB 3Y").params).toMatchObject({ auctionMarket: "hk", search: "RMB 3Y" });
+});
+
+// `fn AUCT "HK 10Y"` read "10-Year" for the 2023-10-26 re-opening of 10GB2601, which had about 2.2 years left.
+test("a re-opening reads the term its issue had left, as a US reopening does, and is still found by its issue's tenor", async () => {
+  const reopened = {
+    ...payload().tenders.find((tender) => tender.issue === "03GB2807001")!,
+    date: "2023-10-26", paper: "hkgb" as const, issue: "10GB2601", currency: "HKD" as const, term: "10-Year", maturity: "2026-01-21",
+    reopening: true, dataset: "ibip-3year",
+  };
+  const first = { ...reopened, date: "2016-01-21", reopening: false, dataset: "ibip-10year" };
+  const result = { ...board(), tenders: [reopened, first], firstTender: "2016-01-21" };
+  const tenTear = await report("HK 10Y", { historyDays: "all" }, result);
+  expect(tenTear.result.rows.map((row) => [row.date, row.term, row.issueTerm])).toEqual([
+    ["2023-10-26", "2-Year 3-Month", "10-Year"], ["2016-01-21", "10-Year", "10-Year"],
+  ]);
+  // HKMA tendered it in its 3-year bucket: 3Y finds it, as 10Y finds a US 9-Year 10-Month.
+  expect((await report("HK 3Y", { historyDays: "all" }, result)).rows).toEqual(["2023-10-26 10GB2601"]);
+  // Shortest first: the re-opening's 27 months before its issue's 120.
+  expect((await report("HK", { historyDays: "all", sort: "term" }, result)).rows).toEqual(["2023-10-26 10GB2601", "2016-01-21 10GB2601"]);
 });
 
 test("the window counts back from today in Hong Kong, and a bond's month stays in a window that starts within it", async () => {
@@ -93,7 +113,8 @@ test("the text reads the average yield as RATE, an FRN's spread in bp and EF pap
   const line = (needle: string) => text.split("\n").find((entry) => entry.includes(needle))!.trim().split(/\s{2,}/);
   expect(text).toMatch(/Date\s+Type\s+Term\s+Rate\s+B\/C\s+Size\s+Issue/);
   expect(line("2026-10-28")).toEqual(["2026-10-28", "EFB", "3-Month", "2.827%", "2.46", "≈HK$65.7B"]);
-  expect(line("03GB2807001")).toEqual(["2026-10", "HKGB", "3-Year", "1.401%", "9.93", "RMB750M", "03GB2807001"]);
+  // A re-opening of a 3-year bond that matures in July 2028, tendered in October 2026.
+  expect(line("03GB2807001")).toEqual(["2026-10", "HKGB", "1-Year 9-Month", "1.401%", "9.93", "RMB750M", "03GB2807001"]);
   expect(line("01GH2705001")).toEqual(["2026-05", "FRN", "1-Year", "20.0bp spread", "4.44", "HK$1.5B", "01GH2705001"]);
   expect(text).toContain("Hong Kong Tenders | all | all");
   expect(text).toContain("HKMA publishes its tender figures monthly; they run to Oct 28, 2026 for EF Bills, Aug 24, 2026 for EF Notes, Oct 2026 for Government Bonds.");
