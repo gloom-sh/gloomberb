@@ -41,6 +41,36 @@ const BADGE_INDENT = BADGE_COLUMN_WIDTH + BADGE_GAP;
 const NAME_GAP = 2;
 /** Below this a name is a few letters and an ellipsis, which tells nobody apart. */
 const MIN_NAME_WIDTH = 6;
+/** The widest symbol a section's names line up after; a longer one pushes its own name along. */
+const MAX_SYMBOL_COLUMN = 10;
+
+/**
+ * The terminal's instrument rows put their names in one column after the
+ * symbols of their section ("AAPL     Apple Inc." under "BTC-USD  Bitcoin
+ * USD"), as a table would: the width of the section's widest symbol, up to
+ * MAX_SYMBOL_COLUMN. Keyed by the row's index in the list.
+ */
+function symbolColumns(rows: readonly CommandBarListRow[]): Map<number, number> {
+  const columns = new Map<number, number>();
+  let section: number[] = [];
+  let widest = 0;
+  const close = () => {
+    for (const index of section) columns.set(index, Math.min(widest, MAX_SYMBOL_COLUMN));
+    section = [];
+    widest = 0;
+  };
+  for (const row of rows) {
+    if (row.kind !== "item") {
+      if (row.kind === "heading") close();
+      continue;
+    }
+    if (!row.item.name || (row.item.kind !== "ticker" && row.item.kind !== "search")) continue;
+    section.push(row.globalIdx);
+    widest = Math.max(widest, displayWidth(row.item.label));
+  }
+  close();
+  return columns;
+}
 
 interface CommandBarListItemRowProps {
   item: ResultItem;
@@ -52,6 +82,8 @@ interface CommandBarListItemRowProps {
   listQuery: string;
   contentPadding: number;
   labelWidth: number;
+  /** Where the row's name starts, past the symbols of its section (symbolColumns); none when it follows the label. */
+  symbolColumn?: number;
   trailingWidth: number;
   nativePaneChrome: boolean;
   onHoverIndex: (index: number | null) => void;
@@ -69,6 +101,7 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
   listQuery,
   contentPadding,
   labelWidth,
+  symbolColumn,
   trailingWidth,
   nativePaneChrome,
   onHoverIndex,
@@ -87,7 +120,8 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
   const label = truncateToDisplayWidth(presentation.label, labelSpace);
   // The name gives way before the symbol: it shrinks to its ellipsis and drops
   // out once fewer than a few characters of it would show.
-  const nameSpace = labelSpace - displayWidth(label) - NAME_GAP;
+  const symbolWidth = Math.max(displayWidth(label), symbolColumn ?? 0);
+  const nameSpace = labelSpace - symbolWidth - NAME_GAP;
   const name = item.name && nameSpace >= MIN_NAME_WIDTH ? truncateToDisplayWidth(item.name, nameSpace) : "";
   // "current" outranks the shortcut on the right; otherwise a badge lifted from
   // `right` must not be repeated there.
@@ -167,7 +201,7 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
           </Text>
           {name && (
             <Text fg={isSelected ? palette.selectedText : palette.subtle}>
-              {" ".repeat(NAME_GAP) + name}
+              {" ".repeat(symbolWidth - displayWidth(label) + NAME_GAP) + name}
             </Text>
           )}
         </Box>
@@ -290,6 +324,8 @@ export const CommandBarListBody = memo(function CommandBarListBody({
     nativeListRows,
     nativePaneChrome,
   ]);
+  // The desktop and the web set the names in their own type, after the symbol.
+  const nameColumns = useMemo(() => (nativePaneChrome ? null : symbolColumns(nativeListRows)), [nativeListRows, nativePaneChrome]);
 
   const renderedRows = (
     <>
@@ -336,6 +372,7 @@ export const CommandBarListBody = memo(function CommandBarListBody({
             listQuery={visibleListState.query}
             contentPadding={contentPadding}
             labelWidth={labelWidth}
+            symbolColumn={nameColumns?.get(row.globalIdx)}
             trailingWidth={trailingWidth}
             nativePaneChrome={nativePaneChrome}
             onHoverIndex={onHoverIndex}

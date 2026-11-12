@@ -46,7 +46,7 @@ function rawInstrumentType(candidate: Pick<TickerSearchCandidate, "result" | "ti
  * Class tag for the badge column. A query can end with the same code: EQ,
  * CUR, CRYP, OPT, FUT, IDX, ETF, FUND. A fund or derivative whose type string
  * did not classify still badges FUND or DERIV. Anything else gets none, and
- * the row shows its exchange code there when the code is short enough.
+ * its venue stays on the right.
  */
 export function formatInstrumentBadge(
   candidate: Pick<TickerSearchCandidate, "instrumentClass" | "result" | "ticker">

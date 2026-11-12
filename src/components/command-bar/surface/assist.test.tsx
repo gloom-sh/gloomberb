@@ -727,7 +727,7 @@ describe("CommandBar search report", () => {
     // Tab opens ticker search; the ticker is typed there, not in the root query.
     await tui.emitKeypress({ name: "tab" });
     await typeKeys(["M", "S", "F", "T"]);
-    await waitForFrameToContain("NASDAQ MSFT");
+    await waitForFrameToContain("MSFT  Microsoft");
     await settleFrame(tui.setup(), 50);
     expect(reports).toEqual([]);
 
@@ -755,7 +755,7 @@ describe("CommandBar search report", () => {
     await tui.setup().renderOnce();
     await tui.emitKeypress({ name: "tab" });
     await typeKeys(["M", "S", "F", "T"]);
-    await waitForFrameToContain("NASDAQ MSFT");
+    await waitForFrameToContain("MSFT  Microsoft");
     await closeAndSettle();
     expect(reports).toEqual([{
       query: "DES",
@@ -801,9 +801,9 @@ describe("CommandBar search report", () => {
     await tui.setup().renderOnce();
     await tui.emitKeypress({ name: "tab" });
     await typeKeys(["M", "S", "F", "T"]);
-    await waitForFrameToContain("NASDAQ MSFT");
+    await waitForFrameToContain("MSFT  Microsoft");
     await tui.emitKeypress({ name: "escape" });
-    await waitForFrameWithout("NASDAQ MSFT");
+    await waitForFrameWithout("MSFT  Microsoft");
     await typeKeys(["BACKSPACE"]);
     await tui.emitKeypress({ name: "escape" });
     await waitForReports(reports);

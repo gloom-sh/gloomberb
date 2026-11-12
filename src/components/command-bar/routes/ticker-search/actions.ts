@@ -75,9 +75,8 @@ export function useCommandBarTickerSearchActions({
     const detail = formatTickerSearchDetail(candidate);
     // The class lives in the badge, so the trailing text carries only the
     // venue rather than saying "Equity" twice on one row. An unclassified
-    // instrument has no class to show, so the badge column lifts its venue
-    // instead (a short exchange code qualifies on its own) and the trailing
-    // text goes quiet rather than repeating it.
+    // instrument leaves the badge column empty and keeps its venue on the
+    // right, where every listing's is.
     const badge = formatInstrumentBadge(candidate);
     const right = candidate.exchangeLabel || candidate.primaryExchangeLabel || candidate.right || undefined;
     // The candidate's detail leads with the name; the rest repeats the badge or venue.
