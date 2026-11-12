@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DataTableView, type DataTableVisibleRange } from "../../../components";
+import { DataTableView, type DataTableColumnReorder, type DataTableVisibleRange } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
@@ -38,6 +38,8 @@ const isIndexRow = (row: WorldIndexTableRow) => row.type === "row";
 function renderRegionHeader(row: WorldIndexTableRow) {
   return row.type === "header" ? { text: REGION_LABELS[row.region] } : null;
 }
+
+const WORLD_INDEX_COLUMN_REORDER: DataTableColumnReorder = { anchored: 2 };
 
 function WorldIndicesPane({ focused, width, height }: PaneProps) {
   const { pinTicker } = usePluginTickerActions();
@@ -124,6 +126,8 @@ function WorldIndicesPane({ focused, width, height }: PaneProps) {
       rootWidth={width}
       rootHeight={height}
       columns={columns}
+      // The session mark and the index name the row, whether or not the mark has a heading at this width.
+      columnReorder={WORLD_INDEX_COLUMN_REORDER}
       items={dataProvider ? flatRows : []}
       sortable
       sortColumnId={sortPreference.columnId}

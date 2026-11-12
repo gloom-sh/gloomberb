@@ -479,8 +479,8 @@ this, except:
   PF's and FUT's Columns) passes them as `columnReorder={{ control }}`, so a
   drag rewrites that setting and Settings lists the columns as the table
   shows them.
-- `anchored` keeps more leading columns in place (FUT's session mark and
-  symbol); `key` separates two tables in one pane that start with the same
+- `anchored` keeps more leading columns in place (the session mark and
+  symbol in FUT and WEI); `key` separates two tables in one pane that start with the same
   column but are otherwise unrelated.
 
 **Country flags.** Wherever a row or a field names a country (ECO's country,
