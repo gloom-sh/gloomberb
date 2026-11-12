@@ -96,6 +96,33 @@ function useFitStep(scrollRef: RefObject<HTMLDivElement | null>, stepCount: numb
   return step;
 }
 
+/** The fewest cells the context is drawn in: three letters and its ellipsis. */
+const CONTEXT_MIN_CELLS = 4;
+
+/**
+ * The context (`meta`) gives way first, down to nothing; cut to fewer letters
+ * than `CONTEXT_MIN_CELLS` it is not drawn at all rather than left as a sliver
+ * of a word. Its box keeps its place, so nothing beside it moves.
+ */
+function useContextGivesWay(metaRef: RefObject<HTMLSpanElement | null>, text: string | undefined): void {
+  useLayoutEffect(() => {
+    const element = metaRef.current;
+    if (!element) return;
+    const update = () => {
+      const style = getComputedStyle(element);
+      const room = element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const cell = parseFloat(style.getPropertyValue("--cell-w")) || 8;
+      const cut = element.scrollWidth > element.clientWidth + 0.5;
+      element.toggleAttribute("data-sliver", cut && room < CONTEXT_MIN_CELLS * cell);
+    };
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [metaRef, text]);
+}
+
 /**
  * The choices of an inline filter. A long list that scrolls by itself
  * (expiries) keeps the label and the controls beside it in view while it
@@ -323,6 +350,8 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, asOf, leadi
   const fitStep = useFitStep(scrollRef, steps.length, contentKey);
   const fit = steps[fitStep] ?? FULL_FIT;
   const overflow = useHorizontalOverflow(scrollRef, [items.length, !!search, !!view, !!onClearAll, meta, asOf, fitStep]);
+  const metaRef = useRef<HTMLSpanElement | null>(null);
+  useContextGivesWay(metaRef, meta);
   const searchRef = useRef<HTMLDivElement | null>(null);
   // When an inline choice or the view changes (a shortcut, the next expiry),
   // bring the new selection into a scrolled bar. On mount only a strip that
@@ -482,7 +511,7 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, asOf, leadi
       )}
       {/* The as-of keeps its width; the context after it gives way first. */}
       {asOf ? <span className="gloom-qb-meta gloom-qb-asof">{asOf}</span> : null}
-      {meta ? <span className="gloom-qb-meta">{meta}</span> : null}
+      {meta ? <span ref={metaRef} className="gloom-qb-meta">{meta}</span> : null}
       {view && !view.start ? (fit.foldView ? viewMenu : viewNode) : null}
       </div>
     </div>

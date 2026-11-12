@@ -20,6 +20,8 @@ interface QueryBarPaint {
   visible: QueryBarBox;
   /** Text cut by a box that clips it, short of an ellipsis of its own: by a strip that scrolls by itself, the bar's own scroll, or something else. */
   cut: "strip" | "bar" | "other" | null;
+  /** Text that ends in an ellipsis with fewer than three cells of it before. */
+  sliver: boolean;
   /** The filter id of the strip that cut it. */
   strip?: string;
 }
@@ -94,7 +96,9 @@ export const QUERY_BAR_MEASURE = `(() => {
         if (node === bar) break;
       }
       if (empty(box) || empty(visible)) return;
-      paints.push({ label, kind, visible, cut, strip });
+      const cell = parseFloat(style.getPropertyValue("--cell-w")) || 8;
+      const room = element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      paints.push({ label, kind, visible, cut, strip, sliver: ellipsis && room < 3 * cell });
       elements.push(element);
     };
     for (const element of bar.querySelectorAll("*")) {
@@ -138,6 +142,7 @@ export function queryBarFailures(measure: QueryBarMeasure, { barMayScroll, strip
   const name = (index: number) => `${measure.paints[index]!.kind} "${measure.paints[index]!.label}" (${px(measure.paints[index]!.visible)})`;
   for (const [a, b] of measure.overlaps) failures.push(`${name(a)} overlaps ${name(b)}`);
   measure.paints.forEach((paint, index) => {
+    if (paint.sliver) failures.push(`${name(index)} is cut to a sliver before its ellipsis`);
     const allowed = paint.cut === null || (paint.cut === "bar" && barMayScroll) || (paint.cut === "strip" && strips.includes(paint.strip ?? ""));
     if (!allowed) failures.push(`${name(index)} is cut ${paint.cut === "bar" ? "by the bar's edge" : paint.cut === "strip" ? `by the ${paint.strip} strip` : "short"}`);
     if (paint.visible.top < measure.bar.top - 0.5 || paint.visible.bottom > measure.bar.bottom + 0.5) failures.push(`${name(index)} leaves the bar's row`);

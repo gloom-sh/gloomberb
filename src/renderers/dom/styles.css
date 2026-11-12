@@ -1221,6 +1221,8 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   color: var(--gloom-text-muted);
 }
 .gloom-qb-meta + .gloom-qb-view { margin-left: 0; }
+/* Cut to a sliver of a word, it is not drawn (query-bar.tsx); its box stays. */
+.gloom-qb-meta[data-sliver] { visibility: hidden; }
 /* The as-of keeps its width: inline filters collapse to menus first (query-bar.tsx),
    and the context after it gives way before it. */
 .gloom-qb-meta.gloom-qb-asof { flex: none; }
