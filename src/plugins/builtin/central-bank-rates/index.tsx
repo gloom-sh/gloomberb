@@ -10,7 +10,7 @@ export const centralBankRatesModule: PluginModule = {
     tableExport: true, headless: centralBankRatesHeadless }],
   paneTemplates: [{
     id: "central-bank-rates-cbr", paneId: "central-bank-rates", label: "Central Bank Rates",
-    description: "Policy rates of the G20, SNB, Norges Bank, Riksbank and RBNZ, last observed changes and dated historical context.",
+    description: "Policy rates of the G20, SNB, Norges Bank, Riksbank, RBNZ, Egypt and Nigeria, last observed changes and dated historical context.",
     keywords: ["central", "bank", "policy", "rates", "g20", "cbr", "cbrt"], shortcut: { prefix: "CBR", aliases: ["CBRT"] },
     headless: centralBankRatesHeadless,
   }],

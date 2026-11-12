@@ -56,7 +56,9 @@ import {
   matchesCountry,
   matchesImpact,
   NO_CONSENSUS_NOTE,
+  countriesNotInCalendar,
   noScheduledReleasesMessage,
+  notInCalendarMessage,
   noTimeNote as noTimeNoteText,
   parseCountryFilter,
   listingEnd,
@@ -322,11 +324,16 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
   const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";
   // The calendar has events and the filters hid them all: say which, with the way back.
-  // Countries named one by one with nothing in the calendar: a quiet window there, said plainly.
+  // Countries named one by one with nothing in the calendar: a quiet window there, or one the calendar does not cover
+  // (EG, NG), said plainly.
   const unscheduled = useMemo(() => countriesWithoutEvents(countryFilter, events), [countryFilter, events]);
+  const absent = useMemo(() => countriesNotInCalendar(countryFilter, events), [countryFilter, events]);
+  const quiet = unscheduled.filter((code) => !absent.includes(code));
   const filterEmptyTitle = events.length === 0 ? null
     : unscheduled.length > 0 && unscheduled.length === countryFilter.split(",").length
-      ? noScheduledReleasesMessage(unscheduled, releasesThrough ? shortDayLabel(dayStart(releasesThrough)) : null).replace(/\.$/, "")
+      ? [absent.length > 0 ? notInCalendarMessage(absent) : null,
+        quiet.length > 0 ? noScheduledReleasesMessage(quiet, releasesThrough ? shortDayLabel(dayStart(releasesThrough)) : null) : null]
+        .filter(Boolean).join(" ").replace(/\.$/, "")
     : filteredEmptyTitle(impactFilter, countryFilter);
   const emptyStateHint = !loading && !error
     ? [

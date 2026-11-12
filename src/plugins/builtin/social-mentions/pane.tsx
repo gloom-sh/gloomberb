@@ -4,6 +4,9 @@ import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut, useUpdatedAgo } from "../../../public/react";
 import { CompositeChart, DataTableStackView, EmptyState, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter, type DataTableCell, StatGrid } from "../../../components";
 import { ageFooterSegment } from "../../../components/layout/pane/footer";
+import { useUtcDay } from "../../../react/auto-refresh";
+import { reportFooterSegment } from "../shared/source-footer";
+import { socialMentionsHeadless } from "./headless";
 import { colors } from "../../../theme/colors";
 import type { SocialMentionPost, SocialMentionsRange } from "../../../api-client/social-mentions";
 import { staticSeries } from "../../../components/chart/static/series";
@@ -119,6 +122,8 @@ function SocialMentionsTickerView({ width, height, focused, listingKey, onDetail
     return () => clearTimeout(timer);
   }, [pending, resource.updatedAt, resource.reload]);
   useAutoRefresh(resource.updatedAt, resource.load);
+  // The footer leaves the day off a time of today; the next day it names it.
+  useUtcDay();
   const dayOpen = !!openRow;
   useEffect(() => onDetailChange?.(dayOpen), [dayOpen, onDetailChange]);
   useEffect(() => () => onDetailChange?.(false), [onDetailChange]);
@@ -129,7 +134,9 @@ function SocialMentionsTickerView({ width, height, focused, listingKey, onDetail
   const signInWall = !data && isCloudSessionRequired(resource.error);
   usePaneStatusLinkFooter({ registrationId: "social-mentions", focused, loading: resource.loading || pending, error: signInWall ? null : resource.error,
     url: selected?.topPost?.url ?? (symbol ? `https://x.com/search?q=%24${symbol}` : null), showOpenHint: true,
+    // Its source and when the posts were counted, as `fn BUZZ` ends; how long ago it loaded goes first on a narrow row.
     info: data ? [
+      reportFooterSegment(socialMentionsHeadless, { sections: [], metadata: { asOf: data.asOf } }),
       ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : []),
       ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
     ] : [],

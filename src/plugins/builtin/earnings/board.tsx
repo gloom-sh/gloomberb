@@ -18,6 +18,9 @@ import type { EarningsCalendarQuery } from "../../../api-client/earnings";
 import { useAppSelector, usePaneAppConfig, usePaneSettingValue } from "../../../state/app/context";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
+import { useUtcDay } from "../../../react/auto-refresh";
+import { reportFooterSegment } from "../shared/source-footer";
+import { earningsBoardHeadless } from "./headless";
 import type { EarningsEvent } from "../../../types/data-provider";
 import { getSharedRegistry } from "../../registry/shared";
 import { Box, useUiCapabilities } from "../../../ui";
@@ -94,6 +97,8 @@ interface BoardData {
   /** The query read, by `earningsCalendarKey`: kept data from another week is not this week's. */
   queryKey: string;
   reports: BoardReport[];
+  /** When the service built the calendar read, which dates the board; null without one. */
+  asOf: string | null;
   stale: boolean;
   refreshError: string | null;
 }
@@ -208,7 +213,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const loader = useCallback(async (force: boolean): Promise<BoardData> => {
     const holdings = fund ? await loadMembers(fund.etf, force) : null;
     const names = holdings ? fundNames(holdings.payload.members) : named;
-    if (!market && names.length === 0) return { queryKey, reports: [], stale: !!holdings && (holdings.stale || holdings.payload.stale), refreshError: holdings?.refreshError ?? null };
+    if (!market && names.length === 0) return { queryKey, reports: [], asOf: null, stale: !!holdings && (holdings.stale || holdings.payload.stale), refreshError: holdings?.refreshError ?? null };
     const read = fund ? { ...query, symbols: names } : query;
     const [cloud, fallback] = await Promise.allSettled([
       loadEarningsBoard(read, force),
@@ -226,6 +231,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
     return {
       queryKey,
       reports: [...reports, ...extra],
+      asOf: cloud.status === "fulfilled" ? cloud.value.payload.asOf : null,
       stale: (!!holdings && (holdings.stale || holdings.payload.stale)) || (cloud.status === "fulfilled" && cloud.value.stale),
       refreshError: cloud.status === "rejected"
         ? (cloud.reason instanceof Error ? cloud.reason.message : String(cloud.reason))
@@ -238,7 +244,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
       const holdings = fund ? cachedMembers(fund.etf) : null;
       if (fund && !holdings) return null;
       const cached = cachedEarningsCalendar(holdings ? { ...query, symbols: fundNames(holdings.payload.members) } : query);
-      return cached ? { queryKey, reports: cached.payload.reports.map((report) => boardReport(report, owned)), stale: !!holdings?.payload.stale, refreshError: null } : null;
+      return cached ? { queryKey, reports: cached.payload.reports.map((report) => boardReport(report, owned)), asOf: cached.payload.asOf, stale: !!holdings?.payload.stale, refreshError: null } : null;
     },
   });
   // A new fund or range never shows the previous scope while its holdings load or fail.
@@ -316,13 +322,19 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
 
   useAutoRefresh(resource.updatedAt, resource.load);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
+  const utcDay = useUtcDay();
+  // Its source and when the calendar was read, as `fn EVTS` ends; how long ago it loaded goes first on a narrow row.
+  const footerInfo = useMemo(() => data ? [
+    reportFooterSegment(earningsBoardHeadless, { rows: [], metadata: { asOf: data.asOf } }),
+    ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : []),
+  ] : [], [data, updatedAgo, utcDay]);
   usePaneStatusFooter({
     registrationId: "earnings-board",
     enabled: !open,
     loading: resource.loading,
     error: resource.error ?? data?.refreshError ?? null,
     stale: !!data?.stale,
-    info: data && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
+    info: footerInfo,
   });
   const symbol = open?.symbol ?? selectedReport?.symbol ?? null;
   // The desktop and the web only: the terminal's footer stays as it was.

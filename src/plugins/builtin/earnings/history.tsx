@@ -12,6 +12,9 @@ import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { staticSeries } from "../../../components/chart/static/series";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
+import { useUtcDay } from "../../../react/auto-refresh";
+import { reportFooterSegment } from "../shared/source-footer";
+import { earningsCalendarHeadless } from "./headless";
 import { colors } from "../../../theme/colors";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useAssetData } from "../../runtime";
@@ -112,6 +115,14 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
   // A coin's history fails (it is no US ticker), which says nothing once its type has answered.
   const historyError = noEarnings.loading || noEarnings.data ? null : resource.error;
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
+  const utcDay = useUtcDay();
+  // Its source and when the history was read, as `fn ERN` ends; how long ago it loaded goes first on a narrow row.
+  const footerInfo = useMemo(() => abroad
+    ? [{ id: "us-listings", parts: [{ text: "past reports: US and Hong Kong listings only", tone: "muted" as const }] }]
+    : payload ? [
+      reportFooterSegment(earningsCalendarHeadless, { rows: [], metadata: { asOf: payload.asOf } }),
+      ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : []),
+    ] : [], [abroad, payload, updatedAgo, utcDay]);
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => { resource.reload(); upcoming.reload(); }, { focused });
   usePaneStatusFooter({
@@ -119,8 +130,7 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
     loading: resource.loading,
     error: historyError,
     stale: !!resource.data?.stale,
-    info: abroad ? [{ id: "us-listings", parts: [{ text: "past reports: US and Hong Kong listings only", tone: "muted" as const }] }]
-      : payload && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
+    info: footerInfo,
   });
 
   return (

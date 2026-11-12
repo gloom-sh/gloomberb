@@ -224,12 +224,6 @@ export function formatSpreadRank(rank: SpreadRank): string {
   return rank.basis === "price-inverted" && rank.percentile != null ? `${text}, price inverted` : text;
 }
 
-/** The newest day a board's rows are dated, which its footer dates the board by; null with none. */
-export function newestRowDate(dates: ReadonlyArray<string | null | undefined>): string | null {
-  return dates.reduce<string | null>((newest, date) => date && /^\d{4}-\d{2}-\d{2}/.test(date) && (!newest || date > newest)
-    ? date.slice(0, 10) : newest, null);
-}
-
 function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
 }

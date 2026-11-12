@@ -27,7 +27,9 @@ import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search
 import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useAutoRefresh } from "../../../react/auto-refresh";
+import { useAutoRefresh, useUtcDay } from "../../../react/auto-refresh";
+import { reportFooterSegment } from "../shared/source-footer";
+import { treasuryAuctionsHeadless } from "./headless";
 import { useCommandValue } from "../shared/command-tab";
 import { FIXED_INCOME_PANE_ID } from "../fixed-income/model";
 import {
@@ -432,12 +434,15 @@ function UsAuctionsView({
     rowState: { selected: boolean },
   ) => renderAuctionCell(auction, column, rowState, showYear, after?.get(auction.id)), [after, showYear]);
 
+  const utcDay = useUtcDay();
   usePaneFooter(TREASURY_AUCTIONS_PANE_ID, () => {
     const info = loadingErrorFooterInfo(loading, error);
     if (yieldsError) info.push({ id: "yields", parts: [{ text: "Treasury yields unavailable", tone: "warning" as const }] });
     if (savedAt != null) info.push(...savedCopyFooterInfo([savedAt]));
     else if (stale) info.push(STALE_SEGMENT);
     if (fetchedAt && savedAt == null) {
+      // Its source and the newest auction listed, as `fn AUCT` ends; how long ago it loaded goes first on a narrow row.
+      if (rows.length) info.push(reportFooterSegment(treasuryAuctionsHeadless, { rows: rows.map((auction) => ({ auctionDate: auction.auctionDate })) }));
       info.push(ageFooterSegment(formatRelativeAge(fetchedAt)));
     }
     return {
@@ -458,8 +463,10 @@ function UsAuctionsView({
     fetchedAt,
     focusSearch,
     loading,
+    rows,
     savedAt,
     stale,
+    utcDay,
   ]);
 
   // The pane menu names the sort keys; "Sort by…" there picks a column directly.

@@ -22,7 +22,7 @@ export const econStatisticsModule: PluginModule = {
     id: "econ-statistics-pane",
     paneId: ECON_STATISTICS_PANE_ID,
     label: "Economic Statistics",
-    description: "Inflation, labour, growth, housing and rates against their own history.",
+    description: "US inflation, labour, growth, housing and rates against their own history.",
     keywords: [...new Set([
       "economic",
       "statistics",

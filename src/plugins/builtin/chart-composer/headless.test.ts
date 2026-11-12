@@ -804,3 +804,28 @@ test("fn G prints a coin's dollar price near par to four decimals, as quote and 
   expect(result.series[0]!.points.at(-1)!.value).toBe(0.99886);
   expect(renderHeadlessPaneText(definition, result, args, "Custom Chart")).toMatch(/ 0\.9989 +USD/);
 });
+
+// `fn G FRED:TURCPIYOY --csv` ended "Gloom Cloud · Publisher: not published" while `fred TURCPIYOY` cited TurkStat via the CBRT.
+test("fn G --csv names a series' own publisher and publish date, as `fred` cites them", async () => {
+  const chartSpec = buildCustomChartPreset("FRED:TURCPIYOY");
+  chartSpec.viewport.dateWindow = { start: "2026-08-01", end: "2026-11-05" };
+  const definition = chartHeadless("chart-composer-pane");
+  const args = { argument: "FRED:TURCPIYOY", rawArgument: "FRED:TURCPIYOY", symbols: [], options: {} };
+  const result = await definition.load(args, createTestHeadlessContext({
+    marketData: createTestDataProvider({ getTickerFinancials: async () => { throw new Error("Not a ticker: TURCPIYOY."); } }),
+    // FRED does not carry the series: Gloom Cloud serves TurkStat's figures, each with its publisher and when it was published.
+    apiClient: { getCloudFredSeries: async () => ({ info: null, observations: [
+      { date: "2026-09-01", value: 33.29, publisher: "TurkStat", publishedAt: "2026-10-03T07:00:00Z" },
+      { date: "2026-10-01", value: 32.87, publisher: "TurkStat", publishedAt: "2026-11-03T07:00:00Z" },
+    ] }) } as never,
+    settings: { chartSpec },
+    catalogSeriesName: () => "Türkiye CPI, y/y",
+    resolveListing: async () => null,
+  })) as ChartPaneModel;
+  const freshness = deriveHeadlessFreshness(definition, result);
+  const csv = renderReportCsv(headlessReportTables(definition, result, args, "G", freshness, { complete: true, unavailableSymbols: [] }), freshness);
+  expect(csv).toContain("Publisher: TurkStat");
+  expect(csv).toContain("Publication time: 2026-11-03");
+  expect(csv).toMatch(/TurkStat via the CBRT, published 2026-11-03/);
+  expect(csv).not.toContain("Gloom Cloud");
+});

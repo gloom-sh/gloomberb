@@ -38,6 +38,7 @@ export const connectionsModule: PluginModule = {
     reportFreshness: { status: "not-a-feed", basis: "connection health", local: true },
     defaultPosition: "right",
     defaultMode: "floating",
+    utilityWindow: true,
     defaultFloatingSize: { width: 80, height: 24 },
     portableShare: {
       private: { params: true, settings: true, state: true },

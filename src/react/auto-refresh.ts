@@ -36,6 +36,35 @@ export function useAgeClock(since: number | null): number {
   return now;
 }
 
+const UTC_DAY_MS = 86_400_000;
+
+/**
+ * Today's UTC date (`2026-11-12`), which moves at each UTC midnight while the
+ * pane can be seen and catches up when it can. A footer that leaves the day
+ * off a time of today (`Gloom Cloud · 12:25 UTC`) reads it again with this
+ * among its inputs, so a pane left open overnight names the day
+ * (`Thu 12 Nov 12:25 UTC`).
+ */
+export function useUtcDay(): string {
+  const visible = usePaneVisible();
+  const [clock, setClock] = useState(() => Date.now());
+  const day = new Date(clock).toISOString().slice(0, 10);
+
+  useEffect(() => {
+    if (!visible) return;
+    const now = Date.now();
+    if (new Date(now).toISOString().slice(0, 10) !== day) {
+      setClock(now);
+      return;
+    }
+    // A timer that fires a moment early sets the same day, and this runs again for the next.
+    const timer = setTimeout(() => setClock(Date.now()), UTC_DAY_MS - (now % UTC_DAY_MS) + 1_000);
+    return () => clearTimeout(timer);
+  }, [clock, day, visible]);
+
+  return day;
+}
+
 export interface AutoRefreshOptions {
   /**
    * Cadence for a pane whose data moves faster than research data, such as a

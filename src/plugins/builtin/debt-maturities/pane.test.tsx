@@ -89,8 +89,8 @@ test("a short or narrow maturity pane keeps the table's rows, and the chart shri
   expect(lines[2]).toMatch(/^ ● Due next 12 months .*%/);
   expect(lines[3]).toContain("MATURITY");
   expect(lines.filter((line) => /^ In(NextTwelve|Year)/.test(line))).toHaveLength(5);
-  // The footer keeps which filing and its date; how long ago it loaded goes first.
-  expect(lines[9]).toContain("10-K 2025-06-30");
+  // The footer keeps its source, which filing and its date; how long ago it loaded goes first.
+  expect(lines[9]).toContain("SEC EDGAR · 10-K Mon 30 Jun 2025");
   expect(lines[9]).not.toContain("just now");
 });
 
@@ -150,8 +150,8 @@ test("a newer 10-Q is a dated figure row of its own, and every filing's year lab
   expect(lines.find((line) => line.includes("Due next 12 months"))).toContain("4.8%");
   const axis = lines.find((line) => /^\s*2022\s/.test(line))!;
   expect(axis.trim().split(/\s+/)).toEqual(["2022", "2023", "2024", "2025"]);
-  // The footer says which filing the pane's date is.
-  expect(lines.find((line) => line.includes("[o]pen"))).toContain("10-Q 2025-12-31, filed 2026-02-10 · just now");
+  // The footer says where the figures are from and which filing the pane's date is, as `fn DDIS` ends.
+  expect(lines.find((line) => line.includes("[o]pen"))).toContain("SEC EDGAR · 10-Q Wed 31 Dec 2025 · not a live feed (filed data) · just now");
 });
 
 /** A ladder in its report's own bands, as a version 2 server sends it: carrying amounts under IFRS, in HKD millions. */
@@ -191,7 +191,7 @@ test("a ladder in its report's own bands shows the bands as printed, in their ba
   }
   expect(text).not.toMatch(/Year [2-5]|Thereafter/);
   // The footer names the report and its date.
-  expect(lines.find((line) => line.includes("[o]pen"))).toContain("HKEX 2025-12-31, filed 2026-04-08");
+  expect(lines.find((line) => line.includes("[o]pen"))).toContain("HKEX annual or interim report notes · Wed 31 Dec 2025");
 
   await tui.emitKeypress({ name: "return" });
   await settle();

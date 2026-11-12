@@ -1,5 +1,5 @@
 import type { CryptoEtfFlowsPayload } from "../../../api-client/crypto-etf-flows";
-import type { HeadlessPaneColumn } from "../../../types/headless";
+import type { HeadlessPaneColumn, HeadlessPaneFreshness } from "../../../types/headless";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { REPORT_ROWS } from "../shared/headless-options";
 import { readPriceWindow, type PriceWindow } from "../../../utils/price-window";
@@ -65,6 +65,27 @@ function summaryLine(payload: CryptoEtfFlowsPayload): string {
 function fundsLine(payload: CryptoEtfFlowsPayload): string | null {
   const named = payload.funds.flatMap((fund) => fund.name ? [`${fund.ticker} ${fund.name}`] : []);
   return named.length ? `Funds: ${named.join(", ")}.` : null;
+}
+
+/**
+ * What dates the flows, as `fn ETFF` ends and the pane's footer says it: the
+ * publisher, the day (`asOf`, the newest unless a window ends before it) and
+ * when the server last read the publisher's table. `daily` says a missing
+ * trading day makes them stale.
+ */
+export function cryptoEtfFlowFreshness(payload: CryptoEtfFlowsPayload, asOf: string | null, daily = true): HeadlessPaneFreshness {
+  return {
+    source: payload.source.publisher,
+    publisher: payload.source.publisher,
+    status: "not-a-feed",
+    basis: "daily fund flows",
+    ...(daily ? { cadence: "daily" as const } : {}),
+    tradingDayMarket: "US",
+    ...(asOf ? { asOf } : {}),
+    oldest: null,
+    // When the server last read the publisher's table, which is what this report retrieved.
+    retrievedAt: payload.fetchedAt,
+  };
 }
 
 export const cryptoEtfFlowsHeadless: HeadlessPaneDefinition<"rows"> = {
@@ -153,18 +174,7 @@ export const cryptoEtfFlowsHeadless: HeadlessPaneDefinition<"rows"> = {
       notes: [window ? windowSummaryLine(payload, window, days) : summaryLine(payload), ...funds ? [funds] : [], `Source: ${payload.source.publisher}, ${payload.source.url}`],
       complete: !payload.stale,
       ...(payload.stale ? { warnings: [`The flows were last read ${payload.fetchedAt.slice(0, 10)}; newer days may be missing.`] } : {}),
-      freshness: {
-        source: payload.source.publisher,
-        publisher: payload.source.publisher,
-        status: "not-a-feed",
-        basis: "daily fund flows",
-        ...(window && asOf !== payload.asOf ? {} : { cadence: "daily" as const }),
-        tradingDayMarket: "US",
-        ...(asOf ? { asOf } : {}),
-        oldest: null,
-        // When the server last read the publisher's table, which is what this report retrieved.
-        retrievedAt: payload.fetchedAt,
-      },
+      freshness: cryptoEtfFlowFreshness(payload, asOf, !(window && asOf !== payload.asOf)),
       metadata: {
         asset,
         unit: payload.unit,

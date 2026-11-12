@@ -114,7 +114,8 @@ describe("report freshness", () => {
     const hkex = { listingExchangeName: "HKEX", exchangeName: "HKEX", marketState: "CLOSED" as const, dataSource: "delayed" as const, providerId: "gloomberb-cloud" };
     const nominal = createTestQuote({ symbol: "9042.HK", ...hkex, stale: true, lastUpdated: Date.parse("2026-11-04T03:32:00Z"),
       changeSessionDate: "2026-11-06", nominalPrice: { session: "2026-11-06", lastTraded: "2026-10-29" } });
-    const traded = createTestQuote({ symbol: "3042.HK", ...hkex, lastUpdated: Date.parse("2026-11-06T07:59:00Z"), changeSessionDate: "2026-11-06" });
+    // Its closing auction's print, at 16:08 Hong Kong.
+    const traded = createTestQuote({ symbol: "3042.HK", ...hkex, lastUpdated: Date.parse("2026-11-06T08:08:00Z"), changeSessionDate: "2026-11-06" });
     expect(formatStatusLine(quotesFreshness([traded, nominal], undefined, now)!))
       .toBe("HKEX trading day Fri 6 Nov 2026 close · 15 min delayed, 1 of 2 nominal · markets closed · regular session opens Mon 01:30 UTC, 09:30 HKT");
     expect(formatStatusLine(quotesFreshness([nominal], undefined, now)!)).toBe("Fri 6 Nov 2026 · 15 min delayed, nominal · markets closed · regular session opens Mon 01:30 UTC, 09:30 HKT");

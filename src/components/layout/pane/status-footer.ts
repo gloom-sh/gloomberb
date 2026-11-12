@@ -28,7 +28,9 @@ function buildPaneStatusInfo({
   stale = false,
   info = EMPTY_STATUS_INFO,
 }: PaneStatusInfoOptions): PaneFooterSegment[] {
-  return [...info, ...(stale ? [STALE_SEGMENT] : []), ...loadingErrorFooterInfo(loading, error)];
+  // A source line that already says its data is stale (`stale (23 days old)`) is not followed by a second `stale`.
+  const saysStale = info.some((segment) => segment.asOf && /\bstale\b/.test(segment.parts.map((part) => part.text).join("")));
+  return [...info, ...(stale && !saysStale ? [STALE_SEGMENT] : []), ...loadingErrorFooterInfo(loading, error)];
 }
 
 /**
