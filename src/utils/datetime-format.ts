@@ -1,5 +1,6 @@
 import { MISSING_VALUE } from "./format";
 import { toTimestampMillis } from "./timestamp";
+import { knownTimeZoneLabel } from "./zoned-date-time";
 
 export type DisplayDateValue = Date | string | number | null | undefined;
 
@@ -200,7 +201,7 @@ export function formatFeedTime(
 
 /**
  * A date and time in the host's zone, with the zone named: "7 Oct 2026,
- * 23:38 GMT+2", "... 17:38 EDT", "... 21:38 UTC". Without the zone a
+ * 23:38 CET", "... 17:38 ET", "... 21:38 UTC". Without the zone a
  * time read beside a list in UTC looks two hours off.
  */
 export function formatDetailDate(value: DisplayDateValue, fallback = MISSING_VALUE, timeZone?: string): string {
@@ -217,11 +218,15 @@ export function formatDetailDate(value: DisplayDateValue, fallback = MISSING_VAL
 }
 
 /**
- * The host's zone as a time beside it names it ("GMT+8", "EDT", "UTC"), for a
- * column header over times in that zone ("TIME GMT+8"), as `formatDetailTime`
- * names it after one time.
+ * The host's zone as a time beside it names it, for a column header over times
+ * in that zone ("TIME CET"), as `formatDetailTime` names it after one time. A
+ * zone the charts and session lines name ("UTC", "ET", "CET", "JST") reads the
+ * same here; another takes its offset ("GMT+8"). News read "TIME GMT+1" over a
+ * chart's "CET" (review, 12 Nov 2026).
  */
 export function localTimeZoneShortName(now: DisplayDateValue = Date.now(), timeZone?: string): string {
+  const known = knownTimeZoneLabel(timeZone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone);
+  if (known) return known;
   const date = parseDisplayDate(now) ?? new Date();
   return new Intl.DateTimeFormat("en-US", { timeZoneName: "short", timeZone }).formatToParts(date)
     .find((part) => part.type === "timeZoneName")?.value ?? "UTC";
@@ -246,7 +251,7 @@ export function formatClockTime(value: DisplayDateValue, fallback = MISSING_VALU
   return formatter.format(date);
 }
 
-/** The time of `formatDetailDate` alone, its zone named: "23:38 GMT+2", for a day stated beside it. */
+/** The time of `formatDetailDate` alone, its zone named: "23:38 CET", for a day stated beside it. */
 export function formatDetailTime(value: DisplayDateValue, fallback = MISSING_VALUE, timeZone?: string): string {
   const date = parseDisplayDate(value);
   if (!date) return fallback;

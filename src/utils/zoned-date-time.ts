@@ -140,7 +140,12 @@ const TIME_ZONE_LABELS: Readonly<Record<string, string>> = {
   "Pacific/Auckland": "NZT",
 };
 
+/** The short name a zone has all year ("ET" for New York, "JST" for Tokyo), when it has one. */
+export function knownTimeZoneLabel(timeZone: string): string | undefined {
+  return TIME_ZONE_LABELS[timeZone];
+}
+
 /** A short name for a zone that holds all year: "ET" for New York, "JST" for Tokyo, else the city. */
 export function timeZoneLabel(timeZone: string): string {
-  return TIME_ZONE_LABELS[timeZone] ?? timeZone.split("/").at(-1)!.replaceAll("_", " ");
+  return knownTimeZoneLabel(timeZone) ?? timeZone.split("/").at(-1)!.replaceAll("_", " ");
 }

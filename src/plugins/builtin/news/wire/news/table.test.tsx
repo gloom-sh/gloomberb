@@ -267,7 +267,9 @@ describe("NewsArticleStackView under a pinned crosshair", () => {
 // a Hong Kong reader's "Wed 11:26" said nothing of which 11:26; the header names the zone, as TIME UTC does elsewhere.
 test("the time column names the zone its times are in", () => {
   const time = (zone: string) => buildColumns(120, ["time", "title"], zone).find((column) => column.id === "time")!.label;
-  expect(time("Asia/Hong_Kong")).toBe("TIME GMT+8");
+  // Named as the charts and session lines name it; a zone they do not name takes its offset.
+  expect(time("Asia/Hong_Kong")).toBe("TIME HKT");
   expect(time("UTC")).toBe("TIME UTC");
-  expect(time("America/New_York")).toMatch(/^TIME E[SD]T$/);
+  expect(time("America/New_York")).toBe("TIME ET");
+  expect(time("Asia/Dubai")).toBe("TIME GMT+4");
 });

@@ -90,10 +90,10 @@ test("feed times read as a clock today, a weekday this week and a date before", 
 
 test("a detail date names its zone, so a story read beside a list in UTC is not two hours off", () => {
   expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "UTC")).toBe("7 Oct 2026, 21:38 UTC");
-  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "Europe/Berlin")).toBe("7 Oct 2026, 23:38 GMT+2");
-  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "America/New_York")).toBe("7 Oct 2026, 17:38 EDT");
+  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "Europe/Berlin")).toBe("7 Oct 2026, 23:38 CET");
+  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "America/New_York")).toBe("7 Oct 2026, 17:38 ET");
   // A same-day coverage time, beside the story's dated header, names its zone too.
-  expect(formatDetailTime("2026-10-07T21:38:00Z", "-", "Europe/Berlin")).toBe("23:38 GMT+2");
+  expect(formatDetailTime("2026-10-07T21:38:00Z", "-", "Europe/Berlin")).toBe("23:38 CET");
 });
 
 test("calendar dates consistently read day-first", () => {
@@ -102,7 +102,7 @@ test("calendar dates consistently read day-first", () => {
   expect(formatShortDate(day, { day: "2-digit" })).toBe("05 Jan 2026");
   expect(formatShortDate(day, { year: false })).toBe("5 Jan");
   expect(formatFilingDate("2026-11-04")).toBe("04 Nov 2026");
-  expect(formatDetailDate("2026-10-07T22:38:00Z", "-", "Europe/Berlin")).toBe("8 Oct 2026, 00:38 GMT+2");
+  expect(formatDetailDate("2026-10-07T22:38:00Z", "-", "Europe/Berlin")).toBe("8 Oct 2026, 00:38 CET");
   expect(formatWeekdayDay("2026-10-16T00:00:00Z", { timeZone: "UTC" })).toBe("Fri 16 Oct");
   expect(formatWeekdayDay("2027-10-16T00:00:00Z", { timeZone: "UTC", year: true })).toBe("Sat 16 Oct 2027");
 });
