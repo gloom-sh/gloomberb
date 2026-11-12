@@ -7,6 +7,10 @@ test("unlisted recenter retains stable identity and exposure keeps its denominat
   const data = graphPayload();
   expect(entityKey(data.nodes[1]!)).toBe("id:2");
   expect(exposureLabel(data.upstream[1]!.bestPath, data)).toBe("20% est. of 1 revenue");
+  // One hop's share is the one its report files (Sungrow's 4.5% of revenue to a customer): read, never refused or called an estimate.
+  const oneHop = graphPayload();
+  oneHop.upstream[1]!.bestPath.exposure!.estimated = false;
+  expect(exposureLabel(validateGraph(oneHop).upstream[1]!.bestPath, oneHop)).toBe("20% of 1 revenue");
 });
 test("collapse removes descendants while retaining the branch, including a selected path", () => {
   const data = graphPayload(), path = data.upstream[1]!.bestPath;

@@ -206,7 +206,7 @@ test("path evidence preserves every hop and opens the filter form without losing
   await mount(120, 27, "path", "says", () => {}, { to: "3" });
   await tui.waitForFrameToContain("ROUTE");
   await tui.emitKeypress({ name: "return" });
-  const frame = await tui.waitForFrameToContain("Estimated exposure");
+  const frame = await tui.waitForFrameToContain("Exposure");
   expect(frame).toContain("20% est. of 1 revenue");
   expect(frame).toContain("of 1 Compute & Networking revenue");
   expect(frame).toContain("We depend on this supplier.");

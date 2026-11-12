@@ -31,7 +31,7 @@ import { SupplyFlow } from "./flow";
 import { SupplyGraphPane } from "./graph-pane";
 import { entityTicker } from "./graph-model";
 import {
-  cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, earlierRows, fitShareBasis, focusCompanyLabel, focusCompanyName, receivablesConcentration, lockedDisclosures, nativeValue, percentage, ROLE_COLORS, roleLabel,
+  cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, earlierRows, fitShareBasis, focusCompanyLabel, focusCompanyName, receivablesConcentration, lockedDisclosures, nativeValue, percentage, relationshipLabel, ROLE_COLORS, roleLabel,
   periodDate, shareParts, sortRows, supplyEmptyText, supplyPreviewNote, supplyRoleCounts, type SupplySort,
 } from "./model";
 import { RowEvidence } from "./row-evidence";
@@ -97,7 +97,9 @@ function tableColumns(width: number, desktop: boolean, locked: boolean, valueWid
   // Wide enough for the longest whole wording beside its bar and figure ("27% of total revenue (gold sales)"), within a cap;
   // a narrow pane keeps its 26 cells, so the name keeps its room and the share reads its shorter basis.
   const whole = Math.max(0, ...bases.map((forms) => forms[0]!));
-  const shareWidth = Math.max(wide ? 34 : medium ? 30 : 26, Math.min(wide ? 64 : medium ? 52 : 26, (wide ? 8 : 5) + SHARE_FIGURE_CELLS + 2 + whole));
+  // With no share on any row (a related-party table states amounts, not shares) the column keeps its header and the names take the room.
+  const shareWidth = !bases.length ? SHARE_BAR_MIN_CELLS + 1
+    : Math.max(wide ? 34 : medium ? 30 : 26, Math.min(wide ? 64 : medium ? 52 : 26, (wide ? 8 : 5) + SHARE_FIGURE_CELLS + 2 + whole));
   const share: DataTableColumn = { id: "pct", label: "Share", width: shareWidth, align: "left" };
   let columns: DataTableColumn[] = [
     name,
@@ -298,8 +300,8 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
       case "corroboration": return { text: String(row.corroboration ?? 1), value: row.corroboration ?? 1, color: colors.textDim, content: <Text fg={colors.textDim}>{row.corroboration ?? 1}</Text> };
       case "name": {
         const company = counterpartyKind(row) === "company";
-        // The kind label never gives way to a long cohort name; a column too narrow for the name says it in one word.
-        // The desktop always says it in one word: the Role column beside it names the role, and the name takes the room.
+        // The kind label never gives way to a long cohort name; a column too narrow for the name says it in its short form.
+        // The desktop always says it short ("group", "related group"): the Role column beside it names the role, and the name takes the room.
         const full = counterpartyKindLabel(row);
         const kind = !desktop && full && displayWidth(counterpartyLabel(row)) + displayWidth(full) + 4 <= column.width ? full : counterpartyKindLabel(row, true);
         const ticker = !columns.some((entry) => entry.id === "ticker") ? entityTicker(row.counterparty) : null;
@@ -349,7 +351,7 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
   const flowFigures = bodyHeight < 26 ? figures.slice(0, flowFigureColumns) : figures;
   const selectedShare = selected ? shareParts(selected, focusId) : null;
   const flowMeta = selected ? `${entityTicker(selected.reportingEntity) ?? selected.reportingEntity.name} ${evidenceLabel(selected)} · ${selectedShare ? `${selectedShare.value} ${selectedShare.basis}`
-    : nativeValue(selected) !== null || selected.usd !== null ? disclosedValue(selected) : `${roleLabel(selected.role)}, no figure disclosed`}` : undefined;
+    : nativeValue(selected) !== null || selected.usd !== null ? disclosedValue(selected) : `${relationshipLabel(selected)}, no figure disclosed`}` : undefined;
   return <Box width={width} height={height} flexDirection="column">
     {strip}
     <PaneStatusBody loading={!data && resource.loading} error={!data && resource.error !== SUPPLY_UNAVAILABLE ? resource.error : null}

@@ -241,7 +241,7 @@ test("an empty answer says what it searched and over which window, then where el
   const args = createTestHeadlessArgs({ symbols: ["2382:HKEX"] });
   const result = await supplyChainHeadless.load(args, context);
   const splc = renderHeadlessPaneText(supplyChainHeadless, result, args, "SPLC", deriveHeadlessFreshness(supplyChainHeadless, result));
-  expect(splc).toContain("No annual report, announcement or call read so far names a relationship for 2382:HKEX.");
+  expect(splc).toContain("Relationships for 2382:HKEX are not yet available: no annual report, announcement or call read so far names one.");
   expect(splc).toContain("try the customer's side, such as fn SPLC AAPL.");
   expect(splc).not.toContain("not covered");
 });
