@@ -1,5 +1,5 @@
 import { expect, mock, test } from "bun:test";
-import { act } from "react";
+import { act, useState } from "react";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
@@ -199,4 +199,46 @@ test("a table gives up the blank past its text to show a column whole, and an em
   await settle();
   expect(tui.frame()).toContain("No rows");
   expect(tui.frame()).not.toContain("⇧→");
+});
+
+test("a figure that fits itself to its column keeps the form its set width gives it, after the fit took the blank of a shorter one", async () => {
+  const board = [
+    { id: "name", label: "NAME", width: 8 },
+    { id: "last", label: "LAST", width: 10, align: "right" as const },
+    { id: "chg", label: "CHG%", width: 8, align: "right" as const },
+    { id: "cap", label: "CAP", width: 8, align: "right" as const },
+  ];
+  // As a quote board's price does: whole while it fits its column, rounded when it does not.
+  const fitted = (value: number | null, width: number) => {
+    if (value == null) return "—";
+    const whole = value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return whole.length <= width - 1 ? whole : String(Math.round(value));
+  };
+  const state = createInitialState(createDefaultConfig("/tmp/gloom-table-cut-columns"));
+  let load: (last: number) => void = () => {};
+  function Board() {
+    const [last, setLast] = useState<number | null>(null);
+    load = setLast;
+    return <AppContext value={createStaticAppStore(state)}>
+      <PaneInstanceProvider paneId="self-fitting-board">
+        <DataTableView
+          focused showHorizontalScrollbar columns={board} items={[{ name: "BTC", last, chg: "-1.45%", cap: "1.47T" }]}
+          selection={{ kind: "index", selectedIndex: 0, onChange: () => {} }}
+          sortColumnId={null} sortDirection="asc" onHeaderClick={() => {}} getItemKey={(item) => item.name}
+          renderCell={(item, column) => ({
+            text: column.id === "last" ? fitted(item.last, column.width) : String(item[column.id as "name" | "chg" | "cap"]),
+          })}
+          emptyStateTitle="No rows" headerScrollId="self-fitting-header" bodyScrollId="self-fitting-body"
+        />
+      </PaneInstanceProvider>
+    </AppContext>;
+  }
+  await act(async () => { await tui.render(<Board />, { width: 30, height: 6 }); });
+  await settle();
+  // The quote has not loaded: LAST gives up its blank so CAP shows.
+  expect(lines()[0]).toMatch(/CAP/);
+  // It loads: the price is drawn as its set width has it, and the table makes room for that.
+  await act(async () => { load(72858.65); });
+  await settle();
+  expect(lines()[1]).toContain("72,858.65");
 });

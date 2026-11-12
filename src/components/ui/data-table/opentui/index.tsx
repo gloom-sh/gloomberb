@@ -80,6 +80,7 @@ function OpenTuiDataTableRowInner<
   columnGap,
   columnStarts,
   contentWidth,
+  cellColumns,
   displayColumns,
   focusPane,
   frozenColumnOffset,
@@ -113,6 +114,11 @@ function OpenTuiDataTableRowInner<
   columnGap: number;
   columnStarts: number[];
   contentWidth: number;
+  /**
+   * The columns as each cell's text is made for them: never narrower than the pane set, so text that
+   * fits itself to its column (a price's digits) does not shrink with the blank the fit took from it.
+   */
+  cellColumns: C[];
   displayColumns: C[];
   focusPane: () => void;
   frozenColumnOffset?: number;
@@ -228,7 +234,10 @@ function OpenTuiDataTableRowInner<
       {displayColumns.map((column, columnIndex) => {
         const frozen = columnIndex === 0 && frozenColumnOffset !== undefined;
         const clip = columnClips?.[columnIndex] ?? null;
-        const cell = renderCell(item, column, index, rowState);
+        const cellColumn = cellColumns[columnIndex] ?? column;
+        const made = renderCell(item, cellColumn, index, rowState);
+        // A drawn cell lays itself out in the column as drawn.
+        const cell = made.content !== undefined && cellColumn !== column ? renderCell(item, column, index, rowState) : made;
         widths[columnIndex] = cell.content === undefined ? displayWidth(cell.text) : cell.contentWidth ?? null;
         const columnStart = columnStarts[columnIndex] ?? 0;
         const leadGap = tableColumnLeadGap(displayColumns, columnIndex, columnGap);
@@ -459,6 +468,13 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   const displayColumns = useMemo(
     () => expandTableColumns(fittedColumns, contentWidth, columnGap, horizontalPadding),
     [columnGap, fittedColumns, contentWidth, horizontalPadding],
+  );
+  const cellColumns = useMemo(
+    () => displayColumns.map((column, index) => {
+      const set = columns[index] ? tableColumnWidth(columns[index]!) : column.width;
+      return column.width < set ? { ...column, width: set } : column;
+    }),
+    [columns, displayColumns],
   );
   const columnStarts = useMemo(
     () => tableColumnStarts(displayColumns, columnGap),
@@ -848,6 +864,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                     columnGap={columnGap}
                     columnStarts={columnStarts}
                     contentWidth={scrollContentWidth}
+                    cellColumns={cellColumns}
                     displayColumns={displayColumns}
                     focusPane={focusPane}
                     frozenColumnOffset={freezeFirstColumn ? frozenColumnOffset : undefined}
