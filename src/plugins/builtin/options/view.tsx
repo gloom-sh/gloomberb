@@ -987,10 +987,12 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   // cell wide enough for all of it, and otherwise takes a row of its own so no
   // figure is squeezed. Sized for four-digit days, so the band does not
   // reflow as the chain's as-of arrives or the expiry steps.
-  const expiryItem: StatItem = { id: "expiry", label: "Expiry", value: expiryDate, detail: `(${expiryDays})` };
+  // Dated as the expiry strip dates it ("13 Nov '26"), never the ISO day a report carries.
+  const expiryLabel = selectedExpiration == null ? "" : formatExpDate(selectedExpiration);
+  const expiryItem: StatItem = { id: "expiry", label: "Expiry", value: expiryLabel, detail: `(${expiryDays})` };
   const cellColumns = Math.max(figureColumns, Math.ceil((figures.length + 1) / statRowBudget));
   const expiryCells = Math.max(...figures.map((item) => item.label.length), expiryItem.label.length) + 1
-    + expiryDate.length + 2 + "(9999d)".length;
+    + expiryLabel.length + 2 + "(9999d)".length;
   const expiryInline = Math.floor((statWidth - 2 * (cellColumns - 1)) / cellColumns) >= expiryCells;
   const statColumns = expiryInline ? cellColumns : figureColumns;
   const statItems = [expiryInline ? expiryItem : { ...expiryItem, wide: true }, ...figures];

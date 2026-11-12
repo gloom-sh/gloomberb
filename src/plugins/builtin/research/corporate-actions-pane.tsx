@@ -23,6 +23,7 @@ import type {
 } from "../../../types/financials";
 import { blendHex, colors } from "../../../theme/colors";
 import { MISSING_VALUE, formatPercent } from "../../../utils/format";
+import { formatFilingDate } from "../../../utils/datetime-format";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneTicker } from "../../../state/app/context";
@@ -165,7 +166,7 @@ function sharedMetricCurrency(rows: readonly EventRow[]): string | undefined {
 export function buildEventColumns(width: number, unit?: string, variant: "corporate-actions" | "earnings-estimates" = "corporate-actions"): EventColumn[] {
   if (variant === "earnings-estimates") {
     return fitChartTableColumns<EventColumn>([
-      { id: "date", label: "DATE", width: 10, align: "left" },
+      { id: "date", label: "DATE", width: 11, align: "left" },
       { id: "status", label: "EVENT", width: 8, align: "left" },
       { id: "period", label: "PERIOD", width: 9, align: "left" },
       { id: "eps", label: "EPS", width: unit ? 7 : 11, align: "right" },
@@ -176,7 +177,7 @@ export function buildEventColumns(width: number, unit?: string, variant: "corpor
     ], width, ["detail", "growth", "revenue"]);
   }
   const columns: EventColumn[] = [
-    { id: "date", label: "DATE", width: 10, align: "left" },
+    { id: "date", label: "DATE", width: 11, align: "left" },
     { id: "status", label: "EVENT", width: 8, align: "left" },
     { id: "period", label: "PERIOD", width: 12, align: "left" },
     { id: "qEps", label: "Q EPS", width: 12, align: "right" },
@@ -630,7 +631,8 @@ export function CorporateActionsView({
     };
     switch (column.id) {
       case "date":
-        return { text: row.date, color: colors.textDim };
+        // Day-first as the Filings tab beside it dates its rows; the ISO day still sorts the column.
+        return { text: formatFilingDate(row.date, row.date), value: row.date, color: colors.textDim };
       case "status":
         return { text: row.status, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "period":
