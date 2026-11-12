@@ -43,9 +43,12 @@ function ChartIconButton({
   pressed,
   expanded,
   width,
+  onHover,
   children,
 }: {
   label: string;
+  /** The pointer came onto the button. */
+  onHover?: () => void;
   active: boolean;
   isDesktopWeb: boolean;
   onPress: () => void;
@@ -73,6 +76,7 @@ function ChartIconButton({
         consumeChartMouseEvent(event);
         onPress();
       }}
+      onMouseOver={onHover}
       cursor="pointer"
       data-gloom-interactive="true"
       data-gloom-role={role}
@@ -125,23 +129,32 @@ function MaskIcon({ icon, color, size = HANDLE_ICON_PX, visible = true }: { icon
   );
 }
 
+type ChartToolEntry = { label: string; glyph: string; icon: string; shortcut?: string; hint?: string };
+
+/** A tool's name with its key: "Trend line (T)". */
+function useToolName(): (tool: ChartToolEntry) => string {
+  const keyLabel = useShortcutLabel();
+  return (tool) => tool.shortcut ? `${tool.label} (${keyLabel(tool.shortcut)})` : tool.label;
+}
+
 function ChartToolButton({
   tool,
   active,
   isDesktopWeb,
   onPress,
+  onHover,
 }: {
-  tool: { label: string; glyph: string; icon: string; shortcut?: string; hint?: string };
+  tool: ChartToolEntry;
   active: boolean;
   isDesktopWeb: boolean;
   onPress: () => void;
+  onHover?: () => void;
 }) {
-  const keyLabel = useShortcutLabel();
-  const named = tool.shortcut ? `${tool.label} (${keyLabel(tool.shortcut)})` : tool.label;
+  const named = useToolName()(tool);
   const label = tool.hint ? `${named}. ${tool.hint}` : named;
   const color = active ? themeColors.text : themeColors.textDim;
   return (
-    <ChartIconButton label={label} active={active} pressed={active} isDesktopWeb={isDesktopWeb} onPress={onPress}>
+    <ChartIconButton label={label} active={active} pressed={active} isDesktopWeb={isDesktopWeb} onPress={onPress} onHover={onHover}>
       {isDesktopWeb ? <MaskIcon icon={tool.icon} color={color} /> : <Text fg={color}>{tool.glyph}</Text>}
     </ChartIconButton>
   );
@@ -280,6 +293,12 @@ export function ChartToolbar({
   const { open, onHover, onLeave, onFocus, onBlur, fold } = useToolbarOpening(barRef);
   const expanded = pinned || open;
   const tool = CHART_TOOLS.find((entry) => entry.kind === armedTool) ?? CHART_TOOLS[0]!;
+  const toolName = useToolName();
+  // The terminal has no tooltip, so the open bar names the tool under the
+  // pointer, else the one in hand, after its glyphs (review, 12 Nov 2026:
+  // `✥ ↔ ⊞ ╱ ∿` read as nothing).
+  const [hoveredTool, setHoveredTool] = useState<(typeof CHART_TOOLS)[number] | null>(null);
+  const captionTool = hoveredTool ?? tool;
   return (
     <Box
       ref={barRef}
@@ -306,7 +325,10 @@ export function ChartToolbar({
       data-folded={expanded ? undefined : "true"}
       data-pinned={pinned ? "true" : undefined}
       onMouseOver={onHover}
-      onMouseOut={onLeave}
+      onMouseOut={(event: ChartMouseEvent) => {
+        onLeave(event);
+        if (!pointerOnBar(barRef.current, event)) setHoveredTool(null);
+      }}
       onFocus={isDesktopWeb ? onFocus : undefined}
       onBlur={isDesktopWeb ? onBlur : undefined}
     >
@@ -330,6 +352,7 @@ export function ChartToolbar({
           active={armedTool === entry.kind}
           isDesktopWeb={isDesktopWeb}
           onPress={() => onArmTool(entry.kind)}
+          onHover={isDesktopWeb ? undefined : () => setHoveredTool(entry)}
         />
       )) : null}
       {/* Colours only take space while something can use them. */}
@@ -342,6 +365,9 @@ export function ChartToolbar({
           onPress={() => onPickColor(color)}
         />
       )) : null}
+      {expanded && !isDesktopWeb ? (
+        <Text fg={themeColors.textDim} data-gloom-role="composite-chart-tool-name">{toolName(captionTool)}</Text>
+      ) : null}
     </Box>
   );
 }

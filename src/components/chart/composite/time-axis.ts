@@ -637,38 +637,58 @@ function layoutTimeAxis({
     };
   }
 
-  const placed: CompositeTimeAxisTick[] = [];
-  writeLabel(axis, 0, startLabel);
-  placed.push({
-    timestamp: firstTimestamp,
-    ratio: 0,
-    label: startLabel,
-    start: 0,
-    end: startLabel.length - 1,
-  });
-
-  const endPadding = axisWidth > startLabel.length + endLabel.length + 2 ? 1 : 0;
-  // The endpoint sits under the last observation; with no reserved offset
-  // that is the right edge.
-  const endStart = Math.max(
+  const minimumGap = interval.unit === "month" || interval.unit === "year" ? 2 : 1;
+  const endpointGap = endpointLabelGap(interval, span, axisWidth);
+  const at = (ratio: number) => ratio * Math.max(axisWidth - 1, 0);
+  const endStartFor = (label: string) => Math.max(
     startLabel.length + 1,
     Math.min(
-      axisWidth - endLabel.length - endPadding,
-      resolveLabelStart(endRatio * Math.max(axisWidth - 1, 0), endLabel, axisWidth),
+      // The endpoint sits under the last observation; with no reserved offset
+      // that is the right edge.
+      axisWidth - label.length - (axisWidth > startLabel.length + label.length + 2 ? 1 : 0),
+      resolveLabelStart(at(endRatio), label, axisWidth),
     ),
   );
-  const minimumGap = interval.unit === "month" || interval.unit === "year" ? 2 : 1;
+  const interiors = candidates.filter((entry) => !entry.boundary);
+  // A year axis's start label is a bare year too (`2021` for a chart from
+  // November 2021), so the first year tick it pushed out read as a year
+  // missing: `2021 2023 2024` (review, 12 Nov 2026). There the start label
+  // gives way to that tick instead. A month or day axis's start label is a
+  // whole date, which reads as the span's start, and keeps its place.
+  let showStart = true;
+  if (interval.unit === "year") {
+    const firstTick = interiors.find((entry) => formatInteriorLabel(entry.timestamp, firstTimestamp, interval, clock) !== endLabel);
+    if (firstTick) {
+      const label = formatInteriorLabel(firstTick.timestamp, firstTimestamp, interval, clock);
+      showStart = resolveLabelStart(at(firstTick.ratio), label, axisWidth) > startLabel.length - 1 + endpointGap;
+    }
+  }
+
+  const placed: CompositeTimeAxisTick[] = [];
+  if (showStart) {
+    writeLabel(axis, 0, startLabel);
+    placed.push({
+      timestamp: firstTimestamp,
+      ratio: 0,
+      label: startLabel,
+      start: 0,
+      end: startLabel.length - 1,
+    });
+  }
+
+  const endStart = endStartFor(endLabel);
   let previousTimestamp = firstTimestamp;
-  let previousEnd = startLabel.length - 1;
-  const endpointGap = endpointLabelGap(interval, span, axisWidth);
+  let previousEnd = showStart ? startLabel.length - 1 : -1;
   // The first tick follows the start label, the rest follow a tick.
-  let previousGap = endpointGap;
-  for (const candidate of candidates.filter((entry) => !entry.boundary)) {
-    const label = formatInteriorLabel(candidate.timestamp, previousTimestamp, interval, clock);
+  let previousGap = showStart ? endpointGap : 0;
+  for (const candidate of interiors) {
+    const label = showStart || placed.length > 0
+      ? formatInteriorLabel(candidate.timestamp, previousTimestamp, interval, clock)
+      // With no start label, the first tick says the year.
+      : formatInteriorLabel(candidate.timestamp, Date.UTC(1900, 0, 1), interval, clock);
     // A year boundary inside the final year would repeat the right endpoint's year.
     if (label === endLabel) continue;
-    const center = candidate.ratio * Math.max(axisWidth - 1, 0);
-    const start = resolveLabelStart(center, label, axisWidth);
+    const start = resolveLabelStart(at(candidate.ratio), label, axisWidth);
     const end = start + label.length - 1;
     if (start <= previousEnd + previousGap) continue;
     if (end >= endStart - endpointGap) continue;

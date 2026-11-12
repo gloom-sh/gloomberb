@@ -63,7 +63,6 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | `h` / `l` | Switch tabs |
 | `<` / `>` | Narrow or widen a pane's sidebar, such as the list beside the map (the divider also drags) |
 | `Ctrl+Left` / `Ctrl+Right` | Scroll a focused table horizontally |
-| `m` | Cycle chart mode |
 | `Alt+Enter` | Run the newest notification's action, such as Revert or Review |
 | `Alt+Backspace` | Dismiss the newest notification |
 | `q` | Quit (terminal) |
