@@ -89,7 +89,7 @@ describe("macro release list", () => {
       figuresMissing: "the economic calendar has no Non Farm Payrolls row that day" });
   });
 
-  test("the ECB's decision days come from the server with the deposit rate, its next decision, and a CPI actual computed from the index (GLO-1994)", () => {
+  test("the ECB's decision days come from the server with the deposit rate, its next decision, and a CPI actual computed from the index", () => {
     const merged = mergeMacroReleases(floor, {
       ...served("2026-11-11", { cpi: ["2026-11-10"], ecb: ["2026-09-10", "2026-10-29"] }), scheduled: { ecb: "2026-12-17" },
       figures: {

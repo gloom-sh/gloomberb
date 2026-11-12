@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { followsUsBondMarket, usBondMarketClosedNote, usBondMarketHoliday } from "./us-bond-market";
 
-test("a day the US bond market was shut names its holiday, and a curve or rate asked for it says which day it shows (GLO-1994)", () => {
+test("a day the US bond market was shut names its holiday, and a curve or rate asked for it says which day it shows", () => {
   expect(usBondMarketClosedNote("2026-11-11", "2026-11-10")).toBe("Wed 11 Nov: US bond market closed (Veterans Day); showing Tue 10 Nov");
   expect(usBondMarketClosedNote("2026-11-07", "2026-11-06")).toBe("Sat 7 Nov: weekend; showing Fri 6 Nov");
   // A trading day with no curve yet, or a gap a closure does not explain, says nothing.

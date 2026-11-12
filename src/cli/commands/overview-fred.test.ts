@@ -174,7 +174,7 @@ test("nothing on or after --start names the latest observation, and fails a CSV 
   expect((await runFred(["T10Y2Y", "--start", "2026-10-14"])).text.split("\n")[0])
     .toBe("Latest observation: 2026-10-09 (44). Nothing on or after 2026-10-14.");
 
-  // A start on a day the bond market was shut shows the day before and says why (GLO-1994).
+  // A start on a day the bond market was shut shows the day before and says why.
   serveSeries((query) => ({
     observations: query.get("startDate") ? [] : [{ date: "2026-11-10", value: 4.11 }],
     info: { id: "DGS10", units: "Percent", frequency: "Daily", observationStart: "1962-01-02" },

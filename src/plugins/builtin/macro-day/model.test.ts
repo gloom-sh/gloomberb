@@ -147,7 +147,7 @@ describe("macro-day moves on a yield", () => {
   });
 });
 
-describe("macro-day ECB decisions on a pair's closes (GLO-1994)", () => {
+describe("macro-day ECB decisions on a pair's closes", () => {
   test("reads each ECB day on its close, and no move into or out of a close the source copied from the open", () => {
     // EUR/USD: Thu 21 Jul 2022's decision on its own close; Fri 8 Jul's close is the source's copy of its open, which
     // nothing rebuilt, so neither its move nor Mon 11 Jul's is a day's.
