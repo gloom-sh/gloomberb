@@ -4,6 +4,7 @@ import { scalarPoint, staticSeries } from "../../../components/chart/static/seri
 import { getTableWidth, tableColumnWidth } from "../../../components/ui/table-layout";
 import type { CompositeChartXAxis } from "../../../components/chart/composite/types";
 import { formatCompact, formatNumber } from "../../../utils/format";
+import { growthRate, isNotMeaningful, NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { freePreviewNote } from "../shared/free-preview";
 import type { CompanyMode } from "./client";
 
@@ -127,7 +128,8 @@ export function allObservations(data: KpisPayload): KpiObservation[] {
 export function allGuidance(data: GuidancePayload): KpiGuidance[] {
   return [...new Map([...data.guidance, ...data.history].map((row) => [row.id, row])).values()];
 }
-export function observationChange(row: KpiObservation, observations: KpiObservation[]): { value: number | null; unit: string } {
+/** A KPI's change on the period before: N/M off a zero or negative base, where a percentage of it says nothing. */
+export function observationChange(row: KpiObservation, observations: KpiObservation[]): { value: number | null; unit: string; notMeaningful?: true } {
   const fiscalOrder = (item: KpiObservation) => item.period.fiscalYear !== null && (item.period.kind === "year" || item.period.fiscalQuarter !== null)
     ? item.period.fiscalYear * 4 + (item.period.fiscalQuarter ?? 0) : null;
   const previousPeriod = (other: KpiObservation) => other.period.end && row.period.end ? other.period.end < row.period.end
@@ -137,10 +139,12 @@ export function observationChange(row: KpiObservation, observations: KpiObservat
   if (!prior || (row.conflict || row.contested) || !exactObservation(row)) return { value: null, unit: "" };
   if (row.unit === "percent") return { value: row.value - prior.value, unit: "pp" };
   if (row.unit === "basis_points") return { value: row.value - prior.value, unit: "bp" };
-  if (prior.value === 0) return { value: null, unit: "%" };
-  return { value: (row.value - prior.value) / Math.abs(prior.value) * 100, unit: "%" };
+  const growth = growthRate(row.value, prior.value);
+  if (isNotMeaningful(growth)) return { value: null, unit: "%", notMeaningful: true };
+  return { value: growth == null ? null : growth * 100, unit: "%" };
 }
-export const changeText = (change: { value: number | null; unit: string }) => change.value === null ? "--" : `${change.value > 0 ? "+" : ""}${formatNumber(change.value, 2)}${change.unit}`;
+export const changeText = (change: { value: number | null; unit: string; notMeaningful?: true }) => change.notMeaningful ? NOT_MEANINGFUL_TEXT
+  : change.value === null ? "--" : `${change.value > 0 ? "+" : ""}${formatNumber(change.value, 2)}${change.unit}`;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const isoDate = (value: string | null) => {
   const match = value ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) : null;

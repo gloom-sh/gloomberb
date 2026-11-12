@@ -42,6 +42,8 @@ export interface NewsArticle {
   isDeveloping: boolean;
   sourceCount?: number;
   items?: NewsStoryItem[];
+  /** The routine notices the story stands for in a company's feed (a buy-back's daily notices), its own included. */
+  routine?: NewsRoutineNotices;
   /**
    * The text this story was found by, when it stands in for a coin pair's feed
    * no story is filed under: the stories that mention "bitcoin" for BTC-USD.
@@ -50,6 +52,13 @@ export interface NewsArticle {
 
   // Compatibility aliases for RSS/ticker-news panes and existing table columns.
   importance: number;
+}
+
+export interface NewsRoutineNotices {
+  kind: string;
+  notices: number;
+  since: Date;
+  programme: string | null;
 }
 
 export interface NewsQuery {

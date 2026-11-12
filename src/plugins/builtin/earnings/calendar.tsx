@@ -287,7 +287,7 @@ function ReportTile({ report, selected, onPress, tileRef }: {
   const colors = useThemeColors();
   const surprise = report.epsSurprise;
   const ink = selected ? colors.selectedText
-    : surprise == null || surprise === 0 ? colors.text : surprise > 0 ? colors.positive : colors.negative;
+    : typeof surprise !== "number" || surprise === 0 ? colors.text : surprise > 0 ? colors.positive : colors.negative;
   return (
     <Box
       ref={tileRef}

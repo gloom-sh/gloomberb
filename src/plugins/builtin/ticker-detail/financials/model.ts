@@ -4,6 +4,7 @@ import { longerPeriodLabel, statementPeriodLabel, ttmPeriodLabel } from "../../.
 import { areNearbyFinancialPeriodEnds, fillDate, fillDateText, statementPeriodMonths } from "../../../../utils/financial-statements";
 import { formatPerShareNumber } from "../../../../utils/reported-money";
 import { hasNonIncomeStatementGap } from "../../../../utils/statement-gaps";
+import { growthRate, isNotMeaningful, NOT_MEANINGFUL_TEXT, outflowGrowthRate, type Rate } from "../../../../utils/growth";
 import {
   displayWidth,
   formatGrowthShort,
@@ -37,10 +38,13 @@ type MetricDef = {
   label: string;
   key?: keyof FinancialStatement;
   id?: string;
-  compute?: (statement: FinancialStatement) => number | undefined;
+  /** A figure worked out of the statement: a margin, N/M over revenue that is zero or negative (revenueMargin). */
+  compute?: (statement: FinancialStatement) => Rate | undefined;
   format: FinancialMetricFormat;
   showGrowth?: boolean;
   growthDirection?: FinancialGrowthDirection;
+  /** A line kept as a negative number (capex, dividends paid): its growth is the change in what went out. */
+  outflow?: boolean;
 };
 
 export type FinancialRowDef = MetricDef | FinancialGroupDef;
@@ -67,7 +71,7 @@ export type FinancialTableRow =
     kind: "metric";
     id: string;
     key?: keyof FinancialStatement;
-    compute?: (statement: FinancialStatement) => number | undefined;
+    compute?: (statement: FinancialStatement) => Rate | undefined;
     label: string;
     unitLabel: string;
     /** Money unit word (`bn`) the values are in, "" for whole units; null for ratios, per-share values and share counts. */
@@ -76,6 +80,7 @@ export type FinancialTableRow =
     format: FinancialMetricFormat;
     showGrowth: boolean;
     growthDirection: FinancialGrowthDirection;
+    outflow?: boolean;
     depth: number;
   }
   | {
@@ -105,6 +110,14 @@ function statementMetricValue(
 export function financialCellValue(row: FinancialTableRow, statement: FinancialStatement): number | undefined {
   if (row.kind === "group") return row.summaryKey ? statement[row.summaryKey] as number | undefined : undefined;
   return statementMetricValue(row, statement);
+}
+
+/** Whether a worked-out figure (a margin) is not meaningful in a statement: over revenue that is zero or negative. */
+export function statementMetricNotMeaningful(
+  def: Pick<MetricDef, "key" | "compute">,
+  statement: FinancialStatement,
+): boolean {
+  return !def.key && isNotMeaningful(def.compute?.(statement));
 }
 
 export const FINANCIAL_COL_W = 18;
@@ -138,11 +151,38 @@ export function financialPeriodWidth(values: Iterable<string>, headers: Iterable
   return Math.max(value + FINANCIAL_GROWTH_W, header);
 }
 
-export function computeGrowth(current: number | undefined, previous: number | undefined): number | undefined {
-  if (current == null || previous == null || !Number.isFinite(current) || !Number.isFinite(previous) || previous === 0) return undefined;
-  const direct = (current - previous) / Math.abs(previous);
-  const growth = Number.isFinite(direct) ? direct : current / Math.abs(previous) - Math.sign(previous);
-  return Number.isFinite(growth) ? growth : undefined;
+/**
+ * A line's growth from one period to the next: N/M off a zero or negative base (a loss
+ * narrowing, or turning into a profit, is no percentage of the loss). An outflow, kept as a
+ * negative number, grows as the money that went out does.
+ */
+export function computeGrowth(current: number | undefined, previous: number | undefined, outflow = false): Rate | undefined {
+  return outflow ? outflowGrowthRate(current, previous) : growthRate(current, previous);
+}
+
+/**
+ * A row's cell in a statement column: its figure as shown (N/M for a margin over revenue
+ * that is zero or negative) and its growth on the period it is compared with.
+ */
+export function financialCellParts(
+  row: FinancialTableRow,
+  statement: FinancialTableStatement,
+  previous: FinancialStatement | undefined,
+  comparisonCurrency: string | undefined,
+): { value: number | undefined; formattedValue: string; growth: Rate | undefined } {
+  const value = financialCellValue(row, statement);
+  const previousValue = previous ? financialCellValue(row, previous) : undefined;
+  const growth = (row.kind === "metric" && !row.showGrowth)
+    || !canCompareFinancialRow(row, statement, previous, comparisonCurrency)
+    ? undefined : computeGrowth(value, previousValue, row.kind === "metric" && row.outflow === true);
+  return { value, formattedValue: formatFinancialCellValue(row, statement), growth };
+}
+
+/** A row's figure for a period as its cell shows it: N/M for a margin over revenue that is zero or negative. */
+export function formatFinancialCellValue(row: FinancialTableRow, statement: FinancialStatement): string {
+  return row.kind === "metric" && statementMetricNotMeaningful(row, statement)
+    ? NOT_MEANINGFUL_TEXT
+    : formatFinancialValue(financialCellValue(row, statement), row, statement);
 }
 
 const SHARE_COUNT_FIELDS = new Set<keyof FinancialStatement>([
@@ -194,18 +234,19 @@ function comparableLine(current: FinancialStatement, previous: FinancialStatemen
 }
 
 export function semanticGrowthValue(
-  growth: number | undefined,
+  growth: Rate | undefined,
   direction: FinancialGrowthDirection,
 ): number | undefined {
-  if (growth == null) return undefined;
+  if (growth == null || isNotMeaningful(growth)) return undefined;
   if (direction === "lower") return -growth;
   if (direction === "neutral") return 0;
   return growth;
 }
 
 /** A period's value and its growth laid out in a column `width` cells wide, the growth against its right edge. */
-export function formatFinancialCell(value: string, growth: number | undefined, width = FINANCIAL_COL_W) {
-  const growthText = growth != null && Number.isFinite(growth) ? formatFinancialGrowth(growth) : "";
+export function formatFinancialCell(value: string, growth: Rate | undefined, width = FINANCIAL_COL_W) {
+  const growthText = isNotMeaningful(growth) ? NOT_MEANINGFUL_TEXT
+    : growth != null && Number.isFinite(growth) ? formatFinancialGrowth(growth) : "";
   return {
     valueText: padTo(value, Math.max(0, width - FINANCIAL_GROWTH_W), "right"),
     growthText: padTo(growthText ? ` ${growthText}` : "", FINANCIAL_GROWTH_W, "right"),
@@ -390,7 +431,7 @@ function hasFinancialRowValue(
   statements: FinancialStatement[],
 ): boolean {
   if (!isFinancialGroup(row)) {
-    return statements.some((statement) => typeof statementMetricValue(row, statement) === "number");
+    return statements.some((statement) => typeof statementMetricValue(row, statement) === "number" || statementMetricNotMeaningful(row, statement));
   }
   return (
     (row.summaryKey ? hasStatementValue(statements, row.summaryKey) : false)
@@ -504,7 +545,9 @@ export function buildFinancialRows(
         divisor,
         format,
         showGrowth: def.showGrowth ?? format !== "percent",
-        growthDirection: def.growthDirection ?? "higher",
+        // More spent is neither better nor worse in itself.
+        growthDirection: def.growthDirection ?? (def.outflow ? "neutral" : "higher"),
+        ...(def.outflow ? { outflow: true } : {}),
         depth,
       });
       continue;
@@ -652,8 +695,10 @@ export function selectFinancialStatements(
   const servedEnd = (served?.aggregation?.periodEnd ?? "").slice(0, 10);
   // Two ends a few days apart are one period (a quarter dated 2025-06-28 and a half to 2025-06-30).
   const sameEnd = !!fromQuarters && !!served && areNearbyFinancialPeriodEnds(servedEnd, quartersEnd);
+  // To the same day, the served one too where the four quarters would mix two definitions of a line
+  // (a bank's revenue before credit losses in its announcements, after them at the statements source).
   const trailing = served && (!fromQuarters || (!sameEnd && servedEnd > quartersEnd)
-    || (sameEnd && lacksHeadline(fromQuarters, served)))
+    || (sameEnd && (lacksHeadline(fromQuarters, served) || !!servedTrailing?.trailing.overQuarters)))
     ? served
     : fromQuarters;
   // Right after a fiscal year closes, the last four quarters are that year:
@@ -721,22 +766,12 @@ export function buildFinancialTableModel(
   const { rows: tableRows, unit } = shareFinancialUnit(buildFinancialRows(subTab.rows, statements, collapsedGroups));
   const rows = tableRows.map((row): FinancialTableModelRow => {
     const cells = statements.map((statement) => {
-      const previous = previousStatementMap.get(statement.date);
-      const value = row.kind === "group"
-        ? row.summaryKey ? statement[row.summaryKey] as number | undefined : undefined
-        : statementMetricValue(row, statement);
-      const previousValue = previous
-        ? row.kind === "group"
-          ? row.summaryKey ? previous[row.summaryKey] as number | undefined : undefined
-          : statementMetricValue(row, previous)
-        : undefined;
-      const growth = (row.kind === "metric" && !row.showGrowth)
-        || !canCompareFinancialRow(row, statement, previous, comparisonCurrency)
-        ? undefined : computeGrowth(value, previousValue);
+      const { value, formattedValue, growth } = financialCellParts(row, statement, previousStatementMap.get(statement.date), comparisonCurrency);
       return {
-        ...formatFinancialCell(formatFinancialValue(value, row, statement), growth),
+        ...formatFinancialCell(formattedValue, growth),
         value,
-        growth,
+        // A number, or null with the cell's growth text reading N/M.
+        growth: typeof growth === "number" ? growth : undefined,
         semanticGrowth: semanticGrowthValue(growth, row.growthDirection),
       };
     });

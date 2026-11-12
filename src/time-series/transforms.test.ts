@@ -87,6 +87,19 @@ describe("series transformations", () => {
     expect(applySeriesTransform(points, "yoy").map(({ value }) => value)).toEqual([null, null, 50, 50]);
   });
 
+  test("YoY and QoQ growth off a zero or negative base leaves a gap, as it is not meaningful", () => {
+    const points = [
+      point("2023-03-31", -80),
+      point("2023-06-30", 0),
+      point("2023-09-30", 40),
+      point("2024-03-31", 20),
+      point("2024-06-30", 30),
+      point("2024-09-30", 60),
+    ];
+    expect(applySeriesTransform(points, "yoy").map(({ value }) => value)).toEqual([null, null, null, null, null, 50]);
+    expect(applySeriesTransform(points, "qoq").map(({ value }) => value)).toEqual([null, null, null, null, 50, 100]);
+  });
+
   test("log transform leaves nonpositive values as gaps", () => {
     const values = applySeriesTransform([
       point("2024-01-01", -1),

@@ -1,4 +1,5 @@
 import { coinSearchName } from "../utils/crypto-pair";
+import { formatShortDate } from "../utils/datetime-format";
 import { canonicalExchange, normalizeSymbol } from "../utils/exchanges";
 import type { NewsCapability } from "../capabilities";
 import type { NewsArticle, NewsFeed, NewsQuery, NewsQueryState } from "./types";
@@ -286,6 +287,24 @@ export function summaryRestatesHeadline(title: string, summary: string): boolean
   const known = (word: string) => headline.some((stem) => stem === word
     || (Math.min(stem.length, word.length) >= 4 && (stem.startsWith(word) || word.startsWith(stem))));
   return words.filter((word) => !known(word)).length <= words.length * RESTATED_NEW_WORDS;
+}
+
+/**
+ * What a company feed's row of routine notices stands for, after its headline: "8 notices since Oct 30"
+ * (a buy-back's daily "Transaction in own shares", folded into its latest). Null for any other row.
+ */
+export function routineNoticesText(article: Pick<NewsArticle, "routine" | "publishedAt">): string | null {
+  const routine = article.routine;
+  if (!routine || routine.notices < 2) return null;
+  // The year is named only when the run began in another year than its latest notice.
+  const sameYear = routine.since.getUTCFullYear() === article.publishedAt.getUTCFullYear();
+  return `${routine.notices} notices since ${formatShortDate(routine.since, { year: sameYear ? false : "numeric", utc: true })}`;
+}
+
+/** The headline a list shows: with the notices a folded row stands for ("Transaction in own shares (8 notices since Oct 30)"). */
+export function listedHeadline(article: Pick<NewsArticle, "title" | "routine" | "publishedAt">): string {
+  const notices = routineNoticesText(article);
+  return notices ? `${article.title} (${notices})` : article.title;
 }
 
 /**

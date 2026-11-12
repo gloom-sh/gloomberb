@@ -39,7 +39,7 @@ import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import {
-  appTtmRate, enterpriseValueGapIsLarge, enterpriseValueReconciliationNote, trailingEpsFiscalYear, ttmAtAppRate, ttmConversionNote, withBankEnterpriseValue,
+  appTtmRate, enterpriseValueGapIsLarge, enterpriseValueReconciliationNote, trailingEpsFiscalYear, ttmAtAppRate, ttmConversionNote, withFinancialEnterpriseValue,
 } from "../../../utils/fundamentals";
 import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
@@ -188,9 +188,9 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     [fxObservations],
   );
   const ttmRate = appTtmRate(fundamentals, (currency) => fxObservations.get(currency));
-  // A bank's EV reads n/m: its deposits are funding, not debt.
+  // A bank's, an insurer's or a broker's EV reads n/m: its deposits, float or repos are funding, not debt.
   const shownFundamentals = useMemo(
-    () => (fundamentals ? ttmAtAppRate(withBankEnterpriseValue(fundamentals, profile), ttmRate) : fundamentals),
+    () => (fundamentals ? ttmAtAppRate(withFinancialEnterpriseValue(fundamentals, profile), ttmRate) : fundamentals),
     [fundamentals, profile, ttmRate?.rate, ttmRate?.asOf],
   );
   const quoteCurrency = quote?.currency || ticker.metadata.currency || baseCurrency;
@@ -254,7 +254,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   });
   // A provider EV well off market cap + debt - cash, or why a withdrawn one is unavailable, at the
   // regular session price the EV beside it is shown at. A gap of a few percent is the valuation panes' detail.
-  const pricedForEnterpriseValue = atRegularSessionPrice({ quote, fundamentals: withBankEnterpriseValue(fundamentals, profile) }).fundamentals;
+  const pricedForEnterpriseValue = atRegularSessionPrice({ quote, fundamentals: withFinancialEnterpriseValue(fundamentals, profile) }).fundamentals;
   const enterpriseValueNote = enterpriseValueGapIsLarge(pricedForEnterpriseValue)
     ? enterpriseValueReconciliationNote(pricedForEnterpriseValue, undefined, financials ?? undefined) : undefined;
   // Months of cash, for a company that burns it, and an offering since its balance sheet that the cash is not in yet.

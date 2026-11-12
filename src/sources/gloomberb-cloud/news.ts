@@ -82,6 +82,14 @@ function mapCloudNewsStoryItem(
   };
 }
 
+/** A folded row's notices, when the service says how many (two or more) and since when. */
+function routineNotices(payload: CloudNewsPayload["routine"]): NewsArticle["routine"] | null {
+  if (!payload || !Number.isInteger(payload.notices) || payload.notices < 2) return null;
+  const since = new Date(payload.since);
+  if (Number.isNaN(since.getTime())) return null;
+  return { kind: payload.kind, notices: payload.notices, since, programme: payload.programme ?? null };
+}
+
 export function mapCloudNewsArticle(
   item: CloudNewsPayload,
   fallbackTicker?: string,
@@ -124,6 +132,7 @@ export function mapCloudNewsArticle(
     isDeveloping: !!item.flags?.developing,
     sourceCount: item.sourceCount,
     items: item.items?.map(mapCloudNewsStoryItem) ?? [],
+    ...(routineNotices(item.routine) ? { routine: routineNotices(item.routine)! } : {}),
   };
 }
 

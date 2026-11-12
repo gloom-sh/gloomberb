@@ -41,8 +41,9 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
   registrationId: string;
 }) {
   const dataProvider = useAssetData();
-  // Past reports are the US board's, where SAN is not SAN:EPA's company, and a Hong Kong listing's own (its results
-  // announcements, in their currency): any other listing abroad shows its next report alone.
+  // Past reports are the US board's, where SAN is not SAN:EPA's company, and a Hong Kong, Singapore or China A
+  // listing's own (its exchange's results calendar and announcements, in their currency): any other listing abroad
+  // shows its next report alone.
   const venueAbroad = listingAbroadVenue(symbol);
   const abroad = !hasEarningsHistory(venueAbroad);
   const ownAbroad = venueAbroad != null && !abroad;
@@ -122,7 +123,7 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
     loading: resource.loading,
     error: historyError,
     stale: !!resource.data?.stale,
-    info: abroad ? [{ id: "us-listings", parts: [{ text: "past reports: US and Hong Kong listings only", tone: "muted" as const }] }]
+    info: abroad ? [{ id: "us-listings", parts: [{ text: "past reports: US, Hong Kong, Singapore and China A listings only", tone: "muted" as const }] }]
       : payload && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
   });
 

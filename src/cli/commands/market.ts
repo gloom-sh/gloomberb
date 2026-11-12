@@ -230,7 +230,7 @@ import { DAY_SO_FAR_TEXT, dailyOrLongerBarSize, withSessionBar } from "../../tim
 import { requestedBarSize } from "../../time-series/bar-spacing";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
-import { withBankEnterpriseValue } from "../../utils/fundamentals";
+import { withFinancialEnterpriseValue } from "../../utils/fundamentals";
 import { fundamentalsFreshness, quotesFreshness, rowsFreshness, valuationFreshness } from "../freshness";
 import { fxPairListing, fxQuoteRateMove, fxQuoteRateObservation, METAL_NAMES, readFxQuoteRate } from "../fx-quote-rate";
 import { quoteBarNotes } from "../../market-data/quotes/intraday-bar";
@@ -2796,7 +2796,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
           } : {},
           // A bank's EV and EV/revenue are null with why: n/m for banks.
           fundamentals: priced.fundamentals && exportedDividendFundamentals(
-            exportedFundamentals(withBankEnterpriseValue(priced.fundamentals, priced.profile))!, report.distributions),
+            exportedFundamentals(withFinancialEnterpriseValue(priced.fundamentals, priced.profile))!, report.distributions),
           // A bond fund's sponsor figures; fundamentals.dividendYield is then its distribution yield, not its SEC yield.
           ...bond ? { bondFund: bond } : {},
           ...view === "fundamentals" ? { statementFilings, bank: bank.bank, ...bank.note ? { bankNote: bank.note } : {} } : {},

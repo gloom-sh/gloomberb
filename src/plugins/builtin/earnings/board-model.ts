@@ -9,7 +9,7 @@ import { calendarReport } from "../shared/earnings-calendar";
 import { listingSuffixCandidate } from "../../../sources/listing-symbols";
 import { isUsListingExchange } from "../../../utils/exchanges";
 import { sameHistoryListing } from "./client";
-import { shortDate, surprise, weekday } from "./format";
+import { shortDate, surprise, weekday, type Surprise } from "./format";
 
 /** A held name is in a portfolio; a watched one only in watchlists. */
 export type Ownership = "held" | "watched";
@@ -33,8 +33,8 @@ export interface BoardReport {
   provisional: boolean;
   /** Null when the reported figure's basis cannot be determined. */
   epsBasis: EarningsEpsBasis | null;
-  /** Actual over estimate minus one. */
-  epsSurprise: number | null;
+  /** Actual over estimate minus one: N/M against a loss or zero estimate. */
+  epsSurprise: Surprise;
   revenueEstimate: number | null;
   impliedMove: number | null;
   averageMove: number | null;

@@ -854,6 +854,12 @@ export interface StatementTrailing {
   priorInterim: { end: string; months: number };
   /** "FY to 2025-12-31 + 6 months to 2026-06-30 − 6 months to 2025-06-30" */
   basis: string;
+  /**
+   * Why the four quarters to the same end must not stand in for this: the latest quarters come from the
+   * company's announcements and the earlier ones from a source that defines a line otherwise. Absent where
+   * the quarters may be summed.
+   */
+  overQuarters?: string;
 }
 
 /** Per-share earnings lines that can be declared unavailable. */

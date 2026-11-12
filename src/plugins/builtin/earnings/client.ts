@@ -114,13 +114,18 @@ export function cachedEarningsHistory(symbol: string, accessKey?: string) {
   return cachedCloudResource(historyCache, historyKey(symbol, undefined, accessKey), (payload) => validateEarningsHistory(payload, symbol));
 }
 
+/** The venues abroad whose listings' own reports Gloom Cloud reads: their exchange's results calendar and announcements. */
+const HISTORY_VENUES_ABROAD: ReadonlySet<string> = new Set(["HKEX", "SGX", "SSE", "SZSE"]);
+
 /**
  * Whether ERN reads a listing's own past reports: every US listing, and of
- * the listings abroad Hong Kong's, which Gloom Cloud reads from their
- * results announcements. Any other listing abroad shows its next report.
+ * the listings abroad Hong Kong's, Singapore's and China A's, which Gloom
+ * Cloud reads from their exchange's results calendar and announcements. Any
+ * other listing abroad shows its next report. A server that reads only Hong
+ * Kong's refuses the others, which then show their next report as before.
  */
 export function hasEarningsHistory(venueAbroad: string | null): boolean {
-  return venueAbroad == null || venueAbroad === "HKEX";
+  return venueAbroad == null || HISTORY_VENUES_ABROAD.has(venueAbroad);
 }
 
 /** A server that does not read a listing abroad's history yet refuses it (400): the next report stands alone, as before. */

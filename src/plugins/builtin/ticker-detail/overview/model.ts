@@ -31,7 +31,7 @@ import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolio
 import { listingDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../../../market-data/quotes/live-valuation";
 import { atRegularSessionPrice } from "../../../../market-data/quotes/regular-session-valuation";
 import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../../../utils/reported-money";
-import { enterpriseValueCheck, enterpriseValueComputed, enterpriseValueNotMeaningful, fundamentalsCurrency, isBankEnterpriseValue, fundamentalsEpsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
+import { enterpriseValueCheck, enterpriseValueComputed, enterpriseValueNotMeaningful, fundamentalsCurrency, financialEnterpriseValue, fundamentalsEpsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
 import { formatShortDate } from "../../../../utils/datetime-format";
 import { safeExternalUrl } from "../../../../utils/external-url";
 import type { FundBondFacts } from "../../../../api-client/fund-facts";
@@ -334,9 +334,11 @@ export function buildOverviewStats({
   const enterpriseValue = reportedEnterpriseValue(priced);
   // At or below zero, N/M as a P/E over a loss reads, with why in the space a stat has; valuation gives the full reason.
   if (enterpriseValueNotMeaningful(priced)) {
-    // A bank's deposits are funding, not debt (withBankEnterpriseValue); any other's cash exceeds the rest.
+    // A bank's deposits, an insurer's float and a broker's repos are funding, not debt (withFinancialEnterpriseValue);
+    // any other's cash exceeds the rest.
+    const financial = financialEnterpriseValue(priced);
     stats.push({ label: "EV", value: formatPriceEarnings(NOT_MEANINGFUL),
-      detail: isBankEnterpriseValue(priced) ? "for banks" : ["cash > cap + debt", "cash > cap"] });
+      detail: financial ? financial.replace(/^n\/m /, "") : ["cash > cap + debt", "cash > cap"] });
   } else if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
     stats.push({ label: "EV", value: "—" });
   } else if (enterpriseValue != null) {

@@ -18,6 +18,7 @@ import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 import { declaredDividends } from "../../../utils/declared-dividends";
 import { isReasonCode, readableStatus } from "../../../utils/reason-codes";
 import { fundamentalsEpsCurrency, SERVED_TRAILING_EPS } from "../../../utils/fundamentals";
+import { isNotMeaningful, NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import {
   earningsDateStatus,
   earningsDetail,
@@ -58,6 +59,8 @@ export interface EventRow {
   epsEstimate?: number;
   epsDifference?: number;
   surprisePercent?: number;
+  /** The surprise is N/M: the estimate was of a loss, or of nothing. */
+  surpriseNotMeaningful?: true;
   /** A reported figure's basis, or an upcoming estimate's when it is adjusted; the same quarter is named the same way in ERN. The TTM row's EPS is GAAP. */
   epsBasis?: EpsBasisName;
   /** The reported figure is the company's press release's, provisional until the calendar's replaces it. */
@@ -352,8 +355,10 @@ export function buildEventRows(
     // A pending announcement must never inherit the previous report's actuals.
     const statement = earning.epsActual == null ? undefined : statementForEarningsDate(quarterlyStatements, earning);
     const surprise = epsSurprise(earning.epsActual, earning.epsEstimate);
-    const surprisePercent = earning.epsActual == null ? undefined
-      : surprise != null ? Math.round(surprise * 10_000) / 100 : earning.surprisePercent;
+    // Against a loss or zero estimate no percentage is shown, the source's either.
+    const surpriseNotMeaningful = earning.epsActual != null && isNotMeaningful(surprise);
+    const surprisePercent = earning.epsActual == null || surpriseNotMeaningful ? undefined
+      : typeof surprise === "number" ? Math.round(surprise * 10_000) / 100 : earning.surprisePercent;
     rows.push({
       id: earningsIds[index]!,
       // An announcement keeps its date beside ERN's; a period-end row moves to its statement's.
@@ -373,6 +378,7 @@ export function buildEventRows(
       epsEstimate: earning.epsEstimate,
       epsDifference: earning.epsActual == null ? undefined : earning.difference,
       surprisePercent,
+      ...(surpriseNotMeaningful ? { surpriseNotMeaningful: true as const } : {}),
       epsBasis: showsEpsBasis({ epsActual: earning.epsActual, epsBasis: earningsEpsBasis(earning.epsBasis) })
         ? epsBasisName(earningsEpsBasis(earning.epsBasis)) : undefined,
       ...(isProvisionalActual(earning) ? { epsProvisional: true as const } : {}),
@@ -384,8 +390,10 @@ export function buildEventRows(
       periodDateSource: statement?.dateSource,
       providerPeriodDate: earning.dateType === "fiscal-period-end" ? earning.date : undefined,
       dateEvidence: statement?.dateEvidence,
-      value: surprisePercent != null ? formatPercentRaw(surprisePercent) : "-",
-      tone: surprisePercent == null ? "muted" : surprisePercent >= 0 ? "positive" : "negative",
+      value: surpriseNotMeaningful ? NOT_MEANINGFUL_TEXT : surprisePercent != null ? formatPercentRaw(surprisePercent) : "-",
+      // An N/M surprise is still a beat or a miss: the actual's side of the estimate says which.
+      tone: surpriseNotMeaningful ? earning.epsActual! > earning.epsEstimate! ? "positive" : earning.epsActual! < earning.epsEstimate! ? "negative" : "muted"
+        : surprisePercent == null ? "muted" : surprisePercent >= 0 ? "positive" : "negative",
     });
   }
 

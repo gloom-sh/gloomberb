@@ -3,10 +3,10 @@ import { ebitdaLacksDepreciation } from "../../utils/ebitda";
 import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../utils/reported-money";
 import {
-  appTtmRate, BANK_ENTERPRISE_VALUE, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueLabel,
+  appTtmRate, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueLabel,
   enterpriseValueReconciliationNote,
-  epsConversionNote, fundamentalsCurrency, isBankEnterpriseValue, reportedEnterpriseValue, trailingEpsFiscalYear, trailingEpsSourceNote, ttmAtAppRate, ttmConversionNote,
-  withBankEnterpriseValue,
+  epsConversionNote, financialEnterpriseValue, fundamentalsCurrency, isFinancialEnterpriseValueReason, reportedEnterpriseValue, trailingEpsFiscalYear, trailingEpsSourceNote, ttmAtAppRate, ttmConversionNote,
+  withFinancialEnterpriseValue,
 } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { halfYearGrowthPeriod } from "../../utils/financial-statements";
@@ -633,8 +633,9 @@ function unsourcedCurrencyNote(metrics: readonly FundamentalsMetric[]): string |
  * a loss is.
  */
 function enterpriseValueFigure(figure: MetricFigure, fundamentals: TickerFinancials["fundamentals"]): MetricFigure {
-  // A bank's: its deposits are funding, not debt.
-  if (isBankEnterpriseValue(fundamentals)) return { text: BANK_ENTERPRISE_VALUE, value: "N/M", unit: figure.unit };
+  // A bank's, an insurer's or a broker's: its deposits, float or repos are funding, not debt.
+  const financial = financialEnterpriseValue(fundamentals);
+  if (financial) return { text: financial, value: "N/M", unit: figure.unit };
   const label = enterpriseValueLabel(fundamentals);
   if (label === "not-meaningful") return { ...multipleFigure(NOT_MEANINGFUL), unit: figure.unit };
   // A withdrawn EV the bridge stands in for shows the bridge (listingEnterpriseView).
@@ -865,7 +866,7 @@ function fundamentalsMetrics(
   const withdrawn = fundamentals?.notMeaningful ?? {};
   return [
     { label: "Market Cap", ...marketCap },
-    { label: "Enterprise Value", ...enterpriseValueFigure(enterpriseValue, withBankEnterpriseValue(fundamentals, profile)) },
+    { label: "Enterprise Value", ...enterpriseValueFigure(enterpriseValue, withFinancialEnterpriseValue(fundamentals, profile)) },
     // A multiple over a loss is N/M, even beside a positive one the source served from an older period, and so is one
     // withdrawn as no multiple of the share (a warrant's, an EPS that is not net income over the shares; share-multiples).
     { label: epsYear ? `P/E ${epsYear}` : "P/E (TTM)", ...multipleFigure(withdrawn.trailingPE ? NOT_MEANINGFUL : priceEarningsOnEarnings(fundamentals?.trailingPE, fundamentals?.eps)) },
@@ -991,7 +992,7 @@ function fundamentalsNotes(
   // A bank's EV line says why it is n/m.
   const bridged = metrics.some((metric) => metric.label === "Enterprise Value" && typeof metric.value === "number")
     && enterpriseValueLabel(fundamentals) === "unavailable";
-  const enterpriseValue = shown("Enterprise Value") && !metrics.some((metric) => metric.text === BANK_ENTERPRISE_VALUE)
+  const enterpriseValue = shown("Enterprise Value") && !metrics.some((metric) => isFinancialEnterpriseValueReason(metric.text))
     ? bridged ? listingNote : [enterpriseValueReconciliationNote(fundamentals, enterpriseValueCurrency(priced.quote, fundamentals), priced)
       ?? computedEnterpriseValueNote(fundamentals), listingNote].filter(Boolean).join(" ") || undefined
     : undefined;

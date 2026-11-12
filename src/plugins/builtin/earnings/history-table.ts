@@ -2,7 +2,7 @@ import type { DataTableCell, DataTableColumn } from "../../../components";
 import { TABLE_COLUMN_GAP, tableColumnWidth } from "../../../components/ui/table-layout";
 import { colors } from "../../../theme/colors";
 import { TextAttributes } from "../../../ui";
-import { datedYear, epsText, impliedText, moneyText, signedPercent, TIMING_LABEL } from "./format";
+import { datedYear, epsText, impliedText, moneyText, signedPercent, TIMING_LABEL, type Surprise } from "./format";
 import { epsBasisShort, showsEpsBasis } from "../shared/earnings-report";
 import { periodText, type HistoryRow } from "./history-model";
 
@@ -35,7 +35,7 @@ const DROP_ORDER: HistoryColumnId[] = [
 ];
 
 /** The sales columns and what fills them; a company with no revenue on record shows none of them. */
-const SALES_COLUMNS: Partial<Record<HistoryColumnId, (row: HistoryRow) => number | null>> = {
+const SALES_COLUMNS: Partial<Record<HistoryColumnId, (row: HistoryRow) => Surprise>> = {
   revenueEstimate: (row) => row.revenueEstimate,
   revenueActual: (row) => row.revenueActual,
   revenueSurprise: (row) => row.revenueSurprise,
@@ -83,8 +83,8 @@ export function historyColumns(width: number, rows: readonly HistoryRow[], optio
   return columns;
 }
 
-function signed(value: number | null): DataTableCell {
-  return { text: signedPercent(value), color: value == null || value === 0 ? colors.textDim : value > 0 ? colors.positive : colors.negative };
+function signed(value: Surprise): DataTableCell {
+  return { text: signedPercent(value), color: typeof value !== "number" || value === 0 ? colors.textDim : value > 0 ? colors.positive : colors.negative };
 }
 
 /**

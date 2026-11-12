@@ -23,18 +23,16 @@ import {
   financialPeriodWidth,
   FINANCIAL_SUB_TABS,
   buildFinancialRows,
-  canCompareFinancialRow,
   collectDefaultCollapsedGroupIds,
   collectGroupIds,
-  computeGrowth,
-  financialCellValue,
+  financialCellParts,
   financialColumnLabel,
   formatFinancialCell,
+  formatFinancialCellValue,
   financialStatementCurrency,
   financialStatementLimitations,
   financialStatementPeriods,
   financialSubTabFields,
-  formatFinancialValue,
   latestFinancialPeriodEnd,
   notInYetNote,
   resolveFinancialPeriod,
@@ -359,7 +357,7 @@ export function ResolvedFinancialsTab({
     if (nativePaneChrome || ratioTab) return FINANCIAL_COL_W;
     const everyRow = shareFinancialUnit(buildFinancialRows(subTab.rows, displayStatements, NO_COLLAPSED_GROUPS)).rows;
     const values = [...everyRow, ...rows].flatMap((row) => displayStatements.map((statement) => (
-      formatFinancialValue(financialCellValue(row, statement), row, statement)
+      formatFinancialCellValue(row, statement)
     )));
     return financialPeriodWidth(values, periodHeaders);
   }, [displayStatements, nativePaneChrome, periodHeaders, ratioTab, rows, subTab.rows]);
@@ -414,13 +412,7 @@ export function ResolvedFinancialsTab({
       text: "",
     };
 
-    const previous = previousStatementMap.get(column.statement.date);
-    const value = financialCellValue(row, column.statement);
-    const previousValue = previous ? financialCellValue(row, previous) : undefined;
-    const growth = (row.kind === "metric" && !row.showGrowth)
-      || !canCompareFinancialRow(row, column.statement, previous, comparisonCurrency)
-      ? undefined : computeGrowth(value, previousValue);
-    const formattedValue = formatFinancialValue(value, row, column.statement);
+    const { formattedValue, growth } = financialCellParts(row, column.statement, previousStatementMap.get(column.statement.date), comparisonCurrency);
     const cell = formatFinancialCell(formattedValue, growth, column.width);
     const growthColorValue = semanticGrowthValue(growth, row.growthDirection);
 

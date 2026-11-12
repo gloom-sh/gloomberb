@@ -4,7 +4,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { cachedCompanyData, companyKpisCache, fetchCompanyData, loadCompanyData, validateCompanyData } from "./client";
 import { getTableWidth } from "../../../components/ui/table-layout";
-import { allObservations, companyColumns, companyEmptyState, directionLabel, directionTone, fiscalLabel, fitCompanyColumns, guidanceSeries, observationChange, observationChart, outcomeLabel, rangeText, observationValue, guideGroupKey, seriesDetail, seriesName,
+import { allObservations, changeText, companyColumns, companyEmptyState, directionLabel, directionTone, fiscalLabel, fitCompanyColumns, guidanceSeries, observationChange, observationChart, outcomeLabel, rangeText, observationValue, guideGroupKey, seriesDetail, seriesName,
   seriesOrder } from "./model";
 import { guide, guidancePayload, kpisPayload, observation } from "./test-fixture";
 
@@ -30,6 +30,13 @@ test("changes preserve frequency, currency, basis, zero denominators and percent
   expect(observationChange(current, [{ ...previous, conflict: true }]).value).toBeNull();
   expect(observationChange(current, [{ ...previous, value: 0 }]).value).toBeNull();
   expect(observationChange({ ...current, value: 12, unit: "percent" }, [{ ...previous, value: 10, unit: "percent" }])).toEqual({ value: 2, unit: "pp" });
+  // Off a zero or negative base the change is not meaningful, and reads so.
+  expect(changeText(observationChange(current, [{ ...previous, value: 0 }]))).toBe("N/M");
+  const fromLoss = observationChange(current, [{ ...previous, value: -40_000_000 }]);
+  expect(fromLoss).toEqual({ value: null, unit: "%", notMeaningful: true });
+  expect(changeText(fromLoss)).toBe("N/M");
+  // A rate's change in points stays a number across zero.
+  expect(observationChange({ ...current, value: 2, unit: "percent" }, [{ ...previous, value: -1, unit: "percent" }])).toEqual({ value: 3, unit: "pp" });
 });
 
 test("chart projection excludes conflicts, revisions and missing dates without combining fiscal frequencies", () => {

@@ -1,5 +1,6 @@
 import { withBalanceSheetRate } from "../../../market-data/quotes/balance-sheet-rate";
 import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
+import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "../../../ui";
 import {
@@ -380,10 +381,12 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
         return { text: formatLevelPercent(row.fcfYield ?? undefined), color: priceColor(row.fcfYield ?? 0) };
       case "revenueGrowth": {
         // A half-year reporter's growth is its half's, which the cell says beside the figure.
+        if (row.revenueGrowth == null && row.notMeaningful.revenueGrowth) return { text: NOT_MEANINGFUL_TEXT, color: colors.text };
         const half = row.revenueGrowth != null ? revenueGrowthHalfTag(row.revenueGrowthHalf) : null;
         return { text: `${formatPercent(row.revenueGrowth ?? undefined)}${half ? ` ${half}` : ""}`, color: shownPriceColor((row.revenueGrowth ?? 0) * 100, 2) };
       }
       case "operatingMargin":
+        if (row.operatingMargin == null && row.notMeaningful.operatingMargin) return { text: NOT_MEANINGFUL_TEXT, color: colors.text };
         return { text: `${formatLevelPercent(row.operatingMargin ?? undefined)}${row.operatingMargin != null && row.operatingMarginPeriod ? ` ${row.operatingMarginPeriod}` : ""}`, color: colors.text };
     }
   }, []);

@@ -14,7 +14,7 @@ import {
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { companyDataNotes, readCompanyFrom } from "../../../types/company-from";
 import { formatUtcSeconds } from "../../../utils/utc-time";
-import { newsSummaryLine } from "../../../news/news-model";
+import { listedHeadline, newsSummaryLine } from "../../../news/news-model";
 import { shortStoryId } from "../../../news/story-id";
 import { cloudNewsFreshness, cloudRealtimeAccess } from "../shared/report-freshness";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
@@ -55,8 +55,15 @@ function newsRow(article: NewsArticle) {
     id: article.id,
     publishedAt: article.publishedAt.toISOString(),
     source: article.source,
-    headline: article.title,
+    // A row standing for a company's routine notices (a buy-back's daily ones) says how many, and keeps the count.
+    headline: listedHeadline(article),
     summary: article.summary ?? null,
+    ...(article.routine ? {
+      routineKind: article.routine.kind,
+      routineNotices: article.routine.notices,
+      routineSince: article.routine.since.toISOString(),
+      routineProgramme: article.routine.programme,
+    } : {}),
     topic: article.topic,
     topics: article.topics,
     sectors: article.sectors,

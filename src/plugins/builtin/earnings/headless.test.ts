@@ -247,7 +247,7 @@ test("ERN for a listing abroad shows its next report and names the company's US 
   expect(result.errors).toBeUndefined();
   expect(result.rows.map((row) => [row.date, row.epsEstimate])).toEqual([[addDays(today, 19), 2.85]]);
   expect(result.metadata?.notices).toEqual([
-    "Past reports, surprises and implied moves cover US and Hong Kong listings only, so SAN:EPA shows its next report. Sanofi's US listing is SNY: ERN SNY has them.",
+    "Past reports, surprises and implied moves cover US, Hong Kong, Singapore and China A listings only, so SAN:EPA shows its next report. Sanofi's US listing is SNY: ERN SNY has them.",
   ]);
 });
 
@@ -449,3 +449,39 @@ test("an account without Pro gets a Hong Kong listing's street quarters, named b
     ["Q2 FY2026", "CNY", 7.23544, 7.433, null],
   ]);
 })
+
+test("ERN reads a half-yearly reporter's own reports and its projected next date, and a Singapore or China A line's history too", async () => {
+  const aia = (fields: Partial<HistoryReport> & Pick<HistoryReport, "date">) =>
+    report({ symbol: "1299:HKEX", name: "AIA Group Limited", timing: null, timingSource: null, currency: "USD", dateStatus: "reported", ...fields });
+  const asked: string[] = [];
+  const definition = createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    history: async (symbol) => {
+      asked.push(symbol);
+      return {
+        asOf: `${today}T12:00:00.000Z`, symbol, name: "AIA Group Limited",
+        fiscalAnchor: { fiscalPeriod: "2025-12", fiscalYear: 2025, fiscalQuarter: 4 }, consensusBasis: null,
+        reports: [
+          // No street quarter and no notified date: the day the same report came out a year before, 52 weeks on.
+          aia({ date: addDays(today, 126), fiscalPeriod: "2026-12", periodKind: "year", periodMonths: 12, fiscalYear: 2026, currency: null, dateStatus: "projected" }),
+          aia({ date: addDays(today, -84), timing: "bmo", timingSource: "filing", fiscalPeriod: "2026-06", periodKind: "half", periodMonths: 6, fiscalYear: 2026, fiscalHalf: 1,
+            epsActual: 0.41, epsActualSource: "filing", epsBasis: "gaap", epsDilution: "diluted",
+            filing: { url: "https://www1.hkexnews.hk/listedco/listconews/sehk/2026/0820/2026082000001.pdf", title: "Interim Results", publishedAt: "2026-08-19T22:01:00.000Z" } }),
+        ],
+      };
+    },
+    upcoming: async () => [],
+  });
+  const load = (symbol: string) => definition.load({ rawArgument: symbol, argument: [symbol], symbols: [symbol], options: {} }, context);
+  const result = await load("1299:HKEX");
+  expect(result.empty).toBeUndefined();
+  expect(result.rows.map((row) => [row.date, row.dateStatus, row.period, row.currency, row.epsActual, row.timing])).toEqual([
+    [addDays(today, 126), "projected", "FY2026", null, null, null],
+    [addDays(today, -84), "reported", "H1 FY2026", "USD", 0.41, "BMO"],
+  ]);
+  expect(result.rows[1]!.filing).toContain("hkexnews.hk");
+  // Singapore's and China A's lines ask for their own history, as Hong Kong's do.
+  await load("D05:SGX");
+  await load("600519:SSE");
+  expect(asked).toEqual(["1299:HKEX", "D05:SGX", "600519:SSE"]);
+});
