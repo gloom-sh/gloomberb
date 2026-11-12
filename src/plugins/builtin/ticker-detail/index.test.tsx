@@ -60,7 +60,7 @@ const DetailPane = tickerDetailModule.panes![0]!.component as (props: {
   height: number;
 }) => ReactElement;
 
-function FinancialsTabHarness({ width }: { width: number }) {
+function FinancialsTabHarness({ width, financials: given }: { width: number; financials?: TickerFinancials }) {
   const config = createDefaultConfig("/tmp/gloomberb-test");
   config.layout.instances = config.layout.instances.map((instance) => (
     instance.instanceId === "ticker-detail:main"
@@ -70,7 +70,7 @@ function FinancialsTabHarness({ width }: { width: number }) {
 
   const state = createInitialState(config);
   const ticker = createTestTicker("2337", "Mock Co");
-  const financials: TickerFinancials = {
+  const financials: TickerFinancials = given ?? {
     annualStatements: [
       { date: "2021-12-31" },
       { date: "2022-12-31", totalRevenue: 43.49e9, operatingRevenue: 43.49e9, costOfRevenue: 20e9, grossProfit: 23.49e9, operatingIncome: 9.37e9, eps: 4.68, totalAssets: 64e9, currentAssets: 18e9, cashAndCashEquivalents: 3e9 },
@@ -324,6 +324,36 @@ describe("ResolvedFinancialsTab", () => {
     await flushFrame();
 
     expect(tui.frame()).toContain("Cost of Revenue");
+  });
+
+  test("a period stays as wide when a group closes over the line that holds its widest value", async () => {
+    const statement = (date: string, revenue: number, cost: number) => ({
+      date, totalRevenue: revenue, operatingRevenue: revenue, costOfRevenue: cost, grossProfit: revenue * 0.4,
+    });
+    const financials: TickerFinancials = {
+      annualStatements: [
+        statement("2022-12-31", 43.49e9, -987.65e9),
+        statement("2023-12-31", 27.62e9, -876.54e9),
+        statement("2024-12-31", 25.88e9, -765.43e9),
+      ],
+      quarterlyStatements: [],
+      priceHistory: [],
+    };
+    await tui.render(<FinancialsTabHarness width={100} financials={financials} />, { width: 100, height: 20 });
+    await flushFrame();
+    await flushFrame();
+    const header = () => tui.frame().split("\n").find((line) => line.includes("FY2024"))!;
+    const open = header();
+    expect(tui.frame()).toContain("Cost of Revenue");
+
+    // The first line, Revenue, is selected: Enter closes it over Cost of Revenue.
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
+    });
+    await flushFrame();
+    expect(tui.frame()).not.toContain("Cost of Revenue");
+    expect(header()).toBe(open);
   });
 
   test("uses one hover background across financial group rows", async () => {

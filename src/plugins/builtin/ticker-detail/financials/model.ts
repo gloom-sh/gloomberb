@@ -5,6 +5,7 @@ import { areNearbyFinancialPeriodEnds, fillDate, fillDateText, statementPeriodMo
 import { formatPerShareNumber } from "../../../../utils/reported-money";
 import { hasNonIncomeStatementGap } from "../../../../utils/statement-gaps";
 import {
+  displayWidth,
   formatGrowthShort,
   formatNumber,
   formatWithDivisor,
@@ -32,7 +33,7 @@ export function hasStatementFinancials(financials: TickerFinancials | null | und
 type FinancialMetricFormat = "compact" | "eps" | "percent";
 export type FinancialGrowthDirection = "higher" | "lower" | "neutral";
 
-export type MetricDef = {
+type MetricDef = {
   label: string;
   key?: keyof FinancialStatement;
   id?: string;
@@ -92,12 +93,18 @@ export type FinancialTableRow =
     toggleable: boolean;
   };
 
-export function statementMetricValue(
+function statementMetricValue(
   def: Pick<MetricDef, "key" | "compute">,
   statement: FinancialStatement,
 ): number | undefined {
   const value = def.key ? statement[def.key] : def.compute?.(statement);
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** The figure a row shows for a period: a group's summary line, or the row's own. */
+export function financialCellValue(row: FinancialTableRow, statement: FinancialStatement): number | undefined {
+  if (row.kind === "group") return row.summaryKey ? statement[row.summaryKey] as number | undefined : undefined;
+  return statementMetricValue(row, statement);
 }
 
 export const FINANCIAL_COL_W = 18;
@@ -114,8 +121,22 @@ const FINANCIAL_LABEL_MIN_W = 12;
 export function financialLabelWidth(width: number): number {
   return Math.max(FINANCIAL_LABEL_MIN_W, Math.min(FINANCIAL_LABEL_W, width - FINANCIAL_COL_W - 6));
 }
+/** The growth after a period's value: a blank and up to six characters (`+466%`, `<-99T%`). */
 const FINANCIAL_GROWTH_W = 7;
-const FINANCIAL_VALUE_W = FINANCIAL_COL_W - FINANCIAL_GROWTH_W;
+
+/**
+ * A terminal period column as wide as the widest value it shows and the growth
+ * after it, or its header where that is wider. A fixed 18 left a short value
+ * further from its own column's edge than from its growth, so each pair read
+ * tight and the next period far off, and fewer periods fit.
+ */
+export function financialPeriodWidth(values: Iterable<string>, headers: Iterable<string>): number {
+  let value = 0;
+  for (const text of values) value = Math.max(value, displayWidth(text));
+  let header = 0;
+  for (const text of headers) header = Math.max(header, displayWidth(text));
+  return Math.max(value + FINANCIAL_GROWTH_W, header);
+}
 
 export function computeGrowth(current: number | undefined, previous: number | undefined): number | undefined {
   if (current == null || previous == null || !Number.isFinite(current) || !Number.isFinite(previous) || previous === 0) return undefined;
@@ -182,10 +203,11 @@ export function semanticGrowthValue(
   return growth;
 }
 
-export function formatFinancialCell(value: string, growth: number | undefined) {
+/** A period's value and its growth laid out in a column `width` cells wide, the growth against its right edge. */
+export function formatFinancialCell(value: string, growth: number | undefined, width = FINANCIAL_COL_W) {
   const growthText = growth != null && Number.isFinite(growth) ? formatFinancialGrowth(growth) : "";
   return {
-    valueText: padTo(value, FINANCIAL_VALUE_W, "right"),
+    valueText: padTo(value, Math.max(0, width - FINANCIAL_GROWTH_W), "right"),
     growthText: padTo(growthText ? ` ${growthText}` : "", FINANCIAL_GROWTH_W, "right"),
   };
 }
@@ -461,7 +483,7 @@ export function shareFinancialUnit<T extends { unitLabel: string; label: string;
 export function buildFinancialRows(
   defs: FinancialRowDef[],
   statements: FinancialStatement[],
-  collapsedGroups: Set<string>,
+  collapsedGroups: ReadonlySet<string>,
   depth = 0,
 ): FinancialTableRow[] {
   const rows: FinancialTableRow[] = [];

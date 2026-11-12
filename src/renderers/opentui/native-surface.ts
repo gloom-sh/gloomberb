@@ -6,7 +6,12 @@ import {
   type CellRect,
   type NativeChartBitmap,
 } from "../../components/chart/native/chart-rasterizer";
-import { getNativeSurfaceManager } from "../../components/chart/native/surface/manager";
+import {
+  getNativeSurfaceManager,
+  insetCellRect,
+  type CellInsets,
+  type NativeSurfaceAnchor,
+} from "../../components/chart/native/surface/manager";
 import {
   getRenderableCellRect,
   resolveNativeSurfaceVisibleRect,
@@ -32,36 +37,22 @@ export interface NativeSurfaceTarget {
   pixelHeight: number;
   /** The source key plus the pixel size, so a resize uploads a fresh bitmap. */
   bitmapKey: string;
+  /** The box drawn over, which the image layer measures again after every frame. */
+  anchor: NativeSurfaceAnchor;
 }
 
-export interface CellInsets {
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
-}
+export type { CellInsets };
 
 function sameTarget(left: NativeSurfaceTarget | null, right: NativeSurfaceTarget | null): boolean {
   if (left === right) return true;
   if (!left || !right) return false;
   return left.bitmapKey === right.bitmapKey
+    && left.anchor.renderable === right.anchor.renderable
+    && left.anchor.insets === right.anchor.insets
     && left.pixelWidth === right.pixelWidth
     && left.pixelHeight === right.pixelHeight
     && sameCellRect(left.rect, right.rect)
     && sameCellRect(left.visibleRect, right.visibleRect);
-}
-
-function insetRect(rect: CellRect, insets: CellInsets | undefined): CellRect | null {
-  if (!insets) return rect;
-  const width = rect.width - insets.left - insets.right;
-  const height = rect.height - insets.top - insets.bottom;
-  if (width <= 0 || height <= 0) return null;
-  return {
-    x: rect.x + insets.left,
-    y: rect.y + insets.top,
-    width,
-    height,
-  };
 }
 
 /**
@@ -96,7 +87,7 @@ export function useNativeSurfaceTarget(
     let mountTimer: Timer | null = null;
     const previousLifecyclePass = renderable.onLifecyclePass;
     const syncTarget = () => {
-      const rect = insetRect(getRenderableCellRect(renderable), insets);
+      const rect = insetCellRect(getRenderableCellRect(renderable), insets);
       if (!rect || !renderer.resolution || renderer.terminalWidth <= 0 || renderer.terminalHeight <= 0) {
         setTarget((current) => (current === null ? current : null));
         return;
@@ -110,6 +101,7 @@ export function useNativeSurfaceTarget(
         pixelWidth: size.pixelWidth,
         pixelHeight: size.pixelHeight,
         bitmapKey: `${sourceKey}:${size.pixelWidth}x${size.pixelHeight}`,
+        anchor: { renderable, insets },
       };
       setTarget((current) => (sameTarget(current, nextTarget) ? current : nextTarget));
     };
@@ -170,6 +162,7 @@ export function useNativeSurface(
       visibleRect: target.visibleRect,
       bitmap,
       bitmapKey: target.bitmapKey,
+      anchor: target.anchor,
     });
     renderer.requestRender();
   }, [bitmap, nativeSurfaceManager, paneId, renderer, surfaceId, target]);

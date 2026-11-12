@@ -50,6 +50,19 @@ describe("notTheShare", () => {
   });
 });
 
+test("one exact list of fund types, as Gloom Cloud's screener reads it", () => {
+  const typed = (instrumentType: string) => {
+    const fund = listing("XYZ", "NYSE", "Xyz Holdings");
+    fund.quote!.instrumentType = instrumentType;
+    return notTheShare(fund);
+  };
+  for (const type of ["ETF", "Mutual Fund", "MONEYMARKET", "Closed-end Fund", "UNIT_TRUST", "Investment Trust"]) {
+    expect(typed(type)).toBe("a fund is not a company's share");
+  }
+  // A royalty trust or a REIT earns income and keeps its P/E; a type that merely contains FUND is no fund's.
+  for (const type of ["Trust", "REIT", "Common Stock", "Fund Sponsor"]) expect(typed(type)).toBeUndefined();
+});
+
 describe("epsAgainstIncome", () => {
   test("an EPS of the other sign than net income over the shares, or ten times off it, is not the company's", () => {
     // STKH: 96.00 beside a 7.01M loss over 605,876 receipts.
@@ -94,13 +107,15 @@ describe("one P/E for a listing in valuation and EQS", () => {
     quarterlyStatements?: unknown[];
     /** What Gloom Cloud adds to the stored payload when it serves it. */
     served?: { isDepositaryReceipt?: boolean };
+    /** The block Gloom Cloud serves for a cross-currency one, at the case's rates. */
+    servedFundamentals?: Partial<Fundamentals>;
     expect: { trailingPE: number | null; forwardPE?: null; because?: string };
   };
   for (const item of cases.cases as Case[]) {
     test(item.name, () => {
       const financials = {
         quote: { symbol: item.symbol, listingExchangeName: item.exchange, exchangeName: item.exchange, lastUpdated: now - 30 * 60_000, ...item.quote, ...item.served },
-        fundamentals: { ...item.fundamentals, ...item.served },
+        fundamentals: { ...item.fundamentals, ...item.served, ...item.servedFundamentals },
         profile: item.profile,
         financialCurrency: item.financialCurrency,
         annualStatements: item.annualStatements ?? [],

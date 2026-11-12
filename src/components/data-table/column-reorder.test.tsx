@@ -231,3 +231,21 @@ test("a release lost outside the window puts the column down at the next move wi
   expect(savedOrder(store)).toBeUndefined();
   expect(sorted).toEqual(["change"]);
 });
+
+test("a table fitted to its pane moves a column where its fitted header shows, and draws as it opens in that order", async () => {
+  // Set wider than their figures: at 36 cells the terminal gives up the blank so all four show.
+  const wide = COLUMNS.map((column) => ({ ...column, width: 12 }));
+  const store = newStore();
+  await renderTable(store, { columns: wide, showHorizontalScrollbar: true }, 36);
+  expect(headerLine()).toBe("TICKER LAST CHG% VOL");
+
+  // Let go two cells past LAST as drawn: past its middle, so VOL lands after it. At its set width LAST would
+  // run on to the 26th cell, and the same cell would put VOL before it.
+  const past = labelX("LAST") + "LAST".length + 1;
+  await dragHeader("VOL", past - (labelX("VOL") + 1));
+  expect(headerLine()).toBe("TICKER LAST VOL CHG%");
+  const moved = tui.frame();
+
+  await renderTable(newStore(findPaneInstance(store.getState().config.layout, PANE)?.settings), { columns: wide, showHorizontalScrollbar: true }, 36);
+  expect(tui.frame()).toBe(moved);
+});

@@ -9,6 +9,7 @@ import { AppDialogBridge } from "../../app/dialog-bridge";
 import { OpenTuiDialogHostProvider } from "./dialog-host";
 import { OpenTuiInputHostProvider } from "./input-host";
 import { provideKittyServices } from "./kitty-services";
+import { createFrameHits } from "./frame-hits";
 import { captureRendererFrame } from "./frame-capture";
 import { openTuiToastHost } from "./toast-host";
 import { openTuiUiHost } from "./ui-host";
@@ -90,6 +91,8 @@ function createTestNativeRendererHost(renderer: any): NativeRendererHost {
   }
   // What a feedback report and Ask Gloom read from the screen, as the app's host gives it.
   if (typeof renderer.captureFrame !== "function") renderer.captureFrame = () => captureRendererFrame(renderer);
+  // What covers a kitty image, as the app's host reads it.
+  if (!renderer.frameHits) renderer.frameHits = createFrameHits(renderer);
   return provideKittyServices(renderer as NativeRendererHost);
 }
 

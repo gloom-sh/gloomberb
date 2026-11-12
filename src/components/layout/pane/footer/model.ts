@@ -344,6 +344,11 @@ export function totalHintsWidth(hints: readonly Pick<PaneHint, "key" | "label" |
   return Math.ceil(hints.reduce((total, hint, index) => total + (index > 0 ? metrics.gap : 0) + metrics.width(hint), 0) - 1e-9);
 }
 
+/** Cells `segments` take side by side, separators and gaps included, the terminal's keys aside. */
+export function paneFooterInfoWidth(segments: readonly PaneFooterSegment[]): number {
+  return infoTextWidth(segments);
+}
+
 function infoTextWidth(segments: readonly PaneFooterSegment[]): number {
   if (segments.length === 0) return 0;
   return segments.reduce((total, segment, index) => {
@@ -371,22 +376,33 @@ function stepDownTogether(info: PaneFooterSegment[], width: number): PaneFooterS
   return fitted;
 }
 
+/** A warning, an icon or a pressable segment, which a row too narrow never cuts or leaves out. */
+function holdsItsPlace(segment: PaneFooterSegment): boolean {
+  return !!segment.icon || !!segment.onPress || segment.parts.some((part) => part.tone === "warning" || part.tone === "negative");
+}
+
 /**
  * A trailing status cut mid-word reads as part of the hints beside it ("quote
- * 12h t[x] put"): one that does not fit ends in an ellipsis a column short of
- * them, or is left out when less than half of it would show, until the row
- * fits or `keep` segments are left. A warning, an icon or a pressable segment
- * stays as it is, clipped by the row if it must be.
+ * 12h t[x] put"): the last segment that does not fit ends in an ellipsis (a
+ * column short of the hints when it ends the row), or is left out when less
+ * than half of it would show, until the row fits or only the first `keep`
+ * segments are left to give way. A warning, an icon or a pressable segment
+ * holds its place, clipped by the row if it must be; in the terminal
+ * (`pastHeld`) the text before it gives way instead (a delay clock after the
+ * count it qualifies), where the desktop stops there.
  */
-function trimTrailing(info: PaneFooterSegment[], width: number, keep: number): PaneFooterSegment[] {
+function trimTrailing(info: PaneFooterSegment[], width: number, keep: number, pastHeld: boolean): PaneFooterSegment[] {
   let fitted = info;
-  while (fitted.length > keep && infoTextWidth(fitted) > width) {
-    const last = fitted.at(-1)!;
-    if (last.icon || last.onPress || last.parts.some((part) => part.tone === "warning" || part.tone === "negative")) break;
-    // After the separator, a column short of the hints.
-    const room = width - infoTextWidth(fitted.slice(0, -1)) - segmentGapWidth(fitted.at(-2)!, last) - 1;
-    if (room * 2 >= infoTextWidth([last])) return [...fitted.slice(0, -1), clipSegment(last, room)];
-    fitted = fitted.slice(0, -1);
+  while (infoTextWidth(fitted) > width) {
+    const index = pastHeld
+      ? fitted.findLastIndex((segment) => !holdsItsPlace(segment))
+      : holdsItsPlace(fitted.at(-1)!) ? -1 : fitted.length - 1;
+    if (index < keep) break;
+    const segment = fitted[index]!;
+    const own = infoTextWidth([segment]);
+    const room = width - (infoTextWidth(fitted) - own) - (index === fitted.length - 1 ? 1 : 0);
+    if (room * 2 >= own) return [...fitted.slice(0, index), clipSegment(segment, room), ...fitted.slice(index + 1)];
+    fitted = [...fitted.slice(0, index), ...fitted.slice(index + 1)];
   }
   return fitted;
 }
@@ -403,18 +419,22 @@ function trimTrailing(info: PaneFooterSegment[], width: number, keep: number): P
  * With no hints beside it (a pane picture's footer), the row clips the rest,
  * so a frame that fits its own status line sees it overflow.
  */
-export function fitPaneFooterInfo(info: PaneFooterSegment[], width: number, { besideHints = true }: { besideHints?: boolean } = {}): PaneFooterSegment[] {
+export function fitPaneFooterInfo(
+  info: PaneFooterSegment[],
+  width: number,
+  { besideHints = true, terminal = false }: { besideHints?: boolean; terminal?: boolean } = {},
+): PaneFooterSegment[] {
   // How long ago the data loaded goes first, whole: a cut age (`fetched just`) says nothing.
   if (infoTextWidth(info) > width && info.some((segment) => segment.age)) {
-    return fitPaneFooterInfo(info.filter((segment) => !segment.age), width, { besideHints });
+    return fitPaneFooterInfo(info.filter((segment) => !segment.age), width, { besideHints, terminal });
   }
   if (!besideHints) return stepDownTogether(info, width);
   const lastWithVariants = info.findLastIndex((segment) => (segment.variants?.length ?? 0) > 0);
   if (lastWithVariants >= 0 && lastWithVariants < info.length - 1 && infoTextWidth(info) > width) {
-    const trimmed = trimTrailing(info, width, lastWithVariants + 1);
+    const trimmed = trimTrailing(info, width, lastWithVariants + 1, terminal);
     if (infoTextWidth(trimmed) <= width) return trimmed;
   }
-  return trimTrailing(stepDownTogether(info, width), width, 1);
+  return trimTrailing(stepDownTogether(info, width), width, 1, terminal);
 }
 
 /** A segment cut to `width` behind an ellipsis, each part keeping its tone; the full text stays as its title. */
@@ -453,12 +473,28 @@ export interface PaneFooterHintRow {
   infoWidth: number;
 }
 
-/** Hints that fit this footer row, and the rest, which a More control owns. */
+export interface PaneFooterHintRowOptions {
+  /** The terminal's row (layoutPaneFooterHintRow); the desktop's leaves it out. */
+  terminal?: boolean;
+  /** What the terminal draws besides the status's own text (`[!]` after an icon). */
+  keysWidth?: number;
+}
+
+/**
+ * Hints that fit this footer row, and the rest, which a More control owns.
+ * The status gives way to the hints down to its floor (INFO_FLOOR_CHARS,
+ * WARNING_FLOOR_CHARS, or `iconReserve`, the cells its icons take). In the
+ * terminal the status is kept whole while the first hint and More still fit
+ * beside it, hints going under More from the right first, and the status and
+ * the hints keep a column between them, so they never read as one
+ * ("777 matchesU◷1[m]etric").
+ */
 export function layoutPaneFooterHintRow(
   footer: CombinedPaneFooter,
   contentWidth: number,
   iconReserve = 0,
   metrics: PaneHintMetrics = TERMINAL_HINT_METRICS,
+  { terminal = false, keysWidth = 0 }: PaneFooterHintRowOptions = {},
 ): PaneFooterHintRow {
   const width = Math.max(0, Math.floor(contentWidth));
   const hints = footer.hints.filter((hint) => !hint.disabled);
@@ -469,8 +505,14 @@ export function layoutPaneFooterHintRow(
   const textFloor = footer.info.length === 0 ? 0
     : warning || infoChars <= WARNING_FLOOR_CHARS ? Math.min(WARNING_FLOOR_CHARS, infoChars)
     : INFO_FLOOR_CHARS;
-  const infoFloor = Math.min(width, Math.max(iconReserve, textFloor));
-  const hintBudget = Math.max(0, width - infoFloor - (infoFloor > 0 && hints.length > 0 ? 1 : 0));
+  const status = footer.info.length === 0 ? 0 : infoChars + keysWidth;
+  const leastHints = hints.length === 0 ? 0 : Math.min(
+    totalHintsWidth(hints, metrics),
+    Math.ceil(metrics.width(hints[0]!) + metrics.gap + moreControl(Number.POSITIVE_INFINITY).width),
+  );
+  const wholeStatus = terminal && status > 0 && status + (leastHints > 0 ? HINT_GAP + leastHints : 0) <= width;
+  const infoFloor = Math.min(width, wholeStatus ? status : Math.max(iconReserve, textFloor));
+  const hintBudget = Math.max(0, width - infoFloor - (infoFloor > 0 && hints.length > 0 ? HINT_GAP : 0));
   const more = moreControl(hintBudget);
   let visible = hints;
   let overflow: PaneHint[] = [];
@@ -495,7 +537,7 @@ export function layoutPaneFooterHintRow(
     moreLabel: more.label,
     moreWidth: more.width,
     hintsWidth,
-    infoWidth: Math.max(0, width - hintsWidth),
+    infoWidth: Math.max(0, width - hintsWidth - (terminal && footer.info.length > 0 && hintsWidth > 0 ? HINT_GAP : 0)),
   };
 }
 

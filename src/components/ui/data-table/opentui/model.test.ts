@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { fitTableCellText, fitTableHeaderText, tableColumnStarts } from "../../table-layout";
-import { cutColumnText, fitColumnCellText, resolveDataTableColumnClips, resolveMoreColumnsHint, resolveDataTableVisibleWindow, reuseDataTableColumnClips } from "./model";
+import { fitTableCellText, fitTableColumns, fitTableHeaderText, tableColumnStarts } from "../../table-layout";
+import { columnsShownWhole, cutColumnText, fitColumnCellText, MORE_COLUMNS_HINT_WIDTH, resolveDataTableColumnClips, resolveMoreColumnsHint, resolveDataTableVisibleWindow, reuseDataTableColumnClips } from "./model";
 
 describe("OpenTUI data table model", () => {
   test("resolves the virtualized window with overscan around the scroll top", () => {
@@ -100,6 +100,18 @@ describe("OpenTUI data table model", () => {
     const text = [{ width: 10, align: "left", label: "NAME" }, { width: 16, align: "left", label: "STAGE" }];
     expect(hint(16, { columns: text })?.text).toBe(" ⇧→");
     expect(hint(17, { columns: text })).toBeNull();
+  });
+
+  test("a fit leaves a table as set when the hint already fits beside its last whole column, in that column's blank or the cell past the header", () => {
+    // An options chain: its columns carry their gaps (none between them), 64 cells and the cell over the scrollbar.
+    // As set, P OI ends at 62 and "⇧→" follows it; a narrower STRIKE would leave room for the hint's blank, but no
+    // more columns.
+    const chain = [["C BID", 7], ["C ASK", 7], ["C LAST", 8], ["C IV", 6], ["C Δ", 6], ["C VOL", 7], ["C OI", 6], ["STRIKE", 9],
+      ["P OI", 6], ["P VOL", 7], ["P Δ", 6]].map(([label, width]) => ({ id: String(label), label: String(label), width: Number(width), align: "right" as const }));
+    const shownWhole = (columns: readonly typeof chain[number][]) => columnsShownWhole({ columns, columnGap: 0, besideHeader: 1, horizontalPadding: 0, viewportWidth: 64 });
+    expect(shownWhole(chain)).toBe(9);
+    const fitted = fitTableColumns(chain, [6, 6, 6, 6, 5, 5, 4, 3, 4, 5, 5], 64, 0, 0, { ...MORE_COLUMNS_HINT_WIDTH, shownWhole });
+    expect(fitted.map((column) => column.width)).toEqual(chain.map((column) => column.width));
   });
 
   test("a cut number shows only while the cells in view hold all of it; cut text is fitted to them", () => {

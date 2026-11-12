@@ -26,16 +26,6 @@ const DESKTOP = {
 };
 
 describe("command bar sheet geometry", () => {
-  // At 48 columns pieces of the panes showed beside the sheet (a border at its left, cut
-  // words at its right at 120): the terminal sheet clears its rows edge to edge.
-  test("the terminal sheet clears its rows edge to edge at every width", () => {
-    for (const termWidth of [46, 48, 60, 80, 120, 200]) {
-      const layout = resolveCommandBarPanelLayout({ ...BASE, termHeight: 30, termWidth });
-      expect(layout.clearBounds).toEqual({ x: 0, y: 0, width: termWidth, height: layout.panelBounds.height });
-    }
-    expect(resolveCommandBarPanelLayout({ ...DESKTOP, termHeight: 40, termWidth: 60 }).clearBounds).toBeNull();
-  });
-
   /**
    * The sheet is the header prompt expanding downward: same left edge, same
    * width, top edge on the header's bottom edge. Any drift between the two

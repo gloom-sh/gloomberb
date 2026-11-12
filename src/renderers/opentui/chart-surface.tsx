@@ -133,6 +133,7 @@ export const OpenTuiChartSurface = forwardRef<unknown, ChartSurfaceProps>(functi
         bitmap: strip.bitmap,
         bitmapKey: `${strip.key}@${stripRect.x}:${stripRect.y}:${stripRect.width}x${stripRect.height}`,
         imageZIndex: CROSSHAIR_Z_INDEX,
+        anchor: { ...target.anchor, region: strip.rect },
       });
     });
     renderer.requestRender();

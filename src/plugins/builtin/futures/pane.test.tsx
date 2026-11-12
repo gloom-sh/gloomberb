@@ -300,8 +300,9 @@ describe("FuturesPane", () => {
     const ttf = tui.frame().split("\n").find((line) => line.includes("Dutch TTF Gas"));
     expect(ttf).toContain("EUR / MWh");
     expect(ttf).not.toContain("rolled");
-    // A narrow board keeps the month the quote prices and its move, and drops the note it has no room for.
-    await tui.render(<Harness height={64} />, { width: 80, height: 64 });
+    // A narrow board keeps the month the quote prices and its move, and drops the note it has no room for. At 80
+    // columns the figures beside the name give it their blank, and the note's start shows.
+    await tui.render(<Harness width={56} height={64} />, { width: 56, height: 64 });
     await renderSettled();
     const narrow = tui.frame().split("\n").find((line) => line.includes("WTI Crude Oil"));
     expect(narrow).toContain("WTI Crude Oil Dec 2026");

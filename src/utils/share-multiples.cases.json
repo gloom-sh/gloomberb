@@ -1,5 +1,5 @@
 {
- "about": "Listings priced as valuation prices them and as the screener's server projects them, from the same payloads: each gets the same trailing P/E, or none for the same reason. The server reads these cases too; the two copies are kept identical. `served` is what the service adds to a stored payload when it serves it; `universe` is the company universe's large companies with their home lines.",
+ "about": "Listings priced as valuation prices them and as the screener's server projects them, from the same payloads: each gets the same trailing P/E, or none for the same reason. The server reads these cases too; the two copies are kept identical. `served` is what the service adds to a stored payload when it serves it; `universe` is the company universe's large companies with their home lines. `usdRates` are the cached US dollar rates a screener pass labels a cross-currency block at, and `servedFundamentals` the block the service serves at those rates.",
  "now": "2026-11-12T07:00:00Z",
  "universe": [
   {
@@ -261,7 +261,7 @@
    ],
    "expect": {
     "trailingPE": null,
-    "because": "in USD beside a price in CAD, with no rate on record"
+    "because": "in USD beside a price in CAD"
    }
   },
   {
@@ -883,6 +883,784 @@
    ],
    "expect": {
     "trailingPE": 12.5
+   }
+  },
+  {
+   "name": "TBT on Munich is a euro price over Tokuyama's yen EPS, converted at the rate valuation names",
+   "symbol": "TBT",
+   "exchange": "MUNICH",
+   "quote": {
+    "price": 21.6,
+    "currency": "EUR",
+    "name": "Tokuyama Corp"
+   },
+   "fundamentals": {
+    "eps": 308.64,
+    "trailingPE": 0.06998444790046657,
+    "revenue": 349476000000,
+    "netIncome": 22205000000,
+    "sharesOutstanding": 71944660,
+    "source": "gloom"
+   },
+   "financialCurrency": "JPY",
+   "annualStatements": [
+    {
+     "date": "2025-03-31",
+     "currency": "JPY",
+     "eps": 325.08,
+     "netIncome": 23388000000,
+     "totalRevenue": 343073000000
+    },
+    {
+     "date": "2026-03-31",
+     "currency": "JPY",
+     "eps": 308.64,
+     "netIncome": 22205000000,
+     "totalRevenue": 349476000000
+    }
+   ],
+   "usdRates": {
+    "EUR": 1.1,
+    "JPY": 0.006208708
+   },
+   "servedFundamentals": {
+    "financialCurrency": "JPY",
+    "trailingPEConversion": {
+     "from": "JPY",
+     "rate": 0.00564428
+    },
+    "trailingPE": 12.399180745899667
+   },
+   "expect": {
+    "trailingPE": 12.399180745899667
+   }
+  },
+  {
+   "name": "MARA on Stuttgart, Marubeni's yen EPS in euros, with quarters filed since its year",
+   "symbol": "MARA",
+   "exchange": "XSTU",
+   "quote": {
+    "price": 29.39,
+    "currency": "EUR",
+    "name": "Marubeni Corp"
+   },
+   "fundamentals": {
+    "eps": 330.09,
+    "trailingPE": 0.08903632342694418,
+    "revenue": 8265841000000,
+    "netIncome": 543852000000,
+    "sharesOutstanding": 1638396915,
+    "source": "gloom"
+   },
+   "financialCurrency": "JPY",
+   "annualStatements": [
+    {
+     "date": "2025-03-31",
+     "currency": "JPY",
+     "eps": 302.51,
+     "netIncome": 502965000000,
+     "totalRevenue": 7790168000000
+    },
+    {
+     "date": "2026-03-31",
+     "currency": "JPY",
+     "eps": 330.09,
+     "netIncome": 543852000000,
+     "totalRevenue": 8265841000000
+    }
+   ],
+   "quarterlyStatements": [
+    {
+     "date": "2025-09-30",
+     "currency": "JPY",
+     "netIncome": 151097000000,
+     "totalRevenue": 2039644000000
+    },
+    {
+     "date": "2025-12-31",
+     "currency": "JPY",
+     "netIncome": 126793000000,
+     "totalRevenue": 1969053000000
+    },
+    {
+     "date": "2026-03-31",
+     "currency": "JPY",
+     "netIncome": 111562000000,
+     "totalRevenue": 2093422000000
+    },
+    {
+     "date": "2026-06-30",
+     "currency": "JPY",
+     "eps": 114.19,
+     "netIncome": 186432000000,
+     "totalRevenue": 2609225000000
+    },
+    {
+     "date": "2026-09-30",
+     "currency": "JPY",
+     "netIncome": 151595000000,
+     "totalRevenue": 2570903000000
+    }
+   ],
+   "usdRates": {
+    "EUR": 1.1,
+    "JPY": 0.006208708
+   },
+   "servedFundamentals": {
+    "financialCurrency": "JPY",
+    "trailingPEConversion": {
+     "from": "JPY",
+     "rate": 0.00564428
+    },
+    "trailingPE": 15.774611363529836
+   },
+   "expect": {
+    "trailingPE": 15.774611363529836
+   }
+  },
+  {
+   "name": "An agorot price over a dollar EPS: the EPS converted into shekels is put in agorot before dividing (32.4, not 3,240)",
+   "symbol": "AGRT",
+   "exchange": "TASE",
+   "quote": {
+    "price": 30000,
+    "currency": "ILA",
+    "name": "Agorot Industries Ltd"
+   },
+   "fundamentals": {
+    "eps": 2.5,
+    "trailingPE": 120,
+    "revenue": 1000000000,
+    "netIncome": 250000000,
+    "sharesOutstanding": 100000000,
+    "source": "gloom"
+   },
+   "financialCurrency": "USD",
+   "annualStatements": [
+    {
+     "date": "2025-12-31",
+     "currency": "USD",
+     "eps": 2.5,
+     "netIncome": 250000000,
+     "totalRevenue": 1000000000
+    }
+   ],
+   "usdRates": {
+    "USD": 1,
+    "ILS": 0.27
+   },
+   "servedFundamentals": {
+    "financialCurrency": "USD",
+    "trailingPEConversion": {
+     "from": "USD",
+     "rate": 3.7037
+    },
+    "trailingPE": 32.4000324000324
+   },
+   "expect": {
+    "trailingPE": 32.4000324000324
+   }
+  },
+  {
+   "name": "A pence price over a euro EPS: the EPS converted into pounds is put in pence",
+   "symbol": "PENC",
+   "exchange": "LSE",
+   "quote": {
+    "price": 1500,
+    "currency": "GBX",
+    "name": "Pence Holdings plc"
+   },
+   "fundamentals": {
+    "eps": 1.2,
+    "trailingPE": 12.5,
+    "revenue": 2000000000,
+    "netIncome": 120000000,
+    "sharesOutstanding": 100000000,
+    "source": "gloom"
+   },
+   "financialCurrency": "EUR",
+   "annualStatements": [
+    {
+     "date": "2025-12-31",
+     "currency": "EUR",
+     "eps": 1.2,
+     "netIncome": 120000000,
+     "totalRevenue": 2000000000
+    }
+   ],
+   "usdRates": {
+    "EUR": 1.1,
+    "GBP": 1.32
+   },
+   "servedFundamentals": {
+    "financialCurrency": "EUR",
+    "trailingPEConversion": {
+     "from": "EUR",
+     "rate": 0.833333
+    },
+    "trailingPE": 15.0000060000024
+   },
+   "expect": {
+    "trailingPE": 15.0000060000024
+   }
+  },
+  {
+   "name": "A South African cents price over a dollar EPS: the EPS converted into rand is put in cents",
+   "symbol": "CNTS",
+   "exchange": "JSE",
+   "quote": {
+    "price": 2359,
+    "currency": "ZAC",
+    "name": "Cents Resources Ltd"
+   },
+   "fundamentals": {
+    "eps": 0.1,
+    "trailingPE": 235.9,
+    "revenue": 500000000,
+    "netIncome": 200000000,
+    "sharesOutstanding": 2000000000,
+    "source": "gloom"
+   },
+   "financialCurrency": "USD",
+   "annualStatements": [
+    {
+     "date": "2026-06-30",
+     "currency": "USD",
+     "eps": 0.1,
+     "netIncome": 200000000,
+     "totalRevenue": 500000000
+    }
+   ],
+   "usdRates": {
+    "USD": 1,
+    "ZAR": 0.059
+   },
+   "servedFundamentals": {
+    "financialCurrency": "USD",
+    "trailingPEConversion": {
+     "from": "USD",
+     "rate": 16.9492
+    },
+    "trailingPE": 13.918061029429117
+   },
+   "expect": {
+    "trailingPE": 13.918061029429117
+   }
+  },
+  {
+   "name": "With both rates on hand, a source P/E that does not match its EPS is said so, not a missing rate",
+   "symbol": "PENM",
+   "exchange": "LSE",
+   "quote": {
+    "price": 1500,
+    "currency": "GBX",
+    "name": "Pence Holdings plc"
+   },
+   "fundamentals": {
+    "eps": 1.2,
+    "trailingPE": 40,
+    "revenue": 2000000000,
+    "netIncome": 120000000,
+    "sharesOutstanding": 100000000,
+    "source": "gloom"
+   },
+   "financialCurrency": "EUR",
+   "annualStatements": [
+    {
+     "date": "2025-12-31",
+     "currency": "EUR",
+     "eps": 1.2,
+     "netIncome": 120000000,
+     "totalRevenue": 2000000000
+    }
+   ],
+   "usdRates": {
+    "EUR": 1.1,
+    "GBP": 1.32
+   },
+   "servedFundamentals": {
+    "financialCurrency": "EUR",
+    "trailingPE": 40
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "in EUR beside a price in GBP, and the source's P/E does not match that EPS"
+   }
+  },
+  {
+   "name": "Without a rate for the yen, MARA's EPS is its year's own in yen, and there is no P/E",
+   "symbol": "MARA",
+   "exchange": "XSTU",
+   "quote": {
+    "price": 29.39,
+    "currency": "EUR",
+    "name": "Marubeni Corp"
+   },
+   "fundamentals": {
+    "eps": 330.09,
+    "trailingPE": 0.08903632342694418,
+    "revenue": 8265841000000,
+    "netIncome": 543852000000,
+    "sharesOutstanding": 1638396915,
+    "source": "gloom"
+   },
+   "financialCurrency": "JPY",
+   "annualStatements": [
+    {
+     "date": "2025-03-31",
+     "currency": "JPY",
+     "eps": 302.51,
+     "netIncome": 502965000000,
+     "totalRevenue": 7790168000000
+    },
+    {
+     "date": "2026-03-31",
+     "currency": "JPY",
+     "eps": 330.09,
+     "netIncome": 543852000000,
+     "totalRevenue": 8265841000000
+    }
+   ],
+   "quarterlyStatements": [
+    {
+     "date": "2025-09-30",
+     "currency": "JPY",
+     "netIncome": 151097000000,
+     "totalRevenue": 2039644000000
+    },
+    {
+     "date": "2025-12-31",
+     "currency": "JPY",
+     "netIncome": 126793000000,
+     "totalRevenue": 1969053000000
+    },
+    {
+     "date": "2026-03-31",
+     "currency": "JPY",
+     "netIncome": 111562000000,
+     "totalRevenue": 2093422000000
+    },
+    {
+     "date": "2026-06-30",
+     "currency": "JPY",
+     "eps": 114.19,
+     "netIncome": 186432000000,
+     "totalRevenue": 2609225000000
+    },
+    {
+     "date": "2026-09-30",
+     "currency": "JPY",
+     "netIncome": 151595000000,
+     "totalRevenue": 2570903000000
+    }
+   ],
+   "expect": {
+    "trailingPE": null,
+    "because": "in JPY beside a price in EUR"
+   }
+  },
+  {
+   "name": "159682 on SZSE is the ChiNext 50 ETF, though its source types it as equity",
+   "symbol": "159682",
+   "exchange": "SZSE",
+   "quote": {
+    "price": 1.105,
+    "currency": "CNY",
+    "name": "Invesco Great Wall Fund Management Co Ltd - Szse Chinext 50 Index ETF"
+   },
+   "fundamentals": {
+    "eps": 1.27,
+    "trailingPE": 0.87,
+    "forwardPE": 0.8
+   },
+   "expect": {
+    "trailingPE": null,
+    "forwardPE": null,
+    "because": "fund is not a company's share"
+   }
+  },
+  {
+   "name": "BOVA11 is a Brazilian index fund by its name",
+   "symbol": "BOVA11",
+   "exchange": "B3",
+   "quote": {
+    "price": 150,
+    "currency": "BRL",
+    "name": "Ishares Ibovespa Classe de Índice - Responsabilidade Limitada"
+   },
+   "fundamentals": {
+    "eps": 15.21,
+    "trailingPE": 9.86
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "fund is not a company's share"
+   }
+  },
+  {
+   "name": "Polar Capital Technology Trust is a closed-end fund by its profile",
+   "symbol": "PCT",
+   "exchange": "LSE",
+   "quote": {
+    "price": 5.77,
+    "currency": "GBP",
+    "name": "Polar Capital Technology Ord"
+   },
+   "profile": {
+    "description": "Polar Capital Technology Trust plc is a closed ended equity mutual fund launched and managed by Polar Capital LLP. The fund invests in public equity markets across the globe."
+   },
+   "fundamentals": {
+    "eps": 3.3,
+    "trailingPE": 1.75
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "fund is not a company's share"
+   }
+  },
+  {
+   "name": "A business development company named a fund keeps its P/E",
+   "symbol": "BXSL",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 26,
+    "currency": "USD",
+    "name": "Blackstone Secured Lending Fund"
+   },
+   "profile": {
+    "description": "Blackstone Secured Lending Fund is a business development company focused on providing financing to private U.S. companies."
+   },
+   "fundamentals": {
+    "eps": 1.3,
+    "trailingPE": 20
+   },
+   "expect": {
+    "trailingPE": 20
+   }
+  },
+  {
+   "name": "A real estate investment trust keeps its P/E",
+   "symbol": "FRT",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 100,
+    "currency": "USD",
+    "name": "Federal Realty Investment Trust"
+   },
+   "profile": {
+    "description": "Federal Realty Investment Trust is a retail-focused real estate investment trust that owns, operates, and redevelops shopping centers."
+   },
+   "fundamentals": {
+    "eps": 4,
+    "trailingPE": 25
+   },
+   "expect": {
+    "trailingPE": 25
+   }
+  },
+  {
+   "name": "A royalty trust keeps its P/E",
+   "symbol": "CRT",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 12,
+    "currency": "USD",
+    "name": "Cross Timbers Royalty Trust"
+   },
+   "profile": {
+    "description": "Cross Timbers Royalty Trust is a royalty trust that holds net profits interests in oil and natural gas properties located in Texas."
+   },
+   "fundamentals": {
+    "eps": 0.5,
+    "trailingPE": 24
+   },
+   "expect": {
+    "trailingPE": 24
+   }
+  },
+  {
+   "name": "A fund sponsor is a company",
+   "symbol": "WT",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 12,
+    "currency": "USD",
+    "name": "WisdomTree, Inc."
+   },
+   "profile": {
+    "description": "WisdomTree, Inc. is an exchange-traded fund sponsor and asset manager headquartered in New York."
+   },
+   "fundamentals": {
+    "eps": 0.6,
+    "trailingPE": 20
+   },
+   "expect": {
+    "trailingPE": 20
+   }
+  },
+  {
+   "name": "A profile carrying another listing's fund name leaves a company its P/E",
+   "symbol": "USAU",
+   "exchange": "NASDAQ",
+   "quote": {
+    "price": 15,
+    "currency": "USD",
+    "name": "U.S. Gold Corp."
+   },
+   "profile": {
+    "name": "Lyxor MSCI USA UCITS ETF",
+    "description": "U.S. Gold Corp. is a U.S.-focused gold exploration and development company."
+   },
+   "fundamentals": {
+    "eps": 0.75,
+    "trailingPE": 20
+   },
+   "expect": {
+    "trailingPE": 20
+   }
+  },
+  {
+   "name": "Cohen & Steers Infrastructure Fund is a closed-end fund: its profile's first sentence is read past \"Inc.\"",
+   "symbol": "UTF",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 25.74,
+    "currency": "USD",
+    "name": "Cohen & Steers Infrastructure Fund, Inc"
+   },
+   "profile": {
+    "name": "Cohen & Steers Infrastructure Fund, Inc.",
+    "description": "Cohen & Steers Infrastructure Fund, Inc. is a closed ended balanced mutual fund launched and managed by Cohen & Steers Capital Management, Inc. The fund invests in public equity and fixed income markets."
+   },
+   "fundamentals": {
+    "eps": 4.76,
+    "trailingPE": 5.407563025210084
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "fund is not a company's share"
+   }
+  },
+  {
+   "name": "PIMCO Dynamic Income Fund is a closed ended fixed income mutual fund",
+   "symbol": "PDI",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 14.48,
+    "currency": "USD",
+    "name": "PIMCO Dynamic Income Fund"
+   },
+   "profile": {
+    "description": "PIMCO Dynamic Income Fund is a closed ended fixed income mutual fund launched and managed by Pacific Investment Management Company LLC."
+   },
+   "fundamentals": {
+    "eps": 1.4,
+    "trailingPE": 10.342857142857143
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "fund is not a company's share"
+   }
+  },
+  {
+   "name": "Pershing Square Holdings is a closed-ended fund, read past \"Ltd.\"",
+   "symbol": "PSH",
+   "exchange": "LSE",
+   "quote": {
+    "price": 39.88,
+    "currency": "GBP",
+    "name": "Pershing Square Holdings Ord"
+   },
+   "profile": {
+    "description": "Pershing Square Holdings, Ltd. is a closed-ended balanced fund launched and managed by Pershing Square Capital Management, L.P. It invests in public equity and fixed income markets across the globe."
+   },
+   "fundamentals": {
+    "eps": 9.68,
+    "trailingPE": 4.119834710743802
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "fund is not a company's share"
+   }
+  },
+  {
+   "name": "Scottish Mortgage is an investment trust",
+   "symbol": "SMT",
+   "exchange": "LSE",
+   "quote": {
+    "price": 15.13,
+    "currency": "GBP",
+    "name": "Scottish Mortgage Ord"
+   },
+   "profile": {
+    "name": "Scottish Mortgage Investment Trust PLC",
+    "description": "Scottish Mortgage Investment Trust PLC is a closed-ended investment trust launched in 1909 and managed by Baillie Gifford & Co., domiciled in the United Kingdom."
+   },
+   "fundamentals": {
+    "eps": 2.7531,
+    "trailingPE": 5.495623115760416
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "fund is not a company's share"
+   }
+  },
+  {
+   "name": "Literacy Capital is a closed-ended investment company",
+   "symbol": "BOOK",
+   "exchange": "LSE",
+   "quote": {
+    "price": 3,
+    "currency": "GBP",
+    "name": "Literacy Capital PLC"
+   },
+   "profile": {
+    "name": "Literacy Capital plc",
+    "description": "Literacy Capital plc is a British closed-ended investment company that focuses on investing in and supporting medium-sized private businesses."
+   },
+   "fundamentals": {
+    "eps": 0.0123,
+    "trailingPE": 243.90243902439025
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "fund is not a company's share"
+   }
+  },
+  {
+   "name": "A business development company that is also a closed-end investment firm keeps its P/E",
+   "symbol": "CSWC",
+   "exchange": "NASDAQ",
+   "quote": {
+    "price": 23.51,
+    "currency": "USD",
+    "name": "Capital Southwest Corporation"
+   },
+   "profile": {
+    "name": "Capital Southwest Corporation",
+    "description": "Capital Southwest Corporation is a business development company and closed-end investment firm that provides customized financing to lower middle-market businesses."
+   },
+   "fundamentals": {
+    "eps": 1.73,
+    "trailingPE": 13.589595375722544
+   },
+   "expect": {
+    "trailingPE": 13.589595375722544
+   }
+  },
+  {
+   "name": "A fund sponsor named for its ETFs keeps its P/E",
+   "symbol": "GLBX",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 36,
+    "currency": "USD",
+    "name": "Global X ETFs"
+   },
+   "profile": {
+    "name": "Global X ETFs",
+    "description": "Global X ETFs is a provider of exchange-traded funds based in New York."
+   },
+   "fundamentals": {
+    "eps": 2,
+    "trailingPE": 18
+   },
+   "expect": {
+    "trailingPE": 18
+   }
+  },
+  {
+   "name": "A company named for the unit trusts it runs keeps its P/E",
+   "symbol": "UTCO",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 36,
+    "currency": "USD",
+    "name": "Unit Trust Corporation"
+   },
+   "profile": {
+    "description": "Unit Trust Corporation is a financial services company that manages unit trusts."
+   },
+   "fundamentals": {
+    "eps": 2,
+    "trailingPE": 18
+   },
+   "expect": {
+    "trailingPE": 18
+   }
+  },
+  {
+   "name": "Another listing's ETF profile leaves a company its P/E",
+   "symbol": "HL",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 18,
+    "currency": "USD",
+    "name": "Hecla Mining Company"
+   },
+   "profile": {
+    "name": "iShares MSCI Brazil ETF",
+    "description": "The iShares MSCI Brazil ETF is an exchange-traded fund that tracks large and mid-sized Brazilian equities."
+   },
+   "fundamentals": {
+    "eps": 0.6,
+    "trailingPE": 30
+   },
+   "expect": {
+    "trailingPE": 30
+   }
+  },
+  {
+   "name": "A receipt's profile is its underlying's: a CEDEAR of an ETF is a fund",
+   "symbol": "COPX",
+   "exchange": "BYMA",
+   "quote": {
+    "price": 50000,
+    "currency": "ARS",
+    "name": "Banco Comafi S.A."
+   },
+   "profile": {
+    "name": "Global X Copper Miners ETF",
+    "description": "The Global X Copper Miners ETF is an exchange-traded fund that provides investors with targeted exposure to the global copper mining industry."
+   },
+   "fundamentals": {
+    "eps": 2000,
+    "trailingPE": 25,
+    "isDepositaryReceipt": true,
+    "cedearRatio": {
+     "listing": "COPX:BYMA",
+     "receipts": 14,
+     "shares": 1,
+     "company": "Global X Copper Miners ETF",
+     "underlying": "COPX",
+     "listedAt": "2026-09-16"
+    }
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "fund is not a company's share"
+   }
+  },
+  {
+   "name": "A profile naming the listing's symbol is its own",
+   "symbol": "IBOV11",
+   "exchange": "B3",
+   "quote": {
+    "price": 150,
+    "currency": "BRL",
+    "name": "Ibovespa"
+   },
+   "profile": {
+    "name": "IBOV11 Fund",
+    "description": "IBOV11 Fund is an exchange-traded fund designed to track the performance of the Bovespa Index."
+   },
+   "fundamentals": {
+    "eps": 15,
+    "trailingPE": 10
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "fund is not a company's share"
    }
   }
  ]

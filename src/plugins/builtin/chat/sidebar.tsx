@@ -1,6 +1,6 @@
 import { ActionRow } from "../../../components/ui/action-row";
 import { Icon } from "../../../components/ui/icon";
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo, useRef, useSyncExternalStore, type ReactNode } from "react";
 import {
   getPaneSidebarWidthRange,
   PaneSidebar,
@@ -8,7 +8,8 @@ import {
   PaneSidebarList,
   PaneSidebarRow,
 } from "../../../components";
-import { Box, Span, Text, useUiCapabilities } from "../../../ui";
+import { usePaneSidebarReveal } from "../../../components/layout/pane/sidebar";
+import { Box, Span, Text, useUiCapabilities, type BoxRenderable } from "../../../ui";
 import { TextAttributes } from "../../../ui";
 import { blendHex, colors } from "../../../theme/colors";
 import { t } from "../../../i18n";
@@ -62,6 +63,22 @@ function ChannelNotificationIcon({
     >
       <Icon name={enabled ? "sound-on" : "sound-off"} size={15} />
     </Span>
+  );
+}
+
+/** A section's header, kept in view while the keyboard's cursor is on it. */
+function SectionHeaderRow({ width, cursor, backgroundColor, children }: {
+  width: number;
+  cursor: boolean;
+  backgroundColor: string;
+  children: ReactNode;
+}) {
+  const ref = useRef<BoxRenderable>(null);
+  usePaneSidebarReveal(ref, cursor);
+  return (
+    <Box ref={ref} height={1} width={width} flexDirection="row" backgroundColor={backgroundColor}>
+      {children}
+    </Box>
   );
 }
 
@@ -182,13 +199,12 @@ export function ChannelSidebar({
         onResizeEnd: (nextWidth) => chatSidebarStore.commitWidth(nextWidth),
       } : undefined}
     >
-      {({ backgroundColor: sidebarBg, listWidth }) => {
-        const labelWidth = Math.max(listWidth - CHANNEL_ROW_INDENT - notificationWidth, 1);
+      {({ backgroundColor: sidebarBg, listWidth: sidebarWidth }) => {
         // The fill a keyboard-focused sidebar gives the row under its cursor.
         const cursorBackground = blendHex(colors.selected, colors.borderFocused, 0.32);
         // Every section reads the same: a caret, a label, and an optional
         // trailing action, so their channels can all share one indent.
-        const sectionHeader = ({ key, label, fg, unread, expanded, onToggle, action }: {
+        const sectionHeader = (listWidth: number, { key, label, fg, unread, expanded, onToggle, action }: {
           key: string;
           label: string;
           fg?: string;
@@ -198,13 +214,13 @@ export function ChannelSidebar({
           action?: { ariaLabel: string; onPress: () => void };
         }) => {
           const rowWidth = Math.max(1, listWidth - (action ? SECTION_ACTION_WIDTH : 0));
+          const cursor = keyboardFocused && cursorHeaderKey === key;
           return (
-            <Box
+            <SectionHeaderRow
               key={key}
-              height={1}
               width={listWidth}
-              flexDirection="row"
-              backgroundColor={keyboardFocused && cursorHeaderKey === key ? cursorBackground : sidebarBg}
+              cursor={cursor}
+              backgroundColor={cursor ? cursorBackground : sidebarBg}
             >
               <ActionRow
                 label={truncateWithEllipsis(label, Math.max(1, rowWidth - CHANNEL_ROW_INDENT))}
@@ -225,15 +241,16 @@ export function ChannelSidebar({
                   )}
                 </PaneSidebarAction>
               ) : null}
-            </Box>
+            </SectionHeaderRow>
           );
         };
         return (
           <>
             <PaneSidebarList>
-            {sidebarRows.map((row) => {
+            {({ listWidth }) => sidebarRows.map((row) => {
+              const labelWidth = Math.max(listWidth - CHANNEL_ROW_INDENT - notificationWidth, 1);
               if (row.kind === "public-header") {
-                return sectionHeader({
+                return sectionHeader(listWidth, {
                   key: row.key,
                   label: "Channels",
                   unread: hasUnread(row.channels),
@@ -243,7 +260,7 @@ export function ChannelSidebar({
               }
               if (row.kind === "team-header") {
                 const canAddChannel = !!row.team && !!onCreateTeamChannel;
-                return sectionHeader({
+                return sectionHeader(listWidth, {
                   key: row.key,
                   label: row.team ? `${teamPrefix(row.team)} ${row.team.name}` : "Team",
                   fg: row.team ? teamAccentHex(row.team.accentColor) : colors.textDim,
@@ -259,7 +276,7 @@ export function ChannelSidebar({
                 });
               }
               if (row.kind === "direct-header") {
-                return sectionHeader({
+                return sectionHeader(listWidth, {
                   key: row.key,
                   label: "DMs",
                   unread: hasUnread(row.channels),
@@ -325,7 +342,7 @@ export function ChannelSidebar({
                     <Text fg={foregroundColor} selectable={false} onMouseDown={onMouseDown}> </Text>
                     <ProfileIcon color={foregroundColor} onMouseDown={onMouseDown} />
                     <Text fg={foregroundColor} selectable={false} onMouseDown={onMouseDown}>
-                      {` ${truncateWithEllipsis(t("Profile"), Math.max(listWidth - 3, 1))}`}
+                      {` ${truncateWithEllipsis(t("Profile"), Math.max(sidebarWidth - 3, 1))}`}
                     </Text>
                     <Box flexGrow={1} onMouseDown={onMouseDown} />
                   </>
@@ -333,7 +350,7 @@ export function ChannelSidebar({
               </PaneSidebarRow>
             )}
             {loading && focused && (
-              <Box height={1} width={listWidth} flexDirection="row">
+              <Box height={1} width={sidebarWidth} flexDirection="row">
                 <Text fg={colors.textDim}>{` ${t("syncing")}`}</Text>
               </Box>
             )}

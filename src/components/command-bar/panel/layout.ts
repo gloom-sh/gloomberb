@@ -27,13 +27,8 @@ export interface CommandBarPanelLayout {
   listBodyHeight: number;
   nativeOccluderRect: LayoutBounds;
   nativePanelPaddingColumns: number;
+  /** The sheet, the one thing the open bar covers: the panes beside and below it stay as they are. */
   panelBounds: LayoutBounds;
-  /**
-   * The rows the terminal sheet clears behind it, relative to its top, edge
-   * to edge: a pane cut by the sheet's sides shows only pieces of its words
-   * and borders. Null on the desktop, whose sheet is a floating surface.
-   */
-  clearBounds: LayoutBounds | null;
   queryDisplayWidth: number;
   labelWidth: number;
   trailingWidth: number;
@@ -154,7 +149,6 @@ export function resolveCommandBarPanelLayout({
       width: barWidth,
       height: barHeight,
     },
-    clearBounds: nativePaneChrome ? null : { x: 0, y: 0, width: termWidth, height: barHeight },
     queryDisplayWidth,
     labelWidth,
     trailingWidth,
