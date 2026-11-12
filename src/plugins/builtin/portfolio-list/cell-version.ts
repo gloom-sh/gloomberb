@@ -20,9 +20,9 @@ const FX_COLUMN_IDS = new Set([
 ]);
 /** Columns that divide by the portfolio's total. */
 const ALLOCATION_COLUMN_IDS = new Set(["weight", "drift", "trade", "trade_value"]);
-/** Columns read at the price the pane values at: the latest print or the regular close. */
+/** Columns read at the price the pane values at: the latest print or the regular close, and LAST shows it. */
 const VALUATION_COLUMN_IDS = new Set([
-  "mkt_value", "weight", "drift", "trade", "trade_value", "day_pnl", "pnl", "pnl_pct", "as_of",
+  "price", "change", "change_pct", "mkt_value", "weight", "drift", "trade", "trade_value", "day_pnl", "pnl", "pnl_pct", "as_of",
 ]);
 // DIV% reads the corporate actions to measure a trailing yield and to tell a dividend that stopped, which a day can change.
 const SUPPLEMENTAL_COLUMN_IDS = new Set(["target", "target_pct", "rating", "ex_div", "next_earn", "dividend_yield"]);
@@ -30,7 +30,7 @@ const DAY_CLOCK_COLUMN_IDS = new Set(["held", "ex_div", "next_earn", "as_of", "d
 export const PERPETUAL_COLUMN_IDS: ReadonlySet<string> = new Set(["perp_premium", "perp_funding"]);
 /** Columns a future's contract size or settlement moves: its quantity, its value, and at the close its Last. */
 const FUTURES_TERMS_COLUMN_IDS = new Set([
-  ...VALUATION_COLUMN_IDS, "shares", "cost_basis", "avg_cost", "price", "change", "change_pct",
+  ...VALUATION_COLUMN_IDS, "shares", "cost_basis", "avg_cost",
 ]);
 
 const exchangeRateVersions = new WeakMap<ReadonlyMap<string, number>, string>();
@@ -63,7 +63,7 @@ export function columnContextVersion(columnId: string, ctx: ColumnContext): stri
   let version = `${ctx.activeTab ?? ""}|${ctx.baseCurrency}`;
   if (FX_COLUMN_IDS.has(columnId)) version += `|${exchangeRatesVersion(ctx.exchangeRates)}`;
   if (ALLOCATION_COLUMN_IDS.has(columnId)) version += `|${ctx.portfolioWeightBase ?? 0}`;
-  if (VALUATION_COLUMN_IDS.has(columnId)) version += `|${ctx.valuationBasis ?? "latest-print"}`;
+  if (VALUATION_COLUMN_IDS.has(columnId)) version += `|${ctx.valuationBasis ?? ""}`;
   if (ALLOCATION_COLUMN_IDS.has(columnId) || columnId === "target_weight") version += `|${targetsVersion(ctx.portfolioTargets)}`;
   if (SUPPLEMENTAL_COLUMN_IDS.has(columnId)) version += `|${ctx.supplementalVersion ?? 0}`;
   if (PERPETUAL_COLUMN_IDS.has(columnId)) version += `|${ctx.perpetualsVersion ?? 0}`;

@@ -2948,6 +2948,32 @@ describe("one-day charts show the latest session", () => {
     expect(requests).toEqual(["extended", undefined]);
   });
 
+  test("the legend moves with the regular session on its bars, and with the latest print on bars that run into extended hours", async () => {
+    const bars = [...hourlyBars("2026-10-01T13:30:00Z", "2026-10-01T19:30:00Z", 330), ...hourlyBars("2026-10-02T08:00:00Z", "2026-10-02T23:00:00Z", 333)];
+    const source = { kind: "security" as const, instrument: { symbol: "AAPL", exchange: "NASDAQ" }, fieldId: "market.ohlcv" };
+    // After Friday's session: up 2% to a 336.60 close, then 326.70 after hours, 1% under Thursday's 330 close.
+    const quote = { symbol: "AAPL", currency: "USD", price: 326.7, change: -3.3, changePercent: -1, previousClose: 330,
+      regularClose: 336.6, regularCloseSessionDate: "2026-10-02", changeSessionDate: "2026-10-02", marketState: "POSTPOST" as const,
+      listingExchangeName: "NASDAQ", lastUpdated: Date.parse("2026-10-02T23:59:00Z") };
+    const legend = async (extendedHours: boolean) => (await resolveChartSpecData(chartSpec({
+      viewport: { range: "1D", resolution: "1h", ...(extendedHours ? { extendedHours: true } : {}) },
+      series: [chartSeries({ style: "candles", source })],
+    }), {
+      dataProvider: createTestDataProvider({
+        getPriceHistoryForResolutionWithMetadata: async (_symbol, _exchange, _range, resolution, context) => {
+          const extended = context?.historySession === "extended";
+          return { points: extended ? bars : bars.filter((bar) => bar.date.getUTCHours() >= 13 && bar.date.getUTCHours() < 20), resolution,
+            ...(extended ? { extendedHours: true } : {}) };
+        },
+      }),
+      now: new Date("2026-10-03T12:00:00Z"), loadFredSeries: async () => fredLoad(),
+      quoteOverrides: new Map([[chartQuoteOverrideKeyForSource(source), quote]]),
+    })).series[0]?.latestChangePercent;
+    // As `quote` heads Last: the session's +2%, the after-hours print beside it.
+    expect(await legend(false)).toBeCloseTo(2, 8);
+    expect(await legend(true)).toBeCloseTo(-1, 8);
+  });
+
   test("keeps a rolling day for crypto", async () => {
     const result = await resolveDay("BTC-USD", "CCC", hourlyBars("2026-10-02T00:00:00Z", "2026-10-03T11:00:00Z", 84_000));
     expect(result.viewport).toEqual({ start: new Date("2026-10-02T12:00:00Z"), end: new Date("2026-10-03T12:00:00Z") });

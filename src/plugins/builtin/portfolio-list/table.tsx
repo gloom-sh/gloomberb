@@ -52,6 +52,9 @@ const GROSS_WEIGHT_LABEL = "GROSS WT";
 /** P&L%'s header over a period: each position's P&L as a share of the book at the start. */
 const CONTRIBUTION_LABEL = "CONTRIB";
 
+/** What an extended-hours print's session mark adds to LAST: `AH `, `PM ` or `ON `. */
+const SESSION_MARK_WIDTH = 3;
+
 /** The widest a futures quantity grows the QTY column: `-12,000 × 5,000 bushels` fits. */
 const MAX_QUANTITY_COLUMN_WIDTH = 24;
 
@@ -282,6 +285,14 @@ export function PortfolioTickerTable({
     (widest, ticker) => Math.max(widest, displayWidth(resolveCell(sharesColumn, ticker, tableFinancialsMap.get(ticker.metadata.ticker)).text)),
     sharesColumn.width,
   )) : 0;
+  // A book at the latest print marks an extended-hours print in LAST (AH 158.78), so the column grows to fit the mark.
+  const priceColumn = columns.find((column) => column.id === "price");
+  const priceWidth = useMemo(() => priceColumn && columnContext.valuationBasis === "latest-print"
+    ? Math.min(priceColumn.width + SESSION_MARK_WIDTH, sortedTickers.reduce(
+      (widest, ticker) => Math.max(widest, displayWidth(resolveCell(priceColumn, ticker, tableFinancialsMap.get(ticker.metadata.ticker)).text)),
+      priceColumn.width,
+    ))
+    : 0, [columnContext.valuationBasis, priceColumn, resolveCell, sortedTickers, tableFinancialsMap]);
   // The Ticker column grows to its longest symbol, so ETH-USD and BA:LSE show whole beside their market-state dot.
   const tickerWidth = useMemo(() => Math.min(MAX_TICKER_COLUMN_WIDTH, sortedTickers.reduce(
     (widest, ticker) => Math.max(widest, TICKER_DOT_WIDTH + displayWidth(listedSymbol(ticker, tickerDisplayName(ticker), columnContext.homeMarket))),
@@ -295,13 +306,14 @@ export function PortfolioTickerTable({
     ? { ...column, label: "QTY", ...(sharesWidth > column.width ? { width: sharesWidth } : {}) }
     : column.id === "weight" && grossWeights ? { ...column, label: GROSS_WEIGHT_LABEL }
     : column.id === "ticker" && tickerWidth > column.width ? { ...column, width: tickerWidth }
+    : column.id === "price" && priceWidth > column.width ? { ...column, width: priceWidth }
     : column.id === "pnl_pct" && period ? { ...column, label: CONTRIBUTION_LABEL }
     : pnlLabel !== "P&L" && (column.id === "pnl" || column.id === "pnl_pct") ? {
     ...column,
     label: column.id === "pnl_pct" ? pnlLabel.replace("P&L", "%") : pnlLabel,
   } : column).map((column) => BOOK_CURRENCY_COLUMN_IDS.has(column.id) ? bookCurrencyColumn(column, capCurrency) : column)
     .map((column) => hasFrontReference && column.id === noteColumnId ? { ...column, flexGrow: 1 } : column),
-  [capCurrency, columns, grossWeights, hasFrontReference, hasNonShareQuantity, noteColumnId, period, pnlLabel, sharesWidth, tickerWidth]);
+  [capCurrency, columns, grossWeights, hasFrontReference, hasNonShareQuantity, noteColumnId, period, pnlLabel, priceWidth, sharesWidth, tickerWidth]);
   // Read again as the rows' data moves, from the cells the rows show; the columns change only when what is hidden does.
   // The company columns hidden last time, per list, stay hidden while a row added since settles.
   const hiddenCompanyRef = useRef<{ list: string | undefined; ids: ReadonlySet<string> }>({ list: undefined, ids: new Set() });
