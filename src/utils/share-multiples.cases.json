@@ -1,0 +1,889 @@
+{
+ "about": "Listings priced as valuation prices them and as the screener's server projects them, from the same payloads: each gets the same trailing P/E, or none for the same reason. The server reads these cases too; the two copies are kept identical. `served` is what the service adds to a stored payload when it serves it; `universe` is the company universe's large companies with their home lines.",
+ "now": "2026-11-12T07:00:00Z",
+ "universe": [
+  {
+   "symbol": "AMD",
+   "exchange": "NASDAQ",
+   "name": "ADVANCED MICRO DEVICES INC",
+   "issuer": "cik:2488",
+   "primary": true,
+   "marketCapUsd": 300000000000.0
+  },
+  {
+   "symbol": "MC",
+   "exchange": "EPA",
+   "name": "LVMH",
+   "issuer": "isin:FR0000121014",
+   "primary": true,
+   "marketCapUsd": 300000000000.0
+  },
+  {
+   "symbol": "BAM",
+   "exchange": "NYSE",
+   "name": "Brookfield Asset Management Ltd.",
+   "issuer": "cik:1937926",
+   "primary": true,
+   "marketCapUsd": 90000000000.0
+  },
+  {
+   "symbol": "BAM",
+   "exchange": "TSX",
+   "name": "Brookfield Asset Management Ltd.",
+   "issuer": "cik:1937926",
+   "primary": false,
+   "marketCapUsd": 90000000000.0
+  },
+  {
+   "symbol": "TD",
+   "exchange": "TSX",
+   "name": "The Toronto-Dominion Bank",
+   "issuer": "cik:947263",
+   "primary": true,
+   "marketCapUsd": 150000000000.0
+  },
+  {
+   "symbol": "TD",
+   "exchange": "NYSE",
+   "name": "TORONTO DOMINION BANK",
+   "issuer": "cik:947263",
+   "primary": false,
+   "marketCapUsd": 150000000000.0
+  },
+  {
+   "symbol": "XAU",
+   "exchange": "TSX",
+   "name": "GoldMoney Inc.",
+   "issuer": "listing:XAU:TSX",
+   "primary": true,
+   "marketCapUsd": 110000000.0
+  }
+ ],
+ "cases": [
+  {
+   "name": "TDK withheld its quarter to 2025-12-31: no four quarters, so the source's EPS stands",
+   "symbol": "6762",
+   "exchange": "JPX",
+   "quote": {
+    "price": 2337,
+    "currency": "JPY",
+    "name": "TDK Corporation"
+   },
+   "fundamentals": {
+    "eps": 195.79,
+    "trailingPE": 11.936258235864958,
+    "marketCapCurrency": "JPY",
+    "financialCurrency": "JPY",
+    "netIncome": 260677992448,
+    "sharesOutstanding": 1898154125
+   },
+   "quarterlyStatements": [
+    {
+     "date": "2025-06-30",
+     "currency": "JPY",
+     "eps": 21.82
+    },
+    {
+     "date": "2025-09-30",
+     "currency": "JPY",
+     "eps": 36.85
+    },
+    {
+     "date": "2025-12-31",
+     "currency": "JPY",
+     "unavailableEarnings": [
+      "basicEps",
+      "eps"
+     ]
+    },
+    {
+     "date": "2026-03-31",
+     "currency": "JPY",
+     "eps": 7.62
+    },
+    {
+     "date": "2026-06-30",
+     "currency": "JPY",
+     "eps": 42.4
+    },
+    {
+     "date": "2026-09-30",
+     "currency": "JPY",
+     "eps": 50.49
+    }
+   ],
+   "annualStatements": [
+    {
+     "date": "2025-03-31",
+     "currency": "JPY",
+     "eps": 87.98
+    },
+    {
+     "date": "2026-03-31",
+     "currency": "JPY",
+     "eps": 102.97
+    }
+   ],
+   "expect": {
+    "trailingPE": 11.936258235864958
+   }
+  },
+  {
+   "name": "TDK with that quarter filed: the last four quarters",
+   "symbol": "6762",
+   "exchange": "JPX",
+   "quote": {
+    "price": 2337,
+    "currency": "JPY",
+    "name": "TDK Corporation"
+   },
+   "fundamentals": {
+    "eps": 195.79,
+    "trailingPE": 11.936258235864958,
+    "marketCapCurrency": "JPY",
+    "financialCurrency": "JPY",
+    "netIncome": 260677992448,
+    "sharesOutstanding": 1898154125
+   },
+   "quarterlyStatements": [
+    {
+     "date": "2025-06-30",
+     "currency": "JPY",
+     "eps": 21.82
+    },
+    {
+     "date": "2025-09-30",
+     "currency": "JPY",
+     "eps": 36.85
+    },
+    {
+     "date": "2025-12-31",
+     "currency": "JPY",
+     "eps": 38.0
+    },
+    {
+     "date": "2026-03-31",
+     "currency": "JPY",
+     "eps": 7.62
+    },
+    {
+     "date": "2026-06-30",
+     "currency": "JPY",
+     "eps": 42.4
+    },
+    {
+     "date": "2026-09-30",
+     "currency": "JPY",
+     "eps": 50.49
+    }
+   ],
+   "annualStatements": [
+    {
+     "date": "2025-03-31",
+     "currency": "JPY",
+     "eps": 87.98
+    },
+    {
+     "date": "2026-03-31",
+     "currency": "JPY",
+     "eps": 102.97
+    }
+   ],
+   "expect": {
+    "trailingPE": 16.872427983539097
+   }
+  },
+  {
+   "name": "PAN reports in dollars and is quoted in rand: its EPS is not judged against dollar net income",
+   "symbol": "PAN",
+   "exchange": "JSE",
+   "quote": {
+    "price": 23.59,
+    "currency": "ZAR",
+    "name": "Pan African Resources PLC"
+   },
+   "fundamentals": {
+    "eps": 2.98,
+    "trailingPE": 7.916107382550336,
+    "netIncome": 141597000,
+    "sharesOutstanding": 2027313471,
+    "marketCapCurrency": "ZAR"
+   },
+   "financialCurrency": "USD",
+   "annualStatements": [
+    {
+     "date": "2025-06-30",
+     "currency": "USD",
+     "eps": 0.0716,
+     "netIncome": 141597000
+    },
+    {
+     "date": "2026-06-30",
+     "currency": "USD",
+     "eps": 0.176,
+     "netIncome": 357215000
+    }
+   ],
+   "expect": {
+    "trailingPE": 7.916107382550336
+   }
+  },
+  {
+   "name": "U.UN divides a CAD price by a USD EPS, and no rate is on record",
+   "symbol": "U.UN",
+   "exchange": "TSX",
+   "quote": {
+    "price": 26.47,
+    "currency": "CAD",
+    "name": "Sprott Physical Uranium Trust Fund"
+   },
+   "fundamentals": {
+    "eps": 1.64,
+    "trailingPE": 16.140243902439025,
+    "netIncome": 538400000,
+    "sharesOutstanding": 344156215,
+    "marketCapCurrency": "CAD"
+   },
+   "financialCurrency": "USD",
+   "annualStatements": [
+    {
+     "date": "2024-12-31",
+     "currency": "USD",
+     "eps": -4.61,
+     "netIncome": -1220326000
+    },
+    {
+     "date": "2025-12-31",
+     "currency": "USD",
+     "eps": 1.9,
+     "netIncome": 538400000
+    }
+   ],
+   "expect": {
+    "trailingPE": null,
+    "because": "in USD beside a price in CAD, with no rate on record"
+   }
+  },
+  {
+   "name": "AMD on the TSX is a receipt on a company whose home line is on Nasdaq",
+   "symbol": "AMD",
+   "exchange": "TSX",
+   "quote": {
+    "price": 14.23,
+    "currency": "CAD",
+    "name": "Advanced Micro Devices, Inc."
+   },
+   "fundamentals": {
+    "eps": 0.83,
+    "trailingPE": 17.144578313253014,
+    "forwardEps": 1.2,
+    "forwardPE": 11.858333333333334,
+    "marketCapCurrency": "CAD"
+   },
+   "profile": {
+    "country": "US"
+   },
+   "served": {
+    "isDepositaryReceipt": true
+   },
+   "expect": {
+    "trailingPE": null,
+    "forwardPE": null,
+    "because": "depositary receipt with no ratio on record"
+   }
+  },
+  {
+   "name": "LV on Cboe Canada is LVMH's receipt, its home line in Paris",
+   "symbol": "LV",
+   "exchange": "NEO",
+   "quote": {
+    "price": 8.99,
+    "currency": "CAD",
+    "name": "LVMH Moët Hennessy - Louis Vuitton, Société Européenne"
+   },
+   "fundamentals": {
+    "eps": 35.38,
+    "trailingPE": 0.2540983606557377,
+    "marketCapCurrency": "CAD"
+   },
+   "profile": {
+    "country": "FR"
+   },
+   "served": {
+    "isDepositaryReceipt": true
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "depositary receipt with no ratio on record"
+   }
+  },
+  {
+   "name": "XAU on the TSX is Goldmoney's own main line, wherever the company is from",
+   "symbol": "XAU",
+   "exchange": "TSX",
+   "quote": {
+    "price": 11.85,
+    "currency": "CAD",
+    "name": "Goldmoney Inc."
+   },
+   "fundamentals": {
+    "eps": 4.31,
+    "trailingPE": 2.7494199535962878,
+    "marketCapCurrency": "CAD"
+   },
+   "profile": {
+    "country": "VG"
+   },
+   "expect": {
+    "trailingPE": 2.7494199535962878
+   }
+  },
+  {
+   "name": "BAM on the TSX is the same shares as its NYSE home line",
+   "symbol": "BAM",
+   "exchange": "TSX",
+   "quote": {
+    "price": 74.87,
+    "currency": "CAD",
+    "name": "Brookfield Asset Management Ltd."
+   },
+   "fundamentals": {
+    "eps": 4.09,
+    "trailingPE": 18.305623471882644,
+    "marketCapCurrency": "CAD"
+   },
+   "profile": {
+    "country": "US"
+   },
+   "expect": {
+    "trailingPE": 18.305623471882644
+   }
+  },
+  {
+   "name": "TD on Cboe Canada is a Canadian company's line",
+   "symbol": "TD",
+   "exchange": "NEO",
+   "quote": {
+    "price": 177.06,
+    "currency": "CAD",
+    "name": "The Toronto-Dominion Bank"
+   },
+   "fundamentals": {
+    "eps": 9.34,
+    "trailingPE": 18.957173447537475,
+    "marketCapCurrency": "CAD"
+   },
+   "profile": {
+    "country": "CA"
+   },
+   "expect": {
+    "trailingPE": 18.957173447537475
+   }
+  },
+  {
+   "name": "Glass House's main line is on Cboe Canada, though the company is American",
+   "symbol": "GLAS.A.U",
+   "exchange": "NEO",
+   "quote": {
+    "price": 9.5,
+    "currency": "USD",
+    "name": "Glass House Brands Inc."
+   },
+   "fundamentals": {
+    "eps": 0.5,
+    "trailingPE": 19,
+    "marketCapCurrency": "USD"
+   },
+   "profile": {
+    "country": "US"
+   },
+   "expect": {
+    "trailingPE": 19
+   }
+  },
+  {
+   "name": "BZFDW is a warrant, so neither P/E is one",
+   "symbol": "BZFDW",
+   "exchange": "NASDAQ",
+   "quote": {
+    "price": 0.0054,
+    "currency": "USD",
+    "name": "BuzzFeed, Inc. - Warrant"
+   },
+   "fundamentals": {
+    "eps": 0.165,
+    "trailingPE": 0.03272727272727273,
+    "forwardEps": 0.2,
+    "forwardPE": 0.027,
+    "marketCapCurrency": "USD"
+   },
+   "expect": {
+    "trailingPE": null,
+    "forwardPE": null,
+    "because": "warrant is not the share"
+   }
+  },
+  {
+   "name": "A subscription right, by its name",
+   "symbol": "LGVNR",
+   "exchange": "NASDAQ",
+   "quote": {
+    "price": 0.12,
+    "currency": "USD",
+    "name": "Longeveron Inc. Subscription Right"
+   },
+   "fundamentals": {
+    "eps": 0.4,
+    "trailingPE": 0.3,
+    "marketCapCurrency": "USD"
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "right is not the share"
+   }
+  },
+  {
+   "name": "NYSE's .WS is a warrant",
+   "symbol": "NWAX.WS",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 0.5,
+    "currency": "USD",
+    "name": "Nwax Corp"
+   },
+   "fundamentals": {
+    "eps": 1,
+    "trailingPE": 0.5,
+    "marketCapCurrency": "USD"
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "warrant is not the share"
+   }
+  },
+  {
+   "name": "NYSE's .RT is a right",
+   "symbol": "ABCD.RT",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 0.2,
+    "currency": "USD",
+    "name": "Abcd Corp"
+   },
+   "fundamentals": {
+    "eps": 1,
+    "trailingPE": 0.2,
+    "marketCapCurrency": "USD"
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "right is not the share"
+   }
+  },
+  {
+   "name": "SET's -W is a warrant",
+   "symbol": "JMART-W4",
+   "exchange": "SET",
+   "quote": {
+    "price": 0.3,
+    "currency": "THB",
+    "name": "Jay Mart Public Company Limited"
+   },
+   "fundamentals": {
+    "eps": 0.6,
+    "trailingPE": 0.5,
+    "marketCapCurrency": "THB"
+   },
+   "profile": {
+    "country": "TH"
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "warrant is not the share"
+   }
+  },
+  {
+   "name": "A blank-check company's units, by its name, on any venue",
+   "symbol": "ACQ.UN",
+   "exchange": "TSX",
+   "quote": {
+    "price": 10.1,
+    "currency": "CAD",
+    "name": "Maple Leaf Acquisition Corp. - Class A Restricted Voting Units"
+   },
+   "fundamentals": {
+    "eps": 0.4,
+    "trailingPE": 25.25,
+    "marketCapCurrency": "CAD"
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "unit is not the share"
+   }
+  },
+  {
+   "name": "A REIT's units on the TSX are its share",
+   "symbol": "CHP.UN",
+   "exchange": "TSX",
+   "quote": {
+    "price": 14.5,
+    "currency": "CAD",
+    "name": "Choice Properties Real Estate Investment Trust - REIT Units"
+   },
+   "fundamentals": {
+    "eps": 1.45,
+    "trailingPE": 10,
+    "marketCapCurrency": "CAD"
+   },
+   "expect": {
+    "trailingPE": 10
+   }
+  },
+  {
+   "name": "An income fund's units are its share",
+   "symbol": "BLX.UN",
+   "exchange": "TSX",
+   "quote": {
+    "price": 30,
+    "currency": "CAD",
+    "name": "Boralex Income Fund - Units"
+   },
+   "fundamentals": {
+    "eps": 2,
+    "trailingPE": 15,
+    "marketCapCurrency": "CAD"
+   },
+   "expect": {
+    "trailingPE": 15
+   }
+  },
+  {
+   "name": "Depositary units are the partnership's share",
+   "symbol": "IEP",
+   "exchange": "NASDAQ",
+   "quote": {
+    "price": 9,
+    "currency": "USD",
+    "name": "Icahn Enterprises L.P. - Depositary Units"
+   },
+   "fundamentals": {
+    "eps": 0.9,
+    "trailingPE": 10,
+    "marketCapCurrency": "USD"
+   },
+   "expect": {
+    "trailingPE": 10
+   }
+  },
+  {
+   "name": "A unit by its name alone is not one outside the US",
+   "symbol": "MRES.U",
+   "exchange": "TSX",
+   "quote": {
+    "price": 5,
+    "currency": "USD",
+    "name": "Maple Residential - Units"
+   },
+   "fundamentals": {
+    "eps": 0.5,
+    "trailingPE": 10,
+    "marketCapCurrency": "USD"
+   },
+   "expect": {
+    "trailingPE": 10
+   }
+  },
+  {
+   "name": "PSA.PR.U is a preferred, not a unit",
+   "symbol": "PSA.PR.U",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 20,
+    "currency": "USD",
+    "name": "Public Storage Preferred Series U"
+   },
+   "fundamentals": {
+    "eps": 2,
+    "trailingPE": 10,
+    "marketCapCurrency": "USD"
+   },
+   "expect": {
+    "trailingPE": 10
+   }
+  },
+  {
+   "name": "STKH's EPS has the other sign than its net income over its shares",
+   "symbol": "STKH",
+   "exchange": "NASDAQ",
+   "quote": {
+    "price": 2.36,
+    "currency": "USD",
+    "name": "Steakholder Foods Ltd."
+   },
+   "fundamentals": {
+    "eps": 96,
+    "trailingPE": 0.024583333333333332,
+    "netIncome": -7010000,
+    "sharesOutstanding": 605876,
+    "marketCapCurrency": "USD"
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "has the other sign than trailing net income over shares outstanding (-11.57)"
+   }
+  },
+  {
+   "name": "An EPS ten times its net income over its shares is another count",
+   "symbol": "APRT",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 30,
+    "currency": "USD",
+    "name": "Apart Corp"
+   },
+   "fundamentals": {
+    "eps": 25,
+    "trailingPE": 1.2,
+    "netIncome": 2000000,
+    "sharesOutstanding": 1000000,
+    "marketCapCurrency": "USD"
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "is more than 10 times off trailing net income over shares outstanding (2.00)"
+   }
+  },
+  {
+   "name": "Figures below a cent read in two significant digits",
+   "symbol": "BZT",
+   "exchange": "LSE",
+   "quote": {
+    "price": 0.12,
+    "currency": "GBp",
+    "name": "Bezant Resources Plc"
+   },
+   "fundamentals": {
+    "eps": 8.9e-05,
+    "trailingPE": 13.48314606741573,
+    "netIncome": -4257000,
+    "sharesOutstanding": 22932525573,
+    "marketCapCurrency": "GBP"
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "0.000089 has the other sign than trailing net income over shares outstanding (-0.00019)"
+   }
+  },
+  {
+   "name": "A receipt's EPS is not judged against its count, which can be ordinary shares",
+   "symbol": "RCPT",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 30,
+    "currency": "USD",
+    "name": "Receipt Holdings",
+    "isDepositaryReceipt": true,
+    "adrRatio": 10
+   },
+   "fundamentals": {
+    "eps": 25,
+    "trailingPE": 1.2,
+    "netIncome": 2000000,
+    "sharesOutstanding": 1000000,
+    "marketCapCurrency": "USD",
+    "isDepositaryReceipt": true,
+    "adrRatio": 10
+   },
+   "expect": {
+    "trailingPE": 1.2
+   }
+  },
+  {
+   "name": "SNBN's 577,618 CHF a share is its own, and 0.01x its P/E",
+   "symbol": "SNBN",
+   "exchange": "SWX",
+   "quote": {
+    "price": 3090,
+    "currency": "CHF",
+    "name": "Schweizerische Nationalbank"
+   },
+   "fundamentals": {
+    "eps": 577618,
+    "trailingPE": 0.005349556281140823,
+    "netIncome": 57761800192,
+    "sharesOutstanding": 100000,
+    "marketCapCurrency": "CHF"
+   },
+   "expect": {
+    "trailingPE": 0.005349556281140823
+   }
+  },
+  {
+   "name": "Quarters to a period over 487 days old leave the source's EPS",
+   "symbol": "OLDQ",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 50,
+    "currency": "USD",
+    "name": "Old Quarters Inc."
+   },
+   "fundamentals": {
+    "eps": 2.5,
+    "trailingPE": 20,
+    "marketCapCurrency": "USD"
+   },
+   "quarterlyStatements": [
+    {
+     "date": "2024-06-30",
+     "currency": "USD",
+     "eps": 0.55
+    },
+    {
+     "date": "2024-09-30",
+     "currency": "USD",
+     "eps": 0.55
+    },
+    {
+     "date": "2024-12-31",
+     "currency": "USD",
+     "eps": 0.55
+    },
+    {
+     "date": "2025-03-31",
+     "currency": "USD",
+     "eps": 0.55
+    }
+   ],
+   "expect": {
+    "trailingPE": 20
+   }
+  },
+  {
+   "name": "Recent quarters give the EPS",
+   "symbol": "NEWQ",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 50,
+    "currency": "USD",
+    "name": "New Quarters Inc."
+   },
+   "fundamentals": {
+    "eps": 2.5,
+    "trailingPE": 20,
+    "marketCapCurrency": "USD"
+   },
+   "quarterlyStatements": [
+    {
+     "date": "2025-12-31",
+     "currency": "USD",
+     "eps": 0.55
+    },
+    {
+     "date": "2026-03-31",
+     "currency": "USD",
+     "eps": 0.55
+    },
+    {
+     "date": "2026-06-30",
+     "currency": "USD",
+     "eps": 0.55
+    },
+    {
+     "date": "2026-09-30",
+     "currency": "USD",
+     "eps": 0.55
+    }
+   ],
+   "expect": {
+    "trailingPE": 22.727272727272727
+   }
+  },
+  {
+   "name": "A split gone ex after the quarters were filed leaves the source's EPS",
+   "symbol": "SPLT",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 50,
+    "currency": "USD",
+    "name": "Split Inc."
+   },
+   "fundamentals": {
+    "eps": 2.5,
+    "trailingPE": 20,
+    "marketCapCurrency": "USD",
+    "splitShareBasis": {
+     "exDate": "2026-11-02"
+    }
+   },
+   "quarterlyStatements": [
+    {
+     "date": "2025-12-31",
+     "currency": "USD",
+     "eps": 0.55,
+     "availableAt": "2026-10-28"
+    },
+    {
+     "date": "2026-03-31",
+     "currency": "USD",
+     "eps": 0.55,
+     "availableAt": "2026-10-28"
+    },
+    {
+     "date": "2026-06-30",
+     "currency": "USD",
+     "eps": 0.55,
+     "availableAt": "2026-10-28"
+    },
+    {
+     "date": "2026-09-30",
+     "currency": "USD",
+     "eps": 0.55,
+     "availableAt": "2026-10-28"
+    }
+   ],
+   "expect": {
+    "trailingPE": 20
+   }
+  },
+  {
+   "name": "A price in pence leaves the source's EPS, as valuation does",
+   "symbol": "MINQ",
+   "exchange": "LSE",
+   "quote": {
+    "price": 250,
+    "currency": "GBp",
+    "name": "Minor Unit plc"
+   },
+   "fundamentals": {
+    "eps": 0.2,
+    "trailingPE": 12.5,
+    "marketCapCurrency": "GBP"
+   },
+   "quarterlyStatements": [
+    {
+     "date": "2025-12-31",
+     "currency": "GBP",
+     "eps": 0.06
+    },
+    {
+     "date": "2026-03-31",
+     "currency": "GBP",
+     "eps": 0.06
+    },
+    {
+     "date": "2026-06-30",
+     "currency": "GBP",
+     "eps": 0.06
+    },
+    {
+     "date": "2026-09-30",
+     "currency": "GBP",
+     "eps": 0.06
+    }
+   ],
+   "expect": {
+    "trailingPE": 12.5
+   }
+  }
+ ]
+}

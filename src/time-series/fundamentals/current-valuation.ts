@@ -129,6 +129,8 @@ function currentDerivedValuation(
     ))
     .at(-1)?.candidate;
   if (!statement) return null;
+  // A P/E `valuation` withdraws (utils/share-multiples) is withdrawn here too, never read again as the price over EPS.
+  if (metric === "trailingPE" && financials.fundamentals?.notMeaningful?.trailingPE) return { value: null, date: current.date, statement };
   // The listing's EV needs no price in the statement's currency: an ADR's converts the statement instead.
   const listing = listingEnterpriseMultiple(financials, statement, metric);
   if (listing !== undefined) return { value: listing, date: current.date, statement };
@@ -202,6 +204,12 @@ function currentValuation(financials: TickerFinancials, period: SeriesPeriod | u
  */
 export function valuationNotMeaningful(financials: TickerFinancials, source: SecuritySeriesSource): { reason: string; asOf: string } | undefined {
   const [namespace, metric = ""] = canonicalTimeSeriesFieldId(source.fieldId).split(".");
+  if (namespace === "valuation" && (metric === "trailingPE" || metric === "forwardPE" || metric === "pegRatio")) {
+    const reason = financials.fundamentals?.notMeaningful?.[metric];
+    const asOf = financials.fundamentals?.trailingEpsPeriodEnd
+      ?? [...financials.quarterlyStatements, ...financials.annualStatements].map((row) => row.date).sort().at(-1);
+    return reason && asOf ? { reason: reason[0]!.toUpperCase() + reason.slice(1), asOf: asOf.slice(0, 10) } : undefined;
+  }
   if (namespace !== "valuation" || metric !== "evEbitda") return undefined;
   // A daily series ends on the trailing twelve months, as its current point does.
   const period = source.period === "daily" || source.period === "auto" || !source.period ? "ttm" : source.period;

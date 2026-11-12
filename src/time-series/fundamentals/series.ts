@@ -8,6 +8,7 @@ import { createValuationCurrencyContext } from "../valuation-currency";
 import { valuationPriceAtOrBefore, valuationQuoteIssue, type ValuationPriceIssue } from "../valuation-price";
 import type { SecuritySeriesSource, TimeSeriesPoint } from "../types";
 import { isBankOrInsurerIndustry } from "../../utils/ebitda";
+import { notTheShare } from "../../utils/share-multiples";
 import { currentDerivedValuationPoint, currentValuationStatements, providerCurrentValuationPoint } from "./current-valuation";
 import { dailyStatementValuation, dailyValuationFallbackPeriod, historicalValuation } from "./historical-valuation";
 import { FUNDAMENTAL_IDS, QUOTE_DERIVED_VALUATION_IDS, VALUATION_IDS, valuationSeriesUsesLiveQuote } from "./metric-ids";
@@ -15,6 +16,9 @@ import { dedupeFundamentalPeriods, pointForStatement } from "./period-points";
 import { sourceStatements } from "./source-statements";
 import { fundamentalValue, metricAvailability } from "./statement-fields";
 import { valuationAtPrice } from "./valuation-multiples";
+
+/** The multiples of a share's price over its company's earnings (notTheShare withdraws them). */
+const SHARE_PRICE_EARNINGS = new Set(["trailingPE", "forwardPE", "realizedNtmPE", "pegRatio"]);
 
 /** Extracts the selected statement snapshot, retaining known availability dates without reconstructing prior vintages. */
 export function extractFundamentalSeries(
@@ -49,6 +53,8 @@ export function extractFundamentalSeries(
   }
 
   if (namespace !== "valuation" || !VALUATION_IDS.has(metric)) return [];
+  // A warrant's, a right's, a unit's or an unratioed receipt's price over its company's EPS is no P/E at any date.
+  if (SHARE_PRICE_EARNINGS.has(metric) && notTheShare(financials)) return [];
   // A bank's or an insurer's EBITDA measures nothing: its EV/EBITDA is N/M throughout (valuationNotMeaningful).
   if (metric === "evEbitda" && isBankOrInsurerIndustry(financials.profile?.industry)) return [];
   const fallback = dailyValuationFallbackPeriod(financials, source);

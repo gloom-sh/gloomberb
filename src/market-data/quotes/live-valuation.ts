@@ -1,11 +1,11 @@
-import type { AnalystResearchData, CorporateActionsData, Fundamentals, Quote } from "../../types/financials";
+import type { AnalystResearchData, CorporateActionsData, Fundamentals, Quote, TickerFinancials } from "../../types/financials";
 import { atRegularSessionPrice, regularSessionValuationPrice } from "./regular-session-valuation";
 import { hasLikelyQuoteUnitMismatch, resolveCurrencyUnit } from "../../utils/currency-units";
 import { cashInMajorUnits } from "../../utils/dividend-cash";
 import { cashDistribution, dividendReferencePrice, trailingDividendYield, type CashDistribution } from "../../utils/trailing-dividend";
 import { priceEarningsEps } from "../../utils/fundamentals";
 import { selectMarketCapitalization, type MarketCapitalization } from "../../utils/market-capitalization";
-import { priceEarningsOnEarnings, type PriceEarnings } from "../../utils/price-earnings";
+import { NOT_MEANINGFUL, priceEarningsOnEarnings, type PriceEarnings } from "../../utils/price-earnings";
 
 /**
  * Price-derived statistics repriced at the quote's regular session price
@@ -69,14 +69,37 @@ function repriceMultiple(
  * currency than the price is repriced at the rate the served P/E converted it at.
  */
 export function liveTrailingPE(quote: Quote | null | undefined, fundamentals: Fundamentals | undefined): PriceEarnings | undefined {
+  // Withdrawn as no multiple of the share (utils/share-multiples).
+  if (fundamentals?.notMeaningful?.trailingPE) return NOT_MEANINGFUL;
   const stored = pricedFundamentals(quote, fundamentals)?.trailingPE;
   return priceEarningsOnEarnings(repriceMultiple(stored, priceEarningsEps(fundamentals), quote, fundamentals), fundamentals?.eps);
 }
 
 /** Forward P/E over the regular session price; not meaningful when the forward EPS behind it is zero or a loss. */
 export function liveForwardPE(quote: Quote | null | undefined, fundamentals: Fundamentals | undefined): PriceEarnings | undefined {
+  if (fundamentals?.notMeaningful?.forwardPE) return NOT_MEANINGFUL;
   const stored = pricedFundamentals(quote, fundamentals)?.forwardPE;
   return priceEarningsOnEarnings(repriceMultiple(stored, fundamentals?.forwardEps, quote, fundamentals), fundamentals?.forwardEps);
+}
+
+/**
+ * `financials` at the regular session price (atRegularSessionPrice) with the trailing and forward P/E the Overview,
+ * the portfolio and EQS show (liveTrailingPE, liveForwardPE): one the source measured at an older print is the price
+ * over its EPS. A P/E with no number (N/M, or none) stays as the block has it, for its reason.
+ */
+export function atLivePriceEarnings<T extends Pick<TickerFinancials, "quote" | "fundamentals">>(financials: T): T {
+  const priced = atRegularSessionPrice(financials);
+  if (!priced.fundamentals) return priced;
+  const trailing = liveTrailingPE(financials.quote, financials.fundamentals);
+  const forward = liveForwardPE(financials.quote, financials.fundamentals);
+  return {
+    ...priced,
+    fundamentals: {
+      ...priced.fundamentals,
+      ...typeof trailing === "number" ? { trailingPE: trailing } : {},
+      ...typeof forward === "number" ? { forwardPE: forward } : {},
+    },
+  };
 }
 
 /** Forward dividend yield over the regular session price, as a ratio like the stored yield. */
