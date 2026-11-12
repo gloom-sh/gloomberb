@@ -527,19 +527,31 @@ async function cursorDay(cdp: Cdp, paneId: string, at: Point): Promise<number> {
   return day ?? fail(`${paneId} reads out no observation under the pointer`, at);
 }
 
-/** Presses a tool in the chart's toolbar by the start of its label, focusing the pane first: only the focused pane shows its tools. */
+/**
+ * Presses a tool in the chart's toolbar by the start of its label, focusing the
+ * pane first: only the focused pane shows its tools. The bar is folded to one
+ * button until the pointer is on it, so the pointer goes there first.
+ */
 async function armTool(cdp: Cdp, paneId: string, label: string): Promise<void> {
   const toolbar = `!!__check.pane(${JSON.stringify(paneId)})?.querySelector("[data-gloom-role=composite-chart-toolbar]")`;
   if (!await evaluate<boolean>(cdp, toolbar)) {
     await click(cdp, await pointOf(cdp, paneId, "title"));
     if (!await waitFor(cdp, toolbar)) fail(`${paneId} shows no chart tools once focused`);
   }
-  const at = await evaluate<Point | null>(cdp, `(() => {
-    const tool = [...(__check.pane(${JSON.stringify(paneId)})?.querySelectorAll("[data-gloom-role=composite-chart-tool]") ?? [])]
-      .find((element) => (element.getAttribute("data-gloom-label") ?? "").startsWith(${JSON.stringify(label)}));
-    const r = tool?.getBoundingClientRect();
+  const centerOf = (role: string, match: string) => `(() => {
+    const element = [...(__check.pane(${JSON.stringify(paneId)})?.querySelectorAll("[data-gloom-role=${role}]") ?? [])]
+      .find((candidate) => (candidate.getAttribute("data-gloom-label") ?? "").startsWith(${JSON.stringify(match)}));
+    const r = element?.getBoundingClientRect();
     return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
-  })()`) ?? fail(`${paneId} has no ${label} tool`);
+  })()`;
+  let at = await evaluate<Point | null>(cdp, centerOf("composite-chart-tool", label));
+  if (!at) {
+    // Folded: the pointer on its button opens the bar.
+    const handle = await evaluate<Point | null>(cdp, centerOf("composite-chart-toolbar-toggle", ""));
+    if (!handle) fail(`${paneId} has no tool bar button`);
+    await mouse(cdp, "mouseMoved", handle.x, handle.y, false);
+    at = await waitFor<Point | null>(cdp, centerOf("composite-chart-tool", label)) ?? fail(`${paneId} has no ${label} tool`);
+  }
   await click(cdp, at);
 }
 
