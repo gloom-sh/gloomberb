@@ -32,11 +32,13 @@ export function resetEarningsCloudCaches() {
 
 const isDate = (value: unknown) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 const numberOrNull = (value: unknown) => value === null || (typeof value === "number" && Number.isFinite(value));
+const currencyOrAbsent = (value: unknown) => value == null || (typeof value === "string" && /^[A-Z]{3}$/.test(value));
 
 function validReport(report: EarningsReport): boolean {
   return !!report && typeof report.symbol === "string" && isDate(report.date)
     && [null, "bmo", "dmh", "amc"].includes(report.timing)
     && [report.marketCap, report.epsEstimate, report.epsActual, report.revenueEstimate].every(numberOrNull)
+    && currencyOrAbsent(report.currency)
     && (report.implied === null || (typeof report.implied === "object" && Number.isFinite(report.implied.move) && isDate(report.implied.expiry)))
     && (report.realized === null || (typeof report.realized === "object" && Number.isFinite(report.realized.move)));
 }
@@ -69,7 +71,7 @@ type HistoryClient = Pick<typeof apiClient, "getCloudEarningsHistory">;
 
 /** Names a calendar query: the cache's key, and how the board tells one week's reports from another's. */
 export const earningsCalendarKey = (query: EarningsCalendarQuery) =>
-  `${query.from}:${query.to}:${query.perDay ?? ""}:${[...(query.symbols ?? [])].sort().join(",")}`;
+  `${query.from}:${query.to}:${query.perDay ?? ""}:${[...(query.symbols ?? [])].sort().join(",")}${query.markets ? `:${query.markets}` : ""}`;
 
 export async function fetchEarningsCalendar(query: EarningsCalendarQuery, client: CalendarClient = apiClient) {
   try {

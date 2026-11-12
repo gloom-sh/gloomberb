@@ -36,6 +36,10 @@ export interface BoardReport {
   impliedMove: number | null;
   averageMove: number | null;
   owned: Ownership | null;
+  /** ISO currency of the EPS and sales figures; null when the report has none. The market cap is always dollars. */
+  currency?: string | null;
+  /** A listing abroad's lines on its markets, the one shown first; absent for US listings. */
+  listings?: readonly string[];
 }
 
 export type BoardRow =
@@ -145,6 +149,9 @@ export function boardReport(report: EarningsCalendarReport, owned: ReadonlyMap<s
     impliedMove: report.implied?.move ?? null,
     averageMove: report.averageReports >= MIN_AVERAGE_REPORTS ? report.averageMove : null,
     owned: owned.get(report.symbol) ?? null,
+    // The board's US reports are in dollars; a listing abroad's say their own.
+    currency: report.currency ?? "USD",
+    ...report.listings?.length ? { listings: report.listings } : {},
   };
 }
 
@@ -182,6 +189,7 @@ export function fallbackReport(event: EarningsEvent, owned: ReadonlyMap<string, 
     impliedMove: null,
     averageMove: null,
     owned: owned.get(event.symbol) ?? null,
+    currency: epsEstimate != null || dollars("revenueEstimate") != null ? "USD" : null,
   };
 }
 
