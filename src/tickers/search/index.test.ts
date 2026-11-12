@@ -1157,6 +1157,19 @@ describe("ticker-search utilities", () => {
       ];
       expect(build("Google", rows)).toEqual(["GOOGL:NASDAQ", "GOOG:NASDAQ", "GOOGL:BYMA"]);
     });
+
+    test("companies the server sent for a name being typed keep its order, largest first, ahead of the ticker that is the word", () => {
+      // The service's answer to "micro": Microsoft, Micron and Microchip marked with the word, then Micro Leasing in Bangkok.
+      const named = (symbol: string, name: string) => makeSearchResult(symbol, name, { type: "Common Stock", searchAliases: ["micro"] });
+      const rows = [
+        named("MSFT", "Microsoft Corporation Common Stock"),
+        named("MU", "Micron Technology Inc."),
+        named("MCHP", "Microchip Technology Inc."),
+        makeSearchResult("MICRO", "Micro Leasing Public Company Limited", { exchange: "SET", type: "Common Stock", currency: "THB" }),
+        makeSearchResult("IAUM", "iShares Gold Trust Micro", { exchange: "ARCA", type: "ETF" }),
+      ];
+      expect(build("micro", rows).slice(0, 4)).toEqual(["MSFT:NASDAQ", "MU:NASDAQ", "MCHP:NASDAQ", "MICRO:SET"]);
+    });
   });
 
   describe("a renamed company's old name", () => {

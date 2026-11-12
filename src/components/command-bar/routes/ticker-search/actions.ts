@@ -97,6 +97,8 @@ export function useCommandBarTickerSearchActions({
         ...tickerSelectionFromSearchResult(candidate.result),
         label: candidate.label,
         instrumentType: candidate.instrumentType,
+        // The names search found the saved listing by ("micro" for MSFT): it is an exact match as its search row is.
+        searchAliases: candidate.searchAliases,
         detail,
         badge,
         name,

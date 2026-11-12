@@ -217,6 +217,33 @@ test("folds a plain query's symbol hits into one capped Instruments section behi
   expect(merged.find((item) => item.id === "search:NVDA.MX")?.right).toBe("Equity BMV");
 });
 
+test("a plain query with no instruments keeps a busy or failed search's row, and drops a no-match one", () => {
+  const pane: ResultItem = { id: "pane:news", label: "News", detail: "", category: "Panes", kind: "action", action: () => {} };
+  const ids = (providerItems: ResultItem[]) => mergePlainRootTickerResults("semiconductor etf", providerItems, [pane]).map((item) => item.id);
+  // A search that did not answer must not read as one that found nothing.
+  expect(ids([resultItem("search-busy", "Search is busy", "", "info")])).toEqual(["pane:news", "search-busy"]);
+  expect(ids([resultItem("search-error", "Search failed", "", "info")])).toEqual(["pane:news", "search-error"]);
+  // One that found nothing leaves the list to say so.
+  expect(ids([resultItem("no-results", "No matches", "", "info")])).toEqual(["pane:news"]);
+});
+
+test("a listing the server marks with the name as typed is an exact match beside the ticker's: 0005 for hsbc", () => {
+  const row = (id: string, label: string, right: string, searchAliases?: string[]): ResultItem =>
+    ({ ...resultItem(id, label, right, "search"), ...(searchAliases ? { searchAliases } : {}) });
+  const merged = mergePlainRootTickerResults("hsbc", [
+    row("hsbc-nyse", "HSBC", "NYSE"),
+    row("hsba", "HSBA", "LSE", ["HSBA", "hsbc"]),
+    row("hsbc-iex", "HSBC", "IEX"),
+    row("0005", "0005", "HKEX", ["0005", "5", "hsbc"]),
+    row("hbcyf", "HBCYF", "OTC"),
+  ], []);
+  expect(merged.filter((item) => item.category === "Exact Match").map((item) => item.id)).toEqual(["hsbc-nyse", "hsba", "hsbc-iex", "0005"]);
+  // A saved listing search marked for the name is one too: MSFT, saved, for "micro".
+  const saved: ResultItem = { ...resultItem("goto:MSFT", "MSFT", "NASDAQ"), searchAliases: ["MSFT", "micro"] };
+  expect(mergePlainRootTickerResults("micro", [saved, row("micro", "MICRO", "SET")], []).map((item) => [item.id, item.category]))
+    .toEqual([["goto:MSFT", "Exact Match"], ["micro", "Exact Match"]]);
+});
+
 /**
  * The class tag is what the eye sorts instruments by, so the mapping from a
  * provider's type strings has to stay put: an exchange-traded fund is not a
@@ -263,6 +290,8 @@ test("a colon dropdown is one exact venue per row, narrowed by the exchange pref
     expect(venueDropdownResults("EURUSD", pairs, suffix).map((item) => item.id), suffix).toEqual(suffix ? ["eurusd"] : ["eurusd", "fund"]);
   }
   expect(venueDropdownResults("USDJPY", [resultItem("jpy", "JPY=X", "CCY", "search")], "FX").map((item) => item.id)).toEqual(["jpy"]);
+  // A search that did not answer says so in the dropdown too, rather than leave it reading as no venue.
+  expect(venueDropdownResults("NET", [resultItem("search-error", "Search failed", "", "info")], "").map((item) => item.id)).toEqual(["search-error"]);
 });
 
 test("plain exact-symbol search retains venue choices while deduplicating the same listing", () => {
