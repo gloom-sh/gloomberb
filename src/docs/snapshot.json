@@ -1,7 +1,7 @@
 {
  "format": 1,
  "site": "https://gloom.sh",
- "updatedAt": "2026-11-08",
+ "updatedAt": "2026-11-12",
  "categories": [
   {
    "id": "research",
@@ -171,7 +171,7 @@
    "code": "CMP",
    "name": "Compare performance",
    "description": "Indexed returns for a group",
-   "detail": "Price returns rebased to a shared start date for two or more tickers, so relative performance is readable at a glance.",
+   "detail": "Price returns rebased to a shared start date for two or more tickers, so relative performance is readable at a glance. A leveraged or inverse fund also gets the k× daily line of its index fund (3× daily QQQ beside TQQQ) and its decay against it, in percentage points.",
    "category": "research",
    "arg": "NVDA, AMD, AVGO",
    "shot": "https://gloom.sh/screenshots/fn/CMP.png",
@@ -797,9 +797,9 @@
   },
   {
    "code": "PERP",
-   "name": "Perpetual history",
-   "description": "Funding, open interest and premium history",
-   "detail": "Funding, open interest and premium history for one perpetual on Hyperliquid, Binance, Bybit or OKX, with each reading's source. Pro shows the history; Free a limited preview. Live board and trading are in the Hyperliquid plugin.",
+   "name": "Perpetuals",
+   "description": "Perpetual funding, open interest and premium",
+   "detail": "A board and rankings of perpetuals on Hyperliquid, Binance, Bybit and OKX, one asset across the venues, and one perpetual's funding, open interest and premium history with each reading's source. Pro shows the history; Free a limited preview. Trading is in the Hyperliquid plugin.",
    "category": "markets",
    "arg": "BTC",
    "access": "pro",
@@ -810,7 +810,7 @@
    "code": "FUT",
    "name": "Futures board",
    "description": "Front-month futures",
-   "detail": "Each root's front contract until its stated roll date across equity index, rates, energy, metals, agriculture, and FX with last price, unit and session change, grouped by sector, naming the day's most active month by volume when it is another one.",
+   "detail": "Each root's front contract until its stated roll date across equity index, volatility (VIX futures, at Cboe's daily settlement), rates, energy, metals, agriculture, and FX with last price, unit and session change, grouped by sector, naming the day's most active month by volume when it is another one.",
    "category": "markets",
    "shot": "https://gloom.sh/screenshots/fn/FUT.png",
    "lesson": "/academy/futures-commodities-energy/futures-from-zero"
@@ -819,7 +819,7 @@
    "code": "CTM",
    "name": "Futures curve",
    "description": "Futures term structure",
-   "detail": "A futures root's listed contracts as a curve against a week and a month ago, with roll yield, contango or backwardation, and each contract's price, open interest, and volume. CTM VIX is the VIX futures curve from Cboe's daily settlements, with spot VIX and the front month's premium to it.",
+   "detail": "A futures root's listed contracts as a curve against a week and a month ago, with roll yield, contango or backwardation, and each contract's price, open interest, and volume. CTM VIX is the VIX futures curve from Cboe's daily settlements, with spot VIX and the front month's premium to it. Ann. roll yield is what a long position earns or pays rolling from the front contract into the next, scaled to a year: (front / next - 1) × 365 / days between the two, positive in backwardation and negative in contango. PCTL ranks a figure against its own daily values over the past year, 100 the highest and 0 the lowest: the roll yield and the front spread against theirs, and in the table each contract's price against its own.",
    "category": "markets",
    "arg": "GC",
    "shot": "https://gloom.sh/screenshots/fn/CTM.png",
@@ -1773,10 +1773,11 @@
    "category": "Start here",
    "tags": [
     "install",
+    "uninstall",
     "desktop",
     "tui"
    ],
-   "updatedAt": "2026-11-08",
+   "updatedAt": "2026-11-09",
    "blocks": [
     {
      "type": "heading",
@@ -1797,6 +1798,10 @@
     },
     {
      "type": "paragraph",
+     "text": "The script downloads the latest GitHub release, checks its SHA-256, and installs the app to `/Applications` and `gloom` to `~/.local/bin`, using sudo only for a folder you can't write. It prints a PATH line and edits no shell file. Source: [scripts/install.sh](https://github.com/gloom-sh/gloomberb/blob/main/scripts/install.sh) in gloom-sh/gloomberb."
+    },
+    {
+     "type": "paragraph",
      "text": "Coming from Bloomberg? [What runs on a Mac](/answers/bloomberg-terminal-on-mac)."
     },
     {
@@ -1806,11 +1811,15 @@
     },
     {
      "type": "paragraph",
-     "text": "Terminal UI only; Ghostty, Kitty, or WezTerm render charts best. Installs `gloom` into `~/.local/bin`."
+     "text": "Terminal UI only; Ghostty, Kitty, or WezTerm render charts best."
     },
     {
      "type": "code",
      "code": "curl -fsSL gloom.sh/install | bash"
+    },
+    {
+     "type": "paragraph",
+     "text": "The script downloads the latest GitHub release, checks its SHA-256, and installs `gloom` to `~/.local/bin`, using sudo only for a folder you can't write. It prints a PATH line and edits no shell file. Source: [scripts/install.sh](https://github.com/gloom-sh/gloomberb/blob/main/scripts/install.sh) in gloom-sh/gloomberb."
     },
     {
      "type": "heading",
@@ -1951,6 +1960,88 @@
       {
        "type": "paragraph",
        "text": "Switching back to stable never installs an older version: your nightly build stays until a newer stable release is out. Nightly applies to the desktop app and the terminal app; Homebrew, Bun and the install script always get stable."
+      }
+     ]
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Uninstall"
+    },
+    {
+     "type": "paragraph",
+     "text": "Quit Gloom, then remove it the way you installed it:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Homebrew:** `brew uninstall --cask gloom` removes the app and its commands. Add `--zap` to delete your data too.",
+      "**macOS install script:** `rm -rf /Applications/Gloom.app ~/.local/bin/gloom ~/.local/bin/gloomberb`",
+      "**macOS disk image:** drag `Gloom.app` from Applications to the Trash.",
+      "**Linux:** `rm ~/.local/bin/gloom ~/.local/bin/gloomberb`",
+      "**Windows installer:** **Settings > Apps**, Gloom, **Uninstall**.",
+      "**Windows PowerShell line:** delete `%USERPROFILE%\\.local\\bin\\gloom.exe`, then that folder's entry in your user PATH.",
+      "**Bun:** `bun remove -g @gloom-sh/terminal`"
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "Your data stays unless you use `--zap` or delete it yourself."
+    },
+    {
+     "type": "details",
+     "summary": "Where Gloom keeps its data, and the small print",
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "`gloom version` prints the data folder in use."
+      },
+      {
+       "type": "list",
+       "items": [
+        "**macOS and Windows:** `~/.gloomberb` (`%USERPROFILE%\\.gloomberb` on Windows). It holds settings, the database, plugins and logs. `config.json` there can hold broker credentials.",
+        "**Linux:** `~/.gloomberb` if you have it. A new install without it uses `~/.config/gloomberb`, `~/.local/share/gloomberb` and `~/.cache/gloomberb`, or the folders `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME` and `$XDG_CACHE_HOME` name when set.",
+        "**`GLOOMBERB_HOME`:** if you set it, everything above lives in that folder instead."
+       ]
+      },
+      {
+       "type": "paragraph",
+       "text": "The Mac desktop app also keeps these three. With `--zap`, Homebrew deletes them and `~/.gloomberb`:"
+      },
+      {
+       "type": "code",
+       "code": "~/Library/Application Support/com.vincelwt.gloomberb\n~/Library/Preferences/com.vincelwt.gloomberb.plist\n~/Library/WebKit/com.vincelwt.gloomberb"
+      },
+      {
+       "type": "paragraph",
+       "text": "The Windows desktop app keeps this folder, if uninstalling left it:"
+      },
+      {
+       "type": "code",
+       "code": "%LOCALAPPDATA%\\com.vincelwt.gloomberb"
+      },
+      {
+       "type": "paragraph",
+       "text": "Those folders are named after the desktop app's identifier, `com.vincelwt.gloomberb`. If a newer build has moved to `sh.gloom.desktop`, delete that name too."
+      },
+      {
+       "type": "paragraph",
+       "text": "The small print:"
+      },
+      {
+       "type": "list",
+       "items": [
+        "**Shell files:** the macOS and Linux script edits none. If you added the PATH line it printed, delete that line.",
+        "**sudo:** use it for a folder the script needed it for.",
+        "**Before 0.18.4:** an install from then that has not updated since has `Gloomberb.app`, not `Gloom.app`.",
+        "**Intel Mac:** the script installs the terminal command only, so there is no app to delete.",
+        "**Windows installer:** its entry is listed once the app has started; before that, delete the folder above. If the app folder's `bin` is still on your user PATH afterwards, remove it.",
+        "**Windows PATH:** to edit your user PATH, search for \"Edit environment variables for your account\"."
+       ]
+      },
+      {
+       "type": "paragraph",
+       "text": "Your Gloom account and what it synced stay until you delete the account in the app's account settings."
       }
      ]
     },
@@ -2981,6 +3072,160 @@
    ]
   },
   {
+   "slug": "alerts",
+   "title": "Alerts",
+   "lead": "Every alert Gloom sets, and where each one is checked: in the app while it runs, and in Gloom Cloud when you are signed in.",
+   "category": "Start here",
+   "tags": [
+    "ALRT",
+    "SA",
+    "alerts",
+    "price alert",
+    "IV alert",
+    "risk reversal",
+    "news alert",
+    "earnings alert",
+    "options flow",
+    "push",
+    "email",
+    "gloom alerts add"
+   ],
+   "updatedAt": "2026-11-11",
+   "blocks": [
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Open it"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Command",
+      "Does"
+     ],
+     "rows": [
+      [
+       "`ALRT`",
+       "Your alerts: **Levels**, **Events** and **History**"
+      ],
+      [
+       "`SA AAPL above 250`",
+       "Adds a price alert from the command bar"
+      ],
+      [
+       "`gloom alerts add ...`",
+       "Adds any alert from the shell; `gloom help alerts` lists every form"
+      ]
+     ]
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Who checks what"
+    },
+    {
+     "type": "paragraph",
+     "text": "The running app checks price, move, valuation, technical and ratio alerts. Signed in with Cloud sync, Gloom Cloud checks them too while the app is closed. A few others are checked only by the running app, and the news, filing and market rules only by Gloom Cloud, for a signed-in account."
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Alert",
+      "Checked by",
+      "Reaches you"
+     ],
+     "rows": [
+      [
+       "Price: above, below, crosses",
+       "The running app, as quotes arrive. With Cloud sync, Gloom Cloud while the app is closed",
+       "In the app. With the app closed, on your phone and by email"
+      ],
+      [
+       "Move from the previous close",
+       "The running app, once a session. With Cloud sync, Gloom Cloud while the app is closed",
+       "In the app. With the app closed, on your phone and in that day's market email"
+      ],
+      [
+       "P/E, P/S, ratio to a benchmark",
+       "The running app. With Cloud sync, Gloom Cloud while the app is closed",
+       "As price alerts"
+      ],
+      [
+       "RSI and moving averages, RRG",
+       "The running app, on the daily close (RRG on the weekly close). With Cloud sync, Gloom Cloud while the app is closed",
+       "As price alerts"
+      ],
+      [
+       "IV level: 30-day ATM IV or 25-delta risk reversal",
+       "The running app, every 15 minutes",
+       "In the app only"
+      ],
+      [
+       "Earnings date, CPI, FOMC, an economic release",
+       "The running app, every 15 minutes",
+       "In the app, on the day the lead time is reached, and with the actual figures once out. Earnings alerts also reach your phone, once per report and never on the day itself"
+      ],
+      [
+       "[Catalysts](/docs/catalysts) (trial readouts, FDA dates)",
+       "The running app, signed in, on Gloom Pro, every five minutes",
+       "In the app"
+      ],
+      [
+       "News keyword, SEC filing, analyst change, 52-week high or low, unusual volume, short interest, insider trade, hiring, a perpetual's funding or open interest",
+       "Gloom Cloud, signed in",
+       "On your phone"
+      ],
+      [
+       "IV spike on one option contract, options flow",
+       "Gloom Cloud, signed in, on Gloom Pro",
+       "On your phone"
+      ],
+      [
+       "IPO, Congress trades, 13F filings",
+       "Gloom Cloud, signed in",
+       "On your phone"
+      ]
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "A Cloud alert added while signed out is kept, and reads **Needs sign-in** in `ALRT` and `gloom alerts list` until you sign in. Commands such as `gloom doctor` or `gloom fn` never check alerts: only the app does."
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Add one"
+    },
+    {
+     "type": "code",
+     "code": "gloom alerts add AAPL above 250\ngloom alerts add GBPUSD=X moves 0.5%\ngloom alerts add BTC-USD iv above 50        # bitcoin's 30-day ATM IV, from Deribit's options\ngloom alerts add SPY rr below -6            # 30-day 25-delta risk reversal, in vol points\ngloom alerts add CRWV earnings --days 3\ngloom alerts add news bitcoin               # any story that mentions it\ngloom alerts add NVDA flow 5m calls sweeps\ngloom alerts add AAPL271217C00300000 iv spike 5"
+    },
+    {
+     "type": "list",
+     "items": [
+      "A symbol is read as `gloom quote` reads it. A target more than 10 times the last price, or under a tenth of it, is refused.",
+      "An IV level reads the 1M row of `OVDV`'s Table: US listings, and `BTC-USD` and `ETH-USD` from Deribit's options.",
+      "News, flow and the other Cloud rules follow US listings. A coin's news is a keyword alert, on the words you typed when they name the coin, else on its name: `gloom alerts add news bitcoin`.",
+      "A ticker that is also a series name says which listing the alert follows. `DVOL` is a US fund; Deribit's bitcoin volatility index is `gloom fn G CAP:volatility:dvol-btc`, and an alert on bitcoin's implied volatility is `gloom alerts add BTC-USD iv above 60`.",
+      "An IV spike needs a live contract: one past its expiry is refused."
+     ]
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "After it goes off"
+    },
+    {
+     "type": "paragraph",
+     "text": "A price or IV level alert goes off once, then reads **Triggered** or **Alerted** until you re-arm it (`m` in `ALRT`, or `gloom alerts rearm <id>`). A move alert arms itself again for the next session."
+    },
+    {
+     "type": "paragraph",
+     "text": "**History** in `ALRT`, and `gloom fn ALRT --tab history`, lists the alerts that went off on this device, newest first, with the figure and the quote behind each, beside the alerts you created, re-armed or deleted."
+    }
+   ]
+  },
+  {
    "slug": "ai-workflows",
    "title": "AI workflows",
    "lead": "Natural-language command help, Ask Gloom, AI screeners, ticker questions, and persistent local agent threads.",
@@ -3099,7 +3344,7 @@
     "troubleshooting",
     "diagnostics"
    ],
-   "updatedAt": "2026-10-25",
+   "updatedAt": "2026-11-09",
    "blocks": [
     {
      "type": "heading",
@@ -3149,7 +3394,7 @@
     {
      "type": "list",
      "items": [
-      "`Bad CPU type in executable` on macOS: an Intel Mac running the Apple Silicon app. Delete `/Applications/Gloom.app` (`Gloomberb.app` before the app was renamed) and rerun `curl -fsSL gloom.sh/install | bash` for the Intel terminal build.",
+      "`Bad CPU type in executable` on macOS: an Intel Mac running the Apple Silicon app. [Delete](/docs/getting-started#uninstall) `/Applications/Gloom.app` (`Gloomberb.app` before the app was renamed) and rerun `curl -fsSL gloom.sh/install | bash` for the Intel terminal build.",
       "`gloom doctor` shows runtime errors.",
       "Update with the same method you installed with. See [Install and update](/docs/getting-started)."
      ]
@@ -3901,7 +4146,7 @@
     "government",
     "SPLC"
    ],
-   "updatedAt": "2026-10-07",
+   "updatedAt": "2026-11-12",
    "blocks": [
     {
      "type": "heading",
@@ -4001,7 +4246,8 @@
     {
      "type": "list",
      "items": [
-      "A contract is evidence of a government customer, not recognised revenue. Prime awards, subawards and modifications overlap, so do not add them, and currencies are never combined."
+      "A contract is evidence of a government customer, not recognised revenue. Prime awards, subawards and modifications overlap, so do not add them, and currencies are never combined.",
+      "Singapore's GeBIZ amounts are as printed. For a tender awarded by items, a panel or a framework, an amount can be a ceiling, a rate or an estimate, not the supplier's revenue. An amount under S$6,000, or the same amount printed for several suppliers of one tender, shows as no amount."
      ]
     },
     {
@@ -4438,7 +4684,7 @@
   {
    "slug": "perpetuals",
    "title": "Perpetual history",
-   "lead": "PERP shows funding, open interest and premium history for one perpetual on Hyperliquid, Binance, Bybit or OKX",
+   "lead": "PERP shows a board and rankings of perpetuals on Hyperliquid, Binance, Bybit and OKX, and one perpetual's funding, open interest and premium history",
    "category": "Understand the data",
    "tags": [
     "PERP",
@@ -4447,7 +4693,7 @@
     "perpetuals",
     "history"
    ],
-   "updatedAt": "2026-10-26",
+   "updatedAt": "2026-11-09",
    "blocks": [
     {
      "type": "heading",
@@ -4463,11 +4709,11 @@
      "rows": [
       [
        "`PERP`",
-       "A market search"
+       "The Board of every market"
       ],
       [
        "`PERP BTC`",
-       "Bitcoin perpetuals"
+       "Bitcoin on the venue with the most open interest"
       ],
       [
        "`PERP hyperliquid:xyz:TSLA`",
@@ -4487,6 +4733,14 @@
       "Shows"
      ],
      "rows": [
+      [
+       "Board",
+       "Every market by venue: mark, funding, premium, open interest and its 24-hour change, long share and APR, filtered by asset class and venue"
+      ],
+      [
+       "Rankings",
+       "The highest and lowest funding, open-interest surges and premium dislocations, across every asset class or within one"
+      ],
       [
        "Compare",
        "One asset's contracts across the venues: mark, funding, premium and when each was observed"
@@ -4571,6 +4825,7 @@
      "type": "list",
      "items": [
       "Stored readings cover Hyperliquid, Binance, Bybit and OKX. Compare shows each venue's leading contract free; Pro lists every contract.",
+      "A contract's asset class is the one its venue gives it: OKX's instrument category, Binance's underlying type and Bybit's symbol type, so a venue's stock, commodity or FX perpetual is never counted as crypto. Hyperliquid's builder-deployed markets are classed from a checked list and stay Other until checked.",
       "Positive funding means longs pay shorts. Open interest in contracts and in USD differ, because a price rise adds USD open interest without new contracts.",
       "A stock perpetual's premium is blank while the stock market is closed. The live board and trading are in the Hyperliquid plugin."
      ]
@@ -8472,7 +8727,7 @@
   {
    "url": "/academy/rates-bonds-credit/rates/auctions",
    "title": "Treasury auctions (AUCT)",
-   "summary": "AUCT lists upcoming and recent US Treasury auctions with the rate each cleared at, how well it was covered and who bought.",
+   "summary": "AUCT lists upcoming and recent US Treasury auctions with the rate each cleared at, how well it was covered and who bought, and Hong Kong's government paper tenders.",
    "chapter": "Rates, bonds and credit",
    "minutes": 5
   },
