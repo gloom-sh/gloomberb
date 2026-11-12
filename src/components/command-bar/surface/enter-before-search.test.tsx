@@ -21,7 +21,14 @@ describe("Enter before the symbol search answers", () => {
       query="NVDA"
       live
       showQueryState
-      configurePluginRegistry={(registry) => { registry.pinTicker = (key) => { opened.push(key); }; }}
+      configurePluginRegistry={(registry) => {
+        registry.pinTicker = (key) => { opened.push(key); };
+        // The cloud plugin's Sign Up, which opens the sign-up dialog.
+        registry.commands.set("auth-signup", {
+          id: "auth-signup", label: "Sign Up", description: "Create a Gloom account", category: "config",
+          execute: () => { opened.push("sign-up"); },
+        } as any);
+      }}
       dataProvider={createTestDataProvider({
         search: async () => { await held; return results; },
         getQuote: async () => createTestQuote({ symbol: "NVDA", name: "NVIDIA Corporation" }),
@@ -60,19 +67,19 @@ describe("Enter before the symbol search answers", () => {
     expect(opened).toEqual([]);
   });
 
-  test("a row picked on purpose runs at once", async () => {
+  test("a row picked on purpose runs at once: the sign-up offer opens Sign Up", async () => {
     const { opened, release } = await renderHeldSearch();
     try {
       await tui.emitKeypress({ name: "down" });
       await tui.emitKeypress({ name: "return", sequence: "\r" });
-      await tui.waitForFrameToContain("query:Sign Up");
-      expect(opened).toEqual([]);
+      await tui.waitForFrameToContain("bar:closed");
+      expect(opened).toEqual(["sign-up"]);
     } finally {
       release();
     }
   });
 
-  test("an answer with nothing to open leaves the bar as it is", async () => {
+  test("an answer with nothing to open leaves the bar as it is, and says nothing matched", async () => {
     const { opened, release } = await renderHeldSearch([]);
     try {
       await tui.emitKeypress({ name: "return", sequence: "\r" });
@@ -83,6 +90,9 @@ describe("Enter before the symbol search answers", () => {
     expect(tui.frame()).toContain("query:NVDA");
     expect(tui.frame()).toContain("bar:open");
     expect(opened).toEqual([]);
+    // The offer alone is no answer: the list says the query found nothing, above it.
+    const frame = await tui.waitForFrameToContain('No matches for "NVDA"');
+    expect(frame.indexOf('No matches for "NVDA"')).toBeLessThan(frame.indexOf("Ask AI — sign up to enable"));
   });
 });
 

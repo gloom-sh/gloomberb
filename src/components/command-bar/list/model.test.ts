@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildListRows,
+  buildNativeListRows,
   getListRowsHeight,
   resolveListPageTarget,
   resolveSelectedScrollLine,
@@ -125,5 +126,24 @@ describe("page keys", () => {
   test("moves at least one result even when the next row is taller than the page", () => {
     expect(resolveListPageTarget(rows, 2, 2, 1)).toBe(3);
     expect(resolveListPageTarget(rows, 0, 1, -1)).toBe(0);
+  });
+});
+
+describe("a query nothing answers", () => {
+  const offer: ResultItem = { ...makeItem("assist:sign-up", "Ask AI"), defaultSelectable: false };
+  const kinds = (state: ListScreenState) => buildNativeListRows(state, buildListRows(state))
+    .map((row) => row.kind === "message" ? `message ${row.label}` : row.kind === "item" ? `item ${row.item.id}` : row.kind);
+
+  test("says so above the AI's sign-up offer, once the search is over", () => {
+    const state = { ...makeListState([offer]), query: "semiconductor etf", emptyLabel: 'No matches for "semiconductor etf"' };
+    expect(kinds(state)).toEqual(['message No matches for "semiconductor etf"', "spacer", "heading", "item assist:sign-up"]);
+    // Still searching, the spinner says so instead.
+    expect(kinds({ ...state, searching: true })).toEqual(["heading", "item assist:sign-up", "spinner"]);
+  });
+
+  test("an answer, or an empty query, keeps the list as it was", () => {
+    const pane = makeItem("pane:news", "Panes");
+    expect(kinds({ ...makeListState([pane, offer]), emptyLabel: "No matches" })).not.toContain("message No matches");
+    expect(kinds({ ...makeListState([offer]), query: " ", emptyLabel: "No results yet" })).toEqual(["heading", "item assist:sign-up"]);
   });
 });
