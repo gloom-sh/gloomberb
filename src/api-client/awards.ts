@@ -40,6 +40,12 @@ export interface AwardInput {
   ceilingAmount?: string | null
   /** Face value for awards; action amount for modification records. */
   awardAmount?: string | null
+  /**
+   * Why the source's printed amount is served as none: GeBIZ's "under
+   * S$6,000" or "printed alike for 4 suppliers of the tender". Absent when
+   * none was printed, and from an older server.
+   */
+  amountWithheld?: string | null
   recipient: AwardRecipient
   agency: { id?: string | null; name: string; parentName?: string | null }
   parentAwardId?: string | null

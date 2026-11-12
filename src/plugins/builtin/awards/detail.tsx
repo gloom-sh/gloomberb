@@ -5,7 +5,7 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { fetchAward, loadAward } from "./client";
-import { awardPeriod, awardTypeLabel, money, WITHHELD_AMOUNT } from "./model";
+import { amountWithheld, awardPeriod, awardTypeLabel, money, statementText, WITHHELD_AMOUNT } from "./model";
 import { UpgradeLabel } from "../shared/locked-rows";
 
 export function AwardDetail({ row, accessKey, width, height, focused, openAward, openChildren, openUpgrade, attribution: boardAttribution, amountNotice: boardAmountNotice }: {
@@ -33,9 +33,10 @@ export function AwardDetail({ row, accessKey, width, height, focused, openAward,
   const loaded = resource.pages[0], detail = loaded?.payload;
   const current = detail?.row ?? row;
   // The board's statements, else the ones the award's own read carries.
-  const attribution = boardAttribution || detail?.attribution;
-  const amountNotice = boardAmountNotice || detail?.amountNotice;
-  const withheld = current.awardAmount == null && !!amountNotice;
+  const attribution = statementText(boardAttribution) || statementText(detail?.attribution);
+  const amountNotice = statementText(boardAmountNotice) || statementText(detail?.amountNotice);
+  // Withheld by the award's own reason (GeBIZ's "under S$6,000"); an amount never printed stays unreported.
+  const withheld = amountWithheld(current);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const loadMore = useTableLoadMore(scrollRef, resource.hasMore, resource.loadMore);
   usePaneStatusFooter({ registrationId: "awards:detail", loading: resource.loading || resource.loadingMore, error: resource.error?.message ?? resource.moreError?.message, stale: loaded?.stale });
@@ -43,11 +44,11 @@ export function AwardDetail({ row, accessKey, width, height, focused, openAward,
   const labelWidth = width < 85 ? 18 : 23;
   return <ScrollBox ref={scrollRef} scrollY width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} contentOptions={{ paddingX: 1 }} onMouseScroll={loadMore}>
     <StatGrid width={Math.max(1, width - 2)} items={[
-      { id: "value", label: `Value (${current.currency})`, value: withheld ? WITHHELD_AMOUNT : money(current.awardAmount), detail: current.fieldAsOf?.awardAmount ? `as of ${current.fieldAsOf.awardAmount.slice(0, 10)}` : undefined },
+      { id: "value", label: `Value (${current.currency})`, value: withheld ? WITHHELD_AMOUNT : money(current.awardAmount), detail: withheld ?? (current.fieldAsOf?.awardAmount ? `as of ${current.fieldAsOf.awardAmount.slice(0, 10)}` : undefined) },
       { id: "obligated", label: `Obligated (${current.currency})`, value: money(current.obligatedAmount), detail: current.fieldAsOf?.obligatedAmount ? `as of ${current.fieldAsOf.obligatedAmount.slice(0, 10)}` : undefined },
       { id: "ceiling", label: `Ceiling (${current.currency})`, value: money(current.ceilingAmount), detail: current.fieldAsOf?.ceilingAmount ? `as of ${current.fieldAsOf.ceilingAmount.slice(0, 10)}` : undefined },
     ]} />
-    {withheld ? <Text fg={colors.textDim} width={width - 2} wrapMode="word" wrapText>{amountNotice}</Text> : null}
+    {withheld && amountNotice ? <Text fg={colors.textDim} width={width - 2} wrapMode="word" wrapText>{amountNotice}</Text> : null}
     <Section title="Contract" width={width - 2}>
       <KeyValueRow label="Awardee" value={current.recipient.name} labelWidth={labelWidth} />
       <KeyValueRow label={current.entity?.parentName && current.entity.parentName !== current.recipient.name ? "Listed parent" : "Listed company"} value={current.entity ? `${current.entity.ticker} · ${current.entity.parentName ?? current.entity.legalName}` : "Unresolved"} labelWidth={labelWidth} />
@@ -92,7 +93,7 @@ export function AwardDetail({ row, accessKey, width, height, focused, openAward,
             <KeyValueRow label="Record" value={revision.id} detail={revision.supersedes ? `Supersedes ${revision.supersedes}` : "Original observation"} labelWidth={labelWidth} />
             <KeyValueRow label="Awardee" value={revision.award.recipient.name} labelWidth={labelWidth} />
             <KeyValueRow label="Agency" value={revision.award.agency.name} labelWidth={labelWidth} />
-            <KeyValueRow label="Award date / value" value={`${revision.award.awardDate} · ${revision.award.awardAmount == null && amountNotice ? WITHHELD_AMOUNT : `${revision.award.currency} ${money(revision.award.awardAmount)}`}`} labelWidth={labelWidth} />
+            <KeyValueRow label="Award date / value" value={`${revision.award.awardDate} · ${amountWithheld(revision.award) ? WITHHELD_AMOUNT : `${revision.award.currency} ${money(revision.award.awardAmount)}`}`} labelWidth={labelWidth} />
             <KeyValueRow label="Performance period" value={`${revision.award.periodStart ?? "--"} / ${revision.award.periodEnd ?? "--"}`} labelWidth={labelWidth} />
             <Text fg={colors.textDim} width={width - 2} wrapMode="word" wrapText>{revision.award.title}</Text>
             {revision.award.evidenceQuote ? <Text fg={colors.text} width={width - 2} wrapMode="word" wrapText>{revision.award.evidenceQuote}</Text> : null}

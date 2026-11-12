@@ -9,6 +9,9 @@ import type { HeadlessPaneContext } from "../../../types/headless";
 import { awardsHeadless } from "./headless";
 import { awardHistory, awardRow, awardsPayload } from "./test-fixture";
 
+/** The first row of a report's first table. */
+const firstRow = (result: unknown) => (result as { sections: { rows: unknown[] }[] }).sections[0]!.rows[0];
+
 const source = (name: string, coverageStart: string | null, records: number): AwardsPayload["sources"][number] => ({ source: name, enabled: true,
   lastAttemptAt: null, lastOkAt: null, nextPollAt: null, failures: 0, lastError: null, cursor: null, coverageStart, coverageEnd: null, coverageComplete: false, records, requestsToday: 0 });
 // The free preview: the latest awards of anyone, whatever was asked, with Pro's sources behind it.
@@ -106,14 +109,15 @@ test("a source's licence statement is a note under the awards it covers", async 
   expect((await run("agencies")).notes).toBeUndefined();
 });
 
-test("a value the source withholds reads withheld, with how its amounts read, in the feed and an award read alone", async () => {
+test("a value its award says is withheld reads withheld, with how its amounts read; one never printed stays unreported", async () => {
   const attribution = "Contains information from Government Procurement via GeBIZ from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence";
   const amountNotice = "Singapore GeBIZ amounts are as the Ministry of Finance's dataset prints them. An amount under S$6,000, or one that two or more suppliers of a tender print alike, is shown as no amount.";
-  const gebiz = awardRow({ id: "award-sg", source: "sg-gebiz", jurisdiction: "SG", currency: "SGD", awardAmount: null, obligatedAmount: null, ceilingAmount: null,
+  const gebiz = awardRow({ id: "award-sg", source: "sg-gebiz", jurisdiction: "SG", currency: "SGD", awardAmount: null, amountWithheld: "under S$6,000", obligatedAmount: null, ceilingAmount: null,
     recipient: { name: "CYCLE & CARRIAGE KIA PTE LTD" }, revenueComparison: null });
-  // An award with no amount from a source that withholds none is unreported, never withheld.
+  // An award with no amount and no reason is unreported, never withheld: from another source, or one GeBIZ never printed.
   const unreported = awardRow({ id: "award-us", awardAmount: null });
-  const payload = awardsPayload({ rows: [gebiz, unreported], sources: [{ ...source("sg-gebiz", "2021-04-01", 246), attribution, amountNotice }] });
+  const unprinted = awardRow({ id: "award-sg-blank", source: "sg-gebiz", jurisdiction: "SG", currency: "SGD", awardAmount: null, recipient: { name: "SATS FOOD SERVICES PTE. LTD." }, revenueComparison: null });
+  const payload = awardsPayload({ rows: [gebiz, unreported, unprinted], sources: [{ ...source("sg-gebiz", "2021-04-01", 246), attribution, amountNotice }] });
   const apiClient = { getCloudAwards: async () => payload,
     getCloudAward: async () => ({ row: gebiz, revisions: [{ id: "revision-sg", observedAt: "2026-11-12T02:25:37Z", sourceUpdatedAt: null, supersedes: null, award: gebiz }],
       subawards: [], modifications: [], edges: [], access: "full", locked: false, attribution, amountNotice }) } as unknown as HeadlessPaneContext["apiClient"];
@@ -123,8 +127,25 @@ test("a value the source withholds reads withheld, with how its amounts read, in
     expect(result.notes).toEqual([attribution, amountNotice]);
     const lines = renderHeadlessPaneText(awardsHeadless, result, args, "AWARDS", deriveHeadlessFreshness(awardsHeadless, result)).split("\n");
     expect(lines.find((line) => line.includes("CYCLE & CARRIAGE KIA"))).toMatch(/SGD\s+withheld\s/);
-    if (options.tab) expect(lines.find((line) => line.includes("Contractor Corporation"))).not.toContain("withheld");
+    if (options.tab) {
+      expect(lines.find((line) => line.includes("Contractor Corporation"))).not.toContain("withheld");
+      expect(lines.find((line) => line.includes("SATS FOOD SERVICES"))).not.toContain("withheld");
+      expect(firstRow(result)).toMatchObject({ valueWithheld: true, amountWithheld: "under S$6,000" });
+    }
     // An award read alone: its revision's value too.
     else expect(lines.filter((line) => line.includes("withheld"))).toHaveLength(2);
+  }
+});
+
+test("a statement that is not text is never read as one: an older or malformed answer's notice prints nothing and throws nothing", async () => {
+  const gebiz = awardRow({ id: "award-sg", source: "sg-gebiz", jurisdiction: "SG", currency: "SGD", awardAmount: null, amountWithheld: "under S$6,000", revenueComparison: null });
+  const malformed = { ...source("sg-gebiz", "2021-04-01", 246), attribution: 42, amountNotice: { text: "no" } } as unknown as ReturnType<typeof source>;
+  const apiClient = { getCloudAwards: async () => awardsPayload({ rows: [gebiz], sources: [malformed] }),
+    getCloudAward: async () => ({ row: gebiz, revisions: [], subawards: [], modifications: [], edges: [], access: "full", locked: false, attribution: 42, amountNotice: ["no"] }) } as unknown as HeadlessPaneContext["apiClient"];
+  for (const options of [{ tab: "feed" }, { award: "award-sg" }] as Record<string, string>[]) {
+    const result = await awardsHeadless.load(createTestHeadlessArgs({ options }), createTestHeadlessContext({ apiClient }));
+    // The value still reads withheld: that is the award's own reason, not the source's statement.
+    expect(firstRow(result)).toMatchObject({ valueWithheld: true });
+    expect((result.notes ?? []).filter((note) => typeof note !== "string" || /^42$|object Object|^no$/.test(note))).toEqual([]);
   }
 });

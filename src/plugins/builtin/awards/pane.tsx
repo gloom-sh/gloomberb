@@ -26,7 +26,7 @@ import { useAwardAlerts } from "./alerts";
 import { AWARDS_UNAVAILABLE, fetchAwards, loadAward, loadAwards, validateAwards } from "./client";
 import { useAwardsEvidence } from "./evidence";
 import { AWARD_TABS, aggregateId, amountWithheld, awardHistorySeries, awardPercent, awardPeriod, awardsAmountNotices, awardsAttributions, awardScope, awardsCoverageNotes, awardsPreviewNote,
-  awardTab, awardTypeLabel, futureAwardDatesNote, money, rankedAggregates, WITHHELD_AMOUNT, withholdingSources } from "./model";
+  awardTab, awardTypeLabel, futureAwardDatesNote, money, rankedAggregates, WITHHELD_AMOUNT } from "./model";
 import { logFailure } from "../../../utils/log-failure";
 
 type Item = { kind: "award"; row: AwardRow } | { kind: "aggregate"; row: AwardAggregate } | { kind: "leader"; row: AwardCompanyLeader } | { kind: "locked"; id: string }
@@ -203,8 +203,6 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
   const attributionRows = attribution ? wrapTextLines(attribution, Math.max(1, width - 2)).length : 0;
   const openAttribution = openRow ? awardsAttributions(data, [openRow.source]).join(" ") : "";
   const openAmountNotice = openRow ? awardsAmountNotices(data, [openRow.source]).join(" ") : "";
-  // A source that withholds amounts (GeBIZ under S$6,000, or printed alike): its award with none reads withheld, not unreported.
-  const withholding = withholdingSources(data);
   const { strip, rows: tabRows } = usePaneTabs(!denied ? { tabs: [...AWARD_TABS], activeValue: tab, onSelect: (value) => { setTab(value); setOpen(null); }, focused, dense: true } : null);
   const bodyHeight = Math.max(3, height - tabRows);
   const filters: QueryBarFilter[] = [
@@ -264,7 +262,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
             if (column.id === "currency") return { text: row.currency, color: colors.textDim };
             if (["value", "obligated", "ceiling"].includes(column.id)) {
               const value = column.id === "value" ? tab === "events" && item.kind === "award" ? item.row.revenueComparison?.awardAmount : row.awardAmount : column.id === "obligated" ? row.obligatedAmount : row.ceilingAmount;
-              if (value == null) return column.id === "value" && item.kind === "award" && tab !== "events" && amountWithheld(item.row, withholding)
+              if (value == null) return column.id === "value" && item.kind === "award" && tab !== "events" && amountWithheld(item.row)
                 ? { text: WITHHELD_AMOUNT, value: null, color: colors.textMuted } : missingCell(colors);
               return { text: money(value), value, color: column.id === "obligated" || column.id === "value" ? colors.textBright : colors.text };
             }

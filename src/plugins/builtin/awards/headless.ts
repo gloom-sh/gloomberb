@@ -5,7 +5,7 @@ import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-dat
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { fetchAward, fetchAwards } from "./client";
 import { AWARD_TABS, amountWithheld, awardsAmountNotices, awardsAttributions, awardScope, awardsCoverageNotes, awardsEmptyReason, awardsPreviewNote, awardTypeLabel,
-  futureAwardDatesNote, money, WITHHELD_AMOUNT, withholdingSources } from "./model";
+  futureAwardDatesNote, money, statementText, WITHHELD_AMOUNT } from "./model";
 import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
 
 /**
@@ -24,9 +24,15 @@ async function notATicker(ticker: string, ctx: HeadlessPaneContext): Promise<str
   }
 }
 
+/** Marks a value its source withholds (GeBIZ's "under S$6,000"), with why; never an unreported one. */
+const withheldFields = (row: Pick<AwardRow, "awardAmount" | "amountWithheld">) => {
+  const why = amountWithheld(row);
+  return why ? { valueWithheld: true, amountWithheld: why } : {};
+};
+
 /** An award as a report row; `valueWithheld` marks a value its source withholds (GeBIZ), never an unreported one. */
-const awardRecord = (row: AwardRow, withholding: ReadonlySet<string> = new Set()) => ({ id: row.id, date: row.awardDate, dateBasis: row.dateBasis ?? "award", dataBasis: row.dataBasis ?? null,
-  ...(amountWithheld(row, withholding) ? { valueWithheld: true } : {}),
+const awardRecord = (row: AwardRow) => ({ id: row.id, date: row.awardDate, dateBasis: row.dateBasis ?? "award", dataBasis: row.dataBasis ?? null,
+  ...withheldFields(row),
   fieldAsOf: row.fieldAsOf ?? null, fieldSourceUrls: row.fieldSourceUrls ?? null, recipient: row.recipient.name, ticker: row.entity?.ticker ?? null,
   classifications: row.classifications ?? [],
   agency: row.agency.name, jurisdiction: row.jurisdiction, type: row.awardType, currency: row.currency,
@@ -106,13 +112,13 @@ export const awardsHeadless: HeadlessPaneDefinition<"bundle"> = {
   async load(args, ctx) {
     if (args.options.award) {
       const detail = await fetchAward(String(args.options.award), ctx.apiClient, ctx.signal, args.options.revisionsCursor ? String(args.options.revisionsCursor) : undefined);
-      // The award's source's statements: its licence's, and how its amounts read.
-      const notes = [detail.attribution, detail.amountNotice].flatMap((note) => note?.trim() ? [note.trim()] : []);
-      const withholding = new Set(detail.row && detail.amountNotice ? [detail.row.source] : []);
-      const record = (row: AwardRow) => awardRecord(row, withholding);
-      return { complete: !detail.locked && !detail.nextRevisionsCursor && !Object.values(detail.truncated ?? {}).some(Boolean), sections: [{ title: "Award", columns: FEED_COLUMNS, rows: detail.row ? [record(detail.row)] : [] },
-        { title: "Revisions", columns: REVISION_COLUMNS, rows: detail.revisions.map((row) => ({ ...row, ...(amountWithheld(row.award, withholding) ? { valueWithheld: true } : {}) })) },
-        { title: "Subawards", columns: FEED_COLUMNS, rows: detail.subawards.map(record) }, { title: "Modifications", columns: FEED_COLUMNS, rows: detail.modifications.map(record) },
+      // The award's source's statements: its licence's, and how its amounts read when one it prints is withheld.
+      const withheld = [detail.row, ...detail.revisions.map((revision) => revision.award), ...detail.subawards, ...detail.modifications]
+        .some((row) => row && amountWithheld(row));
+      const notes = [statementText(detail.attribution), withheld ? statementText(detail.amountNotice) : ""].filter(Boolean);
+      return { complete: !detail.locked && !detail.nextRevisionsCursor && !Object.values(detail.truncated ?? {}).some(Boolean), sections: [{ title: "Award", columns: FEED_COLUMNS, rows: detail.row ? [awardRecord(detail.row)] : [] },
+        { title: "Revisions", columns: REVISION_COLUMNS, rows: detail.revisions.map((row) => ({ ...row, ...withheldFields(row.award) })) },
+        { title: "Subawards", columns: FEED_COLUMNS, rows: detail.subawards.map(awardRecord) }, { title: "Modifications", columns: FEED_COLUMNS, rows: detail.modifications.map(awardRecord) },
         { title: "Relationships", columns: EDGE_COLUMNS, rows: detail.edges.map((row) => ({ ...row })) }], ...(notes.length ? { notes } : {}),
         metadata: { access: detail.access, locked: detail.locked, nextRevisionsCursor: detail.nextRevisionsCursor, truncated: detail.truncated } };
     }
@@ -128,11 +134,10 @@ export const awardsHeadless: HeadlessPaneDefinition<"bundle"> = {
     const printed = [...(["feed", "company", "all"].includes(tab) ? data.rows : []), ...(["company", "all"].includes(tab) ? data.history : []),
       ...(["agencies", "all"].includes(tab) ? data.agencies : []), ...(["sectors", "all"].includes(tab) ? [...(data.leaders ?? []), ...data.sectors] : []),
       ...(["events", "all"].includes(tab) ? data.alerts : [])];
-    const withholding = withholdingSources(data);
-    const record = (row: AwardRow) => awardRecord(row, withholding);
+    const record = awardRecord;
     // How a withheld value reads, under the awards that print one.
     const withheld = [...(["feed", "company", "all"].includes(tab) ? data.rows : []), ...(["events", "all"].includes(tab) ? data.alerts : [])]
-      .filter((row) => amountWithheld(row, withholding)).map((row) => row.source);
+      .filter((row) => amountWithheld(row)).map((row) => row.source);
     const notes = [...awardsCoverageNotes(data), ...(futureDates ? [futureDates] : []), ...awardsAttributions(data, printed.map((row) => row.source)),
       ...awardsAmountNotices(data, withheld)];
     const empty = awardsEmptyReason(data);

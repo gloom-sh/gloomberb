@@ -116,17 +116,18 @@ function sourceStatements(data: Pick<AwardsPayload, "sources"> | undefined, show
 export const WITHHELD_AMOUNT = "withheld";
 
 /**
- * The sources whose award with no amount had one the source withholds: those
- * whose state says how their amounts read (`amountNotice`). Any other
- * source's missing amount is unreported.
+ * Why an award's value is withheld by its source rather than unreported, or
+ * null: the award's own reason (GeBIZ's "under S$6,000"), never its source's,
+ * so an amount the source never printed still reads unreported.
  */
-export function withholdingSources(data: Pick<AwardsPayload, "sources"> | undefined): Set<string> {
-  return new Set((data?.sources ?? []).flatMap((source) => source.amountNotice?.trim() ? [source.source] : []));
+export function amountWithheld(row: Pick<AwardRow, "awardAmount" | "amountWithheld">): string | null {
+  const why = row.amountWithheld;
+  return row.awardAmount == null && typeof why === "string" && why.trim() ? why.trim() : null;
 }
 
-/** Whether an award's value is withheld by its source rather than unreported. */
-export function amountWithheld(row: Pick<AwardRow, "source" | "awardAmount">, withholding: ReadonlySet<string>): boolean {
-  return row.awardAmount == null && withholding.has(row.source);
+/** A source's statement as served, or nothing: an older or malformed answer's non-string is never read as one. */
+export function statementText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 /** Award dates after the response's own date are the source's, not a mapping slip; they say so instead of passing as past awards. */
