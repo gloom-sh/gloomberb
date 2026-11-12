@@ -26,7 +26,7 @@ export async function loadAnalystResearch(
 }
 
 /** Whether any analyst covers the listing: a target, a rating mix, an action or an estimate. */
-export function hasAnalystCoverage(data: AnalystResearchData | null | undefined): data is AnalystResearchData {
+export function hasAnalystCoverage(data: AnalystResearchData | null | undefined): boolean {
   return !!data && hasAnalystResearchValue(data);
 }
 

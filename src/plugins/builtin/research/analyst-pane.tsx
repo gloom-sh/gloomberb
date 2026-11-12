@@ -336,8 +336,8 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
         getItemKey={(row, index) => `${row.date}:${row.firm}:${index}`}
         renderCell={renderCell}
         selectedTextOverridesCellColor
-        status={noCoverage ? { empty: true, emptyTitle: noAnalystCoverageText(symbol ?? data.symbol) }
-          : failedEmpty ? { error: error!, subject: "Analyst research" } : undefined}
+        status={noCoverage ? { empty: true, emptyTitle: noAnalystCoverageText(symbol ?? data?.symbol ?? "") }
+          : failedEmpty && error ? { error, subject: "Analyst research" } : undefined}
         emptyStateTitle={loading ? "Loading analyst data..." : error ?? "No analyst data"}
       />
     </>
