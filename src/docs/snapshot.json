@@ -788,6 +788,18 @@
    "lesson": "/academy/crypto-and-prediction-markets/crypto-from-zero"
   },
   {
+   "code": "GTP",
+   "name": "Layer 2 metrics",
+   "description": "Ethereum and its layer 2 chains",
+   "detail": "Ethereum and its layer 2 chains side by side: transactions, active addresses, fees, transaction cost, stablecoin supply and value secured, with 30-day changes and a daily history chart. Data from growthepie.",
+   "category": "markets",
+   "plugin": {
+    "id": "growthepie",
+    "name": "growthepie"
+   },
+   "shot": "https://gloom.sh/screenshots/fn/GTP.png"
+  },
+  {
    "code": "ETFF",
    "name": "Crypto ETF flows",
    "description": "Daily spot bitcoin and ether ETF flows",
@@ -833,6 +845,18 @@
    "category": "markets",
    "shot": "https://gloom.sh/screenshots/fn/FNG.png",
    "lesson": "/academy/macro-markets-and-news/markets/sentiment-and-valuation"
+  },
+  {
+   "code": "CFNG",
+   "name": "Crypto fear and greed",
+   "description": "Crypto sentiment gauge",
+   "detail": "The crypto Fear and Greed Index from Alternative.me: today's reading, yesterday, last week and last month, and its history.",
+   "category": "markets",
+   "plugin": {
+    "id": "crypto-fear-greed",
+    "name": "Crypto Fear & Greed"
+   },
+   "shot": "https://gloom.sh/screenshots/fn/CFNG.png"
   },
   {
    "code": "COT",
@@ -1137,6 +1161,18 @@
    },
    "shot": "https://gloom.sh/screenshots/fn/PM.png",
    "lesson": "/academy/crypto-and-prediction-markets/prediction-markets"
+  },
+  {
+   "code": "ADJ",
+   "name": "Adjacent indices",
+   "description": "Prediction-market indices",
+   "detail": "Adjacent's indices built on prediction markets, with each one's level and 1D and 7D moves, its chart and constituents, plus reference rates and CFTC filings.",
+   "category": "markets",
+   "plugin": {
+    "id": "adjacent-indices",
+    "name": "Adjacent"
+   },
+   "shot": "https://gloom.sh/screenshots/fn/ADJ.png"
   },
   {
    "code": "POLL",

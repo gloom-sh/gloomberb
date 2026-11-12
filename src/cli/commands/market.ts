@@ -235,7 +235,8 @@ import { quoteBarNotes } from "../../market-data/quotes/intraday-bar";
 import { cedearRatioText, depositaryPairText, isReceiptSide, listingCedearRatio, listingDepositaryPair } from "../../market-data/depositary-pair";
 import { isPesoDollarPair, loadPesoDollarRates, pesoDollarRateLines, pesoDollarRatesJson } from "../peso-dollar-rates";
 import { withBalanceSheetRate } from "../../market-data/quotes/balance-sheet-rate";
-import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
+import { regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
+import { atLivePriceEarnings } from "../../market-data/quotes/live-valuation";
 import { viewMarketCapitalization } from "../../utils/market-capitalization";
 import {
   barHistoryFreshness,
@@ -2754,7 +2755,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       // A valuation is measured at the quote's regular session price, so the quote dates it.
       const freshness = view === "valuation" ? valuationFreshness(financials) : fundamentalsFreshness(financials);
       // Market cap, the multiples and the yield at the regular session price, as the text gives them; the quote stays as sent.
-      const priced = atRegularSessionPrice(financials);
+      const priced = atLivePriceEarnings(financials);
       // One market cap per view: the share count times the price where the provider's sits more than 2% from it.
       const capitalization = viewMarketCapitalization(priced.quote, priced.fundamentals, regularSessionValuationPrice(priced.quote));
       // The filings behind the latest statements, and for a bank its deposits, uninsured share and CRE.
