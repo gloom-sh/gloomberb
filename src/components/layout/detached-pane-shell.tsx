@@ -41,6 +41,7 @@ import { paneMenuButtonAnchor, ShellActionMenuOverlay, type ActionMenuState } fr
 import { getPaneFooter } from "./pane/footer";
 import { requestPaneDocs } from "../../docs/requests";
 import { DOCS_PANE_TEMPLATE_ID } from "../../docs/content";
+import { paneHoldsUnsentWork } from "../../state/pane-unsent-work";
 
 interface DetachedPaneShellProps {
   pluginRegistry: PluginRegistry;
@@ -130,6 +131,8 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     overlayOpen: dialogOpen || menuState !== null,
     editing: inputCaptured,
     close: () => {
+      // A draft not sent or an answer coming in keeps the window: the Esc goes on to the pane.
+      if (paneHoldsUnsentWork(desktopWindowBridge.paneId)) return false;
       if (!locked) fireAndForget(desktopWindowBridge.closeDetachedPane?.(desktopWindowBridge.paneId), "desktop.closeDetachedPane");
       return true;
     },

@@ -3,6 +3,7 @@ import { CompanyLogoMark } from "../../../components/company-logo";
 import { PaneStatusBody } from "../../../components";
 import { ClippedText } from "../../../components/ui/display";
 import { FILL_REST } from "../../../components/ui/fill";
+import { useSelectionFill } from "../../../components/ui/selection-fill";
 import { afterLayout, revealInScrollBox } from "../../../components/ui/reveal-in-scroll-box";
 import { useDoubleClickActivation } from "../../../components/use-double-click-activation";
 import { useShortcut } from "../../../react/input";
@@ -285,9 +286,11 @@ function ReportTile({ report, selected, onPress, tileRef }: {
   tileRef: (node: BoxRenderable | null) => void;
 }) {
   const colors = useThemeColors();
+  const selectionFill = useSelectionFill();
   const surprise = report.epsSurprise;
-  const ink = selected ? colors.selectedText
-    : typeof surprise !== "number" || surprise === 0 ? colors.text : surprise > 0 ? colors.positive : colors.negative;
+  // An N/M surprise (against a loss or zero estimate) is no number to colour by.
+  const tone = typeof surprise !== "number" || surprise === 0 ? colors.text : surprise > 0 ? colors.positive : colors.negative;
+  const ink = !selected ? tone : selectionFill.lit ? colors.selectedText : selectionFill.ink(tone);
   return (
     <Box
       ref={tileRef}
@@ -296,7 +299,7 @@ function ReportTile({ report, selected, onPress, tileRef }: {
       minWidth={0}
       flexDirection="column"
       alignItems="center"
-      backgroundColor={selected ? colors.selected : undefined}
+      backgroundColor={selected ? selectionFill.bg : undefined}
       hoverBackgroundColor={selected ? undefined : "var(--gloom-hover-fill)"}
       onMouseDown={onPress}
       title={reportTitle(report)}
@@ -323,6 +326,8 @@ function MoreTile({ count, selected, onPress, tileRef }: {
   tileRef: (node: BoxRenderable | null) => void;
 }) {
   const colors = useThemeColors();
+  const selectionFill = useSelectionFill();
+  const lit = selected && selectionFill.lit;
   return (
     <Box
       ref={tileRef}
@@ -332,7 +337,7 @@ function MoreTile({ count, selected, onPress, tileRef }: {
       flexDirection="column"
       alignItems="center"
       justifyContent="center"
-      backgroundColor={selected ? colors.selected : undefined}
+      backgroundColor={selected ? selectionFill.bg : undefined}
       hoverBackgroundColor={selected ? undefined : "var(--gloom-hover-fill)"}
       onMouseDown={onPress}
       title={`Show the other ${count}`}
@@ -342,9 +347,9 @@ function MoreTile({ count, selected, onPress, tileRef }: {
       style={TILE_STYLE}
     >
       <Box style={LOGO_STYLE} alignItems="center" justifyContent="center">
-        <Text fg={selected ? colors.selectedText : colors.textDim} attributes={TextAttributes.BOLD}>{`+${count}`}</Text>
+        <Text fg={lit ? colors.selectedText : selected ? selectionFill.ink(colors.textDim) : colors.textDim} attributes={TextAttributes.BOLD}>{`+${count}`}</Text>
       </Box>
-      <Text fg={selected ? colors.selectedText : colors.textMuted}>more</Text>
+      <Text fg={lit ? colors.selectedText : colors.textMuted}>more</Text>
     </Box>
   );
 }

@@ -35,6 +35,12 @@ export type CommandBarFieldValue = string | boolean | string[];
 
 interface CommandBarRouteBase {
   restoreMain?: CommandBarMainSnapshot;
+  /**
+   * The bar opened on this screen from outside it (the ticker search key, a
+   * click in the header): Esc closes the bar, back where the user was,
+   * instead of showing the root screen they never saw.
+   */
+  launched?: boolean;
 }
 
 interface CommandBarModeRoute extends CommandBarRouteBase {

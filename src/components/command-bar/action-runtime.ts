@@ -104,6 +104,7 @@ export function useCommandBarActionRuntime({
     screen: "ticker-search" | "layout",
     initialQuery = "",
     payload?: Record<string, unknown>,
+    options?: { launched?: boolean },
   ) => {
     if (screen === "ticker-search" && initialQuery.trim()) {
       skipTickerSearchDebounceRef.current = true;
@@ -115,6 +116,7 @@ export function useCommandBarActionRuntime({
       selectedIdx: 0,
       hoveredIdx: null,
       payload,
+      ...(options?.launched ? { launched: true } : {}),
     });
   }, [pushRoute, skipTickerSearchDebounceRef]);
 
