@@ -35,7 +35,8 @@
  * each update state, see header-fixture.tsx; `&host=browser` draws it as the
  * web app does), `tab-sweep` (what the layout sweep's tab visits are checked
  * against, tab-sweep-fixture.tsx), `badge-ink` (the chips badge-ink.ts
- * measures, badge-ink-fixture.tsx), or `kit` (the kit page: every design-system family in every
+ * measures, badge-ink-fixture.tsx), `query-bar` (one query bar per row in
+ * the shapes the panes give it, see query-bar-fixture.tsx), or `kit` (the kit page: every design-system family in every
  * state, see kit-fixture.tsx; `&family=<id>` shows one, `&theme=paper` and
  * `&font=` as everywhere). `&titlebar=1` leaves the top bar's room above the
  * shell, as the app does, for checks that drop on an exact spot.
@@ -96,6 +97,7 @@ import { AxisFixturePane } from "./axis-fixture";
 import { chatLatencyLayouts, ChatLatencySync } from "./chat-latency-fixture";
 import { useAppGlobalShortcuts } from "../../src/app/global-shortcuts";
 import { HeaderFixture, installHeaderClock, installHeaderMarketData, installHeaderPlatform, type HeaderFixtureHandle } from "./header-fixture";
+import { QueryBarFixture } from "./query-bar-fixture";
 import { browserUiHost } from "../../src/renderers/browser/ui-host";
 import { LAYOUT_PANES, installLayoutFetches, layoutLayout } from "./layout-fixture";
 import { KitPage } from "./kit-fixture";
@@ -1516,6 +1518,7 @@ createRoot(root).render(
         ? <DetachedPaneShell pluginRegistry={paneRegistry} desktopWindowBridge={detachedBridge} />
         : scenario === "header" ? <HeaderFixture handle={window.__paneChrome.header} />
         : scenario === "kit" ? <KitPage family={params.get("family")} />
+        : scenario === "query-bar" ? <QueryBarFixture />
         : scenario === "tab-sweep" ? <TabSweepFixture />
         : scenario === "badge-ink" ? <BadgeInkFixture />
         : scenario === "theme" || params.get("layoutReturn") === "1" ? <Box flexDirection="column" width="100%" height="100%">

@@ -62,6 +62,12 @@ export interface QueryBarSelectFilter<T extends string = string> extends QueryBa
   /** Draw the options inline (one click) instead of a menu. For four or fewer short values. */
   inline?: boolean;
   /**
+   * Inline filters: a long list that runs past the bar's edge (expiries). On
+   * the desktop it is a strip that scrolls by itself, where other inline
+   * choices fold into their menu when the bar runs short of room.
+   */
+  scrolls?: boolean;
+  /**
    * The options are the range a chart in this pane shows (1D, 1Y, MAX). Choosing
    * the one already selected sends the pane's charts back to it, as `0` does
    * after a pan or zoom, and does nothing to a chart that was not moved. Inline
@@ -84,7 +90,7 @@ export interface QueryBarMultiFilter extends QueryBarFilterBase {
 export interface QueryBarToggleFilter extends QueryBarFilterBase {
   kind: "toggle";
   value: boolean;
-  /** A shorter label for the terminal's single row. */
+  /** A shorter label for the terminal's single row, and for a desktop bar short of room. */
   short?: string;
   onChange: (value: boolean) => void;
   /**
@@ -123,6 +129,12 @@ export interface QueryBarView<T extends string = string> {
   value: T;
   options: readonly { value: T; label: string; hint?: string; disabled?: boolean }[];
   onChange: (value: T) => void;
+  /**
+   * What the choice is ("Interval", "Sort"): its name for a screen reader, and
+   * its menu's on the desktop when a bar short of room folds it. A chart's range
+   * is "Range" and any other unnamed view "View".
+   */
+  label?: string;
   /** Terminal: left/right cycle the view while this is true. */
   focused?: boolean;
   shortcutScope?: string;
@@ -413,6 +425,7 @@ export function QueryBar({ width, search, filters = [], view, meta, asOf: given,
         id: filter.id,
         kind: "toggle",
         label: filter.label,
+        short: filter.short,
         valueLabel: filter.label,
         narrowing: isNarrowing(filter),
         checked: filter.value,
@@ -449,6 +462,7 @@ export function QueryBar({ width, search, filters = [], view, meta, asOf: given,
       valueLabel: current?.short ?? current?.label ?? String(filter.value),
       narrowing: isNarrowing(filter),
       inline: filter.inline === true,
+      scrolls: filter.scrolls,
       options: filter.options.map((option) => ({
         value: option.value,
         label: option.label,
@@ -500,6 +514,7 @@ export function QueryBar({ width, search, filters = [], view, meta, asOf: given,
             else if (view.chartRange) resetChartView();
           },
           start: view.start,
+          label: view.label ?? (view.chartRange ? "Range" : undefined),
         } : undefined}
         onClearAll={narrowingCount >= 2 ? resetAll : undefined}
         meta={meta}

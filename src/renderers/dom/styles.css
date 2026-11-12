@@ -1153,14 +1153,16 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-qb-inline .gloom-qb-view { margin-left: 0; box-shadow: none; align-self: stretch; }
 /* A nested tab strip's choices start the bar, where the terminal's tab row starts. */
 .gloom-qb-view[data-placement="start"] { margin-left: 0; box-shadow: none; }
-/* A long inline choice (an expiry strip) scrolls by itself, as the terminal's
+/* A long inline list (an expiry strip) scrolls by itself, as the terminal's
    does, so its label and the controls beside it stay in view. It narrows with
-   its group and has no floor of its own: a floor wider than the room the bar
-   gives it drew its next choice under the control beside it. */
+   its group down to its label and one whole choice clear of its fades
+   (--qb-strip-floor, measured in query-bar.tsx) and no further: the rest of
+   the bar gives way first, and a bar narrower than that scrolls instead of
+   drawing one control over the next. */
 .gloom-qb-filters[data-strip="true"],
-.gloom-qb-inline[data-strip="true"] { flex: 0 1 auto; min-width: 0; }
+.gloom-qb-inline[data-strip="true"] { flex: 0 1 auto; }
+.gloom-qb-inline[data-strip="true"] { display: grid; grid-template-columns: auto minmax(var(--qb-strip-floor, 0px), max-content); }
 .gloom-qb-inline[data-strip="true"] .gloom-qb-segments {
-  flex: 0 1 auto;
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -1168,6 +1170,21 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-qb-inline[data-strip="true"] .gloom-qb-segments::-webkit-scrollbar { display: none; }
 .gloom-qb-inline[data-strip="true"] .gloom-qb-segments > button { flex: none; white-space: nowrap; }
 .gloom-qb-filters[data-strip="true"] > :not([data-strip="true"]) { flex: none; }
+/* A bar short of room drops an inline choice's label (query-bar.tsx): its
+   first choice starts where the label did (the band's first-text inset below). */
+.gloom-qb-inline[data-bare="true"],
+.gloom-qb-scroll > .gloom-qb-filters:first-child > .gloom-qb-inline[data-bare="true"]:first-child { padding-left: 0; }
+/* A folded view: its menu chip in the view's place at the right. */
+.gloom-qb-fold {
+  margin-left: auto;
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  box-shadow: inset 1px 0 0 var(--qb-hairline);
+}
+.gloom-qb-fold .gloom-popover-anchor { display: flex; align-items: stretch; }
+.gloom-qb-fold .gloom-qb-chip { box-shadow: none; }
+.gloom-qb-meta + .gloom-qb-fold { margin-left: 0; }
 /* Inline choices are tabs (the tab rule above): text only, the active one
    bright and bold on the accent underline. */
 .gloom-qb-view button {
@@ -1200,6 +1217,8 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   color: var(--gloom-text-muted);
 }
 .gloom-qb-meta + .gloom-qb-view { margin-left: 0; }
+/* Cut to a sliver of a word, it is not drawn (query-bar.tsx); its box stays. */
+.gloom-qb-meta[data-sliver] { visibility: hidden; }
 /* The as-of keeps its width: inline filters collapse to menus first (query-bar.tsx),
    and the context after it gives way before it. */
 .gloom-qb-meta.gloom-qb-asof { flex: none; }
@@ -1631,6 +1650,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-qb-scroll > .gloom-qb-view[data-placement="start"]:first-child > button:first-child,
 .gloom-qb-scroll > .gloom-qb-filters:first-child > :first-child:not(.gloom-popover-anchor),
 .gloom-qb-scroll > .gloom-qb-filters:first-child > .gloom-popover-anchor:first-child > *,
+.gloom-qb-scroll > .gloom-qb-filters:first-child > .gloom-qb-inline[data-bare="true"]:first-child > .gloom-qb-segments > button:first-child,
 .gloom-stack-bar > .gloom-stack-back,
 [data-gloom-role="field-grid-cell"]:first-child:not([data-kind="action"]) {
   padding-left: var(--cell-w);
