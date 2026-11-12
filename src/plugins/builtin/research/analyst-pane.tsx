@@ -27,7 +27,7 @@ import { handleRefreshKey, useClampSelectedIndex } from "../../../components/dat
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { useBoundTicker as useSymbolBinding, useTickerRequest } from "../shared/ticker-request";
-import { loadAnalystResearch } from "./client";
+import { hasAnalystCoverage, loadAnalystResearch, noAnalystCoverageText } from "./client";
 import {
   DEFAULT_RATING_SORT,
   analystReferencePrice,
@@ -109,7 +109,7 @@ function AnalystHeader({ data, history, series, currency, width, height, tableRo
   const consensusLabel = !nativePaneChrome && width < 44 ? "Cons." : "Consensus";
   const split = ratingSplit(data);
   // The table body already reports loading, error, and empty states.
-  const figures: StatItem[] = data ? [
+  const figures: StatItem[] = hasAnalystCoverage(data) ? [
     { id: "target", label: consensusLabel, value: formatAnalystPrice(target?.average, currency) },
     {
       id: "upside",
@@ -194,6 +194,10 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
   }, [dataProvider, cloudSession.requestKey]);
   const { data, loading, error, reload } = useTickerRequest<AnalystResearchData>(loader, symbol, exchange);
   const authWall = !data && isCloudSessionRequired(error);
+  // A listing no analyst covers loads as research with nothing in it: the body says so, the footer has nothing to add.
+  const noCoverage = !!data && !hasAnalystCoverage(data);
+  // A failure with nothing loaded is the body's to say; one behind data on screen (a refresh), the footer's.
+  const failedEmpty = !!symbol && !data && !loading && !!error && !authWall;
   const rows = useMemo(() => sortRatingRows(data?.ratings ?? [], sortPreference), [data?.ratings, sortPreference]);
   const ratingCurrency = analystTargetCurrency(data);
   const columns = useMemo(
@@ -278,9 +282,9 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
   const selectedRow = rows.length > 0 ? rows[selectedIdx] : undefined;
   const footer = (
     <AnalystFooter
-      data={authWall ? null : data}
+      data={authWall || noCoverage ? null : data}
       loading={loading}
-      error={authWall ? null : error}
+      error={authWall || failedEmpty ? null : error}
       width={width}
       binding={binding}
       focused={focused}
@@ -332,6 +336,8 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
         getItemKey={(row, index) => `${row.date}:${row.firm}:${index}`}
         renderCell={renderCell}
         selectedTextOverridesCellColor
+        status={noCoverage ? { empty: true, emptyTitle: noAnalystCoverageText(symbol ?? data.symbol) }
+          : failedEmpty ? { error: error!, subject: "Analyst research" } : undefined}
         emptyStateTitle={loading ? "Loading analyst data..." : error ?? "No analyst data"}
       />
     </>

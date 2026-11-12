@@ -9,7 +9,7 @@ import type {
 import type { AnalystResearchData, Quote } from "../../../types/financials";
 import { logFailure } from "../../../utils/log-failure";
 import { formatPercent } from "../../../utils/format";
-import { loadAnalystResearch } from "./client";
+import { hasAnalystCoverage, loadAnalystResearch, noAnalystCoverageText } from "./client";
 import {
   analystReferenceMetadata,
   analystTargetCurrency,
@@ -185,6 +185,14 @@ export function createAnalystResearchHeadless(
         dependencies.loadData(symbol, args, ctx),
         dependencies.loadQuote?.(symbol, ctx) ?? Promise.resolve(null),
       ]);
+      // A listing no analyst covers has nothing to sum up or list: the report says so once.
+      if (!hasAnalystCoverage(data)) {
+        return {
+          sections: [{ title: "Recent analyst actions", columns: RATING_COLUMNS, rows: [] }],
+          empty: noAnalystCoverageText(data.symbol || symbol),
+          metadata: { symbol: data.symbol || symbol, name: data.name ?? null },
+        };
+      }
       const { upside, reference } = analystUpside(data, quote);
       const currency = analystTargetCurrency(data);
       const ratings = sortRatingRows(data.ratings, {

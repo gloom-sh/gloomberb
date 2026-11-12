@@ -3,9 +3,11 @@ import type { DataTableKeyEvent } from "./view";
 import type { PaneFooterSegment } from "../layout/pane/footer";
 import { useShortcut } from "../../react/input";
 import { isPlainKey } from "../../utils/keyboard";
+import { readableStatus } from "../../utils/reason-codes";
 
+/** `loading`, and the failure in words: a bare reason code (UPSTREAM_ERROR) reads as what happened. */
 export function loadingErrorFooterInfo(loading: boolean, error: string | null | undefined): PaneFooterSegment[] {
-  const message = error?.trim() ?? "";
+  const message = readableStatus(error?.trim() ?? "");
   return [
     ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
     ...(message ? [{ id: "error", parts: [{ text: message, tone: "warning" as const }] }] : []),
