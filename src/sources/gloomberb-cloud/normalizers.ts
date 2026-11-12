@@ -301,6 +301,8 @@ export function mapPricePoint(
     ...(typeof point.rescaled === "number" && Number.isFinite(point.rescaled) && point.rescaled > 0 && point.rescaled !== 1
       ? { rescaled: point.rescaled } : {}),
     ...(typeof point.contract === "string" && FUTURES_CONTRACT_CODE.test(point.contract) ? { contract: point.contract } : {}),
+    ...(point.closeRebuilt === true ? { closeRebuilt: true } : {}),
+    ...(point.closeCopied === true ? { closeCopied: true } : {}),
   };
 }
 

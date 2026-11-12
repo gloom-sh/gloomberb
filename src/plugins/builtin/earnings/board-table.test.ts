@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import type { EarningsCalendarReport, EarningsHistoryPayload } from "../../../api-client/earnings";
 import { colors } from "../../../theme/colors";
 import type { Quote } from "../../../types/financials";
-import { boardReport, reportMove, type BoardRow } from "./board-model";
-import { boardColumns, boardHasActuals, renderBoardCell, type BoardCellContext, type BoardColumn } from "./board-table";
+import { boardReport, boardRowOf, reportMove, type BoardRow } from "./board-model";
+import { boardColumns, boardHasActuals, boardHasCurrencies, boardSymbolWidth, renderBoardCell, type BoardCellContext, type BoardColumn } from "./board-table";
 import { historyRows } from "./history-model";
 import { historyColumns, renderHistoryCell } from "./history-table";
 
@@ -87,6 +87,64 @@ describe("EVTS when narrow", () => {
     }
     // Wide enough, every column shows either way.
     expect(ids(2000, true)).toEqual(ids(2000));
+  });
+});
+
+describe("EVTS with listings abroad", () => {
+  // Tencent's confirmed Q3 as the board serves it: its figures in CNY, its value in dollars, no time of day.
+  const TENCENT = boardReport(calendarReport({
+    symbol: "0700:HKEX", name: "Tencent Holdings Limited", date: "2026-11-18", timing: null, timingSource: null, marketCap: 459.65e9,
+    epsEstimate: 7.21, epsAnalysts: 12, revenueEstimate: 210.24e9, dateStatus: "confirmed", currency: "CNY", listings: ["0700:HKEX"],
+  }), new Map());
+  // Alibaba the day it reports as BABA and as 9988:HKEX: the board's BABA row carries the listing's lines.
+  const BABA = boardReport(calendarReport({ symbol: "BABA", epsEstimate: 2.12, listings: ["9988:HKEX"] }), new Map());
+  const CCB = boardReport(calendarReport({ symbol: "601939:SSE", currency: "CNY", listings: ["601939:SSE", "0939:HKEX"] }), new Map());
+  const ids = (width: number, currencies: boolean, actuals = false) =>
+    boardColumns(width, { currencies, actuals }).map((entry) => entry.id);
+
+  test("a board with a report in another currency shows CCY before the figures it is the currency of, and says its cap is in dollars", () => {
+    expect(boardHasCurrencies([row(LADR), row(BABA)])).toBe(false);
+    expect(boardHasCurrencies([row(LADR), row(TENCENT)])).toBe(true);
+    const wide = boardColumns(2000, { currencies: true });
+    const at = wide.map((entry) => entry.id);
+    expect(at.slice(at.indexOf("ccy"), at.indexOf("ccy") + 2)).toEqual(["ccy", "epsEstimate"]);
+    expect(wide.find((entry) => entry.id === "cap")).toMatchObject({ label: "MKT CAP $", width: 9 });
+    // A board of US reports looks as it always has.
+    expect(ids(2000, false)).not.toContain("ccy");
+    expect(boardColumns(2000).find((entry) => entry.id === "cap")).toMatchObject({ label: "MKT CAP", width: 8 });
+    const ccy = wide.find((entry) => entry.id === "ccy")!;
+    const context: BoardCellContext = { statusShown: true, move: () => null };
+    expect(renderBoardCell(row(TENCENT), ccy, context)).toEqual({ text: "CNY", color: colors.textDim });
+    expect(renderBoardCell(row(LADR), ccy, context)).toEqual({ text: "USD", color: colors.textDim });
+    expect(cell(TENCENT, "cap")).toEqual({ text: "459.65B", color: colors.textDim });
+    expect(cell(TENCENT, "when")).toEqual({ text: "--", color: colors.textDim });
+  });
+
+  test("TICKER fits the longest listing abroad's key on the board, a US board's stays as it was", () => {
+    expect(boardSymbolWidth([row(LADR), row(TENCENT)])).toBe(9);
+    expect(boardSymbolWidth([row(LADR), row(CCB)])).toBe(10);
+    expect(boardSymbolWidth([row(LADR), row(BABA)])).toBe(6);
+    expect(boardColumns(2000, { symbolWidth: 10 }).find((entry) => entry.id === "symbol")?.width).toBe(10);
+  });
+
+  test("narrow, CCY stays while any EPS or sales figure does, and goes with the last", () => {
+    for (const actuals of [false, true]) {
+      for (let width = 40; width <= 200; width += 1) {
+        const shown = new Set(ids(width, true, actuals));
+        const figures = (["epsEstimate", "epsActual", "revenueEstimate"] as const).some((id) => shown.has(id));
+        expect([width, actuals, shown.has("ccy")]).toEqual([width, actuals, figures]);
+      }
+    }
+  });
+
+  test("a listing is found as typed, by another of its company's lines, or as the US line shown for it; a US ticker only as itself", () => {
+    expect(boardRowOf(TENCENT, "0700.HK")).toBe(true);
+    expect(boardRowOf(TENCENT, "700:HKEX")).toBe(true);
+    expect(boardRowOf(CCB, "0939.HK")).toBe(true);
+    expect(boardRowOf(BABA, "9988.HK")).toBe(true);
+    expect(boardRowOf(BABA, "BABA")).toBe(true);
+    expect(boardRowOf(TENCENT, "TCEHY")).toBe(false);
+    expect(boardRowOf(LADR, "0700.HK")).toBe(false);
   });
 });
 

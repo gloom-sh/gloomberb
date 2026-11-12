@@ -68,9 +68,12 @@ test("only what a layout can use is read from the settings", () => {
   expect(parseChartLayoutPrefs({
     panelWeights: { main: 2, volume: -1, rsi: "3", macd: Number.NaN },
     maximizedPanelId: 7,
-    toolbarHidden: "yes",
+    toolbarPinned: "yes",
     legendCollapsed: true,
   })).toEqual({ panelWeights: { main: 2 }, legendCollapsed: true });
+  // A bar saved folded, from before it started folded, is no setting any more.
+  expect(parseChartLayoutPrefs({ toolbarHidden: true })).toEqual({});
+  expect(parseChartLayoutPrefs({ toolbarPinned: true })).toEqual({ toolbarPinned: true });
   expect(parseChartLayoutPrefs([1, 2])).toEqual({});
 });
 
@@ -215,10 +218,12 @@ const press = (event: KeyEventLike) => commit(() => chartShortcut?.(event));
 const lines = () => tui.frame().split("\n");
 const savedLayout = () => findPaneInstance(latest.config.layout, PANE_ID)?.settings?.[CHART_LAYOUT_SETTING_KEY];
 
-test("the keys fold the legend and the tool bar and move the panels' line, and the pane keeps them through a restart", async () => {
+test("the keys fold the legend, keep the tool bar open and move the panels' line, and the pane keeps them through a restart", async () => {
   await mount({});
   expect(lines()[0]).toContain("ACME RSI");
-  expect(tui.frame()).toContain("\u2194");
+  // The tool bar starts folded to the tool in hand.
+  expect(tui.frame()).not.toContain("\u2194");
+  expect(tui.frame()).toContain("\u2725\u203a");
 
   await press(key("l"));
   await press(key("t"));
@@ -229,12 +234,12 @@ test("the keys fold the legend and the tool bar and move the panels' line, and t
   expect(lines()[0]).toContain("ACME Price");
   expect(lines()[0]).toContain("+1");
   expect(lines()[0]).not.toContain("ACME RSI");
-  // The tool bar is the one button that brings it back.
-  expect(folded).not.toContain("\u2194");
-  expect(folded).toContain("\u203a");
+  // Shift+T keeps the tool bar open, with the chevron that folds it again.
+  expect(folded).toContain("\u2194");
+  expect(folded).toContain("\u2039");
   const saved = parseChartLayoutPrefs(savedLayout());
   expect(saved.legendCollapsed).toBe(true);
-  expect(saved.toolbarHidden).toBe(true);
+  expect(saved.toolbarPinned).toBe(true);
   // The top panel's weight alone, against the lower panel's own 1.
   expect(Object.keys(saved.panelWeights ?? {})).toEqual(["main"]);
   expect(saved.panelWeights!.main!).toBeGreaterThan(3);
@@ -250,6 +255,7 @@ test("the keys fold the legend and the tool bar and move the panels' line, and t
   await press(key("l"));
   await press(key("t"));
   expect(lines()[0]).toContain("ACME RSI");
+  expect(tui.frame()).not.toContain("\u2194");
   expect(parseChartLayoutPrefs(savedLayout())).toEqual({ panelWeights: saved.panelWeights });
 });
 
@@ -312,19 +318,23 @@ test("a panel with the whole chart is kept while its data loads, and let go when
   expect(tui.frame()).toContain("$99.5");
 });
 
-test("hiding the tool bar while a tool in hand holds it open puts the tool down and keeps it hidden", async () => {
+test("a tool bar saved folded by an earlier version opens folded, and a tool from the keys shows on its handle without opening it", async () => {
   await mount({ [CHART_LAYOUT_SETTING_KEY]: { toolbarHidden: true } });
   expect(tui.frame()).not.toContain("\u2194");
-  // The ruler picked from the keys opens the bar while it is in hand.
+  expect(tui.frame()).toContain("\u2725\u203a");
+  // The ruler picked from the keys is the handle's tool, and nothing is saved for it.
   await press(key("m"));
-  expect(tui.frame()).toContain("\u2194");
-  // Hide, as the bar's own chevron does: the bar folds and stays hidden.
+  expect(tui.frame()).toContain("\u2194\u203a");
+  expect(tui.frame()).not.toContain("\u2725");
+  expect(parseChartLayoutPrefs(savedLayout()).toolbarPinned).toBeUndefined();
+  // Shift+T keeps the bar open whatever the tool, and again lets it fold.
   await press(key("t"));
-  expect(tui.frame()).not.toContain("\u2194");
-  expect(parseChartLayoutPrefs(savedLayout()).toolbarHidden).toBe(true);
+  expect(tui.frame()).toContain("\u2039");
+  expect(tui.frame()).toContain("\u2725");
+  expect(parseChartLayoutPrefs(savedLayout()).toolbarPinned).toBe(true);
   await press(key("t"));
-  expect(tui.frame()).toContain("\u2194");
-  expect(savedLayout()).toBeUndefined();
+  expect(tui.frame()).toContain("\u2194\u203a");
+  expect(parseChartLayoutPrefs(savedLayout()).toolbarPinned).toBeUndefined();
 });
 
 test("a drag on the line between two panels sets weights only once it has moved a row", () => {

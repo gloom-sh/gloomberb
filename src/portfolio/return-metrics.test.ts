@@ -155,3 +155,10 @@ describe("syntheticPositionUnsupportedReason", () => {
       expect([category, reason(category)]).toEqual([category, "Asset type is not covered by the equity basket"]);
   });
 });
+
+test("a pair's copied close is no day's close: the return runs across it from the close before", () => {
+  const day = (date: string, close: number, closeCopied?: boolean) =>
+    ({ date: new Date(`${date}T00:00:00Z`), close, ...(closeCopied ? { closeCopied } : {}) });
+  const { returns } = resolveDatedReturns([day("2022-06-09", 100), day("2022-06-10", 140, true), day("2022-06-13", 101)]);
+  expect(returns).toEqual([{ startDateKey: "2022-06-09", dateKey: "2022-06-13", value: expect.closeTo(0.01, 12) }]);
+});

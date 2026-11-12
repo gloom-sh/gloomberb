@@ -68,6 +68,14 @@ export interface EarningsReport {
   epsBasis?: EarningsEpsBasis | null;
   /** ISO currency of every amount on the report, a listing abroad's (CNY for Tencent); absent for US listings, whose figures are dollars. */
   currency?: string | null;
+  /**
+   * A listing abroad's board row: the company's lines on its markets, the one
+   * shown first (601939:SSE, 0939:HKEX for China Construction Bank). Its
+   * market cap is in dollars, as every company's on the board. On a US line
+   * shown instead of its company's listing abroad the day both report (BABA
+   * for 9988:HKEX), that listing's lines. Absent for other US listings.
+   */
+  listings?: string[];
 }
 
 export interface EarningsCalendarReport extends EarningsReport {
@@ -140,4 +148,11 @@ export interface EarningsCalendarQuery {
   /** Largest companies kept per day; the listed symbols are always kept. */
   perDay?: number;
   symbols?: readonly string[];
+  /**
+   * `all` adds the Hong Kong, China A and Singapore top 100's reports, each
+   * in its own currency, and keeps a listing there named in `symbols`
+   * (0700:HKEX). Without it the board is US listings'. Only a view that
+   * shows each report's currency asks for it.
+   */
+  markets?: "all";
 }

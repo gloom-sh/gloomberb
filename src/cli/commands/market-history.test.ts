@@ -1140,3 +1140,35 @@ test("history --currency reads a minor unit as its fraction of the major currenc
   expect(await run("VOD:LSE", "GBP", 1.158, ["--currency", "GBp"])).toMatchObject({ close: 115.8, currency: "GBp" });
   expect(await run("AAPL", "USD", 250, ["--currency", "GBp"])).toMatchObject({ close: 20_000, currency: "GBp" });
 });
+
+test("a pair's rebuilt and copied closes are flagged and said once, and the drawdown reads no copied close", async () => {
+  pinClosedSession();
+  const bar = (date: string, open: number, high: number, low: number, close: number, flags: object = {}) =>
+    ({ date: new Date(`${date}T00:00:00Z`), open, high, low, close, ...flags });
+  const cli = createTestCliContext({
+    config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+    dataProvider: createTestDataProvider({
+      getQuote: async () => createTestQuote({ symbol: "EURUSD=X", currency: "USD" }),
+      getPriceHistoryWithMetadata: async () => ({
+        resolution: "1d",
+        points: [
+          bar("2022-06-08", 1.069862, 1.07483, 1.067327, 1.071765, { closeRebuilt: true }),
+          bar("2022-06-09", 1.071765, 1.077006, 1.061921, 1.061921, { closeRebuilt: true }),
+          // Friday's close is the source's copy of its open, which nothing rebuilt: the lowest close, and no day's.
+          bar("2022-06-10", 1.040, 1.064215, 1.030, 1.040, { closeCopied: true }),
+          bar("2022-06-13", 1.049, 1.0525, 1.0398, 1.0512),
+        ],
+      }),
+    }),
+  });
+  await history.execute(["EURUSD=X", "--from", "2022-06-08", "--to", "2022-06-13"], cli.context);
+  const [{ result, options }] = cli.printed;
+  const text = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "text" }, options);
+  expect(text).toMatch(/2022-06-09 .* close rebuilt/);
+  expect(text).toMatch(/2022-06-10 .* close copied/);
+  // The trough is Monday's close, not Friday's copied one.
+  expect(text).toContain("trough 1.051200 on 2022-06-13");
+  expect(result.warnings).toContainEqual(expect.stringContaining(
+    "The source repeated the open of 2022-06-08 and 2022-06-09 as their close; they close at the next session's open (flag close rebuilt); "
+    + "the source repeated the open of 2022-06-10 as its close"));
+});

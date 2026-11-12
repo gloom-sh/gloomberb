@@ -259,7 +259,8 @@ test("a currency typed as its name is asked for by its code and says so; a name 
 });
 
 /** `fx --date` against daily closes by pair symbol; every history request is kept. */
-function datedHarness(baseCurrency: string, closes: Record<string, Record<string, number>>, closedAt?: (day: string) => string) {
+function datedHarness(baseCurrency: string, closes: Record<string, Record<string, number>>, closedAt?: (day: string) => string,
+  copied: readonly string[] = []) {
   const config = createDefaultConfig("/tmp/gloom-fx-command-fixture");
   config.baseCurrency = baseCurrency;
   const asked: string[] = [];
@@ -271,7 +272,8 @@ function datedHarness(baseCurrency: string, closes: Record<string, Record<string
         asked.push(symbol);
         const data = Object.entries(closes[symbol] ?? {})
           .filter(([day]) => (!params.startDate || day >= params.startDate) && (!params.endDate || day <= params.endDate))
-          .map(([day, close]) => ({ date: `${day}T00:00:00.000Z`, close, ...(closedAt ? { closedAt: closedAt(day) } : {}) }));
+          .map(([day, close]) => ({ date: `${day}T00:00:00.000Z`, close, ...(closedAt ? { closedAt: closedAt(day) } : {}),
+            ...(copied.includes(day) ? { closeCopied: true } : {}) }));
         return { status: "success", data };
       },
     },
@@ -310,6 +312,15 @@ test("fx --date gives the rate at that day's daily closes, dated by the source l
   expect(run.rows()[2][0].converted).toBeCloseTo(1000 * 1.15884 * 1.3845, 9);
   expect(run.output("text")[2]).toStartWith("1,000.00 EUR = 1,604.41 CAD\n1 EUR = 1.60441 CAD  (CAD/EUR 0.623281)  ·  via USD: EUR/USD 1.15884, USD/CAD 1.38450\n");
   expect(run.asked).toEqual(["CAD=X", "CAD=X", "EURUSD=X", "CAD=X"]);
+});
+
+test("fx --date on a day whose close the source copied from its open reads the day before, and says why", async () => {
+  setSystemTime(new Date("2026-10-20T15:00:00Z"));
+  const run = datedHarness("USD", { "EURUSD=X": { "2026-09-01": 1.1593, "2026-09-02": 1.1602 } }, undefined, ["2026-09-02"]);
+  await fx.execute(["EUR/USD", "--date", "2026-09-02"], run.context);
+  expect(run.rows()[0]).toMatchObject([{ rate: 1.1593, asOf: "2026-09-01", date: "2026-09-02" }]);
+  expect(run.printed[0]!.result.warnings).toEqual(["No daily close on 2026-09-02: the source repeated that day's open as its close. "
+    + "This is the close of 2026-09-01, the trading day before it."]);
 });
 
 test("fx --date refuses a weekday's today and a day ahead, and a week with no close, before or instead of guessing", async () => {

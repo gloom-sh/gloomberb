@@ -25,9 +25,12 @@ import { useAssetData, usePluginAppActions, usePluginTickerActions } from "../..
 import { earningsResultsAlertValues } from "../alerts/research-builder";
 import { cachedMembers, loadMembers } from "../members/client";
 import { isBoardRowLoading, useQuoteBoard } from "../shared/use-quote-board";
+import { listingAbroadVenue } from "../../../utils/sec";
 import {
   addDays,
+  boardKey,
   boardReport,
+  boardRowOf,
   boardRows,
   fallbackReport,
   newYorkToday,
@@ -38,7 +41,7 @@ import {
   type BoardRow,
   type BoardSort,
 } from "./board-model";
-import { boardColumns, boardHasActuals, renderBoardCell, renderBoardSection, SORTABLE, type BoardCellContext, type BoardColumn } from "./board-table";
+import { boardColumns, boardHasActuals, boardHasCurrencies, boardSymbolWidth, renderBoardCell, renderBoardSection, SORTABLE, type BoardCellContext, type BoardColumn } from "./board-table";
 import { EarningsCalendarView, CALENDAR_GROUP_ROWS, calendarSlotsPerRow } from "./calendar";
 import {
   boardRangeDays,
@@ -99,7 +102,9 @@ interface BoardData {
  * ERN without a ticker: the market's report days, largest companies first,
  * with the implied move and each company's average move. With tickers, or the
  * Names filter (Mine, a portfolio, a watchlist or a fund's holdings),
- * the upcoming reports of those companies instead.
+ * the upcoming reports of those companies instead. Every board reads the Hong
+ * Kong, China A and Singapore top 100's reports too, ranked by their value in
+ * dollars beside US companies, each with the currency of its figures (CCY).
  */
 export function EarningsBoard({ focused, width, height, scopedSymbols, highlight = null }: {
   focused: boolean;
@@ -185,13 +190,18 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const days = useMemo(() => (market || range ? boardRangeDays(range, today) : relativeDays(today)), [market, range, today]);
   const weekOffset = boardRangeWeek(range, today);
   const week = useMemo(() => calendarWeekDates(today, weekOffset), [today, weekOffset]);
-  // The calendar reads its week, reported days included; the table its days.
-  const query = useMemo<EarningsCalendarQuery>(() => calendar
-    ? { from: week[0]!, to: week.at(-1)!, perDay: market ? MARKET_PER_DAY : 0, symbols: named }
-    : market || range
-      ? { from: days[0]!.from, to: days.at(-1)!.to, perDay: market ? MARKET_PER_DAY : 0, symbols: named }
-      : { from: today, to: addDays(today, HORIZON_DAYS), perDay: 0, symbols: named },
-  [calendar, days, market, named, range, today, week]);
+  // EVTS 0700.HK names its listing, which the market board then keeps whatever the day's cut.
+  const highlightListing = market && highlight && listingAbroadVenue(boardKey(highlight)) ? boardKey(highlight) : null;
+  // The calendar reads its week, reported days included; the table its days. Each report says its currency
+  // (CCY), so every board reads the listings abroad too.
+  const query = useMemo<EarningsCalendarQuery>(() => {
+    const symbols = highlightListing && !named.includes(highlightListing) ? [...named, highlightListing] : named;
+    return calendar
+      ? { from: week[0]!, to: week.at(-1)!, perDay: market ? MARKET_PER_DAY : 0, symbols, markets: "all" }
+      : market || range
+        ? { from: days[0]!.from, to: days.at(-1)!.to, perDay: market ? MARKET_PER_DAY : 0, symbols, markets: "all" }
+        : { from: today, to: addDays(today, HORIZON_DAYS), perDay: 0, symbols, markets: "all" };
+  }, [calendar, days, highlightListing, market, named, range, today, week]);
   // A fund's read is named by the fund: its companies are known once its holdings are.
   const queryKey = fund ? `${fund.etf}|${earningsCalendarKey(query)}` : earningsCalendarKey(query);
 
@@ -208,7 +218,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
     ]);
     if (cloud.status === "rejected" && (!perTicker || fallback.status === "rejected")) throw cloud.reason;
     const reports = cloud.status === "fulfilled" ? cloud.value.payload.reports.map((report) => boardReport(report, owned)) : [];
-    const covered = new Set(reports.map((report) => report.symbol));
+    // A listing abroad named by another of its company's lines (0939.HK) is covered by its row.
+    const covered = new Set(reports.flatMap((report) => [report.symbol, ...report.listings ?? []]));
     const extra = fallback.status === "fulfilled"
       ? fallback.value.filter((event) => !covered.has(event.symbol)).map((event) => fallbackReport(event, owned, today))
       : [];
@@ -248,9 +259,13 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const selected = reportRows.find((row) => row.key === selectedKey) ?? reportRows[0] ?? null;
   const open = reportRows.find((row) => row.key === openKey)?.report
     ?? (openKey ? data?.reports.find((report) => report.key === openKey) : undefined) ?? null;
-  // A board with an actual keeps EPS ACT and EPS SURP when narrow; keyed by the flag, so the columns hold between renders.
+  // A board with an actual keeps EPS ACT and EPS SURP when narrow, and one with a listing abroad's report shows CCY;
+  // keyed by the flags, so the columns hold between renders.
   const actuals = boardHasActuals(rows);
-  const columns = useMemo(() => boardColumns(width, { actuals }), [actuals, width]);
+  const currencies = boardHasCurrencies(rows);
+  // TICKER fits a listing abroad's key (601939:SSE) when the board has one.
+  const symbolWidth = boardSymbolWidth(rows);
+  const columns = useMemo(() => boardColumns(width, { actuals, currencies, symbolWidth }), [actuals, currencies, symbolWidth, width]);
   // The move on each report out today, beside its implied move, from the quotes every board reads.
   // Keyed by content: the rows are rebuilt on renders that change nothing, and the quote board reloads on a new list.
   const reportedKey = [...new Set(reportRows.filter((row) => row.report.dateStatus === "reported" && row.report.date === today)
@@ -292,7 +307,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
 
   useEffect(() => {
     if (!highlight || highlighted.current === highlight) return;
-    const row = reportRows.find((candidate) => candidate.report.symbol === highlight);
+    // 0700.HK as typed is the board's 0700:HKEX; 0939.HK is CCB's row under its A share.
+    const row = reportRows.find((candidate) => boardRowOf(candidate.report, highlight));
     if (!row) return;
     highlighted.current = highlight;
     setSelectedKey(row.key);

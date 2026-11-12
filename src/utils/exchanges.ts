@@ -177,20 +177,25 @@ export function usShareClassSpellings(symbol: string, exchange?: string | null):
   return [`${match[1]}.${match[2]}`, `${match[1]}-${match[2]}`, `${match[1]}/${match[2]}`];
 }
 
+/** Canonical US over-the-counter venues: OTC, and the OTC Markets tiers' listing codes. */
+const US_OTC_EXCHANGES: ReadonlySet<string> = new Set(["OTC", "PINK", "PNK", "OQB", "OQX", "OEM", "OBB"]);
+
 /** Canonical US equity venues: the listing exchanges plus other lit and OTC venues. */
 const US_EQUITY_EXCHANGES: ReadonlySet<string> = new Set([
   ...US_LISTING_EXCHANGES,
   "BYX",
   "IEX",
-  "OTC",
-  "PINK",
-  // Listing codes for the OTC Markets tiers.
-  "PNK",
-  "OQB",
-  "OQX",
-  "OEM",
-  "OBB",
+  ...US_OTC_EXCHANGES,
 ]);
+
+/**
+ * A US over-the-counter venue, by its code (OTC, PNK, OQX) or as a quote
+ * names it ("OTC MARKETS OTCPK" for TCEHY, "Other OTC").
+ */
+export function isUsOtcVenue(value?: string): boolean {
+  const venue = canonicalExchange(value);
+  return US_OTC_EXCHANGES.has(venue) || /^(?:OTC MARKETS\b|OTCPK$|OTCQX$|OTCQB$|PINX$|OTHER OTC$)/.test(venue);
+}
 
 /** A US venue a stock or fund trades on, listed or over the counter. */
 export function isUsEquityExchange(value?: string): boolean {

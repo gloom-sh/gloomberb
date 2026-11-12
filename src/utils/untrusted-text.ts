@@ -27,6 +27,17 @@ export function withoutControlCharacters(value: string): string {
 }
 
 /**
+ * At most `maxLength` UTF-16 units of `value`, as a JavaScript string or a
+ * JSON Schema `maxLength` counts them, cut before a surrogate pair rather than
+ * through it, so an emoji at the limit is left out instead of halved.
+ */
+export function sliceWholeCharacters(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  const last = value.charCodeAt(maxLength - 1);
+  return value.slice(0, last >= 0xd800 && last <= 0xdbff ? maxLength - 1 : maxLength);
+}
+
+/**
  * Text another person's app wrote (a shared pane's item, a share's title), as
  * one line that draws as what it says: no terminal escape sequence, control
  * character, bidi control or zero-width character, and no broken surrogate

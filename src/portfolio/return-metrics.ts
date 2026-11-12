@@ -3,7 +3,7 @@ import type { TickerRecord } from "../types/ticker";
 import type { BrokerAccount } from "../types/trading";
 import { isDepositaryReceiptCategory, normalizeAssetCategory } from "../utils/asset-category";
 import { getPricePointTimestamp } from "../utils/price-history";
-import { mergePriceHistoryIntegrity, pricePointIntegrity, type PriceHistoryIntegrity } from "../utils/price-history-integrity";
+import { mergePriceHistoryIntegrity, pricePointCloseCopied, pricePointIntegrity, type PriceHistoryIntegrity } from "../utils/price-history-integrity";
 
 export interface DatedReturn {
   startDateKey: string;
@@ -107,7 +107,9 @@ export function resolveDatedReturns(history: PricePoint[]): ReturnHistoryResult 
   const byTimestamp = new Map<number, PricePoint>();
   for (const point of history) {
     const timestamp = getPricePointTimestamp(point);
-    if (Number.isFinite(timestamp)) byTimestamp.set(timestamp, point);
+    // A pair's close its source copied from the open, which nothing rebuilt, is no day's close: the return runs across
+    // it from the close before, as across a holiday.
+    if (Number.isFinite(timestamp) && !pricePointCloseCopied(point)) byTimestamp.set(timestamp, point);
   }
   const reported = [...byTimestamp].map(([timestamp, point]) => ({ timestamp, point }));
   const issues = reported.map(({ point }) => pricePointIntegrity(point))

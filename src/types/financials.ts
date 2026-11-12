@@ -1193,6 +1193,14 @@ export interface PricePoint {
   rescaled?: number;
   /** A continuous future's bar (NG=F): the contract it closes on (NGZ26). A change from the bar before is a roll. */
   contract?: string;
+  /** A currency pair's daily bar whose source repeated its open as its close: the close is the next session's open. */
+  closeRebuilt?: boolean;
+  /**
+   * A currency pair's daily bar whose source repeated its open as its close, which no next open in its week rebuilds
+   * (none, or one over 5% away): its close is no day's close, and returns leave the bar out
+   * (pricePointCloseCopied).
+   */
+  closeCopied?: boolean;
 }
 
 export interface StatementHistoryAttempt {

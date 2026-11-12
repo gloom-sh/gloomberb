@@ -1,46 +1,64 @@
-import { Box, Text, useShortcutLabel } from "../../../ui";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Box, Text, useShortcutLabel, type BoxRenderable } from "../../../ui";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { consumeChartMouseEvent, type ChartMouseEvent } from "../core/pointer";
 import { CHART_DRAWING_COLORS, type ChartToolKind } from "./tools";
 import { CHART_TOOLS } from "./tool-catalog";
 
-/** Icon cells plus the gap between chips. */
-export const CHART_TOOLBAR_WIDTH = CHART_TOOLS.length * 3 + (CHART_TOOLS.length - 1);
+/** The bar's tools, a gap, and the handle that opens it. */
+export const CHART_TOOLBAR_WIDTH = CHART_TOOLS.length * 3 + (CHART_TOOLS.length - 1) + 4;
 
-/** The bar's own button that folds it away, and the one it folds to. */
-const FOLD_BUTTON = {
-  label: "Hide drawing tools",
-  shortcut: "Shift+T",
-  glyph: "\u2039",
-  icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M10 3.5 5.5 8l4.5 4.5" fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-};
-const UNFOLD_BUTTON = {
-  label: "Show drawing tools",
-  shortcut: "Shift+T",
+/** How long the bar stays open once the pointer has left it. */
+export const CHART_TOOLBAR_FOLD_DELAY_MS = 300;
+
+const SHORTCUT = "Shift+T";
+/** The handle's icon and its hint, in px on the desktop: together they fix its width, so it keeps it when the bar opens. */
+const HANDLE_ICON_PX = 13;
+const HANDLE_HINT_PX = 9;
+const HANDLE_WIDTH = `calc(var(--gloom-space-xs) * 2 + ${HANDLE_ICON_PX + HANDLE_HINT_PX}px)`;
+/** The hint on the folded handle: the bar opens to its right. */
+const OPEN_CHEVRON = {
   glyph: "\u203a",
   icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
+/** The handle of a bar kept open, which folds it. */
+const FOLD_CHEVRON = {
+  glyph: "\u2039",
+  icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M10 3.5 5.5 8l4.5 4.5" fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+};
 
-function ChartToolButton({
-  tool,
+interface PressEventLike {
+  key?: string;
+  preventDefault?: () => void;
+  stopPropagation?: () => void;
+}
+
+/** One of the chart's icon buttons: the control radius, the icon button's hover fill, a 13px icon. */
+function ChartIconButton({
+  label,
   active,
   isDesktopWeb,
   onPress,
   role = "composite-chart-tool",
-  reveal,
+  pressed,
+  expanded,
+  width,
+  children,
 }: {
-  tool: { label: string; glyph: string; icon: string; shortcut?: string; hint?: string };
+  label: string;
   active: boolean;
   isDesktopWeb: boolean;
   onPress: () => void;
   role?: string;
-  /** Drawn only while the pointer is over the bar (desktop and web). */
-  reveal?: boolean;
+  /** A toggle: pressed while it is the chart's tool. */
+  pressed?: boolean;
+  /** A disclosure: open while the bar shows its tools. */
+  expanded?: boolean;
+  /** The desktop button's width when it is not its icon's (CSS length). */
+  width?: string;
+  /** Terminal cells for a glyph, or the desktop's masks. */
+  children: ReactNode;
 }) {
-  const keyLabel = useShortcutLabel();
-  const named = tool.shortcut ? `${tool.label} (${keyLabel(tool.shortcut)})` : tool.label;
-  const label = tool.hint ? `${named}. ${tool.hint}` : named;
-  const color = active ? themeColors.text : themeColors.textDim;
   return (
     <Box
       flexDirection="row"
@@ -59,41 +77,127 @@ function ChartToolButton({
       data-gloom-interactive="true"
       data-gloom-role={role}
       data-gloom-label={label}
-      data-gloom-reveal={reveal ? "hover" : undefined}
       data-active={active ? "true" : "false"}
       title={isDesktopWeb ? label : undefined}
-      // A tool is a toggle button: the icon button family, pressed while it is the chart's tool.
       role={isDesktopWeb ? "button" : undefined}
       aria-label={isDesktopWeb ? label : undefined}
-      aria-pressed={isDesktopWeb ? active : undefined}
+      aria-pressed={isDesktopWeb ? pressed : undefined}
+      aria-expanded={isDesktopWeb ? expanded : undefined}
+      // Focusable for assistive technology, which opens the bar with the focus.
+      // The keyboard's own way is Shift+T: the window keeps Tab for itself.
+      tabIndex={isDesktopWeb ? 0 : undefined}
+      onKeyDown={isDesktopWeb
+        ? (event: PressEventLike) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault?.();
+          event.stopPropagation?.();
+          onPress();
+        }
+        : undefined}
       // Cells size the terminal strip; the desktop chip sizes to its icon.
       // The icon button's look: the control radius, the hover fill.
-      style={isDesktopWeb ? { width: "auto", paddingInline: "var(--gloom-space-xs)", borderRadius: "var(--gloom-radius-md)" } : undefined}
+      style={isDesktopWeb ? { width: width ?? "auto", paddingInline: "var(--gloom-space-xs)", borderRadius: "var(--gloom-radius-md)" } : undefined}
     >
-      {isDesktopWeb ? (
-        <Box
-          flexShrink={0}
-          style={{
-            width: 13,
-            height: 13,
-            backgroundColor: color,
-            maskImage: svgMaskUrl(tool.icon),
-            WebkitMaskImage: svgMaskUrl(tool.icon),
-            maskSize: "contain",
-            WebkitMaskSize: "contain",
-            maskRepeat: "no-repeat",
-            WebkitMaskRepeat: "no-repeat",
-            maskPosition: "center",
-            WebkitMaskPosition: "center",
-          }}
-        />
-      ) : (
-        <Text fg={color}>{tool.glyph}</Text>
-      )}
+      {children}
     </Box>
   );
 }
 
+function MaskIcon({ icon, color, size = HANDLE_ICON_PX, visible = true }: { icon: string; color: string; size?: number; visible?: boolean }) {
+  return (
+    <Box
+      flexShrink={0}
+      visible={visible}
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: color,
+        maskImage: svgMaskUrl(icon),
+        WebkitMaskImage: svgMaskUrl(icon),
+        maskSize: "contain",
+        WebkitMaskSize: "contain",
+        maskRepeat: "no-repeat",
+        WebkitMaskRepeat: "no-repeat",
+        maskPosition: "center",
+        WebkitMaskPosition: "center",
+      }}
+    />
+  );
+}
+
+function ChartToolButton({
+  tool,
+  active,
+  isDesktopWeb,
+  onPress,
+}: {
+  tool: { label: string; glyph: string; icon: string; shortcut?: string; hint?: string };
+  active: boolean;
+  isDesktopWeb: boolean;
+  onPress: () => void;
+}) {
+  const keyLabel = useShortcutLabel();
+  const named = tool.shortcut ? `${tool.label} (${keyLabel(tool.shortcut)})` : tool.label;
+  const label = tool.hint ? `${named}. ${tool.hint}` : named;
+  const color = active ? themeColors.text : themeColors.textDim;
+  return (
+    <ChartIconButton label={label} active={active} pressed={active} isDesktopWeb={isDesktopWeb} onPress={onPress}>
+      {isDesktopWeb ? <MaskIcon icon={tool.icon} color={color} /> : <Text fg={color}>{tool.glyph}</Text>}
+    </ChartIconButton>
+  );
+}
+
+/**
+ * The bar's one fixed button, first in it so the pointer that opened the bar
+ * is still on it. Folded, it shows the tool in hand, with a hint that it
+ * opens; open, only the chevron, which keeps the bar open or lets it fold.
+ */
+function ChartToolbarHandle({
+  tool,
+  armed,
+  expanded,
+  pinned,
+  isDesktopWeb,
+  onPress,
+}: {
+  tool: { label: string; glyph: string; icon: string };
+  /** A tool is in hand, not the resting pan. */
+  armed: boolean;
+  expanded: boolean;
+  pinned: boolean;
+  isDesktopWeb: boolean;
+  onPress: () => void;
+}) {
+  const keyLabel = useShortcutLabel();
+  const keys = keyLabel(SHORTCUT);
+  const label = expanded
+    ? pinned ? `Hide drawing tools (${keys})` : `Keep drawing tools open (${keys})`
+    : `${tool.label}. Show drawing tools (${keys})`;
+  const color = armed ? themeColors.text : themeColors.textDim;
+  const chevron = pinned ? FOLD_CHEVRON : OPEN_CHEVRON;
+  return (
+    <ChartIconButton
+      label={label}
+      active={armed && !expanded}
+      expanded={expanded}
+      width={HANDLE_WIDTH}
+      isDesktopWeb={isDesktopWeb}
+      onPress={onPress}
+      role="composite-chart-toolbar-toggle"
+    >
+      {isDesktopWeb ? (
+        <>
+          {/* Hidden, not removed, once the bar is open: the pointer that opened it is on this icon, and a press that lands as the bar opens still reaches the button.
+              The button keeps its width, so a pointer that came in at its edge is still on it. */}
+          <MaskIcon icon={tool.icon} color={color} visible={!expanded} />
+          <MaskIcon icon={chevron.icon} color={themeColors.textDim} size={expanded ? HANDLE_ICON_PX : HANDLE_HINT_PX} />
+        </>
+      ) : (
+        <Text fg={color}>{expanded ? chevron.glyph : `${tool.glyph}${chevron.glyph}`}</Text>
+      )}
+    </ChartIconButton>
+  );
+}
 
 function svgMaskUrl(svg: string): string {
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
@@ -152,8 +256,8 @@ export function ChartToolbar({
   drawColor,
   showColors,
   levelTool,
-  folded,
-  onToggleFolded,
+  pinned,
+  onTogglePinned,
   onArmTool,
   onPickColor,
 }: {
@@ -165,15 +269,20 @@ export function ChartToolbar({
   showColors: boolean;
   /** The chart's levels can be edited here. */
   levelTool: boolean;
-  /** Hidden by the user: the bar is the one button that brings it back. */
-  folded: boolean;
-  /** Folds the bar away, from the button it shows under the pointer, or opens it again. */
-  onToggleFolded: () => void;
+  /** Kept open by the user. Otherwise the bar is folded to the tool in hand and opens under the pointer. */
+  pinned: boolean;
+  /** Keeps the bar open, or lets it fold again. */
+  onTogglePinned: () => void;
   onArmTool: (tool: ChartToolKind | null) => void;
   onPickColor: (color: string) => void;
 }) {
+  const barRef = useRef<BoxRenderable | null>(null);
+  const { open, onHover, onLeave, onFocus, onBlur, fold } = useToolbarOpening(barRef);
+  const expanded = pinned || open;
+  const tool = CHART_TOOLS.find((entry) => entry.kind === armedTool) ?? CHART_TOOLS[0]!;
   return (
     <Box
+      ref={barRef}
       position="absolute"
       left={left}
       top={top}
@@ -194,29 +303,37 @@ export function ChartToolbar({
         }
         : undefined}
       data-gloom-role="composite-chart-toolbar"
-      data-gloom-reveal-scope="true"
-      data-folded={folded ? "true" : undefined}
+      data-folded={expanded ? undefined : "true"}
+      data-pinned={pinned ? "true" : undefined}
+      onMouseOver={onHover}
+      onMouseOut={onLeave}
+      onFocus={isDesktopWeb ? onFocus : undefined}
+      onBlur={isDesktopWeb ? onBlur : undefined}
     >
-      {folded ? (
+      <ChartToolbarHandle
+        tool={tool}
+        armed={armedTool !== null}
+        expanded={expanded}
+        pinned={pinned}
+        isDesktopWeb={isDesktopWeb}
+        onPress={() => {
+          // Pressed while the bar is open only for the pointer or the focus,
+          // it stays open; pressed while kept open, it folds now.
+          if (pinned) fold();
+          onTogglePinned();
+        }}
+      />
+      {expanded ? CHART_TOOLS.filter((entry) => levelTool || entry.kind !== "level").map((entry) => (
         <ChartToolButton
-          tool={UNFOLD_BUTTON}
-          active={false}
+          key={entry.kind ?? "pan"}
+          tool={entry}
+          active={armedTool === entry.kind}
           isDesktopWeb={isDesktopWeb}
-          onPress={onToggleFolded}
-          role="composite-chart-toolbar-toggle"
+          onPress={() => onArmTool(entry.kind)}
         />
-      ) : null}
-      {folded ? null : CHART_TOOLS.filter((tool) => levelTool || tool.kind !== "level").map((tool) => (
-        <ChartToolButton
-          key={tool.kind ?? "pan"}
-          tool={tool}
-          active={armedTool === tool.kind}
-          isDesktopWeb={isDesktopWeb}
-          onPress={() => onArmTool(tool.kind)}
-        />
-      ))}
+      )) : null}
       {/* Colours only take space while something can use them. */}
-      {!folded && showColors ? CHART_DRAWING_COLORS.map((color) => (
+      {expanded && showColors ? CHART_DRAWING_COLORS.map((color) => (
         <ChartColorSwatch
           key={color}
           color={color}
@@ -225,18 +342,77 @@ export function ChartToolbar({
           onPress={() => onPickColor(color)}
         />
       )) : null}
-      {/* The way to fold the bar shows under the pointer, so a chart at rest
-          draws the bar as it always has; the terminal has Shift+T and the menu. */}
-      {!folded && isDesktopWeb ? (
-        <ChartToolButton
-          tool={FOLD_BUTTON}
-          active={false}
-          isDesktopWeb={isDesktopWeb}
-          onPress={onToggleFolded}
-          role="composite-chart-toolbar-toggle"
-          reveal
-        />
-      ) : null}
     </Box>
   );
+}
+
+const TOOLBAR_SELECTOR = "[data-gloom-role=composite-chart-toolbar]";
+
+/**
+ * Whether a pointer event lies on the bar. A mouseout between two of its icons
+ * does, and is no leaving. The desktop reads the bar's own box in px; the
+ * terminal compares its cells.
+ */
+function pointerOnBar(bar: BoxRenderable | null, event: ChartMouseEvent): boolean {
+  const element = event.target?.closest?.(TOOLBAR_SELECTOR) as { getBoundingClientRect?: () => DOMRect } | null | undefined;
+  if (element?.getBoundingClientRect && typeof event.pixelX === "number" && typeof event.pixelY === "number") {
+    const box = element.getBoundingClientRect();
+    return event.pixelX >= box.left && event.pixelX < box.right && event.pixelY >= box.top && event.pixelY < box.bottom;
+  }
+  if (!bar || typeof event.x !== "number" || typeof event.y !== "number") return false;
+  const x = Number(bar.x);
+  const y = Number(bar.y);
+  return event.x >= x && event.x < x + Number(bar.width) && event.y >= y && event.y < y + Number(bar.height);
+}
+
+/**
+ * Whether the pointer or assistive focus has the bar open: the pointer opens it
+ * at once and keeps it open for a moment after it leaves the bar.
+ */
+function useToolbarOpening(bar: { current: BoxRenderable | null }) {
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const insideRef = useRef(false);
+  // Folded by a press under the pointer: it stays folded until the pointer has left the bar.
+  const foldedUnderPointerRef = useRef(false);
+  const clearTimer = useCallback(() => {
+    if (timerRef.current === null) return;
+    clearTimeout(timerRef.current);
+    timerRef.current = null;
+  }, []);
+  useEffect(() => clearTimer, [clearTimer]);
+  const onHover = useCallback(() => {
+    clearTimer();
+    insideRef.current = true;
+    if (!foldedUnderPointerRef.current) setHovered(true);
+  }, [clearTimer]);
+  const onLeave = useCallback((event: ChartMouseEvent) => {
+    // From one icon to the next, or into the gap between: still on the bar.
+    if (pointerOnBar(bar.current, event)) return;
+    clearTimer();
+    insideRef.current = false;
+    // Back within the delay, it opens: the press that folded it is over.
+    foldedUnderPointerRef.current = false;
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      setHovered(false);
+    }, CHART_TOOLBAR_FOLD_DELAY_MS);
+  }, [bar, clearTimer]);
+  const fold = useCallback(() => {
+    foldedUnderPointerRef.current = insideRef.current;
+    setHovered(false);
+    setFocused(false);
+  }, []);
+  // A press focuses a button too; only focus that shows its ring (assistive technology's) opens the bar.
+  const onFocus = useCallback((event: { target?: unknown }) => {
+    const target = event.target as { matches?: (selector: string) => boolean } | null;
+    if (target?.matches?.(":focus-visible") === true) setFocused(true);
+  }, []);
+  const onBlur = useCallback((event: { currentTarget?: unknown; relatedTarget?: unknown }) => {
+    const root = event.currentTarget as { contains?: (node: unknown) => boolean } | null;
+    if (event.relatedTarget && root?.contains?.(event.relatedTarget)) return;
+    setFocused(false);
+  }, []);
+  return { open: hovered || focused, onHover, onLeave, onFocus, onBlur, fold };
 }

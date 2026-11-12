@@ -89,6 +89,24 @@ describe("macro release list", () => {
       figuresMissing: "the economic calendar has no Non Farm Payrolls row that day" });
   });
 
+  test("the ECB's decision days come from the server with the deposit rate, its next decision, and a CPI actual computed from the index", () => {
+    const merged = mergeMacroReleases(floor, {
+      ...served("2026-11-11", { cpi: ["2026-11-10"], ecb: ["2026-09-10", "2026-10-29"] }), scheduled: { ecb: "2026-12-17" },
+      figures: {
+        ecb: { "2026-09-10": { event: "ECB Interest Rate Decision", actual: "2.50%", forecast: null, prior: "2.25%", surprise: null,
+          decision: "raised 25bp" } },
+        cpi: { "2026-11-10": { event: "Inflation Rate YoY", actual: null, forecast: "3.9%", prior: "3.7%", surprise: null,
+          actualMissing: "the CPI index has no October 2025 level to compare against" } },
+      },
+    });
+    expect(merged.releases.filter((release) => release.kind === "ecb").map((release) => release.date)).toEqual(["2026-09-10", "2026-10-29"]);
+    expect(merged.releases.find((release) => release.date === "2026-09-10")?.figures).toMatchObject({ actual: "2.50%", prior: "2.25%",
+      decision: "raised 25bp" });
+    expect(merged.scheduled).toEqual({ ecb: "2026-12-17" });
+    expect(merged.releases.find((release) => release.date === "2026-11-10")?.figures?.actualMissing)
+      .toBe("the CPI index has no October 2025 level to compare against");
+  });
+
   test("a failed read keeps the last list read, and the bundled one without any", async () => {
     macroReleaseCache.attach(new MemoryPluginPersistence());
     const down = () => Promise.reject(new Error("offline"));
