@@ -13,7 +13,7 @@ export type MacroEventKind = UsMacroEventKind | "ipca" | "ecb";
 
 export const US_MACRO_EVENT_KINDS: readonly UsMacroEventKind[] = ["cpi", "jobs", "fomc"];
 /** The releases Gloom Cloud alone lists: Brazil's IPCA and the ECB's decisions. */
-export const SERVED_MACRO_EVENT_KINDS = ["ipca", "ecb"] as const satisfies readonly MacroEventKind[];
+const SERVED_MACRO_EVENT_KINDS = ["ipca", "ecb"] as const satisfies readonly MacroEventKind[];
 export const MACRO_EVENT_KINDS: readonly MacroEventKind[] = [...US_MACRO_EVENT_KINDS, ...SERVED_MACRO_EVENT_KINDS];
 /** The releases HIVG reads around: the US ones and the ECB's decisions. */
 export const IV_EVENT_KINDS: readonly MacroEventKind[] = [...US_MACRO_EVENT_KINDS, "ecb"];
