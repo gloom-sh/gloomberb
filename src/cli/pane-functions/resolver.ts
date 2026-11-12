@@ -24,7 +24,7 @@ import { bankFigurePointer, bankWordPointer } from "../known-gaps";
 import { findCatalogSeries, type SeriesSource } from "../series-search";
 import type { PluginCodeCommands, PluginCodeStop } from "./plugin-code";
 import { readTerminalCodeArg } from "../../tickers/company-name-listing";
-import { unknownBloombergMarket } from "../../tickers/terminal-codes";
+import { unknownBloombergMarket, unreadBloombergCode } from "../../tickers/terminal-codes";
 import { notATickerWords } from "../company-name-hint";
 import type { MarketContext } from "../types";
 import { findWatchlist } from "../helpers";
@@ -247,7 +247,8 @@ export async function applyListingArgument(
   let named: CliListing | null = null;
   if (takesOneTicker && /\s/.test(args.arg) && !await readTerminalCodeArg(context.dataProvider, args.arg)) {
     // A line written as a code with a market no venue answers to ("AAPL GP") is refused as the resolver words it.
-    if (unknownBloombergMarket(args.arg)) await resolveCliListing(args.arg, undefined, context);
+    // So is a code no symbol is read from ("GTJPY10Y Govt"), with what has it instead.
+    if (unknownBloombergMarket(args.arg) || unreadBloombergCode(args.arg)) await resolveCliListing(args.arg, undefined, context);
     named = exchange ? null : await resolveCliListing(args.arg, undefined, context)
       .catch(logFailure("cli.pane-functions-resolver", "Read a company's name typed for a function failed", null));
     if (!named?.readAs || /\s/.test(named.symbol)) throw new ListingArgError(await notATickerWords(args.arg, context));

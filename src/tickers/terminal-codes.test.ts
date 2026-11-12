@@ -8,7 +8,8 @@ import { createTestDataProvider } from "../test-support/data-provider";
 import type { InstrumentSearchResult } from "../types/instrument";
 import type { HeadlessPaneDefinition, PaneDef, PaneTemplateDef } from "../types/plugin";
 import { normalizeTickerInput } from "./search";
-import { BLOOMBERG_MARKETS, endsInLegalForm, readNearMissListing, readTerminalListingCode, readVenueFirstListing, unknownBloombergMarket } from "./terminal-codes";
+import { BLOOMBERG_MARKETS, endsInLegalForm, readNearMissListing, readTerminalListingCode, readVenueFirstListing, unknownBloombergMarket, unreadBloombergCode } from "./terminal-codes";
+import { readNameEntries } from "../cli/name-entries";
 import { isKnownExchangeCode } from "../utils/exchanges";
 import { splitSymbolArgs, splitSymbolWords } from "../cli/symbol-args";
 import { parseSymbolText } from "../cli/symbol-list";
@@ -50,6 +51,9 @@ test.each([
   ["EUR Curncy", "EURUSD=X"],
   ["CL1 Comdty", "CL1E"],
   ["CO1 Comdty", "CO1E"],
+  ["MOVE Index", "^MOVE"],
+  ["DXY Curncy", "DX-Y.NYB"],
+  ["JY1 Curncy", "6J1E"],
 ])("a terminal's code %s is the listing %s", (typed, key) => {
   expect(readTerminalListingCode(typed)?.key).toBe(key);
   expect(parseListingArg(typed).key).toBe(key);
@@ -265,4 +269,32 @@ test.each([
 // A ticker that is also a venue's code, before a two-letter market code, is written symbol first, as before.
 test.each(["SAN:EPA", "BATS:LSE", "ICE:NYSE", "7203:JPX", "AAPL", "ICE:US", "CME:US", "NEO:US", "OTC:US", "ASX:AU", "BSE:IN", "AMS:SW"])("%s is not written venue first", (typed) => {
   expect(readVenueFirstListing(typed)).toBeNull();
+});
+
+test("a Bloomberg code nothing here reads is one entry, refused with what has it, never a name search or two symbols", async () => {
+  // MOVE Index found another venue's product named after the index; GTJPY10Y Govt split into GTJPY10Y and the GOVT fund.
+  const searched: string[] = [];
+  const provider = createTestDataProvider({
+    search: async (query: string) => {
+      searched.push(query);
+      return [{ symbol: "GOVT", name: "iShares U.S. Treasury Bond ETF", exchange: "ARCA", type: "ETF" } as InstrumentSearchResult];
+    },
+    getQuotesBatch: async (targets) => targets.map((target) => ({ target, quote: { symbol: target.symbol, price: 22 } as never })),
+  });
+  const entries = ["GTJPY10Y Govt", "USDJPY BGN Curncy", "XAU Curncy", "USGG2YR Index", "VXJ Index"];
+  expect(entries.map((entry) => unreadBloombergCode(entry)?.yellowKey)).toEqual(["Govt", "Curncy", "Curncy", "Index", "Index"]);
+  // Names that end in a key word, and codes the terminal reads, are not.
+  for (const name of ["FTSE 100 Index", "Gold Comdty", "Nasdaq Index", "SPX Index", "JPY Curncy"]) expect(unreadBloombergCode(name), name).toBeNull();
+  expect(await readNameEntries(entries, provider)).toEqual(entries);
+  expect(searched).toEqual([]);
+  const refusals = await Promise.all(entries.map((entry) => resolveCliListing(entry, undefined, { dataProvider: provider } as never)
+    .then(() => null, (error: unknown) => error instanceof ListingArgError ? error.message : String(error))));
+  expect(refusals).toEqual([
+    "GTJPY10Y Govt is Bloomberg's code for a government bond, which is not quoted here. Japan's 10-year government yield: gloom fn G CAP:bond-yield:jp-10y.",
+    "USDJPY BGN Curncy is not quoted here: Bloomberg's USD/JPY forwards, option volatilities, risk reversals and pricing sources are not carried. USD/JPY spot: gloom quote USDJPY=X.",
+    "XAU Curncy: Spot gold is not quoted; GC=F is the front-month future.",
+    "USGG2YR Index is Bloomberg's US 2-year Treasury yield, which has no quote here. Try `gloom fred DGS2` or `gloom yield-curve` for the US 2-year Treasury yield.",
+    "VXJ Index is a Bloomberg index code no symbol here is read from. Try gloom search VXJ.",
+  ]);
+  expect(searched).toEqual([]);
 });

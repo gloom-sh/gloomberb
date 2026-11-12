@@ -1418,6 +1418,8 @@ function refusedLine(refused: ReadonlyArray<{ input: string }>): string {
  * after it a reason of several sentences: `Not quoted: iron ore. Iron ore: no live price (...). ...`.
  */
 function unreadLine({ symbol, error }: { symbol: string; error: ListingArgError }): string {
+  // A reason that names the line itself ("GTJPY10Y Govt is Bloomberg's code for a government bond...") says it once.
+  if (error.message.startsWith(`${symbol} `) || error.message.startsWith(`${symbol}:`)) return error.message;
   const reason = error.message.replace(/\.$/, "");
   return reason.includes(". ") ? `Not quoted: ${symbol}. ${reason}.` : `Not quoted: ${symbol} (${reason}).`;
 }

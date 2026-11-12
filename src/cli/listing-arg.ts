@@ -68,9 +68,11 @@ import {
   readTerminalListingCode,
   terminalCodeReadAs,
   unknownBloombergMarket,
+  unreadBloombergCode,
   type NearMissListing,
   type TerminalListingCode,
 } from "../tickers/terminal-codes";
+import { unreadBloombergCodeMessage } from "./terminal-code-hints";
 import { listingAbroadVenue } from "../utils/sec";
 import { savedAbroadForBareSymbol, savedUsListingOf } from "../tickers/search/bare-symbol";
 import { listingSuffixCandidate, listingSuffixVenue, tickerHasListingSuffix } from "../sources/listing-symbols";
@@ -1439,6 +1441,10 @@ export async function resolveCliListing(
   // "iron ore" has no live price: it says so and where the monthly one is, never Kumba Iron Ore's stock.
   const unquoted = exchangeOption?.trim() ? null : unquotedGapMessage(typed);
   if (unquoted) throw new ListingArgError(unquoted);
+  // "GTJPY10Y Govt" and "VXJ Index" are Bloomberg codes no symbol here is read from: refused with what has them,
+  // never searched for as a name (MOVE Index found another venue's product named after the index).
+  const unreadCode = exchangeOption?.trim() ? null : unreadBloombergCode(typed);
+  if (unreadCode) throw new ListingArgError(unreadBloombergCodeMessage(unreadCode));
   // A listing that moved to a new symbol (ELET3, "eletrobras") is the one it trades as now, saying so.
   const renamed = exchangeOption?.trim() ? null : renamedListingFor(typed);
   if (renamed) {

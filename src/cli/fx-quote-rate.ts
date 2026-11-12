@@ -43,7 +43,7 @@ export interface FxQuoteRate {
  * The front-month future a metal with no spot quote is priced from, in USD per
  * troy ounce: COMEX gold and silver, NYMEX platinum and palladium.
  */
-const METAL_FRONT_MONTH: Readonly<Record<string, string>> = { XAU: "GC=F", XAG: "SI=F", XPT: "PL=F", XPD: "PA=F" };
+export const METAL_FRONT_MONTH: Readonly<Record<string, string>> = { XAU: "GC=F", XAG: "SI=F", XPT: "PL=F", XPD: "PA=F" };
 
 /** "Gold", for the line that says a metal's rate is derived from its future. */
 export const METAL_NAMES: Readonly<Record<string, string>> = { XAU: "Gold", XAG: "Silver", XPT: "Platinum", XPD: "Palladium" };

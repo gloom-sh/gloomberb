@@ -3,7 +3,7 @@ import { fstatSync } from "fs";
 import { splitSymbolArgLines, splitSymbolWords, stripStrayEdges, uniqueSymbols } from "./symbol-args";
 import { foldTypedText } from "../utils/typed-text";
 import { hasDecimalCommas, isFigure, isJunkCell, isNumberCell, isSheetErrorCell, protectFigureCommas, restoreFigureCommas } from "./symbol-cells";
-import { endsInLegalForm, readTerminalListingCode, unknownBloombergMarket } from "../tickers/terminal-codes";
+import { endsInLegalForm, readTerminalListingCode, unknownBloombergMarket, unreadBloombergCode } from "../tickers/terminal-codes";
 
 /** Header cells that name a spreadsheet's symbol column, compared without case, spaces or punctuation. */
 const SYMBOL_HEADERS = new Set(["symbol", "symbols", "ticker", "tickers", "code", "stockcode", "securitycode", "instrument"]);
@@ -153,7 +153,7 @@ function looksLikeSymbol(cell: string): boolean {
  */
 function isTerminalCodeCell(cell: string): boolean {
   return /\s/.test(cell.trim()) && !endsInLegalForm(cell)
-    && (readTerminalListingCode(cell) != null || unknownBloombergMarket(cell) != null);
+    && (readTerminalListingCode(cell) != null || unknownBloombergMarket(cell) != null || unreadBloombergCode(cell) != null);
 }
 
 /** A numeric exchange code as a grid holds one (`2007`, `0700`, `600519`): Hong Kong, Tokyo, Shanghai. Shorter is a quantity. */
