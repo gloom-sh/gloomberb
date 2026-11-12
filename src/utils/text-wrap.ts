@@ -105,3 +105,73 @@ export function wrapTextLines(
 
   return lines;
 }
+
+/**
+ * Styled runs of text (a markdown line's bold, code and link segments) on
+ * lines no wider than `width`, broken only at whitespace, as `wrapTextLines`
+ * breaks plain text: the terminal's own word wrap also breaks after `.`, `(`,
+ * `-` and `/`, which split a version as `(0.` / `20.0)` (review, 12 Nov 2026).
+ * A word wider than a line is cut by cells. Each line keeps its segments'
+ * fields; the space a line breaks at is dropped, an indent before the first
+ * word is kept.
+ */
+export function wrapSegmentLines<T extends { text: string }>(segments: readonly T[], width: number): T[][] {
+  const kept = segments.filter((segment) => segment.text.length > 0);
+  const full = kept.map((segment) => segment.text).join("");
+  if (width <= 0 || !/\S/.test(full)) return [kept];
+  // Where each line of `full` starts and ends, in UTF-16 offsets.
+  const ranges: Array<[number, number]> = [];
+  let start = -1;
+  let end = 0;
+  let used = 0;
+  const flush = () => {
+    if (start >= 0) ranges.push([start, end]);
+    start = -1;
+    used = 0;
+  };
+  for (const match of full.matchAll(/\S+/g)) {
+    const word = match[0];
+    const at = match.index;
+    const cells = displayWidth(word);
+    // The first line keeps the indent before its first word.
+    const gap = start >= 0 ? displayWidth(full.slice(end, at)) : ranges.length === 0 ? displayWidth(full.slice(0, at)) : 0;
+    if (start >= 0 && used + gap + cells > width) {
+      flush();
+      if (cells <= width) {
+        start = at;
+        used = cells;
+        end = at + word.length;
+        continue;
+      }
+    } else if (cells <= width || (start < 0 && gap + cells <= width)) {
+      if (start < 0) start = ranges.length === 0 ? 0 : at;
+      used += gap + cells;
+      end = at + word.length;
+      continue;
+    }
+    // Wider than a line: whole lines of it, then the rest begins the next.
+    flush();
+    const pieces = splitLongTextSegmentByDisplayWidth(word, width);
+    let offset = at;
+    pieces.forEach((piece, index) => {
+      start = offset;
+      end = offset + piece.length;
+      used = displayWidth(piece);
+      offset = end;
+      if (index < pieces.length - 1) flush();
+    });
+  }
+  flush();
+  return ranges.map(([from, to]) => {
+    const line: T[] = [];
+    let cursor = 0;
+    for (const segment of kept) {
+      const segmentStart = cursor;
+      cursor += segment.text.length;
+      const sliceFrom = Math.max(from, segmentStart);
+      const sliceTo = Math.min(to, cursor);
+      if (sliceTo > sliceFrom) line.push({ ...segment, text: segment.text.slice(sliceFrom - segmentStart, sliceTo - segmentStart) });
+    }
+    return line;
+  });
+}
