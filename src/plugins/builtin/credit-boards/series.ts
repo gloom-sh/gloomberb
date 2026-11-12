@@ -2,7 +2,7 @@ import type { CdxBoardIndex, CreditBoardPoint } from "../../../api-client/credit
 import type { SeriesDefinition, SeriesLoadRequest, SeriesLoadResult, SeriesPoint } from "../../../series/types";
 import { logFailure } from "../../../utils/log-failure";
 import { cachedSeriesNote } from "../shared/series-warning";
-import { loadCdxBoard, loadFullCdxHistory, loadSovrBoard } from "./client";
+import { boardPublisher, loadCdxBoard, loadFullCdxHistory, loadSovrBoard } from "./client";
 
 /** The five on-the-run 5Y index contracts the CDX tab lists; IG and iTraxx quote spread, HY and EM price. */
 const INDEXES = [
@@ -23,6 +23,14 @@ const SOVEREIGNS: ReadonlyArray<readonly [code: string, name: string]> = [
   ["AD", "Abu Dhabi"], ["BH", "Bahrain"], ["OM", "Oman"], ["MA", "Morocco"], ["NG", "Nigeria"],
   ["DO", "Dominican Republic"], ["CI", "Ivory Coast"],
 ];
+
+/** Every board's levels are DTCC's public trades, as the CDX and SOVR tabs cite them. */
+const BOARD_SOURCE = "DTCC";
+
+/** What a chart of a board's series cites: DTCC, and the publisher the board names (`DTCC Public Price Dissemination`). */
+function boardAttribution(source: string | null | undefined): Pick<SeriesLoadResult, "attribution"> {
+  return { attribution: { source: BOARD_SOURCE, publisher: boardPublisher(source) ?? BOARD_SOURCE } };
+}
 
 function boardPoints(
   rows: ReadonlyArray<{ id: string; points: readonly CreditBoardPoint[] }>,
@@ -51,15 +59,15 @@ const BOARD_YEAR_ONLY = "The full history did not load; showing the last year.";
  * every day the server keeps when the chart starts before it (ALL, 5Y).
  * When that read fails the board's year stands in, said with `warning`.
  */
-async function cdxIndexes(request: SeriesLoadRequest): Promise<{ indexes: readonly CdxBoardIndex[]; resource: CdxSeriesResource; warning?: string }> {
+async function cdxIndexes(request: SeriesLoadRequest): Promise<{ indexes: readonly CdxBoardIndex[]; source: string; resource: CdxSeriesResource; warning?: string }> {
   const resource = await loadCdxBoard();
   const first = Math.min(...resource.payload.indexes.flatMap((index) => index.points.slice(0, 1).map((point) => Date.parse(`${point.date}T00:00:00Z`))));
   if (!request.start || request.start.getTime() < first - BOARD_SLACK_MS) {
     const full = await loadFullCdxHistory().catch(logFailure("credit-boards", "Read the full index CDS history failed", null));
-    if (full) return { indexes: full.indexes, resource: {} };
-    return { indexes: resource.payload.indexes, resource, warning: BOARD_YEAR_ONLY };
+    if (full) return { indexes: full.indexes, source: full.source, resource: {} };
+    return { indexes: resource.payload.indexes, source: resource.payload.source, resource, warning: BOARD_YEAR_ONLY };
   }
-  return { indexes: resource.payload.indexes, resource };
+  return { indexes: resource.payload.indexes, source: resource.payload.source, resource };
 }
 
 /** A CDX series' note: the board's own, or, when it stood in for the full history, that. */
@@ -88,10 +96,11 @@ export const CREDIT_BOARD_SERIES: readonly SeriesDefinition[] = [
     unit: index.quote === "spread" ? "bp" : "points",
     frequency: "daily",
     group: "Credit",
+    publisher: BOARD_SOURCE,
     tags: ["CDS", "index CDS", index.quote, "credit default swap"],
     load: async (request) => {
       const read = await cdxIndexes(request);
-      return { ...boardPoints(read.indexes, index.code, index.name, read.resource), ...cdxSeriesNote(read) };
+      return { ...boardPoints(read.indexes, index.code, index.name, read.resource), ...cdxSeriesNote(read), ...boardAttribution(read.source) };
     },
   })),
   ...INDEXES.filter((index) => index.quote === "price").map((index): SeriesDefinition => ({
@@ -100,11 +109,12 @@ export const CREDIT_BOARD_SERIES: readonly SeriesDefinition[] = [
     unit: "bp",
     frequency: "daily",
     group: "Credit",
+    publisher: BOARD_SOURCE,
     tags: ["CDS", "index CDS", "spread", "spread equivalent", index.code, "credit default swap"],
     description: `${index.name}'s daily price as a conventional spread: a model figure from the ISDA standard model at the index's coupon and standard recovery, on each day's on-the-run contract, not a traded spread.`,
     load: async (request) => {
       const read = await cdxIndexes(request);
-      return { points: spreadEquivalentPoints(read.indexes, index.code, `${index.name} spread eq`), ...cdxSeriesNote(read) };
+      return { points: spreadEquivalentPoints(read.indexes, index.code, `${index.name} spread eq`), ...cdxSeriesNote(read), ...boardAttribution(read.source) };
     },
   })),
   ...SOVEREIGNS.map(([code, name]): SeriesDefinition => ({
@@ -113,10 +123,11 @@ export const CREDIT_BOARD_SERIES: readonly SeriesDefinition[] = [
     unit: "bp",
     frequency: "daily",
     group: "Credit",
+    publisher: BOARD_SOURCE,
     tags: ["CDS", "sovereign", code, "credit default swap"],
     load: async () => {
       const resource = await loadSovrBoard();
-      return boardPoints(resource.payload.sovereigns, code, name, resource);
+      return { ...boardPoints(resource.payload.sovereigns, code, name, resource), ...boardAttribution(resource.payload.source) };
     },
   })),
 ];

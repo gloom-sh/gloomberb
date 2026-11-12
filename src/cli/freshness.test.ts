@@ -64,6 +64,36 @@ describe("quote status line", () => {
       .toBe("US trading day Fri 9 Oct 2026 close · 15-20 min delayed · markets closed · regular session opens Sun 23:00 UTC, Mon 10:00 AET");
   });
 
+  test("a print is the close only from two minutes before the regular session's close, from any feed", () => {
+    // The EGX 30 on Thu 12 Nov 2026: continuous trading to 14:15 Cairo, the closing auction to 14:25 (12:25 UTC).
+    const egx30 = (lastUpdated: string, stale = false) => cloudQuote({
+      symbol: "^CASE30", listingExchangeName: "EGX", instrumentType: "INDEX", stale, lastUpdated: Date.parse(lastUpdated),
+    });
+    const afterClose = "2026-11-12T12:39:00Z";
+    const stopped = quotesFreshness([egx30("2026-11-12T12:14:55Z", true)], undefined, Date.parse(afterClose))!;
+    expect(stopped).not.toHaveProperty("asOfClose");
+    expect(formatStatusLine(stopped)).toMatch(/^Last print Thu 12 Nov 2026 12:14 UTC · stale/);
+    // Stale or not: a current feed's 12:14:55 print is its last too, and so is one at 12:22:59.
+    expect(status([egx30("2026-11-12T12:14:55Z")], afterClose)).toMatch(/^Last print Thu 12 Nov 2026 12:14 UTC · /);
+    expect(status([egx30("2026-11-12T12:22:59Z")], afterClose)).toMatch(/^Last print Thu 12 Nov 2026 12:22 UTC · /);
+    // From two minutes before the close on, it is the close, stale or not.
+    expect(status([egx30("2026-11-12T12:23:00Z")], afterClose)).toMatch(/^EGX trading day Thu 12 Nov 2026 close · /);
+    expect(status([egx30("2026-11-12T12:25:00Z", true)], afterClose)).toMatch(/^EGX trading day Thu 12 Nov 2026 close · /);
+
+    // TWSE's regular session closes at 13:30 Taipei (05:30 UTC); its calendar runs to 14:30 for after-hours fixed-price
+    // trading. Its close is the regular one: a 13:30 print is the close, a 13:25 one its last print.
+    const tsmc = (lastUpdated: string) => cloudQuote({ symbol: "2330", listingExchangeName: "TWSE", currency: "TWD",
+      lastUpdated: Date.parse(lastUpdated) });
+    const evening = "2026-11-12T10:00:00Z";
+    expect(status([tsmc("2026-11-12T05:30:05Z")], evening)).toMatch(/^TWSE trading day Thu 12 Nov 2026 close · /);
+    expect(status([tsmc("2026-11-12T05:28:00Z")], evening)).toMatch(/^TWSE trading day Thu 12 Nov 2026 close · /);
+    expect(status([tsmc("2026-11-12T05:25:00Z")], evening)).toMatch(/^Last print Thu 12 Nov 2026 05:25 UTC · /);
+    // A US share's 15:40 trade on a day that closed at 16:00 is its last print; one at 15:58 is the close.
+    const share = (lastUpdated: string) => cloudQuote({ symbol: "XYZ", lastUpdated: Date.parse(lastUpdated) });
+    expect(status([share("2026-11-12T20:40:00Z")], "2026-11-13T02:00:00Z")).toMatch(/^Last print Thu 12 Nov 2026 20:40 UTC · /);
+    expect(status([share("2026-11-12T20:58:00Z")], "2026-11-13T02:00:00Z")).toMatch(/^US trading day Thu 12 Nov 2026 close · /);
+  });
+
   test("crypto trades around the clock, so it is never closed", () => {
     const now = "2026-10-10T13:00:00Z";
     const bitcoin = (dataSource: "live" | "delayed", minutesAgo: number) => cloudQuote({

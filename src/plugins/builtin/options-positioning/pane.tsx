@@ -334,7 +334,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   usePaneNoticeFooter({ registrationId: "options-positioning:notices", focused, notices });
 
   const expiryFilter = (value: string, options: { value: string; label: string }[], onChange: (value: string) => void): QueryBarFilter => ({
-    id: "expiry", label: "Exp", inline: true, value, onChange,
+    id: "expiry", label: "Exp", inline: true, scrolls: true, value, onChange,
     options: options.map((option, index) => ({
       ...option,
       hint: index === options.findIndex((entry) => entry.value === value) - 1 ? EXPIRY_PREVIOUS_KEY

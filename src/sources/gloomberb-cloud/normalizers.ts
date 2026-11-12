@@ -33,6 +33,8 @@ import { isBankOrInsurerIndustry, withStatementEbitda } from "../../utils/ebitda
 import { parseListingDelisting } from "../../market-data/quotes/delisting";
 import { readIntradayBar, readStaleReason } from "../../market-data/quotes/intraday-bar";
 import { readSessionSplit } from "../../market-data/quotes/session-split";
+import { isIndexLevel } from "../../market-data/market/index-level";
+import { isYieldIndexSymbol } from "../../tickers/index-roots";
 
 export const GLOOMBERB_CLOUD_PROVIDER_ID = "gloomberb-cloud" as const;
 
@@ -109,6 +111,13 @@ export function mapQuote(
   const priceBasis = quote.priceBasis === "nav"
     ? "per-unit"
     : futuresBasis ?? quote.priceBasis;
+  // An index's 0 open or day range is none (^BVSP before B3 opens served Open 0.00, Day Range 0.00 - 0.00): no level
+  // is 0. A Treasury yield index's is (^IRX read 0.00 in 2020), and its levels stand.
+  const index = isIndexLevel(quote.instrumentType) && !isYieldIndexSymbol(quote.symbol ?? "");
+  const sessionPrice = (value: number | undefined) => {
+    const price = normalizePriceValueByDivisor(value, divisor);
+    return index && price != null && price <= 0 ? undefined : price;
+  };
   return withoutUndefinedFields(reconcileQuoteDayRange({
     ...quote,
     retrievedAt: serviceRetrievedAt(quote.retrievedAt),
@@ -132,11 +141,15 @@ export function mapQuote(
       : undefined,
     high52w: normalizePriceValueByDivisor(quote.high52w, divisor),
     low52w: normalizePriceValueByDivisor(quote.low52w, divisor),
+    // The service read the 52-week range from its stored daily bars, its source's being unusable.
+    yearRangeBasis: quote.yearRangeBasis === "daily-bars" ? "daily-bars" : undefined,
+    // No live quote: the close of the latest daily bar of this session.
+    dailyClose: readDailyClose(quote.dailyClose),
     bid: normalizePriceValueByDivisor(quote.bid, divisor),
     ask: normalizePriceValueByDivisor(quote.ask, divisor),
-    open: normalizePriceValueByDivisor(quote.open, divisor),
-    high: normalizePriceValueByDivisor(quote.high, divisor),
-    low: normalizePriceValueByDivisor(quote.low, divisor),
+    open: sessionPrice(quote.open),
+    high: sessionPrice(quote.high),
+    low: sessionPrice(quote.low),
     mark: normalizePriceValueByDivisor(quote.mark, divisor),
     lastTradePrice: normalizePriceValueByDivisor(quote.lastTradePrice, divisor),
     preMarketPrice: normalizePriceValueByDivisor(quote.preMarketPrice, divisor),
@@ -193,6 +206,12 @@ export function mapQuote(
         }
       : quote.provenance,
   }));
+}
+
+/** A daily close's session, an exchange-local `YYYY-MM-DD`; anything else is no daily close. */
+function readDailyClose(value: unknown): Quote["dailyClose"] {
+  const session = value && typeof value === "object" ? (value as { session?: unknown }).session : undefined;
+  return typeof session === "string" && /^\d{4}-\d{2}-\d{2}$/.test(session) ? { session } : undefined;
 }
 
 /**

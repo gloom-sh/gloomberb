@@ -105,6 +105,7 @@ const askgModule: PluginModule = {
     component: ASKGPane,
     defaultPosition: "right",
     defaultMode: "floating",
+    utilityWindow: true,
     defaultFloatingSize: { width: 96, height: 32 },
     portableShare: {
       // A conversation and the panes it read are personal to the account.

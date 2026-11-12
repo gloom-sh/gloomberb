@@ -14,6 +14,8 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedShortVolume, loadShortVolume } from "./client";
+import { shortVolumeHeadless } from "./headless";
+import { reportFooterSegment } from "../shared/source-footer";
 import { exactQuantity, sortedVolumeHistory, VOLUME_COLUMNS, volumeChange, volumeHistoryPoints, volumePercent, volumePointStatus, volumeQuantity, type VolumeColumn, type VolumeSort } from "./model";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
@@ -84,7 +86,9 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
     notices: [...(data?.warnings ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: "short-volume", focused, loading: resource.loading, error: resource.error,
     url: selected?.sourceUrl ?? data?.source.url ?? null, showOpenHint: true,
-    info: data && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
+    // Its source and newest day, as `fn SIV` ends; how long ago it loaded goes first on a narrow row.
+    info: data ? [reportFooterSegment(shortVolumeHeadless, { sections: [{ title: "", columns: [], rows: data.history.map((point) => ({ date: point.date })) }] }),
+      ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : [])] : [],
     stale: !!data && resource.data?.stale,
   });
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="short-volume-signin" action="view daily short volume" needsVerification={session.needsVerification} />;

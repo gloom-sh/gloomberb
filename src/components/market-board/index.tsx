@@ -88,13 +88,19 @@ export interface MarketBoardStackProps<T extends MarketBoardRow> {
 
 /**
  * What a board gives up, in order, when the pane is too narrow for it: the
- * second label, the sparkline, the as-of year, then the change date and the
- * percentile. Shortening dates costs less than losing a column, so it comes
- * before the data columns.
+ * second label, the sparkline, the as-of year, then the change date, the
+ * percentile, the pane's own extra columns and the change. Shortening dates
+ * costs less than losing a column, so it comes before the data columns. The
+ * value and its date are never given up: a narrow board read as names alone
+ * (SOVR without its 5Y) or without the date of its figures (CBR without AS OF).
  */
-const FIT_STEPS = ["labelDetail", "history", "shortAsOf", "changeAsOf", "percentile"] as const;
+const FIT_STEPS = ["labelDetail", "history", "shortAsOf", "changeAsOf", "percentile", "extra", "change"] as const;
 /** The narrowest the name column gives way to in a board too narrow for every column. */
 const MIN_GROW_WIDTH = 10;
+/** Narrower still, once only the name, the value and its date are left, so those two stay whole. */
+const MIN_LABEL_WIDTH = 6;
+/** The columns a board always has; any other is a pane's extra one. */
+const BOARD_COLUMN_IDS = new Set(["label", "labelDetail", "value", "change", "changeAsOf", "percentile", "history", "asOf"]);
 /** An as-of date without its year ("09-17"). */
 const SHORT_AS_OF_WIDTH = 5;
 /** The word a stale or partial row's date carries, with its space: "2026-09-17 stale", "2026-10-19 so far". */
@@ -116,6 +122,8 @@ function fitBoardColumns(candidates: DataTableColumn[], width: number, wordWidth
     if (step === "shortAsOf") {
       shortAsOf = true;
       columns = withAsOfWidth(columns, SHORT_AS_OF_WIDTH + wordWidth);
+    } else if (step === "extra") {
+      columns = columns.filter((column) => BOARD_COLUMN_IDS.has(column.id));
     } else {
       columns = columns.filter((column) => column.id !== step);
     }
@@ -130,9 +138,10 @@ function fitBoardColumns(candidates: DataTableColumn[], width: number, wordWidth
   // that gives way when the board is still too wide, so the date and its word are never cut.
   const growId = columns.some((column) => column.id === "labelDetail") ? "labelDetail" : "label";
   const excess = Math.max(0, getTableWidth(columns) - width);
+  const floor = columns.length <= 3 ? MIN_LABEL_WIDTH : MIN_GROW_WIDTH;
   return {
     columns: columns.map((column) => column.id === growId
-      ? { ...column, width: Math.max(MIN_GROW_WIDTH, column.width - excess), flexGrow: 1 } : column),
+      ? { ...column, width: Math.max(Math.min(floor, column.width), column.width - excess), flexGrow: 1 } : column),
     shortAsOf,
   };
 }

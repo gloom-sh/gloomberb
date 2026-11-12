@@ -1355,7 +1355,7 @@
           {
             "code": "ECST",
             "name": "Economic Statistics",
-            "description": "Inflation, labour, growth, housing and rates against their own history."
+            "description": "US inflation, labour, growth, housing and rates against their own history."
           },
           {
             "code": "CPI",
@@ -1380,7 +1380,7 @@
           {
             "code": "CBR",
             "name": "Central Bank Rates",
-            "description": "Policy rates of the G20, SNB, Norges Bank, Riksbank and RBNZ, last observed changes and dated historical context."
+            "description": "Policy rates of the G20, SNB, Norges Bank, Riksbank, RBNZ, Egypt and Nigeria, last observed changes and dated historical context."
           },
           {
             "code": "VIX",

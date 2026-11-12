@@ -270,7 +270,7 @@ function readsAsTender(tender: HkTender): boolean {
 }
 
 /** What the HK market lists, and how far HKMA's figures run. */
-export interface HkTendersBoard {
+interface HkTendersBoard {
   tenders: HkTender[];
   /** The first issue Gloom Cloud's record holds: a wider window adds rows only past it. */
   firstTender: string | null;

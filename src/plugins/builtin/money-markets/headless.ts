@@ -4,6 +4,15 @@ import { fetchHongKongMoneyMarkets, fetchMoneyMarkets } from "./client";
 import { isHongKongTab, MONEY_MARKET_TABS, moneyMarketChange, moneyMarketNotices, moneyMarketRowNotices, moneyMarketRows, moneyMarketValue } from "./model";
 
 const FRED_FRESHNESS = { source: "FRED", status: "not-a-feed", basis: "published daily and weekly data" } as const;
+const HONG_KONG_FRESHNESS = { ...FRED_FRESHNESS, source: "HKMA", basis: "published Exchange Fund Bill closing yields" } as const;
+
+/** The rows a view reports, without their histories, and what the view declares about them beyond the definition. */
+export function moneyMarketReport(rows: readonly MoneyMarketRow[], hongKong: boolean) {
+  return {
+    ...hongKong ? { freshness: HONG_KONG_FRESHNESS } : {},
+    rows: rows.map(({ history: _history, ...row }) => ({ ...row, percentileValue: row.percentile.value })),
+  };
+}
 
 export const moneyMarketsHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["BTMM"], dataRequirements: ["Gloom Cloud money-markets endpoint"],
@@ -20,7 +29,8 @@ export const moneyMarketsHeadless: HeadlessPaneDefinition<"bundle"> = {
     const rows: MoneyMarketRow[] = "billsCurve" in data ? moneyMarketRows(data, String(args.options.tab)) : data.rows;
     const errors = "billsCurve" in data ? moneyMarketNotices(data) : moneyMarketRowNotices(data.rows);
     const complete = data.status === "available" && errors.length === 0;
-    return { complete, ...hongKong ? { freshness: { ...FRED_FRESHNESS, source: "HKMA", basis: "published Exchange Fund Bill closing yields" } } : {},
+    const report = moneyMarketReport(rows, hongKong);
+    return { complete, ...report.freshness ? { freshness: report.freshness } : {},
       sections: [{ title: hongKong ? "Exchange Fund Bill yields" : "Observations", columns: [
       { key: "label", header: "Instrument" },
       { key: "value", header: "Level", align: "right", format: (value, row) => moneyMarketValue(value as number | null, row.unit as "percent" | "usd-billions") },
@@ -29,7 +39,7 @@ export const moneyMarketsHeadless: HeadlessPaneDefinition<"bundle"> = {
       { key: "previousAsOf", header: "Versus", shrink: false, stackPriority: 1 },
       { key: "percentileValue", header: "Pctl 1Y", align: "right", stackPriority: 2, format: (value) => value == null ? "--" : Number(value).toFixed(0) },
       { key: "asOf", header: "As of", shrink: false }, { key: "status", header: "Status", stackPriority: 3 },
-    ], rows: rows.map(({ history: _history, ...row }) => ({ ...row, percentileValue: row.percentile.value })) }],
+    ], rows: report.rows }],
       errors, unavailableSymbols: rows.filter((row) => row.status === "unavailable").flatMap((row) => row.sourceSeriesIds.length ? row.sourceSeriesIds : [row.label]),
       metadata: { ...data, complete, selectedTab: args.options.tab } };
   },

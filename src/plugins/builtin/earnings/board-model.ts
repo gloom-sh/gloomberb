@@ -7,7 +7,8 @@ import type { TickerRecord } from "../../../types/ticker";
 import { earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
 import { calendarReport } from "../shared/earnings-calendar";
 import { listingSuffixCandidate } from "../../../sources/listing-symbols";
-import { isUsListingExchange } from "../../../utils/exchanges";
+import { isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
+import { listingAbroadVenue } from "../../../utils/sec";
 import { sameHistoryListing } from "./client";
 import { shortDate, surprise, weekday, type Surprise } from "./format";
 
@@ -162,10 +163,44 @@ export function boardReport(report: EarningsCalendarReport, owned: ReadonlyMap<s
   };
 }
 
-/** A listing as the board keys it: 0700.HK, as typed where its quote could not be read, is 0700:HKEX. */
+/**
+ * A listing as the board and Gloom Cloud's earnings history key it, however it
+ * was typed: a vendor's suffix as the venue it names (0700.HK, 700.HK and
+ * 00700.HK are 0700:HKEX, VOD.L is VOD:LSE), a venue by its own code
+ * (0700:XHKG is 0700:HKEX), a Hong Kong code by its four digits, and a US
+ * listing by its ticker (AAPL:NASDAQ is AAPL). Any other key stays as typed.
+ */
 export function boardKey(symbol: string): string {
-  const suffixed = listingSuffixCandidate(symbol);
-  return (suffixed ? `${suffixed.symbol}:${suffixed.exchange}` : symbol).toUpperCase();
+  const typed = symbol.trim().toUpperCase();
+  const suffixed = listingSuffixCandidate(typed);
+  const key = suffixed ? `${suffixed.symbol}:${suffixed.exchange}` : typed;
+  const parsed = parsePublicTickerKey(key);
+  if (parsed.exchange && isUsListingExchange(parsed.exchange)) return parsed.symbol;
+  const venue = listingAbroadVenue(key);
+  if (!venue) return key;
+  const code = venue === "HKEX" && /^\d{1,5}$/.test(parsed.symbol) && Number(parsed.symbol) > 0
+    ? String(Number(parsed.symbol)).padStart(4, "0") : parsed.symbol;
+  return `${code}:${venue}`;
+}
+
+/** The venues abroad whose listings' own reports Gloom Cloud reads: their exchange's results calendar and announcements. */
+const HISTORY_VENUES_ABROAD: ReadonlySet<string> = new Set(["HKEX", "SGX", "SSE", "SZSE"]);
+
+/**
+ * How ERN reads a symbol's past reports: by its listing's key, however it was
+ * typed (`boardKey`: 0700.HK is 0700:HKEX). A US listing's are the US
+ * board's, where SAN is not SAN:EPA's company; a Hong Kong, Singapore or
+ * China A listing has its own (`ownAbroad`), which Gloom Cloud reads from its
+ * exchange's results calendar and announcements, in their currency. Any other
+ * listing abroad has none (`abroad`) and shows its next report. A server that
+ * reads only Hong Kong's refuses the others (`noHistoryAbroad`), which then
+ * show their next report as before.
+ */
+export function historyListing(symbol: string): { listing: string; abroad: boolean; ownAbroad: boolean } {
+  const listing = boardKey(symbol);
+  const venue = listingAbroadVenue(listing);
+  const own = venue != null && HISTORY_VENUES_ABROAD.has(venue);
+  return { listing, abroad: venue != null && !own, ownAbroad: own };
 }
 
 /**

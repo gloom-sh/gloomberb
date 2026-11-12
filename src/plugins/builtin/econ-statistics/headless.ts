@@ -261,8 +261,10 @@ export const econStatisticsHeadless: HeadlessPaneDefinition<"bundle"> = {
     const read = typeof args.argument === "string" ? readStatArg(args.argument) : null;
     const requested = read?.stat ?? null;
     if (args.argument && !requested) {
+      // ECST is the US's statistics; another country's policy rate is in CBR, and its published series in `fred`.
       throw new Error(
-        `Unknown economic statistic "${String(args.argument)}". Use one of: ${STATS.map(({ id }) => id).join(", ")}.`,
+        `Unknown economic statistic "${String(args.argument)}". ECST covers US statistics only: ${STATS.map(({ id }) => id).join(", ")}. `
+          + "For other countries, policy rates are in fn CBR and published series in gloom fred --list.",
       );
     }
     const range = args.options.range as StatRangeId;

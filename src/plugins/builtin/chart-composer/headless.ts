@@ -346,13 +346,17 @@ function releaseDay(value: unknown): string | null {
  * Who a chart cites when each of its series names its own dataset (CBR's
  * policy rates: `FRED series ECBDFR`); nothing, so Gloom Cloud, otherwise.
  */
-function seriesAttribution(series: readonly HeadlessSeries[]): Pick<HeadlessPaneFreshness, "source" | "publisher"> {
+function seriesAttribution(series: readonly HeadlessSeries[]): Pick<HeadlessPaneFreshness, "source" | "publisher" | "publishedAt"> {
   const cited = series.map((entry) => (entry as HeadlessSeries & Pick<ResolvedSeries, "attribution">).attribution);
   if (!cited.length || cited.some((attribution) => !attribution)) return {};
   const publishers = [...new Set(cited.map((attribution) => attribution!.publisher))];
+  // The chart was published with its last series: the newest publication, when every series says when.
+  const published = cited.map((attribution) => attribution!.publishedAt);
+  const publishedAt = published.every(Boolean) ? (published as string[]).sort().at(-1) : undefined;
   return {
     source: [...new Set(cited.map((attribution) => attribution!.source))].join(", "),
     ...(publishers.every(Boolean) ? { publisher: publishers.join(", ") } : {}),
+    ...(publishedAt ? { publishedAt } : {}),
   };
 }
 

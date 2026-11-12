@@ -23,7 +23,9 @@ import { formatPercentileRank } from "../../../utils/format";
 import { useAssetData, usePluginPaneState } from "../../runtime";
 import { FIXED_INCOME_PANE_ID } from "../fixed-income/model";
 import { useCommandValue } from "../shared/command-tab";
+import { reportFooterSegment } from "../shared/source-footer";
 import { getCachedSovrBoard, loadCurrencyMoves, loadSovrBoard } from "./client";
+import { sovrHeadless } from "./headless";
 import { readsInBatches } from "../../../market-data/batched-reads";
 import {
   findSovereign,
@@ -31,7 +33,6 @@ import {
   formatCurrencyMove,
   formatLevel,
   formatMove,
-  newestRowDate,
   SETTLEMENT_TEXT,
   sovrRows,
   type SovrRow,
@@ -115,13 +116,16 @@ export function SovrPane({ focused, width, height }: PaneProps) {
     moves.reload();
   }, { focused, enabled: !loading });
 
-  // Dated by the newest day the rows carry, not when the response was put together.
-  const asOf = newestRowDate(payload?.sovereigns.map((sovereign) => sovereign.date) ?? []);
+  // Its source and the newest day the rows carry, not when the response was put together, as `fn SOVR` ends.
+  // The clock says the prints are delayed, so the line does not again.
+  const sourceLine = useMemo(() => payload
+    ? reportFooterSegment(sovrHeadless, { rows: payload.sovereigns.map((sovereign) => ({ date: sovereign.date })) }, { feed: false })
+    : null, [payload]);
   const info = useMemo<PaneFooterSegment[]>(() => [
-    ...(asOf ? [{ id: "as-of", parts: [{ text: `as of ${asOf}`, tone: "muted" as const }] }] : []),
+    ...(sourceLine ? [sourceLine] : []),
     ...(payload ? [DELAYED_SEGMENT] : []),
     ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
-  ], [asOf, payload, resource.data?.stale]);
+  ], [payload, sourceLine, resource.data?.stale]);
   usePaneStatusFooter({
     registrationId: "sovr",
     loading: loading || moves.loading,

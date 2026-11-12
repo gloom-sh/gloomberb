@@ -31,7 +31,7 @@ test("the type is read from the quote, and a quote that fails leaves a stock's e
   expect(await loadNoEarningsText(failing, "^GSPC", "cli")).toContain("is an index");
 });
 
-test("ERN for an ETF answers that it has no earnings, with no error and nothing missing, where a stock with no reports stays empty", async () => {
+test("ERN for an ETF answers that it has no earnings, with no error and nothing missing, where a stock with no reports has none on record", async () => {
   const ern = (type: string, history: () => Promise<never>) => createEarningsHeadless({
     calendar: async () => { throw new Error("unused"); },
     history,
@@ -46,7 +46,8 @@ test("ERN for an ETF answers that it has no earnings, with no error and nothing 
   const coin = await ern("CRYPTOCURRENCY", async () => { throw new Error("A US ticker symbol is required"); });
   expect(coin.errors).toBeUndefined();
   expect(coin.empty).toContain("is a cryptocurrency");
+  // A company ERN covers (AIA's 1299:HKEX) is no complete answer, and is not reported as one ERN does not cover.
   const stock = await ern("EQUITY", async () => ({ asOf: "2026-10-15T00:00:00.000Z", symbol: "X", name: null, reports: [] }) as never);
-  expect(stock.empty).toBeUndefined();
+  expect(stock.empty).toBe("No earnings reports on record for X.");
   expect(stock.complete).toBeUndefined();
 });

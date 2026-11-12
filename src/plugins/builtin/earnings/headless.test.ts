@@ -298,6 +298,12 @@ test("ERN for a Hong Kong listing reads its own reports: each in its period and 
     [addDays(today, -88), null, "H1 FY2026", "CNY", null, 12.1, "GAAP", null, 400e9],
   ]);
   expect(result.rows[1]!.filing).toContain("hkexnews.hk");
+  // The pane gets the listing as typed: every way of naming it reads its own reports, never a US ticker's.
+  for (const typed of ["0700.HK", "700.HK", "00700.HK", "0700:XHKG"]) {
+    const read = await definition.load({ rawArgument: typed, argument: [typed], symbols: [typed], options: {} }, context);
+    expect([typed, read.errors, read.rows.map((row) => [row.period, row.currency])])
+      .toEqual([typed, undefined, result.rows.map((row) => [row.period, row.currency])]);
+  }
   // A server that does not read Hong Kong's history yet refuses it: the next report stands alone, with no error.
   const { ApiRequestError } = await import("../../../api-client/errors");
   served = new ApiRequestError("A US ticker symbol is required", 400);

@@ -692,13 +692,13 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `CRYP` | Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, 24h volume and market cap. Stablecoins have their own tab |
 | `ETFF` | Daily net flows of the US spot bitcoin and ether ETFs, fund by fund in US$ millions, with the last 5 and 20 days and the running total since launch |
 | `ECO` | Economic events and releases, grouped by day and timed in UTC. Opens on high-impact releases until you pick another impact; the footer counts the lower-impact releases left out (most PMIs among them), and `Shift+F` or `fn ECO --impact all` lists them |
-| `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates |
+| `ECST [statistic]` | US economic statistics: inflation, labour, growth, consumer, housing, rates; other countries' policy rates are in `CBR` and their series in `gloom fred` |
 | `GC [curve] [date]` | Government yield curves (UST, TIPS real, breakeven, euro AAA, Bund, Gilt, JGB, Canada; Mexico and Brazil at 2Y and 10Y) with spreads and percentiles, a compare date, the one-year-forward curve, a World tab and USD SOFR Swaps. CLI: `--curve`, `--date`, `--compare 1D` (or 1W, 1M, 3M, 1Y, or a date), `--tab world`, or `--tab swaps --tenor 10Y` |
 | `WIRP` / `FFIP` | Fed funds futures implied FOMC path, conditional target probabilities, SOFR contracts and Fed projections |
 | `BTMM` | Money markets: funding rates, Treasury bill curves, Federal Reserve liquidity and Hong Kong's Exchange Fund Bill yields |
 | `YAS` | Fixed-coupon bond calculator: price/yield, accrued interest, duration, convexity, DV01 and Treasury spread |
 | `TRACE [issuer, symbol or CUSIP]` | FINRA corporate and agency bond last sales. Alone, the latest prints market-wide |
-| `CBR` / `ECFC` / `CBRT` | Policy rates of the G20, SNB, Norges Bank, Riksbank and RBNZ, last observed moves and one-year history |
+| `CBR` / `ECFC` / `CBRT` | Policy rates of the G20, SNB, Norges Bank, Riksbank, RBNZ, Egypt and Nigeria, last observed moves and one-year history |
 | `CTM [root]` | Futures contract curve, historical ghosts, roll yield and open interest, including `CTM VX` and CME crypto (`CTM BTC` adds each contract's premium to spot and annualised basis, `(Last / spot - 1) × 365 / days to expiry`) |
 | `COT [code or name]` / `CFTC [code or name]` | CFTC positioning extremes, weekly changes and historical percentiles, by root or commodity name (`COT KC`, `COT coffee`), including CME crypto (`COT BTC`). Tabs pick the Legacy, Disaggregated or Financial (TFF) report and `p` picks futures only or futures + options; `fn COT --report tff --positions combined` reads the same |
 | `AUCT [search]` | Treasury auction results: auction rate (a bill's investment rate beside its discount rate, a TIPS rate a real yield, an FRN's a spread in bp), stop-out versus the published average (the median from Nov 1998; `stopOutVsAvgBp` in CSV and JSON), bid-to-cover, indirect, direct and dealer takedown, size and CUSIP; `--view after` ranks each auction against its tenor's last 24 and shows the yield's move 1, 5 and 20 sessions later; `--market hk` lists Hong Kong's EF Bills, EF Notes and Government Bond tenders |
@@ -2825,7 +2825,8 @@ Choose **Check ticker** (`t`) in Results or Criteria, enter a ticker such as `NV
 
 - Plain tickers prefer listings in the screen's currency, then the primary or home listing. When the remaining listings belong to different companies, the check asks for an exchange: enter a qualified ticker such as `2454:JPX`. An explicit exchange is always respected, even when its currency fails the currency criterion.
 - The decision uses the stored screening values, even when Results shows a more recent quote. Missing values are not zero: ordinary comparisons fail on them, while an explicit `missing` condition passes.
-- A ticker outside the covered universe reads **Not covered**, with its criteria **Not evaluated**. Stale and partial values keep their state beside the decision.
+- A ticker is read as `quote` reads it: `700:HKEX`, `700.HK` and `00700.HK` are Tencent's `0700:HKEX`, `GARAN.IS` is `GARAN:BIST`.
+- A ticker outside the covered universe reads **Not covered**, with its criteria **Not evaluated**. A depositary receipt whose company is covered through its home line says so: `BABA` is covered as `9988:HKEX`. Stale and partial values keep their state beside the decision.
 - Passing every criterion means the ticker qualifies, though sort order and pagination can still put it beyond the rows loaded.
 
 The same check runs without a pane:

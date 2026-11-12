@@ -19,6 +19,7 @@ export {
   type DockGeometryOptions,
   type DockLeafLayout,
   type DockResizeTarget,
+  type DockTarget,
   type LayoutBounds,
 } from "./dock-tree";
 
