@@ -106,18 +106,25 @@ type Withdrawn = NonNullable<Fundamentals["notMeaningful"]>;
  * withdrawn and their reason under `notMeaningful`: every P/E and the PEG of
  * a warrant, a right, a unit or a receipt with no ratio (notTheShare), the
  * trailing P/E and the PEG over an EPS that is not the company's
- * (epsAgainstIncome). Reads the trailing EPS withFiledTrailingEps leaves, so
- * it runs after it. Returns the same object when nothing is withdrawn.
+ * (epsAgainstIncome). Only a multiple the block has, or a trailing one its
+ * EPS would give, is withdrawn: one it never had stays absent. Reads the
+ * trailing EPS withFiledTrailingEps leaves, so it runs after it. Returns the
+ * same object when nothing is withdrawn.
  */
 export function withShareMultiples<T extends ShareInputs>(financials: T): T {
   const fundamentals = financials.fundamentals;
   if (!fundamentals) return financials;
   const share = notTheShare(financials);
-  const own = share ? undefined : epsAgainstIncome(financials);
-  const reasons: Withdrawn = share
-    ? { trailingPE: share, forwardPE: share, pegRatio: share }
-    : own ? { trailingPE: own, pegRatio: own } : {};
-  const fields = Object.keys(reasons) as Array<keyof Withdrawn>;
+  const reason = share ?? epsAgainstIncome(financials);
+  // A multiple an earlier pass withdrew is one the block had.
+  const had = fundamentals.notMeaningful ?? {};
+  const has: Record<keyof Withdrawn, boolean> = {
+    trailingPE: finite(fundamentals.trailingPE) || finite(fundamentals.eps) || !!had.trailingPE,
+    forwardPE: !!share && (finite(fundamentals.forwardPE) || !!had.forwardPE),
+    pegRatio: finite(fundamentals.pegRatio) || !!had.pegRatio,
+  };
+  const fields = reason ? (Object.keys(has) as Array<keyof Withdrawn>).filter((field) => has[field]) : [];
+  const reasons: Withdrawn = Object.fromEntries(fields.map((field) => [field, reason]));
   if (fields.length === 0) {
     if (!fundamentals.notMeaningful) return financials;
     const { notMeaningful: _stale, ...rest } = fundamentals;
