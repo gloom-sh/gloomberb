@@ -9,7 +9,7 @@ import {
 import { useAssetData } from "../../../runtime";
 import { colors, priceColor } from "../../../../theme/colors";
 import type { PricePoint } from "../../../../types/financials";
-import { padTo } from "../../../../utils/format";
+import { displayWidth, padTo } from "../../../../utils/format";
 import { useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
 import type { FinancialTableStatement } from "./aggregation";
 import { FINANCIAL_COL_W, financialLabelWidth } from "./model";
@@ -101,8 +101,10 @@ export function RatioTable({
       if (row.kind === "input") {
         return { text: `    ${row.unitLabel}`, color: colors.textDim };
       }
+      const text = `${row.expanded ? "▾" : "▸"} ${row.label}`;
       return {
-        text: `${row.expanded ? "▾" : "▸"} ${row.label}`,
+        text,
+        contentWidth: displayWidth(text),
         color: colors.text,
         // The desktop draws the disclosure as a path, not a glyph.
         content: (

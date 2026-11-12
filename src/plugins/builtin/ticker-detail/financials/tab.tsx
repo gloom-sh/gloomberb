@@ -15,17 +15,19 @@ import {
 } from "../../../../components";
 import { colors, priceColor } from "../../../../theme/colors";
 import { fiscalYearEndMonth } from "../../../../utils/fiscal-period";
-import { padTo } from "../../../../utils/format";
+import { displayWidth, padTo } from "../../../../utils/format";
 import { filledPeriodPublications, filledPeriodsNote, stalePeriodNote } from "../../../../utils/financial-statements";
 import {
   FINANCIAL_COL_W,
   financialLabelWidth,
+  financialPeriodWidth,
   FINANCIAL_SUB_TABS,
   buildFinancialRows,
   canCompareFinancialRow,
   collectDefaultCollapsedGroupIds,
   collectGroupIds,
   computeGrowth,
+  financialCellValue,
   financialColumnLabel,
   formatFinancialCell,
   financialStatementCurrency,
@@ -41,7 +43,6 @@ import {
   selectFinancialStatements,
   shareFinancialUnit,
   splitPeriodsNotInYet,
-  statementMetricValue,
   type FinancialPeriod,
   type FinancialTableRow,
 } from "./model";
@@ -318,6 +319,22 @@ export function ResolvedFinancialsTab({
   const moneyUnit = [comparisonCurrency, unit].filter(Boolean).join(" ");
   const unitMarked = !!unit && rows.some((row) => row.unitLabel !== row.label);
   const metricHeader = moneyUnit ? `${moneyUnit}${unitMarked ? " unless marked" : ""}` : "Metric";
+  // The annual balance sheet leads with a newer quarter-end position.
+  const periodHeaders = useMemo(() => displayStatements.map((statement) => financialColumnHeader(
+    statement,
+    isAnnual && (statement.date === "TTM" || annualDates.has(statement.date)) ? "annual" : "quarterly",
+    yearEndMonth,
+    comparisonCurrency,
+  )), [annualDates, comparisonCurrency, displayStatements, isAnnual, yearEndMonth]);
+  // In the terminal a period is as wide as its widest value and growth, so each pair sits as far from the next
+  // as from its own growth and more periods fit. The ratio tabs keep the statement columns' width.
+  const periodWidth = useMemo(() => {
+    if (nativePaneChrome || ratioTab) return FINANCIAL_COL_W;
+    const values = rows.flatMap((row) => displayStatements.map((statement) => (
+      formatFinancialValue(financialCellValue(row, statement), row, statement)
+    )));
+    return financialPeriodWidth(values, periodHeaders);
+  }, [displayStatements, nativePaneChrome, periodHeaders, ratioTab, rows]);
   const columns = useMemo<FinancialTableColumn[]>(() => [
     {
       id: "metric",
@@ -330,18 +347,12 @@ export function ResolvedFinancialsTab({
       id: `statement:${statement.date}:${index}`,
       kind: "statement",
       statement,
-      // The annual balance sheet leads with a newer quarter-end position.
-      label: padTo(financialColumnHeader(
-        statement,
-        isAnnual && (statement.date === "TTM" || annualDates.has(statement.date)) ? "annual" : "quarterly",
-        yearEndMonth,
-        comparisonCurrency,
-      ), FINANCIAL_COL_W, "center"),
-      width: FINANCIAL_COL_W,
+      label: padTo(periodHeaders[index]!, periodWidth, "center"),
+      width: periodWidth,
       align: "right",
       headerColor: statement.date === "TTM" ? colors.textBright : colors.textDim,
     })),
-  ], [annualDates, comparisonCurrency, displayStatements, isAnnual, metricHeader, width, yearEndMonth]);
+  ], [displayStatements, metricHeader, periodHeaders, periodWidth, width]);
   const periodEnd = latestFinancialPeriodEnd(displayStatements);
   const renderCell = useCallback((
     row: FinancialTableRow,
@@ -353,8 +364,10 @@ export function ResolvedFinancialsTab({
         const marker = row.toggleable ? (row.expanded ? "\u25be" : "\u25b8") : " ";
         const labelColor = row.depth === 0 ? colors.textBright : colors.textDim;
         const labelAttributes = row.depth === 0 ? TextAttributes.BOLD : TextAttributes.NONE;
+        const text = `${indent}${marker} ${row.unitLabel}`;
         return {
-          text: `${indent}${marker} ${row.unitLabel}`,
+          text,
+          contentWidth: displayWidth(text),
           color: labelColor,
           attributes: labelAttributes,
           // The desktop draws the disclosure as a path, not a glyph.
@@ -381,31 +394,24 @@ export function ResolvedFinancialsTab({
       };
     }
 
-    const key = row.kind === "group" ? row.summaryKey : undefined;
-    if (row.kind === "group" && !key) return {
+    if (row.kind === "group" && !row.summaryKey) return {
       text: "",
     };
 
     const previous = previousStatementMap.get(column.statement.date);
-    const value = row.kind === "group"
-      ? column.statement[key!] as number | undefined
-      : statementMetricValue(row, column.statement);
-    const previousValue = previous
-      ? row.kind === "group"
-        ? previous[key!] as number | undefined
-        : statementMetricValue(row, previous)
-      : undefined;
+    const value = financialCellValue(row, column.statement);
+    const previousValue = previous ? financialCellValue(row, previous) : undefined;
     const growth = (row.kind === "metric" && !row.showGrowth)
       || !canCompareFinancialRow(row, column.statement, previous, comparisonCurrency)
       ? undefined : computeGrowth(value, previousValue);
     const formattedValue = formatFinancialValue(value, row, column.statement);
-    const cell = formatFinancialCell(formattedValue, growth);
+    const cell = formatFinancialCell(formattedValue, growth, column.width);
     const growthColorValue = semanticGrowthValue(growth, row.growthDirection);
 
     return {
       text: `${cell.valueText}${cell.growthText}`,
       content: (
-        <Box flexDirection="row" width={FINANCIAL_COL_W}>
+        <Box flexDirection="row" width={column.width}>
           <Text
             attributes={row.kind === "group" ? TextAttributes.BOLD : TextAttributes.NONE}
             fg={colors.text}
@@ -547,7 +553,6 @@ export function ResolvedFinancialsTab({
       // Desktop: the query bar and table run edge to edge like every other
       // pane; the table keeps its own inline padding.
       paddingX={nativePaneChrome ? 0 : 1}
-      paddingBottom={nativePaneChrome ? 0 : 1}
       overflow="hidden"
     >
       {isValuation && oldestPeriodEnd ? <PeriodEndHistoryLoader oldestPeriodEnd={oldestPeriodEnd} onChange={setHistory} /> : null}
