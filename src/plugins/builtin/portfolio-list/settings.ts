@@ -416,7 +416,10 @@ export function buildPortfolioPaneSettingsDef(
     type: "toggle",
   });
   return {
-    title: "Portfolio Pane Settings",
+    // Named for what the pane shows: a watchlist's settings are not a portfolio's.
+    title: activeCollectionId && !activeCollectionIsPortfolio && config.watchlists.some((watchlist) => watchlist.id === activeCollectionId)
+      ? "Watchlist Settings"
+      : "Portfolio Settings",
     values: {
       ...settings,
       columnIds: [...settings.columnIds],
