@@ -2304,7 +2304,11 @@ describe("CompositeChart", () => {
     return { x: lines[row]?.indexOf(glyph) ?? -1, y: row };
   };
   const moveTo = async (at: { x: number; y: number }) => {
-    await act(async () => tui.setup().mockMouse.moveTo(at.x, at.y));
+    // The renderer folds moves that come within a frame of each other into the last.
+    await act(async () => {
+      await tui.setup().mockMouse.moveTo(at.x, at.y);
+      await Bun.sleep(40);
+    });
     return frameNow();
   };
   /** Past the delay before an open bar folds once the pointer has left it. */
@@ -2407,6 +2411,25 @@ describe("CompositeChart", () => {
     const chevron = locate("\u2039");
     await moveTo(chevron);
     expect(await clickAt(chevron)).not.toContain(RULER);
+  });
+
+  test("a bar folded by a press stays folded while the pointer is on it, and opens when the pointer leaves and comes back within the delay", async () => {
+    await tui.render(toolBarChart, { width: 62, height: 14 });
+    await frameNow();
+    await clickAt(locate(HAND));
+    const chevron = locate("\u2039");
+    await moveTo(chevron);
+    expect(await clickAt(chevron)).not.toContain(RULER);
+    // Still on the bar, moving across the button: it stays folded.
+    const folded = locate(HAND);
+    expect(await moveTo({ x: folded.x + 1, y: folded.y })).not.toContain(RULER);
+    expect(await moveTo(folded)).not.toContain(RULER);
+    // Off the bar and back before the delay is up, it opens.
+    await moveTo({ x: 40, y: 8 });
+    expect(await moveTo(locate(HAND))).toContain(RULER);
+    await moveTo({ x: 40, y: 8 });
+    await waitToFold();
+    expect(await frameNow()).not.toContain(RULER);
   });
 
   test("the folded tool bar shows the tool in hand, and the pan tool again once it is put down", async () => {

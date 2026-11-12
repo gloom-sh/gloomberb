@@ -5,20 +5,26 @@ import type { BrowserContext, Page } from "playwright-core";
 import { takeOption } from "../tui-benchmark-harness";
 import { cacheDir } from "./browser";
 import { serveFixturePage } from "./page";
+import { pixelChange } from "./ui-audit-compare";
 
 /**
  * The composite chart's own layout in Chromium and WebKit, with the
  * real pointer on the chart composer fixture (`scenario=cmp&chart=readout`: a
  * price panel, a volume panel and an RSI panel), at 640 and 1280 px. In each
- * browser and width it checks that at rest the drawing tool bar is folded to
- * one button showing the tool in hand (the pan tool) with a hint that it opens,
- * and the legend's chevron and the lines between panels are not drawn; that the
- * pointer on that button opens the bar, which stays open while the pointer
- * moves from one icon to the next and folds a moment after it leaves; that the
- * keyboard's focus opens it and its leaving folds it; that a press on the
- * button keeps the bar open (as Shift+T does), a press on the chevron that then
- * leads it folds it at once, under the pointer, and the bar opens again once the
- * pointer has left and come back; that a tool picked from the keys shows on the
+ * browser and width it checks that at rest the chart draws as the base does
+ * (`--base`, pixel for pixel within ImageMagick's 2% fuzz) outside the drawing
+ * tool bar's own rectangle, and that the bar is folded to one button showing
+ * the tool in hand (the pan tool) with a hint that it opens, while the legend's
+ * chevron and the lines between panels are not drawn; that the pointer on that
+ * button opens the bar without the button changing its width, and the bar stays
+ * open while the pointer moves from one icon to the next and folds a moment
+ * after it leaves; that focus moved to it (assistive technology's: Tab is the
+ * window's, and the keyboard's own way is Shift+T) opens it and its leaving
+ * folds it; that a press on the button at its right edge, as the bar opens,
+ * keeps the bar open (as Shift+T does), a press on the chevron that then leads
+ * it folds it at once, under the pointer, which keeps it folded while it moves
+ * across the button, and the bar opens when the pointer leaves and comes back
+ * within the delay; that a tool picked from the keys shows on the
  * folded button; that the button has the radius, height and hover fill of the
  * bar's other icon buttons; that the legend's chevron shows under the pointer
  * and folds the legend to its first series and a count of the rest, which
@@ -39,7 +45,7 @@ import { serveFixturePage } from "./page";
  *
  * Needs playwright-core's Chromium and WebKit
  * (`bunx playwright-core install chromium webkit`) and ImageMagick for the
- * sheets. Pictures, `sheet-<browser>.jpg` and
+ * comparison and the sheets. Pictures, `sheet-<browser>.jpg` and
  * `report.json` land in `--out` (default under the pane chrome cache).
  */
 
@@ -60,6 +66,8 @@ const PAST_FOLD_DELAY = FOLD_DELAY + 250;
 
 interface Check { browser: string; width: number; name: string; ok: boolean; detail: string }
 const checks: Check[] = [];
+/** The base's open tool bar at rest, by browser and width: the one rectangle the comparison leaves out. */
+const baseToolbar = new Map<string, Box>();
 const shots: string[] = [];
 
 function check(browser: string, width: number, name: string, ok: boolean, detail: unknown) {
@@ -168,6 +176,15 @@ async function drag(page: Page, from: { x: number; y: number }, to: { x: number;
   await settle(page);
 }
 
+/** A copy of the picture with the rectangle (and a margin for its edge) painted over. */
+function maskBar(file: string, box: Box): string {
+  const masked = file.replace(/\.png$/, "-masked.png");
+  const margin = 3;
+  const [x0, y0, x1, y1] = [box.x - margin, box.y - margin, box.x + box.width + margin, box.y + box.height + margin].map((value) => Math.round(value));
+  Bun.spawnSync(["convert", file, "-fill", "black", "-draw", `rectangle ${x0},${y0} ${x1},${y1}`, masked]);
+  return masked;
+}
+
 const shotPath = (side: string, browser: string, width: number, state: string) => join(out, side, `${browser}-${width}-${state}.png`);
 
 async function exercise(browser: "chromium" | "webkit", width: number, page: Page, url: URL) {
@@ -181,6 +198,15 @@ async function exercise(browser: "chromium" | "webkit", width: number, page: Pag
     return;
   }
   await shoot("rest");
+  if (base) {
+    // Everything but the bar's rectangle (the base's, which is open, holds this one's): legend, axes and plot.
+    const before = shotPath("before", browser, width, "rest");
+    const bar = baseToolbar.get(`${browser}-${width}`);
+    const compared = existsSync(before) && bar
+      ? pixelChange(maskBar(before, bar), maskBar(shotPath("after", browser, width, "rest"), bar))
+      : { status: "error" as const, error: "no base picture" };
+    say("at rest the chart draws as the base does outside the tool bar", compared.status === "compared" && compared.change === 0, { bar, compared });
+  }
   say("at rest the tool bar is folded to one button, which names the pan tool, and the legend chevron and panel lines are not drawn",
     rest.toolbar.folded && rest.toolbar.buttons === 1 && /^Pan\b/.test(rest.toolbar.handle?.label ?? "") && !rest.legend.toggleShown
       && rest.dividers.length === 2 && rest.dividers.every((divider) => divider.line === "0"),
@@ -194,6 +220,8 @@ async function exercise(browser: "chromium" | "webkit", width: number, page: Pag
   say("the pointer on the folded button opens the tool bar", hovered.toolbar?.folded === false && hovered.toolbar.buttons > 4 && !hovered.toolbar.pinned, hovered.toolbar);
   await shoot("toolbar-open");
   const OPEN = hovered.toolbar?.buttons ?? 0;
+  say("the button keeps its width when the bar opens", Math.abs((hovered.toolbar?.handle?.box.width ?? 0) - rest.toolbar.handle!.box.width) < 0.5,
+    { folded: rest.toolbar.handle!.box.width, open: hovered.toolbar?.handle?.box.width });
   // Across the icons, each crossing leaving one and entering the next, it stays open past the delay.
   const tools = page.locator("[data-gloom-role=composite-chart-toolbar] [data-gloom-role=composite-chart-tool]");
   for (const index of [0, 1, 2, 1, 0]) {
@@ -241,14 +269,15 @@ async function exercise(browser: "chromium" | "webkit", width: number, page: Pag
   await park(page, width);
   await settle(page, PAST_FOLD_DELAY);
 
-  // Focus from the keyboard opens it, and focus leaving folds it. A key press first,
-  // so the focus counts as the keyboard's (a pressed button is focused by the pointer, and shows no ring).
+  // Focus moved to it opens it, and focus leaving folds it (assistive technology's: Tab never reaches
+  // it, the window keeps that key). A key press first, so the focus counts as the keyboard's
+  // (a pressed button is focused by the pointer, and shows no ring).
   const focused = () => page.evaluate(() => document.activeElement?.getAttribute("data-gloom-role") ?? "");
   await page.keyboard.press("Shift");
   await page.locator("[data-gloom-role=composite-chart-toolbar-toggle]").focus();
   await settle(page, 100);
   const keyOpen = await layoutState(page);
-  say("the keyboard's focus on the button opens the tool bar", await focused() === "composite-chart-toolbar-toggle" && keyOpen.toolbar?.folded === false, { focus: await focused(), toolbar: keyOpen.toolbar });
+  say("focus on the button opens the tool bar", await focused() === "composite-chart-toolbar-toggle" && keyOpen.toolbar?.folded === false, { focus: await focused(), toolbar: keyOpen.toolbar });
   await page.locator("[data-gloom-role=composite-chart-toolbar] [data-gloom-role=composite-chart-tool]").first().focus();
   await settle(page, PAST_FOLD_DELAY);
   say("it stays open while the focus is on its icons", (await layoutState(page)).toolbar?.folded === false && await focused() === "composite-chart-tool", await focused());
@@ -256,14 +285,17 @@ async function exercise(browser: "chromium" | "webkit", width: number, page: Pag
   await settle(page, 100);
   say("and folds once the focus leaves it", (await layoutState(page)).toolbar?.folded === true, (await layoutState(page)).toolbar);
 
-  // A press on the button keeps the bar open; the chevron that then leads it folds it under the pointer.
-  await page.mouse.move(handleAt(rest).x, handleAt(rest).y);
+  // A press on the button keeps the bar open, even at its right edge the moment the bar opens (the
+  // pointer is on the edge of the folded button, not of one that has shrunk); the chevron that then
+  // leads it folds it under the pointer.
+  const edge = { x: rest.toolbar.handle!.box.x + rest.toolbar.handle!.box.width - 2, y: handleAt(rest).y };
+  await page.mouse.move(edge.x, edge.y);
   await page.mouse.down();
   await page.mouse.up();
   await park(page, width);
   await settle(page, PAST_FOLD_DELAY);
   const pinned = await layoutState(page);
-  say("a press on the button keeps the tool bar open after the pointer leaves", pinned.toolbar?.folded === false && pinned.toolbar.pinned && pinned.toolbar.buttons === OPEN,
+  say("a press at the button's right edge keeps the tool bar open after the pointer leaves", pinned.toolbar?.folded === false && pinned.toolbar.pinned && pinned.toolbar.buttons === OPEN,
     { open: OPEN, pinned: pinned.toolbar });
   say("its handle then reads as the one that hides it", /^Hide drawing tools/.test(pinned.toolbar?.handle?.label ?? ""), pinned.toolbar?.handle?.label);
   await page.mouse.move(handleAt(pinned).x, handleAt(pinned).y);
@@ -272,11 +304,19 @@ async function exercise(browser: "chromium" | "webkit", width: number, page: Pag
   await settle(page, 120);
   const unpinned = await layoutState(page);
   say("a press on it folds the bar at once, though the pointer is still on it", unpinned.toolbar?.folded === true && !unpinned.toolbar.pinned, unpinned.toolbar);
-  await park(page, width);
-  await settle(page, PAST_FOLD_DELAY);
+  // Moving across the button keeps it folded; leaving and coming back within the delay opens it.
+  const across = handleAt(unpinned);
+  for (const dx of [-5, 5, -5]) {
+    await page.mouse.move(across.x + dx, across.y, { steps: 3 });
+    await settle(page, 40);
+  }
+  await settle(page, 150);
+  say("it stays folded while the pointer moves across the button", (await layoutState(page)).toolbar?.folded === true, (await layoutState(page)).toolbar);
+  await page.mouse.move(width - 2, HEIGHT - 2);
+  await settle(page, 100);
   await page.mouse.move(handleAt(rest).x, handleAt(rest).y);
   await settle(page, 150);
-  say("and it opens under the pointer again once it has left and come back", (await layoutState(page)).toolbar?.folded === false, (await layoutState(page)).toolbar);
+  say("and it opens when the pointer leaves and comes back within the delay", (await layoutState(page)).toolbar?.folded === false, (await layoutState(page)).toolbar);
   await park(page, width);
   await settle(page, PAST_FOLD_DELAY);
   const unfolded = await layoutState(page);
@@ -450,6 +490,8 @@ async function shootBase(browser: "chromium" | "webkit", width: number, page: Pa
   await open(page, url);
   await park(page, width);
   await picture(page, shotPath("before", browser, width, "rest"));
+  const toolbar = (await layoutState(page)).toolbar;
+  if (toolbar) baseToolbar.set(`${browser}-${width}`, toolbar.box);
 }
 
 function sheetFont(): string[] {
