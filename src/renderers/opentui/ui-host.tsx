@@ -175,6 +175,33 @@ const OpenTuiScrollBox = forwardRef<unknown, OpenTuiPrimitiveProps>(function Ope
 });
 const OpenTuiInputPrimitive = createOpenTuiPrimitive("input");
 
+/**
+ * A field's placeholder in the terminal's dim role: faint as well as in the
+ * placeholder colour, so an example value (`10`, `USD`) does not read as one
+ * typed, nor as the hint under the field in the same muted colour (review,
+ * 12 Nov 2026: AP's placeholders and hints were one grey). The desktop draws
+ * its placeholder inside a sunken field and keeps the colour alone.
+ */
+function dimPlaceholder(props: OpenTuiPrimitiveProps): OpenTuiPrimitiveProps {
+  const { placeholder, placeholderColor } = props as { placeholder?: unknown; placeholderColor?: unknown };
+  if (typeof placeholder !== "string" || placeholder.length === 0) return props;
+  // One styled text per placeholder and colour, so a re-render does not hand the field a new one to apply.
+  const key = `${typeof placeholderColor === "string" ? placeholderColor : ""}\u0000${placeholder}`;
+  let styled = dimPlaceholders.get(key);
+  if (!styled) {
+    if (dimPlaceholders.size >= 256) dimPlaceholders.clear();
+    styled = new OpenTuiStyledText([{
+      __isChunk: true,
+      text: withoutControlCharacters(placeholder),
+      fg: typeof placeholderColor === "string" ? RGBA.fromHex(placeholderColor) : undefined,
+      attributes: OpenTuiTextAttributes.DIM,
+    }] as any);
+    dimPlaceholders.set(key, styled);
+  }
+  return { ...props, placeholder: styled };
+}
+const dimPlaceholders = new Map<string, OpenTuiStyledText>();
+
 interface PasteEventLike {
   bytes: Uint8Array;
 }
@@ -188,7 +215,7 @@ interface PasteEventLike {
 const OpenTuiInput = forwardRef<unknown, OpenTuiPrimitiveProps>(function OpenTuiInput({ joinPastedLines: join, onPaste, ...props }, ref) {
   const handlePaste = typeof onPaste === "function" ? onPaste as (event: PasteEventLike) => void : null;
   return createElement(OpenTuiInputPrimitive, {
-    ...props,
+    ...dimPlaceholder(props),
     ref,
     onPaste: join === true || join === "list" || handlePaste
       ? (event: PasteEventLike) => {
@@ -198,7 +225,10 @@ const OpenTuiInput = forwardRef<unknown, OpenTuiPrimitiveProps>(function OpenTui
       : undefined,
   });
 });
-const OpenTuiTextarea = createOpenTuiPrimitive("textarea");
+const OpenTuiTextareaPrimitive = createOpenTuiPrimitive("textarea");
+const OpenTuiTextarea = forwardRef<unknown, OpenTuiPrimitiveProps>(function OpenTuiTextarea(props, ref) {
+  return createElement(OpenTuiTextareaPrimitive, { ...dimPlaceholder(props), ref });
+});
 const OpenTuiMediaSurface = createOpenTuiPrimitive("box");
 
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
