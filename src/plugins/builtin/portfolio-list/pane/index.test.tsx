@@ -27,6 +27,7 @@ import { PluginRegistry, setSharedMarketDataForTests, setSharedRegistryForTests 
 import { portfolioListModule } from "..";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../../test-support/pane";
 import { AGE_CLOCK_MS } from "../use-column-clock";
+import { CASH_ROW_KEY } from "../allocation-rows";
 import { createTempDbPath, removeTempDbFiles } from "../../../../test-support/temp-db";
 import { apiClient } from "../../../../api-client";
 import type { PerpEquityListing } from "../../../../api-client/perps";
@@ -774,8 +775,29 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(line("TOTAL")).toMatch(/^ TOTAL +100\.0% +100\.0% .* 10\.0k +0\.00 +\+4\.5k/);
     // The header's Cash is the row now.
     expect(tui.frame()).not.toContain("Cash 1.0k");
-    // From AAPL, the last holding, j goes to CASH (TOTAL takes no cursor).
+    // A click takes CASH as the cursor; TOTAL takes none.
+    const rowY = (label: string) => tui.frame().split("\n").findIndex((row) => row.trimStart().startsWith(label));
+    const cursor = () => harnessState?.paneState[TEST_PANE_ID]?.cursorSymbol;
+    await act(async () => {
+      await tui.setup().mockMouse.click(4, rowY("TOTAL"));
+      await tui.setup().renderOnce();
+    });
+    await flushFrame();
+    expect(cursor()).toBe("AAPL");
+    await act(async () => {
+      await tui.setup().mockMouse.click(4, rowY("CASH"));
+      await tui.setup().renderOnce();
+    });
+    await flushFrame();
+    expect(cursor()).toBe(CASH_ROW_KEY);
+    // From AAPL, the last holding, j goes to CASH as well.
+    await act(async () => {
+      await tui.setup().mockMouse.click(4, rowY("● AAPL"));
+      await tui.setup().renderOnce();
+    });
+    await flushFrame();
     await pressTargetKey("j");
+    expect(cursor()).toBe(CASH_ROW_KEY);
     await pressTargetKey("t");
     expect(tui.frame()).toContain("Cash in Main Portfolio: weight 10.0%, target 10.0%.");
   });

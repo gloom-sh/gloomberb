@@ -90,7 +90,11 @@ function summaryRecord(row: TickerTableSummaryRow): TickerRecord {
 }
 
 const isTickerRow = (item: TickerRecord) => !summaryRowOf.has(item);
-const isNavigableRow = (item: TickerRecord) => summaryRowOf.get(item)?.selectable ?? true;
+/** Tickers, and the summary rows that take the cursor (CASH); never the others (TOTAL, a period's FX line). */
+const isNavigableRow = (item: TickerRecord) => {
+  const summary = summaryRowOf.get(item);
+  return summary ? summary.selectable === true : true;
+};
 
 export interface TickerListVisibleRange {
   start: number;
@@ -410,7 +414,8 @@ export function TickerListTableView({
   }, [renderer, showContextMenu]);
 
   const handleRowMouseDown = useCallback((ticker: TickerRecord, _index: number, event: TableMouseEvent) => {
-    if (!isTickerRow(ticker)) return event.button === 2;
+    // A click selects a summary row the cursor lands on (CASH); one it never lands on (TOTAL) keeps the cursor where it is.
+    if (!isTickerRow(ticker)) return event.button === 2 || !isNavigableRow(ticker);
     if (event.button !== 2) return false;
     if (nativeContextMenu !== true) {
       showTickerContextMenu(ticker, event);
