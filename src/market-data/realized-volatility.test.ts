@@ -230,3 +230,11 @@ describe("volatility cone", () => {
     expect(volatilityCone(points, { windows: [2], estimator: "parkinson", lookbackYears: 1 })[0]!.sampleSize).toBe(2);
   });
 });
+
+test("HV reads no close a pair's source copied from its open: the bar is left out, its neighbours' return read across it", () => {
+  const points = history(Array.from({ length: 40 }, (_, index) => (index % 2 ? 0.004 : -0.003)));
+  // A copied close far from the day's real one would swing the estimate if it were read.
+  const copied = points.map((point, index) => index === 20 ? { ...point, close: point.close * 1.05, closeCopied: true } : point);
+  const without = points.filter((_, index) => index !== 20);
+  expect(realizedVolatility(copied, 30)).toBeCloseTo(realizedVolatility(without, 30)!, 12);
+});

@@ -171,3 +171,18 @@ describe("yield curve headless model", () => {
     expect(latest.errors).toEqual([`Tenors unavailable: ${["1M", "1Y", "2Y", "3Y", "5Y", "7Y", "20Y", "30Y"].join(", ")}`]);
   });
 });
+
+test("a date the US bond market was shut says so, and which session the curve shows", async () => {
+  const headless = createYieldCurveHeadless({
+    load: async (_curve, requestedDate) => ({
+      curve: "us", requestedDate, basis: "par", couponsPerYear: 2, lookbacks: null, spreads: null,
+      points: curve(requestedDate === "2026-11-11" ? "2026-11-10" : requestedDate, { "2Y": 4.73, "10Y": 4.98 }),
+    }),
+  });
+  const closed = await headless.load({ ...args, options: { date: "2026-11-11" } }, {} as HeadlessPaneContext);
+  expect(closed.notes).toContain("Wed 11 Nov: US bond market closed (Veterans Day); showing Tue 10 Nov");
+  // A day with its own curve says nothing.
+  const open = await headless.load({ ...args, options: { date: "2026-11-10" } }, {} as HeadlessPaneContext);
+  expect((open.notes ?? []).some((note) => note.includes("bond market closed"))).toBe(false);
+});
+

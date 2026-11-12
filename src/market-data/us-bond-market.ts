@@ -1,8 +1,11 @@
 /**
  * The US bond market's full holidays, as SIFMA recommends them: the federal
  * holidays (Columbus Day and Veterans Day among them, when stocks trade) and
- * Good Friday. A Treasury curve and a FRED rate series have no observation on
- * them. A holiday on a Sunday closes the Monday after it; one on a Saturday
+ * Good Friday, except a Good Friday the March jobs report comes out on (the
+ * first Friday of April: 2010-04-02, 2012-04-06, 2015-04-03, 2021-04-02,
+ * 2023-04-07, 2026-04-03), when SIFMA recommends an early close instead and
+ * the Treasury curve and FRED's daily rates have the day. A Treasury curve and
+ * a FRED rate series have no observation on a full holiday. A holiday on a Sunday closes the Monday after it; one on a Saturday
  * closes the Friday before it, except New Year's Day and Veterans Day, which
  * close nothing then (the market traded Fri 31 Dec 2021 and Fri 10 Nov 2023).
  * Juneteenth is a holiday from 2022. Early closes are trading days.
@@ -52,7 +55,9 @@ function holidays(year: number): ReadonlyMap<string, string> {
   fixed(0, 1, "New Year's Day", false);
   days.set(isoDay(nthWeekday(year, 0, 1, 3)), "Martin Luther King Jr. Day");
   days.set(isoDay(nthWeekday(year, 1, 1, 3)), "Washington's Birthday");
-  days.set(isoDay(goodFriday(year)), "Good Friday");
+  // A Good Friday in April's first week is the March jobs report's day: an early close, not a holiday.
+  const friday = goodFriday(year);
+  if (!(new Date(friday).getUTCMonth() === 3 && new Date(friday).getUTCDate() <= 7)) days.set(isoDay(friday), "Good Friday");
   days.set(isoDay(nthWeekday(year, 4, 1, -1)), "Memorial Day");
   if (year >= 2022) fixed(5, 19, "Juneteenth");
   fixed(6, 4, "Independence Day");

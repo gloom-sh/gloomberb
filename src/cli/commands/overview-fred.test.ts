@@ -303,6 +303,21 @@ test("yield-curve reads each tenor's move against the previous observation, not 
   expect(rows.map(([tenor, yieldText, change]) => [tenor, yieldText, change])).toEqual([["3M", "4.25", "0.0bp"], ["2Y", "4.80", "-4.0bp"], ["10Y", "5.24", "+4.1bp"], ["30Y", "5.60", "-"]]);
 });
 
+test("yield-curve started on a day the bond market was shut shows the session before it and says so", async () => {
+  // Nothing on or after Veterans Day yet; the latest two observations are Tuesday's and Monday's.
+  setCloudApiFetchTransport(async (url) => {
+    const query = new URL(url).searchParams;
+    const series = new URL(url).pathname.split("/").pop()!;
+    const observations = query.get("startDate") ? [] : [{ date: "2026-11-10", value: 4.98 }, { date: "2026-11-09", value: 4.88 }];
+    return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({ observations, info: { id: series, title: series } }) } as Response;
+  });
+  const cli = createTestCliContext();
+  await overviewCliCommands.find((command) => command.name === "yield-curve")!.execute(["--start", "2026-11-11"], cli.context);
+  const { result, options } = cli.printed[0]!;
+  expect(result.data.map((row: Record<string, unknown>) => [row.seriesId, row.date])).toContainEqual(["DGS10", "2026-11-10"]);
+  expect(serializeCliResult(result, DEFAULT_CLI_OPTIONS, options)).toContain("Wed 11 Nov: US bond market closed (Veterans Day); showing Tue 10 Nov");
+});
+
 test("every export dates a figure by the period it covers, when it was released and when it was retrieved, and as_of is the release", async () => {
   // Permits for September are dated 1 Sep and were released 20 Oct; August's release is not stated.
   serveSeries(() => ({

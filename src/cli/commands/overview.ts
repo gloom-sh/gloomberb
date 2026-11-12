@@ -589,8 +589,12 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     // A day before anything the calendar holds says where its listing starts.
     const firstEvent = events.reduce<Date | null>((first, event) => (!first || event.date < first ? event.date : first), null);
     const listedFrom = firstEvent ? firstEvent.toISOString().slice(0, 10) : null;
-    const startsLater = fromOption != null && (past ? past.storedFrom == null || past.storedFrom > fromOption : listedFrom != null && listedFrom > fromOption);
+    // The stored calendar's first day, or once the calendar reaches back less far than that, the furthest day it lists.
+    const pastFrom = past ? past.listedFrom ?? past.storedFrom : null;
+    const startsLater = fromOption != null && (past ? pastFrom == null || pastFrom > fromOption : listedFrom != null && listedFrom > fromOption);
     const listedBefore = !startsLater ? null
+      : past?.listedFrom && (!past.storedFrom || past.listedFrom > past.storedFrom)
+        ? `The calendar lists back ${Math.round((todayStart - Date.parse(`${past.listedFrom}T00:00:00Z`)) / DAY_MS)} days, to ${past.listedFrom}; nothing earlier is listed`
       : past?.storedFrom ? `The stored calendar starts ${past.storedFrom}; nothing earlier is listed`
       : `No events are stored before ${listedFrom ?? isoDate(new Date(todayStart))}`;
     // Countries asked for that nothing in the window is for: a quiet week there, not an unknown country.
@@ -667,7 +671,7 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     ctx.printResult({
       data: rows,
       ...(unread ? { warnings: [unread] } : {}),
-      metadata: { country, impact, ...(search != null ? { search } : {}), from, listedThrough, storedFrom: past?.storedFrom ?? null, ...(viewerZone ? { timeZone: viewerZone } : {}) },
+      metadata: { country, impact, ...(search != null ? { search } : {}), from, listedThrough, storedFrom: past?.storedFrom ?? null, ...(past?.listedFrom ? { listedFrom: past.listedFrom } : {}), ...(viewerZone ? { timeZone: viewerZone } : {}) },
       freshness: calendarFreshness,
     }, {
       dateKey: "date",

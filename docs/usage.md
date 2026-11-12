@@ -1219,7 +1219,7 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 
 **Dates**
 
-- `--from <date>` starts it on another day. An earlier day lists past events with the figures they were released with (`econ --from 2026-10-12 --country US` reaches the previous week's CPI). When the stored calendar starts after that day, it lists from there, text says `The stored calendar starts <date>; nothing earlier is listed` and `--json` has `metadata.storedFrom`. That date is the one MDAY gives as where release-day figures start. The stored calendar reaches back at most 400 days: an earlier `--from` lists from there and names that day the same way.
+- `--from <date>` starts it on another day. An earlier day lists past events with the figures they were released with (`econ --from 2026-10-12 --country US` reaches the previous week's CPI). When the stored calendar starts after that day, it lists from there, text says `The stored calendar starts <date>; nothing earlier is listed` and `--json` has `metadata.storedFrom`. That date is the one MDAY gives as where release-day figures start. The calendar reaches back at most 400 days: once that is later than where the stored calendar starts, an earlier `--from` lists from there and says `The calendar lists back 400 days, to <date>`, with `metadata.listedFrom`.
 - With no network or a server error, `econ` lists the current calendar and warns that the stored one could not be read.
 - `--tail <n>` without `--from` keeps the last n events of the whole calendar, the past week's too.
 - When the calendar stops less than a week past its first day, text ends with `No events listed after <date>` (`--json` carries the last day as `metadata.listedThrough`, and the ECO pane says it in its footer).

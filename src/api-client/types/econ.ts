@@ -50,6 +50,12 @@ export interface CloudEconCalendarFromPayload {
   events: CloudEconEventPayload[];
   /** The first UTC day the stored calendar holds; null when it holds nothing. */
   storedFrom: string | null;
+  /**
+   * The first UTC day any read lists: `storedFrom`, or the furthest day back
+   * the calendar reaches (400 days) once that is later. Absent from an older
+   * server.
+   */
+  listedFrom?: string;
   /** The last UTC day the calendar lists releases for; absent from an older server. */
   listedThrough?: string;
 }
