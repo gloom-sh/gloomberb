@@ -7,6 +7,7 @@ import { QueryStore } from "../query-store";
 import type { QueryEntry } from "../result-types";
 import { buildQuoteKey, instrumentFromQuoteTarget, toMarketDataContext } from "../selectors";
 import { measurePerf } from "../../utils/perf-marks";
+import { quoteStampBucket } from "../quotes/freshness";
 import { withSavedCopyMarkOf } from "../../data/saved-copies";
 import {
   failureStatus,
@@ -491,8 +492,13 @@ export class QuoteSubscriptionManager {
 }
 
 /**
- * Whether a tick would change nothing but its arrival time. Unavailable
- * numbers are NaN on the wire and count as equal to each other; key order and
+ * Whether a tick would change nothing but its arrival time, or its stamp
+ * within the minute it already has. Most of a busy symbol's ticks restamp a
+ * quote whose price, size and book did not move, and a stamp that stays in the
+ * same minute changes no chart bar, as-of clock or session edge, so the pane
+ * has nothing to redraw (the caller still refreshes the receipt now and then).
+ * A stamp that reaches another minute is a change. Unavailable numbers are NaN
+ * on the wire and count as equal to each other; key order and
  * absent-versus-undefined keys do not matter.
  */
 export function areStreamQuotesEquivalent(current: Quote | null | undefined, next: Quote): boolean {
@@ -500,12 +506,14 @@ export function areStreamQuotesEquivalent(current: Quote | null | undefined, nex
   if (current === next) return true;
   const left = current as unknown as Record<string, unknown>;
   const right = next as unknown as Record<string, unknown>;
+  const sameStampMinute = Object.is(quoteStampBucket(current), quoteStampBucket(next))
+    && Number.isFinite(current.lastUpdated);
   for (const key in left) {
-    if (key === "receivedAt" || key === "provenance") continue;
+    if (key === "receivedAt" || key === "provenance" || (key === "lastUpdated" && sameStampMinute)) continue;
     if (!Object.is(left[key], right[key])) return false;
   }
   for (const key in right) {
-    if (key === "receivedAt" || key === "provenance") continue;
+    if (key === "receivedAt" || key === "provenance" || (key === "lastUpdated" && sameStampMinute)) continue;
     if (!(key in left) && right[key] !== undefined) return false;
   }
   return current.provenance === next.provenance

@@ -33,6 +33,18 @@ export function hasValidQuoteObservationTime(quote: Pick<Quote, "lastUpdated">, 
     && Number.isFinite(new Date(timestamp).getTime()) && Number.isFinite(new Date(now).getTime());
 }
 
+/**
+ * The size of the stamp window a chart bar, an as-of clock and a session edge
+ * all move on: a whole minute. A stamp that stays inside the held one's window
+ * changes none of them.
+ */
+const QUOTE_STAMP_BUCKET_MS = 60_000;
+
+/** The whole minute a quote's stamp falls in; NaN for an unusable stamp. */
+export function quoteStampBucket(quote: Pick<Quote, "lastUpdated">): number {
+  return Number.isFinite(quote.lastUpdated) ? Math.floor(quote.lastUpdated / QUOTE_STAMP_BUCKET_MS) : Number.NaN;
+}
+
 /** The source date of a validated daily fund observation, including an old NAV. */
 export function dailyNavDate(quote: Quote, now = Date.now()): string | null {
   if (quote.priceObservation !== "nav" || quote.instrumentType !== "MUTUALFUND"
