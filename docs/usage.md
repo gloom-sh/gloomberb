@@ -1506,6 +1506,8 @@ Data that covers US listings only says so for a listing elsewhere and names the 
 
 `fn TAS SAN:EPA` answers `Time and sales covers US listings only, and SAN:EPA is Sanofi on Euronext Paris (EPA).` with `Sanofi's US listing: SNY (try: gloom fn TAS SNY)`. A list such as `fn SIW SAN:EPA AAPL` leaves the listing out with the same line.
 
+The US listing is the receipt the listing's own quote names, else the line search finds by the company's name. A company whose only US line trades over the counter is offered it where the data covers OTC securities: FINRA short interest (`SI`, `SIW`), fails to deliver (`FTD`), weekly ATS volume (`ATS`) and release days (`MDAY`). `fn SI 0700.HK` answers `Tencent Holdings's US listing: TCEHY, over the counter (try: gloom fn SI TCEHY)`. Options, the tape and daily short volume cover exchange listings only, so `fn TAS 0700.HK` names TCEHY as trading over the counter, outside that data, and offers nothing.
+
 #### Functions with a symbol of their own
 
 `MA` asks for a listing elsewhere by the quote symbol its deals are filed under: `fn MA ATH.TO` is `ATH:TSX`, the deals where `ATH.TO` is the target or the buyer, while plain `ATH` is Athene in New York. A function that takes several tickers (`ERN`, `SIW`, `CMP`, `GE`) reads each the way `quote` does.

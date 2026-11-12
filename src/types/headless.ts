@@ -824,6 +824,15 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
    */
   usListingsOnly?: string;
   /**
+   * The data covers US over-the-counter lines too (FINRA's short interest
+   * and weekly off-exchange volume, the SEC's fails to deliver, daily
+   * closes), so a listing abroad is offered its company's OTC line when it
+   * has no US exchange listing (Tencent's TCEHY for 0700.HK). Without it
+   * only exchange listings are offered, as options, trades and FINRA's
+   * daily short volume cover no OTC line.
+   */
+  usListingsOtc?: boolean;
+  /**
    * A sentence that answer adds for a listing abroad, after its US listing:
    * where to read the nearest data the function has for it (time and sales
    * points at GIP's 1-minute bars). `key` is the listing as read, RMS:ASX.

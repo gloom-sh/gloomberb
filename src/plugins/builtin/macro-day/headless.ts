@@ -15,6 +15,8 @@ const share = (value: unknown) => typeof value === "number" ? `${Math.round(valu
 export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Ticker, or a FRED series such as FRED:T10Y2Y", examples: ["TLT", "FRED:T10Y2Y"] },
   usListingsOnly: "Macro release day data",
+  // Daily closes in the US session, which a line over the counter has as a listed one does.
+  usListingsOtc: true,
   // A spread the catalog prints (FRED:T10Y2Y) moves on release days too: its moves in bp.
   fredSeriesArgument: true,
   // Dated by the release list (releasesThrough) as much as by the closes, so no session schedule applies.
