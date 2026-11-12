@@ -20,6 +20,13 @@ export type DataTableColumn = Pick<
    */
   title?: string;
   flexGrow?: number;
+  /**
+   * Every row can leave this column blank with nothing missing: its value
+   * comes after an event the row is still waiting on (an earnings move, an
+   * IPO's first-day return, a halt's resumption). `shot --strict` counts a
+   * column blank in every row as data the pane lost, except this one.
+   */
+  mayBeBlank?: boolean;
 };
 
 export interface DataTableCell {

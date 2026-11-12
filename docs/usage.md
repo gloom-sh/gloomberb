@@ -612,7 +612,7 @@ Ctrl with the scroll wheel and a trackpad pinch on desktop and web zoom time aro
 
 - **Resize:** on desktop and web, drag the line between two panels (a double-click restores the split). On a focused chart, `Shift+Up` and `Shift+Down` make the top panel a row taller or shorter (the terminal too), and the pane menu has Reset Panel Heights.
 - **One panel full size:** a double-click on a panel's plot gives it the whole chart (two quick presses in the terminal). A double-click again, or the `All panels` button, shows the rest.
-- **Drawing tools:** `Shift+T`, Hide Drawing Tools in the pane menu, or the chevron at the end of the tool bar folds the bar to one button.
+- **Drawing tools:** the tool bar is folded to one button showing the tool in hand (the pan tool when none is). The pointer on it opens the bar, and it folds a moment after the pointer leaves. A press on the button, `Shift+T`, or Show Drawing Tools in the pane menu keeps it open, and the chevron that then leads the bar, `Shift+T` again, or Hide Drawing Tools folds it again. On the keyboard, `Shift+T` is the way: Tab does not reach the button.
 - **Shapes:** besides the trend line (`Shift+D`) and freehand (`Shift+P`), `Shift+J` places a horizontal ray from a clicked price to the right edge, `Shift+B` drags a rectangle, and `Shift+F` drags a Fib retracement whose 0, 23.6, 38.2, 50, 61.8, 78.6 and 100% levels are labelled with their prices on desktop and web. Each is anchored to prices and times like the other drawings, and a build from before these tools shows them as plain lines.
 - **Legend:** `Shift+L`, Collapse Legend in the pane menu, or the chevron in the legend's left margin folds it to the first series and a count (`+5`). A folded series still draws.
 
@@ -1226,7 +1226,7 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 
 **Dates**
 
-- `--from <date>` starts it on another day. An earlier day lists past events with the figures they were released with (`econ --from 2026-10-12 --country US` reaches the previous week's CPI). When the stored calendar starts after that day, text says `The stored calendar starts <date>` and `--json` has `metadata.storedFrom`. The stored calendar reaches back 400 days: an earlier `--from` fails as an input error naming the earliest day (`--from 2024-01-01 is before the earliest day the calendar reaches back to, 2025-09-20`), with `earliest` in `--json`.
+- `--from <date>` starts it on another day. An earlier day lists past events with the figures they were released with (`econ --from 2026-10-12 --country US` reaches the previous week's CPI). When the stored calendar starts after that day, it lists from there, text says `The stored calendar starts <date>; nothing earlier is listed` and `--json` has `metadata.storedFrom`. That date is the one MDAY gives as where release-day figures start. The calendar reaches back at most 400 days: once that is later than where the stored calendar starts, an earlier `--from` lists from there and says `The calendar lists back 400 days, to <date>`, with `metadata.listedFrom`.
 - With no network or a server error, `econ` lists the current calendar and warns that the stored one could not be read.
 - `--tail <n>` without `--from` keeps the last n events of the whole calendar, the past week's too.
 - When the calendar stops less than a week past its first day, text ends with `No events listed after <date>` (`--json` carries the last day as `metadata.listedThrough`, and the ECO pane says it in its footer).
@@ -1405,7 +1405,7 @@ By rating, AAA to BBB: `BAMLC0A1CAAAEY`, `BAMLC0A2CAAEY`, `BAMLC0A3CAEY`, `BAMLC
 **Start dates.** Without `--start` it begins at 2021-01-01 and says so under the table. `--start` takes a date as any date option does, or `yyyy` and `yyyy-mm`.
 
 - A series that begins later starts at its first observation (`fred DEXSFUS --start 1975` begins 1980-01-02), and says when, under the table and as a `note:` line on stderr with `--csv`. A day FRED has no value for inside the series (a holiday) stays a row with a blank value.
-- A start past the series' last observation names the latest one, and `--csv` and `--ndjson` fail with a `--start` that reaches it.
+- A start past the series' last observation names the latest one, and `--csv` and `--ndjson` fail with a `--start` that reaches it. A rate observed on US bond market days (Treasury yields and bills, SOFR, the corporate yields and spreads) started on a day the market was shut shows the day before and says why: `fred DGS10 --start 2026-11-11` prints Tue 10 Nov's value under `Wed 11 Nov: US bond market closed (Veterans Day); showing Tue 10 Nov`.
 
 **What the table prints**
 
@@ -1559,7 +1559,10 @@ A command exits 0 when it worked and 1 when it failed (bad input, no data found,
 
 - Their `--csv` writes Last, Chg%, Prev Close and each extended print as plain numbers (`55.06`, `209500`). `Cur` is the currency and `currency_or_unit` the unit: the currency, a pair's quote currency per base (`JPY per USD` for `USDJPY=X`), `index points`, or `pct` for a yield. An extended print's move is in `Pre-Market Chg%`, `After Hours Chg%` or `Overnight Chg%`, and `compare` adds `Day Low` and `Day High`, all after the columns the export already had. A cell is never `NaN`: a row with no figure says why in its `status` column (`Not a ticker: ZZZZQQ.`, `Chg%: no previous close`), and the failures are on stderr with `--csv` and `--ndjson` too. `--ndjson` rows carry the reason as `status` too (`value_status` beside a field of that name), with a figure that is no number as `null`.
 
-**`shot`** saves its PNG, prints the Reason line and exits 0 even when the pane drew an error, was empty, was still loading or was behind an access gate. `shot --strict` exits 2 in those cases, with the PNG still saved (`--json` carries `usable` and `unusableReason`). `fn` fails on `--strict`.
+**`shot`** saves its PNG, prints the Reason line and exits 0 even when the pane drew an error, was empty, was still loading, was behind an access gate or drew a table column with no value in any row. `shot --strict` exits 2 in those cases, with the PNG still saved (`--json` carries `usable` and `unusableReason`). `fn` fails on `--strict`.
+
+- The Reason quotes what an error or empty state said (`The pane rendered an empty state. It reads "No movers returned."`) and names a column blank in every row (`The VOL and V/AVG columns are blank in every row.`); `--json` lists those columns in `blankColumns`.
+- A column is blank when every row of a table of three rows or more shows a dash or `n/a` in it. A column some rows leave empty, such as an event marker, is not, and neither is one whose value comes after an event the row is waiting on: an upcoming report's move in `ERN`, an IPO's first-day return, a halt's resumption time. A plugin marks such a column with `mayBeBlank` on its `DataTableColumn`.
 
 - `shot` takes a function's options as `fn` reads them: `shot 13F 0001067983 --compare SPY` opens the fund's Overlap against SPY's holdings, and a filter the pane keeps opens it filtered (`shot MA --status completed`, `shot INS AAPL --name "COOK TIMOTHY D"`, `shot CG --chamber senate --side BUY`, `shot HDS AAPL --sort change`, `shot RISK AAPL --year 2024`).
 - An option only the report reads (`--limit`, `--offset`, `--explain`, `--section`, or a report filter like `--availability` on `CALLS`) fails with exit 1 and names the `fn` command that reads it. So do `--limit` or `--tail` on a function with no such option (`shot HP AAPL --tail 5`) and a slip of an option's name (`--veiw`).

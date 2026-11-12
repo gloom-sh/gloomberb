@@ -4,6 +4,7 @@ import { blendHex, colors, priceColor } from "../../theme/colors";
 import { blendForContrast, higherContrast } from "../../theme/color-utils";
 import { t } from "../../i18n";
 import { padTo } from "../../utils/format";
+import { readableError } from "../../utils/reason-codes";
 import {
   buildMetricTreemap,
   buildMetricTreemapRects,
@@ -249,7 +250,7 @@ function DesktopMetricTreemapSurface<T>({ items, width, height, selectedId, onSe
   if (tiles.length === 0) {
     return (
       <Box width={width} height={height} paddingX={1} paddingY={1}>
-        <Text fg={colors.textDim}>{t(emptyStateTitle ?? "No chart data")}</Text>
+        <Text fg={colors.textDim}>{t(readableError(emptyStateTitle ?? "No chart data"))}</Text>
       </Box>
     );
   }
@@ -328,7 +329,7 @@ export function MetricTreemapSurface<T>({
   if (tiles.length === 0) {
     return (
       <Box width={width} height={height} paddingX={1} paddingY={1}>
-        <Text fg={colors.textDim}>{t(emptyStateTitle ?? "No chart data")}</Text>
+        <Text fg={colors.textDim}>{t(readableError(emptyStateTitle ?? "No chart data"))}</Text>
       </Box>
     );
   }

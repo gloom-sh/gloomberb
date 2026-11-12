@@ -37,6 +37,8 @@ export interface CloudMarketScreenerItem extends CloudMoverSessionFields {
   avgVolume?: number;
   /** Observation time of the optional retained metadata. */
   metadataAsOf?: string;
+  /** The listing's market cap from the same retained metadata, where it has one. */
+  marketCap?: number;
   tradeCount?: number;
   currency: string;
   high52w?: number;

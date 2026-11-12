@@ -38,14 +38,14 @@ const twoWeeks = [
  * events and `storedFrom`; "none" is a server that keeps no past events (404),
  * a number another status and "offline" no network for it.
  */
-async function econText(events: unknown[], args: string[], cliOptions: Partial<CliGlobalOptions> = {}, storedFrom: string | null | "none" | "offline" | number = "none", listedThrough?: string): Promise<string> {
-  const { result, options } = await econPrinted(events, args, cliOptions, storedFrom, listedThrough);
+async function econText(events: unknown[], args: string[], cliOptions: Partial<CliGlobalOptions> = {}, storedFrom: string | null | "none" | "offline" | number = "none", listedThrough?: string, listedFrom?: string): Promise<string> {
+  const { result, options } = await econPrinted(events, args, cliOptions, storedFrom, listedThrough, listedFrom);
   // Warnings print apart from the table, as `warning: ...` lines.
   return [serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, ...cliOptions, format: "text" }, options),
     ...(result.warnings ?? []).map((warning) => `warning: ${warning}`)].join("\n");
 }
 
-async function econPrinted(events: unknown[], args: string[], cliOptions: Partial<CliGlobalOptions> = {}, storedFrom: string | null | "none" | "offline" | number = "none", listedThrough?: string) {
+async function econPrinted(events: unknown[], args: string[], cliOptions: Partial<CliGlobalOptions> = {}, storedFrom: string | null | "none" | "offline" | number = "none", listedThrough?: string, listedFrom?: string) {
   resetEconCalendarPersistence();
   attachEconCalendarPersistence(new MemoryPluginPersistence());
   setCloudApiFetchTransport(async (url) => {
@@ -57,7 +57,7 @@ async function econPrinted(events: unknown[], args: string[], cliOptions: Partia
       status,
       headers: new Headers(),
       text: async () => status === 422 ? JSON.stringify({ message: "The calendar reaches back 400 days" })
-        : status !== 200 ? JSON.stringify({ message: "Unavailable" }) : JSON.stringify(history ? { events, storedFrom, ...listedThrough ? { listedThrough } : {} } : events),
+        : status !== 200 ? JSON.stringify({ message: "Unavailable" }) : JSON.stringify(history ? { events, storedFrom, ...listedThrough ? { listedThrough } : {}, ...listedFrom ? { listedFrom } : {} } : events),
     } as Response;
   });
   const cli = createTestCliContext({}, cliOptions);
@@ -96,6 +96,11 @@ test("an earlier --from lists the stored calendar's past events and says where i
   expect(stored).not.toContain("The stored calendar starts");
   const late = await econText(twoWeeks, ["--from", "2026-08-01", "--country", "US"], {}, "2026-09-01");
   expect(late).toContain("The stored calendar starts 2026-09-01; nothing earlier is listed");
+  // Once the calendar reaches back less far than the stored calendar starts, the note names how far it lists.
+  setSystemTime(new Date("2027-03-01T08:00:00.000Z"));
+  expect(await econText(twoWeeks, ["--from", "2025-06-01", "--country", "US"], {}, "2026-01-01", undefined, "2026-01-25"))
+    .toContain("The calendar lists back 400 days, to 2026-01-25; nothing earlier is listed");
+  setSystemTime(new Date("2026-10-18T23:00:00.000Z"));
   // A server that keeps no past events lists what it has and says where that starts.
   const old = await econText(twoWeeks.slice(4), ["--from", "2026-10-12", "--country", "US"]);
   expect(old).toContain("Housing Starts");

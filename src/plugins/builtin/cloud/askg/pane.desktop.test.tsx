@@ -8,6 +8,7 @@ import { WebInputHostProvider } from "../../../../renderers/dom/input-host";
 import { createDomTestHarness } from "../../../../renderers/dom/test-utils";
 import { appReducer, createInitialState } from "../../../../state/app/context";
 import { TestPaneFrame, createTestPaneConfig } from "../../../../test-support/pane";
+import { resetPaneSessionsForTests } from "../../../../state/pane-session";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
 import { noopRendererHost } from "../../../../test-support/renderer-host";
 import { UiHostProvider } from "../../../../ui";
@@ -51,6 +52,7 @@ function json(body: unknown): Response {
 beforeEach(() => {
   feedbackBodies.length = 0;
   askgConversationListStore.reset();
+  resetPaneSessionsForTests();
   const summary = (id: string, title: string) => ({ id, title, messageCount: 2, lastMessageAt: AT, createdAt: AT, updatedAt: AT });
   setCloudApiFetchTransport(async (url, init) => {
     const path = new URL(url).pathname;
@@ -86,6 +88,7 @@ afterEach(() => {
   resetASKGClientManifestCache();
   setSharedRegistryForTests(undefined);
   askgConversationListStore.reset();
+  resetPaneSessionsForTests();
 });
 
 async function settle(): Promise<void> {

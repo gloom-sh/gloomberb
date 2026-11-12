@@ -24,6 +24,7 @@ import {
 } from "../../../cli/desktop-pane-shot-routes";
 import { openShotApiSocket, type ShotApiSocketSend } from "./cli-pane-shot-socket";
 import { instrumentFromTicker } from "../../../market-data/request-types";
+import { buildQuoteKey, instrumentFromQuoteTarget } from "../../../market-data/selectors";
 import type { RendererHost } from "../../../ui/host";
 import { DomHostProviders } from "../../dom/dom-host-providers";
 import { webUiHost } from "./ui-host";
@@ -328,6 +329,8 @@ function waitForShotReadiness(): () => void {
 
 function createShotDataProvider(payload: DesktopPaneShotPayload): DataProvider {
   const cloudProvider = createGloomberbCloudProvider();
+  // The instruments a stream subscription has had its one frame for.
+  const streamedQuotes = new Set<string>();
   const bridge: Partial<DataProvider> = {
     id: payload.marketDataProviderId ?? cloudProvider.id,
     getQuote: (symbol, exchange, context) => requestShotMarketData<Quote>("getQuote", [symbol, exchange, context]),
@@ -371,7 +374,26 @@ function createShotDataProvider(payload: DesktopPaneShotPayload): DataProvider {
     getSecFilingDocuments: (filing) => requestShotMarketData<SecFilingDocument[]>("getSecFilingDocuments", [filing]),
     getSecFilingContent: (filing) => requestShotMarketData<string | null>("getSecFilingContent", [filing]),
     getEarningsCalendar: (symbols) => requestShotMarketData<EarningsEvent[]>("getEarningsCalendar", [symbols]).then(reviveEarningsEvents),
-    subscribeQuotes: () => () => {},
+    subscribeQuotes: (targets, onQuote) => {
+      // A capture has no stream. Each target gets the quote a poll reads, once,
+      // so a pane that streams its rows (Market Movers with live on) shows them
+      // as its user sees them, not as its list alone draws them.
+      const fresh = targets.filter((target) => {
+        const key = buildQuoteKey(instrumentFromQuoteTarget(target));
+        if (streamedQuotes.has(key)) return false;
+        streamedQuotes.add(key);
+        return true;
+      });
+      if (fresh.length > 0) {
+        void requestShotMarketData<QuoteBatchResult[]>("getQuotesBatch", [fresh, {}])
+          .then((results) => results.forEach((result, index) => {
+            const target = fresh[index];
+            if (target && result?.quote) onQuote(target, result.quote);
+          }))
+          .catch(logFailure("desktop-pane-shot", "Could not load the quotes a pane streams for a screenshot"));
+      }
+      return () => {};
+    },
   };
   const fallback = new Proxy(cloudProvider, {
     get(target, property) {
