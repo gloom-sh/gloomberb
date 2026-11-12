@@ -19,7 +19,7 @@ import { PluginRenderProvider } from "../../../runtime";
 import { setSharedRegistryForTests, type PluginRegistry } from "../../../registry";
 import { askgConversationListStore } from "./conversation-store";
 import { resetASKGClientManifestCache } from "./host";
-import { askGloomQuestion } from "./pending-question";
+import { askGloomQuestion, subscribeASKGPaneAttachments, subscribeASKGQuestions } from "./pending-question";
 import { ASKGPane } from "./pane";
 
 const dom = createDomTestHarness({ withUi: false });
@@ -95,6 +95,9 @@ function stateFor(placement: Placement): AppState {
 beforeEach(() => {
   askgConversationListStore.reset();
   resetPaneSessionsForTests();
+  // A question or pane another suite asked for before any pane was open waits for the next pane to mount; this one starts without it.
+  subscribeASKGQuestions(() => {})();
+  subscribeASKGPaneAttachments(() => {})();
   setCloudApiFetchTransport(async (url) => {
     const path = new URL(url).pathname;
     if (path === "/askg/session") {
