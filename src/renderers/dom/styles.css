@@ -1153,14 +1153,17 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-qb-inline .gloom-qb-view { margin-left: 0; box-shadow: none; align-self: stretch; }
 /* A nested tab strip's choices start the bar, where the terminal's tab row starts. */
 .gloom-qb-view[data-placement="start"] { margin-left: 0; box-shadow: none; }
-/* A long inline choice (an expiry strip) scrolls by itself, as the terminal's
+/* A long inline list (an expiry strip) scrolls by itself, as the terminal's
    does, so its label and the controls beside it stay in view. It narrows with
-   its group and has no floor of its own: a floor wider than the room the bar
-   gives it drew its next choice under the control beside it. */
+   its group down to its label and no further: its choices sit in a grid track
+   with no floor, so the strip's and the group's own floors are the label and
+   the controls beside it, and a bar narrower than those scrolls instead of
+   drawing one control over the next. */
 .gloom-qb-filters[data-strip="true"],
-.gloom-qb-inline[data-strip="true"] { flex: 0 1 auto; min-width: 0; }
+.gloom-qb-inline[data-strip="true"] { flex: 0 1 auto; }
+.gloom-qb-inline[data-strip="true"] { display: grid; grid-template-columns: auto minmax(0, max-content); }
+.gloom-qb-inline[data-strip="true"][data-bare="true"] { grid-template-columns: minmax(0, max-content); }
 .gloom-qb-inline[data-strip="true"] .gloom-qb-segments {
-  flex: 0 1 auto;
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -1168,6 +1171,24 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-qb-inline[data-strip="true"] .gloom-qb-segments::-webkit-scrollbar { display: none; }
 .gloom-qb-inline[data-strip="true"] .gloom-qb-segments > button { flex: none; white-space: nowrap; }
 .gloom-qb-filters[data-strip="true"] > :not([data-strip="true"]) { flex: none; }
+/* A bar short of room drops an inline choice's label (query-bar.tsx): its
+   first choice starts where the label did. */
+.gloom-qb-inline[data-bare="true"],
+.gloom-qb-scroll > .gloom-qb-filters:first-child > .gloom-qb-inline[data-bare="true"]:first-child { padding-left: 0; }
+.gloom-qb-scroll > .gloom-qb-filters:first-child > .gloom-qb-inline[data-bare="true"]:first-child > .gloom-qb-segments > button:first-child {
+  padding-left: var(--cell-w);
+}
+/* A folded view: its menu chip in the view's place at the right. */
+.gloom-qb-fold {
+  margin-left: auto;
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  box-shadow: inset 1px 0 0 var(--qb-hairline);
+}
+.gloom-qb-fold .gloom-popover-anchor { display: flex; align-items: stretch; }
+.gloom-qb-fold .gloom-qb-chip { box-shadow: none; }
+.gloom-qb-meta + .gloom-qb-fold { margin-left: 0; }
 /* Inline choices are tabs (the tab rule above): text only, the active one
    bright and bold on the accent underline. */
 .gloom-qb-view button {

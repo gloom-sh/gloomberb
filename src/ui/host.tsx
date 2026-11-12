@@ -545,6 +545,10 @@ export interface HostQueryBarItem {
   narrowing: boolean;
   /** Short exclusive choice drawn as inline segments instead of a menu. */
   inline?: boolean;
+  /** Inline: a long list that runs past the bar's edge, drawn as a strip that scrolls by itself rather than folding into its menu. */
+  scrolls?: boolean;
+  /** Toggles: a shorter label for a bar short of room. */
+  short?: string;
   /** Text filters: the live input, rendered by the kit, and its field state. */
   node?: ReactNode;
   active?: boolean;
