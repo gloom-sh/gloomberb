@@ -95,3 +95,13 @@ test("cohort amounts print compact as the pane draws them, while exports keep th
   expect(csv).toContain("2087053990255.52");
   expect(csv).toContain("100000000.05");
 });
+
+test("a source's licence statement is a note under the awards it covers", async () => {
+  const notice = "Contains information from Government Procurement via GeBIZ accessed on 12 November 2026 from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence";
+  const payload = awardsPayload({ rows: [awardRow({ source: "sg-gebiz", jurisdiction: "SG", currency: "SGD", revenueComparison: null })], sources: [{ ...source("sg-gebiz", "2021-04-01", 246), attribution: notice }] });
+  const run = (tab: string) => awardsHeadless.load(createTestHeadlessArgs({ options: { tab } }),
+    createTestHeadlessContext({ apiClient: { getCloudAwards: async () => payload } as unknown as HeadlessPaneContext["apiClient"] }));
+  expect((await run("feed")).notes).toEqual([notice]);
+  // The agencies here are another source's, so the statement is not theirs to carry.
+  expect((await run("agencies")).notes).toBeUndefined();
+});

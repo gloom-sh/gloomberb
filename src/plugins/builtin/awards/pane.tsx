@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { AwardAggregate, AwardCompanyLeader, AwardFilter, AwardRow, AwardType, AwardsPayload } from "../../../api-client/awards";
-import { Badge, ChartTableHeader, DataTableView, PageStackView, PaneStatusBody, QueryBar, useChartTableSelection, usePagedRows,
+import { Badge, ChartTableHeader, DataTableView, Notice, PageStackView, PaneStatusBody, QueryBar, useChartTableSelection, usePagedRows,
   usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, useTableLoadMore, type DataTableColumn, type PaneHint, type QueryBarFilter } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { formatCompactAxis } from "../../../components/chart-table";
@@ -15,6 +15,7 @@ import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type Scr
 import { withCountryFlag } from "../../../components/ui/country-flag";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { truncateToDisplayWidth } from "../../../utils/format";
+import { wrapTextLines } from "../../../utils/text-wrap";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { useOpenDescription } from "../shared/open-description";
@@ -24,8 +25,8 @@ import { AwardDetail } from "./detail";
 import { useAwardAlerts } from "./alerts";
 import { AWARDS_UNAVAILABLE, fetchAwards, loadAward, loadAwards, validateAwards } from "./client";
 import { useAwardsEvidence } from "./evidence";
-import { AWARD_TABS, aggregateId, awardHistorySeries, awardPercent, awardPeriod, awardScope, awardsCoverageNotes, awardsPreviewNote, awardTab, awardTypeLabel, futureAwardDatesNote, money,
-  rankedAggregates } from "./model";
+import { AWARD_TABS, aggregateId, awardHistorySeries, awardPercent, awardPeriod, awardsAttributions, awardScope, awardsCoverageNotes, awardsPreviewNote, awardTab, awardTypeLabel,
+  futureAwardDatesNote, money, rankedAggregates } from "./model";
 import { logFailure } from "../../../utils/log-failure";
 
 type Item = { kind: "award"; row: AwardRow } | { kind: "aggregate"; row: AwardAggregate } | { kind: "leader"; row: AwardCompanyLeader } | { kind: "locked"; id: string }
@@ -196,6 +197,11 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
     ...(tab === "company" && scopes.length > 1 && !source ? [`Chart covers ${awardScope(chartSource).toLowerCase()}; select a scope to inspect other contracts.`] : []),
     ...(data && (tab === "feed" || tab === "company") ? [futureAwardDatesNote(rows, data.generatedAt)].filter((note): note is string => !!note) : []),
   ] });
+  // A licence's statement under the awards it covers, while any is shown.
+  const shown = tab === "company" && !ticker ? [] : items;
+  const attribution = awardsAttributions(data, shown.flatMap((item) => item.kind === "award" || item.kind === "aggregate" || item.kind === "leader" ? [item.row.source] : [])).join(" ");
+  const attributionRows = attribution ? wrapTextLines(attribution, Math.max(1, width - 2)).length : 0;
+  const openAttribution = openRow ? awardsAttributions(data, [openRow.source]).join(" ") : "";
   const { strip, rows: tabRows } = usePaneTabs(!denied ? { tabs: [...AWARD_TABS], activeValue: tab, onSelect: (value) => { setTab(value); setOpen(null); }, focused, dense: true } : null);
   const bodyHeight = Math.max(3, height - tabRows);
   const filters: QueryBarFilter[] = [
@@ -225,7 +231,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
   return <Box width={width} height={height} flexDirection="column">
     {strip}
     <PageStackView focused={focused} detailOpen={!!openId} onBack={() => setOpen(null)} detailTitle={openRow ? truncateToDisplayWidth(openRow.title, Math.max(20, width - 16)) : "Award evidence"}
-        detailContent={openRow ? <AwardDetail key={openRow.id} row={openRow} accessKey={accessKey} width={width} height={bodyHeight - 1} focused={focused} openAward={setOpen} openUpgrade={openUpgrade}
+        detailContent={openRow ? <AwardDetail key={openRow.id} row={openRow} accessKey={accessKey} width={width} height={bodyHeight - 1} focused={focused} openAward={setOpen} openUpgrade={openUpgrade} attribution={openAttribution}
           openChildren={(type) => { setParentId(openRow.id); setTicker(""); setSource(""); setQuery(""); setAgency(""); setSector(""); setCurrency(""); setJurisdiction(""); setRange("all"); setType(type); setOpen(null); setTab("feed"); }} />
           : <PaneStatusBody loading={detail.loading} error={detail.error} empty={!detail.loading && !detail.error} emptyTitle="Award no longer available." subject="award evidence" />}
         rootContent={<DataTableView<Item> columns={columns} items={tab === "company" && !ticker ? [] : items} rootWidth={width} rootHeight={bodyHeight}
@@ -233,7 +239,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
           status={data ? undefined : { loading: paged.loading, error: failed?.message !== AWARDS_UNAVAILABLE ? failed?.message : null,
             empty: failed?.message === AWARDS_UNAVAILABLE, emptyTitle: AWARDS_UNAVAILABLE, subject: "government awards" }}
           focused={focused && !openId && !search.active && !tickerSearch.active} scrollRef={tableScrollRef} onBodyScrollActivity={loadMore}
-          rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={items.length} tableColumns={columns} query={queryBar} chart={data ? chart : null}
+          rootBefore={<ChartTableHeader width={width} height={bodyHeight - attributionRows} tableRows={items.length} tableColumns={columns} query={queryBar} chart={data ? chart : null}
             figures={tab === "company" && ticker && latest ? [{ id: "total", label: `Obligated ${chartCurrency}`, value: money(latest.cumulativeObligatedAmount) },
               { id: "period", label: "Latest cohort", value: latest.month.slice(0, 7), detail: awardScope(chartSource) }] : undefined} />}
           selection={{ kind: "id", selectedId: selected ? itemId(selected) : null, getId: itemId, onChange: setSelected }} getItemKey={itemId}
@@ -282,6 +288,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
             return { text: award.revenueComparison?.periodEnd ?? "--", color: colors.textDim };
           }}
           emptyStateTitle={tab === "company" && !ticker ? "Enter a company ticker." : tab === "events" ? "No revenue-comparable awards in this scope." : "No awards match these filters."}
+          rootAfter={attribution ? <Box paddingX={1} height={attributionRows} flexShrink={0}><Notice tone="muted">{attribution}</Notice></Box> : undefined}
           bodyAfter={data?.locked && desktop ? <LockedOverlay rows={3} text="Upgrade for complete awards and history" onPress={openUpgrade} /> : undefined} />} />
   </Box>;
 }

@@ -151,6 +151,11 @@ interface AwardSourceState {
   coverageComplete: boolean
   records: number
   requestsToday: number
+  /**
+   * The statement the source's licence asks for wherever its data is shown,
+   * dated by the server's last read; absent for a source that asks for none.
+   */
+  attribution?: string
 }
 interface AwardCoverage {
   source: string

@@ -4,7 +4,7 @@ import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneContext, He
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { fetchAward, fetchAwards } from "./client";
-import { AWARD_TABS, awardScope, awardsCoverageNotes, awardsEmptyReason, awardsPreviewNote, awardTypeLabel, futureAwardDatesNote, money } from "./model";
+import { AWARD_TABS, awardsAttributions, awardScope, awardsCoverageNotes, awardsEmptyReason, awardsPreviewNote, awardTypeLabel, futureAwardDatesNote, money } from "./model";
 import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
 
 /**
@@ -113,10 +113,14 @@ export const awardsHeadless: HeadlessPaneDefinition<"bundle"> = {
     const missing = filter.ticker && (data.locked || !data.rows.length) ? await notATicker(filter.ticker, ctx) : null;
     const lock = awardsPreviewNote(data, filter);
     const futureDates = futureAwardDatesNote(data.rows, data.generatedAt);
-    const notes = [...awardsCoverageNotes(data), ...(futureDates ? [futureDates] : [])];
+    const tab = String(args.options.tab ?? "feed");
+    // The statements the licences of the sources printed ask for.
+    const printed = [...(["feed", "company", "all"].includes(tab) ? data.rows : []), ...(["company", "all"].includes(tab) ? data.history : []),
+      ...(["agencies", "all"].includes(tab) ? data.agencies : []), ...(["sectors", "all"].includes(tab) ? [...(data.leaders ?? []), ...data.sectors] : []),
+      ...(["events", "all"].includes(tab) ? data.alerts : [])];
+    const notes = [...awardsCoverageNotes(data), ...(futureDates ? [futureDates] : []), ...awardsAttributions(data, printed.map((row) => row.source))];
     const empty = awardsEmptyReason(data);
     const sections: HeadlessBundleSection[] = [];
-    const tab = String(args.options.tab ?? "feed");
     if (tab === "feed" || tab === "company" || tab === "all") sections.push({ title: "Awards", columns: FEED_COLUMNS, rows: data.rows.map(awardRecord) });
     if (tab === "company" || tab === "all") sections.push({ title: "Award cohorts by month and currency", columns: COHORT_COLUMNS, rows: data.history.map((row) => ({ ...row })) });
     if (tab === "agencies" || tab === "all") sections.push({ title: "Agency concentration", columns: aggregateColumns("Agency"), rows: data.agencies.map((row) => ({ ...row })) });
