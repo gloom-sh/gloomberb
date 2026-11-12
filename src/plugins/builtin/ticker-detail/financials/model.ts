@@ -33,7 +33,7 @@ export function hasStatementFinancials(financials: TickerFinancials | null | und
 type FinancialMetricFormat = "compact" | "eps" | "percent";
 export type FinancialGrowthDirection = "higher" | "lower" | "neutral";
 
-export type MetricDef = {
+type MetricDef = {
   label: string;
   key?: keyof FinancialStatement;
   id?: string;
@@ -93,7 +93,7 @@ export type FinancialTableRow =
     toggleable: boolean;
   };
 
-export function statementMetricValue(
+function statementMetricValue(
   def: Pick<MetricDef, "key" | "compute">,
   statement: FinancialStatement,
 ): number | undefined {
