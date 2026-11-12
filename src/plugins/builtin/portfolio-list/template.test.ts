@@ -9,7 +9,9 @@ function openedBy(activeCollectionId: string | null, portfolios = [{ id: "main",
     activeCollectionId,
     config: { portfolios, watchlists: [{ id: "watchlist", name: "Watchlist" }] },
   } as unknown as PaneTemplateContext;
-  return pf.createInstance!(context, arg ? { arg } : undefined)?.params?.collectionId;
+  const instance = pf.createInstance!(context, arg ? { arg } : undefined);
+  if (instance instanceof Promise) throw new Error("PF builds its pane synchronously");
+  return instance?.params?.collectionId;
 }
 
 /** Review, 12 Nov 2026: PF opened the Watchlist, the collection last in view, under the name "Collection". */
