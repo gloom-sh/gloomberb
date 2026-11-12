@@ -294,7 +294,7 @@ function FooterContent({
   // A segment with shorter forms takes the longest that fits beside the hints, gaps and terminal keys included.
   const keysWidth = nativePaneChrome ? 0 : footer.info.reduce((total, segment) => total + terminalSegmentKey(segment, focused).length, 0);
   const row = availableWidth !== null
-    ? layoutPaneFooterHintRow({ ...footer, hints: actionableHints }, availableWidth, iconReserve, metrics, keysWidth)
+    ? layoutPaneFooterHintRow({ ...footer, hints: actionableHints }, availableWidth, iconReserve, metrics, { terminal: !nativePaneChrome, keysWidth })
     : null;
   const shownHints = row?.hints ?? actionableHints;
   const overflowHints = row?.overflow ?? [];
@@ -303,7 +303,7 @@ function FooterContent({
   const infoWidth = availableWidth !== null && hasInfo
     ? (row?.infoWidth ?? Math.max(0, availableWidth - hintsWidth))
     : undefined;
-  const info = infoWidth != null ? fitPaneFooterInfo(footer.info, infoWidth - keysWidth, { besideHints: hasHints }) : footer.info;
+  const info = infoWidth != null ? fitPaneFooterInfo(footer.info, infoWidth - keysWidth, { besideHints: hasHints, terminal: !nativePaneChrome }) : footer.info;
   const lastTextIndex = info.findLastIndex((segment) => !segment.icon);
 
   if (!hasInfo && !hasHints) {
