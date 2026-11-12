@@ -12,6 +12,7 @@ import { useFreeQuoteDelay } from "../../../api-client/plan-access";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { remoteStringValue } from "../../../remote/semantic-helpers";
 import { logFailure } from "../../../utils/log-failure";
+import { wrapTextLines } from "../../../utils/text-wrap";
 import { ONBOARDING_DESKTOP } from "../onboarding-frame";
 import {
   POSITION_FIELDS,
@@ -316,6 +317,21 @@ function SignedNumberField(props: ComponentProps<typeof NumberField>) {
   return <NumberField {...props} allowNegative />;
 }
 
+/** The line under the terminal's form, as TuiPositionsPanel draws it. */
+function tuiPositionsNote(state: OnboardingPositionsState, editing: boolean): string {
+  return state.error ?? (state.submitting ? t("adding...") : positionsHint(editing, state.positions.length));
+}
+
+/**
+ * The rows the terminal's panel takes at `width` columns: the fields, the
+ * note under them as it wraps, the heading and the rows it lists, and the
+ * line on adding more later. The card is as tall as what it holds.
+ */
+export function tuiPositionsPanelRows(state: OnboardingPositionsState, editing: boolean, width: number): number {
+  const noteRows = wrapTextLines(tuiPositionsNote(state, editing), Math.max(1, width - 4)).length;
+  return POSITION_FIELDS.length + noteRows + 4 + Math.min(state.positions.length, TUI_VISIBLE_ROWS);
+}
+
 function TuiPositionsPanel({ state, inputRef, editing, selectedSymbol, shortcut }: PositionsPanelProps) {
   const colors = useThemeColors();
   // The newest rows, until the cursor climbs above them.
@@ -330,13 +346,9 @@ function TuiPositionsPanel({ state, inputRef, editing, selectedSymbol, shortcut 
       ))}
       {/* Wraps in a narrow window (64 columns) rather than cutting how the step goes on. */}
       <Box flexShrink={0}>
-        {state.error ? (
-          <Text fg={colors.negative} wrapText>{state.error}</Text>
-        ) : state.submitting ? (
-          <Text fg={colors.textDim}>{t("adding...")}</Text>
-        ) : (
-          <Text fg={colors.textMuted} wrapText>{positionsHint(editing, state.positions.length)}</Text>
-        )}
+        <Text fg={state.error ? colors.negative : state.submitting ? colors.textDim : colors.textMuted} wrapText>
+          {tuiPositionsNote(state, editing)}
+        </Text>
       </Box>
       <Box height={1} />
       <Box height={1} flexDirection="row" overflow="hidden">

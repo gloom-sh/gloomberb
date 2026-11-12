@@ -23,6 +23,7 @@ import { formatCloudPrice, monthsFreeYearly } from "../../account/billing";
 import { proStepCopy } from "../../account/upgrade-dialog";
 import { Button, SegmentedControl, terminalButtonColumns } from "../ui";
 import { AccountStep, PortfolioStep } from "./onboarding-steps";
+import { tuiPositionsPanelRows } from "./portfolio-step/positions-panel";
 import {
   ONBOARDING_DESKTOP,
   OnboardingActions,
@@ -51,7 +52,7 @@ import {
   BROWSER_SIGN_IN_KEY,
   SKIP_DESKS_KEY,
   SKIP_PORTFOLIO_KEY,
-  SKIP_IN_FIELD_KEY,
+  SKIP_KEY,
   CONTINUE_KEY,
   BACK_KEY,
   type PositionsButton,
@@ -462,8 +463,11 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
       ? brokerOptions.find((option) => option.id === selectedBrokerId)
       : null;
     const selectedBrokerName = selectedBroker?.name;
+    // What do you hold? is as tall as what it holds: the fields, the rows listed so far and an error, never rows kept empty for later ones.
+    const positionsColumns = terminalCardSize({ width: viewportWidth, height: viewportHeight }, 76, 22).width - TERMINAL_CARD_INSET.columns;
     const portfolioModalHeight = portfolioSub === "positions"
-      ? 22
+      ? TERMINAL_CARD_INSET.rows + 4 + tuiPositionsPanelRows(positions, editingField, positionsColumns)
+        + (persistenceError ? wrapTextLines(persistenceError, Math.max(1, positionsColumns)).length : 0)
       : portfolioSub === "choose"
         ? 16
         : portfolioSub === "broker-setup"
@@ -553,9 +557,10 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
                 <OnboardingButton
                   label="Skip"
                   variant="ghost"
-                  // In the Ticker field s is typed: on the first run F10 presses Skip there, and from Settings F10
-                  // leaves setup, so Skip shows no key (Tab reaches it).
-                  shortcut={editingField ? (rerun ? undefined : SKIP_IN_FIELD_KEY) : SKIP_PORTFOLIO_KEY}
+                  // The terminal's first run: Skip is F10 on every step, in the Ticker field or not (s still skips
+                  // outside it). From Settings F10 leaves setup, so in the field Skip shows no key (Tab reaches it).
+                  // On a Mac's keyboard F10 is a media key: the desktop's Skip is pressed by its letter or a click.
+                  shortcut={rerun || desktop ? (editingField ? (rerun ? undefined : SKIP_KEY) : SKIP_PORTFOLIO_KEY) : SKIP_KEY}
                   active={positionsButton === "skip"}
                   disabled={positions.submitting}
                   onPress={skipPositions}
@@ -628,7 +633,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
           <OnboardingButton
             label="Skip"
             variant="ghost"
-            shortcut={SKIP_DESKS_KEY}
+            shortcut={rerun || desktop ? SKIP_DESKS_KEY : SKIP_KEY}
             disabled={buildingDesks}
             onPress={() => finishDesks([])}
           />
