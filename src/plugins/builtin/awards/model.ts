@@ -91,9 +91,42 @@ export function awardsCoverageNotes(data: Pick<AwardsPayload, "gaps">): string[]
  * award's detail and `fn AWARDS` print them under the awards they cover.
  */
 export function awardsAttributions(data: Pick<AwardsPayload, "sources"> | undefined, shown: Iterable<string>): string[] {
+  return sourceStatements(data, shown, "attribution");
+}
+
+/**
+ * How the amounts of the sources shown read, each once: GeBIZ's says it
+ * withholds an amount under S$6,000 or one that several suppliers of a tender
+ * print alike. The award's detail and `fn AWARDS` print them beside a
+ * withheld value.
+ */
+export function awardsAmountNotices(data: Pick<AwardsPayload, "sources"> | undefined, shown: Iterable<string>): string[] {
+  return sourceStatements(data, shown, "amountNotice");
+}
+
+function sourceStatements(data: Pick<AwardsPayload, "sources"> | undefined, shown: Iterable<string>, key: "attribution" | "amountNotice"): string[] {
   const sources = new Set(shown);
-  return [...new Set((data?.sources ?? []).flatMap((source) =>
-    sources.has(source.source) && typeof source.attribution === "string" && source.attribution.trim() ? [source.attribution.trim()] : []))];
+  return [...new Set((data?.sources ?? []).flatMap((source) => {
+    const statement = source[key];
+    return sources.has(source.source) && typeof statement === "string" && statement.trim() ? [statement.trim()] : [];
+  }))];
+}
+
+/** What an award's value reads when its source withholds it, never 0 and never the unreported mark. */
+export const WITHHELD_AMOUNT = "withheld";
+
+/**
+ * The sources whose award with no amount had one the source withholds: those
+ * whose state says how their amounts read (`amountNotice`). Any other
+ * source's missing amount is unreported.
+ */
+export function withholdingSources(data: Pick<AwardsPayload, "sources"> | undefined): Set<string> {
+  return new Set((data?.sources ?? []).flatMap((source) => source.amountNotice?.trim() ? [source.source] : []));
+}
+
+/** Whether an award's value is withheld by its source rather than unreported. */
+export function amountWithheld(row: Pick<AwardRow, "source" | "awardAmount">, withholding: ReadonlySet<string>): boolean {
+  return row.awardAmount == null && withholding.has(row.source);
 }
 
 /** Award dates after the response's own date are the source's, not a mapping slip; they say so instead of passing as past awards. */

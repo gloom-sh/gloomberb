@@ -105,3 +105,26 @@ test("a source's licence statement is a note under the awards it covers", async 
   // The agencies here are another source's, so the statement is not theirs to carry.
   expect((await run("agencies")).notes).toBeUndefined();
 });
+
+test("a value the source withholds reads withheld, with how its amounts read, in the feed and an award read alone", async () => {
+  const attribution = "Contains information from Government Procurement via GeBIZ from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence";
+  const amountNotice = "Singapore GeBIZ amounts are as the Ministry of Finance's dataset prints them. An amount under S$6,000, or one that two or more suppliers of a tender print alike, is shown as no amount.";
+  const gebiz = awardRow({ id: "award-sg", source: "sg-gebiz", jurisdiction: "SG", currency: "SGD", awardAmount: null, obligatedAmount: null, ceilingAmount: null,
+    recipient: { name: "CYCLE & CARRIAGE KIA PTE LTD" }, revenueComparison: null });
+  // An award with no amount from a source that withholds none is unreported, never withheld.
+  const unreported = awardRow({ id: "award-us", awardAmount: null });
+  const payload = awardsPayload({ rows: [gebiz, unreported], sources: [{ ...source("sg-gebiz", "2021-04-01", 246), attribution, amountNotice }] });
+  const apiClient = { getCloudAwards: async () => payload,
+    getCloudAward: async () => ({ row: gebiz, revisions: [{ id: "revision-sg", observedAt: "2026-11-12T02:25:37Z", sourceUpdatedAt: null, supersedes: null, award: gebiz }],
+      subawards: [], modifications: [], edges: [], access: "full", locked: false, attribution, amountNotice }) } as unknown as HeadlessPaneContext["apiClient"];
+  for (const options of [{ tab: "feed" }, { award: "award-sg" }] as Record<string, string>[]) {
+    const args = createTestHeadlessArgs({ options });
+    const result = await awardsHeadless.load(args, createTestHeadlessContext({ apiClient }));
+    expect(result.notes).toEqual([attribution, amountNotice]);
+    const lines = renderHeadlessPaneText(awardsHeadless, result, args, "AWARDS", deriveHeadlessFreshness(awardsHeadless, result)).split("\n");
+    expect(lines.find((line) => line.includes("CYCLE & CARRIAGE KIA"))).toMatch(/SGD\s+withheld\s/);
+    if (options.tab) expect(lines.find((line) => line.includes("Contractor Corporation"))).not.toContain("withheld");
+    // An award read alone: its revision's value too.
+    else expect(lines.filter((line) => line.includes("withheld"))).toHaveLength(2);
+  }
+});

@@ -25,8 +25,8 @@ import { AwardDetail } from "./detail";
 import { useAwardAlerts } from "./alerts";
 import { AWARDS_UNAVAILABLE, fetchAwards, loadAward, loadAwards, validateAwards } from "./client";
 import { useAwardsEvidence } from "./evidence";
-import { AWARD_TABS, aggregateId, awardHistorySeries, awardPercent, awardPeriod, awardsAttributions, awardScope, awardsCoverageNotes, awardsPreviewNote, awardTab, awardTypeLabel,
-  futureAwardDatesNote, money, rankedAggregates } from "./model";
+import { AWARD_TABS, aggregateId, amountWithheld, awardHistorySeries, awardPercent, awardPeriod, awardsAmountNotices, awardsAttributions, awardScope, awardsCoverageNotes, awardsPreviewNote,
+  awardTab, awardTypeLabel, futureAwardDatesNote, money, rankedAggregates, WITHHELD_AMOUNT, withholdingSources } from "./model";
 import { logFailure } from "../../../utils/log-failure";
 
 type Item = { kind: "award"; row: AwardRow } | { kind: "aggregate"; row: AwardAggregate } | { kind: "leader"; row: AwardCompanyLeader } | { kind: "locked"; id: string }
@@ -202,6 +202,9 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
   const attribution = awardsAttributions(data, shown.flatMap((item) => item.kind === "award" || item.kind === "aggregate" || item.kind === "leader" ? [item.row.source] : [])).join(" ");
   const attributionRows = attribution ? wrapTextLines(attribution, Math.max(1, width - 2)).length : 0;
   const openAttribution = openRow ? awardsAttributions(data, [openRow.source]).join(" ") : "";
+  const openAmountNotice = openRow ? awardsAmountNotices(data, [openRow.source]).join(" ") : "";
+  // A source that withholds amounts (GeBIZ under S$6,000, or printed alike): its award with none reads withheld, not unreported.
+  const withholding = withholdingSources(data);
   const { strip, rows: tabRows } = usePaneTabs(!denied ? { tabs: [...AWARD_TABS], activeValue: tab, onSelect: (value) => { setTab(value); setOpen(null); }, focused, dense: true } : null);
   const bodyHeight = Math.max(3, height - tabRows);
   const filters: QueryBarFilter[] = [
@@ -231,7 +234,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
   return <Box width={width} height={height} flexDirection="column">
     {strip}
     <PageStackView focused={focused} detailOpen={!!openId} onBack={() => setOpen(null)} detailTitle={openRow ? truncateToDisplayWidth(openRow.title, Math.max(20, width - 16)) : "Award evidence"}
-        detailContent={openRow ? <AwardDetail key={openRow.id} row={openRow} accessKey={accessKey} width={width} height={bodyHeight - 1} focused={focused} openAward={setOpen} openUpgrade={openUpgrade} attribution={openAttribution}
+        detailContent={openRow ? <AwardDetail key={openRow.id} row={openRow} accessKey={accessKey} width={width} height={bodyHeight - 1} focused={focused} openAward={setOpen} openUpgrade={openUpgrade} attribution={openAttribution} amountNotice={openAmountNotice}
           openChildren={(type) => { setParentId(openRow.id); setTicker(""); setSource(""); setQuery(""); setAgency(""); setSector(""); setCurrency(""); setJurisdiction(""); setRange("all"); setType(type); setOpen(null); setTab("feed"); }} />
           : <PaneStatusBody loading={detail.loading} error={detail.error} empty={!detail.loading && !detail.error} emptyTitle="Award no longer available." subject="award evidence" />}
         rootContent={<DataTableView<Item> columns={columns} items={tab === "company" && !ticker ? [] : items} rootWidth={width} rootHeight={bodyHeight}
@@ -261,7 +264,9 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
             if (column.id === "currency") return { text: row.currency, color: colors.textDim };
             if (["value", "obligated", "ceiling"].includes(column.id)) {
               const value = column.id === "value" ? tab === "events" && item.kind === "award" ? item.row.revenueComparison?.awardAmount : row.awardAmount : column.id === "obligated" ? row.obligatedAmount : row.ceilingAmount;
-              return value == null ? missingCell(colors) : { text: money(value), value, color: column.id === "obligated" || column.id === "value" ? colors.textBright : colors.text };
+              if (value == null) return column.id === "value" && item.kind === "award" && tab !== "events" && amountWithheld(item.row, withholding)
+                ? { text: WITHHELD_AMOUNT, value: null, color: colors.textMuted } : missingCell(colors);
+              return { text: money(value), value, color: column.id === "obligated" || column.id === "value" ? colors.textBright : colors.text };
             }
             if (item.kind === "aggregate" || item.kind === "leader") {
               if (column.id === "label") return { text: item.row.label, color: colors.textBright };

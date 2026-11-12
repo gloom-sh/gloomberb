@@ -81,17 +81,24 @@ test("sector company leaders drill into the verified company's history within th
 test("a source's licence statement shows under its awards, and nowhere else", async () => {
   const notice = "Contains information from Government Procurement via GeBIZ accessed on 12 November 2026 from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence";
   const source = { source: "sg-gebiz", enabled: true, lastAttemptAt: null, lastOkAt: "2026-11-12T09:00:00Z", nextPollAt: null, failures: 0, lastError: null, cursor: null,
-    coverageStart: "2021-04-01", coverageEnd: "2026-03-31", coverageComplete: true, records: 246, requestsToday: 0, attribution: notice };
-  const gebiz = awardRow({ id: "award-sg", source: "sg-gebiz", jurisdiction: "SG", currency: "SGD", title: "Maintenance for Network Uninterruptible Power Supply (UPS)",
+    coverageStart: "2021-04-01", coverageEnd: "2026-03-31", coverageComplete: true, records: 246, requestsToday: 0, attribution: notice,
+    amountNotice: "An amount under S$6,000, or one that two or more suppliers of a tender print alike, is shown as no amount." };
+  // GeBIZ withholds this award's amount: it reads withheld, never 0 or unreported.
+  const gebiz = awardRow({ id: "award-sg", source: "sg-gebiz", jurisdiction: "SG", currency: "SGD", title: "Maintenance for Network Uninterruptible Power Supply (UPS)", awardAmount: null,
     recipient: { name: "NCS PTE. LTD." }, agency: { name: "Central Provident Fund Board" }, sourceUrl: "https://data.gov.sg/api/action/datastore_search?resource_id=d_acde1106003906a75c3fa052592f2fcb",
     entity: { ...awardRow().entity!, ticker: "Z74", exchange: "SGX", legalName: "NCS PTE. LTD." }, revenueComparison: null });
   let rows = [gebiz, awardRow()];
   setCloudApiFetchTransport(async () => Response.json(awardsPayload({ rows, sources: [source] })));
-  await mount("feed", 120, 30);
-  expect(await tui.waitForFrameToContain("NCS PTE. LTD.")).toContain("Contains information from Government Procurement via GeBIZ");
-  // The award's own evidence carries it too.
+  await mount("feed", 200, 30);
+  const feed = await tui.waitForFrameToContain("NCS PTE. LTD.");
+  expect(feed).toContain("Contains information from Government Procurement via GeBIZ");
+  expect(feed.split("\n").find((line) => line.includes("NCS PTE. LTD."))).toMatch(/SGD\s+withheld/);
+  // The award's own evidence carries it too, and says how a withheld amount reads.
   await tui.emitKeypress({ name: "return" });
-  expect(await tui.waitForFrameToContain("Observed (UTC)")).toContain("Contains information from Government Procurement via GeBIZ");
+  const detail = await tui.waitForFrameToContain("Observed (UTC)");
+  expect(detail).toContain("Contains information from Government Procurement via GeBIZ");
+  expect(detail).toContain("withheld");
+  expect(detail).toContain("is shown as no amount");
   // Awards from sources that ask for nothing show nothing new.
   awardsCache.reset();
   rows = [awardRow()];
