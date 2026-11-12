@@ -11,6 +11,7 @@ import { Badge } from "../../../components";
 import { t } from "../../../i18n";
 import { Box, Text } from "../../../ui";
 import { displayWidth } from "../../../utils/format";
+import { wrapTextLines } from "../../../utils/text-wrap";
 
 /** A badge is its label plus one cell of padding on each side. */
 const BADGE_CHROME_WIDTH = 2;
@@ -62,6 +63,56 @@ export function badgeCell(
       </Box>
     ),
   };
+}
+
+/** One line of a Help row in the terminal: the chips and the words that sit on it. */
+export interface HelpRowLine {
+  badges: readonly string[];
+  /** The words of a column between the chips and the text (Functions' ARG). */
+  middle?: string;
+  text: string;
+  /** A line under the row's first, which the cursor passes over. */
+  continued: boolean;
+}
+
+/**
+ * A Help row in the terminal as the lines it takes: its chips packed whole
+ * into the key column and its words wrapped across the text column, each
+ * going on under the first line, never cut. Help is where a key or a
+ * description is read whole (review, 12 Nov 2026: "Alt+Enter   Ctrl+Shift+",
+ * "what it shows, its ke…").
+ */
+export function helpRowLines(
+  badges: readonly string[],
+  text: string,
+  keyWidth: number,
+  textWidth: number,
+  middle?: { text: string; width: number },
+): HelpRowLine[] {
+  const chipLines: string[][] = [];
+  for (const badge of badges) {
+    const line = chipLines.at(-1);
+    if (line && badgeGroupWidth([...line, badge]) <= keyWidth) line.push(badge);
+    else chipLines.push([badge]);
+  }
+  const textLines = text ? wrapTextLines(text, Math.max(1, textWidth)) : [];
+  const middleLines = middle?.text ? wrapTextLines(middle.text, Math.max(1, middle.width)) : [];
+  const count = Math.max(1, chipLines.length, textLines.length, middleLines.length);
+  return Array.from({ length: count }, (_, index) => ({
+    badges: chipLines[index] ?? [],
+    ...(middle ? { middle: middleLines[index] ?? "" } : {}),
+    text: textLines[index] ?? "",
+    continued: index > 0,
+  }));
+}
+
+/**
+ * Cells a table's text column gets beside a key column `keyWidth` wide, in a
+ * table `width` wide with `padding` on each side: one gap between the two,
+ * the lane its scrollbar takes and the cell the last column keeps clear.
+ */
+export function helpTextWidth(width: number, keyWidths: number, padding: number, columns = 2): number {
+  return width - padding * 2 - keyWidths - (columns - 1) - 2;
 }
 
 /** Muted placeholder text that still lines up with a badge cell. */

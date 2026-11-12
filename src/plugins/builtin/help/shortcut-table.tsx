@@ -22,7 +22,7 @@ import {
 import { t } from "../../../i18n";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, useUiCapabilities } from "../../../ui";
-import { badgeCell } from "./table-cells";
+import { badgeCell, helpRowLines, helpTextWidth, type HelpRowLine } from "./table-cells";
 
 export interface ShortcutTableEntry {
   id: string;
@@ -30,6 +30,8 @@ export interface ShortcutTableEntry {
   description: string;
   /** Makes the row one click: anywhere on it runs this. */
   run?: () => void;
+  /** The terminal's line of the row this row draws (helpRowLines). */
+  line?: HelpRowLine;
 }
 
 type ShortcutColumn = DataTableColumn & { id: "key" | "description" };
@@ -58,10 +60,19 @@ export function ShortcutTable({
 }) {
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
-  const rows = useMemo<ShortcutRow[]>(
-    () => buildSectionedRows(sections, (entry) => entry.id),
-    [sections],
-  );
+  const rows = useMemo<ShortcutRow[]>(() => {
+    const built = buildSectionedRows(sections, (entry) => entry.id);
+    // The desktop and the web lay a row out in CSS; the terminal goes on under it rather than cutting.
+    if (nativePaneChrome) return built;
+    const textWidth = helpTextWidth(width, keyWidth, fillHeight === undefined ? 0 : 1);
+    return built.flatMap((row): ShortcutRow[] => (isSectionedItemRow(row)
+      ? helpRowLines(row.item.badges, t(row.item.description), keyWidth, textWidth).map((line, index) => ({
+        kind: "item",
+        key: index === 0 ? row.key : `${row.key}~${index}`,
+        item: { ...row.item, line },
+      }))
+      : [row]));
+  }, [fillHeight, keyWidth, nativePaneChrome, sections, width]);
   const columns = useMemo<ShortcutColumn[]>(() => [
     { id: "key", label: keyLabel, width: keyWidth, align: "left" },
     { id: "description", label: descriptionLabel, width: 20, align: "left", flexGrow: 1 },
@@ -70,9 +81,10 @@ export function ShortcutTable({
   const renderCell = useCallback((row: ShortcutRow, column: ShortcutColumn): DataTableCell => {
     if (!isSectionedItemRow(row)) return EMPTY_TABLE_CELL;
     const run = row.item.run;
+    const { line } = row.item;
     const cell: DataTableCell = column.id === "key"
-      ? badgeCell(row.item.badges, column.width, { wholeOnly: true })
-      : { text: t(row.item.description), color: colors.text };
+      ? badgeCell(line ? line.badges : row.item.badges, column.width, { wholeOnly: true })
+      : { text: line ? line.text : t(row.item.description), color: colors.text };
     if (!run) return cell;
     return {
       ...cell,
