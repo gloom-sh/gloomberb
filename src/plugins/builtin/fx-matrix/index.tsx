@@ -319,7 +319,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
 
     if (column.id === "amount") {
       const value = convertedAmount(row);
-      if (value == null) return { text: status.loading > 0 ? "…" : "—", color: colors.textDim };
+      if (value == null) return { text: status.loading > 0 ? "…" : MISSING_VALUE, color: colors.textDim };
       return { text: formatAmountFigure(value, row), value, color: row === amount?.currency ? colors.textDim : colors.text };
     }
 
@@ -332,7 +332,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
       // A missing leg must never fall back to parity: 1.0000 on EUR/JPY reads
       // as a real rate.
       const pending = status.loading > 0;
-      return { text: pending ? "…" : "—", color: colors.textDim };
+      return { text: pending ? "…" : MISSING_VALUE, color: colors.textDim };
     }
     const reference = (referenceRates.get(row) ?? base) / (referenceRates.get(quoteCurrency) ?? quote);
     const rowReference = directionReferences.get(row);

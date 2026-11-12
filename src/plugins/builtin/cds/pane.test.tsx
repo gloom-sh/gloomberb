@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
@@ -179,7 +180,7 @@ describe("CdsPane", () => {
     expect(frame).toMatch(/ 5Y\s+1W\s+1M/);
     // The moves as the index board prints them; one that rounds to 0.0 reads 0.0bp, none reads --.
     expect(frame).toMatch(/Oracle Corporation\s+2\s+2026-08-25 12:00\s+235bp\s+\+28\.1bp\s+\+75\.4bp/);
-    expect(frame).toMatch(/Ford Motor Company\s+1\s+2026-08-25 11:00\s+157bp\s+0\.0bp\s+--/);
+    expect(frame).toMatch(new RegExp(String.raw`Ford Motor Company\s+1\s+2026-08-25 11:00\s+157bp\s+0\.0bp\s+${MISSING_VALUE}`));
     // The last trade, never the fetch time, with its age in days.
     expect(frame).toMatch(/Source: DTCC · last trade 2026-08-25 · lag \d+ days/);
     expect(frame).not.toContain("as of");
@@ -193,8 +194,8 @@ describe("CdsPane", () => {
       },
     });
     const frame = tui.frame();
-    expect(frame).toMatch(/Oracle Corporation\s+2\s+2026-08-25 12:00\s+--\s+--\s+--/);
-    expect(frame).toMatch(/Ford Motor Company\s+1\s+2026-08-25 11:00\s+--\s+--\s+--/);
+    expect(frame).toMatch(new RegExp(String.raw`Oracle Corporation\s+2\s+2026-08-25 12:00\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+${MISSING_VALUE}`));
+    expect(frame).toMatch(new RegExp(String.raw`Ford Motor Company\s+1\s+2026-08-25 11:00\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+${MISSING_VALUE}`));
     // The failure is the footer's data warning, not an empty list.
     expect(frame).toContain("⚠");
   });
@@ -278,7 +279,7 @@ describe("CdsPane", () => {
     // Capped notional keeps its "+", and the coupon is shown instead of an implied spread.
     expect(frame).toContain("5.00M+");
     expect(frame).toContain("100bp");
-    expect(frame).toContain("--");
+    expect(frame).toContain(MISSING_VALUE);
     expect(frame).not.toContain("Ford Motor Company");
     // ISO times, and an upfront with no side: unsigned, under an absolute header.
     expect(frame).toContain("2026-08-25 12:00");

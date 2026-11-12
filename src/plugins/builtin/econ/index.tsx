@@ -496,13 +496,13 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
         const gap = figureGap(ev, now, events);
         if (gap) return { text: gap === "none" ? NO_FIGURE_CELL : AWAITING_FIGURE_CELL, color: colors.warning, value: null };
         return {
-          text: figureWithCurrency(ev.actual, ev.currency) ?? "—",
+          text: figureWithCurrency(ev.actual, ev.currency) ?? MISSING_VALUE,
           color: actualColor(ev.actual, ev.forecast),
         };
       case "forecast":
-        return { text: figureWithCurrency(ev.forecast, ev.currency) ?? "—", color: colors.textDim };
+        return { text: figureWithCurrency(ev.forecast, ev.currency) ?? MISSING_VALUE, color: colors.textDim };
       case "prior":
-        return { text: figureWithCurrency(ev.prior, ev.currency) ?? "—", color: colors.textDim };
+        return { text: figureWithCurrency(ev.prior, ev.currency) ?? MISSING_VALUE, color: colors.textDim };
     }
   }, [events, flagged, now, readerZone]);
 

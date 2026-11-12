@@ -29,7 +29,7 @@ import {
 import { yearToDateBaseLabel } from "../../../market-data/market/year-to-date";
 import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { LATEST_DISTRIBUTION, TRAILING_DIVIDEND_BASIS } from "../../../utils/forward-dividend";
-import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
 import { ATTENTION_LISTED } from "../attention/listing";
 import { kpiFreeLimitNote } from "../company-kpis/model";
@@ -240,13 +240,13 @@ const MEMBERSHIP = new Set<NumericField>(MEMBERSHIP_FIELDS);
 const CONTEXT_FIELDS: NumericField[] = ["marketCap", "price", "changePercent", "trailingPE", "revenueGrowthPercent", "operatingMarginPercent", "dividendYieldPercent"];
 
 export function formatScreenValue(field: NumericField, value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "--";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   if (COMPACT.has(field)) return formatCompact(value, { fixedDecimals: true });
   if (DAILY_COUNTS.has(field)) return value < 1_000 ? value.toFixed(0) : formatCompact(value, { fixedDecimals: true });
   if (RATIOS.has(field)) return `${value.toFixed(1)}x`;
   if (COUNTS.has(field)) return formatNumber(value, 0);
   if (MEMBERSHIP.has(field)) return value === 1 ? "Yes" : "No";
-  if (LETTER_GRADES.has(field)) return gradeLetter(value) ?? "--";
+  if (LETTER_GRADES.has(field)) return gradeLetter(value) ?? MISSING_VALUE;
   if (field === "gradeComposite") return `${formatNumber(value, 2)} ${compositeLabel(value)}`;
   if (HUNDREDTHS.has(field)) return formatNumber(value, 2);
   // The day's move reads as every quote list's CHG% does (+2.04%), not +2.0 (review, 12 Nov 2026).
@@ -308,7 +308,7 @@ export function dividendYieldBasis(metric: ScreenMetric): string | null {
 export function metricDate(metric: ScreenMetric): { text: string; collected: boolean } {
   if (metric.asOf) return { text: metric.asOf.slice(0, 10), collected: false };
   if (metric.value != null && metric.observedAt) return { text: metric.observedAt.slice(0, 10), collected: true };
-  return { text: "--", collected: false };
+  return { text: MISSING_VALUE, collected: false };
 }
 
 const isNumeric = (field: string): field is NumericField => (NUMERIC_FIELDS as readonly string[]).includes(field);

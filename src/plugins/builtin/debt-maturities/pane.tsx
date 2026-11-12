@@ -37,7 +37,7 @@ import { isAccessDenied } from "../../../api-client/errors";
 import { formatCompactAxis } from "../../../components/chart-table";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
-import { formatPercentileRank } from "../../../utils/format";
+import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import {
@@ -367,7 +367,7 @@ function FilingDetail({
         labelWidth={20}
         label="Comparable filings"
         value={String(latest.totalPrincipal.percentile.sampleCount)}
-        detail={`${latest.totalPrincipal.percentile.historyStart ?? "--"} to ${latest.totalPrincipal.percentile.historyEnd ?? "--"}`}
+        detail={`${latest.totalPrincipal.percentile.historyStart ?? MISSING_VALUE} to ${latest.totalPrincipal.percentile.historyEnd ?? MISSING_VALUE}`}
       />
       {quarter ? (
         <>

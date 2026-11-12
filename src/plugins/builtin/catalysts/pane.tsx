@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { usePaneInstance } from "../../../state/app/context";
 import { useCatalystEvidence } from "./evidence";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -139,7 +140,7 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
       const more = event.parties.filter((party) => party.ticker).length - 1;
       return more > 0 ? { text, color: colors.textBright } : listingCell(symbol, colors, state.selected);
     }
-    if (column.id === "parties") return { text, color: text === "--" ? colors.textMuted : colors.textBright };
+    if (column.id === "parties") return { text, color: text === MISSING_VALUE ? colors.textMuted : colors.textBright };
     if (column.id === "type") return { text, color: toneColor(catalystTypeTone(event.type), colors) };
     // The column has room for the flag beside a code.
     if (column.id === "country") return withCountryFlag({ text, color: colors.textDim }, text, desktop);

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { RateMeeting, RatePathPayload } from "../../../api-client/rates";
@@ -43,7 +44,7 @@ describe("rate-path integration boundary", () => {
     expect(curves.map((entry) => entry.style)).toEqual(["step", undefined, undefined, undefined, "step"]);
     expect(rateChangeText(0.105)).toBe("+10.5bp");
     expect(rateChangeText(-0.0004)).toBe("0.0bp");
-    expect(rateChangeText(null)).toBe("--");
+    expect(rateChangeText(null)).toBe(MISSING_VALUE);
   });
 
   test("moves priced by each meeting and at it alone, read the way the probabilities are", () => {

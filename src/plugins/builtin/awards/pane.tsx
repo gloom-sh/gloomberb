@@ -14,7 +14,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { withCountryFlag } from "../../../components/ui/country-flag";
 import { publicTickerKey } from "../../../utils/exchanges";
-import { truncateToDisplayWidth } from "../../../utils/format";
+import { MISSING_VALUE, truncateToDisplayWidth } from "../../../utils/format";
 import { wrapTextLines } from "../../../utils/text-wrap";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
@@ -60,7 +60,7 @@ const COLUMN = {
 const FEED_COLUMNS: DataTableColumn[] = [COLUMN.date, COLUMN.recipient, COLUMN.ticker, COLUMN.title, COLUMN.agency, COLUMN.currency,
   COLUMN.value, COLUMN.obligated, COLUMN.ceiling, COLUMN.country, COLUMN.period, COLUMN.dateBasis];
 /** Amounts a source never reports (UK and EU notices have no obligation or ceiling) leave a column of dashes. */
-const QUIET_AMOUNTS = { obligated: ["--"], ceiling: ["--"] } as const;
+const QUIET_AMOUNTS = { obligated: [MISSING_VALUE], ceiling: [MISSING_VALUE] } as const;
 const EVENT_COLUMNS: DataTableColumn[] = [COLUMN.date, COLUMN.recipient, COLUMN.ticker,
   { id: "ratio", label: "% revenue", width: 11, align: "right" }, COLUMN.currency, { ...COLUMN.value, label: "Compared value" },
   { id: "revenue", label: "Annual revenue", width: 14, align: "right" }, { id: "basis", label: "Value basis", width: 13, align: "left" },
@@ -219,7 +219,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
     view={tab === "sectors" ? { value: leaderView, options: [{ value: "companies", label: "Companies" }, { value: "sectors", label: "Sectors" }], onChange: setLeaderView } : undefined} />;
   const columns = showLeaders ? LEADER_COLUMNS.filter((column) => column.id !== "scope" && column.id !== "currency")
     : aggregated ? AGG_COLUMNS.filter((column) => column.id !== "scope" && column.id !== "currency").map((column) => column.id === "label" ? { ...column, label: tab === "agencies" ? "Agency" : "Sector" } : column)
-    : tab === "events" ? EVENT_COLUMNS : withoutQuietColumns(FEED_COLUMNS, rows, (row, id) => (id === "obligated" ? row.obligatedAmount : row.ceilingAmount) ?? "--", QUIET_AMOUNTS);
+    : tab === "events" ? EVENT_COLUMNS : withoutQuietColumns(FEED_COLUMNS, rows, (row, id) => (id === "obligated" ? row.obligatedAmount : row.ceilingAmount) ?? MISSING_VALUE, QUIET_AMOUNTS);
   const maxShare = Math.max(0, ...items.map((item) => item.kind === "aggregate" || item.kind === "leader" ? item.row.sharePercent ?? 0 : 0));
   // A preview's cohorts are the latest of any company, so they never chart as the ticker's.
   const charted = data?.locked ? [] : series;
@@ -285,7 +285,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
             if (column.id === "ratio") return { text: awardPercent(award), value: award.revenueComparison?.percent ?? null, color: colors.warning, attributes: TextAttributes.BOLD, keepColorWhenSelected: true };
             if (column.id === "revenue") return { text: money(award.revenueComparison?.annualRevenue), value: award.revenueComparison?.annualRevenue ?? null };
             if (column.id === "basis") return { text: award.revenueComparison?.basis === "obligated" ? "Obligated" : "Award value", color: colors.textDim };
-            return { text: award.revenueComparison?.periodEnd ?? "--", color: colors.textDim };
+            return { text: award.revenueComparison?.periodEnd ?? MISSING_VALUE, color: colors.textDim };
           }}
           emptyStateTitle={tab === "company" && !ticker ? "Enter a company ticker." : tab === "events" ? "No revenue-comparable awards in this scope." : "No awards match these filters."}
           rootAfter={attribution ? <Box paddingX={1} height={attributionRows} flexShrink={0}><Notice tone="muted">{attribution}</Notice></Box> : undefined}

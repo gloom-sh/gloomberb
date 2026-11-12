@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { ScannerFlowEvent, ScannerFlowHistoryQuery, ScannerStatus } from "../../../api-client";
 
 export type FlowMinPremium = "50000" | "250000" | "1000000";
@@ -177,11 +178,11 @@ export function formatFlowType(event: ScannerFlowEvent): string {
 }
 
 export function formatFlowSide(side: ScannerFlowEvent["side"]): string {
-  return side === "unknown" ? "—" : side;
+  return side === "unknown" ? MISSING_VALUE : side;
 }
 
 export function formatFlowVolOi(volOi: number | null | undefined): string {
-  if (typeof volOi !== "number" || !Number.isFinite(volOi)) return "—";
+  if (typeof volOi !== "number" || !Number.isFinite(volOi)) return MISSING_VALUE;
   return volOi >= 10 ? `${Math.round(volOi)}x` : `${volOi.toFixed(1)}x`;
 }
 

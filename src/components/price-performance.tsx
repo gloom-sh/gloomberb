@@ -1,13 +1,13 @@
 import { Box, Text, useUiCapabilities } from "../ui";
 import { colors, priceColor } from "../theme/colors";
-import { displayWidth, formatPercent } from "../utils/format";
+import { MISSING_VALUE, displayWidth, formatPercent } from "../utils/format";
 import type { PriceReturnField } from "../market-data/performance";
 
 /** Cells between one horizon's pair and the next. */
 const PAIR_GAP = 3;
 
 function formatReturnValue(value: number | null): string {
-  return value == null ? "-" : formatPercent(value);
+  return value == null ? MISSING_VALUE : formatPercent(value);
 }
 
 function returnValueColor(value: number | null): string {

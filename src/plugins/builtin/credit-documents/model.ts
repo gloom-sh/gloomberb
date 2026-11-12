@@ -3,7 +3,7 @@ import type { DataTableColumn, StatItem } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
 import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import type { ResolvedSeries } from "../../../time-series/types";
-import { displayWidth } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth } from "../../../utils/format";
 
 export const CREDIT_TABS = [{ value: "capital", label: "Capital" }, { value: "covenants", label: "Covenants" }, { value: "maturities", label: "Maturities" }, { value: "screen", label: "Screen" }] as const;
 export type CreditTab = typeof CREDIT_TABS[number]["value"];
@@ -11,7 +11,7 @@ export const creditTab = (value: unknown): CreditTab => CREDIT_TABS.find((tab) =
 /** `maintenance_covenant` and `adjustmentReason` both read as words. */
 export const fieldLabel = (field: string) => field.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, (_, a: string, b: string) => `${a} ${b.toLowerCase()}`).replace(/^./, (value) => value.toUpperCase());
 /** The one placeholder for a value the documents do not support. */
-export const NO_VALUE = "--";
+export const NO_VALUE = MISSING_VALUE;
 export const sentence = (value: string) => value.replace(/^./, (first) => first.toUpperCase());
 export const creditAmount = (value: number | null | undefined): string => value == null ? NO_VALUE : new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 }).format(value);
 export const creditPercent = (value: number | null | undefined): string => value == null ? NO_VALUE : `${value.toFixed(1)}%`;

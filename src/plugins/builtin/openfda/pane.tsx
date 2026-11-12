@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import {
   DataTableStackView,
@@ -72,9 +73,9 @@ const EMPTY_FILTERS: FilterState = {};
 const MAX_FILL_PAGES = 4;
 
 /** Products FDA's product data does not cover (most vaccines) have no labeler on any row. */
-const QUIET_COLUMNS = { labeler: ["-"] } as const;
+const QUIET_COLUMNS = { labeler: [MISSING_VALUE] } as const;
 
-const formatDate = (date: Date | null): string => (date ? date.toISOString().slice(0, 10) : "-");
+const formatDate = (date: Date | null): string => (date ? date.toISOString().slice(0, 10) : MISSING_VALUE);
 
 const capitalize = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 
@@ -95,7 +96,7 @@ function labelerText(record: DrugReport): string | null {
 }
 
 function cellFor(record: OpenFdaRecord, column: ColumnId, colors: ThemeColors): DataTableCell {
-  const missing: DataTableCell = { text: "-", color: colors.textMuted };
+  const missing: DataTableCell = { text: MISSING_VALUE, color: colors.textMuted };
   const toned = (text: string | null): DataTableCell => (text
     ? { text, color: toneColor(recordTone(column, text), colors) }
     : missing);

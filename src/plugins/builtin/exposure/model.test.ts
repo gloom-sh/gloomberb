@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import type { ExposurePayload, ExposureScenario } from "../../../api-client/exposure";
 import { exposureCellText, hopsText, parseCustomScenario, parseHoldings, pathRows, periodText, portfolioRows, tableRows } from "./model";
@@ -98,6 +99,6 @@ test("a quarter key reads as the month it ends in, a date or the source's own wo
   expect(periodText("Q2 FY27")).toBe("Q2 FY27");
   const row = tableRows(payload()).find(item => item.period)!;
   expect(exposureCellText({ ...row, period: "quarter:2026-07-31" }, "period")).toBe("Jul 2026");
-  expect(exposureCellText({ ...row, period: null }, "period")).toBe("--");
+  expect(exposureCellText({ ...row, period: null }, "period")).toBe(MISSING_VALUE);
   expect([1, 2, 4].map(hopsText)).toEqual(["1 hop", "2 hops", "4 hops"]);
 });

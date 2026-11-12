@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { splitDelayedStatus, DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneFooter, usePaneMenuItems,
   usePaneNoticeFooter, usePaneTabs, usePaneTicker, type DataTableColumn, type DataTableKeyEvent, type StatItem } from "../../../components";
@@ -69,8 +70,8 @@ export function dvolStats(dvol: DvolPayload | null | undefined, atm: number | nu
   return [
     { id: "dvol", label: "DVOL", value: latest.value.toFixed(2), detail: `${latest.at.slice(11, 16)} UTC`,
       detailVariants: [`${latest.at.slice(11, 16)} UTC`, ""] },
-    { id: "dvol-change", label: "DVOL 1D", value: change == null ? "--" : signed(change), detail: "vol pts" },
-    { id: "atm30", label: "30D ATM", value: atmPoints == null ? "--" : atmPoints.toFixed(2),
+    { id: "dvol-change", label: "DVOL 1D", value: change == null ? MISSING_VALUE : signed(change), detail: "vol pts" },
+    { id: "atm30", label: "30D ATM", value: atmPoints == null ? MISSING_VALUE : atmPoints.toFixed(2),
       ...(gap == null ? {} : { detail: `${signed(gap)} vs DVOL`, detailVariants: [`${signed(gap)} vs DVOL`, ""] }) },
   ];
 }
@@ -433,9 +434,9 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   // The cell under the cursor on the views that have one: the quoted contract it came from, or the fitted value.
   const selectionStatus = !snapshot || !["surface", "table", "smile"].includes(activeTab) ? null
     : selectedCell?.point
-      ? `nearest ${selectedCell.point.contract.contractSymbol} · mid ${formatPrice(selectedCell.point.mid)} · spread ${formatPrice(selectedCell.point.spread)} · OI ${selectedCell.point.openInterest ?? "--"} · residual ${formatIv(selectedCell.fitResidual)}`
+      ? `nearest ${selectedCell.point.contract.contractSymbol} · mid ${formatPrice(selectedCell.point.mid)} · spread ${formatPrice(selectedCell.point.spread)} · OI ${selectedCell.point.openInterest ?? MISSING_VALUE} · residual ${formatIv(selectedCell.fitResidual)}`
       : selectedCell?.volatility != null
-        ? `${selectedRow?.label} · K ${selectedCell.strike == null ? "--" : formatStrikeLabel(selectedCell.strike)} · fitted IV ${formatIv(selectedCell.volatility)}`
+        ? `${selectedRow?.label} · K ${selectedCell.strike == null ? MISSING_VALUE : formatStrikeLabel(selectedCell.strike)} · fitted IV ${formatIv(selectedCell.volatility)}`
         : "no clean quote at this cell";
   usePaneNoticeFooter({ registrationId: "ovdv-notices", notices: [...new Set(notices)], focused });
   const savedAts = [snapshot && !snapshot.stored ? snapshot.savedAt : undefined, ivStats.length && coin ? dvol.data?.savedAt : undefined]
@@ -591,7 +592,7 @@ function fitMetaParts(parts: ReadonlyArray<string | null | undefined>, room: num
   return text;
 }
 
-const wholeNumber = (value: number | null) => value == null ? "--" : String(Math.round(value));
+const wholeNumber = (value: number | null) => value == null ? MISSING_VALUE : String(Math.round(value));
 /** Whether a settled live chain produced any clean quote, with the filter counts that explain why not. */
 function liveQuoteCoverage(snapshot: SurfaceSnapshot | null | undefined) {
   const expiries = snapshot?.expiries.filter((entry) => entry.state !== "loading") ?? [];
@@ -626,8 +627,8 @@ function ExpiryTable({ snapshot, selected, onSelect, forwards, width, height, fo
   };
   const missing = (entry: SurfaceExpiry, id: string) => {
     const { skew, forward } = rowsByExpiry.get(entry.expiration)!;
-    if (forwards) return id === "2" && forward.dividendYieldHidden ? HIDDEN_YIELD_TEXT : "--";
-    return (id === "2" || id === "3" ? skew.gap : id === "4" ? skew.moneynessGap : id === "5" && skew.termSlopeHidden ? HIDDEN_SLOPE_TEXT : null) ?? "--";
+    if (forwards) return id === "2" && forward.dividendYieldHidden ? HIDDEN_YIELD_TEXT : MISSING_VALUE;
+    return (id === "2" || id === "3" ? skew.gap : id === "4" ? skew.moneynessGap : id === "5" && skew.termSlopeHidden ? HIDDEN_SLOPE_TEXT : null) ?? MISSING_VALUE;
   };
   const rows = [...snapshot.expiries].sort((a, b) => {
     const x = value(a, sort.columnId), y = value(b, sort.columnId);

@@ -9,7 +9,7 @@ import {
 import { quoteExportFeed, quoteExportUnit, quoteSourceName, type BrokerNameOf } from "../../../../market-data/quotes/export-identity";
 import { isYieldIndexSymbol } from "../../../../tickers/index-roots";
 import { toBasisPoints } from "../../../../utils/basis-points";
-import { formatPercentRaw } from "../../../../utils/format";
+import { MISSING_VALUE, formatPercentRaw } from "../../../../utils/format";
 import { parsePublicTickerKey } from "../../../../utils/exchanges";
 import { quoteFreshnessFields } from "../../shared/report-freshness";
 
@@ -20,7 +20,7 @@ import { quoteFreshnessFields } from "../../shared/report-freshness";
 
 /** A price or move in the row's own currency, as the cards draw it. */
 function quoteAmount(value: unknown, row: Record<string, unknown>, signed = false): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  if (typeof value !== "number" || !Number.isFinite(value)) return MISSING_VALUE;
   const currency = typeof row.currency === "string" && row.currency.trim() ? row.currency : undefined;
   const base: MarketFormatOptions = { assetCategory: typeof row.instrumentType === "string" ? row.instrumentType : undefined,
     priceBasis: row.priceBasis === "per-unit" || row.priceBasis === "percent-of-par" ? row.priceBasis : undefined };
@@ -33,7 +33,7 @@ function quoteAmount(value: unknown, row: Record<string, unknown>, signed = fals
   const amount = currency
     ? formatMarketPriceWithCurrency(value, currency, options)
     : formatMarketPrice(value, options);
-  return amount === "—" ? amount : `${signed && value >= 0 ? "+" : ""}${amount}`;
+  return amount === MISSING_VALUE ? amount : `${signed && value >= 0 ? "+" : ""}${amount}`;
 }
 
 function percentCell(value: unknown): string {
@@ -74,7 +74,7 @@ function extendedSessionColumn(session: ExtendedSession): HeadlessPaneColumn {
     key: "extendedPrice", header: EXTENDED_SESSION_LABELS[session], align: "right",
     format: (value, row) => row.extendedSession === session
       ? `${quoteAmount(value, row)} ${percentCell(row.extendedChangePercent)}`
-      : "—",
+      : MISSING_VALUE,
   };
 }
 

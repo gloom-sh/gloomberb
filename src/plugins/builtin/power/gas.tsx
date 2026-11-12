@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useMemo } from "react";
 import type { GasStorageRow } from "../../../api-client/europe-energy";
@@ -72,7 +73,7 @@ function GasDetail({ row, width, height, focused }: { row: GasStorageRow; width:
     { id: "change", label: "1D pp", value: formatGasPoints(row.change), ...(row.previousGasDay ? { detail: `vs ${row.previousGasDay}` } : {}) },
     { id: "year", label: "1Y ago %", value: formatGasFull(row.yearAgo?.full), ...(row.yearAgo ? { detail: row.yearAgo.gasDay } : {}) },
     { id: "range", label: `${gasRangeLabel(five?.years.length ?? 0)} range %`,
-      value: five ? `${formatGasFull(five.min)} to ${formatGasFull(five.max)}` : "--",
+      value: five ? `${formatGasFull(five.min)} to ${formatGasFull(five.max)}` : MISSING_VALUE,
       ...(five ? { detail: `avg ${formatGasFull(five.average)}${five.years.length < 5 ? `, ${five.years.length} of 5 years` : ""}` } : {}) },
   ];
   return <StatChartDetail items={items} width={width} height={height} empty={!history.loading && (series[0]?.points.length ?? 0) < 2}

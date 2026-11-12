@@ -2,11 +2,11 @@ import type { IpoDeal, IpoRegion, IpoSourceHealth, IpoStatus } from "../../../ap
 import type { DataTableColumn } from "../../../components";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { publicTickerKey } from "../../../utils/exchanges";
-import { displayWidth, formatCompact } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatCompact } from "../../../utils/format";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
 
 export const IPO_CALENDAR_PANE_ID = "ipo-calendar";
-export const MISSING = "—";
+export const MISSING = MISSING_VALUE;
 
 export type IpoTab = "all" | Exclude<IpoRegion, "other">;
 

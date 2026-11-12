@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../utils/format";
 import { useMemo, useState, type ReactNode } from "react";
 import { useThemeColors } from "../../theme/theme-context";
 import type { PricePoint } from "../../types/financials";
@@ -177,10 +178,10 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     if (column.id === "value") return { text: row.valueText, color: muted };
     if (column.id === "change") return { text: row.changeText,
       color: signedChange ? signedMoveColor(row.change, row.adverseMove, colors) : colors.textMuted };
-    if (column.id === "changeAsOf") return { text: row.changeAsOf ?? "--", color: colors.textDim };
-    if (column.id === "percentile") return { text: row.percentileText ?? row.percentile?.toFixed(0) ?? "--", color: row.percentile != null && (row.percentile <= 10 || row.percentile >= 90) ? colors.warning : colors.textMuted };
+    if (column.id === "changeAsOf") return { text: row.changeAsOf ?? MISSING_VALUE, color: colors.textDim };
+    if (column.id === "percentile") return { text: row.percentileText ?? row.percentile?.toFixed(0) ?? MISSING_VALUE, color: row.percentile != null && (row.percentile <= 10 || row.percentile >= 90) ? colors.warning : colors.textMuted };
     if (column.id === "history") return { text: "", content: <PriceSparkline priceHistory={row.history} width={column.width} period="1Y" trend="neutral" /> };
-    const asOf = row.asOfText ?? row.asOf ?? "--";
+    const asOf = row.asOfText ?? row.asOf ?? MISSING_VALUE;
     const asOfText = shortAsOf ? shortIsoDate(asOf) : asOf;
     // A narrow board drops the year; the export keeps the full date. The word
     // stays with the color, so a stale row is not color alone.

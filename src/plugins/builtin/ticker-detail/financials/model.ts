@@ -5,6 +5,7 @@ import { areNearbyFinancialPeriodEnds, fillDate, fillDateText, statementPeriodMo
 import { formatPerShareNumber } from "../../../../utils/reported-money";
 import { hasNonIncomeStatementGap } from "../../../../utils/statement-gaps";
 import {
+  MISSING_VALUE,
   displayWidth,
   formatGrowthShort,
   formatNumber,
@@ -238,7 +239,7 @@ export function formatFinancialValue(
 ): string {
   // EBITDA is operating income plus D&A: a period that reports no D&A has none, and its cell says why.
   if ((value == null || !Number.isFinite(value)) && row.key === "ebitda" && ebitdaLacksDepreciation(statement)) return "no D&A";
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   if (row.format === "eps") return formatPerShareNumber(value);
   if (row.format === "percent") return `${formatNumber(value * 100, 1)}%`;
   return formatWithDivisor(value, row.divisor);

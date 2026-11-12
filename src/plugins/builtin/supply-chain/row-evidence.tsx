@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useRef } from "react";
 import type { SupplyRow } from "../../../api-client/supply-chain";
 import { Badge, Button, DetailScrollBody, ExternalLink, KeyValueRow, Prose, Section, StatGrid, type StatItem } from "../../../components";
@@ -47,7 +48,7 @@ export function SupplySources({ row, width, onOpenSource }: { row: SupplyRow; wi
         {canShowQuote(item) && item.englishGloss ? <SourceGloss text={item.englishGloss} width={width} /> : null}
         {sourceLink(item.url, "Open source")}
       </Section>) : <>
-      <KeyValueRow label="Disclosure" value={`${sourceLabel(row)} · filed ${row.filedDate ?? "--"}`} labelWidth={20} />
+      <KeyValueRow label="Disclosure" value={`${sourceLabel(row)} · filed ${row.filedDate ?? MISSING_VALUE}`} labelWidth={20} />
       {row.quoteMatchMode ? <KeyValueRow label="Evidence match" value={row.quoteMatchMode === "exact" ? "Exact text" : row.quoteMatchMode === "whitespace" ? "Whitespace normalized" : "Unicode and whitespace normalized"} labelWidth={20} /> : null}
       <DisclosureQuote role={row.role} quote={disclosureText(row)} quoteLanguage={row.quoteLanguage} width={width} label={isTaggedFact(row) ? "Tagged in the filing" : undefined} />
       {row.quoteGloss ? <SourceGloss text={row.quoteGloss} width={width} /> : null}

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../utils/format";
 import { expect, setSystemTime, test } from "bun:test";
 import type { FuturesContractTermsPayload } from "../api-client/futures-curve";
 import {
@@ -58,7 +59,7 @@ test("a short block drops the least useful lines first and keeps its order", () 
 test("Settle is the confirmed settlement dated by its session, -- without one, at the contract's precision with or without a quote", () => {
   const quote = { currency: "USD", instrumentType: "FUTURE" };
   expect(futuresSettleText(gold, quote)).toBe("$4,216.30 (2026-10-09)");
-  expect(futuresSettleText({ settlement: null }, quote)).toBe("--");
+  expect(futuresSettleText({ settlement: null }, quote)).toBe(MISSING_VALUE);
   expect(futuresSettleText({ settlement: { price: 479.75, date: "2026-10-09" } }, { ...quote, currency: "USX" })).toBe("479.75¢ (2026-10-09)");
   // No quote yet: the tick's decimals survive and no currency is guessed.
   expect(futuresSettleText({ settlement: { price: 3.2952, date: "2026-10-09" } }, undefined)).toBe("3.2952 (2026-10-09)");
@@ -68,11 +69,11 @@ test("Settle is the confirmed settlement dated by its session, -- without one, a
   expect(futuresSettleText({ ...yen, settlement: { price: 0.006354, date: "2026-11-05" } }, quote)).toBe("$0.0063540 (2026-11-05)");
   expect(futuresSettleText({ settlement: { price: 0.686, date: "2026-11-05" }, spec: { tick: 0.00005 } }, quote)).toBe("$0.68600 (2026-11-05)");
   // Beside a move from a later session than the settlement's it waits for that session's, never an older one in its place.
-  expect(futuresSettleText(gold, quote, "2026-10-12")).toBe("-- (2026-10-12 not confirmed yet)");
+  expect(futuresSettleText(gold, quote, "2026-10-12")).toBe(`${MISSING_VALUE} (2026-10-12 not confirmed yet)`);
   expect(futuresSettleText(gold, quote, "2026-10-09")).toBe("$4,216.30 (2026-10-09)");
   // A settlement of the move's own session, newer than the close it is from, is the latest and stays.
   expect(futuresSettleText(gold, quote, "2026-10-08")).toBe("$4,216.30 (2026-10-09)");
-  expect(futuresSettleText({ settlement: null }, quote, "2026-10-12")).toBe("--");
+  expect(futuresSettleText({ settlement: null }, quote, "2026-10-12")).toBe(MISSING_VALUE);
 });
 
 test("a price in cents and every energy price say what they are per; any other dollar price reads as before", () => {

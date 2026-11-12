@@ -9,7 +9,7 @@ import type { TickerFinancials } from "../../../../types/financials";
 import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import type { BrokerAccount, BrokerCashBalance } from "../../../../types/trading";
 import { formatClockTime, formatShortDate } from "../../../../utils/datetime-format";
-import { displayWidth, formatPercentRaw } from "../../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatPercentRaw } from "../../../../utils/format";
 import { getBrokerInstance } from "../../../../utils/broker-instances";
 import {
   resolvePortfolioAccountMetrics,
@@ -495,7 +495,7 @@ export function buildPortfolioFooterSegments({
     ? "Refreshing..."
     : lastRefreshTimestamp != null
       ? formatClockTime(lastRefreshTimestamp)
-      : "-";
+      : MISSING_VALUE;
   return [...accountStatus, { id: "refresh", parts: [{ text: refreshText, tone: "muted" }] }];
 }
 

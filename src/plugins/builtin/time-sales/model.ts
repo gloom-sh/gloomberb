@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { sampleStatistics } from "../../../components/chart/curve/model";
 import type { TapeQuote, TapeSnapshot, TapeTrade } from "../../../api-client/tape";
 
@@ -6,14 +7,14 @@ export function tapeTimeKey(value: string): string {
   const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?Z$/.exec(value);
   return match ? `${match[1]}.${(match[2] ?? "").padEnd(9, "0")}Z` : value;
 }
-export const tapeTime = (value: string | null) => value ? value.replace("T", " ").replace(/Z$/, "") : "--";
+export const tapeTime = (value: string | null) => value ? value.replace("T", " ").replace(/Z$/, "") : MISSING_VALUE;
 /** Footer and session stamps read to the second; row detail keeps the exact SIP nanoseconds. */
 const tapeTimeSeconds = (value: string | null) => tapeTime(value).replace(/\.\d+$/, "");
 export const tapeClock = (value: string) => value.slice(11).replace(/Z$/, "");
 /** Tape rows read at millisecond precision; the row detail keeps the exact SIP nanoseconds. */
 export const tapeClockMs = (value: string) => tapeClock(value).replace(/(\.\d{3})\d+$/, "$1");
 /** Fixed decimals keep a column aligned: pass one digit count for the prices shown together. */
-export const tapePrice = (value: number | null, digits?: number) => value == null ? "--"
+export const tapePrice = (value: number | null, digits?: number) => value == null ? MISSING_VALUE
   : value.toLocaleString("en-US", { minimumFractionDigits: digits ?? 2, maximumFractionDigits: digits ?? 4 });
 const subPenny = (price: number | null) => price != null && Math.abs(price * 100 - Math.round(price * 100)) > 1e-6;
 /** Two decimals, or four for a name below $1 (its SIP tick is $0.0001) or once any print in view is sub-penny. */
@@ -85,7 +86,7 @@ export function tapeClockNewYork(value: string): string {
 }
 /** A footer stamp on New York time: "28 Sep 19:59:54 ET". */
 export function tapeStampNewYork(value: string | null): string {
-  if (!value) return "--";
+  if (!value) return MISSING_VALUE;
   const date = toMs(value);
   return Number.isNaN(date.getTime()) ? tapeTimeSeconds(value) : `${NEW_YORK_DAY.format(date)} ${NEW_YORK_CLOCK.format(date)} ET`;
 }

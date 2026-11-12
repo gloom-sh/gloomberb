@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { DataTableColumn } from "../../../components";
 import { fitChartTableColumns } from "../../../components/chart-table";
 import { getTableWidth } from "../../../components/ui/table-layout";
@@ -132,7 +133,7 @@ export function formatEtDate(utcMs: number): string {
 }
 
 export function formatEtTime(utcMs: number | null): string {
-  return utcMs == null ? "—" : formatEtClock(utcMs);
+  return utcMs == null ? MISSING_VALUE : formatEtClock(utcMs);
 }
 
 /**
@@ -141,7 +142,7 @@ export function formatEtTime(utcMs: number | null): string {
  * reopened before it stopped.
  */
 export function formatEtResumption(utcMs: number | null, haltedAt: number): string {
-  if (utcMs == null) return "—";
+  if (utcMs == null) return MISSING_VALUE;
   const sameDay = formatEtDate(utcMs) === formatEtDate(haltedAt);
   return sameDay ? formatEtClock(utcMs) : `${formatEtDate(utcMs).slice(0, 5)} ${formatEtClock(utcMs).slice(0, 5)}`;
 }

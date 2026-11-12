@@ -4,7 +4,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { useShortcut } from "../../../react/input";
 import { DataTableView } from "../../data-table/view";
 import { EmptyState } from "../../ui";
-import { displayWidth, formatPercentileRank, truncateToDisplayWidth } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatPercentileRank, truncateToDisplayWidth } from "../../../utils/format";
 import { CompositeChart } from "../composite/composite-chart";
 import type { CompositeAxisValueFormatter } from "../composite/format";
 import {
@@ -198,7 +198,7 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
     formatCursor: (ratio: number) => nearestRow(ratio)?.label ?? "",
   }), [chart, nearestRow, plotWidth]);
   const rowAsOf = useCallback((row: CurveTableRow) => (
-    (primary && row.points[primary.id]?.asOf) ?? primary?.asOf ?? "--"
+    (primary && row.points[primary.id]?.asOf) ?? primary?.asOf ?? MISSING_VALUE
   ), [primary]);
   // One shared date is already in the legend or the pane footer; a column
   // repeating it on every row only earns its width when the rows differ.
@@ -213,13 +213,13 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
     if (column.id === "label") return { text: row.label };
     if (column.id === "asOf") return { text: rowAsOf(row), color: colors.textMuted };
     const point = row.points[column.id];
-    return { text: point?.value != null && Number.isFinite(point.value) ? formatValue(point.value) : "--" };
+    return { text: point?.value != null && Number.isFinite(point.value) ? formatValue(point.value) : MISSING_VALUE };
   }, [colors.textMuted, formatValue, rowAsOf]);
   const readout = useMemo(() => {
     if (!cursorRow) return [];
     const value = primary ? cursorRow.points[primary.id]?.value : null;
     const change = formatChange ?? ((delta: number) => `${delta > 0 ? "+" : delta < 0 ? "-" : ""}${formatValue(Math.abs(delta))}`);
-    const parts = [{ label: cursorRow.label, value: value == null || !Number.isFinite(value) ? "--" : formatValue(value) }];
+    const parts = [{ label: cursorRow.label, value: value == null || !Number.isFinite(value) ? MISSING_VALUE : formatValue(value) }];
     // Look-backs read as how far the curve moved since; a flat reference is
     // the same everywhere, so it is drawn and named but never read out.
     for (const entry of series) {
@@ -259,7 +259,7 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
           : <Text key={entry.id} fg={entry.color}>{entry.text}</Text>)}
     </Box>) : null}
     {slopeHeight && slope ? <Box height={1} paddingX={1} flexShrink={0}>
-      <Text fg={colors.text}>{slope.label} {slope.value == null ? "--" : (slope.formatValue ?? formatValue)(slope.value)}
+      <Text fg={colors.text}>{slope.label} {slope.value == null ? MISSING_VALUE : (slope.formatValue ?? formatValue)(slope.value)}
         {` · ${formatPercentileRank(slope.percentile, slope.window)}`}
         {slope.asOf ? ` · ${sourceTime(slope.asOf)}` : ""}</Text>
     </Box> : null}

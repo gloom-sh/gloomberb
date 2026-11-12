@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
 import type { CloudCdsHistoryPointPayload, CloudCdsTradePayload } from "../../../api-client";
 import {
@@ -134,7 +135,7 @@ describe("normalizeCdsTrades", () => {
   test("marks capped notionals so a floor is not read as the trade size", () => {
     expect(formatNotional({ notional: 5_000_000, notionalCapped: true })).toBe("5M+");
     expect(formatNotional({ notional: 5_000_000, notionalCapped: false })).toBe("5M");
-    expect(formatNotional({ notional: null, notionalCapped: false })).toBe("--");
+    expect(formatNotional({ notional: null, notionalCapped: false })).toBe(MISSING_VALUE);
   });
 });
 
@@ -427,7 +428,7 @@ describe("5Y spread chart", () => {
       { id: "1m", label: "1M", value: "+36.1 pts" },
       { id: "range", label: "Range", value: "21.6 to 57.6 pts", detail: "since 2026-09-15" },
     ]);
-    expect([formatPoints(58.2), formatPointsMove(-0.04), formatPointsMove(null)]).toEqual(["58.2 pts", "0.0 pts", "--"]);
+    expect([formatPoints(58.2), formatPointsMove(-0.04), formatPointsMove(null)]).toEqual(["58.2 pts", "0.0 pts", MISSING_VALUE]);
   });
 
   test("says why there is no level only for the cause the server names", () => {

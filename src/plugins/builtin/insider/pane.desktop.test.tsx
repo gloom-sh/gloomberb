@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 /** @jsxImportSource react */
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { tmpdir } from "node:os";
@@ -411,7 +412,7 @@ async function checkColumns() {
   const column = (label: string) => headers().findIndex((header) => header.textContent?.toUpperCase().includes(label));
   const text = (ticker: string, label: string) => cells(ticker)[column(label)]!.textContent;
   expect(["ROLE", "NTH", "VS USUAL", "STAKE"].map((label) => text("NWBI", label))).toEqual(["Director +2", "2nd", "3.1x", "+58%"]);
-  expect(["ROLE", "NTH", "VS USUAL", "STAKE"].map((label) => text("CTSO", label))).toEqual(["Director", "1st", "--", "NEW"]);
+  expect(["ROLE", "NTH", "VS USUAL", "STAKE"].map((label) => text("CTSO", label))).toEqual(["Director", "1st", MISSING_VALUE, "NEW"]);
   // The figure and its mark are two runs: the mark in the muted tone, never the figure's.
   const both = cells("WWIM")[column("STAKE")]!;
   const runs = [...both.querySelectorAll("span")].filter((span) => span.children.length === 0 && span.textContent?.trim());

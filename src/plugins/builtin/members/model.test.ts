@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import { fitTableCellText, getTableWidth, tableColumnWidth } from "../../../components/ui/table-layout";
 import { changeColumns, changeReason, holdingsBasisText, memberColumns, memberRows, membersFeed, percent, sortMembers, stockFundAsOf, stockFundColumns } from "./model";
@@ -57,7 +58,7 @@ test("a Pro account's members are live only while the regular session trades, an
 });
 
 test("a move that rounds to zero prints unsigned, as every other change cell does", () => {
-  expect([1.234, -0.27, 0.004, -0.004, 0, null].map((value) => percent(value))).toEqual(["+1.23%", "-0.27%", "0.00%", "0.00%", "0.00%", "--"]);
+  expect([1.234, -0.27, 0.004, -0.004, 0, null].map((value) => percent(value))).toEqual(["+1.23%", "-0.27%", "0.00%", "0.00%", "0.00%", MISSING_VALUE]);
   expect(percent(-0.0004, "", 3)).toBe("0.000");
   expect(percent(0.0004, " pp", 3)).toBe("0.000 pp");
 });

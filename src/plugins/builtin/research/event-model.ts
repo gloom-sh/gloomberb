@@ -7,6 +7,7 @@ import type {
   TickerFinancials,
 } from "../../../types/financials";
 import {
+  MISSING_VALUE,
   formatDistributionAmount,
   formatCompact,
   formatNumber,
@@ -95,7 +96,7 @@ function formatPeriod(period: string): string {
     .replace(/\bcurrent\b/g, "cur")
     .replace(/\bquarter\b/g, "qtr")
     .replace(/\byear\b/g, "yr")
-    || "-";
+    || MISSING_VALUE;
 }
 
 function isFiscalEstimatePeriod(period: string): boolean {
@@ -175,7 +176,7 @@ function estimateTone(pair: EstimatePair): EventRow["tone"] {
 
 function estimateValue(pair: EstimatePair): string {
   const growth = pair.eps?.growth ?? pair.revenue?.growth;
-  return growth == null ? "-" : formatPercent(growth);
+  return growth == null ? MISSING_VALUE : formatPercent(growth);
 }
 
 /**
@@ -245,7 +246,7 @@ function ttmRow(
     epsBasis: eps == null ? undefined : "GAAP",
     annualEps: eps,
     annualRevenue: ttm.totalRevenue,
-    value: "-",
+    value: MISSING_VALUE,
     tone: "muted",
   };
 }
@@ -361,7 +362,7 @@ export function buildEventRows(
       dateType: earning.dateType,
       status: "Earnings",
       // The fiscal quarter, never the time of day ("After Hours"), which the row keeps as reportTime.
-      period: statement ? quarterLabel(statement.date) : earning.fiscalPeriod ? quarterLabel(earning.fiscalPeriod) : "-",
+      period: statement ? quarterLabel(statement.date) : earning.fiscalPeriod ? quarterLabel(earning.fiscalPeriod) : MISSING_VALUE,
       ...(earning.time?.trim() ? { reportTime: earning.time.trim() } : {}),
       detail: upcomingEarningsDetail(earning),
       epsCurrency: earning.currency ?? (earning.epsActual == null ? feedCurrency : reportedCurrency),
@@ -384,7 +385,7 @@ export function buildEventRows(
       periodDateSource: statement?.dateSource,
       providerPeriodDate: earning.dateType === "fiscal-period-end" ? earning.date : undefined,
       dateEvidence: statement?.dateEvidence,
-      value: surprisePercent != null ? formatPercentRaw(surprisePercent) : "-",
+      value: surprisePercent != null ? formatPercentRaw(surprisePercent) : MISSING_VALUE,
       tone: surprisePercent == null ? "muted" : surprisePercent >= 0 ? "positive" : "negative",
     });
   }
@@ -424,7 +425,7 @@ export function buildEventRows(
       id: `div:${dividend.exDate}`,
       date: dividend.exDate,
       status: "Dividend",
-      period: "-",
+      period: MISSING_VALUE,
       detail: "Ex-date",
       value: formatDistributionAmount(dividend.amount, data?.currency ?? currency),
       tone: "positive",
@@ -437,7 +438,7 @@ export function buildEventRows(
       id: `div-declared:${dividend.exDate}`,
       date: dividend.exDate,
       status: "Dividend",
-      period: "-",
+      period: MISSING_VALUE,
       // A one-off beside the regular payments says so: "Declared special, payable 2026-11-25".
       detail: `Declared${dividend.special ? " special" : ""}${dividend.payDate ? `, payable ${dividend.payDate}` : ""}`,
       value: formatDistributionAmount(dividend.amount, data?.currency ?? currency),
@@ -450,7 +451,7 @@ export function buildEventRows(
       id: `split:${split.date}:${split.description ?? ""}`,
       date: split.date,
       status: "Factor",
-      period: "-",
+      period: MISSING_VALUE,
       detail: "Split/adjustment",
       providerDescription: split.description,
       adjustmentFactor: split.fromFactor && split.toFactor ? split.toFactor / split.fromFactor : split.ratio,
@@ -550,7 +551,7 @@ function hasAnalystEstimates(data: AnalystResearchData): boolean {
 
 
 export function formatEventMetric(value: number | undefined, currency: string | undefined, kind: "eps" | "revenue"): string {
-  if (value == null || !Number.isFinite(value)) return "-";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const formatted = kind === "eps" ? formatNumber(value, 2) : formatCompact(value);
   return currency ? `${formatted} ${currency}` : formatted;
 }

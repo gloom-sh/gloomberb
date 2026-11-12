@@ -1,6 +1,6 @@
 import { formatShortDate } from "../../../utils/datetime-format";
 import type { EarningsTiming } from "../../../api-client/earnings";
-import { formatCompact, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -26,33 +26,33 @@ export function weekday(date: string): string {
 
 /** Fiscal quarter end month: "Sep '26". */
 export function fiscalMonth(period: string | null): string {
-  if (!period) return "--";
+  if (!period) return MISSING_VALUE;
   return `${MONTHS[Number(period.slice(5, 7)) - 1]} '${period.slice(2, 4)}`;
 }
 
 /** An implied move, priced in either direction: "±6.1%". */
 export function impliedText(move: number | null | undefined): string {
-  return move == null ? "--" : `±${(move * 100).toFixed(1)}%`;
+  return move == null ? MISSING_VALUE : `±${(move * 100).toFixed(1)}%`;
 }
 
 /** A size of move without a sign: "4.1%". */
 export function moveSize(move: number | null | undefined): string {
-  return move == null ? "--" : `${(Math.abs(move) * 100).toFixed(1)}%`;
+  return move == null ? MISSING_VALUE : `${(Math.abs(move) * 100).toFixed(1)}%`;
 }
 
 /** A signed move or surprise: "+3.2%", "-7.4%". */
 export function signedPercent(value: number | null | undefined): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   const shown = Number((value * 100).toFixed(1));
   return `${shown > 0 ? "+" : ""}${shown.toFixed(1)}%`;
 }
 
 export function epsText(value: number | null | undefined): string {
-  return value == null ? "--" : formatNumber(value, 2);
+  return value == null ? MISSING_VALUE : formatNumber(value, 2);
 }
 
 export function moneyText(value: number | null | undefined): string {
-  return value == null ? "--" : formatCompact(value, { fixedDecimals: true });
+  return value == null ? MISSING_VALUE : formatCompact(value, { fixedDecimals: true });
 }
 
 export { epsSurprise as surprise } from "../shared/earnings-report";

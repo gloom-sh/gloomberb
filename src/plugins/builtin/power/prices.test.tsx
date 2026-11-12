@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { DesktopPaneShotPayload } from "../../../cli/desktop-pane-shot";
 import type { ResolvedPaneFunction } from "../../../cli/pane-functions/resolver";
@@ -189,7 +190,7 @@ test("the gas board boards each area's storage by its gas day, charts the EU's y
   expect(frame).toContain("73.87");
   expect(frame).toContain("below");
   // An area without a reading is listed without figures, never as zero.
-  expect(frame).toMatch(/Sweden\s+--/);
+  expect(frame).toMatch(new RegExp(String.raw`Sweden\s+${MISSING_VALUE}`));
   expect(asked).toContain("/cloud/europe-energy/gas/EU/seasonal");
   // The legend reads the latest gas day across this year, last year and the range's average.
   const chart = await tui.waitForFrameToContain("5Y avg 88.8%");
@@ -223,7 +224,7 @@ test("EPWR GAS opens on the area it names; the report lists every area, or one a
     formatStatusLine(deriveHeadlessFreshness(powerPricesHeadless, result, Date.parse("2026-10-12T22:00:00Z")));
   const all = await loadPowerPricesReport("gas");
   expect(all.sections[0]!.rows?.map((row) => [row.area, row.full, row.status, row.range])).toEqual([
-    ["EU", 73.87, "estimated", "below"], ["Germany", 60.11, "confirmed", "below"], ["Sweden", null, null, "--"],
+    ["EU", 73.87, "estimated", "below"], ["Germany", 60.11, "confirmed", "below"], ["Sweden", null, null, MISSING_VALUE],
   ]);
   expect(line(all)).toBe("Source: GIE AGSI+ · EU gas day 2026-10-12 · lag 0 days");
   const germany = await loadPowerPricesReport("GAS DE");

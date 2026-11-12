@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { THEME_PERIODS, type ThemeAggregate, type ThemeMember, type ThemePeriod, type ThemeSummary } from "../../../api-client/themes";
 import type { DataTableColumn } from "../../../components";
 import { dropColumnsToFit, getTableWidth } from "../../../components/ui/table-layout";
@@ -30,7 +31,7 @@ export function periodLabel(period: ThemePeriod, ytdBase: string | null, room = 
 export interface ThemeSort { columnId: string; direction: SortDirection }
 export const DEFAULT_SORT: ThemeSort = { columnId: "changePercent", direction: "desc" };
 export function percent(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) return "--";
+  if (value === null || !Number.isFinite(value)) return MISSING_VALUE;
   const rounded = Number(value.toFixed(2));
   return `${rounded > 0 ? "+" : ""}${rounded.toFixed(2)}%`;
 }
@@ -43,7 +44,7 @@ export function aggregateText(metric: ThemeAggregate, breadth = false): string {
   const coverage = coverageText(metric);
   return `${value}${coverage ? ` ${coverage}` : ""}`;
 }
-export const memberPrice = (value: number | null) => value === null ? "--" : value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+export const memberPrice = (value: number | null) => value === null ? MISSING_VALUE : value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const coverageWidth = (metrics: readonly ThemeAggregate[]) => Math.max(0, ...metrics.map((metric) => coverageText(metric) ? coverageText(metric).length + 1 : 0));
 export function sortThemes(rows: readonly ThemeSummary[], sort: ThemeSort): ThemeSummary[] {
   const value = (row: ThemeSummary) => {

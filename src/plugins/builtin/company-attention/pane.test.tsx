@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { act, useReducer } from "react";
 import { afterEach, expect, test } from "bun:test";
 import { setCloudApiFetchTransport } from "../../../api-client";
@@ -39,7 +40,7 @@ test("evidence opens in the stack, keeps original title, and DES preserves the n
   const frame = await tui.waitForFrameToContain("Place");
   expect(frame).toContain("Paris");
   expect(frame).toContain("3 Oct 2026");
-  for (const field of ["Reporting ticker", "Revision", "Confidence", "Unknown", "--", "2026-10-03T"]) expect(frame).not.toContain(field);
+  for (const field of ["Reporting ticker", "Revision", "Confidence", "Unknown", MISSING_VALUE, "2026-10-03T"]) expect(frame).not.toContain(field);
   await tui.emitKeypress({ name: "escape" });
   await tui.waitForFrameToContain("SENIORITY");
   await tui.emitKeypress({ name: "d" });

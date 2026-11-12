@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import {
   LIVE_SCAN_INDEXES,
   LIVE_SCAN_WINDOWS,
@@ -205,7 +206,7 @@ export function conditionUnit(condition: LiveScanCondition): "percent" | "multip
 }
 
 export function formatMultiple(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "--";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   return value >= 10 ? `${Math.round(value)}x` : `${value.toFixed(1)}x`;
 }
 
@@ -221,7 +222,7 @@ export function warmingWindowsText(payload: LiveScanPayload | null): string {
 
 /** A time of day the scanner saw something, to the second. */
 export function formatScanTime(at: number | null | undefined): string {
-  if (at == null || !Number.isFinite(at)) return "--";
+  if (at == null || !Number.isFinite(at)) return MISSING_VALUE;
   const date = new Date(at);
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;

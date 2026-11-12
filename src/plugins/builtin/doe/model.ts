@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { DoeBoardPayload, DoeReport, DoeReportStatus, DoeSeriesRow, DoeTab, DoeUnit } from "../../../api-client/doe";
 import { spanAxisFormatter } from "../../../components/chart-table/axis";
 import type { ChartStripSpec } from "../../../components/chart-table/header";
@@ -74,33 +75,33 @@ function signed(value: number, decimals: number, suffix = ""): string {
 }
 
 export function formatDoeLevel(unit: DoeUnit, value: number | null): string {
-  return value == null ? "--" : grouped(doeDisplayValue(unit, value), DECIMALS[unit]);
+  return value == null ? MISSING_VALUE : grouped(doeDisplayValue(unit, value), DECIMALS[unit]);
 }
 
 export function formatDoeChange(unit: DoeUnit, value: number | null): string {
-  return value == null ? "--" : signed(doeDisplayValue(unit, value), DECIMALS[unit]);
+  return value == null ? MISSING_VALUE : signed(doeDisplayValue(unit, value), DECIMALS[unit]);
 }
 
 /** Against a year ago: a percentage, or points for a rate already in percent. */
 export function formatDoeVsYear(row: DoeSeriesRow): string {
   const ago = row.yearAgo;
-  if (!ago) return "--";
+  if (!ago) return MISSING_VALUE;
   if (row.unit === "pct") return signed(ago.change, 1, "pt");
-  return ago.changePercent == null ? "--" : signed(ago.changePercent, 1, "%");
+  return ago.changePercent == null ? MISSING_VALUE : signed(ago.changePercent, 1, "%");
 }
 
 /** Against the five-year average for the week, the same way. */
 export function formatDoeVsFive(row: DoeSeriesRow): string {
   const five = row.fiveYear;
-  if (!five) return "--";
+  if (!five) return MISSING_VALUE;
   if (row.unit === "pct") return signed(five.vsAverage, 1, "pt");
-  return five.vsAveragePercent == null ? "--" : signed(five.vsAveragePercent, 1, "%");
+  return five.vsAveragePercent == null ? MISSING_VALUE : signed(five.vsAveragePercent, 1, "%");
 }
 
 /** The figure a range bar stands for, for its export and its title. */
 export function formatDoePosition(row: DoeSeriesRow): string {
   const position = row.fiveYear?.position;
-  if (position == null) return "--";
+  if (position == null) return MISSING_VALUE;
   if (position < 0) return "below range";
   if (position > 100) return "above range";
   return `${Math.round(position)}%`;

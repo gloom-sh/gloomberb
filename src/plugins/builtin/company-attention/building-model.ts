@@ -1,7 +1,7 @@
 import { formatShortDate } from "../../../utils/datetime-format";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { HiringBuildingBoard, HiringBuildingFilter, HiringBuildingHold, HiringBuildingShift, HiringBuildingSkip, HiringCompanyBuilding, HiringMixRow, HiringMovePosting } from "../../../api-client/hiring";
-import { formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import { countOf, freePreviewNote, previewCantFilter } from "../shared/free-preview";
 import { humanLabel } from "../shared/research-cells";
 import type { AttentionRow } from "./model";
@@ -41,11 +41,11 @@ const kindText = (shift: Pick<HiringBuildingShift, "dimension">) => shift.dimens
 /** "12 Oct": a week's Monday. */
 function dayLabel(value: string | null | undefined, year = false): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? "");
-  return match ? formatShortDate(match[0], { year: year ? "numeric" : false, utc: true, fallback: "--" }) : "--";
+  return match ? formatShortDate(match[0], { year: year ? "numeric" : false, utc: true, fallback: MISSING_VALUE }) : MISSING_VALUE;
 }
-const count = (value: number | null | undefined) => value == null ? "--" : formatNumber(value, 0);
+const count = (value: number | null | undefined) => value == null ? MISSING_VALUE : formatNumber(value, 0);
 /** A share: whole percents from 10%, a tenth under it. */
-const share = (value: number | null | undefined) => value == null ? "--" : value <= 0 ? "0%" : `${formatNumber(value * 100, value < 0.1 ? 1 : 0)}%`;
+const share = (value: number | null | undefined) => value == null ? MISSING_VALUE : value <= 0 ? "0%" : `${formatNumber(value * 100, value < 0.1 ? 1 : 0)}%`;
 /** A change of share in points, as it rounds: "+23 pts", "+5.2 pts", "0 pts". */
 const pointsRounded = (value: number) => Number((value * 100).toFixed(Math.abs(value) < 0.1 ? 1 : 0));
 const points = (value: number) => {
@@ -161,7 +161,7 @@ const postingRow = (shift: HiringBuildingShift) => (posting: HiringMovePosting):
   id: `${shift.dimension}:${shift.key}:${posting.id}`, url: posting.url, jobPosting: posting, shift,
   values: { title: posting.title.trim(), location: posting.location ?? posting.country, country: posting.country, shift: `${kindText(shift)}: ${shift.label}`,
     function: roleFamily(posting.jobFunction), date: posting.firstSeenAt.slice(0, 10) },
-  details: [{ label: "Posting title", value: posting.title.trim() }, { label: "Location", value: posting.location ?? "--" }, { label: "Country", value: posting.country ?? "Unknown" },
+  details: [{ label: "Posting title", value: posting.title.trim() }, { label: "Location", value: posting.location ?? MISSING_VALUE }, { label: "Country", value: posting.country ?? "Unknown" },
     { label: "Role family", value: roleFamily(posting.jobFunction) ?? "Unclassified" }, { label: "Shift", value: `${kindText(shift)}: ${shift.label}` },
     { label: "First seen", value: posting.firstSeenAt }, { label: "Board", value: posting.sourceTicker }],
 });

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { aggregateLoadedCongress } from "./aggregates";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Box, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
@@ -76,7 +77,7 @@ export function TradeDetail({
       <Box flexDirection="column" width={lineWidth}>
         {/* The detail title already carries the member and ticker. */}
         <KeyValueRow {...DETAIL_ROW} label="chamber" value={`${trade.chamber === "senate" ? "Senate" : "House"}${trade.stateDistrict ? ` · ${trade.stateDistrict}` : ""}`} tone="muted" />
-        <KeyValueRow {...DETAIL_ROW} label="party" value={trade.party ?? "--"} />
+        <KeyValueRow {...DETAIL_ROW} label="party" value={trade.party ?? MISSING_VALUE} />
         <KeyValueRow {...DETAIL_ROW} label="side" value={trade.transactionType} tone={trade.side === "BUY" ? "positive" : trade.side === "SELL" ? "negative" : trade.side === "OTHER" ? "muted" : undefined} />
         <KeyValueRow {...DETAIL_ROW} label="asset" value={fit(trade.assetName)} />
         <KeyValueRow {...DETAIL_ROW} label="amount" value={trade.amount} color={colors.textBright} />
@@ -85,9 +86,9 @@ export function TradeDetail({
         <ReturnRow label="tx vs SPY" value={trade.excessSinceTx} spy={trade.spyReturnSinceTx} />
         <ReturnRow label="filed return" value={trade.returnSinceFiling} />
         <ReturnRow label="filed vs SPY" value={trade.excessSinceFiling} spy={trade.spyReturnSinceFiling} />
-        <KeyValueRow {...DETAIL_ROW} label="price as of" value={trade.returnAsOf ?? "--"} />
-        <KeyValueRow {...DETAIL_ROW} label="tx date" value={trade.transactionDate ?? "--"} />
-        <KeyValueRow {...DETAIL_ROW} label="notification" value={trade.notificationDate ?? "--"} />
+        <KeyValueRow {...DETAIL_ROW} label="price as of" value={trade.returnAsOf ?? MISSING_VALUE} />
+        <KeyValueRow {...DETAIL_ROW} label="tx date" value={trade.transactionDate ?? MISSING_VALUE} />
+        <KeyValueRow {...DETAIL_ROW} label="notification" value={trade.notificationDate ?? MISSING_VALUE} />
         <KeyValueRow {...DETAIL_ROW} label="filed" value={trade.filingDate} />
         <KeyValueRow {...DETAIL_ROW} label="lag" value={`${formatLag(trade.lagDays)}${(trade.lagDays ?? 0) > 45 ? " (past 45 days)" : ""}`} tone={(trade.lagDays ?? 0) > 45 ? "warning" : undefined} />
         {trade.filingStatus ? <KeyValueRow {...DETAIL_ROW} label="status" value={trade.filingStatus} /> : null}
@@ -309,7 +310,7 @@ export function MemberTradesDetail({
   const summaryItems: StatItem[] = [
     { id: "median", label: "Median return", value: formatCongressReturn(summaryMember.medianReturn), color: congressReturnColor(summaryMember.medianReturn), detail: `${summaryMember.pricedTradeCount ?? 0} priced` },
     { id: "vs-spy", label: "Median vs SPY", value: formatCongressReturn(summaryMember.medianExcessSinceFiling), color: congressReturnColor(summaryMember.medianExcessSinceFiling), detail: `since filing, ${summaryMember.excessTradeCount ?? 0} priced`, detailVariants: ["since filing"] },
-    { id: "hit", label: "Buy hit rate", value: summaryMember.buyHitRate == null ? "--" : `${summaryMember.buyHitRate.toFixed(0)}%`, detail: `${summaryMember.pricedBuyCount ?? 0} priced buys` },
+    { id: "hit", label: "Buy hit rate", value: summaryMember.buyHitRate == null ? MISSING_VALUE : `${summaryMember.buyHitRate.toFixed(0)}%`, detail: `${summaryMember.pricedBuyCount ?? 0} priced buys` },
     ...(summaryMember.committees ?? []).map((committee): StatItem => ({ id: `committee:${committee}`, label: "Committee", value: committee, wide: true })),
   ];
   const summary = <StatGrid items={summaryItems} width={width} />;

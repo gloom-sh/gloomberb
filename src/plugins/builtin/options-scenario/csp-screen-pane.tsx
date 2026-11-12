@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -96,10 +97,10 @@ const SYMBOLS_FIELD_WIDTH = 24;
 const SYMBOLS_DEBOUNCE_MS = 700;
 
 const symbolList = (text: string) => [...new Set(text.split(/[\s,;]+/).map((symbol) => symbol.trim().toUpperCase()).filter(Boolean))];
-const percentText = (value: unknown, digits: number) => typeof value === "number" ? `${value.toFixed(digits)}%` : "--";
-const priceText = (value: unknown) => typeof value === "number" ? formatHedgePrice(value) : "--";
+const percentText = (value: unknown, digits: number) => typeof value === "number" ? `${value.toFixed(digits)}%` : MISSING_VALUE;
+const priceText = (value: unknown) => typeof value === "number" ? formatHedgePrice(value) : MISSING_VALUE;
 const moneyText = (value: number) => value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const riskText = (value: number | null, unlimited: boolean) => value != null ? moneyText(value) : unlimited ? "unlimited" : "--";
+const riskText = (value: number | null, unlimited: boolean) => value != null ? moneyText(value) : unlimited ? "unlimited" : MISSING_VALUE;
 /** `before Oct 28`: the flag and the date without its year, which the next report never needs. */
 const earningsCell = (row: { earningsDate: string | null; earningsBeforeExpiry: boolean | null; earnings: string }) => {
   const date = row.earningsDate;
@@ -222,17 +223,17 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
     switch (id) {
       case "rank": return { text: row.rank == null ? "" : String(row.rank), color: colors.textDim };
       case "symbol": return { text: row.symbol, color: colors.textBright };
-      case "expiry": return { text: String(row.expiry ?? "--"), color: colors.textDim };
-      case "days": return { text: row.days == null ? "--" : String(row.days) };
-      case "strike": return { text: row.strike == null ? "--" : String(row.strike) };
+      case "expiry": return { text: String(row.expiry ?? MISSING_VALUE), color: colors.textDim };
+      case "days": return { text: row.days == null ? MISSING_VALUE : String(row.days) };
+      case "strike": return { text: row.strike == null ? MISSING_VALUE : String(row.strike) };
       case "bid": return { text: priceText(row.bid) };
       case "ask": return { text: priceText(row.ask) };
       case "spread": return { text: `${percentText(row.spread, 1)}${row.wide ? " wide" : ""}`, color: row.wide ? colors.warning : undefined };
-      case "delta": return { text: typeof row.delta === "number" ? row.delta.toFixed(2) : "--" };
+      case "delta": return { text: typeof row.delta === "number" ? row.delta.toFixed(2) : MISSING_VALUE };
       case "otm": return { text: percentText(row.otm, 1) };
       case "midYield": return { text: percentText(row.midYield, 2), color: colors.textDim };
       case "bidYield": return { text: percentText(row.bidYield, 2), color: colors.positive };
-      case "ivRank": return { text: typeof row.ivRank === "number" ? row.ivRank.toFixed(0) : "--" };
+      case "ivRank": return { text: typeof row.ivRank === "number" ? row.ivRank.toFixed(0) : MISSING_VALUE };
       case "earnings": return { text: String(row.earnings), color: row.earningsBeforeExpiry === true ? colors.warning : colors.textDim };
       default: return { text: "" };
     }
@@ -241,9 +242,9 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
     switch (id) {
       case "rank": return { text: row.rank == null ? "" : String(row.rank), color: colors.textDim };
       case "symbol": return { text: row.symbol, color: colors.textBright };
-      case "days": return { text: row.days == null ? "--" : String(row.days) };
-      case "trade": return { text: row.trade ?? "--" };
-      case "net": return { text: row.net == null ? "--" : moneyText(row.net) };
+      case "days": return { text: row.days == null ? MISSING_VALUE : String(row.days) };
+      case "trade": return { text: row.trade ?? MISSING_VALUE };
+      case "net": return { text: row.net == null ? MISSING_VALUE : moneyText(row.net) };
       case "maxGain": return { text: riskText(row.maxGain, row.unlimited === "gain") };
       case "maxLoss": return { text: riskText(row.maxLoss, row.unlimited === "loss") };
       case "breakEven": return { text: row.breakEvens };
@@ -251,7 +252,7 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
       // A return above zero reads as a gain; none, or nothing to rank, stays neutral.
       case "returnPerYear": return { text: percentText(row.returnPerYear, 1), color: (row.returnPerYear ?? 0) > 0 ? colors.positive : undefined };
       case "rewardRisk": return { text: rewardRiskText(row.rewardRisk, row.unlimited), value: row.rewardRisk };
-      case "ivRank": return { text: typeof row.ivRank === "number" ? row.ivRank.toFixed(0) : "--" };
+      case "ivRank": return { text: typeof row.ivRank === "number" ? row.ivRank.toFixed(0) : MISSING_VALUE };
       case "spread": return { text: `${percentText(row.spread, 1)}${row.wide ? " wide" : ""}`, color: row.wide ? colors.warning : undefined };
       case "earnings": return { text: earningsCell(row), value: row.earningsDate,
         color: row.earningsBeforeExpiry === true ? colors.warning : colors.textDim };

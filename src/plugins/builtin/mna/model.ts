@@ -2,11 +2,11 @@ import type { MnaDeal, MnaStatus, MnaTerms } from "../../../api-client/mna";
 import type { Quote } from "../../../types/financials";
 import { getListingSymbol } from "../../../sources/listing-symbols";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
-import { formatCompact } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { nonUsSecListingVenue } from "../../../utils/sec";
 
 export const MNA_PANE_ID = "mna";
-export const MISSING = "--";
+export const MISSING = MISSING_VALUE;
 
 const MS_PER_DAY = 86_400_000;
 

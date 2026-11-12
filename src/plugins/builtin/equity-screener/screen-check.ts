@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { NumericField, ScreenCheckPayload, ScreenCriterion, ScreenDefinition } from "../../../api-client/equity-screener";
 import { parseListingArg } from "../../../cli/listing-arg";
 import { canonicalExchange } from "../../../utils/exchanges";
@@ -113,7 +114,7 @@ export function checkRows(data: ScreenCheckPayload) {
         : checkValueText(entry.value, entry.unit, entry.criterion)
       : entry.value,
     result: entry.passes === null ? "Not evaluated" : entry.passes ? "Pass" : "Fail",
-    asOf: entry.asOf?.slice(0, 10) ?? (entry.observedAt ? `${entry.observedAt.slice(0, 10)} (collected)` : "--"),
+    asOf: entry.asOf?.slice(0, 10) ?? (entry.observedAt ? `${entry.observedAt.slice(0, 10)} (collected)` : MISSING_VALUE),
     state: entry.state,
     reason: entry.reason,
     passes: entry.passes,

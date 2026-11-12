@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { OptionContract } from "../../../types/financials";
 import { daysToExpiryFrom, optionMid, type OptionSide } from "../shared/volatility";
 import { optionSpread } from "./market-reference";
@@ -113,7 +114,7 @@ const MIN_COST_OF_SPOT_PERCENT = 0.001;
  * reads <0.001%, so a far out-of-the-money quote stays inside the column.
  */
 export function formatCostOfSpot(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value) || value < 0) return "\u2014";
+  if (value == null || !Number.isFinite(value) || value < 0) return MISSING_VALUE;
   const percent = value * 100;
   if (percent === 0) return "0%";
   if (percent < MIN_COST_OF_SPOT_PERCENT) return `<${MIN_COST_OF_SPOT_PERCENT}%`;
@@ -125,7 +126,7 @@ export function formatCostOfSpot(value: number | null | undefined): string {
 
 /** A fraction as a percent: one decimal under 100% (0.0421 reads 4.2%), whole percents above. */
 export function formatCarryPercent(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const percent = value * 100;
   return `${percent.toFixed(Math.abs(percent) < 100 ? 1 : 0)}%`;
 }

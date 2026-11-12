@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import {
@@ -642,7 +643,7 @@ test("a factor that explains under a tenth of the basket's moves reads as a weak
   expect(factorFitText(0.28)).toBe("R² 0.28");
   expect(factorFitText(0.094)).toBe("R² 0.09, weak fit");
   expect(factorFitText(0.0999)).toBe("R² 0.10");
-  expect(factorFitText(null)).toBe("R² --");
+  expect(factorFitText(null)).toBe(`R² ${MISSING_VALUE}`);
   expect(withoutFactorFit("60 sessions; R² 0.01, weak fit; independent ETF proxy")).toBe("60 sessions; independent ETF proxy");
   expect(withoutFactorFit("76% USD, 24% TRY of book; 60 sessions; R² 0.28; daily USD/TRY closes")).toBe("76% USD, 24% TRY of book; 60 sessions; daily USD/TRY closes");
 });

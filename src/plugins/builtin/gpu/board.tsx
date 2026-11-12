@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useMemo } from "react";
 import type { GpuBoardRow, GpuSettle } from "../../../api-client/gpu";
 import {
@@ -134,11 +135,11 @@ export function GpuBoard({ rows, settles, models, asOf, model, setModel, selecte
         if (!quartiles && stats.min === stats.max) return { text: "" };
         return { text: quartiles ? `${gpuPrice(stats.p25)}–${gpuPrice(stats.p75)}` : `${gpuPrice(stats.min)}–${gpuPrice(stats.max)}`, color: colors.textDim };
       }
-      case "unavailableChange": return gpuChangesLocked(row) ? lockedCell : { text: "-", value: null, color: colors.textMuted };
+      case "unavailableChange": return gpuChangesLocked(row) ? lockedCell : { text: MISSING_VALUE, value: null, color: colors.textMuted };
       case "change1d": case "change7d": case "change30d": {
         if (gpuChangesLocked(row)) return lockedCell;
         const value = row[column.id];
-        return value == null ? { text: "-", value: null, color: colors.textMuted } : { text: gpuChange(value), value, color: gpuChangeColor(value, colors) };
+        return value == null ? { text: MISSING_VALUE, value: null, color: colors.textMuted } : { text: gpuChange(value), value, color: gpuChangeColor(value, colors) };
       }
       case "trend": {
         const points = history.get(row.id);
@@ -180,11 +181,11 @@ export function GpuBoard({ rows, settles, models, asOf, model, setModel, selecte
       }
       case "variant": return { text: gpuVariant(settle).join(" "), content: <GpuVariantChips row={settle} width={column.width} selected={!!ink} /> };
       case "price": return settled ? { text: gpuPrice(settle.pricePerGpuHr), value: settle.pricePerGpuHr, color: colors.textBright, attributes: TextAttributes.BOLD }
-        : { text: "-", value: null, color: colors.textMuted };
-      case "unavailableChange": return { text: "-", value: null, color: colors.textMuted };
+        : { text: MISSING_VALUE, value: null, color: colors.textMuted };
+      case "unavailableChange": return { text: MISSING_VALUE, value: null, color: colors.textMuted };
       case "change1d": case "change7d": case "change30d": {
         const value = settle[column.id];
-        return value == null ? { text: "-", value: null, color: colors.textMuted } : { text: gpuChange(value), value, color: gpuChangeColor(value, colors) };
+        return value == null ? { text: MISSING_VALUE, value: null, color: colors.textMuted } : { text: gpuChange(value), value, color: gpuChangeColor(value, colors) };
       }
       case "asof": return { text: asOfDay && settle.settleAt.startsWith(asOfDay) ? settle.settleAt.slice(11, 16) : gpuTime(settle.settleAt, true),
         value: settle.settleAt, color: colors.textDim };

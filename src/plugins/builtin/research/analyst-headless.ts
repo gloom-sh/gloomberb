@@ -8,7 +8,7 @@ import type {
 } from "../../../types/plugin";
 import type { AnalystResearchData, Quote } from "../../../types/financials";
 import { logFailure } from "../../../utils/log-failure";
-import { formatPercent } from "../../../utils/format";
+import { MISSING_VALUE, formatPercent } from "../../../utils/format";
 import { hasAnalystCoverage, loadAnalystResearch, noAnalystCoverageText } from "./client";
 import {
   analystReferenceMetadata,
@@ -87,7 +87,7 @@ function overviewEntries(data: AnalystResearchData, quote: Quote | null): Headle
     {
       label: "Target upside",
       value: upside ?? null,
-      formatted: upside == null ? "-" : formatPercent(upside),
+      formatted: upside == null ? MISSING_VALUE : formatPercent(upside),
     },
     {
       label: "Upside reference price",
@@ -101,7 +101,7 @@ function overviewEntries(data: AnalystResearchData, quote: Quote | null): Headle
         ? [target.low, target.median, target.high]
           .map((value) => formatAnalystPrice(value, currency))
           .join(" / ")
-        : "-",
+        : MISSING_VALUE,
     },
     {
       label: "Recommendation rating",

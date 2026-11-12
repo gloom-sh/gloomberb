@@ -19,7 +19,7 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes } from "../../../ui";
-import { formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { usePluginPaneState } from "../../runtime";
 import { cachedDealerHistory, fetchPrimaryDealers, hasDealerHistory, loadDealerHistory } from "./client";
@@ -187,7 +187,7 @@ export function PrimaryDealersPane({ focused, width, height }: PaneProps) {
           attributes: row.depth === 0 ? TextAttributes.BOLD : undefined,
         };
       case "asOf":
-        return { text: row.asOf ?? "—", color: colors.textMuted };
+        return { text: row.asOf ?? MISSING_VALUE, color: colors.textMuted };
       case "latest":
         return { text: formatLevel(row.latest), value: row.latest, color: colors.text };
       case "previous":

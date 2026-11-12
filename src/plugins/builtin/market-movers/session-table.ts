@@ -4,7 +4,7 @@ import { withCompanyLogo } from "../../../components/company-logo";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { colors, priceColor } from "../../../theme/colors";
 import { TextAttributes } from "../../../ui";
-import { formatCompact, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatPercentRaw } from "../../../utils/format";
 import { formatMoverPrice, moverReferencePrice } from "./model";
 import { leadCatalyst, type SessionMoverColumnId, type SessionMoverRow } from "./session";
 import { formatVolRatio, volRatioColor } from "./table";
@@ -56,7 +56,7 @@ const CATALYST_LABEL = { halt: "Halt", filing: "8-K", news: "News" } as const;
 
 function signedPercent(value: number | null): DataTableCell {
   return {
-    text: value == null ? "—" : formatPercentRaw(value),
+    text: value == null ? MISSING_VALUE : formatPercentRaw(value),
     value,
     color: value == null ? colors.textDim : priceColor(value),
   };
@@ -85,7 +85,7 @@ export function renderSessionMoverCell(row: SessionMoverRow, column: SessionMove
       return { text: formatVolRatio(row.relativeVolume), value: row.relativeVolume, color: volRatioColor(row.relativeVolume) };
     case "floatShares":
       return {
-        text: row.floatShares == null ? "—" : formatCompact(row.floatShares, { fixedDecimals: true }),
+        text: row.floatShares == null ? MISSING_VALUE : formatCompact(row.floatShares, { fixedDecimals: true }),
         value: row.floatShares,
         color: colors.textDim,
       };

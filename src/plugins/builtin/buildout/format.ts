@@ -1,10 +1,11 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { colors, priceColor } from "../../../theme/colors";
 import { collectUniqueTickerSymbols } from "../../../tickers/tokenizer";
 import { isKnownExchangeCode } from "../../../utils/exchanges";
 import { formatDetailDate as sharedFormatDetailDate, parseDisplayDate } from "../../../utils/datetime-format";
 import type { BuildoutSource, BuildoutUpdate } from "./model/types";
 
-export function text(value: unknown, fallback = "-") {
+export function text(value: unknown, fallback = MISSING_VALUE) {
   if (value == null) return fallback;
   const stringValue = String(value).trim();
   return stringValue || fallback;
@@ -86,7 +87,7 @@ export function moneyText(value: string | null | undefined): string {
 
 export function dateShort(value: string | null | undefined) {
   const date = parseDisplayDate(value);
-  if (!date) return "-";
+  if (!date) return MISSING_VALUE;
   return date.toISOString().slice(5, 10);
 }
 
@@ -96,7 +97,7 @@ export function dateDetail(value: string | null | undefined) {
 }
 
 export function activityLabel(value: number | null | undefined) {
-  if (value == null) return "-";
+  if (value == null) return MISSING_VALUE;
   if (value >= 2) return "High";
   if (value >= 1) return "Low";
   return "None";

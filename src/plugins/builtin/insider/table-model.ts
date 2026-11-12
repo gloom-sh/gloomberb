@@ -1,5 +1,5 @@
 import type { DataTableColumn } from "../../../components";
-import { displayWidth, formatCompact, formatCurrency, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatCompact, formatCurrency, formatNumber } from "../../../utils/format";
 import { isAmendedInsiderFiling } from "./amendments";
 import { insiderSecurityTag, insiderTypeLabel, insiderTypeTone, isOpenMarketTrade, type InsiderTypeTone } from "./display";
 import {
@@ -69,7 +69,7 @@ export function buildInsiderTableRows(parsed: readonly ParsedInsiderFiling[]): I
         date: validDate(filing.filingDate),
         name: name ?? (entry.isLoading ? "Loading..." : "Unknown filer"),
         role: insiderRole(entry),
-        type: entry.isLoading ? "" : disclosure ? "NOTICE" : "—",
+        type: entry.isLoading ? "" : disclosure ? "NOTICE" : MISSING_VALUE,
         tone: "neutral",
         amended: amendment,
         plan: false,
@@ -100,29 +100,29 @@ export function buildInsiderTableRows(parsed: readonly ParsedInsiderFiling[]): I
 
 /** A transaction date as m/d/yy, read in UTC because it names a calendar day. */
 export function formatInsiderDate(date: Date | null): string {
-  if (!date) return "—";
+  if (!date) return MISSING_VALUE;
   return `${date.getUTCMonth() + 1}/${date.getUTCDate()}/${String(date.getUTCFullYear()).slice(-2)}`;
 }
 
 export function formatInsiderShares(value: number | null): string {
-  return value == null ? "—" : formatCompact(value);
+  return value == null ? MISSING_VALUE : formatCompact(value);
 }
 
 /** A Form 4 price: $412.50, or 412.50 when a CCY column names its currency. */
 export function formatInsiderPrice(value: number | null, currency?: string): string {
-  if (value == null) return "—";
+  if (value == null) return MISSING_VALUE;
   return currency ? formatNumber(value, 2) : formatCurrency(value);
 }
 
 /** A Form 4 value: $1.2M, or 1.2M when a CCY column names its currency. */
 export function formatInsiderValue(value: number | null, currency?: string): string {
-  if (value == null) return "—";
+  if (value == null) return MISSING_VALUE;
   return currency ? formatCompact(value) : `$${formatCompact(value)}`;
 }
 
 /** What a row's CCY cell says: the currency of its price and value, or a dash for a filing without either. */
 export function insiderCurrencyText(row: Pick<InsiderTableRow, "price" | "value">, currency: string): string {
-  return row.price == null && row.value == null ? "—" : currency;
+  return row.price == null && row.value == null ? MISSING_VALUE : currency;
 }
 
 /** The quieter words after the type: "4/A" always, "10b5-1" when the column has room. */

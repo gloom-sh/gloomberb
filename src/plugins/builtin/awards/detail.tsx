@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useMemo, useRef } from "react";
 import type { AwardRow } from "../../../api-client/awards";
 import { ActionRow, KeyValueRow, PaneStatusBody, Section, StatGrid, usePagedRows, usePaneNoticeFooter, usePaneStatusFooter, useTableLoadMore } from "../../../components";
@@ -49,8 +50,8 @@ export function AwardDetail({ row, accessKey, width, height, focused, openAward,
       {current.awardStatus ? <KeyValueRow label="Status" value={current.awardStatus} labelWidth={labelWidth} /> : null}
       {current.dataBasis === "bulk-latest-transaction" ? <KeyValueRow label="Record basis" value="Latest published transaction" labelWidth={labelWidth} /> : null}
       <KeyValueRow label="Performance period" value={awardPeriod(current)} labelWidth={labelWidth} />
-      <KeyValueRow label="Performance place" value={[current.placeOfPerformance?.city, current.placeOfPerformance?.region, current.placeOfPerformance?.country].filter(Boolean).join(", ") || "--"} labelWidth={labelWidth} />
-      <KeyValueRow label="NAICS / PSC" value={`${current.naics ?? "--"} / ${current.psc ?? "--"}`} labelWidth={labelWidth} />
+      <KeyValueRow label="Performance place" value={[current.placeOfPerformance?.city, current.placeOfPerformance?.region, current.placeOfPerformance?.country].filter(Boolean).join(", ") || MISSING_VALUE} labelWidth={labelWidth} />
+      <KeyValueRow label="NAICS / PSC" value={`${current.naics ?? MISSING_VALUE} / ${current.psc ?? MISSING_VALUE}`} labelWidth={labelWidth} />
       {current.classifications?.map((classification) => <KeyValueRow key={`${classification.scheme}:${classification.code}`} label={classification.scheme.toUpperCase()} value={classification.code} detail={classification.label} labelWidth={labelWidth} />)}
       <KeyValueRow label="Award id" value={current.sourceAwardId} labelWidth={labelWidth} />
       {current.parentAwardId ? <KeyValueRow label="Parent award" value={current.parentAwardId} labelWidth={labelWidth} /> : null}
@@ -68,7 +69,7 @@ export function AwardDetail({ row, accessKey, width, height, focused, openAward,
     <Section title="Evidence" width={width - 2}>
       <KeyValueRow label="Observed (UTC)" value={current.observedAt.replace("T", " ").slice(0, 19)} labelWidth={labelWidth} />
       {current.dataEffectiveDate ? <KeyValueRow label="Record effective" value={current.dataEffectiveDate.slice(0, 10)} labelWidth={labelWidth} /> : null}
-      <KeyValueRow label="Confidence" value={current.confidence == null ? "--" : `${Math.round(current.confidence * 100)}%`} labelWidth={labelWidth} />
+      <KeyValueRow label="Confidence" value={current.confidence == null ? MISSING_VALUE : `${Math.round(current.confidence * 100)}%`} labelWidth={labelWidth} />
       {current.entity ? <KeyValueRow label="Entity match" value={`${current.entity.method.replaceAll("-", " ")} · ${Math.round(current.entity.confidence * 100)}%`} labelWidth={labelWidth} /> : null}
       {current.evidenceQuote ? <Box paddingY={1}><Text fg={colors.textBright} width={width - 2} wrapMode="word" wrapText>{current.evidenceQuote}</Text></Box> : null}
       <Text fg={colors.textDim} width={width - 2} wrapMode="word" wrapText>{current.sourceUrl}</Text>
@@ -86,7 +87,7 @@ export function AwardDetail({ row, accessKey, width, height, focused, openAward,
             <KeyValueRow label="Awardee" value={revision.award.recipient.name} labelWidth={labelWidth} />
             <KeyValueRow label="Agency" value={revision.award.agency.name} labelWidth={labelWidth} />
             <KeyValueRow label="Award date / value" value={`${revision.award.awardDate} · ${revision.award.currency} ${money(revision.award.awardAmount)}`} labelWidth={labelWidth} />
-            <KeyValueRow label="Performance period" value={`${revision.award.periodStart ?? "--"} / ${revision.award.periodEnd ?? "--"}`} labelWidth={labelWidth} />
+            <KeyValueRow label="Performance period" value={`${revision.award.periodStart ?? MISSING_VALUE} / ${revision.award.periodEnd ?? MISSING_VALUE}`} labelWidth={labelWidth} />
             <Text fg={colors.textDim} width={width - 2} wrapMode="word" wrapText>{revision.award.title}</Text>
             {revision.award.evidenceQuote ? <Text fg={colors.text} width={width - 2} wrapMode="word" wrapText>{revision.award.evidenceQuote}</Text> : null}
             <ActionRow label="Open revision source" onPress={() => void host.openExternal(revision.award.sourceUrl)} />

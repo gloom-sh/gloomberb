@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, beforeEach, expect, setSystemTime, test } from "bun:test";
 import { act, useReducer, useState } from "react";
 import { Box } from "../../../ui";
@@ -409,7 +410,7 @@ test("shows the spot, volatility statistics and the mirrored default fields", as
   const frame = tui.frame();
   expect(frame).toMatch(/Spot\s+101\.00/);
   expect(frame).toMatch(/ATM IV\s+90\.1%/);
-  expect(frame).toMatch(/HV30\s+--/);
+  expect(frame).toMatch(new RegExp(String.raw`HV30\s+${MISSING_VALUE}`));
   expect(frame).toMatch(/Volume\s+4\.0k/);
   for (const header of ["C IV", "C Δ", "C VOL", "C OI", "P OI", "P VOL", "P Δ", "P IV"]) expect(frame).toContain(header);
 });
@@ -740,7 +741,7 @@ test("stale underlying preserves contract observations but cannot seed current G
   });
   await renderSettled();
   const frame = tui.frame();
-  expect(frame).toMatch(/ATM IV\s+--/);
+  expect(frame).toMatch(new RegExp(String.raw`ATM IV\s+${MISSING_VALUE}`));
   expect(frame).toContain("Underlying quote stale");
   expect(frame).not.toContain("[c]alc");
   await exportPaneTable(TEST_PANE_ID, "stale-options.csv");
@@ -779,8 +780,8 @@ test("rejected history disables HV and IV/HV without discarding healthy chain an
   await renderSettled();
   const frame = tui.frame();
   expect(frame).toMatch(/ATM IV\s+90\.1%/);
-  expect(frame).toMatch(/HV30\s+--/);
-  expect(frame).toMatch(/IV\/HV\s+--/);
+  expect(frame).toMatch(new RegExp(String.raw`HV30\s+${MISSING_VALUE}`));
+  expect(frame).toMatch(new RegExp(String.raw`IV\/HV\s+${MISSING_VALUE}`));
   expect(historyRequests).toContainEqual({ range: "1Y", resolution: "1d" });
   expect(frame).toContain("HV30 unavailable: inconsistent OHLC");
   expect(frame).toContain("[c]alc");

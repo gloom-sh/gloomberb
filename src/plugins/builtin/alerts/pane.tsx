@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { METRIC_ALERTS_KEY, RELATIVE_ALERTS_KEY, closeBasis, metricReadingText } from "./metric-model";
 import { metricAvailabilityError } from "./metric-data";
 import { relativeAlertText } from "./metric-command";
@@ -466,7 +467,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
         };
       case "triggered":
         return {
-          text: alert.triggeredAt ? relativeTime(alert.triggeredAt) : "-",
+          text: alert.triggeredAt ? relativeTime(alert.triggeredAt) : MISSING_VALUE,
           color: colors.textDim,
         };
       case "created":

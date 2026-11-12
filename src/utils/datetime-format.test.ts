@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "./format";
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { formatFilingDate, formatWeekdayDay, formatDetailDate, formatDetailTime, formatFeedTime, formatRelativeAge, formatRelativeTime, formatShortDate, formatTimeAgo } from "./datetime-format";
 
@@ -34,7 +35,7 @@ describe("relative time", () => {
     expect(formatTimeAgo(new Date(weekAgo), { short: true })).toMatch(/^9\/1[67]\/26$/);
 
     expect(formatRelativeAge(undefined, now)).toBe("never");
-    expect(formatRelativeTime("not a date", now)).toBe("-");
+    expect(formatRelativeTime("not a date", now)).toBe(MISSING_VALUE);
     expect(formatTimeAgo("not a date")).toBe("unknown");
   });
 
@@ -66,7 +67,7 @@ test("short dates keep each style's formatter apart", () => {
   expect(formatShortDate("2026-01-05", { day: "2-digit", year: "2-digit", utc: true })).toBe("05 Jan 26");
   expect(formatShortDate(lateOnNewYearsEve, { utc: true })).toBe("31 Dec 2025");
   expect(formatShortDate(null, { fallback: "--" })).toBe("--");
-  expect(formatShortDate("not a date")).toBe("-");
+  expect(formatShortDate("not a date")).toBe(MISSING_VALUE);
 });
 
 test("feed times read as a clock today, a weekday this week and a date before", () => {
@@ -84,7 +85,7 @@ test("feed times read as a clock today, a weekday this week and a date before", 
     [new Date(2026, 8, 30, 1, 0), "30 Sep"],
   ];
   for (const [date, label] of cases) expect(formatFeedTime(date, now)).toBe(label);
-  expect(formatFeedTime("not a date", now)).toBe("-");
+  expect(formatFeedTime("not a date", now)).toBe(MISSING_VALUE);
 });
 
 test("a detail date names its zone, so a story read beside a list in UTC is not two hours off", () => {

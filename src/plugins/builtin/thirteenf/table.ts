@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { createElement } from "react";
 import { TickerBadgeList } from "../../../components/ticker/badge/list";
 import { TextAttributes } from "../../../ui";
@@ -46,13 +47,13 @@ export function renderBrowserCell(
     case "cik":
       return { text: row.cik, color: colors.textDim };
     case "period":
-      return { text: row.periodOfReport ?? "--", color: colors.textDim };
+      return { text: row.periodOfReport ?? MISSING_VALUE, color: colors.textDim };
     case "filed":
       return { text: formatShortDate(row.filedAsOfDate, FILING_DAY_FORMAT), color: colors.textDim };
     case "value":
       return { text: formatMoneyCompact(row.tableValueTotal), color: colors.text };
     case "rows":
-      return { text: row.tableEntryTotal == null ? "--" : String(row.tableEntryTotal), color: colors.textDim };
+      return { text: row.tableEntryTotal == null ? MISSING_VALUE : String(row.tableEntryTotal), color: colors.textDim };
     case "estQuarterReturn":
       return {
         text: formatRawPercentMaybe(row.estQuarterReturn),
@@ -139,7 +140,7 @@ export function renderFilingPositionCell(
     case "cusip":
       return { text: row.cusip, color: colors.textDim };
     case "discretion":
-      return { text: row.investmentDiscretion || "--", color: colors.textDim };
+      return { text: row.investmentDiscretion || MISSING_VALUE, color: colors.textDim };
     default:
       return renderPositionCell(row, column.id, column.width, rowState.selected);
   }
@@ -164,11 +165,11 @@ export function renderTimelineCell(
       };
     case "filed":
       // The whole day, as the period beside it: the list spans years.
-      return { text: row.filedAsOfDate || "--", color: colors.textDim };
+      return { text: row.filedAsOfDate || MISSING_VALUE, color: colors.textDim };
     case "value":
       return { text: formatMoneyCompact(row.tableValueTotal), color: colors.text };
     case "rows":
-      return { text: row.tableEntryTotal == null ? "--" : String(row.tableEntryTotal), color: colors.textDim };
+      return { text: row.tableEntryTotal == null ? MISSING_VALUE : String(row.tableEntryTotal), color: colors.textDim };
     case "valueChange":
       return {
         text: formatPercentMaybe(row.valueChangePercent),

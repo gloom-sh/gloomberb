@@ -11,7 +11,7 @@ import type { QueryEntry } from "../../market-data/result-types";
 import type { InstrumentRef } from "../../market-data/request-types";
 import { useQuoteStreaming } from "../../state/hooks/quote-streaming";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
-import { displayWidth, formatPercentRaw } from "../../utils/format";
+import { MISSING_VALUE, displayWidth, formatPercentRaw } from "../../utils/format";
 import { formatMarketPriceWithCurrency, liveQuoteFormatOptions } from "../../market-data/market/format";
 import { exchangeShortName, getSessionMoveDisplay, marketStateColor } from "../../market-data/market/status";
 import { resolveHeaderMarket, systemTimeZone, type HeaderMarketTarget } from "../../market-data/market/header-market";
@@ -138,7 +138,7 @@ export function headerQuoteSummary(
   colors: ThemeColors,
 ): Pick<MarketSummary, "quoteColor" | "quotePriceText" | "quoteText"> {
   const display = isUsableHeaderQuote(quote) ? getSessionMoveDisplay(quote) : null;
-  if (!quote || !display || !Number.isFinite(display.price)) return { quoteColor: colors.textDim, quotePriceText: "—", quoteText: "—" };
+  if (!quote || !display || !Number.isFinite(display.price)) return { quoteColor: colors.textDim, quotePriceText: MISSING_VALUE, quoteText: MISSING_VALUE };
   const quotePriceText = headerPriceText(quote, display.price);
   return {
     quoteColor: display.change != null ? priceColor(display.change, colors) : colors.textDim,

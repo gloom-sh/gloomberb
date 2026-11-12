@@ -1,7 +1,7 @@
 import { formatShortDate } from "../../../utils/datetime-format";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { HiringCompanyMoves, HiringMove, HiringMoveExclusion, HiringMoveFlag, HiringMovePosting, HiringMovesBoard, HiringMovesFilter } from "../../../api-client/hiring";
-import { formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import { countOf, freePreviewNote, previewCantFilter } from "../shared/free-preview";
 import { humanLabel } from "../shared/research-cells";
 import type { AttentionRow } from "./model";
@@ -46,17 +46,17 @@ function alertText(move: HiringMove): string | null {
   if (move.signal !== "accelerating" && move.signal !== "slowing") return "None: not the company's own move";
   if (move.flags?.length) return "Held: flagged for a second look";
   if (move.confirmed === undefined) return null;
-  return move.confirmed ? `Alerting: the signal has held since ${move.signalSince?.slice(0, 16).replace("T", " ") ?? "--"} UTC` : "Waits for a pass 12 hours on to keep it";
+  return move.confirmed ? `Alerting: the signal has held since ${move.signalSince?.slice(0, 16).replace("T", " ") ?? MISSING_VALUE} UTC` : "Waits for a pass 12 hours on to keep it";
 }
 
 /** "12 Oct": the Monday a UTC week starts on. */
 function weekLabel(week: string | null | undefined): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(week ?? "");
-  return match ? formatShortDate(match[0], { year: false, utc: true, fallback: "--" }) : "--";
+  return match ? formatShortDate(match[0], { year: false, utc: true, fallback: MISSING_VALUE }) : MISSING_VALUE;
 }
 /** 3.4x, 0.4x, 74x: a pace against an average. */
-const pace = (value: number | null | undefined) => value == null ? "--" : `${formatNumber(value, Math.abs(value) >= 10 ? 0 : 1)}x`;
-const count = (value: number | null | undefined) => value == null ? "--" : formatNumber(value, 0);
+const pace = (value: number | null | undefined) => value == null ? MISSING_VALUE : `${formatNumber(value, Math.abs(value) >= 10 ? 0 : 1)}x`;
+const count = (value: number | null | undefined) => value == null ? MISSING_VALUE : formatNumber(value, 0);
 /** An average of a few weeks keeps a decimal while it is small: 6.7 a week, not 7. */
 const average = (value: number) => formatNumber(value, value < 10 ? 1 : 0);
 const signed = (value: number, decimals = 0) => `${value > 0 ? "+" : ""}${formatNumber(value, decimals)}`;
@@ -165,7 +165,7 @@ const postingRow = (closed: boolean) => (posting: HiringMovePosting): MovesRow =
   id: `${closed ? "closed" : "added"}:${posting.id}`, url: posting.url, jobPosting: posting,
   values: { title: posting.title.trim(), location: posting.location ?? posting.country, country: posting.country, function: roleFamily(posting.jobFunction), seniority: posting.seniority ? humanLabel(posting.seniority) : null,
     date: (closed ? posting.closedAt ?? posting.firstSeenAt : posting.firstSeenAt).slice(0, 10) },
-  details: [{ label: "Posting title", value: posting.title.trim() }, { label: "Location", value: posting.location ?? "--" }, { label: "Country", value: posting.country ?? "Unknown" },
+  details: [{ label: "Posting title", value: posting.title.trim() }, { label: "Location", value: posting.location ?? MISSING_VALUE }, { label: "Country", value: posting.country ?? "Unknown" },
     { label: "Role family", value: roleFamily(posting.jobFunction) ?? "Unclassified" }, { label: "Seniority", value: posting.seniority ? humanLabel(posting.seniority) : "Unclassified" },
     { label: "First seen", value: posting.firstSeenAt }, ...(posting.closedAt ? [{ label: "Closed", value: posting.closedAt }] : []), { label: "Board", value: posting.sourceTicker }],
 });
@@ -185,7 +185,7 @@ export function companyMovesModel(data: HiringCompanyMoves): MovesModel {
     { label: "Signal", value: signalLabel(latest.signal), detail: (latest.flags?.length ? `${flagText(latest)}, no alert` : driverText(latest)) ?? undefined, detailVariants: [""], tone: tone(latest.signal) },
   ] : data.week && !data.week.measured ? [
     { label: "New roles", value: count(data.week.newRoles), detail: `week of ${weekLabel(data.week.week)}`, detailVariants: [`wk ${weekLabel(data.week.week)}`, ""] },
-    { label: "Not measured", value: exclusionText(data.week.excluded) || "--", wide: true },
+    { label: "Not measured", value: exclusionText(data.week.excluded) || MISSING_VALUE, wide: true },
   ] : data.week && data.preview && data.locked.move ? [
     // A free read off the free board: the week's counts, the move is Pro's.
     { label: "New roles", value: count(data.week.newRoles), detail: `week of ${weekLabel(data.week.week)}`, detailVariants: [`wk ${weekLabel(data.week.week)}`, ""] },

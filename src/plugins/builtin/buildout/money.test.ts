@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
 import { formatCompactMoney, moneyText } from "./format";
 import { normalizeCompany } from "./model/normalizers";
@@ -22,7 +23,7 @@ describe("compact money", () => {
     expect(formatCompactMoney(0)).toBe("$0");
     // Anything that is not a dollar figure keeps the service's own text.
     expect(moneyText("NT$61848.7B")).toBe("NT$61848.7B");
-    expect(moneyText(null)).toBe("-");
+    expect(moneyText(null)).toBe(MISSING_VALUE);
   });
 
   test("the cells carry the whole number for an export and the same text in both tables", () => {

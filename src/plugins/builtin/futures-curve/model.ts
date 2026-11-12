@@ -6,7 +6,7 @@ import type { CompositeAxisDomain } from "../../../components/chart/composite/ty
 import { CME_CRYPTO_FUTURES, FUTURES_CONTRACTS, futuresBoardContractForTicker, futuresContractByCode, tickDecimals } from "../../../market-data/futures-board";
 import { futuresContractCode } from "../../../market-data/futures-contract";
 import { contractMonthLabel } from "../../../utils/contract-month";
-import { formatPercentileRank } from "../../../utils/format";
+import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
 import { formatThirtySeconds } from "../../../market-data/market/format";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
 import { formatUtcDayTime, newestReportTime, oldestReportTime, parseReportTime } from "../../../utils/utc-time";
@@ -149,7 +149,7 @@ function curvePriceDecimals(root: string): number {
 }
 
 export function curvePrice(value: number | null, root: string): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   // A Treasury future reads in 32nds, as `quote` and FUT write it: 106-20\u00bd, never 106.640625.
   if (RATE_TICKS[root] != null) return formatThirtySeconds(Math.abs(value) < 1e-9 ? 0 : value);
   const text = value.toFixed(curvePriceDecimals(root));
@@ -294,7 +294,7 @@ export function curveContractMonth(symbol: string, expiration: string): string {
 }
 
 export function curveTimestamp(value: string | null): string {
-  return value?.replace("T", " ").slice(0, 16) ?? "--";
+  return value?.replace("T", " ").slice(0, 16) ?? MISSING_VALUE;
 }
 
 /** The rank against the contract's own history; one observation ranks nothing. */
@@ -655,7 +655,7 @@ export function contractBasis(row: Pick<FuturesContract, "price" | "stale" | "ex
 
 /** A basis in percent, signed; one that rounds to zero stays unsigned. */
 export function curveBasisPercent(value: number | null, decimals: number): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   const text = Math.abs(value).toFixed(decimals);
   return /[1-9]/.test(text) ? `${value > 0 ? "+" : "-"}${text}%` : `${text}%`;
 }
@@ -663,7 +663,7 @@ export function curveBasisPercent(value: number | null, decimals: number): strin
 /** The footer's spot: `spot BTC-USD 67,250.10 · 07:25 UTC`, with the date when the quote is not from today. */
 export function curveSpotLabel(spot: CurveSpot, root: string, now: number): string {
   const decimals = curvePriceDecimals(root);
-  const price = spot.price == null ? "--" : spot.price.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  const price = spot.price == null ? MISSING_VALUE : spot.price.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   const stamp = curveTimestamp(spot.asOf);
   const today = new Date(now).toISOString().slice(0, 10);
   return `spot ${spot.symbol} ${price} · ${spot.asOf?.startsWith(today) ? stamp.slice(11) : stamp} UTC`;

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
 import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
@@ -92,7 +93,7 @@ describe("VCA dates", () => {
     const { keys, cell } = await load([oneYear("NVDA", "2026-10-09"), oneYear("AAPL", "2026-10-08")]);
     expect(keys.slice(keys.indexOf("verdict"), keys.indexOf("verdict") + 3)).toEqual(["verdict", "iv1y", "iv1yPercentile"]);
     // The IV30's own close: the 1Y read that session, ranked; none from another.
-    expect([0, 1].map((index) => [cell("iv1y", index), cell("iv1yPercentile", index)])).toEqual([["30.0%", "22"], ["--", "--"]]);
+    expect([0, 1].map((index) => [cell("iv1y", index), cell("iv1yPercentile", index)])).toEqual([["30.0%", "22"], ["--", MISSING_VALUE]]);
   });
 
   test("skew from an older capture than the reading is dated", async () => {

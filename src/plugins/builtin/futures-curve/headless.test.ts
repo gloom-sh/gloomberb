@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, setSystemTime, test } from "bun:test";
 import type { FuturesContract, FuturesCurveAsOfPayload, FuturesCurvePayload } from "../../../api-client/futures-curve";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
@@ -147,7 +148,7 @@ describe("CTM report basis", () => {
     // The text reads each spot beside its premium and the days the rate divides by; the spot's minute is the trade's, in As Of UTC.
     expect(text).toMatch(/Contract +Last Trade +Settle +Last +Change +Spot +Vs Spot +Days +Ann Basis +As Of UTC/);
     expect(text).toMatch(/BTCV26 +2026-10-30 +-- +80740\.00 +-- +80600\.00 +\+0\.17% +6\.6 +\+9\.6% +2026-10-24 01:33/);
-    expect(text).toMatch(/BTCH27 .* 83035\.00 +-- +-- +-- +-- +-- +2026-10-24 03:52/);
+    expect(text).toMatch(new RegExp(String.raw`BTCH27 .* 83035\.00 +-- +-- +${MISSING_VALUE} +-- +${MISSING_VALUE} +2026-10-24 03:52`));
     expect(text).not.toContain("Spot Time");
     expect(text).toMatch(/\nNotes:\n {2}Ann Basis = \(Last \/ spot - 1\) × 365 \/ days to expiry.*\n {2}Basis blank for BTCZ26 .*\n {2}Ann Basis is noisy under 7 days/);
     // Other roots have no basis columns to footnote.

@@ -7,7 +7,7 @@ import { afterLayout, revealInScrollBox } from "../../../components/ui/reveal-in
 import { useThemeColors } from "../../../theme/theme-context";
 import type { Quote } from "../../../types/financials";
 import { quoteAgeText } from "../../../market-data/quotes/freshness";
-import { formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatPercentRaw } from "../../../utils/format";
 import type { BrokerAccount, BrokerOrder, BrokerOrderPreview, BrokerOrderRequest, BrokerTradingCapabilities } from "../../../types/trading";
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities, type BoxRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { useDialogState } from "../../../ui/dialog";
@@ -149,7 +149,7 @@ function DockedQuote({ quote, delayed, stale, source, updated, price, change, wi
   </Box>;
   return <Box flexDirection="column" gap={native ? 0.2 : 0} data-gloom-selectable="true">
     <Box flexDirection="row" gap={1} alignItems={native ? "baseline" : "center"}>
-      <FigureText>{quote?.price === undefined ? "--" : price(quote.price)}</FigureText>
+      <FigureText>{quote?.price === undefined ? MISSING_VALUE : price(quote.price)}</FigureText>
       <Box flexGrow={1} minWidth={0}><FigureText part="sub" change={quote?.change}>{change}</FigureText></Box>
       {delayed ? <Box flexShrink={0} title={`${source} · ${updated}`}><Icon name="clock" color={c.warning} /></Box> : null}
       {stale ? <Text fg={c.warning} flexShrink={0}>{stale}</Text> : null}

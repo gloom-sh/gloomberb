@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../../utils/format";
 import { colors } from "../../../../theme/colors";
 import type { BuildoutReportSection, RawObject } from "../model/types";
 import { dateShort, textOrNull, uniqueStrings } from "../format";
@@ -11,7 +12,7 @@ export function valueWithOriginal(value?: string | null, original?: string | nul
 
 export function dateCell(value?: string | null) {
   const short = dateShort(value);
-  return short === "-" ? null : short;
+  return short === MISSING_VALUE ? null : short;
 }
 
 export function booleanText(value: boolean | null | undefined) {

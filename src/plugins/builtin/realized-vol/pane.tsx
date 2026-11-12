@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, useChartTableSelection, usePaneFooter, usePaneNoticeFooter, usePaneTabs,
   usePaneTicker, type DataTableColumn, type StatItem } from "../../../components";
@@ -30,7 +31,7 @@ import { fxProxyChain, fxProxyChainLabel, fxProxyIvLessRv, fxProxyLabel, fxProxy
 /** In session, while visible, the current ATM IV reference re-reads its expiry this often. */
 const ATM_IV_REFRESH_MS = 60_000;
 const TABS = [{ value: "graph", label: "History" }, { value: "cone", label: "Cone" }];
-const percent = (value: number | null | undefined) => value == null ? "--" : `${(value * 100).toFixed(2)}%`;
+const percent = (value: number | null | undefined) => value == null ? MISSING_VALUE : `${(value * 100).toFixed(2)}%`;
 const points = (value: number) => `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}`;
 const NO_CONE: VolatilityConeStatistics[] = [];
 const coneRowId = (row: VolatilityConeStatistics) => String(row.window);
@@ -209,8 +210,8 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
         // A stale IV30 is marked here and said in the footer ("FXB has no IV30 since 2026-05-18").
         { id: "proxy-iv", label: fxProxyLabel(proxyData), value: percent(proxyData.iv30?.value),
           detail: proxyData.iv30 ? `${proxyData.iv30.date.slice(5)} close` : undefined, tone: proxySpread.stale ? "warning" : undefined },
-        { id: "proxy-spread", label: "IV30 - HV20", value: proxySpread.spread == null ? "--" : points(proxySpread.spread), detail: "pts" },
-        { id: "proxy-chain", label: fxProxyChainLabel(proxyData), ...(!proxyChain ? { value: "--" }
+        { id: "proxy-spread", label: "IV30 - HV20", value: proxySpread.spread == null ? MISSING_VALUE : points(proxySpread.spread), detail: "pts" },
+        { id: "proxy-chain", label: fxProxyChainLabel(proxyData), ...(!proxyChain ? { value: MISSING_VALUE }
           : proxyChain.reopen ? { value: "closed", detail: proxyChain.reopen.short ? `fills at the open, ${proxyChain.reopen.short}` : "fills at the open",
             detailVariants: ["fills at the open"] }
             : { value: proxyChain.count, detail: "expiries with ATM IV", detailVariants: ["with ATM IV"] }) },
@@ -241,7 +242,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
             ["as of", model.asOf?.toISOString()], ["source", history.data?.source], ["units", "annualized %"], ["annualization", barsPerYearLabel(model.barsPerYear)], ["warnings", ...notices]]}
           renderCell={(row, column) => ({ text: column.id === "window" ? String(row.window)
             : column.id === "sampleSize" ? String(row.sampleSize)
-              : column.id === "percentile" ? row.percentile == null ? "--" : `${row.percentile.toFixed(1)}%`
+              : column.id === "percentile" ? row.percentile == null ? MISSING_VALUE : `${row.percentile.toFixed(1)}%`
                 : percent(row[column.id as "current" | "min" | "max" | "mean" | "median"]),
             color: column.id === "current" ? colors.warning : colors.text })} />
         {/* Desktop chrome runs a little taller than its rows; the spare row keeps the last window in view. */}

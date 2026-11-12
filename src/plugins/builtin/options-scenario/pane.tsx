@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { splitDelayedStatus, Button, ChoiceDialog, confirmDialog, DataTableView, EmptyState, PageStackView, PaneStatusBody, QueryBar, StatGrid, statGridRows,
   usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableColumn, type SelectControl, type StatItem } from "../../../components";
@@ -45,10 +46,10 @@ import { logFailure } from "../../../utils/log-failure";
 
 const EMPTY_ERRORS: string[] = [];
 const TABS = [{ value: "payoff", label: "Payoff" }, { value: "grid", label: "P&L grid" }, { value: "legs", label: "Legs" }];
-const dateLabel = (value: number) => Number.isFinite(new Date(value).getTime()) ? new Date(value).toISOString().slice(0, 10) : "--";
+const dateLabel = (value: number) => Number.isFinite(new Date(value).getTime()) ? new Date(value).toISOString().slice(0, 10) : MISSING_VALUE;
 // Float noise at a flat origin reads as zero, not a red -0.00.
 const cents = (value: number) => Math.abs(value) < 0.005 ? 0 : value;
-const money = (value: number | null) => value == null || !Number.isFinite(value) ? "--" : cents(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (value: number | null) => value == null || !Number.isFinite(value) ? MISSING_VALUE : cents(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
@@ -354,7 +355,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     { id: "value", label: "Value", value: money(scenario.valuation.price), detail: valueUnit },
     { id: "max-profit", label: "Max profit", value: risk?.unlimitedProfit ? "Unlimited" : money(risk?.maxProfit ?? null) },
     { id: "max-loss", label: "Max loss", value: risk?.unlimitedLoss ? "Unlimited" : money(risk?.maxLoss ?? null) },
-    { id: "breakevens", label: "Breakevens", value: risk?.breakevens.map(money).join(", ") || "--" },
+    { id: "breakevens", label: "Breakevens", value: risk?.breakevens.map(money).join(", ") || MISSING_VALUE },
     { id: "delta", label: "Delta", value: scenario.valuation.delta.toFixed(2) },
     { id: "gamma", label: "Gamma", value: scenario.valuation.gamma.toFixed(3) },
     { id: "theta", label: "Theta", value: money(scenario.valuation.thetaPerDay), detail: "per day" },
@@ -388,7 +389,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       renderCell={(row, column) => {
         const atSpot = row.move != null && Math.abs(row.move) < 1e-9;
         if (column.id === "spot") return { text: money(row.spot), color: row.landmark ? colors.warning : atSpot ? colors.textBright : colors.text };
-        if (column.id === "move") return { text: row.move == null ? "--" : `${row.move > 0 ? "+" : ""}${(row.move * 100).toFixed(1)}`, color: colors.textMuted };
+        if (column.id === "move") return { text: row.move == null ? MISSING_VALUE : `${row.move > 0 ? "+" : ""}${(row.move * 100).toFixed(1)}`, color: colors.textMuted };
         if (column.id === "mark") return { text: row.landmark ?? (atSpot ? "spot" : ""), color: row.landmark ? colors.warning : colors.textMuted };
         const value = cents(row.values[Number(column.id)] ?? 0);
         // Shade by size so the profit zone and the wings read at a glance.
@@ -453,8 +454,8 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
         onActivate={(row) => edit({ id: crypto.randomUUID(), side: row.side, quantity: 1, strike: row.strike,
           expiration: row.expiration, price: optionMid(row) ?? (row.lastPrice > 0 ? row.lastPrice : 0),
           volatility: Number.isFinite(row.impliedVolatility) && row.impliedVolatility >= 0 ? row.impliedVolatility : 0, multiplier: 100 })}
-        renderCell={(row, column) => ({ text: column.id === "side" ? row.side : column.id === "iv" ? (row.impliedVolatility > 0 ? (row.impliedVolatility * 100).toFixed(2) : "--")
-          : column.id === "oi" ? String(row.openInterest ?? "--") : money(row[column.id as "strike" | "bid" | "ask"]) })} />
+        renderCell={(row, column) => ({ text: column.id === "side" ? row.side : column.id === "iv" ? (row.impliedVolatility > 0 ? (row.impliedVolatility * 100).toFixed(2) : MISSING_VALUE)
+          : column.id === "oi" ? String(row.openInterest ?? MISSING_VALUE) : money(row[column.id as "strike" | "bid" | "ask"]) })} />
     </PaneStatusBody>
   </>;
   return <Box flexDirection="column" width={width} height={height} overflow="hidden">

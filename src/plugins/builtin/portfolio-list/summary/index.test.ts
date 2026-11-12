@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../../utils/format";
 import { describe, expect, test } from "bun:test";
 import { getLanguage, setLanguage } from "../../../../i18n";
 import { useRegularMarketSession } from "../../../../test-support/market-session";
@@ -336,7 +337,7 @@ describe("buildPortfolioSummarySegments", () => {
       sortedTickers: [],
     });
 
-    expect(segments.map((segment) => segment.parts[0]?.text)).toEqual(["Acct missing", "-"]);
+    expect(segments.map((segment) => segment.parts[0]?.text)).toEqual(["Acct missing", MISSING_VALUE]);
   });
 });
 

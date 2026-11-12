@@ -6,7 +6,7 @@ import { colors, priceColor } from "../../../theme/colors";
 import type { TickerFinancials, PricePoint } from "../../../types/financials";
 import type { BrokerAccount, BrokerPortfolioPerformance } from "../../../types/trading";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
-import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { formatRelativeAge } from "../../../utils/datetime-format";
 import type { PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 import { instrumentFromTicker, type ChartRequest, type TickerInstrumentOptions } from "../../../market-data/request-types";
@@ -437,7 +437,7 @@ export function buildAnalyticsRiskRows({
     return {
       id: row.id,
       label: row.label,
-      value: reason ? "—" : formatNumber(row.value ?? undefined, 2),
+      value: reason ? MISSING_VALUE : formatNumber(row.value ?? undefined, 2),
       detail: reason ?? (row.value == null ? "Insufficient history for basket estimate" : window ?? (partial ? `Partial: ${partial}` : undefined)),
       color: colors.textMuted,
     };

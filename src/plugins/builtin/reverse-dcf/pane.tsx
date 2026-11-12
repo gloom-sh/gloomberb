@@ -8,7 +8,7 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
-import { formatCompactCurrency } from "../../../utils/format";
+import { MISSING_VALUE, formatCompactCurrency } from "../../../utils/format";
 import { loadReverseDcfInputs } from "./client";
 import { describeFcfMargin, DISCOUNT_RATES, FORECAST_YEARS, formatFcfMargin, pastGrowthBasis, projectReverseDcf, TERMINAL_GROWTH, TERMINAL_GROWTHS,
   ttmBaseGap, type ImpliedGrowth, type MissingInput, type ReverseDcfModel } from "./model";
@@ -28,7 +28,7 @@ function marginOptions(model: ReverseDcfModel | null) {
 }
 
 // A figure not computed reads as the other missing figures beside it do.
-const MISSING = "\u2014";
+const MISSING = MISSING_VALUE;
 
 function pct(value: number | null | undefined, signed = true): string {
   if (value == null) return MISSING;

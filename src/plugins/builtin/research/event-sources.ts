@@ -6,7 +6,7 @@ import type {
 } from "../../../types/financials";
 import { formatEventMetric } from "./event-model";
 import { loadAnalystResearch } from "./client";
-import { formatPercent, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { loadEarningsCalendar } from "../earnings/data/cache";
 import { calendarEventOf, newYorkDay, withResolvedEarnings } from "../shared/earnings-calendar";
 
@@ -39,13 +39,13 @@ export const EARNINGS_ESTIMATE_COLUMNS = [
   ...EVENT_COLUMNS.filter((column) => column.key !== "value" && column.key !== "detail"),
   {
     key: "surprisePercent", header: "EPS surp", align: "right" as const,
-    format: (value: unknown) => value == null ? "-" : formatPercentRaw(Number(value)),
+    format: (value: unknown) => value == null ? MISSING_VALUE : formatPercentRaw(Number(value)),
   },
   {
     key: "estimateGrowth", header: "YoY growth", align: "right" as const,
-    format: (value: unknown) => value == null ? "-" : formatPercent(Number(value)),
+    format: (value: unknown) => value == null ? MISSING_VALUE : formatPercent(Number(value)),
     // The text says which figure grew, as the pane does; exports keep the percent a number.
-    textFormat: (value: unknown, row: Record<string, unknown>) => value == null ? "-"
+    textFormat: (value: unknown, row: Record<string, unknown>) => value == null ? MISSING_VALUE
       : `${formatPercent(Number(value))} ${row.estimateGrowthMetric === "revenue" ? "rev" : "EPS"}`,
   },
   { key: "detail", header: "Detail" },

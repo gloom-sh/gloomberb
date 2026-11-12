@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { ChartTableHeader, CompositeChart, DataTableStackView, spanDigits, DataTableView, PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, type ChartTableChart, type DataTableColumn, type SelectControl } from "../../../components";
 import { useAsyncResource, usePluginPaneState, useShortcut } from "../../../public/react";
@@ -40,7 +41,7 @@ const NET_PRICE_PANELS = [{ id: "net", height: 2 }, { id: "price", height: 1 }];
 const NET_PANEL = [{ id: "net" }];
 /** Legend, four net rows, two price rows and the axis; a shorter band keeps the net alone. */
 const PRICE_PANEL_MIN_ROWS = 8;
-const rank = (value: number | null | undefined) => value == null ? "--" : value.toFixed(0);
+const rank = (value: number | null | undefined) => value == null ? MISSING_VALUE : value.toFixed(0);
 /** A class's rank in a percentile column: 1Y, 3Y, or against every stored report (`all`). */
 const columnRank = (row: CotClassSummary, column: string) =>
   (column === "one" ? row.percentile1Y : column === "three" ? row.percentile3Y : row.percentileAll)?.value ?? null;
@@ -110,7 +111,7 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   ] : [] }), [boardShown, focusSearch]);
   usePaneNoticeFooter({ registrationId: "cot:board-notices", focused, enabled: !open, notices: data?.gaps ?? [] });
   usePaneStatusFooter({ registrationId: "cot:board", enabled: !open, loading: resource.loading, error: resource.error,
-    info: data ? [{ id: "as-of", parts: [{ text: `CFTC ${cotPositionsText(positions)} · ${data.asOf ?? "--"} · contracts`, tone: "muted" }] }] : [] });
+    info: data ? [{ id: "as-of", parts: [{ text: `CFTC ${cotPositionsText(positions)} · ${data.asOf ?? MISSING_VALUE} · contracts`, tone: "muted" }] }] : [] });
   // A class change reloads under the query bar, which stays.
   return <DataTableStackView<CotBoardRow> columns={BOARD_COLUMNS} items={rows} focused={focused && !searching}
     status={data ? undefined : { loading: resource.loading, error: resource.error, empty: !resource.loading && !resource.error, subject: "COT history" }}
@@ -196,7 +197,7 @@ function CotDetail({ width, height, focused, code, family, positions, traderClas
   usePaneStatusFooter({ registrationId: "cot:detail", loading: resource.loading, error: resource.error,
     // The unit the net is counted in, as `fn COT` titles it: what one contract is, where the report says.
     // Futures and options combined says so; futures only reads as it always has.
-    info: payload ? [{ id: "as-of", parts: [{ text: `CFTC ${positions === "combined" ? `${cotPositionsText(positions)} · ` : ""}${payload.asOf ?? "--"} · ${cotContractUnitText(payload.contract?.contractUnits) ?? "contracts"}${data?.priceAsOf ? ` · ${data.priceSymbol} ${data.priceAsOf}` : ""}`, tone: "muted" }] }] : [] });
+    info: payload ? [{ id: "as-of", parts: [{ text: `CFTC ${positions === "combined" ? `${cotPositionsText(positions)} · ` : ""}${payload.asOf ?? MISSING_VALUE} · ${cotContractUnitText(payload.contract?.contractUnits) ?? "contracts"}${data?.priceAsOf ? ` · ${data.priceSymbol} ${data.priceAsOf}` : ""}`, tone: "muted" }] }] : [] });
   return <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} empty={!!payload && !payload.contract} subject="COT contract">
     {payload && data ? <DataTableView columns={POSITION_COLUMNS} items={payload.positions} focused={focused} rootWidth={width} rootHeight={height}
       rootBefore={<ChartTableHeader width={width} height={height} tableRows={payload.positions.length} chart={chart}

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useMemo } from "react";
 import { DataTableStackView, EmptyState, PaneStatusBody, StatGrid, usePaneNoticeFooter, usePaneStatusLinkFooter, type DataTableCell, type StatItem } from "../../../components";
 import { ageFooterSegment } from "../../../components/layout/pane/footer";
@@ -68,8 +69,8 @@ export function ShortSidePublicationPane({ kind, width, height, focused }: Pick<
         ...detailColumns.filter((column) => column.id !== "date" && column.id !== "cusip").map((column) => ({ label: column.detailLabel,
           value: openRow[column.id] == null ? "Not published" : typeof openRow[column.id] === "number" && column.id !== "atsSharePercent" && column.id !== "price"
             ? Number(openRow[column.id]).toLocaleString("en-US", { maximumFractionDigits: 6 }) : publicationCell(column, openRow[column.id] ?? null) })),
-        { label: "Published through", value: data.sourceAsOf ?? "--" },
-        { label: "Retrieved", value: data.loadedAt?.replace("T", " ").replace(/\.\d+Z$/, " UTC") ?? "--" },
+        { label: "Published through", value: data.sourceAsOf ?? MISSING_VALUE },
+        { label: "Retrieved", value: data.loadedAt?.replace("T", " ").replace(/\.\d+Z$/, " UTC") ?? MISSING_VALUE },
       ]} /> : null}
     /> : null}
   </PaneStatusBody>;

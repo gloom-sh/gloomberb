@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { apiClient as cloudApiClient } from "../../../api-client";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { DataProvider } from "../../../types/data-provider";
@@ -133,15 +134,15 @@ export function surfaceEventReadings(expiries: readonly SurfaceExpiry[], catalog
   });
 }
 
-const percent = (value: number | null | undefined, digits = 2) => value == null ? "--" : `${(value * 100).toFixed(digits)}%`;
+const percent = (value: number | null | undefined, digits = 2) => value == null ? MISSING_VALUE : `${(value * 100).toFixed(digits)}%`;
 /** The implied move is an estimate: "≈1.01%". */
-export const approximatePercent = (value: number | null | undefined) => value == null ? "--" : `≈${percent(value)}`;
+export const approximatePercent = (value: number | null | undefined) => value == null ? MISSING_VALUE : `≈${percent(value)}`;
 
 /** MDAY's average absolute move on each release's days: "1.01%", or "1.01/0.98%" for two releases read together. */
 export function surfaceEventHistory(events: readonly SurfaceEvent[]): string {
   const moves = events.map((event) => event.history?.meanAbs);
-  if (moves.every((move) => move == null)) return "--";
-  return moves.length === 1 ? percent(moves[0]) : `${moves.map((move) => move == null ? "--" : (move * 100).toFixed(2)).join("/")}%`;
+  if (moves.every((move) => move == null)) return MISSING_VALUE;
+  return moves.length === 1 ? percent(moves[0]) : `${moves.map((move) => move == null ? MISSING_VALUE : (move * 100).toFixed(2)).join("/")}%`;
 }
 
 /** One line for a narrow pane: "fwd 17.0% · move ≈1.01% · MDAY 1.01%". */

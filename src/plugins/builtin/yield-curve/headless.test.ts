@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
@@ -113,7 +114,7 @@ describe("yield curve headless model", () => {
     expect(lines.slice(at + 1, at + 4)).toEqual([
       "2s10s  +38bp  +1bp 1D \u00b7 20 pctl 1Y",
       "3m10y  +78bp  -2bp 1D",
-      "5s30s  --  -- 1D",
+      `5s30s  ${MISSING_VALUE}  ${MISSING_VALUE} 1D`,
     ]);
     // JSON keeps the spreads as numbers in metadata, not as text.
     expect(result.metadata).toMatchObject({ spread2Y10YBasisPoints: 38, spread3M10YBasisPoints: 78, spread5Y30YBasisPoints: null });

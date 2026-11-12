@@ -29,7 +29,7 @@ export function buildKellyHistoryItems(inputs: KellyHistoryInputs): StatItem[] {
     { id: "winRate", label: "Win rate", value: formatPct(inputs.winProbability, 1), detail: `${inputs.wins}/${inputs.periods}` },
     { id: "avgGain", label: "Avg gain", value: formatSignedPct(inputs.upsideReturn), color: priceColor(inputs.upsideReturn) },
     { id: "avgLoss", label: "Avg loss", value: formatSignedPct(inputs.downsideReturn), color: priceColor(inputs.downsideReturn) },
-    { id: "payoff", label: "Payoff", value: payoff == null ? "—" : `${formatNumber(payoff, 2)}x` },
+    { id: "payoff", label: "Payoff", value: payoff == null ? MISSING_VALUE : `${formatNumber(payoff, 2)}x` },
   ];
 }
 
@@ -198,7 +198,7 @@ export function KellySensitivitySection({
   const renderCell = (row: SensitivityRow, column: DataTableColumn): DataTableCell => {
     if (column.id === ROW_AXIS_COLUMN) return { text: row.label, color: colors.textDim };
     if (column.id === FILL_COLUMN) return { text: "" };
-    return { text: row.cells[Number(column.id)]?.text ?? "—" };
+    return { text: row.cells[Number(column.id)]?.text ?? MISSING_VALUE };
   };
 
   return (

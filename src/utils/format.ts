@@ -240,7 +240,7 @@ export function significantDecimals(value: number, digits = 4): number {
 
 /** A percentile rank with its window: "73 pctl 1Y", "-- pctl 1Y" when unranked, "73 pctl" without a window. */
 export function formatPercentileRank(value: number | null | undefined, window?: string): string {
-  const rank = value == null || !Number.isFinite(value) ? "--" : value.toFixed(0);
+  const rank = value == null || !Number.isFinite(value) ? MISSING_VALUE : value.toFixed(0);
   return window ? `${rank} pctl ${window}` : `${rank} pctl`;
 }
 

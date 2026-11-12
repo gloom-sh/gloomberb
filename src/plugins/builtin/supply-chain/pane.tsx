@@ -19,7 +19,7 @@ import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities } from "../../../ui";
-import { displayWidth } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth } from "../../../utils/format";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { useOpenDescription } from "../shared/open-description";
@@ -320,7 +320,7 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
         <Text fg={ROLE_COLORS[row.role]}>●</Text>
         <Text fg={ink ?? ROLE_COLORS[row.role]}>{` ${roleLabel(row.role)}`}</Text>
       </Box> };
-      case "pct": return { text: percentage(row) === "--" ? "" : `${shareParts(row, focusId)?.value ?? ""} ${shareParts(row, focusId)?.basis ?? ""}`.trim(), value: row.pctOfRevenue,
+      case "pct": return { text: percentage(row) === MISSING_VALUE ? "" : `${shareParts(row, focusId)?.value ?? ""} ${shareParts(row, focusId)?.basis ?? ""}`.trim(), value: row.pctOfRevenue,
         content: <ShareCell row={row} focusId={focusId} width={column.width} layout={shareColumn} selected={state.selected} /> };
       case "usd": return nativeValue(row) === null && row.usd === null ? { text: "", value: null }
         : { text: disclosedValue(row).replace(/ (disclosed|derived)$/, ""), value: row.nativeAmount != null ? row.nativeAmount * (row.nativeScale ?? 1) : row.usd, color: colors.text };

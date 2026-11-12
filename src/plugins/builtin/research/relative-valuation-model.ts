@@ -1,4 +1,4 @@
-import { formatCompact, formatCurrency } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatCurrency } from "../../../utils/format";
 import { comparablePriceEarnings, notMeaningfulMultiples } from "../../../utils/price-earnings";
 import { marketCapBasisNote, viewMarketCapitalization, withheldMarketCap } from "../../../utils/market-capitalization";
 import {
@@ -16,7 +16,7 @@ import { enterpriseValueBridgeBasis, listingEnterpriseValue } from "../../../mar
 import type { Quote, TickerFinancials } from "../../../types/financials";
 
 export function formatRelativePrice(price: number | null | undefined, currency: string | null | undefined): string {
-  if (price == null) return "-";
+  if (price == null) return MISSING_VALUE;
   return formatCurrency(price, currency ?? "");
 }
 

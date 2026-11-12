@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import {
   staticSeries,
   scalarPoint,
@@ -154,7 +155,7 @@ function sharedWordUnit(rows: RiskDisplayRow[]): string | null {
   if (!unit || unit === "%" || !rows.every((row) => row.unit === unit)) return null;
   return unit;
 }
-const bareValue = (row: RiskDisplayRow) => row.value == null ? "--" : row.value.toFixed(2);
+const bareValue = (row: RiskDisplayRow) => row.value == null ? MISSING_VALUE : row.value.toFixed(2);
 const HOLDINGS_SUMMARY_LABELS: Record<string, string> = { top: "Largest", "top-five": "Top five" };
 const CASH_ASIDE = ", cash aside";
 /** The book concentration figures that lead the holdings view, as a summary band. */
@@ -173,7 +174,7 @@ function holdingsSummaryItems(rows: RiskDisplayRow[]): StatItem[] {
     return {
       id: row.id,
       label: HOLDINGS_SUMMARY_LABELS[row.id] ?? row.label,
-      value: row.value == null ? "--" : share ? `${row.value.toFixed(2)}%` : row.value.toFixed(2),
+      value: row.value == null ? MISSING_VALUE : share ? `${row.value.toFixed(2)}%` : row.value.toFixed(2),
       detail,
     };
   });
@@ -970,13 +971,13 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
               : { text: sharedUnit || attributionParts ? bareValue(row) : riskValue(row), ...(weakFit ? { color: colors.textMuted } : {}) };
           if (column.id === "rSquared")
             return row.rSquared == null
-              ? { text: "--" }
+              ? { text: MISSING_VALUE }
               : { text: `${weakFit ? "weak " : ""}${row.rSquared.toFixed(2)}`, value: row.rSquared, ...(weakFit ? { color: colors.textMuted } : {}) };
           if (column.id === "percentile") return { text: riskPercentile(row) };
-          if (column.id === "asOf") return { text: row.asOf?.slice(0, 10) ?? "--" };
+          if (column.id === "asOf") return { text: row.asOf?.slice(0, 10) ?? MISSING_VALUE };
           if (column.id === "allocation" || column.id === "selection" || column.id === "interaction") {
             const part = row[column.id];
-            return { text: part == null ? "--" : part.toFixed(2) };
+            return { text: part == null ? MISSING_VALUE : part.toFixed(2) };
           }
           return { text: factorFits ? withoutFactorFit(row.detail) : row.detail };
         }}

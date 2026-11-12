@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { DataProvider } from "../../../types/data-provider";
 import type { HeadlessPaneFreshness } from "../../../types/plugin";
@@ -294,7 +295,7 @@ export function cspScreenCriteriaText(criteria: CspScreenCriteria, now: number):
  * expires, and its date; `unavailable` when the earnings calendar could not be read.
  */
 export function cspEarningsText(csp: Pick<CashSecuredPut, "earnings"> | null): string {
-  if (!csp) return "--";
+  if (!csp) return MISSING_VALUE;
   const { beforeExpiry, date, unavailable } = csp.earnings;
   if (unavailable) return "unavailable";
   return beforeExpiry == null ? "unknown" : `${beforeExpiry ? "before" : "after"} ${date}`;

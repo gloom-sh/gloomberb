@@ -1,12 +1,12 @@
 import type { ShortVolumeObservation, ShortVolumePayload } from "../../../api-client/short-volume";
 import type { DataTableColumn } from "../../../components";
-import { formatCompact } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 
-export const volumePercent = (value: number | null) => value == null ? "--" : `${value.toFixed(2)}%`;
-export const volumeChange = (value: number | null) => value == null ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(2)}pp`;
-export const volumeQuantity = (value: string | null) => value == null ? "--" : formatCompact(Number(value), { fixedDecimals: true });
+export const volumePercent = (value: number | null) => value == null ? MISSING_VALUE : `${value.toFixed(2)}%`;
+export const volumeChange = (value: number | null) => value == null ? MISSING_VALUE : `${value > 0 ? "+" : ""}${value.toFixed(2)}pp`;
+export const volumeQuantity = (value: string | null) => value == null ? MISSING_VALUE : formatCompact(Number(value), { fixedDecimals: true });
 export function exactQuantity(value: string | null): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   const [integer, fraction = ""] = value.split(".");
   const decimals = fraction.replace(/0+$/, "");
   return `${integer!.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${decimals ? `.${decimals}` : ""}`;

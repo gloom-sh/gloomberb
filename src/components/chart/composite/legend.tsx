@@ -2,7 +2,7 @@ import { memo, useEffect, useRef } from "react";
 import { Box, ScrollBox, Span, Text, useShortcutLabel, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { CANONICAL_EXCHANGE_ALIASES } from "../../../utils/exchanges";
-import { displayWidth, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatPercentRaw } from "../../../utils/format";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { consumeChartMouseEvent, type ChartMouseEvent } from "../core/pointer";
 import {
@@ -33,7 +33,7 @@ function formatLegendSeriesValue(
   formatValue: CompositeChartProps["formatValue"],
   scene: CompositeChartScene | null,
 ): string {
-  if (value === null) return "—";
+  if (value === null) return MISSING_VALUE;
   return formatValue ? formatValue(value, series) : formatCompositeSeriesValue(value, series, axisPriceReference(scene, series));
 }
 

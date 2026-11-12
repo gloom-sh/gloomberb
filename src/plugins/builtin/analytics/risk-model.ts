@@ -1,6 +1,6 @@
 import { portfolioOptionGreeks } from "./risk-options";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
-import { formatCurrency, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatCurrency, formatNumber } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import {
   getPortfolioPositionMetrics,
@@ -204,7 +204,7 @@ function bookCurrencyShares(lines: ReadonlyArray<{ currency: string; value: numb
 
 /** A factor row's evidence without its fit, for a table that gives the fit a column of its own. */
 export function withoutFactorFit(detail: string): string {
-  return detail.replace(/; R² (?:--|[0-9.]+(?:, weak fit)?)/, "");
+  return detail.replace(new RegExp(String.raw`; R² (?:${MISSING_VALUE}|[0-9.]+(?:, weak fit)?)`), "");
 }
 
 /** Whether a fit is weak as it reads to two decimals: 0.0999 shows as 0.10 and is not. */
@@ -214,7 +214,7 @@ export function isWeakFactorFit(rSquared: number | null | undefined): boolean {
 
 /** "R² 0.28", or "R² 0.03, weak fit" below WEAK_FACTOR_FIT; "R² --" without a fit. */
 export function factorFitText(rSquared: number | null | undefined): string {
-  if (rSquared == null || !Number.isFinite(rSquared)) return "R² --";
+  if (rSquared == null || !Number.isFinite(rSquared)) return `R² ${MISSING_VALUE}`;
   return `R² ${rSquared.toFixed(2)}${isWeakFactorFit(rSquared) ? ", weak fit" : ""}`;
 }
 /** The tail-loss rows, which also read in money on the covered basket. */
@@ -1224,7 +1224,7 @@ export function buildPortfolioRisk(
         unit: "%",
         percentile: null,
         asOf: row.regression?.asOf ?? null,
-        detail: `% of basket; ${row.regression?.samples ?? 0} sessions; R² ${row.regression?.rSquared?.toFixed(2) ?? "--"}; ${row.source}`,
+        detail: `% of basket; ${row.regression?.samples ?? 0} sessions; R² ${row.regression?.rSquared?.toFixed(2) ?? MISSING_VALUE}; ${row.source}`,
       })),
       // Dated as the index scenario is: the weights and betas are today's, the window is in the label and the evidence.
       ...(episodeState
@@ -1429,7 +1429,7 @@ export const riskValue = (row: RiskDisplayRow) =>
   row.leftOut
     ? "left out"
     : row.value == null
-    ? "--"
+    ? MISSING_VALUE
     : `${row.value.toFixed(2)}${row.unit === "%" ? "%" : ` ${row.unit}`}${riskAmount(row)}`;
 /** A row's evidence with what a tail loss in money is taken on: the basket, its share of the book and what it leaves out. */
 export function riskEvidence(row: RiskDisplayRow): string {
@@ -1441,4 +1441,4 @@ function riskAmount(row: RiskDisplayRow): string {
   return ` (${formatCurrency(row.amount, row.amountCurrency, 0)})`;
 }
 export const riskPercentile = (row: RiskDisplayRow) =>
-  row.percentile == null ? "--" : String(Math.round(row.percentile));
+  row.percentile == null ? MISSING_VALUE : String(Math.round(row.percentile));

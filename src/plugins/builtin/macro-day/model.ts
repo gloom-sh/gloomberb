@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { EarningsTiming } from "../../../api-client/earnings";
 import type { PricePoint } from "../../../types/financials";
 import { zonedDateTimeParts } from "../../../utils/zoned-date-time";
@@ -37,7 +38,7 @@ const macroDayMoveBasis = (symbol: string): MacroDayMoveBasis => isYieldIndexSym
  */
 export function formatMacroDayMove(value: number | null | undefined, basis: MacroDayMoveBasis,
   { signed = true, unit = true }: { signed?: boolean; unit?: boolean } = {}): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   if (basis === "yield") {
     const bp = toBasisPoints(value, 1);
     return `${signed && bp > 0 ? "+" : ""}${bp.toFixed(1)}${unit ? "bp" : ""}`;

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useMemo, type ReactNode } from "react";
 import type { ThemeMember, ThemePeriod, ThemeSummary } from "../../../api-client/themes";
 import { splitDelayedStatus, DataTableStackView, DataTableView, PaneStatusBody, usePaneNoticeFooter, usePaneStatusFooter, type DataTableCell, type DataTableColumn } from "../../../components";
@@ -75,7 +76,7 @@ function Members({ id, width, height, focused }: { id: string; width: number; he
   useMembersMenu("themes:members-menu", memberList);
   const renderCell = useCallback((row: ThemeMember, column: DataTableColumn): DataTableCell => {
     if (column.id === "symbol") return { text: row.symbol, color: colors.textBright };
-    if (column.id === "name") return { text: row.name ?? "--", color: colors.text };
+    if (column.id === "name") return { text: row.name ?? MISSING_VALUE, color: colors.text };
     if (column.id === "price") return { text: memberPrice(row.price), value: row.price };
     if (column.id === "preMarket" || column.id === "afterHours") {
       // The extended print's move from the close in Price.
@@ -134,7 +135,7 @@ export function ThemesBoard({ width, height, focused, tabStrip, tabRows = 0 }: T
     if (column.id === "memberCount") return { text: String(row.memberCount), value: row.memberCount, color: colors.textMuted };
     if (column.id === "best" || column.id === "worst") {
       const member = row[column.id];
-      return { text: member ? `${member.symbol} ${percent(member.changePercent)}` : "--", value: member?.changePercent ?? null,
+      return { text: member ? `${member.symbol} ${percent(member.changePercent)}` : MISSING_VALUE, value: member?.changePercent ?? null,
         color: member ? shownPriceColor(member.changePercent, 2, colors) : colors.textMuted };
     }
     const breadth = column.id === "breadth";

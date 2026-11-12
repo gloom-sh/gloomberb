@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../utils/format";
 import type { Quote } from "../../types/financials";
 import { getLanguage, tf } from "../../i18n";
 import { isPerpetualExchange } from "../../tickers/perpetual-listing";
@@ -72,7 +73,7 @@ export interface QuoteAgeFormatOptions {
 
 export function formatQuoteAge(lastUpdated: number | undefined, now = Date.now(), options: QuoteAgeFormatOptions = {}): string {
   const clamped = clampQuoteTimestamp(lastUpdated, now);
-  if (clamped == null) return "—";
+  if (clamped == null) return MISSING_VALUE;
 
   // A receipt or source time ahead of the clock is fresh, never negative.
   const ageMs = Math.max(0, now - clamped);
@@ -99,11 +100,11 @@ export function formatQuoteAgeWithSource(
   now = Date.now(),
   options: QuoteAgeFormatOptions = {},
 ): string {
-  if (!quote) return "—";
+  if (!quote) return MISSING_VALUE;
 
   const timestamp = resolveQuoteAgeTimestamp(quote, now);
-  const age = timestamp == null ? "—" : formatQuoteAge(timestamp, now, options);
-  if (age === "—") return age;
+  const age = timestamp == null ? MISSING_VALUE : formatQuoteAge(timestamp, now, options);
+  if (age === MISSING_VALUE) return age;
 
   const prefix = quote.dataSource === "delayed" ? "◷" : "";
   return prefix ? `${prefix}${age}` : age;

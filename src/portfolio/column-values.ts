@@ -12,7 +12,7 @@ import { colors, priceColor, shownPriceColor } from "../theme/colors";
 import { formatQuoteAgeWithSource, resolveQuoteAgeTimestamp } from "../market-data/quotes/time";
 import { delistingStateLabel } from "../market-data/quotes/delisting";
 import { formatFeedTime, formatShortDate, parseDisplayDate, type ShortDateOptions } from "../utils/datetime-format";
-import { convertCurrency, formatCompact, formatCompactAmount, formatNumber, formatPercentRaw } from "../utils/format";
+import { MISSING_VALUE, convertCurrency, formatCompact, formatCompactAmount, formatNumber, formatPercentRaw } from "../utils/format";
 import {
   formatMarketCost,
   quoteFormatOptions,
@@ -169,13 +169,13 @@ export interface ColumnContext {
 /** A row's P&L or contribution over the pane's period: `…` while the closes load, `—` without both. */
 function periodPnlCell(period: NonNullable<ColumnContext["periodPnl"]>, symbol: string, field: "pnl" | "contribution"): { text: string; color?: string } {
   const row = period.rows.get(symbol);
-  if (!row) return { text: period.pending ? "…" : "—" };
+  if (!row) return { text: period.pending ? "…" : MISSING_VALUE };
   return periodPnlFigure(row[field], field);
 }
 
 /** A period's P&L (`pnl`) or contribution figure as the P&L and P&L% cells show it, the FX line's included. */
 export function periodPnlFigure(value: number | null | undefined, field: "pnl" | "contribution"): { text: string; color?: string; value?: number } {
-  if (value == null || !Number.isFinite(value)) return { text: "—" };
+  if (value == null || !Number.isFinite(value)) return { text: MISSING_VALUE };
   return field === "pnl"
     ? { text: formatCompactAmount(value, { signed: true }), color: priceColor(value), value }
     : { text: formatPercentRaw(value), color: shownPriceColor(value, 2), value };
@@ -208,7 +208,7 @@ function perpetualValue(columnId: keyof typeof PERPETUAL_FIELDS, symbol: string,
 }
 
 /** Position and calendar dates as "Jan 5", read in UTC. */
-const MONTH_DAY: ShortDateOptions = { year: false, utc: true, fallback: "\u2014" };
+const MONTH_DAY: ShortDateOptions = { year: false, utc: true, fallback: MISSING_VALUE };
 
 function startOfUtcDay(date: Date): number {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
@@ -222,7 +222,7 @@ function daysSince(value: Date | string | number | null | undefined, now: number
 }
 
 function formatHeldDays(days: number | null): string {
-  if (days == null) return "—";
+  if (days == null) return MISSING_VALUE;
   if (days < 365) return `${days}d`;
   return `${formatNumber(days / 365, 1)}y`;
 }
@@ -266,7 +266,7 @@ function listedCurrency(
 
 function compactText(value: string | null | undefined): string {
   const trimmed = value?.trim();
-  return trimmed ? trimmed : "—";
+  return trimmed ? trimmed : MISSING_VALUE;
 }
 
 function targetValue(data: AnalystResearchData | null | undefined): number | null {
@@ -454,7 +454,7 @@ export function resolvePortfolioPriceValue(
   if (brokerMarkPrice != null) {
     return { text: formatMarketPrice(brokerMarkPrice, { ...formatOptions, maxWidth }) };
   }
-  return { text: "—" };
+  return { text: MISSING_VALUE };
 }
 
 /**
@@ -625,7 +625,7 @@ export function getColumnValue(
     case "industry":
       return { text: compactText(ticker.metadata.industry || financials?.profile?.industry) };
     case "tags":
-      return { text: ticker.metadata.tags.length > 0 ? ticker.metadata.tags.join(",") : "—" };
+      return { text: ticker.metadata.tags.length > 0 ? ticker.metadata.tags.join(",") : MISSING_VALUE };
     case "price": {
       const cell = resolvePortfolioPriceValue(headlineQuote, brokerMarkPrice, headlineQuote ? currentQuoteOptions : markOptions, col.width, quote?.marketState);
       // An extended-hours print says which session it is from, before it so the digits stay aligned: AH 158.78.
@@ -634,7 +634,7 @@ export function getColumnValue(
       return session ? { ...cell, text: `${EXTENDED_SESSION_MARKS[session]} ${cell.text}`, value: headlineQuote.price } : cell;
     }
     case "change":
-      if (!headlineQuote) return { text: "—" };
+      if (!headlineQuote) return { text: MISSING_VALUE };
       // A listing that no longer trades has no day's move: its last session's is years old.
       if (quote?.delisting) return { text: delistingStateLabel(quote.delisting), color: colors.warning };
       return {
@@ -642,23 +642,23 @@ export function getColumnValue(
         color: marketChangeColor(headlineQuote.change, quote?.marketState),
       };
     case "bid":
-      return { text: quote?.bid != null ? formatMarketPrice(quote.bid, { ...currentQuoteOptions, maxWidth: col.width }) : "—" };
+      return { text: quote?.bid != null ? formatMarketPrice(quote.bid, { ...currentQuoteOptions, maxWidth: col.width }) : MISSING_VALUE };
     case "ask":
-      return { text: quote?.ask != null ? formatMarketPrice(quote.ask, { ...currentQuoteOptions, maxWidth: col.width }) : "—" };
+      return { text: quote?.ask != null ? formatMarketPrice(quote.ask, { ...currentQuoteOptions, maxWidth: col.width }) : MISSING_VALUE };
     case "spread":
       return {
         text: quote?.bid != null && quote?.ask != null
           ? formatMarketPrice(quote.ask - quote.bid, { ...currentQuoteOptions, maxWidth: col.width })
-          : "—",
+          : MISSING_VALUE,
       };
     case "spread_pct": {
-      if (!isFiniteNumber(quote?.bid) || !isFiniteNumber(quote?.ask)) return { text: "—" };
+      if (!isFiniteNumber(quote?.bid) || !isFiniteNumber(quote?.ask)) return { text: MISSING_VALUE };
       const midpoint = (quote.bid + quote.ask) / 2;
-      if (midpoint === 0) return { text: "—" };
+      if (midpoint === 0) return { text: MISSING_VALUE };
       return { text: formatPercentRaw(((quote.ask - quote.bid) / Math.abs(midpoint)) * 100) };
     }
     case "bid_ask_size": {
-      if (!isFiniteNumber(quote?.bidSize) && !isFiniteNumber(quote?.askSize)) return { text: "—" };
+      if (!isFiniteNumber(quote?.bidSize) && !isFiniteNumber(quote?.askSize)) return { text: MISSING_VALUE };
       return { text: `${formatCompact(quote?.bidSize)}/${formatCompact(quote?.askSize)}` };
     }
     case "change_pct": {
@@ -666,26 +666,26 @@ export function getColumnValue(
       const changePercent = headlineChangePercent(headlineQuote, quote);
       return quote
         ? { text: formatPercentRaw(changePercent), color: marketChangeColor(changePercent, quote.marketState) }
-        : { text: "—" };
+        : { text: MISSING_VALUE };
     }
     case "volume": {
       const volume = reportedQuoteVolume(quote);
-      return { text: volume != null ? formatCompact(volume, { fixedDecimals: true }) : "—" };
+      return { text: volume != null ? formatCompact(volume, { fixedDecimals: true }) : MISSING_VALUE };
     }
     case "dollar_volume": {
       const volume = reportedQuoteVolume(quote);
-      if (!displayQuote || volume == null) return { text: "—" };
+      if (!displayQuote || volume == null) return { text: MISSING_VALUE };
       return { text: formatCompact(toBaseQuote(displayQuote.price * volume), { fixedDecimals: true }) };
     }
     case "range_52w": {
       const position = fiftyTwoWeekPosition(displayQuote, quote);
-      return { text: position == null ? "—" : formatPercentRaw(Math.max(0, Math.min(100, position))) };
+      return { text: position == null ? MISSING_VALUE : formatPercentRaw(Math.max(0, Math.min(100, position))) };
     }
     case "market_cap": {
       const cap = liveMarketCapitalization(quote, fundamentals);
       const value = cap ? listedMarketCapitalization(convertMarketCapitalization(cap.value, cap.currency, ctx.baseCurrency, ctx.exchangeRates)) : null;
       // An export writes the whole figure, not the three digits the cell shows (72.27B), in the base currency it names.
-      return { text: value == null ? "—" : formatCompact(value, { fixedDecimals: true }), value, valueUnit: ctx.baseCurrency };
+      return { text: value == null ? MISSING_VALUE : formatCompact(value, { fixedDecimals: true }), value, valueUnit: ctx.baseCurrency };
     }
     case "pe":
       return { text: formatPriceEarnings(liveTrailingPE(quote, fundamentals)) };
@@ -694,31 +694,31 @@ export function getColumnValue(
     case "dividend_yield": {
       const dividendYield = currentDividendYield(ticker.metadata.ticker, quote, fundamentals, ctx);
       if (dividendYield.pending) return { text: "…" };
-      return { text: dividendYield.value != null ? `${(dividendYield.value * 100).toFixed(2)}%` : "—" };
+      return { text: dividendYield.value != null ? `${(dividendYield.value * 100).toFixed(2)}%` : MISSING_VALUE };
     }
     case "ext_hours": {
       const changePercent = getExtendedSessionDisplay(quote)?.changePercent;
-      if (!isFiniteNumber(changePercent)) return { text: "—" };
+      if (!isFiniteNumber(changePercent)) return { text: MISSING_VALUE };
       return { text: formatPercentRaw(changePercent), color: shownPriceColor(changePercent, 2) };
     }
     case "side":
-      return { text: positionSideLabel(ticker, ctx.activeTab) ?? "—" };
+      return { text: positionSideLabel(ticker, ctx.activeTab) ?? MISSING_VALUE };
     case "shares":
-      if (positionMetrics.positionCount === 0) return { text: "—" };
+      if (positionMetrics.positionCount === 0) return { text: MISSING_VALUE };
       // A future counts contracts and says what one is: -1,000 × 100 oz. The table widens the column to fit.
       return positionMetrics.isFuture
         ? { text: futuresQuantityText(formatMarketQuantity(totalShares, formatOptions), futuresContractSizeLabel(futures, multiplierHint, positionMetrics)) }
         : { text: formatMarketQuantity(totalShares, { ...formatOptions, maxWidth: col.width }) };
     case "avg_cost":
-      if (totalCostUnits === 0 || !Number.isFinite(totalCost)) return { text: "—" };
+      if (totalCostUnits === 0 || !Number.isFinite(totalCost)) return { text: MISSING_VALUE };
       // A money cost keeps its currency's minor unit, as `portfolio show` prints it: 45.50, not 45.5.
       return { text: formatMarketCost(totalCost / Math.abs(totalCostUnits), { ...withCurrencyMinorDigits(formatOptions, positionCurrency), maxWidth: col.width }) };
     case "cost_basis":
       // Signed, as the value is: a short's cost is what it was sold for, negative.
-      if (baseMetrics.positionCount === 0 || !Number.isFinite(baseMetrics.signedCost)) return { text: "—" };
+      if (baseMetrics.positionCount === 0 || !Number.isFinite(baseMetrics.signedCost)) return { text: MISSING_VALUE };
       return { text: formatCompact(baseMetrics.signedCost) };
     case "mkt_value": {
-      if (baseMetrics.positionCount === 0) return { text: "—" };
+      if (baseMetrics.positionCount === 0) return { text: MISSING_VALUE };
       const marketValue = resolvePortfolioMarketValue(baseMetrics, activeQuote ? toBaseQuote(activeQuote.price) : null)?.net;
       return { text: marketValue == null ? UNPRICED : formatCompactAmount(marketValue) };
     }
@@ -753,20 +753,20 @@ export function getColumnValue(
         const dayPnl = positionDayPnl({ units: totalPriceUnits, isFuture: positionMetrics.isFuture }, { price: activeQuote.price, change: activeQuote.change }, quoteCurrency, ctx, toBaseQuote);
         return { text: formatCompactAmount(dayPnl, { signed: true }), color: priceColor(dayPnl) };
       }
-      return { text: "—" };
+      return { text: MISSING_VALUE };
     case "pnl": {
       if (ctx.periodPnl) return periodPnlCell(ctx.periodPnl, ticker.metadata.ticker, "pnl");
       const pnl = positionPnl.value;
-      return pnl === null ? { text: "—", pnlBasis: positionPnl.basis }
+      return pnl === null ? { text: MISSING_VALUE, pnlBasis: positionPnl.basis }
         : { text: formatCompactAmount(pnl, { signed: true }), color: priceColor(pnl), pnlBasis: positionPnl.basis };
     }
     case "pnl_pct": {
       if (ctx.periodPnl) return periodPnlCell(ctx.periodPnl, ticker.metadata.ticker, "contribution");
       const percent = portfolioPnlPercent(positionPnl.value, baseMetrics.totalCost);
-      return percent === null ? { text: "—" } : { text: formatPercentRaw(percent), color: shownPriceColor(percent, 2) };
+      return percent === null ? { text: MISSING_VALUE } : { text: formatPercentRaw(percent), color: shownPriceColor(percent, 2) };
     }
     case "mark_delta":
-      if (!liveQuote || brokerMarkPrice == null || liveQuote.price === 0 || positionMetrics.priceBasis !== (quote?.priceBasis ?? "per-unit") || positionCurrency !== quoteCurrency) return { text: "—" };
+      if (!liveQuote || brokerMarkPrice == null || liveQuote.price === 0 || positionMetrics.priceBasis !== (quote?.priceBasis ?? "per-unit") || positionCurrency !== quoteCurrency) return { text: MISSING_VALUE };
       {
         const percent = ((brokerMarkPrice - liveQuote.price) / Math.abs(liveQuote.price)) * 100;
         return { text: formatPercentRaw(percent), color: shownPriceColor(percent, 2) };
@@ -785,7 +785,7 @@ export function getColumnValue(
       const currency = analystTargetDisplayCurrency(analyst.data, quoteCurrency, displayQuote?.price);
       return {
         text: value == null
-          ? "—"
+          ? MISSING_VALUE
           : formatMarketPriceWithCurrency(value, currency, { ...formatOptions, maxWidth: col.width }),
       };
     }
@@ -794,14 +794,14 @@ export function getColumnValue(
       if (analyst.pending) return { text: "…" };
       const value = targetValue(analyst.data);
       const current = targetReferencePrice(analyst.data, quoteCurrency, displayQuote?.price);
-      if (value == null || !current) return { text: "—" };
+      if (value == null || !current) return { text: MISSING_VALUE };
       const percent = ((value - current) / Math.abs(current)) * 100;
       return { text: formatPercentRaw(percent), color: shownPriceColor(percent, 2) };
     }
     case "rating": {
       const analyst = mapData(ctx.analystResearch, ticker.metadata.ticker);
       if (analyst.pending) return { text: "…" };
-      return { text: analyst.data?.recommendationRating != null ? formatNumber(analyst.data.recommendationRating, 1) : "—" };
+      return { text: analyst.data?.recommendationRating != null ? formatNumber(analyst.data.recommendationRating, 1) : MISSING_VALUE };
     }
     case "ex_div": {
       const result = exDividendDate(ticker.metadata.ticker, ctx);
@@ -817,7 +817,7 @@ export function getColumnValue(
     case "perp_funding": {
       const perp = perpetualValue(col.id, ticker.metadata.ticker, ctx, quote);
       if (perp.pending) return { text: "…" };
-      if (perp.value == null) return { text: "—" };
+      if (perp.value == null) return { text: MISSING_VALUE };
       // An old venue reading keeps its figure, dimmed, as PERP shows a stale market.
       return {
         text: formatPerpetualRate(perp.value, col.id === "perp_funding" ? 4 : 2),
@@ -828,7 +828,7 @@ export function getColumnValue(
       return { text: formatQuoteAgeWithSource(quote, ctx.now, { seconds: true }) };
     case "as_of": {
       const time = getPortfolioValuationTime(quote, ctx.valuationBasis, positionMetrics, futures?.settlement);
-      if (!time) return { text: "—" };
+      if (!time) return { text: MISSING_VALUE };
       // In UTC, as the header says; a close the venue's calendar gives no hour for is dated by its day.
       // An export writes the date with it, as ISO: 16:49 alone says nothing of which day.
       const iso = new Date(time.time).toISOString();
@@ -836,14 +836,14 @@ export function getColumnValue(
       if (valuesAtNominalPrice(quote, positionMetrics, ctx.valuationBasis)) return { text: "nominal", color: colors.warning, value: iso.slice(0, 10) };
       return {
         // Every row names its day: a bare 00:47 beside Fri 21:00 reads as the same evening.
-        text: time.dateOnly ? formatShortDate(time.time, MONTH_DAY) : formatFeedTime(time.time, ctx.now, "—", { utc: true, dayToday: true }),
+        text: time.dateOnly ? formatShortDate(time.time, MONTH_DAY) : formatFeedTime(time.time, ctx.now, MISSING_VALUE, { utc: true, dayToday: true }),
         value: time.dateOnly ? iso.slice(0, 10) : iso,
       };
     }
     case PRICE_SPARKLINE_COLUMN_ID:
       return { text: "" };
     default:
-      return { text: "—" };
+      return { text: MISSING_VALUE };
   }
 }
 

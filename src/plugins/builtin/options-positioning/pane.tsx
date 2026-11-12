@@ -35,7 +35,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text } from "../../../ui";
-import { formatCompact } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { formatStrikeLabel } from "../../../utils/options";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -369,7 +369,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   ] : [], [colors.negative, colors.positive, strikeChart, strikeWindow]);
   const callTotal = expiries.find((row) => row.date === shownExpiry);
   const strikeFigures = useMemo<StatItem[]>(() => !callTotal ? [] : [
-    { id: "max-pain", label: "Max pain", value: maxPain == null ? "--" : formatStrikeLabel(maxPain), color: colors.warning,
+    { id: "max-pain", label: "Max pain", value: maxPain == null ? MISSING_VALUE : formatStrikeLabel(maxPain), color: colors.warning,
       detail: maxPain == null ? undefined : `${formatDistance(maxPain, spot)} vs spot` },
     { id: "spot", label: "Spot", value: formatLevel(spot), ...spotStamp },
     { id: "pc", label: "P/C OI", value: formatRatio(callTotal.putCallRatio) },
@@ -463,7 +463,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
       case "callWall":
       case "putWall": {
         const strike = expiryWalls?.get(row.date)?.[column.id] ?? null;
-        return { text: strike == null ? "--" : formatStrikeLabel(strike), value: strike, color: colors.textMuted };
+        return { text: strike == null ? MISSING_VALUE : formatStrikeLabel(strike), value: strike, color: colors.textMuted };
       }
       case "putCallRatio": return { text: formatRatio(row.putCallRatio), value: row.putCallRatio };
       case "change": {
@@ -471,7 +471,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
         return { text: formatCountChange(change), value: change,
           color: change == null || change === 0 ? colors.textMuted : change > 0 ? colors.positive : colors.negative };
       }
-      case "maxPain": return { text: row.maxPain == null ? "--" : formatStrikeLabel(row.maxPain), value: row.maxPain, color: colors.warning };
+      case "maxPain": return { text: row.maxPain == null ? MISSING_VALUE : formatStrikeLabel(row.maxPain), value: row.maxPain, color: colors.warning };
       case "distance": return {
         text: formatDistance(row.maxPain, spot),
         value: row.maxPain == null || spot == null ? null : Number(((row.maxPain / spot - 1) * 100).toFixed(4)),
@@ -521,7 +521,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
     { id: "flip", label: "Flip", value: formatLevel(gammaData.flip),
       detail: gammaData.flip == null ? "none within 15%" : `${formatDistance(gammaData.flip, gammaSpot)} vs spot` },
     ...([["call-wall", "Call wall", walls.callWall], ["put-wall", "Put wall", walls.putWall]] as const).map(([id, label, strike]) => ({
-      id, label, value: strike == null ? "--" : formatStrikeLabel(strike),
+      id, label, value: strike == null ? MISSING_VALUE : formatStrikeLabel(strike),
       detail: strike == null ? undefined : `${formatDistance(strike, gammaSpot)} vs spot`,
     })),
     ...(band ? [{ id: "band", label: "Dealer range", value: `${formatGamma(band.low)} to ${formatGamma(band.high)}`,

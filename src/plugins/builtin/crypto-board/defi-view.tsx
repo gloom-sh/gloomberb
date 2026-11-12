@@ -14,7 +14,7 @@ import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import type { DefiTvlPayload } from "../../../api-client/crypto-markets";
 import { colors, priceColor } from "../../../theme/colors";
 import { SERIES_COLORS } from "../../../theme/series-colors";
-import { formatCompact, formatCompactAmount } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatCompactAmount } from "../../../utils/format";
 import { usePluginPaneState } from "../../runtime";
 import {
   buildDefiColumns,
@@ -47,7 +47,7 @@ function signedPercent(value: number | null): DataTableCell {
 
 function signedAmount(value: number | null): DataTableCell {
   return {
-    text: value == null ? "—" : formatCompactAmount(value, { signed: true }),
+    text: value == null ? MISSING_VALUE : formatCompactAmount(value, { signed: true }),
     color: value == null ? colors.textDim : priceColor(value),
   };
 }
@@ -59,7 +59,7 @@ function renderDefiCell(row: DefiRow, column: DefiColumn): DataTableCell {
     case "name":
       return { text: row.name, color: colors.textBright };
     case "detail":
-      return { text: row.detail ?? "—", color: colors.textDim };
+      return { text: row.detail ?? MISSING_VALUE, color: colors.textDim };
     case "tvl":
       return { text: formatTvl(row.tvl) };
     case "change1dPercent":
@@ -73,9 +73,9 @@ function renderDefiCell(row: DefiRow, column: DefiColumn): DataTableCell {
     case "change30dPercent":
       return signedPercent(row.change30dPercent);
     case "share":
-      return { text: row.share == null ? "—" : `${row.share.toFixed(2)}%`, color: colors.textDim };
+      return { text: row.share == null ? MISSING_VALUE : `${row.share.toFixed(2)}%`, color: colors.textDim };
     case "chains":
-      return { text: row.chains == null ? "—" : String(row.chains), color: colors.textDim };
+      return { text: row.chains == null ? MISSING_VALUE : String(row.chains), color: colors.textDim };
     case "fees24h":
     case "fees7d":
     case "fees30d":
@@ -83,7 +83,7 @@ function renderDefiCell(row: DefiRow, column: DefiColumn): DataTableCell {
     case "revenue7d":
     case "revenue30d": {
       const value = row[column.id];
-      return value == null ? { text: "—", color: colors.textDim } : { text: formatTvl(value) };
+      return value == null ? { text: MISSING_VALUE, color: colors.textDim } : { text: formatTvl(value) };
     }
   }
 }
@@ -93,7 +93,7 @@ function changeFigure(id: string, label: string, amount: number | null, percent:
   return {
     id,
     label,
-    value: amount == null ? "—" : formatCompactAmount(amount, { signed: true }),
+    value: amount == null ? MISSING_VALUE : formatCompactAmount(amount, { signed: true }),
     detail: formatCryptoPercent(percent),
     ...(amount == null ? {} : { color: priceColor(amount) }),
   };

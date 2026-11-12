@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox } from "../../../ui";
 import { DataTableView, FieldGrid, KeyValueRow, Notice, QueryBar, Section, usePaneNoticeFooter, usePaneTabs, type GridField, type SelectControl } from "../../../components";
@@ -29,7 +30,7 @@ const SHOCK_COLUMNS = [
   { id: "returnPercent", label: "Return %", width: 12, align: "right" as const },
 ];
 const loadBenchmark = () => loadBondBenchmark();
-const fixed = (value: number | null | undefined, digits = 4) => value == null ? "-" : value.toFixed(digits);
+const fixed = (value: number | null | undefined, digits = 4) => value == null ? MISSING_VALUE : value.toFixed(digits);
 
 export function BondCalculatorPane({ focused, width, height }: PaneProps) {
   const [settlement] = usePaneSettingValue<string | undefined>("settlement", undefined);

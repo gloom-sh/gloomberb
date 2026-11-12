@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { HkTender } from "../../../api-client/hk-tenders";
 import { unansweredRefreshError } from "../../../data/saved-copies";
 import type { HeadlessPaneColumn, HeadlessPaneFreshness, HeadlessRowsResult } from "../../../types/headless";
@@ -22,7 +23,7 @@ import {
 import { auctionHistoryPhrase, nextAuctionHistoryWindow, type AuctionFilter } from "./model";
 
 const tender = (row: Record<string, unknown>) => row as unknown as HkTender;
-const rate = (value: unknown, row: Record<string, unknown>) => formatHkRate(tender(row), value == null ? null : Number(value), "-");
+const rate = (value: unknown, row: Record<string, unknown>) => formatHkRate(tender(row), value == null ? null : Number(value), MISSING_VALUE);
 /** The text says what a floating rate note's figure is, as a US FRN's does; the export keeps the number. */
 const rateText = (value: unknown, row: Record<string, unknown>) => `${rate(value, row)}${value != null && isSpread(tender(row)) ? " spread" : ""}`;
 
@@ -41,7 +42,7 @@ const HK_COLUMNS: HeadlessPaneColumn[] = [
     description: "A bond's amount allotted; EF paper's amount offered, worked out from its applications and over-subscription (≈).",
     format: (value: unknown) => value == null ? "" : String(value),
     textFormat: (value: unknown, row: Record<string, unknown>) =>
-      formatHkAmount(tender(row), value == null ? null : Number(value), "-", hkSizeWorkedOut(tender(row))),
+      formatHkAmount(tender(row), value == null ? null : Number(value), MISSING_VALUE, hkSizeWorkedOut(tender(row))),
   },
   { key: "issue", header: "Issue", format: (value: unknown) => value == null ? "" : String(value) },
 ];

@@ -3,7 +3,7 @@ import type { DataTableColumn } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
 import { getTableWidth, tableColumnWidth } from "../../../components/ui/table-layout";
 import type { CompositeChartXAxis } from "../../../components/chart/composite/types";
-import { formatCompact, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";
 import { freePreviewNote } from "../shared/free-preview";
 import type { CompanyMode } from "./client";
 
@@ -72,7 +72,7 @@ export const unitLabel = (row: Pick<CompanyRow, "unit" | "currency" | "dimension
   percent: "%", basis_points: "bp", count: "Count", ratio: "x", volume: row.dimensions.unit ?? "Volume",
 })[row.unit];
 function numberText(value: number | null | undefined, unit: KpiUnit, withUnit = true): string {
-  if (value == null) return "--";
+  if (value == null) return MISSING_VALUE;
   const number = Math.abs(value) >= 10_000 ? formatCompact(value, { fixedDecimals: true }) : formatNumber(value, Number.isInteger(value) ? 0 : 2);
   return `${number}${!withUnit ? "" : unit === "percent" ? "%" : unit === "basis_points" ? "bp" : unit === "ratio" ? "x" : ""}`;
 }
@@ -140,7 +140,7 @@ export function observationChange(row: KpiObservation, observations: KpiObservat
   if (prior.value === 0) return { value: null, unit: "%" };
   return { value: (row.value - prior.value) / Math.abs(prior.value) * 100, unit: "%" };
 }
-export const changeText = (change: { value: number | null; unit: string }) => change.value === null ? "--" : `${change.value > 0 ? "+" : ""}${formatNumber(change.value, 2)}${change.unit}`;
+export const changeText = (change: { value: number | null; unit: string }) => change.value === null ? MISSING_VALUE : `${change.value > 0 ? "+" : ""}${formatNumber(change.value, 2)}${change.unit}`;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const isoDate = (value: string | null) => {
   const match = value ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) : null;
@@ -217,8 +217,8 @@ export function companyCellText(row: CompanyRow, column: string, observations: K
   return column === "metric" ? row.metric.name : column === "period" ? fiscalLabel(row) : column === "value" ? `${guide ? rangeText(guide) : observationValue(row as KpiObservation)}${guide?.status === "withdrawn" || guide?.hedge === "qualitative" ? "" : unitSuffix(row)}`
     : column === "unit" ? unitLabel(row)
     : column === "basis" ? basisLabel(row.basis) : column === "scope" ? dimensionLabel(row.dimensions) || "Consolidated"
-    : column === "issued" ? guide?.issuedDate ?? "--" : column === "actual" ? guide?.actual ? `${valueText(row, guide.actual.value)}${unitSuffix(row)}` : "--"
-    : column === "outcome" ? guide ? outcomeLabel(guide) : "--" : column === "published" ? row.evidence[0]!.publishedAt.slice(0, 10)
+    : column === "issued" ? guide?.issuedDate ?? MISSING_VALUE : column === "actual" ? guide?.actual ? `${valueText(row, guide.actual.value)}${unitSuffix(row)}` : MISSING_VALUE
+    : column === "outcome" ? guide ? outcomeLabel(guide) : MISSING_VALUE : column === "published" ? row.evidence[0]!.publishedAt.slice(0, 10)
     : column === "confidence" ? `${Math.round(row.confidence * 100)}%` : column === "revision" ? `${row.revision} ${row.current ? "current" : "superseded"}` : row.evidence[0]!.quote;
 }
 /**

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { DataTableColumn } from "../../../components";
 import { fitChartTableColumns } from "../../../components/chart-table";
 import { colors } from "../../../theme/colors";
@@ -36,13 +37,13 @@ export function firstBondSortDirection(columnId: BondColumnId): "asc" | "desc" {
 }
 
 export function formatBondDecimal(value: number | null, digits: number): string {
-  if (value == null) return "—";
+  if (value == null) return MISSING_VALUE;
   const text = value.toFixed(digits);
   return Number(text) === 0 ? (0).toFixed(digits) : text;
 }
 
 export function formatBondChange(value: number | null): string {
-  if (value == null) return "—";
+  if (value == null) return MISSING_VALUE;
   const text = value.toFixed(3);
   if (Number(text) === 0) return "0.000";
   return value > 0 ? `+${text}` : text;

@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { DataTableColumn } from "../../../components";
 import { blendHex, type ThemeColors } from "../../../theme/colors";
 import type { PaneReportOptionDef } from "../../../types/plugin";
@@ -99,7 +100,7 @@ const PHASES: ReadonlyArray<{ value: string; label: string }> = [
  */
 export function trialPhaseLabel(phases: readonly string[], compact = false): string {
   const codes = phases.map((phase) => phase.trim().toUpperCase()).filter(Boolean);
-  if (codes.length === 0) return "--";
+  if (codes.length === 0) return MISSING_VALUE;
   if (codes.every((code) => code === "NA")) return "N/A";
   if (codes.length === 1 && codes[0] === "EARLY_PHASE1") return compact ? "Early 1" : "Early phase 1";
   const numbers = [...new Set(codes
@@ -113,7 +114,7 @@ export function trialPhaseLabel(phases: readonly string[], compact = false): str
 /** Whether the study has a phase to show: not an observational study with none, nor a device study the registry calls not applicable. */
 export function hasTrialPhase(phases: readonly string[]): boolean {
   const label = trialPhaseLabel(phases);
-  return label !== "--" && label !== "N/A";
+  return label !== MISSING_VALUE && label !== "N/A";
 }
 
 /**
@@ -162,7 +163,7 @@ export function orderTrials<T extends Pick<ClinicalTrial, "sponsorClass" | "phas
 /** The phase as the detail view says it. */
 export function trialPhaseDetail(phases: readonly string[]): string {
   const label = trialPhaseLabel(phases);
-  return label === "--" ? "None" : label === "N/A" ? "Not applicable" : label;
+  return label === MISSING_VALUE ? "None" : label === "N/A" ? "Not applicable" : label;
 }
 
 const SPONSOR_CLASSES: ReadonlyArray<{ value: string; label: string; short?: string; description?: string }> = [

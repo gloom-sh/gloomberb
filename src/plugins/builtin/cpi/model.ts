@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { CpiBoardPayload, CpiReleaseStatus, CpiRow } from "../../../api-client/cpi";
 import type { ChartStripSpec } from "../../../components/chart-table/header";
 import { staticSeries } from "../../../components/chart/static/series";
@@ -94,11 +95,11 @@ function signed(value: number, decimals: number): string {
 }
 
 /** Percent changes as the pane shows them: two decimals, signed, no unit (the header names it). */
-export const formatCpiChange = (value: number | null) => value == null ? "--" : signed(value, 2);
+export const formatCpiChange = (value: number | null) => value == null ? MISSING_VALUE : signed(value, 2);
 /** Contributions in percentage points, two decimals, signed. */
-export const formatCpiPoints = (value: number | null) => value == null ? "--" : signed(value, 2);
+export const formatCpiPoints = (value: number | null) => value == null ? MISSING_VALUE : signed(value, 2);
 /** Share of the basket, percent: one decimal. */
-export const formatCpiWeight = (value: number | null) => value == null ? "--" : value.toFixed(1);
+export const formatCpiWeight = (value: number | null) => value == null ? MISSING_VALUE : value.toFixed(1);
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 

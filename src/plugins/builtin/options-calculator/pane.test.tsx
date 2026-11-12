@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { useReducer } from "react";
 import { act } from "react";
@@ -203,7 +204,7 @@ test("shows the remaining fraction of a day for a live near-expiry contract", as
   await render({ days: "0.25" });
   const frame = tui.frame();
   expect(frame).toMatch(/Days\s+0\.25\s*d/);
-  expect(frame).toMatch(/Implied IV\s+--/);
+  expect(frame).toMatch(new RegExp(String.raw`Implied IV\s+${MISSING_VALUE}`));
 });
 
 test("displays fractional strikes and spot prices without rounding them to whole dollars", async () => {
@@ -307,7 +308,7 @@ test("model switching restores the cash schedule and reprices under the selected
   for (let i = 0; i < 2; i++) await tui.emitKeypress({ name: "tab", sequence: "\t" });
   await act(async () => { await tui.setup().mockInput.typeText("10"); tui.setup().mockInput.pressEnter(); });
   await act(async () => { await tui.setup().renderOnce(); });
-  expect(tui.frame()).toMatch(/Model\s+--/);
+  expect(tui.frame()).toMatch(new RegExp(String.raw`Model\s+${MISSING_VALUE}`));
   await tui.emitKeypress({ name: "escape", sequence: "\u001B" }, { afterCommit: true });
   await tui.emitKeypress({ name: "m", sequence: "m" }, { afterCommit: true });
   expect(tui.frame()).toMatch(/Model\s+\d+\.\d+/);
@@ -318,8 +319,8 @@ test("surface selection without an underlying hides input-IV prices and recovers
   const before = tui.frame().match(/Model\s+(\d+\.\d+)/)?.[1];
   expect(before).toBeDefined();
   await tui.emitKeypress({ name: "v", sequence: "v" }, { afterCommit: true });
-  expect(tui.frame()).toMatch(/Fit IV\s+--/);
-  expect(tui.frame()).toMatch(/Model\s+--/);
+  expect(tui.frame()).toMatch(new RegExp(String.raw`Fit IV\s+${MISSING_VALUE}`));
+  expect(tui.frame()).toMatch(new RegExp(String.raw`Model\s+${MISSING_VALUE}`));
   await tui.emitKeypress({ name: "escape", sequence: "\u001B" }, { afterCommit: true });
   await tui.emitKeypress({ name: "v", sequence: "v" }, { afterCommit: true });
   expect(tui.frame().match(/Model\s+(\d+\.\d+)/)?.[1]).toBe(before);
@@ -328,12 +329,12 @@ test("surface selection without an underlying hides input-IV prices and recovers
 test("an invalid seeded cash schedule stays editable and only blocks its active model", async () => {
   await render({ model: "american", dividends: "30:1;bad", days: "365" });
   expect(tui.frame()).toContain("30:1;bad");
-  expect(tui.frame()).toMatch(/Model\s+--/);
+  expect(tui.frame()).toMatch(new RegExp(String.raw`Model\s+${MISSING_VALUE}`));
   await tui.emitKeypress({ name: "m", sequence: "m" }, { afterCommit: true });
   expect(tui.frame()).toMatch(/Model\s+\d+\.\d+/);
   await tui.emitKeypress({ name: "m", sequence: "m" }, { afterCommit: true });
   expect(tui.frame()).toContain("30:1;bad");
-  expect(tui.frame()).toMatch(/Model\s+--/);
+  expect(tui.frame()).toMatch(new RegExp(String.raw`Model\s+${MISSING_VALUE}`));
 });
 
 test("a screenshot prices the frozen surface volatility instead of input IV or a new market request", async () => {

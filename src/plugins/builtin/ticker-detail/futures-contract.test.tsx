@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act } from "react";
 import { apiClient } from "../../../api-client";
@@ -31,7 +32,7 @@ afterEach(() => { futuresContractCache.reset(); });
 
 const CASES = [
   { name: "a confirmed settlement", quote: futuresQuote, answer: terms, settle: "$4,216.30 (2026-10-09)" },
-  { name: "no confirmed settlement", quote: futuresQuote, answer: { ...terms, settlement: null }, settle: "--" },
+  { name: "no confirmed settlement", quote: futuresQuote, answer: { ...terms, settlement: null }, settle: MISSING_VALUE },
   { name: "a server without the route", quote: futuresQuote, answer: new ApiRequestError("Not found", 404), settle: null },
   { name: "a stock", quote: createTestQuote({ symbol: "AAPL", name: "Apple Inc.", price: 336.64, instrumentType: "EQUITY" }), answer: terms, settle: null },
 ] as const;
@@ -57,7 +58,8 @@ for (const { name, quote, answer, settle } of CASES) {
       const flat = (value: string) => value.replace(/ +/g, " ");
       for (const line of settle === null ? [] : [`Settle ${settle}`, "Contract GCZ26", "Tick 0.10 = $10.00", "First Notice 2026-11-30"]) {
         expect(flat(quoteText)).toContain(`\n${line}\n`);
-        expect(flat(report)).toContain(`\n${line}\n`);
+        if (line === `Settle ${MISSING_VALUE}`) expect(flat(report)).not.toContain("\nSettle ");
+        else expect(flat(report)).toContain(`\n${line}\n`);
       }
       if (settle === null) {
         expect(quoteText).not.toContain("Settle");
@@ -124,7 +126,7 @@ const overnightGold = createTestQuote({
 
 for (const { name, settlement, settle, change } of [
   { name: "Monday's, a session behind the move", settlement: { price: 4160.1, date: "2026-10-19" },
-    settle: "-- (2026-10-20 not confirmed yet)", change: "vs Tue 20 Oct close" },
+    settle: `${MISSING_VALUE} (2026-10-20 not confirmed yet)`, change: "vs Tue 20 Oct close" },
   { name: "Tuesday's, the one the move is from", settlement: { price: 4158.7, date: "2026-10-20" },
     settle: "$4,158.70 (2026-10-20)", change: "vs Tue 20 Oct settle" },
 ] as const) {

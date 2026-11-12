@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { DataTableView, Notice, type DataTableColumn } from "../../../components";
 import { turbo } from "../../../components/chart/surface3d/model";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -96,7 +97,7 @@ export function SurfaceHeatGrid({ grid, range, ticks, selected, onSelect, width,
         const index = Number(column.id), value = grid.volatilities[row.index]?.[index] ?? null;
         const chosen = selected?.tenorIndex === row.index && selected.moneynessIndex === index;
         const onMouseDown = () => onSelect({ tenorIndex: row.index, moneynessIndex: index });
-        if (value == null || !Number.isFinite(value)) return { text: "--", color: colors.textMuted, onMouseDown };
+        if (value == null || !Number.isFinite(value)) return { text: MISSING_VALUE, color: colors.textMuted, onMouseDown };
         const fill = surfaceColorHex(value, range);
         return { text: (value * 100).toFixed(1), color: chosen ? colors.selectedText : surfaceTextColor(fill),
           backgroundColor: chosen ? colors.selected : fill, onMouseDown };

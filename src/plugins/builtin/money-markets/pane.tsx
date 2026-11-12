@@ -11,7 +11,7 @@ import type { MoneyMarketRow } from "../../../api-client/money-markets";
 import { staticSeries } from "../../../components/chart/static/series";
 import { StatChartDetail } from "../../../components/market-board";
 import type { PaneProps } from "../../../types/plugin";
-import { formatPercentileRank } from "../../../utils/format";
+import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedHongKongMoneyMarkets, getCachedMoneyMarkets, loadHongKongMoneyMarkets, loadMoneyMarkets } from "./client";
@@ -49,8 +49,8 @@ function ObservationDetail({ row, width, height, focused = false }: { row: Money
   // The chart below shows the 1Y window, so the range carries no sample count or window dates.
   const items: StatItem[] = [
     { id: "level", label: row.unit === "percent" ? "Rate" : "USD billions", value: moneyMarketValue(row.value, row.unit),
-      detail: `${formatPercentileRank(p.value, "1Y")} · ${row.asOf ?? "--"}` },
-    { id: "change", label: "Change", value: moneyMarketChange(row.change, row.changeUnit), detail: `since ${row.previousAsOf ?? "--"}` },
+      detail: `${formatPercentileRank(p.value, "1Y")} · ${row.asOf ?? MISSING_VALUE}` },
+    { id: "change", label: "Change", value: moneyMarketChange(row.change, row.changeUnit), detail: `since ${row.previousAsOf ?? MISSING_VALUE}` },
     { id: "range", label: "1Y range", value: `${moneyMarketValue(p.min, row.unit)} to ${moneyMarketValue(p.max, row.unit)}` },
     // A bill yield is HKMA's; the US rows name their FRED series.
     row.group === "efb" ? { id: "series", label: "Source", value: "HKMA", detail: "closing yield, 16:00 HKT" }
@@ -86,7 +86,7 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
   const slope = data?.billsCurve.slope;
   // The curve's slope is the Bills tab's summary figure.
   const billsItems: StatItem[] = slope ? [{ id: "slope", label: "1Y-4W",
-    value: slope.valueBps == null ? "--" : `${slope.valueBps > 0 ? "+" : ""}${slope.valueBps.toFixed(1)}bp`,
+    value: slope.valueBps == null ? MISSING_VALUE : `${slope.valueBps > 0 ? "+" : ""}${slope.valueBps.toFixed(1)}bp`,
     detail: [formatPercentileRank(slope.percentile.value, "1Y"),
       slope.asOf && slope.asOf !== data?.billsCurve.asOf ? slope.asOf : null].filter(Boolean).join(" · ") }] : [];
   // A bill row and its tenor on the curve are one selection, matched by FRED series.

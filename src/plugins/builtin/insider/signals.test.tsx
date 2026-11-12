@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -122,8 +123,8 @@ test("ranks companies; Enter opens the company's own INS here, on its insiders, 
   let frame = tui.frame();
   // A server from before the structured facts: the lead's role and how many others, the rest dashes.
   expect(frame).toMatch(/SCORE ▼\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BUYERS\s+BOUGHT\s+LAST BUY/);
-  expect(frame).toMatch(/NWBI\s+Northwind Biologics Inc\s+78\s+CEO \+2\s+--\s+--\s+--\s+3\s+\$1\.15M/);
-  expect(frame).toMatch(/CTSO\s+Contoso Energy Corp\s+72\s+CEO\s+--\s+--\s+--\s+1\s+\$610\.0k/);
+  expect(frame).toMatch(new RegExp(String.raw`NWBI\s+Northwind Biologics Inc\s+78\s+CEO \+2\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+3\s+\$1\.15M`));
+  expect(frame).toMatch(new RegExp(String.raw`CTSO\s+Contoso Energy Corp\s+72\s+CEO\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+1\s+\$610\.0k`));
   expect(frame).toContain("as of 14 Oct 2026");
   // Footers follow the conventions: no generic key hints for Enter or Esc, and no second way into the same INS.
   expect(frame).not.toContain("[Enter]");
@@ -138,7 +139,7 @@ test("ranks companies; Enter opens the company's own INS here, on its insiders, 
   expect(frame).toMatch(/Window\s+7D\s+30D\s+90D.*Trades\s+Insiders/);
   expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+SOLD\s+LAST/);
   // The same facts the ranking gives its lead insider: an older server's from the why facts.
-  expect(frame).toMatch(/Ana Rivera\s+CEO\s+4th\s+4\.9x\s+--\s+\$610\.0k\s+--\s+2026-10-14/);
+  expect(frame).toMatch(new RegExp(String.raw`Ana Rivera\s+CEO\s+4th\s+4\.9x\s+${MISSING_VALUE}\s+\$610\.0k\s+${MISSING_VALUE}\s+2026-10-14`));
   expect(frame).not.toContain("Northwind Biologics");
   expect(asked.filter((params) => params.ticker)).toEqual([{ window: 30, ticker: "CTSO" }, { side: "sell", window: 30, ticker: "CTSO" }]);
   // The pane stays the ranking: no ticker, no new title.
@@ -364,14 +365,14 @@ test("why reads as columns: the lead insider's role and how many others, their n
   // The insider with the most dollars leads; the others are a count.
   expect(facts(BUYING[0]!)).toEqual(["CEO +2", "1st", "1.4x", "+12%"]);
   // An older server's buyer has no figures: the lead's why facts say them.
-  expect(facts(BUYING[1]!)).toEqual(["CEO", "4th", "4.9x", "--"]);
-  expect(facts(BUYING[2]!)).toEqual(["Director", "1st", "--", "NEW"]);
+  expect(facts(BUYING[1]!)).toEqual(["CEO", "4th", "4.9x", MISSING_VALUE]);
+  expect(facts(BUYING[2]!)).toEqual(["Director", "1st", MISSING_VALUE, "NEW"]);
   expect(facts(SELLING[0]!)).toEqual(["Director", "2nd", "100x+", "EXITED"]);
   // Traded both ways: no nth sale or size against usual, the stake marked.
-  expect(facts(SELLING[1]!)).toEqual(["CFO +1", "--", "--", "-22% \u00b1"]);
+  expect(facts(SELLING[1]!)).toEqual(["CFO +1", MISSING_VALUE, MISSING_VALUE, "-22% \u00b1"]);
   // A server without structured signals or buyer figures: dashes, the role still said.
-  expect(facts(ROWS[0]!)).toEqual(["CEO +2", "--", "--", "--"]);
-  expect(facts({ ...ROWS[0]!, buyers: [] })).toEqual(["--", "--", "--", "--"]);
+  expect(facts(ROWS[0]!)).toEqual(["CEO +2", MISSING_VALUE, MISSING_VALUE, MISSING_VALUE]);
+  expect(facts({ ...ROWS[0]!, buyers: [] })).toEqual([MISSING_VALUE, MISSING_VALUE, MISSING_VALUE, MISSING_VALUE]);
 
   // Tones keep the chips' roles: what the ranking counts in the side's colour, NEW and EXITED strong, a lone or small figure plain.
   const weights = (row: InsiderSignalRow) => {
@@ -386,7 +387,7 @@ test("why reads as columns: the lead insider's role and how many others, their n
   expect([0.04, 0.6, 2, 2.84, 9.96, 12.4, 99.9, 100, 140].map(formatInsiderUsual))
     .toEqual(["<0.1x", "0.6x", "2x", "2.8x", "10x", "12x", "100x", "100x+", "100x+"]);
   expect([-100, -38.6, -0.36, 0, null, 300, 350, 500, 2415, 70_821.5].map((pct) => formatInsiderStake(pct)))
-    .toEqual(["-100%", "-39%", "-0.4%", "--", "--", "+300%", "4.5x", "6x", "25x", "709x"]);
+    .toEqual(["-100%", "-39%", "-0.4%", MISSING_VALUE, MISSING_VALUE, "+300%", "4.5x", "6x", "25x", "709x"]);
   expect(formatInsiderStake("NEW", true)).toBe("NEW \u00b1");
 
 });
@@ -394,10 +395,10 @@ test("why reads as columns: the lead insider's role and how many others, their n
 test("INS on a ticker lists its insiders on both sides in the ranking's terms: the lead's facts are the ranking's, the largest first", () => {
   const lines = insiderActivityLines({ buy: { rows: [BUYING[0]!] }, sell: { rows: [SELLING[1]!] } });
   expect(lines.map((line) => [line.side, line.name, line.role, line.nth.text, line.usual.text, line.stake.text, line.bought, line.sold, line.last])).toEqual([
-    ["sell", "Li Chen", "CFO", "--", "--", "-22% \u00b1", null, 700_000, "2026-10-12"],
+    ["sell", "Li Chen", "CFO", MISSING_VALUE, MISSING_VALUE, "-22% \u00b1", null, 700_000, "2026-10-12"],
     ["buy", "Ana Rivera", "CEO", "1st", "1.4x", "+12%", 496_000, null, "2026-10-01"],
     ["buy", "Li Chen", "CFO", "3rd", "2.8x", "+56%", 354_000, null, "2026-10-09"],
-    ["buy", "Ben Okafor", "Director", "1st", "--", "NEW", 302_500, null, "2026-10-14"],
+    ["buy", "Ben Okafor", "Director", "1st", MISSING_VALUE, "NEW", 302_500, null, "2026-10-14"],
     ["sell", "Ana Rivera", "CEO", "1st", "0.6x", "-4%", null, 200_000, "2026-10-10"],
   ]);
   // Every ranked row's lead reads the same in the company's insiders, whichever server sent it.
@@ -438,8 +439,8 @@ test("Buying and Selling switch in the query bar, with the side's own words, in 
   await mount(sided, 140, 24);
   let frame = tui.frame();
   expect(frame).toMatch(/NWBI\s+Northwind Biologics Inc\s+78\s+CEO \+2\s+1st\s+1\.4x\s+\+12%\s+3\s+\$1\.15M\s+2026-10-14/);
-  expect(frame).toMatch(/CTSO\s+Contoso Energy Corp\s+72\s+CEO\s+4th\s+4\.9x\s+--\s+1\s+\$610\.0k/);
-  expect(frame).toMatch(/FBKM\s+Fabrikam Bancorp\s+33\s+Director\s+1st\s+--\s+NEW\s+1\s+\$720\.0k/);
+  expect(frame).toMatch(new RegExp(String.raw`CTSO\s+Contoso Energy Corp\s+72\s+CEO\s+4th\s+4\.9x\s+${MISSING_VALUE}\s+1\s+\$610\.0k`));
+  expect(frame).toMatch(new RegExp(String.raw`FBKM\s+Fabrikam Bancorp\s+33\s+Director\s+1st\s+${MISSING_VALUE}\s+NEW\s+1\s+\$720\.0k`));
   // No why column: its facts are the columns. No strip under the table: the insiders are the opened company.
   expect(frame).not.toMatch(/\bWHY\b/);
   expect(frame).not.toContain("Ana Rivera");
@@ -448,9 +449,9 @@ test("Buying and Selling switch in the query bar, with the side's own words, in 
   frame = tui.frame();
   // Its insiders in the ranking's columns, the buyers' dollars first.
   expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+SOLD\s+LAST/);
-  expect(frame).toMatch(/Ana Rivera\s+CEO\s+1st\s+1\.4x\s+\+12%\s+\$496\.0k\s+--\s+2026-10-01/);
-  expect(frame).toMatch(/Li Chen\s+CFO\s+3rd\s+2\.8x\s+\+56%\s+\$354\.0k\s+--\s+2026-10-09/);
-  expect(frame).toMatch(/Ben Okafor\s+Director\s+1st\s+--\s+NEW\s+\$302\.5k\s+--\s+2026-10-14/);
+  expect(frame).toMatch(new RegExp(String.raw`Ana Rivera\s+CEO\s+1st\s+1\.4x\s+\+12%\s+\$496\.0k\s+${MISSING_VALUE}\s+2026-10-01`));
+  expect(frame).toMatch(new RegExp(String.raw`Li Chen\s+CFO\s+3rd\s+2\.8x\s+\+56%\s+\$354\.0k\s+${MISSING_VALUE}\s+2026-10-09`));
+  expect(frame).toMatch(new RegExp(String.raw`Ben Okafor\s+Director\s+1st\s+${MISSING_VALUE}\s+NEW\s+\$302\.5k\s+${MISSING_VALUE}\s+2026-10-14`));
   // The headers sort, as the ranking's do: stake largest first puts NEW on top.
   await tui.clickFrameText("STAKE");
   await settle();
@@ -467,7 +468,7 @@ test("Buying and Selling switch in the query bar, with the side's own words, in 
   expect(frame).toMatch(/ROLE\s+NTH\s+VS USUAL\s+STAKE\s+SELLERS\s+SOLD\s+LAST SALE/);
   expect(frame).toMatch(/TRNT\s+Tailspin Toys Inc\s+61\s+Director\s+2nd\s+100x\+\s+EXITED\s+1\s+\$4\.20M/);
   // Bought and sold: counted on the net, marked, with no nth sale or size against usual.
-  expect(frame).toMatch(/WWIM\s+Wide World Importers\s+40\s+CFO \+1\s+--\s+--\s+-22% \u00b1\s+2\s+\$900k/);
+  expect(frame).toMatch(new RegExp(String.raw`WWIM\s+Wide World Importers\s+40\s+CFO \+1\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+-22% \u00b1\s+2\s+\$900k`));
   // The position filter says what it does on this side.
   expect(frame).toContain("Exited");
   expect(frame).not.toMatch(/\bNew\b/);
@@ -478,8 +479,8 @@ test("Buying and Selling switch in the query bar, with the side's own words, in 
   expect(frame).toContain("\u2190 Back WWIM \u00b7 Wide World Importers");
   // Opened from Selling: the sellers' dollars first.
   expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT\s+SOLD ▼\s+LAST/);
-  expect(frame).toMatch(/Li Chen\s+CFO\s+--\s+--\s+-22% \u00b1\s+--\s+\$700k\s+2026-10-12/);
-  expect(frame).toMatch(/Ana Rivera\s+CEO\s+1st\s+0\.6x\s+-4%\s+--\s+\$200k\s+2026-10-10/);
+  expect(frame).toMatch(new RegExp(String.raw`Li Chen\s+CFO\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+-22% \u00b1\s+${MISSING_VALUE}\s+\$700k\s+2026-10-12`));
+  expect(frame).toMatch(new RegExp(String.raw`Ana Rivera\s+CEO\s+1st\s+0\.6x\s+-4%\s+${MISSING_VALUE}\s+\$200k\s+2026-10-10`));
 });
 
 test("the filters narrow the request, and an empty answer says it is the filters", async () => {
@@ -521,7 +522,7 @@ test("an 80-column terminal keeps the role and stake, without the size against u
   frame = tui.frame();
   expect(frame).toContain("\u2190 Back CTSO \u00b7 Contoso Energy Corp");
   expect(frame).toMatch(/INSIDER\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BOUGHT ▼\s+SOLD\s+LAST/);
-  expect(frame).toMatch(/Ana Rivera\s+CEO\s+4th\s+4\.9x\s+--\s+\$610\.0k\s+--\s+2026-10-14/);
+  expect(frame).toMatch(new RegExp(String.raw`Ana Rivera\s+CEO\s+4th\s+4\.9x\s+${MISSING_VALUE}\s+\$610\.0k\s+${MISSING_VALUE}\s+2026-10-14`));
 });
 
 test("the insiders' columns drop the size against usual, then the nth trade and the last day, as the ranking's do, then the role", () => {

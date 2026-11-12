@@ -24,7 +24,7 @@ import { evidenceDate, evidenceLabel, isUnconfirmed, trustTier } from "./trust";
 import { scrollByLines } from "../../../state/pane-scroll-registry";
 import { isPlainKey } from "../../../utils/keyboard";
 import { DATE_FIELD_EXAMPLES } from "../../../utils/calendar-date";
-import { displayWidth } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth } from "../../../utils/format";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { logFailure } from "../../../utils/log-failure";
 
@@ -91,7 +91,7 @@ function PathEvidence({ data, path, width, focused, onRecenter }: { data: GraphP
               {row.leadStatus === "verified" ? <Badge tone="positive" label="Verified" /> : null}</Box>
             <KeyValueRow label="Disclosure" value={`${evidence.reporter.name} · ${roleLabel(evidence.role)}`} color={ROLE_COLORS[evidence.role]} labelWidth={20} />
             <KeyValueRow label="Evidence class" value={`${TIER_LABELS[evidence.tier]} · ${SOURCE_LABELS[evidence.sourceKind]}`} detail={`${Math.round(evidence.confidence * 100)}% confidence`} labelWidth={20} />
-            <KeyValueRow label="Period" value={periodText(row)} detail={trustTier(row) === 1 ? `filed ${row.filedDate ?? "--"}` : `published ${evidenceDate(row)}`} labelWidth={20} />
+            <KeyValueRow label="Period" value={periodText(row)} detail={trustTier(row) === 1 ? `filed ${row.filedDate ?? MISSING_VALUE}` : `published ${evidenceDate(row)}`} labelWidth={20} />
             {row.entityScope === "group" && !row.counterparty.aggregate ? <KeyValueRow label="Metric scope" value="Corporate group" labelWidth={20} /> : null}
             <SupplyVerification row={row} />
             {share ? <>

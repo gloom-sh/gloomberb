@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableView, PaneStatusBody, Prose, QueryBar, usePaneFooter, usePaneNoticeFooter, type DataTableColumn, type DataTableKeyEvent } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -125,7 +126,7 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
       case "iv30": return { text: formatVol(row.iv30), color: row.stale ? colors.textDim : colors.warning };
       case "spot": return { text: formatSpot(row.spot), color: colors.textDim };
       case "date": return { text: row.date ? readingLabel(row.date, row.method, true, { basis: row.basis, stale: row.stale })
-        : row.status === "queued" || row.status === "backfilling" ? row.status : "--", color: row.stale ? colors.warning : colors.textDim };
+        : row.status === "queued" || row.status === "backfilling" ? row.status : MISSING_VALUE, color: row.stale ? colors.warning : colors.textDim };
       case "rank": return { text: formatRank(row.rank) };
       case "percentile": return { text: formatRank(row.percentile) };
       case "verdict": return { text: verdictLabel(row.verdict), color: row.verdict === "rich" ? colors.negative : row.verdict === "cheap" ? colors.positive : colors.textDim };
@@ -134,10 +135,10 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
       case "termSlope": return { text: formatPoints(row.termSlope), color: row.termSlope != null && row.termSlope > 0 ? colors.negative : colors.text };
       case "riskReversal": return { text: formatPoints(row.riskReversal) };
       case "riskReversalPercentile": return { text: formatRank(row.riskReversalPercentile) };
-      case "skewDate": return { text: row.skewDate ? readingLabel(row.skewDate, row.skewMethod, true) : "--", color: colors.textDim };
+      case "skewDate": return { text: row.skewDate ? readingLabel(row.skewDate, row.skewMethod, true) : MISSING_VALUE, color: colors.textDim };
       case "hv": return { text: hv.has(row.symbol) ? formatVol(row.hv) : "...", color: colors.positive };
-      case "hvDate": return { text: row.hvDate ? shortDate(row.hvDate) : "--", color: colors.textDim };
-      case "ivHv": return { text: row.ivHv == null ? "--" : row.ivHv.toFixed(2) };
+      case "hvDate": return { text: row.hvDate ? shortDate(row.hvDate) : MISSING_VALUE, color: colors.textDim };
+      case "ivHv": return { text: row.ivHv == null ? MISSING_VALUE : row.ivHv.toFixed(2) };
       default: return { text: "" };
     }
   };

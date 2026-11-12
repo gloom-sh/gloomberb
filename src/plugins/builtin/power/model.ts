@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { PowerAggregate, PowerBoard, PowerCoverage, PowerExposure, PowerHistoryPoint, PowerProject, PowerRates } from "../../../api-client/power";
 import { staticSeries, type DataTableColumn } from "../../../components";
 
@@ -34,8 +35,8 @@ export function powerLoadedSources(tab: PowerTab, coverage: readonly PowerCovera
   return tab === "capacity" ? "US EIA generation and utility filings" : names([...loaded.filter((c) => c.country === "US"), ...loaded.filter((c) => c.country !== "US")]);
 }
 export const titleCase = (value: string) => value.replace(/(^|[ _-])\w/g, (match) => match.toUpperCase());
-export const powerNumber = (n: number | null | undefined) => n == null ? "--" : n.toLocaleString("en-US", { maximumFractionDigits: 1 });
-export const powerPercent = (n: number | null) => n == null ? "--" : `${(n * 100).toFixed(1)}%`;
+export const powerNumber = (n: number | null | undefined) => n == null ? MISSING_VALUE : n.toLocaleString("en-US", { maximumFractionDigits: 1 });
+export const powerPercent = (n: number | null) => n == null ? MISSING_VALUE : `${(n * 100).toFixed(1)}%`;
 /** The listed companies a record names, or null when its register names none: the ticker map. */
 export const tickerLabel = (row: { entities: PowerProject["entities"] }) => [...new Set(row.entities.flatMap((e) => e.tickers.map((t) => t.ticker)))].join(", ") || null;
 /** What the ticker column says for a record no listed company is mapped to. */

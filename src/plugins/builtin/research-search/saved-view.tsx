@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useMemo, useState } from "react";
 import {
   Checkbox,
@@ -94,7 +95,7 @@ export function SavedSearchesView({
         return { text: search.name || search.query, color: colors.text };
       case "filters":
         return {
-          text: describeFilters(search.filters) || "\u2014",
+          text: describeFilters(search.filters) || MISSING_VALUE,
           color: colors.textDim,
         };
       case "alert":
@@ -113,12 +114,12 @@ export function SavedSearchesView({
         };
       case "last":
         return {
-          text: search.lastMatchAt ? formatHitDate(search.lastMatchAt) : "\u2014",
+          text: search.lastMatchAt ? formatHitDate(search.lastMatchAt) : MISSING_VALUE,
           color: colors.textDim,
         };
       case "hits":
         return {
-          text: search.matchCount > 0 ? String(search.matchCount) : "\u2014",
+          text: search.matchCount > 0 ? String(search.matchCount) : MISSING_VALUE,
           color: colors.textDim,
         };
     }

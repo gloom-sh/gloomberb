@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo } from "react";
 import type { HkTender } from "../../../api-client/hk-tenders";
 import {
@@ -91,11 +92,11 @@ function renderTenderCell(tender: HkTender, column: HkColumn, rowState: { select
     case "term":
       return { text: tender.term, color: selected ?? colors.text };
     case "rate":
-      return { text: formatHkRate(tender, hkRate(tender), "—"), color: selected ?? colors.textBright };
+      return { text: formatHkRate(tender, hkRate(tender), MISSING_VALUE), color: selected ?? colors.textBright };
     case "btc":
       return { text: tender.bidToCover.toFixed(2), color: selected ?? colors.text };
     case "size":
-      return { text: formatHkAmount(tender, hkSize(tender), "—", hkSizeWorkedOut(tender)), color: selected ?? colors.textDim };
+      return { text: formatHkAmount(tender, hkSize(tender), MISSING_VALUE, hkSizeWorkedOut(tender)), color: selected ?? colors.textDim };
     case "cusip":
       return { text: tender.issue ?? "", color: selected ?? colors.textDim };
   }
@@ -105,11 +106,11 @@ function renderTenderCell(tender: HkTender, column: HkColumn, rowState: { select
 function hkTableDate(date: string, showYear: boolean): string {
   if (showYear) return date;
   if (date.length === 7) return hkDateText(date).replace(/ \d{4}$/, "");
-  return formatShortDate(date, { year: false, utc: true, fallback: "\u2014" });
+  return formatShortDate(date, { year: false, utc: true, fallback: MISSING_VALUE });
 }
 
-const percent = (value: number | null) => value == null ? "—" : `${value.toFixed(3)}%`;
-const times = (value: number | null) => value == null ? "—" : value.toFixed(2);
+const percent = (value: number | null) => value == null ? MISSING_VALUE : `${value.toFixed(3)}%`;
+const times = (value: number | null) => value == null ? MISSING_VALUE : value.toFixed(2);
 
 function HkTenderDetail({ tender, width }: { tender: HkTender; width: number }) {
   const row = (label: string, value: string) => (
@@ -125,7 +126,7 @@ function HkTenderDetail({ tender, width }: { tender: HkTender; width: number }) 
         </Box>
         <Box height={1} />
         {isSpread(tender)
-          ? row("Spread over HONIA", formatHkRate(tender, hkRate(tender), "—"))
+          ? row("Spread over HONIA", formatHkRate(tender, hkRate(tender), MISSING_VALUE))
           : row("Average yield", percent(tender.averageYield))}
         {/* An RMB bond's average yield is annualised; HKMA gives it semi-annualised too. */}
         {tender.averageYieldSemiAnnual != null && row("Semi-annual basis", percent(tender.averageYieldSemiAnnual))}
@@ -134,7 +135,7 @@ function HkTenderDetail({ tender, width }: { tender: HkTender; width: number }) 
         <Box height={1} />
         {row("Applied", formatHkAmount(tender, tender.applied))}
         {tender.allotted != null && row("Allotted", formatHkAmount(tender, tender.allotted))}
-        {tender.offered != null && row("Offered (worked out)", formatHkAmount(tender, tender.offered, "—", true))}
+        {tender.offered != null && row("Offered (worked out)", formatHkAmount(tender, tender.offered, MISSING_VALUE, true))}
         {tender.coupon != null && row("Coupon", percent(tender.coupon))}
         {tender.maturity && row("Maturity", hkDateText(tender.maturity))}
         <Box height={1} />

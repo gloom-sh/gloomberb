@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { DataTableCell, DataTableColumn } from "../../../components";
 import { TABLE_COLUMN_GAP, tableColumnWidth } from "../../../components/ui/table-layout";
 import { colors } from "../../../theme/colors";
@@ -53,7 +54,7 @@ const AMOUNT_COLUMNS: ReadonlySet<HistoryColumnId> = new Set(["epsEstimate", "ep
 const CURRENCY_WIDTH = 4;
 
 /** A listing abroad's figure with its currency; a US listing's dollars stay bare. */
-const inCurrency = (text: string, row: HistoryRow) => (row.currency && text !== "--" ? `${text} ${row.currency}` : text);
+const inCurrency = (text: string, row: HistoryRow) => (row.currency && text !== MISSING_VALUE ? `${text} ${row.currency}` : text);
 
 /**
  * The columns that fit `width`. A listing abroad's (`abroad`, Hong Kong's)
@@ -100,20 +101,20 @@ export function renderHistoryCell(row: HistoryRow, column: HistoryColumn, liveMo
     case "date":
       return { text: datedYear(row.date), color: row.upcoming ? colors.textBright : colors.text, attributes: row.upcoming ? TextAttributes.BOLD : undefined };
     case "when":
-      return { text: row.timing ? TIMING_LABEL[row.timing] : "--", color: row.expectedTiming ? colors.textMuted : dim };
+      return { text: row.timing ? TIMING_LABEL[row.timing] : MISSING_VALUE, color: row.expectedTiming ? colors.textMuted : dim };
     case "period":
       return { text: periodText(row), color: dim };
     case "epsEstimate":
       return { text: inCurrency(epsText(row.epsEstimate), row), color: dim };
     case "analysts":
-      return { text: row.epsAnalysts == null ? "--" : String(row.epsAnalysts), color: dim };
+      return { text: row.epsAnalysts == null ? MISSING_VALUE : String(row.epsAnalysts), color: dim };
     case "epsActual":
       // The company's press release's figure reads quieter until the calendar's replaces it.
       return { text: inCurrency(epsText(row.epsActual), row), color: row.provisional ? colors.textMuted : colors.text };
     case "basis":
       // A listing abroad's basic EPS is not the statements' diluted figure: it says what it is.
       return !showsEpsBasis(row)
-        ? { text: "--", color: dim }
+        ? { text: MISSING_VALUE, color: dim }
         : !row.epsBasis && row.epsDilution === "basic"
           ? { text: "basic", color: colors.textMuted }
           : { text: epsBasisShort(row.epsBasis), color: row.epsBasis ? colors.textMuted : dim };
@@ -133,6 +134,6 @@ export function renderHistoryCell(row: HistoryRow, column: HistoryColumn, liveMo
       return live === "loading" ? { text: "…", color: dim } : signed(row.move ?? live);
     }
     case "ratio":
-      return { text: row.moveRatio == null ? "--" : `${row.moveRatio.toFixed(1)}x`, color: row.moveRatio != null && row.moveRatio > 1 ? colors.warning : dim };
+      return { text: row.moveRatio == null ? MISSING_VALUE : `${row.moveRatio.toFixed(1)}x`, color: row.moveRatio != null && row.moveRatio > 1 ? colors.warning : dim };
   }
 }

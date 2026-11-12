@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "./format";
 import { toTimestampMillis } from "./timestamp";
 
 export type DisplayDateValue = Date | string | number | null | undefined;
@@ -22,7 +23,7 @@ function elapsedUnits(ageMs: number): { count: number; unit: "m" | "h" | "d" } |
 }
 
 /** Age for a narrow column: "<1m", "5m", "3h", "2d". */
-export function formatRelativeTime(value: DisplayDateValue, now = Date.now(), fallback = "-"): string {
+export function formatRelativeTime(value: DisplayDateValue, now = Date.now(), fallback = MISSING_VALUE): string {
   const date = parseDisplayDate(value);
   if (!date) return fallback;
 
@@ -92,7 +93,7 @@ function dayFirstParts(formatter: Intl.DateTimeFormat, date: Date): string {
 /** A day-first month-name date such as "5 Jan 2026", in local time unless `utc` is set. */
 export function formatShortDate(value: DisplayDateValue, options: ShortDateOptions = {}): string {
   const date = parseDisplayDate(value);
-  if (!date) return options.fallback ?? "-";
+  if (!date) return options.fallback ?? MISSING_VALUE;
   const { year = "numeric", day = "numeric", utc = false } = options;
   const key = `${year}:${day}:${utc}`;
   let formatter = shortDateFormatters.get(key);
@@ -113,7 +114,7 @@ const weekdayDayFormatters = new Map<string, Intl.DateTimeFormat>();
 /** A weekday and day-first date ("Fri 16 Oct"), with a year only when asked for. */
 export function formatWeekdayDay(value: DisplayDateValue, { timeZone, year = false }: { timeZone?: string; year?: boolean } = {}): string {
   const date = parseDisplayDate(value);
-  if (!date) return "-";
+  if (!date) return MISSING_VALUE;
   const key = `${timeZone ?? ""}:${year}`;
   let formatter = weekdayDayFormatters.get(key);
   if (!formatter) {
@@ -178,7 +179,7 @@ function utcMidnight(date: Date): number {
 export function formatFeedTime(
   value: DisplayDateValue,
   now = Date.now(),
-  fallback = "-",
+  fallback = MISSING_VALUE,
   { utc = false, dayToday = false }: {
     utc?: boolean;
     /** Today's time carries its weekday too ("Sat 00:47"), for a column whose other rows name theirs ("Fri 21:00"). */
@@ -202,7 +203,7 @@ export function formatFeedTime(
  * 23:38 GMT+2", "... 17:38 EDT", "... 21:38 UTC". Without the zone a
  * time read beside a list in UTC looks two hours off.
  */
-export function formatDetailDate(value: DisplayDateValue, fallback = "-", timeZone?: string): string {
+export function formatDetailDate(value: DisplayDateValue, fallback = MISSING_VALUE, timeZone?: string): string {
   const date = parseDisplayDate(value);
   if (!date) return fallback;
 
@@ -233,7 +234,7 @@ const zonedClockFormatters = new Map<string, Intl.DateTimeFormat>();
  * the host's zone unless `timeZone` is given. Never AM/PM: one footer read
  * "8:30 AM" beside another's "14:32" (review, 12 Nov 2026).
  */
-export function formatClockTime(value: DisplayDateValue, fallback = "-", timeZone?: string): string {
+export function formatClockTime(value: DisplayDateValue, fallback = MISSING_VALUE, timeZone?: string): string {
   const date = parseDisplayDate(value);
   if (!date) return fallback;
   if (!timeZone) return clockFormatter.format(date);
@@ -246,7 +247,7 @@ export function formatClockTime(value: DisplayDateValue, fallback = "-", timeZon
 }
 
 /** The time of `formatDetailDate` alone, its zone named: "23:38 GMT+2", for a day stated beside it. */
-export function formatDetailTime(value: DisplayDateValue, fallback = "-", timeZone?: string): string {
+export function formatDetailTime(value: DisplayDateValue, fallback = MISSING_VALUE, timeZone?: string): string {
   const date = parseDisplayDate(value);
   if (!date) return fallback;
   return `${formatClockTime(date, fallback, timeZone)} ${localTimeZoneShortName(date, timeZone)}`;

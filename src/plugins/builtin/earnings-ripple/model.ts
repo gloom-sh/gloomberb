@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import type { EarningsCalendarReport, EarningsTiming } from "../../../api-client/earnings";
 import type { SupplyChainPayload, SupplyEntity, SupplyRow } from "../../../api-client/supply-chain";
 import type { GraphPath, GraphPayload } from "../../../api-client/supply-chain-graph";
@@ -184,12 +185,12 @@ export function secondHopLinks(chains: ReadonlyMap<string, SupplyChainPayload>, 
 function hopShare(graph: GraphPayload, linkId: string): RippleHop {
   const link = graph.links.find((entry) => entry.id === linkId);
   const evidence = link?.evidence.find((item) => item.id === link.primaryEvidenceId);
-  return { owner: evidence ? entityLabel(evidence.reporter) : "--", pct: evidence?.pctOfRevenue ?? null, basis: evidence?.pctBasis ?? null, scoped: !!evidence?.pctScope };
+  return { owner: evidence ? entityLabel(evidence.reporter) : MISSING_VALUE, pct: evidence?.pctOfRevenue ?? null, basis: evidence?.pctBasis ?? null, scoped: !!evidence?.pctScope };
 }
 
 /** `30% of TSM`, `12% of AVGO purchases`, or `--` where the filing names the link without a figure. */
 export function hopLabel(hop: RippleHop) {
-  if (hop.pct == null) return "--";
+  if (hop.pct == null) return MISSING_VALUE;
   return `${hop.pct}%${hop.scoped ? "*" : ""} of ${hop.owner}${hop.basis && hop.basis !== "revenue" ? ` ${hop.basis}` : ""}`;
 }
 

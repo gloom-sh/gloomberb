@@ -1,3 +1,4 @@
+import { MISSING_VALUE } from "../../../utils/format";
 import { afterEach, expect, test } from "bun:test";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import type { SupplyEvidenceItem } from "../../../api-client/supply-chain";
@@ -75,7 +76,7 @@ test("confirmed filing concentrations alone set ribbon widths and unconfirmed ne
   expect(nodes.filter((node) => node.id !== "filing").every((node) => node.weight === null)).toBe(true);
   for (const row of rows.slice(1)) {
     expect(shareParts(row, "FOCUS")).toBeNull();
-    expect(percentage(row)).toBe("--");
+    expect(percentage(row)).toBe(MISSING_VALUE);
   }
   const primary = rows[0]!;
   const newerReport = { ...primary, id: "newer-report", tier: 4 as const, asOf: "2026-10-04" };

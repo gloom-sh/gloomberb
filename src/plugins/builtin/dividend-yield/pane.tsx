@@ -20,7 +20,7 @@ import {
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors, priceColor } from "../../../theme/colors";
 import { TextAttributes, useUiCapabilities } from "../../../ui";
-import { displayWidth, formatCurrency, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatCurrency, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { forwardDividendNote, lapseValue, lastPaidNote, UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
@@ -52,12 +52,12 @@ import { bondFigures } from "../../../market-data/bond-funds";
 
 /** A per-share rate; one converted from the currency the company declares in goes to two decimals of its source's unit. */
 function formatRate(value: number | null, currency: string, converted = false, subUnit?: string): string {
-  if (value == null) return "—";
+  if (value == null) return MISSING_VALUE;
   return converted ? formatConvertedAmount(value, currency, subUnit) : formatDistributionAmount(value, currency);
 }
 
 function formatGrowth(value: number | null): string {
-  if (value == null) return "—";
+  if (value == null) return MISSING_VALUE;
   return formatPercentRaw(value * 100);
 }
 
@@ -70,12 +70,12 @@ function growthItem(id: string, label: string, growth: number | null, payments: 
 }
 
 function formatDate(date: Date | null): string {
-  if (!date) return "—";
+  if (!date) return MISSING_VALUE;
   return date.toISOString().slice(0, 10);
 }
 
 function formatFrequency(freq: DividendMetrics["paymentFrequency"]): string {
-  if (!freq) return "—";
+  if (!freq) return MISSING_VALUE;
   switch (freq) {
     case "monthly": return "Monthly";
     case "quarterly": return "Quarterly";
@@ -128,7 +128,7 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
       ...metrics.forwardRate != null ? converted : {} },
     growthItem("growth-1y", short ? "1Y chg" : "1Y growth", metrics.growth1Y, metrics.growth1YPayments),
     growthItem("cagr-3y", "3Y CAGR", metrics.growth3Y, metrics.growth3YPayments),
-    { id: "payout", label: "Payout", value: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : "—" },
+    { id: "payout", label: "Payout", value: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : MISSING_VALUE },
     { id: "cadence", label: "Cadence", value: formatFrequency(metrics.paymentFrequency) },
     ...exDate,
     { id: "next-pay", label: "Next pay", value: formatDate(metrics.nextPayDate) },
