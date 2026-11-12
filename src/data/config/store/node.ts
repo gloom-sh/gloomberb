@@ -1,6 +1,6 @@
 import { logFailure } from "../../../utils/log-failure";
 import { existsSync, readdirSync, type Dirent } from "fs";
-import { readFile, rename, rm } from "fs/promises";
+import { readFile, rm } from "fs/promises";
 import { dirname, join, resolve } from "path";
 import { expandUserHome, getGloomberbDirs } from "../home";
 import type { AppConfig } from "../../../types/config";
@@ -9,6 +9,7 @@ import { debugLog } from "../../../utils/debug-log";
 import { findAbsorbedCheckout, isDirectoryOrLink, isPluginDirectory } from "../../../plugins/loader";
 import { EXTRACTED_PLUGINS } from "../../../plugins/extracted-plugins";
 import { makePrivateDir, writePrivateFile } from "../../../utils/private-files";
+import { renameIntoPlace } from "../../../utils/replace-file";
 import { tightenProfilePermissions } from "../../profile-permissions";
 import type { ConfigMigrationHost } from "./migrations";
 import {
@@ -121,7 +122,8 @@ async function writeConfigFile(configPath: string, contents: string): Promise<vo
   try {
     // Readable by the user alone: config.json holds broker credentials.
     await writePrivateFile(tempPath, contents);
-    await rename(tempPath, configPath);
+    // Windows refuses this while a scanner still reads the file just written.
+    await renameIntoPlace(tempPath, configPath);
   } catch (error) {
     await rm(tempPath, { force: true }).catch(() => { /* Intentional ignore: Remove a partial temporary file while preserving the write error rethrown below. */ });
     throw error;

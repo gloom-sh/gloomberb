@@ -37,6 +37,7 @@ import {
   type OnboardingSectionId,
 } from "./onboarding-frame";
 import { planProStep } from "./pro-step-layout";
+import { wrapTextLines } from "../../utils/text-wrap";
 import { useOnboardingAccount } from "./wizard-account";
 import { useOnboardingBrokerSync } from "./wizard-broker-sync";
 import { useOnboardingPositions } from "./wizard-positions";
@@ -192,11 +193,15 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     setEditingField,
     setPortfolioSub,
   });
+  const notifySetupSaveFailure = useCallback(() => {
+    pluginRegistry.notify({ type: "error", body: t("Could not save your setup.") });
+  }, [pluginRegistry]);
   const {
     finish, skipSetup,
   } = useOnboardingCompletion({
     finishingRef, resetBrokerSync, setIsFinishing, setPersistenceError, progressSaveQueueRef, stateRef,
     dispatch, onComplete,
+    onSaveFailure: notifySetupSaveFailure,
   });
   const {
     setBrokerFieldValue, chooseBroker, openBrokerConnect, submitBrokerField, continuePortfolio,
@@ -586,8 +591,11 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
   }
 
   if (stage === "desks") {
+    const desksColumns = terminalCardSize({ width: viewportWidth, height: viewportHeight }, DESKS_CARD_WIDTH, 18).width - TERMINAL_CARD_INSET.columns;
+    // A save error names the file, so it usually takes two rows; the card grows by what it wraps to.
+    const errorRows = persistenceError ? wrapTextLines(persistenceError, Math.max(1, desksColumns)).length : 0;
     return (
-      <OnboardingModal width={DESKS_CARD_WIDTH} height={18 + (persistenceError ? 1 : 0)}>
+      <OnboardingModal width={DESKS_CARD_WIDTH} height={18 + errorRows}>
         <OnboardingHeader
           active="portfolio"
           available={sectionAvailability}
@@ -609,7 +617,7 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
           cursor={deskCursor}
           onCursor={setDeskCursor}
           onToggle={(key) => setChosenDesks((current) => toggleDeskChoice(current, key))}
-          width={terminalCardSize({ width: viewportWidth, height: viewportHeight }, DESKS_CARD_WIDTH, 18).width - TERMINAL_CARD_INSET.columns}
+          width={desksColumns}
         />
         {persistenceError ? (
           <Text fg={colors.negative} wrapText style={desktop ? { marginTop: 10 } : undefined}>
