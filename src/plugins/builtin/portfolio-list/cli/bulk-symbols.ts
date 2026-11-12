@@ -8,6 +8,7 @@ import { splitSymbolArgs, splitSymbolWords, symbolInputKey } from "../../../../c
 import { notASymbolError } from "../../../../cli/symbol-cells";
 import { readSymbolList, SymbolListError } from "../../../../cli/symbol-list";
 import { cliStyles } from "../../../../utils/cli-output";
+import { listProgressNotice } from "../../../../cli/list-progress";
 import { shellWord } from "../../../../utils/shell-word";
 import { logFailure } from "../../../../utils/log-failure";
 import { parsePublicTickerKey } from "../../../../utils/exchanges";
@@ -256,45 +257,17 @@ export function retryNotice(ctx: CliCommandContext): (count: number, waitMs: num
   };
 }
 
-/** A lookup this slow says how far it has got, so an add never looks stuck: first after two seconds, then every five. */
-const PROGRESS_AFTER_MS = 2_000;
-const PROGRESS_EVERY_MS = 5_000;
-
 /**
  * Lines on standard error while an add of several symbols is slow to look
  * them up: "Looking up 10 symbols." two seconds in when none is settled yet,
  * else "Looked up 4 of 10 symbols.", which it says again every five seconds
- * until all are. Nothing for one symbol or a lookup that is quick. It is told
- * (0, total) as the lookup starts and each symbol as it settles; the lines
- * come from a timer, so a lookup waiting on one slow answer still says so.
+ * until all are (`listProgressNotice`).
  */
 export function progressNotice(
   ctx: Pick<CliCommandContext, "cliOptions">,
-  { afterMs = PROGRESS_AFTER_MS, everyMs = PROGRESS_EVERY_MS }: { afterMs?: number; everyMs?: number } = {},
+  timing: { afterMs?: number; everyMs?: number } = {},
 ): (looked: number, total: number) => void {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let looked = 0, total = 0, told = false;
-  const tell = () => {
-    timer = undefined;
-    if (looked >= total) return;
-    console.error(cliStyles.muted(told || looked > 0 ? `Looked up ${looked} of ${total} symbols.` : `Looking up ${total} symbols.`));
-    told = true;
-    schedule(everyMs);
-  };
-  const schedule = (ms: number) => {
-    timer = setTimeout(tell, ms);
-    // The add's own end, not this line, decides when the process exits.
-    (timer as { unref?: () => void }).unref?.();
-  };
-  return (settled, of) => {
-    if (ctx.cliOptions.quiet || of < 2) return;
-    looked = settled;
-    total = of;
-    if (looked >= total) {
-      if (timer) clearTimeout(timer);
-      timer = undefined;
-    } else if (!timer) schedule(afterMs);
-  };
+  return listProgressNotice(ctx, (looked, total, told) => told || looked > 0 ? `Looked up ${looked} of ${total} symbols.` : `Looking up ${total} symbols.`, timing);
 }
 
 /**

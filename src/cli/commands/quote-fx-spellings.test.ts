@@ -6,7 +6,10 @@ import { createTestCliContext, type PrintedCliResult } from "../../test-support/
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { currencyPairSpelling } from "../../utils/currency-pair";
 import { DEFAULT_CLI_OPTIONS } from "../options";
-import { printCliResult } from "../result";
+import { printCliResult, serializeCliResult } from "../result";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { setCliColorEnabledOverride } from "../../utils/cli-output";
 import { marketDataCliCommands } from "./market";
 
@@ -96,7 +99,9 @@ test("every spelling of a pair quotes the same listing, so its rows are the same
     // One request, for the pair's own listing, whatever was typed.
     expect(new Set(asked), pair).toEqual(new Set([pair]));
     expect(rows, pair).toHaveLength(typed.length);
-    for (const [index, row] of rows.entries()) expect(row, `${typed[index]} as ${pair}`).toEqual(rows[0]!);
+    // Each names the entry it was typed as, and the first one it repeats.
+    const quoted = ({ input: _input, duplicateOf: _duplicateOf, ...row }: Record<string, unknown>) => row;
+    for (const [index, row] of rows.entries()) expect(quoted(row), `${typed[index]} as ${pair}`).toEqual(quoted(rows[0]!));
     const first = rows[0]!;
     expect([first.symbol, first.session, first.rawPrice, first.updatedAt], pair)
       .toEqual([pair, "OPEN", listed[pair]!.price, new Date(listed[pair]!.lastUpdated).toISOString()]);
@@ -132,5 +137,35 @@ test("a pair-like miss names the listing search finds nearest, and nothing when 
     spy.mockRestore();
     write.mockRestore();
     setCliColorEnabledOverride(null);
+  }
+});
+
+test("a list's export has a row for every line as typed, in its order, each repeat of a listing marked", async () => {
+  // A sheet's column pasted as a file: four lines that are all USD/JPY, and a code no listing is read from between them.
+  const dir = mkdtempSync(join(tmpdir(), "quote-input-"));
+  const file = join(dir, "symbols.txt");
+  writeFileSync(file, ["USDJPY Curncy", "ＵＳＤＪＰＹ", "GTJPY10Y Govt", "usdjpy", "USD/JPY", "EURUSD=X", "USDJPY Curncy"].join("\n"));
+  try {
+    const source = pairSource();
+    const cli = createTestCliContext({ dataProvider: source.dataProvider }, { format: "csv" });
+    await quoteCommand.execute(["--file", file], cli.context);
+    const [printed] = cli.printed as [PrintedCliResult];
+    const csv = serializeCliResult(printed.result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, printed.options).split("\n");
+    const head = csv[0]!.split(",");
+    const cells = (line: string) => line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
+    const rows = csv.slice(1, 7).map((line) => {
+      const row = cells(line);
+      return [row[head.indexOf("Symbol")], row[head.indexOf("input")], row[head.indexOf("duplicate_of")], row[head.indexOf("status")]!.slice(0, 15)];
+    });
+    expect(rows).toEqual([
+      ["USDJPY=X", "USDJPY Curncy", "", ""],
+      ["USDJPY=X", "ＵＳＤＪＰＹ", "USDJPY Curncy", ""],
+      ["GTJPY10Y Govt", "GTJPY10Y Govt", "", "\"GTJPY10Y Govt "],
+      ["USDJPY=X", "usdjpy", "USDJPY Curncy", ""],
+      ["USDJPY=X", "USD/JPY", "USDJPY Curncy", ""],
+      ["EURUSD=X", "EURUSD=X", "", ""],
+    ]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

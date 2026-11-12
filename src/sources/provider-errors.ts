@@ -1,5 +1,5 @@
 import { DataServiceUnreachableError, isNetworkFailure } from "../utils/network-failure";
-import { wasAskedTwice } from "../api-client/errors";
+import { ApiRequestError, wasAskedTwice } from "../api-client/errors";
 
 // Registered, so a miss raised by another copy of this module (a plugin that
 // resolved `gloomberb/market-data` from the source tree) is still recognized.
@@ -163,7 +163,20 @@ export function noProviderError(message: string, note: ProviderMissNote | undefi
     return note!.failure instanceof DataServiceUnreachableError ? note!.failure : new DataServiceUnreachableError(note!.failure);
   }
   if (wasAskedTwice(note?.failure)) return new NoProviderError(serviceDidNotAnswerMessage(symbol), note!.failure);
+  if (note?.failure instanceof ApiRequestError && note.failure.status === 429) {
+    return new NoProviderError(rateLimitedMessage(symbol, note.failure.retryAfterMs), note.failure);
+  }
   return new NoProviderError(message, note?.failure);
+}
+
+/**
+ * What a read says when Gloom's data service refused it for its request limit
+ * (429): not that the listing has no data, and when to ask again. "for SYMBOL"
+ * closes the first sentence, as `serviceDidNotAnswerMessage` words it.
+ */
+export function rateLimitedMessage(symbol?: string, retryAfterMs?: number): string {
+  const wait = retryAfterMs && retryAfterMs > 0 ? `in ${Math.ceil(retryAfterMs / 1000)} s` : "in a minute";
+  return `Gloom's data service is at its request limit${symbol ? ` for ${symbol}` : ""}. Try again ${wait}.`;
 }
 
 /**

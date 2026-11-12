@@ -1,6 +1,6 @@
 import { readFile } from "fs/promises";
 import { fstatSync } from "fs";
-import { splitSymbolArgLines, splitSymbolWords, stripStrayEdges, uniqueSymbols } from "./symbol-args";
+import { splitSymbolArgLines, splitSymbolWords, stripStrayEdges, symbolInputKey, uniqueSymbols } from "./symbol-args";
 import { foldTypedText } from "../utils/typed-text";
 import { hasDecimalCommas, isFigure, isJunkCell, isNumberCell, isSheetErrorCell, protectFigureCommas, restoreFigureCommas } from "./symbol-cells";
 import { endsInLegalForm, readTerminalListingCode, unknownBloombergMarket, unreadBloombergCode } from "../tickers/terminal-codes";
@@ -420,6 +420,8 @@ export interface SymbolListSource {
    * words, each a symbol.
    */
   readEntries?: (entries: string[]) => Promise<string[]>;
+  /** Given, gets each line of the file and standard input as typed (`TypedForm`), for a command whose rows name them. */
+  typedForms?: TypedForm[];
 }
 
 export class SymbolListError extends Error {
@@ -456,6 +458,7 @@ export async function readSymbolList(source: SymbolListSource): Promise<{ symbol
   const strays = new Set<string>(stripStrayEdges(typedArgs.join(" ")).notes);
   const ignored: string[] = [];
   const headers: string[] = [];
+  const typedForms = source.typedForms ?? [];
   const addCells = async ({ symbols, ignored: beside, entries: whole, header }: SymbolText) => {
     if (header) headers.push(`Skipped the first row as a header: ${listCells(header)}.`);
     const cells = symbols.map((cell) => {
@@ -476,13 +479,38 @@ export async function readSymbolList(source: SymbolListSource): Promise<{ symbol
       const code = (error as NodeJS.ErrnoException).code;
       throw new SymbolListError(code === "ENOENT" ? `No file at ${source.file}.` : `Could not read ${source.file}: ${error instanceof Error ? error.message : String(error)}`);
     }
+    typedForms.push(...typedLines(text));
     await addCells(parseSymbolText(foldTypedText(text)));
   }
   if (wantsStdin || (typed.length === 0 && source.file == null && (source.stdinPiped ?? stdinIsPiped()))) {
-    await addCells(parseSymbolText(foldTypedText(await readStdin())));
+    const text = await readStdin();
+    typedForms.push(...typedLines(text));
+    await addCells(parseSymbolText(foldTypedText(text)));
   }
   // A number where a symbol goes (a line of prices, a typed 1.899) is left out with those typed beside a symbol.
   const numbers = [...figures, ...collected.filter(isNumberCell)];
   const notes = [ignoredCellsNote(ignored), ignoredNumbersNote(numbers)].filter((note): note is string => !!note);
   return { ...uniqueSymbols(collected.filter((symbol) => !isNumberCell(symbol))), notes: [...headers, ...strays, ...notes] };
+}
+
+/** A line of a list as typed, before full-width letters and case were folded, and the entry it reads as. */
+export interface TypedForm {
+  typed: string;
+  /** The entry the line reads as, its repeats' key (`symbolInputKey`): `ＵＳＤＪＰＹ` and `usdjpy` are both `USDJPY`'s. */
+  key: string;
+}
+
+/**
+ * Each line of a list's text that is one entry, as typed and once in the order first read, with the key of the entry
+ * it reads as: so a command can say which line of a sheet each row is, where several were read as one entry.
+ */
+function typedLines(text: string): TypedForm[] {
+  const seen = new Set<string>();
+  return text.split(/\r?\n/).flatMap((line) => {
+    const typed = line.trim();
+    const key = symbolInputKey(stripStrayEdges(foldTypedText(typed)).text);
+    if (!typed || !key || seen.has(typed)) return [];
+    seen.add(typed);
+    return [{ typed, key }];
+  });
 }
