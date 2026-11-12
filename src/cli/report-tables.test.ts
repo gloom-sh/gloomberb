@@ -7,6 +7,7 @@ import {
   renderReportNdjson,
   reportFooterLines,
   selectReportTables,
+  withRefusedRows,
   type CliReportTables,
 } from "./report-tables";
 import type { ReportFreshness } from "./pane-functions/freshness";
@@ -43,6 +44,40 @@ describe("report tables", () => {
       { metric: "Net income", 2025: 112_010_000_000, text: "112.0 +19%" },
     ]);
     expect(table.rows).toEqual([["Revenue", 416.161], ["Net income", 112.01]]);
+  });
+
+  test("a column's scale is decided once from all its figures, so a spread near zero exports at its neighbours' scale", () => {
+    // HIVG's IV-HV spread is a fraction drawn in points: 0.0013 drawn "+0.1" is within a step of itself too, and alone
+    // exported as 0.0013 beside 0.8586.
+    const points = (value: unknown) => `${Number(value) >= 0 ? "+" : ""}${(Number(value) * 100).toFixed(1)}`;
+    const table = exportRowsTable("History", [
+      { key: "date", header: "Date" },
+      { key: "spread", header: "IV-HV", align: "right", format: points },
+    ], [
+      { date: "2026-09-17", spread: 0.00858637789209 },
+      { date: "2026-09-16", spread: 0.00129604323566 },
+      { date: "2026-09-15", spread: -0.000779004930701 },
+    ]);
+    expect(table.rows).toEqual([["2026-09-17", 0.858637789209], ["2026-09-16", 0.129604323566], ["2026-09-15", -0.0779004930701]]);
+  });
+
+  test("a symbol a list left out still has its row, its reason in status and its figures empty", () => {
+    // `fn VCA "USDJPY Curncy,FXY,7203 JT Equity" --csv` wrote FXY alone; the other two were only on stderr.
+    const table = exportRowsTable("Rich/cheap", [
+      { key: "symbol", header: "Symbol" },
+      { key: "iv30", header: "IV30", format: percent },
+    ], [{ symbol: "FXY", iv30: 0.077 }], { status: true });
+    const report = withRefusedRows({ tables: [table] }, [
+      { symbol: "USDJPY=X", reason: "OTC FX volatility is not covered for USDJPY=X." },
+      { symbol: "7203:JPX", reason: "Implied volatility covers US listings only." },
+    ]);
+    expect(report.tables[0]!.columns).toEqual(["Symbol", "IV30 (%)", "status"]);
+    expect(report.tables[0]!.rows).toEqual([
+      ["FXY", 7.7, ""],
+      ["USDJPY=X", "", "OTC FX volatility is not covered for USDJPY=X."],
+      ["7203:JPX", "", "Implied volatility covers US listings only."],
+    ]);
+    expect(report.tables[0]!.rowIdentities?.map((identity) => identity?.symbolOrSeries)).toEqual([undefined, "USDJPY=X", "7203:JPX"]);
   });
 
   test("a value drawn with its sign turned exports as drawn, every digit, not the rounded figure", () => {

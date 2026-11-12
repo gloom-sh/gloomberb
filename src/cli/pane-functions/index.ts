@@ -49,7 +49,7 @@ import { CLI_ERROR_CODE, failUnreachable, failWithError, isCliFailure, isSourceU
 import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../../utils/network-failure";
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
 import { knownGapMessage, commandPointer, commandPointerLeads, topicPointer } from "../known-gaps";
-import { selectReportTables, splitCsvFooter, type CliReportTables } from "../report-tables";
+import { selectReportTables, splitCsvFooter, withRefusedRows, type CliReportTables } from "../report-tables";
 import { cliOutputWritten, printCliResult, serializeCliResult, type CliErrorObject } from "../result";
 import { checkOutputPath, resolveOutputPath, writeOutputFile } from "../output-file";
 import type { CatalogCommandHit } from "../unknown-command";
@@ -464,7 +464,8 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       const result = { data, exportFreshness: report.data.freshness, ...(warnings.length > 0 ? { warnings } : {}), ...(failure ? { failure } : {}) };
       const render = {
         text: () => glossary ? `${report.text}\n\n${renderReportGlossary(resolved.token, glossary)}` : report.text,
-        ...(tabular ? { tables: selectReportTables(report.tables, resolved.tableSection) } : {}),
+        // A symbol of the list left out still has its row, with why.
+        ...(tabular ? { tables: selectReportTables(withRefusedRows(report.tables, parsed.refusedListings), resolved.tableSection) } : {}),
       };
       if (outputPath) {
         // A report with no data writes no file: a header alone would read as a screen that matched nothing. It fails

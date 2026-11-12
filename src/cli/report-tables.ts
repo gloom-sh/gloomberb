@@ -97,7 +97,8 @@ type Cell =
   /** `unit`: what the column draws a number of this row in, so a missing figure still names its unit. */
   | { kind: "blank"; unit?: string }
   | { kind: "text"; text: string; time?: boolean }
-  | { kind: "number"; value: number; unit: string }
+  /** `drawn`: the value and the number the text drew for it, whose scale the whole column decides (`columnScale`). */
+  | { kind: "number"; value: number; unit: string; drawn?: { value: number; display: DisplayNumber } }
   /** Text that may read as a number, once the whole column is known. */
   | { kind: "textual"; text: string };
 
@@ -192,16 +193,46 @@ function readDisplay(value: string): DisplayNumber | typeof BLANK_DISPLAY | null
  * with its sign turned (a short position as a negative amount) exports it as
  * drawn, every digit, not the rounded figure read back.
  */
-function valueAsDrawn(value: number, drawn: DisplayNumber): number | null {
-  const target = Number(drawn.number);
-  const tolerance = drawn.step * (1 + 1e-9) + Number.EPSILON;
-  for (const sign of [1, -1]) {
-    for (const scale of DISPLAY_SCALES) {
-      const scaled = sign * value * scale;
-      if (Math.abs(scaled - target) <= tolerance) return exportNumber(scaled);
-    }
+function valueAsDrawn(value: number, drawn: DisplayNumber, scales: readonly number[] = SIGNED_SCALES): number | null {
+  const scale = scales.find((entry) => fitsDrawn(value, drawn, entry));
+  return scale === undefined ? null : exportNumber(value * scale);
+}
+
+/** Each display scale, then each with the sign turned, in the order a value is read by. */
+const SIGNED_SCALES = [...DISPLAY_SCALES, ...DISPLAY_SCALES.map((scale) => -scale)];
+
+/** Whether a value times a signed scale is the number drawn, to its last digit. */
+function fitsDrawn(value: number, drawn: DisplayNumber, scale: number): boolean {
+  return Math.abs(value * scale - Number(drawn.number)) <= drawn.step * (1 + 1e-9) + Number.EPSILON;
+}
+
+/**
+ * The one scale a column's values are drawn at, decided from all of them: a
+ * value near zero fits several (a spread of 0.0013 drawn "+0.1" is within a
+ * step of itself as of 100 times itself), and read alone it would export at
+ * another scale than the rows beside it (0.0013 beside 0.8586). The first
+ * scale every value fits, else the one most fit; null for a column with no
+ * value drawn as a number.
+ */
+function columnScale(cells: readonly Cell[]): number | null {
+  const drawn = cells.flatMap((cell) => cell.kind === "number" && cell.drawn ? [cell.drawn] : []);
+  if (drawn.length < 2) return null;
+  let best: { scale: number; fits: number } | null = null;
+  for (const scale of SIGNED_SCALES) {
+    const fits = drawn.filter((entry) => fitsDrawn(entry.value, entry.display, scale)).length;
+    if (fits === drawn.length) return scale;
+    if (fits > (best?.fits ?? 0)) best = { scale, fits };
   }
-  return null;
+  return best?.scale ?? null;
+}
+
+/** The column's cells, each value drawn as a number exported at the column's one scale where it fits it. */
+function atColumnScale(cells: Cell[]): Cell[] {
+  const scale = columnScale(cells);
+  if (scale == null) return cells;
+  return cells.map((cell) => cell.kind === "number" && cell.drawn && fitsDrawn(cell.drawn.value, cell.drawn.display, scale)
+    ? { ...cell, value: exportNumber(cell.drawn.value * scale) }
+    : cell);
 }
 
 function timeCell(instant: number, dateOnly: boolean, shown: string | null, raw?: string): Cell {
@@ -220,13 +251,13 @@ function numberCell(value: number, shown: string | null, key: string | undefined
   if (drawn === BLANK_DISPLAY) return BLANK;
   // "3M" drawn from 3 is a tenor or a code, not three million.
   if (drawn && BARE_SCALED.test(shown) && value === Number(shown.replace(/[kKMBT]$/, ""))) return text(shown);
-  if (drawn) return { kind: "number", value: valueAsDrawn(value, drawn) ?? Number(drawn.number), unit: drawn.unit };
+  if (drawn) return { kind: "number", value: valueAsDrawn(value, drawn) ?? Number(drawn.number), unit: drawn.unit, drawn: { value, display: drawn } };
   // A time drawn as a date or a clock.
   if (isEpochMilliseconds(value)) return timeCell(value, false, shown);
   const [first, ...rest] = shown.split(/\s+/);
   const lead = rest.length > 0 && CHANGE_NOTE.test(rest.join(" ")) ? readDisplay(first!) : null;
   const scaled = lead && lead !== BLANK_DISPLAY ? valueAsDrawn(value, lead) : null;
-  if (lead && lead !== BLANK_DISPLAY && scaled != null) return { kind: "number", value: scaled, unit: lead.unit };
+  if (lead && lead !== BLANK_DISPLAY && scaled != null) return { kind: "number", value: scaled, unit: lead.unit, drawn: { value, display: lead } };
   return text(shown);
 }
 
@@ -288,7 +319,8 @@ function exportCell(raw: unknown, display: string | null, key?: string): Cell {
  * becomes a number only beside other figures, never in a column of tenors
  * ("3M, 6M, 1Y"). Identifier columns keep their text.
  */
-function resolveColumn(header: string, cells: Cell[], parseText: boolean): ResolvedColumn {
+function resolveColumn(header: string, column: Cell[], parseText: boolean): ResolvedColumn {
+  const cells = atColumnScale(column);
   const textual = cells.flatMap((cell) => cell.kind === "textual" ? [cell] : []);
   const read = parseText ? textual.map((cell) => readDisplay(cell.text)) : [];
   const numeric = read.filter((entry): entry is DisplayNumber => entry != null && entry !== BLANK_DISPLAY);
@@ -621,6 +653,27 @@ function sectionByTitle(tables: readonly CliReportTable[], wanted: string): CliR
     throw new Error(`"${wanted}" starts more than one section: ${starting.map((table) => table.title).join(", ")}. Give more of the title, or its number.`);
   }
   return starting[0];
+}
+
+/**
+ * The report with a row for each listing a list left out (a pair with no options of its own, a listing abroad where
+ * the data covers US listings only), added to its first table that has a Symbol and a status column: the symbol, its
+ * reason in status, the figures empty, so every symbol asked for has a row, as `fn` help says a missing figure's
+ * reason goes in status. A report with no such table is as it was.
+ */
+export function withRefusedRows(report: CliReportTables, refused: ReadonlyArray<{ symbol: string; reason: string }> | undefined): CliReportTables {
+  if (!refused?.length) return report;
+  const at = report.tables.findIndex((table) => table.columns.some((column) => column.toLowerCase() === "symbol")
+    && table.columns.some((column) => column === "status" || column === "value_status"));
+  if (at < 0) return report;
+  const table = report.tables[at]!;
+  const symbolAt = table.columns.findIndex((column) => column.toLowerCase() === "symbol");
+  const statusAt = table.columns.findIndex((column) => column === "status" || column === "value_status");
+  const rows = refused.map(({ symbol, reason }) => table.columns.map((_column, index) => index === symbolAt ? symbol : index === statusAt ? reason : ""));
+  const rowIdentities = [...table.rowIdentities ?? table.rows.map(() => undefined), ...refused.map(({ symbol }) => ({ symbolOrSeries: symbol, asOf: null }))];
+  const tables = [...report.tables];
+  tables[at] = { ...table, rows: [...table.rows, ...rows], rowIdentities };
+  return { ...report, tables };
 }
 
 /**
