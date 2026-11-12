@@ -362,18 +362,20 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     const unreadAmount = amountError ?? (typedAmount && "error" in typedAmount ? typedAmount.error : null);
     if (unreadAmount) info.push({ id: "amount", parts: [{ text: unreadAmount, tone: "warning" }] });
     if (status.loading > 0) info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
-    if (statusText) info.push({ id: "rates", parts: [{ text: statusText, tone: status.stale || status.unknownTime || status.unavailable ? "warning" : "muted" }] });
+    // Where the rates are from and when, as `fn FXC` ends, dates them: the rates' status then says only what is wrong,
+    // naming the pair, never the oldest rate's time again.
+    const observations = savedAt == null ? rateObservations() : [];
+    const warns = !!(status.stale || status.unknownTime || status.unavailable);
+    if (statusText && (warns || observations.length === 0)) info.push({ id: "rates", parts: [{ text: statusText, tone: warns ? "warning" : "muted" }] });
     // Every cross is read through each currency's dollar pair, the amount column too; `fx` reads a pair's own quote.
     info.push({ id: "cross", parts: [{ text: "via USD", tone: "muted" }] });
     if (savedAt != null) info.push(savedCopyFooterSegment("updated", savedAt));
     else {
-      // Where the rates are from and when, as `fn FXC` ends.
-      const observations = rateObservations();
       if (observations.length) info.push(reportFooterSegment(fxMatrixHeadless, { rows: [], freshness: { observations } }));
       if (updatedAgo) info.push(ageFooterSegment(updatedAgo, { verb: "fetched" }));
     }
     return { info };
-  }, [amountError, rates, savedAt, status.loading, statusText, typedAmount, updatedAgo, utcDay]);
+  }, [amountError, rates, savedAt, status.loading, status.stale, status.unavailable, status.unknownTime, statusText, typedAmount, updatedAgo, utcDay]);
 
   const queryBar = (
     <QueryBar
