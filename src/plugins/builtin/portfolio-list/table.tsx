@@ -10,6 +10,7 @@ import { PRICE_SPARKLINE_COLUMN_ID } from "../../../components/price-sparkline/v
 import type { QuoteFlashDirection } from "../../../components/quote-flash";
 import type { TickerTableCell, TickerTableSummaryRow } from "../../../components/ticker/list-table-view";
 import { createRowValueCache } from "../../../components/ui/row-value-cache";
+import type { DataTableColumnReorder } from "../../../components/ui";
 import type { ColumnConfig } from "../../../types/config";
 import type { PricePoint, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
@@ -204,6 +205,7 @@ export function PortfolioTickerTable({
   answeredSnapshots,
   exportName,
   allocationRows,
+  columnReorder,
 }: {
   columns: ColumnConfig[];
   focused?: boolean;
@@ -240,6 +242,8 @@ export function PortfolioTickerTable({
   exportName?: string;
   /** The book's CASH and TOTAL rows under its holdings (`allocationSummaryRows`). */
   allocationRows?: readonly TickerTableSummaryRow[];
+  /** Header drags rewrite the pane's Columns setting (`DataTableProps.columnReorder`). */
+  columnReorder?: DataTableColumnReorder;
 }) {
   const cellCacheRef = useRef(createRowValueCache<string, ReturnType<typeof getColumnValue> & TickerTableCell>(5000));
   const openPerpetualRef = useRef(onOpenPerpetual);
@@ -389,6 +393,7 @@ export function PortfolioTickerTable({
       summaryRows={summaryRows}
       rootHeight={rootHeight}
       exportName={exportName}
+      columnReorder={columnReorder}
     />
   );
 }

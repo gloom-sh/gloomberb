@@ -373,7 +373,8 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     { id: "expiration", label: "Expiry", width: 12, align: "left" }, { id: "price", label: "Entry / share", width: 14, align: "right" },
     { id: "volatility", label: "IV %", width: 9, align: "right" }, { id: "multiplier", label: "Units", width: 7, align: "right" }];
   const activeContent = scenario && tab === "payoff" ? <ScenarioPayoffChart scenario={scenario} width={width} height={bodyHeight} focused={tabsFocused} session={valuedSession} />
-    : scenario && tab === "grid" ? <DataTableView focused={focused && !volActive} rootWidth={width}
+    // Valuation dates in time order across the spot rows.
+    : scenario && tab === "grid" ? <DataTableView focused={focused && !volActive} rootWidth={width} columnReorder={false}
       rootHeight={bodyHeight} items={scenario.grid.toSorted((a, b) => { const value = (row: typeof a) => gridSort.columnId === "spot" ? row.spot : gridSort.columnId === "move" ? row.move ?? 0 : row.values[Number(gridSort.columnId)] ?? 0; return (value(a) - value(b)) * (gridSort.direction === "asc" ? 1 : -1); })}
       sortColumnId={gridSort.columnId} sortDirection={gridSort.direction} onHeaderClick={(id) => {
         // The landmark column has no label and no order of its own.

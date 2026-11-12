@@ -92,6 +92,30 @@ export interface DataTableSectionHeader {
   };
 }
 
+/** How a table's columns move when the reader drags a header (`DataTableProps.columnReorder`). */
+export interface DataTableColumnReorder {
+  /** How many leading columns stay first. Unset, the first column and the narrow marks before it (`rowAnchorColumnCount`). */
+  anchored?: number;
+  /**
+   * Names this table's remembered order, for a pane that shows several
+   * tables starting with the same column whose other columns differ. Unset,
+   * the first column's id.
+   */
+  key?: string;
+  /**
+   * The pane's own ordered list of the columns it shows, for a pane whose
+   * settings choose and order them (an ordered-multi-select): a drag rewrites
+   * that list instead of keeping an order of its own, so Settings and the
+   * table agree.
+   */
+  control?: {
+    order: readonly string[];
+    /** The order Reset Columns puts the list back in; without it the pane menu offers none. */
+    defaultOrder?: readonly string[];
+    onChange: (order: string[]) => void;
+  };
+}
+
 /** Where `scrollToIndex` puts its row: the nearest edge, the middle, or the top of the viewport. */
 export type DataTableScrollAlign = "nearest" | "center" | "start";
 
@@ -116,6 +140,18 @@ export interface DataTableProps<
   sortDirection: "asc" | "desc";
   /** Sorts by a column. Without it the header is plain labels and ignores clicks. */
   onHeaderClick?: (columnId: string) => void;
+  /**
+   * Dragging a header moves its column (once the press moves a few pixels or
+   * two cells; a click still sorts), and the pane remembers the order: Reset
+   * Columns in the pane menu puts the pane's own back. The columns that name
+   * the row stay first. `false` keeps the pane's order, for columns that are
+   * one ordered axis (periods, tenors, strikes) or a fixed format.
+   */
+  columnReorder?: false | DataTableColumnReorder;
+  /** Set by `DataTable` from `columnReorder` for the renderer: moves a column to an index. Absent where the order is fixed. */
+  onColumnMove?: (columnId: string, toIndex: number) => void;
+  /** Set by `DataTable` with `onColumnMove`: the leading columns a drag neither moves nor drops before. */
+  anchoredColumns?: number;
   headerScrollRef: RefObject<ScrollBoxRenderable | null>;
   scrollRef: RefObject<ScrollBoxRenderable | null>;
   syncHeaderScroll: () => void;

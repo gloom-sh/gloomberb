@@ -578,6 +578,8 @@ export function ResolvedFinancialsTab({
           headerScrollId={headerScrollId}
           bodyScrollId={bodyScrollId}
           columns={columns}
+          // Fiscal periods, oldest to newest: an axis, not columns to arrange.
+          columnReorder={false}
           items={rows}
           selection={{
             kind: "id",

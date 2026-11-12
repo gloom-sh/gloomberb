@@ -26,6 +26,7 @@ import type { TickerRecord } from "../../types/ticker";
 import { PRICE_SPARKLINE_COLUMN_ID, PriceSparkline } from "../price-sparkline/view";
 import { DataTableView, type DataTableKeyEvent, type DataTableSelection } from "../data-table/view";
 import type { QuoteFlashDirection } from "../quote-flash";
+import type { DataTableColumnReorder } from "../ui";
 import { objectVersion } from "../../utils/object-version";
 import { getCompletedRegularSessionDisplay } from "../../market-data/market/status";
 import { QUOTE_EXPORT_IDENTITY_HEADERS, quoteExportIdentityCells } from "../../market-data/quotes/export-identity";
@@ -152,6 +153,8 @@ export interface TickerListTableViewProps {
   addTickerShortcut?: string;
   virtualize?: boolean;
   overscan?: number;
+  /** How the header drags reorder the columns (`DataTableProps.columnReorder`). */
+  columnReorder?: false | DataTableColumnReorder;
 }
 
 const FLASHABLE_QUOTE_COLUMN_IDS = new Set([
@@ -287,6 +290,7 @@ export function TickerListTableView({
   virtualize = true,
   overscan = 4,
   exportName,
+  columnReorder,
 }: TickerListTableViewProps) {
   const commandBarShortcut = useCommandBarShortcut();
   const resolvedEmptyHint = emptyHint ?? tf("Press {shortcut} to add one.", { shortcut: addTickerShortcut ?? commandBarShortcut });
@@ -445,6 +449,7 @@ export function TickerListTableView({
     <DataTableView<TickerRecord, ColumnConfig>
       focused={focused}
       columns={columns}
+      columnReorder={columnReorder}
       items={items}
       isNavigable={summaries.length ? isNavigableRow : undefined}
       sortColumnId={sortColumnId ?? null}

@@ -62,6 +62,7 @@ import { useQuoteDelayFooter } from "../../shared/cloud-upgrade";
 import {
   getCollectionEntries,
   getPortfolioPaneSettings,
+  PORTFOLIO_DEFAULT_COLUMN_ORDER,
   resolveActiveCollectionId,
   resolveScopedCollectionEntries,
   resolveVisibleColumns,
@@ -169,6 +170,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const [collectionSorts, setCollectionSorts] = usePaneStateValue<Record<string, CollectionSortPreference>>("collectionSorts", NO_COLLECTION_SORTS);
   const [cashDrawerExpanded, setCashDrawerExpanded] = usePaneStateValue<boolean>("cashDrawerExpanded", false);
   const [, setViewMode] = usePaneSettingValue<PortfolioViewMode>("viewMode", "table");
+  const [, setColumnIds] = usePaneSettingValue<readonly string[] | undefined>("columnIds", undefined);
 
   const [streamWindow, setStreamWindow] = useState({ start: 0, end: 24 });
   const [quickAddFocused, setQuickAddFocused] = useState(false);
@@ -260,6 +262,10 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     () => resolveVisibleColumns(paneSettings.columnIds, isPortfolioTab, { targetWeights: hasTargetWeights(currentPortfolio), otherCurrencies }),
     [currentPortfolio, isPortfolioTab, otherCurrencies, paneSettings.columnIds],
   );
+  // A header dragged to a new place rewrites the Columns setting, so Settings lists them as the table shows them.
+  const columnReorder = useMemo(() => ({
+    control: { order: paneSettings.columnIds, defaultOrder: PORTFOLIO_DEFAULT_COLUMN_ORDER, onChange: setColumnIds },
+  }), [paneSettings.columnIds, setColumnIds]);
   const supplementalData = usePortfolioSupplementalData(tickers, columns, appActive, financialsMap);
   // One lookup for the whole list, only while a perpetual column is on screen.
   const showsPerpetuals = viewMode === "table" && columns.some((column) => PERPETUAL_COLUMN_IDS.has(column.id));
@@ -922,6 +928,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
           answeredSnapshots={answeredSnapshots}
           exportName={activeCollectionEntry?.name}
           allocationRows={allocationRows}
+          columnReorder={columnReorder}
         />
       ) : (
         <PortfolioGrid

@@ -376,6 +376,28 @@ export function useUpdatePaneSettings(paneId?: string) {
   }, [scopedPaneId, updateLayout]);
 }
 
+/**
+ * Rewrites one setting of a pane that may be absent (a table drawn outside a
+ * pane): `update` gets its value and returns the next one, `undefined` to
+ * remove it, or the same value to leave the layout alone.
+ */
+export function useOptionalPaneSettingUpdater(paneId: string | null, key: string) {
+  const updateLayout = useUpdatePaneLayout();
+  return useCallback((update: (value: unknown) => unknown) => {
+    if (!paneId) return;
+    updateLayout((layout) => {
+      const pane = findPaneInstance(layout, paneId);
+      if (!pane) return layout;
+      const current = pane.settings?.[key];
+      const next = update(current);
+      if (Object.is(next, current)) return layout;
+      if (next !== undefined) return setPaneSetting(layout, paneId, key, next);
+      const { [key]: _removed, ...rest } = pane.settings ?? {};
+      return setPaneSettings(layout, paneId, Object.keys(rest).length > 0 ? rest : undefined);
+    });
+  }, [key, paneId, updateLayout]);
+}
+
 function useScopedPaneId(paneId?: string): string {
   const contextId = useOptionalPaneInstanceId();
   const id = paneId ?? contextId;

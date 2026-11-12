@@ -466,7 +466,8 @@ function WorldTab({ onOpen, focused, width, height }: {
     <PaneStatusBody loading={loading && !data} error={!data ? error : null} loadingLabel="Loading world curves..." subject="world curves">
       <DataTableView<WorldRow>
         focused={focused} rootWidth={width} rootHeight={height}
-        columns={WORLD_COLUMNS} items={rows} getItemKey={worldKey} renderCell={renderCell}
+        // Maturities in order, each beside its own change.
+        columns={WORLD_COLUMNS} columnReorder={false} items={rows} getItemKey={worldKey} renderCell={renderCell}
         selection={{ kind: "id", selectedId, getId: worldKey, onChange: (id) => setSelected(id) }}
         onActivate={(row) => onOpen(row.id)} sortColumnId={null} sortDirection="asc"
         emptyStateTitle="No curves yet."
