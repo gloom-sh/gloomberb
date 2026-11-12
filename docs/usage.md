@@ -2825,7 +2825,8 @@ Choose **Check ticker** (`t`) in Results or Criteria, enter a ticker such as `NV
 
 - Plain tickers prefer listings in the screen's currency, then the primary or home listing. When the remaining listings belong to different companies, the check asks for an exchange: enter a qualified ticker such as `2454:JPX`. An explicit exchange is always respected, even when its currency fails the currency criterion.
 - The decision uses the stored screening values, even when Results shows a more recent quote. Missing values are not zero: ordinary comparisons fail on them, while an explicit `missing` condition passes.
-- A ticker outside the covered universe reads **Not covered**, with its criteria **Not evaluated**. Stale and partial values keep their state beside the decision.
+- A ticker is read as `quote` reads it: `700:HKEX`, `700.HK` and `00700.HK` are Tencent's `0700:HKEX`, `GARAN.IS` is `GARAN:BIST`.
+- A ticker outside the covered universe reads **Not covered**, with its criteria **Not evaluated**. A depositary receipt whose company is covered through its home line says so: `BABA` is covered as `9988:HKEX`. Stale and partial values keep their state beside the decision.
 - Passing every criterion means the ticker qualifies, though sort order and pagination can still put it beyond the rows loaded.
 
 The same check runs without a pane:

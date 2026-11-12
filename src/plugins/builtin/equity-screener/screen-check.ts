@@ -1,10 +1,16 @@
 import type { NumericField, ScreenCheckPayload, ScreenCriterion, ScreenDefinition } from "../../../api-client/equity-screener";
-import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchanges";
+import { parseListingArg } from "../../../cli/listing-arg";
+import { canonicalExchange } from "../../../utils/exchanges";
 import { criterionText, formatScreenValue, GRADE_DISPLAY_FIELDS, parseScreenDefinition, screenDefinitionKey, screenLabel } from "./model";
 
-/** One listing, with the same exchange aliases the rest of the app accepts. */
+/**
+ * One listing, read as `quote` reads it before it asks: 700:HKEX, 700.HK and
+ * 00700.HK are 0700:HKEX, GARAN.IS is GARAN:BIST, "VOD LN" VOD:LSE. A bare
+ * symbol stays bare, for the screen to pick its listing.
+ */
 export function screenCheckTicker(text: string): { symbol: string; exchange?: string } {
-  const ticker = parsePublicTickerKey(text.trim());
+  const listing = parseListingArg(text.trim(), null, { listingSuffix: true });
+  const ticker = listing.exchange ? { symbol: listing.symbol, exchange: listing.exchange } : { symbol: listing.symbol };
   if (!/^[A-Z0-9][A-Z0-9./-]{0,31}$/.test(ticker.symbol)
     || (ticker.exchange !== undefined && !/^[A-Z0-9_-]{1,24}$/.test(ticker.exchange)))
     throw new Error("Enter one ticker, such as NVDA or NVDA:NASDAQ.");
