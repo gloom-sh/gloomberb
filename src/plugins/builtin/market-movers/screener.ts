@@ -350,7 +350,8 @@ function mergeCloudScreenerItem(
     volume: screenerVolume(item.volume),
     avgVolume,
     volumeRatio: screenerVolumeRatio(screenerVolume(item.volume), avgVolume),
-    marketCap: metadata?.marketCap,
+    // The live list's own size, else the delayed list's: before the open that list can be short.
+    marketCap: screenerVolume(item.marketCap) ?? metadata?.marketCap,
     currency,
     fiftyTwoWeekHigh: screenerNumber(item.high52w) ?? metadataPrice(metadata?.fiftyTwoWeekHigh),
     fiftyTwoWeekLow: screenerNumber(item.low52w) ?? metadataPrice(metadata?.fiftyTwoWeekLow),
