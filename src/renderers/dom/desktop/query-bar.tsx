@@ -96,12 +96,12 @@ function useFitStep(scrollRef: RefObject<HTMLDivElement | null>, stepCount: numb
   return step;
 }
 
-/** The fewest cells the context is drawn in: three letters and its ellipsis. */
-const CONTEXT_MIN_CELLS = 4;
+/** The least room the context is drawn in, in ems of its text: about three letters and its ellipsis. */
+const CONTEXT_MIN_EMS = 2.5;
 
 /**
- * The context (`meta`) gives way first, down to nothing; cut to fewer letters
- * than `CONTEXT_MIN_CELLS` it is not drawn at all rather than left as a sliver
+ * The context (`meta`) gives way first, down to nothing; cut shorter than
+ * `CONTEXT_MIN_EMS` it is not drawn at all rather than left as a sliver
  * of a word. Its box keeps its place, so nothing beside it moves.
  */
 function useContextGivesWay(metaRef: RefObject<HTMLSpanElement | null>, text: string | undefined): void {
@@ -111,9 +111,8 @@ function useContextGivesWay(metaRef: RefObject<HTMLSpanElement | null>, text: st
     const update = () => {
       const style = getComputedStyle(element);
       const room = element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-      const cell = parseFloat(style.getPropertyValue("--cell-w")) || 8;
       const cut = element.scrollWidth > element.clientWidth + 0.5;
-      element.toggleAttribute("data-sliver", cut && room < CONTEXT_MIN_CELLS * cell);
+      element.toggleAttribute("data-sliver", cut && room < CONTEXT_MIN_EMS * parseFloat(style.fontSize));
     };
     update();
     if (typeof ResizeObserver === "undefined") return;

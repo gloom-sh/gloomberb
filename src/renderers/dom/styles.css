@@ -1172,12 +1172,9 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-qb-inline[data-strip="true"] .gloom-qb-segments > button { flex: none; white-space: nowrap; }
 .gloom-qb-filters[data-strip="true"] > :not([data-strip="true"]) { flex: none; }
 /* A bar short of room drops an inline choice's label (query-bar.tsx): its
-   first choice starts where the label did. */
+   first choice starts where the label did (the band's first-text inset below). */
 .gloom-qb-inline[data-bare="true"],
 .gloom-qb-scroll > .gloom-qb-filters:first-child > .gloom-qb-inline[data-bare="true"]:first-child { padding-left: 0; }
-.gloom-qb-scroll > .gloom-qb-filters:first-child > .gloom-qb-inline[data-bare="true"]:first-child > .gloom-qb-segments > button:first-child {
-  padding-left: var(--cell-w);
-}
 /* A folded view: its menu chip in the view's place at the right. */
 .gloom-qb-fold {
   margin-left: auto;
@@ -1654,6 +1651,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-qb-scroll > .gloom-qb-view[data-placement="start"]:first-child > button:first-child,
 .gloom-qb-scroll > .gloom-qb-filters:first-child > :first-child:not(.gloom-popover-anchor),
 .gloom-qb-scroll > .gloom-qb-filters:first-child > .gloom-popover-anchor:first-child > *,
+.gloom-qb-scroll > .gloom-qb-filters:first-child > .gloom-qb-inline[data-bare="true"]:first-child > .gloom-qb-segments > button:first-child,
 .gloom-stack-bar > .gloom-stack-back,
 [data-gloom-role="field-grid-cell"]:first-child:not([data-kind="action"]) {
   padding-left: var(--cell-w);

@@ -20,7 +20,7 @@ interface QueryBarPaint {
   visible: QueryBarBox;
   /** Text cut by a box that clips it, short of an ellipsis of its own: by a strip that scrolls by itself, the bar's own scroll, or something else. */
   cut: "strip" | "bar" | "other" | null;
-  /** Text that ends in an ellipsis with fewer than three cells of it before. */
+  /** Text that ends in an ellipsis with less than two ems of it before: a letter or two. */
   sliver: boolean;
   /** The filter id of the strip that cut it. */
   strip?: string;
@@ -96,9 +96,8 @@ export const QUERY_BAR_MEASURE = `(() => {
         if (node === bar) break;
       }
       if (empty(box) || empty(visible)) return;
-      const cell = parseFloat(style.getPropertyValue("--cell-w")) || 8;
       const room = element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-      paints.push({ label, kind, visible, cut, strip, sliver: ellipsis && room < 3 * cell });
+      paints.push({ label, kind, visible, cut, strip, sliver: ellipsis && room < 2 * parseFloat(style.fontSize) });
       elements.push(element);
     };
     for (const element of bar.querySelectorAll("*")) {
