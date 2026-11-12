@@ -19,7 +19,7 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { colors, priceColor } from "../../../theme/colors";
 import type { HolderData } from "../../../types/financials";
-import { clipToDisplayWidth, formatCompact } from "../../../utils/format";
+import { clipToDisplayWidth, displayWidth, formatCompact } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData, usePluginAppActions, usePluginPaneState } from "../../runtime";
@@ -295,6 +295,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         // The name gives way first, so the markers survive a narrow column.
         return {
           text: [row.name, receipts, fund ? "13F" : ""].filter(Boolean).join(" "),
+          contentWidth: displayWidth(row.name) + badges * (BADGE_WIDTH + 1),
           content: (
             <Box flexDirection="row" gap={1} width={column.width} overflow="hidden">
               <Text fg={color} attributes={TextAttributes.BOLD}>

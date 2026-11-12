@@ -37,9 +37,10 @@ function Harness({ frozen }: { frozen: boolean }) {
         sortDirection="asc"
         onHeaderClick={() => {}}
         getItemKey={(row) => row.name}
+        // Each value fills its column, so none has blank to give up and the table stays wider than the pane.
         renderCell={(row, column) => column.id === "chg"
-          ? { text: row.chg, onMouseDown: () => chgPressed(row.name) }
-          : { text: row[column.id as "name" | "last"] }}
+          ? { text: row.chg.padStart(column.width), onMouseDown: () => chgPressed(row.name) }
+          : { text: column.align === "right" ? row.last.padStart(column.width) : row.name.padEnd(column.width) }}
         emptyStateTitle="No rows"
         headerScrollId="cut-header"
         bodyScrollId="cut-body"
@@ -162,4 +163,40 @@ test("beside a frozen first column every sideways step and the far end start a c
   }
   // At the far end, the last columns, run on past by blank cells to start one whole.
   expect(headers().slice(0, 3)).toEqual(["JPY", "CHF", "CAD"]);
+});
+
+// A board set wider than its figures, as a watchlist is: at 30 cells its CHG% sat past the edge behind "⇧→".
+test("a table gives up the blank past its text to show a column whole, and an empty one never says there are more", async () => {
+  const board = [
+    { id: "name", label: "NAME", width: 10 },
+    { id: "last", label: "LAST", width: 10, align: "right" as const },
+    { id: "chg", label: "CHG%", width: 10, align: "right" as const },
+    { id: "note", label: "NOTE", width: 12 },
+  ];
+  const row = { name: "Brent", last: "62.10", chg: "-0.85%", note: "front month" } as Record<string, string>;
+  const state = createInitialState(createDefaultConfig("/tmp/gloom-table-cut-columns"));
+  const render = (items: Record<string, string>[]) => act(async () => {
+    await tui.render(<AppContext value={createStaticAppStore(state)}>
+      <PaneInstanceProvider paneId="fitted-board">
+        <DataTableView
+          focused showHorizontalScrollbar columns={board} items={items}
+          selection={{ kind: "index", selectedIndex: 0, onChange: () => {} }}
+          sortColumnId={null} sortDirection="asc" onHeaderClick={() => {}} getItemKey={(item) => item.name!}
+          renderCell={(item, column) => ({ text: item[column.id]! })}
+          emptyStateTitle="No rows" headerScrollId="fitted-header" bodyScrollId="fitted-body"
+        />
+      </PaneInstanceProvider>
+    </AppContext>, { width: 30, height: 8 });
+  });
+  await render([row]);
+  await settle();
+  expect(lines()[0]).toMatch(/NAME\s+LAST\s+CHG%\s+⇧→\s*$/);
+  expect(lines()[1]).toContain("-0.85%");
+  // NOTE starts a cell short of the edge: blank, not a stray "…".
+  expect(lines()[1]).not.toContain("…");
+
+  await render([]);
+  await settle();
+  expect(tui.frame()).toContain("No rows");
+  expect(tui.frame()).not.toContain("⇧→");
 });

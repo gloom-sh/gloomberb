@@ -13,7 +13,7 @@ import { useBeforeShortcut, useShortcut } from "../../react/input";
 import { isPlainKey, isPlainKeyboardEvent } from "../../utils/keyboard";
 import { DataTable, PaneStatusBody, type DataTableColumn, type DataTableProps, type PaneStatusBodyProps } from "../ui";
 import { useDataTableSortMenu } from "./sort-menu";
-import { tableFreezesFirstColumn, tableRevealLeft, tableScrollStep } from "../ui/table-layout";
+import { drawnTableColumns, tableFreezesFirstColumn, tableRevealLeft, tableScrollStep } from "../ui/table-layout";
 import {
   TableViewFrame,
   useResetTableScroll,
@@ -697,13 +697,14 @@ export function DataTableView<
     // At either edge the key is still the table's, so it never falls through
     // to switch a tab.
     stopTableKey(event);
+    const columns = drawnTableColumns.get(body) ?? tableProps.columns;
     const nextLeft = tableScrollStep({
-      columns: tableProps.columns,
+      columns,
       columnGap: tableProps.columnGap,
       horizontalPadding: tableProps.horizontalPadding,
       frozenFirstColumn: tableFreezesFirstColumn({
         freezeFirstColumn: tableProps.freezeFirstColumn,
-        columns: tableProps.columns,
+        columns,
         columnGap: tableProps.columnGap,
         horizontalPadding: tableProps.horizontalPadding,
         viewportWidth,
@@ -742,7 +743,7 @@ export function DataTableView<
         if (scrollWidth > 0) revealedKeyRef.current = revealKey;
         return scrollWidth > 0;
       }
-      const shared = { columns: tableProps.columns, columnGap: tableProps.columnGap, horizontalPadding: tableProps.horizontalPadding };
+      const shared = { columns: drawnTableColumns.get(body) ?? tableProps.columns, columnGap: tableProps.columnGap, horizontalPadding: tableProps.horizontalPadding };
       const nextLeft = tableRevealLeft({ ...shared, columnIndex: revealColumnIndex, viewportWidth, maxLeft,
         frozenFirstColumn: tableFreezesFirstColumn({ ...shared, freezeFirstColumn: tableProps.freezeFirstColumn, viewportWidth, overflows: true }) });
       if (nextLeft !== body.scrollLeft) {
