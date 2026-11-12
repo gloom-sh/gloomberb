@@ -35,6 +35,7 @@ import type {
   AssistCommandDescriptor,
   AssistCommandResponse,
   AuthUser,
+  CloudCancelFeedback,
   CloudSyncPushResponse,
   CloudSyncSnapshotResponse,
   PersistedAuthUser
@@ -65,6 +66,8 @@ const ASSIST_QUERY_MAX_LENGTH = 200;
 const ASSIST_COMMAND_LIMIT = 150;
 /** The futures curve's root list is the longest a command sends: 76. */
 export const ASSIST_ARG_OPTION_LIMIT = 128;
+/** The longest cancel note the server keeps. */
+export const CLOUD_CANCEL_COMMENT_MAX = 500;
 const ASSIST_ARG_OPTION_VALUE_MAX_LENGTH = 40;
 const ASSIST_ARG_OPTION_LABEL_MAX_LENGTH = 60;
 const ASSIST_REQUEST_TIMEOUT_MS = 6_000;
@@ -605,12 +608,18 @@ class GloomApiClient {
    * Ends the Pro trial and Pro now, unbilled. Call it only once the person
    * confirmed a warning that says so. `endedNow` is false when the server
    * scheduled the cancel at the period end instead: the subscription was no
-   * longer in its trial, or the server predates ending a trial early.
+   * longer in its trial, or the server predates ending a trial early. The
+   * reason and note, when given, go to the billing provider with the cancel.
    */
-  async endCloudTrial(): Promise<{ canceled: boolean; endedNow?: boolean }> {
+  async endCloudTrial(feedback: CloudCancelFeedback = {}): Promise<{ canceled: boolean; endedNow?: boolean }> {
+    const comment = feedback.comment?.trim().slice(0, CLOUD_CANCEL_COMMENT_MAX);
     return this.request<{ canceled: boolean; endedNow?: boolean }>("/stripe/subscription/cancel", {
       method: "POST",
-      body: JSON.stringify({ endTrialNow: true }),
+      body: JSON.stringify({
+        ...(feedback.reason ? { reason: feedback.reason } : {}),
+        ...(comment ? { comment } : {}),
+        endTrialNow: true,
+      }),
     });
   }
 

@@ -52,3 +52,13 @@ export interface CloudPricing {
   monthly: CloudPricingTier;
   yearly: CloudPricingTier;
 }
+
+/** Why someone cancelled, as gloom.sh's cancel window and the cancel endpoint name it. */
+export type CloudCancelReason = "bugs" | "missing_feature" | "too_expensive" | "not_using" | "temporary" | "other";
+
+/** What a cancel may carry besides the cancel itself; both are optional. */
+export interface CloudCancelFeedback {
+  reason?: CloudCancelReason;
+  /** A short note in the person's words, at most `CLOUD_CANCEL_COMMENT_MAX` characters. */
+  comment?: string;
+}
