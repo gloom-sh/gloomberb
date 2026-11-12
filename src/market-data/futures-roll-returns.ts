@@ -8,7 +8,7 @@ export const ROLLS_BACK_ADJUSTED = "rolls back-adjusted";
 const ROLLS_LEFT_AS_TRADED = "rolls left as traded";
 
 /** A roll in a continuous future's daily bars, as rollAdjustedHistory closed it. */
-export interface ReturnRoll {
+interface ReturnRoll {
   /** The first bar on the incoming contract, YYYY-MM-DD. */
   date: string;
   /** The contracts either side (NGX26, NGZ26), from the bars or the contract calendar. */

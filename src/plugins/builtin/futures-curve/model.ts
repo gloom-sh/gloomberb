@@ -957,6 +957,30 @@ export function noTradeChangeNote(rows: readonly Pick<FuturesContract, "symbol" 
   return `Change blank ${named} (no trade since ${data.settlementDate})${options.count ? "" : "."}`;
 }
 
+/** Most contract codes a partial curve's status line names before it counts the rest. */
+const NAMED_INCOMPLETE_CONTRACTS = 6;
+
+/**
+ * What a partial curve leaves out, by contract, for its report's status line:
+ * "NGZ31 not resolved", "NGF35, NGG35 unquoted". Null when it names none: a
+ * curve from a server that does not list what it could not resolve, or one
+ * whose gap is not about a contract.
+ */
+export function curveIncompleteDetail(data: Pick<FuturesCurvePayload, "catalogue" | "contracts">): string | null {
+  const codes = (symbols: readonly string[]) => {
+    const named = symbols.map(curveContractCode);
+    return named.length > NAMED_INCOMPLETE_CONTRACTS
+      ? `${named.slice(0, NAMED_INCOMPLETE_CONTRACTS).join(", ")} and ${named.length - NAMED_INCOMPLETE_CONTRACTS} more`
+      : named.join(", ");
+  };
+  const unresolved = data.catalogue.unresolved ?? [];
+  const unquoted = data.contracts.filter((row) => row.price == null).map((row) => row.symbol);
+  return [
+    unresolved.length ? `${codes(unresolved)} not resolved` : null,
+    unquoted.length ? `${codes(unquoted)} unquoted` : null,
+  ].filter((part): part is string => part != null).join(", ") || null;
+}
+
 /**
  * The archived curve on a past date in the live curve's shape, so the pane
  * draws it the same way. Its week- and month-back ghosts are the curves as

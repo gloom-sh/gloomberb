@@ -11,7 +11,7 @@ import { parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 import type { ResolvedPaneFunction } from "./resolver";
 import { toMarketDataContext } from "../../market-data/selectors";
 import { quoteMetadataFromQuote } from "../../market-data/quotes/metadata";
-import { loadSeasonalityHistory, SEASONALITY_HISTORY_RESOLUTION } from "../../plugins/builtin/seasonality/client";
+import { loadSeasonalityHistory } from "../../plugins/builtin/seasonality/client";
 import type { InstrumentRef } from "../../market-data/request-types";
 import { CORRELATION_HISTORY_RESOLUTION, loadCorrelationHistory } from "../../plugins/builtin/correlation/history";
 import type { TimeRange } from "../../time-series/range";
@@ -106,7 +106,8 @@ export async function withShotSeasonalityHistory(
   if (history.error || history.stale) {
     throw new Error(`${instrument.symbol}: ${history.error ?? `${cadence} price history is stale`}`);
   }
-  return { ...financials, priceHistory: history.history, priceHistoryResolution: SEASONALITY_HISTORY_RESOLUTION[cadence] };
+  // The bars as served: the pane closes a continuous future's rolls itself, from its daily bars.
+  return { ...financials, priceHistory: history.served.points, priceHistoryResolution: history.served.resolution };
 }
 
 /**

@@ -501,6 +501,12 @@ interface HeadlessPaneResultBase {
   /** Failures: a source that did not answer, or a value that could not be computed. */
   errors?: string[];
   /**
+   * What a report with `complete: false` leaves out, in the few words its
+   * status line and `# incomplete` line name it by ("NGZ31 not resolved"),
+   * when neither a count asked for nor a symbol without data says it.
+   */
+  incompleteDetail?: string;
+  /**
    * Caveats about a report that did load: what it leaves out, what it assumes,
    * how a value was marked. One sentence each. They never make a report fail;
    * `complete: false` says when the report does not cover what was asked.

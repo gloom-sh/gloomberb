@@ -15,6 +15,12 @@ export interface SeasonalityHistory {
   fetchedAt: number;
   /** A continuous future's returns, read within one contract at each roll: "rolls back-adjusted" (rollAdjustedHistory). */
   rollNote?: string;
+  /**
+   * The bars as served and their size, what a capture hands the pane to read
+   * again: a continuous future's daily bars before their rolls were closed,
+   * anything else's `history` itself.
+   */
+  served: { points: PricePoint[]; resolution: ManualChartResolution };
 }
 
 /** Monthly closes for the Returns and Overlay tabs, daily closes for Weekdays. */
@@ -22,7 +28,7 @@ export type SeasonalityCadence = "monthly" | "daily";
 
 const CANCELLED = "Seasonality history load was cancelled";
 /** The cadence each tab reads, and so the cadence a screenshot of it captures. */
-export const SEASONALITY_HISTORY_RESOLUTION: Record<SeasonalityCadence, ManualChartResolution> = { monthly: "1mo", daily: "1d" };
+const SEASONALITY_HISTORY_RESOLUTION: Record<SeasonalityCadence, ManualChartResolution> = { monthly: "1mo", daily: "1d" };
 /** Daily history is served to five years; a longer request can come back as weekly bars. */
 const BUFFER_RANGE = { monthly: "ALL", daily: "5Y" } as const;
 
@@ -45,11 +51,13 @@ function seasonalityRequest(instrument: InstrumentRef, cadence: SeasonalityCaden
  * are. Anything else as served.
  */
 function seasonalitySeries(
-  served: readonly PricePoint[], symbol: string, cadence: SeasonalityCadence,
-): Pick<SeasonalityHistory, "history" | "rollNote"> {
-  if (!isContinuousFuture(symbol)) return { history: [...served] };
-  const adjusted = rollAdjustedHistory(served, symbol);
-  const note = adjusted.note ? { rollNote: adjusted.note } : {};
+  bars: readonly PricePoint[], symbol: string, cadence: SeasonalityCadence,
+): Pick<SeasonalityHistory, "history" | "rollNote" | "served"> {
+  if (!isContinuousFuture(symbol)) {
+    return { history: [...bars], served: { points: [...bars], resolution: SEASONALITY_HISTORY_RESOLUTION[cadence] } };
+  }
+  const adjusted = rollAdjustedHistory(bars, symbol);
+  const note = { served: { points: [...bars], resolution: "1d" as const }, ...adjusted.note ? { rollNote: adjusted.note } : {} };
   if (cadence === "daily") {
     const from = new Date(adjusted.points.at(-1)?.date ?? 0);
     from.setUTCFullYear(from.getUTCFullYear() - 5);
@@ -109,6 +117,7 @@ export async function loadSeasonalityHistory(
       fetchedAt: entry.fetchedAt ?? now };
   } catch (error) {
     if (request.signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw abortError(CANCELLED);
-    return { history: [], stale: false, error: errorMessage(error), fetchedAt: now };
+    return { history: [], stale: false, error: errorMessage(error), fetchedAt: now,
+      served: { points: [], resolution: SEASONALITY_HISTORY_RESOLUTION[cadence] } };
   }
 }
