@@ -295,3 +295,21 @@ test("a box takes the fill of the hovered box it sits in, and gives it back when
   (inner as Hoverable).processMouseEvent({ type: "out" });
   expect([hex(outer), hex(inner)]).toEqual([undefined, undefined]);
 });
+
+// A scroll box sized before its rows are laid out had a thumb of half a cell
+// from then on, whatever share of its content it showed.
+test("a scroll box whose rows arrive after it is sized has a thumb as long as the share it shows", async () => {
+  current = await createTestRenderer({ width: 20, height: 10 });
+  const { renderer, renderOnce, captureCharFrame } = current;
+  const scroll = new ScrollBoxRenderable(renderer, { id: "scroll", width: 20, height: 10 });
+  renderer.root.add(scroll);
+  await renderOnce();
+  for (let line = 0; line < 20; line += 1) {
+    scroll.add(new TextRenderable(renderer, { id: `line-${line}`, content: `line ${line}` }));
+  }
+  await renderOnce();
+  await renderOnce();
+  // Ten rows of twenty: half the track, in the last column.
+  const thumb = captureCharFrame().split("\n").map((row) => row[19]).filter((cell) => cell && cell !== " ");
+  expect(thumb).toEqual(["█", "█", "█", "█", "█"]);
+});
