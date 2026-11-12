@@ -407,8 +407,9 @@ export function fitTableColumns<C extends TableWidthColumn>(
   );
   const least = edgeHint.least > 0 ? edgeHint.least : horizontalPadding;
   // What the first `count` columns keep after them: the hint, or the padding, while columns follow; after the
-  // last its padding, so the table runs no further past the edge than its trailing gap.
-  const tail = (count: number) => (count < set.length ? least : horizontalPadding);
+  // last its padding, unless the set widths already ran into it: the table runs no further past the edge.
+  const lastTail = Math.max(0, Math.min(horizontalPadding, room - prefixEnd(set.length, set)));
+  const tail = (count: number) => (count < set.length ? least : lastTail);
   let count = 0;
   while (count < set.length && prefixEnd(count + 1) + tail(count + 1) <= room) count += 1;
   if (count === 0) return sized();

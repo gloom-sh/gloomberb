@@ -122,6 +122,14 @@ describe("table layout", () => {
     expect(getTableWidth(fitTableColumns(board, [0, 0, 0, 0, 0], 40, 1, 1, hint))).toBeLessThanOrEqual(40);
   });
 
+  test("a last column the set widths end at the edge, its padding past it, may end there with a name grown", () => {
+    // A movers board at 66 cells: EVENT ends at the edge as set, and LAST has a cell of blank for the name.
+    const movers = [["#", 3], ["TICKER", 8], ["NAME", 6], ["LAST", 10], ["CHG%", 8], ["PRE VOL", 9], ["RVOL", 6], ["EVENT", 7]]
+      .map(([label, width], index) => ({ id: String(index), label: String(label), width: Number(width), align: index >= 3 && index <= 6 ? "right" : "left" }));
+    expect(fitTableColumns(movers, [2, 4, 34, 9, 8, 6, 5, 4], 66, 1, 1, { least: 3, whole: 8 }).map((column) => column.width))
+      .toEqual([3, 8, 7, 9, 8, 9, 6, 7]);
+  });
+
   test("a fit never trades a column the set widths show whole for more of a cut name", () => {
     const hint = { least: 3, whole: 8 };
     // A maturity table at 39 cells: its last column ends at the edge, only its blank past it cut. Pushing it
