@@ -105,6 +105,9 @@ export function planFirstRunWatchlist(
  */
 const COMPACT_HOME_BELOW = { width: 100, height: 30 } as const;
 
+/** The left column's share an empty portfolio keeps on a full-size Home: its empty state and footer at 120x36 (dock-tree.ts rounds it to rows). */
+const EMPTY_PORTFOLIO_SHARE = 0.2;
+
 export function isCompactHomeViewport(viewport: { width: number; height: number }): boolean {
   return viewport.width < COMPACT_HOME_BELOW.width || viewport.height < COMPACT_HOME_BELOW.height;
 }
@@ -231,7 +234,10 @@ export function buildFirstRunLayout({
       first: {
         kind: "split",
         axis: "vertical",
-        ratio: 0.5,
+        // Holding nothing, the portfolio is its empty line and the way to add
+        // one, and the watchlist has the column: half of it was a quarter of
+        // the screen with one line in it (review, 12 Nov 2026).
+        ratio: holdings ? 0.5 : EMPTY_PORTFOLIO_SHARE,
         first: { kind: "pane", instanceId: FIRST_RUN_PANE_IDS.heatmap },
         second: { kind: "pane", instanceId: FIRST_RUN_PANE_IDS.watchlist },
       },
