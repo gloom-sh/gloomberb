@@ -308,7 +308,7 @@ const BLANK_COLUMN_MIN_ROWS = 3;
  * an upcoming report's move); section headers and tables of fewer than
  * BLANK_COLUMN_MIN_ROWS rows are not read.
  */
-export function shotBlankColumns(rows: readonly Pick<DesktopPaneShotRenderedRow, "tableIndex" | "cells" | "section">[]): string[] {
+function shotBlankColumns(rows: readonly Pick<DesktopPaneShotRenderedRow, "tableIndex" | "cells" | "section">[]): string[] {
   const tables = new Map<number, Array<Pick<DesktopPaneShotRenderedRow, "cells">>>();
   for (const row of rows) {
     // A row drawn as one cell is a section header or a prose entry, not a row of the table's columns.
@@ -336,7 +336,7 @@ export function shotBlankColumns(rows: readonly Pick<DesktopPaneShotRenderedRow,
 }
 
 /** "The VOL and V/AVG columns are blank in every row." */
-export function blankColumnsSentence(columns: readonly string[]): string {
+function blankColumnsSentence(columns: readonly string[]): string {
   const named = columns.length === 1 ? columns[0]!
     : `${columns.slice(0, -1).join(", ")} and ${columns[columns.length - 1]}`;
   return `The ${named} column${columns.length === 1 ? " is" : "s are"} blank in every row.`;
