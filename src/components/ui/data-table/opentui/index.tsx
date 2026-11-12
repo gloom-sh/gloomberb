@@ -35,6 +35,7 @@ import { resolveDataTableScrollTop } from "../visible-range";
 import { useFocusOwningPane, useVisibleRangeEmitter } from "../hooks";
 import { useStableColumns } from "../stable-columns";
 import {
+  columnsShownWhole,
   cutColumnText,
   fitColumnCellText,
   resolveDataTableColumnClips,
@@ -417,13 +418,30 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     if (kept && widths.every((width, index) => width === kept[index])) return;
     setMeasuredWidths({ key: columnsKey, widths });
   });
+  // A header as drawn, with its sort mark.
+  const sortedLabel = useCallback(
+    (column: { id: string; label: string }) => (sortColumnId === column.id ? `${column.label}${column.label ? " " : ""}▲` : column.label),
+    [sortColumnId],
+  );
+  // The header row has a blank cell past its scroll box, over the body's vertical scrollbar, which the
+  // "more ⇧→" hint takes first (resolveMoreColumnsHint).
+  const besideHeader = Math.max(0, Math.min(1, (scrollRef.current?.width ?? 0) - measuredViewportWidth));
   // Fitted to the viewport and what the columns hold: blank past their text gives way before a column is
   // cut or pushed out of view (fitTableColumns).
   const fittedColumns = useMemo(
     () => contentWidths
-      ? fitTableColumns(columns, contentWidths, measuredViewportWidth, columnGap, horizontalPadding, showHorizontalScrollbar ? MORE_COLUMNS_HINT_WIDTH : undefined)
+      ? fitTableColumns(columns, contentWidths, measuredViewportWidth, columnGap, horizontalPadding, showHorizontalScrollbar ? {
+        ...MORE_COLUMNS_HINT_WIDTH,
+        shownWhole: (fitted) => columnsShownWhole({
+          columns: fitted.map((column) => ({ width: column.width, align: column.align, label: sortedLabel(column) })),
+          columnGap,
+          besideHeader,
+          horizontalPadding,
+          viewportWidth: measuredViewportWidth,
+        }),
+      } : undefined)
       : columns,
-    [columnGap, columns, contentWidths, horizontalPadding, measuredViewportWidth, showHorizontalScrollbar],
+    [besideHeader, columnGap, columns, contentWidths, horizontalPadding, measuredViewportWidth, showHorizontalScrollbar, sortedLabel],
   );
   const tableWidth = useMemo(
     () => getTableWidth(fittedColumns, columnGap, horizontalPadding),
@@ -461,16 +479,14 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     : 0);
   // Columns out of view past the right edge: the header row ends in "more ⇧→" there, a press on it scrolls to
   // them, and the rows leave its cells blank, so a narrow pane says it has more than it shows. The header's
-  // scroll box is as wide as the body's viewport (measuredViewportWidth), so the header row has a blank cell
-  // past it, over the body's vertical scrollbar; the hint is laid over the row, not inside the scroll box,
-  // and takes that cell first.
-  const besideHeader = Math.max(0, Math.min(1, (scrollRef.current?.width ?? 0) - measuredViewportWidth));
+  // scroll box is as wide as the body's viewport (measuredViewportWidth); the hint is laid over the row, not
+  // inside the scroll box, and takes the cell past it first (besideHeader).
   // An empty table has nothing past the edge to scroll to.
   const hintColumns = useMemo(() => displayColumns.map((column) => ({
     width: column.width,
     align: column.align,
-    label: sortColumnId === column.id ? `${column.label}${column.label ? " " : ""}▲` : column.label,
-  })), [displayColumns, sortColumnId]);
+    label: sortedLabel(column),
+  })), [displayColumns, sortedLabel]);
   const moreColumns = horizontalScrollbarVisible && items.length > 0 ? resolveMoreColumnsHint({
     columns: hintColumns,
     columnGap,

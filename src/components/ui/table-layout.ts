@@ -372,7 +372,12 @@ export function fitTableColumns<C extends TableWidthColumn>(
   viewportWidth: number,
   columnGap = 1,
   horizontalPadding = 1,
-  edgeHint: { least: number; whole: number } = { least: 0, whole: 0 },
+  edgeHint: {
+    least: number;
+    whole: number;
+    /** How many leading columns these widths show whole beside the hint, as the table draws it. */
+    shownWhole?: (columns: readonly C[]) => number;
+  } = { least: 0, whole: 0 },
 ): C[] {
   const set = normalizeTableColumns(columns);
   if (viewportWidth <= 0 || set.length === 0) return set;
@@ -408,8 +413,12 @@ export function fitTableColumns<C extends TableWidthColumn>(
   while (count < set.length && prefixEnd(count + 1) + tail(count + 1) <= room) count += 1;
   if (count === 0) return sized();
   // The columns the set widths show whole, the last one's blank past it cut or not: a fit never shows fewer.
-  let setCount = 0;
-  while (setCount < set.length && prefixEnd(setCount + 1, set) + (setCount + 1 < set.length ? least : 0) <= room) setCount += 1;
+  const shownWhole = edgeHint.shownWhole ?? ((columns: readonly C[]) => {
+    let shown = 0;
+    while (shown < set.length && prefixEnd(shown + 1, columns) + (shown + 1 < set.length ? least : 0) <= room) shown += 1;
+    return shown;
+  });
+  const setCount = shownWhole(set);
   if (count < setCount) return set;
   const shown = set.slice(0, count).map((_, index) => index);
   extra = room - tail(count) - prefixEnd(count);
@@ -427,7 +436,8 @@ export function fitTableColumns<C extends TableWidthColumn>(
     if (edgeHint.least > 0 && wholeHint > 0 && extra >= wholeHint && !nextShowsText) extra -= wholeHint;
   }
   growColumns(widths, setWidths, shown, extra);
-  return sized();
+  const fitted = sized();
+  return cutGrew(shownCut) || shownWhole(fitted) > setCount ? fitted : set;
 }
 
 export function expandTableColumns<C extends TableWidthColumn>(

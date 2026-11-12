@@ -1,5 +1,5 @@
 import { displayWidth } from "../../../../utils/format";
-import { fitTableCellText, tableColumnLeadGap } from "../../table-layout";
+import { fitTableCellText, tableColumnLeadGap, tableColumnStarts } from "../../table-layout";
 
 /**
  * Where the viewport cuts a column: `inset` cells hidden on its left (past the
@@ -197,6 +197,31 @@ export function resolveMoreColumnsHint({
   // The last column ends at the header's edge: the arrow takes its label's trailing blank, the rows keep it.
   if (lastPadded && headerRight === lastEnd) return { text: MORE_COLUMNS_LABELS[2], left: lastEnd - 1 - scrollLeft, reserve: 0 };
   return null;
+}
+
+/**
+ * How many leading columns a table scrolled to its start shows whole, the
+ * rows' cells under the "more ⇧→" hint aside (`resolveMoreColumnsHint`).
+ */
+export function columnsShownWhole({
+  columns,
+  columnGap,
+  besideHeader = 0,
+  horizontalPadding,
+  viewportWidth,
+}: {
+  columns: readonly HintColumn[];
+  columnGap: number;
+  besideHeader?: number;
+  horizontalPadding: number;
+  viewportWidth: number;
+}): number {
+  const columnStarts = tableColumnStarts(columns, columnGap);
+  const hint = resolveMoreColumnsHint({ columns, columnGap, columnStarts, besideHeader, horizontalPadding, scrollLeft: 0, viewportWidth });
+  const right = viewportWidth - (hint?.reserve ?? 0);
+  let count = 0;
+  while (count < columns.length && horizontalPadding + columnStarts[count]! + columns[count]!.width <= right) count += 1;
+  return count;
 }
 
 /**
