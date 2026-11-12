@@ -409,7 +409,7 @@ test("clips a transient update notice to its slot", async () => {
     const helpX = frame.indexOf("Help ?");
     expect(helpX).toBeGreaterThan(0);
     expect(frame[helpX - 1]).toBe(" ");
-    expect(frame).toMatch(/Update check failed.*\.\.\. +Help \?/);
+    expect(frame).toMatch(/Update check failed.*… +Help \?/);
   }
 });
 

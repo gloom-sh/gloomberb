@@ -1,10 +1,11 @@
 import { displayWidth, truncateToDisplayWidth } from "./format";
 
+/** Cuts to `width` characters behind one `…`, the mark every cut text ends with. */
 export function truncateWithEllipsis(text: string, width: number): string {
   if (width <= 0) return "";
   if (text.length <= width) return text;
-  if (width <= 3) return text.slice(0, width);
-  return `${text.slice(0, width - 3)}...`;
+  if (width === 1) return "\u2026";
+  return `${text.slice(0, width - 1).trimEnd()}\u2026`;
 }
 
 export function splitLongTextSegmentByDisplayWidth(value: string, lineWidth: number): string[] {

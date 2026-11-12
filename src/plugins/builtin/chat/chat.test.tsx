@@ -1351,7 +1351,7 @@ describe("ChatContent", () => {
       "   \u2502 a quote long enough to wrap",
       "   \u2502 onto a second row too",
     ]);
-    expect(lines[reply]).toBe("  reply ada: No price yet: it has...");
+    expect(lines[reply]).toBe("  reply ada: No price yet: it hasn'…");
     // The list is scrolled by these heights, so they must be the rows drawn.
     expect(estimateMessageHeight(message, 38)).toBe(reply - header);
   });
@@ -1566,7 +1566,7 @@ describe("ChatContent", () => {
     // The quote of a bot's message: the icon stands where the colon would, and the preview ends in an ellipsis inside the row.
     const quote = rows().find((row) => row.trimStart().startsWith("reply deskbot"))!;
     expect(quote).toContain(`reply deskbot ${botIcon} Futures`);
-    expect(quote.endsWith("...")).toBe(true);
+    expect(quote.endsWith("…")).toBe(true);
 
     // The newest message, a bot's, selected: its icon and its actions all show.
     await emitKeypress({ name: "up", sequence: "\u001b[A" });
@@ -1585,7 +1585,7 @@ describe("ChatContent", () => {
     await emitKeypress({ name: "return", sequence: "\r" });
     await flushFrame();
     const replying = rows().find((row) => row.includes("replying to @deskbot"))!;
-    expect(replying).toMatch(new RegExp(`replying to @deskbot ${botIcon} Futures.*\\.\\.\\. +Cancel$`));
+    expect(replying).toMatch(new RegExp(`replying to @deskbot ${botIcon} Futures.*\u2026 +Cancel$`));
   });
 
   test("a row too narrow for both icons drops Pro before the role and keeps the name and the actions, and a hidden clock never shows", async () => {

@@ -436,7 +436,7 @@ export default function LiveScanPane({ focused, width, height }: PaneProps) {
         ? `${payload.matched.toLocaleString("en-US")} symbols match; the ${payload.matches.length} strongest are listed. Add a condition or raise a floor to narrow the scan.`
         : null,
       wire.skipped.length
-        ? `${wire.skipped.length} watchlist ${wire.skipped.length === 1 ? "row is" : "rows are"} not a US stock and ${wire.skipped.length === 1 ? "is" : "are"} left out: ${wire.skipped.slice(0, 8).join(", ")}${wire.skipped.length > 8 ? ", ..." : ""}`
+        ? `${wire.skipped.length} watchlist ${wire.skipped.length === 1 ? "row is" : "rows are"} not a US stock and ${wire.skipped.length === 1 ? "is" : "are"} left out: ${wire.skipped.slice(0, 8).join(", ")}${wire.skipped.length > 8 ? ", \u2026" : ""}`
         : null,
       runnable ? wire.problem : null,
       feed.error && payload ? feed.error : null,

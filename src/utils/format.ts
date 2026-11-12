@@ -371,17 +371,12 @@ function truncateToWidth(value: string, width: number): string {
   return output;
 }
 
+/** Cuts to a display width behind one `…`, as clipToDisplayWidth does: every cut text ends the same way. */
 export function truncateToDisplayWidth(value: string, width: number): string {
-  if (width <= 0) return "";
-  if (displayWidth(value) <= width) return value;
-  if (width <= 3) return ".".repeat(width);
-  return `${truncateToWidth(value, width - 3)}...`;
+  return clipToDisplayWidth(value, width);
 }
 
-/**
- * Clips to a display width behind a single `…`, which gives a narrow cell back
- * two characters that `...` would spend on the marker.
- */
+/** Clips to a display width behind a single `…`, the one cell every cut text ends with. */
 export function clipToDisplayWidth(value: string, width: number): string {
   if (width <= 0) return "";
   if (displayWidth(value) <= width) return value;
