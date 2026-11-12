@@ -302,7 +302,9 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
   return {
     columns: ownAbroad ? LISTING_HISTORY_COLUMNS : HISTORY_COLUMNS,
     rows,
-    ...(noEarnings ? { empty: noEarnings, complete: true, unavailableSymbols: [] } : {}),
+    ...(noEarnings ? { empty: noEarnings, complete: true, unavailableSymbols: [] }
+      // A listing abroad shows only its next report: none on the calendar is what it has, not a listing ERN does not cover.
+      : abroad && rows.length === 0 && upcoming.status === "fulfilled" ? { empty: `${symbol} has no report on the calendar yet.` } : {}),
     errors: history.status === "rejected" && !noEarnings ? [String(history.reason instanceof Error ? history.reason.message : history.reason)] : undefined,
     metadata: {
       symbol, name: payload?.name ?? next?.name ?? null, asOf: payload?.asOf ?? null,

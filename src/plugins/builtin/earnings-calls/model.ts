@@ -295,10 +295,20 @@ export function findCallForQuarter(
     )) ?? null;
   }
 
+  // A half year's results: "H1 26", "1H26", "26H1".
+  const half = token.match(/^(?:H([12])(\d{2}|\d{4})?|([12])H(\d{2}|\d{4})?|(\d{2}|\d{4})H([12]))$/);
+  if (half) {
+    const which = Number(half[1] ?? half[3] ?? half[6]);
+    const year = half[2] ?? half[4] ?? half[5];
+    return sorted.find((call) => call.fiscalHalf === which && sameYear(call.fiscalYear, year ? Number(year) : null)) ?? null;
+  }
+
+  // A year's call, never its half's (SHKP's interim and annual results calls share FY2026): the half only when it is all there is.
   const fiscalYear = token.match(/^(?:FY)?(\d{2}|\d{4})$/);
   if (fiscalYear) {
     const year = Number(fiscalYear[1]);
-    return sorted.find((call) => sameYear(call.fiscalYear, year)) ?? null;
+    const ofYear = sorted.filter((call) => sameYear(call.fiscalYear, year));
+    return ofYear.find((call) => !call.fiscalHalf) ?? ofYear[0] ?? null;
   }
 
   return null;
