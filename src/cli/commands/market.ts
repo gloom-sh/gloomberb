@@ -112,7 +112,7 @@ import {
   expirationHint, expiredExpiryText, expiryIsoDate, isLiveOptionExpiry, liveDefaultExpiry, liveOptionExpiries, missingExpiryMessage,
   OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER, optionExpiryVenue, withLiveExpiryList,
 } from "../../utils/option-expiry";
-import { DATE_OPTION_EXAMPLES, isoDateOption, isoDateToday } from "../../utils/calendar-date";
+import { calendarMonthsBefore, DATE_OPTION_EXAMPLES, isoDateOption, isoDateToday } from "../../utils/calendar-date";
 import { apiClient } from "../../api-client";
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../../api-client/plan-rules";
 import type { ExchangeAnnouncementsPayload } from "../../api-client/exchange-announcements";
@@ -142,7 +142,7 @@ import {
   fxInterventionLatestNote, fxInterventionPair, fxInterventionWindowNote, loadFxInterventions, type FxInterventionPair,
 } from "../../market-data/fx-interventions";
 import { maxDrawdownText, maxRunUp, maxRunUpText, measuredUntil } from "../../utils/max-drawdown";
-import { subtractTimeRange } from "../../time-series/date-window";
+import { ALL_HISTORY_REACH_MONTHS, subtractTimeRange } from "../../time-series/date-window";
 import { historyFirstBarDay, isPastPriceWindow, loadPriceWindowHistory, PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP, priceWindowInterval, priceWindowText, readPriceWindow, type PriceWindow } from "../../utils/price-window";
 import {
   BAR_INTERVAL_LABELS,
@@ -1612,9 +1612,10 @@ function takeHistoryInterval(args: string[], ctx: Parameters<CliCommandDef["exec
   return interval!;
 }
 
-/** The window a range reaches back over, ending today: what `--interval` reads it as. */
+/** The window a range reaches back over, ending today: what `--interval` reads it as, ALL over every year a source keeps. */
 function rangePriceWindow(range: TimeRange, now = new Date()): PriceWindow {
-  return { from: subtractTimeRange(now, range).toISOString().slice(0, 10), to: now.toISOString().slice(0, 10) };
+  const from = range === "ALL" ? calendarMonthsBefore(now, ALL_HISTORY_REACH_MONTHS) : subtractTimeRange(now, range);
+  return { from: from.toISOString().slice(0, 10), to: now.toISOString().slice(0, 10) };
 }
 
 /**

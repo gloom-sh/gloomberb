@@ -696,7 +696,8 @@ export class MarketDataCoordinator {
             ? { kind: "resolution", range: request.bufferRange, resolution: request.resolution }
             : { kind: "range", range: request.bufferRange };
         const context = { ...toMarketDataContext(request.instrument),
-          cacheMode: options.forceRefresh ? "refresh" as const : "default" as const };
+          cacheMode: options.forceRefresh ? "refresh" as const : "default" as const,
+          ...(request.newestBars ? { newestBars: true } : {}) };
         const load = (historyRequest: HistoryResultRequest) => fetchHistoryResult(this.dataProvider,
           request.instrument.symbol, request.instrument.exchange ?? "", historyRequest, context);
         const result = await load(requested) ?? await load({ kind: "range", range: request.bufferRange });

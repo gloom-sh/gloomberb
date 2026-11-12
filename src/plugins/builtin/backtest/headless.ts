@@ -65,7 +65,8 @@ export const backtestHeadless: HeadlessPaneDefinition<"bundle"> = {
     const entry = parseRule(rules.entry), exit = parseRule(rules.exit);
     const instrument = await resolveHeadlessInstrument(ctx, args.symbols[0]!);
     const [history, unit] = await Promise.all([
-      loadBacktestHistory(instrument, { signal: ctx.signal }, createBacktestDependencies(ctx.marketData)),
+      loadBacktestHistory(instrument, { signal: ctx.signal, wholeHistory: lookbackYears(args.options.lookback) == null },
+        createBacktestDependencies(ctx.marketData)),
       priceUnit(ctx, instrument),
     ]);
     const costBps = Number(args.options.cost ?? 5);

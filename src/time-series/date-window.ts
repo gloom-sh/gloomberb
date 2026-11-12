@@ -4,11 +4,12 @@ import { calendarMonthsBefore } from "../utils/calendar-date";
 export interface DateWindowRange extends ChartDateWindow {}
 
 /**
- * How far back ALL reaches: 125 years, past the first bar any source keeps
- * (the S&P 500's daily closes start in 1927), so ALL is the whole stored
- * history and never a window cut short of it.
+ * How far back a read of ALL follows a history whose bars reach the start of
+ * ALL's own window (fifty years): 125 years, past the first bar any source
+ * keeps (the S&P 500's daily closes start in 1927), so ALL is the whole
+ * stored history. The window ALL asks for first stays fifty years.
  */
-export const ALL_RANGE_MONTHS = 1_500;
+export const ALL_HISTORY_REACH_MONTHS = 1_500;
 
 export function subtractTimeRange(endDate: Date, range: TimeRange): Date {
   // Research bounds follow source instants and UTC date keys, independently
@@ -32,7 +33,7 @@ export function subtractTimeRange(endDate: Date, range: TimeRange): Date {
     case "5Y":
       return calendarMonthsBefore(endDate, 60);
     case "ALL":
-      return calendarMonthsBefore(endDate, ALL_RANGE_MONTHS);
+      return calendarMonthsBefore(endDate, 600);
   }
   return startDate;
 }

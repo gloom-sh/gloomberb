@@ -183,3 +183,26 @@ test("the extended session reaches only a broker that serves it; otherwise the c
     expect([lastResort.points.length > 0, lastResort.extendedHours]).toEqual([true, undefined]);
   } finally { store.close(); }
 });
+
+// A backtest's newest bars, kept, would answer a plugin's read of every daily bar kept with the newest twenty years.
+test("the newest bars of one read never answer a read of every bar kept, nor the other way round", async () => {
+  const store = new AppPersistence(createTempDbPath("history-newest-bars"));
+  const asked: string[] = [];
+  const today = Math.floor(Date.now() / 86_400_000) * 86_400_000;
+  const daily = Array.from({ length: 6 }, (_, i) => ({ date: new Date(today - (6 - i) * 86_400_000), close: 100 + i }));
+  const provider: DataProvider = { ...fallbackProvider, id: "cloud",
+    async getPriceHistoryForResolutionWithMetadata(_ticker, _exchange, _range, _resolution, context) {
+      asked.push(context?.newestBars ? "newest" : "whole");
+      return { points: context?.newestBars ? daily.slice(-3) : daily, resolution: "1d" };
+    } };
+  try {
+    const router = new AssetDataRouter(provider, [], store.resources);
+    const history = (newestBars: boolean) => router.getPriceHistoryForResolutionWithMetadata("AAPL", "NASDAQ", "ALL", "1d",
+      newestBars ? { newestBars } : undefined);
+    expect((await history(true)).points).toHaveLength(3);
+    expect((await history(false)).points).toHaveLength(6);
+    expect((await history(true)).points).toHaveLength(3);
+    expect((await history(false)).points).toHaveLength(6);
+    expect(asked).toEqual(["newest", "whole"]);
+  } finally { store.close(); }
+});

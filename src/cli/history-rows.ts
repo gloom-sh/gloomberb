@@ -942,7 +942,7 @@ function startsLate(range: TimeRange, interval: ManualChartResolution | null, fi
 
 /**
  * Where an ALL history starts when that is its source's first bar, well
- * after the window ALL reaches back to (ALL_RANGE_MONTHS): BTC-USD's
+ * after the window ALL asks for (fifty years): BTC-USD's
  * monthly bars start 2014-09, though it traded from 2010. A monthly bar's
  * month, otherwise its day. Null for other ranges, and for a history the
  * window cuts.

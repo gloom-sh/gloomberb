@@ -552,16 +552,6 @@ async function resolveChartSpecPass(
     );
   };
 
-  /**
-   * The source with the exchange the live quote the chart was handed names,
-   * null without one: its history then goes out beside its financials instead
-   * of after them (a cold `shot G TTEK` waited a second for them).
-   */
-  const sourceWithQuoteExchange = (source: Extract<ChartSeriesSpec["source"], { kind: "security" }>) => {
-    const quoted = withQuoteExchange(source, sources.quoteOverrides?.get(chartQuoteOverrideKeyForSource(source)));
-    return quoted.instrument.exchange?.trim() ? quoted : null;
-  };
-
   const adaptiveBounds = spec.viewport.resolution === "auto"
     ? runtimeAutoBounds(options)
     : null;
@@ -577,7 +567,7 @@ async function resolveChartSpecPass(
   const resolutionSupportSources = await Promise.all(activeMarketSources.map(async (source) => (
     source.instrument.exchange?.trim()
       ? source
-      : sourceWithQuoteExchange(source) ?? sourceWithResolvedExchange(source, await loadFinancials(source))
+      : sourceWithResolvedExchange(source, await loadFinancials(source))
   )));
   const supportBySource = await Promise.all(resolutionSupportSources.map((source) => loadResolutionSupport(source, priceOnly)));
   const sharedSupport = activeMarketSources.length > 0 ? intersectChartResolutionSupport(supportBySource) : [];
@@ -944,15 +934,14 @@ async function resolveChartSpecPass(
       let resolvedSource = source;
       let financials: TickerFinancials | null;
       let history: LoadedPriceHistory | null;
-      const quoted = source.instrument.exchange?.trim() ? null : sourceWithQuoteExchange(source);
-      if (needsHistory && !source.instrument.exchange?.trim() && !quoted) {
+      if (needsHistory && !source.instrument.exchange?.trim()) {
         financials = await financialsPromise;
         resolvedSource = sourceWithResolvedExchange(source, financials);
         history = await loadHistory(resolvedSource, historyPricedValuation);
       } else {
         [financials, history] = await Promise.all([
           financialsPromise,
-          needsHistory ? loadHistory(quoted ?? source, historyPricedValuation) : Promise.resolve(null),
+          needsHistory ? loadHistory(source, historyPricedValuation) : Promise.resolve(null),
         ]);
         resolvedSource = sourceWithResolvedExchange(source, financials);
       }

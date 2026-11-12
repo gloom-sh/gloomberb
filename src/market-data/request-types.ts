@@ -27,6 +27,8 @@ export interface ChartRequest {
   startDate?: Date;
   endDate?: Date;
   barSize?: string;
+  /** Only the newest bars one read returns are wanted (`MarketDataRequestContext.newestBars`). */
+  newestBars?: boolean;
 }
 
 export interface OptionsRequest {

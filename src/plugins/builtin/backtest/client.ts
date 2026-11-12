@@ -75,14 +75,19 @@ export function toBacktestBars(
   };
 }
 
+/**
+ * The daily closes a run tests. A run of the last five or ten years reads the
+ * newest bars one request returns (about twenty years); `wholeHistory`, for
+ * a run over every session (lookback max), reads on to the first bar kept.
+ */
 export async function loadBacktestHistory(
   instrument: InstrumentRef,
-  options: { forceRefresh?: boolean; signal?: AbortSignal } = {},
+  options: { forceRefresh?: boolean; signal?: AbortSignal; wholeHistory?: boolean } = {},
   dependencies: BacktestHistoryDependencies = createBacktestDependencies(),
 ): Promise<BacktestHistory> {
   const symbol = instrument.symbol.trim().toUpperCase();
   const entry = await dependencies.loadChart(
-    { instrument, bufferRange: "ALL", granularity: "resolution", resolution: "1d" },
+    { instrument, bufferRange: "ALL", granularity: "resolution", resolution: "1d", ...(options.wholeHistory ? {} : { newestBars: true }) },
     { forceRefresh: options.forceRefresh },
   );
   options.signal?.throwIfAborted();

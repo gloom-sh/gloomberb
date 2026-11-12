@@ -55,6 +55,7 @@ export function buildChartKey(request: ChartRequest): string {
     request.startDate ? request.startDate.toISOString() : "",
     request.endDate ? request.endDate.toISOString() : "",
     request.barSize ?? "",
+    ...(request.newestBars ? ["newest"] : []),
   ].join(":");
 }
 

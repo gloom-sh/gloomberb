@@ -100,10 +100,10 @@ test("saved daily exports, correlation and range boundaries use the same UTC dat
     }
     expect(result.liveCalls).toBe(0);
     expect(result.allContract).toEqual({ first: "1950-01-01T00:00:00.000Z", chartStart: "1950-01-01T00:00:00.000Z",
-      supported: true, requestStart: "1899-02-28T00:00:00.000Z" });
+      supported: true, requestStart: "1974-02-28T00:00:00.000Z" });
     expect(result.ranges).toEqual([
       "2026-03-29T15:45:12.345Z", "2026-03-23T15:45:12.345Z", "2026-02-28T15:45:12.345Z", "2025-12-30T15:45:12.345Z",
-      "2025-09-30T15:45:12.345Z", "2025-03-30T15:45:12.345Z", "2021-03-30T15:45:12.345Z", "1901-03-30T15:45:12.345Z",
+      "2025-09-30T15:45:12.345Z", "2025-03-30T15:45:12.345Z", "2021-03-30T15:45:12.345Z", "1976-03-30T15:45:12.345Z",
     ]);
     // Month/year cutoffs clamp to valid calendar dates and retain their UTC clock.
     expect(result.rollover).toEqual(["2026-02-28T15:45:00.000Z", "2026-02-28T15:45:00.000Z", "2023-02-28T15:45:00.000Z"]);
