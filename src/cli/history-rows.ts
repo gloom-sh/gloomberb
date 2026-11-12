@@ -844,11 +844,6 @@ export function formatBarPrice(value: number, decimals: number, maxWidth?: numbe
   return formatPriceObservation(Number(value.toFixed(Math.min(20, decimals))), { minimumFractionDigits: decimals, maxWidth });
 }
 
-/** How far back ALL reaches, in whole years, from the window a history request for it asks for. */
-export function historyAllRangeYears(now = new Date()): number {
-  return Math.round((now.getTime() - subtractTimeRange(now, "ALL").getTime()) / (365.25 * DAY_MS));
-}
-
 /** "1D 5-minute, 1W hourly, 1M to 1Y daily, 5Y weekly, ALL monthly", from the table history requests use. */
 export function historyIntervalsByRange(): string {
   const groups: Array<{ ranges: TimeRange[]; resolution: ManualChartResolution }> = [];
@@ -947,7 +942,7 @@ function startsLate(range: TimeRange, interval: ManualChartResolution | null, fi
 
 /**
  * Where an ALL history starts when that is its source's first bar, well
- * after the window ALL reaches back to (historyAllRangeYears): BTC-USD's
+ * after the window ALL asks for (fifty years): BTC-USD's
  * monthly bars start 2014-09, though it traded from 2010. A monthly bar's
  * month, otherwise its day. Null for other ranges, and for a history the
  * window cuts.

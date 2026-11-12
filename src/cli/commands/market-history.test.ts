@@ -621,7 +621,31 @@ test("history refuses a word typed beside a symbol that is no ticker, and a bar 
   const details: string[] = [];
   const context = { ...failed.context, fail: (message: string, detail?: string): never => { details.push(detail ?? ""); throw new Error(message); } };
   await expect(history.execute(["GC=F", "1s"], context)).rejects.toThrow();
-  expect(details).toEqual([`history serves each --range in one bar size. ${subMinuteDataMessage("GC=F")}`]);
+  expect(details).toEqual([`history serves each --range in one bar size; --interval daily, weekly or monthly picks one. ${subMinuteDataMessage("GC=F")}`]);
+});
+
+/** `history KO --range ALL` was monthly bars alone, and `--from 1990` weekly: a long daily read had no way to ask. */
+test("--interval reads a range or a window in the bar size asked, ALL in daily bars back to its first, and names any other size", async () => {
+  setSystemTime(new Date("2026-11-11T12:00:00Z"));
+  try {
+    const asked: string[] = [];
+    const cli = createTestCliContext({
+      config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+      dataProvider: createTestDataProvider({
+        getQuote: async () => createTestQuote({ symbol: "ACME", currency: "USD", marketState: "CLOSED" }),
+        getDetailedPriceHistoryWithMetadata: async (_symbol, _exchange, start, end, interval) => {
+          asked.push(`${interval} ${start.toISOString().slice(0, 10)} ${end.toISOString().slice(0, 10)}`);
+          return { resolution: interval, points: sessionBars(OCT_DAYS, QUIET_VOLUMES) };
+        },
+      }),
+    }, { format: "json" });
+    await history.execute(["ACME", "--range", "ALL", "--interval", "daily"], cli.context);
+    await history.execute(["ACME", "--from", "1990", "--interval", "weekly"], cli.context);
+    expect(asked).toEqual(["1d 1901-11-11 2026-11-11", "1wk 1990-01-01 2026-11-11"]);
+    await expect(history.execute(["ACME", "--interval", "hourly"], cli.context)).rejects.toThrow(`--interval is daily, weekly or monthly, not "hourly".`);
+  } finally {
+    setSystemTime();
+  }
 });
 
 test("history reads a list from --file (a text file, or a CSV's first column) and from standard input with -", async () => {
@@ -879,7 +903,7 @@ test("a stock's daily and intraday history is unchanged by the futures marks: no
     expect(daily.json).not.toMatch(/"(contract|roll|thin)"/);
     expect((daily.result.warnings ?? []).join("\n")).not.toMatch(/thin|roll/);
 
-    const intraday = await historyOutputs(["ACME", "--range", "1D", "--interval", "15m"],
+    const intraday = await historyOutputs(["ACME", "--range", "1D"],
       sessionBars(OCT_DAYS.map(() => "2026-10-30"), QUIET_VOLUMES).map((bar, index) => ({ ...bar, date: new Date(Date.parse("2026-10-30T14:30:00Z") + index * 900_000) })),
       { symbol: "ACME", name: "Acme Corp", listingExchangeName: "NYSE" });
     expect(intraday.text).not.toMatch(/thin|roll|front month/);

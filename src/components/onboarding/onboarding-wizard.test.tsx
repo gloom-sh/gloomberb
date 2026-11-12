@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "fs/promises";
+import { mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { act, useCallback, useState, type ReactNode } from "react";
@@ -818,6 +818,40 @@ describe("OnboardingWizard", () => {
     await waitUntil(() => capturedConfig?.onboardingProgress?.stage === "research", "the research stage");
     expect(capturedConfig?.onboardingProgress).toMatchObject({ path: "manual", tickerSymbol: "SPY", positionsImported: 0, desks: [] });
     expect(capturedConfig?.layout.instances.find((instance) => instance.paneId === "chart-composer")?.binding).toEqual({ kind: "fixed", symbol: "SPY" });
+  });
+
+  // Every step saves before it moves on. A profile that refuses the write (a
+  // Windows scanner holding the file, a read-only disk) used to keep the first
+  // run on "What do you hold?" with every way out failing on the same save.
+  test("a profile that cannot be saved never holds the first run: every step moves on with the reason shown, and setup closes", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-unsaved-"));
+    // A file where the data folder belongs: every config save fails.
+    const blocked = join(tempDataDir, "profile");
+    await writeFile(blocked, "");
+    const notices: string[] = [];
+    const pluginRegistry = {
+      ...createPluginRegistry(),
+      notify: (notification: { body: string }) => { notices.push(notification.body); },
+    } as unknown as PluginRegistry;
+    let completed: AppConfig | null = null;
+    await tui.render(
+      <WizardHarness config={createDefaultConfig(blocked)} pluginRegistry={pluginRegistry} onComplete={(next) => { completed = next; }} />,
+      { width: 80, height: 24 },
+    );
+    await tui.setup().renderOnce();
+    await pressEscape();
+    await emitKeypress({ name: "s", sequence: "s" });
+    // The card says why, and the step still moved on.
+    expect(await waitForFrame("What do you trade most?")).toMatch(/E(EXIST|NOTDIR): /);
+    await emitKeypress({ name: "s", sequence: "s" });
+    await waitForFrame("Keep exploring");
+    expect(capturedConfig?.onboardingProgress).toMatchObject({ stage: "research", tickerSymbol: "SPY" });
+
+    await pressEscape();
+    await waitUntil(() => completed !== null, "setup to close");
+    expect(completed?.onboardingComplete).toBe(true);
+    expect(capturedConfig?.onboardingComplete).toBe(true);
+    expect(notices).toEqual(["Could not save your setup."]);
   });
 
   test("imports a broker portfolio after the first manual position and opens its largest holding", async () => {

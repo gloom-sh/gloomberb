@@ -37,9 +37,10 @@ import {
   attachEconCalendarPersistence,
   actualColor,
   AWAITING_FIGURE_CELL,
-  awaitingFigureText,
   awaitsConsensus,
-  awaitsFigure,
+  figureGap,
+  figureGapText,
+  NO_FIGURE_CELL,
   calendarDisplayRows,
   CALENDAR_TIME_ZONE_LABEL,
   dayLabel,
@@ -354,8 +355,9 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // The dash under Forecast on the row in hand, while its consensus is not in yet.
   const focusedEvent = detailEvent ?? filtered[selectedIdx];
   const noConsensus = !!focusedEvent && awaitsConsensus(focusedEvent);
-  // The row in hand is past its time and its figure is not in yet: when it was due.
-  const awaitedFigure = focusedEvent && awaitsFigure(focusedEvent, now) ? awaitingFigureText(focusedEvent) : null;
+  // The row in hand is past its time and its figure is not in yet: when it was due, or that the source has none.
+  const focusedGap = focusedEvent ? figureGap(focusedEvent, now, events) : null;
+  const awaitedFigure = focusedEvent && focusedGap ? figureGapText(focusedEvent, focusedGap) : null;
   // The blank time on the row in hand, with why: a bank whose calendar gives the day and not the time.
   const noTimeNote = focusedEvent && hasNoStatedTime(focusedEvent) ? noTimeNoteText(focusedEvent.timeNote!) : null;
   const pastListingStatus = showsPastListing && releasesThrough && !detailEvent && !listedAfterStatus
@@ -378,11 +380,11 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     ...(noTimeNote ? [{ id: "no-time", parts: [{ text: noTimeNote, tone: "muted" as const }],
       variants: [[{ text: "no time stated", tone: "muted" as const }]] }] : []),
     ...(awaitedFigure ? [{ id: "awaiting-figure", parts: [{ text: awaitedFigure, tone: "warning" as const }],
-      variants: [[{ text: "awaiting figure", tone: "warning" as const }]] }] : []),
+      variants: [[{ text: focusedGap === "none" ? "no figure" : "awaiting figure", tone: "warning" as const }]] }] : []),
     ...(noConsensus ? [{ id: "no-consensus", parts: [{ text: NO_CONSENSUS_NOTE, tone: "muted" as const }],
       variants: [[{ text: "no consensus yet", tone: "muted" as const }]] }] : []),
     ...(staleness ? [{ id: "updated", parts: [{ text: staleness, tone: "muted" as const }] }] : []),
-  ], [allImpactKey, awaitedFigure, detailEvent, hiddenStatus, listedAfterStatus, nextText, noConsensus, noTimeNote, pastListingStatus, releasesThrough, showStale, staleness]);
+  ], [allImpactKey, awaitedFigure, detailEvent, focusedGap, hiddenStatus, listedAfterStatus, nextText, noConsensus, noTimeNote, pastListingStatus, releasesThrough, showStale, staleness]);
   // A report of the pane (`gloom fn ECO`) says it too.
   const listedThrough = listedEnd;
   useRemoteUiNode(listedAfter && listedThrough ? {
@@ -490,8 +492,9 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
         return { text: econEventName(ev), color: colors.text };
       // An amount reads with its currency beside it (-556.5B JPY), where the server says it.
       case "actual":
-        // A release past its time whose figure is not in yet says so; the footer says when it was due.
-        if (awaitsFigure(ev, now)) return { text: AWAITING_FIGURE_CELL, color: colors.warning, value: null };
+        // A release past its time whose figure is not in yet says so, or that the source has none; the footer says it whole.
+        const gap = figureGap(ev, now, events);
+        if (gap) return { text: gap === "none" ? NO_FIGURE_CELL : AWAITING_FIGURE_CELL, color: colors.warning, value: null };
         return {
           text: figureWithCurrency(ev.actual, ev.currency) ?? "—",
           color: actualColor(ev.actual, ev.forecast),
@@ -501,7 +504,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       case "prior":
         return { text: figureWithCurrency(ev.prior, ev.currency) ?? "—", color: colors.textDim };
     }
-  }, [flagged, now, readerZone]);
+  }, [events, flagged, now, readerZone]);
 
   const selectedEvent = filtered[selectedIdx];
   const filterControls = (
@@ -524,6 +527,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const detailContent = detailEvent ? (
     <EconDetailView
       event={detailEvent}
+      calendar={events}
       width={width}
       height={Math.max(height - 1, 1)}
       focused={focused}

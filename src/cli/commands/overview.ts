@@ -38,9 +38,9 @@ import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, type ExtendedSession } 
 import {
   COUNTRY_CYCLE,
   COUNTRY_FILTER_HINT,
-  awaitingFigureText,
   awaitsConsensus,
-  awaitsFigure,
+  figureGap,
+  figureGapText,
   countriesWithoutEvents,
   econEventName,
   FILTER_CYCLE,
@@ -312,12 +312,14 @@ async function runMoverCommand(rawArgs: string[], ctx: Parameters<CliCommandDef[
     };
   });
   const fellBack = basis === "extended" && rankedBy === "regular";
-  // As the MOST report reads it: real-time for a Pro account, delayed otherwise, each row dated by its own last price.
+  // As the MOST report reads it: real-time for a Pro account, delayed otherwise, dated by the list's own time.
   ctx.printResult({
     data: rows,
     metadata: { category, rankedBy, ...(minFloat != null ? { minFloat } : {}) },
     ...(fellBack ? { warnings: ["No pre-market or after-hours prints now, so the list is ranked by the regular-session move."] } : {}),
-    freshness: rowsFreshness(rows, { status: movers.source === "cloud" ? "live" : "delayed" }, { stale: movers.stale }),
+    // Dated by the list's own time, not a row's (a Most Active row can be dated midnight).
+    freshness: rowsFreshness(rows, { status: movers.source === "cloud" ? "live" : "delayed", ...(movers.asOf != null ? { asOf: movers.asOf } : {}) },
+      { stale: movers.stale }),
   }, {
     heading: `Ranked by ${MOVER_RANKING_LABELS[rankedBy]}`,
     ...(minFloat != null && hasPartialFloat(rows) ? { footnote: PARTIAL_FLOAT_NOTE } : {}),
@@ -622,8 +624,9 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
           actualText: event.actual ?? null,
           forecastText: event.forecast ?? null,
           priorText: event.prior ?? null,
-          // A release past its time with no figure yet: "due 07:00 UTC, awaiting figure"; null otherwise.
-          actualStatus: awaitsFigure(event, now) ? awaitingFigureText(event) : null,
+          // A release past its time with no figure yet: "due 07:00 UTC, awaiting figure", then "no figure from the source"
+          // two hours on or once the release's other rows have theirs; null otherwise.
+          actualStatus: ((gap) => gap ? figureGapText(event, gap) : null)(figureGap(event, now, inWindow)),
           // The publisher's own clock, for rows Gloom Cloud adds from a bank's or a statistics office's calendar.
           localTime: event.localTime ?? null,
           timeZone: event.timeZone ?? null,

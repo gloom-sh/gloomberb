@@ -100,7 +100,9 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
   const strategyControl = useRef<SelectControl>(null);
   const instrument = instrumentFromTicker(ticker, symbol);
   const instrumentKey = JSON.stringify(instrument);
-  const loader = useCallback((force: boolean) => loadBacktestHistory(instrument!, { forceRefresh: force }), [instrumentKey]);
+  const wholeHistory = lookbackYears(lookback) == null;
+  const loader = useCallback((force: boolean) => loadBacktestHistory(instrument!, { forceRefresh: force, wholeHistory }),
+    [instrumentKey, wholeHistory]);
   const history = useAsyncResource(instrument ? loader : null);
   useAutoRefresh(history.updatedAt, history.load);
 

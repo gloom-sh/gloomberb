@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Span, Text, TextAttributes, useNativeRenderer } from "../../../../ui";
 import { hoverBg } from "../../../../theme/colors";
-import { selectedCellColor } from "../../../../theme/tone-contrast";
+import { selectedRowCellColor } from "../../../../theme/tone-contrast";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { usePaneInstance } from "../../../../state/app/context";
 import { useViewport } from "../../../../react/input";
@@ -255,9 +255,9 @@ function OpenTuiDataTableRowInner<
             )) : (
               <Text
                 attributes={cell.attributes ?? TextAttributes.NONE}
-                fg={selected && (cell.color === undefined || (selectedTextOverridesCellColor && !cell.keepColorWhenSelected))
-                  ? colors.selectedText
-                  : selected ? selectedCellColor(cell.color, colors) ?? colors.text : cell.color ?? colors.text}
+                fg={selected
+                  ? selectedRowCellColor(cell.color, !!selectedTextOverridesCellColor, cell.keepColorWhenSelected, colors) ?? colors.selectedText
+                  : cell.color ?? colors.text}
               >
                 {fitted.note ? <>
                   {`${frozen ? " ".repeat(horizontalPadding) : ""}${" ".repeat(inset)}${fitted.text}`}

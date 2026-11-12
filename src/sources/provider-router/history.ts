@@ -167,17 +167,19 @@ function makeHistoryRequestIdentity(
     fallbackVariantParts: Array<[string, string | number | undefined | null]>;
   },
 ): Pick<HistoryRequestDescriptor, "identity" | "cacheVariantKeys" | "exactCacheVariantKeys" | "target"> {
-  // Extended-hours bars are another history; they never answer for the regular session.
-  const session: [string, string | undefined] = ["session", input.context?.historySession];
+  // Extended-hours bars are another history; they never answer for the regular session. Nor do
+  // the newest bars of one read (newestBars) answer for every bar kept.
+  const session: Array<[string, string | undefined]> = [["session", input.context?.historySession],
+    ["bars", input.context?.newestBars ? "newest" : undefined]];
   const identity = makeRouterRequestIdentity(deps, {
     kind: input.kind,
     ticker: input.ticker,
     context: input.context,
-    variantParts: priceHistoryVariantParts([...input.variantParts, session], input.exchange),
+    variantParts: priceHistoryVariantParts([...input.variantParts, ...session], input.exchange),
   });
   const cacheVariantKeys = [
     identity.variantKey,
-    buildVariantKey(priceHistoryVariantParts([...input.fallbackVariantParts, session], input.exchange)),
+    buildVariantKey(priceHistoryVariantParts([...input.fallbackVariantParts, ...session], input.exchange)),
   ];
   return {
     target: { symbol: input.ticker, exchange: input.exchange },

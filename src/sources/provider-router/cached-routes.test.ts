@@ -2,7 +2,7 @@ import { describe, expect, setSystemTime, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
 import { MarketDataCoordinator } from "../../market-data/coordinator";
 import { buildArticleSummaryKey } from "../../market-data/selectors";
-import { createTestDataProvider } from "../../test-support/data-provider";
+import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import type { BrokerAdapter } from "../../types/broker";
 import { AssetDataRouter } from "./index";
 import { MARKET_METADATA_SCHEMA_VERSION } from "./cache";
@@ -308,6 +308,24 @@ describe("shared cached market queries", () => {
       expect(coordinator.getFxEntry("EUR").error).not.toBeNull();
       expect(calls).toBe(2);
     } finally { coordinator.destroy(); persistence.close(); }
+  });
+
+  test("a quote says when Gloom fetched it, and its saved copy read back later keeps that time, not the read's", async () => {
+    const fetchedAt = Date.parse("2026-11-11T19:45:00Z");
+    let calls = 0;
+    const persistence = new AppPersistence(":memory:");
+    const provider = createTestDataProvider({ id: "cloud", getQuote: async () => {
+      if (++calls > 1) throw new Error("offline");
+      return createTestQuote({ symbol: "TTEK", price: 37.53, lastUpdated: fetchedAt - 60_000, marketState: "REGULAR" });
+    } });
+    setSystemTime(new Date(fetchedAt));
+    try {
+      expect(await new AssetDataRouter(provider, [], persistence.resources).getQuote("TTEK", "NYSE"))
+        .toMatchObject({ price: 37.53, retrievedAt: fetchedAt });
+      setSystemTime(new Date(fetchedAt + 5 * 60_000));
+      expect(await new AssetDataRouter(provider, [], persistence.resources).getQuote("TTEK", "NYSE"))
+        .toMatchObject({ price: 37.53, retrievedAt: fetchedAt });
+    } finally { setSystemTime(); persistence.close(); }
   });
 
   test("expired numeric FX fallback also rejects a mismatched pair", () => {

@@ -144,8 +144,10 @@ export interface DataTableProps<
   ) => DataTableCell;
   /**
    * Draws every text cell of the selected row in the selection text color,
-   * over the cell's own `color` unless it sets `keepColorWhenSelected`.
-   * Without it only cells that leave `color` unset turn to that color.
+   * over the cell's own `color` unless it sets `keepColorWhenSelected` or the
+   * color is the theme's up or down tone, which every table keeps on the
+   * selected row (selectedRowCellColor). Without it only cells that leave
+   * `color` unset turn to that color.
    */
   selectedTextOverridesCellColor?: boolean;
   /**

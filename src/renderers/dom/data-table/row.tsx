@@ -12,7 +12,7 @@ import { tableColumnLeadGap } from "../../../components/ui/table-layout";
 import { WebIcon } from "../desktop/icons";
 import { useFrozenColumnInsets } from "./frozen-column";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
-import { selectedCellColor } from "../../../theme/tone-contrast";
+import { selectedRowCellColor } from "../../../theme/tone-contrast";
 import { useThemeColors } from "../../../theme/theme-context";
 import {
   CSS_BG,
@@ -448,9 +448,9 @@ function WebDataTableRowInner<
               <CellText
                 cell={cell}
                 column={column}
-                color={selected && (cell.color === undefined || (selectedTextOverridesCellColor && !cell.keepColorWhenSelected))
-                  ? CSS_SELECTED_TEXT
-                  : selected ? selectedCellColor(cell.color, colors) ?? CSS_TEXT : cell.color ?? CSS_TEXT}
+                color={selected
+                  ? selectedRowCellColor(cell.color, selectedTextOverridesCellColor, cell.keepColorWhenSelected, colors) ?? CSS_SELECTED_TEXT
+                  : cell.color ?? CSS_TEXT}
               />
             )}
           </div>

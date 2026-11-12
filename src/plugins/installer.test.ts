@@ -403,31 +403,38 @@ test.skipIf(process.platform === "win32")("git is resolved before entering a plu
 
 // `gloom install` names the folder for the repository and the app names the
 // plugin by its id, so a command given either has to land on the same folder,
-// and refuse to guess when a clone and a linked copy share the id.
-test("an installed plugin is found by its folder or by its gloom.json id", async () => {
+// and refuse to guess when a clone and a linked copy share the id. A linked
+// plugin with no gloom.json is known by the id its export registers.
+test("an installed plugin is found by its folder, its gloom.json id, or the id its export registers", async () => {
   const root = mkdtempSync(join(tmpdir(), "gloom-plugin-names-"));
   scratch.push(root);
   const home = join(root, "home");
-  const plugin = (folder: string, id?: string) => {
+  const plugin = (folder: string, id?: string, source = "export default {};\n") => {
     mkdirSync(join(home, "plugins", folder), { recursive: true });
-    writeFileSync(join(home, "plugins", folder, "index.ts"), "export default {};\n");
+    writeFileSync(join(home, "plugins", folder, "index.ts"), source);
     if (id) writeFileSync(join(home, "plugins", folder, "gloom.json"), JSON.stringify({ id }));
   };
   plugin("gloom-hackernews", "hackernews");
   plugin("my-hn", "hackernews");
   plugin("gloom-polls", "polls");
   plugin("side-loaded");
+  plugin("riskwatch", undefined, 'export default { id: "risk-watch", name: "Risk watch", version: "0.1.0" };\n');
 
   const found = await runIsolated(root, `
-    return Object.fromEntries(["gloom-hackernews", "polls", "hackernews", "side-loaded", "nope"]
-      .map((name) => [name, installer.installedPluginDirectoriesNamed(name).sort()]));
+    const names = ["gloom-hackernews", "polls", "hackernews", "side-loaded", "nope", "riskwatch", "risk-watch"];
+    return {
+      named: Object.fromEntries(names.map((name) => [name, installer.installedPluginDirectoriesNamed(name).sort()])),
+      byId: Object.fromEntries(await Promise.all(names.map(async (name) => [name, (await installer.installedPluginDirectoriesById(name)).sort()]))),
+    };
   `, { GLOOMBERB_HOME: home });
 
-  expect(found).toEqual({
+  const named = {
     "gloom-hackernews": ["gloom-hackernews"],
     polls: ["gloom-polls"],
     hackernews: ["gloom-hackernews", "my-hn"],
     "side-loaded": ["side-loaded"],
     nope: [],
-  });
+    riskwatch: ["riskwatch"],
+  };
+  expect(found).toEqual({ named: { ...named, "risk-watch": [] }, byId: { ...named, "risk-watch": ["riskwatch"] } });
 });

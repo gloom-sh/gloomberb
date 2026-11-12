@@ -30,6 +30,12 @@ export interface PriceHistoryResult {
   coverageStart?: string;
   /** Why nothing before `coverageStart` is served, when the source says: "old-shekel quotes before 1992 are not served". */
   coverageNote?: string;
+  /**
+   * The bars stop short of the window asked for: a read of the dates before
+   * this day (YYYY-MM-DD) failed, so earlier bars are missing, not absent.
+   * The bars from this day on are whole.
+   */
+  truncatedBefore?: string;
   /** The source served the pre-market and after-hours bars the request asked for. */
   extendedHours?: boolean;
   /**

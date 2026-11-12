@@ -13,6 +13,8 @@ import { useTableBodyScrollActivity } from "../../../components/table-view-share
 import { createDomTestHarness } from "../test-utils";
 import { WEB_CELL_HEIGHT } from "../../../theme/font-scale";
 import { WebDataTable } from ".";
+import { colors } from "../../../theme/colors";
+import { selectedCellColor } from "../../../theme/tone-contrast";
 
 const { window: testWindow, render } = createDomTestHarness();
 const items = Array.from({ length: 100 }, (_, index) => index);
@@ -129,7 +131,8 @@ test("controlled centering keeps following late quotes until the user scrolls", 
   expect(body.scrollTop).toBe(0);
 });
 
-test("an opted-in table draws the selected row in selection text unless a cell keeps its tone", async () => {
+// HP's selected row (today, -6.31%) lost its red on colorblind-light: an opted-in table drew its CHG in selection text.
+test("an opted-in table draws the selected row in selection text unless a cell keeps its tone or is an up or down figure", async () => {
   const state = createInitialState(createDefaultConfig("/tmp/gloom-table-test"));
   function Harness() {
     const headerScrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -141,6 +144,7 @@ test("an opted-in table draws the selected row in selection text unless a cell k
           columns={[
             { id: "name", label: "Name", width: 6 },
             { id: "pnl", label: "P&L", width: 6, align: "right" },
+            { id: "chg", label: "Chg", width: 6, align: "right" },
           ]}
           sortColumnId={null}
           sortDirection="asc"
@@ -153,6 +157,7 @@ test("an opted-in table draws the selected row in selection text unless a cell k
           onSelect={() => {}}
           renderCell={(item, column) => column.id === "pnl"
             ? { text: "+1", color: "#00ff00", keepColorWhenSelected: true }
+            : column.id === "chg" ? { text: "-6.31%", color: colors.negative }
             : { text: item, color: "#999999" }}
           selectedTextOverridesCellColor
           emptyStateTitle="No rows"
@@ -166,9 +171,10 @@ test("an opted-in table draws the selected row in selection text unless a cell k
   const colorsByRow = [...container.querySelectorAll('[data-gloom-role="data-table-row"]')].map((row) => (
     [...row.querySelectorAll("span")].map((span) => (span as HTMLElement).style.color)
   ));
+  // The down move keeps its tone on the band, as the theme lifts it there.
   expect(colorsByRow).toEqual([
-    ["var(--gloom-selected-text)", "#00ff00"],
-    ["#999999", "#00ff00"],
+    ["var(--gloom-selected-text)", "#00ff00", selectedCellColor(colors.negative, colors)],
+    ["#999999", "#00ff00", colors.negative],
   ]);
 });
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateA
 import { recordResearchActivity } from "../../api-client/research-activity";
 import { apiClient } from "../../api-client";
 import type { SyncBrokerInstanceResult } from "../../brokers/sync-broker-instance";
-import { saveConfigImmediately } from "../../state/config-save-scheduler";
+import { saveConfigImmediately, scheduleConfigSave } from "../../state/config-save-scheduler";
 import type { AppConfig, OnboardingProgress } from "../../types/config";
 import type { useAppDispatch, useAppStateRef } from "../../state/app/context";
 import { t } from "../../i18n";
@@ -33,6 +33,11 @@ import { useViewport } from "../../react/input";
 
 const onboardingLog = debugLog.createLogger("onboarding");
 
+function saveFailureMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message || t("Unable to save onboarding progress.");
+}
+
 export function useOnboardingProgress({
   stateRef, dispatch,
 }: {
@@ -57,17 +62,21 @@ export function useOnboardingProgress({
       .then(async () => {
         if (finishingRef.current) return stateRef.current.config;
         const nextConfig = withOnboardingProgress(baseConfig ?? stateRef.current.config, patch);
+        const show = () => dispatch({
+          type: "SET_ONBOARDING_STATE",
+          complete: false,
+          progress: nextConfig.onboardingProgress,
+        });
         try {
           await saveConfigImmediately(nextConfig);
-          dispatch({
-            type: "SET_ONBOARDING_STATE",
-            complete: false,
-            progress: nextConfig.onboardingProgress,
-          });
+          show();
           return nextConfig;
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          setPersistenceError(message || t("Unable to save onboarding progress."));
+          // The step moves on all the same, with the reason on the card: a
+          // profile that cannot be written must not hold anyone on a step.
+          // The next save that works records where they are.
+          setPersistenceError(saveFailureMessage(error));
+          show();
           throw error;
         }
       });
@@ -194,10 +203,16 @@ export function useOnboardingWorkspace({
     patch: Partial<OnboardingProgress> & Pick<OnboardingProgress, "stage">,
   ) => {
     const withProgress = withOnboardingProgress(nextConfig, patch);
-    await saveConfigImmediately(withProgress);
+    try {
+      await saveConfigImmediately(withProgress);
+    } catch (error) {
+      // Built all the same: finishing setup saves the whole config again.
+      onboardingLog.error("Saving the first-run workspace failed", { error: String(error) });
+      setPersistenceError(saveFailureMessage(error));
+    }
     dispatch({ type: "SET_CONFIG", config: withProgress });
     pluginRegistry.events.emit("config:changed", { config: withProgress });
-  }, [dispatch, pluginRegistry.events]);
+  }, [dispatch, pluginRegistry.events, setPersistenceError]);
 
   // Continue with a ticker typed but not added adds it first, then goes on once its row is listed.
   const [continueAfterAdd, setContinueAfterAdd] = useState(false);
@@ -311,7 +326,7 @@ export function useOnboardingWorkspace({
 
 export function useOnboardingCompletion({
   finishingRef, resetBrokerSync, setIsFinishing, setPersistenceError, progressSaveQueueRef, stateRef,
-  dispatch, onComplete,
+  dispatch, onComplete, onSaveFailure,
 }: {
   finishingRef: RefObject<boolean>;
   resetBrokerSync: () => boolean;
@@ -321,6 +336,8 @@ export function useOnboardingCompletion({
   stateRef: ReturnType<typeof useAppStateRef>;
   dispatch: ReturnType<typeof useAppDispatch>;
   onComplete: (config: AppConfig) => void | Promise<void>;
+  /** Finishing could not be saved; setup closes all the same, so this says so where the user still looks. */
+  onSaveFailure: () => void;
 }) {
   const finish = useCallback(async (skipped = false) => {
     if (finishingRef.current) return;
@@ -339,12 +356,26 @@ export function useOnboardingCompletion({
         onboardingComplete: true,
         onboardingProgress: undefined,
       };
-      await saveConfigImmediately(nextConfig);
+      let saved = true;
+      try {
+        await saveConfigImmediately(nextConfig);
+      } catch (error) {
+        // Setup closes all the same: a profile that cannot be written must
+        // not keep anyone in it. The save below tries again.
+        saved = false;
+        onboardingLog.error("Saving finished setup failed", { error: String(error) });
+      }
       dispatch({
         type: "SET_ONBOARDING_STATE",
         complete: true,
         progress: undefined,
       });
+      // Saved once more from the state. A pane that queued a save while the
+      // one above ran queued the config with setup still open, which would
+      // open it again at the next launch; this replaces it, and retries a
+      // save that failed.
+      scheduleConfigSave(() => ({ ...stateRef.current.config, recentTickers: stateRef.current.recentTickers }));
+      if (!saved) onSaveFailure();
       // The funnel counts first runs; a run from Settings is not one.
       if (!rerun) recordResearchActivity(skipped ? "onboarding_skipped" : "onboarding_completed", undefined, undefined, { desks });
       await Promise.resolve(onComplete(nextConfig));
@@ -353,7 +384,7 @@ export function useOnboardingCompletion({
       finishingRef.current = false;
       setIsFinishing(false);
     }
-  }, [dispatch, onComplete, resetBrokerSync, stateRef]);
+  }, [dispatch, onComplete, onSaveFailure, resetBrokerSync, stateRef]);
   const skipSetup = useCallback(() => { void finish(true); }, [finish]);
 
   return {
