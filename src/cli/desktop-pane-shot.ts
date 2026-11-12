@@ -127,6 +127,8 @@ export interface DesktopPaneShotBridge {
 }
 
 interface DesktopPaneShotRenderedCell {
+  /** The column can be blank in every row with nothing missing (DataTableColumn.mayBeBlank). */
+  mayBeBlank?: true;
   columnId?: string;
   columnLabel: string;
   text: string;
@@ -195,6 +197,12 @@ export interface DesktopPaneShotRenderResult {
    * the body shows anything more.
    */
   emptyStateText?: string[];
+  /**
+   * What each visible error and empty state says, its title and message
+   * without its buttons, a line each: the words a `--strict` Reason quotes.
+   * Absent when no state shows, or in a capture that did not read them.
+   */
+  stateText?: { error?: string[]; empty?: string[] };
   /** A wall that needs an account, or a Pro lock on part of the pane. */
   accessGate?: PaneAccessGate | null;
   /**
@@ -894,6 +902,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
               const exact = Number(cell.getAttribute("data-gloom-cell-value") || "NaN");
               return {
                 ...(typeof semanticColumn.id === "string" ? { columnId: semanticColumn.id } : {}),
+                ...(semanticColumn.mayBeBlank === true ? { mayBeBlank: true } : {}),
                 columnLabel: typeof semanticColumn.label === "string"
                   ? semanticColumn.label
                   : headers[cellIndex] || (values.length === 1 ? "Row" : String(cellIndex + 1)),
@@ -979,6 +988,25 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
             .map((child) => normalize(child.innerText || child.textContent))
             .filter(Boolean);
         })(),
+        // What each visible error and empty state says, for the Reason a strict capture gives.
+        stateText: (() => {
+          const said = (status) => [...new Set([...root.querySelectorAll('[data-gloom-status="' + status + '"]')]
+            // The innermost: a pane's status body holds the state it draws.
+            .filter((state) => isVisible(state) && !state.querySelector('[data-gloom-status="' + status + '"]'))
+            .map((state) => {
+              const parts = state.children.length > 0 ? [...state.children] : [state];
+              return parts
+                .filter((part) => isVisible(part) && !part.matches('button, [role="button"]') && !part.querySelector('button, [role="button"]'))
+                .map((part) => normalize(part.innerText || part.textContent))
+                .filter(Boolean)
+                // A title and its message read as two sentences.
+                .reduce((text, part) => !text ? part : /[.!?:]$/.test(text) ? text + " " + part : text + ". " + part, "");
+            })
+            .filter(Boolean))].slice(0, 3);
+          const error = said("error");
+          const empty = said("empty");
+          return { ...(error.length ? { error } : {}), ...(empty.length ? { empty } : {}) };
+        })(),
         contentFigures: (${countContentFigures.toString()})(root, isVisible),
         // The shared sign-in wall and the Pro lock prompt every gated pane draws.
         accessGate: [...root.querySelectorAll('[data-gloom-ui="sign-in-wall"]')].some(isVisible) ? "sign-in"
@@ -1007,6 +1035,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
         errorStateDetected?: boolean;
         emptyStateDetected?: boolean;
         emptyStateText?: string[];
+        stateText?: { error?: unknown; empty?: unknown };
         contentFigures?: number;
         accessGate?: string;
         rows?: DesktopPaneShotRenderedRow[];
@@ -1062,9 +1091,19 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
     ...(Array.isArray(value?.emptyStateText) && value.emptyStateText.length > 0
       ? { emptyStateText: value.emptyStateText.filter((line): line is string => typeof line === "string" && line.length > 0) } : {}),
     accessGate,
+    ...shotStateText(value?.stateText),
     ...(typeof value?.contentFigures === "number" ? { contentFigures: value.contentFigures } : {}),
     semanticUi: Array.isArray(value?.semanticUi) ? value.semanticUi : [],
   };
+}
+
+/** The state words a page read, as strings only; nothing when it read none. */
+function shotStateText(value: { error?: unknown; empty?: unknown } | undefined): Pick<DesktopPaneShotRenderResult, "stateText"> {
+  const lines = (said: unknown) => Array.isArray(said) ? said.filter((line): line is string => typeof line === "string" && line.length > 0) : [];
+  const error = lines(value?.error);
+  const empty = lines(value?.empty);
+  if (error.length === 0 && empty.length === 0) return {};
+  return { stateText: { ...(error.length ? { error } : {}), ...(empty.length ? { empty } : {}) } };
 }
 
 /** Draws the first variant that fits the pane footer, and returns what it drew. */

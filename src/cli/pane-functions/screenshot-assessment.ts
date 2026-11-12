@@ -2,7 +2,7 @@ import { SHOT_REQUEST_REFUSED, SHOT_UNAVAILABLE } from "../../api-client/errors"
 import { CHART_COMPOSER_PANE_ID } from "../../types/config";
 import { isRecord } from "../../utils/guards";
 import { parsePublicTickerKey } from "../../utils/exchanges";
-import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
+import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult, DesktopPaneShotRenderedRow } from "../desktop-pane-shot";
 import type { ResolvedPaneFunction } from "./resolver";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import { accessGateSentence, accessGateStatus } from "./access-gate";
@@ -60,6 +60,7 @@ export function shotShowsText(visibleText: string, value: string): boolean {
 
 export function isPaneScreenshotUsable(signals: PaneScreenshotReadinessSignals): boolean {
   return !signals.refused
+    && !signals.blankColumns?.length
     && (signals.interactive || ((signals.rowCount > 0 || signals.contentShown === true) && !signals.emptyStateDetected))
     && !signals.loadingStateDetected
     && !signals.errorStateDetected
@@ -168,6 +169,8 @@ export function assessPaneScreenshot(
     && shotShowsContent(render);
   // The capture's refusal of a request (chat, a team's) drawn where the pane's content goes is not the pane.
   const refused = shotShowsRefusal(render);
+  // A column with no value in any row is data the pane lost, as Market Movers' VOL and V/AVG did before the open.
+  const blankColumns = interactive ? [] : shotBlankColumns(render.rows);
   const empty = render.loadingStateDetected
     || render.errorStateDetected
     || refused
@@ -185,11 +188,12 @@ export function assessPaneScreenshot(
     semanticMismatch,
     requiresStructuredDataEvidence: requiresStructuredDataEvidence(resolved),
     hasStructuredDataEvidence: dataEvidence !== null,
+    blankColumns,
   });
   const unusableReason = usable
     ? null
     : refused ? refusedShotReason(resolved)
-    : shotUnusableReasonFor(resolved, payload, render, unavailableSymbols, semanticMismatch);
+    : shotUnusableReasonFor(resolved, payload, render, unavailableSymbols, semanticMismatch, blankColumns);
   const tableRows = shotTableRows(resolved, render);
   const notices = [
     ...renderedReportNotices(render.semanticUi ?? []).notices,
@@ -217,6 +221,7 @@ export function assessPaneScreenshot(
     usable,
     unusableReason,
     ...(refused ? { refused: true as const } : {}),
+    ...(blankColumns.length > 0 ? { blankColumns } : {}),
     dataEvidence,
     ...(notices.length > 0 ? { notices } : {}),
     ...(tableRows ? { tableRows } : {}),
@@ -287,6 +292,66 @@ function requiresStructuredDataEvidence(resolved: ResolvedPaneFunction): boolean
 }
 
 const PLACEHOLDER_VALUE = /^(?:[-\u2013\u2014]+|n\/?a)?$/i;
+
+/**
+ * Rows a table must draw before a column that is blank in all of them reads
+ * as a column the pane lost, rather than a short list's gaps.
+ */
+const BLANK_COLUMN_MIN_ROWS = 3;
+
+/**
+ * The columns of a capture's tables whose every drawn row shows a placeholder
+ * for a missing value ("—", "n/a"), by their headers, as Market Movers' VOL
+ * and V/AVG did before the open. A column some rows leave empty is a sparse
+ * marker (an event column), not a blank one, and neither is a column the pane
+ * says can be blank (`mayBeBlank`: a value that comes after an event, such as
+ * an upcoming report's move); section headers and tables of fewer than
+ * BLANK_COLUMN_MIN_ROWS rows are not read.
+ */
+export function shotBlankColumns(rows: readonly Pick<DesktopPaneShotRenderedRow, "tableIndex" | "cells" | "section">[]): string[] {
+  const tables = new Map<number, Array<Pick<DesktopPaneShotRenderedRow, "cells">>>();
+  for (const row of rows) {
+    // A row drawn as one cell is a section header or a prose entry, not a row of the table's columns.
+    if (row.section || row.cells.length < 2) continue;
+    tables.set(row.tableIndex, [...tables.get(row.tableIndex) ?? [], row]);
+  }
+  const blank: string[] = [];
+  for (const tableRows of tables.values()) {
+    if (tableRows.length < BLANK_COLUMN_MIN_ROWS) continue;
+    const columns = new Map<string, { label: string; placeholders: number; filled: boolean }>();
+    for (const row of tableRows) {
+      for (const cell of row.cells) {
+        const key = cell.columnId ?? cell.columnLabel;
+        const column = columns.get(key) ?? { label: cell.columnLabel, placeholders: 0, filled: false };
+        if (PLACEHOLDER_VALUE.test(cell.text.trim()) && !cell.mayBeBlank) column.placeholders += 1;
+        else column.filled = true;
+        columns.set(key, column);
+      }
+    }
+    for (const { label, placeholders, filled } of columns.values()) {
+      if (!filled && placeholders === tableRows.length && !blank.includes(label)) blank.push(label);
+    }
+  }
+  return blank;
+}
+
+/** "The VOL and V/AVG columns are blank in every row." */
+export function blankColumnsSentence(columns: readonly string[]): string {
+  const named = columns.length === 1 ? columns[0]!
+    : `${columns.slice(0, -1).join(", ")} and ${columns[columns.length - 1]}`;
+  return `The ${named} column${columns.length === 1 ? " is" : "s are"} blank in every row.`;
+}
+
+/**
+ * What the pane's states said, quoted after the sentence that names the
+ * state: ` It reads "Market movers temporarily unavailable. Try again in a
+ * moment."` Empty when the capture read no words for it.
+ */
+function stateSaid(lines: readonly string[] | undefined): string {
+  if (!lines?.length) return "";
+  const quoted = lines.map((line) => `"${line}"`).join(" and ");
+  return ` It reads ${quoted}${/[.!?]$/.test(lines[lines.length - 1]!) ? "" : "."}`;
+}
 
 /**
  * What a live pane shows, counted: its table's rows; else the values its
@@ -360,9 +425,10 @@ export function surfaceNotDrawnMismatches(render: Pick<DesktopPaneShotRenderResu
 export function shotUnusableReasonFor(
   resolved: ResolvedPaneFunction,
   payload: DesktopPaneShotPayload,
-  render: Pick<DesktopPaneShotRenderResult, "loadingStateDetected" | "errorStateDetected" | "emptyStateDetected" | "accessGate" | "surfaces">,
+  render: Pick<DesktopPaneShotRenderResult, "loadingStateDetected" | "errorStateDetected" | "emptyStateDetected" | "accessGate" | "surfaces" | "stateText" | "errorStateMarkers" | "emptyStateMarkers">,
   unavailableSymbols: string[],
   semanticMismatch: boolean,
+  blankColumns: readonly string[] = [],
 ): string {
   if (resolved.capability.id === "intraday-price-chart") {
     const intraday = payload.intradayHistories[0];
@@ -375,14 +441,16 @@ export function shotUnusableReasonFor(
   }
   if (render.loadingStateDetected) return "The pane was still loading when the screenshot was captured.";
   if (render.accessGate) return accessGateSentence(render.accessGate);
-  if (render.errorStateDetected) return "The pane rendered an error state.";
-  if (render.emptyStateDetected) return "The pane rendered an empty state.";
+  // The first sentence stays as scripts match it; the state's own words follow it.
+  if (render.errorStateDetected) return `The pane rendered an error state.${stateSaid(render.stateText?.error ?? render.errorStateMarkers)}`;
+  if (render.emptyStateDetected) return `The pane rendered an empty state.${stateSaid(render.stateText?.empty ?? render.emptyStateMarkers)}`;
   const surfaceGap = surfaceNotDrawnMismatches(render)[0];
   if (surfaceGap) return `${surfaceGap[0]!.toUpperCase()}${surfaceGap.slice(1)}.`;
   if (unavailableSymbols.length > 0) return `Data is unavailable for ${unavailableSymbols.join(", ")}.`;
   const ratioGap = financialRatioShotGap(resolved, payload);
   if (ratioGap) return ratioGap;
   if (semanticMismatch) return "The rendered content did not match the requested capability.";
+  if (blankColumns.length > 0) return blankColumnsSentence(blankColumns);
   return "The pane did not produce verifiable screenshot evidence.";
 }
 
