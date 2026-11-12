@@ -4,7 +4,7 @@ import { boardReport, type BoardReport } from "./board-model";
 import { moveInWeek } from "./calendar";
 import { boardRangeDays, boardRangeWeek, boardRangeWords, calendarDays, calendarWeekDates, calendarWeekLabel, requestedBoardRange } from "./calendar-model";
 
-// Fri Oct 16 2026; the week is Mon Oct 12 to Fri Oct 16.
+// Fri 16 Oct 2026; the week is Mon 12 Oct to Fri 16 Oct.
 const TODAY = "2026-10-16";
 const report = (symbol: string, fields: Partial<EarningsCalendarReport> = {}, owned = new Map<string, "held" | "watched">()): BoardReport =>
   boardReport({
@@ -20,19 +20,19 @@ describe("ERN calendar", () => {
     expect(calendarWeekDates("2026-10-17", 0)[0]).toBe("2026-10-19");
     // Across a month end.
     expect(calendarWeekDates(TODAY, 3)).toEqual(["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06"]);
-    expect([-1, 0, 1, 3].map((offset) => calendarWeekLabel(TODAY, offset))).toEqual(["Last week", "This week", "Next week", "Week of Nov 2"]);
+    expect([-1, 0, 1, 3].map((offset) => calendarWeekLabel(TODAY, offset))).toEqual(["Last week", "This week", "Next week", "Week of 2 Nov"]);
   });
 
   test("one range drives the table's days and the calendar's week: --week as an offset, --date as its day and its week", () => {
     expect([requestedBoardRange(undefined, "last"), requestedBoardRange("", "next"), requestedBoardRange("2026-10-07", undefined), requestedBoardRange(undefined, undefined)])
       .toEqual(["-1", "1", "2026-10-07", ""]);
-    expect(boardRangeDays("-1", TODAY).map((day) => day.label)).toEqual(["Mon Oct 5", "Tue Oct 6", "Wed Oct 7", "Thu Oct 8", "Fri Oct 9"]);
+    expect(boardRangeDays("-1", TODAY).map((day) => day.label)).toEqual(["Mon 5 Oct", "Tue 6 Oct", "Wed 7 Oct", "Thu 8 Oct", "Fri 9 Oct"]);
     expect(boardRangeDays("0", TODAY).map((day) => day.label).at(-1)).toBe("Today");
-    expect(boardRangeDays("2026-10-07", TODAY)).toEqual([{ label: "Wed Oct 7", from: "2026-10-07", to: "2026-10-07" }]);
+    expect(boardRangeDays("2026-10-07", TODAY)).toEqual([{ label: "Wed 7 Oct", from: "2026-10-07", to: "2026-10-07" }]);
     // The calendar draws a day's own week, and this week for the days ahead.
     expect([boardRangeWeek("2026-10-07", TODAY), boardRangeWeek("2026-09-25", TODAY), boardRangeWeek("", TODAY), boardRangeWeek("3", TODAY)]).toEqual([-1, -3, 0, 3]);
     expect([boardRangeWords("-1", TODAY), boardRangeWords("2", TODAY), boardRangeWords(TODAY, TODAY), boardRangeWords("2026-10-07", TODAY), boardRangeWords("", TODAY)])
-      .toEqual(["last week", "in the week of Oct 26", "today", "on Wed Oct 7", null]);
+      .toEqual(["last week", "in the week of 26 Oct", "today", "on Wed 7 Oct", null]);
   });
 
   test("each day groups its reports before the open, during the session, after the close, then with no time, largest first", () => {
@@ -50,7 +50,7 @@ describe("ERN calendar", () => {
     ], week, { today: TODAY });
 
     expect(days.map((day) => [day.weekday, day.label, day.total])).toEqual([
-      ["Mon", "Oct 12", 0], ["Tue", "Oct 13", 1], ["Wed", "Oct 14", 0], ["Thu", "Oct 15", 0], ["Fri", "Oct 16", 6],
+      ["Mon", "12 Oct", 0], ["Tue", "13 Oct", 1], ["Wed", "14 Oct", 0], ["Thu", "15 Oct", 0], ["Fri", "16 Oct", 6],
     ]);
     const friday = days[4]!;
     expect(friday.today).toBe(true);
@@ -83,7 +83,7 @@ describe("ERN calendar", () => {
   });
 
   test("a market holiday is marked closed", () => {
-    // Thanksgiving, Thu Nov 26 2026.
+    // Thanksgiving, Thu 26 Nov 2026.
     const days = calendarDays([], calendarWeekDates("2026-11-23", 0), { today: "2026-11-23" });
     expect(days.map((day) => day.closed)).toEqual([false, false, false, true, false]);
   });

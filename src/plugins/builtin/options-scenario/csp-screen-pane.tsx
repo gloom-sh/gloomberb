@@ -1,3 +1,4 @@
+import { formatShortDate } from "../../../utils/datetime-format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableView, PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type DataTableKeyEvent,
@@ -99,12 +100,11 @@ const percentText = (value: unknown, digits: number) => typeof value === "number
 const priceText = (value: unknown) => typeof value === "number" ? formatHedgePrice(value) : "--";
 const moneyText = (value: number) => value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const riskText = (value: number | null, unlimited: boolean) => value != null ? moneyText(value) : unlimited ? "unlimited" : "--";
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 /** `before Oct 28`: the flag and the date without its year, which the next report never needs. */
 const earningsCell = (row: { earningsDate: string | null; earningsBeforeExpiry: boolean | null; earnings: string }) => {
   const date = row.earningsDate;
   if (!date || row.earningsBeforeExpiry == null) return row.earnings;
-  return `${row.earningsBeforeExpiry ? "before" : "after"} ${MONTHS[Number(date.slice(5, 7)) - 1]} ${Number(date.slice(8, 10))}`;
+  return `${row.earningsBeforeExpiry ? "before" : "after"} ${formatShortDate(`${date}T00:00:00Z`, { year: false, utc: true })}`;
 };
 /** A column's value to sort on: earnings by date, a flag as a number, an unlimited gain or loss above every limit. */
 function sortValue(row: Record<string, unknown>, columnId: string): string | number | null {

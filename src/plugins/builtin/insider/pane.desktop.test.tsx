@@ -162,7 +162,7 @@ async function openRanking(pane: () => ReturnType<typeof findPaneInstance> & obj
   const container = await dom.render(<RankingPane />);
   await until(() => !!container.textContent?.includes("Contoso Energy Corp"));
   expect(container.textContent).toContain("2nd");
-  expect(container.textContent).toContain("as of Oct 14, 2026");
+  expect(container.textContent).toContain("as of 14 Oct 2026");
 
   // The stack's title, ticker and company, shows only while a company is open.
   const opened = () => !!container.textContent?.includes(" \u00b7 ");

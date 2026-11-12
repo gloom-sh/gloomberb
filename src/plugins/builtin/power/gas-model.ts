@@ -181,7 +181,7 @@ export function gasYearAxis(year: number) {
       ticks: [0, 3, 6, 9].map((month) => ({ label: MONTHS[month]!, ratio: ratio(Date.UTC(year, month, 1)) })),
       formatCursor: (xRatio: number) => {
         const date = new Date(start + Math.round((xRatio * span) / DAY_MS) * DAY_MS);
-        return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
+        return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`;
       },
     },
   };

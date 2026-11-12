@@ -720,7 +720,7 @@ function formatQuoteTime(lastUpdated: number | undefined, now = Date.now()): str
   const today = new Date(now);
   if (date.getUTCFullYear() !== today.getUTCFullYear() || date.getUTCMonth() !== today.getUTCMonth()
     || date.getUTCDate() !== today.getUTCDate()) {
-    return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
+    return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`;
   }
   return `${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`;
 }

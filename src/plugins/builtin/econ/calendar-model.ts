@@ -94,9 +94,9 @@ export function timeLabel(d: Date): string {
 /** The zone the calendar's times and days are in, for the column header. */
 export const CALENDAR_TIME_ZONE_LABEL = "UTC";
 
-/** "Fri Oct 9", the UTC day the calendar groups an instant under. */
+/** "Fri 9 Oct", the UTC day the calendar groups an instant under. */
 export function shortDayLabel(d: Date): string {
-  return `${DAY_NAMES[d.getUTCDay()]!} ${MONTH_NAMES[d.getUTCMonth()]!} ${d.getUTCDate()}`;
+  return `${DAY_NAMES[d.getUTCDay()]!} ${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()]!}`;
 }
 
 export function dayLabel(d: Date, today: Date): string {

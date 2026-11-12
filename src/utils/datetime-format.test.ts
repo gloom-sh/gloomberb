@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
-import { formatDetailDate, formatDetailTime, formatFeedTime, formatRelativeAge, formatRelativeTime, formatShortDate, formatTimeAgo } from "./datetime-format";
+import { formatFilingDate, formatWeekdayDay, formatDetailDate, formatDetailTime, formatFeedTime, formatRelativeAge, formatRelativeTime, formatShortDate, formatTimeAgo } from "./datetime-format";
 
 afterEach(() => setSystemTime());
 
@@ -61,10 +61,10 @@ describe("relative time", () => {
 
 test("short dates keep each style's formatter apart", () => {
   const lateOnNewYearsEve = "2025-12-31T23:30:00Z";
-  expect(formatShortDate("2026-01-05", { utc: true })).toBe("Jan 5, 2026");
-  expect(formatShortDate("2026-01-05", { year: false, utc: true })).toBe("Jan 5");
-  expect(formatShortDate("2026-01-05", { day: "2-digit", year: "2-digit", utc: true })).toBe("Jan 05, 26");
-  expect(formatShortDate(lateOnNewYearsEve, { utc: true })).toBe("Dec 31, 2025");
+  expect(formatShortDate("2026-01-05", { utc: true })).toBe("5 Jan 2026");
+  expect(formatShortDate("2026-01-05", { year: false, utc: true })).toBe("5 Jan");
+  expect(formatShortDate("2026-01-05", { day: "2-digit", year: "2-digit", utc: true })).toBe("05 Jan 26");
+  expect(formatShortDate(lateOnNewYearsEve, { utc: true })).toBe("31 Dec 2025");
   expect(formatShortDate(null, { fallback: "--" })).toBe("--");
   expect(formatShortDate("not a date")).toBe("-");
 });
@@ -78,19 +78,30 @@ test("feed times read as a clock today, a weekday this week and a date before", 
     [new Date(2026, 8, 28, 23, 59), "Mon 23:59"],
     // Six days back is the last day a weekday names; a week back is a date.
     [new Date(2026, 8, 23, 9, 10), "Wed 09:10"],
-    [new Date(2026, 8, 22, 9, 10), "Sep 22"],
-    [new Date(2025, 8, 18, 8, 0), "Sep 18, 25"],
+    [new Date(2026, 8, 22, 9, 10), "22 Sep"],
+    [new Date(2025, 8, 18, 8, 0), "18 Sep 25"],
     // A clock ahead of ours never reads as a weekday or a time.
-    [new Date(2026, 8, 30, 1, 0), "Sep 30"],
+    [new Date(2026, 8, 30, 1, 0), "30 Sep"],
   ];
   for (const [date, label] of cases) expect(formatFeedTime(date, now)).toBe(label);
   expect(formatFeedTime("not a date", now)).toBe("-");
 });
 
 test("a detail date names its zone, so a story read beside a list in UTC is not two hours off", () => {
-  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "UTC")).toBe("Oct 7, 2026 at 21:38 UTC");
-  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "Europe/Berlin")).toBe("Oct 7, 2026 at 23:38 GMT+2");
-  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "America/New_York")).toBe("Oct 7, 2026 at 17:38 EDT");
+  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "UTC")).toBe("7 Oct 2026, 21:38 UTC");
+  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "Europe/Berlin")).toBe("7 Oct 2026, 23:38 GMT+2");
+  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "America/New_York")).toBe("7 Oct 2026, 17:38 EDT");
   // A same-day coverage time, beside the story's dated header, names its zone too.
   expect(formatDetailTime("2026-10-07T21:38:00Z", "-", "Europe/Berlin")).toBe("23:38 GMT+2");
+});
+
+test("calendar dates consistently read day-first", () => {
+  const day = new Date(2026, 0, 5, 12);
+  expect(formatShortDate(day)).toBe("5 Jan 2026");
+  expect(formatShortDate(day, { day: "2-digit" })).toBe("05 Jan 2026");
+  expect(formatShortDate(day, { year: false })).toBe("5 Jan");
+  expect(formatFilingDate("2026-11-04")).toBe("04 Nov 2026");
+  expect(formatDetailDate("2026-10-07T22:38:00Z", "-", "Europe/Berlin")).toBe("8 Oct 2026, 00:38 GMT+2");
+  expect(formatWeekdayDay("2026-10-16T00:00:00Z", { timeZone: "UTC" })).toBe("Fri 16 Oct");
+  expect(formatWeekdayDay("2027-10-16T00:00:00Z", { timeZone: "UTC", year: true })).toBe("Sat 16 Oct 2027");
 });

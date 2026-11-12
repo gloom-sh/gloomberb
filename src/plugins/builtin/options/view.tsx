@@ -4,6 +4,7 @@ import { usePaneAppConfig, usePaneSettingValue, usePaneTicker, useUpdatePaneSett
 import { colors, priceColor } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
 import { formatCompact, formatPercentRaw } from "../../../utils/format";
+import { formatShortDate } from "../../../utils/datetime-format";
 import { formatMarketPrice, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../market-data/market/format";
 import { getRegularSessionDisplay } from "../../../market-data/market/status";
 import { chainOptionContract, formatExpDate, formatStrikeLabel, optionContractName, resolveOptionsTarget } from "../../../utils/options";
@@ -189,7 +190,7 @@ function optionsSummaryItems({ spot, summary, enrichment, currency, ivRank }: {
     { id: "iv-hv", label: "IV/HV", value: formatRatio(summary?.impliedHistoricalRatio) },
     ...(ivRank ? [{
       id: "ivr", label: "IVR", value: whole(rank?.rank),
-      detail: rank ? `pctl ${whole(rank.percentile)} · ${rank.date.slice(5)}` : undefined,
+      detail: rank ? `pctl ${whole(rank.percentile)} · ${formatShortDate(rank.date, { year: false, utc: true })}` : undefined,
     }] : []),
     { id: "straddle", label: "Straddle", ...move(enrichment?.expectedMove.straddle, enrichment?.expectedMove.straddlePercent) },
     { id: "sigma", label: "1σ fit", ...move(enrichment?.expectedMove.sigma, enrichment?.expectedMove.sigmaPercent) },

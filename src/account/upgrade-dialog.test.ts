@@ -18,9 +18,9 @@ describe("upgrade sheet copy", () => {
   test("promises a free start only when the server confirmed the trial", () => {
     const trial = upgradeDialogCopy(offer({}), "month", now);
     expect(trial.subtitle).toBe(
-      "Pro is free for 7 days. $0 today, then $70/mo from Oct 6. Card required. Cancel before and you pay nothing.",
+      "Pro is free for 7 days. $0 today, then $70/mo from 6 Oct. Card required. Cancel before and you pay nothing.",
     );
-    expect(upgradeDialogCopy(offer({}), "year", now).subtitle).toContain("then $630/yr from Oct 6");
+    expect(upgradeDialogCopy(offer({}), "year", now).subtitle).toContain("then $630/yr from 6 Oct");
 
     // Trial used: checkout bills on the spot. Unknown: it might.
     for (const trialAvailable of [false, null]) {

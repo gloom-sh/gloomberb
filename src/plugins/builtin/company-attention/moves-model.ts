@@ -1,3 +1,4 @@
+import { formatShortDate } from "../../../utils/datetime-format";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { HiringCompanyMoves, HiringMove, HiringMoveExclusion, HiringMoveFlag, HiringMovePosting, HiringMovesBoard, HiringMovesFilter } from "../../../api-client/hiring";
 import { formatNumber } from "../../../utils/format";
@@ -48,11 +49,10 @@ function alertText(move: HiringMove): string | null {
   return move.confirmed ? `Alerting: the signal has held since ${move.signalSince?.slice(0, 16).replace("T", " ") ?? "--"} UTC` : "Waits for a pass 12 hours on to keep it";
 }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-/** "Oct 12": the Monday a UTC week starts on. */
+/** "12 Oct": the Monday a UTC week starts on. */
 function weekLabel(week: string | null | undefined): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(week ?? "");
-  return match ? `${MONTHS[Number(match[2]) - 1]} ${Number(match[3])}` : "--";
+  return match ? formatShortDate(match[0], { year: false, utc: true, fallback: "--" }) : "--";
 }
 /** 3.4x, 0.4x, 74x: a pace against an average. */
 const pace = (value: number | null | undefined) => value == null ? "--" : `${formatNumber(value, Math.abs(value) >= 10 ? 0 : 1)}x`;

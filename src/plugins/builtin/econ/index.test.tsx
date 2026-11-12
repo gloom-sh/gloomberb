@@ -170,7 +170,7 @@ describe("EconCalendarPane", () => {
     expect(frame).toContain("Release 39 m/m");
     expect(frame).not.toContain("Release 0 m/m");
     // Nothing is listed ahead, which the footer says rather than leaving a quiet week.
-    expect(frame).toMatch(/No events listed after \w{3} \w{3} \d+/);
+    expect(frame).toMatch(/No events listed after \w{3} \d+ \w{3}/);
   });
 
   // NOW a few rows down would leave Friday's last releases on top of a Saturday.
@@ -205,7 +205,7 @@ describe("EconCalendarPane", () => {
     const localClock = `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
     const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const separator = `TODAY · ${days[at.getUTCDay()]} ${months[at.getUTCMonth()]} ${at.getUTCDate()}`;
+    const separator = `TODAY · ${days[at.getUTCDay()]} ${at.getUTCDate()} ${months[at.getUTCMonth()]}`;
 
     const persistence = new MemoryPluginPersistence();
     persistence.seedResource("calendar", "global", [{
@@ -299,7 +299,7 @@ describe("EconCalendarPane", () => {
     attachEconCalendarPersistence(persistence);
     const registry = createRemoteUiRegistry();
     const frame = await renderPane(160, "all", true, { country: "MX,TR", tabAt: "5" }, undefined, registry);
-    expect(frame).toContain("releases listed through Fri Sep 4, then each bank's next decision");
+    expect(frame).toContain("releases listed through Fri 4 Sep, then each bank's next decision");
     expect(frame).not.toContain("No events listed after");
     expect(renderedReportNotices(registry.snapshot())).toMatchObject({
       notices: expect.arrayContaining(["No releases listed after 2026-09-04; the rows after it are each central bank's next decision."]),

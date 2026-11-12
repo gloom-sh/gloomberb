@@ -397,7 +397,7 @@ test("a calendar answered at the server's limit is cut, says so, and stays so fr
   const client = clientWith(async () => answer());
   const cut = await loadUpcomingCallsWithClient(client, days);
   expect(cut.truncated).toBe(true);
-  expect(upcomingCutNotice(cut.calls)).toBe("The calendar stops at 1,500 calls: later calls from Oct 23 on may be missing.");
+  expect(upcomingCutNotice(cut.calls)).toBe("The calendar stops at 1,500 calls: later calls from 23 Oct on may be missing.");
   expect((await loadUpcomingCallsWithClient(client, days)).truncated).toBe(true);
   answer = async () => { throw new ApiRequestError("Controlled outage", 503); };
   expect(await loadUpcomingCallsWithClient(client, days, { force: true })).toMatchObject({ stale: true, truncated: true });

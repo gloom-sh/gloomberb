@@ -75,7 +75,7 @@ export function quoteSpread(row: TapeQuote) {
 const NEW_YORK_CLOCK = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
 });
-const NEW_YORK_DAY = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" });
+const NEW_YORK_DAY = new Intl.DateTimeFormat("en-GB", { timeZone: "America/New_York", month: "short", day: "numeric" });
 const toMs = (value: string) => new Date(value.replace(/(\.\d{3})\d+/, "$1"));
 /** Tape rows on New York time, the market's own clock, to the millisecond. */
 export function tapeClockNewYork(value: string): string {
@@ -83,7 +83,7 @@ export function tapeClockNewYork(value: string): string {
   if (Number.isNaN(date.getTime())) return tapeClockMs(value);
   return `${NEW_YORK_CLOCK.format(date)}.${/\.(\d{3})/.exec(value)?.[1] ?? "000"}`;
 }
-/** A footer stamp on New York time: "Sep 28 19:59:54 ET". */
+/** A footer stamp on New York time: "28 Sep 19:59:54 ET". */
 export function tapeStampNewYork(value: string | null): string {
   if (!value) return "--";
   const date = toMs(value);

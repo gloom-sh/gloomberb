@@ -463,12 +463,12 @@ test("a bare symbol whose listing stopped asks after the live company search nam
   const live = createTestQuote({ symbol: "D05", name: "DBS Group Holdings Ltd.", currency: "SGD", exchangeName: "SGX" });
   const asked = await runQuote(["DBS"], { dataProvider: answering(live), batches: [], searches: () => 0 });
   expect(asked.warnings).toContain(
-    "DBS (Invesco DB Silver Fund): Delisted Mar 3, 2023 (last price $28.68). Did you mean D05:SGX (DBS Group Holdings Ltd.)?");
+    "DBS (Invesco DB Silver Fund): Delisted 3 Mar 2023 (last price $28.68). Did you mean D05:SGX (DBS Group Holdings Ltd.)?");
   // A company whose line stopped too is no answer, and a listing named by its venue is the one meant.
   const stopped = { ...live, lastUpdated: lastTrade, lastTradeTime: lastTrade, stale: true };
   for (const [args, bank] of [[["DBS"], stopped], [["DBS:ARCA"], live]] as const) {
     const answer = await runQuote([...args], { dataProvider: answering(bank), batches: [], searches: () => 0 });
-    expect(answer.warnings.some((warning) => warning.includes("Delisted Mar 3, 2023"))).toBe(true);
+    expect(answer.warnings.some((warning) => warning.includes("Delisted 3 Mar 2023"))).toBe(true);
     expect(answer.warnings.join("\n")).not.toContain("Did you mean");
   }
 });

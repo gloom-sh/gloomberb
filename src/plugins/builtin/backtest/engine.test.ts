@@ -161,7 +161,7 @@ test("a run over a listing that no longer trades ends on its last session and sa
   const history = { symbol: "SIVB", bars: sessions, skippedDates: [], undatedSkipped: 0,
     delisting: { status: "delisted" as const, lastTradeDate: "2023-03-09", historyStart: "2021-01-04" } };
   const rules = [parseRule("close > sma(20)"), parseRule("close < sma(20)")] as const;
-  const ended = "SIVB: Delisted Mar 9, 2023. The run ends on its last session, 2023-03-09, and a position still held"
+  const ended = "SIVB: Delisted 9 Mar 2023. The run ends on its last session, 2023-03-09, and a position still held"
     + " is valued at that close, not at anything holders received after it.";
   // Through the newest session, or to an end after it: no later session will come, so the run is repeatable now.
   for (const end of [null, "2023-12-31"]) {
@@ -170,7 +170,7 @@ test("a run over a listing that no longer trades ends on its last session and sa
   }
   // 2021 to 2022 ends before the last session: an ordinary run, still naming the listing as delisted.
   const year = runHistoryBacktest(history, ...rules, { lookbackYears: null, costBps: 5, end: "2022-12-31" });
-  expect([year.end, year.repeatable, year.warnings]).toEqual(["2022-12-30", true, ["SIVB: Delisted Mar 9, 2023."]]);
+  expect([year.end, year.repeatable, year.warnings]).toEqual(["2022-12-30", true, ["SIVB: Delisted 9 Mar 2023."]]);
 });
 
 test("sessions served without a positive close are warned by date, a long list shortened", () => {

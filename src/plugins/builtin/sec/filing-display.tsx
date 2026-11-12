@@ -1,13 +1,10 @@
+import { formatFilingDate } from "../../../utils/datetime-format";
 import { EmptyState } from "../../../components";
 import { formatCompact, formatCurrency, formatNumber } from "../../../utils/format";
 import { transactionTypeLabel, type InsiderTransaction } from "../insider/insider-data";
 
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
-
 export function formatFilingShortDate(value: Date | string | number): string {
-  const date = value instanceof Date ? value : new Date(value);
-  if (isNaN(date.getTime())) return "—";
-  return `${MONTH_NAMES[date.getUTCMonth()]} ${String(date.getUTCDate()).padStart(2, " ")} ${date.getUTCFullYear()}`;
+  return formatFilingDate(value);
 }
 
 export function formatFilingFormLabel(form: string, fallback = "FORM 4"): string {

@@ -140,7 +140,7 @@ describe("resolvePortfolioAccountState", () => {
     });
 
     expect(accountState?.account.netLiquidation).toBe(123456);
-    expect(accountState?.sourceLabel).toBe("Flex May 14");
+    expect(accountState?.sourceLabel).toBe("Flex 14 May");
   });
 
   test("uses the account as-of date when choosing the freshest cached Flex account", () => {
@@ -196,7 +196,7 @@ describe("resolvePortfolioAccountState", () => {
     });
 
     expect(accountState?.account.netLiquidation).toBe(200000);
-    expect(accountState?.sourceLabel).toBe("Flex Jun 16");
+    expect(accountState?.sourceLabel).toBe("Flex 16 Jun");
   });
 
 });

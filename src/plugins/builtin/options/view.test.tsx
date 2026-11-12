@@ -234,7 +234,7 @@ test("Enter opens the cursor's contract on its broker, and with trading t opens 
   await act(async () => { await tui.emitKeypress({ name: "return" }); });
   const contract = { brokerId: "demo", brokerInstanceId: "sim", symbol: "AAPL", localSymbol: "AAPL260619C00100000", secType: "OPT", currency: "USD",
     lastTradeDateOrContractMonth: "20260619", right: "C" as const, strike: 100, multiplier: "100" };
-  expect(pinned[0]).toEqual({ symbol: "AAPL260619C00100000", options: { instrument: contract, listing: { name: "AAPL Jun 19 '26 $100 Call", exchange: "", currency: "USD", type: "OPT" } } });
+  expect(pinned[0]).toEqual({ symbol: "AAPL260619C00100000", options: { instrument: contract, listing: { name: "AAPL 19 Jun '26 $100 Call", exchange: "", currency: "USD", type: "OPT" } } });
   await act(async () => { await tui.emitKeypress({ name: "t" }); });
   expect(pinned[1]).toMatchObject({ symbol: "AAPL260619C00100000", options: { instrument: contract, tabId: "broker-trade" } });
   // The ticket opens on Buy and chooses the side itself.

@@ -118,7 +118,7 @@ test("an explicit interval on a range longer than the source keeps charts the re
   setSystemTime(NOW);
   const firstBar = proof().availableStart + STEP;
   const { provider, calls, data } = limited({ data: history(firstBar) }), cache = new ChartResolveCache();
-  const notice = "15m history starts Jul 24; the source keeps the last 60 days.";
+  const notice = "15m history starts 24 Jul; the source keeps the last 60 days.";
   const result = await resolveChartSpecData(chart("RETENTION", "15m", "3M"), sources(provider), cache, { awaitResolutionSupport: true });
   expect(result.errors).toEqual([]);
   expect(result.resolution).toBe("15m");
@@ -151,7 +151,7 @@ test("bars built from retained bars start where the source's bars do and keep th
   const result = await resolveChartSpecData(chart("RETENTION", "2h", "3M"), sources(provider), undefined, { awaitResolutionSupport: true });
   expect(calls.map(call => call.kind)).toEqual(["15m", "recovery"]);
   expect(result.errors).toEqual([]);
-  expect(retentionNotices(result.warnings)).toEqual(["2h history starts Jul 24; the source keeps the last 60 days."]);
+  expect(retentionNotices(result.warnings)).toEqual(["2h history starts 24 Jul; the source keeps the last 60 days."]);
   const closes = result.series.find(series => series.id === "close")!;
   expect(closes.barSize).toBe("2h");
   // Eight 15-minute bars to a bar, from midnight for a coin: the first retained bar (12:15) joins the 12:00 bar.
@@ -175,7 +175,7 @@ test("zooming out or panning left past the first retained bar keeps the retained
     const { provider, calls, data } = limited({ data: history(firstBar) });
     const result = await moved(provider, viewport);
     expect(result.errors).toEqual([]);
-    expect(retentionNotices(result.warnings)).toEqual(["15m history starts Jul 24; the source keeps the last 60 days."]);
+    expect(retentionNotices(result.warnings)).toEqual(["15m history starts 24 Jul; the source keeps the last 60 days."]);
     expect(result.viewport).toEqual(viewport);
     expect(result.series.find(series => series.id === "close")!.points).toHaveLength(data.filter(point => point.date <= viewport.end).length);
     // One request, inside the validated evidence. A view in the past asks for half a view past its end too.
@@ -267,10 +267,10 @@ test("a listing without a retention limit keeps its whole range at an explicit i
 
 test("the retained window's first day reads in the listing's zone", () => {
   const evidence = { ...proof(), availableStart: Date.parse("2026-08-03T22:30:00Z"), observedAt: Date.parse("2026-10-02T22:30:00Z") };
-  expect(historyRetentionNotice(evidence, "30m", "Europe/Helsinki")).toBe("30m history starts Aug 4; the source keeps the last 60 days.");
-  expect(historyRetentionNotice(evidence, "30m", null)).toBe("30m history starts Aug 3; the source keeps the last 60 days.");
+  expect(historyRetentionNotice(evidence, "30m", "Europe/Helsinki")).toBe("30m history starts 4 Aug; the source keeps the last 60 days.");
+  expect(historyRetentionNotice(evidence, "30m", null)).toBe("30m history starts 3 Aug; the source keeps the last 60 days.");
   const lastYear = { ...evidence, availableStart: Date.parse("2025-12-20T12:00:00Z"), observedAt: Date.parse("2026-01-02T12:00:00Z") };
-  expect(historyRetentionNotice(lastYear, "1m", "Europe/Helsinki")).toBe("1m history starts Dec 20, 2025; the source keeps the last 13 days.");
+  expect(historyRetentionNotice(lastYear, "1m", "Europe/Helsinki")).toBe("1m history starts 20 Dec 2025; the source keeps the last 13 days.");
 });
 
 test("Auto stops after the scoped recovery fails instead of replaying unqualified source chains", async () => {

@@ -922,7 +922,7 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     const frame = await tui.waitForFrameToContain("[b] reconnect");
     expect(frame).toContain("AAPL");
-    expect(frame).toContain("as of Oct 17 14:02");
+    expect(frame).toContain("as of 17 Oct 14:02");
     expect(frame).toContain("IBKR disconnected");
     expect(frame).not.toContain("Acct missing");
 
@@ -975,7 +975,7 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     const frame = await tui.waitForFrameToContain("[b] enable");
     expect(frame).toContain("AAPL");
-    expect(frame).toContain("as of Oct 17 14:02");
+    expect(frame).toContain("as of 17 Oct 14:02");
     expect(frame).toContain("IBKR disabled");
     expect(calls).toEqual([]);
 
@@ -1601,7 +1601,7 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(frame).toContain("Cash & Margin");
     expect(frame.match(/Cash -50,000/g)).toHaveLength(1);
     expect(frame.match(/Net Liq 125,000/g)).toHaveLength(1);
-    expect(frame).toContain("Flex Mar 27");
+    expect(frame).toContain("Flex 27 Mar");
     expect(frame).toContain("-351,957.025");
     expect(frame).not.toContain("Avail");
     expect(frame).not.toContain("JPY");
@@ -2362,7 +2362,7 @@ describe("PortfolioListPane perpetual columns", () => {
     await flushFrame();
     const row = tui.frame().split("\n").find((line) => line.includes("AAPL"))!;
     expect(row).toContain("AAPL C $300 Dec'26");
-    expect(row).toContain("AAPL Dec 18 '26");
+    expect(row).toContain("AAPL 18 Dec '26");
     expect(row).not.toContain("261218C");
   });
 

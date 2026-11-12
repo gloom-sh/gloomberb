@@ -116,19 +116,19 @@ export function doeReport(payload: DoeBoardPayload, tab: DoeTab): DoeReportStatu
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** "Sep 25" from a calendar date. */
+/** "25 Sep" from a calendar date. */
 function doeDay(date: string): string {
   const [, month, day] = date.split("-").map(Number) as [number, number, number];
-  return `${MONTHS[month - 1]} ${day}`;
+  return `${day} ${MONTHS[month - 1]}`;
 }
 
-/** A release instant on the EIA's own clock: "Wed Sep 30 10:30 ET". */
+/** A release instant on the EIA's own clock: "Wed 30 Sep 10:30 ET". */
 function doeReleaseTime(iso: string): string {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric",
     hour: "2-digit", minute: "2-digit", hourCycle: "h23",
   }).formatToParts(new Date(iso)).map((part) => [part.type, part.value]));
-  return `${parts.weekday} ${parts.month} ${parts.day} ${parts.hour}:${parts.minute} ET`;
+  return `${parts.weekday} ${parts.day} ${parts.month} ${parts.hour}:${parts.minute} ET`;
 }
 
 /** The calendar's expectation for the next gas release, as the 1W change column reads it: "consensus +80 Bcf, prior +77 Bcf". */

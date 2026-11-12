@@ -1,3 +1,4 @@
+import { formatWeekdayDay } from "../../../utils/datetime-format";
 // Alerts a number of days before a dated event: a company's next earnings, or
 // a release in the economic calendar, CPI and FOMC among them. An earnings
 // rule can instead go off once the report's actual EPS is out; a release also
@@ -206,13 +207,12 @@ export function rearmScheduledAlert(rule: EventAlertRule, now = Date.now()): Eve
   return { ...rest, status: "active", createdAt: rule.status === "paused" ? now : rule.createdAt };
 }
 
-/** "Mon, Nov 9" for a calendar day. */
+/** "Mon 9 Nov" for a calendar day. */
 function formatEventDay(date: string): string {
-  return new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" })
-    .format(new Date(`${date}T00:00:00Z`));
+  return formatWeekdayDay(`${date}T00:00:00Z`, { timeZone: "UTC" });
 }
 
-/** The notification: "CRWV earnings in 3 days, Mon, Nov 9", "CPI release tomorrow, Wed, Oct 14". */
+/** The notification: "CRWV earnings in 3 days, Mon 9 Nov", "CPI release tomorrow, Wed 14 Oct". */
 export function scheduledAlertMessage(target: ScheduledEventTarget, eventDate: string, today: string): string {
   const days = daysBetween(today, eventDate);
   const when = days <= 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;

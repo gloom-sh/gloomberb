@@ -1,3 +1,4 @@
+import { formatShortDate } from "../../utils/datetime-format";
 /** @jsxImportSource react */
 import type { CSSProperties } from "react";
 import type { DockLayoutNode, PaneInstanceConfig } from "../../types/config";
@@ -79,7 +80,7 @@ function formatDate(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? ""
-    : date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    : formatShortDate(date);
 }
 
 export function LayoutShareView({

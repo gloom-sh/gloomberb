@@ -176,7 +176,7 @@ test("an empty ranking, a load, a failure and a refused session each say so in t
   seed = { "social-mentions:outliers:minPosts": 0 };
   await mount(async (params) => answer(params, []));
   expect(asked).toEqual([{ window: "day", limit: 100 }]);
-  expect(tui.frame()).toContain("No ticker has been counted since Nov 3, 2026.");
+  expect(tui.frame()).toContain("No ticker has been counted since 3 Nov 2026.");
   // The query bar stays, so another window is one click away.
   expect(tui.frame()).toContain("Today");
 

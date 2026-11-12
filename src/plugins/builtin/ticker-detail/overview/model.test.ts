@@ -81,7 +81,7 @@ test("holdings and short interest read as fractions; blank, zero and past figure
     institutionPercentHeld: 0.71417, insiderPercentHeld: 0.04007, exDividendDate: "2026-09-10",
   }, { date: "2026-11-18", timing: "amc", timingSource: "history" })).toEqual({
     Float: "23.13B", Beta: "2.22", "Short Float": "1.27% 2.3d to cover",
-    "Inst Own": "71.42%", "Insider Own": "4.01%", "Ex-Dividend": "Sep 10", Earnings: "Nov 18 AMC in 49d",
+    "Inst Own": "71.42%", "Insider Own": "4.01%", "Ex-Dividend": "10 Sep", Earnings: "18 Nov AMC in 49d",
   });
   expect(figures({ floatShares: 0, beta: Number.NaN, exDividendDate: "" },
     { date: "2026-09-29", timing: null, timingSource: null })).toEqual({});

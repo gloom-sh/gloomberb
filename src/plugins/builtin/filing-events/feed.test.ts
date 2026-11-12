@@ -41,8 +41,8 @@ describe("buildFilingEventsFeed", () => {
       `], { env: { ...process.env, TZ: timezone } });
       expect(result.exitCode).toBe(0);
       const feed = JSON.parse(result.stdout.toString());
-      expect(feed.entries.map((entry: { filedLabel: string }) => entry.filedLabel)).toEqual(["Sep 01, 2026", "Sep 01, 2026", "Sep 01, 2026"]);
-      expect(feed.entries[0].people[0].detail).toBe("CEO, joined, effective Sep 01, 2026");
+      expect(feed.entries.map((entry: { filedLabel: string }) => entry.filedLabel)).toEqual(["01 Sep 2026", "01 Sep 2026", "01 Sep 2026"]);
+      expect(feed.entries[0].people[0].detail).toBe("CEO, joined, effective 01 Sep 2026");
     }
   });
 
@@ -54,9 +54,9 @@ describe("buildFilingEventsFeed", () => {
         { name: "Invalid", role: "CFO", action: "joined", effective: "2026-02-29" },
       ],
     })], 80);
-    expect(feed.entries[0]?.filedLabel).toBe("Feb 29, 2024");
+    expect(feed.entries[0]?.filedLabel).toBe("29 Feb 2024");
     expect(feed.entries[0]?.people.map((person) => person.detail)).toEqual([
-      "CEO, joined, effective Feb 29, 2024", "CFO, joined, effective —",
+      "CEO, joined, effective 29 Feb 2024", "CFO, joined, effective —",
     ]);
   });
 
@@ -76,9 +76,9 @@ describe("buildFilingEventsFeed", () => {
         { name: "Art Levinson", role: "Lead Independent Director", action: "joined", effective },
       ],
     })], 120))).toEqual([
-      "Tim Cook: Chief Executive Officer → Executive Chair, effective Sep 01, 2026",
-      "John Ternus: Chief Executive Officer, joined; Member of the Board, appointed director, effective Sep 01, 2026",
-      "Art Levinson: Chair of the Board → Lead Independent Director, effective Sep 01, 2026",
+      "Tim Cook: Chief Executive Officer → Executive Chair, effective 01 Sep 2026",
+      "John Ternus: Chief Executive Officer, joined; Member of the Board, appointed director, effective 01 Sep 2026",
+      "Art Levinson: Chair of the Board → Lead Independent Director, effective 01 Sep 2026",
     ]);
   });
 

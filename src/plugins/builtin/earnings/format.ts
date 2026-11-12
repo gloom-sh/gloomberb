@@ -1,3 +1,4 @@
+import { formatShortDate } from "../../../utils/datetime-format";
 import type { EarningsTiming } from "../../../api-client/earnings";
 import { formatCompact, formatNumber } from "../../../utils/format";
 
@@ -8,13 +9,12 @@ const utcDate = (date: string) => new Date(`${date}T00:00:00Z`);
 
 export const TIMING_LABEL: Record<EarningsTiming, string> = { bmo: "BMO", dmh: "DMH", amc: "AMC" };
 
-/** "Oct 29" */
+/** "29 Oct" */
 export function shortDate(date: string): string {
-  const day = utcDate(date);
-  return `${MONTHS[day.getUTCMonth()]} ${day.getUTCDate()}`;
+  return formatShortDate(utcDate(date), { year: false, utc: true });
 }
 
-/** "Oct 29 '26" */
+/** "29 Oct '26" */
 export function datedYear(date: string): string {
   return `${shortDate(date)} '${date.slice(2, 4)}`;
 }

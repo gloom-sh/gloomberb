@@ -86,7 +86,7 @@ test("a card of a listing that no longer trades says when, not that its quote is
   try {
     const entry = { ...createIdleEntry<Quote>(), phase: "ready" as const, data: quote };
     const card = await renderCard(entry, 40, 4);
-    expect(card).toContain("Delisted Oct 27, 2022");
+    expect(card).toContain("Delisted 27 Oct 2022");
     expect(card).not.toContain("Stale quote");
     // Its last close alone: no move, not even a dash for one.
     for (const move of ["+0.96%", "+0.51", "—"]) expect(card).not.toContain(move);

@@ -124,7 +124,7 @@ test("ranks companies; Enter opens the company's own INS here, on its insiders, 
   expect(frame).toMatch(/SCORE ▼\s+ROLE\s+NTH\s+VS USUAL\s+STAKE\s+BUYERS\s+BOUGHT\s+LAST BUY/);
   expect(frame).toMatch(/NWBI\s+Northwind Biologics Inc\s+78\s+CEO \+2\s+--\s+--\s+--\s+3\s+\$1\.15M/);
   expect(frame).toMatch(/CTSO\s+Contoso Energy Corp\s+72\s+CEO\s+--\s+--\s+--\s+1\s+\$610\.0k/);
-  expect(frame).toContain("as of Oct 14, 2026");
+  expect(frame).toContain("as of 14 Oct 2026");
   // Footers follow the conventions: no generic key hints for Enter or Esc, and no second way into the same INS.
   expect(frame).not.toContain("[Enter]");
   expect(frame).not.toContain("[i]ns");
@@ -240,12 +240,12 @@ test("the footer warns when the window reaches past the filings read, or none ha
   const notice = (window: number, from: string | null) => insiderSignalsCoverageNotice({ window, through: "2026-10-15", coverage: { from, through: from ? "2026-10-14" : null } });
   expect(notice(30, "2026-08-31")).toBeNull();
   expect(notice(30, "2026-09-16")).toBeNull();
-  expect(notice(30, "2026-09-17")).toBe("Form 4 filings are read from Sep 17, 2026, so this window leaves out buying before then.");
+  expect(notice(30, "2026-09-17")).toBe("Form 4 filings are read from 17 Sep 2026, so this window leaves out buying before then.");
   expect(notice(7, "2026-10-01")).toBeNull();
   expect(notice(7, null)).toBe("Form 4 filings are still being read, so this ranking may leave out buying.");
 
   await mount(async (window) => ({ ...payload(window), coverage: { from: null, through: null } }));
-  expect(tui.frame()).toContain("[!] as of Oct 14, 2026");
+  expect(tui.frame()).toContain("[!] as of 14 Oct 2026");
   insiderSignalsCache.reset();
   await mount(async (window) => payload(window));
   expect(tui.frame()).not.toContain("[!]");
@@ -257,12 +257,12 @@ test("the footer warns when days in the window were left unread by an outage", a
   // Servers that predate the list, and gaps outside the window, say nothing.
   expect(notice(30, "2026-08-31")).toBeNull();
   expect(notice(7, "2026-08-31", ["2026-09-28", "2026-09-29"])).toBeNull();
-  expect(notice(30, "2026-08-31", ["2026-09-28"])).toBe("Form 4 filings for Sep 28, 2026 are not read yet, so this ranking may leave out buying.");
+  expect(notice(30, "2026-08-31", ["2026-09-28"])).toBe("Form 4 filings for 28 Sep 2026 are not read yet, so this ranking may leave out buying.");
   expect(notice(30, "2026-08-31", ["2026-09-28", "2026-09-29"])).toBe("Form 4 filings for 2 days in this window are not read yet, so this ranking may leave out buying.");
-  expect(notice(90, "2026-09-17", ["2026-09-28"])).toBe("Form 4 filings are read from Sep 17, 2026, and 1 day since is not read yet, so this ranking may leave out buying.");
+  expect(notice(90, "2026-09-17", ["2026-09-28"])).toBe("Form 4 filings are read from 17 Sep 2026, and 1 day since is not read yet, so this ranking may leave out buying.");
 
   await mount(async (window) => ({ ...payload(window), coverage: { from: "2026-08-31", through: "2026-10-14", missingDays: ["2026-09-28"] } }));
-  expect(tui.frame()).toContain("[!] as of Oct 14, 2026");
+  expect(tui.frame()).toContain("[!] as of 14 Oct 2026");
 });
 
 test("a narrow pane drops the size against usual, then the nth trade, then the company and the counts", () => {

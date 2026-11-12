@@ -1,3 +1,4 @@
+import { formatShortDate } from "../../../utils/datetime-format";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { HiringCompanySignals, HiringMovePosting, HiringSignalFlag, HiringSignalGroup, HiringSignalHold, HiringSignalKind, HiringSignalSkip, HiringSignalsBoard, HiringSignalsFilter, HiringWeekSignal } from "../../../api-client/hiring";
 import { formatNumber } from "../../../utils/format";
@@ -49,11 +50,10 @@ export const holdText = (hold: HiringSignalHold) => HOLD_LABELS[hold] ?? humanLa
 const skipText = (skips: readonly HiringSignalSkip[]) => skips.map((skip) => SKIP_LABELS[skip] ?? humanLabel(skip)).join(", ");
 const isFirst = (signal: Pick<HiringWeekSignal, "kind">) => signal.kind === "new_country" || signal.kind === "new_city" || signal.kind === "new_role_type";
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-/** "Oct 12": a week's Monday or a first read's day. */
+/** "12 Oct": a week's Monday or a first read's day. */
 function dayLabel(value: string | null | undefined, year = false): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? "");
-  return match ? `${MONTHS[Number(match[2]) - 1]} ${Number(match[3])}${year ? `, ${match[1]}` : ""}` : "--";
+  return match ? formatShortDate(match[0], { year: year ? "numeric" : false, utc: true, fallback: "--" }) : "--";
 }
 const pace = (value: number | null | undefined) => value == null ? "--" : `${formatNumber(value, Math.abs(value) >= 10 ? 0 : 1)}x`;
 const count = (value: number | null | undefined) => value == null ? "--" : formatNumber(value, 0);
@@ -71,7 +71,7 @@ export function signalsNumber(columnId: string, value: number): string {
   return count(value);
 }
 
-/** How far back "never" goes for this company: "Sep 17, 2026, none of 703 earlier postings (98% placed)". */
+/** How far back "never" goes for this company: "17 Sep 2026, none of 703 earlier postings (98% placed)". */
 function neverText(signal: HiringWeekSignal): string {
   const what = signal.dimension === "function" ? "with a role family" : signal.dimension === "city" ? "naming a city" : "placed";
   return `${dayLabel(signal.history.watchedSince, true)}, none of ${count(signal.history.priorPostings)} earlier postings (${percent(signal.history.priorShare)} ${what})`;

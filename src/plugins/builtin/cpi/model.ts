@@ -107,19 +107,19 @@ export function cpiMonth(period: string): string {
   return `${MONTHS[Number(period.slice(5, 7)) - 1]} ${period.slice(0, 4)}`;
 }
 
-/** A release instant on BLS's own clock: "Wed Oct 14 08:30 ET". */
+/** A release instant on BLS's own clock: "Wed 14 Oct 08:30 ET". */
 function releaseTime(iso: string): string {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric",
     hour: "2-digit", minute: "2-digit", hourCycle: "h23",
   }).formatToParts(new Date(iso)).map((part) => [part.type, part.value]));
-  return `${parts.weekday} ${parts.month} ${parts.day} ${parts.hour}:${parts.minute} ET`;
+  return `${parts.weekday} ${parts.day} ${parts.month} ${parts.hour}:${parts.minute} ET`;
 }
 
 /**
  * The month the data covers, when it came out and when the next release is
- * due, on one line: "Aug 2026 · released Fri Sep 11 08:30 ET · next Wed Oct
- * 14 08:30 ET". A release past its time and not in yet reads "due".
+ * due, on one line: "Aug 2026 · released Fri 11 Sep 08:30 ET · next Wed
+ * 14 Oct 08:30 ET". A release past its time and not in yet reads "due".
  */
 export function cpiHeaderLine(release: CpiReleaseStatus, now = Date.now()): string | undefined {
   if (!release.period) return undefined;

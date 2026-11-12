@@ -139,8 +139,8 @@ test("discovery answered from its saved copy says when it was saved; standard re
   await key("r");
   const latest = frame();
   expect(latest).toContain("Only 2026 risk analysis");
-  expect(latest).toContain("Filed Feb 03, 2026");
-  expect(latest).toContain("updated Feb 04, 2026");
+  expect(latest).toContain("Filed 03 Feb 2026");
+  expect(latest).toContain("updated 04 Feb 2026");
   expect(latest).not.toContain("saved copy");
 
   await click("2025 10-K");
@@ -214,7 +214,7 @@ test("a 10-K that lists no risk factors says so, with its filing date and the fi
   await mount();
   const none = frame();
   expect(none).toContain("This 10-K lists no risk factors (the company is not required to).");
-  expect(none).toContain("2026 10-K · Filed Feb 03, 2026");
+  expect(none).toContain("2026 10-K · Filed 03 Feb 2026");
   // Nothing to list or compare: no section headings, no prior-year note.
   expect(none).not.toContain("What Dominates");
   expect(none).not.toContain("All Risk Factors");
@@ -269,7 +269,7 @@ test("in-memory report survives transient refresh with its source dates but clea
   const failed = frame();
   expect(failed).toContain("Only 2026 risk analysis");
   expect(failed).toContain("Temporary report outage");
-  expect(failed).toContain("Filed Feb 03, 2026");
+  expect(failed).toContain("Filed 03 Feb 2026");
 
   status = 402;
   await key("r");

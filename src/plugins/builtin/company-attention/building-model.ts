@@ -1,3 +1,4 @@
+import { formatShortDate } from "../../../utils/datetime-format";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { HiringBuildingBoard, HiringBuildingFilter, HiringBuildingHold, HiringBuildingShift, HiringBuildingSkip, HiringCompanyBuilding, HiringMixRow, HiringMovePosting } from "../../../api-client/hiring";
 import { formatNumber } from "../../../utils/format";
@@ -37,11 +38,10 @@ const buildingHoldText = (hold: HiringBuildingHold) => HOLD_LABELS[hold] ?? huma
 const skipText = (skips: readonly HiringBuildingSkip[]) => skips.map((skip) => SKIP_LABELS[skip] ?? humanLabel(skip)).join(", ");
 const kindText = (shift: Pick<HiringBuildingShift, "dimension">) => shift.dimension === "theme" ? "Theme" : "Role family";
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-/** "Oct 12": a week's Monday. */
+/** "12 Oct": a week's Monday. */
 function dayLabel(value: string | null | undefined, year = false): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? "");
-  return match ? `${MONTHS[Number(match[2]) - 1]} ${Number(match[3])}${year ? `, ${match[1]}` : ""}` : "--";
+  return match ? formatShortDate(match[0], { year: year ? "numeric" : false, utc: true, fallback: "--" }) : "--";
 }
 const count = (value: number | null | undefined) => value == null ? "--" : formatNumber(value, 0);
 /** A share: whole percents from 10%, a tenth under it. */

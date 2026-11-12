@@ -410,8 +410,8 @@ describe("PortfolioAnalyticsPane", () => {
     expect(frame).toMatch(figure("Avail", "15,000"));
     expect(frame).toMatch(figure("Excess", "12,000"));
     expect(frame).toMatch(figure("BP", "30,000"));
-    expect(frame).toMatch(figure("As Of", "Mar 26"));
-    expect(frame).toMatch(figure("Source", "Flex Mar 26"));
+    expect(frame).toMatch(figure("As Of", "26 Mar"));
+    expect(frame).toMatch(figure("Source", "Flex 26 Mar"));
   });
 
   test("falls back from a Gateway portfolio to a configured Flex profile for IBKR history", async () => {

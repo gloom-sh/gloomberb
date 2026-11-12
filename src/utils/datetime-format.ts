@@ -72,9 +72,9 @@ export function formatTimeAgo(date: Date | string, { short = false }: { short?: 
 }
 
 export interface ShortDateOptions {
-  /** "Jan 5, 2026" (the default), "Jan 5, 26", or no year at all ("Jan 5"). */
+  /** "5 Jan 2026" (the default), "5 Jan 26", or no year at all ("5 Jan"). */
   year?: "numeric" | "2-digit" | false;
-  /** "2-digit" pads the day so dates line up in a column ("Jan 05"). */
+  /** "2-digit" pads the day so dates line up in a column ("05 Jan"). */
   day?: "numeric" | "2-digit";
   /** Read the day in UTC, for date-only values that name a calendar day rather than an instant. */
   utc?: boolean;
@@ -84,7 +84,12 @@ export interface ShortDateOptions {
 
 const shortDateFormatters = new Map<string, Intl.DateTimeFormat>();
 
-/** A month-name date such as "Jan 5, 2026", in local time unless `utc` is set. */
+function dayFirstParts(formatter: Intl.DateTimeFormat, date: Date): string {
+  const parts = Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]));
+  return `${parts.weekday ? `${parts.weekday} ` : ""}${parts.day} ${parts.month}${parts.year ? ` ${parts.year}` : ""}`;
+}
+
+/** A day-first month-name date such as "5 Jan 2026", in local time unless `utc` is set. */
 export function formatShortDate(value: DisplayDateValue, options: ShortDateOptions = {}): string {
   const date = parseDisplayDate(value);
   if (!date) return options.fallback ?? "-";
@@ -100,11 +105,26 @@ export function formatShortDate(value: DisplayDateValue, options: ShortDateOptio
     });
     shortDateFormatters.set(key, formatter);
   }
-  return formatter.format(date);
+  return dayFirstParts(formatter, date);
+}
+
+const weekdayDayFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/** A weekday and day-first date ("Fri 16 Oct"), with a year only when asked for. */
+export function formatWeekdayDay(value: DisplayDateValue, { timeZone, year = false }: { timeZone?: string; year?: boolean } = {}): string {
+  const date = parseDisplayDate(value);
+  if (!date) return "-";
+  const key = `${timeZone ?? ""}:${year}`;
+  let formatter = weekdayDayFormatters.get(key);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-US", { weekday: "short", day: "numeric", month: "short", year: year ? "numeric" : undefined, timeZone });
+    weekdayDayFormatters.set(key, formatter);
+  }
+  return dayFirstParts(formatter, date);
 }
 
 /**
- * The day a filing is dated, as the agency and the filer write it: "Nov 04,
+ * The day a filing is dated, as the agency and the filer write it: "04 Nov
  * 2026", the day padded so a column of them lines up. A calendar day, read in
  * UTC, so it never moves with the viewer's zone: give it the filing date
  * (`2026-11-04`, or that day at midnight UTC), not an acceptance instant,
@@ -151,7 +171,7 @@ function utcMidnight(date: Date): number {
 /**
  * When a feed item was published, in local time, as a newswire prints it:
  * the time today ("14:32"), the weekday and time over the six days before
- * ("Mon 09:10"), and the date for anything older ("Sep 18", or "Sep 18, 25"
+ * ("Mon 09:10"), and the date for anything older ("18 Sep", or "18 Sep 25"
  * in another year). A weekday never names a day a week or more back. With
  * `utc`, the same in UTC, for a column whose header names the zone.
  */
@@ -178,7 +198,7 @@ export function formatFeedTime(
 }
 
 /**
- * A date and time in the host's zone, with the zone named: "Oct 7, 2026 at
+ * A date and time in the host's zone, with the zone named: "7 Oct 2026,
  * 23:38 GMT+2", "... 17:38 EDT", "... 21:38 UTC". Without the zone a
  * time read beside a list in UTC looks two hours off.
  */
@@ -186,13 +206,13 @@ export function formatDetailDate(value: DisplayDateValue, fallback = "-", timeZo
   const date = parseDisplayDate(value);
   if (!date) return fallback;
 
-  const datePart = date.toLocaleDateString("en-US", {
+  const datePart = dayFirstParts(new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
     timeZone,
-  });
-  return `${datePart} at ${formatDetailTime(date, fallback, timeZone)}`;
+  }), date);
+  return `${datePart}, ${formatDetailTime(date, fallback, timeZone)}`;
 }
 
 /**

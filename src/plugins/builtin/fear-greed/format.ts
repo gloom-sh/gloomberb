@@ -83,5 +83,5 @@ export function formatUpdatedAt(date: Date | null): string {
     hourCycle: "h23",
   }).formatToParts(date);
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((entry) => entry.type === type)?.value ?? "";
-  return `Last updated ${part("month")} ${part("day")} at ${part("hour")}:${part("minute")} ET`;
+  return `Last updated ${part("day")} ${part("month")} at ${part("hour")}:${part("minute")} ET`;
 }

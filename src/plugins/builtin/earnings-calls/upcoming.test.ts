@@ -15,7 +15,7 @@ import {
   nextCall,
 } from "./upcoming";
 
-// Wednesday Oct 21 2026, 14:00 in New York (EDT, UTC-4).
+// Wednesday 21 Oct 2026, 14:00 in New York (EDT, UTC-4).
 const NOW = Date.parse("2026-10-21T18:00:00Z");
 
 const call = (id: string, callAt: string | null, extra: Partial<CloudEarningsCallPayload> = {}): CloudEarningsCallPayload => ({
@@ -70,7 +70,7 @@ describe("the next call", () => {
     expect(callCountdown(call("ibm", "2026-10-21T00:00:00Z"), NOW)).toBe("today");
     expect(callCountdown(call("ibm", "2026-10-22T00:00:00Z"), NOW)).toBe("tomorrow");
     expect(callCountdown(call("ibm", "2026-10-23T00:00:00Z"), NOW)).toBe("Fri");
-    expect(callCountdown(call("ibm", "2026-11-05T00:00:00Z"), NOW)).toBe("Nov 5");
+    expect(callCountdown(call("ibm", "2026-11-05T00:00:00Z"), NOW)).toBe("5 Nov");
   });
 
   test("names its start here and in New York, or New York's alone when the clocks agree", () => {
@@ -79,16 +79,16 @@ describe("the next call", () => {
     const here = new Date(Date.parse(meta.callAt!));
     const sameClock = here.getHours() === 16 && here.getMinutes() === 30 && here.getDate() === 21;
     if (sameClock) {
-      expect(start).toBe("Wed Oct 21 16:30 ET");
+      expect(start).toBe("Wed 21 Oct 16:30 ET");
       expect(newYork).toBeNull();
     } else {
-      expect(start).toMatch(/^\w{3} \w{3} \d{1,2} \d{2}:\d{2}$/);
+      expect(start).toMatch(/^\w{3} \d{1,2} \w{3} \d{2}:\d{2}$/);
       expect(newYork).toBe("16:30 ET");
     }
-    expect(callStartText(call("ibm", "2026-10-22T00:00:00Z"), NOW)).toEqual({ start: "Thu Oct 22", newYork: null });
+    expect(callStartText(call("ibm", "2026-10-22T00:00:00Z"), NOW)).toEqual({ start: "Thu 22 Oct", newYork: null });
     // The notice says the countdown within a day, not a weekday it already names.
     expect(nextCallNotice(meta, NOW)).toMatch(/^Next call .*16:30.*, in 2h 30m\.$/);
-    expect(nextCallNotice(call("ibm", "2026-10-23T00:00:00Z"), NOW)).toBe("Next call Fri Oct 23.");
+    expect(nextCallNotice(call("ibm", "2026-10-23T00:00:00Z"), NOW)).toBe("Next call Fri 23 Oct.");
   });
 });
 

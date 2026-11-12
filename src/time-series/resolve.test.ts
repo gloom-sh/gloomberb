@@ -1412,7 +1412,7 @@ describe("resolveChartSpecData", () => {
     });
     expect(requests).toHaveLength(3);
     expect(edge.bufferedSeries?.[0]?.historyStart?.getTime()).toBe(FIRST);
-    expect(edge.warnings).toContain("30m history starts Mar 3, 2025.");
+    expect(edge.warnings).toContain("30m history starts 3 Mar 2025.");
   });
 
   test("accumulates historical windows without replacing the current tail", async () => {

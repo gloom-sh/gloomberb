@@ -76,12 +76,12 @@ describe("CPI table", () => {
   test("the header names the month, its release and the next one on BLS's clock", () => {
     const { release } = board();
     expect(cpiHeaderLine(release, Date.parse("2026-10-03T08:00:00Z")))
-      .toBe("Aug 2026 · released Fri Sep 11 08:30 ET · next Wed Oct 14 08:30 ET");
+      .toBe("Aug 2026 · released Fri 11 Sep 08:30 ET · next Wed 14 Oct 08:30 ET");
     // Past its time and not in yet: due, not next. Standard time from November.
     expect(cpiHeaderLine({ ...release, nextReleaseAt: "2026-12-10T13:30:00.000Z" }, Date.parse("2026-12-10T14:00:00Z")))
-      .toBe("Aug 2026 · released Fri Sep 11 08:30 ET · due Thu Dec 10 08:30 ET");
+      .toBe("Aug 2026 · released Fri 11 Sep 08:30 ET · due Thu 10 Dec 08:30 ET");
     // Nothing listed yet after the last scheduled release.
-    expect(cpiHeaderLine({ ...release, nextPeriod: null, nextReleaseAt: null })).toBe("Aug 2026 · released Fri Sep 11 08:30 ET");
+    expect(cpiHeaderLine({ ...release, nextPeriod: null, nextReleaseAt: null })).toBe("Aug 2026 · released Fri 11 Sep 08:30 ET");
     expect(cpiHeaderLine({ ...release, period: null })).toBeUndefined();
   });
 
