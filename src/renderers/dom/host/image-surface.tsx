@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { ImageSurfaceProps } from "../../../ui/host";
 import { cleanDomProps, commonStyle } from "./style";
 
@@ -11,8 +11,6 @@ type ImageStatus = "loading" | "loaded" | "failed";
  * empty box while it asks again.
  */
 const failedImages = new Set<string>();
-/** Images that loaded this session: a row scrolled back into view draws its picture on its first frame, not its stand-in. */
-const loadedImages = new Set<string>();
 const IMAGES_KEPT = 2_000;
 
 function remember(images: Set<string>, src: string): void {
@@ -20,9 +18,17 @@ function remember(images: Set<string>, src: string): void {
   images.add(src);
 }
 
+/**
+ * Every new image element starts loading, even for a picture that loaded
+ * before: what counts is whether this element has it to draw. One the
+ * browser still holds is complete at once, so a row scrolled back into view
+ * draws it on its first frame (see the layout effect); one it has to fetch
+ * again keeps the stand-in until it arrives. A loaded status carried over
+ * from another element drew the white plate behind an image not yet there,
+ * a blank white square in the desktop app for as long as the fetch took.
+ */
 function initialStatus(src: string): ImageStatus {
-  if (failedImages.has(src)) return "failed";
-  return loadedImages.has(src) ? "loaded" : "loading";
+  return failedImages.has(src) ? "failed" : "loading";
 }
 
 /**
@@ -37,6 +43,12 @@ export function WebImageSurface({ children, src, alt = "", objectFit = "contain"
   // Keyed by the address it describes, so a row that takes another logo starts that one's own load.
   const [known, setKnown] = useState<{ src: string; status: ImageStatus }>(() => ({ src: imageSrc, status: initialStatus(imageSrc) }));
   const status = known.src === imageSrc ? known.status : initialStatus(imageSrc);
+  const imageRef = useRef<HTMLImageElement | null>(null);
+  // Before the frame is painted: a picture the browser already holds is drawn at once, not after its stand-in.
+  useLayoutEffect(() => {
+    const image = imageRef.current;
+    if (status === "loading" && image?.complete && image.naturalWidth > 0) setKnown({ src: imageSrc, status: "loaded" });
+  }, [imageSrc, status]);
   const baseStyle = commonStyle(props);
   const waiting = fallbackWhileLoading && status === "loading";
   return (
@@ -53,13 +65,11 @@ export function WebImageSurface({ children, src, alt = "", objectFit = "contain"
         <>
           <img
             key={imageSrc}
+            ref={imageRef}
             src={imageSrc}
             alt={alt}
             draggable={false}
-            onLoad={() => {
-              remember(loadedImages, imageSrc);
-              setKnown({ src: imageSrc, status: "loaded" });
-            }}
+            onLoad={() => setKnown({ src: imageSrc, status: "loaded" })}
             onError={() => {
               remember(failedImages, imageSrc);
               setKnown({ src: imageSrc, status: "failed" });
