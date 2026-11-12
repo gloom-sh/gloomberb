@@ -93,7 +93,7 @@ test("the trial ends only after its warning, Enter or Esc keep it, and no reason
   const kept = await openWarning(end);
   const frame = tui.frame();
   expect(frame).toContain("Cancelling ends your trial and Pro now.");
-  expect(frame).toContain("Oct 23 without being charged.");
+  expect(frame).toContain("23 Oct without being charged.");
   expect(frame).toContain("What made you decide to cancel? (optional)");
   // The buttons stay in view on the smallest terminal.
   expect(frame).toContain("End Trial Now");
