@@ -242,3 +242,54 @@ test("a figure that fits itself to its column keeps the form its set width gives
   await settle();
   expect(lines()[1]).toContain("72,858.65");
 });
+
+test("a table's columns over its rows at its width are as drawn fresh, never wider for rows or a width it had before", async () => {
+  const board = [
+    { id: "name", label: "NAME", width: 8, flexGrow: 1 },
+    { id: "last", label: "LAST", width: 10, align: "right" as const },
+    { id: "chg", label: "CHG%", width: 8, align: "right" as const },
+    { id: "cap", label: "CAP", width: 8, align: "right" as const },
+  ];
+  type Row = { name: string; last: string; chg: string; cap: string };
+  const alphabet: Row[] = [{ name: "Alphabet Inc. Class A", last: "171.20", chg: "-0.85%", cap: "2.09T" }];
+  const bp: Row[] = [{ name: "BP", last: "31.08", chg: "+0.12%", cap: "84.1B" }];
+  // As a name column does: whole while it fits, cut with an ellipsis when it does not.
+  const clip = (text: string, width: number) => text.length <= width ? text : `${text.slice(0, width - 1)}…`;
+  const state = createInitialState(createDefaultConfig("/tmp/gloom-table-cut-columns"));
+  let show: (rows: Row[]) => void = () => {};
+  function Board({ rows }: { rows: Row[] }) {
+    const [items, setItems] = useState(rows);
+    show = setItems;
+    return <AppContext value={createStaticAppStore(state)}>
+      <PaneInstanceProvider paneId="refit-board">
+        <DataTableView
+          focused showHorizontalScrollbar columns={board} items={items}
+          selection={{ kind: "index", selectedIndex: 0, onChange: () => {} }}
+          sortColumnId={null} sortDirection="asc" onHeaderClick={() => {}} getItemKey={(item) => item.name}
+          renderCell={(item, column) => ({ text: column.id === "name" ? clip(item.name, column.width) : item[column.id as keyof Row] })}
+          emptyStateTitle="No rows" headerScrollId="refit-header" bodyScrollId="refit-body"
+        />
+      </PaneInstanceProvider>
+    </AppContext>;
+  }
+  const fresh = async (rows: Row[], width: number) => {
+    await act(async () => { await tui.render(<Board rows={rows} />, { width, height: 6 }); });
+    await settle();
+    return tui.frame();
+  };
+  const bpAt30 = await fresh(bp, 30);
+  const alphabetAt30 = await fresh(alphabet, 30);
+  expect(bpAt30).toContain("CAP");
+
+  // Alphabet's row replaced with BP's: its long name no longer holds the column open.
+  await act(async () => { show(bp); });
+  await settle();
+  expect(tui.frame()).toBe(bpAt30);
+
+  // Drawn wide, the name whole in the room the pane gives it, then narrowed again.
+  await fresh(alphabet, 64);
+  expect(lines()[1]).toContain("Alphabet Inc. Class A");
+  await act(async () => { tui.setup().resize(30, 6); });
+  await settle();
+  expect(tui.frame()).toBe(alphabetAt30);
+});

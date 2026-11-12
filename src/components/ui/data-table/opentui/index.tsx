@@ -115,8 +115,9 @@ function OpenTuiDataTableRowInner<
   columnStarts: number[];
   contentWidth: number;
   /**
-   * The columns as each cell's text is made for them: never narrower than the pane set, so text that
-   * fits itself to its column (a price's digits) does not shrink with the blank the fit took from it.
+   * The columns as each cell's text is made for and measured at: as an unfitted table draws them, so
+   * text that fits itself to its column (a price's digits) neither shrinks with the blank the fit took
+   * from it nor grows with the room the fit gave it.
    */
   cellColumns: C[];
   displayColumns: C[];
@@ -236,9 +237,9 @@ function OpenTuiDataTableRowInner<
         const clip = columnClips?.[columnIndex] ?? null;
         const cellColumn = cellColumns[columnIndex] ?? column;
         const made = renderCell(item, cellColumn, index, rowState);
-        // A drawn cell lays itself out in the column as drawn.
+        // A drawn cell lays itself out in the column as drawn; its width is the one made for its column unfitted.
         const cell = made.content !== undefined && cellColumn !== column ? renderCell(item, column, index, rowState) : made;
-        widths[columnIndex] = cell.content === undefined ? displayWidth(cell.text) : cell.contentWidth ?? null;
+        widths[columnIndex] = made.content === undefined ? displayWidth(made.text) : made.contentWidth ?? null;
         const columnStart = columnStarts[columnIndex] ?? 0;
         const leadGap = tableColumnLeadGap(displayColumns, columnIndex, columnGap);
         const inset = clip ? clip.inset : !frozen && frozenColumnOffset !== undefined
@@ -404,15 +405,21 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     viewportWidth: measuredViewportWidth,
     measureContentWidth,
   } = useMeasuredTableContentWidth(setTableWidth, headerScrollRef, scrollRef);
-  // The widest text each column holds in the rows drawn so far, kept while the columns stay the same, so a
-  // column never narrows as the rows under it scroll by. Each row reports its cells' widths as it draws them
-  // (a drawn cell, `content`, gives its `contentWidth` or keeps its column's width), so no cell is made twice.
+  // The widest text each column holds in the rows drawn so far, kept while the columns, the rows and the
+  // pane's width stay the same, so a column never narrows as the rows under it scroll by; new rows or a new
+  // width start it over from the rows in view. Each row reports its cells' widths as it draws them (a drawn
+  // cell, `content`, gives its `contentWidth` or keeps its column's width), so no cell is made twice.
   const columnsKey = columns.map((column) => `${column.id}:${column.width}:${column.label}`).join("\u0000");
   const rowCellWidths = useRef(new Map<string, RowCellWidths>()).current;
   const [measuredWidths, setMeasuredWidths] = useState<{ key: string; widths: (number | null)[] } | null>(null);
+  const measuredFrom = useRef<{ items: readonly T[]; viewportWidth: number } | null>(null);
   const contentWidths = measuredWidths?.key === columnsKey ? measuredWidths.widths : null;
   useLayoutEffect(() => {
-    const kept = measuredWidths?.key === columnsKey ? measuredWidths.widths : null;
+    const from = measuredFrom.current;
+    const fresh = !from || from.items !== items || from.viewportWidth !== measuredViewportWidth;
+    measuredFrom.current = { items, viewportWidth: measuredViewportWidth };
+    const previous = measuredWidths?.key === columnsKey ? measuredWidths.widths : null;
+    const kept = fresh ? null : previous;
     const widths: (number | null)[] = columns.map((_, index) => kept?.[index] ?? 0);
     if (kept) kept.forEach((width, index) => { if (width === null) widths[index] = null; });
     visibleItems.forEach((item, offset) => {
@@ -424,7 +431,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
       });
     });
     if (rowCellWidths.size > visibleItems.length * 4 + 64) rowCellWidths.clear();
-    if (kept && widths.every((width, index) => width === kept[index])) return;
+    if (previous && widths.every((width, index) => width === previous[index])) return;
     setMeasuredWidths({ key: columnsKey, widths });
   });
   // A header as drawn, with its sort mark.
@@ -469,13 +476,22 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     () => expandTableColumns(fittedColumns, contentWidth, columnGap, horizontalPadding),
     [columnGap, fittedColumns, contentWidth, horizontalPadding],
   );
-  const cellColumns = useMemo(
-    () => displayColumns.map((column, index) => {
-      const set = columns[index] ? tableColumnWidth(columns[index]!) : column.width;
-      return column.width < set ? { ...column, width: set } : column;
-    }),
-    [columns, displayColumns],
-  );
+  // What each cell's text is made for, and measured at: the columns as an unfitted table draws them, never the
+  // fit's. Text that fits itself to its column (a price's digits) does not shrink with the blank the fit took
+  // from it, nor, made for the room the fit gave it, measure wider and so take more on the next fit.
+  const cellColumns = useMemo(() => {
+    if (fittedColumns === columns) return displayColumns;
+    const unfitted = expandTableColumns(
+      columns,
+      fillAvailableWidth ? Math.max(setTableWidth, measuredViewportWidth) : setTableWidth,
+      columnGap,
+      horizontalPadding,
+    );
+    return displayColumns.map((column, index) => {
+      const width = unfitted[index]?.width ?? column.width;
+      return width === column.width ? column : { ...column, width };
+    });
+  }, [columnGap, columns, displayColumns, fillAvailableWidth, fittedColumns, horizontalPadding, measuredViewportWidth, setTableWidth]);
   const columnStarts = useMemo(
     () => tableColumnStarts(displayColumns, columnGap),
     [columnGap, displayColumns],
