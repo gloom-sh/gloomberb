@@ -104,11 +104,20 @@ async function atTwoHeights(cdp: Cdp, plot: Rect, share: number): Promise<Array<
 }
 
 async function pressTool(cdp: Cdp, label: string): Promise<void> {
-  const at = await evaluate<{ x: number; y: number } | null>(cdp, `(() => {
-    const chip = [...document.querySelectorAll('[data-gloom-role=composite-chart-tool]')].find(node => (node.getAttribute('data-gloom-label') ?? '').startsWith(${JSON.stringify(label)}));
+  const centerOf = (role: string, match: string) => `(() => {
+    const chip = [...document.querySelectorAll('[data-gloom-role=${role}]')].find(node => (node.getAttribute('data-gloom-label') ?? '').startsWith(${JSON.stringify(match)}));
     const r = chip?.getBoundingClientRect();
     return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
-  })()`);
+  })()`;
+  let at = await evaluate<{ x: number; y: number } | null>(cdp, centerOf("composite-chart-tool", label));
+  if (!at) {
+    // The bar is folded to one button until the pointer is on it.
+    const handle = await evaluate<{ x: number; y: number } | null>(cdp, centerOf("composite-chart-toolbar-toggle", ""));
+    if (!handle) throw new Error(`No tool bar button in the chart toolbar`);
+    await mouse(cdp, "mouseMoved", handle.x, handle.y, false);
+    await frames(cdp, 3);
+    at = await evaluate<{ x: number; y: number } | null>(cdp, centerOf("composite-chart-tool", label));
+  }
   if (!at) throw new Error(`No ${label} tool in the chart toolbar`);
   await mouse(cdp, "mouseMoved", at.x, at.y, false);
   await mouse(cdp, "mousePressed", at.x, at.y, true);

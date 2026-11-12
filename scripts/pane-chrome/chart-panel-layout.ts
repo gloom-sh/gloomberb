@@ -5,36 +5,41 @@ import type { BrowserContext, Page } from "playwright-core";
 import { takeOption } from "../tui-benchmark-harness";
 import { cacheDir } from "./browser";
 import { serveFixturePage } from "./page";
-import { pixelChange } from "./ui-audit-compare";
 
 /**
  * The composite chart's own layout in Chromium and WebKit, with the
  * real pointer on the chart composer fixture (`scenario=cmp&chart=readout`: a
  * price panel, a volume panel and an RSI panel), at 640 and 1280 px. In each
- * browser and width it checks that at rest the chart draws as the base does
- * (`--base`, pixel for pixel within ImageMagick's 2% fuzz) and shows none of
- * the new controls; that the drawing tool bar's fold button shows under the
- * pointer and folds the bar to the one button that opens it again, as Shift+T
- * does; that the legend's chevron shows under the pointer and folds the legend
- * to its first series and a count of the rest, which opens it again, as
- * Shift+L does, and a click on an entry still hides its series; that the line
- * between two panels shows under the pointer, a click on it that jitters keeps
- * the split, a drag on it moves it and a double-click puts back the split;
- * that Shift+Up makes the top panel taller; that a tool picked from the keys
- * opens a hidden bar and its chevron folds it again, kept hidden;
- * that a double-click on the RSI plot gives it the whole chart, with its
+ * browser and width it checks that at rest the drawing tool bar is folded to
+ * one button showing the tool in hand (the pan tool) with a hint that it opens,
+ * and the legend's chevron and the lines between panels are not drawn; that the
+ * pointer on that button opens the bar, which stays open while the pointer
+ * moves from one icon to the next and folds a moment after it leaves; that the
+ * keyboard's focus opens it and its leaving folds it; that a press on the
+ * button keeps the bar open (as Shift+T does), a press on the chevron that then
+ * leads it folds it at once, under the pointer, and the bar opens again once the
+ * pointer has left and come back; that a tool picked from the keys shows on the
+ * folded button; that the button has the radius, height and hover fill of the
+ * bar's other icon buttons; that the legend's chevron shows under the pointer
+ * and folds the legend to its first series and a count of the rest, which
+ * opens it again, as Shift+L does, and a click on an entry still hides its
+ * series; that the line between two panels shows under the pointer, a click
+ * on it that jitters keeps the split, a drag on it moves it and a double-click
+ * puts back the split; that Shift+Up makes the top panel taller; that a
+ * double-click on the RSI plot gives it the whole chart, with its
  * `All panels` button and every series still read in the legend, and the
  * button, a double-click on it or another on the plot gives the others back
  * and keeps them; and that a drag on the
  * plot still pans. It pictures each state, and writes a contact sheet per
- * browser: before and after at rest, then each new state, a row per width.
+ * browser: the base at rest (`--base`), then this tree at rest and in each new
+ * state, a row per width.
  *
  *   bun run check:chart-panel-layout [--base <checkout>] [--out <dir>] [--root <checkout>]
  *                                    [--browsers chromium,webkit] [--widths 640,1280]
  *
  * Needs playwright-core's Chromium and WebKit
  * (`bunx playwright-core install chromium webkit`) and ImageMagick for the
- * comparison and the sheets. Pictures, `sheet-<browser>.jpg` and
+ * sheets. Pictures, `sheet-<browser>.jpg` and
  * `report.json` land in `--out` (default under the pane chrome cache).
  */
 
@@ -48,7 +53,10 @@ const widths = (takeOption(args, "--widths") ?? "640,1280").split(",").map(Numbe
 const HEIGHT = 800;
 /** A taller window, where a split kept in whole rows would share the plot unlike the chart's own. */
 const TALL_HEIGHT = 1010;
-const STATES = ["rest", "toolbar-hidden", "legend-folded", "divider-hover", "panels-resized", "maximized"] as const;
+const STATES = ["rest", "toolbar-open", "toolbar-tool", "legend-folded", "divider-hover", "panels-resized", "maximized"] as const;
+/** The fold delay of the tool bar (`CHART_TOOLBAR_FOLD_DELAY_MS`), and a wait past it. */
+const FOLD_DELAY = 300;
+const PAST_FOLD_DELAY = FOLD_DELAY + 250;
 
 interface Check { browser: string; width: number; name: string; ok: boolean; detail: string }
 const checks: Check[] = [];
@@ -73,7 +81,7 @@ interface LayoutState {
   panels: { label: string; box: Box }[];
   /** Each line between two panels, with the opacity its drawn line has. */
   dividers: { box: Box; line: string }[];
-  toolbar: { box: Box; folded: boolean; buttons: number; foldShown: boolean } | null;
+  toolbar: { box: Box; folded: boolean; pinned: boolean; buttons: number; handle: { label: string; box: Box } | null } | null;
   legend: { text: string; collapsed: boolean; toggleShown: boolean; more: Box | null } | null;
   restore: Box | null;
 }
@@ -87,7 +95,7 @@ const layoutState = (page: Page) => page.evaluate((): LayoutState => {
   const shown = (element: Element | null | undefined) => !!element && getComputedStyle(element).display !== "none" && element.getBoundingClientRect().width > 0;
   const toolbar = document.querySelector<HTMLElement>("[data-gloom-role=composite-chart-toolbar]");
   const legend = document.querySelector<HTMLElement>("[data-gloom-role=composite-chart-legend]");
-  const fold = toolbar?.querySelector("[data-gloom-role=composite-chart-toolbar-toggle]");
+  const handle = toolbar?.querySelector("[data-gloom-role=composite-chart-toolbar-toggle]");
   return {
     view: document.querySelector<HTMLElement>("[data-gloom-role=composite-chart]")?.dataset.gloomView ?? null,
     panels: Array.from(document.querySelectorAll<HTMLElement>("[data-gloom-role=composite-chart-panel]"))
@@ -97,8 +105,9 @@ const layoutState = (page: Page) => page.evaluate((): LayoutState => {
     toolbar: toolbar ? {
       box: box(toolbar)!,
       folded: toolbar.dataset.folded === "true",
+      pinned: toolbar.dataset.pinned === "true",
       buttons: Array.from(toolbar.querySelectorAll("button, [role=button]")).filter((button) => shown(button)).length,
-      foldShown: shown(fold),
+      handle: handle ? { label: handle.getAttribute("aria-label") ?? "", box: box(handle)! } : null,
     } : null,
     legend: legend ? {
       text: legend.textContent ?? "",
@@ -172,32 +181,106 @@ async function exercise(browser: "chromium" | "webkit", width: number, page: Pag
     return;
   }
   await shoot("rest");
-  say("at rest the fold button, the legend chevron and the panel lines are not drawn",
-    !rest.toolbar.foldShown && !rest.legend.toggleShown && rest.dividers.length === 2 && rest.dividers.every((divider) => divider.line === "0"),
-    { fold: rest.toolbar.foldShown, chevron: rest.legend.toggleShown, lines: rest.dividers.map((divider) => divider.line) });
-  if (base) {
-    const before = shotPath("before", browser, width, "rest");
-    const compared = existsSync(before) ? pixelChange(before, shotPath("after", browser, width, "rest")) : { status: "error" as const, error: "no base picture" };
-    say("at rest the chart draws as the base does", compared.status === "compared" && compared.change === 0, compared);
-  }
+  say("at rest the tool bar is folded to one button, which names the pan tool, and the legend chevron and panel lines are not drawn",
+    rest.toolbar.folded && rest.toolbar.buttons === 1 && /^Pan\b/.test(rest.toolbar.handle?.label ?? "") && !rest.legend.toggleShown
+      && rest.dividers.length === 2 && rest.dividers.every((divider) => divider.line === "0"),
+    { toolbar: rest.toolbar, chevron: rest.legend.toggleShown, lines: rest.dividers.map((divider) => divider.line) });
 
-  // The tool bar: its fold button under the pointer, and folded, the one button back.
-  await page.mouse.move(rest.toolbar.box.x + 6, rest.toolbar.box.y + rest.toolbar.box.height / 2);
-  await settle(page, 200);
+  // The tool bar: the pointer on its one button opens it, and a moment after the pointer leaves it folds.
+  const handleAt = (state: LayoutState) => center(state.toolbar!.handle!.box);
+  await page.mouse.move(handleAt(rest).x, handleAt(rest).y);
+  await settle(page, 150);
   const hovered = await layoutState(page);
-  say("the fold button shows with the pointer on the tool bar", hovered.toolbar?.foldShown === true, hovered.toolbar);
-  await page.locator("[data-gloom-role=composite-chart-toolbar] [data-gloom-role=composite-chart-toolbar-toggle]").click();
+  say("the pointer on the folded button opens the tool bar", hovered.toolbar?.folded === false && hovered.toolbar.buttons > 4 && !hovered.toolbar.pinned, hovered.toolbar);
+  await shoot("toolbar-open");
+  const OPEN = hovered.toolbar?.buttons ?? 0;
+  // Across the icons, each crossing leaving one and entering the next, it stays open past the delay.
+  const tools = page.locator("[data-gloom-role=composite-chart-toolbar] [data-gloom-role=composite-chart-tool]");
+  for (const index of [0, 1, 2, 1, 0]) {
+    const at = center((await tools.nth(index).boundingBox())!);
+    await page.mouse.move(at.x, at.y, { steps: 4 });
+    await settle(page, 60);
+  }
+  await settle(page, PAST_FOLD_DELAY);
+  say("it stays open while the pointer moves from one icon to the next", (await layoutState(page)).toolbar?.folded === false, (await layoutState(page)).toolbar);
+  // Off the bar it waits, then folds.
+  await page.mouse.move(width - 2, HEIGHT - 2);
+  await settle(page, 100);
+  const leaving = await layoutState(page);
+  await settle(page, PAST_FOLD_DELAY);
+  const left = await layoutState(page);
+  say("it stays open for a moment after the pointer leaves, then folds", leaving.toolbar?.folded === false && left.toolbar?.folded === true && left.toolbar.buttons === 1,
+    { shortly: leaving.toolbar?.folded, later: left.toolbar?.folded });
+
+  // The handle looks like the bar's other icon buttons: radius, height and hover fill.
+  await page.mouse.move(handleAt(rest).x, handleAt(rest).y);
+  await settle(page, 150);
+  const look = await page.evaluate(() => {
+    const read = (element: Element | null | undefined) => {
+      if (!element) return null;
+      const style = getComputedStyle(element);
+      return { radius: style.borderTopLeftRadius, height: Math.round(element.getBoundingClientRect().height * 10) / 10, background: style.backgroundColor, paddingInline: style.paddingLeft };
+    };
+    return {
+      handle: read(document.querySelector("[data-gloom-role=composite-chart-toolbar-toggle]")),
+      tool: read(document.querySelector("[data-gloom-role=composite-chart-tool]:not([data-active=true])")),
+    };
+  });
+  const handlePoint = await page.locator("[data-gloom-role=composite-chart-toolbar-toggle]").boundingBox();
+  const toolPoint = await page.locator("[data-gloom-role=composite-chart-tool][data-active=false]").first().boundingBox();
+  await page.mouse.move(center(handlePoint!).x, center(handlePoint!).y);
+  await settle(page, 100);
+  const handleFill = await page.locator("[data-gloom-role=composite-chart-toolbar-toggle]").evaluate((element) => getComputedStyle(element).backgroundColor);
+  await page.mouse.move(center(toolPoint!).x, center(toolPoint!).y);
+  await settle(page, 100);
+  const toolFill = await page.locator("[data-gloom-role=composite-chart-tool][data-active=false]").first().evaluate((element) => getComputedStyle(element).backgroundColor);
+  say("the button has the radius, height and padding of the bar's icon buttons, and their hover fill",
+    !!look.handle && !!look.tool && look.handle.radius === look.tool.radius && look.handle.height === look.tool.height
+      && look.handle.paddingInline === look.tool.paddingInline && handleFill === toolFill && handleFill !== "rgba(0, 0, 0, 0)",
+    { ...look, handleFill, toolFill });
   await park(page, width);
-  const folded = await layoutState(page);
-  say("the fold button folds the tool bar to the button that opens it",
-    folded.toolbar?.folded === true && folded.toolbar.buttons === 1 && folded.toolbar.box.width < rest.toolbar.box.width / 3,
-    { before: rest.toolbar, after: folded.toolbar });
-  await shoot("toolbar-hidden");
-  await page.locator("[data-gloom-role=composite-chart-toolbar] [data-gloom-role=composite-chart-toolbar-toggle]").click();
+  await settle(page, PAST_FOLD_DELAY);
+
+  // Focus from the keyboard opens it, and focus leaving folds it. A key press first,
+  // so the focus counts as the keyboard's (a pressed button is focused by the pointer, and shows no ring).
+  const focused = () => page.evaluate(() => document.activeElement?.getAttribute("data-gloom-role") ?? "");
+  await page.keyboard.press("Shift");
+  await page.locator("[data-gloom-role=composite-chart-toolbar-toggle]").focus();
+  await settle(page, 100);
+  const keyOpen = await layoutState(page);
+  say("the keyboard's focus on the button opens the tool bar", await focused() === "composite-chart-toolbar-toggle" && keyOpen.toolbar?.folded === false, { focus: await focused(), toolbar: keyOpen.toolbar });
+  await page.locator("[data-gloom-role=composite-chart-toolbar] [data-gloom-role=composite-chart-tool]").first().focus();
+  await settle(page, PAST_FOLD_DELAY);
+  say("it stays open while the focus is on its icons", (await layoutState(page)).toolbar?.folded === false && await focused() === "composite-chart-tool", await focused());
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await settle(page, 100);
+  say("and folds once the focus leaves it", (await layoutState(page)).toolbar?.folded === true, (await layoutState(page)).toolbar);
+
+  // A press on the button keeps the bar open; the chevron that then leads it folds it under the pointer.
+  await page.mouse.move(handleAt(rest).x, handleAt(rest).y);
+  await page.mouse.down();
+  await page.mouse.up();
   await park(page, width);
+  await settle(page, PAST_FOLD_DELAY);
+  const pinned = await layoutState(page);
+  say("a press on the button keeps the tool bar open after the pointer leaves", pinned.toolbar?.folded === false && pinned.toolbar.pinned && pinned.toolbar.buttons === OPEN,
+    { open: OPEN, pinned: pinned.toolbar });
+  say("its handle then reads as the one that hides it", /^Hide drawing tools/.test(pinned.toolbar?.handle?.label ?? ""), pinned.toolbar?.handle?.label);
+  await page.mouse.move(handleAt(pinned).x, handleAt(pinned).y);
+  await page.mouse.down();
+  await page.mouse.up();
+  await settle(page, 120);
+  const unpinned = await layoutState(page);
+  say("a press on it folds the bar at once, though the pointer is still on it", unpinned.toolbar?.folded === true && !unpinned.toolbar.pinned, unpinned.toolbar);
+  await park(page, width);
+  await settle(page, PAST_FOLD_DELAY);
+  await page.mouse.move(handleAt(rest).x, handleAt(rest).y);
+  await settle(page, 150);
+  say("and it opens under the pointer again once it has left and come back", (await layoutState(page)).toolbar?.folded === false, (await layoutState(page)).toolbar);
+  await park(page, width);
+  await settle(page, PAST_FOLD_DELAY);
   const unfolded = await layoutState(page);
-  say("that button opens the tool bar again", unfolded.toolbar?.folded === false && unfolded.toolbar.buttons === rest.toolbar.buttons,
-    unfolded.toolbar);
+  say("the toolbar is folded again with the pointer away", unfolded.toolbar?.folded === true && unfolded.toolbar.buttons === 1, unfolded.toolbar);
 
   // The legend: its chevron under the pointer, folded to the first series and a count.
   const legendBox = (await page.locator("[data-gloom-role=composite-chart-legend]").boundingBox())!;
@@ -290,35 +373,35 @@ async function exercise(browser: "chromium" | "webkit", width: number, page: Pag
   await page.keyboard.press("Shift+ArrowDown");
   await settle(page);
   say("Shift+Down gives it back", sameHeights(await layoutState(page), rest), heights(await layoutState(page)));
+  // Shift+T keeps the bar open and lets it fold again; Shift+L folds the legend.
+  await park(page, width);
+  await settle(page, PAST_FOLD_DELAY);
   await page.keyboard.press("Shift+T");
-  await settle(page);
-  const keyFolded = await layoutState(page);
+  await settle(page, 150);
+  const keyPinned = await layoutState(page);
   await page.keyboard.press("Shift+T");
   await page.keyboard.press("Shift+L");
-  await settle(page);
+  await settle(page, 150);
   const keyLegend = await layoutState(page);
   await page.keyboard.press("Shift+L");
   await settle(page);
-  say("Shift+T folds the tool bar and Shift+L the legend", keyFolded.toolbar?.folded === true && keyLegend.legend?.collapsed === true
-    && (await layoutState(page)).legend?.collapsed === false, { toolbar: keyFolded.toolbar?.folded, legend: keyLegend.legend?.collapsed });
+  say("Shift+T keeps the tool bar open and again lets it fold, and Shift+L folds the legend",
+    keyPinned.toolbar?.folded === false && keyPinned.toolbar.pinned && (await layoutState(page)).toolbar?.folded === true
+      && keyLegend.legend?.collapsed === true && (await layoutState(page)).legend?.collapsed === false,
+    { pinned: keyPinned.toolbar?.pinned, legend: keyLegend.legend?.collapsed });
 
-  // Hidden, the bar opens for a tool picked from the keys; its chevron then
-  // puts the tool down and folds it, and it stays hidden.
-  await page.keyboard.press("Shift+T");
+  // A tool picked from the keys is the folded button's tool, and the bar stays folded.
+  await settle(page, PAST_FOLD_DELAY);
   await page.keyboard.press("Shift+M");
-  await settle(page);
-  const toolOpen = await layoutState(page);
-  const toolbarBox = toolOpen.toolbar?.box ?? rest.toolbar.box;
-  await page.mouse.move(toolbarBox.x + 6, toolbarBox.y + toolbarBox.height / 2);
-  await settle(page, 200);
-  await page.locator("[data-gloom-role=composite-chart-toolbar] [data-gloom-role=composite-chart-toolbar-toggle]").click();
-  await park(page, width);
-  const toolHidden = await layoutState(page);
-  say("a hidden bar opened by a tool from the keys folds again by its chevron, and stays hidden",
-    toolOpen.toolbar?.folded === false && toolHidden.toolbar?.folded === true && toolHidden.toolbar.buttons === 1,
-    { open: toolOpen.toolbar?.folded, after: toolHidden.toolbar });
-  await page.locator("[data-gloom-role=composite-chart-toolbar] [data-gloom-role=composite-chart-toolbar-toggle]").click();
-  await park(page, width);
+  await settle(page, 150);
+  const toolFolded = await layoutState(page);
+  await shoot("toolbar-tool");
+  say("a tool picked from the keys shows on the folded button, which names it",
+    toolFolded.toolbar?.folded === true && toolFolded.toolbar.buttons === 1 && /^Ruler\b/.test(toolFolded.toolbar.handle?.label ?? ""),
+    toolFolded.toolbar);
+  await page.keyboard.press("Escape");
+  await settle(page, 150);
+  say("and the pan tool again once it is put down", /^Pan\b/.test((await layoutState(page)).toolbar?.handle?.label ?? ""), (await layoutState(page)).toolbar?.handle?.label);
 
   // A double-click on the RSI plot gives it the whole chart, and the way back.
   const rsi = rest.panels.find((panel) => panel.label === "RSI")!.box;

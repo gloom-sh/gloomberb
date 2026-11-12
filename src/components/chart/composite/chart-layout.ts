@@ -2,7 +2,7 @@ import { allocateCompositePanelHeights } from "./scene";
 
 /**
  * How a chart pane lays its chart out, as the user left it: the panels'
- * heights, a panel given the whole plot, the drawing tool bar hidden and the
+ * heights, a panel given the whole plot, the drawing tool bar kept open and the
  * legend collapsed. Kept in the pane's settings beside its drawings, so it
  * outlives a restart; a chart outside a pane keeps it while it is mounted.
  */
@@ -16,8 +16,11 @@ export interface ChartLayoutPrefs {
   panelWeights?: Readonly<Record<string, number>>;
   /** The panel given the whole plot while the others wait. */
   maximizedPanelId?: string;
-  /** The drawing tool bar is folded to the one button that brings it back. */
-  toolbarHidden?: boolean;
+  /**
+   * The drawing tool bar is kept open. It is folded to the tool in hand
+   * otherwise, and opens under the pointer.
+   */
+  toolbarPinned?: boolean;
   /** The legend shows its first series and how many more it holds. */
   legendCollapsed?: boolean;
 }
@@ -35,7 +38,7 @@ export function parseChartLayoutPrefs(value: unknown): ChartLayoutPrefs {
     if (weights.length > 0) layout.panelWeights = Object.fromEntries(weights);
   }
   if (typeof source.maximizedPanelId === "string" && source.maximizedPanelId) layout.maximizedPanelId = source.maximizedPanelId;
-  if (source.toolbarHidden === true) layout.toolbarHidden = true;
+  if (source.toolbarPinned === true) layout.toolbarPinned = true;
   if (source.legendCollapsed === true) layout.legendCollapsed = true;
   return Object.keys(layout).length > 0 ? layout : NO_CHART_LAYOUT;
 }
