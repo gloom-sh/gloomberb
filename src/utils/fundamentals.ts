@@ -215,6 +215,8 @@ export function enterpriseValueComputed(
  */
 export function enterpriseValueGapIsLarge(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): boolean {
   const check = enterpriseValueCheck(fundamentals);
+  // The provider's figure shown as it is: what the note says of its inputs is a detail for `ticker`.
+  if (check?.status === "matches" || check?.status === "unchecked") return false;
   const bridge = check ? bridgeEnterpriseValue(check) : undefined;
   if (check?.status !== "differs" || !finiteNumber(check.source) || bridge === undefined || bridge <= 0) return true;
   return Math.abs(check.source / bridge - 1) > OVERVIEW_ENTERPRISE_VALUE_GAP;
@@ -227,7 +229,9 @@ const OVERVIEW_ENTERPRISE_VALUE_GAP = 0.1;
  * and short-term investments 1.25B (balance sheet 2026-06-30), in place of the provider's 61.75B.", "EV N/M: cash and short-term investments
  * exceed market cap + total debt (balance sheet 2026-06-30)." A balance sheet in another currency names the rate it
  * was converted at ("balance sheet 2026-06-30, EUR at 0.8614 GBP"). A withdrawn EV no balance sheet checked gives
- * Gloom Cloud's reason; one withdrawn without a check, that the source failed validation. Undefined when the EV matches, is unchecked or computed, or has no check. Read it from the
+ * Gloom Cloud's reason; one withdrawn without a check, that the source failed validation. A provider's EV that
+ * matches or is unchecked has a line only where the balance sheet's minority interest is not on its lines
+ * (providerEnterpriseValueNote). Undefined when the EV is computed, or has no check. Read it from the
  * fundamentals the rows show (atRegularSessionPrice moves the check with the EV and the market cap), so its figures
  * are theirs.
  */
@@ -247,8 +251,12 @@ export function enterpriseValueReconciliationNote(
   if (check?.status === "withdrawn" && !finiteNumber(check.computed) && reason) {
     return `EV unavailable: ${reason.charAt(0).toLowerCase()}${reason.slice(1)}.`;
   }
-  if (!check || !finiteNumber(check.computed) || !finiteNumber(check.source)
-    || (check.status !== "differs" && check.status !== "withdrawn")) return undefined;
+  if (!check || !finiteNumber(check.computed) || !finiteNumber(check.source)) return undefined;
+  const otherCurrency = !!currency && !!check.currency && check.currency !== currency;
+  if ((check.status === "matches" || check.status === "unchecked") && !otherCurrency) {
+    return providerEnterpriseValueNote({ ...check, computed: check.computed, source: check.source }, currency, statements);
+  }
+  if (check.status !== "differs" && check.status !== "withdrawn") return undefined;
   const source = `${formatCompact(check.source)} ${check.currency}`;
   const computed = formatCompact(check.computed);
   const leases = finiteNumber(check.leases) && check.leases > 0 ? " + leases" : "";
@@ -264,6 +272,30 @@ export function enterpriseValueReconciliationNote(
   const ratio = check.computed > 0 ? ` is ${(check.source / check.computed).toFixed(1)}x` : " is far from";
   const twice = check.convertedTwice && check.convertedFrom ? `; it converts ${check.convertedFrom} to ${check.currency} twice` : "";
   return `EV unavailable: the provider's ${source}${ratio} the ${computed} computed from ${basis}${twice}.`;
+}
+
+/**
+ * The line under a provider's EV the bridge did not replace, where the balance sheet's minority interest is not on
+ * its lines: "EV 26.41B USD is the provider's, within 5% of 27.28B: market cap 6.04B + total debt 9.92B - cash 880M +
+ * minority interest and preferred equity 12.21B from the company's filing (balance sheet 2026-09-30).", and where
+ * neither the sheet nor its filing gives one, why the provider's figure stands. Undefined for any other check.
+ */
+function providerEnterpriseValueNote(
+  check: EnterpriseValueCheck & { computed: number; source: number },
+  currency: string | undefined,
+  statements: BalanceSheets | undefined,
+): string | undefined {
+  const fx = check.fx && finiteNumber(check.fx.rate) ? `, ${check.fx.from} at ${check.fx.rate.toPrecision(4)} ${check.currency}` : "";
+  const sheet = check.balanceSheetDate ? ` (balance sheet ${check.balanceSheetDate}${fx})` : "";
+  const inputs = enterpriseValueInputs(check, sheet, checkCashBasis(check, statements));
+  const provider = `EV ${formatCompact(check.source)} ${check.currency} is the provider's`;
+  if (check.status === "matches" && check.minorityFiled && !bridgeStandsIn(check, currency)) {
+    return `${provider}, within 5% of ${formatCompact(bridgeEnterpriseValue(check)!)}: ${inputs}.`;
+  }
+  const earlier = check.minorityUnreported;
+  if (check.status !== "unchecked" || !earlier || !finiteNumber(earlier.value)) return undefined;
+  return `${provider}: ${inputs} is ${formatCompact(check.computed)} with no minority interest, which that balance sheet does not`
+    + ` report (${formatCompact(earlier.value)} on ${earlier.balanceSheetDate}), so the provider's figure stands.`;
 }
 
 /** The balance sheets a note reads to say what a check's cash holds. */
@@ -287,16 +319,25 @@ export function checkCashBasis(
 
 /**
  * "EV 7.48B USD is market cap 8.22B + total debt 864.07M - cash and short-term investments 1.6B (balance sheet
- * 2026-06-30)": the bridge with its inputs, each where the check carries it, minority interest and preferred equity
- * among them where the balance sheet shows any, and its cash as checkCashBasis reads it.
+ * 2026-06-30)": the bridge with its inputs (enterpriseValueInputs).
  */
 function computedEnterpriseValueInputs(check: EnterpriseValueCheck, sheet: string, cashBasis: ReturnType<typeof checkCashBasis>): string {
+  return `EV ${formatCompact(bridgeEnterpriseValue(check)!)} ${check.currency} is ${enterpriseValueInputs(check, sheet, cashBasis)}`;
+}
+
+/**
+ * "market cap 8.22B + total debt 864.07M - cash and short-term investments 1.6B (balance sheet 2026-06-30)": what the
+ * bridge adds up, each where the check carries it, minority interest and preferred equity among them where the balance
+ * sheet shows any (named as the company's filing's where the sheet has no equity lines), and its cash as
+ * checkCashBasis reads it.
+ */
+function enterpriseValueInputs(check: EnterpriseValueCheck, sheet: string, cashBasis: ReturnType<typeof checkCashBasis>): string {
   const part = (label: string, value: number | undefined) => finiteNumber(value) ? `${label} ${formatCompact(value)}` : label;
   const leases = finiteNumber(check.leases) && check.leases > 0 ? ` + ${part("leases", check.leases)}` : "";
   const minority = minorityAndPreferred(check);
-  const equity = minority > 0 ? ` + ${part("minority interest and preferred equity", minority)}` : "";
-  return `EV ${formatCompact(bridgeEnterpriseValue(check)!)} ${check.currency} is ${part("market cap", check.marketCap)} + ${part("total debt", check.totalDebt)}${leases}`
-    + ` - ${part(cashBasis, check.cash)}${equity}${sheet}`;
+  const filed = check.minorityFiled ? " from the company's filing" : "";
+  const equity = minority > 0 ? ` + ${part("minority interest and preferred equity", minority)}${filed}` : "";
+  return `${part("market cap", check.marketCap)} + ${part("total debt", check.totalDebt)}${leases} - ${part(cashBasis, check.cash)}${equity}${sheet}`;
 }
 
 /**
