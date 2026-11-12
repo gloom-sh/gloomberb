@@ -869,7 +869,7 @@ header, with the detail's height.
   `preventDefault()` when it acts). Reserved: `j`/`k`/arrows move, Enter
   opens, Esc/Backspace back, `r` refresh, `Shift+R` refresh all, `!`
   warnings, `o` open source, `/` search, `.` pane menu, Tab/Shift+Tab next
-  pane or field, `h`/`l` tabs, `{`/`}` a nested strip's views, `<`/`>` the width of a resizable sidebar, `?` help, F1 the pane's help card, `` ` `` ticker search (changes the focused pane's ticker), `q` quit (terminal),
+  pane or field, Ctrl+PageDown/Ctrl+PageUp a stack's tabs, `h`/`l` tabs, `{`/`}` a nested strip's views, `<`/`>` the width of a resizable sidebar, `?` help, F1 the pane's help card, `` ` `` ticker search (changes the focused pane's ticker), `q` quit (terminal),
   `u` restart into a downloaded update or retry a failed one, `$` Pro upgrade, Ctrl+P command bar. `q`, `u`, `r`,
   `Shift+R`, `?` and `` ` `` reach the app before any pane. Table keys go
   through `onRootKeyDown` and `onDetailKeyDown` (return `true` when handled);
@@ -901,6 +901,24 @@ header, with the detail's height.
   unscoped `before` handler can run ahead of it too (a pane restored at
   launch), so one that goes back calls `countEscapeTowardClose(event)`
   itself.
+- One Esc closes a focused floating window, as it does a dialog, when
+  nothing took it: no handler called `preventDefault()` or
+  `stopPropagation()`, and no `keepEscapeFromClosing(event)`. Focus goes to
+  the next floating window, or back where it was. A locked window stays, and
+  the Esc that follows at a double press's pace closes nothing more, so Esc
+  Esc still closes one window. A pane keeps its Esc by handling it: backing
+  out of a detail, closing its own menu (then also
+  `keepEscapeFromClosing(event)`, so it does not count toward Esc Esc),
+  leaving a field.
+- No Esc, one or two, closes a pane that holds work Esc would throw away: a
+  draft that lives only as long as the pane, an answer still coming in. The
+  pane says so with `usePaneUnsentWork(holds)` (Ask Gloom passes its draft
+  and its running answer); Ctrl+W, the close button and the pane menu still
+  close it. A draft saved elsewhere (the chat composer's, saved with its
+  channel), a note saved when editing ends and a form that takes Esc as
+  Cancel have nothing to report. `countEscapeTowardClose`,
+  `keepEscapeFromClosing` and `usePaneUnsentWork` come from
+  `gloomberb/react`.
 - The pane menu (`.`, Shift+F10, the `...` button) is where the keyboard
   finds everything: it lists the footer hints with their keys, what kit
   controls add (table sort, query-bar filters, tab add/close/move, empty-state

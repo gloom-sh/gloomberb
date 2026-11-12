@@ -1,6 +1,6 @@
-import { Box, Text, useUiHost } from "../../ui";
+import { Box, Span, Text, useUiHost } from "../../ui";
 import { TextAttributes } from "../../ui";
-import { type ComponentType, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, type ComponentType, type ReactNode } from "react";
 import type { ThemeColors } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { t } from "../../i18n";
@@ -118,6 +118,26 @@ export function buttonLabelAttributes(variant: ButtonVariant, active: boolean, i
 }
 
 /**
+ * A terminal button's own content (`children`) as it draws focused: the text
+ * in it marked as a label is (`buttonLabelAttributes`), so a focused filled
+ * button drawn from children reads stronger than an unfocused one too. Text
+ * a component of the caller's draws is its own to mark.
+ */
+export function markButtonContent(children: ReactNode, attributes: number): ReactNode {
+  if (!attributes) return children;
+  return Children.map(children, (child): ReactNode => {
+    if (!isValidElement<{ attributes?: number; children?: ReactNode }>(child)) return child;
+    if (child.type === Text || child.type === Span) {
+      return cloneElement(child, { attributes: (child.props.attributes ?? 0) | attributes });
+    }
+    if (typeof child.type === "string" || child.type === Box) {
+      return child.props.children === undefined ? child : cloneElement(child, undefined, markButtonContent(child.props.children, attributes));
+    }
+    return child;
+  });
+}
+
+/**
  * Terminal cells a button takes: the padded label, then its key. For a row that
  * has to know whether its buttons fit before it lays them out.
  */
@@ -210,7 +230,10 @@ export function Button({
         if (!inert) onPress?.();
       }}
     >
-      {children ?? <Text fg={palette.fg} attributes={buttonLabelAttributes(variant, active, inert)}>
+      {children != null
+        // A filled button's fill does not change with focus: its content carries the mark a label would.
+        ? isFilledVariant(variant) ? markButtonContent(children, buttonLabelAttributes(variant, active, inert)) : children
+        : <Text fg={palette.fg} attributes={buttonLabelAttributes(variant, active, inert)}>
         {compact ? displayLabel ?? label : ` ${displayLabel ?? label} `}
       </Text>}
       {shortcut && (

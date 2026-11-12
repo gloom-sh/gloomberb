@@ -1,4 +1,10 @@
-import { getDockedPaneIds, hiddenDockTabIds, hiddenFloatingTabIds } from "../../../layout/pane-manager";
+import {
+  dockStackTabIds,
+  floatingStackMembers,
+  getDockedPaneIds,
+  hiddenDockTabIds,
+  hiddenFloatingTabIds,
+} from "../../../layout/pane-manager";
 import type { PluginRegistry } from "../../../plugins/registry";
 import { findPaneInstance, type LayoutConfig } from "../../../types/config";
 import { collectDisabledPaneIds } from "../shell/visible-layout";
@@ -42,6 +48,21 @@ export function getVisiblePaneCycleOrder(
   if (!covered || covered.size === 0) return visible;
   const shown = visible.filter((instanceId) => instanceId === focusedPaneId || !covered.has(instanceId));
   return shown.some((instanceId) => instanceId !== focusedPaneId) ? shown : visible;
+}
+
+/**
+ * The tab of `paneId`'s stack, docked or floating, `direction` steps from it
+ * in tab order, round from the last to the first: what the next- and
+ * previous-tab keys show, since Tab passes the tabs a stack hides. Null when
+ * the pane is in no stack.
+ */
+export function adjacentStackTabId(layout: LayoutConfig, paneId: string | null, direction: 1 | -1): string | null {
+  if (!paneId) return null;
+  const docked = dockStackTabIds(layout, paneId);
+  const tabs = docked.length > 1 ? docked : floatingStackMembers(layout.floating, paneId).map((entry) => entry.instanceId);
+  const index = tabs.indexOf(paneId);
+  if (tabs.length < 2 || index < 0) return null;
+  return tabs[(index + direction + tabs.length) % tabs.length]!;
 }
 
 const coveredSources = new Set<() => ReadonlySet<string>>();

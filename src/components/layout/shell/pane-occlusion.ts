@@ -65,28 +65,39 @@ export function resolveOccludedPaneIds(
 /**
  * Docked panes whose title bar floating windows hide, half of it or more. A
  * focused pane shows its focus there (the frame, the title), so focus moved
- * to one of these could not be seen: Tab passes them by. Only the bar's first
- * row counts; a window over the body alone hides nothing that says focus.
+ * to one of these could not be seen: Tab passes them by. The bar is judged
+ * along its middle line, where the title reads: the terminal's one row (the
+ * frame's top line, title in it), the desktop's taller bar whatever line
+ * sits over its top (a divider, a window's border). A window over the body,
+ * or over no more than the top edge of the bar, hides nothing that says
+ * focus.
+ *
+ * `headerRows` is the bar's height in the layout's units: 1 on the terminal,
+ * the chrome row on the desktop (`paneHeaderRows`).
  */
 export function resolveTitleCoveredPaneIds(
   docked: ReadonlyArray<{ paneId: string; rect: LayoutBounds }>,
   floating: readonly LayoutBounds[],
+  { headerRows = 1 }: { headerRows?: number } = {},
 ): Set<string> {
   const covered = new Set<string>();
   if (floating.length === 0) return covered;
   for (const { paneId, rect } of docked) {
-    const row = Math.floor(rect.y);
-    const x0 = Math.floor(rect.x);
-    const x1 = Math.ceil(rect.x + rect.width);
-    if (x1 <= x0) continue;
-    let hiddenCells = 0;
-    for (let x = x0; x < x1; x += 1) {
-      if (floating.some((window) => (
-        x >= Math.floor(window.x) && x < Math.ceil(window.x + window.width)
-        && row >= Math.floor(window.y) && row < Math.ceil(window.y + window.height)
-      ))) hiddenCells += 1;
+    if (rect.width <= 0) continue;
+    const titleLine = rect.y + Math.min(headerRows, rect.height) / 2;
+    const spans = floating
+      .filter((window) => titleLine >= window.y && titleLine < window.y + window.height)
+      .map((window) => [Math.max(rect.x, window.x), Math.min(rect.x + rect.width, window.x + window.width)] as const)
+      .filter(([start, end]) => end > start)
+      .toSorted((left, right) => left[0] - right[0]);
+    let hidden = 0;
+    let reach = rect.x;
+    for (const [start, end] of spans) {
+      if (end <= reach) continue;
+      hidden += end - Math.max(start, reach);
+      reach = end;
     }
-    if (hiddenCells * 2 >= x1 - x0) covered.add(paneId);
+    if (hidden * 2 >= rect.width) covered.add(paneId);
   }
   return covered;
 }

@@ -8,6 +8,7 @@ export {
 } from "./floating";
 
 export {
+  dockStackTabIds,
   findDockLeaf,
   getDockDividerLayouts,
   getDockedPaneIds,

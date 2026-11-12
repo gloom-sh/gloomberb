@@ -85,4 +85,17 @@ describe("resolveTitleCoveredPaneIds", () => {
     );
     expect([...covered]).toEqual(["pane"]);
   });
+
+  // The desktop's bar is taller than a row and a divider or a window's border
+  // runs over its top: a window reaching just past that line hides no title,
+  // one over the bar's middle does, at fractional positions too.
+  test("a desktop bar is judged along its middle, not the line over its top", () => {
+    const headerRows = 1.75;
+    const panes = [docked("edge", 0, 10.06, 30), docked("middle", 30, 10.06, 30)];
+    const covered = resolveTitleCoveredPaneIds(panes, [
+      { x: 0, y: 4.5, width: 30, height: 6 },
+      { x: 29.5, y: 4.5, width: 30.5, height: 6.5 },
+    ], { headerRows });
+    expect([...covered]).toEqual(["middle"]);
+  });
 });

@@ -27,11 +27,15 @@ export function TestShellPaneKeys(options: Partial<ShellPaneKeyOptions> & { focu
     overlayOpen: false,
     popOutFocusedPane: none,
     shareFocusedPane: none,
+    showAdjacentStackTab: none,
     startWindowMode: () => {},
     toggleFocusedPaneFullscreen: none,
     toggleFocusedPaneFloating: none,
     toggleFocusedPaneNewLayout: none,
     ...options,
+    // Esc Esc closes as the shell's close does unless the test passes its own.
+    closeFocusedPaneOnEscape: options.closeFocusedPaneOnEscape
+      ?? (options.closeFocusedPane ? () => options.closeFocusedPane!({ focusNextFloating: true }) : none),
   });
   return null;
 }

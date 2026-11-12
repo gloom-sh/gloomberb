@@ -288,8 +288,8 @@ function ReportTile({ report, selected, onPress, tileRef }: {
   const colors = useThemeColors();
   const selectionFill = useSelectionFill();
   const surprise = report.epsSurprise;
-  const ink = selected && selectionFill.lit ? colors.selectedText
-    : surprise == null || surprise === 0 ? colors.text : surprise > 0 ? colors.positive : colors.negative;
+  const tone = surprise == null || surprise === 0 ? colors.text : surprise > 0 ? colors.positive : colors.negative;
+  const ink = !selected ? tone : selectionFill.lit ? colors.selectedText : selectionFill.ink(tone);
   return (
     <Box
       ref={tileRef}
@@ -346,7 +346,7 @@ function MoreTile({ count, selected, onPress, tileRef }: {
       style={TILE_STYLE}
     >
       <Box style={LOGO_STYLE} alignItems="center" justifyContent="center">
-        <Text fg={lit ? colors.selectedText : colors.textDim} attributes={TextAttributes.BOLD}>{`+${count}`}</Text>
+        <Text fg={lit ? colors.selectedText : selected ? selectionFill.ink(colors.textDim) : colors.textDim} attributes={TextAttributes.BOLD}>{`+${count}`}</Text>
       </Box>
       <Text fg={lit ? colors.selectedText : colors.textMuted}>more</Text>
     </Box>

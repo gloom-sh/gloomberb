@@ -50,42 +50,83 @@ export interface PaneHeaderStack {
 
 /** Terminal: the least a tab that is not shown keeps when a stack is cut to fit: a letter and the ellipsis. */
 const STACK_TAB_MIN_WIDTH = 4;
+/** Terminal: between the last tab named and the count of those left out. */
+const STACK_TAB_MORE_GAP = " ";
+
+/** Terminal: one tab of a stack as its header lays it out (`stackTabSpans`). */
+export interface StackTabSpan {
+  /** The tab's place in the stack; for the `more` count, the tab a press on it shows. */
+  index: number;
+  /** Cells from where the title starts (after the grip). */
+  start: number;
+  text: string;
+  /** The count of the tabs left out (`+2`), which a press steps through. */
+  more?: true;
+}
 
 /**
  * Terminal: the tabs of a stack its header shows in `width` cells, as text
  * and where each starts, in cells from where the title starts (after the
  * grip); `index` is the tab's place in the stack. Every tab shows when they
- * fit. When they do not, the tab shown (`activeIndex`) keeps its name and the
- * others share what is left, or drop out when that is less than a letter
- * each, so the header always names what the pane shows. The pointer runtime
+ * fit. When they do not, the tab shown (`activeIndex`) keeps its name, as
+ * many others as keep a letter each share what is left, in tab order, and a
+ * dim `+n` after them counts the rest. A press on the count shows the first
+ * tab left out after the one shown, so pressing it again steps through them.
+ * The header always names what the pane shows; the count goes first when
+ * there is no room for it beside a letter of that name. The pointer runtime
  * finds the tab under a press with the same spans.
  */
 export function stackTabSpans(
   titles: readonly string[],
   activeIndex = -1,
   width = Number.POSITIVE_INFINITY,
-): Array<{ index: number; start: number; text: string }> {
+): StackTabSpan[] {
   const labels = titles.map((title) => truncateToDisplayWidth(title, STACK_TAB_MAX_WIDTH));
-  const separators = STACK_TAB_SEPARATOR.length * Math.max(0, labels.length - 1);
-  const natural = labels.reduce((sum, label) => sum + displayWidth(label), 0) + separators;
+  const separator = STACK_TAB_SEPARATOR.length;
+  const natural = labels.reduce((sum, label) => sum + displayWidth(label), 0) + separator * Math.max(0, labels.length - 1);
   let texts: Array<string | null> = labels;
+  let more: { index: number; text: string } | null = null;
   if (natural > width && activeIndex >= 0 && activeIndex < labels.length) {
-    const shown = truncateToDisplayWidth(labels[activeIndex]!, width);
-    const others = labels.length - 1;
-    const share = others > 0
-      ? Math.floor((width - displayWidth(shown) - STACK_TAB_SEPARATOR.length * others) / others)
-      : 0;
+    const shownLabel = labels[activeIndex]!;
+    const others = labels.map((_, index) => index).filter((index) => index !== activeIndex);
+    const moreWidth = (count: number) => (count > 0 ? STACK_TAB_MORE_GAP.length + `+${count}`.length : 0);
+    let kept: number[] = [];
+    let share = 0;
+    for (let keep = others.length; keep >= 1; keep -= 1) {
+      const room = width - displayWidth(shownLabel) - separator * keep - moreWidth(others.length - keep);
+      if (Math.floor(room / keep) >= STACK_TAB_MIN_WIDTH) {
+        kept = others.slice(0, keep);
+        share = Math.floor(room / keep);
+        break;
+      }
+    }
+    const left = others.filter((index) => !kept.includes(index));
+    const count = left.length > 0 ? `+${left.length}` : null;
+    let shown = shownLabel;
+    if (kept.length === 0) {
+      const room = width - moreWidth(left.length);
+      shown = truncateToDisplayWidth(shownLabel, room >= Math.min(STACK_TAB_MIN_WIDTH, displayWidth(shownLabel)) ? room : width);
+    }
     texts = labels.map((label, index) => (
-      index === activeIndex ? shown : share >= STACK_TAB_MIN_WIDTH ? truncateToDisplayWidth(label, share) : null
+      index === activeIndex ? shown : kept.includes(index) ? truncateToDisplayWidth(label, share) : null
     ));
+    const used = texts.reduce<number>((sum, text) => sum + (text === null ? 0 : displayWidth(text)), 0)
+      + separator * kept.length;
+    if (count && used + moreWidth(left.length) <= width) {
+      more = { index: left.find((index) => index > activeIndex) ?? left[0]!, text: count };
+    }
   }
   let start = 0;
-  const spans: Array<{ index: number; start: number; text: string }> = [];
+  const spans: StackTabSpan[] = [];
   texts.forEach((text, index) => {
     if (text === null) return;
     spans.push({ index, start, text });
-    start += displayWidth(text) + STACK_TAB_SEPARATOR.length;
+    start += displayWidth(text) + separator;
   });
+  if (more) {
+    const last = spans.at(-1);
+    spans.push({ index: more.index, start: last ? last.start + displayWidth(last.text) + STACK_TAB_MORE_GAP.length : 0, text: more.text, more: true });
+  }
   return spans;
 }
 
@@ -131,6 +172,11 @@ function TerminalStackTabs({ stack, spans, width, activeFg, pad }: {
   let left = width;
   const parts: Array<{ key: string; text: string; fg: string }> = [];
   spans.forEach((span, position) => {
+    if (span.more) {
+      parts.push({ key: "more-gap", text: STACK_TAB_MORE_GAP, fg: colors.textDim });
+      parts.push({ key: "more", text: span.text, fg: colors.textDim });
+      return;
+    }
     const tab = stack.tabs[span.index]!;
     if (position > 0) parts.push({ key: `sep:${tab.id}`, text: STACK_TAB_SEPARATOR, fg: colors.border });
     parts.push({ key: tab.id, text: span.text, fg: tab.id === stack.active ? activeFg : colors.textDim });

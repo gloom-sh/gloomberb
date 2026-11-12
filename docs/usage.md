@@ -53,6 +53,7 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | `Ctrl+Shift+G` | Tidy windows |
 | `Alt+A` | Ask Gloom about the focused pane, in a new conversation with the pane attached |
 | `Tab` | Switch panes: the tab a stack shows, never the ones behind it, and no pane a floating window hides |
+| `Ctrl+PageDown` / `Ctrl+PageUp` | Show the next or previous tab of the focused pane's stack. `Ctrl+Tab` / `Ctrl+Shift+Tab` too, where the terminal sends them (kitty keyboard protocol) |
 | `Ctrl+1`-`9` or `Alt+1`-`9` | Switch layout tabs. Only terminals with the kitty keyboard protocol (Ghostty, Kitty, WezTerm) send `Ctrl` with a digit, so the tabs show `Alt+1` everywhere else. On a Mac terminal `Alt` is `Option` once it is set to send Meta (Terminal.app: Use Option as Meta key; iTerm2: Option key as Esc+) |
 | `?` | Open Help; `?` or `Esc` again closes it |
 | `j` / `k` | Navigate lists |
@@ -141,7 +142,7 @@ A pane you move, from the layout or floating, lands where the target under the p
 
 The square or strip under the pointer lights up, and an outline shows exactly where the pane will land; on the desktop and web the pane turns see-through over it. Nothing depends on how long you hold it.
 
-Panes stacked as tabs show them in the title bar. A click on a tab shows that pane, dragging a tab out takes that pane out of the stack, and the rest of a floating stack's title bar moves the whole window. A pane closed or floated from a stack leaves the others where they are.
+Panes stacked as tabs show them in the title bar. A click on a tab shows that pane, dragging a tab out takes that pane out of the stack, and the rest of a floating stack's title bar moves the whole window. A pane closed or floated from a stack leaves the others where they are. In a terminal title bar too narrow for every name, the tab shown keeps its name and `+2` counts the tabs left out; a click on the count shows them one after another. `Ctrl+PageDown` and `Ctrl+PageUp`, or Next Tab and Previous Tab in the pane menu, step through the tabs from the keyboard.
 
 Without a mouse, window mode (`Ctrl+Shift+M`) moves the focused pane: the arrows pick a pane in the layout and the side to join it on, `d` floats it or returns it to the layout, and `1` to `8` float it in a quarter or half of the window. `Enter` applies the move and leaves window mode; `Esc` leaves it without moving anything.
 

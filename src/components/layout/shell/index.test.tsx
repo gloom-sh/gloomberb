@@ -30,6 +30,7 @@ import { TERMINAL_MAGNET_REST_MS } from "./drag/magnets";
 import { ONE_SHOT_COOLDOWN_MS } from "../../../utils/one-shot";
 import { registerPaneDocsHandler } from "../../../docs/requests";
 import { registerAskGloomPaneHandler, type AskGloomPaneAttachment } from "../../../ask-gloom/pane-request";
+import { holdPaneUnsentWork } from "../../../state/pane-unsent-work";
 
 const tui = createOpenTuiTestHarness();
 
@@ -761,6 +762,36 @@ describe("Shell", () => {
     const moved = actions.filter((action) => action.type === "UPDATE_LAYOUT").at(-1)?.layout as LayoutConfig | undefined;
     expect(moved?.dockRoot).toEqual({ kind: "pane", instanceId: "portfolio-list:main" });
     expect(moved?.floating.map((entry) => entry.instanceId)).toEqual(["ticker-detail:main"]);
+  });
+
+  // Tab passes the tabs a stack hides: the tab keys step through them, round,
+  // and a header too narrow for every name counts the rest, which a click
+  // shows one after another.
+  test("terminal: the tab keys and a narrow header's count reach every tab of a stack", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-stack-keys-test");
+    const detail = requireLayoutInstance(config, "ticker-detail:main");
+    const layout: LayoutConfig = {
+      dockRoot: buildDockStack(["portfolio-list:main", "ticker-detail:main", "ticker-detail:two"], "portfolio-list:main"),
+      instances: [{ ...requireLayoutInstance(config, "portfolio-list:main") }, { ...detail }, { ...detail, instanceId: "ticker-detail:two" }],
+      floating: [],
+      detached: [],
+    };
+    const { actions } = await renderShell(createShellStateWithLayout(config, layout, "portfolio-list:main"), { width: 40, height: 14 });
+    const focused = () => actions.filter((action) => action.type === "FOCUS_PANE").at(-1)?.paneId;
+
+    await emitKeypress({ name: "pagedown", ctrl: true });
+    expect(focused()).toBe("ticker-detail:main");
+    await emitKeypress({ name: "pageup", ctrl: true });
+    expect(focused()).toBe("ticker-detail:two");
+
+    const header = tui.frame().split("\n")[0]!;
+    expect(header).toMatch(/^┌─:: Main Portfolio │ \S+ \+1/);
+    await act(async () => {
+      await tui.setup().mockMouse.click(header.indexOf("+1"), 1);
+      await tui.setup().renderOnce();
+    });
+    expect(focused()).toBe("ticker-detail:two");
+    expect(actions.some((action) => action.type === "UPDATE_LAYOUT")).toBe(false);
   });
 
   // The terminal's own way to the same targets as the desktop's: drawn in
@@ -1703,6 +1734,31 @@ describe("Shell", () => {
     await emitKeypress({ name: "escape", sequence: "\u001b" });
     await emitKeypress({ name: "escape", sequence: "\u001b" });
     expect(actions.filter((action) => action.type === "UPDATE_LAYOUT")).toHaveLength(1);
+  });
+
+  // Ask Gloom's draft goes with its pane: the Esc that leaves the composer,
+  // and any after it, never close the window over it. Ctrl+W still does.
+  test("no Esc closes a floating pane that holds unsent work", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-test");
+    const layout = floatingOverDockLayout(config, [{ instanceId: "ticker-detail:main", x: 4, y: 2 }]);
+    const release = holdPaneUnsentWork("ticker-detail:main");
+    try {
+      const { actions } = await renderShell(
+        { ...createShellStateWithLayout(config, layout, "ticker-detail:main"), previousFocusedPaneId: "portfolio-list:main" },
+        { width: 40, height: 12 },
+      );
+
+      await emitKeypress({ name: "escape", sequence: "\u001b" });
+      await emitKeypress({ name: "escape", sequence: "\u001b" });
+      expect(actions.some((action) => action.type === "UPDATE_LAYOUT")).toBe(false);
+
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      await emitKeypress({ name: "escape", sequence: "\u001b" });
+      expect(actions.find((action) => action.type === "UPDATE_LAYOUT")?.layout.floating).toEqual([]);
+    } finally {
+      release();
+    }
   });
 
   test("one Esc leaves a locked floating pane and a docked one open", async () => {

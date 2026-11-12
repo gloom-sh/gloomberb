@@ -17,6 +17,8 @@ interface ShellPaneManagementShortcutOptions {
   closeFocusedPane(options?: { focusNextFloating?: boolean }): boolean;
   /** Closes the focused pane when it is a floating window one Esc closes; false otherwise. */
   closeFocusedFloatingPane(): boolean;
+  /** Esc Esc's close: the focused pane, then the next floating one, unless it holds unsent work. */
+  closeFocusedPaneOnEscape(): boolean;
   copyFocusedPaneScreenshot(): boolean;
   exportFocusedPaneCsv(): boolean;
   focusedPaneId: string | null;
@@ -29,6 +31,8 @@ interface ShellPaneManagementShortcutOptions {
   overlayOpen: boolean;
   popOutFocusedPane(): boolean;
   shareFocusedPane(): boolean;
+  /** Shows the tab of the focused pane's stack `direction` steps to; false when it is in no stack. */
+  showAdjacentStackTab(direction: 1 | -1): boolean;
   startWindowMode(paneId?: string, mode?: WindowEditMode): void;
   toggleFocusedPaneFullscreen(): boolean;
   toggleFocusedPaneFloating(): boolean;
@@ -41,6 +45,7 @@ export function useShellPaneManagementShortcuts({
   closeAllFloatingPanes,
   closeFocusedFloatingPane,
   closeFocusedPane,
+  closeFocusedPaneOnEscape,
   copyFocusedPaneScreenshot,
   exportFocusedPaneCsv,
   focusedPaneId,
@@ -53,6 +58,7 @@ export function useShellPaneManagementShortcuts({
   overlayOpen,
   popOutFocusedPane,
   shareFocusedPane,
+  showAdjacentStackTab,
   startWindowMode,
   toggleFocusedPaneFullscreen,
   toggleFocusedPaneFloating,
@@ -69,7 +75,7 @@ export function useShellPaneManagementShortcuts({
     overlayOpen,
     editing: inputCaptured,
     dragging: hasActiveDrag,
-    close: () => closeFocusedPane({ focusNextFloating: true }),
+    close: closeFocusedPaneOnEscape,
     closeOnSingle: closeFocusedFloatingPane,
   });
 
@@ -114,6 +120,19 @@ export function useShellPaneManagementShortcuts({
       }
     }
 
+    // A stack's tabs step like movement keys, a press each and no cooldown,
+    // and ahead of the panes: a list that reads PageDown without its
+    // modifiers would otherwise take Ctrl+PageDown.
+    if ((shortcut === "next-tab" || shortcut === "prev-tab") && !overlayOpen && !hasActiveDrag()) {
+      if (!inputCaptured || inputCaptureAllowsPaneManagementShortcut(shortcut, event)) {
+        if (showAdjacentStackTab(shortcut === "next-tab" ? 1 : -1)) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+      }
+    }
+
     if ((event.name === "escape" || event.name === "esc") && hasActiveDrag()) {
       cancelActiveDrag();
       event.preventDefault();
@@ -141,7 +160,7 @@ export function useShellPaneManagementShortcuts({
     const shortcut = resolvePaneManagementShortcut(event, keybindings);
     if (!shortcut || hasActiveDrag() || overlayOpen) return;
     if (inputCaptured && !inputCaptureAllowsPaneManagementShortcut(shortcut, event)) return;
-    if (shortcut === "menu") return;
+    if (shortcut === "menu" || shortcut === "next-tab" || shortcut === "prev-tab") return;
     const shot = shots.get(shortcut);
     if (shot.refuses(event)) {
       event.preventDefault();

@@ -249,7 +249,7 @@ function TickersTradesView({ symbols, width, height, focused, viewBar }: Tickers
       </Box>
     );
   }
-  const renderCell = (row: TickerTradeRow, column: TradeColumn, index: number, state: { selected: boolean }): DataTableCell =>
+  const renderCell = (row: TickerTradeRow, column: TradeColumn, index: number, state: { selected: boolean; inactive?: boolean }): DataTableCell =>
     column.id === "ticker"
       ? listingCell(row.ticker, colors, state.selected)
       : renderInsiderCell(row, column as InsiderColumn, index, state);

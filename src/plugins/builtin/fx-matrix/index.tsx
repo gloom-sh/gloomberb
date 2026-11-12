@@ -20,7 +20,7 @@ import { useFxRatesMap } from "../../../market-data/hooks";
 import { resolveEntryData } from "../../../market-data/selectors";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { usePaneSettingValue, useUpdatePaneSettings } from "../../../state/app/context";
-import { colors, shownPriceColor } from "../../../theme/colors";
+import { colors, inactiveSelectedBg, shownPriceColor } from "../../../theme/colors";
 import { formatPercentRaw, MISSING_VALUE } from "../../../utils/format";
 import type {
   CommandBarResultDef, CommandBarSearchProvider, GloomPluginContext, PaneProps, PaneTemplateContext, PaneTemplateCreateOptions,
@@ -300,7 +300,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     row: FxCurrency,
     column: DataTableColumn,
     _index: number,
-    rowState: { selected: boolean },
+    rowState: { selected: boolean; inactive?: boolean },
   ): DataTableCell => {
     if (column.id === "base") {
       return {
@@ -344,9 +344,12 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
         ? crossMovePercent(base, rowReference, quote, columnReference)
         : null,
     );
-    // The cursor row keeps its selection colours; the tint leans on them.
+    // The cursor row keeps its selection colours, quieter while the board does
+    // not have the keys; the tint leans on them.
     const backgroundColor = rowState.selected
-      ? directionTint(level, { background: colors.selected, text: colors.selectedText })
+      ? rowState.inactive
+        ? directionTint(level, { background: inactiveSelectedBg(colors), text: colors.text })
+        : directionTint(level, { background: colors.selected, text: colors.selectedText })
       : directionTint(level, { background: colors.bg, text: colors.text });
     return { text: formatRate(base / quote, quoteCurrency, reference), color: colors.text, backgroundColor };
   }, [amount?.currency, convertedAmount, directionReferences, flagged, moveVsUsd, rates, referenceRates, status.loading]);

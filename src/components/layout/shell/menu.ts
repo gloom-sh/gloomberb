@@ -119,6 +119,8 @@ export function menuForPane(
   askGloom?: () => void,
   /** Report a Bug: the pane's picture and a line to #bugs; absent where it cannot be posted or pictured. */
   reportBug?: () => void,
+  /** The pane is a tab of a stack: show the next or the previous tab. */
+  stackTabs?: { next: () => void; previous: () => void },
 ): ContextMenuItem[] {
   const baseActions: ContextMenuItem[] = [...paneItems];
   if (baseActions.length > 0) baseActions.push(contextMenuDivider("pane:own-actions-divider"));
@@ -174,6 +176,13 @@ export function menuForPane(
   }
   // Plugin actions sit with sharing and exporting.
   baseActions.push(pluginContextMenuSlot("pane"));
+
+  if (stackTabs) {
+    baseActions.push(
+      { id: "stack-next-tab", label: "Next Tab", accelerator: accelerators.nextTab, onSelect: stackTabs.next },
+      { id: "stack-prev-tab", label: "Previous Tab", accelerator: accelerators.prevTab, onSelect: stackTabs.previous },
+    );
+  }
 
   if (fullscreen) {
     baseActions.push({

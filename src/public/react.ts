@@ -72,6 +72,13 @@ export type { PaneTickerIdentity } from "./pane-hooks";
 // Keyboard handling for plugin panes; the renderer decides how events arrive.
 export { useShortcut } from "../react/input";
 
+// What a pane's Esc does to the close (see Esc in docs/pane-conventions.md):
+// an Esc that closes a menu of the pane's own is kept from closing the pane,
+// an Esc that leaves an empty field counts toward it, and a pane holding a
+// draft or an answer still coming in is never closed by Esc at all.
+export { countEscapeTowardClose, keepEscapeFromClosing } from "../utils/double-escape-close";
+export { usePaneUnsentWork } from "../state/pane-unsent-work";
+
 // The size of the surface the app is drawing into. A pane that pages or
 // virtualizes its own rows needs it, and it has to come from the renderer:
 // terminal cells, desktop pixels, and a browser tab are all different.

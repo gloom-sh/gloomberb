@@ -26,8 +26,9 @@ import {
 import { useThemeColors } from "../../../theme/theme-context";
 import { SPACE } from "../../../theme/ui-tokens";
 import { getPaneDisplayTitle } from "../pane/title";
-import { registerCoveredPaneSource } from "../pane/cycle-order";
+import { adjacentStackTabId, registerCoveredPaneSource } from "../pane/cycle-order";
 import { resolveTitleCoveredPaneIds } from "./pane-occlusion";
+import { paneHeaderRows } from "../pane/sizing";
 import type { PaneHeaderQuickSetting } from "../pane/header";
 import { getPaneFooter } from "../pane/footer";
 import { getShortcutDisplayMode } from "../../../utils/shortcut-labels";
@@ -316,6 +317,7 @@ export function Shell({
     closeAllFloatingPanes,
     closeFocusedFloatingPane,
     closeFocusedPane,
+    closeFocusedPaneOnEscape,
     copyFocusedPaneScreenshot,
     copyPaneScreenshot,
     exportFocusedPaneCsv,
@@ -325,6 +327,7 @@ export function Shell({
     openFocusedPaneSettings,
     openPaneSettings,
     popOutFocusedPane,
+    showAdjacentStackTab,
     toggleFocusedPaneFloating,
   } = useShellPaneActions({
     closePaneMenu,
@@ -506,7 +509,8 @@ export function Shell({
   const titleCoveredPaneIds = useMemo(() => resolveTitleCoveredPaneIds(
     screenDockLeafLayouts.map((leaf) => ({ paneId: leaf.instanceId, rect: leaf.rect })),
     screenFloatingPanes.map((entry) => entry.rect),
-  ), [screenDockLeafLayouts, screenFloatingPanes]);
+    { headerRows: paneHeaderRows(nativePaneChrome) },
+  ), [nativePaneChrome, screenDockLeafLayouts, screenFloatingPanes]);
   const titleCoveredRef = useRef(titleCoveredPaneIds);
   titleCoveredRef.current = titleCoveredPaneIds;
   useEffect(() => registerCoveredPaneSource(() => titleCoveredRef.current), []);
@@ -624,6 +628,7 @@ export function Shell({
     closeAllFloatingPanes,
     closeFocusedFloatingPane: transientFocusActive ? () => false : closeFocusedFloatingPane,
     closeFocusedPane,
+    closeFocusedPaneOnEscape,
     copyFocusedPaneScreenshot,
     exportFocusedPaneCsv,
     focusedPaneId,
@@ -636,6 +641,7 @@ export function Shell({
     overlayOpen,
     popOutFocusedPane,
     shareFocusedPane,
+    showAdjacentStackTab,
     startWindowMode,
     toggleFocusedPaneFullscreen,
     toggleFocusedPaneFloating,
@@ -670,6 +676,8 @@ export function Shell({
       title: getPaneTitle(pane),
       floating: !!pane.floating,
     };
+    const nextStackTab = adjacentStackTabId(visibleLayout, paneId, 1);
+    const previousStackTab = adjacentStackTabId(visibleLayout, paneId, -1);
     const items = menuForPane(
       pane,
       visibleLayout,
@@ -712,6 +720,9 @@ export function Shell({
       canAsk ? () => { askAboutPane(paneId, { cover: kitMenuRectRef.current }); } : undefined,
       canReportPaneBug(nativePaneChrome || !!nativeRenderer.capturePaneImage)
         ? () => { pluginRegistry.reportPaneBug(paneId); }
+        : undefined,
+      nextStackTab && previousStackTab
+        ? { next: () => focusPane(nextStackTab), previous: () => focusPane(previousStackTab) }
         : undefined,
     );
     const showKitMenu = () => {

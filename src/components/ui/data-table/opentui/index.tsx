@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Span, Text, TextAttributes, useNativeRenderer, type BoxRenderable } from "../../../../ui";
 import { capturePointerDrag, releasePointerDrag } from "../../../../ui/pointer-drag";
-import { hoverBg } from "../../../../theme/colors";
+import { hoverBg, inactiveSelectedText } from "../../../../theme/colors";
 import { selectedRowCellColor } from "../../../../theme/tone-contrast";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { usePaneInstance } from "../../../../state/app/context";
@@ -174,10 +174,14 @@ function OpenTuiDataTableRowInner<
 }) {
   const sectionHeader = renderSectionHeader?.(item, index) ?? null;
   const selectionLit = selected && paneSelectionLit;
+  // On the quieter fill a row keeps its own colours, each lifted only where it would not read there.
+  const ink = (color: string) => (selected && !selectionLit ? inactiveSelectedText(color, colors) : color);
 
   if (sectionHeader) {
     // A header the cursor can land on (a collapsible group) shows it like a row.
-    const headerColor = sectionHeader.color ?? (selectionLit ? colors.selectedText : colors.textBright);
+    const headerColor = selectionLit
+      ? sectionHeader.color ?? colors.selectedText
+      : ink(sectionHeader.color ?? colors.textBright);
     const action = sectionHeader.action;
     return (
       <Box
@@ -218,7 +222,7 @@ function OpenTuiDataTableRowInner<
                 action.onPress();
               }}
             >
-              <Text fg={selectionLit ? colors.selectedText : colors.text}>{action.label}</Text>
+              <Text fg={selectionLit ? colors.selectedText : ink(colors.text)}>{action.label}</Text>
             </Box>
           </Box>
         ) : (
@@ -233,7 +237,7 @@ function OpenTuiDataTableRowInner<
     );
   }
 
-  const rowState = { selected };
+  const rowState = { selected, inactive: selected && !selectionLit };
   const widths: (number | null)[] = [];
   cellWidths.set(itemKey, { columnsKey, widths });
   const rowBackgroundColor = getRowBackgroundColor?.(item, index, rowState);
@@ -315,11 +319,12 @@ function OpenTuiDataTableRowInner<
                 attributes={cell.attributes ?? TextAttributes.NONE}
                 fg={selectionLit
                   ? selectedRowCellColor(cell.color, !!selectedTextOverridesCellColor, cell.keepColorWhenSelected, colors) ?? colors.selectedText
-                  : cell.color ?? colors.text}
+                  // A cell on a fill of its own keeps the colour it chose for it.
+                  : cell.backgroundColor && cell.backgroundColor !== selectionBg ? cell.color ?? colors.text : ink(cell.color ?? colors.text)}
               >
                 {fitted.note ? <>
                   {`${frozen ? " ".repeat(horizontalPadding) : ""}${" ".repeat(inset)}${fitted.text}`}
-                  <Span fg={colors.textDim} attributes={TextAttributes.NONE}>{fitted.note}</Span>
+                  <Span fg={ink(colors.textDim)} attributes={TextAttributes.NONE}>{fitted.note}</Span>
                   {`${fitted.padding ?? ""}${frozen ? " ".repeat(columnGap) : ""}`}
                 </> : `${frozen ? " ".repeat(horizontalPadding) : ""}${" ".repeat(inset)}${fitted.text}${frozen ? " ".repeat(columnGap) : ""}`}
               </Text>

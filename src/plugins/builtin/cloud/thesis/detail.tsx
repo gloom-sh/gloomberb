@@ -358,8 +358,10 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
     const row = rows.find((entry) => entry.id === item.id);
     if (!row) return null;
     const lit = state.selected && selectionFill.lit;
-    const fg = lit ? colors.selectedText : colors.text;
-    const dim = lit ? colors.selectedText : colors.textDim;
+    // On the quieter fill a row's colours are lifted where they would not read.
+    const ink = (color: string) => (state.selected ? selectionFill.ink(color) : color);
+    const fg = lit ? colors.selectedText : ink(colors.text);
+    const dim = lit ? colors.selectedText : ink(colors.textDim);
     // Every row is a full-width row box, so the DOM host lays headings and
     // prose out flush left like the pillar rows instead of centering them.
     if (row.kind === "heading") {
