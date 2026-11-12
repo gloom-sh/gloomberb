@@ -149,7 +149,8 @@ export function CommandBarPanel({
         onOverlayClose();
       }}
     >
-      {/* The terminal sheet's rows are its own, edge to edge: no piece of a pane shows at its sides. */}
+      {/* The terminal sheet's rows are its own, edge to edge: no piece of a pane shows at its sides.
+        They clear to the app's own background, so only the sheet under the prompt wears the bar's fill. */}
       {clearBounds && (
         <Box
           position="absolute"
@@ -157,7 +158,7 @@ export function CommandBarPanel({
           left={clearBounds.x}
           width={clearBounds.width}
           height={clearBounds.height}
-          backgroundColor={palette.panelBg}
+          backgroundColor={colors.bg}
           zIndex={100}
         />
       )}
