@@ -15,6 +15,7 @@ import {
 } from "../layout-marketplace/cloud";
 import { SyncRevisionConflictError, type SyncSnapshot } from "../sync/types";
 import { withDeadline } from "../utils/async-deadline";
+import { sliceWholeCharacters } from "../utils/untrusted-text";
 import { CloudASKGApi } from "./askg";
 import { CloudAuthApi } from "./auth";
 import { CloudChatApi } from "./chat";
@@ -66,7 +67,7 @@ const ASSIST_QUERY_MAX_LENGTH = 200;
 const ASSIST_COMMAND_LIMIT = 150;
 /** The futures curve's root list is the longest a command sends: 76. */
 export const ASSIST_ARG_OPTION_LIMIT = 128;
-/** The longest cancel note the server keeps. */
+/** The longest cancel note the server keeps, in UTF-16 units as its schema counts them. */
 export const CLOUD_CANCEL_COMMENT_MAX = 500;
 const ASSIST_ARG_OPTION_VALUE_MAX_LENGTH = 40;
 const ASSIST_ARG_OPTION_LABEL_MAX_LENGTH = 60;
@@ -612,7 +613,7 @@ class GloomApiClient {
    * reason and note, when given, go to the billing provider with the cancel.
    */
   async endCloudTrial(feedback: CloudCancelFeedback = {}): Promise<{ canceled: boolean; endedNow?: boolean }> {
-    const comment = feedback.comment?.trim().slice(0, CLOUD_CANCEL_COMMENT_MAX);
+    const comment = feedback.comment === undefined ? undefined : sliceWholeCharacters(feedback.comment.trim(), CLOUD_CANCEL_COMMENT_MAX);
     return this.request<{ canceled: boolean; endedNow?: boolean }>("/stripe/subscription/cancel", {
       method: "POST",
       body: JSON.stringify({

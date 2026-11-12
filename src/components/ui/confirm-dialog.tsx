@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Box, Text, TextAttributes, useUiHost } from "../../ui";
 import { colors } from "../../theme/colors";
 import { t, tf } from "../../i18n";
 import { type DialogApi, type PromptContext, useDialogKeyboard } from "../../ui/dialog";
+import type { InputRenderable } from "../../ui/host";
 import type { KeyEventLike } from "../../react/input";
 import { isPlainKey } from "../../utils/keyboard";
 import { Button, type ButtonVariant } from "./button";
@@ -11,6 +12,7 @@ import { TextField } from "./fields";
 import { DialogFrame, fitDialogWidth } from "./frame";
 import { ListView, listCursorMove, type ListViewItem } from "./list-view";
 import { logFailure } from "../../utils/log-failure";
+import { sliceWholeCharacters } from "../../utils/untrusted-text";
 
 /**
  * An optional question a confirm asks under its body, such as why: one of a
@@ -68,9 +70,10 @@ export interface ConfirmDialogProps extends PromptContext<boolean> {
    */
   defaultAction?: "confirm" | "cancel";
   /**
-   * Asks an optional question under the body. The arrows pick a choice and
-   * Tab moves into the note and back; while the note has the keys, what is
-   * typed goes there, Enter leaves it and only Esc answers the dialog.
+   * Asks an optional question under the body. The arrows pick a choice, and
+   * Space or a click on the picked one clears it. Tab moves into the note and
+   * back; while the note has the keys, what is typed goes there, Enter leaves
+   * it and only Esc answers the dialog.
    */
   question?: ConfirmDialogQuestion;
   /** With `question`: what it got, called as the dialog confirms. */
@@ -205,18 +208,25 @@ interface QuestionAnswer {
   choiceIndex: number;
   note: string;
   noteFocused: boolean;
-  pick(index: number): void;
+  noteInputRef: RefObject<InputRenderable | null>;
+  /** A click or Space on a choice: picks it, or clears it when it was the one picked. */
+  toggle(index: number): void;
   setNote(note: string): void;
+  /** Moves the keyboard into the note or out of it, the field's own focus with it. */
   focusNote(focused: boolean): void;
   read(): ConfirmDialogAnswer;
   /**
-   * Whether the note has the keys, ahead of the render that shows it. A field
-   * with the focus is the note too: the dialog took it from anything under it.
+   * Whether the note has the keys, ahead of the render that shows it. Only the
+   * note itself: a field under the dialog that kept the focus takes nothing
+   * from the dialog, which answers `y` and Enter as it does without a note.
    */
   noteHasKeys(event: KeyEventLike): boolean;
   /** A key while the note has the keys: Tab and Enter leave it; the rest is typing. */
   handleNoteKey(event: KeyEventLike): void;
-  /** A key while the note does not have them: the arrows pick, Tab enters the note. True when it was one. */
+  /**
+   * A key while the note does not have them: the arrows pick, Space clears
+   * the choice or picks it back, Tab enters the note. True when it was one.
+   */
   handleKey(event: KeyEventLike): boolean;
 }
 
@@ -231,36 +241,54 @@ function useQuestionAnswer(question: ConfirmDialogQuestion | undefined): Questio
   const [noteFocused, setNoteFocused] = useState(false);
   // Terminal input can deliver a pick, the note and `y` before React renders.
   const choiceRef = useRef(-1);
+  // The choice last picked, where the arrows and Space go on from once it is cleared.
+  const cursorRef = useRef(-1);
   const noteRef = useRef("");
   const noteFocusedRef = useRef(false);
+  const noteInputRef = useRef<InputRenderable | null>(null);
   const hasNote = question?.notePlaceholder !== undefined;
-  const pick = (index: number) => {
-    if (index < 0 || index >= items.length) return;
+  const setChoice = (index: number) => {
+    if (index < -1 || index >= items.length) return;
+    if (index >= 0) cursorRef.current = index;
     choiceRef.current = index;
     setChoiceIndex(index);
   };
+  // No reason stays a choice: the picked one clears.
+  const toggle = (index: number) => setChoice(index === choiceRef.current ? -1 : index);
   const setNote = (next: string) => {
     noteRef.current = next;
     setNoteState(next);
   };
   const focusNote = (focused: boolean) => {
-    noteFocusedRef.current = focused && hasNote;
-    setNoteFocused(focused && hasNote);
+    const next = focused && hasNote;
+    noteFocusedRef.current = next;
+    setNoteFocused(next);
+    // Now, not on the render the flag makes: the next key must find the field
+    // that has it, and a note left must not take Enter or `y` as typing.
+    if (next) noteInputRef.current?.focus?.();
+    else noteInputRef.current?.blur?.();
   };
   return {
     items,
     choiceIndex,
     note,
     noteFocused,
-    pick,
+    noteInputRef,
+    toggle,
     setNote,
     focusNote,
     read: () => {
       const choice = question?.choices[choiceRef.current]?.id;
-      const trimmed = noteRef.current.trim().slice(0, question?.noteMaxLength);
+      const trimmed = sliceWholeCharacters(noteRef.current.trim(), question?.noteMaxLength ?? Infinity);
       return { ...(choice ? { choice } : {}), ...(hasNote && trimmed ? { note: trimmed } : {}) };
     },
-    noteHasKeys: (event) => hasNote && (noteFocusedRef.current || event.targetEditable === true),
+    noteHasKeys: (event) => {
+      if (!noteFocusedRef.current) return false;
+      if (event.targetEditable === true && noteInputRef.current?.focused === true) return true;
+      // The note lost the keys without saying so: they are the dialog's, and the note stops showing them.
+      focusNote(false);
+      return false;
+    },
     handleNoteKey: (event) => {
       if (!isTabKey(event) && event.name !== "enter" && event.name !== "return") return;
       event.preventDefault();
@@ -273,10 +301,15 @@ function useQuestionAnswer(question: ConfirmDialogQuestion | undefined): Questio
         focusNote(true);
         return true;
       }
+      if (isPlainKey(event, "space")) {
+        event.preventDefault();
+        if (cursorRef.current >= 0) toggle(cursorRef.current);
+        return true;
+      }
       const move = listCursorMove(event, items.length);
       if (!move) return false;
       event.preventDefault();
-      pick(move(items, choiceRef.current));
+      setChoice(move(items, choiceRef.current >= 0 ? choiceRef.current : cursorRef.current));
       return true;
     },
   };
@@ -309,12 +342,12 @@ function QuestionFields({
         rowGap={0}
         surface="framed"
         height={answer.items.length}
-        // Enter answers the dialog, a focused choice too: Space picks it.
+        // Enter answers the dialog, a focused choice too: Space picks or clears it.
         checkboxRows
         onSelect={(index) => {
           if (disabled) return;
           answer.focusNote(false);
-          answer.pick(index);
+          answer.toggle(index);
         }}
       />
       {question.notePlaceholder !== undefined && (
@@ -326,6 +359,7 @@ function QuestionFields({
             placeholder={t(question.notePlaceholder)}
             maxLength={question.noteMaxLength}
             focused={answer.noteFocused}
+            inputRef={answer.noteInputRef}
             disabled={disabled}
             width={desktop ? undefined : width}
             onMouseDown={() => answer.focusNote(true)}
