@@ -444,6 +444,18 @@ describe("shared UI kit", () => {
     expect(resolvedChoice).toBe("model-12");
   });
 
+  /** Review, 12 Nov 2026: EQS's forty fields scrolled twelve at a time with nothing to type into. */
+  test("narrows a choice list longer than its rows to what is typed, and Enter takes the first match", async () => {
+    const choices = Array.from({ length: 25 }, (_, index) => ({ id: `model-${index + 1}`, label: `Model ${index + 1}` }));
+    await tui.render(<ChoiceDialogHarness choices={choices} />, { width: 44, height: 20 });
+    await tui.waitForFrameToContain("Filter");
+    await tui.emitKeypress([..."model 7"].map((character) => ({ name: character === " " ? "space" : character, sequence: character })), { frames: 2, afterCommit: true });
+    await tui.waitForFrameToContain("▸ Model 7");
+    expect(tui.frame()).not.toContain("Model 8");
+    await emitKeypress({ name: "enter", sequence: "\r" });
+    expect(resolvedChoice).toBe("model-7");
+  });
+
   test("keeps shared multi-select values in option order when toggling", () => {
     const options = [
       { value: "sma", label: "SMA" },
