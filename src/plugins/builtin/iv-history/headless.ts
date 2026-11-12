@@ -102,15 +102,20 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
         releases.upcomingNote,
         staleMacroReleasesNotice(releases.list),
       ].filter((note): note is string => !!note);
-      const eventColumns = [{ key: "releaseDate", header: "Release date" }, { key: "session", header: "Session" },
+      // A policy decision's row says what it did (ECB raised 75bp to 0.75%), as MDAY's does; the export keeps the rate before too.
+      const decisionColumns = event === "fomc" || event === "ecb"
+        ? [{ key: "decision", header: "Decision" }, { key: "actual", header: "Actual" }, { key: "prior", header: "Prior" }] : [];
+      const eventColumns = [{ key: "releaseDate", header: "Release date" }, ...decisionColumns, { key: "session", header: "Session" },
         ...historyColumns.slice(1), ...skewColumns];
+      const decided = offsets.rows.some((row) => row.decision != null);
+      const textColumns = eventColumns.filter((column) => decided ? column.key !== "prior" : !decisionColumns.includes(column));
       return {
         sections: [{
           title: `${label} releases, ${offsetText(offset)}`,
           // The export names the release and the offset on every row, so files of several offsets or releases join.
           columns: [{ key: "release", header: "Release" }, eventColumns[0]!, { key: "offset", header: "Offset (sessions)" }, ...eventColumns.slice(1)],
           rows: offsets.rows.map(({ date, ...row }) => ({ ...row, session: date, release: label })),
-          textColumns: offsets.rows.some((row) => row.skew25d != null) ? eventColumns : eventColumns.slice(0, -skewColumns.length),
+          textColumns: offsets.rows.some((row) => row.skew25d != null) ? textColumns : textColumns.slice(0, -skewColumns.length),
         }],
         complete: payload.status === "ready" && errors.length === 0,
         unavailableSymbols: offsets.rows.some((row) => row.iv30 != null) ? [] : [instrument.symbol], errors,

@@ -220,7 +220,8 @@ export function SeasonalityPane({ width, height, focused }: PaneProps) {
               formatCursor: (ratio) => new Date(Date.UTC(OVERLAY_YEAR, 0, 1) + ratio * 365 * 86_400_000).toISOString().slice(5, 10) }}
             colors={{ background: palette.bgColor, grid: palette.gridColor, crosshair: palette.crosshairColor, text: colors.text,
               textDim: palette.axisColor, negative: colors.negative }} />
-          : <DataTableView<Row> focused={focused} columns={COLUMNS} items={rows} rootWidth={width} rootHeight={contentHeight}
+          // January to December: the grid is a calendar.
+          : <DataTableView<Row> focused={focused} columns={COLUMNS} columnReorder={false} items={rows} rootWidth={width} rootHeight={contentHeight}
             getItemKey={(row) => row.id} emptyStateTitle="No monthly returns." sortColumnId={null} sortDirection="desc"
             selection={{ kind: "id", selectedId: selectedRow, getId: (row) => row.id, onChange: (id) => setSelectedRow(id) }}
             getExportMetadata={() => [["symbol", model.symbol], ["as of", model.asOf?.toISOString()], ["units", "percent, local-price close to close"]]}

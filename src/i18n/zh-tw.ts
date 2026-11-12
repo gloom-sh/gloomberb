@@ -1659,6 +1659,8 @@ export const zhTW: Record<string, string> = {
   "Sign in to Gloom": "登入 Gloom",
   "Continue in your browser or scan the code.": "在瀏覽器中繼續，或掃描 QR 碼。",
   "Other AI apps linked to {broker} get disconnected. Connect them to Gloom instead.": "已連結 {broker} 的其他 AI 應用程式會被中斷連線。請改為將它們連線到 Gloom。",
+  "{broker} will ask to replace your existing Gloom connection. Choose to replace it.": "{broker} 會詢問是否取代你現有的 Gloom 連線。請選擇取代。",
+  "{broker} may ask to replace your existing Gloom connection. If it does, choose to replace it.": "{broker} 可能會詢問是否取代你現有的 Gloom 連線。如果詢問，請選擇取代。",
   "Waiting for {broker}...": "正在等待 {broker}...",
   "Contacting Gloom...": "正在連線 Gloom...",
   "Something went wrong.": "發生錯誤。",

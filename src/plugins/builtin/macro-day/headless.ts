@@ -66,15 +66,24 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
     // The days the filter keeps get a row of their own: how the name moved on hot CPI days.
     const selected = surprise === "all" ? [] : [row(`${MACRO_SURPRISE_LABELS[surprise]} ${release === "all" ? "release"
       : MACRO_EVENT_LABELS[release as MacroEventKind]}`, macroDayStats(events, model.normal.meanAbs))];
-    // A day without figures says why: before the kept calendar (one note for them all), or the calendar's own gap.
+    // A day without figures says why: before the kept calendar (one note for them all), or the calendar's own gap. An ECB
+    // decision before it has its rates (Gloom Cloud reads them off the deposit rate series) and lacks only the forecast.
     const figuresFrom = releases.figuresFrom;
-    const beforeCalendar = (event: MacroDayEvent) => !!figuresFrom && event.kind !== "ipca" && !event.figures && event.date < figuresFrom;
+    const predates = (event: MacroDayEvent) => !!figuresFrom && event.kind !== "ipca" && event.date < figuresFrom;
+    const beforeCalendar = (event: MacroDayEvent) => predates(event) && !event.figures;
+    const noForecast = (event: MacroDayEvent) => predates(event) && !!event.figures && event.figures.forecast == null;
+    /** "CPI and Jobs days": the kinds of the listed days `pick` takes, in the order the summary lists them. */
+    const daysOf = (pick: (event: MacroDayEvent) => boolean) => {
+      const labels = model.kinds.filter((kind) => events.some((event) => event.kind === kind && pick(event))).map((kind) => MACRO_EVENT_LABELS[kind]);
+      return `${labels.length > 1 ? `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}` : labels[0]} days`;
+    };
     // A release Gloom Cloud alone lists (IPCA, the ECB) is summed up on its own: "Any release" is then the US ones'.
     const usOnly = model.kinds.some((kind) => !US_MACRO_EVENT_KINDS.includes(kind as (typeof US_MACRO_EVENT_KINDS)[number]));
     const missing = (event: MacroDayEvent) => event.figures ? null : event.figuresMissing
       ?? (beforeCalendar(event) ? `before ${figuresFrom}, when Gloom Cloud's economic calendar starts` : null);
     const figureNotes = [
-      ...(events.some(beforeCalendar) ? [`Release days before ${figuresFrom} have no actual, forecast or prior: Gloom Cloud's economic calendar starts then.`] : []),
+      ...(events.some(beforeCalendar) ? [`${daysOf(beforeCalendar)} before ${figuresFrom} have no actual, forecast or prior: Gloom Cloud's economic calendar starts then.`] : []),
+      ...(events.some(noForecast) ? [`Forecasts start ${figuresFrom}, with Gloom Cloud's economic calendar: ${daysOf(noForecast)} before it have an actual and prior, no forecast or surprise.`] : []),
       ...macroFigureGapNotices(events),
     ];
     return {

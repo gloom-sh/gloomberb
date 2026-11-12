@@ -1040,6 +1040,8 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
         headerScrollId="options-table-header-scroll"
         bodyScrollId="options-table-body-scroll"
         columns={optionColumns}
+        // Calls and puts mirror each other around the strike; Settings orders their fields.
+        columnReorder={false}
         items={rows}
         sortColumnId={null}
         sortDirection="asc"

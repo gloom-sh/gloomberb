@@ -84,7 +84,8 @@ export function SurfaceHeatGrid({ grid, range, ticks, selected, onSelect, width,
   const first = ticks[0], last = ticks.at(-1);
   return <Box flexDirection="column" width={width} height={height} data-gloom-role="surface-grid" data-gloom-surface-renderer="grid">
     {notice ? <Box paddingX={1}><Notice tone="muted">{notice}</Notice></Box> : null}
-    <DataTableView<HeatRow> rootWidth={width} rootHeight={Math.max(2, height - 1 - noticeRows)} columns={columns} items={rows}
+    {/* Moneyness or delta in order across the tenors: the surface's axis. */}
+    <DataTableView<HeatRow> rootWidth={width} rootHeight={Math.max(2, height - 1 - noticeRows)} columns={columns} columnReorder={false} items={rows}
       getItemKey={(row) => String(row.index)}
       selection={{ kind: "id", selectedId: selected ? String(selected.tenorIndex) : null, getId: (row) => String(row.index),
         onChange: (_id, row) => onSelect({ tenorIndex: row.index, moneynessIndex: selected?.moneynessIndex ?? 0 }) }}

@@ -15,7 +15,7 @@ import {
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { usePaneVisible } from "../../../state/app/activity";
-import { usePaneInstance, usePaneSettingValue } from "../../../state/app/context";
+import { useOptionalPaneSettingUpdater, usePaneInstance, usePaneSettingValue } from "../../../state/app/context";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -60,6 +60,7 @@ import {
 } from "./model";
 import {
   createFuturesColumns,
+  DEFAULT_FUTURES_COLUMN_IDS,
   FUTURES_COLUMN_DEFS,
   FUTURES_REPORT_COLUMNS,
   renderFuturesCell,
@@ -88,6 +89,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
   const { pinTicker } = usePluginTickerActions();
   const dataProvider = useAssetData();
   const paneInstance = usePaneInstance();
+  const updateColumnIds = useOptionalPaneSettingUpdater(paneInstance?.instanceId ?? null, "columnIds");
   const liveStreaming = useLiveStreamingSetting();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sortPreference, setSortPreference] = useState<FuturesSortPreference>(DEFAULT_FUTURES_SORT);
@@ -154,6 +156,17 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
   })), [columns, returns]);
   const titledColumns = useMemo(() => returnBases.size === 0 ? columns
     : columns.map((column) => returnBases.has(column.id) ? { ...column, title: returnBases.get(column.id) } : column), [columns, returnBases]);
+  // A header dragged to a new place rewrites the Columns setting; back in the default order, the setting goes, so
+  // columns later added to the defaults still show. The session mark and the symbol name the row and stay first.
+  const anchoredColumns = columns.findIndex((column) => column.id !== "status" && column.id !== "code");
+  const columnReorder = useMemo(() => ({
+    anchored: anchoredColumns > 0 ? anchoredColumns : undefined,
+    control: {
+      order: visibleColumnIds,
+      defaultOrder: DEFAULT_FUTURES_COLUMN_IDS,
+      onChange: (ids: string[] | undefined) => updateColumnIds(() => ids),
+    },
+  }), [anchoredColumns, updateColumnIds, visibleColumnIds]);
   useRemoteUiNode(returnBases.size > 0 ? {
     role: "report-notice",
     label: "Return base dates",
@@ -369,6 +382,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
       rootWidth={width}
       rootHeight={height}
       columns={titledColumns}
+      columnReorder={columnReorder}
       items={dataProvider ? rows : []}
       sortable
       sortColumnId={sortPreference.columnId}

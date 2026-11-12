@@ -37,7 +37,7 @@ import {
   type BrokerProfileRow,
 } from "./model";
 import { useBrokerManagerActions } from "./pane-actions";
-import { useSignInEnds } from "./sign-in-end";
+import { useSignInReads } from "./sign-in-end";
 import {
   buildBrokerColumns,
   renderBrokerCell,
@@ -82,10 +82,10 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
 
   // Signed-in profiles take their broker's name from the connector list.
   const signedInBrokers = useSyncExternalStore(subscribeSignedInBrokers, getSignedInBrokers, getSignedInBrokers);
-  const { ends: signInEnds, reload: reloadSignInEnds } = useSignInEnds(config.brokerInstances);
+  const { reads: signInReads, reload: reloadSignInReads } = useSignInReads(config.brokerInstances);
   const rows = useMemo(
-    () => buildBrokerProfileRows(config, adapters, brokerAccounts, signInEnds, getBrokerLogo, brokerSyncErrors),
-    [adapters, brokerAccounts, brokerSyncErrors, config, getBrokerLogo, language, signInEnds, signedInBrokers, statusVersion],
+    () => buildBrokerProfileRows(config, adapters, brokerAccounts, signInReads, getBrokerLogo, brokerSyncErrors),
+    [adapters, brokerAccounts, brokerSyncErrors, config, getBrokerLogo, language, signInReads, signedInBrokers, statusVersion],
   );
   const selectedIndex = Math.max(0, rows.findIndex((row) => row.id === selectedId));
   const selectedRow = rows[selectedIndex] ?? null;
@@ -115,8 +115,8 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   // After a connect or sync, which can renew a sign-in or find it ended.
   const refreshStatuses = useCallback(() => {
     setStatusVersion((version) => version + 1);
-    reloadSignInEnds();
-  }, [reloadSignInEnds]);
+    reloadSignInReads();
+  }, [reloadSignInReads]);
 
   const {
     busy,
