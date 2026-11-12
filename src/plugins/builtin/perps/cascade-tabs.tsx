@@ -149,7 +149,7 @@ export function Depth({ asset, onAssetChange, accessKey, width, height, focused,
   </>;
   const lock = data && !pro ? <Lock text="Upgrade for hourly depth history" onPress={upgrade} role="perps-depth-upgrade" /> : null;
   return <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject="order book depth">
-    // Bid and ask depth in pairs at widening distances from mid.
+    {/* Bid and ask depth in pairs at widening distances from mid: the columns keep their order. */}
     <DataTableView<PerpDepthRow> columns={columns} columnReorder={false} items={rows} focused={focused && !querySearch.active} rootWidth={width} rootHeight={height} rootBefore={before}
       getItemKey={(row) => row.marketId} sortColumnId={null} sortDirection="desc" resetScrollKey={base}
       selection={{ kind: "id", selectedId: selected?.marketId ?? null, getId: (row) => row.marketId, onChange: setSelected }} onActivate={(row) => onOpenMarket(row.marketId)}
