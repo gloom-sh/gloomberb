@@ -700,6 +700,86 @@ describe("PortfolioListPane cash and margin UI", () => {
     await flushFrame();
   }
 
+  /** Main Portfolio, $10,000: AAPL $2,600 and SPY $6,400 held, $1,000 cash, targets AAPL 20%, SPY 70%, CASH 10%. */
+  async function renderTargetBook(notifications: Array<{ type?: string; body: string }>) {
+    const config = createManualCollectionConfig("main");
+    config.portfolios = config.portfolios.map((portfolio) => portfolio.id === "main"
+      ? { ...portfolio, cash: { amount: 1000, currency: "USD" }, targetWeights: { AAPL: 20, SPY: 70, CASH: 10 } }
+      : portfolio);
+    const held = (symbol: string, shares: number) => makeTicker({
+      ticker: symbol, name: symbol, watchlists: [], portfolios: ["main"],
+      positions: [{ portfolio: "main", shares, avgCost: 50, currency: "USD", broker: "manual" }],
+    });
+    await tui.render(<PaneFooterProvider>{(footer) => <Box flexDirection="column">
+      <PortfolioHarness
+        config={config}
+        collectionId="main"
+        stateMutator={(state) => {
+          state.tickers = new Map([["AAPL", held("AAPL", 26)], ["SPY", held("SPY", 64)]]);
+          state.financials = new Map([
+            ["AAPL", createTestFinancials({ quote: makeQuote({ symbol: "AAPL", price: 100, change: 0, changePercent: 0, previousClose: 100 }) })],
+            ["SPY", createTestFinancials({ quote: makeQuote({ symbol: "SPY", price: 100, change: 0, changePercent: 0, previousClose: 100 }) })],
+          ]);
+          state.paneState[TEST_PANE_ID] = { ...state.paneState[TEST_PANE_ID], cursorSymbol: "AAPL" };
+        }}
+        runtime={createTestPluginRuntime({ notify: (notification) => { notifications.push(notification); } })}
+        paneHeight={14}
+        paneWidth={160}
+      />
+      <PaneFooterBar footer={footer} focused width={160} />
+      <PaneFooterKeys paneId={TEST_PANE_ID} footer={footer} focused />
+    </Box>}</PaneFooterProvider>, { width: 160, height: 24 });
+    for (let index = 0; index < 3; index++) await flushFrame();
+  }
+
+  async function pressTargetKey(key: string) {
+    await act(async () => {
+      if (key === "enter") tui.setup().mockInput.pressEnter();
+      else tui.setup().mockInput.pressKey(key);
+      await Promise.resolve();
+      await tui.setup().renderOnce();
+    });
+    await flushFrame();
+  }
+
+  const mainTargets = () => harnessState?.config.portfolios.find((portfolio) => portfolio.id === "main")?.targetWeights;
+
+  test("t sets the cursor row's target weight in a dialog and Shift+T clears it, with no mouse", async () => {
+    const notifications: Array<{ type?: string; body: string }> = [];
+    await renderTargetBook(notifications);
+    await pressTargetKey("t");
+    expect(tui.frame()).toContain("Set Target Weight");
+    expect(tui.frame()).toContain("AAPL in Main Portfolio: weight 26.0%, target 20.0%.");
+    // The field starts at the current target: replace it.
+    await act(async () => {
+      for (let index = 0; index < 4; index++) tui.setup().mockInput.pressBackspace();
+      await tui.setup().mockInput.typeText("25");
+    });
+    await pressTargetKey("enter");
+    expect(mainTargets()).toEqual({ AAPL: 25, SPY: 70, CASH: 10 });
+    expect(notifications.at(-1)).toMatchObject({ type: "success" });
+    expect(notifications.at(-1)?.body).toStartWith("Set the target for AAPL in Main Portfolio to 25.0%.");
+
+    await pressTargetKey("T");
+    expect(mainTargets()).toEqual({ SPY: 70, CASH: 10 });
+    expect(notifications.at(-1)?.body).toStartWith("Cleared the target for AAPL in Main Portfolio.");
+  });
+
+  test("a book with cash or targets ends in CASH and TOTAL rows, and the cursor reaches CASH to set its target", async () => {
+    const notifications: Array<{ type?: string; body: string }> = [];
+    await renderTargetBook(notifications);
+    const line = (label: string) => tui.frame().split("\n").find((row) => row.trimStart().startsWith(label)) ?? "";
+    // Cash at its 10% target trades nothing; TOTAL is the whole book, cash included, with the targets' sum.
+    expect(line("CASH")).toMatch(/^ CASH +10\.0% +10\.0% +0\.0pp .* 1\.0k /);
+    expect(line("TOTAL")).toMatch(/^ TOTAL +100\.0% +100\.0% .* 10\.0k +0\.00 +\+4\.5k/);
+    // The header's Cash is the row now.
+    expect(tui.frame()).not.toContain("Cash 1.0k");
+    // From AAPL, the last holding, j goes to CASH (TOTAL takes no cursor).
+    await pressTargetKey("j");
+    await pressTargetKey("t");
+    expect(tui.frame()).toContain("Cash in Main Portfolio: weight 10.0%, target 10.0%.");
+  });
+
   test("d asks before taking the selected ticker off a watchlist, then moves to the next row", async () => {
     const position = { portfolio: "main", shares: 2, avgCost: 40, currency: "USD", broker: "manual" as const };
     const watched = (symbol: string, overrides: Partial<TickerRecord["metadata"]> = {}) => makeTicker({

@@ -76,10 +76,12 @@ export function useTargetWeightActions({
   const latest = useRef({ portfolio, row, listedSymbols });
   latest.current = { portfolio, row, listedSymbols };
 
+  // With the panes' live state in the layout, so the config keeps the cursor where the target was set.
   const save = useCallback((config: AppConfig) => {
     const state = stateRef.current;
-    dispatch({ type: "SET_CONFIG", config });
-    scheduleConfigSave(syncConfigActiveLayoutState(config, state.paneState, state.focusedPaneId));
+    const synced = syncConfigActiveLayoutState(config, state.paneState, state.focusedPaneId);
+    dispatch({ type: "SET_CONFIG", config: synced });
+    scheduleConfigSave(synced);
   }, [dispatch, stateRef]);
 
   const setTarget = useCallback(async () => {
