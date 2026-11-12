@@ -6,6 +6,7 @@ import { cliStyles, cliTerminalWidth, wrapText } from "../utils/cli-output";
 import { withSearchHints, type FredSeriesCheck } from "./not-a-ticker";
 import { isProviderBusy, isSourceFailure, SEARCH_BUSY_CODE, SEARCH_BUSY_MESSAGE, serviceDidNotAnswerMessage } from "../sources/provider-errors";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../utils/network-failure";
+import { isReasonCode, readableError } from "../utils/reason-codes";
 
 const USAGE_PREFIX = "Usage: ";
 /** The code of every error a command fails with: bad input, nothing found, an option it does not take. */
@@ -144,9 +145,25 @@ function cliErrorObject(error: unknown): CliErrorObject {
   if (error instanceof ApiRequestError && error.status === 400) {
     return { code: CLI_ERROR_CODE, message: error.message };
   }
+  const message = error instanceof Error ? error.message : String(error);
+  // A read that ended in the data service's bare reason code: it had nothing, or its source failed and may answer later.
+  if (isReasonCode(message)) {
+    return NOTHING_CODES.has(message.trim())
+      ? { code: NO_DATA_CODE, message }
+      : { code: SOURCE_UNAVAILABLE_CODE, message, retryable: true };
+  }
+  return { code: "unexpected_error", message };
+}
+
+/** The reason codes that say the data service has nothing, as opposed to a source that failed. */
+const NOTHING_CODES = new Set(["NO_DATA", "NOT_FOUND", "BAD_MAPPING"]);
+
+/** What a failure says in words: a reason code (UPSTREAM_ERROR) in its message or details reads as what happened. */
+function readableCliError(error: CliErrorObject): CliErrorObject {
   return {
-    code: "unexpected_error",
-    message: error instanceof Error ? error.message : String(error),
+    ...error,
+    message: readableError(error.message),
+    ...(typeof error.details === "string" ? { details: readableError(error.details) } : {}),
   };
 }
 
@@ -197,7 +214,7 @@ function hintedError(error: CliErrorObject, args: readonly string[], isFredSerie
 
 export function printCliError(error: unknown, options: CliGlobalOptions, context: CliErrorContext = {}): void {
   if (options.quiet && options.format === "text") return;
-  const errorObject = cliErrorObject(error);
+  const errorObject = readableCliError(cliErrorObject(error));
   console.error(options.format === "text"
     ? formatCliErrorText(hintedError(errorObject, context.args ?? [], context.isFredSeries), context)
     : serializeCliError(errorObject, options));

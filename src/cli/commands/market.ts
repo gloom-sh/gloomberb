@@ -61,6 +61,7 @@ import {
   formatAnalystReference,
   ratingReason,
 } from "../../plugins/builtin/research/analyst-model";
+import { hasAnalystCoverage, loadAnalystResearch, noAnalystCoverageText } from "../../plugins/builtin/research/client";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
 import { awaitingFirstDelayedPrint, isQuoteStaleForCurrentSession, noPrintsTodayText, nominalPriceText, nominalSessionLabel } from "../../market-data/quotes/freshness";
 import {
@@ -3650,7 +3651,8 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const venues = loadBareVenues(listing, market);
     const [data, quote] = await Promise.all([
       loadForListing(
-        listing, market, ctx, () => market.dataProvider.getAnalystResearch(listing.request.symbol, listing.request.exchange),
+        // A listing no analyst covers loads as research with nothing in it, said below rather than failed.
+        listing, market, ctx, () => loadAnalystResearch(market.dataProvider, listing.request.symbol, listing.request.exchange),
         undefined, { command: "analyst", noun: "analyst research" },
       ),
       loadListingQuote(market.dataProvider, listing),
@@ -3677,7 +3679,8 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     }, {
       heading: listingHeading(identity),
       rows: analystRows,
-      summary: (research) => analystSummary(research, quote),
+      summary: (research) => hasAnalystCoverage(research) ? analystSummary(research, quote) : "",
+      empty: noAnalystCoverageText(identity.symbol),
       rowNote: analystRowNote,
       columns: [
         { key: "date", header: "Date" },

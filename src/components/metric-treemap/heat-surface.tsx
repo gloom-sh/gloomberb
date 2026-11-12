@@ -13,6 +13,7 @@ import {
 import { useThemeColors } from "../../theme/theme-context";
 import { t } from "../../i18n";
 import { clipToDisplayWidth, padTo } from "../../utils/format";
+import { readableError } from "../../utils/reason-codes";
 import type { FloatMetricTreemapTile, MetricTreemapItem } from "./layout";
 import {
   buildMetricTreemapScene,
@@ -820,7 +821,7 @@ export function HeatTreemapSurface<T>(props: HeatTreemapSurfaceProps<T>) {
   if (props.scene.tiles.length === 0) {
     return (
       <Box width={props.width} height={props.height} paddingX={1} paddingY={1}>
-        <Text fg={colors.textDim}>{t(props.emptyStateTitle ?? "No chart data")}</Text>
+        <Text fg={colors.textDim}>{t(readableError(props.emptyStateTitle ?? "No chart data"))}</Text>
       </Box>
     );
   }

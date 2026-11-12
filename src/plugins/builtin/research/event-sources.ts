@@ -5,6 +5,7 @@ import type {
   TickerFinancials,
 } from "../../../types/financials";
 import { formatEventMetric } from "./event-model";
+import { loadAnalystResearch } from "./client";
 import { formatPercent, formatPercentRaw } from "../../../utils/format";
 import { loadEarningsCalendar } from "../earnings/data/cache";
 import { calendarEventOf, newYorkDay, withResolvedEarnings } from "../shared/earnings-calendar";
@@ -74,7 +75,8 @@ function settledError(result: PromiseSettledResult<unknown>): string | null {
 export async function loadEventSources(provider: DataProvider, symbol: string, today = newYorkDay()): Promise<EventSources> {
   const [actions, estimates, financials, calendar] = await Promise.allSettled([
     provider.getCorporateActions?.(symbol, "") ?? null,
-    provider.getAnalystResearch?.(symbol, "") ?? null,
+    // A listing no analyst covers answers with no estimates, not a failure.
+    provider.getAnalystResearch ? loadAnalystResearch(provider, symbol, "") : null,
     provider.getTickerFinancials(symbol, ""),
     loadEarningsCalendar(provider, [symbol]),
   ]);
