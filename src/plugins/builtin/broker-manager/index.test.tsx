@@ -695,7 +695,7 @@ describe("BrokersPane", () => {
 
   test("c renews a sign-in the pane knows is connected or has an end, and is a plain connect otherwise", async () => {
     const calls: string[] = [];
-    const asked: Array<{ renew?: boolean }> = [];
+    const asked: Array<{ renew?: boolean; replace?: string | null }> = [];
     const connectedAt = new Date(Date.now() - 6.5 * 24 * 3_600_000).toISOString();
     let connection: Record<string, unknown> = { status: "connected", connectedAt };
     spies.push(spyOn(apiClient, "isSignedIn").mockReturnValue(true));
@@ -703,7 +703,7 @@ describe("BrokersPane", () => {
       path === "" ? connection : { accounts: [], positions: [] }
     )) as typeof apiClient.brokerRequest));
     spies.push(spyOn(signInDialog, "requestBrokerSignIn").mockImplementation(async (_broker, options) => {
-      asked.push({ renew: options?.renew });
+      asked.push({ renew: options?.renew, replace: options?.replace });
       return false;
     }));
     const profile = (id: string): BrokerInstanceConfig => ({ id, brokerType: "signed-in", label: id, connectionMode: "ibkr", config: {}, enabled: true });
@@ -714,11 +714,22 @@ describe("BrokersPane", () => {
     // Days from its end: shown all the same, and renewable early.
     const far = { status: "connected", connectedAt, expiresAt: new Date(Date.now() + 4 * 24 * 3_600_000).toISOString(), expiresSoon: false };
 
-    for (const [id, answer, renews] of [
-      ["synced", { status: "connected", connectedAt }, true],
-      ["flagged", ending, true],
-      ["far", far, true],
-      ["plain", { status: "connected", connectedAt }, false],
+    const ended = { status: "reauth_required", connectedAt, expiresAt: null, expiresSoon: false };
+
+    // A Gloom server from before `replacePrompt` says nothing, and only a renewal of a broker that keeps one
+    // connection is known to ask (this one keeps several). One that says is followed, ended or not.
+    for (const [id, answer, renews, replace] of [
+      ["synced", { status: "connected", connectedAt }, true, null],
+      ["flagged", ending, true, null],
+      ["far", far, true, null],
+      ["plain", { status: "connected", connectedAt }, false, null],
+      ["live", { ...far, replacePrompt: "will" }, true, "will"],
+      // Ended on the broker's clock: it still lists Gloom's connection and asks to replace it.
+      ["clock", { ...ended, lastError: "invalid_grant: Authorization grant has expired", replacePrompt: "will" }, false, "will"],
+      // Another app took the account's one connection: nothing of Gloom's left to replace.
+      ["taken", { ...ended, lastError: "invalid_grant: Invalid authorization status", replacePrompt: null }, false, null],
+      // An end Gloom cannot tell from the user removing Gloom at the broker.
+      ["unsure", { ...ended, lastError: "HTTP 401", replacePrompt: "may" }, false, "may"],
     ] as const) {
       asked.length = 0;
       connection = answer;
@@ -727,10 +738,10 @@ describe("BrokersPane", () => {
       await settle();
       await settle();
       // The row says when the broker ends the sign-in, whenever it has an end.
-      expect(frame().includes("Ends ")).toBe("expiresAt" in answer);
+      expect(frame().includes("Ends ")).toBe(Boolean(answer.expiresAt));
       await pressKey("c");
       await settle();
-      expect(asked).toEqual([{ renew: renews }]);
+      expect(asked).toEqual([{ renew: renews, replace }]);
       // Said in the profile's detail; nothing on the row changed.
       await pressKey("RETURN");
       expect(frame()).toContain(renews ? "sign-in was not renewed." : "was not connected.");

@@ -1652,6 +1652,7 @@ export const zhCN: Record<string, string> = {
   "Continue in your browser or scan the code.": "在浏览器中继续，或扫描二维码。",
   "Other AI apps linked to {broker} get disconnected. Connect them to Gloom instead.": "已关联 {broker} 的其他 AI 应用会被断开。请改为将它们连接到 Gloom。",
   "{broker} will ask to replace your existing Gloom connection. Choose to replace it.": "{broker} 会询问是否替换你现有的 Gloom 连接。请选择替换。",
+  "{broker} may ask to replace your existing Gloom connection. If it does, choose to replace it.": "{broker} 可能会询问是否替换你现有的 Gloom 连接。如果询问，请选择替换。",
   "Waiting for {broker}...": "正在等待 {broker}...",
   "Contacting Gloom...": "正在连接 Gloom...",
   "Something went wrong.": "出了点问题。",

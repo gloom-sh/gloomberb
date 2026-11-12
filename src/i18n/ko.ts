@@ -1650,6 +1650,7 @@ export const ko: Record<string, string> = {
   "Continue in your browser or scan the code.": "브라우저에서 계속하거나 코드를 스캔하세요.",
   "Other AI apps linked to {broker} get disconnected. Connect them to Gloom instead.": "{broker}에 연결된 다른 AI 앱은 연결이 해제됩니다. 대신 Gloom에 연결하세요.",
   "{broker} will ask to replace your existing Gloom connection. Choose to replace it.": "{broker}에서 기존 Gloom 연결을 교체할지 묻습니다. 교체를 선택하세요.",
+  "{broker} may ask to replace your existing Gloom connection. If it does, choose to replace it.": "{broker}에서 기존 Gloom 연결을 교체할지 물을 수 있습니다. 그러면 교체를 선택하세요.",
   "Waiting for {broker}...": "{broker} 기다리는 중...",
   "Contacting Gloom...": "Gloom에 연결하는 중...",
   "Something went wrong.": "문제가 발생했습니다.",

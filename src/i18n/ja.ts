@@ -1652,6 +1652,7 @@ export const ja: Record<string, string> = {
   "Continue in your browser or scan the code.": "ブラウザーで続けるか、コードをスキャンしてください。",
   "Other AI apps linked to {broker} get disconnected. Connect them to Gloom instead.": "{broker} に連携している他の AI アプリは切断されます。代わりに Gloom に接続してください。",
   "{broker} will ask to replace your existing Gloom connection. Choose to replace it.": "{broker} から既存の Gloom 接続を置き換えるか確認されます。置き換えを選んでください。",
+  "{broker} may ask to replace your existing Gloom connection. If it does, choose to replace it.": "{broker} から既存の Gloom 接続を置き換えるか確認される場合があります。その場合は置き換えを選んでください。",
   "Waiting for {broker}...": "{broker} を待っています...",
   "Contacting Gloom...": "Gloom に接続中...",
   "Something went wrong.": "問題が発生しました。",

@@ -4,7 +4,8 @@ import type { AppConfig, BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerAccount } from "../../../types/trading";
 import { formatCurrency } from "../../../utils/format";
 import { t } from "../../../i18n";
-import type { SignInEnd, SignInEnds } from "./sign-in-end";
+import type { BrokerReplacePrompt } from "../../../brokers/signed-in/client";
+import type { SignInEnd, SignInReads } from "./sign-in-end";
 
 export type BrokerDisplayState =
   | "disabled"
@@ -30,6 +31,12 @@ export interface BrokerProfileRow {
   accountIds: string[];
   /** When the broker ends this profile's live sign-in, for a broker that ends it on a clock. */
   signInEnd: SignInEnd | null;
+  /**
+   * Whether the broker will or may ask to replace the Gloom connection it
+   * lists when this profile signs in again, as Gloom says; undefined when
+   * Gloom has not said (a server that predates it, or no read yet).
+   */
+  replacePrompt?: BrokerReplacePrompt | null;
   /** The broker's logo for the desktop and the web (brokers/logos.ts); null draws its initial. */
   logo: string | null;
   instance: BrokerInstanceConfig;
@@ -123,7 +130,7 @@ export function buildBrokerProfileRows(
   config: AppConfig,
   adapters: ReadonlyMap<string, BrokerAdapter | null>,
   brokerAccounts: Record<string, BrokerAccount[]>,
-  signInEnds: SignInEnds = new Map(),
+  signInReads: SignInReads = new Map(),
   pluginLogo: BrokerPluginLogo = () => null,
   syncErrors: Readonly<Record<string, string>> = {},
 ): BrokerProfileRow[] {
@@ -165,7 +172,9 @@ export function buildBrokerProfileRows(
       // Say nothing next to a failure or a profile that does not connect.
       signInEnd: state.state === "error" || state.state === "sign-in" || state.state === "disabled" || state.state === "unavailable"
         ? null
-        : signInEnds.get(instance.id) ?? null,
+        : signInReads.get(instance.id)?.end ?? null,
+      // Said for an ended sign-in too: it is the next sign-in the broker asks about.
+      replacePrompt: signInReads.get(instance.id)?.replacePrompt,
       logo: brokerProfileLogo(instance, adapter, pluginLogo),
       instance,
       adapter,

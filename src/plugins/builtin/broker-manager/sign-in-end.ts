@@ -1,6 +1,10 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { apiClient } from "../../../api-client";
-import { fetchSignedInBrokerConnection, type SignedInBrokerConnection } from "../../../brokers/signed-in/client";
+import {
+  type BrokerReplacePrompt,
+  fetchSignedInBrokerConnection,
+  type SignedInBrokerConnection,
+} from "../../../brokers/signed-in/client";
 import { isSignedInBrokerProfile, signedInBrokerId } from "../../../brokers/signed-in/profile";
 import { tf } from "../../../i18n";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -20,13 +24,30 @@ export interface SignInEnd {
   soon: boolean;
 }
 
-export type SignInEnds = ReadonlyMap<string, SignInEnd>;
+/** What Gloom says about a profile's sign-in: when it ends, and what the broker asks on the next one. */
+export interface SignInRead {
+  end: SignInEnd | null;
+  /**
+   * Whether the broker will or may ask to replace the Gloom connection it
+   * lists when the user signs in again; undefined from a Gloom server that
+   * predates it.
+   */
+  replacePrompt?: BrokerReplacePrompt | null;
+}
+
+export type SignInReads = ReadonlyMap<string, SignInRead>;
 
 /** When the broker ends the live sign-in, and whether Gloom says to renew it now. */
 export function signInEndOf(connection: Pick<SignedInBrokerConnection, "expiresAt" | "expiresSoon">): SignInEnd | null {
   if (!connection.expiresAt) return null;
   const endsAt = Date.parse(connection.expiresAt);
   return Number.isFinite(endsAt) ? { endsAt, soon: connection.expiresSoon === true } : null;
+}
+
+/** What Gloom says about the account's connection to a broker. */
+export function signInReadOf(connection: SignedInBrokerConnection): SignInRead {
+  const end = signInEndOf(connection);
+  return "replacePrompt" in connection ? { end, replacePrompt: connection.replacePrompt ?? null } : { end };
 }
 
 /** The profile row's status, in the place of "Connected": "Ends Oct 10". */
@@ -42,13 +63,15 @@ export function signInEndNote(endsAt: number, now = Date.now()): string {
 }
 
 /**
- * When each signed-in profile's sign-in ends, by instance id, for the profiles
- * whose broker ends it on a clock. Read from Gloom when the pane opens and
- * after a connect or sync; a failed read is the same as nothing to say.
+ * What Gloom says about each signed-in profile's sign-in, by instance id: when
+ * it ends, for a broker that ends it on a clock, and whether the broker will
+ * ask to replace Gloom's connection on the next one. Read from Gloom when the
+ * pane opens and after a connect or sync; a failed read is the same as
+ * nothing to say.
  */
-export function useSignInEnds(
+export function useSignInReads(
   instances: readonly BrokerInstanceConfig[],
-): { ends: SignInEnds; reload: () => void } {
+): { reads: SignInReads; reload: () => void } {
   const profiles = useMemo(
     () => instances.flatMap((instance) => isSignedInBrokerProfile(instance) && instance.enabled !== false
       ? [{ id: instance.id, broker: signedInBrokerId(instance) }]
@@ -67,7 +90,7 @@ export function useSignInEnds(
     ? async () => {
       const reads = await Promise.all(brokerKey.split(",").map(async (broker) => {
         try {
-          return [broker, signInEndOf(await fetchSignedInBrokerConnection(broker))] as const;
+          return [broker, signInReadOf(await fetchSignedInBrokerConnection(broker))] as const;
         } catch {
           return [broker, null] as const;
         }
@@ -77,14 +100,14 @@ export function useSignInEnds(
     : null, [brokerKey, signedIn]);
   const { data, reload } = useAsyncResource(loader, { keepPreviousData: true });
 
-  const ends = useMemo<SignInEnds>(() => {
-    const byInstance = new Map<string, SignInEnd>();
+  const reads = useMemo<SignInReads>(() => {
+    const byInstance = new Map<string, SignInRead>();
     for (const profile of profiles) {
-      const end = data?.get(profile.broker);
-      if (end) byInstance.set(profile.id, end);
+      const read = data?.get(profile.broker);
+      if (read) byInstance.set(profile.id, read);
     }
     return byInstance;
   }, [data, profiles]);
   const refresh = useCallback(() => { reload(); }, [reload]);
-  return { ends, reload: refresh };
+  return { reads, reload: refresh };
 }
