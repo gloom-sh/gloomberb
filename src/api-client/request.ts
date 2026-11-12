@@ -25,7 +25,8 @@ export const DEFAULT_API_URL = "https://api.gloom.sh";
  * then, and nothing else answered meanwhile, is a hung connection: the request
  * fails as the data service being unreachable, as a refused one does.
  */
-const DEFAULT_MARKET_REQUEST_TIMEOUT_MS = 10_000;
+export const MARKET_REQUEST_TIMEOUT_MS = 10_000;
+const DEFAULT_MARKET_REQUEST_TIMEOUT_MS = MARKET_REQUEST_TIMEOUT_MS;
 /**
  * A search, which a command and a keystroke wait on, gives up on a connection
  * that sends nothing back sooner. A slow search on a service that answers

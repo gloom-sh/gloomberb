@@ -91,7 +91,7 @@ import {
 } from "../../../../portfolio/allocation";
 import { findCachedPortfolioAccount } from "../cached-account";
 import { importedFromText } from "../imported-from";
-import { findNamedCollection, watchlistMemberSymbol } from "../../../../portfolio/collection-name";
+import { findNamedCollection, watchlistMemberSymbol, type CollectionNameOptions } from "../../../../portfolio/collection-name";
 import { isoDateToday } from "../../../../utils/calendar-date";
 import { lastTradeDate } from "../../../../tickers/listing-fate";
 import type { PriceWindow } from "../../../../utils/price-window";
@@ -226,6 +226,8 @@ export interface ShowCollectionOptions {
   drip?: { years: number; withholding: number };
   /** How long every holding's dividend read may take together; a test shortens it. */
   dividendDeadlineMs?: number;
+  /** Fails in its own words when no collection has the name, before the generic "not found". */
+  onMissing?: (config: AppConfig) => void;
   /** Where futures' terms and settlements are read; Gloom Cloud's terms and the data provider's daily bars by default. */
   futuresSources?: PortfolioFuturesSources;
   /** Where the FX closes of the lots' purchase dates are read; Gloom Cloud by default. */
@@ -262,11 +264,20 @@ export type CollectionMatch =
   | { kind: "portfolio"; id: string; name: string; portfolio: Portfolio }
   | { kind: "watchlist"; id: string; name: string };
 
-export function findCollection(config: AppConfig, name: string): CollectionMatch | null {
+export function findCollection(config: AppConfig, name: string, { prefix = false }: CollectionNameOptions = {}): CollectionMatch | null {
   const portfolio = findNamedCollection(config.portfolios, name);
   if (portfolio) return { kind: "portfolio", id: portfolio.id, name: portfolio.name, portfolio };
   const watchlist = findNamedCollection(config.watchlists, name);
-  return watchlist ? { kind: "watchlist", id: watchlist.id, name: watchlist.name } : null;
+  if (watchlist) return { kind: "watchlist", id: watchlist.id, name: watchlist.name };
+  if (!prefix) return null;
+  // The start of one name, among portfolios and watchlists together: `PF family` is Family Office.
+  const started = findNamedCollection<{ id: string; name: string; kind: "portfolio" | "watchlist" }>([
+    ...config.portfolios.map((entry) => ({ id: entry.id, name: entry.name, kind: "portfolio" as const })),
+    ...config.watchlists.map((entry) => ({ id: entry.id, name: entry.name, kind: "watchlist" as const })),
+  ], name, { prefix: true });
+  if (!started) return null;
+  const book = started.kind === "portfolio" ? config.portfolios.find((entry) => entry.id === started.id) : undefined;
+  return book ? { kind: "portfolio", id: book.id, name: book.name, portfolio: book } : { kind: "watchlist", id: started.id, name: started.name };
 }
 
 type CollectionQuote = Awaited<ReturnType<DataProvider["getQuote"]>>;
@@ -929,7 +940,7 @@ async function showCollectionWithMarketData(
   name: string,
   ctx: CliCommandContext,
   { config, store, dataProvider, persistence }: MarketContext,
-  { explain = false, basis = "latest-print", drip, dividendDeadlineMs = DIVIDEND_READ_DEADLINE_MS, futuresSources, costFxHistory = apiClient, period, real = false, cpi }: ShowCollectionOptions,
+  { explain = false, basis = "latest-print", drip, dividendDeadlineMs = DIVIDEND_READ_DEADLINE_MS, futuresSources, costFxHistory = apiClient, period, real = false, cpi, onMissing }: ShowCollectionOptions,
   outcome: { readsLeftBehind: boolean } = { readsLeftBehind: false },
 ) {
   const tickers = (await store.loadAllTickers()).sort((left, right) =>
@@ -938,6 +949,7 @@ async function showCollectionWithMarketData(
   const collection = findCollection(config, name);
 
   if (!collection) {
+    onMissing?.(config);
     ctx.fail(
       `Collection "${name}" was not found.`,
       `Available: ${[...config.portfolios.map((portfolio) => portfolio.name), ...config.watchlists.map((watchlist) => watchlist.name)].join(", ")}`,
@@ -1056,6 +1068,21 @@ async function showCollectionWithMarketData(
     const hedged = allocation.weightBasis === "gross";
     const yieldBase = hedged ? allocation.weightBase : exposure.net;
     const portfolioYield = totalIncome != null && yieldBase != null && yieldBase > 0 ? (totalIncome / yieldBase) * 100 : null;
+    // With a holding's income unknown, TOTAL still adds up those it has, and the note under the table names the
+    // holdings it leaves out. Its yield is over the same base less what those are worth, so a holding that pays
+    // nothing (a coin, a non-payer) still counts. The export keeps annualIncome null and knownAnnualIncome.
+    const partialIncome = totalIncome == null && income.knownHoldings > 0;
+    const leftOutValue = partialIncome
+      ? valued.reduce((sum, entry) => {
+        const value = entry.position && entry.metrics && income.gaps.has(entry.ticker.metadata.ticker) ? entry.row.marketValue : null;
+        return typeof value === "number" && Number.isFinite(value) ? sum + (hedged ? Math.abs(value) : value) : sum;
+      }, 0)
+      : 0;
+    const knownBase = partialIncome && yieldBase != null ? yieldBase - leftOutValue : null;
+    const totalIncomeShown = partialIncome ? income.knownIncome : totalIncome;
+    const totalYieldShown = partialIncome
+      ? knownBase != null && knownBase > 0 ? (income.knownIncome / knownBase) * 100 : null
+      : portfolioYield;
     const incomeUnavailable = [...income.gaps].map(([symbol, gap]) => ({ symbol, ...gap }));
     const showTargets = allocation.targetSum != null;
     // Never dropped on a narrow terminal, so --explain reads the terms off them.
@@ -1306,7 +1333,7 @@ async function showCollectionWithMarketData(
       cliStyles.bold(wholeMoney(total)),
       formatAllocationWeight(totalWeight(allocation)),
       ...(showTargets ? [formatAllocationWeight(allocation.targetSum), "", "", ""] : []),
-      ...(showIncome ? [cliStyles.bold(money(totalIncome)), formatIncomeYield(portfolioYield)] : []),
+      ...(showIncome ? [cliStyles.bold(money(totalIncomeShown)), formatIncomeYield(totalYieldShown)] : []),
       totalPnlValue == null ? "—" : colorBySign(money(totalPnlValue, { signed: true }), totalPnlValue),
       "",
     ]);
@@ -1381,7 +1408,7 @@ async function showCollectionWithMarketData(
     }
     if (unsized(unavailableCost).length > 0) notes.push(cliStyles.muted(`Cost unavailable for ${named(unsized(unavailableCost))}.`));
     if (unsized(unavailablePnl).length > 0) notes.push(cliStyles.muted(`P&L unavailable for ${named(unsized(unavailablePnl))}.`));
-    const incomeNote = incomeGapNote(income, { name: named, money: (value) => money(value), deadlineMs: dividendDeadlineMs });
+    const incomeNote = incomeGapNote(income, { name: named, deadlineMs: dividendDeadlineMs });
     if (incomeNote) notes.push(cliStyles.muted(incomeNote));
     for (const note of notes) console.log(note);
     if (drip) {

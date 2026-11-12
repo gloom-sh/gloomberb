@@ -115,12 +115,15 @@ import { usePurchaseDateCostFx } from "./purchase-date-fx";
 import { periodFxLine, periodPnlLabel, periodPnlNotices, usePanePeriodPnl } from "./period-pnl";
 import type { LoadedPeriodPnl } from "../period-pnl";
 import {
+  allocationFigures,
   allocationWeightBase,
   buildPortfolioAllocation,
   CASH_SYMBOL,
   hasTargetWeights,
   resolvePortfolioCash,
 } from "../../../../portfolio/allocation";
+import { allocationSummaryRows, CASH_ROW_KEY } from "../allocation-rows";
+import { useTargetWeightActions, type TargetRow } from "./target-weights";
 
 /** Columns that need the portfolio's total. */
 const ALLOCATION_COLUMN_IDS = new Set(["weight", "drift", "trade", "trade_value"]);
@@ -130,8 +133,12 @@ const ALLOCATION_COLUMN_IDS = new Set(["weight", "drift", "trade", "trade_value"
 const FOOTER_TOTALS_THROTTLE_MS = 250;
 const WEIGHT_TOTAL_THROTTLE_MS = 1_000;
 const DAY_MS = 86_400_000;
+/** DRIFT sorts by its size, so its first click puts the largest drift on top. */
+const firstSortDirection = (columnId: string) => columnId === "drift" ? "desc" as const : "asc" as const;
 /** One fallback for every render: a fresh `{}` would read as a changed value each time. */
 const NO_COLLECTION_SORTS: Record<string, CollectionSortPreference> = {};
+/** What the pane's `cursorSummaryRow` holds while the cursor is on the CASH row. */
+const CASH_SUMMARY_ROW = "cash";
 
 export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const activateTicker = useTickerSourceActivate();
@@ -147,6 +154,18 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
 
   const [currentCollectionId, setCurrentCollectionId] = usePaneStateValue<string>("collectionId", paneCollection.collectionId ?? "");
   const [committedCursorSymbol, setCommittedCursorSymbol] = usePaneStateValue<string | null>("cursorSymbol", null);
+  // The CASH row's cursor has a key of its own: `cursorSymbol`, which followers, recent tickers and saved layouts
+  // read, only ever holds a ticker, and keeps the last one while the cursor is on cash.
+  const [cursorSummaryRow, setCursorSummaryRow] = usePaneStateValue<string | null>("cursorSummaryRow", null);
+  const committedCursorRow = cursorSummaryRow === CASH_SUMMARY_ROW ? CASH_ROW_KEY : committedCursorSymbol;
+  const commitCursorRow = useCallback((row: string | null) => {
+    if (row === CASH_ROW_KEY) {
+      setCursorSummaryRow(CASH_SUMMARY_ROW);
+      return;
+    }
+    setCursorSummaryRow(null);
+    setCommittedCursorSymbol(row);
+  }, [setCommittedCursorSymbol, setCursorSummaryRow]);
   const [collectionSorts, setCollectionSorts] = usePaneStateValue<Record<string, CollectionSortPreference>>("collectionSorts", NO_COLLECTION_SORTS);
   const [cashDrawerExpanded, setCashDrawerExpanded] = usePaneStateValue<boolean>("cashDrawerExpanded", false);
   const [, setViewMode] = usePaneSettingValue<PortfolioViewMode>("viewMode", "table");
@@ -159,7 +178,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     setCursorSymbol,
     flushCursorSymbol,
     cancelPendingCursorSymbol,
-  } = useThrottledCursorSymbol(committedCursorSymbol, setCommittedCursorSymbol);
+  } = useThrottledCursorSymbol(committedCursorRow, commitCursorRow);
 
   const paneSettings = useMemo(
     () => getPortfolioPaneSettings(paneInstance?.settings),
@@ -416,7 +435,6 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   });
 
   const selectedIdx = sortedTickers.findIndex((ticker) => ticker.metadata.ticker === cursorSymbol);
-  const safeSelectedIdx = selectedIdx >= 0 ? selectedIdx : 0;
 
   const prefetchInstrument = useCallback((instrument: InstrumentRef) => {
     getSharedMarketDataCoordinator()?.warmTickerGaps(instrument);
@@ -449,6 +467,20 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     });
     return allocation.cash ? { ...allocation.cash, total: allocation.total } : null;
   }, [accountState, cashLine, cashValue, isPortfolioTab, portfolioSummaryTotals, portfolioTargets]);
+  // Under the holdings of a book with cash entered by hand or targets, its CASH and TOTAL rows, as
+  // `portfolio show` prints them: cash takes a target and a trade like a holding, so the trades add up.
+  const showsAllocationRows = isPortfolioTab && viewMode === "table" && !paneSettings.hideCash
+    && (cashLine?.source === "manual" || hasTargetWeights(currentPortfolio));
+  const allocationRows = useMemo(() => {
+    if (!showsAllocationRows) return undefined;
+    const allocation = buildPortfolioAllocation({
+      holdings: portfolioSummaryTotals.allocationHoldings ?? [],
+      cashValue: cashValue ?? (cashLine ? Number.NaN : null),
+      targets: portfolioTargets,
+    });
+    return allocationSummaryRows(allocation, { cashCurrency: cashLine?.currency, currency: totalsCurrency });
+  }, [cashLine, cashValue, portfolioSummaryTotals, portfolioTargets, showsAllocationRows, totalsCurrency]);
+  const cashRowShown = !!allocationRows?.some((row) => row.id === "cash");
   const summarySegments = useMemo(() => buildPortfolioSummarySegments({
     totals: portfolioSummaryTotals,
     accountState: summaryAccountState,
@@ -459,12 +491,13 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     manualCash,
     brokerPortfolio,
     valuationBasis,
+    cashInTable: cashRowShown,
     period: periodColumns ? {
       label: periodPnlLabel(periodColumns),
       total: periodColumns.result?.total ?? null,
       contribution: periodColumns.result?.totalContribution ?? null,
     } : null,
-  }), [brokerPortfolio, config.baseCurrency, convertAccountValue, isPortfolioTab, manualCash, periodColumns, portfolioSummaryTotals, summaryAccountState, totalsCurrency, valuationBasis]);
+  }), [brokerPortfolio, cashRowShown, config.baseCurrency, convertAccountValue, isPortfolioTab, manualCash, periodColumns, portfolioSummaryTotals, summaryAccountState, totalsCurrency, valuationBasis]);
   // The header row sits in the pane's one-cell side padding, like the table.
   const summaryWidth = Math.max(0, width - 2);
   const summaryLayout = useMemo(() => layoutPortfolioSummaryHeader(summarySegments, summaryWidth, {
@@ -523,7 +556,10 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   }, [activeCollectionId, collectionSorts, setCollectionSorts]);
 
   const handleHeaderClick = useCallback((columnId: string) => {
-    setSortPreference(nextHeaderSort(activeSort, columnId, { resetTo: { columnId: null, direction: "asc" } }));
+    setSortPreference(nextHeaderSort(activeSort, columnId, {
+      firstDirection: firstSortDirection,
+      resetTo: { columnId: null, direction: "asc" },
+    }));
   }, [activeSort.columnId, activeSort.direction, setSortPreference]);
 
   const openTickerFloating = useCallback((symbol: string, options?: { newPane?: boolean }) => {
@@ -564,13 +600,14 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     if (isEnter && event.shift && !event.ctrl && !event.meta && !event.alt) {
       event.preventDefault?.();
       event.stopPropagation?.();
-      const ticker = sortedTickers[safeSelectedIdx];
+      // The cash row opens nothing.
+      const ticker = selectedIdx >= 0 ? sortedTickers[selectedIdx] : undefined;
       if (ticker) openTickerInNewPane(ticker);
       return true;
     }
 
     return false;
-  }, [dismissSinceLastSeen, focused, openTickerInNewPane, safeSelectedIdx, sortedTickers]);
+  }, [dismissSinceLastSeen, focused, openTickerInNewPane, selectedIdx, sortedTickers]);
 
   useEffect(() => {
     if (activeCollectionId !== currentCollectionId) {
@@ -585,11 +622,13 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       return;
     }
 
-    const hasSelection = cursorSymbol && sortedTickers.some((ticker) => ticker.metadata.ticker === cursorSymbol);
+    // The cash row takes the cursor too, while it is shown.
+    const hasSelection = cursorSymbol && ((cursorSymbol === CASH_ROW_KEY && cashRowShown)
+      || sortedTickers.some((ticker) => ticker.metadata.ticker === cursorSymbol));
     if (!hasSelection) {
       setCursorSymbol(sortedTickers[0]!.metadata.ticker, { immediate: true });
     }
-  }, [cursorSymbol, setCursorSymbol, sortedTickers]);
+  }, [cashRowShown, cursorSymbol, setCursorSymbol, sortedTickers]);
 
   const effectiveStreamWindow = useMemo(() => (
     viewMode === "grid"
@@ -722,6 +761,21 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       ? [{ id: "open-perpetual", label: tf("Open {label}", { label: `PERP ${perpetualDisplaySymbol(cursorMarket)} · ${perpetualVenueName(cursorMarket.exchange)}` }),
         onSelect: () => openPerpMarket(cursorMarket.marketId) }]
       : null, [cursorMarket, cursorPerpetual, openPerpMarket]);
+
+  // The cursor row's target weight: a holding's, or the cash line's on the CASH row.
+  const targetRow = useMemo<TargetRow | null>(() => {
+    if (!isPortfolioTab || !currentPortfolio) return null;
+    if (cursorSymbol === CASH_ROW_KEY) {
+      return cashRowShown ? { cash: true, symbol: CASH_SYMBOL, label: "Cash", weight: cashWeight(cashValue, portfolioWeightBase, portfolioWeightBasis) } : null;
+    }
+    if (!selectedTicker) return null;
+    const symbol = selectedTicker.metadata.ticker;
+    const holding = weightHoldings?.find((entry) => entry.symbol === symbol);
+    const weight = holding ? allocationFigures(holding, portfolioWeightBase, null).weight : null;
+    return { cash: false, symbol, label: symbol, weight };
+  }, [cashRowShown, cashValue, currentPortfolio, cursorSymbol, isPortfolioTab, portfolioWeightBase, portfolioWeightBasis, selectedTicker, weightHoldings]);
+  const listedSymbols = useMemo(() => new Set(collectionTickers.map((ticker) => ticker.metadata.ticker)), [collectionTickers]);
+  useTargetWeightActions({ portfolio: currentPortfolio, row: targetRow, listedSymbols, enabled: focused && viewMode === "table" && !quickAddFocused });
 
   usePaneFooter("portfolio-list", () => ({
     info: [
@@ -866,6 +920,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
           width={width}
           answeredSnapshots={answeredSnapshots}
           exportName={activeCollectionEntry?.name}
+          allocationRows={allocationRows}
         />
       ) : (
         <PortfolioGrid
@@ -900,6 +955,12 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
 
     </Box>
   );
+}
+
+/** The cash line's weight, as its row shows it: none against a hedged book's gross exposure. */
+function cashWeight(cashValue: number | null, weightBase: number | undefined, basis: "total" | "gross" | undefined): number | null {
+  if (cashValue == null || basis === "gross") return null;
+  return allocationFigures({ held: true, marketValue: cashValue, units: 0, unitPrice: null }, weightBase, null).weight;
 }
 
 /** The quotes of the rows, in order, for the delayed clock, which stops at the first late one. */

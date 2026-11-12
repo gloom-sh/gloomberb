@@ -7,7 +7,7 @@ import { resolveCliTicker, resolveTickerForCli } from "../../../../cli/ticker-re
 import { takeFlag, takeOption } from "../../../../cli/commands/command-utils";
 import { EXCHANGE_OPTION, listingKeys, loadSavedListing, parseListingArg, requireSavedListing, savedListingCandidates, savedListingName, type ListingArg } from "../../../../cli/listing-arg";
 import { cliStyles, renderStats, renderTable } from "../../../../utils/cli-output";
-import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
+import { CLI_COMMAND_GROUPS, suggestCliCommand } from "../../../../cli/help";
 import { formatMarketCostWithCurrency, formatMarketQuantity } from "../../../../market-data/market/format";
 import type { FuturesContractTermsPayload } from "../../../../api-client/futures-curve";
 import { futuresQuantityText, isFuturesTicker } from "../../../../portfolio/futures-positions";
@@ -36,7 +36,7 @@ import {
   setPortfolioCash,
   setPortfolioTargetWeight,
 } from "../../../../portfolio/mutations";
-import { listingLabel, renderCollectionOverview, showCollection } from "./render";
+import { findCollection, listingLabel, renderCollectionOverview, showCollection } from "./render";
 import { resolvePortfolioTotalsCurrency } from "../summary/totals";
 import {
   CASH_SYMBOL,
@@ -945,6 +945,31 @@ const IMPORT_FLAGS = new Set(["--13f", "--top", "--name", "--notional", "--repla
 
 /** The actions `portfolio` takes; any other first word names a portfolio to show. */
 const KNOWN_ACTIONS = new Set(["list", "show", "create", "delete", "rm", "add", "remove", "position", "cash", "target", "targets", "import"]);
+/** The subcommands as help lists them, for a word that is none of them. */
+const LISTED_ACTIONS = ["list", "show", "create", "delete", "add", "remove", "position", "cash", "target", "import"];
+
+/**
+ * `portfolio rebalance Main`: no collection is named "rebalance Main", so the
+ * first word was meant as a subcommand. The closest one, every one when none
+ * is close, and the command that shows a book's drift and the trades that
+ * rebalance it, with the portfolio the rest names.
+ */
+export function unknownPortfolioAction(args: readonly string[], config: AppConfig): { message: string; details: string } | null {
+  const [word = "", ...rest] = args;
+  const near = suggestCliCommand(word, LISTED_ACTIONS);
+  // One word close to no subcommand is a collection's name mistyped, which the generic answer lists.
+  if (rest.length === 0 && !near) return null;
+  const named = rest.length > 0 ? findCollection(config, rest.join(" ")) : null;
+  const book = named?.kind === "portfolio" ? shellWord(named.name) : "<portfolio>";
+  return {
+    message: `"${word}" is not a portfolio subcommand, and no portfolio or watchlist is named "${args.join(" ")}".`,
+    details: [
+      near ? `Did you mean: gloom portfolio ${[near, ...rest].map(shellWord).join(" ")}` : `Subcommands: ${LISTED_ACTIONS.join(", ")}`,
+      `Weights, drift and the trades that rebalance a book: gloom portfolio show ${book}`,
+      `Set a target weight: gloom portfolio target set ${book} <symbol|CASH> <weight%>`,
+    ].join("\n"),
+  };
+}
 
 /** How `portfolio show` prices a book, said in its help. */
 const VALUE_HELP = {
@@ -1220,7 +1245,12 @@ export const portfolioCliCommand: CliCommandDef = {
       ctx.fail(TARGET_USAGE);
     }
 
-    const shown = await showCollection(args.join(" "), ctx, { explain, basis, drip, ...(period ? { period } : {}) });
+    // A first word that names nothing, before the rest, was meant as a subcommand (`portfolio rebalance Main`).
+    const onMissing = (config: AppConfig) => {
+      const reply = unknownPortfolioAction(args, config);
+      if (reply) ctx.fail(reply.message, reply.details);
+    };
+    const shown = await showCollection(args.join(" "), ctx, { explain, basis, drip, ...(period ? { period } : {}), onMissing });
     if (shown.readsLeftBehind) exitLeavingReadsBehind();
   },
 };

@@ -279,6 +279,41 @@ test("a bare symbol read abroad that is one slip from a US ticker says so beside
   }
 });
 
+test("BRKB, quoted only abroad, is Berkshire's class B in the US and names the line abroad; BRKB:BMV stays on BMV", async () => {
+  const listed = (symbol: string, exchangeName: string, currency: string) =>
+    createTestQuote({ symbol, name: "Berkshire Hathaway Inc.", exchangeName, listingExchangeName: exchangeName, currency });
+  const line = (symbol: string, exchange: string, currency: string) =>
+    ({ providerId: "test", symbol, name: "Berkshire Hathaway Inc.", exchange, type: "EQUITY", currency });
+  const dataProvider = createTestDataProvider({
+    search: async (query: string) => ({
+      "BRK.B": [line("BRK.B", "NYSE", "USD")],
+      BRKB: [line("BRKB", "BMV", "MXN"), line("BRKB", "WSE", "PLN")],
+    })[query.replace(/:$/, "").toUpperCase()] ?? [],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => ({
+      target,
+      quote: ({
+        BRKB: listed("BRKB", "BMV", "MXN"),
+        "BRKB:BMV": listed("BRKB", "BMV", "MXN"),
+        "BRK.B": listed("BRK.B", "NYSE", "USD"),
+      } as Record<string, ReturnType<typeof createTestQuote>>)[target.symbol] ?? null,
+    })),
+  });
+  const run = async (symbol: string) => {
+    const cli = createTestCliContext({ dataProvider, store: { loadTicker: async () => null, loadAllTickers: async () => [] } });
+    await quoteCommand.execute([symbol], cli.context);
+    const { result } = cli.printed[0]!;
+    return { rows: result.data as Array<{ target: QuoteSubscriptionTarget }>, warnings: result.warnings ?? [] };
+  };
+
+  const joined = await run("BRKB");
+  expect(joined.rows.map((row) => row.target.symbol)).toEqual(["BRK.B"]);
+  expect(joined.warnings).toContain('Read "BRKB" as BRK.B (Berkshire Hathaway Inc.); also BRKB:BMV, BRKB:WSE.');
+  // The venue named is the venue quoted.
+  const named = await run("BRKB:BMV");
+  expect(named.rows.map((row) => row.target.symbol)).toEqual(["BRKB:BMV"]);
+  expect(named.warnings.join("\n")).not.toContain("BRK.B");
+});
+
 test("a futures board code quotes its future where no security uses it, and names the future where the security has no quote", async () => {
   const ttf = venueSource("TTF", [], { "TTF=F": createTestQuote({ symbol: "TTF=F", currency: "EUR", instrumentType: "FUTURE" }) });
   expect((await runQuote(["TTF"], ttf)).rows.map((row) => row.target.symbol)).toEqual(["TTF=F"]);

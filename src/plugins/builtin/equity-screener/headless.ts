@@ -457,7 +457,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
         hasMore: !!data.nextCursor,
         metrics,
         ...(unmatched.length > 0 ? { unmatchedValues: unmatchedCategoryValues(data.definition, data, rows) } : {}),
-        priceBasis: "price, changePercent and the market cap are the regular session, read from each row's quote as `quote` reads it: after the close, its close and that close's move. A pre-market, after-hours or overnight print is in extendedPrice and extendedChangePercent, measured from that close. Membership and percentiles are the snapshot's, which ranks by the close; a sort on price, changePercent, volume or marketCap orders these rows by the figures shown.",
+        priceBasis: "price, changePercent and the market cap are the regular session, read from each row's quote as `quote` reads it: after the close, its close and that close's move. trailingPE, forwardPE and priceToBook are over that price, as `valuation` reprices them. A pre-market, after-hours or overnight print is in extendedPrice and extendedChangePercent, measured from that close. Membership and percentiles are the snapshot's, which ranks by the close; a sort on price, changePercent, volume, marketCap or those multiples orders these rows by the figures shown.",
         notices: data.nextCursor
           ? [moreMatchesNotice(data.rows.length, data.universe.matched)]
           : [],

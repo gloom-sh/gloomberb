@@ -29,6 +29,8 @@ import {
   validateScreenPayload,
   criterionInputText,
   criterionValueLabel,
+  firstScreenSortDirection,
+  pressedScreenSort,
 } from "./model";
 const field = {
   id: "trailingPE" as const,
@@ -345,6 +347,18 @@ test("grades print as letters and the composite with its label, in one sign colo
   for (const row of older.rows) for (const field of GRADE_FIELDS) delete (row.metrics as Partial<typeof row.metrics>)[field];
   const loaded = validateScreenPayload(older);
   for (const field of [...LETTER_GRADE_FIELDS, "gradeComposite"] as const) expect(loaded.rows[0]!.metrics[field]).toMatchObject({ value: null, state: "unavailable" });
+});
+
+test("a P/E header or metric starts cheapest first, any other largest first, and a second press flips it", () => {
+  const byCap = { field: "marketCap", direction: "desc" } as const;
+  for (const field of ["trailingPE", "forwardPE", "priceToBook", "enterpriseToRevenue", "evToEbitda"]) {
+    expect(pressedScreenSort(byCap, field), field).toEqual({ field, direction: "asc" });
+    expect(firstScreenSortDirection(field), field).toBe("asc");
+  }
+  expect(pressedScreenSort({ field: "trailingPE", direction: "desc" }, "marketCap")).toEqual({ field: "marketCap", direction: "desc" });
+  expect(pressedScreenSort({ field: "trailingPE", direction: "asc" }, "trailingPE")).toEqual({ field: "trailingPE", direction: "desc" });
+  expect(pressedScreenSort({ field: "trailingPE", direction: "desc" }, "trailingPE")).toEqual({ field: "trailingPE", direction: "asc" });
+  expect(firstScreenSortDirection("dividendYieldPercent")).toBe("desc");
 });
 
 test("a symbol list takes a watchlist's name or up to 500 symbols; other categories stay at 25", () => {

@@ -919,8 +919,11 @@ export function getSortValue(
       return rowAllocation(ticker, activeQuote, baseMetrics, toBaseQuote, ctx).weight;
     case "target_weight":
       return holdingTarget(ctx.portfolioTargets, ticker.metadata.ticker) ?? null;
-    case "drift":
-      return rowAllocation(ticker, activeQuote, baseMetrics, toBaseQuote, ctx).drift;
+    case "drift": {
+      // Drift sorts by its size, an overweight and an underweight alike: the largest is the first to trade.
+      const drift = rowAllocation(ticker, activeQuote, baseMetrics, toBaseQuote, ctx).drift;
+      return drift == null ? null : Math.abs(drift);
+    }
     case "trade":
       return rowAllocation(ticker, activeQuote, baseMetrics, toBaseQuote, ctx).tradeUnits;
     case "trade_value":

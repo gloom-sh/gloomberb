@@ -25,7 +25,10 @@ export const equityScreenerModule: PluginModule = {
       keywords: [
         "eqs",
         "criteria",
+        "screen",
+        "stock screen",
         "screener",
+        "stock screener",
         "valuation",
         "discovery",
         "filter",

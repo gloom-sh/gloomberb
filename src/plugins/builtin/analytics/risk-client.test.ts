@@ -39,6 +39,21 @@ test("Cloud daily risk history rejects currency, listing, gap and duplicate ambi
     ),
   ).toThrow("timestamp");
 });
+test("today's bar is in the window once the listing's session closed, and out while it still trades", () => {
+  // 2026-09-22's bar beside the history through the 21st: ARCA closes at 16:00 New York, 20:00 UTC.
+  const withToday = () => {
+    const history = riskHistory();
+    history.data!.push({ date: "2026-09-22T00:00:00.000Z", open: 120, high: 120, low: 120, close: 120, volume: 100 });
+    return history;
+  };
+  const at = (time: string) => {
+    const moment = new Date(time);
+    return validateRiskHistory(withToday(), instrument, { ...riskQuote(), lastUpdated: moment.getTime() - 60_000 }, moment).latestClose.date.slice(0, 10);
+  };
+  expect(at("2026-09-22T19:30:00Z")).toBe("2026-09-21");
+  expect(at("2026-09-22T23:10:00Z")).toBe("2026-09-22");
+});
+
 test("partial Cloud source failures stay local; permission rejection escapes the shared load", async () => {
   const client = {
     getCloudQuotesBatch: async (

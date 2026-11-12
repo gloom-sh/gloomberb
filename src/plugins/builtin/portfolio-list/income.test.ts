@@ -88,7 +88,7 @@ async function text(run: () => Promise<unknown>): Promise<string> {
   return output.join("\n");
 }
 
-test("portfolio show reads cents in rand, converts income, owes a short's dividend, and names each unknown holding's cause in one line without counting it as $0", async () => {
+test("portfolio show reads cents in rand, converts income, owes a short's dividend, and TOTAL sums the income it has, naming each holding left out and why", async () => {
   // SLOW never answers: the shared deadline leaves it unread.
   const read = (symbol: string) => histories[symbol] ? Promise.resolve(histories[symbol]!) : new Promise<CorporateActionsData>(() => {});
   setCliColorEnabledOverride(false);
@@ -110,10 +110,11 @@ test("portfolio show reads cents in rand, converts income, owes a short's divide
     const shown = await text(() => showCollection("main", market(read).context, { dividendDeadlineMs: 50, drip: { years: 1, withholding: 20 } }));
     expect(shown).toMatch(/SBK[^\n]*\$180\.00 +6\.00%/);
     expect(shown).toMatch(/PEP[^\n]*— +— /);
-    // The book holds a short, so it is weighed on its gross exposure and TOTAL claims no 100%.
-    expect(shown).toMatch(/TOTAL +0\.00% +\$14,500 +— +— +— /);
-    expect(shown).toContain("Income unavailable: no GBP exchange rate for BP:NYSE; no dividend history for PEP:NASDAQ; "
-      + "dividends not read within 0.05s for SLOW:NYSE. The other 3 holdings pay $360.00 a year.");
+    // The book holds a short, so it is weighed on its gross exposure and TOTAL claims no 100%. Its income is the
+    // holdings' it has, $360.00 over their $13,500 gross, never $0 for the others nor a "—" for all.
+    expect(shown).toMatch(/TOTAL +0\.00% +\$14,500 +— +\$360\.00 +2\.67% /);
+    expect(shown).toContain("TOTAL income and yield leave out BP:NYSE (no GBP exchange rate); PEP:NASDAQ (no dividend history); "
+      + "SLOW:NYSE (dividends not read within 0.05s).");
     // The short's cost repeats in the projection, nothing reinvested; unknown holdings are not projected.
     expect(shown).toMatch(/MO:NYSE +-10 +-10 +-\$20\.00/);
     expect(shown).toContain("Not projected: BP:NYSE, PEP:NASDAQ, SLOW:NYSE (income unavailable above).");
@@ -123,6 +124,33 @@ test("portfolio show reads cents in rand, converts income, owes a short's divide
     expect(offline).not.toContain("Income  ");
     expect(offline).not.toMatch(/KO[^\n]*—[^\n]*—[^\n]*—/);
     expect(offline).toContain("Income not shown: dividends not read (offline?) for BP:NYSE, KO:NYSE, MO:NYSE, PEP:NASDAQ, SBK:JSE, SLOW:NYSE.");
+  } finally {
+    setCliColorEnabledOverride(null);
+  }
+});
+
+test("TOTAL's partial yield is over the whole invested value less the holdings it leaves out, so a coin that pays nothing still counts", async () => {
+  const book = [
+    createTestTicker("KO", "Coca-Cola", { exchange: "NYSE", portfolios: ["main"], positions: [position(100, 60, "USD")] }),
+    createTestTicker("SLOW", "Slow Co", { exchange: "NYSE", portfolios: ["main"], positions: [position(10, 20, "USD")] }),
+    createTestTicker("BTC-USD", "Bitcoin", { exchange: "CCC", portfolios: ["main"], positions: [position(0.1, 40_000, "USD")] }),
+  ];
+  const last: Record<string, number> = { KO: 100, SLOW: 20, "BTC-USD": 50_000 };
+  const cli = createTestCliContext({
+    config: createDefaultConfig("/unused-income"),
+    store: { loadAllTickers: async () => book },
+    dataProvider: createTestDataProvider({
+      getQuote: async (symbol) => ({ symbol, price: last[symbol]!, currency: "USD", change: 0, changePercent: 0, previousClose: last[symbol]!, lastUpdated: Date.now() }),
+      getExchangeRate: async () => 1,
+      getCorporateActions: async (symbol) => symbol === "KO" ? histories.KO! : new Promise<CorporateActionsData>(() => {}),
+    }),
+  });
+  setCliColorEnabledOverride(false);
+  try {
+    const shown = await text(() => showCollection("main", cli.context, { dividendDeadlineMs: 50 }));
+    // KO's $200 over KO's $10,000 and the coin's $5,000, SLOW's $200 left out: 1.33%, not 2.00% over KO alone.
+    expect(shown).toMatch(/TOTAL[^\n]*\$15,200[^\n]*\$200\.00 +1\.33% /);
+    expect(shown).toContain("TOTAL income and yield leave out SLOW:NYSE (dividends not read within 0.05s).");
   } finally {
     setCliColorEnabledOverride(null);
   }

@@ -8,6 +8,17 @@ const LISTED_COLLECTIONS = 12;
 /** Names the command bar lists under an unknown one: they share one row of the bar. */
 const LISTED_COLLECTION_NAMES = 6;
 
+/** How a collection argument is read: `prefix` also takes the start of one collection's name. */
+export interface CollectionNameOptions {
+  /**
+   * `PF family` opens Family Office when no other collection's name starts
+   * with "family". Ids are internal, so only a whole one reads. For what
+   * opens a pane or a report; a command that changes or deletes a collection
+   * takes its whole name.
+   */
+  prefix?: boolean;
+}
+
 /**
  * The portfolio or watchlist an argument names, by its id or its name,
  * trimmed and in any case: `Family`, `family` and `FAMILY` are one portfolio.
@@ -17,15 +28,26 @@ const LISTED_COLLECTION_NAMES = 6;
 export function findNamedCollection<T extends { id: string; name: string }>(
   collections: readonly T[],
   raw: string | null | undefined,
+  { prefix = false }: CollectionNameOptions = {},
 ): T | null {
   const wanted = raw?.trim() ?? "";
   if (!wanted) return null;
   const exact = collections.find((entry) => entry.id === wanted);
   if (exact) return exact;
   const normalized = wanted.toLowerCase();
-  return collections.find((entry) => (
+  const named = collections.find((entry) => (
     entry.id.toLowerCase() === normalized || entry.name.trim().toLowerCase() === normalized
-  )) ?? null;
+  ));
+  if (named || !prefix) return named ?? null;
+  const started = collectionsStartingWith(collections, normalized);
+  return started.length === 1 ? started[0]! : null;
+}
+
+/** The collections whose name starts with `wanted`, in their order. */
+function collectionsStartingWith<T extends { id: string; name: string }>(collections: readonly T[], wanted: string): T[] {
+  const start = wanted.trim().toLowerCase();
+  if (!start) return [];
+  return collections.filter((entry) => entry.name.trim().toLowerCase().startsWith(start));
 }
 
 /**
@@ -77,10 +99,22 @@ export function unknownCollectionArgError(
   collections: readonly { id: string; name: string }[],
   noun: "portfolio" | "watchlist" | "portfolio or watchlist",
   form: (name: string) => string = (name) => name,
+  options: CollectionNameOptions = {},
 ): ShortcutArgError | null {
   const wanted = raw.trim();
-  if (findNamedCollection(collections, wanted)) return null;
-  const names = collections.map((collection) => form(collection.name.trim() || collection.id));
+  if (findNamedCollection(collections, wanted, options)) return null;
+  const nameOf = (collection: { id: string; name: string }) => form(collection.name.trim() || collection.id);
+  // A start several names share says which, rather than that none has it.
+  const started = options.prefix ? collectionsStartingWith(collections, wanted) : [];
+  if (started.length > 1) {
+    const listed = started.slice(0, LISTED_COLLECTION_NAMES).map(nameOf);
+    const more = started.length - listed.length;
+    return {
+      message: `"${wanted}" starts more than one ${noun}`,
+      detail: more > 0 ? `Type more of ${listed.join(", ")} or ${more} more` : `Type more of ${listed.slice(0, -1).join(", ")} or ${listed.at(-1)}`,
+    };
+  }
+  const names = collections.map(nameOf);
   const listed = names.slice(0, LISTED_COLLECTION_NAMES);
   const more = names.length - listed.length;
   const plural = noun === "portfolio or watchlist" ? "portfolios or watchlists" : `${noun}s`;

@@ -358,6 +358,34 @@ export function screenColumnLabel(field: NumericField, ytdBase: string | null, f
 export const columnWidth = (field: NumericField, label = SHORT_LABELS[field]) =>
   Math.max(field === "price" ? 10 : field === "gradeComposite" ? 12 : 8, label.length);
 
+/** Valuation multiples, where the cheapest is what a screen looks for first. */
+const VALUATION_MULTIPLE_FIELDS: ReadonlySet<string> = new Set(["trailingPE", "forwardPE", "enterpriseToRevenue", "priceToBook", "evToEbitda"]);
+
+/**
+ * Whether a field is a valuation multiple: it sorts cheapest first, and one
+ * at zero or below (a loss, negative book or EBITDA) is no cheap price, so it
+ * ranks after every positive one either way, as the server sorts it.
+ */
+export function isValuationMultiple(field: string): boolean {
+  return VALUATION_MULTIPLE_FIELDS.has(field);
+}
+
+/**
+ * The order a field ranks in when picked as the metric or its header is first
+ * pressed: a valuation multiple cheapest first, anything else largest first.
+ */
+export function firstScreenSortDirection(field: string): "asc" | "desc" {
+  return isValuationMultiple(field) ? "asc" : "desc";
+}
+
+/** The sort a header press asks for: the column sorted flips, another starts the way it ranks. */
+export function pressedScreenSort<F extends string>(current: { field: string; direction: "asc" | "desc" }, field: F): { field: F; direction: "asc" | "desc" } {
+  return {
+    field,
+    direction: current.field === field ? current.direction === "desc" ? "asc" : "desc" : firstScreenSortDirection(field),
+  };
+}
+
 export const DEFAULT_SCREEN: ScreenDefinition = {
   version: 1,
   currency: "USD",

@@ -6,14 +6,19 @@ import { isNetworkFailure } from "../../../utils/network-failure";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 import { mapWithConcurrency } from "../../../utils/concurrency";
+import { MARKET_REQUEST_TIMEOUT_MS } from "../../../api-client/request";
 import type { DataProvider } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 
 /** Dividend reads `portfolio show` makes at once. */
 const DIVIDEND_CONCURRENCY = 8;
-/** How long `portfolio show` waits for every holding's dividends together before it prints without the rest. */
-export const DIVIDEND_READ_DEADLINE_MS = 4_000;
+/**
+ * How long `portfolio show` waits for every holding's dividends together
+ * before it prints without the rest: the time a price read gets, as a cold
+ * read of a fund's distributions (TLT's) takes longer than a quote.
+ */
+export const DIVIDEND_READ_DEADLINE_MS = MARKET_REQUEST_TIMEOUT_MS;
 /** How far `--drip` projects, in whole years. */
 export const DRIP_MAX_YEARS = 5;
 export const DRIP_DEFAULT_YEARS = 5;
@@ -229,11 +234,13 @@ const UNREAD_WORDS: Record<"timed-out" | "sign-in" | "offline" | "failed", (seco
 /**
  * The one line `portfolio show` says about income it cannot show, naming
  * each cause and its holdings: no dividend history, no exchange rate, or
- * dividends not read. Null when every holding's income is known.
+ * dividends not read. With some holdings' income known, TOTAL adds those up
+ * and the line names the holdings it leaves out. Null when every holding's
+ * income is known.
  */
 export function incomeGapNote(
   income: PortfolioIncome,
-  { name, money, deadlineMs = DIVIDEND_READ_DEADLINE_MS }: { name: (symbols: string[]) => string; money: (value: number) => string; deadlineMs?: number },
+  { name, deadlineMs = DIVIDEND_READ_DEADLINE_MS }: { name: (symbols: string[]) => string; deadlineMs?: number },
 ): string | null {
   if (income.gaps.size === 0) return null;
   const groups = new Map<string, string[]>();
@@ -243,10 +250,12 @@ export function incomeGapNote(
       : UNREAD_WORDS[gap.why](Number((deadlineMs / 1000).toFixed(2)));
     groups.set(key, [...(groups.get(key) ?? []), symbol]);
   }
-  const causes = [...groups].map(([cause, symbols]) => `${cause} for ${name(symbols)}`).join("; ");
-  if (income.knownHoldings === 0) return `Income ${showsIncomeColumns(income) ? "unavailable" : "not shown"}: ${causes}.`;
-  const others = income.knownHoldings;
-  return `Income unavailable: ${causes}. The other ${others === 1 ? "holding pays" : `${others} holdings pay`} ${money(income.knownIncome)} a year.`;
+  if (income.knownHoldings === 0) {
+    const causes = [...groups].map(([cause, symbols]) => `${cause} for ${name(symbols)}`).join("; ");
+    return `Income ${showsIncomeColumns(income) ? "unavailable" : "not shown"}: ${causes}.`;
+  }
+  const left = [...groups].map(([cause, symbols]) => `${name(symbols)} (${cause})`).join("; ");
+  return `TOTAL income and yield leave out ${left}.`;
 }
 
 /** `--years`: a whole number of years from 1 to DRIP_MAX_YEARS. */

@@ -25,6 +25,7 @@ import {
   oneWordCompanyName,
   parseListingArg,
   quoteBareListing,
+  readShareClassCode,
   serviceNamedCompany,
   titleCaseCompanyName,
   type ListingArg,
@@ -110,6 +111,9 @@ export async function answerQuote(
       : null;
     const meant = titled ? await answerNamedListing(titled, market, request, refresh, datesChangeBasis) : null;
     if (meant) return meant;
+    // BRKB quoted only abroad (BMV) is BRK.B, Berkshire's class B in the US, whose line abroad the note names.
+    const shareClass = await abroadShareClass(listing, result.quote, market, request, refresh, datesChangeBasis);
+    if (shareClass) return shareClass;
     // "CAR = Avis Budget Group, NASDAQ (different companies on XETRA, ASX)" names the venue too, so it replaces "SXR8 -> XETRA".
     const choice = await listingChoiceNotes(listing, market, result.quote, venues);
     const venue = choice.length > 0 ? null : bareListingNote(listing, result.quote);
@@ -249,6 +253,20 @@ export async function withJoinedCompanyNames(
     return answer ? [{ answer, asked: { ...answer.listing, typed: entry.typed } }] : entry.words.map((word) => ({ answer: word.answer, asked: word.asked }));
   }));
   return { answers: rows.flat().map((row) => row.answer), asked: rows.flat().map((row) => row.asked) };
+}
+
+/** A bare code quoted abroad that is a US share class without its mark (`readShareClassCode`), answered as that class. */
+async function abroadShareClass(
+  listing: CliListing,
+  quote: Quote,
+  market: MarketContext,
+  request: ListingDataRequest,
+  refresh: boolean,
+  datesChangeBasis: boolean,
+): Promise<QuoteAnswer | null> {
+  if (listing.exchange || listing.saved || !listing.typed || !bareListingNote(listing, quote)) return null;
+  const shareClass = await readShareClassCode(listing.typed, market, { unsaved: true });
+  return shareClass ? answerNamedListing(shareClass, market, request, refresh, datesChangeBasis) : null;
 }
 
 /**

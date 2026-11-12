@@ -7,6 +7,7 @@ import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-uti
 import { AppPersistence } from "../../../../data/app-persistence";
 import { TickerRepository } from "../../../../data/ticker-repository";
 import { appReducer, createInitialState, type AppAction } from "../../../../state/app/context";
+import { resolveTickerForPane } from "../../../../core/state/app/layout";
 import { AssetDataRouter } from "../../../../sources/provider-router";
 import {
   createDefaultConfig,
@@ -27,6 +28,7 @@ import { PluginRegistry, setSharedMarketDataForTests, setSharedRegistryForTests 
 import { portfolioListModule } from "..";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../../test-support/pane";
 import { AGE_CLOCK_MS } from "../use-column-clock";
+import { CASH_ROW_KEY } from "../allocation-rows";
 import { createTempDbPath, removeTempDbFiles } from "../../../../test-support/temp-db";
 import { apiClient } from "../../../../api-client";
 import type { PerpEquityListing } from "../../../../api-client/perps";
@@ -34,6 +36,7 @@ import { perpsListCache, perpsMarketCache } from "../../perps/client";
 import { equitiesPayload, perpBoard, venueRow } from "../../perps/test-fixture";
 
 const TEST_PANE_ID = "portfolio-list:test";
+const FOLLOWER_PANE_ID = "quote-monitor:follower";
 
 test.each([true, false])("deferred and continuous futures share a front reference without replacing their prices (streaming %s)", async (liveStreaming) => {
   const symbols = ["NGF27", "NG2", "NGX26"];
@@ -699,6 +702,140 @@ describe("PortfolioListPane cash and margin UI", () => {
     });
     await flushFrame();
   }
+
+  /**
+   * Main Portfolio, $10,000: AAPL $2,600 and SPY $6,400 held, $1,000 cash, targets AAPL 20%, SPY 70%, CASH 10%,
+   * and a quote pane following PF. `cashHolding` adds a stock whose symbol is CASH.
+   */
+  async function renderTargetBook(notifications: Array<{ type?: string; body: string }>, { cashHolding = false } = {}) {
+    const config = createManualCollectionConfig("main");
+    config.portfolios = config.portfolios.map((portfolio) => portfolio.id === "main"
+      ? { ...portfolio, cash: { amount: 1000, currency: "USD" }, targetWeights: { AAPL: 20, SPY: 70, CASH: 10 } }
+      : portfolio);
+    config.layout.instances.push({ instanceId: FOLLOWER_PANE_ID, paneId: "quote-monitor", binding: { kind: "follow", sourceInstanceId: TEST_PANE_ID } });
+    const held = (symbol: string, shares: number) => makeTicker({
+      ticker: symbol, name: symbol, watchlists: [], portfolios: ["main"],
+      positions: [{ portfolio: "main", shares, avgCost: 50, currency: "USD", broker: "manual" }],
+    });
+    await tui.render(<PaneFooterProvider>{(footer) => <Box flexDirection="column">
+      <PortfolioHarness
+        config={config}
+        collectionId="main"
+        stateMutator={(state) => {
+          const symbols = cashHolding ? ["AAPL", "SPY", "CASH"] : ["AAPL", "SPY"];
+          state.tickers = new Map(symbols.map((symbol) => [symbol, held(symbol, symbol === "SPY" ? 64 : symbol === "AAPL" ? 26 : 1)]));
+          state.financials = new Map(symbols.map((symbol) => [symbol,
+            createTestFinancials({ quote: makeQuote({ symbol, price: 100, change: 0, changePercent: 0, previousClose: 100 }) })]));
+          state.paneState[TEST_PANE_ID] = { ...state.paneState[TEST_PANE_ID], cursorSymbol: "AAPL" };
+        }}
+        runtime={createTestPluginRuntime({ notify: (notification) => { notifications.push(notification); } })}
+        paneHeight={14}
+        paneWidth={160}
+      />
+      <PaneFooterBar footer={footer} focused width={160} />
+      <PaneFooterKeys paneId={TEST_PANE_ID} footer={footer} focused />
+    </Box>}</PaneFooterProvider>, { width: 160, height: 24 });
+    for (let index = 0; index < 3; index++) await flushFrame();
+  }
+
+  async function pressTargetKey(key: string) {
+    await act(async () => {
+      if (key === "enter") tui.setup().mockInput.pressEnter();
+      else tui.setup().mockInput.pressKey(key);
+      await Promise.resolve();
+      await tui.setup().renderOnce();
+    });
+    await flushFrame();
+  }
+
+  const mainTargets = () => harnessState?.config.portfolios.find((portfolio) => portfolio.id === "main")?.targetWeights;
+
+  test("t sets the cursor row's target weight in a dialog and Shift+T clears it, with no mouse", async () => {
+    const notifications: Array<{ type?: string; body: string }> = [];
+    await renderTargetBook(notifications);
+    await pressTargetKey("t");
+    expect(tui.frame()).toContain("Set Target Weight");
+    expect(tui.frame()).toContain("AAPL in Main Portfolio: weight 26.0%, target 20.0%.");
+    // The field starts at the current target: replace it.
+    await act(async () => {
+      for (let index = 0; index < 4; index++) tui.setup().mockInput.pressBackspace();
+      await tui.setup().mockInput.typeText("25");
+    });
+    await pressTargetKey("enter");
+    expect(mainTargets()).toEqual({ AAPL: 25, SPY: 70, CASH: 10 });
+    expect(notifications.at(-1)).toMatchObject({ type: "success" });
+    expect(notifications.at(-1)?.body).toStartWith("Set the target for AAPL in Main Portfolio to 25.0%.");
+
+    await pressTargetKey("T");
+    expect(mainTargets()).toEqual({ SPY: 70, CASH: 10 });
+    expect(notifications.at(-1)?.body).toStartWith("Cleared the target for AAPL in Main Portfolio.");
+  });
+
+  test("a book with cash or targets ends in CASH and TOTAL rows; CASH takes the cursor and a target, never a follower's ticker", async () => {
+    const notifications: Array<{ type?: string; body: string }> = [];
+    await renderTargetBook(notifications);
+    const line = (label: string) => tui.frame().split("\n").find((row) => row.trimStart().startsWith(label)) ?? "";
+    // Cash at its 10% target trades nothing: TRADE counts units, so its amount is in TRADE VAL alone. TOTAL adds up
+    // the allocation columns, AAPL's sale and SPY's purchase to nothing; its value, day and P&L stay in the header.
+    expect(line("CASH")).toMatch(/^ CASH +10\.0% +10\.0% +0\.0pp +0\.00 /);
+    expect(line("TOTAL")).toMatch(/^ TOTAL +100\.0% +100\.0% +0\.0pp +0\.00\s*$/);
+    expect(line("● AAPL")).toMatch(/AAPL +26\.0% +20\.0% +\+6\.0pp +-6 +-600\.00 /);
+    // The header's Cash is the row now.
+    expect(tui.frame()).not.toContain("Cash 1.0k");
+    const rowY = (label: string) => tui.frame().split("\n").findIndex((row) => row.trimStart().startsWith(label));
+    const paneState = () => harnessState?.paneState[TEST_PANE_ID];
+    // Followers see the cursor once its throttle commits it.
+    const click = async (label: string) => {
+      await act(async () => {
+        await tui.setup().mockMouse.click(4, rowY(label));
+        await tui.setup().renderOnce();
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      });
+      await flushFrame();
+    };
+    // TOTAL takes no cursor.
+    await click("TOTAL");
+    expect(paneState()?.cursorSymbol).toBe("AAPL");
+    expect(paneState()?.cursorSummaryRow ?? null).toBeNull();
+    // On CASH the cursor is in its own key: cursorSymbol keeps AAPL, so the pane following PF keeps its ticker, and
+    // nothing that reads a ticker (recent tickers, the saved layout) ever holds the cash row.
+    await click("CASH");
+    expect(paneState()?.cursorSummaryRow).toBe("cash");
+    expect(paneState()?.cursorSymbol).toBe("AAPL");
+    expect(resolveTickerForPane(harnessState!, FOLLOWER_PANE_ID)).toBe("AAPL");
+    expect(harnessState!.recentTickers.every((symbol) => /^[A-Z]/.test(symbol))).toBe(true);
+    expect(JSON.stringify(harnessState!.config)).not.toContain(CASH_ROW_KEY);
+    await pressTargetKey("t");
+    expect(tui.frame()).toContain("Cash in Main Portfolio: weight 10.0%, target 10.0%.");
+    await pressTargetKey("enter");
+    expect(notifications.at(-1)?.body).toBe("Set the cash target in Main Portfolio to 10.0%.");
+    // Back on a ticker, the cash key clears and the follower moves with the cursor; j from the last holding is CASH.
+    await click("● SPY");
+    expect(paneState()?.cursorSummaryRow ?? null).toBeNull();
+    expect(resolveTickerForPane(harnessState!, FOLLOWER_PANE_ID)).toBe("SPY");
+    await click("● AAPL");
+    await pressTargetKey("j");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 200)); });
+    expect(paneState()?.cursorSummaryRow).toBe("cash");
+    expect(resolveTickerForPane(harnessState!, FOLLOWER_PANE_ID)).toBe("AAPL");
+  });
+
+  test("a holding whose symbol is CASH takes no target, and t says why", async () => {
+    const notifications: Array<{ type?: string; body: string }> = [];
+    await renderTargetBook(notifications, { cashHolding: true });
+    await act(async () => {
+      await tui.setup().mockMouse.click(4, tui.frame().split("\n").findIndex((row) => row.trimStart().startsWith("● CASH")));
+      await tui.setup().renderOnce();
+    });
+    await flushFrame();
+    expect(harnessState?.paneState[TEST_PANE_ID]?.cursorSymbol).toBe("CASH");
+    for (const key of ["t", "T"]) {
+      await pressTargetKey(key);
+      expect(tui.frame()).not.toContain("Set Target Weight");
+      expect(notifications.at(-1)).toEqual({ type: "info", body: "The holding CASH takes no target: a target on CASH is the cash line's in Main Portfolio." });
+    }
+    expect(mainTargets()).toEqual({ AAPL: 20, SPY: 70, CASH: 10 });
+  });
 
   test("d asks before taking the selected ticker off a watchlist, then moves to the next row", async () => {
     const position = { portfolio: "main", shares: 2, avgCost: 40, currency: "USD", broker: "manual" as const };

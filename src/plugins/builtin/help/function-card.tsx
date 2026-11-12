@@ -24,7 +24,7 @@ import { ShortcutHint } from "../../../components/ui/shortcut-hint";
 import { t } from "../../../i18n";
 import { useViewport } from "../../../react/input";
 import { useThemeColors } from "../../../theme/theme-context";
-import { Box, Text, TextAttributes, useRendererHost } from "../../../ui";
+import { Box, Text, TextAttributes, useRendererHost, useUiHost } from "../../../ui";
 import { useDialog, useDialogKeyboard, type AlertContext } from "../../../ui/dialog";
 import { getSharedRegistry } from "../../registry";
 import type { HelpFunction } from "./function-index";
@@ -77,8 +77,10 @@ function CardRow({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function KeysRow({ keys }: { keys: readonly FunctionHelpKey[] }) {
+  // In the terminal a wrapped line of keys follows the one before it: a gap there is two blank rows.
+  const spacing = useUiHost().KeyHint ? { gap: 2 } : { columnGap: 2, rowGap: 0 };
   return (
-    <Box flexDirection="row" flexWrap="wrap" gap={2}>
+    <Box flexDirection="row" flexWrap="wrap" {...spacing}>
       {keys.map((hint) => <ShortcutHint key={`${hint.key}${hint.label}`} hotkey={hint.key} label={hint.label} words={keyHintWords(hint)} />)}
     </Box>
   );

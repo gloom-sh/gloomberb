@@ -50,7 +50,7 @@ import {
   runPaneFunctionHelp,
   runPaneScreenshot,
 } from "./pane-functions";
-import { type UnknownCommandPointers, unknownCommandReply } from "./unknown-command";
+import { hitsBesideNearCommand, type UnknownCommandPointers, unknownCommandReply } from "./unknown-command";
 import { catalogFredSeriesIds } from "./series-search";
 import { primeBoardCoins } from "./board-coins";
 
@@ -362,10 +362,13 @@ async function unknownCommandPointers(
   commands: CliCommandDef[],
 ): Promise<UnknownCommandPointers> {
   const fn = await functionCodeCommand(ctx, token, args);
-  const command = fn || nearCommand(token, commands);
-  const hits = command ? [] : await catalogCommandHits(ctx, token);
+  const near = fn ? null : nearCommand(token, commands);
+  const found = fn ? [] : await catalogCommandHits(ctx, token);
+  // A word close to a command is that command's slip, unless a function is named for it: `screen` is the
+  // screener before it is `screenshot` mistyped.
+  const hits = hitsBesideNearCommand(found, token, near);
   // What the catalog finds for a word (`comps`) outranks the code it happens to be a slip from.
-  const nearFn = command || hits.length > 0 ? null : await nearFunctionCodeCommand(ctx, token, args);
+  const nearFn = fn || near || hits.length > 0 ? null : await nearFunctionCodeCommand(ctx, token, args);
   return { fn, nearFn, hits, args };
 }
 
