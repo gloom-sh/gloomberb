@@ -71,8 +71,9 @@ export interface EarningsReport {
   /**
    * A listing abroad's board row: the company's lines on its markets, the one
    * shown first (601939:SSE, 0939:HKEX for China Construction Bank). Its
-   * market cap is in dollars, as every company's on the board. Absent for US
-   * listings.
+   * market cap is in dollars, as every company's on the board. On a US line
+   * shown instead of its company's listing abroad the day both report (BABA
+   * for 9988:HKEX), that listing's lines. Absent for other US listings.
    */
   listings?: string[];
 }

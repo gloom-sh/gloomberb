@@ -9,7 +9,7 @@ import type {
   HeadlessRowsResult,
 } from "../../../types/plugin";
 import type { EarningsEvent } from "../../../types/data-provider";
-import { addDays, boardReport, fallbackReport, MIN_AVERAGE_REPORTS, newYorkToday, type BoardReport } from "./board-model";
+import { addDays, boardKey, boardReport, boardRowOf, fallbackReport, MIN_AVERAGE_REPORTS, newYorkToday, type BoardReport } from "./board-model";
 import { BOARD_WEEKS, boardRangeDays, boardRangeLabel, isBoardWeek, requestedBoardRange, type BoardRange } from "./calendar-model";
 import { fetchEarningsCalendar, fetchEarningsHistory, hasEarningsHistory, noHistoryAbroad, sameHistoryListing } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
@@ -18,9 +18,7 @@ import { historyRows, periodText } from "./history-model";
 import { fiscalQuarterText } from "./fiscal-quarter";
 import { loadNoEarningsText } from "./no-earnings";
 import { EPS_BASIS_NOTE, epsBasisName, PROVISIONAL_NOTE, showsEpsBasis } from "../shared/earnings-report";
-import { isUsListingExchange } from "../../../utils/exchanges";
 import { listingAbroadVenue } from "../../../utils/sec";
-import { listingSuffixCandidate } from "../../../sources/listing-symbols";
 import { findUsListingOfCompany } from "../../../tickers/us-listing";
 import { shortCompanyName } from "../../../tickers/company-name";
 import { REPORT_ROWS } from "../shared/headless-options";
@@ -115,21 +113,6 @@ const defaultDependencies: EarningsHeadlessDependencies = {
 };
 
 const NO_OWNERSHIP = new Map();
-
-/** A listing as the board keys it: 0700.HK, as typed where its quote could not be read, is 0700:HKEX. */
-function boardKey(symbol: string): string {
-  const suffixed = listingSuffixCandidate(symbol);
-  return (suffixed ? `${suffixed.symbol}:${suffixed.exchange}` : symbol).toUpperCase();
-}
-
-/** Whether a board row is the listing named: its own line, or another of its company's there (0939:HKEX for 601939:SSE). */
-function boardRowOf(entry: Pick<BoardReport, "symbol" | "listings">, named: string): boolean {
-  const symbol = boardKey(named);
-  const [bare = symbol, venue] = symbol.split(":");
-  // A US ticker is its bare symbol; a listing named abroad is only ever a listing abroad's row.
-  if (!venue || isUsListingExchange(venue)) return !entry.listings && entry.symbol.toUpperCase() === bare;
-  return [entry.symbol, ...entry.listings ?? []].some((line) => sameHistoryListing(line, symbol));
-}
 
 /**
  * EVTS with a ticker: the board is the market's whatever the ticker, so the

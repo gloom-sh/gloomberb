@@ -33,12 +33,13 @@ export function resetEarningsCloudCaches() {
 const isDate = (value: unknown) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 const numberOrNull = (value: unknown) => value === null || (typeof value === "number" && Number.isFinite(value));
 const currencyOrAbsent = (value: unknown) => value == null || (typeof value === "string" && /^[A-Z]{3}$/.test(value));
+const linesOrAbsent = (value: unknown) => value == null || (Array.isArray(value) && value.every((line) => typeof line === "string"));
 
 function validReport(report: EarningsReport): boolean {
   return !!report && typeof report.symbol === "string" && isDate(report.date)
     && [null, "bmo", "dmh", "amc"].includes(report.timing)
     && [report.marketCap, report.epsEstimate, report.epsActual, report.revenueEstimate].every(numberOrNull)
-    && currencyOrAbsent(report.currency)
+    && currencyOrAbsent(report.currency) && linesOrAbsent(report.listings)
     && (report.implied === null || (typeof report.implied === "object" && Number.isFinite(report.implied.move) && isDate(report.implied.expiry)))
     && (report.realized === null || (typeof report.realized === "object" && Number.isFinite(report.realized.move)));
 }

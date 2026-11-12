@@ -189,6 +189,9 @@ test("EVTS reads the Hong Kong, China A and Singapore listings too: a listing na
         listing({ symbol: "601939:SSE", name: "China Construction Bank", marketCap: 471.2e9, currency: "CNY", listings: ["601939:SSE", "0939:HKEX"],
           epsEstimate: 0.37, dateStatus: "reported", epsActual: 0.38 }),
         { ...report({ symbol: "NVDA", date: day, timing: "amc", marketCap: 4.5e12, epsEstimate: 1.25 }), averageMove: 0.07, averageReports: 8 },
+        // Alibaba reports the same day as BABA and 9988:HKEX: the board shows BABA, with the listing's lines.
+        { ...report({ symbol: "BABA", date: day, timing: "bmo", marketCap: 380e9, epsEstimate: 2.12 }), averageMove: 0.05, averageReports: 8,
+          listings: ["9988:HKEX"] },
       ] } as EarningsCalendarPayload;
     },
     history: async () => { throw new Error("unused"); },
@@ -204,7 +207,13 @@ test("EVTS reads the Hong Kong, China A and Singapore listings too: a listing na
     ["NVDA", "USD", 4.5e12, 1.25, null, "AMC"],
     ["601939:SSE", "CNY", 471.2e9, 0.37, null, null],
     ["0700:HKEX", "CNY", 459.65e9, 7.21, 210.24e9, null],
+    ["BABA", "USD", 380e9, 2.12, null, "BMO"],
   ]);
+  // Alibaba named by its Hong Kong line is BABA's row; BABA named is its own, though it carries the listing's lines.
+  expect((await load("9988.HK")).metadata?.highlight).toMatchObject({ onBoard: true, row: "BABA" });
+  expect((await load("9988.HK")).metadata?.notices).toEqual([expect.stringContaining(`9988.HK reports on ${day} (as BABA).`)]);
+  expect((await load("BABA")).metadata?.highlight).toMatchObject({ onBoard: true, row: "BABA" });
+  expect((await load("BABA")).metadata?.notices).toEqual([expect.stringContaining(`BABA reports on ${day}.`)]);
   expect(tencent.metadata?.currency).toContain("never converted");
   // CCB named by its H share is on the board under its A share; a 700 typed without its zero is Tencent's row.
   expect((await load("0939:HKEX")).metadata?.highlight).toEqual({ symbol: "0939:HKEX", onBoard: true, date: day, row: "601939:SSE" });

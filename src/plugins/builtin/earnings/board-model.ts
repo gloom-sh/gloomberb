@@ -6,6 +6,9 @@ import type { EarningsDateStatus, EarningsEpsBasis, Quote } from "../../../types
 import type { TickerRecord } from "../../../types/ticker";
 import { earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
 import { calendarReport } from "../shared/earnings-calendar";
+import { listingSuffixCandidate } from "../../../sources/listing-symbols";
+import { isUsListingExchange } from "../../../utils/exchanges";
+import { sameHistoryListing } from "./client";
 import { shortDate, surprise, weekday } from "./format";
 
 /** A held name is in a portfolio; a watched one only in watchlists. */
@@ -38,7 +41,11 @@ export interface BoardReport {
   owned: Ownership | null;
   /** ISO currency of the EPS and sales figures; null when the report has none. The market cap is always dollars. */
   currency?: string | null;
-  /** A listing abroad's lines on its markets, the one shown first; absent for US listings. */
+  /**
+   * A listing abroad's lines on its markets, the one shown first; on a US line
+   * the board shows instead of its listing abroad (BABA, the day 9988:HKEX
+   * reports too), that listing's. Absent for other US listings.
+   */
   listings?: readonly string[];
 }
 
@@ -153,6 +160,24 @@ export function boardReport(report: EarningsCalendarReport, owned: ReadonlyMap<s
     currency: report.currency ?? "USD",
     ...report.listings?.length ? { listings: report.listings } : {},
   };
+}
+
+/** A listing as the board keys it: 0700.HK, as typed where its quote could not be read, is 0700:HKEX. */
+export function boardKey(symbol: string): string {
+  const suffixed = listingSuffixCandidate(symbol);
+  return (suffixed ? `${suffixed.symbol}:${suffixed.exchange}` : symbol).toUpperCase();
+}
+
+/**
+ * Whether a board row is the listing named: its own line, or another of its
+ * company's (0939:HKEX for 601939:SSE, 9988:HKEX for BABA the day both report).
+ */
+export function boardRowOf(entry: Pick<BoardReport, "symbol" | "listings">, named: string): boolean {
+  const symbol = boardKey(named);
+  const [bare = symbol, venue] = symbol.split(":");
+  // A US ticker is a US row's bare symbol, never a listing abroad's.
+  if (!venue || isUsListingExchange(venue)) return !entry.symbol.includes(":") && entry.symbol.toUpperCase() === bare;
+  return [entry.symbol, ...entry.listings ?? []].some((line) => sameHistoryListing(line, symbol));
 }
 
 /**
