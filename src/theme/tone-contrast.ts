@@ -4,12 +4,11 @@ import type { ThemeColors } from "./colors";
 
 /**
  * Whether the theme reads its text at body contrast on every surface, its
- * tones and hints included: the light and colour-blind themes, which the
- * registry gives selected-row tones (Theme.selectedWarning). Dark themes
- * draw as they always have.
+ * tones and hints included: the light and colour-blind themes
+ * (Theme.readableTones). Dark themes draw as they always have.
  */
 export function readsAtBodyContrast(palette: ThemeColors = colors): boolean {
-  return palette.selectedWarning !== undefined;
+  return palette.readableTones === true;
 }
 
 /**
@@ -27,10 +26,35 @@ export function selectedCellColor<T extends string | undefined>(color: T, palett
   return color;
 }
 
+/** Whether a colour is the theme's up or down tone, which a selected row keeps (selectedRowCellColor). */
+function isDirectionTone(color: string, palette: ThemeColors): boolean {
+  return color === palette.positive || color === palette.negative;
+}
+
+/**
+ * The colour a cell of the selected row is drawn in, null for the
+ * selection's own text colour: a cell with no colour of its own takes it,
+ * and so does every other cell of a table that sets
+ * `selectedTextOverridesCellColor`, except an up or down figure, which keeps
+ * its direction (lifted by selectedCellColor) in every table, and a cell
+ * that asks to keep its colour. The band shows the selection; the -6.31% on
+ * it stays red. Both table renderers draw through it.
+ */
+export function selectedRowCellColor(
+  color: string | undefined,
+  overrides: boolean,
+  keep: boolean | undefined,
+  palette: ThemeColors = colors,
+): string | null {
+  if (color === undefined) return null;
+  if (overrides && !keep && !isDirectionTone(color, palette)) return null;
+  return selectedCellColor(color, palette);
+}
+
 /**
  * A tone on the pane title bar, such as a quick setting that is on (the live
  * ⚡): lifted to body contrast on the bar in a theme that reads its tones so
- * (Theme.selectedWarning is set), since the bar sits darker than the page
+ * (Theme.readableTones), since the bar sits darker than the page
  * its tokens are checked on; as it is in any other theme.
  */
 export function paneTitleTone(tone: string, focused: boolean, floating = false, palette: ThemeColors = colors): string {

@@ -69,6 +69,17 @@ function isNonFutureType(instrumentType: string | undefined): boolean {
   return !!type && type !== "FUTURE" && type !== "FUTURES" && type !== "FUT";
 }
 
+/**
+ * When Gloom Cloud fetched a quote from its source, as the service sends it
+ * (ms): a copy it kept, even one it could not refresh, says when it was
+ * fetched, never when this app read it. A time ahead of this clock reads as
+ * now. Undefined when absent or unreadable; the router then dates the quote
+ * by its own read (withRetrievedAt).
+ */
+function serviceRetrievedAt(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.min(value, Date.now()) : undefined;
+}
+
 export function mapQuote(
   quote: CloudQuotePayload,
   providerMeta?: CloudProviderMeta,
@@ -100,6 +111,7 @@ export function mapQuote(
     : futuresBasis ?? quote.priceBasis;
   return withoutUndefinedFields(reconcileQuoteDayRange({
     ...quote,
+    retrievedAt: serviceRetrievedAt(quote.retrievedAt),
     delisting: parseListingDelisting(quote.delisting),
     intradayBar: readIntradayBar(quote.intradayBar),
     staleReason: readStaleReason(quote.staleReason),

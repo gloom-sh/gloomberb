@@ -203,6 +203,13 @@ export interface MarketDataRequestContext {
    * no venue calendar dates. The long-lived app dates every quote anyway.
    */
   datesChangeBasis?: boolean;
+  /**
+   * The newest bars one read returns will do (a backtest of its last ten
+   * years): a history the service cut at its bar cap, or one beginning with
+   * the window asked, is answered as it came, without reads of its older bars.
+   * Without it `ALL` is every bar kept.
+   */
+  newestBars?: boolean;
 }
 
 export interface CachedFinancialsTarget {

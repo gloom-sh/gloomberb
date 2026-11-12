@@ -308,7 +308,7 @@ export function createCoreCliCommands(
         if (!name) {
           fail("Usage: gloom remove <plugin>");
         }
-        await removePlugin(installedPluginArg(name));
+        await removePlugin(await installedPluginArg(name));
       },
     },
     apiCliCommand,

@@ -3,6 +3,14 @@ import { calendarMonthsBefore } from "../utils/calendar-date";
 
 export interface DateWindowRange extends ChartDateWindow {}
 
+/**
+ * How far back a read of ALL follows a history whose bars reach the start of
+ * ALL's own window (fifty years): 125 years, past the first bar any source
+ * keeps (the S&P 500's daily closes start in 1927), so ALL is the whole
+ * stored history. The window ALL asks for first stays fifty years.
+ */
+export const ALL_HISTORY_REACH_MONTHS = 1_500;
+
 export function subtractTimeRange(endDate: Date, range: TimeRange): Date {
   // Research bounds follow source instants and UTC date keys, independently
   // of the viewing computer's timezone and daylight-saving transitions.

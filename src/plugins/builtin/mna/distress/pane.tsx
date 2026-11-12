@@ -560,7 +560,8 @@ function DistressTable<Row>({
   const renderCell = useCallback((row: Row, column: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {
     const muted = state.selected ? colors.selectedText : colors.textMuted;
     const base = state.selected ? colors.selectedText : colors.text;
-    const tone = (value: StateTone) => (state.selected ? colors.selectedText : toneColor(value, colors));
+    // The shared table keeps a gain or loss tone on the selected row and inks any other in the selection's text.
+    const tone = (value: StateTone) => toneColor(value, colors);
     return spec.cell(row, column.id, muted, base, tone);
   }, [colors, spec]);
 

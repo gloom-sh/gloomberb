@@ -70,7 +70,7 @@ function shouldUseCache(api: MarketScreenerApi, options?: FetchCacheOptions): bo
   return options?.cache === true || (options?.cache !== false && api === screenerApi);
 }
 
-function readCache<T>(key: string, options?: { allowExpired?: boolean }): { data: T; stale: boolean; fetchedAt: number } | null {
+function readCache<T>(key: string, options?: { allowExpired?: boolean }): { data: T; stale: boolean; fetchedAt: number; asOf?: number } | null {
   const record = marketMoversPersistence?.getResource<CachedResult<T>>(CACHE_KIND, key, {
     sourceKey: CACHE_SOURCE,
     schemaVersion: CACHE_SCHEMA_VERSION,
@@ -82,6 +82,7 @@ function readCache<T>(key: string, options?: { allowExpired?: boolean }): { data
     data: record.value.data,
     stale: record.value.stale || !!record.stale || failedFetches.has(key),
     fetchedAt: record.fetchedAt,
+    ...(Number.isFinite(record.value.asOf) ? { asOf: record.value.asOf } : {}),
   };
 }
 
@@ -99,6 +100,8 @@ export interface CachedResult<T> {
   stale: boolean;
   /** Its refresh failed and the copy saved at this time (ms) answered instead. */
   savedAt?: number;
+  /** When the list itself is current at (ms), as the service dates it: a delayed list's time, not its rows'. */
+  asOf?: number;
 }
 
 async function loadCached<T>(
@@ -109,7 +112,7 @@ async function loadCached<T>(
   if (options?.cache === false) return fetcher();
 
   const cached = readCache<T>(key);
-  if (!options?.forceRefresh && cached && !cached.stale) return { data: cached.data, stale: false };
+  if (!options?.forceRefresh && cached && !cached.stale) return { data: cached.data, stale: false, ...(cached.asOf != null ? { asOf: cached.asOf } : {}) };
 
   const activeFetch = activeFetches.get(key) as Promise<CachedResult<T>> | undefined;
   if (activeFetch) return activeFetch;
@@ -128,7 +131,7 @@ async function loadCached<T>(
       // expired is not. A command that shows it ends with when the copy was saved. A refusal or a
       // reply that fails validation is the error, saved copy or not.
       if (fallback && isTransientFailure(error)) {
-        return servedFromSavedCopy({ data: fallback.data, stale: true, savedAt: fallback.fetchedAt }, fallback.fetchedAt);
+        return servedFromSavedCopy({ data: fallback.data, stale: true, savedAt: fallback.fetchedAt, ...(fallback.asOf != null ? { asOf: fallback.asOf } : {}) }, fallback.fetchedAt);
       }
       throw error;
     })
@@ -153,6 +156,12 @@ export interface MarketMoversResult {
   stale: boolean;
   /** Its refresh failed and the list saved at this time (ms) answered instead. */
   savedAt?: number;
+  /**
+   * When the list is current at (ms), as the service dates it: what a
+   * footer shows, never a row's own time (a Most Active row read from the
+   * day's stored snapshot can be dated midnight).
+   */
+  asOf?: number;
 }
 
 export interface PreferredMarketMoverSources {
@@ -278,7 +287,9 @@ export async function fetchScreenerResult(
     // The service's own source did not answer this time: a saved list answers, as it does a 5xx.
     if (!response.data && response.status === "retryable_error") throw sourceDidNotAnswer("Market movers temporarily unavailable");
     if (!response.data) throw new Error("Invalid market movers response");
-    return { data: parseScreenerResponse(response.data), stale: response.stale === true || response.data.stale === true };
+    const asOf = Date.parse(response.data.asOf);
+    return { data: parseScreenerResponse(response.data), stale: response.stale === true || response.data.stale === true,
+      ...(Number.isFinite(asOf) ? { asOf } : {}) };
   };
   if (!shouldUseCache(api, options)) return load();
   return loadCached(`screener:${category}:count=${count}${session ? `:session=${session}` : ""}`, load, options);
@@ -407,6 +418,7 @@ export async function fetchPreferredMarketMovers(
       source: "gloom",
       stale: result.stale,
       ...(result.savedAt != null ? { savedAt: result.savedAt } : {}),
+      ...(result.asOf != null ? { asOf: result.asOf } : {}),
     };
   }
 
@@ -435,6 +447,7 @@ export async function fetchPreferredMarketMovers(
         ))),
         source: "cloud",
         stale: response.stale === true || response.data.stale === true,
+        ...(Number.isFinite(Date.parse(response.data.asOf)) ? { asOf: Date.parse(response.data.asOf) } : {}),
       };
     }
   } catch (error) {
@@ -448,6 +461,7 @@ export async function fetchPreferredMarketMovers(
     source: "gloom",
     stale: fallback.stale,
     ...(fallback.savedAt != null ? { savedAt: fallback.savedAt } : {}),
+    ...(fallback.asOf != null ? { asOf: fallback.asOf } : {}),
   };
 }
 

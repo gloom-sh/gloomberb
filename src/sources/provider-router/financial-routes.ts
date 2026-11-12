@@ -35,6 +35,7 @@ import {
 } from "./financials";
 import type { ProviderQuoteMissNote, ProviderRouterPrimaryRoutes } from "./primary";
 import type { ProviderRouterCoreDeps, SourceResult } from "./route-types";
+import { withRetrievedAt } from "./retrieved-at";
 
 export interface ProviderRouterFinancialRouteDeps extends Pick<
   ProviderRouterCoreDeps,
@@ -219,8 +220,9 @@ export class ProviderRouterFinancialRoutes {
     const cachedIsStale = rawCached && (brokerSourceKeys.includes(rawCached.sourceKey)
       ? isQuoteContributionStaleForCurrentSession(quoteWithFreshnessExchange(rawCached.value, exchange))
       : !isProviderQuoteUsableForCurrentSession(rawCached.value, exchange, ticker, { recentAnswer: !rawCached.stale }));
+    // A saved copy is dated by when it was fetched, which a copy saved before quotes said so lacks.
     const cached = rawCached && !cachedIsStale
-      ? rawCached
+      ? { ...rawCached, value: withRetrievedAt(rawCached.value, rawCached.fetchedAt) }
       : null;
     const forceRefresh = context?.cacheMode === "refresh";
     if (cached && !forceRefresh && !cached.stale) {

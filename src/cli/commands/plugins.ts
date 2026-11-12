@@ -21,7 +21,7 @@ import {
 import { linkHostPackages } from "../../plugins/host-link";
 import {
   installedPluginDirectories,
-  installedPluginDirectoriesNamed,
+  installedPluginDirectoriesById,
   installedPluginId,
   loadRegistryListings,
   readPluginRemote,
@@ -61,17 +61,18 @@ function absorbedNotice(absorbed: AbsorbedPlugin, directory: string | null): str
 
 /**
  * The folder of the installed plugin a command names, by its id or by its
- * folder; fails when none, or more than one, answers to it.
+ * folder, a linked plugin's included; fails when none, or more than one,
+ * answers to it.
  */
-export function installedPluginArg(name: string): string {
-  const matches = installedPluginDirectoriesNamed(name);
+export async function installedPluginArg(name: string): Promise<string> {
+  const matches = await installedPluginDirectoriesById(name);
   if (matches.length > 1) fail(`"${name}" is the id of ${matches.length} installed plugins: ${matches.join(", ")}.`, "Name one by its folder.");
   if (matches.length === 0) fail(`Plugin "${name}" was not found.`, PLUGINS_DIR);
   return matches[0]!;
 }
 
 export async function updatePlugins(name?: string) {
-  const dirs = name ? [installedPluginArg(name)] : installedPluginDirectories();
+  const dirs = name ? [await installedPluginArg(name)] : installedPluginDirectories();
 
   if (dirs.length === 0) {
     console.log(cliStyles.muted("No plugins installed."));
@@ -209,7 +210,7 @@ function listedHostImports<T>(
  * build the desktop and web app need actually compiles.
  */
 async function doctorPlugin(nameOrPath: string): Promise<PluginDoctorReport> {
-  const candidate = nameOrPath.includes("/") || nameOrPath.startsWith(".") ? resolve(nameOrPath) : join(PLUGINS_DIR, installedPluginArg(nameOrPath));
+  const candidate = nameOrPath.includes("/") || nameOrPath.startsWith(".") ? resolve(nameOrPath) : join(PLUGINS_DIR, await installedPluginArg(nameOrPath));
   if (!existsSync(candidate)) fail(`Plugin "${nameOrPath}" was not found.`, PLUGINS_DIR);
   const directory = basename(candidate);
   const linked = lstatSync(candidate).isSymbolicLink();

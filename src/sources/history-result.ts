@@ -48,6 +48,7 @@ export function normalizeHistoryResult(
     ...(isHistoryCoverageDate(result.coverageStart) && historyCoverageNoteText(result.coverageNote)
       ? { coverageNote: historyCoverageNoteText(result.coverageNote) } : {}),
     ...(result.extendedHours === true ? { extendedHours: true } : {}),
+    ...(isHistoryCoverageDate(result.truncatedBefore) ? { truncatedBefore: result.truncatedBefore } : {}),
     ...(result.savedCopyBehind === true ? { savedCopyBehind: true as const } : {}),
     ...(delisting ? { delisting } : {}),
   };

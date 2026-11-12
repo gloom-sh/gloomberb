@@ -15,6 +15,16 @@ export interface ChartDateWindow {
 }
 
 export const TIME_RANGES: TimeRange[] = ["1D", "1W", "1M", "3M", "6M", "1Y", "5Y", "ALL"];
+
+/**
+ * Throws for a range that is none of TIME_RANGES: a plugin asking for "20Y"
+ * hears which ranges there are rather than getting another range's bars.
+ */
+export function assertTimeRange(range: unknown): asserts range is TimeRange {
+  if (typeof range === "string" && (TIME_RANGES as string[]).includes(range)) return;
+  const shown = typeof range === "string" ? `"${range}"` : String(range);
+  throw new Error(`Unknown range ${shown}: use one of ${TIME_RANGES.join(", ")}, or a dated request (getDetailedPriceHistoryWithMetadata) for any other window.`);
+}
 export const CHART_RESOLUTIONS: ChartResolution[] = [
   "auto",
   "1m",

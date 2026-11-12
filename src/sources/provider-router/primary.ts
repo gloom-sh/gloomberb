@@ -21,6 +21,7 @@ import {
   mergeFinancials,
 } from "./financials";
 import type { ProviderRouterCoreDeps, SourceResult } from "./route-types";
+import { withRetrievedAt } from "./retrieved-at";
 
 /** What the providers of one quote request said when none had a current quote. */
 export interface ProviderQuoteMissNote extends ProviderMissNote {
@@ -165,12 +166,12 @@ export class ProviderRouterPrimaryRoutes {
     for (const candidate of this.options.getBrokerCandidatesForContext(context, false)) {
       if (!candidate.broker.getQuote || candidate.broker.ticketQuotesOnly) continue;
       try {
-        const result = await candidate.broker.getQuote(
+        const result = withRetrievedAt(await candidate.broker.getQuote(
           ticker,
           candidate.instance,
           exchange,
           context?.instrument ?? null,
-        );
+        ), Date.now());
         this.options.cacheResource(
           "quote",
           entityKey,
@@ -197,7 +198,7 @@ export class ProviderRouterPrimaryRoutes {
     const variantKey = this.options.getTickerVariantCandidates(exchange)[0] ?? "";
     for (const provider of this.options.providersInPriorityOrder()) {
       try {
-        const quote = await provider.getQuote(ticker, exchange, context);
+        const quote = withRetrievedAt(await provider.getQuote(ticker, exchange, context), Date.now());
         if (!isProviderQuoteUsableForCurrentSession(quote, exchange, ticker, { recentAnswer: true })) {
           noteProviderAnswer(misses);
           const lastKnown = misses && lastKnownProviderQuote(quote, exchange, ticker);

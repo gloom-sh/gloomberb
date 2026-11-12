@@ -200,8 +200,12 @@ export function createMarketMoversHeadless(
         ...(notes.length > 0 ? { notes } : {}),
         // A list served from a saved copy ends with when it was saved.
         metadata: { ...savedCopyMark(result), list: tab, source: result.source, stale: result.stale, rankedBy, minFloat: floatFiltered ? minFloat : null },
-        // A Pro account's Gainers, Losers and Most Active are the real-time lists.
-        ...(result.source === "cloud" ? { freshness: { status: "live" as const } } : {}),
+        // A Pro account's Gainers, Losers and Most Active are the real-time lists. The footer is the list's own time,
+        // which a Most Active row read from the day's stored snapshot (dated midnight) would otherwise set.
+        ...(result.source === "cloud" || result.asOf != null ? { freshness: {
+          ...(result.source === "cloud" ? { status: "live" as const } : {}),
+          ...(result.asOf != null ? { asOf: result.asOf } : {}),
+        } } : {}),
       };
     },
   };

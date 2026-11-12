@@ -29,7 +29,7 @@ import type { NewsArticle, NewsQuery } from "../../news/types";
 import type { BrokerContractRef, InstrumentSearchResult } from "../../types/instrument";
 import type { TickerChanges } from "../../types/ticker-changes";
 import type { IssuerListings } from "../../types/issuer-listings";
-import type { TimeRange } from "../../time-series/range";
+import { assertTimeRange, type TimeRange } from "../../time-series/range";
 import type { ChartResolutionSupport, ManualChartResolution } from "../../time-series/resolution";
 import { debugLog } from "../../utils/debug-log";
 import { errorMessage } from "../../utils/errors";
@@ -452,11 +452,13 @@ export class AssetDataRouter implements DataProvider {
   }
 
   async getPriceHistory(ticker: string, exchange: string, range: TimeRange, context?: MarketDataRequestContext): Promise<PricePoint[]> {
+    assertTimeRange(range);
     exchange = this.resolvePublicExchange(ticker, exchange, context) ?? "";
     return this.historyRoutes.getPriceHistory(ticker, exchange, range, context);
   }
 
   async getPriceHistoryWithMetadata(ticker: string, exchange: string, range: TimeRange, context?: MarketDataRequestContext): Promise<PriceHistoryResult> {
+    assertTimeRange(range);
     exchange = this.resolvePublicExchange(ticker, exchange, context) ?? "";
     return this.historyRoutes.getPriceHistoryWithMetadata(ticker, exchange, range, context);
   }
@@ -468,6 +470,7 @@ export class AssetDataRouter implements DataProvider {
     resolution: ManualChartResolution,
     context?: MarketDataRequestContext,
   ): Promise<PricePoint[]> {
+    assertTimeRange(bufferRange);
     exchange = this.resolvePublicExchange(ticker, exchange, context) ?? "";
     return this.historyRoutes.getPriceHistoryForResolution(ticker, exchange, bufferRange, resolution, context);
   }
@@ -479,6 +482,7 @@ export class AssetDataRouter implements DataProvider {
     resolution: ManualChartResolution,
     context?: MarketDataRequestContext,
   ): Promise<PriceHistoryResult> {
+    assertTimeRange(bufferRange);
     exchange = this.resolvePublicExchange(ticker, exchange, context) ?? "";
     return this.historyRoutes.getPriceHistoryForResolutionWithMetadata(ticker, exchange, bufferRange, resolution, context);
   }

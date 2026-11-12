@@ -1,5 +1,5 @@
 import { logFailure } from "../utils/log-failure";
-import type { EarningsEvent } from "../types/data-provider";
+import type { DataProvider, EarningsEvent } from "../types/data-provider";
 import type { EarningsDateStatus } from "../types/financials";
 import { isUsListingExchange } from "../utils/exchanges";
 import { listingChoiceNote, loadListingQuote, usLineOfListing, type CliListing, type ListingDeps, type ListingVenue } from "./listing-arg";
@@ -43,12 +43,43 @@ export async function noListingCalendarNote(
 }
 
 /**
- * "BG, FPI: no earnings date found." for the listings at home a calendar came
- * back without, each named once; null when it dated them all.
+ * The day a listing last reported, `YYYY-MM-DD`, from the company's quarters
+ * on record: the newest announcement on or before `today` with a reported
+ * figure. Null when none is on record or they cannot be read.
  */
-export function undatedListingsNote(listings: readonly Pick<CliListing, "key">[]): string | null {
+export async function lastReportedDay(
+  provider: Pick<DataProvider, "getCorporateActions">,
+  listing: Pick<CliListing, "request">,
+  today: string,
+): Promise<string | null> {
+  if (!provider.getCorporateActions) return null;
+  const actions = await provider.getCorporateActions(listing.request.symbol, listing.request.exchange)
+    .catch(logFailure("cli.earnings-calendar", "Read a listing's reported quarters failed", null));
+  const reported = (actions?.earnings ?? [])
+    .filter((row) => row.dateType !== "fiscal-period-end" && row.epsActual != null && row.date.slice(0, 10) <= today)
+    .map((row) => row.date.slice(0, 10))
+    .sort();
+  return reported.at(-1) ?? null;
+}
+
+/**
+ * The listings at home a calendar came back without, each named once, with
+ * when each last reported: "KO: no upcoming earnings date found; last
+ * reported 2026-10-27." Those with no report on record share one line ("BG,
+ * FPI: no earnings date found."). Null when the calendar dated them all.
+ */
+export function undatedListingsNote(
+  listings: readonly Pick<CliListing, "key">[],
+  lastReported: ReadonlyMap<string, string | null> = new Map(),
+): string | null {
   const keys = [...new Set(listings.map((listing) => listing.key))];
-  return keys.length > 0 ? `${keys.join(", ")}: no earnings date found.` : null;
+  const reported = keys.filter((key) => lastReported.get(key));
+  const unknown = keys.filter((key) => !lastReported.get(key));
+  const lines = [
+    ...reported.map((key) => `${key}: no upcoming earnings date found; last reported ${lastReported.get(key)}.`),
+    ...unknown.length > 0 ? [`${unknown.join(", ")}: no earnings date found.`] : [],
+  ];
+  return lines.length > 0 ? lines.join("\n") : null;
 }
 
 /**

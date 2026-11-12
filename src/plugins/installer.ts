@@ -873,6 +873,21 @@ export function installedPluginDirectoriesNamed(name: string): string[] {
 }
 
 /**
+ * The installed folders `name` names, as installedPluginDirectoriesNamed,
+ * and else the folders whose plugin registers under that id with no
+ * gloom.json to say so: `plugin link ./riskwatch` of a plugin whose export
+ * is `risk-watch` is found as `risk-watch` too, as the running app knows it.
+ * Only those folders' exports are read.
+ */
+export async function installedPluginDirectoriesById(name: string): Promise<string[]> {
+  const named = installedPluginDirectoriesNamed(name);
+  if (named.length > 0) return named;
+  const undeclared = installedPluginDirectories().filter((dir) => !readPluginManifest(join(PLUGINS_DIR, dir)).id);
+  const ids = await Promise.all(undeclared.map(async (dir) => [dir, await installedPluginRegistryId(dir)] as const));
+  return ids.filter(([, id]) => id === name).map(([dir]) => dir);
+}
+
+/**
  * The id the plugin in `directory` registers under, which is what the running
  * app keys it by. Read from gloom.json when it declares one, which the export
  * repeats (`plugin doctor` warns when it does not); otherwise from the export,
@@ -917,7 +932,8 @@ export async function linkPlugin(sourcePath: string, options: PluginInstallOptio
   const plugin = await readPluginExport(source).catch(logFailure("plugin-installer", "Linked plugin validation failed", null));
   if (!options.quiet) {
     console.log(cliStyles.success(`Linked ${plugin?.name ?? name} from ${source}`));
-    console.log(cliStyles.muted(`Check it with "gloom plugin doctor ${name}".`));
+    // By the id it registers under, which every plugin command takes, as the folder is.
+    console.log(cliStyles.muted(`Check it with "gloom plugin doctor ${plugin?.id ?? name}".`));
   }
   return describe(source, name, plugin);
 }
