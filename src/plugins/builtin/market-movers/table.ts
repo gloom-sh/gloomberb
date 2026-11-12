@@ -33,12 +33,13 @@ const EXTENDED_MIN_NAME_WIDTH = 12;
  * The list's columns at `width`. A pre-market or after-hours column follows
  * CHG% for each session in `extendedSessions`, and FLOAT ends the row while a
  * minimum float is set (`float`); to make room for them a narrow pane gives up
- * MCAP, then 52W%, before it cuts the names short.
+ * MCAP, then 52W%, before it cuts the names short. Trending's rows are quotes,
+ * which carry no average volume or market cap: it has no V/AVG or MCAP.
  */
 export function buildMarketMoverColumns(
   width: number,
   extendedSessions: readonly ExtendedSession[] = [],
-  options: { float?: boolean } = {},
+  options: { float?: boolean; trending?: boolean } = {},
 ): MarketMoverColumn[] {
   const lead: MarketMoverColumn[] = [
     { id: "rank", label: "#", width: 3, align: "left" },
@@ -57,9 +58,9 @@ export function buildMarketMoverColumns(
   ];
   const trailing: MarketMoverColumn[] = [
     { id: "volume", label: "VOL", width: 8, align: "right" },
-    { id: "volumeRatio", label: "V/AVG", width: 6, align: "right" },
+    ...(options.trending ? [] : [{ id: "volumeRatio" as const, label: "V/AVG", width: 6, align: "right" as const }]),
     { id: "range", label: "52W%", width: 6, align: "right" },
-    { id: "marketCap", label: "MCAP", width: 8, align: "right" },
+    ...(options.trending ? [] : [{ id: "marketCap" as const, label: "MCAP", width: 8, align: "right" as const }]),
     ...(options.float ? [{ id: "floatShares" as const, label: "FLOAT", width: 7, align: "right" as const }] : []),
   ];
   // Measured the way the table draws them (a header and its sort mark widen a
@@ -67,7 +68,8 @@ export function buildMarketMoverColumns(
   const nameRoom = () => width - getTableWidth([...lead, ...quote, ...trailing]) - 1;
   for (const id of ["marketCap", "range"] as const) {
     if ((extendedSessions.length === 0 && !options.float) || nameRoom() >= EXTENDED_MIN_NAME_WIDTH) break;
-    trailing.splice(trailing.findIndex((column) => column.id === id), 1);
+    const at = trailing.findIndex((column) => column.id === id);
+    if (at >= 0) trailing.splice(at, 1);
   }
   return [...lead, { id: "name", label: "NAME", width: Math.max(6, nameRoom()), align: "left" }, ...quote, ...trailing];
 }

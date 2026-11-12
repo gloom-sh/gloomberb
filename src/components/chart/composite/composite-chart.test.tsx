@@ -25,6 +25,7 @@ import {
   type KeyEventLike,
 } from "../../../react/input";
 import { CompositeChart } from "./composite-chart";
+import { CHART_TOOLBAR_FOLD_DELAY_MS } from "./toolbar";
 import type { CompositeChartLevel, CompositeChartLevels, CompositeLevelEdit } from "./levels";
 import { createDefaultConfig } from "../../../types/config";
 import { AppContext, createInitialState, PaneInstanceProvider } from "../../../state/app/context";
@@ -2289,6 +2290,48 @@ describe("CompositeChart", () => {
     expect(capturedSurfaceProps!.bitmaps[0]).toBe(raster);
   });
 
+  // The tool bar is folded to a handle until the pointer or the keyboard is on it.
+  const RULER = "\u2194";
+  const HAND = "\u2725";
+  const CHEVRON = "\u203a";
+  const frameNow = async () => {
+    await act(async () => tui.setup().renderOnce());
+    return tui.frame();
+  };
+  const locate = (glyph: string) => {
+    const lines = tui.frame().split("\n");
+    const row = lines.findIndex((line) => line.includes(glyph));
+    return { x: lines[row]?.indexOf(glyph) ?? -1, y: row };
+  };
+  const moveTo = async (at: { x: number; y: number }) => {
+    // The renderer folds moves that come within a frame of each other into the last.
+    await act(async () => {
+      await tui.setup().mockMouse.moveTo(at.x, at.y);
+      await Bun.sleep(40);
+    });
+    return frameNow();
+  };
+  /** Past the delay before an open bar folds once the pointer has left it. */
+  const waitToFold = () => act(async () => Bun.sleep(CHART_TOOLBAR_FOLD_DELAY_MS + 100));
+  const clickAt = async (at: { x: number; y: number }) => {
+    await act(async () => tui.setup().mockMouse.click(at.x, at.y));
+    return frameNow();
+  };
+  const toolBarChart = (
+    <CaptureChartSurfaceProvider>
+      <InputHostProvider host={chartInputHost}>
+        <CompositeChart
+          width={60}
+          height={12}
+          focused
+          interactive
+          series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+          panels={[{ id: "main" }]}
+        />
+      </InputHostProvider>
+    </CaptureChartSurfaceProvider>
+  );
+
   test("arms and disarms a chart tool from the toolbar", async () => {
     await tui.render(
       <CaptureChartSurfaceProvider>
@@ -2304,9 +2347,10 @@ describe("CompositeChart", () => {
     );
     await act(async () => tui.setup().renderOnce());
 
-    // Pressing the ruler icon has to arm the tool for an unmodified drag.
-    const toolbarRow = tui.frame().split("\n").findIndex((line) => line.includes("↔"));
-    const rulerX = tui.frame().split("\n")[toolbarRow]!.indexOf("↔");
+    // Pressing the ruler icon has to arm the tool for an unmodified drag: the
+    // pointer on the handle opens the bar first.
+    await moveTo(locate(HAND));
+    const { x: rulerX, y: toolbarRow } = locate(RULER);
     await act(async () => {
       await tui.setup().mockMouse.moveTo(rulerX, toolbarRow);
       await tui.setup().mockMouse.click(rulerX, toolbarRow);
@@ -2332,6 +2376,75 @@ describe("CompositeChart", () => {
     expect(tui.frame()).not.toContain("Δ");
   });
 
+  test("starts with the tool bar folded to the pan tool, opens under the pointer, and folds a moment after it leaves", async () => {
+    await tui.render(toolBarChart, { width: 62, height: 14 });
+    const folded = await frameNow();
+    // Folded: the tool in hand with a hint that it opens, not the tools.
+    expect(folded).toContain(HAND + CHEVRON);
+    expect(folded).not.toContain(RULER);
+
+    expect(await moveTo(locate(HAND))).toContain(RULER);
+    // Crossing from one icon to the next leaves one and enters the other: it stays open past the delay.
+    await moveTo(locate(RULER));
+    await moveTo(locate("\u229e"));
+    await waitToFold();
+    expect(await frameNow()).toContain(RULER);
+    // Off the bar it waits, then folds.
+    expect(await moveTo({ x: 40, y: 8 })).toContain(RULER);
+    await waitToFold();
+    const after = await frameNow();
+    expect(after).not.toContain(RULER);
+    expect(after).toContain(HAND + CHEVRON);
+    // Back on the handle, it opens again.
+    expect(await moveTo(locate(HAND))).toContain(RULER);
+  });
+
+  test("a press on the folded handle keeps the tool bar open, and the chevron folds it at once", async () => {
+    await tui.render(toolBarChart, { width: 62, height: 14 });
+    await frameNow();
+    expect(await clickAt(locate(HAND))).toContain(RULER);
+    // Open for good: the pointer leaving does not fold it.
+    await moveTo({ x: 40, y: 8 });
+    await waitToFold();
+    expect(await frameNow()).toContain(RULER);
+    // The chevron that leads the bar folds it, under the pointer too.
+    const chevron = locate("\u2039");
+    await moveTo(chevron);
+    expect(await clickAt(chevron)).not.toContain(RULER);
+  });
+
+  test("a bar folded by a press stays folded while the pointer is on it, and opens when the pointer leaves and comes back within the delay", async () => {
+    await tui.render(toolBarChart, { width: 62, height: 14 });
+    await frameNow();
+    await clickAt(locate(HAND));
+    const chevron = locate("\u2039");
+    await moveTo(chevron);
+    expect(await clickAt(chevron)).not.toContain(RULER);
+    // Still on the bar, moving across the button: it stays folded.
+    const folded = locate(HAND);
+    expect(await moveTo({ x: folded.x + 1, y: folded.y })).not.toContain(RULER);
+    expect(await moveTo(folded)).not.toContain(RULER);
+    // Off the bar and back before the delay is up, it opens.
+    await moveTo({ x: 40, y: 8 });
+    expect(await moveTo(locate(HAND))).toContain(RULER);
+    await moveTo({ x: 40, y: 8 });
+    await waitToFold();
+    expect(await frameNow()).not.toContain(RULER);
+  });
+
+  test("the folded tool bar shows the tool in hand, and the pan tool again once it is put down", async () => {
+    await tui.render(toolBarChart, { width: 62, height: 14 });
+    await frameNow();
+    await act(async () => chartShortcut?.(keyEvent("m", true)));
+    const armed = await frameNow();
+    expect(armed).toContain(RULER + CHEVRON);
+    expect(armed).not.toContain(HAND);
+    await act(async () => chartShortcut?.(keyEvent("d", true)));
+    expect(await frameNow()).toContain("\u2571" + CHEVRON);
+    await act(async () => chartShortcut?.(keyEvent("escape")));
+    expect(await frameNow()).toContain(HAND + CHEVRON);
+  });
+
   test("shows its tools on the focused pane only, and keeps them while one is in hand or a press drags", async () => {
     let setFocused: (focused: boolean) => void = () => {};
     function FocusablePane({ children }: { children: ReactNode }) {
@@ -2353,30 +2466,28 @@ describe("CompositeChart", () => {
       </CaptureChartSurfaceProvider>,
       { width: 62, height: 14 },
     );
-    const RULER = "\u2194";
-    const HAND = "\u2725";
-    const frame = async () => {
-      await act(async () => tui.setup().renderOnce());
-      return tui.frame();
-    };
+    const frame = frameNow;
     const focus = async (focused: boolean) => {
       await act(async () => setFocused(focused));
       return frame();
     };
-    const press = async (glyph: string) => {
-      const lines = tui.frame().split("\n");
-      const row = lines.findIndex((line) => line.includes(glyph));
-      await act(async () => tui.setup().mockMouse.click(lines[row]!.indexOf(glyph), row));
-      return frame();
-    };
+    const press = async (glyph: string) => clickAt(locate(glyph));
 
-    expect(await frame()).not.toContain(RULER);
-    expect(await focus(true)).toContain(RULER);
+    expect(await frame()).not.toContain(HAND);
+    // The bar is folded; the pointer on its handle opens it.
+    expect(await focus(true)).toContain(HAND);
+    expect(await moveTo(locate(HAND))).toContain(RULER);
 
     // A tool in hand stays in view after focus moves on, until it is put down.
     await press(RULER);
-    expect(await focus(false)).toContain(RULER);
+    await focus(false);
+    await moveTo({ x: 40, y: 8 });
+    await waitToFold();
+    expect(await frame()).toContain(RULER + CHEVRON);
+    await moveTo(locate(RULER + CHEVRON));
     expect(await press(HAND)).not.toContain(RULER);
+    expect(tui.frame()).not.toContain(HAND);
+    await moveTo({ x: 40, y: 8 });
 
     // So does a drag that started on the focused pane, until its release.
     await focus(true);
@@ -2384,9 +2495,9 @@ describe("CompositeChart", () => {
       capturedSurfaceProps!.onMouseDown(pointerEvent(30, 6));
       capturedSurfaceProps!.onMouseDrag(pointerEvent(24, 6));
     });
-    expect(await focus(false)).toContain(RULER);
+    expect(await focus(false)).toContain(HAND);
     await act(async () => capturedSurfaceProps!.onMouseUp(pointerEvent(24, 6)));
-    expect(await frame()).not.toContain(RULER);
+    expect(await frame()).not.toContain(HAND);
   });
 
   test("draws a line, then grabs its end to reshape it", async () => {

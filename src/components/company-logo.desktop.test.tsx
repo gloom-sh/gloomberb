@@ -24,10 +24,27 @@ describe("company logos in table cells", () => {
     expect(tile(view).style.background).toBe("#ffffff");
     expect(view.querySelector("img")?.style.width).toBe("100%");
 
-    // Scrolled away and back: the logo is there on the first frame, not the initial again.
-    const again = await render(<CompanyLogoMark symbol="LDNGQ" name="Loading Quux Holdings" />);
-    expect(tile(again).textContent).toBe("");
-    expect(again.querySelector("img")?.style.width).toBe("100%");
+    // Scrolled away and back while the browser holds the picture: the logo is there on the first frame.
+    const image = window.HTMLImageElement.prototype;
+    const held = { complete: Object.getOwnPropertyDescriptor(image, "complete"), naturalWidth: Object.getOwnPropertyDescriptor(image, "naturalWidth") };
+    Object.defineProperty(image, "complete", { configurable: true, get: () => true });
+    Object.defineProperty(image, "naturalWidth", { configurable: true, get: () => 64 });
+    try {
+      const again = await render(<CompanyLogoMark symbol="LDNGQ" name="Loading Quux Holdings" />);
+      expect(tile(again).textContent).toBe("");
+      expect(tile(again).style.background).toBe("#ffffff");
+      expect(again.querySelector("img")?.style.width).toBe("100%");
+    } finally {
+      for (const [key, descriptor] of Object.entries(held)) {
+        if (descriptor) Object.defineProperty(image, key, descriptor);
+        else delete (image as unknown as Record<string, unknown>)[key];
+      }
+    }
+
+    // One it has to fetch again keeps the initial until it arrives: a white plate with no logo on it is a blank square.
+    const refetched = await render(<CompanyLogoMark symbol="LDNGQ" name="Loading Quux Holdings" />);
+    expect(tile(refetched).textContent).toBe("L");
+    expect(tile(refetched).style.background).toBe("");
   });
 
   test("the terminal keeps the cell as it was; the desktop leads it with the company's or the coin's logo", async () => {

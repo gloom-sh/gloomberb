@@ -1,5 +1,5 @@
 import type { PricePoint, Quote } from "../types/financials";
-import { pricePointIntegrity } from "../utils/price-history-integrity";
+import { pricePointCloseCopied, pricePointIntegrity } from "../utils/price-history-integrity";
 import { calendarMonthsBefore } from "../utils/calendar-date";
 import { barSessionDay, isReturnPeriod, periodBaseDay, periodBaseIndex } from "./market/period-return";
 
@@ -56,6 +56,9 @@ function normalizePriceReturnHistory(points: readonly PricePoint[]): readonly Pr
   for (const point of points) {
     const date = coercePointDate(point.date as Date | string | number);
     if (!date || (!Number.isFinite(point.close) && !pricePointIntegrity(point))) continue;
+    // A pair's close its source copied from the open, which nothing rebuilt, is no day's close: a horizon's base or end
+    // falls on the close before it, as across a holiday.
+    if (pricePointCloseCopied(point)) continue;
     byTimestamp.set(date.getTime(), { ...point, date });
   }
   const history = [...byTimestamp.entries()]

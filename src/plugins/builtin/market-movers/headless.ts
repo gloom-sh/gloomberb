@@ -172,7 +172,8 @@ export function createMarketMoversHeadless(
       const ranked = createRows(result.quotes);
       // Last and Change % are the regular session; an extended print is a column of its own.
       const extendedSessions = moverExtendedSessions(ranked);
-      const rows = ranked.map(({ extended, ...row }) => ({
+      // closedSession only tells the live overlay which session the row's volume is.
+      const rows = ranked.map(({ extended, closedSession: _closedSession, ...row }) => ({
         ...row,
         extendedSession: extended?.session ?? null,
         extendedPrice: extended?.price ?? null,

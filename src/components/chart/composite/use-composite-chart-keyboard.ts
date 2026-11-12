@@ -64,8 +64,8 @@ export interface KeyboardToolDrag {
 
 /** The chart's own layout: its tool bar, its legend and its panels' heights. */
 export interface CompositeChartLayoutControls {
-  /** The bar is saved hidden; it still opens while a tool is in hand. */
-  toolbarHidden: boolean;
+  /** The bar is kept open; otherwise it folds to the tool in hand and opens under the pointer. */
+  toolbarPinned: boolean;
   toggleToolbar: () => void;
   /** The legend has more than one series, so it can fold to its first. */
   legendCollapsible: boolean;
@@ -728,8 +728,7 @@ export function useCompositeChartKeyboard({
   const levelToolKeys = toolsActive && armedTool === "level" && levelsEditable;
   const canDeleteLevel = toolsActive && levelsEditable && !!selectedLevel?.editable && !selectedLevel.draggable;
   const pinState = pin ? pin.pinned : null;
-  // Hidden as it shows: a saved hidden bar is open while a tool is in hand.
-  const toolbarHidden = layout.toolbarHidden && armedTool === null;
+  const toolbarPinned = layout.toolbarPinned;
   const {
     legendCollapsible,
     legendCollapsed,
@@ -811,7 +810,7 @@ export function useCompositeChartKeyboard({
       if (resettable) menu.push({ id: "chart-reset", label: "Reset Zoom", accelerator: "0", onSelect: () => chartActionsRef.current.reset() });
       menu.push({
         id: "chart-toolbar",
-        label: toolbarHidden ? "Show Drawing Tools" : "Hide Drawing Tools",
+        label: toolbarPinned ? "Hide Drawing Tools" : "Show Drawing Tools",
         accelerator: "Shift+T",
         onSelect: () => chartActionsRef.current.layout.toggleToolbar(),
       });
@@ -860,7 +859,7 @@ export function useCompositeChartKeyboard({
     levelsEditable,
     toolsActive,
     pinState,
-    toolbarHidden,
+    toolbarPinned,
     legendCollapsible,
     legendCollapsed,
     panelsResizable,

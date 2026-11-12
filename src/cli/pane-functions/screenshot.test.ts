@@ -689,6 +689,37 @@ describe("a capture of a pane that marks no rows", () => {
     }
     expect(assess(chat, { visibleText: "#everyone hello" })).toMatchObject({ usable: true });
   });
+
+  // Market Movers before the open: every row read "—" under VOL and V/AVG, and `shot --strict` passed it.
+  test("a column blank in every row makes it unusable, named in the Reason; a sparse or a mayBeBlank column does not", () => {
+    const row = (rank: number, volume: string, ratio: string, event?: string) => ({
+      tableIndex: 0, rowIndex: rank - 1, selected: false,
+      cells: [
+        { columnId: "rank", columnLabel: "#", text: String(rank) },
+        { columnId: "symbol", columnLabel: "TICKER", text: `T${rank}` },
+        { columnId: "volume", columnLabel: "VOL", text: volume },
+        { columnId: "volumeRatio", columnLabel: "V/AVG", text: ratio },
+        ...(event ? [{ columnId: "catalyst", columnLabel: "EVENT", text: event }] : []),
+        // An upcoming report's move: blank on every row with nothing missing (ERN).
+        { columnId: "move", columnLabel: "MOVE", text: "--", mayBeBlank: true as const },
+      ],
+    });
+    const blank = assess(diag, { rows: [row(1, "—", "—"), row(2, "—", "—", "News"), row(3, "—", "—")] });
+    expect(blank).toMatchObject({ usable: false, blankColumns: ["VOL", "V/AVG"], unusableReason: "The VOL and V/AVG columns are blank in every row." });
+    const filled = assess(diag, { rows: [row(1, "150.57M", "18x"), row(2, "—", "—", "News"), row(3, "294.1k", "—")] });
+    expect(filled).toMatchObject({ usable: true, unusableReason: null });
+    expect(filled).not.toHaveProperty("blankColumns");
+    // Two rows are a short list's gaps, not a lost column.
+    expect(assess(diag, { rows: [row(1, "—", "—"), row(2, "—", "—")] })).toMatchObject({ usable: true });
+  });
+
+  test("an error or empty state's Reason keeps its sentence and quotes what the pane said", () => {
+    expect(assess(diag, { errorStateDetected: true, stateText: { error: ["Market movers temporarily unavailable. Try again in a moment."] } }).unusableReason)
+      .toBe('The pane rendered an error state. It reads "Market movers temporarily unavailable. Try again in a moment."');
+    expect(assess(diag, { emptyStateDetected: true, emptyStateMarkers: ["No movers returned"] }).unusableReason)
+      .toBe('The pane rendered an empty state. It reads "No movers returned".');
+    expect(assess(diag, { emptyStateDetected: true }).unusableReason).toBe("The pane rendered an empty state.");
+  });
 });
 
 describe("pane screenshot payload credentials", () => {

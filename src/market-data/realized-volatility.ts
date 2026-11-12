@@ -2,6 +2,7 @@ import type { PricePoint } from "../types/financials";
 import { barsPerYear, type BarsPerYearInstrument } from "./bars-per-year";
 import {
   mergePriceHistoryIntegrity,
+  pricePointCloseCopied,
   pricePointIntegrity,
   pricePointOpenWithheld,
   pricePointWicks,
@@ -113,6 +114,8 @@ function observations(points: readonly PricePoint[]): Observation[] | null {
   for (const point of points) {
     const time = new Date(point.date).getTime();
     if (!Number.isFinite(time)) return null;
+    // A pair's close its source copied from the open, which nothing rebuilt, is no day's close: the bar is left out.
+    if (pricePointCloseCopied(point)) continue;
     dates.set(time, point);
   }
   return [...dates.entries()].sort(([a], [b]) => a - b).map(([time, point]) => ({

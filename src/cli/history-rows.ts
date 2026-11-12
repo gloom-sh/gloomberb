@@ -16,8 +16,8 @@ import { currencyPairCode } from "../utils/currency-pair";
 import { currencyUnitLabel, resolveCurrencyUnit } from "../utils/currency-units";
 import { dailyBarDate, getPricePointTimestamp } from "../utils/price-history";
 import {
-  isWickFlag, latestTradeIndex, missingVolumeNotice, OPEN_WITHHELD_FLAG, priceHistoryIntegrityNotice, pricePointIntegrityFlags,
-  pricePointOpenWithheld, pricePointValues, pricePointWickFlags,
+  CLOSE_COPIED_FLAG, CLOSE_REBUILT_FLAG, isWickFlag, latestTradeIndex, missingVolumeNotice, OPEN_WITHHELD_FLAG, priceHistoryIntegrityNotice,
+  pricePointIntegrityFlags, pricePointOpenWithheld, pricePointValues, pricePointWickFlags,
 } from "../utils/price-history-integrity";
 import { formatUtcTime } from "../utils/utc-time";
 import { maxDrawdown, type DrawdownScale, type MaxDrawdown } from "../utils/max-drawdown";
@@ -315,8 +315,13 @@ export function historyBarFlags(point: PricePoint): string[] {
   return [
     ...pricePointIntegrityFlags(point), ...pricePointOpenWithheld(point) ? [OPEN_WITHHELD_FLAG] : [],
     ...pricePointWickFlags(point), ...rescaleFlags(point),
+    // A pair's close its source repeated from the open: rebuilt from the next session's open, or a copy nothing rebuilt.
+    ...point.closeRebuilt ? [CLOSE_REBUILT_FLAG] : [], ...point.closeCopied ? [CLOSE_COPIED_FLAG] : [],
   ];
 }
+
+/** Whether a flag code marks a close its source repeated from the open (CLOSE_REBUILT_FLAG, CLOSE_COPIED_FLAG), whose prices stay. */
+const isCopiedCloseFlag = (code: string) => code === CLOSE_REBUILT_FLAG || code === CLOSE_COPIED_FLAG;
 
 /** Days a month's daily bars may leave out at either end or between two of them and still say its range: a week. */
 const REBUILD_MAX_HOLE_DAYS = 7;
@@ -384,7 +389,8 @@ export function withDailyRebuiltBars(rows: readonly HistoryRow[], daily: readonl
 
 /** The codes of a bar left blank for prices that contradict each other: not a break before it, nor a withheld wick or open. */
 function blankingCodes(row: Pick<HistoryRow, "flag">): string[] {
-  return flagCodes(row).filter((code) => !BREAK_FLAGS.has(code) && !isWickFlag(code) && !isRescaleFlag(code) && code !== OPEN_WITHHELD_FLAG);
+  return flagCodes(row).filter((code) => !BREAK_FLAGS.has(code) && !isWickFlag(code) && !isRescaleFlag(code) && code !== OPEN_WITHHELD_FLAG
+    && !isCopiedCloseFlag(code));
 }
 
 /**
@@ -1218,6 +1224,31 @@ export function historyOpenNote(rows: readonly Pick<HistoryRow, "date" | "flag">
   if (flagged.length === 1) return `The open of ${flagged[0]!.date} is outside its high and low in the source data; ${kept}`;
   const dates = flagged.length <= LISTED_GAPS ? ` (${listItems(flagged.map((row) => row.date))})` : "";
   return `${flagged.length} of ${rows.length} bars have an open outside their high and low in the source data${dates}; ${kept}`;
+}
+
+/**
+ * What a pair's history says of the closes its source repeated from the open
+ * (EUR/USD's 5 Jul 2022 came as open and close 1.043319 on a day that closed
+ * near 1.026): the ones rebuilt from the next session's open (flag close
+ * rebuilt), and the ones nothing could rebuild (the last session of their
+ * week, or a next open over 5% away), which returns leave out
+ * (flag close copied). Three or more of either are counted. Null when no bar
+ * is either.
+ */
+export function historyCopiedCloseNote(rows: readonly Pick<HistoryRow, "date" | "flag">[]): string | null {
+  const dated = (code: string) => rows.filter((row) => flagCodes(row).includes(code)).map((row) => row.date);
+  const listed = (dates: readonly string[]) => dates.length <= LISTED_GAPS ? listItems(dates) : `${dates.length} bars`;
+  const rebuilt = dated(CLOSE_REBUILT_FLAG);
+  const copied = dated(CLOSE_COPIED_FLAG);
+  const notes = [
+    rebuilt.length > 0 ? `The source repeated the open of ${listed(rebuilt)} as ${rebuilt.length === 1 ? "its" : "their"} close; `
+      + `${rebuilt.length === 1 ? "it closes" : "they close"} at the next session's open (flag ${CLOSE_REBUILT_FLAG})` : null,
+    copied.length > 0 ? `the source repeated the open of ${listed(copied)} as ${copied.length === 1 ? "its" : "their"} close, which `
+      + `no next open in the week rebuilds (none, or one over 5% away): no day's close, `
+      + `left out of returns (flag ${CLOSE_COPIED_FLAG})` : null,
+  ].filter((note): note is string => note != null);
+  const text = notes.join("; ");
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : null;
 }
 
 /**

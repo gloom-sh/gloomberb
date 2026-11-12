@@ -25,15 +25,16 @@ const ALL_COLUMNS: BoardColumn[] = [
   { id: "when", label: "WHEN", width: 7, align: "left" },
   { id: "status", label: "STATUS", width: 9, align: "left" },
   { id: "implied", label: "IMPLIED", width: 7, align: "right" },
-  { id: "move", label: "MOVE", width: 7, align: "right" },
+  // The move, the actual EPS and its surprise come with the report: an upcoming one has none.
+  { id: "move", label: "MOVE", width: 7, align: "right", mayBeBlank: true },
   { id: "average", label: "AVG MOVE", width: 8, align: "right" },
   // The currency of the EPS and sales figures, on a board with a listing abroad's (CNY for Tencent).
   { id: "ccy", label: "CCY", width: 3, align: "left" },
   { id: "epsEstimate", label: "EPS EST", width: 7, align: "right" },
   { id: "analysts", label: "ESTS", width: 4, align: "right" },
-  { id: "epsActual", label: "EPS ACT", width: 7, align: "right" },
+  { id: "epsActual", label: "EPS ACT", width: 7, align: "right", mayBeBlank: true },
   { id: "basis", label: "BASIS", width: 5, align: "left" },
-  { id: "epsSurprise", label: "EPS SURP", width: 8, align: "right" },
+  { id: "epsSurprise", label: "EPS SURP", width: 8, align: "right", mayBeBlank: true },
   { id: "revenueEstimate", label: "SALES EST", width: 9, align: "right" },
   { id: "cap", label: "MKT CAP", width: 8, align: "right" },
 ];

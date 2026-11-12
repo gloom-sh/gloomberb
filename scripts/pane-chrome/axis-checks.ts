@@ -103,17 +103,39 @@ async function atTwoHeights(cdp: Cdp, plot: Rect, share: number): Promise<Array<
   return reads;
 }
 
+/** `read` until it gives something, a frame apart, for as many frames as a slow machine needs. */
+async function untilRead<T>(cdp: Cdp, read: () => Promise<T | null>, what: string): Promise<T> {
+  for (let frame = 0; frame < 120; frame += 1) {
+    const value = await read();
+    if (value) return value;
+    await frames(cdp, 1);
+  }
+  throw new Error(`${what} did not show`);
+}
+
 async function pressTool(cdp: Cdp, label: string): Promise<void> {
-  const at = await evaluate<{ x: number; y: number } | null>(cdp, `(() => {
+  const chip = (property: string) => `(() => {
     const chip = [...document.querySelectorAll('[data-gloom-role=composite-chart-tool]')].find(node => (node.getAttribute('data-gloom-label') ?? '').startsWith(${JSON.stringify(label)}));
-    const r = chip?.getBoundingClientRect();
-    return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
-  })()`);
-  if (!at) throw new Error(`No ${label} tool in the chart toolbar`);
+    ${property}
+  })()`;
+  const chipCenter = () => evaluate<{ x: number; y: number } | null>(cdp, chip("const r = chip?.getBoundingClientRect(); return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;"));
+  let at = await chipCenter();
+  if (!at) {
+    // The bar is folded to one button until the pointer is on it.
+    const handle = await evaluate<{ x: number; y: number } | null>(cdp, `(() => {
+      const r = document.querySelector('[data-gloom-role=composite-chart-toolbar-toggle]')?.getBoundingClientRect();
+      return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
+    })()`);
+    if (!handle) throw new Error("No tool bar button in the chart toolbar");
+    await mouse(cdp, "mouseMoved", handle.x, handle.y, false);
+    at = await untilRead(cdp, chipCenter, `The ${label} tool in the chart toolbar`);
+  }
   await mouse(cdp, "mouseMoved", at.x, at.y, false);
   await mouse(cdp, "mousePressed", at.x, at.y, true);
   await mouse(cdp, "mouseReleased", at.x, at.y, false);
-  await frames(cdp, 3);
+  // The press has landed once the tool is the chart's.
+  await untilRead(cdp, async () => await evaluate<boolean>(cdp, chip("return chip?.getAttribute('data-active') === 'true';")) ? true : null, `The ${label} tool arming`);
+  await frames(cdp, 2);
 }
 
 const toolSteps = ["desktop", "browser"].flatMap((host) => [640, 1280].flatMap((width) => ["three", "stacked"].map((kind) => ({

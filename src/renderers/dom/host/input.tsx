@@ -328,6 +328,10 @@ function useWebEditable<T extends HTMLInputElement | HTMLTextAreaElement>(
     setCursorOffset: applyCursorOffset,
     focus: () => elementRef.current?.focus(),
     blur: () => elementRef.current?.blur(),
+    get focused() {
+      const element = elementRef.current;
+      return element != null && element.ownerDocument.activeElement === element;
+    },
   };
 
   const elementProps = {
