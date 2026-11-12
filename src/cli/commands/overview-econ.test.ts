@@ -277,6 +277,11 @@ test("--tz adds the viewer's clock, with the weekday there in Day", async () => 
   const printed = await econPrinted(brazil, ["--country", "BR", "--tz", "America/New_York"]);
   expect(printed.result.metadata).toMatchObject({ timeZone: "America/New_York" });
   expect((printed.result.data as Record<string, unknown>[]).at(-1)).toMatchObject({ viewerDate: "2026-10-23", viewerTime: "08:00" });
+  // The CSV keeps the UTC timestamp, its time and its weekday, and the viewer's date, weekday and time in columns of
+  // their own, filled: the viewer's Tue was beside the UTC Wed's date, and its clock had no date.
+  const csv = serializeCliResult(printed.result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, printed.options).split("\n");
+  expect(csv[0]).toStartWith("Date,Time,Day,New York date,New York day,New York time,Local,Country");
+  expect(csv.find((line) => line.includes("Night release"))).toStartWith("2026-10-14T01:30:00.000Z,01:30,Wed,2026-10-13,Tue,21:30,,BR,medium,Night release");
   // Without --tz the rows carry no viewer clock, and Day is the UTC date's.
   const plain = await econText(brazil, ["--country", "BR"]);
   expect(plain).not.toContain("New York");

@@ -405,6 +405,29 @@ function econHeadColumns(viewerZone: string | null): CliResultColumn[] {
 }
 
 /**
+ * An export's columns up to the event: the UTC timestamp, its time and
+ * weekday, and with --tz the viewer's own date, weekday and time, each in a
+ * column of its own and filled on every row with a time, so no column mixes
+ * the UTC day with the viewer's weekday. The publisher's own clock (`Local`)
+ * stays where it was.
+ */
+function econExportHeadColumns(viewerZone: string | null): CliResultColumn[] {
+  const [date, , , viewerTime, local, ...rest] = viewerZone ? econHeadColumns(viewerZone) : [];
+  if (!viewerZone) return econHeadColumns(null);
+  const city = timeZoneCity(viewerZone);
+  return [
+    date!,
+    { key: "time", header: "Time", format: (value, row) => value === "All Day" ? "All day" : value === "" ? "" : utcDateTimePart(row.date, "time") },
+    { key: "utcDay", header: "Day" },
+    { key: "viewerDate", header: `${city} date` },
+    { key: "day", header: `${city} day`, format: (value, row) => typeof row.viewerDate === "string" ? String(value ?? "") : "" },
+    { ...viewerTime!, header: `${city} time`, format: (value) => typeof value === "string" ? value : "" },
+    local!,
+    ...rest,
+  ];
+}
+
+/**
  * The text table's columns up to the event. Plain output keeps every column a
  * query has, so a column that is empty by construction has to be left out
  * here, not hidden by the table: the viewer's clock only exists with --tz, and
@@ -614,6 +637,8 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
           date: isoDate(event.date),
           // The weekday on the viewer's clock (--tz), else the UTC day's; a row with no time is its day's.
           day: weekdayOf(clock?.date ?? isoDate(event.date).slice(0, 10)),
+          // The UTC day's weekday, beside the UTC timestamp in an export with --tz.
+          ...(viewerZone ? { utcDay: weekdayOf(isoDate(event.date).slice(0, 10)) } : {}),
           time: hasNoStatedTime(event) ? "" : event.time,
           ...(viewerZone ? { viewerDate: clock?.date ?? null, viewerTime: clock?.time ?? null } : {}),
           country: eventCountry(event),
@@ -693,7 +718,7 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
         period: typeof row.referencePeriod === "string" ? row.referencePeriod : null,
       }),
       // The exports add what a script needs to read a row; the text table keeps the columns it had.
-      columns: [...econHeadColumns(viewerZone), ...econFigureColumns(false), ...econExportColumns],
+      columns: [...econExportHeadColumns(viewerZone), ...econFigureColumns(false), ...econExportColumns],
       textColumns: [...econTextHeadColumns(viewerZone, rows.some((row) => !!publisherClock(row.localTime, row.timeZone))), ...econFigureColumns(true), ECON_PUBLISHER_COLUMN],
     });
   });
