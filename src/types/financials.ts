@@ -414,6 +414,12 @@ export interface Fundamentals extends DepositaryReceiptFacts {
   epsCurrency?: string;
   /** Set when `trailingPE` divides the price by the trailing EPS converted from another currency. */
   trailingPEConversion?: TrailingPEConversion;
+  /**
+   * What the trailing EPS was worked out from where Gloom Cloud did not take
+   * its source's: `statements` (net income over shares), `home` (a receipt's
+   * home line, per receipt), `cpo` (a CPO line's company, per CPO).
+   */
+  trailingEpsBasis?: "statements" | "home" | "cpo";
   /** Provider-reported issuer market cap; marketCapCurrency identifies its units when known. */
   marketCap?: number;
   marketCapCurrency?: string;
@@ -475,6 +481,12 @@ export interface Fundamentals extends DepositaryReceiptFacts {
    */
   trailingEpsSource?: "filed-quarters" | "served";
   trailingEpsPeriodEnd?: string;
+  /**
+   * Why a multiple is withdrawn though its figures are numbers (utils/share-multiples): a warrant's price over its
+   * company's EPS, a receipt's with no ratio on record, an EPS that is not net income over the shares. The multiple
+   * itself is absent; every view reads it as N/M with this reason.
+   */
+  notMeaningful?: Partial<Record<"trailingPE" | "forwardPE" | "pegRatio", string>>;
   operatingMargin?: number;
   profitMargin?: number;
   revenueGrowth?: number;

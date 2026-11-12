@@ -47,6 +47,14 @@ describe("P/E band", () => {
     expect(model.rows.map((row) => row.periodEnd)).not.toContain("2024-06-30");
   });
 
+  test("a warrant's price over its company's EPS is no band", () => {
+    // BZFDW, BuzzFeed's warrant at $0.0054, read 0.03x here.
+    const data = financials([unfiled("2025-03-31", 0.04), unfiled("2025-06-30", 0.04), unfiled("2025-09-30", 0.04), unfiled("2025-12-31", 0.045)], [],
+      { symbol: "BZFDW", name: "BuzzFeed, Inc. - Warrant", listingExchangeName: "NASDAQ", price: 0.0054, currency: "USD" });
+    const model = projectPeBand(data, [{ date: new Date("2026-01-05"), close: 0.0054 }], { symbol: "BZFDW", lookbackYears: 0, now: Date.parse("2026-01-10") });
+    expect(model).toMatchObject({ error: "No P/E: a warrant is not the share the EPS is per.", current: null, weeks: [] });
+  });
+
   test("picks round multiples across the history, ranks today's P/E in it, and refuses EPS in another currency", () => {
     expect(chooseMultiples(Array.from({ length: 12 }, (_, index) => 20 + index))).toEqual([20, 25, 30]);
     expect(chooseMultiples([18.2, 18.5, 18.9])).toEqual([18, 19, 20]);

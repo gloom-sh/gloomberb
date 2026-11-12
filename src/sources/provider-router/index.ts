@@ -56,6 +56,7 @@ import { collectCapabilityRouteSources, mergeRouteSourcesById, normalizeRouteSou
 import type { ProviderRouterCoreDeps } from "./route-types";
 import { withProviderConnectionHealth } from "./connection-health";
 import { withFiledTrailingEps } from "../../time-series/filed-trailing-eps";
+import { withShareMultiples } from "../../utils/share-multiples";
 import {
   contextFromCachedTarget,
   getBrokerCandidates,
@@ -65,6 +66,13 @@ import {
   withBrokerTimeout,
   type BrokerCandidate,
 } from "./brokers";
+
+/**
+ * One trailing EPS and P/E for every view of a listing: the filed quarters', as PEB and GE read them
+ * (withFiledTrailingEps), and none where the price over it is no multiple of the share (withShareMultiples).
+ */
+const withTrailingMultiples = <T extends Parameters<typeof withFiledTrailingEps>[0] & Parameters<typeof withShareMultiples>[0]>(financials: T): T =>
+  withShareMultiples(withFiledTrailingEps(financials));
 
 const providerLog = debugLog.createLogger("asset-data-router");
 
@@ -216,7 +224,7 @@ export class AssetDataRouter implements DataProvider {
     for (const target of valid) {
       const key = target.symbol.toUpperCase();
       const financials = cached.get(key);
-      if (financials) cached.set(key, withFiledTrailingEps(this.knownFinancials(financials, listingOf(target, contextFromCachedTarget(target)))));
+      if (financials) cached.set(key, withTrailingMultiples(this.knownFinancials(financials, listingOf(target, contextFromCachedTarget(target)))));
     }
     return cached;
   }
@@ -268,7 +276,7 @@ export class AssetDataRouter implements DataProvider {
     const results = answered.map((result) => {
       if (!result.financials) return result;
       const quoted = result.financials.quote ? this.withDatedQuote(result.financials, dated[next++]!, listingOfResult(result)) : result.financials;
-      const financials = withFiledTrailingEps(quoted);
+      const financials = withTrailingMultiples(quoted);
       return financials === result.financials ? result : { ...result, financials };
     });
     const restored = new Map(results.map((result) => {
@@ -283,11 +291,11 @@ export class AssetDataRouter implements DataProvider {
     const { context, datesChangeBasis } = splitDating(requestContext);
     exchange = this.resolvePublicExchange(ticker, exchange, context);
     const financials = await this.financialRoutes.getTickerFinancials(ticker, exchange, context);
-    if (!financials.quote) return withFiledTrailingEps(financials);
+    if (!financials.quote) return withTrailingMultiples(financials);
     const listing = listingOf({ symbol: ticker, exchange }, context);
     const [quote] = await this.datedAnswers([{ quote: financials.quote, listing }], datesChangeBasis);
     // One trailing EPS and P/E for every view of the listing: the filed quarters', as PEB and GE read them.
-    return withFiledTrailingEps(this.withDatedQuote(financials, quote!, listing));
+    return withTrailingMultiples(this.withDatedQuote(financials, quote!, listing));
   }
 
   async getQuote(ticker: string, exchange?: string, requestContext?: MarketDataRequestContext): Promise<Quote> {
