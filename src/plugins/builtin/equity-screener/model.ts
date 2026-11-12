@@ -339,8 +339,12 @@ export function screenMetricSetting(setting: unknown, fallback: NumericField): [
  * snapshot's day without one.
  */
 export function screenYtdBase(rows: readonly ScreenRow[], assembledAt?: string | null, now = Date.now()): string | null {
-  const day = rows.map((row) => row.metrics.returnYtdPercent?.asOf?.slice(0, 10) ?? "").filter(Boolean).sort().at(-1)
-    ?? assembledAt?.slice(0, 10);
+  let newest = "";
+  for (const row of rows) {
+    const day = row.metrics.returnYtdPercent?.asOf?.slice(0, 10);
+    if (day && day > newest) newest = day;
+  }
+  const day = newest || assembledAt?.slice(0, 10);
   return day ? yearToDateBaseLabel(day, "NYSE", now) : null;
 }
 
