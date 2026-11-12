@@ -44,6 +44,7 @@ import { resolveSelectionKeyHints } from "../selection-hint";
 import { findPaneInstance } from "../../../types/config";
 import { getBasePaneDisplayTitle } from "../../layout/pane/title";
 import { isDialogOpen } from "../../../ui/dialog-stack";
+import { logFailure } from "../../../utils/log-failure";
 
 interface CommandBarProps {
   dataProvider: DataProvider;
@@ -371,7 +372,8 @@ export function CommandBar({
     const command = commands.find((candidate) => candidate.id === "auth-signup")
       ?? commands.find((candidate) => candidate.id === "auth-resend-verification");
     if (command) {
-      createPluginCommandItem(command).action();
+      Promise.resolve(createPluginCommandItem(command).action())
+        .catch(logFailure("command-bar.assist", "Start sign up from the AI offer failed"));
       return;
     }
     setRootQuery("Sign Up");
