@@ -162,6 +162,38 @@ describe("form modal", () => {
     expect(frame()).toContain("LAST");
   });
 
+  test("a form that fits once the terminal grows shows no scrollbar, its text as wide as the body", async () => {
+    // As wide as the body: beside a scrollbar it would wrap, a row more than the body, and keep the bar.
+    const description = "Target fills from the current price after the symbol resolves.";
+    const fields = ["Kind", "Symbol", "Condition", "Target Price"].map((label, index) => ({
+      id: `f${index + 1}`, label, type: "text" as const, ...(index === 3 ? { description } : {}),
+    }));
+    await renderForm(() => {}, {
+      kind: "route",
+      route: {
+        kind: "workflow",
+        workflowId: "plugin-command:fits",
+        title: "Fits",
+        fields,
+        values: Object.fromEntries(fields.map((field) => [field.id, ""])),
+        activeFieldId: "f1",
+        submitLabel: "Save",
+        pending: false,
+        error: null,
+        payload: { kind: "plugin-command", actionId: "fits" },
+      },
+    }, { size: { width: 90, height: 18 } });
+    await waitForForm("Kind");
+    // Too short for it: the body scrolls, with its bar.
+    expect(frame()).toMatch(/[█▀▄]/);
+    await act(async () => { session.setup.resize(90, 30); });
+    await settle();
+    await settle();
+    const row = frame().split("\n").find((line) => line.includes("Target fills"));
+    expect(row).toContain(description);
+    expect(frame()).not.toMatch(/[█▀▄]/);
+  });
+
   test("while a submit runs the form ignores Enter; a failure stays in the form", async () => {
     let calls = 0;
     let fail: (error: Error) => void = () => {};

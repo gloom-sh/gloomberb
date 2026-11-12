@@ -467,6 +467,16 @@ export function FormModalContent({
     }
   }, [desktop, showsFields]);
 
+  // A body its fields fit shows no scrollbar. Left to the scroll box, a bar shown while the body was shorter
+  // would stay: it takes the text a column, and a line as wide as the body wraps to a row more than it holds.
+  const bodyFits = fieldRowsHeight <= availableRows;
+  useLayoutEffect(() => {
+    const bar = desktop || !showsFields ? null : scrollRef.current?.verticalScrollBar;
+    if (!bar) return;
+    if (bodyFits) bar.visible = false;
+    else bar.resetVisibilityControl?.();
+  }, [bodyFits, desktop, showsFields]);
+
   // After layout, so a field that dependsOn just revealed is measured, and
   // again when the body's height changes (an error line takes a row from it).
   useEffect(() => {
