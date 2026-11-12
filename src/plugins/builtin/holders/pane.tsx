@@ -66,6 +66,34 @@ function cikMatches(rows: readonly HolderRow[]): Map<string, Holder13FMatch> {
 /** The width of a three-letter badge ("13F", "ADR"): the label and its padding. */
 const BADGE_WIDTH = 5;
 
+/**
+ * A holder's name and its markers. ADR: a position held as receipts on a home line's list. 13F: a fund
+ * whose filing opens on Enter or o. The name gives way first, so the markers survive a narrow column;
+ * the cell says how wide it draws whole (`contentWidth`), so the table fits the column to it.
+ */
+export function holderNameCell(
+  name: string,
+  { receipts, fund }: { receipts: string; fund: boolean },
+  color: string,
+  width: number,
+): DataTableCell {
+  if (!receipts && !fund) return { text: name, color, attributes: TextAttributes.BOLD };
+  const badges = (receipts ? 1 : 0) + (fund ? 1 : 0);
+  return {
+    text: [name, receipts, fund ? "13F" : ""].filter(Boolean).join(" "),
+    contentWidth: displayWidth(name) + badges * (BADGE_WIDTH + 1),
+    content: (
+      <Box flexDirection="row" gap={1} width={width} overflow="hidden">
+        <Text fg={color} attributes={TextAttributes.BOLD}>
+          {clipToDisplayWidth(name, Math.max(1, width - badges * (BADGE_WIDTH + 1)))}
+        </Text>
+        {receipts ? <Badge label={receipts} /> : null}
+        {fund ? <Badge label="13F" tone="accent" /> : null}
+      </Box>
+    ),
+  };
+}
+
 export function HoldersView({ focused, width, height }: { focused: boolean; width: number; height: number }) {
   const { nativePaneChrome } = useUiCapabilities();
   const { symbol, ticker, financials } = usePaneTicker();
@@ -286,26 +314,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     switch (column.id) {
       case "holder": {
         const color = rowState.selected ? colors.selectedText : colors.textBright;
-        // ADR: a position held as receipts on a home line's list. 13F: a fund
-        // whose filing opens on Enter or o.
-        const receipts = holderShareBasisMarker(row);
-        const fund = fundMatches.has(row.id);
-        if (!receipts && !fund) return { text: row.name, color, attributes: TextAttributes.BOLD };
-        const badges = (receipts ? 1 : 0) + (fund ? 1 : 0);
-        // The name gives way first, so the markers survive a narrow column.
-        return {
-          text: [row.name, receipts, fund ? "13F" : ""].filter(Boolean).join(" "),
-          contentWidth: displayWidth(row.name) + badges * (BADGE_WIDTH + 1),
-          content: (
-            <Box flexDirection="row" gap={1} width={column.width} overflow="hidden">
-              <Text fg={color} attributes={TextAttributes.BOLD}>
-                {clipToDisplayWidth(row.name, Math.max(1, column.width - badges * (BADGE_WIDTH + 1)))}
-              </Text>
-              {receipts ? <Badge label={receipts} /> : null}
-              {fund ? <Badge label="13F" tone="accent" /> : null}
-            </Box>
-          ),
-        };
+        return holderNameCell(row.name, { receipts: holderShareBasisMarker(row), fund: fundMatches.has(row.id) }, color, column.width);
       }
       case "value":
         return { text: formatMoneyCompact(row.value, currency, { code: currencyCode }), color: colors.text };

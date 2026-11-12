@@ -29,6 +29,28 @@ export type RatioTableColumn = DataTableColumn & (
 
 const ratioRowKey = (row: RatioTableRow) => row.id;
 
+/**
+ * A ratio's name in the metric column, after its disclosure, a cell apart: as wide as it says
+ * (`contentWidth`), so the table fits the column to it whole. The desktop draws the disclosure as a
+ * path, not a glyph.
+ */
+export function ratioNameCell(
+  row: Extract<RatioTableRow, { kind: "ratio" }>,
+  color: string,
+): Pick<DataTableCell, "text" | "contentWidth" | "content"> {
+  const text = `${row.expanded ? "▾" : "▸"} ${row.label}`;
+  return {
+    text,
+    contentWidth: displayWidth(text),
+    content: (
+      <Box flexDirection="row" alignItems="center" gap={1}>
+        <DisclosureMarker expanded={row.expanded} color={color} />
+        <Text fg={color}>{row.label}</Text>
+      </Box>
+    ),
+  };
+}
+
 export interface PeriodEndHistoryState {
   data: PricePoint[] | undefined;
   loading: boolean;
@@ -101,18 +123,9 @@ export function RatioTable({
       if (row.kind === "input") {
         return { text: `    ${row.unitLabel}`, color: colors.textDim };
       }
-      const text = `${row.expanded ? "▾" : "▸"} ${row.label}`;
       return {
-        text,
-        contentWidth: displayWidth(text),
+        ...ratioNameCell(row, colors.text),
         color: colors.text,
-        // The desktop draws the disclosure as a path, not a glyph.
-        content: (
-          <Box flexDirection="row" alignItems="center" gap={1}>
-            <DisclosureMarker expanded={row.expanded} color={colors.text} />
-            <Text fg={colors.text}>{row.label}</Text>
-          </Box>
-        ),
         onMouseDown: (event) => {
           event.preventDefault?.();
           event.stopPropagation?.();

@@ -74,6 +74,31 @@ type FinancialTableColumn = DataTableColumn & (
 );
 
 const NO_COLLAPSED_GROUPS: ReadonlySet<string> = new Set();
+
+/**
+ * A group's name in the metric column. It draws its indent (an empty one still takes a cell), its disclosure
+ * and its name a cell apart, and says that width (`contentWidth`) so the table fits the column to it whole.
+ * The desktop draws the disclosure as a path, not a glyph.
+ */
+export function financialGroupNameCell(
+  row: Extract<FinancialTableRow, { kind: "group" }>,
+  color: string,
+  attributes: number,
+): Pick<DataTableCell, "text" | "contentWidth" | "content"> {
+  const indent = " ".repeat(row.depth * 2);
+  const marker = row.toggleable ? (row.expanded ? "\u25be" : "\u25b8") : " ";
+  return {
+    text: `${indent}${marker} ${row.unitLabel}`,
+    contentWidth: Math.max(1, displayWidth(indent)) + 1 + displayWidth(marker) + 1 + displayWidth(row.unitLabel),
+    content: (
+      <Box flexDirection="row" alignItems="center" gap={1}>
+        <Text fg={color}>{indent}</Text>
+        {row.toggleable ? <DisclosureMarker expanded={!!row.expanded} color={color} /> : <Text> </Text>}
+        <Text fg={color} attributes={attributes}>{row.unitLabel}</Text>
+      </Box>
+    ),
+  };
+}
 const financialRowKey = (row: FinancialTableRow) => row.id;
 const financialRowBackground = (row: FinancialTableRow) => (
   row.kind === "group" && row.depth === 0 ? colors.panel : undefined
@@ -363,24 +388,12 @@ export function ResolvedFinancialsTab({
   ): DataTableCell => {
     if (column.kind === "metric") {
       if (row.kind === "group") {
-        const indent = " ".repeat(row.depth * 2);
-        const marker = row.toggleable ? (row.expanded ? "\u25be" : "\u25b8") : " ";
         const labelColor = row.depth === 0 ? colors.textBright : colors.textDim;
         const labelAttributes = row.depth === 0 ? TextAttributes.BOLD : TextAttributes.NONE;
-        const text = `${indent}${marker} ${row.unitLabel}`;
         return {
-          text,
-          contentWidth: displayWidth(text),
+          ...financialGroupNameCell(row, labelColor, labelAttributes),
           color: labelColor,
           attributes: labelAttributes,
-          // The desktop draws the disclosure as a path, not a glyph.
-          content: (
-            <Box flexDirection="row" alignItems="center" gap={1}>
-              <Text fg={labelColor}>{indent}</Text>
-              {row.toggleable ? <DisclosureMarker expanded={!!row.expanded} color={labelColor} /> : <Text> </Text>}
-              <Text fg={labelColor} attributes={labelAttributes}>{row.unitLabel}</Text>
-            </Box>
-          ),
           onMouseDown: row.toggleable
             ? (event) => {
               event.preventDefault?.();
