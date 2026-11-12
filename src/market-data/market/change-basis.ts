@@ -11,7 +11,13 @@ import { futuresChangeBasis, futuresQuoteMonth, futuresSettleText, isFuturesInst
 import { quoteTradingDay } from "../quotes/day-range";
 import { splitRatioText } from "../quotes/session-split";
 import { hasPublishedSessionCalendar, isVenueTradingDay, latestRegularSessionOpen, previousPublishedSession, sessionCalendarTimeZone } from "./freshness";
-import { getActiveQuoteDisplay, getRegularSessionDisplay, regularSessionDisplayDate } from "./status";
+import {
+  EXTENDED_SESSION_MARKS,
+  getActiveQuoteDisplay,
+  getRegularSessionDisplay,
+  regularSessionDisplayDate,
+  type ExtendedSession,
+} from "./status";
 
 const DAY_MS = 86_400_000;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -404,6 +410,34 @@ export function combinedChangeBasisLabel(bases: Iterable<QuoteChangeBasis | null
   for (const basis of bases) if (basis) labels.add(changeBasisLabel(basis, now));
   if (labels.size === 0) return null;
   return labels.size === 1 ? [...labels][0]! : MIXED_CHANGE_BASIS_LABEL;
+}
+
+/** An extended session as a day's move names its print in words, where there is room: "after hours vs Tue 10 Nov close". */
+const EXTENDED_PRINT_WORDS: Record<ExtendedSession, string> = { PRE: "pre-market", POST: "after hours", OVERNIGHT: "overnight" };
+
+/**
+ * The basis of a day's move summed over the prices a book is valued at, when
+ * some are pre-market, after-hours or overnight prints (its latest print): the
+ * session of those prints, then the close the moves are from, so the line says
+ * which print it compares with which close. `marks` gives the session as a row
+ * marks its price ("AH vs Tue 10 Nov close"), otherwise in words ("after hours
+ * vs Tue 10 Nov close"); prints from several sessions read EXT or "extended
+ * hours". Without an extended print, the close alone, as
+ * combinedChangeBasisLabel gives it; null without a basis.
+ */
+export function dayMoveBasisLabel(
+  bases: Iterable<QuoteChangeBasis | null | undefined>,
+  prints: Iterable<ExtendedSession | null | undefined>,
+  { marks = false, now = Date.now() }: { marks?: boolean; now?: number } = {},
+): string | null {
+  const basis = combinedChangeBasisLabel(bases, now);
+  const sessions = new Set<ExtendedSession>();
+  for (const print of prints) if (print) sessions.add(print);
+  if (!basis || sessions.size === 0) return basis;
+  const [session] = sessions;
+  const print = sessions.size > 1 ? (marks ? "EXT" : "extended hours")
+    : marks ? EXTENDED_SESSION_MARKS[session!] : EXTENDED_PRINT_WORDS[session!];
+  return `${print} ${basis}`;
 }
 
 /**

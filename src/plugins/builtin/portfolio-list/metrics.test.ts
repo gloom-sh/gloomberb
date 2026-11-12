@@ -109,7 +109,7 @@ describe("portfolio-metrics", () => {
     const audTotals = calculatePortfolioSummaryTotals([bhp], financials, aud, new Map(), true, "asx");
     expect(audTotals).toMatchObject({ totalMktValue: 60_000, totalCostBasis: 40_000, unrealizedPnl: 20_000, dailyPnl: 1000 });
     expect(audTotals.unavailableConversions).toBeUndefined();
-    expect(summary(audTotals, aud)).toBe("Val A$60.0k Day +A$1.0k (+1.69%) vs prev close P&L +A$20.0k (+50.00%)");
+    expect(summary(audTotals, aud)).toBe("Val A$60,000 Day +A$1,000 (+1.69%) vs prev close P&L +A$20,000 (+50.00%)");
     const audContext = { ...defaultColumnContext, activeTab: "asx", baseCurrency: aud, exchangeRates: new Map() };
     const mktValue: ColumnConfig = { id: "mkt_value", label: "MKT VAL", width: 10, align: "right" };
     expect(getColumnValue(mktValue, bhp, financials.get("BHP"), audContext).text).toBe("60.0k");
@@ -129,7 +129,7 @@ describe("portfolio-metrics", () => {
     expect(adoptHeldPortfolioCurrencies(config, [bhp, aapl]).portfolios.find((entry) => entry.id === "asx")!.currency).toBe("USD");
     const usdPortfolio = { id: "asx", name: "ASX", currency: "USD" };
     expect(summary(calculatePortfolioSummaryTotals([aapl], financials, "USD", new Map(), true, "asx"), resolvePortfolioTotalsCurrency(usdPortfolio, "USD")))
-      .toBe("Val 1.2k Day +50.00 (+4.35%) vs prev close P&L +200.00 (+20.00%)");
+      .toBe("Val 1,200 Day +50.00 (+4.35%) vs prev close P&L +200.00 (+20.00%)");
 
     // A broker portfolio stays in its account currency; a watchlist uses the base currency.
     expect(resolvePortfolioTotalsCurrency({ ...usdPortfolio, brokerId: "ibkr", brokerInstanceId: "ibkr-live" }, "USD")).toBe("USD");
@@ -157,12 +157,12 @@ describe("portfolio-metrics", () => {
     const text = (currency: string, value: typeof totals) =>
       buildPortfolioSummarySegments({ totals: value, accountState: null, currency, baseCurrency: "EUR" })
         .flatMap((segment) => segment.parts.map((part) => part.text)).join(" ");
-    expect(text("EUR", totals)).toStartWith("Val €3.1k");
+    expect(text("EUR", totals)).toStartWith("Val €3,091");
     // A USD broker account in a EUR app shows its symbol, so it never reads as euros.
     const usdBroker = { id: "broker:ibkr", name: "IBKR", currency: "USD", brokerId: "ibkr", brokerInstanceId: "ibkr-live" };
     expect(resolvePortfolioTotalsCurrency(usdBroker, "EUR")).toBe("USD");
     const usdTotals = calculatePortfolioSummaryTotals([aapl], financials, "USD", new Map(), true, "main");
-    expect(text("USD", usdTotals)).toBe("Val $1.2k Day +$50.00 (+4.35%) vs prev close P&L +$200.00 (+20.00%)");
+    expect(text("USD", usdTotals)).toBe("Val $1,200 Day +$50.00 (+4.35%) vs prev close P&L +$200.00 (+20.00%)");
   });
 
   test("leaves watchlists unsorted by default and respects persisted overrides", () => {
@@ -564,8 +564,8 @@ describe("position aggregation across sides, currencies and broker coverage", ()
     expect(getColumnValue(column("shares"), ticker, financials, defaultColumnContext).text).toBe("0");
     expect(getColumnValue(column("pnl"), ticker, financials, defaultColumnContext).text).toBe("+1.0k");
     const header = buildPortfolioSummarySegments({ totals, accountState: null }).map(segment => segment.parts.map(part => part.text).join(" ")).join(" ");
-    expect(header).toContain("Gross 24.0k Net 0.00");
-    expect(header).toContain("Long 12.0k Short -12.0k");
+    expect(header).toContain("Gross 24,000 Net 0.00");
+    expect(header).toContain("Long 12,000 Short -12,000");
   });
 
   test("converts each cost basis before summing and withholds averages across native currencies", () => {
@@ -726,6 +726,45 @@ describe("watchlist and portfolio LAST, CHG and CHG% around the close", () => {
     expect(totals.dailyPnl).toBeCloseTo(-70.3, 8);
   });
 
+  test("valued at the latest print, LAST is that print marked by its session, so LAST, CHG, MKT VAL and DAY agree and the header names the print", () => {
+    // NVDA on Wed 11 Nov 2026 after 20:00 New York: up 2.87% to a 173.73 close, then 158.78 after hours.
+    const nvda = createFinancials({ quote: { symbol: "NVDA", price: 158.78, change: -10.11, changePercent: -5.9862,
+      previousClose: 168.89, previousCloseDate: "2026-11-10", regularClose: 173.73, regularCloseSessionDate: "2026-11-11",
+      changeSessionDate: "2026-11-11", marketState: "POSTPOST", listingExchangeName: "NASDAQ",
+      lastUpdated: Date.parse("2026-11-12T00:59:59Z") } });
+    const held = createTicker({ positions: [{ portfolio: "main", shares: 10, avgCost: 150, broker: "manual" }] });
+    const now = Date.parse("2026-11-12T08:00:00Z");
+    const latest: ColumnContext = { ...defaultColumnContext, now, valuationBasis: "latest-print" };
+    const atClose: ColumnContext = { ...latest, valuationBasis: "regular-close" };
+    const row = (context: ColumnContext, ...ids: string[]) => ids.map((id) => getColumnValue(column(id), held, nvda, context).text);
+    const value = (context: ColumnContext, id: string) => getSortValue(column(id), held, nvda, context);
+
+    expect(row(latest, "price", "change", "change_pct", "ext_hours")).toEqual(["AH 158.78", "-10.11", "-5.99%", "-8.61%"]);
+    expect(value(latest, "price")).toBe(158.78);
+    expect(value(latest, "change_pct")).toBeCloseTo(-5.9862, 3);
+    expect(value(latest, "mkt_value")).toBeCloseTo(10 * 158.78, 8);
+    expect(value(latest, "day_pnl")).toBeCloseTo(10 * -10.11, 8);
+    // At the regular close, and in a watchlist, LAST is the close `quote` heads, and the print is EXT%.
+    for (const context of [atClose, { ...defaultColumnContext, now }]) {
+      expect(row(context, "price", "change", "change_pct", "ext_hours")).toEqual(["173.73", "+4.84", "+2.87%", "-8.61%"]);
+    }
+    expect(value(atClose, "mkt_value")).toBeCloseTo(10 * 173.73, 8);
+
+    setSystemTime(new Date(now));
+    try {
+      const header = (basis: "latest-print" | "regular-close") => {
+        const totals = calculatePortfolioSummaryTotals([held], new Map([["AAPL", nvda]]), "USD", new Map([["USD", 1]]), true, "main", basis);
+        return buildPortfolioSummarySegments({ totals, accountState: null, valuationBasis: basis })
+          .map((segment) => segment.parts.map((part) => part.text).join(" ")).join("  ");
+      };
+      // The print's session goes with the close the move is from; Val leaves its "(latest print)" to it.
+      expect(header("latest-print")).toBe("Val 1,588  Day -101.10 (-5.99%) AH vs Tue 10 Nov close  P&L +87.80 (+5.85%)");
+      expect(header("regular-close")).toStartWith("Val 1,737 (regular close)  Day +48.40 (+2.87%) vs Tue 10 Nov close");
+    } finally {
+      setSystemTime();
+    }
+  });
+
   test("the watchlist Avg Day is the mean of the CHG% column after the close, while portfolio DAY stays live", () => {
     const watchContext: ColumnContext = { ...defaultColumnContext, activeTab: "watch" };
     const rows = [
@@ -779,8 +818,8 @@ describe("a hedge in the PF pane: long shares and short gold futures", () => {
     const totals = calculatePortfolioSummaryTotals([spy, gold], financials, "USD", new Map(), true, "main", "latest-print", futuresTerms);
     expect(totals).toMatchObject({ totalMktValue: 4_618_000, netMktValue: -3_778_000, longMktValue: 420_000, shortMktValue: -4_198_000, hasFutures: true });
     const header = buildPortfolioSummarySegments({ totals, accountState: null }).map(segment => segment.parts.map(part => part.text).join(" ")).join("  ");
-    expect(header).toContain("Gross 4.62M  Net -3.78M");
-    expect(header).toContain("Long 420.0k  Short -4.20M");
+    expect(header).toContain("Gross 4,618,000  Net -3,778,000");
+    expect(header).toContain("Long 420,000  Short -4,198,000");
   });
 
   test("at the close a future's LAST, value, day and as-of are its settlement, and a future without a size says so", () => {

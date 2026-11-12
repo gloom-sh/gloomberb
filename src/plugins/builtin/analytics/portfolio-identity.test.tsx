@@ -153,7 +153,7 @@ test("actual analytics account switching changes quote, sector denominator and h
   await act(async () => { tui.setup().mockInput.pressArrow("right"); await tui.setup().renderOnce(); }); await settleFrame(tui.setup(), 20);
   expect(latestState.paneState[paneId]?.portfolioId).toBe("b");
   const frame = tui.frame();
-  expect(frame).toMatch(/Val +4\.0k/);
+  expect(frame).toMatch(/Val +4,000/);
   expect(frame).toMatch(/P&L +\+800\.00/);
   expect(frame).toContain("Technology                50.0%       2.0k");
   expect(frame).not.toContain("Weights unavailable");
@@ -169,7 +169,7 @@ for (const portfolioId of ["a", "b"]) test(`actual analytics ${portfolioId} reje
   await act(async () => f.coordinator.primeCachedFinancials([{ instrument: instrumentFromTicker(ticker, "ACME", { portfolioId })!, financials: financials("ACME", 300) }]));
   await settleFrame(tui.setup(), 20);
   expect(tui.frame()).toContain("60.0%");
-  expect(tui.frame()).toMatch(/Val +5\.0k/);
+  expect(tui.frame()).toMatch(/Val +5,000/);
 });
 
 test("actual shared-portfolio preview uses its selected quote and history contracts", async () => {

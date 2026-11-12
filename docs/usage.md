@@ -360,6 +360,7 @@ Every change line says what its move is measured from, in muted words after it: 
 - **Coins:** since 00:00 UTC, the previous UTC day's close. A coin whose close cannot be dated to the last two days reads `24h`, and a perpetual always does.
 - **Indices:** an index quote that names no session is dated by the session of its home venue its last print falls in, after that day's open (the S&P 500's closing print at 16:37 New York on Fri 6 Nov reads `vs Thu 5 Nov close`). Cboe's are not: their days are Cboe's own. Its Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) follow the bond market, which shuts on days the equity calendar trades (Veterans Day), so only their own daily closes date them, else they read `vs prev close`.
 - **Totals** over moves from different closes (an HKEX listing beside a US one) read `vs mixed closes`.
+- **Extended-hours prints:** a book's day priced at a pre-market, after-hours or overnight print names that session before the close: `Day -101.10 (-5.99%) AH vs Tue 10 Nov close` in the PF header, as its rows mark the print, and `after hours vs Tue 10 Nov close` in `portfolio show`.
 
 In exports, `--csv` and `--ndjson` rows add `Chg Basis` and `Chg Basis Note` (`changeBasis`, `changeBasisNote`). In `--json`, `quote` and `compare` add `changeBasis` (`kind`, `date`, the `closed` days, `label`, `note`) to each row, `quote` adds `previousCloseDate` and, for a future whose move it measured again, `sourceMove` (`change`, `changePercent` and `previousClose` as the source sent them), and `portfolio show` adds `dayChangeBasis`. A quote with no comparison shows its price without a change.
 
@@ -397,7 +398,7 @@ From the close until the next open (overnight, weekend, pre-market), every figur
 
 #### Portfolio and watchlist reports
 
-`portfolio show` and `watchlist show` read the quote as the `PF` pane does: Last and Chg are the regular close and its move after the close, with an After Hours or Pre-Market column when a holding has one. Value and P&L are priced at the latest print unless you ask for the regular close; see [What a portfolio is priced at](#what-a-portfolio-is-priced-at).
+`portfolio show` and `watchlist show` read the quote as `quote` does: Last and Chg are the regular close and its move after the close, with an After Hours or Pre-Market column when a holding has one. Value and P&L are priced at the latest print unless you ask for the regular close; see [What a portfolio is priced at](#what-a-portfolio-is-priced-at).
 
 - A portfolio's `--json` puts Last in `quotePrice` and adds the four `extended` fields (`fn PF` reports `price` and `changePercent` the same way).
 - `watchlist show --csv` and `--json` print one row per ticker, as raw numbers: `symbol`, `listing`, `name`, `exchange`, `kind`, `currency`, `price`, `change`, `changePercent`, the four `extended` fields, `volume`, `quoteAsOf`, `stale` and `lastTradeDate`. `marketCap` is in your base currency (`marketCapCurrency`), and `fundingRate8h` appears only when the list holds perpetual markets.
@@ -1951,7 +1952,7 @@ You do not need the pane to get an official plugin. Type its code, such as `TV`,
 
 Value, P&L, weights and the total are priced at each holding's latest print, pre-market and after hours included, as brokers value a book. `portfolio show` says so under the title (`Priced at the latest print, extended hours included`), and its `As of (UTC)` column gives the time of the price each row uses (`Fri 9 Oct 23:59`).
 
-TOTAL's Chg is the book's move from the closes before, and `Day's move: -HK$15,313.04 (-4.90%) vs Thu 5 Nov close` under the table says it in money with what it is measured from (`vs mixed closes` when the holdings' closes are from different days), as the PF header's Day does. At the latest print it is each print's move, a pre-market or after-hours one included, as Value is: a US pre-market print on Monday moves from Friday's close. A holding that no longer trades counts as no move. A book across markets dates each one's session and open in its source line (`HKEX and US Fri 6 Nov 2026 close · markets closed · HKEX opens Mon 01:30 UTC, 09:30 HKT · US Mon 14:30 UTC, 09:30 ET`).
+TOTAL's Chg is the book's move from the closes before, and `Day's move: -HK$15,313.04 (-4.90%) vs Thu 5 Nov close` under the table says it in money with what it is measured from (`vs mixed closes` when the holdings' closes are from different days), as the PF header's Day does. At the latest print it is each print's move, a pre-market or after-hours one included, as Value is, and the line names that print's session: a US pre-market print on Monday reads `pre-market vs Fri 6 Nov close`. A holding that no longer trades counts as no move. A book across markets dates each one's session and open in its source line (`HKEX and US Fri 6 Nov 2026 close · markets closed · HKEX opens Mon 01:30 UTC, 09:30 HKT · US Mon 14:30 UTC, 09:30 ET`).
 
 ### Pricing at the regular close
 
@@ -1959,7 +1960,15 @@ TOTAL's Chg is the book's move from the closes before, and `Day's move: -HK$15,3
 
 - `As of` is the venue's close (`Fri 9 Oct 20:00` for a US listing). `Day's move: +$1,165.49 (+0.51%)` under the table is the holdings' move from the close before.
 - `fn PF <portfolio> --close` does the same, with the day's move above its table. Both end their source line with the basis (`priced at the regular close`).
-- In the `PF` pane the header reads `Val 231.3k (latest print)` or `(regular close)`. **Value at Regular Close** in the pane's settings switches it, and `shot PF <portfolio> --close` captures it that way.
+- In the `PF` pane the header reads `Val 231,312 (latest print)` or `(regular close)`. **Value at Regular Close** in the pane's settings switches it, and `shot PF <portfolio> --close` captures it that way.
+
+### LAST in the PF pane
+
+A row's LAST, CHG and CHG% are the price its value uses, so LAST times the shares is MKT VAL and CHG times them is DAY.
+
+- At the latest print, after the close or before the open, LAST is the extended-hours print, marked by its session (`AH 158.78`, `PM`, `ON`). Its CHG% is measured from the same close as DAY, and the header's Day names both (`Day -101.10 (-5.99%) AH vs Tue 10 Nov close`). The EXT% column keeps the print's move from the regular close (`-8.61%`), as `quote`'s After Hours line does.
+- At the regular close, LAST is the regular session as `quote` heads it, with the extended print in EXT%. A watchlist values nothing and shows LAST the same way.
+- The header's totals read to the unit (`Val 1,588`, `Day -101.10`), compact only from a billion (`1.23B`).
 
 ### Futures
 

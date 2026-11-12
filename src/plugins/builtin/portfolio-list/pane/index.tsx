@@ -347,7 +347,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     baseCurrency: totalsCurrency,
     exchangeRates,
     fxDayMoves,
-    valuationBasis,
+    // A watchlist values nothing: its LAST is the regular session's, as `quote` heads it.
+    ...(isPortfolioTab ? { valuationBasis } : {}),
     portfolioWeightBase,
     portfolioWeightBasis,
     portfolioTargets,

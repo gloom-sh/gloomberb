@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { act } from "react";
 import type { PluginRegistry } from "../../plugins/registry";
+import type { Quote } from "../../types/financials";
 import { formSnapshot } from "../../remote/form";
 import { createRemoteUiRegistry } from "../../remote/semantic-tree";
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
@@ -303,9 +304,12 @@ describe("form modal", () => {
   });
 
   test("Add Alert checks its symbol in the form, and a new symbol keeps the target the user typed", async () => {
-    const quotes: Record<string, { price: number; name: string }> = {
+    const quotes: Record<string, Partial<Quote>> = {
       AMD: { price: 201.5, name: "Advanced Micro Devices" },
-      NVDA: { price: 120.25, name: "NVIDIA Corp." },
+      // After 20:00 New York, from a 173.73 close to 158.78 after hours: the alert is judged on that print.
+      NVDA: { price: 158.78, name: "NVIDIA Corp.", change: -10.11, changePercent: -5.9862, previousClose: 168.89,
+        regularClose: 173.73, regularCloseSessionDate: "2026-11-11", changeSessionDate: "2026-11-11", marketState: "POSTPOST",
+        listingExchangeName: "NASDAQ", lastUpdated: Date.parse("2026-11-12T00:59:59Z") },
     };
     const dataProvider = createTestDataProvider({
       getQuote: async (symbol) => {
@@ -335,7 +339,7 @@ describe("form modal", () => {
     await type("NVDA");
 
     await waitForFrameToContain("NVIDIA Corp.");
-    await waitForFrameToContain("Current price 120.25; edit to set the target.");
+    await waitForFrameToContain("Current price 158.78 After-Hours; edit to set the target.");
     expect(frame().split("\n").some((line) => /^\W*180\W*$/.test(line))).toBe(true);
   });
 
