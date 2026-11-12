@@ -386,6 +386,8 @@ export function ToolResultDetail({
           rootWidth={width}
           rootHeight={Math.max(3, height - headerHeight)}
           columns={columns}
+          // A tool's answer, read once: its columns are the tool's, not a layout to keep with the pane.
+          columnReorder={false}
           items={table.rows}
           sortColumnId={null}
           sortDirection="asc"

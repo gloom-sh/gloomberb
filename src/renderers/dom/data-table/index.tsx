@@ -44,6 +44,7 @@ import {
   useScrollbarState,
 } from "./dom";
 import { WebDataTableHeader, WebDataTableRow } from "./row";
+import { useWebColumnDrag } from "./column-drag";
 
 interface VirtualRow {
   index: number;
@@ -84,6 +85,8 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   sortColumnId,
   sortDirection,
   onHeaderClick,
+  onColumnMove,
+  anchoredColumns = 1,
   headerScrollRef,
   scrollRef,
   syncHeaderScroll: _syncHeaderScroll,
@@ -124,6 +127,14 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   const paneInstanceId = usePaneInstance()?.instanceId ?? null;
   const focusPane = useFocusOwningPane();
   const bodyElementRef = useRef<HTMLDivElement | null>(null);
+  const contentElementRef = useRef<HTMLDivElement | null>(null);
+  const { drag: columnDrag, startPress: pressMovableHeader } = useWebColumnDrag({
+    contentRef: contentElementRef,
+    bodyRef: bodyElementRef,
+    anchoredColumns,
+    onColumnMove,
+    onHeaderClick,
+  });
   const headerHorizontal = useScrollbarState(false);
   const headerVertical = useScrollbarState(false);
   const bodyHorizontal = useScrollbarState(showHorizontalScrollbar);
@@ -427,6 +438,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
         onTouchMove={() => { controlledScrollOffsetRef.current = null; }}
       >
         <div
+          ref={contentElementRef}
           data-gloom-role="data-table-scroll-content"
           style={{
             position: "relative",
@@ -446,9 +458,19 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
             onTableMouseDown={onTableMouseDown}
             gridTemplateColumns={gridTemplateColumns}
             onHeaderClick={onHeaderClick}
+            onMovableHeaderPress={onColumnMove ? pressMovableHeader : undefined}
+            anchoredColumns={anchoredColumns}
+            draggedColumn={columnDrag?.from ?? null}
             sortColumnId={sortColumnId}
             sortDirection={sortDirection}
           />
+          {columnDrag?.dropLeft != null ? (
+            <div
+              data-gloom-role="data-table-drop-indicator"
+              aria-hidden="true"
+              style={{ left: columnDrag.dropLeft }}
+            />
+          ) : null}
           {items.length === 0 ? (
             emptyContent ?? (
               <EmptyBody body={bodyElementRef}>

@@ -313,6 +313,8 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
         onBodyScrollActivity={loadMoreFromScroll}
         resetScrollKey={`${browserMode}:${query}`}
         columns={columns}
+        // Performance adds the quarters' returns in time order after the fund's columns.
+        columnReorder={browserMode === "performance" ? false : undefined}
         items={sortedRows}
         sortColumnId={browserSort.columnId}
         sortDirection={browserSort.direction}

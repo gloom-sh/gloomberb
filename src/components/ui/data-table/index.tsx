@@ -12,10 +12,12 @@ import { registerPaneTableExporter } from "../../../state/pane-table-export-regi
 import { createDataTableCsv } from "../../data-table/export";
 import { headerCase } from "../header-case";
 import { figureColumnCells } from "./render-cell";
+import { useDataTableColumnOrder } from "./use-column-order";
 
 export type {
   DataTableCell,
   DataTableColumn,
+  DataTableColumnReorder,
   DataTableProps,
   DataTableSectionHeader,
   DataTableVisibleRange,
@@ -26,7 +28,16 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
 ) {
   // Every renderer, report and export reads the cells through this, so a column of figures lines up everywhere.
   const renderCell = useMemo(() => figureColumnCells(ownProps.renderCell), [ownProps.renderCell]);
-  const props = { ...ownProps, renderCell };
+  // A caller that already ordered the columns (`DataTableView`) passes the move it resolved.
+  const order = useDataTableColumnOrder(ownProps.columns, ownProps.onColumnMove ? false : ownProps.columnReorder);
+  const props = {
+    ...ownProps,
+    renderCell,
+    // Exports and reports read the columns in the order the reader sees them.
+    columns: order.columns,
+    onColumnMove: ownProps.onColumnMove ?? order.onColumnMove,
+    anchoredColumns: ownProps.onColumnMove ? ownProps.anchoredColumns : order.anchoredColumns,
+  };
   const paneId = useOptionalPaneInstanceId();
   const renderer = useRendererHost();
   const propsRef = useRef(props);

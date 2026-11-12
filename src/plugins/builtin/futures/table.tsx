@@ -37,7 +37,7 @@ export const FUTURES_COLUMN_DEFS: readonly FuturesColumnDef[] = [
   { id: "time", label: "Time", description: "UTC time of the last quote." },
 ];
 
-const DEFAULT_FUTURES_COLUMN_IDS = FUTURES_COLUMN_DEFS.map((column) => column.id);
+export const DEFAULT_FUTURES_COLUMN_IDS = FUTURES_COLUMN_DEFS.map((column) => column.id);
 
 /**
  * Extra columns only earn their width once the board is wide enough to keep a

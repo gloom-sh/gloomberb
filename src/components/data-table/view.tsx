@@ -13,7 +13,9 @@ import { useBeforeShortcut, useShortcut } from "../../react/input";
 import { isPlainKey, isPlainKeyboardEvent } from "../../utils/keyboard";
 import { DataTable, PaneStatusBody, type DataTableColumn, type DataTableProps, type PaneStatusBodyProps } from "../ui";
 import { useDataTableSortMenu } from "./sort-menu";
+import { useDataTableColumnMenuItems } from "./column-menu";
 import { tableFreezesFirstColumn, tableRevealLeft, tableScrollStep } from "../ui/table-layout";
+import { useDataTableColumnOrder } from "../ui/data-table/use-column-order";
 import {
   TableViewFrame,
   useResetTableScroll,
@@ -211,13 +213,31 @@ export function DataTableView<
   ...tableProps
 }: DataTableViewProps<T, C>) {
   const onHeaderClick = tableProps.onHeaderClick;
+  // Ordered here, so a sideways step and a revealed column count the columns as they are drawn.
+  const columnOrder = useDataTableColumnOrder(
+    tableProps.columns,
+    tableProps.onColumnMove ? false : tableProps.columnReorder,
+    { menu: false },
+  );
+  const columns = columnOrder.columns;
+  const onColumnMove = tableProps.onColumnMove ?? columnOrder.onColumnMove;
+  const anchoredColumns = tableProps.onColumnMove ? tableProps.anchoredColumns ?? 1 : columnOrder.anchoredColumns;
+  const columnItems = useDataTableColumnMenuItems({
+    enabled: focused && keyboardNavigation,
+    columns,
+    anchoredColumns,
+    onColumnMove,
+    customized: columnOrder.customized,
+    reset: columnOrder.reset,
+  });
   useDataTableSortMenu({
     enabled: focused && keyboardNavigation && !!onHeaderClick && (sortable ?? true),
-    columns: isColumnSortable ? tableProps.columns.filter(isColumnSortable) : tableProps.columns,
+    columns: isColumnSortable ? columns.filter(isColumnSortable) : columns,
     sortColumnId: tableProps.sortColumnId ?? null,
     sortDirection: tableProps.sortDirection ?? "asc",
     onHeaderClick: onHeaderClick ?? ignoreHeaderClick,
     onSortChange,
+    columnItems,
   });
   const {
     effectiveHeaderScrollRef,
@@ -698,12 +718,12 @@ export function DataTableView<
     // to switch a tab.
     stopTableKey(event);
     const nextLeft = tableScrollStep({
-      columns: tableProps.columns,
+      columns,
       columnGap: tableProps.columnGap,
       horizontalPadding: tableProps.horizontalPadding,
       frozenFirstColumn: tableFreezesFirstColumn({
         freezeFirstColumn: tableProps.freezeFirstColumn,
-        columns: tableProps.columns,
+        columns,
         columnGap: tableProps.columnGap,
         horizontalPadding: tableProps.horizontalPadding,
         viewportWidth,
@@ -725,7 +745,7 @@ export function DataTableView<
   // The column asked for, in the middle of the scrolled columns once the body has its width. Keyed on the
   // column and the pane's width only: a refresh that resizes a column to its new figures, or a scroll the
   // reader made with Shift+arrows, stays where it is. An empty table waits for its rows.
-  const revealColumnIndex = revealColumnId == null ? -1 : tableProps.columns.findIndex((column) => column.id === revealColumnId);
+  const revealColumnIndex = revealColumnId == null ? -1 : columns.findIndex((column) => column.id === revealColumnId);
   const revealKey = revealColumnIndex < 0 ? null : `${revealColumnIndex}:${rootWidth ?? ""}`;
   const revealedKeyRef = useRef<string | null>(null);
   const hasRows = tableProps.items.length > 0;
@@ -742,7 +762,7 @@ export function DataTableView<
         if (scrollWidth > 0) revealedKeyRef.current = revealKey;
         return scrollWidth > 0;
       }
-      const shared = { columns: tableProps.columns, columnGap: tableProps.columnGap, horizontalPadding: tableProps.horizontalPadding };
+      const shared = { columns, columnGap: tableProps.columnGap, horizontalPadding: tableProps.horizontalPadding };
       const nextLeft = tableRevealLeft({ ...shared, columnIndex: revealColumnIndex, viewportWidth, maxLeft,
         frozenFirstColumn: tableFreezesFirstColumn({ ...shared, freezeFirstColumn: tableProps.freezeFirstColumn, viewportWidth, overflows: true }) });
       if (nextLeft !== body.scrollLeft) {
@@ -811,6 +831,10 @@ export function DataTableView<
     >
       {bodyStatusShown(status) ? <PaneStatusBody {...status} /> : <DataTable<T, C>
         {...tableProps}
+        columns={columns}
+        columnReorder={false}
+        onColumnMove={onColumnMove}
+        anchoredColumns={anchoredColumns}
         headerScrollRef={effectiveHeaderScrollRef}
         scrollRef={effectiveScrollRef}
         syncHeaderScroll={effectiveSyncHeaderScroll}

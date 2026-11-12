@@ -80,6 +80,12 @@ Desktop builds add the matching `Cmd` shortcuts on macOS and these:
 
 The focused pane's footer shows its actions with their keys: `[a]dd` in the terminal, and in the desktop app and on the web the key in a small keycap before the action's name. Click a hint to run it. The pane menu (`.` or the `...` button) lists every action, then the pane's table, filters, tabs and toggles, then the pane and window actions.
 
+### Table columns
+
+Click a column header to sort by it, and again to reverse. Drag a header sideways to move its column: a line shows where it will go, a `│` in the terminal's header row, and `Esc` puts it back while you drag. The pane keeps the order, so it stays after a restart and on your other devices. **Move Column…** in the pane menu moves one from the keyboard, and **Reset Columns** puts the pane's own order back. The column that names the row (a ticker, a name, a date) stays first.
+
+In `PF` and `FUT` a moved column also moves in the pane's **Columns** setting. Tables whose columns are one scale in order keep it: fiscal periods in `FA`, months in `SEAS`, the calls and puts around the strike in `OMON`, the grids in `OVDV`, the FX matrix and the like.
+
 ### Dialogs and forms
 
 - Dialogs: `Enter` confirms, `Esc` closes (on the desktop `Tab` moves between controls).

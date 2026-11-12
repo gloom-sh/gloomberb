@@ -214,6 +214,8 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
       {payload ? (
         <DataTableView<Item>
           columns={columns}
+          // Reporting quarters in time order, then the latest and TTM.
+          columnReorder={false}
           items={items}
           focused={focused}
           rootWidth={width}
