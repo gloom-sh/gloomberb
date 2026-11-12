@@ -11,6 +11,7 @@ import type { HeadlessBundleResult, HeadlessPaneApiClient } from "../../../types
 import type { IvHistoryPayload, IvMethod, IvPoint, IvScreenPayload, IvScreenRow } from "./client";
 import { vcaDefinitions } from "./format";
 import { ivHistoryHeadless, ivScreenHeadless } from "./headless";
+import { MACRO_RELEASE_TABLE } from "../macro-day/release-table";
 
 const reading = (date: string, method: IvMethod, iv30: number) => ({
   date, method, capturedAt: `${date}T19:55:00Z`, spot: 100, iv7: null, iv30, iv60: null, iv90: iv30 + 0.01, iv180: null, iv365: null,
@@ -264,7 +265,17 @@ describe("HIVG skew history", () => {
 });
 
 describe("HIVG exports for scripts", () => {
-  afterEach(() => setSystemTime());
+  const bundled = { coveredThrough: MACRO_RELEASE_TABLE.coveredThrough, fomc: MACRO_RELEASE_TABLE.days.fomc[2026]! };
+  afterEach(() => {
+    setSystemTime();
+    MACRO_RELEASE_TABLE.coveredThrough = bundled.coveredThrough;
+    MACRO_RELEASE_TABLE.days.fomc[2026] = bundled.fomc;
+  });
+  /** The release table an app of `day` carries: no release day after it, whatever the table the app ships with covers today. */
+  const bundledThrough = (day: string) => {
+    MACRO_RELEASE_TABLE.coveredThrough = day;
+    MACRO_RELEASE_TABLE.days.fomc[2026] = bundled.fomc.filter((date) => `2026-${date}` <= day);
+  };
   const session = (sessionDate: string, iv30: number): IvPoint => ({
     sessionDate, method: "trade-close", capturedAt: `${sessionDate}T23:30:00Z`, spot: 100,
     iv7: null, iv30, iv60: null, iv90: iv30 + 0.01, iv180: null, iv365: null,
@@ -363,6 +374,7 @@ describe("HIVG exports for scripts", () => {
   test("the next FOMC has its row once its session at the offset has closed and been read; today's open session is none", async () => {
     // Wednesday 21 Oct 2026, 10:00 New York: IV is read through Tuesday's close, and today's bar is under way.
     setSystemTime(new Date("2026-10-21T14:00:00Z"));
+    bundledThrough("2026-10-20");
     const october = series("2026-10-20");
     // 28 Oct: six sessions back is 20 Oct, read last night.
     const week = await load("SPY", october, { event: "fomc", offset: -6 }, ["2026-10-28", "2026-12-09"]);

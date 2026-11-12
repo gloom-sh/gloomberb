@@ -88,29 +88,31 @@ function servedFigures(value: unknown): MacroReleaseFigures | undefined {
 /**
  * The served list extends the floor past its end; the floor keeps its own
  * days up to there. IPCA, which the floor does not carry, is the served list's
- * through its end, and left out when the server lists none. Every day takes
- * the figures the server has for it, or the reason it gives for having none;
- * US days before its economic calendar (`figuresFrom`) have none. A served
- * list that breaks the contract, or ends no later than the floor, adds
- * nothing.
+ * through its end, and left out when the server lists none. Every day, the
+ * floor's included, takes the figures the server has for it, or the reason it
+ * gives for having none, whether or not the served list reaches past the
+ * floor's end; US days before its economic calendar (`figuresFrom`) have none.
+ * A served list that breaks the contract adds nothing.
  */
 export function mergeMacroReleases(floor: MacroReleaseList, served: unknown): MacroReleaseList {
   const payload = served as { coveredThrough?: unknown; releases?: Partial<Record<MacroEventKind, unknown>>;
     figures?: Partial<Record<MacroEventKind, Record<string, unknown>>>; figuresFrom?: unknown;
     figureGaps?: Partial<Record<MacroEventKind, Record<string, unknown>>> } | null;
-  const coveredThrough = payload?.coveredThrough;
-  if (!isDate(coveredThrough) || coveredThrough <= floor.coveredThrough) return floor;
+  const servedThrough = payload?.coveredThrough;
+  if (!isDate(servedThrough)) return floor;
+  // The list is complete through the later of the two ends; a served list that stops short of the floor's adds figures only.
+  const coveredThrough = servedThrough > floor.coveredThrough ? servedThrough : floor.coveredThrough;
   const later: MacroRelease[] = [];
   for (const kind of US_MACRO_EVENT_KINDS) {
     const dates = payload?.releases?.[kind];
     if (!Array.isArray(dates) || !dates.every(isDate)) return floor;
     for (const date of new Set(dates)) {
-      if (date > floor.coveredThrough && date <= coveredThrough) later.push({ kind, date });
+      if (date > floor.coveredThrough && date <= servedThrough) later.push({ kind, date });
     }
   }
   const ipca = payload?.releases?.ipca;
   if (Array.isArray(ipca) && ipca.every(isDate)) {
-    for (const date of new Set(ipca)) if (date <= coveredThrough) later.push({ kind: "ipca", date });
+    for (const date of new Set(ipca)) if (date <= servedThrough) later.push({ kind: "ipca", date });
   }
   const figuresFrom = isDate(payload?.figuresFrom) ? payload.figuresFrom : null;
   const figuresOf = (release: MacroRelease): MacroRelease => {
