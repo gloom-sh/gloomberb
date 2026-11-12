@@ -93,7 +93,7 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
       paneInstanceId: paneId,
       sortColumnId: props.sortColumnId,
       sortDirection: props.sortDirection,
-      columns: props.columns.map((column) => ({ id: column.id, label: column.label })),
+      columns: props.columns.map((column) => ({ id: column.id, label: column.label, ...(column.mayBeBlank ? { mayBeBlank: true } : {}) })),
       rowCount: props.items.length,
       selectedId: firstSelectedId(props),
       ...(props.reportEveryRow ? { rows: cachedReportedRows(props, reportedRowsRef) } : {}),
