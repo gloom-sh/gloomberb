@@ -44,6 +44,7 @@ export const WEB_LINK_ONLY_HOSTS: ReadonlySet<string> = new Set([
   "www.cboe.com",
   "www.cnn.com",
   "www.deribit.com",
+  "www.ecb.europa.eu",
   "www.eex.com",
   "www.eia.gov",
   "www.federalreserve.gov",

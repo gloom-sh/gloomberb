@@ -3,6 +3,7 @@ import { t, tf } from "../../i18n";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, useUiCapabilities } from "../../ui";
 import { formatRelativeAge } from "../../utils/datetime-format";
+import { readableError } from "../../utils/reason-codes";
 import { Spinner } from "./loading";
 import { ButtonActionScope } from "./action-scope";
 import { blendForContrast, higherContrast } from "../../theme/color-utils";
@@ -206,7 +207,8 @@ function EmptyStateBody({ title, message, hint, actions, retry, status = "empty"
       onPress={feedback.press}
     />
   ) : null;
-  // Provider messages must wrap at narrow pane widths rather than lose their tail.
+  // Provider messages must wrap at narrow pane widths rather than lose their tail,
+  // and a bare reason code (UPSTREAM_ERROR) a pane passed on reads as words.
   return (
     <Box
       id={domId}
@@ -215,9 +217,9 @@ function EmptyStateBody({ title, message, hint, actions, retry, status = "empty"
       data-gloom-ui="empty-state"
       style={inset ? NATIVE_STATE_INSET : undefined}
     >
-      <Box><Text fg={status === "error" ? colors.negative : colors.textDim} wrapText>{t(title)}</Text></Box>
-      {message && <Box><Text fg={colors.textMuted} wrapText>{t(message)}</Text></Box>}
-      {hint && <Box><Text fg={colors.textMuted} wrapText>{t(hint)}</Text></Box>}
+      <Box><Text fg={status === "error" ? colors.negative : colors.textDim} wrapText>{t(readableError(title))}</Text></Box>
+      {message && <Box><Text fg={colors.textMuted} wrapText>{t(readableError(message))}</Text></Box>}
+      {hint && <Box><Text fg={colors.textMuted} wrapText>{t(readableError(hint))}</Text></Box>}
       {/* Wraps in a narrow pane rather than clipping the second action; a terminal wraps without a blank row. */}
       {(retryButton || actions) && (
         <Box flexDirection="row" flexWrap="wrap" gap={1} rowGap={nativePaneChrome ? undefined : 0} marginTop={1}>
@@ -243,18 +245,19 @@ export function Notice({ children, tone = "warning", variant = "inline" }: Notic
   const native = useUiCapabilities().nativePaneChrome;
   const color = tone === "muted" ? colors.textDim : colors[tone];
   const status = tone === "negative" ? "error" : "notice";
+  const body = typeof children === "string" ? readableError(children) : children;
   // Inline feedback keeps its original single-text shape: a flex row here collapses inside content-sized parents.
   if (variant !== "callout") {
     return (
       <Box data-gloom-status={status} data-gloom-ui="notice">
-        <Text fg={color} wrapText>{children}</Text>
+        <Text fg={color} wrapText>{body}</Text>
       </Box>
     );
   }
   const foreground = blendForContrast(color, colors.panel, higherContrast("#000000", "#ffffff", colors.panel), 4.5);
   return (
     <Box flexDirection="row" gap={1} paddingX={1} paddingY={native ? 0.35 : 0} backgroundColor={colors.panel} border={["left"]} borderColor={color} data-gloom-status={status} data-gloom-ui="notice" role={native ? tone === "negative" ? "alert" : "status" : undefined} aria-atomic={native ? true : undefined}>
-      <Text fg={foreground}>!</Text><Box flexGrow={1} minWidth={0}><Text fg={foreground} wrapText>{children}</Text></Box>
+      <Text fg={foreground}>!</Text><Box flexGrow={1} minWidth={0}><Text fg={foreground} wrapText>{body}</Text></Box>
     </Box>
   );
 }

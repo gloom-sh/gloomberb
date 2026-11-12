@@ -84,6 +84,8 @@ export function createShortInterestHeadless(
       ],
     },
     usListingsOnly: "FINRA short interest",
+    // FINRA's settlements count OTC securities' shares short too: 0700.HK is offered TCEHY.
+    usListingsOtc: true,
     options: [
       {
         key: "order",

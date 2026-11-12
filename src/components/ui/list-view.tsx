@@ -71,9 +71,10 @@ export interface ListViewProps {
   selectOnHover?: boolean;
   autoScrollToIndex?: boolean;
   /**
-   * The rows are checkboxes (ToggleList). A focused desktop row toggles on
-   * Space and leaves Enter to the surface around the list, the way a checkbox
-   * leaves Enter to its dialog's default button.
+   * The rows are checkboxes (ToggleList), or choices a dialog asks beside its
+   * buttons. A focused desktop row toggles or picks on Space and leaves Enter
+   * to the surface around the list, the way a checkbox leaves Enter to its
+   * dialog's default button.
    */
   checkboxRows?: boolean;
   onMouseScroll?: (event: any) => void;

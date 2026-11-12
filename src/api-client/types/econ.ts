@@ -50,6 +50,12 @@ export interface CloudEconCalendarFromPayload {
   events: CloudEconEventPayload[];
   /** The first UTC day the stored calendar holds; null when it holds nothing. */
   storedFrom: string | null;
+  /**
+   * The first UTC day any read lists: `storedFrom`, or the furthest day back
+   * the calendar reaches (400 days) once that is later. Absent from an older
+   * server.
+   */
+  listedFrom?: string;
   /** The last UTC day the calendar lists releases for; absent from an older server. */
   listedThrough?: string;
 }
@@ -97,23 +103,29 @@ export interface CloudMacroReleaseDaysPayload {
   /** The last New York day the lists are complete for. */
   coveredThrough: string;
   sources: string[];
-  /** New York dates, oldest first. Brazil's IPCA days when the server can vouch for them. */
-  releases: Record<"cpi" | "jobs" | "fomc", string[]> & { ipca?: string[] };
+  /** New York dates, oldest first. Brazil's IPCA days when the server can vouch for them, and the ECB's decision days. */
+  releases: Record<"cpi" | "jobs" | "fomc", string[]> & { ipca?: string[]; ecb?: string[] };
   /** Each kind's figures by New York release day, for the days they are known. */
-  figures?: Partial<Record<"cpi" | "jobs" | "fomc" | "ipca", Record<string, {
+  figures?: Partial<Record<"cpi" | "jobs" | "fomc" | "ipca" | "ecb", Record<string, {
     event: string;
     actual: string | null;
     forecast: string | null;
     prior: string | null;
     /** Above the consensus (hot), below it (cool), at it (in-line); null without both. */
     surprise: "hot" | "cool" | "in-line" | null;
-    /** An FOMC day's move in the target range: "held", "cut 25bp", "raised 50bp". */
+    /** An FOMC or ECB day's move in the rate: "held", "cut 25bp", "raised 50bp". */
     decision?: string;
+    /** How the actual was computed where the calendar lists none: a CPI's year-on-year change from the index. */
+    computed?: string;
+    /** Why a day with a consensus or a prior has no actual, where it cannot be computed either. */
+    actualMissing?: string;
   }>>>;
-  /** The first New York day the kept economic calendar covers: US days before it have no figures. */
+  /** The first day the kept economic calendar holds, the one `econ` names: days before it have no figures. */
   figuresFrom?: string;
-  /** Why a US release day from `figuresFrom` on has no figures, by kind and day. */
-  figureGaps?: Partial<Record<"cpi" | "jobs" | "fomc", Record<string, string>>>;
+  /** Why a release day from `figuresFrom` on has no figures, by kind and day. */
+  figureGaps?: Partial<Record<"cpi" | "jobs" | "fomc" | "ecb", Record<string, string>>>;
+  /** The next day of a kind its publisher schedules ahead: the ECB's next decision. */
+  scheduled?: { ecb?: string };
 }
 
 export interface CloudFredObservationPayload {

@@ -316,7 +316,8 @@ export async function applyListingArgument(
   const abroad = usOnly ? listings.filter((listing) => listingAbroadVenue(listing.key) != null) : [];
   if (usOnly && abroad.length > 0) {
     const answers = await Promise.all(abroad.map(async (listing) => {
-      const answer = await usListingsOnlyMessage(usOnly, listing, context, (key) => `gloom ${command} ${token} ${key}`);
+      const answer = await usListingsOnlyMessage(usOnly, listing, context, (key) => `gloom ${command} ${token} ${key}`,
+        { otc: headless?.usListingsOtc === true });
       const hint = headless?.usListingsOnlyHint?.(listing.key);
       return hint ? { ...answer, details: `${answer.details}\n${hint}` } : answer;
     }));

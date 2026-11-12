@@ -27,6 +27,7 @@ import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneTicker } from "../../../state/app/context";
 import { mayBeUsEquityTicker } from "../../../utils/sec";
+import { loadAnalystResearch } from "./client";
 import { useAssetData, usePluginPaneState } from "../../runtime";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
@@ -469,7 +470,7 @@ export function CorporateActionsView({
   }, [dataProvider, cloudSession.requestKey]);
   const analystLoader = useCallback(async (nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
     if (!dataProvider?.getAnalystResearch) return null;
-    return dataProvider.getAnalystResearch(nextSymbol, nextExchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
+    return loadAnalystResearch(dataProvider, nextSymbol, nextExchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
   }, [dataProvider, cloudSession.requestKey]);
   // The earnings calendar's next report, which the rows are resolved against as `earnings` and ERN read it.
   const calendarLoader = useCallback((nextSymbol: string, _exchange: string, forceRefresh: boolean) => (

@@ -195,6 +195,18 @@ export function isNoSourceAnswer(error: unknown): boolean {
   return error instanceof Error && !(error instanceof ProviderBusyError) && isNoProviderMessage(error.message);
 }
 
+/**
+ * A source that answered it has nothing for a listing it knows: a miss that
+ * does not say the symbol is unknown, or one that crossed the desktop or
+ * screenshot bridge, which carries only its message, the service's bare
+ * NO_DATA. A source that failed, and a symbol no source knows, are not.
+ */
+export function isNoDataAnswer(error: unknown): boolean {
+  if (error instanceof Error && error.message.trim() === "NO_DATA") return true;
+  return isProviderMiss(error) && !error.notFound && !/^(?:NOT_FOUND|BAD_MAPPING)$/.test(error.message.trim())
+    && notATickerSymbol(error.message) === null;
+}
+
 export function shouldLogProviderError(error: unknown): boolean {
   if (isProviderMiss(error)) return false;
   const message = error instanceof Error ? error.message : String(error);

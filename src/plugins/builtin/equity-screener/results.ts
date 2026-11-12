@@ -8,7 +8,16 @@ import { logFailure } from "../../../utils/log-failure";
 import { fetchScreen } from "./client";
 import { appendScreenPage } from "./model";
 
-/** Query changes and pagination cannot exchange data across immutable snapshots. */
+/** A refresh re-reads what a long list holds, up to this many rows, so it does not walk an endless one. */
+const REFRESH_ROW_LIMIT = 1_000;
+
+/**
+ * Query changes and pagination cannot exchange data across immutable snapshots.
+ * A refresh of a screen already loaded replaces its rows in place: the first
+ * page of the new snapshot, then as many more as the list held, swapped in
+ * together so the table keeps its length and its scroll position. A refresh
+ * that finds the same snapshot keeps the pages as they are.
+ */
 export function useScreenResults(
   definition: ScreenDefinition,
   sessionKey: string,
@@ -42,6 +51,7 @@ export function useScreenResults(
     moreController.current = null;
     const request = new AbortController();
     controller.current = request;
+    const held = stateRef.current.identity === identity ? stateRef.current.data : null;
     setState((current) => ({
       identity,
       data: current.identity === identity ? current.data : null,
@@ -51,8 +61,18 @@ export function useScreenResults(
       updatedAt: current.identity === identity ? current.updatedAt : null,
     }));
     try {
-      const data = await fetcher(definition, null, request.signal);
+      let data = await fetcher(definition, null, request.signal);
       if (request.signal.aborted || activeIdentity.current !== identity) return;
+      if (held?.snapshot && data.snapshot?.id === held.snapshot.id) {
+        data = held;
+      } else if (held) {
+        const wanted = Math.min(held.rows.length, REFRESH_ROW_LIMIT);
+        while (data.nextCursor && data.rows.length < wanted) {
+          const page = await fetcher(definition, data.nextCursor, request.signal);
+          if (request.signal.aborted || activeIdentity.current !== identity) return;
+          data = appendScreenPage(data, page);
+        }
+      }
       setState({
         identity,
         data,

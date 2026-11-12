@@ -1,5 +1,4 @@
 import { CLOUD_PLAN_KEY } from "../../shared/cloud-upgrade";
-import { getCurrentPluginTarget } from "../../../current-target";
 import {
   useCallback,
   useEffect,
@@ -44,6 +43,7 @@ import {
   useAppSelector,
   usePaneAppConfig,
 } from "../../../../state/app/context";
+import { usePaneSession, usePaneSessionState } from "../../../../state/pane-session";
 import { useInlineTickers } from "../../../../state/hooks/inline-tickers";
 import { useRemoteControlHandler } from "../../../../remote/app-host";
 import { RemoteUiScope } from "../../../../remote/semantic-tree";
@@ -62,14 +62,12 @@ import { usePlanAccess } from "../../../../api-client/plan-access";
 import { SignInWall } from "../auth-actions";
 import { afterLayout, revealInScrollBox } from "../../../../components/ui/reveal-in-scroll-box";
 import { describePortfolioTab } from "../../analytics/portfolio-selection";
-import { ASKGSessionController, type ASKGControllerManifest } from "./controller";
 import {
-  createASKGRendererToolExecutor,
   buildASKGSourceShare,
   type ASKGSourceShare,
-  loadASKGClientManifest,
   resolveToolPaneTarget,
 } from "./host";
+import { createASKGPaneSession, disposeASKGPaneSession } from "./pane-session";
 import { getSharedRegistry } from "../../../registry";
 import {
   answerReadNothing,
@@ -102,7 +100,6 @@ import type { AskGloomPaneAttachment } from "../../../../ask-gloom/pane-request"
 import { moveComposerCursorToOffset } from "../../chat/content/composer-cursor";
 import {
   ASKG_PANE_QUESTION,
-  attachedPaneContext,
   attachPane,
   type ASKGAttachedPane,
 } from "./pane-attachment";
@@ -112,9 +109,7 @@ import {
   attachedPaneBlockHeight,
   LEAVE_OUT_PANE_KEY,
 } from "./attached-pane";
-import { buildASKGUserData } from "./user-data";
 import { ASKGConversationSidebar } from "./sidebar";
-import { ASKGUndoManager } from "./undo";
 import {
   activeTurn,
   canRateTurn,
@@ -146,7 +141,6 @@ import { logFailure } from "../../../../utils/log-failure";
 
 export const ASKG_PANE_ID = "askg";
 
-const CLIENT_VERSION = "1";
 const MIN_DETAIL_HEIGHT = 8;
 /** The composer grows with the question up to this many lines, then scrolls. */
 const MAX_COMPOSER_LINES = 6;
@@ -154,11 +148,6 @@ const MAX_COMPOSER_LINES = 6;
 const LOW_QUOTA = 20;
 /** What unlocks Ask Gloom: a free account with a verified email; a paid plan only changes the model. */
 const ASKG_WALL_HINT = "Free with a verified Gloom account.";
-
-function clientKind(): "tui" | "desktop" | "web" {
-  const target = getCurrentPluginTarget();
-  return target === "web" || target === "desktop" ? target : "tui";
-}
 
 function tierLabel(row: ASKGToolRow): string | null {
   if (row.writeTier === "read") return null;
@@ -611,72 +600,37 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   const dialog = useDialog();
   const rendererHost = useRendererHost();
 
-  const configRef = useRef(config);
-  configRef.current = config;
-  const remoteHandlerRef = useRef(remoteHandler);
-  remoteHandlerRef.current = remoteHandler;
-  const contextRef = useRef({ symbol: activeSymbol, paneId });
-  contextRef.current = { symbol: activeSymbol, paneId };
   // Read when a question is sent, so portfolio and ticker changes do not re-render the pane.
   const getAppState = useAppGetState();
-  const getAppStateRef = useRef(getAppState);
-  getAppStateRef.current = getAppState;
+
+  // The conversation belongs to the pane, not to this drawing of it: docking
+  // or floating the pane mounts it again, and it picks the conversation up
+  // where it was (see `usePaneSession`).
+  const session = usePaneSession(
+    "askg:conversation",
+    () => createASKGPaneSession({
+      config,
+      remoteHandler,
+      getAppState,
+      context: { symbol: activeSymbol, paneId },
+    }),
+    disposeASKGPaneSession,
+    paneId,
+  );
+  const { controller } = session;
+  session.bindings.config = config;
+  session.bindings.remoteHandler = remoteHandler;
+  session.bindings.getAppState = getAppState;
+  session.bindings.context = { symbol: activeSymbol, paneId };
 
   // The pane the conversation on screen is about, read whenever a question
   // goes so every turn of it carries the pane.
-  const [attached, setAttachedState] = useState<ASKGAttachedPane | null>(null);
-  const attachedRef = useRef<ASKGAttachedPane | null>(null);
+  const [attached, setAttachedState] = usePaneSessionState<ASKGAttachedPane | null>("askg:attached", null, paneId);
+  const attachedRef = session.attached;
   const setAttached = useCallback((next: ASKGAttachedPane | null) => {
     attachedRef.current = next;
     setAttachedState(next);
-  }, []);
-
-  // Each call and each undo gets a fresh executor, so the tokens live here:
-  // an executor's own manager would forget them as soon as its call returned.
-  const undoManager = useMemo(() => new ASKGUndoManager((request) => {
-    const handler = remoteHandlerRef.current;
-    if (!handler) return Promise.reject(new Error("This window cannot undo tool calls."));
-    return handler(request);
-  }), []);
-
-  const controller = useMemo(() => new ASKGSessionController({
-    transport: apiClient.askg,
-    loadManifest: () => loadASKGClientManifest(),
-    getExecutor: (manifest: ASKGControllerManifest) => {
-      const handler = remoteHandlerRef.current;
-      if (!handler) return null;
-      return createASKGRendererToolExecutor({
-        config: configRef.current,
-        remoteHandler: handler,
-        manifest: {
-          tools: manifest.tools,
-          manifestHash: manifest.manifestHash,
-          skipped: [],
-        },
-        undoManager,
-      });
-    },
-    client: { kind: clientKind(), version: CLIENT_VERSION },
-    getContext: () => {
-      const state = getAppStateRef.current();
-      const userData = buildASKGUserData({
-        config: state.config,
-        brokerAccounts: state.brokerAccounts,
-        tickers: state.tickers.values(),
-      });
-      const pane = attachedRef.current;
-      // An attached pane is what the question is about: its function, its
-      // symbol and, once that may go, what it shows.
-      if (pane) return { ...attachedPaneContext(pane), ...(userData ? { userData } : {}) };
-      return {
-        ...(contextRef.current.symbol ? { symbol: contextRef.current.symbol } : {}),
-        paneId: contextRef.current.paneId,
-        ...(userData ? { userData } : {}),
-      };
-    },
-  }), [undoManager]);
-
-  useEffect(() => () => controller.dispose(), [controller]);
+  }, [attachedRef, setAttachedState]);
 
   const state: ASKGConversationState = useSyncExternalStore(
     useCallback((listener) => controller.subscribe(listener), [controller]),
@@ -684,14 +638,16 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     useCallback(() => controller.getState(), [controller]),
   );
 
-  const [inputValue, setInputValue] = useState("");
+  // What is in the composer and which row of the conversation the keyboard is
+  // on go with the conversation, so a dock change leaves them where they were.
+  const [inputValue, setInputValue] = usePaneSessionState("askg:draft", "", paneId);
   const [inputFocused, setInputFocused] = useState(false);
   // A tool row or a turn's folded calls; j/k walk them.
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [expandedToolCallId, setExpandedToolCallId] = useState<string | null>(null);
-  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set());
+  const [selectedId, setSelectedId] = usePaneSessionState<string | null>("askg:selected", null, paneId);
+  const [expandedToolCallId, setExpandedToolCallId] = usePaneSessionState<string | null>("askg:expanded", null, paneId);
+  const [openGroups, setOpenGroups] = usePaneSessionState<ReadonlySet<string>>("askg:open-groups", () => new Set(), paneId);
   // The answer whose thumbs down shows its reasons and the send action.
-  const [feedbackFollowUpTurnId, setFeedbackFollowUpTurnId] = useState<string | null>(null);
+  const [feedbackFollowUpTurnId, setFeedbackFollowUpTurnId] = usePaneSessionState<string | null>("askg:feedback-follow-up", null, paneId);
   // The example question the keyboard is on while the pane is empty.
   const [exampleIndex, setExampleIndex] = useState<number | null>(null);
   const inputRef = useRef<TextareaRenderable | null>(null);
@@ -793,7 +749,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   }, [state]);
 
   const profileExamples = useMemo(() => {
-    const appState = getAppStateRef.current();
+    const appState = getAppState();
     return askgExampleQuestions({
       config: appState.config,
       tickers: appState.tickers.values(),
@@ -1019,10 +975,11 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   // Closing the pane is two Escs away, so the conversation it showed comes
   // back with the next one this session opens. A question typed with the
   // command that opened it starts a new one instead.
-  const restoredRef = useRef(false);
   useEffect(() => {
-    if (restoredRef.current || !planAccess.emailVerified) return;
-    restoredRef.current = true;
+    // Once per pane: a pane that comes back from a dock change has its
+    // conversation already, and one that was started empty stays empty.
+    if (session.restored || !planAccess.emailVerified) return;
+    session.restored = true;
     const remembered = askgConversationListStore.rememberedOpen();
     if (!remembered || queuedQuestionRef.current || queuedPaneRef.current || controller.getState().turns.length > 0) return;
     void apiClient.askg.loadConversation(remembered).then((conversation) => {
@@ -1031,7 +988,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       if (!conversation || current.turns.length > 0 || current.conversationId || attachedRef.current || queuedPaneRef.current) return;
       controller.openConversation(conversation);
     }).catch(logFailure("cloud.askg.pane", "Restore the last open conversation failed"));
-  }, [controller, planAccess.emailVerified]);
+  }, [attachedRef, controller, planAccess.emailVerified, session]);
 
   useEffect(() => {
     if (state.conversationId) askgConversationListStore.rememberOpen(state.conversationId);
@@ -1162,7 +1119,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     if (target.kind !== "pane") return;
     const failed = (reason: string) => notify({ body: `Could not open ${formatSourceCommand(target.command)}: ${reason}`, type: "error" });
     try {
-      const share = await buildASKGSourceShare(target.command, configRef.current);
+      const share = await buildASKGSourceShare(target.command, session.bindings.config);
       openSharedPane(share.data, () => failed("panes cannot open from here."));
     } catch (error) {
       failed(error instanceof Error ? error.message : String(error));
@@ -1350,7 +1307,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         if (source.target.kind !== "pane") continue;
         const key = formatSourceCommand(source.target.command);
         if (links.has(key) || pending.some((entry) => entry.key === key)) continue;
-        const share = await buildASKGSourceShare(source.target.command, configRef.current).catch((error: unknown) => {
+        const share = await buildASKGSourceShare(source.target.command, session.bindings.config).catch((error: unknown) => {
           logFailure("cloud.askg.pane", "An answer source could not be shared")(error);
           return null;
         });

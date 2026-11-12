@@ -109,3 +109,11 @@ test("matrix calculations clip buffered history and retain loading/error provena
   expect(retained).toMatchObject({ status: "ready", loading: false, refreshError: "Provider timed out", fetchedAt: 123 });
   expect(retained.prices).toEqual(series.prices);
 });
+
+test("a pair's close the source copied from its open is left out: the next return runs from the close before, as across a holiday", () => {
+  expect(dailyCloses([
+    { date: new Date("2022-06-09"), close: 1.061921 },
+    { date: new Date("2022-06-10"), close: 1.061921, closeCopied: true },
+    { date: new Date("2022-06-13"), close: 1.0512 },
+  ])).toEqual([{ dateKey: "2022-06-09", close: 1.061921 }, { dateKey: "2022-06-13", close: 1.0512 }]);
+});

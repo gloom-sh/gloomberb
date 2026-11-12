@@ -666,15 +666,9 @@ function ThemedCompositeChart({
   const patchLayout = useCallback((patch: ChartLayoutPrefs | ((layout: ChartLayoutPrefs) => ChartLayoutPrefs)) => {
     layoutStateRef.current.onChartLayoutChange((layout) => patchChartLayout(layout, typeof patch === "function" ? patch(layout) : patch));
   }, []);
-  // The tool in hand, read when the bar is toggled (the keyboard hook below holds it).
-  const toolInHandRef = useRef<{ armed: boolean; putDown: () => void }>({ armed: false, putDown: () => {} });
-  // Shift+T and the chevrons act on the bar as it shows: a bar open only for
-  // the tool in hand folds again, the tool put down, and stays hidden.
+  // Shift+T and the bar's own button keep it open, or let it fold to the tool in hand again.
   const toggleToolbar = useCallback(() => {
-    const tool = toolInHandRef.current;
-    const hidden = layoutStateRef.current.chartLayout.toolbarHidden === true && !tool.armed;
-    if (!hidden && tool.armed) tool.putDown();
-    patchLayout({ toolbarHidden: !hidden });
+    patchLayout({ toolbarPinned: layoutStateRef.current.chartLayout.toolbarPinned !== true });
   }, [patchLayout]);
   const toggleLegendCollapsed = useCallback(() => patchLayout((layout) => ({ legendCollapsed: !layout.legendCollapsed })), [patchLayout]);
   const resetPanelHeights = useCallback(() => {
@@ -721,7 +715,7 @@ function ThemedCompositeChart({
   const legendCollapsed = legendCollapsible && chartLayout.legendCollapsed === true;
   const projectedPanelCount = projectedScene?.panels.length ?? 0;
   const layoutControls = useMemo(() => ({
-    toolbarHidden: chartLayout.toolbarHidden === true,
+    toolbarPinned: chartLayout.toolbarPinned === true,
     toggleToolbar,
     legendCollapsible,
     legendCollapsed,
@@ -734,7 +728,7 @@ function ThemedCompositeChart({
     restorePanels: resetPanelMaximized,
   }), [
     chartLayout.panelWeights,
-    chartLayout.toolbarHidden,
+    chartLayout.toolbarPinned,
     layoutPanels?.length,
     legendCollapsed,
     legendCollapsible,
@@ -794,7 +788,6 @@ function ThemedCompositeChart({
     pickDrawColor,
     layout: layoutControls,
   });
-  toolInHandRef.current = { armed: armedTool !== null, putDown: () => armTool(null) };
   const pressFromPointer = useCallback(() => {
     onPress?.();
     activateFromPointer();
@@ -1045,9 +1038,6 @@ function ThemedCompositeChart({
   // drawing. A chart outside a pane (a share page) keeps them.
   const toolbarWanted = paneFocused !== false || armedTool !== null || pointerDragging || toolSpan !== null;
   const showToolbar = interactive && navigable && toolbarWanted && plotWidth > CHART_TOOLBAR_WIDTH + 4;
-  // Hidden, the bar folds to the button that brings it back, and opens again
-  // while a tool picked from the keys is in hand, so the plot says which one.
-  const toolbarFolded = showToolbar && chartLayout.toolbarHidden === true && armedTool === null;
   // Bars shorter than a day carry a time of day the cursor reads out.
   const intradayBars = baseScene.timeZone !== undefined || visibleSeries.some((entry) => (
     !!entry.historyResolution && isIntradayResolution(entry.historyResolution)
@@ -1119,8 +1109,8 @@ function ThemedCompositeChart({
           drawColor={drawColor}
           showColors={isDrawingTool(armedTool) || !!selectedDrawingId}
           levelTool={levelsEditable}
-          folded={toolbarFolded}
-          onToggleFolded={() => {
+          pinned={chartLayout.toolbarPinned === true}
+          onTogglePinned={() => {
             pressFromPointer();
             toggleToolbar();
           }}

@@ -12,7 +12,7 @@ import { createTestDataProvider } from "../../../test-support/data-provider";
 import { sessionQuotes } from "../../../test-support/test-fixture-session-quotes";
 import { setCliColorEnabledOverride } from "../../../utils/cli-output";
 import { equityScreenerHeadless } from "./headless";
-import { overlayLiveScreenRows, screenExtendedSessions, sortLiveScreenRows } from "./live";
+import { liveScreenPlaces, overlayLiveScreenRows, placeLiveScreenRows, screenExtendedSessions, sortLiveScreenRows } from "./live";
 import { screenFixture } from "./test-fixture";
 
 afterEach(() => setCliColorEnabledOverride(null));
@@ -203,4 +203,35 @@ test("a P/E at zero or below sorts after the positive ones, cheapest or dearest 
   // A move below zero is a move like any other where it is no multiple.
   const moves = shown.map((entry) => ({ ...entry, metrics: { ...entry.metrics, changePercent: { ...entry.metrics.changePercent, value: entry.metrics.trailingPE.value } } }));
   expect(sortLiveScreenRows(moves, { field: "changePercent", direction: "asc" }).map((item) => item.symbol)).toEqual(["LOSS", "ZERO", "CHEAP", "DEAR", "NONE"]);
+});
+
+test("a tick lays over the row it names only, and moves no row (or the array) when it changes nothing shown", () => {
+  const rows = ["AAPL", "MSFT", "NVDA"].map((symbol) => {
+    const row = { ...snapshotRow(198.5, 0.36), symbol };
+    row.metrics.price.observedAt = "2026-10-09T16:45:00.000Z";
+    return row;
+  });
+  const entry = (symbol: string, quote: Quote) => [buildQuoteKey({ symbol, exchange: "NASDAQ" }), ready({ ...quote, symbol })] as const;
+  const msft = entry("MSFT", quotes().regular), unloaded = entry("ZZZZ", quotes().regular);
+  const first = overlayLiveScreenRows(rows, new Map([msft]));
+  expect(first[1]!.metrics.price.value).toBe(199.1);
+  expect(first[0]).toBe(rows[0]!);
+  expect(first[2]).toBe(rows[2]!);
+  // The same quote again keeps the row's object, and a quote for a symbol that is not loaded hands back the array it was given.
+  expect(overlayLiveScreenRows(rows, new Map([msft, unloaded]))[1]).toBe(first[1]!);
+  expect(overlayLiveScreenRows(rows, new Map([unloaded]))).toBe(rows);
+  expect(overlayLiveScreenRows(rows, new Map())).toBe(rows);
+});
+
+test("rows are placed by the order sampled earlier, so a tick moves figures without reshuffling, and an unknown row follows", () => {
+  const row = (symbol: string, cap: number) => {
+    const base = snapshotRow();
+    return { ...base, symbol, metrics: { ...base.metrics, marketCap: { ...base.metrics.marketCap, value: cap } } };
+  };
+  const sampled = [row("A", 3), row("B", 9), row("C", 5)];
+  const places = liveScreenPlaces(sampled, { field: "marketCap", direction: "desc" });
+  expect([...places.keys()].map((id) => id.split(":")[1])).toEqual(["B", "C", "A"]);
+  // A's cap overtakes B's on a tick; the places stay those sampled until the pane samples again.
+  const ticked = [row("A", 30), row("B", 9), row("C", 5), row("NEW", 1)];
+  expect(placeLiveScreenRows(ticked, places).map((item) => item.symbol)).toEqual(["B", "C", "A", "NEW"]);
 });
