@@ -122,6 +122,25 @@ describe("table layout", () => {
     expect(getTableWidth(fitTableColumns(board, [0, 0, 0, 0, 0], 40, 1, 1, hint))).toBeLessThanOrEqual(40);
   });
 
+  test("a fit never trades a column the set widths show whole for more of a cut name", () => {
+    const hint = { least: 3, whole: 8 };
+    // A maturity table at 39 cells: its last column ends at the edge, only its blank past it cut. Pushing it
+    // out would give the name three more cells.
+    const maturities = [
+      { id: "label", label: "MATURITY", width: 15 },
+      { id: "value", label: "PRINCIPAL", width: 11, align: "right" },
+      { id: "share", label: "% TOTAL", width: 9, align: "right" },
+    ];
+    expect(fitTableColumns(maturities, [18, 6, 5], 39, 1, 1, hint).map((column) => column.width)).toEqual([15, 11, 9]);
+    // Eight columns at 80 cells, each at its header's width but the cut company name: they stay.
+    const ranking = [8, 15, 7, 8, 7, 8, 8, 10].map((width, index) => ({
+      id: String(index), label: ["TICKER", "COMPANY", "SCORE", "ROLE", "STAKE", "BUYERS", "BOUGHT", "LAST BUY"][index]!, width,
+      align: [0, 1, 3].includes(index) ? "left" : "right",
+    }));
+    expect(fitTableColumns(ranking, [4, 23, 2, 8, 4, 1, 7, 10], 80, 1, 1).map((column) => column.width))
+      .toEqual([8, 15, 7, 8, 7, 8, 8, 10]);
+  });
+
   test("a last text column the hint's whole form would leave a few cells of is pushed out by the shown columns", () => {
     // The volatility board at 34 cells: INDEX, LEVEL, 1D % and AS OF, which cannot show whole.
     const columns = [

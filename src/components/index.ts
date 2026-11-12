@@ -118,11 +118,9 @@ export {
   PaneSidebarRow,
   readStoredPaneSidebarWidth,
   shouldShowPaneSidebar,
-  usePaneSidebarReveal,
 } from "./layout/pane/sidebar";
 export type {
   PaneSidebarActionRenderState,
-  PaneSidebarListRenderState,
   PaneSidebarRenderState,
   PaneSidebarResize,
   PaneSidebarRowRenderState,

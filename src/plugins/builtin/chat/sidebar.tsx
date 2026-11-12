@@ -7,8 +7,8 @@ import {
   PaneSidebarAction,
   PaneSidebarList,
   PaneSidebarRow,
-  usePaneSidebarReveal,
 } from "../../../components";
+import { usePaneSidebarReveal } from "../../../components/layout/pane/sidebar";
 import { Box, Span, Text, useUiCapabilities, type BoxRenderable } from "../../../ui";
 import { TextAttributes } from "../../../ui";
 import { blendHex, colors } from "../../../theme/colors";

@@ -130,20 +130,21 @@ describe("FxMatrixPane", () => {
     // No room for the day's move beside the currencies: it gives way, the amount stays first.
     expect(header.trim().split(/\s+/).slice(0, 2)).toEqual(["AMOUNT", "USD"]);
     expect(header).not.toContain("1D");
-    // The table's own sign that columns go on past the edge.
+    // Each currency as wide as its figures, so JPY fits too, then the table's own sign that columns go on past the edge.
+    expect(header).toContain("JPY");
     expect(header.trimEnd().endsWith("→")).toBe(true);
-    expect(header).not.toContain("JPY");
+    expect(header).not.toContain("CHF");
     const row = (code: string) => lines().find((line) => line.trimStart().startsWith(`${code} `))!;
     expect(row("GBP")).toContain((2_500_000 * 1.08 / 1.27).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     // JPY has no rate here: its amount is unavailable, never parity.
     expect(row("JPY")).toContain("—");
     // Every currency keeps its row, and Shift+Right brings the columns past the edge into view, the codes kept.
     expect(lines().filter((line) => /^\s*(USD|EUR|GBP|JPY|CHF|CAD|AUD|NZD)\s/.test(line))).toHaveLength(8);
-    for (let step = 0; step < 4 && !lines()[1]!.includes("JPY"); step++) {
+    for (let step = 0; step < 4 && !lines()[1]!.includes("CHF"); step++) {
       await act(async () => { await tui.emitKeypress({ name: "right", shift: true }); });
       await settle();
     }
-    expect(lines()[1]).toContain("JPY");
+    expect(lines()[1]).toContain("CHF");
     expect(row("EUR").trimStart().startsWith("EUR")).toBe(true);
   });
 

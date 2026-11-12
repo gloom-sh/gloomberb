@@ -401,24 +401,31 @@ export function fitTableColumns<C extends TableWidthColumn>(
     getTableWidth(columns.slice(0, count), columnGap, horizontalPadding) - columnGap - horizontalPadding
   );
   const least = edgeHint.least > 0 ? edgeHint.least : horizontalPadding;
+  // What the first `count` columns keep after them: the hint, or the padding, while columns follow; after the
+  // last its padding, so the table runs no further past the edge than its trailing gap.
+  const tail = (count: number) => (count < set.length ? least : horizontalPadding);
   let count = 0;
-  while (count < set.length && prefixEnd(count + 1) + least <= room) count += 1;
+  while (count < set.length && prefixEnd(count + 1) + tail(count + 1) <= room) count += 1;
   if (count === 0) return sized();
+  // The columns the set widths show whole, the last one's blank past it cut or not: a fit never shows fewer.
   let setCount = 0;
-  while (setCount < set.length && prefixEnd(setCount + 1, set) + least <= room) setCount += 1;
+  while (setCount < set.length && prefixEnd(setCount + 1, set) + (setCount + 1 < set.length ? least : 0) <= room) setCount += 1;
+  if (count < setCount) return set;
   const shown = set.slice(0, count).map((_, index) => index);
-  extra = room - least - prefixEnd(count);
-  // Kept for the hint's whole form, a last column after them would have that many cells in view, which text
-  // shows cut rather than leave to the hint when they reach its label (hasColumnsPastRightEdge). With more
-  // columns past it the hint shows anyway.
-  const next = set[count]!;
-  const nextInView = edgeHint.whole - columnGap - tableColumnLeadGap(sized(), count, columnGap);
-  const nextShowsText = count === set.length - 1 && (next.align ?? "left") !== "right" && nextInView >= displayWidth(next.label ?? "");
-  const wholeHint = Math.max(0, edgeHint.whole - least);
+  extra = room - tail(count) - prefixEnd(count);
   const shownCut = cut.filter((index) => index < count);
   extra = growColumns(widths, wants, shownCut, extra);
-  if (count <= setCount && !cutGrew(shownCut)) return set;
-  if (edgeHint.least > 0 && wholeHint > 0 && extra >= wholeHint && !nextShowsText) extra -= wholeHint;
+  if (count === setCount && !cutGrew(shownCut)) return set;
+  if (count < set.length) {
+    // Kept for the hint's whole form, a last column after them would have that many cells in view, which text
+    // shows cut rather than leave to the hint when they reach its label (hasColumnsPastRightEdge). With more
+    // columns past it the hint shows anyway.
+    const next = set[count]!;
+    const nextInView = edgeHint.whole - columnGap - tableColumnLeadGap(sized(), count, columnGap);
+    const nextShowsText = count === set.length - 1 && (next.align ?? "left") !== "right" && nextInView >= displayWidth(next.label ?? "");
+    const wholeHint = Math.max(0, edgeHint.whole - least);
+    if (edgeHint.least > 0 && wholeHint > 0 && extra >= wholeHint && !nextShowsText) extra -= wholeHint;
+  }
   growColumns(widths, setWidths, shown, extra);
   return sized();
 }
