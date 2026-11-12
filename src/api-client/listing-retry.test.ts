@@ -69,4 +69,11 @@ test("a listing the service has no quote for is asked once a minute, so an unkno
   // Another listing, or the same on another venue, is its own question.
   await unknown.api.getCloudQuote("^ZZZQ", "NYSE");
   expect(unknown.paths).toHaveLength(2);
+  // The memory is capped: past 256 unknown listings the oldest is asked about again.
+  const many = service(notFound);
+  for (let index = 0; index < 257; index += 1) await many.api.getCloudQuote(`ZZQ${index}`);
+  await many.api.getCloudQuote("ZZQ256");
+  expect(many.paths).toHaveLength(257);
+  await many.api.getCloudQuote("ZZQ0");
+  expect(many.paths).toHaveLength(258);
 });

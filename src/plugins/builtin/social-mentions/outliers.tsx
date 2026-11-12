@@ -11,6 +11,9 @@ import {
 } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { ageFooterSegment } from "../../../components/layout/pane/footer";
+import { useUtcDay } from "../../../react/auto-refresh";
+import { reportFooterSegment } from "../shared/source-footer";
+import { socialMentionsHeadless } from "./headless";
 import { useAsyncResource, useAutoRefresh, useMarketData, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box } from "../../../ui";
@@ -154,13 +157,19 @@ export function SocialOutliersView({ width, height, focused, renderTicker }: {
   }, [setOpenName, setOpenSymbol]);
 
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
+  const utcDay = useUtcDay();
+  // Its source and when the posts were counted, as `fn BUZZ` ends; how long ago it loaded goes first on a narrow row.
+  const footerInfo = useMemo(() => data ? [
+    reportFooterSegment(socialMentionsHeadless, { sections: [], metadata: { asOf: data.asOf } }),
+    ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : []),
+  ] : [], [data, updatedAgo, utcDay]);
   usePaneStatusFooter({
     registrationId: "social-mentions:outliers",
     enabled: !detailOpen,
     loading: resource.loading,
     error: data ? resource.error : null,
     stale: !!data && !!shown?.stale,
-    info: data && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
+    info: footerInfo,
   });
   usePaneNoticeFooter({
     registrationId: "social-mentions:outliers:notices",

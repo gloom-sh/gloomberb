@@ -11,7 +11,7 @@ import {
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { ageFooterSegment, type PaneFooterSegment } from "../../../components/layout/pane/footer";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useAutoRefresh, useUpdatedAgo } from "../../../react/auto-refresh";
+import { useAutoRefresh, useUpdatedAgo, useUtcDay } from "../../../react/auto-refresh";
 import { usePaneInstance } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
@@ -20,6 +20,8 @@ import { withCountryFlag, withFlagRoom } from "../../../components/ui/country-fl
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import { fetchCommodityBalances } from "./client";
+import { commodityBalancesHeadless } from "./headless";
+import { reportFooterSegment } from "../shared/source-footer";
 import {
   BALANCE_SORT,
   PRICE_SORT,
@@ -94,11 +96,17 @@ export function CommodityBalancesPane({ width, height, focused }: PaneProps) {
     queryBarWidth: width,
   });
   const updatedAgo = useUpdatedAgo(updatedAt);
+  const utcDay = useUtcDay();
+  // Its source and the estimates' month, as `fn PSD` ends; how long ago it loaded goes first on a narrow row.
   const info = useMemo<PaneFooterSegment[]>(() => {
-    const year = data?.marketYear;
-    const updated: PaneFooterSegment[] = updatedAgo ? [ageFooterSegment(updatedAgo)] : [];
-    return year ? [...updated, { id: "year", parts: [{ text: year, tone: "muted" }] }] : updated;
-  }, [data?.marketYear, updatedAgo]);
+    if (!data) return [];
+    const year = data.marketYear;
+    return [
+      reportFooterSegment(commodityBalancesHeadless, { sections: [], ...(data.month ? { metadata: { asOf: `${data.month}-01` } } : {}) }),
+      ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : []),
+      ...(year ? [{ id: "year", parts: [{ text: year, tone: "muted" as const }] }] : []),
+    ];
+  }, [data, updatedAgo, utcDay]);
 
   useAutoRefresh(updatedAt, load);
   usePaneRefreshKey(load, { focused });

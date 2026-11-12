@@ -102,6 +102,7 @@ import { openPerpLabel, useOpenPerpMarket } from "../../perps/open-market";
 import { useLiveStreamingSetting } from "../../../../state/hooks/live-streaming";
 import { useThrottledTickerOrder } from "../use-throttled-ticker-order";
 import { useThrottledMemo } from "../use-throttled-memo";
+import { useUtcDay } from "../../../../react/auto-refresh";
 import { perpetualDisplaySymbol, perpetualListing, perpetualVenueName } from "../../../../tickers/perpetual-listing";
 import { useColumnClock } from "../use-column-clock";
 import { liveMarketCapitalization } from "../../../../market-data/quotes/live-valuation";
@@ -660,6 +661,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     liveStreaming,
   });
 
+  // The quotes' time of today drops its day; the next day the footer names it.
+  const utcDay = useUtcDay();
   const summaryFooterInfo = useThrottledMemo(() => buildPortfolioFooterSegments({
     accountState: summaryAccountState,
     accountStatusText: accountsError
@@ -680,6 +683,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     portfolioSummaryTotals,
     refreshingSize,
     summaryAccountState,
+    utcDay,
   ], FOOTER_TOTALS_THROTTLE_MS);
   const fxWarning = !!(fxStatus.stale || fxStatus.unknownTime || fxStatus.unavailable);
   // Signed out or free, the rows' prices are the delayed ones; a list of coins is live and says nothing.

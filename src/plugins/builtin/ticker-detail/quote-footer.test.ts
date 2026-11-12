@@ -69,3 +69,13 @@ test("a current quote's footer names its source and its time, as `quote` ends", 
   // A narrow footer keeps the source and the time before the market.
   expect(line?.variants?.map((parts) => parts[0]!.text)).toContain("Gloom Cloud · 14:44 UTC");
 });
+
+// The ticker footer read "Gloom Cloud · 12:25 UTC" the day after too, as if the print were today's.
+test("a quote from before today names its day in every width of the footer", () => {
+  const quote = { ...nvda, marketState: "POST" as const, lastUpdated: Date.parse("2026-11-11T20:59:00Z") };
+  at("2026-11-12T00:20:00Z");
+  const line = segments(quote).find((segment) => segment.id === "ticker-research-source")!;
+  const texts = [line.parts[0]!.text, ...(line.variants ?? []).map((parts) => parts[0]!.text)];
+  expect(texts.every((text) => text.includes("Wed 11 Nov"))).toBe(true);
+  expect(texts).toContain("Gloom Cloud · Wed 11 Nov 20:59 UTC");
+});

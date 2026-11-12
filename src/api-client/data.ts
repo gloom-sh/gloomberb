@@ -219,6 +219,8 @@ const LISTING_RETRY_DELAY_MS = 400;
  * unknown symbol fails at once instead of after each asks the service again.
  */
 const QUOTE_NOT_FOUND_MS = 60_000;
+/** The most quote paths remembered as not found: a list of mistyped symbols must not grow the memory without end. */
+const QUOTE_NOT_FOUND_ENTRIES = 256;
 
 const isNotFound = (answer: { status?: string; reasonCode?: string } | null | undefined) =>
   answer?.status === "empty" && answer.reasonCode === "NOT_FOUND";
@@ -292,8 +294,17 @@ export class CloudDataApi {
    */
   private readonly histories = this.historyCoalescer(false);
 
-  /** Each quote path the service said it has no quote for, and when (`QUOTE_NOT_FOUND_MS`). */
+  /** Each quote path the service said it has no quote for, and when (`QUOTE_NOT_FOUND_MS`), oldest first, at most QUOTE_NOT_FOUND_ENTRIES. */
   private readonly quotesNotFound = new Map<string, number>();
+
+  private rememberQuoteNotFound(path: string): void {
+    this.quotesNotFound.delete(path);
+    this.quotesNotFound.set(path, Date.now());
+    for (const oldest of this.quotesNotFound.keys()) {
+      if (this.quotesNotFound.size <= QUOTE_NOT_FOUND_ENTRIES) break;
+      this.quotesNotFound.delete(oldest);
+    }
+  }
 
   private quoteNotFound(path: string): CloudMarketResponse<CloudQuotePayload> | null {
     const said = this.quotesNotFound.get(path);
@@ -598,7 +609,7 @@ export class CloudDataApi {
     const known = this.quoteNotFound(path);
     if (known) return known;
     const answer = await this.readListing(() => this.request<CloudMarketResponse<CloudQuotePayload>>(path));
-    if (isNotFound(answer)) this.quotesNotFound.set(path, Date.now());
+    if (isNotFound(answer)) this.rememberQuoteNotFound(path);
     return answer;
   }
 

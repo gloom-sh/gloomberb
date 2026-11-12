@@ -369,6 +369,7 @@ export const brokerManagerModule: PluginModule = {
       reportFreshness: { status: "not-a-feed", basis: "broker connections", local: true },
       defaultPosition: "right",
       defaultMode: "floating",
+      utilityWindow: true,
       defaultFloatingSize: { width: 92, height: 24 },
       portableShare: {
         private: { title: true, params: true, settings: true, state: true },

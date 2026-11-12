@@ -34,6 +34,7 @@ import { parseListingDelisting } from "../../market-data/quotes/delisting";
 import { readIntradayBar, readStaleReason } from "../../market-data/quotes/intraday-bar";
 import { readSessionSplit } from "../../market-data/quotes/session-split";
 import { isIndexLevel } from "../../market-data/market/index-level";
+import { isYieldIndexSymbol } from "../../tickers/index-roots";
 
 export const GLOOMBERB_CLOUD_PROVIDER_ID = "gloomberb-cloud" as const;
 
@@ -110,8 +111,9 @@ export function mapQuote(
   const priceBasis = quote.priceBasis === "nav"
     ? "per-unit"
     : futuresBasis ?? quote.priceBasis;
-  // An index's 0 open or day range is none (^BVSP before B3 opens served Open 0.00, Day Range 0.00 - 0.00): no level is 0.
-  const index = isIndexLevel(quote.instrumentType);
+  // An index's 0 open or day range is none (^BVSP before B3 opens served Open 0.00, Day Range 0.00 - 0.00): no level
+  // is 0. A Treasury yield index's is (^IRX read 0.00 in 2020), and its levels stand.
+  const index = isIndexLevel(quote.instrumentType) && !isYieldIndexSymbol(quote.symbol ?? "");
   const sessionPrice = (value: number | undefined) => {
     const price = normalizePriceValueByDivisor(value, divisor);
     return index && price != null && price <= 0 ? undefined : price;

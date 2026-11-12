@@ -284,7 +284,7 @@ function readSession(record: Record<string, unknown>, time: ReportTime | null, s
     time,
     ...(calendar ? { calendar } : {}),
     // A row at its venue's nominal price is that session's price, however old its last trade.
-    ...(record.stale === true && record.nominal !== true ? { stale: true as const } : {}),
+    ...(record.nominal === true ? { nominal: true as const } : {}),
   });
 }
 

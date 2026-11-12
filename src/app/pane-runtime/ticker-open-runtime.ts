@@ -11,7 +11,7 @@ import {
 import type { PluginRegistry } from "../../plugins/registry";
 import { PluginOffError, notifyPluginOff } from "../../plugins/plugin-off";
 import { findFixedTickerPaneForSymbol } from "../../layout/ticker-navigation";
-import { gridDockTarget } from "./layout-placement";
+import { gridDockTarget, utilityWindowsOf } from "./layout-placement";
 import type { AppAction, AppState } from "../../state/app/context";
 import { findPaneInstance, TICKER_RESEARCH_PANE_ID, normalizePaneId } from "../../types/config";
 import type {
@@ -217,8 +217,9 @@ export function useAppTickerOpenRuntime({
     const { width, height } = pluginRegistry.getTermSize();
     const shouldFloat = options?.floating ?? true;
     // A pane that would float docks into a layout being built as a grid, as any other pane does.
-    const grid = shouldFloat && gridLayouts
-      ? gridDockTarget(gridLayouts, currentState.config, instance.instanceId, { width, height }) : null;
+    const grid = shouldFloat && gridLayouts && !paneDef.utilityWindow
+      ? gridDockTarget(gridLayouts, currentState.config, instance.instanceId, { width, height },
+        utilityWindowsOf(currentLayout, (paneId) => !!pluginRegistry.panes.get(paneId)?.utilityWindow)) : null;
     const nextLayout = grid ? addPaneToLayout(currentLayout, instance, grid) : shouldFloat
       ? addPaneFloating(currentLayout, instance, width, height, paneDef, { focusedPaneId: currentState.focusedPaneId })
       : addPaneToLayout(

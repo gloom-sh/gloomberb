@@ -31,6 +31,7 @@ export const teamModule: PluginModule = {
     component: TeamPane,
     defaultPosition: "right",
     defaultMode: "floating",
+    utilityWindow: true,
     defaultFloatingSize: { width: 84, height: 30 },
     portableShare: {
       private: { title: true, params: true, settings: true, state: true },

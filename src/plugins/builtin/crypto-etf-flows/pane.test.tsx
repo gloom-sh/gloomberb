@@ -74,9 +74,11 @@ test("asset controls survive loading, 503 and empty; r retries, stale rows stay 
 
     mode = "stale";
     await tui.emitKeypress({ name: "r", sequence: "r" });
-    const stale = await tui.waitForFrameToContain("stale");
-    expect(stale).toContain("ETHA");
+    const stale = await tui.waitForFrameToContain("ETHA");
+    expect(stale).toContain("stale");
     expect(stale).toContain("123.0");
+    // The footer's source line says it once.
+    expect(stale.match(/\bstale\b/g)).toHaveLength(1);
     await tui.clickFrameText("Bitcoin");
     await tui.waitForFrameToContain("IBIT");
     expect(tui.frame()).not.toContain("ETHA");

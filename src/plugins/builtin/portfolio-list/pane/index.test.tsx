@@ -1028,6 +1028,28 @@ describe("PortfolioListPane cash and margin UI", () => {
     });
   }
 
+  // The watchlist read "Gloom Cloud · 12:25 UTC" the day after too: a time of the day before, without its day.
+  test("the watchlist footer names the quotes' source and time, and their day once that day has passed", async () => {
+    let clock = Date.parse("2026-11-12T23:59:59.700Z");
+    quoteClock = spyOn(Date, "now").mockImplementation(() => clock);
+    const config = createManualCollectionConfig("watchlist");
+    await tui.render(<PaneFooterProvider>{(footer) => <Box flexDirection="column">
+      <PortfolioHarness config={config} collectionId="watchlist" paneHeight={8}
+        ticker={makeTicker({ portfolios: [], watchlists: ["watchlist"], positions: [] })}
+        quote={makeQuote({ marketState: "CLOSED", dataSource: "delayed", providerId: "gloomberb-cloud",
+          lastUpdated: Date.parse("2026-11-12T12:25:00Z") })} />
+      <PaneFooterBar footer={footer} focused width={100} />
+    </Box>}</PaneFooterProvider>, { width: 100, height: 14 });
+    await flushFrame();
+    const today = await tui.waitForFrameToContain("Gloom Cloud · 12:25 UTC");
+    expect(today).not.toContain("12 Nov");
+    // Past midnight UTC, with no new quote, the same footer names the day.
+    clock = Date.parse("2026-11-13T00:00:03Z");
+    await act(async () => { await Bun.sleep(1_200); });
+    await flushFrame();
+    expect(await tui.waitForFrameToContain("Thu 12 Nov")).toMatch(/Gloom Cloud · Thu 12 Nov (2026 )?12:25 UTC/);
+  });
+
   test("quick-add rejects unresolved ticker input", async () => {
     const config = createManualCollectionConfig("watchlist");
     const notifications: Array<{ type?: string; body: string }> = [];

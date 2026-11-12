@@ -40,6 +40,7 @@ import type {
 import type { DialogApi } from "../../ui/dialog";
 import {
   gridDockTarget,
+  utilityWindowsOf,
   resolvePaneShowTarget,
   resolvePaneTarget as resolvePaneTargetInLayout,
   selectEdgeAnchor,
@@ -193,9 +194,10 @@ export function useAppPaneRuntime({
 
     const floating = options?.placement === "floating" || (options?.placement !== "docked" && paneDef.defaultMode === "floating");
     // A pane that would float, as most functions ask to, docks into a layout being built as a grid; one placed
-    // beside a given pane goes there.
-    const grid = floating && !options?.relativeToPaneId
-      ? gridDockTarget(gridLayouts.current, config, instance.instanceId, { width, height }) : null;
+    // beside a given pane goes there, and a utility window (account, brokers, Ask Gloom, team) floats.
+    const grid = floating && !options?.relativeToPaneId && !paneDef.utilityWindow
+      ? gridDockTarget(gridLayouts.current, config, instance.instanceId, { width, height },
+        utilityWindowsOf(layout, (paneId) => !!pluginRegistry.panes.get(paneId)?.utilityWindow)) : null;
     if (grid) {
       nextLayout = addPaneToLayout(nextLayout, instance, grid);
     } else if (floating) {

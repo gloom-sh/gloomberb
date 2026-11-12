@@ -1,6 +1,7 @@
 import type { AnalystResearchData, CorporateActionsData, Fundamentals, Quote, TickerFinancials } from "../../types/financials";
 import { atRegularSessionPrice, regularSessionValuationPrice } from "./regular-session-valuation";
 import { isIndexLevel } from "../market/index-level";
+import { isYieldIndexSymbol } from "../../tickers/index-roots";
 import { hasLikelyQuoteUnitMismatch, resolveCurrencyUnit } from "../../utils/currency-units";
 import { cashInMajorUnits } from "../../utils/dividend-cash";
 import { cashDistribution, dividendReferencePrice, trailingDividendYield, type CashDistribution } from "../../utils/trailing-dividend";
@@ -197,15 +198,25 @@ export function liveMarketCapitalization(
   return { ...stored, value: shares * price, live: true };
 }
 
+/** Whether a value is one of the quote's levels: above 0, or any finite yield for a Treasury yield index (^IRX can read 0). */
+function quoteLevel(quote: Quote): (value: number | null | undefined) => value is number {
+  return isYieldIndexSymbol(quote.symbol)
+    ? (value: number | null | undefined): value is number => value != null && Number.isFinite(value)
+    : positive;
+}
+
 /**
- * The 52-week range a quote states, when it is one: both bounds above 0, and
- * for an index not its day's range again (a source that repeats the
- * session's low and high as the year's: the EGX 30's 52,691.30 high on a day
- * its bars spanned 39,537 to 56,931). A range the service read from the
- * stored daily bars instead (Quote.yearRangeBasis) is one whatever it equals.
+ * The 52-week range a quote states, when it is one: both bounds above 0 (a
+ * Treasury yield index's at any level, 0 and below included), and for an index
+ * not its day's range again (a source that repeats the session's low and high
+ * as the year's: the EGX 30's 52,691.30 high on a day its bars spanned 39,537
+ * to 56,931). A range the service read from the stored daily bars instead
+ * (Quote.yearRangeBasis) is one whatever it equals.
  */
 export function statedYearRange(quote: Quote | null | undefined): { low: number; high: number } | null {
-  if (!quote || !positive(quote.low52w) || !positive(quote.high52w) || quote.high52w < quote.low52w) return null;
+  if (!quote) return null;
+  const level = quoteLevel(quote);
+  if (!level(quote.low52w) || !level(quote.high52w) || quote.high52w < quote.low52w) return null;
   const repeatsDay = quote.low52w === quote.low && quote.high52w === quote.high;
   if (repeatsDay && quote.yearRangeBasis !== "daily-bars" && isIndexLevel(quote.instrumentType)) return null;
   return { low: quote.low52w, high: quote.high52w };
@@ -222,7 +233,7 @@ export function liveFiftyTwoWeekRange(
 ): { low: number; high: number } | null {
   const stated = statedYearRange(quote);
   if (!quote || !stated) return null;
-  const session = [quote.price, quote.high, quote.low, displayedPrice].filter(positive);
+  const session = [quote.price, quote.high, quote.low, displayedPrice].filter(quoteLevel(quote));
   const low = Math.min(stated.low, ...session);
   const high = Math.max(stated.high, ...session);
   return high > low ? { low, high } : null;

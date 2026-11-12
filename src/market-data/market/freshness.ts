@@ -128,6 +128,39 @@ const REGULAR_CLOSE_MINUTES: Record<string, number> = {
   // Borsa Istanbul: continuous trading to 18:00, then the closing auction and trading at the close to 18:10.
   BIST: 18 * 60 + 10,
 };
+// How long before its calendar's close (REGULAR_CLOSE_MINUTES, rounded up and
+// running through any trading at the close, or the after-hours session the
+// calendar keeps) a venue's closing price is set: the end of its closing
+// auction, or of regular trading where the calendar runs on (TWSE's close is
+// 13:30, its calendar 14:30 for after-hours fixed-price trading). A venue not
+// listed sets its close at the calendar's. Rounded early, never late: a print
+// is only called the close from this time on (closingPriceTime).
+const CLOSING_PRICE_LEAD_MINUTES: Record<string, number> = {
+  // The closing auctions: Xetra, Vienna, Euronext and London to 17:35 (16:35), SIX and Milan to 17:30 and 17:35,
+  // Nasdaq Stockholm and Helsinki to 17:30 and 18:30, Copenhagen to 17:00, Oslo to 16:25, Iceland to 15:35, Warsaw to 17:00.
+  XETRA: 5, VIE: 5, EPA: 5, AMS: 5, BRU: 5, LIS: 5, LSE: 5, SWX: 10, BIT: 10,
+  SFB: 10, HEL: 10, CPH: 10, OSL: 5, ICEX: 5, WSE: 10, PSE: 5,
+  // Hong Kong's auction ends at random from 16:08, Sydney's from 16:10, Singapore's at 17:06, Wellington's by 16:50.
+  HKEX: 2, ASX: 5, SGX: 15, NZX: 10,
+  // Regular trading ends 13:30 in Taipei, 15:30 in Mumbai and Seoul and 15:00 in Shanghai and Shenzhen;
+  // the calendars run on through after-hours or closing-price sessions.
+  TWSE: 60, TPEX: 60, NSE: 30, BSE: 30, KRX: 30, KOSDAQ: 30, SSE: 30, SZSE: 30,
+  // Mexico, Buenos Aires and Johannesburg close at 15:00, 17:00 and 17:00; B3's close is 17:00 or 18:00 with New
+  // York's clocks, and the earlier is taken.
+  BMV: 10, BYMA: 10, JSE: 15, B3: 90,
+  // The Gulf and Tel Aviv: the closing auction's end, before trading at last.
+  TASE: 6, TADAWUL: 10, QE: 5, DFM: 5, MSX: 5, BIST: 5,
+};
+
+/**
+ * When a venue's closing price was set for the session its calendar closes at
+ * `close` (latestRegularSessionClose's): the closing auction's end or the end
+ * of regular trading, before any trading at the close or after-hours session
+ * the calendar runs through (CLOSING_PRICE_LEAD_MINUTES).
+ */
+export function closingPriceTime(exchange: string | undefined, close: number): number {
+  return close - (CLOSING_PRICE_LEAD_MINUTES[canonicalExchange(exchange)] ?? 0) * 60_000;
+}
 // Venues whose week is not Monday to Friday, as their days off (0 is Sunday).
 // Tadawul, Qatar, Boursa Kuwait and the Egyptian Exchange trade Sunday to
 // Thursday. Dubai's DFM has traded Monday to Friday since 2022, like the

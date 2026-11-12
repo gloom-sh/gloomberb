@@ -57,9 +57,18 @@ export function selectEdgeAnchor(layout: LayoutConfig, edge: "left" | "right"): 
     [0]?.instanceId ?? null;
 }
 
-/** A layout with no pane at all, docked, floating or in a window of its own: one a new pane starts a grid in. */
-function isEmptyLayout(layout: LayoutConfig): boolean {
-  return layout.instances.length === 0 && layout.floating.length === 0 && layout.detached.length === 0 && layout.dockRoot == null;
+/** Whether a pane instance is a utility window (PaneDef.utilityWindow: account, brokers, Ask Gloom, team), by its instance id. */
+type IsUtilityWindow = (instanceId: string) => boolean;
+
+/**
+ * A layout with no pane in it, docked, floating or in a window of its own,
+ * but utility windows (an account or Ask Gloom window open over it): one a new
+ * pane starts a grid in.
+ */
+function isEmptyLayout(layout: LayoutConfig, isUtility: IsUtilityWindow): boolean {
+  return layout.dockRoot == null && layout.detached.length === 0
+    && layout.instances.every((instance) => isUtility(instance.instanceId))
+    && layout.floating.every((entry) => isUtility(entry.instanceId));
 }
 
 /**
@@ -83,17 +92,28 @@ function gridAnchor(layout: LayoutConfig, bounds: { width: number; height: numbe
  * panes added one after another make a grid, not a stack of windows over an
  * empty layout that only Tidy Windows would dock. Null for any other layout,
  * and once the layout has a floating window, which a pane then joins as before.
+ * Utility windows (`isUtility`) are no panes of the layout: one open over it
+ * neither stops the grid nor counts against an empty layout.
  */
 export function gridDockTarget(
   grids: Set<string>,
   config: Pick<AppConfig, "layout" | "layouts" | "activeLayoutIndex">,
   instanceId: string,
   bounds: { width: number; height: number },
+  isUtility: IsUtilityWindow = () => false,
 ): DockTarget | null {
   const active = config.layouts[config.activeLayoutIndex];
   const key = active ? active.id ?? `${config.activeLayoutIndex}:${active.name}` : null;
   if (!key) return null;
-  if (isEmptyLayout(config.layout)) grids.add(key);
-  if (!grids.has(key) || config.layout.floating.length > 0) return null;
+  if (isEmptyLayout(config.layout, isUtility)) grids.add(key);
+  if (!grids.has(key) || config.layout.floating.some((entry) => !isUtility(entry.instanceId))) return null;
   return gridAnchor(config.layout, bounds) ?? { relativeTo: instanceId, position: "right" };
+}
+
+/** A layout's pane instances that are utility windows, by the pane each shows (PaneDef.utilityWindow). */
+export function utilityWindowsOf(layout: LayoutConfig, isUtilityPane: (paneId: string) => boolean): IsUtilityWindow {
+  return (instanceId) => {
+    const instance = layout.instances.find((candidate) => candidate.instanceId === instanceId);
+    return !!instance && isUtilityPane(instance.paneId);
+  };
 }

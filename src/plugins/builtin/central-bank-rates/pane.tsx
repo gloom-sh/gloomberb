@@ -27,12 +27,15 @@ function PolicyDetail({ row, width, height, focused }: { row: CentralBankRow; wi
   const series = useMemo(() => [staticSeries(history.map((point) => ({ date: new Date(point.date), observedAt: new Date(point.date), value: point.value })),
     { id: row.id, label: row.instrument, color: colors.positive, calendarSpaced: true, style: "step" })], [row, history]);
   const p = row.percentile;
+  // A bank whose terms ask it: the figures computed from its rates say so (the CBE's).
+  const computed = row.computedFrom ? `computed from ${row.computedFrom}` : null;
   // The chart shows the rank window, so the range carries no window or sample
   // count; short details keep the figures several to a row.
   const items: StatItem[] = [
     { id: "level", label: row.range ? "Target range" : "Policy rate", value: policyLevel(row),
-      detail: formatPercentileRank(p.value, "1Y") },
-    { id: "move", label: "Last change", value: policyChange(row), detail: policyChangeDate(row) ?? undefined },
+      detail: [formatPercentileRank(p.value, "1Y"), computed].filter(Boolean).join(" · ") },
+    { id: "move", label: "Last change", value: policyChange(row),
+      detail: [policyChangeDate(row), computed].filter(Boolean).join(" · ") || undefined },
     // A target range ranks and charts its midpoint, which the band's range would not say.
     { id: "range", label: "1Y range", value: `${policyRate(p.min)} to ${policyRate(p.max)}`, detail: row.range ? "midpoint" : undefined },
     { id: "asOf", label: "As of", value: row.asOf ?? "--", tone: row.status === "stale" ? "warning" : undefined,

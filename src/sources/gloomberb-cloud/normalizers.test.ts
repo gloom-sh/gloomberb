@@ -138,6 +138,11 @@ test("an index's 0 open is none, a 52-week range that repeats its day's is none,
   expect(merval.dailyClose).toEqual({ session: "2026-11-11" });
   expect([quoteMarketStateLabel(merval), dailyCloseText(merval)]).toEqual(["DAILY CLOSE", "no live quote, daily close of Wed 11 Nov"]);
   expect(index({ dailyClose: { session: "yesterday" } } as Partial<CloudQuotePayload>).dailyClose).toBeUndefined();
+  // A Treasury yield index's 0 is a level: ^IRX's open, low and 52-week low of 0.00 stand.
+  const bill = index({ symbol: "^IRX", currency: "USD", price: 0.01, open: 0, low: 0, high: 0.02, low52w: -0.01, high52w: 1.62,
+    listingExchangeName: "CBOE" });
+  expect([bill.open, bill.low, bill.high]).toEqual([0, 0, 0.02]);
+  expect(statedYearRange(bill)).toEqual({ low: -0.01, high: 1.62 });
 });
 
 test("a null last-session move from the service is no move", () => {
