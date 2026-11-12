@@ -49,11 +49,23 @@ export interface SignedInBrokerConnection {
    * The three fields below are absent from a Gloom server that predates them.
    */
   expiresAt?: string | null;
-  /** Within a day of `expiresAt`, or past it: time to connect again. */
+  /** Within Gloom's warning window before `expiresAt` (two days), or past it: time to renew. */
   expiresSoon?: boolean;
   /** Why the broker ended the sign-in, in its own words. Null while connected. */
   lastError?: string | null;
+  /**
+   * Whether the broker keeps one connection per account and will ask to
+   * replace the Gloom connection it lists for this one on the next sign-in:
+   * while it is live, or after the broker ended it on its clock. `may` when
+   * Gloom cannot tell an end from the user removing Gloom at the broker;
+   * null when it will not ask (none, or another app took the account).
+   * Absent from a Gloom server that predates it.
+   */
+  replacePrompt?: BrokerReplacePrompt | null;
 }
+
+/** What a single-connection broker asks about the Gloom connection it lists, on a new sign-in. */
+export type BrokerReplacePrompt = "will" | "may";
 
 /** Public: the list does not depend on the user, so Add Broker can show it signed out. */
 export function listSignedInBrokers(): Promise<{ connectors: SignedInBroker[] }> {

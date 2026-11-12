@@ -45,7 +45,7 @@ describe("in the terminal", () => {
     }
   }
 
-  async function connect(code?: string) {
+  async function connect(code?: string, replace: "will" | "may" | null = null) {
     const bodies: unknown[] = [];
     spies.push(spyOn(apiClient, "isSignedIn").mockReturnValue(true));
     spies.push(spyOn(apiClient, "brokerRequest").mockImplementation(async (_broker: string, path: string, options?: { body?: unknown }) => {
@@ -56,7 +56,7 @@ describe("in the terminal", () => {
       return { status: "not_connected" } as never;
     }));
     await tui.render(<TestDialogProvider><BrokerSignInDialogHost /></TestDialogProvider>);
-    await act(async () => { void requestBrokerSignIn(BROKER); });
+    await act(async () => { void requestBrokerSignIn(BROKER, { renew: replace !== null, replace }); });
     await tui.waitForFrameToContain("Waiting for Interactive Brokers", 40);
     await settle();
     const lines = tui.frame().split("\n");
@@ -75,6 +75,28 @@ describe("in the terminal", () => {
     const noteAt = lines.findIndex((line) => line.includes(NOTE.slice(0, 12)));
     const note = lines.slice(noteAt, noteAt + 3).map((line) => line.replace(/[│\s]+/g, " ").trim()).join(" ");
     expect(note).toContain(NOTE);
+  });
+
+  test("a sign-in the broker will ask to replace says so, every word of it inside the dialog", async () => {
+    const renewNote = brokerSignInNote(BROKER, "will")!;
+    expect(renewNote).toBe("Interactive Brokers will ask to replace your existing Gloom connection. Choose to replace it.");
+    // Its first line runs to the last column the old inset allowed, which the dialog cut off.
+    const { lines } = await connect(undefined, "will");
+    const noteAt = lines.findIndex((line) => line.includes(renewNote.slice(0, 32)));
+    const note = lines.slice(noteAt, noteAt + 3).map((line) => line.replace(/[│\s]+/g, " ").trim()).join(" ");
+    expect(note).toContain(renewNote);
+  });
+
+  test("a sign-in Gloom cannot tell about says the broker may ask", async () => {
+    const mayNote = brokerSignInNote(BROKER, "may")!;
+    expect(mayNote).toBe("Interactive Brokers may ask to replace your existing Gloom connection. If it does, choose to replace it.");
+    const { lines } = await connect(undefined, "may");
+    const noteAt = lines.findIndex((line) => line.includes(mayNote.slice(0, 32)));
+    const note = lines.slice(noteAt, noteAt + 3).map((line) => line.replace(/[│\s]+/g, " ").trim()).join(" ");
+    expect(note).toContain(mayNote);
+    // Nothing to replace, or a broker that keeps several connections: the broker's usual note.
+    expect(brokerSignInNote(BROKER, null)).toBe(NOTE);
+    expect(brokerSignInNote({ ...BROKER, capabilities: { ...BROKER.capabilities, singleConnection: false } }, "will")).toBeNull();
   });
 
   test("a Gloom Cloud that still hands out a code gets it shown", async () => {
