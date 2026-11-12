@@ -61,7 +61,6 @@ export function shotShowsText(visibleText: string, value: string): boolean {
 export function isPaneScreenshotUsable(signals: PaneScreenshotReadinessSignals): boolean {
   return !signals.refused
     && !signals.blankColumns?.length
-    && !signals.cutColumns?.length
     && (signals.interactive || ((signals.rowCount > 0 || signals.contentShown === true) && !signals.emptyStateDetected))
     && !signals.loadingStateDetected
     && !signals.errorStateDetected
@@ -172,8 +171,9 @@ export function assessPaneScreenshot(
   const refused = shotShowsRefusal(render);
   // A column with no value in any row is data the pane lost, as Market Movers' VOL and V/AVG did before the open.
   const blankColumns = interactive ? [] : shotBlankColumns(render.rows);
-  // A column past the edge of its table is data the picture left out: AUCT's after view at 720px kept +1D and lost +5D, +20D and the CUSIP.
-  const cutColumns = interactive ? [] : render.cutColumns ?? [];
+  // A column past the edge of its table is data the picture left out (AUCT's after view at 720px lost +5D, +20D and the CUSIP).
+  // It is a warning, not a reason the picture is unusable, while nineteen panes still cut one at 720px.
+  const cutColumns = interactive ? [] : cleanColumnLabels(render.cutColumns ?? []);
   const empty = render.loadingStateDetected
     || render.errorStateDetected
     || refused
@@ -192,12 +192,11 @@ export function assessPaneScreenshot(
     requiresStructuredDataEvidence: requiresStructuredDataEvidence(resolved),
     hasStructuredDataEvidence: dataEvidence !== null,
     blankColumns,
-    cutColumns,
   });
   const unusableReason = usable
     ? null
     : refused ? refusedShotReason(resolved)
-    : shotUnusableReasonFor(resolved, payload, render, unavailableSymbols, semanticMismatch, blankColumns, cutColumns);
+    : shotUnusableReasonFor(resolved, payload, render, unavailableSymbols, semanticMismatch, blankColumns);
   const tableRows = shotTableRows(resolved, render);
   const notices = [
     ...renderedReportNotices(render.semanticUi ?? []).notices,
@@ -348,10 +347,24 @@ function blankColumnsSentence(columns: readonly string[]): string {
   return `The ${namedColumns(columns)} column${columns.length === 1 ? " is" : "s are"} blank in every row.`;
 }
 
-/** "The +5D BP, +20D BP and CUSIP columns are cut at this width: a wider --width shows them." */
-function cutColumnsSentence(columns: readonly string[]): string {
-  const one = columns.length === 1;
-  return `The ${namedColumns(columns)} column${one ? " is" : "s are"} cut at this width: a wider --width shows ${one ? "it" : "them"}.`;
+/**
+ * A column's header as the warning names it: a table that centres its
+ * headers pads them with spaces (FA's `      FY2024      `).
+ */
+function cleanColumnLabels(labels: readonly string[]): string[] {
+  return [...new Set(labels.map((label) => label.replace(/\s+/g, " ").trim()).filter(Boolean))];
+}
+
+/**
+ * The warning a picture that cut columns at its table's edge carries, by
+ * their headers: "The +5D BP, +20D BP and CUSIP columns are cut at this width:
+ * a wider --width shows them." Null when it cut none.
+ */
+export function shotCutColumnsWarning(columns: readonly string[] | undefined): string | null {
+  const named = cleanColumnLabels(columns ?? []);
+  if (named.length === 0) return null;
+  const one = named.length === 1;
+  return `The ${namedColumns(named)} column${one ? " is" : "s are"} cut at this width: a wider --width shows ${one ? "it" : "them"}.`;
 }
 
 /**
@@ -441,7 +454,6 @@ export function shotUnusableReasonFor(
   unavailableSymbols: string[],
   semanticMismatch: boolean,
   blankColumns: readonly string[] = [],
-  cutColumns: readonly string[] = [],
 ): string {
   if (resolved.capability.id === "intraday-price-chart") {
     const intraday = payload.intradayHistories[0];
@@ -464,7 +476,6 @@ export function shotUnusableReasonFor(
   if (ratioGap) return ratioGap;
   if (semanticMismatch) return "The rendered content did not match the requested capability.";
   if (blankColumns.length > 0) return blankColumnsSentence(blankColumns);
-  if (cutColumns.length > 0) return cutColumnsSentence(cutColumns);
   return "The pane did not produce verifiable screenshot evidence.";
 }
 

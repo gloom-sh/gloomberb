@@ -892,8 +892,8 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
             headerCells.forEach((cell, cellIndex) => {
               const rect = cell.getBoundingClientRect();
               if (rect.width <= 0 || (rect.left >= left - 1 && rect.right <= right + 1)) return;
-              const label = typeof (semanticColumns[cellIndex] || {}).label === "string" && semanticColumns[cellIndex].label
-                || headers[cellIndex] || String(cellIndex + 1);
+              // A centred header is padded with spaces (FA's "      FY2024      ").
+              const label = normalize((semanticColumns[cellIndex] || {}).label) || headers[cellIndex] || String(cellIndex + 1);
               if (!cutColumns.includes(label)) cutColumns.push(label);
             });
           }
