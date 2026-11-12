@@ -206,6 +206,8 @@ export interface InputRenderable {
   setCursorOffset?(offset: number): void;
   focus?(): void;
   blur?(): void;
+  /** Whether the field has the keyboard now: the keys typed go to it. */
+  readonly focused?: boolean;
 }
 
 export interface TextareaRenderable extends InputRenderable {

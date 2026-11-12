@@ -4,6 +4,7 @@ import { OperationTimeoutError } from "../utils/async-deadline";
 import {
   cleanProviderReason,
   createProviderMiss,
+  isNoDataAnswer,
   isNoProviderMessage,
   isNoSourceAnswer,
   isSourceFailure,
@@ -107,4 +108,22 @@ test("a listing read the data service failed to answer twice says so and to try 
     noteProviderMiss(note, failure);
     expect(noProviderError("No quote provider available for YAR:OSL", note, "YAR:OSL").message).toBe("No quote provider available for YAR:OSL");
   }
+});
+
+/**
+ * A listing nothing covers (CENN for analyst research) reads as an empty
+ * answer; a symbol no source knows and a source that failed must not, or the
+ * pane would say "no coverage" for a delisted name or an outage.
+ */
+test("only a source's answer that it has nothing for a listing it knows is an empty answer", () => {
+  expect(isNoDataAnswer(createProviderMiss("NO_DATA"))).toBe(true);
+  // The desktop bridge carries only the message.
+  expect(isNoDataAnswer(new Error("NO_DATA"))).toBe(true);
+
+  expect(isNoDataAnswer(createProviderMiss("NOT_FOUND", undefined, { notFound: true }))).toBe(false);
+  // The router rebuilds a miss from its reason, without the flag.
+  expect(isNoDataAnswer(createProviderMiss("NOT_FOUND"))).toBe(false);
+  expect(isNoDataAnswer(noProviderError("No provider available", { notFound: true }, "MULN"))).toBe(false);
+  expect(isNoDataAnswer(new Error("UPSTREAM_ERROR"))).toBe(false);
+  expect(isNoDataAnswer(noProviderError("No provider available", { failure: new Error("UPSTREAM_ERROR") }))).toBe(false);
 });

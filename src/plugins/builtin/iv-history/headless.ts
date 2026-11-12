@@ -7,7 +7,7 @@ import { HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHi
 import { vcaUniverse } from "./universe";
 import { offsetText, releaseOffsetRows } from "./events";
 import { loadMacroReleases } from "../macro-day/client";
-import { MACRO_EVENT_LABELS, MACRO_RELEASE_SOURCES, staleMacroReleasesNotice, US_MACRO_EVENT_KINDS, type MacroRelease, type UsMacroEventKind,
+import { IV_EVENT_KINDS, MACRO_EVENT_LABELS, MACRO_RELEASE_SOURCES, staleMacroReleasesNotice, type MacroEventKind, type MacroRelease,
   type MacroReleaseList } from "../macro-day/releases";
 import { lookupScheduledDates } from "../alerts/scheduled";
 import { fetchCpiBoard } from "../cpi/client";
@@ -37,17 +37,17 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
   options: [
     { key: "lookback", type: "enum", values: [{ value: "1Y" }, { value: "2Y" }, { value: "ALL" }], defaultValue: "1Y", description: "Visible history" },
     { key: "hvWindow", type: "enum", values: HV_WINDOWS.map((window) => ({ value: String(window) })), defaultValue: "20", description: "Realized volatility window in sessions" },
-    { key: "event", type: "enum", aliases: ["release"], values: US_MACRO_EVENT_KINDS.map((value) => ({ value, ...value === "jobs" ? { aliases: ["nfp", "payrolls"] } : {} })),
-      description: "One row per release of this kind whose session at --offset has closed (the next scheduled FOMC or CPI included), in place of the daily history",
+    { key: "event", type: "enum", aliases: ["release"], values: IV_EVENT_KINDS.map((value) => ({ value, ...value === "jobs" ? { aliases: ["nfp", "payrolls"] } : {} })),
+      description: "One row per release of this kind whose session at --offset has closed (the next scheduled FOMC, CPI or ECB decision included), in place of the daily history",
       example: "--event fomc --offset -6", shot: { reportOnly: "lists the readings around past release days" } },
     { key: "offset", type: "integer", minimum: -60, maximum: 60, defaultValue: 0,
       description: "Sessions from each release with --event: 0 is the first session on or after the release day, -6 the sixth session before that",
       example: "--event cpi --offset -1", shot: { reportOnly: "picks the session read around each release" } },
   ],
   async load(args, ctx) {
-    const event = typeof args.options.event === "string" && args.options.event ? args.options.event as UsMacroEventKind : null;
+    const event = typeof args.options.event === "string" && args.options.event ? args.options.event as MacroEventKind : null;
     const offset = Number(args.options.offset) || 0;
-    if (!event && offset !== 0) throw new Error("--offset counts sessions from a release day: add --event fomc, cpi or jobs.");
+    if (!event && offset !== 0) throw new Error("--offset counts sessions from a release day: add --event fomc, cpi, jobs or ecb.");
     const instrument = await resolveHeadlessInstrument(ctx, args.symbols[0]!);
     // What became of the symbol, as `quote` reads it, looked up beside the figures: FB's are the fund listed
     // there now, TWTR stopped trading, and HFC, which became DINO, has none of its own.
@@ -102,15 +102,20 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
         releases.upcomingNote,
         staleMacroReleasesNotice(releases.list),
       ].filter((note): note is string => !!note);
-      const eventColumns = [{ key: "releaseDate", header: "Release date" }, { key: "session", header: "Session" },
+      // A policy decision's row says what it did (ECB raised 75bp to 0.75%), as MDAY's does; the export keeps the rate before too.
+      const decisionColumns = event === "fomc" || event === "ecb"
+        ? [{ key: "decision", header: "Decision" }, { key: "actual", header: "Actual" }, { key: "prior", header: "Prior" }] : [];
+      const eventColumns = [{ key: "releaseDate", header: "Release date" }, ...decisionColumns, { key: "session", header: "Session" },
         ...historyColumns.slice(1), ...skewColumns];
+      const decided = offsets.rows.some((row) => row.decision != null);
+      const textColumns = eventColumns.filter((column) => decided ? column.key !== "prior" : !decisionColumns.includes(column));
       return {
         sections: [{
           title: `${label} releases, ${offsetText(offset)}`,
           // The export names the release and the offset on every row, so files of several offsets or releases join.
           columns: [{ key: "release", header: "Release" }, eventColumns[0]!, { key: "offset", header: "Offset (sessions)" }, ...eventColumns.slice(1)],
           rows: offsets.rows.map(({ date, ...row }) => ({ ...row, session: date, release: label })),
-          textColumns: offsets.rows.some((row) => row.skew25d != null) ? eventColumns : eventColumns.slice(0, -skewColumns.length),
+          textColumns: offsets.rows.some((row) => row.skew25d != null) ? textColumns : textColumns.slice(0, -skewColumns.length),
         }],
         complete: payload.status === "ready" && errors.length === 0,
         unavailableSymbols: offsets.rows.some((row) => row.iv30 != null) ? [] : [instrument.symbol], errors,
@@ -237,27 +242,29 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
  * The releases of `event` HIVG reads around: the days MDAY studies (the list
  * the app ships with, extended by Gloom Cloud's), and the next one scheduled,
  * from the CPI board's release calendar or the FOMC meetings WIRP prices, as
- * scheduled alerts read them. Payrolls have no schedule to read.
+ * scheduled alerts read them, or the ECB's next decision as Gloom Cloud lists
+ * it with its decision days. Payrolls have no schedule to read.
  */
-async function eventReleases(event: UsMacroEventKind, ctx: HeadlessPaneContext): Promise<{
+async function eventReleases(event: MacroEventKind, ctx: HeadlessPaneContext): Promise<{
   list: MacroReleaseList; upcoming: string | null; upcomingNote: string | null;
 }> {
   const label = MACRO_EVENT_LABELS[event];
   const [published, next] = await Promise.all([
     loadMacroReleases({}, () => ctx.apiClient.getCloudMacroReleaseDays()),
-    event === "jobs" ? null : lookupScheduledDates([{ kind: "macro", event }], {
+    event !== "cpi" && event !== "fomc" ? null : lookupScheduledDates([{ kind: "macro", event }], {
       earnings: async () => [],
       cpi: () => fetchCpiBoard(ctx.apiClient),
       fomc: async () => (await fetchRatePath(ctx.apiClient)).meetings,
     }, zonedDateKey(Date.now(), "America/New_York")).then((dates) => dates.get(`macro:${event}`) ?? { date: null }),
   ]);
-  const upcoming = next && "date" in next ? next.date : null;
+  const upcoming = event === "ecb" ? published.scheduled?.ecb ?? null : next && "date" in next ? next.date : null;
   const listed = upcoming != null && published.releases.some((release) => release.kind === event && release.date === upcoming);
   const releases: MacroRelease[] = upcoming && !listed ? [...published.releases, { kind: event, date: upcoming }] : published.releases;
   return {
     list: { ...published, releases },
     upcoming,
-    upcomingNote: next == null ? `The next ${label} release is not scheduled here, so it has no row yet.`
+    upcomingNote: event === "ecb" ? upcoming ? null : `The next ${label} decision is not scheduled here, so it has no row yet.`
+      : next == null ? `The next ${label} release is not scheduled here, so it has no row yet.`
       : "error" in next ? `The next ${label} date could not be loaded (${next.error}), so it has no row.` : null,
   };
 }

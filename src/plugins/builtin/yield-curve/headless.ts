@@ -17,6 +17,7 @@ import { fetchSwapCurve, loadSavedCurve, loadSavedWorldRows } from "./client";
 import { savedCopyMark } from "../../../data/saved-copies";
 import { formatSwapBp, selectedSwapTenor } from "./swaps-model";
 import { logFailure } from "../../../utils/log-failure";
+import { usBondMarketClosedNote } from "../../../market-data/us-bond-market";
 
 const percent = (value: unknown) => value == null ? "-" : `${Number(value).toFixed(2)}%`;
 /** A move already in basis points: `+3bp`, `-1bp`, `0bp`. */
@@ -237,6 +238,9 @@ export function createYieldCurveHeadless(
         : data.seriesSource ? data.seriesSource
         : data.seriesSource === null ? "FRED" : CURVE_PUBLISHERS[curve];
       const cutoff = curveCutoff(curve);
+      // A US curve asked for a day the bond market was shut says so, and which day it shows (Veterans Day shows the day before).
+      const closed = requestedDate && session && CURVE_MARKETS[curve] === "US" ? usBondMarketClosedNote(requestedDate, session) : null;
+      const notes = [...(ranked ? [RANK_NOTE] : []), ...(closed ? [closed] : [])];
       return {
         // A stored curve cites its publisher. FRED's fallback cites info.source, not that publisher.
         // A Treasury curve names when in the day it was taken, beside its date.
@@ -244,7 +248,7 @@ export function createYieldCurveHeadless(
           ...(cutoff ? { schedule: cutoff } : {}),
           ...(requestedDate ? { basis: "historical curve" } : { basis: "daily curve", cadence: "daily" }) },
         ...(comparePoints ? { columns: compareColumns(compareAsOf) } : ranked ? { columns: RANKED_COLUMNS } : {}),
-        ...(ranked ? { notes: [RANK_NOTE] } : {}),
+        ...(notes.length ? { notes } : {}),
         // The spreads the pane shows over its table, each with its day move and where it sits in the last year.
         ...(spreads.length ? { textSections: [{ title: "Spreads", entries: spreads.map((figure) => {
           const text = curveSpreadText(figure);

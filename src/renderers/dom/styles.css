@@ -1694,6 +1694,28 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   color: var(--gloom-text) !important;
 }
 
+/* A header that moves its column takes the grab cursor, as a tab that
+   reorders does. Dragged, it takes the hover fill and its label brightens,
+   and an accent line through the header and rows marks the gap it drops
+   into (renderers/dom/data-table/column-drag.ts). */
+[data-gloom-role="data-table-header-cell"][data-gloom-movable="true"] { cursor: grab; }
+[data-gloom-role="data-table-header-cell"][data-gloom-dragging="true"] {
+  background-image: linear-gradient(var(--gloom-hover-fill), var(--gloom-hover-fill));
+}
+[data-gloom-role="data-table-header-cell"][data-gloom-dragging="true"] > * {
+  color: var(--gloom-text-bright) !important;
+}
+[data-gloom-role="data-table-drop-indicator"] {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-50%);
+  z-index: 4;
+  pointer-events: none;
+  background: var(--gloom-accent);
+}
+
 /* A link is the text around it, underlined (external-link.tsx); the pointer or keyboard focus brightens it. */
 [data-gloom-link="true"] { text-underline-offset: 2px; }
 [data-gloom-link="true"]:is(:hover, :focus-visible) { color: var(--gloom-link-hover) !important; }

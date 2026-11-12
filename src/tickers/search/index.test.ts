@@ -75,14 +75,15 @@ describe("ticker-search utilities", () => {
       buildTickerSearchCandidates({ query, tickers, providerResults: results, totalLimit: 12 })
         .filter((item) => parsePublicTickerKey(item.symbol).symbol === query)
         .map((item) => item.exchangeLabel);
-    // "Netcall" starts with NET, which used to put London first.
-    expect(venues("NET", [cloudflare, { ...cloudflare, exchange: "BMV" }, netcall])).toEqual(["NYSE", "BMV", "LSE"]);
-    // The stock boost used to put a penny miner above the gold ETF.
+    // "Netcall" starts with NET, which used to put London first. Cloudflare's copy in Mexico follows Netcall,
+    // which it would crowd out of a short list.
+    expect(venues("NET", [cloudflare, { ...cloudflare, exchange: "BMV" }, netcall])).toEqual(["NYSE", "LSE", "BMV"]);
+    // The stock boost used to put a penny miner above the gold ETF; the ETF's copy in Buenos Aires follows the miner.
     expect(venues("GLD", [
       makeSearchResult("GLD", "SPDR Gold Shares", { exchange: "ARCA", type: "ETF" }),
       makeSearchResult("GLD", "SPDR Gold Shares", { exchange: "BYMA", type: "ETF" }),
       makeSearchResult("GLD", "Gold Finder Resources Ltd.", { exchange: "TSXV", type: "Common Stock" }),
-    ])).toEqual(["ARCA", "BYMA", "TSXV"]);
+    ])).toEqual(["ARCA", "TSXV", "BYMA"]);
     const saved = createTestTicker("NET", "Netcall Plc", { exchange: "LSE", currency: "GBP" });
     expect(venues("NET", [cloudflare, netcall], new Map([["NET", saved]]))).toEqual(["LSE", "NYSE"]);
   });
@@ -1169,6 +1170,36 @@ describe("ticker-search utilities", () => {
         makeSearchResult("IAUM", "iShares Gold Trust Micro", { exchange: "ARCA", type: "ETF" }),
       ];
       expect(build("micro", rows).slice(0, 4)).toEqual(["MSFT:NASDAQ", "MU:NASDAQ", "MCHP:NASDAQ", "MICRO:SET"]);
+    });
+
+    test("a US ticker that is also a company's short name leads, then that company, then the ticker's other companies before its venue copies", () => {
+      const row = (symbol: string, name: string, exchange: string, overrides: Partial<InstrumentSearchResult> = {}) =>
+        makeSearchResult(symbol, name, { exchange, type: "Common Stock", ...overrides });
+      // The service's answer to "byd": Boyd Gaming's ticker, then BYD Company's lines marked with the word.
+      const byd = [
+        row("BYD", "Boyd Gaming Corporation", "NYSE"),
+        row("002594", "BYD Company Limited", "SZSE", { searchAliases: ["byd"], homeListing: true }),
+        row("1211", "BYD Company Limited", "HKEX", { searchAliases: ["byd"] }),
+        row("BYD", "Boyd Gaming Corporation", "IEX"),
+        row("BYD", "Boyd Group Services Inc.", "TSX"),
+        row("BYD", "Boyd Group Services Inc.", "NEO"),
+        row("BYD", "Beyond Securities Public Company Limited", "SET"),
+      ];
+      expect(build("byd", byd)).toEqual([
+        "BYD:NYSE", "002594:SZSE", "1211:HKEX", "BYD:TSX", "BYD:SET", "BYD:IEX", "BYD:NEO",
+      ]);
+      // "hsbc": the receipt in New York, its home in London, then Hong Kong's 0005 before the receipt's copies.
+      const hsbc = [
+        row("HSBA", "HSBC Holdings plc", "LSE", { searchAliases: ["hsbc"], homeListing: true }),
+        row("HSBC", "HSBC Holdings, plc.", "NYSE", { type: "American Depositary Receipt" }),
+        row("0005", "HSBC Holdings plc", "HKEX", { searchAliases: ["hsbc"] }),
+        row("HSBC", "HSBC Holdings Plc CEDEAR", "BYMA", { type: "Depositary Receipt" }),
+        row("HSBC", "HSBC Holdings, plc.", "IEX", { type: "American Depositary Receipt" }),
+      ];
+      expect(build("hsbc", hsbc).slice(0, 3)).toEqual(["HSBC:NYSE", "HSBA:LSE", "0005:HKEX"]);
+      // A name written as one, or a venue typed, asks for something else.
+      expect(build("BYD:NYSE", byd)[0]).toBe("BYD:NYSE");
+      expect(build("Byd", byd).indexOf("1211:HKEX")).toBeGreaterThan(build("byd", byd).indexOf("1211:HKEX"));
     });
   });
 

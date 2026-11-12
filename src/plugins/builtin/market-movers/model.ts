@@ -1,5 +1,8 @@
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
-import { overlayScreenerQuoteEntries } from "../../../market-data/quotes/screener-live-quotes";
+import {
+  getRegularSessionQuoteDisplay,
+  overlayScreenerQuoteEntries,
+} from "../../../market-data/quotes/screener-live-quotes";
 import {
   getExtendedSessionDisplay,
   getRegularSessionDisplay,
@@ -56,9 +59,15 @@ export type MarketMoverColumn = DataTableColumn & { id: MarketMoverColumnId };
 /**
  * A list row. Price and change are the regular session's, as `ticker` reads
  * them; a row whose quote has a pre-market or after-hours print carries it in
- * `extended`, measured from that session's close.
+ * `extended`, measured from that session's close. `closedSession` is set
+ * while they are a completed session's close and move (that session's New
+ * York date, null when the quote cannot date it), so the volume beside them
+ * is known to be that session's too.
  */
-export type MoverQuote = ScreenerQuote & { extended?: ExtendedSessionDisplay | null };
+export type MoverQuote = ScreenerQuote & {
+  extended?: ExtendedSessionDisplay | null;
+  closedSession?: string | null;
+};
 export type MarketMoverRow = MoverQuote & { rank: number };
 
 export interface MarketMoverSortPreference {
@@ -249,6 +258,12 @@ function moverExtended(quote: Quote): ExtendedSessionDisplay | null {
   return extended && isFiniteNumber(extended.price) ? extended : null;
 }
 
+/** The completed regular session a quote's headline is, as the live overlay reads it; undefined while it is the live session's. */
+function closedSessionOf(quote: Quote): string | null | undefined {
+  const display = getRegularSessionQuoteDisplay(quote);
+  return display?.completed ? display.closedSession : undefined;
+}
+
 /**
  * A listed row as `ticker` reads its quote: Last and Chg% are the regular
  * session's close and move, and a pre-market or after-hours print is its
@@ -275,12 +290,20 @@ export function moverRegularSession({ sessions, ...row }: ScreenerQuote): MoverQ
     change: screenerNumber(headline.change),
     changePercent: screenerNumber(headline.changePercent),
     extended: moverExtended(quote),
+    ...closedSessionField(quote),
   };
+}
+
+function closedSessionField(quote: Quote): Pick<MoverQuote, "closedSession"> {
+  const closedSession = closedSessionOf(quote);
+  return closedSession === undefined ? {} : { closedSession };
 }
 
 /**
  * A trending row from its quote: Last and Chg% are the regular session, as
  * `ticker` reads it, and a pre-market or after-hours print rides beside them.
+ * The quote gives its 52-week range; it has no average volume or market cap,
+ * so the list shows no columns for them (buildMarketMoverColumns).
  */
 export function screenerQuoteFromQuote(symbol: string, quote: Quote): MoverQuote {
   const headline = getRegularSessionDisplay(quote)!;
@@ -295,14 +318,15 @@ export function screenerQuoteFromQuote(symbol: string, quote: Quote): MoverQuote
     volumeRatio: null,
     marketCap: undefined,
     currency: quote.currency ?? "",
-    fiftyTwoWeekHigh: undefined,
-    fiftyTwoWeekLow: undefined,
+    fiftyTwoWeekHigh: screenerNumber(quote.high52w) ?? undefined,
+    fiftyTwoWeekLow: screenerNumber(quote.low52w) ?? undefined,
     dayHigh: undefined,
     dayLow: undefined,
     exchange: quote.listingExchangeName ?? quote.exchangeName ?? "",
     lastUpdated: quote.lastUpdated,
     previousClose: screenerNumber(quote.previousClose) ?? undefined,
     extended: moverExtended(quote),
+    ...closedSessionField(quote),
   };
 }
 
@@ -335,10 +359,28 @@ export function formatMoverPrice(price: number | null, currency: string, referen
 const convertedOverlays = new WeakMap<ScreenerQuote, MoverQuote>();
 
 /**
+ * The volume beside a quote's completed regular session on a list row: the
+ * list's, the volume of the session the row was listed in, while the quote
+ * reads that same session, as the quote's own volume is by then often the
+ * next day's (none in the pre-market); the quote's otherwise.
+ */
+function completedSessionVolume(original: MoverQuote, closedSession: string | null, quote: Quote): number | null {
+  const quoted = screenerVolume(quote.volume);
+  const sameSession = original.closedSession !== undefined
+    && (original.closedSession == null || closedSession == null || original.closedSession === closedSession);
+  return sameSession ? original.volume ?? quoted : quoted;
+}
+
+/**
  * Live quotes on the list's rows, which keep the list's order. Price and
  * change are the regular session's, as `ticker` reads them, so after the
  * close they hold at it and a pre-market or after-hours print is the row's
- * `extended`. Range endpoints and the previous close belong to the original
+ * `extended`, and the volume beside that close stays the session's. A row
+ * listed as a completed session's close keeps the list's price, move, volume
+ * and extended print, taking only the quote's name, while its quote cannot
+ * name the close it follows: its own figures would read a pre-market or
+ * after-hours print as the day's move, beside rows ranked by the last
+ * session's. Range endpoints and the previous close belong to the original
  * screener price denomination.
  */
 export function overlayMarketMoverQuotes(
@@ -350,23 +392,34 @@ export function overlayMarketMoverQuotes(
     if (row === original) return row;
     const cached = convertedOverlays.get(row);
     if (cached) return cached;
-    const convert = (value: number | undefined) => convertScreenerPriceUnit(value, original.currency, row.currency);
     const quote = resolveEntryData(entries.get(buildQuoteKey({ symbol: row.symbol, exchange: row.exchange })));
-    const headline = quote ? getRegularSessionDisplay(quote) : null;
-    const converted = {
-      ...row,
-      ...(quote && headline ? {
-        price: headline.price,
-        change: isFiniteNumber(headline.change) ? headline.change : null,
-        changePercent: isFiniteNumber(headline.changePercent) ? headline.changePercent : null,
-        extended: moverExtended(quote),
-      } : {}),
-      fiftyTwoWeekLow: convert(original.fiftyTwoWeekLow),
-      fiftyTwoWeekHigh: convert(original.fiftyTwoWeekHigh),
-      dayLow: convert(original.dayLow),
-      dayHigh: convert(original.dayHigh),
-      previousClose: row.previousClose ?? convert(original.previousClose),
-    };
+    const regular = quote ? getRegularSessionQuoteDisplay(quote) : null;
+    let converted: MoverQuote;
+    if (quote && !regular && original.closedSession !== undefined) {
+      converted = { ...original, name: row.name };
+    } else {
+      const convert = (value: number | undefined) => convertScreenerPriceUnit(value, original.currency, row.currency);
+      const headline = regular ?? (quote ? getRegularSessionDisplay(quote) : null);
+      const { closedSession: _listed, ...overlaid } = row;
+      converted = {
+        ...overlaid,
+        ...(quote && headline ? {
+          price: headline.price,
+          change: isFiniteNumber(headline.change) ? headline.change : null,
+          changePercent: isFiniteNumber(headline.changePercent) ? headline.changePercent : null,
+          extended: moverExtended(quote),
+        } : {}),
+        ...(quote && regular?.completed ? {
+          closedSession: regular.closedSession,
+          volume: completedSessionVolume(original, regular.closedSession, quote),
+        } : {}),
+        fiftyTwoWeekLow: convert(original.fiftyTwoWeekLow),
+        fiftyTwoWeekHigh: convert(original.fiftyTwoWeekHigh),
+        dayLow: convert(original.dayLow),
+        dayHigh: convert(original.dayHigh),
+        previousClose: row.previousClose ?? convert(original.previousClose),
+      };
+    }
     convertedOverlays.set(row, converted);
     return converted;
   });

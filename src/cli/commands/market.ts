@@ -61,6 +61,7 @@ import {
   formatAnalystReference,
   ratingReason,
 } from "../../plugins/builtin/research/analyst-model";
+import { hasAnalystCoverage, loadAnalystResearch, noAnalystCoverageText } from "../../plugins/builtin/research/client";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
 import { awaitingFirstDelayedPrint, isQuoteStaleForCurrentSession, noPrintsTodayText, nominalPriceText, nominalSessionLabel } from "../../market-data/quotes/freshness";
 import {
@@ -155,6 +156,7 @@ import {
   historyFacts,
   historyFlagNote,
   historyOpenNote,
+  historyCopiedCloseNote,
   historyWickNote,
   historyContractDrawdown,
   historyRollNote,
@@ -194,7 +196,7 @@ import {
 } from "../history-export";
 import { fail, failWithError, isCliFailure, NO_DATA_CODE } from "../errors";
 import { createConcurrencyLimiter, mapWithConcurrency } from "../../utils/concurrency";
-import { MISSING_VOLUME_TEXT } from "../../utils/price-history-integrity";
+import { CLOSE_COPIED_FLAG, MISSING_VOLUME_TEXT } from "../../utils/price-history-integrity";
 import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { bareFuturesCode, futuresBoardContract } from "../../market-data/futures-board";
 import { commodityNamedIn, commoditySearchName } from "../../market-data/commodity-names";
@@ -235,7 +237,8 @@ import { quoteBarNotes } from "../../market-data/quotes/intraday-bar";
 import { cedearRatioText, depositaryPairText, isReceiptSide, listingCedearRatio, listingDepositaryPair } from "../../market-data/depositary-pair";
 import { isPesoDollarPair, loadPesoDollarRates, pesoDollarRateLines, pesoDollarRatesJson } from "../peso-dollar-rates";
 import { withBalanceSheetRate } from "../../market-data/quotes/balance-sheet-rate";
-import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
+import { regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
+import { atLivePriceEarnings } from "../../market-data/quotes/live-valuation";
 import { viewMarketCapitalization } from "../../utils/market-capitalization";
 import {
   barHistoryFreshness,
@@ -2031,6 +2034,7 @@ async function loadListingHistory(
       : range === "YTD" ? ytdHistoryNotes(data) : [...historyNotes(range, interval, data[0]?.date, Date.now(), coverage != null), coverage ?? []],
     // The status line says how far a bar still forming runs; the note is for the bars it does not name.
     gaps ?? [], historyJumpNote(data) ?? [], historyRescaleNote(data) ?? [], historyFlagNote(data) ?? [], historyOpenNote(data) ?? [], historyWickNote(data) ?? [],
+    historyCopiedCloseNote(data) ?? [],
     historyMissingVolumeNote(data) ?? [],
     historyVenueVolumeNote(data) ?? [],
     // NG=F's rows are November's to the 23rd and December's from the 26th: each roll named, and thin bars said.
@@ -2237,9 +2241,10 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // A yield (^TNX) falls and rises by its level, in bp, and its largest rise is said too.
     const yieldUnits = isYieldIndexSymbol(history.listing.symbol);
     // A week's or month's close is dated by its last session (March 2026 is Tue 31 Mar), not the 1st its bar is dated by.
-    const closes = interval === "1wk" || interval === "1mo"
+    // A pair's close its source copied from the open, with nothing to rebuild it from, is no day's close (flag close copied).
+    const closes = (interval === "1wk" || interval === "1mo"
       ? data.map((row) => ({ ...row, date: barCloseSession(interval, row.date, identity.exchange || undefined, Date.now()) }))
-      : data;
+      : data).filter((row) => !row.flag?.split(",").includes(CLOSE_COPIED_FLAG));
     const contractDrawdown = historyContractDrawdown(closes, yieldUnits ? "yield" : "return");
     // A window's last week can close after the dates asked for (--to 2003, a week ending Fri 2 Jan 2004): measured to its end.
     const until = ask.window?.to;
@@ -2754,7 +2759,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       // A valuation is measured at the quote's regular session price, so the quote dates it.
       const freshness = view === "valuation" ? valuationFreshness(financials) : fundamentalsFreshness(financials);
       // Market cap, the multiples and the yield at the regular session price, as the text gives them; the quote stays as sent.
-      const priced = atRegularSessionPrice(financials);
+      const priced = atLivePriceEarnings(financials);
       // One market cap per view: the share count times the price where the provider's sits more than 2% from it.
       const capitalization = viewMarketCapitalization(priced.quote, priced.fundamentals, regularSessionValuationPrice(priced.quote));
       // The filings behind the latest statements, and for a bank its deposits, uninsured share and CRE.
@@ -3649,7 +3654,8 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const venues = loadBareVenues(listing, market);
     const [data, quote] = await Promise.all([
       loadForListing(
-        listing, market, ctx, () => market.dataProvider.getAnalystResearch(listing.request.symbol, listing.request.exchange),
+        // A listing no analyst covers loads as research with nothing in it, said below rather than failed.
+        listing, market, ctx, () => loadAnalystResearch(market.dataProvider, listing.request.symbol, listing.request.exchange),
         undefined, { command: "analyst", noun: "analyst research" },
       ),
       loadListingQuote(market.dataProvider, listing),
@@ -3676,7 +3682,8 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     }, {
       heading: listingHeading(identity),
       rows: analystRows,
-      summary: (research) => analystSummary(research, quote),
+      summary: (research) => hasAnalystCoverage(research) ? analystSummary(research, quote) : "",
+      empty: noAnalystCoverageText(identity.symbol),
       rowNote: analystRowNote,
       columns: [
         { key: "date", header: "Date" },
@@ -4082,7 +4089,10 @@ async function runFxOnDate(
   };
   const warnings = [
     ...request.readAs ?? [],
-    ...closeDate < date ? [`No daily close on ${date}, a weekend or market holiday: this is the close of ${closeDate}, the trading day before it.`] : [],
+    ...closeDate < date ? [[...legs.values()].some((leg) => leg.copiedClose === date)
+      // The source repeated the day's open as its close and nothing rebuilt it: no close of that day is known.
+      ? `No daily close on ${date}: the source repeated that day's open as its close. This is the close of ${closeDate}, the trading day before it.`
+      : `No daily close on ${date}, a weekend or market holiday: this is the close of ${closeDate}, the trading day before it.`] : [],
     ...toUsdByDefault && amount != null
       ? [`No target currency given, so ${fxSideCode(request, "currency")} is converted to USD; for another, write fx ${args[0]!.trim()} ${fxSideCode(request, "currency")}/<to> --date ${date}.`]
       : [],

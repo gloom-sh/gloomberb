@@ -28,6 +28,13 @@ export interface CloudPricePointPayload {
   contract?: string;
   /** A currency pair's daily bar: when its close was taken (17:00 New York), as an ISO time, where the server knows it. */
   closedAt?: string;
+  /** A currency pair's daily bar whose source repeated its open as its close: the close is the next session's open. */
+  closeRebuilt?: boolean;
+  /**
+   * A currency pair's daily bar whose source repeated its open as its close, which no next open in its week rebuilds
+   * (none, or one over 5% away): the close is no day's close.
+   */
+  closeCopied?: boolean;
 }
 
 type CloudMarketStatus =

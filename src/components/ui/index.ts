@@ -3,7 +3,7 @@ export { ListView } from "./list-view";
 export type { ListViewItem, ListViewProps, ListRowState } from "./list-view";
 
 export { DataTable } from "./data-table";
-export type { DataTableCell, DataTableColumn, DataTableProps, DataTableVisibleRange } from "./data-table";
+export type { DataTableCell, DataTableColumn, DataTableColumnReorder, DataTableProps, DataTableVisibleRange } from "./data-table";
 
 export { Button, terminalButtonColumns } from "./button";
 export { Icon, IconButton, ICON_GLYPHS } from "./icon";

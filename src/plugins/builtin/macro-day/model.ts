@@ -3,6 +3,7 @@ import type { PricePoint } from "../../../types/financials";
 import { zonedDateTimeParts } from "../../../utils/zoned-date-time";
 import { toBasisPoints } from "../../../utils/basis-points";
 import { isYieldIndexSymbol } from "../../../tickers/index-roots";
+import { pricePointCloseCopied } from "../../../utils/price-history-integrity";
 import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, US_MACRO_EVENT_KINDS, type MacroEventKind, type MacroRelease, type MacroReleaseFigures,
   type MacroSurprise } from "./releases";
 
@@ -107,10 +108,18 @@ export const macroDayEventLabel = (event: Pick<MacroDayEvent, "kind" | "earnings
 export const macroDayReleaseName = (event: Pick<MacroDayEvent, "kind" | "earnings">) =>
   event.earnings ? `${MACRO_EVENT_LABELS[event.kind]} (earnings)` : MACRO_EVENT_LABELS[event.kind];
 
-/** One line for each release day the economic calendar covers that has no figures, saying why. */
+/**
+ * One line for each release day the economic calendar covers that has no
+ * figures, or no actual, saying why, and for each whose actual is computed
+ * (a CPI's year-on-year change from the index), saying how.
+ */
 export const macroFigureGapNotices = (events: readonly Pick<MacroDayEvent, "kind" | "date" | "figures" | "figuresMissing">[]) =>
-  events.filter((event) => !event.figures && event.figuresMissing)
-    .map((event) => `${event.date} ${MACRO_EVENT_LABELS[event.kind]} has no figures: ${event.figuresMissing}.`);
+  events.flatMap((event) => {
+    const label = `${event.date} ${MACRO_EVENT_LABELS[event.kind]}`;
+    if (!event.figures) return event.figuresMissing ? [`${label} has no figures: ${event.figuresMissing}.`] : [];
+    if (event.figures.computed) return [`${label} actual is ${event.figures.computed}.`];
+    return event.figures.actualMissing ? [`${label} has no actual: ${event.figures.actualMissing}.`] : [];
+  });
 
 /** What a row adds to its release's name: a policy decision's move, and the earnings marker. */
 export const macroDayEventNote = (event: Pick<MacroDayEvent, "earnings" | "figures">) =>
@@ -191,17 +200,20 @@ export function projectMacroDays(history: readonly PricePoint[], options: {
   const { coveredThrough } = options;
   const basis = options.basis ?? macroDayMoveBasis(options.symbol);
   const byDate = new Map<string, number>();
+  // A pair's sessions whose close the source copied from the open, which nothing rebuilt: no move into or out of them is a day's.
+  const copied = new Set<string>();
   for (const point of history) {
     const time = new Date(point.date).getTime();
     // A yield can sit at zero or below it; a price cannot.
     if (!Number.isFinite(time) || !Number.isFinite(point.close) || (basis === "return" && point.close <= 0)) continue;
     byDate.set(sessionDate(time), point.close);
+    if (pricePointCloseCopied(point)) copied.add(sessionDate(time));
   }
   const sessions = [...byDate.keys()].sort();
   const last = sessions.at(-1) ?? null;
   const empty = (): MacroDayStats => stats([], null);
   const kinds = MACRO_EVENT_KINDS.filter((kind) => US_KINDS.has(kind) || options.releases.some((release) => release.kind === kind));
-  if (!last) return { symbol: options.symbol, basis, events: [], kinds, byKind: { cpi: empty(), jobs: empty(), fomc: empty(), ipca: empty() },
+  if (!last) return { symbol: options.symbol, basis, events: [], kinds, byKind: { cpi: empty(), jobs: empty(), fomc: empty(), ipca: empty(), ecb: empty() },
     allEvents: empty(), earnings: empty(), normal: empty(), start: null, asOf: null };
 
   // Sessions after the published lists end may be unlisted release days, so they are left out of both sides.
@@ -217,6 +229,7 @@ export function projectMacroDays(history: readonly PricePoint[], options: {
   for (let index = 1; index < sessions.length; index++) {
     const date = sessions[index]!, previous = sessions[index - 1]!;
     if (date <= start || date > end || dayNumber(date) - dayNumber(previous) > MAX_SESSION_GAP_DAYS) continue;
+    if (copied.has(date) || copied.has(previous)) continue;
     moves.set(date, basis === "yield" ? byDate.get(date)! - byDate.get(previous)! : byDate.get(date)! / byDate.get(previous)! - 1);
   }
 

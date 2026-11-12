@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, expect, setSystemTime, spyOn, test } from "bun:test";
-import { act } from "react";
+import { act, useReducer } from "react";
 import { apiClient } from "../../../api-client";
 import type { EarningsCalendarPayload, EarningsCalendarQuery, EarningsCalendarReport } from "../../../api-client/earnings";
 import type { CombinedPaneFooter } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
-import { createInitialState } from "../../../state/app/context";
+import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { setSharedRegistryForTests } from "../../registry/shared";
@@ -64,4 +64,70 @@ test("the terminal keeps ERN's table and footer: no calendar, even from a layout
   expect(frame).not.toContain("Calendar");
   expect(frame).not.toContain("otify");
   expect(footer.hints.map((hint) => hint.id)).toEqual(["catalysts", "ticker", "estimates", "calls", "analysts"]);
+});
+
+/** The board with the app's reducer, so the row it selects stays selected. */
+function LiveBoard({ initial, runtime: live, highlight, onFooter }: {
+  initial: AppState;
+  runtime: ReturnType<typeof createTestPluginRuntime>;
+  highlight: string;
+  onFooter: (footer: CombinedPaneFooter) => void;
+}) {
+  const [state, dispatch] = useReducer(appReducer, initial);
+  return (
+    <TestPaneFrame state={state} dispatch={dispatch} paneId={state.focusedPaneId!} pluginId="earnings" runtime={live} width={150} height={12}>
+      {(body, value) => {
+        onFooter(value);
+        return <EarningsBoard focused scopedSymbols={MARKET} highlight={highlight} {...body} />;
+      }}
+    </TestPaneFrame>
+  );
+}
+
+test("EVTS 0700.HK: the market board reads the listings abroad, lands on Tencent's row below the US companies, and says its currency", async () => {
+  resetEarningsCloudCaches();
+  const asked: EarningsCalendarQuery[] = [];
+  // The footer's [t]icker opens the selected row's company.
+  const opened: string[] = [];
+  const recording = createTestPluginRuntime({ navigateTicker: (symbol: string) => { opened.push(symbol); } });
+  let boardFooter: CombinedPaneFooter | null = null;
+  // Twenty US companies larger than Tencent that day, then Tencent: off screen until the board lands on it.
+  const us = Array.from({ length: 20 }, (_, index) => ({ ...entry(`US${index + 10}`, "2026-10-15"), marketCap: (900 - index) * 1e9 }));
+  const tencent: EarningsCalendarReport = {
+    ...entry("0700:HKEX", "2026-10-15"), name: "Tencent Holdings Limited", timing: null, timingSource: null, marketCap: 459.65e9,
+    epsEstimate: 7.21, epsAnalysts: 12, revenueEstimate: 210.24e9, dateStatus: "confirmed", currency: "CNY", listings: ["0700:HKEX"],
+  };
+  calendarRequests.mockImplementation(async (query: EarningsCalendarQuery) => {
+    asked.push(query);
+    return { asOf: "2026-10-14T15:00:00Z", from: query.from, to: query.to, reports: query.markets === "all" ? [...us, tencent] : us };
+  });
+  try {
+    const instance = `${PANE}:evts`;
+    const state = createInitialState(createTestPaneConfig("/tmp/gloomberb-evts-abroad-tui-test", { paneId: "earnings-calendar", instanceId: instance }));
+    state.focusedPaneId = instance;
+    await act(async () => {
+      await tui.render(
+        <LiveBoard initial={state} runtime={recording} highlight="0700.HK" onFooter={(value) => { boardFooter = value; }} />,
+        { width: 150, height: 12 },
+      );
+    });
+    await settleFrame(tui.setup(), 8);
+    const frame = tui.frame();
+    // Read with the listings abroad, Tencent's listing named so the day's cut keeps it.
+    expect(asked.at(-1)).toMatchObject({ markets: "all", symbols: expect.arrayContaining(["0700:HKEX"]) });
+    // Its row, last by size, is the one selected: 0700.HK as typed is the board's 0700:HKEX.
+    act(() => (boardFooter as CombinedPaneFooter | null)?.hints.find((hint) => hint.id === "ticker")?.onPress?.());
+    expect(opened).toEqual(["0700:HKEX"]);
+    // Scrolled to it, below twenty larger US companies.
+    expect(frame).toContain("0700:HKEX");
+    expect(frame).not.toContain("US10 ");
+    // A board with a listing abroad's report says each report's currency, and that the cap is in dollars.
+    expect(frame).toContain("CCY");
+    expect(frame).toContain("CNY");
+  } finally {
+    calendarRequests.mockImplementation(async (query: EarningsCalendarQuery) => ({
+      asOf: "2026-10-14T15:00:00Z", from: query.from, to: query.to, reports: [entry("JPM", "2026-10-14"), entry("NFLX", "2026-10-15")],
+    }));
+    resetEarningsCloudCaches();
+  }
 });

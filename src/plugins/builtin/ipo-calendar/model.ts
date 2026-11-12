@@ -334,9 +334,9 @@ const IPO_COLUMNS: readonly IpoColumn[] = [
   { id: "status", label: "STATUS", width: 9, align: "left" },
   // "HK$26.20-28.50".
   { id: "price", label: "PRICE", width: 14, align: "right" },
-  // "$218.82M".
-  { id: "size", label: "SIZE", width: 8, align: "right" },
-  { id: "return", label: "RETURN", width: 8, align: "right" },
+  // "$218.82M". A deal's size comes with its terms and its return with its first day: an upcoming one has neither.
+  { id: "size", label: "SIZE", width: 8, align: "right", mayBeBlank: true },
+  { id: "return", label: "RETURN", width: 8, align: "right", mayBeBlank: true },
 ];
 
 /**

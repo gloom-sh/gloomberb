@@ -457,6 +457,35 @@ so the selected row reads in the selection color without each cell checking
 goes in a cell's `leading` or a column's `headerLeading`: the terminal skips
 it, the text keeps its own selection color, and exports read only the text.
 
+**Moving columns.** Every kit table's columns move. A header dragged
+sideways (past a few pixels on the desktop and the web, two cells in the
+terminal; a click still sorts, on the release) drops its column where the
+accent line shows,
+a `│` in the terminal's header row, and the pane keeps the order in its
+settings (`pane.columnOrder`), saved and synced with the layout. "Move Column…"
+in the pane menu does the same from the keyboard, and "Reset Columns" puts
+the pane's own order back. The columns that name the row stay first: the
+first column, with a narrow mark before it (a status dot, a rank). Exports
+and reports read the columns in the reader's order. A pane does nothing for
+this, except:
+
+- Columns that are one ordered axis or a fixed format keep their order:
+  `columnReorder={false}`. Today that is FA's fiscal periods and ratios,
+  revenue breakdown's quarters, SEAS's months, the FX matrix, OMON's calls and
+  puts around the strike, the option scenario's dates, the rate path's
+  targets, OVDV's grids, reverse DCF's and Kelly's sensitivity grids, 13F's
+  quarterly returns, the world curves' maturities and PERP's depth by
+  distance. A tool's answer in Ask Gloom keeps the tool's columns too: it is
+  read once, not a layout to keep with the pane.
+- A pane whose settings choose and order its columns (an ordered-multi-select,
+  PF's and FUT's Columns) passes them as `columnReorder={{ control }}`, so a
+  drag rewrites that setting and Settings lists the columns as the table
+  shows them. Back in the pane's default order, the setting goes, so columns
+  added to the defaults later still show.
+- `anchored` keeps more leading columns in place (the session mark and
+  symbol in FUT and WEI); `key` separates two tables in one pane that name
+  their rows with the same column but are otherwise unrelated.
+
 **Country flags.** Wherever a row or a field names a country (ECO's country,
 a balance's or a board's country or jurisdiction, a venue's market, an IPO's
 exchange, a filing's country), the desktop and the web lead it with the
@@ -811,6 +840,17 @@ header, with the detail's height.
   `gloomberb/quotes` and `LIVE_STREAMING_QUICK_SETTING`. Fetching lives in
   `client.ts`, projection in `view.ts`/`model.ts`, shared with the `headless`
   definition.
+- Docking, floating, stacking or fullscreening a pane draws it in another
+  place in the tree, so it mounts again. Its first frame after must show what
+  the last one did, with the same selection, open item, draft and scroll
+  target. What the user chose belongs in pane state (`usePluginPaneState`,
+  `usePaneSettingValue`), never component state. An effect that clears or
+  moves the selection acts on a loaded list only: rows that have not come in
+  yet (they load after every mount) say nothing about it. What cannot be
+  saved with the pane or travel in a shared layout (a live conversation with
+  an answer coming in, a transcript, a draft) goes in `usePaneSession` or
+  `usePaneSessionState` (`src/state/pane-session.ts`): in memory, per pane,
+  released a moment after the pane closes.
 - Live data: gate timers, polls and streams on `usePaneVisible()` (app
   visible and pane not covered), not on focus; `useAppVisible()` is for work
   that must continue while the pane is covered. A covered pane keeps its

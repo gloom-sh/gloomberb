@@ -61,6 +61,21 @@ export function pricePointIntegrityFlags(point: PricePoint): string[] {
 /** What a bar whose open alone contradicts its range is flagged with, in `history` and HP. */
 export const OPEN_WITHHELD_FLAG = "open withheld";
 
+/** A currency pair's bar whose close the server rebuilt from the next session's open: the source repeated its open as its close. */
+export const CLOSE_REBUILT_FLAG = "close rebuilt";
+/** A currency pair's bar whose source repeated its open as its close, which no next open in its week rebuilds. */
+export const CLOSE_COPIED_FLAG = "close copied";
+
+/**
+ * Whether a bar's close is its source's copy of its open, which no next open
+ * in its week rebuilds (a Friday's, or one the next open is outside the range
+ * of): no day's close. A return into or out of it is no day's move, so
+ * return-based functions leave the bar out.
+ */
+export function pricePointCloseCopied(point: Pick<PricePoint, "closeCopied">): boolean {
+  return point.closeCopied === true;
+}
+
 /**
  * Whether a bar's open alone contradicts its range: above its high or under
  * its low, while the high, low and close agree. MTN on the JSE, 30 Oct 2026:

@@ -427,7 +427,9 @@ async function checkColumns() {
   const order = () => [...container.querySelectorAll("[data-gloom-role='data-table-row']")].map((row) => row.textContent?.slice(0, 4));
   const click = async (label: string) => {
     await act(async () => {
+      // A header that can drag its column sorts on release.
       headers()[column(label)]!.dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }) as unknown as Event);
+      headers()[column(label)]!.dispatchEvent(new dom.window.MouseEvent("mouseup", { bubbles: true, cancelable: true, button: 0 }) as unknown as Event);
       await Bun.sleep(10);
     });
   };

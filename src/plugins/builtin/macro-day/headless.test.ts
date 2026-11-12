@@ -36,3 +36,33 @@ test("an FOMC day's row is named FOMC, its decision a field of its own, and the 
   const text = renderHeadlessPaneText(macroDayHeadless, result, args, "MDAY", deriveHeadlessFreshness(macroDayHeadless, result, Date.now()));
   expect(text).toMatch(/2026-10-28\s+FOMC held\s+3\.75-4\.00%/);
 });
+
+test("an ECB day before the economic calendar has its rates and lacks only the forecast, and the note says that, not that it has nothing", async () => {
+  setSystemTime(new Date("2026-11-07T12:00:00Z"));
+  const held = (rate: string, forecast: string | null) => ({ event: "Deposit facility rate", actual: rate, forecast, prior: rate,
+    surprise: forecast ? "in-line" as const : null, decision: "held" });
+  const days: CloudMacroReleaseDaysPayload = {
+    checkedAt: "2026-11-06T22:00:00Z", coveredThrough: "2026-11-06", sources: [], figuresFrom: "2026-01-01",
+    releases: { cpi: [], jobs: [], fomc: [], ecb: ["2025-10-30", "2025-12-18", "2026-10-29"] },
+    figures: { ecb: { "2025-10-30": held("2.00%", null), "2025-12-18": held("2.00%", null), "2026-10-29": held("2.50%", "2.50%") } },
+  };
+  spyOn(apiClient, "getCloudMacroReleaseDays").mockResolvedValue(days);
+  const observations = Array.from({ length: 432 }, (_, index) => {
+    const date = new Date(Date.UTC(2025, 8, 1 + index)).toISOString().slice(0, 10);
+    return { date, value: 0.5 + (index % 5) / 1000 };
+  });
+  const fred = { getCloudFredSeries: async () => ({ observations, fetchedAt: "2026-11-06T22:00:00Z" }) };
+  const load = async (release: string) => {
+    const args = { rawArgument: "FRED:T10Y2Y", argument: "FRED:T10Y2Y", symbols: ["FRED:T10Y2Y"], options: { release } };
+    const result = await macroDayHeadless.load!(args, { apiClient: fred, signal: new AbortController().signal } as unknown as HeadlessPaneContext);
+    if (!result) throw new Error("MDAY loaded nothing");
+    return { notes: result.notes ?? [], text: renderHeadlessPaneText(macroDayHeadless, result, args, "MDAY", deriveHeadlessFreshness(macroDayHeadless, result, Date.now())) };
+  };
+  const ecb = await load("ecb");
+  expect(ecb.text).toMatch(/2025-10-30\s+ECB held\s+2\.00%/);
+  expect(ecb.notes).toContain("Forecasts start 2026-01-01, with Gloom Cloud's economic calendar: ECB days before it have an actual and prior, no forecast or surprise.");
+  expect(ecb.notes.some((note) => note.includes("have no actual, forecast or prior"))).toBe(false);
+  // A US day before the calendar has no figures at all, and is named by its kind.
+  const cpi = await load("cpi");
+  expect(cpi.notes).toContain("CPI days before 2026-01-01 have no actual, forecast or prior: Gloom Cloud's economic calendar starts then.");
+});

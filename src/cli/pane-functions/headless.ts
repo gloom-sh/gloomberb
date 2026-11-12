@@ -50,6 +50,7 @@ import { formatCompact } from "../../utils/format";
 import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, withSavedCopy, type ReportFreshness } from "./freshness";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import { accessGateStatus, errorsAccessGate, isProLock, reportGateText } from "./access-gate";
+import { readableStatus } from "../../utils/reason-codes";
 import { noArgumentMessage } from "./capabilities";
 import { lockedHeadlessReport } from "./lock-note";
 import { resumeStateKey } from "../../plugins/registry/plugin-state";
@@ -368,7 +369,7 @@ export function serializeHeadlessPaneResult(
   result: HeadlessPaneResult,
 ): Record<string, unknown> {
   const common = {
-    ...(result.errors ? { errors: result.errors } : {}),
+    ...(result.errors ? { errors: result.errors.map((error) => isProLock(error) ? error : readableStatus(error)) } : {}),
     ...(result.notes?.length ? { notes: result.notes } : {}),
     ...(result.warnings?.length ? { warnings: result.warnings } : {}),
     ...(result.metadata ? { metadata: result.metadata } : {}),
@@ -757,7 +758,8 @@ function incompleteDetail(
 /** What Gloom Pro would unlock apart from what failed: a lock is not an error, though it stays in `errors` for JSON. */
 function splitErrors(result: HeadlessPaneResult): { locked: string[]; failed: string[] } {
   const errors = result.errors ?? [];
-  return { locked: errors.filter(isProLock), failed: errors.filter((error) => !isProLock(error)) };
+  // A failure reads in words: "AAPL: the source did not answer", not its reason code.
+  return { locked: errors.filter(isProLock), failed: errors.filter((error) => !isProLock(error)).map(readableStatus) };
 }
 
 /**

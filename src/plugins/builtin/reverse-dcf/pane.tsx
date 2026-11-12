@@ -145,7 +145,8 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
         <Box paddingX={1}><Notice variant="callout" tone="muted">{missingInputsText(model.missing)}</Notice></Box>
       </> : model && !model.error ? <>
         <StatGrid items={stats} width={width} maxLines={statMaxLines} />
-        <DataTableView<Row> focused={focused} columns={COLUMNS} items={model.sensitivity} rootWidth={width} rootHeight={contentHeight}
+        {/* Terminal growth rates in order: a sensitivity grid's axis. */}
+        <DataTableView<Row> focused={focused} columns={COLUMNS} columnReorder={false} items={model.sensitivity} rootWidth={width} rootHeight={contentHeight}
           getItemKey={(row) => String(row.discountRate)} emptyStateTitle="No implied growth." sortColumnId={null} sortDirection="desc"
           selection={{ kind: "id", selectedId, getId: (row) => String(row.discountRate),
             onChange: (id) => { if (id) setDiscount(String(Math.round(Number(id) * 100))); } }}

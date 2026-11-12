@@ -20,6 +20,13 @@ export type DataTableColumn = Pick<
    */
   title?: string;
   flexGrow?: number;
+  /**
+   * Every row can leave this column blank with nothing missing: its value
+   * comes after an event the row is still waiting on (an earnings move, an
+   * IPO's first-day return, a halt's resumption). `shot --strict` counts a
+   * column blank in every row as data the pane lost, except this one.
+   */
+  mayBeBlank?: boolean;
 };
 
 export interface DataTableCell {
@@ -98,6 +105,36 @@ export interface DataTableSectionHeader {
   };
 }
 
+/** How a table's columns move when the reader drags a header (`DataTableProps.columnReorder`). */
+export interface DataTableColumnReorder {
+  /** How many leading columns stay first. Unset, the first column and the narrow marks before it (`rowAnchorColumnCount`). */
+  anchored?: number;
+  /**
+   * Names this table's remembered order, for a pane that shows several
+   * tables naming their rows with the same column whose other columns
+   * differ. Unset, the id of the column that names the row (the last
+   * anchored one).
+   */
+  key?: string;
+  /**
+   * The pane's own ordered list of the columns it shows, for a pane whose
+   * settings choose and order them (an ordered-multi-select): a drag rewrites
+   * that list instead of keeping an order of its own, so Settings and the
+   * table agree.
+   */
+  control?: {
+    order: readonly string[];
+    /**
+     * The list the pane shows while its setting is unset. Reset Columns puts
+     * the list back in this order (without it the pane menu offers none),
+     * and a list that comes out the same is `undefined` to `onChange`.
+     */
+    defaultOrder?: readonly string[];
+    /** The list to keep, or undefined to remove the setting, so columns later added to the defaults reach the pane. */
+    onChange: (order: string[] | undefined) => void;
+  };
+}
+
 /** Where `scrollToIndex` puts its row: the nearest edge, the middle, or the top of the viewport. */
 export type DataTableScrollAlign = "nearest" | "center" | "start";
 
@@ -122,6 +159,19 @@ export interface DataTableProps<
   sortDirection: "asc" | "desc";
   /** Sorts by a column. Without it the header is plain labels and ignores clicks. */
   onHeaderClick?: (columnId: string) => void;
+  /**
+   * Dragging a header moves its column (once the press moves a few pixels or
+   * two cells; a click still sorts, on the release rather than the press),
+   * and the pane remembers the order under `pane.columnOrder`: Reset
+   * Columns in the pane menu puts the pane's own back. The columns that name
+   * the row stay first. `false` keeps the pane's order, for columns that are
+   * one ordered axis (periods, tenors, strikes) or a fixed format.
+   */
+  columnReorder?: false | DataTableColumnReorder;
+  /** Set by `DataTable` from `columnReorder` for the renderer: moves a column to an index. Absent where the order is fixed. */
+  onColumnMove?: (columnId: string, toIndex: number) => void;
+  /** Set by `DataTable` with `onColumnMove`: the leading columns a drag neither moves nor drops before. */
+  anchoredColumns?: number;
   headerScrollRef: RefObject<ScrollBoxRenderable | null>;
   scrollRef: RefObject<ScrollBoxRenderable | null>;
   syncHeaderScroll: () => void;

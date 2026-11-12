@@ -780,7 +780,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
       const result = await endTrialAfterWarning(
         dialog,
         planAccess,
-        () => apiClient.endCloudTrial(),
+        (feedback) => apiClient.endCloudTrial(feedback),
         () => {
           setBusy("trial");
           setMessage({ tone: "info", text: t("Ending trial...") });

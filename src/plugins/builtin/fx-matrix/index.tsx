@@ -405,6 +405,8 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
       resetScrollKey={amount ? storedFxBoardAmount(amount) : ""}
       // A pane too narrow for every currency scrolls to the rest, as other wide tables do; the row's code stays.
       columns={allColumns}
+      // Each column is a row's currency in the same order: the matrix reads across and down alike.
+      columnReorder={false}
       freezeFirstColumn
       getExportMetadata={() => createFxExportMetadata(currencies, rates,
         (currency) => rateEntries.get(currency))}

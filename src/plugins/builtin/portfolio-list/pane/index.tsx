@@ -24,6 +24,7 @@ import {
   useAppSelector,
   useAppStateRef,
   usePaneCollection,
+  useOptionalPaneSettingUpdater,
   usePaneInstance,
   usePaneSettingValue,
   usePaneStateValue,
@@ -34,6 +35,7 @@ import { summarizeFxRates, fxStatusLabel } from "../../../../utils/fx-status";
 import { convertCurrency } from "../../../../utils/format";
 import { nextHeaderSort } from "../../../../utils/sort-values";
 import { getSharedMarketDataCoordinator } from "../../../../market-data/coordinator";
+import { DEFAULT_PORTFOLIO_COLUMN_IDS } from "../../../../types/config";
 import type { TickerRecord } from "../../../../types/ticker";
 import type { TickerFinancials } from "../../../../types/financials";
 import type { PaneProps } from "../../../../types/plugin";
@@ -169,6 +171,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const [collectionSorts, setCollectionSorts] = usePaneStateValue<Record<string, CollectionSortPreference>>("collectionSorts", NO_COLLECTION_SORTS);
   const [cashDrawerExpanded, setCashDrawerExpanded] = usePaneStateValue<boolean>("cashDrawerExpanded", false);
   const [, setViewMode] = usePaneSettingValue<PortfolioViewMode>("viewMode", "table");
+  const updateColumnIds = useOptionalPaneSettingUpdater(paneInstance?.instanceId ?? null, "columnIds");
 
   const [streamWindow, setStreamWindow] = useState({ start: 0, end: 24 });
   const [quickAddFocused, setQuickAddFocused] = useState(false);
@@ -260,6 +263,15 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     () => resolveVisibleColumns(paneSettings.columnIds, isPortfolioTab, { targetWeights: hasTargetWeights(currentPortfolio), otherCurrencies }),
     [currentPortfolio, isPortfolioTab, otherCurrencies, paneSettings.columnIds],
   );
+  // A header dragged to a new place rewrites the Columns setting, so Settings lists them as the table shows them;
+  // back in the default order, the setting goes, so columns later added to the defaults still show.
+  const columnReorder = useMemo(() => ({
+    control: {
+      order: paneSettings.columnIds,
+      defaultOrder: DEFAULT_PORTFOLIO_COLUMN_IDS,
+      onChange: (ids: string[] | undefined) => updateColumnIds(() => ids),
+    },
+  }), [paneSettings.columnIds, updateColumnIds]);
   const supplementalData = usePortfolioSupplementalData(tickers, columns, appActive, financialsMap);
   // One lookup for the whole list, only while a perpetual column is on screen.
   const showsPerpetuals = viewMode === "table" && columns.some((column) => PERPETUAL_COLUMN_IDS.has(column.id));
@@ -922,6 +934,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
           answeredSnapshots={answeredSnapshots}
           exportName={activeCollectionEntry?.name}
           allocationRows={allocationRows}
+          columnReorder={columnReorder}
         />
       ) : (
         <PortfolioGrid

@@ -161,6 +161,8 @@ export function RatioTable({
       headerScrollId={headerScrollId}
       bodyScrollId={bodyScrollId}
       columns={columns}
+      // The statements' fiscal periods: an axis, not columns to arrange.
+      columnReorder={false}
       items={rows}
       selection={{
         kind: "id",

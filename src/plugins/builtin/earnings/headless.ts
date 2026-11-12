@@ -9,16 +9,15 @@ import type {
   HeadlessRowsResult,
 } from "../../../types/plugin";
 import type { EarningsEvent } from "../../../types/data-provider";
-import { addDays, boardReport, fallbackReport, MIN_AVERAGE_REPORTS, newYorkToday, type BoardReport } from "./board-model";
+import { addDays, boardKey, boardReport, boardRowOf, fallbackReport, MIN_AVERAGE_REPORTS, newYorkToday, type BoardReport } from "./board-model";
 import { BOARD_WEEKS, boardRangeDays, boardRangeLabel, isBoardWeek, requestedBoardRange, type BoardRange } from "./calendar-model";
-import { fetchEarningsCalendar, fetchEarningsHistory, hasEarningsHistory, noHistoryAbroad } from "./client";
+import { fetchEarningsCalendar, fetchEarningsHistory, hasEarningsHistory, noHistoryAbroad, sameHistoryListing } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL } from "./format";
 import { historyRows, periodText } from "./history-model";
 import { fiscalQuarterText } from "./fiscal-quarter";
 import { loadNoEarningsText } from "./no-earnings";
 import { EPS_BASIS_NOTE, epsBasisName, PROVISIONAL_NOTE, showsEpsBasis } from "../shared/earnings-report";
-import { isUsListingExchange } from "../../../utils/exchanges";
 import { listingAbroadVenue } from "../../../utils/sec";
 import { findUsListingOfCompany } from "../../../tickers/us-listing";
 import { shortCompanyName } from "../../../tickers/company-name";
@@ -42,7 +41,10 @@ const BOARD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "timing", header: "When" },
   { key: "symbol", header: "Ticker" },
   { key: "name", header: "Name" },
-  { key: "marketCap", header: "Mkt cap", align: right, format: (value) => moneyText(num(value)) },
+  // Dollars for every company, a listing abroad's too, so the board ranks them together.
+  { key: "marketCap", header: "Mkt cap $", align: right, format: (value) => moneyText(num(value)) },
+  // The EPS and sales figures' currency: a listing abroad's own (CNY for Tencent).
+  { key: "currency", header: "Ccy" },
   { key: "epsEstimate", header: "EPS est", align: right, format: (value) => epsText(num(value)) },
   { key: "epsAnalysts", header: "Ests", align: right },
   { key: "epsActual", header: "EPS act", align: right, format: (value) => epsText(num(value)) },
@@ -52,6 +54,9 @@ const BOARD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "impliedMove", header: "Implied", align: right, format: (value) => impliedText(num(value)) },
   { key: "averageMove", header: "Avg move", align: right, format: (value) => moveSize(num(value)) },
 ];
+
+/** What the board's currency and cap are, and which listings abroad it has, in its metadata. */
+const BOARD_CURRENCY_NOTE = "currency is the ISO currency of a report's EPS and sales figures: dollars for US listings, a listing abroad's own (CNY for Tencent), never converted. marketCap is in dollars for every company, so the board ranks them together. Besides US listings the board has the Hong Kong, China A and Singapore top 100's reports whose date the company confirmed or that are out, from each listing's earnings history; they have no time of day, implied or average move. A company listed on two of those markets is shown once, under its primary listing, and found by any of its lines.";
 
 /** What an ERN <ticker> report's quarter is, in its metadata. */
 const FISCAL_QUARTER_NOTE = "fiscalQuarter is the quarter as the company names it (Q3 FY2027), from its earnings calls on record; fiscalPeriod is the month the quarter ended. A company whose calls do not name its quarters has fiscalQuarter null.";
@@ -96,7 +101,7 @@ const LISTING_HISTORY_COLUMNS: HeadlessPaneColumn[] = [
 const LISTING_PERIOD_NOTE = "period is what the figures cover: a quarter (Q3 FY2026, or its end month), a half (H1 FY2026), a year (FY2025) or a year to date (9M FY2026), a fiscal year named by the calendar year it ends in. A half-yearly reporter's half is never a quarter. currency is the ISO currency of every amount on the row, estimates included. EPS estimates and actuals are the street's quarter figures, compared only in one currency and on one basis; a period the street has no quarter for shows the company's reported EPS and revenue from its results announcement (filing) with no estimate, its EPS diluted (basis GAAP) where the filing gives one, else basic (basis basic). The announcements' figures and links come with Gloom Pro, as KPIS has them; the street's quarters are everyone's.";
 
 interface EarningsHeadlessDependencies {
-  calendar(query: { from: string; to: string; perDay: number; symbols: string[] }, context: HeadlessPaneContext): Promise<EarningsCalendarPayload>;
+  calendar(query: { from: string; to: string; perDay: number; symbols: string[]; markets?: "all" }, context: HeadlessPaneContext): Promise<EarningsCalendarPayload>;
   history(symbol: string, context: HeadlessPaneContext): Promise<EarningsHistoryPayload>;
   upcoming(symbols: string[], context: HeadlessPaneContext): Promise<EarningsEvent[]>;
 }
@@ -114,15 +119,16 @@ const NO_OWNERSHIP = new Map();
  * report says so once, whether the ticker is on it and when, and where its
  * own report dates are.
  */
-function boardTickerNotice(symbol: string, board: ReadonlyArray<{ symbol: string; date: string }>, from: string, to: string): { notice: string; date: string | null } {
-  const [bare = symbol, venue] = symbol.toUpperCase().split(":");
-  // The board lists US tickers; a listing named abroad is never one of them.
-  const report = venue && !isUsListingExchange(venue) ? undefined : board.find((entry) => entry.symbol.toUpperCase() === bare);
-  const where = report ? `${symbol} reports on ${report.date}` : `${symbol} is not on it`;
+function boardTickerNotice(symbol: string, board: ReadonlyArray<Pick<BoardReport, "symbol" | "listings" | "date">>, from: string, to: string): { notice: string; date: string | null; row: string | null } {
+  const report = board.find((entry) => boardRowOf(entry, symbol));
+  // CCB named by its H share is on the board under its A share.
+  const shownAs = report?.listings && !sameHistoryListing(report.symbol, boardKey(symbol)) ? ` (as ${report.symbol})` : "";
+  const where = report ? `${symbol} reports on ${report.date}${shownAs}` : `${symbol} is not on it`;
   const days = from === to ? from : `${from} to ${to}`;
   return {
     notice: `EVTS is the market's earnings board for ${days}, not one company's: ${where}. For ${symbol}'s own report dates run \`gloom fn ERN ${symbol}\`.`,
     date: report?.date ?? null,
+    row: report?.symbol ?? null,
   };
 }
 
@@ -166,9 +172,12 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
   const named = args.symbols;
   const days = boardRangeDays(range, today);
   // Named companies' upcoming reports by default; a chosen week or day reads that range for them as for the market.
+  // Every view of the board shows each report's currency, so it reads the listings abroad too; EVTS 0700.HK names its
+  // listing, which the board then keeps whatever the day's cut.
+  const abroad = highlight && listingAbroadVenue(boardKey(highlight)) ? [boardKey(highlight)] : [];
   const query = named.length && !range
-    ? { from: today, to: addDays(today, 90), perDay: 0, symbols: named }
-    : { from: days[0]!.from, to: days.at(-1)!.to, perDay: named.length ? 0 : 200, symbols: named };
+    ? { from: today, to: addDays(today, 90), perDay: 0, symbols: named, markets: "all" as const }
+    : { from: days[0]!.from, to: days.at(-1)!.to, perDay: named.length ? 0 : 200, symbols: named.length ? named : abroad, markets: "all" as const };
   const inRange = (event: EarningsEvent) => {
     const date = event.earningsDate.toISOString().slice(0, 10);
     return !range || (date >= query.from && date <= query.to);
@@ -180,7 +189,8 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
   if (cloud.status === "rejected" && (!named.length || fallback.status === "rejected")) throw cloud.reason;
   const payload = cloud.status === "fulfilled" ? cloud.value : null;
   const reports = (payload?.reports ?? []).map((report) => boardReport(report, NO_OWNERSHIP));
-  const covered = new Set(reports.map((report) => report.symbol));
+  // A listing abroad named by another of its company's lines (0939:HKEX) is covered by its row.
+  const covered = new Set(reports.flatMap((report) => [report.symbol, ...report.listings ?? []]));
   const uncovered = fallback.status === "fulfilled" ? fallback.value.filter((event) => !covered.has(event.symbol)) : [];
   // The days ahead leave out a report just gone by, which the stored board has as the date board shows it.
   const stored = named.length && !range ? await storedPastReports(uncovered, today, context, deps) : new Map<EarningsEvent, BoardReport>();
@@ -195,6 +205,8 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
     symbol: report.symbol,
     name: report.name,
     marketCap: report.marketCap,
+    currency: report.currency ?? null,
+    ...report.listings ? { listings: report.listings } : {},
     epsEstimate: report.epsEstimate,
     epsAnalysts: report.epsAnalysts,
     epsActual: report.epsActual,
@@ -211,7 +223,7 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
     rows,
     errors: cloud.status === "rejected" ? [String(cloud.reason instanceof Error ? cloud.reason.message : cloud.reason)] : undefined,
     metadata: {
-      ...(ticker ? { notices: [ticker.notice], highlight: { symbol: highlight, onBoard: ticker.date != null, date: ticker.date } } : {}),
+      ...(ticker ? { notices: [ticker.notice], highlight: { symbol: highlight, onBoard: ticker.date != null, date: ticker.date, row: ticker.row } } : {}),
       asOf: payload?.asOf ?? null,
       from: query.from,
       to: query.to,
@@ -219,6 +231,7 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
       epsBasis: EPS_BASIS_NOTE,
       provisional: PROVISIONAL_NOTE,
       marketCap: MARKET_CAP_NOTE,
+      currency: BOARD_CURRENCY_NOTE,
       total: all.length,
       returned: rows.length,
       truncated: rows.length < all.length,

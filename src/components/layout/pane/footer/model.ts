@@ -3,6 +3,7 @@ import { t, tf } from "../../../../i18n";
 import { type CompanyFrom, companyFromLabel } from "../../../../types/company-from";
 import { clipToDisplayWidth, displayWidth } from "../../../../utils/format";
 import { formatShortDate } from "../../../../utils/datetime-format";
+import { readableStatus } from "../../../../utils/reason-codes";
 import { getShortcutHintWidth } from "../../../ui/shortcut-hint";
 import { KEY_HINT_GAP_PX, keycapText, keyHintCells, keyHintTitle, keyHintWords } from "../../../ui/key-hint-words";
 
@@ -586,7 +587,31 @@ export function combinePaneFooterRegistrations(registrations: Map<string, PaneFo
   const shown = kept.some((hint) => !hint.besideOthers && !hint.disabled) ? kept : kept.filter((hint) => !hint.besideOthers);
 
   if (info.length === 0 && shown.length === 0 && menu.length === 0 && keys.length === 0) return EMPTY_FOOTER;
-  return { info: savedCopyFirst(info), hints: shown, menu, keys };
+  return { info: savedCopyFirst(info.map(readableFailure)), hints: shown, menu, keys };
+}
+
+const failureTone = (part: PaneFooterPart) => part.tone === "warning" || part.tone === "negative";
+
+/**
+ * A failure a pane put in its footer itself, in words: a bare reason code
+ * (UPSTREAM_ERROR) reads as what happened, as `loadingErrorFooterInfo` says
+ * it. Only warning and negative parts, so a symbol shown as data stays.
+ */
+function readableFailure(segment: PaneFooterSegment): PaneFooterSegment {
+  const read = (parts: PaneFooterPart[]) => {
+    let changed = false;
+    const next = parts.map((part) => {
+      const text = failureTone(part) ? readableStatus(part.text) : part.text;
+      if (text === part.text) return part;
+      changed = true;
+      return { ...part, text };
+    });
+    return changed ? next : parts;
+  };
+  const parts = read(segment.parts);
+  const variants = segment.variants?.map(read);
+  const same = parts === segment.parts && (variants ?? []).every((variant, index) => variant === segment.variants![index]);
+  return same ? segment : { ...segment, parts, ...(variants ? { variants } : {}) };
 }
 
 /**

@@ -1,10 +1,11 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Box, ScrollBox, Span, Text, TextAttributes, useNativeRenderer } from "../../../../ui";
+import { Box, ScrollBox, Span, Text, TextAttributes, useNativeRenderer, type BoxRenderable } from "../../../../ui";
+import { capturePointerDrag, releasePointerDrag } from "../../../../ui/pointer-drag";
 import { hoverBg } from "../../../../theme/colors";
 import { selectedRowCellColor } from "../../../../theme/tone-contrast";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { usePaneInstance } from "../../../../state/app/context";
-import { useViewport } from "../../../../react/input";
+import { useShortcut, useViewport } from "../../../../react/input";
 import { measurePerf } from "../../../../utils/perf-marks";
 import { displayWidth } from "../../../../utils/format";
 import { useDoubleClickActivation } from "../../../use-double-click-activation";
@@ -34,6 +35,7 @@ import type {
 import { resolveDataTableScrollTop } from "../visible-range";
 import { useFocusOwningPane, useVisibleRangeEmitter } from "../hooks";
 import { useStableColumns } from "../stable-columns";
+import { COLUMN_DRAG_THRESHOLD_CELLS, columnDropBoundary, columnDropIndex } from "../column-order";
 import {
   columnsShownWhole,
   cutColumnText,
@@ -49,6 +51,26 @@ import {
 interface DataTableRowPointerTarget<T> {
   item: T;
   index: number;
+}
+
+/** A press on a header that may become a drag of its column. */
+interface HeaderPress {
+  columnId: string;
+  from: number;
+  startX: number;
+  dragging: boolean;
+}
+
+interface HeaderDragEvent {
+  x?: number;
+  preventDefault?: () => void;
+  stopPropagation?: () => void;
+}
+
+/** A column being dragged, and the gap it would drop into (null where it would stay). */
+interface ColumnDrag {
+  from: number;
+  boundary: number | null;
 }
 
 type ManagedScrollBar = {
@@ -310,6 +332,8 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   sortColumnId,
   sortDirection,
   onHeaderClick,
+  onColumnMove,
+  anchoredColumns = 1,
   headerScrollRef,
   scrollRef,
   syncHeaderScroll,
@@ -504,11 +528,91 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     if (moved) drawnTableColumns.set(body, fittedColumns);
     else drawnTableColumns.delete(body);
   }, [columns, fittedColumns, scrollRef]);
+  // A press on a movable header sorts on release, or drags its column once it moves two cells: the header row
+  // takes the drag (capturePointerDrag), marks the gap the column would drop into, and moves it on release.
+  const headerRowRef = useRef<BoxRenderable | null>(null);
+  const headerPressRef = useRef<HeaderPress | null>(null);
+  const [columnDrag, setColumnDrag] = useState<ColumnDrag | null>(null);
+  const columnSpans = useMemo(
+    () => displayColumns.map((column, index) => ({ start: columnStarts[index] ?? 0, end: (columnStarts[index] ?? 0) + column.width })),
+    [columnStarts, displayColumns],
+  );
+  // Scrolled sideways, a frozen first column covers the columns under it: it ends here, in the row's
+  // coordinates past its padding, and nothing drops among the columns it covers.
+  const frozenEnd = freezeFirstColumn ? frozenColumnOffset + (displayColumns[0]?.width ?? 0) + columnGap : undefined;
+  const dropBoundaryAt = useCallback((event?: { x?: number }) => {
+    const row = headerRowRef.current;
+    if (typeof event?.x !== "number" || !row) return null;
+    // row.x is where the scrolled row starts on screen, so this is the pointer's place among the columns.
+    return columnDropBoundary(columnSpans, event.x - (row.x ?? 0) - horizontalPadding, anchoredColumns, frozenEnd);
+  }, [anchoredColumns, columnSpans, frozenEnd, horizontalPadding]);
+  const dragHeader = useCallback((event?: HeaderDragEvent) => {
+    const press = headerPressRef.current;
+    if (!press || typeof event?.x !== "number") return;
+    if (!press.dragging && Math.abs(event.x - press.startX) < COLUMN_DRAG_THRESHOLD_CELLS) return;
+    press.dragging = true;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    const boundary = dropBoundaryAt(event);
+    const next = { from: press.from, boundary: boundary !== null && columnDropIndex(press.from, boundary) !== null ? boundary : null };
+    setColumnDrag((current) => current?.from === next.from && current.boundary === next.boundary ? current : next);
+  }, [dropBoundaryAt]);
+  // A press that never sees its release (let go outside the window) ends at the next move with no button
+  // held, the next press or the terminal losing focus: no move, no sort, and the header is put down.
+  const cancelHeaderPress = useCallback(() => {
+    if (!headerPressRef.current) return;
+    headerPressRef.current = null;
+    setColumnDrag(null);
+    releasePointerDrag(nativeRenderer);
+  }, [nativeRenderer]);
+  const dragging = columnDrag !== null;
+  useEffect(() => {
+    if (!dragging || typeof nativeRenderer?.on !== "function") return;
+    nativeRenderer.on("blur", cancelHeaderPress);
+    return () => nativeRenderer.off("blur", cancelHeaderPress);
+  }, [cancelHeaderPress, dragging, nativeRenderer]);
+  // Esc while a column drags puts it back; the release then does nothing.
+  useShortcut((event) => {
+    if (event.name !== "escape" || !headerPressRef.current?.dragging) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    headerPressRef.current = null;
+    setColumnDrag(null);
+  }, { enabled: dragging, phase: "capture" });
+  const releaseHeader = useCallback((event?: HeaderDragEvent) => {
+    const press = headerPressRef.current;
+    headerPressRef.current = null;
+    setColumnDrag(null);
+    if (!press) return;
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (!press.dragging) {
+      onHeaderClick?.(press.columnId);
+      return;
+    }
+    const boundary = dropBoundaryAt(event);
+    const to = boundary === null ? null : columnDropIndex(press.from, boundary);
+    if (to !== null) onColumnMove?.(press.columnId, to);
+  }, [dropBoundaryAt, onColumnMove, onHeaderClick]);
   // A frozen board's rows run on past the last column, blank, so scrolled to its far end it starts a column
   // whole beside the frozen one, as each step does (tableScrollStep).
   const scrollContentWidth = contentWidth + (freezeFirstColumn && horizontalScrollbarVisible
     ? tableFarEdgePad({ columns: displayColumns, columnGap, horizontalPadding, contentWidth, viewportWidth: measuredViewportWidth })
     : 0);
+  const lastColumn = displayColumns.length - 1;
+  // The gap's own blank cell, before the column it would land in front of or after the last one; never under a
+  // frozen first column, but in its trailing blank cell when the column it lands before is partly behind it, and
+  // at the viewport's last cell when the gap after the last column is past it.
+  const dropMarkerLeft = columnDrag?.boundary == null ? null : Math.min(
+    scrollContentWidth - 1,
+    measuredViewportWidth > 0 ? frozenColumnOffset + measuredViewportWidth - 1 : Number.POSITIVE_INFINITY,
+    horizontalPadding + Math.max(
+      frozenEnd === undefined ? Number.NEGATIVE_INFINITY : frozenEnd - 1,
+      columnDrag.boundary <= lastColumn
+        ? (columnStarts[columnDrag.boundary] ?? 0) - 1
+        : (columnStarts[lastColumn] ?? 0) + (displayColumns[lastColumn]?.width ?? 0),
+    ),
+  );
   // Columns out of view past the right edge: the header row ends in "more ⇧→" there, a press on it scrolls to
   // them, and the rows leave its cells blank, so a narrow pane says it has more than it shows. The header's
   // scroll box is as wide as the body's viewport (measuredViewportWidth); the hint is laid over the row, not
@@ -761,14 +865,25 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
         onSizeChange={measureContentWidth}
       >
         <Box
+          ref={headerRowRef}
           flexDirection="row"
           height={1}
           {...tableContentWidthProps(scrollContentWidth)}
           paddingX={horizontalPadding}
           backgroundColor={colors.panel}
+          onMouseDrag={onColumnMove ? dragHeader : undefined}
+          onMouseDragEnd={onColumnMove ? releaseHeader : undefined}
+          // While the row holds a press, every other mouse event comes here: one with no button held, or a
+          // new press (sent to the row itself, not bubbled up from a header), means the release went missing.
+          onMouseMove={onColumnMove ? cancelHeaderPress : undefined}
+          onMouseDown={onColumnMove ? (event: any) => {
+            if (event?.target === headerRowRef.current) cancelHeaderPress();
+          } : undefined}
         >
           {displayColumns.map((column, columnIndex) => {
             const frozen = freezeFirstColumn && columnIndex === 0;
+            const movable = !!onColumnMove && columnIndex >= anchoredColumns;
+            const dragged = columnDrag?.from === columnIndex;
             const columnStart = columnStarts[columnIndex] ?? 0;
             const clip = columnClips?.[columnIndex] ?? null;
             const inset = clip ? clip.inset : freezeFirstColumn && !frozen
@@ -800,10 +915,17 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                 position="relative"
                 left={frozen ? frozenColumnOffset : undefined}
                 zIndex={frozen ? 1 : undefined}
-                backgroundColor={column.headerBackgroundColor ?? colors.panel}
+                backgroundColor={dragged ? hoverBg(colors) : column.headerBackgroundColor ?? colors.panel}
                 onMouseDown={(event: any) => {
                   focusPane();
                   onTableMouseDown?.(event);
+                  if (movable && (event.button ?? 0) === 0) {
+                    // Sorted on release, unless the press drags the column first.
+                    event.preventDefault();
+                    headerPressRef.current = { columnId: column.id, from: columnIndex, startX: event.x, dragging: false };
+                    capturePointerDrag(nativeRenderer, headerRowRef.current);
+                    return;
+                  }
                   if (!onHeaderClick) return;
                   event.preventDefault();
                   onHeaderClick(column.id);
@@ -811,13 +933,20 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
               >
                 <Text
                   attributes={TextAttributes.BOLD}
-                  fg={isSorted ? colors.text : column.headerColor ?? colors.textDim}
+                  fg={dragged ? colors.textBright : isSorted ? colors.text : column.headerColor ?? colors.textDim}
+                  // A press here may drag the column, which a text selection would take over.
+                  selectable={onColumnMove ? false : undefined}
                 >
                   {frozen ? `${" ".repeat(horizontalPadding)}${labelText}${" ".repeat(columnGap)}` : labelText}
                 </Text>
               </Box>
             );
           })}
+          {dropMarkerLeft !== null ? (
+            <Box position="absolute" left={dropMarkerLeft} top={0} width={1} height={1} zIndex={3}>
+              <Text fg={colors.borderFocused}>│</Text>
+            </Box>
+          ) : null}
         </Box>
       </ScrollBox>
       {moreColumns ? (

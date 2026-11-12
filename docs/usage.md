@@ -80,6 +80,12 @@ Desktop builds add the matching `Cmd` shortcuts on macOS and these:
 
 The focused pane's footer shows its actions with their keys: `[a]dd` in the terminal, and in the desktop app and on the web the key in a small keycap before the action's name. Click a hint to run it. The pane menu (`.` or the `...` button) lists every action, then the pane's table, filters, tabs and toggles, then the pane and window actions.
 
+### Table columns
+
+Click a column header to sort by it, and again to reverse. Drag a header sideways to move its column: a line shows where it will go, a `│` in the terminal's header row, and `Esc` puts it back while you drag. The pane keeps the order, so it stays after a restart and on your other devices. **Move Column…** in the pane menu moves one from the keyboard, and **Reset Columns** puts the pane's own order back. The column that names the row (a ticker, a name, a date) stays first.
+
+In `PF` and `FUT` a moved column also moves in the pane's **Columns** setting. Tables whose columns are one scale in order keep it: fiscal periods in `FA`, months in `SEAS`, the calls and puts around the strike in `OMON`, the grids in `OVDV`, the FX matrix and the like.
+
 ### Dialogs and forms
 
 - Dialogs: `Enter` confirms, `Esc` closes (on the desktop `Tab` moves between controls).
@@ -606,7 +612,7 @@ Ctrl with the scroll wheel and a trackpad pinch on desktop and web zoom time aro
 
 - **Resize:** on desktop and web, drag the line between two panels (a double-click restores the split). On a focused chart, `Shift+Up` and `Shift+Down` make the top panel a row taller or shorter (the terminal too), and the pane menu has Reset Panel Heights.
 - **One panel full size:** a double-click on a panel's plot gives it the whole chart (two quick presses in the terminal). A double-click again, or the `All panels` button, shows the rest.
-- **Drawing tools:** `Shift+T`, Hide Drawing Tools in the pane menu, or the chevron at the end of the tool bar folds the bar to one button.
+- **Drawing tools:** the tool bar is folded to one button showing the tool in hand (the pan tool when none is). The pointer on it opens the bar, and it folds a moment after the pointer leaves. A press on the button, `Shift+T`, or Show Drawing Tools in the pane menu keeps it open, and the chevron that then leads the bar, `Shift+T` again, or Hide Drawing Tools folds it again. On the keyboard, `Shift+T` is the way: Tab does not reach the button.
 - **Shapes:** besides the trend line (`Shift+D`) and freehand (`Shift+P`), `Shift+J` places a horizontal ray from a clicked price to the right edge, `Shift+B` drags a rectangle, and `Shift+F` drags a Fib retracement whose 0, 23.6, 38.2, 50, 61.8, 78.6 and 100% levels are labelled with their prices on desktop and web. Each is anchored to prices and times like the other drawings, and a build from before these tools shows them as plain lines.
 - **Legend:** `Shift+L`, Collapse Legend in the pane menu, or the chevron in the legend's left margin folds it to the first series and a count (`+5`). A folded series still draws.
 
@@ -1220,7 +1226,7 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 
 **Dates**
 
-- `--from <date>` starts it on another day. An earlier day lists past events with the figures they were released with (`econ --from 2026-10-12 --country US` reaches the previous week's CPI). When the stored calendar starts after that day, text says `The stored calendar starts <date>` and `--json` has `metadata.storedFrom`. The stored calendar reaches back 400 days: an earlier `--from` fails as an input error naming the earliest day (`--from 2024-01-01 is before the earliest day the calendar reaches back to, 2025-09-20`), with `earliest` in `--json`.
+- `--from <date>` starts it on another day. An earlier day lists past events with the figures they were released with (`econ --from 2026-10-12 --country US` reaches the previous week's CPI). When the stored calendar starts after that day, it lists from there, text says `The stored calendar starts <date>; nothing earlier is listed` and `--json` has `metadata.storedFrom`. That date is the one MDAY gives as where release-day figures start. The calendar reaches back at most 400 days: once that is later than where the stored calendar starts, an earlier `--from` lists from there and says `The calendar lists back 400 days, to <date>`, with `metadata.listedFrom`.
 - With no network or a server error, `econ` lists the current calendar and warns that the stored one could not be read.
 - `--tail <n>` without `--from` keeps the last n events of the whole calendar, the past week's too.
 - When the calendar stops less than a week past its first day, text ends with `No events listed after <date>` (`--json` carries the last day as `metadata.listedThrough`, and the ECO pane says it in its footer).
@@ -1399,7 +1405,7 @@ By rating, AAA to BBB: `BAMLC0A1CAAAEY`, `BAMLC0A2CAAEY`, `BAMLC0A3CAEY`, `BAMLC
 **Start dates.** Without `--start` it begins at 2021-01-01 and says so under the table. `--start` takes a date as any date option does, or `yyyy` and `yyyy-mm`.
 
 - A series that begins later starts at its first observation (`fred DEXSFUS --start 1975` begins 1980-01-02), and says when, under the table and as a `note:` line on stderr with `--csv`. A day FRED has no value for inside the series (a holiday) stays a row with a blank value.
-- A start past the series' last observation names the latest one, and `--csv` and `--ndjson` fail with a `--start` that reaches it.
+- A start past the series' last observation names the latest one, and `--csv` and `--ndjson` fail with a `--start` that reaches it. A rate observed on US bond market days (Treasury yields and bills, SOFR, the corporate yields and spreads) started on a day the market was shut shows the day before and says why: `fred DGS10 --start 2026-11-11` prints Tue 10 Nov's value under `Wed 11 Nov: US bond market closed (Veterans Day); showing Tue 10 Nov`.
 
 **What the table prints**
 
@@ -1507,6 +1513,8 @@ Data that covers US listings only says so for a listing elsewhere and names the 
 
 `fn TAS SAN:EPA` answers `Time and sales covers US listings only, and SAN:EPA is Sanofi on Euronext Paris (EPA).` with `Sanofi's US listing: SNY (try: gloom fn TAS SNY)`. A list such as `fn SIW SAN:EPA AAPL` leaves the listing out with the same line.
 
+The US listing is the receipt the listing's own quote names, else the line search finds by the company's name. A company whose only US line trades over the counter is offered it where the data covers OTC securities: FINRA short interest (`SI`, `SIW`), fails to deliver (`FTD`), weekly ATS volume (`ATS`) and release days (`MDAY`). `fn SI 0700.HK` answers `Tencent Holdings's US listing: TCEHY, over the counter (try: gloom fn SI TCEHY)`. Options, the tape and daily short volume cover exchange listings only, so `fn TAS 0700.HK` names TCEHY as trading over the counter, outside that data, and offers nothing.
+
 #### Functions with a symbol of their own
 
 `MA` asks for a listing elsewhere by the quote symbol its deals are filed under: `fn MA ATH.TO` is `ATH:TSX`, the deals where `ATH.TO` is the target or the buyer, while plain `ATH` is Athene in New York. A function that takes several tickers (`ERN`, `SIW`, `CMP`, `GE`) reads each the way `quote` does.
@@ -1551,7 +1559,10 @@ A command exits 0 when it worked and 1 when it failed (bad input, no data found,
 
 - Their `--csv` writes Last, Chg%, Prev Close and each extended print as plain numbers (`55.06`, `209500`). `Cur` is the currency and `currency_or_unit` the unit: the currency, a pair's quote currency per base (`JPY per USD` for `USDJPY=X`), `index points`, or `pct` for a yield. An extended print's move is in `Pre-Market Chg%`, `After Hours Chg%` or `Overnight Chg%`, and `compare` adds `Day Low` and `Day High`, all after the columns the export already had. A cell is never `NaN`: a row with no figure says why in its `status` column (`Not a ticker: ZZZZQQ.`, `Chg%: no previous close`), and the failures are on stderr with `--csv` and `--ndjson` too. `--ndjson` rows carry the reason as `status` too (`value_status` beside a field of that name), with a figure that is no number as `null`.
 
-**`shot`** saves its PNG, prints the Reason line and exits 0 even when the pane drew an error, was empty, was still loading or was behind an access gate. `shot --strict` exits 2 in those cases, with the PNG still saved (`--json` carries `usable` and `unusableReason`). `fn` fails on `--strict`.
+**`shot`** saves its PNG, prints the Reason line and exits 0 even when the pane drew an error, was empty, was still loading, was behind an access gate or drew a table column with no value in any row. `shot --strict` exits 2 in those cases, with the PNG still saved (`--json` carries `usable` and `unusableReason`). `fn` fails on `--strict`.
+
+- The Reason quotes what an error or empty state said (`The pane rendered an empty state. It reads "No movers returned."`) and names a column blank in every row (`The VOL and V/AVG columns are blank in every row.`); `--json` lists those columns in `blankColumns`.
+- A column is blank when every row of a table of three rows or more shows a dash or `n/a` in it. A column some rows leave empty, such as an event marker, is not, and neither is one whose value comes after an event the row is waiting on: an upcoming report's move in `ERN`, an IPO's first-day return, a halt's resumption time. A plugin marks such a column with `mayBeBlank` on its `DataTableColumn`.
 
 - `shot` takes a function's options as `fn` reads them: `shot 13F 0001067983 --compare SPY` opens the fund's Overlap against SPY's holdings, and a filter the pane keeps opens it filtered (`shot MA --status completed`, `shot INS AAPL --name "COOK TIMOTHY D"`, `shot CG --chamber senate --side BUY`, `shot HDS AAPL --sort change`, `shot RISK AAPL --year 2024`).
 - An option only the report reads (`--limit`, `--offset`, `--explain`, `--section`, or a report filter like `--availability` on `CALLS`) fails with exit 1 and names the `fn` command that reads it. So do `--limit` or `--tail` on a function with no such option (`shot HP AAPL --tail 5`) and a slip of an option's name (`--veiw`).
@@ -2786,7 +2797,7 @@ Returns, EPS and revenue revisions, upside (the analysts', the Graham number's a
 Results lead with the chosen metric and its covered-universe percentile, then one column per numeric criterion and context columns (market cap, price, change, P/E, revenue growth, operating margin, dividend yield) as width allows. Stale values are amber, and an AS OF column dates the chosen metric where it is stale.
 
 - Price, change and market cap follow the live quote while the regular session trades. Otherwise they are the last regular close and its move, as `quote` shows them, and a PRE-MKT, AFTER-HRS or OVERNIGHT column beside CHG% carries the extended print's move while a row has one. The screen filters, sorts and ranks by the close.
-- P/E, forward P/E and P/B are over the price the row shows, with the EPS and book `valuation` reads, so one ticker has one P/E at one time in both. A row takes the company's name as its quote gives it.
+- P/E, forward P/E and P/B are over the price the row shows, with the EPS and book `valuation` reads (the trailing EPS is the one `valuation` shows as EPS (TTM), the last four filed quarters'), so one ticker has one P/E at one time in both. A warrant, a right, a unit, a depositary receipt with no ratio on record and an EPS that is not net income over the shares read **N/M** with the reason, as in `valuation` (see [Financial statements and valuation](research-data.md#financial-statements-and-valuation)). A row takes the company's name as its quote gives it.
 - Click a metric header to sort by it and make it the focus, again to reverse. A valuation multiple (P/E, forward P/E, P/B, EV/revenue, EV/EBITDA) sorts cheapest first, with one at zero or below after the positive ones either way; any other metric largest first. The footer shows the number of matches and the currency. Its ⚠ opens only what the data service says about the snapshot you are looking at, such as company names read from a fallback. The universe is the same for every screen, so it is described here and not warned about: about five thousand listings with recent financials, not every listed equity. A company outside it reads **Not covered** in a ticker check.
 - Enter opens a company's dated observations, `o` opens it in Ticker Research.
 
