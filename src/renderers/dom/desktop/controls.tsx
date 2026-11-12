@@ -689,7 +689,7 @@ export function WebPageStackView({
             <WebIcon name="back" size={11} />
             <span className="gloom-qb-text">{backLabel}</span>
           </button>
-          {detailTitle ? <div className="gloom-stack-title">{detailTitle}</div> : <div style={{ flex: 1 }} />}
+          {detailTitle ? <div className="gloom-stack-title" title={detailTitle}>{detailTitle}</div> : <div style={{ flex: 1 }} />}
           {backHint ? <span className="gloom-stack-hint">{backHint}</span> : null}
         </div>
       )}

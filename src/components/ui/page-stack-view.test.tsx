@@ -20,6 +20,13 @@ afterEach(() => {
   backCalls = 0;
 });
 
+/** One frame, in act: the stack's title reads its row's width once laid out and renders again. */
+async function renderFrame() {
+  await act(async () => {
+    await tui.setup().renderOnce();
+  });
+}
+
 function HostPageStackView({ detailContent }: PageStackViewProps) {
   return (
     <Box flexDirection="column">
@@ -71,7 +78,7 @@ function MouseBackHarness() {
 describe("PageStackView", () => {
   test("can switch between the fallback and host implementations without changing hook topology", async () => {
     await tui.render(<HostSwitchHarness />, { width: 48, height: 8 });
-    await tui.setup().renderOnce();
+    await renderFrame();
     expect(tui.frame()).toContain("← Back Detail title");
 
     await act(async () => {
@@ -93,9 +100,31 @@ describe("PageStackView", () => {
     expect(tui.frame()).toContain("← Back Detail title");
   });
 
+  test("keeps a title longer than the row on one line, ending in an ellipsis", async () => {
+    const title = "v0.20.8 Hong Kong listings valued, every ETF that holds a stock, and prices that ride out a dropped stream";
+    await tui.render(
+      <PageStackView
+        focused
+        detailOpen
+        onBack={() => {}}
+        rootContent={<Text>Root content</Text>}
+        detailContent={<Text>Detail content</Text>}
+        detailTitle={title}
+      />,
+      { width: 40, height: 6 },
+    );
+    await renderFrame();
+    await renderFrame();
+    const lines = tui.frame().split("\n").map((line) => line.trimEnd());
+    expect(lines[0]).toStartWith("← Back v0.20.8 Hong Kong listings");
+    expect(lines[0]).toEndWith("…");
+    expect(lines[0]!.length).toBeLessThanOrEqual(40);
+    expect(lines[1]).toBe("Detail content");
+  });
+
   test("keeps the fallback back action mouse-accessible", async () => {
     await tui.render(<MouseBackHarness />, { width: 48, height: 8 });
-    await tui.setup().renderOnce();
+    await renderFrame();
     expect(tui.frame()).toContain("Detail content");
 
     await act(async () => {

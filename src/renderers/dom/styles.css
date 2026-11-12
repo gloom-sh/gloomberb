@@ -1320,8 +1320,8 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 
 
 /* Detail header of a list/detail stack: the same band as the query bar, so
-   Back and the item title read as the pane's toolbar. Grows when a long title
-   wraps rather than hiding it. */
+   Back and the item title read as the pane's toolbar. The title stays on one
+   line at any width and ends in an ellipsis; the full title is its tooltip. */
 .gloom-stack-bar {
   --qb-hairline: var(--gloom-hairline);
   --qb-fill: var(--gloom-hover-fill);
@@ -1360,7 +1360,9 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   line-height: var(--cell-h);
   font-weight: var(--gloom-weight-bold);
   color: var(--gloom-text-bright);
-  overflow-wrap: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .gloom-stack-hint { flex: none; align-self: center; padding: 0 var(--gloom-space-sm); color: var(--gloom-text-muted); white-space: nowrap; }
 /* Back and the title when a detail's query bar has taken the stack header. */
@@ -1399,7 +1401,8 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 [data-gloom-role="pane-header-tabs"] [data-gloom-role="tab-label"],
 [data-gloom-role="pane-stack-tabs"] [data-gloom-role="tab-label"],
 .gloom-qb-title,
-.gloom-qb-meta {
+.gloom-qb-meta,
+.gloom-stack-title {
   padding-block: var(--gloom-space-xs);
   margin-block: calc(-1 * var(--gloom-space-xs));
 }
