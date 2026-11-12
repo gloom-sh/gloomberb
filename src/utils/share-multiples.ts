@@ -1,3 +1,4 @@
+import { classifyInstrumentType } from "../tickers/instrument-kind";
 import type { FinancialStatement, Fundamentals, TickerFinancials } from "../types/financials";
 import { resolveCurrencyUnit } from "./currency-units";
 import { canonicalExchange, US_LISTING_EXCHANGES } from "./exchanges";
@@ -33,6 +34,45 @@ const SET_WARRANT = /-W\d*$/;
  */
 const THAI_RECEIPT = /^[A-Z][A-Z0-9]{1,7}(?:01|03|06|11|13|19|23|24|80)$/;
 
+/**
+ * A fund's own name: an exchange-traded fund, note or product (a UCITS one
+ * too), a Brazilian index fund ("Fundo de Índice", "Classe de Índice"), an
+ * index or mutual fund, a unit trust. "Fund", "Trust" and "REIT" alone also
+ * name operating companies (Blackstone Secured Lending Fund, Northern Trust,
+ * Federal Realty Investment Trust).
+ */
+const FUND_NAMES = [
+  /\b(?:ETFs?|ETNs?|ETPs?)\b/,
+  /\bUCITS\b/,
+  /\bexchange[- ]traded\s+(?:funds?|notes?|products?|commodit(?:y|ies))\b/i,
+  /\b(?:fundos?|classes?)\s+de\s+[íi]ndice\b/i,
+  /\b(?:index|mutual)\s+funds?\b/i,
+  /\bunit\s+trusts?\b/i,
+];
+/**
+ * A profile whose first sentence says the line is a fund: "The Inv-GW CHNXT
+ * 50 ETF is an exchange-traded fund", "Polar Capital Technology Trust plc is
+ * a closed ended equity mutual fund", "Sprott Physical Uranium Trust is a
+ * closed-end commodity trust". Not a company that sponsors or runs them, a
+ * business development company ("a closed-end investment company") or a real
+ * estate investment trust.
+ */
+const FUND_DESCRIPTION =
+  /^[^.]*?\bis\s+(?:an?\s+|the\s+)?(?:(?:type|kind|form)\s+of\s+)?(?:[\w&,-]+\s+){0,3}?(?:exchange[- ]traded\s+(?:funds?|notes?|products?|commodit(?:y|ies))|closed[- ]end(?:ed)?\s+(?:[\w-]+\s+){0,2}?(?:funds?|trusts?)|mutual\s+funds?|unit\s+(?:investment\s+)?trusts?|index\s+funds?)\b(?!\s+(?:sponsor|provider|manager|management|issuer|company|business|platform|firm|operator|administrator|distributor)s?\b)/i;
+
+/**
+ * Whether a listing is a fund, whose units are no company's shares: its type
+ * says so, its name (the quote's, else the profile's, which can be another
+ * listing's), or the first sentence of its profile. 159682 on SZSE, the
+ * ChiNext 50 ETF a source types EQUITY, read 0.87x on an EPS of 1.27. Gloom
+ * Cloud's screener reads funds alike.
+ */
+function isFund(financials: Pick<TickerFinancials, "quote" | "profile">): boolean {
+  if (classifyInstrumentType(financials.quote?.instrumentType) === "fund") return true;
+  const name = financials.quote?.name?.trim() || financials.profile?.name?.trim() || "";
+  return FUND_NAMES.some((rule) => rule.test(name)) || FUND_DESCRIPTION.test(financials.profile?.description?.trim() ?? "");
+}
+
 type Instrument = "warrant" | "right" | "unit";
 
 const instrumentOf = (code: string): Instrument => {
@@ -54,7 +94,8 @@ type EpsInputs = ShareInputs & Partial<Pick<TickerFinancials, "financialCurrency
  * ratio is on record on the receipt already (TSM's 5 shares, a CEDEAR's
  * published ratio). A unit is told by its name only on a US venue or for a
  * blank-check company; a REIT's, a fund's or a partnership's units are its
- * share, and PSA.PR.U is a preferred.
+ * share, and PSA.PR.U is a preferred. Nor is a fund's price over the EPS a
+ * source gives it a P/E (isFund).
  */
 export function notTheShare(financials: ShareInputs): string | undefined {
   const quote = financials.quote;
@@ -72,6 +113,7 @@ export function notTheShare(financials: ShareInputs): string | undefined {
       : venue === "SET" && SET_WARRANT.test(code) ? "W" : undefined;
   const instrument = byName ?? (bySymbol ? instrumentOf(bySymbol) : undefined);
   if (instrument) return `a ${instrument} is not the share the EPS is per`;
+  if (isFund(financials)) return "a fund is not a company's share";
   const country = financials.profile?.country?.trim().toUpperCase();
   const fundamentals = financials.fundamentals;
   const receipt = quote.isDepositaryReceipt || fundamentals?.isDepositaryReceipt || fundamentals?.shareBasis === "depositary_receipt"
@@ -112,31 +154,31 @@ const days = (from: string, to: string) => (Date.parse(to) - Date.parse(from)) /
 const quarterApart = (from: string, to: string) => days(from, to) >= 80 && days(from, to) <= 100;
 
 /**
- * The statements' trailing net income in `currency`: the latest fiscal year
- * when no quarter runs past it, four consecutive quarters, the year plus the
- * half since it where Gloom Cloud serves one, or the latest year plus the
- * quarters since it less the same quarters a year earlier. Gloom Cloud reads
- * the same window to tell an EPS in the reporting currency.
+ * The statements' trailing net income or diluted EPS in `currency`: the
+ * latest fiscal year when no quarter runs past it, four consecutive quarters,
+ * the year plus the half since it where Gloom Cloud serves one, or the latest
+ * year plus the quarters since it less the same quarters a year earlier.
+ * Gloom Cloud reads the same window to tell an EPS in the reporting currency.
  */
-function statementsTrailingNetIncome(financials: EpsInputs, currency: string): number | undefined {
+function statementsTrailing(financials: EpsInputs, currency: string, field: "netIncome" | "eps"): number | undefined {
   const usable = (rows: readonly FinancialStatement[]) => rows
-    .filter((row) => finite(row.netIncome) && Number.isFinite(Date.parse(row.date)) && row.currency === currency)
+    .filter((row) => finite(row[field]) && Number.isFinite(Date.parse(row.date)) && row.currency === currency)
     .sort((left, right) => left.date.localeCompare(right.date));
   const quarters = usable(quarterRows(financials.quarterlyStatements ?? []));
   const annual = usable(financials.annualStatements ?? []).at(-1);
   const latest = quarters.at(-1);
   const trailing = financials.trailingStatement;
   const served = trailing?.trailing?.method === "annual-plus-interim" && Number.isFinite(Date.parse(trailing.date))
-    && trailing.currency === currency && finite(trailing.netIncome)
+    && trailing.currency === currency && finite(trailing[field])
     && !(annual && days(annual.date, trailing.date) <= SAME_DATE_DAYS)
     && !(latest && days(trailing.date, latest.date) > SAME_DATE_DAYS)
-    ? { value: trailing.netIncome, end: trailing.date } : undefined;
-  if (!served && annual && (!latest || days(annual.date, latest.date) <= SAME_DATE_DAYS)) return annual.netIncome!;
+    ? { value: trailing[field], end: trailing.date } : undefined;
+  if (!served && annual && (!latest || days(annual.date, latest.date) <= SAME_DATE_DAYS)) return annual[field]!;
   if (!latest) return served?.value;
   const lastFour = quarters.slice(-4);
   if ((!served || Math.abs(days(latest.date, served.end)) <= SAME_DATE_DAYS) && lastFour.length === 4
     && lastFour.every((row, index) => index === 0 || quarterApart(lastFour[index - 1]!.date, row.date))) {
-    return lastFour.reduce((total, row) => total + row.netIncome!, 0);
+    return lastFour.reduce((total, row) => total + row[field]!, 0);
   }
   if (served) return served.value;
   if (!annual) return undefined;
@@ -148,8 +190,19 @@ function statementsTrailingNetIncome(financials: EpsInputs, currency: string): n
   }
   const prior = interims.map((row) => quarters.find((candidate) => Math.abs(days(candidate.date, row.date) - 365) <= SAME_DATE_DAYS));
   if (prior.some((row) => !row)) return undefined;
-  return annual.netIncome! + interims.reduce((total, row) => total + row.netIncome!, 0)
-    - prior.reduce((total, row) => total + row!.netIncome!, 0);
+  return annual[field]! + interims.reduce((total, row) => total + row[field]!, 0)
+    - prior.reduce((total, row) => total + row![field]!, 0);
+}
+
+/** An EPS the statements' own diluted EPS in `currency` matches, within 1% or half a cent (the source rounds to cents). */
+function statementsOwnEps(financials: EpsInputs, currency: string, eps: number): boolean {
+  if (eps === 0) return false;
+  const annual = (financials.annualStatements ?? [])
+    .filter((row) => row.currency === currency && finite(row.eps) && Number.isFinite(Date.parse(row.date)))
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .at(-1)?.eps;
+  return [annual, statementsTrailing(financials, currency, "eps")].some((own) =>
+    finite(own) && own !== 0 && Math.abs(eps - own) <= Math.max(0.01 * Math.abs(own), 0.005));
 }
 
 /**
@@ -158,10 +211,13 @@ function statementsTrailingNetIncome(financials: EpsInputs, currency: string): n
  * P/E's `trailingPEConversion`). U.UN on the TSX divided its CA$26.47 by a
  * USD 1.64 and read 16.14; NEW on Stuttgart €1.63 by GBP 0.0241, 67.63. The
  * EPS is shown to be in the reporting currency where it is labelled so, sits
- * beside a trailing block in it, or the block's net income is the statements'
- * own in it. Gloom Cloud's screener reads the same. Undefined for an EPS the
- * filed quarters give (in the price's currency), a receipt's on its home
- * line, and one whose currency cannot be told.
+ * beside a trailing block in it, the block's net income is the statements'
+ * own in it, or the EPS is their own diluted EPS for the latest fiscal year
+ * or their trailing twelve months (TBT on MUNICH's 308.64 JPY, Tokuyama's
+ * year to March 2026, beside €21.60 read 0.07x). Gloom Cloud's screener reads
+ * the same. Undefined for an EPS the filed quarters give (in the price's
+ * currency), a receipt's on its home line, and one whose currency cannot be
+ * told.
  */
 function noRateForEps(financials: EpsInputs): string | undefined {
   const fundamentals = financials.fundamentals;
@@ -175,9 +231,10 @@ function noRateForEps(financials: EpsInputs): string | undefined {
   const conversion = fundamentals.trailingPEConversion;
   if (conversion && majorCurrency(conversion.from) === reporting && finite(conversion.rate) && conversion.rate > 0) return undefined;
   const income = fundamentals.netIncome;
-  const statements = finite(income) ? statementsTrailingNetIncome(financials, reporting) : undefined;
+  const statements = finite(income) ? statementsTrailing(financials, reporting, "netIncome") : undefined;
   const inReporting = stated === reporting || (!!fundamentals.financialCurrency && !fundamentals.epsCurrency)
-    || (finite(income) && finite(statements) && Math.abs(income - statements) <= 0.01 * Math.max(Math.abs(income), Math.abs(statements)));
+    || (finite(income) && finite(statements) && Math.abs(income - statements) <= 0.01 * Math.max(Math.abs(income), Math.abs(statements)))
+    || statementsOwnEps(financials, reporting, eps);
   return inReporting ? `EPS (TTM) in ${reporting} beside a price in ${listing}, with no rate on record` : undefined;
 }
 

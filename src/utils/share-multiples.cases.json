@@ -1,5 +1,5 @@
 {
- "about": "Listings priced as valuation prices them and as the screener's server projects them, from the same payloads: each gets the same trailing P/E, or none for the same reason. The server reads these cases too; the two copies are kept identical. `served` is what the service adds to a stored payload when it serves it; `universe` is the company universe's large companies with their home lines.",
+ "about": "Listings priced as valuation prices them and as the screener's server projects them, from the same payloads: each gets the same trailing P/E, or none for the same reason. The server reads these cases too; the two copies are kept identical. `served` is what the service adds to a stored payload when it serves it; `universe` is the company universe's large companies with their home lines. `usdRates` are the cached US dollar rates a screener pass labels a cross-currency block at, and `servedFundamentals` the block the service serves at those rates.",
  "now": "2026-11-12T07:00:00Z",
  "universe": [
   {
@@ -883,6 +883,371 @@
    ],
    "expect": {
     "trailingPE": 12.5
+   }
+  },
+  {
+   "name": "TBT on Munich is a euro price over Tokuyama's yen EPS, converted at the rate valuation names",
+   "symbol": "TBT",
+   "exchange": "MUNICH",
+   "quote": {
+    "price": 21.6,
+    "currency": "EUR",
+    "name": "Tokuyama Corp"
+   },
+   "fundamentals": {
+    "eps": 308.64,
+    "trailingPE": 0.06998444790046657,
+    "revenue": 349476000000,
+    "netIncome": 22205000000,
+    "sharesOutstanding": 71944660,
+    "source": "gloom"
+   },
+   "financialCurrency": "JPY",
+   "annualStatements": [
+    {
+     "date": "2025-03-31",
+     "currency": "JPY",
+     "eps": 325.08,
+     "netIncome": 23388000000,
+     "totalRevenue": 343073000000
+    },
+    {
+     "date": "2026-03-31",
+     "currency": "JPY",
+     "eps": 308.64,
+     "netIncome": 22205000000,
+     "totalRevenue": 349476000000
+    }
+   ],
+   "usdRates": {
+    "EUR": 1.1,
+    "JPY": 0.006208708
+   },
+   "servedFundamentals": {
+    "financialCurrency": "JPY",
+    "trailingPEConversion": {
+     "from": "JPY",
+     "rate": 0.00564428
+    },
+    "trailingPE": 12.399180745899667
+   },
+   "expect": {
+    "trailingPE": 12.399180745899667
+   }
+  },
+  {
+   "name": "MARA on Stuttgart, Marubeni's yen EPS in euros, with quarters filed since its year",
+   "symbol": "MARA",
+   "exchange": "XSTU",
+   "quote": {
+    "price": 29.39,
+    "currency": "EUR",
+    "name": "Marubeni Corp"
+   },
+   "fundamentals": {
+    "eps": 330.09,
+    "trailingPE": 0.08903632342694418,
+    "revenue": 8265841000000,
+    "netIncome": 543852000000,
+    "sharesOutstanding": 1638396915,
+    "source": "gloom"
+   },
+   "financialCurrency": "JPY",
+   "annualStatements": [
+    {
+     "date": "2025-03-31",
+     "currency": "JPY",
+     "eps": 302.51,
+     "netIncome": 502965000000,
+     "totalRevenue": 7790168000000
+    },
+    {
+     "date": "2026-03-31",
+     "currency": "JPY",
+     "eps": 330.09,
+     "netIncome": 543852000000,
+     "totalRevenue": 8265841000000
+    }
+   ],
+   "quarterlyStatements": [
+    {
+     "date": "2025-09-30",
+     "currency": "JPY",
+     "netIncome": 151097000000,
+     "totalRevenue": 2039644000000
+    },
+    {
+     "date": "2025-12-31",
+     "currency": "JPY",
+     "netIncome": 126793000000,
+     "totalRevenue": 1969053000000
+    },
+    {
+     "date": "2026-03-31",
+     "currency": "JPY",
+     "netIncome": 111562000000,
+     "totalRevenue": 2093422000000
+    },
+    {
+     "date": "2026-06-30",
+     "currency": "JPY",
+     "eps": 114.19,
+     "netIncome": 186432000000,
+     "totalRevenue": 2609225000000
+    },
+    {
+     "date": "2026-09-30",
+     "currency": "JPY",
+     "netIncome": 151595000000,
+     "totalRevenue": 2570903000000
+    }
+   ],
+   "usdRates": {
+    "EUR": 1.1,
+    "JPY": 0.006208708
+   },
+   "servedFundamentals": {
+    "financialCurrency": "JPY",
+    "trailingPEConversion": {
+     "from": "JPY",
+     "rate": 0.00564428
+    },
+    "trailingPE": 15.774611363529836
+   },
+   "expect": {
+    "trailingPE": 15.774611363529836
+   }
+  },
+  {
+   "name": "Without a rate for the yen, MARA's EPS is its year's own in yen, and there is no P/E",
+   "symbol": "MARA",
+   "exchange": "XSTU",
+   "quote": {
+    "price": 29.39,
+    "currency": "EUR",
+    "name": "Marubeni Corp"
+   },
+   "fundamentals": {
+    "eps": 330.09,
+    "trailingPE": 0.08903632342694418,
+    "revenue": 8265841000000,
+    "netIncome": 543852000000,
+    "sharesOutstanding": 1638396915,
+    "source": "gloom"
+   },
+   "financialCurrency": "JPY",
+   "annualStatements": [
+    {
+     "date": "2025-03-31",
+     "currency": "JPY",
+     "eps": 302.51,
+     "netIncome": 502965000000,
+     "totalRevenue": 7790168000000
+    },
+    {
+     "date": "2026-03-31",
+     "currency": "JPY",
+     "eps": 330.09,
+     "netIncome": 543852000000,
+     "totalRevenue": 8265841000000
+    }
+   ],
+   "quarterlyStatements": [
+    {
+     "date": "2025-09-30",
+     "currency": "JPY",
+     "netIncome": 151097000000,
+     "totalRevenue": 2039644000000
+    },
+    {
+     "date": "2025-12-31",
+     "currency": "JPY",
+     "netIncome": 126793000000,
+     "totalRevenue": 1969053000000
+    },
+    {
+     "date": "2026-03-31",
+     "currency": "JPY",
+     "netIncome": 111562000000,
+     "totalRevenue": 2093422000000
+    },
+    {
+     "date": "2026-06-30",
+     "currency": "JPY",
+     "eps": 114.19,
+     "netIncome": 186432000000,
+     "totalRevenue": 2609225000000
+    },
+    {
+     "date": "2026-09-30",
+     "currency": "JPY",
+     "netIncome": 151595000000,
+     "totalRevenue": 2570903000000
+    }
+   ],
+   "expect": {
+    "trailingPE": null,
+    "because": "in JPY beside a price in EUR, with no rate on record"
+   }
+  },
+  {
+   "name": "159682 on SZSE is the ChiNext 50 ETF, though its source types it as equity",
+   "symbol": "159682",
+   "exchange": "SZSE",
+   "quote": {
+    "price": 1.105,
+    "currency": "CNY",
+    "name": "Invesco Great Wall Fund Management Co Ltd - Szse Chinext 50 Index ETF"
+   },
+   "fundamentals": {
+    "eps": 1.27,
+    "trailingPE": 0.87,
+    "forwardPE": 0.8
+   },
+   "expect": {
+    "trailingPE": null,
+    "forwardPE": null,
+    "because": "fund is not a company's share"
+   }
+  },
+  {
+   "name": "BOVA11 is a Brazilian index fund by its name",
+   "symbol": "BOVA11",
+   "exchange": "B3",
+   "quote": {
+    "price": 150,
+    "currency": "BRL",
+    "name": "Ishares Ibovespa Classe de Índice - Responsabilidade Limitada"
+   },
+   "fundamentals": {
+    "eps": 15.21,
+    "trailingPE": 9.86
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "fund is not a company's share"
+   }
+  },
+  {
+   "name": "Polar Capital Technology Trust is a closed-end fund by its profile",
+   "symbol": "PCT",
+   "exchange": "LSE",
+   "quote": {
+    "price": 5.77,
+    "currency": "GBP",
+    "name": "Polar Capital Technology Ord"
+   },
+   "profile": {
+    "description": "Polar Capital Technology Trust plc is a closed ended equity mutual fund launched and managed by Polar Capital LLP. The fund invests in public equity markets across the globe."
+   },
+   "fundamentals": {
+    "eps": 3.3,
+    "trailingPE": 1.75
+   },
+   "expect": {
+    "trailingPE": null,
+    "because": "fund is not a company's share"
+   }
+  },
+  {
+   "name": "A business development company named a fund keeps its P/E",
+   "symbol": "BXSL",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 26,
+    "currency": "USD",
+    "name": "Blackstone Secured Lending Fund"
+   },
+   "profile": {
+    "description": "Blackstone Secured Lending Fund is a business development company focused on providing financing to private U.S. companies."
+   },
+   "fundamentals": {
+    "eps": 1.3,
+    "trailingPE": 20
+   },
+   "expect": {
+    "trailingPE": 20
+   }
+  },
+  {
+   "name": "A real estate investment trust keeps its P/E",
+   "symbol": "FRT",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 100,
+    "currency": "USD",
+    "name": "Federal Realty Investment Trust"
+   },
+   "profile": {
+    "description": "Federal Realty Investment Trust is a retail-focused real estate investment trust that owns, operates, and redevelops shopping centers."
+   },
+   "fundamentals": {
+    "eps": 4,
+    "trailingPE": 25
+   },
+   "expect": {
+    "trailingPE": 25
+   }
+  },
+  {
+   "name": "A royalty trust keeps its P/E",
+   "symbol": "CRT",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 12,
+    "currency": "USD",
+    "name": "Cross Timbers Royalty Trust"
+   },
+   "profile": {
+    "description": "Cross Timbers Royalty Trust is a royalty trust that holds net profits interests in oil and natural gas properties located in Texas."
+   },
+   "fundamentals": {
+    "eps": 0.5,
+    "trailingPE": 24
+   },
+   "expect": {
+    "trailingPE": 24
+   }
+  },
+  {
+   "name": "A fund sponsor is a company",
+   "symbol": "WT",
+   "exchange": "NYSE",
+   "quote": {
+    "price": 12,
+    "currency": "USD",
+    "name": "WisdomTree, Inc."
+   },
+   "profile": {
+    "description": "WisdomTree, Inc. is an exchange-traded fund sponsor and asset manager headquartered in New York."
+   },
+   "fundamentals": {
+    "eps": 0.6,
+    "trailingPE": 20
+   },
+   "expect": {
+    "trailingPE": 20
+   }
+  },
+  {
+   "name": "A profile carrying another listing's fund name leaves a company its P/E",
+   "symbol": "USAU",
+   "exchange": "NASDAQ",
+   "quote": {
+    "price": 15,
+    "currency": "USD",
+    "name": "U.S. Gold Corp."
+   },
+   "profile": {
+    "name": "Lyxor MSCI USA UCITS ETF",
+    "description": "U.S. Gold Corp. is a U.S.-focused gold exploration and development company."
+   },
+   "fundamentals": {
+    "eps": 0.75,
+    "trailingPE": 20
+   },
+   "expect": {
+    "trailingPE": 20
    }
   }
  ]

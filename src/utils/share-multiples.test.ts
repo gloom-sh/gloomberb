@@ -94,13 +94,15 @@ describe("one P/E for a listing in valuation and EQS", () => {
     quarterlyStatements?: unknown[];
     /** What Gloom Cloud adds to the stored payload when it serves it. */
     served?: { isDepositaryReceipt?: boolean };
+    /** The block Gloom Cloud serves for a cross-currency one, at the case's rates. */
+    servedFundamentals?: Partial<Fundamentals>;
     expect: { trailingPE: number | null; forwardPE?: null; because?: string };
   };
   for (const item of cases.cases as Case[]) {
     test(item.name, () => {
       const financials = {
         quote: { symbol: item.symbol, listingExchangeName: item.exchange, exchangeName: item.exchange, lastUpdated: now - 30 * 60_000, ...item.quote, ...item.served },
-        fundamentals: { ...item.fundamentals, ...item.served },
+        fundamentals: { ...item.fundamentals, ...item.served, ...item.servedFundamentals },
         profile: item.profile,
         financialCurrency: item.financialCurrency,
         annualStatements: item.annualStatements ?? [],
