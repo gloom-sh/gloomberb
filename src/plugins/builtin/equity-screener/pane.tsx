@@ -384,7 +384,7 @@ function EquityScreenView({
   const places = useMemo(() => liveScreenPlaces(orderRows, definition.sort), [definition.sort, orderRows]);
   const rows = useMemo(() => placeLiveScreenRows(liveRows, places), [liveRows, places]);
   const { anchor: refreshAnchor, release: releaseRefreshAnchor } = useRefreshAnchor(data?.snapshot?.id ?? null, rows, visibleRange.start);
-  const opened = rows.find((row) => screenRowId(row) === openId);
+  const opened = openId ? rows.find((row) => screenRowId(row) === openId) : undefined;
   const selected =
     opened ?? rows.find((row) => screenRowId(row) === selectedId) ?? rows[0];
   const currentSaved = saved.data?.find((row) => row.id === currentSavedId);

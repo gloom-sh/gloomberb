@@ -424,8 +424,19 @@ export function screenCurrencyEmpty(
   };
 }
 
-export const screenRowId = (row: Pick<ScreenRow, "symbol" | "exchange">) =>
-  `${canonicalExchange(row.exchange)}:${row.symbol}`;
+/**
+ * A row's id as last read: the table, the order and the lookups of a long list
+ * ask for it row by row on every render, and a screen's rows do not change
+ * between them.
+ */
+const rowIds = new WeakMap<object, { symbol: string; exchange: string; id: string }>();
+export const screenRowId = (row: Pick<ScreenRow, "symbol" | "exchange">) => {
+  const known = rowIds.get(row);
+  if (known && known.symbol === row.symbol && known.exchange === row.exchange) return known.id;
+  const id = `${canonicalExchange(row.exchange)}:${row.symbol}`;
+  rowIds.set(row, { symbol: row.symbol, exchange: row.exchange, id });
+  return id;
+};
 export const screenLabel = (field: string) =>
   ({
     kpiArr: "Annual recurring revenue",
