@@ -143,6 +143,61 @@ test("dragging the terminal divider reports a clamped width and commits once", a
   expect(committed).toEqual([26, 12]);
 });
 
+test("a terminal list longer than the sidebar scrolls with the wheel and follows the row the keyboard moves to", async () => {
+  const rows = (active: number) => (
+    <PaneSidebar width={20} height={5} focused keyboardFocused>
+      <PaneSidebarList>
+        {({ listWidth }) => Array.from({ length: 20 }, (_, index) => (
+          <PaneSidebarRow key={index} active={index === active} ariaLabel={`Channel ${index}`}>
+            {({ foregroundColor }) => (
+              <Text fg={foregroundColor}>{` Channel ${index}`.padEnd(listWidth - 1)}{"!"}</Text>
+            )}
+          </PaneSidebarRow>
+        ))}
+      </PaneSidebarList>
+    </PaneSidebar>
+  );
+  // A frame lays the list out, and the next draws what it measured.
+  const settle = async () => {
+    for (let pass = 0; pass < 2; pass += 1) {
+      await act(async () => {
+        await tui.setup().renderOnce();
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      });
+    }
+    await act(async () => {
+      await tui.setup().renderOnce();
+    });
+  };
+  const shown = () => tui.frame().split("\n").slice(0, 5).map((line) => line.match(/Channel (\d+)/)?.[1]).filter(Boolean);
+
+  await act(async () => {
+    await tui.render(rows(0), { width: 24, height: 5 });
+  });
+  await settle();
+  expect(shown()).toEqual(["0", "1", "2", "3", "4"]);
+  // The scrollbar takes a column from the rows, not their last one.
+  expect(tui.frame().split("\n")[0]?.slice(0, 19)).toMatch(/!.$/);
+
+  await act(async () => {
+    await tui.setup().mockMouse.scroll(4, 2, "down");
+  });
+  await settle();
+  expect(shown()[0]).not.toBe("0");
+
+  await act(async () => {
+    await tui.render(rows(15), { width: 24, height: 5 });
+  });
+  await settle();
+  expect(shown()).toContain("15");
+
+  await act(async () => {
+    await tui.render(rows(1), { width: 24, height: 5 });
+  });
+  await settle();
+  expect(shown()).toContain("1");
+});
+
 describe("desktop pane sidebar", () => {
   const { render, window: testWindow } = createDomTestHarness({ capabilities: { nativePaneChrome: true } });
 
