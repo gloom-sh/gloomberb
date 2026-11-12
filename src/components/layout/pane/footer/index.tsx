@@ -18,6 +18,7 @@ import {
   separatesPaneFooterSegments,
   hasPaneFooterContent,
   layoutPaneFooterHintRow,
+  paneFooterInfoWidth,
   paneHintTitle,
   terminalHintMetrics,
   totalHintsWidth,
@@ -50,6 +51,9 @@ export {
   usePaneFooter,
   usePaneMenuItems,
 } from "./registration";
+
+/** Terminal: blank cells between a framed footer's last hint and the frame's end. */
+const FOOTER_FRAME_GAP = 1;
 
 function footerToneColor(part: PaneFooterPart): string {
   if (part.color) return part.color;
@@ -86,10 +90,11 @@ function terminalSegmentKey(segment: PaneFooterSegment, focused: boolean): strin
     : "";
 }
 
-/** Columns an icon segment keeps when hints crowd the footer. */
+/** Columns an icon segment keeps when hints crowd the footer: in the terminal, what it draws (`◷15m`, `⚠[!]`). */
 function iconSegmentReserve(segment: PaneFooterSegment, focused: boolean, nativePaneChrome: boolean): number {
   if (!segment.icon) return 0;
-  return nativePaneChrome ? 3 : Math.max(3, 1 + terminalSegmentKey(segment, focused).length);
+  if (nativePaneChrome) return 3;
+  return Math.max(3, paneFooterInfoWidth([segment]) + terminalSegmentKey(segment, focused).length);
 }
 
 function SegmentView({ segment, focused }: { segment: PaneFooterSegment; focused: boolean }) {
@@ -265,12 +270,15 @@ function FooterContent({
   width,
   showBackground = true,
   nativePaneChrome = false,
+  trailingGap = 0,
 }: {
   footer: CombinedPaneFooter;
   focused: boolean;
   width?: number;
   showBackground?: boolean;
   nativePaneChrome?: boolean;
+  /** Blank cells of the band after the hints, past `width`, so they never touch the frame. */
+  trailingGap?: number;
 }) {
   const hasInfo = footer.info.length > 0;
   const actionableHints = focused ? footer.hints.filter((hint) => !hint.disabled) : [];
@@ -283,8 +291,10 @@ function FooterContent({
   const keyLabel = useShortcutLabel();
   const { cellWidthPx = 8 } = useUiCapabilities();
   const metrics = nativePaneChrome ? desktopHintMetrics(cellWidthPx) : terminalHintMetrics(keyLabel);
+  // A segment with shorter forms takes the longest that fits beside the hints, gaps and terminal keys included.
+  const keysWidth = nativePaneChrome ? 0 : footer.info.reduce((total, segment) => total + terminalSegmentKey(segment, focused).length, 0);
   const row = availableWidth !== null
-    ? layoutPaneFooterHintRow({ ...footer, hints: actionableHints }, availableWidth, iconReserve, metrics)
+    ? layoutPaneFooterHintRow({ ...footer, hints: actionableHints }, availableWidth, iconReserve, metrics, keysWidth)
     : null;
   const shownHints = row?.hints ?? actionableHints;
   const overflowHints = row?.overflow ?? [];
@@ -293,8 +303,6 @@ function FooterContent({
   const infoWidth = availableWidth !== null && hasInfo
     ? (row?.infoWidth ?? Math.max(0, availableWidth - hintsWidth))
     : undefined;
-  // A segment with shorter forms takes the longest that fits beside the hints, gaps and terminal keys included.
-  const keysWidth = nativePaneChrome ? 0 : footer.info.reduce((total, segment) => total + terminalSegmentKey(segment, focused).length, 0);
   const info = infoWidth != null ? fitPaneFooterInfo(footer.info, infoWidth - keysWidth, { besideHints: hasHints }) : footer.info;
   const lastTextIndex = info.findLastIndex((segment) => !segment.icon);
 
@@ -312,6 +320,7 @@ function FooterContent({
       flexDirection="row"
       justifyContent="space-between"
       overflow="hidden"
+      paddingRight={trailingGap > 0 ? trailingGap : undefined}
       backgroundColor={backgroundColor}
     >
       {hasInfo && (
@@ -428,16 +437,21 @@ export function PaneFooterBar({
   }
 
   if (focused || showBorder) {
-    const contentWidth = Math.max(0, Math.floor(width) - 1 - reservedRight - (reservedRight > 0 ? 0 : 1));
+    // The row ends as the title bar does (` x ─┐`): the last hint, a blank, then the rule's last dash
+    // and the corner, or the floating pane's `─◢` in the cells it reserves. A hint against the dash
+    // read as one word (`ticker─`).
+    const ruleEnd = reservedRight > 0 ? "" : "─┘";
+    const rowWidth = Math.max(0, Math.floor(width) - 1 - reservedRight - ruleEnd.length);
+    const contentWidth = Math.max(0, rowWidth - FOOTER_FRAME_GAP);
     return (
       <Box height={1} width={width} flexDirection="row" data-gloom-role="pane-footer" data-focused={focused ? "true" : "false"} data-empty={empty ? "true" : "false"}>
         <Text fg={borderColor} selectable={false}>└</Text>
-        <Box width={contentWidth} height={1} overflow="hidden">
+        <Box width={rowWidth} height={1} overflow="hidden">
           {empty
-            ? <Text fg={borderColor} selectable={false}>{"─".repeat(contentWidth)}</Text>
-            : <FooterContent footer={resolvedFooter} focused={focused} width={contentWidth} />}
+            ? <Text fg={borderColor} selectable={false}>{"─".repeat(rowWidth)}</Text>
+            : <FooterContent footer={resolvedFooter} focused={focused} width={contentWidth} trailingGap={rowWidth - contentWidth} />}
         </Box>
-        {reservedRight === 0 && <Text fg={borderColor} selectable={false}>┘</Text>}
+        {ruleEnd && <Text fg={borderColor} selectable={false}>{ruleEnd}</Text>}
       </Box>
     );
   }

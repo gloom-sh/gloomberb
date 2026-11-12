@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { keyHintWords } from "../../../ui/key-hint-words";
-import { ageFooterSegment, combinePaneFooterRegistrations, desktopHintMetrics, fitPaneFooterInfo, savedCopyFooterSegment, layoutPaneFooterHintRow, PANE_FOOTER_SEPARATOR, totalHintsWidth, separatesPaneFooterSegments, splitDelayedStatus, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
+import { ageFooterSegment, combinePaneFooterRegistrations, delayedFooterSegment, desktopHintMetrics, fitPaneFooterInfo, paneFooterInfoWidth, savedCopyFooterSegment, layoutPaneFooterHintRow, PANE_FOOTER_SEPARATOR, totalHintsWidth, separatesPaneFooterSegments, splitDelayedStatus, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
 
 const hints: PaneHint[] = [
   { id: "search", key: "/", label: "search" },
@@ -120,6 +120,29 @@ describe("footer hint row", () => {
     // A longer status gives way to the hints, as before.
     const long = layoutPaneFooterHintRow(footer([{ id: "line", parts: [{ text: "Binance 02:15 · Bybit 02:24 UTC · oldest 9 min" }] }]), 46);
     expect(long.hintsWidth).toBeGreaterThan(row.hintsWidth);
+  });
+
+  test("the status and the hints never touch: hints go under More from the right first, then text before a clock gives way", () => {
+    const status: PaneFooterSegment[] = [
+      { id: "loading", parts: [{ text: "loading more", tone: "muted" }] },
+      { id: "matches", parts: [{ text: "777 matches" }] },
+      { id: "currency", parts: [{ text: "USD", tone: "muted" }] },
+      delayedFooterSegment({ id: "delay", detail: "15m delayed", delay: "15m", onPress: () => {} }),
+    ];
+    const whole = paneFooterInfoWidth(status);
+    // The whole status, a column, the first hint ([/]search), a column and More.
+    const wholeFrom = whole + 1 + 9 + 1 + 6;
+    for (let width = 40; width <= 100; width += 1) {
+      const row = layoutPaneFooterHintRow(footer(status), width, 4);
+      const fitted = fitPaneFooterInfo(status, row.infoWidth);
+      expect(row.infoWidth + 1 + row.hintsWidth).toBeLessThanOrEqual(width);
+      expect(paneFooterInfoWidth(fitted)).toBeLessThanOrEqual(row.infoWidth);
+      expect(fitted.at(-1)!.id).toBe("delay");
+      if (width >= wholeFrom) {
+        expect(fitted).toEqual(status);
+        expect(row.hints[0]!.id).toBe("search");
+      }
+    }
   });
 
   test("a warning icon read and turned muted keeps the room it had, so the hints do not move", () => {
