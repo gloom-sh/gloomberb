@@ -321,6 +321,126 @@ export function hasMeaningfulTableHorizontalOverflow(
   return viewportWidth > 0 && tableWidth - viewportWidth > columnGap;
 }
 
+/**
+ * The columns a terminal table drew, by its body's scroll box, while
+ * `fitTableColumns` has moved them from the widths the pane set: a sideways
+ * step and the column a table opens on go by the edges the reader sees.
+ */
+export const drawnTableColumns = new WeakMap<object, readonly TableWidthColumn[]>();
+
+/** Cells handed out one at a time, left to right, to the columns still short of their target. */
+function growColumns(widths: number[], targets: readonly number[], indexes: readonly number[], extra: number): number {
+  let left = extra;
+  while (left > 0) {
+    const short = indexes.filter((index) => widths[index]! < targets[index]!);
+    if (short.length === 0) break;
+    for (const index of short) {
+      if (left <= 0) break;
+      widths[index]! += 1;
+      left -= 1;
+    }
+  }
+  return left;
+}
+
+/**
+ * The terminal table's columns as wide as the room and what they hold allow,
+ * before any column is cut or pushed out of view past the right edge.
+ * `contentWidths` is the widest text each column holds now, its header aside,
+ * or null where it draws something that cannot be measured (it keeps its set
+ * width). A table whose set widths fit (to its trailing gap) and cut nothing
+ * is left as set. Otherwise every column first gives up the blank past its
+ * text, down to its header and sort mark; a column that cuts its text then
+ * takes back what it needs while room is left, and the others take back
+ * their blank, a cell at a time. A column that grows (`flexGrow`) takes what
+ * is left after that, as it always did.
+ *
+ * When even that leaves columns past the edge, as many leading columns as fit
+ * whole beside the shortest form of the hint that says more follow
+ * (`edgeHint.least`) keep the room, or beside the table's padding without a
+ * hint. Their cut text takes what it needs first; then the hint's whole form
+ * (`edgeHint.whole`), unless a last column, a few cells of it then in view,
+ * would show them as cut text instead of the hint; then their blank, up to
+ * their set widths. The others wait past the edge at their narrowest.
+ *
+ * A fit that shows no more than the set widths do (no cut text longer, no
+ * column more in view) leaves the table as set.
+ */
+export function fitTableColumns<C extends TableWidthColumn>(
+  columns: readonly C[],
+  contentWidths: readonly (number | null)[],
+  viewportWidth: number,
+  columnGap = 1,
+  horizontalPadding = 1,
+  edgeHint: {
+    least: number;
+    whole: number;
+    /** How many leading columns these widths show whole beside the hint, as the table draws it. */
+    shownWhole?: (columns: readonly C[]) => number;
+  } = { least: 0, whole: 0 },
+): C[] {
+  const set = normalizeTableColumns(columns);
+  if (viewportWidth <= 0 || set.length === 0) return set;
+  const floors = set.map((column) => (column.label ? Math.min(column.width, displayWidth(column.label) + HEADER_RESERVED_WIDTH) : 1));
+  const wants = set.map((column, index) => {
+    const content = contentWidths[index];
+    return content == null ? column.width : Math.max(floors[index]!, Math.ceil(content));
+  });
+  const cut = set.flatMap((column, index) => (wants[index]! > column.width ? [index] : []));
+  const room = Math.floor(viewportWidth);
+  const overflows = hasMeaningfulTableHorizontalOverflow(getTableWidth(set, columnGap, horizontalPadding), room, columnGap);
+  if (cut.length === 0 && !overflows) return set;
+  const widths = set.map((column, index) => Math.min(column.width, wants[index]!));
+  const sized = () => set.map((column, index) => (widths[index] === column.width ? column : { ...column, width: widths[index]! }));
+  const setWidths = set.map((column) => column.width);
+  const cutGrew = (indexes: readonly number[]) => indexes.some((index) => widths[index]! > setWidths[index]!);
+  let extra = room - getTableWidth(sized(), columnGap, horizontalPadding);
+  if (extra >= 0) {
+    extra = growColumns(widths, wants, cut, extra);
+    if (!overflows && !cutGrew(cut)) return set;
+    growColumns(widths, setWidths, set.map((_, index) => index), extra);
+    return sized();
+  }
+  // Where the first `count` columns end, without the blank after the last.
+  const prefixEnd = (count: number, columns: readonly C[] = sized()) => (
+    getTableWidth(columns.slice(0, count), columnGap, horizontalPadding) - columnGap - horizontalPadding
+  );
+  const least = edgeHint.least > 0 ? edgeHint.least : horizontalPadding;
+  // What the first `count` columns keep after them: the hint, or the padding, while columns follow; after the
+  // last its padding, unless the set widths already ran into it: the table runs no further past the edge.
+  const lastTail = Math.max(0, Math.min(horizontalPadding, room - prefixEnd(set.length, set)));
+  const tail = (count: number) => (count < set.length ? least : lastTail);
+  let count = 0;
+  while (count < set.length && prefixEnd(count + 1) + tail(count + 1) <= room) count += 1;
+  if (count === 0) return sized();
+  // The columns the set widths show whole, the last one's blank past it cut or not: a fit never shows fewer.
+  const shownWhole = edgeHint.shownWhole ?? ((columns: readonly C[]) => {
+    let shown = 0;
+    while (shown < set.length && prefixEnd(shown + 1, columns) + (shown + 1 < set.length ? least : 0) <= room) shown += 1;
+    return shown;
+  });
+  const setCount = shownWhole(set);
+  if (count < setCount) return set;
+  const shown = set.slice(0, count).map((_, index) => index);
+  extra = room - tail(count) - prefixEnd(count);
+  const shownCut = cut.filter((index) => index < count);
+  extra = growColumns(widths, wants, shownCut, extra);
+  if (count === setCount && !cutGrew(shownCut)) return set;
+  if (count < set.length) {
+    // Kept for the hint's whole form, a last column after them would have that many cells in view, which text
+    // shows cut rather than leave to the hint when they reach its label (hasColumnsPastRightEdge). With more
+    // columns past it the hint shows anyway.
+    const next = set[count]!;
+    const nextInView = edgeHint.whole - columnGap - tableColumnLeadGap(sized(), count, columnGap);
+    const nextShowsText = count === set.length - 1 && (next.align ?? "left") !== "right" && nextInView >= displayWidth(next.label ?? "");
+    const wholeHint = Math.max(0, edgeHint.whole - least);
+    if (edgeHint.least > 0 && wholeHint > 0 && extra >= wholeHint && !nextShowsText) extra -= wholeHint;
+  }
+  growColumns(widths, setWidths, shown, extra);
+  const fitted = sized();
+  return cutGrew(shownCut) || shownWhole(fitted) > setCount ? fitted : set;
+}
+
 export function expandTableColumns<C extends TableWidthColumn>(
   columns: readonly C[],
   targetWidth: number,

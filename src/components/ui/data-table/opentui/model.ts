@@ -1,5 +1,5 @@
 import { displayWidth } from "../../../../utils/format";
-import { fitTableCellText, tableColumnLeadGap } from "../../table-layout";
+import { fitTableCellText, tableColumnLeadGap, tableColumnStarts } from "../../table-layout";
 
 /**
  * Where the viewport cuts a column: `inset` cells hidden on its left (past the
@@ -101,6 +101,11 @@ export function reuseDataTableColumnClips(
  * the only sign.
  */
 const MORE_COLUMNS_LABELS = ["more ⇧→", "⇧→", "→"] as const;
+/** The cells the "more ⇧→" hint takes at the right edge with the blank before it, whole and at its shortest with a key. */
+export const MORE_COLUMNS_HINT_WIDTH = {
+  whole: displayWidth(MORE_COLUMNS_LABELS[0]) + 1,
+  least: displayWidth(MORE_COLUMNS_LABELS[1]) + 1,
+} as const;
 
 export interface MoreColumnsHint {
   /** The cells the hint draws: its label, after a blank unless it takes the last column's own. */
@@ -164,8 +169,7 @@ export function resolveMoreColumnsHint({
   scrollLeft: number;
   viewportWidth: number;
 }): MoreColumnsHint | null {
-  const longest = displayWidth(MORE_COLUMNS_LABELS[0]) + 1;
-  if (columns.length === 0 || viewportWidth < longest * 2) return null;
+  if (columns.length === 0 || viewportWidth < MORE_COLUMNS_HINT_WIDTH.whole * 2) return null;
   const right = scrollLeft + viewportWidth;
   const starts = columns.map((_, index) => horizontalPadding + (columnStarts[index] ?? 0));
   if (!hasColumnsPastRightEdge(columns, starts, right)) return null;
@@ -196,6 +200,31 @@ export function resolveMoreColumnsHint({
 }
 
 /**
+ * How many leading columns a table scrolled to its start shows whole, the
+ * rows' cells under the "more ⇧→" hint aside (`resolveMoreColumnsHint`).
+ */
+export function columnsShownWhole({
+  columns,
+  columnGap,
+  besideHeader = 0,
+  horizontalPadding,
+  viewportWidth,
+}: {
+  columns: readonly HintColumn[];
+  columnGap: number;
+  besideHeader?: number;
+  horizontalPadding: number;
+  viewportWidth: number;
+}): number {
+  const columnStarts = tableColumnStarts(columns, columnGap);
+  const hint = resolveMoreColumnsHint({ columns, columnGap, columnStarts, besideHeader, horizontalPadding, scrollLeft: 0, viewportWidth });
+  const right = viewportWidth - (hint?.reserve ?? 0);
+  let count = 0;
+  while (count < columns.length && horizontalPadding + columnStarts[count]! + columns[count]!.width <= right) count += 1;
+  return count;
+}
+
+/**
  * Each column's clip at the current scroll, null for a column shown whole.
  * A frozen first column stays, and what slides under it counts as cut on the
  * left. `rightReserve` cells at the right edge show no column (under the
@@ -211,6 +240,7 @@ export function resolveDataTableColumnClips({
   scrollLeft,
   viewportWidth,
   widths,
+  labels,
 }: {
   columnGap: number;
   /** Where each column's content starts, from the first column (tableColumnStarts). */
@@ -223,6 +253,12 @@ export function resolveDataTableColumnClips({
   viewportWidth: number;
   /** Each column's drawn width. */
   widths: readonly number[];
+  /**
+   * Each column's header as drawn, with its alignment. Text the right edge leaves fewer cells than its
+   * label shows none of them: a sliver would read as a stray ellipsis, and "more ⇧→" counts the column
+   * as past the edge (hasColumnsPastRightEdge).
+   */
+  labels?: readonly HintColumn[];
 }): (DataTableColumnClip | null)[] | null {
   if (viewportWidth <= 0 || widths.length === 0) return null;
   const right = scrollLeft + viewportWidth - Math.max(0, rightReserve);
@@ -235,7 +271,10 @@ export function resolveDataTableColumnClips({
     if (start >= left && end <= right) return null;
     cut = true;
     const inset = Math.min(width, Math.max(0, left - start));
-    return { inset, width: Math.max(0, Math.min(end, right) - start - inset) };
+    const shown = Math.max(0, Math.min(end, right) - start - inset);
+    const header = labels?.[index];
+    const sliver = !!header && (header.align ?? "left") !== "right" && inset + shown < width && shown < displayWidth(header.label);
+    return { inset, width: sliver ? 0 : shown };
   });
   return cut ? clips : null;
 }

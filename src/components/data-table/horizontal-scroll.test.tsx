@@ -79,8 +79,9 @@ function Harness({ initial }: { initial: Partial<Options> }) {
         sortDirection="asc"
         onHeaderClick={() => {}}
         getItemKey={(row) => row.id}
+        // Each value fills its column exactly, as a wide table's figures do: none has blank to give up or is cut.
         renderCell={(row, column) => ({
-          text: row[column.id as keyof typeof row] ?? "20.0%",
+          text: (row[column.id as keyof typeof row] ?? "20.0%").padEnd(column.width).slice(0, column.width),
           ...(options.drawnFirst && column.id === "id" ? { content: <Text>{row.id}</Text> } : {}),
         })}
         emptyStateTitle="No rows"

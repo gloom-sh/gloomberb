@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Span, Text, TextAttributes, useNativeRenderer, type BoxRenderable } from "../../../../ui";
 import { capturePointerDrag, releasePointerDrag } from "../../../../ui/pointer-drag";
 import { hoverBg } from "../../../../theme/colors";
@@ -14,6 +14,9 @@ import { EmptyState } from "../../status";
 import { observeScrollBoxContentSize, observeScrollBoxViewportSize } from "../../../../renderers/opentui/scrollbox-layout";
 import {
   expandTableColumns,
+  drawnTableColumns,
+  fitTableColumns,
+  tableColumnWidth,
   fitTableHeaderText,
   getTableWidth,
   hasMeaningfulTableHorizontalOverflow,
@@ -34,11 +37,13 @@ import { useFocusOwningPane, useVisibleRangeEmitter } from "../hooks";
 import { useStableColumns } from "../stable-columns";
 import { COLUMN_DRAG_THRESHOLD_CELLS, columnDropBoundary, columnDropIndex } from "../column-order";
 import {
+  columnsShownWhole,
   cutColumnText,
   fitColumnCellText,
   resolveDataTableColumnClips,
   resolveDataTableVisibleWindow,
   resolveMoreColumnsHint,
+  MORE_COLUMNS_HINT_WIDTH,
   reuseDataTableColumnClips,
   type DataTableColumnClip,
 } from "./model";
@@ -83,6 +88,12 @@ function setScrollBarVisible(scrollBar: unknown, visible: boolean): void {
   bar.visible = visible;
 }
 
+/** The widths of what a row drew in each column, null for a cell of its own (`content`) that gives none (`contentWidth`). */
+interface RowCellWidths {
+  columnsKey: string;
+  widths: (number | null)[];
+}
+
 function OpenTuiDataTableRowInner<
   T,
   C extends DataTableColumn,
@@ -91,6 +102,7 @@ function OpenTuiDataTableRowInner<
   columnGap,
   columnStarts,
   contentWidth,
+  cellColumns,
   displayColumns,
   focusPane,
   frozenColumnOffset,
@@ -110,7 +122,12 @@ function OpenTuiDataTableRowInner<
   selected,
   selectedTextOverridesCellColor,
   columnClips,
+  cellWidths,
+  columnsKey,
 }: {
+  /** Where the row leaves the width of each column's text as it draws it, for the table to fit its columns to. */
+  cellWidths: Map<string, RowCellWidths>;
+  columnsKey: string;
   /** Only compared by the row memo; see `getRowVersion`. */
   rowVersion?: unknown;
   /** Columns of the row in view, which a section header's action keeps to. */
@@ -119,6 +136,12 @@ function OpenTuiDataTableRowInner<
   columnGap: number;
   columnStarts: number[];
   contentWidth: number;
+  /**
+   * The columns as each cell's text is made for and measured at: as an unfitted table draws them, so
+   * text that fits itself to its column (a price's digits) neither shrinks with the blank the fit took
+   * from it nor grows with the room the fit gave it.
+   */
+  cellColumns: C[];
   displayColumns: C[];
   focusPane: () => void;
   frozenColumnOffset?: number;
@@ -204,6 +227,8 @@ function OpenTuiDataTableRowInner<
   }
 
   const rowState = { selected };
+  const widths: (number | null)[] = [];
+  cellWidths.set(itemKey, { columnsKey, widths });
   const rowBackgroundColor = getRowBackgroundColor?.(item, index, rowState);
   const rowBg = selected ? colors.selected : rowBackgroundColor ?? colors.bg;
   const rowHoverBg = selected ? undefined : hoverBg(colors);
@@ -232,7 +257,11 @@ function OpenTuiDataTableRowInner<
       {displayColumns.map((column, columnIndex) => {
         const frozen = columnIndex === 0 && frozenColumnOffset !== undefined;
         const clip = columnClips?.[columnIndex] ?? null;
-        const cell = renderCell(item, column, index, rowState);
+        const cellColumn = cellColumns[columnIndex] ?? column;
+        const made = renderCell(item, cellColumn, index, rowState);
+        // A drawn cell lays itself out in the column as drawn; its width is the one made for its column unfitted.
+        const cell = made.content !== undefined && cellColumn !== column ? renderCell(item, column, index, rowState) : made;
+        widths[columnIndex] = made.content === undefined ? displayWidth(made.text) : made.contentWidth ?? null;
         const columnStart = columnStarts[columnIndex] ?? 0;
         const leadGap = tableColumnLeadGap(displayColumns, columnIndex, columnGap);
         const inset = clip ? clip.inset : !frozen && frozenColumnOffset !== undefined
@@ -392,31 +421,113 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     ],
   );
   const { endIndex, startIndex, viewportHeight, visibleItems } = tableWindow;
-  const tableWidth = useMemo(
+  const setTableWidth = useMemo(
     () => getTableWidth(columns, columnGap, horizontalPadding),
     [columnGap, columns, horizontalPadding],
   );
   const {
-    contentWidth: measuredContentWidth,
     viewportWidth: measuredViewportWidth,
     measureContentWidth,
-  } = useMeasuredTableContentWidth(tableWidth, headerScrollRef, scrollRef);
+  } = useMeasuredTableContentWidth(setTableWidth, headerScrollRef, scrollRef);
+  // The widest text each column holds in the rows drawn so far, kept while the columns, the rows and the
+  // pane's width stay the same, so a column never narrows as the rows under it scroll by; new rows or a new
+  // width start it over from the rows in view. Each row reports its cells' widths as it draws them (a drawn
+  // cell, `content`, gives its `contentWidth` or keeps its column's width), so no cell is made twice.
+  const columnsKey = columns.map((column) => `${column.id}:${column.width}:${column.label}`).join("\u0000");
+  const rowCellWidths = useRef(new Map<string, RowCellWidths>()).current;
+  const [measuredWidths, setMeasuredWidths] = useState<{ key: string; widths: (number | null)[] } | null>(null);
+  const measuredFrom = useRef<{ items: readonly T[]; viewportWidth: number } | null>(null);
+  const contentWidths = measuredWidths?.key === columnsKey ? measuredWidths.widths : null;
+  useLayoutEffect(() => {
+    const from = measuredFrom.current;
+    const fresh = !from || from.items !== items || from.viewportWidth !== measuredViewportWidth;
+    measuredFrom.current = { items, viewportWidth: measuredViewportWidth };
+    const previous = measuredWidths?.key === columnsKey ? measuredWidths.widths : null;
+    const kept = fresh ? null : previous;
+    const widths: (number | null)[] = columns.map((_, index) => kept?.[index] ?? 0);
+    if (kept) kept.forEach((width, index) => { if (width === null) widths[index] = null; });
+    visibleItems.forEach((item, offset) => {
+      const row = rowCellWidths.get(getItemKey(item, startIndex + offset));
+      if (!row || row.columnsKey !== columnsKey) return;
+      row.widths.forEach((width, index) => {
+        const known = widths[index];
+        widths[index] = known === null || width === null ? null : Math.max(known ?? 0, width);
+      });
+    });
+    if (rowCellWidths.size > visibleItems.length * 4 + 64) rowCellWidths.clear();
+    if (previous && widths.every((width, index) => width === previous[index])) return;
+    setMeasuredWidths({ key: columnsKey, widths });
+  });
+  // A header as drawn, with its sort mark.
+  const sortedLabel = useCallback(
+    (column: { id: string; label: string }) => (sortColumnId === column.id ? `${column.label}${column.label ? " " : ""}▲` : column.label),
+    [sortColumnId],
+  );
+  // The header row has a blank cell past its scroll box, over the body's vertical scrollbar, which the
+  // "more ⇧→" hint takes first (resolveMoreColumnsHint).
+  const besideHeader = Math.max(0, Math.min(1, (scrollRef.current?.width ?? 0) - measuredViewportWidth));
+  // Fitted to the viewport and what the columns hold: blank past their text gives way before a column is
+  // cut or pushed out of view (fitTableColumns).
+  const fittedColumns = useMemo(
+    () => contentWidths
+      ? fitTableColumns(columns, contentWidths, measuredViewportWidth, columnGap, horizontalPadding, showHorizontalScrollbar ? {
+        ...MORE_COLUMNS_HINT_WIDTH,
+        shownWhole: (fitted) => columnsShownWhole({
+          columns: fitted.map((column) => ({ width: column.width, align: column.align, label: sortedLabel(column) })),
+          columnGap,
+          besideHeader,
+          horizontalPadding,
+          viewportWidth: measuredViewportWidth,
+        }),
+      } : undefined)
+      : columns,
+    [besideHeader, columnGap, columns, contentWidths, horizontalPadding, measuredViewportWidth, showHorizontalScrollbar, sortedLabel],
+  );
+  const tableWidth = useMemo(
+    () => getTableWidth(fittedColumns, columnGap, horizontalPadding),
+    [columnGap, fittedColumns, horizontalPadding],
+  );
+  const measuredContentWidth = Math.max(tableWidth, measuredViewportWidth);
   const horizontalScrollbarVisible = showHorizontalScrollbar
     && hasMeaningfulTableHorizontalOverflow(tableWidth, measuredViewportWidth, columnGap);
   const freezeFirstColumn = tableFreezesFirstColumn({
-    freezeFirstColumn: freezeFirstColumnProp, columns, columnGap, horizontalPadding, viewportWidth: measuredViewportWidth,
+    freezeFirstColumn: freezeFirstColumnProp, columns: fittedColumns, columnGap, horizontalPadding, viewportWidth: measuredViewportWidth,
     overflows: horizontalScrollbarVisible,
   });
   const contentWidth = fillAvailableWidth ? measuredContentWidth : tableWidth;
   const sectionWidth = measuredViewportWidth > 0 ? Math.min(contentWidth, measuredViewportWidth) : contentWidth;
   const displayColumns = useMemo(
-    () => expandTableColumns(columns, contentWidth, columnGap, horizontalPadding),
-    [columnGap, columns, contentWidth, horizontalPadding],
+    () => expandTableColumns(fittedColumns, contentWidth, columnGap, horizontalPadding),
+    [columnGap, fittedColumns, contentWidth, horizontalPadding],
   );
+  // What each cell's text is made for, and measured at: the columns as an unfitted table draws them, never the
+  // fit's. Text that fits itself to its column (a price's digits) does not shrink with the blank the fit took
+  // from it, nor, made for the room the fit gave it, measure wider and so take more on the next fit.
+  const cellColumns = useMemo(() => {
+    if (fittedColumns === columns) return displayColumns;
+    const unfitted = expandTableColumns(
+      columns,
+      fillAvailableWidth ? Math.max(setTableWidth, measuredViewportWidth) : setTableWidth,
+      columnGap,
+      horizontalPadding,
+    );
+    return displayColumns.map((column, index) => {
+      const width = unfitted[index]?.width ?? column.width;
+      return width === column.width ? column : { ...column, width };
+    });
+  }, [columnGap, columns, displayColumns, fillAvailableWidth, fittedColumns, horizontalPadding, measuredViewportWidth, setTableWidth]);
   const columnStarts = useMemo(
     () => tableColumnStarts(displayColumns, columnGap),
     [columnGap, displayColumns],
   );
+  // Sideways steps and the column a table opens on go by the widths drawn where the fit moved them.
+  useEffect(() => {
+    const body = scrollRef.current;
+    if (!body) return;
+    const moved = fittedColumns !== columns && fittedColumns.some((column, index) => column.width !== tableColumnWidth(columns[index]!));
+    if (moved) drawnTableColumns.set(body, fittedColumns);
+    else drawnTableColumns.delete(body);
+  }, [columns, fittedColumns, scrollRef]);
   // A press on a movable header sorts on release, or drags its column once it moves two cells: the header row
   // takes the drag (capturePointerDrag), marks the gap the column would drop into, and moves it on release.
   const headerRowRef = useRef<BoxRenderable | null>(null);
@@ -504,16 +615,16 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   );
   // Columns out of view past the right edge: the header row ends in "more ⇧→" there, a press on it scrolls to
   // them, and the rows leave its cells blank, so a narrow pane says it has more than it shows. The header's
-  // scroll box is as wide as the body's viewport (measuredViewportWidth), so the header row has a blank cell
-  // past it, over the body's vertical scrollbar; the hint is laid over the row, not inside the scroll box,
-  // and takes that cell first.
-  const besideHeader = Math.max(0, Math.min(1, (scrollRef.current?.width ?? 0) - measuredViewportWidth));
-  const moreColumns = horizontalScrollbarVisible ? resolveMoreColumnsHint({
-    columns: displayColumns.map((column) => ({
-      width: column.width,
-      align: column.align,
-      label: sortColumnId === column.id ? `${column.label}${column.label ? " " : ""}▲` : column.label,
-    })),
+  // scroll box is as wide as the body's viewport (measuredViewportWidth); the hint is laid over the row, not
+  // inside the scroll box, and takes the cell past it first (besideHeader).
+  // An empty table has nothing past the edge to scroll to.
+  const hintColumns = useMemo(() => displayColumns.map((column) => ({
+    width: column.width,
+    align: column.align,
+    label: sortedLabel(column),
+  })), [displayColumns, sortedLabel]);
+  const moreColumns = horizontalScrollbarVisible && items.length > 0 ? resolveMoreColumnsHint({
+    columns: hintColumns,
     columnGap,
     columnStarts,
     frozenFirstColumn: freezeFirstColumn,
@@ -537,8 +648,9 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
       // A table that cannot scroll sideways fits its own columns; one it cut could never be scrolled to.
       viewportWidth: showHorizontalScrollbar ? measuredViewportWidth : 0,
       widths: displayColumns.map((column) => column.width),
+      labels: hintColumns,
     })),
-    [columnGap, columnStarts, displayColumns, freezeFirstColumn, horizontalPadding, measuredViewportWidth, moreColumnsReserve, scrollLeft, showHorizontalScrollbar],
+    [columnGap, columnStarts, displayColumns, freezeFirstColumn, hintColumns, horizontalPadding, measuredViewportWidth, moreColumnsReserve, scrollLeft, showHorizontalScrollbar],
   );
   const reportVisibleRange = useVisibleRangeEmitter({
     itemCount: items.length,
@@ -897,6 +1009,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                     columnGap={columnGap}
                     columnStarts={columnStarts}
                     contentWidth={scrollContentWidth}
+                    cellColumns={cellColumns}
                     displayColumns={displayColumns}
                     focusPane={focusPane}
                     frozenColumnOffset={freezeFirstColumn ? frozenColumnOffset : undefined}
@@ -917,6 +1030,8 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                     selected={isSelected(item, index)}
                     selectedTextOverridesCellColor={selectedTextOverridesCellColor}
                     columnClips={columnClips}
+                    cellWidths={rowCellWidths}
+                    columnsKey={columnsKey}
                   />
                 );
               }),

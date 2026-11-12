@@ -26,6 +26,7 @@ import {
   resolvePaneManagementShortcut,
 } from "./index";
 import { inputCaptureAllowsPaneManagementShortcut } from "./shortcuts";
+import { TERMINAL_MAGNET_REST_MS } from "./drag/magnets";
 import { ONE_SHOT_COOLDOWN_MS } from "../../../utils/one-shot";
 import { registerPaneDocsHandler } from "../../../docs/requests";
 import { registerAskGloomPaneHandler, type AskGloomPaneAttachment } from "../../../ask-gloom/pane-request";
@@ -905,6 +906,56 @@ describe("Shell", () => {
       { instanceId: detail.instanceId, x: 41, y: 6, stack: "s" },
       { instanceId: "ticker-detail:two", x: 41, y: 6, stack: "s" },
     ]);
+  });
+
+  // At a hand's pace a magnet that drew its catch held the window for three
+  // cells on each edge it crossed, then jumped it: a drag that lagged.
+  test("terminal: a window dragged at a hand's pace follows the pointer past an edge, and catches it once the pointer rests", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-magnet-pace-test");
+    const main = requireLayoutInstance(config, "portfolio-list:main");
+    const detail = requireLayoutInstance(config, "ticker-detail:main");
+    const layout: LayoutConfig = {
+      dockRoot: { kind: "pane", instanceId: main.instanceId },
+      instances: [{ ...main }, { ...detail }, { ...detail, instanceId: "ticker-detail:two" }],
+      floating: [
+        { instanceId: detail.instanceId, x: 8, y: 2, width: 32, height: 8, zIndex: 50 },
+        { instanceId: "ticker-detail:two", x: 50, y: 2, width: 20, height: 8, zIndex: 51 },
+      ],
+      detached: [],
+    };
+    const { actions } = await renderShell(createShellStateWithLayout(config, layout, detail.instanceId), { width: 80, height: 18 });
+    // The window's top row: where its left corner is drawn. The pointer's rows count from the top bar.
+    const left = () => tui.frame().split("\n")[2]!.indexOf("┌");
+    expect(left()).toBe(8);
+    const mouse = tui.setup().mockMouse;
+    const drawn: number[] = [];
+    await act(async () => {
+      await mouse.pressDown(10, 3);
+      await tui.setup().renderOnce();
+    });
+    // Twenty cells a second, its right edge from 42 across the other
+    // window's at 50 to 54, then back to 49.
+    for (const dx of [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 13, 12, 11, 10, 9]) {
+      await act(async () => {
+        await Bun.sleep(50);
+        await mouse.moveTo(10 + dx, 3);
+        await tui.setup().renderOnce();
+      });
+      drawn.push(left());
+    }
+    expect(drawn).toEqual([10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 21, 20, 19, 18, 17]);
+    // Still: a cell off the other window's edge, it steps onto it.
+    await act(async () => {
+      await Bun.sleep(TERMINAL_MAGNET_REST_MS * 2);
+      await tui.setup().renderOnce();
+    });
+    expect(left()).toBe(18);
+    await act(async () => {
+      await mouse.release(19, 3);
+      await tui.setup().renderOnce();
+    });
+    const moved = actions.filter((action) => action.type === "UPDATE_LAYOUT").at(-1)?.layout as LayoutConfig | undefined;
+    expect(moved?.floating.find((entry) => entry.instanceId === detail.instanceId)).toMatchObject({ x: 18, y: 2 });
   });
 
   test("each tab of a stack keeps its own state as the tabs switch, never another tab's", async () => {

@@ -167,6 +167,8 @@ interface ScrollBarRenderable {
   visible: boolean;
   /** Terminal only: whether a click on the bar moves the keyboard focus to it. */
   focusable?: boolean;
+  /** Terminal only: shows the bar again while the content overflows, after `visible` was set. */
+  resetVisibilityControl?(): void;
   on?(event: "change", handler: () => void): void;
   off?(event: "change", handler: () => void): void;
 }
@@ -267,6 +269,20 @@ export interface NativePaneImage {
   cells?: { cols: number; rows: number; cells: NativeFrameCell[] };
 }
 
+/**
+ * What the frame on screen drew on top, cell by cell: kitty images are drawn
+ * out of band, so the terminal image layer reads this to keep each image under
+ * whatever covers it.
+ */
+export interface NativeFrameHits {
+  /** The renderable drawn last at a cell of the frame on screen, or null. */
+  at(x: number, y: number): unknown;
+  /** Whether a renderable fills its cells (a background), rather than only grouping or writing over others. */
+  paints(renderable: unknown): boolean;
+  /** Whether a renderable is still in the tree the terminal draws. */
+  attached(renderable: unknown): boolean;
+}
+
 /** The last frame the terminal renderer drew, as styled rows. */
 export interface NativeFrameCapture {
   cols: number;
@@ -304,6 +320,8 @@ export interface NativeRendererHost {
   removePostProcessFn?(processFn: NativePostProcessFn): void;
   /** Terminal renderers only. Kitty graphics are drawn out of band and come back as blank cells. */
   captureFrame?(): NativeFrameCapture | null;
+  /** Terminal renderers only: what each cell of the frame on screen drew on top. */
+  frameHits?: NativeFrameHits;
   /**
    * Terminal renderers only: a PNG of a rectangle of the frame shown now, in
    * cells, its characters drawn in a bundled font and its kitty images put back.

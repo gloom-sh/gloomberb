@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { keyHintWords } from "../../../ui/key-hint-words";
-import { ageFooterSegment, combinePaneFooterRegistrations, desktopHintMetrics, fitPaneFooterInfo, savedCopyFooterSegment, layoutPaneFooterHintRow, PANE_FOOTER_SEPARATOR, totalHintsWidth, separatesPaneFooterSegments, splitDelayedStatus, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
+import { ageFooterSegment, combinePaneFooterRegistrations, delayedFooterSegment, desktopHintMetrics, fitPaneFooterInfo, paneFooterInfoWidth, savedCopyFooterSegment, layoutPaneFooterHintRow, PANE_FOOTER_SEPARATOR, totalHintsWidth, separatesPaneFooterSegments, splitDelayedStatus, type CombinedPaneFooter, type PaneFooterRegistration, type PaneFooterSegment, type PaneHint } from "./model";
 
 const hints: PaneHint[] = [
   { id: "search", key: "/", label: "search" },
@@ -120,6 +120,52 @@ describe("footer hint row", () => {
     // A longer status gives way to the hints, as before.
     const long = layoutPaneFooterHintRow(footer([{ id: "line", parts: [{ text: "Binance 02:15 · Bybit 02:24 UTC · oldest 9 min" }] }]), 46);
     expect(long.hintsWidth).toBeGreaterThan(row.hintsWidth);
+  });
+
+  test("the status and the hints never touch: hints go under More from the right first, then text before a clock gives way", () => {
+    const status: PaneFooterSegment[] = [
+      { id: "loading", parts: [{ text: "loading more", tone: "muted" }] },
+      { id: "matches", parts: [{ text: "777 matches" }] },
+      { id: "currency", parts: [{ text: "USD", tone: "muted" }] },
+      delayedFooterSegment({ id: "delay", detail: "15m delayed", delay: "15m", onPress: () => {} }),
+    ];
+    const whole = paneFooterInfoWidth(status);
+    // The whole status, a column, the first hint ([/]search), a column and More.
+    const wholeFrom = whole + 1 + 9 + 1 + 6;
+    for (let width = 40; width <= 100; width += 1) {
+      const row = layoutPaneFooterHintRow(footer(status), width, 4, undefined, { terminal: true });
+      const fitted = fitPaneFooterInfo(status, row.infoWidth, { terminal: true });
+      expect(row.infoWidth + 1 + row.hintsWidth).toBeLessThanOrEqual(width);
+      expect(paneFooterInfoWidth(fitted)).toBeLessThanOrEqual(row.infoWidth);
+      expect(fitted.at(-1)!.id).toBe("delay");
+      if (width >= wholeFrom) {
+        expect(fitted).toEqual(status);
+        expect(row.hints[0]!.id).toBe("search");
+      }
+    }
+  });
+
+  test("the desktop's row keeps its hints and gives the status way to its floor first, the terminal's rule left out", () => {
+    const status: PaneFooterSegment[] = [
+      { id: "loading", parts: [{ text: "loading more", tone: "muted" }] },
+      { id: "matches", parts: [{ text: "777 matches" }] },
+      { id: "currency", parts: [{ text: "USD", tone: "muted" }] },
+      delayedFooterSegment({ id: "delay", detail: "15m delayed", delay: "15m", onPress: () => {} }),
+    ];
+    const metrics = desktopHintMetrics(8);
+    let keptMore = 0;
+    for (let width = 40; width <= 120; width += 1) {
+      const desktop = layoutPaneFooterHintRow(footer(status), width, 3, metrics);
+      const terminal = layoutPaneFooterHintRow(footer(status), width, 3, metrics, { terminal: true });
+      // The status takes all the hints leave it, with no column of its own between them.
+      expect(desktop.infoWidth).toBe(Math.max(0, width - desktop.hintsWidth));
+      expect(desktop.hints.length).toBeGreaterThanOrEqual(terminal.hints.length);
+      if (desktop.hints.length > terminal.hints.length) keptMore += 1;
+    }
+    expect(keptMore).toBeGreaterThan(0);
+    // A status ending in its clock is clipped by the row there, the text before the clock kept as it is.
+    expect(fitPaneFooterInfo(status, 30).map((segment) => segment.id)).toEqual(status.map((segment) => segment.id));
+    expect(fitPaneFooterInfo(status, 30, { terminal: true }).at(-1)!.id).toBe("delay");
   });
 
   test("a warning icon read and turned muted keeps the room it had, so the hints do not move", () => {

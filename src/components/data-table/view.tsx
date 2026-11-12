@@ -14,7 +14,7 @@ import { isPlainKey, isPlainKeyboardEvent } from "../../utils/keyboard";
 import { DataTable, PaneStatusBody, type DataTableColumn, type DataTableProps, type PaneStatusBodyProps } from "../ui";
 import { useDataTableSortMenu } from "./sort-menu";
 import { useDataTableColumnMenuItems } from "./column-menu";
-import { tableFreezesFirstColumn, tableRevealLeft, tableScrollStep } from "../ui/table-layout";
+import { drawnTableColumns, tableFreezesFirstColumn, tableRevealLeft, tableScrollStep } from "../ui/table-layout";
 import { useDataTableColumnOrder } from "../ui/data-table/use-column-order";
 import {
   TableViewFrame,
@@ -717,13 +717,15 @@ export function DataTableView<
     // At either edge the key is still the table's, so it never falls through
     // to switch a tab.
     stopTableKey(event);
+    // The columns in their order, at the widths the terminal's fit drew them.
+    const drawn = drawnTableColumns.get(body) ?? columns;
     const nextLeft = tableScrollStep({
-      columns,
+      columns: drawn,
       columnGap: tableProps.columnGap,
       horizontalPadding: tableProps.horizontalPadding,
       frozenFirstColumn: tableFreezesFirstColumn({
         freezeFirstColumn: tableProps.freezeFirstColumn,
-        columns,
+        columns: drawn,
         columnGap: tableProps.columnGap,
         horizontalPadding: tableProps.horizontalPadding,
         viewportWidth,
@@ -762,7 +764,8 @@ export function DataTableView<
         if (scrollWidth > 0) revealedKeyRef.current = revealKey;
         return scrollWidth > 0;
       }
-      const shared = { columns, columnGap: tableProps.columnGap, horizontalPadding: tableProps.horizontalPadding };
+      // The columns in their order, at the widths the terminal's fit drew them.
+      const shared = { columns: drawnTableColumns.get(body) ?? columns, columnGap: tableProps.columnGap, horizontalPadding: tableProps.horizontalPadding };
       const nextLeft = tableRevealLeft({ ...shared, columnIndex: revealColumnIndex, viewportWidth, maxLeft,
         frozenFirstColumn: tableFreezesFirstColumn({ ...shared, freezeFirstColumn: tableProps.freezeFirstColumn, viewportWidth, overflows: true }) });
       if (nextLeft !== body.scrollLeft) {

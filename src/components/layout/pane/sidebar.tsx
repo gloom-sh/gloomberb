@@ -1,5 +1,7 @@
-import { createContext, startTransition, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Box, Text, useNativeRenderer, useUiCapabilities, type BoxRenderable } from "../../../ui";
+import { createContext, startTransition, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { Box, Text, useNativeRenderer, useUiCapabilities, useUiHost, type BoxRenderable, type ScrollBoxRenderable } from "../../../ui";
+import { afterLayout, revealInScrollBox } from "../../ui/reveal-in-scroll-box";
+import { observeScrollBoxContentSize, observeScrollBoxViewportSize } from "../../../renderers/opentui/scrollbox-layout";
 import { beginLiveResize, createCatchUp, type CatchUp } from "../../../ui/live-resize";
 import { capturePointerDrag } from "../../../ui/pointer-drag";
 import { blendHex, colors, hoverBg } from "../../../theme/colors";
@@ -37,7 +39,7 @@ const PaneSidebarContext = createContext<PaneSidebarContextValue | null>(null);
 
 function usePaneSidebarContext(): PaneSidebarContextValue {
   const context = useContext(PaneSidebarContext);
-  if (!context) throw new Error("PaneSidebarRow and PaneSidebarAction must be rendered inside PaneSidebar.");
+  if (!context) throw new Error("PaneSidebarList, PaneSidebarRow and PaneSidebarAction must be rendered inside PaneSidebar.");
   return context;
 }
 
@@ -309,20 +311,125 @@ export function PaneSidebar({
   );
 }
 
-export function PaneSidebarList({ children }: { children: ReactNode }) {
+interface PaneSidebarListContextValue {
+  /** Marks `node` as the row the list keeps in view, and brings it there. */
+  setCurrent: (node: BoxRenderable | null) => void;
+}
+
+const PaneSidebarListContext = createContext<PaneSidebarListContextValue | null>(null);
+
+/**
+ * Keeps the row `ref` is on in view while it is `current`: the row the
+ * keyboard is on, or the open item. Rows outside a PaneSidebarList, and the
+ * desktop list, which scrolls by CSS, ignore it.
+ */
+export function usePaneSidebarReveal(ref: RefObject<BoxRenderable | null>, current: boolean): void {
+  const list = useContext(PaneSidebarListContext);
+  useLayoutEffect(() => {
+    if (!list || !current) return;
+    list.setCurrent(ref.current);
+    return () => list.setCurrent(null);
+  }, [current, list, ref]);
+}
+
+export interface PaneSidebarListRenderState {
+  /** The width a row has beside the list's scrollbar, while it shows one. */
+  listWidth: number;
+}
+
+/**
+ * The scrolling part of a sidebar. The wheel scrolls it, a scrollbar shows
+ * while it holds more rows than fit, and the row a `PaneSidebarRow` marks
+ * `active` (or `usePaneSidebarReveal` marks current) stays in view as the
+ * keyboard moves it.
+ */
+export function PaneSidebarList({ children }: { children: ReactNode | ((state: PaneSidebarListRenderState) => ReactNode) }) {
   const { nativePaneChrome } = useUiCapabilities();
+  const sidebar = usePaneSidebarContext();
+  if (nativePaneChrome) {
+    return (
+      <Box
+        flexGrow={1}
+        flexShrink={1}
+        flexBasis={0}
+        minHeight={0}
+        data-gloom-role="pane-sidebar-list"
+        style={{ minHeight: 0, overflowX: "hidden", overflowY: "auto" }}
+      >
+        {typeof children === "function" ? children({ listWidth: sidebar.listWidth }) : children}
+      </Box>
+    );
+  }
+  return <TerminalPaneSidebarList sidebar={sidebar}>{children}</TerminalPaneSidebarList>;
+}
+
+function TerminalPaneSidebarList({ sidebar, children }: {
+  sidebar: PaneSidebarContextValue;
+  children: ReactNode | ((state: PaneSidebarListRenderState) => ReactNode);
+}) {
+  // The host's own ScrollBox, which the pane scroll keys do not drive: the
+  // list's keys move its cursor, and the pane's bring the cursor into view.
+  const { ScrollBox } = useUiHost();
+  const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+  const currentRef = useRef<BoxRenderable | null>(null);
+  const [scrollbar, setScrollbar] = useState(false);
+  const reveal = useCallback(() => afterLayout(() => revealInScrollBox(scrollRef.current, currentRef.current)), []);
+  const list = useMemo<PaneSidebarListContextValue>(() => ({
+    setCurrent: (node) => {
+      currentRef.current = node;
+      if (node) reveal();
+    },
+  }), [reveal]);
+  // The scrollbar shows once the rows outgrow the list, and takes a column
+  // from them. Read once the whole pass is laid out: the content is at least
+  // as tall as the viewport, and is not yet sized to it when the viewport
+  // reports.
+  const syncScrollbar = useCallback(() => afterLayout(() => {
+    const scrollBox = scrollRef.current;
+    if (!scrollBox) return;
+    const viewportHeight = scrollBox.viewport?.height ?? 0;
+    setScrollbar(viewportHeight > 0 && scrollBox.scrollHeight > viewportHeight);
+  }), []);
+  // A list that opens, or is made shorter or taller, brings the row under the
+  // cursor back into view. Rows coming and going, and the scrollbar taking a
+  // column, leave the scroll where the wheel put it.
+  const viewportHeightRef = useRef(0);
+  const syncViewport = useCallback(() => {
+    syncScrollbar();
+    const height = scrollRef.current?.viewport?.height ?? 0;
+    if (height === viewportHeightRef.current) return;
+    viewportHeightRef.current = height;
+    reveal();
+  }, [reveal, syncScrollbar]);
+  useEffect(() => observeScrollBoxViewportSize(scrollRef.current, syncViewport), [syncViewport]);
+  useEffect(() => observeScrollBoxContentSize(scrollRef.current, syncScrollbar), [syncScrollbar]);
+  // In the same frame as the rows narrow or widen for it.
+  useLayoutEffect(() => {
+    const bar = scrollRef.current?.verticalScrollBar;
+    if (bar) bar.visible = scrollbar;
+  }, [scrollbar]);
+  const listWidth = Math.max(1, sidebar.listWidth - (scrollbar ? 1 : 0));
+  const context = useMemo(() => ({ ...sidebar, listWidth }), [sidebar, listWidth]);
+
   return (
-    <Box
-      flexGrow={1}
-      flexShrink={1}
-      flexBasis={0}
-      minHeight={0}
-      overflow={nativePaneChrome ? undefined : "hidden"}
-      data-gloom-role="pane-sidebar-list"
-      style={nativePaneChrome ? { minHeight: 0, overflowX: "hidden", overflowY: "auto" } : undefined}
-    >
-      {children}
-    </Box>
+    <PaneSidebarContext.Provider value={context}>
+      <PaneSidebarListContext.Provider value={list}>
+        <ScrollBox
+          ref={scrollRef}
+          flexGrow={1}
+          flexShrink={1}
+          flexBasis={0}
+          minHeight={0}
+          scrollY
+          focusable={false}
+          verticalScrollbarOptions={{ visible: false }}
+          horizontalScrollbarOptions={{ visible: false }}
+          data-gloom-role="pane-sidebar-list"
+        >
+          {typeof children === "function" ? children({ listWidth }) : children}
+        </ScrollBox>
+      </PaneSidebarListContext.Provider>
+    </PaneSidebarContext.Provider>
   );
 }
 
@@ -349,6 +456,8 @@ export function PaneSidebarRow({
 }) {
   const { activeBackgroundColor, backgroundColor, keyboardFocused, listWidth } = usePaneSidebarContext();
   const [hovered, setHovered] = useState(false);
+  const rowRef = useRef<BoxRenderable>(null);
+  usePaneSidebarReveal(rowRef, active);
   const foregroundColor = active
     ? colors.selectedText
     : keyboardFocused
@@ -369,6 +478,7 @@ export function PaneSidebarRow({
 
   return (
     <Box
+      ref={rowRef}
       height={height}
       width={listWidth}
       flexDirection="row"

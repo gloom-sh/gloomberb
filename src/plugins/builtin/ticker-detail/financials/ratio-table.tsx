@@ -9,7 +9,7 @@ import {
 import { useAssetData } from "../../../runtime";
 import { colors, priceColor } from "../../../../theme/colors";
 import type { PricePoint } from "../../../../types/financials";
-import { padTo } from "../../../../utils/format";
+import { displayWidth, padTo } from "../../../../utils/format";
 import { useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
 import type { FinancialTableStatement } from "./aggregation";
 import { FINANCIAL_COL_W, financialLabelWidth } from "./model";
@@ -28,6 +28,28 @@ export type RatioTableColumn = DataTableColumn & (
 );
 
 const ratioRowKey = (row: RatioTableRow) => row.id;
+
+/**
+ * A ratio's name in the metric column, after its disclosure, a cell apart: as wide as it says
+ * (`contentWidth`), so the table fits the column to it whole. The desktop draws the disclosure as a
+ * path, not a glyph.
+ */
+export function ratioNameCell(
+  row: Extract<RatioTableRow, { kind: "ratio" }>,
+  color: string,
+): Pick<DataTableCell, "text" | "contentWidth" | "content"> {
+  const text = `${row.expanded ? "▾" : "▸"} ${row.label}`;
+  return {
+    text,
+    contentWidth: displayWidth(text),
+    content: (
+      <Box flexDirection="row" alignItems="center" gap={1}>
+        <DisclosureMarker expanded={row.expanded} color={color} />
+        <Text fg={color}>{row.label}</Text>
+      </Box>
+    ),
+  };
+}
 
 export interface PeriodEndHistoryState {
   data: PricePoint[] | undefined;
@@ -102,15 +124,8 @@ export function RatioTable({
         return { text: `    ${row.unitLabel}`, color: colors.textDim };
       }
       return {
-        text: `${row.expanded ? "▾" : "▸"} ${row.label}`,
+        ...ratioNameCell(row, colors.text),
         color: colors.text,
-        // The desktop draws the disclosure as a path, not a glyph.
-        content: (
-          <Box flexDirection="row" alignItems="center" gap={1}>
-            <DisclosureMarker expanded={row.expanded} color={colors.text} />
-            <Text fg={colors.text}>{row.label}</Text>
-          </Box>
-        ),
         onMouseDown: (event) => {
           event.preventDefault?.();
           event.stopPropagation?.();

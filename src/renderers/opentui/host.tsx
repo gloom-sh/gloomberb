@@ -13,6 +13,7 @@ import { installInteractionPerformanceRecorder } from "./interaction-performance
 import { provideKittyServices } from "./kitty-services";
 import { setTerminalReportsControlKeys } from "../../app/keybindings/terminal-keys";
 import { captureRendererFrame } from "./frame-capture";
+import { createFrameHits } from "./frame-hits";
 import {
   createTimerFrameDriver,
   installMarketDataFrameDriver,
@@ -245,6 +246,7 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
     removePostProcessFn: (processFn) => renderer.removePostProcessFn(processFn as any),
     copyToClipboardOSC52: (text) => renderer.copyToClipboardOSC52(text),
     captureFrame: () => captureRendererFrame(renderer),
+    frameHits: createFrameHits(renderer),
     async capturePaneImage(rect) {
       if (renderer.isDestroyed) throw new Error("The terminal has closed.");
       // Loaded on first use: the glyph atlas is only needed for a picture.
