@@ -162,9 +162,10 @@ describe("earnings transcript headless", () => {
     expect(callTitle(interim)).toBe("0016:HKEX H1 26");
     expect(findCallForQuarter([annual, interim], "H1 2026")?.id).toBe("shkp-h1");
     expect(findCallForQuarter([annual, interim], "1H26")?.id).toBe("shkp-h1");
-    // A year asks for the year's results call, a newer half aside; the half stands in only when it is all the year has.
+    // A year asks for the year's results call, a newer half aside, and never gets a half: not even when it is all the year has.
     expect(findCallForQuarter([interim, { ...annual, callAt: "2026-01-10T00:00:00Z" }], "FY2026")?.id).toBe("shkp-fy");
-    expect(findCallForQuarter([interim], "FY2026")?.id).toBe("shkp-h1");
+    expect(findCallForQuarter([interim], "FY2026")).toBeNull();
+    expect(findCallForQuarter([interim], "H1-2026")?.id).toBe("shkp-h1");
   });
   test("an event that is not an earnings call is listed by its label and is not the latest earnings call", () => {
     const deal: CloudEarningsCallPayload = {

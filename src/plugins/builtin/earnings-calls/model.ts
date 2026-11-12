@@ -303,12 +303,12 @@ export function findCallForQuarter(
     return sorted.find((call) => call.fiscalHalf === which && sameYear(call.fiscalYear, year ? Number(year) : null)) ?? null;
   }
 
-  // A year's call, never its half's (SHKP's interim and annual results calls share FY2026): the half only when it is all there is.
+  // A year's call, never its half's (SHKP's interim and annual results calls share FY2026), even when the half is all
+  // the year has so far: H1-2026 asks for that one.
   const fiscalYear = token.match(/^(?:FY)?(\d{2}|\d{4})$/);
   if (fiscalYear) {
     const year = Number(fiscalYear[1]);
-    const ofYear = sorted.filter((call) => sameYear(call.fiscalYear, year));
-    return ofYear.find((call) => !call.fiscalHalf) ?? ofYear[0] ?? null;
+    return sorted.find((call) => sameYear(call.fiscalYear, year) && !call.fiscalHalf) ?? null;
   }
 
   return null;
