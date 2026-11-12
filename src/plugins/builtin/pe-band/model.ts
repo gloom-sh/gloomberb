@@ -6,6 +6,7 @@ import { STALE_TRAILING_EPS_MS, trailingEpsSteps as sharedTrailingEpsSteps, type
 import { createValuationCurrencyContext } from "../../../time-series/valuation-currency";
 import type { FinancialStatement, PricePoint, TickerFinancials } from "../../../types/financials";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
+import { notTheShare } from "../../../utils/share-multiples";
 import { datedByReport, type ReportDate } from "./report-dates";
 
 export type { EpsStep };
@@ -209,6 +210,9 @@ export function projectPeBand(
   const empty: PeBandModel = { symbol: options.symbol, currency, weeks: [], rows: [], multiples: [], current: null, range: null, sample: null, bandCeiling: null,
     undated: 0, unavailable: 0, conversion: null, error: null, notice: null };
   if (!financials) return { ...empty, error: "Fundamentals unavailable." };
+  // A warrant's, a right's, a unit's or an unratioed receipt's price over its company's EPS is no P/E at any date.
+  const share = notTheShare(financials);
+  if (share) return { ...empty, error: `No P/E: ${share}.` };
   const allSteps = trailingEpsSteps(financials, options.reports);
   const latest = allSteps.findLast((step) => step.eps != null);
   if (!latest) return { ...empty, error: "No trailing EPS on record." };
