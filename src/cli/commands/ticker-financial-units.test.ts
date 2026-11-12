@@ -225,6 +225,27 @@ test("an EV whose gap is minority interest is the provider's, a bridge served in
   expect(await report(crossed)).toMatch(/^Enterprise Value 31B USD$/m);
 });
 
+// PAGP's 30 Sep 2026 balance sheet, read from its 10-Q alone: debt and cash, and no equity lines.
+test("a balance sheet with no minority interest line never puts the bridge in the provider's place, and the inputs line says why", async () => {
+  const september = { currency: "USD", marketCap: 6.04e9, totalDebt: 9.92e9, cash: 0.88e9, balanceSheetDate: "2026-09-30",
+    computed: 15.08e9, source: 26.41e9 };
+  const withCheck = (enterpriseValueCheck: NonNullable<TickerFinancials["fundamentals"]>["enterpriseValueCheck"]): TickerFinancials => ({
+    quote, annualStatements: [], quarterlyStatements: [], priceHistory: [],
+    fundamentals: { marketCap: 6.04e9, marketCapCurrency: "USD", enterpriseValue: 26.41e9, enterpriseValueCheck },
+  });
+  // The 12.21B of noncontrolling interest its 10-Q tags checks the provider's figure: 26.41B is 0.97x of 27.29B.
+  const filed = await report(withCheck({ ...september, status: "matches", minorityAndPreferred: 12.21e9, minorityFiled: true }));
+  expect(filed).toMatch(/^Enterprise Value 26\.41B USD$/m);
+  expect(filed).toContain("EV 26.41B USD is the provider's, within 5% of 27.29B: market cap 6.04B + total debt 9.92B - cash 880M"
+    + " + minority interest and preferred equity 12.21B from the company's filing (balance sheet 2026-09-30).");
+  // Where the filing tags none either, the provider's figure stands, and June's minority interest says why.
+  const unreported = await report(withCheck({ ...september, status: "unchecked",
+    minorityUnreported: { balanceSheetDate: "2026-06-30", value: 13.73e9 } }));
+  expect(unreported).toMatch(/^Enterprise Value 26\.41B USD$/m);
+  expect(unreported).toContain("EV 26.41B USD is the provider's: market cap 6.04B + total debt 9.92B - cash 880M (balance sheet 2026-09-30)"
+    + " is 15.08B with no minority interest, which that balance sheet does not report (13.73B on 2026-06-30), so the provider's figure stands.");
+});
+
 test("after the close the EV row and its note read one close, the cap rests on the shares shown, and a withdrawn EV says why", () => {
   // CHGG on 2026-10-13: the after-hours 0.74 quote beside the 0.7133 close. The row moved the provider's
   // 63.02M EV to the close (60.06M) while its note still read 63.02M against 43.61M computed at 0.74.

@@ -130,10 +130,14 @@ function datedSheets(financials: Pick<TickerFinancials, "annualStatements" | "qu
     .sort((a, b) => b.date.localeCompare(a.date));
 }
 
-/** Total equity including minority interest less common equity; null where either line is missing. */
+/**
+ * Total equity including minority interest less common equity, else what the company's filing tags for the date (a
+ * quarter read from the filing alone); null where the sheet gives neither.
+ */
 function minorityOnSheet(row: FinancialStatement | undefined): number | null {
   const gross = row?.totalEquityGrossMinorityInterest, common = row?.commonStockEquity;
-  return finite(gross) && finite(common) ? Math.max(0, gross - common) : null;
+  if (finite(gross) && finite(common)) return Math.max(0, gross - common);
+  return finite(row?.minorityAndPreferredEquity) ? Math.max(0, row.minorityAndPreferredEquity) : null;
 }
 
 /** The bridge Gloom Cloud computed beside a withdrawal, its minority interest and cash read as its balance sheet holds them. */
@@ -141,8 +145,8 @@ function checkBridge(check: EnterpriseValueCheck, financials: EnterpriseValueInp
   const sheetDate = check.balanceSheetDate ?? "";
   const row = [...financials.quarterlyStatements ?? [], ...financials.annualStatements ?? []]
     .find((statement) => statement.date.slice(0, 10) === sheetDate);
-  // Gloom Cloud serves the line only where both equity lines give a positive figure. A sheet on file without them, or
-  // one that is not on file, is named: never counted as zero.
+  // Gloom Cloud serves the line only where the equity lines or the filing give a positive figure. A sheet on file
+  // without them, or one that is not on file, is named: never counted as zero.
   const minority = finite(check.minorityAndPreferred) ? check.minorityAndPreferred : row ? minorityOnSheet(row) : null;
   return {
     sheetDate, marketCap: check.marketCap ?? 0, totalDebt: check.totalDebt ?? 0, leases: check.leases ?? 0, cash: check.cash ?? 0,

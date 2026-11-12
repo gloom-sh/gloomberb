@@ -326,7 +326,8 @@ export interface TtmConversion {
  * served beside it.
  * `matches` within 5%; `differs` beyond it (or beyond 2% on the other side of the market cap from net debt), within
  * 0.7x to 1.5x, shown labelled as the provider's; `withdrawn` outside that band, with no EV or EV/revenue; `unchecked`
- * without a recent balance sheet carrying both lines. `computed`: an insurer's or a holding company's EV, which is
+ * without a recent balance sheet carrying both lines, or where that balance sheet has no minority interest and an
+ * earlier one's accounts for the gap (`minorityUnreported`): the provider's figure stands. `computed`: an insurer's or a holding company's EV, which is
  * `computed` itself, its investment book kept in (`investmentsKept`). `not-meaningful`: the EV comes out at or below
  * zero, served as no EV or EV/revenue, with `reason`; shown N/M.
  */
@@ -348,10 +349,17 @@ export interface EnterpriseValueCheck {
   computed?: number;
   /**
    * Minority interest and preferred equity on the same balance sheet (total equity including minority interest less
-   * common equity), where both lines are there and the difference is positive. `computed` plus this is the EV the
-   * provider's is checked against and that stands in for it (bridgeEnterpriseValue).
+   * common equity, else what the company's filing tags for its date, `minorityFiled`), where it is positive.
+   * `computed` plus this is the EV the provider's is checked against and that stands in for it (bridgeEnterpriseValue).
    */
   minorityAndPreferred?: number;
+  /** `minorityAndPreferred` comes from the company's filing: the balance sheet has no equity lines. */
+  minorityFiled?: true;
+  /**
+   * On an `unchecked` check: the balance sheet and its filing give no minority interest, and this earlier balance sheet's
+   * accounts for the provider's EV above `computed`, so the provider's figure stands.
+   */
+  minorityUnreported?: { balanceSheetDate: string; value: number };
   /** `cash` is cash and equivalents alone: an insurer's or a holding company's investments stay in its EV. */
   investmentsKept?: true;
   /** Why the EV is not meaningful (`not-meaningful`), or why a withdrawn EV no balance sheet checked is withdrawn. */
@@ -1092,6 +1100,11 @@ export interface FinancialStatement {
   totalEquity?: number;
   totalEquityGrossMinorityInterest?: number;
   commonStockEquity?: number;
+  /**
+   * Minority interest and preferred equity as the company's 10-K or 10-Q tags them for the date: on a quarter Gloom
+   * Cloud reads from the filing alone, which has no equity lines.
+   */
+  minorityAndPreferredEquity?: number;
   commonStock?: number;
   capitalStock?: number;
   additionalPaidInCapital?: number;
