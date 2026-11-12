@@ -29,7 +29,7 @@ import {
 import { yearToDateBaseLabel } from "../../../market-data/market/year-to-date";
 import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { LATEST_DISTRIBUTION, TRAILING_DIVIDEND_BASIS } from "../../../utils/forward-dividend";
-import { formatCompact, formatNumber } from "../../../utils/format";
+import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
 import { ATTENTION_LISTED } from "../attention/listing";
 import { kpiFreeLimitNote } from "../company-kpis/model";
@@ -249,6 +249,8 @@ export function formatScreenValue(field: NumericField, value: number | null): st
   if (LETTER_GRADES.has(field)) return gradeLetter(value) ?? "--";
   if (field === "gradeComposite") return `${formatNumber(value, 2)} ${compositeLabel(value)}`;
   if (HUNDREDTHS.has(field)) return formatNumber(value, 2);
+  // The day's move reads as every quote list's CHG% does (+2.04%), not +2.0 (review, 12 Nov 2026).
+  if (field === "changePercent") return formatPercentRaw(value);
   // A value that rounds to zero prints 0.0, never -0.0.
   const fixed = Math.abs(value) < 0.05 ? "0.0" : formatNumber(value, 1);
   return SIGNED.has(field) && value > 0 && fixed !== "0.0" ? `+${fixed}` : fixed;
