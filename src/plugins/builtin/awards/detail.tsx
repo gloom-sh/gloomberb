@@ -8,9 +8,11 @@ import { fetchAward, loadAward } from "./client";
 import { awardPeriod, awardTypeLabel, money } from "./model";
 import { UpgradeLabel } from "../shared/locked-rows";
 
-export function AwardDetail({ row, accessKey, width, height, focused, openAward, openChildren, openUpgrade }: {
+export function AwardDetail({ row, accessKey, width, height, focused, openAward, openChildren, openUpgrade, attribution }: {
   row: AwardRow; accessKey: string; width: number; height: number; focused: boolean; openAward: (id: string) => void;
   openChildren: (type: "subaward" | "modification") => void; openUpgrade: () => void;
+  /** The statement the award's source licence asks for wherever its data is shown. */
+  attribution?: string;
 }) {
   const colors = useThemeColors();
   const host = useRendererHost();
@@ -70,6 +72,7 @@ export function AwardDetail({ row, accessKey, width, height, focused, openAward,
       {current.entity ? <KeyValueRow label="Entity match" value={`${current.entity.method.replaceAll("-", " ")} · ${Math.round(current.entity.confidence * 100)}%`} labelWidth={labelWidth} /> : null}
       {current.evidenceQuote ? <Box paddingY={1}><Text fg={colors.textBright} width={width - 2} wrapMode="word" wrapText>{current.evidenceQuote}</Text></Box> : null}
       <Text fg={colors.textDim} width={width - 2} wrapMode="word" wrapText>{current.sourceUrl}</Text>
+      {attribution ? <Text fg={colors.textDim} width={width - 2} wrapMode="word" wrapText>{attribution}</Text> : null}
       {Object.entries(current.fieldSourceUrls ?? {}).map(([field, url]) => <ActionRow key={field} label={`Open ${({ obligatedAmount: "obligation", ceilingAmount: "ceiling", awardAmount: "award value", parentRecipient: "parent relationship" } as Record<string, string>)[field] ?? field.replace(/([a-z])([A-Z])/g, "$1 $2").replaceAll("_", " ").toLowerCase()} evidence${current.fieldAsOf?.[field] ? ` · ${current.fieldAsOf[field]!.slice(0, 10)}` : ""}`} onPress={() => void host.openExternal(url)} />)}
       {current.entity ? <KeyValueRow label="Entity evidence" value={current.entity.evidenceUrl} labelWidth={labelWidth} /> : null}
       {current.entity ? <ActionRow label="Open entity evidence" onPress={() => void host.openExternal(current.entity!.evidenceUrl)} /> : null}

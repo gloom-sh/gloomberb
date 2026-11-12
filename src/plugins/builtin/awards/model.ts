@@ -85,6 +85,17 @@ export function awardsCoverageNotes(data: Pick<AwardsPayload, "gaps">): string[]
   return data.gaps.filter((gap) => gap !== NO_AWARDS);
 }
 
+/**
+ * The statements the licences of the sources shown ask for wherever their
+ * data is shown, each once, in the server's source order: the pane, the
+ * award's detail and `fn AWARDS` print them under the awards they cover.
+ */
+export function awardsAttributions(data: Pick<AwardsPayload, "sources"> | undefined, shown: Iterable<string>): string[] {
+  const sources = new Set(shown);
+  return [...new Set((data?.sources ?? []).flatMap((source) =>
+    sources.has(source.source) && typeof source.attribution === "string" && source.attribution.trim() ? [source.attribution.trim()] : []))];
+}
+
 /** Award dates after the response's own date are the source's, not a mapping slip; they say so instead of passing as past awards. */
 export function futureAwardDatesNote(rows: readonly AwardRow[], generatedAt: string): string | null {
   const today = generatedAt.slice(0, 10);

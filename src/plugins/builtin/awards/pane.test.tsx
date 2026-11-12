@@ -77,3 +77,24 @@ test("sector company leaders drill into the verified company's history within th
   await tui.waitForFrameToContain("Latest cohort");
   expect(requests.some((request) => request.includes("ticker=TEST") && request.includes("sector=Aircraft+Manufacturing") && request.includes("source=usaspending"))).toBe(true);
 });
+
+test("a source's licence statement shows under its awards, and nowhere else", async () => {
+  const notice = "Contains information from Government Procurement via GeBIZ accessed on 12 November 2026 from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence";
+  const source = { source: "sg-gebiz", enabled: true, lastAttemptAt: null, lastOkAt: "2026-11-12T09:00:00Z", nextPollAt: null, failures: 0, lastError: null, cursor: null,
+    coverageStart: "2021-04-01", coverageEnd: "2026-03-31", coverageComplete: true, records: 246, requestsToday: 0, attribution: notice };
+  const gebiz = awardRow({ id: "award-sg", source: "sg-gebiz", jurisdiction: "SG", currency: "SGD", title: "Maintenance for Network Uninterruptible Power Supply (UPS)",
+    recipient: { name: "NCS PTE. LTD." }, agency: { name: "Central Provident Fund Board" }, sourceUrl: "https://data.gov.sg/api/action/datastore_search?resource_id=d_acde1106003906a75c3fa052592f2fcb",
+    entity: { ...awardRow().entity!, ticker: "Z74", exchange: "SGX", legalName: "NCS PTE. LTD." }, revenueComparison: null });
+  let rows = [gebiz, awardRow()];
+  setCloudApiFetchTransport(async () => Response.json(awardsPayload({ rows, sources: [source] })));
+  await mount("feed", 120, 30);
+  expect(await tui.waitForFrameToContain("NCS PTE. LTD.")).toContain("Contains information from Government Procurement via GeBIZ");
+  // The award's own evidence carries it too.
+  await tui.emitKeypress({ name: "return" });
+  expect(await tui.waitForFrameToContain("Observed (UTC)")).toContain("Contains information from Government Procurement via GeBIZ");
+  // Awards from sources that ask for nothing show nothing new.
+  awardsCache.reset();
+  rows = [awardRow()];
+  await mount("feed", 120, 30);
+  expect(await tui.waitForFrameToContain("Contractor Corporation")).not.toContain("Contains information");
+});
