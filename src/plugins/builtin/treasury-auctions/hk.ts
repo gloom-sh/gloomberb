@@ -217,7 +217,7 @@ const HK_SORT_NAMES: ReadonlyArray<{ names: readonly string[]; column: HkColumnI
 ];
 
 /** The column a sort name means for Hong Kong's tenders; null for a US-only one (`indirect`, `btc-pctl`). */
-export function hkSortColumn(name: string): HkColumnId | null {
+function hkSortColumn(name: string): HkColumnId | null {
   const value = name.trim().toLowerCase().replace(/^-/, "");
   return HK_SORT_NAMES.find((entry) => entry.names.includes(value))?.column ?? null;
 }

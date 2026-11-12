@@ -635,7 +635,7 @@ export function auctionCommandRequest(arg: string | undefined): {
 }
 
 /** The column `--sort` names, by its name or an alias; null for anything else. */
-export function auctionSortColumn(value: string): AuctionColumnId | null {
+function auctionSortColumn(value: string): AuctionColumnId | null {
   const name = value.trim().toLowerCase();
   return AUCTION_SORT_NAMES.find((entry) => entry.value === name || entry.aliases?.includes(name))?.column ?? null;
 }
