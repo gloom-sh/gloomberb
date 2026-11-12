@@ -196,7 +196,8 @@ export function withHomeListingLead<T extends TickerSearchCandidate>(items: T[],
  * ticker, each company's first row then comes before further venues of one
  * already listed (Boyd Gaming's BYD on IEX, the ETF's AIA in Mexico), which
  * would push the other companies out of a short list. A line on a US
- * exchange, a home line and a saved row are no such copies. The lead's own
+ * exchange, a home line and a saved row are no such copies, and a line
+ * with no name of its own is no other company. The lead's own
  * home line, which `withHomeListingLead` put right after it, stays there. A
  * name typed as a name (`Aia`) or with its venue (AIA:NASDAQ) asks for
  * something else.
@@ -220,7 +221,9 @@ export function withNamedCompanyAfterUsLead<T extends TickerSearchCandidate>(ite
       && !isUsListingExchange(candidateExchange(item));
   });
   const others = rest.filter((item) => !copies.includes(item));
-  const last = others.findLastIndex(exact);
+  // A line with no name of its own (a nameless Buenos Aires DK) is no other company the copies would crowd out.
+  const ownName = (item: T) => !!item.result?.name?.trim() && !isPlaceholderLine(item);
+  const last = others.findLastIndex((item) => exact(item) && ownName(item));
   const crowding = copies.length > 0 && last >= 0 && rest.indexOf(copies[0]!) < rest.indexOf(others[last]!);
   if (!named.length && !crowding) return items;
   if (crowding) rest = [...others.slice(0, last + 1), ...copies, ...others.slice(last + 1)];
