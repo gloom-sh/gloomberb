@@ -474,7 +474,8 @@ this, except:
   puts around the strike, the option scenario's dates, the rate path's
   targets, OVDV's grids, reverse DCF's and Kelly's sensitivity grids, 13F's
   quarterly returns, the world curves' maturities and PERP's depth by
-  distance.
+  distance. A tool's answer in Ask Gloom keeps the tool's columns too: it is
+  read once, not a layout to keep with the pane.
 - A pane whose settings choose and order its columns (an ordered-multi-select,
   PF's and FUT's Columns) passes them as `columnReorder={{ control }}`, so a
   drag rewrites that setting and Settings lists the columns as the table
