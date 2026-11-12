@@ -29,12 +29,22 @@ describe("notTheShare", () => {
     ]) expect(notTheShare(listing(symbol!, exchange!, name!))).toBeUndefined();
   });
 
-  test("a Thai receipt of a foreign company has no ratio on record; a Thai company's share is its share", () => {
-    // SOFTBANK80: a receipt at 7.85 THB over SoftBank's 203.71 THB a share read 0.04x.
-    const softbank = listing("SOFTBANK80:SET", "SET", "SoftBank Group Corp.", {}, "JP");
-    expect(notTheShare(softbank)).toBe("a depositary receipt with no ratio on record to the share the EPS is per");
-    expect(notTheShare(listing("SCB80", "SET", "SCB X Public Company Limited", {}, "TH"))).toBeUndefined();
-    expect(notTheShare(listing("SOFTBANK80:SET", "SET", "SoftBank Group Corp.", { adrRatio: 0.01 }, "JP"))).toBeUndefined();
+  test("a receipt with no ratio on record is not the share; one with a ratio, and a company's own share, are", () => {
+    const noRatio = "a depositary receipt with no ratio on record to the share the EPS is per";
+    // SOFTBANK80: a Thai receipt at 7.85 THB over SoftBank's 203.71 THB a share read 0.04x; nothing flags it.
+    expect(notTheShare(listing("SOFTBANK80:SET", "SET", "SoftBank Group Corp.", {}, "JP"))).toBe(noRatio);
+    // LV on NEO, LVMH's Canadian receipt at CA$8.99, flagged with no ratio; NEST, Nestlé's, not flagged.
+    expect(notTheShare(listing("LV", "NEO", "LVMH Moët Hennessy - Louis Vuitton", { isDepositaryReceipt: true }, "FR"))).toBe(noRatio);
+    expect(notTheShare(listing("NEST", "NEO", "Nestlé S.A.", {}, "CH"))).toBe(noRatio);
+    for (const [symbol, exchange, fundamentals, country] of [
+      ["SCB80", "SET", {}, "TH"],
+      ["SHOP", "TSX", {}, "CA"],
+      ["TSM", "NYSE", { isDepositaryReceipt: true, adrRatio: 5 }, "TW"],
+      ["SOFTBANK80:SET", "SET", { adrRatio: 0.01 }, "JP"],
+    ] as const) expect(notTheShare(listing(symbol, exchange, "Company", fundamentals, country))).toBeUndefined();
+    const cedear = listing("MELI", "BYMA", "MercadoLibre", { isDepositaryReceipt: true }, "UY");
+    cedear.quote!.cedearRatio = { underlying: "MELI", shares: 1, receipts: 120 } as never;
+    expect(notTheShare(cedear)).toBeUndefined();
   });
 });
 

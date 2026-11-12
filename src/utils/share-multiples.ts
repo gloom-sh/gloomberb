@@ -37,9 +37,11 @@ type ShareInputs = Pick<TickerFinancials, "quote" | "profile" | "fundamentals">;
  * warrant, a right or a unit is not the share (BZFDW, BuzzFeed's warrant at
  * $0.0054, read 0.03x), and a depositary receipt with no ratio on record is
  * on another count than the share (SOFTBANK80 on SET, a Thai receipt at
- * 7.85 THB over SoftBank's 203.71 THB a share, read 0.04x). Gloom Cloud puts
- * a receipt whose ratio is on record on the receipt already. EQS reads the
- * same (the server's equity-screener share-multiples).
+ * 7.85 THB over SoftBank's 203.71 THB a share, read 0.04x; LV on NEO,
+ * LVMH's Canadian receipt at CA$8.99, 0.25x). Gloom Cloud puts a receipt
+ * whose ratio is on record on the receipt already (TSM's 5 shares, a
+ * CEDEAR's published ratio). EQS reads the same (the server's
+ * equity-screener share-multiples).
  */
 export function notTheShare(financials: ShareInputs): string | undefined {
   const quote = financials.quote;
@@ -55,11 +57,14 @@ export function notTheShare(financials: ShareInputs): string | undefined {
   const instrument = byName ?? (bySymbol ? instrumentOf(bySymbol) : undefined);
   if (instrument) return `a ${instrument} is not the share the EPS is per`;
   const country = financials.profile?.country?.trim().toUpperCase();
-  const ratio = financials.fundamentals?.adrRatio ?? quote.adrRatio;
-  if (venue === "SET" && THAI_RECEIPT.test(code) && country !== "TH" && !(typeof ratio === "number" && ratio > 0)) {
-    return "a depositary receipt with no ratio on record to the share the EPS is per";
-  }
-  return undefined;
+  const fundamentals = financials.fundamentals;
+  const receipt = quote.isDepositaryReceipt || fundamentals?.isDepositaryReceipt || fundamentals?.shareBasis === "depositary_receipt"
+    // Thai receipts and Cboe Canada's of companies abroad are not flagged as receipts.
+    || (venue === "SET" && THAI_RECEIPT.test(code) && country !== "TH")
+    || (venue === "NEO" && !!country && country !== "CA");
+  const ratio = [quote.adrRatio, fundamentals?.adrRatio].some((value) => typeof value === "number" && value > 0)
+    || !!(quote.cedearRatio ?? fundamentals?.cedearRatio);
+  return receipt && !ratio ? "a depositary receipt with no ratio on record to the share the EPS is per" : undefined;
 }
 
 const isReceipt = (financials: ShareInputs) => !!(
