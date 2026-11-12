@@ -1,6 +1,6 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
 import type { CdxBoardIndex, CreditIndexQuote } from "../../../api-client/credit-boards";
-import { CDX_MAX_DAYS, fetchCdxBoard, fetchSovrBoard, loadCurrencyMoves } from "./client";
+import { boardPublisher, CDX_MAX_DAYS, fetchCdxBoard, fetchSovrBoard, loadCurrencyMoves } from "./client";
 import { readsInBatches } from "../../../market-data/batched-reads";
 import {
   cdxDay,
@@ -54,11 +54,6 @@ const dayColumn: HeadlessPaneColumn = {
   description: "Blank for a complete day. For today's New York trade date, still trading: so far, the prints behind its level and the last one's time (UTC).",
   format: (value) => typeof value === "string" ? value : "",
 };
-
-/** The publisher a board's payload names, spelled out: `DTCC PPD` is DTCC's public price dissemination. */
-function boardPublisher(source: string | null | undefined): string | undefined {
-  return source?.trim().replace(/\bPPD\b/, "Public Price Dissemination") || undefined;
-}
 
 /**
  * Each day's level on the contract on the run that day, newest first, over

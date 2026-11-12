@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { getLanguage, setLanguage } from "../../i18n";
 import type { Quote } from "../../types/financials";
-import { formatQuoteAge, formatQuoteAgeWithSource, formatQuoteNavAsOf, getMostRecentQuoteUpdate } from "./time";
+import { formatQuoteAge, formatQuoteAgeWithSource, formatQuoteNavAsOf } from "./time";
 
 describe("quote-time", () => {
   test("formats sub-second quote age in milliseconds", () => {
@@ -24,7 +24,6 @@ describe("quote-time", () => {
     };
 
     expect(formatQuoteAgeWithSource(quote, now)).toBe("◷1s");
-    expect(getMostRecentQuoteUpdate([quote], now)).toBe(1_700_000_029_000);
   });
 
   test("counts whole seconds for a once-a-second clock, never below zero", () => {

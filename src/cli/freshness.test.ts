@@ -64,6 +64,20 @@ describe("quote status line", () => {
       .toBe("US trading day Fri 9 Oct 2026 close · 15-20 min delayed · markets closed · regular session opens Sun 23:00 UTC, Mon 10:00 AET");
   });
 
+  test("a stale feed's print from before its session's close is the last print, not the close", () => {
+    // The EGX 30 on Thu 12 Nov 2026: continuous trading to 14:15 Cairo, the closing auction to 14:25 (12:25 UTC).
+    const egx30 = (lastUpdated: string, stale: boolean) => cloudQuote({
+      symbol: "^CASE30", listingExchangeName: "EGX", instrumentType: "INDEX", stale, lastUpdated: Date.parse(lastUpdated),
+    });
+    const afterClose = "2026-11-12T12:39:00Z";
+    const stopped = quotesFreshness([egx30("2026-11-12T12:14:55Z", true)], undefined, Date.parse(afterClose))!;
+    expect(stopped).not.toHaveProperty("asOfClose");
+    expect(formatStatusLine(stopped)).toMatch(/^Last print Thu 12 Nov 2026 12:14 UTC · stale/);
+    // From the close on it is the close, stale or not; a current source's print of the day is its close.
+    expect(status([egx30("2026-11-12T12:25:00Z", true)], afterClose)).toMatch(/^EGX trading day Thu 12 Nov 2026 close · /);
+    expect(status([egx30("2026-11-12T12:14:55Z", false)], afterClose)).toMatch(/^EGX trading day Thu 12 Nov 2026 close · /);
+  });
+
   test("crypto trades around the clock, so it is never closed", () => {
     const now = "2026-10-10T13:00:00Z";
     const bitcoin = (dataSource: "live" | "delayed", minutesAgo: number) => cloudQuote({

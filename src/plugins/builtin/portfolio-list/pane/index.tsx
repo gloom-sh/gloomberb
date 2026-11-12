@@ -783,9 +783,10 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       ...offlineBrokerFooter.asOf,
       ...summaryFooterInfo,
       ...offlineBrokerFooter.status,
+      // The delay clock beside the quotes' source and time; the FX note after it gives way first on a narrow row.
+      ...(quoteDelay ? [quoteDelay] : []),
       ...(fxStatusText && !fxWarning ? [{ id: "fx", parts: [{ text: `FX ${fxStatusText}`, tone: "muted" as const }] }] : []),
       ...(showsPerpetuals && perpetuals.stale ? [{ id: "perpetuals", parts: [{ text: "perpetuals stale", tone: "warning" as const }] }] : []),
-      ...(quoteDelay ? [quoteDelay] : []),
     ],
     hints: [
       ...offlineBrokerFooter.hints,

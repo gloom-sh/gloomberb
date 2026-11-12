@@ -15,6 +15,8 @@ import { formatPercentileRank } from "../../../utils/format";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedHongKongMoneyMarkets, getCachedMoneyMarkets, loadHongKongMoneyMarkets, loadMoneyMarkets } from "./client";
+import { moneyMarketReport, moneyMarketsHeadless } from "./headless";
+import { reportFooterSegment } from "../shared/source-footer";
 import { isHongKongTab, MONEY_MARKET_TABS, moneyMarketAxis, moneyMarketChange, moneyMarketCurves, moneyMarketNotices, moneyMarketObservations, moneyMarketRateChange, moneyMarketRowNotices, moneyMarketRows, moneyMarketValue } from "./model";
 
 const TABS = MONEY_MARKET_TABS.map(({ value, label }) => ({ value, label }));
@@ -128,6 +130,12 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
   } : null;
   const figures = billsTab ? billsItems : [];
   const updatedAgo = useUpdatedAgo(active.updatedAt);
+  const sourceLine = useMemo(() => {
+    if (!shown) return null;
+    const report = moneyMarketReport(hongKong ? hongKongData?.rows ?? [] : data ? moneyMarketRows(data, tab) : [], hongKong);
+    return reportFooterSegment(moneyMarketsHeadless, { ...report.freshness ? { freshness: report.freshness } : {},
+      sections: [{ title: "", columns: [], rows: report.rows }] });
+  }, [data, hongKong, hongKongData, shown, tab]);
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true });
   const bodyHeight = Math.max(3, height - tabRows);
   useAutoRefresh(active.updatedAt, active.load);
@@ -137,7 +145,8 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
       ...(active.data?.refreshError ? [active.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: "money-markets", focused, loading: active.loading, error: active.error,
     url: selected?.observation.sourceUrl ?? null, showOpenHint: true,
-    info: shown && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
+    // Its source and the rows' dates, as `fn BTMM` ends; how long ago it loaded goes first on a narrow row.
+    info: shown ? [sourceLine!, ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : [])] : [],
     stale: !!shown && active.data?.stale,
   });
   return <Box width={width} height={height} flexDirection="column">

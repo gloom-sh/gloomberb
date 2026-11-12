@@ -38,13 +38,15 @@ export interface SessionObservation {
   time: ReportTime | null;
   /** The regular sessions an index quote carries, for a publisher the app has no calendar for. */
   calendar?: QuoteIndexSession;
+  /** Its source says it is stale: a feed that stopped, whose last print is no close unless it came after one. */
+  stale?: true;
 }
 
 interface VenueSession {
   state: ReportMarketState | "always";
   next?: { date: string; open: number; firstTrade?: true };
-  /** The latest regular session that has closed: its local date and open. */
-  last?: { date: string; open: number | null };
+  /** The latest regular session that has closed: its local date, open and close. */
+  last?: { date: string; open: number | null; close?: number };
   timeZone?: string;
   /** The sessions are the quote's own, not a calendar of the venue. */
   quoted?: true;
@@ -75,7 +77,7 @@ function venueSession(exchange: string, marketState: string | undefined, now: nu
   if (next) {
     const { timeZone } = next;
     const latestClose = latestRegularSessionClose(exchange, now);
-    const last = latestClose ? { date: latestClose.date, open: latestRegularSessionOpen(exchange, latestClose.close) } : undefined;
+    const last = latestClose ? { date: latestClose.date, open: latestRegularSessionOpen(exchange, latestClose.close), close: latestClose.close } : undefined;
     if (isRegularSessionTime(exchange, now)) return { state: "open", timeZone };
     if (isUsListingExchange(exchange)) {
       const today = zonedDateKey(now, timeZone);
@@ -119,7 +121,7 @@ function quotedSessions({ timeZone, current, regular }: QuoteIndexSession, now: 
     timeZone,
     quoted: true,
     ...(current.start > now ? { next: { date: zonedDateKey(current.start, timeZone), open: current.start } } : {}),
-    ...(closed ? { last: { date: zonedDateKey(closed.start, timeZone), open: closed.start } } : {}),
+    ...(closed ? { last: { date: zonedDateKey(closed.start, timeZone), open: closed.start, close: closed.end } } : {}),
   };
 }
 
@@ -127,9 +129,43 @@ function quotedSessions({ timeZone, current, regular }: QuoteIndexSession, now: 
 const FX_VENUE = "CCY";
 
 /**
+ * How long before a calendar's close a print still is the close. The close a
+ * calendar keeps includes the closing auction and any trading at the close
+ * (the Egyptian Exchange: continuous trading to 14:15, the auction to 14:25),
+ * and a minute bar is stamped when it opens; a print before that, from
+ * continuous trading, is the session's last print, not its close.
+ */
+const CLOSING_PRINT_WINDOW_MS = 10 * 60_000;
+
+/**
+ * Where a print stands in its venue's latest closed session: from its close
+ * on, before it, or in neither (another day, before the open, no calendar).
+ */
+function printInLastSession(time: number, session: VenueSession): "close" | "before-close" | null {
+  const last = session.last;
+  if (!last || !session.timeZone) return null;
+  if (last.open != null && time < last.open) return null;
+  if (zonedDateKey(time, session.timeZone) !== last.date) return null;
+  return last.close != null && time < last.close - CLOSING_PRINT_WINDOW_MS ? "before-close" : "close";
+}
+
+/**
+ * A stale feed's print from before its session's close: the feed stopped
+ * early (the EGX 30's 12:14:55 UTC read at 12:39, the venue closing 12:25),
+ * so the print is its last, not the close. A current source's print of that
+ * day is its close, whenever the venue's regular trading ended (TWSE at
+ * 13:30, its calendar running to its after-hours trading's 14:30).
+ */
+function isPreClosePrint(observation: SessionObservation, session: VenueSession): boolean {
+  const time = observation.time;
+  return !!observation.stale && !!time && !time.dateOnly && printInLastSession(time.time, session) === "before-close";
+}
+
+/**
  * The newest observation is its venue's latest close: the venue has not
  * opened since, and the print is from that session's day, after its open (an
- * after-hours print of that day counts). Returns that session's local date.
+ * after-hours print of that day counts), and not a stale feed's from before
+ * its close (`isPreClosePrint`). Returns that session's local date.
  */
 function closeDateOf(observation: SessionObservation, session: VenueSession, now: number): string | null {
   const time = observation.time;
@@ -143,8 +179,7 @@ function closeDateOf(observation: SessionObservation, session: VenueSession, now
     return isFxWeekClosePrint(time.time, weekClose) ? zonedDateKey(weekClose - 1, "America/New_York") : null;
   }
   if (session.last && session.timeZone) {
-    if (session.last.open != null && time.time < session.last.open) return null;
-    return zonedDateKey(time.time, session.timeZone) === session.last.date ? session.last.date : null;
+    return printInLastSession(time.time, session) && !isPreClosePrint(observation, session) ? session.last.date : null;
   }
   // No calendar: the source says the session is over, and the print is dated in UTC.
   return session.state === "closed" && !session.last ? new Date(time.time).toISOString().slice(0, 10) : null;
@@ -213,7 +248,7 @@ export function reportVenueSessionDates(observations: readonly SessionObservatio
     // A venue in its session whose newest row is from an earlier day has not printed today: that row is its last close.
     const exchange = canonicalExchange(observation.exchange);
     const latestClose = session.state === "open" && session.timeZone ? latestRegularSessionClose(exchange, now) : null;
-    const last = latestClose ? { date: latestClose.date, open: latestRegularSessionOpen(exchange, latestClose.close) } : session.last;
+    const last = latestClose ? { date: latestClose.date, open: latestRegularSessionOpen(exchange, latestClose.close), close: latestClose.close } : session.last;
     const closeDate = closeDateOf(observation, { ...session, last }, now);
     const date = closeDate
       ?? (session.timeZone ? zonedDateKey(observation.time.time, session.timeZone) : new Date(observation.time.time).toISOString().slice(0, 10));
@@ -263,14 +298,15 @@ export function reportVenueMarkets(observations: readonly SessionObservation[], 
 
 /**
  * Where the markets behind a quote report stand now, and whether the newest
- * observation is a close, and whose. Null market when the venues disagree
- * (Tokyo open, New York closed), trade around the clock, or none can be
- * placed; a report then says nothing rather than guess.
+ * observation is a close, and whose, or the last print of a session that
+ * closed after it (`lastPrint`: a feed that stopped before the close). Null
+ * market when the venues disagree (Tokyo open, New York closed), trade around
+ * the clock, or none can be placed; a report then says nothing rather than guess.
  */
 export function reportMarketSession(
   observations: readonly SessionObservation[],
   now: number,
-): { market: ReportMarket | null; closeDate: string | null; closeMarket: string | null } {
+): { market: ReportMarket | null; closeDate: string | null; closeMarket: string | null; lastPrint?: true } {
   const sessions = new Map<string, VenueSession>();
   let newest: { observation: SessionObservation; session: VenueSession; exchange: string } | null = null;
   for (const observation of observations) {
@@ -294,7 +330,9 @@ export function reportMarketSession(
     : null;
   const reopen = reopening?.next ?? null;
   const closeDate = (state === "closed" || state === "pre-market") && newest ? closeDateOf(newest.observation, newest.session, now) : null;
+  const lastPrint = !closeDate && (state === "closed" || state === "pre-market") && newest && isPreClosePrint(newest.observation, newest.session);
   return {
+    ...(lastPrint ? { lastPrint: true as const } : {}),
     market: {
       state,
       ...(reopen ? {

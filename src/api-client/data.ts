@@ -213,6 +213,17 @@ function batchAnswers<K extends string, T>(response: CloudMarketResponse<CloudBa
 const LISTING_RETRY_DELAY_MS = 400;
 
 /**
+ * How long the service's answer that it has no quote for a listing stands.
+ * Resolving the symbol, quoting it and checking whether it stopped trading
+ * each ask about a symbol nothing lists: one answer serves them all, so an
+ * unknown symbol fails at once instead of after each asks the service again.
+ */
+const QUOTE_NOT_FOUND_MS = 60_000;
+
+const isNotFound = (answer: { status?: string; reasonCode?: string } | null | undefined) =>
+  answer?.status === "empty" && answer.reasonCode === "NOT_FOUND";
+
+/**
  * Whether a failed listing read is asked again: the service answered that its
  * own source failed (`retryable_error`, or the catch-all `fatal_error`, with no
  * data), or failed with a 5xx or a timeout. A rate limit is never asked again,
@@ -280,6 +291,17 @@ export class CloudDataApi {
    * soon as sixteen reads have.
    */
   private readonly histories = this.historyCoalescer(false);
+
+  /** Each quote path the service said it has no quote for, and when (`QUOTE_NOT_FOUND_MS`). */
+  private readonly quotesNotFound = new Map<string, number>();
+
+  private quoteNotFound(path: string): CloudMarketResponse<CloudQuotePayload> | null {
+    const said = this.quotesNotFound.get(path);
+    if (said == null) return null;
+    if (Date.now() - said < QUOTE_NOT_FOUND_MS) return { status: "empty", reasonCode: "NOT_FOUND", data: null };
+    this.quotesNotFound.delete(path);
+    return null;
+  }
 
   /**
    * The same over one window of dates (a portfolio's holdings over the risk
@@ -571,7 +593,12 @@ export class CloudDataApi {
     symbol: string,
     exchange?: string,
   ): Promise<CloudMarketResponse<CloudQuotePayload>> {
-    return this.readListing(() => this.requestMarketSymbol("/market/quote", symbol, exchange));
+    const path = cloudMarketSymbolPath("/market/quote", symbol, exchange);
+    const known = this.quoteNotFound(path);
+    if (known) return known;
+    const answer = await this.readListing(() => this.request<CloudMarketResponse<CloudQuotePayload>>(path));
+    if (isNotFound(answer)) this.quotesNotFound.set(path, Date.now());
+    return answer;
   }
 
   async getCloudQuotesBatch(

@@ -1,4 +1,4 @@
-import { useCallback, type Dispatch } from "react";
+import { useCallback, useRef, type Dispatch } from "react";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import {
   addPaneFloating,
@@ -39,6 +39,7 @@ import type {
 } from "../../types/plugin";
 import type { DialogApi } from "../../ui/dialog";
 import {
+  gridDockTarget,
   resolvePaneShowTarget,
   resolvePaneTarget as resolvePaneTargetInLayout,
   selectEdgeAnchor,
@@ -170,6 +171,9 @@ export function useAppPaneRuntime({
     if (isPaneDetached(nextLayout, paneId)) focusDetachedPane?.(paneId);
   }, [activatePane, focusDetachedPane, persistLayout, state.config.layout]);
 
+  /** The layouts this window has been filling from empty, which a new pane docks into as a grid (gridDockTarget). */
+  const gridLayouts = useRef(new Set<string>());
+
   const placePaneInstance = useCallback((
     instance: PaneInstanceConfig,
     paneDef: PaneDef,
@@ -178,7 +182,8 @@ export function useAppPaneRuntime({
     const { width, height } = pluginRegistry.getTermSize();
     // Templates can await ticker resolution before placing their pane, so the
     // layout from the render that started the request may be out of date.
-    const { config: { layout }, focusedPaneId } = stateRef.current;
+    const { config, focusedPaneId } = stateRef.current;
+    const { layout } = config;
     const relativeTo = options?.relativeToPaneId
       ? resolvePaneTarget(options.relativeToPaneId, layout)
       : (focusedPaneId && isPaneInLayout(layout, focusedPaneId) ? focusedPaneId : null);
@@ -186,7 +191,14 @@ export function useAppPaneRuntime({
     let nextLayout = layout;
     const dockedPaneIds = getDockedPaneIds(nextLayout);
 
-    if (options?.placement === "floating" || (options?.placement !== "docked" && paneDef.defaultMode === "floating")) {
+    const floating = options?.placement === "floating" || (options?.placement !== "docked" && paneDef.defaultMode === "floating");
+    // A pane that would float, as most functions ask to, docks into a layout being built as a grid; one placed
+    // beside a given pane goes there.
+    const grid = floating && !options?.relativeToPaneId
+      ? gridDockTarget(gridLayouts.current, config, instance.instanceId, { width, height }) : null;
+    if (grid) {
+      nextLayout = addPaneToLayout(nextLayout, instance, grid);
+    } else if (floating) {
       nextLayout = addPaneFloating(nextLayout, instance, width, height, paneDef, { focusedPaneId });
     } else if (relativeTo && findDockLeaf(nextLayout, relativeTo)) {
       nextLayout = addPaneToLayout(nextLayout, instance, { relativeTo, position: relativePosition });
@@ -286,6 +298,7 @@ export function useAppPaneRuntime({
     dataProvider,
     dispatch,
     focusVisiblePane,
+    gridLayouts: gridLayouts.current,
     persistLayout,
     pluginRegistry,
     stateRef,

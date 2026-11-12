@@ -20,8 +20,10 @@ const NOT_MODULES = new Set(["shared"]);
 // PortWatch publishes the chokepoint transits, and the IMF's terms ask for attribution; TurkStat, Türkiye's
 // statistics institute, compiles the Turkish CPI the central bank republishes. DefiLlama publishes the open
 // DeFi TVL data whose measure the total is, which CRYP's DeFi tab already names as its source. TSA, the U.S.
-// Transportation Security Administration, publishes the daily checkpoint travel numbers.
-const PUBLISHERS = new Set(["FRED", "BIS", "EIA", "CFTC", "FINRA", "Bundesbank", "Bank of England", "Japan Ministry of Finance", "Bank of Canada", "Banxico", "Tesouro Nacional", "ECB", "U.S. Treasury", "SEC", "Ember", "EEX", "GIE AGSI+", "IMF PortWatch", "TurkStat", "IBGE", "NAHB", "MAS", "DefiLlama", "TSA"]);
+// Transportation Security Administration, publishes the daily checkpoint travel numbers. DTCC's swap data
+// repository publishes the public CDS trade reports whose daily medians the CDX and sovereign CDS series are,
+// as `fn SOVR` and `fn CDX` name their source.
+const PUBLISHERS = new Set(["FRED", "BIS", "EIA", "CFTC", "FINRA", "Bundesbank", "Bank of England", "Japan Ministry of Finance", "Bank of Canada", "Banxico", "Tesouro Nacional", "ECB", "U.S. Treasury", "SEC", "Ember", "EEX", "GIE AGSI+", "IMF PortWatch", "TurkStat", "IBGE", "NAHB", "MAS", "DefiLlama", "TSA", "DTCC"]);
 const SAMPLE_INPUTS = { ticker: "AAPL", option: "AAPL260618C00200000", crypto: "BTC-USD" } as const;
 
 function sourceFiles(dir: string): string[] {

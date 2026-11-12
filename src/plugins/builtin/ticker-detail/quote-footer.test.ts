@@ -30,7 +30,9 @@ const nvda: Quote = {
   stale: false,
 };
 
-const warning = (quote: Quote) => tickerQuoteFooterInfo(quote, null, 120).map((segment) => segment.parts.map((part) => part.text).join(" "));
+const segments = (quote: Quote) => tickerQuoteFooterInfo(quote, null, 120);
+const warning = (quote: Quote) => segments(quote).filter((segment) => segment.id !== "ticker-research-source")
+  .map((segment) => segment.parts.map((part) => part.text).join(" "));
 
 describe("ticker footer on a signed-out delayed feed", () => {
   test("US closed overnight: Tuesday's last print is the current price, with no warning", () => {
@@ -56,4 +58,14 @@ describe("ticker footer on a signed-out delayed feed", () => {
     expect(warning({ ...nvda, marketState: "REGULAR", stale: true, lastUpdated: Date.parse("2026-11-11T14:40:00Z") }))
       .toEqual(["Stale quote 2026-11-11 14:40Z"]);
   });
+});
+
+// A quote that was current named nothing in the footer: `vs Wed 11 Nov close` in the body, and no source or time.
+test("a current quote's footer names its source and its time, as `quote` ends", () => {
+  at("2026-11-11T15:00:00Z");
+  const line = segments({ ...nvda, marketState: "REGULAR", price: 169.9, lastUpdated: Date.parse("2026-11-11T14:44:00Z") })
+    .find((segment) => segment.id === "ticker-research-source");
+  expect(line?.parts[0]?.text).toBe("Gloom Cloud · 14:44 UTC · markets open");
+  // A narrow footer keeps the source and the time before the market.
+  expect(line?.variants?.map((parts) => parts[0]!.text)).toContain("Gloom Cloud · 14:44 UTC");
 });

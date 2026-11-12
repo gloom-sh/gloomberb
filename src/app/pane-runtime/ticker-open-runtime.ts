@@ -11,6 +11,7 @@ import {
 import type { PluginRegistry } from "../../plugins/registry";
 import { PluginOffError, notifyPluginOff } from "../../plugins/plugin-off";
 import { findFixedTickerPaneForSymbol } from "../../layout/ticker-navigation";
+import { gridDockTarget } from "./layout-placement";
 import type { AppAction, AppState } from "../../state/app/context";
 import { findPaneInstance, TICKER_RESEARCH_PANE_ID, normalizePaneId } from "../../types/config";
 import type {
@@ -56,6 +57,8 @@ interface UseAppTickerOpenRuntimeOptions {
   dataProvider: DataProvider;
   dispatch: Dispatch<AppAction>;
   focusVisiblePane: (paneId: string, layout?: LayoutConfig) => void;
+  /** The layouts this window has been filling from empty, which a new pane docks into as a grid (gridDockTarget). */
+  gridLayouts?: Set<string>;
   persistLayout: (layout: LayoutConfig, options?: { pushHistory?: boolean; focusedPaneId?: string | null }) => void;
   pluginRegistry: PluginRegistry;
   stateRef: { current: AppState };
@@ -145,6 +148,7 @@ export function useAppTickerOpenRuntime({
   dataProvider,
   dispatch,
   focusVisiblePane,
+  gridLayouts,
   persistLayout,
   pluginRegistry,
   stateRef,
@@ -212,7 +216,10 @@ export function useAppTickerOpenRuntime({
     const currentLayout = currentState.config.layout;
     const { width, height } = pluginRegistry.getTermSize();
     const shouldFloat = options?.floating ?? true;
-    const nextLayout = shouldFloat
+    // A pane that would float docks into a layout being built as a grid, as any other pane does.
+    const grid = shouldFloat && gridLayouts
+      ? gridDockTarget(gridLayouts, currentState.config, instance.instanceId, { width, height }) : null;
+    const nextLayout = grid ? addPaneToLayout(currentLayout, instance, grid) : shouldFloat
       ? addPaneFloating(currentLayout, instance, width, height, paneDef, { focusedPaneId: currentState.focusedPaneId })
       : addPaneToLayout(
         currentLayout,
@@ -230,7 +237,7 @@ export function useAppTickerOpenRuntime({
     }
     activatePane(instance.instanceId, opening ? { trackTicker: false } : undefined);
     return instance.instanceId;
-  }, [activatePane, buildPaneInstance, dispatch, persistLayout, pluginRegistry, stateRef]);
+  }, [activatePane, buildPaneInstance, dispatch, gridLayouts, persistLayout, pluginRegistry, stateRef]);
 
   const placePinnedTickerTarget = useCallback((target: TickerOpenTarget, options?: PinTickerOptions, typed?: string) => {
     const paneType = normalizePaneId(options?.paneType ?? TICKER_RESEARCH_PANE_ID);

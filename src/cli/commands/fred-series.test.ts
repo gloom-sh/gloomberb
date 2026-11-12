@@ -12,13 +12,13 @@ import {
   fredHistoryNotes,
   fredInterval,
   fredObservationsFromStart,
-  fredPublicationTime,
   fredUnit,
   fredValueCell,
   isSpreadSeries,
   laggingSeriesNote,
   parseFredChange,
 } from "./fred-series";
+import { fredPublicationTime } from "../../sources/gloomberb-cloud/fred-attribution";
 
 test("a table prints every observation at the series' precision, which FRED's dropped zeros and float noise do not lower or raise", () => {
   // FRED serves 5.10 and 5.00 as 5.1 and 5; beside 5.09 they print as 5.10 and 5.00.

@@ -606,6 +606,33 @@ export function countriesWithoutEvents(filter: CountryFilter, events: ReadonlyAr
 }
 
 /**
+ * The countries the calendar covers: those of the currencies its release feed
+ * lists (the euro area's members under EU), the banks whose decisions and the
+ * statistics offices whose CPI releases Gloom Cloud keeps, and Hong Kong's and
+ * Singapore's government bond auctions.
+ */
+const CALENDAR_COUNTRIES: ReadonlySet<string> = new Set([
+  "US", "EU", ...Object.values(EURO_AREA_MEMBERS), "GB", "JP", "CN", "CA", "AU", "NZ", "CH",
+  "IN", "ID", "KR", "BR", "MX", "RU", "TR", "ZA", "NO", "SE", "HK", "SG",
+]);
+
+/**
+ * Countries the filter names that the calendar does not cover (EG, NG, AR):
+ * none it knows of, and none any row of the loaded calendar is for, so no
+ * release of theirs would show however long the window.
+ */
+export function countriesNotInCalendar(filter: CountryFilter, events: ReadonlyArray<Pick<EconEvent, "country" | "event">>): string[] {
+  const listed = new Set(countriesWithoutEvents(filter, events));
+  return filterCountries(filter).filter((country) => listed.has(country) && !CALENDAR_COUNTRIES.has(country));
+}
+
+/** "EG is not in the calendar", or EG, NG and AR are (`countriesNotInCalendar`). */
+export function notInCalendarMessage(countries: readonly string[]): string {
+  const named = countries.length > 1 ? `${countries.slice(0, -1).join(", ")} and ${countries.at(-1)}` : countries.join("");
+  return `${named} ${countries.length > 1 ? "are" : "is"} not in the calendar.`;
+}
+
+/**
  * "No scheduled releases for MX in this window", or for MX or ZA; with the
  * day the listing ends, where it does ("; releases are listed through 2026-11-20").
  */

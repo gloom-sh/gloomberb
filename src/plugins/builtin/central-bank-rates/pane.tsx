@@ -13,7 +13,12 @@ import { formatPercentileRank } from "../../../utils/format";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedCentralBankRates, loadCentralBankRates } from "./client";
-import { hasNoPolicyRate, policyBoardRow, policyChange, policyChangeDate, policyHistory, policyLevel, policyNotices, policyRate } from "./model";
+import { centralBankRatesHeadless } from "./headless";
+import { reportFooterSegment } from "../shared/source-footer";
+import {
+  hasNoPolicyRate, policyBoardRow, policyChange, policyChangeDate, policyHistory, policyLevel, policyNotices, policyObservations, policyRate,
+  policySource,
+} from "./model";
 
 const PANELS = [{ id: "main" }];
 
@@ -38,7 +43,7 @@ function PolicyDetail({ row, width, height, focused }: { row: CentralBankRow; wi
     ...row.latestDecision === undefined ? [] : [{ id: "decided", label: row.latestDecision?.kind === "fixing" ? "Last fixing" : "Last decision",
       value: row.latestDecision?.date ?? "--" }],
     { id: "meeting", label: row.nextMeeting?.kind === "fixing" ? "Next fixing" : "Next meeting", value: row.nextMeeting?.date ?? "--" },
-    { id: "source", label: "Source", value: row.source?.toUpperCase() ?? "--", detail: row.sourceSeriesIds.join(", ") || undefined },
+    { id: "source", label: "Source", value: policySource(row) ?? "--", detail: row.sourceSeriesIds.join(", ") || undefined },
     { id: "instrument", label: "Instrument", value: row.instrument, detail: row.centralBank ?? undefined, wide: true },
   ];
   return <StatChartDetail items={items} width={width} height={height} empty={!history.some((point) => point.value != null)}
@@ -63,7 +68,9 @@ export function CentralBankRatesPane({ width, height, focused }: PaneProps) {
     notices: [...(data ? policyNotices(data) : []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: "central-bank-rates", focused, loading: resource.loading, error: resource.error,
     url: selected?.observation.sourceUrl ?? null, showOpenHint: true,
-    info: data && updatedAgo ? [ageFooterSegment(updatedAgo)] : [],
+    // Its sources and the rows' dates, as `fn CBR` ends; how long ago it loaded goes first on a narrow row.
+    info: data ? [reportFooterSegment(centralBankRatesHeadless, { sections: [], freshness: { observations: policyObservations(data) } }),
+      ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : [])] : [],
     stale: !!data && resource.data?.stale,
   });
   return <Box width={width} height={height} flexDirection="column">

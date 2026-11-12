@@ -617,6 +617,24 @@ describe("PortfolioListPane cash and margin UI", () => {
       type: "success",
       body: "Added MSFT to Watchlist.",
     });
+    // The add is done: the row closes, empty, and typing no longer goes into it.
+    expect(tui.frame()).toContain("+ ticker");
+    await act(async () => {
+      await tui.setup().mockInput.typeText("x");
+      await tui.setup().renderOnce();
+    });
+    expect(tui.frame()).toContain("+ ticker");
+    // Opened again, a longer symbol shows whole, its first letter not scrolled away ("+ SDTRY=X").
+    await act(async () => {
+      tui.setup().mockInput.pressKey("a");
+      await tui.setup().renderOnce();
+    });
+    await act(async () => {
+      await tui.setup().mockInput.typeText("USDTRY=X");
+      await tui.setup().renderOnce();
+    });
+    await flushFrame();
+    expect(tui.frame()).toContain("+ USDTRY=X");
   });
 
   test("quick-add adds an exact ticker to a manual portfolio", async () => {

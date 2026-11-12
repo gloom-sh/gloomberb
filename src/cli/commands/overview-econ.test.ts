@@ -145,6 +145,12 @@ test("--country takes ISO codes, comma lists and regions; a country with nothing
   expect(list).toContain("Housing Starts");
   expect(list).not.toContain("German ZEW");
   expect(list).toContain("No scheduled releases for MX in this window.");
+  // A country the calendar does not cover is not a quiet window: it says so, beside the rows of the ones it does.
+  const frontier = await econText(withTurkey, ["--country", "TR,EG,NG,AR"]);
+  expect(frontier).toContain("CPI y/y");
+  expect(frontier).toContain("EG, NG and AR are not in the calendar.");
+  expect(frontier).not.toContain("No scheduled releases");
+  expect(await econText(withTurkey, ["--country", "EG,MX"])).toContain("EG is not in the calendar. No scheduled releases for MX in this window; releases are listed through 2026-11-03.");
   await expect(econText(withTurkey, ["--country", "TUR"])).rejects.toThrow('Unknown country "TUR".');
   await expect(econText(withTurkey, ["--country", "MX,XQ"])).rejects.toThrow('Unknown country "XQ".');
 });

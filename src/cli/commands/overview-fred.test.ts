@@ -6,6 +6,10 @@ import { captureConsole } from "../../test-support/console";
 import { DEFAULT_CLI_OPTIONS } from "../options";
 import { serializeCliResult } from "../result";
 import { overviewCliCommands } from "./overview";
+import { baseEconomicSeries } from "../../time-series/base-series";
+import { fredSeriesAttribution } from "../../sources/gloomberb-cloud/fred-attribution";
+import type { FredSeriesLoadResult } from "../../sources/gloomberb-cloud/fred-series";
+import type { ChartSeriesSpec } from "../../time-series/types";
 
 const fred = overviewCliCommands.find((command) => command.name === "fred")!;
 
@@ -222,6 +226,29 @@ test("a series FRED does not carry names its publisher and where it is read from
   const sora = await runFred(["SORA"]);
   expect(sora.text).toContain("Contains information from MAS's Domestic Interest Rates, made available under the Singapore Open Data Licence version 1.0.");
   expect(sora.text.split("\n").at(-1)).toStartWith("Source: MAS via its domestic interest rates page, published 2026-11-05");
+});
+
+test("a chart and its export cite a series as fred does: its own publisher and when it published, never Gloom Cloud", async () => {
+  const data = {
+    observations: [
+      { date: "2026-09-01", value: 29.73, publisher: "TurkStat", publishedAt: "2026-10-05T07:05:00.000Z" },
+      { date: "2026-08-01", value: 31.51, publisher: "TurkStat" },
+    ],
+    info: { id: "TURCPIYOY", title: "Türkiye CPI, y/y", units: "Percent change from year ago", frequency: "Monthly", observationEnd: "2026-09-01" },
+  };
+  serveSeries(() => data);
+  const turkey = await runFred(["TURCPIYOY"]);
+  const spec = { id: "s1", source: { kind: "economic", provider: "fred", seriesId: "TURCPIYOY" } } as unknown as ChartSeriesSpec;
+  const chart = baseEconomicSeries(spec, { data, fetchedAt: 0, stale: false, source: "network" } as unknown as FredSeriesLoadResult, 0)!;
+  expect(chart.attribution).toEqual({
+    source: turkey.result.freshness!.source!, publisher: "TurkStat", publishedAt: "2026-10-05T07:05:00.000Z",
+  });
+  expect(chart.attribution!.source).toBe("TurkStat via the CBRT, published 2026-10-05");
+  // A series FRED lists cites FRED, its publisher as FRED names it, and when FRED last updated it.
+  const dgs10 = { observations: [{ date: "2026-10-09", value: 4.11 }], info: { id: "DGS10", source: "Board of Governors of the Federal Reserve System (US)", observationEnd: "2026-10-09", lastUpdated: "2026-10-12 15:16:37-05" } };
+  expect(fredSeriesAttribution("DGS10", dgs10 as never)).toEqual({
+    source: "FRED", publisher: "Board of Governors of the Federal Reserve System (US)", publishedAt: "2026-10-12T20:16:37.000Z",
+  });
 });
 
 test("a monthly series is dated by its month, and a lagging one carries its note", async () => {

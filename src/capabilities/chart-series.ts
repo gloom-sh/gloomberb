@@ -235,8 +235,10 @@ function resolvedOutput(value: unknown): ResolvedSeries {
   const kind = timeBasis?.kind === undefined ? undefined : enumValue<"market">(timeBasis.kind, "time basis kind", new Set(["market"]));
   const warning = optionalString(input.warning, "resolve output warning", 500);
   const attribution = input.attribution === undefined ? undefined : object(input.attribution, "resolve output attribution");
-  if (attribution) onlyKeys(attribution, "resolve output attribution", ["source", "publisher"]);
+  if (attribution) onlyKeys(attribution, "resolve output attribution", ["source", "publisher", "publishedAt"]);
   const publisher = attribution ? optionalString(attribution.publisher, "resolve output publisher", 160) : undefined;
+  const publishedAt = attribution ? optionalString(attribution.publishedAt, "resolve output publication time", 64) : undefined;
+  if (publishedAt !== undefined && !Number.isFinite(Date.parse(publishedAt))) fail("resolve output publication time", "expected an ISO date.");
   return {
     id: boundedString(input.id, "resolve output ID", 160),
     label: boundedString(input.label, "resolve output label", 160),
@@ -271,6 +273,7 @@ function resolvedOutput(value: unknown): ResolvedSeries {
     ...(attribution ? { attribution: {
       source: boundedString(attribution.source, "resolve output source", 160),
       ...(publisher !== undefined ? { publisher } : {}),
+      ...(publishedAt !== undefined ? { publishedAt } : {}),
     } } : {}),
     ...(input.hidden !== undefined
       ? typeof input.hidden === "boolean" ? { hidden: input.hidden } : fail("resolve output hidden", "expected a boolean.")
