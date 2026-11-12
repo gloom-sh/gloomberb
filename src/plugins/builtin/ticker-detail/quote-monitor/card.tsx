@@ -23,6 +23,7 @@ import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/fr
 import { delistingLabel, delistingStateLabel } from "../../../../market-data/quotes/delisting";
 import { formatQuoteNavAsOf, formatQuoteSessionAsOf } from "../../../../market-data/quotes/time";
 import { ClippedText } from "../../../../components/ui/display";
+import { useSelectionFill } from "../../../../components/ui/selection-fill";
 import { useQuoteFlashDirection } from "../../../../components/quote-flash";
 import { followLiveSparklinePrice } from "../../../../components/price-sparkline/model";
 import {
@@ -163,6 +164,7 @@ export function QuoteMonitorCard({
   onOpen: (symbol: string) => void;
 }) {
   const { nativePaneChrome, cellWidthPx = 8 } = useUiCapabilities();
+  const selectionFill = useSelectionFill();
   const quote = resolveEntryData(quoteEntry) ?? cachedFinancials?.quote;
   const queriedPriceHistory = resolveEntryData(chartEntry);
   const barHistory = queriedPriceHistory && queriedPriceHistory.length >= 2
@@ -251,9 +253,10 @@ export function QuoteMonitorCard({
     onSelect,
     onActivate: onOpen,
   });
-  // The terminal marks the cursor on the symbol; the desktop rings the card.
-  const symbolFg = selected && !nativePaneChrome ? colors.selectedText : colors.textBright;
-  const symbolBg = selected && !nativePaneChrome ? colors.selected : undefined;
+  // The terminal marks the cursor on the symbol, quieter while the board does
+  // not have the keys; the desktop rings the card.
+  const symbolFg = selected && !nativePaneChrome && selectionFill.lit ? colors.selectedText : colors.textBright;
+  const symbolBg = selected && !nativePaneChrome ? selectionFill.bg : undefined;
 
   return (
     <Box
