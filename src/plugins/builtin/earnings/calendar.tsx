@@ -88,9 +88,11 @@ function locate(grid: readonly Slot[][][], key: string | null): Position | null 
 /** What hovering a logo says: the company, when it reports and, once out, how it did. */
 function reportTitle(report: BoardReport): string {
   const when = report.timing ? TIMING_LABEL[report.timing] : "time not set";
+  // A listing abroad's figures say their currency (CNY for Tencent), as the table's CCY does.
+  const currency = report.currency && report.currency !== "USD" ? ` ${report.currency}` : "";
   const figures = report.epsActual != null
-    ? `EPS ${epsText(report.epsActual)} vs ${epsText(report.epsEstimate)} est${report.epsSurprise != null ? `, ${signedPercent(report.epsSurprise)}` : ""}`
-    : report.epsEstimate != null ? `EPS est ${epsText(report.epsEstimate)}` : null;
+    ? `EPS ${epsText(report.epsActual)} vs ${epsText(report.epsEstimate)} est${currency}${report.epsSurprise != null ? `, ${signedPercent(report.epsSurprise)}` : ""}`
+    : report.epsEstimate != null ? `EPS est ${epsText(report.epsEstimate)}${currency}` : null;
   return [`${report.symbol} · ${report.name}`, when, figures].filter(Boolean).join(" · ");
 }
 
@@ -267,6 +269,14 @@ const TILE_STYLE = {
 } as const;
 /** The logo of a calendar tile: a square near two cells tall, most of the slot's width. */
 const LOGO_STYLE = { width: "calc(var(--cell-h) * 1.75)", height: "calc(var(--cell-h) * 1.75)", flexShrink: 0 } as const;
+/** The ticker under the logo is never wider than its tile: it ends in an ellipsis instead of running under the next. */
+const LABEL_STYLE = { maxWidth: "100%", minWidth: 0 } as const;
+
+/** A tile's ticker: a listing abroad's code without its venue (0700 for 0700:HKEX), which the tile's title names. */
+function tileLabel(symbol: string): string {
+  const venue = symbol.indexOf(":");
+  return venue > 0 ? symbol.slice(0, venue) : symbol;
+}
 
 function ReportTile({ report, selected, onPress, tileRef }: {
   report: BoardReport;
@@ -299,7 +309,9 @@ function ReportTile({ report, selected, onPress, tileRef }: {
       <Box style={LOGO_STYLE}>
         <CompanyLogoMark symbol={report.symbol} name={report.name} size="lead" />
       </Box>
-      <ClippedText text={report.symbol} width={CALENDAR_SLOT_CELLS - 1} fg={ink} attributes={TextAttributes.BOLD} />
+      <Box style={LABEL_STYLE}>
+        <ClippedText text={tileLabel(report.symbol)} width={CALENDAR_SLOT_CELLS - 1} fg={ink} attributes={TextAttributes.BOLD} />
+      </Box>
     </Box>
   );
 }

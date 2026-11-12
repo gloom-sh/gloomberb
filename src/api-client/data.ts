@@ -559,6 +559,7 @@ export class CloudDataApi {
     const params = new URLSearchParams({ from: query.from, to: query.to });
     if (query.perDay != null) params.set("perDay", String(query.perDay));
     if (query.symbols?.length) params.set("symbols", query.symbols.join(","));
+    if (query.markets) params.set("markets", query.markets);
     return this.request<EarningsCalendarPayload>(`/cloud/earnings/calendar?${params}`, { signal: AbortSignal.timeout(30_000) });
   }
 

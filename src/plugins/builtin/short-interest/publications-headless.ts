@@ -9,6 +9,8 @@ export function publicationHeadless(kind: PublicationKind): HeadlessPaneDefiniti
     shape: "bundle", options: [],
     argument: { kind: "ticker", description: "US equity ticker.", placeholder: "ticker" },
     usListingsOnly: fails ? "SEC fails to deliver" : "FINRA weekly off-exchange volume",
+    // Both report OTC securities: a receipt over the counter (TCEHY) has its fails and its weekly volume.
+    usListingsOtc: true,
     freshness: { source: fails ? "SEC" : "FINRA", status: "not-a-feed", basis: fails ? "settlement-date outstanding fails" : "published off-exchange volume",
       schedule: fails ? "published twice monthly" : "published weekly with a delay", observedKey: "date", oldest: null },
     discovery: {
