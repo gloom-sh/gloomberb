@@ -631,6 +631,7 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
           if (data.unreadRows?.length) {
             stats.push(["Not loaded", cliStyles.warning(data.unreadRows.map((symbol) => data.unreadReasons?.[symbol] ? `${symbol} (${data.unreadReasons[symbol]})` : symbol).join(", "))]);
           }
+          if (data.blankColumns?.length) stats.push(["Blank columns", cliStyles.warning(data.blankColumns.join(", "))]);
           if (data.render.emptyStateMarkers.length > 0) stats.push(["Empty states", data.render.emptyStateMarkers.join(", ")]);
           if (data.render.missingExpectedText.length > 0) stats.push(["Missing text", data.render.missingExpectedText.join(", ")]);
           return [`Saved ${displayPath(data.outputPath)}`, renderStats(stats)].join("\n");

@@ -125,6 +125,8 @@ export interface PaneScreenshotReadinessSignals {
   semanticMismatch: boolean;
   requiresStructuredDataEvidence: boolean;
   hasStructuredDataEvidence: boolean;
+  /** Columns blank in every row the capture drew (`shotBlankColumns`). */
+  blankColumns?: readonly string[];
 }
 
 export interface PaneScreenshotResult {
@@ -152,6 +154,8 @@ export interface PaneScreenshotResult {
   unusableReason: string | null;
   /** The pane drew the capture's refusal of the requests it reads its content with (CHAT's channels). */
   refused?: true;
+  /** Columns blank in every row the capture drew, by their headers: data the pane lost (`shotBlankColumns`). */
+  blankColumns?: string[];
   dataEvidence: PaneScreenshotDataEvidence | null;
   /** What the pane says its view leaves out, such as OMON's "21 of 145 strikes". */
   notices?: string[];

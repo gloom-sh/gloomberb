@@ -281,8 +281,9 @@ const HALT_COLUMNS: readonly HaltColumn[] = [
   { id: "date", label: "DATE ET", width: 9, align: "left" },
   { id: "age", label: "AGE", width: 6, align: "right" },
   { id: "halted", label: "HALT ET", width: 9, align: "left" },
-  { id: "quote", label: "QUOTE ET", width: 11, align: "left" },
-  { id: "trade", label: "TRADE ET", width: 11, align: "left" },
+  // Set when quoting and trading resume: a halt still in force has neither.
+  { id: "quote", label: "QUOTE ET", width: 11, align: "left", mayBeBlank: true },
+  { id: "trade", label: "TRADE ET", width: 11, align: "left", mayBeBlank: true },
   { id: "duration", label: "HALTED FOR", width: 12, align: "right" },
   { id: "status", label: "STATUS", width: 8, align: "left" },
 ];

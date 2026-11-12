@@ -263,7 +263,12 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
 
   const openTicker = useInlineTickerOpener();
 
+  // The rows come in after the pane mounts, every time it mounts (docking or
+  // floating it mounts it again), so no rows yet says nothing about which row
+  // was selected. Only a loaded table with no such row moves the selection.
+  const rowsLoaded = !!payload && status === "loaded";
   useEffect(() => {
+    if (!rowsLoaded) return;
     if (tradeRows.length === 0) {
       if (selectedTradeId !== null) setSelectedTradeId(null);
       return;
@@ -271,9 +276,10 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
     if (!selectedTrade || !selectedTradeId) {
       setSelectedTradeId(tradeRows[0]!.id);
     }
-  }, [selectedTrade, selectedTradeId, setSelectedTradeId, tradeRows]);
+  }, [rowsLoaded, selectedTrade, selectedTradeId, setSelectedTradeId, tradeRows]);
 
   useEffect(() => {
+    if (!rowsLoaded) return;
     if (memberRows.length === 0) {
       if (selectedMemberId !== null) setSelectedMemberId(null);
       return;
@@ -281,7 +287,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
     if (!selectedMember || !selectedMemberId) {
       setSelectedMemberId(memberRows[0]!.id);
     }
-  }, [memberRows, selectedMember, selectedMemberId, setSelectedMemberId]);
+  }, [memberRows, rowsLoaded, selectedMember, selectedMemberId, setSelectedMemberId]);
 
   useEffect(() => {
     if (!payload || status !== "loaded") return;
