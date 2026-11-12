@@ -892,7 +892,7 @@ When the `PF` table comes back into sight after two minutes away, LAST is tinted
 - Each row has shares, average cost, last price, market value and unrealized P&L in the portfolio's currency, its weight of the total with cash (see [Cash, target weights and rebalancing](#cash-target-weights-and-rebalancing)), and when its price is from. Rows run largest first, then the cash line. With target weights set, each row adds its target, drift and the trade that reaches it.
 - `--close` values them at the regular close (see [What a portfolio is priced at](#what-a-portfolio-is-priced-at)).
 - `--limit` caps the rows (50 by default, at most 200). The totals always cover every position.
-- Name the portfolio or watchlist by its ID or name. Without one it reads your first portfolio. A watchlist returns its tickers with their quotes.
+- Name the portfolio or watchlist by its ID or name, or the start of one name (`PF family` opens Family Office while no other name starts so; the command bar names them when several do). Without one it reads your first portfolio. A watchlist returns its tickers with their quotes.
 
 Published layouts keep portable pane setup and state (searches, chart viewport, drawings). Credentials, accounts, portfolios and pane fields marked private stay local. Publishing copies a durable `term.gloom.sh/l/...` link.
 
@@ -1160,6 +1160,7 @@ Cboe's Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) print their level
 - A coin pair written the way crypto exchanges write it, `BTC/USD`, is the coin `BTC-USD`. A currency pair such as `EUR/USD` stays a currency pair.
 - Every spelling of a currency pair is one listing: `USD/NGN`, `usd/ngn`, `USDNGN=X` and `USDNGN:CCY` are all `USDNGN=X`, and `JPY=X` is `USDJPY=X`. `USD-NGN` and `USDNGN` read the same unless a security is listed under those letters (`MNT-USD` stays the coin).
 - A share class written `BRK.B` or `BRK-B`, the listing named with its exchange (`BRK.B:NYSE`) and the one you saved are one listing.
+- A US share class typed without its mark, `"BRK B"` or `BRKB`, is that class (the row you saved first), never a fund named for it, and the note names the code's lines abroad: `Read "BRKB" as BRK.B (Berkshire Hathaway Inc.); also BRKB:BMV, BRKB:WSE.` A code that trades in the US, or abroad as another company (`HEIA` is Heineken), stays as typed.
 - A symbol written like a pair that is not a ticker names the nearest listing: ``Not a ticker: USD_NGN. Did you mean USDNGN=X (US Dollar/Nigerian Naira)?``
 
 **Stopped listings.** A listing whose quote stopped more than half a year ago says so under the table: `TWTR: no longer trading since 2022-10-27 (last price $53.86)`.
@@ -1529,7 +1530,8 @@ A list leaves such a ticker out and says so. `LITI` takes funds too, and `FA` sh
 
 - A name nothing opens (`fn volsurf SPY`) fails with the five closest functions and `Search the catalog: gloom catalog volsurf`.
 - A code one slip from a function's code names it and the command that runs it: `fn RCDF PLTR` says `Unknown function or pane "RCDF". Did you mean RDCF (Reverse DCF)?` and `Run: gloom fn RDCF PLTR`. A name near no code says `No function code is close to ZZQX. List every function: gloom catalog`.
-- A function code typed as a command (`gloom OVDV KO`, `gloom help OVDV`) answers `OVDV is a function: gloom fn OVDV KO`. Any other unknown command says `Unknown command` and the closest command.
+- A function code typed as a command (`gloom OVDV KO`, `gloom help OVDV`) answers `OVDV is a function: gloom fn OVDV KO`. Any other unknown command says `Unknown command` and the closest command. A word that names a function and is one slip from a command lists the functions first: `gloom screen` names `gloom fn EQS` (Equity Screener), then `Did you mean screenshot?`.
+- A `portfolio` subcommand that does not exist, where no collection has the name either (`portfolio rebalance Main`), says so, with the closest subcommand or the list of them, `gloom portfolio show` for weights, drift and the trades that rebalance a book, and `portfolio target set`.
 - A word written as a ticker (`gloom PLTR`, `gloom BRK.B`) adds `To quote it: gloom quote PLTR` and `Find the ticker: gloom search PLTR`.
 - A currency pair or a currency typed alone, in any spelling (`gloom eurusd`, `gloom EUR/USD`, `gloom eur`, `gloom yen`), reads as the pair, a currency as its pair against the dollar the way markets quote it: `Unknown command "eurusd": it reads as EUR/USD.`, then `To quote it: gloom quote EURUSD=X` and `Rate, conversion and forwards: gloom fx EUR/USD`. A three-letter code in capitals may be a ticker as well (`COP` is ConocoPhillips, `NOK` Nokia): it keeps the ticker answer, `quote` and `search`, and adds the pair's lines (`As a currency it reads as USD/COP: gloom quote USDCOP=X`).
 - A function the catalog suggests for an unknown word runs with what was typed after it. A pair, a currency's name or a code in lowercase is written as its pair for a function that takes FX (`prices eur` suggests `gloom fn HP EURUSD=X`); any other function, and a code in capitals (`peers NOK` suggests `gloom fn RV NOK --peers`), keep the word as typed. A volatility function, which OTC FX volatility does not reach, takes the currency fund whose options stand in, and says so: `skew eur` suggests `gloom fn OVDV FXE`, with `FXE's options stand in for EUR/USD: OTC FX volatility is not covered.`
@@ -2064,7 +2066,7 @@ The broker's last account snapshot is kept across restarts, and the footer gives
 
 `gloom portfolio show <name>` adds Income and Yield for a portfolio of shares or funds. **Income** is a year of trailing dividends on the shares held, in the portfolio's currency, and **Yield** is that over the holding's value (on TOTAL, over the whole portfolio, cash included). A short owes the dividend, so its income is negative.
 
-A holding whose income is unknown shows `—`, and so does the total, never $0. One line under the table names the cause (no dividend history, no exchange rate, or not read: signed out, offline or past the four-second deadline).
+A holding whose income is unknown shows `—`, never $0. TOTAL then adds up the income of the holdings that have one, its yield over their value, and one line under the table names each holding it leaves out and why (no dividend history, no exchange rate, or not read: signed out, offline or past the ten-second deadline, the time a price read gets): `TOTAL income and yield leave out TLT:NASDAQ (dividends not read within 10s).` With no holding's income known, TOTAL shows `—` too. `--json` keeps `annualIncome` null and adds what is known in `knownAnnualIncome`.
 
 Income paid in another currency converts into the portfolio's at the latest rate, as its value does. A holding with no rate into it keeps the Income and Yield columns, with `—` and the note under the table.
 
@@ -2164,7 +2166,9 @@ The terms in the table:
 
 `portfolio show <name> --explain` follows the table with what each term means. [gloom.sh/docs/portfolio](https://gloom.sh/docs/portfolio) walks through a small rebalance.
 
-In `PF`, a portfolio with targets shows `WEIGHT`, `TGT WT`, `DRIFT` and `TRADE` after `MKT VAL`, unless the pane's columns already include target columns (`TRADE VAL` is in the column settings; `TARGET` and `TARGET%` are the analysts' price target). With cash entered by hand the header shows `Total` and `Cash`, with the cash's weight and drift.
+In `PF`, a portfolio with targets shows `WEIGHT`, `TGT WT`, `DRIFT` and `TRADE` right after `TICKER` (after `WEIGHT` where the pane's columns place it), unless the pane's columns already include target columns (`TRADE VAL` is in the column settings; `TARGET` and `TARGET%` are the analysts' price target). Sorting by `DRIFT` (a header click, or **Sort by…** in the pane menu) puts the largest drift first, overweight or underweight. A portfolio with cash or targets ends in a `CASH` row, with its weight, target, drift and trade, and a `TOTAL` row with the whole book, cash included, and the targets' sum; with targets that add up to 100% the trades and cash's sum to nothing.
+
+`t` sets the target weight of the row under the cursor, `CASH` included, and `Shift+T` clears it, as `portfolio target set` and `target clear` do (also **Set Target Weight…** and **Clear Target** in the pane menu). The notice says when the targets no longer add up to 100%.
 
 ## Broker position sync
 
@@ -2652,14 +2656,14 @@ Select a coloured table row to locate its trail, and open it for dated strength 
 
 ## Portfolio risk depth: PORT and MARS
 
-`PORT` opens portfolio market risk. `MARS` is its alias. Add a local portfolio's ID or name, in any case, to select it (`PORT main`, `PORT Family`). Every command and function that takes a portfolio or watchlist reads it that way, and in the command bar a name no portfolio has (`PORT Nope`, `PF Nope`, `EXPO PORT:Nope`) shows a row listing the ones there are instead of opening the first.
+`PORT` opens portfolio market risk. `MARS` is its alias. Add a local portfolio's ID or name, in any case, to select it (`PORT main`, `PORT Family`), or the start of one name (`PORT fam` while no other name starts so). Every command and function that takes a portfolio or watchlist reads it that way, and in the command bar a name no portfolio has (`PORT Nope`, `PF Nope`, `EXPO PORT:Nope`) shows a row listing the ones there are instead of opening the first.
 
 - Views: Risk, Factors, Holdings, Correlation, Stress, Performance, Attribution and Greeks. Enter opens a metric's evidence and history, Escape returns.
 - Click portfolio tabs or press `p` to switch portfolios. `i` imports local account evidence from the clipboard and `r` refreshes Cloud observations. Tables support sorting and CSV export.
 
 ### Benchmark and stress
 
-The return rows and tracking error are measured against SPY (`60D benchmark return (SPY)`) over the trailing 60 sessions.
+The return rows and tracking error are measured against SPY (`60D benchmark return (SPY)`) over the trailing 60 sessions. A holding's session is in the window once its close is final: after 16:00 New York a US book runs through that day's close.
 
 - For a portfolio made with `portfolio import --13f`, the pane's **Risk window** setting or `--since filed` measures them from the 13F's filing date instead (a portfolio without one keeps the trailing 60 and says so). The basket is then the 13F's own weights bought at the filing-date close and held, and the report's first line says so.
 - `--weights current` (the pane's **Since-filing weights** setting) holds today's weights fixed over the same sessions instead.
@@ -2771,7 +2775,8 @@ Returns, EPS and revenue revisions, upside (the analysts', the Graham number's a
 Results lead with the chosen metric and its covered-universe percentile, then one column per numeric criterion and context columns (market cap, price, change, P/E, revenue growth, operating margin, dividend yield) as width allows. Stale values are amber, and an AS OF column dates the chosen metric where it is stale.
 
 - Price, change and market cap follow the live quote while the regular session trades. Otherwise they are the last regular close and its move, as `quote` shows them, and a PRE-MKT, AFTER-HRS or OVERNIGHT column beside CHG% carries the extended print's move while a row has one. The screen filters, sorts and ranks by the close.
-- Click a metric header to sort by it and make it the focus, again to reverse. The footer shows the number of matches and the currency. Its ⚠ opens only what the data service says about the snapshot you are looking at, such as company names read from a fallback. The universe is the same for every screen, so it is described here and not warned about: about five thousand listings with recent financials, not every listed equity. A company outside it reads **Not covered** in a ticker check.
+- P/E, forward P/E and P/B are over the price the row shows, with the EPS and book `valuation` reads, so one ticker has one P/E at one time in both. A row takes the company's name as its quote gives it.
+- Click a metric header to sort by it and make it the focus, again to reverse. A valuation multiple (P/E, forward P/E, P/B, EV/revenue, EV/EBITDA) sorts cheapest first; any other metric largest first. The footer shows the number of matches and the currency. Its ⚠ opens only what the data service says about the snapshot you are looking at, such as company names read from a fallback. The universe is the same for every screen, so it is described here and not warned about: about five thousand listings with recent financials, not every listed equity. A company outside it reads **Not covered** in a ticker check.
 - Enter opens a company's dated observations, `o` opens it in Ticker Research.
 
 **Ideas** holds ready technical screens of companies above $2 billion: oversold in an uptrend (RSI 14 at most 30 over the 200-session average), a fresh golden cross (10 sessions), a 52-week high breakout (at the last session, largest first), a Bollinger squeeze (width percentile at most 5) and MACD turning up in an uptrend. Beside them are three fundamental screens. **Value**: FCF yield at least 6%, EV/EBITDA at most 10x and net debt within 3x EBITDA, highest yield first. **Quality**: ROIC at least 15%, net debt within 2x EBITDA, revenue CAGR 5Y at least 5% and positive free cash flow, highest ROIC first. **GARP**: consensus EPS growth of 10% to 25% for the year in progress, EPS CAGR 3Y at least 10%, forward P/E at most 20x and ROIC at least 10%, fastest growth first. Then eight screens on the classic scores and one on the grades:
