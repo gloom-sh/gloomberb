@@ -340,7 +340,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
           ? keyEntry("panel-height", ["Shift+Up/Down"], "Make the top panel taller or shorter; Reset Panel Heights in the pane menu puts back the split.")
           : keyEntry("panel-height", ["Drag", "Shift+Up/Down"], tf("Drag the line between two panels to resize them, double-click it for the default split; {taller} and {shorter} resize the top panel.", { taller: keyLabel("Shift+Up"), shorter: keyLabel("Shift+Down") })),
         keyEntry("panel-max", ["Double-click"], "Double-click a panel to give it the whole chart, and again to show every panel."),
-        keyEntry("tools-hide", ["Shift+T"], "Hide the drawing tools to a single button, or show them again."),
+        keyEntry("tools-hide", ["Shift+T"], "Keep the drawing tools open, or let them fold again to a single button showing the tool in hand that opens under the pointer."),
         keyEntry("legend-fold", ["Shift+L"], "Fold the legend to its first series and a count of the rest, or open it again."),
       ],
     },

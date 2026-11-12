@@ -205,9 +205,10 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
   const rankedRows = useMemo(() => createRows(resolvedQuotes), [resolvedQuotes]);
   // A pre-market or after-hours column only while a row has such a print.
   const extendedSessionsKey = moverExtendedSessions(rankedRows).join(",");
+  const trending = activeTab === "trending";
   const columns = useMemo(
-    () => buildMarketMoverColumns(width, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : [], { float: minFloat != null }),
-    [extendedSessionsKey, minFloat, width],
+    () => buildMarketMoverColumns(width, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : [], { float: minFloat != null, trending }),
+    [extendedSessionsKey, minFloat, trending, width],
   );
   const rows = useMemo(() => sortRows(rankedRows, sortPreference), [rankedRows, sortPreference]);
   const selectedIdx = selectedSymbol

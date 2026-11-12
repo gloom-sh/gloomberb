@@ -16,6 +16,7 @@ import {
 import { computeTTM } from "../ticker-detail/financials/aggregation";
 import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 import { declaredDividends } from "../../../utils/declared-dividends";
+import { isReasonCode, readableStatus } from "../../../utils/reason-codes";
 import { fundamentalsEpsCurrency, SERVED_TRAILING_EPS } from "../../../utils/fundamentals";
 import {
   earningsDateStatus,
@@ -497,7 +498,7 @@ export function eventSourceNotice(state: EventSourceState): EventSourceNotice | 
     .filter(([section, status]) => status === "unavailable" && (state.variant !== "earnings-estimates" || section === "earnings"))
     .map(([section]) => section);
   // Sections and estimates that a source failed to give share one line: "Unavailable: earnings, analyst estimates (the source did not answer)".
-  const estimatesCode = !!state.estimatesError && REASON_CODE.test(state.estimatesError.trim());
+  const estimatesCode = isReasonCode(state.estimatesError);
   const sharedLine = !state.actionsError && unavailableSections.length > 0 && estimatesCode;
 
   if (state.actionsError) {
@@ -530,23 +531,12 @@ export function eventSourceNotice(state: EventSourceState): EventSourceNotice | 
   };
 }
 
-/** A data service's reason code (UPSTREAM_ERROR) rather than words. */
-const REASON_CODE = /^[A-Z][A-Z0-9_]+$/;
-
 /**
  * A source's failure in words: a reason code reads as what happened
  * ("UPSTREAM_ERROR" is "the source did not answer"); a sentence stands.
  */
 export function sourceErrorText(error: string): string {
-  const text = error.trim();
-  if (!REASON_CODE.test(text)) return text;
-  switch (text) {
-    case "TIMEOUT": return "the source timed out";
-    case "NOT_FOUND":
-    case "NO_DATA": return "the source has none for this symbol";
-    case "RATE_LIMITED": return "the source is busy, try again shortly";
-    default: return "the source did not answer";
-  }
+  return readableStatus(error.trim());
 }
 
 function hasCorporateActionRows(data: CorporateActionsData): boolean {
