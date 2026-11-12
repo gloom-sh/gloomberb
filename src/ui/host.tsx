@@ -580,6 +580,8 @@ export interface HostQueryBarProps {
     onChange(value: string): void;
     /** Drawn first, where a tab row starts: a nested tab strip. */
     start?: boolean;
+    /** What the choice is ("Interval"), for a screen reader and its folded menu; "View" when unnamed. */
+    label?: string;
   };
   onClearAll?: () => void;
   /** Muted context at the right edge, e.g. the selected row's date. Gives way first. */

@@ -5,6 +5,8 @@ import { withChoiceGroupHeadings } from "../../../components/ui/choice-groups";
 import { WebPopover } from "./popover";
 import { WebMenu } from "./menu";
 import { useHorizontalOverflow } from "../host/overflow-fade";
+import { FADE_PX } from "../host/overflow-fade-px";
+import { isLiveResizing, onLiveResizeEnd } from "../../../ui/live-resize";
 import { STACK_DETAIL_ROLE, StackHeaderContext } from "./stack-header";
 import { CheckboxBox } from "./controls";
 import { WebIcon } from "./icons";
@@ -31,7 +33,7 @@ function isFoldable(item: HostQueryBarItem): boolean {
  * up, except that folding the inline choices brings the view back while it fits.
  */
 interface QueryBarFit {
-  /** Inline choices drop their label ("Range"): their choices name themselves. */
+  /** Inline choices drop their label ("Range"): their choices name themselves. A strip keeps its own. */
   bareInline: boolean;
   /** Toggles show their short label ("Ext hours"). */
   shortToggles: boolean;
@@ -47,7 +49,7 @@ const FULL_FIT: QueryBarFit = { bareInline: false, shortToggles: false, foldView
 function fitSteps(items: readonly HostQueryBarItem[], view: HostQueryBarProps["view"]): QueryBarFit[] {
   const steps = [FULL_FIT];
   const then = (change: Partial<QueryBarFit>) => steps.push({ ...steps[steps.length - 1]!, ...change });
-  if (items.some((item) => item.kind === "select" && item.inline && item.label)) then({ bareInline: true });
+  if (items.some((item) => isFoldable(item) && item.label)) then({ bareInline: true });
   if (items.some((item) => item.kind === "toggle" && item.short && item.short !== item.label)) then({ shortToggles: true });
   const viewFolds = !!view && !view.start && view.options.length > 1;
   if (viewFolds) then({ foldView: true });
@@ -59,11 +61,38 @@ function fitSteps(items: readonly HostQueryBarItem[], view: HostQueryBarProps["v
 }
 
 /**
+ * Calls `update` whenever `element` or one of its children changes size, except
+ * while the pointer is resizing a pane: then once, after the resize ends.
+ */
+function observeSizes(element: HTMLElement, update: () => void): () => void {
+  if (typeof ResizeObserver === "undefined") return () => {};
+  let afterResize = false;
+  let frame = 0;
+  const observer = new ResizeObserver(() => {
+    if (isLiveResizing()) afterResize = true;
+    else update();
+  });
+  const stopListening = onLiveResizeEnd(() => {
+    if (!afterResize) return;
+    afterResize = false;
+    frame = requestAnimationFrame(update);
+  });
+  observer.observe(element);
+  for (const child of element.children) observer.observe(child);
+  return () => {
+    observer.disconnect();
+    stopListening();
+    cancelAnimationFrame(frame);
+  };
+}
+
+/**
  * Which of `stepCount` fit steps the bar is drawn at: the first whose controls
  * fit its width. A step that ran past the width is remembered with the width it
  * needed, so the bar goes back up only once it is that wide again and does not
  * open for a pixel and fold on the next. A change to what the bar holds (`key`)
- * starts again from the top. Measured before paint, so no step is ever seen.
+ * starts again from the top. Measured before paint, so no step is ever seen;
+ * while a pane is being dragged to a new size, once the drag ends.
  */
 function useFitStep(scrollRef: RefObject<HTMLDivElement | null>, stepCount: number, key: string): number {
   const [state, setState] = useState({ key, step: 0 });
@@ -86,12 +115,8 @@ function useFitStep(scrollRef: RefObject<HTMLDivElement | null>, stepCount: numb
       if (back >= 0) setState({ key, step: back });
     };
     update();
-    if (typeof ResizeObserver === "undefined") return;
     // The bar's width, and a control that grows after it was measured (a late font).
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    for (const child of element.children) observer.observe(child);
-    return () => observer.disconnect();
+    return observeSizes(element, update);
   }, [key, scrollRef, step, stepCount]);
   return step;
 }
@@ -123,14 +148,43 @@ function useContextGivesWay(metaRef: RefObject<HTMLSpanElement | null>, text: st
 }
 
 /**
+ * A strip that scrolls by itself narrows no further than its widest choice and
+ * the fades either side of it (`--qb-strip-floor`, styles.css), so a whole
+ * choice always shows and takes a click: the rest of the bar gives way, and
+ * then scrolls, first. The chosen choice is kept in the middle, clear of the
+ * fades, as the strip narrows and as the choice moves.
+ */
+function useStripFloor(stripRef: RefObject<HTMLDivElement | null>, strip: boolean, key: string): void {
+  useLayoutEffect(() => {
+    const element = stripRef.current;
+    const group = element?.parentElement;
+    if (!strip || !element || !group) return;
+    const update = () => {
+      let widest = 0;
+      for (const choice of element.children) widest = Math.max(widest, choice.getBoundingClientRect().width);
+      group.style.setProperty("--qb-strip-floor", `${Math.ceil(widest) + 2 * FADE_PX}px`);
+      const chosen = element.querySelector<HTMLElement>("button[data-active=true]");
+      if (!chosen) return;
+      const box = element.getBoundingClientRect();
+      const choice = chosen.getBoundingClientRect();
+      element.scrollLeft += choice.left - box.left - (box.width - choice.width) / 2;
+    };
+    update();
+    return observeSizes(element, update);
+  }, [key, strip, stripRef]);
+}
+
+/**
  * The choices of an inline filter. A long list that scrolls by itself
  * (expiries) keeps the label and the controls beside it in view while it
- * brings the chosen one into view. A bar short of room drops the label.
+ * keeps the chosen one in view. A bar short of room drops the label of any
+ * other.
  */
 export function InlineChoices({ item, bare = false }: { item: HostQueryBarItem; bare?: boolean }) {
   const stripRef = useRef<HTMLDivElement | null>(null);
   const strip = isStrip(item);
   const overflow = useHorizontalOverflow(stripRef, [item.options.length, strip]);
+  useStripFloor(stripRef, strip, JSON.stringify([item.options.map((option) => option.label), item.options.find((option) => option.selected)?.value]));
   return (
     <div className="gloom-qb-inline" data-item-id={item.id} data-narrowing={item.narrowing ? "true" : undefined}
       data-strip={strip ? "true" : undefined} data-bare={bare ? "true" : undefined}>
@@ -234,12 +288,14 @@ function TextField({ item }: { item: HostQueryBarItem }) {
   );
 }
 
-function FilterChip({ item, open, onOpenChange, fit }: {
+function FilterChip({ item, open, onOpenChange, fit, quietLabel = false }: {
   item: HostQueryBarItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** What the bar gave up to fit its width. */
   fit: QueryBarFit;
+  /** The label names the menu but is not drawn: its choice names itself (a folded view). */
+  quietLabel?: boolean;
 }) {
   if (item.kind === "text") return <TextField item={item} />;
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -248,7 +304,7 @@ function FilterChip({ item, open, onOpenChange, fit }: {
     if (open) triggerRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [open]);
   const inline = item.kind === "select" && item.inline === true;
-  if (inline && !(fit.foldInline && isFoldable(item))) return <InlineChoices item={item} bare={fit.bareInline} />;
+  if (inline && !(fit.foldInline && isFoldable(item))) return <InlineChoices item={item} bare={fit.bareInline && !isStrip(item)} />;
   if (item.kind === "toggle") {
     const short = fit.shortToggles && item.short ? item.short : null;
     return (
@@ -258,7 +314,6 @@ function FilterChip({ item, open, onOpenChange, fit }: {
         data-kind="toggle"
         data-narrowing={item.narrowing ? "true" : undefined}
         aria-pressed={item.checked}
-        aria-label={short ? item.label : undefined}
         title={short ? item.label : undefined}
         onMouseDown={(event) => event.stopPropagation()}
         onClick={item.onToggle}
@@ -269,9 +324,10 @@ function FilterChip({ item, open, onOpenChange, fit }: {
     );
   }
   // An inline filter folded into its menu has already dropped its label, unless it names no choice (a chart
-  // panned off its ranges); the view has none.
-  const label = inline && fit.bareInline && item.valueLabel ? "" : item.label;
-  const ariaLabel = !label && item.label ? `${item.label}: ${item.valueLabel}` : undefined;
+  // panned off its ranges); a folded view draws none. Its name still follows the choice it shows.
+  const quiet = !!item.valueLabel && (quietLabel || (inline && fit.bareInline));
+  const label = quiet ? "" : item.label;
+  const ariaLabel = quiet && item.label ? `${item.valueLabel}, ${item.label}` : undefined;
 
   const trigger = (
     <button
@@ -342,7 +398,7 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, asOf, leadi
     // A text filter's field keeps its width while it is typed in.
     items.map((item) => [item.id, item.kind, item.label, item.short, item.kind === "text" ? null : item.valueLabel, item.narrowing, item.width,
       item.inline ? item.options.map((option) => option.label) : null]),
-    view ? [view.start, view.value, view.options.map((option) => option.label)] : null,
+    view ? [view.start, view.value, view.label, view.options.map((option) => option.label)] : null,
     !!search, !!onClearAll, asOf ?? null, !!leading, stackAttached, stack?.title ?? null,
   ]);
   const steps = fitSteps(items, view);
@@ -422,7 +478,7 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, asOf, leadi
 
   // A nested tab strip's choices start the bar, as a tab row does; any other view sits at its right.
   const viewNode = view ? (
-    <div className="gloom-qb-view" role="radiogroup" data-placement={view.start ? "start" : undefined}>
+    <div className="gloom-qb-view" role="radiogroup" aria-label={view.label} data-placement={view.start ? "start" : undefined}>
       {view.options.map((option) => (
         <button
           key={option.value}
@@ -447,7 +503,7 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, asOf, leadi
         item={{
           id: VIEW_MENU_ID,
           kind: "select",
-          label: "",
+          label: view.label ?? "View",
           valueLabel: view.options.find((option) => option.value === view.value)?.label ?? view.value,
           narrowing: false,
           options: view.options.map((option) => ({
@@ -464,6 +520,7 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, asOf, leadi
         open={openId === VIEW_MENU_ID}
         onOpenChange={(open) => setOpen(VIEW_MENU_ID, open)}
         fit={fit}
+        quietLabel
       />
     </div>
   ) : null;

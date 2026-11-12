@@ -12,8 +12,10 @@ import { QUERY_BAR_MEASURE, queryBarFailures, type QueryBarMeasure } from "./que
  * and ranges into menus before it scrolls, where a half-scrolled range strip
  * once left a ghost of 1W beside Range. A bar too narrow even for that
  * scrolls; the widths below say where each bar still fits, at the default
- * text size. A bar that gave way opens again once it is wide enough, and a
- * folded range picks a range with a click.
+ * text size. An expiry strip never narrows past its label and one whole
+ * choice, where it once shrank to a sliver with no expiry left to click, and
+ * keeps its chosen expiry in view. A bar that gave way opens again once it is
+ * wide enough, and a folded range picks a range with a click.
  */
 
 interface QueryBarStep {
@@ -33,13 +35,15 @@ const FITS_FROM: Record<string, number> = {
   "price chart, intraday": 280,
   "price chart, five years": 200,
   "generic future, total return, a date window": 560,
-  "option chain": 200,
+  // The expiry strip keeps its label and one whole choice clear of its fades.
+  "option chain": 280,
+  "options positioning": 200,
   "statement with an as-of": 344,
   "list with a search": 664,
   "a range alone": 200,
 };
-/** The one inline list that scrolls by itself (the option chain's expiries); every other inline choice shows whole or folds. */
-const SCROLLING_STRIPS = ["expiration"];
+/** The inline lists that scroll by themselves (the option chain's and Options Positioning's expiries); every other inline choice shows whole or folds. */
+const SCROLLING_STRIPS = ["expiration", "expiry"];
 /** The size every other step expects (checks.ts). */
 const RESTORE = { width: 1400, height: 900 };
 

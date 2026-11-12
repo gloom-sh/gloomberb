@@ -742,7 +742,10 @@ header, with the detail's height.
   chip, then inline filters fold into theirs (bringing the view back while it
   fits). Only a bar too narrow even for that scrolls sideways. A long list
   that is meant to run past the edge (an option chain's expiries) sets
-  `scrolls` and is a strip that scrolls by itself instead of folding.
+  `scrolls` and is a strip that scrolls by itself instead of folding; it keeps
+  its label and its chosen choice whole, and the rest of the bar gives way
+  before it narrows past that. Name the `view` with `label` ("Interval"), the
+  name a screen reader and its folded menu give it.
   The inline filter or view that picks a chart's range sets `chartRange`:
   choosing the selected range again sends the pane's charts back to it, as `0`
   does, so every chart's range strip behaves the same. Bind the range's number

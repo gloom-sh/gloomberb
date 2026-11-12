@@ -3,10 +3,10 @@
  * The `query-bar` scenario for the query bar checks (query-bar-checks.ts): one
  * query bar per row, each across the whole page, in the shapes the panes give
  * it: the price chart's ranges, extended hours and intervals (GP), a generic
- * future's roll and adjustment beside them, an option chain's expiry strip, a
- * statement with an as-of, a list with a search and filters, and a range
- * alone. The choices work, so a picture shows what a click leaves. Nothing is
- * fetched.
+ * future's roll and adjustment beside them, an option chain's expiry strip
+ * beside its strikes and Options Positioning's alone, a statement with an
+ * as-of, a list with a search and filters, and a range alone. The choices
+ * work, so a picture shows what a click leaves. Nothing is fetched.
  */
 import { useState } from "react";
 import { QueryBar, type QueryBarFilter, type QueryBarView } from "../../src/components/ui/query-bar";
@@ -39,12 +39,12 @@ export const QUERY_BAR_CASES: QueryBarCase[] = [
       { id: "range", label: "Range", inline: true, chartRange: true, value: "1D", options: RANGES, onChange: noop },
       { id: "extended-hours", kind: "toggle", label: "Extended hours", short: "Ext hours", value: false, onChange: noop },
     ],
-    view: { value: "Auto (1m)", options: INTRADAY, onChange: noop },
+    view: { label: "Interval", value: "Auto (1m)", options: INTRADAY, onChange: noop },
   },
   {
     name: "price chart, five years",
     filters: [{ id: "range", label: "Range", inline: true, chartRange: true, value: "5Y", options: RANGES, onChange: noop }],
-    view: { value: "Auto (W)", options: LONG, onChange: noop },
+    view: { label: "Interval", value: "Auto (W)", options: LONG, onChange: noop },
   },
   {
     name: "generic future, total return, a date window",
@@ -54,7 +54,7 @@ export const QUERY_BAR_CASES: QueryBarCase[] = [
       { id: "adjust", label: "Adjust", value: "ratio", options: [{ value: "none", label: "None" }, { value: "ratio", label: "Ratio" }], onChange: noop },
       { id: "total-return", kind: "toggle", label: "Total return", short: "Total ret", value: true, onChange: noop },
     ],
-    view: { value: "Auto (D)", options: ["Auto (D)", "D", "W", "M"].map((label) => ({ label, value: label })), onChange: noop },
+    view: { label: "Interval", value: "Auto (D)", options: ["Auto (D)", "D", "W", "M"].map((label) => ({ label, value: label })), onChange: noop },
     meta: "Jan 3, 2024 to Mar 1, 2025",
   },
   {
@@ -63,6 +63,10 @@ export const QUERY_BAR_CASES: QueryBarCase[] = [
       { id: "strikes", label: "Strikes", value: "10", defaultValue: "all", options: [{ value: "all", label: "All" }, { value: "10", label: "±10" }], onChange: noop },
       { id: "expiration", label: "Exp", inline: true, scrolls: true, value: "5", options: EXPIRIES, onChange: noop },
     ],
+  },
+  {
+    name: "options positioning",
+    filters: [{ id: "expiry", label: "Exp", inline: true, scrolls: true, value: "23", options: EXPIRIES, onChange: noop }],
   },
   {
     name: "statement with an as-of",

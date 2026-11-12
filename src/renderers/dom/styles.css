@@ -1155,14 +1155,13 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-qb-view[data-placement="start"] { margin-left: 0; box-shadow: none; }
 /* A long inline list (an expiry strip) scrolls by itself, as the terminal's
    does, so its label and the controls beside it stay in view. It narrows with
-   its group down to its label and no further: its choices sit in a grid track
-   with no floor, so the strip's and the group's own floors are the label and
-   the controls beside it, and a bar narrower than those scrolls instead of
+   its group down to its label and one whole choice clear of its fades
+   (--qb-strip-floor, measured in query-bar.tsx) and no further: the rest of
+   the bar gives way first, and a bar narrower than that scrolls instead of
    drawing one control over the next. */
 .gloom-qb-filters[data-strip="true"],
 .gloom-qb-inline[data-strip="true"] { flex: 0 1 auto; }
-.gloom-qb-inline[data-strip="true"] { display: grid; grid-template-columns: auto minmax(0, max-content); }
-.gloom-qb-inline[data-strip="true"][data-bare="true"] { grid-template-columns: minmax(0, max-content); }
+.gloom-qb-inline[data-strip="true"] { display: grid; grid-template-columns: auto minmax(var(--qb-strip-floor, 0px), max-content); }
 .gloom-qb-inline[data-strip="true"] .gloom-qb-segments {
   min-width: 0;
   overflow-x: auto;

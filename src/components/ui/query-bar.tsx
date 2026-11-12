@@ -129,6 +129,12 @@ export interface QueryBarView<T extends string = string> {
   value: T;
   options: readonly { value: T; label: string; hint?: string; disabled?: boolean }[];
   onChange: (value: T) => void;
+  /**
+   * What the choice is ("Interval", "Sort"): its name for a screen reader, and
+   * its menu's on the desktop when a bar short of room folds it. A chart's range
+   * is "Range" and any other unnamed view "View".
+   */
+  label?: string;
   /** Terminal: left/right cycle the view while this is true. */
   focused?: boolean;
   shortcutScope?: string;
@@ -508,6 +514,7 @@ export function QueryBar({ width, search, filters = [], view, meta, asOf: given,
             else if (view.chartRange) resetChartView();
           },
           start: view.start,
+          label: view.label ?? (view.chartRange ? "Range" : undefined),
         } : undefined}
         onClearAll={narrowingCount >= 2 ? resetAll : undefined}
         meta={meta}
