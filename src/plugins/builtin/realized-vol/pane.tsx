@@ -159,7 +159,8 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     ...(history.loading ? [{ id: "loading", parts: [{ text: "loading history", tone: "muted" as const }] }] : []),
     ...(history.data?.stale ? [{ id: "stale", parts: [{ text: "stale history", tone: "warning" as const }] }] : []),
     ...(history.data ? [{ id: "cadence", parts: [{
-      text: model ? `daily closes · ${barsPerYearLabel(model.barsPerYear)}` : "daily closes", tone: "muted" as const,
+      text: model ? `daily closes · ${barsPerYearLabel(model.barsPerYear)}${model.rollNote ? ` · ${model.rollNote}` : ""}` : "daily closes",
+      tone: "muted" as const,
     }] }] : []),
     ...(model?.asOf ? [{ id: "date", parts: [{ text: model.asOf.toISOString().slice(0, 10), tone: "muted" as const }] }] : []),
     ...(showIv && iv.loading ? [{ id: "iv-loading", parts: [{ text: "loading ATM IV", tone: "muted" as const }] }] : []),

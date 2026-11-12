@@ -177,8 +177,9 @@ export function SeasonalityPane({ width, height, focused }: PaneProps) {
 
   usePaneNoticeFooter({ registrationId: "seasonality-notices", focused,
     notices: [...new Set([identityError, history.error, history.data?.error].filter((value): value is string => !!value))] });
-  const closes = model?.asOf ? `monthly closes to ${model.asOf.toISOString().slice(0, 7)}`
-    : weekdayModel?.start ? `daily closes ${weekdayModel.start} to ${weekdayModel.asOf}` : null;
+  const rolls = history.data?.rollNote ? ` · ${history.data.rollNote}` : "";
+  const closes = model?.asOf ? `monthly closes to ${model.asOf.toISOString().slice(0, 7)}${rolls}`
+    : weekdayModel?.start ? `daily closes ${weekdayModel.start} to ${weekdayModel.asOf}${rolls}` : null;
   usePaneFooter("seasonality", () => ({ info: [
     ...(history.loading ? [{ id: "loading", parts: [{ text: "loading history", tone: "muted" as const }] }] : []),
     ...(history.data?.stale ? [{ id: "stale", parts: [{ text: "stale history", tone: "warning" as const }] }] : []),

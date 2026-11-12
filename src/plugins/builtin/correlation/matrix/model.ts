@@ -1,3 +1,4 @@
+import { rollAdjustedHistory } from "../../../../market-data/futures-roll-returns";
 import { pricePointIntegrity, type PriceHistoryIntegrity } from "../../../../utils/price-history-integrity";
 import type { QueryEntry } from "../../../../market-data/result-types";
 import { colors } from "../../../../theme/colors";
@@ -24,6 +25,8 @@ export interface CorrelationSeries {
   observationCount: number;
   /** Bars left out because their prices contradict each other, kept as the source reported them. */
   integrity?: PriceHistoryIntegrity[];
+  /** A continuous future's returns, read within one contract at each roll: "rolls back-adjusted" (rollAdjustedHistory). */
+  rollNote?: string;
   loading?: boolean;
   refreshError?: string;
   fetchedAt?: number | null;
@@ -90,12 +93,15 @@ export function getSeriesForEntry(
  */
 export function buildCorrelationSeries(symbol: string, history: readonly PricePoint[]): CorrelationSeries {
   const integrity = history.flatMap((point) => { const issue = pricePointIntegrity(point); return issue ? [issue] : []; });
-  const prices = dailyCloses(history);
+  // The closes are read for returns alone: a continuous future's are each one contract's.
+  const returns = rollAdjustedHistory(history, symbol);
+  const prices = dailyCloses(returns.points);
   const observationCount = Math.max(0, prices.length - 1);
   return {
     symbol, prices, observationCount,
     status: observationCount < MIN_CORRELATION_OBSERVATIONS ? "insufficient" : "ready",
     ...(integrity.length ? { integrity } : {}),
+    ...(returns.note ? { rollNote: returns.note } : {}),
   };
 }
 

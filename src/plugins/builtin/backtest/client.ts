@@ -5,6 +5,7 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { ListingDelisting, PricePoint } from "../../../types/financials";
 import type { BacktestBar } from "./rules";
 import { isFiniteNumber } from "../../../utils/guards";
+import { rollAdjustedHistory } from "../../../market-data/futures-roll-returns";
 
 export interface BacktestHistoryDependencies {
   loadChart(request: ChartRequest, options?: { forceRefresh?: boolean }): Promise<QueryEntry<PricePoint[]>>;
@@ -29,6 +30,8 @@ export interface BacktestHistory {
   fetchedAt: number;
   /** The listing no longer trades: its last bar is its last session, and no later one will come. */
   delisting?: ListingDelisting;
+  /** A continuous future's bars, back-adjusted at each roll: "rolls back-adjusted" (rollAdjustedHistory). */
+  rollNote?: string;
 }
 
 /**
@@ -91,8 +94,11 @@ export async function loadBacktestHistory(
     { forceRefresh: options.forceRefresh },
   );
   options.signal?.throwIfAborted();
-  const history = toBacktestBars(resolveEntryValue(entry) ?? [], entry.history?.nonPositiveCloseDates);
+  // A continuous future is tested on one contract's returns at each roll, its earlier prices scaled to the newest contract's.
+  const adjusted = rollAdjustedHistory(resolveEntryValue(entry) ?? [], symbol);
+  const history = toBacktestBars(adjusted.points, entry.history?.nonPositiveCloseDates);
   if (!history.bars.length) throw new Error(entry.error?.message ?? "Daily price history unavailable");
   const delisting = entry.history?.delisting;
-  return { symbol, ...history, fetchedAt: entry.fetchedAt ?? Date.now(), ...(delisting ? { delisting } : {}) };
+  return { symbol, ...history, fetchedAt: entry.fetchedAt ?? Date.now(), ...(delisting ? { delisting } : {}),
+    ...(adjusted.note ? { rollNote: adjusted.note } : {}) };
 }

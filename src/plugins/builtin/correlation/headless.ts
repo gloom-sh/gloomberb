@@ -73,9 +73,11 @@ export const correlationHeadless: HeadlessPaneDefinition<"rows"> = {
       reason: row.sampleSize < 5 ? "Insufficient shared return observations" : "Zero return variance",
     }));
     const asOf = newestReportTime(symbols.map((symbol) => bySymbol.get(symbol)?.prices.at(-1)?.dateKey));
+    const rollNotes = symbols.flatMap((symbol) => bySymbol.get(symbol)?.rollNote ? [`${symbol}: ${bySymbol.get(symbol)!.rollNote}`] : []);
     return {
       freshness: { asOf, ...unfinishedBarFreshness([...bars.values()], asOf?.slice(0, 10)) },
       rows, unavailableSymbols,
+      ...(rollNotes.length ? { notes: rollNotes } : {}),
       errors: [
         ...loaded.errors,
         // A thin pair says which side is short of daily bars; a pair with enough returns and no value has no variance.
@@ -114,7 +116,8 @@ export const relationshipHeadless: HeadlessPaneDefinition<"series"> = {
     const loaded = await loadHeadlessSymbols(symbols, ctx, (symbol) => loadListedHistory(ctx, symbol, range));
     const listings = new Map(loaded.entries.map(({ symbol, data }) => [symbol, data]));
     const histories = new Map(loaded.entries.map(({ symbol, data }) => [symbol, data.points]));
-    const analysis = buildRelationshipAnalysis(histories.get(symbols[0]!) ?? [], histories.get(symbols[1]!) ?? [], correlationWindow);
+    const analysis = buildRelationshipAnalysis(histories.get(symbols[0]!) ?? [], histories.get(symbols[1]!) ?? [], correlationWindow,
+      [symbols[0]!, symbols[1]!]);
     const [left, right] = symbols.map((symbol) => ({ symbol, ...listings.get(symbol) }));
     const sessionNote = listings.size === 2 ? mixedSessionCloseNote(left!, right!, analysis.aligned.at(-1)?.dateKey) : null;
     const unavailableSymbols = symbols.filter((symbol) => (histories.get(symbol) ?? []).filter((point) => (
@@ -147,6 +150,7 @@ export const relationshipHeadless: HeadlessPaneDefinition<"series"> = {
       freshness: unfinishedBarFreshness([...histories.values()], analysis.aligned.at(-1)?.dateKey, [...listings.values()].map(({ quotedAt }) => quotedAt)) ?? {},
       unavailableSymbols: [...new Set(unavailableSymbols)],
       errors: [...loaded.errors, ...(analysis.correlationUnavailableReason ? [analysis.correlationUnavailableReason] : [])],
+      ...(analysis.rollNotes.length ? { notes: analysis.rollNotes } : {}),
       metadata: {
         left: symbols[0], right: symbols[1], range, correlationWindow,
         returnAlignment: CORRELATION_RETURN_BASIS,

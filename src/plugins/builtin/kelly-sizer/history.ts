@@ -2,6 +2,7 @@ import type { PricePoint } from "../../../types/financials";
 import type { ChartRequest, InstrumentRef } from "../../../market-data/request-types";
 import { dailyBarDate, getPricePointTimestamp } from "../../../utils/price-history";
 import { calendarMonthReturnsRequest, trailingDailyClosesRequest, venueMonth } from "../../../time-series/calendar-month-returns";
+import { rollAdjustedHistory } from "../../../market-data/futures-roll-returns";
 
 export const KELLY_HISTORY_DEFAULT_YEARS = 5;
 export const KELLY_HISTORY_MAX_YEARS = 5;
@@ -24,6 +25,8 @@ export interface KellyHistoryInputs {
   /** The newest daily close read, which a month in progress may follow, as YYYY-MM-DD. */
   latest: string;
   years: number;
+  /** A continuous future's months read within one contract at each roll: "rolls back-adjusted" (rollAdjustedHistory). */
+  rollNote?: string;
 }
 
 export function clampKellyHistoryYears(value: unknown): number {
@@ -50,13 +53,16 @@ export function kellyTrailingHistoryRequest(instrument: InstrumentRef, years: nu
  * months are used. Days and the month now are the venue's (`exchange`), a
  * coin's UTC, so a month that has ended in Tokyo counts before it has in UTC. Null
  * when that leaves fewer than `KELLY_HISTORY_MIN_PERIODS` returns, or every
- * one of them is a gain, or every one of them is a loss.
+ * one of them is a gain, or every one of them is a loss. A continuous future
+ * (`symbol` NG=F) is read within one contract at each roll.
  */
 export function estimateKellyHistoryInputs(
-  points: readonly PricePoint[],
+  served: readonly PricePoint[],
   yearsInput: number,
-  options: { exchange?: string; now?: number } = {},
+  options: { exchange?: string; now?: number; symbol?: string } = {},
 ): KellyHistoryInputs | null {
+  const adjusted = options.symbol ? rollAdjustedHistory(served, options.symbol) : { points: served, note: null };
+  const points = adjusted.points;
   const years = clampKellyHistoryYears(yearsInput);
   const now = venueMonth(options.now ?? Date.now(), options.exchange ?? "");
   const thisMonth = `${now.year}-${String(now.month).padStart(2, "0")}`;
@@ -87,5 +93,6 @@ export function estimateKellyHistoryInputs(
     end: picks.at(-1)!.day,
     latest: dailyBarDate(closes.at(-1)!.time, options.exchange ?? ""),
     years,
+    ...(adjusted.note ? { rollNote: adjusted.note } : {}),
   };
 }

@@ -26,7 +26,7 @@ export const seasonalityHeadless: HeadlessPaneDefinition<"bundle"> = {
     const weekdays = args.options.tab === "weekdays";
     const history = await loadSeasonalityHistory({ instrument, cadence: weekdays ? "daily" : "monthly", signal: ctx.signal }, ctx.marketData);
     ctx.signal.throwIfAborted();
-    const common = { errors: history.error ? [history.error] : [] };
+    const common = { errors: history.error ? [history.error] : [], ...(history.rollNote ? { notes: [history.rollNote] } : {}) };
     if (weekdays) {
       const model = projectWeekdays(history.history, { symbol: instrument.symbol, exchange: instrument.exchange, fetchedAt: history.fetchedAt });
       const present = model.start != null;

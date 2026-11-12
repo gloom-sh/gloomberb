@@ -988,6 +988,8 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
       ...[leftSeries, rightSeries].filter((series, index) => index === 0 || left !== right)
         .map((series) => contradictoryBarsNote(series.symbol, series.integrity?.length ?? 0, series.bars)),
       thinCorrelationNote({ label: left, closes: leftSeries.prices.length }, { label: right, closes: rightSeries.prices.length }, sampleSize, "1Y"),
+      ...[leftSeries, rightSeries].filter((series, index) => index === 0 || left !== right)
+        .map((series) => series.rollNote ? `${series.symbol}: ${series.rollNote}` : null),
     ].filter((note) => note != null);
     // A bare symbol names no exchange; its quote says where it lists, which sets when its daily close is taken.
     const [leftQuote, rightQuote] = await Promise.all([leftListing!, rightListing!].map((listing) => loadListingQuote(services.dataProvider, listing)));

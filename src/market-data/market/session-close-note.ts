@@ -2,6 +2,8 @@ import { canonicalExchange } from "../../utils/exchanges";
 import { futuresListingVenue } from "../../utils/futures-generic";
 import { regularSessionCloseUtcMinute } from "./freshness";
 import { PERPETUAL_EXCHANGES } from "../../tickers/perpetual-listing";
+import { futuresContractByCode } from "../futures-board";
+import { zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
 
 interface SessionLeg {
   symbol: string;
@@ -23,20 +25,55 @@ function offsetText(minutes: number): string {
   return [hours ? `${hours} h` : "", rest ? `${rest} min` : ""].filter(Boolean).join(" ");
 }
 
+/** Metals settle at their own times, New York minutes: gold 13:30, silver 13:25, platinum 13:05, copper and palladium 13:00. */
+const METAL_SETTLEMENTS: Readonly<Record<string, number>> = {
+  GC: 13 * 60 + 30, MGC: 13 * 60 + 30, SI: 13 * 60 + 25, SIL: 13 * 60 + 25, PL: 13 * 60 + 5, HG: 13 * 60, PA: 13 * 60,
+};
+
+/**
+ * When a future's daily settlement is taken, in New York minutes: the time
+ * its daily bar closes on, whatever the bar is stamped. From CME Group's and
+ * Cboe's settlement procedures: energy 14:30 (NYMEX), grains 14:15 (13:15
+ * Chicago), livestock 14:05, Treasuries and currencies 15:00, equity index
+ * and VIX futures 16:00. Null for a root whose time is not listed here
+ * (Dutch TTF, the ICE softs).
+ */
+function futuresSettlementMinute(root: string | null): number | null {
+  if (!root) return null;
+  if (METAL_SETTLEMENTS[root] !== undefined) return METAL_SETTLEMENTS[root]!;
+  const contract = futuresContractByCode(root);
+  switch (contract?.sector) {
+    case "energy": return contract.code === "TTF" ? null : 14 * 60 + 30;
+    case "agriculture": return contract.venue === "CBT" ? 14 * 60 + 15 : null;
+    case "livestock": return 14 * 60 + 5;
+    case "rates": case "currencies": return 15 * 60;
+    case "equity-index": case "equity-sectors": case "volatility": return 16 * 60;
+    default: return null;
+  }
+}
+
 /**
  * Where a daily bar of the listing falls on its date. A venue with a listed
- * regular close closes at that UTC time. Crypto, FX and futures carry a bar
- * dated 00:00 UTC, which closes when the next UTC day starts. A venue with
- * neither is unknown.
+ * regular close closes at that UTC time, and a future at its settlement.
+ * Crypto and FX carry a bar dated 00:00 UTC, which closes when the next UTC
+ * day starts. A venue with neither is unknown.
  */
 function dailyBarClose(leg: SessionLeg, time: number): { minute: number; text: string } | null {
   const label = leg.label ?? leg.symbol;
   const minute = regularSessionCloseUtcMinute(leg.exchange, time);
   if (minute !== null) return { minute, text: `${label} closes ${clock(minute)} UTC` };
   const exchange = canonicalExchange(leg.exchange);
-  return exchange && (ALWAYS_OPEN_EXCHANGES.has(exchange) || futuresListingVenue(leg.symbol, exchange))
-    ? { minute: MINUTES_PER_DAY, text: `${label} bar is ${clock(0)} UTC` }
-    : null;
+  if (!exchange) return null;
+  const future = futuresListingVenue(leg.symbol, exchange);
+  if (future) {
+    const settles = futuresSettlementMinute(future.root);
+    if (settles == null) return null;
+    const day = new Date(time).toISOString().slice(0, 10).split("-").map(Number);
+    const at = zonedWallClockToUtcMs("America/New_York", day[0]!, day[1]!, day[2]!, Math.floor(settles / 60), settles % 60, 0);
+    const utc = Math.floor(at / 60_000) % MINUTES_PER_DAY;
+    return { minute: utc, text: `${label} settles ${clock(utc)} UTC` };
+  }
+  return ALWAYS_OPEN_EXCHANGES.has(exchange) ? { minute: MINUTES_PER_DAY, text: `${label} bar is ${clock(0)} UTC` } : null;
 }
 
 /**

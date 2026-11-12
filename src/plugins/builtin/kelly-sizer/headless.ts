@@ -33,7 +33,7 @@ function inputEntries(inputs: KellyHistoryInputs, edge: number) {
   const payoff = inputs.downsideReturn < 0 ? inputs.upsideReturn / -inputs.downsideReturn : null;
   return [
     { key: "window", label: "Window", value: { start: inputs.start, end: inputs.end, months: inputs.periods },
-      formatted: `${inputs.start} to ${inputs.end}, ${inputs.periods} monthly returns` },
+      formatted: `${inputs.start} to ${inputs.end}, ${inputs.periods} monthly returns${inputs.rollNote ? `, ${inputs.rollNote}` : ""}` },
     { key: "winRate", label: "Win rate", value: inputs.winProbability,
       formatted: `${formatPct(inputs.winProbability)} (${inputs.wins} of ${inputs.periods} months up)` },
     { key: "averageGain", label: "Average gain", value: inputs.upsideReturn, formatted: `${formatSignedPct(inputs.upsideReturn)} a month` },
@@ -111,7 +111,7 @@ export const kellyHeadless: HeadlessPaneDefinition<"bundle"> = {
     ]);
     const history = resolveEntryValue(entry) ?? [];
     ctx.signal.throwIfAborted();
-    const inputs = estimateKellyHistoryInputs(history, years, { exchange });
+    const inputs = estimateKellyHistoryInputs(history, years, { exchange, symbol });
     if (!inputs) {
       return {
         complete: false,

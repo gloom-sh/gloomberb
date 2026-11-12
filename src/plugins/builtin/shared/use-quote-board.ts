@@ -115,7 +115,8 @@ function mergeQuotes(previous: BoardQuoteMap, loaded: BoardQuoteMap): BoardQuote
     const retained = current ?? (state.quote && (state.quote.lastUpdated ?? 0) >= (kept?.lastUpdated ?? 0) ? state.quote : kept);
     next.set(symbol, {
       quote: retained,
-      loading: false,
+      // A batch's dated quote painted while the symbol is asked for alone keeps the row loading.
+      loading: state.loading,
       error: state.error,
       stale: !current && retained !== null,
       ...(current ? { answeredAt: now } : {}),
@@ -229,6 +230,11 @@ async function requestBoardQuotes(
           error: result?.error ? errorMessage(result.error) : null,
           stale: false,
         });
+      }
+      // A symbol asked for again alone shows the batch's dated quote meanwhile, so what reads its quote (a future's
+      // contract month, which FUT's returns read the contract's history by) starts now rather than after a round trip.
+      for (const result of followUps) {
+        if (finitePrice(result.quote ?? null)) answered.set(result.target.symbol, { quote: result.quote!, loading: true, error: null, stale: false });
       }
       if (answered.size > 0) apply(answered);
       await Promise.all(followUps.map((result) => askAlone(result.target.symbol, { cacheMode: result.followUp }, result.quote)));

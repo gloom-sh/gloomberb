@@ -48,7 +48,7 @@ test("names beside other text are a table read by its first column, or by the co
   expect(parseSymbolText(sectors)).toEqual({ symbols: ["Apple Inc", "Microsoft Corp"], ignored: ["Technology", "Technology"], entries: true });
   const names = { "apple inc": "AAPL", "microsoft corp": "MSFT" } as Record<string, string>;
   const read = await readSymbolList({ args: ["-"], readStdin: async () => sectors, readEntries: async (entries) => entries.map((entry) => names[entry.toLowerCase()] ?? entry) });
-  expect(read).toEqual({ symbols: ["AAPL", "MSFT"], repeated: 0, notes: ["Read the first column as symbols; ignored the 2 cells beside it: Technology, Technology."] });
+  expect(read).toEqual({ symbols: ["AAPL", "MSFT"], repeated: 0, notes: ["Read the first column as symbols; ignored the 2 cells beside it: Technology (2 times)."] });
   // A header is not a company, and names the column to read.
   expect(parseSymbolText(`Name,Sector\n${sectors}`)).toEqual({ symbols: ["Apple Inc", "Microsoft Corp"], ignored: [], entries: true });
   expect(parseSymbolText(`Sector;Company\nTechnology;Apple Inc\n`).symbols).toEqual(["Apple Inc"]);
@@ -102,9 +102,10 @@ test("a separator stuck to a symbol in a list is dropped before any lookup and n
 
 test("a European sheet's prices are number cells, never symbols, whatever splits each line", async () => {
   // Before, the comma of `2.582,52` split the line, and `2.582` was added as 2582:HKEX.
-  const pasted = "ED 2.582,52\nCNX;1.899,21\nEQT\t3.594,10\n$$$\nN/A\n";
+  // A sheet's error values are cells the lookup names as not symbols, never comments: #REF! was dropped unsaid.
+  const pasted = "ED 2.582,52\nCNX;1.899,21\nEQT\t3.594,10\n$$$\nN/A\n#REF!\n#N/A\n#VALUE!\n#DIV/0!\n#NAME?\n# a comment\n";
   expect(await readSymbolList({ args: ["-"], readStdin: async () => pasted })).toEqual({
-    symbols: ["ED", "CNX", "EQT", "$$$", "N/A"],
+    symbols: ["ED", "CNX", "EQT", "$$$", "N/A", "#REF!", "#N/A", "#VALUE!", "#DIV/0!", "#NAME?"],
     repeated: 0,
     notes: ["Read the first column as symbols; ignored the 3 number cells beside it: 2.582,52; 1.899,21; 3.594,10."],
   });
@@ -115,6 +116,9 @@ test("a European sheet's prices are number cells, never symbols, whatever splits
     expect(read.symbols).toEqual(["XOM"]);
     expect(read.notes.at(-1)).toBe("Ignored 1.899,21, a number, not a symbol.");
   }
+  // A number repeated down a long paste is named once, with its count.
+  const repeated = await readSymbolList({ args: ["-"], readStdin: async () => "ED 2.582,52\nCNX 2.582,52\nEQT 2.582,52\nAR 1.899,21\n" });
+  expect(repeated.notes).toEqual(["Read the first column as symbols; ignored the 4 number cells beside it: 2.582,52 (3 times); 1.899,21."]);
   // Typed, a number is never a symbol either: beside one (a pasted line) or on its own.
   expect(await readSymbolList({ args: ["ED 2.582,52\nCNX;1.899,21", "1.899", "EQT"] })).toEqual({
     symbols: ["ED", "CNX", "EQT"],

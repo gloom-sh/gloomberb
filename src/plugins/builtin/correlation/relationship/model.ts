@@ -6,6 +6,7 @@ import type { PaneSettingsDef, PaneTemplateCreateOptions } from "../../../../typ
 import type { PricePoint } from "../../../../types/financials";
 import { formatTickerListInput, parseTickerListInput } from "../../../../tickers/list";
 import { alignDailyCloses, dailyCloses, pearsonCorrelation } from "../compute";
+import { rollAdjustedHistory } from "../../../../market-data/futures-roll-returns";
 
 export type RelationshipRange = Extract<TimeRange, "1M" | "3M" | "6M" | "1Y" | "5Y" | "ALL">;
 
@@ -51,6 +52,8 @@ export interface RelationshipAnalysis {
   stats: RelationshipRegressionStats | null;
   latestRatio: number | null;
   latestCorrelation: number | null;
+  /** A continuous future's returns read within one contract at each roll: "NG=F: rolls back-adjusted". */
+  rollNotes: string[];
 }
 
 function syntheticChartPoint(date: Date, value: number): ProjectedChartPoint {
@@ -148,10 +151,16 @@ function computeRelationshipRegression(returns: RelationshipReturnPoint[]): Rela
   };
 }
 
+/**
+ * The pair's ratio from the prices as traded, and its returns, rolling
+ * correlation and regression from each side's returns, a continuous future's
+ * within one contract at each roll (rollAdjustedHistory) when `symbols` names it.
+ */
 export function buildRelationshipAnalysis(
   leftPoints: PricePoint[],
   rightPoints: PricePoint[],
   correlationWindow = DEFAULT_RELATIONSHIP_CORRELATION_WINDOW,
+  symbols?: readonly [string, string],
 ): RelationshipAnalysis {
   const issues = (points: PricePoint[]) => points.flatMap((point) => {
     const issue = pricePointIntegrity(point); return issue ? [issue] : [];
@@ -159,7 +168,11 @@ export function buildRelationshipAnalysis(
   // Bars whose prices contradict each other are gaps, as history leaves them blank (dailyCloses); kept for the export.
   const integrity = { left: issues(leftPoints), right: issues(rightPoints) };
   const aligned = alignRelationshipPrices(leftPoints, rightPoints);
-  const returns = buildRelationshipReturns(aligned);
+  const [left, right] = symbols
+    ? [rollAdjustedHistory(leftPoints, symbols[0]), rollAdjustedHistory(rightPoints, symbols[1])]
+    : [{ points: leftPoints, note: null }, { points: rightPoints, note: null }];
+  const returns = buildRelationshipReturns(left.note || right.note ? alignRelationshipPrices(left.points, right.points) : aligned);
+  const rollNotes = symbols ? [[symbols[0], left.note], [symbols[1], right.note]].flatMap(([symbol, note]) => note ? [`${symbol}: ${note}`] : []) : [];
   const correlationPoints = buildRollingCorrelationPoints(returns, correlationWindow);
   const scatterPoints = returns.map((entry, index) => ({
     x: entry.rightReturn * 100,
@@ -181,6 +194,7 @@ export function buildRelationshipAnalysis(
     stats,
     latestRatio: aligned.at(-1)?.ratio ?? null,
     latestCorrelation,
+    rollNotes,
     ...(correlationUnavailableReason ? { correlationUnavailableReason } : {}),
     ...(integrity.left.length || integrity.right.length ? { integrity } : {}),
   };

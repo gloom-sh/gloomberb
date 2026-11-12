@@ -19,7 +19,7 @@ import {
 import { isUsSymbolVenue, LOOKUP_TIMEOUT_MS, movedAwayChange, tickerChangeLine, tickerChangeSymbol, type MovedTickerChange } from "../tickers/ticker-changes";
 import { isVenueAbroad } from "../tickers/listing-fate";
 import { serviceMarkedOtherListing } from "../tickers/company-name-listing";
-import { sameCompany } from "../tickers/company-name";
+import { sameCompany, shortCompanyName } from "../tickers/company-name";
 import { tickerHasListingSuffix } from "../sources/listing-symbols";
 import { canonicalExchange, exchangeLabel, isUsListingExchange, resolveExchangeTimeZone } from "../utils/exchanges";
 import { isCurrencyPairListing } from "../utils/fx-market-hours";
@@ -292,7 +292,7 @@ function choiceNeeded(
   if (!found) return null;
   // The line stopped trading as its company moved on (Rite Aid to RADCQ): one line says both.
   const moved = resolution.ended ? movedAwayChange(resolution.change) : null;
-  if (moved) return { message: stoppedTradingLine(symbol, moved), successor: moved.tradesAs };
+  if (moved) return { message: stoppedTradingLine(symbol, moved, resolution.ticker.metadata.name), successor: moved.tradesAs };
   return { message: history ? `${history.note}; ${found}` : found, successor: history?.successor ?? null };
 }
 
@@ -315,9 +315,15 @@ function quotelessNote(resolution: CliTicker): string | null {
   return resolution.noQuote ? "no quote" : null;
 }
 
-/** "RAD stopped trading 2023-10-17, now RADCQ", the company named first when known: a symbol whose line ended as its company moved. */
-function stoppedTradingLine(symbol: string, moved: MovedTickerChange): string {
-  const who = moved.issuer ? `${moved.issuer} (${symbol})` : symbol;
+/**
+ * "Chesapeake Energy (CHK) stopped trading 2024-10-02, now EXE": a symbol
+ * whose line ended as its company moved, named first by the listing's own
+ * name as its quote gives it, else by the issuer the change names, when known.
+ */
+function stoppedTradingLine(symbol: string, moved: MovedTickerChange, name?: string | null): string {
+  const own = name?.trim() && name.trim().toUpperCase() !== symbol.toUpperCase() ? shortCompanyName(name.trim()) : null;
+  const issuer = own ?? moved.issuer;
+  const who = issuer ? `${issuer} (${symbol})` : symbol;
   return `${who} stopped trading ${moved.changes[0]!.date}, now ${moved.tradesAs}`;
 }
 

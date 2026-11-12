@@ -139,7 +139,7 @@ function summarySections(input: BacktestReportInput): HeadlessBundleSection[] {
  */
 export function backtestReport(input: BacktestReportInput): HeadlessBundleResult {
   const { result } = input;
-  const continuation = continuationNote(input.symbol, input.exchange);
+  const continuation = continuationNote(input.symbol, input.exchange, result.rollNote);
   const end = input.window.end?.trim() || null;
   return {
     complete: true,

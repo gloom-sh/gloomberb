@@ -323,9 +323,9 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const historyPoints = useResolvedEntryValue(historyEntry);
   const historyInputs = useMemo(
     () => historyPoints
-      ? estimateKellyHistoryInputs(historyPoints, historyYears, { exchange: ticker?.metadata.exchange ?? "" })
+      ? estimateKellyHistoryInputs(historyPoints, historyYears, { exchange: ticker?.metadata.exchange ?? "", symbol: ticker?.metadata.ticker })
       : null,
-    [historyPoints, historyYears, ticker?.metadata.exchange],
+    [historyPoints, historyYears, ticker?.metadata.exchange, ticker?.metadata.ticker],
   );
   const rawActiveDraft = drafts[sizingMode] ?? DEFAULT_KELLY_DRAFTS[sizingMode];
   const { commonAssumptions, updateCommon } = useKellyCommonAssumptions(rawActiveDraft);

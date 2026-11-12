@@ -55,6 +55,12 @@ export function isNumberCell(cell: string): boolean {
   return FIGURE.test(text) && !/^\d+$/.test(text);
 }
 
+/** A spreadsheet's error value (`#REF!`, `#N/A`, `#DIV/0!`): a cell the sheet could not fill, never a comment. */
+export function isSheetErrorCell(cell: string): boolean {
+  const text = cell.trim();
+  return text.startsWith("#") && PLACEHOLDER.test(text);
+}
+
 /** A cell that names nothing: no letter or digit (`$$$`, `--`, `-`, `…`), or a placeholder for a missing value (`N/A`, `#N/A`). */
 export function isJunkCell(cell: string): boolean {
   const text = cell.trim();
