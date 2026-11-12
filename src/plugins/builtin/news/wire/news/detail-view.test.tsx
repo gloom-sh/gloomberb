@@ -9,7 +9,7 @@ import { TestPaneProvider, createTestPaneConfig } from "../../../../../test-supp
 import { createStatefulTestPluginRuntime } from "../../../../../test-support/plugin-runtime";
 import { createInitialState, appReducer } from "../../../../../state/app/context";
 import { PaneFooterProvider, PaneFooterBar } from "../../../../../components/layout/pane/footer";
-import { formatDetailDate } from "../../../../../utils/datetime-format";
+import { formatDetailDate, formatDetailTime } from "../../../../../utils/datetime-format";
 import type { NewsArticle } from "../../../../../news/types";
 import { createTestArticle } from "../../../../../test-support/news";
 import { Box } from "../../../../../ui";
@@ -263,7 +263,7 @@ test("older detail preserves the newer known headline and summary", async () => 
   const headerLine = capture().split("\n").find((line) => line.includes("Controlled wire \u00b7"));
   expect(headerLine).toContain(formatDetailDate(new Date("2026-09-11T12:00:00Z")));
   // Coverage from the story's own day is timed, not dated again.
-  expect(capture()).toContain(new Date("2026-09-11T11:00:00Z").toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }));
+  expect(capture()).toContain(formatDetailTime(new Date("2026-09-11T11:00:00Z")));
   expect(service.getQueryState(query).articles[0]?.title).toBe("Acme acquisition terminated");
 });
 

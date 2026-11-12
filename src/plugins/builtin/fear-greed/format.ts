@@ -78,10 +78,10 @@ export function formatUpdatedAt(date: Date | null): string {
     timeZone: "America/New_York",
     month: "short",
     day: "numeric",
-    hour: "numeric",
+    hour: "2-digit",
     minute: "2-digit",
-    hour12: true,
+    hourCycle: "h23",
   }).formatToParts(date);
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((entry) => entry.type === type)?.value ?? "";
-  return `Last updated ${part("month")} ${part("day")} at ${part("hour")}:${part("minute")} ${part("dayPeriod")} ET`;
+  return `Last updated ${part("month")} ${part("day")} at ${part("hour")}:${part("minute")} ET`;
 }

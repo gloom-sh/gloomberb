@@ -88,9 +88,9 @@ test("feed times read as a clock today, a weekday this week and a date before", 
 });
 
 test("a detail date names its zone, so a story read beside a list in UTC is not two hours off", () => {
-  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "UTC")).toBe("Oct 7, 2026 at 9:38 PM UTC");
-  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "Europe/Berlin")).toBe("Oct 7, 2026 at 11:38 PM GMT+2");
-  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "America/New_York")).toBe("Oct 7, 2026 at 5:38 PM EDT");
+  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "UTC")).toBe("Oct 7, 2026 at 21:38 UTC");
+  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "Europe/Berlin")).toBe("Oct 7, 2026 at 23:38 GMT+2");
+  expect(formatDetailDate("2026-10-07T21:38:00Z", "-", "America/New_York")).toBe("Oct 7, 2026 at 17:38 EDT");
   // A same-day coverage time, beside the story's dated header, names its zone too.
-  expect(formatDetailTime("2026-10-07T21:38:00Z", "-", "Europe/Berlin")).toBe("11:38 PM GMT+2");
+  expect(formatDetailTime("2026-10-07T21:38:00Z", "-", "Europe/Berlin")).toBe("23:38 GMT+2");
 });

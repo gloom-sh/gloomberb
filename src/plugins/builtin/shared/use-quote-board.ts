@@ -14,6 +14,7 @@ import { colors, priceColor } from "../../../theme/colors";
 import type { MarketDataRequestContext, QuoteBatchResult, QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { MarketState, Quote } from "../../../types/financials";
 import { formatPercentRaw } from "../../../utils/format";
+import { formatClockTime } from "../../../utils/datetime-format";
 import { useAssetData } from "../../runtime";
 
 export interface BoardQuoteState {
@@ -653,7 +654,7 @@ export function quoteBoardFooterInfo(status: QuoteBoardStatus): PaneFooterSegmen
       id: "fresh",
       quoteStatus: true,
       parts: [{
-        text: new Date(status.latestTs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        text: formatClockTime(status.latestTs),
         tone: "muted",
       }],
     });

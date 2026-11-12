@@ -179,7 +179,7 @@ export function formatFeedTime(
 
 /**
  * A date and time in the host's zone, with the zone named: "Oct 7, 2026 at
- * 11:38 PM GMT+2", "... 5:38 PM EDT", "... 9:38 PM UTC". Without the zone a
+ * 23:38 GMT+2", "... 17:38 EDT", "... 21:38 UTC". Without the zone a
  * time read beside a list in UTC looks two hours off.
  */
 export function formatDetailDate(value: DisplayDateValue, fallback = "-", timeZone?: string): string {
@@ -206,14 +206,28 @@ export function localTimeZoneShortName(now: DisplayDateValue = Date.now(), timeZ
     .find((part) => part.type === "timeZoneName")?.value ?? "UTC";
 }
 
-/** The time of `formatDetailDate` alone, its zone named: "11:38 PM GMT+2", for a day stated beside it. */
+const zonedClockFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * A time of day on the 24-hour clock every pane reads ("09:05", "23:38"), in
+ * the host's zone unless `timeZone` is given. Never AM/PM: one footer read
+ * "8:30 AM" beside another's "14:32" (review, 12 Nov 2026).
+ */
+export function formatClockTime(value: DisplayDateValue, fallback = "-", timeZone?: string): string {
+  const date = parseDisplayDate(value);
+  if (!date) return fallback;
+  if (!timeZone) return clockFormatter.format(date);
+  let formatter = zonedClockFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
+    zonedClockFormatters.set(timeZone, formatter);
+  }
+  return formatter.format(date);
+}
+
+/** The time of `formatDetailDate` alone, its zone named: "23:38 GMT+2", for a day stated beside it. */
 export function formatDetailTime(value: DisplayDateValue, fallback = "-", timeZone?: string): string {
   const date = parseDisplayDate(value);
   if (!date) return fallback;
-  return date.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZoneName: "short",
-    timeZone,
-  });
+  return `${formatClockTime(date, fallback, timeZone)} ${localTimeZoneShortName(date, timeZone)}`;
 }

@@ -8,7 +8,7 @@ import type { BrokerConnectionStatus } from "../../../../types/broker";
 import type { TickerFinancials } from "../../../../types/financials";
 import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import type { BrokerAccount, BrokerCashBalance } from "../../../../types/trading";
-import { formatShortDate } from "../../../../utils/datetime-format";
+import { formatClockTime, formatShortDate } from "../../../../utils/datetime-format";
 import { displayWidth, formatPercentRaw } from "../../../../utils/format";
 import { getBrokerInstance } from "../../../../utils/broker-instances";
 import {
@@ -133,7 +133,7 @@ function formatSourceBadge(account: BrokerAccount, liveGateway: boolean): { labe
       label: !syncedAt
         ? "Synced"
         : today
-          ? `Synced ${syncedAt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}`
+          ? `Synced ${formatClockTime(syncedAt)}`
           : `Synced ${formatShortDate(syncedAt, { year: false })}`,
       kind: "cloud",
     };
@@ -494,7 +494,7 @@ export function buildPortfolioFooterSegments({
   const refreshText = refreshingSize > 0
     ? "Refreshing..."
     : lastRefreshTimestamp != null
-      ? new Date(lastRefreshTimestamp).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+      ? formatClockTime(lastRefreshTimestamp)
       : "-";
   return [...accountStatus, { id: "refresh", parts: [{ text: refreshText, tone: "muted" }] }];
 }
