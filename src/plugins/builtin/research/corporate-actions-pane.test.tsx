@@ -96,6 +96,21 @@ test("EE keeps surprise visible with annual and quarterly estimates and never as
   expect(csv).toContain("1000000000");
 });
 
+/** Review, 12 Nov 2026: AAPL's events led with a 2028 estimate, the newest date, above everything that had happened. */
+test("events read in the order they happen and open on the next one", async () => {
+  await render({ symbol: "TEST", splits: [], earnings: [],
+    dividends: [{ exDate: "2099-02-10", amount: 0.3 }, { exDate: "2020-02-10", amount: 0.1 }, { exDate: "2098-02-10", amount: 0.2 }],
+  }, "corporate-actions", 100);
+  const lines = tui.frame().split("\n");
+  const rowOf = (date: string) => lines.findIndex((line) => line.includes(date));
+  expect(rowOf("2020-02-10")).toBeLessThan(rowOf("2098-02-10"));
+  expect(rowOf("2098-02-10")).toBeLessThan(rowOf("2099-02-10"));
+  await tui.emitKeypress({ name: "return" });
+  await frame();
+  expect(tui.frame()).toContain("$0.20");
+  expect(tui.frame()).not.toContain("2020-02-10");
+});
+
 test("opening a fiscal-period row cannot select a same-day pending announcement", async () => {
   await render({ symbol: "TEST", dividends: [], splits: [], earnings: [
     { date: "2026-09-30", dateType: "announcement", epsEstimate: 2.2 },
