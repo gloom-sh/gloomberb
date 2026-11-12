@@ -12,6 +12,8 @@ Above the **NVDA says** table, a chart appears when at least three dated period 
 
 Customers the filer does not name are labelled **undisclosed customer** (or supplier), and geographic, channel and customer cohorts **customer group**, both in muted text so they never read as a company.
 
+A **related party** (a China A or Hong Kong report's 关联交易: the company's parent, its group, or a company under the same control) is never shown as a plain supplier or customer. Its name carries a `related party` chip, or `related group` when the report names the company with its subsidiaries (X及其子公司), and its Role reads **Related-party customer** (or supplier) in the evidence view, the table's copy and export, `fn SPLC` and the graph; a Flow card says `related group ·` before its figure (`related ·` on a narrow card). Its Value is the report's actual amount for the year, in the printed unit and currency to the cent (`9,515,093.66 CNY`, `6,105,254 CNY thousand`); it has no share. A named group that is no related party reads `group`.
+
 The **Evidence** filter defaults to Filings, Company and Call. Add Reported to see corroborated reporting. Add Unconfirmed to see rumors and single-source leads, including reported leads that still await verification. Unconfirmed rows occupy a separate section and do not enter flow diagrams or disclosed concentrations. A source's trust tier is distinct from the relationship role: a company announcement can describe an investment without establishing a supplier relationship.
 
 | Tier | Evidence | Meaning |

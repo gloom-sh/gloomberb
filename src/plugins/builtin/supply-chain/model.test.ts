@@ -73,6 +73,10 @@ test("a related-party trade never reads as a plain supplier, and its source amou
   const item = { valueKind: "related_party_group_purchases", value: 26_909_758_882.26, valueUnit: "units", currency: "CNY" };
   expect([sourceValueLabel(item.valueKind), sourceValueText(item)]).toEqual(["Related-party purchases", "26,909,758,882.26 CNY"]);
   expect(sourceValueText({ ...item, value: 9_771_378, valueUnit: "ten_thousands" })).toBe("9,771,378 CNY ten thousand");
+  // A line that names no currency takes its row's, or shows nothing: never "9,771,378 ten thousand".
+  expect(sourceValueText({ ...item, value: 9_771_378, valueUnit: "ten_thousands", currency: null }, "CNY")).toBe("9,771,378 CNY ten thousand");
+  expect(sourceValueText({ ...item, value: 9_771_378, valueUnit: "ten_thousands", currency: null })).toBeNull();
+  expect(sourceValueText({ ...item, value: 1_250, valueUnit: "units", currency: null }, null)).toBeNull();
   // A total in units keeps its cents to two places, as the report prints each line.
   expect(disclosedValue({ ...group, nativeAmount: 822_340_444.9, nativeCurrency: "CNY", nativeScale: 1 })).toBe("822,340,444.90 CNY");
   expect(sourceValueText({ ...item, value: 203_664_060.2 })).toBe("203,664,060.20 CNY");

@@ -286,12 +286,20 @@ export function sourceValueLabel(kind: string | null): string {
   const words = kind.replace(/_/g, " ").trim();
   return words ? words[0]!.toUpperCase() + words.slice(1) : "Source value";
 }
-/** A source value in its currency and printed unit, as a row's value reads: "26,909,758,882.26 CNY", "12,345 CNY ten thousand", "4.5%". */
-export function sourceValueText(item: Pick<SupplyEvidenceItem, "value" | "valueUnit" | "currency">): string | null {
+/**
+ * A source value in its currency and printed unit, as a row's value reads:
+ * "26,909,758,882.26 CNY", "12,345 CNY ten thousand", "4.5%". An amount in a
+ * unit of a currency takes the row's currency when its own line names none,
+ * and is not shown without one: "9,771,378 ten thousand" says nothing.
+ */
+export function sourceValueText(item: Pick<SupplyEvidenceItem, "value" | "valueUnit" | "currency">, rowCurrency?: string | null): string | null {
   if (item.value === null) return null;
   const scale = item.valueUnit ? UNIT_SCALES[item.valueUnit] : undefined;
   const amount = printedAmount(item.value, scale);
-  if (scale !== undefined) return `${amount}${item.currency ? ` ${item.currency}` : ""}${scaleLabel(scale)}`;
+  if (scale !== undefined) {
+    const currency = item.currency || rowCurrency;
+    return currency ? `${amount} ${currency}${scaleLabel(scale)}` : null;
+  }
   if (item.valueUnit === "percent" || item.valueUnit === "per cent") return `${amount}%`;
   return [amount, item.currency, item.valueUnit].filter(Boolean).join(" ");
 }

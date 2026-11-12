@@ -318,7 +318,8 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
         if (!ticker) return { text: "", value: null };
         return { text: ticker, color: colors.textBright, content: desktop ? <Badge label={ticker} tone="accent" /> : undefined };
       }
-      case "role": return { text: roleLabel(row.role), content: <Box flexDirection="row" height={1} overflow="hidden">
+      // The text a copy or export reads names a related party; the cell draws the role beside the name's chip.
+      case "role": return { text: relationshipLabel(row), content: <Box flexDirection="row" height={1} overflow="hidden">
         <Text fg={ROLE_COLORS[row.role]}>●</Text>
         <Text fg={ink ?? ROLE_COLORS[row.role]}>{` ${roleLabel(row.role)}`}</Text>
       </Box> };

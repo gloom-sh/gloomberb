@@ -42,7 +42,7 @@ export function SupplySources({ row, width, onOpenSource }: { row: SupplyRow; wi
         <KeyValueRow label="Publisher" value={item.publisher} detail={item.publishedAt.slice(0, 10)} labelWidth={20} />
         <KeyValueRow label="Evidence" value={tierLabel(item.tier)} detail={item.status !== "active" ? item.status : item.textOrigin === "asr" ? "Speech transcript" : undefined} labelWidth={20} />
         {item.verificationStatus === "lead" ? <KeyValueRow label="Verification" value="Unconfirmed supporting item" labelWidth={20} /> : null}
-        {item.value !== null ? <KeyValueRow label={sourceValueLabel(item.valueKind)} value={sourceValueText(item)!} labelWidth={20} /> : null}
+        {sourceValueText(item, row.nativeCurrency) ? <KeyValueRow label={sourceValueLabel(item.valueKind)} value={sourceValueText(item, row.nativeCurrency)!} labelWidth={20} /> : null}
         {canShowQuote(item) && item.quote ? <DisclosureQuote role={row.role} quote={item.quote} quoteLanguage={item.quoteLanguage} width={width} /> : <KeyValueRow label="Quotation" value={item.textOrigin === "snippet" ? "Original text not verified" : "Link only"} labelWidth={20} />}
         {canShowQuote(item) && item.englishGloss ? <SourceGloss text={item.englishGloss} width={width} /> : null}
         {sourceLink(item.url, "Open source")}
