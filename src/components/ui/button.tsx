@@ -70,6 +70,18 @@ export function buttonShortcutColor(palette: { bg?: string; fg: string }, inert:
   return inert ? colors.textMuted : colors.textDim;
 }
 
+/** Primary and danger are filled with their own colour, which focus keeps. */
+function isFilledVariant(variant: ButtonVariant): boolean {
+  return variant === "primary" || variant === "danger";
+}
+
+/**
+ * A terminal button's colours. Focus (`active`) fills a secondary or ghost
+ * button with the selection; a filled one keeps its fill, which is already
+ * stronger than the selection, and marks focus on its label instead
+ * (`buttonLabelAttributes`), so a focused primary never reads weaker than an
+ * unfocused one.
+ */
 export function resolveButtonColors(variant: ButtonVariant, active: boolean, disabled: boolean, colors: ThemeColors, tone?: ButtonProps["tone"]): { bg?: string; fg: string } {
   if (variant === "quiet") return { bg: active ? colors.selected : undefined, fg: disabled ? colors.textMuted : active ? colors.textBright : colors.textDim };
   if (variant === "plain") {
@@ -79,7 +91,7 @@ export function resolveButtonColors(variant: ButtonVariant, active: boolean, dis
     return { bg: colors.panel, fg: colors.textMuted };
   }
   if (tone && variant === "primary") return { bg: colors[tone], fg: colors.bg };
-  if (active) {
+  if (active && !isFilledVariant(variant)) {
     return { bg: colors.selected, fg: colors.selectedText };
   }
 
@@ -94,6 +106,15 @@ export function resolveButtonColors(variant: ButtonVariant, active: boolean, dis
     default:
       return { bg: colors.panel, fg: colors.text };
   }
+}
+
+/**
+ * A terminal button's label: bold when focused, and underlined too on a
+ * filled button, whose fill does not change with focus.
+ */
+export function buttonLabelAttributes(variant: ButtonVariant, active: boolean, inert: boolean): number {
+  if (!active) return 0;
+  return TextAttributes.BOLD | (isFilledVariant(variant) && !inert ? TextAttributes.UNDERLINE : 0);
 }
 
 /**
@@ -189,7 +210,7 @@ export function Button({
         if (!inert) onPress?.();
       }}
     >
-      {children ?? <Text fg={palette.fg} attributes={active ? TextAttributes.BOLD : 0}>
+      {children ?? <Text fg={palette.fg} attributes={buttonLabelAttributes(variant, active, inert)}>
         {compact ? displayLabel ?? label : ` ${displayLabel ?? label} `}
       </Text>}
       {shortcut && (

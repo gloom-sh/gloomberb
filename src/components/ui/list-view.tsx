@@ -3,6 +3,7 @@ import { Box, ScrollBox, Text, useUiHost } from "../../ui";
 import { useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { TextAttributes, type ScrollBoxRenderable } from "../../ui";
 import { hoverBg } from "../../theme/colors";
+import { useSelectionFill } from "./selection-fill";
 import { t } from "../../i18n";
 import { useRemoteUiNode, useRemoteUiScope } from "../../remote/semantic-tree";
 import { resolveRemoteListIndex } from "../../remote/semantic-helpers";
@@ -212,6 +213,7 @@ export function ListView({
   remoteMetadata,
 }: ListViewProps) {
   const colors = useThemeColors();
+  const selectionFill = useSelectionFill();
   // Drawn inside a prompt (a dialog that lists a prompt's answers), it carries the prompt's scope.
   const contextScope = useRemoteUiScope();
   useRemoteUiNode({
@@ -290,7 +292,7 @@ export function ListView({
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
   const baseBg = bgColor ?? colors.bg;
-  const activeBg = selectedBgColor ?? colors.selected;
+  const activeBg = selectedBgColor ?? selectionFill.bg;
   const rowHoverBg = hoverBgColor ?? hoverBg(colors);
   const selectedItem = selectedIndex >= 0 ? items[selectedIndex] : undefined;
   const activeScrollIndex = scrollIndex ?? selectedIndex;

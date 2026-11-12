@@ -75,6 +75,15 @@ export function hoverColour(palette: Palette): string {
 }
 
 /**
+ * The chosen row of a list or table whose pane does not have the keyboard: a
+ * third of the way from the panel to the selection, so the row still says
+ * where the cursor is without reading as the one the keys move.
+ */
+export function inactiveSelectionColour(palette: Palette): string {
+  return blendHex(palette.panel, palette.selected, 0.35);
+}
+
+/**
  * The colour roles the palette names indirectly, as `--gloom-*` variables:
  * styles.css and inline styles read these, never a blend of their own.
  */

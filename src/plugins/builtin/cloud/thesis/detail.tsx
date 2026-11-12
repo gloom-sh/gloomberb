@@ -32,6 +32,7 @@ import {
 import { promptChoice } from "./prompts";
 import { thesisStore } from "./store";
 import { ClippedText } from "../../../../components/ui/display";
+import { useSelectionFill } from "../../../../components/ui/selection-fill";
 import { logFailure } from "../../../../utils/log-failure";
 
 type Row =
@@ -155,6 +156,7 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
   const [busy, setBusy] = useState(false);
   const generation = useRef(0);
   const { nativePaneChrome } = useUiCapabilities();
+  const selectionFill = useSelectionFill();
 
   const ctx = useMemo<flows.FlowContext>(() => ({ dialog, notify, hasProAccess: plan.hasProAccess, openUpgrade }), [dialog, notify, openUpgrade, plan.hasProAccess]);
 
@@ -355,8 +357,9 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
   const renderRow = useCallback((item: ListViewItem, state: { selected: boolean }) => {
     const row = rows.find((entry) => entry.id === item.id);
     if (!row) return null;
-    const fg = state.selected ? colors.selectedText : colors.text;
-    const dim = state.selected ? colors.selectedText : colors.textDim;
+    const lit = state.selected && selectionFill.lit;
+    const fg = lit ? colors.selectedText : colors.text;
+    const dim = lit ? colors.selectedText : colors.textDim;
     // Every row is a full-width row box, so the DOM host lays headings and
     // prose out flush left like the pillar rows instead of centering them.
     if (row.kind === "heading") {
@@ -427,7 +430,7 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
         <Text fg={dim}>{rightText}</Text>
       </Box>
     );
-  }, [contentWidth, rows, thesis.document]);
+  }, [contentWidth, rows, selectionFill.lit, thesis.document]);
 
   const owner = isTeam ? teamStore.getTeam(thesis.owner.id)?.name ?? "team" : null;
   const nextDue = thesis.document.catalysts
@@ -519,7 +522,7 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
           rowGap={0}
           height={nativePaneChrome ? undefined : Math.max(3, height - headerHeight - stripHeight)}
           flexGrow={nativePaneChrome ? 1 : undefined}
-          getRowBackgroundColor={(item, state) => (state.selected ? colors.selected : item.disabled ? colors.bg : undefined)}
+          getRowBackgroundColor={(item, state) => (state.selected ? selectionFill.bg : item.disabled ? colors.bg : undefined)}
           remoteRole="thesis"
           remoteLabel={thesis.title}
         />

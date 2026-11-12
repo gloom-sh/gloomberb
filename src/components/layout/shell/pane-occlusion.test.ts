@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveOccludedPaneIds, visibleFocusTarget, type OcclusionPane } from "./pane-occlusion";
+import { resolveOccludedPaneIds, resolveTitleCoveredPaneIds, visibleFocusTarget, type OcclusionPane } from "./pane-occlusion";
 
 const bounds = { width: 40, height: 20 };
 
@@ -64,4 +64,25 @@ test("focus moves from a pane hidden under windows to the topmost one that shows
   // A window that leaves part of the dock showing leaves its focus alone.
   const partial = [pane("dock", [0, 0, 40, 20], null, 0), pane("window", [0, 0, 30, 20], 51, 1)];
   expect(visibleFocusTarget("dock", partial, resolveOccludedPaneIds(partial, bounds))).toBeNull();
+});
+
+describe("resolveTitleCoveredPaneIds", () => {
+  const docked = (paneId: string, x: number, y: number, width: number) => ({ paneId, rect: { x, y, width, height: 10 } });
+
+  test("a window over half or more of a docked pane's title row covers it; one over its body alone does not", () => {
+    const covered = resolveTitleCoveredPaneIds([
+      docked("half", 0, 0, 20),
+      docked("less", 20, 0, 20),
+      docked("body", 0, 10, 40),
+    ], [{ x: 10, y: 0, width: 19, height: 5 }, { x: 0, y: 12, width: 40, height: 6 }]);
+    expect([...covered]).toEqual(["half"]);
+  });
+
+  test("two windows side by side cover a title row neither covers half of", () => {
+    const covered = resolveTitleCoveredPaneIds(
+      [docked("pane", 0, 0, 40)],
+      [{ x: 0, y: 0, width: 10, height: 4 }, { x: 25, y: 0, width: 10, height: 4 }],
+    );
+    expect([...covered]).toEqual(["pane"]);
+  });
 });

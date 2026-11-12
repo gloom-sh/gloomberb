@@ -15,6 +15,8 @@ interface ShellPaneManagementShortcutOptions {
   closeAllFloatingPanes(): boolean;
   /** `focusNextFloating`: the top floating pane left takes the focus, for closing them one after another. */
   closeFocusedPane(options?: { focusNextFloating?: boolean }): boolean;
+  /** Closes the focused pane when it is a floating window one Esc closes; false otherwise. */
+  closeFocusedFloatingPane(): boolean;
   copyFocusedPaneScreenshot(): boolean;
   exportFocusedPaneCsv(): boolean;
   focusedPaneId: string | null;
@@ -37,6 +39,7 @@ export function useShellPaneManagementShortcuts({
   askAboutFocusedPane,
   cancelActiveDrag,
   closeAllFloatingPanes,
+  closeFocusedFloatingPane,
   closeFocusedPane,
   copyFocusedPaneScreenshot,
   exportFocusedPaneCsv,
@@ -59,13 +62,15 @@ export function useShellPaneManagementShortcuts({
   const [shots] = useState(createOneShots);
   const keybindings = useKeybindings();
 
-  // Esc Esc closes the focused pane and hands the focus to the next floating one.
+  // Esc Esc closes the focused pane and hands the focus to the next floating
+  // one; one Esc nothing took closes a floating window.
   useDoubleEscapeClose({
     targetId: focusedPaneId,
     overlayOpen,
     editing: inputCaptured,
     dragging: hasActiveDrag,
     close: () => closeFocusedPane({ focusNextFloating: true }),
+    closeOnSingle: closeFocusedFloatingPane,
   });
 
   useShortcut((event) => {

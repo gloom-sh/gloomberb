@@ -63,6 +63,35 @@ export function resolveOccludedPaneIds(
 }
 
 /**
+ * Docked panes whose title bar floating windows hide, half of it or more. A
+ * focused pane shows its focus there (the frame, the title), so focus moved
+ * to one of these could not be seen: Tab passes them by. Only the bar's first
+ * row counts; a window over the body alone hides nothing that says focus.
+ */
+export function resolveTitleCoveredPaneIds(
+  docked: ReadonlyArray<{ paneId: string; rect: LayoutBounds }>,
+  floating: readonly LayoutBounds[],
+): Set<string> {
+  const covered = new Set<string>();
+  if (floating.length === 0) return covered;
+  for (const { paneId, rect } of docked) {
+    const row = Math.floor(rect.y);
+    const x0 = Math.floor(rect.x);
+    const x1 = Math.ceil(rect.x + rect.width);
+    if (x1 <= x0) continue;
+    let hiddenCells = 0;
+    for (let x = x0; x < x1; x += 1) {
+      if (floating.some((window) => (
+        x >= Math.floor(window.x) && x < Math.ceil(window.x + window.width)
+        && row >= Math.floor(window.y) && row < Math.ceil(window.y + window.height)
+      ))) hiddenCells += 1;
+    }
+    if (hiddenCells * 2 >= x1 - x0) covered.add(paneId);
+  }
+  return covered;
+}
+
+/**
  * Where focus belongs when the focused pane is hidden under floating panes,
  * as a docked pane is under a window that fills a narrow terminal: the
  * topmost pane that shows, so the keys go to what the reader sees. Null while

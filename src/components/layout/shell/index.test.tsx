@@ -782,7 +782,7 @@ describe("Shell", () => {
     const { actions } = await renderShell(createShellStateWithLayout(config, layout, "ticker-detail:float"));
     const rows = tui.frame().split("\n");
     // The pointer's rows count from the top bar, which the shell leaves out here.
-    const float = rows.findIndex((row) => row.includes("┌::")) + 1;
+    const float = rows.findIndex((row) => row.includes("┌─::")) + 1;
     const lower = rows.findIndex((row, index) => index > 2 && row.startsWith("::"));
     const middle = Math.floor((lower + rows.length) / 2);
     await act(async () => {
@@ -846,7 +846,7 @@ describe("Shell", () => {
     const rest = () => JSON.stringify(tui.setup().captureSpans());
     const before = rest();
     // The pointer's rows count from the top bar, which the shell leaves out here.
-    const float = tui.frame().split("\n").findIndex((row) => row.includes("┌::")) + 1;
+    const float = tui.frame().split("\n").findIndex((row) => row.includes("┌─::")) + 1;
     const lower = tui.frame().split("\n").findIndex((row, index) => index > 2 && row.startsWith("::")) + 1;
     const mouse = tui.setup().mockMouse;
     for (const [x, y] of [[48, float], [4, lower]] as const) {
@@ -887,9 +887,9 @@ describe("Shell", () => {
     };
     const { actions } = await renderShell(createShellStateWithLayout(config, layout, "ticker-detail:two"));
     const rows = tui.frame().split("\n");
-    const row = rows.findIndex((line) => line.includes("┌::"));
+    const row = rows.findIndex((line) => line.includes("┌─::"));
     // On its grip, which moves the stack whole; the pointer's rows count from the top bar.
-    const [x, y] = [rows[row]!.indexOf("┌::") + 1, row + 1];
+    const [x, y] = [rows[row]!.indexOf("┌─::") + 2, row + 1];
     await act(async () => {
       const mouse = tui.setup().mockMouse;
       await mouse.pressDown(x, y);
@@ -1391,7 +1391,7 @@ describe("Shell", () => {
     expect(actions.some((action) => action.type === "UPDATE_LAYOUT")).toBe(false);
   });
 
-  test("moves a floating pane in window mode and commits once", async () => {
+  test("moves a floating pane in window mode, and Enter commits once and leaves the mode", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-window-mode-test");
     const floatingLayout = cloneLayout(config.layout);
     floatingLayout.dockRoot = { kind: "pane", instanceId: "portfolio-list:main" };
@@ -1408,7 +1408,8 @@ describe("Shell", () => {
       await tui.setup().renderOnce();
     });
 
-    expect(tui.frame()).toContain("Committed");
+    expect(tui.frame()).not.toContain("WINDOW MOVE");
+    expect(actions.at(-1)).toEqual({ type: "FOCUS_PANE", paneId: "ticker-detail:main" });
     const updateLayout = findUpdateLayout(actions);
     expect(actions.filter((action) => action.type === "PUSH_LAYOUT_HISTORY")).toHaveLength(1);
     expect(updateLayout?.layout.floating.find((entry: any) => entry.instanceId === "ticker-detail:main")).toEqual(expect.objectContaining({
@@ -1417,7 +1418,7 @@ describe("Shell", () => {
     }));
   });
 
-  test("returns to window selection after commit for editing another window", async () => {
+  test("Tab picks another window in move mode, and Enter moves it and raises it above the rest", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-window-mode-repeat-test");
     const floatingLayout = cloneLayout(config.layout);
     floatingLayout.dockRoot = null;
@@ -1430,31 +1431,16 @@ describe("Shell", () => {
     );
 
     await emitKeypress({ name: "m", ctrl: true, shift: true });
-    await emitKeypress({ name: "right" });
-    await emitKeypress({ name: "enter" });
-
-    expect(tui.frame()).toContain("WINDOW MOVE");
-
     await emitKeypress({ name: "tab" });
     await emitKeypress({ name: "right" });
     await emitKeypress({ name: "enter" });
 
     const updates = actions.filter((action) => action.type === "UPDATE_LAYOUT");
-    expect(updates).toHaveLength(2);
-    expect(updates[0]?.layout.floating.find((entry: any) => entry.instanceId === "ticker-detail:main")).toEqual(expect.objectContaining({
-      x: 10,
-      y: 2,
-    }));
-    expect(updates[1]?.layout.floating.find((entry: any) => entry.instanceId === "ticker-detail:main")).toEqual(expect.objectContaining({
-      x: 10,
-      y: 2,
-    }));
-    expect(updates[1]?.layout.floating.find((entry: any) => entry.instanceId === "portfolio-list:main")).toEqual(expect.objectContaining({
-      x: 4,
-      y: 1,
-    }));
-    const movedPortfolio = updates[1]?.layout.floating.find((entry: any) => entry.instanceId === "portfolio-list:main");
-    const movedTicker = updates[1]?.layout.floating.find((entry: any) => entry.instanceId === "ticker-detail:main");
+    expect(updates).toHaveLength(1);
+    const movedPortfolio = updates[0]?.layout.floating.find((entry: any) => entry.instanceId === "portfolio-list:main");
+    const movedTicker = updates[0]?.layout.floating.find((entry: any) => entry.instanceId === "ticker-detail:main");
+    expect(movedPortfolio).toEqual(expect.objectContaining({ x: 4, y: 1 }));
+    expect(movedTicker).toEqual(expect.objectContaining({ x: 8, y: 2 }));
     expect(movedPortfolio?.zIndex).toBeGreaterThan(movedTicker?.zIndex ?? 0);
   });
 
@@ -1479,31 +1465,31 @@ describe("Shell", () => {
     }));
   });
 
-  test("toggles the selected window between docked and floating in window move mode", async () => {
+  test.each([
+    ["docked", false],
+    ["floating", true],
+  ] as const)("d in window move mode toggles a %s window between docked and floating", async (_name, floating) => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-window-mode-dock-toggle-test");
     const mainPane = requireLayoutInstance(config, "portfolio-list:main");
-    const dockedLayout = {
-      dockRoot: { kind: "pane" as const, instanceId: "portfolio-list:main" },
+    const layout = {
+      dockRoot: floating ? null : { kind: "pane" as const, instanceId: "portfolio-list:main" },
       instances: [{ ...mainPane }],
-      floating: [],
+      floating: floating ? [{ instanceId: "portfolio-list:main", x: 4, y: 2, width: 32, height: 10, zIndex: 50 }] : [],
     };
     const { actions } = await renderShell(
-      createShellStateWithLayout(config, dockedLayout, "portfolio-list:main"),
+      createShellStateWithLayout(config, layout, "portfolio-list:main"),
     );
 
     await emitKeypress({ name: "m", ctrl: true, shift: true });
-    expect(tui.frame()).toContain("d float");
+    expect(tui.frame()).toContain("WINDOW MOVE");
 
-    await emitKeypress({ name: "d" });
-    await emitKeypress({ name: "enter" });
     await emitKeypress({ name: "d" });
     await emitKeypress({ name: "enter" });
 
     const updates = actions.filter((action) => action.type === "UPDATE_LAYOUT");
-    expect(updates).toHaveLength(2);
-    expect(updates[0]?.layout.floating.some((entry: any) => entry.instanceId === "portfolio-list:main")).toBe(true);
-    expect(updates[1]?.layout.floating.some((entry: any) => entry.instanceId === "portfolio-list:main")).toBe(false);
-    expect(updates[1]?.layout.dockRoot).toEqual({ kind: "pane", instanceId: "portfolio-list:main" });
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.layout.floating.some((entry: any) => entry.instanceId === "portfolio-list:main")).toBe(!floating);
+    expect(updates[0]?.layout.dockRoot).toEqual(floating ? { kind: "pane", instanceId: "portfolio-list:main" } : null);
   });
 
   test("previews a directional docked window move before committing it", async () => {
@@ -1644,6 +1630,37 @@ describe("Shell", () => {
     const updateLayout = actions.find((action) => action.type === "UPDATE_LAYOUT");
     expect(updateLayout?.layout.floating.map((entry: { instanceId: string }) => entry.instanceId)).toEqual(["ticker-detail:main"]);
     expect(updateLayout?.focusedPaneId).toBe("ticker-detail:main");
+  });
+
+  // A ticker opened from a list floats over it: one Esc puts it away and the
+  // list has the keys again, as a dialog does. Esc Esc, the old way, still
+  // closes that one window and not the list as well.
+  test("one Esc closes the focused floating pane and focus goes back where it was", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-test");
+    const layout = floatingOverDockLayout(config, [{ instanceId: "ticker-detail:main", x: 4, y: 2 }]);
+    const { actions } = await renderShell(
+      { ...createShellStateWithLayout(config, layout, "ticker-detail:main"), previousFocusedPaneId: "portfolio-list:main" },
+      { width: 40, height: 12 },
+    );
+
+    await emitKeypress({ name: "escape", sequence: "\u001b" });
+    const updates = actions.filter((action) => action.type === "UPDATE_LAYOUT");
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.layout.floating).toEqual([]);
+    expect(updates[0]?.focusedPaneId).toBe("portfolio-list:main");
+
+    await emitKeypress({ name: "escape", sequence: "\u001b" });
+    await emitKeypress({ name: "escape", sequence: "\u001b" });
+    expect(actions.filter((action) => action.type === "UPDATE_LAYOUT")).toHaveLength(1);
+  });
+
+  test("one Esc leaves a locked floating pane and a docked one open", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-test");
+    const layout = floatingOverDockLayout(config, [{ instanceId: "ticker-detail:main", x: 4, y: 2, locked: true }]);
+    const { actions } = await renderShell(createShellStateWithLayout(config, layout, "ticker-detail:main"), { width: 40, height: 12 });
+
+    await emitKeypress({ name: "escape", sequence: "\u001b" });
+    expect(actions.some((action) => action.type === "UPDATE_LAYOUT")).toBe(false);
   });
 
   test("closes the focused floating pane with Ctrl+W", async () => {

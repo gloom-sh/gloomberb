@@ -2,7 +2,7 @@ import { createContext, startTransition, useCallback, useContext, useEffect, use
 import { Box, Text, useNativeRenderer, useUiCapabilities, type BoxRenderable } from "../../../ui";
 import { beginLiveResize, createCatchUp, type CatchUp } from "../../../ui/live-resize";
 import { capturePointerDrag } from "../../../ui/pointer-drag";
-import { blendHex, colors, hoverBg } from "../../../theme/colors";
+import { blendHex, colors, hoverBg, inactiveSelectedBg } from "../../../theme/colors";
 import { t } from "../../../i18n";
 import { usePaneFooter } from "./footer/registration";
 
@@ -219,7 +219,7 @@ export function PaneSidebar({
     : colors.panel;
   const activeBackgroundColor = keyboardFocused
     ? blendHex(colors.selected, colors.borderFocused, 0.32)
-    : blendHex(colors.panel, colors.selected, 0.35);
+    : inactiveSelectedBg(colors);
   const sidebarLayoutHeight = nativePaneChrome ? "100%" : height;
   const nativeFillStyle = nativePaneChrome ? { minHeight: 0 } : undefined;
   const renderState = { backgroundColor, listWidth };

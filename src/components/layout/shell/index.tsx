@@ -26,6 +26,8 @@ import {
 import { useThemeColors } from "../../../theme/theme-context";
 import { SPACE } from "../../../theme/ui-tokens";
 import { getPaneDisplayTitle } from "../pane/title";
+import { registerCoveredPaneSource } from "../pane/cycle-order";
+import { resolveTitleCoveredPaneIds } from "./pane-occlusion";
 import type { PaneHeaderQuickSetting } from "../pane/header";
 import { getPaneFooter } from "../pane/footer";
 import { getShortcutDisplayMode } from "../../../utils/shortcut-labels";
@@ -312,6 +314,7 @@ export function Shell({
   const {
     canExportPaneCsv,
     closeAllFloatingPanes,
+    closeFocusedFloatingPane,
     closeFocusedPane,
     copyFocusedPaneScreenshot,
     copyPaneScreenshot,
@@ -498,6 +501,15 @@ export function Shell({
       ? visibleFloatingPanes.filter(({ pane }) => pane.instance.instanceId === transientFocusPaneId).map((entry) => ({ ...entry, rect: fullscreenRect }))
       : visibleFloatingPanes
   ), [fullscreenRect, transientFocusActive, transientFocusPaneId, visibleFloatingPanes]);
+  // Docked panes whose title bar a floating window hides: Tab passes them by,
+  // so focus never lands where it cannot be seen.
+  const titleCoveredPaneIds = useMemo(() => resolveTitleCoveredPaneIds(
+    screenDockLeafLayouts.map((leaf) => ({ paneId: leaf.instanceId, rect: leaf.rect })),
+    screenFloatingPanes.map((entry) => entry.rect),
+  ), [screenDockLeafLayouts, screenFloatingPanes]);
+  const titleCoveredRef = useRef(titleCoveredPaneIds);
+  titleCoveredRef.current = titleCoveredPaneIds;
+  useEffect(() => registerCoveredPaneSource(() => titleCoveredRef.current), []);
   const screenDockedPanes = useMemo(() => (
     transientFocusActive
       ? dockedPanes.filter((pane) => pane.instance.instanceId === transientFocusPaneId)
@@ -610,6 +622,7 @@ export function Shell({
     askAboutFocusedPane,
     cancelActiveDrag,
     closeAllFloatingPanes,
+    closeFocusedFloatingPane: transientFocusActive ? () => false : closeFocusedFloatingPane,
     closeFocusedPane,
     copyFocusedPaneScreenshot,
     exportFocusedPaneCsv,
@@ -820,6 +833,7 @@ export function Shell({
     openPaneMenu,
     openPaneDocs,
     getPaneTitle,
+    getPaneQuickSettings,
     paneMap,
     persistLayout,
     precisePointer,

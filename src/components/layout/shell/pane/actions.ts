@@ -141,6 +141,18 @@ export function useShellPaneActions({
     return true;
   }, [focusedPaneId, persistLayout, pluginRegistry, previousFocusedPaneId, visibleLayout]);
 
+  /**
+   * One Esc closes the focused floating window, unless it is locked (then the
+   * Esc goes on, with no notice: a stray Esc is not a close request). As with
+   * Esc Esc, the next floating window takes the focus, and with none left it
+   * goes back where it was before the window took it.
+   */
+  const closeFocusedFloatingPane = useCallback(() => {
+    if (!focusedPaneId || !visibleLayout.floating.some((entry) => entry.instanceId === focusedPaneId)) return false;
+    if (isPaneLockedInLayout(visibleLayout, focusedPaneId)) return false;
+    return closeFocusedPane({ focusNextFloating: true });
+  }, [closeFocusedPane, focusedPaneId, visibleLayout]);
+
   const closeAllFloatingPanes = useCallback(() => {
     if (visibleLayout.floating.length === 0) return false;
     const lockedIds = new Set(visibleLayout.floating
@@ -219,6 +231,7 @@ export function useShellPaneActions({
   return {
     canExportPaneCsv,
     closeAllFloatingPanes,
+    closeFocusedFloatingPane,
     closeFocusedPane,
     copyFocusedPaneScreenshot,
     copyPaneScreenshot,

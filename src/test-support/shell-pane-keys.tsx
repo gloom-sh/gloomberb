@@ -14,6 +14,7 @@ export function TestShellPaneKeys(options: Partial<ShellPaneKeyOptions> & { focu
     askAboutFocusedPane: none,
     cancelActiveDrag: () => {},
     closeAllFloatingPanes: none,
+    closeFocusedFloatingPane: none,
     closeFocusedPane: none,
     copyFocusedPaneScreenshot: none,
     exportFocusedPaneCsv: none,

@@ -38,10 +38,11 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | Key | Action |
 |-----|--------|
 | `Ctrl+P` | Open command mode |
-| `` ` `` | Change the focused pane's ticker (ticker search) |
+| `` ` `` | Change the focused pane's ticker (ticker search); `Esc` closes the search and leaves the pane as it was |
 | `.` | Open the focused pane's menu (also `Shift+F10` or the Menu key) |
 | `Ctrl+,` | Open focused pane settings |
 | `Ctrl+W` | Close focused pane (unless it is locked) |
+| `Esc` | Close the focused floating window (unless it is locked) once it has nothing left to go back through, and focus the next floating window or the pane you came from |
 | `Esc` `Esc` | Close focused pane, even one that could still go back, and focus the next floating pane. Not over a typed draft or with a menu or dialog open |
 | `Ctrl+Shift+M` | Move focused window (`WIN resize` starts resize mode) |
 | `Ctrl+Shift+D` | Float the focused pane, or return it to the layout |
@@ -51,7 +52,7 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | `Ctrl+Shift+L` | Layout actions |
 | `Ctrl+Shift+G` | Tidy windows |
 | `Alt+A` | Ask Gloom about the focused pane, in a new conversation with the pane attached |
-| `Tab` | Switch panes |
+| `Tab` | Switch panes: the tab a stack shows, never the ones behind it, and no pane a floating window hides |
 | `Ctrl+1`-`9` or `Alt+1`-`9` | Switch layout tabs. Only terminals with the kitty keyboard protocol (Ghostty, Kitty, WezTerm) send `Ctrl` with a digit, so the tabs show `Alt+1` everywhere else. On a Mac terminal `Alt` is `Option` once it is set to send Meta (Terminal.app: Use Option as Meta key; iTerm2: Option key as Esc+) |
 | `?` | Open Help; `?` or `Esc` again closes it |
 | `j` / `k` | Navigate lists |
@@ -136,7 +137,7 @@ The square or strip under the pointer lights up, and an outline shows exactly wh
 
 Panes stacked as tabs show them in the title bar. A click on a tab shows that pane, dragging a tab out takes that pane out of the stack, and the rest of a floating stack's title bar moves the whole window. A pane closed or floated from a stack leaves the others where they are.
 
-Without a mouse, window mode (`Ctrl+Shift+M`) moves the focused pane: the arrows pick a pane in the layout and the side to join it on, `d` floats it or returns it to the layout, and `1` to `8` float it in a quarter or half of the window. `Enter` applies the move.
+Without a mouse, window mode (`Ctrl+Shift+M`) moves the focused pane: the arrows pick a pane in the layout and the side to join it on, `d` floats it or returns it to the layout, and `1` to `8` float it in a quarter or half of the window. `Enter` applies the move and leaves window mode; `Esc` leaves it without moving anything.
 
 ### Docs inside the app
 
