@@ -110,6 +110,14 @@ describe("table layout", () => {
     expect(widths(fitTableColumns(movers, [4, 30, 6, 7], 38, 1, 1, hint))).toEqual([8, 11, 6, 7]);
     // A drawn cell that gives no width (null) keeps its column as set, and the name gets less.
     expect(widths(fitTableColumns(movers, [null, 30, 6, 7], 38, 1, 1, hint))).toEqual([10, 9, 6, 7]);
+    // A headline set to the pane's edge and cut there: the cell a narrower rank gives back would not lengthen
+    // it, so the table stays as set rather than move.
+    const news = [
+      { id: "rank", label: "#", width: 4, align: "right" },
+      { id: "time", label: "TIME GMT+1", width: 12 },
+      { id: "title", label: "HEADLINE", width: 24 },
+    ];
+    expect(widths(fitTableColumns(news, [2, 9, 80], getTableWidth(news) - 1, 1, 1))).toEqual([4, 12, 24]);
     // An empty table is as wide as its headers, so it never says there are more columns.
     expect(getTableWidth(fitTableColumns(board, [0, 0, 0, 0, 0], 40, 1, 1, hint))).toBeLessThanOrEqual(40);
   });
@@ -123,7 +131,8 @@ describe("table layout", () => {
       { id: "date", label: "AS OF", width: 12 },
     ];
     const fitted = fitTableColumns(columns, [5, 6, 6, 10], 34, 1, 1, { least: 3, whole: 8 });
-    expect(fitted.map((column) => column.width)).toEqual([8, 9, 9, 10]);
+    // The three it shows are whole at their set widths, so the table stays as set.
+    expect(fitted.map((column) => column.width)).toEqual([8, 9, 9, 12]);
     // AS OF starts three cells from the edge: fewer than its label, so the rows leave them blank beside "⇧→".
     expect(34 - tableColumnStarts(fitted)[3]! - 1).toBeLessThan("AS OF".length);
   });

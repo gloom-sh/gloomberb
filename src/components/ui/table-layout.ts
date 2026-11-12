@@ -362,6 +362,9 @@ function growColumns(widths: number[], targets: readonly number[], indexes: read
  * (`edgeHint.whole`), unless a last column, a few cells of it then in view,
  * would show them as cut text instead of the hint; then their blank, up to
  * their set widths. The others wait past the edge at their narrowest.
+ *
+ * A fit that shows no more than the set widths do (no cut text longer, no
+ * column more in view) leaves the table as set.
  */
 export function fitTableColumns<C extends TableWidthColumn>(
   columns: readonly C[],
@@ -380,22 +383,29 @@ export function fitTableColumns<C extends TableWidthColumn>(
   });
   const cut = set.flatMap((column, index) => (wants[index]! > column.width ? [index] : []));
   const room = Math.floor(viewportWidth);
-  if (cut.length === 0 && !hasMeaningfulTableHorizontalOverflow(getTableWidth(set, columnGap, horizontalPadding), room, columnGap)) return set;
+  const overflows = hasMeaningfulTableHorizontalOverflow(getTableWidth(set, columnGap, horizontalPadding), room, columnGap);
+  if (cut.length === 0 && !overflows) return set;
   const widths = set.map((column, index) => Math.min(column.width, wants[index]!));
   const sized = () => set.map((column, index) => (widths[index] === column.width ? column : { ...column, width: widths[index]! }));
   const setWidths = set.map((column) => column.width);
+  const cutGrew = (indexes: readonly number[]) => indexes.some((index) => widths[index]! > setWidths[index]!);
   let extra = room - getTableWidth(sized(), columnGap, horizontalPadding);
   if (extra >= 0) {
     extra = growColumns(widths, wants, cut, extra);
+    if (!overflows && !cutGrew(cut)) return set;
     growColumns(widths, setWidths, set.map((_, index) => index), extra);
     return sized();
   }
   // Where the first `count` columns end, without the blank after the last.
-  const prefixEnd = (count: number) => getTableWidth(sized().slice(0, count), columnGap, horizontalPadding) - columnGap - horizontalPadding;
+  const prefixEnd = (count: number, columns: readonly C[] = sized()) => (
+    getTableWidth(columns.slice(0, count), columnGap, horizontalPadding) - columnGap - horizontalPadding
+  );
   const least = edgeHint.least > 0 ? edgeHint.least : horizontalPadding;
   let count = 0;
   while (count < set.length && prefixEnd(count + 1) + least <= room) count += 1;
   if (count === 0) return sized();
+  let setCount = 0;
+  while (setCount < set.length && prefixEnd(setCount + 1, set) + least <= room) setCount += 1;
   const shown = set.slice(0, count).map((_, index) => index);
   extra = room - least - prefixEnd(count);
   // Kept for the hint's whole form, a last column after them would have that many cells in view, which text
@@ -405,7 +415,9 @@ export function fitTableColumns<C extends TableWidthColumn>(
   const nextInView = edgeHint.whole - columnGap - tableColumnLeadGap(sized(), count, columnGap);
   const nextShowsText = count === set.length - 1 && (next.align ?? "left") !== "right" && nextInView >= displayWidth(next.label ?? "");
   const wholeHint = Math.max(0, edgeHint.whole - least);
-  extra = growColumns(widths, wants, cut.filter((index) => index < count), extra);
+  const shownCut = cut.filter((index) => index < count);
+  extra = growColumns(widths, wants, shownCut, extra);
+  if (count <= setCount && !cutGrew(shownCut)) return set;
   if (edgeHint.least > 0 && wholeHint > 0 && extra >= wholeHint && !nextShowsText) extra -= wholeHint;
   growColumns(widths, setWidths, shown, extra);
   return sized();
