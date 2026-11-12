@@ -1,26 +1,35 @@
 // Published release days, not a rule engine: the dates each release came
 // out, read from the publishers' own archives. A release cancelled or moved (the
 // 2025 shutdown) is as published, and a scheduled date is not a release day
-// until it is out. Dates are New York calendar days. Brazil's IPCA days come
-// from Gloom Cloud only; the list the app ships with has the US releases.
+// until it is out. Dates are New York calendar days. Brazil's IPCA days and the
+// ECB's decision days come from Gloom Cloud only; the list the app ships with
+// has the US releases.
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { MACRO_RELEASE_TABLE } from "./release-table";
 
 /** The US releases the bundled list carries, and the ones HIVG reads around. */
 export type UsMacroEventKind = "cpi" | "jobs" | "fomc";
-export type MacroEventKind = UsMacroEventKind | "ipca";
+export type MacroEventKind = UsMacroEventKind | "ipca" | "ecb";
 
 export const US_MACRO_EVENT_KINDS: readonly UsMacroEventKind[] = ["cpi", "jobs", "fomc"];
-export const MACRO_EVENT_KINDS: readonly MacroEventKind[] = [...US_MACRO_EVENT_KINDS, "ipca"];
+/** The releases Gloom Cloud alone lists: Brazil's IPCA and the ECB's decisions. */
+const SERVED_MACRO_EVENT_KINDS = ["ipca", "ecb"] as const satisfies readonly MacroEventKind[];
+export const MACRO_EVENT_KINDS: readonly MacroEventKind[] = [...US_MACRO_EVENT_KINDS, ...SERVED_MACRO_EVENT_KINDS];
+/** The releases HIVG reads around: the US ones and the ECB's decisions. */
+export const IV_EVENT_KINDS: readonly MacroEventKind[] = [...US_MACRO_EVENT_KINDS, "ecb"];
 
-export const MACRO_EVENT_LABELS: Record<MacroEventKind, string> = { cpi: "CPI", jobs: "Jobs", fomc: "FOMC", ipca: "IPCA" };
+export const MACRO_EVENT_LABELS: Record<MacroEventKind, string> = { cpi: "CPI", jobs: "Jobs", fomc: "FOMC", ipca: "IPCA", ecb: "ECB" };
 
-/** BLS news release archives for CPI and the Employment Situation, the Federal Reserve's meeting calendar, IBGE's calendar. */
+/**
+ * BLS news release archives for CPI and the Employment Situation, the Federal Reserve's meeting calendar, IBGE's
+ * calendar, the ECB's monetary policy decisions.
+ */
 export const MACRO_RELEASE_SOURCES: Record<MacroEventKind, string> = {
   cpi: "https://www.bls.gov/bls/news-release/cpi.htm",
   jobs: "https://www.bls.gov/bls/news-release/empsit.htm",
   fomc: "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
   ipca: "https://www.ibge.gov.br/calendario-indicadores-novoportal.html",
+  ecb: "https://www.ecb.europa.eu/press/govcdec/mopo/html/index.en.html",
 };
 
 /** A list more than this many days behind today says so: a release day may be missing from its end. */
@@ -41,6 +50,10 @@ export interface MacroReleaseFigures {
   surprise: MacroSurprise | null;
   /** A policy decision's move: "held", "cut 25bp", "raised 50bp". */
   decision?: string;
+  /** How the actual was computed where the calendar lists none: a CPI's year-on-year change from the index. */
+  computed?: string;
+  /** Why a day with a consensus or a prior has no actual, where it cannot be computed either. */
+  actualMissing?: string;
 }
 
 export interface MacroRelease {
@@ -56,8 +69,10 @@ export interface MacroReleaseList {
   releases: MacroRelease[];
   /** The last day the list is complete for: later sessions are left out, release day or not. */
   coveredThrough: string;
-  /** The first day Gloom Cloud's economic calendar covers: US days before it have no figures. */
+  /** The first day Gloom Cloud's economic calendar covers: days before it have no figures. */
   figuresFrom?: string;
+  /** The ECB's next decision, which Gloom Cloud lists ahead. */
+  scheduled?: { ecb?: string };
 }
 
 const DAY_MS = 86_400_000;
@@ -81,14 +96,17 @@ function servedFigures(value: unknown): MacroReleaseFigures | undefined {
   if (!event) return undefined;
   const surprise = MACRO_SURPRISES.find((candidate) => candidate === figures?.surprise) ?? null;
   const decision = text(figures?.decision);
+  const computed = text(figures?.computed);
+  const actualMissing = text(figures?.actualMissing);
   return { event, actual: text(figures?.actual), forecast: text(figures?.forecast), prior: text(figures?.prior), surprise,
-    ...(decision ? { decision } : {}) };
+    ...(decision ? { decision } : {}), ...(computed ? { computed } : {}), ...(actualMissing ? { actualMissing } : {}) };
 }
 
 /**
  * The served list extends the floor past its end; the floor keeps its own
- * days up to there. IPCA, which the floor does not carry, is the served list's
- * through its end, and left out when the server lists none. Every day, the
+ * days up to there. IPCA and the ECB's decisions, which the floor does not
+ * carry, are the served list's through its end, and left out when the server
+ * lists none. Every day, the
  * floor's included, takes the figures the server has for it, or the reason it
  * gives for having none, whether or not the served list reaches past the
  * floor's end; US days before its economic calendar (`figuresFrom`) have none.
@@ -97,7 +115,7 @@ function servedFigures(value: unknown): MacroReleaseFigures | undefined {
 export function mergeMacroReleases(floor: MacroReleaseList, served: unknown): MacroReleaseList {
   const payload = served as { coveredThrough?: unknown; releases?: Partial<Record<MacroEventKind, unknown>>;
     figures?: Partial<Record<MacroEventKind, Record<string, unknown>>>; figuresFrom?: unknown;
-    figureGaps?: Partial<Record<MacroEventKind, Record<string, unknown>>> } | null;
+    figureGaps?: Partial<Record<MacroEventKind, Record<string, unknown>>>; scheduled?: { ecb?: unknown } } | null;
   const servedThrough = payload?.coveredThrough;
   if (!isDate(servedThrough)) return floor;
   // The list is complete through the later of the two ends; a served list that stops short of the floor's adds figures only.
@@ -110,18 +128,21 @@ export function mergeMacroReleases(floor: MacroReleaseList, served: unknown): Ma
       if (date > floor.coveredThrough && date <= servedThrough) later.push({ kind, date });
     }
   }
-  const ipca = payload?.releases?.ipca;
-  if (Array.isArray(ipca) && ipca.every(isDate)) {
-    for (const date of new Set(ipca)) if (date <= servedThrough) later.push({ kind: "ipca", date });
+  for (const kind of SERVED_MACRO_EVENT_KINDS) {
+    const dates = payload?.releases?.[kind];
+    if (!Array.isArray(dates) || !dates.every(isDate)) continue;
+    for (const date of new Set(dates)) if (date <= servedThrough) later.push({ kind, date });
   }
   const figuresFrom = isDate(payload?.figuresFrom) ? payload.figuresFrom : null;
+  const nextEcb = isDate(payload?.scheduled?.ecb) ? payload.scheduled.ecb : null;
   const figuresOf = (release: MacroRelease): MacroRelease => {
     const figures = servedFigures(payload?.figures?.[release.kind]?.[release.date]);
     if (figures) return { ...release, figures };
     const missing = text(payload?.figureGaps?.[release.kind]?.[release.date]);
     return missing ? { ...release, figuresMissing: missing } : release;
   };
-  return { releases: [...floor.releases, ...later].map(figuresOf).sort(byDate), coveredThrough, ...(figuresFrom ? { figuresFrom } : {}) };
+  return { releases: [...floor.releases, ...later].map(figuresOf).sort(byDate), coveredThrough, ...(figuresFrom ? { figuresFrom } : {}),
+    ...(nextEcb ? { scheduled: { ecb: nextEcb } } : {}) };
 }
 
 /** Whole days from the list's last covered day to today in New York. */

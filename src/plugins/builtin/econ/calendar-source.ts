@@ -22,6 +22,8 @@ export type EconCalendarFrom =
     events: EconEvent[];
     /** The first UTC day the stored calendar holds; null when it holds nothing. */
     storedFrom: string | null;
+    /** The first UTC day any read lists (the stored calendar's, or the furthest back it reaches); null from an older server. */
+    listedFrom: string | null;
     /** The last UTC day the calendar lists releases for; null from a server that does not say. */
     listedThrough: string | null;
   }
@@ -47,6 +49,7 @@ export async function fetchEconCalendarFrom(from: string): Promise<EconCalendarF
     return {
       events: withPercentUnits(payload.events.map(toEconEvent)),
       storedFrom: payload.storedFrom,
+      listedFrom: typeof payload.listedFrom === "string" && /^\d{4}-\d{2}-\d{2}$/.test(payload.listedFrom) ? payload.listedFrom : null,
       listedThrough: typeof payload.listedThrough === "string" && /^\d{4}-\d{2}-\d{2}$/.test(payload.listedThrough) ? payload.listedThrough : null,
     };
   } catch (error) {

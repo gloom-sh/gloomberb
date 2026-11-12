@@ -181,9 +181,18 @@ function joinNameWords(args: readonly string[]): readonly string[] {
  * refuses `1,234`.
  * An amount and one currency converts to USD (`toUsdByDefault`). An amount
  * may carry a K, M or B suffix (`959.81M USD/EUR`). The error sentence
- * otherwise.
+ * otherwise. Words pasted as one argument (`fx "1234.5 eur/usd "`) are read
+ * as typed apart, a slash with spaces around it joining its pair.
  */
-export function parseFxArgs(words: readonly string[], baseCurrency: string): FxArgs | { error: string } {
+export function parseFxArgs(typedWords: readonly string[], baseCurrency: string): FxArgs | { error: string } {
+  const words = typedWords.flatMap((word) => word.replace(/\s*\/\s*/g, "/").trim().split(/\s+/)).filter(Boolean)
+    // A scale typed apart from its amount (`959.81 M`) stays the amount's.
+    .reduce<string[]>((joined, word) => {
+      const last = joined.at(-1);
+      if (/^[kKmMbB]$/.test(word) && joined.length === 1 && last && parseTypedNumber(last).kind !== "invalid") joined[0] = `${last}${word}`;
+      else joined.push(word);
+      return joined;
+    }, []);
   const scaled = words.length > 1 ? amountScale(words[0]) : null;
   const args = joinNameWords(scaled ? [scaled.number, ...words.slice(1)] : words);
   if (args.length === 1) {

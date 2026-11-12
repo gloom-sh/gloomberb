@@ -107,3 +107,10 @@ describe("price performance", () => {
   });
 
 });
+
+test("a return horizon measures from the close before a pair's copied close, never from it", () => {
+  const history = [point("2026-10-01", 100), point("2026-10-02", 101), { ...point("2026-10-05", 150), closeCopied: true },
+    point("2026-10-06", 102), point("2026-11-05", 110)];
+  // 1M from 5 Nov is based on 5 Oct, whose close is the source's copy: 2 Oct's close stands in.
+  expect(buildPriceReturnFields(history).find((field) => field.id === "1M")?.value).toBeCloseTo(110 / 101 - 1, 12);
+});

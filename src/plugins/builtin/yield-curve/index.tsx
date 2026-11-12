@@ -40,6 +40,7 @@ import { SwapsTab } from "./swaps";
 import {
   cachedCurve, cachedWorldRows, curveViewCache, loadSavedCurve, loadSavedWorldRows, swapCurveCache, worldCurvesCache,
 } from "./client";
+import { usBondMarketClosedNote } from "../../../market-data/us-bond-market";
 
 type GcTab = "curve" | "world" | "swaps";
 const TABS = [{ label: "Curve", value: "curve" }, { label: "World", value: "world" }, { label: "Swaps", value: "swaps" }];
@@ -260,9 +261,13 @@ function CurveTab({ curve, onCurveChange, focused, width, height }: {
   // Both look-backs share one request per tenor, so they usually fail together.
   const lookbackFailures = [...new Set((fredLookbacks ?? []).flatMap((lookback) => lookback.points ? [] : [lookback.error]))]
     .map((message) => `${andList((fredLookbacks ?? []).filter((lookback) => lookback.error === message).map((lookback) => lookback.id))} look-back unavailable: ${message}`);
+  // A Treasury curve asked for a day the bond market was shut (Veterans Day) says so, and which day it shows.
+  const closedDay = requestedDate && asOf && (curve === "us" || curve === "us-real" || curve === "us-breakeven")
+    ? usBondMarketClosedNote(requestedDate, asOf) : null;
   usePaneNoticeFooter({
     registrationId: "yield-curve:notices",
     notices: [
+      closedDay ? `${closedDay}.` : null,
       !asOf && points.some((point) => point.yield != null) ? "The tenors carry mixed or unknown observation dates, so the curve is not one session." : null,
       missingTenors.length ? `Unavailable tenors: ${missingTenors.join(", ")}.` : null,
       points.some((point) => point.stale) ? "Some tenors are cached values because their refresh failed." : null,

@@ -1220,7 +1220,7 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 
 **Dates**
 
-- `--from <date>` starts it on another day. An earlier day lists past events with the figures they were released with (`econ --from 2026-10-12 --country US` reaches the previous week's CPI). When the stored calendar starts after that day, text says `The stored calendar starts <date>` and `--json` has `metadata.storedFrom`. The stored calendar reaches back 400 days: an earlier `--from` fails as an input error naming the earliest day (`--from 2024-01-01 is before the earliest day the calendar reaches back to, 2025-09-20`), with `earliest` in `--json`.
+- `--from <date>` starts it on another day. An earlier day lists past events with the figures they were released with (`econ --from 2026-10-12 --country US` reaches the previous week's CPI). When the stored calendar starts after that day, it lists from there, text says `The stored calendar starts <date>; nothing earlier is listed` and `--json` has `metadata.storedFrom`. That date is the one MDAY gives as where release-day figures start. The calendar reaches back at most 400 days: once that is later than where the stored calendar starts, an earlier `--from` lists from there and says `The calendar lists back 400 days, to <date>`, with `metadata.listedFrom`.
 - With no network or a server error, `econ` lists the current calendar and warns that the stored one could not be read.
 - `--tail <n>` without `--from` keeps the last n events of the whole calendar, the past week's too.
 - When the calendar stops less than a week past its first day, text ends with `No events listed after <date>` (`--json` carries the last day as `metadata.listedThrough`, and the ECO pane says it in its footer).
@@ -1399,7 +1399,7 @@ By rating, AAA to BBB: `BAMLC0A1CAAAEY`, `BAMLC0A2CAAEY`, `BAMLC0A3CAEY`, `BAMLC
 **Start dates.** Without `--start` it begins at 2021-01-01 and says so under the table. `--start` takes a date as any date option does, or `yyyy` and `yyyy-mm`.
 
 - A series that begins later starts at its first observation (`fred DEXSFUS --start 1975` begins 1980-01-02), and says when, under the table and as a `note:` line on stderr with `--csv`. A day FRED has no value for inside the series (a holiday) stays a row with a blank value.
-- A start past the series' last observation names the latest one, and `--csv` and `--ndjson` fail with a `--start` that reaches it.
+- A start past the series' last observation names the latest one, and `--csv` and `--ndjson` fail with a `--start` that reaches it. A rate observed on US bond market days (Treasury yields and bills, SOFR, the corporate yields and spreads) started on a day the market was shut shows the day before and says why: `fred DGS10 --start 2026-11-11` prints Tue 10 Nov's value under `Wed 11 Nov: US bond market closed (Veterans Day); showing Tue 10 Nov`.
 
 **What the table prints**
 

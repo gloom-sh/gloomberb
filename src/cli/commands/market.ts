@@ -156,6 +156,7 @@ import {
   historyFacts,
   historyFlagNote,
   historyOpenNote,
+  historyCopiedCloseNote,
   historyWickNote,
   historyContractDrawdown,
   historyRollNote,
@@ -195,7 +196,7 @@ import {
 } from "../history-export";
 import { fail, failWithError, isCliFailure, NO_DATA_CODE } from "../errors";
 import { createConcurrencyLimiter, mapWithConcurrency } from "../../utils/concurrency";
-import { MISSING_VOLUME_TEXT } from "../../utils/price-history-integrity";
+import { CLOSE_COPIED_FLAG, MISSING_VOLUME_TEXT } from "../../utils/price-history-integrity";
 import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { bareFuturesCode, futuresBoardContract } from "../../market-data/futures-board";
 import { commodityNamedIn, commoditySearchName } from "../../market-data/commodity-names";
@@ -2033,6 +2034,7 @@ async function loadListingHistory(
       : range === "YTD" ? ytdHistoryNotes(data) : [...historyNotes(range, interval, data[0]?.date, Date.now(), coverage != null), coverage ?? []],
     // The status line says how far a bar still forming runs; the note is for the bars it does not name.
     gaps ?? [], historyJumpNote(data) ?? [], historyRescaleNote(data) ?? [], historyFlagNote(data) ?? [], historyOpenNote(data) ?? [], historyWickNote(data) ?? [],
+    historyCopiedCloseNote(data) ?? [],
     historyMissingVolumeNote(data) ?? [],
     historyVenueVolumeNote(data) ?? [],
     // NG=F's rows are November's to the 23rd and December's from the 26th: each roll named, and thin bars said.
@@ -2239,9 +2241,10 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // A yield (^TNX) falls and rises by its level, in bp, and its largest rise is said too.
     const yieldUnits = isYieldIndexSymbol(history.listing.symbol);
     // A week's or month's close is dated by its last session (March 2026 is Tue 31 Mar), not the 1st its bar is dated by.
-    const closes = interval === "1wk" || interval === "1mo"
+    // A pair's close its source copied from the open, with nothing to rebuild it from, is no day's close (flag close copied).
+    const closes = (interval === "1wk" || interval === "1mo"
       ? data.map((row) => ({ ...row, date: barCloseSession(interval, row.date, identity.exchange || undefined, Date.now()) }))
-      : data;
+      : data).filter((row) => !row.flag?.split(",").includes(CLOSE_COPIED_FLAG));
     const contractDrawdown = historyContractDrawdown(closes, yieldUnits ? "yield" : "return");
     // A window's last week can close after the dates asked for (--to 2003, a week ending Fri 2 Jan 2004): measured to its end.
     const until = ask.window?.to;
@@ -4086,7 +4089,10 @@ async function runFxOnDate(
   };
   const warnings = [
     ...request.readAs ?? [],
-    ...closeDate < date ? [`No daily close on ${date}, a weekend or market holiday: this is the close of ${closeDate}, the trading day before it.`] : [],
+    ...closeDate < date ? [[...legs.values()].some((leg) => leg.copiedClose === date)
+      // The source repeated the day's open as its close and nothing rebuilt it: no close of that day is known.
+      ? `No daily close on ${date}: the source repeated that day's open as its close. This is the close of ${closeDate}, the trading day before it.`
+      : `No daily close on ${date}, a weekend or market holiday: this is the close of ${closeDate}, the trading day before it.`] : [],
     ...toUsdByDefault && amount != null
       ? [`No target currency given, so ${fxSideCode(request, "currency")} is converted to USD; for another, write fx ${args[0]!.trim()} ${fxSideCode(request, "currency")}/<to> --date ${date}.`]
       : [],

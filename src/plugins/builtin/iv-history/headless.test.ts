@@ -12,6 +12,8 @@ import type { IvHistoryPayload, IvMethod, IvPoint, IvScreenPayload, IvScreenRow 
 import { vcaDefinitions } from "./format";
 import { ivHistoryHeadless, ivScreenHeadless } from "./headless";
 import { MACRO_RELEASE_TABLE } from "../macro-day/release-table";
+import { macroReleaseCache } from "../macro-day/client";
+import type { CloudMacroReleaseDaysPayload } from "../../../api-client";
 
 const reading = (date: string, method: IvMethod, iv30: number) => ({
   date, method, capturedAt: `${date}T19:55:00Z`, spot: 100, iv7: null, iv30, iv60: null, iv90: iv30 + 0.01, iv180: null, iv365: null,
@@ -268,6 +270,7 @@ describe("HIVG exports for scripts", () => {
   const bundled = { coveredThrough: MACRO_RELEASE_TABLE.coveredThrough, fomc: MACRO_RELEASE_TABLE.days.fomc[2026]! };
   afterEach(() => {
     setSystemTime();
+    macroReleaseCache.reset();
     MACRO_RELEASE_TABLE.coveredThrough = bundled.coveredThrough;
     MACRO_RELEASE_TABLE.days.fomc[2026] = bundled.fomc;
   });
@@ -304,7 +307,7 @@ describe("HIVG exports for scripts", () => {
   });
   /** `meetings`: the FOMC days the rate path lists, or null when it cannot be read. */
   const load = async (symbol: string, points: IvPoint[], options: Record<string, string | number> = {}, meetings: string[] | null = [],
-    patch: Partial<IvHistoryPayload> = {}) => {
+    patch: Partial<IvHistoryPayload> = {}, releaseDays: CloudMacroReleaseDaysPayload | null = null) => {
     const last = points.at(-1)?.sessionDate ?? null;
     const payload: IvHistoryPayload = { version: 1, symbol, asOf: "2026-10-21", status: points.length ? "ready" : "unavailable",
       coverage: { source: "seed", addedAt: "2026-08-01T00:00:00Z", backfilledThrough: last, since: points[0]?.sessionDate ?? null },
@@ -313,6 +316,9 @@ describe("HIVG exports for scripts", () => {
     const apiClient = { impliedVolatility: async () => payload, getCloudRatePath: async () => {
       if (!meetings) throw new Error("offline");
       return ratePath(meetings);
+    }, getCloudMacroReleaseDays: async () => {
+      if (!releaseDays) throw new Error("offline");
+      return releaseDays;
     } } as unknown as HeadlessPaneApiClient;
     const marketData = createTestDataProvider({ getPriceHistory: async () => bars });
     const result = await ivHistoryHeadless.load(args, createTestHeadlessContext({ apiClient, marketData })) as HeadlessBundleResult;
@@ -368,7 +374,19 @@ describe("HIVG exports for scripts", () => {
     // Every release before the history (July's, and those since 2021) is counted under the rows, with where the history starts.
     expect(result.notes).toContainEqual(expect.stringMatching(/^\d+ earlier FOMC releases predate the IV history, which starts 2026-09-01\.$/));
     await expect(Promise.resolve(ivHistoryHeadless.load(createTestHeadlessArgs({ symbols: ["SPY"], options: { lookback: "1Y", hvWindow: "20", offset: -6 } }),
-      createTestHeadlessContext()))).rejects.toThrow("--offset counts sessions from a release day: add --event fomc, cpi or jobs.");
+      createTestHeadlessContext()))).rejects.toThrow("--offset counts sessions from a release day: add --event fomc, cpi, jobs or ecb.");
+  });
+
+  test("--event ecb reads the ECB's decision days Gloom Cloud lists, and its next decision once its session has a reading", async () => {
+    setSystemTime(new Date("2026-10-01T14:00:00Z"));
+    const releaseDays: CloudMacroReleaseDaysPayload = { checkedAt: "2026-09-30T22:00:00Z", coveredThrough: "2026-09-30", sources: [],
+      releases: { cpi: [], jobs: [], fomc: [], ecb: ["2026-07-23", "2026-09-10"] }, scheduled: { ecb: "2026-10-29" } };
+    const { lines, result } = await load("FXE", september, { event: "ecb", offset: 0 }, [], {}, releaseDays);
+    // 10 Sep's decision read on its own session; 23 Jul's before the IV history starts.
+    expect(lines.filter((line) => line.startsWith("ECB,")).map((line) => line.split(",").slice(0, 5).join(",")))
+      .toEqual(["ECB,2026-09-10,0,2026-09-10,12.6"]);
+    expect(result.notes).toContain("1 earlier ECB release predates the IV history, which starts 2026-09-01.");
+    expect(result.notes).toContain("Left out ECB 2026-10-29: no closing reading yet for its session at --offset 0.");
   });
 
   test("the next FOMC has its row once its session at the offset has closed and been read; today's open session is none", async () => {
