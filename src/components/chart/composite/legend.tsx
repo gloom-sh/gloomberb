@@ -106,25 +106,25 @@ function nameWords(label: string): string[] {
   return label.split(" ").filter(Boolean);
 }
 
-/** The shortest a legend name reads on one line: its first word whole, with `...` for the rest ("Bab..."). */
+/** The shortest a legend name reads on one line: its first word whole, with one `…` for the rest ("Bab…"). */
 export function shortestLegendName(label: string): string {
   const words = nameWords(label);
-  return words.length > 1 ? `${words[0]}...` : label;
+  return words.length > 1 ? `${words[0]}…` : label;
 }
 
 /**
- * A legend name cut to whole words within `width` cells, `...` standing for
+ * A legend name cut to whole words within `width` cells, one `…` standing for
  * the words left out, never a word cut through ("Malacc"): its first words,
  * or its first and last ones where those tell it from the other names
- * (`US...corporate OAS` beside `US high yield OAS`). At the least its first
+ * (`US…corporate OAS` beside `US high yield OAS`). At the least its first
  * word, whatever `width` is. A name that fits is whole.
  */
 export function wholeWordsCut(label: string, width: number, others: readonly string[] = []): string {
   if (displayWidth(label) <= width) return label;
   const words = nameWords(label);
   const rivals = others.filter((other) => other !== label).map(nameWords);
-  const shown = ([head, tail]: readonly [number, number]) => `${words.slice(0, head).join(" ")}...${words.slice(words.length - tail).join(" ")}`;
-  // Another name with the same first and last words would read the same: "US high..." beside "US high yield OAS - ...".
+  const shown = ([head, tail]: readonly [number, number]) => `${words.slice(0, head).join(" ")}…${words.slice(words.length - tail).join(" ")}`;
+  // Another name with the same first and last words would read the same: "US high…" beside "US high yield OAS - …".
   const tellsApart = ([head, tail]: readonly [number, number]) => !rivals.some((other) => other.length >= head + tail
     && words.slice(0, head).every((word, index) => other[index] === word)
     && words.slice(words.length - tail).every((word, index) => other[other.length - tail + index] === word));
@@ -379,7 +379,7 @@ export function CompositeLegend({
   // Names get the room the row has. When it overflows, every name drops its
   // listing exchange (and a company's field, compactLabel) together, so the
   // row reads in one form; then the widest name loses its last words first,
-  // never a word cut through: one word stays whole, and "Bab el-Mandeb" reads "Bab...".
+  // never a word cut through: one word stays whole, and "Bab el-Mandeb" reads "Bab…".
   // The value (including its sign/unit) always stays intact. If the row cannot
   // fit even with every name at its first word, it wraps where the chart gives
   // it rows, else keeps the old 30-cell entries and scrolls.

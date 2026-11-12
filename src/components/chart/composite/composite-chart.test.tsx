@@ -610,7 +610,7 @@ describe("CompositeChart", () => {
     const legend = tui.frame().split("\n")[0]!;
     expect(legend).toContain("MSFT:XNAS Revenue $90.01B");
     // Cut at whole words, the value whole after it, and the right axis it reads against.
-    expect(legend).toContain("Very long issuer... -49.6% (right axis)");
+    expect(legend).toContain("Very long issuer… -49.6% (right axis)");
     expect(legend).toContain("腾讯控股腾讯控股");
     expect(legend.match(/\$90\.01B/g)).toHaveLength(2);
   });
@@ -629,7 +629,7 @@ describe("CompositeChart", () => {
     };
     expect(await legendAt(100)).toContain("SI=F Silver Dec 2026 $51.8 (right axis)");
     // Names lose their last words first; the note goes only where every name is down to its first word.
-    expect(await legendAt(64)).toContain("SI=F...Dec 2026 $51.8 (right axis)");
+    expect(await legendAt(64)).toContain("SI=F Silver Dec… $51.8 (right axis)");
     const narrow = await legendAt(40);
     expect(narrow).not.toContain("(right axis)");
     expect(narrow).toContain("$51.8");
@@ -889,8 +889,9 @@ describe("CompositeChart", () => {
       return tui.frame().split("\n").filter((line) => labels.some((label) => line.includes(label.split(" ")[0]!)));
     };
     // Every word a legend line shows is one of a name's words, whole: "Malacca", never "Malacc" or "transi".
-    const cutWords = (shown: readonly string[]) => shown.flatMap((line) => line.split(/\s+|\.\.\./))
-      .filter((token) => /^[A-Za-z][A-Za-z-]*$/.test(token) && !words.has(token));
+    // A series' one-letter marker (o) is not a word.
+    const cutWords = (shown: readonly string[]) => shown.flatMap((line) => line.split(/\s+|…/))
+      .filter((token) => /^[A-Za-z][A-Za-z-]+$/.test(token) && !words.has(token));
     const wrapped = await lines(24);
     expect(wrapped.length).toBeGreaterThan(1);
     expect(cutWords(wrapped)).toEqual([]);
