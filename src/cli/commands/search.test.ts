@@ -85,13 +85,17 @@ test("a name typed in kana or kanji is searched as typed, matches no saved ticke
     return { asked, failure, printed: printed[0] };
   };
   // The service fails on every name in another script; that is no busy search, and the saved list is no match.
-  for (const query of ["ゲームストップ", "任天堂"]) {
+  for (const query of ["ゲームストップ", "架空商事"]) {
     const { asked, failure, printed } = await run(query, async () => { throw new ProviderBusyError(); });
     expect(asked).toContain(query);
     expect(failure).toBeNull();
     expect(printed!.data).toEqual([]);
     expect(printed!.warnings).toEqual(["No matches. Try the ticker or the English name."]);
   }
+  // A Tokyo company's name in Japanese is its listing, searched by its code.
+  const nintendo = await run("任天堂", async () => []);
+  expect(nintendo.asked[0]).toBe("7974:JPX");
+  expect(nintendo.printed!.warnings![0]).toBe('Read "任天堂" as 7974:JPX.');
   // A Latin name the service is too busy for is still busy.
   expect((await run("gamestop", async () => { throw new ProviderBusyError(); })).failure).toMatchObject({ code: "search_busy" });
 });

@@ -73,6 +73,7 @@ import {
   type TerminalListingCode,
 } from "../tickers/terminal-codes";
 import { unreadBloombergCodeMessage } from "./terminal-code-hints";
+import { japaneseNameReadAs, readJapaneseName } from "../tickers/search/japanese-names";
 import { listingAbroadVenue } from "../utils/sec";
 import { savedAbroadForBareSymbol, savedUsListingOf } from "../tickers/search/bare-symbol";
 import { listingSuffixCandidate, listingSuffixVenue, tickerHasListingSuffix } from "../sources/listing-symbols";
@@ -1445,6 +1446,16 @@ export async function resolveCliListing(
   // never searched for as a name (MOVE Index found another venue's product named after the index).
   const unreadCode = exchangeOption?.trim() ? null : unreadBloombergCode(typed);
   if (unreadCode) throw new ListingArgError(unreadBloombergCodeMessage(unreadCode));
+  // A name typed in Japanese (ドル円, トヨタ自動車) is the listing it names, which is named in Latin letters; one several
+  // companies' names start with (トヨタ) asks which.
+  const japanese = exchangeOption?.trim() ? [] : await readJapaneseName(typed);
+  if (japanese.length > 1) {
+    throw new ListingArgError(`${typed.trim()} names ${japanese.length} companies. Listings: ${japanese.map(({ key, name }) => `${key} (${name})`).join(", ")}.`);
+  }
+  if (japanese.length === 1) {
+    const listing = await resolveCliListing(japanese[0]!.key, null, deps, options);
+    return { ...listing, readAs: japaneseNameReadAs(typed, japanese), readFromName: true, typed: typed.trim() };
+  }
   // A listing that moved to a new symbol (ELET3, "eletrobras") is the one it trades as now, saying so.
   const renamed = exchangeOption?.trim() ? null : renamedListingFor(typed);
   if (renamed) {
