@@ -33,6 +33,107 @@ const SET_WARRANT = /-W\d*$/;
  */
 const THAI_RECEIPT = /^[A-Z][A-Z0-9]{1,7}(?:01|03|06|11|13|19|23|24|80)$/;
 
+/**
+ * A fund's own name: an exchange-traded fund, note or product (a UCITS one
+ * too), a Brazilian index fund ("Fundo de Índice", "Classe de Índice"), an
+ * index or mutual fund, a unit trust, an investment trust plc. A sponsor's
+ * name ("Global X ETFs") is not one, nor is a company named after the unit
+ * trusts it runs ("Unit Trust Corporation"), nor "Fund", "Trust" or "REIT"
+ * alone (Blackstone Secured Lending Fund, Northern Trust, Federal Realty
+ * Investment Trust).
+ */
+const FUND_NAMES = [
+  /\b(?:ETF|ETN|ETP)\b/,
+  /\bUCITS\b/,
+  /\bexchange[- ]traded\s+(?:fund|note|product|commodity)\b/i,
+  /\b(?:fundos?|classes?)\s+de\s+[íi]ndice\b/i,
+  /\b(?:index|mutual)\s+funds?\b/i,
+  /\bunit\s+trusts?\b(?!\s+(?:corporation|company|bank)\b)/i,
+  /(?<!real[- ]estate\s|property\s)\binvestment\s+trust\s+(?:plc|ltd|limited)\b/i,
+];
+/**
+ * A profile's first sentence saying the line is a fund: "The Inv-GW CHNXT 50
+ * ETF is an exchange-traded fund", "Cohen & Steers Infrastructure Fund, Inc.
+ * is a closed ended balanced mutual fund", "PIMCO Dynamic Income Fund is a
+ * closed ended fixed income mutual fund", "Literacy Capital plc is a British
+ * closed-ended investment company", "Sprott Physical Uranium Trust is a
+ * closed-end commodity trust", "... is an investment trust", an Australian
+ * listed investment company. Closed-end funds and investment trusts are
+ * valued on their assets, not their earnings. Not a company that sponsors or
+ * runs funds ("is an exchange-traded fund sponsor"), nor a real estate
+ * investment trust; a business development company is read apart.
+ */
+const FUND_DESCRIPTION =
+  /\bis\s+(?:an?\s+|the\s+)?(?:(?:type|kind|form)\s+of\s+)?(?:(?!(?:of|sponsor|provider|manager|issuer|operator|administrator|distributor|advis[eo]r)\b)[\w&,'’-]+\s+){0,3}?(?:exchange[- ]traded\s+(?:funds?|notes?|products?|commodit(?:y|ies))|closed[- ]end(?:ed)?\s+(?:[\w-]+\s+){0,3}?(?:funds?|trusts?|(?:investment|management)\s+(?:compan(?:y|ies)|firms?|vehicles?))|mutual\s+funds?|unit\s+(?:investment\s+)?trusts?|index\s+funds?|listed\s+investment\s+compan(?:y|ies)|(?<!real[- ]estate\s|realty\s|property\s|mortgage\s)investment\s+trusts?)\b(?!\s+(?:sponsor|provider|manager|management|issuer|company|corporation|bank|business|platform|firm|operator|administrator|distributor)s?\b)/i;
+/** A business development company lends to private companies and is valued on its earnings: it keeps its P/E, closed-end or not. */
+const BUSINESS_DEVELOPMENT = /\bbusiness\s+development\s+compan(?:y|ies)\b/i;
+/** Abbreviations whose period does not end a profile's first sentence: Inc., Ltd., Corp., Co., plc., U.S. */
+const ABBREVIATIONS = /\b(?:Inc|Ltd|Corp|Co|Plc|plc|PLC|LLC|Pty|Pvt|Bhd)\.|\b(?:[A-Z]\.){2,}/g;
+/** A profile's first sentence, read past abbreviations. */
+const firstSentence = (text: string): string =>
+  text.trim().replace(ABBREVIATIONS, (match) => match.replaceAll(".", "")).split(/\.(?:\s|$)/)[0] ?? "";
+/**
+ * The types a source gives a fund, as one exact list (spaces, dashes and
+ * underscores dropped, upper case): an exchange-traded fund, note or product,
+ * a mutual, money market or closed-end fund, a unit or investment trust.
+ * Gloom Cloud's screener reads the same list.
+ */
+const FUND_TYPES = new Set([
+  "ETF", "ETN", "ETP", "EXCHANGETRADEDFUND", "EXCHANGETRADEDNOTE", "EXCHANGETRADEDPRODUCT", "FUND", "MUTUALFUND",
+  "MONEYMARKET", "MONEYMARKETFUND", "CEF", "CLOSEDEND", "CLOSEDENDFUND", "UNITTRUST", "UNITINVESTMENTTRUST", "UIT",
+  "INVESTMENTTRUST",
+]);
+/** Words that name no particular company or fund, left out when two names are compared (ownProfileText). */
+const GENERIC_NAME_WORDS = new Set([
+  "the", "and", "inc", "incorporated", "ltd", "limited", "plc", "corp", "corporation", "company", "group", "holdings",
+  "holding", "fund", "funds", "etf", "etfs", "etc", "etn", "etp", "trust", "ord", "shares", "share", "class", "common",
+  "stock", "units", "unit", "capital", "global", "international", "investment", "investments", "management", "asset",
+  "assets", "securities", "index", "ucits", "usd", "eur", "gbp", "acc", "dist", "new", "llc", "pty", "pvt", "bhd",
+  "mutual",
+]);
+const nameWords = (name: string): string[] => [...new Set(name.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+  .split(/[^a-z0-9]+/).filter((word) => word.length >= 3 && !GENERIC_NAME_WORDS.has(word)))];
+/** Two words name the same thing: equal, or one of four letters or more inside the other (Dspnifty, Nifty). */
+const sameWord = (left: string, right: string): boolean =>
+  left === right || (Math.min(left.length, right.length) >= 4 && (left.includes(right) || right.includes(left)));
+/** What a profile's first sentence is about: the words before its verb. */
+const profileSubject = (description: string): string =>
+  firstSentence(description).split(/\s+(?:is|was|are|operates|engages|provides)\s/)[0] ?? "";
+
+/**
+ * Whether a profile's name or first sentence is this listing's own: it shares a word with the quote's name, or names
+ * the listing's symbol (IBOV11 Fund). A receipt's profile is its underlying's, which it stands for (COPX on BYMA,
+ * Banco Comafi's CEDEAR of the Global X Copper Miners ETF). A profile can be another listing's under the same symbol
+ * (USAU, U.S. Gold Corp., carried the name of a Lyxor ETF): such a name says nothing of this listing. Without a quote
+ * name, or a word to compare, it stands.
+ */
+function ownProfileText(financials: ShareInputs, text: string): boolean {
+  const quote = nameWords(financials.quote?.name ?? "");
+  const profile = nameWords(text);
+  if (!quote.length || !profile.length || isReceipt(financials)) return true;
+  if (financials.quote?.cedearRatio ?? financials.fundamentals?.cedearRatio) return true;
+  const code = (financials.quote?.symbol ?? "").split(":")[0]!.trim().toUpperCase();
+  if (code.length >= 3 && text.toUpperCase().split(/[^A-Z0-9.]+/).includes(code)) return true;
+  return profile.some((word) => quote.some((other) => sameWord(word, other)));
+}
+
+/**
+ * Whether a listing is a fund, whose units are no company's shares: its type (FUND_TYPES), its quote's name, or its
+ * profile's name or first sentence where each is the listing's own (ownProfileText). 159682 on SZSE, the ChiNext 50
+ * ETF a source types EQUITY, read 0.87x on an EPS of 1.27. Closed-end funds and investment trusts are funds wherever
+ * they list (Polar Capital Technology, Scottish Mortgage, Pershing Square, Literacy Capital); a business development
+ * company is not. Gloom Cloud's screener reads funds alike.
+ */
+function isFund(financials: ShareInputs): boolean {
+  if (FUND_TYPES.has((financials.quote?.instrumentType ?? "").replace(/[\s_-]/g, "").toUpperCase())) return true;
+  const profileName = financials.profile?.name?.trim() ?? "";
+  const names = [financials.quote?.name ?? "", ownProfileText(financials, profileName) ? profileName : ""];
+  if (names.some((name) => FUND_NAMES.some((rule) => rule.test(name)))) return true;
+  const description = financials.profile?.description ?? "";
+  return ownProfileText(financials, profileSubject(description)) && !BUSINESS_DEVELOPMENT.test(description)
+    && FUND_DESCRIPTION.test(firstSentence(description));
+}
+
 type Instrument = "warrant" | "right" | "unit";
 
 const instrumentOf = (code: string): Instrument => {
@@ -54,7 +155,8 @@ type EpsInputs = ShareInputs & Partial<Pick<TickerFinancials, "financialCurrency
  * ratio is on record on the receipt already (TSM's 5 shares, a CEDEAR's
  * published ratio). A unit is told by its name only on a US venue or for a
  * blank-check company; a REIT's, a fund's or a partnership's units are its
- * share, and PSA.PR.U is a preferred.
+ * share, and PSA.PR.U is a preferred. Nor is a fund's price over the EPS a
+ * source gives it a P/E (isFund).
  */
 export function notTheShare(financials: ShareInputs): string | undefined {
   const quote = financials.quote;
@@ -72,6 +174,7 @@ export function notTheShare(financials: ShareInputs): string | undefined {
       : venue === "SET" && SET_WARRANT.test(code) ? "W" : undefined;
   const instrument = byName ?? (bySymbol ? instrumentOf(bySymbol) : undefined);
   if (instrument) return `a ${instrument} is not the share the EPS is per`;
+  if (isFund(financials)) return "a fund is not a company's share";
   const country = financials.profile?.country?.trim().toUpperCase();
   const fundamentals = financials.fundamentals;
   const receipt = quote.isDepositaryReceipt || fundamentals?.isDepositaryReceipt || fundamentals?.shareBasis === "depositary_receipt"
@@ -91,7 +194,9 @@ const finite = (value: number | null | undefined): value is number => typeof val
 /** A per-share figure in a reason: whole above 100, cents above 0.01, else two significant digits (BZT's 0.000089). */
 const perShare = (value: number) => Math.abs(value) >= 100 ? value.toFixed(0)
   : Math.abs(value) >= 0.01 ? value.toFixed(2) : value.toPrecision(2);
-const majorCurrency = (currency: string | null | undefined) => resolveCurrencyUnit(currency).currency || undefined;
+/** A currency's major unit; ZAC is South African cents here, as Gloom Cloud quotes it. */
+const majorCurrency = (currency: string | null | undefined) =>
+  resolveCurrencyUnit(currency?.trim() === "ZAC" ? "ZAc" : currency).currency || undefined;
 
 /** The latest statement's currency. */
 function statementsCurrency(financials: EpsInputs): string | undefined {
@@ -112,31 +217,31 @@ const days = (from: string, to: string) => (Date.parse(to) - Date.parse(from)) /
 const quarterApart = (from: string, to: string) => days(from, to) >= 80 && days(from, to) <= 100;
 
 /**
- * The statements' trailing net income in `currency`: the latest fiscal year
- * when no quarter runs past it, four consecutive quarters, the year plus the
- * half since it where Gloom Cloud serves one, or the latest year plus the
- * quarters since it less the same quarters a year earlier. Gloom Cloud reads
- * the same window to tell an EPS in the reporting currency.
+ * The statements' trailing net income or diluted EPS in `currency`: the
+ * latest fiscal year when no quarter runs past it, four consecutive quarters,
+ * the year plus the half since it where Gloom Cloud serves one, or the latest
+ * year plus the quarters since it less the same quarters a year earlier.
+ * Gloom Cloud reads the same window to tell an EPS in the reporting currency.
  */
-function statementsTrailingNetIncome(financials: EpsInputs, currency: string): number | undefined {
+function statementsTrailing(financials: EpsInputs, currency: string, field: "netIncome" | "eps"): number | undefined {
   const usable = (rows: readonly FinancialStatement[]) => rows
-    .filter((row) => finite(row.netIncome) && Number.isFinite(Date.parse(row.date)) && row.currency === currency)
+    .filter((row) => finite(row[field]) && Number.isFinite(Date.parse(row.date)) && row.currency === currency)
     .sort((left, right) => left.date.localeCompare(right.date));
   const quarters = usable(quarterRows(financials.quarterlyStatements ?? []));
   const annual = usable(financials.annualStatements ?? []).at(-1);
   const latest = quarters.at(-1);
   const trailing = financials.trailingStatement;
   const served = trailing?.trailing?.method === "annual-plus-interim" && Number.isFinite(Date.parse(trailing.date))
-    && trailing.currency === currency && finite(trailing.netIncome)
+    && trailing.currency === currency && finite(trailing[field])
     && !(annual && days(annual.date, trailing.date) <= SAME_DATE_DAYS)
     && !(latest && days(trailing.date, latest.date) > SAME_DATE_DAYS)
-    ? { value: trailing.netIncome, end: trailing.date } : undefined;
-  if (!served && annual && (!latest || days(annual.date, latest.date) <= SAME_DATE_DAYS)) return annual.netIncome!;
+    ? { value: trailing[field], end: trailing.date } : undefined;
+  if (!served && annual && (!latest || days(annual.date, latest.date) <= SAME_DATE_DAYS)) return annual[field]!;
   if (!latest) return served?.value;
   const lastFour = quarters.slice(-4);
   if ((!served || Math.abs(days(latest.date, served.end)) <= SAME_DATE_DAYS) && lastFour.length === 4
     && lastFour.every((row, index) => index === 0 || quarterApart(lastFour[index - 1]!.date, row.date))) {
-    return lastFour.reduce((total, row) => total + row.netIncome!, 0);
+    return lastFour.reduce((total, row) => total + row[field]!, 0);
   }
   if (served) return served.value;
   if (!annual) return undefined;
@@ -148,20 +253,39 @@ function statementsTrailingNetIncome(financials: EpsInputs, currency: string): n
   }
   const prior = interims.map((row) => quarters.find((candidate) => Math.abs(days(candidate.date, row.date) - 365) <= SAME_DATE_DAYS));
   if (prior.some((row) => !row)) return undefined;
-  return annual.netIncome! + interims.reduce((total, row) => total + row.netIncome!, 0)
-    - prior.reduce((total, row) => total + row!.netIncome!, 0);
+  return annual[field]! + interims.reduce((total, row) => total + row[field]!, 0)
+    - prior.reduce((total, row) => total + row![field]!, 0);
+}
+
+/** An EPS the statements' own diluted EPS in `currency` matches, within 1% or half a cent (the source rounds to cents). */
+function statementsOwnEps(financials: EpsInputs, currency: string, eps: number): boolean {
+  if (eps === 0) return false;
+  const annual = (financials.annualStatements ?? [])
+    .filter((row) => row.currency === currency && finite(row.eps) && Number.isFinite(Date.parse(row.date)))
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .at(-1)?.eps;
+  return [annual, statementsTrailing(financials, currency, "eps")].some((own) =>
+    finite(own) && own !== 0 && Math.abs(eps - own) <= Math.max(0.01 * Math.abs(own), 0.005));
 }
 
 /**
  * Why a trailing EPS in the statements' reporting currency beside a price in
- * another gives no P/E: there is no rate on record to price it at (the served
- * P/E's `trailingPEConversion`). U.UN on the TSX divided its CA$26.47 by a
+ * another gives no P/E: the served block names no rate it was converted at
+ * (the served P/E's `trailingPEConversion`). U.UN on the TSX divided its CA$26.47 by a
  * USD 1.64 and read 16.14; NEW on Stuttgart €1.63 by GBP 0.0241, 67.63. The
  * EPS is shown to be in the reporting currency where it is labelled so, sits
- * beside a trailing block in it, or the block's net income is the statements'
- * own in it. Gloom Cloud's screener reads the same. Undefined for an EPS the
- * filed quarters give (in the price's currency), a receipt's on its home
- * line, and one whose currency cannot be told.
+ * beside a trailing block in it, the block's net income is the statements'
+ * own in it, or the EPS is their own diluted EPS for the latest fiscal year
+ * or their trailing twelve months (TBT on MUNICH's 308.64 JPY, Tokuyama's
+ * year to March 2026, beside €21.60 read 0.07x). The reason says what is
+ * known: Gloom Cloud labels a block's currency only with the rates at hand,
+ * so a labelled one was left unconverted because its source's P/E does not
+ * match the EPS; an unlabelled one has no conversion on record, which a
+ * missing rate and figures that do not tie to the statements both leave, and
+ * the payload does not say which. Gloom Cloud's screener, which knows its
+ * rates, says "no rate on record" only when it has none.
+ * Undefined for an EPS the filed quarters give (in the price's currency), a
+ * receipt's on its home line, and one whose currency cannot be told.
  */
 function noRateForEps(financials: EpsInputs): string | undefined {
   const fundamentals = financials.fundamentals;
@@ -175,10 +299,16 @@ function noRateForEps(financials: EpsInputs): string | undefined {
   const conversion = fundamentals.trailingPEConversion;
   if (conversion && majorCurrency(conversion.from) === reporting && finite(conversion.rate) && conversion.rate > 0) return undefined;
   const income = fundamentals.netIncome;
-  const statements = finite(income) ? statementsTrailingNetIncome(financials, reporting) : undefined;
+  const statements = finite(income) ? statementsTrailing(financials, reporting, "netIncome") : undefined;
   const inReporting = stated === reporting || (!!fundamentals.financialCurrency && !fundamentals.epsCurrency)
-    || (finite(income) && finite(statements) && Math.abs(income - statements) <= 0.01 * Math.max(Math.abs(income), Math.abs(statements)));
-  return inReporting ? `EPS (TTM) in ${reporting} beside a price in ${listing}, with no rate on record` : undefined;
+    || (finite(income) && finite(statements) && Math.abs(income - statements) <= 0.01 * Math.max(Math.abs(income), Math.abs(statements)))
+    || statementsOwnEps(financials, reporting, eps);
+  if (!inReporting) return undefined;
+  // Gloom Cloud labels a block's currency only with the rates at hand: such a block was left unconverted because
+  // its source's P/E is not the price over that EPS, not for want of a rate.
+  return fundamentals.financialCurrency
+    ? `EPS (TTM) in ${reporting} beside a price in ${listing}, and the source's P/E does not match that EPS`
+    : `EPS (TTM) in ${reporting} beside a price in ${listing}, with no conversion on record`;
 }
 
 /**

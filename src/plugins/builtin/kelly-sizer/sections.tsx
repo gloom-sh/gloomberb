@@ -204,6 +204,8 @@ export function KellySensitivitySection({
   return (
     <DataTableView<SensitivityRow>
       columns={columns}
+      // Prices or returns in order: a sensitivity grid's axis.
+      columnReorder={false}
       items={rows}
       getItemKey={(row) => row.id}
       selection={{ kind: "none" }}

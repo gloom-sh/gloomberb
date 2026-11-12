@@ -623,6 +623,54 @@ describe("MarketDataCoordinator key subscriptions", () => {
     }
   });
 
+  test("holds a tick that only restamps the quote within its minute until the next receipt refresh", async () => {
+    const realDateNow = Date.now;
+    const { provider, emitQuote } = createProvider();
+    const coordinator = new MarketDataCoordinator(provider);
+    const nvda = { symbol: "NVDA", exchange: "NASDAQ" };
+    // Seconds into a minute, so the stamps below stay inside it until the last.
+    const first = 1_800_000_000_000 - (1_800_000_000_000 % 60_000) + 10_000;
+    const tick = (stamp: number) => quote("NVDA", 173.73, { lastUpdated: stamp, bid: 173.7, ask: 173.8, dataSource: "live", delivery: "stream" });
+    let calls = 0;
+
+    try {
+      coordinator.subscribeKeys([buildQuoteKey(nvda)], () => { calls += 1; });
+      coordinator.subscribeQuotes([{ instrument: nvda, priority: { visible: true } }]);
+
+      Date.now = () => first;
+      emitQuote(nvda, tick(first));
+      await flushCoordinator();
+      expect(calls).toBe(1);
+
+      for (const offset of [200, 1_000, 3_500]) {
+        Date.now = () => first + offset;
+        emitQuote(nvda, tick(first + offset));
+        await flushCoordinator();
+      }
+      expect(calls).toBe(1);
+      expect(coordinator.getQuoteEntry(nvda).data).toMatchObject({ lastUpdated: first, receivedAt: first });
+
+      // The receipt refresh stores it, with the stamp it carries.
+      Date.now = () => first + 6_000;
+      emitQuote(nvda, tick(first + 6_000));
+      await flushCoordinator();
+      expect(calls).toBe(2);
+      expect(coordinator.getQuoteEntry(nvda).data).toMatchObject({ lastUpdated: first + 6_000, receivedAt: first + 6_000 });
+
+      // A stamp in the next minute opens a bar, moves the as-of clock: stored at once, and so is any other change.
+      Date.now = () => first + 6_100;
+      emitQuote(nvda, tick(first + 60_000));
+      await flushCoordinator();
+      expect(calls).toBe(3);
+      Date.now = () => first + 6_200;
+      emitQuote(nvda, { ...tick(first + 60_100), bid: 173.71 });
+      await flushCoordinator();
+      expect(calls).toBe(4);
+    } finally {
+      Date.now = realDateNow;
+    }
+  });
+
   test("does not refresh receipt time from an explicitly stale polled quote", async () => {
     const realDateNow = Date.now;
     const { provider, emitQuote } = createProvider();

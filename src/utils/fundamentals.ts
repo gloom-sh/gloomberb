@@ -572,11 +572,22 @@ export function trailingEpsSourceNote(
 
 type PriceEarningsBasis = Pick<Fundamentals, "financialCurrency" | "ttmConversion" | "epsCurrency" | "trailingPEConversion">;
 
-/** The trailing EPS in the price's currency: converted at the rate the served P/E used when it says so. */
-export function priceEarningsEps(fundamentals: Pick<Fundamentals, "eps" | "trailingPEConversion"> | undefined): number | undefined {
+/** The minor units a quote can be priced in, as Gloom Cloud reads them: pence, South African cents and agorot. */
+const MINOR_QUOTE_UNITS = new Set(["GBp", "GBX", "ZAc", "ZAC", "ILA"]);
+
+/**
+ * The trailing EPS in the price's currency and unit: converted at the rate the served P/E used when it says so, a
+ * rate into the major unit, so a price in pence, South African cents or agorot takes it a hundredfold (30,000 ILA
+ * over 2.50 USD at 3.7037 ILS is 32.4, not 3,240).
+ */
+export function priceEarningsEps(
+  fundamentals: Pick<Fundamentals, "eps" | "trailingPEConversion"> | undefined,
+  quoteCurrency?: string | null,
+): number | undefined {
   const eps = fundamentals?.eps;
   const rate = fundamentals?.trailingPEConversion?.rate;
-  return typeof eps === "number" && typeof rate === "number" && Number.isFinite(rate) && rate > 0 ? eps * rate : eps;
+  if (typeof eps !== "number" || typeof rate !== "number" || !Number.isFinite(rate) || !(rate > 0)) return eps;
+  return eps * rate * (MINOR_QUOTE_UNITS.has(quoteCurrency?.trim() ?? "") ? 100 : 1);
 }
 
 /**

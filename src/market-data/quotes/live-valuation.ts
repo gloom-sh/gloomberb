@@ -74,7 +74,7 @@ export function liveTrailingPE(quote: Quote | null | undefined, fundamentals: Fu
   // Withdrawn as no multiple of the share (utils/share-multiples).
   if (fundamentals?.notMeaningful?.trailingPE) return NOT_MEANINGFUL;
   const stored = pricedFundamentals(quote, fundamentals)?.trailingPE;
-  return priceEarningsOnEarnings(repriceMultiple(stored, priceEarningsEps(fundamentals), quote, fundamentals), fundamentals?.eps);
+  return priceEarningsOnEarnings(repriceMultiple(stored, priceEarningsEps(fundamentals, quote?.currency), quote, fundamentals), fundamentals?.eps);
 }
 
 /** Forward P/E over the regular session price; not meaningful when the forward EPS behind it is zero or a loss. */

@@ -93,9 +93,10 @@ import { readsInBatches } from "../batched-reads";
 /** How long a streamed tick may reuse the quote fields read from the cache. */
 const STREAM_QUOTE_BASELINE_TTL_MS = 60_000;
 /**
- * A repeat of an unchanged quote only moves its arrival time. Writing that
- * would re-render every reader per heartbeat, so it is recorded at most this
- * often: often enough that quote ages and the stream watchdog see a live feed.
+ * A repeat of an unchanged quote, or one restamped within the same minute,
+ * only moves its arrival time and stamp. Writing that would re-render every
+ * reader per heartbeat, so it is recorded at most this often: often enough
+ * that quote ages and the stream watchdog see a live feed.
  */
 const STREAM_RECEIPT_REFRESH_MS = 5_000;
 /** Keeps a long session of browsing from holding a baseline per visited symbol. */

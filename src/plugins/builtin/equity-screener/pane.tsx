@@ -101,9 +101,10 @@ import {
 } from "./model";
 import { findNamedCollection, readWatchlistArgument } from "../../../portfolio/collection-name";
 import { useScreenResults } from "./results";
+import { useRefreshAnchor } from "./refresh-anchor";
 import { screenWatchlistList } from "./watchlist";
 import { unmatchedCategoryText, unmatchedCategoryValues } from "./categories";
-import { overlayLiveScreenRows, screenExtendedMove, screenExtendedSessions, sortLiveScreenRows, type LiveScreenRow } from "./live";
+import { liveScreenPlaces, overlayLiveScreenRows, placeLiveScreenRows, screenExtendedMove, screenExtendedSessions, type LiveScreenRow } from "./live";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { buildScreenerQuoteTargets } from "../../../market-data/quotes/screener-live-quotes";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
@@ -380,20 +381,16 @@ function EquityScreenView({
     LIVE_ORDER_SAMPLE_MS,
     `${data?.snapshot?.id ?? ""}:${JSON.stringify(definition.sort)}:${snapshotRows.length}`,
   );
-  const rows = useMemo(() => {
-    const order = new Map(sortLiveScreenRows(orderRows, definition.sort).map((row, index) => [screenRowId(row), index]));
-    return liveRows
-      .map((row, index) => ({ row, index, place: order.get(screenRowId(row)) ?? Number.POSITIVE_INFINITY }))
-      .sort((a, b) => a.place - b.place || a.index - b.index)
-      .map(({ row }) => row);
-  }, [definition.sort, liveRows, orderRows]);
-  const opened = rows.find((row) => screenRowId(row) === openId);
+  const places = useMemo(() => liveScreenPlaces(orderRows, definition.sort), [definition.sort, orderRows]);
+  const rows = useMemo(() => placeLiveScreenRows(liveRows, places), [liveRows, places]);
+  const { anchor: refreshAnchor, release: releaseRefreshAnchor } = useRefreshAnchor(data?.snapshot?.id ?? null, rows, visibleRange.start);
+  const opened = openId ? rows.find((row) => screenRowId(row) === openId) : undefined;
   const selected =
     opened ?? rows.find((row) => screenRowId(row) === selectedId) ?? rows[0];
   const currentSaved = saved.data?.find((row) => row.id === currentSavedId);
   // The pane menu's Save to Watchlist… takes the matches loaded, in the order shown (the first page is 100). A live
   // quote changes the rows but not who they are, so the menu is rebuilt only when the order does.
-  const shownOrder = rows.map(screenRowId).join(" ");
+  const shownOrder = useMemo(() => [...places.keys()].join(" "), [places]);
   const watchlistList = useMemo(
     () => mode === "results" && !openId && data && screenDefinitionKey(data.definition) === screenDefinitionKey(definition)
       ? screenWatchlistList({ definition, rows, matched: data.universe.matched, savedName: currentSaved?.name })
@@ -443,22 +440,27 @@ function EquityScreenView({
   ]);
   const tableScroll = useRef<ScrollBoxRenderable>(null);
   const queryControl = useRef<SelectControl>(null);
-  const loadMore = useTableLoadMore(
+  const loadMoreNearEnd = useTableLoadMore(
     tableScroll,
     !opened && !results.loading && !results.loadingMore && !!data?.nextCursor,
     results.loadMore,
   );
+  const loadMore = useCallback((source?: "programmatic" | "user") => {
+    if (source === "user") releaseRefreshAnchor();
+    loadMoreNearEnd();
+  }, [loadMoreNearEnd, releaseRefreshAnchor]);
   const metricFields = pickerFields(
     fields.data?.fields.filter((field) => field.kind === "number") ?? [],
     [metric],
   );
   // AS OF earns its column only when some row's focus metric is stale; the
   // snapshot decides, so a live quote freshening a row does not reflow the table.
-  const staleFocus = snapshotRows.some((row) => row.metrics[metric]?.state === "stale");
+  const staleFocus = useMemo(() => snapshotRows.some((row) => row.metrics[metric]?.state === "stale"), [metric, snapshotRows]);
   // A pre-market, after-hours or overnight column only while a row has such a print.
-  const extendedSessions = screenExtendedSessions(rows);
+  const extendedSessions = useMemo(() => screenExtendedSessions(rows), [rows]);
   // YTD names the close it is measured from, `31 Dec`.
-  const ytdBase = screenYtdBase(snapshotRows, data?.snapshot?.assembledAt);
+  const assembledAt = data?.snapshot?.assembledAt;
+  const ytdBase = useMemo(() => screenYtdBase(snapshotRows, assembledAt), [assembledAt, snapshotRows]);
   // A screen its currency emptied says so, not that no company matches.
   const currencyEmpty = data && data.rows.length === 0 ? screenCurrencyEmpty(data.definition, data.universe) : null;
   // A criterion's name that matches nothing (`Utility`) says so with the names it was likely meant as.
@@ -1082,6 +1084,9 @@ function EquityScreenView({
             rootHeight={bodyHeight - 1}
             scrollRef={tableScroll}
             onBodyScrollActivity={loadMore}
+            scrollToIndex={refreshAnchor?.index}
+            scrollToIndexAlign={refreshAnchor ? "start" : "nearest"}
+            scrollToIndexVersion={refreshAnchor?.version ?? 0}
             resetScrollKey={JSON.stringify(definition)}
             visibleRangeKey={JSON.stringify(definition)}
             onVisibleRangeChange={setVisibleRange}

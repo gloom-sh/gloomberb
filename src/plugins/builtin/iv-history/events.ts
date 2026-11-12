@@ -20,6 +20,10 @@ interface ReleaseOffsetRow {
   /** 25-delta put IV minus call IV, and the risk reversal, call minus put. */
   skew25d: number | null;
   rr25d: number | null;
+  /** What a policy decision did (held, raised 75bp) and the rate after it and before, where Gloom Cloud has them. */
+  decision: string | null;
+  actual: string | null;
+  prior: string | null;
 }
 
 export interface ReleaseOffsets {
@@ -132,6 +136,7 @@ export function releaseOffsetRows(
       iv30: iv30.get(date) ?? null, iv90: iv90.get(date) ?? null, iv365: iv365.get(date) ?? null,
       hv: hv.get(date) ?? null, spread: spread.get(date) ?? null,
       skew25d: skewValue, rr25d: skewValue == null ? null : -skewValue,
+      decision: release.figures?.decision ?? null, actual: release.figures?.actual ?? null, prior: release.figures?.prior ?? null,
     });
   }
   return result;

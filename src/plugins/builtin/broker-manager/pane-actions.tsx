@@ -182,12 +182,19 @@ export function useBrokerManagerActions({
       const { id, label } = selectedRow;
       startRowAction(id, t("Connecting…"));
       try {
-        // A connected broker is connected again only by a new sign-in: this renews it before the broker ends it.
-        // A row that says when the sign-in ends is renewable before this session's first sync too.
-        const renew = selectedRow.state === "connected" || selectedRow.signInEndsAt !== null;
+        // A connected broker is connected again only by a new sign-in: this renews it before the broker ends it,
+        // at any time, for a new full lifetime. A row that says when the sign-in ends is renewable before this
+        // session's first sync too.
+        const renew = selectedRow.state === "connected" || selectedRow.signInEnd !== null;
+        // What the broker will ask about the Gloom connection it lists, as Gloom says: also after the broker ended
+        // the sign-in on its clock, and not after another app took the account. A Gloom server that predates it
+        // says nothing; then a renewal of a single-connection broker is the one case known to ask.
+        const replace = selectedRow.replacePrompt !== undefined
+          ? selectedRow.replacePrompt
+          : renew && broker.capabilities.singleConnection ? "will" : null;
         let signedIn: boolean;
         try {
-          signedIn = await requestBrokerSignIn(broker, { renew });
+          signedIn = await requestBrokerSignIn(broker, { renew, replace });
         } catch (error) {
           setRowNote(id, {
             tone: "error",

@@ -1,5 +1,5 @@
 import type { Dispatch } from "react";
-import type { AppAction, AppContextStoreValue, AppState } from "../state/app/context";
+import { appReducer, type AppAction, type AppContextStoreValue, type AppState } from "../state/app/context";
 
 const ignoreAction: Dispatch<AppAction> = () => {};
 const noUnsubscribe = () => {};
@@ -17,5 +17,28 @@ export function createStaticAppStore(
     dispatch,
     getState: () => state,
     subscribe: () => noUnsubscribe,
+  };
+}
+
+/**
+ * An `AppContext` value that runs the app's reducer on every dispatch and
+ * notifies its subscribers, for a suite that checks what the app's own
+ * actions did to the state (a pane setting written, a layout saved).
+ */
+export function createReducerAppStore(state: AppState): AppContextStoreValue {
+  let current = state;
+  const listeners = new Set<() => void>();
+  return {
+    dispatch: (action) => {
+      current = appReducer(current, action);
+      for (const listener of listeners) listener();
+    },
+    getState: () => current,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
   };
 }

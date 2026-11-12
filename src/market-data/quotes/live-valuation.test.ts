@@ -69,6 +69,9 @@ describe("live valuation", () => {
     const lin: Fundamentals = { trailingPE: 432.4 / (14.61 * 0.8924), eps: 14.61, financialCurrency: "USD", marketCapCurrency: "EUR",
       trailingPEConversion: { from: "USD", rate: 0.8924 } };
     expect(liveTrailingPE(quote({ price: 440, currency: "EUR" }), lin)).toBeCloseTo(440 / (14.61 * 0.8924));
+    // An agorot price over a USD EPS: the shekel rate's EPS is taken into agorot (31,000 / 925.9 = 33.5, not 3,348).
+    const agorot: Fundamentals = { trailingPE: 300 / (2.5 * 3.7037), eps: 2.5, financialCurrency: "USD", trailingPEConversion: { from: "USD", rate: 3.7037 } };
+    expect(liveTrailingPE(quote({ price: 31_000, currency: "ILA" }), agorot)).toBeCloseTo(31_000 / (2.5 * 3.7037 * 100));
   });
 
   test("reprices forward P/E and yield only when the forward per-share figure is served", () => {

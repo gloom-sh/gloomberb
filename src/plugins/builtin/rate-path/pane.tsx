@@ -194,6 +194,8 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
           rootBefore={header(meetingColumns, meetings.length, pathChart)} />
         : tab === "probabilities" ? <DataTableView
           columns={probabilityColumns}
+          // Target ranges in rate order.
+          columnReorder={false}
           items={data.meetings} selection={selection} focused={focused} sortColumnId={null} sortDirection="asc"
           getItemKey={meetingKey} rootWidth={width} rootHeight={bodyHeight} emptyStateTitle="Meeting probabilities unavailable"
           rootBefore={header(probabilityColumns, data.meetings.length)}

@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { memo, type CSSProperties, type ReactNode } from "react";
+import { memo, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { TextAttributes } from "../../../ui/host";
 import { DisclosureMarker } from "../../../components/ui/disclosure-marker";
 import type {
@@ -84,6 +84,9 @@ export function WebDataTableHeader<C extends DataTableColumn>({
   onTableMouseDown,
   gridTemplateColumns,
   onHeaderClick,
+  onMovableHeaderPress,
+  anchoredColumns = 1,
+  draggedColumn = null,
   sortColumnId,
   sortDirection,
 }: {
@@ -97,6 +100,11 @@ export function WebDataTableHeader<C extends DataTableColumn>({
   onTableMouseDown?: (event: any) => void;
   gridTemplateColumns: string;
   onHeaderClick?: (columnId: string) => void;
+  /** A left press on a header past the anchored ones, which sorts on release or drags the column (useWebColumnDrag). */
+  onMovableHeaderPress?: (columnId: string, index: number, event: ReactMouseEvent<HTMLElement>) => void;
+  anchoredColumns?: number;
+  /** The column being dragged, drawn lifted. */
+  draggedColumn?: number | null;
   sortColumnId: string | null;
   sortDirection: "asc" | "desc";
 }) {
@@ -125,11 +133,21 @@ export function WebDataTableHeader<C extends DataTableColumn>({
       {columns.map((column, columnIndex) => {
         const isSorted = sortColumnId === column.id;
         const color = isSorted ? CSS_TEXT : column.headerColor ?? CSS_TEXT_DIM;
+        const pressMovable = columnIndex >= anchoredColumns ? onMovableHeaderPress : undefined;
+        const movable = pressMovable !== undefined;
+        const sortOnPress = onHeaderClick ? (event: ReactMouseEvent<HTMLElement>) => {
+          focusPane();
+          onTableMouseDown?.(event);
+          event.preventDefault();
+          onHeaderClick(column.id);
+        } : undefined;
         return (
           <div
             key={column.id}
             data-gloom-role="data-table-header-cell"
-            data-gloom-interactive={onHeaderClick ? "true" : undefined}
+            data-gloom-interactive={onHeaderClick || movable ? "true" : undefined}
+            data-gloom-movable={movable ? "true" : undefined}
+            data-gloom-dragging={draggedColumn === columnIndex ? "true" : undefined}
             data-gloom-tinted={column.headerColor ? "true" : undefined}
             style={{
               minWidth: 0,
@@ -152,12 +170,16 @@ export function WebDataTableHeader<C extends DataTableColumn>({
               backgroundColor: column.headerBackgroundColor ?? CSS_PANEL,
               boxShadow: freezeFirstColumn && columnIndex === 0 ? `-${inlinePaddingPx(horizontalPadding)}px 0 0 ${column.headerBackgroundColor ?? CSS_PANEL}, ${columnGap * WEB_CELL_WIDTH}px 0 0 ${column.headerBackgroundColor ?? CSS_PANEL}` : undefined,
             }}
-            onMouseDown={onHeaderClick ? (event) => {
+            onMouseDown={pressMovable ? (event) => {
+              if (event.button !== 0) {
+                sortOnPress?.(event);
+                return;
+              }
               focusPane();
               onTableMouseDown?.(event);
               event.preventDefault();
-              onHeaderClick(column.id);
-            } : undefined}
+              pressMovable(column.id, columnIndex, event);
+            } : sortOnPress}
           >
             {column.headerLeading !== undefined ? <Leading>{column.headerLeading}</Leading> : null}
             <span

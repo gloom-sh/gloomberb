@@ -317,7 +317,7 @@ export function BrokerDetailContent({
   // The row's STATUS, and in full what the last action on the profile came to,
   // which outranks the profile's own status message until it is news no more.
   // The sign-in's end has a line of its own below.
-  const status = brokerRowStatus({ ...row, signInEndsAt: null }, activity);
+  const status = brokerRowStatus({ ...row, signInEnd: null }, activity);
   const note = activity.note ?? null;
   const detailStatusMessage = note?.text ?? (row.message || t("No status message."));
   const statusMessageColor = note
@@ -340,8 +340,10 @@ export function BrokerDetailContent({
         <Text fg={statusMessageColor} width={width} wrapText>
           {detailStatusMessage}
         </Text>
-        {row.signInEndsAt !== null && (
-          <Text fg={colors.warning} width={width} wrapText>{signInEndNote(row.signInEndsAt)}</Text>
+        {row.signInEnd !== null && (
+          <Text fg={row.signInEnd.soon ? colors.warning : colors.textDim} width={width} wrapText>
+            {signInEndNote(row.signInEnd.endsAt)}
+          </Text>
         )}
         <Text fg={colors.textMuted}>{tf("Last sync {time}", { time: formatRelativeAge(row.lastSyncedAt) })}</Text>
         {row.instance.localOnly ? <Text fg={colors.textMuted}>{t("Account data stays on this device, out of Gloom Cloud")}</Text> : null}

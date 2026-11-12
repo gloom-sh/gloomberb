@@ -4,6 +4,9 @@ import { useOptionalDialog, type PromptContext } from "../../ui/dialog";
 import { usePaneMenuItems } from "../layout/pane/footer";
 import { ChoiceDialog } from "../ui/choice-dialog";
 import type { DataTableColumn } from "../ui";
+import type { ContextMenuItem } from "../../types/context-menu";
+
+const NO_ITEMS: readonly ContextMenuItem[] = [];
 
 /**
  * A sortable table's header clicks, for the keyboard: "Sort by…" in the pane
@@ -17,6 +20,7 @@ export function useDataTableSortMenu({
   sortDirection,
   onHeaderClick,
   onSortChange,
+  columnItems = NO_ITEMS,
 }: {
   enabled: boolean;
   columns: DataTableColumn[];
@@ -25,6 +29,8 @@ export function useDataTableSortMenu({
   onHeaderClick: (columnId: string) => void;
   /** Sets a direction outright, for a header click that cycles through "unsorted". */
   onSortChange?: (columnId: string, direction: "asc" | "desc") => void;
+  /** The table's column entries (Move Column…, Reset Columns), listed with its sort. */
+  columnItems?: readonly ContextMenuItem[];
 }) {
   const dialog = useOptionalDialog();
   const registrationId = `data-table-sort:${useId()}`;
@@ -39,7 +45,7 @@ export function useDataTableSortMenu({
   const sortableColumns = columns.filter((column) => column.label.trim().length > 0);
 
   usePaneMenuItems(registrationId, () => {
-    if (!enabled || !dialog || sortableColumns.length === 0) return null;
+    if (!enabled || !dialog || sortableColumns.length === 0) return columnItems.length > 0 ? [...columnItems] : null;
     const chooseColumn = async () => {
       const current = latest.current;
       const arrow = current.sortDirection === "asc" ? "▲" : "▼";
@@ -70,6 +76,7 @@ export function useDataTableSortMenu({
       ...(sortColumnId
         ? [{ id: "sort-reverse", label: "Reverse Sort", onSelect: reverse }]
         : []),
+      ...columnItems,
     ];
-  }, [dialog, enabled, sortColumnId, sortableColumns.length]);
+  }, [columnItems, dialog, enabled, sortColumnId, sortableColumns.length]);
 }

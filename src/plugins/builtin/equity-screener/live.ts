@@ -6,7 +6,7 @@ import type { QueryEntry } from "../../../market-data/result-types";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import type { Quote } from "../../../types/financials";
 import { isFiniteNumber } from "../../../utils/guards";
-import { isValuationMultiple } from "./model";
+import { isValuationMultiple, screenRowId } from "./model";
 
 /**
  * A screen row with its quote laid over it: price, change, volume and market
@@ -107,32 +107,64 @@ function overlayLiveScreenRow(snapshotRow: ScreenRow, quote: Quote | null | unde
 /** The last overlay per snapshot row, so a row whose quote did not move keeps its object. */
 const liveRows = new WeakMap<ScreenRow, { quote: Quote | null; row: LiveScreenRow }>();
 
-function overlayRows(rows: readonly ScreenRow[], quoteOf: (key: string) => Quote | null | undefined): LiveScreenRow[] {
-  return rows.map((row) => {
-    const quote = quoteOf(screenRowQuoteKey(row));
-    if (quote === undefined) return row;
-    const cached = liveRows.get(row);
-    if (cached && cached.quote === quote) return cached.row;
-    const next = overlayLiveScreenRow(row, quote);
-    liveRows.set(row, { quote, row: next });
-    return next;
-  });
+/** Where each quote key sits in a rows array: a screen's rows are replaced as a whole, so this is read once per array. */
+const rowPositions = new WeakMap<readonly ScreenRow[], Map<string, number[]>>();
+
+function positionsByQuoteKey(rows: readonly ScreenRow[]): Map<string, number[]> {
+  let positions = rowPositions.get(rows);
+  if (!positions) {
+    positions = new Map();
+    rows.forEach((row, index) => {
+      const key = screenRowQuoteKey(row);
+      const at = positions!.get(key);
+      if (at) at.push(index);
+      else positions!.set(key, [index]);
+    });
+    rowPositions.set(rows, positions);
+  }
+  return positions;
+}
+
+/**
+ * The rows with their quotes laid over them. Only the rows a quote names are
+ * touched, so a long list costs what its quotes do, and the same array comes
+ * back while none of them moved a row (a tick for a row off the loaded pages,
+ * or one that changes none of what the row shows).
+ */
+function overlayRows(
+  rows: readonly ScreenRow[],
+  quotes: Iterable<readonly [string, Quote | null | undefined]>,
+): readonly LiveScreenRow[] {
+  const positions = positionsByQuoteKey(rows);
+  let next: LiveScreenRow[] | null = null;
+  for (const [key, quote] of quotes) {
+    if (quote === undefined) continue;
+    for (const index of positions.get(key) ?? []) {
+      const row = rows[index]!;
+      let live: LiveScreenRow;
+      const cached = liveRows.get(row);
+      if (cached && cached.quote === quote) live = cached.row;
+      else {
+        live = overlayLiveScreenRow(row, quote);
+        liveRows.set(row, { quote, row: live });
+      }
+      if (live !== (next ?? rows)[index]) (next ??= [...rows])[index] = live;
+    }
+  }
+  return next ?? rows;
 }
 
 /** The pane's rows with the streamed quotes on screen laid over them. */
 export function overlayLiveScreenRows(
   rows: readonly ScreenRow[],
   entries: ReadonlyMap<string, QueryEntry<Quote>>,
-): LiveScreenRow[] {
-  return overlayRows(rows, (key) => {
-    const entry = entries.get(key);
-    return entry ? resolveEntryData(entry) : undefined;
-  });
+): readonly LiveScreenRow[] {
+  return overlayRows(rows, Array.from(entries, ([key, entry]) => [key, resolveEntryData(entry)] as const));
 }
 
 /** Rows with quotes keyed by screenRowQuoteKey laid over them, for a report. */
-export function overlayScreenQuotes(rows: readonly ScreenRow[], quotes: ReadonlyMap<string, Quote>): LiveScreenRow[] {
-  return overlayRows(rows, (key) => quotes.get(key));
+export function overlayScreenQuotes(rows: readonly ScreenRow[], quotes: ReadonlyMap<string, Quote>): readonly LiveScreenRow[] {
+  return overlayRows(rows, quotes);
 }
 
 /** The fields a quote moves on a row (overlayLiveScreenRow). */
@@ -163,6 +195,30 @@ export function sortLiveScreenRows<T extends ScreenRow>(rows: readonly T[], sort
       return a.index - b.index;
     })
     .map(({ row }) => row);
+}
+
+/**
+ * Where each row sits in the screen's order by the figures it shows
+ * (sortLiveScreenRows), by row id in that order. The pane takes it from
+ * figures sampled every few seconds, so a tick reorders nothing: the rows it
+ * moves are placed by it (placeLiveScreenRows), and the sort is not redone.
+ */
+export function liveScreenPlaces(rows: readonly ScreenRow[], sort: ScreenDefinition["sort"]): ReadonlyMap<string, number> {
+  return new Map(sortLiveScreenRows(rows, sort).map((row, index) => [screenRowId(row), index]));
+}
+
+/** `rows` in the order of `places`; a row it does not know follows those it does, in the order it has. */
+export function placeLiveScreenRows<T extends ScreenRow>(rows: readonly T[], places: ReadonlyMap<string, number>): T[] {
+  const placed: Array<T | undefined> = [];
+  const rest: T[] = [];
+  for (const row of rows) {
+    const place = places.get(screenRowId(row));
+    if (place === undefined || placed[place] !== undefined) rest.push(row);
+    else placed[place] = row;
+  }
+  const ordered: T[] = [];
+  for (const row of placed) if (row !== undefined) ordered.push(row);
+  return ordered.concat(rest);
 }
 
 /** The extended sessions some row has a print for, in the order their columns go. */
