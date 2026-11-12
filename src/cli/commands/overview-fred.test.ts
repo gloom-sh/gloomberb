@@ -150,28 +150,39 @@ test("nothing on or after --start names the latest observation, and fails a CSV 
     observations: query.get("startDate") ? [] : [{ date: "2026-10-09", value: 5.24 }],
     info: { id: "DGS10", units: "Percent", frequency: "Daily", observationStart: "1962-01-02" },
   }));
-  const { result, text } = await runFred(["DGS10", "--start", "2026-10-11"]);
-  expect(text.split("\n")[0]).toBe("Latest observation: 2026-10-09 (5.24). Nothing on or after 2026-10-11.");
+  // Tue 13 Oct was a trading day with nothing either, which no closure explains.
+  const { result, text } = await runFred(["DGS10", "--start", "2026-10-14"]);
+  expect(text.split("\n")[0]).toBe("Latest observation: 2026-10-09 (5.24). Nothing on or after 2026-10-14.");
   expect(queries[1]!.get("limit")).toBe("1");
   expect(result.metadata).toMatchObject({ latestObservation: { date: "2026-10-09", value: 5.24 } });
   for (const format of ["csv", "ndjson"] as const) {
     const cli = createTestCliContext(undefined, { format });
-    const failed = await Promise.resolve(fred.execute(["DGS10", "--start", "2026-10-11"], cli.context)).catch((error: unknown) => error);
+    const failed = await Promise.resolve(fred.execute(["DGS10", "--start", "2026-10-14"], cli.context)).catch((error: unknown) => error);
     expect(failed).toBeInstanceOf(Error);
-    expect((failed as Error).message).toBe("No DGS10 observations on or after 2026-10-11.");
+    expect((failed as Error).message).toBe("No DGS10 observations on or after 2026-10-14.");
     expect(cli.printed).toHaveLength(0);
   }
   // A series with no data at all, or a failed second look, keeps the plain answer.
   serveSeries(() => ({ observations: [] }));
-  expect((await runFred(["DGS10", "--start", "2026-10-11"])).text.split("\n")[0]).toBe("No results.");
+  expect((await runFred(["DGS10", "--start", "2026-10-14"])).text.split("\n")[0]).toBe("No results.");
 
   // A spread exports in basis points, so the empty line names that figure, not FRED's percentage points.
   serveSeries((query) => ({
     observations: query.get("startDate") ? [] : [{ date: "2026-10-09", value: 0.44 }],
     info: T10Y2Y_INFO,
   }));
-  expect((await runFred(["T10Y2Y", "--start", "2026-10-11"])).text.split("\n")[0])
-    .toBe("Latest observation: 2026-10-09 (44). Nothing on or after 2026-10-11.");
+  expect((await runFred(["T10Y2Y", "--start", "2026-10-14"])).text.split("\n")[0])
+    .toBe("Latest observation: 2026-10-09 (44). Nothing on or after 2026-10-14.");
+
+  // A start on a day the bond market was shut shows the day before and says why (GLO-1994).
+  serveSeries((query) => ({
+    observations: query.get("startDate") ? [] : [{ date: "2026-11-10", value: 4.11 }],
+    info: { id: "DGS10", units: "Percent", frequency: "Daily", observationStart: "1962-01-02" },
+  }));
+  const closed = await runFred(["DGS10", "--start", "2026-11-11"]);
+  expect(closed.text).toContain("2026-11-10");
+  expect(closed.text).toContain("Wed 11 Nov: US bond market closed (Veterans Day); showing Tue 10 Nov");
+  expect(closed.result.metadata).not.toHaveProperty("latestObservation");
 });
 
 test("a yield ahead of FRED names Treasury and when it published, in the source line and on its row; FRED's own stay FRED", async () => {

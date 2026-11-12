@@ -94,3 +94,11 @@ test("a minor unit reads as a fraction of its major currency, pence only in thei
   expect(parseFxRequest("GBPUSD", "EUR")).toEqual({ currency: "GBP", baseCurrency: "USD" });
   expect(parseFxRequest("gbp-usd", "EUR")).toEqual({ currency: "GBP", baseCurrency: "USD" });
 });
+
+test("words pasted as one argument read as typed apart (GLO-1994)", () => {
+  const eurUsd = { currency: "EUR", baseCurrency: "USD" };
+  expect(parseFxArgs(["1234.5 eur/usd "], "GBP")).toEqual({ request: eurUsd, amount: 1234.5 });
+  expect(parseFxArgs(["1234.5 EUR / USD"], "GBP")).toEqual({ request: eurUsd, amount: 1234.5 });
+  expect(parseFxArgs(["959.81 M", "USD/EUR"], "GBP")).toEqual({ request: { currency: "USD", baseCurrency: "EUR" }, amount: 959_810_000 });
+});
+

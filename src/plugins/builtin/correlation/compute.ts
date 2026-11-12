@@ -1,6 +1,6 @@
 import type { PricePoint } from "../../../types/financials";
 import { getPricePointTimestamp } from "../../../utils/price-history";
-import { pricePointIntegrity } from "../../../utils/price-history-integrity";
+import { pricePointCloseCopied, pricePointIntegrity } from "../../../utils/price-history-integrity";
 
 export interface CorrelationResult {
   correlation: number | null;
@@ -26,13 +26,14 @@ export type ChangeBasis = "return" | "difference";
  * Keep the final valid close for each UTC trading date, in chronological order.
  * A bar whose prices contradict each other (a high under its open) is left out,
  * as `history` leaves it blank: the series has a gap there, and the next return
- * runs from the close before it, as across a holiday.
+ * runs from the close before it, as across a holiday. So is a pair's close its
+ * source copied from the open, which nothing rebuilt (flag close copied).
  */
 export function dailyCloses(points: readonly PricePoint[]): DailyClose[] {
   const byDate = new Map<string, number>();
   for (const point of [...points].sort(comparePricePointsByDate)) {
     const dateKey = toDateKey(point);
-    if (!dateKey || !Number.isFinite(point.close) || point.close <= 0 || pricePointIntegrity(point)) continue;
+    if (!dateKey || !Number.isFinite(point.close) || point.close <= 0 || pricePointIntegrity(point) || pricePointCloseCopied(point)) continue;
     byDate.set(dateKey, point.close);
   }
   return [...byDate].map(([dateKey, close]) => ({ dateKey, close }));

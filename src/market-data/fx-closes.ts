@@ -46,7 +46,8 @@ export function dailyFxCloses(
     if (!row || typeof row.date !== "string" || !Number.isFinite(Date.parse(row.date)) || !isDay(row.date.slice(0, 10))
       || !Number.isFinite(row.close) || row.close <= 0) throw new FxHistoryError("unavailable");
     const date = new Date(row.date).toISOString().slice(0, 10);
-    if (date >= today) continue;
+    // A close the source copied from the open, which nothing rebuilt, is no day's close: the day before it stands in.
+    if (date >= today || row.closeCopied === true) continue;
     const rate = leg.invert ? 1 / row.close : row.close;
     const previous = closes.get(date);
     if (previous != null && previous !== rate) throw new FxHistoryError("unavailable");
@@ -88,6 +89,11 @@ export interface FxCloseReading {
   date: string;
   /** When the close was taken, as an ISO time (17:00 New York), when the service says. */
   closedAt?: string;
+  /**
+   * The day asked for, when its close is the source's copy of its open, which
+   * nothing rebuilt: `date` is then the trading day before it.
+   */
+  copiedClose?: string;
 }
 
 /**
@@ -134,16 +140,22 @@ export async function readFxCloseOnDate(
   if (response.status !== "success" && response.status !== "partial") return { reading: null, served };
   const today = isoDay(now.getTime());
   let best: FxCloseReading | null = null;
+  let copied: string | undefined;
   for (const row of Array.isArray(response.data) ? response.data : []) {
     const at = typeof row?.date === "string" ? Date.parse(row.date) : Number.NaN;
     if (!Number.isFinite(at) || !Number.isFinite(row.close) || row.close <= 0) continue;
     const rowDay = isoDay(at);
     if (rowDay > date || rowDay >= today || Date.parse(`${rowDay}T00:00:00Z`) < day - FX_MAX_AGE_DAYS * DAY_MS) continue;
+    // A close the source copied from the open, which nothing rebuilt, is no day's close: the day before it stands in.
+    if (row.closeCopied === true) {
+      if (rowDay === date) copied = rowDay;
+      continue;
+    }
     const close = fxFigureAsSent(row.close);
     const closedAt = typeof row.closedAt === "string" && Number.isFinite(Date.parse(row.closedAt)) ? row.closedAt : undefined;
     if (!best || rowDay > best.date) best = { rate: leg.invert ? 1 / close : close, close, date: rowDay, ...(closedAt ? { closedAt } : {}) };
   }
-  return { reading: best, served };
+  return { reading: best && copied ? { ...best, copiedClose: copied } : best, served };
 }
 
 /**

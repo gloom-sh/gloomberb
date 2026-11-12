@@ -146,3 +146,22 @@ describe("macro-day moves on a yield", () => {
     expect(formatMacroDayMove(priceDays.events[0]!.move, priceDays.basis)).toBe("+0.76%");
   });
 });
+
+describe("macro-day ECB decisions on a pair's closes (GLO-1994)", () => {
+  test("reads each ECB day on its close, and no move into or out of a close the source copied from the open", () => {
+    // EUR/USD: Thu 21 Jul 2022's decision on its own close; Fri 8 Jul's close is the source's copy of its open, which
+    // nothing rebuilt, so neither its move nor Mon 11 Jul's is a day's.
+    const history = weekdays("2022-07-04", "2022-07-29", [], { "2022-07-07": 1.0186, "2022-07-08": 1.0162, "2022-07-11": 1.0035 })
+      .map((point) => point.date.toISOString().startsWith("2022-07-08") ? { ...point, closeCopied: true } : point);
+    const model = projectMacroDays(history, { symbol: "EURUSD=X", lookbackYears: 1, coveredThrough: "2022-12-31", releases: [
+      { kind: "ecb", date: "2022-07-21" },
+      { kind: "cpi", date: "2022-07-11" },
+    ] });
+    expect(model.kinds).toContain("ecb");
+    expect(model.events.map((event) => [event.kind, event.date])).toEqual([["ecb", "2022-07-21"]]);
+    expect(model.byKind.ecb.count).toBe(1);
+    // The normal days leave out the two moves the copied close is an end of; an ECB day is a normal US day, as IPCA's is.
+    expect(model.normal.count).toBe(history.length - 1 - 2);
+  });
+});
+

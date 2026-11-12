@@ -102,6 +102,7 @@ import {
   laggingSeriesNote,
   parseFredChange,
 } from "./fred-series";
+import { followsUsBondMarket, usBondMarketClosedNote } from "../../market-data/us-bond-market";
 
 // Batch quotes often omit names for indices and ETFs; these baskets are fixed, so name them here.
 const BASKET_NAMES = new Map<string, string>([
@@ -825,7 +826,7 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
     ...releasedOf(observation) ? { released: releasedOf(observation) } : {},
   });
   // A --start before the series begins comes back padded with blank days: the rows start at its first observation.
-  const rows = fredObservationsFromStart(data.observations, data.info?.observationStart)
+  const fromStart = fredObservationsFromStart(data.observations, data.info?.observationStart)
     .filter((observation) => !horizon || observation.date >= startDate)
     .map(exportRow);
   // The default start hides older history and a start before the series begins is moved up silently: say where it really starts.
@@ -837,8 +838,13 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
     seriesNotOnFred(seriesId)?.attribution ?? null,
   ].filter((note): note is string => note != null);
   // Nothing on or after the start: name where the series ends, so an empty answer is not a dead end.
-  const latest = rows.length > 0 ? null : await loadFredSeries(seriesId, { limit: 1, sortOrder: "desc" })
+  const latest = fromStart.length > 0 ? null : await loadFredSeries(seriesId, { limit: 1, sortOrder: "desc" })
     .then((payload) => payload.observations[0] ?? null).catch(logFailure("cli.commands-overview", "Read latest economic series observation failed", null));
+  // A rate observed on US bond market days, started on a day the market was shut (Veterans Day), shows the day before
+  // and says why: "Wed 11 Nov: US bond market closed (Veterans Day); showing Tue 10 Nov".
+  const closedDay = latest && latest.value != null && followsUsBondMarket(seriesId) ? usBondMarketClosedNote(startDate, latest.date) : null;
+  const rows = closedDay && latest ? [exportRow(latest)] : fromStart;
+  if (closedDay) notes.unshift(closedDay);
   // CSV and NDJSON are rows alone: an empty one would read as a series with no data, so it fails and says where the series ends.
   if (rows.length === 0 && (ctx.cliOptions.format === "csv" || ctx.cliOptions.format === "ndjson")) {
     ctx.fail(`No ${seriesId} observations on or after ${startDate}.`, fredEmptyAdvice(seriesId, latest));
@@ -859,7 +865,7 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
       info: data.info, seriesId, startDate, sortOrder, unit, interval,
       ...(horizon ? { change: horizon } : {}),
       ...(notes.length ? { notes } : {}),
-      ...(latest ? { latestObservation: exportRow(latest) } : {}),
+      ...(latest && !closedDay ? { latestObservation: exportRow(latest) } : {}),
     },
     freshness: rowsFreshness(rows, {
       source: ahead?.source ?? notOnFredSource(seriesId) ?? "FRED", status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null,
@@ -910,7 +916,12 @@ async function runYieldCurve(rawArgs: string[], ctx: Parameters<CliCommandDef["e
   rejectArgs(args, "yield-curve [--start <date>]", ctx);
   const series = Object.keys(YIELD_TENORS);
   const results = await withSavedFredSeries(ctx, () => Promise.all(series.map(async (seriesId) => {
-    const data = await loadFredSeries(seriesId, { startDate, sortOrder: "desc" });
+    let data = await loadFredSeries(seriesId, { startDate, sortOrder: "desc" });
+    // A start on a day the bond market was shut (Veterans Day) has nothing on or after it yet: the day before stands in.
+    if (!data.observations.some((observation) => observation.value != null)) {
+      const before = await loadFredSeries(seriesId, { limit: 2, sortOrder: "desc" });
+      if (before.observations[0] && usBondMarketClosedNote(startDate, before.observations[0].date)) data = before;
+    }
     const [latest, previous] = data.observations;
     return {
       // A tenor from the copy an earlier read saved, the refresh having failed, says so in the source line.
@@ -930,6 +941,8 @@ async function runYieldCurve(rawArgs: string[], ctx: Parameters<CliCommandDef["e
   })));
   // Tenors whose latest yield FRED does not list yet name the Treasury and when it published them.
   const ahead = fredProvenance(results.flatMap((row) => row.latest ? [row.latest] : []));
+  const shown = results.map((row) => row.date).filter(Boolean).sort().at(-1);
+  const closedDay = shown ? usBondMarketClosedNote(startDate, shown) : null;
   // The curve shown was published with its last tenor: the newest of their FRED updates, when each has one.
   const published = results.map((row) => row.publishedAt);
   const publishedAt = ahead ? ahead.publishedAt : published.every((time) => time != null) ? published.sort().at(-1) : null;
@@ -943,6 +956,7 @@ async function runYieldCurve(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     }),
   }, {
     exportIdentity: (row) => ({ symbolOrSeries: String(row.seriesId), currencyOrUnit: "pct", interval: "daily" }),
+    ...(closedDay ? { footnote: closedDay, exportNotes: [closedDay] } : {}),
     textColumns: [
       { key: "tenor", header: "Tenor", value: (row) => YIELD_TENORS[String(row.seriesId)] ?? row.seriesId },
       { key: "value", header: "Yield %", align: "right", format: (value) => typeof value === "number" ? value.toFixed(2) : "-" },
