@@ -577,19 +577,21 @@ index b9445d2cca9477dfe06026da451b6d19268fcbdd..1f5795ab76800a64fdb0acf4a1ed0186
      this.updateStdinParserProtocolContext({
        privateCapabilityRepliesActive: false,
 diff --git a/index-3mx8q5t1.js b/index-3mx8q5t1.js
-index fb66f651e3c5e5bd21b673290542e9f6b1f73818..a4564d65f1f02145e320468a3dcb76d445663584 100644
+index fb66f651e3c5e5bd21b673290542e9f6b1f73818..bee91f3071845efd730b161a6fe92952bc7f93cf 100644
 --- a/index-3mx8q5t1.js
 +++ b/index-3mx8q5t1.js
-@@ -10070,6 +10070,9 @@ class ScrollBarRenderable extends Renderable {
-     const scrollRange = Math.max(0, this._scrollSize - this._viewportSize);
-     this.slider.min = 0;
-     this.slider.max = scrollRange;
-+    // The thumb's length: the slider clamps it to the range it had, which is
-+    // none while the content is not laid out yet.
-+    this.slider.viewPortSize = Math.max(1, this._viewportSize);
-     this.slider.value = Math.min(this._scrollPosition, scrollRange);
+@@ -9692,7 +9692,10 @@ class SliderRenderable extends Renderable {
+     }
    }
-   scrollBy(delta, unit = "absolute") {
+   set viewPortSize(size) {
+-    const clampedSize = Math.max(0.01, Math.min(size, this._max - this._min));
++    // The thumb is this share of the range plus this. Clamped to the range, it
++    // never passed half the track, and a slider sized before its content had
++    // a range kept a sliver of a thumb.
++    const clampedSize = Math.max(0.01, size);
+     if (clampedSize !== this._viewPortSize) {
+       this._viewPortSize = clampedSize;
+       this.requestRender();
 diff --git a/lib/parse.mouse.d.ts b/lib/parse.mouse.d.ts
 index c29f953fde0b78f09d2ec7a830e5a72452c1fe7e..04613b921bd9b4a9a7a1a4fbd0234d4012df67a1 100644
 --- a/lib/parse.mouse.d.ts

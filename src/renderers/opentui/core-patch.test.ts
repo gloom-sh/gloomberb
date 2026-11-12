@@ -298,18 +298,24 @@ test("a box takes the fill of the hovered box it sits in, and gives it back when
 
 // A scroll box sized before its rows are laid out had a thumb of half a cell
 // from then on, whatever share of its content it showed.
-test("a scroll box whose rows arrive after it is sized has a thumb as long as the share it shows", async () => {
+test("a scroll box's thumb is as long as the share it shows, its rows arriving after it is sized or not", async () => {
   current = await createTestRenderer({ width: 20, height: 10 });
   const { renderer, renderOnce, captureCharFrame } = current;
-  const scroll = new ScrollBoxRenderable(renderer, { id: "scroll", width: 20, height: 10 });
-  renderer.root.add(scroll);
-  await renderOnce();
-  for (let line = 0; line < 20; line += 1) {
-    scroll.add(new TextRenderable(renderer, { id: `line-${line}`, content: `line ${line}` }));
-  }
-  await renderOnce();
-  await renderOnce();
+  const thumb = async (lines: number) => {
+    const scroll = new ScrollBoxRenderable(renderer, { id: `scroll-${lines}`, width: 20, height: 10 });
+    renderer.root.add(scroll);
+    await renderOnce();
+    for (let line = 0; line < lines; line += 1) {
+      scroll.add(new TextRenderable(renderer, { id: `line-${lines}-${line}`, content: `line ${line}` }));
+    }
+    await renderOnce();
+    await renderOnce();
+    const cells = captureCharFrame().split("\n").map((row) => row[19]).filter((cell) => cell && cell !== " ").join("");
+    renderer.root.remove(scroll.id);
+    return cells;
+  };
   // Ten rows of twenty: half the track, in the last column.
-  const thumb = captureCharFrame().split("\n").map((row) => row[19]).filter((cell) => cell && cell !== " ");
-  expect(thumb).toEqual(["█", "█", "█", "█", "█"]);
+  expect(await thumb(20)).toBe("█████");
+  // Ten of eleven: most of it, where the thumb stopped at half.
+  expect(await thumb(11)).toBe("█████████");
 });
