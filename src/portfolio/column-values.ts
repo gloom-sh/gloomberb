@@ -25,6 +25,8 @@ import {
   type MarketFormatOptions,
 } from "../market-data/market/format";
 import {
+  EXTENDED_SESSION_MARKS,
+  extendedPrintSession,
   getActiveQuoteDisplay,
   getCompletedRegularSessionDisplay,
   getExtendedSessionDisplay,
@@ -33,6 +35,7 @@ import {
   marketStateDot,
   quoteDotMarketState,
   type ActiveQuoteDisplay,
+  type SessionPriceDisplay,
 } from "../market-data/market/status";
 import { formatOptionTicker } from "../utils/options";
 import { distributionHistory, forwardYieldMayHaveLapsed, lapsedDividend } from "../utils/forward-dividend";
@@ -119,7 +122,12 @@ export interface ColumnContext {
   fxDayMoves?: ReadonlyMap<string, number>;
   /** Clock for quote age (per second while shown) and day-based columns. */
   now: number;
-  /** What market values, P&L, weights and the day's move are priced at; the latest print when absent. */
+  /**
+   * What market values, P&L, weights and the day's move are priced at, and
+   * LAST, CHG and CHG% show with it (rowHeadlineDisplay). Absent, as in a
+   * list that values nothing (a watchlist), the values are at the latest print
+   * and LAST is the regular session's, as `quote` heads it.
+   */
   valuationBasis?: PortfolioValuationBasis;
   /**
    * What a portfolio's weights divide by (allocationWeightBase): its priced
@@ -344,21 +352,41 @@ function tradedQuoteDisplay(
 }
 
 /**
- * LAST, CHG and CHG% once the regular session is over, and in the pre-market
- * while the quote carries the last session's close and move: that close and its
- * move, frozen, because the EXT% column carries the extended print measured
- * from that close. Until the close, and wherever no close is reported (a
- * pre-market quote without it, venues without extended hours), the traded price
- * as above.
- * Valuation columns (DAY P&L, MKT VAL, weight, P&L) keep the latest print,
- * unless the pane values at the regular close, which is this headline.
- * A watchlist's Avg Day averages this CHG%.
+ * The regular session's price and move, as `quote` heads Last: once the
+ * session is over, and in the pre-market while the quote carries the last
+ * session's close and move, that close and its move, frozen, because the EXT%
+ * column carries the extended print measured from that close. Until the close,
+ * and wherever no close is reported (a pre-market quote without it, venues
+ * without extended hours), the traded price as above. A watchlist's LAST and
+ * CHG% (its Avg Day averages this CHG%), and a book's valued at the regular
+ * close, which is this price; a book valued at the latest print shows that
+ * print instead (rowHeadlineDisplay).
  */
 export function headlineQuoteDisplay(
   traded: ActiveQuoteDisplay | null,
   quote: TickerFinancials["quote"],
 ): ActiveQuoteDisplay | null {
   return traded ? getCompletedRegularSessionDisplay(quote) ?? traded : null;
+}
+
+/**
+ * LAST, CHG and CHG% of a row: the price its figures use, so LAST times the
+ * shares is MKT VAL and CHG times them is DAY. In a book valued at the latest
+ * print, that print and its move from the close DAY measures from, naming its
+ * session when it is a pre-market, after-hours or overnight trade (`AH
+ * 158.78`); an option shows its trade, valued at its mark. A book at the
+ * regular close, and a list that values nothing (no `valuationBasis`, a
+ * watchlist), show the regular session as `quote` heads it
+ * (headlineQuoteDisplay), with the extended print in EXT%.
+ */
+function rowHeadlineDisplay(
+  traded: ActiveQuoteDisplay | null,
+  quote: TickerFinancials["quote"],
+  ctx: Pick<ColumnContext, "valuationBasis">,
+): SessionPriceDisplay | null {
+  if (ctx.valuationBasis !== "latest-print" || !traded) return headlineQuoteDisplay(traded, quote);
+  const session = extendedPrintSession(quote, traded.price);
+  return session ? { ...traded, session } : traded;
 }
 
 /** CHG% as shown: the headline's, else the quote's own when no position price is usable. */
@@ -546,7 +574,7 @@ export function getColumnValue(
   const liveQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
   const activeQuote = getPortfolioValuationDisplay(positionMetrics, quote, ctx.valuationBasis, futures?.settlement);
   const displayQuote = tradedQuoteDisplay(positionMetrics, liveQuote, quote);
-  const headlineQuote = settledHeadline(positionMetrics, ctx, futures) ?? headlineQuoteDisplay(displayQuote, quote);
+  const headlineQuote: SessionPriceDisplay | null = settledHeadline(positionMetrics, ctx, futures) ?? rowHeadlineDisplay(displayQuote, quote, ctx);
   const { positionCurrency, totalShares, totalCost, totalCostUnits, totalPriceUnits, multiplierHint, brokerMarkPrice } = positionMetrics;
 
   const toBaseQuote = (value: number) =>
@@ -598,8 +626,13 @@ export function getColumnValue(
       return { text: compactText(ticker.metadata.industry || financials?.profile?.industry) };
     case "tags":
       return { text: ticker.metadata.tags.length > 0 ? ticker.metadata.tags.join(",") : "—" };
-    case "price":
-      return resolvePortfolioPriceValue(headlineQuote, brokerMarkPrice, headlineQuote ? currentQuoteOptions : markOptions, col.width, quote?.marketState);
+    case "price": {
+      const cell = resolvePortfolioPriceValue(headlineQuote, brokerMarkPrice, headlineQuote ? currentQuoteOptions : markOptions, col.width, quote?.marketState);
+      // An extended-hours print says which session it is from, before it so the digits stay aligned: AH 158.78.
+      // The table widens the column to fit; an export keeps the price.
+      const session = headlineQuote?.session;
+      return session ? { ...cell, text: `${EXTENDED_SESSION_MARKS[session]} ${cell.text}`, value: headlineQuote.price } : cell;
+    }
     case "change":
       if (!headlineQuote) return { text: "—" };
       // A listing that no longer trades has no day's move: its last session's is years old.
@@ -832,7 +865,7 @@ export function getSortValue(
   const liveQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
   const activeQuote = getPortfolioValuationDisplay(positionMetrics, quote, ctx.valuationBasis, futures?.settlement);
   const displayQuote = tradedQuoteDisplay(positionMetrics, liveQuote, quote);
-  const headlineQuote = settledHeadline(positionMetrics, ctx, futures) ?? headlineQuoteDisplay(displayQuote, quote);
+  const headlineQuote = settledHeadline(positionMetrics, ctx, futures) ?? rowHeadlineDisplay(displayQuote, quote, ctx);
   const { positionCurrency, totalShares, totalCost, totalCostUnits, totalPriceUnits, brokerMarkPrice } = positionMetrics;
 
   const toBaseQuote = (value: number) =>

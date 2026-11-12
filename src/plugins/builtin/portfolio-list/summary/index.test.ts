@@ -17,6 +17,7 @@ import {
   layoutPortfolioSummaryHeader,
   resolvePortfolioAccountState,
 } from "./index";
+import { formatPortfolioAmount } from "./totals";
 
 describe("resolvePortfolioAccountState", () => {
   test("does not reuse a single cached broker account for a different explicit portfolio account", () => {
@@ -200,6 +201,20 @@ describe("resolvePortfolioAccountState", () => {
 
 });
 
+test("a book's totals read to the unit, never rounded to a hundred, and compact only from a billion", () => {
+  // $1,587.80 read Val 1.6k beside a Day of -101.10.
+  expect(formatPortfolioAmount(1587.8, "USD")).toBe("1,588");
+  expect(formatPortfolioAmount(-101.1, "USD", { signed: true })).toBe("-101.10");
+  expect(formatPortfolioAmount(999.996, "USD")).toBe("1,000");
+  expect(formatPortfolioAmount(-4_198_000, "USD", { signed: true })).toBe("-4,198,000");
+  expect(formatPortfolioAmount(1_234_000_000, "USD")).toBe("1.23B");
+  expect(formatPortfolioAmount(0.001, "USD", { signed: true })).toBe("0.00");
+  // A currency without a minor unit keeps none; another than the app's leads with its symbol.
+  expect(formatPortfolioAmount(950, "JPY", { baseCurrency: "JPY" })).toBe("¥950");
+  expect(formatPortfolioAmount(60_000, "AUD", { signed: true })).toBe("+A$60,000");
+  expect(formatPortfolioAmount(Number.NaN, "USD")).toBe("—");
+});
+
 describe("buildPortfolioSummarySegments", () => {
   const totals: PortfolioSummaryTotals = {
     totalMktValue: 125000,
@@ -241,9 +256,21 @@ describe("buildPortfolioSummarySegments", () => {
     const segments = fitSummarySegments(buildPortfolioSummarySegments({
       totals,
       accountState: { account, sourceLabel: "Live" },
-    }), 28);
+    }), 30);
 
     expect(segments.map((segment) => segment.id)).toEqual(["netliq", "val"]);
+  });
+
+  test("Val leaves what it is priced at to a Day that names its after-hours print, and keeps it when the Day has no room", () => {
+    const atPrint: PortfolioSummaryTotals = { ...totals, totalMktValue: 1587.8, dailyPnl: -101.1, dailyPnlPct: -5.99,
+      totalCostBasis: 1500, unrealizedPnl: 87.8, unrealizedPnlPct: 5.85, dayChangeBasis: "AH vs Tue 10 Nov close", dayAtExtendedPrint: true };
+    const fit = (width: number, value = atPrint) => fitSummarySegments(buildPortfolioSummarySegments({
+      totals: value, accountState: null, valuationBasis: "latest-print",
+    }), width).map((segment) => segment.parts.map((part) => part.text).join(" "));
+    expect(fit(120)).toEqual(["Val 1,588", "Day -101.10 (-5.99%) AH vs Tue 10 Nov close", "P&L +87.80 (+5.85%)"]);
+    expect(fit(30)).toEqual(["Val 1,588 (latest print)"]);
+    // A day at regular-session prices names no print, so Val says it.
+    expect(fit(120, { ...atPrint, dayChangeBasis: "vs Tue 10 Nov close", dayAtExtendedPrint: undefined })[0]).toBe("Val 1,588 (latest print)");
   });
 
   test("fits segments using translated terminal display widths", () => {
@@ -267,14 +294,14 @@ describe("buildPortfolioSummarySegments", () => {
       accountState: { account, sourceLabel: "Live" },
     });
 
-    expect(segments.find((segment) => segment.id === "val")?.parts[1]?.text).toBe("175.0k");
+    expect(segments.find((segment) => segment.id === "val")?.parts[1]?.text).toBe("175,000");
   });
 
   test("drops low-priority broker segments before required ones", () => {
     const segments = fitSummarySegments(buildPortfolioSummarySegments({
       totals,
       accountState: { account, sourceLabel: "Live" },
-    }), 112);
+    }), 118);
 
     expect(segments.map((segment) => segment.id)).toEqual([
       "netliq",
@@ -328,22 +355,22 @@ describe("a margin account's header", () => {
 
   test("leads with the equity and labels the positions' sum as gross", () => {
     const { text } = header(marginQuotes(), createMarginAccount());
-    expect(text.slice(0, 3)).toEqual(["Net Liq 1.00M", "Gross 1.60M", "Cash -600.0k"]);
+    expect(text.slice(0, 3)).toEqual(["Net Liq 1,000,000", "Gross 1,600,000", "Cash -600,000"]);
     expect(text).toContain("Lev 1.6x");
   });
 
   test("live quotes for every position replace the gross, never the equity", () => {
     const { totals, text } = header(marginQuotes({ move: 10, option: true }), createMarginAccount());
     expect(totals.livePriced).toBe(true);
-    expect(text.slice(0, 2)).toEqual(["Net Liq 1.04M", "Gross 1.64M"]);
+    expect(text.slice(0, 2)).toEqual(["Net Liq 1,040,000", "Gross 1,640,000"]);
     // Without the broker's day, the quotes' day is a return on the equity, not on the positions,
     // from a NASDAQ, a XETRA and a CBOE close that need not be the same day's.
-    expect(text).toContain("Day +40.0k (+4.00%) vs mixed closes");
+    expect(text).toContain("Day +40,000 (+4.00%) vs mixed closes");
   });
 
   test("without its account, the equity and cash read as unknown beside the gross", () => {
     const { text } = header(marginQuotes(), null);
-    expect(text.slice(0, 3)).toEqual(["Net Liq —", "Gross 1.60M", "Cash —"]);
+    expect(text.slice(0, 3)).toEqual(["Net Liq —", "Gross 1,600,000", "Cash —"]);
     expect(text.some((segment) => segment.startsWith("Val") || segment.startsWith("Lev"))).toBe(false);
   });
 });

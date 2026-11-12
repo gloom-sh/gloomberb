@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 import type { Quote } from "../../types/financials";
 import { sessionQuotes } from "../../test-support/test-fixture-session-quotes";
 import {
+  extendedPrintSession,
   extendedSessionLineLabel,
   getActiveQuoteDisplay,
   getCompletedRegularSessionDisplay,
   getExtendedSessionDisplay,
+  getLatestPrintDisplay,
   getRegularSessionDisplay,
   getSessionMoveDisplay,
   getTradedSessionMoveDisplay,
@@ -233,6 +235,43 @@ describe("the overnight session", () => {
       expect(getExtendedSessionDisplay(quote)?.session).not.toBe("OVERNIGHT");
       expect(quoteSessionLabel(quote)).not.toBe("OVERNIGHT");
     }
+  });
+});
+
+describe("the latest print, named by its session", () => {
+  // NVDA on Wed 11 Nov 2026 after 20:00 New York: up 2.87% to a 173.73 close, then 158.78 after hours, 5.99% under Tuesday's close.
+  const nvda: Quote = {
+    symbol: "NVDA", currency: "USD", price: 158.78, change: -10.11, changePercent: -5.9862,
+    previousClose: 168.89, regularClose: 173.73, regularCloseSessionDate: "2026-11-11", changeSessionDate: "2026-11-11",
+    marketState: "POSTPOST", listingExchangeName: "NASDAQ", lastUpdated: Date.parse("2026-11-12T00:59:59Z"),
+  };
+  const { overnightMark } = sessionQuotes();
+
+  test("is the after-hours print `quote` shows beside Last, moving from the close Last's move is from", () => {
+    expect(getRegularSessionDisplay(nvda)!.price).toBe(173.73);
+    expect(getExtendedSessionDisplay(nvda)).toMatchObject({ session: "POST", price: 158.78 });
+    const latest = getLatestPrintDisplay(nvda)!;
+    expect(latest).toMatchObject({ price: 158.78, session: "POST" });
+    expect(latest.change).toBeCloseTo(-10.11, 8);
+    expect(latest.changePercent).toBeCloseTo(-5.9862, 3);
+    expect(extendedPrintSession(nvda, 158.78)).toBe("POST");
+    // The regular close, an option's mark or a future's settlement is no print of the session.
+    expect(extendedPrintSession(nvda, 173.73)).toBeNull();
+    expect(extendedPrintSession(nvda, null)).toBeNull();
+    expect(getLatestPrintDisplay(overnightMark)).toMatchObject({ session: "OVERNIGHT", mark: true });
+  });
+
+  test("names no session for the regular session's price, or for a close nothing has traded after", () => {
+    const open = { ...nvda, price: 173.73, change: 4.84, changePercent: 2.8658, marketState: "REGULAR" as const,
+      regularClose: undefined, regularCloseSessionDate: undefined, lastUpdated: Date.parse("2026-11-11T20:59:00Z") };
+    expect(getLatestPrintDisplay(open)).toEqual({ price: 173.73, change: 4.84, changePercent: 2.8658 });
+    expect(extendedPrintSession(open, 173.73)).toBeNull();
+    // Nothing traded after the close.
+    expect(getLatestPrintDisplay({ ...nvda, price: 173.73 })?.session).toBeUndefined();
+    // A pre-market that has not traded yet carries the close; the source says so.
+    const waiting = { ...nvda, marketState: "PRE" as const, extendedSessionPrint: false };
+    expect(getLatestPrintDisplay(waiting)?.session).toBeUndefined();
+    expect(getLatestPrintDisplay(null)).toBeNull();
   });
 });
 

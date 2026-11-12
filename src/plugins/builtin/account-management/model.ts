@@ -25,6 +25,7 @@ export type AccountFieldKey =
   | "emailAlertsOffAction"
   | "upgradeAction"
   | "cancelTrialAction"
+  | "inviteCopyAction"
   | "assistantsAction"
   | "passwordAction"
   | "deleteAccountAction";

@@ -16,6 +16,7 @@ import type {
   DeviceAuthTokenResponse,
   McpKeyScope,
   PersistedAuthUser,
+  ReferralInvite,
 } from "./types";
 
 type CloudApiRequest = <T>(path: string, options?: RequestInit, canApplySession?: () => boolean) => Promise<T>;
@@ -283,6 +284,11 @@ export class CloudAuthApi {
         body: JSON.stringify({}),
       },
     );
+  }
+
+  /** The account's invite link and the free months it has earned. */
+  async getReferralInvite(): Promise<ReferralInvite> {
+    return this.options.request<ReferralInvite>("/account/referral", { method: "GET" });
   }
 
   /** The private calendar feed link, or null until it is first created. */

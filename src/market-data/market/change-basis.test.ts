@@ -6,6 +6,7 @@ import {
   changeBasisLabel,
   changeBasisNote,
   combinedChangeBasisLabel,
+  dayMoveBasisLabel,
   futuresQuoteFromSettle,
   quoteChangeBasis,
   quotePreviousCloseDate,
@@ -295,6 +296,20 @@ test("a total over moves from different closes says so instead of naming one", (
   expect(combinedChangeBasisLabel([us, hkex], NOW)).toBe("vs mixed closes");
   expect(combinedChangeBasisLabel([us, { kind: "utc day" }], NOW)).toBe("vs mixed closes");
   expect(combinedChangeBasisLabel([null], NOW)).toBeNull();
+});
+
+test("a day's move priced at extended-hours prints names their session before the close it is from", () => {
+  const us = { kind: "close" as const, date: "2026-10-19", venue: "NASDAQ", closed: [] };
+  const hkex = { kind: "close" as const, date: "2026-10-16", venue: "HKEX", closed: ["2026-10-19"] };
+  expect(dayMoveBasisLabel([us, us], ["POST", null], { now: NOW })).toBe("after hours vs Mon 19 Oct close");
+  expect(dayMoveBasisLabel([us, us], ["POST", null], { marks: true, now: NOW })).toBe("AH vs Mon 19 Oct close");
+  expect(dayMoveBasisLabel([us], ["PRE"], { marks: true, now: NOW })).toBe("PM vs Mon 19 Oct close");
+  expect(dayMoveBasisLabel([us, hkex], ["PRE"], { now: NOW })).toBe("pre-market vs mixed closes");
+  expect(dayMoveBasisLabel([us, us], ["PRE", "OVERNIGHT"], { marks: true, now: NOW })).toBe("EXT vs Mon 19 Oct close");
+  expect(dayMoveBasisLabel([us, us], ["PRE", "OVERNIGHT"], { now: NOW })).toBe("extended hours vs Mon 19 Oct close");
+  // Regular-session prices name the close alone; no basis, no label.
+  expect(dayMoveBasisLabel([us, hkex], [null, undefined], { now: NOW })).toBe("vs mixed closes");
+  expect(dayMoveBasisLabel([null], ["POST"], { now: NOW })).toBeNull();
 });
 
 test("--json gives the basis beside the move: kind, dated session, closures, label and note", () => {

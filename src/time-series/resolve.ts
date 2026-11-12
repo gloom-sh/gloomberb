@@ -1033,6 +1033,7 @@ async function resolveChartSpecPass(
         history?.resolution,
         quoteMetadata,
         contractUnit,
+        { extendedHours: history?.extendedHours === true },
       );
       if (!base) throw new Error(`Unknown field ${source.fieldId}.`);
       let result = builtBars ? withBuiltBarSize(base, builtBars) : base;

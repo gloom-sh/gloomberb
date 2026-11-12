@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { tf } from "../../../i18n";
+import { t, tf } from "../../../i18n";
+import { extendedSessionLineLabel, getLatestPrintDisplay, type SessionPriceDisplay } from "../../../market-data/market/status";
 import type { DataProvider } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import { coerceFieldString } from "../helpers";
@@ -24,8 +25,19 @@ function formatAlertWorkflowPrice(value: number): string {
   return Number.isFinite(value) ? String(value) : "";
 }
 
-function formatAlertWorkflowQuote(quote: Quote): string {
-  const price = formatAlertWorkflowPrice(quote.price);
+/**
+ * The price an alert is judged on, as the form shows it: the latest print, an
+ * extended-hours one named by its session (158.78 After-Hours), as `quote`
+ * names it beside Last.
+ */
+function formatAlertWorkflowCurrentPrice(print: SessionPriceDisplay): string {
+  const price = formatAlertWorkflowPrice(print.price);
+  const session = print.session;
+  return session ? `${price} ${extendedSessionLineLabel({ ...print, session }, t)}` : price;
+}
+
+function formatAlertWorkflowQuote(quote: Quote, print: SessionPriceDisplay): string {
+  const price = formatAlertWorkflowCurrentPrice(print);
   const exchange = quote.fullExchangeName || quote.exchangeName || quote.listingExchangeName || "";
   const name = quote.name || quote.symbol;
   const source = quote.dataSource === "delayed" ? "delayed" : quote.dataSource || "";
@@ -113,11 +125,13 @@ export function useAlertWorkflowQuoteSync({
     void dataProvider.getQuote(alertWorkflowSymbol, "")
       .then((quote) => {
         if (quoteRequestRef.current !== requestId) return;
-        if (!quote || typeof quote.price !== "number" || !Number.isFinite(quote.price)) {
+        // An alert is judged on the latest print, extended hours included: the target starts there.
+        const print = getLatestPrintDisplay(quote);
+        if (!quote || !print || !Number.isFinite(print.price)) {
           throw new Error(tf('No quote found for "{symbol}".', { symbol: alertWorkflowSymbol }));
         }
 
-        const quotePrice = formatAlertWorkflowPrice(quote.price);
+        const quotePrice = formatAlertWorkflowPrice(print.price);
         updateRoute((route) => {
           if (!isSetAlertWorkflow(route)) return route;
           if (normalizeAlertWorkflowSymbol(route.values.symbol) !== alertWorkflowSymbol) return route;
@@ -133,8 +147,8 @@ export function useAlertWorkflowQuoteSync({
             ...route,
             values: nextValues,
             fields: updateAlertWorkflowFieldDescriptions(route.fields, {
-              symbol: formatAlertWorkflowQuote(quote),
-              price: tf("Current price {price}; edit to set the target.", { price: quotePrice }),
+              symbol: formatAlertWorkflowQuote(quote, print),
+              price: tf("Current price {price}; edit to set the target.", { price: formatAlertWorkflowCurrentPrice(print) }),
             }),
             payloadMeta: {
               ...(route.payloadMeta ?? {}),

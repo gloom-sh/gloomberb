@@ -503,8 +503,8 @@ describe("PortfolioListPane cash and margin UI", () => {
       });
       for (let index = 0; index < 6; index++) await flushFrame();
       const frame = tui.frame();
-      expect(frame).toContain(source === "unknown currency" ? "Net Liq —" : "Net Liq 15.0k");
-      expect(frame).toContain(source === "CAD" ? "Cash 13.5k" : "Cash —");
+      expect(frame).toContain(source === "unknown currency" ? "Net Liq —" : "Net Liq 15,000");
+      expect(frame).toContain(source === "CAD" ? "Cash 13,500" : "Cash —");
       expect(frame).not.toContain("Cash 0");
       if (source !== "unknown currency") expect(requested).toContain("CAD");
       else expect(frame).toContain("⚠");
@@ -781,7 +781,7 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(line("TOTAL")).toMatch(/^ TOTAL +100\.0% +100\.0% +0\.0pp +0\.00\s*$/);
     expect(line("● AAPL")).toMatch(/AAPL +26\.0% +20\.0% +\+6\.0pp +-6 +-600\.00 /);
     // The header's Cash is the row now.
-    expect(tui.frame()).not.toContain("Cash 1.0k");
+    expect(tui.frame()).not.toContain("Cash 1,000");
     const rowY = (label: string) => tui.frame().split("\n").findIndex((row) => row.trimStart().startsWith(label));
     const paneState = () => harnessState?.paneState[TEST_PANE_ID];
     // Followers see the cursor once its throttle commits it.
@@ -1599,8 +1599,8 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     const frame = tui.frame();
     expect(frame).toContain("Cash & Margin");
-    expect(frame.match(/Cash -50.0k/g)).toHaveLength(1);
-    expect(frame.match(/Net Liq 125.0k/g)).toHaveLength(1);
+    expect(frame.match(/Cash -50,000/g)).toHaveLength(1);
+    expect(frame.match(/Net Liq 125,000/g)).toHaveLength(1);
     expect(frame).toContain("Flex Mar 27");
     expect(frame).toContain("-351,957.025");
     expect(frame).not.toContain("Avail");
