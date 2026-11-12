@@ -56,7 +56,7 @@ import type { CompanyProfile, DeclaredDividendAction, FinancialStatement, Quote,
 import { apiClient } from "../../api-client";
 import { withBalanceSheetRate } from "../../market-data/quotes/balance-sheet-rate";
 import { enterpriseValueBridgeNote, listingEnterpriseValue } from "../../market-data/quotes/listing-enterprise-value";
-import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
+import { regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
 import { instrumentTypeLabel, resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
 import { INDEX_POINTS_LABEL, isIndexLevel, reportedQuoteVolume } from "../../market-data/market/index-level";
@@ -106,7 +106,7 @@ import type { ReportFreshness } from "../pane-functions/freshness";
 import { fundamentalsFreshness, quotesFreshness } from "../freshness";
 import { distributionHistory, forwardDividendBasis, forwardDividendMayHaveLapsed, lapsedDividend, noCurrentDividend, TRAILING_DIVIDEND_BASIS, type DistributionHistory, type DividendLapse } from "../../utils/forward-dividend";
 import { declaredDividends } from "../../utils/declared-dividends";
-import { historyTrailingDividendYield, measuresTrailingYield } from "../../market-data/quotes/live-valuation";
+import { atLivePriceEarnings, historyTrailingDividendYield, measuresTrailingYield } from "../../market-data/quotes/live-valuation";
 import { loadOfferingFilings, loadStatementFilings, resultsReleaseText, statementPeriodText, type StatementFilingsReport } from "../statement-filings";
 import type { BankFiguresPayload } from "../../api-client/bank-figures";
 import { bankSection } from "../bank-section";
@@ -964,7 +964,8 @@ const TRAILING_MONEY_METRICS = new Set(["EPS (TTM)", "Revenue (TTM)", "Net Incom
  * The notes under shown fundamentals: a market cap shown as the share count times the price and the provider's, how a labelled or
  * withdrawn EV compares with market cap + debt - cash, what a converted TTM block was converted from, an EPS in
  * another currency than the amounts beside it, and what a P/E on such an EPS divides. `priced` is the snapshot at
- * the regular session price (atRegularSessionPrice), the figures the lines show, so each note reads those.
+ * the regular session price with the P/E the Overview shows (atLivePriceEarnings), the figures the lines show, so
+ * each note reads those.
  */
 function fundamentalsNotes(
   /** With the statements where the report has them: the balance sheet says what a bridge's cash holds. */
@@ -1130,11 +1131,11 @@ function valuationPriceMetrics(financials: FundamentalsReportData): Fundamentals
 /**
  * The lines `fundamentals` or `valuation` reports, the ones with a value.
  * Market cap, the P/E multiples and the dividend yield are measured at the
- * regular session price (atRegularSessionPrice), which `valuation` names in
- * its first lines.
+ * regular session price, which `valuation` names in its first lines, and a P/E
+ * is the one the Overview and EQS show for it (atLivePriceEarnings).
  */
 function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fundamentals" | "valuation"): FundamentalsMetric[] {
-  const financials = atRegularSessionPrice(snapshot);
+  const financials = atLivePriceEarnings(snapshot);
   const quote = financials.quote;
   const fundamentals = financials.fundamentals;
   const capitalization = viewMarketCapitalization(quote, fundamentals, regularSessionValuationPrice(quote));
@@ -1182,7 +1183,7 @@ export function renderFundamentalsReport(
   const fund = fundFactsNote(symbol, financials.exchange || quote?.exchangeName, financials, null, financials.fundFacts);
   if (lines.length === before) lines.push("", cliStyles.muted([`No ${view} reported for ${financials.symbol}.`, fund].filter(Boolean).join(" ")));
   else if (fund) lines.push(cliStyles.muted(fund));
-  for (const note of fundamentalsNotes(atRegularSessionPrice(financials), metrics, quote?.currency, listingEnterpriseView(financials).note)) {
+  for (const note of fundamentalsNotes(atLivePriceEarnings(financials), metrics, quote?.currency, listingEnterpriseView(financials).note)) {
     lines.push(cliStyles.muted(note));
   }
   if (view === "fundamentals") {
@@ -1259,7 +1260,7 @@ export function fundamentalsReportTables(
       notes: [
         ...metrics.length === 0
           ? [`No ${view} reported for ${financials.symbol}.`]
-          : fundamentalsNotes(atRegularSessionPrice(financials), metrics, financials.quote?.currency, listingEnterpriseView(financials).note),
+          : fundamentalsNotes(atLivePriceEarnings(financials), metrics, financials.quote?.currency, listingEnterpriseView(financials).note),
         ...fund ? [fund] : [],
         ...view === "fundamentals" ? statementFilingsNotes(financials.statementFilings) : [],
         ...bank?.notes ?? [],
@@ -1418,7 +1419,7 @@ export async function buildTickerReport({
   }
 
   // Market cap and the multiples are measured at the regular session price the Quote section heads with.
-  const priced = atRegularSessionPrice(financials);
+  const priced = atLivePriceEarnings(financials);
   const capitalization = viewMarketCapitalization(priced.quote, priced.fundamentals, regularSessionValuationPrice(priced.quote));
   // Market cap and EV read in the currency they are reported in, as the revenue and income beside them do,
   // with the base currency's figure after them when it differs: 627.2B USD (878.15B CAD).
@@ -1637,7 +1638,7 @@ function buildTickerStructuredData({
   const priceReturns = computeTickerPriceReturns(financials, tickerFile?.metadata.assetCategory);
   const identity = listingIdentity(listing, quote);
   // Market cap and the multiples at the regular session price, as the text report gives them.
-  const priced = atRegularSessionPrice(financials);
+  const priced = atLivePriceEarnings(financials);
   const runway = cashRunway(financials);
   return {
     symbol,

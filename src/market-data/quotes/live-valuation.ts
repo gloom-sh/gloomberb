@@ -1,4 +1,4 @@
-import type { AnalystResearchData, CorporateActionsData, Fundamentals, Quote } from "../../types/financials";
+import type { AnalystResearchData, CorporateActionsData, Fundamentals, Quote, TickerFinancials } from "../../types/financials";
 import { atRegularSessionPrice, regularSessionValuationPrice } from "./regular-session-valuation";
 import { hasLikelyQuoteUnitMismatch, resolveCurrencyUnit } from "../../utils/currency-units";
 import { cashInMajorUnits } from "../../utils/dividend-cash";
@@ -80,6 +80,26 @@ export function liveForwardPE(quote: Quote | null | undefined, fundamentals: Fun
   if (fundamentals?.notMeaningful?.forwardPE) return NOT_MEANINGFUL;
   const stored = pricedFundamentals(quote, fundamentals)?.forwardPE;
   return priceEarningsOnEarnings(repriceMultiple(stored, fundamentals?.forwardEps, quote, fundamentals), fundamentals?.forwardEps);
+}
+
+/**
+ * `financials` at the regular session price (atRegularSessionPrice) with the trailing and forward P/E the Overview,
+ * the portfolio and EQS show (liveTrailingPE, liveForwardPE): one the source measured at an older print is the price
+ * over its EPS. A P/E with no number (N/M, or none) stays as the block has it, for its reason.
+ */
+export function atLivePriceEarnings<T extends Pick<TickerFinancials, "quote" | "fundamentals">>(financials: T): T {
+  const priced = atRegularSessionPrice(financials);
+  if (!priced.fundamentals) return priced;
+  const trailing = liveTrailingPE(financials.quote, financials.fundamentals);
+  const forward = liveForwardPE(financials.quote, financials.fundamentals);
+  return {
+    ...priced,
+    fundamentals: {
+      ...priced.fundamentals,
+      ...typeof trailing === "number" ? { trailingPE: trailing } : {},
+      ...typeof forward === "number" ? { forwardPE: forward } : {},
+    },
+  };
 }
 
 /** Forward dividend yield over the regular session price, as a ratio like the stored yield. */
