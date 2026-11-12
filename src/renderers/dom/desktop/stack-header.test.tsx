@@ -29,7 +29,7 @@ afterEach(() => {
 
 const bar = <QueryBar width={80} view={{ value: "a", options: [{ value: "a", label: "Trades" }, { value: "b", label: "Insiders" }], onChange: () => {} }} />;
 
-async function mountStack(detail: ReactNode) {
+async function mountStack(detail: ReactNode, title = "BORR") {
   let setOpen: (open: boolean) => void = () => {};
   function Stack() {
     const [open, update] = useState(false);
@@ -41,7 +41,7 @@ async function mountStack(detail: ReactNode) {
             focused
             detailOpen={open}
             onBack={() => update(false)}
-            detailTitle="BORR"
+            detailTitle={title}
             rootContent={<Text>Root</Text>}
             detailContent={detail}
           />
@@ -100,6 +100,27 @@ test("a query bar opening its detail stays one row high while the content under 
     const barStyle = dom.window.getComputedStyle(queryBar);
     expect([barStyle.flexGrow, barStyle.height]).toEqual(["0", "20px"]);
     expect(dom.window.getComputedStyle(container.querySelector("[data-testid='chain']")!).flexGrow).toBe("1");
+  } finally {
+    style.remove();
+  }
+});
+
+// A title longer than the band used to wrap onto a second line and spill over
+// the row. It stays on one line at any width and ends in an ellipsis; the
+// whole title is the tooltip.
+test("a title longer than the Back band stays on one line, ending in an ellipsis", async () => {
+  const title = "v0.20.8 Hong Kong listings valued, every ETF that holds a stock, and prices that ride out a dropped stream";
+  const style = dom.window.document.createElement("style");
+  style.textContent = readFileSync(join(import.meta.dir, "../styles.css"), "utf8");
+  dom.window.document.head.appendChild(style);
+  try {
+    const { container, open } = await mountStack(<Text>Detail</Text>, title);
+    await open(true);
+    const element = container.querySelector<HTMLElement>("[data-gloom-role='page-stack-header'] .gloom-stack-title")!;
+    expect(element.textContent).toBe(title);
+    expect(element.getAttribute("title")).toBe(title);
+    const titleStyle = dom.window.getComputedStyle(element);
+    expect([titleStyle.whiteSpace, titleStyle.textOverflow, titleStyle.overflow]).toEqual(["nowrap", "ellipsis", "hidden"]);
   } finally {
     style.remove();
   }

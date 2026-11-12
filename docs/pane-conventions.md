@@ -526,7 +526,9 @@ A cell's optional `keepEnd` names the end of its `text` that a column too narrow
 **Table + detail.** `DataTableStackView` is the "list, then open one" shape:
 Enter or click calls `onActivate`, the pane sets the open item, the stack
 shows `← Back` plus `detailTitle` and the detail. Esc, Backspace, the mouse
-back button or clicking Back pops it. Rules:
+back button or clicking Back pops it. The title is one line at any width: a
+long one ends in an ellipsis (the desktop's tooltip holds the whole title), so
+write it to lead with what names the item. Rules:
 
 - The open item is keyed by a stable id (symbol + date, accession, id),
   never an index, and lives in `usePluginPaneState` with the selected row so

@@ -1,8 +1,11 @@
 import { Box, Text, TextAttributes, useUiHost } from "../../ui";
+import type { BoxRenderable } from "../../ui/host";
 import { useShortcut } from "../../react/input";
-import { useCallback, type ComponentType, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { colors } from "../../theme/colors";
 import { usePaneShareItem } from "../../shares/pane-item";
+import { observeBoxWidth } from "../../renderers/opentui/box-width";
+import { clipToDisplayWidth } from "../../utils/format";
 import {
   isDetailBackNavigationKey,
   isMouseBackNavigationEvent,
@@ -49,6 +52,25 @@ export function PageStackView({
   }
 
   return <OpenTuiPageStackView {...props} />;
+}
+
+/**
+ * The item's title on the one row Back sits in: a title longer than the room
+ * the row leaves ends in an ellipsis, it never wraps. The room is only known
+ * once the row is laid out, so until then the whole title is drawn, clipped
+ * by its box.
+ */
+function StackTitle({ title }: { title: string }) {
+  const boxRef = useRef<BoxRenderable>(null);
+  const [width, setWidth] = useState<number | null>(null);
+  useLayoutEffect(() => observeBoxWidth(boxRef.current, setWidth), []);
+  return (
+    <Box ref={boxRef} flexGrow={1} flexShrink={1} flexBasis={0} minWidth={0} overflow="hidden">
+      <Text fg={colors.textBright} attributes={TextAttributes.BOLD} wrapMode="none">
+        {width === null ? title : clipToDisplayWidth(title, width)}
+      </Text>
+    </Box>
+  );
 }
 
 function OpenTuiPageStackView({
@@ -121,11 +143,7 @@ function OpenTuiPageStackView({
         {detailTitle ? (
           <>
             <Box width={1} flexShrink={0} />
-            <Box flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
-              <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>
-                {detailTitle}
-              </Text>
-            </Box>
+            <StackTitle title={detailTitle} />
           </>
         ) : (
           <Box flexGrow={1} />
