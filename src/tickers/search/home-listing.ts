@@ -1,6 +1,6 @@
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
 import { companyLines, companyNameExtraWords, companyNameMatch, namedByService, type CompanyLineFacts } from "../company-name";
-import { answersOnlyByKeyword, isPlaceholderLine, isQualifiedTickerQuery, readsAsUsTicker } from "./ranking";
+import { answersOnlyByKeyword, getIssuerGroupKey, isPlaceholderLine, isQualifiedTickerQuery, normalizeTickerSymbol, readsAsUsTicker } from "./ranking";
 import type { TickerSearchCandidate } from "./types";
 
 /** Venues that only quote shares listed elsewhere: the OTC tiers, Frankfurt's open market and Germany's regional exchanges. */
@@ -185,6 +185,46 @@ export function withHomeListingLead<T extends TickerSearchCandidate>(items: T[],
   const rest = items.filter((item) => item !== home);
   const after = rest.indexOf(lead) + 1;
   return [...rest.slice(0, after), home, ...rest.slice(after)];
+}
+
+/**
+ * A US ticker typed that is also a large company's short name leads with the
+ * US line, as a bare ticker resolves, then the rows the service marks with
+ * the word as typed: the company the word names, ahead of the ticker's other
+ * rows. "aia" is the iShares Asia 50 ETF's AIA, then AIA Group's 1299; "byd"
+ * is Boyd Gaming's BYD, then BYD Company's 002594 and 1211. Under the
+ * ticker, each company's first row then comes before further venues of one
+ * already listed (Boyd Gaming's BYD on IEX, the ETF's AIA in Mexico), which
+ * would push the other companies out of a short list. A line on a US
+ * exchange, a home line and a saved row are no such copies. The lead's own
+ * home line, which `withHomeListingLead` put right after it, stays there. A
+ * name typed as a name (`Aia`) or with its venue (AIA:NASDAQ) asks for
+ * something else.
+ */
+export function withNamedCompanyAfterUsLead<T extends TickerSearchCandidate>(items: T[], query: string): T[] {
+  if (isQualifiedTickerQuery(query) || !readsAsUsTicker(query)) return items;
+  const typed = normalizeTickerSymbol(query);
+  const exact = (item: T) => normalizeTickerSymbol(item.symbol || item.label) === typed;
+  const [lead, next] = items;
+  if (!lead || lead.kind !== "search" || !exact(lead) || !isUsListingExchange(candidateExchange(lead))) return items;
+  const at = next && !exact(next) && next.result?.homeListing === true ? 2 : 1;
+  const named = items.slice(at).filter((item) => item.kind === "search" && !exact(item) && !!item.result && namedByService(query, item.result));
+  let rest = items.slice(at).filter((item) => !named.includes(item));
+  const companyOf = (item: T) => getIssuerGroupKey(item.detail) || item.id;
+  const listed = new Set(items.slice(0, at).filter(exact).map(companyOf));
+  const copies = rest.filter((item) => {
+    if (!exact(item)) return false;
+    const further = listed.has(companyOf(item));
+    listed.add(companyOf(item));
+    return further && item.kind === "search" && !item.saved && item.result?.homeListing !== true
+      && !isUsListingExchange(candidateExchange(item));
+  });
+  const others = rest.filter((item) => !copies.includes(item));
+  const last = others.findLastIndex(exact);
+  const crowding = copies.length > 0 && last >= 0 && rest.indexOf(copies[0]!) < rest.indexOf(others[last]!);
+  if (!named.length && !crowding) return items;
+  if (crowding) rest = [...others.slice(0, last + 1), ...copies, ...others.slice(last + 1)];
+  return [...items.slice(0, at), ...named, ...rest];
 }
 
 /** `items` with `home` moved just ahead of `lead`. */

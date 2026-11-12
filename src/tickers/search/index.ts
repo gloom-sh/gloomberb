@@ -41,7 +41,7 @@ import { endsInLegalForm, readNearMissListing, readVenueFirstListing, readTermin
 import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
 import { settleWithin } from "../../utils/async-deadline";
 import { companyNameExtraWords } from "../company-name";
-import { withHomeListingLead } from "./home-listing";
+import { withHomeListingLead, withNamedCompanyAfterUsLead } from "./home-listing";
 import { answeredInFull, rememberSearchAnswer, withKnownListings } from "./listing-index";
 import { savedAbroadForBareSymbol, savedUsListingOf } from "./bare-symbol";
 import { delistingLabel, parseListingWithdrawal, withdrawalLabel } from "../../market-data/quotes/delisting";
@@ -356,7 +356,10 @@ export function buildTickerSearchCandidates({
     query,
   );
   const providerItems = createProviderTickerSearchCandidates(filteredProviderResults, tickers, candidateOptions);
-  const ranked = withHomeListingLead(withSuccessorFirst(rankTickerSearchItems([...localItems, ...providerItems], query), query), query);
+  const ranked = withNamedCompanyAfterUsLead(
+    withHomeListingLead(withSuccessorFirst(rankTickerSearchItems([...localItems, ...providerItems], query), query), query),
+    query,
+  );
   return limitTickerSearchCandidates(companyListingsFirst(assignTickerSearchCategories(ranked, query), query), totalLimit, localLimit);
 }
 
