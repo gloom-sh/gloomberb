@@ -73,6 +73,7 @@ type FinancialTableColumn = DataTableColumn & (
   | { id: string; kind: "statement"; statement: FinancialTableStatement }
 );
 
+const NO_COLLAPSED_GROUPS: ReadonlySet<string> = new Set();
 const financialRowKey = (row: FinancialTableRow) => row.id;
 const financialRowBackground = (row: FinancialTableRow) => (
   row.kind === "group" && row.depth === 0 ? colors.panel : undefined
@@ -327,14 +328,16 @@ export function ResolvedFinancialsTab({
     comparisonCurrency,
   )), [annualDates, comparisonCurrency, displayStatements, isAnnual, yearEndMonth]);
   // In the terminal a period is as wide as its widest value and growth, so each pair sits as far from the next
-  // as from its own growth and more periods fit. The ratio tabs keep the statement columns' width.
+  // as from its own growth and more periods fit. The ratio tabs keep the statement columns' width. Every line of
+  // the statement counts, a collapsed group's too, so opening or closing one leaves the periods where they are.
   const periodWidth = useMemo(() => {
     if (nativePaneChrome || ratioTab) return FINANCIAL_COL_W;
-    const values = rows.flatMap((row) => displayStatements.map((statement) => (
+    const everyRow = shareFinancialUnit(buildFinancialRows(subTab.rows, displayStatements, NO_COLLAPSED_GROUPS)).rows;
+    const values = [...everyRow, ...rows].flatMap((row) => displayStatements.map((statement) => (
       formatFinancialValue(financialCellValue(row, statement), row, statement)
     )));
     return financialPeriodWidth(values, periodHeaders);
-  }, [displayStatements, nativePaneChrome, periodHeaders, ratioTab, rows]);
+  }, [displayStatements, nativePaneChrome, periodHeaders, ratioTab, rows, subTab.rows]);
   const columns = useMemo<FinancialTableColumn[]>(() => [
     {
       id: "metric",

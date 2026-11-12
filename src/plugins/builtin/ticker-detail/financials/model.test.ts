@@ -6,6 +6,7 @@ import {
   computeGrowth,
   computeTTM,
   financialColumnLabel,
+  financialPeriodWidth,
   formatFinancialCell,
   financialStatementCurrency,
   FINANCIAL_SUB_TABS,
@@ -33,6 +34,22 @@ function createFinancials(): TickerFinancials {
 }
 
 describe("financial statement table model", () => {
+  test("a terminal period holds its widest value and the widest growth whole, or its header where that is wider", () => {
+    const values = ["43.49", "-987.65", "1.2"];
+    const width = financialPeriodWidth(values, ["FY2024", "FY2023"]);
+    for (const value of values) {
+      // The longest growth a cell can show, at the period's width: nothing cut, nothing past the column.
+      const cell = formatFinancialCell(value, -1e20, width);
+      expect(cell.valueText.trim()).toBe(value);
+      expect(cell.growthText.trim()).toHaveLength(6);
+      expect(`${cell.valueText}${cell.growthText}`.length).toBe(width);
+    }
+    // The widest value ends the column against its growth, with no blank before it.
+    expect(formatFinancialCell("-987.65", 0.1, width).valueText).toBe("-987.65");
+    expect(financialPeriodWidth(["1.2"], ["Dec 2025 USD (restated)"])).toBe(23);
+    expect(financialPeriodWidth([], [])).toBe(7);
+  });
+
   test("large growth fits beside precise EPS without truncating its sign or percent unit", () => {
     const growth = computeGrowth(0.004125, -0.00000254)!;
     const cell = formatFinancialCell("0.004125", growth);

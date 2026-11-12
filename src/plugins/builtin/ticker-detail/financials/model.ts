@@ -483,7 +483,7 @@ export function shareFinancialUnit<T extends { unitLabel: string; label: string;
 export function buildFinancialRows(
   defs: FinancialRowDef[],
   statements: FinancialStatement[],
-  collapsedGroups: Set<string>,
+  collapsedGroups: ReadonlySet<string>,
   depth = 0,
 ): FinancialTableRow[] {
   const rows: FinancialTableRow[] = [];
