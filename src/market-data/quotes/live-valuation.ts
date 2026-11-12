@@ -5,7 +5,7 @@ import { cashInMajorUnits } from "../../utils/dividend-cash";
 import { cashDistribution, dividendReferencePrice, trailingDividendYield, type CashDistribution } from "../../utils/trailing-dividend";
 import { priceEarningsEps } from "../../utils/fundamentals";
 import { selectMarketCapitalization, type MarketCapitalization } from "../../utils/market-capitalization";
-import { priceEarningsOnEarnings, type PriceEarnings } from "../../utils/price-earnings";
+import { NOT_MEANINGFUL, priceEarningsOnEarnings, type PriceEarnings } from "../../utils/price-earnings";
 
 /**
  * Price-derived statistics repriced at the quote's regular session price
@@ -69,12 +69,15 @@ function repriceMultiple(
  * currency than the price is repriced at the rate the served P/E converted it at.
  */
 export function liveTrailingPE(quote: Quote | null | undefined, fundamentals: Fundamentals | undefined): PriceEarnings | undefined {
+  // Withdrawn as no multiple of the share (utils/share-multiples).
+  if (fundamentals?.notMeaningful?.trailingPE) return NOT_MEANINGFUL;
   const stored = pricedFundamentals(quote, fundamentals)?.trailingPE;
   return priceEarningsOnEarnings(repriceMultiple(stored, priceEarningsEps(fundamentals), quote, fundamentals), fundamentals?.eps);
 }
 
 /** Forward P/E over the regular session price; not meaningful when the forward EPS behind it is zero or a loss. */
 export function liveForwardPE(quote: Quote | null | undefined, fundamentals: Fundamentals | undefined): PriceEarnings | undefined {
+  if (fundamentals?.notMeaningful?.forwardPE) return NOT_MEANINGFUL;
   const stored = pricedFundamentals(quote, fundamentals)?.forwardPE;
   return priceEarningsOnEarnings(repriceMultiple(stored, fundamentals?.forwardEps, quote, fundamentals), fundamentals?.forwardEps);
 }

@@ -862,17 +862,19 @@ function fundamentalsMetrics(
 ): FundamentalsMetric[] {
   const signed = (value: number) => colorBySign(formatPercent(value), value);
   const receipt = fundamentals?.sharesOutstanding != null && sharesOutstandingInReceipts(quote, fundamentals, profile?.description);
+  const withdrawn = fundamentals?.notMeaningful ?? {};
   return [
     { label: "Market Cap", ...marketCap },
     { label: "Enterprise Value", ...enterpriseValueFigure(enterpriseValue, withBankEnterpriseValue(fundamentals, profile)) },
-    // A multiple over a loss is N/M, even beside a positive one the source served from an older period.
-    { label: epsYear ? `P/E ${epsYear}` : "P/E (TTM)", ...multipleFigure(priceEarningsOnEarnings(fundamentals?.trailingPE, fundamentals?.eps)) },
+    // A multiple over a loss is N/M, even beside a positive one the source served from an older period, and so is one
+    // withdrawn as no multiple of the share (a warrant's, an EPS that is not net income over the shares; share-multiples).
+    { label: epsYear ? `P/E ${epsYear}` : "P/E (TTM)", ...multipleFigure(withdrawn.trailingPE ? NOT_MEANINGFUL : priceEarningsOnEarnings(fundamentals?.trailingPE, fundamentals?.eps)) },
     // Next fiscal year's consensus, named by its year: `Forward P/E FY27`.
     {
       label: forwardLabel(fundamentals),
-      ...multipleFigure(priceEarningsOnEarnings(fundamentals?.forwardPE, fundamentals?.forwardEps)),
+      ...multipleFigure(withdrawn.forwardPE ? NOT_MEANINGFUL : priceEarningsOnEarnings(fundamentals?.forwardPE, fundamentals?.forwardEps)),
     },
-    { label: "PEG", ...multipleFigure(fundamentals?.pegRatio) },
+    { label: "PEG", ...multipleFigure(withdrawn.pegRatio ? NOT_MEANINGFUL : fundamentals?.pegRatio) },
     // EPS (TTM) is the last four filed quarters' (filed-trailing-eps), so its twelve months can end before those of
     // the flows below, Gloom Cloud's trailing block; Gloom Cloud's EPS standing in is noted (trailingEpsSourceNote).
     { label: epsYear ? `EPS ${epsYear}` : "EPS (TTM)", ...reportedMoney(fundamentals?.eps, fundamentals?.epsCurrency?.trim() || reportingCurrency, true, codes) },
@@ -994,8 +996,30 @@ function fundamentalsNotes(
     : undefined;
   // A cap Gloom Cloud withheld says why, as RV and EQS do.
   const withheld = withheldMarketCap(fundamentals)?.note;
-  return [withheld, shareBasis, enterpriseValue, conversion, eps, epsSource, priceEarnings, unsourcedCurrencyNote(metrics)]
+  return [withheld, shareBasis, enterpriseValue, conversion, eps, epsSource, priceEarnings, withdrawnMultiplesNote(fundamentals, metrics),
+    unsourcedCurrencyNote(metrics)]
     .filter((note): note is string => !!note);
+}
+
+/**
+ * Why the P/E lines shown N/M are withdrawn (utils/share-multiples): "P/E (TTM) and Forward P/E are N/M: a warrant is
+ * not the share the EPS is per." One reason for every line it withdraws; a loss's N/M needs none.
+ */
+function withdrawnMultiplesNote(fundamentals: TickerFinancials["fundamentals"], metrics: readonly FundamentalsMetric[]): string | undefined {
+  const reasons = fundamentals?.notMeaningful;
+  if (!reasons) return undefined;
+  const lines = metrics.filter((metric) => metric.text === "N/M" && !metric.exportOnly).flatMap((metric) => {
+    const name = metricName(metric.label);
+    const field = name === "P/E (TTM)" ? "trailingPE" : name === "Forward P/E" ? "forwardPE" : name === "PEG" ? "pegRatio" : undefined;
+    const reason = field && reasons[field];
+    return reason ? [{ label: metric.label, reason }] : [];
+  });
+  const groups = new Map<string, string[]>();
+  for (const { label, reason } of lines) groups.set(reason, [...groups.get(reason) ?? [], label]);
+  return [...groups].map(([reason, labels]) => {
+    const named = labels.length === 1 ? labels[0] : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+    return `${named} ${labels.length === 1 ? "is" : "are"} N/M: ${reason}.`;
+  }).join(" ") || undefined;
 }
 
 // The share count is the market cap's basis: the cap is the count times the price, or a note says why not.

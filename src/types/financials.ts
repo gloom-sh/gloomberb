@@ -475,6 +475,12 @@ export interface Fundamentals extends DepositaryReceiptFacts {
    */
   trailingEpsSource?: "filed-quarters" | "served";
   trailingEpsPeriodEnd?: string;
+  /**
+   * Why a multiple is withdrawn though its figures are numbers (utils/share-multiples): a warrant's price over its
+   * company's EPS, a receipt's with no ratio on record, an EPS that is not net income over the shares. The multiple
+   * itself is absent; every view reads it as N/M with this reason.
+   */
+  notMeaningful?: Partial<Record<"trailingPE" | "forwardPE" | "pegRatio", string>>;
   operatingMargin?: number;
   profitMargin?: number;
   revenueGrowth?: number;
