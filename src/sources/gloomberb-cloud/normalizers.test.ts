@@ -127,6 +127,15 @@ test("an index's 0 open is none, a 52-week range that repeats its day's is none,
   const fromBars = index({ low52w: 39537, high52w: 56931, yearRangeBasis: "daily-bars" });
   expect(statedYearRange(fromBars)).toEqual({ low: 39537, high: 56931 });
   expect(fromBars.yearRangeBasis).toBe("daily-bars");
+  // The word goes with its range: a tick relaying the same range keeps it, one with the day's range again (a copy
+  // saved before the server read the bars) drops it, never labelling the day's range "daily bars".
+  const kept = normalizeQuoteContribution(fromBars)!;
+  const { yearRangeBasis: _unsaid, ...relayed } = fromBars;
+  expect(mergeQuoteContribution(kept, { ...relayed, price: 52030 }).yearRangeBasis).toBe("daily-bars");
+  const { yearRangeBasis: _none, ...saved } = index({});
+  const merged = mergeQuoteContribution(kept, saved);
+  expect([merged.high52w, merged.yearRangeBasis]).toEqual([52691.3, undefined]);
+  expect(statedYearRange(merged)).toBeNull();
   // A share whose range is its day's (a new listing) keeps it; a bound at 0 is none.
   expect(statedYearRange(index({ symbol: "COMI.CA", instrumentType: "EQUITY" }))).toEqual({ low: 51904.4, high: 52691.3 });
   expect(statedYearRange(index({ low52w: 0, high52w: 209714 }))).toBeNull();
