@@ -26,6 +26,7 @@ import {
   ScrollBox,
   Textarea,
   TextAttributes,
+  useRendererHost,
   useUiCapabilities,
   type ScrollBoxRenderable,
   type TextareaRenderable,
@@ -33,7 +34,7 @@ import {
 import { useDialog, type AlertContext } from "../../../ui/dialog";
 import type { SelectControl } from "../../../components/ui/select-button";
 import { FRAMED_TEXTAREA_DESKTOP_STYLE, fieldFrameStyle } from "../../../components/ui/fields";
-import { apiClient, type AccountProfile, type CloudPricing } from "../../../api-client";
+import { apiClient, type AccountProfile, type CloudPricing, type ReferralInvite } from "../../../api-client";
 import { chatController } from "../chat/controller";
 import { SignInWall } from "../cloud/auth-actions";
 import { loadUpgradeOffer } from "../../../account/upgrade-dialog";
@@ -72,6 +73,7 @@ import { DeleteAccountPasswordDialog, PasswordChangeDialog } from "./password-di
 import { deleteAccountConfirmingSession } from "./delete-account";
 import { endTrialAfterWarning } from "./trial-cancel";
 import { CalendarAccountTab } from "./calendar-tab";
+import { InviteRow } from "./invite-row";
 import { useAccountManagementFooter } from "./footer";
 import { useAccountManagementKeyboard } from "./keyboard";
 import {
@@ -128,8 +130,8 @@ const ACCOUNT_TAB_FIELD_ORDER: Record<AccountManagementTab, AccountFieldKey[]> =
   ],
   // Its actions are footer hints; the tab owns its footer.
   calendar: [],
-  // Cancel Trial shows only while a trial runs.
-  pro: ["upgradeAction", "cancelTrialAction"],
+  // Cancel Trial shows only while a trial runs, the invite once it loaded.
+  pro: ["upgradeAction", "cancelTrialAction", "inviteCopyAction"],
   // The Teams tab owns its own keyboard handling (a list, not form fields).
   teams: [],
   // Remote assistants allowed to drive this terminal; a list with its own footer.
@@ -230,6 +232,8 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const [pricing, setPricing] = useState<CloudPricing | null>(null);
   // Null until the server says; only a confirmed trial is offered.
   const [trialAvailable, setTrialAvailable] = useState<boolean | null>(null);
+  // The Pro tab's invite link; null until it loads, and when it cannot.
+  const [invite, setInvite] = useState<ReferralInvite | null>(null);
   const [draft, setDraft] = useState<AccountDraft>(() => profileToDraft(null));
   const [activeTab, setActiveTab] = usePluginPaneState<AccountManagementTab>("activeTab", "profile");
   const [activeField, setActiveField] = useState<AccountFieldKey>(
@@ -268,8 +272,9 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     if (field === "showLocalTime" || field === "showDesks") return chatCardSupported;
     if (field === "desks") return chatCardSupported && draft.showDesks;
     if (field === "cancelTrialAction") return planAccess.isTrialActive;
+    if (field === "inviteCopyAction") return invite !== null;
     return true;
-  }), [activeTab, chatCardSupported, draft.showDesks, planAccess.isTrialActive]);
+  }), [activeTab, chatCardSupported, draft.showDesks, invite, planAccess.isTrialActive]);
   const accountTabs = ACCOUNT_TAB_DEFS.map((tab) => ({ ...tab, label: t(tab.label) }));
 
   const planPrice = useMemo(() => formatCloudMonthlyPrice(pricing), [language, pricing]);
@@ -518,6 +523,24 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
       cancelled = true;
     };
   }, [sessionMarker]);
+
+  // The invite link is read when the Pro tab opens, and again for another
+  // account: one account's link must never show under another's.
+  const proTabOpen = activeTab === "pro";
+  useEffect(() => {
+    setInvite(null);
+    if (!proTabOpen || !apiClient.isSignedIn()) return;
+    let cancelled = false;
+    void apiClient.getReferralInvite()
+      .then((next) => {
+        if (!cancelled) setInvite(next);
+      })
+      // A server without invites, or a failed read, leaves the row out.
+      .catch(logFailure("account-management.pane", "Load invite link failed"));
+    return () => {
+      cancelled = true;
+    };
+  }, [proTabOpen, sessionMarker]);
 
   useEffect(() => {
     if (!hasSession || !apiClient.isSignedIn()) return;
@@ -784,6 +807,17 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     }
   }, [busy, dialog, planAccess]);
 
+  const renderer = useRendererHost();
+  const copyInvite = useCallback(() => {
+    setActiveField("inviteCopyAction");
+    if (!invite) return;
+    void renderer.copyText(invite.url).then(
+      () => setMessage({ tone: "success", text: t("Link copied.") }),
+      // A terminal without clipboard access: the link is selectable on the row.
+      () => setMessage({ tone: "info", text: t("Copy failed. Select the link instead.") }),
+    );
+  }, [invite, renderer]);
+
   useAccountManagementFooter({
     busy,
     // The Calendar and Agents tabs save nothing and show their own status.
@@ -799,6 +833,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     deleteAccount,
     draftRef,
     endTrial,
+    copyInvite,
     fieldOrder,
     // Behind the sign-in wall the fields are not there, and Enter is the wall's.
     focused: focused && activeTab !== "teams" && activeTab !== "calendar" && activeTab !== "agents" && (hasSession || apiClient.isSignedIn()),
@@ -1053,6 +1088,17 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                   </Box>
                 ) : null}
               </Box>
+              {invite ? (
+                <InviteRow
+                  invite={invite}
+                  active={activeField === "inviteCopyAction"}
+                  width={contentWidth}
+                  labelWidth={formLabelWidth}
+                  nodeRef={fieldNodeRef("inviteCopyAction")}
+                  onCopy={copyInvite}
+                  onFocus={() => setActiveField("inviteCopyAction")}
+                />
+              ) : null}
             </>
           ) : null}
 

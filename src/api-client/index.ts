@@ -634,6 +634,7 @@ class GloomApiClient {
   getBuildoutAccount = this.auth.getBuildoutAccount.bind(this.auth);
   getBuildoutToken = this.auth.getBuildoutToken.bind(this.auth);
   updateAccountProfile = this.auth.updateAccountProfile.bind(this.auth);
+  getReferralInvite = this.auth.getReferralInvite.bind(this.auth);
   getCalendarFeed = this.auth.getCalendarFeed.bind(this.auth);
   ensureCalendarFeed = this.auth.ensureCalendarFeed.bind(this.auth);
   rotateCalendarFeed = this.auth.rotateCalendarFeed.bind(this.auth);

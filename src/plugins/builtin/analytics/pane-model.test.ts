@@ -85,13 +85,13 @@ test("converts every account balance while keeping leverage independent of displ
   expect(rows(1).get("margin-leverage")).toBe("1.5x");
   const converted = rows(1.2);
   expect(converted.get("margin-leverage")).toBe("1.5x");
-  expect(converted.get("net-liquidation")).toBe("120.0k");
-  expect(converted.get("total-value")).toBe("180.0k");
-  expect(converted.get("cash")).toBe("-60.0k");
-  expect(converted.get("settled-cash")).toBe("-48.0k");
-  expect(converted.get("available-funds")).toBe("36.0k");
-  expect(converted.get("excess-liquidity")).toBe("24.0k");
-  expect(converted.get("buying-power")).toBe("72.0k");
+  expect(converted.get("net-liquidation")).toBe("120,000");
+  expect(converted.get("total-value")).toBe("180,000");
+  expect(converted.get("cash")).toBe("-60,000");
+  expect(converted.get("settled-cash")).toBe("-48,000");
+  expect(converted.get("available-funds")).toBe("36,000");
+  expect(converted.get("excess-liquidity")).toBe("24,000");
+  expect(converted.get("buying-power")).toBe("72,000");
 
   accountState.account.netLiquidation = 0;
   expect(rows(1).has("margin-leverage")).toBe(false);
@@ -109,16 +109,16 @@ describe("a margin account's summary", () => {
 
   test("states the equity, the gross and the leverage between them", () => {
     const summary = rows(createMarginAccount());
-    expect(summary.get("net-liquidation")).toBe("Net Liq 1.00M");
-    expect(summary.get("total-value")).toBe("Gross 1.60M");
+    expect(summary.get("net-liquidation")).toBe("Net Liq 1,000,000");
+    expect(summary.get("total-value")).toBe("Gross 1,600,000");
     expect(summary.get("margin-leverage")).toBe("Margin Lev 1.6x");
-    expect(summary.get("cash")).toBe("Cash -600.0k");
+    expect(summary.get("cash")).toBe("Cash -600,000");
   });
 
   test("without its account the gross is never shown as the value", () => {
     const summary = rows(null);
     expect(summary.get("net-liquidation")).toBe("Net Liq —");
-    expect(summary.get("total-value")).toBe("Gross 1.60M");
+    expect(summary.get("total-value")).toBe("Gross 1,600,000");
   });
 });
 

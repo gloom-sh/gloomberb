@@ -136,12 +136,12 @@ describe("what a portfolio is priced at and when each row's price is from", () =
     expect(text).toContain("As of (UTC)");
     // XLK's after-hours 198.80 is 1.02 a share over Thursday's close, SAP 4.00 over a close nothing dates: TOTAL's Chg is the value's move.
     expect(text).toMatch(/TOTAL +\+0\.59% /);
-    expect(text).toContain("Day's move: +$1,220.00 (+0.59%) vs mixed closes");
+    expect(text).toContain("Day's move: +$1,220.00 (+0.59%) after hours vs mixed closes");
     expect(text.split("\n").find((line) => line.startsWith("XLK"))).toMatch(new RegExp(`\\$198,800 .*${day("23:58").source}`));
     expect(text.split("\n").find((line) => line.startsWith("SAP"))).toMatch(day("15:38"));
 
     const json = JSON.parse(await showExport(["show", "Main"], "json"));
-    expect(json.metadata).toMatchObject({ valuationBasis: "latest-print", dayChange: 1220, dayChangeBasis: "vs mixed closes" });
+    expect(json.metadata).toMatchObject({ valuationBasis: "latest-print", dayChange: 1220, dayChangeBasis: "after hours vs mixed closes" });
     expect(json.data[1]).toMatchObject({ symbol: "XLK", quotePrice: 198.78, marketValue: 198_800, priceBasis: null,
       valuationBasis: "latest-print", valuationPrice: 198.8, valuationAsOf: "2026-10-09T23:58:08.000Z", quoteAsOf: Date.parse("2026-10-09T23:58:08Z") });
   });
@@ -207,7 +207,7 @@ describe("what a portfolio is priced at and when each row's price is from", () =
     const output: string[] = [];
     const logger = spyOn(console, "log").mockImplementation((...line) => { output.push(line.join(" ")); });
     try { await portfolioCliCommand.execute(["show", "Main"], createTestCliContext(premarket).context); } finally { logger.mockRestore(); }
-    expect(output.join("\n")).toContain("Day's move: +$720.00 (+0.36%) vs Fri 9 Oct close");
+    expect(output.join("\n")).toContain("Day's move: +$720.00 (+0.36%) pre-market vs Fri 9 Oct close");
   });
 
   test("PF --close reports the same values, each row's close time and the basis in its closing line", async () => {
@@ -263,13 +263,13 @@ describe("a book across HKEX and the US, read on Mon 9 Nov 2026 before the US op
     try { await portfolioCliCommand.execute(["show", "Main"], createTestCliContext(market).context); } finally { logger.mockRestore(); }
     const text = output.join("\n");
     // 1000 x 0.22 + 1000 x 0.028 + 100 x 0.62, at one HKD to the dollar here; TWTR adds its value to the base and nothing to the move.
-    expect(text).toContain("Day's move: +$310.00 (+2.04%) vs Fri 6 Nov close");
+    expect(text).toContain("Day's move: +$310.00 (+2.04%) pre-market vs Fri 6 Nov close");
     expect(text.split("\n").find((line) => line.startsWith("9042"))).toMatch(/Mon 9 Nov nominal$/);
 
     const cli = createTestCliContext(market, { format: "json" });
     await portfolioCliCommand.execute(["show", "Main"], cli.context);
     const json = JSON.parse(serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, cli.printed[0]!.options));
-    expect(json.metadata).toMatchObject({ dayChange: 310, dayChangeBasis: "vs Fri 6 Nov close" });
+    expect(json.metadata).toMatchObject({ dayChange: 310, dayChangeBasis: "pre-market vs Fri 6 Nov close" });
     // The counter keeps its last print as its quote time, and says its price is nominal, dated by its session.
     expect(json.data.find((row: { symbol: string }) => row.symbol === "9042.HK")).toMatchObject({ quoteAsOf: Date.parse("2026-11-04T03:32:00Z"),
       quotePriceKind: "nominal", valuationAsOf: "2026-11-09", valuationPriceKind: "nominal" });

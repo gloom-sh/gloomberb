@@ -42,6 +42,11 @@ export interface PortfolioSummarySegment {
     bold?: boolean;
   }>;
   length: number;
+  /**
+   * What the segment reads when it ends the row, the next one having no room:
+   * Val with its basis note, which the Day after it says otherwise.
+   */
+  alone?: PortfolioSummarySegment;
 }
 
 export interface PortfolioSummaryAccountState {
@@ -109,6 +114,10 @@ export function fitSummarySegments(candidates: PortfolioSummarySegment[], widthB
     if (fitted.length > 0 && nextUsed > widthBudget) break;
     fitted.push(segment);
     used = nextUsed;
+  }
+  const last = fitted.at(-1);
+  if (last?.alone && fitted.length < candidates.length && used - last.length + last.alone.length <= widthBudget) {
+    fitted[fitted.length - 1] = last.alone;
   }
   return fitted;
 }
@@ -319,14 +328,17 @@ export function buildPortfolioSummarySegments({
   }
 
   // Which price the value uses goes with it, so a narrow row never shows one without the other.
-  candidates.push(createSummarySegment("val", [
+  const dayNamesBasis = !accountMetrics.brokerDay && Number.isFinite(accountMetrics.dailyPnl);
+  const valParts: PortfolioSummarySegment["parts"] = [
     { text: broker || totals.hasShorts ? "Gross" : "Val", tone: "label" },
     { text: money(totalMarketValue), tone: "value", bold: true },
-    ...(valuationBasis ? [{
-      text: valuationBasis === "regular-close" && totals.hasFutures ? PRICED_AT_SETTLE_TEXT : PRICED_AT_TEXT[valuationBasis],
-      tone: "muted" as const,
-    }] : []),
-  ]));
+  ];
+  const noted = valuationBasis ? createSummarySegment("val", [...valParts, {
+    text: valuationBasis === "regular-close" && totals.hasFutures ? PRICED_AT_SETTLE_TEXT : PRICED_AT_TEXT[valuationBasis],
+    tone: "muted",
+  }]) : createSummarySegment("val", valParts);
+  candidates.push(noted);
+  const valIndex = candidates.length - 1;
 
   if (totals.hasShorts && totals.netMktValue != null) {
     candidates.push(createSummarySegment("net-value", [
@@ -364,8 +376,13 @@ export function buildPortfolioSummarySegments({
     { text: money(accountMetrics.dailyPnl, true), tone: "value", color: priceColor(accountMetrics.dailyPnl), bold: true },
     { text: `(${formatPercentRaw(accountMetrics.dailyPnlPct)}${holdingsOnly ? " ex cash" : ""})`, tone: "muted", color: shownPriceColor(accountMetrics.dailyPnlPct, 2) },
     // The broker's own day is from its account's close, not the quotes': it names none.
-    ...(accountMetrics.brokerDay || !Number.isFinite(accountMetrics.dailyPnl) ? [] : dayBasisPart(totals)),
+    ...(dayNamesBasis ? dayBasisPart(totals) : []),
   ]));
+  // Right after Val, a Day that names its extended-hours print ("AH vs Tue 10 Nov close") says what the value is
+  // priced at: Val leaves its note to it, and keeps it on a row with no room for the Day.
+  if (valuationBasis === "latest-print" && totals.dayAtExtendedPrint && dayNamesBasis && valIndex === candidates.length - 2) {
+    candidates[valIndex] = { ...createSummarySegment("val", valParts), alone: noted };
+  }
   if (!period) candidates.push(createSummarySegment("pnl", [
     { text: !Number.isFinite(account?.unrealizedPnl)
       && totals.unrealizedPnlBasis === "broker-snapshot" ? "Broker P&L"

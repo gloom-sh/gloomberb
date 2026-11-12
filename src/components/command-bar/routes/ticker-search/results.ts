@@ -162,10 +162,15 @@ export function mergeTickerSearchResultItems(
 }
 
 const SEARCH_BUSY_ITEM_ID = "search-busy";
+const SEARCH_ERROR_ITEM_ID = "search-error";
 
-/** The busy row among a search's rows: a list left with no instruments keeps it, so nothing there reads as no listing. */
-function searchBusyRows(items: readonly ResultItem[]): ResultItem[] {
-  return items.filter((item) => item.id === SEARCH_BUSY_ITEM_ID);
+/**
+ * The busy or failed row among a search's rows: a list left with no
+ * instruments keeps it, so a search that did not answer never reads as one
+ * that found nothing.
+ */
+function searchStatusRows(items: readonly ResultItem[]): ResultItem[] {
+  return items.filter((item) => item.id === SEARCH_BUSY_ITEM_ID || item.id === SEARCH_ERROR_ITEM_ID);
 }
 
 /**
@@ -185,7 +190,7 @@ export function tickerSearchFailureItems(error: unknown, query: string, localIte
     }], localItems);
   }
   return [{
-    id: "search-error",
+    id: SEARCH_ERROR_ITEM_ID,
     label: "Search failed",
     detail: "Check your connection",
     category: "Search",
@@ -213,7 +218,9 @@ function isInstrumentItem(item: ResultItem): boolean {
  * further exchange of one already shown, so Saputo's SAP on Toronto is not
  * pushed out by SAP SE's fourth German venue; the rows keep their ranked order.
  * Info rows ("no matches", "search failed") are dropped: the instruments are
- * an extra here, never the answer.
+ * an extra here, never the answer. With no instruments left, a busy or
+ * failed search keeps its row, and one that found nothing leaves the list to
+ * say so (`buildNativeListRows`).
  */
 export function mergePlainRootTickerResults(
   query: string,
@@ -253,8 +260,8 @@ export function mergePlainRootTickerResults(
   const commandNamed = wordNamesCommand(query, rootItems);
   rootItems = leadWithNamedCommands(query, rootItems);
   if (instruments.length === 0) {
-    const busy = searchBusyRows(providerItems);
-    return busy.length > 0 ? [...rootItems, ...busy] : rootItems;
+    const status = searchStatusRows(providerItems);
+    return status.length > 0 ? [...rootItems, ...status] : rootItems;
   }
 
   // A listing that stopped trading is still the one its symbol names (SIVB, TWTR), unless a live listing
@@ -432,7 +439,7 @@ export function venueDropdownResults(symbol: string, items: ResultItem[], suffix
     if (!venueMatchesSuffix(item, suffix)) continue;
     rows.push(item.category === "Exact Match" ? item : { ...item, category: "Exact Match" });
   }
-  return rows.length > 0 ? rows : searchBusyRows(items);
+  return rows.length > 0 ? rows : searchStatusRows(items);
 }
 
 /**
