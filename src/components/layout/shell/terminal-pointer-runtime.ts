@@ -19,7 +19,13 @@ import type {
   VisibleFloatingPane,
 } from "./drag/runtime";
 import type { WindowEditState } from "../window-edit/mode";
-import { paneHeaderTitleStart, stackTabSpans } from "../pane/header";
+import {
+  paneHeaderTitleStart,
+  stackTabSpans,
+  terminalHeaderTitleWidth,
+  terminalHeaderTrailingWidth,
+  type PaneHeaderQuickSetting,
+} from "../pane/header";
 import { displayWidth } from "../../../utils/format";
 
 interface UseShellTerminalPointerRuntimeOptions {
@@ -43,6 +49,8 @@ interface UseShellTerminalPointerRuntimeOptions {
   /** The header's `?`: the pane's entry in DOCS. */
   openPaneDocs: (paneId: string) => void;
   getPaneTitle: (pane: ResolvedPane) => string;
+  /** A pane's quick settings, which take room from a stack's tabs in its header. */
+  getPaneQuickSettings: (paneId: string) => ReadonlyArray<Pick<PaneHeaderQuickSetting, "icon">>;
   paneMap: Map<string, ResolvedPane>;
   selectWindowModePane: (paneId: string) => void;
   setHoveredMenuItemId: Dispatch<SetStateAction<string | null>>;
@@ -67,19 +75,29 @@ function getVisibleFloatingRect(
     : visibleRect;
 }
 
-/** The tab of a stack whose title is `x` cells into its header's title. */
+/**
+ * The tab of a stack whose title is `x` cells into its header's title, laid
+ * out as the header lays it out (`stackTabSpans`) in a header `width` wide
+ * that shows `shown`.
+ */
 function stackTabAt(
   stack: readonly string[],
+  shown: string,
   x: number,
+  header: { width: number; framed: boolean; corner: boolean },
   paneMap: Map<string, ResolvedPane>,
   getPaneTitle: (pane: ResolvedPane) => string,
+  getPaneQuickSettings: (paneId: string) => ReadonlyArray<Pick<PaneHeaderQuickSetting, "icon">>,
 ): string | null {
   const titles = stack.map((id) => {
     const pane = paneMap.get(id);
     return pane ? getPaneTitle(pane) : id;
   });
-  const index = stackTabSpans(titles).findIndex((span) => x >= span.start && x < span.start + displayWidth(span.text));
-  return index >= 0 ? stack[index]! : null;
+  const trailing = terminalHeaderTrailingWidth(getPaneQuickSettings(shown), paneMap.get(shown)?.instance.locked === true, true);
+  const titleWidth = terminalHeaderTitleWidth(header.width, { framed: header.framed, corner: header.corner, trailing });
+  const span = stackTabSpans(titles, stack.indexOf(shown), titleWidth)
+    .find((candidate) => x >= candidate.start && x < candidate.start + displayWidth(candidate.text));
+  return span ? stack[span.index]! : null;
 }
 
 function sortedFloatingPanes(visibleFloatingPanes: VisibleFloatingPane[]): VisibleFloatingPane[] {
@@ -102,6 +120,7 @@ export function useShellTerminalPointerRuntime({
   openPaneMenu,
   openPaneDocs,
   getPaneTitle,
+  getPaneQuickSettings,
   paneMap,
   selectWindowModePane,
   setHoveredMenuItemId,
@@ -269,7 +288,13 @@ export function useShellTerminalPointerRuntime({
           // A press on a tab of a floating stack pulls that tab out; the rest
           // of the bar moves the stack. A floating title bar is always framed.
           const stack = floatingStacks(visibleFloatingPanes.map((entry) => entry.pane.floating!), floatingOrder).get(paneId);
-          const tabId = stack ? stackTabAt(stack, relativeX - paneHeaderTitleStart(true), paneMap, getPaneTitle) : null;
+          const tabId = stack
+            ? stackTabAt(stack, paneId, relativeX - paneHeaderTitleStart(true), {
+              width: rect.width,
+              framed: true,
+              corner: true,
+            }, paneMap, getPaneTitle, getPaneQuickSettings)
+            : null;
           startDrag({
             type: "pane-drag",
             paneId: tabId ?? paneId,
@@ -360,7 +385,14 @@ export function useShellTerminalPointerRuntime({
         if (relativeY === 0) {
           // A press on one of a stack's tabs moves that pane; the release
           // shows it if the pointer did not move.
-          const tabId = leaf.stack ? stackTabAt(leaf.stack, relativeX - paneHeaderTitleStart(isFocused), paneMap, getPaneTitle) : null;
+          const framed = isFocused || transientFocusActive;
+          const tabId = leaf.stack
+            ? stackTabAt(leaf.stack, leaf.instanceId, relativeX - paneHeaderTitleStart(framed), {
+              width: leaf.rect.width,
+              framed,
+              corner: transientFocusActive,
+            }, paneMap, getPaneTitle, getPaneQuickSettings)
+            : null;
           startDrag({
             type: "pane-drag",
             paneId: tabId ?? leaf.instanceId,
@@ -389,6 +421,7 @@ export function useShellTerminalPointerRuntime({
     focusPane,
     floatingOrder,
     focusedPaneId,
+    getPaneQuickSettings,
     getPaneTitle,
     handleActiveDrag,
     handleFloatingClose,

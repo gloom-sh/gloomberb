@@ -22,6 +22,8 @@ import {
 } from "../../../../state/pane-table-export-registry";
 import { getDesktopWindows } from "../../../../state/desktop-windows";
 import { getTopFloatingPaneId } from "../../../../core/state/app/layout";
+import { paneHoldsUnsentWork } from "../../../../state/pane-unsent-work";
+import { adjacentStackTabId } from "../../pane/cycle-order";
 
 function notifyPaneLocked(pluginRegistry: PluginRegistry): void {
   pluginRegistry.notify({ body: "Pane is locked. Unlock it in pane settings.", type: "info" });
@@ -141,6 +143,37 @@ export function useShellPaneActions({
     return true;
   }, [focusedPaneId, persistLayout, pluginRegistry, previousFocusedPaneId, visibleLayout]);
 
+  /**
+   * Esc Esc closes the focused pane, as Ctrl+W does, except one holding work
+   * an Esc must not throw away (a draft not sent, an answer coming in): then
+   * the Esc goes on to the pane.
+   */
+  const closeFocusedPaneOnEscape = useCallback(() => {
+    if (paneHoldsUnsentWork(focusedPaneId)) return false;
+    return closeFocusedPane({ focusNextFloating: true });
+  }, [closeFocusedPane, focusedPaneId]);
+
+  /**
+   * One Esc closes the focused floating window, unless it is locked or holds
+   * unsent work (then the Esc goes on, with no notice: a stray Esc is not a
+   * close request). As with Esc Esc, the next floating window takes the
+   * focus, and with none left it goes back where it was before the window
+   * took it.
+   */
+  const closeFocusedFloatingPane = useCallback(() => {
+    if (!focusedPaneId || !visibleLayout.floating.some((entry) => entry.instanceId === focusedPaneId)) return false;
+    if (isPaneLockedInLayout(visibleLayout, focusedPaneId)) return false;
+    return closeFocusedPaneOnEscape();
+  }, [closeFocusedPaneOnEscape, focusedPaneId, visibleLayout]);
+
+  /** Shows and focuses the next or previous tab of the focused pane's stack; false when it is in none. */
+  const showAdjacentStackTab = useCallback((direction: 1 | -1) => {
+    const next = adjacentStackTabId(visibleLayout, focusedPaneId, direction);
+    if (!next) return false;
+    focusPane(next);
+    return true;
+  }, [focusPane, focusedPaneId, visibleLayout]);
+
   const closeAllFloatingPanes = useCallback(() => {
     if (visibleLayout.floating.length === 0) return false;
     const lockedIds = new Set(visibleLayout.floating
@@ -219,7 +252,9 @@ export function useShellPaneActions({
   return {
     canExportPaneCsv,
     closeAllFloatingPanes,
+    closeFocusedFloatingPane,
     closeFocusedPane,
+    closeFocusedPaneOnEscape,
     copyFocusedPaneScreenshot,
     copyPaneScreenshot,
     exportFocusedPaneCsv,
@@ -229,6 +264,7 @@ export function useShellPaneActions({
     openFocusedPaneSettings,
     openPaneSettings,
     popOutFocusedPane,
+    showAdjacentStackTab,
     toggleFocusedPaneFloating,
   };
 }

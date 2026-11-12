@@ -9,6 +9,7 @@ interface UseCommandBarLaunchRequestOptions {
     screen: "ticker-search" | "layout",
     initialQuery?: string,
     payload?: TickerSearchPayload,
+    options?: { launched?: boolean },
   ) => void;
 }
 
@@ -30,7 +31,7 @@ export function useCommandBarLaunchRequest({
     processedLaunchSequenceRef.current = launch.sequence;
 
     if (launch.kind === "ticker-search") {
-      openModeRoute("ticker-search", launch.query ?? "", launch.payload);
+      openModeRoute("ticker-search", launch.query ?? "", launch.payload, { launched: true });
     }
     // Submitting text needs the selection runtime, which the surface wires up
     // after this hook; it watches for run-query itself.

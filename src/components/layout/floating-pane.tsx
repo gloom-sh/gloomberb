@@ -54,19 +54,25 @@ interface FloatingPaneWrapperProps {
   children: ReactNode;
 }
 
-function TerminalFloatingPaneBorder({ width, height }: { width: number; height: number }) {
+/**
+ * The window's sides, between its title bar and footer, which draw the top
+ * and bottom of the frame. Focused or not, so what is under the window never
+ * runs into it; focus draws them in the focus colour, as it does the rest.
+ */
+function TerminalFloatingPaneBorder({ width, height, focused }: { width: number; height: number; focused: boolean }) {
   const borderWidth = Math.max(0, Math.floor(width));
   const borderHeight = Math.max(0, Math.floor(height));
   const bodyHeight = Math.max(0, borderHeight - 2);
   if (borderWidth < 2 || bodyHeight <= 0) return null;
+  const color = focused ? colors.borderFocused : colors.border;
 
   return (
     <>
       <Box position="absolute" top={1} left={0} width={1} height={bodyHeight}>
-        <Text fg={colors.border} selectable={false}>{"│".repeat(bodyHeight)}</Text>
+        <Text fg={color} selectable={false}>{"│".repeat(bodyHeight)}</Text>
       </Box>
       <Box position="absolute" top={1} left={borderWidth - 1} width={1} height={bodyHeight}>
-        <Text fg={colors.border} selectable={false}>{"│".repeat(bodyHeight)}</Text>
+        <Text fg={color} selectable={false}>{"│".repeat(bodyHeight)}</Text>
       </Box>
     </>
   );
@@ -186,7 +192,7 @@ export function FloatingPaneWrapper({
         />
       )}
 
-      {!nativePaneChrome && !focused && <TerminalFloatingPaneBorder width={width} height={height} />}
+      {!nativePaneChrome && <TerminalFloatingPaneBorder width={width} height={height} focused={focused || windowModeSelected} />}
 
       {nativePaneChrome ? (
         <Box

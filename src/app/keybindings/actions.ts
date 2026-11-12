@@ -18,6 +18,8 @@ export type CoreKeybindingActionId =
   | "notification-dismiss"
   | "quit"
   | "pane-menu"
+  | "pane-next-tab"
+  | "pane-prev-tab"
   | "pane-close"
   | "close-floating-panes"
   | "pane-settings"
@@ -54,6 +56,8 @@ export interface KeybindingActionDef {
 
 export const PANE_ACTION_IDS = new Set<CoreKeybindingActionId>([
   "pane-menu",
+  "pane-next-tab",
+  "pane-prev-tab",
   "pane-close",
   "close-floating-panes",
   "pane-settings",
@@ -175,6 +179,21 @@ export const KEYBINDING_ACTIONS: readonly KeybindingActionDef[] = [
     // "." stands for the pane's "..." button. Shift+F10 and the Menu key are
     // the platform keys for a context menu, and this is the pane's.
     defaults: [".", "Shift+F10", "ContextMenu"],
+  },
+  {
+    id: "pane-next-tab",
+    category: "Pane Management",
+    description: "Show the next tab of the focused pane's stack.",
+    // Tab moves between panes and passes the tabs a stack hides; these step
+    // through them. Ctrl+PageDown is the tab key of browsers and editors and
+    // reaches most terminals; Ctrl+Tab, where the host can tell it from Tab.
+    defaults: ["Ctrl+PageDown", "Ctrl+Tab"],
+  },
+  {
+    id: "pane-prev-tab",
+    category: "Pane Management",
+    description: "Show the previous tab of the focused pane's stack.",
+    defaults: ["Ctrl+PageUp", "Ctrl+Shift+Tab"],
   },
   {
     id: "pane-close",

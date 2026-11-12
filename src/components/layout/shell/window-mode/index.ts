@@ -126,26 +126,15 @@ export function useShellWindowMode({
     setWindowMode(null);
   }, []);
 
+  // Enter applies what the mode changed and leaves it, as Enter does in a
+  // dialog; Esc leaves it with nothing changed.
   const commitWindowMode = useCallback(() => {
     if (!windowMode) return;
-    const committedLayout = resolveWindowEditCommitLayout(windowMode, bounds, dockGeometryOptions);
-    const hasPendingCommit = windowEditHasPendingCommit(windowMode, bounds, dockGeometryOptions);
-    if (!hasPendingCommit) {
-      focusPane(windowMode.paneId);
-      setWindowMode(null);
-      return;
+    if (windowEditHasPendingCommit(windowMode, bounds, dockGeometryOptions)) {
+      persistLayout(resolveWindowEditCommitLayout(windowMode, bounds, dockGeometryOptions));
     }
-
-    persistLayout(committedLayout);
     focusPane(windowMode.paneId);
-    setWindowMode({
-      paneId: windowMode.paneId,
-      previewLayout: committedLayout,
-      mode: "move",
-      focus: normalizeWindowEditFocus({ kind: "move" }, committedLayout, windowMode.paneId, "move", bounds, dockGeometryOptions),
-      dirty: false,
-      notice: "Committed",
-    });
+    setWindowMode(null);
   }, [bounds, dockGeometryOptions, focusPane, persistLayout, windowMode]);
 
   const updateWindowModePreviewLayout = useCallback((nextLayout: LayoutConfig, paneId?: string) => {

@@ -8,12 +8,14 @@ export {
 } from "./floating";
 
 export {
+  dockStackTabIds,
   findDockLeaf,
   getDockDividerLayouts,
   getDockedPaneIds,
   getDockLeafLayouts,
   getDockResizeTargets,
   getDockSplitGeometry,
+  hiddenDockTabIds,
   showDockTab,
   type DockDividerLayout,
   type DockGeometryOptions,
