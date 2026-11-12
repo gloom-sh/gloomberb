@@ -1,4 +1,3 @@
-import { logFailure } from "../utils/log-failure";
 import type { TapeFeedEvent } from "./tape";
 import type {
   AuthUser,
@@ -12,98 +11,27 @@ import type {
   ScannerKind,
   TeamNotification,
 } from "./types";
-import {
-  normalizeChatChannelStateFrame,
-  normalizeChatMessage,
-  normalizeChatNotification,
-  normalizeChatReactions,
-  normalizeTeamNotification,
-} from "./normalizers";
-import { debugLog, previewList, previewLongLists } from "../utils/debug-log";
+import { debugLog } from "../utils/debug-log";
 import { canonicalExchange, normalizeSymbol } from "../utils/exchanges";
-import { mergeQuoteSubscriptionTargets } from "../market-data/quote-subscription-target";
-import { recordServerClockSample } from "../market-data/quotes/clock";
-import { perpetualListing } from "../tickers/perpetual-listing";
-import {
-  connectionHealth,
-  GLOOM_CLOUD_SOCKET_CONNECTION_ID,
-  type ConnectionHealthRegistry,
-} from "../core/connection-health";
+import { connectionHealth, type ConnectionHealthRegistry } from "../core/connection-health";
+import { SocketConnection } from "./socket-connection";
+import { SocketFeatures } from "./socket-features";
+import { dispatchSocketFrame, type SocketFrameRoutes, type SocketReadyFrame } from "./socket-frames";
+import { SocketListeners } from "./socket-listeners";
+import { QuoteStreamSubscriptions } from "./socket-quotes";
 
-const QUOTE_SUBSCRIPTION_FLUSH_MS = 25;
-/** How long a connection may take to open before the attempt is dropped and tried again. */
-export const SOCKET_CONNECT_TIMEOUT_MS = 10_000;
-/**
- * An open connection that has sent nothing for this long is asked whether it
- * is still there: a `ping`, which the server answers with a `pong`.
- */
-export const SOCKET_QUIET_PING_MS = 10_000;
-/**
- * A connection that has not answered a ping in this long, nothing else come
- * back meanwhile, is taken for dead (a half-open link: a laptop that slept, a
- * network that changed under it). It is dropped and opened again; until then
- * prices it streamed read as stale. Only an unanswered ping drops it: silence
- * alone does not, since a check that runs late (a hidden tab's throttled
- * timers, a wake from sleep) finds any connection silent.
- */
-export const SOCKET_PING_ANSWER_MS = 10_000;
-/** How often an open connection's silence is checked; it never needs to be exact. */
-const SOCKET_SILENCE_CHECK_MS = 2_500;
-/**
- * Protocol features this client can read. A server lists the ones it offers
- * in "ready"; the client opts into the shared ones, so an older server never
- * sees a request it does not understand.
- */
-const MARKET_BATCH_FEATURE = "market.batch";
-/** Chat frames carry `attachments`; without it the server writes images into the text. */
-export const CHAT_ATTACHMENTS_FEATURE = "chat.attachments";
-/** The app can run terminal tools relayed from a remote assistant; it still announces itself first. */
-export const TERMINAL_RELAY_FEATURE = "terminal.relay";
-const CLIENT_SOCKET_FEATURES = [MARKET_BATCH_FEATURE, CHAT_ATTACHMENTS_FEATURE, TERMINAL_RELAY_FEATURE] as const;
-/**
- * The server streams perpetual listings (`BTC:HYPERLIQUID`) from their venues. Until a server offers it, they are
- * kept off market.subscribe: an older one would read `BTC` on HYPERLIQUID as a stock symbol.
- */
-const MARKET_PERPS_FEATURE = "market.perps";
-/**
- * The most perpetual listings the app streams at once, across every pane: on screen and selected first. The server
- * takes up to 100 from one connection (fewer signed out); the rest keep their fetched readings.
- */
-const PERP_STREAM_BUDGET = 60;
-/** On screen and selected first, then by weight; equal ones keep the order they were asked in. */
-const perpStreamRank = (target: QuoteStreamTarget) => (target.selected ? 2 : 0) + (target.visible ? 1 : 0);
-const isPerpTarget = (target: QuoteStreamTarget) => !!perpetualListing(target.symbol, target.exchange);
+export { CHAT_ATTACHMENTS_FEATURE, TERMINAL_RELAY_FEATURE } from "./socket-features";
+export { SOCKET_CONNECT_TIMEOUT_MS, SOCKET_PING_ANSWER_MS, SOCKET_QUIET_PING_MS } from "./socket-connection";
+
 const cloudApiLog = debugLog.createLogger("cloud-api");
 
-type ChannelListener = (message: ChatMessage) => void;
 type ChatNotificationListener = (notification: ChatNotification) => void;
 type ChatChannelStateListener = (state: ChatChannelState) => void;
 type ChatPresenceListener = (onlineCount: number) => void;
 type ChatReactionsListener = (update: ChatReactionsUpdate) => void;
 type TeamNotificationListener = (notification: TeamNotification) => void;
 type CloudEventListener = (data: unknown) => void;
-type QuoteListener = (
-  target: QuoteStreamTarget,
-  quote: CloudQuotePayload,
-) => void;
-type QuoteSubscription = {
-  target: QuoteStreamTarget;
-  listener: QuoteListener;
-};
 type ScannerListener = (event: ScannerFeedEvent) => void;
-
-const SCANNER_MESSAGE_KINDS: Record<string, ScannerKind> = {
-  "scanner.hilo": "hilo",
-  "scanner.flow": "flow",
-};
-
-function mergeQuoteStreamSubscriptions(
-  subscriptions: Iterable<QuoteSubscription>,
-): QuoteStreamTarget | null {
-  return mergeQuoteSubscriptionTargets(
-    [...subscriptions].map((subscription) => subscription.target),
-  );
-}
 
 type CloudApiSocketDelegate = {
   getBaseUrl: () => string;
@@ -130,81 +58,51 @@ type ChatChannelConnection = {
   close: () => void;
 };
 
-function marketKey(symbol: string, exchange?: string): string {
-  const normalizedSymbolValue = normalizeSymbol(symbol);
-  const normalizedExchangeValue = canonicalExchange(exchange);
-  return normalizedExchangeValue
-    ? `${normalizedSymbolValue}:${normalizedExchangeValue}`
-    : normalizedSymbolValue;
-}
-
+/**
+ * The app's realtime link to Gloom Cloud: quotes, chat, team and scanner
+ * feeds over one WebSocket. It keeps the connection open while anything
+ * listens and decides what each subscription needs from it; the connection
+ * itself, inbound frames, quote batching, feature negotiation and the listener
+ * registries live in the `socket-*` modules beside it.
+ */
 export class CloudApiSocket {
-  private ws: WebSocket | null = null;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private reconnectDelayMs = 1000;
-  /** Gives up on a connection that has not opened in SOCKET_CONNECT_TIMEOUT_MS. */
-  private connectTimer: ReturnType<typeof setTimeout> | null = null;
-  /** Checks the open connection's silence (SOCKET_QUIET_PING_MS, SOCKET_PING_ANSWER_MS). */
-  private silenceTimer: ReturnType<typeof setInterval> | null = null;
-  /** When the open connection last sent anything, and when the ping still unanswered went out. */
-  private lastFrameAt = 0;
-  private pingedAt: number | null = null;
-
-  private readonly channelListeners = new Map<string, Set<ChannelListener>>();
-  private readonly chatMentionCandidatesListeners = new Set<() => void>();
-  private readonly chatNotificationListeners =
-    new Set<ChatNotificationListener>();
-  private readonly chatChannelStateListeners =
-    new Set<ChatChannelStateListener>();
-  private readonly chatPresenceListeners = new Set<ChatPresenceListener>();
-  private readonly chatReactionsListeners = new Set<ChatReactionsListener>();
-  private readonly teamNotificationListeners =
-    new Set<TeamNotificationListener>();
-  private readonly cloudEventListeners = new Map<
-    string,
-    Set<CloudEventListener>
-  >();
-  private nextQuoteSubscriptionId = 1;
-  private readonly quoteSubscriptions = new Map<
-    string,
-    Map<number, QuoteSubscription>
-  >();
-  private readonly quoteTargets = new Map<string, QuoteStreamTarget>();
-  private readonly pendingQuoteSubscribes = new Map<
-    string,
-    QuoteStreamTarget
-  >();
-  private readonly pendingQuoteUnsubscribes = new Map<
-    string,
-    QuoteStreamTarget
-  >();
-  private quoteSubscriptionFlushTimer: ReturnType<typeof setTimeout> | null =
-    null;
-  /** The connection that already opted into server features; a reconnect negotiates again. */
-  private featuresRequestedFor: WebSocket | null = null;
-  /** What the last "ready" frame offered; kept across reconnects so a blip does not hide features. */
-  private offeredFeatures: ReadonlySet<string> = new Set();
-  /**
-   * The connection whose server offered perpetual markets. Asked of every connection: a reconnect may reach an older
-   * server, which would read `BTC` on HYPERLIQUID as a stock symbol.
-   */
-  private perpsOfferedOn: WebSocket | null = null;
-  /** The perpetual listings this connection streams, within PERP_STREAM_BUDGET. */
-  private streamedPerps = new Map<string, QuoteStreamTarget>();
-  private readonly offeredFeatureListeners = new Set<() => void>();
-  private readonly connectionListeners = new Set<(event: "ready" | "closed") => void>();
-  private readonly tapeListeners = new Map<string, { symbol: string; exchange: string; listeners: Set<(event: TapeFeedEvent) => void> }>();
-  private readonly scannerListeners = new Map<
-    ScannerKind,
-    Set<ScannerListener>
-  >();
-  /** Latest fan-out payload, so a pane opened mid-stream does not wait for the next tick. */
-  private readonly scannerSnapshots = new Map<ScannerKind, ScannerFeedEvent>();
+  private readonly listeners = new SocketListeners();
+  private readonly connection: SocketConnection;
+  private readonly quotes: QuoteStreamSubscriptions;
+  private readonly features: SocketFeatures;
+  private readonly frameRoutes: SocketFrameRoutes;
 
   constructor(
     private readonly delegate: CloudApiSocketDelegate,
-    private readonly health: ConnectionHealthRegistry = connectionHealth,
-  ) {}
+    health: ConnectionHealthRegistry = connectionHealth,
+  ) {
+    this.connection = new SocketConnection(delegate, health, {
+      wanted: () => this.shouldKeepSocketOpen(),
+      logCounts: () => ({
+        quoteTargets: this.quotes.size,
+        channelTargets: this.listeners.chatChannels.size,
+      }),
+      opened: () => this.replaySubscriptions(),
+      received: (raw) => void this.handleSocketMessage(raw),
+      interrupted: () => this.listeners.tape.emitAll({ type: "disconnected", reason: "Stream disconnected; observed window may contain gaps" }),
+      closed: () => this.listeners.connection.emit("closed"),
+    });
+    const send = (payload: Record<string, unknown>) => this.connection.send(payload);
+    this.quotes = new QuoteStreamSubscriptions({
+      openSocket: () => this.connection.openSocket(),
+      send,
+    });
+    this.features = new SocketFeatures({
+      send,
+      perpsOffered: (socket) => this.quotes.setPerpsConnection(socket),
+    });
+    this.frameRoutes = {
+      listeners: this.listeners,
+      ready: (frame) => this.handleReady(frame),
+      unverified: () => this.handleUnverified(),
+      quote: (frame) => this.quotes.deliver(frame),
+    };
+  }
 
   syncAuthState(options: { reconnect?: boolean } = {}): void {
     if (!this.shouldKeepSocketOpen()) {
@@ -214,32 +112,12 @@ export class CloudApiSocket {
     if (options.reconnect) {
       this.teardown();
     }
-    this.ensureSocket();
+    this.connection.ensureOpen();
   }
 
   teardown(): void {
-    this.emitTapeStatus({ type: "reset", reason: "Stream session changed" });
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    this.stopWatching();
-    const ws = this.ws;
-    this.ws = null;
-    if (ws) {
-      this.emitConnection("closed");
-      cloudApiLog.info("teardown websocket");
-      this.health.reportSocketState(
-        GLOOM_CLOUD_SOCKET_CONNECTION_ID,
-        "idle",
-        "Socket closed locally",
-      );
-    }
-    try {
-      ws?.close();
-    } catch {
-      // Intentional ignore: Closing an already closed socket needs no further cleanup.
-    }
+    this.listeners.tape.emitAll({ type: "reset", reason: "Stream session changed" });
+    this.connection.close();
   }
 
   connectChannel(
@@ -257,14 +135,10 @@ export class CloudApiSocket {
       };
     }
 
-    const listeners =
-      this.channelListeners.get(channelId) ?? new Set<ChannelListener>();
-    const firstListener = listeners.size === 0;
-    listeners.add(onMessage);
-    this.channelListeners.set(channelId, listeners);
-    this.ensureSocket();
+    const firstListener = this.listeners.chatChannels.add(channelId, onMessage);
+    this.connection.ensureOpen();
     if (firstListener) {
-      this.sendSocketMessage({ type: "chat.subscribe", channelId });
+      this.connection.send({ type: "chat.subscribe", channelId });
     }
 
     return {
@@ -284,30 +158,22 @@ export class CloudApiSocket {
         }
       },
       close: () => {
-        const current = this.channelListeners.get(channelId);
-        if (!current) return;
-        current.delete(onMessage);
-        if (current.size === 0) {
-          this.channelListeners.delete(channelId);
-          this.sendSocketMessage({ type: "chat.unsubscribe", channelId });
+        const removal = this.listeners.chatChannels.remove(channelId, onMessage);
+        if (removal === "unknown-key") return;
+        if (removal === "last") {
+          this.connection.send({ type: "chat.unsubscribe", channelId });
         }
-        if (!this.shouldKeepSocketOpen()) {
-          this.teardown();
-        }
+        this.releaseSocket();
       },
     };
   }
 
   subscribeChatNotifications(listener: ChatNotificationListener): () => void {
-    this.chatNotificationListeners.add(listener);
-    return () => {
-      this.chatNotificationListeners.delete(listener);
-    };
+    return this.listeners.chatNotifications.add(listener);
   }
 
   subscribeChatMentionCandidatesChanged(listener: () => void): () => void {
-    this.chatMentionCandidatesListeners.add(listener);
-    return () => { this.chatMentionCandidatesListeners.delete(listener); };
+    return this.listeners.chatMentionCandidates.add(listener);
   }
 
   /**
@@ -315,92 +181,53 @@ export class CloudApiSocket {
    * notifications, it never opens the socket by itself.
    */
   subscribeChatChannelState(listener: ChatChannelStateListener): () => void {
-    this.chatChannelStateListeners.add(listener);
-    return () => {
-      this.chatChannelStateListeners.delete(listener);
-    };
+    return this.listeners.chatChannelState.add(listener);
   }
 
   /** A message's reactions changed in a channel this socket reads. */
   subscribeChatReactions(listener: ChatReactionsListener): () => void {
-    this.chatReactionsListeners.add(listener);
-    return () => {
-      this.chatReactionsListeners.delete(listener);
-    };
+    return this.listeners.chatReactions.add(listener);
   }
 
   subscribeChatPresence(listener: ChatPresenceListener): () => void {
-    this.chatPresenceListeners.add(listener);
-    return () => {
-      this.chatPresenceListeners.delete(listener);
-    };
+    return this.listeners.chatPresence.add(listener);
   }
 
   /** Whether the server's last "ready" frame offered this protocol feature. */
   serverOffers(feature: string): boolean {
-    return this.offeredFeatures.has(feature);
+    return this.features.offers(feature);
   }
 
   subscribeServerFeatures(listener: () => void): () => void {
-    this.offeredFeatureListeners.add(listener);
-    return () => {
-      this.offeredFeatureListeners.delete(listener);
-    };
+    return this.features.subscribe(listener);
   }
 
   /** "ready" after each server hello (features negotiated), "closed" when that connection ends. */
   subscribeConnection(listener: (event: "ready" | "closed") => void): () => void {
-    this.connectionListeners.add(listener);
-    return () => {
-      this.connectionListeners.delete(listener);
-    };
+    return this.listeners.connection.add(listener);
   }
 
   /** Sends one frame on the open connection; false when there is none. */
   sendFrame(payload: Record<string, unknown>): boolean {
-    if (this.ws?.readyState !== WebSocket.OPEN) return false;
-    try {
-      this.ws.send(JSON.stringify(payload));
-      return true;
-    } catch (error) {
-      logFailure("cloud-socket", "WebSocket frame send failed")(error);
-      return false;
-    }
-  }
-
-  private emitConnection(event: "ready" | "closed"): void {
-    for (const listener of this.connectionListeners) listener(event);
+    return this.connection.sendFrame(payload);
   }
 
   subscribeTeamNotifications(listener: TeamNotificationListener): () => void {
-    this.teamNotificationListeners.add(listener);
+    const remove = this.listeners.teamNotifications.add(listener);
     this.syncAuthState();
     return () => {
-      this.teamNotificationListeners.delete(listener);
-      if (!this.shouldKeepSocketOpen()) {
-        this.teardown();
-      }
+      remove();
+      this.releaseSocket();
     };
   }
 
   /** Subscribes to a server push frame by type, e.g. a team layout update. */
   subscribeCloudEvent(type: string, listener: CloudEventListener): () => void {
-    const listeners =
-      this.cloudEventListeners.get(type) ?? new Set<CloudEventListener>();
-    listeners.add(listener);
-    this.cloudEventListeners.set(type, listeners);
+    this.listeners.cloudEvents.add(type, listener);
     this.syncAuthState();
     return () => {
-      const current = this.cloudEventListeners.get(type);
-      if (current) {
-        current.delete(listener);
-        if (current.size === 0) {
-          this.cloudEventListeners.delete(type);
-        }
-      }
-      if (!this.shouldKeepSocketOpen()) {
-        this.teardown();
-      }
+      this.listeners.cloudEvents.remove(type, listener);
+      this.releaseSocket();
     };
   }
 
@@ -412,800 +239,140 @@ export class CloudApiSocket {
     scanner: ScannerKind,
     listener: ScannerListener,
   ): () => void {
-    const listeners =
-      this.scannerListeners.get(scanner) ?? new Set<ScannerListener>();
-    const firstListener = listeners.size === 0;
-    listeners.add(listener);
-    this.scannerListeners.set(scanner, listeners);
-    this.ensureSocket();
+    const firstListener = this.listeners.scanners.add(scanner, listener);
+    this.connection.ensureOpen();
     if (firstListener) {
-      this.sendSocketMessage({ type: "scanner.subscribe", scanner });
+      this.connection.send({ type: "scanner.subscribe", scanner });
     } else {
-      const snapshot = this.scannerSnapshots.get(scanner);
+      const snapshot = this.listeners.scanners.snapshot(scanner);
       if (snapshot) listener(snapshot);
     }
 
     return () => {
-      const current = this.scannerListeners.get(scanner);
-      if (!current || !current.delete(listener)) return;
-      if (current.size === 0) {
-        this.scannerListeners.delete(scanner);
-        this.scannerSnapshots.delete(scanner);
-        this.sendSocketMessage({ type: "scanner.unsubscribe", scanner });
+      const removal = this.listeners.scanners.remove(scanner, listener);
+      if (removal !== "removed" && removal !== "last") return;
+      if (removal === "last") {
+        this.connection.send({ type: "scanner.unsubscribe", scanner });
       }
-      if (!this.shouldKeepSocketOpen()) {
-        this.teardown();
-      }
+      this.releaseSocket();
     };
   }
 
   subscribeTape(symbol: string, exchange: string, listener: (event: TapeFeedEvent) => void): () => void {
     const target = { symbol: normalizeSymbol(symbol), exchange: canonicalExchange(exchange) };
-    const key = marketKey(target.symbol, target.exchange);
-    const existing = this.tapeListeners.get(key);
-    const entry = existing ?? { ...target, listeners: new Set<(event: TapeFeedEvent) => void>() };
-    entry.listeners.add(listener);
-    this.tapeListeners.set(key, entry);
-    this.ensureSocket();
-    if (!existing) this.sendSocketMessage({ type: "tape.subscribe", ...target });
+    const firstListener = this.listeners.tape.add(target, listener);
+    this.connection.ensureOpen();
+    if (firstListener) this.connection.send({ type: "tape.subscribe", ...target });
     return () => {
-      const current = this.tapeListeners.get(key);
-      if (!current?.listeners.delete(listener)) return;
-      if (!current.listeners.size) {
-        this.tapeListeners.delete(key);
-        this.sendSocketMessage({ type: "tape.unsubscribe", ...target });
-      }
-      if (!this.shouldKeepSocketOpen()) this.teardown();
+      const removal = this.listeners.tape.remove(target, listener);
+      if (removal !== "removed" && removal !== "last") return;
+      if (removal === "last") this.connection.send({ type: "tape.unsubscribe", ...target });
+      this.releaseSocket();
     };
-  }
-
-  private emitTapeStatus(event: Exclude<TapeFeedEvent, { type: "data" }>): void {
-    for (const entry of this.tapeListeners.values()) for (const listener of entry.listeners) listener(event);
   }
 
   subscribeQuotes(
     targets: QuoteStreamTarget[],
     onQuote: (target: QuoteStreamTarget, quote: CloudQuotePayload) => void,
   ): () => void {
-    const subscriptionId = this.nextQuoteSubscriptionId++;
-    const uniqueTargets = [
-      ...new Map(
-        targets
-          .filter(
-            (target) =>
-              typeof target.symbol === "string" &&
-              target.symbol.trim().length > 0,
-          )
-          .map((target) => {
-            const normalized = {
-              symbol: normalizeSymbol(target.symbol),
-              exchange: canonicalExchange(target.exchange),
-              surface: target.surface,
-              visible: target.visible,
-              selected: target.selected,
-              weight: target.weight,
-            } satisfies QuoteStreamTarget;
-            return [
-              marketKey(normalized.symbol, normalized.exchange),
-              normalized,
-            ] as const;
-          }),
-      ).values(),
-    ];
-
-    const newSubscriptions: QuoteStreamTarget[] = [];
-    const updatedSubscriptions: QuoteStreamTarget[] = [];
-    for (const target of uniqueTargets) {
-      const key = marketKey(target.symbol, target.exchange);
-      const subscriptions =
-        this.quoteSubscriptions.get(key) ??
-        new Map<number, QuoteSubscription>();
-      const previousTarget = this.quoteTargets.get(key);
-      subscriptions.set(subscriptionId, { target, listener: onQuote });
-      this.quoteSubscriptions.set(key, subscriptions);
-      const mergedTarget =
-        mergeQuoteStreamSubscriptions(subscriptions.values()) ?? target;
-      if (!previousTarget) {
-        newSubscriptions.push(target);
-      } else if (
-        !this.areQuoteStreamTargetsEquivalent(previousTarget, mergedTarget)
-      ) {
-        updatedSubscriptions.push(mergedTarget);
-      }
-      this.quoteTargets.set(key, mergedTarget);
-    }
-
-    this.ensureSocket();
-    const subscriptionsToSend = [...newSubscriptions, ...updatedSubscriptions];
-    if (subscriptionsToSend.length > 0) {
-      cloudApiLog.info("register quote listeners", {
-        count: subscriptionsToSend.length,
-        symbols: previewList(subscriptionsToSend, (target) =>
-          marketKey(target.symbol, target.exchange),
-        ),
-      });
-      this.queueQuoteSubscribes(subscriptionsToSend);
-    }
-
+    const subscription = this.quotes.subscribe(targets, onQuote);
+    this.connection.ensureOpen();
+    subscription.announce();
     return () => {
-      const removedTargets: QuoteStreamTarget[] = [];
-      const updatedTargets: QuoteStreamTarget[] = [];
-
-      for (const target of uniqueTargets) {
-        const key = marketKey(target.symbol, target.exchange);
-        const subscriptions = this.quoteSubscriptions.get(key);
-        if (!subscriptions || !subscriptions.delete(subscriptionId)) continue;
-        const previousTarget = this.quoteTargets.get(key);
-        if (subscriptions.size === 0) {
-          this.quoteSubscriptions.delete(key);
-          if (previousTarget) removedTargets.push(previousTarget);
-          this.quoteTargets.delete(key);
-          continue;
-        }
-        const mergedTarget = mergeQuoteStreamSubscriptions(
-          subscriptions.values(),
-        );
-        if (!mergedTarget) continue;
-        this.quoteTargets.set(key, mergedTarget);
-        if (
-          previousTarget &&
-          !this.areQuoteStreamTargetsEquivalent(previousTarget, mergedTarget)
-        ) {
-          updatedTargets.push(mergedTarget);
-        }
-      }
-
-      if (updatedTargets.length > 0) {
-        this.queueQuoteSubscribes(updatedTargets);
-      }
-
-      if (removedTargets.length > 0) {
-        cloudApiLog.info("remove quote listeners", {
-          count: removedTargets.length,
-          symbols: previewList(removedTargets, (target) =>
-            marketKey(target.symbol, target.exchange),
-          ),
-        });
-        this.queueQuoteUnsubscribes(removedTargets);
-      }
-
-      if (!this.shouldKeepSocketOpen()) {
-        this.teardown();
-      }
+      subscription.release();
+      this.releaseSocket();
     };
   }
 
   dispose(): void {
     cloudApiLog.info("dispose api client", {
-      quoteTargets: this.quoteTargets.size,
-      channelTargets: this.channelListeners.size,
+      quoteTargets: this.quotes.size,
+      channelTargets: this.listeners.chatChannels.size,
     });
-    this.channelListeners.clear();
-    this.offeredFeatureListeners.clear();
-    this.connectionListeners.clear();
-    this.chatNotificationListeners.clear();
-    this.chatChannelStateListeners.clear();
-    this.chatPresenceListeners.clear();
-    this.chatReactionsListeners.clear();
-    this.teamNotificationListeners.clear();
-    this.cloudEventListeners.clear();
-    this.quoteSubscriptions.clear();
-    this.quoteTargets.clear();
-    this.pendingQuoteSubscribes.clear();
-    this.pendingQuoteUnsubscribes.clear();
-    this.tapeListeners.clear();
-    this.scannerListeners.clear();
-    this.scannerSnapshots.clear();
-    if (this.quoteSubscriptionFlushTimer) {
-      clearTimeout(this.quoteSubscriptionFlushTimer);
-      this.quoteSubscriptionFlushTimer = null;
-    }
-    this.reconnectDelayMs = 1000;
+    this.listeners.clear();
+    this.features.clearListeners();
+    this.quotes.clear();
+    this.connection.resetBackoff();
     this.teardown();
   }
 
   async handleSocketMessage(raw: string): Promise<void> {
-    let parsed: any;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (error) {
-      logFailure("cloud-socket", "WebSocket message decoding failed")(error);
-      return;
-    }
+    dispatchSocketFrame(raw, this.frameRoutes);
+  }
 
-    if (parsed?.type === "ready") {
-      recordServerClockSample(parsed.serverTime);
-      this.negotiateSocketFeatures(parsed.features);
-      if (parsed.user) {
-        cloudApiLog.info("websocket ready", {
-          emailVerified: parsed.user.emailVerified === true,
-        });
-        this.delegate.updateCurrentUserFromSocket(
-          parsed.user as Partial<AuthUser>,
-        );
-      }
-      this.emitConnection("ready");
-      return;
+  private handleReady(frame: SocketReadyFrame): void {
+    this.features.negotiate(this.connection.socket, frame.features);
+    if (frame.user) {
+      cloudApiLog.info("websocket ready", {
+        emailVerified: frame.user.emailVerified === true,
+      });
+      this.delegate.updateCurrentUserFromSocket(frame.user);
     }
+    this.listeners.connection.emit("ready");
+  }
 
-    if (parsed?.type === "auth.unverified") {
-      cloudApiLog.warn("websocket marked unverified");
-      if (
-        this.delegate.isUsingWebSocketToken() &&
-        this.delegate.clearWebSocketTokenForFallback()
-      ) {
-        this.reconnectDelayMs = 1000;
-        cloudApiLog.warn(
-          "cleared websocket token after auth rejection; falling back to session token",
-        );
-        this.teardown();
-        this.scheduleReconnect();
-        return;
-      }
-      this.delegate.markCurrentUserUnverified();
-      if (this.quoteTargets.size > 0 || this.scannerListeners.size > 0 || this.tapeListeners.size > 0) {
-        return;
-      }
+  private handleUnverified(): void {
+    cloudApiLog.warn("websocket marked unverified");
+    if (
+      this.delegate.isUsingWebSocketToken() &&
+      this.delegate.clearWebSocketTokenForFallback()
+    ) {
+      this.connection.resetBackoff();
+      cloudApiLog.warn(
+        "cleared websocket token after auth rejection; falling back to session token",
+      );
       this.teardown();
+      this.connection.scheduleReconnect();
       return;
     }
-
-    if (
-      parsed?.type === "chat.message" &&
-      typeof parsed.channelId === "string" &&
-      parsed.data
-    ) {
-      const message = normalizeChatMessage(parsed.data as ChatMessage);
-      for (const listener of this.channelListeners.get(parsed.channelId) ??
-        []) {
-        listener(message);
-      }
+    this.delegate.markCurrentUserUnverified();
+    if (this.hasMarketStreams()) {
       return;
     }
-
-    if (
-      parsed?.type === "chat.reactions" &&
-      typeof parsed.channelId === "string" &&
-      typeof parsed.data?.messageId === "string"
-    ) {
-      const update: ChatReactionsUpdate = {
-        channelId: parsed.channelId,
-        messageId: parsed.data.messageId,
-        reactions: normalizeChatReactions(parsed.data.reactions),
-      };
-      for (const listener of this.chatReactionsListeners) {
-        listener(update);
-      }
-      return;
-    }
-
-    if (parsed?.type === "chat.notification" && parsed.data) {
-      const notification = normalizeChatNotification(
-        parsed.data as ChatNotification,
-      );
-      for (const listener of this.chatNotificationListeners) {
-        listener(notification);
-      }
-      return;
-    }
-
-    if (parsed?.type === "chat.mentions_changed") {
-      for (const listener of this.chatMentionCandidatesListeners) listener();
-      return;
-    }
-    if (parsed?.type === "chat.channel_state") {
-      const state = normalizeChatChannelStateFrame(parsed.data);
-      if (state) {
-        for (const listener of this.chatChannelStateListeners) {
-          listener(state);
-        }
-      }
-      return;
-    }
-
-    if (parsed?.type === "team.notification" && parsed.data) {
-      const notification = normalizeTeamNotification(
-        parsed.data as TeamNotification,
-      );
-      for (const listener of this.teamNotificationListeners) {
-        listener(notification);
-      }
-      return;
-    }
-
-    if (
-      parsed?.type === "chat.presence" &&
-      typeof parsed.onlineCount === "number"
-    ) {
-      for (const listener of this.chatPresenceListeners) {
-        listener(parsed.onlineCount);
-      }
-      return;
-    }
-
-    if (parsed?.type === "tape.snapshot" && parsed.data && typeof parsed.data.symbol === "string" && typeof parsed.data.exchange === "string") {
-      const entry = this.tapeListeners.get(marketKey(parsed.data.symbol, parsed.data.exchange));
-      for (const listener of entry?.listeners ?? []) listener({ type: "data", payload: parsed.data });
-      return;
-    }
-
-    const scannerKind =
-      typeof parsed?.type === "string"
-        ? SCANNER_MESSAGE_KINDS[parsed.type]
-        : undefined;
-    if (scannerKind) {
-      const { type: _type, ...payload } = parsed;
-      this.emitScannerEvent(scannerKind, { type: "data", payload });
-      return;
-    }
-
-    if (parsed?.type === "scanner.denied") {
-      const denied = SCANNER_MESSAGE_KINDS[`scanner.${parsed.scanner}`];
-      if (denied) {
-        this.emitScannerEvent(denied, {
-          type: "denied",
-          reason:
-            typeof parsed.reason === "string" ? parsed.reason : "pro_required",
-        });
-      }
-      return;
-    }
-
-    if (parsed?.type === "market.quote") {
-      this.dispatchMarketQuote(parsed);
-      return;
-    }
-
-    if (parsed?.type === "market.quotes") {
-      recordServerClockSample(parsed.at);
-      if (!Array.isArray(parsed.quotes)) return;
-      // One synchronous pass: every item lands before the next data frame.
-      for (const item of parsed.quotes) this.dispatchMarketQuote(item);
-      return;
-    }
-
-    if (typeof parsed?.type === "string") {
-      const listeners = this.cloudEventListeners.get(parsed.type);
-      if (listeners && listeners.size > 0) {
-        for (const listener of listeners) {
-          listener(parsed.data);
-        }
-        return;
-      }
-    }
+    this.teardown();
   }
 
-  /** Delivers one market.quote frame, or one item of a market.quotes batch, to its listeners. */
-  private dispatchMarketQuote(frame: any): void {
-    if (!frame?.quote || typeof frame.symbol !== "string") return;
-    const subscriptions = this.quoteSubscriptions.get(marketKey(frame.symbol, frame.exchange));
-    if (!subscriptions) return;
-    const quote: CloudQuotePayload = {
-      ...(frame.quote as CloudQuotePayload),
-      ...(frame.delivery === "stream" || frame.delivery === "poll"
-        ? { delivery: frame.delivery }
-        : {}),
-      ...(typeof frame.stale === "boolean" ? { stale: frame.stale } : {}),
-    };
-    for (const subscription of subscriptions.values()) {
-      subscription.listener(subscription.target, quote);
-    }
-  }
-
-  private negotiateSocketFeatures(offered: unknown): void {
-    this.recordOfferedFeatures(offered);
-    if (!Array.isArray(offered) || this.featuresRequestedFor === this.ws) return;
-    const features = CLIENT_SOCKET_FEATURES.filter((feature) => offered.includes(feature));
-    if (features.length === 0) return;
-    this.featuresRequestedFor = this.ws;
-    this.sendSocketMessage({ type: "client.features", features });
-  }
-
-  private recordOfferedFeatures(offered: unknown): void {
-    const next = new Set(
-      Array.isArray(offered)
-        ? offered.filter((feature): feature is string => typeof feature === "string")
-        : [],
-    );
-    const changed = next.size !== this.offeredFeatures.size
-      || [...next].some((feature) => !this.offeredFeatures.has(feature));
-    this.offeredFeatures = next;
-    // Perpetual listings held back since the socket opened go out once this connection's server offers them.
-    const perpsOffered = next.has(MARKET_PERPS_FEATURE) ? this.ws : null;
-    if (perpsOffered !== this.perpsOfferedOn) {
-      this.perpsOfferedOn = perpsOffered;
-      this.streamedPerps.clear();
-      this.syncPerpSubscriptions();
-    }
-    if (!changed) return;
-    for (const listener of this.offeredFeatureListeners) listener();
-  }
-
-  /**
-   * The ws(s) form of the API base URL, or null when the base is not an
-   * http(s) URL. The web build derives it from `location.origin`, which is the
-   * string "null" on an opaque page, and `null/api` must not become a socket URL.
-   */
-  private getWebSocketBaseUrl(): string | null {
-    const baseUrl = this.delegate.getBaseUrl();
-    if (!/^https?:\/\//.test(baseUrl)) return null;
-    const wsProtocol = baseUrl.startsWith("https") ? "wss" : "ws";
-    return baseUrl.replace(/^https?/, wsProtocol);
-  }
-
-  private emitScannerEvent(
-    scanner: ScannerKind,
-    event: ScannerFeedEvent,
-  ): void {
-    this.scannerSnapshots.set(scanner, event);
-    for (const listener of this.scannerListeners.get(scanner) ?? []) {
-      listener(event);
-    }
+  /** Quotes, scanners and tapes stream signed out too, so they keep the connection without a verified account. */
+  private hasMarketStreams(): boolean {
+    return this.quotes.size > 0 || this.listeners.scanners.size > 0 || this.listeners.tape.size > 0;
   }
 
   private shouldKeepSocketOpen(): boolean {
-    if (this.quoteTargets.size > 0 || this.scannerListeners.size > 0 || this.tapeListeners.size > 0)
-      return true;
+    if (this.hasMarketStreams()) return true;
     return (
       this.delegate.hasSessionCredential() &&
       this.delegate.hasVerifiedUser() &&
-      (this.channelListeners.size > 0 ||
-        this.teamNotificationListeners.size > 0 ||
-        this.cloudEventListeners.size > 0)
+      (this.listeners.chatChannels.size > 0 ||
+        this.listeners.teamNotifications.size > 0 ||
+        this.listeners.cloudEvents.size > 0)
     );
   }
 
-  private ensureSocket(): void {
-    if (!this.shouldKeepSocketOpen() || this.ws || this.reconnectTimer) return;
-
-    const socketBaseUrl = this.getWebSocketBaseUrl();
-    if (!socketBaseUrl) {
-      this.failSocketOpen(`Not a usable Gloom Cloud URL: ${this.delegate.getBaseUrl()}`);
-      return;
-    }
-
-    const socketToken = this.delegate.getSocketAuthToken();
-    const usingWebSocketToken = this.delegate.isUsingWebSocketToken();
-    const url = socketToken
-      ? `${socketBaseUrl}/cloud/ws?token=${encodeURIComponent(socketToken)}`
-      : `${socketBaseUrl}/cloud/ws`;
-    cloudApiLog.info("open websocket", {
-      hasToken: !!socketToken,
-      tokenSource: usingWebSocketToken ? "websocket" : "session",
-      quoteTargets: this.quoteTargets.size,
-      channelTargets: this.channelListeners.size,
-    });
-    this.health.reportSocketState(
-      GLOOM_CLOUD_SOCKET_CONNECTION_ID,
-      "connecting",
-      socketBaseUrl,
-    );
-    let ws: WebSocket;
-    try {
-      ws = new WebSocket(url);
-    } catch (error) {
-      this.failSocketOpen(error instanceof Error ? error.message : String(error));
-      return;
-    }
-    this.ws = ws;
-    let opened = false;
-    // A link that swallows the handshake never says so: the attempt is dropped and tried again.
-    this.connectTimer = setTimeout(() => {
-      this.connectTimer = null;
-      if (this.ws === ws) this.dropUnansweredSocket(ws, "Connecting timed out");
-    }, SOCKET_CONNECT_TIMEOUT_MS);
-
-    ws.onopen = () => {
-      if (this.ws !== ws) return;
-      opened = true;
-      this.watchSilence();
-      this.delegate.onServiceAnswered?.();
-      cloudApiLog.info("websocket open");
-      this.health.reportSocketState(
-        GLOOM_CLOUD_SOCKET_CONNECTION_ID,
-        "open",
-        socketBaseUrl,
-      );
-      this.reconnectDelayMs = 1000;
-      // The full set goes out now; queued diffs from before the open are part of it.
-      this.pendingQuoteSubscribes.clear();
-      this.pendingQuoteUnsubscribes.clear();
-      this.flushSubscriptions();
-    };
-
-    ws.onmessage = (event) => {
-      if (this.ws !== ws) return;
-      this.lastFrameAt = Date.now();
-      this.pingedAt = null;
-      this.delegate.onServiceAnswered?.();
-      void this.handleSocketMessage(String(event.data));
-    };
-
-    ws.onclose = (event) => {
-      const activeSocket = this.ws === ws;
-      if (this.ws === ws) {
-        this.ws = null;
-        this.stopWatching();
-      this.emitTapeStatus({ type: "disconnected", reason: "Stream disconnected; observed window may contain gaps" });
-      }
-      const closeEvent = event as CloseEvent | undefined;
-      cloudApiLog.warn("websocket closed", {
-        quoteTargets: this.quoteTargets.size,
-        channelTargets: this.channelListeners.size,
-        code: closeEvent?.code,
-        reason: closeEvent?.reason,
-        tokenSource: usingWebSocketToken ? "websocket" : "session",
-      });
-      if (!activeSocket) return;
-      this.emitConnection("closed");
-      this.health.reportSocketState(
-        GLOOM_CLOUD_SOCKET_CONNECTION_ID,
-        "closed",
-        closeEvent?.reason ||
-          (closeEvent?.code ? `Closed (${closeEvent.code})` : "Socket closed"),
-      );
-      if (
-        usingWebSocketToken &&
-        this.delegate.clearWebSocketTokenForFallback()
-      ) {
-        this.reconnectDelayMs = 1000;
-        cloudApiLog.warn(
-          "cleared websocket token after socket close; falling back to session token",
-        );
-      }
-      if (!this.shouldKeepSocketOpen()) return;
-      this.scheduleReconnect();
-    };
-
-    ws.onerror = () => {
-      if (this.ws !== ws) return;
-      // A socket that was open, cut by a server restart or a proxy, fires its
-      // error just before its close: the close reports it, so the stream gets
-      // the grace a clean close does. One that never opened is a failed
-      // connect, and one open but silent is dropped by the ping check.
-      if (opened) return;
-      this.health.reportSocketState(
-        GLOOM_CLOUD_SOCKET_CONNECTION_ID,
-        "error",
-        "WebSocket error",
-      );
-      // Reconnect is handled by onclose.
-    };
-  }
-
-  /** From the open: the connection's silence is checked until it closes. */
-  private watchSilence(): void {
-    this.stopWatching();
-    this.lastFrameAt = Date.now();
-    this.pingedAt = null;
-    this.silenceTimer = setInterval(() => this.checkSilence(), SOCKET_SILENCE_CHECK_MS);
-  }
-
-  private stopWatching(): void {
-    if (this.connectTimer) clearTimeout(this.connectTimer);
-    if (this.silenceTimer) clearInterval(this.silenceTimer);
-    this.connectTimer = null;
-    this.silenceTimer = null;
-  }
-
-  /**
-   * A connection that went quiet is pinged; one that leaves the ping
-   * unanswered for SOCKET_PING_ANSWER_MS is half open, and is dropped and
-   * opened again. Anything it sends answers the ping.
-   */
-  private checkSilence(): void {
-    const ws = this.ws;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    const now = Date.now();
-    if (this.pingedAt != null) {
-      if (now - this.pingedAt >= SOCKET_PING_ANSWER_MS) this.dropUnansweredSocket(ws, "No answer from the stream");
-      return;
-    }
-    if (now - this.lastFrameAt >= SOCKET_QUIET_PING_MS) {
-      this.pingedAt = now;
-      this.sendFrame({ type: "ping" });
+  /** A listener left: the connection closes once nothing needs it. */
+  private releaseSocket(): void {
+    if (!this.shouldKeepSocketOpen()) {
+      this.teardown();
     }
   }
 
-  /**
-   * Gives up on a connection that never opened or went silent: what it was
-   * carrying is reported as interrupted (the stream's health turns to error,
-   * which marks its prices stale), and a new one is opened with the backoff.
-   * Its close, if it ever comes, is for a socket no longer in use.
-   */
-  private dropUnansweredSocket(ws: WebSocket, reason: string): void {
-    if (this.ws !== ws) return;
-    this.ws = null;
-    this.stopWatching();
-    cloudApiLog.warn("websocket unanswered; reconnecting", { reason, quoteTargets: this.quoteTargets.size });
-    try {
-      ws.close();
-    } catch {
-      // Intentional ignore: a socket that cannot close is dropped all the same.
-    }
-    this.emitTapeStatus({ type: "disconnected", reason: "Stream disconnected; observed window may contain gaps" });
-    this.emitConnection("closed");
-    this.health.reportSocketState(GLOOM_CLOUD_SOCKET_CONNECTION_ID, "error", reason);
-    this.scheduleReconnect();
-  }
+  /** A connection opened: every subscription goes out on it, chat, tapes and scanners first, then quotes. */
+  private replaySubscriptions(): void {
+    // The full set goes out now; queued diffs from before the open are part of it.
+    this.quotes.dropPending();
+    if (!this.connection.openSocket()) return;
 
-  /**
-   * A socket that could not be constructed is an error to show, not to throw:
-   * ensureSocket runs from effects and timers nobody awaits. The reconnect
-   * backoff retries it, so a URL that never works settles at the slowest delay.
-   */
-  private failSocketOpen(reason: string): void {
-    // The reason can carry the socket URL with its token, so only the health detail keeps it.
-    cloudApiLog.warn("websocket could not be opened");
-    this.health.reportSocketState(GLOOM_CLOUD_SOCKET_CONNECTION_ID, "error", reason);
-    this.scheduleReconnect();
-  }
-
-  private scheduleReconnect(): void {
-    if (this.reconnectTimer || !this.shouldKeepSocketOpen()) return;
-    // Jittered so clients dropped together by a server restart do not all
-    // come back in the same instant.
-    const delay = Math.round(this.reconnectDelayMs * (0.5 + Math.random()));
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
-      this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, 10_000);
-      this.ensureSocket();
-    }, delay);
-  }
-
-  private sendSocketMessage(payload: unknown): void {
-    if (this.ws?.readyState !== WebSocket.OPEN) return;
-    if (
-      payload &&
-      typeof payload === "object" &&
-      "type" in (payload as Record<string, unknown>)
-    ) {
-      const type = (payload as Record<string, unknown>).type;
-      if (
-        type === "market.subscribe" ||
-        type === "market.unsubscribe" ||
-        type === "chat.subscribe" ||
-        type === "chat.unsubscribe" ||
-        type === "scanner.subscribe" ||
-        type === "scanner.unsubscribe"
-      ) {
-        cloudApiLog.info("send websocket message", previewLongLists(payload as Record<string, unknown>));
-      }
-    }
-    this.ws.send(JSON.stringify(payload));
-  }
-
-  private flushSubscriptions(): void {
-    if (this.ws?.readyState !== WebSocket.OPEN) return;
-
-    for (const channelId of this.channelListeners.keys()) {
-      this.sendSocketMessage({ type: "chat.subscribe", channelId });
+    for (const channelId of this.listeners.chatChannels.keys()) {
+      this.connection.send({ type: "chat.subscribe", channelId });
     }
 
-    for (const entry of this.tapeListeners.values()) {
-      this.sendSocketMessage({ type: "tape.subscribe", symbol: entry.symbol, exchange: entry.exchange });
+    for (const market of this.listeners.tape.markets()) {
+      this.connection.send({ type: "tape.subscribe", symbol: market.symbol, exchange: market.exchange });
     }
 
-    for (const scanner of this.scannerListeners.keys()) {
-      this.sendSocketMessage({ type: "scanner.subscribe", scanner });
+    for (const scanner of this.listeners.scanners.keys()) {
+      this.connection.send({ type: "scanner.subscribe", scanner });
     }
 
-    const targets = [...this.quoteTargets.values()].filter((target) => !isPerpTarget(target));
-    if (targets.length > 0) {
-      this.sendSocketMessage({
-        type: "market.subscribe",
-        symbols: targets.map((target) =>
-          this.serializeQuoteStreamTarget(target),
-        ),
-      });
-    }
-    this.streamedPerps.clear();
-    this.syncPerpSubscriptions();
-  }
-
-  /**
-   * Streams the perpetual listings within the budget, once this connection's server offers them: the best ranked
-   * across every pane. One that falls out is unsubscribed; one whose target changed (`changed`) is sent again.
-   */
-  private syncPerpSubscriptions(changed: ReadonlySet<string> = new Set()): void {
-    const ws = this.ws;
-    if (!ws || ws.readyState !== WebSocket.OPEN || this.perpsOfferedOn !== ws) return;
-    const wanted = new Map(
-      [...this.quoteTargets]
-        .filter(([, target]) => isPerpTarget(target))
-        .sort(([, left], [, right]) => perpStreamRank(right) - perpStreamRank(left) || (right.weight ?? 0) - (left.weight ?? 0))
-        .slice(0, PERP_STREAM_BUDGET),
-    );
-    const unsubscribes = [...this.streamedPerps].filter(([key]) => !wanted.has(key)).map(([, target]) => target);
-    const subscribes = [...wanted].filter(([key]) => !this.streamedPerps.has(key) || changed.has(key)).map(([, target]) => target);
-    this.streamedPerps = wanted;
-    if (unsubscribes.length > 0) {
-      this.sendSocketMessage({ type: "market.unsubscribe", symbols: unsubscribes.map((target) => this.serializeQuoteStreamTarget(target)) });
-    }
-    if (subscribes.length > 0) {
-      this.sendSocketMessage({ type: "market.subscribe", symbols: subscribes.map((target) => this.serializeQuoteStreamTarget(target)) });
-    }
-  }
-
-  private scheduleQuoteSubscriptionFlush(): void {
-    if (this.quoteSubscriptionFlushTimer) return;
-    this.quoteSubscriptionFlushTimer = setTimeout(() => {
-      this.quoteSubscriptionFlushTimer = null;
-      this.flushQueuedQuoteSubscriptions();
-    }, QUOTE_SUBSCRIPTION_FLUSH_MS);
-  }
-
-  private queueQuoteSubscribes(targets: QuoteStreamTarget[]): void {
-    for (const target of targets) {
-      const key = marketKey(target.symbol, target.exchange);
-      this.pendingQuoteUnsubscribes.delete(key);
-      this.pendingQuoteSubscribes.set(key, target);
-    }
-    this.scheduleQuoteSubscriptionFlush();
-  }
-
-  private queueQuoteUnsubscribes(targets: QuoteStreamTarget[]): void {
-    for (const target of targets) {
-      const key = marketKey(target.symbol, target.exchange);
-      this.pendingQuoteSubscribes.delete(key);
-      this.pendingQuoteUnsubscribes.set(key, target);
-    }
-    this.scheduleQuoteSubscriptionFlush();
-  }
-
-  private flushQueuedQuoteSubscriptions(): void {
-    if (this.ws?.readyState !== WebSocket.OPEN) {
-      this.pendingQuoteSubscribes.clear();
-      this.pendingQuoteUnsubscribes.clear();
-      return;
-    }
-    const subscribes = [...this.pendingQuoteSubscribes.values()].filter((target) => !isPerpTarget(target));
-    const unsubscribes = [...this.pendingQuoteUnsubscribes.values()].filter((target) => !isPerpTarget(target));
-    const perpsChanged = [...this.pendingQuoteSubscribes]
-      .filter(([, target]) => isPerpTarget(target))
-      .map(([key]) => key);
-    const perpsMoved = perpsChanged.length > 0 || [...this.pendingQuoteUnsubscribes.values()].some(isPerpTarget);
-    this.pendingQuoteSubscribes.clear();
-    this.pendingQuoteUnsubscribes.clear();
-    if (perpsMoved) this.syncPerpSubscriptions(new Set(perpsChanged));
-    if (unsubscribes.length > 0) {
-      this.sendSocketMessage({
-        type: "market.unsubscribe",
-        symbols: unsubscribes.map((target) =>
-          this.serializeQuoteStreamTarget(target),
-        ),
-      });
-    }
-    if (subscribes.length > 0) {
-      this.sendSocketMessage({
-        type: "market.subscribe",
-        symbols: subscribes.map((target) =>
-          this.serializeQuoteStreamTarget(target),
-        ),
-      });
-    }
-  }
-
-  private serializeQuoteStreamTarget(
-    target: QuoteStreamTarget,
-  ): QuoteStreamTarget {
-    return {
-      symbol: target.symbol,
-      exchange: target.exchange ?? "",
-      ...(target.surface ? { surface: target.surface } : {}),
-      ...(target.visible ? { visible: true } : {}),
-      ...(target.selected ? { selected: true } : {}),
-      ...(Number.isFinite(target.weight) ? { weight: target.weight } : {}),
-    };
-  }
-
-  private areQuoteStreamTargetsEquivalent(
-    left: QuoteStreamTarget,
-    right: QuoteStreamTarget,
-  ): boolean {
-    return (
-      JSON.stringify(this.serializeQuoteStreamTarget(left)) ===
-      JSON.stringify(this.serializeQuoteStreamTarget(right))
-    );
+    this.quotes.replay();
   }
 }
