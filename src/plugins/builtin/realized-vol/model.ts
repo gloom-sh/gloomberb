@@ -15,7 +15,7 @@ export interface RealizedVolatilityModel {
   windows: number[];
   history: PricePoint[];
   series: RollingRealizedVolatilityPoint[];
-  /** The cone always includes all seven standard windows, independent of chart selection. */
+  /** The cone's rows: `coneWindows`, every standard window unless asked, independent of chart selection. */
   cone: VolatilityConeStatistics[];
   asOf: Date | null;
   /** What the volatility is annualised at, read from the series' own dates. */
@@ -56,6 +56,8 @@ export interface RealizedVolatilityProjectionOptions {
   estimator?: RealizedVolatilityEstimator;
   lookbackYears?: 1 | 2;
   windows?: readonly number[];
+  /** The cone's rows, and the windows a short history or a failed estimate is said for: every standard window when left out. */
+  coneWindows?: readonly number[];
 }
 
 function lookbackCutoff(date: Date, years: number): number {
@@ -76,6 +78,7 @@ export function projectRealizedVolatility(
   const instrument = currencyPairInstrument(options.symbol, options.exchange);
   const windows = [...new Set(options.windows ?? REALIZED_VOLATILITY_WINDOWS)]
     .filter((window) => REALIZED_VOLATILITY_WINDOWS.some((standard) => standard === window));
+  const coneWindows = REALIZED_VOLATILITY_WINDOWS.filter((window) => !options.coneWindows || options.coneWindows.includes(window));
   const warnings: string[] = [];
   // What follows from a history shorter than the windows and lookback asked for: notes, not failures.
   let shortLookback = false;
@@ -108,11 +111,11 @@ export function projectRealizedVolatility(
   const series = cadenceIssue
     ? history.map((point) => ({ date: point.date, values: Object.fromEntries(windows.map((window) => [window, null])) }))
     : rollingRealizedVolatility(returns.points, { windows, estimator, instrument });
-  const cone = volatilityCone(cadenceIssue ? [] : returns.points, { estimator, lookbackYears, instrument });
+  const cone = volatilityCone(cadenceIssue ? [] : returns.points, { windows: coneWindows, estimator, lookbackYears, instrument });
   const visible = history.filter((point) => point.date.getTime() > cutoff);
   const visibleSeries = series.filter((point) => point.date.getTime() > cutoff);
   if (history.length > 0 && history[0]!.date.getTime() > cutoff) shortLookback = true;
-  for (const window of history.length > 0 && !cadenceIssue ? REALIZED_VOLATILITY_WINDOWS : []) {
+  for (const window of history.length > 0 && !cadenceIssue ? coneWindows : []) {
     const result = realizedVolatilityResult(returns.points, window, estimator, instrument);
     if (result.reason === "insufficient-history") shortWindows.push(window);
     else if (result.reason) warnings.push(`HV${window} unavailable: ${result.reason.replaceAll("-", " ")}`);

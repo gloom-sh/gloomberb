@@ -21,12 +21,11 @@ const NG_OCTOBER_ROLL = bars([
 ]);
 
 describe("rollAdjustedHistory", () => {
-  test("reads NG=F's 20-day volatility across the 26 Oct roll within one contract, at about 48.7%", () => {
-    expect(realizedVolatilityResult(NG_OCTOBER_ROLL, 20).value!).toBeCloseTo(0.697, 2);
+  test("reads NG=F's 20-day volatility across the 26 Oct roll within one contract: 48.4%, not 69.7%", () => {
+    expect(realizedVolatilityResult(NG_OCTOBER_ROLL, 20).value!).toBeCloseTo(0.697, 3);
     const { points, rolls, note } = rollAdjustedHistory(NG_OCTOBER_ROLL, "NG=F");
-    const volatility = realizedVolatilityResult(points, 20).value!;
-    expect(volatility).toBeGreaterThan(0.475);
-    expect(volatility).toBeLessThan(0.495);
+    // 48.7% with the roll day dropped; the roll day here is NGZ26's own move from its open.
+    expect(realizedVolatilityResult(points, 20).value!).toBeCloseTo(0.484, 3);
     expect(rolls).toEqual([{ date: "2026-10-26", from: "NGX26", to: "NGZ26", source: "bars", basis: "open" }]);
     expect(note).toBe("rolls back-adjusted");
     // The newest contract's prices are as traded; the ones before the roll are scaled, never the volumes.
@@ -46,5 +45,50 @@ describe("rollAdjustedHistory", () => {
     // A stock, or a future's weekly bars, are left as served.
     expect(rollAdjustedHistory(january, "NG").note).toBeNull();
     expect(rollAdjustedHistory(january.filter((_, index) => index % 5 === 0), "NG=F").points).toEqual(january.filter((_, index) => index % 5 === 0));
+  });
+
+  test("hands a calendar roll over to the contract the bars name from then on, rolling once more only where they differ", () => {
+    // Untagged through 30 Jan, which the calendar has on NGH26 from the 29th; tagged from 2 Feb.
+    const untagged = bars([
+      ["2026-01-22", 5.039, 5.045], ["2026-01-23", 4.872, 5.275], ["2026-01-26", 5.791, 6.8], ["2026-01-27", 6.646, 6.954],
+      ["2026-01-28", 6.5, 7.46], ["2026-01-29", 3.742, 3.918], ["2026-01-30", 3.879, 4.354],
+    ]);
+    const tagged = (contract: string) => bars([["2026-02-02", 3.5, 3.237, contract], ["2026-02-03", 3.24, 3.3, contract], ["2026-02-04", 3.3, 3.25, contract]]);
+    const same = rollAdjustedHistory([...untagged, ...tagged("NGH26")], "NG=F");
+    expect(same.rolls.map((roll) => [roll.date, roll.from, roll.to, roll.source])).toEqual([["2026-01-29", "NGG26", "NGH26", "calendar"]]);
+    const other = rollAdjustedHistory([...untagged, ...tagged("NGJ26")], "NG=F");
+    expect(other.rolls.map((roll) => [roll.date, roll.from, roll.to, roll.source])).toEqual([
+      ["2026-01-29", "NGG26", "NGH26", "calendar"], ["2026-02-02", "NGH26", "NGJ26", "bars"],
+    ]);
+    // The handover day is the incoming contract's own move from its open, 3.5 to 3.237.
+    expect(other.points[7]!.close / other.points[6]!.close).toBeCloseTo(3.237 / 3.5, 9);
+    expect(other.note).toBe("rolls back-adjusted");
+  });
+
+  test("compounds two rolls, and a roll bar with no open is a flat day", () => {
+    const series = (rollOpen: number | null) => bars([
+      ["2026-10-19", 9.9, 10, "CLX26"], ["2026-10-20", 10, 11, "CLX26"], ["2026-10-21", rollOpen, 21, "CLZ26"],
+      ["2026-10-22", 21, 22, "CLZ26"], ["2026-10-23", 40, 42, "CLF27"], ["2026-10-26", 42, 44, "CLF27"],
+    ]);
+    const { points, rolls } = rollAdjustedHistory(series(20), "CL=F");
+    expect(rolls.map((roll) => [roll.date, roll.from, roll.to, roll.basis])).toEqual([
+      ["2026-10-21", "CLX26", "CLZ26", "open"], ["2026-10-23", "CLZ26", "CLF27", "open"],
+    ]);
+    // Each roll day is its incoming contract's own move; the first contract is scaled by both gaps.
+    expect(points[2]!.close / points[1]!.close).toBeCloseTo(21 / 20, 9);
+    expect(points[4]!.close / points[3]!.close).toBeCloseTo(42 / 40, 9);
+    expect(points[0]!.close).toBeCloseTo(10 * (20 / 11) * (40 / 22), 9);
+    expect(points.slice(4)).toEqual(series(20).slice(4));
+
+    const flat = rollAdjustedHistory(series(null), "CL=F");
+    expect(flat.rolls[0]).toMatchObject({ date: "2026-10-21", basis: "flat" });
+    expect(flat.points[2]!.close / flat.points[1]!.close).toBeCloseTo(1, 9);
+  });
+
+  test("an index, a coin pair and a stock are returned as served, with no note", () => {
+    const daily = bars([["2026-10-19", 100, 101], ["2026-10-20", 101, 99], ["2026-10-21", 99, 103], ["2026-10-22", 103, 104]]);
+    for (const symbol of ["^GSPC", "BTC-USD", "NG", "EURUSD=X"]) {
+      expect(rollAdjustedHistory(daily, symbol), symbol).toEqual({ points: daily, rolls: [], note: null });
+    }
   });
 });

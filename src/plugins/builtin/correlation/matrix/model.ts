@@ -196,6 +196,14 @@ export function buildStatusSummary(
   return parts.join(" · ");
 }
 
+/** "NG=F: rolls back-adjusted" for each listed continuous future, as GR says it: the pane's footer and `fn CORR`'s notes. */
+export function correlationRollNotes(symbols: readonly string[], seriesBySymbol: ReadonlyMap<string, CorrelationSeries>): string[] {
+  return symbols.flatMap((symbol) => {
+    const note = seriesBySymbol.get(symbol)?.rollNote;
+    return note ? [`${symbol}: ${note}`] : [];
+  });
+}
+
 /**
  * The matrix already labels every symbol on both axes and the pane now carries
  * its own range control, so the title stays generic instead of repeating them.

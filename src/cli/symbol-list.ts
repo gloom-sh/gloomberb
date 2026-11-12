@@ -321,8 +321,11 @@ export function parseSymbolText(text: string): SymbolText {
   };
 }
 
-/** Cells named in a note, split by semicolons when one of them has a comma of its own (`2.582,52; 1.899,21`). */
-/** The cells named once each in the order first read, a repeated one with its count (`2.582,52 (3 times)`), the rest counted. */
+/**
+ * Cells named in a note, once each in the order first read, a repeated one
+ * with its count (`2.582,52 (3 times)`), the rest counted. Split by semicolons
+ * when one of them has a comma of its own (`2.582,52; 1.899,21`).
+ */
 function listCells(cells: readonly string[]): string {
   const counts = new Map<string, number>();
   for (const cell of cells) counts.set(cell, (counts.get(cell) ?? 0) + 1);

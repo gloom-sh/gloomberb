@@ -84,7 +84,8 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
       ctx.signal.throwIfAborted();
       const model = projectRealizedVolatility(history.history, { symbol: instrument.symbol, exchange: instrument.exchange,
         estimator: ESTIMATOR_OPTIONS.find(({ value }) => value === args.options.estimator)?.value,
-        windows, lookbackYears: Number(args.options.lookbackYears) === 2 ? 2 : 1 });
+        // The windows asked for are the whole report: its rows, whether it is complete, and what it warns of.
+        windows, ...(asked ? { coneWindows: windows } : {}), lookbackYears: Number(args.options.lookbackYears) === 2 ? 2 : 1 });
       const errors = [history.error, iv?.error].filter((value): value is string => !!value);
       const proxyReading = proxy ? fxProxyIvLessRv(proxy, history.history, currencyPairInstrument(instrument.symbol, instrument.exchange)) : null;
       // The cone rows are as of the last daily bar, not of when the report ran.
@@ -100,7 +101,7 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
               format: (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--" })),
             { key: "percentile", header: "Percentile", format: (value) => typeof value === "number" ? `${value.toFixed(1)}%` : "--" },
             { key: "sampleSize", header: "Samples" },
-          ], rows: model.cone.filter((row) => !asked || windows.includes(row.window)).map((row) => ({ ...row })) },
+          ], rows: model.cone.map((row) => ({ ...row })) },
           ...proxy && proxyReading ? [fxProxySection(proxy, proxyReading)] : fx || !args.options.showIv ? [] : [{ title: "Current IV", entries: [
             { label: "ATM IV", value: iv?.reference?.value ?? null, formatted: iv?.reference ? `${(iv.reference.value * 100).toFixed(2)}%` : "--" },
             { label: "Expiry", value: iv?.reference?.expiration ?? null,

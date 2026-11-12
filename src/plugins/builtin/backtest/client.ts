@@ -94,7 +94,8 @@ export async function loadBacktestHistory(
     { forceRefresh: options.forceRefresh },
   );
   options.signal?.throwIfAborted();
-  // A continuous future is tested on one contract's returns at each roll, its earlier prices scaled to the newest contract's.
+  // A continuous future is tested on one contract's returns at each roll, its earlier prices scaled to the newest
+  // contract's: the run's prices (Close, Entry and Exit) are back-adjusted, and the report's headers say so.
   const adjusted = rollAdjustedHistory(resolveEntryValue(entry) ?? [], symbol);
   const history = toBacktestBars(adjusted.points, entry.history?.nonPositiveCloseDates);
   if (!history.bars.length) throw new Error(entry.error?.message ?? "Daily price history unavailable");

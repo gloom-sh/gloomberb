@@ -36,7 +36,7 @@ const METAL_SETTLEMENTS: Readonly<Record<string, number>> = {
  * Cboe's settlement procedures: energy 14:30 (NYMEX), grains 14:15 (13:15
  * Chicago), livestock 14:05, Treasuries and currencies 15:00, equity index
  * and VIX futures 16:00. Null for a root whose time is not listed here
- * (Dutch TTF, the ICE softs).
+ * (Dutch TTF, the ICE softs, lumber, aluminum), whose bar is read as stamped.
  */
 function futuresSettlementMinute(root: string | null): number | null {
   if (!root) return null;
@@ -55,8 +55,9 @@ function futuresSettlementMinute(root: string | null): number | null {
 /**
  * Where a daily bar of the listing falls on its date. A venue with a listed
  * regular close closes at that UTC time, and a future at its settlement.
- * Crypto and FX carry a bar dated 00:00 UTC, which closes when the next UTC
- * day starts. A venue with neither is unknown.
+ * Crypto, FX and a future whose settlement time is not listed carry a bar
+ * dated 00:00 UTC, which closes when the next UTC day starts. A venue with
+ * neither is unknown.
  */
 function dailyBarClose(leg: SessionLeg, time: number): { minute: number; text: string } | null {
   const label = leg.label ?? leg.symbol;
@@ -65,15 +66,14 @@ function dailyBarClose(leg: SessionLeg, time: number): { minute: number; text: s
   const exchange = canonicalExchange(leg.exchange);
   if (!exchange) return null;
   const future = futuresListingVenue(leg.symbol, exchange);
-  if (future) {
-    const settles = futuresSettlementMinute(future.root);
-    if (settles == null) return null;
+  const settles = future ? futuresSettlementMinute(future.root) : null;
+  if (settles != null) {
     const day = new Date(time).toISOString().slice(0, 10).split("-").map(Number);
     const at = zonedWallClockToUtcMs("America/New_York", day[0]!, day[1]!, day[2]!, Math.floor(settles / 60), settles % 60, 0);
     const utc = Math.floor(at / 60_000) % MINUTES_PER_DAY;
     return { minute: utc, text: `${label} settles ${clock(utc)} UTC` };
   }
-  return ALWAYS_OPEN_EXCHANGES.has(exchange) ? { minute: MINUTES_PER_DAY, text: `${label} bar is ${clock(0)} UTC` } : null;
+  return future || ALWAYS_OPEN_EXCHANGES.has(exchange) ? { minute: MINUTES_PER_DAY, text: `${label} bar is ${clock(0)} UTC` } : null;
 }
 
 /**

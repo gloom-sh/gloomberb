@@ -308,6 +308,28 @@ describe("useQuoteBoard follow-ups", () => {
   });
 });
 
+describe("useQuoteBoard background top-ups", () => {
+  test("a row that has a quote is never marked loading or stale while its symbol is asked for alone", async () => {
+    // The poll's batch has only a dated price for each symbol and asks for it alone, a read that never answers here.
+    let calls = 0;
+    const provider = {
+      getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
+        calls += 1;
+        return targets.map((target) => calls === 1 ? { target, quote: quote(target.symbol, 100) }
+          : { target, quote: { ...quote(target.symbol, 90), lastUpdated: 1_699_990_000_000, stale: true }, followUp: "refresh" });
+      },
+      getQuote: () => new Promise<Quote>(() => {}),
+    };
+    await mount(provider, POLL_MS);
+    expect(quotes.get("^GSPC")).toMatchObject({ quote: { price: 100 }, loading: false, stale: false });
+
+    await settle(POLL_MS * 2);
+    expect(calls).toBeGreaterThan(1);
+    expect(quotes.get("^GSPC")).toMatchObject({ quote: { price: 100 }, loading: false, stale: false });
+    expect(quoteBoardStatus(quotes)).toMatchObject({ loading: 0, stale: 0 });
+  });
+});
+
 describe("useQuoteBoard late answers", () => {
   /** A cache-first board whose batch and single reads answer when the test says. */
   async function mountPending(symbols: string[]) {

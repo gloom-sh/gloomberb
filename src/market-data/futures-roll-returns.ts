@@ -165,12 +165,14 @@ const positive = (value: number | undefined): value is number => typeof value ==
  * charts and `history` keep the prices as traded.
  */
 export function rollAdjustedHistory(points: readonly PricePoint[], symbol: string): RollAdjustedHistory {
+  const asServed = (): RollAdjustedHistory => ({ points: [...points], rolls: [], note: null });
   const root = continuousRoot(symbol);
+  if (!root) return asServed();
   const timed = points.map((point) => ({ point, time: getPricePointTimestamp(point) }));
-  if (!root || timed.some(({ time }) => !Number.isFinite(time))) return { points: [...points], rolls: [], note: null };
+  if (timed.some(({ time }) => !Number.isFinite(time))) return asServed();
   timed.sort((left, right) => left.time - right.time);
+  if (!dailyBars(timed.map(({ time }) => time))) return asServed();
   const sorted = timed.map(({ point }) => point);
-  if (!dailyBars(timed.map(({ time }) => time))) return { points: sorted, rolls: [], note: null };
   const days = timed.map(({ time }) => new Date(time).toISOString().slice(0, 10));
 
   const firstNamed = sorted.findIndex((point) => !!point.contract);

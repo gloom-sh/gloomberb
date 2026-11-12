@@ -4,7 +4,7 @@ import { formatNumber, formatSignificant, significantDecimals } from "../../../u
 import { logFailure } from "../../../utils/log-failure";
 import { mixedSessionCloseNote } from "../../../market-data/market/session-close-note";
 import { resolveHeadlessInstrument, loadHeadlessSymbols } from "../shared/headless-market-data";
-import { buildCorrelationMatrix, buildCorrelationSeries, buildGeoCorrelationSeries, pairKey, type CorrelationSeries } from "./matrix/model";
+import { buildCorrelationMatrix, buildCorrelationSeries, buildGeoCorrelationSeries, correlationRollNotes, pairKey, type CorrelationSeries } from "./matrix/model";
 import { geoSeriesToken, loadGeoCorrelationHistory } from "./geo";
 import { buildRelationshipAnalysis, DEFAULT_RELATIONSHIP_SECOND_SYMBOL } from "./relationship/model";
 import { paneSchemas } from "./headless-schema";
@@ -73,7 +73,7 @@ export const correlationHeadless: HeadlessPaneDefinition<"rows"> = {
       reason: row.sampleSize < 5 ? "Insufficient shared return observations" : "Zero return variance",
     }));
     const asOf = newestReportTime(symbols.map((symbol) => bySymbol.get(symbol)?.prices.at(-1)?.dateKey));
-    const rollNotes = symbols.flatMap((symbol) => bySymbol.get(symbol)?.rollNote ? [`${symbol}: ${bySymbol.get(symbol)!.rollNote}`] : []);
+    const rollNotes = correlationRollNotes(symbols, bySymbol);
     return {
       freshness: { asOf, ...unfinishedBarFreshness([...bars.values()], asOf?.slice(0, 10)) },
       rows, unavailableSymbols,

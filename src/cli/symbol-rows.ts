@@ -19,7 +19,7 @@ import {
 import { isUsSymbolVenue, LOOKUP_TIMEOUT_MS, movedAwayChange, tickerChangeLine, tickerChangeSymbol, type MovedTickerChange } from "../tickers/ticker-changes";
 import { isVenueAbroad } from "../tickers/listing-fate";
 import { serviceMarkedOtherListing } from "../tickers/company-name-listing";
-import { sameCompany, shortCompanyName } from "../tickers/company-name";
+import { companyNameCase, sameCompany, shortCompanyName } from "../tickers/company-name";
 import { tickerHasListingSuffix } from "../sources/listing-symbols";
 import { canonicalExchange, exchangeLabel, isUsListingExchange, resolveExchangeTimeZone } from "../utils/exchanges";
 import { isCurrencyPairListing } from "../utils/fx-market-hours";
@@ -321,8 +321,9 @@ function quotelessNote(resolution: CliTicker): string | null {
  * name as its quote gives it, else by the issuer the change names, when known.
  */
 function stoppedTradingLine(symbol: string, moved: MovedTickerChange, name?: string | null): string {
-  const own = name?.trim() && name.trim().toUpperCase() !== symbol.toUpperCase() ? shortCompanyName(name.trim()) : null;
-  const issuer = own ?? moved.issuer;
+  // Written as a name is, never in a feed's capitals ("CHESAPEAKE ENERGY CORP" is Chesapeake Energy).
+  const own = name?.trim() && name.trim().toUpperCase() !== symbol.toUpperCase() ? shortCompanyName(companyNameCase(name.trim())) : null;
+  const issuer = own ?? (moved.issuer ? companyNameCase(moved.issuer) : null);
   const who = issuer ? `${issuer} (${symbol})` : symbol;
   return `${who} stopped trading ${moved.changes[0]!.date}, now ${moved.tradesAs}`;
 }

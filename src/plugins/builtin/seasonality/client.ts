@@ -34,8 +34,10 @@ const BUFFER_RANGE = { monthly: "ALL", daily: "5Y" } as const;
 
 /**
  * The bars a tab reads: monthly or daily ones, and for a continuous future
- * (NG=F) daily ones either way, the newest a read returns (about twenty
- * years), whose rolls are back-adjusted before the months are taken.
+ * (NG=F) daily ones either way, the newest a read returns (all of NG=F's,
+ * from August 2000), whose rolls are back-adjusted before the months are
+ * taken. A lookback reaching before them says where they start
+ * (SeasonalityModel.historyStart).
  */
 function seasonalityRequest(instrument: InstrumentRef, cadence: SeasonalityCadence): ChartRequest {
   if (isContinuousFuture(instrument.symbol)) {

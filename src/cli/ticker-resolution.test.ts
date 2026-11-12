@@ -371,6 +371,17 @@ test("a bare symbol whose line stopped trading as its company moved needs a choi
     });
   };
 
+  // A listing named in a feed's capitals reads as a name: Chesapeake Energy, never CHESAPEAKE ENERGY CORP or its successor's.
+  const chk = { ...rad, symbol: "CHK", name: "CHESAPEAKE ENERGY CORP" };
+  const chesapeake = createTestDataProvider({
+    search: async (query) => query === "CHK" ? [chk] : [],
+    getQuote: async () => ({ ...ended("CHK"), name: "CHESAPEAKE ENERGY CORP" }),
+    getTickerChanges: async () => ({ symbol: "CHK", moved: { symbol: "EXE", name: "EXPAND ENERGY CORP", hops: [{ from: "CHK", to: "EXE", date: "2024-10-02" }] },
+      formerly: null, listedName: null, changes: [{ from: "CHK", to: "EXE", date: "2024-10-02" }] }),
+  });
+  const [renamed] = await addSymbols({ symbols: ["CHK"], store: tickerStore(), dataProvider: chesapeake, add: (ticker) => ({ ticker, changed: true }) });
+  expect(renamed?.message).toBe("Chesapeake Energy (CHK) stopped trading 2024-10-02, now EXE");
+
   const rows = await addSymbols({ symbols: ["RAD", "OLDCO"], store: tickerStore(), dataProvider: source(0), add: (ticker) => ({ ticker, changed: true }) });
   expect(rows.map((row) => [row.status, row.message ?? null, row.tradesAs ?? null])).toEqual([
     ["needs_choice", "RAD stopped trading 2023-10-17, now RADCQ", "RADCQ"],
