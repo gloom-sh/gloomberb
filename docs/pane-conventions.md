@@ -811,6 +811,17 @@ header, with the detail's height.
   `gloomberb/quotes` and `LIVE_STREAMING_QUICK_SETTING`. Fetching lives in
   `client.ts`, projection in `view.ts`/`model.ts`, shared with the `headless`
   definition.
+- Docking, floating, stacking or fullscreening a pane draws it in another
+  place in the tree, so it mounts again. Its first frame after must show what
+  the last one did, with the same selection, open item, draft and scroll
+  target. What the user chose belongs in pane state (`usePluginPaneState`,
+  `usePaneSettingValue`), never component state. An effect that clears or
+  moves the selection acts on a loaded list only: rows that have not come in
+  yet (they load after every mount) say nothing about it. What cannot be
+  saved with the pane or travel in a shared layout (a live conversation with
+  an answer coming in, a transcript, a draft) goes in `usePaneSession` or
+  `usePaneSessionState` (`src/state/pane-session.ts`): in memory, per pane,
+  released a moment after the pane closes.
 - Live data: gate timers, polls and streams on `usePaneVisible()` (app
   visible and pane not covered), not on focus; `useAppVisible()` is for work
   that must continue while the pane is covered. A covered pane keeps its

@@ -6,6 +6,7 @@ import { createRemoteUiRegistry, RemoteUiRegistryProvider, type RemoteUiRegistry
 import { createOpenTuiTestHarness, TestDialogProvider } from "../../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../../test-support/pane";
+import { resetPaneSessionsForTests } from "../../../../state/pane-session";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
 import { setSharedRegistryForTests, type PluginRegistry } from "../../../registry";
 import { Box, Text } from "../../../../ui";
@@ -110,6 +111,7 @@ beforeEach(() => {
   storedTranscripts = {};
   transcriptStatus = 200;
   askgConversationListStore.reset();
+  resetPaneSessionsForTests();
   remoteRegistry = null;
   // A transport that buffers whole responses, which is what the desktop had
   // before the streaming bridge: `isStreamingSupported` is false.
@@ -201,6 +203,7 @@ afterEach(() => {
   resetASKGClientManifestCache();
   setSharedRegistryForTests(undefined);
   askgConversationListStore.reset();
+  resetPaneSessionsForTests();
 });
 
 async function renderPane(paneWidth: number, focused = true): Promise<string> {
@@ -736,6 +739,8 @@ describe("ASKGPane conversations", () => {
     await act(async () => {
       await tui.render(<Box />, { width: WIDE_PANE_WIDTH, height: 24 });
     });
+    // Past the pane's grace period, so it comes back from the server rather than from memory.
+    resetPaneSessionsForTests();
     await renderPane(WIDE_PANE_WIDTH);
     expect(tui.frame()).toContain("About 4.2%");
   });

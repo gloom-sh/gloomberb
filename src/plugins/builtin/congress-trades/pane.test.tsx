@@ -1,4 +1,4 @@
-import { act, useReducer } from "react";
+import { act, useReducer, useState } from "react";
 import { afterEach, expect, test } from "bun:test";
 import { setCloudApiFetchTransport, type CloudCongressHousePayload, type CloudCongressTradePayload } from "../../../api-client";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
@@ -33,18 +33,23 @@ const payload: CloudCongressHousePayload = {
   members: [],
 };
 
+/** Returns what mounts the pane again, as docking or floating it does, with the pane's state kept. */
 async function mount(width: number) {
   setCloudApiFetchTransport(async () => Response.json(payload));
   const paneId = "congress-trades:test";
   const state = createInitialState(createTestPaneConfig("/tmp/gloom-cg-test", { paneId: "congress-trades", instanceId: paneId, binding: { kind: "none" } }));
   const runtime = createTestPluginRuntime();
+  let remount = () => {};
   function Harness() {
     const [current, dispatch] = useReducer(appReducer, state);
+    const [mounts, setMounts] = useState(0);
+    remount = () => setMounts((count) => count + 1);
     return <TestPaneFrame state={current} dispatch={dispatch} paneId={paneId} pluginId="gloomberb-cloud" runtime={runtime} width={width} height={24} footerKeys>
-      {(body) => <CongressPane paneId={paneId} paneType="congress-trades" {...body} focused />}
+      {(body) => <CongressPane key={mounts} paneId={paneId} paneType="congress-trades" {...body} focused />}
     </TestPaneFrame>;
   }
   await act(async () => { await tui.render(<Harness />, { width, height: 24 }); });
+  return () => act(async () => { remount(); });
 }
 
 test("VS SPY reads the excess since filing, and a trade's detail shows SPY over both windows", async () => {
@@ -73,4 +78,16 @@ test("members show the median against SPY, and a member's trades carry the colum
   expect(detail).toContain("since filing, 2 priced");
   expect(detail).toContain("VS SPY");
   expect(detail).toContain("+9.5%");
+});
+
+test("the selected trade stays selected when the pane mounts again, as when it is docked or floated", async () => {
+  const remount = await mount(160);
+  await tui.waitForFrameToContain("VS SPY");
+  // The second trade, the sale.
+  await tui.emitKeypress({ name: "down" });
+  await remount();
+  await tui.waitForFrameToContain("VS SPY");
+  await tui.emitKeypress({ name: "return" });
+  const detail = await tui.waitForFrameToContain("tx vs SPY");
+  expect(detail).toMatch(/side\s+Sale/);
 });
