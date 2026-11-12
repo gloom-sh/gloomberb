@@ -44,7 +44,7 @@ export function isReasonCode(text: string | null | undefined): boolean {
  * What a reason code says happened, as a clause to follow a colon or stand in
  * a footer: "the source did not answer". An unknown code reads as a failure.
  */
-export function reasonCodeClause(code: string): string {
+function reasonCodeClause(code: string): string {
   const trimmed = code.trim();
   if (Object.hasOwn(CLAUSES, trimmed)) return CLAUSES[trimmed]!;
   if (/RATE_?LIMIT/.test(trimmed)) return BUSY;
