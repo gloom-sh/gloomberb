@@ -3,7 +3,7 @@ import { applyTheme, colors } from "../../../theme/colors";
 import { contrastRatio } from "../../../theme/color-utils";
 import { DEFAULT_THEME, getThemeIds } from "../../../theme/themes";
 import type { OptionContract } from "../../../types/financials";
-import { createOptionColumns, formatIv, optionColumnColor, renderOptionCell } from "./table";
+import { createOptionColumns, DEFAULT_OPTION_FIELD_IDS, fitOptionFieldIds, formatIv, optionColumnColor, renderOptionCell } from "./table";
 import type { OptionColumn, OptionTableRow } from "./types";
 
 // The band has to clear the neighbouring one by this much to read as a band at
@@ -131,4 +131,15 @@ test("a filled IV leads with ~, still fits the column at 100% and over, and an u
     return renderOptionCell(row, column, 0, { selected: false }).text;
   };
   expect([iv(true), iv(false)]).toEqual(["~9.5%", "9.5%"]);
+});
+
+test("a narrow chain gives up the same fields on both sides, quotes last, so the puts stay beside the calls", () => {
+  const width = (fields: readonly string[]) => createOptionColumns(fields as never).reduce((sum, column) => sum + column.width, 0);
+  expect(fitOptionFieldIds(DEFAULT_OPTION_FIELD_IDS, 200)).toEqual(DEFAULT_OPTION_FIELD_IDS);
+  // A floating OMON at 120x36 is 75 cells wide: the last trade and volume go.
+  expect(fitOptionFieldIds(DEFAULT_OPTION_FIELD_IDS, 75)).toEqual(["bid", "ask", "iv", "delta", "openInterest"]);
+  expect(width(fitOptionFieldIds(DEFAULT_OPTION_FIELD_IDS, 75))).toBeLessThanOrEqual(75);
+  // Settings' order is kept, a put-only field counts once, and the bid never goes.
+  expect(fitOptionFieldIds(["iv", "costOfSpot", "ask", "bid"], 50)).toEqual(["iv", "ask", "bid"]);
+  expect(fitOptionFieldIds(DEFAULT_OPTION_FIELD_IDS, 10)).toEqual(["bid"]);
 });

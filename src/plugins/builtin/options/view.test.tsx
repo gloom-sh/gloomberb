@@ -555,7 +555,7 @@ test("lets the expiration tab row use the full available width", async () => {
   expect(frame).toContain(formatExpDate(expirationDates.at(-1)!));
 });
 
-test("keeps expiration tabs independently scrollable from a narrow strike table", async () => {
+test("keeps both sides of a narrow strike table on screen and its expiration tabs independently scrollable", async () => {
   const expirationDates = Array.from({ length: 12 }, (_, index) => (
     Math.floor(Date.UTC(2026, index, 20) / 1000)
   ));
@@ -583,8 +583,10 @@ test("keeps expiration tabs independently scrollable from a narrow strike table"
   });
 
   await renderSettled();
+  // The chain gives up fields on both sides rather than scroll the puts out of view.
   const bodyScroll = tui.setup().renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable | undefined;
-  expect(bodyScroll?.horizontalScrollBar.visible).toBe(true);
+  expect(bodyScroll?.horizontalScrollBar.visible).toBe(false);
+  expect(tui.frame()).toMatch(/C BID\s+C ASK.*STRIKE.*P ASK\s+P BID/);
   expect(tui.frame()).not.toContain(formatExpDate(expirationDates.at(-1)!));
 
   for (let index = 1; index < expirationDates.length; index += 1) {
@@ -595,7 +597,6 @@ test("keeps expiration tabs independently scrollable from a narrow strike table"
     await renderSettled();
   }
 
-  expect(bodyScroll?.horizontalScrollBar.visible).toBe(true);
   expect(bodyScroll?.scrollLeft ?? 0).toBe(0);
   expect(requestedExpirations).toContain(expirationDates.at(-1));
   expect(tui.frame()).toContain(formatExpDate(expirationDates.at(-1)!));
