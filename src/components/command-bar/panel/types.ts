@@ -30,8 +30,6 @@ export interface CommandBarPanelProps {
   onThemeCommit: (themeId: string) => void;
   onThemePreview: (themeId: string | null) => void;
   panelBounds: LayoutBounds;
-  /** What the terminal sheet clears behind it (see CommandBarPanelLayout); null on the desktop. */
-  clearBounds?: LayoutBounds | null;
   queryDisplayWidth: number;
   rootGhostSuffix: string | null;
   rootShortcutFeedback: string | null;

@@ -65,7 +65,6 @@ export function CommandBarPanel({
   onThemeCommit,
   onThemePreview,
   panelBounds,
-  clearBounds = null,
   queryDisplayWidth,
   rootGhostSuffix,
   rootShortcutFeedback,
@@ -136,6 +135,8 @@ export function CommandBarPanel({
   return (
     // The click-away overlay starts where the sheet does: the header above it
     // holds the bar's input, and a click there must reach it, not close the bar.
+    // It draws nothing: the panes beside and below the sheet stay as they are,
+    // a chart image among them too, and only the sheet covers them.
     <Box
       position="absolute"
       top={panelBounds.y}
@@ -149,19 +150,6 @@ export function CommandBarPanel({
         onOverlayClose();
       }}
     >
-      {/* The terminal sheet's rows are its own, edge to edge: no piece of a pane shows at its sides.
-        They clear to the app's own background, so only the sheet under the prompt wears the bar's fill. */}
-      {clearBounds && (
-        <Box
-          position="absolute"
-          top={clearBounds.y}
-          left={clearBounds.x}
-          width={clearBounds.width}
-          height={clearBounds.height}
-          backgroundColor={colors.bg}
-          zIndex={100}
-        />
-      )}
       <Box
         position="absolute"
         top={0}

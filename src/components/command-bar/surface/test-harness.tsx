@@ -1,5 +1,5 @@
 import { expect } from "bun:test";
-import { useLayoutEffect, useMemo, useReducer, useRef, type Dispatch } from "react";
+import { useLayoutEffect, useMemo, useReducer, useRef, type Dispatch, type ReactNode } from "react";
 import { AppDialogBridge } from "../../../app/dialog-bridge";
 import type { PluginRegistry } from "../../../plugins/registry";
 import { useShortcut } from "../../../react/input";
@@ -274,6 +274,7 @@ export function CommandBarHarness({
   onUnhandledEnter,
   remoteRegistry,
   storeRef,
+  underlay,
 }: {
   query: string;
   disabledPlugins?: string[];
@@ -295,6 +296,8 @@ export function CommandBarHarness({
   remoteRegistry?: RemoteUiRegistry;
   /** Receives the live store, to dispatch as the rest of the app would. */
   storeRef?: { current: AppContextStoreValue | null };
+  /** What the app draws under the bar, in the rows between the header and the probes. */
+  underlay?: ReactNode;
 }) {
   let config: AppConfig = {
     ...createDefaultConfig("/tmp/gloomberb-test"),
@@ -353,7 +356,7 @@ export function CommandBarHarness({
           {/* The header hosts the bar's input while it is open, so typing in a
               test needs the real header on the first row. */}
           <Header />
-          <Box flexGrow={1} />
+          <Box flexGrow={1} flexDirection="column">{underlay}</Box>
           {/* The sheet spans the full width and can reach as far down as
               termHeight - 6 (panel/layout.ts), so probes live on the bottom row,
               the one place no sheet height can cover. */}
