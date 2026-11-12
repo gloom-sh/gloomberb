@@ -9,9 +9,9 @@ import type {
   HeadlessRowsResult,
 } from "../../../types/plugin";
 import type { EarningsEvent } from "../../../types/data-provider";
-import { addDays, boardKey, boardReport, boardRowOf, fallbackReport, MIN_AVERAGE_REPORTS, newYorkToday, type BoardReport } from "./board-model";
+import { addDays, boardKey, boardReport, boardRowOf, fallbackReport, historyListing, MIN_AVERAGE_REPORTS, newYorkToday, type BoardReport } from "./board-model";
 import { BOARD_WEEKS, boardRangeDays, boardRangeLabel, isBoardWeek, requestedBoardRange, type BoardRange } from "./calendar-model";
-import { fetchEarningsCalendar, fetchEarningsHistory, hasEarningsHistory, noHistoryAbroad, sameHistoryListing } from "./client";
+import { fetchEarningsCalendar, fetchEarningsHistory, noHistoryAbroad, sameHistoryListing } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL } from "./format";
 import { historyRows, periodText } from "./history-model";
@@ -254,11 +254,9 @@ async function abroadHistoryNotice(symbol: string, company: string | null, conte
 async function historyReport(symbol: string, context: HeadlessPaneContext, deps: EarningsHeadlessDependencies): Promise<HeadlessRowsResult> {
   // The board is US listings'; SAN:EPA's past reports are not on it, and bare SAN there is another company.
   // A Hong Kong listing has its own, from its results announcements.
-  const venueAbroad = listingAbroadVenue(symbol);
-  const abroad = !hasEarningsHistory(venueAbroad);
-  const ownAbroad = venueAbroad != null && !abroad;
+  const { listing, abroad, ownAbroad } = historyListing(symbol);
   const [history, upcoming] = await Promise.allSettled([
-    abroad ? Promise.resolve(null) : ownAbroad ? deps.history(symbol, context).catch(noHistoryAbroad) : deps.history(symbol, context),
+    abroad ? Promise.resolve(null) : ownAbroad ? deps.history(listing, context).catch(noHistoryAbroad) : deps.history(listing, context),
     deps.upcoming([symbol], context),
   ]);
   if (history.status === "rejected" && upcoming.status === "rejected") throw history.reason;
@@ -299,10 +297,13 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
   // An ETF, an index, a currency pair, a coin or a future has no earnings: that is the answer, not a gap in the data,
   // and a history that failed for one (a coin is no US ticker) is no error.
   const noEarnings = rows.length === 0 && !abroad ? await loadNoEarningsText(context.marketData, symbol, "cli") : null;
+  // A company ERN covers whose history answered with nothing (AIA's, 1299:HKEX) has no reports on record yet: no
+  // complete answer, and not one ERN does not cover.
+  const empty = noEarnings ?? (rows.length === 0 && payload ? `No earnings reports on record for ${symbol}.` : null);
   return {
     columns: ownAbroad ? LISTING_HISTORY_COLUMNS : HISTORY_COLUMNS,
     rows,
-    ...(noEarnings ? { empty: noEarnings, complete: true, unavailableSymbols: [] } : {}),
+    ...(noEarnings ? { empty: noEarnings, complete: true, unavailableSymbols: [] } : empty ? { empty } : {}),
     errors: history.status === "rejected" && !noEarnings ? [String(history.reason instanceof Error ? history.reason.message : history.reason)] : undefined,
     metadata: {
       symbol, name: payload?.name ?? next?.name ?? null, asOf: payload?.asOf ?? null,

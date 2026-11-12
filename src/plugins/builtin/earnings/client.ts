@@ -114,15 +114,6 @@ export function cachedEarningsHistory(symbol: string, accessKey?: string) {
   return cachedCloudResource(historyCache, historyKey(symbol, undefined, accessKey), (payload) => validateEarningsHistory(payload, symbol));
 }
 
-/**
- * Whether ERN reads a listing's own past reports: every US listing, and of
- * the listings abroad Hong Kong's, which Gloom Cloud reads from their
- * results announcements. Any other listing abroad shows its next report.
- */
-export function hasEarningsHistory(venueAbroad: string | null): boolean {
-  return venueAbroad == null || venueAbroad === "HKEX";
-}
-
 /** A server that does not read a listing abroad's history yet refuses it (400): the next report stands alone, as before. */
 export function noHistoryAbroad(error: unknown): null {
   if (error instanceof ApiRequestError && error.status === 400) return null;

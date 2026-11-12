@@ -16,15 +16,14 @@ import { colors } from "../../../theme/colors";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useAssetData } from "../../runtime";
 import { isBoardRowLoading, useQuoteBoard } from "../shared/use-quote-board";
-import { newYorkToday, reportMove } from "./board-model";
+import { historyListing, newYorkToday, reportMove } from "./board-model";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
-import { cachedEarningsHistory, hasEarningsHistory, loadEarningsHistory, noHistoryAbroad } from "./client";
+import { cachedEarningsHistory, loadEarningsHistory, noHistoryAbroad } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { chartAxis, chartPoints, chartRows, historyFigures, historyRows, type HistoryRow } from "./history-model";
 import { historyColumns, renderHistoryCell, type HistoryColumn, type LiveMove } from "./history-table";
 import { loadNoEarningsText } from "./no-earnings";
-import { listingAbroadVenue } from "../../../utils/sec";
 
 const barDate = (row: HistoryRow) => (row.implied != null || row.move != null ? new Date(`${row.date}T00:00:00Z`) : null);
 
@@ -41,11 +40,9 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
   registrationId: string;
 }) {
   const dataProvider = useAssetData();
-  // Past reports are the US board's, where SAN is not SAN:EPA's company, and a Hong Kong listing's own (its results
-  // announcements, in their currency): any other listing abroad shows its next report alone.
-  const venueAbroad = listingAbroadVenue(symbol);
-  const abroad = !hasEarningsHistory(venueAbroad);
-  const ownAbroad = venueAbroad != null && !abroad;
+  // Past reports are a US listing's and a Hong Kong listing's own, read by its key however it was typed (0700.HK is
+  // 0700:HKEX): any other listing abroad shows its next report alone.
+  const { listing, abroad, ownAbroad } = historyListing(symbol);
   // A Hong Kong listing's announcement figures come with Pro, as KPIS has them: what Gloom Cloud answers differs by
   // plan, so it is kept per session and plan.
   const access = usePlanAccess();
@@ -53,11 +50,11 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
   const accessKey = ownAbroad ? `${session.requestKey}:${access.hasProAccess ? "pro" : "free"}` : undefined;
   const loader = useCallback(
     (force: boolean) => (abroad ? Promise.resolve(null)
-      : ownAbroad ? loadEarningsHistory(symbol, force, undefined, accessKey).catch(noHistoryAbroad)
-      : loadEarningsHistory(symbol, force)),
-    [abroad, accessKey, ownAbroad, symbol],
+      : ownAbroad ? loadEarningsHistory(listing, force, undefined, accessKey).catch(noHistoryAbroad)
+      : loadEarningsHistory(listing, force)),
+    [abroad, accessKey, listing, ownAbroad],
   );
-  const resource = useAsyncResource(loader, { initialData: () => (abroad ? null : cachedEarningsHistory(symbol, accessKey)) });
+  const resource = useAsyncResource(loader, { initialData: () => (abroad ? null : cachedEarningsHistory(listing, accessKey)) });
   // Past the stored calendar's horizon, and for listings it does not carry, the per-ticker calendar has the next date.
   const upcomingLoader = useCallback(
     (force: boolean) => loadEarningsCalendar(dataProvider, [symbol], { force }).then((result) => result.events[0] ?? null),
