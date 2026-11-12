@@ -745,6 +745,7 @@ function incompleteDetail(
   status: { complete: boolean; unavailableSymbols: string[] },
 ): boolean | string {
   if (status.complete) return false;
+  if (result.incompleteDetail) return result.incompleteDetail;
   const requested = result.metadata?.requested;
   const available = result.metadata?.available;
   if (typeof requested === "number" && typeof available === "number" && available < requested) {

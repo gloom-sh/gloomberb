@@ -44,13 +44,16 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
       { key: "tab", type: "enum", values: [{ value: "graph" }, { value: "cone" }], defaultValue: initialView,
         description: "Initial view", pluginState: { pluginId: "ticker-research", key: "activeTabId" } },
       { key: "estimator", type: "enum", values: ESTIMATOR_OPTIONS.map(({ value }) => ({ value })), defaultValue: "close-to-close", description: "Realized volatility estimator" },
-      { key: "windows", type: "string", defaultValue: "10,30,90", description: "Comma-separated bar windows: 10,20,30,60,90,180,260" },
+      { key: "windows", type: "string", defaultValue: "",
+        description: "Comma-separated bar windows from 10,20,30,60,90,180,260: the cone rows and graph lines shown (every row, and the 10,30,90 lines, when left out)" },
       { key: "lookbackYears", type: "integer", minimum: 1, maximum: 2, defaultValue: 1, description: "Historical lookback in calendar years" },
       { key: "showIv", type: "boolean", defaultValue: true, description: "Include a dated current ATM IV observation" },
     ],
     async load(args, ctx) {
-      const windows = selectedWindows(args.options.windows);
-      if (!windows.length || String(args.options.windows).split(",").some((value) => !windows.includes(Number(value)))) {
+      // Windows asked for are the cone's rows and the graph's lines; none asked for, every row and the graph's default lines.
+      const asked = String(args.options.windows ?? "").trim();
+      const windows = selectedWindows(asked);
+      if (asked && (!windows.length || asked.split(",").some((value) => !windows.includes(Number(value))))) {
         throw new Error("Choose bar windows from 10,20,30,60,90,180,260");
       }
       const instrument = await resolveHeadlessInstrument(ctx, args.symbols[0]!);
@@ -81,7 +84,8 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
       ctx.signal.throwIfAborted();
       const model = projectRealizedVolatility(history.history, { symbol: instrument.symbol, exchange: instrument.exchange,
         estimator: ESTIMATOR_OPTIONS.find(({ value }) => value === args.options.estimator)?.value,
-        windows, lookbackYears: Number(args.options.lookbackYears) === 2 ? 2 : 1 });
+        // The windows asked for are the whole report: its rows, whether it is complete, and what it warns of.
+        windows, ...(asked ? { coneWindows: windows } : {}), lookbackYears: Number(args.options.lookbackYears) === 2 ? 2 : 1 });
       const errors = [history.error, iv?.error].filter((value): value is string => !!value);
       const proxyReading = proxy ? fxProxyIvLessRv(proxy, history.history, currencyPairInstrument(instrument.symbol, instrument.exchange)) : null;
       // The cone rows are as of the last daily bar, not of when the report ran.
@@ -98,7 +102,7 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
             { key: "percentile", header: "Percentile", format: (value) => typeof value === "number" ? `${value.toFixed(1)}%` : "--" },
             { key: "sampleSize", header: "Samples" },
           ], rows: model.cone.map((row) => ({ ...row })) },
-          ...proxy && proxyReading ? [fxProxySection(proxy, proxyReading)] : fx ? [] : [{ title: "Current IV", entries: [
+          ...proxy && proxyReading ? [fxProxySection(proxy, proxyReading)] : fx || !args.options.showIv ? [] : [{ title: "Current IV", entries: [
             { label: "ATM IV", value: iv?.reference?.value ?? null, formatted: iv?.reference ? `${(iv.reference.value * 100).toFixed(2)}%` : "--" },
             { label: "Expiry", value: iv?.reference?.expiration ?? null,
               formatted: iv?.reference ? new Date(iv.reference.expiration * 1000).toISOString().slice(0, 10) : "--" },
@@ -117,7 +121,8 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
           && !proxyReading?.stale,
         unavailableSymbols: model.history.length ? [] : [instrument.symbol], errors,
         // A proxy that could not be read leaves the pair's own volatility whole: said, not failed.
-        notes: [barsPerYearLabel(model.barsPerYear), ...model.historyNote ? [model.historyNote] : [], ...proxy?.error ? [proxy.error] : [],
+        notes: [barsPerYearLabel(model.barsPerYear), ...model.rollNote ? [model.rollNote] : [], ...model.historyNote ? [model.historyNote] : [],
+          ...proxy?.error ? [proxy.error] : [],
           ...proxyReading?.note ? [proxyReading.note] : []],
         metadata: { unit: "decimal annualized volatility", annualization: model.barsPerYear, model, currentIv: iv,
           ...proxy ? { fxVolProxy: { ...proxy, ...proxyReading } } : {},

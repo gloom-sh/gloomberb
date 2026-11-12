@@ -26,7 +26,7 @@ export const seasonalityHeadless: HeadlessPaneDefinition<"bundle"> = {
     const weekdays = args.options.tab === "weekdays";
     const history = await loadSeasonalityHistory({ instrument, cadence: weekdays ? "daily" : "monthly", signal: ctx.signal }, ctx.marketData);
     ctx.signal.throwIfAborted();
-    const common = { errors: history.error ? [history.error] : [] };
+    const common = { errors: history.error ? [history.error] : [], ...(history.rollNote ? { notes: [history.rollNote] } : {}) };
     if (weekdays) {
       const model = projectWeekdays(history.history, { symbol: instrument.symbol, exchange: instrument.exchange, fetchedAt: history.fetchedAt });
       const present = model.start != null;
@@ -47,7 +47,11 @@ export const seasonalityHeadless: HeadlessPaneDefinition<"bundle"> = {
           fetchedAt: history.fetchedAt, methodology: "docs/research-data.md#seasonality" },
       };
     }
-    const model = projectSeasonality(history.history, { symbol: instrument.symbol, lookbackYears: Number(args.options.lookbackYears) || 10 });
+    const lookbackYears = Number(args.options.lookbackYears) || 10;
+    const model = projectSeasonality(history.history, { symbol: instrument.symbol, lookbackYears });
+    // A lookback past the first month on record says where the years it covers start.
+    const coverage = model.historyStart
+      ? `History starts ${model.historyStart}, so the ${lookbackYears}-year lookback covers ${model.years.length} calendar year${model.years.length === 1 ? "" : "s"}` : null;
     // Monthly bars are dated by their month's first day, which is no close while the month runs.
     const bar = model.asOf?.toISOString().slice(0, 10);
     // The venue whose sessions say whether the month still runs: the key's, or for a bare symbol its quote's.
@@ -66,6 +70,7 @@ export const seasonalityHeadless: HeadlessPaneDefinition<"bundle"> = {
       complete: !history.stale && !history.error && model.years.length > 0,
       unavailableSymbols: model.years.length ? [] : [instrument.symbol],
       ...common,
+      ...(coverage ? { notes: [...common.notes ?? [], coverage] } : {}),
       ...(forming ? { freshness: { periodToDate: forming } } : closed ? { freshness: { asOf: closed } } : {}),
       metadata: { unit: "decimal return, local-price close to close", asOf: model.asOf?.toISOString() ?? null, stale: history.stale,
         fetchedAt: history.fetchedAt, averagePath: model.averagePath, methodology: "docs/research-data.md#seasonality" },

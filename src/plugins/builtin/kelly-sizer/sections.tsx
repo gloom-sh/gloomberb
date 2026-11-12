@@ -25,7 +25,7 @@ export function buildKellyHistoryItems(inputs: KellyHistoryInputs): StatItem[] {
   const payoff = inputs.downsideReturn < 0 ? inputs.upsideReturn / -inputs.downsideReturn : null;
   return [
     // The dates take a row of their own so a narrow pane never cuts them.
-    { id: "window", label: "Window", value: `${inputs.start} to ${inputs.end}`, detail: `${inputs.periods} monthly returns`, wide: true },
+    { id: "window", label: "Window", value: `${inputs.start} to ${inputs.end}`, detail: `${inputs.periods} monthly returns${inputs.rollNote ? `, ${inputs.rollNote}` : ""}`, wide: true },
     { id: "winRate", label: "Win rate", value: formatPct(inputs.winProbability, 1), detail: `${inputs.wins}/${inputs.periods}` },
     { id: "avgGain", label: "Avg gain", value: formatSignedPct(inputs.upsideReturn), color: priceColor(inputs.upsideReturn) },
     { id: "avgLoss", label: "Avg loss", value: formatSignedPct(inputs.downsideReturn), color: priceColor(inputs.downsideReturn) },

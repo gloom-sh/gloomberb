@@ -36,6 +36,7 @@ import {
   buildCorrelationPaneTitle,
   buildGeoCorrelationSeries,
   buildStatusSummary,
+  correlationRollNotes,
   type CorrelationSeries,
   getSeriesForEntry,
   pairKey,
@@ -219,12 +220,15 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   });
 
   // The ticker set and range are visible in-pane and an invalid list shows in
-  // the body, so the footer only carries load state. `r` is global: no hint.
+  // the body, so the footer carries load state, and a future's rolls as GR
+  // says them. `r` is global: no hint.
+  const rollNotes = correlationRollNotes(symbols, seriesBySymbol).join(" · ");
   usePaneFooter("correlation", () => ({
     info: !settings.symbolsError && symbols.length >= 2 && statusSummary
-      ? [{ id: "status", parts: [{ text: statusSummary, tone: "muted" as const }] }]
+      ? [{ id: "status", parts: [{ text: statusSummary, tone: "muted" as const }] },
+        ...(rollNotes ? [{ id: "rolls", parts: [{ text: rollNotes, tone: "muted" as const }] }] : [])]
       : [],
-  }), [settings.symbolsError, statusSummary, symbols.length]);
+  }), [rollNotes, settings.symbolsError, statusSummary, symbols.length]);
 
   // Rows are exactly as wide as the matrix (after the one-cell inset), so the
   // zebra and hover bands stop at the last column instead of running on.

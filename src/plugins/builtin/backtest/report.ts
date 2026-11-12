@@ -1,5 +1,6 @@
 import { cleanFloat32Price, historyUnit } from "../../../cli/history-rows";
 import { barsPerYearLabel } from "../../../market-data/bars-per-year";
+import { ROLLS_BACK_ADJUSTED } from "../../../market-data/futures-roll-returns";
 import type { HeadlessBundleResult, HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneFreshness, HeadlessPaneRow } from "../../../types/headless";
 import { formatStat, formatTradePrice, PRICE_RETURN_LABEL, PRICE_RETURN_NOTE, SUMMARY_ROWS, type StatValue } from "./format";
 import { continuationNote, type BacktestWindowOptions, type HistoryBacktestResult } from "./window";
@@ -47,7 +48,8 @@ const price = (value: unknown) => typeof value !== "number" || !Number.isFinite(
  * lines as the growth of 1 on the price alone and the strategy's drawdown in percent. Exports
  * keep every digit; the text view rounds. The close is the price as `history`
  * exports it, without a float32 feed's noise (671.29999 is 671.3); the run
- * itself used the price as served.
+ * itself used the price as served. A continuous future's closes are
+ * back-adjusted at its rolls, and its Close header says so (withAdjustedPrices).
  */
 const EQUITY_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date", literalHeader: true, shrink: false },
@@ -66,11 +68,25 @@ const EXPORTED_EQUITY_COLUMNS: HeadlessPaneColumn[] = EQUITY_COLUMNS.map((column
   ? { ...column, header: column.header.replace(")", ", price return, distributions not included)") }
   : column);
 
+/** The price columns a run over back-adjusted bars prints, which are not prices that traded. */
+const ADJUSTED_PRICE_KEYS = new Set(["close", "entryPrice", "exitPrice"]);
+
+/**
+ * A run's columns with "(back-adjusted)" on each price header when its bars
+ * were back-adjusted at a continuous future's rolls (`rollNote`): the
+ * returns are one contract's, but a price before the newest roll is scaled to
+ * the newest contract's. Any other run's columns as they are.
+ */
+function withAdjustedPrices(columns: HeadlessPaneColumn[], result: HistoryBacktestResult): HeadlessPaneColumn[] {
+  if (!result.rollNote?.startsWith(ROLLS_BACK_ADJUSTED)) return columns;
+  return columns.map((column) => ADJUSTED_PRICE_KEYS.has(column.key) ? { ...column, header: `${column.header} (back-adjusted)` } : column);
+}
+
 function equitySection(result: HistoryBacktestResult, unit: string | null): HeadlessBundleSection {
   return {
     title: `Daily curve, ${PRICE_RETURN_LABEL.toLowerCase()} · ${result.start} to ${result.end}`,
-    columns: EXPORTED_EQUITY_COLUMNS,
-    textColumns: EQUITY_COLUMNS,
+    columns: withAdjustedPrices(EXPORTED_EQUITY_COLUMNS, result),
+    textColumns: withAdjustedPrices(EQUITY_COLUMNS, result),
     rows: result.equity.map((row): HeadlessPaneRow => ({ ...row, close: cleanFloat32Price(row.close), ...(unit ? { currency: unit } : {}) })),
     ...(unit ? { unit } : {}),
     interval: INTERVAL,
@@ -112,13 +128,13 @@ function summarySections(input: BacktestReportInput): HeadlessBundleSection[] {
     {
       // Prices are in the listing's currency, which the row names; the return and the hold say their own units.
       title: "Trades",
-      columns: [
+      columns: withAdjustedPrices([
         { key: "entryDate", header: "Entry" },
         { key: "entryPrice", header: "Entry price", align: "right", unitKey: "currency", format: tradePrice },
         { key: "exitDate", header: "Exit" },
         { key: "exitPrice", header: "Exit price", align: "right", unitKey: "currency", format: tradePrice },
         { key: "returnPct", header: "Return %", align: "right", format: fixed(2) }, { key: "sessions", header: "Sessions", align: "right" },
-      ],
+      ], result),
       rows: result.trades.map((trade) => ({
         entryDate: trade.entryDate, entryPrice: trade.entryPrice,
         exitDate: trade.open ? "open" : trade.exitDate, exitPrice: trade.exitPrice,
@@ -139,7 +155,7 @@ function summarySections(input: BacktestReportInput): HeadlessBundleSection[] {
  */
 export function backtestReport(input: BacktestReportInput): HeadlessBundleResult {
   const { result } = input;
-  const continuation = continuationNote(input.symbol, input.exchange);
+  const continuation = continuationNote(input.symbol, input.exchange, result.rollNote);
   const end = input.window.end?.trim() || null;
   return {
     complete: true,

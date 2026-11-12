@@ -67,6 +67,19 @@ test("a root no board lists fails naming the roots; the Baltic Dry Index adds th
   expect((await failure("QQQ"))?.details).toBeUndefined();
 });
 
+test("a partial curve names the contracts it lacks where the export and the capture mark it incomplete", async () => {
+  // CTM NG said only "Some provider-listed contracts could not be resolved." and the capture "partial".
+  const { result } = await run("BTC", { btc: (payload) => ({ ...payload, status: "partial",
+    catalogue: { method: "provider", complete: false, horizonEnd: null, unresolved: ["BTCZ31.CME"] },
+    gaps: ["A provider-listed contract could not be resolved: BTCZ31.", "Some listed contracts have no usable current quote."] }) });
+  expect(result.incompleteDetail).toBe("BTCZ31 not resolved, BTCF27 unquoted");
+  const freshness = deriveHeadlessFreshness(futuresCurveHeadless, result);
+  const tables = headlessReportTables(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM", freshness, { complete: false, unavailableSymbols: [] });
+  expect(renderReportCsv(tables, freshness)).toContain("# incomplete: BTCZ31 not resolved, BTCF27 unquoted");
+  // A whole curve has nothing to name.
+  expect((await run("BTC")).result.incompleteDetail).toBeUndefined();
+});
+
 describe("CTM report units", () => {
   test("Dutch TTF gas reports euros per MWh on every row, in the metadata and as its one contract term", async () => {
     const eur = { ...curve("TTF", [{ ...contract("TTF", "X26", 30, 81.434), currency: "EUR", quoteUnit: "EUR", settlement: 78.8490001 }]),

@@ -10,7 +10,8 @@ export const ESTIMATOR_OPTIONS: { value: RealizedVolatilityEstimator; label: str
 export const WINDOW_OPTIONS = REALIZED_VOLATILITY_WINDOWS.map((value) => ({ value: String(value), label: `${value} bars` }));
 export const DEFAULT_WINDOWS = ["10", "30", "90"];
 
+/** The windows a setting or `--windows` names; the graph's default ones when it names none. */
 export function selectedWindows(value: unknown): number[] {
-  const values = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : DEFAULT_WINDOWS;
+  const values = Array.isArray(value) ? value : typeof value === "string" && value.trim() ? value.split(",") : DEFAULT_WINDOWS;
   return [...new Set(values.map(Number).filter((window) => (REALIZED_VOLATILITY_WINDOWS as readonly number[]).includes(window)))].sort((a, b) => a - b);
 }

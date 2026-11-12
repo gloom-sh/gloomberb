@@ -101,17 +101,31 @@ function isFlaggedStale(quote: Quote): boolean {
 }
 
 /**
+ * What a load hands the board for a symbol. `interim`: the batch's dated
+ * price for a symbol it left to be asked for alone, shown meanwhile only on
+ * a row that has no quote yet (mergeQuotes).
+ */
+type LoadedQuoteState = BoardQuoteState & { interim?: true };
+type LoadedQuoteMap = Map<string, LoadedQuoteState>;
+
+/**
  * A failed refresh must not blank a board that was showing prices a second
  * ago: keep the last good quote and mark it stale instead. A load that
  * brings only a price flagged stale shows the newer of it and the last one,
- * marked stale too.
+ * marked stale too. An interim price fills only a row with no quote, which
+ * stays loading until its own read answers; a row that has one keeps it as
+ * it is, so a background top-up never marks it loading or stale.
  */
-function mergeQuotes(previous: BoardQuoteMap, loaded: BoardQuoteMap): BoardQuoteMap {
+function mergeQuotes(previous: BoardQuoteMap, loaded: LoadedQuoteMap): BoardQuoteMap {
   const next: BoardQuoteMap = new Map(previous);
   const now = Date.now();
   for (const [symbol, state] of loaded) {
-    const current = state.quote && !isFlaggedStale(state.quote) ? state.quote : null;
     const kept = previous.get(symbol)?.quote ?? null;
+    if (state.interim) {
+      if (!kept) next.set(symbol, { ...(previous.get(symbol) ?? EMPTY_STATE), quote: state.quote, loading: true, stale: true });
+      continue;
+    }
+    const current = state.quote && !isFlaggedStale(state.quote) ? state.quote : null;
     const retained = current ?? (state.quote && (state.quote.lastUpdated ?? 0) >= (kept?.lastUpdated ?? 0) ? state.quote : kept);
     next.set(symbol, {
       quote: retained,
@@ -197,7 +211,7 @@ async function requestBoardQuotes(
   dataProvider: NonNullable<ReturnType<typeof useAssetData>>,
   subset: readonly string[],
   forceRefresh: boolean,
-  apply: (loaded: BoardQuoteMap) => void,
+  apply: (loaded: LoadedQuoteMap) => void,
   timeoutMs?: number,
 ): Promise<void> {
   const askAlone = async (symbol: string, context: MarketDataRequestContext | undefined, fallback: Quote | null = null) => {
@@ -215,7 +229,7 @@ async function requestBoardQuotes(
   if (dataProvider.getQuotesBatch) {
     const applyBatch = async (results: QuoteBatchResult[]) => {
       const bySymbol = new Map(results.map((result) => [result.target.symbol, result]));
-      const answered: BoardQuoteMap = new Map();
+      const answered: LoadedQuoteMap = new Map();
       const followUps: QuoteBatchResult[] = [];
       for (const symbol of subset) {
         const result = bySymbol.get(symbol);
@@ -229,6 +243,14 @@ async function requestBoardQuotes(
           error: result?.error ? errorMessage(result.error) : null,
           stale: false,
         });
+      }
+      // A symbol asked for again alone shows the batch's dated quote meanwhile on a row with none (a cold board), so
+      // what reads its quote (a future's contract month, which FUT's returns read the contract's history by) starts
+      // now rather than after a round trip. A row that has a quote keeps it (mergeQuotes).
+      for (const result of followUps) {
+        if (finitePrice(result.quote ?? null)) {
+          answered.set(result.target.symbol, { quote: result.quote!, loading: true, error: null, stale: true, interim: true });
+        }
       }
       if (answered.size > 0) apply(answered);
       await Promise.all(followUps.map((result) => askAlone(result.target.symbol, { cacheMode: result.followUp }, result.quote)));
@@ -388,7 +410,7 @@ export function useQuoteBoard(symbols: string[], options: QuoteBoardOptions = {}
    */
   const refreshInBatches = useCallback((subset: readonly string[], forceRefresh: boolean, gen: number) => {
     if (!dataProvider) return;
-    const apply = (loaded: BoardQuoteMap) => {
+    const apply = (loaded: LoadedQuoteMap) => {
       if (fetchGenRef.current !== gen) return;
       setSnapshots((prev) => mergeQuotes(prev, loaded));
     };

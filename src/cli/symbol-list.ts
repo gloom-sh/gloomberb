@@ -2,7 +2,7 @@ import { readFile } from "fs/promises";
 import { fstatSync } from "fs";
 import { splitSymbolArgLines, splitSymbolWords, stripStrayEdges, uniqueSymbols } from "./symbol-args";
 import { foldTypedText } from "../utils/typed-text";
-import { hasDecimalCommas, isFigure, isJunkCell, isNumberCell, protectFigureCommas, restoreFigureCommas } from "./symbol-cells";
+import { hasDecimalCommas, isFigure, isJunkCell, isNumberCell, isSheetErrorCell, protectFigureCommas, restoreFigureCommas } from "./symbol-cells";
 import { endsInLegalForm, readTerminalListingCode, unknownBloombergMarket } from "../tickers/terminal-codes";
 
 /** Header cells that name a spreadsheet's symbol column, compared without case, spaces or punctuation. */
@@ -17,8 +17,9 @@ function headerKey(cell: string): string {
   return cell.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 }
 
+/** A line starting with # or //, except a sheet's error value (`#REF!`), which is a cell named as not a symbol. */
 function isComment(cell: string): boolean {
-  return cell.startsWith("#") || cell.startsWith("//");
+  return (cell.startsWith("#") && !isSheetErrorCell(cell)) || cell.startsWith("//");
 }
 
 /** Whether a quote mark at `index` closes a quoted cell: it is followed by a separator, a line end or the end. */
@@ -320,11 +321,18 @@ export function parseSymbolText(text: string): SymbolText {
   };
 }
 
-/** Cells named in a note, split by semicolons when one of them has a comma of its own (`2.582,52; 1.899,21`). */
+/**
+ * Cells named in a note, once each in the order first read, a repeated one
+ * with its count (`2.582,52 (3 times)`), the rest counted. Split by semicolons
+ * when one of them has a comma of its own (`2.582,52; 1.899,21`).
+ */
 function listCells(cells: readonly string[]): string {
-  const named = cells.slice(0, IGNORED_PREVIEW);
-  const more = cells.length - IGNORED_PREVIEW;
-  return `${named.join(named.some((cell) => cell.includes(",")) ? "; " : ", ")}${more > 0 ? ` and ${more} more` : ""}`;
+  const counts = new Map<string, number>();
+  for (const cell of cells) counts.set(cell, (counts.get(cell) ?? 0) + 1);
+  const distinct = [...counts];
+  const named = distinct.slice(0, IGNORED_PREVIEW).map(([cell, count]) => count > 1 ? `${cell} (${count} times)` : cell);
+  const more = distinct.length - IGNORED_PREVIEW;
+  return `${named.join(distinct.some(([cell]) => cell.includes(",")) ? "; " : ", ")}${more > 0 ? ` and ${more} more` : ""}`;
 }
 
 /** "the cell", "the 3 number cells": number when every one is a figure. */

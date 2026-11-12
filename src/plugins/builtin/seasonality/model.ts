@@ -40,6 +40,12 @@ export interface SeasonalityModel {
   /** Mean of the completed years' paths at each month-end every one of them reached. */
   averagePath: SeasonalityPathPoint[];
   asOf: Date | null;
+  /**
+   * The first month on record ("2000-08") when the lookback reaches before
+   * it: a 30-year lookback on NG=F, whose history starts in 2000, covers the
+   * years since. Null when the history covers every year asked for.
+   */
+  historyStart: string | null;
 }
 
 const monthKey = (year: number, month: number) => year * 12 + month;
@@ -79,7 +85,7 @@ export function projectSeasonality(history: readonly PricePoint[], options: { sy
   const points = medianGapDays(sorted) >= 5 && medianGapDays(sorted) <= 9
     ? sorted.map((point) => ({ ...point, date: new Date(point.date.getTime() + 4 * DAY_MS) })) : sorted;
   const last = points.at(-1);
-  if (!last) return { symbol: options.symbol, years: [], months: [], paths: [], averagePath: [], asOf: null };
+  if (!last) return { symbol: options.symbol, years: [], months: [], paths: [], averagePath: [], asOf: null, historyStart: null };
 
   const monthEnd = new Map<number, number>();
   for (const point of points) monthEnd.set(monthKey(point.date.getUTCFullYear(), point.date.getUTCMonth()), point.close);
@@ -89,7 +95,10 @@ export function projectSeasonality(history: readonly PricePoint[], options: { sy
   // bars are stamped at the month's start, so their date cannot say more.
   const complete = last.date.getUTCMonth() === 11;
   const runningMonthKey = complete ? null : monthKey(lastYear, last.date.getUTCMonth());
-  const firstYear = Math.max(points[0]!.date.getUTCFullYear(), lastYear - Math.max(1, options.lookbackYears) + 1);
+  const askedFirstYear = lastYear - Math.max(1, options.lookbackYears) + 1;
+  const firstYear = Math.max(points[0]!.date.getUTCFullYear(), askedFirstYear);
+  // The asked-for first year's January needs the December before it.
+  const historyStart = points[0]!.date.getTime() >= Date.UTC(askedFirstYear, 0, 1) ? points[0]!.date.toISOString().slice(0, 7) : null;
   const years: SeasonalityYear[] = [];
   const paths: SeasonalityModel["paths"] = [];
   /** Per completed year, return since the prior year-end at each month-end. */
@@ -124,7 +133,7 @@ export function projectSeasonality(history: readonly PricePoint[], options: { sy
     return values.every((value) => value != null) ? [{ date: overlayMonthEnd(month), value: mean(values as number[])! }] : [];
   })] : [];
 
-  return { symbol: options.symbol, years, months, paths, averagePath, asOf: last.date };
+  return { symbol: options.symbol, years, months, paths, averagePath, asOf: last.date, historyStart };
 }
 
 /** Monday first; a Saturday or Sunday row appears only for a venue that trades then. */

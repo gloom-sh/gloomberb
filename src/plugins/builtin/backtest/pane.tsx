@@ -121,7 +121,7 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
     }
   }, [history.data, rules, lookback, costBps, runWindow]);
   const result = run.result;
-  const continuation = instrument ? continuationNote(instrument.symbol, instrument.exchange) : null;
+  const continuation = instrument ? continuationNote(instrument.symbol, instrument.exchange, history.data?.rollNote) : null;
   // Export CSV writes the daily curve `fn BT --csv --equity` prints for this run, whichever table is in view;
   // the table reads it when the export runs. Without a run the table's own rows export.
   const exportCsv = result && symbol ? () => {

@@ -259,11 +259,12 @@ describe("useQuoteBoard cache first", () => {
 describe("useQuoteBoard follow-ups", () => {
   test("a batch's priced rows paint as it answers; each symbol it leaves fills only its own row, or shows the batch's dated price as stale", async () => {
     const dated = { ...quote("C", 7), lastUpdated: 1_699_990_000_000, stale: true };
+    const datedD = { ...quote("D", 9), lastUpdated: 1_699_990_000_000, stale: true };
     const asked: Array<[string, MarketDataRequestContext | undefined]> = [];
     const getQuote = (symbol: string, _exchange?: string, context?: MarketDataRequestContext): Promise<Quote> => {
       asked.push([symbol, context]);
-      // B's own read never answers; C's fails.
-      return symbol === "B" ? new Promise<Quote>(() => {}) : Promise.reject(new Error("UPSTREAM_ERROR"));
+      // B's and D's own reads never answer; C's fails.
+      return symbol === "B" || symbol === "D" ? new Promise<Quote>(() => {}) : Promise.reject(new Error("UPSTREAM_ERROR"));
     };
     // Like the router: without deferred follow-ups it answers only once it has asked for B and C alone.
     const provider = {
@@ -272,7 +273,7 @@ describe("useQuoteBoard follow-ups", () => {
         if (options?.cacheOnly) return targets.map((target) => ({ target, quote: null }));
         const answer = (target: QuoteSubscriptionTarget): QuoteBatchResult => target.symbol === "A"
           ? { target, quote: quote("A", 2) }
-          : { target, quote: target.symbol === "C" ? dated : null, followUp: "default" };
+          : { target, quote: target.symbol === "C" ? dated : target.symbol === "D" ? datedD : null, followUp: "default" };
         if (options?.deferFollowUps) return targets.map(answer);
         return Promise.all(targets.map(async (target) => {
           const result = answer(target);
@@ -282,7 +283,7 @@ describe("useQuoteBoard follow-ups", () => {
         }));
       },
     };
-    const symbols = ["A", "B", "C"];
+    const symbols = ["A", "B", "C", "D"];
     let board: BoardQuoteMap = new Map();
     function FollowUpProbe() {
       board = useQuoteBoard(symbols, { cacheFirst: true, refreshTimeoutMs: 40, liveStreaming: false }).quotes;
@@ -295,12 +296,37 @@ describe("useQuoteBoard follow-ups", () => {
     expect(board.get("A")).toMatchObject({ quote: { price: 2 }, loading: false, stale: false });
     expect(board.get("B")).toMatchObject({ quote: null, loading: true });
     expect(board.get("C")).toMatchObject({ quote: { price: 7 }, loading: false, stale: true, error: null });
-    expect(asked.map(([symbol, context]) => [symbol, context?.cacheMode])).toEqual([["B", "default"], ["C", "default"]]);
+    // A dated price shows while its own read is out, so what reads the row's contract (FUT's returns) starts on it.
+    expect(board.get("D")).toMatchObject({ quote: { price: 9 }, loading: true, stale: true });
+    expect(asked.map(([symbol, context]) => [symbol, context?.cacheMode])).toEqual([["B", "default"], ["C", "default"], ["D", "default"]]);
 
     await settle(80);
     expect(board.get("A")).toMatchObject({ quote: { price: 2 }, stale: false });
     expect(board.get("B")).toMatchObject({ quote: null, loading: false, error: "Quote refresh timed out" });
-    expect(quoteBoardStatus(board)).toMatchObject({ loading: 0, stale: 1, unavailable: 1 });
+    expect(board.get("D")).toMatchObject({ quote: { price: 9 }, loading: false, stale: true, error: null });
+    expect(quoteBoardStatus(board)).toMatchObject({ loading: 0, stale: 2, unavailable: 1 });
+  });
+});
+
+describe("useQuoteBoard background top-ups", () => {
+  test("a row that has a quote is never marked loading or stale while its symbol is asked for alone", async () => {
+    // The poll's batch has only a dated price for each symbol and asks for it alone, a read that never answers here.
+    let calls = 0;
+    const provider = {
+      getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
+        calls += 1;
+        return targets.map((target) => calls === 1 ? { target, quote: quote(target.symbol, 100) }
+          : { target, quote: { ...quote(target.symbol, 90), lastUpdated: 1_699_990_000_000, stale: true }, followUp: "refresh" });
+      },
+      getQuote: () => new Promise<Quote>(() => {}),
+    };
+    await mount(provider, POLL_MS);
+    expect(quotes.get("^GSPC")).toMatchObject({ quote: { price: 100 }, loading: false, stale: false });
+
+    await settle(POLL_MS * 2);
+    expect(calls).toBeGreaterThan(1);
+    expect(quotes.get("^GSPC")).toMatchObject({ quote: { price: 100 }, loading: false, stale: false });
+    expect(quoteBoardStatus(quotes)).toMatchObject({ loading: 0, stale: 0 });
   });
 });
 

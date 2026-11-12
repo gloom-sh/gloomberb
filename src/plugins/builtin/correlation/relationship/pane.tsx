@@ -144,7 +144,7 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
   const left = data?.[0] ?? null;
   const right = data?.[1] ?? null;
   const analysis = useMemo(() => (
-    left && right ? buildRelationshipAnalysis(left.points, right.points, correlationWindow) : null
+    left && right ? buildRelationshipAnalysis(left.points, right.points, correlationWindow, [left.symbol, right.symbol]) : null
   ), [correlationWindow, left, right]);
   const cycleRange = useCallback(() => setRange((current) => nextRelationshipRange(current)), [setRange]);
   const cycleWindow = useCallback(() => setCorrelationWindow((current) => nextRelationshipWindow(current)), [setCorrelationWindow]);
@@ -243,7 +243,9 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
 
   // The legend reads the values at the cursor and the axis carries its date,
   // so the footer only reports loading.
-  usePaneStatusFooter({ registrationId: "relationship-graph", loading });
+  const rollInfo = useMemo(() => analysis?.rollNotes.length
+    ? [{ id: "rolls", parts: [{ text: analysis.rollNotes.join(" · "), tone: "muted" as const }] }] : undefined, [analysis]);
+  usePaneStatusFooter({ registrationId: "relationship-graph", loading, ...(rollInfo ? { info: rollInfo } : {}) });
 
   if (!pair) {
     return (

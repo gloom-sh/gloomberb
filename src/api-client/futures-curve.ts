@@ -124,7 +124,11 @@ export interface FuturesCurvePayload {
   fetchedAt: string
   status: "available" | "partial" | "unavailable"
   stale: boolean
-  catalogue: { method: "provider" | "bounded-search"; complete: boolean; horizonEnd: string | null }
+  catalogue: {
+    method: "provider" | "bounded-search"; complete: boolean; horizonEnd: string | null
+    /** The contracts the provider lists that no quote resolved (NGZ31.NYM); absent from older servers. */
+    unresolved?: string[]
+  }
   contracts: FuturesContract[]
   ghosts: Array<{
     label: "1W" | "1M" | "1Y"

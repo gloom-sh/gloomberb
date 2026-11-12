@@ -6,6 +6,7 @@ import {
 } from "../shared/volatility";
 import type { SurfaceExpiry, SurfaceSnapshot } from "../vol-surface/model";
 import { formingBarsState, isFormingBar } from "../shared/forming-bars";
+import { rollAdjustedHistory } from "../../../market-data/futures-roll-returns";
 
 export interface RealizedVolatilityModel {
   symbol: string;
@@ -14,7 +15,7 @@ export interface RealizedVolatilityModel {
   windows: number[];
   history: PricePoint[];
   series: RollingRealizedVolatilityPoint[];
-  /** The cone always includes all seven standard windows, independent of chart selection. */
+  /** The cone's rows: `coneWindows`, every standard window unless asked, independent of chart selection. */
   cone: VolatilityConeStatistics[];
   asOf: Date | null;
   /** What the volatility is annualised at, read from the series' own dates. */
@@ -37,6 +38,8 @@ export interface RealizedVolatilityModel {
    * through 2026-10-29, the last complete session". Null when every bar is final.
    */
   formingNote: string | null;
+  /** A continuous future's estimates read within one contract at each roll: "rolls back-adjusted" (rollAdjustedHistory). Null for anything else. */
+  rollNote: string | null;
 }
 
 /** "the 180-bar window", "the 180- and 260-bar windows", "the 90-, 180- and 260-bar windows". */
@@ -53,6 +56,8 @@ export interface RealizedVolatilityProjectionOptions {
   estimator?: RealizedVolatilityEstimator;
   lookbackYears?: 1 | 2;
   windows?: readonly number[];
+  /** The cone's rows, and the windows a short history or a failed estimate is said for: every standard window when left out. */
+  coneWindows?: readonly number[];
 }
 
 function lookbackCutoff(date: Date, years: number): number {
@@ -73,6 +78,7 @@ export function projectRealizedVolatility(
   const instrument = currencyPairInstrument(options.symbol, options.exchange);
   const windows = [...new Set(options.windows ?? REALIZED_VOLATILITY_WINDOWS)]
     .filter((window) => REALIZED_VOLATILITY_WINDOWS.some((standard) => standard === window));
+  const coneWindows = REALIZED_VOLATILITY_WINDOWS.filter((window) => !options.coneWindows || options.coneWindows.includes(window));
   const warnings: string[] = [];
   // What follows from a history shorter than the windows and lookback asked for: notes, not failures.
   let shortLookback = false;
@@ -100,15 +106,17 @@ export function projectRealizedVolatility(
   const cutoff = asOf ? lookbackCutoff(asOf, lookbackYears) : 0;
   const cadenceIssue = realizedVolatilityCadenceIssue(history);
   if (cadenceIssue) warnings.push(cadenceIssue);
+  // A continuous future's returns are each one contract's; the price drawn beside them stays as traded.
+  const returns = rollAdjustedHistory(history, options.symbol);
   const series = cadenceIssue
     ? history.map((point) => ({ date: point.date, values: Object.fromEntries(windows.map((window) => [window, null])) }))
-    : rollingRealizedVolatility(history, { windows, estimator, instrument });
-  const cone = volatilityCone(cadenceIssue ? [] : history, { estimator, lookbackYears, instrument });
+    : rollingRealizedVolatility(returns.points, { windows, estimator, instrument });
+  const cone = volatilityCone(cadenceIssue ? [] : returns.points, { windows: coneWindows, estimator, lookbackYears, instrument });
   const visible = history.filter((point) => point.date.getTime() > cutoff);
   const visibleSeries = series.filter((point) => point.date.getTime() > cutoff);
   if (history.length > 0 && history[0]!.date.getTime() > cutoff) shortLookback = true;
-  for (const window of history.length > 0 && !cadenceIssue ? REALIZED_VOLATILITY_WINDOWS : []) {
-    const result = realizedVolatilityResult(history, window, estimator, instrument);
+  for (const window of history.length > 0 && !cadenceIssue ? coneWindows : []) {
+    const result = realizedVolatilityResult(returns.points, window, estimator, instrument);
     if (result.reason === "insufficient-history") shortWindows.push(window);
     else if (result.reason) warnings.push(`HV${window} unavailable: ${result.reason.replaceAll("-", " ")}`);
   }
@@ -127,7 +135,7 @@ export function projectRealizedVolatility(
       : "the long windows' cone covers part of the lookback"}`;
   return { symbol: options.symbol.trim().toUpperCase(), estimator, lookbackYears, windows,
     history: visible, series: visibleSeries, cone, asOf, barsPerYear: barsPerYear(history.map((point) => point.date), instrument),
-    warnings: [...new Set(warnings)], shortWindows, historyNote, formingNote };
+    warnings: [...new Set(warnings)], shortWindows, historyNote, formingNote, rollNote: cadenceIssue ? null : returns.note };
 }
 
 interface CurrentAtmIvReference {
