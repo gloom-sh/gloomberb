@@ -1174,7 +1174,7 @@ export interface PricePoint {
   closeRebuilt?: boolean;
   /**
    * A currency pair's daily bar whose source repeated its open as its close, which no next open in its week rebuilds
-   * (none, or one outside the day's range): its close is no day's close, and returns leave the bar out
+   * (none, or one over 5% away): its close is no day's close, and returns leave the bar out
    * (pricePointCloseCopied).
    */
   closeCopied?: boolean;

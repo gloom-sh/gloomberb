@@ -32,7 +32,7 @@ export interface CloudPricePointPayload {
   closeRebuilt?: boolean;
   /**
    * A currency pair's daily bar whose source repeated its open as its close, which no next open in its week rebuilds
-   * (none, or one outside the day's range): the close is no day's close.
+   * (none, or one over 5% away): the close is no day's close.
    */
   closeCopied?: boolean;
 }

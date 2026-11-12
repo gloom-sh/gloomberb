@@ -1231,7 +1231,7 @@ export function historyOpenNote(rows: readonly Pick<HistoryRow, "date" | "flag">
  * (EUR/USD's 5 Jul 2022 came as open and close 1.043319 on a day that closed
  * near 1.026): the ones rebuilt from the next session's open (flag close
  * rebuilt), and the ones nothing could rebuild (the last session of their
- * week, or a next open outside the day's range), which returns leave out
+ * week, or a next open over 5% away), which returns leave out
  * (flag close copied). Three or more of either are counted. Null when no bar
  * is either.
  */
@@ -1244,7 +1244,7 @@ export function historyCopiedCloseNote(rows: readonly Pick<HistoryRow, "date" | 
     rebuilt.length > 0 ? `The source repeated the open of ${listed(rebuilt)} as ${rebuilt.length === 1 ? "its" : "their"} close; `
       + `${rebuilt.length === 1 ? "it closes" : "they close"} at the next session's open (flag ${CLOSE_REBUILT_FLAG})` : null,
     copied.length > 0 ? `the source repeated the open of ${listed(copied)} as ${copied.length === 1 ? "its" : "their"} close, which `
-      + `no next open in the week rebuilds (none, or one outside the day's range): no day's close, `
+      + `no next open in the week rebuilds (none, or one over 5% away): no day's close, `
       + `left out of returns (flag ${CLOSE_COPIED_FLAG})` : null,
   ].filter((note): note is string => note != null);
   const text = notes.join("; ");
