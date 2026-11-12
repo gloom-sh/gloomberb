@@ -331,6 +331,43 @@ export function getActiveQuoteDisplay(quote: Quote | null | undefined): ActiveQu
   return { price: quote.price, change: quote.change, changePercent: quote.changePercent };
 }
 
+/** A price and its move, with the extended session it is a print of when it is not the regular session's. */
+export interface SessionPriceDisplay extends ActiveQuoteDisplay {
+  /** Set when the price is a pre-market, after-hours or overnight print. */
+  session?: ExtendedSession;
+  /** That print is the midpoint of the session's bid and ask, nothing having traded in it. */
+  mark?: true;
+}
+
+/**
+ * The latest print (getActiveQuoteDisplay), naming its session when it is a
+ * pre-market, after-hours or overnight trade rather than the regular
+ * session's price or close: the extended print `quote` shows beside Last
+ * (getExtendedSessionDisplay) at the same price. A quote that says nothing
+ * has traded in the session yet (extendedSessionPrint false) carries the
+ * close, which names none. Whatever is priced at the latest print (a
+ * position's value and day, an alert's current price) says which session the
+ * price is from with this.
+ */
+export function getLatestPrintDisplay(quote: Quote | null | undefined): SessionPriceDisplay | null {
+  const latest = getActiveQuoteDisplay(quote);
+  if (!latest || quote?.extendedSessionPrint === false) return latest;
+  const extended = getExtendedSessionDisplay(quote);
+  if (!extended || extended.price !== latest.price) return latest;
+  return { ...latest, session: extended.session, ...(extended.mark ? { mark: true as const } : {}) };
+}
+
+/**
+ * The extended session `price` is a print of: the quote's latest print's
+ * (getLatestPrintDisplay) when that is the price and a pre-market,
+ * after-hours or overnight trade. Null for a regular session's price or close,
+ * and for any other price (an option's mark, a future's settlement).
+ */
+export function extendedPrintSession(quote: Quote | null | undefined, price: number | null | undefined): ExtendedSession | null {
+  const latest = getLatestPrintDisplay(quote);
+  return latest?.session && price != null && latest.price === price ? latest.session : null;
+}
+
 function isPositive(value: number | undefined): value is number {
   return isFiniteNumber(value) && value > 0;
 }

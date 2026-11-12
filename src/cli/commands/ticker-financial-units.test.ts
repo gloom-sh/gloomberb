@@ -418,7 +418,7 @@ test("an EPS in another currency than the TTM amounts, and a P/E converting its 
       trailingPEConversion: { from: "USD", rate: 0.8924 } },
   };
   const xetra = await report(lin);
-  for (const line of ["P/E (TTM) 33.17", "EPS (TTM) $14.61", "Revenue (TTM) 33.99B USD", "P/E (TTM): price over EPS converted at 1 USD = 0.8924 EUR."]) {
+  for (const line of ["P/E (TTM) 33.16", "EPS (TTM) $14.61", "Revenue (TTM) 33.99B USD", "P/E (TTM): price over EPS converted at 1 USD = 0.8924 EUR."]) {
     expect(xetra).toContain(line);
   }
   expect(xetra).not.toContain("report-date");

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { EarningsHistoryPayload } from "../../../api-client/earnings";
+import type { EarningsCalendarPayload, EarningsCalendarReport, EarningsHistoryPayload } from "../../../api-client/earnings";
 import type { HeadlessPaneContext } from "../../../types/plugin";
 import { addDays, newYorkToday } from "./board-model";
 import { calendarWeekDates } from "./calendar-model";
@@ -167,9 +167,65 @@ test("EVTS with a ticker stays the market board and says whether that ticker is 
     upcoming: async () => { throw new Error("unused"); },
   });
   const highlight = async (symbol: string) => (await board.load({ ...args, rawArgument: symbol, argument: symbol, symbols: [symbol] }, context)).metadata?.highlight;
-  expect(await highlight("SAN")).toEqual({ symbol: "SAN", onBoard: true, date: day });
+  expect(await highlight("SAN")).toEqual({ symbol: "SAN", onBoard: true, date: day, row: "SAN" });
   // Sanofi in Paris is not the US board's SAN.
-  expect(await highlight("SAN:EPA")).toEqual({ symbol: "SAN:EPA", onBoard: false, date: null });
+  expect(await highlight("SAN:EPA")).toEqual({ symbol: "SAN:EPA", onBoard: false, date: null, row: null });
+});
+
+test("EVTS reads the Hong Kong, China A and Singapore listings too: a listing named lands on its row, in its own currency, ranked by its dollar cap", async () => {
+  const day = addDays(today, 6);
+  const queries: Array<{ symbols: string[]; markets?: string; perDay: number }> = [];
+  // As Gloom Cloud serves them with markets=all: Tencent's confirmed Q3 in CNY, CCB under its A share, NVDA in dollars.
+  const listing = (fields: Partial<EarningsCalendarReport> & Pick<EarningsCalendarReport, "symbol" | "marketCap">) => ({
+    ...report({ date: day, timing: null, timingSource: null, fiscalPeriod: "2026-09", dateStatus: "confirmed" }),
+    averageMove: null, averageReports: 0, implied: null, ...fields,
+  });
+  const board = createEarningsBoardHeadless({
+    calendar: async (query) => {
+      queries.push(query);
+      return { asOf: `${today}T12:00:00.000Z`, from: query.from, to: query.to, reports: [
+        listing({ symbol: "0700:HKEX", name: "Tencent Holdings Limited", marketCap: 459.65e9, currency: "CNY", listings: ["0700:HKEX"],
+          epsEstimate: 7.21, epsAnalysts: 12, revenueEstimate: 210.24e9 }),
+        listing({ symbol: "601939:SSE", name: "China Construction Bank", marketCap: 471.2e9, currency: "CNY", listings: ["601939:SSE", "0939:HKEX"],
+          epsEstimate: 0.37, dateStatus: "reported", epsActual: 0.38 }),
+        { ...report({ symbol: "NVDA", date: day, timing: "amc", marketCap: 4.5e12, epsEstimate: 1.25 }), averageMove: 0.07, averageReports: 8 },
+        // Alibaba reports the same day as BABA and 9988:HKEX: the board shows BABA, with the listing's lines.
+        { ...report({ symbol: "BABA", date: day, timing: "bmo", marketCap: 380e9, epsEstimate: 2.12 }), averageMove: 0.05, averageReports: 8,
+          listings: ["9988:HKEX"] },
+      ] } as EarningsCalendarPayload;
+    },
+    history: async () => { throw new Error("unused"); },
+    upcoming: async () => { throw new Error("unused"); },
+  });
+  const load = (symbol: string) => board.load({ ...args, rawArgument: symbol, argument: symbol, symbols: symbol ? [symbol] : [] }, context);
+  const tencent = await load("0700:HKEX");
+  // The listing is named so the board keeps it whatever the day's cut; a US ticker is not.
+  expect(queries.at(-1)).toMatchObject({ perDay: 200, symbols: ["0700:HKEX"], markets: "all" });
+  expect(tencent.metadata?.highlight).toEqual({ symbol: "0700:HKEX", onBoard: true, date: day, row: "0700:HKEX" });
+  expect(tencent.metadata?.notices).toEqual([expect.stringContaining(`0700:HKEX reports on ${day}.`)]);
+  expect(tencent.rows.map((row) => [row.symbol, row.currency, row.marketCap, row.epsEstimate, row.revenueEstimate, row.timing])).toEqual([
+    ["NVDA", "USD", 4.5e12, 1.25, null, "AMC"],
+    ["601939:SSE", "CNY", 471.2e9, 0.37, null, null],
+    ["0700:HKEX", "CNY", 459.65e9, 7.21, 210.24e9, null],
+    ["BABA", "USD", 380e9, 2.12, null, "BMO"],
+  ]);
+  // Alibaba named by its Hong Kong line is BABA's row; BABA named is its own, though it carries the listing's lines.
+  expect((await load("9988.HK")).metadata?.highlight).toMatchObject({ onBoard: true, row: "BABA" });
+  expect((await load("9988.HK")).metadata?.notices).toEqual([expect.stringContaining(`9988.HK reports on ${day} (as BABA).`)]);
+  expect((await load("BABA")).metadata?.highlight).toMatchObject({ onBoard: true, row: "BABA" });
+  expect((await load("BABA")).metadata?.notices).toEqual([expect.stringContaining(`BABA reports on ${day}.`)]);
+  expect(tencent.metadata?.currency).toContain("never converted");
+  // CCB named by its H share is on the board under its A share; a 700 typed without its zero is Tencent's row.
+  expect((await load("0939:HKEX")).metadata?.highlight).toEqual({ symbol: "0939:HKEX", onBoard: true, date: day, row: "601939:SSE" });
+  expect((await load("0939:HKEX")).metadata?.notices).toEqual([expect.stringContaining(`0939:HKEX reports on ${day} (as 601939:SSE).`)]);
+  expect((await load("700:HKEX")).metadata?.highlight).toMatchObject({ onBoard: true, row: "0700:HKEX" });
+  // Typed with its vendor suffix where its quote could not be read, it is still Tencent's listing, kept by name.
+  expect((await load("0700.HK")).metadata?.highlight).toMatchObject({ onBoard: true, row: "0700:HKEX" });
+  expect(queries.at(-1)).toMatchObject({ symbols: ["0700:HKEX"] });
+  await load("NVDA");
+  expect(queries.at(-1)).toMatchObject({ symbols: [], markets: "all" });
+  // A US ticker is never a listing abroad's row, nor one of its lines.
+  expect((await load("SSE")).metadata?.highlight).toMatchObject({ onBoard: false });
 });
 
 test("ERN for a listing abroad shows its next report and names the company's US listing instead of the US board's other SAN", async () => {
@@ -287,9 +343,9 @@ test("a press release's figures are flagged provisional on the board and in the 
 });
 
 test("EVTS looks back a week or a day, the days the pane's Range shows, and ERN's history refuses a range it would not use", async () => {
-  const queries: { from: string; to: string; perDay: number; symbols: string[] }[] = [];
+  const queries: { from: string; to: string; perDay: number; symbols: string[]; markets?: "all" }[] = [];
   const deps = {
-    calendar: async (query: { from: string; to: string; perDay: number; symbols: string[] }) => {
+    calendar: async (query: { from: string; to: string; perDay: number; symbols: string[]; markets?: "all" }) => {
       queries.push(query);
       return { asOf: `${today}T12:00:00.000Z`, from: query.from, to: query.to, reports: [
         { ...report({ symbol: "NFLX", date: query.from, epsEstimate: 0.82, epsActual: 0.87, dateStatus: "reported" }), averageMove: null, averageReports: 0 },
@@ -302,7 +358,7 @@ test("EVTS looks back a week or a day, the days the pane's Range shows, and ERN'
   const [monday, , , , friday] = calendarWeekDates(today, -1);
   const lastWeek = { from: monday!, to: friday! };
   const week = await board.load({ rawArgument: "", argument: null, symbols: [], options: { week: "last" } }, context);
-  expect(queries.at(-1)).toEqual({ ...lastWeek, perDay: 200, symbols: [] });
+  expect(queries.at(-1)).toEqual({ ...lastWeek, perDay: 200, symbols: [], markets: "all" });
   expect(week.rows[0]).toMatchObject({ symbol: "NFLX", date: lastWeek.from, epsActual: 0.87, dateStatus: "reported" });
   expect(board.describe instanceof Function && board.describe({ rawArgument: "", argument: null, symbols: [], options: { week: "last" } })).toBe("Earnings Calendar | Last week");
 
@@ -313,7 +369,7 @@ test("EVTS looks back a week or a day, the days the pane's Range shows, and ERN'
   // ERN takes the same range for the board and a ticker list; one ticker's history already holds its past reports.
   const ern = createEarningsHeadless(deps);
   await ern.load({ rawArgument: "NFLX TSLA", argument: ["NFLX", "TSLA"], symbols: ["NFLX", "TSLA"], options: { week: "last" } }, context);
-  expect(queries.at(-1)).toEqual({ ...lastWeek, perDay: 0, symbols: ["NFLX", "TSLA"] });
+  expect(queries.at(-1)).toEqual({ ...lastWeek, perDay: 0, symbols: ["NFLX", "TSLA"], markets: "all" });
   await expect(ern.load({ ...args, options: { week: "last" } }, context)).rejects.toThrow("gloom fn EVTS CRWV --week last");
 });
 

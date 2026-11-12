@@ -360,6 +360,7 @@ Every change line says what its move is measured from, in muted words after it: 
 - **Coins:** since 00:00 UTC, the previous UTC day's close. A coin whose close cannot be dated to the last two days reads `24h`, and a perpetual always does.
 - **Indices:** an index quote that names no session is dated by the session of its home venue its last print falls in, after that day's open (the S&P 500's closing print at 16:37 New York on Fri 6 Nov reads `vs Thu 5 Nov close`). Cboe's are not: their days are Cboe's own. Its Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) follow the bond market, which shuts on days the equity calendar trades (Veterans Day), so only their own daily closes date them, else they read `vs prev close`.
 - **Totals** over moves from different closes (an HKEX listing beside a US one) read `vs mixed closes`.
+- **Extended-hours prints:** a book's day priced at a pre-market, after-hours or overnight print names that session before the close: `Day -101.10 (-5.99%) AH vs Tue 10 Nov close` in the PF header, as its rows mark the print, and `after hours vs Tue 10 Nov close` in `portfolio show`.
 
 In exports, `--csv` and `--ndjson` rows add `Chg Basis` and `Chg Basis Note` (`changeBasis`, `changeBasisNote`). In `--json`, `quote` and `compare` add `changeBasis` (`kind`, `date`, the `closed` days, `label`, `note`) to each row, `quote` adds `previousCloseDate` and, for a future whose move it measured again, `sourceMove` (`change`, `changePercent` and `previousClose` as the source sent them), and `portfolio show` adds `dayChangeBasis`. A quote with no comparison shows its price without a change.
 
@@ -397,7 +398,7 @@ From the close until the next open (overnight, weekend, pre-market), every figur
 
 #### Portfolio and watchlist reports
 
-`portfolio show` and `watchlist show` read the quote as the `PF` pane does: Last and Chg are the regular close and its move after the close, with an After Hours or Pre-Market column when a holding has one. Value and P&L are priced at the latest print unless you ask for the regular close; see [What a portfolio is priced at](#what-a-portfolio-is-priced-at).
+`portfolio show` and `watchlist show` read the quote as `quote` does: Last and Chg are the regular close and its move after the close, with an After Hours or Pre-Market column when a holding has one. Value and P&L are priced at the latest print unless you ask for the regular close; see [What a portfolio is priced at](#what-a-portfolio-is-priced-at).
 
 - A portfolio's `--json` puts Last in `quotePrice` and adds the four `extended` fields (`fn PF` reports `price` and `changePercent` the same way).
 - `watchlist show --csv` and `--json` print one row per ticker, as raw numbers: `symbol`, `listing`, `name`, `exchange`, `kind`, `currency`, `price`, `change`, `changePercent`, the four `extended` fields, `volume`, `quoteAsOf`, `stale` and `lastTradeDate`. `marketCap` is in your base currency (`marketCapCurrency`), and `fundingRate8h` appears only when the list holds perpetual markets.
@@ -1506,6 +1507,8 @@ Data that covers US listings only says so for a listing elsewhere and names the 
 
 `fn TAS SAN:EPA` answers `Time and sales covers US listings only, and SAN:EPA is Sanofi on Euronext Paris (EPA).` with `Sanofi's US listing: SNY (try: gloom fn TAS SNY)`. A list such as `fn SIW SAN:EPA AAPL` leaves the listing out with the same line.
 
+The US listing is the receipt the listing's own quote names, else the line search finds by the company's name. A company whose only US line trades over the counter is offered it where the data covers OTC securities: FINRA short interest (`SI`, `SIW`), fails to deliver (`FTD`), weekly ATS volume (`ATS`) and release days (`MDAY`). `fn SI 0700.HK` answers `Tencent Holdings's US listing: TCEHY, over the counter (try: gloom fn SI TCEHY)`. Options, the tape and daily short volume cover exchange listings only, so `fn TAS 0700.HK` names TCEHY as trading over the counter, outside that data, and offers nothing.
+
 #### Functions with a symbol of their own
 
 `MA` asks for a listing elsewhere by the quote symbol its deals are filed under: `fn MA ATH.TO` is `ATH:TSX`, the deals where `ATH.TO` is the target or the buyer, while plain `ATH` is Athene in New York. A function that takes several tickers (`ERN`, `SIW`, `CMP`, `GE`) reads each the way `quote` does.
@@ -1951,7 +1954,7 @@ You do not need the pane to get an official plugin. Type its code, such as `TV`,
 
 Value, P&L, weights and the total are priced at each holding's latest print, pre-market and after hours included, as brokers value a book. `portfolio show` says so under the title (`Priced at the latest print, extended hours included`), and its `As of (UTC)` column gives the time of the price each row uses (`Fri 9 Oct 23:59`).
 
-TOTAL's Chg is the book's move from the closes before, and `Day's move: -HK$15,313.04 (-4.90%) vs Thu 5 Nov close` under the table says it in money with what it is measured from (`vs mixed closes` when the holdings' closes are from different days), as the PF header's Day does. At the latest print it is each print's move, a pre-market or after-hours one included, as Value is: a US pre-market print on Monday moves from Friday's close. A holding that no longer trades counts as no move. A book across markets dates each one's session and open in its source line (`HKEX and US Fri 6 Nov 2026 close · markets closed · HKEX opens Mon 01:30 UTC, 09:30 HKT · US Mon 14:30 UTC, 09:30 ET`).
+TOTAL's Chg is the book's move from the closes before, and `Day's move: -HK$15,313.04 (-4.90%) vs Thu 5 Nov close` under the table says it in money with what it is measured from (`vs mixed closes` when the holdings' closes are from different days), as the PF header's Day does. At the latest print it is each print's move, a pre-market or after-hours one included, as Value is, and the line names that print's session: a US pre-market print on Monday reads `pre-market vs Fri 6 Nov close`. A holding that no longer trades counts as no move. A book across markets dates each one's session and open in its source line (`HKEX and US Fri 6 Nov 2026 close · markets closed · HKEX opens Mon 01:30 UTC, 09:30 HKT · US Mon 14:30 UTC, 09:30 ET`).
 
 ### Pricing at the regular close
 
@@ -1959,7 +1962,15 @@ TOTAL's Chg is the book's move from the closes before, and `Day's move: -HK$15,3
 
 - `As of` is the venue's close (`Fri 9 Oct 20:00` for a US listing). `Day's move: +$1,165.49 (+0.51%)` under the table is the holdings' move from the close before.
 - `fn PF <portfolio> --close` does the same, with the day's move above its table. Both end their source line with the basis (`priced at the regular close`).
-- In the `PF` pane the header reads `Val 231.3k (latest print)` or `(regular close)`. **Value at Regular Close** in the pane's settings switches it, and `shot PF <portfolio> --close` captures it that way.
+- In the `PF` pane the header reads `Val 231,312 (latest print)` or `(regular close)`. **Value at Regular Close** in the pane's settings switches it, and `shot PF <portfolio> --close` captures it that way.
+
+### LAST in the PF pane
+
+A row's LAST, CHG and CHG% are the price its value uses, so LAST times the shares is MKT VAL and CHG times them is DAY.
+
+- At the latest print, after the close or before the open, LAST is the extended-hours print, marked by its session (`AH 158.78`, `PM`, `ON`). Its CHG% is measured from the same close as DAY, and the header's Day names both (`Day -101.10 (-5.99%) AH vs Tue 10 Nov close`). The EXT% column keeps the print's move from the regular close (`-8.61%`), as `quote`'s After Hours line does.
+- At the regular close, LAST is the regular session as `quote` heads it, with the extended print in EXT%. A watchlist values nothing and shows LAST the same way.
+- The header's totals read to the unit (`Val 1,588`, `Day -101.10`), compact only from a billion (`1.23B`).
 
 ### Futures
 
@@ -2207,6 +2218,8 @@ Sign in with email and password, or pick `Log In with QR Code` from the command 
 Signed in, your layouts, settings, portfolios and watchlists sync between your devices. What each pane is showing (cursor, open detail, scroll position) and which floating pane is on top stay on each device. If two devices change the layouts before either has synced, the later change wins.
 
 Signing out pauses sync and keeps unsynced edits for your next sign-in to the same account, including after restarting the app. Signing into a different account starts by merging its cloud workspace. If a sign-in is interrupted, sync stays paused while the app automatically retries session validation; uploads resume only after the account is confirmed.
+
+**Invite a friend.** `ACM` > Pro shows your invite link with **Copy**, and the panes you share carry it too. Each friend who starts paying for Pro through it earns you a free Pro month, up to three; the row counts them.
 
 ## Connect an AI assistant (MCP)
 
@@ -2775,7 +2788,7 @@ Returns, EPS and revenue revisions, upside (the analysts', the Graham number's a
 Results lead with the chosen metric and its covered-universe percentile, then one column per numeric criterion and context columns (market cap, price, change, P/E, revenue growth, operating margin, dividend yield) as width allows. Stale values are amber, and an AS OF column dates the chosen metric where it is stale.
 
 - Price, change and market cap follow the live quote while the regular session trades. Otherwise they are the last regular close and its move, as `quote` shows them, and a PRE-MKT, AFTER-HRS or OVERNIGHT column beside CHG% carries the extended print's move while a row has one. The screen filters, sorts and ranks by the close.
-- P/E, forward P/E and P/B are over the price the row shows, with the EPS and book `valuation` reads, so one ticker has one P/E at one time in both. A row takes the company's name as its quote gives it.
+- P/E, forward P/E and P/B are over the price the row shows, with the EPS and book `valuation` reads (the trailing EPS is the one `valuation` shows as EPS (TTM), the last four filed quarters'), so one ticker has one P/E at one time in both. A warrant, a right, a unit, a depositary receipt with no ratio on record and an EPS that is not net income over the shares read **N/M** with the reason, as in `valuation` (see [Financial statements and valuation](research-data.md#financial-statements-and-valuation)). A row takes the company's name as its quote gives it.
 - Click a metric header to sort by it and make it the focus, again to reverse. A valuation multiple (P/E, forward P/E, P/B, EV/revenue, EV/EBITDA) sorts cheapest first, with one at zero or below after the positive ones either way; any other metric largest first. The footer shows the number of matches and the currency. Its ⚠ opens only what the data service says about the snapshot you are looking at, such as company names read from a fallback. The universe is the same for every screen, so it is described here and not warned about: about five thousand listings with recent financials, not every listed equity. A company outside it reads **Not covered** in a ticker check.
 - Enter opens a company's dated observations, `o` opens it in Ticker Research.
 

@@ -44,6 +44,7 @@ import { resolveSelectionKeyHints } from "../selection-hint";
 import { findPaneInstance } from "../../../types/config";
 import { getBasePaneDisplayTitle } from "../../layout/pane/title";
 import { isDialogOpen } from "../../../ui/dialog-stack";
+import { logFailure } from "../../../utils/log-failure";
 
 interface CommandBarProps {
   dataProvider: DataProvider;
@@ -194,7 +195,6 @@ export function CommandBar({
     openInlineConfirm,
     openModeRoute,
     openPaneTemplateWorkflow,
-    openPluginCommandWorkflow,
     paneShortcutItems,
     persistLayoutChange,
     pluginCommandItems,
@@ -365,14 +365,19 @@ export function CommandBar({
     if (row) runRootRow({ item: row, query: rootQueryRef.current, rank, isShortcut: () => false }, run);
     else run();
   }, [assistState, rootQueryRef, runRootRow, visibleListStateRef]);
+  // The offer runs the step that turns the AI on: Sign Up, or for an account
+  // whose email is not verified yet, sending the verification again.
   const startAssistSignUp = useCallback(() => {
-    const signUpCommand = getAvailablePluginCommands().find((command) => command.id === "auth-signup");
-    if (signUpCommand?.wizard?.length) {
-      openPluginCommandWorkflow(signUpCommand);
+    const commands = getAvailablePluginCommands();
+    const command = commands.find((candidate) => candidate.id === "auth-signup")
+      ?? commands.find((candidate) => candidate.id === "auth-resend-verification");
+    if (command) {
+      Promise.resolve(createPluginCommandItem(command).action())
+        .catch(logFailure("command-bar.assist", "Start sign up from the AI offer failed"));
       return;
     }
     setRootQuery("Sign Up");
-  }, [getAvailablePluginCommands, openPluginCommandWorkflow, setRootQuery]);
+  }, [createPluginCommandItem, getAvailablePluginCommands, setRootQuery]);
   // The assistant pane ships with the cloud plugin, so the row only exists
   // while that pane template is registered.
   const askGloomTemplate = useMemo(() => (

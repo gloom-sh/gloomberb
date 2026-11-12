@@ -201,10 +201,10 @@ describe("PortfolioAnalyticsPane", () => {
           brokerAccounts={{ "ibkr-flex": [{ accountId: "DU12345", name: "Fixture", currency,
             netLiquidation: 20000, totalCashValue: 18000 }] }} />, { width: 100, height: 32 });
       });
-      const frame = await tui.waitForFrameToContain(currency ? "15.0k" : "Unavailable");
-      expect(frame).toMatch(figure("Net Liq", currency ? "15.0k" : "—"));
-      expect(frame).toMatch(figure("Cash", currency ? "13.5k" : "—"));
-      expect(frame).not.toMatch(figure("Net Liq", "20.0k"));
+      const frame = await tui.waitForFrameToContain(currency ? "15,000" : "Unavailable");
+      expect(frame).toMatch(figure("Net Liq", currency ? "15,000" : "—"));
+      expect(frame).toMatch(figure("Cash", currency ? "13,500" : "—"));
+      expect(frame).not.toMatch(figure("Net Liq", "20,000"));
       if (currency) expect(requested).toContain("CAD");
       else expect(frame).toMatch(figure("FX", "Unavailable"));
     });
@@ -230,8 +230,8 @@ describe("PortfolioAnalyticsPane", () => {
     });
     const frame = await tui.waitForFrameToContain("Sep 1 2026");
     if (withAccount) {
-      expect(frame).toMatch(figure("Net Liq", "6.0k"));
-      expect(frame).toMatch(figure("Cash", "6.0k"));
+      expect(frame).toMatch(figure("Net Liq", "6,000"));
+      expect(frame).toMatch(figure("Cash", "6,000"));
     } else {
       expect(frame).not.toContain("Net Liq");
       expect(frame).not.toContain("Cash");
@@ -399,17 +399,17 @@ describe("PortfolioAnalyticsPane", () => {
     await flushFrame();
 
     const frame = tui.frame();
-    expect(frame).toMatch(figure("Net Liq", "125.0k"));
-    expect(frame).toMatch(figure("Gross", "113.6k"));
+    expect(frame).toMatch(figure("Net Liq", "125,000"));
+    expect(frame).toMatch(figure("Gross", "113,636"));
     expect(frame).toMatch(figure("Margin Lev", "0.9x"));
-    expect(frame).toMatch(figure("Cash", "-50.0k"));
+    expect(frame).toMatch(figure("Cash", "-50,000"));
     expect(frame).toMatch(figure("Day", "+900.00"));
     expect(frame).toMatch(figure("P&L", "+777.00"));
     expect(frame).toMatch(figure("Realized", "-25.00"));
-    expect(frame).toMatch(figure("Settled", "-45.0k"));
-    expect(frame).toMatch(figure("Avail", "15.0k"));
-    expect(frame).toMatch(figure("Excess", "12.0k"));
-    expect(frame).toMatch(figure("BP", "30.0k"));
+    expect(frame).toMatch(figure("Settled", "-45,000"));
+    expect(frame).toMatch(figure("Avail", "15,000"));
+    expect(frame).toMatch(figure("Excess", "12,000"));
+    expect(frame).toMatch(figure("BP", "30,000"));
     expect(frame).toMatch(figure("As Of", "Mar 26"));
     expect(frame).toMatch(figure("Source", "Flex Mar 26"));
   });
@@ -519,7 +519,7 @@ describe("PortfolioAnalyticsPane", () => {
     expect(frame).toContain("Flex DU12345");
     // No account for this broker portfolio: its equity is unknown, and its positions are only its gross.
     expect(frame).toMatch(figure("Net Liq", "—"));
-    expect(frame).toMatch(figure("Gross", "1.4k"));
+    expect(frame).toMatch(figure("Gross", "1,400"));
     expect(frame).toMatch(figure("P&L", "+400.00 +40.00%"));
     expect(frame).toContain("Technology               100.0%       1.4k    +400.00  +40.00%");
     expect(frame).not.toContain("1.3k");

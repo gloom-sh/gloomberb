@@ -16,7 +16,7 @@ import {
 import { formatCompact, formatPercentRaw } from "../../../../utils/format";
 import { currencyPriceMinDigits, formatMarketCostWithCurrency, formatMarketPrice, formatMarketPriceWithCurrency, formatMarketQuantity, quoteFormatOptions } from "../../../../market-data/market/format";
 import { resolvePriceBasis } from "../../../../market-data/market/price-basis";
-import { combinedChangeBasisLabel, futuresQuoteFromSettle, quoteChangeBasis, type QuoteChangeBasis } from "../../../../market-data/market/change-basis";
+import { dayMoveBasisLabel, futuresQuoteFromSettle, quoteChangeBasis, type QuoteChangeBasis } from "../../../../market-data/market/change-basis";
 import { getPortfolioPositionMetrics, lotCostAtTodaysRate, lotCostFxRate, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../../../portfolio/position-metrics";
 import {
   getPortfolioValuationDisplay,
@@ -44,6 +44,7 @@ import { resolvePortfolioTotalsCurrency } from "../summary/totals";
 import {
   EXTENDED_SESSION_LABELS,
   exchangeShortName,
+  extendedPrintSession,
   getActiveQuoteDisplay,
   getCompletedRegularSessionDisplay,
   getExtendedSessionDisplay,
@@ -643,7 +644,8 @@ async function positionDayMove(
  * portfolio's currency, and that move against their value at the close
  * before, with what it is measured from as the pane's Day says it ("vs Fri 16
  * Oct close", "vs mixed closes"): at the latest print, the move of that print,
- * a pre-market or after-hours one included; at the close, the regular
+ * a pre-market or after-hours one included, which the basis names ("after
+ * hours vs Tue 10 Nov close"); at the close, the regular
  * session's. A listing that no longer trades counts as no move and names no
  * basis. Null when any priced holding's move is unknown, as the pane's Day is.
  */
@@ -655,6 +657,7 @@ export function portfolioDayMove(
   let previousValue = 0;
   let fx = 0;
   const bases: Array<QuoteChangeBasis | null> = [];
+  const prints: Array<ExtendedSession | null> = [];
   const session = valuation.basis === "regular-close" ? "regular" : "active";
   for (const entry of valuation.positions) {
     if (!entry.position) continue;
@@ -662,12 +665,14 @@ export function portfolioDayMove(
     change += entry.dayMove.change;
     previousValue += entry.dayMove.previousValue;
     fx += entry.dayMove.fx;
-    if (!entry.quote?.delisting) bases.push(quoteChangeBasis(entry.quote, { session, terms: entry.futures }));
+    if (entry.quote?.delisting) continue;
+    bases.push(quoteChangeBasis(entry.quote, { session, terms: entry.futures }));
+    prints.push(session === "active" ? extendedPrintSession(entry.quote, entry.valuation.valuationPrice) : null);
   }
   return {
     change,
     changePercent: previousValue !== 0 ? (change / previousValue) * 100 : null,
-    basis: combinedChangeBasisLabel(bases, now),
+    basis: dayMoveBasisLabel(bases, prints, { now }),
     fx,
   };
 }

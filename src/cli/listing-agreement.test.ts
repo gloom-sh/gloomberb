@@ -51,6 +51,8 @@ const LISTINGS: Array<[typed: string, key: string, readAs: boolean]> = [
 ];
 
 let requested: string[] = [];
+/** Depositary pairs the home line's quote names, set by the tests that read one. */
+const PAIRS: Record<string, { receipt: string; ratio: number; ordinary: string[] }> = {};
 /** Symbols search leaves out, so a shared code is read from the listing's own quotes. */
 const UNSEARCHED = new Set<string>();
 
@@ -62,7 +64,9 @@ function listingQuote(symbol: string, exchange: string) {
   const board = !listing && asked === "KRX" ? LISTED[bare!]?.find(([listed]) => listed === "KOSDAQ") : undefined;
   if (board) return createTestQuote({ symbol: bare!, name: board[1], currency: "KRW", listingExchangeName: "KRX", tradingExchangeName: "KOSDAQ" });
   if (!listing) throw new Error(`No quote for ${symbol}`);
-  return createTestQuote({ symbol: bare!, name: listing[1], currency: "USD", listingExchangeName: listing[0] });
+  const pair = PAIRS[bare!];
+  return createTestQuote({ symbol: bare!, name: listing[1], currency: "USD", listingExchangeName: listing[0],
+    ...pair ? { depositaryPair: pair, isDepositaryReceipt: pair.receipt === bare } : {} });
 }
 
 const dataProvider = createTestDataProvider({
@@ -262,6 +266,45 @@ test("a function whose data covers US listings only names the company's US listi
   expect(list.warnings).toEqual([
     "FINRA short interest covers US listings only, and SAN:EPA is Sanofi on Euronext Paris (EPA). Sanofi's US listing: SNY (try: gloom fn SIW SNY)",
   ]);
+});
+
+test("a listing abroad whose US line is a receipt over the counter is offered it only where the data covers OTC securities", async () => {
+  // As Gloom Cloud quoted them on 12 Nov 2026: 0700:HKEX names its receipt, which trades on OTC Markets' Pink tier.
+  // Search by the name lists Tencent's warrants and its SGX receipt, no US line (none here), so the quote's pair finds it.
+  LISTED.TCEHY = [["OTC MARKETS OTCPK", "Tencent Holdings Limited"]];
+  const pair = { receipt: "TCEHY", ratio: 1, ordinary: ["0700.HK"] };
+  PAIRS["0700"] = pair;
+  PAIRS.TCEHY = pair;
+  const refused = (token: string, typed: string) => runFunction(token, typed)
+    .then(() => null, (error: { message: string; details?: string }) => [error.message, error.details?.split("\n")[0]]);
+  try {
+    // FINRA short interest, its watch, the SEC's fails, FINRA's weekly volume and release-day closes all have TCEHY.
+    for (const [token, what] of [["SI", "FINRA short interest"], ["SIW", "FINRA short interest"], ["FTD", "SEC fails to deliver"],
+      ["ATS", "FINRA weekly off-exchange volume"], ["MDAY", "Macro release day data"]] as const) {
+      expect(await refused(token, "0700:HKEX"), token).toEqual([
+        `${what} covers US listings only, and 0700:HKEX is Tencent Holdings on Hong Kong Stock Exchange (HKEX).`,
+        `Tencent Holdings's US listing: TCEHY, over the counter (try: gloom fn ${token} TCEHY)`,
+      ]);
+    }
+    // Trades, quotes, FINRA's daily short volume and options cover exchange listings: TCEHY is named, never offered.
+    for (const [token, what] of [["TAS", "Time and sales"], ["QR", "Quote recap"], ["SIV", "FINRA short volume"],
+      ["HIVG", "Implied volatility history"]] as const) {
+      expect(await refused(token, "0700:HKEX"), token).toEqual([
+        `${what} covers US listings only, and 0700:HKEX is Tencent Holdings on Hong Kong Stock Exchange (HKEX).`,
+        "Tencent Holdings has no US exchange listing; its US line TCEHY trades over the counter, which this data does not cover.",
+      ]);
+    }
+    // A receipt on a US exchange is every function's: the pair names it before search would.
+    PAIRS["0700"] = { ...pair, receipt: "AAPL" };
+    expect(await refused("TAS", "0700:HKEX")).toEqual([
+      "Time and sales covers US listings only, and 0700:HKEX is Tencent Holdings on Hong Kong Stock Exchange (HKEX).",
+      "Tencent Holdings's US listing: AAPL (try: gloom fn TAS AAPL)",
+    ]);
+  } finally {
+    delete LISTED.TCEHY;
+    delete PAIRS["0700"];
+    delete PAIRS.TCEHY;
+  }
 });
 
 test("a list function reads a pasted list split by semicolons, quote marks dropped, and names a separator left on its end", async () => {

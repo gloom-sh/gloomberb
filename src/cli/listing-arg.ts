@@ -15,6 +15,7 @@ import {
   type ListingVenue,
 } from "../tickers/listing-venues";
 import { findUsListingOfCompany, type UsListing } from "../tickers/us-listing";
+import { listingDepositaryPair } from "../market-data/depositary-pair";
 import {
   findListingOfCompanyName, isCompanyNameInput, marksAnotherListing, readTerminalCodeArg, serviceMarkedListing, serviceMarkedOtherListing, type CompanyNameListing,
 } from "../tickers/company-name-listing";
@@ -33,6 +34,7 @@ import {
   isSharedExchangeCode,
   isUsEquityExchange,
   isUsListingExchange,
+  isUsOtcVenue,
   usShareClassSpellings,
   parsePublicTickerKey,
   publicTickerKey,
@@ -614,21 +616,51 @@ export async function usLineOfListing(
 }
 
 /**
- * The company's own listing on a US exchange: its line under the same symbol
- * (SAN:MCE's New York receipt), else the one search finds by its name
- * (Sanofi's SNY for SAN:EPA, Toyota's TM for 7203:JPX). Funds and contracts
- * that carry its name are not its listing. Null for a listing in the US or
- * with no venue, and when the company has no US line search knows.
+ * The US line a listing abroad's own quote names as its depositary receipt
+ * (0700:HKEX's TCEHY, 9988:HKEX's BABA), on the venue the receipt's quote is
+ * from: a US exchange, or over the counter (canonically OTC). Null when the
+ * quote names none, the listing is the receipt, or the receipt trades
+ * outside the US (Tencent's HTCD on SGX).
+ */
+async function depositaryReceiptLine(quote: Quote | null, deps: Pick<ListingDeps, "dataProvider">): Promise<UsListing | null> {
+  const pair = listingDepositaryPair({ quote });
+  if (!pair || quote?.isDepositaryReceipt === true) return null;
+  const receipt = await deps.dataProvider.getQuote(pair.receipt, "").catch(logFailure("cli.listing-arg", "Read a depositary receipt's quote failed", null));
+  const venue = canonicalExchange(receipt?.listingExchangeName || receipt?.exchangeName || "");
+  const exchange = isUsListingExchange(venue) ? venue : isUsOtcVenue(venue) ? "OTC" : null;
+  return receipt && exchange ? { symbol: pair.receipt, exchange, name: receipt.name ?? quote?.name ?? pair.receipt } : null;
+}
+
+/** A company's US line as a function abroad offers it: `line` when its data covers it; `otc` the line over the counter it does not. */
+interface UsLineOffer {
+  line: UsListing | null;
+  otc: UsListing | null;
+}
+
+/**
+ * The company's own listing in the US: its line under the same symbol
+ * (SAN:MCE's New York receipt), else the receipt its quote names (Tencent's
+ * TCEHY for 0700:HKEX), else the one search finds by its name (Sanofi's SNY
+ * for SAN:EPA, Toyota's TM for 7203:JPX). Funds and contracts that carry its
+ * name are not its listing. A line over the counter is offered only with
+ * `otc`, for data that covers one (FINRA's short interest); otherwise it is
+ * named apart. Nothing for a listing in the US or with no venue, and when
+ * the company has no US line search knows.
  */
 async function usListingOfCompany(
   listing: Pick<ListingArg, "symbol" | "exchange">,
   company: string | null | undefined,
   deps: ListingDeps,
-): Promise<UsListing | null> {
+  quote: Quote | null,
+  otc: boolean,
+): Promise<UsLineOffer> {
   const sameSymbol = await usLineOfListing(listing, company, deps);
-  if (sameSymbol) return { ...sameSymbol, symbol: listing.symbol };
-  if (!listing.exchange || isUsListingExchange(listing.exchange)) return null;
-  return findUsListingOfCompany(deps.dataProvider, company);
+  if (sameSymbol) return { line: { ...sameSymbol, symbol: listing.symbol }, otc: null };
+  if (!listing.exchange || isUsListingExchange(listing.exchange)) return { line: null, otc: null };
+  const receipt = await depositaryReceiptLine(quote, deps);
+  if (receipt && (otc || receipt.exchange !== "OTC")) return { line: receipt, otc: null };
+  const searched = await findUsListingOfCompany(deps.dataProvider, company, { otc });
+  return { line: searched, otc: searched ? null : receipt };
 }
 
 /**
@@ -638,13 +670,17 @@ async function usListingOfCompany(
  * symbol: "Time and sales covers US listings only, and SAN:EPA is Sanofi on
  * Euronext Paris (EPA).", then the company's US listing with the command that
  * asks for it ("Sanofi's US listing: SNY (try: gloom fn TAS SNY)"), or that
- * none was found.
+ * none was found. With `otc` (usListingsOtc) a line over the counter is
+ * offered too, said to be one ("Tencent Holdings's US listing: TCEHY, over
+ * the counter"); without it such a line is named as one the data does not
+ * cover, never offered.
  */
 export async function usListingsOnlyMessage(
   what: string,
   listing: Pick<CliListing, "symbol" | "exchange" | "key" | "request" | "saved">,
   deps: ListingDeps,
   retry: (key: string) => string | null,
+  { otc = false }: { otc?: boolean } = {},
 ): Promise<{ message: string; details: string }> {
   const quote = await loadListingQuote(deps.dataProvider, listing);
   const company = listingIdentity(listing, quote).name;
@@ -658,14 +694,16 @@ export async function usListingsOnlyMessage(
   }
   const where = venue ? exchangeLabel(venue) : "";
   const named = company ? `${shortCompanyName(company)}${where ? ` on ${where}` : ""}` : where || "not a US listing";
-  const us = await usListingOfCompany(local, company, deps);
+  const { line: us, otc: outside } = await usListingOfCompany(local, company, deps, quote, otc);
   const owner = company ? shortCompanyName(company) : listing.key;
   const command = us ? retry(us.symbol) : null;
   return {
     message: `${what} covers US listings only, and ${listing.key} is ${named}.`,
     details: us
-      ? `${owner}'s US listing: ${us.symbol}${command ? ` (try: ${command})` : ""}`
-      : `No US listing of ${owner} was found.`,
+      ? `${owner}'s US listing: ${us.symbol}${us.exchange === "OTC" || isUsOtcVenue(us.exchange) ? ", over the counter" : ""}${command ? ` (try: ${command})` : ""}`
+      : outside
+        ? `${owner} has no US exchange listing; its US line ${outside.symbol} trades over the counter, which this data does not cover.`
+        : `No US listing of ${owner} was found.`,
   };
 }
 

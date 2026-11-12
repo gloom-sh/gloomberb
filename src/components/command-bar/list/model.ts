@@ -2,6 +2,7 @@ import type { CommandBarResultLine } from "../../../types/plugin";
 import type { TickerRecord } from "../../../types/ticker";
 import type { BrokerContractRef, TickerListingRef } from "../../../types/instrument";
 import type { InstrumentRef } from "../../../market-data/request-types";
+import { ASSIST_CATEGORY } from "../assist/model";
 import {
   buildSections,
   type CommandBarCategoryPriorities,
@@ -222,6 +223,14 @@ export function resolveListPageTarget(
   return target;
 }
 
+/**
+ * Whether every row is the AI's offer (`Ask AI — sign up to enable`), which
+ * no Enter takes: nothing in the list answers what was typed.
+ */
+function onlyAssistOffers(results: readonly ResultItem[]): boolean {
+  return results.length > 0 && results.every((item) => item.category === ASSIST_CATEGORY && !isDefaultSelectable(item));
+}
+
 export function buildNativeListRows(listState: ListScreenState, rows: CommandBarListRow[]): CommandBarListRow[] {
   if (listState.searching && rows.length === 0) {
     return [{ kind: "spinner", id: "searching", label: "Searching…" }];
@@ -231,6 +240,10 @@ export function buildNativeListRows(listState: ListScreenState, rows: CommandBar
   }
   if (listState.searching) {
     return [...rows, { kind: "spinner", id: "searching", label: "Searching…" }];
+  }
+  // A query nothing matches says so above the offer, rather than leave the offer looking like the answer.
+  if (listState.query.trim() && onlyAssistOffers(listState.results)) {
+    return [{ kind: "message", id: "empty", label: listState.emptyLabel }, { kind: "spacer", id: "spacer:empty" }, ...rows];
   }
   return rows;
 }

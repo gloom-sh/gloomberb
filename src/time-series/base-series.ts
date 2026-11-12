@@ -1,5 +1,6 @@
 import { resolveAssetDisplayKind } from "../market-data/market/format";
 import { hasValidQuoteObservationTime } from "../market-data/quotes/freshness";
+import { getActiveQuoteDisplay, getRegularSessionDisplay } from "../market-data/market/status";
 import type { HistorySession } from "../types/price-history";
 import { appendLiveQuotePoint, hasUnknownBondHistoryBasis } from "./chart-data";
 import type { LiveBarAccumulator } from "./live-bars";
@@ -135,6 +136,8 @@ export function baseSecuritySeries(
   quoteMetadata: QuoteMetadata | null | undefined = financials.quoteMetadata,
   /** What a futures contract's price counts ("USD / gallon"), from its terms. */
   contractUnit?: string | null,
+  /** The bars run into pre-market and after-hours trading. */
+  { extendedHours = false }: { extendedHours?: boolean } = {},
 ): ResolvedSeries | null {
   if (spec.source.kind !== "security") return null;
   const field = getTimeSeriesField(spec.source.fieldId);
@@ -217,10 +220,13 @@ export function baseSecuritySeries(
   const listingExchange = canonicalExchange(marketExchange) === "SMART" || usOption
     ? canonicalExchange(sessionExchange) || (routedUsListing ? "NYSE" : marketExchange)
     : marketExchange;
+  // The move of the price the chart ends on: the regular session's, its close
+  // once it is over, as `quote` heads Last; the latest print's, an after-hours
+  // one included, where the bars run into extended hours.
   const latestChangePercent = marketField && field.unit.startsWith("currency")
     && !unknownBondBasis
     && financials.quote && hasValidQuoteObservationTime(financials.quote)
-    ? financials.quote.changePercent
+    ? (extendedHours ? getActiveQuoteDisplay(financials.quote) : getRegularSessionDisplay(financials.quote))?.changePercent
     : undefined;
   const priceIssues = valuationPriceIssues(financials, spec.source);
   // A source with closes only, such as a generic future, has flat bars (open,

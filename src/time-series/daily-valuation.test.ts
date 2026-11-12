@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { FinancialStatement, TickerFinancials } from "../types/financials";
 import { createTestDataProvider } from "../test-support/data-provider";
-import { extractFundamentalSeries } from "./fundamentals";
+import { extractFundamentalSeries, valuationNotMeaningful } from "./fundamentals";
 import { resolveChartSpecData } from "./resolve";
 import { dailyValuationHistory } from "./daily-valuation";
 import { completeAvailability } from "../utils/financial-statements";
@@ -272,4 +272,20 @@ test("earnings release history loads once per listing and is retained for offlin
   const replay = await resolveChartSpecData(spec, { ...sources, dataProvider: provider(JSON.parse(JSON.stringify(captured))) });
   expect(loads).toBe(1);
   expect(replay.series.map(series => series.points)).toEqual(model.series.map(series => series.points));
+});
+
+test("a P/E valuation withdraws stays withdrawn: none at any date for a warrant, no current point over an EPS that is not the company's", () => {
+  const ttm: SecuritySeriesSource = { ...source(), period: "ttm" };
+  // BZFDW's warrant price over BuzzFeed's EPS read 0.03x in GE and PEB.
+  const warrant = financials();
+  warrant.quote = { ...warrant.quote!, name: "Test Corp - Warrant", listingExchangeName: "NASDAQ" };
+  expect(values(warrant)).toEqual([]);
+  expect(extractFundamentalSeries(warrant, ttm)).toEqual([]);
+  const data = financials();
+  expect(extractFundamentalSeries(data, ttm).at(-1)?.periodLabel).toBe("Current");
+  // A withdrawn trailing P/E is not read again as the price over the statements' EPS.
+  const reason = "EPS (TTM) 96.00 has the other sign than trailing net income over shares outstanding (-11.57)";
+  data.fundamentals = { eps: 96, notMeaningful: { trailingPE: reason } };
+  expect(extractFundamentalSeries(data, ttm).map((point) => point.periodLabel)).not.toContain("Current");
+  expect(valuationNotMeaningful(data, ttm)).toEqual({ reason, asOf: "2025-03-31" });
 });

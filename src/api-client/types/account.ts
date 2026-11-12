@@ -56,6 +56,16 @@ export interface CreatedMcpKey {
   apiKey: { id: string; name: string; scope: McpKeyScope };
 }
 
+/**
+ * The account's invite link (`/account/referral`), and how many free Pro
+ * months it has earned so far out of the most it can.
+ */
+export interface ReferralInvite {
+  url: string;
+  earned: number;
+  cap: number;
+}
+
 /** The account's private calendar feed link (`/account/calendar-feed`). */
 export interface CalendarFeed {
   url: string;

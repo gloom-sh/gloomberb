@@ -371,17 +371,17 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
       const bIssuerRank = exactIssuerRank.get(exactIssuerKey(b)) ?? Number.POSITIVE_INFINITY;
       if (aIssuerRank !== bIssuerRank) return aIssuerRank - bIssuerRank;
     }
-    if (b.score !== a.score) return b.score - a.score;
-    const aSaved = isSavedSearchItem(a.item);
-    const bSaved = isSavedSearchItem(b.item);
-    if (aSaved !== bSaved) return aSaved ? -1 : 1;
-    // Rows that answer to the same typed name (GOOGL and GOOG for "Google")
-    // keep the order the server gave them rather than the shorter symbol first.
-    if (a.symbolMatchRank === 2) {
+    // Rows the server sent for the name as typed (GOOGL and GOOG for "Google"; Microsoft, Micron and
+    // Microchip for "micro", largest first) keep its order, rather than the shorter name or symbol first.
+    if (a.symbolMatchRank === 2 && !isSavedSearchItem(a.item) && !isSavedSearchItem(b.item)) {
       const aProviderRank = a.item.providerRank ?? Number.POSITIVE_INFINITY;
       const bProviderRank = b.item.providerRank ?? Number.POSITIVE_INFINITY;
       if (aProviderRank !== bProviderRank) return aProviderRank - bProviderRank;
     }
+    if (b.score !== a.score) return b.score - a.score;
+    const aSaved = isSavedSearchItem(a.item);
+    const bSaved = isSavedSearchItem(b.item);
+    if (aSaved !== bSaved) return aSaved ? -1 : 1;
     if (a.item.label.length !== b.item.label.length) return a.item.label.length - b.item.label.length;
     return a.index - b.index;
   };
