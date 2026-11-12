@@ -1068,15 +1068,17 @@ async function showCollectionWithMarketData(
     const hedged = allocation.weightBasis === "gross";
     const yieldBase = hedged ? allocation.weightBase : exposure.net;
     const portfolioYield = totalIncome != null && yieldBase != null && yieldBase > 0 ? (totalIncome / yieldBase) * 100 : null;
-    // With a holding's income unknown, TOTAL still adds up those it has, its yield over their value, and the note
-    // under the table names the holdings it leaves out. The export keeps annualIncome null and knownAnnualIncome.
+    // With a holding's income unknown, TOTAL still adds up those it has, and the note under the table names the
+    // holdings it leaves out. Its yield is over the same base less what those are worth, so a holding that pays
+    // nothing (a coin, a non-payer) still counts. The export keeps annualIncome null and knownAnnualIncome.
     const partialIncome = totalIncome == null && income.knownHoldings > 0;
-    const knownBase = partialIncome
-      ? valued.reduce((sum, entry, index) => {
-        const value = lotIncome[index] ? entry.row.marketValue : null;
+    const leftOutValue = partialIncome
+      ? valued.reduce((sum, entry) => {
+        const value = entry.position && entry.metrics && income.gaps.has(entry.ticker.metadata.ticker) ? entry.row.marketValue : null;
         return typeof value === "number" && Number.isFinite(value) ? sum + (hedged ? Math.abs(value) : value) : sum;
       }, 0)
-      : null;
+      : 0;
+    const knownBase = partialIncome && yieldBase != null ? yieldBase - leftOutValue : null;
     const totalIncomeShown = partialIncome ? income.knownIncome : totalIncome;
     const totalYieldShown = partialIncome
       ? knownBase != null && knownBase > 0 ? (income.knownIncome / knownBase) * 100 : null

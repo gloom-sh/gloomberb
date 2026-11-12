@@ -181,14 +181,18 @@ function resolveCollectionOptions(entries: CollectionEntry[]): PaneSettingOption
 
 /** Columns that read a portfolio's target weights. */
 const TARGET_COLUMN_IDS = new Set(["target_weight", "drift", "trade", "trade_value"]);
-/** What a portfolio with targets shows when the pane's columns name none of them. */
-const REBALANCE_COLUMN_IDS = ["weight", "target_weight", "drift", "trade"];
+/**
+ * What a portfolio with targets shows when the pane's columns name none of
+ * them: TRADE in units and TRADE VAL in money, where the cash line's trade
+ * shows and the trades add up to nothing.
+ */
+const REBALANCE_COLUMN_IDS = ["weight", "target_weight", "drift", "trade", "trade_value"];
 
 /**
- * A portfolio with target weights shows WEIGHT, TGT WT, DRIFT and TRADE right
- * after TICKER, where a rebalance reads them first, unless the pane's columns
- * already pick target columns. A WEIGHT the columns place keeps its place,
- * with the others after it.
+ * A portfolio with target weights shows WEIGHT, TGT WT, DRIFT, TRADE and
+ * TRADE VAL right after TICKER, where a rebalance reads them first, unless
+ * the pane's columns already pick target columns. A WEIGHT the columns place
+ * keeps its place, with the others after it.
  */
 function withTargetColumns(columnIds: string[]): string[] {
   if (columnIds.some((id) => TARGET_COLUMN_IDS.has(id))) return columnIds;

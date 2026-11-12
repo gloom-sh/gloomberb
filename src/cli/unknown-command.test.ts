@@ -4,7 +4,10 @@ import { createDefaultConfig } from "../types/config";
 import { nearFunctionCodes } from "./pane-functions/catalog";
 import { createPaneCatalog } from "./pane-functions/discovery";
 import type { MarketContext } from "./types";
-import { catalogPointer, currencyWordPair, subcommandPointer, tickerPointer, unknownCommandReply, type CatalogCommandHit } from "./unknown-command";
+import { suggestPaneFunctions } from "./pane-functions/catalog";
+import {
+  catalogPointer, currencyWordPair, hitsBesideNearCommand, subcommandPointer, tickerPointer, unknownCommandReply, type CatalogCommandHit,
+} from "./unknown-command";
 import { unknownPortfolioAction } from "../plugins/builtin/portfolio-list/cli/portfolio-command";
 
 const RV: CatalogCommandHit = { code: "RV", label: "Relative Valuation", argKind: "tickers", argPlaceholder: null, peers: true };
@@ -41,6 +44,11 @@ test("a word that names a function and is one slip from a command points at the 
     "Search the catalog: gloom catalog screen",
     "Did you mean screenshot? Run gloom help to see every command.",
   ].join("\n"));
+  // A word one slip from a command keeps only the hits named for it; with no command near, all of them.
+  const PF: CatalogCommandHit = { code: "PF", label: "Portfolio", argKind: "none", argPlaceholder: null, peers: false };
+  expect(hitsBesideNearCommand([EQS, PF, AI], "screen", "screenshot")).toEqual([EQS, AI]);
+  expect(hitsBesideNearCommand([EQS, PF], "scr", "screenshot")).toEqual([]);
+  expect(hitsBesideNearCommand([EQS, PF], "screen", null)).toEqual([EQS, PF]);
   // `portfolio rebalance Main` names no collection: the closest subcommand, or all of them, and where drift and trades are.
   const config = createDefaultConfig("/unused-portfolio-action");
   expect(unknownPortfolioAction(["rebalance", "Main"], config)).toEqual({
@@ -116,6 +124,9 @@ test("a ticker typed as a command is pointed at quote and search, and taken for 
     // A slip from a code that keeps its first letter still is, as a command or after `fn`.
     expect(nearFunctionCodes(registry, "RCDF", { commandWord: true })).toEqual([{ code: "RDCF", label: "Reverse DCF" }]);
     expect(nearFunctionCodes(registry, "RCDF")).toEqual([{ code: "RDCF", label: "Reverse DCF" }]);
+    // `screen`, one slip from `screenshot`, still finds the screener first in the catalog it is answered from.
+    const screen = hitsBesideNearCommand(await suggestPaneFunctions(registry, context, "screen"), "screen", "screenshot");
+    expect(screen[0]?.token).toBe("EQS");
   } finally {
     registry.destroy();
   }

@@ -187,6 +187,19 @@ export function subcommandPointer(
   return { owners: owners.map((command) => command.name), run: owners.map((command) => `gloom ${command.name} ${typed}`) };
 }
 
+/**
+ * The catalog's hits for a word, kept beside a command it is one slip from
+ * (`near`) only where a function's name has a word starting with it: `screen`
+ * keeps Equity Screener and AI Screener before "Did you mean screenshot?".
+ * Every hit when no command is near.
+ */
+export function hitsBesideNearCommand<T extends Pick<CatalogCommandHit, "label">>(hits: readonly T[], token: string, near: string | null): T[] {
+  if (!near) return [...hits];
+  const word = token.trim().toLowerCase();
+  if (word.length < 4) return [];
+  return hits.filter((hit) => hit.label.toLowerCase().split(/[^a-z0-9]+/).some((part) => part.startsWith(word)));
+}
+
 export interface UnknownCommandPointers {
   /** The word is a function's code: the command that runs it. */
   fn: { code: string; command: string } | null;

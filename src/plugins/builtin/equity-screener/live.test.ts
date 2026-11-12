@@ -190,3 +190,17 @@ test("a sort on a figure the quotes move is redone on the figures shown; other s
   expect(order({ field: "marketCap", direction: "asc" })).toEqual(["DUOL", "GRAB", "MANH", "NONE"]);
   expect(order({ field: "trailingPE", direction: "desc" })).toEqual(["GRAB", "NONE", "MANH", "DUOL"]);
 });
+
+test("a P/E at zero or below sorts after the positive ones, cheapest or dearest first, and a missing one after it", () => {
+  const row = (symbol: string, pe: number | null) => {
+    const base = snapshotRow();
+    return { ...base, symbol, metrics: { ...base.metrics, trailingPE: { ...metric(0, "x", "2026-10-09"), value: pe } } };
+  };
+  const shown = [row("LOSS", -12), row("NONE", null), row("DEAR", 40), row("ZERO", 0), row("CHEAP", 9)];
+  const order = (direction: "asc" | "desc") => sortLiveScreenRows(shown, { field: "trailingPE", direction }).map((item) => item.symbol);
+  expect(order("asc")).toEqual(["CHEAP", "DEAR", "LOSS", "ZERO", "NONE"]);
+  expect(order("desc")).toEqual(["DEAR", "CHEAP", "ZERO", "LOSS", "NONE"]);
+  // A move below zero is a move like any other where it is no multiple.
+  const moves = shown.map((entry) => ({ ...entry, metrics: { ...entry.metrics, changePercent: { ...entry.metrics.changePercent, value: entry.metrics.trailingPE.value } } }));
+  expect(sortLiveScreenRows(moves, { field: "changePercent", direction: "asc" }).map((item) => item.symbol)).toEqual(["LOSS", "ZERO", "CHEAP", "DEAR", "NONE"]);
+});

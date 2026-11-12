@@ -8,12 +8,13 @@ const LISTED_COLLECTIONS = 12;
 /** Names the command bar lists under an unknown one: they share one row of the bar. */
 const LISTED_COLLECTION_NAMES = 6;
 
-/** How a collection argument is read: `prefix` also takes the start of one collection's name or id. */
+/** How a collection argument is read: `prefix` also takes the start of one collection's name. */
 export interface CollectionNameOptions {
   /**
-   * `PF family` opens Family Office when no other collection's name or id
-   * starts with "family". For what opens a pane or a report; a command that
-   * changes or deletes a collection takes its whole name.
+   * `PF family` opens Family Office when no other collection's name starts
+   * with "family". Ids are internal, so only a whole one reads. For what
+   * opens a pane or a report; a command that changes or deletes a collection
+   * takes its whole name.
    */
   prefix?: boolean;
 }
@@ -42,11 +43,11 @@ export function findNamedCollection<T extends { id: string; name: string }>(
   return started.length === 1 ? started[0]! : null;
 }
 
-/** The collections whose name or id starts with `wanted`, in their order. */
+/** The collections whose name starts with `wanted`, in their order. */
 function collectionsStartingWith<T extends { id: string; name: string }>(collections: readonly T[], wanted: string): T[] {
   const start = wanted.trim().toLowerCase();
   if (!start) return [];
-  return collections.filter((entry) => entry.name.trim().toLowerCase().startsWith(start) || entry.id.toLowerCase().startsWith(start));
+  return collections.filter((entry) => entry.name.trim().toLowerCase().startsWith(start));
 }
 
 /**

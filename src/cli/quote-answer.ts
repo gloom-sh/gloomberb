@@ -255,10 +255,6 @@ export async function withJoinedCompanyNames(
   return { answers: rows.flat().map((row) => row.answer), asked: rows.flat().map((row) => row.asked) };
 }
 
-/**
- * The row of the listing a company's name was read as (`named`), saying so;
- * null when the app cannot read its venue or it has no quote.
- */
 /** A bare code quoted abroad that is a US share class without its mark (`readShareClassCode`), answered as that class. */
 async function abroadShareClass(
   listing: CliListing,
@@ -273,6 +269,10 @@ async function abroadShareClass(
   return shareClass ? answerNamedListing(shareClass, market, request, refresh, datesChangeBasis) : null;
 }
 
+/**
+ * The row of the listing a company's name was read as (`named`), saying so;
+ * null when the app cannot read its venue or it has no quote.
+ */
 async function answerNamedListing(
   named: ListingArg,
   market: MarketContext,

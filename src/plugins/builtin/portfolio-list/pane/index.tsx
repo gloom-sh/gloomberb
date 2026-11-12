@@ -123,7 +123,6 @@ import {
   resolvePortfolioCash,
 } from "../../../../portfolio/allocation";
 import { allocationSummaryRows, CASH_ROW_KEY } from "../allocation-rows";
-import { resolvePortfolioAccountMetrics } from "../account-metrics";
 import { useTargetWeightActions, type TargetRow } from "./target-weights";
 
 /** Columns that need the portfolio's total. */
@@ -138,6 +137,8 @@ const DAY_MS = 86_400_000;
 const firstSortDirection = (columnId: string) => columnId === "drift" ? "desc" as const : "asc" as const;
 /** One fallback for every render: a fresh `{}` would read as a changed value each time. */
 const NO_COLLECTION_SORTS: Record<string, CollectionSortPreference> = {};
+/** What the pane's `cursorSummaryRow` holds while the cursor is on the CASH row. */
+const CASH_SUMMARY_ROW = "cash";
 
 export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const activateTicker = useTickerSourceActivate();
@@ -153,6 +154,18 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
 
   const [currentCollectionId, setCurrentCollectionId] = usePaneStateValue<string>("collectionId", paneCollection.collectionId ?? "");
   const [committedCursorSymbol, setCommittedCursorSymbol] = usePaneStateValue<string | null>("cursorSymbol", null);
+  // The CASH row's cursor has a key of its own: `cursorSymbol`, which followers, recent tickers and saved layouts
+  // read, only ever holds a ticker, and keeps the last one while the cursor is on cash.
+  const [cursorSummaryRow, setCursorSummaryRow] = usePaneStateValue<string | null>("cursorSummaryRow", null);
+  const committedCursorRow = cursorSummaryRow === CASH_SUMMARY_ROW ? CASH_ROW_KEY : committedCursorSymbol;
+  const commitCursorRow = useCallback((row: string | null) => {
+    if (row === CASH_ROW_KEY) {
+      setCursorSummaryRow(CASH_SUMMARY_ROW);
+      return;
+    }
+    setCursorSummaryRow(null);
+    setCommittedCursorSymbol(row);
+  }, [setCommittedCursorSymbol, setCursorSummaryRow]);
   const [collectionSorts, setCollectionSorts] = usePaneStateValue<Record<string, CollectionSortPreference>>("collectionSorts", NO_COLLECTION_SORTS);
   const [cashDrawerExpanded, setCashDrawerExpanded] = usePaneStateValue<boolean>("cashDrawerExpanded", false);
   const [, setViewMode] = usePaneSettingValue<PortfolioViewMode>("viewMode", "table");
@@ -165,7 +178,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     setCursorSymbol,
     flushCursorSymbol,
     cancelPendingCursorSymbol,
-  } = useThrottledCursorSymbol(committedCursorSymbol, setCommittedCursorSymbol);
+  } = useThrottledCursorSymbol(committedCursorRow, commitCursorRow);
 
   const paneSettings = useMemo(
     () => getPortfolioPaneSettings(paneInstance?.settings),
@@ -465,17 +478,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       cashValue: cashValue ?? (cashLine ? Number.NaN : null),
       targets: portfolioTargets,
     });
-    // The day and P&L the header shows, the broker's own where it reports them.
-    const metrics = resolvePortfolioAccountMetrics(portfolioSummaryTotals, accountState?.account, convertAccountValue, accountState?.snapshotBasis);
-    const period = periodColumns ? periodColumns.result : undefined;
-    return allocationSummaryRows(allocation, {
-      cost: portfolioSummaryTotals.hasPositions ? portfolioSummaryTotals.totalCostBasis : null,
-      dayPnl: metrics.dailyPnl,
-      dayPnlPct: metrics.dailyPnlPct,
-      pnl: periodColumns ? period?.total ?? null : metrics.unrealizedPnl,
-      pnlPct: periodColumns ? period?.totalContribution ?? null : metrics.unrealizedPnlPct,
-    }, { cashCurrency: cashLine?.currency, currency: totalsCurrency });
-  }, [accountState, cashLine, cashValue, convertAccountValue, periodColumns, portfolioSummaryTotals, portfolioTargets, showsAllocationRows, totalsCurrency]);
+    return allocationSummaryRows(allocation, { cashCurrency: cashLine?.currency, currency: totalsCurrency });
+  }, [cashLine, cashValue, portfolioSummaryTotals, portfolioTargets, showsAllocationRows, totalsCurrency]);
   const cashRowShown = !!allocationRows?.some((row) => row.id === "cash");
   const summarySegments = useMemo(() => buildPortfolioSummarySegments({
     totals: portfolioSummaryTotals,
@@ -762,13 +766,13 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const targetRow = useMemo<TargetRow | null>(() => {
     if (!isPortfolioTab || !currentPortfolio) return null;
     if (cursorSymbol === CASH_ROW_KEY) {
-      return cashRowShown ? { symbol: CASH_SYMBOL, label: "Cash", weight: cashWeight(cashValue, portfolioWeightBase, portfolioWeightBasis) } : null;
+      return cashRowShown ? { cash: true, symbol: CASH_SYMBOL, label: "Cash", weight: cashWeight(cashValue, portfolioWeightBase, portfolioWeightBasis) } : null;
     }
     if (!selectedTicker) return null;
     const symbol = selectedTicker.metadata.ticker;
     const holding = weightHoldings?.find((entry) => entry.symbol === symbol);
     const weight = holding ? allocationFigures(holding, portfolioWeightBase, null).weight : null;
-    return { symbol, label: symbol, weight };
+    return { cash: false, symbol, label: symbol, weight };
   }, [cashRowShown, cashValue, currentPortfolio, cursorSymbol, isPortfolioTab, portfolioWeightBase, portfolioWeightBasis, selectedTicker, weightHoldings]);
   const listedSymbols = useMemo(() => new Set(collectionTickers.map((ticker) => ticker.metadata.ticker)), [collectionTickers]);
   useTargetWeightActions({ portfolio: currentPortfolio, row: targetRow, listedSymbols, enabled: focused && viewMode === "table" && !quickAddFocused });

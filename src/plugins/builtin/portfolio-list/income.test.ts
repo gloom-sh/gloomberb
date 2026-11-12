@@ -129,6 +129,33 @@ test("portfolio show reads cents in rand, converts income, owes a short's divide
   }
 });
 
+test("TOTAL's partial yield is over the whole invested value less the holdings it leaves out, so a coin that pays nothing still counts", async () => {
+  const book = [
+    createTestTicker("KO", "Coca-Cola", { exchange: "NYSE", portfolios: ["main"], positions: [position(100, 60, "USD")] }),
+    createTestTicker("SLOW", "Slow Co", { exchange: "NYSE", portfolios: ["main"], positions: [position(10, 20, "USD")] }),
+    createTestTicker("BTC-USD", "Bitcoin", { exchange: "CCC", portfolios: ["main"], positions: [position(0.1, 40_000, "USD")] }),
+  ];
+  const last: Record<string, number> = { KO: 100, SLOW: 20, "BTC-USD": 50_000 };
+  const cli = createTestCliContext({
+    config: createDefaultConfig("/unused-income"),
+    store: { loadAllTickers: async () => book },
+    dataProvider: createTestDataProvider({
+      getQuote: async (symbol) => ({ symbol, price: last[symbol]!, currency: "USD", change: 0, changePercent: 0, previousClose: last[symbol]!, lastUpdated: Date.now() }),
+      getExchangeRate: async () => 1,
+      getCorporateActions: async (symbol) => symbol === "KO" ? histories.KO! : new Promise<CorporateActionsData>(() => {}),
+    }),
+  });
+  setCliColorEnabledOverride(false);
+  try {
+    const shown = await text(() => showCollection("main", cli.context, { dividendDeadlineMs: 50 }));
+    // KO's $200 over KO's $10,000 and the coin's $5,000, SLOW's $200 left out: 1.33%, not 2.00% over KO alone.
+    expect(shown).toMatch(/TOTAL[^\n]*\$15,200[^\n]*\$200\.00 +1\.33% /);
+    expect(shown).toContain("TOTAL income and yield leave out SLOW:NYSE (dividends not read within 0.05s).");
+  } finally {
+    setCliColorEnabledOverride(null);
+  }
+});
+
 test("a portfolio in another currency converts income into it, a lot valued at its purchase date's FX close included, and keeps the columns when the rate is missing", async () => {
   // A dollar lot bought on a date, in a euro portfolio: its cost converts at that day's EUR/USD close.
   const bought = day(30);

@@ -1519,16 +1519,21 @@ export async function readShareClassCode(
   const venues = await listingVenues(code, deps).catch(quiet([] as ListingVenue[]));
   // BRKB has no US line; a code that has one is a ticker of its own.
   if (joined && venues.some((venue) => isUsEquityExchange(venue.exchange))) return null;
-  const line = saved
-    ? { symbol: saved.metadata.ticker, exchange: canonicalExchange(saved.metadata.exchange), name: saved.metadata.name }
-    : await usShareClassLine(dotted, deps);
-  if (!line || !isUsEquityExchange(line.exchange)) return null;
+  const savedExchange = saved ? canonicalExchange(saved.metadata.exchange) : "";
+  const savedLine = saved ? { symbol: saved.metadata.ticker, exchange: savedExchange, name: saved.metadata.name } : null;
+  // A class row saved with no exchange (an import, an older profile) is still the class: search names its US
+  // line, and with search out of reach the row itself is read. Never the name search, which finds funds on it.
+  const searched = savedLine && isUsEquityExchange(savedExchange) ? null : await usShareClassLine(dotted, deps).catch(quiet(null));
+  const line = savedLine && isUsEquityExchange(savedExchange)
+    ? savedLine
+    : searched ? { ...searched, name: searched.name || savedLine?.name || "" } : savedLine && !savedExchange ? savedLine : null;
+  if (!line || (line.exchange ? !isUsEquityExchange(line.exchange) : line !== savedLine)) return null;
   const abroad = venues.filter((venue) => !isUsEquityExchange(venue.exchange));
   if (joined && abroad.some((venue) => venue.name && line.name && !sameCompany(venue.name, line.name))) return null;
   const shown = abroad.slice(0, SHARE_CLASS_OTHER_LINES).map((venue) => `${venue.symbol ?? code}:${venue.exchange}`);
   const also = shown.length ? `; also ${shown.join(", ")}${abroad.length > shown.length ? ` and ${abroad.length - shown.length} more` : ""}` : "";
   // A US listing is read bare, as BRK.B is; another US venue keeps its name.
-  const key = isUsListingExchange(line.exchange) ? line.symbol : `${line.symbol}:${line.exchange}`;
+  const key = !line.exchange || isUsListingExchange(line.exchange) ? line.symbol : `${line.symbol}:${line.exchange}`;
   return { ...parseListingArg(key), readAs: `Read "${words}" as ${line.symbol} (${line.name || "share class"})${also}.`, readFromName: true };
 }
 

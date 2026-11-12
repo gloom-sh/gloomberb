@@ -36,4 +36,8 @@ test("where a pane or report opens one, the start of a single collection's name 
   expect(unknownCollectionArgError("family", books, "portfolio or watchlist", undefined, { prefix: true }))
     .toEqual({ message: '"family" starts more than one portfolio or watchlist', detail: "Type more of Family Office or Family Trust" });
   expect(unknownCollectionArgError("family o", books, "portfolio or watchlist", undefined, { prefix: true })).toBeNull();
+  // Ids are internal: the start of one opens nothing (`a1` is no name), only a whole one does.
+  expect(findNamedCollection(books, "a1", { prefix: true })).toBeNull();
+  expect(findNamedCollection(books, "ma", { prefix: true })?.name).toBe("Main Portfolio");
+  expect(findNamedCollection(books, "e5f6", { prefix: true })?.name).toBe("Retirement");
 });

@@ -23,6 +23,8 @@ const CLEAR_TARGET_KEY = "T";
 
 /** The row a target goes on: a holding by its key, or the cash line. */
 export interface TargetRow {
+  /** The CASH row, the cash line; never a holding, whatever its symbol. */
+  cash: boolean;
   /** The key the target is saved under: the ticker's, or CASH. */
   symbol: string;
   /** How the row reads in a message: AAPL, or Cash. */
@@ -33,7 +35,7 @@ export interface TargetRow {
 
 /** "AAPL in Family Office: weight 10.6%, target 8.0%." The dialog's first line. */
 function describeRow(row: TargetRow, portfolio: Portfolio): string {
-  const target = row.symbol === CASH_SYMBOL ? portfolio.targetWeights?.[CASH_SYMBOL] : holdingTarget(portfolio.targetWeights, row.symbol);
+  const target = row.cash ? portfolio.targetWeights?.[CASH_SYMBOL] : holdingTarget(portfolio.targetWeights, row.symbol);
   const parts = [
     row.weight != null ? `weight ${formatAllocationWeight(row.weight)}` : null,
     target != null ? `target ${formatAllocationWeight(target)}` : "no target",
@@ -85,12 +87,19 @@ export function useTargetWeightActions({
     scheduleConfigSave(synced);
   }, [dispatch, stateRef]);
 
+  // A holding whose symbol is CASH: targets keep that key for the cash line, so it can take none.
+  const refuseCashNamedHolding = useCallback((target: TargetRow, book: Portfolio) => {
+    if (target.cash || target.symbol !== CASH_SYMBOL) return false;
+    notify({ type: "info", body: tf("The holding CASH takes no target: a target on CASH is the cash line's in {portfolio}.", { portfolio: book.name }) });
+    return true;
+  }, [notify]);
+
   const setTarget = useCallback(async () => {
     const { portfolio: book, row: target, listedSymbols: listed } = latest.current;
-    if (!book || !target || busyRef.current) return;
+    if (!book || !target || busyRef.current || refuseCashNamedHolding(target, book)) return;
     busyRef.current = true;
     try {
-      const current = target.symbol === CASH_SYMBOL ? book.targetWeights?.[CASH_SYMBOL] : holdingTarget(book.targetWeights, target.symbol);
+      const current = target.cash ? book.targetWeights?.[CASH_SYMBOL] : holdingTarget(book.targetWeights, target.symbol);
       const typed = await dialog.prompt<string>({
         content: (context) => (
           <TextPromptDialog
@@ -119,14 +128,14 @@ export function useTargetWeightActions({
       const values = { row: target.label, portfolio: book.name, weight: formatAllocationWeight(weight) };
       notify({
         type: "success",
-        body: [target.symbol === CASH_SYMBOL
+        body: [target.cash
           ? tf("Set the cash target in {portfolio} to {weight}.", values)
           : tf("Set the target for {row} in {portfolio} to {weight}.", values), note].filter(Boolean).join(" "),
       });
     } finally {
       busyRef.current = false;
     }
-  }, [dialog, notify, save, stateRef]);
+  }, [dialog, notify, refuseCashNamedHolding, save, stateRef]);
 
   // A dialog or save that fails says why, in the notice and the log.
   const promptTarget = useCallback(() => {
@@ -138,9 +147,9 @@ export function useTargetWeightActions({
 
   const clearTarget = useCallback(() => {
     const { portfolio: book, row: target, listedSymbols: listed } = latest.current;
-    if (!book || !target) return;
+    if (!book || !target || refuseCashNamedHolding(target, book)) return;
     const { config: next, removed } = clearPortfolioTargetWeights(stateRef.current.config, book.id, target.symbol);
-    const cash = target.symbol === CASH_SYMBOL;
+    const cash = target.cash;
     const values = { row: target.label, portfolio: book.name };
     if (removed.length === 0) {
       notify({ type: "info", body: cash ? tf("{portfolio} has no cash target.", values) : tf("{portfolio} has no target for {row}.", values) });
@@ -153,7 +162,7 @@ export function useTargetWeightActions({
       body: [cash ? tf("Cleared the cash target in {portfolio}.", values) : tf("Cleared the target for {row} in {portfolio}.", values), note]
         .filter(Boolean).join(" "),
     });
-  }, [notify, save, stateRef]);
+  }, [notify, refuseCashNamedHolding, save, stateRef]);
 
   const offered = enabled && !!portfolio && !!row;
   usePaneFooter("portfolio-list-targets", () => offered ? {

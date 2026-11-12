@@ -153,6 +153,22 @@ test("BRK B and BRKB are Berkshire's class B, the saved row first, never the ETN
   });
   expect(await readShareClassCode("HEIA", deps, { unsaved: true })).toBeNull();
   expect(await readShareClassCode("AAPL", deps, { unsaved: true })).toBeNull();
+
+  // A held class row saved with no exchange is still the class, never the name search's fund.
+  const blankPersistence = new AppPersistence(":memory:");
+  persistences.push(blankPersistence);
+  const blankStore = new TickerRepository(blankPersistence.tickers);
+  await blankStore.createTicker({
+    ticker: "BRK.B", exchange: "", currency: "USD", name: "Berkshire Hathaway Inc.", portfolios: ["main"], watchlists: [], positions: [], custom: {}, tags: [],
+  });
+  for (const typed of ["BRK B", "BRKB"]) {
+    const listing = await resolveCliListing(typed, undefined, { store: blankStore, dataProvider });
+    expect(listing.saved?.metadata.ticker, typed).toBe("BRK.B");
+    expect(listing.readAs, typed).toBe(`Read "${typed}" as BRK.B (Berkshire Hathaway Inc. Class B); also BRKB:BMV, BRKB:WSE.`);
+  }
+  // With search out of reach, the saved row itself.
+  const offline = createTestDataProvider({ search: async () => { throw new TypeError("fetch failed"); } });
+  expect((await resolveCliListing("BRK B", undefined, { store: blankStore, dataProvider: offline })).saved?.metadata.ticker).toBe("BRK.B");
 });
 
 test("a Hong Kong code without its leading zeros is its HKEX listing where search marks it, unless a row is saved under it", async () => {

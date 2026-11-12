@@ -5,8 +5,8 @@ import {
   formatAllocationWeight,
   type PortfolioAllocation,
 } from "../../../portfolio/allocation";
-import { priceColor, shownPriceColor } from "../../../theme/colors";
-import { formatCompact, formatCompactAmount, formatPercentRaw } from "../../../utils/format";
+import { priceColor } from "../../../theme/colors";
+import { formatCompactAmount } from "../../../utils/format";
 
 /** The cash line's row, which the cursor lands on so it takes a target like a holding. */
 export const CASH_ROW_KEY = summaryRowKey("cash");
@@ -18,32 +18,31 @@ function signed(text: string, value: number | null | undefined): SummaryCell {
   return value != null && Number.isFinite(value) && /[1-9]/.test(text) ? { text, color: priceColor(value), value } : { text, value: value ?? null };
 }
 
-/** What the TOTAL row adds up beside the allocation: the day and P&L the header shows. */
-export interface AllocationRowTotals {
-  cost: number | null;
-  dayPnl: number | null;
-  dayPnlPct: number | null;
-  pnl: number | null;
-  pnlPct: number | null;
+/** Adds up the figures that are known; null when none is. */
+function sumKnown(values: readonly (number | null | undefined)[]): number | null {
+  let sum: number | null = null;
+  for (const value of values) {
+    if (value != null && Number.isFinite(value)) sum = (sum ?? 0) + value;
+  }
+  return sum;
 }
 
 /**
  * The CASH and TOTAL rows under a book's holdings, as `portfolio show`
- * prints them: cash with its weight, target, drift and the trade that
- * reaches it, so the trades add up to nothing once the targets add up to the
- * whole; then the total, cash included, with the day and P&L. Cash trades in
- * its own currency, so its TRADE is the amount. Null rows when the book has
- * neither cash nor a target.
+ * prints them. CASH has its value, weight, target, drift and, in TRADE VAL,
+ * the amount that reaches its target: TRADE counts units, which cash has
+ * none of, so it stays blank there. TOTAL adds up the allocation columns:
+ * the weight, the targets, the drifts and the trades, so a book whose targets
+ * cover it sums to zero. Its value, day and P&L are the header's, and stay
+ * there. Null rows when the book has neither cash nor a target.
  */
 export function allocationSummaryRows(
-  allocation: Pick<PortfolioAllocation, "cash" | "total" | "weightBasis" | "targetSum">,
-  totals: AllocationRowTotals,
+  allocation: Pick<PortfolioAllocation, "rows" | "cash" | "total" | "weightBasis" | "targetSum">,
   { cashCurrency, currency }: { cashCurrency?: string | null; currency: string },
 ): TickerTableSummaryRow[] {
   const rows: TickerTableSummaryRow[] = [];
   const { cash } = allocation;
   if (cash) {
-    const trade = formatCompactAmount(cash.tradeValue ?? undefined, { signed: true });
     rows.push({
       id: "cash",
       selectable: true,
@@ -53,29 +52,22 @@ export function allocationSummaryRows(
         weight: { text: formatAllocationWeight(cash.weight), value: cash.weight },
         target_weight: { text: formatAllocationWeight(cash.targetWeight), value: cash.targetWeight },
         drift: signed(formatAllocationDrift(cash.drift), cash.drift),
-        trade: signed(trade, cash.tradeValue),
-        trade_value: signed(trade, cash.tradeValue),
+        trade_value: signed(formatCompactAmount(cash.tradeValue ?? undefined, { signed: true }), cash.tradeValue),
       },
     });
   }
   const weight = allocation.weightBasis === "total" && allocation.total != null && allocation.total > 0 ? 100 : null;
-  const day = formatCompactAmount(totals.dayPnl ?? undefined, { signed: true });
-  const pnl = formatCompactAmount(totals.pnl ?? undefined, { signed: true });
-  const percent = (value: number | null) => value != null && Number.isFinite(value)
-    ? { text: formatPercentRaw(value), color: shownPriceColor(value, 2), value }
-    : { text: "—", value: null };
+  const lines = [...allocation.rows, ...(cash ? [cash] : [])];
+  const drift = sumKnown(lines.map((line) => line.drift));
+  const tradeValue = sumKnown(lines.map((line) => line.tradeValue));
   rows.push({
     id: "total",
     cells: {
       ticker: { text: "TOTAL" },
-      change_pct: percent(totals.dayPnlPct),
-      cost_basis: { text: totals.cost != null && Number.isFinite(totals.cost) ? formatCompact(totals.cost) : "—", value: totals.cost },
-      mkt_value: { text: formatCompactAmount(allocation.total ?? undefined), value: allocation.total },
       weight: { text: formatAllocationWeight(weight), value: weight },
       target_weight: { text: formatAllocationWeight(allocation.targetSum), value: allocation.targetSum },
-      day_pnl: signed(day, totals.dayPnl),
-      pnl: signed(pnl, totals.pnl),
-      pnl_pct: percent(totals.pnlPct),
+      drift: signed(formatAllocationDrift(drift), drift),
+      trade_value: signed(formatCompactAmount(tradeValue ?? undefined, { signed: true }), tradeValue),
     },
   });
   return rows;

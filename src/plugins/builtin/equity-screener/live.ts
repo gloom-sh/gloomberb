@@ -6,6 +6,7 @@ import type { QueryEntry } from "../../../market-data/result-types";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import type { Quote } from "../../../types/financials";
 import { isFiniteNumber } from "../../../utils/guards";
+import { isValuationMultiple } from "./model";
 
 /**
  * A screen row with its quote laid over it: price, change, volume and market
@@ -142,19 +143,23 @@ const LIVE_SORT_FIELDS: ReadonlySet<string> = new Set(["price", "changePercent",
  * quotes move (price, change, volume, market cap, the P/Es and P/B) is redone on the overlaid
  * values, so the column reads monotone: GRAB's snapshot cap, two closes old,
  * kept it above MANH after its quote moved it below. Rows without a
- * value stay last, and ties keep the snapshot's order. Any other sort is the
+ * value stay last, a multiple at zero or below just before them, and ties
+ * keep the snapshot's order. Any other sort is the
  * snapshot's, which the overlay does not touch.
  */
 export function sortLiveScreenRows<T extends ScreenRow>(rows: readonly T[], sort: ScreenDefinition["sort"]): T[] {
   if (!LIVE_SORT_FIELDS.has(sort.field)) return [...rows];
   const field = sort.field as "price" | "changePercent" | "volume" | "marketCap" | (typeof PRICE_MULTIPLE_FIELDS)[number];
   const sign = sort.direction === "desc" ? -1 : 1;
+  // A multiple at zero or below follows the positive ones, either way, as the server ranks it; unknowns last.
+  const lossesLast = isValuationMultiple(field);
+  const band = (value: number | null | undefined) => !isFiniteNumber(value) ? 2 : lossesLast && value <= 0 ? 1 : 0;
   return rows
     .map((row, index) => ({ row, index, value: row.metrics[field]?.value }))
     .sort((a, b) => {
-      const aKnown = isFiniteNumber(a.value), bKnown = isFiniteNumber(b.value);
-      if (aKnown !== bKnown) return aKnown ? -1 : 1;
-      if (aKnown && bKnown && a.value !== b.value) return sign * (a.value! - b.value!);
+      const aBand = band(a.value), bBand = band(b.value);
+      if (aBand !== bBand) return aBand - bBand;
+      if (aBand < 2 && a.value !== b.value) return sign * (a.value! - b.value!);
       return a.index - b.index;
     })
     .map(({ row }) => row);

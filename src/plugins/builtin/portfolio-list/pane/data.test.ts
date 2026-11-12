@@ -227,11 +227,11 @@ describe("sortTickers", () => {
     expect(sortTickers(rows, financialsMap, { columnId: null, direction: "asc" }, context, columns).valued.size).toBe(0);
   });
 
-  test("a book with targets leads with WEIGHT, TGT WT, DRIFT and TRADE, and DRIFT sorts by size, over and under alike", () => {
+  test("a book with targets leads with WEIGHT, TGT WT, DRIFT, TRADE and TRADE VAL, and DRIFT sorts by size, over and under alike", () => {
     const ids = (columnIds: string[]) => resolveVisibleColumns(columnIds, true, { targetWeights: true }).map((column) => column.id);
-    expect(ids(["ticker", "price", "change_pct", "mkt_value"])).toEqual(["ticker", "weight", "target_weight", "drift", "trade", "price", "change_pct", "mkt_value"]);
+    expect(ids(["ticker", "price", "change_pct", "mkt_value"])).toEqual(["ticker", "weight", "target_weight", "drift", "trade", "trade_value", "price", "change_pct", "mkt_value"]);
     // A WEIGHT the pane places keeps its place, the rest after it; columns that already pick a target column stay as they are.
-    expect(ids(["ticker", "price", "weight", "mkt_value"])).toEqual(["ticker", "price", "weight", "target_weight", "drift", "trade", "mkt_value"]);
+    expect(ids(["ticker", "price", "weight", "mkt_value"])).toEqual(["ticker", "price", "weight", "target_weight", "drift", "trade", "trade_value", "mkt_value"]);
     expect(ids(["ticker", "drift", "price"])).toEqual(["ticker", "drift", "price"]);
 
     // $10,000 book: AAPL 26% against 20% (+6pp), SPY 30% against 40% (-10pp), KO 44% against 42% (+2pp).

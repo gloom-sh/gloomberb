@@ -97,6 +97,7 @@ import {
   screenYtdBase,
   splitGradeReason,
   firstScreenSortDirection,
+  pressedScreenSort,
 } from "./model";
 import { findNamedCollection, readWatchlistArgument } from "../../../portfolio/collection-name";
 import { useScreenResults } from "./results";
@@ -1152,16 +1153,8 @@ function EquityScreenView({
               if (!field) return;
               if ((NUMERIC_FIELDS as readonly string[]).includes(field))
                 setMetric(field as NumericField);
-              apply({
-                ...definition,
-                sort: {
-                  field,
-                  // The same column flips; another starts the way it ranks, a multiple cheapest first.
-                  direction: definition.sort.field === field
-                    ? definition.sort.direction === "desc" ? "asc" : "desc"
-                    : firstScreenSortDirection(field),
-                },
-              });
+              // The same column flips; another starts the way it ranks, a multiple cheapest first.
+              apply({ ...definition, sort: pressedScreenSort(definition.sort, field) });
             }}
             emptyStateTitle={(unmatchedNames ? null : currencyEmpty?.title) ?? "No equities match this screen."}
             emptyStateHint={unmatchedNames
