@@ -194,6 +194,7 @@ import {
   symbolListNotes,
   type HistoryListRow,
 } from "../history-export";
+import { catalogSeriesId, loadCatalogSeriesHistory, type CatalogSeriesHistory } from "../history-catalog-series";
 import { fail, failWithError, isCliFailure, NO_DATA_CODE } from "../errors";
 import { createConcurrencyLimiter, mapWithConcurrency } from "../../utils/concurrency";
 import { CLOSE_COPIED_FLAG, MISSING_VOLUME_TEXT } from "../../utils/price-history-integrity";
@@ -471,8 +472,24 @@ function rangeTypedAsSymbol(entry: string): HistoryRange | null {
 
 function parseRange(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): HistoryRange {
   const range = readHistoryRange(value ?? "1Y");
+  // A date (2026/08/01, 2026-08-01, 2026) is where bars start, which --from takes; --range is a span back from now.
+  const from = range ? null : rangeTypedAsDate(value ?? "");
+  if (from) {
+    ctx.fail(`--range takes a span back from now, such as 3M or 1Y; ${value} is a date.`,
+      `For the bars from ${from}: --from ${from}${from.length > 4 ? "" : " (a year alone is from its first day)"}, with --to for an end.`);
+  }
   if (!range) ctx.fail(`Unknown range "${value}".`, `Use one of ${HISTORY_RANGES.join(", ")}, or ${HISTORY_RANGE_ALIASES}.`);
   return range!;
+}
+
+/** A date typed for --range, as --from takes it (2026-08-01 for 2026/08/01 or 2026.08.01, a year as is); null for anything else. */
+function rangeTypedAsDate(value: string): string | null {
+  const typed = value.trim();
+  if (/^(?:19|20)\d{2}$/.test(typed)) return typed;
+  const date = /^((?:19|20)\d{2})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(typed);
+  if (!date) return null;
+  const iso = `${date[1]}-${date[2]!.padStart(2, "0")}-${date[3]!.padStart(2, "0")}`;
+  return Number.isNaN(Date.parse(`${iso}T00:00:00Z`)) ? null : iso;
 }
 
 function parseNewsFeed(value: string | undefined): NewsQuery["feed"] | undefined {
@@ -494,7 +511,9 @@ function normalizeSymbols(args: string[]): string[] {
  * (`Aeon`) too: it may be a company's name as much as a ticker (`titleCaseCompanyName`).
  */
 function uniqueEntries(entries: readonly string[]): string[] {
-  return uniqueSecuritySymbols(entries.map((entry) => isCompanyNameInput(entry) || isTitleCaseWord(entry) ? entry : entry.toUpperCase()));
+  // A catalog series' id keeps the case its source names it in (CAP:bond-yield:jp-10y).
+  return uniqueSecuritySymbols(entries.map((entry) => catalogSeriesId(entry)
+    ?? (isCompanyNameInput(entry) || isTitleCaseWord(entry) ? entry : entry.toUpperCase())));
 }
 
 /**
@@ -1778,6 +1797,27 @@ interface ListingHistory {
   mostTraded: boolean;
   /** `--currency`: what the prices were converted from and into, and the daily FX series read. */
   fx?: HistoryConversion;
+  /** A catalog series (`CAP:bond-yield:jp-10y`) read beside listings: its values are in `close`, and are no price. */
+  catalogSeries?: true;
+}
+
+/**
+ * A catalog series' values as a list's history, each date's value its close:
+ * dated, in the unit the catalog names (`%` as pct), with its name.
+ */
+function catalogListingHistory(series: CatalogSeriesHistory): ListingHistory {
+  const unit = series.unit === "%" ? "pct" : series.unit;
+  const decimals = Math.min(6, Math.max(2, ...series.points.map(({ value }) => (String(value).split(".")[1] ?? "").length)));
+  return {
+    listing: { symbol: series.id, exchange: "", key: series.id, saved: null, request: { symbol: series.id, exchange: "" } },
+    identity: { symbol: series.id, exchange: "", name: series.label },
+    unit: { kind: "unknown", currency: null, unit },
+    data: series.points.map(({ date, value }) => ({
+      date, open: null, high: null, low: null, close: value, volume: null, currency: null, unit, interval: "1d", flag: null,
+    })),
+    resolution: "1d", interval: "1d", decimals, intraday: false, volume: null, freshness: undefined,
+    notes: series.notes, mostTraded: false, catalogSeries: true,
+  };
 }
 
 /** A history's prices converted into another currency at each bar's daily FX close (`convertListingHistory`). */
@@ -2295,7 +2335,9 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const words = args.filter((arg, index) => !arg.startsWith("-") && !(index > 0 && args[index - 1]!.startsWith("--") && !args[index - 1]!.includes("=")));
   const barSize = file == null ? words.find((arg) => !/\s/.test(arg.trim()) && barSizeTypedAsSymbol(arg)) : undefined;
   if (barSize) failHistoryBarSize(barSize, words, ctx);
-  if (wide || file != null || args.includes("-") || uniqueEntries(args).length > 1 || args.some((arg) => /[,;]/.test(arg))) {
+  // A catalog series (CAP:bond-yield:jp-10y) is read as a list's is, alone too.
+  if (wide || file != null || args.includes("-") || uniqueEntries(args).length > 1 || args.some((arg) => /[,;]/.test(arg))
+    || args.some((arg) => catalogSeriesId(arg) != null)) {
     // `history CC=F 1mo` asks for a month of cocoa, not for cocoa and 1MO: it says which option reads it.
     const typedRange = rangeOption == null && !window ? args.find((arg) => rangeTypedAsSymbol(arg)) : undefined;
     if (typedRange) {
@@ -2550,7 +2592,7 @@ function listedKeys(keys: readonly string[]): string {
  * whose bars were merged. `interval` is the bars' size when every symbol came
  * in one, else null.
  */
-function wideHistoryTable(served: readonly ListingHistory[]): {
+function wideHistoryTable(served: readonly ListingHistory[], failed: readonly string[] = []): {
   rows: Array<Record<string, string | number | null>>;
   columns: CliResultColumn[];
   interval: string | null;
@@ -2588,11 +2630,15 @@ function wideHistoryTable(served: readonly ListingHistory[]): {
       ...histories.map((history): CliResultColumn => {
         const unit = historyExportUnit(history.unit);
         const price = historyPrice(history.decimals);
+        // A catalog series' value is no close: its column is the series, in its unit.
         return {
-          key: key(history), header: `${history.listing.key} close${unit ? ` (${unit})` : ""}`, align: "right",
+          key: key(history), header: `${history.listing.key}${history.catalogSeries ? "" : " close"}${unit ? ` (${unit})` : ""}`, align: "right",
           format: (value) => value == null ? "" : price(value),
         };
       }),
+      // A column asked for that served nothing stays, empty: its reason is in the notes.
+      ...failed.filter((symbol) => !histories.some((history) => history.listing.key === symbol))
+        .map((symbol): CliResultColumn => ({ key: `close:${symbol}`, header: catalogSeriesId(symbol) ? symbol : `${symbol} close`, align: "right", format: () => "" })),
     ],
     interval: intervals.size === 1 ? [...intervals][0] ?? null : null,
     notes,
@@ -2625,6 +2671,8 @@ async function runHistoryList(
     // from a file or standard input, or past the lookups, is tickers: no word in it costs a quote to read as a name.
     const typedList = file === undefined && !args.includes("-") && !exchange;
     const read = await mapWithConcurrency(symbols, HISTORY_LIST_CONCURRENCY, async (symbol) => {
+      // A catalog series is no listing: it is read as a series below.
+      if (catalogSeriesId(symbol)) return { typed: symbol, listing: null, error: null };
       try {
         const listing = await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true, companyWord: lookups && typedList });
         return { typed: symbol, listing };
@@ -2636,6 +2684,9 @@ async function runHistoryList(
     const listed = await mapWithConcurrency(entries, HISTORY_LIST_CONCURRENCY, async (entry): Promise<ListedHistory> => {
       const symbol = entry.typed;
       try {
+        // A catalog series (CAP:bond-yield:jp-10y, FRED:DGS10) is read as `fn G` charts it, dated and in its unit.
+        const seriesId = catalogSeriesId(symbol);
+        if (seriesId) return { symbol: seriesId, history: catalogListingHistory(await loadCatalogSeriesHistory(seriesId, market, ctx.plugins, ask)) };
         if (!("joined" in entry) && !entry.listing) throw entry.error;
         const listing = "joined" in entry ? await resolveNamedListing(entry.joined, market) : entry.listing!;
         const loaded = await loadListingHistory(listing, market, ctx, ask, { lookups });
@@ -2692,7 +2743,10 @@ async function runHistoryList(
       asOf: entry.history.freshness?.asOf ?? null,
     } : { symbol: entry.symbol, error: entry.error });
     if (wide) {
-      const table = wideHistoryTable(served);
+      // A column that served nothing keeps its place, empty, its reason said in the notes.
+      const failed = listed.flatMap((entry) => "error" in entry ? [entry.symbol]
+        : entry.history.data.length === 0 ? [entry.history.listing.key] : []);
+      const table = wideHistoryTable(served, failed);
       notes.push(...table.notes);
       ctx.printResult({
         data: table.rows,

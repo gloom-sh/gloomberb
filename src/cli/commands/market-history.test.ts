@@ -14,6 +14,7 @@ import { serializeCliResult } from "../result";
 import { subMinuteDataMessage } from "../known-gaps";
 import { marketDataCliCommands, readHistoryRange } from "./market";
 import type { PriceHistoryResult } from "../../types/price-history";
+import * as catalogSeries from "../history-catalog-series";
 
 const history = marketDataCliCommands.find((command) => command.name === "history")!;
 
@@ -518,6 +519,28 @@ test("history --wide sets several pairs side by side: a row a date, a close colu
     `2026-10-30,157.58847,0.82503,0.92074,,,1d,Gloom Cloud,2026-10-30,${retrieved}`,
   ]);
   expect(result.failure).toBeUndefined();
+});
+
+test("history --wide takes a catalog series as a column in its unit, and keeps a column that served nothing, empty, with its reason", async () => {
+  // `history --file side.txt --wide` said "Unknown exchange JP-10Y for CAP:BOND-YIELD" and the column was gone.
+  const read = spyOn(catalogSeries, "loadCatalogSeriesHistory").mockImplementation(async (id) => {
+    if (id !== "CAP:bond-yield:jp-10y") throw new Error(`${id} is not covered: no chart series is called "${id.slice(id.indexOf(":") + 1)}".`);
+    return { id, label: "Japan 10Y JGB yield", unit: "%", notes: [], points: [{ date: "2026-10-29", value: 2.84 }, { date: "2026-10-30", value: 2.851 }] };
+  });
+  try {
+    const { csv, result, retrieved } = await runList(["USDJPY=X", "CAP:bond-yield:jp-10y", "FRED:XYZ", "--wide"], async () =>
+      [["2026-10-29", 157.68921], ["2026-10-30", 157.58847]].map(([date, close]) =>
+        ({ date: new Date(date as string), open: close as number, high: close as number, low: close as number, close: close as number })));
+    expect(read.mock.calls.map(([id]) => id)).toEqual(["CAP:bond-yield:jp-10y", "FRED:XYZ"]);
+    expect(csv).toEqual([
+      `Date,USDJPY=X close (JPY per USD),CAP:bond-yield:jp-10y (pct),FRED:XYZ,${IDENTITY}`,
+      `2026-10-29,157.68921,2.84,,,,1d,Gloom Cloud,2026-10-30,${retrieved}`,
+      `2026-10-30,157.58847,2.851,,,,1d,Gloom Cloud,2026-10-30,${retrieved}`,
+    ]);
+    expect(result.warnings).toContain("FRED:XYZ is not covered: no chart series is called \"XYZ\".");
+  } finally {
+    read.mockRestore();
+  }
 });
 
 /** Bars from `start`, one every `minutes`, each closing at the next of `closes`. */
@@ -1171,4 +1194,17 @@ test("a pair's rebuilt and copied closes are flagged and said once, and the draw
   expect(result.warnings).toContainEqual(expect.stringContaining(
     "The source repeated the open of 2022-06-08 and 2022-06-09 as their close; they close at the next session's open (flag close rebuilt); "
     + "the source repeated the open of 2022-06-10 as its close"));
+});
+
+test("a date given to --range points to --from, the option that takes where bars start", async () => {
+  // `history USDJPY=X --range 2026/08/01` said only "Unknown range".
+  const refused = async (range: string) => {
+    const cli = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-command-fixture"), dataProvider: createTestDataProvider({}) });
+    cli.context.fail = (message: string, details?: string): never => { throw new Error(`${message}\n${details}`); };
+    return history.execute(["USDJPY=X", "--range", range], cli.context).then(() => "", (error: Error) => error.message);
+  };
+  expect(await refused("2026/08/01")).toBe("--range takes a span back from now, such as 3M or 1Y; 2026/08/01 is a date.\n"
+    + "For the bars from 2026-08-01: --from 2026-08-01, with --to for an end.");
+  expect(await refused("2026.8.1")).toContain("--from 2026-08-01");
+  expect(await refused("2026/13/45")).toStartWith("Unknown range");
 });
