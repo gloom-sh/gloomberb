@@ -77,9 +77,9 @@ test("a company with no guidance says so and names one that has some, instead of
   const definition = companyHeadless("guidance");
   const args = createTestHeadlessArgs({ symbols: [empty.symbol], options: {} });
   const result = await definition.load(args, createTestHeadlessContext({ apiClient: { getCloudCompanyGuidance: async () => empty } as unknown as typeof apiClient }));
-  expect(result).toMatchObject({ empty: `No guidance on file for ${empty.symbol}. Try \`fn GUIDE WMT\`.` });
+  expect(result).toMatchObject({ empty: `Guidance for ${empty.symbol} is not yet available. Try \`fn GUIDE WMT\`.` });
   const text = renderHeadlessPaneText(definition, result, args, "GUIDE", deriveHeadlessFreshness(definition, result));
-  expect(text).toContain("No guidance on file");
+  expect(text).toContain("is not yet available");
   expect(text).not.toContain("not covered");
   // Guidance on file is a table, not that sentence, and a metric that is not among it keeps its own reason.
   const full = await definition.load(args, createTestHeadlessContext({ apiClient: { getCloudCompanyGuidance: async () => guidancePayload() } as unknown as typeof apiClient }));
