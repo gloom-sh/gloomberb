@@ -302,7 +302,8 @@ async function runMoverCommand(rawArgs: string[], ctx: Parameters<CliCommandDef[
   // --session extended by the extended print's move from that close.
   const { quotes, rankedBy } = rankMoverQuotes(category, movers.quotes.map(moverRegularSession), basis);
   const rows = quotes.filter((quote) => meetsMinFloat(quote.floatShares, minFloat)).slice(0, limit).map((quote) => {
-    const { extended, ...row } = quote;
+    // closedSession only tells the live overlay which session the row's volume is.
+    const { extended, closedSession: _closedSession, ...row } = quote;
     return {
       ...row,
       extendedSession: extended?.session ?? null,
